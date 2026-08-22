@@ -12,7 +12,7 @@
 | F3 | 前端状态与 IPC 封装 | types/plugin.ts、pluginStore、workspaceTabsStore、commands/plugins.ts（42 单测全绿；覆盖率 Lines 100%/Branch 96.87%；全量 vitest 4 个失败文件均为分支既有，见测试记录） | 已完成 | 149d3b2a | 7c36c65e |
 | F4 | 主窗口集成 | WorkspaceMode 扩展、aside 两按钮、Workspace 导航栏/默认卡片/独立 Tab 条/页面壳 + 管理页/安装对话框提前落地（59 组件测试全绿：37 开发 + 22 测试补充；覆盖率 Lines 97.42%/Branch 89.01%；登记 BUG-F4-01…04 低危缺陷/偏差；BUG-F4-01/02/03/04 已修复并经验证 agent 复核，见「F4 修复验证」小节） | 已完成 | 62141434 | ca2218bc+46c195fb |
 | F5 | 插件管理页 | ~~独立功能项~~ 已并入 F4 交付（管理页+两步安装对话框） | 已完成（并入F4） | 62141434 | ca2218bc |
-| F6 | RPC 桥 | uiPluginBridge：信封路由、权限判定、限流超时、token 快照推送（31 单测全绿） | 待测试 | c77085c8 | — |
+| F6 | RPC 桥 | uiPluginBridge：信封路由、权限判定、限流超时、token 快照推送（开发 31 + 测试补充 33 = 64 单测全绿；覆盖率 Lines 99.27%/100%；安全专项复核通过；登记 BUG-F6-01 低危协议偏差，见测试记录） | 测试完成（BUG-F6-01 低危新建，不阻断） | c77085c8 | —（仅追加测试文件，未 commit） |
 | F7 | Settings 外观 | settings.appearance 菜单项 + AppearanceSection 主题切换器 | 未开始 | — | — |
 | F8 | SDK 包 | packages/ui-plugin-sdk（bridge/theme/theme.css/useTheme） | 未开始 | — | — |
 | F9 | 示例插件与 E2E | e2e/fixtures/sample-plugin + e2e/specs/plugins.spec.ts journeys 1-5 | 未开始 | — | — |
@@ -26,6 +26,7 @@
 | BUG-F4-02 | F4 | 「同一插件页多开」不可实现：key=`{pluginId}:{pageId}` + open 幂等，同页重复点击仅聚焦 | Workspace 点击同一导航项两次 → 仅一个 Tab。PRD §4.2/§4.4 允许多开，但 §4.4 表格自身定义该唯一 key，自相矛盾——需产品拍板 | 已修复（产品决议：单实例） |
 | BUG-F4-03 | F4 | 安装流程缺「名称/版本/权限清单确认」中间步骤，确认即直接写入 | 管理页[安装插件…] → 输入合法 zip 路径 → Install：无任何预览确认直接安装成功。规格 §4.3 要求写入前展示确认 | 已修复（ca2218bc） |
 | BUG-F4-04 | F4 | 管理页默认过滤器为「全部」（规格为默认 Workspace），且「全部」视图平铺不分组 | 打开管理页未点 chip 即显示全部插件平铺列表（PluginManagementPage.tsx:57 初值 'all'）。规格 §4.3：默认 Workspace、「全部」分组 | 已修复（ca2218bc） |
+| BUG-F6-01 | F6 | 【低危/协议卫生，无安全影响】原型链键名作为 API type 时回 `E_PERMISSION` 而非设计文档声明的 `E_NOT_FOUND`：`API_ROUTES` 为普通对象字面量，`__proto__`/`constructor`/`hasOwnProperty`/`toString`/`valueOf` 经 Object.prototype 原型链解析为非 undefined 值，绕过「unknown api → E_NOT_FOUND」门（uiPluginBridge.ts:374-380），落入权限判定后被拒。**无法到达任何 handler**（granted Set 仅含 manifest 字符串），不消耗并发配额 | attachBridge 后从 iframe window 投递 `{ch:'ui-plugin',type:'__proto__',target:'host',reqId:'r1'}` → 收到 `__proto__.err{code:'E_PERMISSION'}`；同型 `constructor`/`hasOwnProperty`/`toString`/`valueOf` 一致。按 uiPluginBridge.ts:126 自述契约与 §3.2 路由语义应为 `E_NOT_FOUND('unknown api')`。修复建议：`Object.prototype.hasOwnProperty.call(API_ROUTES, type)` 或 `Map`/null-prototype 路由表。回归锚点：security.test「denies prototype-chain api type …」（5 例） | 新建 |
 
 Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已修复`
 
@@ -341,6 +342,73 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 - `npx vitest run src/windows/plugins src/windows/workspace` → **9 文件 60 tests 全绿**
 
 ⚠️ 合并前备注：ca2218bc 未包含工作区中的配套改动——`src/commands/plugins.ts`（`inspectPluginPackage` IPC 封装）与 en.ts/zh-CN.ts 各 +7 个 i18n 键。缺这三处时已提交的 InstallPluginDialog.tsx 无法通过类型检查、i18n 显示原始 key。主控填写测试 commit 号时须将这三个文件一并纳入提交。
+
+### F6（RPC 桥，commit c77085c8）
+
+- 测试 agent 会话，2026-08-22。规格依据：ui-plugins-implementation.md §3 全部（信封/握手时序/§3.2 API 表/权限映射/限流超时/错误码）与 §4.4。
+- 新增测试文件（零功能代码改动，未 commit）：
+  - `src/lib/__tests__/uiPluginBridge.security.test.ts`（28 例）：凭据白名单、栈/审计非泄露、畸形 payload、大小写变体、原型链键、原型污染遏制、跨 iframe source 隔离、detach 静默、限流配额生命周期、手动快照
+  - `src/windows/workspace/__tests__/PluginPageShell.bridge.test.tsx`（5 例）：桥接线（attachBridge 参数、theme-pack-changed 推送、MutationObserver class 变更推送、卸载 detach、reload 重挂载重连）
+
+#### 用例清单
+
+既有开发单测（31 例，全部 PASS）：
+
+| 组 | 场景 | 数量 | 结论 |
+|----|------|------|------|
+| uiPluginBridge.test | plugin.ready→host.ready 握手（apiVersion/locale/dark/tokens）、theme.apply 手动推送 | 2 | PASS |
+| uiPluginBridge.test | 权限门 deny-by-default（context/command/storage 各 API 缺权限拒 + 全授权放行 + i18n E_NOT_IMPLEMENTED） | 6 | PASS |
+| uiPluginBridge.test | 信封语义（reqId 回显/乱序完成、unknown type E_NOT_FOUND、异源消息忽略、detach 停答） | 4 | PASS |
+| uiPluginBridge.test | 限流超时（第 21 并发 E_RATE_LIMIT+恢复、ui.notify 5s 冷却、30s E_TIMEOUT） | 3 | PASS |
+| uiPluginBridge.test | context 白名单（store 路径/IPC 兜底路径/getActiveConnection 三态） | 3 | PASS |
+| uiPluginBridge.test | command.invoke 错误映射（E_NOT_FOUND/E_BAD_REQUEST） | 2 | PASS |
+| themeTokens.test | themes.css token 定义存在性 ×7、THEME_TOKENS↔themes.css 双向契约 ×2、buildThemeSnapshot dark/v/tokens 键集 ×2 | 11 | PASS |
+
+新增测试单测（33 例，全部 PASS）：
+
+| 编号组 | 场景 | 预期 | 实际 | 结论 |
+|--------|------|------|------|------|
+| SEC-01–04 | 凭据白名单 | IPC 兜底路径 getConnections 与 store 路径 getActiveConnection 输出**恰好 3 个 own keys**（构造式白名单证明，非 delete 式）；含 host/port/username/password/sshTunnel.password/privateKeyPath/passphrase/jump/options.tlsCa 的泄漏型 fixture 全量 marker 扫描零命中；INTERNAL 错误仅 message（≤500 截断），error.stack 标记不出现；审计日志带 `[ui-plugin:{id}]` 且不含 args 内容 | 符合 | PASS |
+| SEC-05–12 | 权限门 vs 畸形路由 | 大小写/前导空格变体 → E_NOT_FOUND；`__proto__` 等 5 个原型链键 → 拒绝且 handler 不可达（当前回 E_PERMISSION，偏差见 BUG-F6-01）；target 非 `host`/缺失/ch 尾随空格 ×4 信封忽略；无 reqId 不应答 | 符合 | PASS |
+| SEC-13–17 | command.invoke 畸形 payload | payload 整体缺失、configId 缺失/数字/空串 → E_BAD_REQUEST；args 为 string/number/boolean → E_BAD_REQUEST；args:null → input `{}`（钉住良性现行为）；数组 args 原样透传 | 符合 | PASS |
+| SEC-18–20 | 原型污染遏制 | JSON.parse 构造 own `__proto__`/`constructor.prototype` 键的 args 与 storage value 原样过桥进 IPC；`Object.prototype` 往返后零污染；污染 reqId 仅作字面回显，信封 ok 字段不受影响 | 符合 | PASS |
+| SEC-21–22 | storage/notify 校验 | storage.get/set/remove 空/缺/数字 key ×9 → E_BAD_REQUEST 且 IPC 零调用；ui.notify 缺 title/空 title/body 数字 ×3 → E_BAD_REQUEST 且 notification 零调用 | 符合 | PASS |
+| SEC-23–24 | source 隔离与静默 | 双 iframe 双桥：B 帧消息仅 B 桥应答（pluginId 命名空间正确），A 桥全程静默；detach 后 plugin.ready 无 host.ready、storage.get 零 IPC 零应答 | 符合 | PASS |
+| SEC-25–27 | 限流配额生命周期 | cap=2：占满→第 3 个 E_RATE_LIMIT；**完成 1 个恰好释放 1 槽**（h4 被受理、h5 再度受限）；超时同样释放容量（E_TIMEOUT 后新请求受理）；30 连发权限拒绝请求零 E_RATE_LIMIT（拒绝类响应不耗配额） | 符合 | PASS |
+| SEC-28 | 手动主题快照 | pushThemeSnapshot 每次调用实时反映 dark 翻转，v=THEME_SNAPSHOT_VERSION(=2)，tokens 键集 == THEME_TOKENS | 符合 | PASS |
+| SH-01–05 | PluginPageShell 桥接线 | ready 后恰 attach 1 次（iframe 元素/pluginId/manifest permissions/locale 正确）；`datazen:theme-pack-changed` 触发 pushThemeSnapshot；documentElement class 增/删触发推送而 lang 属性变更不触发；unmount detach 后事件不再推送；watchdog reload 重挂载后旧桥 detach+新桥 attach（各一次） | 符合 | PASS |
+
+#### 安全专项复核结论（重点项）
+
+| 复核项 | 结论 | 依据 |
+|--------|------|------|
+| 凭据泄露 | **通过** | toPublicConnection（uiPluginBridge.ts:92-98）为**构造式白名单**（`return {id,name,dbType}` 字面量），非 spread/delete 式清洗；store 缓存路径与 IPC 兜底路径、getConnections/getActiveConnection 两 API 全部经过它；SEC-01/02 以 own-keys 计数 + 密钥 marker 全文扫描双重验证 |
+| 权限绕过 | **通过**（1 低危协议偏差 → BUG-F6-01） | 缺 configId/args 非对象均 E_BAD_REQUEST 先于 IPC；type 大小写敏感精确匹配无法旁路；原型链键名虽绕过 E_NOT_FOUND 门但被第二道权限门拒绝，handler 物理不可达、配额零消耗 |
+| source 校验 | **通过** | onMessage 首行 `event.source !== iframe.contentWindow` 即弃；双桥交叉隔离实测；post-detach 含握手在内全静默；targetOrigin '*' 为 PRD §4.3 明示立场（opaque origin + source 校验兜底） |
+| 限流恢复语义 | **通过** | inflight 于 dispatch finally 释放——正常完成、BridgeApiError、INTERNAL、E_TIMEOUT 四条路径等价释放；SEC-25/26/27 分别验证完成后/超时后恢复与拒绝类零消耗 |
+| 其他观察（不计 bug） | — | ① `E_PLUGIN_DISABLED` 已定义但前端不可达：停用联动（BUG-F4-01 修复）先关 Tab→桥已 detach，属预留码；② ui.notify 在 invoke 前写 lastNotifyAt，通知失败也消耗 5s 冷却槽（规格未定义重试语义）；③ 审计日志走 console.info（webview console）而非 Rust tracing 链，M4「日志脱敏核查」时应确认持久化预期 |
+
+#### 覆盖率（npx vitest run --coverage，scope 至两目标文件）
+
+| 文件 | Stmts | Branch | Funcs | Lines | 未覆盖 |
+|------|-------|--------|-------|-------|--------|
+| src/lib/uiPluginBridge.ts | 94.83% | 83.80% | 100% | **99.27%** | 仅 464 行（dispatch switch 的 default 防御分支——API_ROUTES 门已前置拦截 unknown type，实际不可达死分支） |
+| src/lib/themeTokens.ts | 100% | 100% | 100% | **100%** | — |
+
+两文件 Lines 均 ≥80% 达标。
+
+#### 执行命令与结果
+
+- `npx vitest run src/lib/__tests__/uiPluginBridge.security.test.ts src/windows/workspace/__tests__/PluginPageShell.bridge.test.tsx` → **33/33 PASS**
+- `npx vitest run src/lib/__tests__/uiPluginBridge.test.ts src/lib/__tests__/uiPluginBridge.security.test.ts src/lib/__tests__/themeTokens.test.ts --coverage --coverage.include=…` → **59/59 PASS**
+- `npx vitest run`（全量）→ 220 文件：216 passed / **4 failed（全部为基线既有**：RunHistoryDrawer、WidgetEditorDrawer、ConnectionNavigatorTree[文件级]、ObjectBrowser；测试前后两次全量运行失败集合一致，**零新增失败**）；1696 tests passed
+- `npx tsc --noEmit` → 报错仅位于 7 个 F6 无关存量文件（query.ts/ObjectFilterDialog.tsx/ConnectionPage.tsx/ContentView.tsx/ProcessListView.tsx/SavedTasksBanner.tsx/DataTransferWindow.tsx）；**F6 触碰文件（uiPluginBridge.ts/themeTokens.ts/PluginPageShell.tsx）及新增测试文件零错误**
+
+#### Bug
+
+| ID | 严重度 | 状态 |
+|----|--------|------|
+| BUG-F6-01 | 低危（协议卫生，无安全影响，不阻断） | 新建 |
 
 ## 回归测试
 
