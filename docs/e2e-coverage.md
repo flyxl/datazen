@@ -90,6 +90,7 @@
 | 数据看板 | `data-dashboard-*.ts` | Covered（表格视图底部导出按钮交互见 UJ-05） |
 | 应用数据备份标签 | `app-data-backup.ts` | Covered |
 | 路径 IPC 加固 | `path-ipc-hardening.ts` | Covered |
+| 插件系统：安装（两步对话框）/ 管理卡片与权限徽标 / Workspace 导航+Tab / 桥往返（context·storage·token 快照）/ 双 Tab 体系独立 / 外观主题切换 / 停用联动关 Tab / 卸载确认 | `plugins.spec.ts`（J1/J2/J3/J5/J4）+ fixture `e2e/fixtures/sample-plugin/`（fixture 校验锚点：`plugins::fixture_tests` Rust 单测） | Covered（安装走 PathInput 键入路径，原生目录选择器见例外；`ui.notify` 限频与 iframe 崩溃恢复见例外） |
 
 ## 例外登记（自动化限制）
 
@@ -107,6 +108,9 @@
 | 恢复执行日志截断（>1500 行省略标记 / 字符预算） | 需 >1500 条 SQL 语句的真实大备份，E2E 不可行 | `backupProgress.test.ts`（行/字符预算、头尾保留、累计省略数、超长单行截断）；`BackupWindow.test.tsx` 覆盖日志渲染路径 |
 | 数据看板表格视图：大数据量下底部导出按钮不被容器裁剪 | 依赖真实渲染高度的几何断言，跨 WebView 平台不稳定 | 布局修复（`flex flex-col` 容器约束使 DataTable `flex-1` 生效、虚拟滚动开启）；E2E UJ-05 覆盖导出按钮可见 + 点击打开导出对话框 |
 | 选区视觉样式（`::selection` 颜色、大面积选区外观） | 纯视觉外观，无法自动化断言颜色/观感 | 全局 CSS（`globals.css` A1 主题化选区 + A2 控件 `user-select: none`）；TD-SEL-001 覆盖计算样式（内容可选中/控件不可选中） |
+| 插件安装原生目录选择器（PathInput 浏览按钮） | OS 对话框不可点选（同上通用条目，此处为具体落点） | E2E 在 PathInput 键入 fixture 绝对路径走同一 UI 链路 |
+| 插件 `ui.notify` 5s 限频 / 系统通知弹出 | 依赖系统通知中心，自动化不可观测 | `uiPluginBridge.test.ts` 限频用例（冷却窗口内第二次回 `E_RATE_LIMIT`） |
+| 插件 iframe 崩溃恢复条（10s watchdog → 重载按钮） | 需真实加载失败时序，WebKit 自动化不稳定 | `PluginPageShell.test.tsx` watchdog/reload 用例；E2E 断言 shell 存在与重开路径 |
 
 ## 维护约定
 

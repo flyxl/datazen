@@ -11,6 +11,10 @@ pub mod storage;
 #[cfg(test)]
 mod integration_tests;
 
+// F9: keeps the E2E sample plugin package (e2e/fixtures/sample-plugin) valid.
+#[cfg(test)]
+mod fixture_tests;
+
 #[cfg(test)]
 mod protocol_security_tests;
 
