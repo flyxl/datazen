@@ -169,6 +169,12 @@ vi.mock('../../../stores/connectionStore', () => ({
   groupConnections: (connections: ConnectionConfig[], groups: string[], _query: string) => [
     { group: '', connections },
   ],
+  groupConnectionsWithPinnedSection: (
+    connections: ConnectionConfig[],
+    _groups: string[],
+    _query: string,
+  ) => [{ group: '', connections }],
+  PINNED_GROUP_KEY: '__pinned__',
 }));
 
 vi.mock('../../../stores/activeConnectionStore', () => ({

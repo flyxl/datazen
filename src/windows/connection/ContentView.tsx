@@ -636,6 +636,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
           onBatchExport={handleOpenBatchExportFromToolbar}
           onToggleAiChat={() => setAiChatOpen((v) => !v)}
           onToggleDetail={() => setDetailOpen((p) => !p)}
+          onRefresh={handlers.handleRefresh}
         />
       )}
 

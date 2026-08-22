@@ -1,24 +1,12 @@
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
-import { closeExtraWindows, selectDzOption, withSafeModeOff } from '../helpers.js';
-
-/** 后端 IPC 调用（失败抛错）。 */
-async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
-  const result = await browser.executeAsync(
-    (c: string, a: string, done: (r: unknown) => void) => {
-      (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
-        ?.invoke(c, JSON.parse(a))
-        .then((r: unknown) => done(r))
-        .catch((e: unknown) => done({ __error: String(e) }));
-    },
-    cmd,
-    JSON.stringify(args),
-  );
-  if (result && typeof result === 'object' && '__error' in (result as Record<string, unknown>)) {
-    throw new Error(String((result as Record<string, unknown>).__error));
-  }
-  return result as T;
-}
+import {
+  closeExtraWindows,
+  invokeBackend,
+  queryScalar,
+  selectDzOption,
+  withSafeModeOff,
+} from '../helpers.js';
 
 /**
  * Data Transfer window smoke (DTW-001~DTW-003).
@@ -219,10 +207,10 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     // 落库断言：目标库该表应有 3 行
     const tgtConn = (await invokeBackend<string>('connect', { configId: TGT_ID })) ?? '';
     expect(tgtConn).toBeTruthy();
-    const rows = await invokeBackend<{ data: Array<{ c: number }> }>('execute_query', {
+    const rows = await invokeBackend('execute_query', {
       connectionId: tgtConn,
       sql: `SELECT count(*)::int AS c FROM ${TABLE}`,
     });
-    expect(Number(rows?.data?.[0]?.c)).toBe(3);
+    expect(queryScalar(rows, 'c')).toBe(3);
   });
 });

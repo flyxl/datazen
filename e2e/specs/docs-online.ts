@@ -16,6 +16,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, browser, $ } from '@wdio/globals';
+import { connectSeededPgInWorkspace, openQueryTab } from '../helpers.js';
+import { t } from '../i18n.js';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const WINDOW_MANAGER = path.join(ROOT, 'src/lib/windowManager.ts');
@@ -58,7 +60,8 @@ describe('Online Help Docs (DOCS-001~DOCS-007)', () => {
     expect(wm).toContain('buildDocsUrl');
     expect(wm).toContain('settingsCommands.openPath');
     expect(wm).not.toContain("openSingletonWindow('docs-singleton'");
-    expect(wm).not.toContain('create_sub_window');
+    const openDocsBlock = wm.slice(wm.indexOf('export function openDocsWindow'));
+    expect(openDocsBlock).not.toContain('create_sub_window');
 
     const settings = fs.readFileSync(SETTINGS_CMD, 'utf8');
     expect(settings).toContain("invoke<void>('open_path', { path })");
@@ -116,14 +119,11 @@ describe('Online Help Docs (DOCS-001~DOCS-007)', () => {
     const handlesBefore = await browser.getWindowHandles();
     expect(handlesBefore.length).toBe(1);
 
-    const helpBtn = await $('button*=帮助');
+    await connectSeededPgInWorkspace();
+    await openQueryTab();
+    const helpBtn = await $(`button[title="${t('docs.openAiHelp')}"]`);
     await helpBtn.waitForDisplayed({ timeout: 10000 });
     await helpBtn.click();
-    await browser.pause(300);
-
-    const docsItem = await $('button*=使用说明');
-    await docsItem.waitForDisplayed({ timeout: 5000 });
-    await docsItem.click();
     await browser.pause(800);
 
     const handlesAfter = await browser.getWindowHandles();

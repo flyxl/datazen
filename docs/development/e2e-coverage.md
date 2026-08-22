@@ -85,8 +85,14 @@
 | SQL 补全只拉取语句中已加载完整表名的列（禁止前缀 get_columns） | `schemaStore.test.ts` / `sqlEditorDefaults.test.ts` / `buildEditorSchema.test.ts` | Covered |
 | Schema Diff 窗口打开与步骤控件 | `schema-diff-window.ts` | Covered |
 | 数据同步 Diff Workspace（Options / Swap / Compare / Summary / row-diff / preview / Execute chrome） | `data-sync-window.ts` (DSW-001~008, DSW-MAP/WS) | Covered（Execute 对 live DB 见 IPC spec；无 PG 夹具时 MAP/WS 用例 soft-skip） |
+| 数据同步 UI 执行闭环（compare→preview→execute 后回查目标行数） | `data-sync-window.ts` (DSW-EXEC-001) | Covered |
 | 数据同步 IPC（inspect / compare / generate SQL / apply / revalidate） | `data-sync-real.ts` | Covered（需 `e2e/setup-sync-dbs.sh` PG 夹具；SYNC-REAL-009 apply→recompare） |
 | 数据传输窗口（V1 向导 shell） | `data-transfer-window.ts` | Partial（打开 / 步骤 / 模式 / 未选端点校验；跨方言 Execute 未 E2E） |
+| 数据传输真实迁移闭环（preview + execute 后目标 count） | `data-transfer-window.ts` (DTW-X / DT-CL) | Covered |
+| 连接 Pin 置顶 | `ops-pin.ts` | Covered |
+| 对象过滤器对话框与树过滤持久化 | `object-filter.ts` | Covered |
+| 进程列表 / 服务器状态面板 | `ops-process-server.ts` | Covered |
+| DB 节点备份/还原预填入口 | `ops-ddl-backup.ts` | Covered |
 | 数据看板 | `data-dashboard-*.ts` | Covered（表格视图底部导出按钮交互见 UJ-05） |
 | 应用数据备份标签 | `app-data-backup.ts` | Covered |
 | 路径 IPC 加固 | `path-ipc-hardening.ts` | Covered |

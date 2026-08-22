@@ -40,13 +40,15 @@ export async function openNewConnectionDialogFromUi() {
 
 /** Close the new-connection dialog via Cancel (stays on main window). */
 export async function closeNewConnectionDialogFromUi() {
-  const cancelBtn = await $('[data-testid="new-connection-dialog"] button*=取消');
-  if (!(await cancelBtn.isExisting())) {
-    const cancelEn = await $('[data-testid="new-connection-dialog"] button*=Cancel');
-    await cancelEn.click();
-  } else {
-    await cancelBtn.click();
-  }
+  await browser.execute(() => {
+    const dialog = document.querySelector('[data-testid="new-connection-dialog"]');
+    if (!dialog) return;
+    const buttons = Array.from(dialog.querySelectorAll('button'));
+    const cancel = buttons.find(
+      (b) => b.textContent?.includes('取消') || b.textContent?.includes('Cancel'),
+    );
+    cancel?.click();
+  });
   await browser.waitUntil(
     async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
     { timeout: 10000, timeoutMsg: '等待新建连接弹窗关闭超时' },
@@ -398,25 +400,7 @@ export async function createAndConnectPostgreSQL(
     return finishConnectInWorkspace(mainWindow);
   }
 
-  const clickedNew = await browser.execute(() => {
-    const textBtn = Array.from(document.querySelectorAll('button')).find(
-      (b) => b.textContent?.includes('新建连接') || b.textContent?.includes('New Connection'),
-    );
-    if (textBtn) {
-      textBtn.click();
-      return true;
-    }
-    const titleBtn = document.querySelector(
-      'button[title="新建连接"], button[title="New Connection"]',
-    ) as HTMLButtonElement | null;
-    if (titleBtn) {
-      titleBtn.click();
-      return true;
-    }
-    return false;
-  });
-  if (!clickedNew) throw new Error('Could not find "新建连接" button');
-  await waitForNewConnectionDialog();
+  await openNewConnectionDialogFromUi();
 
   // PostgreSQL is the default type; ensure it is selected
   const pgBtn = await $('button*=PostgreSQL');
@@ -509,6 +493,45 @@ async function invokeSettings<T>(cmd: string, args: Record<string, unknown> = {}
     throw new Error(String((result as { __error: string }).__error));
   }
   return result as T;
+}
+
+// ── Tauri IPC / query results ───────────────────────────────────────
+
+export type QueryResultPayload = {
+  rows?: unknown[][];
+  results?: Array<{ rows?: unknown[][]; columns?: Array<{ name: string } | string> }>;
+  data?: unknown;
+};
+
+/** Invoke a Tauri command from the WebDriver session. */
+export async function invokeBackend<T>(
+  cmd: string,
+  args: Record<string, unknown> = {},
+): Promise<T> {
+  return invokeSettings<T>(cmd, args);
+}
+
+/** Normalize `execute_query` payloads (rows array or legacy `{ data: [...] }`). */
+export function parseQueryRows(payload: QueryResultPayload): unknown[][] {
+  if (Array.isArray(payload.rows)) return payload.rows;
+  const fromResults = payload.results?.[0]?.rows;
+  if (Array.isArray(fromResults)) return fromResults;
+  return [];
+}
+
+/** Read the first scalar cell from an `execute_query` response. */
+export function queryScalar(payload: QueryResultPayload, field: string | number = 0): number {
+  const legacy = payload.data;
+  if (Array.isArray(legacy) && legacy[0] && typeof legacy[0] === 'object' && legacy[0] !== null) {
+    const row = legacy[0] as Record<string, unknown>;
+    if (typeof field === 'string' && field in row) return Number(row[field]);
+    const values = Object.values(row);
+    const idx = typeof field === 'number' ? field : 0;
+    return Number(values[idx]);
+  }
+  const rows = parseQueryRows(payload);
+  const idx = typeof field === 'number' ? field : 0;
+  return Number(rows[0]?.[idx]);
 }
 
 /** DROP / TRUNCATE are blocked when Safe Mode is on (product default). */

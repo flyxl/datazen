@@ -10,28 +10,17 @@
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
-import { connectSeededPgInWorkspace, closeExtraWindows, E2E_PG_CONN_NAME } from '../helpers.js';
+import {
+  connectSeededPgInWorkspace,
+  closeExtraWindows,
+  E2E_PG_CONN_NAME,
+  invokeBackend,
+  queryScalar,
+} from '../helpers.js';
 
 const STAMP = Date.now().toString(36);
 const PROC_CONN_ID = `e2e_proc_${STAMP}`;
 const PROC_CONN_NAME = `E2E-Procs-${STAMP}`;
-
-async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
-  const result = await browser.executeAsync(
-    (c: string, a: string, done: (r: unknown) => void) => {
-      (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
-        ?.invoke(c, JSON.parse(a))
-        .then((r: unknown) => done(r))
-        .catch((e: unknown) => done({ __error: String(e) }));
-    },
-    cmd,
-    JSON.stringify(args),
-  );
-  if (result && typeof result === 'object' && '__error' in (result as Record<string, unknown>)) {
-    throw new Error(String((result as Record<string, unknown>).__error));
-  }
-  return result as T;
-}
 
 async function rightClickConn() {
   await browser.execute(() => {
@@ -79,22 +68,32 @@ async function bodyContains(text: string): Promise<boolean> {
   return (await $('body').getText()).includes(text);
 }
 
-/** 进程列表面板是否有行（任意 tbody tr）。 */
+/** 进程列表面板或服务器状态面板是否有数据行。 */
 async function anyTableRows(): Promise<boolean> {
   await browser.pause(800);
   return browser.execute(() => {
-    const t = document.querySelector('table tbody');
-    return !!t && t.querySelectorAll('tr').length > 0;
+    if (document.querySelectorAll('[data-dt-row]').length > 0) return true;
+    const tbody = document.querySelector('table tbody');
+    return !!tbody && tbody.querySelectorAll('tr').length > 0;
   });
 }
 
-/** 点击某 pid 文本所在的单元格（高亮该行）。 */
+/** 点击某 pid 文本所在的行（高亮该行）。 */
 async function clickRowByPid(pid: number): Promise<boolean> {
   return browser.execute((pidText: string) => {
-    const cells = Array.from(document.querySelectorAll('td'));
-    const cell = cells.find((c) => c.textContent?.trim() === pidText);
-    if (!cell) return false;
-    (cell as HTMLElement).click();
+    const pidCells = Array.from(document.querySelectorAll('[data-dt-col]')).filter(
+      (c) => c.getAttribute('data-dt-col')?.toLowerCase() === 'pid',
+    );
+    const cell = pidCells.find((c) => c.textContent?.trim() === pidText);
+    if (cell) {
+      (cell.closest('[tabindex="0"]') as HTMLElement | null)?.click();
+      return true;
+    }
+    const row = Array.from(document.querySelectorAll('[tabindex="0"]')).find((el) =>
+      el.textContent?.includes(pidText),
+    );
+    if (!row) return false;
+    (row as HTMLElement).click();
     return true;
   }, String(pid));
 }
@@ -191,11 +190,11 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
 
   it('OPS-PROC-004: Kill 独立连接并断言 pid 从进程列表消失', async () => {
     // 目标 pid
-    const raw = await invokeBackend<{ data: Array<{ pid: number }> }>('execute_query', {
+    const raw = await invokeBackend('execute_query', {
       connectionId: procConnectionId,
       sql: 'SELECT pg_backend_pid() AS pid',
     });
-    const targetPid = raw?.data?.[0]?.pid;
+    const targetPid = queryScalar(raw, 'pid');
     expect(targetPid).toBeGreaterThan(0);
 
     // 切到进程列表面板
@@ -205,8 +204,10 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
 
     // 先确认目标 pid 出现在面板中
     const seenBefore = await browser.execute((pidText: string) => {
-      return Array.from(document.querySelectorAll('td')).some(
-        (c) => c.textContent?.trim() === pidText,
+      return Array.from(document.querySelectorAll('[data-dt-col]')).some(
+        (c) =>
+          c.getAttribute('data-dt-col')?.toLowerCase() === 'pid' &&
+          c.textContent?.trim() === pidText,
       );
     }, String(targetPid));
     expect(seenBefore).toBe(true);
@@ -244,11 +245,11 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
       },
     });
     const checkConn = await invokeBackend<string>('connect', { configId: checkId });
-    const cnt = await invokeBackend<{ data: Array<{ c: number }> }>('execute_query', {
+    const cnt = await invokeBackend('execute_query', {
       connectionId: checkConn,
       sql: `SELECT count(*)::int AS c FROM pg_stat_activity WHERE pid = ${targetPid}`,
     });
-    expect(Number(cnt?.data?.[0]?.c)).toBe(0);
+    expect(queryScalar(cnt, 'c')).toBe(0);
     try {
       await invokeBackend('delete_connection', { id: checkId });
     } catch {
