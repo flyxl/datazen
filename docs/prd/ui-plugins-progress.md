@@ -14,7 +14,7 @@
 | F5 | 插件管理页 | ~~独立功能项~~ 已并入 F4 交付（管理页+两步安装对话框） | 已完成（并入F4） | 62141434 | ca2218bc |
 | F6 | RPC 桥 | uiPluginBridge：信封路由、权限判定、限流超时、token 快照推送（开发 31 + 测试补充 33 = 64 单测全绿；覆盖率 Lines 99.27%/100%；安全专项复核通过；登记 BUG-F6-01 低危协议偏差，见测试记录） | 测试完成（BUG-F6-01 低危新建，不阻断） | c77085c8 | —（仅追加测试文件，未 commit） |
 | F7 | Settings 外观 | settings.appearance 菜单项 + AppearanceSection 主题切换器（开发 54 + 测试补充 20 单测全绿；覆盖率 AppearanceSection Lines **100%**、themePackApply 全文件 Lines 96.68% / 插件路径子集 97.40%；规格复核 §4.5 六项通过；登记 BUG-F7-01 低危图标缺口，见测试记录） 已完成（BUG-F7-01 经验证 agent 复核通过，见 Bug 跟踪） | 1d9c398b | 9d518661（补 hostLucideMap.ts appearance→Palette 行 + ThemedIcon LUCIDE_MAP 导入 Palette；钉住例翻转为断言 svg 渲染，验证测试 45/45 PASS） |
-| F8 | SDK 包 | packages/ui-plugin-sdk（bridge/theme/theme.css/useTheme） | 未开始 | — | — |
+| F8 | SDK 包 | packages/ui-plugin-sdk（bridge/theme/theme.css/useTheme；31 测试全绿，react 走子路径导出） | 待测试 | 51a91633 | — |
 | F9 | 示例插件与 E2E | e2e/fixtures/sample-plugin + e2e/specs/plugins.spec.ts journeys 1-5 | 未开始 | — | — |
 
 ## Bug 跟踪
