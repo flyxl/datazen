@@ -10,7 +10,7 @@
 | F1 | Rust 插件基座 | plugins/{mod,manifest,install,storage}.rs、IPC 命令组、AppState、单测（capabilities 走既有 ACL 豁免，见测试记录） | 已完成 | 900b9330 | d9d265b3 |
 | F2 | datazen:// 协议 | register_uri_scheme_protocol：path 资产服务 + open 深链 + CSP/403/404 | 已完成 | 4c75f1b0 | ffdf64b3 | —（仅追加测试文件，未 commit） |
 | F3 | 前端状态与 IPC 封装 | types/plugin.ts、pluginStore、workspaceTabsStore、commands/plugins.ts（42 单测全绿；覆盖率 Lines 100%/Branch 96.87%；全量 vitest 4 个失败文件均为分支既有，见测试记录） | 已完成 | 149d3b2a | 7c36c65e |
-| F4 | 主窗口集成 | WorkspaceMode 扩展、aside 两按钮、Workspace 导航栏/默认卡片/独立 Tab 条/页面壳 + 管理页/安装对话框提前落地（59 组件测试全绿：37 开发 + 22 测试补充；覆盖率 Lines 97.42%/Branch 89.01%；登记 BUG-F4-01…04 低危缺陷/偏差） | 有缺陷 | 62141434 | —（仅追加测试文件，未 commit） |
+| F4 | 主窗口集成 | WorkspaceMode 扩展、aside 两按钮、Workspace 导航栏/默认卡片/独立 Tab 条/页面壳 + 管理页/安装对话框提前落地（59 组件测试全绿：37 开发 + 22 测试补充；覆盖率 Lines 97.42%/Branch 89.01%；登记 BUG-F4-01…04 低危缺陷/偏差；BUG-F4-01/02/03/04 已修复并经验证 agent 复核，见「F4 修复验证」小节） | 已完成 | 62141434 | ca2218bc+46c195fb |
 | F5 | 插件管理页 | PluginManagementPage + InstallPluginDialog（卡片/过滤/安装/启停/卸载） | 未开始 | — | — |
 | F6 | RPC 桥 | uiPluginBridge：信封路由、权限判定、限流超时、token 快照推送 | 未开始 | — | — |
 | F7 | Settings 外观 | settings.appearance 菜单项 + AppearanceSection 主题切换器 | 未开始 | — | — |
@@ -22,10 +22,10 @@
 | ID | 功能 | 描述 | 重现步骤 | 状态 |
 |----|------|------|---------|------|
 | BUG-F2-01 | F2 | 【处置：backlog/P2 加固，不阻断】Windows 形态解析面宽于规格：`http(s)://datazen.<host>/<path>`（`datazen.` 后无 `/` 直接接 host）也被接受为合法别名 | `parse_datazen_uri("http://datazen.acme.bill-audit/index.html")` 返回 Ok（与 `http://datazen./acme.bill-audit/index.html` 等价）。规格 §2.4 字面仅定义 `http://datazen./<host>/<path>`。同一校验链（存在→enabled→路径→MIME）仍然全部生效，无安全影响，属低危加固项（可在 strip_scheme 中要求紧随分隔符） | 新建 |
-| BUG-F4-01 | F4 | 插件停用联动不完整：跨窗口/外部触发的 `plugins:changed` 只刷新 pluginStore，无人调 closeByPlugin，残留可激活的僵尸 Tab | 开插件 Tab → 另一窗口 set_plugin_enabled(false) → 原窗口导航项消失但 Tab/iframe 保留。规格 §4.3/§4.4 要求停用即关 Tab；实际仅管理页内操作联动（PluginManagementPage.tsx:93,110）。建议 F6 统一订阅处理 | 待验证 |
+| BUG-F4-01 | F4 | 插件停用联动不完整：跨窗口/外部触发的 `plugins:changed` 只刷新 pluginStore，无人调 closeByPlugin，残留可激活的僵尸 Tab | 开插件 Tab → 另一窗口 set_plugin_enabled(false) → 原窗口导航项消失但 Tab/iframe 保留。规格 §4.3/§4.4 要求停用即关 Tab；实际仅管理页内操作联动（PluginManagementPage.tsx:93,110）。建议 F6 统一订阅处理 | 已修复（ca2218bc） |
 | BUG-F4-02 | F4 | 「同一插件页多开」不可实现：key=`{pluginId}:{pageId}` + open 幂等，同页重复点击仅聚焦 | Workspace 点击同一导航项两次 → 仅一个 Tab。PRD §4.2/§4.4 允许多开，但 §4.4 表格自身定义该唯一 key，自相矛盾——需产品拍板 | 已修复（产品决议：单实例） |
-| BUG-F4-03 | F4 | 安装流程缺「名称/版本/权限清单确认」中间步骤，确认即直接写入 | 管理页[安装插件…] → 输入合法 zip 路径 → Install：无任何预览确认直接安装成功。规格 §4.3 要求写入前展示确认 | 待验证 |
-| BUG-F4-04 | F4 | 管理页默认过滤器为「全部」（规格为默认 Workspace），且「全部」视图平铺不分组 | 打开管理页未点 chip 即显示全部插件平铺列表（PluginManagementPage.tsx:57 初值 'all'）。规格 §4.3：默认 Workspace、「全部」分组 | 待验证 |
+| BUG-F4-03 | F4 | 安装流程缺「名称/版本/权限清单确认」中间步骤，确认即直接写入 | 管理页[安装插件…] → 输入合法 zip 路径 → Install：无任何预览确认直接安装成功。规格 §4.3 要求写入前展示确认 | 已修复（ca2218bc） |
+| BUG-F4-04 | F4 | 管理页默认过滤器为「全部」（规格为默认 Workspace），且「全部」视图平铺不分组 | 打开管理页未点 chip 即显示全部插件平铺列表（PluginManagementPage.tsx:57 初值 'all'）。规格 §4.3：默认 Workspace、「全部」分组 | 已修复（ca2218bc） |
 
 Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已修复`
 
@@ -315,15 +315,32 @@ Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已�
 
 | ID | 类型 | 描述 | 重现步骤 | 期望 vs 实际 | 状态 |
 |----|------|------|---------|-------------|------|
-| BUG-F4-01 | 低危缺陷 | 插件停用联动不完整：跨窗口/外部触发的 `plugins:changed` 只刷新 pluginStore，不关闭对应 Tab | ① 打开已启用插件的页面 Tab；② 经另一窗口（或不经管理页的任意路径）执行 set_plugin_enabled(false) 使后端 emit plugins:changed；③ 观察原窗口 | 规格 §4.3 禁用联动/§4.4：停用即 closeByPlugin 关 Tab；实际仅管理页内 toggle/uninstall 走 closeByPlugin（PluginManagementPage.tsx:93,110），pluginStore 订阅只 refetch（pluginStore.ts:77-79），残留可激活的僵尸 Tab（后续资源请求将被协议层 403）。建议 F6 桥接阶段在 store/shell 层统一订阅处理 | 验证不通过（修复中）|
-| BUG-F4-02 | 规格偏差 | 「同一插件页多开」不可用：同页重复点击仅聚焦既有 Tab | ① Workspace 点击同一导航项两次 | 规格 §4.2/§4.4 字面允许每 Tab 一个独立 iframe 多开；实际 key=`{pluginId}:{pageId}` + open 幂等（workspaceTabsStore.ts:36-47）。注意 PRD §4.4 表格自身规定 key={pluginId}:{pageId}，与多开条款矛盾——需产品拍板取哪一条 | 验证不通过（修复中）|
-| BUG-F4-03 | 规格偏差（低） | 安装流程缺「名称/版本/权限清单确认」中间步骤 | ① 管理页[安装插件…]；② 输入合法 zip 路径；③ 点 Install | 规格 §4.3：校验→展示名称/版本/权限清单确认→写入；实际确认即直接调 install_plugin_from_path 写入并刷新（InstallPluginDialog.handleInstall），权限信息用户安装前不可见 | 验证不通过（修复中）|
-| BUG-F4-04 | 规格偏差（低） | 管理页默认过滤器为「全部」而非「Workspace」，且「全部」平铺不分组 | ① 装有 workspace 插件 + 主题插件时打开管理页 | 规格 §4.3：内容主体默认过滤 Workspace、「全部」混合展示并分组；实际 useState 初值 'all'（PluginManagementPage.tsx:57）且无分组逻辑 | 验证不通过（修复中）|
+| BUG-F4-01 | 低危缺陷 | 插件停用联动不完整：跨窗口/外部触发的 `plugins:changed` 只刷新 pluginStore，不关闭对应 Tab | ① 打开已启用插件的页面 Tab；② 经另一窗口（或不经管理页的任意路径）执行 set_plugin_enabled(false) 使后端 emit plugins:changed；③ 观察原窗口 | 规格 §4.3 禁用联动/§4.4：停用即 closeByPlugin 关 Tab；实际仅管理页内 toggle/uninstall 走 closeByPlugin（PluginManagementPage.tsx:93,110），pluginStore 订阅只 refetch（pluginStore.ts:77-79），残留可激活的僵尸 Tab（后续资源请求将被协议层 403）。建议 F6 桥接阶段在 store/shell 层统一订阅处理 | 已修复（ca2218bc，WorkspaceView effect diff + 门闸单测）|
+| BUG-F4-02 | 规格偏差 | 「同一插件页多开」不可用：同页重复点击仅聚焦既有 Tab | ① Workspace 点击同一导航项两次 | 规格 §4.2/§4.4 字面允许每 Tab 一个独立 iframe 多开；实际 key=`{pluginId}:{pageId}` + open 幂等（workspaceTabsStore.ts:36-47）。注意 PRD §4.4 表格自身规定 key={pluginId}:{pageId}，与多开条款矛盾——需产品拍板取哪一条 | 已修复（产品决议：单实例）|
+| BUG-F4-03 | 规格偏差（低） | 安装流程缺「名称/版本/权限清单确认」中间步骤 | ① 管理页[安装插件…]；② 输入合法 zip 路径；③ 点 Install | 规格 §4.3：校验→展示名称/版本/权限清单确认→写入；实际确认即直接调 install_plugin_from_path 写入并刷新（InstallPluginDialog.handleInstall），权限信息用户安装前不可见 | 已修复（ca2218bc，inspect_plugin_package 预检 + 两步流转单测）|
+| BUG-F4-04 | 规格偏差（低） | 管理页默认过滤器为「全部」而非「Workspace」，且「全部」平铺不分组 | ① 装有 workspace 插件 + 主题插件时打开管理页 | 规格 §4.3：内容主体默认过滤 Workspace、「全部」混合展示并分组；实际 useState 初值 'all'（PluginManagementPage.tsx:57）且无分组逻辑 | 已修复（ca2218bc，默认 'workspace' + allGroups 分组单测）|
 | NOTE-F4-01 | 备注 | Tab 标题为 `page.title || plugin.name`（页面贡献标题优先于插件名） | 打开带自定义 page.title 的插件 Tab | §4.4 字面「标题=插件名」；页面标题区分度更高，语义可辩护 | 备注 |
 | NOTE-F4-02 | 备注 | 卡片图标为名称首字母方块而非 manifest 图标；「更新/卸载菜单」实为单独卸载按钮、更新能力未做 | 查看管理页卡片 | PluginSummary 本就不含 icon 字段（F3 契约）；更新属 P1 排期 | 备注 |
 | NOTE-F4-03 | 备注 | 全量 suite 带 --coverage 运行时覆盖率报告被静默吞掉（复现 2 次）；按目录 include 的子集运行正常 | `npx vitest run --coverage...`（全量 vs 子集对照） | 疑与 ConnectionNavigatorTree 文件级收集崩溃干扰 v8 合并相关；分支既有问题，建议 CI 固定子集口径或先修复该既有失败 | 备注 |
 
 E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」的硬规则在 F9 统一补齐（e2e/specs/plugins.spec.ts journeys），本次仅单测层面。
+
+### F4 修复验证（commit ca2218bc，2026-08-22 验证 agent 会话）
+
+只验不改；复核 diff + 实测，四项全部通过：
+
+| ID | 验证方法 | 结果 |
+|----|---------|------|
+| BUG-F4-01 | WorkspaceView.tsx:44-54 effect：`pluginsLoaded` 门闸 + diff（插件缺失或 enabled=false → `closeByPlugin`）。单测断言真实覆盖行为：WorkspaceView.test.tsx「closes tabs of plugins that were disabled or removed by an external refresh (BUG-F4-01)」（停用→关 1 次、卸载→再关、enabled 插件永不触碰）+「does not diff-close tabs before the plugin store has loaded」（loaded=false 初载空列表不误关既有 Tab）；集成侧 WorkspaceIntegration.test.tsx:189 以真实 store 驱动外部刷新场景 | ✅ 通过 |
+| BUG-F4-03 | Rust `inspect_plugin_package`（install.rs）：一次性 `.datazen-inspect-*` 临时目录跑与真实安装同套规则后清理；三态错误各有断言（not found / apiVersion 校验失败 / zip traversal）且 `count_inspect_dirs()==0`、plugins_dir 无 `acme.demo`；命令注册于 lib.rs:978。前端两步流转：InstallPluginDialog.test.tsx「walks the two-step flow…」（review 步断言 installFromPath **未调用** + 名称/版本/author/权限徽标渲染）、「never installs when cancelled from the review step」（Back/Cancel 均零 install 调用）；IPC 层 inspect_plugin_package_previews_manifest_without_writing 断言 list_plugins 保持为空 | ✅ 通过 |
+| BUG-F4-04 | PluginManagementPage.tsx 初值 `'workspace'`；'all' 视图经 `allGroups` 按 Workspace/主题 分组渲染。测试：默认过滤=Workspace（主题插件初始隐藏 + workspace chip 高亮）、「renders the all view grouped into Workspace pages and Themes sections」（双贡献插件仅入 Workspace 组一次）、「hides empty groups in the all view and keeps the flat grid for single-kind filters」 | ✅ 通过 |
+| BUG-F4-02 决议落实 | PRD ui-plugins.md v0.5→v0.6：「v0.6 变更记录（评审决议）」存在；§4.2 与 §4.4 多开条款均改为「同一插件页复用同一 Tab（点击已打开项聚焦既有 Tab）；多开留待后续版本评估」；本文件 BUG 跟踪表该 bug 状态为「已修复（产品决议：单实例）」 | ✅ 通过 |
+
+执行命令：
+- `cargo test -p datazen --lib plugins` → **108 passed / 0 failed**（含新增 inspect_plugin_package ×4）
+- `npx vitest run src/windows/plugins src/windows/workspace` → **9 文件 60 tests 全绿**
+
+⚠️ 合并前备注：ca2218bc 未包含工作区中的配套改动——`src/commands/plugins.ts`（`inspectPluginPackage` IPC 封装）与 en.ts/zh-CN.ts 各 +7 个 i18n 键。缺这三处时已提交的 InstallPluginDialog.tsx 无法通过类型检查、i18n 显示原始 key。主控填写测试 commit 号时须将这三个文件一并纳入提交。
 
 ## 回归测试
 
