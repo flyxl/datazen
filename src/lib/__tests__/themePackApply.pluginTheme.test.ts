@@ -30,6 +30,25 @@ vi.mock('../crossWindowBus', () => ({
   emitCrossWindow: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Spy wrappers over the legacy-parity sinks (real behavior preserved, calls
+// recorded) so the optional-asset pipeline can be asserted.
+vi.mock('../chart/colors', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../chart/colors')>();
+  return { ...actual, setChartPaletteOverride: vi.fn(actual.setChartPaletteOverride) };
+});
+vi.mock('../themeEditorColors', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../themeEditorColors')>();
+  return { ...actual, setPackEditorColorOverlay: vi.fn(actual.setPackEditorColorOverlay) };
+});
+vi.mock('../iconResolver', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../iconResolver')>();
+  return { ...actual, setActiveIconResolver: vi.fn(actual.setActiveIconResolver) };
+});
+
+import { setChartPaletteOverride } from '../chart/colors';
+import { setPackEditorColorOverlay } from '../themeEditorColors';
+import { setActiveIconResolver } from '../iconResolver';
+
 const mockEmitCrossWindow = vi.mocked(emitCrossWindow);
 
 function toBytes(text: string): number[] {
@@ -359,5 +378,95 @@ describe('applyThemePack dispatches encoded plugin ids to the plugin path', () =
     expect(result).toEqual({ ok: true });
     expect(mockReadThemePackFile).toHaveBeenCalledWith('classic-pack', 'tokens.css');
     expect(mockReadPluginFile).not.toHaveBeenCalled();
+  });
+});
+
+describe('applyPluginTheme legacy-parity assets', () => {
+  const RICH_MANIFEST = {
+    ...MANIFEST,
+    contributes: {
+      pages: [],
+      themes: [
+        ...(
+          MANIFEST as {
+            contributes: { themes: Array<Record<string, unknown>> };
+          }
+        ).contributes.themes,
+        {
+          id: 'night',
+          name: 'Night',
+          tokensCss: 'themes/night/tokens.css',
+          modes: ['dark'],
+          chartsJson: 'themes/night/charts.json',
+          editorJson: 'themes/night/editor.json',
+          iconsDir: 'themes/night/icons',
+        },
+      ],
+    },
+  };
+
+  function nonNullCalls(fn: { mock: { calls: unknown[][] } }): unknown[] {
+    return fn.mock.calls.map((c) => c[0]).filter((v) => v !== null);
+  }
+
+  beforeEach(() => {
+    clearThemePackDom();
+    mockReadPluginFile.mockReset();
+    mockGetPluginManifest.mockReset().mockResolvedValue(RICH_MANIFEST);
+    mockReadThemePackFile.mockReset();
+    mockEmitCrossWindow.mockClear();
+    vi.mocked(setChartPaletteOverride).mockClear();
+    vi.mocked(setPackEditorColorOverlay).mockClear();
+    vi.mocked(setActiveIconResolver).mockClear();
+  });
+
+  it('applies chart palette, icon overrides, and editor overlay', async () => {
+    mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
+      switch (path) {
+        case 'themes/night/tokens.css':
+          return toBytes(':root { --c-accent: #101010; }');
+        case 'themes/night/charts.json':
+          return toBytes('{"default":["#111111","#222222"]}');
+        case 'themes/night/editor.json':
+          return toBytes('{"keyword":"#ff0000"}');
+        case 'themes/night/icons/nav.settings.svg':
+          return toBytes('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+        default:
+          return null;
+      }
+    });
+
+    const result = await applyPluginTheme({ pluginId: 'acme.bill-audit', themeId: 'night' });
+    expect(result).toEqual({ ok: true });
+    expect(mockReadPluginFile).toHaveBeenCalledWith(
+      'acme.bill-audit',
+      'themes/night/icons/nav.settings.svg',
+    );
+    expect(nonNullCalls(vi.mocked(setChartPaletteOverride))).toContainEqual({
+      default: ['#111111', '#222222'],
+    });
+    expect(nonNullCalls(vi.mocked(setPackEditorColorOverlay))).toHaveLength(1);
+    expect(vi.mocked(setActiveIconResolver)).toHaveBeenCalled();
+  });
+
+  it('soft-fails malformed optional assets without failing the theme', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
+      switch (path) {
+        case 'themes/night/tokens.css':
+          return toBytes(':root { --c-accent: #101010; }');
+        case 'themes/night/charts.json':
+          return toBytes('not-json{');
+        default:
+          return null;
+      }
+    });
+
+    const result = await applyPluginTheme({ pluginId: 'acme.bill-audit', themeId: 'night' });
+    expect(result).toEqual({ ok: true });
+    // Unparseable palette resets the override (legacy semantics), theme stays on.
+    expect(vi.mocked(setChartPaletteOverride)).toHaveBeenLastCalledWith(null);
+    expect(document.getElementById('datazen-theme-pack')?.textContent).toContain('--c-accent');
+    warn.mockRestore();
   });
 });
