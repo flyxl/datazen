@@ -246,8 +246,8 @@ vi.mock('../../../components/ThemedIcon', () => ({
   ThemedIcon: () => <span data-testid="themed-icon" />,
 }));
 
-vi.mock('../ThemePackSection', () => ({
-  ThemePackSection: () => <div data-testid="theme-pack" />,
+vi.mock('../AppearanceSection', () => ({
+  AppearanceSection: () => <div data-testid="appearance-section" />,
 }));
 
 vi.mock('../UpdateSection', () => ({
@@ -386,8 +386,20 @@ describe('SettingsContent', () => {
     render(<SettingsContent />);
     await waitForSettingsLoad();
     expect(screen.getByText('settings.language')).toBeInTheDocument();
-    expect(screen.getByTestId('theme-pack')).toBeInTheDocument();
+    expect(screen.queryByTestId('theme-pack')).not.toBeInTheDocument();
     expect(screen.getByTestId('update-section')).toBeInTheDocument();
+  });
+
+  it('registers appearance section and drops the legacy theme pack entry', async () => {
+    render(<SettingsContent />);
+    await waitForSettingsLoad();
+
+    const nav = screen.getByTestId('settings-nav');
+    const appearanceNav = within(nav).getByTestId('settings-nav-appearance');
+    expect(appearanceNav).toHaveTextContent('settings.appearance');
+
+    fireEvent.click(appearanceNav);
+    expect(screen.getByTestId('appearance-section')).toBeInTheDocument();
   });
 
   it('opens section from initialSection prop', async () => {
