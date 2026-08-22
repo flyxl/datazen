@@ -1,3 +1,4 @@
+import { pluginCommands } from '../commands/plugins';
 import { themeCommands } from '../commands/theme';
 import { emitCrossWindow } from './crossWindowBus';
 import { bootstrapDefaultIconResolver } from './bootstrapIconResolver';
@@ -16,6 +17,13 @@ import {
 } from './surfaceBgCache';
 
 export const THEME_PACK_STYLE_ID = 'datazen-theme-pack';
+
+/**
+ * Prefix persisted in `settings.theme.packId` for themes contributed by UI
+ * plugins: `plugin:{pluginId}:{themeId}`. Plugin ids (`<publisher>.<name>`)
+ * and theme ids never contain colons, so the first colon splits reliably.
+ */
+export const PLUGIN_THEME_PACK_PREFIX = 'plugin:';
 
 const ICON_EXTENSIONS = ['.svg', '.webp', '.png'] as const;
 const FONT_URL_RE = /url\s*\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
@@ -104,7 +112,42 @@ async function readPackFile(packId: string, relativePath: string): Promise<numbe
   }
 }
 
-export async function rewriteFontUrls(css: string, packId: string): Promise<string> {
+async function readPluginFileOrNull(
+  pluginId: string,
+  relativePath: string,
+): Promise<number[] | null> {
+  try {
+    return await pluginCommands.readPluginFile(pluginId, relativePath);
+  } catch {
+    return null;
+  }
+}
+
+type PackFileReader = (relativePath: string) => Promise<number[] | null>;
+
+/**
+ * Lexically joins an asset reference against the directory of the css file
+ * it appears in (`''` = plugin/pack root). Rejects traversal outside the root.
+ */
+function joinRelativePath(baseDir: string, ref: string): string {
+  const segments = `${ref.startsWith('/') ? '' : baseDir ? `${baseDir}/` : ''}${ref}`.split('/');
+  const stack: string[] = [];
+  for (const segment of segments) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') {
+      stack.pop();
+      continue;
+    }
+    stack.push(segment);
+  }
+  return stack.join('/');
+}
+
+/**
+ * Rewrites every `url(...)` reference to a local pack file into a blob URL.
+ * Remote http(s) URLs are rejected; blob:/data: URLs are kept as-is.
+ */
+async function rewriteCssUrls(css: string, readFile: PackFileReader): Promise<string> {
   const replacements: { start: number; end: number; url: string }[] = [];
   let match: RegExpExecArray | null;
   const re = new RegExp(FONT_URL_RE.source, 'gi');
@@ -117,7 +160,7 @@ export async function rewriteFontUrls(css: string, packId: string): Promise<stri
       continue;
     }
     const relPath = rawUrl.replace(/^\.\//, '');
-    const bytes = await readPackFile(packId, relPath);
+    const bytes = await readFile(relPath);
     if (!bytes) {
       throw new Error(`Font file not found in pack: ${relPath}`);
     }
@@ -131,6 +174,10 @@ export async function rewriteFontUrls(css: string, packId: string): Promise<stri
     result = `${result.slice(0, start)}url("${url}")${result.slice(end)}`;
   }
   return result;
+}
+
+export async function rewriteFontUrls(css: string, packId: string): Promise<string> {
+  return rewriteCssUrls(css, (relPath) => readPackFile(packId, relPath));
 }
 
 async function probePackIcon(packId: string, semanticId: string): Promise<string | null> {
@@ -201,10 +248,101 @@ export function clearThemePack(): void {
 
 export type ApplyThemePackResult = { ok: true } | { ok: false; error: string };
 
+export function encodePluginThemePackId(pluginId: string, themeId: string): string {
+  return `${PLUGIN_THEME_PACK_PREFIX}${pluginId}:${themeId}`;
+}
+
+export function parsePluginThemePackId(
+  packId: string | null | undefined,
+): { pluginId: string; themeId: string } | null {
+  if (!packId || !packId.startsWith(PLUGIN_THEME_PACK_PREFIX)) return null;
+  const rest = packId.slice(PLUGIN_THEME_PACK_PREFIX.length);
+  const sep = rest.indexOf(':');
+  if (sep <= 0 || sep === rest.length - 1) return null;
+  return { pluginId: rest.slice(0, sep), themeId: rest.slice(sep + 1) };
+}
+
+/** Reference to a theme contributed by an installed UI plugin. */
+export interface PluginThemeRef {
+  pluginId: string;
+  themeId: string;
+  /** Display name, accepted for caller convenience (not used for lookup). */
+  name?: string;
+}
+
+async function resolvePluginTokensPath(pluginId: string, themeId: string): Promise<string> {
+  const manifest = await pluginCommands.getPluginManifest(pluginId);
+  const theme = manifest.contributes.themes.find((th) => th.id === themeId);
+  if (!theme) {
+    throw new Error(`Theme "${themeId}" not found in plugin "${pluginId}"`);
+  }
+  // tokensCss is relative to the plugin root (e.g. "themes/midnight-blue/tokens.css").
+  return theme.tokensCss;
+}
+
+async function applyPluginThemePackId(
+  packId: string,
+  { broadcast = true }: { broadcast?: boolean } = {},
+): Promise<ApplyThemePackResult> {
+  const parsed = parsePluginThemePackId(packId);
+  if (!parsed) {
+    return { ok: false, error: `invalid plugin theme id: ${packId}` };
+  }
+  const { pluginId, themeId } = parsed;
+
+  resetPackState();
+  try {
+    const tokensPath = await resolvePluginTokensPath(pluginId, themeId);
+    const tokensBytes = await readPluginFileOrNull(pluginId, tokensPath);
+    if (!tokensBytes) {
+      throw new Error('tokens.css missing');
+    }
+
+    // Relative url(...) references resolve against the tokens.css directory.
+    const baseDir = tokensPath.includes('/')
+      ? tokensPath.slice(0, tokensPath.lastIndexOf('/'))
+      : '';
+    const css = await rewriteCssUrls(decodeUtf8(tokensBytes), (relPath) =>
+      readPluginFileOrNull(pluginId, joinRelativePath(baseDir, relPath)),
+    );
+    injectThemePackCss(css);
+
+    syncWebviewBackgroundFromTokens();
+    notifyThemePackChanged();
+    if (broadcast) void emitCrossWindow('datazen:theme-pack-changed', packId);
+    return { ok: true };
+  } catch (err) {
+    console.warn('[theme] failed to apply plugin theme', packId, err);
+    resetPackState();
+    syncWebviewBackgroundFromTokens();
+    notifyThemePackChanged();
+    if (broadcast) void emitCrossWindow('datazen:theme-pack-changed', null);
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message };
+  }
+}
+
+/**
+ * Apply a theme contributed by an enabled UI plugin: reads `tokens.css` (and
+ * any local assets referenced by its `url(...)`s) as bytes through
+ * `read_plugin_file` and injects them into the same style element used by
+ * legacy `{appData}/themes/` packs.
+ */
+export async function applyPluginTheme(
+  theme: PluginThemeRef,
+  options: { broadcast?: boolean } = {},
+): Promise<ApplyThemePackResult> {
+  return applyPluginThemePackId(encodePluginThemePackId(theme.pluginId, theme.themeId), options);
+}
+
 export async function applyThemePack(
   packId: string | null,
   { broadcast = true }: { broadcast?: boolean } = {},
 ): Promise<ApplyThemePackResult> {
+  if (packId && parsePluginThemePackId(packId)) {
+    return applyPluginThemePackId(packId, { broadcast });
+  }
+
   resetPackState();
 
   if (!packId) {

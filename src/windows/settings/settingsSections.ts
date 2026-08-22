@@ -2,6 +2,7 @@ import type { TranslationKey } from '../../locales';
 
 export type SettingsSection =
   | 'general'
+  | 'appearance'
   | 'dataBrowsing'
   | 'editor'
   | 'behavior'
@@ -14,6 +15,7 @@ export type SettingsSection =
 
 export const SETTINGS_SECTIONS: { id: SettingsSection; labelKey: TranslationKey }[] = [
   { id: 'general', labelKey: 'settings.general' },
+  { id: 'appearance', labelKey: 'settings.appearance' },
   { id: 'dataBrowsing', labelKey: 'settings.dataBrowsing' },
   { id: 'editor', labelKey: 'settings.editor' },
   { id: 'behavior', labelKey: 'settings.behavior' },

@@ -383,6 +383,19 @@ const en: Record<TranslationKey, string> = {
   'settings.theme.packReset': 'Reset to default',
   'settings.theme.import': 'Import pack…',
   'settings.theme.remove': 'Remove pack',
+  'settings.appearance': 'Appearance',
+  'settings.appearance.subtitle':
+    'Themes come from installed plugins. Click a card to apply it; manage installation on the Plugins page.',
+  'settings.appearance.current': 'Current theme',
+  'settings.appearance.emptyTitle': 'No themes installed',
+  'settings.appearance.emptyHint':
+    'Install a theme plugin from the Plugins page and its themes will show up here.',
+  'settings.appearance.applyError': 'Failed to apply theme: {error}',
+  'settings.appearance.missingHint':
+    'The active theme is no longer provided by an enabled plugin. Pick another theme or restart DataZen to reset.',
+  'settings.appearance.more': 'Other appearance settings',
+  'settings.appearance.morePlaceholder':
+    'Reserved for future options such as density, font size, and more.',
   'settings.updater.title': 'Updates',
   'settings.updater.description': 'Check GitHub Releases for signed Basic build updates.',
   'settings.updater.check': 'Check for updates',

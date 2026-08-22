@@ -374,6 +374,17 @@ const zhCN = {
   'settings.theme.packReset': '恢复默认',
   'settings.theme.import': '导入主题包…',
   'settings.theme.remove': '移除主题包',
+  'settings.appearance': '外观',
+  'settings.appearance.subtitle':
+    '主题来自已安装的插件，点击卡片即可应用；安装管理请前往插件页面。',
+  'settings.appearance.current': '当前主题',
+  'settings.appearance.emptyTitle': '尚未安装主题',
+  'settings.appearance.emptyHint': '在插件页面安装主题插件后，其主题会显示在这里。',
+  'settings.appearance.applyError': '应用主题失败：{error}',
+  'settings.appearance.missingHint':
+    '当前主题已不再由启用的插件提供，请选择其他主题，或重启 DataZen 以恢复默认。',
+  'settings.appearance.more': '其他外观设置',
+  'settings.appearance.morePlaceholder': '预留：密度、字号等选项将在后续版本中提供。',
   'settings.updater.title': '更新',
   'settings.updater.description':
     '从 GitHub Releases 检查并安装 Basic 版本更新（需已签名的发布包）。',

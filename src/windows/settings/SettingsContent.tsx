@@ -12,7 +12,6 @@ import { settingsCommands } from '../../commands/settings';
 import type { AppSettings } from '../../types';
 import type { ThemeMode } from '../../types/theme';
 import { getExtensionLocales } from '../../locales';
-import { ThemePackSection } from './ThemePackSection';
 import { UpdateSection } from './UpdateSection';
 import { PluginSettingsSection } from './PluginSettingsSection';
 import { AiSettingsSection } from './AiSettingsSection';
@@ -22,6 +21,7 @@ import { McpClientSection } from './McpClientSection';
 import { settingsSectionIconId } from '../../lib/hostLucideMap';
 import { SectionTitle, SettingRow, ToggleRow } from './settingsUi';
 import { DataCleanupSection } from './DataCleanupSection';
+import { AppearanceSection } from './AppearanceSection';
 import { parseSettingsSection, SETTINGS_SECTIONS, type SettingsSection } from './settingsSections';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500];
@@ -201,8 +201,6 @@ export function SettingsContent({
                   />
                 </SettingRow>
 
-                <ThemePackSection />
-
                 <UpdateSection
                   checkOnStartup={draft.checkForUpdatesOnStartup}
                   onCheckOnStartupChange={(v) => updateField('checkForUpdatesOnStartup', v)}
@@ -362,6 +360,7 @@ export function SettingsContent({
               </>
             )}
 
+            {activeSection === 'appearance' && <AppearanceSection />}
             {activeSection === 'ai' && <AiSettingsSection />}
             {activeSection === 'prompts' && <PromptSettingsSection />}
             {activeSection === 'mcpServer' && <McpSettingsSection />}
