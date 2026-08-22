@@ -88,3 +88,91 @@ fn e2e_sample_plugin_fixture_installs_through_the_real_path() {
     assert_eq!(manifest.id, "datazen.sample");
     assert!(installed.join("index.html").is_file());
 }
+
+/// Source tree for repo-bundled extension packages (`packages/extensions/`).
+fn extensions_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../packages/extensions")
+}
+
+/// Guards every shipped extension package against rot: each directory under
+/// `packages/extensions/` must keep passing the full manifest rule set
+/// (§2.2 rules 1–7, including folder name == manifest.id) so the samples stay
+/// installable from the management page without any preprocessing.
+#[test]
+fn repo_extension_packages_pass_manifest_validation() {
+    let root = extensions_root();
+    let mut seen = std::collections::BTreeSet::new();
+    for entry in fs::read_dir(&root).expect("read packages/extensions") {
+        let path = entry.expect("dir entry").path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string();
+        if !name.contains('.') {
+            continue; // skip non-package helper directories (e.g. dist/)
+        }
+        let manifest = validate_plugin_dir(&path)
+            .unwrap_or_else(|e| panic!("extension package `{name}` failed validation: {e}"));
+        assert_eq!(
+            manifest.api_version, PLUGIN_API_VERSION,
+            "extension `{name}` apiVersion drifted"
+        );
+        seen.insert(manifest.id);
+    }
+
+    assert!(
+        seen.contains("community.slate-blue"),
+        "converted theme extension missing, saw {seen:?}"
+    );
+    assert!(
+        seen.contains("datazen.playground"),
+        "sample extension missing, saw {seen:?}"
+    );
+}
+
+/// The converted community theme extension must declare its theme
+/// contribution with a tokens.css that exists on disk (rule 5) — this is what
+/// Settings → Appearance lists once installed.
+#[test]
+fn community_slate_blue_extension_declares_theme_contribution() {
+    let dir = extensions_root().join("community.slate-blue");
+    let manifest = validate_plugin_dir(&dir)
+        .unwrap_or_else(|e| panic!("community.slate-blue extension invalid: {e}"));
+    assert!(
+        manifest.entry.is_none(),
+        "pure-theme extension needs no entry"
+    );
+    assert!(
+        manifest.permissions.is_empty(),
+        "pure-theme extension needs no permissions"
+    );
+
+    let themes: Vec<_> = manifest.contributes.themes.iter().collect();
+    assert_eq!(themes.len(), 1);
+    assert_eq!(themes[0].id, "slate-blue");
+    assert_eq!(
+        themes[0].modes,
+        vec!["light".to_string(), "dark".to_string()]
+    );
+    assert!(dir.join(&themes[0].tokens_css).is_file());
+    // Legacy ThemePack capabilities must survive the conversion: chart
+    // palette + semantic icon overrides ride along with the theme.
+    let charts = themes[0]
+        .charts_json
+        .as_deref()
+        .unwrap_or_else(|| panic!("slate-blue must declare chartsJson"));
+    let icons = themes[0]
+        .icons_dir
+        .as_deref()
+        .unwrap_or_else(|| panic!("slate-blue must declare iconsDir"));
+    assert!(dir.join(charts).is_file(), "charts.json missing: {charts}");
+    assert!(dir.join(icons).is_dir(), "icons dir missing: {icons}");
+    assert!(
+        dir.join(icons).join("nav.settings.svg").is_file(),
+        "icons dir must contain semantic overrides"
+    );
+}

@@ -91,6 +91,19 @@ pub struct ThemeContribution {
     pub modes: Vec<String>,
     #[serde(default)]
     pub preview_image: Option<String>,
+    /// Optional CodeMirror color overlay (legacy ThemePack `editor.json`),
+    /// applied by the host after tokens.css. Rule-5 validated path.
+    #[serde(default)]
+    pub editor_json: Option<String>,
+    /// Optional chart series palette (legacy `charts.json`). Rule-5 path.
+    #[serde(default)]
+    pub charts_json: Option<String>,
+    /// Optional directory of semantic icon overrides named
+    /// `<semanticId>.svg|.webp|.png` (legacy `icons/`). Rule-5 path; must be
+    /// an existing directory. Contents are still subject to the package-wide
+    /// file scan (rule 6).
+    #[serde(default)]
+    pub icons_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -249,6 +262,30 @@ pub fn validate_manifest(manifest: &PluginManifest, plugin_dir: &Path) -> Result
             ensure_allowed_extension(preview)?;
             if !preview_path.is_file() {
                 return Err(format!("theme preview image not found: {preview}"));
+            }
+        }
+        // Optional legacy-parity assets (editor overlay / chart palette /
+        // icon overrides). Declared ⇒ must exist; json files are whitelisted
+        // by extension, icons_dir must be a real directory (its contents go
+        // through the rule-6 package scan).
+        for (label, declared) in [
+            ("theme editor.json", &theme.editor_json),
+            ("theme charts.json", &theme.charts_json),
+        ] {
+            if let Some(path) = declared {
+                let resolved = safe_declared_path(plugin_dir, path)?;
+                ensure_allowed_extension(path)?;
+                if !resolved.is_file() {
+                    return Err(format!("{label} not found: {path}"));
+                }
+            }
+        }
+        if let Some(icons_dir) = &theme.icons_dir {
+            let resolved = safe_declared_path(plugin_dir, icons_dir)?;
+            if !resolved.is_dir() {
+                return Err(format!(
+                    "theme icons dir not found or not a directory: {icons_dir}"
+                ));
             }
         }
     }
@@ -728,6 +765,88 @@ mod tests {
         let sepia = THEME_MANIFEST.replace("\"modes\": [\"dark\"]", "\"modes\": [\"sepia\"]");
         let err = validate_manifest(&parsed(&sepia), dir.path()).unwrap_err();
         assert!(err.contains("invalid theme mode"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn accepts_optional_editor_charts_icons_parity_assets() {
+        let json = THEME_MANIFEST.replace(
+            "\"previewImage\": \"themes/midnight-blue/preview.png\"",
+            "\"editorJson\": \"themes/midnight-blue/editor.json\", \
+             \"chartsJson\": \"themes/midnight-blue/charts.json\", \
+             \"iconsDir\": \"themes/midnight-blue/icons\"",
+        );
+        let mut m = parsed(&json);
+        if let Some(theme) = m.contributes.themes.first_mut() {
+            theme.editor_json = Some("themes/midnight-blue/editor.json".into());
+            theme.charts_json = Some("themes/midnight-blue/charts.json".into());
+            theme.icons_dir = Some("themes/midnight-blue/icons".into());
+        }
+        let dir = TempDir::new().unwrap();
+        write_theme_plugin(dir.path());
+        write_file(dir.path(), "themes/midnight-blue/editor.json", "{}");
+        write_file(
+            dir.path(),
+            "themes/midnight-blue/charts.json",
+            "{\"series\":[\"#fff\"]}",
+        );
+        write_file(
+            dir.path(),
+            "themes/midnight-blue/icons/nav.settings.svg",
+            "<svg/>",
+        );
+        assert!(
+            validate_manifest(&m, dir.path()).is_ok(),
+            "declared parity assets should validate"
+        );
+    }
+
+    #[test]
+    fn rejects_missing_declared_parity_assets() {
+        for field in ["editorJson", "chartsJson", "iconsDir"] {
+            let declared = format!("themes/midnight-blue/{field}.json");
+            let json = THEME_MANIFEST.replace(
+                "\"previewImage\": \"themes/midnight-blue/preview.png\"",
+                &format!(
+                    "\"previewImage\": \"themes/midnight-blue/preview.png\", \"{field}\": \"{declared}\""
+                ),
+            );
+            let mut m = parsed(&json);
+            if let Some(theme) = m.contributes.themes.first_mut() {
+                match field {
+                    "editorJson" => theme.editor_json = Some(declared.clone()),
+                    "chartsJson" => theme.charts_json = Some(declared.clone()),
+                    _ => theme.icons_dir = Some(declared.clone()),
+                }
+            }
+            let dir = TempDir::new().unwrap();
+            write_theme_plugin(dir.path());
+            // Nothing written at the declared paths → all three must fail.
+            let err = validate_manifest(&m, dir.path()).unwrap_err();
+            assert!(
+                err.contains("not found"),
+                "{field} missing should be rejected: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_traversal_in_declared_parity_assets() {
+        let json = THEME_MANIFEST.replace(
+            "\"previewImage\": \"themes/midnight-blue/preview.png\"",
+            "\"previewImage\": \"themes/midnight-blue/preview.png\", \"chartsJson\": \"../evil.json\"",
+        );
+        let mut m = parsed(&json);
+        if let Some(theme) = m.contributes.themes.first_mut() {
+            theme.charts_json = Some("../evil.json".into());
+        }
+        let dir = TempDir::new().unwrap();
+        write_theme_plugin(dir.path());
+        // Rejected by the escape check alone — no target file needs to exist.
+        let err = validate_manifest(&m, dir.path()).unwrap_err();
+        assert!(
+            err.contains("unsafe declared path") || err.contains("escapes"),
+            "unexpected: {err}"
+        );
     }
 
     #[test]

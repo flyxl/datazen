@@ -105,7 +105,7 @@ tauri::Builder::default()
 - **path 形态**（v1 资产服务）：`datazen://acme.bill-audit/index.html`、`datazen://acme.bill-audit/assets/icon.svg`。解析：host == `manifest.id` → PluginManager 查存在且 enabled → path 组件校验（无 `..`、无反斜杠、非隐藏文件，`.storage.json` 拒绝）→ 读文件按扩展名回 Content-Type（MIME 表复用 `themePackApply.ts` 的映射，Rust 侧同表复制）。
 - **command 形态**（宿主拦截动作，v1 仅保留语法位）：`datazen://acme.bill-audit/open?page=quota-check&uid=123`。v1 实现 `open`（打开指定 page Tab 并把 query params 原样转发给 iframe 作为启动参数）；未知 command 返回 404。为 P2 深链/跨插件跳转预留。
 - Windows 下 scheme 自动映射为 `http://datazen./...`，解析需兼容两种 host 形态。
-- 响应头固定注入：`Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; font-src 'self'` 与 `X-Content-Type-Options: nosniff`。
+- 响应头固定注入：`Content-Security-Policy: default-src 'self' datazen:; script-src 'self' datazen:; style-src 'self' datazen: 'unsafe-inline'; img-src 'self' datazen: data:; connect-src 'none'; font-src 'self' datazen:` 与 `X-Content-Type-Options: nosniff`。（BUG-F9-04：macOS WebKit 对自定义 scheme 文档不匹配 `'self'`，须显式枚举 `datazen:` 源——对齐 VSCode webview 做法；保留 `'self'` 兼容 Windows/WebView2 的 `http(s)://datazen.<host>/` 映射形态。宿主 `tauri.conf.json` 相应增补 `frame-src` 与 `img-src` 的 `datazen:`。）
 - 404/403 一律返回无 body 状态码，不泄露目录结构。
 
 ### 2.5 IPC 命令组（commands/plugins.rs）

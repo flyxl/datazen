@@ -17,6 +17,11 @@
   var STORAGE_KEY = 'e2e-marker';
   var STORAGE_VALUE = 'ok';
 
+  // BUG-F9-02 workaround: safaridriver cannot automate elements inside the
+  // opaque-origin plugin iframe, so probe outcomes are persisted through the
+  // bridge storage.set RPC and asserted from disk by plugins.spec.ts.
+  var PROBE_PREFIX = 'probe.';
+
   var parentWindow = window.parent;
   var seq = 0;
   var pending = new Map();
@@ -35,8 +40,26 @@
     set(testId, 'error: ' + (error && error.message ? error.message : String(error)));
   }
 
+  function persistProbe(key, value) {
+    request('storage.set', { key: PROBE_PREFIX + key, value: value }).catch(function () {
+      /* best-effort; spec polls the file and reports the last persisted value */
+    });
+  }
+
+  // BUG-F9-04 ②: every error path must land both in a DOM error element and
+  // in the probe.error storage key — never escape as an unhandled rejection
+  // (an earlier revision crashed here calling done('ERR ' + ...) with done
+  // bound to a path string).
+  function persistError(scope, error) {
+    var message = error && error.message ? error.message : String(error);
+    set('probe-error', scope + ': ' + message);
+    persistProbe('error', scope + ': ' + message);
+  }
+
   function renderContext(ctx) {
-    set('dark-state', ctx.dark ? 'dark' : 'light');
+    var dark = ctx.dark ? 'dark' : 'light';
+    set('dark-state', dark);
+    persistProbe('dark', dark);
     var count = ctx.tokens && typeof ctx.tokens === 'object' ? Object.keys(ctx.tokens).length : 0;
     set('token-count', count);
   }
@@ -66,6 +89,7 @@
       var payload = data.payload || {};
       if (payload.apiVersion !== API_VERSION) {
         set('bridge-status', 'error: apiVersion mismatch (' + payload.apiVersion + ')');
+        persistError('apiVersion', 'host reported ' + payload.apiVersion);
         return;
       }
       renderContext({
@@ -73,6 +97,7 @@
         tokens: payload.tokens && typeof payload.tokens === 'object' ? payload.tokens : {},
       });
       set('bridge-status', 'ready');
+      persistProbe('bridge', 'ok');
       runChecks();
       return;
     }
@@ -104,9 +129,11 @@
       .then(function (result) {
         var conns = result && Array.isArray(result.connections) ? result.connections : [];
         set('conn-count', conns.length);
+        persistProbe('connCount', String(conns.length));
       })
       .catch(function (e) {
         fail('conn-count', e);
+        persistProbe('connCount', 'error: ' + (e && e.message ? e.message : String(e)));
       });
 
     // Journey 2: storage.set -> storage.get round-trip proves the RPC bridge.
@@ -116,9 +143,13 @@
       })
       .then(function (result) {
         set('storage-roundtrip', result && result.value === STORAGE_VALUE ? 'ok' : 'mismatch');
+        if (!result || result.value !== STORAGE_VALUE) {
+          persistError('storage-roundtrip', new Error('mismatch'));
+        }
       })
       .catch(function (e) {
         fail('storage-roundtrip', e);
+        persistError('storage-roundtrip', e);
       });
   }
 
@@ -139,6 +170,7 @@
   function scheduleHandshakeRetry(attempt) {
     if (attempt >= HANDSHAKE_RETRIES) {
       set('bridge-status', 'error: no host.ready');
+      persistError('handshake', new Error('no host.ready after retries'));
       return;
     }
     stopHandshakeRetry();
@@ -149,6 +181,15 @@
   }
 
   window.addEventListener('message', onMessage);
+  // Last-resort net: unexpected script errors or rejections are persisted so
+  // the spec can read them from disk; neither handler can itself throw.
+  window.addEventListener('error', function (event) {
+    persistError('window', (event && event.message) || 'unknown script error');
+  });
+  window.addEventListener('unhandledrejection', function (event) {
+    var reason = event && event.reason;
+    persistError('rejection', reason && reason.message ? reason.message : String(reason));
+  });
 
   function boot() {
     set('bridge-status', 'connecting');

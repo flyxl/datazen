@@ -34,8 +34,17 @@ pub const PLUGINS_OPEN_PAGE_EVENT: &str = "plugins:open-page";
 /// Reserved first path segment marking a deep-link command (not an asset).
 pub const OPEN_COMMAND: &str = "open";
 
-const ASSET_CSP: &str = "default-src 'self'; script-src 'self'; \
-style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; font-src 'self'";
+// Explicit scheme sources alongside `'self'`: WebKit (macOS) serves
+// custom-scheme documents from an opaque origin and does not match `'self'`
+// against `datazen://` subresources, which blocked the page's own scripts and
+// images (BUG-F9-04) — mirrors VSCode webviews enumerating the resource scheme
+// explicitly in CSP instead of trusting `'self'`. `'self'` is kept because
+// Windows/WebView2 maps the scheme to `http(s)://datazen.<host>/…`, where only
+// `'self'` matches. `connect-src 'none'` keeps plugins offline; `data:` stays
+// image-only for inline SVG data URLs.
+const ASSET_CSP: &str = "default-src 'self' datazen:; script-src 'self' datazen:; \
+style-src 'self' datazen: 'unsafe-inline'; img-src 'self' datazen: data:; \
+font-src 'self' datazen:; connect-src 'none'";
 
 /// Decoded query parameters keyed by parameter name.
 pub type QueryMap = BTreeMap<String, String>;
@@ -728,8 +737,9 @@ mod tests {
                     .headers()
                     .get(http::header::CONTENT_SECURITY_POLICY)
                     .unwrap(),
-                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
-                 img-src 'self' data:; connect-src 'none'; font-src 'self'"
+                "default-src 'self' datazen:; script-src 'self' datazen:; \
+                 style-src 'self' datazen: 'unsafe-inline'; img-src 'self' datazen: data:; \
+                 font-src 'self' datazen:; connect-src 'none'"
             );
             assert_eq!(
                 response

@@ -6,8 +6,9 @@
     <!--
       F9 E2E fixture page: zero build, no SDK import.
       The bridge client lives in assets/app.js because the host serves package
-      assets with CSP `script-src 'self'` (no 'unsafe-inline') — inline
-      <script> blocks would never execute inside the sandboxed iframe.
+      assets with CSP without 'unsafe-inline' in script-src — inline <script>
+      blocks would never execute inside the sandboxed iframe. Subresource URLs
+      must stay under datazen:// (matched by script-src/img-src 'self' datazen:).
     -->
   </head>
   <body>
@@ -16,6 +17,7 @@
     <p>storage-roundtrip: <span data-testid="storage-roundtrip">-</span></p>
     <p>mode: <span data-testid="dark-state">-</span></p>
     <p>tokens: <span data-testid="token-count">-</span></p>
+    <p data-testid="probe-error" hidden></p>
     <script src="assets/app.js"></script>
   </body>
 </html>
