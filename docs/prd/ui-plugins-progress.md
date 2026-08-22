@@ -15,7 +15,7 @@
 | F6 | RPC 桥 | uiPluginBridge：信封路由、权限判定、限流超时、token 快照推送（开发 31 + 测试补充 33 = 64 单测全绿；覆盖率 Lines 99.27%/100%；安全专项复核通过；登记 BUG-F6-01 低危协议偏差，见测试记录） | 测试完成（BUG-F6-01 低危新建，不阻断） | c77085c8 | —（仅追加测试文件，未 commit） |
 | F7 | Settings 外观 | settings.appearance 菜单项 + AppearanceSection 主题切换器（开发 54 + 测试补充 20 单测全绿；覆盖率 AppearanceSection Lines **100%**、themePackApply 全文件 Lines 96.68% / 插件路径子集 97.40%；规格复核 §4.5 六项通过；登记 BUG-F7-01 低危图标缺口，见测试记录） 已完成（BUG-F7-01 经验证 agent 复核通过，见 Bug 跟踪） | 1d9c398b | 9d518661（补 hostLucideMap.ts appearance→Palette 行 + ThemedIcon LUCIDE_MAP 导入 Palette；钉住例翻转为断言 svg 渲染，验证测试 45/45 PASS） |
 | F8 | SDK 包 | packages/ui-plugin-sdk（bridge/theme/theme.css/useTheme；开发 31 + 测试补充 38 = 69 单测全绿；覆盖率逻辑文件 Lines 98.27%–100%；契约互操作双向复核 §3/§4.4 通过；BUG-F8-01 低危健壮性缺口已修复并经验证 agent 复核 + NOTE-F8-01，见测试记录） | 已完成（BUG-F8-01 经验证 agent 复核通过，见 Bug 跟踪） | 51a91633 | 919a09f3（bridge.ts err 分支 isRecord 守卫 → 空对象兜底，任何畸形 err 帧均结算 UiPluginError(E_INTERNAL)；C-03 源码钉住翻转为 C-03/C-04 动态三态回归用例，SDK 69/69 PASS） |
-| F9 | 示例插件与 E2E | e2e/fixtures/sample-plugin + e2e/specs/plugins.spec.ts journeys 1-5（fixture 防腐化单测 3 例；E2E 待实跑） | 待测试 | e535f9a4 | — |
+| F9 | 示例插件与 E2E | e2e/fixtures/sample-plugin + e2e/specs/plugins.spec.ts journeys 1-5（fixture 防腐化单测 3 例；Rust 111/111 全绿、vitest 零新增失败、spec 静态核对全过；**完整 E2E 实跑受阻塞于 BUG-F9-01 存量构建断裂，见测试记录 F9 小节**） | 受阻塞（解锁条件：修复 BUG-F9-01 后实跑 plugins.spec.ts） | e535f9a4 | — |
 
 ## Bug 跟踪
 
@@ -29,6 +29,7 @@
 | BUG-F6-01 | F6 | 【处置：backlog/P2 加固，不阻断】【低危/协议卫生，无安全影响】原型链键名作为 API type 时回 `E_PERMISSION` 而非设计文档声明的 `E_NOT_FOUND`：`API_ROUTES` 为普通对象字面量，`__proto__`/`constructor`/`hasOwnProperty`/`toString`/`valueOf` 经 Object.prototype 原型链解析为非 undefined 值，绕过「unknown api → E_NOT_FOUND」门（uiPluginBridge.ts:374-380），落入权限判定后被拒。**无法到达任何 handler**（granted Set 仅含 manifest 字符串），不消耗并发配额 | attachBridge 后从 iframe window 投递 `{ch:'ui-plugin',type:'__proto__',target:'host',reqId:'r1'}` → 收到 `__proto__.err{code:'E_PERMISSION'}`；同型 `constructor`/`hasOwnProperty`/`toString`/`valueOf` 一致。按 uiPluginBridge.ts:126 自述契约与 §3.2 路由语义应为 `E_NOT_FOUND('unknown api')`。修复建议：`Object.prototype.hasOwnProperty.call(API_ROUTES, type)` 或 `Map`/null-prototype 路由表。回归锚点：security.test「denies prototype-chain api type …」（5 例） | 新建 |
 | BUG-F7-01 | F7 | 【处置：低危外观缺陷，不阻断】Settings 左侧导航「外观」项图标渲染为「?」占位方块而非 Palette 图标，双重缺口：① commit 1d9c398b **漏提交** `hostLucideMap.ts` 的 `appearance: 'Palette'` 映射行（当前工作区存在该一行未提交修复）——HEAD 状态下 `buildHostLucideById()` 无 `settings.appearance` 键，iconResolver 直接回 UI_PLACEHOLDER；② 即使补上 ①，`ThemedIcon.tsx` 内部 `LUCIDE_MAP`（31-54 行）也**未导入 Palette 组件**，`LUCIDE_MAP['Palette'] ?? fallback` 为 undefined → ThemedIcon.tsx:90-100 渲染 `?` 占位 span。纯视觉问题，功能与切换行为不受影响 | 打开 Settings → 观察左侧导航第 2 项「外观」：图标为灰底「?」小方块，其余菜单项均为正常 lucide 图标。链路：`settingsSectionIconId('appearance')='settings.appearance'` → resolver 解析成功为 `{kind:'lucide',name:'Palette'}` 但 ThemedIcon 查表失败（或 HEAD 下解析即失败）。修复建议：① 提交 hostLucideMap.ts 该行；② ThemedIcon.tsx 导入 Palette 并加入 LUCIDE_MAP。回归锚点：settingsSectionIcons.test.tsx「documents BUG-F7-01…」（修复后翻转为断言 svg 渲染）。备注：`extensions→Puzzle` 存在同型缺口（存量问题、非 F7 引入），建议随修 | 新建 |
 | BUG-F8-01 | F8 | 【处置：低危健壮性缺口，不阻断】【SDK 侧容错】`.err` 响应 payload 缺失或 null 时请求路由崩溃并永久泄漏：bridge.ts onMessage 的 `.err` 分支 `const code = data.payload.code` 未守卫 payload 存在性，而 `pending.delete(reqId)` + `clearTimeout(entry.timer)` 在该解引用**之前**已执行 → TypeError 以 uncaught error 形态逃逸监听器，该请求 Promise **永不结算**（超时定时器已被清、map 条目已被删，后续同 reqId 应答亦无法补救）。宿主正常 `errEnvelope` 恒带 `{code,message}`，仅畸形/被篡改宿主帧可触发；`event.source === parent` 反欺骗门不受影响，无安全越权面；§5「E_* 错误类型 + 容错」语义要求优雅降级为 UiPluginError(E_INTERNAL) | 插件页 `const dz=createClient({parentWindow:parent}); await dz.ready(); const p=dz.storage.get('k');` 后投递 `{ch:'ui-plugin',type:'storage.get.err',target:'host',reqId:<p的在途reqId>,ok:false}`（payload 缺失或 null）→ 页面 uncaught `TypeError: Cannot read properties of null/undefined (reading 'code')`，p 永久 pending。回归锚点：bridge.faults.test.ts C-03/C-04 动态优雅拒绝用例（payload 缺失 / null / undefined 键均断言 reject UiPluginError(E_INTERNAL) 且 window error 监听为零；原源码钉住正则已随修复翻转移除） | 已修复（919a09f3） |
+| BUG-F9-01 | F9 | 【处置：构建阻塞，阻塞 F9 E2E 实跑】【存量缺陷、非插件代码引入】`src/components/connection/ObjectFilterDialog.tsx:2-6` 的相对导入按 `src/windows/connection/` 位置书写（`../components/ui/Button/Dialog/Input`、`../hooks/useI18n`、`./objectFilter`、`../types`），实际文件在 `src/components/connection/` → 解析目标不存在 → `pnpm build`（vite）必败 → e2e-tauri-build 无 webdriver 二进制可产出；ConnectionNavigatorTree vitest 文件级失败同根因（基线失败之一）。main 分支同样存在，引入于 a4d8ce37（ops §5.4 MVPs） | `pnpm build` → vite 报 `Could not resolve "../components/ui/Button" from "src/components/connection/ObjectFilterDialog.tsx"`（exit 1，beforeBuildCommand 失败）；或打开任一触发 ConnectionNavigatorTree 渲染的页面即模块加载失败。修复方向：导入改为 `../ui/*`、`../../hooks/useI18n`、`../../lib/objectFilter`、`../../types`（或将文件移回 windows/connection）。回归锚点：修复后 `pnpm build` 通过 + ConnectionNavigatorTree.test.tsx 转绿 + plugins.spec.ts 可实跑 | 新建（阻塞项） |
 
 Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已修复`
 
@@ -541,6 +542,63 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 |----|------|------|---------|-------------|------|
 | BUG-F8-01 | 低危健壮性缺口（详见 Bug 跟踪表） | `.err` 信封 payload 缺失/null → TypeError uncaught + 请求永久泄漏 | 见 Bug 跟踪表 | 规格 §5 容错语义：应如其他畸形 payload 一样优雅降级 UiPluginError(E_INTERNAL)；修复后 bridge.ts err 分支守卫读取（isRecord → 空对象兜底），任何畸形 err 帧均结算 E_INTERNAL，C-03/C-04 回归通过（缺陷代码上验证为失败）；验证 agent 复核：SDK 69/69 PASS、三态覆盖与防回归断言成立 | 已修复（919a09f3） |
 | NOTE-F8-01 | 备注 | theme.css 含 41 处 hex 字面量，全部位于 `var(--token, #fallback)` 回退位（文件头注释明示「Literal fallbacks only cover the instant before the first snapshot lands」）。按「不含硬编码色值」最严格读法可判偏差；按任务书括号语义「仅 var() 引用」判定合规：所有颜色消费均经 var() 引用契约 token，回退色与 DEFAULT_THEME_TOKENS 逐一相符且有 R5 缺省兜底，测试已断言两计数相等防漂移 | interop.test.ts「fallback palette hexes agree…」+「color policy…」（41==41 断言） | 若产品要求零字面量，删除 var() 第二参即可由 DEFAULT_THEME_TOKENS 兜底，行为不变 | 备注 |
+
+### F9（示例插件与 E2E，commit e535f9a4；HEAD f9c1d4fd）
+
+- 测试 agent 会话，2026-08-22。被测对象：`e2e/fixtures/sample-plugin/` + `e2e/specs/plugins.spec.ts`（J1 安装 → J2 桥往返 → J3 Tab 独立性 → J5 外观持久化 → J4 停用卸载）。
+- **执行层级：静态核对 + 可运行子集（完整 E2E 受阻，见 BUG-F9-01）**。
+
+#### 执行记录（按任务书降级路径如实记录）
+
+| 步骤 | 命令 | 结果 |
+|------|------|------|
+| 1a | `node scripts/generate-menu-labels.mjs` | ✅ 写出 menu-labels.json（50 keys × 2 locales） |
+| 1b | `node scripts/with-plugin-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs` | ❌ **beforeBuildCommand `pnpm build` 失败**：vite `Could not resolve "../components/ui/Button" from "src/components/connection/ObjectFilterDialog.tsx"`（2.16s 即失败，未进入 cargo 阶段）→ **BUG-F9-01，登记为阻塞项**（非 F9 引入，main 分支同病） |
+| 2a | `cargo test -p datazen --lib plugins` | ✅ **111 passed / 0 failed**（含 `plugins::fixture_tests` 守护 3 例：required files / real-path install / manifest validation 全过；需先 `resolve-drivers.mjs --drivers=basic` 注入使 capabilities 与 default feature 一致，否则 tauri build script 报 `Permission redis:default not found`——环境状态问题，非代码缺陷） |
+| 2b | `npx vitest run`（全量 229 文件 / 1805 用例） | ✅ 1802 passed / **4 failed files 与基线集合完全一致**（ConnectionNavigatorTree[文件级]、RunHistoryDrawer、WidgetEditorDrawer、ObjectBrowser），零新增失败。注：ConnectionNavigatorTree 文件级失败根因即 BUG-F9-01（其 import 链加载 ObjectFilterDialog 失败），与基线记录吻合 |
+| 2c | spec 静态审查 | ✅ 见下表 |
+
+#### 静态核对表：spec 选择器 ↔ 宿主 data-testid（逐一 grep 核实）
+
+| spec 选择器 | 宿主落点 | 结论 |
+|-------------|---------|------|
+| `workspace-nav-plugins` / `workspace-nav-workspace-pages` / `workspace-nav-connections` | ConnectionPage.tsx:943/935/911 | ✅ |
+| `plugin-management-page`、`plugin-page-empty`、`plugin-install-button`、`plugin-toggle`(aria-checked:186)、`plugin-uninstall`、`plugin-card[data-plugin-id]`(:126) | PluginManagementPage.tsx | ✅ |
+| `plugin-install-next/review/permissions`、权限 Badge 带 `title`(:143) | InstallPluginDialog.tsx | ✅（review 含 name/version/权限三 badge = fixture 3 权限） |
+| path 输入 placeholder `/path/to/plugin.zip` | InstallPluginDialog.tsx:171 ← en.ts:207 | ✅ |
+| `confirm-dialog-ok` | components/ui/ConfirmDialog.tsx | ✅（J4-002 卸载确认） |
+| `workspace-navigator`、`workspace-nav-item[data-page-key]`(:48-49)、`plugin-page-shell`、`plugin-iframe` | WorkspaceNavigator/PluginPageShell.tsx | ✅ |
+| `workspace-tabbar/tab/tab-close` | WorkspaceTabBar.tsx | ✅ |
+| `workspace-default-cards` | WorkspaceDefaultCards.tsx | ✅（J3-002 关闭全部 Tab 回默认卡片） |
+| `appearance-section/theme-card[data-theme-id]`(aria-pressed:97-99)/`appearance-current-badge`(:130) | AppearanceSection.tsx | ✅ |
+| packId 持久化格式 `plugin:datazen.sample:sample-light` | themePackApply.ts:23 `plugin:{pluginId}:{themeId}` | ✅ 与 EXPECTED_PACK_ID 一致 |
+| IPC：`list_plugins`/`remove_plugin` | commands/plugins.rs:340/369 | ✅（get_settings/save_settings 为既有宿主命令） |
+
+#### 静态核对表：journey 行为 ↔ PRD §4（ui-plugins-implementation.md）
+
+| Journey | PRD §4 依据 | 静态核对结论 |
+|---------|------------|-------------|
+| J1 两步安装（validate→review→confirm） | §4.2 管理页「安装」+ BUG-F4-03 修复引入 review 步骤 | ✅ 对齐；fixture manifest（id/apiVersion 2/entry/contributes.pages+themes/3 permissions）满足 §2.2 校验（fixture_tests 已实跑验证） |
+| J2 桥往返（bridge-status ready、dark-state、token-count>0、storage-roundtrip ok、conn-count==get_connections） | §4.3 握手 plugin.ready→host.ready 附 `{apiVersion,locale,dark,tokens}`；§3.2 权限映射 `context.getConnections→context:connections`、`storage.get/set→storage:local` | ✅ uiPluginBridge.ts:130-134 路由表与 host.ready payload(:479-492) 逐一对应；fixture app.js 断言点(bridge-status:75/dark-state:39/token-count:41/storage:118/conn-count:106)齐全；wdio.conf.ts onPrepare upsert PostgreSQL 连接保证 conn-count≥1 |
+| J3 Tab 独立性（模式切换保留 Tab、关闭全部回默认卡片） | §4.2 workspaceMode 分支互斥渲染；§4.1 独立 tabs store | ✅ ConnectionPage.tsx:960-970 各 mode 整块替换（connections 下无 workspace-navigator）；WorkspaceView + closeByPlugin 具备 |
+| J5 外观持久化 | §4.2 AppearanceSection 单选即应用；packId 编码见上表 | ✅ aria-pressed/current-badge/persist 三要素齐备 |
+| J4 停用卸载联动 | §4.3 「禁用联动：订阅 plugins:changed → closeByPlugin」 | ✅ WorkspaceView.tsx:46-52 订阅并对 disabled/uninstalled 调 closeByPlugin（BUG-F4-01 修复）；卸载走 ConfirmDialog 后 remove_plugin |
+
+#### 风险预判（无法实测，遗留到解锁后）
+
+- macOS safaridriver 对 sandbox opaque-origin iframe 的 `switchToFrame` 支持（spec J2-002~004 依赖）：未验证。若卡死按任务书约定登记 BUG/阻塞，不改功能代码。
+- E2E 未跑，journey 结果表整体标记「未执行（受阻）」。
+
+#### Bug 登记
+
+| ID | 类型 | 描述 | 重现步骤 | 状态 |
+|----|------|------|---------|------|
+| BUG-F9-01 | 构建阻塞（存量缺陷，非 F9 引入） | `src/components/connection/ObjectFilterDialog.tsx:2-6` 相对导入按 `src/windows/connection/` 位置书写（`../components/ui/*`、`../hooks/useI18n`、`./objectFilter`、`../types`），实际文件位于 `src/components/connection/` → `pnpm build`（vite resolve）必败，连带 e2e-tauri-build 无法产出 webdriver 二进制；ConnectionNavigatorTree 测试文件级失败同根因 | `git checkout f9c1d4fd && pnpm build` → vite 报 `Could not resolve "../components/ui/Button" from "src/components/connection/ObjectFilterDialog.tsx"`；引入于 a4d8ce37（ops §5.4 MVPs，2026-08-21），main 分支同样存在。修复方向：改为 `../ui/*`、`../../hooks/useI18n`、`../../lib/objectFilter`、`../../types`（或移回 windows/connection）。**测试 agent 不改功能代码，仅登记** | 新建（阻塞 F9 实跑） |
+
+#### 结论
+
+- 工作项 F9 → **受阻塞**。解锁条件：修复 BUG-F9-01 使 `pnpm build` 通过后，重跑 `with-plugin-inject + e2e-tauri-build`（debug+webdriver）与 `pnpm e2e:skip-build -- --spec e2e/specs/plugins.spec.ts`。
+- 可运行部分全绿：Rust plugins 111/111（fixture 守护 3/3）、vitest 无新增失败、spec↔宿主选择器与 PRD §4 行为静态核对全部一致。
 
 ## 回归测试
 
