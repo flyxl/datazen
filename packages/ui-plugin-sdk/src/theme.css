@@ -1,0 +1,218 @@
+/*
+ * @datazen/ui-plugin-sdk — baseline control styles for UI plugin pages.
+ *
+ * Usage:
+ *   import '@datazen/ui-plugin-sdk/theme.css';
+ *   <button class="dz-btn dz-btn--primary">Run</button>
+ *
+ * Every color resolves from the DataZen token contract (--c-* semantic set
+ * and --dt-* DataTable set) that the host pushes via `theme.apply`. Literal
+ * fallbacks only cover the instant before the first snapshot lands.
+ */
+
+/* ---- page scaffold ------------------------------------------------------ */
+
+.dz-root {
+  background: var(--c-surface, #18181b);
+  color: var(--c-fg, #fafafa);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dz-muted {
+  color: var(--c-fg-muted, #a1a1aa);
+}
+
+.dz-secondary {
+  color: var(--c-fg-secondary, #d4d4d8);
+}
+
+.dz-accent {
+  color: var(--c-accent, #6366f1);
+}
+
+/* ---- buttons ------------------------------------------------------------ */
+
+.dz-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--c-edge, #3f3f46);
+  border-radius: 0.375rem;
+  background: var(--c-surface-raised, #27272a);
+  color: var(--c-fg, #fafafa);
+  font-size: inherit;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    opacity 120ms ease;
+}
+
+.dz-btn:hover:not(:disabled) {
+  background: var(--c-surface-alt, #1f1f23);
+  border-color: var(--c-accent, #6366f1);
+}
+
+.dz-btn:focus-visible {
+  outline: 2px solid var(--c-accent, #6366f1);
+  outline-offset: 1px;
+}
+
+.dz-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dz-btn--primary {
+  background: var(--c-accent, #6366f1);
+  border-color: transparent;
+}
+
+.dz-btn--primary:hover:not(:disabled) {
+  opacity: 0.85;
+  border-color: transparent;
+}
+
+.dz-btn--danger {
+  background: var(--c-danger, #ef4444);
+  border-color: transparent;
+}
+
+.dz-btn--danger:hover:not(:disabled) {
+  opacity: 0.85;
+  border-color: transparent;
+}
+
+/* ---- form controls ------------------------------------------------------ */
+
+.dz-input,
+.dz-textarea,
+.dz-select {
+  width: 100%;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--c-edge, #3f3f46);
+  border-radius: 0.375rem;
+  background: var(--c-surface-inset, #101012);
+  color: var(--c-fg, #fafafa);
+  font-size: inherit;
+}
+
+.dz-textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+.dz-input::placeholder,
+.dz-textarea::placeholder {
+  color: var(--c-fg-muted, #a1a1aa);
+}
+
+.dz-input:focus-visible,
+.dz-textarea:focus-visible,
+.dz-select:focus-visible {
+  outline: none;
+  border-color: var(--c-accent, #6366f1);
+}
+
+.dz-label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--c-fg-secondary, #d4d4d8);
+}
+
+/* ---- card --------------------------------------------------------------- */
+
+.dz-card {
+  border: 1px solid var(--c-edge, #3f3f46);
+  border-radius: 0.5rem;
+  background: var(--c-surface-raised, #27272a);
+  color: var(--c-fg, #fafafa);
+  padding: 1rem;
+}
+
+.dz-card__title {
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--c-fg, #fafafa);
+}
+
+/* ---- table -------------------------------------------------------------- */
+
+.dz-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: inherit;
+  color: var(--c-fg, #fafafa);
+}
+
+.dz-table th,
+.dz-table td {
+  padding: 0.375rem 0.625rem;
+  border-bottom: 1px solid var(--c-edge, #3f3f46);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.dz-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--c-surface-alt, #1f1f23);
+  color: var(--c-fg-secondary, #d4d4d8);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dz-table tbody tr:hover td {
+  background: var(--c-surface-inset, #101012);
+}
+
+/* Cell tint helpers mirroring the host DataTable type-color contract. */
+.dz-cell-null {
+  color: var(--dt-null, #71717a);
+}
+.dz-cell-bool {
+  color: var(--dt-bool, #fb923c);
+}
+.dz-cell-number {
+  color: var(--dt-number, #38bdf8);
+}
+.dz-cell-datetime {
+  color: var(--dt-datetime, #a78bfa);
+}
+.dz-cell-json {
+  color: var(--dt-json, #facc15);
+}
+.dz-cell-text {
+  color: var(--dt-text, #e4e4e7);
+}
+.dz-cell-binary {
+  color: var(--dt-binary, #fb7185);
+}
+
+/* ---- status ------------------------------------------------------------- */
+
+.dz-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  background: var(--c-surface-inset, #101012);
+  border: 1px solid var(--c-edge, #3f3f46);
+  color: var(--c-fg-secondary, #d4d4d8);
+}
+
+.dz-badge--success {
+  color: var(--c-success, #22c55e);
+}
+.dz-badge--warning {
+  color: var(--c-warning, #eab308);
+}
+.dz-badge--danger {
+  color: var(--c-danger, #ef4444);
+}
