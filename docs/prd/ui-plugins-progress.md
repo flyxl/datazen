@@ -8,7 +8,7 @@
 | # | 功能 | 范围摘要 | 状态 | 开发 commit | 测试 commit |
 |---|------|---------|------|------------|------------|
 | F1 | Rust 插件基座 | plugins/{mod,manifest,install,storage}.rs、IPC 命令组、AppState、单测（capabilities 走既有 ACL 豁免，见测试记录） | 已完成 | 900b9330 | d9d265b3 |
-| F2 | datazen:// 协议 | register_uri_scheme_protocol：path 资产服务 + open 深链 + CSP/403/404 | 测试完成 | 4c75f1b0 | —（仅追加测试文件，未 commit） |
+| F2 | datazen:// 协议 | register_uri_scheme_protocol：path 资产服务 + open 深链 + CSP/403/404 | 已完成 | 4c75f1b0 | ffdf64b3 | —（仅追加测试文件，未 commit） |
 | F3 | 前端状态与 IPC 封装 | types/plugin.ts、pluginStore、workspaceTabsStore、commands/plugins.ts | 未开始 | — | — |
 | F4 | 主窗口集成 | WorkspaceMode 扩展、aside 两按钮、Workspace 导航栏/默认卡片/独立 Tab 条/页面壳（静态） | 未开始 | — | — |
 | F5 | 插件管理页 | PluginManagementPage + InstallPluginDialog（卡片/过滤/安装/启停/卸载） | 未开始 | — | — |
@@ -21,7 +21,7 @@
 
 | ID | 功能 | 描述 | 重现步骤 | 状态 |
 |----|------|------|---------|------|
-| BUG-F2-01 | F2 | Windows 形态解析面宽于规格：`http(s)://datazen.<host>/<path>`（`datazen.` 后无 `/` 直接接 host）也被接受为合法别名 | `parse_datazen_uri("http://datazen.acme.bill-audit/index.html")` 返回 Ok（与 `http://datazen./acme.bill-audit/index.html` 等价）。规格 §2.4 字面仅定义 `http://datazen./<host>/<path>`。同一校验链（存在→enabled→路径→MIME）仍然全部生效，无安全影响，属低危加固项（可在 strip_scheme 中要求紧随分隔符） | 新建 |
+| BUG-F2-01 | F2 | 【处置：backlog/P2 加固，不阻断】Windows 形态解析面宽于规格：`http(s)://datazen.<host>/<path>`（`datazen.` 后无 `/` 直接接 host）也被接受为合法别名 | `parse_datazen_uri("http://datazen.acme.bill-audit/index.html")` 返回 Ok（与 `http://datazen./acme.bill-audit/index.html` 等价）。规格 §2.4 字面仅定义 `http://datazen./<host>/<path>`。同一校验链（存在→enabled→路径→MIME）仍然全部生效，无安全影响，属低危加固项（可在 strip_scheme 中要求紧随分隔符） | 新建 |
 
 Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已修复`
 
