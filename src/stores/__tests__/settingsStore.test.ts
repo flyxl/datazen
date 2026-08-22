@@ -82,6 +82,48 @@ describe('settingsStore', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true);
   });
 
+  it('SS-P1: loadSettings dispatches a persisted plugin:<id>:<theme> packId to applyThemePack verbatim', async () => {
+    const persistedPackId = 'plugin:acme.bill-audit:midnight-blue';
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: persistedPackId },
+      language: 'en',
+    });
+    applyThemePack.mockResolvedValue({ ok: true });
+
+    await useSettingsStore.getState().loadSettings();
+
+    expect(applyThemePack).toHaveBeenCalledWith(persistedPackId);
+    expect(useSettingsStore.getState().settings.theme.packId).toBe(persistedPackId);
+    expect(mockSettingsCommands.saveSettings).not.toHaveBeenCalled();
+  });
+
+  it('SS-P2: loadSettings resets a failed plugin theme (e.g. plugin disabled) back to the default pack', async () => {
+    mockSettingsCommands.getSettings.mockResolvedValueOnce({
+      theme: { mode: 'dark', packId: 'plugin:acme.bill-audit:midnight-blue' },
+      language: 'en',
+    });
+    // First call (persisted plugin theme) fails — e.g. plugin disabled/removed;
+    // second call (reset to no pack) succeeds.
+    applyThemePack
+      .mockResolvedValueOnce({
+        ok: false,
+        error: 'Theme "midnight-blue" not found in plugin "acme.bill-audit"',
+      })
+      .mockResolvedValueOnce({ ok: true });
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+
+    await useSettingsStore.getState().loadSettings();
+
+    expect(applyThemePack).toHaveBeenNthCalledWith(1, 'plugin:acme.bill-audit:midnight-blue');
+    expect(applyThemePack).toHaveBeenNthCalledWith(2, null);
+    expect(useSettingsStore.getState().settings.theme.packId).toBeNull();
+    const saved = mockSettingsCommands.saveSettings.mock.calls.at(-1)?.[0] as {
+      theme: { packId: string | null };
+    };
+    expect(saved.theme.packId).toBeNull();
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+  });
+
   it('loadSettings recovers from invalid theme pack', async () => {
     mockSettingsCommands.getSettings.mockResolvedValueOnce({
       theme: { mode: 'light', packId: 'bad-pack' },

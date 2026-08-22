@@ -168,4 +168,112 @@ describe('AppearanceSection', () => {
     render(<AppearanceSection />);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('AS-M1: lists themes of multiple contributing plugins with per-plugin source labels', () => {
+    pluginState.plugins = [
+      makePlugin(),
+      makePlugin({
+        id: 'other.vendor-pack',
+        name: 'Vendor Pack',
+        themes: [{ id: 'nord', name: 'Nord', modes: ['dark', 'light'] }],
+      }),
+    ];
+    render(<AppearanceSection />);
+
+    const cards = screen.getAllByTestId('appearance-theme-card');
+    expect(cards).toHaveLength(3);
+    expect(screen.getByText('Midnight Blue')).toBeInTheDocument();
+    expect(screen.getByText('Solar')).toBeInTheDocument();
+    expect(screen.getByText('Nord')).toBeInTheDocument();
+    expect(screen.getAllByText('v1.0.0 · Bill Audit')).toHaveLength(2);
+    expect(screen.getByText('v1.0.0 · Vendor Pack')).toBeInTheDocument();
+    const nordCard = cards.find((el) => el.getAttribute('data-theme-id') === 'nord')!;
+    expect(nordCard.getAttribute('data-plugin-id')).toBe('other.vendor-pack');
+    expect(within(nordCard).getByText('light')).toBeInTheDocument();
+  });
+
+  it('AS-M2: switches between themes of different plugins persisting each encoded pack id', async () => {
+    pluginState.plugins = [
+      makePlugin(),
+      makePlugin({
+        id: 'other.vendor-pack',
+        name: 'Vendor Pack',
+        themes: [{ id: 'nord', name: 'Nord', modes: ['dark'] }],
+      }),
+    ];
+    render(<AppearanceSection />);
+
+    const cardOf = (themeId: string) =>
+      screen
+        .getAllByTestId('appearance-theme-card')
+        .find((el) => el.getAttribute('data-theme-id') === themeId)!;
+
+    fireEvent.click(cardOf('nord'));
+    await waitFor(() => expect(updateSettingsMock).toHaveBeenCalledTimes(1));
+    let saved = updateSettingsMock.mock.calls[0][0] as { theme: { packId: string } };
+    expect(saved.theme.packId).toBe(encodePluginThemePackId('other.vendor-pack', 'nord'));
+
+    fireEvent.click(cardOf('solar'));
+    await waitFor(() => expect(updateSettingsMock).toHaveBeenCalledTimes(2));
+    saved = updateSettingsMock.mock.calls[1][0] as { theme: { packId: string } };
+    expect(saved.theme.packId).toBe(encodePluginThemePackId('acme.bill-audit', 'solar'));
+  });
+
+  it('AS-M3: highlights only the active theme across plugins', () => {
+    settingsState.settings = {
+      theme: { mode: 'dark', packId: encodePluginThemePackId('other.vendor-pack', 'nord') },
+      language: 'en',
+      pluginSettings: {},
+    };
+    pluginState.plugins = [
+      makePlugin(),
+      makePlugin({
+        id: 'other.vendor-pack',
+        name: 'Vendor Pack',
+        themes: [{ id: 'nord', name: 'Nord', modes: ['dark'] }],
+      }),
+    ];
+    render(<AppearanceSection />);
+
+    const pressed = screen
+      .getAllByTestId('appearance-theme-card')
+      .filter((el) => el.getAttribute('aria-pressed') === 'true');
+    expect(pressed).toHaveLength(1);
+    expect(pressed[0].getAttribute('data-plugin-id')).toBe('other.vendor-pack');
+    expect(pressed[0].getAttribute('data-theme-id')).toBe('nord');
+    expect(screen.getByTestId('appearance-current-badge')).toBeInTheDocument();
+  });
+
+  it('AS-M4: surfaces the orphan hint when the persisted plugin theme is no longer offered', () => {
+    settingsState.settings = {
+      theme: {
+        mode: 'dark',
+        packId: encodePluginThemePackId('acme.gone-plugin', 'vanished'),
+      },
+      language: 'en',
+      pluginSettings: {},
+    };
+    pluginState.plugins = [makePlugin()];
+    render(<AppearanceSection />);
+
+    const grid = screen.getByTestId('appearance-theme-grid');
+    expect(within(grid).getAllByTestId('appearance-theme-card')).toHaveLength(2);
+    expect(screen.getByTestId('appearance-orphan-hint')).toHaveTextContent(
+      'settings.appearance.missingHint',
+    );
+    expect(screen.queryByTestId('appearance-current-badge')).not.toBeInTheDocument();
+  });
+
+  it('AS-M5: string rejections render through the generic error message path', async () => {
+    updateSettingsMock.mockRejectedValueOnce('boom');
+    pluginState.plugins = [makePlugin()];
+    render(<AppearanceSection />);
+
+    fireEvent.click(screen.getAllByTestId('appearance-theme-card')[0]);
+    await waitFor(() =>
+      expect(screen.getByTestId('appearance-error')).toHaveTextContent(
+        'settings.appearance.applyError',
+      ),
+    );
+  });
 });

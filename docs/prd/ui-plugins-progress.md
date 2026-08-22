@@ -13,7 +13,7 @@
 | F4 | 主窗口集成 | WorkspaceMode 扩展、aside 两按钮、Workspace 导航栏/默认卡片/独立 Tab 条/页面壳 + 管理页/安装对话框提前落地（59 组件测试全绿：37 开发 + 22 测试补充；覆盖率 Lines 97.42%/Branch 89.01%；登记 BUG-F4-01…04 低危缺陷/偏差；BUG-F4-01/02/03/04 已修复并经验证 agent 复核，见「F4 修复验证」小节） | 已完成 | 62141434 | ca2218bc+46c195fb |
 | F5 | 插件管理页 | ~~独立功能项~~ 已并入 F4 交付（管理页+两步安装对话框） | 已完成（并入F4） | 62141434 | ca2218bc |
 | F6 | RPC 桥 | uiPluginBridge：信封路由、权限判定、限流超时、token 快照推送（开发 31 + 测试补充 33 = 64 单测全绿；覆盖率 Lines 99.27%/100%；安全专项复核通过；登记 BUG-F6-01 低危协议偏差，见测试记录） | 测试完成（BUG-F6-01 低危新建，不阻断） | c77085c8 | —（仅追加测试文件，未 commit） |
-| F7 | Settings 外观 | settings.appearance 菜单项 + AppearanceSection 主题切换器（54 测试全绿） | 待测试 | 1d9c398b | — |
+| F7 | Settings 外观 | settings.appearance 菜单项 + AppearanceSection 主题切换器（开发 54 + 测试补充 20 单测全绿；覆盖率 AppearanceSection Lines **100%**、themePackApply 全文件 Lines 96.68% / 插件路径子集 97.40%；规格复核 §4.5 六项通过；登记 BUG-F7-01 低危图标缺口，见测试记录） | 测试完成（BUG-F7-01 低危新建，不阻断） | 1d9c398b | —（仅追加测试文件，未 commit；⚠️ 工作区另有一行**功能代码**改动 src/lib/hostLucideMap.ts 未提交，见 F7 记录备注） |
 | F8 | SDK 包 | packages/ui-plugin-sdk（bridge/theme/theme.css/useTheme） | 未开始 | — | — |
 | F9 | 示例插件与 E2E | e2e/fixtures/sample-plugin + e2e/specs/plugins.spec.ts journeys 1-5 | 未开始 | — | — |
 
@@ -27,6 +27,7 @@
 | BUG-F4-03 | F4 | 安装流程缺「名称/版本/权限清单确认」中间步骤，确认即直接写入 | 管理页[安装插件…] → 输入合法 zip 路径 → Install：无任何预览确认直接安装成功。规格 §4.3 要求写入前展示确认 | 已修复（ca2218bc） |
 | BUG-F4-04 | F4 | 管理页默认过滤器为「全部」（规格为默认 Workspace），且「全部」视图平铺不分组 | 打开管理页未点 chip 即显示全部插件平铺列表（PluginManagementPage.tsx:57 初值 'all'）。规格 §4.3：默认 Workspace、「全部」分组 | 已修复（ca2218bc） |
 | BUG-F6-01 | F6 | 【处置：backlog/P2 加固，不阻断】【低危/协议卫生，无安全影响】原型链键名作为 API type 时回 `E_PERMISSION` 而非设计文档声明的 `E_NOT_FOUND`：`API_ROUTES` 为普通对象字面量，`__proto__`/`constructor`/`hasOwnProperty`/`toString`/`valueOf` 经 Object.prototype 原型链解析为非 undefined 值，绕过「unknown api → E_NOT_FOUND」门（uiPluginBridge.ts:374-380），落入权限判定后被拒。**无法到达任何 handler**（granted Set 仅含 manifest 字符串），不消耗并发配额 | attachBridge 后从 iframe window 投递 `{ch:'ui-plugin',type:'__proto__',target:'host',reqId:'r1'}` → 收到 `__proto__.err{code:'E_PERMISSION'}`；同型 `constructor`/`hasOwnProperty`/`toString`/`valueOf` 一致。按 uiPluginBridge.ts:126 自述契约与 §3.2 路由语义应为 `E_NOT_FOUND('unknown api')`。修复建议：`Object.prototype.hasOwnProperty.call(API_ROUTES, type)` 或 `Map`/null-prototype 路由表。回归锚点：security.test「denies prototype-chain api type …」（5 例） | 新建 |
+| BUG-F7-01 | F7 | 【处置：低危外观缺陷，不阻断】Settings 左侧导航「外观」项图标渲染为「?」占位方块而非 Palette 图标，双重缺口：① commit 1d9c398b **漏提交** `hostLucideMap.ts` 的 `appearance: 'Palette'` 映射行（当前工作区存在该一行未提交修复）——HEAD 状态下 `buildHostLucideById()` 无 `settings.appearance` 键，iconResolver 直接回 UI_PLACEHOLDER；② 即使补上 ①，`ThemedIcon.tsx` 内部 `LUCIDE_MAP`（31-54 行）也**未导入 Palette 组件**，`LUCIDE_MAP['Palette'] ?? fallback` 为 undefined → ThemedIcon.tsx:90-100 渲染 `?` 占位 span。纯视觉问题，功能与切换行为不受影响 | 打开 Settings → 观察左侧导航第 2 项「外观」：图标为灰底「?」小方块，其余菜单项均为正常 lucide 图标。链路：`settingsSectionIconId('appearance')='settings.appearance'` → resolver 解析成功为 `{kind:'lucide',name:'Palette'}` 但 ThemedIcon 查表失败（或 HEAD 下解析即失败）。修复建议：① 提交 hostLucideMap.ts 该行；② ThemedIcon.tsx 导入 Palette 并加入 LUCIDE_MAP。回归锚点：settingsSectionIcons.test.tsx「documents BUG-F7-01…」（修复后翻转为断言 svg 渲染）。备注：`extensions→Puzzle` 存在同型缺口（存量问题、非 F7 引入），建议随修 | 新建 |
 
 Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已修复`
 
@@ -409,6 +410,72 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 | ID | 严重度 | 状态 |
 |----|--------|------|
 | BUG-F6-01 | 低危（协议卫生，无安全影响，不阻断） | 新建 |
+
+### F7（Settings 外观，commit 1d9c398b）
+
+- 测试 agent 会话，2026-08-22。规格依据：ui-plugins.md §4.5 全部条款 + §4.3「管理页主题卡不提供应用动作」联动立场；被测面为 AppearanceSection.tsx、settingsSections.ts/SettingsContent.tsx 注册改造、themePackApply.ts `applyPluginTheme` 路径。
+- ⚠️ **会话起点工作区状态备注**：会话开始时工作区即存在 ① 未提交的一行功能代码改动 `src/lib/hostLucideMap.ts`（+`appearance: 'Palette'`）与 ② 未跟踪测试文件 `themePackApply.pluginTheme.test.ts`（9 例）。本会话未改动任何功能代码、仅扩充/新增测试文件；① 对 commit 1d9c398b 而言属于缺陷面的一部分（见 BUG-F7-01），合并前须将该行随测试文件一并提交。
+- 新增/补充测试文件（零功能代码改动，未 commit）：
+  - `src/lib/__tests__/themePackApply.pluginTheme.test.ts`（9→16 例）：编码编解码往返 / legacy 与畸形输入拒识；applyPluginTheme 经 readPluginFile 注入 tokens.css；url() blob 重写与远程 http 拒绝；tokens 缺失 / manifest 无此 themeId 错误；**PT-10…13** url() 相对解析语义（裸相对→tokens 目录、`../` 上跳同级目录、深层穿越钉在插件根内、根绝对→插件根）；**PT-14** 双主题切换替换注入 css 并 revoke 旧 blob；**PT-15** 成功后失败重置 DOM 且广播 null；**PT-16** broadcast:false 抑制跨窗事件；applyThemePack 对 `plugin:` 前缀分发插件路径、legacy 纯 id 不受扰
+  - `src/stores/__tests__/settingsStore.test.ts`（+2 例）：**SS-P1** loadSettings 将持久化 `plugin:<id>:<theme>` packId 原样分发至 applyThemePack（启动分发往返）；**SS-P2** 插件主题应用失败（如插件停用）时 saveSettings 持久化 packId=null、二次 applyThemePack(null) 重置默认
+  - `src/windows/settings/__tests__/AppearanceSection.test.tsx`（+5 例 AS-M1…M5）：双贡献插件多主题全部列出且来源标签正确、跨插件切换分别持久化各自编码 id、全卡片唯一高亮、持久化主题不再被提供时孤儿提示出现且无 Current 徽标、非 Error 拒绝走 String(e) 分支
+  - `src/windows/settings/__tests__/settingsSections.test.ts`（新文件，3 例）：appearance 注册为第 2 个一级菜单项且 labelKey=settings.appearance；theme-pack/themePack 均不可达；深链非法值回退 general
+  - `src/lib/__tests__/settingsSectionIcons.test.tsx`（新文件，3 例）：buildHostLucideById 含 settings.appearance→Palette（钉住工作区未提交行防丢失）、全部 section 解析为 lucide、BUG-F7-01 偏差钉住（映射成功但 ThemedIcon 渲染 `?`）
+
+#### 规格复核（PRD ui-plugins.md §4.5）
+
+| 条款 | 结论 |
+|------|------|
+| SettingsPage 新增一级菜单项「外观」（i18n 键 settings.appearance） | ✅ SETTINGS_SECTIONS 第 2 位；en('Appearance')/zh-CN('外观') 齐备；导航渲染有测试 |
+| v1 内容=主题选择器：列出已启用插件 themes 贡献（名称/modes） | ✅ 仅 `p.enabled` 插件 flatMap themes；卡片含名称、modes Badge、来源插件名+版本 |
+| 单选高亮当前主题，点击即应用 | ✅ aria-pressed + accent 边框/底色 + Current badge；点击当前卡幂等跳过；复用 applyThemePack 插件分支（inject/surface 同步/跨窗广播全链） |
+| 空态引导「去插件管理页安装主题」 | ✅ appearance-empty（en/zh-CN 文案均指向 Plugins 页） |
+| 明确不做：安装/卸载/启停 | ✅ 组件零安装/卸载 UI 与 IPC；管理页主题卡亦无应用动作（§4.3 复核一致） |
+| 明确不做：明暗基础模式切换保留 ThemeToggle 原位 | ✅ ThemeToggle 本 commit 零改动，仍在 Settings/Main/Welcome/Connection TitleBar |
+| 旧 ThemePackSection 用户入口移除（组件可残留不可达） | ✅ 全仓无 import（仅自身文件）；nav 无对应项；parseSettingsSection('theme-pack')→general 深链安全 |
+
+#### 用例清单
+
+开发 commit 自带单测（54 例：AppearanceSection.test 7 + SettingsContent.test 20 + themePackApply.test legacy 18 + settingsStore.test 回滚恢复等 9），本会话复跑全部 PASS。
+
+新增测试单测（20 例，全部 PASS）：
+
+| 编号组 | 场景 | 预期 | 实际 | 结论 |
+|--------|------|------|------|------|
+| PT-10–13 | url() 相对解析 | 裸相对/`./` → tokens.css 所在目录拼接；`../shared/x` → `themes/shared/x`；五级 `../` 穿越仍落在插件根内（readPluginFile 参数无 `..`/前导 `/`）；`/abs` → 插件根相对 | 符合（joinRelativePath 词法折叠，栈空后 pop 为 no-op，无法逃逸根） | PASS |
+| PT-14 | 切换主题资源生命周期 | solar(含字体)→midnight-blue：style textContent 替换为新 css、旧 blob URL 被 revokeObjectURL | 符合 | PASS |
+| PT-15 | 失败恢复广播 | 成功后再应用已停用插件主题 → ok:false、DOM style 元素移除、emitCrossWindow('datazen:theme-pack-changed', null) | 符合 | PASS |
+| PT-16 | broadcast:false | 跨窗事件零发送 | 符合 | PASS |
+| SS-P1 | 启动分发往返 | getSettings 返回编码 packId → applyThemePack 收到原串、不触发 saveSettings | 符合 | PASS |
+| SS-P2 | 停用重置默认 | 首次 ok:false → 第 2 次 applyThemePack(null)、saveSettings 持久化 packId=null、store 归零、暗色类保持 | 符合 | PASS |
+| AS-M1–M3 | 双贡献插件多主题 | 3 卡齐列+按插件来源标注；nord→solar 跨插件切换各持久化 `plugin:<id>:<theme>`；aria-pressed 全局唯一 | 符合 | PASS |
+| AS-M4–M5 | 孤儿提示与非 Error 分支 | 孤儿 packId 显示 missingHint 且无 Current badge；string rejection 显示于 appearance-error | 符合 | PASS |
+| sections×3 / icons×3 | 注册冒烟与图标链 | 见上文件说明；icons 组含 BUG-F7-01 偏差钉住例（绿） | 符合（偏差已登记） | PASS |
+
+#### 覆盖率（npx vitest run --coverage，scope 至两目标文件）
+
+| 文件 | Stmts | Branch | Funcs | Lines | 未覆盖 |
+|------|-------|--------|-------|-------|--------|
+| src/windows/settings/AppearanceSection.tsx | 100% | 100% | 100% | **100%** | — |
+| src/lib/themePackApply.ts（全文件口径，含旧主题包逻辑） | 96.44% | 83.33% | 91.42% | **96.68%** | L96/98（Tauri 原生窗口背景 import，jsdom 不可达）、L213-214/L223（旧包 icons/editor/charts 专属路径）、L122（readPluginFileOrNull IPC throw 兜底）、L289（防御分支，公共入口均先行校验不可达） |
+| └ 插件路径子集口径* | **97.40%**（75/77 stmts） | — | — | 未覆盖仅 L122+L289 | 两处均为防御/兜底，非主路径 |
+
+\* 插件路径子集 = encode/parsePluginThemePackId、joinRelativePath、rewriteCssUrls、readPluginFileOrNull、resolvePluginTokensPath、applyPluginThemePackId、applyPluginTheme 行段。
+
+两目标文件 Lines 均 ≥80% 达标。
+
+#### 执行命令与结果
+
+- `npx vitest run <F7 七个相关测试文件>` → **83/83 PASS**（含开发自带与本次补充）
+- `npx vitest run`（全量）→ 224 文件 1736 tests：1733 passed / **3 failed tests + 1 文件级失败，与本会话前后两次基线运行的既有失败集合一致**（RunHistoryDrawer、WidgetEditorDrawer、ConnectionNavigatorTree[文件级]、ObjectBrowser），**零新增失败**
+- 观察项（不计 F7 缺陷）：F6 已提交的 PluginPageShell.bridge.test.tsx 在全量并行下偶发失败（本会话第 1 次全量失败、单独运行必过、后续两次全量通过）——建议后续阶段排查其隔离性
+- `npx tsc --noEmit` → 16 处报错全部位于 7 个存量无关文件（query.ts/ObjectFilterDialog.tsx/ConnectionPage.tsx/ContentView.tsx/ProcessListView.tsx/SavedTasksBanner.tsx/DataTransferWindow.tsx，与 F6 记录完全一致）；**F7 触碰文件及全部新增测试文件零错误**
+
+#### Bug
+
+| ID | 严重度 | 状态 |
+|----|--------|------|
+| BUG-F7-01 | 低危（外观图标缺口，不阻断；含 commit 漏提交的工作区功能行，合并时须一并处理） | 新建 |
 
 ## 回归测试
 
