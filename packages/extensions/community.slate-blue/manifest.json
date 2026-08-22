@@ -1,0 +1,20 @@
+{
+  "id": "community.slate-blue",
+  "name": "Slate Blue",
+  "version": "1.1.0",
+  "apiVersion": 2,
+  "author": "DataZen Community",
+  "description": "Slate & sky-blue theme — cool slate surfaces from the DataZen main-window design with a dark title bar and blue accents; near-black in dark mode",
+  "contributes": {
+    "themes": [
+      {
+        "id": "slate-blue",
+        "name": "Slate Blue",
+        "tokensCss": "themes/slate-blue/tokens.css",
+        "modes": ["light", "dark"],
+        "chartsJson": "themes/slate-blue/charts.json",
+        "iconsDir": "themes/slate-blue/icons"
+      }
+    ]
+  }
+}

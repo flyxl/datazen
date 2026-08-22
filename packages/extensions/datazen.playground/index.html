@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Extension Playground</title>
+    <!--
+      datazen.playground — zero-build sample extension.
+      Demonstrates every v1 bridge API: handshake, context.getConnections,
+      context.getActiveConnection, command.invoke, storage.*, ui.notify and
+      live theme snapshots. Bridge client mirrors @datazen/ui-plugin-sdk
+      semantics (see assets/app.js). Inline style is allowed by the host CSP
+      (style-src 'unsafe-inline') and consumes contract tokens with fallbacks.
+    -->
+    <style>
+      html {
+        background: var(--c-surface, #ffffff);
+      }
+      body {
+        margin: 0;
+        padding: 16px 20px 32px;
+        font-family: var(--font-sans, system-ui, sans-serif);
+        color: var(--c-fg, #111827);
+        background: transparent;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 4px;
+      }
+      .sub {
+        color: var(--c-fg-secondary, #475569);
+        font-size: 12px;
+        margin: 0 0 16px;
+      }
+      section {
+        border: 1px solid var(--c-edge, #e2e8f0);
+        border-radius: 8px;
+        padding: 12px 14px;
+        margin-bottom: 14px;
+        background: var(--c-surface-alt, #f8fafc);
+      }
+      h2 {
+        font-size: 13px;
+        margin: 0 0 8px;
+        color: var(--c-fg-secondary, #475569);
+      }
+      code,
+      pre {
+        font-family: var(--font-mono, ui-monospace, monospace);
+      }
+      button {
+        font: inherit;
+        padding: 4px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--c-edge, #cbd5e1);
+        background: var(--c-surface-raised, #e2e8f0);
+        color: var(--c-fg, #0f172a);
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--c-accent, #3b82f6);
+      }
+      input {
+        font: inherit;
+        padding: 4px 8px;
+        border-radius: 6px;
+        border: 1px solid var(--c-edge, #cbd5e1);
+        background: var(--c-surface-inset, #fff);
+        color: var(--c-fg, #0f172a);
+        width: 320px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .kv {
+        font-size: 13px;
+        margin: 2px 0;
+      }
+      .kv b {
+        color: var(--c-fg-secondary, #475569);
+        font-weight: 500;
+      }
+      ul {
+        margin: 6px 0 0;
+        padding-left: 18px;
+        font-size: 13px;
+      }
+      pre {
+        margin: 8px 0 0;
+        padding: 8px;
+        max-height: 180px;
+        overflow: auto;
+        font-size: 12px;
+        border-radius: 6px;
+        background: var(--c-surface-inset, #fff);
+        border: 1px solid var(--c-edge, #e2e8f0);
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .chip {
+        display: inline-block;
+        margin: 2px 4px 2px 0;
+        padding: 1px 8px;
+        font-size: 11px;
+        border-radius: 999px;
+        border: 1px solid var(--c-edge, #cbd5e1);
+      }
+      .ok {
+        color: var(--c-success, #16a34a);
+      }
+      .err {
+        color: var(--c-danger, #dc2626);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Extension Playground</h1>
+    <p class="sub">
+      Sample extension for DataZen's runtime plugin system — exercises the whole v1 bridge API.
+    </p>
+
+    <section>
+      <h2>Bridge</h2>
+      <p class="kv">status: <code data-testid="pg-bridge-status">booting</code></p>
+      <p class="kv">mode: <code data-testid="pg-dark-state">-</code></p>
+      <p class="kv">tokens received: <code data-testid="pg-token-count">-</code></p>
+      <div id="pg-token-chips"></div>
+    </section>
+
+    <section>
+      <h2>Context · connections</h2>
+      <p class="kv">active: <b data-testid="pg-active-conn">-</b></p>
+      <ul id="pg-conn-list" data-testid="pg-conn-list"></ul>
+    </section>
+
+    <section>
+      <h2>Command · query</h2>
+      <div class="row">
+        <input id="pg-sql-input" data-testid="pg-sql-input" value="SELECT 1 AS one" />
+        <button id="pg-run-query" data-testid="pg-run-query">Run on active connection</button>
+        <span id="pg-query-status" class="kv"></span>
+      </div>
+      <pre id="pg-query-out" data-testid="pg-query-out">—</pre>
+    </section>
+
+    <section>
+      <h2>Storage · namespaced KV</h2>
+      <div class="row">
+        <button id="pg-inc" data-testid="pg-inc">+1</button>
+        <button id="pg-clear" data-testid="pg-clear">reset</button>
+        <span class="kv">counter = <code data-testid="pg-counter">…</code></span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Notification · rate-limited by host (≥5s)</h2>
+      <div class="row">
+        <button id="pg-notify" data-testid="pg-notify">Send ui.notify</button>
+        <span id="pg-notify-status" class="kv"></span>
+      </div>
+    </section>
+
+    <script src="assets/app.js"></script>
+  </body>
+</html>

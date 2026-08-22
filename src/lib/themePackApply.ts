@@ -7,6 +7,7 @@ import { createIconResolver, setActiveIconResolver, type IconSourceMap } from '.
 import { getDbIcon, getDriverIconMap } from './databaseTypes';
 import { buildHostLucideById } from './hostLucideMap';
 import type { DatabaseType } from '../types';
+import type { ThemeContribution as PluginThemeContribution } from '../types/plugin';
 import { parsePackEditorOverlay, setPackEditorColorOverlay } from './themeEditorColors';
 import { setChartPaletteOverride } from './chart/colors';
 import {
@@ -270,14 +271,44 @@ export interface PluginThemeRef {
   name?: string;
 }
 
-async function resolvePluginTokensPath(pluginId: string, themeId: string): Promise<string> {
+async function loadPluginThemeContribution(
+  pluginId: string,
+  themeId: string,
+): Promise<PluginThemeContribution> {
   const manifest = await pluginCommands.getPluginManifest(pluginId);
   const theme = manifest.contributes.themes.find((th) => th.id === themeId);
   if (!theme) {
     throw new Error(`Theme "${themeId}" not found in plugin "${pluginId}"`);
   }
-  // tokensCss is relative to the plugin root (e.g. "themes/midnight-blue/tokens.css").
-  return theme.tokensCss;
+  return theme;
+}
+
+/** Probe a plugin icons dir for one semantic id across the allowed extensions. */
+async function probePluginIcon(
+  pluginId: string,
+  iconsDir: string,
+  semanticId: string,
+): Promise<string | null> {
+  for (const ext of ICON_EXTENSIONS) {
+    const relPath = joinRelativePath(iconsDir, `${semanticId}${ext}`);
+    const bytes = await readPluginFileOrNull(pluginId, relPath);
+    if (bytes && bytes.length > 0) {
+      return bytesToBlobUrl(bytes, mimeForPath(relPath));
+    }
+  }
+  return null;
+}
+
+async function loadPluginIcons(pluginId: string, iconsDir: string): Promise<IconSourceMap> {
+  const ids = [...UI_ICON_IDS, ...Object.keys(getDriverIconMap())];
+  const map: IconSourceMap = {};
+  await Promise.all(
+    ids.map(async (id) => {
+      const url = await probePluginIcon(pluginId, iconsDir, id);
+      if (url) map[id] = url;
+    }),
+  );
+  return map;
 }
 
 async function applyPluginThemePackId(
@@ -292,7 +323,8 @@ async function applyPluginThemePackId(
 
   resetPackState();
   try {
-    const tokensPath = await resolvePluginTokensPath(pluginId, themeId);
+    const theme = await loadPluginThemeContribution(pluginId, themeId);
+    const tokensPath = theme.tokensCss;
     const tokensBytes = await readPluginFileOrNull(pluginId, tokensPath);
     if (!tokensBytes) {
       throw new Error('tokens.css missing');
@@ -306,6 +338,33 @@ async function applyPluginThemePackId(
       readPluginFileOrNull(pluginId, joinRelativePath(baseDir, relPath)),
     );
     injectThemePackCss(css);
+
+    // Legacy-parity assets: icon overrides, CodeMirror overlay, chart
+    // palettes. Soft-fail like the legacy pipeline — a broken optional asset
+    // degrades that slice only, never the whole theme application.
+    if (theme.iconsDir) {
+      const packIcons = await loadPluginIcons(pluginId, theme.iconsDir);
+      installIconResolver(packIcons);
+    }
+
+    if (theme.editorJson) {
+      const editorBytes = await readPluginFileOrNull(pluginId, theme.editorJson);
+      if (editorBytes) {
+        try {
+          const overlay = parsePackEditorOverlay(JSON.parse(decodeUtf8(editorBytes)) as unknown);
+          setPackEditorColorOverlay(overlay);
+        } catch (err) {
+          console.warn('[theme] failed to parse plugin editor.json', err);
+        }
+      }
+    }
+
+    if (theme.chartsJson) {
+      const chartsBytes = await readPluginFileOrNull(pluginId, theme.chartsJson);
+      if (chartsBytes) {
+        setChartPaletteOverride(parseChartsJson(chartsBytes));
+      }
+    }
 
     syncWebviewBackgroundFromTokens();
     notifyThemePackChanged();

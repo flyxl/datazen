@@ -1,0 +1,42 @@
+/* Playground Night — dark-only theme contribution (violet night palette) */
+
+.dark {
+  --c-surface: #12101f;
+  --c-surface-alt: #191531;
+  --c-surface-raised: #251f47;
+  --c-surface-inset: #0c0a18;
+  --c-edge: #372e63;
+  --c-fg: #ece9ff;
+  --c-fg-secondary: #b9b0e8;
+  --c-fg-muted: #7d74ad;
+  --c-accent: #a78bfa;
+  --c-success: #34d399;
+  --c-warning: #fbbf24;
+  --c-danger: #fb7185;
+  --c-query-run: #34d399;
+  --c-titlebar: #191531;
+  --c-titlebar-fg: #ece9ff;
+  --c-titlebar-fg-muted: #b9b0e8;
+  --c-titlebar-hover: rgba(167, 139, 250, 0.16);
+
+  /* CodeMirror syntax (violet night) */
+  --cm-keyword: #c4b5fd;
+  --cm-string: #6ee7b7;
+  --cm-number: #fcd34d;
+  --cm-comment: #7d74ad;
+  --cm-operator: #67e8f9;
+  --cm-punctuation: #b9b0e8;
+  --cm-foreground: #ece9ff;
+  --cm-background: #12101f;
+  --cm-selection: rgba(167, 139, 250, 0.28);
+  --cm-cursor: #ece9ff;
+
+  /* DataTable cell value colors */
+  --dt-null: var(--c-fg-muted);
+  --dt-bool: #a78bfa;
+  --dt-number: #fcd34d;
+  --dt-datetime: #6ee7b7;
+  --dt-json: #67e8f9;
+  --dt-text: var(--c-fg);
+  --dt-binary: var(--c-danger);
+}

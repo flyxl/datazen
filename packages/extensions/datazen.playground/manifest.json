@@ -1,0 +1,33 @@
+{
+  "id": "datazen.playground",
+  "name": "Extension Playground",
+  "version": "1.0.0",
+  "apiVersion": 2,
+  "author": "DataZen",
+  "description": "Full-featured sample extension: workspace page exercising every v1 bridge API (context / command.invoke / storage / notify) plus a dark theme contribution",
+  "entry": "index.html",
+  "contributes": {
+    "pages": [
+      {
+        "id": "playground",
+        "title": "Extension Playground",
+        "icon": "assets/icon.svg",
+        "showIn": "workspace"
+      }
+    ],
+    "themes": [
+      {
+        "id": "playground-night",
+        "name": "Playground Night",
+        "tokensCss": "themes/playground-night/tokens.css",
+        "modes": ["dark"]
+      }
+    ]
+  },
+  "permissions": [
+    "context:connections",
+    "command:invoke",
+    "storage:local",
+    "ui:notify"
+  ]
+}

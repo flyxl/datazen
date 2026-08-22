@@ -34,6 +34,15 @@ export interface ThemeContribution {
   /** Non-empty subset of `light` / `dark`. */
   modes: string[];
   previewImage?: string;
+  /** Optional CodeMirror color overlay (legacy ThemePack `editor.json`). */
+  editorJson?: string;
+  /** Optional chart series palette (legacy `charts.json`). */
+  chartsJson?: string;
+  /**
+   * Optional directory of semantic icon overrides named
+   * `<semanticId>.svg|.webp|.png` (legacy `icons/`).
+   */
+  iconsDir?: string;
 }
 
 export interface Contributions {
