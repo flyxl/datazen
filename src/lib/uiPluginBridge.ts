@@ -19,6 +19,7 @@ import { UI_PLUGIN_API_VERSION } from '../types/plugin';
 import { pluginCommands } from '../commands/plugins';
 import { driverCommands } from '../commands/driver';
 import { connectionCommands } from '../commands/connection';
+import { resolvePluginString } from './uiPluginI18n';
 import { useConnectionStore } from '../stores/connectionStore';
 import { useActiveConnectionStore } from '../stores/activeConnectionStore';
 import { buildThemeSnapshot } from './themeTokens';
@@ -134,9 +135,17 @@ const API_ROUTES: Record<string, PluginPermission | null> = {
   'storage.set': 'storage:local',
   'storage.remove': 'storage:local',
   'ui.notify': null,
-  // Plugin locales have no loading mechanism yet; lands with F8/F9.
   'i18n.getString': null,
 };
+
+/**
+ * Own-property route lookup (BUG-F6-01): prototype members like
+ * `constructor`/`toString` must be treated as unknown APIs (E_NOT_FOUND),
+ * never resolve through the record's prototype chain to E_PERMISSION.
+ */
+function routeFor(type: string): PluginPermission | null | undefined {
+  return Object.prototype.hasOwnProperty.call(API_ROUTES, type) ? API_ROUTES[type] : undefined;
+}
 
 interface CommandInvokePayload {
   configId: string;
@@ -202,8 +211,11 @@ async function handleCommandInvoke(pluginId: string, payload: unknown) {
       'command.invoke requires {configId, command, args?}',
     );
   }
-  // Audit trail without leaking argument contents into logs.
+  // Audit trail without leaking argument contents into logs. The same line
+  // lands in {dataDir}/logs/datazen.log via the plugin_audit_log command so
+  // the webview console is not the only durable record.
   console.info(`[ui-plugin:${pluginId}] command.invoke ${command} via ${configId}`);
+  pluginCommands.auditLog(pluginId, 'command.invoke', `${command} via ${configId}`);
   try {
     const result = await driverCommands.execute({
       connectionId: configId,
@@ -371,7 +383,7 @@ export function attachBridge(
   async function dispatch(request: PluginRequestEnvelope): Promise<void> {
     // Deny-by-default gate first: permission and routability decisions never
     // consume concurrency quota and take precedence over rate limiting.
-    const requiredPermission = API_ROUTES[request.type];
+    const requiredPermission = routeFor(request.type);
     if (requiredPermission === undefined) {
       respond(
         request,
@@ -450,16 +462,21 @@ export function attachBridge(
           await runHandler(request, () => showNotification(title, p.body));
           break;
         }
-        case 'i18n.getString':
-          respond(
-            request,
-            errEnvelope(
-              request.reqId,
-              BRIDGE_ERROR.NOT_IMPLEMENTED,
-              'i18n.getString arrives with the SDK/locales milestone (F8/F9)',
-            ),
+        case 'i18n.getString': {
+          const p = (request.payload ?? {}) as { key?: unknown };
+          const key = typeof p.key === 'string' ? p.key : '';
+          if (!key) {
+            respond(
+              request,
+              errEnvelope(request.reqId, BRIDGE_ERROR.BAD_REQUEST, 'i18n.getString requires {key}'),
+            );
+            return;
+          }
+          await runHandler(request, () =>
+            resolvePluginString(pluginId, key, locale).then((value) => ({ key, value })),
           );
           break;
+        }
         default:
           respond(
             request,

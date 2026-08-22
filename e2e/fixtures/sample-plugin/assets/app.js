@@ -123,6 +123,42 @@
     }
   }
 
+  // Journey 2 / M2 acceptance: one real command.invoke round-trip against the
+  // first saved connection. `ok:<rows>` proves the full plugin → bridge →
+  // execute_driver_command path; `err:…` keeps the failure observable (the
+  // spec treats unreachable-DB outcomes as environment-gated).
+  function runQueryProbe(conns) {
+    if (!conns || conns.length === 0) {
+      persistProbe('query', 'err:no-conn');
+      return;
+    }
+    request('command.invoke', {
+      configId: conns[0].id,
+      command: 'query',
+      args: { sql: 'SELECT 1 AS one' },
+    })
+      .then(function (result) {
+        // Bridge envelope {result: <CommandResult.data>}; query data is the
+        // multi-statement wrapper {results:[{columns, rows,…}], totalTimeMs}.
+        var payload = result && result.result ? result.result : result;
+        var stmts = payload && Array.isArray(payload.results) ? payload.results : null;
+        var first = stmts && stmts[0];
+        var rows =
+          first && Array.isArray(first.rows)
+            ? first.rows.length
+            : payload && Array.isArray(payload.rows)
+              ? payload.rows.length
+              : -1;
+        set('query-probe', 'ok');
+        persistProbe('query', 'ok:' + rows + 'rows');
+      })
+      .catch(function (e) {
+        var message = e && e.message ? e.message : String(e);
+        set('query-probe', 'error');
+        persistProbe('query', 'err:' + message.slice(0, 120));
+      });
+  }
+
   function runChecks() {
     // Journey 2: context.getConnections renders the visible connection count.
     request('context.getConnections')
@@ -130,10 +166,12 @@
         var conns = result && Array.isArray(result.connections) ? result.connections : [];
         set('conn-count', conns.length);
         persistProbe('connCount', String(conns.length));
+        runQueryProbe(conns);
       })
       .catch(function (e) {
         fail('conn-count', e);
         persistProbe('connCount', 'error: ' + (e && e.message ? e.message : String(e)));
+        persistProbe('query', 'err:no-conn');
       });
 
     // Journey 2: storage.set -> storage.get round-trip proves the RPC bridge.

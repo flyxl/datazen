@@ -32,4 +32,16 @@ export const pluginCommands = {
 
   readPluginFile: (id: string, relativePath: string) =>
     invoke<number[]>('read_plugin_file', { id, relativePath }),
+
+  /**
+   * Fire-and-forget audit entry for plugin-initiated sensitive calls. Lands
+   * in `{dataDir}/logs/datazen.log` via the Rust `tracing` file sink. The
+   * detail string must never contain argument contents — callers pass only
+   * the command name and target connection id.
+   */
+  auditLog: (pluginId: string, event: string, detail: string): void => {
+    void invoke('plugin_audit_log', { pluginId, event, detail }).catch(() => {
+      /* audit is best-effort; IPC being down must not break the call path */
+    });
+  },
 };

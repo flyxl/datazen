@@ -181,11 +181,19 @@
     setStatus('pg-query-status', 'running…', true);
     request('command.invoke', { configId: configId, command: 'query', args: { sql: sql } })
       .then(function (result) {
-        var rows = result && Array.isArray(result.rows) ? result.rows : null;
+        // Bridge envelope {result: <CommandResult.data>}; query data is the
+        // multi-statement wrapper {results:[{columns, rows,…}], totalTimeMs}.
+        var payload = result && result.result ? result.result : result;
+        var stmts = payload && Array.isArray(payload.results) ? payload.results : null;
+        var first = stmts && stmts[0];
+        var rows = first && Array.isArray(first.rows) ? first.rows : null;
+        if (!rows && payload && Array.isArray(payload.rows)) rows = payload.rows;
         var summary = rows
           ? rows.length +
             ' row(s), ' +
-            (Array.isArray(result.columns) ? result.columns.length + ' column(s)' : '?')
+            (Array.isArray((first && first.columns) || payload.columns)
+              ? ((first && first.columns) || payload.columns).length + ' column(s)'
+              : '?')
           : 'ok';
         setStatus('pg-query-status', summary, true);
         var text = JSON.stringify(result, null, 2);

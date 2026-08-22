@@ -10,6 +10,8 @@ const {
   connectionStoreState,
   activeConnectionStoreState,
   notificationInvokeMock,
+  readPluginFileMock,
+  auditLogMock,
 } = vi.hoisted(() => ({
   storageGetMock: vi.fn(),
   storageSetMock: vi.fn(),
@@ -21,7 +23,13 @@ const {
   },
   activeConnectionStoreState: { current: { connections: {} } },
   notificationInvokeMock: vi.fn(),
+  readPluginFileMock: vi.fn(),
+  auditLogMock: vi.fn(),
 }));
+
+function toBytes(text: string): number[] {
+  return [...new TextEncoder().encode(text)];
+}
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => notificationInvokeMock(...args),
@@ -32,6 +40,8 @@ vi.mock('../../commands/plugins', () => ({
     pluginStorageGet: (...args: unknown[]) => storageGetMock(...args),
     pluginStorageSet: (...args: unknown[]) => storageSetMock(...args),
     pluginStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
+    readPluginFile: (...args: unknown[]) => readPluginFileMock(...args),
+    auditLog: (...args: unknown[]) => auditLogMock(...args),
   },
 }));
 
@@ -253,15 +263,42 @@ describe('uiPluginBridge permission gate (deny-by-default)', () => {
     handle.detach();
   });
 
-  it('answers i18n.getString with E_NOT_IMPLEMENTED (locales land in F8/F9)', async () => {
-    const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: [] });
+  it('resolves i18n.getString from plugin locales with en fallback', async () => {
+    readPluginFileMock.mockImplementation(async (_id: string, path: string) => {
+      if (path === 'locales/zh-CN.json') return toBytes('{"greet":"你好"}');
+      if (path === 'locales/zh.json') return toBytes('{}');
+      if (path === 'locales/en.json') return toBytes('{"greet":"Hello"}');
+      return null;
+    });
+    const handle = attachBridge(env.iframe, {
+      pluginId: 'p',
+      permissions: [],
+      locale: 'zh-CN',
+    });
     receive(request('i18n.getString', 'r1', { key: 'greet' }), env.iframe.contentWindow);
     await waitUntil(() => env.sent.length > 0);
 
-    expect(env.sent[0].type).toBe('i18n.getString.err');
-    expect((env.sent[0].payload as Record<string, unknown>).code).toBe(
-      BRIDGE_ERROR.NOT_IMPLEMENTED,
+    expect(env.sent[0].type).toBe('i18n.getString.ok');
+    expect((env.sent[0].payload as Record<string, unknown>).value).toBe('你好');
+
+    // Falls back to en for keys missing from the requested locale.
+    receive(
+      request('i18n.getString', 'r2', { key: 'missing-everywhere' }),
+      env.iframe.contentWindow,
     );
+    await waitUntil(() => env.sent.length > 1);
+    expect(env.sent[1].type).toBe('i18n.getString.ok');
+    expect((env.sent[1].payload as Record<string, unknown>).value).toBeNull();
+    handle.detach();
+  });
+
+  it('rejects i18n.getString without a key and never reads files', async () => {
+    const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: [] });
+    receive(request('i18n.getString', 'r3', {}), env.iframe.contentWindow);
+    await waitUntil(() => env.sent.length > 0);
+    expect(env.sent[0].type).toBe('i18n.getString.err');
+    expect((env.sent[0].payload as Record<string, unknown>).code).toBe(BRIDGE_ERROR.BAD_REQUEST);
+    expect(readPluginFileMock).not.toHaveBeenCalled();
     handle.detach();
   });
 });

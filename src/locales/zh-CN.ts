@@ -185,7 +185,8 @@ const zhCN = {
   'plugins.page.toggle': '启用插件',
   'plugins.page.uninstall': '卸载插件',
   'plugins.page.uninstallTitle': '卸载插件',
-  'plugins.page.uninstallMessage': '确定从 DataZen 移除「{name}」吗？其工作区标签页将一并关闭。',
+  'plugins.page.uninstallMessage':
+    '确定从 DataZen 移除「{name}」吗？其工作区标签页将一并关闭，且插件本地保存的全部数据（storage）将被永久删除。',
   'plugins.page.themeBadge': '主题',
   'plugins.page.themeHint': '主题请在 设置 → 外观 中切换。',
   'plugins.page.apiMismatch': 'API 版本不兼容',

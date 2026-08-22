@@ -47,7 +47,9 @@ datazen/
 │   ├── ai-api/                  # AiProvider trait + factory
 │   ├── drivers/                 # path 驱动 crate（测试也写在各 crate 内）
 │   │   └── <id>/                # Rust `src/` + `tests/`；UI `ui/__tests__/`；E2E `e2e/`
-│   └── themes/                  # 主题包预留
+│   ├── extensions/              # 运行时插件源码包（UI 页 + 主题；安装测试见其 README）
+│   ├── ui-plugin-sdk/           # 插件侧 SDK：类型化 RPC 客户端 / useTheme / theme.css
+│   └── themes/                  # （已迁移）旧 v1 ThemePack 存档，见 extensions/
 ├── e2e/                         # Host WebdriverIO E2E（通用 UI / IPC；非驱动方言）
 ├── test/                        # 手工黑盒测试
 └── docs/                        # 架构文档、RFC、进度
@@ -101,9 +103,13 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 
 详细设计：[Workflow 架构文档](docs/architecture/backend/workflow.md)；用户手册：[docs/workflow-guide.md](docs/workflow-guide.md)。
 
-### 运行时主题包
+### 运行时插件系统（Extensions：UI 页面 + 主题）
 
-与驱动选型独立，安装在 `{appData}/themes/{id}/`。Rust 实现 `src-tauri/src/theme/`，前端 `src/lib/themePackApply.ts`。
+统一运行时扩展：`{appData}/plugins/{publisher}.{name}/`，manifest v2（`contributes.pages/themes` + 权限声明），沙箱 iframe + 受控 postMessage 桥（`uiPluginBridge.ts`），取数一律走 `execute_driver_command`。Rust `src-tauri/src/plugins/`，前端 `windows/workspace|plugins/`。主题贡献完整保留旧 ThemePack 能力（editorJson/chartsJson/iconsDir）；旧 `{appData}/themes/` 运行时入口已移除。宿主不感知具体插件 id；驱动相关测试规则同样适用于插件示例包（守护测试在 Host）。源码包与安装测试见 [packages/extensions/](packages/extensions/)；详细设计：[docs/architecture/backend/plugins.md](docs/architecture/backend/plugins.md)。
+
+### 运行时主题包（遗留）
+
+已被运行时插件系统的 themes 贡献取代；`{appData}/themes/` 不再被主窗口读取，遗留代码仅为测试保留（Q8 一次性切换）。
 
 ## 前端约定
 
@@ -139,6 +145,8 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 | Schema 对象 | 连接树 routines/triggers 等 | `execute_driver_command`（`list_objects` / `get_object_ddl` / `list_privileges`） |
 | Redis 深度运维 | `packages/drivers/redis/ui/*` | `execute_command` / `execute_driver_command` |
 | 主题包 | `windows/settings/ThemePackSection.tsx` | `theme/` + `commands/theme.rs` |
+| 插件系统 | `windows/workspace/` + `windows/plugins/PluginManagementPage.tsx` | `plugins/` + `commands/plugins.rs`（`datazen://` 协议 / 桥接 `lib/uiPluginBridge.ts`） |
+| 插件示例包 | `packages/extensions/*`（含 README 安装测试步骤） | 同上；守护测试 `plugins::fixture_tests` + `extensionThemes.test.ts` |
 
 ## 开发命令
 

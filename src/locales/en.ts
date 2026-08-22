@@ -193,7 +193,7 @@ const en: Record<TranslationKey, string> = {
   'plugins.page.uninstall': 'Uninstall plugin',
   'plugins.page.uninstallTitle': 'Uninstall Plugin',
   'plugins.page.uninstallMessage':
-    'Remove "{name}" from DataZen? Its workspace tabs will be closed.',
+    'Remove "{name}" from DataZen? Its workspace tabs will be closed, and ALL data the plugin saved locally (its storage) will be permanently deleted.',
   'plugins.page.themeBadge': 'Theme',
   'plugins.page.themeHint': 'Switch themes in Settings → Appearance.',
   'plugins.page.apiMismatch': 'API version not supported',
