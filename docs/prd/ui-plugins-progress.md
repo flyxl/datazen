@@ -10,7 +10,7 @@
 | F1 | Rust 插件基座 | plugins/{mod,manifest,install,storage}.rs、IPC 命令组、AppState、单测（capabilities 走既有 ACL 豁免，见测试记录） | 已完成 | 900b9330 | d9d265b3 |
 | F2 | datazen:// 协议 | register_uri_scheme_protocol：path 资产服务 + open 深链 + CSP/403/404 | 已完成 | 4c75f1b0 | ffdf64b3 | —（仅追加测试文件，未 commit） |
 | F3 | 前端状态与 IPC 封装 | types/plugin.ts、pluginStore、workspaceTabsStore、commands/plugins.ts（42 单测全绿；覆盖率 Lines 100%/Branch 96.87%；全量 vitest 4 个失败文件均为分支既有，见测试记录） | 已完成 | 149d3b2a | 7c36c65e |
-| F4 | 主窗口集成 | WorkspaceMode 扩展、aside 两按钮、Workspace 导航栏/默认卡片/独立 Tab 条/页面壳（37 组件测试全绿） | 待测试 | 62141434 | — |
+| F4 | 主窗口集成 | WorkspaceMode 扩展、aside 两按钮、Workspace 导航栏/默认卡片/独立 Tab 条/页面壳 + 管理页/安装对话框提前落地（59 组件测试全绿：37 开发 + 22 测试补充；覆盖率 Lines 97.42%/Branch 89.01%；登记 BUG-F4-01…04 低危缺陷/偏差） | 有缺陷 | 62141434 | —（仅追加测试文件，未 commit） |
 | F5 | 插件管理页 | PluginManagementPage + InstallPluginDialog（卡片/过滤/安装/启停/卸载） | 未开始 | — | — |
 | F6 | RPC 桥 | uiPluginBridge：信封路由、权限判定、限流超时、token 快照推送 | 未开始 | — | — |
 | F7 | Settings 外观 | settings.appearance 菜单项 + AppearanceSection 主题切换器 | 未开始 | — | — |
@@ -22,6 +22,10 @@
 | ID | 功能 | 描述 | 重现步骤 | 状态 |
 |----|------|------|---------|------|
 | BUG-F2-01 | F2 | 【处置：backlog/P2 加固，不阻断】Windows 形态解析面宽于规格：`http(s)://datazen.<host>/<path>`（`datazen.` 后无 `/` 直接接 host）也被接受为合法别名 | `parse_datazen_uri("http://datazen.acme.bill-audit/index.html")` 返回 Ok（与 `http://datazen./acme.bill-audit/index.html` 等价）。规格 §2.4 字面仅定义 `http://datazen./<host>/<path>`。同一校验链（存在→enabled→路径→MIME）仍然全部生效，无安全影响，属低危加固项（可在 strip_scheme 中要求紧随分隔符） | 新建 |
+| BUG-F4-01 | F4 | 插件停用联动不完整：跨窗口/外部触发的 `plugins:changed` 只刷新 pluginStore，无人调 closeByPlugin，残留可激活的僵尸 Tab | 开插件 Tab → 另一窗口 set_plugin_enabled(false) → 原窗口导航项消失但 Tab/iframe 保留。规格 §4.3/§4.4 要求停用即关 Tab；实际仅管理页内操作联动（PluginManagementPage.tsx:93,110）。建议 F6 统一订阅处理 | 验证不通过（修复中）|
+| BUG-F4-02 | F4 | 「同一插件页多开」不可实现：key=`{pluginId}:{pageId}` + open 幂等，同页重复点击仅聚焦 | Workspace 点击同一导航项两次 → 仅一个 Tab。PRD §4.2/§4.4 允许多开，但 §4.4 表格自身定义该唯一 key，自相矛盾——需产品拍板 | 验证不通过（修复中）|
+| BUG-F4-03 | F4 | 安装流程缺「名称/版本/权限清单确认」中间步骤，确认即直接写入 | 管理页[安装插件…] → 输入合法 zip 路径 → Install：无任何预览确认直接安装成功。规格 §4.3 要求写入前展示确认 | 验证不通过（修复中）|
+| BUG-F4-04 | F4 | 管理页默认过滤器为「全部」（规格为默认 Workspace），且「全部」视图平铺不分组 | 打开管理页未点 chip 即显示全部插件平铺列表（PluginManagementPage.tsx:57 初值 'all'）。规格 §4.3：默认 Workspace、「全部」分组 | 验证不通过（修复中）|
 
 Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已修复`
 
@@ -221,6 +225,105 @@ Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已�
 |----|------|------|---------|-------------|------|
 | NOTE-F3-01 | 备注 | 进度表旧文案「全量 vitest 3 个既有失败」不准确：实为 **4 个失败文件**（ConnectionNavigatorTree 文件级收集失败 + RunHistoryDrawer/WidgetEditorDrawer/ObjectBrowser 各 1 失败用例 = 3 个失败用例分布在 4 个文件） | 干净树（git stash -u）复跑 `npx vitest run` 对比 | 表述偏差，失败本身与本功能无关已复核 | 已在本表 F3 行修正 |
 | NOTE-F3-02 | 备注 | pluginStore 在模块 import 时即执行 `ensurePluginsChangedListener()`（模块级副作用）；非 Tauri 环境 listen reject 后靠 catch 复位守卫支持后续重试 | 测试新增 retry 用例覆盖该路径 | PRD §4.1 只要求"监听 plugins:changed 刷新"，实现为超集且行为正确 | 备注 |
+
+### F4（主窗口集成，commit 62141434）
+
+- 测试 agent 会话，2026-08-22。规格依据：ui-plugins.md §4.1–§4.4；ui-plugins-implementation.md §4.2/§4.3。
+- 执行命令：
+  - 开发自带套件：`npx vitest run src/windows/workspace src/windows/plugins` → **37 passed / 0 failed**
+  - 补充后同口径 → **59 passed / 0 failed**（37 开发 + 22 新增）
+  - 全量回归：`npx vitest run` → **1631 passed / 3 failed tests（4 failed files）/ 217 文件**；失败文件与基线（stash 前对照）完全一致——ConnectionNavigatorTree（文件级收集失败）+ RunHistoryDrawer/WidgetEditorDrawer/ObjectBrowser 各 1 例，均为分支既有，不计回归
+  - 类型检查：`npx tsc --noEmit` stash 前后 diff 为空 → 16 条错误全为既有，无新增
+  - 覆盖率：`npx vitest run --coverage.enabled --coverage.reporter=text --coverage.include='src/windows/workspace/**' --coverage.include='src/windows/plugins/**'`（运行触及被测模块的全部 11 个测试文件；注：全量 suite 下 v8 覆盖率报告被 ConnectionNavigatorTree 收集崩溃静默吞掉，见 NOTE-F4-03）
+
+#### 规格复核结论（逐条对照 PRD §4.1–§4.4 / 实现方案 §4.2–§4.3）
+
+| 规格条目 | 结论 |
+|----------|------|
+| §4.1 aside 顺序 = 连接/工作流/数据看板/**Workspace**/插件 + 底部设置 | ✅ DOM 先后顺序断言（新测试 T-01）；ConnectionPage.tsx:907-956 |
+| §4.1 图标隐喻 LayoutGrid(网格)/Puzzle(拼图) + i18n `nav.workspacePages`/`nav.plugins` + testId `workspace-nav-workspace-pages`/`workspace-nav-plugins` | ✅ iconIds.ts/hostLucideMap.ts 同步增量两枚；ThemedIcon fallback 链完整 |
+| §4.1 更新/异常角标提示 | P1 范围未实现，符合排期（不记缺陷） |
+| §4.2/§4.4 无 Tab → 默认卡片视图；开 Tab 后 Tab 条出现；二者互斥 | ✅ WorkspaceView.tsx:62-75；集成测试以**真实 workspaceTabsStore**驱动开/关切换验证互斥（T-08…T-11） |
+| §4.2/§4.4 两套 Tab 体系独立、模式往返状态各自保持 | ✅ workspaceMode 与连接 tabs 为分离 state；round-trip 测试断言切回连接模式无重连（T-05）；settings 往返恢复 workspace 模式（T-06） |
+| §4.2 左侧导航栏 180px、已启用插件页列表（图标+名称+描述）、hover 高亮、点击开 Tab | ✅ WorkspaceNavigator `w-[180px]`；禁用插件不入列 |
+| §4.2/§4.4 停用/卸载时自动关闭对应 Tab | ⚠️ **仅管理页内操作符合**；跨窗口/外部路径触发的 `plugins:changed` 只刷新 pluginStore，无人调用 `closeByPlugin` → **BUG-F4-01** |
+| §4.2/§4.4 同一插件页多开（每 Tab 一个独立 iframe） | ❌ tab key=`{pluginId}:{pageId}` 且 open 幂等 → 同页仅单实例，重复点击只聚焦 → **BUG-F4-02**（PRD §4.4 表格自身定义该 key，与多开条款自相矛盾，实现取 key 设计，需产品拍板） |
+| §4.3 页面壳 `sandbox="allow-scripts"` | ✅ 属性逐字符断言（开发用例 + T-09） |
+| §4.3 懒挂载（首次激活才建 iframe）/非激活 CSS 隐藏保留实例/关闭即卸载/10s 超时重载 | ✅ PluginPageShell 7 例（hidden+aria-hidden+iframe 存活、10_000ms watchdog→reload 按钮重建 frame）+ T-11/T-12 |
+| §4.3 深链 `plugins:open-page` 校验链 payload→插件存在→enabled→page∈pages | ✅ WorkspaceView.tsx:40-47 + 正反用例（未知/停用/缺 pageId/未知 page/空 payload 全忽略） |
+| §4.3 管理 chips 三类（全部/Workspace/主题）+搜索 | ✅ 计数徽标齐全 |
+| §4.3 启停调 setEnabled（停用联动关 Tab）/卸载二次确认/取消保留 | ✅ useConfirmDialog 确认/取消两分支均有测试 |
+| §4.3 主题卡不提供应用动作 + 「在 设置→外观 中切换」提示 | ✅ themeBadge/themeHint，无 [打开] 按钮 |
+| §4.3 apiVersion 不匹配置灰 + 版本提示 + 禁操作 | ✅ opacity-60/warning badge/toggle disabled/[打开]隐藏 |
+| §4.3 安装校验失败错误可复制 | ✅ CopyableError：selectable 文本 + role=alert + copy 按钮 → clipboard.writeText（T-17/T-18） |
+| §4.3 安装流程含「名称/版本/权限清单确认」步骤 | ❌ 选路径确认后直接写入，无预览确认步 → **BUG-F4-03** |
+| §4.3 内容主体默认过滤器 = Workspace；「全部」混合展示并分组 | ❌ 默认 'all' 平铺、无分组 → **BUG-F4-04** |
+| §4.4 Tab 标题 = 插件名 | ⚠️ 实现为 `page.title \|\| plugin.name`（页面标题优先），语义可辩护 → NOTE-F4-01 |
+| i18n 仅 en.ts + zh-CN.ts 变更且键集一致 | ✅ git numstat 仅两文件（41/38 行）；键集 parity 1503==1503 |
+
+#### 新增测试文件（4 个，22 例全 PASS，零功能代码改动）
+
+`src/windows/connection/__tests__/ConnectionPage.pluginsNav.test.tsx`（7）、`src/windows/workspace/__tests__/WorkspaceIntegration.test.tsx`（6，真实子组件+真实 store，仅 mock pluginStore/i18n/tauri event/manifest IPC）、`src/windows/plugins/__tests__/InstallPluginDialog.test.tsx`（6）、`src/windows/workspace/__tests__/PluginIcon.test.tsx`（3）。
+
+#### 用例清单（新增 22 例）
+
+| 编号 | 场景 | 结论 |
+|------|------|------|
+| T-01 | ConnectionPage 渲染两个新 aside 按钮，DOM 顺序位于 dashboard 之后、settings 之前 | PASS |
+| T-02 | 点击 Workspace 按钮 → WorkspaceView 渲染 + 标题栏 nav.workspacePages + 连接树卸载 | PASS |
+| T-03 | 点击 插件 按钮 → PluginManagementPage 渲染 + 标题栏 nav.plugins | PASS |
+| T-04 | 跨模式快捷回调：workspace 空态→管理页→[返回 workspace] 双向切换 | PASS |
+| T-05 | 连接 Tab 在 workspace/plugins 模式往返后保持：无二次 connect | PASS |
+| T-06 | 从 workspace 模式进 Settings 再返回，workspace 模式恢复（settingsReturnModeRef 兼容性） | PASS |
+| T-07 | 两按钮高亮互斥（active 态 bg-accent/20 单一持有） | PASS |
+| T-08 | 无 Tab 时仅默认卡片视图，TabBar 不渲染 | PASS |
+| T-09 | 导航项点击 → TabBar 出现 + 卡片视图消失 + sandbox="allow-scripts" iframe 挂载（src=datazen://…?v=） | PASS |
+| T-10 | 默认卡片点击同样开 Tab（真实 openPluginPage 链路） | PASS |
+| T-11 | 关闭最后一个 Tab：TabBar 消失、卡片视图恢复、iframe 卸载、导航项可重开 | PASS |
+| T-12 | 双 Tab 场景非激活壳 hidden+aria-hidden 保留实例（双 iframe 同挂载） | PASS |
+| T-13 | 畸形深链 payload（null/undefined/空对象/空串/缺 pageId）全部忽略不开 Tab | PASS |
+| T-14 | 安装对话框确认键随路径空白禁用/启用 | PASS |
+| T-15 | 空白路径永不触发后端 installPluginFromPath | PASS |
+| T-16 | trim 后路径安装 + store 刷新 + 关窗 + onInstalled 回传 | PASS |
+| T-17 | 失败错误可复制契约：selectable 类名 + role=alert + copy 按钮 + 对话框保持打开 + 可重试 | PASS |
+| T-18 | copy 按钮将原始错误文本写入剪贴板 | PASS |
+| T-19 | 再次修改路径清除旧错误 | PASS |
+| T-20 | PluginIcon 无图标回退 puzzle glyph | PASS |
+| T-21 | datazen:// 图标 URL 规范化（剥 `./` 前缀） | PASS |
+| T-22 | 图标加载失败→puzzle 回退；换 icon 复原；再败再回退 | PASS |
+
+#### 覆盖率结论（vitest 4.1.10 + @vitest/coverage-v8，include 限 F4 九个源文件，实测）
+
+| 文件 | %Stmts | %Branch | %Funcs | %Lines | 主要未覆盖 |
+|------|--------|---------|--------|--------|------------|
+| windows/plugins/InstallPluginDialog.tsx | 95.23 | 83.33 | 100 | 100 | （语句缺口为 v8 行映射伪影，行覆盖 100%） |
+| windows/plugins/PluginManagementPage.tsx | 96.72 | 86.36 | 100 | 98.11 | L112 handleRemove 的 catch 错误臂 |
+| windows/workspace/PluginIcon.tsx | 100 | 100 | 100 | 100 | — |
+| windows/workspace/PluginPageShell.tsx | 96.66 | 97.82 | 89.47 | 96.07 | L176-177 iframe onError 臂（jsdom 不产生真实加载错误） |
+| windows/workspace/WorkspaceDefaultCards.tsx | 100 | 87.5 | 100 | 100 | L29 未传 onOpenPlugins 的空态臂 |
+| windows/workspace/WorkspaceNavigator.tsx | 100 | 90 | 100 | 100 | L30（同上） |
+| windows/workspace/WorkspaceTabBar.tsx | 84.21 | 75 | 88.88 | 84.61 | L29-31 onWheel 横向滚轮滚动 |
+| windows/workspace/WorkspaceView.tsx | 96.66 | 93.75 | 100 | 100 | L49 卸载竞态 disposed 臂 |
+| windows/workspace/workspacePages.ts | 90.47 | 75 | 100 | 100 | L38/78/80 title 回退与 openPluginPage 失败臂 |
+| **合计** | **95.27** | **89.01** | **96.62** | **97.42** | |
+
+**行覆盖合计 97.42%，最低单文件 WorkspaceTabBar 84.61%，九文件全部 ≥80% 达标**。残余缺口集中在滚轮滚动、onError 竞态等 jsdom 无法自然触发或纯 UI 分支。
+
+#### Bug 列表
+
+无阻断级缺陷（目标套件 0 FAIL）；登记低危缺陷/偏差 4 项：
+
+| ID | 类型 | 描述 | 重现步骤 | 期望 vs 实际 | 状态 |
+|----|------|------|---------|-------------|------|
+| BUG-F4-01 | 低危缺陷 | 插件停用联动不完整：跨窗口/外部触发的 `plugins:changed` 只刷新 pluginStore，不关闭对应 Tab | ① 打开已启用插件的页面 Tab；② 经另一窗口（或不经管理页的任意路径）执行 set_plugin_enabled(false) 使后端 emit plugins:changed；③ 观察原窗口 | 规格 §4.3 禁用联动/§4.4：停用即 closeByPlugin 关 Tab；实际仅管理页内 toggle/uninstall 走 closeByPlugin（PluginManagementPage.tsx:93,110），pluginStore 订阅只 refetch（pluginStore.ts:77-79），残留可激活的僵尸 Tab（后续资源请求将被协议层 403）。建议 F6 桥接阶段在 store/shell 层统一订阅处理 | 验证不通过（修复中）|
+| BUG-F4-02 | 规格偏差 | 「同一插件页多开」不可用：同页重复点击仅聚焦既有 Tab | ① Workspace 点击同一导航项两次 | 规格 §4.2/§4.4 字面允许每 Tab 一个独立 iframe 多开；实际 key=`{pluginId}:{pageId}` + open 幂等（workspaceTabsStore.ts:36-47）。注意 PRD §4.4 表格自身规定 key={pluginId}:{pageId}，与多开条款矛盾——需产品拍板取哪一条 | 验证不通过（修复中）|
+| BUG-F4-03 | 规格偏差（低） | 安装流程缺「名称/版本/权限清单确认」中间步骤 | ① 管理页[安装插件…]；② 输入合法 zip 路径；③ 点 Install | 规格 §4.3：校验→展示名称/版本/权限清单确认→写入；实际确认即直接调 install_plugin_from_path 写入并刷新（InstallPluginDialog.handleInstall），权限信息用户安装前不可见 | 验证不通过（修复中）|
+| BUG-F4-04 | 规格偏差（低） | 管理页默认过滤器为「全部」而非「Workspace」，且「全部」平铺不分组 | ① 装有 workspace 插件 + 主题插件时打开管理页 | 规格 §4.3：内容主体默认过滤 Workspace、「全部」混合展示并分组；实际 useState 初值 'all'（PluginManagementPage.tsx:57）且无分组逻辑 | 验证不通过（修复中）|
+| NOTE-F4-01 | 备注 | Tab 标题为 `page.title || plugin.name`（页面贡献标题优先于插件名） | 打开带自定义 page.title 的插件 Tab | §4.4 字面「标题=插件名」；页面标题区分度更高，语义可辩护 | 备注 |
+| NOTE-F4-02 | 备注 | 卡片图标为名称首字母方块而非 manifest 图标；「更新/卸载菜单」实为单独卸载按钮、更新能力未做 | 查看管理页卡片 | PluginSummary 本就不含 icon 字段（F3 契约）；更新属 P1 排期 | 备注 |
+| NOTE-F4-03 | 备注 | 全量 suite 带 --coverage 运行时覆盖率报告被静默吞掉（复现 2 次）；按目录 include 的子集运行正常 | `npx vitest run --coverage...`（全量 vs 子集对照） | 疑与 ConnectionNavigatorTree 文件级收集崩溃干扰 v8 合并相关；分支既有问题，建议 CI 固定子集口径或先修复该既有失败 | 备注 |
+
+E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」的硬规则在 F9 统一补齐（e2e/specs/plugins.spec.ts journeys），本次仅单测层面。
 
 ## 回归测试
 
