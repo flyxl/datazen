@@ -26,6 +26,8 @@ export interface WorkspaceViewProps {
  */
 export function WorkspaceView({ onOpenPlugins }: WorkspaceViewProps) {
   const pages = useWorkspacePages();
+  const plugins = usePluginStore((s) => s.plugins);
+  const pluginsLoaded = usePluginStore((s) => s.loaded);
   const tabs = useWorkspaceTabsStore((s) => s.tabs);
   const activeKey = useWorkspaceTabsStore((s) => s.activeKey);
 
@@ -33,6 +35,23 @@ export function WorkspaceView({ onOpenPlugins }: WorkspaceViewProps) {
   useEffect(() => {
     if (!usePluginStore.getState().loaded) void usePluginStore.getState().fetch();
   }, []);
+
+  // BUG-F4-01: a `plugins:changed` refresh triggered outside this window
+  // (another window disabling/uninstalling a plugin) must also close that
+  // plugin's workspace tabs — the management page only covers its own actions.
+  // The diff only runs once the store has loaded, so the initial (possibly
+  // empty) plugin list can never close pre-existing tabs.
+  useEffect(() => {
+    if (!pluginsLoaded) return;
+    const { tabs: openTabs, closeByPlugin } = useWorkspaceTabsStore.getState();
+    const visited = new Set<string>();
+    for (const tab of openTabs) {
+      if (visited.has(tab.pluginId)) continue;
+      visited.add(tab.pluginId);
+      const plugin = plugins.find((p) => p.id === tab.pluginId);
+      if (!plugin || !plugin.enabled) closeByPlugin(tab.pluginId);
+    }
+  }, [plugins, pluginsLoaded]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;

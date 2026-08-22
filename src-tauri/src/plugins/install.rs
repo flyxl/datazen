@@ -13,13 +13,14 @@ use uuid::Uuid;
 use zip::ZipArchive;
 
 use super::manifest::{
-    allowed_plugin_extension, validate_plugin_dir, PluginManifest, MAX_PLUGIN_FILES,
-    MAX_PLUGIN_UNCOMPRESSED,
+    allowed_plugin_extension, parse_manifest, validate_manifest, validate_plugin_dir,
+    PluginManifest, MAX_PLUGIN_FILES, MAX_PLUGIN_UNCOMPRESSED,
 };
 use crate::app_data_archive::MAX_COMPRESSION_RATIO;
 
 const STAGING_PREFIX: &str = ".staging-";
 const BACKUP_SUFFIX: &str = ".old.bak";
+const INSPECT_PREFIX: &str = ".datazen-inspect-";
 
 /// Install a plugin ZIP into `{plugins_dir}/{manifest.id}/`.
 pub fn install_from_zip(zip_path: &Path, plugins_dir: &Path) -> Result<PluginManifest, String> {
@@ -48,6 +49,44 @@ pub fn install_from_dir(src_dir: &Path, plugins_dir: &Path) -> Result<PluginMani
     let result = (|| -> Result<PluginManifest, String> {
         copy_plugin_dir(src_dir, &staging)?;
         finalize_staged_package(&staging, plugins_dir)
+    })();
+
+    let _ = fs::remove_dir_all(&staging);
+    result
+}
+
+/// Validate a package fully **without installing it**: the ZIP/directory is
+/// materialized into a throwaway temp directory, then the same rule set 1–7
+/// as the real install runs against it. On success the manifest is returned
+/// (name/version/permissions) so the UI can ask for confirmation; nothing is
+/// ever written to `{plugins_dir}`.
+pub fn inspect_plugin_package(package_path: &Path) -> Result<PluginManifest, String> {
+    if !package_path.exists() {
+        return Err(format!(
+            "plugin package not found: {}",
+            package_path.display()
+        ));
+    }
+    let is_zip = package_path.is_file()
+        && package_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"));
+
+    let staging = std::env::temp_dir().join(format!("{INSPECT_PREFIX}{}", Uuid::new_v4()));
+    let result = (|| -> Result<PluginManifest, String> {
+        if is_zip {
+            extract_plugin_zip(package_path, &staging)?;
+        } else {
+            copy_plugin_dir(package_path, &staging)?;
+        }
+
+        let pack_root = resolve_pack_root(&staging)?;
+        let content = fs::read_to_string(pack_root.join("manifest.json"))
+            .map_err(|e| format!("read manifest.json: {e}"))?;
+        let manifest = parse_manifest(&content)?;
+        validate_manifest(&manifest, &pack_root)?;
+        Ok(manifest)
     })();
 
     let _ = fs::remove_dir_all(&staging);
@@ -772,5 +811,99 @@ mod tests {
         let plugins_root = TempDir::new().unwrap();
         let err = install_from_dir(Path::new("/nonexistent/src"), plugins_root.path()).unwrap_err();
         assert!(err.contains("not found"), "unexpected: {err}");
+    }
+
+    fn count_inspect_dirs() -> usize {
+        fs::read_dir(std::env::temp_dir())
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_str()
+                    .is_some_and(|n| n.starts_with(INSPECT_PREFIX))
+            })
+            .count()
+    }
+
+    #[test]
+    fn inspect_plugin_package_returns_manifest_without_installing() {
+        let tmp = TempDir::new().unwrap();
+        let zip_path = tmp.path().join("demo.zip");
+        write_demo_zip(&zip_path, None);
+
+        let before = count_inspect_dirs();
+        let manifest = inspect_plugin_package(&zip_path).unwrap();
+        assert_eq!(manifest.id, "acme.demo");
+        assert_eq!(manifest.name, "Demo");
+        assert_eq!(manifest.version, "1.0.0");
+        assert_eq!(
+            manifest
+                .permissions
+                .iter()
+                .map(|p| p.as_str())
+                .collect::<Vec<_>>(),
+            vec!["storage:local"]
+        );
+
+        // The throwaway staging dir is cleaned up.
+        assert_eq!(count_inspect_dirs(), before);
+    }
+
+    #[test]
+    fn inspect_plugin_package_accepts_top_level_folder_and_plain_dirs() {
+        let tmp = TempDir::new().unwrap();
+        let zip_path = tmp.path().join("demo.zip");
+        write_demo_zip(&zip_path, Some("acme.demo"));
+        let manifest = inspect_plugin_package(&zip_path).unwrap();
+        assert_eq!(manifest.id, "acme.demo");
+
+        // Directory sources keep install semantics: the folder name does not
+        // have to match the manifest id (staging gets renamed on real install).
+        let src = TempDir::new().unwrap();
+        fs::write(src.path().join("manifest.json"), DEMO_MANIFEST).unwrap();
+        fs::write(src.path().join("index.html"), "<html></html>").unwrap();
+        let manifest = inspect_plugin_package(src.path()).unwrap();
+        assert_eq!(manifest.id, "acme.demo");
+    }
+
+    #[test]
+    fn inspect_plugin_package_rejects_invalid_packages() {
+        // Missing path.
+        let err =
+            inspect_plugin_package(Path::new("/nonexistent/datazen-inspect.zip")).unwrap_err();
+        assert!(err.contains("not found"), "unexpected: {err}");
+
+        // Manifest failing validation (apiVersion mismatch).
+        let tmp = TempDir::new().unwrap();
+        let bad = tmp.path().join("bad.zip");
+        {
+            let file = fs::File::create(&bad).unwrap();
+            let mut zip = ZipWriter::new(file);
+            let options =
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+            let manifest = DEMO_MANIFEST.replace("\"apiVersion\": 2", "\"apiVersion\": 99");
+            add_file(&mut zip, "manifest.json", &manifest, options);
+            add_file(&mut zip, "index.html", "<html></html>", options);
+            zip.finish().unwrap();
+        }
+        let err = inspect_plugin_package(&bad).unwrap_err();
+        assert!(err.contains("apiVersion"), "unexpected: {err}");
+
+        // Malicious traversal entry is rejected by the shared extraction rules.
+        let evil = tmp.path().join("evil.zip");
+        {
+            let file = fs::File::create(&evil).unwrap();
+            let mut zip = ZipWriter::new(file);
+            let options =
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+            add_file(&mut zip, "../outside.html", "<html>evil</html>", options);
+            zip.finish().unwrap();
+        }
+        let err = inspect_plugin_package(&evil).unwrap_err();
+        assert!(
+            err.contains("traversal") || err.contains("invalid zip entry"),
+            "unexpected: {err}"
+        );
+        assert_eq!(count_inspect_dirs(), 0);
     }
 }

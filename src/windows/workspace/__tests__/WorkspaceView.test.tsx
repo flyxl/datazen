@@ -3,7 +3,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { WorkspaceView } from '../WorkspaceView';
 import type { PluginSummary } from '../../../types/plugin';
 
-const { listenMock, pluginState, tabsState, openMock } = vi.hoisted(() => ({
+const { listenMock, pluginState, tabsState, openMock, closeByPluginMock } = vi.hoisted(() => ({
   listenMock: vi.fn(),
   pluginState: {
     plugins: [] as Array<Record<string, unknown>>,
@@ -16,6 +16,7 @@ const { listenMock, pluginState, tabsState, openMock } = vi.hoisted(() => ({
     activeKey: null as string | null,
   },
   openMock: vi.fn(),
+  closeByPluginMock: vi.fn(),
 }));
 
 vi.mock('@tauri-apps/api/event', () => ({
@@ -46,7 +47,7 @@ vi.mock('../../../stores/workspaceTabsStore', () => ({
       open: openMock,
       activate: vi.fn(),
       close: vi.fn(),
-      closeByPlugin: vi.fn(),
+      closeByPlugin: closeByPluginMock,
     }),
   }),
 }));
@@ -87,6 +88,7 @@ beforeEach(() => {
   tabsState.activeKey = null;
   listenMock.mockReset().mockResolvedValue(() => {});
   openMock.mockClear();
+  closeByPluginMock.mockClear();
 });
 
 afterEach(cleanup);
@@ -167,5 +169,73 @@ describe('WorkspaceView', () => {
     });
 
     expect(openMock).not.toHaveBeenCalled();
+  });
+
+  it('closes tabs of plugins that were disabled or removed by an external refresh (BUG-F4-01)', async () => {
+    tabsState.tabs = [
+      {
+        key: 'acme.bill-audit:quota-check',
+        pluginId: 'acme.bill-audit',
+        pageId: 'quota-check',
+        title: 'Quota Check',
+        version: '1.0.0',
+      },
+      {
+        key: 'acme.keep:main',
+        pluginId: 'acme.keep',
+        pageId: 'main',
+        title: 'Keep',
+        version: '1.0.0',
+      },
+    ];
+    pluginState.plugins = [makePlugin(), makePlugin({ id: 'acme.keep', name: 'Keep' })];
+
+    const view = render(<WorkspaceView />);
+    await act(async () => {});
+    expect(closeByPluginMock).not.toHaveBeenCalled();
+
+    // Another window disables `acme.bill-audit`; the refreshed list arrives.
+    pluginState.plugins = [makePlugin({ enabled: false }), makePlugin({ id: 'acme.keep' })];
+    view.rerender(<WorkspaceView />);
+    await act(async () => {});
+    expect(closeByPluginMock).toHaveBeenCalledTimes(1);
+    expect(closeByPluginMock).toHaveBeenCalledWith('acme.bill-audit');
+
+    // A later refresh where the plugin is gone entirely also closes its tabs.
+    closeByPluginMock.mockClear();
+    pluginState.plugins = [makePlugin({ id: 'acme.keep' })];
+    view.rerender(<WorkspaceView />);
+    await act(async () => {});
+    expect(closeByPluginMock).toHaveBeenCalledWith('acme.bill-audit');
+
+    // Enabled plugins are never touched.
+    expect(closeByPluginMock).not.toHaveBeenCalledWith('acme.keep');
+  });
+
+  it('does not diff-close tabs before the plugin store has loaded', async () => {
+    // Restored tabs exist while the initial fetch is still in flight; the
+    // empty placeholder list must not close them.
+    tabsState.tabs = [
+      {
+        key: 'acme.bill-audit:quota-check',
+        pluginId: 'acme.bill-audit',
+        pageId: 'quota-check',
+        title: 'Quota Check',
+        version: '1.0.0',
+      },
+    ];
+    pluginState.plugins = [];
+    pluginState.loaded = false;
+
+    const view = render(<WorkspaceView />);
+    await act(async () => {});
+    expect(closeByPluginMock).not.toHaveBeenCalled();
+
+    // Store finishes loading with the plugin still enabled → tab survives.
+    pluginState.loaded = true;
+    pluginState.plugins = [makePlugin()];
+    view.rerender(<WorkspaceView />);
+    await act(async () => {});
+    expect(closeByPluginMock).not.toHaveBeenCalled();
   });
 });
