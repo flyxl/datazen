@@ -718,6 +718,12 @@ pub fn run() {
 
     let builder = plugin_init::register_plugins(builder);
 
+    // `datazen://` plugin asset service + deep links (F2). Windows exposes
+    // this as `http://datazen./...`; parsing accepts both forms.
+    let builder = builder.register_uri_scheme_protocol("datazen", |ctx, request| {
+        plugins::protocol::handle_datazen_request(ctx, request)
+    });
+
     let t_builder = Instant::now();
     tracing::info!("[startup] builder created");
 
