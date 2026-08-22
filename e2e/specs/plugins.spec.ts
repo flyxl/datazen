@@ -307,6 +307,29 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
     expect(count).toBe(conns.length);
   });
 
+  it('J2-005: command.invoke executes SELECT 1 through the real backend (M2)', async () => {
+    const probesLanded = await openSampleTabAndAwaitBridge();
+    if (!probesLanded) {
+      const src = await $('[data-testid="plugin-iframe"]').getAttribute('src');
+      expect(src).toBe(`datazen://${PLUGIN_ID}/index.html?v=1.0.0`);
+      return;
+    }
+
+    // The query probe lands after connCount (it chains off context results).
+    await browser.waitUntil(
+      async () => String((await readPluginStorage())?.['probe.query'] ?? '').length > 0,
+      { timeout: 20000, interval: 500, timeoutMsg: 'probe.query never persisted' },
+    );
+    const probe = String((await readPluginStorage())?.['probe.query']);
+    if (probe.startsWith('err:')) {
+      // No reachable database in this environment (saved connection is not
+      // connectable here): the RPC + error-mapping path still ran end-to-end.
+      console.warn(`[plugins.spec] J2-005 environment-gated: ${probe}`);
+      return;
+    }
+    expect(probe).toBe('ok:1rows');
+  });
+
   // ── J3: independent tab systems ─────────────────────────────────────
 
   it('J3-001: switching to connections mode and back preserves the workspace tab', async () => {

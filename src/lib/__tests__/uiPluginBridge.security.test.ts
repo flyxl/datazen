@@ -22,6 +22,7 @@ const {
   activeConnectionStoreState,
   notificationInvokeMock,
   consoleInfoSpy,
+  auditLogMock,
 } = vi.hoisted(() => ({
   storageGetMock: vi.fn(),
   storageSetMock: vi.fn(),
@@ -34,6 +35,7 @@ const {
   activeConnectionStoreState: { current: { connections: {} } },
   notificationInvokeMock: vi.fn(),
   consoleInfoSpy: vi.fn(),
+  auditLogMock: vi.fn(),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -45,6 +47,7 @@ vi.mock('../../commands/plugins', () => ({
     pluginStorageGet: (...args: unknown[]) => storageGetMock(...args),
     pluginStorageSet: (...args: unknown[]) => storageSetMock(...args),
     pluginStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
+    auditLog: (...args: unknown[]) => auditLogMock(...args),
   },
 }));
 
@@ -268,6 +271,9 @@ describe('F6 security: credential whitelisting', () => {
     expect(logged).toContain('[ui-plugin:acme.bill-audit]');
     expect(logged).toContain('command.invoke');
     expect(logged).not.toContain('top-secret-value');
+    // The same entry lands in the host log file via plugin_audit_log (still
+    // argument-free — only command name + connection id).
+    expect(auditLogMock).toHaveBeenCalledWith('acme.bill-audit', 'command.invoke', 'query via cfg');
   });
 });
 
@@ -318,10 +324,9 @@ describe('F6 security: permission gate vs malformed routing', () => {
       expect(JSON.stringify(frame.sent)).not.toContain('MUST_NOT_APPEAR');
       expect(driverExecuteMock).not.toHaveBeenCalled();
       expect(storageGetMock).not.toHaveBeenCalled();
-      // Current behavior pins these to E_PERMISSION (prototype members resolve
-      // through API_ROUTES' prototype chain); spec-intended code would be
-      // E_NOT_FOUND — deviation recorded as BUG-F6-02.
-      expect((sent!.payload as { code: string }).code).toBe(BRIDGE_ERROR.PERMISSION);
+      // Own-property routing (BUG-F6-01 fix): prototype members are unknown
+      // APIs, not permission failures.
+      expect((sent!.payload as { code: string }).code).toBe(BRIDGE_ERROR.NOT_FOUND);
       // Prototype chain itself remains intact.
       expect((Object.prototype as unknown as Record<string, unknown>).granted).toBeUndefined();
     },
