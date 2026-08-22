@@ -13,7 +13,7 @@
 | F4 | 主窗口集成 | WorkspaceMode 扩展、aside 两按钮、Workspace 导航栏/默认卡片/独立 Tab 条/页面壳 + 管理页/安装对话框提前落地（59 组件测试全绿：37 开发 + 22 测试补充；覆盖率 Lines 97.42%/Branch 89.01%；登记 BUG-F4-01…04 低危缺陷/偏差；BUG-F4-01/02/03/04 已修复并经验证 agent 复核，见「F4 修复验证」小节） | 已完成 | 62141434 | ca2218bc+46c195fb |
 | F5 | 插件管理页 | ~~独立功能项~~ 已并入 F4 交付（管理页+两步安装对话框） | 已完成（并入F4） | 62141434 | ca2218bc |
 | F6 | RPC 桥 | uiPluginBridge：信封路由、权限判定、限流超时、token 快照推送（开发 31 + 测试补充 33 = 64 单测全绿；覆盖率 Lines 99.27%/100%；安全专项复核通过；登记 BUG-F6-01 低危协议偏差，见测试记录） | 测试完成（BUG-F6-01 低危新建，不阻断） | c77085c8 | —（仅追加测试文件，未 commit） |
-| F7 | Settings 外观 | settings.appearance 菜单项 + AppearanceSection 主题切换器（开发 54 + 测试补充 20 单测全绿；覆盖率 AppearanceSection Lines **100%**、themePackApply 全文件 Lines 96.68% / 插件路径子集 97.40%；规格复核 §4.5 六项通过；登记 BUG-F7-01 低危图标缺口，见测试记录） | 测试完成（BUG-F7-01 低危新建，不阻断） | 1d9c398b | —（仅追加测试文件，未 commit；⚠️ 工作区另有一行**功能代码**改动 src/lib/hostLucideMap.ts 未提交，见 F7 记录备注） |
+| F7 | Settings 外观 | settings.appearance 菜单项 + AppearanceSection 主题切换器（开发 54 + 测试补充 20 单测全绿；覆盖率 AppearanceSection Lines **100%**、themePackApply 全文件 Lines 96.68% / 插件路径子集 97.40%；规格复核 §4.5 六项通过；登记 BUG-F7-01 低危图标缺口，见测试记录） 已完成（BUG-F7-01 经验证 agent 复核通过，见 Bug 跟踪） | 1d9c398b | 9d518661（补 hostLucideMap.ts appearance→Palette 行 + ThemedIcon LUCIDE_MAP 导入 Palette；钉住例翻转为断言 svg 渲染，验证测试 45/45 PASS） |
 | F8 | SDK 包 | packages/ui-plugin-sdk（bridge/theme/theme.css/useTheme） | 未开始 | — | — |
 | F9 | 示例插件与 E2E | e2e/fixtures/sample-plugin + e2e/specs/plugins.spec.ts journeys 1-5 | 未开始 | — | — |
 
@@ -475,7 +475,7 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 
 | ID | 严重度 | 状态 |
 |----|--------|------|
-| BUG-F7-01 | 低危（外观图标缺口，不阻断；含 commit 漏提交的工作区功能行，合并时须一并处理） | 待验证（ThemedIcon LUCIDE_MAP 已补 Palette 映射并导入；settingsSectionIcons 钉住例已翻转为断言 svg 渲染） |
+| BUG-F7-01 | 低危（外观图标缺口，不阻断；含 commit 漏提交的工作区功能行，合并时须一并处理） | 已修复（9d518661） |
 
 ## 回归测试
 
