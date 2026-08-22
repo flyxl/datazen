@@ -137,6 +137,12 @@ describe('startThemeListener', () => {
     return { postMessage: vi.fn() } as unknown as Window;
   }
 
+  it('returns a no-op detach when there is no parent window', () => {
+    const detach = startThemeListener({ parentWindow: null });
+    expect(typeof detach).toBe('function');
+    detach();
+  });
+
   const THEME_APPLY = (tokens: Record<string, string>) => ({
     ch: 'ui-plugin',
     type: 'theme.apply',
