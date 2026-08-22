@@ -9,6 +9,10 @@ export const pluginCommands = {
 
   getPluginManifest: (id: string) => invoke<PluginManifest>('get_plugin_manifest', { id }),
 
+  /** Validates a package without installing; returns its manifest for review. */
+  inspectPluginPackage: (path: string) =>
+    invoke<PluginManifest>('inspect_plugin_package', { path }),
+
   installPluginFromPath: (path: string) =>
     invoke<PluginSummary>('install_plugin_from_path', { path }),
 
