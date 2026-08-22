@@ -10,7 +10,7 @@
 | F1 | Rust 插件基座 | plugins/{mod,manifest,install,storage}.rs、IPC 命令组、AppState、单测（capabilities 走既有 ACL 豁免，见测试记录） | 已完成 | 900b9330 | d9d265b3 |
 | F2 | datazen:// 协议 | register_uri_scheme_protocol：path 资产服务 + open 深链 + CSP/403/404 | 已完成 | 4c75f1b0 | ffdf64b3 | —（仅追加测试文件，未 commit） |
 | F3 | 前端状态与 IPC 封装 | types/plugin.ts、pluginStore、workspaceTabsStore、commands/plugins.ts（42 单测全绿；覆盖率 Lines 100%/Branch 96.87%；全量 vitest 4 个失败文件均为分支既有，见测试记录） | 已完成 | 149d3b2a | 7c36c65e |
-| F4 | 主窗口集成 | WorkspaceMode 扩展、aside 两按钮、Workspace 导航栏/默认卡片/独立 Tab 条/页面壳（静态） | 未开始 | — | — |
+| F4 | 主窗口集成 | WorkspaceMode 扩展、aside 两按钮、Workspace 导航栏/默认卡片/独立 Tab 条/页面壳（37 组件测试全绿） | 待测试 | 62141434 | — |
 | F5 | 插件管理页 | PluginManagementPage + InstallPluginDialog（卡片/过滤/安装/启停/卸载） | 未开始 | — | — |
 | F6 | RPC 桥 | uiPluginBridge：信封路由、权限判定、限流超时、token 快照推送 | 未开始 | — | — |
 | F7 | Settings 外观 | settings.appearance 菜单项 + AppearanceSection 主题切换器 | 未开始 | — | — |
