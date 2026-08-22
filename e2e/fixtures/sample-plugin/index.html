@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sample Hello</title>
+    <!--
+      F9 E2E fixture page: zero build, no SDK import.
+      The bridge client lives in assets/app.js because the host serves package
+      assets with CSP `script-src 'self'` (no 'unsafe-inline') — inline
+      <script> blocks would never execute inside the sandboxed iframe.
+    -->
+  </head>
+  <body>
+    <p>bridge: <span data-testid="bridge-status">booting</span></p>
+    <p>connections: <span data-testid="conn-count">-</span></p>
+    <p>storage-roundtrip: <span data-testid="storage-roundtrip">-</span></p>
+    <p>mode: <span data-testid="dark-state">-</span></p>
+    <p>tokens: <span data-testid="token-count">-</span></p>
+    <script src="assets/app.js"></script>
+  </body>
+</html>

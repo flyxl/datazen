@@ -1,0 +1,5 @@
+/* Sample Light theme contribution (F9 E2E fixture): overrides a few contract tokens. */
+:root {
+  --c-accent: #2563eb;
+  --c-surface: #f8fafc;
+}

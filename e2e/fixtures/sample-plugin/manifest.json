@@ -1,0 +1,28 @@
+{
+  "id": "datazen.sample",
+  "name": "Sample Hello",
+  "version": "1.0.0",
+  "apiVersion": 2,
+  "author": "DataZen E2E",
+  "description": "Static fixture plugin for Host E2E (F9): bridge round-trip demo page plus one theme contribution.",
+  "entry": "index.html",
+  "contributes": {
+    "pages": [
+      {
+        "id": "hello",
+        "title": "Sample Hello",
+        "icon": "assets/icon.svg",
+        "showIn": "workspace"
+      }
+    ],
+    "themes": [
+      {
+        "id": "sample-light",
+        "name": "Sample Light",
+        "tokensCss": "themes/sample/tokens.css",
+        "modes": ["light"]
+      }
+    ]
+  },
+  "permissions": ["context:connections", "command:invoke", "storage:local"]
+}
