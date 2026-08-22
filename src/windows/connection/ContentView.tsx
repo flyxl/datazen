@@ -26,6 +26,7 @@ import { getCachedDDL, invalidateSchemaCache } from '../../lib/schemaCache';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { buildSchemaTreeContextMenuItems } from '../../lib/schemaTreeContextMenu';
 import { getSqlDialect } from '../../lib/sqlDialects';
+import { openBackupWindow } from '../../lib/windowManager';
 import { queryCommands } from '../../commands/query';
 import type {
   ConnectionViewActions,
@@ -72,6 +73,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
   const activePanelId = usePanelStore((s) => s.activePanelId);
   const removePanel = usePanelStore((s) => s.removePanel);
   const setActivePanel = usePanelStore((s) => s.setActivePanel);
+  const storeUpdatePanel = usePanelStore((s) => s.updatePanel);
 
   const activePanel = allPanels.find((p) => p.id === activePanelId) ?? null;
 
@@ -369,6 +371,8 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
             dataTransfer: t('schemaTree.dataTransfer'),
             compareSchema: t('schemaTree.compareSchema'),
             compareData: t('schemaTree.compareData'),
+            backup: t('main.ctx.backup'),
+            restore: t('main.ctx.restore'),
           },
           handlers: {
             onOpen:
@@ -415,6 +419,14 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
                 ? () => handlers.handleOpenQueryHistory()
                 : undefined,
             onCopyDatabaseName: kind === 'database' ? () => copyText(name) : undefined,
+            onBackup:
+              kind === 'database' && ctxDbMeta?.supportsBackup
+                ? () => openBackupWindow('backup', { configId: ctx.configId, database: name })
+                : undefined,
+            onRestore:
+              kind === 'database' && ctxDbMeta?.supportsBackup
+                ? () => openBackupWindow('restore', { configId: ctx.configId, database: name })
+                : undefined,
             onNewTable: handlers.handleCreateTable,
             onTruncate:
               kind === 'table' && !ctxIsReadOnly && !safeMode
@@ -666,6 +678,9 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
               onClosePanel={handlers.handleClosePanel}
               onRefresh={handlers.handleRefresh}
               resolveTableSchema={resolveTableSchema}
+              onUpdatePanelData={(id, data) =>
+                storeUpdatePanel(id, data as Parameters<typeof storeUpdatePanel>[1])
+              }
             />
           )}
         </div>

@@ -141,8 +141,8 @@ export function WidgetEditorDrawer({
           <Button
             variant="ghost"
             className="h-7 w-7 px-0"
-            aria-label={t('common.close')}
             onClick={onClose}
+            aria-label={t('common.close')}
           >
             <X className="h-4 w-4" />
           </Button>

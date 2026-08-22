@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import type { Panel } from '../../stores/panelStore';
 import { getPanelIcon, getPanelLabel } from './contentViewHelpers';
+import { useI18n } from '../../hooks/useI18n';
 
 export interface PanelTabBarProps {
   panels: Panel[];
@@ -19,6 +20,7 @@ export function PanelTabBar({
   onClosePanel,
   onContextMenu,
 }: PanelTabBarProps) {
+  const { t } = useI18n();
   if (panels.length === 0) return null;
 
   return (
@@ -42,7 +44,7 @@ export function PanelTabBar({
                   ? 'bg-surface text-fg'
                   : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
               )}
-              title={`${panel.connectionName} · ${getPanelLabel(panel)}`}
+              title={`${panel.connectionName} · ${getPanelLabel(panel, t)}`}
               onContextMenu={(e) => onContextMenu(panel.id, e)}
             >
               <button
@@ -51,7 +53,7 @@ export function PanelTabBar({
                 onClick={() => onSelectPanel(panel.id)}
               >
                 {getPanelIcon(panel)}
-                <span className="max-w-[160px] truncate">{getPanelLabel(panel)}</span>
+                <span className="max-w-[160px] truncate">{getPanelLabel(panel, t)}</span>
               </button>
               <button
                 type="button"

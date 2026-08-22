@@ -21,7 +21,7 @@ import { databaseCommands } from '../../commands/database';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { listenCrossWindow } from '../../lib/crossWindowBus';
+
 import { isTransferTargetSupported, resolveTransferPairing } from '../../lib/transferPairing';
 import type { ConnectionConfig } from '../../types';
 import { TransferMappingStep } from './TransferMappingStep';

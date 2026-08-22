@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, Legend, Tooltip, XAxis, YAxis } from 'recharts';
 import { getColorPalette } from '../../../lib/chart/colors';
-import { formatAxisTick, formatCompact } from '../../../lib/chart/format';
+import { formatAxisTick, formatCompact, formatEpochMs } from '../../../lib/chart/format';
 import { computeLogScaleHint, mapToLogScale } from '../../../lib/chart/transform';
 import { buildOverlapDashMap } from '../../../lib/chart/seriesOverlap';
 import type { ChartConfig, ChartDataPoint } from '../../../types/chart';
@@ -60,7 +60,11 @@ export function AreaChartRenderer({ data, config, onDataPointClick }: AreaChartR
         dataKey={config.xAxis ?? '__index'}
         tick={{ fontSize: 12, fill: 'var(--c-fg-secondary, #999)' }}
         stroke="var(--c-edge, #333)"
-        tickFormatter={formatAxisTick}
+        type={config.timeDomain ? 'number' : undefined}
+        scale={config.timeDomain ? 'time' : undefined}
+        domain={config.timeDomain}
+        ticks={config.timeTicks}
+        tickFormatter={config.timeDomain ? formatEpochMs : formatAxisTick}
       />
       <YAxis
         tick={{ fontSize: 12, fill: 'var(--c-fg-secondary, #999)' }}
@@ -109,7 +113,10 @@ export function AreaChartRenderer({ data, config, onDataPointClick }: AreaChartR
           strokeWidth={2}
           strokeDasharray={dashMap[yKey]}
           hide={hiddenSeries.has(yKey)}
-          activeDot={{ r: 5, cursor: onDataPointClick ? 'pointer' : undefined }}
+          isAnimationActive={!config.timeDomain}
+          activeDot={
+            config.timeDomain ? false : { r: 5, cursor: onDataPointClick ? 'pointer' : undefined }
+          }
         />
       ))}
     </AreaChart>

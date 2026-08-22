@@ -178,7 +178,9 @@ export function ConnectionPage() {
   const pendingActionRef = useRef<string | null>(null);
   const isResizingRef = useRef(false);
   const resizeHandleRef = useRef<HTMLDivElement>(null);
-  const selectTableRef = useRef<((table: string, schema?: string) => void) | undefined>();
+  const selectTableRef = useRef<
+    ((table: string, schema?: string, database?: string) => void) | undefined
+  >();
   const nodeContextMenuRef = useRef<
     | ((payload: { kind: string; name: string; x: number; y: number; schema?: string }) => void)
     | undefined
@@ -832,8 +834,8 @@ export function ConnectionPage() {
                   refresh: () => actionsRef.current?.refresh(),
                   openObject: (...args) => actionsRef.current?.openObject?.(...args),
                   openQueryHistory: () => actionsRef.current?.openQueryHistory?.(),
-                  openServerStatus: () => actionsRef.current?.openServerStatus?.(),
-                  openProcessList: () => actionsRef.current?.openProcessList?.(),
+                  openServerStatus: (...args) => actionsRef.current?.openServerStatus?.(...args),
+                  openProcessList: (...args) => actionsRef.current?.openProcessList?.(...args),
                 }}
               />
             </div>

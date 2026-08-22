@@ -17,6 +17,10 @@ import {
   type ErDiagramPanel,
   type RedisDbPanel,
   type CreateTablePanel,
+  type ServerStatusPanel,
+  type ServerStatusCache,
+  type ProcessesPanel,
+  type ProcessListCacheData,
 } from '../../stores/panelStore';
 import { getSubTabs, getViewSubTabs } from './contentViewHelpers';
 import { StructureView } from './StructureView';
@@ -45,6 +49,8 @@ export interface PanelContentRendererProps {
   onClosePanel: (panelId: string) => void;
   onRefresh: () => void;
   resolveTableSchema: (table: string) => string | null;
+  /** 将进程/仪表盘面板自身数据写回对应面板（与 configId 绑定）。 */
+  onUpdatePanelData: (panelId: string, data: unknown) => void;
 }
 
 export function PanelContentRenderer({
@@ -59,6 +65,7 @@ export function PanelContentRenderer({
   onClosePanel,
   onRefresh,
   resolveTableSchema,
+  onUpdatePanelData,
 }: PanelContentRendererProps) {
   if (!activePanel) {
     return null;
@@ -94,6 +101,7 @@ export function PanelContentRenderer({
       onClosePanel={onClosePanel}
       onRefresh={onRefresh}
       resolveTableSchema={resolveTableSchema}
+      onUpdatePanelData={onUpdatePanelData}
     />
   );
 }
@@ -110,6 +118,7 @@ interface SqlPanelContentProps {
   onClosePanel: (panelId: string) => void;
   onRefresh: () => void;
   resolveTableSchema: (table: string) => string | null;
+  onUpdatePanelData: (panelId: string, data: unknown) => void;
 }
 
 function SqlPanelContent({
@@ -124,6 +133,7 @@ function SqlPanelContent({
   onClosePanel,
   onRefresh,
   resolveTableSchema,
+  onUpdatePanelData,
 }: SqlPanelContentProps) {
   const { t } = useI18n();
   const panelDbMeta = DB_REGISTRY[panel.databaseType];
@@ -303,11 +313,44 @@ function SqlPanelContent({
   }
 
   if (panel.type === 'server-status') {
-    return <ServerStatusView connectionId={panel.connectionId} />;
+    const sp = panel as ServerStatusPanel;
+    return (
+      <ServerStatusView
+        key={panel.id}
+        connectionId={panel.connectionId}
+        connectionName={panel.connectionName}
+        panelId={panel.id}
+        initialData={sp.data}
+        onDataChange={(data) =>
+          onUpdatePanelData(panel.id, {
+            ...sp.data,
+            status: data.status,
+            variables: data.variables,
+            history: data.history,
+          } satisfies ServerStatusCache)
+        }
+      />
+    );
   }
 
   if (panel.type === 'processes') {
-    return <ProcessListView connectionId={panel.connectionId} />;
+    const pp = panel as ProcessesPanel;
+    return (
+      <ProcessListView
+        key={panel.id}
+        connectionId={panel.connectionId}
+        connectionName={panel.connectionName}
+        panelId={panel.id}
+        initialData={pp.data}
+        onDataChange={(data) =>
+          onUpdatePanelData(panel.id, {
+            ...pp.data,
+            rows: data.rows,
+            columns: data.columns,
+          } satisfies ProcessListCacheData)
+        }
+      />
+    );
   }
 
   if (panel.type === 'db-object') {

@@ -69,7 +69,9 @@ export function getPanelIcon(panel: Panel): ReactNode {
   }
 }
 
-export function getPanelLabel(panel: Panel): string {
+export function getPanelLabel(panel: Panel, t?: (key: TranslationKey) => string): string {
+  const tr = (key: TranslationKey, fallback: string) => (t ? t(key) : fallback);
+  const conn = (label: string) => `${panel.connectionName} · ${label}`;
   switch (panel.type) {
     case 'table':
       return (panel as TablePanel).tableName;
@@ -86,9 +88,9 @@ export function getPanelLabel(panel: Panel): string {
     case 'privileges':
       return 'Privileges';
     case 'server-status':
-      return 'Server Status';
+      return conn(tr('serverStatus.dashboardTitle', 'Server Dashboard'));
     case 'processes':
-      return 'Processes';
+      return conn(tr('processList.title', 'Process List'));
     case 'db-object':
       return (panel as DatabaseObjectPanel).objectName;
     case 'redis-db':
@@ -138,6 +140,28 @@ export function resolveConnectionContext(
   if (!saved) return null;
   return {
     configId: entry.configId,
+    connectionId: entry.connectionId,
+    connectionName: saved.name,
+    databaseType: saved.databaseType,
+  };
+}
+
+/**
+ * 按 configId（持久化连接配置 ID）直接解析当前活动连接上下文。
+ * 右键菜单已知用户点击的连接的 configId，据此同步取到该连接的实时 connectionId，
+ * 明确绑定面板，避免读取「全局活动连接」串数据。
+ */
+export function resolveConnectionContextByConfig(
+  configId: string,
+  activeConnections: ReturnType<typeof useActiveConnectionStore.getState>['connections'],
+  savedConnections: ReturnType<typeof useConnectionStore.getState>['connections'],
+): ConnectionContext | null {
+  const entry = activeConnections[configId];
+  if (!entry?.connectionId) return null;
+  const saved = savedConnections.find((c) => c.id === configId);
+  if (!saved) return null;
+  return {
+    configId,
     connectionId: entry.connectionId,
     connectionName: saved.name,
     databaseType: saved.databaseType,
