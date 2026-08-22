@@ -24,9 +24,27 @@ export function formatPercent(value: number | null | undefined): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+const EPOCH_MS_MIN = Date.UTC(2000, 0, 1); // 946684800000
+const EPOCH_MS_MAX = Date.UTC(2100, 0, 1); // 4102444800000
+
+/** Detect a value in the reasonable epoch-ms range (2000–2100). */
+function isEpochMs(v: number): boolean {
+  return v >= EPOCH_MS_MIN && v <= EPOCH_MS_MAX;
+}
+
+/** Format epoch-ms as a wall-clock `HH:mm:ss`. */
+export function formatEpochMs(ts: number): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 export function formatAxisTick(value: unknown): string {
   if (value == null) return '';
-  if (typeof value === 'number') return formatNumber(value);
+  if (typeof value === 'number') {
+    // A time-axis value (epoch ms) renders as a clock time; other numbers as-is.
+    return isEpochMs(value) ? formatEpochMs(value) : formatNumber(value);
+  }
   const str = String(value);
   return str.length > 20 ? `${str.slice(0, 18)}…` : str;
 }

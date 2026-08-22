@@ -203,7 +203,7 @@ export function ConnectionWorkspaceHome({
                 >
                   {getPanelIcon(panel)}
                   <span className="min-w-0 flex-1 truncate text-sm text-fg">
-                    {getPanelLabel(panel)}
+                    {getPanelLabel(panel, t)}
                   </span>
                 </button>
               ))}

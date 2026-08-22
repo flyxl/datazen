@@ -49,6 +49,7 @@ import { buildConnectionUrl } from '../../lib/buildConnectionUrl';
 import { groupConnections, useConnectionStore } from '../../stores/connectionStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useSchemaStore } from '../../stores/schemaStore';
+import type { ConnectionOpenTarget } from '../../lib/connectionViews/types';
 import { showWebContextMenu } from '../../stores/contextMenuStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { shouldUseMultiDatabaseTree } from './schema-tree/SchemaTree';
@@ -391,8 +392,8 @@ export interface ConnectionNavigatorTreeProps {
       schema?: string,
     ) => void;
     openQueryHistory?: () => void;
-    openServerStatus?: () => void;
-    openProcessList?: () => void;
+    openServerStatus?: (ctx?: ConnectionOpenTarget) => void;
+    openProcessList?: (ctx?: ConnectionOpenTarget) => void;
   };
 }
 
@@ -435,6 +436,24 @@ export const ConnectionNavigatorTree = forwardRef<
   const saveConnection = useConnectionStore((s) => s.saveConnection);
   const activeConnections = useActiveConnectionStore((s) => s.connections);
   const connect = useActiveConnectionStore((s) => s.connect);
+
+  /**
+   * 由右键点击的连接显式构造「打开进程列表 / 服务器仪表盘」的目标连接，
+   * 直接把 configId + 当前实时 connectionId 传给面板，避免依赖全局活动连接串数据。
+   */
+  const buildOpenTarget = useCallback(
+    (conn: { id: string; name: string; databaseType: string }): ConnectionOpenTarget | null => {
+      const live = activeConnections[conn.id]?.connectionId;
+      if (!live) return null;
+      return {
+        configId: conn.id,
+        connectionId: live,
+        connectionName: conn.name,
+        databaseType: conn.databaseType as ConnectionOpenTarget['databaseType'],
+      };
+    },
+    [activeConnections],
+  );
 
   // ── Group dialog state ──
   const [newGroupDialogOpen, setNewGroupDialogOpen] = useState(false);
@@ -1127,7 +1146,7 @@ export const ConnectionNavigatorTree = forwardRef<
             onServerStatus: supportsServerStatus
               ? () => {
                   onSelectConnection(conn.id);
-                  viewActions?.openServerStatus?.();
+                  viewActions?.openServerStatus?.(buildOpenTarget(conn) ?? undefined);
                 }
               : undefined,
             onPin: () => {
@@ -1139,7 +1158,7 @@ export const ConnectionNavigatorTree = forwardRef<
             onProcessList: supportsProcessList
               ? () => {
                   onSelectConnection(conn.id);
-                  viewActions?.openProcessList?.();
+                  viewActions?.openProcessList?.(buildOpenTarget(conn) ?? undefined);
                 }
               : undefined,
             onBackup: supportsBackup

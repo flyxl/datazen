@@ -8,16 +8,62 @@ import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { useI18n } from '../../hooks/useI18n';
 import { driverCommands } from '../../commands/driver';
 import { commandResultColumns, commandResultRows } from '../../lib/processListResult';
-import type { QueryResult, Value } from '../../types';
+import type { QueryResult, Value, ColumnInfo } from '../../types';
+
+export interface ProcessListCache {
+  rows: (string | number | boolean | null)[][];
+  columns?: { name: string; dataType: string; nullable?: boolean }[];
+}
 
 interface ProcessListViewProps {
   connectionId: string;
+  connectionName?: string;
+  /** 面板 id（用于把加载的数据写回对应 tab）。 */
+  panelId?: string;
+  /** 该 tab 已缓存的数据；用于首帧直接展示，随后总是重新拉取以保证最新。 */
+  initialData?: ProcessListCache;
+  /** 加载完成后把最新数据写回对应面板。 */
+  onDataChange?: (data: ProcessListCache) => void;
 }
 
-export function ProcessListView({ connectionId }: ProcessListViewProps) {
+function panelDataToQueryResult(data: ProcessListCache): QueryResult {
+  return {
+    columns: data.columns?.length
+      ? data.columns.map((c) => ({
+          name: c.name,
+          dataType: c.dataType,
+          nullable: c.nullable ?? true,
+        }))
+      : [],
+    rows: data.rows as Value[][],
+    executionTimeMs: 0,
+  };
+}
+
+function queryResultToPanelData(result: QueryResult | null): ProcessListCache | null {
+  if (!result) return null;
+  const columns: ColumnInfo[] = result.columns ?? [];
+  return {
+    rows: (result.rows ?? []) as (string | number | boolean | null)[][],
+    columns: columns.map((c) => ({
+      name: c.name,
+      dataType: c.dataType,
+      nullable: c.nullable ?? true,
+    })),
+  };
+}
+
+export function ProcessListView({
+  connectionId,
+  connectionName,
+  initialData,
+  onDataChange,
+}: ProcessListViewProps) {
   const { t } = useI18n();
   const [confirmKill, confirmKillDialog] = useConfirmDialog();
-  const [result, setResult] = useState<QueryResult | null>(null);
+  const [result, setResult] = useState<QueryResult | null>(() =>
+    initialData ? panelDataToQueryResult(initialData) : null,
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [highlightedRow, setHighlightedRow] = useState<number | null>(null);
@@ -32,23 +78,31 @@ export function ProcessListView({ connectionId }: ProcessListViewProps) {
         command: 'list_processes',
         input: {},
       });
-      setResult(commandResultRows(response.data));
+      const next = commandResultRows(response.data);
+      setResult(next);
+      const cached = queryResultToPanelData(next);
+      if (cached) onDataChange?.(cached);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setResult(null);
     } finally {
       setLoading(false);
     }
+  }, [connectionId, onDataChange]);
+
+  // 按 connectionId 拉取；切换进程列表 tab 时若组件被复用，必须重新加载，避免串数据。
+  // 故意不依赖 load：onDataChange 每帧可能是新引用，纳入依赖会无限重拉。
+  useEffect(() => {
+    setResult(initialData ? panelDataToQueryResult(initialData) : null);
+    setHighlightedRow(null);
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionId]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
   const columns: ColumnDef[] = useMemo(() => {
-    if (!result) return commandResultColumns([]);
-    return result.columns.map((c) => ({ id: c.name, name: c.name, type: c.dataType }));
-  }, [result]);
+    if (!result) return commandResultColumns([], t);
+    return commandResultColumns(result.columns, t);
+  }, [result, t]);
 
   const pidColumnIndex = useMemo(() => {
     if (!result) return -1;
@@ -91,6 +145,10 @@ export function ProcessListView({ connectionId }: ProcessListViewProps) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-edge px-3">
         <span className="text-xs font-medium text-fg">{t('processList.title')}</span>
+        <span className="truncate text-xs text-fg-muted" title={connectionName}>
+          {connectionName}
+        </span>
+        <span className="h-3 w-px bg-edge" />
         <div className="flex-1" />
         <Button
           variant="ghost"
