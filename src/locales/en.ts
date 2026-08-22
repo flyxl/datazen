@@ -205,6 +205,13 @@ const en: Record<TranslationKey, string> = {
   'plugins.install.description': 'Select a local plugin package (.zip) to install.',
   'plugins.install.pathLabel': 'Plugin package (.zip)',
   'plugins.install.pathPlaceholder': '/path/to/plugin.zip',
+  'plugins.install.next': 'Continue',
+  'plugins.install.back': 'Back',
+  'plugins.install.inspecting': 'Checking…',
+  'plugins.install.permissions': 'Requested permissions',
+  'plugins.install.noPermissions': 'This package requests no permissions.',
+  'plugins.page.groupWorkspace': 'Workspace pages',
+  'plugins.page.groupTheme': 'Themes',
   'plugins.install.confirm': 'Install',
   'plugins.install.installing': 'Installing…',
 

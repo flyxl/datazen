@@ -196,6 +196,13 @@ const zhCN = {
   'plugins.install.description': '选择本地插件包（.zip）进行安装。',
   'plugins.install.pathLabel': '插件包（.zip）',
   'plugins.install.pathPlaceholder': '/path/to/plugin.zip',
+  'plugins.install.next': '继续',
+  'plugins.install.back': '返回',
+  'plugins.install.inspecting': '校验中…',
+  'plugins.install.permissions': '申请的权限',
+  'plugins.install.noPermissions': '该插件包未申请任何权限。',
+  'plugins.page.groupWorkspace': 'Workspace 页面',
+  'plugins.page.groupTheme': '主题',
   'plugins.install.confirm': '安装',
   'plugins.install.installing': '安装中…',
 
