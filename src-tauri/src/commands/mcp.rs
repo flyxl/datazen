@@ -268,12 +268,34 @@ mod tests {
     use super::*;
     use crate::testing::app_state::TestAppState;
 
+    /// Serializes every test that touches the process-global MCP_HANDLE:
+    /// parallel `reset/start/stop` from sibling tests used to cancel another
+    /// test's embedded server mid-flight (flaky only under full-suite load).
+    static MCP_LIFECYCLE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     async fn reset_mcp_handle() {
         let _ = stop_embedded_mcp().await;
     }
 
+    /// Poll `mcp_is_running` up to a deadline instead of a fixed sleep — the
+    /// embedded server start is asynchronous and a bare 50ms wait races under
+    /// parallel test scheduling (observed flaky on loaded machines).
+    async fn wait_until_mcp_running(timeout_ms: u64) -> bool {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+        loop {
+            if mcp_is_running().await {
+                return true;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return false;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+
     #[tokio::test]
     async fn mcp_get_status_when_stopped() {
+        let _guard = MCP_LIFECYCLE_LOCK.lock().await;
         reset_mcp_handle().await;
         let status = mcp_get_status().await.unwrap();
         assert!(!status.running);
@@ -282,16 +304,16 @@ mod tests {
 
     #[tokio::test]
     async fn start_embedded_mcp_reports_running() {
+        let _guard = MCP_LIFECYCLE_LOCK.lock().await;
         reset_mcp_handle().await;
         let test = TestAppState::new().await;
         start_embedded_mcp(&test.state).await.unwrap();
 
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let status = mcp_get_status().await.unwrap();
         assert!(
-            status.running,
+            wait_until_mcp_running(2000).await,
             "embedded MCP should stay running with duplex keepalive"
         );
+        let status = mcp_get_status().await.unwrap();
         assert_eq!(status.transport, "stdio");
 
         stop_embedded_mcp().await.unwrap();
@@ -301,21 +323,29 @@ mod tests {
 
     #[tokio::test]
     async fn reload_embedded_mcp_restarts_when_running() {
+        let _guard = MCP_LIFECYCLE_LOCK.lock().await;
         reset_mcp_handle().await;
         let test = TestAppState::new().await;
         start_embedded_mcp(&test.state).await.unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        assert!(mcp_is_running().await);
+        assert!(
+            wait_until_mcp_running(2000).await,
+            "embedded MCP should be running after start"
+        );
 
         reload_embedded_mcp(&test.state).await.unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        assert!(mcp_is_running().await);
+        assert!(
+            wait_until_mcp_running(2000).await,
+            "reloaded embedded MCP should be running again"
+        );
 
         stop_embedded_mcp().await.unwrap();
     }
 
     #[tokio::test]
     async fn reload_embedded_mcp_noop_when_stopped() {
+        let _guard = MCP_LIFECYCLE_LOCK.lock().await;
         reset_mcp_handle().await;
         let test = TestAppState::new().await;
         reload_embedded_mcp(&test.state).await.unwrap();
