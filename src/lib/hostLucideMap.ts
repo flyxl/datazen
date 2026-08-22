@@ -23,6 +23,7 @@ export const HOST_LUCIDE_MAP: Record<UiIconId, string> = {
 /** Settings sidebar sections — extended ids beyond v1 catalog. */
 export const SETTINGS_SECTION_LUCIDE_MAP: Record<string, string> = {
   general: 'Globe',
+  appearance: 'Palette',
   dataBrowsing: 'Table2',
   editor: 'Code2',
   behavior: 'MousePointerClick',

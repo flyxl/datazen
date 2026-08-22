@@ -34,10 +34,9 @@ describe('settings section icon chain (F7)', () => {
     }
   });
 
-  // BUG-F7-01 deviation pin: ThemedIcon's internal LUCIDE_MAP lacks `Palette`,
-  // so the resolved lucide name degrades to the `?` placeholder span today.
-  // Once fixed (add Palette import), flip this to expect an svg glyph.
-  it('documents BUG-F7-01: appearance maps to Palette but renders the ? placeholder', () => {
+  // BUG-F7-01 fixed: ThemedIcon's internal LUCIDE_MAP now includes `Palette`,
+  // so the resolved lucide name renders as an svg glyph (no ? placeholder).
+  it('renders settings.appearance Palette as an svg glyph (BUG-F7-01 fixed)', () => {
     installDefaultResolver();
     expect(getActiveIconResolver().resolve('settings.appearance')).toEqual({
       kind: 'lucide',
@@ -45,7 +44,7 @@ describe('settings section icon chain (F7)', () => {
     });
 
     const { container } = render(<ThemedIcon id="settings.appearance" />);
-    expect(container.querySelector('svg')).toBeNull();
-    expect(screen.getByText('?')).toBeInTheDocument();
+    expect(container.querySelector('svg')).not.toBeNull();
+    expect(screen.queryByText('?')).toBeNull();
   });
 });

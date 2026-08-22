@@ -475,7 +475,7 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 
 | ID | 严重度 | 状态 |
 |----|--------|------|
-| BUG-F7-01 | 低危（外观图标缺口，不阻断；含 commit 漏提交的工作区功能行，合并时须一并处理） | 新建 |
+| BUG-F7-01 | 低危（外观图标缺口，不阻断；含 commit 漏提交的工作区功能行，合并时须一并处理） | 待验证（ThemedIcon LUCIDE_MAP 已补 Palette 映射并导入；settingsSectionIcons 钉住例已翻转为断言 svg 渲染） |
 
 ## 回归测试
 
