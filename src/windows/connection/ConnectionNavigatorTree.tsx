@@ -1069,7 +1069,11 @@ export const ConnectionNavigatorTree = forwardRef<
           .filter((g) => g !== conn.group)
           .map((g) => ({ id: g, label: formatGroupLabel(g, t) }));
 
-        const commands = await driverCommands.getDriverCommands(conn.databaseType);
+        // Command discovery is best-effort: a failed probe must not block
+        // the context menu — the menu only loses its driver-specific entries.
+        const commands = await driverCommands
+          .getDriverCommands(conn.databaseType)
+          .catch(() => undefined);
         const supportsServerStatus =
           isConnected && hasCommand(commands, SERVER_STATUS_SNAPSHOT_COMMAND);
         const supportsProcessList = isConnected && hasCommand(commands, LIST_PROCESSES_COMMAND);
