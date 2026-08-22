@@ -80,7 +80,7 @@ describe('ObjectBrowser', () => {
     fireEvent.contextMenu(row);
     await waitFor(() => expect(showNativeContextMenu).toHaveBeenCalled());
     const items = showNativeContextMenu.mock.calls[0]![0] as Array<{ id?: string }>;
-    expect(items.map((i) => i.id)).toEqual(['open', 'copy-name', 'copy-ddl', 'refresh']);
+    expect(items.map((i) => i.id)).toEqual(['refresh', 'open', 'copy-name', 'copy-ddl']);
   });
 
   it('switches kind and shows load errors', async () => {

@@ -138,7 +138,12 @@ export function RunHistoryDrawer({
             <h2 className="text-sm font-semibold text-fg">{t('dashboard.runHistory')}</h2>
             <p className="truncate text-xs text-fg-muted">{widget.title}</p>
           </div>
-          <Button variant="ghost" className="h-7 w-7 px-0" onClick={onClose}>
+          <Button
+            variant="ghost"
+            className="h-7 w-7 px-0"
+            onClick={onClose}
+            aria-label={t('common.close')}
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>
