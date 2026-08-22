@@ -6,6 +6,9 @@ import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { pluginCommands } from '../../commands/plugins';
 import { usePluginStore } from '../../stores/pluginStore';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { attachBridge, type UiPluginBridgeHandle } from '../../lib/uiPluginBridge';
+import type { PluginPermission } from '../../types/plugin';
 import type { WorkspaceTab } from '../../stores/workspaceTabsStore';
 import { PluginIcon } from './PluginIcon';
 
@@ -91,6 +94,40 @@ export function PluginPageShell({ tab, active }: PluginPageShellProps) {
   const [failed, setFailed] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
   const resolvingRef = useRef(false);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const bridgeRef = useRef<UiPluginBridgeHandle | null>(null);
+
+  // F6 RPC bridge: one attach per iframe instance (key changes on reload).
+  // `theme-pack-changed` covers pack installs/removals; the MutationObserver
+  // covers every dark/light switch path — they all end in a `dark` class
+  // toggle on documentElement (settingsStore.applyTheme / useThemeSync).
+  useEffect(() => {
+    const el = iframeRef.current;
+    if (phase.kind !== 'ready' || !el) return;
+    const permissions: PluginPermission[] =
+      usePluginStore.getState().byId(tab.pluginId)?.permissions ?? [];
+    const bridge = attachBridge(el, {
+      pluginId: tab.pluginId,
+      permissions,
+      locale: useSettingsStore.getState().settings.language,
+    });
+    bridgeRef.current = bridge;
+
+    const pushSnapshot = () => bridge.pushThemeSnapshot();
+    document.addEventListener('datazen:theme-pack-changed', pushSnapshot);
+    const themeClassObserver = new MutationObserver(pushSnapshot);
+    themeClassObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+
+    return () => {
+      document.removeEventListener('datazen:theme-pack-changed', pushSnapshot);
+      themeClassObserver.disconnect();
+      bridge.detach();
+      if (bridgeRef.current === bridge) bridgeRef.current = null;
+    };
+  }, [phase.kind, reloadNonce, tab.pluginId]);
 
   useEffect(() => {
     if (active) setEverActivated(true);
@@ -164,10 +201,12 @@ export function PluginPageShell({ tab, active }: PluginPageShellProps) {
       <div className="relative min-h-0 flex-1">
         {showIframe ? (
           <>
-            {/* F6 (message bridge): attach the postMessage listener here; only
-                trust messages whose event.source === this iframe.contentWindow. */}
+            {/* F6 (message bridge): attached in the effect above; only
+                messages whose event.source === this iframe.contentWindow are
+                trusted, and manifest permissions gate every routed API. */}
             <iframe
               key={reloadNonce > 0 ? `${tab.key}#${reloadNonce}` : tab.key}
+              ref={iframeRef}
               data-testid="plugin-iframe"
               title={tab.title}
               sandbox="allow-scripts"
