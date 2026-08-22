@@ -31,8 +31,9 @@
       "csp": {
         "default-src": "'self'",
         "script-src": "'self'",
+        "frame-src": "'self' datazen:",
         "style-src": "'self' 'unsafe-inline'",
-        "img-src": "'self' data: asset: tauri: blob:",
+        "img-src": "'self' data: asset: tauri: blob: datazen:",
         "font-src": "'self' blob: data:",
         "connect-src": "'self' https: http: ipc: http://ipc.localhost"
       },
