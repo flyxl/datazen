@@ -5,6 +5,7 @@
 //! state via a `.enabled` marker file, and is shared through `AppState`.
 pub mod install;
 pub mod manifest;
+pub mod protocol;
 pub mod storage;
 
 #[cfg(test)]
@@ -15,13 +16,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
-// Re-exported for the IPC layer and the upcoming `datazen://` asset service (F2).
+// Re-exported for the IPC layer and the `datazen://` asset service (F2);
+// consumed via `crate::plugins::…` paths, so unused-import lint is expected.
 #[allow(unused_imports)]
 pub use manifest::{
     allowed_plugin_extension, is_valid_plugin_id, parse_manifest, validate_manifest,
     validate_plugin_dir, Contributions, PageContribution, Permission, PluginManifest,
     ThemeContribution, MAX_PLUGIN_FILES, MAX_PLUGIN_UNCOMPRESSED,
 };
+#[allow(unused_imports)]
+pub use protocol::{handle_datazen_request, parse_datazen_uri, PLUGINS_OPEN_PAGE_EVENT};
 pub use storage::{storage_get, storage_remove, storage_set};
 
 /// Host-side runtime plugin API version; packages must declare
