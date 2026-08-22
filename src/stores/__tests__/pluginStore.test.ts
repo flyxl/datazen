@@ -142,6 +142,22 @@ describe('pluginStore', () => {
     expect(usePluginStore.getState().error).toBe('busy');
   });
 
+  it('setEnabled optimistic flip leaves other plugins untouched', async () => {
+    const other = makePlugin({ id: 'acme.midnight', enabled: true });
+    mockPluginCommands.listPlugins
+      .mockResolvedValueOnce([makePlugin(), other])
+      .mockResolvedValueOnce([makePlugin({ enabled: false }), other]);
+    await importStore();
+    await usePluginStore.getState().fetch();
+
+    await usePluginStore.getState().setEnabled('acme.demo', false);
+
+    const state = usePluginStore.getState();
+    expect(state.plugins.find((p) => p.id === 'acme.demo')?.enabled).toBe(false);
+    expect(state.plugins.find((p) => p.id === 'acme.midnight')?.enabled).toBe(true);
+    expect(state.error).toBeNull();
+  });
+
   it('byId finds installed plugins by manifest id', async () => {
     mockPluginCommands.listPlugins.mockResolvedValueOnce([
       makePlugin(),
@@ -168,5 +184,40 @@ describe('pluginStore', () => {
     handler();
     await Promise.resolve();
     expect(mockPluginCommands.listPlugins).toHaveBeenCalled();
+  });
+
+  // --- F3 supplementary (test agent) ---
+
+  it('fetch failure surfaces non-Error rejection strings verbatim', async () => {
+    mockPluginCommands.listPlugins.mockRejectedValueOnce('ipc unavailable');
+    await importStore();
+    await usePluginStore.getState().fetch();
+    expect(usePluginStore.getState().error).toBe('ipc unavailable');
+  });
+
+  it('plugins:changed refetch swaps in fresh data once the event fires', async () => {
+    await importStore();
+    const handler = listenMock.mock.calls[0][1] as () => void;
+
+    mockPluginCommands.listPlugins.mockResolvedValueOnce([makePlugin({ id: 'acme.fresh' })]);
+    handler();
+
+    await vi.waitFor(() => {
+      expect(usePluginStore.getState().plugins.map((p) => p.id)).toEqual(['acme.fresh']);
+    });
+    expect(usePluginStore.getState().error).toBeNull();
+  });
+
+  it('retries the plugins:changed subscription after a failed attempt', async () => {
+    listenMock.mockRejectedValueOnce(new Error('outside tauri runtime'));
+    const { ensurePluginsChangedListener } = await importStore();
+
+    // Import-time subscribe rejected; flush tasks so the catch resets the guard.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(listenMock).toHaveBeenCalledTimes(1);
+    expect(listenMock.mock.calls[0][0]).toBe('plugins:changed');
+
+    ensurePluginsChangedListener(); // guard was reset → subscribes again
+    expect(listenMock).toHaveBeenCalledTimes(2);
   });
 });

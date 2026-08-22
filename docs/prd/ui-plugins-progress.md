@@ -9,7 +9,7 @@
 |---|------|---------|------|------------|------------|
 | F1 | Rust 插件基座 | plugins/{mod,manifest,install,storage}.rs、IPC 命令组、AppState、单测（capabilities 走既有 ACL 豁免，见测试记录） | 已完成 | 900b9330 | d9d265b3 |
 | F2 | datazen:// 协议 | register_uri_scheme_protocol：path 资产服务 + open 深链 + CSP/403/404 | 已完成 | 4c75f1b0 | ffdf64b3 | —（仅追加测试文件，未 commit） |
-| F3 | 前端状态与 IPC 封装 | types/plugin.ts、pluginStore、workspaceTabsStore、commands/plugins.ts（27 单测；全量 vitest 3 个既有失败与本功能无关） | 待测试 | 149d3b2a | — |
+| F3 | 前端状态与 IPC 封装 | types/plugin.ts、pluginStore、workspaceTabsStore、commands/plugins.ts（42 单测全绿；覆盖率 Lines 100%/Branch 96.87%；全量 vitest 4 个失败文件均为分支既有，见测试记录） | 测试完成 | 149d3b2a | —（仅追加测试文件，未 commit） |
 | F4 | 主窗口集成 | WorkspaceMode 扩展、aside 两按钮、Workspace 导航栏/默认卡片/独立 Tab 条/页面壳（静态） | 未开始 | — | — |
 | F5 | 插件管理页 | PluginManagementPage + InstallPluginDialog（卡片/过滤/安装/启停/卸载） | 未开始 | — | — |
 | F6 | RPC 桥 | uiPluginBridge：信封路由、权限判定、限流超时、token 快照推送 | 未开始 | — | — |
@@ -167,6 +167,60 @@ Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已�
 | BUG-F2-01 | 低危加固 | Windows 形态解析面宽于规格字面：`datazen.` 后无 `/` 直接接 host 也被接受 | `parse_datazen_uri("http://datazen.acme.bill-audit/index.html")` → Ok 且与规范形等价 | 规格：仅 `http://datazen./<host>/<path>`；实际：`http(s)://datazen.<host>/<path>` 别名同样可达。同一校验链仍全程生效，无安全影响；如需收紧可在 strip_scheme 要求紧随 `/` | 新建 |
 | DEV-F2-01 | 备注 | MIME 表为 themePackApply.ts 映射的**超集**而非"同表复制"：新增 html/js/mjs/css/json（插件 UI 页面必需）；共享 5 项（svg/webp/png/woff2/woff）取值一致无冲突 | 对照 src/lib/themePackApply.ts `MIME_BY_EXT`（5 项）与 content_type_for（10 项） | 规格措辞"同表复制"；实际为合理超集，主题包场景取值完全兼容 | 备注 |
 | DEV-F2-02 | 备注 | Tauri 接线层（handle_datazen_request 及 emit_open_page）无自动化直测 | 见覆盖率结论 L301–355 说明 | 单测需 tauri mock runtime；当前以 datazen_response 直测 + 注册点审查旁证。若 F9 E2E 需要端到端协议验证，建议届时补 WebdriverIO 层用例 | 备注（F9 承接评估） |
+
+### F3（前端状态与 IPC 封装，commit 149d3b2a）
+
+- 测试 agent 会话，2026-08-22。规格依据：ui-plugins-implementation.md §4.1；后端契约以 `src-tauri/src/commands/plugins.rs` 与 `plugins/manifest.rs` 为准。
+- 执行命令：
+  - 目标套件：`npx vitest run src/stores/__tests__/{pluginStore,workspaceTabsStore}.test.ts src/commands/__tests__/plugins.test.ts src/types/__tests__/plugin.test.ts` → **42 passed / 0 failed**（27 既有 + 15 新增，0.7s）
+  - 全量回归：`npx vitest run` → **1572 passed / 3 failed tests（4 failed files）/ 207 文件**；`git stash -u` 干净树复跑 → **完全相同的 4 个失败文件**（206 文件 / 1560 用例），确认与本功能无关
+  - 覆盖率：`npx vitest run --coverage`（v8 provider，include 仅限四个被测文件）
+
+#### 契约复核结论（逐条对照）
+
+| 契约项 | 前端 | 后端 | 结论 |
+|--------|------|------|------|
+| `PluginSummary` 字段 | types/plugin.ts:74-85（apiVersion/enabled/permissions/pages/themes） | commands/plugins.rs:49-64 `rename_all="camelCase"`；author/description/icon 走 `skip_serializing_if` 省略 | ✅ 一一对应；TS 侧声明为可选与省略语义兼容 |
+| `Permission` 四字符串 | `'context:connections'/'command:invoke'/'storage:local'/'ui:notify'` | manifest.rs:97-105 serde rename + `as_str()`（commands/plugins.rs:77-81 序列化路径） | ✅ 完全一致（fixture 编译期 `satisfies` 锁定） |
+| `PluginManifest` | 含 showIn/tokensCss/modes/previewImage/backend?:unknown\|null | manifest.rs:39-96 camelCase + deny_unknown_fields | ✅ 一致；backend v1 恒 null 有 fixture 断言 |
+| API 版本 | `UI_PLUGIN_API_VERSION = 2` | `PLUGIN_API_VERSION = 2`（plugins/mod.rs） | ✅ 一致 |
+| 命令名 ×9 | invoke 名 list_plugins / get_plugin_manifest / install_plugin_from_path / remove_plugin / set_plugin_enabled / plugin_storage_{get,set,remove} / read_plugin_file | 同名 `#[tauri::command]` 且 lib.rs:977-985 全部注册 | ✅ 一致 |
+| 参数键名 | `{pluginId,key}`、`{id,relativePath}`、`{path}`、`{id,enabled}` 等 camelCase | Rust snake_case 形参（plugin_id/relative_path），Tauri v2 自动映射 | ✅ 正确 |
+| 事件名 | `PLUGINS_CHANGED_EVENT='plugins:changed'`（commands/plugins.ts:5） | 同值常量并在 install/remove/set_enabled 成功后 emit（commands/plugins.rs:19,340,351,363） | ✅ 一致 |
+
+#### 新增测试文件
+
+既有 `__tests__` 内追加用例（零功能代码改动）：`workspaceTabsStore.test.ts` +5、`pluginStore.test.ts` +4、`commands/plugins.test.ts` +2；新增 `src/types/__tests__/plugin.test.ts`（serde 形态契约 fixture，编译期 `satisfies` 防漂移）。
+
+#### 用例清单（42 例全部 PASS）
+
+| 分组 | 场景 | 数量 | 结论 |
+|------|------|------|------|
+| pluginStore（12） | fetch 成功填充+清 error、失败置 error（Error 与非 Error 字符串两分支）、loaded 标记、setEnabled 乐观翻转→refetch 对账、仅翻转目标插件不误伤他插件、setEnabled 失败经 refetch 回滚并重抛、remove 成功刷新/失败置 error 重抛、byId 命中与不存在返回 undefined、`plugins:changed` 订阅恰一次+事件触发 refetch 换新数据、listen 失败后守卫复位可重试 | 12 | PASS |
+| workspaceTabsStore（17） | open 追加激活、open 幂等（key 冲突原位刷新元数据）、open 重聚焦非激活重复 key、activate 仅对存在 tab 生效、close 矩阵全量：关中间→右邻/关首→右邻/关尾→左邻/关唯一→null/关非激活保持选中/未知 key 无操作、closeByPlugin 批量关+锚点落位（首移除槽位锚定、尾移除左邻回退、他插件激活保持、清空置 null、未知插件 no-op）、`workspaceTabKey` 冒号拼接格式 | 17 | PASS |
+| commands/plugins（9） | 全部 9 个 invoke 的命令名+参数键断言、install/manifest/storage 值/readPluginFile 载荷透传、事件名与 API 版本契约常量 | 9 | PASS |
+| types/plugin（4） | UI_PLUGIN_API_VERSION==Rust PLUGIN_API_VERSION(2)、Permission 四串精确集合、serde 形态 PluginSummary（可选字段省略）与 PluginManifest（showIn/tokensCss/backend=null）fixture | 4 | PASS |
+
+#### 覆盖率结论（vitest 4.1.10 + @vitest/coverage-v8，include 仅四个被测文件实测）
+
+| 文件 | %Stmts | %Branch | %Funcs | %Lines |
+|------|--------|---------|--------|--------|
+| src/commands/plugins.ts | 100 | 100 | 100 | 100 |
+| src/stores/pluginStore.ts | 96.77 | 83.33 | 100 | 100 |
+| src/stores/workspaceTabsStore.ts | 100 | 100 | 100 | 100 |
+| src/types/plugin.ts | 100 | 100 | 100 | 100 |
+| **合计** | **98.82** | **96.87** | **100** | **100** |
+
+**四文件 Lines/Stmts/Funcs 均 ≥96%，Branch 合计 96.87%，≥80% 目标达标**（且高于 vitest.config 既有 stores 门槛 lines/statements 80、functions 75、branches 55）。残余未覆盖：pluginStore.ts L75 一带（`setEnabled` catch 内 refetch 自身再失败的极端分支，v8 行级 remap 显示为部分命中）；四个文件当前无其他生产调用方（F4+ 未开始），上述数字即完整口径。
+
+#### Bug 列表
+
+无功能缺陷（目标套件 0 FAIL）。登记备注 2 条：
+
+| ID | 类型 | 描述 | 重现步骤 | 期望 vs 实际 | 状态 |
+|----|------|------|---------|-------------|------|
+| NOTE-F3-01 | 备注 | 进度表旧文案「全量 vitest 3 个既有失败」不准确：实为 **4 个失败文件**（ConnectionNavigatorTree 文件级收集失败 + RunHistoryDrawer/WidgetEditorDrawer/ObjectBrowser 各 1 失败用例 = 3 个失败用例分布在 4 个文件） | 干净树（git stash -u）复跑 `npx vitest run` 对比 | 表述偏差，失败本身与本功能无关已复核 | 已在本表 F3 行修正 |
+| NOTE-F3-02 | 备注 | pluginStore 在模块 import 时即执行 `ensurePluginsChangedListener()`（模块级副作用）；非 Tauri 环境 listen reject 后靠 catch 复位守卫支持后续重试 | 测试新增 retry 用例覆盖该路径 | PRD §4.1 只要求"监听 plugins:changed 刷新"，实现为超集且行为正确 | 备注 |
 
 ## 回归测试
 

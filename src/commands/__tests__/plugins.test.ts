@@ -84,4 +84,36 @@ describe('pluginCommands', () => {
     expect(PLUGINS_CHANGED_EVENT).toBe('plugins:changed');
     expect(UI_PLUGIN_API_VERSION).toBe(2);
   });
+
+  // --- F3 supplementary (test agent): payload passthrough ---
+
+  it('passes install and manifest payloads through untouched', async () => {
+    const summary = {
+      id: 'acme.demo',
+      name: 'Demo Plugin',
+      version: '1.0.0',
+      apiVersion: 2,
+      enabled: true,
+      permissions: ['storage:local'],
+      pages: [],
+      themes: [],
+    };
+    invokeMock.mockResolvedValueOnce(summary);
+    await expect(pluginCommands.installPluginFromPath('/tmp/acme')).resolves.toBe(summary);
+    expect(invokeMock).toHaveBeenLastCalledWith('install_plugin_from_path', { path: '/tmp/acme' });
+
+    const manifest = { id: 'acme.demo', apiVersion: 2, permissions: [] };
+    invokeMock.mockResolvedValueOnce(manifest);
+    await expect(pluginCommands.getPluginManifest('acme.demo')).resolves.toBe(manifest);
+  });
+
+  it('pluginStorageGet returns the raw storage value without wrapping', async () => {
+    const value = { nested: [1, 'a'] };
+    invokeMock.mockResolvedValueOnce(value);
+    await expect(pluginCommands.pluginStorageGet('acme.demo', 'k')).resolves.toBe(value);
+    expect(invokeMock).toHaveBeenLastCalledWith('plugin_storage_get', {
+      pluginId: 'acme.demo',
+      key: 'k',
+    });
+  });
 });

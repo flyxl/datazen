@@ -140,4 +140,52 @@ describe('workspaceTabsStore', () => {
     expect(useWorkspaceTabsStore.getState().tabs).toHaveLength(2);
     expect(useWorkspaceTabsStore.getState().activeKey).toBe(C().key);
   });
+
+  // --- F3 supplementary (test agent): key format, close-first, anchor edge ---
+
+  it('workspaceTabKey joins pluginId and pageId with ":"', () => {
+    expect(workspaceTabKey('acme.demo', 'main')).toBe('acme.demo:main');
+    expect(workspaceTabKey(A().pluginId, A().pageId)).toBe(A().key);
+  });
+
+  it('close matrix: active first → right neighbor', () => {
+    seed([A(), B(), C()], A().key);
+    useWorkspaceTabsStore.getState().close(A().key);
+
+    const state = useWorkspaceTabsStore.getState();
+    expect(state.tabs.map((t) => t.title)).toEqual(['B', 'C']);
+    expect(state.activeKey).toBe(B().key);
+  });
+
+  it('open refocuses an inactive duplicate key and refreshes metadata in place', () => {
+    seed([A(), C()], C().key);
+    useWorkspaceTabsStore
+      .getState()
+      .open(tab('acme.demo', 'main', { title: 'A2', icon: 'icon.svg' }));
+
+    const state = useWorkspaceTabsStore.getState();
+    expect(state.tabs.map((t) => t.title)).toEqual(['A2', 'C']);
+    expect(state.activeKey).toBe(A().key);
+  });
+
+  it('closeByPlugin anchors the fallback at the first removed slot', () => {
+    // Active tab is the LAST of the removed plugin's tabs; the anchor still
+    // points at the first removed position inside the filtered list.
+    const b2 = tab('acme.demo', 'extra', { title: 'B2' });
+    seed([C(), B(), b2, D()], b2.key);
+    useWorkspaceTabsStore.getState().closeByPlugin('acme.demo');
+
+    const state = useWorkspaceTabsStore.getState();
+    expect(state.tabs.map((t) => t.title)).toEqual(['C', 'D']);
+    expect(state.activeKey).toBe(D().key);
+  });
+
+  it('closeByPlugin falls back to the left neighbor when removal sits at the tail', () => {
+    seed([A(), C()], C().key);
+    useWorkspaceTabsStore.getState().closeByPlugin('acme.other');
+
+    const state = useWorkspaceTabsStore.getState();
+    expect(state.tabs.map((t) => t.title)).toEqual(['A']);
+    expect(state.activeKey).toBe(A().key);
+  });
 });
