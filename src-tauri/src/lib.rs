@@ -975,6 +975,7 @@ pub fn run() {
             commands::get_monitor_paused,
             commands::set_monitor_paused,
             commands::list_plugins,
+            commands::inspect_plugin_package,
             commands::install_plugin_from_path,
             commands::remove_plugin,
             commands::set_plugin_enabled,

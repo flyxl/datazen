@@ -164,6 +164,25 @@ pub(crate) async fn install_plugin_from_path_impl(
     }))
 }
 
+pub(crate) async fn inspect_plugin_package_impl(
+    path: String,
+) -> Result<PluginManifest, CommandError> {
+    let source = PathBuf::from(&path);
+    if !source.exists() {
+        return Err(CommandError::NotFound(format!(
+            "plugin package not found: {}",
+            source.display()
+        )));
+    }
+
+    // Full rule-set validation in a throwaway temp dir; nothing touches
+    // `{plugins_dir}` until `install_plugin_from_path` runs.
+    tokio::task::spawn_blocking(move || crate::plugins::install::inspect_plugin_package(&source))
+        .await
+        .map_err(|e| CommandError::Internal(format!("inspect_plugin_package task: {e}")))?
+        .map_err(CommandError::Validation)
+}
+
 pub(crate) async fn remove_plugin_impl(state: &AppState, id: String) -> Result<(), CommandError> {
     ensure_plugin_exists(state, &id)?;
 
@@ -339,6 +358,11 @@ pub async fn install_plugin_from_path(
     let summary = install_plugin_from_path_impl(&state, path).await?;
     let _ = app.emit(PLUGINS_CHANGED_EVENT, ());
     Ok(summary)
+}
+
+#[tauri::command]
+pub async fn inspect_plugin_package(path: String) -> Result<PluginManifest, CommandError> {
+    inspect_plugin_package_impl(path).await
 }
 
 #[tauri::command]
@@ -604,6 +628,49 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("apiVersion"), "{err}");
         assert!(list_plugins_impl(&test.state).is_empty());
+    }
+
+    #[tokio::test]
+    async fn inspect_plugin_package_previews_manifest_without_writing() {
+        let test = TestAppState::new().await;
+        let plugins_dir = test.state.plugins.plugins_dir().to_path_buf();
+
+        // Unknown path → NotFound.
+        let err = inspect_plugin_package_impl("/nonexistent/pkg.zip".into())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("not found"), "{err}");
+
+        let tmp = TempDir::new().unwrap();
+        let zip_path = tmp.path().join("demo.zip");
+        write_demo_zip(&zip_path);
+
+        // Valid package: manifest returned, plugins dir untouched.
+        assert!(!plugins_dir.exists() || plugins_dir.read_dir().unwrap().next().is_none());
+        let manifest = inspect_plugin_package_impl(zip_path.to_string_lossy().to_string())
+            .await
+            .unwrap();
+        assert_eq!(manifest.id, "acme.demo");
+        assert_eq!(manifest.version, "1.0.0");
+        assert!(list_plugins_impl(&test.state).is_empty());
+        assert!(!plugins_dir.join("acme.demo").exists());
+
+        // Invalid package surfaces the validation error.
+        let bad = tmp.path().join("bad.zip");
+        {
+            let file = fs::File::create(&bad).unwrap();
+            let mut zip = ZipWriter::new(file);
+            let options =
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+            let manifest = DEMO_MANIFEST.replace("\"apiVersion\": 2", "\"apiVersion\": 99");
+            zip.start_file("manifest.json", options).unwrap();
+            zip.write_all(manifest.as_bytes()).unwrap();
+            zip.finish().unwrap();
+        }
+        let err = inspect_plugin_package_impl(bad.to_string_lossy().to_string())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("apiVersion"), "{err}");
     }
 
     #[tokio::test]

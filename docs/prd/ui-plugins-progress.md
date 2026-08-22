@@ -22,10 +22,10 @@
 | ID | 功能 | 描述 | 重现步骤 | 状态 |
 |----|------|------|---------|------|
 | BUG-F2-01 | F2 | 【处置：backlog/P2 加固，不阻断】Windows 形态解析面宽于规格：`http(s)://datazen.<host>/<path>`（`datazen.` 后无 `/` 直接接 host）也被接受为合法别名 | `parse_datazen_uri("http://datazen.acme.bill-audit/index.html")` 返回 Ok（与 `http://datazen./acme.bill-audit/index.html` 等价）。规格 §2.4 字面仅定义 `http://datazen./<host>/<path>`。同一校验链（存在→enabled→路径→MIME）仍然全部生效，无安全影响，属低危加固项（可在 strip_scheme 中要求紧随分隔符） | 新建 |
-| BUG-F4-01 | F4 | 插件停用联动不完整：跨窗口/外部触发的 `plugins:changed` 只刷新 pluginStore，无人调 closeByPlugin，残留可激活的僵尸 Tab | 开插件 Tab → 另一窗口 set_plugin_enabled(false) → 原窗口导航项消失但 Tab/iframe 保留。规格 §4.3/§4.4 要求停用即关 Tab；实际仅管理页内操作联动（PluginManagementPage.tsx:93,110）。建议 F6 统一订阅处理 | 验证不通过（修复中）|
-| BUG-F4-02 | F4 | 「同一插件页多开」不可实现：key=`{pluginId}:{pageId}` + open 幂等，同页重复点击仅聚焦 | Workspace 点击同一导航项两次 → 仅一个 Tab。PRD §4.2/§4.4 允许多开，但 §4.4 表格自身定义该唯一 key，自相矛盾——需产品拍板 | 验证不通过（修复中）|
-| BUG-F4-03 | F4 | 安装流程缺「名称/版本/权限清单确认」中间步骤，确认即直接写入 | 管理页[安装插件…] → 输入合法 zip 路径 → Install：无任何预览确认直接安装成功。规格 §4.3 要求写入前展示确认 | 验证不通过（修复中）|
-| BUG-F4-04 | F4 | 管理页默认过滤器为「全部」（规格为默认 Workspace），且「全部」视图平铺不分组 | 打开管理页未点 chip 即显示全部插件平铺列表（PluginManagementPage.tsx:57 初值 'all'）。规格 §4.3：默认 Workspace、「全部」分组 | 验证不通过（修复中）|
+| BUG-F4-01 | F4 | 插件停用联动不完整：跨窗口/外部触发的 `plugins:changed` 只刷新 pluginStore，无人调 closeByPlugin，残留可激活的僵尸 Tab | 开插件 Tab → 另一窗口 set_plugin_enabled(false) → 原窗口导航项消失但 Tab/iframe 保留。规格 §4.3/§4.4 要求停用即关 Tab；实际仅管理页内操作联动（PluginManagementPage.tsx:93,110）。建议 F6 统一订阅处理 | 待验证 |
+| BUG-F4-02 | F4 | 「同一插件页多开」不可实现：key=`{pluginId}:{pageId}` + open 幂等，同页重复点击仅聚焦 | Workspace 点击同一导航项两次 → 仅一个 Tab。PRD §4.2/§4.4 允许多开，但 §4.4 表格自身定义该唯一 key，自相矛盾——需产品拍板 | 已修复（产品决议：单实例） |
+| BUG-F4-03 | F4 | 安装流程缺「名称/版本/权限清单确认」中间步骤，确认即直接写入 | 管理页[安装插件…] → 输入合法 zip 路径 → Install：无任何预览确认直接安装成功。规格 §4.3 要求写入前展示确认 | 待验证 |
+| BUG-F4-04 | F4 | 管理页默认过滤器为「全部」（规格为默认 Workspace），且「全部」视图平铺不分组 | 打开管理页未点 chip 即显示全部插件平铺列表（PluginManagementPage.tsx:57 初值 'all'）。规格 §4.3：默认 Workspace、「全部」分组 | 待验证 |
 
 Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已修复`
 

@@ -10,6 +10,7 @@ const {
   fetchMock,
   closeByPluginMock,
   openTabMock,
+  inspectPackageMock,
   installFromPathMock,
   confirmSpy,
 } = vi.hoisted(() => ({
@@ -23,6 +24,7 @@ const {
   fetchMock: vi.fn(),
   closeByPluginMock: vi.fn(),
   openTabMock: vi.fn(),
+  inspectPackageMock: vi.fn(),
   installFromPathMock: vi.fn(),
   confirmSpy: vi.fn(),
 }));
@@ -60,6 +62,7 @@ vi.mock('../../../stores/workspaceTabsStore', () => ({
 vi.mock('../../../commands/plugins', () => ({
   PLUGINS_CHANGED_EVENT: 'plugins:changed',
   pluginCommands: {
+    inspectPluginPackage: (...args: unknown[]) => inspectPackageMock(...args),
     installPluginFromPath: (...args: unknown[]) => installFromPathMock(...args),
   },
 }));
@@ -95,6 +98,15 @@ beforeEach(() => {
   setEnabledMock.mockReset().mockResolvedValue(undefined);
   removeMock.mockReset().mockResolvedValue(undefined);
   fetchMock.mockReset().mockResolvedValue(undefined);
+  inspectPackageMock.mockReset().mockResolvedValue({
+    id: 'acme.new',
+    name: 'New Plugin',
+    version: '1.0.0',
+    apiVersion: 2,
+    author: 'Acme',
+    contributes: { pages: [], themes: [] },
+    permissions: ['storage:local'],
+  });
   installFromPathMock.mockReset();
   closeByPluginMock.mockReset();
   openTabMock.mockReset();
@@ -119,7 +131,7 @@ describe('PluginManagementPage', () => {
     expect(badges).toBeInTheDocument();
   });
 
-  it('filters cards through the all/workspace/theme chips', () => {
+  it('defaults the filter to Workspace and switches through all/theme chips', () => {
     pluginState.plugins = [
       makePlugin(),
       makePlugin({
@@ -132,17 +144,64 @@ describe('PluginManagementPage', () => {
 
     render(<PluginManagementPage />);
 
-    expect(screen.getAllByTestId('plugin-card')).toHaveLength(2);
+    // PRD §4.3: default filter is Workspace — theme-only plugins start hidden.
+    expect(screen.getAllByTestId('plugin-card')).toHaveLength(1);
+    expect(screen.getByText('Bill Audit')).toBeInTheDocument();
+    const workspaceChip = screen.getByTestId('plugin-filter-workspace');
+    expect(workspaceChip.className).toMatch(/bg-accent/);
+    expect(screen.getByTestId('plugin-filter-all').className).not.toMatch(/bg-accent/);
 
     fireEvent.click(screen.getByTestId('plugin-filter-theme'));
     expect(screen.getAllByTestId('plugin-card')).toHaveLength(1);
     expect(screen.getByTestId('plugin-management-page')).toHaveTextContent('Midnight');
 
-    fireEvent.click(screen.getByTestId('plugin-filter-workspace'));
-    expect(screen.getAllByTestId('plugin-card')).toHaveLength(1);
-    expect(screen.getByTestId('plugin-management-page')).toHaveTextContent('Bill Audit');
-
     fireEvent.click(screen.getByTestId('plugin-filter-all'));
+    expect(screen.getAllByTestId('plugin-card')).toHaveLength(2);
+  });
+
+  it('renders the all view grouped into Workspace pages and Themes sections', () => {
+    pluginState.plugins = [
+      makePlugin({
+        id: 'acme.midnight',
+        name: 'Midnight',
+        pages: [],
+        themes: [{ id: 'm', name: 'M', modes: ['dark'] }],
+      }),
+      makePlugin(),
+      // Both contributions: belongs to the Workspace group, shown exactly once.
+      makePlugin({ id: 'acme.both', name: 'Both' }),
+    ];
+
+    render(<PluginManagementPage />);
+    fireEvent.click(screen.getByTestId('plugin-filter-all'));
+
+    expect(screen.getByTestId('plugin-group-workspace')).toHaveTextContent(
+      'plugins.page.groupWorkspace',
+    );
+    expect(screen.getByTestId('plugin-group-theme')).toHaveTextContent('plugins.page.groupTheme');
+    const workspaceGroup = screen.getByTestId('plugin-group-workspace');
+    expect(within(workspaceGroup).getAllByTestId('plugin-card')).toHaveLength(2);
+    expect(within(workspaceGroup).getByText('Bill Audit')).toBeInTheDocument();
+    expect(within(workspaceGroup).getByText('Both')).toBeInTheDocument();
+    const themeGroup = screen.getByTestId('plugin-group-theme');
+    expect(within(themeGroup).getAllByTestId('plugin-card')).toHaveLength(1);
+    expect(within(themeGroup).getByText('Midnight')).toBeInTheDocument();
+  });
+
+  it('hides empty groups in the all view and keeps the flat grid for single-kind filters', () => {
+    pluginState.plugins = [makePlugin(), makePlugin({ id: 'acme.afi', name: 'AFI Pricing' })];
+
+    render(<PluginManagementPage />);
+    fireEvent.click(screen.getByTestId('plugin-filter-all'));
+
+    expect(screen.queryByTestId('plugin-group-theme')).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('plugin-group-workspace')).getAllByTestId('plugin-card'),
+    ).toHaveLength(2);
+
+    // Non-"all" filters keep rendering a single flat grid without headers.
+    fireEvent.click(screen.getByTestId('plugin-filter-workspace'));
+    expect(screen.queryByTestId('plugin-group-workspace')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('plugin-card')).toHaveLength(2);
   });
 
@@ -257,6 +316,7 @@ describe('PluginManagementPage', () => {
     ];
 
     render(<PluginManagementPage />);
+    fireEvent.click(screen.getByTestId('plugin-filter-theme'));
     const themeCard = card('acme.midnight');
 
     expect(within(themeCard).getByText('plugins.page.themeHint')).toBeInTheDocument();
@@ -278,7 +338,7 @@ describe('PluginManagementPage', () => {
     expect(within(mismatched).queryByTestId('plugin-open')).not.toBeInTheDocument();
   });
 
-  it('installs a plugin package from a zip path and refreshes the list', async () => {
+  it('installs through the two-step confirm flow and refreshes the list', async () => {
     installFromPathMock.mockResolvedValue({ id: 'acme.new' });
     fetchMock.mockResolvedValue(undefined);
 
@@ -287,11 +347,17 @@ describe('PluginManagementPage', () => {
 
     expect(screen.getByText('plugins.install.title')).toBeInTheDocument();
 
+    // Step 1 → 2: inspection only, no write yet.
     fireEvent.change(await screen.findByPlaceholderText('plugins.install.pathPlaceholder'), {
       target: { value: '/tmp/acme-new.zip' },
     });
-    fireEvent.click(screen.getByTestId('plugin-install-confirm'));
+    fireEvent.click(screen.getByTestId('plugin-install-next'));
+    const review = await screen.findByTestId('plugin-install-review');
+    expect(review).toHaveTextContent('New Plugin');
+    expect(installFromPathMock).not.toHaveBeenCalled();
 
+    // Step 2: explicit confirmation performs the install.
+    fireEvent.click(screen.getByTestId('plugin-install-confirm'));
     await waitFor(() => expect(installFromPathMock).toHaveBeenCalledWith('/tmp/acme-new.zip'));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await waitFor(() =>
@@ -299,21 +365,22 @@ describe('PluginManagementPage', () => {
     );
   });
 
-  it('shows a copyable error when installation fails', async () => {
-    installFromPathMock.mockRejectedValue(new Error('manifest invalid'));
+  it('shows a copyable error when package inspection fails', async () => {
+    inspectPackageMock.mockRejectedValue(new Error('manifest invalid'));
 
     render(<PluginManagementPage />);
     fireEvent.click(screen.getByTestId('plugin-install-button'));
     fireEvent.change(await screen.findByPlaceholderText('plugins.install.pathPlaceholder'), {
       target: { value: '/tmp/broken.zip' },
     });
-    fireEvent.click(screen.getByTestId('plugin-install-confirm'));
+    fireEvent.click(screen.getByTestId('plugin-install-next'));
 
     await waitFor(() =>
       expect(screen.getByTestId('plugin-install-error')).toHaveTextContent('manifest invalid'),
     );
     expect(screen.getByTestId('copyable-error-copy')).toBeInTheDocument();
-    // Dialog stays open so the user can retry or copy the error.
+    // Nothing was written; dialog stays open so the user can retry or copy.
+    expect(installFromPathMock).not.toHaveBeenCalled();
     expect(screen.getByText('plugins.install.title')).toBeInTheDocument();
   });
 });
