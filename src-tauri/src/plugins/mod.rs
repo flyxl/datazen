@@ -11,6 +11,9 @@ pub mod storage;
 #[cfg(test)]
 mod integration_tests;
 
+#[cfg(test)]
+mod protocol_security_tests;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
