@@ -1,7 +1,7 @@
 # DataZen 插件系统技术方案
 
-> 对应 [PRD](./ui-plugins.md) v0.3。命名沿用 `data-dashboard-implementation.md` 惯例。
-> 状态：Draft。分支：`feature/ui-plugins`（worktree：`../datazen-ui-plugins`）。
+> 对应 [PRD](./extensions.md) v0.3。命名沿用 `data-dashboard-implementation.md` 惯例。
+> 状态：Draft。分支：`feature/extensions`（worktree：`../datazen-extensions`）。
 
 ## 1. 总体架构
 
@@ -18,7 +18,7 @@
 │  execute_driver_command（复用，不改）                                           │
 └───────────────────────────────────────────────────────────────────────────────┘
                                    ▲
-                    sandbox iframe（opaque origin，@datazen/ui-plugin-sdk）
+                    sandbox iframe（opaque origin，@datazen/extension-sdk）
 ```
 
 职责边界：
@@ -134,7 +134,7 @@ tauri::Builder::default()
 
 ```ts
 // 双向统一信封（target 预留 P2 后端路由）
-type Envelope = { ch:'ui-plugin'; type:string; reqId?:string; target:'host'; payload?:unknown };
+type Envelope = { ch:'datazen-extension'; type:string; reqId?:string; target:'host'; payload?:unknown };
 ```
 
 ```text
@@ -153,7 +153,7 @@ iframe 加载 ──► plugin.ready {apiVersion}
 |------|------|----------------|
 | `context.getConnections` | `context:connections` | `{}` → `{connections:[{id,name,dbType}]}`（服务端白名单字段） |
 | `context.getActiveConnection` | `context:connections` | `{}` → `{connection|null}` 同上 |
-| `command.invoke` | `command:invoke` | `{configId, command, args}` → execute_driver_command 原样结果；审计日志加 `[ui-plugin:{id}]` 前缀 |
+| `command.invoke` | `command:invoke` | `{configId, command, args}` → execute_driver_command 原样结果；审计日志加 `[extension:{id}]` 前缀 |
 | `storage.get` / `set` / `remove` | `storage:local` | `{key[, value]}` → `{value|null}` / `{}` |
 | `ui.notify` | — | `{title, body}` → 系统通知（≥5s/次限频） |
 | `i18n.getString` | — | `{key}` → 插件自带 locales 查表 |
@@ -202,7 +202,7 @@ src/windows/plugins/
 └── InstallPluginDialog.tsx
 src/windows/settings/
 └── AppearanceSection.tsx     # 「外观」菜单项：主题选择器（读 pluginStore 中已启用 themes 贡献，单选即应用）+ 外观配置占位
-src/lib/uiPluginBridge.ts     # postMessage 路由器 + 权限表 + token 快照推送
+src/lib/extensionBridge.ts     # postMessage 路由器 + 权限表 + token 快照推送
 src/lib/themeTokens.ts        # THEME_TOKENS 契约常量 + buildThemeSnapshot()
 ```
 
@@ -224,14 +224,14 @@ ConnectionPage 改动点（最小侵入）：
 
 - `THEME_TOKENS`：契约数组，收录 `--c-*` 全集与 `--dt-*` 全集（从 `themePackApply.ts`/`dataTypeColors.ts` 整理成共享常量，放 `src/lib/themeTokens.ts`，SDK 文档同步导出清单）。
 - `buildThemeSnapshot()`：`getComputedStyle(document.documentElement)` 读取 + `classList.contains('dark')`。
-- 推送时机：shell 的 iframe load 完成（握手后）、`datazen:theme-pack-changed`（themePackApply.ts:96 已有事件）、`useThemeSync` 明暗切换回调。快照带 `v=UI_PLUGIN_PROTOCOL_VERSION`。
+- 推送时机：shell 的 iframe load 完成（握手后）、`datazen:theme-pack-changed`（themePackApply.ts:96 已有事件）、`useThemeSync` 明暗切换回调。快照带 `v=EXTENSION_PROTOCOL_VERSION`。
 - iframe 内由 SDK 写到自身 `:root` 并派发同名 DOM 事件；body 默认透明背景。
 
-## 5. SDK（packages/ui-plugin-sdk）
+## 5. SDK（packages/extension-sdk）
 
 ```text
-packages/ui-plugin-sdk/
-├── package.json        # name "@datazen/ui-plugin-sdk"，private，仅 TS 无运行时依赖
+packages/extension-sdk/
+├── package.json        # name "@datazen/extension-sdk"，private，仅 TS 无运行时依赖
 ├── src/index.ts        # export createClient(), useTheme(), definePage()
 ├── src/bridge.ts       # reqId 自增、Promise 化 RPC、30s 超时、E_* 错误类型
 ├── src/theme.ts        # 监听 theme.apply → 写 :root 变量 + 派发 datazen:theme-pack-changed
@@ -265,7 +265,7 @@ const { dark } = dz.useTheme();                     // React hook（可选 react
 | 凭据泄露 | 桥接白名单字段（id/name/dbType）在 Rust 侧构造返回对象，密码/host/port/用户名字段**物理上不进入**响应结构 |
 | 远程载荷 | CSP `connect-src 'none'` + 无远程字体/资源（对齐主题包立场）；协议仅服务本地文件 |
 | DoS / 消息洪泛 | 每插件 ≤20 并发请求、通知 ≥5s 限频、storage 单插件 ≤1MB |
-| 审计缺失 | `command.invoke` 日志加 `[ui-plugin:{id}]` 前缀，走既有 `CmdExt`/log_redact 链路 |
+| 审计缺失 | `command.invoke` 日志加 `[extension:{id}]` 前缀，走既有 `CmdExt`/log_redact 链路 |
 
 信任锚：v1 无签名（Q5 已决），安装时权限确认弹窗是唯一人工审查点；管理页可随时复查权限清单。
 
@@ -275,7 +275,7 @@ const { dark } = dz.useTheme();                     // React hook（可选 react
 |----|------|------|
 | Rust 单测 | `plugins/*.rs` 内 `#[cfg(test)]` | id/api_version/backend 校验、路径穿越用例集、zip 条目攻击样例、白名单与大小上限、storage 隔离与原子写 |
 | Rust 集成 | `src-tauri/tests/plugins_*.rs` | 安装→list→enable/disable→remove 全流程（tempdir appData） |
-| Host 前端单测 | `src/lib/__tests__/uiPluginBridge.test.ts` 等 | reqId 关联、权限 allow/deny、超时、token 快照构建；`workspaceTabsStore` 开关/批量关闭 |
+| Host 前端单测 | `src/lib/__tests__/extensionBridge.test.ts` 等 | reqId 关联、权限 allow/deny、超时、token 快照构建；`workspaceTabsStore` 开关/批量关闭 |
 | Host E2E | `e2e/specs/plugins.spec.ts` + fixture | 见下 |
 
 E2E fixture：`e2e/fixtures/sample-plugin/`（纯静态 manifest+index.html，无构建步骤）。Journeys：
@@ -301,19 +301,19 @@ E2E fixture：`e2e/fixtures/sample-plugin/`（纯静态 manifest+index.html，�
 - [ ] E2E：fixture + journeys 1/4/5
 
 **M2 桥**
-- [ ] `lib/uiPluginBridge.ts` 路由 + 权限 + 限流；PluginPageShell 接入 RPC/storage/context/command
+- [ ] `lib/extensionBridge.ts` 路由 + 权限 + 限流；PluginPageShell 接入 RPC/storage/context/command
 - [ ] Rust storage IPC + command.invoke 审计前缀
 - [ ] E2E journey 2/3
 
 **M3 SDK 与主题联动**
-- [ ] `packages/ui-plugin-sdk/{index,bridge,theme}.{ts,css}` + `__tests__`
+- [ ] `packages/extension-sdk/{index,bridge,theme}.{ts,css}` + `__tests__`
 - [ ] `lib/themeTokens.ts` 契约常量；快照推送接线（theme-pack-changed/useThemeSync）
 - [ ] Settings 新增 `settings.appearance` 菜单项 + `AppearanceSection.tsx` 主题切换器
 - [ ] 示例插件完善（含 themes 贡献演示）；i18n.getString 下发
 
 **M4 加固收尾**
 - [ ] 崩溃恢复条、日志脱敏核查、E2E 补齐与例外登记
-- [ ] 架构文档 `docs/architecture/backend/plugins.md`；`docs/plugin-development.md` 增「运行时 UI 插件」章
+- [ ] 架构文档 `docs/architecture/backend/plugins.md`；`docs/plugin-development.md` 增「运行时 扩展」章
 
 ## 9. 风险与开放点
 

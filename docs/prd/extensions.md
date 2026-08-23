@@ -1,4 +1,4 @@
-# DataZen 插件系统 PRD（统一主题包与 UI 插件）
+# DataZen 插件系统 PRD（统一主题包与 扩展）
 
 | 项目 | 内容 |
 |------|------|
@@ -7,8 +7,8 @@
 | 创建日期 | 2026-08-21 |
 | 更新日期 | 2026-08-22 |
 | 状态 | Draft（v0.6 决议已并入：同页单实例；v0.5 反馈已并入：Settings→外观主题切换入口） |
-| 关联分支 | `feature/ui-plugins`（worktree：`../datazen-ui-plugins`） |
-| UI 原型 | [prototypes/ui-plugins.html](./prototypes/ui-plugins.html) |
+| 关联分支 | `feature/extensions`（worktree：`../datazen-extensions`） |
+| UI 原型 | [prototypes/extensions.html](./prototypes/extensions.html) |
 | 关联文档 | [插件开发指南（编译时驱动）](../plugin-development.md)、[独立插件开发指南](../independent-plugin-development.zh-CN.md)、[架构文档](../architecture/README.md) |
 
 ### v0.6 变更记录（评审决议）
@@ -32,7 +32,7 @@
 
 ### v0.2 变更记录（评审反馈）
 
-1. 主题包与 UI 插件**统一为同一套插件系统**（manifest 多贡献类型，主题包成为其中一种贡献）。
+1. 主题包与 扩展**统一为同一套插件系统**（manifest 多贡献类型，主题包成为其中一种贡献）。
 2. 预留**前端 + 后端 Rust 插件**的扩展能力（manifest `backend` 字段与 RPC 路由设计前置）。
 3. 插件管理入口放主窗口左侧边栏，与「连接 / 工作流 / 数据看板」平级（VSCode 扩展图标模式）。
 4. 点击入口打开**插件管理页面**；页面内容视图展示所有注册为 workspace 的插件卡片。
@@ -56,7 +56,7 @@ DataZen 存在两套彼此独立的扩展机制：
 
 1. **源码魔改锁死升级**：业务方无法跟随主线，每次合并靠人工移植。
 2. **无法独立分发**：内部小工具必须走完整宿主发布流程。
-3. **扩展机制割裂**：主题包与未来的 UI 插件各自一套 manifest/安装/管理链路，用户心智与实现成本双输。
+3. **扩展机制割裂**：主题包与未来的 扩展各自一套 manifest/安装/管理链路，用户心智与实现成本双输。
 4. **无安全边界**：魔改代码拥有宿主全部权限。
 5. **能力错位**：编译时驱动机制面向「数据库接入」，不适合承载业务工具页。
 
@@ -90,7 +90,7 @@ DataZen 插件系统是运行时的统一扩展机制：一份 manifest 声明�
 
 1. **零硬编码**：宿主不感知具体插件 id，一切经 manifest 动态发现。
 2. **复用 Command API**：插件取数一律走既有 `execute_driver_command`，禁止旁路 IPC。
-3. **协议版本化**：`PLUGIN_PROTOCOL_VERSION`（编译时）/ `UI_PLUGIN_PROTOCOL_VERSION`（运行时）各自握手。
+3. **协议版本化**：`PLUGIN_PROTOCOL_VERSION`（编译时）/ `EXTENSION_PROTOCOL_VERSION`（运行时）各自握手。
 4. **最小权限**：manifest 声明权限，capability 白名单只放行专用命令组。
 
 ---
@@ -116,7 +116,7 @@ DataZen 插件系统是运行时的统一扩展机制：一份 manifest 声明�
   "id": "bill-audit",                // ^[a-z][a-z0-9-]{1,31}$ 全局唯一
   "name": "账单额度核对",
   "version": "1.0.0",                // semver
-  "apiVersion": 2,                   // 必须 == 宿主 UI_PLUGIN_PROTOCOL_VERSION
+  "apiVersion": 2,                   // 必须 == 宿主 EXTENSION_PROTOCOL_VERSION
   "author": "...",
   "description": "...",
   "entry": "index.html",             // pages 贡献的入口（相对路径）
@@ -289,7 +289,7 @@ DataZen 插件系统是运行时的统一扩展机制：一份 manifest 声明�
 iframe ↔ 宿主 postMessage，统一信封：
 
 ```ts
-{ ch: 'ui-plugin', type: string, reqId?: string, target: 'host', payload?: unknown }
+{ ch: 'extension', type: string, reqId?: string, target: 'host', payload?: unknown }
 ```
 
 - 请求-响应带 `reqId`；超时 30s；每插件并发限流。
@@ -321,7 +321,7 @@ v1 API 面【权限确认时机已决：安装时一次性，详情页可复查 
 - iframe load 时推快照 `{ v, dark, tokens }`；监听 `datazen:theme-pack-changed`（src/lib/themePackApply.ts:96）与明暗切换重推。
 - SDK 落到 iframe 自身 `:root`（变量名与宿主一致），派发同名 DOM 事件；随附 `theme.css` 基础控件样式，插件零适配跟随任意主题。
 - iframe body 透明背景；未知 token 忽略、缺失回退 SDK 默认值。
-- 主题包新增 token 时 bump `UI_PLUGIN_PROTOCOL_VERSION`。
+- 主题包新增 token 时 bump `EXTENSION_PROTOCOL_VERSION`。
 - 插件不得贡献 CSS 变量到宿主（单向）；如需配套主题，做成自己 manifest 里的 themes 贡献即可——这正是统一后的自然形态。
 
 ---
@@ -371,6 +371,6 @@ v1 API 面【权限确认时机已决：安装时一次性，详情页可复查 
 ## 12. 影响面清单
 
 - Rust：`src-tauri/src/plugins/`（新：安装器/manifest/storage）、`commands/plugins.rs`（新 IPC 组）、`theme/` 读文件入口切到插件目录、capabilities（`default.json.host` 增补）、自定义协议 `datazen://` 注册
-- 前端：aside 两个新按钮（`workspaceMode='workspace'` / `'plugins'`）、`windows/workspace/*`（导航栏/Tab 条/默认卡片/页面壳）、`windows/plugins/PluginManagementPage.tsx`、Settings 新增「外观」菜单项 + `AppearanceSection.tsx`（ThemePackSection 改造为纯切换器，移除安装/卸载逻辑）、`lib/uiPluginBridge.ts`
-- 新包：`packages/ui-plugin-sdk`
+- 前端：aside 两个新按钮（`workspaceMode='workspace'` / `'plugins'`）、`windows/workspace/*`（导航栏/Tab 条/默认卡片/页面壳）、`windows/plugins/PluginManagementPage.tsx`、Settings 新增「外观」菜单项 + `AppearanceSection.tsx`（ThemePackSection 改造为纯切换器，移除安装/卸载逻辑）、`lib/extensionBridge.ts`
+- 新包：`packages/extension-sdk`
 - 文档：本 PRD → 架构文档 + 插件开发指南增章（区分编译时驱动 vs 运行时插件）

@@ -109,9 +109,9 @@
 | 数据看板表格视图：大数据量下底部导出按钮不被容器裁剪 | 依赖真实渲染高度的几何断言，跨 WebView 平台不稳定 | 布局修复（`flex flex-col` 容器约束使 DataTable `flex-1` 生效、虚拟滚动开启）；E2E UJ-05 覆盖导出按钮可见 + 点击打开导出对话框 |
 | 选区视觉样式（`::selection` 颜色、大面积选区外观） | 纯视觉外观，无法自动化断言颜色/观感 | 全局 CSS（`globals.css` A1 主题化选区 + A2 控件 `user-select: none`）；TD-SEL-001 覆盖计算样式（内容可选中/控件不可选中） |
 | 插件安装原生目录选择器（PathInput 浏览按钮） | OS 对话框不可点选（同上通用条目，此处为具体落点） | E2E 在 PathInput 键入 fixture 绝对路径走同一 UI 链路 |
-| 插件 `ui.notify` 5s 限频 / 系统通知弹出 | 依赖系统通知中心，自动化不可观测 | `uiPluginBridge.test.ts` 限频用例（冷却窗口内第二次回 `E_RATE_LIMIT`） |
+| 插件 `ui.notify` 5s 限频 / 系统通知弹出 | 依赖系统通知中心，自动化不可观测 | `extensionBridge.test.ts` 限频用例（冷却窗口内第二次回 `E_RATE_LIMIT`） |
 | 插件 iframe 崩溃恢复条（10s watchdog → 重载按钮） | 需真实加载失败时序，WebKit 自动化不稳定 | `PluginPageShell.test.tsx` watchdog/reload 用例；E2E 断言 shell 存在与重开路径 |
-| 插件 iframe 内元素自动化（J2 桥往返的帧内 DOM 断言） | macOS WebKit 自动化下 `datazen://` 子帧导航被拒（实测截图：帧内容永不渲染、fixture JS 永不执行、`.storage.json` 探针永不落盘；同 URL 顶层窗口直载则正常渲染执行——疑为宿主 CSP `default-src 'self'` 未豁免 `datazen:` 子帧或 WebKit 自定义协议子帧策略，已登记 BUG-F9-04 待宿主验证） | 补偿：fixture 经既有桥 `storage.set` 持久化三个探针（`probe.bridge`/`probe.dark`/`probe.connCount`），E2E 从 `{appData}/plugins/datazen.sample/.storage.json` 轮询对账（内容可加载的平台即全量断言）；本环境下自动降级为真实 shell 级行为断言——watchdog 失败条出现 / 重载按钮重挂 iframe / manifest entry URL 解析正确。桥逻辑另有宿主 `uiPluginBridge` 64 例 + SDK 69 例单测背书。iframe 存在性断言（顶层文档）保留 |
+| 插件 iframe 内元素自动化（J2 桥往返的帧内 DOM 断言） | macOS WebKit 自动化下 `datazen://` 子帧导航被拒（实测截图：帧内容永不渲染、fixture JS 永不执行、`.storage.json` 探针永不落盘；同 URL 顶层窗口直载则正常渲染执行——疑为宿主 CSP `default-src 'self'` 未豁免 `datazen:` 子帧或 WebKit 自定义协议子帧策略，已登记 BUG-F9-04 待宿主验证） | 补偿：fixture 经既有桥 `storage.set` 持久化三个探针（`probe.bridge`/`probe.dark`/`probe.connCount`），E2E 从 `{appData}/plugins/datazen.sample/.storage.json` 轮询对账（内容可加载的平台即全量断言）；本环境下自动降级为真实 shell 级行为断言——watchdog 失败条出现 / 重载按钮重挂 iframe / manifest entry URL 解析正确。桥逻辑另有宿主 `extensionBridge` 64 例 + SDK 69 例单测背书。iframe 存在性断言（顶层文档）保留 |
 
 ## 维护约定
 

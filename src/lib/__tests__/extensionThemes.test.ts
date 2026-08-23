@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 /**
  * Guards the repo-bundled extension packages under `packages/extensions/`.
  *
- * Since the unified plugin system (PRD: ui-plugins.md), themes ship as
+ * Since the unified plugin system (PRD: extensions.md), themes ship as
  * `contributes.themes` inside extension manifests (apiVersion 2) instead of
  * legacy v1 ThemePacks. The community theme pack was converted accordingly;
  * this suite keeps its token contract honest and validates the sample

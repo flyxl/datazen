@@ -5,7 +5,7 @@
  * C-03/C-04 lock in the BUG-F8-01 fix: malformed `.err` frames whose
  * `payload` is absent or null must settle the pending request as
  * ExtensionError(E_INTERNAL) with zero uncaught page errors (see
- * docs/prd/ui-plugins-progress.md Bug 跟踪).
+ * docs/prd/extensions-progress.md Bug 跟踪).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
