@@ -108,6 +108,7 @@
   /* --------------------------------------------------------------- theme */
 
   function renderTheme(state) {
+    applyHostTheme(state); // theme-consistency spec: consume host tokens, never hardcode
     set('pg-dark-state', state.dark ? 'dark' : 'light');
     var tokens = state.tokens && typeof state.tokens === 'object' ? state.tokens : {};
     set('pg-token-count', Object.keys(tokens).length);
@@ -126,6 +127,23 @@
           : '';
         host.appendChild(chip);
       });
+  }
+
+  // Theme-consistency contract (see README): host tokens land on :root so the
+  // page's var()-based styles track the app; `.dark` + color-scheme keep
+  // native widgets in step. Fallbacks in index.html cover only the instant
+  // before the first snapshot.
+  function applyHostTheme(state) {
+    var root = document.documentElement;
+    var tokens = state && state.tokens && typeof state.tokens === 'object' ? state.tokens : {};
+    Object.keys(tokens).forEach(function (name) {
+      if (/^--/.test(name) && typeof tokens[name] === 'string') {
+        root.style.setProperty(name, tokens[name]);
+      }
+    });
+    var dark = !!(state && state.dark);
+    root.classList.toggle('dark', dark);
+    root.style.colorScheme = dark ? 'dark' : 'light';
   }
 
   /* ------------------------------------------------------------ context */

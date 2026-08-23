@@ -58,10 +58,27 @@
 
   function renderContext(ctx) {
     var dark = ctx.dark ? 'dark' : 'light';
+    applyHostTheme(ctx); // theme-consistency spec: page MUST consume host tokens
     set('dark-state', dark);
     persistProbe('dark', dark);
     var count = ctx.tokens && typeof ctx.tokens === 'object' ? Object.keys(ctx.tokens).length : 0;
     set('token-count', count);
+  }
+
+  // Theme-consistency contract (packages/extensions/README.md): write the
+  // host's --c-*/--dt-* tokens onto :root, toggle the `dark` class and keep
+  // native controls/scrollbars in sync via color-scheme.
+  function applyHostTheme(ctx) {
+    var root = document.documentElement;
+    var tokens = ctx && ctx.tokens && typeof ctx.tokens === 'object' ? ctx.tokens : {};
+    Object.keys(tokens).forEach(function (name) {
+      if (/^--/.test(name) && typeof tokens[name] === 'string') {
+        root.style.setProperty(name, tokens[name]);
+      }
+    });
+    var dark = !!(ctx && ctx.dark);
+    root.classList.toggle('dark', dark);
+    root.style.colorScheme = dark ? 'dark' : 'light';
   }
 
   function request(type, payload) {

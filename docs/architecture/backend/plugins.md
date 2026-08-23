@@ -57,7 +57,7 @@
 | ui.notify | —（无需声明） | ≥5s 冷却 |
 | i18n.getString | — | 插件自带 `locales/<locale>.json` 查表，en 兜底 |
 
-限流 ≤20 并发（E_RATE_LIMIT）、单请求超时 30s。**审计**：command.invoke 写 webview console（`[ui-plugin:{id}]`）并同时经 `plugin_audit_log` 命令进 tracing 文件 sink（`{dataDir}/logs/datazen.log`，target `ui_plugin_audit`）；detail 仅含命令名+连接 id，参数内容永不入日志（前端构造式白名单 + Rust 双端截断）。
+限流 ≤20 并发（E_RATE_LIMIT）、单请求超时 30s。**主题推送**：`host.ready` 携带首次 `{dark, tokens}` 快照；宿主在 `<html>` class 变化与 `datazen:theme-pack-changed` 事件时对每个挂载桥推送 `theme.apply`（`PluginPageShell` → `pushThemeSnapshot`），页面侧义务见 [packages/extensions/README.md](../../../packages/extensions/README.md)「主题一致性规范」。**审计**：command.invoke 写 webview console（`[ui-plugin:{id}]`）并同时经 `plugin_audit_log` 命令进 tracing 文件 sink（`{dataDir}/logs/datazen.log`，target `ui_plugin_audit`）；detail 仅含命令名+连接 id，参数内容永不入日志（前端构造式白名单 + Rust 双端截断）。
 
 ## 主题应用
 
