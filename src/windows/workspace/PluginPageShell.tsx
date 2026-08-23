@@ -7,7 +7,7 @@ import { cn } from '../../lib/cn';
 import { pluginCommands } from '../../commands/plugins';
 import { usePluginStore } from '../../stores/pluginStore';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { attachBridge, type UiPluginBridgeHandle } from '../../lib/uiPluginBridge';
+import { attachBridge, type ExtensionBridgeHandle } from '../../lib/extensionBridge';
 import type { PluginPermission } from '../../types/plugin';
 import type { WorkspaceTab } from '../../stores/workspaceTabsStore';
 import { PluginIcon } from './PluginIcon';
@@ -95,7 +95,7 @@ export function PluginPageShell({ tab, active }: PluginPageShellProps) {
   const [reloadNonce, setReloadNonce] = useState(0);
   const resolvingRef = useRef(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const bridgeRef = useRef<UiPluginBridgeHandle | null>(null);
+  const bridgeRef = useRef<ExtensionBridgeHandle | null>(null);
 
   // F6 RPC bridge: one attach per iframe instance (key changes on reload).
   // `theme-pack-changed` covers pack installs/removals; the MutationObserver

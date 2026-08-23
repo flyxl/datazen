@@ -96,4 +96,4 @@ packages/extensions/<publisher>.<name>/
 
 ## SDK
 
-正式开发建议使用 [`packages/ui-plugin-sdk`](../ui-plugin-sdk/)（`createClient()` 类型化 RPC、`useTheme()`、`theme.css` 基础控件）；本目录示例刻意零构建，便于直接安装验证。
+正式开发建议使用 [`packages/extension-sdk`](../extension-sdk/)（`createClient()` 类型化 RPC、`useTheme()`、`theme.css` 基础控件）；本目录示例刻意零构建，便于直接安装验证。

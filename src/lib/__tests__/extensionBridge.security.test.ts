@@ -10,7 +10,7 @@
  * - rate-limit quota release semantics (completion / timeout / denials)
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PluginRequestEnvelope } from '../uiPluginBridge';
+import type { PluginRequestEnvelope } from '../extensionBridge';
 
 const {
   storageGetMock,
@@ -78,8 +78,8 @@ import {
   attachBridge,
   BRIDGE_ERROR,
   BRIDGE_CHANNEL,
-  type UiPluginBridgeHandle,
-} from '../uiPluginBridge';
+  type ExtensionBridgeHandle,
+} from '../extensionBridge';
 
 type SentEnvelope = Record<string, unknown>;
 
@@ -116,7 +116,7 @@ async function waitUntil(cond: () => boolean): Promise<void> {
 }
 
 let frame: FakeFrame;
-let handle: UiPluginBridgeHandle | null = null;
+let handle: ExtensionBridgeHandle | null = null;
 
 function request(type: string, reqId?: string, payload?: unknown): PluginRequestEnvelope {
   return { ch: BRIDGE_CHANNEL, type, target: 'host', ...(reqId ? { reqId } : {}), payload };
@@ -250,7 +250,7 @@ describe('F6 security: credential whitelisting', () => {
     expect(payload.message.endsWith('…')).toBe(true);
   });
 
-  it('audit log prefixes [ui-plugin:{id}] and never logs argument contents', async () => {
+  it('audit log prefixes [extension:{id}] and never logs argument contents', async () => {
     driverExecuteMock.mockResolvedValue({ data: null });
     handle = attachBridge(frame.iframe, {
       pluginId: 'acme.bill-audit',
@@ -268,17 +268,17 @@ describe('F6 security: credential whitelisting', () => {
     await waitUntil(() => frame.sent.length > 0);
 
     const logged = consoleInfoSpy.mock.calls.map((c) => c.join(' ')).join('\n');
-    expect(logged).toContain('[ui-plugin:acme.bill-audit]');
+    expect(logged).toContain('[extension:acme.bill-audit]');
     expect(logged).toContain('command.invoke');
     expect(logged).not.toContain('top-secret-value');
-    // The same entry lands in the host log file via plugin_audit_log (still
+    // The same entry lands in the host log file via extension_audit_log (still
     // argument-free — only command name + connection id).
     expect(auditLogMock).toHaveBeenCalledWith('acme.bill-audit', 'command.invoke', 'query via cfg');
   });
 });
 
 describe('F6 security: permission gate vs malformed routing', () => {
-  function attachAll(): UiPluginBridgeHandle {
+  function attachAll(): ExtensionBridgeHandle {
     return attachBridge(frame.iframe, {
       pluginId: 'p',
       permissions: ['context:connections', 'command:invoke', 'storage:local'],

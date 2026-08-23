@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { PluginManagementPage } from '../PluginManagementPage';
-import { UI_PLUGIN_API_VERSION, type PluginSummary } from '../../../types/plugin';
+import { EXTENSION_API_VERSION, type PluginSummary } from '../../../types/plugin';
 
 const {
   pluginState,
@@ -72,7 +72,7 @@ function makePlugin(overrides: Partial<PluginSummary> = {}): PluginSummary {
     id: 'acme.bill-audit',
     name: 'Bill Audit',
     version: '1.0.0',
-    apiVersion: UI_PLUGIN_API_VERSION,
+    apiVersion: EXTENSION_API_VERSION,
     author: 'Acme',
     description: 'Compare bills against quotas',
     enabled: true,
@@ -325,7 +325,7 @@ describe('PluginManagementPage', () => {
   });
 
   it('greys out API-mismatched plugins and blocks their toggle/open actions', () => {
-    pluginState.plugins = [makePlugin({ apiVersion: UI_PLUGIN_API_VERSION + 1 })];
+    pluginState.plugins = [makePlugin({ apiVersion: EXTENSION_API_VERSION + 1 })];
 
     render(<PluginManagementPage />);
     const mismatched = card('acme.bill-audit');

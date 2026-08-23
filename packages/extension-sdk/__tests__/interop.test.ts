@@ -1,7 +1,7 @@
 /**
  * F8 test-agent: SDK ↔ host contract interoperability checks.
  *
- * The host counterpart lives in `src/lib/uiPluginBridge.ts` (+ `themeTokens.ts`,
+ * The host counterpart lives in `src/lib/extensionBridge.ts` (+ `themeTokens.ts`,
  * `types/plugin.ts`, `theme.css` consumers). Heavy host modules (tauri IPC,
  * zustand stores) are NOT executed here — their constants are parsed from
  * source so a drift on either side fails this file. Light pure modules
@@ -16,7 +16,7 @@ import {
   BRIDGE_CHANNEL as SDK_CHANNEL,
   BRIDGE_ERROR as SDK_ERRORS,
   REQUEST_TIMEOUT_MS as SDK_TIMEOUT,
-  UI_PLUGIN_API_VERSION as SDK_API_VERSION,
+  EXTENSION_API_VERSION as SDK_API_VERSION,
 } from '../src/bridge';
 import { DEFAULT_THEME_TOKENS, applyThemeSnapshot, startThemeListener } from '../src/theme';
 import * as SdkPublic from '../src/index';
@@ -26,11 +26,11 @@ import {
   THEME_TOKENS,
   buildThemeSnapshot,
 } from '../../../src/lib/themeTokens';
-import { UI_PLUGIN_API_VERSION as HOST_API_VERSION } from '../../../src/types/plugin';
+import { EXTENSION_API_VERSION as HOST_API_VERSION } from '../../../src/types/plugin';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HOST_ROOT = resolve(HERE, '../../..');
-const HOST_BRIDGE_SRC = readFileSync(resolve(HOST_ROOT, 'src/lib/uiPluginBridge.ts'), 'utf8');
+const HOST_BRIDGE_SRC = readFileSync(resolve(HOST_ROOT, 'src/lib/extensionBridge.ts'), 'utf8');
 const HOST_CSS_SRC = readFileSync(resolve(HOST_ROOT, 'src/styles/themes.css'), 'utf8');
 const SDK_CSS_SRC = readFileSync(resolve(HERE, '../src/theme.css'), 'utf8');
 
@@ -77,7 +77,7 @@ describe('X-01 wire error codes: every SDK BRIDGE_ERROR equals the host router c
 
 describe('X-02 envelope constants', () => {
   it('channel name matches the host literal', () => {
-    expect(SDK_CHANNEL).toBe('ui-plugin');
+    expect(SDK_CHANNEL).toBe('datazen-extension');
     expect(HOST_BRIDGE_SRC).toContain(`export const BRIDGE_CHANNEL = '${SDK_CHANNEL}';`);
   });
 

@@ -8,7 +8,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { usePluginStore } from '../../stores/pluginStore';
 import { useWorkspaceTabsStore } from '../../stores/workspaceTabsStore';
-import { UI_PLUGIN_API_VERSION, type PluginSummary } from '../../types/plugin';
+import { EXTENSION_API_VERSION, type PluginSummary } from '../../types/plugin';
 import { openPluginPage } from '../workspace/workspacePages';
 import { InstallPluginDialog } from './InstallPluginDialog';
 import { PERMISSION_LABELS } from './permissionLabels';
@@ -118,7 +118,7 @@ export function PluginManagementPage({ onOpenInWorkspace }: PluginManagementPage
   };
 
   const renderCard = (plugin: PluginSummary) => {
-    const apiMismatch = plugin.apiVersion !== UI_PLUGIN_API_VERSION;
+    const apiMismatch = plugin.apiVersion !== EXTENSION_API_VERSION;
     const dimmed = apiMismatch || !plugin.enabled;
     return (
       <div
@@ -159,7 +159,7 @@ export function PluginManagementPage({ onOpenInWorkspace }: PluginManagementPage
               tone="warning"
               title={t('plugins.page.apiMismatchHint', {
                 plugin: plugin.apiVersion,
-                host: UI_PLUGIN_API_VERSION,
+                host: EXTENSION_API_VERSION,
               })}
             >
               {t('plugins.page.apiMismatch')}

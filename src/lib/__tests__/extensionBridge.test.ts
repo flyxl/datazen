@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PluginRequestEnvelope } from '../uiPluginBridge';
+import type { PluginRequestEnvelope } from '../extensionBridge';
 
 const {
   storageGetMock,
@@ -71,7 +71,7 @@ import {
   BRIDGE_ERROR,
   BRIDGE_CHANNEL,
   MAX_INFLIGHT_REQUESTS,
-} from '../uiPluginBridge';
+} from '../extensionBridge';
 
 type SentEnvelope = Record<string, unknown>;
 
@@ -127,7 +127,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('uiPluginBridge handshake', () => {
+describe('extensionBridge handshake', () => {
   it('answers plugin.ready with host.ready carrying apiVersion/locale/dark/tokens', async () => {
     document.documentElement.classList.add('dark');
     const handle = attachBridge(env.iframe, {
@@ -173,7 +173,7 @@ describe('uiPluginBridge handshake', () => {
   });
 });
 
-describe('uiPluginBridge permission gate (deny-by-default)', () => {
+describe('extensionBridge permission gate (deny-by-default)', () => {
   it.each([['context.getConnections'], ['context.getActiveConnection']])(
     'denies %s without context:connections',
     async (type) => {
@@ -303,7 +303,7 @@ describe('uiPluginBridge permission gate (deny-by-default)', () => {
   });
 });
 
-describe('uiPluginBridge envelope semantics', () => {
+describe('extensionBridge envelope semantics', () => {
   it('echoes reqId on .ok responses even when handlers complete out of order', async () => {
     let releaseFirst!: (v: unknown) => void;
     let releaseSecond!: (v: unknown) => void;
@@ -378,7 +378,7 @@ describe('uiPluginBridge envelope semantics', () => {
   });
 });
 
-describe('uiPluginBridge rate limiting & timeout', () => {
+describe('extensionBridge rate limiting & timeout', () => {
   it('rejects the 21st concurrent request with E_RATE_LIMIT and recovers afterwards', async () => {
     let resolveFirst!: (v: unknown) => void;
     driverExecuteMock.mockImplementation(
@@ -473,7 +473,7 @@ describe('uiPluginBridge rate limiting & timeout', () => {
   });
 });
 
-describe('uiPluginBridge context whitelist', () => {
+describe('extensionBridge context whitelist', () => {
   const leakyConfig = {
     id: 'conn_1',
     name: 'Prod PG',
@@ -569,7 +569,7 @@ describe('uiPluginBridge context whitelist', () => {
   });
 });
 
-describe('uiPluginBridge command.invoke error mapping', () => {
+describe('extensionBridge command.invoke error mapping', () => {
   it('maps backend "not found" rejections to E_NOT_FOUND', async () => {
     driverExecuteMock.mockRejectedValue('connection not found: cfg-x');
     const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: ['command:invoke'] });

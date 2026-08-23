@@ -2,19 +2,19 @@
  * Plugin-side typed RPC client over the host postMessage bridge (PRD §3).
  *
  * Runs inside the sandboxed iframe: no Tauri APIs, zero runtime dependencies.
- * Every request is a `{ch:'ui-plugin', type, reqId, target:'host', payload?}`
+ * Every request is a `{ch:'datazen-extension', type, reqId, target:'host', payload?}`
  * envelope posted to `window.parent` with a `'*'` targetOrigin (the frame has
  * an opaque origin, so nothing stricter can be expressed); responses are
  * trusted only when `event.source === parent` and are correlated by the
  * echoed `reqId`. Requests time out after {@link REQUEST_TIMEOUT_MS}; `.err`
- * responses become {@link UiPluginError}s carrying the wire error code.
+ * responses become {@link ExtensionError}s carrying the wire error code.
  */
-export const BRIDGE_CHANNEL = 'ui-plugin';
+export const BRIDGE_CHANNEL = 'datazen-extension';
 
-/** Must match `UI_PLUGIN_API_VERSION` on the host (`src/types/plugin.ts`). */
-export const UI_PLUGIN_API_VERSION = 2;
+/** Must match `EXTENSION_API_VERSION` on the host (`src/types/plugin.ts`). */
+export const EXTENSION_API_VERSION = 2;
 
-/** Mirrors the host router deadline (`uiPluginBridge.ts`). */
+/** Mirrors the host router deadline (`extensionBridge.ts`). */
 export const REQUEST_TIMEOUT_MS = 30_000;
 
 /** Wire error codes mirrored from the host router; never leak stack traces. */
@@ -33,21 +33,21 @@ export type BridgeErrorCode = (typeof BRIDGE_ERROR)[keyof typeof BRIDGE_ERROR];
 
 /** SDK-local failure codes that never appear on the wire. */
 export const SDK_ERROR = {
-  VERSION_MISMATCH: 'UI_PLUGIN_VERSION_MISMATCH',
-  DETACHED: 'UI_PLUGIN_DETACHED',
+  VERSION_MISMATCH: 'EXTENSION_VERSION_MISMATCH',
+  DETACHED: 'EXTENSION_DETACHED',
 } as const;
 
 export type SdkErrorCode = (typeof SDK_ERROR)[keyof typeof SDK_ERROR];
 
-export type UiPluginErrorCode = BridgeErrorCode | SdkErrorCode;
+export type ExtensionErrorCode = BridgeErrorCode | SdkErrorCode;
 
 /** Typed rejection for every failed bridge interaction. */
-export class UiPluginError extends Error {
-  readonly code: UiPluginErrorCode;
+export class ExtensionError extends Error {
+  readonly code: ExtensionErrorCode;
 
-  constructor(code: UiPluginErrorCode, message: string) {
+  constructor(code: ExtensionErrorCode, message: string) {
     super(message);
-    this.name = 'UiPluginError';
+    this.name = 'ExtensionError';
     this.code = code;
   }
 }
@@ -106,10 +106,10 @@ export interface HostContext {
   tokens: Record<string, string>;
 }
 
-export interface UiPluginClient {
+export interface ExtensionClient {
   /**
    * Perform the `plugin.ready` → `host.ready` handshake and resolve with the
-   * host context. Rejects with `UI_PLUGIN_VERSION_MISMATCH` when the host
+   * host context. Rejects with `EXTENSION_VERSION_MISMATCH` when the host
    * speaks another protocol version, `E_TIMEOUT` when it never answers.
    * Idempotent after success.
    */
@@ -143,7 +143,7 @@ export interface UiPluginClient {
 
   /**
    * Remove the window listener, abort every pending request/handshake with
-   * `UI_PLUGIN_DETACHED` and put the client into a terminal detached state.
+   * `EXTENSION_DETACHED` and put the client into a terminal detached state.
    */
   detach(): void;
 }
@@ -184,7 +184,7 @@ function isResponseEnvelope(data: unknown): data is ResponseEnvelope {
  * const rows = await dz.command.invoke({ configId, command: 'query', args: { sql } });
  * ```
  */
-export function createClient(options: CreateClientOptions = {}): UiPluginClient {
+export function createClient(options: CreateClientOptions = {}): ExtensionClient {
   const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const parent =
     options.parentWindow !== undefined
@@ -234,11 +234,11 @@ export function createClient(options: CreateClientOptions = {}): UiPluginClient 
   function settleHandshake(data: { payload?: unknown }): void {
     if (handshakeState !== 'pending') return;
     const payload = isRecord(data.payload) ? data.payload : {};
-    if (payload.apiVersion !== UI_PLUGIN_API_VERSION) {
+    if (payload.apiVersion !== EXTENSION_API_VERSION) {
       failHandshake(
-        new UiPluginError(
+        new ExtensionError(
           SDK_ERROR.VERSION_MISMATCH,
-          `host bridge apiVersion ${String(payload.apiVersion)} is incompatible with SDK ${UI_PLUGIN_API_VERSION}; update @datazen/ui-plugin-sdk`,
+          `host bridge apiVersion ${String(payload.apiVersion)} is incompatible with SDK ${EXTENSION_API_VERSION}; update @datazen/extension-sdk`,
         ),
       );
       return;
@@ -258,7 +258,7 @@ export function createClient(options: CreateClientOptions = {}): UiPluginClient 
 
   function ready(): Promise<HostContext> {
     if (detached) {
-      return Promise.reject(new UiPluginError(SDK_ERROR.DETACHED, 'client detached'));
+      return Promise.reject(new ExtensionError(SDK_ERROR.DETACHED, 'client detached'));
     }
     if (handshakeState === 'ready' && context) return Promise.resolve(context);
     if (handshakeState === 'failed') {
@@ -287,25 +287,25 @@ export function createClient(options: CreateClientOptions = {}): UiPluginClient 
       rejectReady = reject;
       handshakeTimer = setTimeout(() => {
         failHandshake(
-          new UiPluginError(BRIDGE_ERROR.TIMEOUT, `handshake timed out after ${timeoutMs}ms`),
+          new ExtensionError(BRIDGE_ERROR.TIMEOUT, `handshake timed out after ${timeoutMs}ms`),
         );
       }, timeoutMs);
       post({
         ch: BRIDGE_CHANNEL,
         type: 'plugin.ready',
         target: 'host',
-        payload: { apiVersion: UI_PLUGIN_API_VERSION },
+        payload: { apiVersion: EXTENSION_API_VERSION },
       });
     });
   }
 
   function request<R>(type: string, payload?: unknown): Promise<R> {
     if (detached) {
-      return Promise.reject(new UiPluginError(SDK_ERROR.DETACHED, 'client detached'));
+      return Promise.reject(new ExtensionError(SDK_ERROR.DETACHED, 'client detached'));
     }
     if (!parent) {
       return Promise.reject(
-        new UiPluginError(BRIDGE_ERROR.INTERNAL, `"${type}" unavailable outside an iframe`),
+        new ExtensionError(BRIDGE_ERROR.INTERNAL, `"${type}" unavailable outside an iframe`),
       );
     }
     seq += 1;
@@ -313,7 +313,9 @@ export function createClient(options: CreateClientOptions = {}): UiPluginClient 
     return new Promise<R>((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(reqId);
-        reject(new UiPluginError(BRIDGE_ERROR.TIMEOUT, `"${type}" timed out after ${timeoutMs}ms`));
+        reject(
+          new ExtensionError(BRIDGE_ERROR.TIMEOUT, `"${type}" timed out after ${timeoutMs}ms`),
+        );
       }, timeoutMs);
       pending.set(reqId, { type, resolve, reject, timer });
       post({
@@ -346,14 +348,14 @@ export function createClient(options: CreateClientOptions = {}): UiPluginClient 
     } else {
       // Malformed host frames may omit or null the err payload entirely
       // (BUG-F8-01); read defensively so the listener can never throw and
-      // the pending request always settles as UiPluginError(E_INTERNAL).
+      // the pending request always settles as ExtensionError(E_INTERNAL).
       const payload: { code?: unknown; message?: unknown } = isRecord(data.payload)
         ? data.payload
         : {};
       const code = payload.code;
       entry.reject(
-        new UiPluginError(
-          (typeof code === 'string' ? code : BRIDGE_ERROR.INTERNAL) as UiPluginErrorCode,
+        new ExtensionError(
+          (typeof code === 'string' ? code : BRIDGE_ERROR.INTERNAL) as ExtensionErrorCode,
           (typeof payload.message === 'string' && payload.message) || entry.type,
         ),
       );
@@ -364,7 +366,7 @@ export function createClient(options: CreateClientOptions = {}): UiPluginClient 
     window.addEventListener('message', onMessage);
   }
 
-  const client: UiPluginClient = {
+  const client: ExtensionClient = {
     ready,
 
     context: {
@@ -421,10 +423,10 @@ export function createClient(options: CreateClientOptions = {}): UiPluginClient 
       }
       for (const [, entry] of pending) {
         clearTimeout(entry.timer);
-        entry.reject(new UiPluginError(SDK_ERROR.DETACHED, `"${entry.type}" aborted: detached`));
+        entry.reject(new ExtensionError(SDK_ERROR.DETACHED, `"${entry.type}" aborted: detached`));
       }
       pending.clear();
-      failHandshake(new UiPluginError(SDK_ERROR.DETACHED, 'handshake aborted: detached'));
+      failHandshake(new ExtensionError(SDK_ERROR.DETACHED, 'handshake aborted: detached'));
     },
   };
 

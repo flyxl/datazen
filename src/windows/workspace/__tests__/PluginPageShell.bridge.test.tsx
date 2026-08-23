@@ -17,7 +17,7 @@ const { attachBridgeMock, getManifestMock, summaryHolder } = vi.hoisted(() => ({
   summaryHolder: { current: undefined as Record<string, unknown> | undefined },
 }));
 
-vi.mock('../../../lib/uiPluginBridge', () => ({
+vi.mock('../../../lib/extensionBridge', () => ({
   attachBridge: (...args: unknown[]) => attachBridgeMock(...args),
 }));
 

@@ -1,8 +1,8 @@
 /*
- * @datazen/ui-plugin-sdk — baseline control styles for UI plugin pages.
+ * @datazen/extension-sdk — baseline control styles for UI plugin pages.
  *
  * Usage:
- *   import '@datazen/ui-plugin-sdk/theme.css';
+ *   import '@datazen/extension-sdk/theme.css';
  *   <button class="dz-btn dz-btn--primary">Run</button>
  *
  * Every color resolves from the DataZen token contract (--c-* semantic set

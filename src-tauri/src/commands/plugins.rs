@@ -383,7 +383,7 @@ pub async fn remove_plugin(
 /// argument contents — and both sides cap field lengths so a misbehaving
 /// plugin cannot flood the log.
 #[tauri::command]
-pub async fn plugin_audit_log(
+pub async fn extension_audit_log(
     plugin_id: String,
     event: String,
     detail: String,
@@ -394,7 +394,7 @@ pub async fn plugin_audit_log(
     let event = event.chars().take(64).collect::<String>();
     let detail = detail.chars().take(200).collect::<String>();
     tracing::info!(
-        target: "ui_plugin_audit",
+        target: "extension_audit",
         plugin_id = %plugin_id,
         event = %event,
         detail = %detail,

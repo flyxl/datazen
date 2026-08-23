@@ -7,7 +7,7 @@
  * names are stored here — values are read live from computed styles so
  * snapshots always reflect the active base theme + applied theme pack.
  */
-import { UI_PLUGIN_API_VERSION } from '../types/plugin';
+import { EXTENSION_API_VERSION } from '../types/plugin';
 
 export const THEME_TOKENS = [
   // Backgrounds
@@ -45,7 +45,7 @@ export const THEME_TOKENS = [
 export type ThemeTokenName = (typeof THEME_TOKENS)[number];
 
 /** Wire version of the theme snapshot payload (`theme.apply` / `host.ready`). */
-export const THEME_SNAPSHOT_VERSION = UI_PLUGIN_API_VERSION;
+export const THEME_SNAPSHOT_VERSION = EXTENSION_API_VERSION;
 
 export interface ThemeSnapshot {
   /** Protocol version of this snapshot shape. */

@@ -40,7 +40,7 @@ export const pluginCommands = {
    * the command name and target connection id.
    */
   auditLog: (pluginId: string, event: string, detail: string): void => {
-    void invoke('plugin_audit_log', { pluginId, event, detail }).catch(() => {
+    void invoke('extension_audit_log', { pluginId, event, detail }).catch(() => {
       /* audit is best-effort; IPC being down must not break the call path */
     });
   },

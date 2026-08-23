@@ -26,7 +26,7 @@ export default defineConfig({
       'src/**/*.test.{ts,tsx}',
       'scripts/__tests__/**/*.test.{ts,mjs}',
       // SDK package tests run on the Host toolchain too (PRD F8).
-      'packages/ui-plugin-sdk/__tests__/**/*.test.{ts,tsx}',
+      'packages/extension-sdk/__tests__/**/*.test.{ts,tsx}',
     ],
     coverage: {
       provider: 'v8',

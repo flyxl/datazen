@@ -1,16 +1,16 @@
 /*
  * Sample plugin bridge client (F9 E2E fixture).
  *
- * Zero-build vanilla JS mirroring the @datazen/ui-plugin-sdk bridge semantics:
+ * Zero-build vanilla JS mirroring the @datazen/extension-sdk bridge semantics:
  * `plugin.ready` -> `host.ready` handshake, then reqId-correlated RPC against
- * the host postMessage router (src/lib/uiPluginBridge.ts). Kept dependency-free
+ * the host postMessage router (src/lib/extensionBridge.ts). Kept dependency-free
  * on purpose so the fixture is a plain static directory.
  */
 (function () {
   'use strict';
 
   var API_VERSION = 2;
-  var CHANNEL = 'ui-plugin';
+  var CHANNEL = 'datazen-extension';
   var HANDSHAKE_RETRIES = 10;
   var HANDSHAKE_RETRY_MS = 500;
   var REQUEST_TIMEOUT_MS = 15000;

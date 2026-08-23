@@ -7,7 +7,7 @@
  */
 
 /** API version handshake; must match `PLUGIN_API_VERSION` on the Rust side. */
-export const UI_PLUGIN_API_VERSION = 2;
+export const EXTENSION_API_VERSION = 2;
 
 /** Serialized strings of the Rust `Permission` enum (serde renames). */
 export type PluginPermission =

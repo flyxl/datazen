@@ -1,11 +1,11 @@
 /**
- * @datazen/ui-plugin-sdk — public entry point.
+ * @datazen/extension-sdk — public entry point.
  *
  * - `createClient()` — typed postMessage RPC against the host bridge.
  * - Theme utilities — apply/observe host `theme.apply` snapshots (no React).
- * - Types — wire shapes shared with `src/lib/uiPluginBridge.ts`.
+ * - Types — wire shapes shared with `src/lib/extensionBridge.ts`.
  *
- * The optional `useTheme` React hook lives at `@datazen/ui-plugin-sdk/react`
+ * The optional `useTheme` React hook lives at `@datazen/extension-sdk/react`
  * (react is an optional peer dependency): exporting it from here would force
  * every plugin bundle — including non-React ones — to link against React,
  * breaking the zero-runtime-dependency contract. Its result *type* is
@@ -16,8 +16,8 @@ export {
   BRIDGE_ERROR,
   REQUEST_TIMEOUT_MS,
   SDK_ERROR,
-  UI_PLUGIN_API_VERSION,
-  UiPluginError,
+  EXTENSION_API_VERSION,
+  ExtensionError,
   createClient,
 } from './bridge';
 export type {
@@ -28,8 +28,8 @@ export type {
   HostContext,
   NotifyRequest,
   SdkErrorCode,
-  UiPluginClient,
-  UiPluginErrorCode,
+  ExtensionClient,
+  ExtensionErrorCode,
 } from './bridge';
 
 export {
