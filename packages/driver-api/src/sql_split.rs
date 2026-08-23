@@ -190,8 +190,12 @@ impl SqlStatementScanner {
                 if bytes[self.i] == b'$' && self.buf[self.i..].starts_with(&tag) {
                     self.i += tag.len();
                     self.mode = ScanMode::Normal;
-                } else if !eof && remaining_is_prefix(&self.buf[self.i..], &tag) {
-                    return Step::NeedMore;
+                } else if !eof {
+                    let at = floor_char_boundary(&self.buf, self.i);
+                    if remaining_is_prefix(&self.buf[at..], &tag) {
+                        return Step::NeedMore;
+                    }
+                    self.i += utf8_seq_len(bytes[self.i]);
                 } else {
                     self.i += 1;
                 }
@@ -234,9 +238,16 @@ impl SqlStatementScanner {
     fn step_normal(&mut self, eof: bool) -> Step {
         let bytes = self.buf.as_bytes();
         let len = bytes.len();
-        let rest = &self.buf[self.i..];
+        // `self.i` walks raw bytes and may sit inside a multi-byte character;
+        // floor it before slicing so user SQL with non-ASCII text cannot panic.
+        let scan_at = floor_char_boundary(&self.buf, self.i);
+        let rest = &self.buf[scan_at..];
 
-        if self.recognize_delimiter && self.buf[self.start..self.i].trim().is_empty() {
+        if self.recognize_delimiter
+            && self.buf[self.start..floor_char_boundary(&self.buf, self.i)]
+                .trim()
+                .is_empty()
+        {
             match match_delimiter_command(&self.buf, self.i, eof) {
                 DelimMatch::NeedMore => return Step::NeedMore,
                 DelimMatch::Hit { delimiter, next } => {
@@ -314,7 +325,9 @@ impl SqlStatementScanner {
                 }
             }
             _ => {
-                self.i += 1;
+                // Advance by whole characters so `self.i` lands on char
+                // boundaries even when SQL contains multi-byte text.
+                self.i += utf8_seq_len(bytes[self.i]);
             }
         }
         Step::Continue
@@ -337,6 +350,30 @@ fn remaining_is_prefix(remaining: &str, token: &str) -> bool {
     !remaining.is_empty() && token.starts_with(remaining) && remaining.len() < token.len()
 }
 
+/// Floor `idx` onto the nearest UTF-8 char boundary.
+///
+/// The scanner walks raw bytes for speed, so `self.i` may temporarily sit
+/// inside a multi-byte character (e.g. Chinese aliases in user SQL). String
+/// slices must never use such an index directly.
+fn floor_char_boundary(s: &str, idx: usize) -> usize {
+    let mut i = idx.min(s.len());
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+/// Byte length of the UTF-8 sequence started by `b` (continuation → 1).
+fn utf8_seq_len(b: u8) -> usize {
+    match b {
+        0x00..=0x7f => 1,
+        0xc0..=0xdf => 2,
+        0xe0..=0xef => 3,
+        0xf0..=0xf7 => 4,
+        _ => 1,
+    }
+}
+
 /// Parse a MySQL client `DELIMITER` meta-command at `i`.
 fn match_delimiter_command(input: &str, i: usize, eof: bool) -> DelimMatch {
     let rest = match input.get(i..) {
@@ -344,13 +381,22 @@ fn match_delimiter_command(input: &str, i: usize, eof: bool) -> DelimMatch {
         None => return DelimMatch::None,
     };
     const KW: &str = "delimiter";
-    if rest.len() < KW.len() {
-        if !eof && KW.starts_with(&rest.to_ascii_lowercase()) {
+    // Byte-wise comparisons: `rest` may begin inside multi-byte text and
+    // string slicing here would risk a char-boundary panic.
+    let rb = rest.as_bytes();
+    if rb.len() < KW.len() {
+        if !eof
+            && KW.as_bytes().starts_with(
+                &rb.iter()
+                    .map(|b| b.to_ascii_lowercase())
+                    .collect::<Vec<u8>>(),
+            )
+        {
             return DelimMatch::NeedMore;
         }
         return DelimMatch::None;
     }
-    if !rest[..KW.len()].eq_ignore_ascii_case(KW) {
+    if !rb[..KW.len()].eq_ignore_ascii_case(KW.as_bytes()) {
         return DelimMatch::None;
     }
     let after = match rest.get(KW.len()..) {
@@ -537,6 +583,48 @@ mod tests {
         assert_eq!(stmts.len(), 2);
         assert_eq!(stmts[0], "SELECT 1");
         assert_eq!(stmts[1], "/* block; comment */ SELECT 2");
+    }
+
+    /// Regression: byte-index panic inside multi-byte characters
+    /// (e.g. `SELECT status AS 状态 ...`) used to crash the tokio worker.
+    #[test]
+    fn split_sql_handles_multibyte_aliases() {
+        let stmts = split_sql_statements(
+            "SELECT status AS 状态, COUNT(*) AS 数量 FROM orders GROUP BY status;",
+        );
+        assert_eq!(stmts.len(), 1);
+        assert!(stmts[0].contains("状态"));
+        assert!(stmts[0].contains("数量"));
+    }
+
+    #[test]
+    fn split_sql_multibyte_in_comments_quotes_and_identifiers() {
+        let stmts = split_sql_statements(
+            "-- 中文注释; 带分号\nSELECT '中文分号;测试' AS v; SELECT \"列名\" FROM t;",
+        );
+        assert_eq!(stmts.len(), 2);
+        assert!(stmts[0].contains("中文分号;测试"));
+        assert!(stmts[1].contains("列名"));
+    }
+
+    #[test]
+    fn scanner_chunked_multibyte_matches_single_push() {
+        let sql = "SELECT 状态 AS s, COUNT(*) AS 数量 FROM orders GROUP BY status;\nSELECT '中文;分号' AS x;";
+        let one_shot = split_sql_statements(sql);
+        assert_eq!(one_shot.len(), 2);
+
+        let mut scanner = SqlStatementScanner::new();
+        let mut streamed = Vec::new();
+        let chars: Vec<char> = sql.chars().collect();
+        let mut idx = 0;
+        while idx < chars.len() {
+            let end = (idx + 3).min(chars.len());
+            let chunk: String = chars[idx..end].iter().collect();
+            streamed.extend(scanner.push(&chunk));
+            idx = end;
+        }
+        streamed.extend(scanner.finish());
+        assert_eq!(streamed, one_shot);
     }
 
     #[test]
