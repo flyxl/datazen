@@ -2,7 +2,7 @@
  * Host-side postMessage bridge for sandboxed UI plugin iframes (PRD §3).
  *
  * Envelope (both directions):
- *   { ch:'ui-plugin', type, reqId?, target:'host', payload? }
+ *   { ch:'datazen-extension', type, reqId?, target:'host', payload? }
  * Responses suffix the request type with `.ok` / `.err` and echo `reqId`.
  *
  * Security posture:
@@ -15,16 +15,16 @@
  */
 import { invoke } from '@tauri-apps/api/core';
 import type { PluginPermission } from '../types/plugin';
-import { UI_PLUGIN_API_VERSION } from '../types/plugin';
+import { EXTENSION_API_VERSION } from '../types/plugin';
 import { pluginCommands } from '../commands/plugins';
 import { driverCommands } from '../commands/driver';
 import { connectionCommands } from '../commands/connection';
-import { resolvePluginString } from './uiPluginI18n';
+import { resolvePluginString } from './extensionI18n';
 import { useConnectionStore } from '../stores/connectionStore';
 import { useActiveConnectionStore } from '../stores/activeConnectionStore';
 import { buildThemeSnapshot } from './themeTokens';
 
-export const BRIDGE_CHANNEL = 'ui-plugin';
+export const BRIDGE_CHANNEL = 'datazen-extension';
 
 export const REQUEST_TIMEOUT_MS = 30_000;
 export const MAX_INFLIGHT_REQUESTS = 20;
@@ -212,9 +212,9 @@ async function handleCommandInvoke(pluginId: string, payload: unknown) {
     );
   }
   // Audit trail without leaking argument contents into logs. The same line
-  // lands in {dataDir}/logs/datazen.log via the plugin_audit_log command so
+  // lands in {dataDir}/logs/datazen.log via the extension_audit_log command so
   // the webview console is not the only durable record.
-  console.info(`[ui-plugin:${pluginId}] command.invoke ${command} via ${configId}`);
+  console.info(`[extension:${pluginId}] command.invoke ${command} via ${configId}`);
   pluginCommands.auditLog(pluginId, 'command.invoke', `${command} via ${configId}`);
   try {
     const result = await driverCommands.execute({
@@ -274,7 +274,7 @@ export interface AttachBridgeOptions {
   notifyCooldownMs?: number;
 }
 
-export interface UiPluginBridgeHandle {
+export interface ExtensionBridgeHandle {
   detach(): void;
   /** Push a fresh theme.apply snapshot to the plugin iframe. */
   pushThemeSnapshot(): void;
@@ -298,12 +298,12 @@ function isPluginEnvelope(data: unknown): data is PluginRequestEnvelope {
 export function attachBridge(
   iframe: HTMLIFrameElement,
   opts: AttachBridgeOptions,
-): UiPluginBridgeHandle {
+): ExtensionBridgeHandle {
   const {
     pluginId,
     permissions,
     locale = typeof navigator !== 'undefined' ? navigator.language : 'en',
-    apiVersion = UI_PLUGIN_API_VERSION,
+    apiVersion = EXTENSION_API_VERSION,
     timeoutMs = REQUEST_TIMEOUT_MS,
     maxInflight = MAX_INFLIGHT_REQUESTS,
     notifyCooldownMs = NOTIFY_MIN_INTERVAL_MS,

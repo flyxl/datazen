@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  UI_PLUGIN_API_VERSION,
+  EXTENSION_API_VERSION,
   type PluginManifest,
   type PluginPermission,
   type PluginSummary,
@@ -39,7 +39,7 @@ const MANIFEST_PAYLOAD = {
   id: 'acme.demo',
   name: 'Demo Plugin',
   version: '1.0.0',
-  apiVersion: UI_PLUGIN_API_VERSION,
+  apiVersion: EXTENSION_API_VERSION,
   author: 'Acme',
   entry: 'index.html',
   contributes: {
@@ -58,8 +58,8 @@ const MANIFEST_PAYLOAD = {
 } satisfies PluginManifest;
 
 describe('types/plugin host contract', () => {
-  it('UI_PLUGIN_API_VERSION matches Rust PLUGIN_API_VERSION (=2)', () => {
-    expect(UI_PLUGIN_API_VERSION).toBe(2);
+  it('EXTENSION_API_VERSION matches Rust PLUGIN_API_VERSION (=2)', () => {
+    expect(EXTENSION_API_VERSION).toBe(2);
   });
 
   it('PluginPermission covers exactly the four Rust Permission serde renames', () => {

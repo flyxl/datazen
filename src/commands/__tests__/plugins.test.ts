@@ -7,7 +7,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 import { PLUGINS_CHANGED_EVENT, pluginCommands } from '../plugins';
-import { UI_PLUGIN_API_VERSION } from '../../types/plugin';
+import { EXTENSION_API_VERSION } from '../../types/plugin';
 
 describe('pluginCommands', () => {
   beforeEach(() => {
@@ -82,7 +82,7 @@ describe('pluginCommands', () => {
 
   it('exposes the Rust event name and API version contract', () => {
     expect(PLUGINS_CHANGED_EVENT).toBe('plugins:changed');
-    expect(UI_PLUGIN_API_VERSION).toBe(2);
+    expect(EXTENSION_API_VERSION).toBe(2);
   });
 
   // --- F3 supplementary (test agent): payload passthrough ---

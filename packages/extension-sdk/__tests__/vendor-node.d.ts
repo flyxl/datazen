@@ -1,6 +1,6 @@
 /**
  * Minimal ambient typings for node builtins used by test-only helpers
- * (`readFileSync` source-contract checks). Keeps `tsc -p packages/ui-plugin-sdk`
+ * (`readFileSync` source-contract checks). Keeps `tsc -p packages/extension-sdk`
  * green without adding a runtime dependency or touching the package tsconfig.
  */
 declare module 'node:fs' {

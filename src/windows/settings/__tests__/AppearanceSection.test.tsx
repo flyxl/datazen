@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AppearanceSection } from '../AppearanceSection';
-import { UI_PLUGIN_API_VERSION, type PluginSummary } from '../../../types/plugin';
+import { EXTENSION_API_VERSION, type PluginSummary } from '../../../types/plugin';
 import { encodePluginThemePackId } from '../../../lib/themePackApply';
 
 const { pluginState, fetchMock, settingsState, updateSettingsMock } = vi.hoisted(() => {
@@ -49,7 +49,7 @@ function makePlugin(overrides: Partial<PluginSummary> = {}): PluginSummary {
     id: 'acme.bill-audit',
     name: 'Bill Audit',
     version: '1.0.0',
-    apiVersion: UI_PLUGIN_API_VERSION,
+    apiVersion: EXTENSION_API_VERSION,
     author: 'Acme',
     enabled: true,
     permissions: [],

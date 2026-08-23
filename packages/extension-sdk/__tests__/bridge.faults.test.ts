@@ -4,7 +4,7 @@
  *
  * C-03/C-04 lock in the BUG-F8-01 fix: malformed `.err` frames whose
  * `payload` is absent or null must settle the pending request as
- * UiPluginError(E_INTERNAL) with zero uncaught page errors (see
+ * ExtensionError(E_INTERNAL) with zero uncaught page errors (see
  * docs/prd/ui-plugins-progress.md Bug 跟踪).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -13,16 +13,16 @@ import {
   BRIDGE_ERROR,
   REQUEST_TIMEOUT_MS,
   SDK_ERROR,
-  UI_PLUGIN_API_VERSION,
-  UiPluginError,
+  EXTENSION_API_VERSION,
+  ExtensionError,
   createClient,
 } from '../src/bridge';
-import type { UiPluginClient } from '../src/bridge';
+import type { ExtensionClient } from '../src/bridge';
 
 type Sent = Record<string, unknown>;
 
 const HOST_READY_PAYLOAD = {
-  apiVersion: UI_PLUGIN_API_VERSION,
+  apiVersion: EXTENSION_API_VERSION,
   locale: 'en',
   dark: false,
   tokens: {},
@@ -55,7 +55,7 @@ function okResponse(type: string, reqId: string, payload?: unknown): Sent {
   };
 }
 
-async function handshake(parent: Window): Promise<{ client: UiPluginClient }> {
+async function handshake(parent: Window): Promise<{ client: ExtensionClient }> {
   const client = createClient({ parentWindow: parent });
   const readyPromise = client.ready();
   receive(parent, hostReady());
@@ -159,9 +159,9 @@ describe('malformed host responses (F8 tolerance matrix)', () => {
       tracked.restore();
     }
 
-    const failure = (await pending) as UiPluginError;
+    const failure = (await pending) as ExtensionError;
     expect(tracked.events).toEqual([]);
-    expect(failure).toBeInstanceOf(UiPluginError);
+    expect(failure).toBeInstanceOf(ExtensionError);
     expect(failure.code).toBe(BRIDGE_ERROR.INTERNAL);
     expect(failure.message).toBe('storage.get');
   });
@@ -190,9 +190,9 @@ describe('malformed host responses (F8 tolerance matrix)', () => {
         tracked.restore();
       }
 
-      const failure = (await pending) as UiPluginError;
+      const failure = (await pending) as ExtensionError;
       expect(tracked.events).toEqual([]);
-      expect(failure).toBeInstanceOf(UiPluginError);
+      expect(failure).toBeInstanceOf(ExtensionError);
       expect(failure.code).toBe(BRIDGE_ERROR.INTERNAL);
       expect(failure.message).toBe('ui.notify');
     }
@@ -213,8 +213,8 @@ describe('malformed host responses (F8 tolerance matrix)', () => {
         ok: false,
         payload: badPayload,
       });
-      const failure = (await pending) as UiPluginError;
-      expect(failure).toBeInstanceOf(UiPluginError);
+      const failure = (await pending) as ExtensionError;
+      expect(failure).toBeInstanceOf(ExtensionError);
       expect(failure.code).toBe(BRIDGE_ERROR.INTERNAL);
       expect(failure.message).toBe('storage.remove');
     }
@@ -366,7 +366,7 @@ describe('concurrent request routing', () => {
     await expect(second).resolves.toBe('real');
   });
 
-  it('C-12 detach aborts all 50 in-flight requests with UI_PLUGIN_DETACHED', async () => {
+  it('C-12 detach aborts all 50 in-flight requests with EXTENSION_DETACHED', async () => {
     const { parent } = makeParentWindow();
     const { client } = await handshake(parent);
 
@@ -378,8 +378,8 @@ describe('concurrent request routing', () => {
 
     const outcomes = await Promise.all(pendings);
     for (const outcome of outcomes) {
-      expect(outcome).toBeInstanceOf(UiPluginError);
-      expect((outcome as UiPluginError).code).toBe(SDK_ERROR.DETACHED);
+      expect(outcome).toBeInstanceOf(ExtensionError);
+      expect((outcome as ExtensionError).code).toBe(SDK_ERROR.DETACHED);
     }
   });
 

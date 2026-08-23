@@ -984,7 +984,7 @@ pub fn run() {
             commands::plugin_storage_set,
             commands::plugin_storage_remove,
             commands::read_plugin_file,
-            commands::plugin_audit_log,
+            commands::extension_audit_log,
             rebuild_menu,
         ])
         .on_window_event(|window, event| {
