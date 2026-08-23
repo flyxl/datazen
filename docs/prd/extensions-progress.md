@@ -142,7 +142,7 @@ Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已�
 | S-08 | Windows 形态反斜杠穿越（编码与裸 `\`） | PASS |
 | S-09 | `http://datazen.<host>/` 无分隔符别名 → BUG-F2-01 修复后拒绝（unsupported scheme）；规范形 `http://datazen./<host>/…` 与 native 仍等价（原「宽松接受」断言已随修复翻转，2026-08-23） | PASS（BUG-F2-01 已修复） |
 | S-10 | 盘符组件 `C:/evil.json`：Unix 下不存在即 404；Windows 下由 canonicalize 包含性兜底（join 截断语义） | PASS |
-| S-11 | `http://datazen.` 空段/缺路径：host 为空串被拒 | PASS |
+| S-11 | `http://datazen.` 空段/缺路径：裸形（无分隔符）BUG-F2-01 修复后提前以 unsupported scheme 拒绝；`http://datazen./`（分隔符已满足、host 空）仍由空 host 校验拒绝——两态均拒，安全结论不变 | PASS |
 | S-12 | host 混淆 8 变体：大小写、尾点、`:8080` 端口、百分号编码 host（host 从不解码）、前后空白、多点号 | PASS |
 | S-13 | scheme 大小写不敏感但前缀精确：单斜杠/`xdatazen://`/反斜杠形式/外域前缀全拒 | PASS |
 | S-14 | open params 特殊字符原样转发：`&`/`=`/`%`/加号空格/中文（`a%26b%3Dc`→`a&b=c`、`中文`、`100%`），`page` 键排除 | PASS |
