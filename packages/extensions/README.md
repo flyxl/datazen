@@ -56,6 +56,15 @@ packages/extensions/<publisher>.<name>/
 
 > 注意：安装是**拷贝语义**——修改源码后需重新安装才能生效（同 id 重装会覆盖并备份旧包为 `{id}.old.bak`）。停用/卸载在插件管理页操作。
 
+## 主题一致性规范（必须遵守）
+
+扩展页面运行在宿主窗口的 iframe 中，**必须与宿主 UI 保持同一主题观感**——宿主切到深色，扩展页面不得停留在浅色。契约如下：
+
+1. **禁止硬编码配色**。所有颜色一律经 CSS 变量消费宿主 token 契约：`--c-*` 语义组（`--c-surface` / `--c-fg` / `--c-accent` 等）与 `--dt-*` DataTable 组。
+2. **宿主推送时机（保证）**：桥接握手 `host.ready` 携带首次 `{dark, tokens}` 快照；此后宿主在每次主题切换（模式 toggle 或主题包更换，含 `<html>` class 变化与 `datazen:theme-pack-changed` 事件）时主动推送 `theme.apply` 同形快照。扩展无需轮询。
+3. **页面义务**：收到快照后把 tokens 写到 `document.documentElement` 的 inline style、同步切换 `.dark` class 与 `color-scheme`（SDK 用户由 `applyThemeSnapshot()` / `useTheme()` 代劳；零构建页面参考 `datazen.playground/assets/app.js` 的 `applyHostTheme()`）。
+4. **回退值仅限握手前的一瞬**：`var(--x, fallback)` 的字面回退只允许覆盖首帧，不得作为常驻配色；推荐回退中性色并声明 `color-scheme: light dark`。
+
 ## 主题完整能力（legacy ThemePack 对齐）
 
 `contributes.themes[]` 除必需字段外支持三个**可选**字段，完整保留旧 ThemePack 的全部能力：

@@ -12,6 +12,15 @@
       (style-src 'unsafe-inline') and consumes contract tokens with fallbacks.
     -->
     <style>
+      /*
+       * Theme-consistency spec (README "主题一致性规范"): every color resolves
+       * from the host token contract pushed via host.ready / theme.apply
+       * (app.js writes them onto :root). Literal fallbacks below only cover
+       * the instant before the first snapshot — never hardcode palette colors.
+       */
+      :root {
+        color-scheme: light dark;
+      }
       html {
         background: var(--c-surface, #ffffff);
       }

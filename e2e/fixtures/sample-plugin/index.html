@@ -9,7 +9,25 @@
       assets with CSP without 'unsafe-inline' in script-src — inline <script>
       blocks would never execute inside the sandboxed iframe. Subresource URLs
       must stay under datazen:// (matched by script-src/img-src 'self' datazen:).
+
+      Theme-consistency spec (packages/extensions/README.md): colors come from
+      the host's --c-*/--dt-* tokens (applied to :root by app.js on
+      host.ready / theme.apply); literal fallbacks only cover the instant
+      before the first snapshot lands.
     -->
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        padding: 12px 16px;
+        font-family: system-ui, sans-serif;
+        font-size: 13px;
+        background: var(--c-surface, #ffffff);
+        color: var(--c-fg, #111827);
+      }
+    </style>
   </head>
   <body>
     <p>bridge: <span data-testid="bridge-status">booting</span></p>
