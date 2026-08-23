@@ -278,22 +278,23 @@ fn windows_form_backslash_traversal_is_rejected() {
 }
 
 #[test]
-fn windows_dotted_host_without_separator_parses_leniently() {
-    // `http://datazen.acme.bill-audit/...` (no `/` right after `datazen.`)
-    // is accepted as an alias of the canonical Windows form. Lenient superset:
-    // the same plugin-id/host/path/MIME checks still gate every request.
-    let canonical = parse_datazen_uri("datazen://acme.bill-audit/index.html").unwrap();
+fn windows_dotted_host_without_separator_is_rejected() {
+    // BUG-F2-01: `http://datazen.acme.bill-audit/...` (no `/` right after
+    // `datazen.`) used to be accepted as a lenient alias of the canonical
+    // Windows form. Spec §2.4 only defines `http://datazen./<host>/<path>`,
+    // so the separator is mandatory and these fail as unsupported schemes.
+    let unsupported = |uri: &str| format!("unsupported scheme: {uri}");
     assert_eq!(
         parse_datazen_uri("http://datazen.acme.bill-audit/index.html"),
-        Ok(canonical.clone())
+        Err(unsupported("http://datazen.acme.bill-audit/index.html"))
     );
     assert_eq!(
         parse_datazen_uri("https://datazen.acme.bill-audit/index.html"),
-        Ok(canonical)
+        Err(unsupported("https://datazen.acme.bill-audit/index.html"))
     );
     assert_eq!(
         parse_datazen_uri("https://datazenacme.bill-audit/index.html"),
-        Err("unsupported scheme: https://datazenacme.bill-audit/index.html".to_string())
+        Err(unsupported("https://datazenacme.bill-audit/index.html"))
     );
 }
 
