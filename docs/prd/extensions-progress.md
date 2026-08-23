@@ -1,7 +1,7 @@
 # 插件系统开发进度管理
 
 > 流程：编码 agent 开发 + 单测 → commit → 新测试 agent 输出 E2E 用例与结果（覆盖率 ≥80%，只报不修）→ commit → bug 循环（验证不通过→修复中→待验证→已修复）。
-> 分支：`feature/ui-plugins`（worktree：`../datazen-ui-plugins`）。PRD：[ui-plugins.md](./ui-plugins.md) v0.5；技术方案：[ui-plugins-implementation.md](./ui-plugins-implementation.md)。
+> 分支：`feature/extensions`（worktree：`../datazen-extensions`）。PRD：[extensions.md](./extensions.md) v0.5；技术方案：[extensions-implementation.md](./extensions-implementation.md)。
 
 ## 功能工作项
 
@@ -12,9 +12,9 @@
 | F3 | 前端状态与 IPC 封装 | types/plugin.ts、pluginStore、workspaceTabsStore、commands/plugins.ts（42 单测全绿；覆盖率 Lines 100%/Branch 96.87%；全量 vitest 4 个失败文件均为分支既有，见测试记录） | 已完成 | 149d3b2a | 7c36c65e |
 | F4 | 主窗口集成 | WorkspaceMode 扩展、aside 两按钮、Workspace 导航栏/默认卡片/独立 Tab 条/页面壳 + 管理页/安装对话框提前落地（59 组件测试全绿：37 开发 + 22 测试补充；覆盖率 Lines 97.42%/Branch 89.01%；登记 BUG-F4-01…04 低危缺陷/偏差；BUG-F4-01/02/03/04 已修复并经验证 agent 复核，见「F4 修复验证」小节） | 已完成 | 62141434 | ca2218bc+46c195fb |
 | F5 | 插件管理页 | ~~独立功能项~~ 已并入 F4 交付（管理页+两步安装对话框） | 已完成（并入F4） | 62141434 | ca2218bc |
-| F6 | RPC 桥 | uiPluginBridge：信封路由、权限判定、限流超时、token 快照推送（开发 31 + 测试补充 33 = 64 单测全绿；覆盖率 Lines 99.27%/100%；安全专项复核通过；登记 BUG-F6-01 低危协议偏差，见测试记录） | 测试完成（BUG-F6-01 低危新建，不阻断） | c77085c8 | —（仅追加测试文件，未 commit） |
+| F6 | RPC 桥 | extensionBridge：信封路由、权限判定、限流超时、token 快照推送（开发 31 + 测试补充 33 = 64 单测全绿；覆盖率 Lines 99.27%/100%；安全专项复核通过；登记 BUG-F6-01 低危协议偏差，见测试记录） | 测试完成（BUG-F6-01 低危新建，不阻断） | c77085c8 | —（仅追加测试文件，未 commit） |
 | F7 | Settings 外观 | settings.appearance 菜单项 + AppearanceSection 主题切换器（开发 54 + 测试补充 20 单测全绿；覆盖率 AppearanceSection Lines **100%**、themePackApply 全文件 Lines 96.68% / 插件路径子集 97.40%；规格复核 §4.5 六项通过；登记 BUG-F7-01 低危图标缺口，见测试记录） 已完成（BUG-F7-01 经验证 agent 复核通过，见 Bug 跟踪） | 1d9c398b | 9d518661（补 hostLucideMap.ts appearance→Palette 行 + ThemedIcon LUCIDE_MAP 导入 Palette；钉住例翻转为断言 svg 渲染，验证测试 45/45 PASS） |
-| F8 | SDK 包 | packages/ui-plugin-sdk（bridge/theme/theme.css/useTheme；开发 31 + 测试补充 38 = 69 单测全绿；覆盖率逻辑文件 Lines 98.27%–100%；契约互操作双向复核 §3/§4.4 通过；BUG-F8-01 低危健壮性缺口已修复并经验证 agent 复核 + NOTE-F8-01，见测试记录） | 已完成（BUG-F8-01 经验证 agent 复核通过，见 Bug 跟踪） | 51a91633 | 919a09f3（bridge.ts err 分支 isRecord 守卫 → 空对象兜底，任何畸形 err 帧均结算 UiPluginError(E_INTERNAL)；C-03 源码钉住翻转为 C-03/C-04 动态三态回归用例，SDK 69/69 PASS） |
+| F8 | SDK 包 | packages/extension-sdk（bridge/theme/theme.css/useTheme；开发 31 + 测试补充 38 = 69 单测全绿；覆盖率逻辑文件 Lines 98.27%–100%；契约互操作双向复核 §3/§4.4 通过；BUG-F8-01 低危健壮性缺口已修复并经验证 agent 复核 + NOTE-F8-01，见测试记录） | 已完成（BUG-F8-01 经验证 agent 复核通过，见 Bug 跟踪） | 51a91633 | 919a09f3（bridge.ts err 分支 isRecord 守卫 → 空对象兜底，任何畸形 err 帧均结算 ExtensionError(E_INTERNAL)；C-03 源码钉住翻转为 C-03/C-04 动态三态回归用例，SDK 69/69 PASS） |
 | F9 | 示例插件与 E2E | e2e/fixtures/sample-plugin + e2e/specs/plugins.spec.ts journeys 1-5（fixture 防腐化单测 3 例；Rust 111/111 全绿、vitest 零新增失败、spec 静态核对全过；BUG-F9-01 经 4c5e755a 修复解锁后 **E2E 实跑 6/11 PASS**：J1/J3/J5 全过、J2-001 过、无产品缺陷证据；J2-002~004 受阻于 BUG-F9-02 WebKit/safaridriver iframe 自动化限制，J4-001/002 因 BUG-F9-03 spec 缺失 Settings 返回导航未执行到断言——两缺陷已登记待处理，见测试记录 F9 E2E 实跑小节。**2026-08-22 二次验证**：BUG-F9-03 spec 侧修复 + BUG-F→02 探针落盘绕行（fixture 经桥 storage.set 持久化 probe.*，spec 磁盘对账 + shell 级降级断言）落地后 **11/11 PASS**；诊断中发现更深层根因并登记 BUG-F9-04（datazen:// 子帧内容在 WebKit 自动化下永不加载，疑宿主 CSP frame-src 回退或 WebKit 自定义协议子帧策略，待宿主验证） | 测试基本完成（11/11 PASS；BUG-F9-02/03 → 待验证（附实跑摘要）；BUG-F9-04 新建待宿主处理） | e535f9a4+4c5e755a | — |
 
 ## Bug 跟踪
@@ -26,10 +26,10 @@
 | BUG-F4-02 | F4 | 「同一插件页多开」不可实现：key=`{pluginId}:{pageId}` + open 幂等，同页重复点击仅聚焦 | Workspace 点击同一导航项两次 → 仅一个 Tab。PRD §4.2/§4.4 允许多开，但 §4.4 表格自身定义该唯一 key，自相矛盾——需产品拍板 | 已修复（产品决议：单实例） |
 | BUG-F4-03 | F4 | 安装流程缺「名称/版本/权限清单确认」中间步骤，确认即直接写入 | 管理页[安装插件…] → 输入合法 zip 路径 → Install：无任何预览确认直接安装成功。规格 §4.3 要求写入前展示确认 | 已修复（ca2218bc） |
 | BUG-F4-04 | F4 | 管理页默认过滤器为「全部」（规格为默认 Workspace），且「全部」视图平铺不分组 | 打开管理页未点 chip 即显示全部插件平铺列表（PluginManagementPage.tsx:57 初值 'all'）。规格 §4.3：默认 Workspace、「全部」分组 | 已修复（ca2218bc） |
-| BUG-F6-01 | F6 | 【处置：backlog/P2 加固，不阻断】【低危/协议卫生，无安全影响】原型链键名作为 API type 时回 `E_PERMISSION` 而非设计文档声明的 `E_NOT_FOUND`：`API_ROUTES` 为普通对象字面量，`__proto__`/`constructor`/`hasOwnProperty`/`toString`/`valueOf` 经 Object.prototype 原型链解析为非 undefined 值，绕过「unknown api → E_NOT_FOUND」门（uiPluginBridge.ts:374-380），落入权限判定后被拒。**无法到达任何 handler**（granted Set 仅含 manifest 字符串），不消耗并发配额 | attachBridge 后从 iframe window 投递 `{ch:'ui-plugin',type:'__proto__',target:'host',reqId:'r1'}` → 收到 `__proto__.err{code:'E_PERMISSION'}`；同型 `constructor`/`hasOwnProperty`/`toString`/`valueOf` 一致。按 uiPluginBridge.ts:126 自述契约与 §3.2 路由语义应为 `E_NOT_FOUND('unknown api')`。修复建议：`Object.prototype.hasOwnProperty.call(API_ROUTES, type)` 或 `Map`/null-prototype 路由表。回归锚点：security.test「denies prototype-chain api type …」（5 例） | 新建 |
+| BUG-F6-01 | F6 | 【处置：backlog/P2 加固，不阻断】【低危/协议卫生，无安全影响】原型链键名作为 API type 时回 `E_PERMISSION` 而非设计文档声明的 `E_NOT_FOUND`：`API_ROUTES` 为普通对象字面量，`__proto__`/`constructor`/`hasOwnProperty`/`toString`/`valueOf` 经 Object.prototype 原型链解析为非 undefined 值，绕过「unknown api → E_NOT_FOUND」门（extensionBridge.ts:374-380），落入权限判定后被拒。**无法到达任何 handler**（granted Set 仅含 manifest 字符串），不消耗并发配额 | attachBridge 后从 iframe window 投递 `{ch:'datazen-extension',type:'__proto__',target:'host',reqId:'r1'}` → 收到 `__proto__.err{code:'E_PERMISSION'}`；同型 `constructor`/`hasOwnProperty`/`toString`/`valueOf` 一致。按 extensionBridge.ts:126 自述契约与 §3.2 路由语义应为 `E_NOT_FOUND('unknown api')`。修复建议：`Object.prototype.hasOwnProperty.call(API_ROUTES, type)` 或 `Map`/null-prototype 路由表。回归锚点：security.test「denies prototype-chain api type …」（5 例） | 新建 |
 | BUG-F7-01 | F7 | 【处置：低危外观缺陷，不阻断】Settings 左侧导航「外观」项图标渲染为「?」占位方块而非 Palette 图标，双重缺口：① commit 1d9c398b **漏提交** `hostLucideMap.ts` 的 `appearance: 'Palette'` 映射行（当前工作区存在该一行未提交修复）——HEAD 状态下 `buildHostLucideById()` 无 `settings.appearance` 键，iconResolver 直接回 UI_PLACEHOLDER；② 即使补上 ①，`ThemedIcon.tsx` 内部 `LUCIDE_MAP`（31-54 行）也**未导入 Palette 组件**，`LUCIDE_MAP['Palette'] ?? fallback` 为 undefined → ThemedIcon.tsx:90-100 渲染 `?` 占位 span。纯视觉问题，功能与切换行为不受影响 | 打开 Settings → 观察左侧导航第 2 项「外观」：图标为灰底「?」小方块，其余菜单项均为正常 lucide 图标。链路：`settingsSectionIconId('appearance')='settings.appearance'` → resolver 解析成功为 `{kind:'lucide',name:'Palette'}` 但 ThemedIcon 查表失败（或 HEAD 下解析即失败）。修复建议：① 提交 hostLucideMap.ts 该行；② ThemedIcon.tsx 导入 Palette 并加入 LUCIDE_MAP。回归锚点：settingsSectionIcons.test.tsx「documents BUG-F7-01…」（修复后翻转为断言 svg 渲染）。备注：`extensions→Puzzle` 存在同型缺口（存量问题、非 F7 引入），建议随修 | 新建 |
-| BUG-F8-01 | F8 | 【处置：低危健壮性缺口，不阻断】【SDK 侧容错】`.err` 响应 payload 缺失或 null 时请求路由崩溃并永久泄漏：bridge.ts onMessage 的 `.err` 分支 `const code = data.payload.code` 未守卫 payload 存在性，而 `pending.delete(reqId)` + `clearTimeout(entry.timer)` 在该解引用**之前**已执行 → TypeError 以 uncaught error 形态逃逸监听器，该请求 Promise **永不结算**（超时定时器已被清、map 条目已被删，后续同 reqId 应答亦无法补救）。宿主正常 `errEnvelope` 恒带 `{code,message}`，仅畸形/被篡改宿主帧可触发；`event.source === parent` 反欺骗门不受影响，无安全越权面；§5「E_* 错误类型 + 容错」语义要求优雅降级为 UiPluginError(E_INTERNAL) | 插件页 `const dz=createClient({parentWindow:parent}); await dz.ready(); const p=dz.storage.get('k');` 后投递 `{ch:'ui-plugin',type:'storage.get.err',target:'host',reqId:<p的在途reqId>,ok:false}`（payload 缺失或 null）→ 页面 uncaught `TypeError: Cannot read properties of null/undefined (reading 'code')`，p 永久 pending。回归锚点：bridge.faults.test.ts C-03/C-04 动态优雅拒绝用例（payload 缺失 / null / undefined 键均断言 reject UiPluginError(E_INTERNAL) 且 window error 监听为零；原源码钉住正则已随修复翻转移除） | 已修复（919a09f3） |
-| BUG-F9-02 | F9 | 【处置：E2E 基建阻塞，绕行落地；诊断升级见 BUG-F9-04】【非产品缺陷证据】macOS safaridriver/WebKit（webkit 605.1.15）WebDriver 无法在插件 iframe 内执行自动化命令：`browser.switchToFrame(iframe)` 本身成功，但帧内任何元素定位（`element` POST）均抛 `WebDriverError: A JavaScript exception occurred when running "element" with method "POST"`，20s waitUntil 全程 WARN 刷屏后超时 → J2-002~004 的桥内联断言不可自动化。注意：J2-001（导航项→Tab→iframe 存在）PASS；桥业务逻辑已有单测背书（宿主 uiPluginBridge 64 例 99.27% 行覆盖 + SDK 69 例），本失败不构成桥功能损坏的证据，仅证明该路径在 WebKit WebDriver 下不可测。疑与 sandbox opaque-origin iframe（datazen:// 协议加载）相关。**2026-08-22 二次诊断**：根因比原判更深——帧内容（含 fixture JS）在 WebKit 自动化下根本不加载/不执行（截图实证空白 + watchdog 失败条；同 URL 顶层窗口直载正常渲染执行），原「元素定位限制」仅为表层症状；绕行方案照常成立：fixture 经既有桥 storage.set 持久化 probe.bridge/dark/connCount 三探针 → spec 从 `{appData}/plugins/datazen.sample/.storage.json` 磁盘对账（内容可加载平台即全量断言）；本环境自动降级为真实 shell 级行为断言（watchdog 失败条 / 重载重挂 / entry URL 解析）。深层根因单列 BUG-F9-04 | `pnpm e2e:skip-build -- --spec e2e/specs/plugins.spec.ts` → J2-002 在 insidePluginFrame 的首次 `$(...)` 即抛 JS exception；连续两次完整运行失败集合完全一致（确定性，非 flaky）。关键输出：`javascript error: WebDriverError: A JavaScript exception occurred when running "element" with method "POST"` @ plugins.spec.ts:93 textOfTestId。**二次验证**：同命令 **11/11 PASS**（26.8s），J2-003 降级路径实测点击重载按钮后新 iframe 重挂成功 | **已修复（2026-08-23 关闭）**。**结案备注（2026-08-22）**：最终根因即 BUG-F9-04 双层 CSP 缺口（帧内容从未加载，非 safaridriver 自动化限制）——CSP 修复后探针经真实桥落盘、降级分支零触发；探针绕行保留为标准断言路径（不依赖帧内 WebDriver 自动化，跨平台稳定） |
+| BUG-F8-01 | F8 | 【处置：低危健壮性缺口，不阻断】【SDK 侧容错】`.err` 响应 payload 缺失或 null 时请求路由崩溃并永久泄漏：bridge.ts onMessage 的 `.err` 分支 `const code = data.payload.code` 未守卫 payload 存在性，而 `pending.delete(reqId)` + `clearTimeout(entry.timer)` 在该解引用**之前**已执行 → TypeError 以 uncaught error 形态逃逸监听器，该请求 Promise **永不结算**（超时定时器已被清、map 条目已被删，后续同 reqId 应答亦无法补救）。宿主正常 `errEnvelope` 恒带 `{code,message}`，仅畸形/被篡改宿主帧可触发；`event.source === parent` 反欺骗门不受影响，无安全越权面；§5「E_* 错误类型 + 容错」语义要求优雅降级为 ExtensionError(E_INTERNAL) | 插件页 `const dz=createClient({parentWindow:parent}); await dz.ready(); const p=dz.storage.get('k');` 后投递 `{ch:'datazen-extension',type:'storage.get.err',target:'host',reqId:<p的在途reqId>,ok:false}`（payload 缺失或 null）→ 页面 uncaught `TypeError: Cannot read properties of null/undefined (reading 'code')`，p 永久 pending。回归锚点：bridge.faults.test.ts C-03/C-04 动态优雅拒绝用例（payload 缺失 / null / undefined 键均断言 reject ExtensionError(E_INTERNAL) 且 window error 监听为零；原源码钉住正则已随修复翻转移除） | 已修复（919a09f3） |
+| BUG-F9-02 | F9 | 【处置：E2E 基建阻塞，绕行落地；诊断升级见 BUG-F9-04】【非产品缺陷证据】macOS safaridriver/WebKit（webkit 605.1.15）WebDriver 无法在插件 iframe 内执行自动化命令：`browser.switchToFrame(iframe)` 本身成功，但帧内任何元素定位（`element` POST）均抛 `WebDriverError: A JavaScript exception occurred when running "element" with method "POST"`，20s waitUntil 全程 WARN 刷屏后超时 → J2-002~004 的桥内联断言不可自动化。注意：J2-001（导航项→Tab→iframe 存在）PASS；桥业务逻辑已有单测背书（宿主 extensionBridge 64 例 99.27% 行覆盖 + SDK 69 例），本失败不构成桥功能损坏的证据，仅证明该路径在 WebKit WebDriver 下不可测。疑与 sandbox opaque-origin iframe（datazen:// 协议加载）相关。**2026-08-22 二次诊断**：根因比原判更深——帧内容（含 fixture JS）在 WebKit 自动化下根本不加载/不执行（截图实证空白 + watchdog 失败条；同 URL 顶层窗口直载正常渲染执行），原「元素定位限制」仅为表层症状；绕行方案照常成立：fixture 经既有桥 storage.set 持久化 probe.bridge/dark/connCount 三探针 → spec 从 `{appData}/plugins/datazen.sample/.storage.json` 磁盘对账（内容可加载平台即全量断言）；本环境自动降级为真实 shell 级行为断言（watchdog 失败条 / 重载重挂 / entry URL 解析）。深层根因单列 BUG-F9-04 | `pnpm e2e:skip-build -- --spec e2e/specs/plugins.spec.ts` → J2-002 在 insidePluginFrame 的首次 `$(...)` 即抛 JS exception；连续两次完整运行失败集合完全一致（确定性，非 flaky）。关键输出：`javascript error: WebDriverError: A JavaScript exception occurred when running "element" with method "POST"` @ plugins.spec.ts:93 textOfTestId。**二次验证**：同命令 **11/11 PASS**（26.8s），J2-003 降级路径实测点击重载按钮后新 iframe 重挂成功 | **已修复（2026-08-23 关闭）**。**结案备注（2026-08-22）**：最终根因即 BUG-F9-04 双层 CSP 缺口（帧内容从未加载，非 safaridriver 自动化限制）——CSP 修复后探针经真实桥落盘、降级分支零触发；探针绕行保留为标准断言路径（不依赖帧内 WebDriver 自动化，跨平台稳定） |
 | BUG-F9-03 | F9 | 【处置：spec 缺陷（e535f9a4 测试脚本），非产品缺陷】plugins.spec.ts 在 J5-001 结束后停留在 Settings 视图，未调用 `backFromSettingsInMainWindow()`（helpers.ts:783）返回工作区壳即进入 J4：ConnectionPage.tsx:898-900 `mainView==='settings'` 三元分支**只渲染 SettingsPage、卸载整个 aside**，故 J4-001 第一步 `openWorkspaceMode()` 找不到 `workspace-nav-workspace-pages`、J4-002 找不到 `workspace-nav-plugins`，双双 10s 超时——J4 停用/卸载 journey 实际从未执行到断言。对照：J3/J5 在同一会话中点击同批 aside 按钮全部 PASS，排除产品回归与会话损坏 | 跑全套件至 J5 通过后：J4-001 报 `Error: element ("[data-testid="workspace-nav-workspace-pages"]") still not displayed after 10000ms` at openWorkspaceMode (plugins.spec.ts:67 ← :292)；J4-002 同型（workspace-nav-plugins，spec.ts:60 ← :312）。两次运行一致。静态根因：ConnectionPage.tsx:898 settings 分支无 aside。修复方向（spec 侧）：J4 开头或 J5 末尾调 backFromSettingsInMainWindow() | **已修复（2026-08-23 关闭）**：J4-001 开头容错调用——`$('[data-testid="settings-back"]')` 存在才调 `backFromSettingsInMainWindow()`（防未来 journey 重排）；实跑 `pnpm e2e:skip-build -- --spec e2e/specs/plugins.spec.ts` → **11/11 PASS**（26.8s），J4-001/002 均执行到全部断言（停用关 Tab/导航项移除、确认卸载卡片消失 + list_plugins 无该插件） |
 | BUG-F9-04 | F9 | 【新建：产品疑点，待宿主验证】【BUG-F9-02 二次诊断升级】macOS WebKit（webkit 605.1.15，webdriver 构建）下 **`datazen://` 子帧内容永不加载**：① 插件 iframe（`sandbox="allow-scripts"` src=`datazen://datazen.sample/index.html?v=1.0.0`）区域完全空白，`load` 事件不触发 → PluginPageShell 10s watchdog 翻转失败条「插件页面加载失败/重新加载」；② 点击重载后新实例同样失败；③ 同 URL 以**顶层窗口直载则完整渲染且 JS 正常执行**（截图实证 bridge-status=connecting，即 app.js boot() 已运行）——协议 handler 本身工作正常；④ spec 侧注入的同源 iframe（tauri://localhost/window.html）可加载，而 datazen:// 的普通/沙箱 iframe 均只出空白文档（contentDocument 可读、body 空 = about:blank 回退，非跨源 SecurityError）。综合指向：宿主 CSP `default-src 'self'`（tauri.conf.json，无 frame-src 显式豁免 `datazen:`）或 WebKit 自定义协议子帧策略拒绝子帧导航；**影响面：WebKit 平台插件页面可能对真实用户同样不可用（待非 webdriver 环境复现确认）**；Windows/Linux（WebView2 自定义协议映射 http://datazen./…）未验证 | 复现：webdriver 构建安装 e2e/fixtures/sample-plugin → Workspace 打开 Sample Hello Tab → 12s 后出现失败条；诊断脚本另证顶层直载正常。修复方向（宿主侧）：tauri.conf.json CSP 增加 `frame-src`（含 `'self'` 与 datazen:/自定义协议源）或等效豁免；回归锚点：plugins.spec.ts J2-002~004 探针落盘全量断言自动生效（当前为 shell 级降级分支） | **已修复（2026-08-22 宿主会话验证关闭）**：根因为**双层 CSP 缺口**，非 WebKit 子帧策略限制——① 宿主页 CSP（tauri.conf.json）`img-src` 缺 `datazen:`：导航栏/TabBar/默认卡片的插件图标 `<img>` 全部被拒（console 报错 ×8）；② iframe 响应头 ASSET_CSP 只有 `'self'`：WebKit 对自定义 scheme 文档按 opaque origin 处理，`'self'` 不匹配 `datazen://` 子资源（index.html 能载入但 app.js/script 被拒）。修复对齐 VSCode webview 立场（显式在 CSP 枚举特权资源 scheme，Electron 侧其另注册 standard/secure 特权，Tauri macOS 无对应 API 故仅用显式枚举）：tauri.conf.json `frame-src`/`img-src` 增补 `datazen:` + protocol.rs ASSET_CSP 改为 `'self' datazen:` 双源（保留 `'self'` 兼容 Windows/WebView2 的 `http(s)://datazen.<host>/` 映射形态，纯 `datazen:` 会在该平台破坏加载）。验证：cargo plugins 111/111（含 CSP 头逐字符断言更新）；E2E 两轮实跑 **11/11 PASS** 且「BUG-F9-02/04 降级」警告 **0 次**——probe.bridge/dark/connCount 经真实桥 storage.set 落盘，J2-002~004 走全量断言路径。回归锚点：plugins.spec.ts J2-002~004 探针断言自动生效；遗留：Windows/Linux 平台实机未验（同套 spec 可复用）、非 webdriver 真机抽查建议随合并前手工过一遍 |
 | BUG-F9-01 | F9 | 【存量缺陷、非插件代码引入】`src/components/connection/ObjectFilterDialog.tsx:2-6` 的相对导入按 `src/windows/connection/` 位置书写（`../components/ui/Button/Dialog/Input`、`../hooks/useI18n`、`./objectFilter`、`../types`），实际文件在 `src/components/connection/` → 解析目标不存在 → `pnpm build`（vite）必败 → e2e-tauri-build 无 webdriver 二进制可产出；ConnectionNavigatorTree vitest 文件级失败同根因（基线失败之一）。main 分支同样存在，引入于 a4d8ce37（ops §5.4 MVPs） | `pnpm build` → vite 报 `Could not resolve "../components/ui/Button" from "src/components/connection/ObjectFilterDialog.tsx"`（exit 1，beforeBuildCommand 失败）；或打开任一触发 ConnectionNavigatorTree 渲染的页面即模块加载失败。修复方向：导入改为 `../ui/*`、`../../hooks/useI18n`、`../../lib/objectFilter`、`../../types`（或将文件移回 windows/connection）。回归锚点：修复后 `pnpm build` 通过 + ConnectionNavigatorTree.test.tsx 转绿 + plugins.spec.ts 可实跑 | **已修复（4c5e755a）**（2026-08-22 验证 agent 复核关闭：导入路径按真实位置修正后 `pnpm build` ✅（vite 4.18s 构建成功）；webdriver 二进制经 `generate-menu-labels + with-plugin-inject --drivers=basic + e2e-tauri-build` 成功产出 DataZen.app（cargo dev profile 1m31s，仅 DMG 打包步骤失败，不影响 E2E）；`pnpm e2e:skip-build -- --spec e2e/specs/plugins.spec.ts` 实跑解锁，4445 就绪、11 用例全执行 → 6 PASS / 5 FAIL。剩余失败均为独立新问题：BUG-F9-02（WebKit iframe 自动化限制，J2-002~004）与 BUG-F9-03（spec 缺失返回导航，J4-001/002），与本修复无关。回归锚点三项全部兑现：pnpm build 通过 ✅ / plugins.spec.ts 可实跑 ✅ / ConnectionNavigatorTree 文件级失败消失（该会话已确认）✅） |
@@ -42,7 +42,7 @@ Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已�
 
 ### F1（Rust 插件基座，commit 900b9330）
 
-- 测试 agent 会话，2026-08-22。规格依据：ui-plugins-implementation.md §2.2/§2.3/§2.5/§2.6。
+- 测试 agent 会话，2026-08-22。规格依据：extensions-implementation.md §2.2/§2.3/§2.5/§2.6。
 - 执行命令：
   - `cargo test -p datazen --lib plugins` → **60 passed / 0 failed**（54 既有单测 + 6 新增集成用例）
   - `cargo test -p datazen --lib commands::mcp -- --test-threads=1` → 6/6 PASS。注：mcp 组并行跑时因全局句柄竞态偶挂（`start_embedded_mcp_reports_running` 等 3 例），单线程即稳定通过；**既有 flaky，与 F1 无关**。
@@ -107,7 +107,7 @@ Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已�
 
 ### F2（datazen:// 协议，commit 4c75f1b0）
 
-- 测试 agent 会话，2026-08-22。规格依据：ui-plugins-implementation.md §2.4；ui-plugins.md §5（沙箱与加载）。
+- 测试 agent 会话，2026-08-22。规格依据：extensions-implementation.md §2.4；extensions.md §5（沙箱与加载）。
 - 执行命令：
   - 基线：`cargo test -p datazen --lib plugins` → **78 passed / 0 failed**（F1 后基线绿）
   - 终态：同命令 → **104 passed / 0 failed**（78 既有 + 26 新增安全用例，0.9s）
@@ -181,7 +181,7 @@ Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已�
 
 ### F3（前端状态与 IPC 封装，commit 149d3b2a）
 
-- 测试 agent 会话，2026-08-22。规格依据：ui-plugins-implementation.md §4.1；后端契约以 `src-tauri/src/commands/plugins.rs` 与 `plugins/manifest.rs` 为准。
+- 测试 agent 会话，2026-08-22。规格依据：extensions-implementation.md §4.1；后端契约以 `src-tauri/src/commands/plugins.rs` 与 `plugins/manifest.rs` 为准。
 - 执行命令：
   - 目标套件：`npx vitest run src/stores/__tests__/{pluginStore,workspaceTabsStore}.test.ts src/commands/__tests__/plugins.test.ts src/types/__tests__/plugin.test.ts` → **42 passed / 0 failed**（27 既有 + 15 新增，0.7s）
   - 全量回归：`npx vitest run` → **1572 passed / 3 failed tests（4 failed files）/ 207 文件**；`git stash -u` 干净树复跑 → **完全相同的 4 个失败文件**（206 文件 / 1560 用例），确认与本功能无关
@@ -194,7 +194,7 @@ Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已�
 | `PluginSummary` 字段 | types/plugin.ts:74-85（apiVersion/enabled/permissions/pages/themes） | commands/plugins.rs:49-64 `rename_all="camelCase"`；author/description/icon 走 `skip_serializing_if` 省略 | ✅ 一一对应；TS 侧声明为可选与省略语义兼容 |
 | `Permission` 四字符串 | `'context:connections'/'command:invoke'/'storage:local'/'ui:notify'` | manifest.rs:97-105 serde rename + `as_str()`（commands/plugins.rs:77-81 序列化路径） | ✅ 完全一致（fixture 编译期 `satisfies` 锁定） |
 | `PluginManifest` | 含 showIn/tokensCss/modes/previewImage/backend?:unknown\|null | manifest.rs:39-96 camelCase + deny_unknown_fields | ✅ 一致；backend v1 恒 null 有 fixture 断言 |
-| API 版本 | `UI_PLUGIN_API_VERSION = 2` | `PLUGIN_API_VERSION = 2`（plugins/mod.rs） | ✅ 一致 |
+| API 版本 | `EXTENSION_API_VERSION = 2` | `PLUGIN_API_VERSION = 2`（plugins/mod.rs） | ✅ 一致 |
 | 命令名 ×9 | invoke 名 list_plugins / get_plugin_manifest / install_plugin_from_path / remove_plugin / set_plugin_enabled / plugin_storage_{get,set,remove} / read_plugin_file | 同名 `#[tauri::command]` 且 lib.rs:977-985 全部注册 | ✅ 一致 |
 | 参数键名 | `{pluginId,key}`、`{id,relativePath}`、`{path}`、`{id,enabled}` 等 camelCase | Rust snake_case 形参（plugin_id/relative_path），Tauri v2 自动映射 | ✅ 正确 |
 | 事件名 | `PLUGINS_CHANGED_EVENT='plugins:changed'`（commands/plugins.ts:5） | 同值常量并在 install/remove/set_enabled 成功后 emit（commands/plugins.rs:19,340,351,363） | ✅ 一致 |
@@ -210,7 +210,7 @@ Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已�
 | pluginStore（12） | fetch 成功填充+清 error、失败置 error（Error 与非 Error 字符串两分支）、loaded 标记、setEnabled 乐观翻转→refetch 对账、仅翻转目标插件不误伤他插件、setEnabled 失败经 refetch 回滚并重抛、remove 成功刷新/失败置 error 重抛、byId 命中与不存在返回 undefined、`plugins:changed` 订阅恰一次+事件触发 refetch 换新数据、listen 失败后守卫复位可重试 | 12 | PASS |
 | workspaceTabsStore（17） | open 追加激活、open 幂等（key 冲突原位刷新元数据）、open 重聚焦非激活重复 key、activate 仅对存在 tab 生效、close 矩阵全量：关中间→右邻/关首→右邻/关尾→左邻/关唯一→null/关非激活保持选中/未知 key 无操作、closeByPlugin 批量关+锚点落位（首移除槽位锚定、尾移除左邻回退、他插件激活保持、清空置 null、未知插件 no-op）、`workspaceTabKey` 冒号拼接格式 | 17 | PASS |
 | commands/plugins（9） | 全部 9 个 invoke 的命令名+参数键断言、install/manifest/storage 值/readPluginFile 载荷透传、事件名与 API 版本契约常量 | 9 | PASS |
-| types/plugin（4） | UI_PLUGIN_API_VERSION==Rust PLUGIN_API_VERSION(2)、Permission 四串精确集合、serde 形态 PluginSummary（可选字段省略）与 PluginManifest（showIn/tokensCss/backend=null）fixture | 4 | PASS |
+| types/plugin（4） | EXTENSION_API_VERSION==Rust PLUGIN_API_VERSION(2)、Permission 四串精确集合、serde 形态 PluginSummary（可选字段省略）与 PluginManifest（showIn/tokensCss/backend=null）fixture | 4 | PASS |
 
 #### 覆盖率结论（vitest 4.1.10 + @vitest/coverage-v8，include 仅四个被测文件实测）
 
@@ -235,7 +235,7 @@ Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已�
 
 ### F4（主窗口集成，commit 62141434）
 
-- 测试 agent 会话，2026-08-22。规格依据：ui-plugins.md §4.1–§4.4；ui-plugins-implementation.md §4.2/§4.3。
+- 测试 agent 会话，2026-08-22。规格依据：extensions.md §4.1–§4.4；extensions-implementation.md §4.2/§4.3。
 - 执行命令：
   - 开发自带套件：`npx vitest run src/windows/workspace src/windows/plugins` → **37 passed / 0 failed**
   - 补充后同口径 → **59 passed / 0 failed**（37 开发 + 22 新增）
@@ -341,7 +341,7 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 | BUG-F4-01 | WorkspaceView.tsx:44-54 effect：`pluginsLoaded` 门闸 + diff（插件缺失或 enabled=false → `closeByPlugin`）。单测断言真实覆盖行为：WorkspaceView.test.tsx「closes tabs of plugins that were disabled or removed by an external refresh (BUG-F4-01)」（停用→关 1 次、卸载→再关、enabled 插件永不触碰）+「does not diff-close tabs before the plugin store has loaded」（loaded=false 初载空列表不误关既有 Tab）；集成侧 WorkspaceIntegration.test.tsx:189 以真实 store 驱动外部刷新场景 | ✅ 通过 |
 | BUG-F4-03 | Rust `inspect_plugin_package`（install.rs）：一次性 `.datazen-inspect-*` 临时目录跑与真实安装同套规则后清理；三态错误各有断言（not found / apiVersion 校验失败 / zip traversal）且 `count_inspect_dirs()==0`、plugins_dir 无 `acme.demo`；命令注册于 lib.rs:978。前端两步流转：InstallPluginDialog.test.tsx「walks the two-step flow…」（review 步断言 installFromPath **未调用** + 名称/版本/author/权限徽标渲染）、「never installs when cancelled from the review step」（Back/Cancel 均零 install 调用）；IPC 层 inspect_plugin_package_previews_manifest_without_writing 断言 list_plugins 保持为空 | ✅ 通过 |
 | BUG-F4-04 | PluginManagementPage.tsx 初值 `'workspace'`；'all' 视图经 `allGroups` 按 Workspace/主题 分组渲染。测试：默认过滤=Workspace（主题插件初始隐藏 + workspace chip 高亮）、「renders the all view grouped into Workspace pages and Themes sections」（双贡献插件仅入 Workspace 组一次）、「hides empty groups in the all view and keeps the flat grid for single-kind filters」 | ✅ 通过 |
-| BUG-F4-02 决议落实 | PRD ui-plugins.md v0.5→v0.6：「v0.6 变更记录（评审决议）」存在；§4.2 与 §4.4 多开条款均改为「同一插件页复用同一 Tab（点击已打开项聚焦既有 Tab）；多开留待后续版本评估」；本文件 BUG 跟踪表该 bug 状态为「已修复（产品决议：单实例）」 | ✅ 通过 |
+| BUG-F4-02 决议落实 | PRD extensions.md v0.5→v0.6：「v0.6 变更记录（评审决议）」存在；§4.2 与 §4.4 多开条款均改为「同一插件页复用同一 Tab（点击已打开项聚焦既有 Tab）；多开留待后续版本评估」；本文件 BUG 跟踪表该 bug 状态为「已修复（产品决议：单实例）」 | ✅ 通过 |
 
 执行命令：
 - `cargo test -p datazen --lib plugins` → **108 passed / 0 failed**（含新增 inspect_plugin_package ×4）
@@ -351,9 +351,9 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 
 ### F6（RPC 桥，commit c77085c8）
 
-- 测试 agent 会话，2026-08-22。规格依据：ui-plugins-implementation.md §3 全部（信封/握手时序/§3.2 API 表/权限映射/限流超时/错误码）与 §4.4。
+- 测试 agent 会话，2026-08-22。规格依据：extensions-implementation.md §3 全部（信封/握手时序/§3.2 API 表/权限映射/限流超时/错误码）与 §4.4。
 - 新增测试文件（零功能代码改动，未 commit）：
-  - `src/lib/__tests__/uiPluginBridge.security.test.ts`（28 例）：凭据白名单、栈/审计非泄露、畸形 payload、大小写变体、原型链键、原型污染遏制、跨 iframe source 隔离、detach 静默、限流配额生命周期、手动快照
+  - `src/lib/__tests__/extensionBridge.security.test.ts`（28 例）：凭据白名单、栈/审计非泄露、畸形 payload、大小写变体、原型链键、原型污染遏制、跨 iframe source 隔离、detach 静默、限流配额生命周期、手动快照
   - `src/windows/workspace/__tests__/PluginPageShell.bridge.test.tsx`（5 例）：桥接线（attachBridge 参数、theme-pack-changed 推送、MutationObserver class 变更推送、卸载 detach、reload 重挂载重连）
 
 #### 用例清单
@@ -362,19 +362,19 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 
 | 组 | 场景 | 数量 | 结论 |
 |----|------|------|------|
-| uiPluginBridge.test | plugin.ready→host.ready 握手（apiVersion/locale/dark/tokens）、theme.apply 手动推送 | 2 | PASS |
-| uiPluginBridge.test | 权限门 deny-by-default（context/command/storage 各 API 缺权限拒 + 全授权放行 + i18n E_NOT_IMPLEMENTED） | 6 | PASS |
-| uiPluginBridge.test | 信封语义（reqId 回显/乱序完成、unknown type E_NOT_FOUND、异源消息忽略、detach 停答） | 4 | PASS |
-| uiPluginBridge.test | 限流超时（第 21 并发 E_RATE_LIMIT+恢复、ui.notify 5s 冷却、30s E_TIMEOUT） | 3 | PASS |
-| uiPluginBridge.test | context 白名单（store 路径/IPC 兜底路径/getActiveConnection 三态） | 3 | PASS |
-| uiPluginBridge.test | command.invoke 错误映射（E_NOT_FOUND/E_BAD_REQUEST） | 2 | PASS |
+| extensionBridge.test | plugin.ready→host.ready 握手（apiVersion/locale/dark/tokens）、theme.apply 手动推送 | 2 | PASS |
+| extensionBridge.test | 权限门 deny-by-default（context/command/storage 各 API 缺权限拒 + 全授权放行 + i18n E_NOT_IMPLEMENTED） | 6 | PASS |
+| extensionBridge.test | 信封语义（reqId 回显/乱序完成、unknown type E_NOT_FOUND、异源消息忽略、detach 停答） | 4 | PASS |
+| extensionBridge.test | 限流超时（第 21 并发 E_RATE_LIMIT+恢复、ui.notify 5s 冷却、30s E_TIMEOUT） | 3 | PASS |
+| extensionBridge.test | context 白名单（store 路径/IPC 兜底路径/getActiveConnection 三态） | 3 | PASS |
+| extensionBridge.test | command.invoke 错误映射（E_NOT_FOUND/E_BAD_REQUEST） | 2 | PASS |
 | themeTokens.test | themes.css token 定义存在性 ×7、THEME_TOKENS↔themes.css 双向契约 ×2、buildThemeSnapshot dark/v/tokens 键集 ×2 | 11 | PASS |
 
 新增测试单测（33 例，全部 PASS）：
 
 | 编号组 | 场景 | 预期 | 实际 | 结论 |
 |--------|------|------|------|------|
-| SEC-01–04 | 凭据白名单 | IPC 兜底路径 getConnections 与 store 路径 getActiveConnection 输出**恰好 3 个 own keys**（构造式白名单证明，非 delete 式）；含 host/port/username/password/sshTunnel.password/privateKeyPath/passphrase/jump/options.tlsCa 的泄漏型 fixture 全量 marker 扫描零命中；INTERNAL 错误仅 message（≤500 截断），error.stack 标记不出现；审计日志带 `[ui-plugin:{id}]` 且不含 args 内容 | 符合 | PASS |
+| SEC-01–04 | 凭据白名单 | IPC 兜底路径 getConnections 与 store 路径 getActiveConnection 输出**恰好 3 个 own keys**（构造式白名单证明，非 delete 式）；含 host/port/username/password/sshTunnel.password/privateKeyPath/passphrase/jump/options.tlsCa 的泄漏型 fixture 全量 marker 扫描零命中；INTERNAL 错误仅 message（≤500 截断），error.stack 标记不出现；审计日志带 `[extension:{id}]` 且不含 args 内容 | 符合 | PASS |
 | SEC-05–12 | 权限门 vs 畸形路由 | 大小写/前导空格变体 → E_NOT_FOUND；`__proto__` 等 5 个原型链键 → 拒绝且 handler 不可达（当前回 E_PERMISSION，偏差见 BUG-F6-01）；target 非 `host`/缺失/ch 尾随空格 ×4 信封忽略；无 reqId 不应答 | 符合 | PASS |
 | SEC-13–17 | command.invoke 畸形 payload | payload 整体缺失、configId 缺失/数字/空串 → E_BAD_REQUEST；args 为 string/number/boolean → E_BAD_REQUEST；args:null → input `{}`（钉住良性现行为）；数组 args 原样透传 | 符合 | PASS |
 | SEC-18–20 | 原型污染遏制 | JSON.parse 构造 own `__proto__`/`constructor.prototype` 键的 args 与 storage value 原样过桥进 IPC；`Object.prototype` 往返后零污染；污染 reqId 仅作字面回显，信封 ok 字段不受影响 | 符合 | PASS |
@@ -388,7 +388,7 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 
 | 复核项 | 结论 | 依据 |
 |--------|------|------|
-| 凭据泄露 | **通过** | toPublicConnection（uiPluginBridge.ts:92-98）为**构造式白名单**（`return {id,name,dbType}` 字面量），非 spread/delete 式清洗；store 缓存路径与 IPC 兜底路径、getConnections/getActiveConnection 两 API 全部经过它；SEC-01/02 以 own-keys 计数 + 密钥 marker 全文扫描双重验证 |
+| 凭据泄露 | **通过** | toPublicConnection（extensionBridge.ts:92-98）为**构造式白名单**（`return {id,name,dbType}` 字面量），非 spread/delete 式清洗；store 缓存路径与 IPC 兜底路径、getConnections/getActiveConnection 两 API 全部经过它；SEC-01/02 以 own-keys 计数 + 密钥 marker 全文扫描双重验证 |
 | 权限绕过 | **通过**（1 低危协议偏差 → BUG-F6-01） | 缺 configId/args 非对象均 E_BAD_REQUEST 先于 IPC；type 大小写敏感精确匹配无法旁路；原型链键名虽绕过 E_NOT_FOUND 门但被第二道权限门拒绝，handler 物理不可达、配额零消耗 |
 | source 校验 | **通过** | onMessage 首行 `event.source !== iframe.contentWindow` 即弃；双桥交叉隔离实测；post-detach 含握手在内全静默；targetOrigin '*' 为 PRD §4.3 明示立场（opaque origin + source 校验兜底） |
 | 限流恢复语义 | **通过** | inflight 于 dispatch finally 释放——正常完成、BridgeApiError、INTERNAL、E_TIMEOUT 四条路径等价释放；SEC-25/26/27 分别验证完成后/超时后恢复与拒绝类零消耗 |
@@ -398,17 +398,17 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 
 | 文件 | Stmts | Branch | Funcs | Lines | 未覆盖 |
 |------|-------|--------|-------|-------|--------|
-| src/lib/uiPluginBridge.ts | 94.83% | 83.80% | 100% | **99.27%** | 仅 464 行（dispatch switch 的 default 防御分支——API_ROUTES 门已前置拦截 unknown type，实际不可达死分支） |
+| src/lib/extensionBridge.ts | 94.83% | 83.80% | 100% | **99.27%** | 仅 464 行（dispatch switch 的 default 防御分支——API_ROUTES 门已前置拦截 unknown type，实际不可达死分支） |
 | src/lib/themeTokens.ts | 100% | 100% | 100% | **100%** | — |
 
 两文件 Lines 均 ≥80% 达标。
 
 #### 执行命令与结果
 
-- `npx vitest run src/lib/__tests__/uiPluginBridge.security.test.ts src/windows/workspace/__tests__/PluginPageShell.bridge.test.tsx` → **33/33 PASS**
-- `npx vitest run src/lib/__tests__/uiPluginBridge.test.ts src/lib/__tests__/uiPluginBridge.security.test.ts src/lib/__tests__/themeTokens.test.ts --coverage --coverage.include=…` → **59/59 PASS**
+- `npx vitest run src/lib/__tests__/extensionBridge.security.test.ts src/windows/workspace/__tests__/PluginPageShell.bridge.test.tsx` → **33/33 PASS**
+- `npx vitest run src/lib/__tests__/extensionBridge.test.ts src/lib/__tests__/extensionBridge.security.test.ts src/lib/__tests__/themeTokens.test.ts --coverage --coverage.include=…` → **59/59 PASS**
 - `npx vitest run`（全量）→ 220 文件：216 passed / **4 failed（全部为基线既有**：RunHistoryDrawer、WidgetEditorDrawer、ConnectionNavigatorTree[文件级]、ObjectBrowser；测试前后两次全量运行失败集合一致，**零新增失败**）；1696 tests passed
-- `npx tsc --noEmit` → 报错仅位于 7 个 F6 无关存量文件（query.ts/ObjectFilterDialog.tsx/ConnectionPage.tsx/ContentView.tsx/ProcessListView.tsx/SavedTasksBanner.tsx/DataTransferWindow.tsx）；**F6 触碰文件（uiPluginBridge.ts/themeTokens.ts/PluginPageShell.tsx）及新增测试文件零错误**
+- `npx tsc --noEmit` → 报错仅位于 7 个 F6 无关存量文件（query.ts/ObjectFilterDialog.tsx/ConnectionPage.tsx/ContentView.tsx/ProcessListView.tsx/SavedTasksBanner.tsx/DataTransferWindow.tsx）；**F6 触碰文件（extensionBridge.ts/themeTokens.ts/PluginPageShell.tsx）及新增测试文件零错误**
 
 #### Bug
 
@@ -418,7 +418,7 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 
 ### F7（Settings 外观，commit 1d9c398b）
 
-- 测试 agent 会话，2026-08-22。规格依据：ui-plugins.md §4.5 全部条款 + §4.3「管理页主题卡不提供应用动作」联动立场；被测面为 AppearanceSection.tsx、settingsSections.ts/SettingsContent.tsx 注册改造、themePackApply.ts `applyPluginTheme` 路径。
+- 测试 agent 会话，2026-08-22。规格依据：extensions.md §4.5 全部条款 + §4.3「管理页主题卡不提供应用动作」联动立场；被测面为 AppearanceSection.tsx、settingsSections.ts/SettingsContent.tsx 注册改造、themePackApply.ts `applyPluginTheme` 路径。
 - ⚠️ **会话起点工作区状态备注**：会话开始时工作区即存在 ① 未提交的一行功能代码改动 `src/lib/hostLucideMap.ts`（+`appearance: 'Palette'`）与 ② 未跟踪测试文件 `themePackApply.pluginTheme.test.ts`（9 例）。本会话未改动任何功能代码、仅扩充/新增测试文件；① 对 commit 1d9c398b 而言属于缺陷面的一部分（见 BUG-F7-01），合并前须将该行随测试文件一并提交。
 - 新增/补充测试文件（零功能代码改动，未 commit）：
   - `src/lib/__tests__/themePackApply.pluginTheme.test.ts`（9→16 例）：编码编解码往返 / legacy 与畸形输入拒识；applyPluginTheme 经 readPluginFile 注入 tokens.css；url() blob 重写与远程 http 拒绝；tokens 缺失 / manifest 无此 themeId 错误；**PT-10…13** url() 相对解析语义（裸相对→tokens 目录、`../` 上跳同级目录、深层穿越钉在插件根内、根绝对→插件根）；**PT-14** 双主题切换替换注入 css 并 revoke 旧 blob；**PT-15** 成功后失败重置 DOM 且广播 null；**PT-16** broadcast:false 抑制跨窗事件；applyThemePack 对 `plugin:` 前缀分发插件路径、legacy 纯 id 不受扰
@@ -427,7 +427,7 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
   - `src/windows/settings/__tests__/settingsSections.test.ts`（新文件，3 例）：appearance 注册为第 2 个一级菜单项且 labelKey=settings.appearance；theme-pack/themePack 均不可达；深链非法值回退 general
   - `src/lib/__tests__/settingsSectionIcons.test.tsx`（新文件，3 例）：buildHostLucideById 含 settings.appearance→Palette（钉住工作区未提交行防丢失）、全部 section 解析为 lucide、BUG-F7-01 偏差钉住（映射成功但 ThemedIcon 渲染 `?`）
 
-#### 规格复核（PRD ui-plugins.md §4.5）
+#### 规格复核（PRD extensions.md §4.5）
 
 | 条款 | 结论 |
 |------|------|
@@ -484,23 +484,23 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 
 ### F8（SDK 包，commit 51a91633）
 
-- 测试 agent 会话，2026-08-22。规格依据：ui-plugins-implementation.md §5；协议契约以宿主 `src/lib/uiPluginBridge.ts` 为对端（信封/错误码/权限行为），token 契约以 `src/lib/themeTokens.ts` 为对端。
-- 新增测试文件（零功能代码改动，未 commit；`vendor-node.d.ts` 为仅测试用类型垫片，使 `tsc -p packages/ui-plugin-sdk` 在无 @types/node 直依赖下保持零错误，不改包 tsconfig）：
-  - `packages/ui-plugin-sdk/__tests__/bridge.faults.test.ts`（14 例）：畸形宿主响应容错矩阵、storage 序列化保真、command.invoke 透传、50 并发 reqId 路由、双 client nonce 隔离、detach 中断、环境守卫
-  - `packages/ui-plugin-sdk/__tests__/interop.test.ts`（18 例）：SDK↔宿主双向契约互操作（源码级常量抽取比对 + 轻量模块活体往返）
-  - `packages/ui-plugin-sdk/__tests__/react.test.ts`（4 例）：useTheme hook（createElement 写法，避免为 .tsx 改包 tsconfig）
-  - `packages/ui-plugin-sdk/__tests__/theme.test.ts`（追加 1 例）：startThemeListener 无父窗口 no-op 分支
+- 测试 agent 会话，2026-08-22。规格依据：extensions-implementation.md §5；协议契约以宿主 `src/lib/extensionBridge.ts` 为对端（信封/错误码/权限行为），token 契约以 `src/lib/themeTokens.ts` 为对端。
+- 新增测试文件（零功能代码改动，未 commit；`vendor-node.d.ts` 为仅测试用类型垫片，使 `tsc -p packages/extension-sdk` 在无 @types/node 直依赖下保持零错误，不改包 tsconfig）：
+  - `packages/extension-sdk/__tests__/bridge.faults.test.ts`（14 例）：畸形宿主响应容错矩阵、storage 序列化保真、command.invoke 透传、50 并发 reqId 路由、双 client nonce 隔离、detach 中断、环境守卫
+  - `packages/extension-sdk/__tests__/interop.test.ts`（18 例）：SDK↔宿主双向契约互操作（源码级常量抽取比对 + 轻量模块活体往返）
+  - `packages/extension-sdk/__tests__/react.test.ts`（4 例）：useTheme hook（createElement 写法，避免为 .tsx 改包 tsconfig）
+  - `packages/extension-sdk/__tests__/theme.test.ts`（追加 1 例）：startThemeListener 无父窗口 no-op 分支
   - 编号备注：bridge.faults 组无 C-04——原动态崩溃钉住例因 jsdom 将监听器异常上报为 Uncaught Exception（无法在套件内绿态钉住），已并入 C-03 注释中的完整重现步骤
 
 #### 契约互操作复核结论（双向）
 
 | 契约项 | SDK 侧 | 宿主侧 | 结论 |
 |--------|--------|--------|------|
-| 信封字段/ch 名 | `{ch:'ui-plugin', type, reqId?, target:'host', payload?}` + ok:true/false 判别 | 同构 PluginRequestEnvelope；响应 `${type}.ok/.err` 后缀并回显 reqId | ✅ 一致（X-02）；SDK 纯按 reqId 路由，对后缀兼容 |
-| 错误码字符串 | BRIDGE_ERROR 八枚 E_* | uiPluginBridge BRIDGE_ERROR 八枚 | ✅ 键值逐一双向相等、无多余项、全异且匹配 `E_[A-Z_]+`（X-01） |
+| 信封字段/ch 名 | `{ch:'datazen-extension', type, reqId?, target:'host', payload?}` + ok:true/false 判别 | 同构 PluginRequestEnvelope；响应 `${type}.ok/.err` 后缀并回显 reqId | ✅ 一致（X-02）；SDK 纯按 reqId 路由，对后缀兼容 |
+| 错误码字符串 | BRIDGE_ERROR 八枚 E_* | extensionBridge BRIDGE_ERROR 八枚 | ✅ 键值逐一双向相等、无多余项、全异且匹配 `E_[A-Z_]+`（X-01） |
 | theme.apply payload 形状 | ThemeSnapshot `{v,dark,tokens}` | buildThemeSnapshot() 实际输出键集恰为 `[dark,tokens,v]`，v=THEME_SNAPSHOT_VERSION=2 | ✅ 一致（X-03/X-06 活体往返：宿主 builder 输出直接喂 SDK applier，tokens/dark 全部落位） |
-| host.ready apiVersion===2 | UI_PLUGIN_API_VERSION=2 且 !== 即拒 VERSION_MISMATCH | attachBridge 握手 payload `{apiVersion,locale,dark,tokens}`，apiVersion 默认 types/plugin 的 2 | ✅ 对齐（X-03 三方一致 + X-06 按 attachBridge 字面 payload 驱动 ready() 成功） |
-| 权限行为 | SDK 仅透传路由类型，不做本地权限判断 | API_ROUTES deny-by-default | ✅ SDK 发出的全部 8 个路由类型均 ∈ 宿主路由表（X-04）；缺权限时宿主回 E_PERMISSION → SDK 转 UiPluginError（既有用例背书） |
+| host.ready apiVersion===2 | EXTENSION_API_VERSION=2 且 !== 即拒 VERSION_MISMATCH | attachBridge 握手 payload `{apiVersion,locale,dark,tokens}`，apiVersion 默认 types/plugin 的 2 | ✅ 对齐（X-03 三方一致 + X-06 按 attachBridge 字面 payload 驱动 ready() 成功） |
+| 权限行为 | SDK 仅透传路由类型，不做本地权限判断 | API_ROUTES deny-by-default | ✅ SDK 发出的全部 8 个路由类型均 ∈ 宿主路由表（X-04）；缺权限时宿主回 E_PERMISSION → SDK 转 ExtensionError（既有用例背书） |
 | token 名单 | DEFAULT_THEME_TOKENS 21 键 | THEME_TOKENS 21 名 | ✅ 双向精确相等；themes.css 定义齐全；theme.css 消费 19 个 var() 引用 ⊆ THEME_TOKENS（--c-query-run/--c-titlebar* 五个宿主 chrome 专属 token 有意不被插件消费）（X-05） |
 | css 色值纪律 | theme.css「仅 var() 引用」 | — | ✅ 移除全部 var(...) 后零 #hex/rgb(/hsl( 残留；41 个字面量全部位于 var() 回退位内且与 DEFAULT_THEME_TOKENS 一一对应（NOTE-F8-01） |
 
@@ -509,18 +509,18 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 | 编号组 | 场景 | 预期 | 实际 | 结论 |
 |--------|------|------|------|------|
 | C-01–02 | 畸形响应容错 | ok 信封缺 payload 字段 → 五个类型化 API 全部容错解包（null/[]/undefined）；string/number/null/array/undefined 非 JSON 数据一律忽略且不结算在途请求 | 符合 | PASS |
-| C-03 | BUG-F8-01 回归（payload 缺失） | 无 `payload` 字段的 `.err` 帧立即结算为 UiPluginError(E_INTERNAL)、message 回退请求类型名；派发期间 window `error` 事件 + `window.onerror` 捕获为零（修复前该用例在缺陷代码上失败：TypeError 逃逸 + Promise 永不结算超时） | 符合 | PASS |
+| C-03 | BUG-F8-01 回归（payload 缺失） | 无 `payload` 字段的 `.err` 帧立即结算为 ExtensionError(E_INTERNAL)、message 回退请求类型名；派发期间 window `error` 事件 + `window.onerror` 捕获为零（修复前该用例在缺陷代码上失败：TypeError 逃逸 + Promise 永不结算超时） | 符合 | PASS |
 | C-04 | BUG-F8-01 回归（payload null/undefined） | `payload:null`、`payload:undefined`、无 payload 键三种畸形 `.err` 帧均优雅拒绝为 E_INTERNAL 且零未捕获错误 | 符合 | PASS |
-| C-05 | err payload 原始类型降级 | `{code:7}`/false/0/'boom' 四种非法 payload 均立即拒绝为 UiPluginError(E_INTERNAL)，message 回退为请求类型名，无挂起 | 符合 | PASS |
+| C-05 | err payload 原始类型降级 | `{code:7}`/false/0/'boom' 四种非法 payload 均立即拒绝为 ExtensionError(E_INTERNAL)，message 回退为请求类型名，无挂起 | 符合 | PASS |
 | C-06–08 | storage 序列化保真 | set 嵌套对象/数组逐字上线；set 原始值（0/false/null/undefined 键存在性）原样投递；get 返回 falsy（false/0/''）**不塌缩为 null**、对象深等透传、缺 value → null | 符合 | PASS |
 | C-09 | command.invoke 透传 | 投递对象与入参 **同一引用**（零重组）、键序一致、额外顶层字段与嵌套 args 原样保留、结果仅解 `.result` | 符合 | PASS |
-| C-10–13 | 并发与路由 | 50 并发 reqId 全唯一（nonce-scoped 自增）且乱序应答各自正确路由；重复/迟到/未知 reqId 应答忽略；detach 中断 50 个在途请求全部 UI_PLUGIN_DETACHED；同页双 client nonce 不相交且按 reqId 正确分发（B 先答不串线） | 符合 | PASS |
+| C-10–13 | 并发与路由 | 50 并发 reqId 全唯一（nonce-scoped 自增）且乱序应答各自正确路由；重复/迟到/未知 reqId 应答忽略；detach 中断 50 个在途请求全部 EXTENSION_DETACHED；同页双 client nonce 不相交且按 reqId 正确分发（B 先答不串线） | 符合 | PASS |
 | C-14–15 | 环境守卫 | parentWindow:null 时类型化调用立即 E_INTERNAL；REQUEST_TIMEOUT_MS==30_000 与宿主常量一致 | 符合 | PASS |
 | X-01–X-07 | 互操作契约 | 见上表七项双向复核 | 符合 | PASS |
 | R-01 ×4 | useTheme | 首渲染即取当前状态（首帧有主题）、每次 apply 快照重渲染（act 包裹）、卸载后不再更新且不抛错、unsubscribe 幂等 | 符合 | PASS |
 | theme +1 | startThemeListener 无父窗口 | 返回可调用的 no-op detach | 符合 | PASS |
 
-#### 覆盖率结论（npx vitest run packages/ui-plugin-sdk --coverage --coverage.include='packages/ui-plugin-sdk/src/**'，实测）
+#### 覆盖率结论（npx vitest run packages/extension-sdk --coverage --coverage.include='packages/extension-sdk/src/**'，实测）
 
 | 文件 | Stmts | Branch | Funcs | Lines | 未覆盖 |
 |------|-------|--------|-------|-------|--------|
@@ -535,15 +535,15 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 
 #### 执行命令与结果
 
-- `npx vitest run packages/ui-plugin-sdk` → BUG-F8-01 修复后复跑 **69 passed / 0 failed**（31 开发 + 38 新增；C-03/C-04 在未修复代码上验证为失败，翻转后通过）
+- `npx vitest run packages/extension-sdk` → BUG-F8-01 修复后复跑 **69 passed / 0 failed**（31 开发 + 38 新增；C-03/C-04 在未修复代码上验证为失败，翻转后通过）
 - `npx vitest run`（全量）→ 229 文件：225 passed / **4 failed files 与基线集合完全一致**（ConnectionNavigatorTree[文件级]、RunHistoryDrawer、WidgetEditorDrawer、ObjectBrowser），1800 passed / 3 failed tests——基线 4 个失败用例中 RunHistoryDrawer「loads index…」本轮自行通过（该文件已知 flaky，单独复跑仍不稳定），**零新增失败**
-- `npx tsc -p packages/ui-plugin-sdk --noEmit` → **零错误**
+- `npx tsc -p packages/extension-sdk --noEmit` → **零错误**
 
 #### Bug 与备注
 
 | ID | 类型 | 描述 | 重现步骤 | 期望 vs 实际 | 状态 |
 |----|------|------|---------|-------------|------|
-| BUG-F8-01 | 低危健壮性缺口（详见 Bug 跟踪表） | `.err` 信封 payload 缺失/null → TypeError uncaught + 请求永久泄漏 | 见 Bug 跟踪表 | 规格 §5 容错语义：应如其他畸形 payload 一样优雅降级 UiPluginError(E_INTERNAL)；修复后 bridge.ts err 分支守卫读取（isRecord → 空对象兜底），任何畸形 err 帧均结算 E_INTERNAL，C-03/C-04 回归通过（缺陷代码上验证为失败）；验证 agent 复核：SDK 69/69 PASS、三态覆盖与防回归断言成立 | 已修复（919a09f3） |
+| BUG-F8-01 | 低危健壮性缺口（详见 Bug 跟踪表） | `.err` 信封 payload 缺失/null → TypeError uncaught + 请求永久泄漏 | 见 Bug 跟踪表 | 规格 §5 容错语义：应如其他畸形 payload 一样优雅降级 ExtensionError(E_INTERNAL)；修复后 bridge.ts err 分支守卫读取（isRecord → 空对象兜底），任何畸形 err 帧均结算 E_INTERNAL，C-03/C-04 回归通过（缺陷代码上验证为失败）；验证 agent 复核：SDK 69/69 PASS、三态覆盖与防回归断言成立 | 已修复（919a09f3） |
 | NOTE-F8-01 | 备注 | theme.css 含 41 处 hex 字面量，全部位于 `var(--token, #fallback)` 回退位（文件头注释明示「Literal fallbacks only cover the instant before the first snapshot lands」）。按「不含硬编码色值」最严格读法可判偏差；按任务书括号语义「仅 var() 引用」判定合规：所有颜色消费均经 var() 引用契约 token，回退色与 DEFAULT_THEME_TOKENS 逐一相符且有 R5 缺省兜底，测试已断言两计数相等防漂移 | interop.test.ts「fallback palette hexes agree…」+「color policy…」（41==41 断言） | 若产品要求零字面量，删除 var() 第二参即可由 DEFAULT_THEME_TOKENS 兜底，行为不变 | 备注 |
 
 ### F9（示例插件与 E2E，commit e535f9a4；HEAD f9c1d4fd）
@@ -577,12 +577,12 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 | packId 持久化格式 `plugin:datazen.sample:sample-light` | themePackApply.ts:23 `plugin:{pluginId}:{themeId}` | ✅ 与 EXPECTED_PACK_ID 一致 |
 | IPC：`list_plugins`/`remove_plugin` | commands/plugins.rs:340/369 | ✅（get_settings/save_settings 为既有宿主命令） |
 
-#### 静态核对表：journey 行为 ↔ PRD §4（ui-plugins-implementation.md）
+#### 静态核对表：journey 行为 ↔ PRD §4（extensions-implementation.md）
 
 | Journey | PRD §4 依据 | 静态核对结论 |
 |---------|------------|-------------|
 | J1 两步安装（validate→review→confirm） | §4.2 管理页「安装」+ BUG-F4-03 修复引入 review 步骤 | ✅ 对齐；fixture manifest（id/apiVersion 2/entry/contributes.pages+themes/3 permissions）满足 §2.2 校验（fixture_tests 已实跑验证） |
-| J2 桥往返（bridge-status ready、dark-state、token-count>0、storage-roundtrip ok、conn-count==get_connections） | §4.3 握手 plugin.ready→host.ready 附 `{apiVersion,locale,dark,tokens}`；§3.2 权限映射 `context.getConnections→context:connections`、`storage.get/set→storage:local` | ✅ uiPluginBridge.ts:130-134 路由表与 host.ready payload(:479-492) 逐一对应；fixture app.js 断言点(bridge-status:75/dark-state:39/token-count:41/storage:118/conn-count:106)齐全；wdio.conf.ts onPrepare upsert PostgreSQL 连接保证 conn-count≥1 |
+| J2 桥往返（bridge-status ready、dark-state、token-count>0、storage-roundtrip ok、conn-count==get_connections） | §4.3 握手 plugin.ready→host.ready 附 `{apiVersion,locale,dark,tokens}`；§3.2 权限映射 `context.getConnections→context:connections`、`storage.get/set→storage:local` | ✅ extensionBridge.ts:130-134 路由表与 host.ready payload(:479-492) 逐一对应；fixture app.js 断言点(bridge-status:75/dark-state:39/token-count:41/storage:118/conn-count:106)齐全；wdio.conf.ts onPrepare upsert PostgreSQL 连接保证 conn-count≥1 |
 | J3 Tab 独立性（模式切换保留 Tab、关闭全部回默认卡片） | §4.2 workspaceMode 分支互斥渲染；§4.1 独立 tabs store | ✅ ConnectionPage.tsx:960-970 各 mode 整块替换（connections 下无 workspace-navigator）；WorkspaceView + closeByPlugin 具备 |
 | J5 外观持久化 | §4.2 AppearanceSection 单选即应用；packId 编码见上表 | ✅ aria-pressed/current-badge/persist 三要素齐备 |
 | J4 停用卸载联动 | §4.3 「禁用联动：订阅 plugins:changed → closeByPlugin」 | ✅ WorkspaceView.tsx:46-52 订阅并对 disabled/uninstalled 调 closeByPlugin（BUG-F4-01 修复）；卸载走 ConfirmDialog 后 remove_plugin |
@@ -605,7 +605,7 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 
 ### F9 E2E 实跑验证（BUG-F9-01 经 4c5e755a 修复解锁，2026-08-22 验证 agent 会话）
 
-- 验证 agent 会话（全新），worktree `../datazen-ui-plugins` @ 4c5e755a，只验不改功能代码。
+- 验证 agent 会话（全新），worktree `../datazen-extensions` @ 4c5e755a，只验不改功能代码。
 
 #### 执行命令与结果
 
@@ -695,10 +695,10 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 | 2 | packages/extensions 源码树 + 主题 legacy 能力完整保留（editorJson/chartsJson/iconsDir）（commit 9f521d38） | Rust 116/116 + vitest 守护全绿 |
 | 3 | 基线测试修复 ×4 | 见回归清单勾选项；全量 vitest 首次零失败 |
 | 4 | i18n.getString 实现（替换 E_NOT_IMPLEMENTED） | 插件 `locales/<locale>.json` 查表 + en 兜底 + 字典缓存；桥接用例重写（ok/en 回退/缺 key BAD_REQUEST 三态） |
-| 5 | 审计日志写入文件 | `plugin_audit_log` 命令（tracing target `ui_plugin_audit` → `{dataDir}/logs/datazen.log`），双端字段截断防灌水；安全用例断言 detail 仅含命令名+连接 id |
+| 5 | 审计日志写入文件 | `extension_audit_log` 命令（tracing target `extension_audit` → `{dataDir}/logs/datazen.log`），双端字段截断防灌水；安全用例断言 detail 仅含命令名+连接 id |
 | 6 | BUG-F6-01 修复 | API_ROUTES 改 own-property 路由查找，原型链键 E_PERMISSION→E_NOT_FOUND（安全用例同步翻转） |
 | 7 | 卸载确认弹窗补数据删除警示 | en/zh-CN uninstallMessage 增补 storage 永久删除提示 |
-| 8 | M2 验收探针 | fixture `runQueryProbe`（command.invoke SELECT 1 → probe.query）+ spec **J2-005 新增**；**E2E 实跑 12/12 PASS**（`ok:1rows` 真实 PostgreSQL 查询经桥全链路；同轮宿主日志确认 `ui_plugin_audit` 审计行落盘 `datazen.log`）。注意 query 返回为多语句包装 `{results:[{columns,rows}…]}`，fixture/playground 均按此解包 |
+| 8 | M2 验收探针 | fixture `runQueryProbe`（command.invoke SELECT 1 → probe.query）+ spec **J2-005 新增**；**E2E 实跑 12/12 PASS**（`ok:1rows` 真实 PostgreSQL 查询经桥全链路；同轮宿主日志确认 `extension_audit` 审计行落盘 `datazen.log`）。注意 query 返回为多语句包装 `{results:[{columns,rows}…]}`，fixture/playground 均按此解包 |
 | 9 | BUG-F9-02/03 状态翻转 | 修复均已实跑验证，Bug 表状态更新为已修复 |
 
 遗留（明确不做/后续版本）：Windows/Linux 实机验证（用户指示除外）、插件更新流程（P1）、BUG-F2-01（P2 backlog）。

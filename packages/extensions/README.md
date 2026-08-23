@@ -1,6 +1,6 @@
 # DataZen Extensions
 
-运行时插件（UI 页面 + 主题）的**源码包目录**。每个子目录是一个完整、可直接安装的 extension 包，遵循统一插件系统规范（PRD：[ui-plugins.md](../../docs/prd/ui-plugins.md)，技术方案：[ui-plugins-implementation.md](../../docs/prd/ui-plugins-implementation.md) §2.2）。
+运行时插件（UI 页面 + 主题）的**源码包目录**。每个子目录是一个完整、可直接安装的 extension 包，遵循统一插件系统规范（PRD：[extensions.md](../../docs/prd/extensions.md)，技术方案：[extensions-implementation.md](../../docs/prd/extensions-implementation.md) §2.2）。
 
 > 历史注记：本目录取代 `packages/themes/`（旧 v1 ThemePack 源码树）。社区主题 `community.slate-blue` 已按新规范改造为纯主题 extension；`fixtures/themes/community.fixture-dark` 保留原位，仅服务遗留 theme 模块的单测。
 

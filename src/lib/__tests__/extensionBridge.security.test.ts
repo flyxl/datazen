@@ -344,7 +344,7 @@ describe('F6 security: permission gate vs malformed routing', () => {
     );
     receive({ ch: BRIDGE_CHANNEL, type: 'storage.get', reqId: 't3' }, frame.iframe.contentWindow);
     receive(
-      { ch: 'ui-plugin ', type: 'storage.get', reqId: 't4', target: 'host' },
+      { ch: 'datazen-extension ', type: 'storage.get', reqId: 't4', target: 'host' },
       frame.iframe.contentWindow,
     );
     await flush();
