@@ -44,10 +44,10 @@ packages/extensions/<publisher>.<name>/
 
 1. 启动 DataZen（`pnpm tauri:dev`）
 2. 左侧边栏 → **插件** → **安装插件…**
-3. 在弹窗中粘贴包的**绝对目录路径**（如 `…/DataZen/packages/extensions/datazen.playground`），或先打 zip：
+3. 在弹窗中粘贴包的**绝对目录路径**（如 `…/DataZen/packages/extensions/datazen.playground`），或使用预打包的 zip：**`packages/extensions/dist/<id>.zip`**（该目录已 gitignore）。手动重打：
 
    ```bash
-   cd packages/extensions/datazen.playground && zip -r ../../datazen.playground.zip .
+   cd packages/extensions/datazen.playground && zip -rqX ../dist/datazen.playground.zip . -x '.DS_Store'
    ```
 
 4. 预览确认（名称/版本/权限清单）→ Install → 卡片出现即成功
