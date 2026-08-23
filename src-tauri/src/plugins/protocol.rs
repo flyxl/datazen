@@ -108,11 +108,13 @@ fn strip_scheme(uri: &str) -> Option<&str> {
         return uri.get("datazen://".len()..);
     }
     // Windows WebView2 maps custom schemes to http(s) with a dotted host:
-    // `http://datazen./acme.bill-audit/index.html`.
+    // `http://datazen./acme.bill-audit/index.html`. The `/` separator is
+    // mandatory (BUG-F2-01): spec §2.4 only defines
+    // `http://datazen./<host>/<path>`, so `datazen.` followed directly by the
+    // plugin id is not an alias and must fail as an unsupported scheme.
     for prefix in ["https://datazen.", "http://datazen."] {
         if lower.starts_with(prefix) {
-            let rest = uri.get(prefix.len()..)?;
-            return Some(rest.strip_prefix('/').unwrap_or(rest));
+            return uri.get(prefix.len()..)?.strip_prefix('/');
         }
     }
     None
@@ -442,6 +444,32 @@ mod tests {
         ] {
             assert_eq!(native, parse_datazen_uri(windows), "{windows}");
         }
+    }
+
+    #[test]
+    fn windows_form_without_separator_is_rejected() {
+        // BUG-F2-01: `datazen.` followed directly by the plugin id (no `/`
+        // separator) used to be accepted as a lenient alias. Spec §2.4 only
+        // defines `http://datazen./<host>/<path>`, so these must fail with
+        // "unsupported scheme" while the canonical form keeps parsing.
+        for uri in [
+            "http://datazen.acme.bill-audit/index.html",
+            "https://datazen.acme.bill-audit/index.html",
+            "HTTP://DATAZEN.ACME.BILL-AUDIT/index.html",
+        ] {
+            assert!(
+                parse_datazen_uri(uri)
+                    .unwrap_err()
+                    .starts_with("unsupported scheme"),
+                "`{uri}` should be rejected as an unsupported scheme"
+            );
+        }
+        let native = parse_datazen_uri("datazen://acme.bill-audit/index.html").unwrap();
+        assert_eq!(
+            parse_datazen_uri("http://datazen./acme.bill-audit/index.html"),
+            Ok(native),
+            "canonical Windows form still parses and matches native"
+        );
     }
 
     #[test]

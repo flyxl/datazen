@@ -21,7 +21,7 @@
 
 | ID | 功能 | 描述 | 重现步骤 | 状态 |
 |----|------|------|---------|------|
-| BUG-F2-01 | F2 | 【处置：backlog/P2 加固，不阻断】Windows 形态解析面宽于规格：`http(s)://datazen.<host>/<path>`（`datazen.` 后无 `/` 直接接 host）也被接受为合法别名 | `parse_datazen_uri("http://datazen.acme.bill-audit/index.html")` 返回 Ok（与 `http://datazen./acme.bill-audit/index.html` 等价）。规格 §2.4 字面仅定义 `http://datazen./<host>/<path>`。同一校验链（存在→enabled→路径→MIME）仍然全部生效，无安全影响，属低危加固项（可在 strip_scheme 中要求紧随分隔符） | 新建 |
+| BUG-F2-01 | F2 | Windows 形态解析面宽于规格：`http(s)://datazen.<host>/<path>`（`datazen.` 后无 `/` 直接接 host）曾被接受为合法别名。**已修复（行为收紧，2026-08-23）**：strip_scheme 移除 `unwrap_or(rest)` 回退，要求 `datazen.` 后紧随 `/` 分隔符；native `datazen://` 与规范形 `http://datazen./<host>/<path>` 解析不变 | 原 `parse_datazen_uri("http://datazen.acme.bill-audit/index.html")` 返回 Ok（与规范形等价）；修复后返回 Err（unsupported scheme）。规格 §2.4 字面仅定义 `http://datazen./<host>/<path>`。同一校验链（存在→enabled→路径→MIME）不受影响。回归锚点：protocol.rs `windows_form_without_separator_is_rejected`（新增负例）+ protocol_security_tests.rs `windows_dotted_host_without_separator_is_rejected`（原宽松别名钉住例翻转）+ 回归清单 S-09 同步翻转 | 已修复 |
 | BUG-F4-01 | F4 | 插件停用联动不完整：跨窗口/外部触发的 `plugins:changed` 只刷新 pluginStore，无人调 closeByPlugin，残留可激活的僵尸 Tab | 开插件 Tab → 另一窗口 set_plugin_enabled(false) → 原窗口导航项消失但 Tab/iframe 保留。规格 §4.3/§4.4 要求停用即关 Tab；实际仅管理页内操作联动（PluginManagementPage.tsx:93,110）。建议 F6 统一订阅处理 | 已修复（ca2218bc） |
 | BUG-F4-02 | F4 | 「同一插件页多开」不可实现：key=`{pluginId}:{pageId}` + open 幂等，同页重复点击仅聚焦 | Workspace 点击同一导航项两次 → 仅一个 Tab。PRD §4.2/§4.4 允许多开，但 §4.4 表格自身定义该唯一 key，自相矛盾——需产品拍板 | 已修复（产品决议：单实例） |
 | BUG-F4-03 | F4 | 安装流程缺「名称/版本/权限清单确认」中间步骤，确认即直接写入 | 管理页[安装插件…] → 输入合法 zip 路径 → Install：无任何预览确认直接安装成功。规格 §4.3 要求写入前展示确认 | 已修复（ca2218bc） |
@@ -140,7 +140,7 @@ Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已�
 | S-06 | 畸形转义 `a%.html`/`%zz`/尾部孤立 `%`：保持字面量不 panic | PASS |
 | S-07 | Windows 形态等价性：http/https/大写 scheme 三形与 native 同解析同字节（含 query） | PASS |
 | S-08 | Windows 形态反斜杠穿越（编码与裸 `\`） | PASS |
-| S-09 | `http://datazen.<host>/` 无分隔符别名宽松接受 → 登记 BUG-F2-01（低危加固项，非缺陷行为恶化） | PASS（记录偏差） |
+| S-09 | `http://datazen.<host>/` 无分隔符别名 → BUG-F2-01 修复后拒绝（unsupported scheme）；规范形 `http://datazen./<host>/…` 与 native 仍等价（原「宽松接受」断言已随修复翻转，2026-08-23） | PASS（BUG-F2-01 已修复） |
 | S-10 | 盘符组件 `C:/evil.json`：Unix 下不存在即 404；Windows 下由 canonicalize 包含性兜底（join 截断语义） | PASS |
 | S-11 | `http://datazen.` 空段/缺路径：host 为空串被拒 | PASS |
 | S-12 | host 混淆 8 变体：大小写、尾点、`:8080` 端口、百分号编码 host（host 从不解码）、前后空白、多点号 | PASS |
@@ -175,7 +175,7 @@ Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已�
 
 | ID | 类型 | 描述 | 重现步骤 | 期望 vs 实际 | 状态 |
 |----|------|------|---------|-------------|------|
-| BUG-F2-01 | 低危加固 | Windows 形态解析面宽于规格字面：`datazen.` 后无 `/` 直接接 host 也被接受 | `parse_datazen_uri("http://datazen.acme.bill-audit/index.html")` → Ok 且与规范形等价 | 规格：仅 `http://datazen./<host>/<path>`；实际：`http(s)://datazen.<host>/<path>` 别名同样可达。同一校验链仍全程生效，无安全影响；如需收紧可在 strip_scheme 要求紧随 `/` | 新建 |
+| BUG-F2-01 | 低危加固 | Windows 形态解析面宽于规格字面：`datazen.` 后无 `/` 直接接 host 也被接受 | `parse_datazen_uri("http://datazen.acme.bill-audit/index.html")` → Ok 且与规范形等价 | 规格：仅 `http://datazen./<host>/<path>`；实际（修复前）：`http(s)://datazen.<host>/<path>` 别名同样可达。同一校验链仍全程生效，无安全影响。**已修复**：strip_scheme 要求 `datazen.` 后紧随 `/`，无分隔符形态报 unsupported scheme，正例不变 | 已修复（2026-08-23，见 Bug 跟踪 BUG-F2-01） |
 | DEV-F2-01 | 备注 | MIME 表为 themePackApply.ts 映射的**超集**而非"同表复制"：新增 html/js/mjs/css/json（插件 UI 页面必需）；共享 5 项（svg/webp/png/woff2/woff）取值一致无冲突 | 对照 src/lib/themePackApply.ts `MIME_BY_EXT`（5 项）与 content_type_for（10 项） | 规格措辞"同表复制"；实际为合理超集，主题包场景取值完全兼容 | 备注 |
 | DEV-F2-02 | 备注 | Tauri 接线层（handle_datazen_request 及 emit_open_page）无自动化直测 | 见覆盖率结论 L301–355 说明 | 单测需 tauri mock runtime；当前以 datazen_response 直测 + 注册点审查旁证。若 F9 E2E 需要端到端协议验证，建议届时补 WebdriverIO 层用例 | 备注（F9 承接评估） |
 
@@ -701,4 +701,4 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 | 8 | M2 验收探针 | fixture `runQueryProbe`（command.invoke SELECT 1 → probe.query）+ spec **J2-005 新增**；**E2E 实跑 12/12 PASS**（`ok:1rows` 真实 PostgreSQL 查询经桥全链路；同轮宿主日志确认 `extension_audit` 审计行落盘 `datazen.log`）。注意 query 返回为多语句包装 `{results:[{columns,rows}…]}`，fixture/playground 均按此解包 |
 | 9 | BUG-F9-02/03 状态翻转 | 修复均已实跑验证，Bug 表状态更新为已修复 |
 
-遗留（明确不做/后续版本）：Windows/Linux 实机验证（用户指示除外）、插件更新流程（P1）、BUG-F2-01（P2 backlog）。
+遗留（明确不做/后续版本）：Windows/Linux 实机验证（用户指示除外）、插件更新流程（P1）。
