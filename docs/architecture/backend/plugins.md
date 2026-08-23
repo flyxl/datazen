@@ -1,6 +1,6 @@
 # 运行时插件系统（UI 页面 + 主题 Extension）
 
-> [返回架构总览](../README.md) · PRD：[docs/prd/extensions.md](../../prd/extensions.md) · 技术方案：[docs/prd/extensions-implementation.md](../../prd/extensions-implementation.md)
+> [返回架构总览](../README.md) · 源码包与安装测试：[packages/extensions/](../../../packages/extensions/)
 
 统一运行时扩展机制：一份 `manifest.json` 声明插件贡献了什么（工作区页面 / 主题），宿主提供壳与受控 postMessage 桥，插件在沙箱 iframe 中运行。与**编译时驱动插件**（`packages/drivers/*`，inventory 注册）长期并存、互不替代；与主题包的关系见下文「主题」。
 

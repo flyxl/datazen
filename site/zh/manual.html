@@ -1,0 +1,872 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>使用手册 — DataZen</title>
+    <meta
+      name="description"
+      content="DataZen 详细使用手册：安装、连接数据库、SQL 编辑器、数据编辑、AI 助手、图表可视化、Workflow 自动化、运营看板、数据同步与备份恢复。"
+    />
+    <link rel="canonical" href="https://flyxl.github.io/datazen/zh/manual.html" />
+    <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/manual.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/manual.html" />
+    <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/manual.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="使用手册 — DataZen" />
+    <meta
+      property="og:description"
+      content="DataZen 详细使用手册：安装、连接、SQL 编辑器、AI 助手、图表、Workflow、看板、数据同步与备份。"
+    />
+    <meta property="og:url" content="https://flyxl.github.io/datazen/zh/manual.html" />
+    <meta
+      property="og:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="使用手册 — DataZen" />
+    <meta
+      name="twitter:description"
+      content="DataZen 详细使用手册：安装、连接、SQL 编辑器、AI 助手、图表、Workflow、看板、数据同步与备份。"
+    />
+    <meta
+      name="twitter:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <link rel="icon" href="../assets/logo.png" />
+    <link rel="stylesheet" href="../assets/css/site.css" />
+    <style>
+      .manual-shot {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow);
+        margin: 18px 0 6px;
+        display: block;
+      }
+      .manual-shot-caption {
+        font-size: 13px;
+        opacity: 0.65;
+        margin: 0 0 22px;
+      }
+      .kbd {
+        display: inline-block;
+        padding: 1px 7px;
+        border: 1px solid var(--border);
+        border-bottom-width: 2px;
+        border-radius: 6px;
+        font-size: 12.5px;
+        background: rgba(127, 127, 127, 0.08);
+      }
+      .tip {
+        border-left: 3px solid var(--accent);
+        padding: 10px 14px;
+        background: rgba(127, 127, 127, 0.07);
+        border-radius: 0 10px 10px 0;
+        margin: 16px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <header id="site-header"></header>
+
+    <section class="page-head">
+      <div class="wrap">
+        <p class="breadcrumb"><a href="index.html">首页</a> / 使用手册</p>
+        <h1>📘 DataZen 使用手册</h1>
+        <p>
+          从安装到进阶的完整操作指南：连接数据库、SQL 查询与结果编辑、AI 辅助、图表可视化、 Workflow
+          自动化、运营看板、数据同步 / 迁移 / 结构对比，以及备份与安全。
+        </p>
+      </div>
+    </section>
+
+    <section class="wrap docs-layout">
+      <nav class="docs-toc" aria-label="手册目录">
+        <p class="docs-toc-heading">目录</p>
+        <a class="docs-toc-link" href="#install">1. 安装与启动</a>
+        <a class="docs-toc-link" href="#ui">2. 界面总览</a>
+        <a class="docs-toc-link" href="#connections">3. 连接管理</a>
+        <a class="docs-toc-link" href="#sql">4. SQL 编辑器与查询</a>
+        <a class="docs-toc-link" href="#data">5. 数据浏览与编辑</a>
+        <a class="docs-toc-link" href="#objects">6. 对象管理与 ER 图</a>
+        <a class="docs-toc-link" href="#charts">7. 图表可视化</a>
+        <a class="docs-toc-link" href="#ai">8. AI 助手</a>
+        <a class="docs-toc-link" href="#workflow">9. Workflows 自动化</a>
+        <a class="docs-toc-link" href="#dashboard">10. 运营看板</a>
+        <a class="docs-toc-link" href="#sync">11. 同步 · 迁移 · 结构对比</a>
+        <a class="docs-toc-link" href="#redis">12. Redis 工具</a>
+        <a class="docs-toc-link" href="#backup">13. 备份与恢复</a>
+        <a class="docs-toc-link" href="#plugins">14. 插件与主题</a>
+        <a class="docs-toc-link" href="#settings">15. 设置参考</a>
+        <a class="docs-toc-link" href="#security">16. 安全与隐私</a>
+        <a class="docs-toc-link" href="#shortcuts">17. 键盘快捷键</a>
+        <a class="docs-toc-link" href="#faq">18. 故障排查 FAQ</a>
+      </nav>
+
+      <div class="docs-main">
+        <section id="install" class="docs-section">
+          <h2 class="docs-section-title">1. 安装与启动</h2>
+          <div class="docs-prose">
+            <p>
+              DataZen 是免费开源（GPLv3）的跨平台桌面数据库客户端，基于 Tauri v2 + Rust 构建，
+              无需注册账号。
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>平台</th>
+                  <th>安装包</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>macOS Apple Silicon / Intel</td>
+                  <td><code>.dmg</code></td>
+                </tr>
+                <tr>
+                  <td>Windows x64</td>
+                  <td><code>.exe</code> / <code>.msi</code></td>
+                </tr>
+                <tr>
+                  <td>Linux x86_64</td>
+                  <td><code>.deb</code> / <code>.rpm</code> / <code>.AppImage</code></td>
+                </tr>
+              </tbody>
+            </table>
+            <ol>
+              <li>
+                前往
+                <a href="https://github.com/flyxl/datazen/releases" target="_blank" rel="noopener"
+                  >GitHub Releases</a
+                >
+                下载对应平台的安装包。
+              </li>
+              <li>
+                安装并首次启动后进入欢迎页，可点击「创建第一个连接」或「导入连接」 （支持从
+                TablePlus、Navicat、DataGrip、DBeaver、DBX 等工具迁移）。
+              </li>
+            </ol>
+            <div class="tip">
+              <strong>macOS 提示：</strong>若提示「已损坏」或「无法验证开发者」，在终端执行
+              <code>xattr -cr /Applications/DataZen.app</code>，或在系统设置中右键 → 打开一次即可。
+            </div>
+          </div>
+        </section>
+
+        <section id="ui" class="docs-section">
+          <h2 class="docs-section-title">2. 界面总览</h2>
+          <div class="docs-prose">
+            <img
+              class="manual-shot"
+              src="../assets/screenshots/01-main-window.png"
+              alt="DataZen 主窗口"
+              loading="lazy"
+            />
+            <p class="manual-shot-caption">主工作区：左侧连接树 + 标签页 + AI 侧边栏</p>
+            <ul>
+              <li>
+                <strong>左侧功能栏</strong>：连接（Connections）、Workflows、看板（Dashboards）、
+                工作区（Workspace，插件页面）、插件（Plugins）；底部为设置（Settings）。
+              </li>
+              <li>
+                <strong>主内容区</strong>：连接树 +
+                多标签页查询区；设置页与新建议接对话框均在主窗口内打开。
+              </li>
+              <li>
+                <strong>菜单栏</strong>：文件（新建连接、Data Sync、Schema Diff、Workflow、备份…）、
+                视图（主题、全屏）、工具（查看日志、导入导出应用数据 /
+                连接配置）、帮助（使用说明）。
+              </li>
+              <li>
+                <strong>独立子窗口</strong>：备份数据库、Data Sync、Data Transfer、Schema Diff
+                四类功能在单独窗口中运行。
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="connections" class="docs-section">
+          <h2 class="docs-section-title">3. 连接管理</h2>
+          <div class="docs-prose">
+            <h3>新建连接</h3>
+            <ol>
+              <li>点击左侧栏「连接」，再点击「新建连接」（或菜单 文件 → 新建连接）。</li>
+              <li>
+                在左侧数据库类型列表中选择类型（可搜索）；未随当前安装包启用的驱动会标注「Planned」。
+              </li>
+              <li>
+                按类型填写表单：服务器型填写 主机 / 端口 / 用户名 / 密码 / 数据库； 文件型（如
+                SQLite）选择数据库文件；Redis 填写密码与库索引。
+              </li>
+              <li>
+                展开「高级设置」：SSL 模式（禁用 / 首选 / 必须）、<strong>只读连接</strong> （拒绝
+                INSERT / UPDATE / DELETE 与 DDL）、颜色标记、分组。
+              </li>
+              <li>
+                需要跳板时开启「SSH 隧道」：支持 密码 / 私钥 / SSH Agent 三种认证，并可配置 Jump
+                跳板机。
+              </li>
+              <li>点击「测试连接」确认连通后保存。</li>
+            </ol>
+            <div class="tip">
+              直接粘贴连接 URL 或工具复制的连接串，DataZen 会自动识别并填充表单。 支持从
+              DBX、Navicat（.ncx）、DataGrip、DBeaver、TablePlus 批量导入连接
+              （连接分享对话框中操作），敏感密码按各格式要求填写。
+            </div>
+            <h3>支持的数据库</h3>
+            <p>
+              默认内置 PostgreSQL、MySQL / MariaDB、SQLite、Redis 等；MongoDB、ClickHouse、
+              DuckDB、SQL Server 等以可选驱动形式在构建时选择。完整列表见官网
+              <a href="databases.html">数据库支持</a> 页面。
+            </p>
+            <img
+              class="manual-shot"
+              src="../assets/screenshots/14-multidb.png"
+              alt="多数据库支持"
+              loading="lazy"
+            />
+          </div>
+        </section>
+
+        <section id="sql" class="docs-section">
+          <h2 class="docs-section-title">4. SQL 编辑器与查询</h2>
+          <div class="docs-prose">
+            <img
+              class="manual-shot"
+              src="../assets/screenshots/17-sql-editor.png"
+              alt="SQL 编辑器"
+              loading="lazy"
+            />
+            <ul>
+              <li>
+                <strong>智能补全</strong>：基于当前库的表 / 列结构自动补全，含驱动函数补全； 按
+                <span class="kbd">Tab</span> 接受候选。
+              </li>
+              <li>
+                <strong>执行</strong>：<span class="kbd">⌘/Ctrl + Enter</span> 执行全部语句；
+                选中文本后执行仅运行所选；执行中按钮变为「停止」可取消。
+              </li>
+              <li>
+                <strong>多结果集</strong>：多条语句生成多个 Result Tab；显示总耗时与流式加载行数。
+              </li>
+              <li>
+                <strong>EXPLAIN</strong>：驱动支持时可用，展示执行计划树，并可用「AI
+                分析」给出瓶颈与优化建议。
+              </li>
+              <li>
+                <strong>工具栏</strong>：Format 格式化、事务 Begin / Commit /
+                Rollback（带未闭合事务提醒）、 Safe Mode 开关（拦截无 WHERE 的 UPDATE / DELETE 及
+                TRUNCATE / DROP）、参数绑定、 查询历史（可搜索、分库范围）与收藏。
+              </li>
+              <li>
+                <strong>执行 SQL 文件</strong>：菜单入口选择 .sql
+                文件对目标库执行，破坏性内容需二次确认。
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="data" class="docs-section">
+          <h2 class="docs-section-title">5. 数据浏览与编辑</h2>
+          <div class="docs-prose">
+            <img
+              class="manual-shot"
+              src="../assets/screenshots/18-data-editor.png"
+              alt="数据编辑"
+              loading="lazy"
+            />
+            <ul>
+              <li>
+                <strong>浏览</strong>：点击表名查看数据网格，支持排序、分页、列宽调整与虚拟滚动。
+              </li>
+              <li>
+                <strong>筛选</strong>：过滤构建器支持 = ≠ &gt; &lt; ≥ ≤ contains / in / IS NULL
+                等运算符， AND / OR 组合；也可用 <strong>AI 智能筛选</strong> 直接输入 「age &gt; 18
+                and name contains John」这类自然语言条件。
+              </li>
+              <li>
+                <strong>编辑</strong>：双击单元格编辑（按列类型自动转换；空字符串提交为 NULL）；
+                行删除与编辑要求表有主键；详情面板（空格键开关）可查看 BLOB 与整行数据。
+              </li>
+              <li>
+                <strong>复制</strong>：右键复制单元格 / 行，或复制为 JSON / CSV / SQL INSERT /
+                UPDATE。
+              </li>
+              <li>
+                <strong>导出</strong>：CSV、TSV、JSON、Markdown、Excel(XLSX)、SQL INSERT / UPDATE；
+                范围可选 当前页 / 已选中行 / 整表流式导出。多表批量导出支持 结构+数据、单文件或
+                ZIP。
+              </li>
+              <li>
+                <strong>导入</strong>：CSV / JSON / XLSX 导入目标表，含解析预览与大数据量提示。
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="objects" class="docs-section">
+          <h2 class="docs-section-title">6. 对象管理与 ER 图</h2>
+          <div class="docs-prose">
+            <ul>
+              <li>
+                <strong>对象树</strong>：浏览数据库 / Schema / 表 / 视图 / 函数 / 存储过程 / 触发器
+                / 序列等， 右键菜单提供建库、建
+                Schema、建用户、授权等管理命令（随驱动能力动态出现）。
+              </li>
+              <li>
+                <strong>DDL 与结构</strong>：查看对象 DDL；表结构编辑器可修改列、索引、注释等
+                （能力随驱动而定）。
+              </li>
+              <li><strong>权限管理</strong>：Privileges 视图查看与授予 / 回收权限。</li>
+              <li>
+                <strong>ER 图</strong>：自动读取外键关系生成实体关系图，支持搜索、缩放适配、折叠列，
+                并可导出 PNG / SVG。
+              </li>
+              <li>
+                <strong>服务器状态</strong>：实时趋势图与进程列表（可 Kill 会话，视驱动支持）。
+              </li>
+            </ul>
+            <img
+              class="manual-shot"
+              src="../assets/screenshots/16-er.png"
+              alt="ER 图"
+              loading="lazy"
+            />
+            <p class="manual-shot-caption">ER 关系图：外键关系可视化，支持 PNG / SVG 导出</p>
+          </div>
+        </section>
+
+        <section id="charts" class="docs-section">
+          <h2 class="docs-section-title">7. 图表可视化</h2>
+          <div class="docs-prose">
+            <img
+              class="manual-shot"
+              src="../assets/screenshots/02-query-chart.png"
+              alt="查询结果转图表"
+              loading="lazy"
+            />
+            <ol>
+              <li>执行查询后，在结果区切换 表格 ⇄ 图表 视图（可在设置中开启「自动切换图表」）。</li>
+              <li>
+                DataZen 会根据结果集智能推荐图表类型（时间序列→折线、类别占比→饼图、
+                类别对比→柱状、两组数值→散点），并给出推荐理由。
+              </li>
+              <li>
+                配置面板可调整：图表类型（折线 / 柱状 / 饼 / 散点 / 面积）、X / Y 轴（多序列）、
+                分组、聚合（求和 / 平均 / 计数 / 最值）、排序、配色、图例与数值标签；
+                也支持用自然语言指令调整（中英文均可，如「改成柱状图」「按 X 升序」）。
+              </li>
+              <li>点击导出为 PNG / SVG；还可一键「添加到看板」持续监控。</li>
+            </ol>
+            <img
+              class="manual-shot"
+              src="../assets/screenshots/10-chart-types.png"
+              alt="多种图表类型"
+              loading="lazy"
+            />
+          </div>
+        </section>
+
+        <section id="ai" class="docs-section">
+          <h2 class="docs-section-title">8. AI 助手</h2>
+          <div class="docs-prose">
+            <h3>配置 Provider</h3>
+            <p>
+              设置 → AI Assistant 中选择 Provider（OpenAI / DeepSeek / Ollama / 自定义端点）、
+              协议（OpenAI Chat Completions / OpenAI Responses / Anthropic Messages）、模型、 API
+              Key 后点击 Validate 校验并保存。配置加密存储于本地 <code>ai_config.enc</code>，
+              不会出现在日志中。未配置时侧边栏会引导跳转设置页。
+            </p>
+            <img
+              class="manual-shot"
+              src="../assets/screenshots/03-ai-nl2sql.png"
+              alt="自然语言生成 SQL"
+              loading="lazy"
+            />
+            <p class="manual-shot-caption">自然语言 → SQL：结合当前库 Schema 生成可执行语句</p>
+            <ul>
+              <li>
+                <strong>NL2SQL</strong>：描述需求生成 SQL，可直接应用 / 复制，或「应用并生成图表」。
+              </li>
+              <li><strong>错误诊断</strong>：查询失败时一键诊断，解释原因并给出修正 SQL。</li>
+              <li><strong>EXPLAIN 分析</strong>：解读执行计划，指出瓶颈与优化建议。</li>
+              <li>
+                <strong>AI Chat</strong>：侧边栏对话；输入 <code>@</code> 引用上下文——当前连接下的
+                <strong>表</strong>，以及 AI Context
+                目录中的<strong>文件</strong>（最近引用自动记忆）； 回复中的 SQL
+                可一键插入编辑器；支持流式输出、思考过程展示与停止生成。
+              </li>
+              <li>
+                <strong>其他触点</strong>：表格智能筛选、数据同步差异解读、Workflow AI 生成等。
+              </li>
+            </ul>
+            <img
+              class="manual-shot"
+              src="../assets/screenshots/07-ai-chat.png"
+              alt="AI Chat"
+              loading="lazy"
+            />
+          </div>
+        </section>
+
+        <section id="workflow" class="docs-section">
+          <h2 class="docs-section-title">9. Workflows 自动化</h2>
+          <div class="docs-prose">
+            <p>
+              Workflow 用 YAML 把查询、AI 分析、条件分支和循环编排成可复用的自动化流程，
+              可从界面、AI 侧边栏或 MCP 启动。
+            </p>
+            <img
+              class="manual-shot"
+              src="../assets/screenshots/04-workflow.png"
+              alt="Workflow 编辑器"
+              loading="lazy"
+            />
+            <h3>创建与运行</h3>
+            <ol>
+              <li>入口：左侧栏「Workflows」新建，或打开连接窗口的 AI 侧边栏 →「工作流」标签。</li>
+              <li>
+                编辑器提供 可视化表单 + YAML 双模式；也可用「AI Create」用自然语言生成流程草稿。
+              </li>
+              <li>
+                定义 <code>variables</code>（string / number / connection 类型）作为运行时输入，
+                执行时填入或取默认值。
+              </li>
+              <li>点击 Run 执行：逐步显示每个 Step 的结果表、SQL 与耗时；历史记录可回看。</li>
+            </ol>
+            <pre class="language-yaml"><code>id: daily-report
+name: 日报
+description: 查询今日订单并由 AI 生成摘要
+variables:
+  - name: date
+    type: string
+    required: true
+steps:
+  - type: query
+    id: get_orders
+    sql: "SELECT count(*) AS total FROM orders WHERE order_date = '{{date}}'"
+  - type: ai
+    id: summary
+    prompt: "今天是 {{current_date}}，订单数 {{steps.get_orders.rows.0.total}}，请写一句话日报。"
+output:
+  template: "{{steps.summary.result}}"</code></pre>
+            <ul>
+              <li>
+                <strong>Step 类型</strong>：<code>query</code>（SQL，模板变量
+                <code>{{...}}</code>）、 <code>ai</code>（调用已配置的
+                Provider）、<code>condition</code>（if / then / else）、
+                <code>foreach</code>（循环，默认上限 100 次）。
+              </li>
+              <li>
+                <strong>连接继承</strong>：Workflow 可设默认 connection，Step 可覆盖；
+                跨库场景可为不同 Step 绑定不同连接。
+              </li>
+              <li>
+                <strong>错误策略</strong>：<code>abort</code>（默认）/ <code>skip</code> /
+                <code>fallback</code>， 支持 Step 级覆盖与全局超时（默认 300 秒）。
+              </li>
+            </ul>
+            <img
+              class="manual-shot"
+              src="../assets/screenshots/12-workflow-crossdb.png"
+              alt="跨库 Workflow"
+              loading="lazy"
+            />
+            <p class="manual-shot-caption">
+              跨库 Workflow：PostgreSQL 取订单 + MySQL 取物流 + AI 汇总
+            </p>
+            <p>
+              完整语法（模板规则、条件表达式、故障排查表）见
+              <a
+                href="https://github.com/flyxl/datazen/blob/main/docs/features/workflow-guide.zh-CN.md"
+                target="_blank"
+                rel="noopener"
+                >Workflow 使用指南</a
+              >。
+            </p>
+          </div>
+        </section>
+
+        <section id="dashboard" class="docs-section">
+          <h2 class="docs-section-title">10. 运营看板</h2>
+          <div class="docs-prose">
+            <p>
+              运营看板是独立的监控窗口：多个图表组件绑定 SQL，由后台 MonitorEngine 按间隔自动刷新，
+              指标越过阈值时推送桌面通知或 Webhook。
+            </p>
+            <ol>
+              <li>主窗口左侧「看板」→ 新建 / 打开看板，进入 12 列网格画布。</li>
+              <li>
+                「添加组件」：绑定<strong>已保存</strong>的连接、输入监控 SQL、选择图表配置，
+                设置刷新间隔（最低 30 秒）。
+              </li>
+              <li>
+                配置告警：选择指标列与聚合、比较符与阈值、冷却时间，勾选通知渠道 （桌面通知 /
+                Webhook；邮件渠道暂未开放）。
+              </li>
+              <li>工具栏支持 全部刷新、暂停 / 恢复监控（全局，托盘同步）、导入 / 导出看板定义。</li>
+            </ol>
+            <div class="tip">
+              关闭看板窗口不会停止后台调度；每次运行的历史快照都会落盘，
+              可在组件「历史」抽屉中回放，无需重跑 SQL。导出的看板 JSON 不含凭据与历史。
+            </div>
+          </div>
+        </section>
+
+        <section id="sync" class="docs-section">
+          <h2 class="docs-section-title">11. 数据同步 · 迁移 · 结构对比</h2>
+          <div class="docs-prose">
+            <img
+              class="manual-shot"
+              src="../assets/screenshots/19-backup-sync.png"
+              alt="数据同步"
+              loading="lazy"
+            />
+            <p>三个工具职责不同，按场景选择：</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>工具</th>
+                  <th>场景</th>
+                  <th>流程</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Data Sync 数据同步</strong></td>
+                  <td>
+                    同族数据库（MySQL↔MySQL、PG↔PG）、表结构与主键完全一致的<strong>行级差异</strong>同步
+                  </td>
+                  <td>
+                    Compare → Review 勾选差异 → Preview SQL → Execute（默认不含
+                    DELETE，勾选需双重确认）
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Data Transfer 数据迁移</strong></td>
+                  <td>异构数据库间的单向搬运（如 MySQL → PostgreSQL），支持结构 + 数据</td>
+                  <td>
+                    八步向导：源/目标 → 模式 → 对象 → 字段映射 → 写入选项 → 预览 → 执行 → 结果
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Schema Diff 结构对比</strong></td>
+                  <td>将源库结构作为期望状态，生成受控 DDL 并部署到目标库</td>
+                  <td>
+                    Compare → Plan → Review → Deploy；默认只生成增量变更，破坏性语句需勾选并输入
+                    <code>DEPLOY</code>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <ul>
+              <li>
+                Data Sync
+                的硬性门闸：同方言族、结构完全一致、主键一致且非空；不满足时窗口内可一键跳转 Schema
+                Diff。
+              </li>
+              <li>
+                Schema Diff 支持 PG / SQLite 事务执行失败自动回滚；MySQL DDL
+                逐条提交，部分成功会标记 <code>mixed</code>。
+              </li>
+              <li>目标连接为只读时，所有写入型操作的执行按钮均被禁用。</li>
+            </ul>
+            <p>
+              详细步骤见
+              <a
+                href="https://github.com/flyxl/datazen/blob/main/docs/features/data-sync-guide.zh-CN.md"
+                target="_blank"
+                rel="noopener"
+                >数据同步指南</a
+              >、
+              <a
+                href="https://github.com/flyxl/datazen/blob/main/docs/features/schema-diff-guide.zh-CN.md"
+                target="_blank"
+                rel="noopener"
+                >结构对比指南</a
+              >。
+            </p>
+          </div>
+        </section>
+
+        <section id="redis" class="docs-section">
+          <h2 class="docs-section-title">12. Redis 工具</h2>
+          <div class="docs-prose">
+            <img
+              class="manual-shot"
+              src="../assets/screenshots/15-redis.png"
+              alt="Redis 管理"
+              loading="lazy"
+            />
+            <ul>
+              <li>
+                <strong>Key 浏览器</strong>：按模式扫描浏览 Key，查看 TTL 与类型化值 （String / Hash
+                / List / Set / ZSet / Stream），支持编辑与删除。
+              </li>
+              <li><strong>命令控制台</strong>：直接执行 Redis 命令并查看结果。</li>
+              <li><strong>监控</strong>：实时命令监控信息流。</li>
+              <li><strong>Pub/Sub</strong>：订阅频道并查看消息推送。</li>
+            </ul>
+            <p>
+              连接表单支持指定库索引与 TLS；深度运维能力由内置 Redis 驱动提供，
+              界面上无需区分宿主与驱动实现。
+            </p>
+          </div>
+        </section>
+
+        <section id="backup" class="docs-section">
+          <h2 class="docs-section-title">13. 备份与恢复</h2>
+          <div class="docs-prose">
+            <ul>
+              <li>
+                <strong>数据库备份 / 恢复窗口</strong>（菜单 文件）：左侧选择连接与数据库 →
+                设置文件名模式、按需追加各数据库专用的 dump 参数、可选 Gzip 压缩 → 开始备份；
+                过程分阶段展示进度并输出执行日志（可复制）。恢复模式选择备份文件回灌，
+                目标库已有对象时会弹出破坏性覆盖确认。
+              </li>
+              <li>
+                <strong>应用数据归档</strong>（菜单 工具）：Export / Import App Data 将
+                连接配置、Workflow、历史记录等打包成 ZIP 迁移到新设备；加密主密钥默认不包含在内，
+                导出向导会明确提示并可单独备份密钥。
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="plugins" class="docs-section">
+          <h2 class="docs-section-title">14. 插件与主题</h2>
+          <div class="docs-prose">
+            <ul>
+              <li>
+                <strong>安装</strong>：左侧栏「Plugins」→ Install Plugin… 选择 .zip 包，
+                向导会校验包并列出其申请的权限后安装。
+              </li>
+              <li>
+                <strong>管理</strong>：每个插件可启用 / 停用 /
+                卸载（卸载会永久删除其本地存储数据）； API 版本不兼容会显示徽标提示。
+              </li>
+              <li>
+                <strong>工作区页面</strong>：启用插件的页面出现在左侧「Workspace」中， 以沙箱 iframe
+                运行，只能通过受控桥接访问数据库命令。
+              </li>
+              <li>
+                <strong>主题</strong>：插件可贡献主题，安装后在 设置 → Appearance
+                中以卡片形式一键切换， 支持亮 / 暗 / 跟随系统模式徽标。
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="settings" class="docs-section">
+          <h2 class="docs-section-title">15. 设置参考</h2>
+          <div class="docs-prose">
+            <table>
+              <thead>
+                <tr>
+                  <th>分区</th>
+                  <th>主要内容</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>General</td>
+                  <td>
+                    语言（简体中文 / English）、主题、检查更新、默认页大小、连接池、监控与历史清理
+                  </td>
+                </tr>
+                <tr>
+                  <td>Appearance</td>
+                  <td>插件贡献的主题卡片切换</td>
+                </tr>
+                <tr>
+                  <td>Data Browsing</td>
+                  <td>默认页大小、SELECT 结果限制、自动切换图表、最大返回行数</td>
+                </tr>
+                <tr>
+                  <td>Editor</td>
+                  <td>字体大小与字族</td>
+                </tr>
+                <tr>
+                  <td>Behavior</td>
+                  <td>删除确认、自动提交、Safe Mode（拦截危险 SQL）</td>
+                </tr>
+                <tr>
+                  <td>Logging</td>
+                  <td>日志级别与路径、查看日志（改配置需重启生效）</td>
+                </tr>
+                <tr>
+                  <td>AI Assistant</td>
+                  <td>Provider / 协议 / 模型 / Key / 校验</td>
+                </tr>
+                <tr>
+                  <td>Prompt Management</td>
+                  <td>按驱动或全局覆盖 Prompt 模板，可重置默认</td>
+                </tr>
+                <tr>
+                  <td>MCP Server</td>
+                  <td>
+                    启用 MCP 服务、暴露工具开关、权限模式（只读 / 安全写 /
+                    高危写）、连接白名单、Cursor / Claude Desktop 配置片段
+                  </td>
+                </tr>
+                <tr>
+                  <td>External MCP Servers</td>
+                  <td>添加外部 MCP Server（名称 / 命令 / 参数），连接后在 AI Chat 中使用其工具</td>
+                </tr>
+                <tr>
+                  <td>Extensions</td>
+                  <td>内置插件扩展的专属设置项</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="security" class="docs-section">
+          <h2 class="docs-section-title">16. 安全与隐私</h2>
+          <div class="docs-prose">
+            <img
+              class="manual-shot"
+              src="../assets/screenshots/20-security.png"
+              alt="安全机制"
+              loading="lazy"
+            />
+            <ul>
+              <li>
+                连接凭据使用 AES-256-GCM 加密存储；主密钥默认保存在操作系统钥匙串 （开发版可用本地
+                <code>.key</code> 文件）。
+              </li>
+              <li>
+                AI 配置独立加密（<code>ai_config.enc</code>），请求只发往你自己配置的 Provider，
+                数据不上传任何云端服务。
+              </li>
+              <li>
+                Safe Mode 拦截无 WHERE 的 UPDATE / DELETE 和 TRUNCATE /
+                DROP；只读连接在驱动层拒绝写入。
+              </li>
+              <li>MCP Server 提供只读 / 安全写 / 高危写三档权限模式，并可限制允许的连接。</li>
+              <li>高危操作（删行、破坏性部署、覆盖恢复）均有二次确认。</li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="shortcuts" class="docs-section">
+          <h2 class="docs-section-title">17. 键盘快捷键</h2>
+          <div class="docs-prose">
+            <table>
+              <thead>
+                <tr>
+                  <th>快捷键</th>
+                  <th>作用</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="kbd">⌘/Ctrl + N</span></td>
+                  <td>新建查询标签</td>
+                </tr>
+                <tr>
+                  <td><span class="kbd">⌘/Ctrl + W</span></td>
+                  <td>关闭当前标签</td>
+                </tr>
+                <tr>
+                  <td><span class="kbd">⌘/Ctrl + Enter</span></td>
+                  <td>执行 SQL（选中则只执行所选）</td>
+                </tr>
+                <tr>
+                  <td><span class="kbd">Enter</span> / <span class="kbd">Shift + Enter</span></td>
+                  <td>AI 输入框发送 / 换行</td>
+                </tr>
+                <tr>
+                  <td><span class="kbd">Space</span></td>
+                  <td>数据网格开关详情面板</td>
+                </tr>
+                <tr>
+                  <td><span class="kbd">Delete</span></td>
+                  <td>删除选中的数据行（需确认且有主键）</td>
+                </tr>
+                <tr>
+                  <td><span class="kbd">@</span></td>
+                  <td>AI 输入框中唤起上下文选择器（Esc 关闭）</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="faq" class="docs-section">
+          <h2 class="docs-section-title">18. 故障排查 FAQ</h2>
+          <div class="docs-prose">
+            <table>
+              <thead>
+                <tr>
+                  <th>现象</th>
+                  <th>处理</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>macOS 提示「已损坏 / 无法验证」</td>
+                  <td>终端执行 <code>xattr -cr /Applications/DataZen.app</code>，详见打包文档</td>
+                </tr>
+                <tr>
+                  <td>连接树为空但确有连接</td>
+                  <td>检查是否选择了错误的驱动构建变体；重新导入连接配置</td>
+                </tr>
+                <tr>
+                  <td>某数据库类型不可选 / 标注 Planned</td>
+                  <td>
+                    该驱动未包含在当前安装包，下载 all 变体或自行构建（见 optional-drivers 文档）
+                  </td>
+                </tr>
+                <tr>
+                  <td>数据编辑报 noPrimaryKey</td>
+                  <td>目标表缺少主键，无法定位行；先补主键或用 SQL 编辑</td>
+                </tr>
+                <tr>
+                  <td>EXPLAIN 按钮不出现</td>
+                  <td>当前驱动不支持执行计划，属预期行为</td>
+                </tr>
+                <tr>
+                  <td>AI 未响应</td>
+                  <td>设置 → AI Assistant 校验 Key 与端点；Ollama 需本地服务在线</td>
+                </tr>
+                <tr>
+                  <td>看板组件一直 error</td>
+                  <td>组件绑定的连接 ID 失效或 SQL 报错，重新选择连接并在查询窗口验证 SQL</td>
+                </tr>
+                <tr>
+                  <td>如何查看日志</td>
+                  <td>菜单 工具 → 查看日志；日志位于应用数据目录 logs/ 下</td>
+                </tr>
+                <tr>
+                  <td>升级 / 自动更新</td>
+                  <td>设置 → General → Check for updates，或前往 GitHub Releases</td>
+                </tr>
+              </tbody>
+            </table>
+            <p>
+              更多资料：
+              <a
+                href="https://github.com/flyxl/datazen/tree/main/docs/features"
+                target="_blank"
+                rel="noopener"
+                >功能指南仓库目录</a
+              >
+              ·
+              <a href="https://github.com/flyxl/datazen/issues" target="_blank" rel="noopener"
+                >问题反馈</a
+              >
+            </p>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <footer id="site-footer"></footer>
+    <script src="../assets/js/site.js"></script>
+  </body>
+</html>

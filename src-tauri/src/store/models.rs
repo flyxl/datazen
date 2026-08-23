@@ -12,7 +12,11 @@ use super::settings::AppSettings;
 pub struct QueryHistoryEntry {
     pub id: String,
     pub config_id: String,
+    /// Session-active logical database when the statement ran ("" = unknown/legacy rows).
     pub database: String,
+    /// Schema namespace when known (PG search_path is not session-tracked yet → usually None).
+    #[serde(default)]
+    pub schema: Option<String>,
     pub sql: String,
     pub executed_at: DateTime<Utc>,
     pub execution_time_ms: u64,

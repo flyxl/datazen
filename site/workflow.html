@@ -1,61 +1,97 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Workflow — DataZen</title>
-  <meta name="description" content="DataZen Workflow: YAML orchestration for SQL, AI steps, conditions, and loops — cross-database runs, error strategies, multiple entry points." />
-  <link rel="canonical" href="https://flyxl.github.io/datazen/workflow.html" />
-  <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/workflow.html" />
-  <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/workflow.html" />
-  <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/workflow.html" />
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="Workflow — DataZen" />
-  <meta property="og:description" content="DataZen Workflow: YAML orchestration for SQL, AI steps, conditions, and loops — cross-database runs, error strategies, multiple entry points." />
-  <meta property="og:url" content="https://flyxl.github.io/datazen/workflow.html" />
-  <meta property="og:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <meta property="og:locale" content="en_US" />
-  <meta property="og:locale:alternate" content="zh_CN" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Workflow — DataZen" />
-  <meta name="twitter:description" content="DataZen Workflow: YAML orchestration for SQL, AI steps, conditions, and loops — cross-database runs, error strategies, multiple entry points." />
-  <meta name="twitter:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <link rel="icon" href="assets/logo.png" />
-  <link rel="stylesheet" href="assets/css/site.css" />
-</head>
-<body>
-  <header id="site-header"></header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Workflow — DataZen</title>
+    <meta
+      name="description"
+      content="DataZen Workflow: YAML orchestration for SQL, AI steps, conditions, and loops — cross-database runs, error strategies, multiple entry points."
+    />
+    <link rel="canonical" href="https://flyxl.github.io/datazen/workflow.html" />
+    <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/workflow.html" />
+    <link
+      rel="alternate"
+      hreflang="zh-CN"
+      href="https://flyxl.github.io/datazen/zh/workflow.html"
+    />
+    <link
+      rel="alternate"
+      hreflang="x-default"
+      href="https://flyxl.github.io/datazen/workflow.html"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Workflow — DataZen" />
+    <meta
+      property="og:description"
+      content="DataZen Workflow: YAML orchestration for SQL, AI steps, conditions, and loops — cross-database runs, error strategies, multiple entry points."
+    />
+    <meta property="og:url" content="https://flyxl.github.io/datazen/workflow.html" />
+    <meta
+      property="og:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Workflow — DataZen" />
+    <meta
+      name="twitter:description"
+      content="DataZen Workflow: YAML orchestration for SQL, AI steps, conditions, and loops — cross-database runs, error strategies, multiple entry points."
+    />
+    <meta
+      name="twitter:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <link rel="icon" href="assets/logo.png" />
+    <link rel="stylesheet" href="assets/css/site.css" />
+  </head>
+  <body>
+    <header id="site-header"></header>
 
-  <section class="page-head">
-    <div class="wrap">
-      <p class="breadcrumb"><a href="index.html">Home</a> / Workflow</p>
-      <h1>⚙️ Workflow Automation</h1>
-      <p>Turn "query → analyze → decide" into reusable YAML flows — cross-database execution, AI participation, rerun anytime.</p>
-    </div>
-  </section>
-
-  <section class="wrap">
-    <div class="feature-block">
-      <div>
-        <span class="kicker">YAML Definition</span>
-        <h2>One file, one flow</h2>
-        <p>Workflows are described in YAML: variables, steps, output. Steps pass data via <code>{{...}}</code> templates — query results feed directly into AI, and AI conclusions drive the next step.</p>
-        <ul>
-          <li>Step types: <code>query</code> / <code>ai</code> / <code>condition</code> / <code>foreach</code></li>
-          <li>Variables: string / number / connection, with defaults and required validation</li>
-          <li>Template syntax: single values, row sets, full table JSON all referenceable</li>
-          <li>Error strategies: abort / skip / fallback; configurable timeouts</li>
-        </ul>
+    <section class="page-head">
+      <div class="wrap">
+        <p class="breadcrumb"><a href="index.html">Home</a> / Workflow</p>
+        <h1>⚙️ Workflow Automation</h1>
+        <p>
+          Turn "query → analyze → decide" into reusable YAML flows — cross-database execution, AI
+          participation, rerun anytime.
+        </p>
       </div>
-      <img class="feature-shot" src="assets/screenshots/04-workflow.png" alt="Workflow window" />
-    </div>
+    </section>
 
-    <div class="feature-block reverse">
-      <div>
-        <span class="kicker">Cross-Database Orchestration</span>
-        <h2>One flow, multiple databases</h2>
-        <p>Each step can bind to a different connection and database. For example: query orders from PostgreSQL, fetch logistics from MySQL, then let AI summarize into a report.</p>
-        <pre><code>steps:
+    <section class="wrap">
+      <div class="feature-block">
+        <div>
+          <span class="kicker">YAML Definition</span>
+          <h2>One file, one flow</h2>
+          <p>
+            Workflows are described in YAML: variables, steps, output. Steps pass data via
+            <code>{{...}}</code> templates — query results feed directly into AI, and AI conclusions
+            drive the next step.
+          </p>
+          <ul>
+            <li>
+              Step types: <code>query</code> / <code>ai</code> / <code>condition</code> /
+              <code>foreach</code>
+            </li>
+            <li>Variables: string / number / connection, with defaults and required validation</li>
+            <li>Template syntax: single values, row sets, full table JSON all referenceable</li>
+            <li>Error strategies: abort / skip / fallback; configurable timeouts</li>
+          </ul>
+        </div>
+        <img class="feature-shot" src="assets/screenshots/04-workflow.png" alt="Workflow window" />
+      </div>
+
+      <div class="feature-block reverse">
+        <div>
+          <span class="kicker">Cross-Database Orchestration</span>
+          <h2>One flow, multiple databases</h2>
+          <p>
+            Each step can bind to a different connection and database. For example: query orders
+            from PostgreSQL, fetch logistics from MySQL, then let AI summarize into a report.
+          </p>
+          <pre><code>steps:
   - type: query
     id: get_orders
     connection: "{{pg_conn}}"
@@ -81,42 +117,89 @@ output:
     ## Orders &amp; logistics for user {{uid}}
     {{steps.get_orders.result}}
     {{steps.get_logistics.result}}</code></pre>
+        </div>
+        <img
+          class="feature-shot"
+          src="assets/screenshots/12-workflow-crossdb.png"
+          alt="Cross-database Workflow"
+        />
       </div>
-      <img class="feature-shot" src="assets/screenshots/12-workflow-crossdb.png" alt="Cross-database Workflow" />
-    </div>
 
-    <div class="feature-block">
-      <div>
-        <span class="kicker">Four Ways to Run</span>
-        <h2>Run from anywhere</h2>
-        <ul>
-          <li><strong>Connection window AI sidebar</strong>: select workflow, fill variables, view results</li>
-          <li><strong>Standalone Workflow window</strong>: tabbed management for multiple flows, full-screen focus</li>
-          <li><strong>MCP invocation</strong>: <code>list_workflows</code> / <code>run_workflow</code> exposed to external AI</li>
-          <li><strong>AI generation</strong>: let AI generate an executable workflow from your requirements</li>
-        </ul>
+      <div class="feature-block">
+        <div>
+          <span class="kicker">Four Ways to Run</span>
+          <h2>Run from anywhere</h2>
+          <ul>
+            <li>
+              <strong>Connection window AI sidebar</strong>: select workflow, fill variables, view
+              results
+            </li>
+            <li>
+              <strong>Standalone Workflow window</strong>: tabbed management for multiple flows,
+              full-screen focus
+            </li>
+            <li>
+              <strong>MCP invocation</strong>: <code>list_workflows</code> /
+              <code>run_workflow</code> exposed to external AI
+            </li>
+            <li>
+              <strong>AI generation</strong>: let AI generate an executable workflow from your
+              requirements
+            </li>
+          </ul>
+        </div>
+        <img
+          class="feature-shot"
+          src="assets/screenshots/13-workflow-run.png"
+          alt="Workflow execution"
+        />
       </div>
-      <img class="feature-shot" src="assets/screenshots/13-workflow-run.png" alt="Workflow execution" />
-    </div>
-  </section>
+    </section>
 
-  <section class="section">
-    <div class="wrap">
-      <h2 style="font-size:26px;margin-bottom:20px">Typical scenarios</h2>
-      <div class="grid-3">
-        <div class="card"><div class="icon">📦</div><h3>Orders + Logistics</h3><p>Query orders from PG, fetch logistics from MySQL, AI summarizes in one sentence — ready for support.</p></div>
-        <div class="card"><div class="icon">🔁</div><h3>Loop Inspection</h3><p>foreach over large orders, generate notes per row; condition handles empty result branches.</p></div>
-        <div class="card"><div class="icon">🛟</div><h3>Graceful Fallback</h3><p>When the primary table is missing, fallback to a backup query — flow continues with a notice row.</p></div>
+    <section class="section">
+      <div class="wrap">
+        <h2 style="font-size: 26px; margin-bottom: 20px">Typical scenarios</h2>
+        <div class="grid-3">
+          <div class="card">
+            <div class="icon">📦</div>
+            <h3>Orders + Logistics</h3>
+            <p>
+              Query orders from PG, fetch logistics from MySQL, AI summarizes in one sentence —
+              ready for support.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">🔁</div>
+            <h3>Loop Inspection</h3>
+            <p>
+              foreach over large orders, generate notes per row; condition handles empty result
+              branches.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">🛟</div>
+            <h3>Graceful Fallback</h3>
+            <p>
+              When the primary table is missing, fallback to a backup query — flow continues with a
+              notice row.
+            </p>
+          </div>
+        </div>
+        <div class="callout">
+          <strong>Scope note:</strong> current step types focus on query and AI orchestration (no
+          standalone HTTP / script steps); <code>foreach</code> defaults to 100 iterations max; MCP
+          calls typically return final output rather than step-by-step details. Full syntax in the
+          <a
+            href="https://github.com/flyxl/datazen/blob/main/docs/features/workflow-guide.en.md"
+            target="_blank"
+            rel="noopener"
+            >user guide</a
+          >.
+        </div>
       </div>
-      <div class="callout">
-        <strong>Scope note:</strong> current step types focus on query and AI orchestration (no standalone HTTP / script steps);
-        <code>foreach</code> defaults to 100 iterations max; MCP calls typically return final output rather than step-by-step details.
-        Full syntax in the <a href="https://github.com/flyxl/datazen/blob/main/docs/workflow-guide.en.md" target="_blank" rel="noopener">user guide</a>.
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <footer id="site-footer"></footer>
-  <script src="assets/js/site.js"></script>
-</body>
+    <footer id="site-footer"></footer>
+    <script src="assets/js/site.js"></script>
+  </body>
 </html>

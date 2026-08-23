@@ -12,9 +12,11 @@ impl Store {
         &self,
         limit: usize,
         config_id: Option<&str>,
+        database: Option<&str>,
+        schema: Option<&str>,
     ) -> Vec<QueryHistoryEntry> {
         self.history_db
-            .get_query_history(limit, config_id)
+            .get_query_history(limit, config_id, database, schema)
             .unwrap_or_else(|e| {
                 tracing::warn!(error = %e, "Failed to read query history from SQLite");
                 Vec::new()

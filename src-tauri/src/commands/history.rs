@@ -40,6 +40,7 @@ mod tests {
             id: Uuid::new_v4().to_string(),
             config_id: "cfg1".into(),
             database: "app".into(),
+            schema: None,
             sql: sql.into(),
             executed_at: Utc::now(),
             execution_time_ms: 1,
@@ -61,7 +62,11 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(deleted, 1);
-        assert!(test.store.get_query_history(10, None).await.is_empty());
+        assert!(test
+            .store
+            .get_query_history(10, None, None, None)
+            .await
+            .is_empty());
     }
 
     #[tokio::test]

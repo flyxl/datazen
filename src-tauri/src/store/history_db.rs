@@ -184,6 +184,26 @@ impl HistoryDb {
                 )?;
                 tracing::info!("Database schema migrated to version 2");
             }
+
+            if version < 3 {
+                let has_schema_col = conn
+                    .prepare("SELECT schema FROM query_history LIMIT 0")
+                    .is_ok();
+
+                if !has_schema_col {
+                    conn.execute_batch("ALTER TABLE query_history ADD COLUMN schema TEXT;")?;
+                    tracing::info!("Added query_history.schema column");
+                }
+
+                conn.execute_batch(
+                    "
+                    CREATE INDEX IF NOT EXISTS idx_query_history_config_db
+                        ON query_history(config_id, database);
+                    INSERT OR IGNORE INTO schema_version (version) VALUES (3);
+                    ",
+                )?;
+                tracing::info!("Database schema migrated to version 3");
+            }
             Ok(())
         })
     }
@@ -199,8 +219,8 @@ impl HistoryDb {
     pub fn add_query_history(&self, entry: QueryHistoryEntry) -> Result<(), HistoryDbError> {
         self.with_conn(|conn| {
             let dominated: Option<String> = match conn.query_row(
-                "SELECT sql FROM query_history WHERE config_id = ?1 ORDER BY executed_at DESC LIMIT 1",
-                params![entry.config_id],
+                "SELECT sql FROM query_history WHERE config_id = ?1 AND database = ?2 AND schema IS ?3 ORDER BY executed_at DESC LIMIT 1",
+                params![entry.config_id, entry.database, entry.schema],
                 |row| row.get(0),
             ) {
                 Ok(v) => Some(v),
@@ -221,7 +241,7 @@ impl HistoryDb {
                         success = ?4,
                         error_message = ?5
                      WHERE id = (
-                        SELECT id FROM query_history WHERE config_id = ?6 ORDER BY executed_at DESC LIMIT 1
+                        SELECT id FROM query_history WHERE config_id = ?6 AND database = ?7 AND schema IS ?8 ORDER BY executed_at DESC LIMIT 1
                      )",
                     params![
                         entry.executed_at.to_rfc3339(),
@@ -230,18 +250,21 @@ impl HistoryDb {
                         entry.success as i32,
                         entry.error_message,
                         entry.config_id,
+                        entry.database,
+                        entry.schema,
                     ],
                 )?;
             } else {
                 conn.execute(
                     "INSERT INTO query_history (
-                        id, config_id, database, sql, executed_at,
+                        id, config_id, database, schema, sql, executed_at,
                         execution_time_ms, rows_affected, success, error_message
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                     params![
                         entry.id,
                         entry.config_id,
                         entry.database,
+                        entry.schema,
                         entry.sql,
                         entry.executed_at.to_rfc3339(),
                         entry.execution_time_ms as i64,
@@ -261,32 +284,49 @@ impl HistoryDb {
         &self,
         limit: usize,
         config_id: Option<&str>,
+        database: Option<&str>,
+        schema: Option<&str>,
     ) -> Result<Vec<QueryHistoryEntry>, HistoryDbError> {
         self.with_conn(|conn| {
+            let mut where_clauses: Vec<String> = Vec::new();
+            let mut filter_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
             if let Some(cid) = config_id {
-                let mut stmt = conn.prepare(
-                    "SELECT id, config_id, database, sql, executed_at,
-                            execution_time_ms, rows_affected, success, error_message
-                     FROM query_history
-                     WHERE config_id = ?1
-                     ORDER BY executed_at DESC
-                     LIMIT ?2",
-                )?;
-                let rows = stmt.query_map(params![cid, limit as i64], map_query_row)?;
-                rows.collect::<Result<Vec<_>, _>>()
-                    .map_err(HistoryDbError::from)
-            } else {
-                let mut stmt = conn.prepare(
-                    "SELECT id, config_id, database, sql, executed_at,
-                            execution_time_ms, rows_affected, success, error_message
-                     FROM query_history
-                     ORDER BY executed_at DESC
-                     LIMIT ?1",
-                )?;
-                let rows = stmt.query_map(params![limit as i64], map_query_row)?;
-                rows.collect::<Result<Vec<_>, _>>()
-                    .map_err(HistoryDbError::from)
+                where_clauses.push(format!("config_id = ?{}", filter_params.len() + 1));
+                filter_params.push(Box::new(cid.to_string()));
             }
+            if let Some(db) = database {
+                where_clauses.push(format!("database = ?{}", filter_params.len() + 1));
+                filter_params.push(Box::new(db.to_string()));
+            }
+            if let Some(s) = schema {
+                // Empty string means "rows with no schema" (NULL); else exact match.
+                if s.is_empty() {
+                    where_clauses.push("schema IS NULL".to_string());
+                } else {
+                    where_clauses.push(format!("schema = ?{}", filter_params.len() + 1));
+                    filter_params.push(Box::new(s.to_string()));
+                }
+            }
+            let where_sql = if where_clauses.is_empty() {
+                String::new()
+            } else {
+                format!("WHERE {}", where_clauses.join(" AND "))
+            };
+            let sql = format!(
+                "SELECT id, config_id, database, schema, sql, executed_at, \
+                 execution_time_ms, rows_affected, success, error_message \
+                 FROM query_history {} ORDER BY executed_at DESC LIMIT ?{}",
+                where_sql,
+                filter_params.len() + 1,
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            filter_params.push(Box::new(limit as i64));
+            let rows = stmt.query_map(
+                rusqlite::params_from_iter(filter_params.iter().map(|p| p.as_ref())),
+                map_query_row,
+            )?;
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(HistoryDbError::from)
         })
     }
 
@@ -551,21 +591,22 @@ fn trim_workflow_history(conn: &Connection) -> Result<(), HistoryDbError> {
 }
 
 fn map_query_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueryHistoryEntry> {
-    let executed_at: String = row.get(4)?;
+    let executed_at: String = row.get(5)?;
     let executed_at = DateTime::parse_from_rfc3339(&executed_at)
         .map(|dt| dt.with_timezone(&Utc))
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-    let rows_affected: Option<i64> = row.get(6)?;
+    let rows_affected: Option<i64> = row.get(7)?;
     Ok(QueryHistoryEntry {
         id: row.get(0)?,
         config_id: row.get(1)?,
         database: row.get(2)?,
-        sql: row.get(3)?,
+        schema: row.get(3)?,
+        sql: row.get(4)?,
         executed_at,
-        execution_time_ms: row.get::<_, i64>(5)? as u64,
+        execution_time_ms: row.get::<_, i64>(6)? as u64,
         rows_affected: rows_affected.map(|v| v as u64),
-        success: row.get::<_, i32>(7)? != 0,
-        error_message: row.get(8)?,
+        success: row.get::<_, i32>(8)? != 0,
+        error_message: row.get(9)?,
     })
 }
 
@@ -773,6 +814,7 @@ mod tests {
             id: Uuid::new_v4().to_string(),
             config_id: "cfg1".into(),
             database: "app".into(),
+            schema: None,
             sql: sql.into(),
             executed_at: Utc::now() - Duration::days(days_ago),
             execution_time_ms: 10,
@@ -787,6 +829,7 @@ mod tests {
             id: Uuid::new_v4().to_string(),
             config_id: config_id.into(),
             database: "app".into(),
+            schema: None,
             sql: sql.into(),
             executed_at: Utc::now(),
             execution_time_ms: 10,
@@ -836,7 +879,7 @@ mod tests {
         .unwrap();
 
         let db = HistoryDb::open(dir.path()).unwrap();
-        let loaded = db.get_query_history(10, None).unwrap();
+        let loaded = db.get_query_history(10, None, None, None).unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].sql, "SELECT 1");
         assert!(!dir.path().join("history/queries.json").exists());
@@ -844,7 +887,10 @@ mod tests {
 
         // Re-open must not duplicate.
         let db2 = HistoryDb::open(dir.path()).unwrap();
-        assert_eq!(db2.get_query_history(10, None).unwrap().len(), 1);
+        assert_eq!(
+            db2.get_query_history(10, None, None, None).unwrap().len(),
+            1
+        );
         let _ = db;
         let _ = db2;
     }
@@ -887,14 +933,14 @@ mod tests {
         db.add_query_history(sample_query_for_config("SELECT 3", "cfg-a"))
             .unwrap();
 
-        let all = db.get_query_history(10, None).unwrap();
+        let all = db.get_query_history(10, None, None, None).unwrap();
         assert_eq!(all.len(), 3);
 
-        let a_only = db.get_query_history(10, Some("cfg-a")).unwrap();
+        let a_only = db.get_query_history(10, Some("cfg-a"), None, None).unwrap();
         assert_eq!(a_only.len(), 2);
         assert!(a_only.iter().all(|e| e.config_id == "cfg-a"));
 
-        let b_only = db.get_query_history(10, Some("cfg-b")).unwrap();
+        let b_only = db.get_query_history(10, Some("cfg-b"), None, None).unwrap();
         assert_eq!(b_only.len(), 1);
         assert_eq!(b_only[0].config_id, "cfg-b");
     }
@@ -907,11 +953,107 @@ mod tests {
             .unwrap();
         db.add_query_history(sample_query_for_config("SELECT 1", "cfg-b"))
             .unwrap();
-        let all = db.get_query_history(10, None).unwrap();
+        let all = db.get_query_history(10, None, None, None).unwrap();
         assert_eq!(
             all.len(),
             2,
             "same SQL on different configs should not dedup"
+        );
+    }
+
+    #[test]
+    fn query_history_database_filter() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = HistoryDb::open(dir.path()).unwrap();
+
+        let mut app = sample_query("SELECT 1", 0);
+        app.database = "app_db".into();
+        db.add_query_history(app.clone()).unwrap();
+
+        let mut analytics = sample_query("SELECT 2", 0);
+        analytics.database = "analytics".into();
+        analytics.schema = Some("public".into());
+        db.add_query_history(analytics).unwrap();
+
+        let legacy = sample_query("SELECT 3", 0);
+        let legacy_db = legacy.database.clone();
+        db.add_query_history(legacy).unwrap();
+
+        let app_only = db
+            .get_query_history(10, None, Some("app_db"), None)
+            .unwrap();
+        assert_eq!(app_only.len(), 1);
+        assert_eq!(app_only[0].database, "app_db");
+
+        // Legacy rows record an empty database string; filtering by "" finds them.
+        let legacy_rows = db
+            .get_query_history(10, None, Some(&legacy_db), None)
+            .unwrap();
+        assert_eq!(legacy_rows.len(), 1);
+
+        let none = db
+            .get_query_history(10, None, Some("missing"), None)
+            .unwrap();
+        assert!(none.is_empty());
+
+        // Unfiltered still returns everything.
+        assert_eq!(db.get_query_history(10, None, None, None).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn query_history_schema_roundtrip_and_filter() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = HistoryDb::open(dir.path()).unwrap();
+
+        let mut with_schema = sample_query("SELECT 1", 0);
+        with_schema.database = "analytics".into();
+        with_schema.schema = Some("sales".into());
+        db.add_query_history(with_schema).unwrap();
+
+        let mut without_schema = sample_query("SELECT 2", 0);
+        without_schema.database = "analytics".into();
+        without_schema.schema = None;
+        db.add_query_history(without_schema).unwrap();
+
+        let sales = db
+            .get_query_history(10, None, Some("analytics"), Some("sales"))
+            .unwrap();
+        assert_eq!(sales.len(), 1);
+        assert_eq!(sales[0].schema.as_deref(), Some("sales"));
+
+        // NULL-safe: NULL schema rows only match when the filter asks for NULL
+        // (empty string is the sentinel for "no schema").
+        let null_schema = db
+            .get_query_history(10, None, Some("analytics"), Some(""))
+            .unwrap();
+        assert_eq!(null_schema.len(), 1);
+
+        let all = db
+            .get_query_history(10, None, Some("analytics"), None)
+            .unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn query_history_dedup_scoped_by_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = HistoryDb::open(dir.path()).unwrap();
+
+        let mut a = sample_query("SELECT 1", 0);
+        a.config_id = "cfg1".into();
+        a.database = "app_db".into();
+        db.add_query_history(a).unwrap();
+
+        let mut b = sample_query("SELECT 1", 0);
+        b.config_id = "cfg1".into();
+        b.database = "other_db".into();
+        db.add_query_history(b).unwrap();
+
+        let all = db.get_query_history(10, None, None, None).unwrap();
+        assert_eq!(
+            all.len(),
+            2,
+            "same SQL on different databases of one config should not dedup"
         );
     }
 
@@ -958,7 +1100,7 @@ mod tests {
         drop(db);
         let db2 = HistoryDb::open(dir.path()).unwrap();
         db2.add_query_history(sample_query("SELECT 1", 0)).unwrap();
-        let loaded = db2.get_query_history(10, None).unwrap();
+        let loaded = db2.get_query_history(10, None, None, None).unwrap();
         assert_eq!(loaded.len(), 1);
     }
 
@@ -990,8 +1132,11 @@ mod tests {
 
         let deleted = db.purge(HistoryScope::All, Some(30)).unwrap();
         assert_eq!(deleted, 2);
-        assert_eq!(db.get_query_history(10, None).unwrap().len(), 1);
-        assert_eq!(db.get_query_history(10, None).unwrap()[0].sql, "recent");
+        assert_eq!(db.get_query_history(10, None, None, None).unwrap().len(), 1);
+        assert_eq!(
+            db.get_query_history(10, None, None, None).unwrap()[0].sql,
+            "recent"
+        );
         assert_eq!(db.list_workflow_history(None).unwrap().len(), 1);
         assert_eq!(db.list_workflow_history(None).unwrap()[0].id, "w-new");
     }
@@ -1012,7 +1157,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(db.purge(HistoryScope::Query, None).unwrap(), 1);
-        assert!(db.get_query_history(10, None).unwrap().is_empty());
+        assert!(db
+            .get_query_history(10, None, None, None)
+            .unwrap()
+            .is_empty());
         assert_eq!(db.list_workflow_history(None).unwrap().len(), 1);
 
         assert_eq!(db.purge(HistoryScope::Workflow, None).unwrap(), 1);
@@ -1027,7 +1175,7 @@ mod tests {
         db.add_query_history(e1.clone()).unwrap();
         e1.execution_time_ms = 99;
         db.add_query_history(e1).unwrap();
-        let history = db.get_query_history(10, None).unwrap();
+        let history = db.get_query_history(10, None, None, None).unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].execution_time_ms, 99);
     }

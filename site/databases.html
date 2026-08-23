@@ -1,109 +1,207 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Databases &amp; Connections — DataZen</title>
-  <meta name="description" content="DataZen databases: PostgreSQL, MySQL, MariaDB, SQLite, Redis; multi-database sessions, SSH tunnels, plugins (kiwi / OLAP / Superset), ER diagrams." />
-  <link rel="canonical" href="https://flyxl.github.io/datazen/databases.html" />
-  <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/databases.html" />
-  <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/databases.html" />
-  <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/databases.html" />
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="Databases &amp; Connections — DataZen" />
-  <meta property="og:description" content="DataZen databases: PostgreSQL, MySQL, MariaDB, SQLite, Redis; multi-database sessions, SSH tunnels, plugins (kiwi / OLAP / Superset), ER diagrams." />
-  <meta property="og:url" content="https://flyxl.github.io/datazen/databases.html" />
-  <meta property="og:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <meta property="og:locale" content="en_US" />
-  <meta property="og:locale:alternate" content="zh_CN" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Databases &amp; Connections — DataZen" />
-  <meta name="twitter:description" content="DataZen databases: PostgreSQL, MySQL, MariaDB, SQLite, Redis; multi-database sessions, SSH tunnels, plugins (kiwi / OLAP / Superset), ER diagrams." />
-  <meta name="twitter:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <link rel="icon" href="assets/logo.png" />
-  <link rel="stylesheet" href="assets/css/site.css" />
-</head>
-<body>
-  <header id="site-header"></header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Databases &amp; Connections — DataZen</title>
+    <meta
+      name="description"
+      content="DataZen databases: PostgreSQL, MySQL, MariaDB, SQLite, Redis; multi-database sessions, SSH tunnels, plugins (kiwi / OLAP / Superset), ER diagrams."
+    />
+    <link rel="canonical" href="https://flyxl.github.io/datazen/databases.html" />
+    <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/databases.html" />
+    <link
+      rel="alternate"
+      hreflang="zh-CN"
+      href="https://flyxl.github.io/datazen/zh/databases.html"
+    />
+    <link
+      rel="alternate"
+      hreflang="x-default"
+      href="https://flyxl.github.io/datazen/databases.html"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Databases &amp; Connections — DataZen" />
+    <meta
+      property="og:description"
+      content="DataZen databases: PostgreSQL, MySQL, MariaDB, SQLite, Redis; multi-database sessions, SSH tunnels, plugins (kiwi / OLAP / Superset), ER diagrams."
+    />
+    <meta property="og:url" content="https://flyxl.github.io/datazen/databases.html" />
+    <meta
+      property="og:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Databases &amp; Connections — DataZen" />
+    <meta
+      name="twitter:description"
+      content="DataZen databases: PostgreSQL, MySQL, MariaDB, SQLite, Redis; multi-database sessions, SSH tunnels, plugins (kiwi / OLAP / Superset), ER diagrams."
+    />
+    <meta
+      name="twitter:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <link rel="icon" href="assets/logo.png" />
+    <link rel="stylesheet" href="assets/css/site.css" />
+  </head>
+  <body>
+    <header id="site-header"></header>
 
-  <section class="page-head">
-    <div class="wrap">
-      <p class="breadcrumb"><a href="index.html">Home</a> / Databases &amp; Connections</p>
-      <h1>🔌 Databases &amp; Connections</h1>
-      <p>One interface for many databases: connect, browse, query, edit, and sync — all natively implemented.</p>
-    </div>
-  </section>
-
-  <section class="wrap">
-    <div class="grid-3">
-      <div class="card"><div class="icon">🐘</div><h3>PostgreSQL</h3><p>Full schema browsing, EXPLAIN, multi-database sessions, SSL / SSH.</p></div>
-      <div class="card"><div class="icon">🐬</div><h3>MySQL / MariaDB</h3><p>Compatible branches, session-level multi-database switching, data sync.</p></div>
-      <div class="card"><div class="icon">🗄️</div><h3>SQLite</h3><p>Open local files directly — zero configuration.</p></div>
-      <div class="card"><div class="icon">⚡</div><h3>Redis</h3><p>Dedicated view: database list + key browser, all data types supported.</p></div>
-      <div class="card"><div class="icon">📡</div><h3>kiwi</h3><p>Cloud database proxy plugin with domain instance semantics.</p></div>
-      <div class="card"><div class="icon">📊</div><h3>OLAP / Superset</h3><p>Plugin drivers: Presto / Trino analytics engines and data exploration platforms.</p></div>
-    </div>
-
-    <div class="feature-block">
-      <div>
-        <span class="kicker">Session-Level Multi-Database</span>
-        <h2>One connection, browse all databases</h2>
-        <p>PostgreSQL / MySQL / MariaDB: a single connection lets you browse and switch multiple databases in the sidebar. When a logical database name is configured, it locks to that database to prevent mistakes.</p>
-        <ul>
-          <li>Schema tree grouped by database; virtual scrolling for large catalogs</li>
-          <li>Switch via use_database — no reconnect needed</li>
-          <li>Configure logical database name → lock to single database (Kiwi's domain field does not participate in locking)</li>
-        </ul>
+    <section class="page-head">
+      <div class="wrap">
+        <p class="breadcrumb"><a href="index.html">Home</a> / Databases &amp; Connections</p>
+        <h1>🔌 Databases &amp; Connections</h1>
+        <p>
+          One interface for many databases: connect, browse, query, edit, and sync — all natively
+          implemented.
+        </p>
       </div>
-      <img class="feature-shot" src="assets/screenshots/14-multidb.png" alt="Multi-database session" />
-    </div>
+    </section>
 
-    <div class="feature-block reverse">
-      <div>
-        <span class="kicker">Redis Dedicated View</span>
-        <h2>Key browser and secure connections</h2>
-        <ul>
-          <li>Database list + key browser — String / Hash / List / Set / ZSet / Stream</li>
-          <li>Type and TTL at a glance; click to view field values</li>
-          <li>Built-in SSH tunnel (pure Rust), encrypted credentials on disk, Host Key TOFU verification</li>
-          <li>Connection passwords encrypted with AES-256-GCM; master key in system keychain</li>
-        </ul>
+    <section class="wrap">
+      <div class="grid-3">
+        <div class="card">
+          <div class="icon">🐘</div>
+          <h3>PostgreSQL</h3>
+          <p>Full schema browsing, EXPLAIN, multi-database sessions, SSL / SSH.</p>
+        </div>
+        <div class="card">
+          <div class="icon">🐬</div>
+          <h3>MySQL / MariaDB</h3>
+          <p>Compatible branches, session-level multi-database switching, data sync.</p>
+        </div>
+        <div class="card">
+          <div class="icon">🗄️</div>
+          <h3>SQLite</h3>
+          <p>Open local files directly — zero configuration.</p>
+        </div>
+        <div class="card">
+          <div class="icon">⚡</div>
+          <h3>Redis</h3>
+          <p>Dedicated view: database list + key browser, all data types supported.</p>
+        </div>
+        <div class="card">
+          <div class="icon">📡</div>
+          <h3>kiwi</h3>
+          <p>Cloud database proxy plugin with domain instance semantics.</p>
+        </div>
+        <div class="card">
+          <div class="icon">📊</div>
+          <h3>OLAP / Superset</h3>
+          <p>Plugin drivers: Presto / Trino analytics engines and data exploration platforms.</p>
+        </div>
       </div>
-      <img class="feature-shot" src="assets/screenshots/15-redis.png" alt="Redis dedicated view" />
-    </div>
 
-    <div class="feature-block">
-      <div>
-        <span class="kicker">ER Diagram</span>
-        <h2>Table relationships at a glance</h2>
-        <p>Auto-generates database ER diagrams (React Flow rendering) — foreign key relationships and table structure visualized, ideal for understanding unfamiliar databases quickly.</p>
+      <div class="feature-block">
+        <div>
+          <span class="kicker">Session-Level Multi-Database</span>
+          <h2>One connection, browse all databases</h2>
+          <p>
+            PostgreSQL / MySQL / MariaDB: a single connection lets you browse and switch multiple
+            databases in the sidebar. When a logical database name is configured, it locks to that
+            database to prevent mistakes.
+          </p>
+          <ul>
+            <li>Schema tree grouped by database; virtual scrolling for large catalogs</li>
+            <li>Switch via use_database — no reconnect needed</li>
+            <li>
+              Configure logical database name → lock to single database (Kiwi's domain field does
+              not participate in locking)
+            </li>
+          </ul>
+        </div>
+        <img
+          class="feature-shot"
+          src="assets/screenshots/14-multidb.png"
+          alt="Multi-database session"
+        />
       </div>
-      <img class="feature-shot" src="assets/screenshots/16-er.png" alt="ER diagram" />
-    </div>
-  </section>
 
-  <section class="section">
-    <div class="wrap">
-      <h2 style="font-size:26px;margin-bottom:20px">Plugin system</h2>
-      <p class="muted" style="margin-bottom:20px">
-        DataZen uses a compile-time plugin architecture (similar to Caddy 2): built-in drivers are always available;
-        external drivers register at build time via <code>register_driver!</code>, with Git refs pinned for reproducible builds.
-      </p>
-      <table class="tbl">
-        <tr><th>Driver</th><th>Type</th><th>Description</th></tr>
-        <tr><td>PostgreSQL / MySQL / SQLite / Redis</td><td>Built-in</td><td>Full core feature support</td></tr>
-        <tr><td>kiwi</td><td>Git plugin</td><td>Cloud database proxy with domain instance semantics</td></tr>
-        <tr><td>OLAP</td><td>Git plugin</td><td>Presto / Trino analytics engines</td></tr>
-        <tr><td>Superset</td><td>Git plugin</td><td>Data exploration platform integration</td></tr>
-      </table>
-      <div class="callout">
-        Want to add a new database? Implement the <code>DatabaseDriver</code> trait as a plugin — see the
-        <a href="https://github.com/flyxl/datazen/blob/main/docs/plugin-development.md" target="_blank" rel="noopener">plugin development guide</a>.
+      <div class="feature-block reverse">
+        <div>
+          <span class="kicker">Redis Dedicated View</span>
+          <h2>Key browser and secure connections</h2>
+          <ul>
+            <li>Database list + key browser — String / Hash / List / Set / ZSet / Stream</li>
+            <li>Type and TTL at a glance; click to view field values</li>
+            <li>
+              Built-in SSH tunnel (pure Rust), encrypted credentials on disk, Host Key TOFU
+              verification
+            </li>
+            <li>Connection passwords encrypted with AES-256-GCM; master key in system keychain</li>
+          </ul>
+        </div>
+        <img
+          class="feature-shot"
+          src="assets/screenshots/15-redis.png"
+          alt="Redis dedicated view"
+        />
       </div>
-    </div>
-  </section>
 
-  <footer id="site-footer"></footer>
-  <script src="assets/js/site.js"></script>
-</body>
+      <div class="feature-block">
+        <div>
+          <span class="kicker">ER Diagram</span>
+          <h2>Table relationships at a glance</h2>
+          <p>
+            Auto-generates database ER diagrams (React Flow rendering) — foreign key relationships
+            and table structure visualized, ideal for understanding unfamiliar databases quickly.
+          </p>
+        </div>
+        <img class="feature-shot" src="assets/screenshots/16-er.png" alt="ER diagram" />
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <h2 style="font-size: 26px; margin-bottom: 20px">Plugin system</h2>
+        <p class="muted" style="margin-bottom: 20px">
+          DataZen uses a compile-time plugin architecture (similar to Caddy 2): built-in drivers are
+          always available; external drivers register at build time via
+          <code>register_driver!</code>, with Git refs pinned for reproducible builds.
+        </p>
+        <table class="tbl">
+          <tr>
+            <th>Driver</th>
+            <th>Type</th>
+            <th>Description</th>
+          </tr>
+          <tr>
+            <td>PostgreSQL / MySQL / SQLite / Redis</td>
+            <td>Built-in</td>
+            <td>Full core feature support</td>
+          </tr>
+          <tr>
+            <td>kiwi</td>
+            <td>Git plugin</td>
+            <td>Cloud database proxy with domain instance semantics</td>
+          </tr>
+          <tr>
+            <td>OLAP</td>
+            <td>Git plugin</td>
+            <td>Presto / Trino analytics engines</td>
+          </tr>
+          <tr>
+            <td>Superset</td>
+            <td>Git plugin</td>
+            <td>Data exploration platform integration</td>
+          </tr>
+        </table>
+        <div class="callout">
+          Want to add a new database? Implement the <code>DatabaseDriver</code> trait as a plugin —
+          see the
+          <a
+            href="https://github.com/flyxl/datazen/blob/main/docs/development/independent-plugin-development.en.md"
+            target="_blank"
+            rel="noopener"
+            >plugin development guide</a
+          >.
+        </div>
+      </div>
+    </section>
+
+    <footer id="site-footer"></footer>
+    <script src="assets/js/site.js"></script>
+  </body>
 </html>

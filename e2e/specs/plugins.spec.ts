@@ -76,7 +76,7 @@ async function readPluginStorage(): Promise<PluginStorageFile | null> {
  * all worked), false when the shell watchdog fired instead — i.e. the iframe
  * content never loaded (BUG-F9-02/BUG-F9-04: under macOS WebKit automation,
  * `datazen://` subframe navigation is refused, so the fixture JS never runs;
- * see docs/e2e-coverage.md 例外登记).
+ * see docs/development/e2e-coverage.md 例外登记).
  */
 async function openSampleTabAndAwaitBridge(): Promise<boolean> {
   await openWorkspaceMode();

@@ -124,10 +124,20 @@ async fn record_sql_command_outcome(
         tracing::warn!(connection_id, "Skipping history: config_id not found");
         return;
     };
+    // Record the session-active logical database so history can be grouped /
+    // filtered per panel context (empty string when the driver is single-db).
+    let database = state
+        .connection_manager
+        .get_connection_config(connection_id)
+        .await
+        .ok()
+        .and_then(|config| config.database)
+        .unwrap_or_default();
     let entry = crate::store::QueryHistoryEntry {
         id: uuid::Uuid::new_v4().to_string(),
         config_id,
-        database: String::new(),
+        database,
+        schema: None,
         sql: sql.to_string(),
         executed_at: chrono::Utc::now(),
         execution_time_ms,
@@ -605,7 +615,11 @@ mod tests {
                 || result.data.get("columns").is_some()
                 || result.data.is_object()
         );
-        let history = test.state.store.get_query_history(10, None).await;
+        let history = test
+            .state
+            .store
+            .get_query_history(10, None, None, None)
+            .await;
         assert!(history.iter().any(|e| e.success));
     }
 

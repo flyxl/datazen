@@ -203,4 +203,4 @@ Command 的输入使用 JSON，Driver 通过 manifest / definition 声明 schema
 - MCP：`list_workflows` / `run_workflow`、`datazen://workflows`（实现位于 `mcp/server.rs`）
 - Driver API：`packages/driver-api/src/command.rs`、`traits.rs`
 
-**用户手册（YAML 语法与用法）：** [Workflow 使用手册](../../workflow-guide.md)
+**用户手册（YAML 语法与用法）：** [Workflow 使用手册](../../features/workflow-guide.zh-CN.md)

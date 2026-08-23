@@ -52,7 +52,7 @@ datazen/
 │   └── themes/                  # （已迁移）旧 v1 ThemePack 存档，见 extensions/
 ├── e2e/                         # Host WebdriverIO E2E（通用 UI / IPC；非驱动方言）
 ├── test/                        # 手工黑盒测试
-└── docs/                        # 架构文档、RFC、进度
+└── docs/                        # 文档：features/（功能）、architecture/（架构）、development/（开发发布）
 ```
 
 ## 核心架构模式
@@ -101,7 +101,7 @@ Server 暴露 Tools/Resources/Prompts（DB tools 使用持久化 `config_id`）�
 
 YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime。Step 通过 Driver Command API 执行；Workflow 默认 connection 可被 Step 继承或覆盖；旧 `type: query` 自动规范化为 `Command("query")`。Workflow UI 通过 `command_definitions()` 动态发现可用 Command，不硬编码。
 
-详细设计：[Workflow 架构文档](docs/architecture/backend/workflow.md)；用户手册：[docs/workflow-guide.md](docs/workflow-guide.md)。
+详细设计：[Workflow 架构文档](docs/architecture/backend/workflow.md)；用户手册：[docs/features/workflow-guide.zh-CN.md](docs/features/workflow-guide.zh-CN.md)。
 
 ### 运行时插件系统（Extensions：UI 页面 + 主题）
 
@@ -165,13 +165,13 @@ cargo test -p datazen-driver-postgres  # 示例：某个 path 驱动的 Rust 测
 
 ### E2E
 
-完整流程见 [docs/e2e-testing.md](docs/e2e-testing.md)；覆盖矩阵见 [docs/e2e-coverage.md](docs/e2e-coverage.md)。
+完整流程见 [docs/development/e2e-testing.md](docs/development/e2e-testing.md)；覆盖矩阵见 [docs/development/e2e-coverage.md](docs/development/e2e-coverage.md)。
 
 - 必须用 `pnpm tauri build --debug --features webdriver` 构建
 - **硬性规则**：所有 Host UI 交互路径都必须被 E2E 覆盖；新增/变更 Host UI 必须同 PR 更新 E2E
 - **驱动 E2E** 写在 `packages/drivers/<id>/e2e/`，不进 Host `e2e/specs/`
 - **契约矩阵**：`e2e/contract/` 定义统一 journeys，`pnpm e2e:contract:matrix` 跨 PG/MySQL/SQLite 运行
-- 无法自动化的路径须在 `docs/e2e-coverage.md` 登记例外
+- 无法自动化的路径须在 `docs/development/e2e-coverage.md` 登记例外
 
 ```bash
 pnpm e2e                    # 完整构建 + 全部 Host E2E

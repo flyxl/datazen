@@ -189,11 +189,10 @@ Connection 变化后重新 discovery；没有 Step override 时使用 Workflow �
 |------|------|
 | [安全措施](security.md) | AES-256-GCM + key_store、CSP、路径遍历防护、文件扩展名白名单、AI Key 安全 |
 | [窗口管理](windows.md) | 主工作区 Page（Welcome / Connection / Settings 等）、子窗口、`windowKind` 路由、Docs 官网跳转 |
-| [测试策略](testing.md) | Rust / Vitest / E2E 概览；Host UI 路径覆盖见 [e2e-coverage.md](../e2e-coverage.md) |
+| [测试策略](testing.md) | Rust / Vitest / E2E 概览；Host UI 路径覆盖见 [e2e-coverage.md](../development/e2e-coverage.md) |
 
-## 其他文档
+## 相关文档索引
 
-- [竞品对比：Navicat / TablePlus / DataGrip](../competitive-comparison.md)
-- [Workflow 使用手册](../workflow-guide.md)
-- [产品需求文档 (PRD)](../PRD.md)
-- [插件开发指南](../plugin-development.md)
+- 功能使用文档（用户向）：[docs/features/](../features/)
+- 开发 / 发布 / 测试流程文档：[docs/development/](../development/)
+- 文档总索引：[docs/README.md](../README.md)

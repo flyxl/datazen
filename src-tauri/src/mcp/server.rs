@@ -615,7 +615,11 @@ impl DataZenMcpServer {
         }
 
         if uri == "datazen://query-history" {
-            let history = self.app_state.store.get_query_history(50, None).await;
+            let history = self
+                .app_state
+                .store
+                .get_query_history(50, None, None, None)
+                .await;
             let json = serde_json::to_string_pretty(&history)
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?;
             return Ok(ReadResourceResult::new(vec![ResourceContents::text(

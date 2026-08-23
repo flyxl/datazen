@@ -1,13 +1,13 @@
 # 数据同步（Data Synchronization）
 
-> [返回架构总览](../README.md) · 用户手册：[data-sync-guide.md](../../data-sync-guide.md)
+> [返回架构总览](../README.md) · 用户手册：[data-sync-guide.md](../../features/data-sync-guide.zh-CN.md)
 
 DataZen 把三类能力拆开，**本模块只实现 Data Synchronization**（对标 Navicat Diff Sync）：
 
 | 产品 | 何时用 | V1 |
 |------|--------|----|
 | **Data Synchronization** | 同族、结构完全一致、相同 PK；Compare → Review → Preview → Execute | Diff Workspace + 引擎 / IPC 已接通 |
-| **Data Transfer** | 异构 / 需 IR 转换 / 单向拷贝 | **V1 基础**（独立 `data-transfer` 窗口；见 [data-transfer-guide.md](../../data-transfer-guide.md)） |
+| **Data Transfer** | 异构 / 需 IR 转换 / 单向拷贝 | **V1 基础**（独立 `data-transfer` 窗口；见 [data-transfer-guide.md](../../features/data-transfer-guide.zh-CN.md)） |
 | **Structure Sync** | 只改 DDL | Schema Diff Deploy，见 [schema-diff.md](schema-diff.md) |
 
 旧产品路径 **DROP + INSERT 覆盖拷贝**与 legacy IPC（`compare_databases` / `sync_table` / `sync_tables`）已完全移除。
@@ -50,7 +50,7 @@ src-tauri/src/commands/sync/
 └── exec.rs         # execute_data_sync：不经 execute_query / sql_guard；可带 jobId
 ```
 
-`src-tauri/src/transfer/` 保留异构 IR 适配器与 DDL 生成（Schema Diff Deploy、**Data Transfer** 等）；**不得**再作为 Data Synchronization 执行引擎。Transfer 产品与 Sync 完全分离，见 [data-transfer-guide.md](../../data-transfer-guide.md)。
+`src-tauri/src/transfer/` 保留异构 IR 适配器与 DDL 生成（Schema Diff Deploy、**Data Transfer** 等）；**不得**再作为 Data Synchronization 执行引擎。Transfer 产品与 Sync 完全分离，见 [data-transfer-guide.md](../../features/data-transfer-guide.zh-CN.md)。
 
 ## 3. Compare 实现（V1 生产路径）
 
@@ -128,4 +128,3 @@ Legacy：`sync_table` / `sync_tables` / `compare_databases` 已移除。
 | Host E2E IPC | `e2e/specs/data-sync-real.ts`（inspect/compare/apply/generate/revalidate；需 PG/MySQL 夹具） |
 | 驱动方言深度 | **不要**放进 Host；写在 `packages/drivers/<id>/` |
 
-进度记录：`docs/progress/next-move-20260821.md`（P0 Phase C）。

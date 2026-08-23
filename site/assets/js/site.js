@@ -11,6 +11,7 @@
         { href: 'workflow.html', label: 'Workflow' },
         { href: 'databases.html', label: 'Databases' },
         { href: 'docs.html', label: 'User Guide' },
+        { href: 'manual.html', label: 'Manual' },
         { href: 'download.html', label: 'Download' },
       ],
       downloadCta: 'Download',
@@ -24,6 +25,7 @@
       footerCharts: 'Charts',
       footerWorkflow: 'Workflow',
       footerDocs: 'User Guide',
+      footerManual: 'Manual',
       footerDatabases: 'Databases',
       footerGithub: 'GitHub',
       footerReleases: 'Releases',
@@ -41,6 +43,7 @@
         { href: 'workflow.html', label: 'Workflow' },
         { href: 'databases.html', label: '数据库' },
         { href: 'docs.html', label: '使用说明' },
+        { href: 'manual.html', label: '使用手册' },
         { href: 'download.html', label: '下载' },
       ],
       downloadCta: '下载',
@@ -54,6 +57,7 @@
       footerCharts: '图表可视化',
       footerWorkflow: 'Workflow',
       footerDocs: '使用说明',
+      footerManual: '使用手册',
       footerDatabases: '数据库支持',
       footerGithub: 'GitHub 仓库',
       footerReleases: '下载中心',
@@ -156,6 +160,9 @@
       '</a>' +
       '<a href="docs.html">' +
       t.footerDocs +
+      '</a>' +
+      '<a href="manual.html">' +
+      t.footerManual +
       '</a>' +
       '<a href="databases.html">' +
       t.footerDatabases +

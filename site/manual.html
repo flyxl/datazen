@@ -1,0 +1,940 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>User Manual — DataZen</title>
+    <meta
+      name="description"
+      content="The complete DataZen user manual: installation, database connections, SQL editor, data editing, AI assistant, charts, workflows, ops dashboard, data sync, and backup & restore."
+    />
+    <link rel="canonical" href="https://flyxl.github.io/datazen/manual.html" />
+    <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/manual.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/manual.html" />
+    <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/manual.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="User Manual — DataZen" />
+    <meta
+      property="og:description"
+      content="The complete DataZen user manual: connections, SQL editor, AI assistant, charts, workflows, dashboards, data sync, and backup."
+    />
+    <meta property="og:url" content="https://flyxl.github.io/datazen/manual.html" />
+    <meta
+      property="og:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="User Manual — DataZen" />
+    <meta
+      name="twitter:description"
+      content="The complete DataZen user manual: connections, SQL editor, AI assistant, charts, workflows, dashboards, data sync, and backup."
+    />
+    <meta
+      name="twitter:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <link rel="icon" href="assets/logo.png" />
+    <link rel="stylesheet" href="assets/css/site.css" />
+    <style>
+      .manual-shot {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow);
+        margin: 18px 0 6px;
+        display: block;
+      }
+      .manual-shot-caption {
+        font-size: 13px;
+        opacity: 0.65;
+        margin: 0 0 22px;
+      }
+      .kbd {
+        display: inline-block;
+        padding: 1px 7px;
+        border: 1px solid var(--border);
+        border-bottom-width: 2px;
+        border-radius: 6px;
+        font-size: 12.5px;
+        background: rgba(127, 127, 127, 0.08);
+      }
+      .tip {
+        border-left: 3px solid var(--accent);
+        padding: 10px 14px;
+        background: rgba(127, 127, 127, 0.07);
+        border-radius: 0 10px 10px 0;
+        margin: 16px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <header id="site-header"></header>
+
+    <section class="page-head">
+      <div class="wrap">
+        <p class="breadcrumb"><a href="index.html">Home</a> / User Manual</p>
+        <h1>📘 DataZen User Manual</h1>
+        <p>
+          The complete guide from installation to advanced usage: connect databases, query and edit
+          data, work with AI, visualize results, automate with Workflows, monitor with dashboards,
+          and keep your data safe.
+        </p>
+      </div>
+    </section>
+
+    <section class="wrap docs-layout">
+      <nav class="docs-toc" aria-label="Manual contents">
+        <p class="docs-toc-heading">Contents</p>
+        <a class="docs-toc-link" href="#install">1. Installation</a>
+        <a class="docs-toc-link" href="#ui">2. Interface Tour</a>
+        <a class="docs-toc-link" href="#connections">3. Connections</a>
+        <a class="docs-toc-link" href="#sql">4. SQL Editor &amp; Queries</a>
+        <a class="docs-toc-link" href="#data">5. Data Browsing &amp; Editing</a>
+        <a class="docs-toc-link" href="#objects">6. Objects &amp; ER Diagram</a>
+        <a class="docs-toc-link" href="#charts">7. Charts</a>
+        <a class="docs-toc-link" href="#ai">8. AI Assistant</a>
+        <a class="docs-toc-link" href="#workflow">9. Workflows</a>
+        <a class="docs-toc-link" href="#dashboard">10. Ops Dashboard</a>
+        <a class="docs-toc-link" href="#sync">11. Sync · Transfer · Schema Diff</a>
+        <a class="docs-toc-link" href="#redis">12. Redis Tools</a>
+        <a class="docs-toc-link" href="#backup">13. Backup &amp; Restore</a>
+        <a class="docs-toc-link" href="#plugins">14. Plugins &amp; Themes</a>
+        <a class="docs-toc-link" href="#settings">15. Settings Reference</a>
+        <a class="docs-toc-link" href="#security">16. Security &amp; Privacy</a>
+        <a class="docs-toc-link" href="#shortcuts">17. Keyboard Shortcuts</a>
+        <a class="docs-toc-link" href="#faq">18. Troubleshooting</a>
+      </nav>
+
+      <div class="docs-main">
+        <section id="install" class="docs-section">
+          <h2 class="docs-section-title">1. Installation</h2>
+          <div class="docs-prose">
+            <p>
+              DataZen is a free, open-source (GPLv3) cross-platform desktop database client built
+              with Tauri v2 + Rust. No account required.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Platform</th>
+                  <th>Package</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>macOS Apple Silicon / Intel</td>
+                  <td><code>.dmg</code></td>
+                </tr>
+                <tr>
+                  <td>Windows x64</td>
+                  <td><code>.exe</code> / <code>.msi</code></td>
+                </tr>
+                <tr>
+                  <td>Linux x86_64</td>
+                  <td><code>.deb</code> / <code>.rpm</code> / <code>.AppImage</code></td>
+                </tr>
+              </tbody>
+            </table>
+            <ol>
+              <li>
+                Download the package for your platform from
+                <a href="https://github.com/flyxl/datazen/releases" target="_blank" rel="noopener"
+                  >GitHub Releases</a
+                >.
+              </li>
+              <li>
+                On first launch you land on the Welcome page — create your first connection or
+                import connections from TablePlus, Navicat, DataGrip, DBeaver, DBX, or a DataZen
+                export.
+              </li>
+            </ol>
+            <div class="tip">
+              <strong>macOS note:</strong> if the app is reported as damaged or from an unidentified
+              developer, run <code>xattr -cr /Applications/DataZen.app</code>, or right-click the
+              app and choose Open once.
+            </div>
+          </div>
+        </section>
+
+        <section id="ui" class="docs-section">
+          <h2 class="docs-section-title">2. Interface Tour</h2>
+          <div class="docs-prose">
+            <img
+              class="manual-shot"
+              src="assets/screenshots/01-main-window.png"
+              alt="DataZen main window"
+              loading="lazy"
+            />
+            <p class="manual-shot-caption">Main workspace: connection tree + tabs + AI sidebar</p>
+            <ul>
+              <li>
+                <strong>Left rail</strong>: Connections, Workflows, Dashboards, Workspace (plugin
+                pages), Plugins; Settings is pinned at the bottom.
+              </li>
+              <li>
+                <strong>Main area</strong>: connection tree + tabbed query editor. Settings and the
+                new-connection dialog open inside the main window.
+              </li>
+              <li>
+                <strong>Menu bar</strong>: File (New Connection, Data Sync, Schema Diff, Workflow,
+                Backup…), View (themes, full screen), Tools (logs, app data / connection import
+                &amp; export), Help (user guide).
+              </li>
+              <li>
+                <strong>Sub-windows</strong>: Backup Database, Data Sync, Data Transfer and Schema
+                Diff run in dedicated OS windows.
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="connections" class="docs-section">
+          <h2 class="docs-section-title">3. Connections</h2>
+          <div class="docs-prose">
+            <h3>Create a connection</h3>
+            <ol>
+              <li>
+                Open Connections from the left rail and click New Connection (or File → New
+                Connection).
+              </li>
+              <li>
+                Pick the database type from the searchable list; drivers not included in your build
+                are marked "Planned".
+              </li>
+              <li>
+                Fill the variant-specific form: server types ask for host / port / user / password /
+                database; file types (SQLite) ask for the database file; Redis asks for a password
+                and database index.
+              </li>
+              <li>
+                Open Advanced Settings: SSL mode (Disabled / Preferred / Required),
+                <strong>read-only connection</strong> (rejects INSERT / UPDATE / DELETE and DDL),
+                color tag, and group.
+              </li>
+              <li>
+                Enable "Connect via SSH Tunnel" when needed: password / private key / SSH agent
+                authentication, plus jump-host support.
+              </li>
+              <li>Click Test Connection, then save.</li>
+            </ol>
+            <div class="tip">
+              Paste a connection URL or a connection string copied from another tool and DataZen
+              auto-fills the form. Bulk-import connections from DBX, Navicat (.ncx), DataGrip,
+              DBeaver, or TablePlus in the connection share dialog.
+            </div>
+            <h3>Supported databases</h3>
+            <p>
+              PostgreSQL, MySQL / MariaDB, SQLite and Redis ship by default; MongoDB, ClickHouse,
+              DuckDB, SQL Server and more are compile-time optional drivers. See the
+              <a href="databases.html">databases page</a> for the full list.
+            </p>
+            <img
+              class="manual-shot"
+              src="assets/screenshots/14-multidb.png"
+              alt="Multi-database support"
+              loading="lazy"
+            />
+          </div>
+        </section>
+
+        <section id="sql" class="docs-section">
+          <h2 class="docs-section-title">4. SQL Editor &amp; Queries</h2>
+          <div class="docs-prose">
+            <img
+              class="manual-shot"
+              src="assets/screenshots/17-sql-editor.png"
+              alt="SQL editor"
+              loading="lazy"
+            />
+            <ul>
+              <li>
+                <strong>Smart completion</strong>: tables and columns from the live schema plus
+                driver-provided function completions; press <span class="kbd">Tab</span> to accept.
+              </li>
+              <li>
+                <strong>Execution</strong>: <span class="kbd">⌘/Ctrl + Enter</span> runs the script;
+                select text to run only the selection. The Execute button becomes Stop while
+                running.
+              </li>
+              <li>
+                <strong>Multiple results</strong>: each statement gets its own Result tab, with
+                total time and streaming row counts.
+              </li>
+              <li>
+                <strong>EXPLAIN</strong> (driver-dependent): plan tree plus AI analysis with
+                bottlenecks and optimization suggestions.
+              </li>
+              <li>
+                <strong>Toolbar</strong>: Format, Begin / Commit / Rollback with open-transaction
+                reminders, Safe Mode toggle (blocks UPDATE/DELETE without WHERE and TRUNCATE/DROP),
+                bind parameters, searchable query history, and favorites.
+              </li>
+              <li>
+                <strong>Execute SQL file</strong>: run a .sql file against a target database with a
+                destructive-content confirmation.
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="data" class="docs-section">
+          <h2 class="docs-section-title">5. Data Browsing &amp; Editing</h2>
+          <div class="docs-prose">
+            <img
+              class="manual-shot"
+              src="assets/screenshots/18-data-editor.png"
+              alt="Data editor"
+              loading="lazy"
+            />
+            <ul>
+              <li>
+                <strong>Browse</strong>: click a table to open the virtualized grid with sorting,
+                pagination and column resizing.
+              </li>
+              <li>
+                <strong>Filter</strong>: the filter builder supports = ≠ &gt; &lt; ≥ ≤ contains / in
+                / IS NULL with AND / OR logic; or type plain language into the
+                <strong>AI Smart Filter</strong> (e.g. "age &gt; 18 and name contains John").
+              </li>
+              <li>
+                <strong>Edit</strong>: double-click a cell to edit (values coerce to the column
+                type; empty string commits NULL). Editing and row deletion require a primary key.
+                Press <span class="kbd">Space</span> for the detail panel with BLOB preview.
+              </li>
+              <li>
+                <strong>Copy</strong>: right-click to copy a cell / row, or copy as JSON / CSV / SQL
+                INSERT / UPDATE.
+              </li>
+              <li>
+                <strong>Export</strong>: CSV, TSV, JSON, Markdown, Excel (XLSX), SQL INSERT / UPDATE
+                — current page, selected rows, or a streamed full-table export. Batch export handles
+                many tables as data + structure, single file or ZIP.
+              </li>
+              <li>
+                <strong>Import</strong>: CSV / JSON / XLSX into a target table with a parse preview.
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="objects" class="docs-section">
+          <h2 class="docs-section-title">6. Objects &amp; ER Diagram</h2>
+          <div class="docs-prose">
+            <ul>
+              <li>
+                <strong>Object tree</strong>: browse databases, schemas, tables, views, functions,
+                procedures, triggers and sequences. Context menus expose admin commands (create
+                database / schema / user, grant) based on driver capabilities.
+              </li>
+              <li>
+                <strong>DDL &amp; structure</strong>: view object DDL; the structure editor manages
+                columns, indexes and comments where the driver supports it.
+              </li>
+              <li><strong>Privileges</strong>: the Privileges view lists and manages grants.</li>
+              <li>
+                <strong>ER diagram</strong>: auto-built from foreign keys, with search, fit-to-view,
+                collapsible columns and PNG / SVG export.
+              </li>
+              <li>
+                <strong>Server status</strong>: live trend charts and a process list with Kill
+                (driver-dependent).
+              </li>
+            </ul>
+            <img
+              class="manual-shot"
+              src="assets/screenshots/16-er.png"
+              alt="ER diagram"
+              loading="lazy"
+            />
+            <p class="manual-shot-caption">ER diagram with PNG / SVG export</p>
+          </div>
+        </section>
+
+        <section id="charts" class="docs-section">
+          <h2 class="docs-section-title">7. Charts</h2>
+          <div class="docs-prose">
+            <img
+              class="manual-shot"
+              src="assets/screenshots/02-query-chart.png"
+              alt="Query results as charts"
+              loading="lazy"
+            />
+            <ol>
+              <li>
+                After running a query, toggle Table ⇄ Chart in the result header (auto-switching can
+                be enabled in Settings).
+              </li>
+              <li>
+                DataZen recommends a chart type from the result shape — time series → line,
+                low-cardinality categories → pie, category comparison → bar, two numeric columns →
+                scatter — and explains why.
+              </li>
+              <li>
+                The config panel controls chart type (line / bar / pie / scatter / area), X axis and
+                multi-series Y axes, grouping, aggregation (sum / average / count / min / max),
+                sorting, colors, legend and value labels. Natural-language commands work too (e.g.
+                "switch to bar chart", "sort by X ascending").
+              </li>
+              <li>Export as PNG / SVG, or send the chart straight to a dashboard widget.</li>
+            </ol>
+            <img
+              class="manual-shot"
+              src="assets/screenshots/10-chart-types.png"
+              alt="Chart types"
+              loading="lazy"
+            />
+          </div>
+        </section>
+
+        <section id="ai" class="docs-section">
+          <h2 class="docs-section-title">8. AI Assistant</h2>
+          <div class="docs-prose">
+            <h3>Configure a provider</h3>
+            <p>
+              In Settings → AI Assistant pick a provider (OpenAI / DeepSeek / Ollama / custom
+              endpoint), protocol (OpenAI Chat Completions / OpenAI Responses / Anthropic Messages),
+              model and API key, then Validate and Save. The config is encrypted locally as
+              <code>ai_config.enc</code> and never logged. Until configured, the sidebar links you
+              to the settings page.
+            </p>
+            <img
+              class="manual-shot"
+              src="assets/screenshots/03-ai-nl2sql.png"
+              alt="Natural language to SQL"
+              loading="lazy"
+            />
+            <p class="manual-shot-caption">Natural language → SQL with live schema context</p>
+            <ul>
+              <li>
+                <strong>NL2SQL</strong>: describe what you need, then apply, copy, or "Apply &amp;
+                Chart".
+              </li>
+              <li>
+                <strong>Error diagnosis</strong>: one click explains a failed query and proposes
+                fixed SQL.
+              </li>
+              <li>
+                <strong>EXPLAIN analysis</strong>: interprets execution plans and flags bottlenecks.
+              </li>
+              <li>
+                <strong>AI Chat</strong>: type <code>@</code> to attach context — tables from the
+                active connection, or files from your AI Context directory (recent picks are
+                remembered). SQL blocks in replies can be inserted into the editor; streaming and
+                thinking output are supported and generation can be stopped.
+              </li>
+              <li>
+                <strong>Other touchpoints</strong>: smart grid filters, Data Sync diff explanation,
+                Workflow AI generation.
+              </li>
+            </ul>
+            <img
+              class="manual-shot"
+              src="assets/screenshots/07-ai-chat.png"
+              alt="AI Chat"
+              loading="lazy"
+            />
+          </div>
+        </section>
+
+        <section id="workflow" class="docs-section">
+          <h2 class="docs-section-title">9. Workflows</h2>
+          <div class="docs-prose">
+            <p>
+              Workflows chain queries, AI analysis, conditions and loops into reusable YAML flows,
+              runnable from the UI, the AI sidebar, or MCP.
+            </p>
+            <img
+              class="manual-shot"
+              src="assets/screenshots/04-workflow.png"
+              alt="Workflow editor"
+              loading="lazy"
+            />
+            <h3>Create and run</h3>
+            <ol>
+              <li>
+                Open Workflows in the left rail, or the Workflow tab in a connection window's AI
+                sidebar.
+              </li>
+              <li>
+                The editor offers both a visual form and YAML; "AI Create" drafts a flow from a
+                natural-language description.
+              </li>
+              <li>
+                Declare <code>variables</code> (string / number / connection) as runtime inputs with
+                defaults and required flags.
+              </li>
+              <li>
+                Run the flow: each step shows its result table, SQL and timing; history is kept for
+                review.
+              </li>
+            </ol>
+            <pre class="language-yaml"><code>id: daily-report
+name: Daily report
+description: Count today's orders and summarize with AI
+variables:
+  - name: date
+    type: string
+    required: true
+steps:
+  - type: query
+    id: get_orders
+    sql: "SELECT count(*) AS total FROM orders WHERE order_date = '{{date}}'"
+  - type: ai
+    id: summary
+    prompt: "Today is {{current_date}}, orders: {{steps.get_orders.rows.0.total}}. Write a one-line report."
+output:
+  template: "{{steps.summary.result}}"</code></pre>
+            <ul>
+              <li>
+                <strong>Step types</strong>: <code>query</code> (SQL with
+                <code>{{...}}</code> templates), <code>ai</code>, <code>condition</code> (if / then
+                / else), <code>foreach</code> (loops, capped at 100 iterations by default).
+              </li>
+              <li>
+                <strong>Connection inheritance</strong>: a workflow-level default connection can be
+                overridden per step — ideal for cross-database flows.
+              </li>
+              <li>
+                <strong>Error strategies</strong>: <code>abort</code> (default) /
+                <code>skip</code> / <code>fallback</code>, with step-level overrides and a global
+                timeout (300 s default).
+              </li>
+            </ul>
+            <img
+              class="manual-shot"
+              src="assets/screenshots/12-workflow-crossdb.png"
+              alt="Cross-database workflow"
+              loading="lazy"
+            />
+            <p class="manual-shot-caption">
+              Cross-database flow: PostgreSQL orders + MySQL logistics + AI summary
+            </p>
+            <p>
+              Full syntax (template rules, condition expressions, troubleshooting) lives in the
+              <a
+                href="https://github.com/flyxl/datazen/blob/main/docs/features/workflow-guide.en.md"
+                target="_blank"
+                rel="noopener"
+                >Workflow guide</a
+              >.
+            </p>
+          </div>
+        </section>
+
+        <section id="dashboard" class="docs-section">
+          <h2 class="docs-section-title">10. Ops Dashboard</h2>
+          <div class="docs-prose">
+            <p>
+              The Ops Dashboard is a dedicated monitoring window: chart widgets bound to SQL are
+              refreshed automatically by a background MonitorEngine, with threshold alerts pushed to
+              desktop notifications or a webhook.
+            </p>
+            <ol>
+              <li>
+                Open Dashboards in the left rail → create or open a dashboard to enter the 12-column
+                grid canvas.
+              </li>
+              <li>
+                Add Widget: bind a <strong>saved</strong> connection, write the monitoring SQL,
+                choose the chart, and set a refresh interval (minimum 30 seconds).
+              </li>
+              <li>
+                Configure alerts: metric column + aggregation, operator, threshold, cooldown, and
+                channels (desktop notification / webhook; email is reserved for later).
+              </li>
+              <li>
+                The toolbar offers Refresh All, global Pause / Resume monitoring (mirrored in the
+                tray), and dashboard import / export.
+              </li>
+            </ol>
+            <div class="tip">
+              Closing the dashboard window does not stop scheduling. Every run is persisted as a
+              snapshot you can replay from the widget's History drawer without re-running SQL.
+              Exported dashboard JSON contains no credentials and no run history.
+            </div>
+          </div>
+        </section>
+
+        <section id="sync" class="docs-section">
+          <h2 class="docs-section-title">11. Sync · Transfer · Schema Diff</h2>
+          <div class="docs-prose">
+            <img
+              class="manual-shot"
+              src="assets/screenshots/19-backup-sync.png"
+              alt="Data sync"
+              loading="lazy"
+            />
+            <p>Three tools with distinct jobs — pick by scenario:</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Tool</th>
+                  <th>Scenario</th>
+                  <th>Flow</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Data Sync</strong></td>
+                  <td>
+                    Row-level sync within the same dialect family (MySQL↔MySQL, PG↔PG) when table
+                    structure and primary keys match exactly
+                  </td>
+                  <td>
+                    Compare → Review &amp; check diffs → Preview SQL → Execute (DELETE excluded by
+                    default; enabling it requires double confirmation)
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Data Transfer</strong></td>
+                  <td>
+                    One-way copy between heterogeneous databases (e.g. MySQL → PostgreSQL),
+                    structure and/or data
+                  </td>
+                  <td>
+                    Eight-step wizard: source/target → mode → objects → mapping → options → preview
+                    → execute → result
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Schema Diff</strong></td>
+                  <td>
+                    Treat the source structure as the desired state and deploy controlled DDL to the
+                    target
+                  </td>
+                  <td>
+                    Compare → Plan → Review → Deploy; additive-only by default, destructive
+                    statements require a checkbox plus typing <code>DEPLOY</code>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <ul>
+              <li>
+                Data Sync hard gates: same dialect family, identical structure, identical non-empty
+                primary keys. Incompatible tables offer a one-click jump to Schema Diff.
+              </li>
+              <li>
+                Schema Diff runs transactionally on PostgreSQL / SQLite (auto-rollback on failure);
+                MySQL commits statement-by-statement, so partial success is reported as
+                <code>mixed</code>.
+              </li>
+              <li>When a target connection is read-only, every write path is disabled.</li>
+            </ul>
+            <p>
+              Deep dives:
+              <a
+                href="https://github.com/flyxl/datazen/blob/main/docs/features/data-sync-guide.zh-CN.md"
+                target="_blank"
+                rel="noopener"
+                >Data Sync guide</a
+              >
+              ·
+              <a
+                href="https://github.com/flyxl/datazen/blob/main/docs/features/schema-diff-guide.en.md"
+                target="_blank"
+                rel="noopener"
+                >Schema Diff guide</a
+              >
+            </p>
+          </div>
+        </section>
+
+        <section id="redis" class="docs-section">
+          <h2 class="docs-section-title">12. Redis Tools</h2>
+          <div class="docs-prose">
+            <img
+              class="manual-shot"
+              src="assets/screenshots/15-redis.png"
+              alt="Redis management"
+              loading="lazy"
+            />
+            <ul>
+              <li>
+                <strong>Key browser</strong>: scan keys by pattern, inspect TTL and typed values
+                (String / Hash / List / Set / ZSet / Stream), edit and delete.
+              </li>
+              <li><strong>Command console</strong>: run Redis commands directly.</li>
+              <li><strong>Monitor</strong>: live command stream.</li>
+              <li><strong>Pub/Sub</strong>: subscribe to channels and watch messages arrive.</li>
+            </ul>
+            <p>
+              The connection form supports database index selection and TLS; the deep operations are
+              provided by the built-in Redis driver.
+            </p>
+          </div>
+        </section>
+
+        <section id="backup" class="docs-section">
+          <h2 class="docs-section-title">13. Backup &amp; Restore</h2>
+          <div class="docs-prose">
+            <ul>
+              <li>
+                <strong>Database backup / restore window</strong> (File menu): pick a connection and
+                database, adjust the file-name pattern, add dialect-specific dump options,
+                optionally compress with Gzip, and start. Progress is shown per stage with a
+                copyable execution log. Restore mode replays a backup file and asks for
+                destructive-overwrite confirmation when the target already contains objects.
+              </li>
+              <li>
+                <strong>App-data archive</strong> (Tools menu): Export / Import App Data bundles
+                connections, workflows and history into a ZIP for moving machines. The encryption
+                master key is excluded by design; the wizard warns explicitly and offers a separate
+                key backup.
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="plugins" class="docs-section">
+          <h2 class="docs-section-title">14. Plugins &amp; Themes</h2>
+          <div class="docs-prose">
+            <ul>
+              <li>
+                <strong>Install</strong>: Plugins page → Install Plugin… → choose a .zip package;
+                the wizard verifies it and lists requested permissions before installing.
+              </li>
+              <li>
+                <strong>Manage</strong>: enable / disable / uninstall per plugin (uninstalling
+                permanently deletes its local storage). Incompatible API versions show a badge.
+              </li>
+              <li>
+                <strong>Workspace pages</strong>: enabled plugin pages appear under Workspace and
+                run in a sandboxed iframe that can only reach the database through the controlled
+                bridge.
+              </li>
+              <li>
+                <strong>Themes</strong>: plugins can contribute themes; after installation they
+                appear as cards in Settings → Appearance with light / dark / system badges.
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="settings" class="docs-section">
+          <h2 class="docs-section-title">15. Settings Reference</h2>
+          <div class="docs-prose">
+            <table>
+              <thead>
+                <tr>
+                  <th>Section</th>
+                  <th>Contents</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>General</td>
+                  <td>
+                    Language, theme, updates, default page size, pool size, monitoring, history
+                    cleanup
+                  </td>
+                </tr>
+                <tr>
+                  <td>Appearance</td>
+                  <td>Theme cards contributed by plugins</td>
+                </tr>
+                <tr>
+                  <td>Data Browsing</td>
+                  <td>Page size, SELECT result limit, auto chart switch, max returned rows</td>
+                </tr>
+                <tr>
+                  <td>Editor</td>
+                  <td>Font size and family</td>
+                </tr>
+                <tr>
+                  <td>Behavior</td>
+                  <td>Confirm on delete, auto commit, Safe Mode</td>
+                </tr>
+                <tr>
+                  <td>Logging</td>
+                  <td>Log level and path, view logs (restart required after changes)</td>
+                </tr>
+                <tr>
+                  <td>AI Assistant</td>
+                  <td>Provider / protocol / model / key / validation</td>
+                </tr>
+                <tr>
+                  <td>Prompt Management</td>
+                  <td>Per-driver or global prompt overrides, reset to default</td>
+                </tr>
+                <tr>
+                  <td>MCP Server</td>
+                  <td>
+                    Enable MCP, tool toggles, permission mode (read-only / safe write / high-risk
+                    write), allowlist, ready-to-paste Cursor &amp; Claude Desktop configs
+                  </td>
+                </tr>
+                <tr>
+                  <td>External MCP Servers</td>
+                  <td>Add external MCP servers (name / command / args) for use in AI Chat</td>
+                </tr>
+                <tr>
+                  <td>Extensions</td>
+                  <td>Settings exposed by built-in plugin extensions</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="security" class="docs-section">
+          <h2 class="docs-section-title">16. Security &amp; Privacy</h2>
+          <div class="docs-prose">
+            <img
+              class="manual-shot"
+              src="assets/screenshots/20-security.png"
+              alt="Security"
+              loading="lazy"
+            />
+            <ul>
+              <li>
+                Credentials are encrypted with AES-256-GCM; the master key lives in the OS keychain
+                (dev builds may use a local <code>.key</code> file).
+              </li>
+              <li>
+                AI configuration is encrypted separately (<code>ai_config.enc</code>); requests go
+                only to the provider you configure — no DataZen cloud in between.
+              </li>
+              <li>
+                Safe Mode blocks UPDATE/DELETE without WHERE and TRUNCATE/DROP; read-only
+                connections reject writes at the driver level.
+              </li>
+              <li>
+                The MCP Server exposes read-only / safe-write / high-risk-write permission modes
+                with a connection allowlist.
+              </li>
+              <li>
+                Dangerous actions (row deletion, destructive deploy, overwrite restore) always ask
+                for confirmation.
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="shortcuts" class="docs-section">
+          <h2 class="docs-section-title">17. Keyboard Shortcuts</h2>
+          <div class="docs-prose">
+            <table>
+              <thead>
+                <tr>
+                  <th>Shortcut</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="kbd">⌘/Ctrl + N</span></td>
+                  <td>New query tab</td>
+                </tr>
+                <tr>
+                  <td><span class="kbd">⌘/Ctrl + W</span></td>
+                  <td>Close active tab</td>
+                </tr>
+                <tr>
+                  <td><span class="kbd">⌘/Ctrl + Enter</span></td>
+                  <td>Execute SQL (selection only if text selected)</td>
+                </tr>
+                <tr>
+                  <td><span class="kbd">Enter</span> / <span class="kbd">Shift + Enter</span></td>
+                  <td>Send / newline in AI input</td>
+                </tr>
+                <tr>
+                  <td><span class="kbd">Space</span></td>
+                  <td>Toggle row detail panel</td>
+                </tr>
+                <tr>
+                  <td><span class="kbd">Delete</span></td>
+                  <td>Delete selected rows (confirmed, PK required)</td>
+                </tr>
+                <tr>
+                  <td><span class="kbd">@</span></td>
+                  <td>Open AI context picker (Esc closes)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="faq" class="docs-section">
+          <h2 class="docs-section-title">18. Troubleshooting</h2>
+          <div class="docs-prose">
+            <table>
+              <thead>
+                <tr>
+                  <th>Symptom</th>
+                  <th>Fix</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>macOS says the app is damaged / unverified</td>
+                  <td>
+                    Run <code>xattr -cr /Applications/DataZen.app</code> — see the packaging doc
+                  </td>
+                </tr>
+                <tr>
+                  <td>A database type shows "Planned"</td>
+                  <td>
+                    That driver is not in your build; download an all-drivers package or build from
+                    source (see optional-drivers doc)
+                  </td>
+                </tr>
+                <tr>
+                  <td>Editing rows reports noPrimaryKey</td>
+                  <td>
+                    The table has no primary key, so rows cannot be addressed; add one or edit via
+                    SQL
+                  </td>
+                </tr>
+                <tr>
+                  <td>No EXPLAIN button</td>
+                  <td>The current driver does not expose execution plans</td>
+                </tr>
+                <tr>
+                  <td>AI not responding</td>
+                  <td>
+                    Validate the key/endpoint in Settings → AI Assistant; ensure a local Ollama is
+                    running if used
+                  </td>
+                </tr>
+                <tr>
+                  <td>Dashboard widget stuck in error</td>
+                  <td>
+                    Its bound connection ID is stale or the SQL fails — rebind and test the SQL in a
+                    query window
+                  </td>
+                </tr>
+                <tr>
+                  <td>Where are the logs?</td>
+                  <td>Tools → View Logs; files live under logs/ in the app-data directory</td>
+                </tr>
+                <tr>
+                  <td>Updating</td>
+                  <td>Settings → General → Check for updates, or grab the latest GitHub Release</td>
+                </tr>
+              </tbody>
+            </table>
+            <p>
+              More resources:
+              <a
+                href="https://github.com/flyxl/datazen/tree/main/docs/features"
+                target="_blank"
+                rel="noopener"
+                >feature guides in the repo</a
+              >
+              ·
+              <a href="https://github.com/flyxl/datazen/issues" target="_blank" rel="noopener"
+                >issue tracker</a
+              >
+            </p>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <footer id="site-footer"></footer>
+    <script src="assets/js/site.js"></script>
+  </body>
+</html>

@@ -97,4 +97,16 @@
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/download.html" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/download.html" />
   </url>
+  <url>
+    <loc>https://flyxl.github.io/datazen/manual.html</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/manual.html" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/manual.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/manual.html" />
+  </url>
+  <url>
+    <loc>https://flyxl.github.io/datazen/zh/manual.html</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/manual.html" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/manual.html" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/manual.html" />
+  </url>
 </urlset>
