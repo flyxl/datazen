@@ -40,7 +40,7 @@ The Driver API is deliberately independent of database implementation libraries.
 
 Those implementation types must not appear in the public Driver API. Connection pools, rows, transactions, cursors, and database-specific errors remain private to the driver implementation. DataZen communicates through API-defined types such as `ConnectionHandle`, `QueryResult`, `Value`, and `DriverError`.
 
-See [`docs/driver-api/public-api-dependency-boundary.md`](../../docs/driver-api/public-api-dependency-boundary.md) for the complete dependency-boundary policy.
+See [`docs/development/driver-api-dependency-boundary.md`](../../docs/development/driver-api-dependency-boundary.md) for the complete dependency-boundary policy.
 
 ## Versioning
 

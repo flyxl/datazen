@@ -165,6 +165,7 @@ async fn mock_provider_analyze_queries() {
             id: uuid::Uuid::new_v4().to_string(),
             config_id: "mock-hist".into(),
             database: "app".into(),
+            schema: None,
             sql: "SELECT 1".into(),
             executed_at: chrono::Utc::now(),
             execution_time_ms: 1,

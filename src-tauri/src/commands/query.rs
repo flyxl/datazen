@@ -105,10 +105,17 @@ pub(crate) async fn get_query_history_impl(
     state: &AppState,
     limit: usize,
     config_id: Option<String>,
+    database: Option<String>,
+    schema: Option<String>,
 ) -> Result<Vec<QueryHistoryEntry>, CommandError> {
     Ok(state
         .store
-        .get_query_history(limit, config_id.as_deref())
+        .get_query_history(
+            limit,
+            config_id.as_deref(),
+            database.as_deref(),
+            schema.as_deref(),
+        )
         .await)
 }
 
@@ -216,8 +223,10 @@ pub async fn get_query_history(
     state: State<'_, AppState>,
     limit: usize,
     config_id: Option<String>,
+    database: Option<String>,
+    schema: Option<String>,
 ) -> Result<Vec<QueryHistoryEntry>, CommandError> {
-    get_query_history_impl(&state, limit, config_id).await
+    get_query_history_impl(&state, limit, config_id, database, schema).await
 }
 
 #[tauri::command]
@@ -425,7 +434,9 @@ mod tests {
             .unwrap();
         assert_eq!(result.results.len(), 1);
 
-        let history = get_query_history_impl(&test.state, 10, None).await.unwrap();
+        let history = get_query_history_impl(&test.state, 10, None, None, None)
+            .await
+            .unwrap();
         assert_eq!(history.len(), 1);
         assert!(history[0].success);
     }
@@ -518,7 +529,7 @@ mod tests {
             .await
             .unwrap();
         clear_query_history_impl(&test.state).await.unwrap();
-        assert!(get_query_history_impl(&test.state, 10, None)
+        assert!(get_query_history_impl(&test.state, 10, None, None, None)
             .await
             .unwrap()
             .is_empty());
@@ -574,7 +585,9 @@ mod tests {
         assert!(events
             .iter()
             .any(|e| matches!(e, QueryStreamEvent::Done { .. })));
-        let history = get_query_history_impl(&test.state, 10, None).await.unwrap();
+        let history = get_query_history_impl(&test.state, 10, None, None, None)
+            .await
+            .unwrap();
         assert!(history.iter().any(|e| e.success));
     }
 
@@ -623,7 +636,9 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(test.mock.last_query_limit(), Some(None));
-        let history = get_query_history_impl(&test.state, 10, None).await.unwrap();
+        let history = get_query_history_impl(&test.state, 10, None, None, None)
+            .await
+            .unwrap();
         assert!(history.is_empty());
     }
 
@@ -646,7 +661,9 @@ mod tests {
         .await
         .unwrap_err();
         assert!(err.to_string().contains("boom"));
-        let history = get_query_history_impl(&test.state, 10, None).await.unwrap();
+        let history = get_query_history_impl(&test.state, 10, None, None, None)
+            .await
+            .unwrap();
         assert_eq!(history.len(), 1);
         assert!(!history[0].success);
         assert!(history[0]

@@ -12,6 +12,7 @@ const PAGES = [
   "workflow.html",
   "databases.html",
   "download.html",
+  "manual.html",
 ];
 const errors = [];
 

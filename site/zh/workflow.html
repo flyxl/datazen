@@ -1,61 +1,93 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Workflow — DataZen</title>
-  <meta name="description" content="DataZen Workflow：用 YAML 编排 SQL 查询、AI 分析、条件分支与循环，支持跨库执行、错误策略与多种运行入口。" />
-  <link rel="canonical" href="https://flyxl.github.io/datazen/zh/workflow.html" />
-  <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/workflow.html" />
-  <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/workflow.html" />
-  <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/workflow.html" />
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="Workflow — DataZen" />
-  <meta property="og:description" content="DataZen Workflow：用 YAML 编排 SQL 查询、AI 分析、条件分支与循环，支持跨库执行、错误策略与多种运行入口。" />
-  <meta property="og:url" content="https://flyxl.github.io/datazen/zh/workflow.html" />
-  <meta property="og:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <meta property="og:locale" content="zh_CN" />
-  <meta property="og:locale:alternate" content="en_US" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Workflow — DataZen" />
-  <meta name="twitter:description" content="DataZen Workflow：用 YAML 编排 SQL 查询、AI 分析、条件分支与循环，支持跨库执行、错误策略与多种运行入口。" />
-  <meta name="twitter:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <link rel="icon" href="../assets/logo.png" />
-  <link rel="stylesheet" href="../assets/css/site.css" />
-</head>
-<body>
-  <header id="site-header"></header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Workflow — DataZen</title>
+    <meta
+      name="description"
+      content="DataZen Workflow：用 YAML 编排 SQL 查询、AI 分析、条件分支与循环，支持跨库执行、错误策略与多种运行入口。"
+    />
+    <link rel="canonical" href="https://flyxl.github.io/datazen/zh/workflow.html" />
+    <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/workflow.html" />
+    <link
+      rel="alternate"
+      hreflang="zh-CN"
+      href="https://flyxl.github.io/datazen/zh/workflow.html"
+    />
+    <link
+      rel="alternate"
+      hreflang="x-default"
+      href="https://flyxl.github.io/datazen/workflow.html"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Workflow — DataZen" />
+    <meta
+      property="og:description"
+      content="DataZen Workflow：用 YAML 编排 SQL 查询、AI 分析、条件分支与循环，支持跨库执行、错误策略与多种运行入口。"
+    />
+    <meta property="og:url" content="https://flyxl.github.io/datazen/zh/workflow.html" />
+    <meta
+      property="og:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Workflow — DataZen" />
+    <meta
+      name="twitter:description"
+      content="DataZen Workflow：用 YAML 编排 SQL 查询、AI 分析、条件分支与循环，支持跨库执行、错误策略与多种运行入口。"
+    />
+    <meta
+      name="twitter:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <link rel="icon" href="../assets/logo.png" />
+    <link rel="stylesheet" href="../assets/css/site.css" />
+  </head>
+  <body>
+    <header id="site-header"></header>
 
-  <section class="page-head">
-    <div class="wrap">
-      <p class="breadcrumb"><a href="index.html">首页</a> / Workflow</p>
-      <h1>⚙️ Workflow 自动化</h1>
-      <p>把「查数 → 分析 → 决策」固化成可复用的 YAML 流程，跨库执行、AI 参与、随时重跑。</p>
-    </div>
-  </section>
-
-  <section class="wrap">
-    <div class="feature-block">
-      <div>
-        <span class="kicker">YAML 定义</span>
-        <h2>一个文件，一套流程</h2>
-        <p>Workflow 用 YAML 描述：变量、步骤、输出。步骤之间通过 <code>{{...}}</code> 模板传递数据，查询结果可以直接喂给 AI，AI 结论再驱动下一步。</p>
-        <ul>
-          <li>步骤类型：<code>query</code> / <code>ai</code> / <code>condition</code> / <code>foreach</code></li>
-          <li>变量：string / number / connection，支持默认值与必填校验</li>
-          <li>模板语法：单值、行集、整表 JSON 均可引用</li>
-          <li>错误策略：abort / skip / fallback，超时可控</li>
-        </ul>
+    <section class="page-head">
+      <div class="wrap">
+        <p class="breadcrumb"><a href="index.html">首页</a> / Workflow</p>
+        <h1>⚙️ Workflow 自动化</h1>
+        <p>把「查数 → 分析 → 决策」固化成可复用的 YAML 流程，跨库执行、AI 参与、随时重跑。</p>
       </div>
-      <img class="feature-shot" src="../assets/screenshots/04-workflow.png" alt="Workflow 窗口" />
-    </div>
+    </section>
 
-    <div class="feature-block reverse">
-      <div>
-        <span class="kicker">跨库编排</span>
-        <h2>一个流程，连多个库</h2>
-        <p>每个步骤可以绑定不同的连接与数据库。例如：从 PostgreSQL 订单库查出订单，再到 MySQL 物流库补物流信息，最后让 AI 汇总成报告。</p>
-        <pre><code>steps:
+    <section class="wrap">
+      <div class="feature-block">
+        <div>
+          <span class="kicker">YAML 定义</span>
+          <h2>一个文件，一套流程</h2>
+          <p>
+            Workflow 用 YAML 描述：变量、步骤、输出。步骤之间通过
+            <code>{{...}}</code> 模板传递数据，查询结果可以直接喂给 AI，AI 结论再驱动下一步。
+          </p>
+          <ul>
+            <li>
+              步骤类型：<code>query</code> / <code>ai</code> / <code>condition</code> /
+              <code>foreach</code>
+            </li>
+            <li>变量：string / number / connection，支持默认值与必填校验</li>
+            <li>模板语法：单值、行集、整表 JSON 均可引用</li>
+            <li>错误策略：abort / skip / fallback，超时可控</li>
+          </ul>
+        </div>
+        <img class="feature-shot" src="../assets/screenshots/04-workflow.png" alt="Workflow 窗口" />
+      </div>
+
+      <div class="feature-block reverse">
+        <div>
+          <span class="kicker">跨库编排</span>
+          <h2>一个流程，连多个库</h2>
+          <p>
+            每个步骤可以绑定不同的连接与数据库。例如：从 PostgreSQL 订单库查出订单，再到 MySQL
+            物流库补物流信息，最后让 AI 汇总成报告。
+          </p>
+          <pre><code>steps:
   - type: query
     id: get_orders
     connection: "{{pg_conn}}"
@@ -81,42 +113,70 @@ output:
     ## 用户 {{uid}} 的订单物流
     {{steps.get_orders.result}}
     {{steps.get_logistics.result}}</code></pre>
+        </div>
+        <img
+          class="feature-shot"
+          src="../assets/screenshots/12-workflow-crossdb.png"
+          alt="跨库 Workflow"
+        />
       </div>
-      <img class="feature-shot" src="../assets/screenshots/12-workflow-crossdb.png" alt="跨库 Workflow" />
-    </div>
 
-    <div class="feature-block">
-      <div>
-        <span class="kicker">四种运行方式</span>
-        <h2>在哪都能跑</h2>
-        <ul>
-          <li><strong>连接窗口 AI 侧栏</strong>：选中工作流、填变量、看结果</li>
-          <li><strong>独立 Workflow 窗口</strong>：标签页管理多个流程，全屏专注</li>
-          <li><strong>MCP 调用</strong>：<code>list_workflows</code> / <code>run_workflow</code> 暴露给外部 AI</li>
-          <li><strong>AI 生成</strong>：让 AI 根据需求直接生成一份可执行的工作流</li>
-        </ul>
+      <div class="feature-block">
+        <div>
+          <span class="kicker">四种运行方式</span>
+          <h2>在哪都能跑</h2>
+          <ul>
+            <li><strong>连接窗口 AI 侧栏</strong>：选中工作流、填变量、看结果</li>
+            <li><strong>独立 Workflow 窗口</strong>：标签页管理多个流程，全屏专注</li>
+            <li>
+              <strong>MCP 调用</strong>：<code>list_workflows</code> /
+              <code>run_workflow</code> 暴露给外部 AI
+            </li>
+            <li><strong>AI 生成</strong>：让 AI 根据需求直接生成一份可执行的工作流</li>
+          </ul>
+        </div>
+        <img
+          class="feature-shot"
+          src="../assets/screenshots/13-workflow-run.png"
+          alt="Workflow 执行"
+        />
       </div>
-      <img class="feature-shot" src="../assets/screenshots/13-workflow-run.png" alt="Workflow 执行" />
-    </div>
-  </section>
+    </section>
 
-  <section class="section">
-    <div class="wrap">
-      <h2 style="font-size:26px;margin-bottom:20px">典型场景</h2>
-      <div class="grid-3">
-        <div class="card"><div class="icon">📦</div><h3>订单 + 物流</h3><p>PG 查订单，MySQL 补物流，AI 汇总一句话说明，直接输出给客服。</p></div>
-        <div class="card"><div class="icon">🔁</div><h3>循环巡检</h3><p>foreach 遍历大额订单，逐条生成说明；condition 处理空结果分支。</p></div>
-        <div class="card"><div class="icon">🛟</div><h3>容错降级</h3><p>主表不存在时 fallback 到备查语句，流程不中断，输出提示行。</p></div>
+    <section class="section">
+      <div class="wrap">
+        <h2 style="font-size: 26px; margin-bottom: 20px">典型场景</h2>
+        <div class="grid-3">
+          <div class="card">
+            <div class="icon">📦</div>
+            <h3>订单 + 物流</h3>
+            <p>PG 查订单，MySQL 补物流，AI 汇总一句话说明，直接输出给客服。</p>
+          </div>
+          <div class="card">
+            <div class="icon">🔁</div>
+            <h3>循环巡检</h3>
+            <p>foreach 遍历大额订单，逐条生成说明；condition 处理空结果分支。</p>
+          </div>
+          <div class="card">
+            <div class="icon">🛟</div>
+            <h3>容错降级</h3>
+            <p>主表不存在时 fallback 到备查语句，流程不中断，输出提示行。</p>
+          </div>
+        </div>
+        <div class="callout">
+          <strong>边界说明：</strong>当前步骤类型聚焦查询与 AI 编排（无独立 HTTP / 脚本步骤）；
+          <code>foreach</code> 默认最多 100 次迭代，MCP 调用通常返回最终输出而非逐步详情。
+          完整语法见<a
+            href="https://github.com/flyxl/datazen/blob/main/docs/features/workflow-guide.zh-CN.md"
+            target="_blank"
+            rel="noopener"
+            >使用手册</a
+          >。
+        </div>
       </div>
-      <div class="callout">
-        <strong>边界说明：</strong>当前步骤类型聚焦查询与 AI 编排（无独立 HTTP / 脚本步骤）；
-        <code>foreach</code> 默认最多 100 次迭代，MCP 调用通常返回最终输出而非逐步详情。
-        完整语法见<a href="https://github.com/flyxl/datazen/blob/main/docs/workflow-guide.md" target="_blank" rel="noopener">使用手册</a>。
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <footer id="site-footer"></footer>
-  <script src="../assets/js/site.js"></script>
-</body>
+    <footer id="site-footer"></footer>
+    <script src="../assets/js/site.js"></script>
+  </body>
 </html>

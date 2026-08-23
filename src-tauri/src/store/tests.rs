@@ -348,6 +348,7 @@ fn sample_history_entry(sql: &str) -> QueryHistoryEntry {
         id: uuid::Uuid::new_v4().to_string(),
         config_id: "cfg-1".into(),
         database: "db".into(),
+        schema: None,
         sql: sql.into(),
         executed_at: Utc::now(),
         execution_time_ms: 10,
@@ -421,18 +422,21 @@ async fn query_history_dedup_and_clear() {
         .add_query_history(sample_history_entry("SELECT 2"))
         .await
         .unwrap();
-    assert_eq!(store.get_query_history(10, None).await.len(), 2);
+    assert_eq!(store.get_query_history(10, None, None, None).await.len(), 2);
 
     // Dedup only applies when SQL matches the most recent entry.
     let mut dup = sample_history_entry("SELECT 2");
     dup.execution_time_ms = 99;
     store.add_query_history(dup).await.unwrap();
-    let history = store.get_query_history(10, None).await;
+    let history = store.get_query_history(10, None, None, None).await;
     assert_eq!(history.len(), 2);
     assert_eq!(history[0].execution_time_ms, 99);
 
     store.clear_query_history().await.unwrap();
-    assert!(store.get_query_history(10, None).await.is_empty());
+    assert!(store
+        .get_query_history(10, None, None, None)
+        .await
+        .is_empty());
 }
 
 #[tokio::test]

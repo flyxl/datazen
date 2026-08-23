@@ -50,7 +50,7 @@ cargo test -p datazen-ai-api --lib
 node scripts/check-site-seo.mjs
 ```
 
-E2E requires a webdriver debug build — see [`docs/e2e-testing.md`](docs/e2e-testing.md). Do not use a bare `cargo build` as the E2E binary.
+E2E requires a webdriver debug build — see [`docs/development/e2e-testing.md`](docs/development/e2e-testing.md). Do not use a bare `cargo build` as the E2E binary.
 
 ## Pull requests
 
@@ -65,7 +65,7 @@ Frontend IPC args use `snake_case` keys to match the Rust commands. Do not edit 
 ## Plugins
 
 External drivers use the compile-time plugin system (`drivers-registry.json`,
-`register_driver!`). See [`docs/plugin-development.md`](docs/plugin-development.md)
+`register_driver!`). See [`docs/development/independent-plugin-development.en.md`](docs/development/independent-plugin-development.en.md)
 or `AGENTS.md` for an overview.
 
 ## License

@@ -12,7 +12,7 @@ permissions: {}
 jobs:
   build:
     # Secrets (Deploy Keys, Windows signing) live in Environment "release"
-    # — see docs/ci-private-plugins.md
+    # — see docs/development/ci-private-plugins.md
     environment: release
     permissions:
       contents: write

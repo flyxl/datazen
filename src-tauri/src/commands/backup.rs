@@ -305,6 +305,30 @@ pub async fn execute_sql_file_with_dialog(
 ) -> Result<bool, CommandError> {
     sql_file_with_dialog(&app, &state, connection_id, database, options).await
 }
+/// Direct-path `.sql` file execution (no dialog). Available only in webdriver
+/// builds so E2E can drive the streaming pipeline without a native picker.
+#[tauri::command]
+pub async fn execute_sql_file(
+    state: State<'_, AppState>,
+    connection_id: String,
+    input_path: String,
+    options: Option<Vec<String>>,
+    database: Option<String>,
+) -> Result<bool, CommandError> {
+    require_webdriver_path_ipc(
+        "Direct path sql file execution disabled; use execute_sql_file_with_dialog",
+    )?;
+    restore_database_from_path(
+        &state,
+        None,
+        connection_id,
+        database,
+        PathBuf::from(input_path),
+        options,
+    )
+    .await?;
+    Ok(true)
+}
 
 async fn sql_file_with_dialog(
     app: &tauri::AppHandle,

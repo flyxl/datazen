@@ -147,10 +147,10 @@ Driver API 本身维护在 DataZen monorepo 的 `packages/driver-api` 中，并�
 
 详细文档：
 
-- **[独立插件开发指南 — 中文](docs/independent-plugin-development.zh-CN.md)**
-- **[Independent Plugin Development — English](docs/independent-plugin-development.md)**
+- **[独立插件开发指南 — 中文](docs/development/independent-plugin-development.zh-CN.md)**
+- **[Independent Plugin Development — English](docs/development/independent-plugin-development.en.md)**
 - **[Driver API crate README](packages/driver-api/README.md)**
-- **[Driver API 依赖边界](docs/driver-api/public-api-dependency-boundary.md)**
+- **[Driver API 依赖边界](docs/development/driver-api-dependency-boundary.md)**
 - **[datazen-driver-api on crates.io](https://crates.io/crates/datazen-driver-api)**
 
 ## 支持的数据库
@@ -224,13 +224,14 @@ DataZen 按照本地数据库访问场景设计：
 
 ## 文档
 
-- [项目官网](https://flyxl.github.io/datazen/zh/)
-- [独立插件开发指南](docs/independent-plugin-development.zh-CN.md)
-- [English Plugin Development Guide](docs/independent-plugin-development.md)
+- [项目官网](https://flyxl.github.io/datazen/zh/) · [使用手册](https://flyxl.github.io/datazen/zh/manual.html) · [User Manual (EN)](https://flyxl.github.io/datazen/manual.html)
+- [功能文档](docs/features/) · [架构文档](docs/architecture/README.md) · [开发/发布文档](docs/development/)
+- [独立插件开发指南](docs/development/independent-plugin-development.zh-CN.md)
+- [English Plugin Development Guide](docs/development/independent-plugin-development.en.md)
 - [Driver API crate](packages/driver-api/README.md)
-- [Driver API 依赖边界](docs/driver-api/public-api-dependency-boundary.md)
+- [Driver API 依赖边界](docs/development/driver-api-dependency-boundary.md)
 - [datazen-driver-api on crates.io](https://crates.io/crates/datazen-driver-api)
-- [Workflow 指南](docs/workflow-guide.en.md)
+- [Workflow 指南](docs/features/workflow-guide.zh-CN.md)
 - [贡献指南](CONTRIBUTING.md)
 
 ## 参与贡献

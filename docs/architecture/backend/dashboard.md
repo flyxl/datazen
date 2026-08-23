@@ -50,4 +50,4 @@ npx vitest run src/windows/dashboard src/lib/dashboard
 pnpm e2e:dashboard   # e2e/specs/data-dashboard*.ts
 ```
 
-详见 [PRD](../../prd/data-dashboard.md) 与 [实施方案](../../prd/data-dashboard-implementation.md)。
+详见 [PRD](../../features/ops-dashboard-guide.zh-CN.md) 与 [实施方案](../../features/ops-dashboard-guide.en.md)。

@@ -11,7 +11,7 @@
  * a binary that fails at runtime with: asset not found: index.html
  * because the Tauri CLI (beforeBuildCommand + asset embedding) was skipped.
  *
- * See docs/e2e-testing.md for the full agent playbook.
+ * See docs/development/e2e-testing.md for the full agent playbook.
  */
 import { spawn, execSync } from 'node:child_process';
 import { createConnection } from 'node:net';
@@ -135,7 +135,7 @@ function assertFrontendDistPresent() {
       [
         'Missing dist/index.html — frontend assets were never built.',
         `Fix: run \`${BUILD_CMD}\` (do not use bare cargo build).`,
-        'See docs/e2e-testing.md',
+        'See docs/development/e2e-testing.md',
       ].join('\n'),
     );
   }
@@ -147,7 +147,7 @@ function assertBinaryReady(binaryPath) {
       [
         `E2E binary not found: ${binaryPath}`,
         `Fix: run \`${BUILD_CMD}\` then re-run, or omit --skip-build.`,
-        'See docs/e2e-testing.md',
+        'See docs/development/e2e-testing.md',
       ].join('\n'),
     );
   }
@@ -240,7 +240,7 @@ try {
         'Cause: binary was likely built with bare `cargo build`, which skips Tauri asset embedding.',
         `Fix: ${BUILD_CMD}`,
         'Then: pnpm e2e:skip-build -- --spec <your-spec>',
-        'See docs/e2e-testing.md',
+        'See docs/development/e2e-testing.md',
       ].join('\n'),
     );
   }
@@ -251,7 +251,7 @@ try {
       '  1. Binary built WITHOUT --features webdriver',
       '  2. Used cargo build instead of `pnpm tauri build --debug --features webdriver`',
       '  3. Another process already holds 4445',
-      'See docs/e2e-testing.md',
+      'See docs/development/e2e-testing.md',
     ].join('\n'),
   );
 }
@@ -263,7 +263,7 @@ if (sawAssetMissing) {
       'App reported "asset not found: index.html" — frontend is broken.',
       `Rebuild with: ${BUILD_CMD}`,
       'Do NOT use: cargo build -p datazen --features webdriver',
-      'See docs/e2e-testing.md',
+      'See docs/development/e2e-testing.md',
     ].join('\n'),
   );
 }

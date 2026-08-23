@@ -147,10 +147,10 @@ The Driver API itself is maintained in `packages/driver-api` and published as th
 
 See the complete guides:
 
-- **[Independent Plugin Development — English](docs/independent-plugin-development.md)**
-- **[独立插件开发指南 — 中文](docs/independent-plugin-development.zh-CN.md)**
+- **[Independent Plugin Development — English](docs/development/independent-plugin-development.en.md)**
+- **[独立插件开发指南 — 中文](docs/development/independent-plugin-development.zh-CN.md)**
 - **[Driver API crate README](packages/driver-api/README.md)**
-- **[Driver API dependency boundary](docs/driver-api/public-api-dependency-boundary.md)**
+- **[Driver API dependency boundary](docs/development/driver-api-dependency-boundary.md)**
 - **[datazen-driver-api on crates.io](https://crates.io/crates/datazen-driver-api)**
 
 ## Supported databases
@@ -184,9 +184,9 @@ Download the latest release from **[GitHub Releases](https://github.com/flyxl/da
 
 DataZen is free and does not require an account.
 
-**macOS Gatekeeper:** If the app is blocked as damaged or from an unidentified developer, clear quarantine: `xattr -cr /Applications/DataZen.app`, or right-click → Open once. See [packaging.md](docs/packaging.md) for details and the notarization checklist.
+**macOS Gatekeeper:** If the app is blocked as damaged or from an unidentified developer, clear quarantine: `xattr -cr /Applications/DataZen.app`, or right-click → Open once. See [packaging.md](docs/development/packaging.md) for details and the notarization checklist.
 
-Optional drivers (MongoDB, ClickHouse, DuckDB, SQL Server, …) are compile-time selections — see [optional-drivers.md](docs/optional-drivers.md).
+Optional drivers (MongoDB, ClickHouse, DuckDB, SQL Server, …) are compile-time selections — see [optional-drivers.md](docs/development/optional-drivers.md).
 
 ## Build from source
 
@@ -228,16 +228,17 @@ Always review the privacy and security policies of the AI provider and endpoint 
 
 ## Documentation
 
-- [Project website](https://flyxl.github.io/datazen/)
-- [Independent Plugin Development](docs/independent-plugin-development.md)
-- [Chinese Plugin Development Guide](docs/independent-plugin-development.zh-CN.md)
+- [Project website](https://flyxl.github.io/datazen/) · [User Manual (EN)](https://flyxl.github.io/datazen/manual.html) · [使用手册 (ZH)](https://flyxl.github.io/datazen/zh/manual.html)
+- [Feature guides](docs/features/) · [Architecture docs](docs/architecture/README.md) · [Development & release docs](docs/development/)
+- [Independent Plugin Development](docs/development/independent-plugin-development.en.md)
+- [Chinese Plugin Development Guide](docs/development/independent-plugin-development.zh-CN.md)
 - [Driver API crate](packages/driver-api/README.md)
-- [Driver API dependency boundary](docs/driver-api/public-api-dependency-boundary.md)
+- [Driver API dependency boundary](docs/development/driver-api-dependency-boundary.md)
 - [datazen-driver-api on crates.io](https://crates.io/crates/datazen-driver-api)
-- [Workflow Guide](docs/workflow-guide.en.md)
-- [Optional path drivers](docs/optional-drivers.md) (MongoDB, ClickHouse, DuckDB, SQL Server)
-- [Packaging & release channels](docs/packaging.md) (macOS Gatekeeper, Linux packages)
-- [Auto-update](docs/updater.md)
+- [Workflow Guide](docs/features/workflow-guide.en.md)
+- [Optional path drivers](docs/development/optional-drivers.md) (MongoDB, ClickHouse, DuckDB, SQL Server)
+- [Packaging & release channels](docs/development/packaging.md) (macOS Gatekeeper, Linux packages)
+- [Auto-update](docs/development/updater.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## Contributing

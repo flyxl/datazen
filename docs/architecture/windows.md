@@ -17,6 +17,7 @@
 | 子窗口 | `BackupWindow` | 备份/恢复（单例） |
 | 子窗口 | `DataSyncWindow` | 同族 Data Sync Diff Workspace（单例） |
 | 子窗口 | `SchemaDiffWindow` | Schema Diff（单例） |
+| 子窗口 | `DataTransferWindow` | 异构 Data Transfer 向导（单例） |
 
 | 窗口 | Label / `?window=` |
 |------|-------------------|
@@ -24,6 +25,7 @@
 | backup | `backup-singleton` / `backup` |
 | data-sync | `data-sync-singleton` / `data-sync` |
 | schema-diff | `schema-diff` |
+| data-transfer | `data-transfer` |
 
 **Settings** 与 **Docs** 均不是子窗口：
 

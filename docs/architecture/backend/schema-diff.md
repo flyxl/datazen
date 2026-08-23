@@ -30,4 +30,4 @@ Compare-only DDL previews in Data Sync still use `transfer/ddl.rs` `build_create
 
 ## User docs
 
-See [docs/schema-diff-deploy.md](../../schema-diff-deploy.md).
+See [docs/schema-diff-deploy.md](../../features/schema-diff-deploy.md).

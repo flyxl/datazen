@@ -55,7 +55,7 @@ pnpm e2e:core / e2e:db / e2e:ai    # 分组（默认 skip-build）
 ```
 
 > ⚠️ **禁止** `cargo build --features webdriver` 作为 E2E 二进制来源。  
-> 正确命令：`pnpm tauri build --debug --features webdriver`。完整说明：[e2e-testing.md](../e2e-testing.md)。
+> 正确命令：`pnpm tauri build --debug --features webdriver`。完整说明：[e2e-testing.md](../development/e2e-testing.md)。
 
 ## 3. Rust 测试覆盖
 
@@ -130,16 +130,16 @@ Host 各模块内 `#[cfg(test)]`。驱动实现的单测在 `packages/drivers/<i
 
 ## 4.6 Host E2E 覆盖规则
 
-与 [AGENTS.md](../../AGENTS.md) / [e2e-testing.md](../e2e-testing.md) 一致：
+与 [AGENTS.md](../../AGENTS.md) / [e2e-testing.md](../development/e2e-testing.md) 一致：
 
 1. Host 内**所有 UI 交互**与**所有用户可走到的路径**须有 `e2e/specs/` 覆盖（交互 + 结果断言）。
 2. 改 Host UI 必须同 PR 更新 E2E。
-3. 驱动专属用例不进 Host；例外路径登记在 [e2e-coverage.md](../e2e-coverage.md)。
-4. **Host Connection Contract × Driver**：`e2e/contract/` + `e2e/specs/host-contract-matrix.ts` — 各 SQL 驱动连接窗跑同一套 Host journeys；见 [e2e-coverage.md](../e2e-coverage.md)「Host Connection Contract」。
+3. 驱动专属用例不进 Host；例外路径登记在 [e2e-coverage.md](../development/e2e-coverage.md)。
+4. **Host Connection Contract × Driver**：`e2e/contract/` + `e2e/specs/host-contract-matrix.ts` — 各 SQL 驱动连接窗跑同一套 Host journeys；见 [e2e-coverage.md](../development/e2e-coverage.md)「Host Connection Contract」。
 
 ## 5. E2E 测试
 
-> **Agent / 开发者操作手册（构建、排错、检查清单）：[docs/e2e-testing.md](../e2e-testing.md)**
+> **Agent / 开发者操作手册（构建、排错、检查清单）：[docs/e2e-testing.md](../development/e2e-testing.md)**
 
 WebdriverIO E2E spec（Host：`e2e/specs/`）：
 

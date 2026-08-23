@@ -2010,7 +2010,7 @@ pub(crate) async fn ai_analyze_queries_impl(
     };
     let history = state
         .store
-        .get_query_history(200, config_id.as_deref())
+        .get_query_history(200, config_id.as_deref(), None, None)
         .await;
     let filtered: Vec<_> = history.iter().collect();
 
