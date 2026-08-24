@@ -69,7 +69,7 @@ impl QueryExecutor {
         &self,
         driver: &Arc<dyn DatabaseDriver>,
         handle: &ConnectionHandle,
-        connection_id: &str,
+        db_session_id: &str,
         database: &str,
         table: &str,
         page: u32,
@@ -81,7 +81,7 @@ impl QueryExecutor {
     ) -> Result<TableDataResult, DriverError> {
         let cached = self
             .schema_cache
-            .get_columns(connection_id, database, table, driver, handle)
+            .get_columns(db_session_id, database, table, driver, handle)
             .await?;
 
         let qi = |name: &str| driver.quote_ident(name);

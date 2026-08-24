@@ -80,7 +80,7 @@ pub(crate) async fn get_explain_impl(
     tracing::debug!(%connection_id, "get_explain");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("get_explain")?;
 
@@ -94,7 +94,7 @@ pub(crate) async fn cancel_query_impl(
     tracing::info!(%connection_id, "cancel_query");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("cancel_query")?;
 
@@ -272,7 +272,7 @@ pub(crate) async fn begin_session_transaction_impl(
     }
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("begin_session_transaction")?;
     let tx = match driver.begin_transaction(&handle).await {
@@ -305,7 +305,7 @@ pub(crate) async fn commit_session_transaction_impl(
 ) -> Result<(), CommandError> {
     let (driver, _) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("commit_session_transaction")?;
     let tx = state
@@ -326,7 +326,7 @@ pub(crate) async fn rollback_session_transaction_impl(
 ) -> Result<(), CommandError> {
     let (driver, _) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("rollback_session_transaction")?;
     let tx = state

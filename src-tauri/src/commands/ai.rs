@@ -290,7 +290,7 @@ pub(crate) async fn ai_generate_sql_impl(
 
     let (driver_ref, _) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("ai_generate_sql")?;
 
@@ -481,7 +481,7 @@ pub(crate) async fn ai_diagnose_error_impl(
 
     let (driver_ref, _) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("ai_diagnose_error")?;
 
@@ -574,7 +574,7 @@ pub(crate) async fn ai_analyze_explain_impl(
 
     let (driver, _) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("ai_analyze_explain")?;
 
@@ -689,7 +689,7 @@ pub(crate) async fn ai_parse_filter_impl(
 
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("ai_parse_filter")?;
 
@@ -1142,7 +1142,7 @@ pub(crate) async fn ai_chat_impl(
     if include_schema {
         if let Some(ref conn_id) = connection_id {
             let db = database.as_deref().unwrap_or("");
-            if let Ok((driver, _handle)) = state.connection_manager.get_connection(conn_id).await {
+            if let Ok((driver, _handle)) = state.connection_manager.get_session(conn_id).await {
                 let pinned = context_tables.clone().unwrap_or_default();
                 let supports_tools = provider.supports_tools();
                 let pipeline = SchemaContextPipeline::new(state.schema_context_builder.clone());
@@ -1725,7 +1725,7 @@ pub(crate) async fn ai_generate_schema_doc_impl(
 
     let (driver_ref, _) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("ai_generate_schema_doc")?;
 
@@ -2003,14 +2003,16 @@ pub(crate) async fn ai_analyze_queries_impl(
     tracing::info!(connection_id = ?connection_id, "ai_analyze_queries: start");
     let (provider, ai_config) = resolve_ai(&state).await?;
 
-    let config_id = if let Some(ref cid) = connection_id {
-        state.connection_manager.resolve_config_id(cid).await
+    // The IPC connection_id carries the runtime dbSessionId; resolve the
+    // persisted connectionId that owns it so history is filtered by connection.
+    let owner_connection_id = if let Some(ref cid) = connection_id {
+        state.connection_manager.owner_connection_id(cid).await
     } else {
         None
     };
     let history = state
         .store
-        .get_query_history(200, config_id.as_deref(), None, None)
+        .get_query_history(200, owner_connection_id.as_deref(), None, None)
         .await;
     let filtered: Vec<_> = history.iter().collect();
 

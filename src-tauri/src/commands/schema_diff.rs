@@ -46,23 +46,23 @@ pub async fn prepare_schema_diff_plan(
 
     let src_config = state
         .connection_manager
-        .get_connection_config(&source_connection_id)
+        .get_session_config(&source_connection_id)
         .await
         .cmd_err("prepare_schema_diff_plan")?;
     let tgt_config = state
         .connection_manager
-        .get_connection_config(&target_connection_id)
+        .get_session_config(&target_connection_id)
         .await
         .cmd_err("prepare_schema_diff_plan")?;
 
     let (src_driver, src_handle) = state
         .connection_manager
-        .get_connection(&source_connection_id)
+        .get_session(&source_connection_id)
         .await
         .cmd_err("prepare_schema_diff_plan")?;
     let (tgt_driver, tgt_handle) = state
         .connection_manager
-        .get_connection(&target_connection_id)
+        .get_session(&target_connection_id)
         .await
         .cmd_err("prepare_schema_diff_plan")?;
 
@@ -174,7 +174,7 @@ pub async fn execute_schema_diff_deploy(
 
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&target_connection_id)
+        .get_session(&target_connection_id)
         .await
         .cmd_err("execute_schema_diff_deploy")?;
 
@@ -203,23 +203,23 @@ pub(crate) async fn compare_table_schemas_impl(
 
     let src_config = state
         .connection_manager
-        .get_connection_config(&source_connection_id)
+        .get_session_config(&source_connection_id)
         .await
         .cmd_err("compare_table_schemas")?;
     let tgt_config = state
         .connection_manager
-        .get_connection_config(&target_connection_id)
+        .get_session_config(&target_connection_id)
         .await
         .cmd_err("compare_table_schemas")?;
 
     let (src_driver, src_handle) = state
         .connection_manager
-        .get_connection(&source_connection_id)
+        .get_session(&source_connection_id)
         .await
         .cmd_err("compare_table_schemas")?;
     let (tgt_driver, tgt_handle) = state
         .connection_manager
-        .get_connection(&target_connection_id)
+        .get_session(&target_connection_id)
         .await
         .cmd_err("compare_table_schemas")?;
 
@@ -312,12 +312,12 @@ pub(crate) async fn compare_table_data_impl(
 
     let (src_driver, src_handle) = state
         .connection_manager
-        .get_connection(&source_connection_id)
+        .get_session(&source_connection_id)
         .await
         .cmd_err("compare_table_data")?;
     let (tgt_driver, tgt_handle) = state
         .connection_manager
-        .get_connection(&target_connection_id)
+        .get_session(&target_connection_id)
         .await
         .cmd_err("compare_table_data")?;
 

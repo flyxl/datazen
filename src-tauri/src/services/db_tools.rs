@@ -9,19 +9,22 @@ use crate::store::Store;
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
 use std::sync::Arc;
 
-/// Resolve a connection from a **config_id** (persistent UUID from `list_connections`)
-/// or a runtime connection id. Uses [`ConnectionManager::resolve_session`].
+/// Resolve a live DB session from an id that may be either kind: a
+/// **connectionId** (persisted connection configuration id, as returned by
+/// `list_connections`) or a **dbSessionId** (runtime session handle id).
+/// Uses [`ConnectionManager::resolve_session`] (db_session_id first,
+/// connection_id fallback).
 pub async fn resolve_connection(
     connection_manager: &ConnectionManager,
-    config_id: &str,
+    connection_id: &str,
 ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
-    let (_runtime_id, driver, handle) =
-        resolve_connection_with_id(connection_manager, config_id).await?;
+    let (_db_session_id, driver, handle) =
+        resolve_connection_with_id(connection_manager, connection_id).await?;
     Ok((driver, handle))
 }
 
-/// Like [`resolve_connection`], but also returns the **runtime** connection id
-/// (which may differ from the input when a config id was supplied).
+/// Like [`resolve_connection`], but also returns the resolved **dbSessionId**
+/// (which may differ from the input when a connectionId was supplied).
 pub async fn resolve_connection_with_id(
     connection_manager: &ConnectionManager,
     id: &str,
@@ -50,12 +53,12 @@ pub async fn list_connections(store: &Store) -> Result<String, String> {
     serde_json::to_string_pretty(&result).map_err(|e| format!("Error: {e}"))
 }
 
-/// List all databases on a connection identified by config_id.
+/// List all databases for the connection identified by a connectionId or dbSessionId.
 pub async fn list_databases(
     connection_manager: &ConnectionManager,
-    config_id: &str,
+    connection_id: &str,
 ) -> Result<String, String> {
-    let (driver, handle) = resolve_connection(connection_manager, config_id).await?;
+    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
     let dbs = driver
         .get_databases(&handle)
         .await
@@ -63,13 +66,13 @@ pub async fn list_databases(
     serde_json::to_string_pretty(&dbs).map_err(|e| format!("Error: {e}"))
 }
 
-/// List all tables in a database on a connection identified by config_id.
+/// List all tables in a database for the connection identified by a connectionId or dbSessionId.
 pub async fn list_tables(
     connection_manager: &ConnectionManager,
-    config_id: &str,
+    connection_id: &str,
     database: &str,
 ) -> Result<String, String> {
-    let (driver, handle) = resolve_connection(connection_manager, config_id).await?;
+    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
     let tables = driver
         .get_tables(&handle, database)
         .await
@@ -81,12 +84,12 @@ pub async fn list_tables(
 /// Returns at most `limit` matching table names.
 pub async fn search_tables(
     connection_manager: &ConnectionManager,
-    config_id: &str,
+    connection_id: &str,
     database: &str,
     pattern: &str,
     limit: usize,
 ) -> Result<String, String> {
-    let (driver, handle) = resolve_connection(connection_manager, config_id).await?;
+    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
     let all_tables = driver
         .get_tables(&handle, database)
         .await
@@ -113,13 +116,13 @@ pub async fn search_tables(
     serde_json::to_string_pretty(&result).map_err(|e| format!("Error: {e}"))
 }
 
-/// Get detailed schema for one or more tables on a connection identified by config_id.
+/// Get detailed schema for one or more tables for the connection identified by a connectionId or dbSessionId.
 pub async fn get_table_schema(
     connection_manager: &ConnectionManager,
-    config_id: &str,
+    connection_id: &str,
     tables: &[String],
 ) -> Result<String, String> {
-    let (driver, handle) = resolve_connection(connection_manager, config_id).await?;
+    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
     let mut results = Vec::new();
     for table in tables {
         match driver.get_table_schema(&handle, table).await {
@@ -130,13 +133,13 @@ pub async fn get_table_schema(
     serde_json::to_string_pretty(&results).map_err(|e| format!("Error: {e}"))
 }
 
-/// Get a single table's schema on a connection identified by config_id.
+/// Get a single table's schema for the connection identified by a connectionId or dbSessionId.
 pub async fn get_single_table_schema(
     connection_manager: &ConnectionManager,
-    config_id: &str,
+    connection_id: &str,
     table: &str,
 ) -> Result<datazen_driver_api::TableSchema, String> {
-    let (driver, handle) = resolve_connection(connection_manager, config_id).await?;
+    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
     driver
         .get_table_schema(&handle, table)
         .await
@@ -149,11 +152,11 @@ pub fn resolve_query_limit(limit: Option<u32>) -> Option<u32> {
     Some(resolved.min(MCP_QUERY_MAX_LIMIT))
 }
 
-/// Execute a SQL query on a connection identified by config_id.
+/// Execute a SQL query for the connection identified by a connectionId or dbSessionId.
 /// When `permission_mode` is `Some`, SQL is checked against MCP permission rules.
 pub async fn query(
     connection_manager: &ConnectionManager,
-    config_id: &str,
+    connection_id: &str,
     sql: &str,
     limit: Option<u32>,
     permission_mode: Option<McpPermissionMode>,
@@ -161,7 +164,7 @@ pub async fn query(
     if let Some(mode) = permission_mode {
         permission::check_sql_allowed(sql, mode)?;
     }
-    let (driver, handle) = resolve_connection(connection_manager, config_id).await?;
+    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
     let limit = resolve_query_limit(limit);
     let result = driver
         .query_multi(&handle, sql, limit)
@@ -170,13 +173,13 @@ pub async fn query(
     serde_json::to_string_pretty(&result).map_err(|e| format!("Error: {e}"))
 }
 
-/// Run EXPLAIN on a SQL query on a connection identified by config_id.
+/// Run EXPLAIN on a SQL query for the connection identified by a connectionId or dbSessionId.
 pub async fn explain_query(
     connection_manager: &ConnectionManager,
-    config_id: &str,
+    connection_id: &str,
     sql: &str,
 ) -> Result<String, String> {
-    let (driver, handle) = resolve_connection(connection_manager, config_id).await?;
+    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
     let result = driver
         .explain(&handle, sql)
         .await

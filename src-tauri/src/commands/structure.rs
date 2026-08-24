@@ -16,7 +16,7 @@ pub async fn get_structure_capabilities(
     tracing::info!(%connection_id, "get_structure_capabilities");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("get_structure_capabilities")?;
 
@@ -49,7 +49,7 @@ pub async fn plan_table_structure_changes(
     );
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("plan_table_structure_changes")?;
 

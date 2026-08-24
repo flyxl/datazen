@@ -35,7 +35,7 @@ pub(crate) async fn use_database_impl(
     tracing::info!(%connection_id, %database, "use_database");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("use_database")?;
 
@@ -66,7 +66,7 @@ pub(crate) async fn get_tables_impl(
     tracing::info!(%connection_id, %database, "get_tables");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("get_tables")?;
 
@@ -87,7 +87,7 @@ pub(crate) async fn get_columns_impl(
     tracing::info!(%connection_id, %table, "get_columns");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("get_columns")?;
 
@@ -109,13 +109,13 @@ pub(crate) async fn get_table_schema_impl(
     tracing::info!(%connection_id, %table, "get_table_schema");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("get_table_schema")?;
 
     let config = state
         .connection_manager
-        .get_connection_config(&connection_id)
+        .get_session_config(&connection_id)
         .await
         .cmd_err("get_table_schema")?;
     let database = config.database.as_deref().unwrap_or("default");
@@ -144,13 +144,13 @@ pub(crate) async fn get_table_data_impl(
     tracing::info!(%connection_id, %table, page, page_size, "get_table_data");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("get_table_data")?;
 
     let config = state
         .connection_manager
-        .get_connection_config(&connection_id)
+        .get_session_config(&connection_id)
         .await
         .cmd_err("get_table_data")?;
     let database = config.database.as_deref().unwrap_or("default");
@@ -169,7 +169,7 @@ pub(crate) async fn get_table_data_impl(
         .get_table_data(
             &driver,
             &handle,
-            &connection_id,
+            &connection_id, // runtime db_session_id (IPC field name unchanged until W2)
             database,
             &table,
             page,
@@ -194,7 +194,7 @@ pub(crate) async fn get_er_data_impl(
     tracing::info!(%connection_id, %database, "get_er_data");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("get_er_data")?;
 

@@ -106,36 +106,40 @@ fn sql_from_input(input: &serde_json::Value) -> Option<String> {
 
 async fn record_sql_command_outcome(
     state: &AppState,
-    connection_id: Option<&str>,
+    db_session_id: Option<&str>,
     sql: &str,
     success: bool,
     execution_time_ms: u64,
     rows_affected: Option<u64>,
     error_message: Option<String>,
 ) {
-    let Some(connection_id) = connection_id else {
+    let Some(db_session_id) = db_session_id else {
         return;
     };
-    let Some(config_id) = state
+    // Resolve the persisted connection config that owns this runtime session.
+    let Some(connection_id) = state
         .connection_manager
-        .resolve_config_id(connection_id)
+        .owner_connection_id(db_session_id)
         .await
     else {
-        tracing::warn!(connection_id, "Skipping history: config_id not found");
+        tracing::warn!(
+            db_session_id,
+            "Skipping history: no owning connectionId for this dbSessionId"
+        );
         return;
     };
     // Record the session-active logical database so history can be grouped /
     // filtered per panel context (empty string when the driver is single-db).
     let database = state
         .connection_manager
-        .get_connection_config(connection_id)
+        .get_session_config(db_session_id)
         .await
         .ok()
         .and_then(|config| config.database)
         .unwrap_or_default();
     let entry = crate::store::QueryHistoryEntry {
         id: uuid::Uuid::new_v4().to_string(),
-        config_id,
+        config_id: connection_id,
         database,
         schema: None,
         sql: sql.to_string(),
@@ -293,7 +297,7 @@ pub(crate) async fn execute_driver_command_stream_impl(
 
     let read_only = state
         .connection_manager
-        .get_connection_config(&handle.id)
+        .get_session_config(&handle.id)
         .await
         .map(|c| c.read_only)
         .unwrap_or(false);
@@ -411,7 +415,7 @@ pub(crate) async fn execute_driver_command_with_mode(
             if let Some(sql) = request.input.get("sql").and_then(|v| v.as_str()) {
                 let read_only = state
                     .connection_manager
-                    .get_connection_config(&handle.id)
+                    .get_session_config(&handle.id)
                     .await
                     .map(|c| c.read_only)
                     .unwrap_or(false);
