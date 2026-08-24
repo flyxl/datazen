@@ -30,6 +30,7 @@ import { Button } from '../../components/ui/Button';
 import { SqlEditor } from '../../components/SqlEditor';
 import type { SqlEditorHandle } from '../../components/SqlEditor';
 import { buildEditorSchema } from '../../lib/buildEditorSchema';
+import { findGroupForDatabase, groupQueryHistory } from '../../lib/historyGroups';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { buildSqlEditorContextMenuItems } from '../../lib/sqlEditorContextMenu';
 import {
@@ -149,6 +150,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
   const [showExplain, setShowExplain] = useState(false);
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
   const [historySearch, setHistorySearch] = useState('');
+  const [historyScopeMode, setHistoryScopeMode] = useState<'current' | 'all'>('current');
   const [inTransaction, setInTransaction] = useState(false);
   const [txBusy, setTxBusy] = useState(false);
   const [txUnclosedOpen, setTxUnclosedOpen] = useState(false);
@@ -627,11 +629,35 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
     [t, configId, loadHistory],
   );
 
-  const filteredHistory = useMemo(() => {
+  // Group by recorded session database; default scope shows only this panel's
+  // database so applied entries re-run in context (no "table not exist").
+  const historyGroups = useMemo(
+    () => groupQueryHistory(history, t('query.historyUnknownDb')),
+    [history, t],
+  );
+  const currentDbGroup = useMemo(
+    () => findGroupForDatabase(historyGroups, currentDatabase),
+    [historyGroups, currentDatabase],
+  );
+  // 'current' with no matching group falls back to all groups (single-db
+  // drivers, or no history recorded for this database yet) — surface that.
+  const historyScopeFallback = historyScopeMode === 'current' && !currentDbGroup;
+  const scopedSections = useMemo(() => {
     const q = historySearch.trim().toLowerCase();
-    if (!q) return history;
-    return history.filter((h) => h.sql.toLowerCase().includes(q));
-  }, [history, historySearch]);
+    const applyQ = (items: typeof history) =>
+      q ? items.filter((h) => h.sql.toLowerCase().includes(q)) : items;
+    if (historyScopeMode === 'current' && currentDbGroup) {
+      return [
+        {
+          key: currentDbGroup.key,
+          label: null as string | null,
+          items: applyQ(currentDbGroup.entries),
+        },
+      ];
+    }
+    return historyGroups.map((g) => ({ key: g.key, label: g.label, items: applyQ(g.entries) }));
+  }, [historyScopeMode, currentDbGroup, historyGroups, historySearch]);
+  const filteredCount = scopedSections.reduce((n, s) => n + s.items.length, 0);
 
   const handleClearHistory = useCallback(() => {
     void (async () => {
@@ -1169,38 +1195,88 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
                 />
               </div>
             )}
+            {history.length > 0 && (
+              <div className="flex gap-1 border-b border-edge px-2 py-1.5">
+                <button
+                  type="button"
+                  data-testid="history-scope-current"
+                  aria-pressed={historyScopeMode === 'current'}
+                  onClick={() => setHistoryScopeMode('current')}
+                  className={`rounded px-2 py-0.5 text-[11px] ${historyScopeMode === 'current' ? 'bg-accent text-white' : 'border border-edge text-fg-muted hover:text-fg'}`}
+                >
+                  {t('query.historyScopeCurrent')}
+                </button>
+                <button
+                  type="button"
+                  data-testid="history-scope-all"
+                  aria-pressed={historyScopeMode === 'all'}
+                  onClick={() => setHistoryScopeMode('all')}
+                  className={`rounded px-2 py-0.5 text-[11px] ${historyScopeMode === 'all' ? 'bg-accent text-white' : 'border border-edge text-fg-muted hover:text-fg'}`}
+                >
+                  {t('query.historyScopeAll')}
+                </button>
+              </div>
+            )}
+            {history.length > 0 && historyScopeFallback && (
+              <div
+                data-testid="history-scope-fallback-hint"
+                className="border-b border-edge px-3 py-1.5 text-[11px] text-fg-muted"
+              >
+                {t('query.historyScopeFallbackHint')}
+              </div>
+            )}
             {history.length === 0 ? (
               <div className="px-3 py-4 text-center text-xs text-fg-muted">
                 {t('query.noHistory')}
               </div>
-            ) : filteredHistory.length === 0 ? (
+            ) : filteredCount === 0 ? (
               <div className="px-3 py-4 text-center text-xs text-fg-muted">
                 {t('query.noHistoryMatch')}
               </div>
             ) : (
-              filteredHistory.map((h) => (
-                <button
-                  key={h.id}
-                  type="button"
-                  className="w-full border-b border-edge px-3 py-2 text-left hover:bg-surface-raised"
-                  onClick={() => updateSql(panelId, h.sql)}
-                  onContextMenu={(e) => handleHistoryContextMenu(e, h.sql)}
-                >
-                  <div className="selectable truncate font-mono text-xs text-fg-secondary">
-                    {h.sql}
+              <>
+                {historyScopeMode === 'current' && currentDbGroup && (
+                  <div className="border-b border-edge px-3 py-1.5 text-[11px] text-fg-muted">
+                    {t('query.database')}:
+                    <span className="ml-1 font-medium text-fg">{currentDbGroup.label}</span>
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-fg-muted">
-                    <span className={h.success ? 'text-green-400' : 'text-red-400'}>
-                      {h.success ? t('common.success') : t('common.failed')}
-                    </span>
-                    <span>{h.executionTimeMs}ms</span>
-                    {h.rowsAffected != null && (
-                      <span>{t('query.historyRows', { count: h.rowsAffected })}</span>
+                )}
+                {scopedSections.map((section) => (
+                  <div key={section.key}>
+                    {section.label && (
+                      <div
+                        data-testid="history-group-label"
+                        className="sticky top-0 z-10 border-b border-edge bg-surface-alt px-3 py-1 text-[11px] font-semibold text-fg-muted"
+                      >
+                        {section.label} ({section.items.length})
+                      </div>
                     )}
-                    <span>{formatLastConnected(h.executedAt)}</span>
+                    {section.items.map((h) => (
+                      <button
+                        key={h.id}
+                        type="button"
+                        className="w-full border-b border-edge px-3 py-2 text-left hover:bg-surface-raised"
+                        onClick={() => updateSql(panelId, h.sql)}
+                        onContextMenu={(e) => handleHistoryContextMenu(e, h.sql)}
+                      >
+                        <div className="selectable truncate font-mono text-xs text-fg-secondary">
+                          {h.sql}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-fg-muted">
+                          <span className={h.success ? 'text-green-400' : 'text-red-400'}>
+                            {h.success ? t('common.success') : t('common.failed')}
+                          </span>
+                          <span>{h.executionTimeMs}ms</span>
+                          {h.rowsAffected != null && (
+                            <span>{t('query.historyRows', { count: h.rowsAffected })}</span>
+                          )}
+                          <span>{formatLastConnected(h.executedAt)}</span>
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                </button>
-              ))
+                ))}
+              </>
             )}
           </aside>
         )}

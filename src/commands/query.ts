@@ -43,8 +43,8 @@ export const queryCommands = {
 
   cancelQuery: (connectionId: string) => invoke<void>('cancel_query', { connectionId }),
 
-  getQueryHistory: (limit: number, configId?: string) =>
-    invoke<QueryHistoryEntry[]>('get_query_history', { limit, configId }),
+  getQueryHistory: (limit: number, configId?: string, database?: string, schema?: string) =>
+    invoke<QueryHistoryEntry[]>('get_query_history', { limit, configId, database, schema }),
 
   clearQueryHistory: () => invoke<void>('clear_query_history'),
 

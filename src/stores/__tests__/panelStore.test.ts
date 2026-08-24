@@ -473,7 +473,7 @@ describe('panelStore', () => {
 
     await usePanelStore.getState().loadHistory('cfg-1');
 
-    expect(mockGetQueryHistory).toHaveBeenCalledWith(100, 'cfg-1');
+    expect(mockGetQueryHistory).toHaveBeenCalledWith(1000, 'cfg-1');
     expect(usePanelStore.getState().queryHistory).toEqual(history);
   });
 
@@ -528,7 +528,7 @@ describe('panelStore', () => {
 
     await usePanelStore.getState().openQueryHistory('cfg-1');
 
-    expect(mockGetQueryHistory).toHaveBeenCalledWith(100, 'cfg-1');
+    expect(mockGetQueryHistory).toHaveBeenCalledWith(1000, 'cfg-1');
     const state = usePanelStore.getState();
     expect(state.historyVisible).toBe(true);
     expect(state.favoritesVisible).toBe(false);

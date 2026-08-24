@@ -430,7 +430,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
   // ── History / Favorites ────────────────────────────────────────
 
   loadHistory: async (configId) => {
-    const queryHistory = await queryCommands.getQueryHistory(100, configId);
+    const queryHistory = await queryCommands.getQueryHistory(1000, configId);
     set({ queryHistory });
   },
 
