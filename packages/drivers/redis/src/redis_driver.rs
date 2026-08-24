@@ -1219,19 +1219,21 @@ impl DatabaseDriver for RedisDriver {
     ) -> Result<Vec<TableInfo>, DriverError> {
         let t0 = std::time::Instant::now();
         let db_index = Self::parse_db_name(database)?;
-        tracing::info!(%database, db_index, "redis get_tables: acquiring lock");
-        let mut conns = self.connections.write().await;
-        tracing::info!(
-            lock_ms = t0.elapsed().as_millis() as u64,
-            "redis get_tables: lock acquired"
-        );
-        let rc = Self::get_conn(&mut conns, handle)?;
-        Self::select_db(&mut rc.live, db_index)
+        // Read the key list on a short-lived dedicated connection so the
+        // shared session's selected DB stays untouched. Callers (e.g. the
+        // sidebar cache refresh) enumerate several databases in a row and
+        // must never flip the session as a side effect.
+        let plan = {
+            let mut conns = self.connections.write().await;
+            let rc = Self::get_conn(&mut conns, handle)?;
+            rc.plan.clone()
+        };
+        let mut live = open_live_conn(&plan).await?;
+        Self::select_db(&mut live, db_index)
             .await
             .map_err(DriverError::QueryFailed)?;
         let database = database.to_string();
-        with_redis_conn!(&mut rc.live, |conn| get_tables_on(conn, &database, t0)
-            .await)
+        with_redis_conn!(&mut live, |conn| get_tables_on(conn, &database, t0).await)
     }
 
     async fn get_table_schema(

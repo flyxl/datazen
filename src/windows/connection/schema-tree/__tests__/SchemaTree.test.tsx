@@ -232,9 +232,10 @@ describe('SchemaTree routing', () => {
     fireEvent.click(dbBtn.closest('button')!);
 
     await waitFor(() => {
-      expect(mockUseDatabase).toHaveBeenCalledWith('conn-1', 'db1');
+      // Expanding only enumerates the db's tables — the SQL session must NOT
+      // flip (get_tables is session-neutral; activation happens on table open).
+      expect(mockUseDatabase).not.toHaveBeenCalledWith('conn-1', 'db1');
       expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db1');
-      expect(useSchemaStore.getState().currentDatabase).toBe('db1');
       expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['orders']);
     });
 
@@ -260,9 +261,8 @@ describe('SchemaTree routing', () => {
     fireEvent.click(dbBtn.closest('button')!);
 
     await waitFor(() => {
-      expect(mockUseDatabase).toHaveBeenCalledWith('conn-1', 'alpha');
+      expect(mockUseDatabase).not.toHaveBeenCalledWith('conn-1', 'alpha');
       expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'alpha');
-      expect(useSchemaStore.getState().currentDatabase).toBe('alpha');
       expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['t1', 't2']);
     });
 

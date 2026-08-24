@@ -208,7 +208,8 @@ export function UnifiedSchemaTree({
       const { databaseCommands } = await import('../../../commands/database');
       for (const dbName of expanded) {
         try {
-          await databaseCommands.useDatabase(connectionId, dbName);
+          // No useDatabase here: get_tables is session-neutral, so refreshing
+          // expanded-db caches must never flip the shared SQL session.
           const all = await databaseCommands.getTables(connectionId, dbName);
           if (cancelled) return;
           setDbTables((prev) => ({ ...prev, [dbName]: all }));
@@ -269,8 +270,9 @@ export function UnifiedSchemaTree({
 
       setDbLoading((prev) => new Set(prev).add(dbName));
       try {
+        // get_tables is session-neutral — no useDatabase needed to enumerate
+        // another db's tables. The session only moves on explicit activation.
         const { databaseCommands } = await import('../../../commands/database');
-        await databaseCommands.useDatabase(connectionId, dbName);
         const all = await databaseCommands.getTables(connectionId, dbName);
         setDbTables((prev) => ({ ...prev, [dbName]: all }));
         setLoadedTables(dbName, all);
