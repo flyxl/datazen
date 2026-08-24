@@ -163,7 +163,7 @@ Workflow Command Runtime 同时被 Tauri IPC 使用，主要能力包括：
 ## 能力概要
 
 - YAML 格式定义
-- Query / Command / Ai / Condition / ForEach
+- Query / Command / Ai / Condition / ForEach / Merge / Transform
 - Driver-specific Command
 - Connection inheritance / per-step override
 - Command input schema 校验
