@@ -659,7 +659,7 @@ async fn effective_connection_name(
         .map_err(|e| e.to_string())?;
     app_state
         .connection_manager
-        .get_connection_config(&runtime_id)
+        .get_session_config(&runtime_id)
         .await
         .map(|c| c.name)
         .map_err(|e| e.to_string())

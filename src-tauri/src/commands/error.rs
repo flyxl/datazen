@@ -138,7 +138,7 @@ mod tests {
     fn display_and_serialize_variants() {
         let cases: Vec<CommandError> = vec![
             CommandError::Store(StoreError::ReadError("x".into())),
-            CommandError::Connection(ConnectionError::ConfigNotFound("c".into())),
+            CommandError::Connection(ConnectionError::ConnectionConfigNotFound("c".into())),
             CommandError::Driver(DriverError::QueryFailed("q".into())),
             CommandError::Ai(AiError::NotConfigured("ai".into())),
             CommandError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file")),
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn from_conversions_work() {
-        let _: CommandError = ConnectionError::ConnectionNotFound("id".into()).into();
+        let _: CommandError = ConnectionError::DbSessionNotFound("id".into()).into();
         let _: CommandError = DriverError::ConnectionFailed("x".into()).into();
         let _: CommandError = AiError::RequestFailed("fail".into()).into();
         let _: CommandError = std::io::Error::new(std::io::ErrorKind::Other, "io").into();
@@ -176,7 +176,7 @@ mod tests {
         assert_eq!(ok.cmd_err("test_cmd").unwrap(), 7);
 
         let err: Result<i32, ConnectionError> =
-            Err(ConnectionError::ConnectionNotFound("gone".into()));
+            Err(ConnectionError::DbSessionNotFound("gone".into()));
         assert!(err.cmd_err("test_cmd").is_err());
     }
 

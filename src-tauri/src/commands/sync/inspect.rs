@@ -19,12 +19,12 @@ pub(crate) async fn inspect_data_sync_impl(
 ) -> Result<Vec<TableResult>, CommandError> {
     let src_config = state
         .connection_manager
-        .get_connection_config(&source_connection_id)
+        .get_session_config(&source_connection_id)
         .await
         .cmd_err("inspect_data_sync")?;
     let tgt_config = state
         .connection_manager
-        .get_connection_config(&target_connection_id)
+        .get_session_config(&target_connection_id)
         .await
         .cmd_err("inspect_data_sync")?;
 
@@ -48,12 +48,12 @@ pub(crate) async fn inspect_data_sync_impl(
 
     let (src_driver, src_handle) = state
         .connection_manager
-        .get_connection(&source_connection_id)
+        .get_session(&source_connection_id)
         .await
         .cmd_err("inspect_data_sync")?;
     let (tgt_driver, tgt_handle) = state
         .connection_manager
-        .get_connection(&target_connection_id)
+        .get_session(&target_connection_id)
         .await
         .cmd_err("inspect_data_sync")?;
 

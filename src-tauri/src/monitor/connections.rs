@@ -27,8 +27,9 @@ struct MonitorEntry {
 
 /// Holds monitor connections keyed by `config_id` (logical key `monitor:{config_id}`).
 ///
-/// Uses [`ConnectionManager::establish_connection`] so handles are never inserted
-/// into the UI `config_id_map`. Each monitor entry gets its own driver pool instance.
+/// Uses [`ConnectionManager::establish_connection`] so sessions are never inserted
+/// into the UI session map (`ConnectionManager::session_owner_map`). Each monitor
+/// entry gets its own driver pool instance.
 pub struct MonitorConnectionRegistry {
     connection_manager: Arc<ConnectionManager>,
     entries: Arc<RwLock<HashMap<String, MonitorEntry>>>,
@@ -328,7 +329,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn monitor_registry_does_not_touch_ui_config_id_map() {
+    async fn monitor_registry_does_not_touch_ui_session_owner_map() {
         std::env::set_var("DATAZEN_KEYRING", "file");
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
@@ -347,6 +348,6 @@ mod tests {
             )
             .await;
 
-        assert_eq!(connection_manager.ui_session_map_len().await, 0);
+        assert_eq!(connection_manager.session_owner_map_len().await, 0);
     }
 }

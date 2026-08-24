@@ -32,7 +32,7 @@ impl SchemaContextBuilder {
     ) -> Result<(String, Vec<String>), String> {
         let (driver, handle) = self
             .connection_manager
-            .get_connection(connection_id)
+            .get_session(connection_id)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -57,7 +57,7 @@ impl SchemaContextBuilder {
     ) -> Result<SqlGenerationContext, String> {
         let (driver, handle) = self
             .connection_manager
-            .get_connection(connection_id)
+            .get_session(connection_id)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -112,7 +112,7 @@ impl SchemaContextBuilder {
     ) -> Result<SqlGenerationContext, String> {
         let (driver, handle) = self
             .connection_manager
-            .get_connection(connection_id)
+            .get_session(connection_id)
             .await
             .map_err(|e| e.to_string())?;
 

@@ -32,12 +32,12 @@ pub(crate) async fn commit_row_updates_impl(
     tracing::info!(%connection_id, %table, batch_count = updates.len(), "commit_row_updates");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("commit_row_updates")?;
     let read_only = state
         .connection_manager
-        .get_connection_config(&connection_id)
+        .get_session_config(&connection_id)
         .await
         .map(|c| c.read_only)
         .unwrap_or(false);
@@ -147,12 +147,12 @@ pub(crate) async fn commit_row_deletes_impl(
     tracing::info!(%connection_id, %table, batch_count = deletes.len(), "commit_row_deletes");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("commit_row_deletes")?;
     let read_only = state
         .connection_manager
-        .get_connection_config(&connection_id)
+        .get_session_config(&connection_id)
         .await
         .map(|c| c.read_only)
         .unwrap_or(false);

@@ -566,7 +566,7 @@ async fn write_data_file(
 
     let read_only = state
         .connection_manager
-        .get_connection_config(&handle.id)
+        .get_session_config(&handle.id)
         .await
         .map(|c| c.read_only)
         .unwrap_or(false);

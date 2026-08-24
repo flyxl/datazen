@@ -18,12 +18,12 @@ pub(crate) async fn preview_data_transfer_impl(
 
     let src_config = state
         .connection_manager
-        .get_connection_config(&job.source.connection_id)
+        .get_session_config(&job.source.connection_id)
         .await
         .cmd_err("preview_data_transfer")?;
     let tgt_config = state
         .connection_manager
-        .get_connection_config(&job.target.connection_id)
+        .get_session_config(&job.target.connection_id)
         .await
         .cmd_err("preview_data_transfer")?;
 
@@ -43,7 +43,7 @@ pub(crate) async fn preview_data_transfer_impl(
 
     let (src_driver, src_handle) = state
         .connection_manager
-        .get_connection(&job.source.connection_id)
+        .get_session(&job.source.connection_id)
         .await
         .cmd_err("preview_data_transfer")?;
 

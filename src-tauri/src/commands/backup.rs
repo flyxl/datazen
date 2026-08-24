@@ -191,13 +191,13 @@ async fn backup_database_to_path(
     tracing::info!(%connection_id, path = %output_path.display(), "backup_database");
     let config = state
         .connection_manager
-        .get_connection_config(&connection_id)
+        .get_session_config(&connection_id)
         .await
         .cmd_err("backup_database")?;
 
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("backup_database")?;
 
@@ -453,12 +453,12 @@ async fn restore_database_from_path(
 
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&connection_id)
         .await
         .cmd_err("restore_database")?;
     let config = state
         .connection_manager
-        .get_connection_config(&connection_id)
+        .get_session_config(&connection_id)
         .await
         .cmd_err("restore_database")?;
     if config.read_only {

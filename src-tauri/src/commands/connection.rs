@@ -58,22 +58,22 @@ pub(crate) async fn test_connection_impl(
 
 pub(crate) async fn connect_impl(
     state: &AppState,
-    config_id: String,
+    connection_id: String,
 ) -> Result<String, CommandError> {
-    tracing::info!(%config_id, "connect");
-    let conn_id = state
+    tracing::info!(%connection_id, "connect");
+    let db_session_id = state
         .connection_manager
-        .get_or_connect(&config_id)
+        .get_or_connect_session(&connection_id)
         .await
         .cmd_err("connect")?;
 
-    if let Some(mut cfg) = state.store.get_connection(&config_id).await {
+    if let Some(mut cfg) = state.store.get_connection(&connection_id).await {
         cfg.last_connected_at = Some(chrono::Utc::now().to_rfc3339());
         let _ = state.store.save_connection(cfg).await;
     }
 
-    tracing::info!(%config_id, %conn_id, "connect OK");
-    Ok(conn_id)
+    tracing::info!(db_session_id = %db_session_id, "connect OK");
+    Ok(db_session_id)
 }
 
 pub(crate) async fn ping_connection_impl(
@@ -114,11 +114,7 @@ pub(crate) async fn disconnect_impl(
         .await
         .remove(&connection_id)
     {
-        if let Ok((driver, _)) = state
-            .connection_manager
-            .get_connection(&connection_id)
-            .await
-        {
+        if let Ok((driver, _)) = state.connection_manager.get_session(&connection_id).await {
             if let Err(e) = driver.rollback(tx).await {
                 tracing::warn!(%connection_id, error = %e, "rollback session tx on disconnect");
             }
@@ -140,7 +136,7 @@ pub(crate) async fn get_connection_info_impl(
 ) -> Result<serde_json::Value, CommandError> {
     let config = state
         .connection_manager
-        .get_connection_config(&connection_id)
+        .get_session_config(&connection_id)
         .await
         .cmd_err("get_connection_info")?;
 

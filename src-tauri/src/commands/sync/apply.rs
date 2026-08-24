@@ -52,12 +52,12 @@ pub(crate) async fn compare_data_sync_impl(
     let wanted: std::collections::HashSet<String> = tables.into_iter().collect();
     let src_config = state
         .connection_manager
-        .get_connection_config(&source_connection_id)
+        .get_session_config(&source_connection_id)
         .await
         .cmd_err("compare_data_sync")?;
     let tgt_config = state
         .connection_manager
-        .get_connection_config(&target_connection_id)
+        .get_session_config(&target_connection_id)
         .await
         .cmd_err("compare_data_sync")?;
     let family = crate::data_sync::require_data_sync_family(
@@ -67,12 +67,12 @@ pub(crate) async fn compare_data_sync_impl(
     let quote = ident_quote(&family);
     let (src_driver, src_handle) = state
         .connection_manager
-        .get_connection(&source_connection_id)
+        .get_session(&source_connection_id)
         .await
         .cmd_err("compare_data_sync")?;
     let (tgt_driver, tgt_handle) = state
         .connection_manager
-        .get_connection(&target_connection_id)
+        .get_session(&target_connection_id)
         .await
         .cmd_err("compare_data_sync")?;
 
@@ -165,7 +165,7 @@ pub(crate) async fn generate_data_sync_sql_impl(
 
     let tgt_config = state
         .connection_manager
-        .get_connection_config(&target_connection_id)
+        .get_session_config(&target_connection_id)
         .await
         .cmd_err("generate_data_sync_sql")?;
     let family = crate::data_sync::require_data_sync_family(
@@ -175,7 +175,7 @@ pub(crate) async fn generate_data_sync_sql_impl(
     let quote = ident_quote(&family);
     let (tgt_driver, tgt_handle) = state
         .connection_manager
-        .get_connection(&target_connection_id)
+        .get_session(&target_connection_id)
         .await
         .cmd_err("generate_data_sync_sql")?;
 
