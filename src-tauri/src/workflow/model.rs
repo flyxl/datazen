@@ -101,6 +101,65 @@ pub enum WorkflowStep {
         steps: Vec<WorkflowStep>,
         max_iterations: Option<usize>,
     },
+    #[serde(rename = "merge")]
+    Merge {
+        id: String,
+        /// Ordered list of row groups concatenated into a single table.
+        #[serde(default)]
+        sources: Vec<MergeSource>,
+        /// Optional global column order for the output table (unnamed source columns are appended after).
+        #[serde(default)]
+        columns: Option<Vec<String>>,
+        #[serde(default)]
+        timeout_secs: Option<u64>,
+        #[serde(default)]
+        on_error: Option<ErrorHandlingConfig>,
+    },
+    #[serde(rename = "transform")]
+    Transform {
+        id: String,
+        /// Source expression (usually `steps.<id>.rows` or a literal JSON array).
+        from: String,
+        /// Row-level computed columns: `name -> expression`.
+        #[serde(default)]
+        add_columns: Vec<TransformColumn>,
+        /// Optional row filter (reuses the `conditions` comparison grammar on cell values).
+        #[serde(default)]
+        filter: Option<String>,
+        /// Optional column to sort by; prefix with `-` for descending.
+        #[serde(default)]
+        sort_by: Option<String>,
+        /// Number of leading rows to skip before emitting.
+        #[serde(default)]
+        offset: Option<usize>,
+        /// Maximum number of rows to emit.
+        #[serde(default)]
+        limit: Option<usize>,
+        #[serde(default)]
+        timeout_secs: Option<u64>,
+        #[serde(default)]
+        on_error: Option<ErrorHandlingConfig>,
+    },
+}
+
+/// One input group feeding a `merge` step.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MergeSource {
+    /// Path expression resolving to a JSON array of objects.
+    pub source: String,
+    /// Column projection + rename: `output_name -> source_field` (dot path).
+    #[serde(default)]
+    pub columns: serde_json::Map<String, serde_json::Value>,
+    /// Constant columns injected into every row of this group (e.g. `{ src: "PG" }`).
+    #[serde(default)]
+    pub add: serde_json::Map<String, serde_json::Value>,
+}
+
+/// A computed column for a `transform` step.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TransformColumn {
+    pub name: String,
+    pub expr: String,
 }
 
 impl WorkflowStep {
@@ -110,7 +169,9 @@ impl WorkflowStep {
             | Self::Command { id, .. }
             | Self::Ai { id, .. }
             | Self::Condition { id, .. }
-            | Self::ForEach { id, .. } => id,
+            | Self::ForEach { id, .. }
+            | Self::Merge { id, .. }
+            | Self::Transform { id, .. } => id,
         }
     }
     pub(crate) fn step_type_str(&self) -> &'static str {
@@ -120,13 +181,17 @@ impl WorkflowStep {
             Self::Ai { .. } => "ai",
             Self::Condition { .. } => "condition",
             Self::ForEach { .. } => "foreach",
+            Self::Merge { .. } => "merge",
+            Self::Transform { .. } => "transform",
         }
     }
     pub(crate) fn on_error_strategy(&self) -> Option<ErrorStrategy> {
         match self {
             Self::Query { on_error, .. }
             | Self::Command { on_error, .. }
-            | Self::Ai { on_error, .. } => on_error.as_ref().map(|c| c.to_strategy()),
+            | Self::Ai { on_error, .. }
+            | Self::Merge { on_error, .. }
+            | Self::Transform { on_error, .. } => on_error.as_ref().map(|c| c.to_strategy()),
             _ => None,
         }
     }
@@ -134,7 +199,9 @@ impl WorkflowStep {
         match self {
             Self::Query { timeout_secs, .. }
             | Self::Command { timeout_secs, .. }
-            | Self::Ai { timeout_secs, .. } => *timeout_secs,
+            | Self::Ai { timeout_secs, .. }
+            | Self::Merge { timeout_secs, .. }
+            | Self::Transform { timeout_secs, .. } => *timeout_secs,
             _ => None,
         }
     }
