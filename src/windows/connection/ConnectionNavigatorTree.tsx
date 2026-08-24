@@ -1220,6 +1220,7 @@ export const ConnectionNavigatorTree = forwardRef<
               : undefined,
             onNewQuery: () => {
               onSelectConnection(configId);
+              useSchemaStore.setState({ currentDatabase: dbName });
               viewActions?.newQuery?.();
             },
             onQueryHistory: () => {
@@ -1365,6 +1366,7 @@ export const ConnectionNavigatorTree = forwardRef<
             },
             onNewQuery: () => {
               onSelectConnection(configId);
+              useSchemaStore.setState({ currentDatabase: dbName });
               viewActions?.newQuery?.();
             },
             onQueryHistory: () => {
