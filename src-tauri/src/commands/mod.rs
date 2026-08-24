@@ -15,6 +15,7 @@ mod error;
 mod export;
 mod file;
 mod history;
+pub(crate) mod job_registry;
 pub mod mcp;
 mod plugins;
 mod query;
