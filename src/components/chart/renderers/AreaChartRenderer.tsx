@@ -113,7 +113,7 @@ export function AreaChartRenderer({ data, config, onDataPointClick }: AreaChartR
           strokeWidth={2}
           strokeDasharray={dashMap[yKey]}
           hide={hiddenSeries.has(yKey)}
-          isAnimationActive={!config.timeDomain}
+          isAnimationActive={false}
           activeDot={
             config.timeDomain ? false : { r: 5, cursor: onDataPointClick ? 'pointer' : undefined }
           }

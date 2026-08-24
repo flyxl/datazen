@@ -132,7 +132,7 @@ pub fn build_connection_plan(config: &ConnectionConfig) -> Result<ConnectionPlan
             Ok(ConnectionPlan::Standalone(StandalonePlan {
                 url,
                 username: non_empty(config.username.as_deref()),
-                password: config.password.clone(),
+                password: non_empty(config.password.as_deref()),
                 tls,
                 db_index,
                 connect_timeout,
@@ -148,7 +148,7 @@ pub fn build_connection_plan(config: &ConnectionConfig) -> Result<ConnectionPlan
             Ok(ConnectionPlan::Cluster(ClusterPlan {
                 node_urls,
                 username: non_empty(config.username.as_deref()),
-                password: config.password.clone(),
+                password: non_empty(config.password.as_deref()),
                 tls,
                 connect_timeout,
             }))
@@ -170,7 +170,7 @@ pub fn build_connection_plan(config: &ConnectionConfig) -> Result<ConnectionPlan
                 master_name,
                 sentinel_password,
                 username: non_empty(config.username.as_deref()),
-                password: config.password.clone(),
+                password: non_empty(config.password.as_deref()),
                 tls,
                 db_index: parse_db_index(config.database.as_deref())?,
                 connect_timeout,
@@ -868,6 +868,34 @@ mod tests {
                 assert!(!p.tls.enabled);
                 assert!(!p.tls.prefer_fallback);
             }
+            _ => panic!("expected standalone plan"),
+        }
+    }
+
+    #[test]
+    fn empty_password_is_treated_as_none() {
+        // Servers without `requirepass` reject `HELLO AUTH default ""` with an
+        // authentication error, so an empty stored password must be dropped
+        // before building the connection plan.
+        let mut config = base_config();
+        config.password = Some(String::new());
+        let plan = build_connection_plan(&config).unwrap();
+        match plan {
+            ConnectionPlan::Standalone(p) => assert_eq!(p.password, None),
+            _ => panic!("expected standalone plan"),
+        }
+
+        config.password = Some("   ".to_string());
+        let plan = build_connection_plan(&config).unwrap();
+        match plan {
+            ConnectionPlan::Standalone(p) => assert_eq!(p.password, None),
+            _ => panic!("expected standalone plan"),
+        }
+
+        config.password = Some("secret".to_string());
+        let plan = build_connection_plan(&config).unwrap();
+        match plan {
+            ConnectionPlan::Standalone(p) => assert_eq!(p.password.as_deref(), Some("secret")),
             _ => panic!("expected standalone plan"),
         }
     }

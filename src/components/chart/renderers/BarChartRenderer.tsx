@@ -86,6 +86,7 @@ export function BarChartRenderer({ data, config, onDataPointClick }: BarChartRen
           fill={colors[i % colors.length]}
           radius={[3, 3, 0, 0]}
           hide={hiddenSeries.has(yKey)}
+          isAnimationActive={false}
           cursor={onDataPointClick ? 'pointer' : undefined}
           onClick={(_: unknown, index: number) => onDataPointClick?.(index)}
         >
