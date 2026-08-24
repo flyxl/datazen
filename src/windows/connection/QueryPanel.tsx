@@ -196,7 +196,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
   const isMultiDb = useSchemaStore((s) => s.isMultiDatabase);
   const ensureColumns = useSchemaStore((s) => s.ensureColumns);
-  const loadTables = useSchemaStore((s) => s.loadTables);
+  const switchDatabase = useSchemaStore((s) => s.switchDatabase);
   const ensureNamespacePath = useSchemaStore((s) => s.ensureNamespacePath);
   const namespaceLoading = useSchemaStore((s) => s.ensuringCount > 0);
 
@@ -245,9 +245,17 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
         return;
       }
       const db = next[0];
-      if (db && db !== currentDatabase) await loadTables(db);
+      if (db && db !== currentDatabase) {
+        // Use switchDatabase (not loadTables) so the session + editor context
+        // move to the target database without bumping schemaEpoch. Bumping
+        // schemaEpoch treats the switch as a schema-wide change and would make
+        // the sidebar (ConnectionNavigatorTree) wipe and reload every expanded
+        // database, causing a full redraw and racing the session `useDatabase`
+        // back to another database.
+        await switchDatabase(db);
+      }
     },
-    [currentDatabase, ensureNamespacePath, isPathHierarchy, loadTables],
+    [currentDatabase, ensureNamespacePath, isPathHierarchy, switchDatabase],
   );
 
   const handleQualifiedPath = useCallback(

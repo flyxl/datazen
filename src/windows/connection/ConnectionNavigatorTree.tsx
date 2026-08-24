@@ -57,6 +57,7 @@ import type { ConnectionOpenTarget } from '../../lib/connectionViews/types';
 import { showWebContextMenu } from '../../stores/contextMenuStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { shouldUseMultiDatabaseTree } from './schema-tree/SchemaTree';
+import { useExpandedDbCacheRefresh } from './schema-tree/useExpandedDbCacheRefresh';
 import { connectionCommands } from '../../commands/connection';
 import { driverCommands } from '../../commands/driver';
 import { hasCommand } from '../../lib/commandSchema';
@@ -498,7 +499,8 @@ export const ConnectionNavigatorTree = forwardRef<
     const tableKey = `${connectionId}::${dbName}`;
     try {
       const { databaseCommands } = await import('../../commands/database');
-      await databaseCommands.useDatabase(connectionId, dbName);
+      // No useDatabase here: get_tables is session-neutral in every driver,
+      // so refreshing a cache must never flip the shared SQL session.
       const all = await databaseCommands.getTables(connectionId, dbName);
       setDbTablesMap((prev) => ({ ...prev, [tableKey]: all }));
       useSchemaStore.getState().setLoadedTables(dbName, all, connectionId);
@@ -570,52 +572,29 @@ export const ConnectionNavigatorTree = forwardRef<
     [],
   );
 
-  // Invalidate + reload dbTablesMap when databases list or schemaEpoch changes
-  const prevFpRef = useRef<Map<string, string>>(new Map());
-  useEffect(() => {
-    const nextFp = new Map<string, string>();
-    for (const [, cEntry] of Object.entries(activeConnections)) {
-      if (!cEntry.connectionId) continue;
-      const sd = schemas.get(cEntry.connectionId);
-      if (sd) {
-        nextFp.set(cEntry.connectionId, `${sd.databases.join('\0')}|${sd.schemaEpoch}`);
-      }
-    }
-    const prev = prevFpRef.current;
-    prevFpRef.current = nextFp;
-    if (prev.size === 0) return;
-    for (const [connId, fp] of nextFp) {
-      if (prev.get(connId) !== fp) {
-        // Find configId for this connectionId
-        const configId = Object.entries(activeConnections).find(
-          ([, e]) => e.connectionId === connId,
-        )?.[0];
-        // Invalidate and auto-reload expanded databases
-        setDbTablesMap((m) => {
-          const next: Record<string, TableInfo[]> = {};
-          for (const key of Object.keys(m)) {
-            if (!key.startsWith(connId + '::')) next[key] = m[key];
-          }
-          return next;
-        });
-        setDbObjectsMap((m) => {
-          const next: Record<string, DatabaseObject[]> = {};
-          for (const key of Object.keys(m)) {
-            if (!key.startsWith(connId + '::')) next[key] = m[key];
-          }
-          return next;
-        });
-        if (configId) {
-          for (const dbKey of expandedDbs) {
-            if (dbKey.startsWith(configId + '::')) {
-              const dbName = dbKey.slice(configId.length + 2);
-              void reloadDbTables(connId, dbName);
-            }
-          }
+  // Invalidate + reload per-db caches when the connection's schema surface
+  // genuinely changes (db list or epoch). Shared hook — no useDatabase inside.
+  useExpandedDbCacheRefresh({
+    activeConnections,
+    expandedDbs,
+    loadTablesForDb: reloadDbTables,
+    clearCaches: (connId: string) => {
+      setDbTablesMap((m) => {
+        const next: Record<string, TableInfo[]> = {};
+        for (const key of Object.keys(m)) {
+          if (!key.startsWith(connId + '::')) next[key] = m[key];
         }
-      }
-    }
-  }, [activeConnections, schemas, expandedDbs, reloadDbTables]);
+        return next;
+      });
+      setDbObjectsMap((m) => {
+        const next: Record<string, DatabaseObject[]> = {};
+        for (const key of Object.keys(m)) {
+          if (!key.startsWith(connId + '::')) next[key] = m[key];
+        }
+        return next;
+      });
+    },
+  });
 
   // ── Auto-expand groups on first load ──
 

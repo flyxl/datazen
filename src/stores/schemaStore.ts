@@ -264,6 +264,15 @@ interface SchemaStore extends ConnectionSchemaState {
 
   loadForConnection: (connectionId: string, options?: LoadForConnectionOptions) => Promise<void>;
   loadTables: (database: string, connectionId?: string) => Promise<void>;
+  /**
+   * Switch the session to a different logical database and refresh the editor
+   * context (tables/namespace/currentDatabase) for it. Unlike `loadTables`,
+   * this does NOT bump `schemaEpoch`, so sidebar/query-panel listeners that
+   * treat epoch bumps as schema-wide invalidations keep their per-database
+   * cache. It is meant for lightweight context switches (e.g. the Query Panel
+   * database dropdown) where the connection schema itself did not change.
+   */
+  switchDatabase: (database: string, connectionId?: string) => Promise<void>;
   setLoadedTables: (database: string, all: TableInfo[], connectionId?: string) => void;
   removeRelation: (name: string, connectionId?: string) => void;
   mergeNamespace: (
@@ -413,6 +422,23 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
           loading: false,
           schemaEpoch: (schema?.schemaEpoch ?? 0) + 1,
         });
+      } catch (e) {
+        commitConnectionPatch(connectionId, {
+          loading: false,
+          error: e instanceof Error ? e.message : t('schema.loadTablesFailed'),
+        });
+      }
+    },
+
+    switchDatabase: async (database, connectionIdOverride) => {
+      const connectionId = resolveRealConnectionId(get(), connectionIdOverride);
+      if (!connectionId) return;
+      commitConnectionPatch(connectionId, { loading: true, error: null });
+      try {
+        await databaseCommands.useDatabase(connectionId, database);
+        const all = await databaseCommands.getTables(connectionId, database);
+        get().setLoadedTables(database, all, connectionId);
+        commitConnectionPatch(connectionId, { loading: false });
       } catch (e) {
         commitConnectionPatch(connectionId, {
           loading: false,

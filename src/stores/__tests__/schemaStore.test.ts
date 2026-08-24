@@ -280,6 +280,42 @@ describe('schemaStore.loadTables', () => {
   });
 });
 
+describe('schemaStore.switchDatabase', () => {
+  let useSchemaStore: typeof import('../../stores/schemaStore').useSchemaStore;
+  let databaseCommands: typeof import('../../commands/database').databaseCommands;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.useFakeTimers();
+    const storeMod = await import('../../stores/schemaStore');
+    useSchemaStore = storeMod.useSchemaStore;
+    const cmdMod = await import('../../commands/database');
+    databaseCommands = cmdMod.databaseCommands;
+    useSchemaStore.setState({ connectionId: 'test-conn' });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('switches the session database and updates the editor context via setLoadedTables', async () => {
+    await useSchemaStore.getState().switchDatabase('otherdb');
+
+    expect(databaseCommands.useDatabase).toHaveBeenCalledWith('test-conn', 'otherdb');
+    expect(databaseCommands.getTables).toHaveBeenCalledWith('test-conn', 'otherdb');
+    const state = useSchemaStore.getState();
+    expect(state.currentDatabase).toBe('otherdb');
+    expect(state.tables.map((t) => t.name)).toEqual(['users', 'products', 'orders']);
+  });
+
+  it('does not bump schemaEpoch on a lightweight context switch', async () => {
+    expect(useSchemaStore.getState().schemaEpoch).toBe(0);
+    await useSchemaStore.getState().switchDatabase('otherdb');
+    // Identical to loadTables except for the invalidation bump — epoch stays flat.
+    expect(useSchemaStore.getState().schemaEpoch).toBe(0);
+  });
+});
+
 describe('schemaStore.loadColumnMap', () => {
   let useSchemaStore: typeof import('../../stores/schemaStore').useSchemaStore;
   let databaseCommands: typeof import('../../commands/database').databaseCommands;
