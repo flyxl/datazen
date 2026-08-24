@@ -1266,6 +1266,7 @@ const zhCN = {
   'chat.notConfigured': '请先在设置中配置 AI 服务',
   'chat.welcome': '你好！我是你的数据库助手。你可以问我关于 SQL 查询、数据库概念或数据分析的问题。',
   'chat.insertSql': '插入到编辑器',
+  'chat.copyCode': '复制代码',
   'chat.reasoning': '思考过程',
   'chat.questions.customAnswer': '输入自定义回答…',
   'chat.questions.submit': '提交回答',
