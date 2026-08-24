@@ -1,124 +1,329 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>DataZen — Lightweight, Free, Open-Source AI Database Client</title>
-  <meta name="description" content="DataZen is a Tauri-based cross-platform desktop database client: AI SQL generation, EXPLAIN analysis, charts, and cross-database Workflows. Supports PostgreSQL, MySQL, SQLite, and Redis." />
-  <link rel="canonical" href="https://flyxl.github.io/datazen/" />
-  <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/" />
-  <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/" />
-  <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/" />
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="DataZen — Lightweight, Free, Open-Source AI Database Client" />
-  <meta property="og:description" content="DataZen is a Tauri-based cross-platform desktop database client: AI SQL generation, EXPLAIN analysis, charts, and cross-database Workflows. Supports PostgreSQL, MySQL, SQLite, and Redis." />
-  <meta property="og:url" content="https://flyxl.github.io/datazen/" />
-  <meta property="og:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <meta property="og:locale" content="en_US" />
-  <meta property="og:locale:alternate" content="zh_CN" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="DataZen — Lightweight, Free, Open-Source AI Database Client" />
-  <meta name="twitter:description" content="DataZen is a Tauri-based cross-platform desktop database client: AI SQL generation, EXPLAIN analysis, charts, and cross-database Workflows. Supports PostgreSQL, MySQL, SQLite, and Redis." />
-  <meta name="twitter:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <link rel="icon" href="assets/logo.png" />
-  <link rel="stylesheet" href="assets/css/site.css" />
-  <script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  "name": "DataZen",
-  "applicationCategory": "DeveloperApplication",
-  "operatingSystem": "macOS, Windows",
-  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-  "license": "https://www.gnu.org/licenses/gpl-3.0.html",
-  "url": "https://flyxl.github.io/datazen/",
-  "image": "https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png",
-  "description": "Lightweight, free, open-source AI database client built with Tauri.",
-  "inLanguage": "en"
-}
-  </script>
-</head>
-<body>
-  <header id="site-header"></header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DataZen — Lightweight, Free, Open-Source AI Database Client</title>
+    <meta
+      name="description"
+      content="DataZen is a Tauri-based cross-platform desktop database client: AI SQL generation, EXPLAIN analysis, charts, and cross-database Workflows. Supports PostgreSQL, MySQL, SQLite, and Redis."
+    />
+    <link rel="canonical" href="https://flyxl.github.io/datazen/" />
+    <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/" />
+    <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/" />
+    <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/" />
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:title"
+      content="DataZen — Lightweight, Free, Open-Source AI Database Client"
+    />
+    <meta
+      property="og:description"
+      content="DataZen is a Tauri-based cross-platform desktop database client: AI SQL generation, EXPLAIN analysis, charts, and cross-database Workflows. Supports PostgreSQL, MySQL, SQLite, and Redis."
+    />
+    <meta property="og:url" content="https://flyxl.github.io/datazen/" />
+    <meta
+      property="og:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="DataZen — Lightweight, Free, Open-Source AI Database Client"
+    />
+    <meta
+      name="twitter:description"
+      content="DataZen is a Tauri-based cross-platform desktop database client: AI SQL generation, EXPLAIN analysis, charts, and cross-database Workflows."
+    />
+    <meta
+      name="twitter:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <link rel="icon" href="assets/logo.png" />
+    <link rel="stylesheet" href="assets/css/site.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "DataZen",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Windows",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+        "url": "https://flyxl.github.io/datazen/",
+        "image": "https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png",
+        "description": "Lightweight, free, open-source AI database client built with Tauri.",
+        "inLanguage": "en"
+      }
+    </script>
+  </head>
+  <body>
+    <header id="site-header"></header>
 
-  <section class="hero">
-    <div class="wrap">
-      <span class="hero-badge">v0.0.8 · Free &amp; Open Source · GPLv3</span>
-      <h1>Let <span class="grad">AI</span> handle the database work<br />Turn data into visual charts</h1>
-      <p class="lead">
-        DataZen is a desktop database client under 10MB: natural-language SQL,
-        one-click error diagnosis, smart EXPLAIN analysis, charted query results,
-        and YAML workflows that span multiple databases.
-      </p>
-      <div class="hero-cta">
-        <a class="btn btn-primary btn-lg" href="download.html">Download</a>
-        <a class="btn btn-secondary btn-lg" href="https://github.com/flyxl/datazen" target="_blank" rel="noopener">GitHub</a>
+    <!-- Hero -->
+    <section class="hero">
+      <div class="wrap">
+        <span class="hero-badge"
+          ><span class="dot"></span>v0.0.8 · Free &amp; Open Source · GPLv3</span
+        >
+        <h1>
+          Let <span class="grad">AI</span> handle the database work.<br />Turn data into charts.
+        </h1>
+        <p class="lead">
+          DataZen is a desktop database client under 10&nbsp;MB. Query in natural language, diagnose
+          errors with one click, read EXPLAIN plans like a pro, chart every result, and automate
+          cross-database jobs with YAML workflows.
+        </p>
+        <div class="hero-cta">
+          <a class="btn btn-primary btn-lg" href="download.html">Download for macOS / Windows</a>
+          <a
+            class="btn btn-secondary btn-lg"
+            href="https://github.com/flyxl/datazen"
+            target="_blank"
+            rel="noopener"
+            >Star on GitHub</a
+          >
+        </div>
+        <p class="hero-note">No account. No telemetry of your data. Local-first by design.</p>
+        <div class="hero-shot">
+          <div class="shot-frame">
+            <div class="bar"><i></i><i></i><i></i><span>DataZen — 演示 PostgreSQL</span></div>
+            <img
+              src="assets/screenshots/01-main-window.png"
+              alt="DataZen main window with connection tree and query results"
+            />
+          </div>
+        </div>
       </div>
-      <p class="hero-note">macOS · Windows · PostgreSQL / MySQL / MariaDB / SQLite / Redis</p>
-      <div class="hero-shot">
-        <img src="assets/screenshots/01-main-window.png" alt="DataZen main window" />
+    </section>
+
+    <!-- Supported databases strip -->
+    <section class="db-strip">
+      <div class="wrap db-strip-inner">
+        <span class="label">Built-in support</span>
+        <span class="db-chip"><i></i>PostgreSQL</span>
+        <span class="db-chip"><i></i>MySQL</span>
+        <span class="db-chip"><i></i>MariaDB</span>
+        <span class="db-chip"><i></i>SQLite</span>
+        <span class="db-chip"><i></i>Redis</span>
+        <span class="pill">+ plugins: KiwiDB / Trino / Superset…</span>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="section-tight">
-    <div class="wrap grid-3">
-      <a class="card" href="ai.html" style="display:block">
-        <div class="icon">🤖</div>
-        <h3>AI Assistant</h3>
-        <p>Natural-language SQL, error diagnosis, EXPLAIN insights, AI Chat sidebar, and smart filters. OpenAI / Anthropic / DeepSeek / custom endpoints.</p>
-        <span class="tag">Explore AI →</span>
-      </a>
-      <a class="card" href="charts.html" style="display:block">
-        <div class="icon">📊</div>
-        <h3>Charts</h3>
-        <p>One-click chart view with smart type recommendations. Line, bar, pie, scatter, and area — export PNG / SVG.</p>
-        <span class="tag">Explore charts →</span>
-      </a>
-      <a class="card" href="workflow.html" style="display:block">
-        <div class="icon">⚙️</div>
-        <h3>Workflow Automation</h3>
-        <p>YAML workflows for queries, AI analysis, branches, and loops. Run across databases from the UI, MCP, or chat.</p>
-        <span class="tag">Explore Workflow →</span>
-      </a>
-    </div>
-  </section>
-
-  <section class="section">
-    <div class="wrap">
-      <div class="center" style="margin-bottom:36px">
-        <h2 style="font-size:30px;margin-bottom:10px">More than “yet another database client”</h2>
-        <p class="muted" style="font-size:16px">Lightweight, secure, and extensible — built around real developer workflows</p>
+    <!-- Stats band -->
+    <section class="section-tight">
+      <div class="wrap stats-band">
+        <div class="stat"><b>&lt;10 MB</b><span>installer size — Rust core</span></div>
+        <div class="stat"><b>10</b><span>UI languages out of the box</span></div>
+        <div class="stat"><b>5+</b><span>databases, plugin extensible</span></div>
+        <div class="stat"><b>0 €</b><span>free &amp; open source forever</span></div>
       </div>
-      <div class="grid-4">
-        <div class="card"><div class="icon">⚡</div><h3>Under 10MB</h3><p>Tauri v2 + Rust: tiny installers, fast startup, far less memory than typical Java clients.</p></div>
-        <div class="card"><div class="icon">🛡️</div><h3>Local-first security</h3><p>Passwords in the OS keychain, encrypted SSH credentials, no cloud account — data stays on your machine.</p></div>
-        <div class="card"><div class="icon">🧩</div><h3>Plugin ecosystem</h3><p>Compile-time drivers: kiwi, OLAP (Presto / Trino), Superset — inject what you need.</p></div>
-        <div class="card"><div class="icon">🌍</div><h3>10 languages</h3><p>en / zh-CN / zh-TW / ja / ko / de / es / fr / pt / ru — follows system language on first launch.</p></div>
+    </section>
+
+    <!-- Three pillars with real screenshots -->
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head center">
+          <span class="kicker">Core capabilities</span>
+          <h2>An AI teammate for your daily database work</h2>
+          <p>
+            Not a gimmicky chatbot bolted onto a grid — every feature is wired into the actual query
+            workflow.
+          </p>
+        </div>
+        <div class="grid-3">
+          <a class="card media-card" href="ai.html">
+            <img
+              src="assets/screenshots/03-ai-nl2sql.png"
+              alt="Natural-language SQL generation"
+              loading="lazy"
+            />
+            <div class="body">
+              <h3>AI Assistant</h3>
+              <p>
+                Natural-language SQL, one-click error diagnosis, smart EXPLAIN reading, chat
+                sidebar, NL data filters.
+              </p>
+              <span class="tag">Explore AI →</span>
+            </div>
+          </a>
+          <a class="card media-card" href="charts.html">
+            <img
+              src="assets/screenshots/02-query-chart.png"
+              alt="Charted query results"
+              loading="lazy"
+            />
+            <div class="body">
+              <h3>Charts</h3>
+              <p>
+                One-click chart view with smart type recommendations. Line, bar, pie, scatter, area
+                — export PNG / SVG.
+              </p>
+              <span class="tag">Explore charts →</span>
+            </div>
+          </a>
+          <a class="card media-card" href="workflow.html">
+            <img
+              src="assets/screenshots/04-workflow.png"
+              alt="Cross-database workflow run"
+              loading="lazy"
+            />
+            <div class="body">
+              <h3>Workflow Automation</h3>
+              <p>
+                YAML workflows spanning multiple databases: queries, commands, conditions, loops,
+                merges — from UI or MCP.
+              </p>
+              <span class="tag">Explore Workflow →</span>
+            </div>
+          </a>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="section" style="padding-top:0">
-    <div class="wrap">
-      <h2 style="font-size:26px;margin-bottom:24px">Screenshots</h2>
-      <div class="shots">
-        <img src="assets/screenshots/02-query-chart.png" alt="Query results and charts" loading="lazy" />
-        <img src="assets/screenshots/03-ai-nl2sql.png" alt="AI-generated SQL" loading="lazy" />
-        <img src="assets/screenshots/04-workflow.png" alt="Workflow editor" loading="lazy" />
+    <!-- Why DataZen -->
+    <section class="section" style="padding-top: 0">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="kicker">Why DataZen</span>
+          <h2>More than “yet another database client”</h2>
+          <p>Lightweight, secure, and extensible — designed around real developer workflows.</p>
+        </div>
+        <div class="grid-4">
+          <div class="card">
+            <div class="icon">⚡</div>
+            <h3>Under 10 MB</h3>
+            <p>
+              Tauri v2 + Rust core: tiny installers, instant startup, far lighter than JVM-based
+              clients.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">🛡️</div>
+            <h3>Local-first security</h3>
+            <p>
+              Passwords live in the OS keychain; nothing to cloud. Your data never leaves your
+              machine.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">🧩</div>
+            <h3>Plugin ecosystem</h3>
+            <p>
+              Compile-time drivers (KiwiDB, Trino, Superset) and runtime extension pages &amp;
+              themes.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">🌍</div>
+            <h3>10 languages</h3>
+            <p>
+              en / zh-CN / zh-TW / ja / ko / de / es / fr / pt / ru — follows system language on
+              first launch.
+            </p>
+          </div>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="section">
-    <div class="wrap center">
-      <h2 style="font-size:28px;margin-bottom:14px">Try it now</h2>
-      <p class="muted" style="margin-bottom:24px">Free and open source. No signup. Download and go.</p>
-      <a class="btn btn-primary btn-lg" href="download.html">Go to download</a>
-    </div>
-  </section>
+    <!-- Comparison -->
+    <section class="section" style="padding-top: 0">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="kicker">Compare</span>
+          <h2>Heavy client, meet the featherweight</h2>
+        </div>
+        <table class="compare">
+          <thead>
+            <tr>
+              <th scope="col">&nbsp;</th>
+              <th scope="col">DataZen</th>
+              <th scope="col">JVM-based clients</th>
+              <th scope="col">Native heavyweights</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Installer size</td>
+              <td class="yes">&lt; 10 MB</td>
+              <td class="no">~ 400 MB</td>
+              <td class="no">100–300 MB</td>
+            </tr>
+            <tr>
+              <td>Startup time</td>
+              <td class="yes">&lt; 1 s</td>
+              <td class="no">5–15 s</td>
+              <td>1–3 s</td>
+            </tr>
+            <tr>
+              <td>Built-in AI (NL2SQL, diagnosis, EXPLAIN)</td>
+              <td class="yes">✓</td>
+              <td class="no">—</td>
+              <td class="no">Partial / paid tiers</td>
+            </tr>
+            <tr>
+              <td>Cross-database YAML workflows</td>
+              <td class="yes">✓</td>
+              <td class="no">—</td>
+              <td class="no">—</td>
+            </tr>
+            <tr>
+              <td>Charts on any result set</td>
+              <td class="yes">✓</td>
+              <td>Paid add-ons</td>
+              <td>Paid editions</td>
+            </tr>
+            <tr>
+              <td>Price</td>
+              <td class="yes">Free · GPLv3</td>
+              <td>Free / paid</td>
+              <td>$99+ / seat</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="muted" style="font-size: 12.5px; margin-top: 8px">
+          Comparison figures are indicative, based on publicly available installers as of 2026.
+        </p>
+      </div>
+    </section>
 
-  <footer id="site-footer"></footer>
-  <script src="assets/js/site.js"></script>
-</body>
+    <!-- Gallery -->
+    <section class="section" style="padding-top: 0">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="kicker">Gallery</span>
+          <h2>A look inside</h2>
+        </div>
+        <div class="shots">
+          <img src="assets/screenshots/14-multidb.png" alt="Multi-database tree" loading="lazy" />
+          <img
+            src="assets/screenshots/16-er.png"
+            alt="ER diagram with foreign-key relations"
+            loading="lazy"
+          />
+          <img
+            src="assets/screenshots/21-dashboard.png"
+            alt="Monitoring dashboard widgets"
+            loading="lazy"
+          />
+        </div>
+      </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section class="section" style="padding-top: 0">
+      <div class="wrap">
+        <div class="cta-band">
+          <h2>Ready to zen your databases?</h2>
+          <p>Download free, connect in seconds, and let the AI do the boring parts.</p>
+          <a class="btn btn-primary btn-lg" href="download.html">Get DataZen</a>
+        </div>
+      </div>
+    </section>
+
+    <footer id="site-footer"></footer>
+    <script src="assets/js/site.js"></script>
+  </body>
 </html>

@@ -72,6 +72,9 @@ echo "  Ensured DB $MYSQL_DB"
 echo ""
 bash "$SCRIPT_DIR/setup-sync-dbs.sh"
 
+# Demo data for the marketing screenshot spec (zz-screenshots.ts).
+bash "$SCRIPT_DIR/setup-demo-data.sh" || echo "  WARNING: setup-demo-data.sh failed; zz-screenshots may fail."
+
 echo ""
 echo "=== Connectivity check ==="
 psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$E2E_DB" -tAc "SELECT COUNT(*) FROM product" >/dev/null
