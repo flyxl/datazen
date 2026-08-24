@@ -235,7 +235,8 @@ pub fn run_transform(
         rows.sort_by(|a, b| {
             let av = access(a.as_object().unwrap_or(&Map::new()), &field);
             let bv = access(b.as_object().unwrap_or(&Map::new()), &field);
-            compare_json(&av, &bv).then_with(|| json_value_to_string(&av).cmp(&json_value_to_string(&bv)))
+            compare_json(&av, &bv)
+                .then_with(|| json_value_to_string(&av).cmp(&json_value_to_string(&bv)))
         });
         if desc {
             rows.reverse();
@@ -368,7 +369,9 @@ fn tokenize(input: &str) -> Result<Vec<Tok>, String> {
             }
             _ if c.is_alphanumeric() || c == '_' || c == '.' => {
                 let mut id = String::new();
-                while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_' || chars[i] == '.') {
+                while i < chars.len()
+                    && (chars[i].is_alphanumeric() || chars[i] == '_' || chars[i] == '.')
+                {
                     id.push(chars[i]);
                     i += 1;
                 }
@@ -599,12 +602,18 @@ mod tests {
             MergeSource {
                 source: "steps.pg.rows".into(),
                 columns: serde_json::Map::new(),
-                add: serde_json::json!({"src":"PG"}).as_object().cloned().unwrap(),
+                add: serde_json::json!({"src":"PG"})
+                    .as_object()
+                    .cloned()
+                    .unwrap(),
             },
             MergeSource {
                 source: "steps.my.rows".into(),
                 columns: serde_json::Map::new(),
-                add: serde_json::json!({"src":"MY"}).as_object().cloned().unwrap(),
+                add: serde_json::json!({"src":"MY"})
+                    .as_object()
+                    .cloned()
+                    .unwrap(),
             },
         ];
         let out = run_merge(&sources, &None, &c).unwrap();
@@ -677,10 +686,7 @@ mod tests {
 
     #[test]
     fn transform_sort_desc_and_limit() {
-        let c = ctx_with(&[(
-            "s",
-            serde_json::json!({"rows":[{"v":3},{"v":1},{"v":2}]}),
-        )]);
+        let c = ctx_with(&[("s", serde_json::json!({"rows":[{"v":3},{"v":1},{"v":2}]}))]);
         let out = run_transform(
             "steps.s.rows",
             &[],
@@ -732,7 +738,10 @@ mod tests {
             "alice"
         );
         assert_eq!(
-            evaluate_expression("name + '!'", &row).unwrap().as_str().unwrap(),
+            evaluate_expression("name + '!'", &row)
+                .unwrap()
+                .as_str()
+                .unwrap(),
             "alice!"
         );
         assert_eq!(evaluate_expression("age * 2", &row).unwrap(), 60.0);

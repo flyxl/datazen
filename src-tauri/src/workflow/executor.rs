@@ -510,7 +510,12 @@ impl WorkflowExecutor {
                     sql_executed: None,
                 })
             }
-            WorkflowStep::Merge { id, sources, columns, .. } => {
+            WorkflowStep::Merge {
+                id,
+                sources,
+                columns,
+                ..
+            } => {
                 let resolved: Vec<MergeSource> = sources
                     .iter()
                     .map(|s| merge_template_resolve(s, context))
@@ -543,7 +548,9 @@ impl WorkflowExecutor {
                     .iter()
                     .map(|c| TransformColumn {
                         name: c.name.clone(),
-                        expr: context.resolve_template(&c.expr).unwrap_or_else(|_| c.expr.clone()),
+                        expr: context
+                            .resolve_template(&c.expr)
+                            .unwrap_or_else(|_| c.expr.clone()),
                     })
                     .collect();
                 let resolved_filter = filter
@@ -865,12 +872,18 @@ mod tests {
                         MergeSource {
                             source: "steps.t1.rows".into(),
                             columns: serde_json::Map::new(),
-                            add: serde_json::json!({"src":"CALC"}).as_object().cloned().unwrap(),
+                            add: serde_json::json!({"src":"CALC"})
+                                .as_object()
+                                .cloned()
+                                .unwrap(),
                         },
                         MergeSource {
                             source: "[{\"a\":\"z\",\"amount\":1}]".into(),
                             columns: serde_json::Map::new(),
-                            add: serde_json::json!({"src":"LIT"}).as_object().cloned().unwrap(),
+                            add: serde_json::json!({"src":"LIT"})
+                                .as_object()
+                                .cloned()
+                                .unwrap(),
                         },
                     ],
                     columns: None,
