@@ -179,6 +179,8 @@ export interface QueryHistoryEntry {
   id: string;
   configId: string;
   database: string;
+  /** Schema namespace when known (PG search_path is not session-tracked yet → usually absent). */
+  schema?: string | null;
   sql: string;
   executedAt: string;
   executionTimeMs: number;

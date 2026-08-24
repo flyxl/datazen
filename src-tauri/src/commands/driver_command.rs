@@ -145,7 +145,11 @@ async fn record_sql_command_outcome(
         success,
         error_message,
     };
-    let _ = state.store.add_query_history(entry).await;
+    // Persistence failures must not break query execution, but silently
+    // dropping history (disk full / locked db) is undebuggable — log it.
+    if let Err(e) = state.store.add_query_history(entry).await {
+        tracing::warn!(error = %e, "add_query_history failed");
+    }
 }
 
 fn query_rows_affected(data: &serde_json::Value) -> Option<u64> {

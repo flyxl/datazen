@@ -394,7 +394,24 @@ mod tests {
         delete_keyring_entry_for_test();
 
         let dir = tempdir().unwrap();
-        let result = load_or_create_master_key(dir.path());
+        // The OS keychain may block on an interactive authorization prompt
+        // (e.g. macOS securityd) when run locally. Guard with a timeout and
+        // skip instead of deadlocking the whole suite while holding ENV_LOCK.
+        let (tx, rx) = std::sync::mpsc::channel();
+        let dir_for_thread = dir.path().to_path_buf();
+        std::thread::spawn(move || {
+            let _ = tx.send(load_or_create_master_key(&dir_for_thread));
+        });
+        let result = match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+            Ok(result) => result,
+            Err(_) => {
+                eprintln!(
+                    "skipping: keychain access timed out (likely an OS auth prompt); \
+                     set DATAZEN_KEYRING=file or unlock the keychain"
+                );
+                return;
+            }
+        };
         match result {
             Ok(_) => {
                 // Keychain is usable in this environment — clean up and skip assertion.

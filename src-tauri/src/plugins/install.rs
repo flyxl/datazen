@@ -488,6 +488,7 @@ fn atomic_replace_dir(dest: &Path, staging: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::sync::{Mutex, MutexGuard};
     use tempfile::TempDir;
     use zip::write::SimpleFileOptions;
     use zip::{CompressionMethod, ZipWriter};
@@ -813,6 +814,19 @@ mod tests {
         assert!(err.contains("not found"), "unexpected: {err}");
     }
 
+    // Inspect staging dirs are created in the global temp dir by production
+    // code, so parallel tests would observe each other's transient
+    // `.datazen-inspect-*` entries and race on count_inspect_dirs(). Every
+    // test below that calls inspect_plugin_package holds this lock for its
+    // whole body; no other test module creates that prefix.
+    static INSPECT_TMP_LOCK: Mutex<()> = Mutex::new(());
+
+    fn inspect_tmp_lock() -> MutexGuard<'static, ()> {
+        INSPECT_TMP_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     fn count_inspect_dirs() -> usize {
         fs::read_dir(std::env::temp_dir())
             .unwrap()
@@ -827,6 +841,7 @@ mod tests {
 
     #[test]
     fn inspect_plugin_package_returns_manifest_without_installing() {
+        let _inspect_guard = inspect_tmp_lock();
         let tmp = TempDir::new().unwrap();
         let zip_path = tmp.path().join("demo.zip");
         write_demo_zip(&zip_path, None);
@@ -851,6 +866,7 @@ mod tests {
 
     #[test]
     fn inspect_plugin_package_accepts_top_level_folder_and_plain_dirs() {
+        let _inspect_guard = inspect_tmp_lock();
         let tmp = TempDir::new().unwrap();
         let zip_path = tmp.path().join("demo.zip");
         write_demo_zip(&zip_path, Some("acme.demo"));
@@ -868,6 +884,7 @@ mod tests {
 
     #[test]
     fn inspect_plugin_package_rejects_invalid_packages() {
+        let _inspect_guard = inspect_tmp_lock();
         // Missing path.
         let err =
             inspect_plugin_package(Path::new("/nonexistent/datazen-inspect.zip")).unwrap_err();
