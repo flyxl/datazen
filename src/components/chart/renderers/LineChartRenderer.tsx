@@ -111,7 +111,7 @@ export function LineChartRenderer({ data, config, onDataPointClick }: LineChartR
           strokeWidth={2}
           strokeDasharray={dashMap[yKey]}
           hide={hiddenSeries.has(yKey)}
-          isAnimationActive={!config.timeDomain}
+          isAnimationActive={false}
           dot={config.timeDomain ? false : { r: 3, fill: colors[i % colors.length] }}
           activeDot={
             config.timeDomain ? false : { r: 5, cursor: onDataPointClick ? 'pointer' : undefined }

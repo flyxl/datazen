@@ -65,6 +65,7 @@ export function ScatterChartRenderer({
       <Scatter
         data={data}
         fill={colors[0]}
+        isAnimationActive={false}
         cursor={onDataPointClick ? 'pointer' : undefined}
         onClick={(_: unknown, index: number) => onDataPointClick?.(index)}
       />

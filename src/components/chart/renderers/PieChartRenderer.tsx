@@ -22,8 +22,13 @@ export function PieChartRenderer({ data, config, onDataPointClick }: PieChartRen
         cx="50%"
         cy="50%"
         outerRadius="70%"
-        label={config.showValues ? (props: { name?: string; percent?: number }) =>
-          `${props.name ?? ''}: ${((props.percent ?? 0) * 100).toFixed(0)}%` : false}
+        isAnimationActive={false}
+        label={
+          config.showValues
+            ? (props: { name?: string; percent?: number }) =>
+                `${props.name ?? ''}: ${((props.percent ?? 0) * 100).toFixed(0)}%`
+            : false
+        }
         labelLine={config.showValues}
       >
         {data.map((_, idx) => (
@@ -44,9 +49,7 @@ export function PieChartRenderer({ data, config, onDataPointClick }: PieChartRen
           fontSize: 12,
         }}
       />
-      {config.showLegend && (
-        <Legend wrapperStyle={{ fontSize: 12, color: 'var(--c-fg, #eee)' }} />
-      )}
+      {config.showLegend && <Legend wrapperStyle={{ fontSize: 12, color: 'var(--c-fg, #eee)' }} />}
     </PieChart>
   );
 }
