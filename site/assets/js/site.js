@@ -33,6 +33,7 @@
       footerContact: 'Contact',
       langSwitchLabel: '中',
       langSwitchAria: 'Switch to Chinese',
+      themeToggleAria: 'Toggle light / dark theme',
     },
     zh: {
       nav: [
@@ -65,6 +66,7 @@
       footerContact: '联系作者',
       langSwitchLabel: 'EN',
       langSwitchAria: '切换到英文',
+      themeToggleAria: '切换亮色 / 暗色主题',
     },
   };
 
@@ -116,6 +118,12 @@
       '<div class="nav-links">' +
       links +
       '</div>' +
+      '<div class="nav-tools">' +
+      '<button class="theme-toggle" type="button" data-theme-toggle aria-label="' +
+      t.themeToggleAria +
+      '" title="' +
+      t.themeToggleAria +
+      '"><span data-theme-icon>🌙</span></button>' +
       '<a class="nav-lang" href="' +
       langHref +
       '" aria-label="' +
@@ -123,6 +131,7 @@
       '">' +
       t.langSwitchLabel +
       '</a>' +
+      '</div>' +
       '<a class="btn btn-primary nav-cta" href="download.html">' +
       t.downloadCta +
       '</a>' +
@@ -131,7 +140,39 @@
     toggle.addEventListener('click', function () {
       host.querySelector('.nav-links').classList.toggle('open');
     });
+    const themeBtn = host.querySelector('[data-theme-toggle]');
+    themeBtn.addEventListener('click', toggleTheme);
+    syncThemeIcon(host.querySelector('[data-theme-icon]'));
   }
+
+  // ── Theme: dark default, persisted in localStorage, applied pre-paint ──
+
+  const THEME_KEY = 'dz-theme';
+
+  function currentTheme() {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === 'light' || saved === 'dark') return saved;
+    return 'dark';
+  }
+
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+  }
+
+  function syncThemeIcon(el) {
+    if (!el) return;
+    el.textContent = document.documentElement.getAttribute('data-theme') === 'light' ? '☀️' : '🌙';
+  }
+
+  function toggleTheme() {
+    const next = currentTheme() === 'dark' ? 'light' : 'dark';
+    localStorage.setItem(THEME_KEY, next);
+    applyTheme(next);
+    document.querySelectorAll('[data-theme-icon]').forEach(syncThemeIcon);
+  }
+
+  // Set the attribute as early as possible to avoid theme flash.
+  applyTheme(currentTheme());
 
   function renderFooter() {
     const host = document.getElementById('site-footer');
