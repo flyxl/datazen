@@ -107,10 +107,7 @@ fn path_is_under(child: &std::path::Path, root: &std::path::Path) -> bool {
 
 /// Legacy path-based IPC is only available in webdriver/E2E builds.
 fn require_webdriver_path_ipc(disabled_msg: &'static str) -> Result<(), CommandError> {
-    if !cfg!(feature = "webdriver") {
-        return Err(CommandError::Validation(disabled_msg.into()));
-    }
-    Ok(())
+    super::error::require_webdriver_path_ipc(disabled_msg)
 }
 
 /// Open the application log directory (path resolved server-side).

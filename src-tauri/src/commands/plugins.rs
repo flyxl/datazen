@@ -319,13 +319,7 @@ pub(crate) async fn read_plugin_file_impl(
         )));
     }
 
-    let canonical_base = fs::canonicalize(&plugin_dir).cmd_err("read_plugin_file")?;
-    let canonical_file = fs::canonicalize(&file_path).cmd_err("read_plugin_file")?;
-    if !canonical_file.starts_with(&canonical_base) {
-        return Err(CommandError::Validation(
-            "path traversal not allowed".into(),
-        ));
-    }
+    super::error::assert_under_dir(&plugin_dir, &file_path, "read_plugin_file")?;
 
     tokio::fs::read(&file_path)
         .await

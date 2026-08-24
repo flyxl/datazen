@@ -62,17 +62,7 @@ impl<'a> ThrottledRestoreProgress<'a> {
 }
 
 fn require_webdriver_path_ipc(disabled_msg: &'static str) -> Result<(), CommandError> {
-    if !cfg!(feature = "webdriver") {
-        return Err(CommandError::Validation(disabled_msg.into()));
-    }
-    Ok(())
-}
-
-fn map_driver_err(e: DriverError) -> CommandError {
-    match e {
-        DriverError::NotSupported(msg) => CommandError::Validation(msg),
-        other => CommandError::Driver(other),
-    }
+    super::error::require_webdriver_path_ipc(disabled_msg)
 }
 
 pub(crate) fn parse_backup_options(options: &[String]) -> Result<BackupDumpOptions, CommandError> {
@@ -212,7 +202,7 @@ async fn backup_database_to_path(
         .dump_database_with_progress(&handle, &db_name, &opts, &mut on_progress)
         .await
         .map_err(|e| {
-            let err = map_driver_err(e);
+            let err = CommandError::from(e);
             tracing::error!(cmd = "backup_database", error = %err);
             err
         })?;
@@ -506,8 +496,7 @@ async fn restore_database_from_path(
         } else {
             driver
                 .restore_sql_with_progress(&handle, "", Some(&restore_opts), &mut on_progress)
-                .await
-                .map_err(map_driver_err)?;
+                .await?;
         }
     }
     throttle.flush();
@@ -572,10 +561,7 @@ async fn stream_sql_file_into_session(
         let bytes = item.map_err(CommandError::Validation)?;
         let text = utf8.push(&bytes).map_err(CommandError::Validation)?;
         if !text.is_empty() {
-            session
-                .feed(&text, on_progress)
-                .await
-                .map_err(map_driver_err)?;
+            session.feed(&text, on_progress).await?;
         }
     }
     match reader_task.await {
@@ -587,12 +573,9 @@ async fn stream_sql_file_into_session(
     }
     let tail = utf8.finish().map_err(CommandError::Validation)?;
     if !tail.is_empty() {
-        session
-            .feed(&tail, on_progress)
-            .await
-            .map_err(map_driver_err)?;
+        session.feed(&tail, on_progress).await?;
     }
-    session.finish(on_progress).await.map_err(map_driver_err)
+    session.finish(on_progress).await.map_err(Into::into)
 }
 
 #[cfg(test)]
@@ -665,14 +648,14 @@ mod tests {
     }
 
     #[test]
-    fn map_driver_err_not_supported_is_validation() {
-        let err = map_driver_err(DriverError::NotSupported("create".into()));
+    fn driver_err_not_supported_is_validation() {
+        let err = CommandError::from(DriverError::NotSupported("create".into()));
         assert!(matches!(err, CommandError::Validation(msg) if msg == "create"));
     }
 
     #[test]
-    fn map_driver_err_other_stays_driver() {
-        let err = map_driver_err(DriverError::QueryFailed("boom".into()));
+    fn driver_err_other_stays_driver() {
+        let err = CommandError::from(DriverError::QueryFailed("boom".into()));
         assert!(matches!(err, CommandError::Driver(_)));
     }
 

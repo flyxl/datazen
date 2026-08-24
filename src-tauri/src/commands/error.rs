@@ -101,6 +101,66 @@ impl From<crate::data_transfer::TransferError> for CommandError {
     }
 }
 
+impl From<crate::dashboard::store::DashboardStoreError> for CommandError {
+    fn from(e: crate::dashboard::store::DashboardStoreError) -> Self {
+        match e {
+            crate::dashboard::store::DashboardStoreError::NotFound(id) => Self::NotFound(id),
+            crate::dashboard::store::DashboardStoreError::Parse(msg) => Self::Validation(msg),
+            crate::dashboard::store::DashboardStoreError::Db(
+                crate::store::AppDbError::NotFound(id),
+            ) => Self::NotFound(id),
+            crate::dashboard::store::DashboardStoreError::Db(e) => Self::Internal(e.to_string()),
+        }
+    }
+}
+
+impl From<crate::dashboard::runs::DashboardRunsError> for CommandError {
+    fn from(e: crate::dashboard::runs::DashboardRunsError) -> Self {
+        match e {
+            crate::dashboard::runs::DashboardRunsError::NotFound(id) => Self::NotFound(id),
+            crate::dashboard::runs::DashboardRunsError::Parse(msg) => Self::Validation(msg),
+            crate::dashboard::runs::DashboardRunsError::Db(e) => Self::Internal(e.to_string()),
+        }
+    }
+}
+
+impl From<crate::dashboard::export::DashboardExportError> for CommandError {
+    fn from(e: crate::dashboard::export::DashboardExportError) -> Self {
+        match e {
+            crate::dashboard::export::DashboardExportError::Validation(msg) => {
+                Self::Validation(msg)
+            }
+            crate::dashboard::export::DashboardExportError::Io(e) => Self::Io(e),
+            crate::dashboard::export::DashboardExportError::Store(e) => Self::from(e),
+            crate::dashboard::export::DashboardExportError::Database(e) => {
+                Self::Internal(e.to_string())
+            }
+        }
+    }
+}
+
+impl From<crate::dashboard::execute::DashboardExecuteError> for CommandError {
+    fn from(e: crate::dashboard::execute::DashboardExecuteError) -> Self {
+        match e {
+            crate::dashboard::execute::DashboardExecuteError::Workflow(msg) => {
+                Self::Validation(msg)
+            }
+            crate::dashboard::execute::DashboardExecuteError::Runs(e) => Self::from(e),
+            crate::dashboard::execute::DashboardExecuteError::Store(e) => Self::from(e),
+        }
+    }
+}
+
+impl From<crate::dashboard::create::CreateWidgetError> for CommandError {
+    fn from(e: crate::dashboard::create::CreateWidgetError) -> Self {
+        match e {
+            crate::dashboard::create::CreateWidgetError::Store(e) => Self::from(e),
+            crate::dashboard::create::CreateWidgetError::Validation(msg) => Self::Validation(msg),
+            crate::dashboard::create::CreateWidgetError::Workflow(msg) => Self::Validation(msg),
+        }
+    }
+}
+
 impl From<String> for CommandError {
     fn from(s: String) -> Self {
         Self::Internal(s)
@@ -128,6 +188,31 @@ impl<T, E: Into<CommandError>> CmdExt<T> for Result<T, E> {
             err
         })
     }
+}
+
+/// Legacy path-based IPC is only available in webdriver/E2E builds.
+pub(crate) fn require_webdriver_path_ipc(disabled_msg: &'static str) -> Result<(), CommandError> {
+    if !cfg!(feature = "webdriver") {
+        return Err(CommandError::Validation(disabled_msg.into()));
+    }
+    Ok(())
+}
+
+/// Ensure `target` resolves to a path under `base` after canonicalization.
+/// Returns the canonical target path on success.
+pub(crate) fn assert_under_dir(
+    base: &std::path::Path,
+    target: &std::path::Path,
+    cmd: &str,
+) -> Result<std::path::PathBuf, CommandError> {
+    let canonical_base = base.canonicalize().cmd_err(cmd)?;
+    let canonical_target = target.canonicalize().cmd_err(cmd)?;
+    if !canonical_target.starts_with(&canonical_base) {
+        return Err(CommandError::Validation(
+            "Path traversal not allowed".into(),
+        ));
+    }
+    Ok(canonical_target)
 }
 
 #[cfg(test)]
