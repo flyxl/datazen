@@ -15,8 +15,8 @@ import { createAndConnectPostgreSQL, closeExtraWindows } from '../helpers.js';
 const CONN_NAME = 'E2E-CtxNewQuery';
 const PG_HOST = process.env.E2E_PG_HOST || '127.0.0.1';
 const PG_PORT = Number(process.env.E2E_PG_PORT) || 5432;
-const PRIMARY_DB = process.env.E2E_PG_DB || 'postgres';
-const SECONDARY_DB = process.env.E2E_PG_SECONDARY_DB || 'datazen_test';
+const PRIMARY_DB = process.env.E2E_PG_DB || 'goecoride';
+const SECONDARY_DB = process.env.E2E_PG_SECONDARY_DB || 'datazen';
 
 function skipRequested(): boolean {
   return process.env.E2E_SKIP_PG === '1';
