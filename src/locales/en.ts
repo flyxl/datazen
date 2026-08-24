@@ -1292,6 +1292,7 @@ const en: Record<TranslationKey, string> = {
   'chat.welcome':
     "Hello! I'm your database assistant. Ask me about SQL queries, database concepts, or data analysis.",
   'chat.insertSql': 'Insert to Editor',
+  'chat.copyCode': 'Copy code',
   'chat.reasoning': 'Thinking',
   'chat.questions.customAnswer': 'Type a custom answer…',
   'chat.questions.submit': 'Submit Answers',
