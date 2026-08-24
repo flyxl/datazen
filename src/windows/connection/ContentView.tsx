@@ -715,6 +715,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
               <AiChatPanel
                 connectionId={connectionId}
                 database={currentDatabase ?? undefined}
+                sqlDialect={databaseType ? DB_REGISTRY[databaseType]?.sqlDialect : undefined}
                 onInsertSql={(sql) => {
                   if (activePanel?.type === 'query') {
                     updateQuerySql(activePanel.id, sql);
