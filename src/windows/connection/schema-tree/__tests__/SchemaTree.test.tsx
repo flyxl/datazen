@@ -161,7 +161,7 @@ describe('SchemaTree routing', () => {
     expect(await findByText(/schemaTree\.tables/)).toBeInTheDocument();
   });
 
-  it('routes mysql without initialDatabase to MultiDatabaseSchemaTree when length > 1', async () => {
+  it('mysql without initialDatabase shows multi-db tree when length > 1', async () => {
     mockGetDatabases.mockResolvedValueOnce(['datazen_test', 'mysql', 'information_schema']);
 
     const { findByText, queryByText } = render(<SchemaTree {...baseProps} databaseType="mysql" />);
@@ -188,7 +188,7 @@ describe('SchemaTree routing', () => {
     });
   });
 
-  it('routes postgresql without initialDatabase to MultiDatabaseSchemaTree when length > 1', async () => {
+  it('postgresql without initialDatabase shows multi-db tree when length > 1', async () => {
     mockGetDatabases.mockResolvedValueOnce(['db1', 'db2']);
 
     const { findByText, queryByText } = render(

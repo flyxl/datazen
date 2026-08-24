@@ -50,9 +50,7 @@ export const DB_TYPE_POPULARITY_ORDER: readonly string[] = [
   'superset',
 ];
 
-const dbTypePopularityRank = new Map(
-  DB_TYPE_POPULARITY_ORDER.map((id, index) => [id, index]),
-);
+const dbTypePopularityRank = new Map(DB_TYPE_POPULARITY_ORDER.map((id, index) => [id, index]));
 
 /** Sort db type picker entries by {@link DB_TYPE_POPULARITY_ORDER}. */
 export function sortDbTypesByPopularity<T extends { value: string }>(items: T[]): T[] {
@@ -66,7 +64,7 @@ export function sortDbTypesByPopularity<T extends { value: string }>(items: T[])
 
 /** Get the identifier quoting function for a given database type. */
 export function escapeIdent(name: string, dbType?: DatabaseType): string {
-  const q = dbType ? DB_REGISTRY[dbType]?.quoteChar ?? '"' : '"';
+  const q = dbType ? (DB_REGISTRY[dbType]?.quoteChar ?? '"') : '"';
   if (q === '`') return `\`${name.replaceAll('`', '``')}\``;
   if (q === '"') return `"${name.replaceAll('"', '""')}"`;
   return name; // no quoting (e.g. Redis)
@@ -90,14 +88,7 @@ export function getDriverIconParents(): Record<string, string> {
 /** Get the icon info (short label + bg class) for a database type. */
 export function getDbIcon(dbType: DatabaseType): { label: string; bg: string } {
   const meta = DB_REGISTRY[dbType];
-  return meta
-    ? { label: meta.shortLabel, bg: meta.iconBg }
-    : { label: 'DB', bg: 'bg-gray-500' };
-}
-
-/** Get the icon color class for compact displays. */
-export function getDbIconColor(dbType: DatabaseType): string {
-  return DB_REGISTRY[dbType]?.iconColor ?? 'text-fg-muted';
+  return meta ? { label: meta.shortLabel, bg: meta.iconBg } : { label: 'DB', bg: 'bg-gray-500' };
 }
 
 /** Clamp numeric DB index fields (Redis etc.); invalid input becomes `"0"`. */
@@ -105,11 +96,6 @@ export function normalizeIndexDatabaseField(s: string, maxIndex = 15): string {
   const u = s.trim();
   if (u === '' || !/^\d+$/.test(u)) return '0';
   return String(Math.min(maxIndex, Math.max(0, parseInt(u, 10))));
-}
-
-/** @deprecated Use normalizeIndexDatabaseField */
-export function normalizeRedisDatabaseField(s: string): string {
-  return normalizeIndexDatabaseField(s, 15);
 }
 
 /** Build a display address string for a connection. */

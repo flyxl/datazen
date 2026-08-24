@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { normalizeRedisDatabaseField, DB_REGISTRY } from '../../../lib/databaseTypes';
+import { DB_REGISTRY } from '../../../lib/databaseTypes';
 import { PRESET_GROUPS } from '../../../lib/connectionGroups';
 import { useConnectionForm } from '../useConnectionForm';
 
@@ -23,21 +23,6 @@ vi.mock('../../../stores/connectionStore', () => ({
     },
   ),
 }));
-
-describe('normalizeRedisDatabaseField', () => {
-  it('returns 0 for empty or invalid input', () => {
-    expect(normalizeRedisDatabaseField('')).toBe('0');
-    expect(normalizeRedisDatabaseField('  ')).toBe('0');
-    expect(normalizeRedisDatabaseField('abc')).toBe('0');
-  });
-
-  it('clamps to 0-15', () => {
-    expect(normalizeRedisDatabaseField('0')).toBe('0');
-    expect(normalizeRedisDatabaseField('15')).toBe('15');
-    expect(normalizeRedisDatabaseField('16')).toBe('15');
-    expect(normalizeRedisDatabaseField('-1')).toBe('0');
-  });
-});
 
 describe('useConnectionForm', () => {
   beforeEach(() => {

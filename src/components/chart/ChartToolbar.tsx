@@ -16,6 +16,7 @@ import { cn } from '../../lib/cn';
 import { exportChartAsPng, exportChartAsSvg } from '../../lib/chart/export';
 import { parseNlChartConfig } from '../../lib/chart/nlConfig';
 import type { ChartConfig, ChartField, ChartType } from '../../types/chart';
+import { ToolbarShell } from '../ui/ToolbarShell';
 
 interface ChartToolbarProps {
   config: ChartConfig;
@@ -72,7 +73,7 @@ export function ChartToolbar({
   };
 
   return (
-    <div className="flex shrink-0 items-center gap-1 border-b border-edge bg-surface-alt px-2 py-1">
+    <ToolbarShell className="gap-1 px-2 py-1">
       {/* Chart type selector */}
       <div className="flex items-center gap-0.5 rounded-md bg-surface p-0.5">
         {CHART_TYPES.map(({ type, icon: Icon, labelKey }) => (
@@ -227,6 +228,6 @@ export function ChartToolbar({
           </>
         )}
       </div>
-    </div>
+    </ToolbarShell>
   );
 }
