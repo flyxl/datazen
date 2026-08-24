@@ -204,17 +204,29 @@ async function ensureDbTableVisible(
   });
 }
 
+async function triggerContextMenuAction(
+  element: HTMLElement,
+  actionId: string,
+): Promise<ReturnType<typeof vi.fn>> {
+  fireEvent.contextMenu(element);
+  const { showWebContextMenu } = await import('../../../stores/contextMenuStore');
+  await waitFor(() => {
+    const items = vi.mocked(showWebContextMenu).mock.calls.at(-1)?.[0] ?? [];
+    expect(items.some((item) => item.id === actionId)).toBe(true);
+  });
+  const menuItems = vi.mocked(showWebContextMenu).mock.calls.at(-1)?.[0] ?? [];
+  const target = menuItems.find((item) => item.id === actionId);
+  expect(target).toBeDefined();
+  target?.action?.();
+  return vi.mocked(showWebContextMenu);
+}
+
 async function triggerDropDatabase(
   findByText: (text: string) => Promise<HTMLElement>,
   dbName: string,
 ) {
   await waitFor(() => findByText(dbName));
-  fireEvent.contextMenu((await findByText(dbName)).closest('button')!);
-  const { showWebContextMenu } = await import('../../../stores/contextMenuStore');
-  const menuItems = vi.mocked(showWebContextMenu).mock.calls.at(-1)?.[0] ?? [];
-  const dropItem = menuItems.find((item) => item.id === 'drop-database');
-  expect(dropItem).toBeDefined();
-  dropItem?.action?.();
+  await triggerContextMenuAction((await findByText(dbName)).closest('button')!, 'drop-database');
 }
 
 async function triggerContextMenuRefresh(element: HTMLElement): Promise<void> {
@@ -508,5 +520,74 @@ describe('ConnectionNavigatorTree drop database', () => {
     await waitFor(() => {
       expect(onShowMessage).toHaveBeenCalledWith('permission denied', 'error');
     });
+  });
+});
+
+describe('ConnectionNavigatorTree context menu new query', () => {
+  it('sets currentDatabase to the right-clicked database before opening new query', async () => {
+    const newQuery = vi.fn();
+    const { findByText, queryAllByText } = render(
+      <ConnectionNavigatorTree {...baseProps} viewActions={{ newQuery }} />,
+    );
+
+    await ensureDbTableVisible(findByText, queryAllByText, 'db_a', 'users');
+    await ensureDbTableVisible(findByText, queryAllByText, 'db_b', 'orders');
+
+    await waitFor(() => {
+      expect(useSchemaStore.getState().currentDatabase).toBe('db_b');
+    });
+
+    await triggerContextMenuAction((await findByText('db_a')).closest('button')!, 'new-query');
+
+    expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+    expect(newQuery).toHaveBeenCalled();
+  });
+
+  it('sets currentDatabase to the schema parent database before opening new query', async () => {
+    connectionsState.connections = [
+      {
+        ...MYSQL_CONN,
+        id: 'cfg-pg',
+        name: 'Local PG',
+        databaseType: 'postgresql',
+        port: 5432,
+      },
+    ];
+    activeConnectionsState.connections = {
+      'cfg-pg': { status: 'connected', connectionId: 'conn-1' },
+    };
+    mockGetTables.mockImplementation((_connId: string, dbName: string) => {
+      if (dbName === 'db_a') {
+        return Promise.resolve([
+          { name: 'users', tableType: 'table', schema: 'public', rowCount: null },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const newQuery = vi.fn();
+    const { findByText } = render(
+      <ConnectionNavigatorTree {...baseProps} activeConfigId="cfg-pg" viewActions={{ newQuery }} />,
+    );
+
+    await waitFor(() => findByText('db_a'));
+    await waitFor(() => expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a'));
+    fireEvent.click((await findByText('public')).closest('button')!);
+    await waitFor(() => {
+      expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+    });
+
+    // Set a different active database to verify the fix
+    useSchemaStore.setState({ currentDatabase: 'db_b' });
+
+    await triggerContextMenuAction((await findByText('public')).closest('button')!, 'new-query');
+
+    expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+    expect(newQuery).toHaveBeenCalled();
+
+    connectionsState.connections = [MYSQL_CONN];
+    activeConnectionsState.connections = {
+      'cfg-mysql': { status: 'connected', connectionId: 'conn-1' },
+    };
   });
 });
