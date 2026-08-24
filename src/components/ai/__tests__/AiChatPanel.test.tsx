@@ -19,6 +19,10 @@ vi.mock('../WorkflowPanel', () => ({
   ),
 }));
 
+vi.mock('../../SqlCodeBlock', () => ({
+  SqlCodeBlock: ({ code }: { code: string }) => <div data-testid="sql-code-block">{code}</div>,
+}));
+
 vi.mock('../AiInput', () => ({
   AiInput: ({
     value,
@@ -38,7 +42,9 @@ vi.mock('../AiInput', () => ({
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
       />
-      <button type="button" data-testid="chat-send" onClick={onSubmit}>send</button>
+      <button type="button" data-testid="chat-send" onClick={onSubmit}>
+        send
+      </button>
     </div>
   ),
 }));
@@ -76,7 +82,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   Element.prototype.scrollIntoView = vi.fn();
   aiState.isConfigured = true;
-  aiState.chatSession = { messages: [], isStreaming: false, streamContent: '', streamReasoning: '' };
+  aiState.chatSession = {
+    messages: [],
+    isStreaming: false,
+    streamContent: '',
+    streamReasoning: '',
+  };
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
     value: { writeText: vi.fn().mockResolvedValue(undefined) },
@@ -95,7 +106,12 @@ describe('AiChatPanel', () => {
     aiState.chatSession = null as unknown as typeof aiState.chatSession;
     const { getByText, rerender } = render(<AiChatPanel connectionId="c1" />);
     expect(aiState.initChatSession).toHaveBeenCalled();
-    aiState.chatSession = { messages: [], isStreaming: false, streamContent: '', streamReasoning: '' };
+    aiState.chatSession = {
+      messages: [],
+      isStreaming: false,
+      streamContent: '',
+      streamReasoning: '',
+    };
     rerender(<AiChatPanel connectionId="c1" />);
     expect(getByText('chat.welcome')).toBeInTheDocument();
   });
@@ -113,7 +129,7 @@ describe('AiChatPanel', () => {
     });
   });
 
-  it('renders messages with code blocks and insert SQL', () => {
+  it('renders messages with inline code blocks and insert SQL', () => {
     const onInsertSql = vi.fn();
     aiState.chatSession.messages = [
       { role: 'user', content: 'help' },
@@ -123,18 +139,19 @@ describe('AiChatPanel', () => {
         reasoning: 'thinking...',
       },
     ];
-    const { getByText, container } = render(
+    const { getByText, getByTestId, queryByText } = render(
       <AiChatPanel connectionId="c1" onInsertSql={onInsertSql} />,
     );
     expect(getByText('help')).toBeInTheDocument();
+    expect(getByText('Try:')).toBeInTheDocument();
+    expect(queryByText('```sql')).toBeNull();
+    expect(getByTestId('ai-code-block')).toBeInTheDocument();
+    expect(getByTestId('sql-code-block')).toHaveTextContent('SELECT 1');
     fireEvent.click(getByText('chat.reasoning'));
     expect(getByText('thinking...')).toBeInTheDocument();
-    fireEvent.click(getByText('chat.insertSql'));
+    fireEvent.click(getByTestId('ai-code-insert'));
     expect(onInsertSql).toHaveBeenCalledWith('SELECT 1');
-    const copyBtn = getByText('chat.insertSql')
-      .closest('span')!
-      .querySelector('button')!;
-    fireEvent.click(copyBtn);
+    fireEvent.click(getByTestId('ai-code-copy'));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('SELECT 1');
   });
 
@@ -162,8 +179,8 @@ describe('AiChatPanel', () => {
     fireEvent.click(clearBtn);
     expect(aiState.clearChat).toHaveBeenCalled();
     fireEvent.click(getByText('chat.title'));
-    const docsBtn = Array.from(document.querySelectorAll('button')).find((b) =>
-      b.getAttribute('title') === 'docs.openAiHelp',
+    const docsBtn = Array.from(document.querySelectorAll('button')).find(
+      (b) => b.getAttribute('title') === 'docs.openAiHelp',
     );
     if (docsBtn) fireEvent.click(docsBtn);
     expect(openDocsWindow).toHaveBeenCalledWith('context');
