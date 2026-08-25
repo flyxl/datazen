@@ -76,7 +76,7 @@ const en: Record<TranslationKey, string> = {
   'menu.bringAllToFront': 'Bring All to Front',
   'menu.closeWindow': 'Close Window',
   'menu.help': 'Help',
-  'menu.documentation': 'User Guide',
+  'menu.documentation': 'Feature Deep Dives',
   'menu.reportIssue': 'Report an Issue',
   'menu.ctxAddFavorite': 'Add to Favorites',
 
@@ -1745,7 +1745,7 @@ const en: Record<TranslationKey, string> = {
   'dashboard.alertThreshold': 'Threshold',
   'dashboard.alertCooldown': 'Cooldown (seconds)',
   'win.settings': 'Settings - DataZen',
-  'win.docs': 'User Guide - DataZen',
+  'win.docs': 'Feature Deep Dives - DataZen',
   'docs.nav': 'Contents',
   'docs.openHelp': 'User Guide',
   'docs.openAiHelp': 'AI & Context Help',
