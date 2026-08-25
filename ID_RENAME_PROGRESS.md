@@ -34,9 +34,9 @@
 | OBS-004 | W3 复测补充审计 R4/OBS-3 | WorkflowChatPanel 将配置 id 塞入 `AiInput.dbSessionId`→ai_chat，后端 get_session 严格查找 + if-let-Ok 静默降级兜底：不硬错但 schema 增强静默失效（main 上行为等价）。改进建议：FE 取活动会话 id 或后端改 resolve_session | 见 W3 测试报告 R4 节 | 观察 | - |
 | OBS-005 | W3 复测 T1/P3 | `e2e/specs/data-transfer-window.ts(211)` 悬空标识符 `tgtDbSessionId`（L208 实为 tgtConn），TS2304——W3 提交 80df9968 引入的一行笔误，e2e 错误总数 68 vs main 基线 67 的唯一增量 | e2e tsconfig 报错列表 | 观察（随 BUG-006 一行修掉） | W3 |
 | BUG-007 | W4 独立测试 T5/DEFECT-1 | **P3 既有遗留**：`docs/TODO-screenshots.md:35` 描述 toggleDb 参数为 configId+connectionId+dbName，实际签名为 (connectionId, dbSessionId, dbName)——该文件不在归档排除范围、未被 W4 触碰，属活文档残留 | 打开该文件比对实际函数签名 | 已修复 | W5 |
-| BUG-008 | 回归 R2/A-1 | **P2 E2E 测试代码迁移遗漏（确定性复现×2）**：`client-parity.ts` 会话/事务用例以连接 id 冒充 dbSessionId 调用会话域命令 → DB session not found | 对照 backup-database.ts L77 正确范本；隔离环境复跑该 spec | 待验证 | 回归修复 |
-| BUG-009 | 回归 R2/A-2 | **P2 同类**：`driver-commands.ts` 相关用例 request 键名未随 W2 迁移（仍发 connectionId，后端已要求 dbSessionId）→ serde required 报错 | 同上 | 待验证 | 回归修复 |
-| BUG-010 | 回归 R2/A-3 | **P2 同类**：`execute-sql-file.ts` SF-E01 同类键名遗漏 | 同上 | 待验证 | 回归修复 |
+| BUG-008 | 回归 R2/A-1 | **P2 E2E 测试代码迁移遗漏（确定性复现×2）**：`client-parity.ts` 会话/事务用例以连接 id 冒充 dbSessionId 调用会话域命令 → DB session not found | 对照 backup-database.ts L77 正确范本；隔离环境复跑该 spec | 已修复 | 回归修复 |
+| BUG-009 | 回归 R2/A-2 | **P2 同类**：`driver-commands.ts` 相关用例 request 键名未随 W2 迁移（仍发 connectionId，后端已要求 dbSessionId）→ serde required 报错 | 同上 | 已修复 | 回归修复 |
+| BUG-010 | 回归 R2/A-3 | **P2 同类**：`execute-sql-file.ts` SF-E01 同类键名遗漏 | 同上 | 已修复 | 回归修复 |
 | OBS-006 | 回归脚本开发期/R0 | `ai_generate_schema_doc_selects_tables_when_many` 全量并发偶发、单独复跑稳定（负载型）；run-regression.sh 已内置失败子集复跑兜底，本轮 R1 未触发 | scripts/run-regression.sh 头注释与 .regression-home 日志 | 观察 | - |
 
 ## 三、测试记录
@@ -62,7 +62,7 @@
 | R0（回归脚本开发） | 回归阶段 | 新建 `scripts/run-regression.sh`（6 步门禁：注入包装+HOME 沙箱+失败子集复跑+汇总表）与 `scripts/run-e2e-minimal.sh`（复刻 e2e:minimal 免 install + e2e/.env 三级解析 + webdriver 构建容错）；.gitignore+.regression-home/；e2e-testing.md 补脚本链接 | 脚本就绪待回归 agent 实跑；期间发现并解决 capabilities/插件注入不一致阻塞（with-plugin-inject 包装）；OBS-006（ai_generate_schema_doc_* 并发偶发，单测稳定）登记于脚本重试策略 | 回归脚本 agent（worktree 删除后改在主检出 feature 分支工作） |
 | R1-R3（全量回归） | 回归阶段 | R1 门禁 6/6 PASS（cargo lib **1128/0** 第 1 轮即绿、vitest 240 文件/1894、drivers 84、守护 exit 0、tsc/vite 零错）；R2 e2e minimal：E2E_ISOLATE_HOME=1 后应用正常启动，官方总账 76 spec 仅前 38 真执行（7 过/31 败），甄别出确定性重构遗漏 3 处（→BUG-008/009/010）；B 类待用户环境补跑（未执行 ~38 spec 完整重跑 / export-import 单独跑 / e2e/.env 补 E2E_PG_RO_PASSWORD 并核查 E2E_REDIS_PASSSWORD 三连 S 拼写 / ~20 个 UI 可见性族失败需 GUI 对照定论） | **暂不合并**：A 类修复闭环后再评；报告 `test-reports/REGRESSION-report.md` | 全新回归 agent c71b5ed7 |
 | F4（回归修复轮自测） | 回归阶段 | BUG-008：client-parity 会话槽全部改真实会话 id（13 处）+ 持久化槽更名 pgConnectionId + after 清理修正；BUG-009：driver-commands 键迁移+值语义双修（不再依赖双模兜底）；BUG-010：execute-sql-file 补范本模式 + withSafeModeOff（暴露并修正 SF-E02 假通过）+ 断言修正为位置数组行 | client-parity 7 过/3 败（确定性 3 败全转绿，余 3 败与 B-5 UI 可见性族吻合）；driver-commands **2/2 绿**；execute-sql-file **2/2 绿**；e2e tsc 67 ≤ 基线且三文件零错 | 编码 agent 07f37e84 |
-| T7（复测） | 回归阶段 | 待复测 agent 产出 | 待测试 | 待评估 | 复测 agent c71b5ed7 |
+| T7（复测） | 回归阶段 | 独立复核三 spec 值语义逐槽核对 PASS、旧键零残留；隔离复跑：client-parity 会话事务全链路转绿（余 3 败精确匹配 B-5 族）、driver-commands 2/2、execute-sql-file 2/2（SF-E02 由假通过变真通过）；e2e tsc 71=基线持平且目标文件零错 | **通过**（BUG-008/009/010 → 已修复，A-1/A-2/A-3 解除） | 复测 agent c71b5ed7，报告已追加复测章节 |
 | D5（开发自测） | W4 | CHANGELOG 6 条破坏性变更；活文档 29 处 token 替换+示例代码重写；MCP 资源定向加固测试（输出含 connectionId 不含 configId） | lib 1126 过 / vitest 1890 绿 / SEO 脚本触碰文件全过；grep 3 处全为合法历史演进说明 | 待独立测试 agent 评估 | 编码 agent 4119a5df |
 | T5（独立测试） | W4 | CHANGELOG 六条逐一对照代码现实 6/6 相符；文档示例抽查 6/6 一致；zh/en 与 site 双语平行；10 条清单 9 过 1 警示；mcp/server.rs 行覆盖 87.60% ≥80% | **通过**；lib 1126 过 / vitest 1890 绿；发现 BUG-007（P3 既有遗留）+ OBS×4 | 全新测试 agent 9f275212，报告 `test-reports/W4-test-report.md` |
 
@@ -91,7 +91,8 @@
 | d1488615 | 回归执行里程碑：R1 门禁全绿；R2 登记 A 类 3 处 spec 迁移遗漏（BUG-008/009/010 验证不通过）+ B 类待补跑清单 + 回归报告 |
 | d1488615 / 76838afe | 回归执行里程碑：R1 门禁全绿；A 类登记（BUG-008/009/010 验证不通过）+ 回归报告 + 进度记账 |
 | be922ce3 | 回归修复里程碑：BUG-008/009/010 修复（3 spec），bug 状态 → **待验证** |
-| （本次） | 进度记账：bug 状态同步待验证 + F4 自测记录 + 哈希回填 |
+| be922ce3 / 7999782e | 回归修复里程碑：BUG-008/009/010 修复 + 记账（bug 状态 → 待验证） |
+| （本次） | 回归修复复测里程碑：复测**通过**，BUG-008/009/010 → 已修复；进入 B 类补跑与合并评估 + 进度更新 |
 
 ## 五、决策记录
 

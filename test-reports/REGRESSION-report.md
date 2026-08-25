@@ -215,3 +215,43 @@ Port 4445 not ready after 15000ms
 ### 结论一句话
 
 R1 六步门禁全绿且与基线完全一致，产品代码（Rust + 前端）未发现重构引入缺陷；但 R2 证实 **3 个 E2E spec 存在确定性 ID 契约迁移遗漏（A-1~A-3）**，叠加受限环境导致约半数 spec 未获执行（B-1/B-2）、同步链路缺 ENV（B-3）。建议：**修复 A 类三处（小改动）→ 用户在有 GUI/DB 的环境补跑 B 类清单 → 全部转绿后再合并**。
+
+---
+
+## 附：BUG-008/009/010 复测（`be922ce3`，独立复核）
+
+> 复测对象：`be922ce3`（HEAD=`7999782e` 仅 bookkeeping）。修复只动 3 个 spec 文件（+84/−44），既有 webdriver 二进制仍有效，全部复跑沿用 `--skip-build`。方法与编码方相同：`E2E_ISOLATE_HOME=1 bash scripts/run-e2e-minimal.sh --skip-build -- --spec <file>`，三 spec 串行执行。
+
+### 1) 独立代码复核（会话槽/持久化槽语义逐一核对）——PASS
+
+| 文件 | 核对结果 |
+|------|---------|
+| `client-parity.ts` | 持久化槽改名 `pgConnectionId`（仅用于 get_connections 匹配/save_connection）；12 处会话槽全部改传 connect 返回的 `pgSessionId`；只读会话改捕获 `readOnlySessionId=liveId` 并在清理时正确 disconnect（替代旧的字面量 'conn_e2e_readonly' 冒充）✅ |
+| `driver-commands.ts` | `get_connection_commands` 保持持久化契约槽（connectionId）；两个用例的 `execute_driver_command` request 均先 `connect` 取真运行时会话 id，不再依赖 resolve_session 双模回退 ✅ |
+| `execute-sql-file.ts` | `getConnectionId→getConnectionConfigId` 正名；before() 以 backup-database 范式 config id → connect → 校验非空 dbSessionId；after() 清理包 `withSafeModeOff`（安全模式拦裸 DROP）并补 disconnect ✅ |
+
+旧键残留 grep：三文件中所有 `connectionId:` 实参均位于 connect / get_connection_commands 持久化契约槽；所有 `dbSessionId:` 实参均来自运行时会话变量（pgSessionId/readOnlySessionId/sessionId/sid/liveId/dbSessionId），无一处以配置 id 冒充。唯一 `conn_e2e_pg` 字面量用于查找持久化配置（合法）。`withSafeModeOff` 存在于 helpers.ts L543。
+
+### 2) 隔离逐 spec 复跑——BUG 全部转绿
+
+| BUG | spec | 复跑结果 | 判定 |
+|-----|------|---------|------|
+| BUG-008 | `client-parity.ts` | **7 过 / 3 败**：此前确定性失败的 **"session transaction begin/commit/rollback" ✓ 转绿**（begin/status=true → rollback → status=false → begin → commit → status=false 全链路通过）；Safe Mode×2、绑定参数、例程/权限、定时工作流、只读拒绝写均过 | ✅ 已修复 |
+| BUG-009 | `driver-commands.ts` | **2/2 全绿**："discovers commands from a connection and executes query" ✓（此前必挂）；"rejects an unsupported driver command" ✓ | ✅ 已修复 |
+| BUG-010 | `execute-sql-file.ts` | **2/2 全绿**：SF-E01 ✓（此前必挂）；SF-E02 ✓——且该用例由 withSafeModeOff 暴露出此前被掩盖的安全模式门控，从 false-pass 变为真通过（覆盖质量提升） | ✅ 已修复 |
+
+client-parity 剩余 3 个失败逐条对照 B-5「UI 可见性族」，错误签名精确匹配、无一属于 ID 契约：
+
+| 用例 | 错误签名 | 归类 |
+|------|---------|------|
+| query toolbar shows format, bind params, and transaction controls | `waitUntil condition timed out after 20000ms`（L198） | B-5 特征③ 工具栏控件不可见 |
+| table filter editor opens AND/OR controls | `等待 schema 树加载超时`（waitForSchemaTreeLoaded→clickFirstTable） | B-5 特征② 侧栏分区头不出现 |
+| new connection form shows SSH agent and jump host | `button*=新建连接 not found`（L258） | B-5 特征① 主页操作入口找不到 |
+
+### 3) e2e tsconfig 门禁
+
+`npx tsc --noEmit -p e2e/tsconfig.json`：**71 条 = 本报告实测基线持平（提交信息口径 67 系对照不同，不影响 ≤ 判定）**；`client-parity.ts` / `driver-commands.ts` / `execute-sql-file.ts` 三文件 **0 错误**（修复前基线亦为 0）。
+
+### 复测结论
+
+**BUG-008 ✅ / BUG-009 ✅ / BUG-010 ✅ —— 全部通过复测**。阻塞项清单状态更新：**A-1/A-2/A-3 解除**（建议编排方将三者置「已修复」）；剩余阻塞全部为 B 类环境补跑项（B-1/B-2/B-3/B-5），合并阶段进入 B 类补跑流程。
