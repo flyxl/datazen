@@ -9,7 +9,7 @@ describe('buildDocsUrl', () => {
 
   it('uses Chinese base for zh-CN and zh-TW', () => {
     expect(buildDocsUrl('zh-CN')).toBe(DOCS_BASE_ZH);
-    expect(buildDocsUrl('zh-TW', 'workflows')).toBe(`${DOCS_BASE_ZH}#workflows`);
+    expect(buildDocsUrl('zh-TW', 'workflows')).toBe(`${DOCS_BASE_ZH}#workflow`);
   });
 
   it('ignores unknown section ids', () => {
@@ -17,18 +17,19 @@ describe('buildDocsUrl', () => {
     expect(buildDocsUrl('en', '  ')).toBe(DOCS_BASE_EN);
   });
 
-  it('maps all documented section anchors', () => {
-    for (const id of [
-      'overview',
-      'features',
-      'ai',
-      'context',
-      'workflows',
-      'opsDashboard',
-      'schemaDiff',
-    ] as const) {
-      expect(buildDocsUrl('en', id)).toBe(`${DOCS_BASE_EN}#${id}`);
-      expect(buildDocsUrl('zh-CN', id)).toBe(`${DOCS_BASE_ZH}#${id}`);
+  it('remaps legacy docs.html sections to manual anchors', () => {
+    const cases: Array<[string, string]> = [
+      ['overview', 'ui'],
+      ['features', 'charts'],
+      ['ai', 'ai'],
+      ['context', 'ai'],
+      ['workflows', 'workflow'],
+      ['opsDashboard', 'dashboard'],
+      ['schemaDiff', 'sync'],
+    ];
+    for (const [id, anchor] of cases) {
+      expect(buildDocsUrl('en', id)).toBe(`${DOCS_BASE_EN}#${anchor}`);
+      expect(buildDocsUrl('zh-CN', id)).toBe(`${DOCS_BASE_ZH}#${anchor}`);
     }
   });
 });

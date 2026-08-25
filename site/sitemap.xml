@@ -74,18 +74,6 @@
     <xhtml:link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/databases.html" />
   </url>
   <url>
-    <loc>https://flyxl.github.io/datazen/docs.html</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/docs.html" />
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/docs.html" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/docs.html" />
-  </url>
-  <url>
-    <loc>https://flyxl.github.io/datazen/zh/docs.html</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/docs.html" />
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/docs.html" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/docs.html" />
-  </url>
-  <url>
     <loc>https://flyxl.github.io/datazen/download.html</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/download.html" />
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/download.html" />
