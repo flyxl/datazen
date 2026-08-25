@@ -38,10 +38,10 @@ const PG_CONFIG = {
 const TMP_DIR = os.tmpdir();
 const TEST_TABLE = '_e2e_backup_test';
 
-async function seedBackupTable(connId: string) {
+async function seedBackupTable(dbSessionId: string) {
   await withSafeModeOff(() =>
     invokeBackend('execute_query', {
-      connectionId: connId,
+      dbSessionId,
       sql: `
       DROP TABLE IF EXISTS ${TEST_TABLE};
       CREATE TABLE ${TEST_TABLE} (
@@ -54,10 +54,10 @@ async function seedBackupTable(connId: string) {
   );
 }
 
-async function dropBackupTable(connId: string) {
+async function dropBackupTable(dbSessionId: string) {
   await withSafeModeOff(() =>
     invokeBackend('execute_query', {
-      connectionId: connId,
+      dbSessionId,
       sql: `DROP TABLE IF EXISTS ${TEST_TABLE}`,
     }),
   );
@@ -68,24 +68,24 @@ async function dropBackupTable(connId: string) {
 // ═════════════════════════════════════════════════════════════════════
 
 describe('数据库备份功能 (BACKUP)', () => {
-  let connectionId: string;
+  let dbSessionId: string;
 
   before(async () => {
     await browser.setTimeout({ script: 120000 });
     await browser.pause(3000);
     await invokeBackend('save_connection', { config: PG_CONFIG });
-    connectionId = await invokeBackend<string>('connect', { configId: PG_CONFIG.id });
-    await seedBackupTable(connectionId);
+    dbSessionId = await invokeBackend<string>('connect', { connectionId: PG_CONFIG.id });
+    await seedBackupTable(dbSessionId);
   });
 
   after(async () => {
     try {
-      await dropBackupTable(connectionId);
+      await dropBackupTable(dbSessionId);
     } catch {
       /* ok */
     }
     try {
-      await invokeBackend('disconnect', { connectionId });
+      await invokeBackend('disconnect', { dbSessionId });
     } catch {
       /* ok */
     }
@@ -97,12 +97,12 @@ describe('数据库备份功能 (BACKUP)', () => {
   });
 
   it('BACKUP-001: connect returns a valid connection ID string', async () => {
-    expect(typeof connectionId).toBe('string');
-    expect(connectionId.length).toBeGreaterThan(0);
+    expect(typeof dbSessionId).toBe('string');
+    expect(dbSessionId.length).toBeGreaterThan(0);
   });
 
   it('BACKUP-002: get_databases returns database list', async () => {
-    const dbs = await invokeBackend<string[]>('get_databases', { connectionId });
+    const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId });
     expect(Array.isArray(dbs)).toBe(true);
     expect(dbs.length).toBeGreaterThan(0);
     expect(dbs).toContain(PG_CONFIG.database);
@@ -112,7 +112,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     const outPath = path.join(TMP_DIR, `datazen-backup-test-${Date.now()}.sql`);
 
     await invokeBackend('backup_database', {
-      connectionId,
+      dbSessionId,
       database: PG_CONFIG.database,
       outputPath: outPath,
       options: [],
@@ -135,7 +135,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     const outPath = path.join(TMP_DIR, `datazen-backup-schema-${Date.now()}.sql`);
 
     await invokeBackend('backup_database', {
-      connectionId,
+      dbSessionId,
       database: PG_CONFIG.database,
       outputPath: outPath,
       options: ['schema-only'],
@@ -158,7 +158,7 @@ describe('数据库备份功能 (BACKUP)', () => {
 
     // Use a small table subset via pg_dump -t to avoid dumping 1M+ rows
     await invokeBackend('backup_database', {
-      connectionId,
+      dbSessionId,
       database: PG_CONFIG.database,
       outputPath: outPath,
       options: ['data-only'],
@@ -177,7 +177,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     const outPath = path.join(TMP_DIR, `datazen-backup-clean-${Date.now()}.sql`);
 
     await invokeBackend('backup_database', {
-      connectionId,
+      dbSessionId,
       database: PG_CONFIG.database,
       outputPath: outPath,
       options: ['clean', 'schema-only'],
@@ -197,7 +197,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     const outPath = path.join(TMP_DIR, `datazen-backup-create-${Date.now()}.sql`);
 
     await invokeBackend('backup_database', {
-      connectionId,
+      dbSessionId,
       database: PG_CONFIG.database,
       outputPath: outPath,
       options: ['create', 'schema-only'],
@@ -216,7 +216,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     const outPath = path.join(TMP_DIR, `datazen-backup-gz-${Date.now()}.sql.gz`);
 
     await invokeBackend('backup_database', {
-      connectionId,
+      dbSessionId,
       database: PG_CONFIG.database,
       outputPath: outPath,
       options: ['schema-only'],
@@ -240,7 +240,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     const outPath = path.join(TMP_DIR, `datazen-backup-multi-${Date.now()}.sql`);
 
     await invokeBackend('backup_database', {
-      connectionId,
+      dbSessionId,
       database: PG_CONFIG.database,
       outputPath: outPath,
       options: ['clean', 'schema-only'],
@@ -262,14 +262,14 @@ describe('数据库备份功能 (BACKUP)', () => {
     const fnName = '_e2e_backup_fn';
     await withSafeModeOff(() =>
       invokeBackend('execute_query', {
-        connectionId,
+        dbSessionId,
         sql: `CREATE OR REPLACE FUNCTION ${fnName}() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$;`,
       }),
     );
 
     const outPath = path.join(TMP_DIR, `datazen-backup-routines-${Date.now()}.sql`);
     await invokeBackend('backup_database', {
-      connectionId,
+      dbSessionId,
       database: PG_CONFIG.database,
       outputPath: outPath,
       options: ['schema-only', 'routines'],
@@ -282,27 +282,27 @@ describe('数据库备份功能 (BACKUP)', () => {
 
     await withSafeModeOff(() =>
       invokeBackend('execute_query', {
-        connectionId,
+        dbSessionId,
         sql: `DROP FUNCTION IF EXISTS ${fnName}();`,
       }),
     );
 
     await withSafeModeOff(() =>
       invokeBackend('restore_database', {
-        connectionId,
+        dbSessionId,
         inputPath: outPath,
       }),
     );
 
     const check = await invokeBackend<unknown>('execute_query', {
-      connectionId,
+      dbSessionId,
       sql: `SELECT proname FROM pg_proc WHERE proname = '${fnName}'`,
     });
     expect(JSON.stringify(check)).toContain(fnName);
 
     await withSafeModeOff(() =>
       invokeBackend('execute_query', {
-        connectionId,
+        dbSessionId,
         sql: `DROP FUNCTION IF EXISTS ${fnName}();`,
       }),
     );
@@ -313,7 +313,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     this.timeout(120000);
     const outPath = path.join(TMP_DIR, `datazen-backup-overwrite-${Date.now()}.sql`);
     await invokeBackend('backup_database', {
-      connectionId,
+      dbSessionId,
       database: PG_CONFIG.database,
       outputPath: outPath,
       options: [],
@@ -322,7 +322,7 @@ describe('数据库备份功能 (BACKUP)', () => {
 
     await withSafeModeOff(() =>
       invokeBackend('restore_database', {
-        connectionId,
+        dbSessionId,
         inputPath: outPath,
         database: PG_CONFIG.database,
         options: ['overwrite'],
@@ -333,7 +333,7 @@ describe('数据库备份功能 (BACKUP)', () => {
       rows?: unknown[][];
       results?: { rows?: unknown[][] }[];
     }>('execute_query', {
-      connectionId,
+      dbSessionId,
       sql: `SELECT COUNT(*)::int AS c FROM ${TEST_TABLE}`,
     });
     const rows = check.rows ?? check.results?.[0]?.rows ?? [];
@@ -347,7 +347,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     let errorMsg = '';
     try {
       await invokeBackend('backup_database', {
-        connectionId: 'nonexistent-id',
+        dbSessionId: 'nonexistent-id',
         database: PG_CONFIG.database,
         outputPath: outPath,
         options: [],

@@ -66,19 +66,19 @@ impl StatementExecutor for LiveExecutor {
 
 pub(crate) async fn execute_data_sync_impl(
     state: &AppState,
-    target_connection_id: String,
+    target_db_session_id: String,
     statements: Vec<SqlStatement>,
     job_id: Option<String>,
     target_database: Option<String>,
 ) -> Result<ExecutionResult, CommandError> {
     let config = state
         .connection_manager
-        .get_connection_config(&target_connection_id)
+        .get_session_config(&target_db_session_id)
         .await
         .cmd_err("execute_data_sync")?;
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&target_connection_id)
+        .get_session(&target_db_session_id)
         .await
         .cmd_err("execute_data_sync")?;
     // Apply the target database (if provided) so the writes hit the chosen DB.

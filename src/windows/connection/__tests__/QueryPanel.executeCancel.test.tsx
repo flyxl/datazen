@@ -132,8 +132,8 @@ describe('QueryPanel execute/cancel button', () => {
     return render(
       <QueryPanel
         panelId={PANEL_ID}
-        connectionId="conn-1"
-        configId="cfg-1"
+        dbSessionId="sess-conn-1"
+        connectionId="cfg-1"
         databaseType="postgresql"
       />,
     );
@@ -180,8 +180,8 @@ describe('QueryPanel execute/cancel button', () => {
     rerender(
       <QueryPanel
         panelId={PANEL_ID}
-        connectionId="conn-1"
-        configId="cfg-1"
+        dbSessionId="sess-conn-1"
+        connectionId="cfg-1"
         databaseType="postgresql"
       />,
     );

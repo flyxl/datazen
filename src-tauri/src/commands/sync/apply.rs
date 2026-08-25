@@ -23,8 +23,8 @@ fn ident_quote(family: &str) -> char {
 
 pub(crate) async fn compare_data_sync_impl(
     state: &AppState,
-    source_connection_id: String,
-    target_connection_id: String,
+    source_db_session_id: String,
+    target_db_session_id: String,
     tables: Vec<String>,
     job_id: Option<String>,
     source_database: Option<String>,
@@ -40,8 +40,8 @@ pub(crate) async fn compare_data_sync_impl(
     };
     let inspected = inspect_data_sync_impl(
         state,
-        source_connection_id.clone(),
-        target_connection_id.clone(),
+        source_db_session_id.clone(),
+        target_db_session_id.clone(),
         source_database.clone(),
         target_database.clone(),
         source_schema.clone(),
@@ -52,12 +52,12 @@ pub(crate) async fn compare_data_sync_impl(
     let wanted: std::collections::HashSet<String> = tables.into_iter().collect();
     let src_config = state
         .connection_manager
-        .get_connection_config(&source_connection_id)
+        .get_session_config(&source_db_session_id)
         .await
         .cmd_err("compare_data_sync")?;
     let tgt_config = state
         .connection_manager
-        .get_connection_config(&target_connection_id)
+        .get_session_config(&target_db_session_id)
         .await
         .cmd_err("compare_data_sync")?;
     let family = crate::data_sync::require_data_sync_family(
@@ -67,12 +67,12 @@ pub(crate) async fn compare_data_sync_impl(
     let quote = ident_quote(&family);
     let (src_driver, src_handle) = state
         .connection_manager
-        .get_connection(&source_connection_id)
+        .get_session(&source_db_session_id)
         .await
         .cmd_err("compare_data_sync")?;
     let (tgt_driver, tgt_handle) = state
         .connection_manager
-        .get_connection(&target_connection_id)
+        .get_session(&target_db_session_id)
         .await
         .cmd_err("compare_data_sync")?;
 
@@ -152,7 +152,7 @@ pub(crate) async fn compare_data_sync_impl(
 
 pub(crate) async fn generate_data_sync_sql_impl(
     state: &AppState,
-    target_connection_id: String,
+    target_db_session_id: String,
     tables: Vec<TableResult>,
     options: SyncOptions,
     target_database: Option<String>,
@@ -165,7 +165,7 @@ pub(crate) async fn generate_data_sync_sql_impl(
 
     let tgt_config = state
         .connection_manager
-        .get_connection_config(&target_connection_id)
+        .get_session_config(&target_db_session_id)
         .await
         .cmd_err("generate_data_sync_sql")?;
     let family = crate::data_sync::require_data_sync_family(
@@ -175,7 +175,7 @@ pub(crate) async fn generate_data_sync_sql_impl(
     let quote = ident_quote(&family);
     let (tgt_driver, tgt_handle) = state
         .connection_manager
-        .get_connection(&target_connection_id)
+        .get_session(&target_db_session_id)
         .await
         .cmd_err("generate_data_sync_sql")?;
 
@@ -220,8 +220,8 @@ pub(crate) async fn generate_data_sync_sql_impl(
 
 pub(crate) async fn apply_data_sync_impl(
     state: &AppState,
-    source_connection_id: String,
-    target_connection_id: String,
+    source_db_session_id: String,
+    target_db_session_id: String,
     tables: Vec<String>,
     job_id: Option<String>,
     source_database: Option<String>,
@@ -232,8 +232,8 @@ pub(crate) async fn apply_data_sync_impl(
 ) -> Result<crate::data_sync::ExecutionResult, CommandError> {
     let compared = compare_data_sync_impl(
         state,
-        source_connection_id.clone(),
-        target_connection_id.clone(),
+        source_db_session_id.clone(),
+        target_db_session_id.clone(),
         tables,
         job_id.clone(),
         source_database.clone(),
@@ -246,7 +246,7 @@ pub(crate) async fn apply_data_sync_impl(
     .await?;
     let statements = generate_data_sync_sql_impl(
         state,
-        target_connection_id.clone(),
+        target_db_session_id.clone(),
         compared,
         options,
         target_database.clone(),
@@ -255,7 +255,7 @@ pub(crate) async fn apply_data_sync_impl(
     .await?;
     execute_data_sync_impl(
         state,
-        target_connection_id,
+        target_db_session_id,
         statements,
         job_id,
         target_database,
@@ -266,8 +266,8 @@ pub(crate) async fn apply_data_sync_impl(
 /// Re-run inspect gates for selected tables; returns stale table names when structure/PK drifted.
 pub(crate) async fn revalidate_data_sync_impl(
     state: &AppState,
-    source_connection_id: String,
-    target_connection_id: String,
+    source_db_session_id: String,
+    target_db_session_id: String,
     tables: Vec<String>,
     source_database: Option<String>,
     target_database: Option<String>,
@@ -276,8 +276,8 @@ pub(crate) async fn revalidate_data_sync_impl(
 ) -> Result<serde_json::Value, CommandError> {
     let inspected = inspect_data_sync_impl(
         state,
-        source_connection_id,
-        target_connection_id,
+        source_db_session_id,
+        target_db_session_id,
         source_database,
         target_database,
         source_schema,

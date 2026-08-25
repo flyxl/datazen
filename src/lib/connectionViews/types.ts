@@ -15,8 +15,10 @@ export interface NodeContextMenuPayload {
  * 不再依赖全局「当前活动连接」，避免 MySQL/PG 面板串数据。
  */
 export interface ConnectionOpenTarget {
-  configId: string;
+  /** Persistent connection id the user clicked. */
   connectionId: string;
+  /** Live database session id for that connection (may be resolved by the host). */
+  dbSessionId: string;
   connectionName: string;
   databaseType: DatabaseType;
 }
@@ -43,9 +45,10 @@ export interface ConnectionViewActions {
 }
 
 export interface ConnectionViewProps {
-  connectionId: string;
+  /** Live database session id used for every query/IPC this view issues. */
+  dbSessionId: string;
   /** Persistent saved-connection ID (stable across restarts). */
-  configId: string;
+  connectionId: string;
   connectionName: string;
   databaseType: DatabaseType;
   initialDatabase?: string;

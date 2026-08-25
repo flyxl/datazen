@@ -7,14 +7,14 @@ use tauri::State;
 
 pub(crate) async fn get_databases_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<Vec<String>, CommandError> {
     let start = Instant::now();
-    tracing::info!(%connection_id, "get_databases");
+    tracing::info!(%db_session_id, "get_databases");
 
     let (_runtime_id, driver, handle) = state
         .connection_manager
-        .resolve_session(&connection_id)
+        .resolve_session(&db_session_id)
         .await
         .cmd_err("get_databases")?;
 
@@ -22,20 +22,20 @@ pub(crate) async fn get_databases_impl(
         .get_databases(&handle)
         .await
         .cmd_err("get_databases")?;
-    tracing::info!(%connection_id, count = dbs.len(), ms = start.elapsed().as_millis() as u64, "get_databases OK");
+    tracing::info!(%db_session_id, count = dbs.len(), ms = start.elapsed().as_millis() as u64, "get_databases OK");
     Ok(dbs)
 }
 
 pub(crate) async fn use_database_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     database: String,
 ) -> Result<(), CommandError> {
     let start = Instant::now();
-    tracing::info!(%connection_id, %database, "use_database");
+    tracing::info!(%db_session_id, %database, "use_database");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("use_database")?;
 
@@ -45,11 +45,11 @@ pub(crate) async fn use_database_impl(
         .cmd_err("use_database")?;
     state
         .connection_manager
-        .set_active_database(&connection_id, &database)
+        .set_active_database(&db_session_id, &database)
         .await
         .cmd_err("use_database")?;
     tracing::info!(
-        %connection_id,
+        %db_session_id,
         %database,
         ms = start.elapsed().as_millis() as u64,
         "use_database OK"
@@ -59,14 +59,14 @@ pub(crate) async fn use_database_impl(
 
 pub(crate) async fn get_tables_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     database: String,
 ) -> Result<Vec<TableInfo>, CommandError> {
     let start = Instant::now();
-    tracing::info!(%connection_id, %database, "get_tables");
+    tracing::info!(%db_session_id, %database, "get_tables");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("get_tables")?;
 
@@ -74,20 +74,20 @@ pub(crate) async fn get_tables_impl(
         .get_tables(&handle, &database)
         .await
         .cmd_err("get_tables")?;
-    tracing::info!(%connection_id, %database, count = tables.len(), ms = start.elapsed().as_millis() as u64, "get_tables OK");
+    tracing::info!(%db_session_id, %database, count = tables.len(), ms = start.elapsed().as_millis() as u64, "get_tables OK");
     Ok(tables)
 }
 
 pub(crate) async fn get_columns_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     table: String,
 ) -> Result<Vec<String>, CommandError> {
     let start = Instant::now();
-    tracing::info!(%connection_id, %table, "get_columns");
+    tracing::info!(%db_session_id, %table, "get_columns");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("get_columns")?;
 
@@ -96,42 +96,42 @@ pub(crate) async fn get_columns_impl(
         .await
         .cmd_err("get_columns")?;
 
-    tracing::info!(%connection_id, %table, count = cols.len(), ms = start.elapsed().as_millis() as u64, "get_columns OK");
+    tracing::info!(%db_session_id, %table, count = cols.len(), ms = start.elapsed().as_millis() as u64, "get_columns OK");
     Ok(cols.into_iter().map(|c| c.name).collect())
 }
 
 pub(crate) async fn get_table_schema_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     table: String,
 ) -> Result<TableSchema, CommandError> {
     let start = Instant::now();
-    tracing::info!(%connection_id, %table, "get_table_schema");
+    tracing::info!(%db_session_id, %table, "get_table_schema");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("get_table_schema")?;
 
     let config = state
         .connection_manager
-        .get_connection_config(&connection_id)
+        .get_session_config(&db_session_id)
         .await
         .cmd_err("get_table_schema")?;
     let database = config.database.as_deref().unwrap_or("default");
 
     let schema = state
         .schema_cache
-        .get_table_schema(&connection_id, database, &table, &driver, &handle)
+        .get_table_schema(&db_session_id, database, &table, &driver, &handle)
         .await
         .cmd_err("get_table_schema")?;
-    tracing::info!(%connection_id, %table, cols = schema.columns.len(), indexes = schema.indexes.len(), fks = schema.foreign_keys.len(), ms = start.elapsed().as_millis() as u64, "get_table_schema OK");
+    tracing::info!(%db_session_id, %table, cols = schema.columns.len(), indexes = schema.indexes.len(), fks = schema.foreign_keys.len(), ms = start.elapsed().as_millis() as u64, "get_table_schema OK");
     Ok(schema)
 }
 
 pub(crate) async fn get_table_data_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     table: String,
     page: u32,
     page_size: u32,
@@ -141,16 +141,16 @@ pub(crate) async fn get_table_data_impl(
     filter_logic: Option<String>,
 ) -> Result<TableDataResult, CommandError> {
     let start = Instant::now();
-    tracing::info!(%connection_id, %table, page, page_size, "get_table_data");
+    tracing::info!(%db_session_id, %table, page, page_size, "get_table_data");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("get_table_data")?;
 
     let config = state
         .connection_manager
-        .get_connection_config(&connection_id)
+        .get_session_config(&db_session_id)
         .await
         .cmd_err("get_table_data")?;
     let database = config.database.as_deref().unwrap_or("default");
@@ -169,7 +169,7 @@ pub(crate) async fn get_table_data_impl(
         .get_table_data(
             &driver,
             &handle,
-            &connection_id,
+            &db_session_id,
             database,
             &table,
             page,
@@ -181,20 +181,20 @@ pub(crate) async fn get_table_data_impl(
         )
         .await
         .cmd_err("get_table_data")?;
-    tracing::info!(%connection_id, %table, rows = result.rows.len(), ms = start.elapsed().as_millis() as u64, "get_table_data OK");
+    tracing::info!(%db_session_id, %table, rows = result.rows.len(), ms = start.elapsed().as_millis() as u64, "get_table_data OK");
     Ok(result)
 }
 
 pub(crate) async fn get_er_data_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     database: String,
 ) -> Result<Vec<TableSchema>, CommandError> {
     let start = Instant::now();
-    tracing::info!(%connection_id, %database, "get_er_data");
+    tracing::info!(%db_session_id, %database, "get_er_data");
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("get_er_data")?;
 
@@ -207,7 +207,7 @@ pub(crate) async fn get_er_data_impl(
     for table in &tables {
         match state
             .schema_cache
-            .get_table_schema(&connection_id, &database, &table.name, &driver, &handle)
+            .get_table_schema(&db_session_id, &database, &table.name, &driver, &handle)
             .await
         {
             Ok(schema) => schemas.push(schema),
@@ -218,7 +218,7 @@ pub(crate) async fn get_er_data_impl(
     }
 
     tracing::info!(
-        %connection_id, %database,
+        %db_session_id, %database,
         tables = schemas.len(),
         ms = start.elapsed().as_millis() as u64,
         "get_er_data OK"
@@ -244,14 +244,14 @@ fn parse_grants_from_command(
 
 async fn run_schema_object_command(
     state: &AppState,
-    connection_id: &str,
+    db_session_id: &str,
     command: &str,
     input: serde_json::Value,
 ) -> Result<serde_json::Value, CommandError> {
     let result = super::driver_command::execute_driver_command_impl(
         state,
         super::driver_command::ExecuteDriverCommandRequest {
-            connection_id: Some(connection_id.to_string()),
+            db_session_id: Some(db_session_id.to_string()),
             driver_type: None,
             command: command.to_string(),
             input,
@@ -263,7 +263,7 @@ async fn run_schema_object_command(
 
 pub(crate) async fn get_database_objects_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     kind: String,
 ) -> Result<Vec<crate::schema_objects::DatabaseObject>, CommandError> {
     if crate::schema_objects::ObjectKind::parse(&kind).is_none() {
@@ -273,7 +273,7 @@ pub(crate) async fn get_database_objects_impl(
     }
     let data = run_schema_object_command(
         state,
-        &connection_id,
+        &db_session_id,
         "list_objects",
         serde_json::json!({ "kind": kind }),
     )
@@ -283,7 +283,7 @@ pub(crate) async fn get_database_objects_impl(
 
 pub(crate) async fn get_object_ddl_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     kind: String,
     name: String,
     schema: Option<String>,
@@ -295,7 +295,7 @@ pub(crate) async fn get_object_ddl_impl(
     }
     let data = run_schema_object_command(
         state,
-        &connection_id,
+        &db_session_id,
         "get_object_ddl",
         serde_json::json!({
             "kind": kind,
@@ -313,11 +313,11 @@ pub(crate) async fn get_object_ddl_impl(
 
 pub(crate) async fn get_privileges_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<Vec<crate::schema_objects::PrivilegeGrant>, CommandError> {
     let data = run_schema_object_command(
         state,
-        &connection_id,
+        &db_session_id,
         "list_privileges",
         serde_json::json!({}),
     )
@@ -328,79 +328,79 @@ pub(crate) async fn get_privileges_impl(
 #[tauri::command]
 pub async fn get_database_objects(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     kind: String,
 ) -> Result<Vec<crate::schema_objects::DatabaseObject>, CommandError> {
-    get_database_objects_impl(&state, connection_id, kind).await
+    get_database_objects_impl(&state, db_session_id, kind).await
 }
 
 #[tauri::command]
 pub async fn get_object_ddl(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     kind: String,
     name: String,
     schema: Option<String>,
 ) -> Result<String, CommandError> {
-    get_object_ddl_impl(&state, connection_id, kind, name, schema).await
+    get_object_ddl_impl(&state, db_session_id, kind, name, schema).await
 }
 
 #[tauri::command]
 pub async fn get_privileges(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<Vec<crate::schema_objects::PrivilegeGrant>, CommandError> {
-    get_privileges_impl(&state, connection_id).await
+    get_privileges_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
 pub async fn get_databases(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<Vec<String>, CommandError> {
-    get_databases_impl(&state, connection_id).await
+    get_databases_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
 pub async fn use_database(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     database: String,
 ) -> Result<(), CommandError> {
-    use_database_impl(&state, connection_id, database).await
+    use_database_impl(&state, db_session_id, database).await
 }
 
 #[tauri::command]
 pub async fn get_tables(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     database: String,
 ) -> Result<Vec<TableInfo>, CommandError> {
-    get_tables_impl(&state, connection_id, database).await
+    get_tables_impl(&state, db_session_id, database).await
 }
 
 #[tauri::command]
 pub async fn get_columns(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     table: String,
 ) -> Result<Vec<String>, CommandError> {
-    get_columns_impl(&state, connection_id, table).await
+    get_columns_impl(&state, db_session_id, table).await
 }
 
 #[tauri::command]
 pub async fn get_table_schema(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     table: String,
 ) -> Result<TableSchema, CommandError> {
-    get_table_schema_impl(&state, connection_id, table).await
+    get_table_schema_impl(&state, db_session_id, table).await
 }
 
 #[tauri::command]
 pub async fn get_table_data(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     table: String,
     page: u32,
     page_size: u32,
@@ -411,7 +411,7 @@ pub async fn get_table_data(
 ) -> Result<TableDataResult, CommandError> {
     get_table_data_impl(
         &state,
-        connection_id,
+        db_session_id,
         table,
         page,
         page_size,
@@ -426,10 +426,10 @@ pub async fn get_table_data(
 #[tauri::command]
 pub async fn get_er_data(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     database: String,
 ) -> Result<Vec<TableSchema>, CommandError> {
-    get_er_data_impl(&state, connection_id, database).await
+    get_er_data_impl(&state, db_session_id, database).await
 }
 
 #[cfg(test)]
@@ -497,7 +497,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_databases_via_config_id_fallback() {
+    async fn get_databases_via_connection_id_fallback() {
         let test = TestAppState::with_tables().await;
         test.save_connection("cfg-fallback").await;
         let dbs = get_databases_impl(&test.state, "cfg-fallback".into())

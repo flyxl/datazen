@@ -5,7 +5,7 @@ import {
   chartConfig,
   cleanupDashboard,
   createEmptyDashboard,
-  getSeededConfigId,
+  getSeededConnectionId,
   invokeBackend,
   invokeBackendExpectError,
   openDashboardFromMain,
@@ -17,13 +17,13 @@ const WIDGET_TITLE = 'E2E Workflow Tile';
 
 describe('数据看板 Workflow 添加 (UJ-04, UJ-10)', () => {
   let mainWindow: string;
-  let configId: string;
+  let connectionId: string;
   let widgetId: string;
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await browser.pause(1000);
-    configId = await getSeededConfigId();
+    connectionId = await getSeededConnectionId();
 
     try {
       await invokeBackend('workflow_delete', { workflowId: WORKFLOW_ID });
@@ -40,14 +40,14 @@ describe('数据看板 Workflow 添加 (UJ-04, UJ-10)', () => {
         name: 'E2E User Workflow',
         description: 'Dashboard E2E user workflow',
         variables: [],
-        connection: configId,
+        connection: connectionId,
         visibility: 'user',
         steps: [
           {
             type: 'query',
             id: 'q1',
             sql: "SELECT 'X' AS label, 42 AS value",
-            connection: configId,
+            connection: connectionId,
           },
         ],
       },

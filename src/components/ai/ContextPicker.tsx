@@ -15,7 +15,7 @@ interface ContextPickerProps {
   onClose: () => void;
   anchorRef: React.RefObject<HTMLElement | null>;
   position?: 'above' | 'below';
-  connectionId?: string;
+  dbSessionId?: string;
   database?: string;
 }
 
@@ -84,7 +84,7 @@ export function ContextPicker({
   onClose,
   anchorRef,
   position = 'above',
-  connectionId,
+  dbSessionId,
   database,
 }: ContextPickerProps) {
   const { t } = useI18n();
@@ -99,7 +99,7 @@ export function ContextPicker({
 
   // `@` only opens the picker at root (categories). Typing after `@` filters
   // once the user drills into Tables/Files — no second `@` for nested levels.
-  const showTablesCategory = Boolean(connectionId);
+  const showTablesCategory = Boolean(dbSessionId);
   const needsTables = view === 'tables' && showTablesCategory;
   const needsFiles = view === 'files';
 
@@ -113,12 +113,12 @@ export function ContextPicker({
 
   useEffect(() => {
     if (!needsTables) return;
-    if (!connectionId || !database) return;
+    if (!dbSessionId || !database) return;
 
     let cancelled = false;
     setLoadingTables(true);
     databaseCommands
-      .getTables(connectionId, database)
+      .getTables(dbSessionId, database)
       .then((data) => {
         if (!cancelled) {
           setTables(data.map((tbl) => tableToItem(tbl, database)));
@@ -134,7 +134,7 @@ export function ContextPicker({
     return () => {
       cancelled = true;
     };
-  }, [needsTables, connectionId, database]);
+  }, [needsTables, dbSessionId, database]);
 
   useEffect(() => {
     if (!needsFiles) return;

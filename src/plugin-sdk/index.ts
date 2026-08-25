@@ -41,15 +41,15 @@ export type { TableInfo, TableType } from '../types';
 
 /**
  * Sync fetched tables into the host schema store (SQL editor autocomplete).
- * Pass `connectionId` for custom schema trees that never call `loadForConnection`.
+ * Pass `dbSessionId` for custom schema trees that never call `loadForConnection`.
  */
 export function syncSchemaTables(
   database: string,
   tables: TableInfo[],
-  connectionId?: string,
+  dbSessionId?: string,
 ): void {
-  if (connectionId) {
-    useSchemaStore.setState({ connectionId });
+  if (dbSessionId) {
+    useSchemaStore.setState({ dbSessionId });
   }
   useSchemaStore.getState().setLoadedTables(database, tables);
 }
@@ -58,10 +58,10 @@ export function syncSchemaNamespace(
   segments: string[],
   kind: 'branch' | 'tables',
   names: string[],
-  options?: { connectionId?: string },
+  options?: { dbSessionId?: string },
 ): void {
-  if (options?.connectionId) {
-    useSchemaStore.setState({ connectionId: options.connectionId });
+  if (options?.dbSessionId) {
+    useSchemaStore.setState({ dbSessionId: options.dbSessionId });
   }
   useSchemaStore.getState().mergeNamespace(segments, kind, names);
 }
@@ -72,10 +72,10 @@ export function syncSchemaNamespace(
  */
 export function registerPathAliases(
   entries: { name: string; id: string }[],
-  connectionId?: string,
+  dbSessionId?: string,
 ): void {
-  if (connectionId) {
-    useSchemaStore.setState({ connectionId });
+  if (dbSessionId) {
+    useSchemaStore.setState({ dbSessionId });
   }
   useSchemaStore.getState().registerPathAliases(entries);
 }

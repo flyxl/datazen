@@ -27,15 +27,15 @@ export async function redisCommandInvoke<T = unknown>(
   command: string,
   args: Record<string, unknown> = {},
 ): Promise<T> {
-  const connectionId = String(args.connectionId ?? '');
+  const dbSessionId = String(args.dbSessionId ?? '');
   const input = { ...args };
-  delete input.connectionId;
-  const result = await driverCommands.execute({ connectionId, command, input });
+  delete input.dbSessionId;
+  const result = await driverCommands.execute({ dbSessionId, command, input });
   return unwrapData(result.data) as T;
 }
 
 export async function invokeScanKeys(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   pattern: string,
   cursor: number,
@@ -43,7 +43,7 @@ export async function invokeScanKeys(
   invoke: RedisInvokeFn = redisCommandInvoke,
 ): Promise<KeyScanResult> {
   return (await invoke('redis', 'scan_keys', {
-    connectionId,
+    dbSessionId,
     dbIndex,
     pattern,
     cursor,
@@ -52,13 +52,13 @@ export async function invokeScanKeys(
 }
 
 export async function invokeGetKey(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   invoke: RedisInvokeFn = redisCommandInvoke,
 ): Promise<KeyDetail> {
   return (await invoke('redis', 'get_key', {
-    connectionId,
+    dbSessionId,
     dbIndex,
     key,
   })) as KeyDetail;

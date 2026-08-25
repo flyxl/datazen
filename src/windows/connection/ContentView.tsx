@@ -77,22 +77,22 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
 
   const activePanel = allPanels.find((p) => p.id === activePanelId) ?? null;
 
+  const dbSessionId = activePanel?.dbSessionId ?? '';
   const connectionId = activePanel?.connectionId ?? '';
-  const configId = activePanel?.configId ?? '';
   const connectionName = activePanel?.connectionName ?? '';
   const databaseType = activePanel?.databaseType as DatabaseType | undefined;
 
   const connCtx: ConnectionContext | null = useMemo(() => {
     if (!activePanel) return null;
     return {
-      configId: activePanel.configId,
       connectionId: activePanel.connectionId,
+      dbSessionId: activePanel.dbSessionId,
       connectionName: activePanel.connectionName,
       databaseType: activePanel.databaseType,
     };
   }, [
-    activePanel?.configId,
     activePanel?.connectionId,
+    activePanel?.dbSessionId,
     activePanel?.connectionName,
     activePanel?.databaseType,
   ]);
@@ -100,21 +100,21 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
   const savedConnections = useConnectionStore((s) => s.connections);
   const hasSavedConnections = savedConnections.length > 0;
   const activeConnections = useActiveConnectionStore((s) => s.connections);
-  const storeActiveConnectionId = useSchemaStore((s) => s.activeConnectionId);
+  const storeActiveDbSessionId = useSchemaStore((s) => s.activeDbSessionId);
 
   const sidebarConnCtx = useMemo(() => {
-    if (!storeActiveConnectionId) return connCtx;
+    if (!storeActiveDbSessionId) return connCtx;
     return (
-      resolveConnectionContext(storeActiveConnectionId, activeConnections, savedConnections) ??
+      resolveConnectionContext(storeActiveDbSessionId, activeConnections, savedConnections) ??
       connCtx
     );
-  }, [storeActiveConnectionId, activeConnections, savedConnections, connCtx]);
+  }, [storeActiveDbSessionId, activeConnections, savedConnections, connCtx]);
 
   const initialDatabase = useMemo(() => {
-    const ctxConfigId = sidebarConnCtx?.configId ?? configId;
-    if (!ctxConfigId) return undefined;
-    return savedConnections.find((c) => c.id === ctxConfigId)?.database;
-  }, [savedConnections, sidebarConnCtx?.configId, configId]);
+    const ctxConnectionId = sidebarConnCtx?.connectionId ?? connectionId;
+    if (!ctxConnectionId) return undefined;
+    return savedConnections.find((c) => c.id === ctxConnectionId)?.database;
+  }, [savedConnections, sidebarConnCtx?.connectionId, connectionId]);
 
   const toolbarDbType = databaseType ?? (sidebarConnCtx?.databaseType as DatabaseType | undefined);
   const dbMeta = databaseType ? DB_REGISTRY[databaseType] : undefined;
@@ -142,7 +142,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
   const recentPanels = useMemo(() => {
     if (!sidebarConnCtx) return [];
     return allPanels
-      .filter((panel) => panel.configId === sidebarConnCtx.configId)
+      .filter((panel) => panel.connectionId === sidebarConnCtx.connectionId)
       .slice(-6)
       .reverse();
   }, [allPanels, sidebarConnCtx]);
@@ -208,18 +208,18 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
     if (databaseType) setDbType(databaseType);
   }, [databaseType, setDbType]);
 
-  const schemaTreeConnectionId = sidebarConnCtx?.connectionId ?? connectionId;
+  const schemaTreeDbSessionId = sidebarConnCtx?.dbSessionId ?? dbSessionId;
   const schemaTreeDatabaseType = sidebarConnCtx?.databaseType ?? databaseType;
 
   useEffect(() => {
-    if (!schemaTreeConnectionId || !schemaTreeDatabaseType) return;
+    if (!schemaTreeDbSessionId || !schemaTreeDatabaseType) return;
     const meta = DB_REGISTRY[schemaTreeDatabaseType];
-    void loadForConnection(schemaTreeConnectionId, {
+    void loadForConnection(schemaTreeDbSessionId, {
       preferredDatabase: initialDatabase,
       skipLoadTables: Boolean(meta?.hasMultiDatabase) && !initialDatabase?.trim(),
       databaseType: schemaTreeDatabaseType,
     });
-  }, [schemaTreeConnectionId, schemaTreeDatabaseType, initialDatabase, loadForConnection]);
+  }, [schemaTreeDbSessionId, schemaTreeDatabaseType, initialDatabase, loadForConnection]);
 
   const handlers = usePanelHandlers({
     connCtx: sidebarConnCtx,
@@ -232,7 +232,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
 
   const handleOpenSqlFile = useCallback(() => {
     if (!sidebarConnCtx) return;
-    const saved = savedConnections.find((c) => c.id === sidebarConnCtx.configId);
+    const saved = savedConnections.find((c) => c.id === sidebarConnCtx.connectionId);
     const driverReadOnly = sidebarConnCtx.databaseType
       ? DB_REGISTRY[sidebarConnCtx.databaseType as DatabaseType]?.readOnly === true
       : false;
@@ -274,7 +274,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
       const ctx = sidebarConnCtx;
       if (!ctx) return Promise.reject(new Error('No active connection'));
       return loadBatchExportTableData({
-        connectionId: ctx.connectionId,
+        dbSessionId: ctx.dbSessionId,
         tableName: name,
         databaseType: ctx.databaseType,
         includeRows: false,
@@ -290,7 +290,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
       const { kind, name, schema } = payload;
       const ctxDbType = ctx.databaseType as DatabaseType;
       const ctxDbMeta = DB_REGISTRY[ctxDbType];
-      const saved = savedConnections.find((c) => c.id === ctx.configId);
+      const saved = savedConnections.find((c) => c.id === ctx.connectionId);
       const ctxIsReadOnly = ctxDbMeta?.readOnly === true || saved?.readOnly === true;
       const ctxShowStructureEditor = canOpenStructureEditor(ctxDbMeta) && !ctxIsReadOnly;
       const ctxSupportsErDiagram = ctxDbMeta?.supportsErDiagram !== false;
@@ -299,7 +299,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
       const ctxBatchExportSupported = supportsFullTableExport(ctxExportScope);
       const scopedPanels = usePanelStore
         .getState()
-        .panels.filter((p) => p.configId === ctx.configId);
+        .panels.filter((p) => p.connectionId === ctx.connectionId);
 
       const copyText = (text: string) => {
         void navigator.clipboard.writeText(text);
@@ -310,7 +310,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
         const dialect = getSqlDialect(ctxDbType);
         if (!dialect) return;
         const { sql, extractColumnIndex } = dialect.ddl.getTableDdlQuery(name);
-        void getCachedDDL(ctx.connectionId, name, sql, (rows) => {
+        void getCachedDDL(ctx.dbSessionId, name, sql, (rows) => {
           const row = rows[0];
           const val = row?.[extractColumnIndex];
           return typeof val === 'string' ? val : val != null ? String(val) : '';
@@ -330,7 +330,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
         const confirmed = await confirmAction({ title, message, kind: 'warning' });
         if (!confirmed) return;
         try {
-          await queryCommands.executeQuery(ctx.connectionId, sql);
+          await queryCommands.executeQuery(ctx.dbSessionId, sql);
           afterSuccess?.();
         } catch (e) {
           console.warn(e);
@@ -421,11 +421,11 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
             onCopyDatabaseName: kind === 'database' ? () => copyText(name) : undefined,
             onBackup:
               kind === 'database' && ctxDbMeta?.supportsBackup
-                ? () => openBackupWindow('backup', { configId: ctx.configId, database: name })
+                ? () => openBackupWindow('backup', { connectionId: ctx.connectionId, database: name })
                 : undefined,
             onRestore:
               kind === 'database' && ctxDbMeta?.supportsBackup
-                ? () => openBackupWindow('restore', { configId: ctx.configId, database: name })
+                ? () => openBackupWindow('restore', { connectionId: ctx.connectionId, database: name })
                 : undefined,
             onNewTable: handlers.handleCreateTable,
             onTruncate:
@@ -443,7 +443,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
                         const store = useTableDataStore.getState();
                         if (store.activeTable === name) {
                           void store.loadTableData({
-                            connectionId: ctx.connectionId,
+                            dbSessionId: ctx.dbSessionId,
                             table: name,
                           });
                         }
@@ -463,7 +463,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
                       t(isView ? 'schemaTree.dropView' : 'schemaTree.drop'),
                       sql,
                       () => {
-                        invalidateSchemaCache(ctx.connectionId, name);
+                        invalidateSchemaCache(ctx.dbSessionId, name);
                         removeRelation(name);
                         handlers.handleRefresh();
                         closePanelsForTable(name);
@@ -702,7 +702,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
           />
         )}
 
-        {aiChatOpen && connectionId && (
+        {aiChatOpen && dbSessionId && (
           <>
             <div
               ref={aiHandleRef}
@@ -713,7 +713,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
               className="shrink-0 border-l border-edge bg-surface"
             >
               <AiChatPanel
-                connectionId={connectionId}
+                dbSessionId={dbSessionId}
                 database={currentDatabase ?? undefined}
                 sqlDialect={databaseType ? DB_REGISTRY[databaseType]?.sqlDialect : undefined}
                 onInsertSql={(sql) => {
@@ -750,7 +750,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
           rows={tableRows}
           selectedRows={selectedRows}
           databaseType={sidebarConnCtx.databaseType}
-          connectionId={sidebarConnCtx.connectionId}
+          dbSessionId={sidebarConnCtx.dbSessionId}
           totalRows={totalRows}
           defaultScope="entire_table"
           dataExportCapability={exportScope}
@@ -764,7 +764,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
             setBatchExportOpen(false);
             setBatchExportInitialSelected([]);
           }}
-          connectionId={sidebarConnCtx.connectionId}
+          dbSessionId={sidebarConnCtx.dbSessionId}
           databaseType={sidebarConnCtx.databaseType}
           database={currentDatabase ?? undefined}
           tables={exportableTableNames}
@@ -781,7 +781,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
             setImportOpen(false);
             setImportTableName(null);
           }}
-          connectionId={sidebarConnCtx.connectionId}
+          dbSessionId={sidebarConnCtx.dbSessionId}
           tableName={importTableName}
           onImported={handlers.handleRefresh}
           databaseType={sidebarConnCtx.databaseType}
@@ -794,7 +794,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
         <ExecuteSqlFileDialog
           open={sqlFileDialogOpen}
           onClose={() => setSqlFileDialogOpen(false)}
-          connectionId={sidebarConnCtx.connectionId}
+          dbSessionId={sidebarConnCtx.dbSessionId}
           database={currentDatabase ?? initialDatabase ?? null}
           connectionName={sidebarConnCtx.connectionName}
           onExecuted={handlers.handleRefresh}
@@ -805,11 +805,11 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
         <CreateDatabaseDialog
           open={createDbOpen}
           onClose={() => setCreateDbOpen(false)}
-          connectionId={sidebarConnCtx.connectionId}
+          dbSessionId={sidebarConnCtx.dbSessionId}
           onCreated={async () => {
-            const connId = sidebarConnCtx.connectionId;
+            const sessionId = sidebarConnCtx.dbSessionId;
             const dbType = sidebarConnCtx.databaseType;
-            await loadForConnection(connId, {
+            await loadForConnection(sessionId, {
               preferredDatabase: initialDatabase,
               databaseType: dbType,
               skipLoadTables: true,
@@ -822,14 +822,14 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
         <CreateSchemaDialog
           open={createSchemaOpen}
           onClose={() => setCreateSchemaOpen(false)}
-          connectionId={sidebarConnCtx.connectionId}
+          dbSessionId={sidebarConnCtx.dbSessionId}
           onCreated={async () => {
-            const connId = sidebarConnCtx.connectionId;
+            const sessionId = sidebarConnCtx.dbSessionId;
             const db = currentDatabase ?? initialDatabase;
             if (db) {
-              await useSchemaStore.getState().loadTables(db, connId);
+              await useSchemaStore.getState().loadTables(db, sessionId);
             }
-            await loadForConnection(connId, {
+            await loadForConnection(sessionId, {
               preferredDatabase: initialDatabase,
               databaseType: sidebarConnCtx.databaseType,
               skipLoadTables: false,
@@ -842,7 +842,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
         <CreateUserDialog
           open={createUserOpen}
           onClose={() => setCreateUserOpen(false)}
-          connectionId={sidebarConnCtx.connectionId}
+          dbSessionId={sidebarConnCtx.dbSessionId}
           onCreated={() => {
             const ctx = sidebarConnCtx;
             const store = usePanelStore.getState();

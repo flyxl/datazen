@@ -57,14 +57,14 @@ pub fn resolve_db_name(selected: Option<&str>, config_default: Option<&str>) -> 
 }
 
 pub fn is_self_sync(
-    source_connection_id: &str,
-    target_connection_id: &str,
+    source_db_session_id: &str,
+    target_db_session_id: &str,
     source_database: &str,
     target_database: &str,
     source_schema: Option<&str>,
     target_schema: Option<&str>,
 ) -> bool {
-    if source_connection_id != target_connection_id {
+    if source_db_session_id != target_db_session_id {
         return false;
     }
     if source_database != target_database {
@@ -94,8 +94,8 @@ pub fn filter_tables_by_schema(
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerateSqlRequest {
-    pub source_connection_id: String,
-    pub target_connection_id: String,
+    pub source_db_session_id: String,
+    pub target_db_session_id: String,
     pub tables: Vec<TableResult>,
     pub options: SyncOptionsInput,
     pub source_database: Option<String>,

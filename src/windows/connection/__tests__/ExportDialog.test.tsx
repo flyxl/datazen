@@ -51,7 +51,7 @@ function renderDialog(overrides: Partial<Parameters<typeof ExportDialog>[0]> = {
       columns={COLS}
       rows={[{ id: 1 }, { id: 2 }]}
       selectedRows={new Set()}
-      connectionId="c1"
+      dbSessionId="c1"
       {...overrides}
     />,
   );

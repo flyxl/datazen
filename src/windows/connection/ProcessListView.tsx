@@ -16,7 +16,7 @@ export interface ProcessListCache {
 }
 
 interface ProcessListViewProps {
-  connectionId: string;
+  dbSessionId: string;
   connectionName?: string;
   /** 面板 id（用于把加载的数据写回对应 tab）。 */
   panelId?: string;
@@ -54,7 +54,7 @@ function queryResultToPanelData(result: QueryResult | null): ProcessListCache | 
 }
 
 export function ProcessListView({
-  connectionId,
+  dbSessionId,
   connectionName,
   initialData,
   onDataChange,
@@ -74,7 +74,7 @@ export function ProcessListView({
     setError(null);
     try {
       const response = await driverCommands.execute({
-        connectionId,
+        dbSessionId,
         command: 'list_processes',
         input: {},
       });
@@ -88,16 +88,16 @@ export function ProcessListView({
     } finally {
       setLoading(false);
     }
-  }, [connectionId, onDataChange]);
+  }, [dbSessionId, onDataChange]);
 
-  // 按 connectionId 拉取；切换进程列表 tab 时若组件被复用，必须重新加载，避免串数据。
+  // 按 dbSessionId 拉取；切换进程列表 tab 时若组件被复用，必须重新加载，避免串数据。
   // 故意不依赖 load：onDataChange 每帧可能是新引用，纳入依赖会无限重拉。
   useEffect(() => {
     setResult(initialData ? panelDataToQueryResult(initialData) : null);
     setHighlightedRow(null);
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectionId]);
+  }, [dbSessionId]);
 
   const columns: ColumnDef[] = useMemo(() => {
     if (!result) return commandResultColumns([], t);
@@ -127,7 +127,7 @@ export function ProcessListView({
     setError(null);
     try {
       await driverCommands.execute({
-        connectionId,
+        dbSessionId,
         command: 'kill_process',
         input: { pid, force: true },
       });
@@ -137,7 +137,7 @@ export function ProcessListView({
     } finally {
       setKilling(false);
     }
-  }, [confirmKill, connectionId, highlightedRow, load, pidColumnIndex, result, t]);
+  }, [confirmKill, dbSessionId, highlightedRow, load, pidColumnIndex, result, t]);
 
   const rows = (result?.rows ?? []) as Value[][];
 

@@ -25,7 +25,7 @@ interface AiInputProps {
   className?: string;
   contextItems?: ContextItem[];
   onContextItemsChange?: (items: ContextItem[]) => void;
-  connectionId?: string;
+  dbSessionId?: string;
   database?: string;
   /** Where the @ picker opens relative to the input. Default: above. */
   pickerPosition?: 'above' | 'below';
@@ -50,7 +50,7 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
     className,
     contextItems,
     onContextItemsChange,
-    connectionId,
+    dbSessionId,
     database,
     pickerPosition = 'above',
     hideSubmit = false,
@@ -175,7 +175,7 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
             onClose={() => setShowPicker(false)}
             anchorRef={wrapperRef}
             position={pickerPosition}
-            connectionId={connectionId}
+            dbSessionId={dbSessionId}
             database={database}
           />
         )}

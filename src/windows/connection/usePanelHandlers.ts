@@ -50,20 +50,20 @@ export interface PanelHandlers {
 
 /**
  * 右键菜单打开「进程列表 / 服务器仪表盘」时，调用方会显式传入被点击的连接 target，
- * 面板据此绑定（configId + connectionId），不依赖「全局活动连接」，避免 MySQL/PG 串数据。
+ * 面板据此绑定（connectionId + dbSessionId），不依赖「全局活动连接」，避免 MySQL/PG 串数据。
  * 未传入时（如从已绑定视图内部调用）回退到当前侧栏上下文。
  */
 function resolveOpenTarget(
   target: ConnectionOpenTarget | undefined,
   sidebar: ConnectionContext | null,
 ): ConnectionContext | null {
-  // 有显式目标时，以其 configId 为准，并从活动连接表中解析当前实时 connectionId，
+  // 有显式目标时，以其 connectionId 为准，并从活动连接表中解析当前实时 dbSessionId，
   // 绝不对齐到传入的 target 可能带有的旧 id、也不回落到其它连接的上下文。
-  if (target && target.configId) {
-    const live = useActiveConnectionStore.getState().connections[target.configId]?.connectionId;
+  if (target && target.connectionId) {
+    const live = useActiveConnectionStore.getState().connections[target.connectionId]?.dbSessionId;
     return {
-      configId: target.configId,
-      connectionId: live || target.connectionId,
+      connectionId: target.connectionId,
+      dbSessionId: live || target.dbSessionId,
       connectionName: target.connectionName,
       databaseType: target.databaseType,
     };
@@ -102,8 +102,9 @@ export function usePanelHandlers({
 
   const allPanels = usePanelStore((s) => s.panels);
   const connPanels = useMemo(
-    () => (sidebarConnCtx ? allPanels.filter((p) => p.configId === sidebarConnCtx.configId) : []),
-    [allPanels, sidebarConnCtx?.configId],
+    () =>
+      sidebarConnCtx ? allPanels.filter((p) => p.connectionId === sidebarConnCtx.connectionId) : [],
+    [allPanels, sidebarConnCtx?.connectionId],
   );
 
   const handleSelectTable = useCallback(
@@ -112,7 +113,7 @@ export function usePanelHandlers({
       if (!ctx) return;
       const currentPanels = usePanelStore
         .getState()
-        .panels.filter((p) => p.configId === ctx.configId);
+        .panels.filter((p) => p.connectionId === ctx.connectionId);
       const isView = schemaViews.some(
         (v) => v.name === table && (schema == null || v.schema === schema),
       );
@@ -331,8 +332,10 @@ export function usePanelHandlers({
       const ctx = resolveOpenTarget(target, sidebarConnCtx);
       if (!ctx) return;
       const all = usePanelStore.getState().panels;
-      // 每个连接的服务器仪表盘面板唯一，按 configId 绑定，绝不复用其它连接的面板。
-      const existing = all.find((p) => p.type === 'server-status' && p.configId === ctx.configId);
+      // 每个连接的服务器仪表盘面板唯一，按 connectionId 绑定，绝不复用其它连接的面板。
+      const existing = all.find(
+        (p) => p.type === 'server-status' && p.connectionId === ctx.connectionId,
+      );
       if (existing) {
         setActivePanel(existing.id);
         return;
@@ -347,7 +350,9 @@ export function usePanelHandlers({
       const ctx = resolveOpenTarget(target, sidebarConnCtx);
       if (!ctx) return;
       const all = usePanelStore.getState().panels;
-      const existing = all.find((p) => p.type === 'processes' && p.configId === ctx.configId);
+      const existing = all.find(
+        (p) => p.type === 'processes' && p.connectionId === ctx.connectionId,
+      );
       if (existing) {
         setActivePanel(existing.id);
         return;
@@ -382,7 +387,7 @@ export function usePanelHandlers({
     } else {
       handleNewQuery();
     }
-    void usePanelStore.getState().openQueryHistory(sidebarConnCtx.configId);
+    void usePanelStore.getState().openQueryHistory(sidebarConnCtx.connectionId);
   }, [sidebarConnCtx, connPanels, setActivePanel, handleNewQuery]);
 
   const handleClosePanel = useCallback(
@@ -464,11 +469,11 @@ export function usePanelHandlers({
   );
 
   const handleRefresh = useCallback(() => {
-    if (!sidebarConnCtx?.connectionId) return;
+    if (!sidebarConnCtx?.dbSessionId) return;
     if (currentDatabase) {
       void loadTables(currentDatabase);
     } else {
-      void loadForConnection(sidebarConnCtx.connectionId, {
+      void loadForConnection(sidebarConnCtx.dbSessionId, {
         databaseType: sidebarConnCtx.databaseType,
       });
     }

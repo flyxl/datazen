@@ -190,11 +190,11 @@ describe('createClient typed api surface', () => {
     await expect(idle).resolves.toBeNull();
   });
 
-  it('command.invoke forwards {configId,command,args} and unwraps the result', async () => {
+  it('command.invoke forwards {connectionId,command,args} and unwraps the result', async () => {
     const { parent, sent } = makeParentWindow();
     const { client } = await handshake(parent);
 
-    const invokeRequest = { configId: 'cfg-9', command: 'query', args: { sql: 'select 1' } };
+    const invokeRequest = { connectionId: 'cfg-9', command: 'query', args: { sql: 'select 1' } };
     const pending = client.command.invoke(invokeRequest);
 
     expect(sent[1]).toMatchObject({

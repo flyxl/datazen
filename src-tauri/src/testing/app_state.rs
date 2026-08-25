@@ -61,10 +61,11 @@ impl TestAppState {
         config
     }
 
-    pub async fn connect_config(&self, config_id: &str) -> String {
+    /// Establish (or reuse) the db session for persisted connection config `connection_id`.
+    pub async fn connect_config(&self, connection_id: &str) -> String {
         self.state
             .connection_manager
-            .get_or_connect(config_id)
+            .get_or_connect_session(connection_id)
             .await
             .expect("connect")
     }

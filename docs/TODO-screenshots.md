@@ -32,7 +32,7 @@ pnpm e2e:skip-build -- --spec e2e/specs/zz-screenshots.ts
 **错误**：`tables not listed under postgres`
 **根因**：虚拟滚动树中 `button[data-tree-node="db"][data-db-name="postgres"]` 点击后，表格行未在超时内出现。
 **可能原因**：
-- `toggleDb` 需要 `configId` + `connectionId` + `dbName` 三个参数，click handler 从 row data 取值，但 React 事件可能未正确触发
+- `toggleDb` 的实际签名为 `(connectionId, dbSessionId, dbName)`（`ConnectionNavigatorTree.tsx`）：click handler 从 row data 取 `row.connectionId / row.dbSessionId / row.dbName`——`connectionId` 只用于展开态 key（`${connectionId}::${dbName}`），拉取表列表走 `dbSessionId`；但 React 事件可能未正确触发
 - 虚拟滚动只渲染可见行，`scrollIntoView` 后按钮可能还未被 React 挂载
 - postgres 可能已展开，点击反而折叠了
 

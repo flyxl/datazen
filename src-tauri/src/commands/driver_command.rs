@@ -25,7 +25,7 @@ pub(crate) fn access_level_for_mode(mode: Option<McpPermissionMode>) -> CommandA
 #[serde(rename_all = "camelCase")]
 pub struct ExecuteDriverCommandStreamRequest {
     #[serde(default)]
-    pub connection_id: Option<String>,
+    pub db_session_id: Option<String>,
     pub command: String,
     #[serde(default)]
     pub input: serde_json::Value,
@@ -54,7 +54,7 @@ impl Default for ExecuteDriverCommandStreamOpts {
 #[serde(rename_all = "camelCase")]
 pub struct ExecuteDriverCommandRequest {
     #[serde(default)]
-    pub connection_id: Option<String>,
+    pub db_session_id: Option<String>,
     #[serde(default)]
     pub driver_type: Option<String>,
     pub command: String,
@@ -106,36 +106,40 @@ fn sql_from_input(input: &serde_json::Value) -> Option<String> {
 
 async fn record_sql_command_outcome(
     state: &AppState,
-    connection_id: Option<&str>,
+    db_session_id: Option<&str>,
     sql: &str,
     success: bool,
     execution_time_ms: u64,
     rows_affected: Option<u64>,
     error_message: Option<String>,
 ) {
-    let Some(connection_id) = connection_id else {
+    let Some(db_session_id) = db_session_id else {
         return;
     };
-    let Some(config_id) = state
+    // Resolve the persisted connection config that owns this runtime session.
+    let Some(connection_id) = state
         .connection_manager
-        .resolve_config_id(connection_id)
+        .owner_connection_id(db_session_id)
         .await
     else {
-        tracing::warn!(connection_id, "Skipping history: config_id not found");
+        tracing::warn!(
+            db_session_id,
+            "Skipping history: no owning connectionId for this dbSessionId"
+        );
         return;
     };
     // Record the session-active logical database so history can be grouped /
     // filtered per panel context (empty string when the driver is single-db).
     let database = state
         .connection_manager
-        .get_connection_config(connection_id)
+        .get_session_config(db_session_id)
         .await
         .ok()
         .and_then(|config| config.database)
         .unwrap_or_default();
     let entry = crate::store::QueryHistoryEntry {
         id: uuid::Uuid::new_v4().to_string(),
-        config_id,
+        connection_id,
         database,
         schema: None,
         sql: sql.to_string(),
@@ -167,10 +171,13 @@ fn query_rows_affected(data: &serde_json::Value) -> Option<u64> {
 
 async fn resolve_command_driver(
     state: &AppState,
-    connection_id: Option<&String>,
+    db_session_id: Option<&String>,
     driver_type: Option<&String>,
 ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle, bool), CommandError> {
-    if let Some(id) = nonempty(connection_id) {
+    // resolve_session is dual-mode: it accepts a runtime db_session_id and
+    // falls back to the owning persisted connection_id (legacy callers, e.g.
+    // the extension bridge until W3 adds an explicit target parameter).
+    if let Some(id) = nonempty(db_session_id) {
         let (_runtime_id, driver, handle) = state
             .connection_manager
             .resolve_session(id)
@@ -179,7 +186,7 @@ async fn resolve_command_driver(
         return Ok((driver, handle, true));
     }
     let driver_type = nonempty(driver_type)
-        .ok_or_else(|| CommandError::Validation("connectionId or driverType is required".into()))?;
+        .ok_or_else(|| CommandError::Validation("dbSessionId or driverType is required".into()))?;
     let driver = state
         .driver_registry
         .get(&driver_type.to_string())
@@ -232,16 +239,16 @@ pub(crate) async fn execute_driver_command_stream_impl(
         )));
     }
 
-    let connection_id = request
-        .connection_id
+    let db_session_id = request
+        .db_session_id
         .as_ref()
         .map(String::as_str)
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| CommandError::Validation("connectionId is required".into()))?;
+        .ok_or_else(|| CommandError::Validation("dbSessionId is required".into()))?;
 
     let (driver, handle, _bound) =
-        resolve_command_driver(state, request.connection_id.as_ref(), None).await?;
+        resolve_command_driver(state, request.db_session_id.as_ref(), None).await?;
 
     let definition = driver
         .command_definitions()
@@ -281,19 +288,19 @@ pub(crate) async fn execute_driver_command_stream_impl(
         })?;
 
     tracing::info!(
-        connection_id,
+        db_session_id,
         sql_len = sql.len(),
         "execute_driver_command_stream"
     );
     tracing::debug!(
-        connection_id,
+        db_session_id,
         sql_preview = %sql.chars().take(500).collect::<String>(),
         "execute_driver_command_stream sql"
     );
 
     let read_only = state
         .connection_manager
-        .get_connection_config(&handle.id)
+        .get_session_config(&handle.id)
         .await
         .map(|c| c.read_only)
         .unwrap_or(false);
@@ -331,7 +338,7 @@ pub(crate) async fn execute_driver_command_stream_impl(
             if opts.record_history {
                 record_sql_command_outcome(
                     state,
-                    Some(connection_id),
+                    Some(db_session_id),
                     &sql,
                     true,
                     total_ms.load(Ordering::Relaxed),
@@ -341,7 +348,7 @@ pub(crate) async fn execute_driver_command_stream_impl(
                 .await;
             }
             if crate::cache::sql_may_mutate_schema(&sql) {
-                state.schema_cache.clear_connection(connection_id).await;
+                state.schema_cache.clear_connection(db_session_id).await;
             }
             Ok(())
         }
@@ -349,7 +356,7 @@ pub(crate) async fn execute_driver_command_stream_impl(
             if opts.record_history {
                 record_sql_command_outcome(
                     state,
-                    Some(connection_id),
+                    Some(db_session_id),
                     &sql,
                     false,
                     0,
@@ -370,7 +377,7 @@ pub(crate) async fn execute_driver_command_with_mode(
 ) -> Result<CommandResult, CommandError> {
     let (driver, handle, bound) = resolve_command_driver(
         state,
-        request.connection_id.as_ref(),
+        request.db_session_id.as_ref(),
         request.driver_type.as_ref(),
     )
     .await?;
@@ -411,7 +418,7 @@ pub(crate) async fn execute_driver_command_with_mode(
             if let Some(sql) = request.input.get("sql").and_then(|v| v.as_str()) {
                 let read_only = state
                     .connection_manager
-                    .get_connection_config(&handle.id)
+                    .get_session_config(&handle.id)
                     .await
                     .map(|c| c.read_only)
                     .unwrap_or(false);
@@ -429,10 +436,10 @@ pub(crate) async fn execute_driver_command_with_mode(
     }
 
     let sql = sql_from_input(&request.input);
-    let connection_id = nonempty(request.connection_id.as_ref()).map(str::to_string);
+    let db_session_id = nonempty(request.db_session_id.as_ref()).map(str::to_string);
     tracing::info!(
         command = %request.command,
-        connection_id = connection_id.as_deref().unwrap_or(""),
+        db_session_id = db_session_id.as_deref().unwrap_or(""),
         sql_len = sql.as_ref().map(|s| s.len()).unwrap_or(0),
         "execute_driver_command"
     );
@@ -458,7 +465,7 @@ pub(crate) async fn execute_driver_command_with_mode(
                         .unwrap_or(0);
                     record_sql_command_outcome(
                         state,
-                        connection_id.as_deref(),
+                        db_session_id.as_deref(),
                         sql,
                         true,
                         execution_time_ms,
@@ -467,7 +474,7 @@ pub(crate) async fn execute_driver_command_with_mode(
                     )
                     .await;
                     if crate::cache::sql_may_mutate_schema(sql) {
-                        if let Some(id) = connection_id.as_deref() {
+                        if let Some(id) = db_session_id.as_deref() {
                             state.schema_cache.clear_connection(id).await;
                         }
                     }
@@ -480,7 +487,7 @@ pub(crate) async fn execute_driver_command_with_mode(
                 if let Some(sql) = sql.as_deref() {
                     record_sql_command_outcome(
                         state,
-                        connection_id.as_deref(),
+                        db_session_id.as_deref(),
                         sql,
                         false,
                         0,
@@ -551,28 +558,28 @@ mod tests {
     #[test]
     fn request_uses_camel_case_wire_format() {
         let request = ExecuteDriverCommandRequest {
-            connection_id: Some("mysql-prod".into()),
+            db_session_id: Some("mysql-prod".into()),
             driver_type: None,
             command: "query".into(),
             input: serde_json::json!({ "sql": "SELECT 1" }),
         };
 
         let encoded = serde_json::to_value(request).unwrap();
-        assert_eq!(encoded["connectionId"], "mysql-prod");
+        assert_eq!(encoded["dbSessionId"], "mysql-prod");
         assert_eq!(encoded["command"], "query");
         assert_eq!(encoded["input"]["sql"], "SELECT 1");
-        assert!(encoded.get("connection_id").is_none());
+        assert!(encoded.get("db_session_id").is_none());
     }
 
     #[test]
     fn request_defaults_input_to_null_when_omitted() {
         let request: ExecuteDriverCommandRequest = serde_json::from_value(serde_json::json!({
-            "connectionId": "mysql-prod",
+            "dbSessionId": "mysql-prod",
             "command": "query"
         }))
         .unwrap();
 
-        assert_eq!(request.connection_id.as_deref(), Some("mysql-prod"));
+        assert_eq!(request.db_session_id.as_deref(), Some("mysql-prod"));
         assert_eq!(request.command, "query");
         assert_eq!(request.input, serde_json::Value::Null);
         assert!(request.driver_type.is_none());
@@ -606,7 +613,7 @@ mod tests {
         let result = execute_driver_command_impl(
             &test.state,
             ExecuteDriverCommandRequest {
-                connection_id: Some(conn_id.clone()),
+                db_session_id: Some(conn_id.clone()),
                 driver_type: None,
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "SELECT 1" }),
@@ -634,7 +641,7 @@ mod tests {
         let err = execute_driver_command_impl(
             &test.state,
             ExecuteDriverCommandRequest {
-                connection_id: Some(conn_id),
+                db_session_id: Some(conn_id),
                 driver_type: None,
                 command: "not-a-command".into(),
                 input: serde_json::json!({}),
@@ -652,7 +659,7 @@ mod tests {
         let err = execute_driver_command_impl(
             &test.state,
             ExecuteDriverCommandRequest {
-                connection_id: Some(conn_id),
+                db_session_id: Some(conn_id),
                 driver_type: None,
                 command: "query".into(),
                 input: serde_json::json!({}),
@@ -670,7 +677,7 @@ mod tests {
         let err = execute_driver_command_with_mode(
             &test.state,
             ExecuteDriverCommandRequest {
-                connection_id: Some(conn_id),
+                db_session_id: Some(conn_id),
                 driver_type: None,
                 command: "execute".into(),
                 input: serde_json::json!({ "sql": "DELETE FROM t" }),
@@ -683,7 +690,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn discovers_commands_from_config_id() {
+    async fn discovers_commands_from_connection_id() {
         let test = crate::testing::app_state::TestAppState::new().await;
         test.save_connection("cfg-discover").await;
         let definitions = get_connection_commands_impl(&test.state, "cfg-discover".into())
@@ -707,7 +714,7 @@ mod tests {
         let err = execute_driver_command_impl(
             &test.state,
             ExecuteDriverCommandRequest {
-                connection_id: None,
+                db_session_id: None,
                 driver_type: Some("postgres".into()),
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "SELECT 1" }),
@@ -746,7 +753,7 @@ mod tests {
         let result = execute_driver_command_impl(
             &test.state,
             ExecuteDriverCommandRequest {
-                connection_id: None,
+                db_session_id: None,
                 driver_type: Some("postgres".into()),
                 command: "ping".into(),
                 input: serde_json::json!({}),
@@ -764,7 +771,7 @@ mod tests {
         let err = execute_driver_command_impl(
             &test.state,
             ExecuteDriverCommandRequest {
-                connection_id: Some(conn_id),
+                db_session_id: Some(conn_id),
                 driver_type: None,
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "UPDATE t SET x = 1" }),
@@ -785,7 +792,7 @@ mod tests {
         let err = execute_driver_command_impl(
             &test.state,
             ExecuteDriverCommandRequest {
-                connection_id: Some(conn_id),
+                db_session_id: Some(conn_id),
                 driver_type: None,
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "UPDATE t SET x = 1 WHERE id = 1" }),
@@ -803,7 +810,7 @@ mod tests {
         let result = execute_driver_command_impl(
             &test.state,
             ExecuteDriverCommandRequest {
-                connection_id: Some(conn_id),
+                db_session_id: Some(conn_id),
                 driver_type: None,
                 command: "query".into(),
                 input: serde_json::json!({
@@ -827,7 +834,7 @@ mod tests {
         let result = execute_driver_command_impl(
             &test.state,
             ExecuteDriverCommandRequest {
-                connection_id: Some(conn_id),
+                db_session_id: Some(conn_id),
                 driver_type: None,
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "UPDATE t SET x = 1" }),

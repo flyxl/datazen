@@ -109,11 +109,11 @@ async function expectCommandNotFound(invoke: () => Promise<unknown>): Promise<vo
 
 async function saveAndConnect(cfg: typeof PG_SRC): Promise<string> {
   await invokeBackend('save_connection', { config: cfg });
-  return invokeBackend<string>('connect', { configId: cfg.id });
+  return invokeBackend<string>('connect', { connectionId: cfg.id });
 }
 
-async function runSQL(connectionId: string, sql: string): Promise<void> {
-  const run = () => invokeBackend('execute_query', { connectionId, sql });
+async function runSQL(dbSessionId: string, sql: string): Promise<void> {
+  const run = () => invokeBackend('execute_query', { dbSessionId, sql });
   if (sqlBlockedBySafeMode(sql)) {
     await withSafeModeOff(run);
     return;
@@ -147,11 +147,11 @@ interface SqlStatement {
 
 // ── Live connection IDs (filled by before hook) ─────────────────────
 
-let srcConnId: string;
-let tgtConnId: string;
-let roConnId: string;
-let myTgtConnId: string;
-let myRoConnId: string;
+let srcSessionId: string;
+let tgtSessionId: string;
+let roSessionId: string;
+let myTgtSessionId: string;
+let myRoSessionId: string;
 
 // ═════════════════════════════════════════════════════════════════════
 // Group 1: PostgreSQL → PostgreSQL (Happy Path)
@@ -165,8 +165,8 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     await browser.pause(500);
 
     // Save connection configs and connect
-    srcConnId = await saveAndConnect(PG_SRC);
-    tgtConnId = await saveAndConnect(PG_TGT);
+    srcSessionId = await saveAndConnect(PG_SRC);
+    tgtSessionId = await saveAndConnect(PG_TGT);
 
     // Clean slate: drop any leftover test tables
     const cleanSQL = `
@@ -177,8 +177,8 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
       DROP TABLE IF EXISTS sync_pg_types;
       DROP TABLE IF EXISTS sync_apply_exec;
     `;
-    await runSQL(srcConnId, cleanSQL);
-    await runSQL(tgtConnId, cleanSQL);
+    await runSQL(srcSessionId, cleanSQL);
+    await runSQL(tgtSessionId, cleanSQL);
   });
 
   after(async () => {
@@ -192,12 +192,12 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
       DROP TABLE IF EXISTS sync_apply_exec;
     `;
     try {
-      await runSQL(srcConnId, cleanSQL);
+      await runSQL(srcSessionId, cleanSQL);
     } catch {
       /* ok */
     }
     try {
-      await runSQL(tgtConnId, cleanSQL);
+      await runSQL(tgtSessionId, cleanSQL);
     } catch {
       /* ok */
     }
@@ -214,7 +214,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
 
   it('SYNC-REAL-001: inspect — source has table, target is empty → UNMAPPED_SOURCE', async () => {
     await runSQL(
-      srcConnId,
+      srcSessionId,
       `
       CREATE TABLE sync_users (
         id integer NOT NULL,
@@ -230,8 +230,8 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     );
 
     const results = await invokeBackend<InspectResult[]>('inspect_data_sync', {
-      sourceConnectionId: srcConnId,
-      targetConnectionId: tgtConnId,
+      sourceDbSessionId: srcSessionId,
+      targetDbSessionId: tgtSessionId,
     });
 
     const users = results.find((r) => r.sourceTable === 'sync_users');
@@ -242,8 +242,8 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
   it('SYNC-REAL-002: legacy sync_table IPC is removed', async () => {
     await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
-        sourceConnectionId: srcConnId,
-        targetConnectionId: tgtConnId,
+        sourceDbSessionId: srcSessionId,
+        targetDbSessionId: tgtSessionId,
         tableName: 'sync_users',
       }),
     );
@@ -251,8 +251,8 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
 
   it('SYNC-REAL-003: inspect without sync — table remains UNMAPPED_SOURCE', async () => {
     const results = await invokeBackend<InspectResult[]>('inspect_data_sync', {
-      sourceConnectionId: srcConnId,
-      targetConnectionId: tgtConnId,
+      sourceDbSessionId: srcSessionId,
+      targetDbSessionId: tgtSessionId,
     });
 
     const users = results.find((r) => r.sourceTable === 'sync_users');
@@ -262,7 +262,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
 
   it('SYNC-REAL-004: compare_data_sync — same schema different rows reports INSERT rows', async () => {
     await runSQL(
-      tgtConnId,
+      tgtSessionId,
       `
       CREATE TABLE sync_users (
         id integer NOT NULL,
@@ -277,7 +277,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     `,
     );
     await runSQL(
-      srcConnId,
+      srcSessionId,
       `
       INSERT INTO sync_users (id, name, email) VALUES
         (4, 'Dave', 'dave@example.com'),
@@ -286,8 +286,8 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     );
 
     const results = await invokeBackend<CompareDataSyncResult[]>('compare_data_sync', {
-      sourceConnectionId: srcConnId,
-      targetConnectionId: tgtConnId,
+      sourceDbSessionId: srcSessionId,
+      targetDbSessionId: tgtSessionId,
       tables: ['sync_users'],
     });
 
@@ -300,7 +300,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
   it('SYNC-REAL-005: inspect — different schemas → INCOMPATIBLE', async () => {
     // Source: 3 columns
     await runSQL(
-      srcConnId,
+      srcSessionId,
       `
       CREATE TABLE sync_products (
         id integer NOT NULL,
@@ -314,7 +314,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
 
     // Target: 2 columns (missing price)
     await runSQL(
-      tgtConnId,
+      tgtSessionId,
       `
       CREATE TABLE sync_products (
         id integer NOT NULL,
@@ -326,8 +326,8 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     );
 
     const results = await invokeBackend<InspectResult[]>('inspect_data_sync', {
-      sourceConnectionId: srcConnId,
-      targetConnectionId: tgtConnId,
+      sourceDbSessionId: srcSessionId,
+      targetDbSessionId: tgtSessionId,
     });
 
     const products = results.find((r) => r.sourceTable === 'sync_products');
@@ -336,11 +336,11 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
   });
 
   it('SYNC-REAL-006: inspect — UNMAPPED_TARGET table', async () => {
-    await runSQL(tgtConnId, 'CREATE TABLE sync_tgt_only (id int);');
+    await runSQL(tgtSessionId, 'CREATE TABLE sync_tgt_only (id int);');
 
     const results = await invokeBackend<InspectResult[]>('inspect_data_sync', {
-      sourceConnectionId: srcConnId,
-      targetConnectionId: tgtConnId,
+      sourceDbSessionId: srcSessionId,
+      targetDbSessionId: tgtSessionId,
     });
 
     const tgtOnly = results.find((r) => r.targetTable === 'sync_tgt_only');
@@ -351,8 +351,8 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
   it('SYNC-REAL-007: legacy sync_table IPC is removed for mismatched schema', async () => {
     await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
-        sourceConnectionId: srcConnId,
-        targetConnectionId: tgtConnId,
+        sourceDbSessionId: srcSessionId,
+        targetDbSessionId: tgtSessionId,
         tableName: 'sync_products',
       }),
     );
@@ -360,7 +360,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
 
   it('SYNC-REAL-008: generate_data_sync_sql — INSERT diff yields parameterized statements', async () => {
     await runSQL(
-      srcConnId,
+      srcSessionId,
       `
       DROP TABLE IF EXISTS sync_apply_exec;
       CREATE TABLE sync_apply_exec (
@@ -372,7 +372,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     `,
     );
     await runSQL(
-      tgtConnId,
+      tgtSessionId,
       `
       DROP TABLE IF EXISTS sync_apply_exec;
       CREATE TABLE sync_apply_exec (
@@ -385,8 +385,8 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     );
 
     const compared = await invokeBackend<CompareDataSyncResult[]>('compare_data_sync', {
-      sourceConnectionId: srcConnId,
-      targetConnectionId: tgtConnId,
+      sourceDbSessionId: srcSessionId,
+      targetDbSessionId: tgtSessionId,
       tables: ['sync_apply_exec'],
       options: { insert: true, update: true, delete: false },
     });
@@ -395,8 +395,8 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     expect(table!.rows?.some((r) => r.operation === 'INSERT')).toBe(true);
 
     const stmts = await invokeBackend<SqlStatement[]>('generate_data_sync_sql', {
-      sourceConnectionId: srcConnId,
-      targetConnectionId: tgtConnId,
+      sourceDbSessionId: srcSessionId,
+      targetDbSessionId: tgtSessionId,
       tables: compared.filter((r) => r.sourceTable === 'sync_apply_exec'),
       options: { insert: true, update: true, delete: false },
     });
@@ -409,8 +409,8 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     const revalidate = await invokeBackend<{ ok: boolean; staleTables: unknown[] }>(
       'revalidate_data_sync',
       {
-        sourceConnectionId: srcConnId,
-        targetConnectionId: tgtConnId,
+        sourceDbSessionId: srcSessionId,
+        targetDbSessionId: tgtSessionId,
         tables: ['sync_apply_exec'],
       },
     );
@@ -418,8 +418,8 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     expect(revalidate.staleTables.length).toBe(0);
 
     const applyResult = await invokeBackend<ExecutionResult>('apply_data_sync', {
-      sourceConnectionId: srcConnId,
-      targetConnectionId: tgtConnId,
+      sourceDbSessionId: srcSessionId,
+      targetDbSessionId: tgtSessionId,
       tables: ['sync_apply_exec'],
       options: { insert: true, update: true, delete: false },
     });
@@ -427,8 +427,8 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     expect(applyResult.rolledBack).toBe(false);
 
     const after = await invokeBackend<CompareDataSyncResult[]>('compare_data_sync', {
-      sourceConnectionId: srcConnId,
-      targetConnectionId: tgtConnId,
+      sourceDbSessionId: srcSessionId,
+      targetDbSessionId: tgtSessionId,
       tables: ['sync_apply_exec'],
       options: { insert: true, update: true, delete: false },
     });
@@ -453,13 +453,13 @@ describe('数据同步: 权限错误 (SYNC-PERM)', () => {
     await browser.pause(500);
 
     // Ensure source connection is ready with a table to sync
-    if (!srcConnId) srcConnId = await saveAndConnect(PG_SRC);
-    if (!tgtConnId) tgtConnId = await saveAndConnect(PG_TGT);
+    if (!srcSessionId) srcSessionId = await saveAndConnect(PG_SRC);
+    if (!tgtSessionId) tgtSessionId = await saveAndConnect(PG_TGT);
 
     // Ensure sync_users exists in source
     try {
       await runSQL(
-        srcConnId,
+        srcSessionId,
         `
         CREATE TABLE IF NOT EXISTS sync_users (
           id integer NOT NULL,
@@ -477,15 +477,15 @@ describe('数据同步: 权限错误 (SYNC-PERM)', () => {
     }
 
     // Connect readonly users
-    roConnId = await saveAndConnect(PG_RO);
-    myRoConnId = await saveAndConnect(MY_RO);
+    roSessionId = await saveAndConnect(PG_RO);
+    myRoSessionId = await saveAndConnect(MY_RO);
   });
 
   it('SYNC-REAL-010: legacy sync_table IPC is removed for PG read-only target', async () => {
     await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
-        sourceConnectionId: srcConnId,
-        targetConnectionId: roConnId,
+        sourceDbSessionId: srcSessionId,
+        targetDbSessionId: roSessionId,
         tableName: 'sync_users',
       }),
     );
@@ -494,8 +494,8 @@ describe('数据同步: 权限错误 (SYNC-PERM)', () => {
   it('SYNC-REAL-011: legacy sync_table IPC is removed for MySQL read-only target', async () => {
     await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
-        sourceConnectionId: srcConnId,
-        targetConnectionId: myRoConnId,
+        sourceDbSessionId: srcSessionId,
+        targetDbSessionId: myRoSessionId,
         tableName: 'sync_users',
       }),
     );
@@ -513,13 +513,13 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
     });
     await browser.pause(500);
 
-    if (!srcConnId) srcConnId = await saveAndConnect(PG_SRC);
-    myTgtConnId = await saveAndConnect(MY_TGT);
+    if (!srcSessionId) srcSessionId = await saveAndConnect(PG_SRC);
+    myTgtSessionId = await saveAndConnect(MY_TGT);
 
     // Clean MySQL target
     try {
       await runSQL(
-        myTgtConnId,
+        myTgtSessionId,
         `
         DROP TABLE IF EXISTS sync_users;
         DROP TABLE IF EXISTS sync_simple;
@@ -535,7 +535,7 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
   after(async () => {
     try {
       await runSQL(
-        myTgtConnId,
+        myTgtSessionId,
         `
         DROP TABLE IF EXISTS sync_users;
         DROP TABLE IF EXISTS sync_simple;
@@ -549,7 +549,7 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
     // Clean PG source test tables
     try {
       await runSQL(
-        srcConnId,
+        srcSessionId,
         `
         DROP TABLE IF EXISTS sync_simple;
         DROP TABLE IF EXISTS sync_diverse;
@@ -572,12 +572,12 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
 
   it('SYNC-REAL-021: legacy sync_table IPC is removed for PG→MySQL', async () => {
     try {
-      await runSQL(srcConnId, 'DROP TABLE IF EXISTS sync_simple;');
+      await runSQL(srcSessionId, 'DROP TABLE IF EXISTS sync_simple;');
     } catch {
       /* ok */
     }
     await runSQL(
-      srcConnId,
+      srcSessionId,
       `
       CREATE TABLE sync_simple (
         id integer NOT NULL,
@@ -593,8 +593,8 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
 
     await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
-        sourceConnectionId: srcConnId,
-        targetConnectionId: myTgtConnId,
+        sourceDbSessionId: srcSessionId,
+        targetDbSessionId: myTgtSessionId,
         tableName: 'sync_simple',
       }),
     );
@@ -602,12 +602,12 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
 
   it('SYNC-REAL-022: legacy sync_table IPC is removed for diverse types PG→MySQL', async () => {
     try {
-      await runSQL(srcConnId, 'DROP TABLE IF EXISTS sync_diverse;');
+      await runSQL(srcSessionId, 'DROP TABLE IF EXISTS sync_diverse;');
     } catch {
       /* ok */
     }
     await runSQL(
-      srcConnId,
+      srcSessionId,
       `
       CREATE TABLE sync_diverse (
         id integer NOT NULL PRIMARY KEY,
@@ -626,8 +626,8 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
 
     await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
-        sourceConnectionId: srcConnId,
-        targetConnectionId: myTgtConnId,
+        sourceDbSessionId: srcSessionId,
+        targetDbSessionId: myTgtSessionId,
         tableName: 'sync_diverse',
       }),
     );
@@ -635,12 +635,12 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
 
   it('SYNC-REAL-023: legacy sync_table IPC is removed for PG array type PG→MySQL', async () => {
     try {
-      await runSQL(srcConnId, 'DROP TABLE IF EXISTS sync_pg_arrays;');
+      await runSQL(srcSessionId, 'DROP TABLE IF EXISTS sync_pg_arrays;');
     } catch {
       /* ok */
     }
     await runSQL(
-      srcConnId,
+      srcSessionId,
       `
       CREATE TABLE sync_pg_arrays (
         id integer NOT NULL PRIMARY KEY,
@@ -652,8 +652,8 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
 
     await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
-        sourceConnectionId: srcConnId,
-        targetConnectionId: myTgtConnId,
+        sourceDbSessionId: srcSessionId,
+        targetDbSessionId: myTgtSessionId,
         tableName: 'sync_pg_arrays',
       }),
     );
@@ -734,8 +734,8 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
     const results = await invokeBackend<
       Array<{ sourceTable: string; targetTable: string; status: string }>
     >('inspect_data_sync', {
-      sourceConnectionId: batchSrcId,
-      targetConnectionId: batchTgtId,
+      sourceDbSessionId: batchSrcId,
+      targetDbSessionId: batchTgtId,
     });
     const names = results.map((r) => r.sourceTable);
     expect(names).toContain('sync_batch_a');
@@ -746,10 +746,8 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
     await expectCommandNotFound(() =>
       invokeBackend('sync_tables', {
         taskId: 'test-batch-001',
-        sourceConnectionId: batchSrcId,
-        targetConnectionId: batchTgtId,
-        sourceConfigId: PG_SRC.id,
-        targetConfigId: PG_TGT.id,
+        sourceDbSessionId: batchSrcId,
+        targetDbSessionId: batchTgtId,
         tables: ['sync_batch_a', 'sync_batch_b', 'sync_batch_c'],
         skipTables: [],
         strategy: 'full',
@@ -769,8 +767,8 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
   it('SYNC-BATCH-003: legacy sync_table IPC is removed', async () => {
     await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
-        sourceConnectionId: batchSrcId,
-        targetConnectionId: batchTgtId,
+        sourceDbSessionId: batchSrcId,
+        targetDbSessionId: batchTgtId,
         tableName: 'sync_batch_a',
       }),
     );
@@ -779,10 +777,10 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
   it('SYNC-BATCH-004: sync task CRUD still works without overwrite copy', async () => {
     const pausedTask: SyncTask = {
       id: 'test-batch-004',
-      sourceConnectionId: batchSrcId,
-      targetConnectionId: batchTgtId,
-      sourceConfigId: PG_SRC.id,
-      targetConfigId: PG_TGT.id,
+      sourceDbSessionId: batchSrcId,
+      targetDbSessionId: batchTgtId,
+      sourceConnectionId: PG_SRC.id,
+      targetConnectionId: PG_TGT.id,
       tables: ['sync_batch_a'],
       completedTables: [],
       currentTable: null,
@@ -869,10 +867,10 @@ describe('数据同步: 断点续传与冲突检测 (SYNC-RESUME)', () => {
   it('SYNC-RESUME-001: paused task can be saved without overwrite copy', async () => {
     const pausedTask: SyncTask = {
       id: 'test-resume-conflict',
-      sourceConnectionId: resumeSrcId,
-      targetConnectionId: resumeTgtId,
-      sourceConfigId: PG_SRC.id,
-      targetConfigId: PG_TGT.id,
+      sourceDbSessionId: resumeSrcId,
+      targetDbSessionId: resumeTgtId,
+      sourceConnectionId: PG_SRC.id,
+      targetConnectionId: PG_TGT.id,
       tables: ['sync_resume_a', 'sync_resume_b'],
       completedTables: ['sync_resume_a'],
       currentTable: 'sync_resume_b',
@@ -919,10 +917,8 @@ describe('数据同步: 断点续传与冲突检测 (SYNC-RESUME)', () => {
     await expectCommandNotFound(() =>
       invokeBackend('sync_tables', {
         taskId: 'test-resume-skip',
-        sourceConnectionId: resumeSrcId,
-        targetConnectionId: resumeTgtId,
-        sourceConfigId: PG_SRC.id,
-        targetConfigId: PG_TGT.id,
+        sourceDbSessionId: resumeSrcId,
+        targetDbSessionId: resumeTgtId,
         tables: ['sync_resume_a', 'sync_resume_b'],
         skipTables: ['sync_resume_a'],
         strategy: 'continue',
@@ -937,8 +933,8 @@ interface SyncTask {
   id: string;
   sourceConnectionId: string;
   targetConnectionId: string;
-  sourceConfigId: string;
-  targetConfigId: string;
+  sourceDbSessionId: string;
+  targetDbSessionId: string;
   tables: string[];
   completedTables: string[];
   currentTable: string | null;

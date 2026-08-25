@@ -282,7 +282,7 @@ describe('ConnectionPage plugin nav integration (F4)', () => {
   it('keeps connection tabs intact across workspace/plugins mode round-trips', async () => {
     localStorage.setItem(
       'datazen:pending-connection',
-      JSON.stringify({ configId: 'cfg-1', connectionName: 'Local PG' }),
+      JSON.stringify({ connectionId: 'cfg-1', connectionName: 'Local PG' }),
     );
     connectMock.mockResolvedValue('conn-live-1');
 

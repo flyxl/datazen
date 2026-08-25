@@ -190,14 +190,14 @@
 
   function runQuery() {
     var sql = ($('pg-sql-input') && $('pg-sql-input').value) || 'SELECT 1';
-    var configId = (activeConnection && activeConnection.id) || firstConnectionId;
-    if (!configId) {
+    var connectionId = (activeConnection && activeConnection.id) || firstConnectionId;
+    if (!connectionId) {
       set('pg-query-out', 'No connection available. Save one in DataZen and reload this tab.');
-      setStatus('pg-query-status', 'no configId', false);
+      setStatus('pg-query-status', 'no connectionId', false);
       return;
     }
     setStatus('pg-query-status', 'running…', true);
-    request('command.invoke', { configId: configId, command: 'query', args: { sql: sql } })
+    request('command.invoke', { connectionId: connectionId, command: 'query', args: { sql: sql } })
       .then(function (result) {
         // Bridge envelope {result: <CommandResult.data>}; query data is the
         // multi-statement wrapper {results:[{columns, rows,…}], totalTimeMs}.

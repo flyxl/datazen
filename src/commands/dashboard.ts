@@ -35,7 +35,7 @@ export const dashboardCommands = {
 
   createWidgetFromSql: (params: {
     dashboardId: string;
-    configId: string;
+    connectionId: string;
     sql: string;
     title?: string;
     viewMode: ViewMode;
@@ -50,7 +50,7 @@ export const dashboardCommands = {
     chartConfig?: ChartConfig;
   }) => invoke<CreateWidgetResult>('create_widget_from_workflow', { params }),
 
-  updateHiddenWidgetSql: (params: { workflowId: string; configId: string; sql: string }) =>
+  updateHiddenWidgetSql: (params: { workflowId: string; connectionId: string; sql: string }) =>
     invoke<void>('update_hidden_widget_sql', { params }),
 
   exportWithDialog: (dashboardId: string, defaultFileName: string) =>

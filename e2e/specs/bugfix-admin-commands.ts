@@ -73,14 +73,14 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
 
 async function saveAndConnect(config: Record<string, unknown>): Promise<string> {
   await invokeBackend('save_connection', { config });
-  return invokeBackend<string>('connect', { configId: config.id as string });
+  return invokeBackend<string>('connect', { connectionId: config.id as string });
 }
 
 // ─── MySQL tests ───────────────────────────────────────────────
 
 describe('MySQL admin commands (IPC)', () => {
   let connId: string;
-  const configId = `e2e-mysql-admin-${UNIQUE}`;
+  const connectionId = `e2e-mysql-admin-${UNIQUE}`;
 
   before(async function () {
     const reachable = await tcpReachable(MYSQL_HOST, MYSQL_PORT);
@@ -90,7 +90,7 @@ describe('MySQL admin commands (IPC)', () => {
     }
 
     connId = await saveAndConnect({
-      id: configId,
+      id: connectionId,
       name: `E2E-MySQL-Admin-${UNIQUE}`,
       host: MYSQL_HOST,
       port: MYSQL_PORT,
@@ -104,17 +104,17 @@ describe('MySQL admin commands (IPC)', () => {
   it('should create a new database and list it', async function () {
     if (!connId) return this.skip();
 
-    const dbsBefore = await invokeBackend<string[]>('get_databases', { connectionId: connId });
+    const dbsBefore = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
 
     await invokeBackend('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'create_database',
         input: { name: MYSQL_TEST_DB },
       },
     });
 
-    const dbsAfter = await invokeBackend<string[]>('get_databases', { connectionId: connId });
+    const dbsAfter = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
     expect(dbsAfter).toContain(MYSQL_TEST_DB);
     expect(dbsAfter.length).toBeGreaterThan(dbsBefore.length);
   });
@@ -126,7 +126,7 @@ describe('MySQL admin commands (IPC)', () => {
       data: { results: { rows: unknown[][] }[] };
     }>('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'query',
         input: {
           sql: 'SELECT GRANTEE, PRIVILEGE_TYPE FROM information_schema.USER_PRIVILEGES LIMIT 5',
@@ -143,11 +143,11 @@ describe('MySQL admin commands (IPC)', () => {
     // 1. use_database('') to reset
     // 2. get_databases → must include new DB
     try {
-      await invokeBackend('use_database', { connectionId: connId, database: '' });
+      await invokeBackend('use_database', { dbSessionId: connId, database: '' });
     } catch {
       /* ok */
     }
-    const dbs = await invokeBackend<string[]>('get_databases', { connectionId: connId });
+    const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
     expect(dbs).toContain(MYSQL_TEST_DB);
     expect(dbs.length).toBeGreaterThanOrEqual(2);
   });
@@ -155,7 +155,7 @@ describe('MySQL admin commands (IPC)', () => {
   it('should show ALL databases (not locked to one) when no preferred DB', async function () {
     if (!connId) return this.skip();
 
-    const dbs = await invokeBackend<string[]>('get_databases', { connectionId: connId });
+    const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
     expect(dbs.length).toBeGreaterThanOrEqual(2);
     expect(dbs).toContain(MYSQL_TEST_DB);
   });
@@ -163,9 +163,9 @@ describe('MySQL admin commands (IPC)', () => {
   it('should list tables for a specific database after use_database', async function () {
     if (!connId) return this.skip();
 
-    await invokeBackend('use_database', { connectionId: connId, database: MYSQL_TEST_DB });
+    await invokeBackend('use_database', { dbSessionId: connId, database: MYSQL_TEST_DB });
     const tables = await invokeBackend<{ name: string }[]>('get_tables', {
-      connectionId: connId,
+      dbSessionId: connId,
       database: MYSQL_TEST_DB,
     });
     // New DB has no tables yet — just verify it doesn't error
@@ -179,24 +179,24 @@ describe('MySQL admin commands (IPC)', () => {
     const dropDb = `e2e_drop_${UNIQUE}`;
     await invokeBackend('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'create_database',
         input: { name: dropDb },
       },
     });
 
-    const dbsBefore = await invokeBackend<string[]>('get_databases', { connectionId: connId });
+    const dbsBefore = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
     expect(dbsBefore).toContain(dropDb);
 
     await invokeBackend('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'drop_database',
         input: { name: dropDb },
       },
     });
 
-    const dbsAfter = await invokeBackend<string[]>('get_databases', { connectionId: connId });
+    const dbsAfter = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
     expect(dbsAfter).not.toContain(dropDb);
   });
 
@@ -205,7 +205,7 @@ describe('MySQL admin commands (IPC)', () => {
       try {
         await invokeBackend('execute_driver_command', {
           request: {
-            connectionId: connId,
+            dbSessionId: connId,
             command: 'execute',
             input: { sql: `DROP DATABASE IF EXISTS \`${MYSQL_TEST_DB}\`` },
           },
@@ -214,12 +214,12 @@ describe('MySQL admin commands (IPC)', () => {
         /* best effort */
       }
       try {
-        await invokeBackend('disconnect', { connectionId: connId });
+        await invokeBackend('disconnect', { dbSessionId: connId });
       } catch {
         /* best effort */
       }
       try {
-        await invokeBackend('delete_connection', { id: configId });
+        await invokeBackend('delete_connection', { id: connectionId });
       } catch {
         /* best effort */
       }
@@ -231,7 +231,7 @@ describe('MySQL admin commands (IPC)', () => {
 
 describe('PostgreSQL admin commands (IPC)', () => {
   let connId: string;
-  const configId = `e2e-pg-admin-${UNIQUE}`;
+  const connectionId = `e2e-pg-admin-${UNIQUE}`;
 
   before(async function () {
     const reachable = await tcpReachable(PG_HOST, PG_PORT);
@@ -241,7 +241,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
     }
 
     connId = await saveAndConnect({
-      id: configId,
+      id: connectionId,
       name: `E2E-PG-Admin-${UNIQUE}`,
       host: PG_HOST,
       port: PG_PORT,
@@ -257,13 +257,13 @@ describe('PostgreSQL admin commands (IPC)', () => {
 
     await invokeBackend('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'create_database',
         input: { name: PG_TEST_DB },
       },
     });
 
-    const dbs = await invokeBackend<string[]>('get_databases', { connectionId: connId });
+    const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
     expect(dbs).toContain(PG_TEST_DB);
   });
 
@@ -272,17 +272,17 @@ describe('PostgreSQL admin commands (IPC)', () => {
 
     await invokeBackend('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'create_schema',
         input: { name: PG_TEST_SCHEMA },
       },
     });
 
     // Simulate frontend loadTables flow: use_database + get_tables
-    await invokeBackend('use_database', { connectionId: connId, database: PG_DB });
+    await invokeBackend('use_database', { dbSessionId: connId, database: PG_DB });
     const tablesResult = await invokeBackend<{ name: string; schema: string; tableType: string }[]>(
       'get_tables',
-      { connectionId: connId, database: PG_DB },
+      { dbSessionId: connId, database: PG_DB },
     );
 
     // Verify new schema appears (either via SCHEMA_MARKER or table entries)
@@ -302,13 +302,13 @@ describe('PostgreSQL admin commands (IPC)', () => {
     if (!connId) return this.skip();
 
     // Simulate full loadForConnection → getDatabases → loadTables flow
-    const dbs = await invokeBackend<string[]>('get_databases', { connectionId: connId });
+    const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
     expect(dbs).toContain(PG_DB);
 
-    await invokeBackend('use_database', { connectionId: connId, database: PG_DB });
+    await invokeBackend('use_database', { dbSessionId: connId, database: PG_DB });
     const tablesResult = await invokeBackend<{ name: string; schema: string; tableType: string }[]>(
       'get_tables',
-      { connectionId: connId, database: PG_DB },
+      { dbSessionId: connId, database: PG_DB },
     );
 
     const schemas = [...new Set(tablesResult.map((t) => t.schema).filter(Boolean))];
@@ -322,7 +322,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
 
     await invokeBackend('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'create_user',
         input: { username: PG_TEST_USER, password: 'test123' },
       },
@@ -332,7 +332,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       data: { results: { rows: unknown[][] }[] };
     }>('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'query',
         input: {
           sql: `SELECT rolname FROM pg_roles WHERE rolname = '${PG_TEST_USER}'`,
@@ -347,7 +347,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
 
     await invokeBackend('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'grant_privileges',
         input: {
           username: PG_TEST_USER,
@@ -362,7 +362,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       data: { results: { rows: unknown[][] }[] };
     }>('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'query',
         input: {
           sql: `SELECT has_database_privilege('${PG_TEST_USER}', '${PG_DB}', 'CONNECT') AS has_priv`,
@@ -378,24 +378,24 @@ describe('PostgreSQL admin commands (IPC)', () => {
     const dropDb = `e2e_pgdrop_${UNIQUE}`;
     await invokeBackend('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'create_database',
         input: { name: dropDb },
       },
     });
 
-    const dbsBefore = await invokeBackend<string[]>('get_databases', { connectionId: connId });
+    const dbsBefore = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
     expect(dbsBefore).toContain(dropDb);
 
     await invokeBackend('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'drop_database',
         input: { name: dropDb },
       },
     });
 
-    const dbsAfter = await invokeBackend<string[]>('get_databases', { connectionId: connId });
+    const dbsAfter = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
     expect(dbsAfter).not.toContain(dropDb);
   });
 
@@ -406,7 +406,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       data: { results: { rows: unknown[][] }[] };
     }>('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'query',
         input: {
           sql: `SELECT rolname AS grantee FROM pg_roles WHERE rolname NOT LIKE 'pg_%' AND rolcanlogin ORDER BY 1`,
@@ -422,7 +422,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
 
     await invokeBackend('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'grant_privileges',
         input: {
           username: PG_TEST_USER,
@@ -437,7 +437,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       data: { results: { rows: unknown[][] }[] };
     }>('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'query',
         input: {
           sql: `SELECT has_database_privilege('${PG_TEST_USER}', '${PG_DB}', 'CREATE') AS has_priv`,
@@ -453,15 +453,15 @@ describe('PostgreSQL admin commands (IPC)', () => {
     const dropSchema = `e2e_drop_sch_${UNIQUE}`;
     await invokeBackend('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'create_schema',
         input: { name: dropSchema },
       },
     });
 
-    await invokeBackend('use_database', { connectionId: connId, database: PG_DB });
+    await invokeBackend('use_database', { dbSessionId: connId, database: PG_DB });
     const tablesBefore = await invokeBackend<{ name: string; schema: string }[]>('get_tables', {
-      connectionId: connId,
+      dbSessionId: connId,
       database: PG_DB,
     });
     const schemasBefore = [...new Set(tablesBefore.map((t) => t.schema).filter(Boolean))];
@@ -469,14 +469,14 @@ describe('PostgreSQL admin commands (IPC)', () => {
 
     await invokeBackend('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'drop_schema',
         input: { name: dropSchema, cascade: true },
       },
     });
 
     const tablesAfter = await invokeBackend<{ name: string; schema: string }[]>('get_tables', {
-      connectionId: connId,
+      dbSessionId: connId,
       database: PG_DB,
     });
     const schemasAfter = [...new Set(tablesAfter.map((t) => t.schema).filter(Boolean))];
@@ -489,7 +489,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
     // CREATE is not granted to PUBLIC by default, so revoking it actually works
     await invokeBackend('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'revoke_privileges',
         input: {
           username: PG_TEST_USER,
@@ -503,7 +503,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       data: { results: { rows: unknown[][] }[] };
     }>('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'query',
         input: {
           sql: `SELECT has_database_privilege('${PG_TEST_USER}', '${PG_DB}', 'CREATE') AS has_priv`,
@@ -519,7 +519,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
     const dropUser = `e2e_drop_usr_${UNIQUE}`;
     await invokeBackend('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'create_user',
         input: { username: dropUser, password: 'test123' },
       },
@@ -529,7 +529,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       data: { results: { rows: unknown[][] }[] };
     }>('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'query',
         input: { sql: `SELECT 1 FROM pg_roles WHERE rolname = '${dropUser}'` },
       },
@@ -538,7 +538,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
 
     await invokeBackend('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'drop_user',
         input: { username: dropUser },
       },
@@ -548,7 +548,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       data: { results: { rows: unknown[][] }[] };
     }>('execute_driver_command', {
       request: {
-        connectionId: connId,
+        dbSessionId: connId,
         command: 'query',
         input: { sql: `SELECT 1 FROM pg_roles WHERE rolname = '${dropUser}'` },
       },
@@ -559,7 +559,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
   it('should show created database after full refresh cycle', async function () {
     if (!connId) return this.skip();
 
-    const dbs = await invokeBackend<string[]>('get_databases', { connectionId: connId });
+    const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
     expect(dbs).toContain(PG_TEST_DB);
     expect(dbs).toContain(PG_DB);
     expect(dbs.length).toBeGreaterThanOrEqual(2);
@@ -570,7 +570,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       try {
         await invokeBackend('execute_driver_command', {
           request: {
-            connectionId: connId,
+            dbSessionId: connId,
             command: 'execute',
             input: { sql: `DROP SCHEMA IF EXISTS "${PG_TEST_SCHEMA}"` },
           },
@@ -581,7 +581,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       try {
         await invokeBackend('execute_driver_command', {
           request: {
-            connectionId: connId,
+            dbSessionId: connId,
             command: 'execute',
             input: { sql: `REVOKE ALL ON DATABASE "${PG_DB}" FROM "${PG_TEST_USER}"` },
           },
@@ -592,7 +592,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       try {
         await invokeBackend('execute_driver_command', {
           request: {
-            connectionId: connId,
+            dbSessionId: connId,
             command: 'execute',
             input: { sql: `DROP ROLE IF EXISTS "${PG_TEST_USER}"` },
           },
@@ -604,7 +604,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       try {
         await invokeBackend('execute_driver_command', {
           request: {
-            connectionId: connId,
+            dbSessionId: connId,
             command: 'drop_database',
             input: { name: PG_TEST_DB },
           },
@@ -613,12 +613,12 @@ describe('PostgreSQL admin commands (IPC)', () => {
         /* best effort - may fail if DB wasn't created */
       }
       try {
-        await invokeBackend('disconnect', { connectionId: connId });
+        await invokeBackend('disconnect', { dbSessionId: connId });
       } catch {
         /* best effort */
       }
       try {
-        await invokeBackend('delete_connection', { id: configId });
+        await invokeBackend('delete_connection', { id: connectionId });
       } catch {
         /* best effort */
       }

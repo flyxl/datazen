@@ -6,7 +6,7 @@ import { useAiStore } from '../../stores/aiStore';
 import { openSettingsWindow } from '../../lib/windowManager';
 
 interface DiagnosisPanelProps {
-  connectionId: string;
+  dbSessionId: string;
   database: string;
   sql: string;
   errorMessage: string;
@@ -15,7 +15,7 @@ interface DiagnosisPanelProps {
 }
 
 export function DiagnosisPanel({
-  connectionId,
+  dbSessionId,
   database,
   sql,
   errorMessage,
@@ -31,8 +31,8 @@ export function DiagnosisPanel({
   const clearDiagnosis = useAiStore((s) => s.clearDiagnosis);
 
   const handleDiagnose = useCallback(() => {
-    void diagnoseError({ connectionId, database, sql, errorMessage });
-  }, [diagnoseError, connectionId, database, sql, errorMessage]);
+    void diagnoseError({ dbSessionId, database, sql, errorMessage });
+  }, [diagnoseError, dbSessionId, database, sql, errorMessage]);
 
   useEffect(() => {
     if (!diagnosis && !isDiagnosing && !diagnosisError) {

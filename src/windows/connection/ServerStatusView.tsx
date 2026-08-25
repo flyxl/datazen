@@ -48,7 +48,7 @@ export interface ServerStatusCache {
 }
 
 interface ServerStatusViewProps {
-  connectionId: string;
+  dbSessionId: string;
   connectionName?: string;
   /** 面板 id（用于把数据写回对应 tab）。 */
   panelId?: string;
@@ -257,7 +257,7 @@ interface ChartCard {
 }
 
 export function ServerStatusView({
-  connectionId,
+  dbSessionId,
   connectionName,
   initialData,
   onDataChange,
@@ -314,7 +314,7 @@ export function ServerStatusView({
       setError(null);
       try {
         const result = await driverCommands.execute({
-          connectionId,
+          dbSessionId,
           command: SERVER_STATUS_SNAPSHOT_COMMAND,
           input: {},
         });
@@ -355,10 +355,10 @@ export function ServerStatusView({
         setButtonLoading(false);
       }
     },
-    [connectionId, t, persist, autoRefresh],
+    [dbSessionId, t, persist, autoRefresh],
   );
 
-  // 按 connectionId 拉取；切换服务器详情 tab 时若组件被复用，必须重新加载。
+  // 按 dbSessionId 拉取；切换服务器详情 tab 时若组件被复用，必须重新加载。
   // 故意不依赖 load：onDataChange 每帧可能是新引用，纳入依赖会重置 history 并无限重拉。
   useEffect(() => {
     historyRef.current = initialData?.history ?? {};
@@ -369,7 +369,7 @@ export function ServerStatusView({
     setLastUpdatedAt(initialData?.updatedAt ?? null);
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectionId]);
+  }, [dbSessionId]);
 
   useEffect(() => {
     if (autoRefresh <= 0) return;

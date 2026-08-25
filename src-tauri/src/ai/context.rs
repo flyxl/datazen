@@ -27,12 +27,12 @@ impl SchemaContextBuilder {
     /// Returns only table names (no column details). Much cheaper for initial LLM calls.
     pub async fn get_table_names(
         &self,
-        connection_id: &str,
+        db_session_id: &str,
         database: &str,
     ) -> Result<(String, Vec<String>), String> {
         let (driver, handle) = self
             .connection_manager
-            .get_connection(connection_id)
+            .get_session(db_session_id)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -50,14 +50,14 @@ impl SchemaContextBuilder {
     /// Build detailed DDL for specific tables only.
     pub async fn build_selective_context(
         &self,
-        connection_id: &str,
+        db_session_id: &str,
         database: &str,
         table_names: &[String],
         max_tokens_budget: usize,
     ) -> Result<SqlGenerationContext, String> {
         let (driver, handle) = self
             .connection_manager
-            .get_connection(connection_id)
+            .get_session(db_session_id)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -68,7 +68,7 @@ impl SchemaContextBuilder {
         for table_name in table_names {
             let schema = self
                 .schema_cache
-                .get_table_schema(connection_id, database, table_name, &driver, &handle)
+                .get_table_schema(db_session_id, database, table_name, &driver, &handle)
                 .await;
 
             match schema {
@@ -83,7 +83,7 @@ impl SchemaContextBuilder {
                 }
                 Err(e) => {
                     tracing::warn!(
-                        connection_id = %connection_id,
+                        db_session_id = %db_session_id,
                         database = %database,
                         table = %table_name,
                         error = %e,
@@ -104,7 +104,7 @@ impl SchemaContextBuilder {
 
     pub async fn build_sql_context(
         &self,
-        connection_id: &str,
+        db_session_id: &str,
         database: &str,
         current_table: Option<&str>,
         recent_queries: &[String],
@@ -112,7 +112,7 @@ impl SchemaContextBuilder {
     ) -> Result<SqlGenerationContext, String> {
         let (driver, handle) = self
             .connection_manager
-            .get_connection(connection_id)
+            .get_session(db_session_id)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -135,7 +135,7 @@ impl SchemaContextBuilder {
         for table_name in &sorted_tables {
             let schema = self
                 .schema_cache
-                .get_table_schema(connection_id, database, table_name, &driver, &handle)
+                .get_table_schema(db_session_id, database, table_name, &driver, &handle)
                 .await;
 
             if let Ok(schema) = schema {

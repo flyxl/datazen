@@ -11,7 +11,7 @@ import type { TableInfo } from '../types';
 type TFunc = (key: I18nKey, params?: Record<string, string | number>) => string;
 
 export interface RunSqlFileExecutionOptions {
-  connectionId: string;
+  dbSessionId: string;
   database: string;
   t: TFunc;
   /** Restore flow: confirm dropping existing objects when the database is non-empty. */
@@ -32,7 +32,7 @@ export interface RunSqlFileExecutionOptions {
  * (same pipeline as Restore Database). Never loads file contents into JS.
  */
 export async function runSqlFileExecution({
-  connectionId,
+  dbSessionId,
   database,
   t,
   confirmOverwrite,
@@ -43,7 +43,7 @@ export async function runSqlFileExecution({
   command = 'execute_sql_file_with_dialog',
   successMessageKey = 'backup.restoreSuccess',
 }: RunSqlFileExecutionOptions): Promise<boolean> {
-  await invoke('use_database', { connectionId, database });
+  await invoke('use_database', { dbSessionId, database });
 
   const options: string[] = [];
 
@@ -52,7 +52,7 @@ export async function runSqlFileExecution({
     if (!ok) return false;
   } else if (confirmOverwrite) {
     const tables = await invoke<TableInfo[]>('get_tables', {
-      connectionId,
+      dbSessionId,
       database,
     });
     if (tables.length > 0) {
@@ -82,7 +82,7 @@ export async function runSqlFileExecution({
 
   try {
     const executed = await invoke<boolean>(command, {
-      connectionId,
+      dbSessionId,
       database,
       options,
     });

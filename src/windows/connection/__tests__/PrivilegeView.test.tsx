@@ -66,7 +66,7 @@ beforeEach(() => {
 
 describe('PrivilegeView', () => {
   it('renders grants in tree view and executes SQL', async () => {
-    render(<PrivilegeView connectionId="c1" />);
+    render(<PrivilegeView dbSessionId="c1" />);
     await screen.findByText('alice');
     expect(screen.getByText('public')).toBeInTheDocument();
     expect(screen.getByText('users')).toBeInTheDocument();
@@ -81,25 +81,25 @@ describe('PrivilegeView', () => {
 
   it('shows empty and error states', async () => {
     getPrivileges.mockRejectedValueOnce(new Error('denied'));
-    const { rerender } = render(<PrivilegeView connectionId="c1" />);
+    const { rerender } = render(<PrivilegeView dbSessionId="c1" />);
     await screen.findByText('denied');
 
     getPrivileges.mockReset();
     getPrivileges.mockResolvedValue([]);
-    rerender(<PrivilegeView connectionId="c2" />);
+    rerender(<PrivilegeView dbSessionId="c2" />);
     await screen.findByText('privileges.empty');
   });
 
   it('surfaces execute failures', async () => {
     executeQuery.mockRejectedValueOnce(new Error('cannot grant'));
-    render(<PrivilegeView connectionId="c1" />);
+    render(<PrivilegeView dbSessionId="c1" />);
     await screen.findByText('alice');
     fireEvent.click(screen.getByText('query.execute'));
     await screen.findByText('cannot grant');
   });
 
   it('switches between by-user and by-object views', async () => {
-    render(<PrivilegeView connectionId="c1" />);
+    render(<PrivilegeView dbSessionId="c1" />);
     await screen.findByText('alice');
     expect(screen.getByText('privileges.byUser')).toBeInTheDocument();
     expect(screen.getByText('privileges.byObject')).toBeInTheDocument();
@@ -110,7 +110,7 @@ describe('PrivilegeView', () => {
   });
 
   it('can refresh data', async () => {
-    render(<PrivilegeView connectionId="c1" />);
+    render(<PrivilegeView dbSessionId="c1" />);
     await screen.findByText('alice');
 
     getPrivileges.mockClear();

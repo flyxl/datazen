@@ -12,7 +12,7 @@ const mockListFiles = vi.fn<(query?: string) => Promise<ContextEntry[]>>();
 const mockGetTables =
   vi.fn<
     (
-      connectionId: string,
+      dbSessionId: string,
       database: string,
     ) => Promise<{ name: string; tableType: string; schema?: string }[]>
   >();
@@ -51,7 +51,7 @@ const sampleTables = [
 ];
 
 interface RenderOptions {
-  connectionId?: string;
+  dbSessionId?: string;
   database?: string;
   query?: string;
 }
@@ -72,7 +72,7 @@ function renderPicker(
         onSelect={onSelect}
         onClose={onClose}
         anchorRef={anchorRef}
-        connectionId={options.connectionId}
+        dbSessionId={options.dbSessionId}
         database={options.database}
       />,
     ),
@@ -82,7 +82,7 @@ function renderPicker(
 describe('ContextPicker', () => {
   it('shows Tables and Files categories at root', async () => {
     const { getByTestId } = renderPicker('', vi.fn(), vi.fn(), {
-      connectionId: 'conn-1',
+      dbSessionId: 'conn-1',
       database: 'mydb',
     });
 
@@ -93,7 +93,7 @@ describe('ContextPicker', () => {
     });
   });
 
-  it('shows only Files category when connectionId is missing', async () => {
+  it('shows only Files category when dbSessionId is missing', async () => {
     const { getByTestId, queryByTestId } = renderPicker();
 
     await waitFor(() => {
@@ -105,7 +105,7 @@ describe('ContextPicker', () => {
   it('drills into Tables and lists names', async () => {
     mockGetTables.mockResolvedValue(sampleTables);
     const { getByTestId } = renderPicker('', vi.fn(), vi.fn(), {
-      connectionId: 'conn-1',
+      dbSessionId: 'conn-1',
       database: 'mydb',
     });
 
@@ -132,7 +132,7 @@ describe('ContextPicker', () => {
     mockListFiles.mockResolvedValue(sampleFiles);
 
     const { getByTestId, queryAllByTestId } = renderPicker('users', vi.fn(), vi.fn(), {
-      connectionId: 'conn-1',
+      dbSessionId: 'conn-1',
       database: 'mydb',
     });
 
@@ -161,7 +161,7 @@ describe('ContextPicker', () => {
             onSelect={vi.fn()}
             onClose={vi.fn()}
             anchorRef={anchorRef}
-            connectionId="conn-1"
+            dbSessionId="conn-1"
             database="mydb"
           />
         </div>
@@ -272,7 +272,7 @@ describe('ContextPicker', () => {
     localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
 
     const { getByText } = renderPicker('', vi.fn(), vi.fn(), {
-      connectionId: 'conn-1',
+      dbSessionId: 'conn-1',
       database: 'mydb',
     });
 

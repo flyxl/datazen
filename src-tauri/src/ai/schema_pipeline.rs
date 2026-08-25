@@ -65,7 +65,7 @@ impl SchemaContextPipeline {
 
     pub async fn resolve(
         &self,
-        connection_id: &str,
+        db_session_id: &str,
         database: &str,
         pinned_tables: &[String],
         supports_tools: bool,
@@ -74,7 +74,7 @@ impl SchemaContextPipeline {
     ) -> Result<PromptSeed, String> {
         let (db_type, table_names) = self
             .builder
-            .get_table_names(connection_id, database)
+            .get_table_names(db_session_id, database)
             .await
             .unwrap_or_else(|_| (String::new(), Vec::new()));
 
@@ -83,13 +83,13 @@ impl SchemaContextPipeline {
         } else {
             match self
                 .builder
-                .build_selective_context(connection_id, database, pinned_tables, pinned_budget)
+                .build_selective_context(db_session_id, database, pinned_tables, pinned_budget)
                 .await
             {
                 Ok(c) => c.schema_ddl,
                 Err(e) => {
                     tracing::warn!(
-                        connection_id = %connection_id,
+                        db_session_id = %db_session_id,
                         database = %database,
                         pinned_count = pinned_tables.len(),
                         error = %e,
@@ -105,7 +105,7 @@ impl SchemaContextPipeline {
         } else {
             let ctx = self
                 .builder
-                .build_sql_context(connection_id, database, None, &[], fallback_budget)
+                .build_sql_context(db_session_id, database, None, &[], fallback_budget)
                 .await?;
             Some(ctx.schema_ddl)
         };

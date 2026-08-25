@@ -18,11 +18,11 @@ import type { DatabaseObject, DatabaseObjectKind } from '../../types';
 const KINDS: DatabaseObjectKind[] = ['function', 'procedure', 'trigger'];
 
 interface ObjectBrowserProps {
-  connectionId: string;
+  dbSessionId: string;
   databaseType?: string;
 }
 
-export function ObjectBrowser({ connectionId, databaseType }: ObjectBrowserProps) {
+export function ObjectBrowser({ dbSessionId, databaseType }: ObjectBrowserProps) {
   const { t } = useI18n();
   const [kind, setKind] = useState<DatabaseObjectKind>('function');
   const [objects, setObjects] = useState<DatabaseObject[]>([]);
@@ -39,7 +39,7 @@ export function ObjectBrowser({ connectionId, databaseType }: ObjectBrowserProps
       setLoading(true);
       setError(null);
       try {
-        const rows = await databaseCommands.getDatabaseObjects(connectionId, nextKind);
+        const rows = await databaseCommands.getDatabaseObjects(dbSessionId, nextKind);
         setObjects(rows);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -48,7 +48,7 @@ export function ObjectBrowser({ connectionId, databaseType }: ObjectBrowserProps
         setLoading(false);
       }
     },
-    [connectionId],
+    [dbSessionId],
   );
 
   useEffect(() => {
@@ -61,7 +61,7 @@ export function ObjectBrowser({ connectionId, databaseType }: ObjectBrowserProps
       setRunMessage(null);
       try {
         const text = await databaseCommands.getObjectDdl(
-          connectionId,
+          dbSessionId,
           obj.kind,
           obj.name,
           obj.schema,
@@ -71,7 +71,7 @@ export function ObjectBrowser({ connectionId, databaseType }: ObjectBrowserProps
         setDdl(`-- ${e instanceof Error ? e.message : String(e)}`);
       }
     },
-    [connectionId],
+    [dbSessionId],
   );
 
   const copyObjectDdl = useCallback(
@@ -80,13 +80,13 @@ export function ObjectBrowser({ connectionId, databaseType }: ObjectBrowserProps
         const text =
           selected?.name === obj.name && selected?.schema === obj.schema && ddl
             ? ddl
-            : await databaseCommands.getObjectDdl(connectionId, obj.kind, obj.name, obj.schema);
+            : await databaseCommands.getObjectDdl(dbSessionId, obj.kind, obj.name, obj.schema);
         await navigator.clipboard.writeText(text);
       } catch (e) {
         setRunMessage(e instanceof Error ? e.message : String(e));
       }
     },
-    [connectionId, ddl, selected],
+    [dbSessionId, ddl, selected],
   );
 
   const handleExecute = useCallback(async () => {
@@ -94,7 +94,7 @@ export function ObjectBrowser({ connectionId, databaseType }: ObjectBrowserProps
     setRunning(true);
     setRunMessage(null);
     try {
-      await queryCommands.executeQuery(connectionId, ddl);
+      await queryCommands.executeQuery(dbSessionId, ddl);
       setRunMessage(t('objects.executeOk'));
       void load(kind);
     } catch (e) {
@@ -102,7 +102,7 @@ export function ObjectBrowser({ connectionId, databaseType }: ObjectBrowserProps
     } finally {
       setRunning(false);
     }
-  }, [connectionId, ddl, kind, load, t]);
+  }, [dbSessionId, ddl, kind, load, t]);
 
   const handleListContextMenu = useCallback(
     (e: React.MouseEvent, obj: DatabaseObject) => {

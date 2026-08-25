@@ -164,7 +164,7 @@ async fn ai_analyze_queries_with_history() {
         .store
         .add_query_history(crate::store::QueryHistoryEntry {
             id: uuid::Uuid::new_v4().to_string(),
-            config_id: "hist-cfg".into(),
+            connection_id: "hist-cfg".into(),
             database: "app".into(),
             schema: None,
             sql: "SELECT 1".into(),
@@ -210,7 +210,7 @@ async fn execute_db_tool_list_tables() {
     let tool = ToolCall {
         id: "t2".into(),
         name: "list_tables".into(),
-        arguments: r#"{"config_id":"tables-cfg","database":"app"}"#.into(),
+        arguments: r#"{"connection_id":"tables-cfg","database":"app"}"#.into(),
     };
     let out = execute_db_tool(&test.state, &tool).await;
     assert!(out.contains("users"));
@@ -578,7 +578,7 @@ async fn execute_db_tool_get_table_schema() {
     let tool = ToolCall {
         id: "t3".into(),
         name: "get_table_schema".into(),
-        arguments: r#"{"config_id":"schema-tool","tables":["users"]}"#.into(),
+        arguments: r#"{"connection_id":"schema-tool","tables":["users"]}"#.into(),
     };
     let out = execute_db_tool(&test.state, &tool).await;
     assert!(out.contains("users"));
@@ -682,7 +682,7 @@ async fn execute_db_tool_list_databases() {
     let tool = ToolCall {
         id: "ld".into(),
         name: "list_databases".into(),
-        arguments: r#"{"config_id":"db-tool"}"#.into(),
+        arguments: r#"{"connection_id":"db-tool"}"#.into(),
     };
     let out = execute_db_tool(&test.state, &tool).await;
     assert!(out.contains("app"));
@@ -696,7 +696,7 @@ async fn ai_analyze_queries_all_history() {
         .store
         .add_query_history(crate::store::QueryHistoryEntry {
             id: uuid::Uuid::new_v4().to_string(),
-            config_id: "all-hist".into(),
+            connection_id: "all-hist".into(),
             database: "app".into(),
             schema: None,
             sql: "SELECT 2".into(),

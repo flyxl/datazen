@@ -2,7 +2,7 @@
 
 > This document describes how to use DataZen **Ops Dashboards**: multi-chart layouts, background refresh, alerts, run history, the system tray, and import/export.  
 > Source of truth: `src-tauri/src/dashboard/`, `src-tauri/src/monitor/`, `src/windows/dashboard/`.  
-> Dashboards reference saved connections by **`configId`** (same as MCP). Dashboard files never store database passwords.
+> Dashboards reference saved connections by **`connectionId`** (same as MCP). Dashboard files never store database passwords.
 
 ---
 
@@ -14,7 +14,7 @@ An Ops Dashboard is a dedicated window for **on-call / ops / business monitoring
 |------------|-------------|
 | Multi-chart grid | 12-column layout; each widget has its own tile size |
 | Timed monitoring | Per-widget `refreshSec` (minimum 30s); scheduling can continue after the dashboard window closes |
-| Connection isolation | Monitor uses `monitor:{configId}` handles, separate from UI query sessions |
+| Connection isolation | Monitor uses `monitor:{connectionId}` handles, separate from UI query sessions |
 | Alerts | Numeric threshold + cooldown; channels: desktop, webhook (email settings reserved, not sent yet) |
 | History | Every run is persisted; pick a past run to redraw from snapshot (no re-query) |
 | Tray | Optional tray: open dashboards, pause/resume monitoring, quit |
@@ -50,7 +50,7 @@ An Ops Dashboard is a dedicated window for **on-call / ops / business monitoring
 | Field | Meaning |
 |-------|---------|
 | `title` | Tile title |
-| `configId` | Saved connection id (create the connection first) |
+| `connectionId` | Saved connection id (create the connection first) |
 | `sql` | Query driving the chart |
 | `chartConfig` | Chart type, axes, aggregation (same shape as query-result charts) |
 | `layout` | `{ x, y, w, h }` on the grid |
@@ -94,7 +94,7 @@ Default retention is about **200 runs / 30 days** per widget (Settings → Monit
 
 ### 3.1 Prerequisites
 
-1. At least one **saved** connection (`configId`).  
+1. At least one **saved** connection (`connectionId`).  
 2. SQL must match the target dialect; monitor opens its own connection.  
 3. (Optional) Allow DataZen notifications in the OS.  
 4. (Optional) A webhook URL that accepts POST JSON, or set a default in Settings.
@@ -178,7 +178,7 @@ Cooldown and cooldown apply only after successful evaluation.
 
 ### 7.1 MonitorEngine
 
-On app start the engine schedules enabled widgets by `refreshSec`, limits concurrency, and serializes work per `configId`. Default query timeout is about **60s**.
+On app start the engine schedules enabled widgets by `refreshSec`, limits concurrency, and serializes work per `connectionId`. Default query timeout is about **60s**.
 
 ### 7.2 Tray (Settings → Monitor)
 
@@ -205,7 +205,7 @@ Tray actions typically include open dashboards, pause/resume, quit.
 
 ### 8.1 Single-file dashboard
 
-Export writes definition-only JSON (no run history, no passwords). Import may assign a new id on conflict. Target machines need matching `configId` connections or you must rebind widgets.
+Export writes definition-only JSON (no run history, no passwords). Import may assign a new id on conflict. Target machines need matching `connectionId` connections or you must rebind widgets.
 
 ### 8.2 App-data ZIP
 
@@ -231,7 +231,7 @@ They complement each other (e.g. Workflow writes aggregates; dashboard SQL reads
 | Symptom | Likely cause | What to try |
 |---------|--------------|-------------|
 | `Driver not found` | Driver not linked in this build | Use a build with that driver / set `DATAZEN_DRIVERS` in dev |
-| Widget always errors | Bad `configId`, SQL, network/ACL | Rebind connection; validate SQL in a query tab |
+| Widget always errors | Bad `connectionId`, SQL, network/ACL | Rebind connection; validate SQL in a query tab |
 | No auto refresh | Global pause / disabled flags / interval | Check pause button and enabled; wait or Refresh all |
 | No tray | Tray off or no active widgets | Settings → Monitor; enable widgets |
 | Main close quits app | Close-to-tray off | Enable tray + close-to-tray |

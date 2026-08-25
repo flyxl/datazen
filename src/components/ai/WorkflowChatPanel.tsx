@@ -59,7 +59,7 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
     const conn = selectedConnection || undefined;
     const { contextFiles, contextTables } = splitContextItems(contextItems);
     void sendMessage({
-      connectionId: conn,
+      dbSessionId: conn,
       content: input.trim(),
       includeSchema: !!conn,
       contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
@@ -187,7 +187,7 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
             t={t}
             onAnswerQuestions={(answers) => {
               void sendMessage({
-                connectionId: selectedConnection || undefined,
+                dbSessionId: selectedConnection || undefined,
                 content: answers,
                 includeSchema: !!selectedConnection,
               });
@@ -232,7 +232,7 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
           rows={3}
           isLoading={workflowChat?.isStreaming}
           onStop={handleStop}
-          connectionId={selectedConnection || undefined}
+          dbSessionId={selectedConnection || undefined}
           database={selectedDatabase}
           contextItems={contextItems}
           onContextItemsChange={setContextItems}

@@ -183,7 +183,7 @@ function formatJsonChunk(
 
 export interface StreamQueryFn {
   (
-    connectionId: string,
+    dbSessionId: string,
     sql: string,
     onEvent: (event: QueryStreamEvent) => void,
     options?: { applyResultLimit?: boolean; recordHistory?: boolean },
@@ -191,7 +191,7 @@ export interface StreamQueryFn {
 }
 
 export async function streamQueryIntoExporter(opts: {
-  connectionId: string;
+  dbSessionId: string;
   sql: string;
   streamer: TableExportStreamer;
   write: (chunk: string) => void | Promise<void>;
@@ -208,7 +208,7 @@ export async function streamQueryIntoExporter(opts: {
   };
 
   await streamQuery(
-    opts.connectionId,
+    opts.dbSessionId,
     opts.sql,
     (event) => {
       if (event.type === 'statementStart') {
@@ -250,7 +250,7 @@ function inferColumnNames(rows: (unknown | null)[][]): string[] {
 
 /** Stream a table export into a single in-memory string (one table at a time). */
 export async function streamTableExportText(opts: {
-  connectionId: string;
+  dbSessionId: string;
   tableName: string;
   columns: string[];
   format: StreamableExportFormat;
@@ -267,7 +267,7 @@ export async function streamTableExportText(opts: {
   });
   let content = '';
   await streamQueryIntoExporter({
-    connectionId: opts.connectionId,
+    dbSessionId: opts.dbSessionId,
     sql: buildTableSelectSql(opts.tableName, opts.columns, opts.databaseType),
     streamer,
     write: (chunk) => {
@@ -299,7 +299,7 @@ const defaultSaveSession: SaveSessionApi = {
 
 /** Stream a table export directly to a user-chosen file (no full-table row array). */
 export async function streamTableExportToSaveDialog(opts: {
-  connectionId: string;
+  dbSessionId: string;
   tableName: string;
   columns: string[];
   format: StreamableExportFormat;
@@ -333,7 +333,7 @@ export async function streamTableExportToSaveDialog(opts: {
 
   try {
     await streamQueryIntoExporter({
-      connectionId: opts.connectionId,
+      dbSessionId: opts.dbSessionId,
       sql: buildTableSelectSql(opts.tableName, opts.columns, opts.databaseType),
       streamer,
       write: async (chunk) => {

@@ -16,7 +16,7 @@ import { supportsFullTableExport, type DataExportCapability } from '../../lib/ex
 export interface BatchExportDialogProps {
   open: boolean;
   onClose: () => void;
-  connectionId: string;
+  dbSessionId: string;
   databaseType?: string;
   database?: string;
   /** available table names (from schema store) */
@@ -52,7 +52,7 @@ const DATA_FORMAT_OPTIONS: { value: BatchExportDataFormat; label: string }[] = [
 export function BatchExportDialog({
   open,
   onClose,
-  connectionId,
+  dbSessionId,
   databaseType,
   database: _database,
   tables,
@@ -156,7 +156,7 @@ export function BatchExportDialog({
           dataFormat,
           outputMode,
           databaseType,
-          connectionId,
+          dbSessionId,
           loadTableExportData,
           onProgress: ({ tableName }) => {
             const idx = selectedTables.indexOf(tableName);
@@ -198,7 +198,7 @@ export function BatchExportDialog({
     outputMode,
     databaseType,
     loadTableExportData,
-    connectionId,
+    dbSessionId,
     batchExportLocked,
   ]);
 

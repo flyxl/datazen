@@ -24,12 +24,12 @@ export interface WidgetEditorDrawerProps {
   widget: DashboardWidget | null;
   isNew?: boolean;
   /** When editing a hidden SQL workflow widget */
-  hiddenSql?: { configId: string; sql: string };
+  hiddenSql?: { connectionId: string; sql: string };
   /** User-visible workflows for binding non-hidden widgets */
   userWorkflows?: WorkflowListItem[];
   onOpenWorkflowEditor?: () => void;
   onClose: () => void;
-  onSave: (widget: DashboardWidget, hiddenSql?: { configId: string; sql: string }) => void;
+  onSave: (widget: DashboardWidget, hiddenSql?: { connectionId: string; sql: string }) => void;
 }
 
 const CHART_TYPES: ChartType[] = ['bar', 'line', 'pie', 'scatter', 'area'];
@@ -96,15 +96,15 @@ export function WidgetEditorDrawer({
   const fetchConnections = useConnectionStore((s) => s.fetchConnections);
 
   const [draft, setDraft] = useState<DashboardWidget>(() => widget ?? emptyDraft());
-  const [hiddenSql, setHiddenSql] = useState<{ configId: string; sql: string }>(
-    hiddenSqlProp ?? { configId: '', sql: 'SELECT 1 AS v' },
+  const [hiddenSql, setHiddenSql] = useState<{ connectionId: string; sql: string }>(
+    hiddenSqlProp ?? { connectionId: '', sql: 'SELECT 1 AS v' },
   );
   const [forceCustomRefresh, setForceCustomRefresh] = useState(false);
 
   useEffect(() => {
     if (open) {
       setDraft(widget ?? emptyDraft());
-      setHiddenSql(hiddenSqlProp ?? { configId: '', sql: 'SELECT 1 AS v' });
+      setHiddenSql(hiddenSqlProp ?? { connectionId: '', sql: 'SELECT 1 AS v' });
       setForceCustomRefresh(false);
       void fetchConnections();
     }
@@ -112,7 +112,7 @@ export function WidgetEditorDrawer({
 
   const handleSave = useCallback(() => {
     if (!draft.title.trim()) return;
-    if (hiddenSqlProp != null && (!hiddenSql.configId || !hiddenSql.sql.trim())) return;
+    if (hiddenSqlProp != null && (!hiddenSql.connectionId || !hiddenSql.sql.trim())) return;
     const normalized = {
       ...draft,
       title: draft.title.trim(),
@@ -163,8 +163,8 @@ export function WidgetEditorDrawer({
               <label className="block space-y-1">
                 <span className="text-xs text-fg-muted">{t('dashboard.connection')}</span>
                 <Select
-                  value={hiddenSql.configId}
-                  onChange={(v) => setHiddenSql((s) => ({ ...s, configId: v }))}
+                  value={hiddenSql.connectionId}
+                  onChange={(v) => setHiddenSql((s) => ({ ...s, connectionId: v }))}
                   options={connOptions}
                   placeholder={t('dashboard.selectConnection')}
                 />
@@ -179,7 +179,7 @@ export function WidgetEditorDrawer({
                     value={hiddenSql.sql}
                     onChange={(sql) => setHiddenSql((s) => ({ ...s, sql }))}
                     databaseType={
-                      connections.find((c) => c.id === hiddenSql.configId)?.databaseType
+                      connections.find((c) => c.id === hiddenSql.connectionId)?.databaseType
                     }
                   />
                 </div>

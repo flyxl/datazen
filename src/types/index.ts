@@ -177,7 +177,7 @@ export interface ExplainResult {
 
 export interface QueryHistoryEntry {
   id: string;
-  configId: string;
+  connectionId: string;
   database: string;
   /** Schema namespace when known (PG search_path is not session-tracked yet → usually absent). */
   schema?: string | null;
@@ -191,7 +191,7 @@ export interface QueryHistoryEntry {
 
 export interface FavoriteQuery {
   id: string;
-  configId: string;
+  connectionId: string;
   title: string;
   sql: string;
   createdAt: string;

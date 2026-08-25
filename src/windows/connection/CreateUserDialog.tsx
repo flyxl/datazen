@@ -15,19 +15,19 @@ import { useI18n } from '../../hooks/useI18n';
 interface CreateUserDialogProps {
   open: boolean;
   onClose: () => void;
-  connectionId: string;
+  dbSessionId: string;
   onCreated?: (username: string) => void;
 }
 
 export function CreateUserDialog({
   open,
   onClose,
-  connectionId,
+  dbSessionId,
   onCreated,
 }: CreateUserDialogProps) {
   const { t } = useI18n();
   const { definition: grantDefinition } = useConnectionCommand(
-    open ? connectionId : undefined,
+    open ? dbSessionId : undefined,
     'grant_privileges',
   );
   const { all: allPrivileges } = usePrivilegeOptions(grantDefinition);
@@ -45,13 +45,13 @@ export function CreateUserDialog({
   const showGrantOption = hasSchemaField(grantDefinition, 'grantOption');
 
   useEffect(() => {
-    if (open && connectionId) {
+    if (open && dbSessionId) {
       databaseCommands
-        .getDatabases(connectionId)
+        .getDatabases(dbSessionId)
         .then(setDatabases)
         .catch(() => {});
     }
-  }, [open, connectionId]);
+  }, [open, dbSessionId]);
 
   const resetForm = useCallback(() => {
     setUsername('');
@@ -92,7 +92,7 @@ export function CreateUserDialog({
     try {
       const input: Record<string, unknown> = { username: username.trim() };
       if (password) input.password = password;
-      await driverCommands.execute({ connectionId, command: 'create_user', input });
+      await driverCommands.execute({ dbSessionId, command: 'create_user', input });
       setCreatedUsername(username.trim());
       setStep('grant');
     } catch (err) {
@@ -100,7 +100,7 @@ export function CreateUserDialog({
     } finally {
       setRunning(false);
     }
-  }, [username, password, connectionId]);
+  }, [username, password, dbSessionId]);
 
   const handleGrant = useCallback(async () => {
     if (selectedPrivileges.size === 0) return;
@@ -108,7 +108,7 @@ export function CreateUserDialog({
     setError(null);
     try {
       await driverCommands.execute({
-        connectionId,
+        dbSessionId,
         command: 'grant_privileges',
         input: {
           username: createdUsername,
@@ -127,7 +127,7 @@ export function CreateUserDialog({
     }
   }, [
     selectedPrivileges,
-    connectionId,
+    dbSessionId,
     createdUsername,
     targetDatabase,
     grantOption,

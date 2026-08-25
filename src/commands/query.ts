@@ -10,12 +10,12 @@ import { driverCommands } from './driver';
 
 export const queryCommands = {
   executeQuery: async (
-    connectionId: string,
+    dbSessionId: string,
     sql: string,
     params?: Record<string, string | number | boolean | null>,
   ) => {
     const result = await driverCommands.execute({
-      connectionId,
+      dbSessionId,
       command: 'query',
       input: params && Object.keys(params).length > 0 ? { sql, params } : { sql },
     });
@@ -23,13 +23,13 @@ export const queryCommands = {
   },
 
   executeQueryStream: async (
-    connectionId: string,
+    dbSessionId: string,
     sql: string,
     onEvent: (event: QueryStreamEvent) => void,
     options?: { applyResultLimit?: boolean; recordHistory?: boolean },
   ) => {
     await driverCommands.executeStream({
-      connectionId,
+      dbSessionId,
       command: 'query_stream',
       input: { sql },
       onEvent,
@@ -38,33 +38,34 @@ export const queryCommands = {
     });
   },
 
-  getExplain: (connectionId: string, sql: string) =>
-    invoke<ExplainResult>('get_explain', { connectionId, sql }),
+  getExplain: (dbSessionId: string, sql: string) =>
+    invoke<ExplainResult>('get_explain', { dbSessionId, sql }),
 
-  cancelQuery: (connectionId: string) => invoke<void>('cancel_query', { connectionId }),
+  cancelQuery: (dbSessionId: string) => invoke<void>('cancel_query', { dbSessionId }),
 
-  getQueryHistory: (limit: number, configId?: string, database?: string, schema?: string) =>
-    invoke<QueryHistoryEntry[]>('get_query_history', { limit, configId, database, schema }),
+  /** connectionId = 持久化配置连接 id（历史按连接分组）。 */
+  getQueryHistory: (limit: number, connectionId?: string, database?: string, schema?: string) =>
+    invoke<QueryHistoryEntry[]>('get_query_history', { limit, connectionId, database, schema }),
 
   clearQueryHistory: () => invoke<void>('clear_query_history'),
 
-  getFavoriteQueries: (configId?: string) =>
-    invoke<FavoriteQuery[]>('get_favorite_queries', { configId }),
+  getFavoriteQueries: (connectionId?: string) =>
+    invoke<FavoriteQuery[]>('get_favorite_queries', { connectionId }),
 
-  addFavoriteQuery: (configId: string, title: string, sql: string) =>
-    invoke<FavoriteQuery>('add_favorite_query', { configId, title, sql }),
+  addFavoriteQuery: (connectionId: string, title: string, sql: string) =>
+    invoke<FavoriteQuery>('add_favorite_query', { connectionId, title, sql }),
 
   deleteFavoriteQuery: (id: string) => invoke<void>('delete_favorite_query', { id }),
 
-  beginSessionTransaction: (connectionId: string) =>
-    invoke<void>('begin_session_transaction', { connectionId }),
+  beginSessionTransaction: (dbSessionId: string) =>
+    invoke<void>('begin_session_transaction', { dbSessionId }),
 
-  commitSessionTransaction: (connectionId: string) =>
-    invoke<void>('commit_session_transaction', { connectionId }),
+  commitSessionTransaction: (dbSessionId: string) =>
+    invoke<void>('commit_session_transaction', { dbSessionId }),
 
-  rollbackSessionTransaction: (connectionId: string) =>
-    invoke<void>('rollback_session_transaction', { connectionId }),
+  rollbackSessionTransaction: (dbSessionId: string) =>
+    invoke<void>('rollback_session_transaction', { dbSessionId }),
 
-  sessionTransactionStatus: (connectionId: string) =>
-    invoke<boolean>('session_transaction_status', { connectionId }),
+  sessionTransactionStatus: (dbSessionId: string) =>
+    invoke<boolean>('session_transaction_status', { dbSessionId }),
 };

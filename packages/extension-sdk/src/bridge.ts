@@ -88,7 +88,8 @@ export interface ConnectionSummary {
 }
 
 export interface CommandInvokeRequest {
-  configId: string;
+  /** Persistent connection id the command targets. */
+  connectionId: string;
   command: string;
   args?: Record<string, unknown>;
 }
@@ -181,7 +182,7 @@ function isResponseEnvelope(data: unknown): data is ResponseEnvelope {
  * ```ts
  * const dz = createClient();
  * await dz.ready();
- * const rows = await dz.command.invoke({ configId, command: 'query', args: { sql } });
+ * const rows = await dz.command.invoke({ connectionId, command: 'query', args: { sql } });
  * ```
  */
 export function createClient(options: CreateClientOptions = {}): ExtensionClient {

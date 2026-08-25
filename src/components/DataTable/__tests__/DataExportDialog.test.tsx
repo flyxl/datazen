@@ -68,7 +68,7 @@ describe('DataExportDialog', () => {
     expect(getByText('export.range')).toBeInTheDocument();
   });
 
-  it('offers entire-table scope when connectionId is set', () => {
+  it('offers entire-table scope when dbSessionId is set', () => {
     render(
       <DataExportDialog
         open
@@ -76,7 +76,7 @@ describe('DataExportDialog', () => {
         columns={COLS}
         rows={[[1, 'a']]}
         tableName="users"
-        connectionId="c1"
+        dbSessionId="c1"
         totalRows={100}
       />,
     );
@@ -184,7 +184,7 @@ describe('DataExportDialog export capability', () => {
         columns={COLS}
         rows={[[1, 'a']]}
         tableName="users"
-        connectionId="c1"
+        dbSessionId="c1"
         totalRows={100}
         dataExportCapability="loaded_only"
       />,
@@ -204,7 +204,7 @@ describe('DataExportDialog export capability', () => {
         columns={COLS}
         rows={[[1, 'a']]}
         tableName="users"
-        connectionId="c1"
+        dbSessionId="c1"
         dataExportCapability="none"
       />,
     );

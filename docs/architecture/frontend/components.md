@@ -384,12 +384,11 @@ Tauri 使用 serde 反序列化前端传入的参数。
 
 **约定**：新增 IPC 时，前端 `invoke` 第二参数与 TypeScript 类型保持一致（camelCase）；Rust 命令形参保持 snake_case；复杂 struct 在 Rust 侧显式 `rename_all = "camelCase"`。不要在前端混用 snake_case 键名（如 `connection_id`），现有 `src/commands/` 中已无此类用法。
 
-示例（摘自 `commands/query.ts` / `commands/connection.ts`）：
+示例（摘自 `commands/connection.ts`；术语：`connectionId` = 持久化配置连接 id，`dbSessionId` = 运行时会话 id）：
 
 ```typescript
-invoke<MultiQueryResult>('execute_query', { connectionId, sql });
-invoke<string>('connect', { configId });
-invoke<number | null>('export_connections_with_dialog', { password, defaultFileName });
+invoke<string>('connect', { connectionId });            // 返回运行时 dbSessionId
+invoke<boolean>('ping_connection', { dbSessionId });
 ```
 
 ### 8.2 命令封装
@@ -413,11 +412,18 @@ export const connectionCommands = {
   testConnection: (config: ConnectionConfig) =>
     invoke<ServerInfo>('test_connection', { config }),
 
-  connect: (configId: string) =>
-    invoke<string>('connect', { config_id: configId }),
+  // 入参为持久化配置连接 id（connectionId），返回运行时会话 id（dbSessionId）
+  connect: (connectionId: string) =>
+    invoke<string>('connect', { connectionId }),
 
-  disconnect: (connectionId: string) =>
-    invoke<void>('disconnect', { connection_id: connectionId }),
+  pingConnection: (dbSessionId: string) =>
+    invoke<boolean>('ping_connection', { dbSessionId }),
+
+  releaseConnection: (dbSessionId: string) =>
+    invoke<boolean>('release_connection', { dbSessionId }),
+
+  disconnect: (dbSessionId: string) =>
+    invoke<void>('disconnect', { dbSessionId }),
 };
 ```
 
@@ -426,31 +432,14 @@ export const connectionCommands = {
 import { invoke } from '@tauri-apps/api/core';
 
 export const databaseCommands = {
-  getDatabases: (connectionId: string) =>
-    invoke<string[]>('get_databases', { connection_id: connectionId }),
+  getDatabases: (dbSessionId: string) =>
+    invoke<string[]>('get_databases', { dbSessionId }),
 
-  getTables: (connectionId: string, database: string) =>
-    invoke<TableInfo[]>('get_tables', { connection_id: connectionId, database }),
+  getTables: (dbSessionId: string, database: string) =>
+    invoke<TableInfo[]>('get_tables', { dbSessionId, database }),
 
-  getTableSchema: (connectionId: string, table: string) =>
-    invoke<TableSchema>('get_table_schema', { connection_id: connectionId, table }),
-
-  // 注意：需要后端新增 #[tauri::command] get_table_data（见下方补齐说明）
-  getTableData: (params: {
-    connectionId: string;
-    table: string;
-    page: number;
-    pageSize: number;
-    filters?: FilterCondition[];
-    sorts?: SortCondition[];
-  }) => invoke<TableDataResult>('get_table_data', {
-    connection_id: params.connectionId,
-    table: params.table,
-    page: params.page,
-    page_size: params.pageSize,
-    filters: params.filters,
-    sorts: params.sorts,
-  }),
+  getTableSchema: (dbSessionId: string, table: string) =>
+    invoke<TableSchema>('get_table_schema', { dbSessionId, table }),
 };
 ```
 
@@ -458,18 +447,24 @@ export const databaseCommands = {
 // commands/query.ts
 import { invoke } from '@tauri-apps/api/core';
 
+// SQL 查询统一经 Driver Command IPC 执行（dbSessionId 标识目标会话）
 export const queryCommands = {
-  executeQuery: (connectionId: string, sql: string) =>
-    invoke<QueryResult>('execute_query', { connection_id: connectionId, sql }),
+  executeQuery: async (dbSessionId: string, sql: string) => {
+    const result = await invoke<{ data: MultiQueryResult }>(
+      'execute_driver_command',
+      { dbSessionId, command: 'query', input: { sql } },
+    );
+    return result.data;
+  },
 
-  getExplain: (connectionId: string, sql: string) =>
-    invoke<ExplainResult>('get_explain', { connection_id: connectionId, sql }),
+  getExplain: (dbSessionId: string, sql: string) =>
+    invoke<ExplainResult>('get_explain', { dbSessionId, sql }),
 
-  cancelQuery: (connectionId: string) =>
-    invoke<void>('cancel_query', { connection_id: connectionId }),
+  cancelQuery: (dbSessionId: string) =>
+    invoke<void>('cancel_query', { dbSessionId }),
 
-  getQueryHistory: (limit: number) =>
-    invoke<QueryHistoryEntry[]>('get_query_history', { limit }),
+  getQueryHistory: (limit: number, connectionId?: string) =>
+    invoke<QueryHistoryEntry[]>('get_query_history', { limit, connectionId }),
 
   clearQueryHistory: () =>
     invoke<void>('clear_query_history'),
@@ -885,7 +880,7 @@ ContentView
 
 ### 8.3 数据流
 
-1. 后端 `get_er_data(connection_id, database)` 批量获取所有表的 `TableSchema`（含外键）
+1. 后端 `get_er_data(db_session_id, database)` 批量获取所有表的 `TableSchema`（含外键）
 2. `buildErGraph(schemas, focusTable?)` 生成 nodes 和 edges
 3. `focusTable` 参数控制焦点模式：仅显示目标表及其直接关联表
 4. React Flow 渲染，支持交互和导出

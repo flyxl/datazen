@@ -24,15 +24,15 @@ use tauri::State;
 #[tauri::command]
 pub async fn prepare_schema_diff_plan(
     state: State<'_, AppState>,
-    source_connection_id: String,
-    target_connection_id: String,
+    source_db_session_id: String,
+    target_db_session_id: String,
     table_names: Vec<String>,
     allow_destructive: bool,
     include_indexes: Option<bool>,
 ) -> Result<SchemaDiffPlan, CommandError> {
     tracing::info!(
-        %source_connection_id,
-        %target_connection_id,
+        %source_db_session_id,
+        %target_db_session_id,
         tables = table_names.len(),
         allow_destructive,
         "prepare_schema_diff_plan"
@@ -46,23 +46,23 @@ pub async fn prepare_schema_diff_plan(
 
     let src_config = state
         .connection_manager
-        .get_connection_config(&source_connection_id)
+        .get_session_config(&source_db_session_id)
         .await
         .cmd_err("prepare_schema_diff_plan")?;
     let tgt_config = state
         .connection_manager
-        .get_connection_config(&target_connection_id)
+        .get_session_config(&target_db_session_id)
         .await
         .cmd_err("prepare_schema_diff_plan")?;
 
     let (src_driver, src_handle) = state
         .connection_manager
-        .get_connection(&source_connection_id)
+        .get_session(&source_db_session_id)
         .await
         .cmd_err("prepare_schema_diff_plan")?;
     let (tgt_driver, tgt_handle) = state
         .connection_manager
-        .get_connection(&target_connection_id)
+        .get_session(&target_db_session_id)
         .await
         .cmd_err("prepare_schema_diff_plan")?;
 
@@ -152,13 +152,13 @@ pub async fn prepare_schema_diff_plan(
 #[tauri::command]
 pub async fn execute_schema_diff_deploy(
     state: State<'_, AppState>,
-    target_connection_id: String,
+    target_db_session_id: String,
     plan: SchemaDiffPlan,
     use_transaction: Option<bool>,
     confirm_destructive: Option<String>,
 ) -> Result<SchemaDiffDeployResult, CommandError> {
     tracing::info!(
-        %target_connection_id,
+        %target_db_session_id,
         statements = plan.statements.len(),
         "execute_schema_diff_deploy"
     );
@@ -174,7 +174,7 @@ pub async fn execute_schema_diff_deploy(
 
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&target_connection_id)
+        .get_session(&target_db_session_id)
         .await
         .cmd_err("execute_schema_diff_deploy")?;
 
@@ -195,31 +195,31 @@ pub async fn execute_schema_diff_deploy(
 /// Compare column-level schema differences for a single table.
 pub(crate) async fn compare_table_schemas_impl(
     state: &AppState,
-    source_connection_id: String,
-    target_connection_id: String,
+    source_db_session_id: String,
+    target_db_session_id: String,
     table_name: String,
 ) -> Result<serde_json::Value, CommandError> {
-    tracing::info!(%source_connection_id, %target_connection_id, %table_name, "compare_table_schemas");
+    tracing::info!(%source_db_session_id, %target_db_session_id, %table_name, "compare_table_schemas");
 
     let src_config = state
         .connection_manager
-        .get_connection_config(&source_connection_id)
+        .get_session_config(&source_db_session_id)
         .await
         .cmd_err("compare_table_schemas")?;
     let tgt_config = state
         .connection_manager
-        .get_connection_config(&target_connection_id)
+        .get_session_config(&target_db_session_id)
         .await
         .cmd_err("compare_table_schemas")?;
 
     let (src_driver, src_handle) = state
         .connection_manager
-        .get_connection(&source_connection_id)
+        .get_session(&source_db_session_id)
         .await
         .cmd_err("compare_table_schemas")?;
     let (tgt_driver, tgt_handle) = state
         .connection_manager
-        .get_connection(&target_connection_id)
+        .get_session(&target_db_session_id)
         .await
         .cmd_err("compare_table_schemas")?;
 
@@ -304,20 +304,20 @@ pub(crate) async fn compare_table_schemas_impl(
 /// Sample row-level data differences for a single table.
 pub(crate) async fn compare_table_data_impl(
     state: &AppState,
-    source_connection_id: String,
-    target_connection_id: String,
+    source_db_session_id: String,
+    target_db_session_id: String,
     table_name: String,
 ) -> Result<serde_json::Value, CommandError> {
-    tracing::info!(%source_connection_id, %target_connection_id, %table_name, "compare_table_data");
+    tracing::info!(%source_db_session_id, %target_db_session_id, %table_name, "compare_table_data");
 
     let (src_driver, src_handle) = state
         .connection_manager
-        .get_connection(&source_connection_id)
+        .get_session(&source_db_session_id)
         .await
         .cmd_err("compare_table_data")?;
     let (tgt_driver, tgt_handle) = state
         .connection_manager
-        .get_connection(&target_connection_id)
+        .get_session(&target_db_session_id)
         .await
         .cmd_err("compare_table_data")?;
 
@@ -425,14 +425,14 @@ pub(crate) async fn compare_table_data_impl(
 #[tauri::command]
 pub async fn compare_table_schemas(
     state: State<'_, AppState>,
-    source_connection_id: String,
-    target_connection_id: String,
+    source_db_session_id: String,
+    target_db_session_id: String,
     table_name: String,
 ) -> Result<serde_json::Value, CommandError> {
     compare_table_schemas_impl(
         &state,
-        source_connection_id,
-        target_connection_id,
+        source_db_session_id,
+        target_db_session_id,
         table_name,
     )
     .await
@@ -441,14 +441,14 @@ pub async fn compare_table_schemas(
 #[tauri::command]
 pub async fn compare_table_data(
     state: State<'_, AppState>,
-    source_connection_id: String,
-    target_connection_id: String,
+    source_db_session_id: String,
+    target_db_session_id: String,
     table_name: String,
 ) -> Result<serde_json::Value, CommandError> {
     compare_table_data_impl(
         &state,
-        source_connection_id,
-        target_connection_id,
+        source_db_session_id,
+        target_db_session_id,
         table_name,
     )
     .await

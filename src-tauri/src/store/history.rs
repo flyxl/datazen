@@ -11,12 +11,12 @@ impl Store {
     pub async fn get_query_history(
         &self,
         limit: usize,
-        config_id: Option<&str>,
+        connection_id: Option<&str>,
         database: Option<&str>,
         schema: Option<&str>,
     ) -> Vec<QueryHistoryEntry> {
         self.history_db
-            .get_query_history(limit, config_id, database, schema)
+            .get_query_history(limit, connection_id, database, schema)
             .unwrap_or_else(|e| {
                 tracing::warn!(error = %e, "Failed to read query history from SQLite");
                 Vec::new()
@@ -38,9 +38,9 @@ impl Store {
             .map_err(|e| StoreError::WriteError(e.to_string()))
     }
 
-    pub async fn get_favorite_queries(&self, config_id: Option<&str>) -> Vec<FavoriteQuery> {
+    pub async fn get_favorite_queries(&self, connection_id: Option<&str>) -> Vec<FavoriteQuery> {
         self.history_db
-            .get_favorite_queries(config_id)
+            .get_favorite_queries(connection_id)
             .unwrap_or_else(|e| {
                 tracing::warn!(error = %e, "Failed to read favorite queries from SQLite");
                 Vec::new()

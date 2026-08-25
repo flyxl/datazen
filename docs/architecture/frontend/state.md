@@ -70,7 +70,7 @@ src/
 ├──────────────┼──────────────┼──────────────┼───────────────┤
 │ activeConnectionStore       │ settingsStore │ uiStore       │
 │                             │              │               │
-│ - connectionId              │ - theme      │ - sidebarWidth│
+│ - connectionId + dbSessionId│ - theme      │ - sidebarWidth│
 │ - status (connected/idle)   │ - language   │ - editorHeight│
 │ - serverInfo                │ - editor     │ - activeDialog│
 │ - currentDatabase           │ - shortcuts  │ - isFullscreen│
@@ -176,7 +176,7 @@ interface TableDataStore {
 
 #### panelStore — 面板 + 查询执行状态
 
-统一管理所有连接的面板（Tab）和查询执行状态。面板元数据（轻量）和查询执行数据（重量级）分开存储。
+统一管理所有连接的面板（Tab）和查询执行状态。面板元数据（轻量）和查询执行数据（重量级）分开存储。术语：`connectionId` 指持久化配置连接 id（历史/收藏的归属键），`dbSessionId` 指运行时会话 id。
 
 详细设计参见 [Unified Panel Store RFC](../../architecture/rfc/unified-panel-store.md)。
 
@@ -208,7 +208,7 @@ interface PanelState {
 interface PanelActions {
   addPanel: (panel: Panel, activate?: boolean) => void;
   removePanel: (panelId: string) => void;
-  removeAllForConnection: (configId: string) => void;
+  removeAllForConnection: (connectionId: string) => void;
   setActivePanel: (panelId: string) => void;
   updatePanel: (panelId: string, patch: Partial<Panel>) => void;
   closeOtherPanels: (panelId: string) => void;
@@ -217,9 +217,9 @@ interface PanelActions {
   updateSql: (panelId: string, sql: string) => void;
   executeQuery: (panelId: string, params?: BindParams) => Promise<void>;
   cancelQuery: (panelId: string) => Promise<void>;
-  loadHistory: (configId?: string) => Promise<void>;
-  loadFavorites: (configId?: string) => Promise<void>;
-  addFavorite: (title: string, sql: string, configId: string) => Promise<void>;
+  loadHistory: (connectionId?: string) => Promise<void>;
+  loadFavorites: (connectionId?: string) => Promise<void>;
+  addFavorite: (title: string, sql: string, connectionId: string) => Promise<void>;
   deleteFavorite: (id: string) => Promise<void>;
   // ...more actions
 }

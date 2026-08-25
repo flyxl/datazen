@@ -37,7 +37,7 @@ describe('runBatchExportJob', () => {
       mode: 'data_and_structure',
       dataFormat: 'csv',
       outputMode: 'zip',
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       databaseType: 'postgres',
       loadTableExportData,
       exportTables,
@@ -50,8 +50,8 @@ describe('runBatchExportJob', () => {
     expect(loadTableExportData).not.toHaveBeenCalled();
   });
 
-  it('throws when connectionId is missing', async () => {
-    await expect(runBatchExportJob(base({ connectionId: undefined }))).rejects.toThrow(
+  it('throws when dbSessionId is missing', async () => {
+    await expect(runBatchExportJob(base({ dbSessionId: undefined }))).rejects.toThrow(
       'Missing connection',
     );
   });
@@ -74,7 +74,7 @@ describe('runBatchExportJob', () => {
     expect(onProgress).toHaveBeenCalledWith({ current: 2, total: 2, tableName: 'orders' });
 
     const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
-    expect(request.connectionId).toBe('c1');
+    expect(request.dbSessionId).toBe('c1');
     expect(request.databaseType).toBe('postgres');
     expect(request.mode).toBe('data_and_structure');
     expect(request.dataFormat).toBe('sql_insert');
@@ -95,5 +95,72 @@ describe('runBatchExportJob', () => {
   it('propagates load errors', async () => {
     loadTableExportData.mockRejectedValue(new Error('ddl failed'));
     await expect(runBatchExportJob(base())).rejects.toThrow('ddl failed');
+  });
+});
+
+describe('ExportTablesRequest IPC contract guard (BUG-006)', () => {
+  // Mirrors `ExportTablesRequest` in src-tauri/src/commands/export.rs:
+  // #[serde(rename_all = "camelCase")] over
+  //   db_session_id / database_type / mode / data_format / output_mode / tables.
+  // serde has NO aliases and NO deny_unknown_fields: an unexpected key is
+  // silently dropped and a missing required key is a hard rejection — so the
+  // wire key set must match exactly, neither more nor less.
+  const BACKEND_WIRE_KEYS = [
+    'dbSessionId',
+    'databaseType',
+    'mode',
+    'dataFormat',
+    'outputMode',
+    'tables',
+  ].sort();
+
+  it('builds a payload whose key set matches the backend contract', async () => {
+    const loadTableExportData = vi.fn().mockResolvedValue(users);
+    const exportTables = vi.fn().mockResolvedValue({ Saved: 1 });
+    await runBatchExportJob({
+      tableNames: ['users'],
+      mode: 'data_and_structure',
+      dataFormat: 'sql_insert',
+      outputMode: 'single',
+      dbSessionId: 'live-session-1',
+      databaseType: 'postgres',
+      loadTableExportData,
+      exportTables,
+    });
+
+    expect(exportTables).toHaveBeenCalledTimes(1);
+    const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
+    expect(Object.keys(request).sort()).toEqual(BACKEND_WIRE_KEYS);
+  });
+
+  it('never emits the retired connectionId key', async () => {
+    const loadTableExportData = vi.fn().mockResolvedValue(users);
+    const exportTables = vi.fn().mockResolvedValue({ Saved: 1 });
+    await runBatchExportJob({
+      tableNames: ['users'],
+      mode: 'data_only',
+      dataFormat: 'csv',
+      outputMode: 'zip',
+      dbSessionId: 'live-session-1',
+      databaseType: null,
+      loadTableExportData,
+      exportTables,
+    });
+
+    const request = exportTables.mock.calls[0]![0] as Record<string, unknown>;
+    expect(request).not.toHaveProperty('connectionId');
+    expect(request.dbSessionId).toBe('live-session-1');
+  });
+
+  it('statically pins the interface field name to dbSessionId', () => {
+    // Compile-time anchor duplicated at runtime: renaming the field back to
+    // `connectionId` must fail this suite even if mocks stay loose.
+    type ExpectedShape = { dbSessionId: string } & Record<string, unknown>;
+    const sample: ExpectedShape = { dbSessionId: 'x' };
+    // If ExportTablesRequest gains/loses the dbSessionId field, this
+    // assignment stops compiling.
+    const typed: ExportTablesRequest = { ...sample, databaseType: null };
+    expect(typed.dbSessionId).toBeDefined();
+    expect(Object.keys(typed)).toContain('dbSessionId');
   });
 });

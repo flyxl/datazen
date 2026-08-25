@@ -7,7 +7,7 @@ use super::error::TransferError;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Endpoint {
-    pub connection_id: String,
+    pub db_session_id: String,
     pub database: String,
     pub schema: Option<String>,
 }

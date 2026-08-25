@@ -271,12 +271,12 @@ mod tests {
     fn sample_job(mode: TransferMode, write_mode: WriteMode) -> TransferJob {
         TransferJob {
             source: Endpoint {
-                connection_id: "s".into(),
+                db_session_id: "s".into(),
                 database: "src".into(),
                 schema: None,
             },
             target: Endpoint {
-                connection_id: "t".into(),
+                db_session_id: "t".into(),
                 database: "tgt".into(),
                 schema: None,
             },

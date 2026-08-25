@@ -93,7 +93,7 @@ describe('WidgetEditorDrawer', () => {
       <WidgetEditorDrawer
         open
         widget={baseWidget}
-        hiddenSql={{ configId: 'c1', sql: 'SELECT 1 AS v' }}
+        hiddenSql={{ connectionId: 'c1', sql: 'SELECT 1 AS v' }}
         onClose={vi.fn()}
         onSave={vi.fn()}
       />,
@@ -110,7 +110,7 @@ describe('WidgetEditorDrawer', () => {
       <WidgetEditorDrawer
         open
         widget={{ ...baseWidget, refresh: { mode: 'manual' } }}
-        hiddenSql={{ configId: 'c1', sql: 'SELECT 1 AS v' }}
+        hiddenSql={{ connectionId: 'c1', sql: 'SELECT 1 AS v' }}
         onClose={vi.fn()}
         onSave={vi.fn()}
       />,
@@ -129,7 +129,7 @@ describe('WidgetEditorDrawer', () => {
           title: '  My Tile  ',
           refresh: { mode: 'interval', refreshSec: 10 },
         }}
-        hiddenSql={{ configId: 'c1', sql: 'SELECT 1 AS v' }}
+        hiddenSql={{ connectionId: 'c1', sql: 'SELECT 1 AS v' }}
         onClose={vi.fn()}
         onSave={onSave}
       />,
@@ -139,12 +139,12 @@ describe('WidgetEditorDrawer', () => {
     expect(onSave).toHaveBeenCalledTimes(1);
     const [saved, hiddenSql] = onSave.mock.calls[0] as [
       DashboardWidget,
-      { configId: string; sql: string },
+      { connectionId: string; sql: string },
     ];
     expect(saved.title).toBe('My Tile');
     expect(saved.refresh.mode).toBe('interval');
     expect(saved.refresh.refreshSec).toBeGreaterThanOrEqual(30);
-    expect(hiddenSql).toEqual({ configId: 'c1', sql: 'SELECT 1 AS v' });
+    expect(hiddenSql).toEqual({ connectionId: 'c1', sql: 'SELECT 1 AS v' });
   });
 
   it('edits title, toggles enabled, and changes refresh mode', () => {
@@ -183,7 +183,7 @@ describe('WidgetEditorDrawer', () => {
       <WidgetEditorDrawer
         open
         widget={baseWidget}
-        hiddenSql={{ configId: 'c1', sql: 'SELECT 1 AS v' }}
+        hiddenSql={{ connectionId: 'c1', sql: 'SELECT 1 AS v' }}
         onClose={vi.fn()}
         onSave={onSave}
       />,
@@ -197,7 +197,7 @@ describe('WidgetEditorDrawer', () => {
 
     const [, hiddenSql] = onSave.mock.calls[0] as [
       DashboardWidget,
-      { configId: string; sql: string },
+      { connectionId: string; sql: string },
     ];
     expect(hiddenSql.sql).toBe('SELECT 2 AS v');
   });

@@ -75,7 +75,7 @@ describe('TableStructureEditor useDatabase', () => {
   it('calls useDatabase on mount when database prop is set', async () => {
     render(
       <TableStructureEditor
-        connectionId="conn-1"
+        dbSessionId="conn-1"
         databaseType="postgresql"
         database="mydb"
         schema="public"

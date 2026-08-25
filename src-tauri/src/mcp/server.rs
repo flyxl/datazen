@@ -23,8 +23,8 @@ use std::sync::Arc;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct QueryInput {
-    /// Persistent connection config id (from list_connections)
-    pub config_id: String,
+    /// Persistent connection id (from list_connections)
+    pub connection_id: String,
     /// SQL query to execute
     pub sql: String,
     /// Maximum rows to return (default: 100, max: 50000)
@@ -33,16 +33,16 @@ pub struct QueryInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListTablesInput {
-    /// Persistent connection config id (from list_connections)
-    pub config_id: String,
+    /// Persistent connection id (from list_connections)
+    pub connection_id: String,
     /// Optional database name
     pub database: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SearchTablesInput {
-    /// Persistent connection config id (from list_connections)
-    pub config_id: String,
+    /// Persistent connection id (from list_connections)
+    pub connection_id: String,
     /// Optional database name
     pub database: Option<String>,
     /// Search keyword to match against table names (case-insensitive)
@@ -53,32 +53,32 @@ pub struct SearchTablesInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetSchemaInput {
-    /// Persistent connection config id (from list_connections)
-    pub config_id: String,
+    /// Persistent connection id (from list_connections)
+    pub connection_id: String,
     /// Table name
     pub table: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ExplainQueryInput {
-    /// Persistent connection config id (from list_connections)
-    pub config_id: String,
+    /// Persistent connection id (from list_connections)
+    pub connection_id: String,
     /// SQL query to analyze
     pub sql: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DescribeTableInput {
-    /// Persistent connection config id (from list_connections)
-    pub config_id: String,
+    /// Persistent connection id (from list_connections)
+    pub connection_id: String,
     /// Table name
     pub table: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListDatabasesInput {
-    /// Persistent connection config id (from list_connections)
-    pub config_id: String,
+    /// Persistent connection id (from list_connections)
+    pub connection_id: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -88,16 +88,16 @@ pub struct RunWorkflowInput {
     /// Input variables for the workflow (JSON object)
     #[serde(default)]
     pub variables: serde_json::Value,
-    /// Optional persistent connection config id (some workflows require a database connection)
-    pub config_id: Option<String>,
+    /// Optional persistent connection id (some workflows require a database connection)
+    pub connection_id: Option<String>,
 }
 
 // ─── Prompt Argument Types ───
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct Nl2SqlArgs {
-    /// Persistent connection config id for schema context
-    pub config_id: String,
+    /// Persistent connection id for schema context
+    pub connection_id: String,
     /// Natural language description of the query
     pub question: String,
     /// Optional database name
@@ -106,8 +106,8 @@ pub struct Nl2SqlArgs {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DiagnoseErrorArgs {
-    /// Persistent connection config id
-    pub config_id: String,
+    /// Persistent connection id
+    pub connection_id: String,
     /// The SQL that caused the error
     pub sql: String,
     /// The error message
@@ -116,8 +116,8 @@ pub struct DiagnoseErrorArgs {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ExplainPlanArgs {
-    /// Persistent connection config id
-    pub config_id: String,
+    /// Persistent connection id
+    pub connection_id: String,
     /// The SQL query to explain
     pub sql: String,
 }
@@ -175,8 +175,8 @@ impl DataZenMcpServer {
         McpError::internal_error(e, None)
     }
 
-    fn ensure_allowed(&self, tool_name: &str, config_id: &str) -> Result<(), McpError> {
-        allowlist::ensure_connection_allowed(config_id, &self.allowed_connection_ids)
+    fn ensure_allowed(&self, tool_name: &str, connection_id: &str) -> Result<(), McpError> {
+        allowlist::ensure_connection_allowed(connection_id, &self.allowed_connection_ids)
             .map_err(|e| tool_help::tool_error(tool_name, &e))
     }
 
@@ -261,7 +261,7 @@ pub(crate) fn format_table_description(
 #[tool_router]
 impl DataZenMcpServer {
     #[tool(
-        description = "List all configured database connections. Returns config IDs, names, database types, and hosts."
+        description = "List all configured database connections. Returns connection IDs, names, database types, and hosts."
     )]
     async fn list_connections(&self) -> Result<String, McpError> {
         let connections = self.app_state.store.get_connections().await;
@@ -286,10 +286,10 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<ListDatabasesInput>,
     ) -> Result<String, McpError> {
-        self.ensure_allowed("list_databases", &input.config_id)?;
+        self.ensure_allowed("list_databases", &input.connection_id)?;
         crate::services::db_tools::list_databases(
             &self.app_state.connection_manager,
-            &input.config_id,
+            &input.connection_id,
         )
         .await
         .map_err(Self::map_err)
@@ -302,11 +302,11 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<ListTablesInput>,
     ) -> Result<String, McpError> {
-        self.ensure_allowed("list_tables", &input.config_id)?;
+        self.ensure_allowed("list_tables", &input.connection_id)?;
         let db = input.database.as_deref().unwrap_or("");
         crate::services::db_tools::list_tables(
             &self.app_state.connection_manager,
-            &input.config_id,
+            &input.connection_id,
             db,
         )
         .await
@@ -320,12 +320,12 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<SearchTablesInput>,
     ) -> Result<String, McpError> {
-        self.ensure_allowed("search_tables", &input.config_id)?;
+        self.ensure_allowed("search_tables", &input.connection_id)?;
         let db = input.database.as_deref().unwrap_or("");
         let limit = input.limit.unwrap_or(20) as usize;
         crate::services::db_tools::search_tables(
             &self.app_state.connection_manager,
-            &input.config_id,
+            &input.connection_id,
             db,
             &input.pattern,
             limit,
@@ -335,15 +335,15 @@ impl DataZenMcpServer {
     }
 
     #[tool(
-        description = "Execute a SQL query on a connected database. Returns results as JSON. Use list_connections first to get valid config IDs. Default row limit is 100 (max 50000)."
+        description = "Execute a SQL query on a connected database. Returns results as JSON. Use list_connections first to get valid connection IDs. Default row limit is 100 (max 50000)."
     )]
     async fn query(&self, Parameters(input): Parameters<QueryInput>) -> Result<String, McpError> {
-        self.ensure_allowed("query", &input.config_id)?;
+        self.ensure_allowed("query", &input.connection_id)?;
         permission::check_sql_allowed(&input.sql, self.permission_mode)
             .map_err(|e| tool_help::tool_error("query", &e))?;
         crate::services::db_tools::query(
             &self.app_state.connection_manager,
-            &input.config_id,
+            &input.connection_id,
             &input.sql,
             input.limit,
             Some(self.permission_mode),
@@ -359,11 +359,11 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<GetSchemaInput>,
     ) -> Result<String, McpError> {
-        self.ensure_allowed("get_schema", &input.config_id)?;
+        self.ensure_allowed("get_schema", &input.connection_id)?;
         let tables = vec![input.table.clone()];
         crate::services::db_tools::get_table_schema(
             &self.app_state.connection_manager,
-            &input.config_id,
+            &input.connection_id,
             &tables,
         )
         .await
@@ -377,10 +377,10 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<ExplainQueryInput>,
     ) -> Result<String, McpError> {
-        self.ensure_allowed("explain_query", &input.config_id)?;
+        self.ensure_allowed("explain_query", &input.connection_id)?;
         crate::services::db_tools::explain_query(
             &self.app_state.connection_manager,
-            &input.config_id,
+            &input.connection_id,
             &input.sql,
         )
         .await
@@ -394,10 +394,10 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<DescribeTableInput>,
     ) -> Result<String, McpError> {
-        self.ensure_allowed("describe_table", &input.config_id)?;
+        self.ensure_allowed("describe_table", &input.connection_id)?;
         let schema = crate::services::db_tools::get_single_table_schema(
             &self.app_state.connection_manager,
-            &input.config_id,
+            &input.connection_id,
             &input.table,
         )
         .await
@@ -437,7 +437,7 @@ impl DataZenMcpServer {
         let result = crate::workflow::WorkflowExecutor::execute_with_options(
             &workflow,
             &self.app_state,
-            input.config_id.as_deref(),
+            input.connection_id.as_deref(),
             &input.variables,
             crate::workflow::WorkflowExecuteOptions {
                 permission_mode: Some(self.permission_mode),
@@ -463,7 +463,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(args): Parameters<Nl2SqlArgs>,
     ) -> Result<GetPromptResult, McpError> {
-        let (conn_id, driver, _handle) = self.resolve_connection(&args.config_id).await?;
+        let (conn_id, driver, _handle) = self.resolve_connection(&args.connection_id).await?;
         let lang = self.app_state.store.get_settings().await.language;
         let db_type = driver.driver_type();
         let db = args.database.as_deref().unwrap_or("");
@@ -502,7 +502,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(args): Parameters<DiagnoseErrorArgs>,
     ) -> Result<GetPromptResult, McpError> {
-        let (_conn_id, driver, _handle) = self.resolve_connection(&args.config_id).await?;
+        let (_conn_id, driver, _handle) = self.resolve_connection(&args.connection_id).await?;
         let lang = self.app_state.store.get_settings().await.language;
         let db_type = driver.driver_type();
 
@@ -536,7 +536,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(args): Parameters<ExplainPlanArgs>,
     ) -> Result<GetPromptResult, McpError> {
-        let (_conn_id, driver, handle) = self.resolve_connection(&args.config_id).await?;
+        let (_conn_id, driver, handle) = self.resolve_connection(&args.connection_id).await?;
         let lang = self.app_state.store.get_settings().await.language;
         let db_type = driver.driver_type();
 
@@ -632,12 +632,12 @@ impl DataZenMcpServer {
                 McpError::invalid_params(format!("Invalid URI encoding: {e}"), None)
             })?;
             let parts: Vec<&str> = decoded.splitn(2, '/').collect();
-            let config_id = parts
+            let connection_id = parts
                 .first()
                 .ok_or_else(|| McpError::invalid_params("Missing connection ID in URI", None))?;
             let db = parts.get(1).copied().unwrap_or("");
 
-            let (runtime_id, _driver, _handle) = self.resolve_connection(config_id).await?;
+            let (runtime_id, _driver, _handle) = self.resolve_connection(connection_id).await?;
 
             let context = self
                 .app_state
@@ -671,22 +671,22 @@ impl DataZenMcpServer {
         let text = match name {
             "list_connections" => self.list_connections().await?,
             "list_databases" => {
-                let config_id = arguments
+                let connection_id = arguments
                     .as_ref()
-                    .and_then(|a| a.get("config_id"))
+                    .and_then(|a| a.get("connection_id"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 self.list_databases(rmcp::handler::server::wrapper::Parameters(
                     ListDatabasesInput {
-                        config_id: config_id.into(),
+                        connection_id: connection_id.into(),
                     },
                 ))
                 .await?
             }
             "list_tables" => {
-                let config_id = arguments
+                let connection_id = arguments
                     .as_ref()
-                    .and_then(|a| a.get("config_id"))
+                    .and_then(|a| a.get("connection_id"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 let database = arguments
@@ -696,16 +696,16 @@ impl DataZenMcpServer {
                     .map(String::from);
                 self.list_tables(rmcp::handler::server::wrapper::Parameters(
                     ListTablesInput {
-                        config_id: config_id.into(),
+                        connection_id: connection_id.into(),
                         database,
                     },
                 ))
                 .await?
             }
             "search_tables" => {
-                let config_id = arguments
+                let connection_id = arguments
                     .as_ref()
-                    .and_then(|a| a.get("config_id"))
+                    .and_then(|a| a.get("connection_id"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 let database = arguments
@@ -724,7 +724,7 @@ impl DataZenMcpServer {
                     .and_then(|v| v.as_u64());
                 self.search_tables(rmcp::handler::server::wrapper::Parameters(
                     SearchTablesInput {
-                        config_id: config_id.into(),
+                        connection_id: connection_id.into(),
                         database,
                         pattern: pattern.into(),
                         limit,
@@ -733,9 +733,9 @@ impl DataZenMcpServer {
                 .await?
             }
             "query" => {
-                let config_id = arguments
+                let connection_id = arguments
                     .as_ref()
-                    .and_then(|a| a.get("config_id"))
+                    .and_then(|a| a.get("connection_id"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 let sql = arguments
@@ -749,7 +749,7 @@ impl DataZenMcpServer {
                     .and_then(|v| v.as_u64())
                     .map(|n| n as u32);
                 self.query(rmcp::handler::server::wrapper::Parameters(QueryInput {
-                    config_id: config_id.into(),
+                    connection_id: connection_id.into(),
                     sql: sql.into(),
                     limit,
                 }))
@@ -817,8 +817,8 @@ impl ServerHandler for DataZenMcpServer {
         .map_err(|e| tool_help::tool_error(&tool_name, &e))?;
 
         if let Some(args) = request.arguments.as_ref() {
-            if let Some(config_id) = args.get("config_id").and_then(|v| v.as_str()) {
-                self.ensure_allowed(&tool_name, config_id)?;
+            if let Some(connection_id) = args.get("connection_id").and_then(|v| v.as_str()) {
+                self.ensure_allowed(&tool_name, connection_id)?;
             }
         }
 
@@ -915,38 +915,41 @@ mod tests {
     }
 
     #[test]
-    fn query_input_rejects_legacy_connection_id_field() {
+    fn query_input_accepts_connection_id() {
         let json = r#"{"connection_id":"c1","sql":"SELECT 1"}"#;
-        let parsed = serde_json::from_str::<QueryInput>(json);
-        assert!(parsed.is_err(), "legacy connection_id must not deserialize");
+        let parsed: QueryInput = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.connection_id, "c1");
     }
 
     #[test]
-    fn query_input_accepts_config_id() {
+    fn query_input_rejects_removed_config_id_field() {
         let json = r#"{"config_id":"c1","sql":"SELECT 1"}"#;
-        let parsed: QueryInput = serde_json::from_str(json).unwrap();
-        assert_eq!(parsed.config_id, "c1");
+        let parsed = serde_json::from_str::<QueryInput>(json);
+        assert!(
+            parsed.is_err(),
+            "removed config_id field must not deserialize"
+        );
     }
 
     #[test]
     fn test_list_databases_input_deserialization() {
-        let json = r#"{"config_id": "test-id"}"#;
+        let json = r#"{"connection_id": "test-id"}"#;
         let input: ListDatabasesInput = serde_json::from_str(json).unwrap();
-        assert_eq!(input.config_id, "test-id");
+        assert_eq!(input.connection_id, "test-id");
     }
 
     #[test]
     fn test_query_input_defaults() {
-        let json = r#"{"config_id": "c1", "sql": "SELECT 1"}"#;
+        let json = r#"{"connection_id": "c1", "sql": "SELECT 1"}"#;
         let input: QueryInput = serde_json::from_str(json).unwrap();
-        assert_eq!(input.config_id, "c1");
+        assert_eq!(input.connection_id, "c1");
         assert_eq!(input.sql, "SELECT 1");
         assert_eq!(input.limit, None);
     }
 
     #[test]
     fn test_query_input_with_limit() {
-        let json = r#"{"config_id": "c1", "sql": "SELECT 1", "limit": 50}"#;
+        let json = r#"{"connection_id": "c1", "sql": "SELECT 1", "limit": 50}"#;
         let input: QueryInput = serde_json::from_str(json).unwrap();
         assert_eq!(input.limit, Some(50));
     }
@@ -985,17 +988,17 @@ mod tests {
 
     #[test]
     fn list_tables_input_deserializes_optional_database() {
-        let json = r#"{"config_id":"c1","database":"mydb"}"#;
+        let json = r#"{"connection_id":"c1","database":"mydb"}"#;
         let input: ListTablesInput = serde_json::from_str(json).unwrap();
-        assert_eq!(input.config_id, "c1");
+        assert_eq!(input.connection_id, "c1");
         assert_eq!(input.database.as_deref(), Some("mydb"));
     }
 
     #[test]
     fn search_tables_input_deserializes() {
-        let json = r#"{"config_id":"c1","pattern":"user","database":"app","limit":10}"#;
+        let json = r#"{"connection_id":"c1","pattern":"user","database":"app","limit":10}"#;
         let input: SearchTablesInput = serde_json::from_str(json).unwrap();
-        assert_eq!(input.config_id, "c1");
+        assert_eq!(input.connection_id, "c1");
         assert_eq!(input.pattern, "user");
         assert_eq!(input.database.as_deref(), Some("app"));
         assert_eq!(input.limit, Some(10));
@@ -1003,9 +1006,9 @@ mod tests {
 
     #[test]
     fn search_tables_input_defaults_optional_fields() {
-        let json = r#"{"config_id":"c1","pattern":"order"}"#;
+        let json = r#"{"connection_id":"c1","pattern":"order"}"#;
         let input: SearchTablesInput = serde_json::from_str(json).unwrap();
-        assert_eq!(input.config_id, "c1");
+        assert_eq!(input.connection_id, "c1");
         assert_eq!(input.pattern, "order");
         assert!(input.database.is_none());
         assert!(input.limit.is_none());
@@ -1017,14 +1020,14 @@ mod tests {
         let input: RunWorkflowInput = serde_json::from_str(json).unwrap();
         assert_eq!(input.workflow_id, "wf-1");
         assert!(input.variables.is_null());
-        assert!(input.config_id.is_none());
+        assert!(input.connection_id.is_none());
     }
 
     #[test]
     fn nl2sql_args_deserialize() {
-        let json = r#"{"config_id":"c1","question":"count users","database":"app"}"#;
+        let json = r#"{"connection_id":"c1","question":"count users","database":"app"}"#;
         let args: Nl2SqlArgs = serde_json::from_str(json).unwrap();
-        assert_eq!(args.config_id, "c1");
+        assert_eq!(args.connection_id, "c1");
         assert_eq!(args.question, "count users");
         assert_eq!(args.database.as_deref(), Some("app"));
     }
@@ -1077,7 +1080,7 @@ mod tests {
         let dbs = server
             .list_databases(rmcp::handler::server::wrapper::Parameters(
                 ListDatabasesInput {
-                    config_id: "mcp-cfg".into(),
+                    connection_id: "mcp-cfg".into(),
                 },
             ))
             .await
@@ -1087,7 +1090,7 @@ mod tests {
         let tables = server
             .list_tables(rmcp::handler::server::wrapper::Parameters(
                 ListTablesInput {
-                    config_id: "mcp-cfg".into(),
+                    connection_id: "mcp-cfg".into(),
                     database: Some("app".into()),
                 },
             ))
@@ -1097,7 +1100,7 @@ mod tests {
 
         let schema = server
             .get_schema(rmcp::handler::server::wrapper::Parameters(GetSchemaInput {
-                config_id: "mcp-cfg".into(),
+                connection_id: "mcp-cfg".into(),
                 table: "users".into(),
             }))
             .await
@@ -1107,7 +1110,7 @@ mod tests {
         let desc = server
             .describe_table(rmcp::handler::server::wrapper::Parameters(
                 DescribeTableInput {
-                    config_id: "mcp-cfg".into(),
+                    connection_id: "mcp-cfg".into(),
                     table: "users".into(),
                 },
             ))
@@ -1118,7 +1121,7 @@ mod tests {
         let explain = server
             .explain_query(rmcp::handler::server::wrapper::Parameters(
                 ExplainQueryInput {
-                    config_id: "mcp-cfg".into(),
+                    connection_id: "mcp-cfg".into(),
                     sql: "SELECT 1".into(),
                 },
             ))
@@ -1128,7 +1131,7 @@ mod tests {
 
         let query_out = server
             .query(rmcp::handler::server::wrapper::Parameters(QueryInput {
-                config_id: "mcp-cfg".into(),
+                connection_id: "mcp-cfg".into(),
                 sql: "SELECT 1".into(),
                 limit: Some(10),
             }))
@@ -1145,7 +1148,7 @@ mod tests {
         let search_result = server
             .search_tables(rmcp::handler::server::wrapper::Parameters(
                 SearchTablesInput {
-                    config_id: "mcp-cfg".into(),
+                    connection_id: "mcp-cfg".into(),
                     database: Some("app".into()),
                     pattern: "user".into(),
                     limit: Some(10),
@@ -1159,7 +1162,7 @@ mod tests {
         let search_no_match = server
             .search_tables(rmcp::handler::server::wrapper::Parameters(
                 SearchTablesInput {
-                    config_id: "mcp-cfg".into(),
+                    connection_id: "mcp-cfg".into(),
                     database: Some("app".into()),
                     pattern: "zzz_nonexistent".into(),
                     limit: None,
@@ -1184,7 +1187,7 @@ mod tests {
             .call_tool_inner(
                 "search_tables",
                 Some(
-                    serde_json::json!({"config_id":"cti-search","database":"app","pattern":"user"}),
+                    serde_json::json!({"connection_id":"cti-search","database":"app","pattern":"user"}),
                 ),
             )
             .await
@@ -1205,7 +1208,7 @@ mod tests {
 
         let nl2sql = server
             .nl2sql_prompt(rmcp::handler::server::wrapper::Parameters(Nl2SqlArgs {
-                config_id: conn_id.clone(),
+                connection_id: conn_id.clone(),
                 question: "count users".into(),
                 database: Some("app".into()),
             }))
@@ -1227,7 +1230,7 @@ mod tests {
         let diag = server
             .diagnose_error_prompt(rmcp::handler::server::wrapper::Parameters(
                 DiagnoseErrorArgs {
-                    config_id: conn_id.clone(),
+                    connection_id: conn_id.clone(),
                     sql: "SELECT bad".into(),
                     error: "column missing".into(),
                 },
@@ -1244,7 +1247,7 @@ mod tests {
         let plan = server
             .explain_plan_prompt(rmcp::handler::server::wrapper::Parameters(
                 ExplainPlanArgs {
-                    config_id: conn_id,
+                    connection_id: conn_id,
                     sql: "SELECT 1".into(),
                 },
             ))
@@ -1286,11 +1289,43 @@ mod tests {
             _ => panic!("expected text resource"),
         }
 
+        // Seed one row so the resource contract below is exercised on real output.
+        test.store
+            .add_query_history(crate::store::QueryHistoryEntry {
+                id: "hist-1".into(),
+                connection_id: "res-inner".into(),
+                database: "app".into(),
+                schema: None,
+                sql: "SELECT 1".into(),
+                executed_at: chrono::Utc::now(),
+                execution_time_ms: 1,
+                rows_affected: None,
+                success: true,
+                error_message: None,
+            })
+            .await
+            .expect("add_query_history");
+
         let hist = server
             .read_resource_inner("datazen://query-history")
             .await
             .unwrap();
+        // External contract: history entries must serialize with `connectionId`
+        // (camelCase of `connection_id`); the legacy `configId` key is gone.
         assert!(!hist.contents.is_empty());
+        match &hist.contents[0] {
+            ResourceContents::TextResourceContents { text, .. } => {
+                assert!(
+                    text.contains("\"connectionId\""),
+                    "query-history resource must expose connectionId, got: {text}"
+                );
+                assert!(
+                    !text.contains("configId"),
+                    "legacy configId key must not appear in resource output"
+                );
+            }
+            _ => panic!("expected text resource"),
+        }
 
         let schema_uri = format!("datazen://schema/{conn_id}/app");
         let schema = server.read_resource_inner(&schema_uri).await.unwrap();
@@ -1340,14 +1375,14 @@ mod tests {
         let err = server
             .call_tool_inner(
                 "query",
-                Some(serde_json::json!({"config_id":"x","sql":"SELECT 1"})),
+                Some(serde_json::json!({"connection_id":"x","sql":"SELECT 1"})),
             )
             .await
             .unwrap_err();
         let msg = err.message.to_string();
         assert!(msg.contains("disabled"));
         assert!(msg.contains("Tool: query"));
-        assert!(msg.contains("config_id"));
+        assert!(msg.contains("connection_id"));
     }
 
     #[tokio::test]
@@ -1363,7 +1398,7 @@ mod tests {
         let err = server
             .call_tool_inner(
                 "list_databases",
-                Some(serde_json::json!({"config_id":"blocked-cfg"})),
+                Some(serde_json::json!({"connection_id":"blocked-cfg"})),
             )
             .await
             .unwrap_err();
@@ -1386,7 +1421,7 @@ mod tests {
 
         let err = server
             .query(rmcp::handler::server::wrapper::Parameters(QueryInput {
-                config_id: "ro-cfg".into(),
+                connection_id: "ro-cfg".into(),
                 sql: "DELETE FROM users".into(),
                 limit: None,
             }))
@@ -1461,7 +1496,7 @@ mod tests {
         let dbs = server
             .call_tool_inner(
                 "list_databases",
-                Some(serde_json::json!({"config_id":"cti-cfg"})),
+                Some(serde_json::json!({"connection_id":"cti-cfg"})),
             )
             .await
             .unwrap();
@@ -1470,7 +1505,7 @@ mod tests {
         let tables = server
             .call_tool_inner(
                 "list_tables",
-                Some(serde_json::json!({"config_id":"cti-cfg","database":"app"})),
+                Some(serde_json::json!({"connection_id":"cti-cfg","database":"app"})),
             )
             .await
             .unwrap();
@@ -1479,7 +1514,7 @@ mod tests {
         let query = server
             .call_tool_inner(
                 "query",
-                Some(serde_json::json!({"config_id":"cti-cfg","sql":"SELECT 1","limit":5})),
+                Some(serde_json::json!({"connection_id":"cti-cfg","sql":"SELECT 1","limit":5})),
             )
             .await
             .unwrap();
@@ -1500,7 +1535,7 @@ mod tests {
                 RunWorkflowInput {
                     workflow_id: "missing".into(),
                     variables: serde_json::json!({}),
-                    config_id: None,
+                    connection_id: None,
                 },
             ))
             .await

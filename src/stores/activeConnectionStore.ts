@@ -13,8 +13,10 @@ function extractError(e: unknown): string {
 }
 
 export interface ConnectionEntry {
+  /** Runtime database session id (empty while connecting/errored). */
+  dbSessionId: string;
+  /** Persistent connection id this entry was opened from (map key). */
   connectionId: string;
-  configId: string;
   status: ConnectionStatus;
   serverInfo: ServerInfo | null;
   currentDatabase: string | null;
@@ -22,18 +24,18 @@ export interface ConnectionEntry {
 }
 
 interface ActiveConnectionStore {
-  /** All tracked connections, keyed by configId. */
+  /** All tracked connections, keyed by connectionId (persistent config connection id). */
   connections: Record<string, ConnectionEntry>;
 
   connect: (config: ConnectionConfig) => Promise<void>;
   /** Mark a connection as 'connecting' without triggering IPC. */
-  markConnecting: (configId: string, database: string | null) => void;
+  markConnecting: (connectionId: string, database: string | null) => void;
   /** Mark a connection as 'connected' (called from cross-window event). */
-  markConnected: (configId: string, connectionId: string) => void;
+  markConnected: (connectionId: string, dbSessionId: string) => void;
   /** Mark a connection as failed (called from cross-window event). */
-  markError: (configId: string, error: string) => void;
-  disconnect: (configId: string) => Promise<void>;
-  removeByConnectionId: (connectionId: string) => void;
+  markError: (connectionId: string, error: string) => void;
+  disconnect: (connectionId: string) => Promise<void>;
+  removeByDbSessionId: (dbSessionId: string) => void;
   reset: () => void;
 }
 
@@ -41,15 +43,15 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
   connections: {},
 
   connect: async (config) => {
-    const configId = config.id;
-    console.log('[connect] starting', configId, config.name);
+    const connectionId = config.id;
+    console.log('[connect] starting', connectionId, config.name);
 
     set((s) => ({
       connections: {
         ...s.connections,
-        [configId]: {
-          connectionId: '',
-          configId,
+        [connectionId]: {
+          dbSessionId: '',
+          connectionId,
           status: 'connecting',
           serverInfo: null,
           currentDatabase: config.database ?? null,
@@ -59,8 +61,8 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
     }));
 
     try {
-      const connectionId = await connectionCommands.connect(configId);
-      console.log('[connect] pool created', connectionId);
+      const dbSessionId = await connectionCommands.connect(connectionId);
+      console.log('[connect] pool created', dbSessionId);
 
       const serverInfo = await connectionCommands.testConnection(config);
       console.log('[connect] server info', serverInfo);
@@ -68,9 +70,9 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
       set((s) => ({
         connections: {
           ...s.connections,
-          [configId]: {
+          [connectionId]: {
+            dbSessionId,
             connectionId,
-            configId,
             status: 'connected',
             serverInfo,
             currentDatabase: config.database ?? null,
@@ -78,34 +80,34 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
           },
         },
       }));
-      console.log('[connect] success', connectionId);
-      void emitCrossWindow('datazen:connection-ready', { configId, connectionId });
+      console.log('[connect] success', dbSessionId);
+      void emitCrossWindow('datazen:connection-ready', { connectionId, dbSessionId });
     } catch (e) {
       const msg = extractError(e);
       console.error('[connect] failed', msg);
       set((s) => ({
         connections: {
           ...s.connections,
-          [configId]: {
-            ...s.connections[configId],
-            connectionId: '',
-            configId,
+          [connectionId]: {
+            ...s.connections[connectionId],
+            dbSessionId: '',
+            connectionId,
             status: 'error',
             error: msg,
           },
         },
       }));
-      void emitCrossWindow('datazen:connection-failed', { configId, error: msg });
+      void emitCrossWindow('datazen:connection-failed', { connectionId, error: msg });
     }
   },
 
-  markConnecting: (configId, database) => {
+  markConnecting: (connectionId, database) => {
     set((s) => ({
       connections: {
         ...s.connections,
-        [configId]: {
-          connectionId: '',
-          configId,
+        [connectionId]: {
+          dbSessionId: '',
+          connectionId,
           status: 'connecting',
           serverInfo: null,
           currentDatabase: database,
@@ -114,13 +116,13 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
       },
     }));
     setTimeout(() => {
-      const entry = get().connections[configId];
+      const entry = get().connections[connectionId];
       if (entry?.status === 'connecting') {
         set((s) => ({
           connections: {
             ...s.connections,
-            [configId]: {
-              ...s.connections[configId],
+            [connectionId]: {
+              ...s.connections[connectionId],
               status: 'error',
               error: 'Connection timeout',
             },
@@ -130,14 +132,14 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
     }, 30_000);
   },
 
-  markConnected: (configId, connectionId) => {
+  markConnected: (connectionId, dbSessionId) => {
     set((s) => ({
       connections: {
         ...s.connections,
-        [configId]: {
-          ...s.connections[configId],
+        [connectionId]: {
+          ...s.connections[connectionId],
+          dbSessionId,
           connectionId,
-          configId,
           status: 'connected',
           error: null,
         },
@@ -145,14 +147,14 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
     }));
   },
 
-  markError: (configId, error) => {
+  markError: (connectionId, error) => {
     set((s) => ({
       connections: {
         ...s.connections,
-        [configId]: {
-          ...s.connections[configId],
-          connectionId: '',
-          configId,
+        [connectionId]: {
+          ...s.connections[connectionId],
+          dbSessionId: '',
+          connectionId,
           status: 'error',
           error,
         },
@@ -160,38 +162,38 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
     }));
   },
 
-  disconnect: async (configId) => {
-    const entry = get().connections[configId];
-    const connectionId = entry?.connectionId;
-    console.log('[disconnect]', configId, connectionId);
+  disconnect: async (connectionId) => {
+    const entry = get().connections[connectionId];
+    const dbSessionId = entry?.dbSessionId;
+    console.log('[disconnect]', connectionId, dbSessionId);
 
-    if (!connectionId) {
+    if (!dbSessionId) {
       set((s) => {
-        const { [configId]: _, ...rest } = s.connections;
+        const { [connectionId]: _, ...rest } = s.connections;
         return { connections: rest };
       });
       return;
     }
 
     try {
-      await connectionCommands.disconnect(connectionId);
+      await connectionCommands.disconnect(dbSessionId);
       console.log('[disconnect] success');
-      await emitCrossWindow('datazen:disconnect-requested', { connectionId });
+      await emitCrossWindow('datazen:disconnect-requested', { dbSessionId });
     } catch (e) {
       console.error('[disconnect] failed', extractError(e));
     } finally {
       set((s) => {
-        const { [configId]: _, ...rest } = s.connections;
+        const { [connectionId]: _, ...rest } = s.connections;
         return { connections: rest };
       });
     }
   },
 
-  removeByConnectionId: (connectionId) => {
+  removeByDbSessionId: (dbSessionId) => {
     set((s) => {
       const next = { ...s.connections };
       for (const key of Object.keys(next)) {
-        if (next[key].connectionId === connectionId) {
+        if (next[key].dbSessionId === dbSessionId) {
           delete next[key];
         }
       }

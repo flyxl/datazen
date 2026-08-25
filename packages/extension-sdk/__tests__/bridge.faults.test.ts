@@ -108,7 +108,7 @@ describe('malformed host responses (F8 tolerance matrix)', () => {
     receive(parent, okResponse('context.getActiveConnection', sent[3].reqId as string));
     await expect(active).resolves.toBeNull();
 
-    const invoked = client.command.invoke({ configId: 'c', command: 'query' });
+    const invoked = client.command.invoke({ connectionId: 'c', command: 'query' });
     receive(parent, okResponse('command.invoke', sent[4].reqId as string));
     await expect(invoked).resolves.toBeUndefined();
 
@@ -294,7 +294,7 @@ describe('argument pass-through (command.invoke)', () => {
 
     const args: Record<string, unknown> = { sql: 'select 1', limit: 10, opts: { timeoutMs: 5 } };
     const invokeRequest = {
-      configId: 'cfg-9',
+      connectionId: 'cfg-9',
       command: 'query',
       args,
       tracingTag: 'plugin-side-extra',
