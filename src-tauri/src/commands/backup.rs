@@ -119,7 +119,7 @@ pub(crate) fn validate_backup_filter_extension(
 #[tauri::command]
 pub async fn backup_database(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     database: Option<String>,
     output_path: String,
     options: Option<Vec<String>>,
@@ -128,7 +128,7 @@ pub async fn backup_database(
     require_webdriver_path_ipc("Direct path backup disabled; use backup_database_with_dialog")?;
     backup_database_to_path(
         &state,
-        connection_id,
+        db_session_id,
         database,
         PathBuf::from(output_path),
         options,
@@ -143,7 +143,7 @@ pub async fn backup_database(
 pub async fn backup_database_with_dialog(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     database: Option<String>,
     default_file_name: String,
     filter_extension: String,
@@ -168,7 +168,7 @@ pub async fn backup_database_with_dialog(
         .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
     backup_database_to_path(
         &state,
-        connection_id,
+        db_session_id,
         database,
         path,
         options,
@@ -181,23 +181,23 @@ pub async fn backup_database_with_dialog(
 
 async fn backup_database_to_path(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     database: Option<String>,
     output_path: PathBuf,
     options: Option<Vec<String>>,
     compress: Option<bool>,
     app: Option<&tauri::AppHandle>,
 ) -> Result<(), CommandError> {
-    tracing::info!(%connection_id, path = %output_path.display(), "backup_database");
+    tracing::info!(%db_session_id, path = %output_path.display(), "backup_database");
     let config = state
         .connection_manager
-        .get_session_config(&connection_id)
+        .get_session_config(&db_session_id)
         .await
         .cmd_err("backup_database")?;
 
     let (driver, handle) = state
         .connection_manager
-        .get_session(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("backup_database")?;
 
@@ -264,7 +264,7 @@ async fn backup_database_to_path(
 #[tauri::command]
 pub async fn restore_database(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     input_path: String,
     options: Option<Vec<String>>,
     database: Option<String>,
@@ -273,7 +273,7 @@ pub async fn restore_database(
     restore_database_from_path(
         &state,
         None,
-        connection_id,
+        db_session_id,
         database,
         PathBuf::from(input_path),
         options,
@@ -286,11 +286,11 @@ pub async fn restore_database(
 pub async fn restore_database_with_dialog(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     database: Option<String>,
     options: Option<Vec<String>>,
 ) -> Result<bool, CommandError> {
-    sql_file_with_dialog(&app, &state, connection_id, database, options).await
+    sql_file_with_dialog(&app, &state, db_session_id, database, options).await
 }
 
 /// Native open dialog + execute a `.sql` file against the current connection.
@@ -299,18 +299,18 @@ pub async fn restore_database_with_dialog(
 pub async fn execute_sql_file_with_dialog(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     database: Option<String>,
     options: Option<Vec<String>>,
 ) -> Result<bool, CommandError> {
-    sql_file_with_dialog(&app, &state, connection_id, database, options).await
+    sql_file_with_dialog(&app, &state, db_session_id, database, options).await
 }
 /// Direct-path `.sql` file execution (no dialog). Available only in webdriver
 /// builds so E2E can drive the streaming pipeline without a native picker.
 #[tauri::command]
 pub async fn execute_sql_file(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     input_path: String,
     options: Option<Vec<String>>,
     database: Option<String>,
@@ -321,7 +321,7 @@ pub async fn execute_sql_file(
     restore_database_from_path(
         &state,
         None,
-        connection_id,
+        db_session_id,
         database,
         PathBuf::from(input_path),
         options,
@@ -333,7 +333,7 @@ pub async fn execute_sql_file(
 async fn sql_file_with_dialog(
     app: &tauri::AppHandle,
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     database: Option<String>,
     options: Option<Vec<String>>,
 ) -> Result<bool, CommandError> {
@@ -350,7 +350,7 @@ async fn sql_file_with_dialog(
     let path = fp
         .into_path()
         .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
-    restore_database_from_path(state, Some(app), connection_id, database, path, options).await?;
+    restore_database_from_path(state, Some(app), db_session_id, database, path, options).await?;
     Ok(true)
 }
 
@@ -435,12 +435,12 @@ async fn drop_existing_restore_targets(
 async fn restore_database_from_path(
     state: &AppState,
     app: Option<&tauri::AppHandle>,
-    connection_id: String,
+    db_session_id: String,
     database: Option<String>,
     input_path: PathBuf,
     options: Option<Vec<String>>,
 ) -> Result<(), CommandError> {
-    tracing::info!(%connection_id, path = %input_path.display(), "restore_database");
+    tracing::info!(%db_session_id, path = %input_path.display(), "restore_database");
     emit_restore_progress(
         app,
         DumpProgress {
@@ -453,12 +453,12 @@ async fn restore_database_from_path(
 
     let (driver, handle) = state
         .connection_manager
-        .get_session(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("restore_database")?;
     let config = state
         .connection_manager
-        .get_session_config(&connection_id)
+        .get_session_config(&db_session_id)
         .await
         .cmd_err("restore_database")?;
     if config.read_only {
@@ -474,7 +474,7 @@ async fn restore_database_from_path(
 
     let restore_opts = parse_restore_options(&options.unwrap_or_default());
     tracing::info!(
-        %connection_id,
+        %db_session_id,
         overwrite = restore_opts.overwrite,
         "restore_database streaming"
     );
@@ -521,7 +521,7 @@ async fn restore_database_from_path(
             phase: DumpPhase::Done,
         },
     );
-    tracing::info!(%connection_id, "restore_database OK");
+    tracing::info!(%db_session_id, "restore_database OK");
     Ok(())
 }
 
@@ -783,5 +783,65 @@ mod tests {
         .await
         .unwrap_err();
         assert!(err.to_string().contains("Safe mode is enabled"));
+    }
+}
+
+#[cfg(test)]
+mod ipc_contract_guards {
+    //! D1 regression anchors: all six backup/restore commands operate on the
+    //! **current runtime session** (strict `get_session` / `get_session_config`
+    //! lookups), so their wire parameter must be `db_session_id` (frontend
+    //! camelCase `dbSessionId`). They previously shipped as `connection_id`
+    //! while using session semantics — "renamed but reversed". These tests pin
+    /// the contract in both directions.
+    use super::*;
+
+    const SOURCE: &str = include_str!("backup.rs");
+
+    /// Extracts the parameter list of a `pub async fn <command>(...)`.
+    fn command_params(command: &str) -> String {
+        let needle = format!("pub async fn {command}(");
+        let start = SOURCE
+            .find(&needle)
+            .unwrap_or_else(|| panic!("command `{command}` not found in backup.rs"));
+        let rest = &SOURCE[start + needle.len()..];
+        let end = rest.find(')').expect("unterminated parameter list");
+        rest[..end].to_string()
+    }
+
+    #[test]
+    fn session_semantics_commands_take_db_session_id() {
+        for cmd in [
+            "backup_database",
+            "backup_database_with_dialog",
+            "restore_database",
+            "restore_database_with_dialog",
+            "execute_sql_file",
+            "execute_sql_file_with_dialog",
+        ] {
+            let params = command_params(cmd);
+            assert!(
+                params.contains("db_session_id"),
+                "`{cmd}` must take `db_session_id` (runtime session semantics); got: {params}"
+            );
+            let without_new = params.replace("db_session_id", "");
+            assert!(
+                !without_new.contains("connection_id"),
+                "`{cmd}` must not take (or also take) `connection_id`; got: {params}"
+            );
+        }
+    }
+
+    #[test]
+    fn strict_session_lookups_are_never_fed_a_connection_id_binding() {
+        // Body-level guard mirroring the signature guards above. The needles are
+        // assembled at runtime so this test module never contains them.
+        let conn = "connection_";
+        let id = "id";
+        let conn_id = format!("{conn}{id}");
+        assert!(!SOURCE.contains(&format!(".get_session(&{conn_id})")));
+        assert!(!SOURCE.contains(&format!(".get_session({conn_id})")));
+        assert!(!SOURCE.contains(&format!(".get_session_config(&{conn_id})")));
+        assert!(!SOURCE.contains(&format!(".get_session_config({conn_id})")));
     }
 }

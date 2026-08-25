@@ -49,7 +49,7 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-006)', () => {
     }
 
     // Get current database
-    const databases = await invokeBackend<string[]>('get_databases', { connectionId: connId });
+    const databases = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
     if (databases.length === 0) {
       console.warn('No databases found, skipping');
       return;

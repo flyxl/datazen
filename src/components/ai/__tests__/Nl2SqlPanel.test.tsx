@@ -79,7 +79,7 @@ describe('Nl2SqlPanel', () => {
     );
     fireEvent.click(getByText('nl2sql.generate'));
     expect(aiState.generateSql).toHaveBeenCalledWith({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       database: 'mydb',
       currentTable: undefined,
       contextFiles: undefined,

@@ -679,7 +679,7 @@ export function DataSyncWindow() {
       try {
         const connectionId = activeConns[sourceId] ?? activeConns[targetId];
         const text = await aiCommands.chat({
-          connectionId,
+          dbSessionId: connectionId,
           database: sourceDatabase || targetDatabase || undefined,
           messages: [{ role: 'user', content: prompt }],
           requestId: crypto.randomUUID(),

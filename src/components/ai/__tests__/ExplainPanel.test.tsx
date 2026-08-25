@@ -74,7 +74,7 @@ describe('ExplainPanel', () => {
     expect(getByTestId('explain-plan')).toBeInTheDocument();
     fireEvent.click(getByText('explain.analyze'));
     expect(aiState.analyzeExplain).toHaveBeenCalledWith({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       explainOutput: 'Seq Scan on users',
       originalSql: 'SELECT 1',
     });

@@ -44,7 +44,7 @@ export function NlFilterInput({ connectionId, database, tableName }: NlFilterInp
   const handleParse = async () => {
     abortRef.current = false;
     const targetTable = tableName;
-    const filters = await parseFilter({ connectionId, database, table: targetTable });
+    const filters = await parseFilter({ dbSessionId: connectionId, database, table: targetTable });
 
     if (abortRef.current) return;
 

@@ -56,7 +56,7 @@ export function AiChatPanel({ connectionId, database, sqlDialect, onInsertSql }:
     if (!input.trim() || chatSession?.isStreaming) return;
     const { contextFiles, contextTables } = splitContextItems(contextItems);
     void sendMessage({
-      connectionId,
+      dbSessionId: connectionId,
       database,
       content: input.trim(),
       contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
@@ -172,7 +172,7 @@ export function AiChatPanel({ connectionId, database, sqlDialect, onInsertSql }:
                 sqlDialect={sqlDialect}
                 onInsertSql={onInsertSql}
                 onAnswerQuestions={(answers) => {
-                  void sendMessage({ connectionId, database, content: answers });
+                  void sendMessage({ dbSessionId: connectionId, database, content: answers });
                 }}
                 isLastAssistant={
                   msg.role === 'assistant' &&

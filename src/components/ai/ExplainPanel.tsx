@@ -74,7 +74,7 @@ export function ExplainPanel({
   }, [planJson]);
 
   const handleAnalyze = useCallback(() => {
-    void analyzeExplain({ connectionId, explainOutput, originalSql: sql });
+    void analyzeExplain({ dbSessionId: connectionId, explainOutput, originalSql: sql });
   }, [analyzeExplain, connectionId, explainOutput, sql]);
 
   return (

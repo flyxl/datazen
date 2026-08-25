@@ -125,7 +125,7 @@ describe('WorkflowChatPanel', () => {
     fireEvent.change(getByTestId('wf-chat-input'), { target: { value: 'make workflow' } });
     fireEvent.click(getByTestId('wf-chat-send'));
     expect(aiState.sendWorkflowChatMessage).toHaveBeenCalledWith({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       content: 'make workflow',
       includeSchema: true,
       contextFiles: undefined,
