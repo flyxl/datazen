@@ -11,7 +11,7 @@
 | W1 | 后端核心与服务层术语落地 | `services/connection_manager.rs` 内部命名（`config_id_map`→`session_owner_map` 等）、错误信息区分两种 id；IPC 契约暂不变 | ✅ **已完成（测试通过，0 缺陷）** | 2026-08-24 | 26 文件 +482/-278；核心模块行覆盖 86.94%~96.74%（≥80% 达标）；185 个 IPC 命令签名零变化；报告见 `test-reports/W1-test-report.md` |
 | W2 | IPC 契约切换（前后端原子批） | Tauri 命令参数改名 + `src/commands/*` 封装同步 + 全部前后端调用点 + **MCP 参数直接改名 `connection_id`（不留 `config_id` 别名）** + **SQLite 列与持久化字段直接改名**（历史库按既有迁移模式做一次性列重命名） | ✅ **已完成**（复测通过，BUG-001/002/003 已修复） | 2026-08-24 | 开发 b962b4cc → 测试不通过 ce2ef15f → 修复 d20aa93a → 复测通过；⚠️ e2e:minimal 环境受阻转收尾强制项 |
 | W3 | 前端状态/类型/组件改名 | `types/index.ts`、stores、`connectionViews/types.ts`、组件 props、跨窗口事件 payload、windowManager、extensionBridge 显式目标 | ✅ **已完成**（复测通过，BUG-004/005 已修复） | 2026-08-24 | 开发 80df9968 → 测试通过附 P2×2（31b92f29）→ 修复 a70f5c19 → 复测通过；八链路语义审计无装反；新发现 BUG-006 转独立闭环 |
-| W4 | 外部契约与文档对齐 | 新建 CHANGELOG.md（6 条破坏性变更+迁移指引）、活文档清扫 9 文件、MCP 资源输出字段收口 | ✅ 开发完成（待测试） | 2026-08-24 | 11 文件；门禁：lib 1126 过/2 既有失败、vitest 1890 绿、site SEO 触碰文件全过；grep 遗漏=0 |
+| W4 | 外部契约与文档对齐 | 新建 CHANGELOG.md（6 条破坏性变更+迁移指引）、活文档清扫 9 文件、MCP 资源输出字段收口 | ✅ **已完成**（测试通过；P3 遗留转 BUG-007 随 W5 修） | 2026-08-24 | 实际 12 文件（含进度文件）；CHANGELOG 六条 6/6 与代码相符；示例抽查 6/6 一致；报告见 `test-reports/W4-test-report.md` |
 | W5 | 文档与守护 | `docs/architecture/naming.md`、AGENTS.md 精简更新、lint/grep 守护规则 | 未开始 | - | |
 
 收尾：回归测试（**含强制补跑 `pnpm e2e:minimal`**——W2 复测因沙箱 EPERM 环境受阻，报告 R5；合并 main 前必须在无沙箱限制环境通过）→ main 合入 feature 并复验 → 文档更新 → 合并 main。
@@ -33,6 +33,7 @@
 | BUG-006 | W3 复测补充审计 R4/D5 | **P1 功能性断裂（W2 清尾遗漏）**：ExportTablesRequest 后端字段已是 `db_session_id`（export.rs L83，resolve_session 双模 L563），前端 `commands/file.ts` 仍以 `connectionId` 键传会话 id、`lib/batchExportJob.ts` 以 `{connectionId: dbSessionId}` 构造并带误导注释——serde 必报 missing field，**多表批量导出当前 HEAD 必挂**；两侧既有测试因 mock/原生构造均无法拦截 | 实跑多表批量导出；或比对 file.ts 接口键与 export.rs 结构体 | 已修复 | W2 |
 | OBS-004 | W3 复测补充审计 R4/OBS-3 | WorkflowChatPanel 将配置 id 塞入 `AiInput.dbSessionId`→ai_chat，后端 get_session 严格查找 + if-let-Ok 静默降级兜底：不硬错但 schema 增强静默失效（main 上行为等价）。改进建议：FE 取活动会话 id 或后端改 resolve_session | 见 W3 测试报告 R4 节 | 观察 | - |
 | OBS-005 | W3 复测 T1/P3 | `e2e/specs/data-transfer-window.ts(211)` 悬空标识符 `tgtDbSessionId`（L208 实为 tgtConn），TS2304——W3 提交 80df9968 引入的一行笔误，e2e 错误总数 68 vs main 基线 67 的唯一增量 | e2e tsconfig 报错列表 | 观察（随 BUG-006 一行修掉） | W3 |
+| BUG-007 | W4 独立测试 T5/DEFECT-1 | **P3 既有遗留**：`docs/TODO-screenshots.md:35` 描述 toggleDb 参数为 configId+connectionId+dbName，实际签名为 (connectionId, dbSessionId, dbName)——该文件不在归档排除范围、未被 W4 触碰，属活文档残留 | 打开该文件比对实际函数签名 | 验证不通过 | W5 一并修 |
 
 ## 三、测试记录
 
@@ -53,7 +54,7 @@
 | F3（修复轮自测） | W3/W2 | BUG-006：file.ts/batchExportJob.ts 键改 dbSessionId + 3 条 IPC 契约守护测试（键集合双向断言/反向断言/静态锚点）；OBS-005 一行修复 | host vitest **1890 绿**（净增 4）；host tsc 零错；e2e tsc 72→71 | 编码 agent 977851e6 |
 | T4R（复测） | W3/W2 | 修复正确性核对（构造点唯一、注释清理）；守护测试反向注入实验（改回旧键→5 用例失败含 2 条契约守护→恢复后 diff 为空）；OBS-005 修复后 e2e tsc 67=main 基线 | **通过**（BUG-006 → 已修复）；host vitest 1890 绿 / drivers 84 绿 / host tsc 零错 | 复测 agent 03c401c9，报告已追加最终复测节 |
 | D5（开发自测） | W4 | CHANGELOG 6 条破坏性变更；活文档 29 处 token 替换+示例代码重写；MCP 资源定向加固测试（输出含 connectionId 不含 configId） | lib 1126 过 / vitest 1890 绿 / SEO 脚本触碰文件全过；grep 3 处全为合法历史演进说明 | 待独立测试 agent 评估 | 编码 agent 4119a5df |
-| T5（独立测试） | W4 | 待测试 agent 产出 | 待测试 | 待评估 | 全新测试 agent |
+| T5（独立测试） | W4 | CHANGELOG 六条逐一对照代码现实 6/6 相符；文档示例抽查 6/6 一致；zh/en 与 site 双语平行；10 条清单 9 过 1 警示；mcp/server.rs 行覆盖 87.60% ≥80% | **通过**；lib 1126 过 / vitest 1890 绿；发现 BUG-007（P3 既有遗留）+ OBS×4 | 全新测试 agent 9f275212，报告 `test-reports/W4-test-report.md` |
 
 ## 四、提交记录
 
@@ -72,7 +73,8 @@
 | 4568546c | W3 复测里程碑：复测**通过**，BUG-004/005 → 已修复，W3 → 已完成；新登记 BUG-006（P1）+ OBS-004/005 + 进度更新 |
 | 897ce98a | BUG-006 修复里程碑：ExportTablesRequest 键对齐 + 3 条守护测试 + OBS-005，bug 状态 → **待验证** |
 | 5bd0623b | BUG-006 复测里程碑：复测**通过**，BUG-006 → 已修复 + 进度更新 |
-| （本次） | W4 开发里程碑：CHANGELOG + 活文档对齐 + MCP 资源收口 + 进度更新 |
+| d3f67525 | W4 开发里程碑：CHANGELOG + 活文档对齐 + MCP 资源收口 + 进度更新 |
+| （本次） | W4 测试里程碑：复测**通过**（CHANGELOG 6/6 相符、示例 6/6 一致）；登记 BUG-007（P3 既有遗留，随 W5 修）+ 进度更新 |
 
 ## 五、决策记录
 
