@@ -32,8 +32,8 @@ const DEFAULT_LIMIT = 50;
 type ActiveTab = 'documents' | 'queries';
 
 export function DocumentConnectionView({
+  dbSessionId,
   connectionId,
-  configId,
   connectionName,
   databaseType,
   initialDatabase,
@@ -61,8 +61,8 @@ export function DocumentConnectionView({
   const [insertMode, setInsertMode] = useState(false);
 
   useEffect(() => {
-    void loadForConnection(connectionId, { skipLoadTables: true });
-  }, [connectionId, loadForConnection]);
+    void loadForConnection(dbSessionId, { skipLoadTables: true });
+  }, [dbSessionId, loadForConnection]);
 
   useEffect(() => {
     if (databases.length === 0 || selectedDb) return;
@@ -75,8 +75,8 @@ export function DocumentConnectionView({
     async (db: string) => {
       setCollectionsLoading(true);
       try {
-        await databaseCommands.useDatabase(connectionId, db);
-        const tables = await databaseCommands.getTables(connectionId, db);
+        await databaseCommands.useDatabase(dbSessionId, db);
+        const tables = await databaseCommands.getTables(dbSessionId, db);
         setCollections(tables);
       } catch (e) {
         console.error('load collections failed:', e);
@@ -85,7 +85,7 @@ export function DocumentConnectionView({
         setCollectionsLoading(false);
       }
     },
-    [connectionId],
+    [dbSessionId],
   );
 
   const handleSelectDb = useCallback(
@@ -117,7 +117,7 @@ export function DocumentConnectionView({
           limit: DEFAULT_LIMIT,
           database: selectedDb,
         });
-        const multi = await databaseCommands.executeSQL(connectionId, sql);
+        const multi = await databaseCommands.executeSQL(dbSessionId, sql);
         const nextResult = multi.results[0] ?? null;
         setResult(nextResult);
 
@@ -150,7 +150,7 @@ export function DocumentConnectionView({
         setDocsLoading(false);
       }
     },
-    [connectionId, selectedDb],
+    [dbSessionId, selectedDb],
   );
 
   const handleSelectCollection = useCallback(
@@ -169,11 +169,11 @@ export function DocumentConnectionView({
   }, [selectedCollection, filterText, loadDocuments]);
 
   const handleRefresh = useCallback(() => {
-    void loadForConnection(connectionId, { skipLoadTables: true });
+    void loadForConnection(dbSessionId, { skipLoadTables: true });
     if (selectedDb) void loadCollections(selectedDb);
     if (selectedCollection) void loadDocuments(selectedCollection, filterText);
   }, [
-    connectionId,
+    dbSessionId,
     selectedDb,
     selectedCollection,
     filterText,
@@ -253,7 +253,7 @@ export function DocumentConnectionView({
         filter: { _id: id },
         setFields,
       });
-      await databaseCommands.executeSQL(connectionId, sql);
+      await databaseCommands.executeSQL(dbSessionId, sql);
       if (selectedCollection) {
         await loadDocuments(selectedCollection, filterText, { preserveId: id });
       }
@@ -262,7 +262,7 @@ export function DocumentConnectionView({
     } finally {
       setMutating(false);
     }
-  }, [connectionId, editText, filterText, loadDocuments, selectedCollection, selectedDb, t]);
+  }, [dbSessionId, editText, filterText, loadDocuments, selectedCollection, selectedDb, t]);
 
   const handleInsertDocument = useCallback(async () => {
     if (!selectedCollection || !selectedDb) return;
@@ -281,7 +281,7 @@ export function DocumentConnectionView({
         database: selectedDb,
         documents: [doc],
       });
-      await databaseCommands.executeSQL(connectionId, sql);
+      await databaseCommands.executeSQL(dbSessionId, sql);
       setInsertMode(false);
       setEditText('');
       if (selectedCollection) await loadDocuments(selectedCollection, filterText);
@@ -290,7 +290,7 @@ export function DocumentConnectionView({
     } finally {
       setMutating(false);
     }
-  }, [connectionId, editText, filterText, loadDocuments, selectedCollection, selectedDb]);
+  }, [dbSessionId, editText, filterText, loadDocuments, selectedCollection, selectedDb]);
 
   const handleDeleteDocument = useCallback(async () => {
     if (!selectedCollection || !selectedDb) return;
@@ -314,7 +314,7 @@ export function DocumentConnectionView({
         database: selectedDb,
         filter: { _id: id },
       });
-      await databaseCommands.executeSQL(connectionId, sql);
+      await databaseCommands.executeSQL(dbSessionId, sql);
       handleCloseEditor();
       if (selectedCollection) await loadDocuments(selectedCollection, filterText);
     } catch (e) {
@@ -323,7 +323,7 @@ export function DocumentConnectionView({
       setMutating(false);
     }
   }, [
-    connectionId,
+    dbSessionId,
     editText,
     filterText,
     handleCloseEditor,
@@ -559,8 +559,8 @@ export function DocumentConnectionView({
         </div>
       ) : (
         <DocumentQueryPanel
+          dbSessionId={dbSessionId}
           connectionId={connectionId}
-          configId={configId}
           connectionName={connectionName}
           databaseType={databaseType}
         />
@@ -750,13 +750,15 @@ function DocumentResultTable({
 }
 
 function DocumentQueryPanel({
+  dbSessionId,
   connectionId,
-  configId,
   connectionName,
   databaseType,
 }: {
+  /** Live session id for the embedded query panel. */
+  dbSessionId: string;
+  /** Persistent connection id used to scope/dedupe the panel. */
   connectionId: string;
-  configId: string;
   connectionName: string;
   databaseType: string;
 }) {
@@ -775,7 +777,7 @@ function DocumentQueryPanel({
           type: 'query',
           id: panelId,
           connectionId,
-          configId,
+          dbSessionId,
           connectionName,
           databaseType: databaseType as import('../../types').DatabaseType,
           title: 'Query',
@@ -783,7 +785,7 @@ function DocumentQueryPanel({
         false,
       );
     }
-  }, [queryPanelId, connectionId, configId, connectionName, databaseType]);
+  }, [queryPanelId, dbSessionId, connectionId, connectionName, databaseType]);
 
   if (!queryPanelId) return null;
   return (

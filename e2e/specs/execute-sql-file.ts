@@ -20,24 +20,24 @@ async function getConnectionId(): Promise<string | null> {
   return arr.find((c) => c.name === '本地 PostgreSQL')?.id ?? null;
 }
 
-async function runQuery(connId: string, sql: string): Promise<unknown> {
+async function runQuery(dbSessionId: string, sql: string): Promise<unknown> {
   return browser.executeAsync(
     (cid: string, s: string, done: (r: unknown) => void) => {
       (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
         ?.invoke('execute_driver_command', {
-          request: { connectionId: cid, command: 'query', input: { sql: s } },
+          request: { dbSessionId: cid, command: 'query', input: { sql: s } },
         })
         .then(done)
         .catch((e: unknown) => done({ __error: String(e) }));
     },
-    connId,
+    dbSessionId,
     sql,
   );
 }
 
 describe('Execute SQL File (SF)', () => {
   let mainWindow: string;
-  let connId = '';
+  let dbSessionId = '';
   let dir = '';
   const STAMP = Date.now().toString(36);
   const T1 = 'e2e_sf_ok_' + STAMP;
@@ -48,14 +48,14 @@ describe('Execute SQL File (SF)', () => {
     await openSeededPgConnectionWindow(mainWindow);
     const cid = await getConnectionId();
     if (!cid) throw new Error('seeded PG connection not found');
-    connId = cid;
+    dbSessionId = cid;
     dir = mkdtempSync(join(tmpdir(), 'datazen-sf-'));
   });
 
   after(async () => {
-    if (connId) {
-      await runQuery(connId, 'DROP TABLE IF EXISTS ' + T1);
-      await runQuery(connId, 'DROP TABLE IF EXISTS ' + T2);
+    if (dbSessionId) {
+      await runQuery(dbSessionId, 'DROP TABLE IF EXISTS ' + T1);
+      await runQuery(dbSessionId, 'DROP TABLE IF EXISTS ' + T2);
     }
     try {
       rmSync(dir, { recursive: true, force: true });
@@ -69,11 +69,11 @@ describe('Execute SQL File (SF)', () => {
     return browser.executeAsync(
       (cid: string, path: string, done: (r: unknown) => void) => {
         (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
-          ?.invoke('execute_sql_file', { connectionId: cid, inputPath: path })
+          ?.invoke('execute_sql_file', { dbSessionId: cid, inputPath: path })
           .then(done)
           .catch((e: unknown) => done({ __error: String(e) }));
       },
-      connId,
+      dbSessionId,
       p,
     );
   }
@@ -88,7 +88,7 @@ describe('Execute SQL File (SF)', () => {
     const ok = (await invokeSqlFile(file)) as { __error?: string };
     expect(ok.__error).toBeUndefined();
     expect(ok).toBe(true);
-    const res = (await runQuery(connId, 'SELECT COUNT(*) AS n FROM ' + T1)) as {
+    const res = (await runQuery(dbSessionId, 'SELECT COUNT(*) AS n FROM ' + T1)) as {
       data?: { results?: Array<{ rows?: Array<{ n?: number }> }> };
       __error?: string;
     };

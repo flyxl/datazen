@@ -48,7 +48,7 @@ describe('Driver Command IPC', () => {
     await expect(
       invokeBackend('execute_driver_command', {
         request: {
-          connectionId: conns[0].id,
+          dbSessionId: conns[0].id,
           command: 'not-a-real-command',
           input: {},
         },

@@ -4,7 +4,7 @@ import type { QueryHistoryEntry } from '../../types';
 
 function entry(partial: Partial<QueryHistoryEntry> & { id: string }): QueryHistoryEntry {
   return {
-    configId: 'cfg-1',
+    connectionId: 'cfg-1',
     database: 'app_db',
     sql: 'SELECT 1',
     executedAt: '2026-08-21T10:00:00Z',

@@ -27,7 +27,7 @@ import { buildErGraph } from './er/buildErGraph';
 import type { TableSchema } from '../../types';
 
 interface ErDiagramViewProps {
-  connectionId: string;
+  dbSessionId: string;
   database: string;
   focusTable?: string;
   onSelectTable?: (tableName: string) => void;
@@ -48,7 +48,7 @@ export function ErDiagramView(props: ErDiagramViewProps) {
 }
 
 function ErDiagramInner({
-  connectionId,
+  dbSessionId,
   database,
   focusTable,
   onSelectTable,
@@ -73,7 +73,7 @@ function ErDiagramInner({
     setLoading(true);
     setError(null);
     databaseCommands
-      .getErData(connectionId, database)
+      .getErData(dbSessionId, database)
       .then((data) => {
         if (!cancelled) {
           setSchemas(data);
@@ -89,7 +89,7 @@ function ErDiagramInner({
     return () => {
       cancelled = true;
     };
-  }, [connectionId, database]);
+  }, [dbSessionId, database]);
 
   useEffect(() => {
     if (loading || error) return;

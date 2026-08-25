@@ -3,8 +3,8 @@ import type { DriverCommandDefinition, QueryStreamEvent } from '../types';
 
 export interface ExecuteDriverCommandRequest {
   /** Runtime db session id. `resolve_session` also accepts a persisted
-   * connection id (legacy callers, e.g. the extension bridge until W3 adds an
-   * explicit target parameter). */
+   * connection id (dual-mode; e.g. the extension bridge falls back to the
+   * raw id when it cannot resolve a live session). */
   dbSessionId?: string;
   driverType?: string;
   command: string;

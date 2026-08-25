@@ -34,7 +34,7 @@ function makeDeps(overrides: Partial<EnsureDeps> = {}): EnsureDeps {
     });
 
   return {
-    connectionId: 'conn-1',
+    dbSessionId: 'conn-1',
     databaseType: 'path_driver',
     isMultiDatabase: true,
     namespaceTree: {},

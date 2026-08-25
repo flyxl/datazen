@@ -38,10 +38,10 @@ const PG_CONFIG = {
 const TMP_DIR = os.tmpdir();
 const TEST_TABLE = '_e2e_backup_test';
 
-async function seedBackupTable(connId: string) {
+async function seedBackupTable(dbSessionId: string) {
   await withSafeModeOff(() =>
     invokeBackend('execute_query', {
-      dbSessionId: connId,
+      dbSessionId,
       sql: `
       DROP TABLE IF EXISTS ${TEST_TABLE};
       CREATE TABLE ${TEST_TABLE} (
@@ -54,10 +54,10 @@ async function seedBackupTable(connId: string) {
   );
 }
 
-async function dropBackupTable(connId: string) {
+async function dropBackupTable(dbSessionId: string) {
   await withSafeModeOff(() =>
     invokeBackend('execute_query', {
-      dbSessionId: connId,
+      dbSessionId,
       sql: `DROP TABLE IF EXISTS ${TEST_TABLE}`,
     }),
   );
@@ -68,24 +68,24 @@ async function dropBackupTable(connId: string) {
 // ═════════════════════════════════════════════════════════════════════
 
 describe('数据库备份功能 (BACKUP)', () => {
-  let connectionId: string;
+  let dbSessionId: string;
 
   before(async () => {
     await browser.setTimeout({ script: 120000 });
     await browser.pause(3000);
     await invokeBackend('save_connection', { config: PG_CONFIG });
-    connectionId = await invokeBackend<string>('connect', { connectionId: PG_CONFIG.id });
-    await seedBackupTable(connectionId);
+    dbSessionId = await invokeBackend<string>('connect', { connectionId: PG_CONFIG.id });
+    await seedBackupTable(dbSessionId);
   });
 
   after(async () => {
     try {
-      await dropBackupTable(connectionId);
+      await dropBackupTable(dbSessionId);
     } catch {
       /* ok */
     }
     try {
-      await invokeBackend('disconnect', { dbSessionId: connectionId });
+      await invokeBackend('disconnect', { dbSessionId });
     } catch {
       /* ok */
     }
@@ -97,12 +97,12 @@ describe('数据库备份功能 (BACKUP)', () => {
   });
 
   it('BACKUP-001: connect returns a valid connection ID string', async () => {
-    expect(typeof connectionId).toBe('string');
-    expect(connectionId.length).toBeGreaterThan(0);
+    expect(typeof dbSessionId).toBe('string');
+    expect(dbSessionId.length).toBeGreaterThan(0);
   });
 
   it('BACKUP-002: get_databases returns database list', async () => {
-    const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId: connectionId });
+    const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId });
     expect(Array.isArray(dbs)).toBe(true);
     expect(dbs.length).toBeGreaterThan(0);
     expect(dbs).toContain(PG_CONFIG.database);

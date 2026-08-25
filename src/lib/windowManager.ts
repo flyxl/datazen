@@ -161,14 +161,15 @@ export function openSchemaDiffWindow() {
 
 export function openBackupWindow(
   mode: 'backup' | 'restore' = 'backup',
-  prefill?: { configId?: string; database?: string },
+  prefill?: { connectionId?: string; database?: string },
 ) {
   const restore = mode === 'restore';
+  // URL param `connectionId` = persistent config connection id.
   openSingletonWindow(restore ? 'backup-restore-singleton' : 'backup-singleton', {
     params: {
       window: 'backup',
       ...(restore ? { mode: 'restore' } : {}),
-      ...(prefill?.configId ? { configId: prefill.configId } : {}),
+      ...(prefill?.connectionId ? { connectionId: prefill.connectionId } : {}),
       ...(prefill?.database ? { database: prefill.database } : {}),
     },
     width: 750,
@@ -233,15 +234,17 @@ export const PENDING_CONNECTION_KEY = 'datazen:pending-connection';
  * 2. `datazen:open-connection` event — handled by the existing listener
  */
 export function openConnectionWindow(
-  opts: { connectionId?: string; configId?: string },
+  opts: { dbSessionId?: string; connectionId?: string },
   connectionName: string,
   database?: string,
   databaseType?: string,
   action?: string,
 ) {
+  // Cross-window payload keys follow the W3 convention:
+  // `connectionId` = persistent config connection id, `dbSessionId` = runtime session id.
   const payload: Record<string, string> = { connectionName };
+  if (opts.dbSessionId) payload.dbSessionId = opts.dbSessionId;
   if (opts.connectionId) payload.connectionId = opts.connectionId;
-  if (opts.configId) payload.configId = opts.configId;
   if (database) payload.database = database;
   if (databaseType) payload.databaseType = databaseType;
   if (action) payload.action = action;

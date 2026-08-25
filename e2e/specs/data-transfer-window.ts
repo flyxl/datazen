@@ -93,29 +93,29 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     await invokeBackend('save_connection', {
       config: pgConfig(TGT_ID, TGT_NAME, 'datazen_sync_tgt'),
     });
-    const srcConn = await invokeBackend<string>('connect', { connectionId: SRC_ID });
-    const tgtConn = await invokeBackend<string>('connect', { connectionId: TGT_ID });
+    const srcDbSessionId = await invokeBackend<string>('connect', { connectionId: SRC_ID });
+    const tgtDbSessionId = await invokeBackend<string>('connect', { connectionId: TGT_ID });
 
     await withSafeModeOff(async () => {
       await invokeBackend('execute_query', {
-        connectionId: srcConn,
+        dbSessionId: srcDbSessionId,
         sql: `DROP TABLE IF EXISTS ${TABLE}`,
       });
       await invokeBackend('execute_query', {
-        connectionId: tgtConn,
+        dbSessionId: tgtDbSessionId,
         sql: `DROP TABLE IF EXISTS ${TABLE}`,
       });
       await invokeBackend('execute_query', {
-        connectionId: srcConn,
+        dbSessionId: srcDbSessionId,
         sql: `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL, qty int)`,
       });
       await invokeBackend('execute_query', {
-        connectionId: srcConn,
+        dbSessionId: srcDbSessionId,
         sql: `INSERT INTO ${TABLE} (id, name, qty) VALUES (1,'a',10),(2,'b',20),(3,'c',30)`,
       });
       // 目标预建同结构空表，使 insert 模式可直接批量写
       await invokeBackend('execute_query', {
-        connectionId: tgtConn,
+        dbSessionId: tgtDbSessionId,
         sql: `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL, qty int)`,
       });
     });
@@ -125,15 +125,15 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
 
   after(async () => {
     try {
-      const srcConn = await invokeBackend<string>('connect', { connectionId: SRC_ID });
-      const tgtConn = await invokeBackend<string>('connect', { connectionId: TGT_ID });
+      const srcDbSessionId = await invokeBackend<string>('connect', { connectionId: SRC_ID });
+      const tgtDbSessionId = await invokeBackend<string>('connect', { connectionId: TGT_ID });
       await withSafeModeOff(async () => {
         await invokeBackend('execute_query', {
-          connectionId: srcConn,
+          dbSessionId: srcDbSessionId,
           sql: `DROP TABLE IF EXISTS ${TABLE}`,
         });
         await invokeBackend('execute_query', {
-          connectionId: tgtConn,
+          dbSessionId: tgtDbSessionId,
           sql: `DROP TABLE IF EXISTS ${TABLE}`,
         });
       });
@@ -208,7 +208,7 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     const tgtConn = (await invokeBackend<string>('connect', { connectionId: TGT_ID })) ?? '';
     expect(tgtConn).toBeTruthy();
     const rows = await invokeBackend('execute_query', {
-      connectionId: tgtConn,
+      dbSessionId: tgtDbSessionId,
       sql: `SELECT count(*)::int AS c FROM ${TABLE}`,
     });
     expect(queryScalar(rows, 'c')).toBe(3);

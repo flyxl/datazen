@@ -99,7 +99,7 @@ describe('TableView', () => {
     });
 
     render(
-      <TableView connectionId="c1" database="app" tableName="users" databaseType="postgresql" />,
+      <TableView dbSessionId="c1" database="app" tableName="users" databaseType="postgresql" />,
     );
 
     const message = screen.getByTestId('copyable-error-message');
@@ -131,7 +131,7 @@ describe('TableView', () => {
     });
 
     render(
-      <TableView connectionId="c1" database="app" tableName="users" databaseType="postgresql" />,
+      <TableView dbSessionId="c1" database="app" tableName="users" databaseType="postgresql" />,
     );
 
     const message = screen.getByTestId('copyable-error-message');

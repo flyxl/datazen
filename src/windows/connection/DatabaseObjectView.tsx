@@ -8,7 +8,7 @@ import { queryCommands } from '../../commands/query';
 import type { DatabaseObjectKind } from '../../types';
 
 interface DatabaseObjectViewProps {
-  connectionId: string;
+  dbSessionId: string;
   databaseType?: string;
   objectKind: DatabaseObjectKind;
   objectName: string;
@@ -16,7 +16,7 @@ interface DatabaseObjectViewProps {
 }
 
 export function DatabaseObjectView({
-  connectionId,
+  dbSessionId,
   databaseType,
   objectKind,
   objectName,
@@ -34,7 +34,7 @@ export function DatabaseObjectView({
     setMessage(null);
     try {
       const text = await databaseCommands.getObjectDdl(
-        connectionId,
+        dbSessionId,
         objectKind,
         objectName,
         objectSchema,
@@ -45,7 +45,7 @@ export function DatabaseObjectView({
     } finally {
       setLoading(false);
     }
-  }, [connectionId, objectKind, objectName, objectSchema]);
+  }, [dbSessionId, objectKind, objectName, objectSchema]);
 
   useEffect(() => {
     void loadDdl();
@@ -56,14 +56,14 @@ export function DatabaseObjectView({
     setRunning(true);
     setMessage(null);
     try {
-      await queryCommands.executeQuery(connectionId, ddl);
+      await queryCommands.executeQuery(dbSessionId, ddl);
       setMessage(t('objects.executeOk'));
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
     } finally {
       setRunning(false);
     }
-  }, [connectionId, ddl, t]);
+  }, [dbSessionId, ddl, t]);
 
   const kindLabel =
     objectKind === 'function'

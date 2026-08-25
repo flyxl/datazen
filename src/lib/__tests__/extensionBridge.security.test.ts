@@ -212,7 +212,7 @@ describe('F6 security: credential whitelisting', () => {
     };
     activeConnectionStoreState.current = {
       connections: {
-        conn_9: { configId: 'conn_9', status: 'connected' },
+        conn_9: { connectionId: 'conn_9', status: 'connected' },
       },
     };
     handle = attachBridge(frame.iframe, {
@@ -238,7 +238,7 @@ describe('F6 security: credential whitelisting', () => {
     handle = attachBridge(frame.iframe, { pluginId: 'p', permissions: ['command:invoke'] });
 
     receive(
-      request('command.invoke', 'boom', { configId: 'cfg', command: 'query' }),
+      request('command.invoke', 'boom', { connectionId: 'cfg', command: 'query' }),
       frame.iframe.contentWindow,
     );
     await waitUntil(() => frame.sent.length > 0);
@@ -259,7 +259,7 @@ describe('F6 security: credential whitelisting', () => {
 
     receive(
       request('command.invoke', 'log1', {
-        configId: 'cfg',
+        connectionId: 'cfg',
         command: 'query',
         args: { sql: "select * from users where pw = 'top-secret-value'" },
       }),
@@ -311,7 +311,7 @@ describe('F6 security: permission gate vs malformed routing', () => {
       handle = attachAll();
 
       receive(
-        request(type, `pp-${type}`, { configId: 'c', command: 'query' }),
+        request(type, `pp-${type}`, { connectionId: 'c', command: 'query' }),
         frame.iframe.contentWindow,
       );
       await waitUntil(() =>
@@ -390,19 +390,19 @@ describe('F6 security: malformed command.invoke payloads', () => {
     await expectBadRequest('bad0');
   });
 
-  it('rejects missing / non-string / numeric configId', async () => {
+  it('rejects missing / non-string / numeric connectionId', async () => {
     invoke('bad1', { command: 'query' });
-    invoke('bad2', { configId: 123, command: 'query' });
-    invoke('bad3', { configId: '', command: 'query' });
+    invoke('bad2', { connectionId: 123, command: 'query' });
+    invoke('bad3', { connectionId: '', command: 'query' });
     await expectBadRequest('bad1');
     await expectBadRequest('bad2');
     await expectBadRequest('bad3');
   });
 
   it('rejects primitive (non-object) args', async () => {
-    invoke('bad4', { configId: 'c', command: 'query', args: 'drop table users' });
-    invoke('bad5', { configId: 'c', command: 'query', args: 42 });
-    invoke('bad6', { configId: 'c', command: 'query', args: true });
+    invoke('bad4', { connectionId: 'c', command: 'query', args: 'drop table users' });
+    invoke('bad5', { connectionId: 'c', command: 'query', args: 42 });
+    invoke('bad6', { connectionId: 'c', command: 'query', args: true });
     await expectBadRequest('bad4');
     await expectBadRequest('bad5');
     await expectBadRequest('bad6');
@@ -410,7 +410,7 @@ describe('F6 security: malformed command.invoke payloads', () => {
 
   it('treats args:null as an empty input object (benign, pinned behavior)', async () => {
     driverExecuteMock.mockResolvedValue({ data: 'ok' });
-    invoke('nullargs', { configId: 'c', command: 'query', args: null });
+    invoke('nullargs', { connectionId: 'c', command: 'query', args: null });
     await waitUntil(() => frame.sent.some((m) => m.reqId === 'nullargs'));
 
     expect(driverExecuteMock).toHaveBeenCalledWith({
@@ -423,7 +423,7 @@ describe('F6 security: malformed command.invoke payloads', () => {
 
   it('forwards array args verbatim without treating them as key/value maps', async () => {
     driverExecuteMock.mockResolvedValue({ data: 'ok' });
-    invoke('arrargs', { configId: 'c', command: 'query', args: ['a', 'b'] });
+    invoke('arrargs', { connectionId: 'c', command: 'query', args: ['a', 'b'] });
     await waitUntil(() => frame.sent.some((m) => m.reqId === 'arrargs'));
     expect(driverExecuteMock).toHaveBeenCalledWith({
       dbSessionId: 'c',
@@ -449,7 +449,7 @@ describe('F6 security: prototype pollution containment', () => {
       '{"__proto__":{"polluted":"pwned"},"constructor":{"prototype":{"polluted2":"yes"}},"sql":"select 1"}',
     );
     receive(
-      request('command.invoke', 'evil1', { configId: 'c', command: 'query', args: evilArgs }),
+      request('command.invoke', 'evil1', { connectionId: 'c', command: 'query', args: evilArgs }),
       frame.iframe.contentWindow,
     );
     await flush();

@@ -10,7 +10,7 @@ import type { DatabaseTypeMeta } from './databaseMeta';
 import { resolveEnsureSegments } from './sqlPathPrefix';
 
 export interface EnsureDeps {
-  connectionId: string;
+  dbSessionId: string;
   databaseType: string | null;
   isMultiDatabase: boolean;
   loadedPaths: Set<string>;
@@ -25,9 +25,9 @@ export interface EnsureDeps {
   mergeNamespace: (segments: string[], kind: 'branch' | 'tables', names: string[]) => void;
   cachePathItems: (fetchPath: string, items: TableInfo[]) => void;
   registerPathAliases: (entries: { name: string; id: string }[]) => void;
-  getDatabases: (connectionId: string) => Promise<string[]>;
-  getTables: (connectionId: string, database: string) => Promise<TableInfo[]>;
-  useDatabase: (connectionId: string, database: string) => Promise<void>;
+  getDatabases: (dbSessionId: string) => Promise<string[]>;
+  getTables: (dbSessionId: string, database: string) => Promise<TableInfo[]>;
+  useDatabase: (dbSessionId: string, database: string) => Promise<void>;
 }
 
 const inflight = new Map<string, Promise<void>>();
@@ -72,7 +72,7 @@ function resolveEnsureStrategy(databaseType: string | null): DatabaseTypeMeta['n
  * then `get_tables(rootId[/…])`. Does not parse plugin-specific database list formats.
  */
 async function ensurePathHierarchy(segments: string[], deps: EnsureDeps): Promise<void> {
-  const { connectionId, pathAliases } = deps;
+  const { dbSessionId, pathAliases } = deps;
 
   if (segments.length === 0) {
     const names = Object.keys(pathAliases);
@@ -88,7 +88,7 @@ async function ensurePathHierarchy(segments: string[], deps: EnsureDeps): Promis
 
   let items = deps.pathItems[fetchPath];
   if (!items) {
-    items = await deps.getTables(connectionId, fetchPath);
+    items = await deps.getTables(dbSessionId, fetchPath);
     deps.cachePathItems(fetchPath, items);
   }
 
@@ -108,11 +108,11 @@ async function ensurePathHierarchy(segments: string[], deps: EnsureDeps): Promis
 }
 
 async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<void> {
-  const { connectionId, isMultiDatabase, tables, databases, currentDatabase } = deps;
+  const { dbSessionId, isMultiDatabase, tables, databases, currentDatabase } = deps;
 
   if (segments.length === 0) {
     if (isMultiDatabase) {
-      const dbs = await deps.getDatabases(connectionId);
+      const dbs = await deps.getDatabases(dbSessionId);
       deps.mergeNamespace([], 'branch', dbs);
       return;
     }
@@ -122,8 +122,8 @@ async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<v
       databases[0];
     if (!preferred) return;
 
-    await deps.useDatabase(connectionId, preferred);
-    const all = await deps.getTables(connectionId, preferred);
+    await deps.useDatabase(dbSessionId, preferred);
+    const all = await deps.getTables(dbSessionId, preferred);
     const bySchema = new Map<string, string[]>();
     for (const item of all) {
       if (!isSchemaGroupingSchema(item.schema)) continue;
@@ -141,8 +141,8 @@ async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<v
 
   if (isMultiDatabase && segments.length === 1) {
     const [db] = segments;
-    await deps.useDatabase(connectionId, db);
-    const all = await deps.getTables(connectionId, db);
+    await deps.useDatabase(dbSessionId, db);
+    const all = await deps.getTables(dbSessionId, db);
     const tableItems = all.filter((item) => item.tableType !== 'view');
     const bySchema = new Map<string, string[]>();
     for (const item of tableItems) {
@@ -176,8 +176,8 @@ async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<v
       databases[0];
     if (!preferred) return;
 
-    await deps.useDatabase(connectionId, preferred);
-    const all = await deps.getTables(connectionId, preferred);
+    await deps.useDatabase(dbSessionId, preferred);
+    const all = await deps.getTables(dbSessionId, preferred);
     const names = all
       .filter((item) => item.tableType !== 'view' && item.schema === schema)
       .map((item) => item.name);
@@ -186,18 +186,18 @@ async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<v
 }
 
 async function ensureDefaultSql(segments: string[], deps: EnsureDeps): Promise<void> {
-  const { connectionId } = deps;
+  const { dbSessionId } = deps;
 
   if (segments.length === 0) {
-    const dbs = await deps.getDatabases(connectionId);
+    const dbs = await deps.getDatabases(dbSessionId);
     deps.mergeNamespace([], 'branch', dbs);
     return;
   }
 
   if (segments.length === 1) {
     const [db] = segments;
-    await deps.useDatabase(connectionId, db);
-    const all = await deps.getTables(connectionId, db);
+    await deps.useDatabase(dbSessionId, db);
+    const all = await deps.getTables(dbSessionId, db);
     deps.mergeNamespace([db], 'tables', tableNames(all));
   }
 }
@@ -245,7 +245,7 @@ export function namespaceEnsurePending(segments: string[], deps: EnsureDeps): bo
 
 export async function ensureNamespacePath(segments: string[], deps: EnsureDeps): Promise<void> {
   const resolved = resolveForEnsure(segments, deps);
-  const key = `${deps.connectionId}|${resolved.join('.')}`;
+  const key = `${deps.dbSessionId}|${resolved.join('.')}`;
   const existing = inflight.get(key);
   if (existing) return existing;
   const p = runEnsure(resolved, deps).finally(() => inflight.delete(key));

@@ -132,12 +132,13 @@ export function DataTransferWindow() {
   const targetReadOnly = targetConn?.readOnly === true;
 
   const ensureConnected = useCallback(
-    async (configId: string): Promise<string | null> => {
-      if (activeConns[configId]) return activeConns[configId];
+    async (connectionId: string): Promise<string | null> => {
+      // activeConns maps persistent connection id -> live db session id.
+      if (activeConns[connectionId]) return activeConns[connectionId];
       try {
-        const connectionId = await invoke<string>('connect', { connectionId: configId });
-        setActiveConns((prev) => ({ ...prev, [configId]: connectionId }));
-        return connectionId;
+        const dbSessionId = await invoke<string>('connect', { connectionId });
+        setActiveConns((prev) => ({ ...prev, [connectionId]: dbSessionId }));
+        return dbSessionId;
       } catch (e) {
         setErrorMsg(`${t('transfer.connectFailed')} ${e instanceof Error ? e.message : String(e)}`);
         setErrorOpen(true);

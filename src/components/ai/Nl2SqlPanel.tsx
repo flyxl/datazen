@@ -9,7 +9,7 @@ import { splitContextItems } from '../../lib/contextItems';
 import type { ContextItem } from '../../types';
 
 interface Nl2SqlPanelProps {
-  connectionId: string;
+  dbSessionId: string;
   database: string;
   currentTable?: string;
   /** Stream / write generated SQL into the SQL editor. */
@@ -17,7 +17,7 @@ interface Nl2SqlPanelProps {
 }
 
 export function Nl2SqlPanel({
-  connectionId,
+  dbSessionId,
   database,
   currentTable,
   onSqlChange,
@@ -47,7 +47,7 @@ export function Nl2SqlPanel({
     const { contextFiles, contextTables } = splitContextItems(contextItems);
     lastWrittenRef.current = '';
     void generateSql({
-      dbSessionId: connectionId,
+      dbSessionId,
       database,
       currentTable,
       contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
@@ -56,7 +56,7 @@ export function Nl2SqlPanel({
     setContextItems([]);
   }, [
     generateSql,
-    connectionId,
+    dbSessionId,
     database,
     currentTable,
     nl2sql.input,
@@ -94,7 +94,7 @@ export function Nl2SqlPanel({
           isLoading={nl2sql.isGenerating}
           contextItems={contextItems}
           onContextItemsChange={setContextItems}
-          connectionId={connectionId}
+          dbSessionId={dbSessionId}
           database={database}
           pickerPosition="below"
           hideSubmit

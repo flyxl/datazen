@@ -130,39 +130,39 @@ export function getViewSubTabs(
 }
 
 export function resolveConnectionContext(
-  connectionId: string,
+  dbSessionId: string,
   activeConnections: ReturnType<typeof useActiveConnectionStore.getState>['connections'],
   savedConnections: ReturnType<typeof useConnectionStore.getState>['connections'],
 ): ConnectionContext | null {
-  const entry = Object.values(activeConnections).find((e) => e.connectionId === connectionId);
-  if (!entry?.connectionId) return null;
-  const saved = savedConnections.find((c) => c.id === entry.configId);
+  const entry = Object.values(activeConnections).find((e) => e.dbSessionId === dbSessionId);
+  if (!entry?.dbSessionId) return null;
+  const saved = savedConnections.find((c) => c.id === entry.connectionId);
   if (!saved) return null;
   return {
-    configId: entry.configId,
     connectionId: entry.connectionId,
+    dbSessionId: entry.dbSessionId,
     connectionName: saved.name,
     databaseType: saved.databaseType,
   };
 }
 
 /**
- * 按 configId（持久化连接配置 ID）直接解析当前活动连接上下文。
- * 右键菜单已知用户点击的连接的 configId，据此同步取到该连接的实时 connectionId，
+ * 按 connectionId（持久化连接 ID）直接解析当前活动连接上下文。
+ * 右键菜单已知用户点击的连接的 connectionId，据此同步取到该连接的实时 dbSessionId，
  * 明确绑定面板，避免读取「全局活动连接」串数据。
  */
-export function resolveConnectionContextByConfig(
-  configId: string,
+export function resolveConnectionContextByConnection(
+  connectionId: string,
   activeConnections: ReturnType<typeof useActiveConnectionStore.getState>['connections'],
   savedConnections: ReturnType<typeof useConnectionStore.getState>['connections'],
 ): ConnectionContext | null {
-  const entry = activeConnections[configId];
-  if (!entry?.connectionId) return null;
-  const saved = savedConnections.find((c) => c.id === configId);
+  const entry = activeConnections[connectionId];
+  if (!entry?.dbSessionId) return null;
+  const saved = savedConnections.find((c) => c.id === connectionId);
   if (!saved) return null;
   return {
-    configId,
-    connectionId: entry.connectionId,
+    connectionId,
+    dbSessionId: entry.dbSessionId,
     connectionName: saved.name,
     databaseType: saved.databaseType,
   };

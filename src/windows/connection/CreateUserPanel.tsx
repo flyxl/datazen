@@ -7,10 +7,10 @@ import { driverCommands } from '../../commands/driver';
 import { useI18n } from '../../hooks/useI18n';
 
 interface CreateUserPanelProps {
-  connectionId: string;
+  dbSessionId: string;
 }
 
-export function CreateUserPanel({ connectionId }: CreateUserPanelProps) {
+export function CreateUserPanel({ dbSessionId }: CreateUserPanelProps) {
   const { t } = useI18n();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -28,7 +28,7 @@ export function CreateUserPanel({ connectionId }: CreateUserPanelProps) {
       if (password) input.password = password;
 
       await driverCommands.execute({
-        dbSessionId: connectionId,
+        dbSessionId,
         command: 'create_user',
         input,
       });
@@ -40,7 +40,7 @@ export function CreateUserPanel({ connectionId }: CreateUserPanelProps) {
     } finally {
       setRunning(false);
     }
-  }, [username, password, connectionId, t]);
+  }, [username, password, dbSessionId, t]);
 
   return (
     <div className="flex flex-1 flex-col overflow-auto">

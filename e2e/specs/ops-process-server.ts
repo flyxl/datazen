@@ -100,7 +100,7 @@ async function clickRowByPid(pid: number): Promise<boolean> {
 
 describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
   let mainWindow: string;
-  let procConnectionId: string;
+  let procDbSessionId: string;
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
@@ -120,11 +120,11 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
         sslMode: 'disable',
       },
     });
-    procConnectionId = await invokeBackend<string>('connect', { connectionId: PROC_CONN_ID });
+    procDbSessionId = await invokeBackend<string>('connect', { connectionId: PROC_CONN_ID });
 
     // 记下该空闲连接的 pid 供断言
     await invokeBackend('execute_query', {
-      connectionId: procConnectionId,
+      dbSessionId: procDbSessionId,
       sql: 'SELECT pg_backend_pid() AS pid',
     });
 
@@ -191,7 +191,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
   it('OPS-PROC-004: Kill 独立连接并断言 pid 从进程列表消失', async () => {
     // 目标 pid
     const raw = await invokeBackend('execute_query', {
-      connectionId: procConnectionId,
+      dbSessionId: procDbSessionId,
       sql: 'SELECT pg_backend_pid() AS pid',
     });
     const targetPid = queryScalar(raw, 'pid');
@@ -244,9 +244,9 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
         sslMode: 'disable',
       },
     });
-    const checkConn = await invokeBackend<string>('connect', { connectionId: checkId });
+    const checkDbSessionId = await invokeBackend<string>('connect', { connectionId: checkId });
     const cnt = await invokeBackend('execute_query', {
-      connectionId: checkConn,
+      dbSessionId: checkDbSessionId,
       sql: `SELECT count(*)::int AS c FROM pg_stat_activity WHERE pid = ${targetPid}`,
     });
     expect(queryScalar(cnt, 'c')).toBe(0);

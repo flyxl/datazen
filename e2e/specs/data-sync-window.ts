@@ -311,8 +311,8 @@ describe('数据同步 UI 执行闭环 (DSW-EXEC)', () => {
   async function dSyncConnect(id: string) {
     return invokeSync<string>('connect', { connectionId: id });
   }
-  async function dSyncSql(connId: string, sql: string) {
-    const run = () => invokeSync('execute_query', { connectionId: connId, sql });
+  async function dSyncSql(dbSessionId: string, sql: string) {
+    const run = () => invokeSync('execute_query', { dbSessionId, sql });
     await withSafeModeOff(run);
   }
 
@@ -378,7 +378,7 @@ describe('数据同步 UI 执行闭环 (DSW-EXEC)', () => {
     // 落库校验：目标行数 = 5
     const tgt = await dSyncConnect(TGT_ID);
     const rows2 = await invokeSync('execute_query', {
-      connectionId: tgt,
+      dbSessionId: tgt,
       sql: `SELECT count(*)::int AS c FROM ${TABLE}`,
     });
     expect(queryScalar(rows2, 'c')).toBe(5);

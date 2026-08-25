@@ -37,7 +37,7 @@ describe('runBatchExportJob', () => {
       mode: 'data_and_structure',
       dataFormat: 'csv',
       outputMode: 'zip',
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       databaseType: 'postgres',
       loadTableExportData,
       exportTables,
@@ -50,8 +50,8 @@ describe('runBatchExportJob', () => {
     expect(loadTableExportData).not.toHaveBeenCalled();
   });
 
-  it('throws when connectionId is missing', async () => {
-    await expect(runBatchExportJob(base({ connectionId: undefined }))).rejects.toThrow(
+  it('throws when dbSessionId is missing', async () => {
+    await expect(runBatchExportJob(base({ dbSessionId: undefined }))).rejects.toThrow(
       'Missing connection',
     );
   });

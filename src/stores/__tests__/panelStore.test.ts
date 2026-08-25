@@ -30,8 +30,8 @@ describe('panelStore', () => {
   type TablePanel = import('../panelStore').TablePanel;
 
   const base = {
-    configId: 'cfg-1',
-    connectionId: 'conn-1',
+    connectionId: 'cfg-1',
+    dbSessionId: 'sess-1',
     connectionName: 'TestDB',
     databaseType: 'postgresql' as const,
   };
@@ -169,12 +169,12 @@ describe('panelStore', () => {
 
   // ── removeAllForConnection ───────────────────────────────────
 
-  it('removeAllForConnection removes all panels for a configId', () => {
+  it('removeAllForConnection removes all panels for a connectionId', () => {
     const p1 = makeTable('users');
     const p2: Panel = {
       ...base,
-      configId: 'cfg-2',
-      connectionId: 'conn-2',
+      connectionId: 'cfg-2',
+      dbSessionId: 'sess-2',
       type: 'table',
       id: nextPanelId('tbl'),
       tableName: 'other',
@@ -187,7 +187,7 @@ describe('panelStore', () => {
 
     const state = usePanelStore.getState();
     expect(state.panels).toHaveLength(1);
-    expect(state.panels[0].configId).toBe('cfg-2');
+    expect(state.panels[0].connectionId).toBe('cfg-2');
     expect(state.activePanelId).toBe(p2.id);
   });
 
@@ -313,8 +313,8 @@ describe('panelStore', () => {
   it('panels from different connections coexist', () => {
     const p1 = makeTable('users');
     const p2: Panel = {
-      configId: 'cfg-2',
-      connectionId: 'conn-2',
+      connectionId: 'cfg-2',
+      dbSessionId: 'sess-2',
       connectionName: 'OtherDB',
       databaseType: 'mysql' as any,
       type: 'table',
@@ -327,16 +327,16 @@ describe('panelStore', () => {
 
     const state = usePanelStore.getState();
     expect(state.panels).toHaveLength(2);
-    expect(state.panels[0].configId).toBe('cfg-1');
-    expect(state.panels[1].configId).toBe('cfg-2');
+    expect(state.panels[0].connectionId).toBe('cfg-1');
+    expect(state.panels[1].connectionId).toBe('cfg-2');
     expect(state.activePanelId).toBe(p2.id);
   });
 
   it('removeAllForConnection preserves other connections panels', () => {
     const p1 = makeTable('users');
     const p2: Panel = {
-      configId: 'cfg-2',
-      connectionId: 'conn-2',
+      connectionId: 'cfg-2',
+      dbSessionId: 'sess-2',
       connectionName: 'OtherDB',
       databaseType: 'mysql' as any,
       type: 'table',
@@ -351,7 +351,7 @@ describe('panelStore', () => {
 
     const state = usePanelStore.getState();
     expect(state.panels).toHaveLength(1);
-    expect(state.panels[0].configId).toBe('cfg-2');
+    expect(state.panels[0].connectionId).toBe('cfg-2');
   });
 
   // ── queryExec lifecycle ────────────────────────────────────────
@@ -412,8 +412,8 @@ describe('panelStore', () => {
     const q1: Panel = { ...base, type: 'query', id: nextPanelId('qry'), title: 'Q1' };
     const q2: Panel = {
       ...base,
-      configId: 'cfg-2',
-      connectionId: 'conn-2',
+      connectionId: 'cfg-2',
+      dbSessionId: 'sess-2',
       type: 'query',
       id: nextPanelId('qry'),
       title: 'Q2',
@@ -430,8 +430,8 @@ describe('panelStore', () => {
 
   it('supports redis-db panel type', () => {
     const redisPanel: Panel = {
-      configId: 'cfg-redis',
-      connectionId: 'conn-redis',
+      connectionId: 'cfg-redis',
+      dbSessionId: 'sess-redis',
       connectionName: 'Redis',
       databaseType: 'redis' as any,
       type: 'redis-db',
@@ -461,7 +461,7 @@ describe('panelStore', () => {
     const history = [
       {
         id: 'h1',
-        configId: 'cfg-1',
+        connectionId: 'cfg-1',
         database: 'db',
         sql: 'SELECT 1',
         executedAt: '',
@@ -479,7 +479,7 @@ describe('panelStore', () => {
 
   it('loadFavorites calls IPC and sets queryFavorites', async () => {
     const favorites = [
-      { id: 'f1', configId: 'cfg-1', title: 'Fav', sql: 'SELECT 1', createdAt: '' },
+      { id: 'f1', connectionId: 'cfg-1', title: 'Fav', sql: 'SELECT 1', createdAt: '' },
     ];
     mockGetFavoriteQueries.mockResolvedValueOnce(favorites);
 
@@ -491,7 +491,7 @@ describe('panelStore', () => {
 
   it('addFavorite calls IPC then reloads favorites', async () => {
     const favorites = [
-      { id: 'f1', configId: 'cfg-1', title: 'My Fav', sql: 'SELECT 1', createdAt: '' },
+      { id: 'f1', connectionId: 'cfg-1', title: 'My Fav', sql: 'SELECT 1', createdAt: '' },
     ];
     mockGetFavoriteQueries.mockResolvedValueOnce(favorites);
 
@@ -557,7 +557,7 @@ describe('panelStore', () => {
 
     await usePanelStore.getState().cancelQuery(panel.id);
 
-    expect(mockCancelQuery).toHaveBeenCalledWith('conn-1');
+    expect(mockCancelQuery).toHaveBeenCalledWith('sess-1');
     const exec = usePanelStore.getState().queryExec.get(panel.id)!;
     expect(exec.running).toBe(false);
     expect(exec.error).toBe('Cancelled');

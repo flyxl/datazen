@@ -11,7 +11,7 @@ import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
 
 interface ExplainPanelProps {
-  connectionId: string;
+  dbSessionId: string;
   sql: string;
   explainOutput: string;
   planJson?: unknown;
@@ -32,7 +32,7 @@ const severityIcons: Record<string, string> = {
 };
 
 export function ExplainPanel({
-  connectionId,
+  dbSessionId,
   sql,
   explainOutput,
   planJson,
@@ -74,8 +74,8 @@ export function ExplainPanel({
   }, [planJson]);
 
   const handleAnalyze = useCallback(() => {
-    void analyzeExplain({ dbSessionId: connectionId, explainOutput, originalSql: sql });
-  }, [analyzeExplain, connectionId, explainOutput, sql]);
+    void analyzeExplain({ dbSessionId, explainOutput, originalSql: sql });
+  }, [analyzeExplain, dbSessionId, explainOutput, sql]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto">

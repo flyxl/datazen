@@ -49,7 +49,7 @@ export interface PanelContentRendererProps {
   onClosePanel: (panelId: string) => void;
   onRefresh: () => void;
   resolveTableSchema: (table: string) => string | null;
-  /** 将进程/仪表盘面板自身数据写回对应面板（与 configId 绑定）。 */
+  /** 将进程/仪表盘面板自身数据写回对应面板（与 connectionId 绑定）。 */
   onUpdatePanelData: (panelId: string, data: unknown) => void;
 }
 
@@ -77,8 +77,8 @@ export function PanelContentRenderer({
     return (
       <RedisView
         key={activePanel.id}
+        dbSessionId={activePanel.dbSessionId}
         connectionId={activePanel.connectionId}
-        configId={activePanel.configId}
         connectionName={activePanel.connectionName}
         databaseType={activePanel.databaseType}
         initialDatabase={(activePanel as RedisDbPanel).dbName}
@@ -157,7 +157,7 @@ function SqlPanelContent({
         <div className="flex min-h-0 flex-1 flex-col">
           {panel.subTab === 'data' && (
             <TableView
-              connectionId={panel.connectionId}
+              dbSessionId={panel.dbSessionId}
               database={panel.database ?? currentDatabase ?? ''}
               tableName={panel.tableName}
               databaseType={panel.databaseType}
@@ -167,7 +167,7 @@ function SqlPanelContent({
           {panel.subTab === 'structure' &&
             (panel.structureEditing ? (
               <TableStructureEditor
-                connectionId={panel.connectionId}
+                dbSessionId={panel.dbSessionId}
                 databaseType={panel.databaseType}
                 database={panel.database ?? currentDatabase}
                 schema={panel.tableSchema ?? resolveTableSchema(panel.tableName)}
@@ -175,7 +175,7 @@ function SqlPanelContent({
                 tableName={panel.tableName}
                 showBackButton
                 onSuccess={() => {
-                  invalidateSchemaCache(panel.connectionId, panel.tableName);
+                  invalidateSchemaCache(panel.dbSessionId, panel.tableName);
                   onExitStructureEditing(panel.id);
                   onRefresh();
                 }}
@@ -183,7 +183,7 @@ function SqlPanelContent({
               />
             ) : (
               <StructureView
-                connectionId={panel.connectionId}
+                dbSessionId={panel.dbSessionId}
                 tableName={panel.tableName}
                 onEditStructure={
                   panelShowStructureEditor ? () => onEditTableStructure(panel.tableName) : undefined
@@ -192,7 +192,7 @@ function SqlPanelContent({
             ))}
           {panel.subTab === 'indexes' && (
             <IndexesView
-              connectionId={panel.connectionId}
+              dbSessionId={panel.dbSessionId}
               tableName={panel.tableName}
               databaseType={panel.databaseType}
               onEditStructure={
@@ -201,11 +201,11 @@ function SqlPanelContent({
             />
           )}
           {panel.subTab === 'foreignKeys' && (
-            <ForeignKeysView connectionId={panel.connectionId} tableName={panel.tableName} />
+            <ForeignKeysView dbSessionId={panel.dbSessionId} tableName={panel.tableName} />
           )}
           {panel.subTab === 'ddl' && (
             <DDLView
-              connectionId={panel.connectionId}
+              dbSessionId={panel.dbSessionId}
               tableName={panel.tableName}
               databaseType={panel.databaseType}
             />
@@ -231,7 +231,7 @@ function SqlPanelContent({
         <div className="flex min-h-0 flex-1 flex-col">
           {(panel as ViewPanel).subTab === 'data' && (
             <TableView
-              connectionId={panel.connectionId}
+              dbSessionId={panel.dbSessionId}
               database={(panel as ViewPanel).database ?? currentDatabase ?? ''}
               tableName={(panel as ViewPanel).viewName}
               databaseType={panel.databaseType}
@@ -240,13 +240,13 @@ function SqlPanelContent({
           )}
           {(panel as ViewPanel).subTab === 'structure' && (
             <StructureView
-              connectionId={panel.connectionId}
+              dbSessionId={panel.dbSessionId}
               tableName={(panel as ViewPanel).viewName}
             />
           )}
           {(panel as ViewPanel).subTab === 'ddl' && (
             <DDLView
-              connectionId={panel.connectionId}
+              dbSessionId={panel.dbSessionId}
               tableName={(panel as ViewPanel).viewName}
               databaseType={panel.databaseType}
               isView
@@ -261,8 +261,8 @@ function SqlPanelContent({
     return (
       <QueryPanel
         panelId={panel.id}
+        dbSessionId={panel.dbSessionId}
         connectionId={panel.connectionId}
-        configId={panel.configId}
         databaseType={panel.databaseType}
       />
     );
@@ -277,7 +277,7 @@ function SqlPanelContent({
     });
     return (
       <CreateTablePanelContent
-        connectionId={panel.connectionId}
+        dbSessionId={panel.dbSessionId}
         databaseType={panel.databaseType}
         database={panelDatabase}
         schema={schema}
@@ -294,7 +294,7 @@ function SqlPanelContent({
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <ErDiagramView
-          connectionId={panel.connectionId}
+          dbSessionId={panel.dbSessionId}
           database={currentDatabase}
           focusTable={(panel as ErDiagramPanel).focusTable}
           onSelectTable={onSelectTable}
@@ -305,11 +305,11 @@ function SqlPanelContent({
   }
 
   if (panel.type === 'objects') {
-    return <ObjectBrowser connectionId={panel.connectionId} databaseType={panel.databaseType} />;
+    return <ObjectBrowser dbSessionId={panel.dbSessionId} databaseType={panel.databaseType} />;
   }
 
   if (panel.type === 'privileges') {
-    return <PrivilegeView connectionId={panel.connectionId} databaseType={panel.databaseType} />;
+    return <PrivilegeView dbSessionId={panel.dbSessionId} databaseType={panel.databaseType} />;
   }
 
   if (panel.type === 'server-status') {
@@ -317,7 +317,7 @@ function SqlPanelContent({
     return (
       <ServerStatusView
         key={panel.id}
-        connectionId={panel.connectionId}
+        dbSessionId={panel.dbSessionId}
         connectionName={panel.connectionName}
         panelId={panel.id}
         initialData={sp.data}
@@ -338,7 +338,7 @@ function SqlPanelContent({
     return (
       <ProcessListView
         key={panel.id}
-        connectionId={panel.connectionId}
+        dbSessionId={panel.dbSessionId}
         connectionName={panel.connectionName}
         panelId={panel.id}
         initialData={pp.data}
@@ -356,7 +356,7 @@ function SqlPanelContent({
   if (panel.type === 'db-object') {
     return (
       <DatabaseObjectView
-        connectionId={panel.connectionId}
+        dbSessionId={panel.dbSessionId}
         databaseType={panel.databaseType}
         objectKind={(panel as import('../../stores/panelStore').DatabaseObjectPanel).objectKind}
         objectName={(panel as import('../../stores/panelStore').DatabaseObjectPanel).objectName}
@@ -369,7 +369,7 @@ function SqlPanelContent({
 }
 
 interface CreateTablePanelContentProps {
-  connectionId: string;
+  dbSessionId: string;
   databaseType: import('../../types').DatabaseType;
   database: string | null;
   schema: string | null;
@@ -379,7 +379,7 @@ interface CreateTablePanelContentProps {
 
 /** Ensures multi-db session is on the target database before rendering the editor. */
 function CreateTablePanelContent({
-  connectionId,
+  dbSessionId,
   databaseType,
   database,
   schema,
@@ -396,7 +396,7 @@ function CreateTablePanelContent({
       setDbReady(true);
       return;
     }
-    const key = `${connectionId}\0${database}`;
+    const key = `${dbSessionId}\0${database}`;
     if (dbSwitchedRef.current === key) {
       setDbReady(true);
       return;
@@ -404,7 +404,7 @@ function CreateTablePanelContent({
     let cancelled = false;
     setDbReady(false);
     void databaseCommands
-      .useDatabase(connectionId, database)
+      .useDatabase(dbSessionId, database)
       .then(() => {
         if (cancelled) return;
         dbSwitchedRef.current = key;
@@ -417,7 +417,7 @@ function CreateTablePanelContent({
     return () => {
       cancelled = true;
     };
-  }, [connectionId, database, isMultiDb]);
+  }, [dbSessionId, database, isMultiDb]);
 
   if (!dbReady) {
     return (
@@ -429,7 +429,7 @@ function CreateTablePanelContent({
 
   return (
     <TableStructureEditor
-      connectionId={connectionId}
+      dbSessionId={dbSessionId}
       databaseType={databaseType}
       database={database}
       schema={schema}
