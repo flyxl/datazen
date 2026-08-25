@@ -74,7 +74,7 @@ export function ProcessListView({
     setError(null);
     try {
       const response = await driverCommands.execute({
-        connectionId,
+        dbSessionId: connectionId,
         command: 'list_processes',
         input: {},
       });
@@ -127,7 +127,7 @@ export function ProcessListView({
     setError(null);
     try {
       await driverCommands.execute({
-        connectionId,
+        dbSessionId: connectionId,
         command: 'kill_process',
         input: { pid, force: true },
       });

@@ -808,9 +808,9 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "config_id": { "type": "string", "description": "The config ID from list_connections" }
+                    "connection_id": { "type": "string", "description": "The connection ID from list_connections" }
                 },
-                "required": ["config_id"]
+                "required": ["connection_id"]
             }),
         },
         ToolDefinition {
@@ -819,10 +819,10 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "config_id": { "type": "string", "description": "The config ID from list_connections" },
+                    "connection_id": { "type": "string", "description": "The connection ID from list_connections" },
                     "database": { "type": "string", "description": "Database name (optional for some database types)" }
                 },
-                "required": ["config_id"]
+                "required": ["connection_id"]
             }),
         },
         ToolDefinition {
@@ -831,12 +831,12 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "config_id": { "type": "string", "description": "The config ID from list_connections" },
+                    "connection_id": { "type": "string", "description": "The connection ID from list_connections" },
                     "database": { "type": "string", "description": "Database name" },
                     "pattern": { "type": "string", "description": "Search keyword to match against table names" },
                     "limit": { "type": "integer", "description": "Max results to return (default 20)", "default": 20 }
                 },
-                "required": ["config_id", "pattern"]
+                "required": ["connection_id", "pattern"]
             }),
         },
         ToolDefinition {
@@ -845,14 +845,14 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "config_id": { "type": "string", "description": "The config ID from list_connections" },
+                    "connection_id": { "type": "string", "description": "The connection ID from list_connections" },
                     "tables": {
                         "type": "array",
                         "items": { "type": "string" },
                         "description": "One or more table names to get schema for"
                     }
                 },
-                "required": ["config_id", "tables"]
+                "required": ["connection_id", "tables"]
             }),
         },
     ]
@@ -879,23 +879,24 @@ async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {
     let result = match tool_call.name.as_str() {
         "list_connections" => crate::services::db_tools::list_connections(&state.store).await,
         "list_databases" => {
-            let config_id = args["config_id"].as_str().unwrap_or("");
-            crate::services::db_tools::list_databases(cm, config_id).await
+            let connection_id = args["connection_id"].as_str().unwrap_or("");
+            crate::services::db_tools::list_databases(cm, connection_id).await
         }
         "list_tables" => {
-            let config_id = args["config_id"].as_str().unwrap_or("");
+            let connection_id = args["connection_id"].as_str().unwrap_or("");
             let database = args["database"].as_str().unwrap_or("");
-            crate::services::db_tools::list_tables(cm, config_id, database).await
+            crate::services::db_tools::list_tables(cm, connection_id, database).await
         }
         "search_tables" => {
-            let config_id = args["config_id"].as_str().unwrap_or("");
+            let connection_id = args["connection_id"].as_str().unwrap_or("");
             let database = args["database"].as_str().unwrap_or("");
             let pattern = args["pattern"].as_str().unwrap_or("");
             let limit = args["limit"].as_u64().unwrap_or(20) as usize;
-            crate::services::db_tools::search_tables(cm, config_id, database, pattern, limit).await
+            crate::services::db_tools::search_tables(cm, connection_id, database, pattern, limit)
+                .await
         }
         "get_table_schema" => {
-            let config_id = args["config_id"].as_str().unwrap_or("");
+            let connection_id = args["connection_id"].as_str().unwrap_or("");
             let tables: Vec<String> = args["tables"]
                 .as_array()
                 .map(|a| {
@@ -904,7 +905,7 @@ async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {
                         .collect()
                 })
                 .unwrap_or_default();
-            crate::services::db_tools::get_table_schema(cm, config_id, &tables).await
+            crate::services::db_tools::get_table_schema(cm, connection_id, &tables).await
         }
         other => Err(format!("Unknown tool: {other}")),
     };

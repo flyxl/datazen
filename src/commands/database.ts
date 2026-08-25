@@ -26,26 +26,26 @@ export interface RowDeleteBatch {
 }
 
 export const databaseCommands = {
-  getDatabases: (connectionId: string) => invoke<string[]>('get_databases', { connectionId }),
+  getDatabases: (dbSessionId: string) => invoke<string[]>('get_databases', { dbSessionId }),
 
   /** Switch active database for subsequent unqualified queries (MySQL/MariaDB). */
-  useDatabase: (connectionId: string, database: string) =>
-    invoke<void>('use_database', { connectionId, database }),
+  useDatabase: (dbSessionId: string, database: string) =>
+    invoke<void>('use_database', { dbSessionId, database }),
 
-  getTables: (connectionId: string, database: string) =>
-    invoke<TableInfo[]>('get_tables', { connectionId, database }),
+  getTables: (dbSessionId: string, database: string) =>
+    invoke<TableInfo[]>('get_tables', { dbSessionId, database }),
 
-  getColumns: (connectionId: string, table: string) =>
-    invoke<string[]>('get_columns', { connectionId, table }),
+  getColumns: (dbSessionId: string, table: string) =>
+    invoke<string[]>('get_columns', { dbSessionId, table }),
 
-  getTableSchema: (connectionId: string, table: string) =>
-    invoke<TableSchema>('get_table_schema', { connectionId, table }),
+  getTableSchema: (dbSessionId: string, table: string) =>
+    invoke<TableSchema>('get_table_schema', { dbSessionId, table }),
 
-  getErData: (connectionId: string, database: string) =>
-    invoke<TableSchema[]>('get_er_data', { connectionId, database }),
+  getErData: (dbSessionId: string, database: string) =>
+    invoke<TableSchema[]>('get_er_data', { dbSessionId, database }),
 
   getTableData: (params: {
-    connectionId: string;
+    dbSessionId: string;
     table: string;
     page: number;
     pageSize: number;
@@ -55,7 +55,7 @@ export const databaseCommands = {
     filterLogic?: 'and' | 'or';
   }) =>
     invoke<TableDataResult>('get_table_data', {
-      connectionId: params.connectionId,
+      dbSessionId: params.dbSessionId,
       table: params.table,
       page: params.page,
       pageSize: params.pageSize,
@@ -65,20 +65,20 @@ export const databaseCommands = {
       filterLogic: params.filterLogic,
     }),
 
-  executeSQL: (connectionId: string, sql: string) => queryCommands.executeQuery(connectionId, sql),
+  executeSQL: (dbSessionId: string, sql: string) => queryCommands.executeQuery(dbSessionId, sql),
 
-  commitRowUpdates: (connectionId: string, table: string, updates: RowUpdateBatch[]) =>
-    invoke<void>('commit_row_updates', { connectionId, table, updates }),
+  commitRowUpdates: (dbSessionId: string, table: string, updates: RowUpdateBatch[]) =>
+    invoke<void>('commit_row_updates', { dbSessionId, table, updates }),
 
-  commitRowDeletes: (connectionId: string, table: string, deletes: RowDeleteBatch[]) =>
-    invoke<void>('commit_row_deletes', { connectionId, table, deletes }),
+  commitRowDeletes: (dbSessionId: string, table: string, deletes: RowDeleteBatch[]) =>
+    invoke<void>('commit_row_deletes', { dbSessionId, table, deletes }),
 
-  getDatabaseObjects: (connectionId: string, kind: string) =>
-    invoke<DatabaseObject[]>('get_database_objects', { connectionId, kind }),
+  getDatabaseObjects: (dbSessionId: string, kind: string) =>
+    invoke<DatabaseObject[]>('get_database_objects', { dbSessionId, kind }),
 
-  getObjectDdl: (connectionId: string, kind: string, name: string, schema?: string | null) =>
-    invoke<string>('get_object_ddl', { connectionId, kind, name, schema: schema ?? null }),
+  getObjectDdl: (dbSessionId: string, kind: string, name: string, schema?: string | null) =>
+    invoke<string>('get_object_ddl', { dbSessionId, kind, name, schema: schema ?? null }),
 
-  getPrivileges: (connectionId: string) =>
-    invoke<PrivilegeGrant[]>('get_privileges', { connectionId }),
+  getPrivileges: (dbSessionId: string) =>
+    invoke<PrivilegeGrant[]>('get_privileges', { dbSessionId }),
 };

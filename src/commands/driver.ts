@@ -2,14 +2,17 @@ import { Channel, invoke } from '@tauri-apps/api/core';
 import type { DriverCommandDefinition, QueryStreamEvent } from '../types';
 
 export interface ExecuteDriverCommandRequest {
-  connectionId?: string;
+  /** Runtime db session id. `resolve_session` also accepts a persisted
+   * connection id (legacy callers, e.g. the extension bridge until W3 adds an
+   * explicit target parameter). */
+  dbSessionId?: string;
   driverType?: string;
   command: string;
   input: Record<string, unknown>;
 }
 
 export interface ExecuteDriverCommandStreamRequest {
-  connectionId: string;
+  dbSessionId: string;
   command: string;
   input: Record<string, unknown>;
   onEvent: (event: QueryStreamEvent) => void;
@@ -36,7 +39,7 @@ export const driverCommands = {
     onEventChannel.onmessage = request.onEvent;
     await invoke<void>('execute_driver_command_stream', {
       request: {
-        connectionId: request.connectionId,
+        dbSessionId: request.dbSessionId,
         command: request.command,
         input: request.input,
       },

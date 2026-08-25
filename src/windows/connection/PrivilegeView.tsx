@@ -255,7 +255,7 @@ function GrantDialog({
     setError(null);
     try {
       await driverCommands.execute({
-        connectionId,
+        dbSessionId: connectionId,
         command: 'grant_privileges',
         input: {
           username: username.trim(),
@@ -418,7 +418,7 @@ function ByUserView({
     if (!ok) return;
     setActionError(null);
     try {
-      await driverCommands.execute({ connectionId, command: 'drop_user', input: { username } });
+      await driverCommands.execute({ dbSessionId: connectionId, command: 'drop_user', input: { username } });
       onRefresh();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : String(e));
@@ -441,7 +441,7 @@ function ByUserView({
     setActionError(null);
     try {
       await driverCommands.execute({
-        connectionId,
+        dbSessionId: connectionId,
         command: 'revoke_privileges',
         input: { username: grantee, database: objectName, privileges },
       });
@@ -623,7 +623,7 @@ function ByObjectView({
     setActionError(null);
     try {
       await driverCommands.execute({
-        connectionId,
+        dbSessionId: connectionId,
         command: 'revoke_privileges',
         input: { username: grantee, database: objectName, privileges },
       });

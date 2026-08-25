@@ -218,7 +218,11 @@ async function handleCommandInvoke(pluginId: string, payload: unknown) {
   pluginCommands.auditLog(pluginId, 'command.invoke', `${command} via ${configId}`);
   try {
     const result = await driverCommands.execute({
-      connectionId: configId,
+      // Plugin-visible protocol still sends `configId` (W3 will switch it);
+      // the IPC request field is now dbSessionId. We pass the config
+      // connection id through — backend resolve_session accepts both shapes,
+      // so behavior is unchanged. W3 将提供显式 connectionId 目标参数。
+      dbSessionId: configId,
       command,
       input: (p.args ?? {}) as Record<string, unknown>,
     });

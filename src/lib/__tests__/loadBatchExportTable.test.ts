@@ -108,7 +108,7 @@ describe('loadBatchExportTableData', () => {
       .mockResolvedValueOnce(pageResult(2, 2, [[5, 'e']]));
 
     const result = await loadBatchExportTableData({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       tableName: 'users',
       databaseType: 'sqlite',
       pageSize: 2,
@@ -117,7 +117,7 @@ describe('loadBatchExportTableData', () => {
 
     expect(getTableData).toHaveBeenCalledTimes(3);
     expect(getTableData).toHaveBeenNthCalledWith(1, {
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       table: 'users',
       page: 0,
       pageSize: 2,
@@ -165,7 +165,7 @@ describe('loadBatchExportTableData', () => {
       );
 
     const result = await loadBatchExportTableData({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       tableName: 'users',
       pageSize: 2,
       deps: makeDeps({ getTableData }),
@@ -199,7 +199,7 @@ describe('loadBatchExportTableData', () => {
       );
 
     const result = await loadBatchExportTableData({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       tableName: 'users',
       pageSize: 3,
       maxRows: 4,
@@ -230,7 +230,7 @@ describe('loadBatchExportTableData', () => {
     );
 
     const result = await loadBatchExportTableData({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       tableName: 'users',
       pageSize: 3,
       maxRows: 3,
@@ -245,7 +245,7 @@ describe('loadBatchExportTableData', () => {
     const getDdl = vi.fn();
     const getDialect = vi.fn();
     const result = await loadBatchExportTableData({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       tableName: 'users',
       deps: makeDeps({ getDdl, getDialect }),
     });
@@ -260,7 +260,7 @@ describe('loadBatchExportTableData', () => {
     const getDdl = vi.fn();
     const getDialect = vi.fn().mockReturnValue(null);
     const result = await loadBatchExportTableData({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       tableName: 'users',
       databaseType: 'redis',
       deps: makeDeps({ getDdl, getDialect }),
@@ -274,7 +274,7 @@ describe('loadBatchExportTableData', () => {
   it('sets ddl to null when DDL fetch fails but still returns schema and rows', async () => {
     const getDdl = vi.fn().mockRejectedValue(new Error('ddl boom'));
     const result = await loadBatchExportTableData({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       tableName: 'users',
       databaseType: 'sqlite',
       deps: makeDeps({ getDdl }),
@@ -290,7 +290,7 @@ describe('loadBatchExportTableData', () => {
   it('treats blank DDL string as null', async () => {
     const getDdl = vi.fn().mockResolvedValue('   ');
     const result = await loadBatchExportTableData({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       tableName: 'users',
       databaseType: 'mysql',
       deps: makeDeps({ getDdl }),
@@ -310,7 +310,7 @@ describe('loadBatchExportTableData', () => {
     );
 
     const result = await loadBatchExportTableData({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       tableName: 'users',
       databaseType: 'mysql',
       deps: makeDeps({
@@ -339,7 +339,7 @@ describe('loadBatchExportTableData', () => {
     );
 
     const result = await loadBatchExportTableData({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       tableName: 'users',
       databaseType: 'sqlite',
       deps: makeDeps({ getDdl, getDialect: () => fakeDialect(0) }),

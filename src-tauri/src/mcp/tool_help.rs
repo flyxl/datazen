@@ -28,47 +28,47 @@ const TOOL_HELPS: &[ToolHelp] = &[
     ToolHelp {
         name: "list_databases",
         description: "List all databases on a connected server.",
-        parameters: "config_id (string, required) — persistent connection id from list_connections",
-        example: r#"{"name":"list_databases","arguments":{"config_id":"<uuid>"}}"#,
+        parameters: "connection_id (string, required) — persistent connection id from list_connections",
+        example: r#"{"name":"list_databases","arguments":{"connection_id":"<uuid>"}}"#,
     },
     ToolHelp {
         name: "list_tables",
         description: "List tables in a database with types and row counts.",
         parameters:
-            "config_id (string, required); database (string, optional) — defaults to connection default",
-        example: r#"{"name":"list_tables","arguments":{"config_id":"<uuid>","database":"app"}}"#,
+            "connection_id (string, required); database (string, optional) — defaults to connection default",
+        example: r#"{"name":"list_tables","arguments":{"connection_id":"<uuid>","database":"app"}}"#,
     },
     ToolHelp {
         name: "search_tables",
         description: "Search tables by name pattern (case-insensitive substring).",
         parameters:
-            "config_id (string, required); pattern (string, required); database (string, optional); limit (number, optional, default 20)",
-        example: r#"{"name":"search_tables","arguments":{"config_id":"<uuid>","pattern":"user","limit":20}}"#,
+            "connection_id (string, required); pattern (string, required); database (string, optional); limit (number, optional, default 20)",
+        example: r#"{"name":"search_tables","arguments":{"connection_id":"<uuid>","pattern":"user","limit":20}}"#,
     },
     ToolHelp {
         name: "query",
         description: "Execute SQL and return JSON rows.",
         parameters:
-            "config_id (string, required); sql (string, required); limit (number, optional, default 100, max 50000)",
-        example: r#"{"name":"query","arguments":{"config_id":"<uuid>","sql":"SELECT 1","limit":100}}"#,
+            "connection_id (string, required); sql (string, required); limit (number, optional, default 100, max 50000)",
+        example: r#"{"name":"query","arguments":{"connection_id":"<uuid>","sql":"SELECT 1","limit":100}}"#,
     },
     ToolHelp {
         name: "get_schema",
         description: "Get table schema: columns, PKs, FKs, indexes.",
-        parameters: "config_id (string, required); table (string, required)",
-        example: r#"{"name":"get_schema","arguments":{"config_id":"<uuid>","table":"users"}}"#,
+        parameters: "connection_id (string, required); table (string, required)",
+        example: r#"{"name":"get_schema","arguments":{"connection_id":"<uuid>","table":"users"}}"#,
     },
     ToolHelp {
         name: "explain_query",
         description: "Return EXPLAIN plan for a SQL query.",
-        parameters: "config_id (string, required); sql (string, required)",
-        example: r#"{"name":"explain_query","arguments":{"config_id":"<uuid>","sql":"SELECT * FROM users"}}"#,
+        parameters: "connection_id (string, required); sql (string, required)",
+        example: r#"{"name":"explain_query","arguments":{"connection_id":"<uuid>","sql":"SELECT * FROM users"}}"#,
     },
     ToolHelp {
         name: "describe_table",
         description: "Human-readable table description.",
-        parameters: "config_id (string, required); table (string, required)",
-        example: r#"{"name":"describe_table","arguments":{"config_id":"<uuid>","table":"users"}}"#,
+        parameters: "connection_id (string, required); table (string, required)",
+        example: r#"{"name":"describe_table","arguments":{"connection_id":"<uuid>","table":"users"}}"#,
     },
     ToolHelp {
         name: "list_workflows",
@@ -80,7 +80,7 @@ const TOOL_HELPS: &[ToolHelp] = &[
         name: "run_workflow",
         description: "Execute a workflow by id (see list_workflows).",
         parameters:
-            "workflow_id (string, required); variables (object, optional); config_id (string, optional)",
+            "workflow_id (string, required); variables (object, optional); connection_id (string, optional)",
         example: r#"{"name":"run_workflow","arguments":{"workflow_id":"my-flow","variables":{}}}"#,
     },
 ];
@@ -165,7 +165,7 @@ mod tests {
     fn lookup_returns_query_help() {
         let help = lookup("query").unwrap();
         assert!(help.description.contains("SQL"));
-        assert!(help.example.contains("config_id"));
+        assert!(help.example.contains("connection_id"));
     }
 
     #[test]
@@ -180,8 +180,8 @@ mod tests {
 
     #[test]
     fn tool_error_includes_reason_and_help() {
-        let err = tool_error("query", "missing config_id");
-        assert!(err.message.contains("missing config_id"));
+        let err = tool_error("query", "missing connection_id");
+        assert!(err.message.contains("missing connection_id"));
         assert!(err.message.contains("Tool: query"));
         assert!(err.message.contains("Example:"));
     }

@@ -274,7 +274,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
       const ctx = sidebarConnCtx;
       if (!ctx) return Promise.reject(new Error('No active connection'));
       return loadBatchExportTableData({
-        connectionId: ctx.connectionId,
+        dbSessionId: ctx.connectionId,
         tableName: name,
         databaseType: ctx.databaseType,
         includeRows: false,

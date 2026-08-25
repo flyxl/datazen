@@ -1292,7 +1292,7 @@ export const ConnectionNavigatorTree = forwardRef<
                         }
                       }
                       await driverCommands.execute({
-                        connectionId,
+                        dbSessionId: connectionId,
                         command: 'drop_database',
                         input: { name: dbName },
                       });
@@ -1406,7 +1406,7 @@ export const ConnectionNavigatorTree = forwardRef<
                       if (!ok || !conn) return;
                       try {
                         await driverCommands.execute({
-                          connectionId,
+                          dbSessionId: connectionId,
                           command: 'drop_schema',
                           input: { name: schemaName, cascade: true },
                         });

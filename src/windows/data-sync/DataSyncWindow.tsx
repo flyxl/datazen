@@ -171,7 +171,7 @@ export function DataSyncWindow() {
     async (configId: string): Promise<string | null> => {
       if (activeConns[configId]) return activeConns[configId];
       try {
-        const connectionId = await invoke<string>('connect', { configId });
+        const connectionId = await invoke<string>('connect', { connectionId: configId });
         setActiveConns((prev) => ({ ...prev, [configId]: connectionId }));
         return connectionId;
       } catch (e) {

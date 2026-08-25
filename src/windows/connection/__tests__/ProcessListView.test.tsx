@@ -41,10 +41,10 @@ import { ProcessListView } from '../ProcessListView';
 describe('ProcessListView connection binding', () => {
   beforeEach(() => {
     executeMock.mockReset();
-    executeMock.mockImplementation(async ({ connectionId }: { connectionId: string }) => ({
+    executeMock.mockImplementation(async ({ dbSessionId }: { dbSessionId: string }) => ({
       data: {
         columns: [{ name: 'pid', dataType: 'int' }],
-        rows: [[connectionId === 'conn-pg' ? 111 : 222]],
+        rows: [[dbSessionId === 'conn-pg' ? 111 : 222]],
       },
     }));
   });
@@ -58,7 +58,7 @@ describe('ProcessListView connection binding', () => {
 
     await waitFor(() => {
       expect(executeMock).toHaveBeenCalledWith(
-        expect.objectContaining({ connectionId: 'conn-pg', command: 'list_processes' }),
+        expect.objectContaining({ dbSessionId: 'conn-pg', command: 'list_processes' }),
       );
     });
     await waitFor(() => {
@@ -69,7 +69,7 @@ describe('ProcessListView connection binding', () => {
 
     await waitFor(() => {
       expect(executeMock).toHaveBeenCalledWith(
-        expect.objectContaining({ connectionId: 'conn-mysql', command: 'list_processes' }),
+        expect.objectContaining({ dbSessionId: 'conn-mysql', command: 'list_processes' }),
       );
     });
     await waitFor(() => {

@@ -14,15 +14,15 @@ use tauri::State;
 
 pub(crate) async fn execute_query_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     sql: String,
 ) -> Result<MultiQueryResult, CommandError> {
-    tracing::info!(%connection_id, sql_len = sql.len(), "execute_query");
-    tracing::debug!(%connection_id, sql_preview = %sql.chars().take(500).collect::<String>(), "execute_query sql");
+    tracing::info!(%db_session_id, sql_len = sql.len(), "execute_query");
+    tracing::debug!(%db_session_id, sql_preview = %sql.chars().take(500).collect::<String>(), "execute_query sql");
     let result = super::driver_command::execute_driver_command_impl(
         state,
         super::driver_command::ExecuteDriverCommandRequest {
-            connection_id: Some(connection_id),
+            db_session_id: Some(db_session_id),
             driver_type: None,
             command: "query".into(),
             input: serde_json::json!({ "sql": sql }),
@@ -49,7 +49,7 @@ impl Default for ExecuteQueryStreamOpts {
 
 pub(crate) async fn execute_query_stream_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     sql: String,
     on_event: QueryStreamCallback,
     opts: ExecuteQueryStreamOpts,
@@ -57,7 +57,7 @@ pub(crate) async fn execute_query_stream_impl(
     execute_driver_command_stream_impl(
         state,
         ExecuteDriverCommandStreamRequest {
-            connection_id: Some(connection_id),
+            db_session_id: Some(db_session_id),
             command: "query_stream".into(),
             input: serde_json::json!({ "sql": sql }),
             apply_result_limit: Some(opts.apply_result_limit),
@@ -74,13 +74,13 @@ pub(crate) async fn execute_query_stream_impl(
 
 pub(crate) async fn get_explain_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     sql: String,
 ) -> Result<ExplainResult, CommandError> {
-    tracing::debug!(%connection_id, "get_explain");
+    tracing::debug!(%db_session_id, "get_explain");
     let (driver, handle) = state
         .connection_manager
-        .get_session(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("get_explain")?;
 
@@ -89,12 +89,12 @@ pub(crate) async fn get_explain_impl(
 
 pub(crate) async fn cancel_query_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<(), CommandError> {
-    tracing::info!(%connection_id, "cancel_query");
+    tracing::info!(%db_session_id, "cancel_query");
     let (driver, handle) = state
         .connection_manager
-        .get_session(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("cancel_query")?;
 
@@ -104,7 +104,7 @@ pub(crate) async fn cancel_query_impl(
 pub(crate) async fn get_query_history_impl(
     state: &AppState,
     limit: usize,
-    config_id: Option<String>,
+    connection_id: Option<String>,
     database: Option<String>,
     schema: Option<String>,
 ) -> Result<Vec<QueryHistoryEntry>, CommandError> {
@@ -112,7 +112,7 @@ pub(crate) async fn get_query_history_impl(
         .store
         .get_query_history(
             limit,
-            config_id.as_deref(),
+            connection_id.as_deref(),
             database.as_deref(),
             schema.as_deref(),
         )
@@ -130,20 +130,23 @@ pub(crate) async fn clear_query_history_impl(state: &AppState) -> Result<(), Com
 
 pub(crate) async fn get_favorite_queries_impl(
     state: &AppState,
-    config_id: Option<String>,
+    connection_id: Option<String>,
 ) -> Result<Vec<crate::store::FavoriteQuery>, CommandError> {
-    Ok(state.store.get_favorite_queries(config_id.as_deref()).await)
+    Ok(state
+        .store
+        .get_favorite_queries(connection_id.as_deref())
+        .await)
 }
 
 pub(crate) async fn add_favorite_query_impl(
     state: &AppState,
-    config_id: String,
+    connection_id: String,
     title: String,
     sql: String,
 ) -> Result<crate::store::FavoriteQuery, CommandError> {
     let fav = crate::store::FavoriteQuery {
         id: uuid::Uuid::new_v4().to_string(),
-        config_id,
+        connection_id,
         title,
         sql,
         created_at: chrono::Utc::now(),
@@ -170,16 +173,16 @@ pub(crate) async fn delete_favorite_query_impl(
 #[tauri::command]
 pub async fn execute_query(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     sql: String,
 ) -> Result<MultiQueryResult, CommandError> {
-    execute_query_impl(&state, connection_id, sql).await
+    execute_query_impl(&state, db_session_id, sql).await
 }
 
 #[tauri::command]
 pub async fn execute_query_stream(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     sql: String,
     on_event: Channel<QueryStreamEvent>,
     apply_result_limit: Option<bool>,
@@ -190,7 +193,7 @@ pub async fn execute_query_stream(
     });
     execute_query_stream_impl(
         &state,
-        connection_id,
+        db_session_id,
         sql,
         callback,
         ExecuteQueryStreamOpts {
@@ -204,29 +207,29 @@ pub async fn execute_query_stream(
 #[tauri::command]
 pub async fn get_explain(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     sql: String,
 ) -> Result<ExplainResult, CommandError> {
-    get_explain_impl(&state, connection_id, sql).await
+    get_explain_impl(&state, db_session_id, sql).await
 }
 
 #[tauri::command]
 pub async fn cancel_query(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<(), CommandError> {
-    cancel_query_impl(&state, connection_id).await
+    cancel_query_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
 pub async fn get_query_history(
     state: State<'_, AppState>,
     limit: usize,
-    config_id: Option<String>,
+    connection_id: Option<String>,
     database: Option<String>,
     schema: Option<String>,
 ) -> Result<Vec<QueryHistoryEntry>, CommandError> {
-    get_query_history_impl(&state, limit, config_id, database, schema).await
+    get_query_history_impl(&state, limit, connection_id, database, schema).await
 }
 
 #[tauri::command]
@@ -237,19 +240,19 @@ pub async fn clear_query_history(state: State<'_, AppState>) -> Result<(), Comma
 #[tauri::command]
 pub async fn get_favorite_queries(
     state: State<'_, AppState>,
-    config_id: Option<String>,
+    connection_id: Option<String>,
 ) -> Result<Vec<crate::store::FavoriteQuery>, CommandError> {
-    get_favorite_queries_impl(&state, config_id).await
+    get_favorite_queries_impl(&state, connection_id).await
 }
 
 #[tauri::command]
 pub async fn add_favorite_query(
     state: State<'_, AppState>,
-    config_id: String,
+    connection_id: String,
     title: String,
     sql: String,
 ) -> Result<crate::store::FavoriteQuery, CommandError> {
-    add_favorite_query_impl(&state, config_id, title, sql).await
+    add_favorite_query_impl(&state, connection_id, title, sql).await
 }
 
 #[tauri::command]
@@ -262,17 +265,17 @@ pub async fn delete_favorite_query(
 
 pub(crate) async fn begin_session_transaction_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<(), CommandError> {
     {
         let txs = state.session_transactions.lock().await;
-        if txs.contains_key(&connection_id) {
+        if txs.contains_key(&db_session_id) {
             return Ok(());
         }
     }
     let (driver, handle) = state
         .connection_manager
-        .get_session(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("begin_session_transaction")?;
     let tx = match driver.begin_transaction(&handle).await {
@@ -282,7 +285,7 @@ pub(crate) async fn begin_session_transaction_impl(
                 .session_transactions
                 .lock()
                 .await
-                .contains_key(&connection_id)
+                .contains_key(&db_session_id)
             {
                 return Ok(());
             }
@@ -290,29 +293,29 @@ pub(crate) async fn begin_session_transaction_impl(
         }
     };
     let mut txs = state.session_transactions.lock().await;
-    if txs.contains_key(&connection_id) {
+    if txs.contains_key(&db_session_id) {
         drop(txs);
         let _ = driver.rollback(tx).await;
         return Ok(());
     }
-    txs.insert(connection_id, tx);
+    txs.insert(db_session_id, tx);
     Ok(())
 }
 
 pub(crate) async fn commit_session_transaction_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<(), CommandError> {
     let (driver, _) = state
         .connection_manager
-        .get_session(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("commit_session_transaction")?;
     let tx = state
         .session_transactions
         .lock()
         .await
-        .remove(&connection_id)
+        .remove(&db_session_id)
         .ok_or_else(|| CommandError::Validation("No open transaction".into()))?;
     driver
         .commit(tx)
@@ -322,18 +325,18 @@ pub(crate) async fn commit_session_transaction_impl(
 
 pub(crate) async fn rollback_session_transaction_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<(), CommandError> {
     let (driver, _) = state
         .connection_manager
-        .get_session(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("rollback_session_transaction")?;
     let tx = state
         .session_transactions
         .lock()
         .await
-        .remove(&connection_id)
+        .remove(&db_session_id)
         .ok_or_else(|| CommandError::Validation("No open transaction".into()))?;
     driver
         .rollback(tx)
@@ -343,45 +346,45 @@ pub(crate) async fn rollback_session_transaction_impl(
 
 pub(crate) async fn session_transaction_status_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<bool, CommandError> {
     Ok(state
         .session_transactions
         .lock()
         .await
-        .contains_key(&connection_id))
+        .contains_key(&db_session_id))
 }
 
 #[tauri::command]
 pub async fn begin_session_transaction(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<(), CommandError> {
-    begin_session_transaction_impl(&state, connection_id).await
+    begin_session_transaction_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
 pub async fn commit_session_transaction(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<(), CommandError> {
-    commit_session_transaction_impl(&state, connection_id).await
+    commit_session_transaction_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
 pub async fn rollback_session_transaction(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<(), CommandError> {
-    rollback_session_transaction_impl(&state, connection_id).await
+    rollback_session_transaction_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
 pub async fn session_transaction_status(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<bool, CommandError> {
-    session_transaction_status_impl(&state, connection_id).await
+    session_transaction_status_impl(&state, db_session_id).await
 }
 
 #[cfg(test)]

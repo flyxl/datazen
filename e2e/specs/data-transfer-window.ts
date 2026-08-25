@@ -93,8 +93,8 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     await invokeBackend('save_connection', {
       config: pgConfig(TGT_ID, TGT_NAME, 'datazen_sync_tgt'),
     });
-    const srcConn = await invokeBackend<string>('connect', { configId: SRC_ID });
-    const tgtConn = await invokeBackend<string>('connect', { configId: TGT_ID });
+    const srcConn = await invokeBackend<string>('connect', { connectionId: SRC_ID });
+    const tgtConn = await invokeBackend<string>('connect', { connectionId: TGT_ID });
 
     await withSafeModeOff(async () => {
       await invokeBackend('execute_query', {
@@ -125,8 +125,8 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
 
   after(async () => {
     try {
-      const srcConn = await invokeBackend<string>('connect', { configId: SRC_ID });
-      const tgtConn = await invokeBackend<string>('connect', { configId: TGT_ID });
+      const srcConn = await invokeBackend<string>('connect', { connectionId: SRC_ID });
+      const tgtConn = await invokeBackend<string>('connect', { connectionId: TGT_ID });
       await withSafeModeOff(async () => {
         await invokeBackend('execute_query', {
           connectionId: srcConn,
@@ -205,7 +205,7 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     await result.waitForDisplayed({ timeout: 15000 });
 
     // 落库断言：目标库该表应有 3 行
-    const tgtConn = (await invokeBackend<string>('connect', { configId: TGT_ID })) ?? '';
+    const tgtConn = (await invokeBackend<string>('connect', { connectionId: TGT_ID })) ?? '';
     expect(tgtConn).toBeTruthy();
     const rows = await invokeBackend('execute_query', {
       connectionId: tgtConn,

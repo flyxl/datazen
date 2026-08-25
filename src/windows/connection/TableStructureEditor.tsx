@@ -100,7 +100,7 @@ async function fetchEstimatedTableRows(args: {
     const input: Record<string, unknown> = { table: args.table };
     if (args.schema) input.schema = args.schema;
     const result = await driverCommands.execute({
-      connectionId: args.connectionId,
+      dbSessionId: args.connectionId,
       command: ESTIMATE_TABLE_ROWS_COMMAND,
       input,
     });

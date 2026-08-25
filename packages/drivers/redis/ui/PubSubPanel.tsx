@@ -12,7 +12,7 @@ import { cn } from '../../../../src/lib/cn';
 import { redisCommandInvoke } from './redisInvoke';
 
 export interface PubSubPanelProps {
-  connectionId: string;
+  dbSessionId: string;
 }
 
 interface PubSubMessage {
@@ -30,7 +30,7 @@ interface ActiveSubscription {
 }
 
 interface PubSubMessageEvent {
-  connectionId: string;
+  dbSessionId: string;
   subscriptionId: string;
   channel: string;
   payload: string;
@@ -50,7 +50,7 @@ function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString();
 }
 
-export function PubSubPanel({ connectionId }: PubSubPanelProps) {
+export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
   const { t } = useI18n();
   const [channelsInput, setChannelsInput] = useState('');
   const [patternsInput, setPatternsInput] = useState('');
@@ -83,7 +83,7 @@ export function PubSubPanel({ connectionId }: PubSubPanelProps) {
       try {
         unlisten = await listen<PubSubMessageEvent>('redis-pubsub-message', (event) => {
           const payload = event.payload;
-          if (payload.connectionId !== connectionId) return;
+          if (payload.dbSessionId !== dbSessionId) return;
           messageSeq.current += 1;
           setMessages((prev) => {
             const next = [
@@ -109,18 +109,18 @@ export function PubSubPanel({ connectionId }: PubSubPanelProps) {
       cancelled = true;
       unlisten?.();
     };
-  }, [connectionId]);
+  }, [dbSessionId]);
 
   useEffect(() => {
     return () => {
       for (const sub of subscriptionsRef.current) {
         void redisCommandInvoke('redis', 'pubsub_unsubscribe', {
-          connectionId,
+          dbSessionId,
           subscriptionId: sub.id,
         }).catch(() => {});
       }
     };
-  }, [connectionId]);
+  }, [dbSessionId]);
 
   const handleSubscribe = useCallback(async () => {
     const channels = parseNameList(channelsInput);
@@ -134,7 +134,7 @@ export function PubSubPanel({ connectionId }: PubSubPanelProps) {
     setError(null);
     try {
       const subscriptionId = await redisCommandInvoke<string>('redis', 'pubsub_subscribe', {
-        connectionId,
+        dbSessionId,
         channels,
         patterns,
       });
@@ -149,20 +149,20 @@ export function PubSubPanel({ connectionId }: PubSubPanelProps) {
     } finally {
       setSubscribing(false);
     }
-  }, [channelsInput, patternsInput, connectionId, t]);
+  }, [channelsInput, patternsInput, dbSessionId, t]);
 
   const handleUnsubscribe = useCallback(async (subscriptionId: string) => {
     setError(null);
     try {
       await redisCommandInvoke('redis', 'pubsub_unsubscribe', {
-        connectionId,
+        dbSessionId,
         subscriptionId,
       });
       setSubscriptions((prev) => prev.filter((s) => s.id !== subscriptionId));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [connectionId]);
+  }, [dbSessionId]);
 
   const handlePublish = useCallback(async () => {
     const channel = publishChannel.trim();
@@ -175,7 +175,7 @@ export function PubSubPanel({ connectionId }: PubSubPanelProps) {
     setError(null);
     try {
       const receivers = await redisCommandInvoke<number>('redis', 'pubsub_publish', {
-        connectionId,
+        dbSessionId,
         channel,
         message: publishMessage,
       });
@@ -185,7 +185,7 @@ export function PubSubPanel({ connectionId }: PubSubPanelProps) {
     } finally {
       setPublishing(false);
     }
-  }, [connectionId, publishChannel, publishMessage, t]);
+  }, [dbSessionId, publishChannel, publishMessage, t]);
 
   const handleClearMessages = useCallback(() => {
     setMessages([]);

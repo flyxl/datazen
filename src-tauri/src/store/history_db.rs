@@ -150,11 +150,13 @@ impl HistoryDb {
             )?;
 
             if version < 2 {
-                let has_connection_id_col = conn
+                // Historical v1 → v2 step: v1 stored the column as
+                // `connection_id`; it was renamed to `config_id` (data cleared).
+                let has_legacy_connection_id_col = conn
                     .prepare("SELECT connection_id FROM query_history LIMIT 0")
                     .is_ok();
 
-                if has_connection_id_col {
+                if has_legacy_connection_id_col {
                     conn.execute_batch(
                         "
                         DELETE FROM query_history;
@@ -204,6 +206,45 @@ impl HistoryDb {
                 )?;
                 tracing::info!("Database schema migrated to version 3");
             }
+
+            if version < 4 {
+                // v4: align physical column names with the ID terminology —
+                // the persisted config connection id is now called
+                // `connection_id` everywhere (struct fields, IPC, storage).
+                let rename_column = |conn: &rusqlite::Connection,
+                                     table: &str,
+                                     from: &str,
+                                     to: &str|
+                 -> Result<(), HistoryDbError> {
+                    let probe = format!("SELECT {from} FROM {table} LIMIT 0");
+                    if conn.prepare(&probe).is_ok() {
+                        conn.execute_batch(&format!(
+                            "ALTER TABLE {table} RENAME COLUMN {from} TO {to};"
+                        ))?;
+                        tracing::info!("Migrated {table}: {from} → {to}");
+                    }
+                    Ok(())
+                };
+                rename_column(conn, "query_history", "config_id", "connection_id")?;
+                rename_column(conn, "favorite_queries", "config_id", "connection_id")?;
+
+                conn.execute_batch(
+                    "
+                    DROP INDEX IF EXISTS idx_query_history_connection_id;
+                    DROP INDEX IF EXISTS idx_query_history_config_id;
+                    DROP INDEX IF EXISTS idx_query_history_config_db;
+                    DROP INDEX IF EXISTS idx_favorite_queries_config_id;
+                    CREATE INDEX IF NOT EXISTS idx_query_history_connection_id
+                        ON query_history(connection_id);
+                    CREATE INDEX IF NOT EXISTS idx_query_history_connection_db
+                        ON query_history(connection_id, database);
+                    CREATE INDEX IF NOT EXISTS idx_favorite_queries_connection_id
+                        ON favorite_queries(connection_id);
+                    INSERT OR IGNORE INTO schema_version (version) VALUES (4);
+                    ",
+                )?;
+                tracing::info!("Database schema migrated to version 4");
+            }
             Ok(())
         })
     }
@@ -219,8 +260,8 @@ impl HistoryDb {
     pub fn add_query_history(&self, entry: QueryHistoryEntry) -> Result<(), HistoryDbError> {
         self.with_conn(|conn| {
             let dominated: Option<String> = match conn.query_row(
-                "SELECT sql FROM query_history WHERE config_id = ?1 AND database = ?2 AND schema IS ?3 ORDER BY executed_at DESC LIMIT 1",
-                params![entry.config_id, entry.database, entry.schema],
+                "SELECT sql FROM query_history WHERE connection_id = ?1 AND database = ?2 AND schema IS ?3 ORDER BY executed_at DESC LIMIT 1",
+                params![entry.connection_id, entry.database, entry.schema],
                 |row| row.get(0),
             ) {
                 Ok(v) => Some(v),
@@ -241,7 +282,7 @@ impl HistoryDb {
                         success = ?4,
                         error_message = ?5
                      WHERE id = (
-                        SELECT id FROM query_history WHERE config_id = ?6 AND database = ?7 AND schema IS ?8 ORDER BY executed_at DESC LIMIT 1
+                        SELECT id FROM query_history WHERE connection_id = ?6 AND database = ?7 AND schema IS ?8 ORDER BY executed_at DESC LIMIT 1
                      )",
                     params![
                         entry.executed_at.to_rfc3339(),
@@ -249,7 +290,7 @@ impl HistoryDb {
                         entry.rows_affected.map(|v| v as i64),
                         entry.success as i32,
                         entry.error_message,
-                        entry.config_id,
+                        entry.connection_id,
                         entry.database,
                         entry.schema,
                     ],
@@ -257,12 +298,12 @@ impl HistoryDb {
             } else {
                 conn.execute(
                     "INSERT INTO query_history (
-                        id, config_id, database, schema, sql, executed_at,
+                        id, connection_id, database, schema, sql, executed_at,
                         execution_time_ms, rows_affected, success, error_message
                      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                     params![
                         entry.id,
-                        entry.config_id,
+                        entry.connection_id,
                         entry.database,
                         entry.schema,
                         entry.sql,
@@ -283,15 +324,15 @@ impl HistoryDb {
     pub fn get_query_history(
         &self,
         limit: usize,
-        config_id: Option<&str>,
+        connection_id: Option<&str>,
         database: Option<&str>,
         schema: Option<&str>,
     ) -> Result<Vec<QueryHistoryEntry>, HistoryDbError> {
         self.with_conn(|conn| {
             let mut where_clauses: Vec<String> = Vec::new();
             let mut filter_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-            if let Some(cid) = config_id {
-                where_clauses.push(format!("config_id = ?{}", filter_params.len() + 1));
+            if let Some(cid) = connection_id {
+                where_clauses.push(format!("connection_id = ?{}", filter_params.len() + 1));
                 filter_params.push(Box::new(cid.to_string()));
             }
             if let Some(db) = database {
@@ -313,7 +354,7 @@ impl HistoryDb {
                 format!("WHERE {}", where_clauses.join(" AND "))
             };
             let sql = format!(
-                "SELECT id, config_id, database, schema, sql, executed_at, \
+                "SELECT id, connection_id, database, schema, sql, executed_at, \
                  execution_time_ms, rows_affected, success, error_message \
                  FROM query_history {} ORDER BY executed_at DESC LIMIT ?{}",
                 where_sql,
@@ -342,11 +383,11 @@ impl HistoryDb {
     pub fn add_favorite_query(&self, fav: FavoriteQuery) -> Result<(), HistoryDbError> {
         self.with_conn(|conn| {
             conn.execute(
-                "INSERT INTO favorite_queries (id, config_id, title, sql, created_at)
+                "INSERT INTO favorite_queries (id, connection_id, title, sql, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![
                     fav.id,
-                    fav.config_id,
+                    fav.connection_id,
                     fav.title,
                     fav.sql,
                     fav.created_at.to_rfc3339(),
@@ -358,14 +399,14 @@ impl HistoryDb {
 
     pub fn get_favorite_queries(
         &self,
-        config_id: Option<&str>,
+        connection_id: Option<&str>,
     ) -> Result<Vec<FavoriteQuery>, HistoryDbError> {
         self.with_conn(|conn| {
-            if let Some(cid) = config_id {
+            if let Some(cid) = connection_id {
                 let mut stmt = conn.prepare(
-                    "SELECT id, config_id, title, sql, created_at
+                    "SELECT id, connection_id, title, sql, created_at
                      FROM favorite_queries
-                     WHERE config_id = ?1
+                     WHERE connection_id = ?1
                      ORDER BY created_at DESC",
                 )?;
                 let rows = stmt.query_map(params![cid], map_favorite_row)?;
@@ -373,7 +414,7 @@ impl HistoryDb {
                     .map_err(HistoryDbError::from)
             } else {
                 let mut stmt = conn.prepare(
-                    "SELECT id, config_id, title, sql, created_at
+                    "SELECT id, connection_id, title, sql, created_at
                      FROM favorite_queries
                      ORDER BY created_at DESC",
                 )?;
@@ -590,6 +631,10 @@ fn trim_workflow_history(conn: &Connection) -> Result<(), HistoryDbError> {
     Ok(())
 }
 
+// Storage-layer note: since schema v4 the SQLite columns use the unified
+// `connection_id` name (persisted config connection id), matching the struct
+// fields — no legacy-name adapter is needed.
+
 fn map_query_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueryHistoryEntry> {
     let executed_at: String = row.get(5)?;
     let executed_at = DateTime::parse_from_rfc3339(&executed_at)
@@ -598,7 +643,7 @@ fn map_query_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueryHistoryEntry>
     let rows_affected: Option<i64> = row.get(7)?;
     Ok(QueryHistoryEntry {
         id: row.get(0)?,
-        config_id: row.get(1)?,
+        connection_id: row.get(1)?,
         database: row.get(2)?,
         schema: row.get(3)?,
         sql: row.get(4)?,
@@ -617,7 +662,7 @@ fn map_favorite_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<FavoriteQuery> 
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     Ok(FavoriteQuery {
         id: row.get(0)?,
-        config_id: row.get(1)?,
+        connection_id: row.get(1)?,
         title: row.get(2)?,
         sql: row.get(3)?,
         created_at,
@@ -674,7 +719,7 @@ fn migrate_queries_json(db: &HistoryDb, data_dir: &Path) -> Result<(), HistoryDb
         for entry in entries {
             let _ = conn.execute(
                 "INSERT OR IGNORE INTO query_history (
-                    id, config_id, database, sql, executed_at,
+                    id, connection_id, database, sql, executed_at,
                     execution_time_ms, rows_affected, success, error_message
                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
@@ -812,7 +857,7 @@ mod tests {
     fn sample_query(sql: &str, days_ago: i64) -> QueryHistoryEntry {
         QueryHistoryEntry {
             id: Uuid::new_v4().to_string(),
-            config_id: "cfg1".into(),
+            connection_id: "cfg1".into(),
             database: "app".into(),
             schema: None,
             sql: sql.into(),
@@ -824,10 +869,10 @@ mod tests {
         }
     }
 
-    fn sample_query_for_config(sql: &str, config_id: &str) -> QueryHistoryEntry {
+    fn sample_query_for_config(sql: &str, connection_id: &str) -> QueryHistoryEntry {
         QueryHistoryEntry {
             id: Uuid::new_v4().to_string(),
-            config_id: config_id.into(),
+            connection_id: connection_id.into(),
             database: "app".into(),
             schema: None,
             sql: sql.into(),
@@ -923,7 +968,7 @@ mod tests {
     }
 
     #[test]
-    fn query_history_config_id_filter() {
+    fn query_history_connection_id_filter() {
         let dir = tempfile::tempdir().unwrap();
         let db = HistoryDb::open(dir.path()).unwrap();
         db.add_query_history(sample_query_for_config("SELECT 1", "cfg-a"))
@@ -938,15 +983,15 @@ mod tests {
 
         let a_only = db.get_query_history(10, Some("cfg-a"), None, None).unwrap();
         assert_eq!(a_only.len(), 2);
-        assert!(a_only.iter().all(|e| e.config_id == "cfg-a"));
+        assert!(a_only.iter().all(|e| e.connection_id == "cfg-a"));
 
         let b_only = db.get_query_history(10, Some("cfg-b"), None, None).unwrap();
         assert_eq!(b_only.len(), 1);
-        assert_eq!(b_only[0].config_id, "cfg-b");
+        assert_eq!(b_only[0].connection_id, "cfg-b");
     }
 
     #[test]
-    fn query_history_dedup_scoped_by_config_id() {
+    fn query_history_dedup_scoped_by_connection_id() {
         let dir = tempfile::tempdir().unwrap();
         let db = HistoryDb::open(dir.path()).unwrap();
         db.add_query_history(sample_query_for_config("SELECT 1", "cfg-a"))
@@ -1040,12 +1085,12 @@ mod tests {
         let db = HistoryDb::open(dir.path()).unwrap();
 
         let mut a = sample_query("SELECT 1", 0);
-        a.config_id = "cfg1".into();
+        a.connection_id = "cfg1".into();
         a.database = "app_db".into();
         db.add_query_history(a).unwrap();
 
         let mut b = sample_query("SELECT 1", 0);
-        b.config_id = "cfg1".into();
+        b.connection_id = "cfg1".into();
         b.database = "other_db".into();
         db.add_query_history(b).unwrap();
 
@@ -1066,7 +1111,7 @@ mod tests {
 
         let fav = FavoriteQuery {
             id: "fav1".into(),
-            config_id: "cfg-a".into(),
+            connection_id: "cfg-a".into(),
             title: "My query".into(),
             sql: "SELECT 1".into(),
             created_at: Utc::now(),
@@ -1075,7 +1120,7 @@ mod tests {
 
         let fav2 = FavoriteQuery {
             id: "fav2".into(),
-            config_id: "cfg-b".into(),
+            connection_id: "cfg-b".into(),
             title: "Other".into(),
             sql: "SELECT 2".into(),
             created_at: Utc::now(),

@@ -499,7 +499,7 @@ describe('ConnectionNavigatorTree drop database', () => {
     await waitFor(() => {
       expect(mockUseDatabase).toHaveBeenCalledWith('conn-1', 'postgres');
       expect(mockDriverExecute).toHaveBeenCalledWith({
-        connectionId: 'conn-1',
+        dbSessionId: 'conn-1',
         command: 'drop_database',
         input: { name: 'db_a' },
       });

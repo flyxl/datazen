@@ -314,7 +314,7 @@ export function ServerStatusView({
       setError(null);
       try {
         const result = await driverCommands.execute({
-          connectionId,
+          dbSessionId: connectionId,
           command: SERVER_STATUS_SNAPSHOT_COMMAND,
           input: {},
         });

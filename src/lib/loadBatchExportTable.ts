@@ -16,15 +16,15 @@ const DEFAULT_MAX_ROWS = 100_000;
 const DEFAULT_PAGE_SIZE = 500;
 
 export interface LoadBatchExportTableDeps {
-  getSchema: (connectionId: string, tableName: string) => Promise<TableSchema>;
+  getSchema: (dbSessionId: string, tableName: string) => Promise<TableSchema>;
   getDdl: (
-    connectionId: string,
+    dbSessionId: string,
     tableName: string,
     sql: string,
     resultExtractor: (rows: unknown[][]) => string,
   ) => Promise<string>;
   getTableData: (params: {
-    connectionId: string;
+    dbSessionId: string;
     table: string;
     page: number;
     pageSize: number;
@@ -65,7 +65,7 @@ function extractDdlString(rows: unknown[][], extractColumnIndex: number): string
 }
 
 async function loadDdl(
-  connectionId: string,
+  dbSessionId: string,
   tableName: string,
   databaseType: string | undefined,
   getDdl: LoadBatchExportTableDeps['getDdl'],
@@ -78,7 +78,7 @@ async function loadDdl(
 
   try {
     const { sql, extractColumnIndex } = dialect.ddl.getTableDdlQuery(tableName);
-    const ddl = await getDdl(connectionId, tableName, sql, (rows) =>
+    const ddl = await getDdl(dbSessionId, tableName, sql, (rows) =>
       extractDdlString(rows, extractColumnIndex),
     );
     return ddl.trim() !== '' ? ddl : null;
@@ -88,7 +88,7 @@ async function loadDdl(
 }
 
 async function loadAllRows(
-  connectionId: string,
+  dbSessionId: string,
   tableName: string,
   pageSize: number,
   maxRows: number,
@@ -100,7 +100,7 @@ async function loadAllRows(
 
   while (allRows.length < maxRows) {
     const res = await getTableData({
-      connectionId,
+      dbSessionId: dbSessionId,
       table: tableName,
       page,
       pageSize,
@@ -131,7 +131,7 @@ async function loadAllRows(
 }
 
 export async function loadBatchExportTableData(params: {
-  connectionId: string;
+  dbSessionId: string;
   tableName: string;
   databaseType?: string;
   /** max rows to pull (default 100_000); stop early if hit */
@@ -142,7 +142,7 @@ export async function loadBatchExportTableData(params: {
   deps?: Partial<LoadBatchExportTableDeps>;
 }): Promise<BatchExportTableInput> {
   const {
-    connectionId,
+    dbSessionId,
     tableName,
     databaseType,
     maxRows = DEFAULT_MAX_ROWS,
@@ -156,10 +156,10 @@ export async function loadBatchExportTableData(params: {
     ...depsOverride,
   };
 
-  const schema = await deps.getSchema(connectionId, tableName);
-  const ddl = await loadDdl(connectionId, tableName, databaseType, deps.getDdl, deps.getDialect);
+  const schema = await deps.getSchema(dbSessionId, tableName);
+  const ddl = await loadDdl(dbSessionId, tableName, databaseType, deps.getDdl, deps.getDialect);
   const rows = includeRows
-    ? await loadAllRows(connectionId, tableName, pageSize, maxRows, deps.getTableData)
+    ? await loadAllRows(dbSessionId, tableName, pageSize, maxRows, deps.getTableData)
     : [];
 
   return {

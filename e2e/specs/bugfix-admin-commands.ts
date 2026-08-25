@@ -73,7 +73,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
 
 async function saveAndConnect(config: Record<string, unknown>): Promise<string> {
   await invokeBackend('save_connection', { config });
-  return invokeBackend<string>('connect', { configId: config.id as string });
+  return invokeBackend<string>('connect', { connectionId: config.id as string });
 }
 
 // ─── MySQL tests ───────────────────────────────────────────────

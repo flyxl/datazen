@@ -43,7 +43,7 @@ export async function runSqlFileExecution({
   command = 'execute_sql_file_with_dialog',
   successMessageKey = 'backup.restoreSuccess',
 }: RunSqlFileExecutionOptions): Promise<boolean> {
-  await invoke('use_database', { connectionId, database });
+  await invoke('use_database', { dbSessionId: connectionId, database });
 
   const options: string[] = [];
 
@@ -52,7 +52,7 @@ export async function runSqlFileExecution({
     if (!ok) return false;
   } else if (confirmOverwrite) {
     const tables = await invoke<TableInfo[]>('get_tables', {
-      connectionId,
+      dbSessionId: connectionId,
       database,
     });
     if (tables.length > 0) {

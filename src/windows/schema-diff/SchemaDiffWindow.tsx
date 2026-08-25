@@ -114,7 +114,7 @@ export function SchemaDiffWindow() {
     async (configId: string): Promise<string | null> => {
       if (activeConns[configId]) return activeConns[configId];
       try {
-        const connectionId = await invoke<string>('connect', { configId });
+        const connectionId = await invoke<string>('connect', { connectionId: configId });
         setActiveConns((prev) => ({ ...prev, [configId]: connectionId }));
         return connectionId;
       } catch (e) {
@@ -176,8 +176,8 @@ export function SchemaDiffWindow() {
       const tgtConnId = await ensureConnected(targetId);
       if (!srcConnId || !tgtConnId) return;
       const next = await schemaDiffCommands.preparePlan({
-        sourceConnectionId: srcConnId,
-        targetConnectionId: tgtConnId,
+        sourceDbSessionId: srcConnId,
+        targetDbSessionId: tgtConnId,
         tableNames: tables,
         allowDestructive,
         includeIndexes,
@@ -201,7 +201,7 @@ export function SchemaDiffWindow() {
       const tgtConnId = await ensureConnected(targetId);
       if (!tgtConnId) return;
       const result = await schemaDiffCommands.executeDeploy({
-        targetConnectionId: tgtConnId,
+        targetDbSessionId: tgtConnId,
         plan,
         useTransaction,
         confirmDestructive: planHasDestructive(plan) ? confirmText.trim() : undefined,
@@ -239,9 +239,9 @@ export function SchemaDiffWindow() {
 
   const handleExportConfig = async () => {
     const cfg: SchemaDiffConfigJson = {
-      version: 1,
-      sourceConfigId: sourceId,
-      targetConfigId: targetId,
+      version: 2,
+      sourceConnectionId: sourceId,
+      targetConnectionId: targetId,
       tables: parseTableList(tableNamesRaw),
       allowDestructive,
       includeIndexes,
@@ -261,11 +261,11 @@ export function SchemaDiffWindow() {
     try {
       const text = await navigator.clipboard.readText();
       const cfg = JSON.parse(text) as SchemaDiffConfigJson;
-      if (cfg.version !== 1 || !cfg.sourceConfigId || !cfg.targetConfigId) {
+      if (cfg.version !== 2 || !cfg.sourceConnectionId || !cfg.targetConnectionId) {
         throw new Error(t('schemaDiff.invalidConfig'));
       }
-      setSourceId(cfg.sourceConfigId);
-      setTargetId(cfg.targetConfigId);
+      setSourceId(cfg.sourceConnectionId);
+      setTargetId(cfg.targetConnectionId);
       setTableNamesRaw((cfg.tables ?? []).join('\n'));
       setAllowDestructive(Boolean(cfg.allowDestructive));
       setIncludeIndexes(cfg.includeIndexes ?? true);

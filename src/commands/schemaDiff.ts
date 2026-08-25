@@ -43,10 +43,12 @@ export interface SchemaDiffDeployResult {
   statementResults: StatementExecResult[];
 }
 
+/// Clipboard export/import format. v2: keys renamed to connectionId per the
+/// connectionId(dbSessionId) terminology (v1 configs with configId are rejected).
 export interface SchemaDiffConfigJson {
-  version: 1;
-  sourceConfigId: string;
-  targetConfigId: string;
+  version: 2;
+  sourceConnectionId: string;
+  targetConnectionId: string;
   tables: string[];
   allowDestructive: boolean;
   includeIndexes?: boolean;
@@ -76,46 +78,46 @@ export function exportPlanSql(plan: SchemaDiffPlan): string {
 
 export const schemaDiffCommands = {
   compareTableSchemas: (
-    sourceConnectionId: string,
-    targetConnectionId: string,
+    sourceDbSessionId: string,
+    targetDbSessionId: string,
     tableName: string,
   ) =>
     invoke<TableSchemaDiff>('compare_table_schemas', {
-      sourceConnectionId,
-      targetConnectionId,
+      sourceDbSessionId,
+      targetDbSessionId,
       tableName,
     }),
 
-  compareTableData: (sourceConnectionId: string, targetConnectionId: string, tableName: string) =>
+  compareTableData: (sourceDbSessionId: string, targetDbSessionId: string, tableName: string) =>
     invoke<TableDataCompare>('compare_table_data', {
-      sourceConnectionId,
-      targetConnectionId,
+      sourceDbSessionId,
+      targetDbSessionId,
       tableName,
     }),
 
   preparePlan: (params: {
-    sourceConnectionId: string;
-    targetConnectionId: string;
+    sourceDbSessionId: string;
+    targetDbSessionId: string;
     tableNames: string[];
     allowDestructive: boolean;
     includeIndexes?: boolean;
   }) =>
     invoke<SchemaDiffPlan>('prepare_schema_diff_plan', {
-      sourceConnectionId: params.sourceConnectionId,
-      targetConnectionId: params.targetConnectionId,
+      sourceDbSessionId: params.sourceDbSessionId,
+      targetDbSessionId: params.targetDbSessionId,
       tableNames: params.tableNames,
       allowDestructive: params.allowDestructive,
       includeIndexes: params.includeIndexes,
     }),
 
   executeDeploy: (params: {
-    targetConnectionId: string;
+    targetDbSessionId: string;
     plan: SchemaDiffPlan;
     useTransaction?: boolean;
     confirmDestructive?: string;
   }) =>
     invoke<SchemaDiffDeployResult>('execute_schema_diff_deploy', {
-      targetConnectionId: params.targetConnectionId,
+      targetDbSessionId: params.targetDbSessionId,
       plan: params.plan,
       useTransaction: params.useTransaction,
       confirmDestructive: params.confirmDestructive,
