@@ -80,7 +80,7 @@ async function saveAndConnect(config: Record<string, unknown>): Promise<string> 
 
 describe('MySQL admin commands (IPC)', () => {
   let connId: string;
-  const configId = `e2e-mysql-admin-${UNIQUE}`;
+  const connectionId = `e2e-mysql-admin-${UNIQUE}`;
 
   before(async function () {
     const reachable = await tcpReachable(MYSQL_HOST, MYSQL_PORT);
@@ -90,7 +90,7 @@ describe('MySQL admin commands (IPC)', () => {
     }
 
     connId = await saveAndConnect({
-      id: configId,
+      id: connectionId,
       name: `E2E-MySQL-Admin-${UNIQUE}`,
       host: MYSQL_HOST,
       port: MYSQL_PORT,
@@ -219,7 +219,7 @@ describe('MySQL admin commands (IPC)', () => {
         /* best effort */
       }
       try {
-        await invokeBackend('delete_connection', { id: configId });
+        await invokeBackend('delete_connection', { id: connectionId });
       } catch {
         /* best effort */
       }
@@ -231,7 +231,7 @@ describe('MySQL admin commands (IPC)', () => {
 
 describe('PostgreSQL admin commands (IPC)', () => {
   let connId: string;
-  const configId = `e2e-pg-admin-${UNIQUE}`;
+  const connectionId = `e2e-pg-admin-${UNIQUE}`;
 
   before(async function () {
     const reachable = await tcpReachable(PG_HOST, PG_PORT);
@@ -241,7 +241,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
     }
 
     connId = await saveAndConnect({
-      id: configId,
+      id: connectionId,
       name: `E2E-PG-Admin-${UNIQUE}`,
       host: PG_HOST,
       port: PG_PORT,
@@ -618,7 +618,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
         /* best effort */
       }
       try {
-        await invokeBackend('delete_connection', { id: configId });
+        await invokeBackend('delete_connection', { id: connectionId });
       } catch {
         /* best effort */
       }

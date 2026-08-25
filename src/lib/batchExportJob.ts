@@ -14,7 +14,7 @@ export interface RunBatchExportJobOptions {
   dataFormat: 'csv' | 'json' | 'sql_insert';
   outputMode: BatchExportOutputMode;
   databaseType?: string;
-  connectionId?: string;
+  dbSessionId?: string;
   /** Required loader that returns per-table metadata (DDL + column names). */
   loadTableExportData: (tableName: string) => Promise<{
     tableName: string;
@@ -46,7 +46,7 @@ export async function runBatchExportJob(
     dataFormat,
     outputMode,
     databaseType,
-    connectionId,
+    dbSessionId,
     loadTableExportData,
     onProgress,
     exportTables = fileCommands.exportTablesStream,
@@ -55,7 +55,7 @@ export async function runBatchExportJob(
   if (tableNames.length === 0) {
     throw new Error('no_tables_selected');
   }
-  if (!connectionId) {
+  if (!dbSessionId) {
     throw new Error('Missing connection');
   }
 
@@ -73,7 +73,9 @@ export async function runBatchExportJob(
   }
 
   const request: ExportTablesRequest = {
-    connectionId,
+    // IPC contract key stays `connectionId` (resolve_session is dual-mode);
+    // the value carried is the live db session id.
+    connectionId: dbSessionId,
     databaseType: databaseType ?? undefined,
     mode,
     dataFormat,

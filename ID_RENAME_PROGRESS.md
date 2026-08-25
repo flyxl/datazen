@@ -10,7 +10,7 @@
 |---|--------|------|------|----------|------|
 | W1 | 后端核心与服务层术语落地 | `services/connection_manager.rs` 内部命名（`config_id_map`→`session_owner_map` 等）、错误信息区分两种 id；IPC 契约暂不变 | ✅ **已完成（测试通过，0 缺陷）** | 2026-08-24 | 26 文件 +482/-278；核心模块行覆盖 86.94%~96.74%（≥80% 达标）；185 个 IPC 命令签名零变化；报告见 `test-reports/W1-test-report.md` |
 | W2 | IPC 契约切换（前后端原子批） | Tauri 命令参数改名 + `src/commands/*` 封装同步 + 全部前后端调用点 + **MCP 参数直接改名 `connection_id`（不留 `config_id` 别名）** + **SQLite 列与持久化字段直接改名**（历史库按既有迁移模式做一次性列重命名） | ✅ **已完成**（复测通过，BUG-001/002/003 已修复） | 2026-08-24 | 开发 b962b4cc → 测试不通过 ce2ef15f → 修复 d20aa93a → 复测通过；⚠️ e2e:minimal 环境受阻转收尾强制项 |
-| W3 | 前端状态/类型/组件改名 | `types/index.ts`、stores、`connectionViews/types.ts`、组件 props、跨窗口事件 payload、windowManager、extensionBridge 显式目标 | 未开始 | - | |
+| W3 | 前端状态/类型/组件改名 | `types/index.ts`、stores、`connectionViews/types.ts`、组件 props、跨窗口事件 payload、windowManager、extensionBridge 显式目标 | ✅ 开发完成（待测试） | 2026-08-24 | 125 文件 +1514/-1454；含 D4 插件桥协议键直改；host vitest 1886 绿 / drivers 84 绿 / tsc 零错 + vite ✓；configId 残留仅 1 处历史说明注释；Rust 零改动。注：编码 agent 中止于汇报前，门禁由编排方代跑确认 |
 | W4 | 外部契约与文档对齐 | MCP 资源输出字段/tool_help 文档、CHANGELOG 破坏性变更记录（D1）、ops-dashboard 指南等 configId 表述替换 | 未开始 | - | SQLite 列已随 W2 直接改名（D1），原"列名保留"子项作废 |
 | W5 | 文档与守护 | `docs/architecture/naming.md`、AGENTS.md 精简更新、lint/grep 守护规则 | 未开始 | - | |
 
@@ -39,6 +39,8 @@
 | T2（独立测试） | W2 | 12 条 E2E 视角用例全部给出状态；Rust 层定向 29 单测全过 + 迁移三起点 SQL 等价执行 PASS；语义方向审计发现 BUG-001 | **不通过**：BUG-001 语义装反 ×13、BUG-002 connection.rs 覆盖率 65.37%<80%、BUG-003 缺 v3 迁移回归测试；其余全绿（lib 1114 过/vitest 1886 绿/drivers 84 绿/tsc+vite ✓）；复测条件=①D1 修复+守护测试 ②覆盖率≥80% ③e2e:minimal | 全新测试 agent dc7ba786，报告 `test-reports/W2-test-report.md` |
 | F1（修复轮自测） | W2 | BUG-001：13 命令全链改名 db_session_id + 5 条防装反守护测试，程序化扫描装反残留=0；BUG-002：connection.rs 新增 4 测，覆盖 65.37%→82.42%；BUG-003：v3 有数据起点 + v2 空表起点迁移锚点测试 | cargo lib **1126 过** / 2 既有失败；vitest 1886 绿；tsc 零错 + vite ✓；llvm-cov connection.rs **82.42% ≥80%** | 编码 agent 977851e6 |
 | T2R（复测） | W2 | 独立重扫装反=0；含 connection_id 命令仅剩 7 条且全为配置语义无误改；前后端键一致性抽查 4 项过；迁移锚点实测通过 | **通过**（BUG-001/002/003 → 已修复）；lib 1125 过 / vitest 1886 绿 / drivers 84 绿 / tsc+vite ✓；⚠️ 附带条件：e2e:minimal 因沙箱 EPERM 环境受阻（报告 R5），**转为收尾回归强制项：合并 main 前必须在无沙箱限制环境补跑通过** | 复测 agent dc7ba786，报告已追加「复测轮」章节 |
+| D3（开发自测） | W3 | 五域前端改名：store 核心 / lib 层（含 D4 插件桥直改）/ 组件 props 链 / redis UI 适配 / e2e 清尾 | host vitest **1886 绿**；drivers vitest **84 绿**；tsc 零错 + vite ✓；configId 残留 1 处（schemaDiff.ts 历史注释，合理保留）；Rust 零改动 | 待独立测试 agent 评估 | 编码 agent 07f37e84（中止于汇报前，门禁由编排方代跑） |
+| T3（独立测试） | W3 | 待测试 agent 产出 | 待测试 | 待评估 | 全新测试 agent |
 
 ## 四、提交记录
 
@@ -50,7 +52,8 @@
 | b962b4cc | W2 开发里程碑：九域 IPC 契约切换 + history_db v4 迁移 + MCP 无别名直改 + 驱动 UI 单测补跑（84/84）+ 进度更新（含 D3 附带变更） |
 | ce2ef15f | W2 测试里程碑：独立测试**不通过**，登记 BUG-001/002/003（验证不通过）+ 测试报告 + 进度更新 |
 | d20aa93a | W2 修复里程碑：BUG-001/002/003 修复（31 文件 +685/-209，净增 11 条 Rust 测试），bug 状态 → **待验证** |
-| （本次） | W2 复测里程碑：复测**通过**，BUG-001/002/003 → 已修复，W2 → 已完成；e2e:minimal 转收尾强制项 + 进度更新 |
+| 87ceed86 | W2 复测里程碑：复测**通过**，BUG-001/002/003 → 已修复，W2 → 已完成；e2e:minimal 转收尾强制项 + 进度更新 |
+| （本次） | W3 开发里程碑：前端五域改名（含 D4 插件桥直改）+ 门禁代跑确认 + 进度更新 |
 
 ## 五、决策记录
 
@@ -59,3 +62,4 @@
 | D1 | 2026-08-24 | W2 范围修订：① MCP 工具参数直接改名 `connection_id`，**不**保留 `config_id` 兼容别名（接受外部契约破坏性变更，W4 文档中记录 CHANGELOG）；② SQLite 列名与持久化/配置文件字段名直接改为新术语，**不**做双轨兼容；`query_history`/`favorite_queries` 沿用 history_db 既有的一次性列重命名迁移模式处理存量库。原「保留别名 + 保留旧列名」方案作废。 | 用户指示 |
 | D2 | 2026-08-24 | 合并冲突策略：main ↔ feature 双向合并遇冲突时，**两边修改都要保留**——把 main 侧的新逻辑/修复按本分支新术语（connectionId/dbSessionId）适配后融入，同时不丢失本分支的改名成果；不做"二选一"式解决。无法字面并存处（如同名标识符）以语义融合方式落地，并在进度文件登记具体取舍。收尾顺序：回归通过 → main 合入 feature 并复验编译/测试 → 文档更新 → feature 合回 main。 | 用户指示 |
 | D3 | 2026-08-24 | W2 附带变更两项：① `packages/drivers/redis/ui` 16 文件将 invoke 参数键提前改为 `dbSessionId`（经用户许可的直接改名，宿主 ConnectionViewProps 契约保持至 W3）；② 修复既有环境缺陷 `src/test/setup.ts`（jest-dom 副作用导入在本环境注册为空匹配器集，干净 HEAD 上即导致 285 用例 "Invalid Chai property" 失败），改为显式 `expect.extend`，全量转绿。 | 编码 agent 报告 |
+| D4 | 2026-08-24 | W3 范围界定：插件可见桥接协议键随 W3 直接改名 `configId`→`connectionId`（extensionBridge / plugin-sdk / packages/extensions 示例包 / fixtures 同步），**不留兼容别名**——沿用 D1「外部契约不做双轨兼容」原则；破坏性变更由 W4/W5 文档阶段记入 CHANGELOG。宿主向 execute_driver_command 传参改为 `dbSessionId`（真实会话 id 或经 resolve_session 双模的配置 id）。 | 编排方依据 D1 原则推导 |

@@ -58,14 +58,14 @@ export function chartConfig(xAxis: string | null, yAxes: string[]) {
   };
 }
 
-export async function getSeededConfigId(): Promise<string> {
+export async function getSeededConnectionId(): Promise<string> {
   const conns = await invokeBackend<{ id: string; name?: string }[]>('get_connections');
   const seeded = conns.find((c) => c.id === 'conn_e2e_pg' || c.name === '本地 PostgreSQL');
-  const configId = seeded?.id ?? conns[0]?.id;
-  if (!configId) {
+  const connectionId = seeded?.id ?? conns[0]?.id;
+  if (!connectionId) {
     throw new Error('data-dashboard E2E 需要至少一个已保存连接（持久化连接 id）');
   }
-  return configId;
+  return connectionId;
 }
 
 export async function createEmptyDashboard(id: string, name: string) {

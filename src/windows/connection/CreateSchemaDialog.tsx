@@ -12,18 +12,18 @@ import { useI18n } from '../../hooks/useI18n';
 interface CreateSchemaDialogProps {
   open: boolean;
   onClose: () => void;
-  connectionId: string;
+  dbSessionId: string;
   onCreated?: () => void | Promise<void>;
 }
 
 export function CreateSchemaDialog({
   open,
   onClose,
-  connectionId,
+  dbSessionId,
   onCreated,
 }: CreateSchemaDialogProps) {
   const { t } = useI18n();
-  const { definition } = useConnectionCommand(open ? connectionId : undefined, 'create_schema');
+  const { definition } = useConnectionCommand(open ? dbSessionId : undefined, 'create_schema');
   const [name, setName] = useState('');
   const [optionalValues, setOptionalValues] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
@@ -54,7 +54,7 @@ export function CreateSchemaDialog({
         if (value.trim()) input[field] = value.trim();
       }
 
-      await driverCommands.execute({ dbSessionId: connectionId, command: 'create_schema', input });
+      await driverCommands.execute({ dbSessionId, command: 'create_schema', input });
       resetForm();
       await onCreated?.();
       onClose();
@@ -63,7 +63,7 @@ export function CreateSchemaDialog({
     } finally {
       setRunning(false);
     }
-  }, [name, optionalValues, connectionId, resetForm, onCreated, onClose]);
+  }, [name, optionalValues, dbSessionId, resetForm, onCreated, onClose]);
 
   return (
     <Dialog

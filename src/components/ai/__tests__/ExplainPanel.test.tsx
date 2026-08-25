@@ -59,7 +59,7 @@ describe('ExplainPanel', () => {
   it('renders raw explain output and plan tree', () => {
     const { getByText, getByTestId } = render(
       <ExplainPanel
-        connectionId="c1"
+        dbSessionId="c1"
         sql="SELECT 1"
         explainOutput="Seq Scan on users"
         planTree={{
@@ -88,7 +88,7 @@ describe('ExplainPanel', () => {
     };
     const { getByTestId, queryByText } = render(
       <ExplainPanel
-        connectionId="c1"
+        dbSessionId="c1"
         sql="SELECT 1"
         explainOutput="raw text fallback"
         planJson={planJson}
@@ -112,13 +112,13 @@ describe('ExplainPanel', () => {
   it('shows analyzing and error states', () => {
     aiState.isAnalyzingExplain = true;
     const { getByText, rerender } = render(
-      <ExplainPanel connectionId="c1" sql="" explainOutput="out" />,
+      <ExplainPanel dbSessionId="c1" sql="" explainOutput="out" />,
     );
     expect(getByText('explain.analyzing')).toBeInTheDocument();
 
     aiState.isAnalyzingExplain = false;
     aiState.explainError = 'AI down';
-    rerender(<ExplainPanel connectionId="c1" sql="" explainOutput="out" />);
+    rerender(<ExplainPanel dbSessionId="c1" sql="" explainOutput="out" />);
     expect(getByText('AI down')).toBeInTheDocument();
   });
 
@@ -136,7 +136,7 @@ describe('ExplainPanel', () => {
     };
     const { getByText } = render(
       <ExplainPanel
-        connectionId="c1"
+        dbSessionId="c1"
         sql="SELECT * FROM users"
         explainOutput="plan"
         onApplySql={onApplySql}
@@ -150,7 +150,7 @@ describe('ExplainPanel', () => {
 
   it('shows not configured footer', () => {
     aiState.isConfigured = false;
-    const { getByText } = render(<ExplainPanel connectionId="c1" sql="" explainOutput="x" />);
+    const { getByText } = render(<ExplainPanel dbSessionId="c1" sql="" explainOutput="x" />);
     fireEvent.click(getByText('settings.ai.goToConfigure'));
     expect(openSettingsWindow).toHaveBeenCalledWith('ai');
   });

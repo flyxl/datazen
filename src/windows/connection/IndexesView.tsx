@@ -15,7 +15,7 @@ import { suggestedIndexName } from './structure/StructureIndexTable';
 import { dataTypeTextClass } from '../../lib/dataTypeColors';
 
 interface IndexesViewProps {
-  connectionId: string;
+  dbSessionId: string;
   tableName: string;
   createIndexTrigger?: number;
   databaseType?: string;
@@ -266,7 +266,7 @@ function DeleteConfirmDialog({ indexName, onConfirm, onCancel, submitting }: Del
 // ── Main IndexesView ─────────────────────────────────────────────
 
 export function IndexesView({
-  connectionId,
+  dbSessionId,
   tableName,
   createIndexTrigger,
   databaseType,
@@ -291,7 +291,7 @@ export function IndexesView({
     setLoading(true);
     setError(null);
 
-    getCachedTableSchema(connectionId, tableName)
+    getCachedTableSchema(dbSessionId, tableName)
       .then((schema: TableSchema) => {
         if (!cancelled) {
           setIndexes(schema.indexes);
@@ -311,7 +311,7 @@ export function IndexesView({
     return () => {
       cancelled = true;
     };
-  }, [connectionId, tableName, version, t]);
+  }, [dbSessionId, tableName, version, t]);
 
   useEffect(() => loadSchema(), [loadSchema]);
 
@@ -322,8 +322,8 @@ export function IndexesView({
   const handleCreateIndex = async (sql: string) => {
     setSubmitting(true);
     try {
-      await databaseCommands.executeSQL(connectionId, sql);
-      invalidateSchemaCache(connectionId, tableName);
+      await databaseCommands.executeSQL(dbSessionId, sql);
+      invalidateSchemaCache(dbSessionId, tableName);
       setShowCreate(false);
       setVersion((v) => v + 1);
     } catch (e) {
@@ -342,8 +342,8 @@ export function IndexesView({
       const dropSql =
         indexDialect?.getDropIndexSql(deleteTarget, tableName, q) ??
         `DROP INDEX ${q}${deleteTarget}${q}`;
-      await databaseCommands.executeSQL(connectionId, dropSql);
-      invalidateSchemaCache(connectionId, tableName);
+      await databaseCommands.executeSQL(dbSessionId, dropSql);
+      invalidateSchemaCache(dbSessionId, tableName);
       setDeleteTarget(null);
       setVersion((v) => v + 1);
     } catch (e) {

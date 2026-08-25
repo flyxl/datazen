@@ -39,17 +39,17 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-006)', () => {
 
   it('ER-001: get_er_data returns schema data', async () => {
     // Get the connection info from the window
-    const connId = await browser.execute(() => {
+    const dbSessionId = await browser.execute(() => {
       return new URLSearchParams(window.location.search).get('connectionId') || '';
     }) as string;
 
-    if (!connId) {
+    if (!dbSessionId) {
       console.warn('No connectionId in URL, skipping');
       return;
     }
 
     // Get current database
-    const databases = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
+    const databases = await invokeBackend<string[]>('get_databases', { dbSessionId });
     if (databases.length === 0) {
       console.warn('No databases found, skipping');
       return;
@@ -57,7 +57,7 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-006)', () => {
 
     const database = databases[0];
     const schemas = await invokeBackend<any[]>('get_er_data', {
-      connectionId: connId,
+      dbSessionId,
       database,
     });
 

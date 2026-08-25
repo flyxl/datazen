@@ -93,8 +93,10 @@ type MainView = 'workspace' | 'settings';
 // ── Connection Tab ────────────────────────────────────────────────
 
 interface ConnectionTab {
-  configId: string;
+  /** Persistent connection id (saved connection this tab was opened from). */
   connectionId: string;
+  /** Live database session id ('' while connecting). */
+  dbSessionId: string;
   connectionName: string;
   databaseType: DatabaseType;
   initialDatabase?: string;
@@ -103,16 +105,16 @@ interface ConnectionTab {
 }
 
 function makeTabFromPayload(data: Record<string, string>): ConnectionTab | null {
-  const configId = data.configId ?? '';
-  if (!configId) return null;
   const connectionId = data.connectionId ?? '';
+  if (!connectionId) return null;
+  const dbSessionId = data.dbSessionId ?? '';
   return {
-    configId,
     connectionId,
+    dbSessionId,
     connectionName: data.connectionName ?? '',
     databaseType: (data.databaseType ?? 'postgresql') as DatabaseType,
     initialDatabase: data.database,
-    status: connectionId ? 'connected' : 'connecting',
+    status: dbSessionId ? 'connected' : 'connecting',
   };
 }
 
@@ -132,14 +134,14 @@ function consumePendingConnection(): { tab: ConnectionTab; action?: string } | n
 
 // ── Sync all keyed stores to a specific connection ────────────────
 
-function syncStoresActiveConnection(connectionId: string | null) {
-  useSchemaStore.getState().setActiveConnection(connectionId);
-  useTableDataStore.getState().setActiveConnection(connectionId);
+function syncStoresActiveConnection(dbSessionId: string | null) {
+  useSchemaStore.getState().setActiveConnection(dbSessionId);
+  useTableDataStore.getState().setActiveConnection(dbSessionId);
 }
 
-function removeConnectionFromStores(connectionId: string) {
-  useSchemaStore.getState().removeConnection(connectionId);
-  useTableDataStore.getState().removeConnection(connectionId);
+function removeConnectionFromStores(dbSessionId: string) {
+  useSchemaStore.getState().removeConnection(dbSessionId);
+  useTableDataStore.getState().removeConnection(dbSessionId);
 }
 
 // ── Component ─────────────────────────────────────────────────────
@@ -214,9 +216,9 @@ export function ConnectionPage() {
   }, []);
 
   useEffect(() => {
-    if (!activeTab?.connectionId || activeTab.status !== 'connected') return;
+    if (!activeTab?.dbSessionId || activeTab.status !== 'connected') return;
     executePendingAction();
-  }, [activeTab?.connectionId, activeTab?.status, executePendingAction]);
+  }, [activeTab?.dbSessionId, activeTab?.status, executePendingAction]);
 
   const allPanels = usePanelStore((s) => s.panels);
   const activePanelId = usePanelStore((s) => s.activePanelId);
@@ -250,11 +252,11 @@ export function ConnectionPage() {
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     void listenCrossWindow('datazen:refresh-connection', (payload) => {
-      const data = payload as { connectionId?: string } | undefined;
-      if (!data?.connectionId) return;
-      const tab = tabs.find((t) => t.connectionId === data.connectionId);
+      const data = payload as { dbSessionId?: string } | undefined;
+      if (!data?.dbSessionId) return;
+      const tab = tabs.find((t) => t.dbSessionId === data.dbSessionId);
       if (!tab) return;
-      void navigatorRef.current?.refreshConnection(tab.configId);
+      void navigatorRef.current?.refreshConnection(tab.connectionId);
       actionsRef.current?.refresh?.();
     }).then((fn) => {
       cleanup = fn;
@@ -264,15 +266,15 @@ export function ConnectionPage() {
 
   // ── Derive active connection from active panel or active tab ──
 
-  const activeConnectionId = activePanel?.connectionId || activeTab?.connectionId || null;
+  const activeDbSessionId = activePanel?.dbSessionId || activeTab?.dbSessionId || null;
 
   useEffect(() => {
-    syncStoresActiveConnection(activeConnectionId);
-  }, [activeConnectionId]);
+    syncStoresActiveConnection(activeDbSessionId);
+  }, [activeDbSessionId]);
 
   useEffect(() => {
     if (!activePanel) return;
-    const tabIdx = tabs.findIndex((t) => t.configId === activePanel.configId);
+    const tabIdx = tabs.findIndex((t) => t.connectionId === activePanel.connectionId);
     if (tabIdx >= 0 && tabIdx !== activeIdx) {
       setActiveIdx(tabIdx);
     }
@@ -283,40 +285,40 @@ export function ConnectionPage() {
 
   const connectTab = useCallback(async (tab: ConnectionTab): Promise<string> => {
     const store = useActiveConnectionStore.getState();
-    const existing = store.connections[tab.configId];
-    if (existing?.status === 'connected' && existing.connectionId) {
-      return existing.connectionId;
+    const existing = store.connections[tab.connectionId];
+    if (existing?.status === 'connected' && existing.dbSessionId) {
+      return existing.dbSessionId;
     }
-    store.markConnecting(tab.configId, tab.initialDatabase ?? null);
-    return connectionCommands.connect(tab.configId);
+    store.markConnecting(tab.connectionId, tab.initialDatabase ?? null);
+    return connectionCommands.connect(tab.connectionId);
   }, []);
 
   useEffect(() => {
     if (tabs.length === 0) return;
-    const pending = tabs.filter((t) => t.status === 'connecting' && !t.connectionId);
+    const pending = tabs.filter((t) => t.status === 'connecting' && !t.dbSessionId);
     for (const tab of pending) {
       void (async () => {
         try {
-          const connId = await connectTab(tab);
-          useActiveConnectionStore.getState().markConnected(tab.configId, connId);
+          const sessionId = await connectTab(tab);
+          useActiveConnectionStore.getState().markConnected(tab.connectionId, sessionId);
           setTabs((prev) =>
             prev.map((t) =>
-              t.configId === tab.configId
-                ? { ...t, connectionId: connId, status: 'connected', error: undefined }
+              t.connectionId === tab.connectionId
+                ? { ...t, dbSessionId: sessionId, status: 'connected', error: undefined }
                 : t,
             ),
           );
           void emitCrossWindow('datazen:connection-ready', {
-            configId: tab.configId,
-            connectionId: connId,
+            connectionId: tab.connectionId,
+            dbSessionId: sessionId,
           });
         } catch (e) {
           const msg =
             typeof e === 'string' ? e : e instanceof Error ? e.message : t('backend.unknownError');
-          useActiveConnectionStore.getState().markError(tab.configId, msg);
+          useActiveConnectionStore.getState().markError(tab.connectionId, msg);
           setTabs((prev) =>
             prev.map((tb) =>
-              tb.configId === tab.configId ? { ...tb, status: 'error', error: msg } : tb,
+              tb.connectionId === tab.connectionId ? { ...tb, status: 'error', error: msg } : tb,
             ),
           );
         }
@@ -330,7 +332,7 @@ export function ConnectionPage() {
     let cleanup: (() => void) | undefined;
     void listenCrossWindow('datazen:open-connection', (payload) => {
       const data = payload as Record<string, string> | undefined;
-      if (!data?.configId) return;
+      if (!data?.connectionId) return;
       setWorkspaceMode('connections');
 
       try {
@@ -342,13 +344,13 @@ export function ConnectionPage() {
 
       if (data.action) pendingActionRef.current = data.action;
 
-      if (newTab.connectionId) syncStoresActiveConnection(newTab.connectionId);
+      if (newTab.dbSessionId) syncStoresActiveConnection(newTab.dbSessionId);
 
       setTabs((prev) => {
-        const existingIdx = prev.findIndex((t) => t.configId === newTab.configId);
+        const existingIdx = prev.findIndex((t) => t.connectionId === newTab.connectionId);
         if (existingIdx >= 0) {
-          if (prev[existingIdx].connectionId) {
-            syncStoresActiveConnection(prev[existingIdx].connectionId);
+          if (prev[existingIdx].dbSessionId) {
+            syncStoresActiveConnection(prev[existingIdx].dbSessionId);
           }
           setActiveIdx(existingIdx);
           if (prev[existingIdx].status === 'connected' && data.action) {
@@ -372,23 +374,23 @@ export function ConnectionPage() {
     const cleanups: (() => void)[] = [];
 
     void listenCrossWindow('datazen:connection-ready', (payload) => {
-      const data = payload as { configId?: string; connectionId?: string } | undefined;
-      if (!data?.configId || !data?.connectionId) return;
+      const data = payload as { connectionId?: string; dbSessionId?: string } | undefined;
+      if (!data?.connectionId || !data?.dbSessionId) return;
       setTabs((prev) =>
         prev.map((tab) =>
-          tab.configId === data.configId
-            ? { ...tab, connectionId: data.connectionId!, status: 'connected', error: undefined }
+          tab.connectionId === data.connectionId
+            ? { ...tab, dbSessionId: data.dbSessionId!, status: 'connected', error: undefined }
             : tab,
         ),
       );
     }).then((fn) => cleanups.push(fn));
 
     void listenCrossWindow('datazen:connection-failed', (payload) => {
-      const data = payload as { configId?: string; error?: string } | undefined;
-      if (!data?.configId) return;
+      const data = payload as { connectionId?: string; error?: string } | undefined;
+      if (!data?.connectionId) return;
       setTabs((prev) =>
         prev.map((tab) =>
-          tab.configId === data.configId
+          tab.connectionId === data.connectionId
             ? { ...tab, status: 'error', error: data.error ?? 'Unknown error' }
             : tab,
         ),
@@ -396,9 +398,9 @@ export function ConnectionPage() {
     }).then((fn) => cleanups.push(fn));
 
     void listenCrossWindow('datazen:disconnect-requested', (payload) => {
-      const data = payload as { connectionId?: string } | undefined;
-      if (!data?.connectionId) return;
-      setTabs((prev) => prev.filter((t) => t.connectionId !== data.connectionId));
+      const data = payload as { dbSessionId?: string } | undefined;
+      if (!data?.dbSessionId) return;
+      setTabs((prev) => prev.filter((t) => t.dbSessionId !== data.dbSessionId));
     }).then((fn) => cleanups.push(fn));
 
     return () => cleanups.forEach((fn) => fn());
@@ -410,8 +412,8 @@ export function ConnectionPage() {
     const HEARTBEAT_MS = 5 * 60 * 1000;
     const timer = setInterval(() => {
       for (const tab of tabs) {
-        if (tab.connectionId && tab.status === 'connected') {
-          connectionCommands.pingConnection(tab.connectionId).catch(() => {});
+        if (tab.dbSessionId && tab.status === 'connected') {
+          connectionCommands.pingConnection(tab.dbSessionId).catch(() => {});
         }
       }
     }, HEARTBEAT_MS);
@@ -433,12 +435,12 @@ export function ConnectionPage() {
         isClosing = true;
         event.preventDefault();
         for (const tab of tabs) {
-          if (tab.connectionId) {
+          if (tab.dbSessionId) {
             try {
-              const wasDisconnected = await connectionCommands.releaseConnection(tab.connectionId);
+              const wasDisconnected = await connectionCommands.releaseConnection(tab.dbSessionId);
               if (wasDisconnected) {
                 await emitCrossWindow('datazen:connection-closed', {
-                  connectionId: tab.connectionId,
+                  dbSessionId: tab.dbSessionId,
                 });
               }
             } catch {
@@ -456,27 +458,27 @@ export function ConnectionPage() {
   // ── Close all tabs for a connection (and cleanup store data) ──
 
   const handleCloseTab = useCallback(
-    async (configId: string) => {
-      const tab = tabs.find((t) => t.configId === configId);
+    async (connectionId: string) => {
+      const tab = tabs.find((t) => t.connectionId === connectionId);
       if (!tab) return;
 
-      usePanelStore.getState().removeAllForConnection(configId);
+      usePanelStore.getState().removeAllForConnection(connectionId);
 
-      if (tab.connectionId) {
-        removeConnectionFromStores(tab.connectionId);
-        useActiveConnectionStore.getState().removeByConnectionId(tab.connectionId);
+      if (tab.dbSessionId) {
+        removeConnectionFromStores(tab.dbSessionId);
+        useActiveConnectionStore.getState().removeByDbSessionId(tab.dbSessionId);
         try {
-          const wasDisconnected = await connectionCommands.releaseConnection(tab.connectionId);
+          const wasDisconnected = await connectionCommands.releaseConnection(tab.dbSessionId);
           if (wasDisconnected) {
-            void emitCrossWindow('datazen:connection-closed', { connectionId: tab.connectionId });
+            void emitCrossWindow('datazen:connection-closed', { dbSessionId: tab.dbSessionId });
           }
         } catch {
           // best effort
         }
       }
 
-      const idx = tabs.findIndex((t) => t.configId === configId);
-      setTabs((prev) => prev.filter((t) => t.configId !== configId));
+      const idx = tabs.findIndex((t) => t.connectionId === connectionId);
+      setTabs((prev) => prev.filter((t) => t.connectionId !== connectionId));
       setActiveIdx((prev) => {
         if (idx < 0) return prev;
         if (prev < idx) return prev;
@@ -490,31 +492,31 @@ export function ConnectionPage() {
   // ── Tree callbacks ──
 
   const handleSelectConnection = useCallback(
-    (configId: string) => {
+    (connectionId: string) => {
       setWorkspaceMode('connections');
-      const existingIdx = tabs.findIndex((t) => t.configId === configId);
+      const existingIdx = tabs.findIndex((t) => t.connectionId === connectionId);
       if (existingIdx >= 0) {
         const existingTab = tabs[existingIdx];
-        if (existingTab.connectionId) {
-          syncStoresActiveConnection(existingTab.connectionId);
+        if (existingTab.dbSessionId) {
+          syncStoresActiveConnection(existingTab.dbSessionId);
         }
         setActiveIdx(existingIdx);
         return;
       }
-      const conn = connections.find((c) => c.id === configId);
+      const conn = connections.find((c) => c.id === connectionId);
       if (!conn) return;
 
-      const entry = useActiveConnectionStore.getState().connections[configId];
-      const connId = entry?.connectionId ?? '';
+      const entry = useActiveConnectionStore.getState().connections[connectionId];
+      const sessionId = entry?.dbSessionId ?? '';
       const newTab: ConnectionTab = {
-        configId,
-        connectionId: connId,
+        connectionId,
+        dbSessionId: sessionId,
         connectionName: conn.name,
         databaseType: conn.databaseType,
         initialDatabase: conn.database,
-        status: connId ? 'connected' : 'connecting',
+        status: sessionId ? 'connected' : 'connecting',
       };
-      if (connId) syncStoresActiveConnection(connId);
+      if (sessionId) syncStoresActiveConnection(sessionId);
       setTabs((prev) => {
         const next = [...prev, newTab];
         setActiveIdx(next.length - 1);
@@ -525,29 +527,31 @@ export function ConnectionPage() {
   );
 
   const handleSelectKvDb = useCallback(
-    (configId: string, dbName: string) => {
+    (connectionId: string, dbName: string) => {
       setWorkspaceMode('connections');
-      handleSelectConnection(configId);
+      handleSelectConnection(connectionId);
 
       const panels = usePanelStore.getState().panels;
       const existing = panels.find(
         (p) =>
-          p.type === 'redis-db' && p.configId === configId && (p as RedisDbPanel).dbName === dbName,
+          p.type === 'redis-db' &&
+          p.connectionId === connectionId &&
+          (p as RedisDbPanel).dbName === dbName,
       );
       if (existing) {
         usePanelStore.getState().setActivePanel(existing.id);
         return;
       }
 
-      const conn = connections.find((c) => c.id === configId);
+      const conn = connections.find((c) => c.id === connectionId);
       if (!conn) return;
-      const entry = useActiveConnectionStore.getState().connections[configId];
-      const connId = entry?.connectionId ?? '';
+      const entry = useActiveConnectionStore.getState().connections[connectionId];
+      const sessionId = entry?.dbSessionId ?? '';
 
       const panel: RedisDbPanel = {
         id: nextPanelId('redis'),
-        configId,
-        connectionId: connId,
+        connectionId,
+        dbSessionId: sessionId,
         connectionName: conn.name,
         databaseType: conn.databaseType,
         type: 'redis-db',
@@ -559,8 +563,8 @@ export function ConnectionPage() {
   );
 
   const handleDeleteConnection = useCallback(
-    (configId: string) => {
-      const conn = connections.find((c) => c.id === configId);
+    (connectionId: string) => {
+      const conn = connections.find((c) => c.id === connectionId);
       if (!conn) return;
       void confirmDelete({
         title: t('main.ctx.deleteConnection'),
@@ -568,16 +572,16 @@ export function ConnectionPage() {
         kind: 'warning',
       }).then((ok) => {
         if (!ok) return;
-        void handleCloseTab(configId);
-        void deleteConnection(configId);
+        void handleCloseTab(connectionId);
+        void deleteConnection(connectionId);
       });
     },
     [connections, confirmDelete, handleCloseTab, deleteConnection, t],
   );
 
   const handleDisconnect = useCallback(
-    (configId: string) => {
-      void handleCloseTab(configId);
+    (connectionId: string) => {
+      void handleCloseTab(connectionId);
     },
     [handleCloseTab],
   );
@@ -809,7 +813,7 @@ export function ConnectionPage() {
             <div className="flex min-h-0 flex-1 flex-col">
               <ConnectionNavigatorTree
                 ref={navigatorRef}
-                activeConfigId={activeTab?.configId ?? null}
+                activeConnectionId={activeTab?.connectionId ?? null}
                 onSelectConnection={handleSelectConnection}
                 onSelectTable={handleSelectTable}
                 onSelectKvDb={handleSelectKvDb}
@@ -860,7 +864,7 @@ export function ConnectionPage() {
                   setTabs((prev) =>
                     prev.map((tab, i) =>
                       i === activeIdx
-                        ? { ...tab, status: 'connecting', connectionId: '', error: undefined }
+                        ? { ...tab, status: 'connecting', dbSessionId: '', error: undefined }
                         : tab,
                     ),
                   );
@@ -871,7 +875,7 @@ export function ConnectionPage() {
               <button
                 className="rounded-md bg-surface-raised px-4 py-1.5 text-sm text-fg-secondary hover:text-fg"
                 type="button"
-                onClick={() => void handleCloseTab(activeTab.configId)}
+                onClick={() => void handleCloseTab(activeTab.connectionId)}
               >
                 {t('common.close')}
               </button>

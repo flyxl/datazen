@@ -11,13 +11,13 @@ import { useI18n } from '../../hooks/useI18n';
 import type { DatabaseType } from '../../types';
 
 interface CreateDatabasePanelProps {
-  connectionId: string;
+  dbSessionId: string;
   databaseType: DatabaseType;
 }
 
-export function CreateDatabasePanel({ connectionId, databaseType }: CreateDatabasePanelProps) {
+export function CreateDatabasePanel({ dbSessionId, databaseType }: CreateDatabasePanelProps) {
   const { t } = useI18n();
-  const { definition } = useConnectionCommand(connectionId, 'create_database');
+  const { definition } = useConnectionCommand(dbSessionId, 'create_database');
   const [name, setName] = useState('');
   const [optionalValues, setOptionalValues] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
@@ -42,20 +42,20 @@ export function CreateDatabasePanel({ connectionId, databaseType }: CreateDataba
       }
 
       await driverCommands.execute({
-        dbSessionId: connectionId,
+        dbSessionId,
         command: 'create_database',
         input,
       });
       setSuccess(t('createDb.success', { name: name.trim() }));
       setName('');
       setOptionalValues({});
-      void loadForConnection(connectionId, { databaseType });
+      void loadForConnection(dbSessionId, { databaseType });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setRunning(false);
     }
-  }, [name, optionalValues, connectionId, databaseType, loadForConnection, t]);
+  }, [name, optionalValues, dbSessionId, databaseType, loadForConnection, t]);
 
   return (
     <div className="flex flex-1 flex-col overflow-auto">

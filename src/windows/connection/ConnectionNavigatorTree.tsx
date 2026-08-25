@@ -153,8 +153,8 @@ type UnifiedRow =
     }
   | {
       type: 'db';
-      configId: string;
       connectionId: string;
+      dbSessionId: string;
       dbName: string;
       expanded: boolean;
       loading: boolean;
@@ -162,7 +162,7 @@ type UnifiedRow =
     }
   | {
       type: 'schema';
-      configId: string;
+      connectionId: string;
       dbName: string;
       schemaName: string;
       expanded: boolean;
@@ -182,15 +182,15 @@ type UnifiedRow =
       depth: number;
       catId: string;
       isSelected: boolean;
-      configId: string;
       connectionId: string;
+      dbSessionId: string;
       dbName: string;
     }
   | { type: 'object'; obj: DatabaseObject; depth: number; catId: string }
   | {
       type: 'kv-db';
-      configId: string;
       connectionId: string;
+      dbSessionId: string;
       dbName: string;
       depth: number;
       isSelected: boolean;
@@ -214,8 +214,8 @@ type UnifiedRow =
       /** Path segments from root to this node (for ensureNamespacePath) */
       segments: string[];
       key: string;
-      configId: string;
       connectionId: string;
+      dbSessionId: string;
     }
   | { type: 'empty-group' }
   | { type: 'no-connections' };
@@ -236,8 +236,8 @@ function namespaceTreeContains(tree: SqlNamespace, query: string): boolean {
  */
 function flattenNamespaceTree(
   tree: SqlNamespace,
-  configId: string,
   connectionId: string,
+  dbSessionId: string,
   baseDepth: number,
   rows: UnifiedRow[],
   expandedDbs: Set<string>,
@@ -256,7 +256,7 @@ function flattenNamespaceTree(
     }
 
     const segments = [...parentSegments, name];
-    const nodeKey = `${configId}::ns::${segments.join('/')}`;
+    const nodeKey = `${connectionId}::ns::${segments.join('/')}`;
     const nodeIsLeaf = isLeaf(child);
 
     if (nodeIsLeaf) {
@@ -269,8 +269,8 @@ function flattenNamespaceTree(
         leafKind: tableTypeMap.get(name) ?? 'table',
         segments,
         key: nodeKey,
-        configId,
         connectionId,
+        dbSessionId,
       });
     } else {
       const expanded = expandedDbs.has(nodeKey) || !!query;
@@ -282,8 +282,8 @@ function flattenNamespaceTree(
         isLeaf: false,
         segments,
         key: nodeKey,
-        configId,
         connectionId,
+        dbSessionId,
       });
       if (expanded) {
         const childEntries = Object.entries(child);
@@ -293,8 +293,8 @@ function flattenNamespaceTree(
         } else {
           flattenNamespaceTree(
             child,
-            configId,
             connectionId,
+            dbSessionId,
             baseDepth + 1,
             rows,
             expandedDbs,
@@ -358,19 +358,19 @@ function extractErrorMessage(error: unknown, fallback: string): string {
 
 export interface ConnectionNavigatorTreeHandle {
   refreshAllConnections: () => Promise<void>;
-  refreshConnection: (configId: string) => Promise<void>;
+  refreshConnection: (connectionId: string) => Promise<void>;
 }
 
 export interface ConnectionNavigatorTreeProps {
-  onSelectConnection: (configId: string) => void;
+  onSelectConnection: (connectionId: string) => void;
   onSelectTable: (tableName: string, schema?: string, database?: string) => void;
-  onSelectKvDb?: (configId: string, dbName: string) => void;
-  activeConfigId: string | null;
+  onSelectKvDb?: (connectionId: string, dbName: string) => void;
+  activeConnectionId: string | null;
   onNewConnection: () => void;
   onRefresh?: () => void;
-  onEditConnection: (configId: string) => void;
-  onDeleteConnection: (configId: string) => void;
-  onDisconnect: (configId: string) => void;
+  onEditConnection: (connectionId: string) => void;
+  onDeleteConnection: (connectionId: string) => void;
+  onDisconnect: (connectionId: string) => void;
   onExportConnections?: () => void;
   onImportConnections?: () => void;
   onCollapseSidebar?: () => void;
@@ -412,7 +412,7 @@ export const ConnectionNavigatorTree = forwardRef<
     onSelectConnection,
     onSelectTable,
     onSelectKvDb,
-    activeConfigId,
+    activeConnectionId,
     onNewConnection,
     onRefresh,
     onEditConnection,
@@ -444,15 +444,15 @@ export const ConnectionNavigatorTree = forwardRef<
 
   /**
    * 由右键点击的连接显式构造「打开进程列表 / 服务器仪表盘」的目标连接，
-   * 直接把 configId + 当前实时 connectionId 传给面板，避免依赖全局活动连接串数据。
+   * 直接把 connectionId + 当前实时 dbSessionId 传给面板，避免依赖全局活动连接串数据。
    */
   const buildOpenTarget = useCallback(
     (conn: { id: string; name: string; databaseType: string }): ConnectionOpenTarget | null => {
-      const live = activeConnections[conn.id]?.connectionId;
+      const live = activeConnections[conn.id]?.dbSessionId;
       if (!live) return null;
       return {
-        configId: conn.id,
-        connectionId: live,
+        connectionId: conn.id,
+        dbSessionId: live,
         connectionName: conn.name,
         databaseType: conn.databaseType as ConnectionOpenTarget['databaseType'],
       };
@@ -495,30 +495,30 @@ export const ConnectionNavigatorTree = forwardRef<
   const [dbObjectsMap, setDbObjectsMap] = useState<Record<string, DatabaseObject[]>>({});
   const [loadingDbs, setLoadingDbs] = useState<Set<string>>(new Set());
 
-  const reloadDbTables = useCallback(async (connectionId: string, dbName: string) => {
-    const tableKey = `${connectionId}::${dbName}`;
+  const reloadDbTables = useCallback(async (dbSessionId: string, dbName: string) => {
+    const tableKey = `${dbSessionId}::${dbName}`;
     try {
       const { databaseCommands } = await import('../../commands/database');
       // No useDatabase here: get_tables is session-neutral in every driver,
       // so refreshing a cache must never flip the shared SQL session.
-      const all = await databaseCommands.getTables(connectionId, dbName);
+      const all = await databaseCommands.getTables(dbSessionId, dbName);
       setDbTablesMap((prev) => ({ ...prev, [tableKey]: all }));
-      useSchemaStore.getState().setLoadedTables(dbName, all, connectionId);
+      useSchemaStore.getState().setLoadedTables(dbName, all, dbSessionId);
     } catch {
       // ignore
     }
   }, []);
 
   const activateDatabase = useCallback(
-    async (connectionId: string, dbName: string) => {
-      const tableKey = `${connectionId}::${dbName}`;
+    async (dbSessionId: string, dbName: string) => {
+      const tableKey = `${dbSessionId}::${dbName}`;
       const cached = dbTablesMap[tableKey];
       if (cached) {
-        useSchemaStore.getState().setLoadedTables(dbName, cached, connectionId);
+        useSchemaStore.getState().setLoadedTables(dbName, cached, dbSessionId);
       }
       try {
         const { databaseCommands } = await import('../../commands/database');
-        await databaseCommands.useDatabase(connectionId, dbName);
+        await databaseCommands.useDatabase(dbSessionId, dbName);
       } catch {
         // Selection still updates; query path may fail until user retries.
       }
@@ -527,9 +527,9 @@ export const ConnectionNavigatorTree = forwardRef<
   );
 
   const clearDbLocalCache = useCallback(
-    (configId: string, connectionId: string, dbName: string) => {
-      const tableKey = `${connectionId}::${dbName}`;
-      const dbKey = `${configId}::${dbName}`;
+    (connectionId: string, dbSessionId: string, dbName: string) => {
+      const tableKey = `${dbSessionId}::${dbName}`;
+      const dbKey = `${connectionId}::${dbName}`;
       setDbTablesMap((prev) => {
         if (!(tableKey in prev)) return prev;
         const next = { ...prev };
@@ -537,7 +537,7 @@ export const ConnectionNavigatorTree = forwardRef<
         return next;
       });
       setDbObjectsMap((prev) => {
-        const prefix = `${configId}::${dbName}::`;
+        const prefix = `${connectionId}::${dbName}::`;
         const hasMatch = Object.keys(prev).some((k) => k.startsWith(prefix));
         if (!hasMatch) return prev;
         const next = { ...prev };
@@ -550,21 +550,21 @@ export const ConnectionNavigatorTree = forwardRef<
         const next = new Set(prev);
         next.delete(dbKey);
         for (const key of prev) {
-          if (key.startsWith(`${configId}::${dbName}::`)) next.delete(key);
+          if (key.startsWith(`${connectionId}::${dbName}::`)) next.delete(key);
         }
         return next;
       });
       setExpandedSchemas((prev) => {
         const next = new Set(prev);
         for (const key of prev) {
-          if (key.startsWith(`${configId}::${dbName}::`)) next.delete(key);
+          if (key.startsWith(`${connectionId}::${dbName}::`)) next.delete(key);
         }
         return next;
       });
       setExpandedCats((prev) => {
         const next = new Set(prev);
         for (const key of prev) {
-          if (key.startsWith(`${configId}::${dbName}::`)) next.delete(key);
+          if (key.startsWith(`${connectionId}::${dbName}::`)) next.delete(key);
         }
         return next;
       });
@@ -621,9 +621,9 @@ export const ConnectionNavigatorTree = forwardRef<
     setExpandedConnections((prev) => {
       let changed = false;
       const next = new Set(prev);
-      for (const [configId, entry] of Object.entries(activeConnections)) {
-        if (entry?.status === 'connected' && !next.has(configId)) {
-          next.add(configId);
+      for (const [connectionId, entry] of Object.entries(activeConnections)) {
+        if (entry?.status === 'connected' && !next.has(connectionId)) {
+          next.add(connectionId);
           changed = true;
         }
       }
@@ -649,13 +649,13 @@ export const ConnectionNavigatorTree = forwardRef<
   }, [activeConnections]);
 
   useEffect(() => {
-    for (const configId of expandedConnections) {
-      const entry = activeConnections[configId];
-      if (entry?.status !== 'connected' || !entry.connectionId) continue;
-      if (loadedConnectionsRef.current.has(configId)) continue;
-      loadedConnectionsRef.current.add(configId);
+    for (const connectionId of expandedConnections) {
+      const entry = activeConnections[connectionId];
+      if (entry?.status !== 'connected' || !entry.dbSessionId) continue;
+      if (loadedConnectionsRef.current.has(connectionId)) continue;
+      loadedConnectionsRef.current.add(connectionId);
 
-      const conn = connections.find((c) => c.id === configId);
+      const conn = connections.find((c) => c.id === connectionId);
       if (!conn) continue;
 
       const meta = DB_REGISTRY[conn.databaseType];
@@ -664,34 +664,34 @@ export const ConnectionNavigatorTree = forwardRef<
       const isPluginManaged = isCustomTree || isPathHierarchyOnly;
       const isMultiDb = shouldUseMultiDatabaseTree(meta, conn.database);
 
-      void loadForConnection(entry.connectionId, {
+      void loadForConnection(entry.dbSessionId, {
         preferredDatabase: conn.database,
         skipLoadTables: isMultiDb || isPluginManaged,
         databaseType: conn.databaseType,
       }).then(() => {
         if (isPathHierarchyOnly) {
-          void ensureNamespacePath([], entry.connectionId);
+          void ensureNamespacePath([], entry.dbSessionId);
         }
 
         if (isMultiDb) {
-          const sd = useSchemaStore.getState().schemas.get(entry.connectionId);
+          const sd = useSchemaStore.getState().schemas.get(entry.dbSessionId);
           const configuredDb = conn.database?.trim();
           const dbName =
             configuredDb && sd?.databases.includes(configuredDb)
               ? configuredDb
               : (sd?.currentDatabase ?? sd?.databases[0]);
           if (dbName) {
-            const dbKey = `${configId}::${dbName}`;
+            const dbKey = `${connectionId}::${dbName}`;
             setExpandedDbs((prev) => new Set(prev).add(dbKey));
             setExpandedCats((prev) => new Set(prev).add(`${dbKey}::tables`));
-            void reloadDbTables(entry.connectionId, dbName);
+            void reloadDbTables(entry.dbSessionId, dbName);
           }
         }
       });
 
       // Auto-expand default database for standard single-db schema trees
       if (!isMultiDb && !isPluginManaged && conn.database) {
-        const dbKey = `${configId}::${conn.database}`;
+        const dbKey = `${connectionId}::${conn.database}`;
         setExpandedDbs((prev) => new Set(prev).add(dbKey));
         setExpandedCats((prev) => new Set(prev).add(`${dbKey}::tables`));
       }
@@ -793,14 +793,14 @@ export const ConnectionNavigatorTree = forwardRef<
   }, []);
 
   const toggleConnection = useCallback(
-    (configId: string) => {
+    (connectionId: string) => {
       setExpandedConnections((prev) => {
         const next = new Set(prev);
-        if (next.has(configId)) {
-          next.delete(configId);
+        if (next.has(connectionId)) {
+          next.delete(connectionId);
         } else {
-          next.add(configId);
-          onSelectConnection(configId);
+          next.add(connectionId);
+          onSelectConnection(connectionId);
         }
         return next;
       });
@@ -809,8 +809,8 @@ export const ConnectionNavigatorTree = forwardRef<
   );
 
   const toggleDb = useCallback(
-    async (configId: string, connectionId: string, dbName: string) => {
-      const dbKey = `${configId}::${dbName}`;
+    async (connectionId: string, dbSessionId: string, dbName: string) => {
+      const dbKey = `${connectionId}::${dbName}`;
       const wasExpanded = expandedDbs.has(dbKey);
 
       setExpandedDbs((prev) => {
@@ -825,13 +825,13 @@ export const ConnectionNavigatorTree = forwardRef<
       // Auto-expand tables category
       setExpandedCats((prev) => new Set(prev).add(`${dbKey}::tables`));
 
-      const tableKey = `${connectionId}::${dbName}`;
+      const tableKey = `${dbSessionId}::${dbName}`;
       if (dbTablesMap[tableKey]) return;
       if (loadingDbs.has(tableKey)) return;
 
       setLoadingDbs((prev) => new Set(prev).add(tableKey));
       try {
-        await reloadDbTables(connectionId, dbName);
+        await reloadDbTables(dbSessionId, dbName);
       } catch {
         setDbTablesMap((prev) => ({ ...prev, [tableKey]: [] }));
       } finally {
@@ -855,7 +855,7 @@ export const ConnectionNavigatorTree = forwardRef<
   }, []);
 
   const toggleCategory = useCallback(
-    async (catKey: string, catId: string, connectionId: string) => {
+    async (catKey: string, catId: string, dbSessionId: string) => {
       const wasExpanded = expandedCats.has(catKey);
 
       setExpandedCats((prev) => {
@@ -871,7 +871,7 @@ export const ConnectionNavigatorTree = forwardRef<
 
       try {
         const { databaseCommands } = await import('../../commands/database');
-        const objs = await databaseCommands.getDatabaseObjects(connectionId, catId);
+        const objs = await databaseCommands.getDatabaseObjects(dbSessionId, catId);
         setDbObjectsMap((prev) => ({ ...prev, [catKey]: objs }));
       } catch {
         setDbObjectsMap((prev) => ({ ...prev, [catKey]: [] }));
@@ -881,11 +881,11 @@ export const ConnectionNavigatorTree = forwardRef<
   );
 
   const reloadDbObjectCategory = useCallback(
-    async (connectionId: string, catKey: string, catId: string) => {
+    async (dbSessionId: string, catKey: string, catId: string) => {
       if (catId === 'tables' || catId === 'views') return;
       try {
         const { databaseCommands } = await import('../../commands/database');
-        const objs = await databaseCommands.getDatabaseObjects(connectionId, catId);
+        const objs = await databaseCommands.getDatabaseObjects(dbSessionId, catId);
         setDbObjectsMap((prev) => ({ ...prev, [catKey]: objs }));
       } catch {
         setDbObjectsMap((prev) => ({ ...prev, [catKey]: [] }));
@@ -895,23 +895,23 @@ export const ConnectionNavigatorTree = forwardRef<
   );
 
   const reloadExpandedObjectCategories = useCallback(
-    async (configId: string, connectionId: string) => {
+    async (connectionId: string, dbSessionId: string) => {
       for (const catKey of expandedCats) {
-        if (!catKey.startsWith(`${configId}::`)) continue;
+        if (!catKey.startsWith(`${connectionId}::`)) continue;
         const catId = catKey.split('::').pop();
         if (!catId || catId === 'tables' || catId === 'views') continue;
-        await reloadDbObjectCategory(connectionId, catKey, catId);
+        await reloadDbObjectCategory(dbSessionId, catKey, catId);
       }
     },
     [expandedCats, reloadDbObjectCategory],
   );
 
   const refreshConnection = useCallback(
-    async (configId: string) => {
-      const entry = activeConnections[configId];
-      if (entry?.status !== 'connected' || !entry.connectionId) return;
+    async (connectionId: string) => {
+      const entry = activeConnections[connectionId];
+      if (entry?.status !== 'connected' || !entry.dbSessionId) return;
 
-      const conn = connections.find((c) => c.id === configId);
+      const conn = connections.find((c) => c.id === connectionId);
       if (!conn) return;
 
       const meta = DB_REGISTRY[conn.databaseType];
@@ -920,25 +920,25 @@ export const ConnectionNavigatorTree = forwardRef<
       const isPluginManaged = isCustomTree || isPathHierarchyOnly;
       const isMultiDb = shouldUseMultiDatabaseTree(meta, conn.database);
 
-      await loadForConnection(entry.connectionId, {
+      await loadForConnection(entry.dbSessionId, {
         preferredDatabase: conn.database,
         skipLoadTables: isMultiDb || isPluginManaged,
         databaseType: conn.databaseType,
       });
 
       if (isPathHierarchyOnly) {
-        await ensureNamespacePath([], entry.connectionId);
+        await ensureNamespacePath([], entry.dbSessionId);
       }
 
       if (isMultiDb) {
         await Promise.all(
           [...expandedDbs]
-            .filter((dbKey) => dbKey.startsWith(`${configId}::`))
-            .map((dbKey) => reloadDbTables(entry.connectionId, dbKey.slice(configId.length + 2))),
+            .filter((dbKey) => dbKey.startsWith(`${connectionId}::`))
+            .map((dbKey) => reloadDbTables(entry.dbSessionId, dbKey.slice(connectionId.length + 2))),
         );
       }
 
-      await reloadExpandedObjectCategories(configId, entry.connectionId);
+      await reloadExpandedObjectCategories(connectionId, entry.dbSessionId);
     },
     [
       activeConnections,
@@ -954,38 +954,38 @@ export const ConnectionNavigatorTree = forwardRef<
   const refreshAllConnections = useCallback(async () => {
     await Promise.all(
       Object.keys(activeConnections)
-        .filter((configId) => activeConnections[configId]?.status === 'connected')
-        .map((configId) => refreshConnection(configId)),
+        .filter((connectionId) => activeConnections[connectionId]?.status === 'connected')
+        .map((connectionId) => refreshConnection(connectionId)),
     );
   }, [activeConnections, refreshConnection]);
 
   const refreshDatabase = useCallback(
-    async (configId: string, dbName: string) => {
-      const entry = activeConnections[configId];
-      if (!entry?.connectionId) return;
+    async (connectionId: string, dbName: string) => {
+      const entry = activeConnections[connectionId];
+      if (!entry?.dbSessionId) return;
 
-      const conn = connections.find((c) => c.id === configId);
+      const conn = connections.find((c) => c.id === connectionId);
       if (!conn) return;
 
       const meta = DB_REGISTRY[conn.databaseType];
       const isMultiDb = shouldUseMultiDatabaseTree(meta, conn.database);
 
       if (isMultiDb) {
-        await reloadDbTables(entry.connectionId, dbName);
+        await reloadDbTables(entry.dbSessionId, dbName);
       } else {
-        await loadForConnection(entry.connectionId, {
+        await loadForConnection(entry.dbSessionId, {
           preferredDatabase: dbName,
           skipLoadTables: false,
           databaseType: conn.databaseType,
         });
       }
 
-      const prefix = `${configId}::${dbName}::`;
+      const prefix = `${connectionId}::${dbName}::`;
       for (const catKey of expandedCats) {
         if (!catKey.startsWith(prefix)) continue;
         const catId = catKey.split('::').pop();
         if (!catId || catId === 'tables' || catId === 'views') continue;
-        await reloadDbObjectCategory(entry.connectionId, catKey, catId);
+        await reloadDbObjectCategory(entry.dbSessionId, catKey, catId);
       }
     },
     [
@@ -999,18 +999,18 @@ export const ConnectionNavigatorTree = forwardRef<
   );
 
   const refreshSchema = useCallback(
-    async (configId: string, dbName: string, _schemaName: string) => {
-      const entry = activeConnections[configId];
-      if (!entry?.connectionId) return;
+    async (connectionId: string, dbName: string, _schemaName: string) => {
+      const entry = activeConnections[connectionId];
+      if (!entry?.dbSessionId) return;
 
-      await reloadDbTables(entry.connectionId, dbName);
+      await reloadDbTables(entry.dbSessionId, dbName);
 
-      const prefix = `${configId}::${dbName}::${_schemaName}::`;
+      const prefix = `${connectionId}::${dbName}::${_schemaName}::`;
       for (const catKey of expandedCats) {
         if (!catKey.startsWith(prefix)) continue;
         const catId = catKey.split('::').pop();
         if (!catId || catId === 'tables' || catId === 'views') continue;
-        await reloadDbObjectCategory(entry.connectionId, catKey, catId);
+        await reloadDbObjectCategory(entry.dbSessionId, catKey, catId);
       }
     },
     [activeConnections, expandedCats, reloadDbObjectCategory, reloadDbTables],
@@ -1149,16 +1149,16 @@ export const ConnectionNavigatorTree = forwardRef<
               : undefined,
             onBackup: supportsBackup
               ? () => {
-                  openBackupWindow('backup', { configId: conn.id, database: conn.database });
+                  openBackupWindow('backup', { connectionId: conn.id, database: conn.database });
                 }
               : undefined,
             onRestore: supportsBackup
               ? () => {
-                  openBackupWindow('restore', { configId: conn.id, database: conn.database });
+                  openBackupWindow('restore', { connectionId: conn.id, database: conn.database });
                 }
               : undefined,
             onRefresh: () => {
-              if (activeConnections[conn.id]?.connectionId) {
+              if (activeConnections[conn.id]?.dbSessionId) {
                 void refreshConnection(conn.id);
               }
             },
@@ -1200,12 +1200,12 @@ export const ConnectionNavigatorTree = forwardRef<
   // ── Database / Schema / Category / Object context menus ──
 
   const handleDatabaseContextMenu = useCallback(
-    (e: React.MouseEvent, dbName: string, configId: string) => {
+    (e: React.MouseEvent, dbName: string, connectionId: string) => {
       e.preventDefault();
       e.stopPropagation();
-      const entry = activeConnections[configId];
-      const connectionId = entry?.connectionId;
-      const conn = connections.find((c) => c.id === configId);
+      const entry = activeConnections[connectionId];
+      const dbSessionId = entry?.dbSessionId;
+      const conn = connections.find((c) => c.id === connectionId);
       const dbMeta = conn ? DB_REGISTRY[conn.databaseType] : undefined;
       const readOnly = conn?.readOnly === true || dbMeta?.readOnly === true;
       showWebContextMenu(
@@ -1213,47 +1213,47 @@ export const ConnectionNavigatorTree = forwardRef<
           kind: 'database',
           labels: schemaLabels,
           handlers: {
-            onRefresh: connectionId
+            onRefresh: dbSessionId
               ? () => {
-                  void refreshDatabase(configId, dbName);
+                  void refreshDatabase(connectionId, dbName);
                 }
               : undefined,
             onNewQuery: () => {
-              onSelectConnection(configId);
+              onSelectConnection(connectionId);
               useSchemaStore.setState({ currentDatabase: dbName });
               viewActions?.newQuery?.();
             },
             onQueryHistory: () => {
-              onSelectConnection(configId);
+              onSelectConnection(connectionId);
               viewActions?.openQueryHistory?.();
             },
             onCopyDatabaseName: () => {
               void navigator.clipboard.writeText(dbName);
             },
             onViewErDiagram: () => {
-              onSelectConnection(configId);
+              onSelectConnection(connectionId);
               viewActions?.openErDiagram?.();
             },
             onExecuteSqlFile:
               viewActions?.openSqlFile && !readOnly && !safeMode
                 ? () => {
-                    onSelectConnection(configId);
+                    onSelectConnection(connectionId);
                     viewActions.openSqlFile!();
                   }
                 : undefined,
             onNewTable: viewActions?.createTable
               ? () => {
-                  onSelectConnection(configId);
+                  onSelectConnection(connectionId);
                   viewActions.createTable!();
                 }
               : undefined,
             onCreateSchema: dbMeta?.supportsCreateSchema
               ? () => {
-                  onSelectConnection(configId);
+                  onSelectConnection(connectionId);
                   viewActions?.openCreateSchema?.();
                 }
               : undefined,
-            onDropDatabase: connectionId
+            onDropDatabase: dbSessionId
               ? () => {
                   void (async () => {
                     const ok = await confirmDropDatabase({
@@ -1264,7 +1264,7 @@ export const ConnectionNavigatorTree = forwardRef<
                     });
                     if (!ok || !conn) return;
                     try {
-                      const schemaData = useSchemaStore.getState().schemas.get(connectionId);
+                      const schemaData = useSchemaStore.getState().schemas.get(dbSessionId);
                       const activeDb = schemaData?.currentDatabase;
                       if (activeDb === dbName && schemaData) {
                         const fallback = resolveDropDatabaseFallback(
@@ -1274,30 +1274,30 @@ export const ConnectionNavigatorTree = forwardRef<
                         );
                         if (fallback) {
                           const { databaseCommands } = await import('../../commands/database');
-                          await databaseCommands.useDatabase(connectionId, fallback);
-                          const cached = dbTablesMap[`${connectionId}::${fallback}`];
+                          await databaseCommands.useDatabase(dbSessionId, fallback);
+                          const cached = dbTablesMap[`${dbSessionId}::${fallback}`];
                           if (cached) {
                             useSchemaStore
                               .getState()
-                              .setLoadedTables(fallback, cached, connectionId);
+                              .setLoadedTables(fallback, cached, dbSessionId);
                           } else {
                             useSchemaStore.setState((state) => {
-                              const entry = state.schemas.get(connectionId);
+                              const entry = state.schemas.get(dbSessionId);
                               if (!entry) return state;
                               const next = new Map(state.schemas);
-                              next.set(connectionId, { ...entry, currentDatabase: fallback });
+                              next.set(dbSessionId, { ...entry, currentDatabase: fallback });
                               return { ...state, schemas: next };
                             });
                           }
                         }
                       }
                       await driverCommands.execute({
-                        dbSessionId: connectionId,
+                        dbSessionId: dbSessionId,
                         command: 'drop_database',
                         input: { name: dbName },
                       });
-                      clearDbLocalCache(configId, connectionId, dbName);
-                      await loadForConnection(connectionId, {
+                      clearDbLocalCache(connectionId, dbSessionId, dbName);
+                      await loadForConnection(dbSessionId, {
                         databaseType: conn.databaseType,
                         skipLoadTables: true,
                       });
@@ -1315,12 +1315,12 @@ export const ConnectionNavigatorTree = forwardRef<
             onCompareData: () => openDataSyncWindow(),
             onBackup: dbMeta?.supportsBackup
               ? () => {
-                  openBackupWindow('backup', { configId, database: dbName });
+                  openBackupWindow('backup', { connectionId, database: dbName });
                 }
               : undefined,
             onRestore: dbMeta?.supportsBackup
               ? () => {
-                  openBackupWindow('restore', { configId, database: dbName });
+                  openBackupWindow('restore', { connectionId, database: dbName });
                 }
               : undefined,
           },
@@ -1348,12 +1348,12 @@ export const ConnectionNavigatorTree = forwardRef<
   );
 
   const handleSchemaContextMenu = useCallback(
-    (e: React.MouseEvent, schemaName: string, dbName: string, configId: string) => {
+    (e: React.MouseEvent, schemaName: string, dbName: string, connectionId: string) => {
       e.preventDefault();
       e.stopPropagation();
-      const entry = activeConnections[configId];
-      const connectionId = entry?.connectionId;
-      const conn = connections.find((c) => c.id === configId);
+      const entry = activeConnections[connectionId];
+      const dbSessionId = entry?.dbSessionId;
+      const conn = connections.find((c) => c.id === connectionId);
       const dbMeta = conn ? DB_REGISTRY[conn.databaseType] : undefined;
       const readOnly = conn?.readOnly === true || dbMeta?.readOnly === true;
       showWebContextMenu(
@@ -1362,27 +1362,27 @@ export const ConnectionNavigatorTree = forwardRef<
           labels: schemaLabels,
           handlers: {
             onRefresh: () => {
-              void refreshSchema(configId, dbName, schemaName);
+              void refreshSchema(connectionId, dbName, schemaName);
             },
             onNewQuery: () => {
-              onSelectConnection(configId);
+              onSelectConnection(connectionId);
               useSchemaStore.setState({ currentDatabase: dbName });
               viewActions?.newQuery?.();
             },
             onQueryHistory: () => {
-              onSelectConnection(configId);
+              onSelectConnection(connectionId);
               viewActions?.openQueryHistory?.();
             },
             onExecuteSqlFile:
               viewActions?.openSqlFile && !readOnly && !safeMode
                 ? () => {
-                    onSelectConnection(configId);
+                    onSelectConnection(connectionId);
                     viewActions.openSqlFile!();
                   }
                 : undefined,
             onNewTable: viewActions?.createTable
               ? () => {
-                  onSelectConnection(configId);
+                  onSelectConnection(connectionId);
                   viewActions.createTable!();
                 }
               : undefined,
@@ -1390,11 +1390,11 @@ export const ConnectionNavigatorTree = forwardRef<
               void navigator.clipboard.writeText(schemaName);
             },
             onViewErDiagram: () => {
-              onSelectConnection(configId);
+              onSelectConnection(connectionId);
               viewActions?.openErDiagram?.();
             },
             onDropSchema:
-              connectionId && !schemaName.startsWith('pg_') && schemaName !== 'information_schema'
+              dbSessionId && !schemaName.startsWith('pg_') && schemaName !== 'information_schema'
                 ? () => {
                     void (async () => {
                       const ok = await confirmDropSchema({
@@ -1406,11 +1406,11 @@ export const ConnectionNavigatorTree = forwardRef<
                       if (!ok || !conn) return;
                       try {
                         await driverCommands.execute({
-                          dbSessionId: connectionId,
+                          dbSessionId: dbSessionId,
                           command: 'drop_schema',
                           input: { name: schemaName, cascade: true },
                         });
-                        await loadForConnection(connectionId, {
+                        await loadForConnection(dbSessionId, {
                           preferredDatabase: conn.database,
                           databaseType: conn.databaseType,
                           skipLoadTables: false,
@@ -1449,7 +1449,7 @@ export const ConnectionNavigatorTree = forwardRef<
   );
 
   const handleCategoryContextMenu = useCallback(
-    (e: React.MouseEvent, catKey: string, catId: string, configId: string) => {
+    (e: React.MouseEvent, catKey: string, catId: string, connectionId: string) => {
       e.preventDefault();
       e.stopPropagation();
       showWebContextMenu(
@@ -1458,9 +1458,9 @@ export const ConnectionNavigatorTree = forwardRef<
           labels: schemaLabels,
           handlers: {
             onRefresh: () => {
-              const entry = activeConnections[configId];
-              if (!entry?.connectionId) return;
-              const conn = connections.find((c) => c.id === configId);
+              const entry = activeConnections[connectionId];
+              if (!entry?.dbSessionId) return;
+              const conn = connections.find((c) => c.id === connectionId);
               if (!conn) return;
 
               const parts = catKey.split('::');
@@ -1471,16 +1471,16 @@ export const ConnectionNavigatorTree = forwardRef<
                 const meta = DB_REGISTRY[conn.databaseType];
                 const isMultiDb = shouldUseMultiDatabaseTree(meta, conn.database);
                 if (isMultiDb) {
-                  void reloadDbTables(entry.connectionId, dbName);
+                  void reloadDbTables(entry.dbSessionId, dbName);
                 } else {
-                  void loadForConnection(entry.connectionId, {
+                  void loadForConnection(entry.dbSessionId, {
                     preferredDatabase: dbName,
                     skipLoadTables: false,
                     databaseType: conn.databaseType,
                   });
                 }
               } else {
-                void reloadDbObjectCategory(entry.connectionId, catKey, catId);
+                void reloadDbObjectCategory(entry.dbSessionId, catKey, catId);
               }
             },
           },
@@ -1642,7 +1642,7 @@ export const ConnectionNavigatorTree = forwardRef<
 
     const addCategories = (
       allItems: TableInfo[],
-      configId: string,
+      connectionId: string,
       _connectionId: string,
       dbName: string,
       schemaName: string | undefined,
@@ -1661,8 +1661,8 @@ export const ConnectionNavigatorTree = forwardRef<
 
       for (const cat of getCategoriesForDriver(dbType)) {
         const catKey = schemaName
-          ? `${configId}::${dbName}::${schemaName}::${cat.id}`
-          : `${configId}::${dbName}::${cat.id}`;
+          ? `${connectionId}::${dbName}::${schemaName}::${cat.id}`
+          : `${connectionId}::${dbName}::${cat.id}`;
         const isExpanded = expandedCats.has(catKey);
 
         let count = 0;
@@ -1706,8 +1706,8 @@ export const ConnectionNavigatorTree = forwardRef<
                 depth: baseDepth + 1,
                 catId: cat.id,
                 isSelected: false,
-                configId,
-                connectionId: _connectionId,
+                connectionId,
+                dbSessionId: _connectionId,
                 dbName,
               });
             }
@@ -1733,8 +1733,8 @@ export const ConnectionNavigatorTree = forwardRef<
       if (hay.includes(query)) return true;
 
       const cEntry = activeConnections[conn.id];
-      if (cEntry?.status !== 'connected' || !cEntry.connectionId) return false;
-      const sd = schemas.get(cEntry.connectionId);
+      if (cEntry?.status !== 'connected' || !cEntry.dbSessionId) return false;
+      const sd = schemas.get(cEntry.dbSessionId);
       if (!sd) return false;
 
       // Check database names
@@ -1747,7 +1747,7 @@ export const ConnectionNavigatorTree = forwardRef<
         return true;
       // Check multi-db cached tables
       for (const [key, items] of Object.entries(dbTablesMap)) {
-        if (!key.startsWith(cEntry.connectionId + '::')) continue;
+        if (!key.startsWith(cEntry.dbSessionId + '::')) continue;
         if (items.some((i) => i.name.toLowerCase().includes(query))) return true;
       }
       // Check namespace tree keys (path-hierarchy / custom drivers)
@@ -1794,7 +1794,7 @@ export const ConnectionNavigatorTree = forwardRef<
         rows.push({
           type: 'connection',
           conn,
-          isSelected: activeConfigId === conn.id,
+          isSelected: activeConnectionId === conn.id,
           status,
           expanded: (isExpanded && isConnected) || !!query,
           depth: 1,
@@ -1802,8 +1802,8 @@ export const ConnectionNavigatorTree = forwardRef<
 
         if (!isConnected || (!isExpanded && !query)) continue;
 
-        const connectionId = entry!.connectionId!;
-        const schemaData = schemas.get(connectionId);
+        const dbSessionId = entry!.dbSessionId!;
+        const schemaData = schemas.get(dbSessionId);
         if (!schemaData) {
           rows.push({ type: 'db-loading', depth: 2 });
           continue;
@@ -1825,7 +1825,7 @@ export const ConnectionNavigatorTree = forwardRef<
           flattenNamespaceTree(
             tree,
             conn.id,
-            connectionId,
+            dbSessionId,
             2,
             rows,
             expandedDbs,
@@ -1846,8 +1846,8 @@ export const ConnectionNavigatorTree = forwardRef<
             for (const dbName of filteredDbs) {
               rows.push({
                 type: 'kv-db',
-                configId: conn.id,
-                connectionId,
+                connectionId: conn.id,
+                dbSessionId,
                 dbName,
                 depth: 2,
                 isSelected: false,
@@ -1863,7 +1863,7 @@ export const ConnectionNavigatorTree = forwardRef<
           let dbs = query
             ? schemaData.databases.filter((d) => {
                 if (d.toLowerCase().includes(query)) return true;
-                const tblKey = `${connectionId}::${d}`;
+                const tblKey = `${dbSessionId}::${d}`;
                 const tbls = dbTablesMap[tblKey];
                 return tbls?.some((tbl) => tbl.name.toLowerCase().includes(query)) ?? false;
               })
@@ -1872,14 +1872,14 @@ export const ConnectionNavigatorTree = forwardRef<
 
           for (const dbName of dbs) {
             const dbKey = `${conn.id}::${dbName}`;
-            const tableKey = `${connectionId}::${dbName}`;
+            const tableKey = `${dbSessionId}::${dbName}`;
             const isDbExpanded = expandedDbs.has(dbKey) || !!query;
             const isLoading = loadingDbs.has(tableKey);
 
             rows.push({
               type: 'db',
-              configId: conn.id,
-              connectionId,
+              connectionId: conn.id,
+              dbSessionId,
               dbName,
               expanded: isDbExpanded,
               loading: isLoading,
@@ -1923,7 +1923,7 @@ export const ConnectionNavigatorTree = forwardRef<
 
                 rows.push({
                   type: 'schema',
-                  configId: conn.id,
+                  connectionId: conn.id,
                   dbName,
                   schemaName,
                   expanded: schemaExpanded,
@@ -1934,7 +1934,7 @@ export const ConnectionNavigatorTree = forwardRef<
                   addCategories(
                     schemaItems,
                     conn.id,
-                    connectionId,
+                    dbSessionId,
                     dbName,
                     schemaName,
                     4,
@@ -1947,7 +1947,7 @@ export const ConnectionNavigatorTree = forwardRef<
               addCategories(
                 allItems,
                 conn.id,
-                connectionId,
+                dbSessionId,
                 dbName,
                 undefined,
                 3,
@@ -1966,8 +1966,8 @@ export const ConnectionNavigatorTree = forwardRef<
 
           rows.push({
             type: 'db',
-            configId: conn.id,
-            connectionId,
+            connectionId: conn.id,
+            dbSessionId,
             dbName,
             expanded: isDbExpanded,
             loading: schemaData.loading && schemaData.tables.length === 0,
@@ -2002,7 +2002,7 @@ export const ConnectionNavigatorTree = forwardRef<
 
               rows.push({
                 type: 'schema',
-                configId: conn.id,
+                connectionId: conn.id,
                 dbName,
                 schemaName,
                 expanded: schemaExpanded,
@@ -2013,7 +2013,7 @@ export const ConnectionNavigatorTree = forwardRef<
                 addCategories(
                   schemaItems,
                   conn.id,
-                  connectionId,
+                  dbSessionId,
                   dbName,
                   schemaName,
                   4,
@@ -2026,7 +2026,7 @@ export const ConnectionNavigatorTree = forwardRef<
             addCategories(
               allItems,
               conn.id,
-              connectionId,
+              dbSessionId,
               dbName,
               undefined,
               3,
@@ -2047,7 +2047,7 @@ export const ConnectionNavigatorTree = forwardRef<
     expandedSchemas,
     expandedCats,
     activeConnections,
-    activeConfigId,
+    activeConnectionId,
     schemas,
     dbTablesMap,
     dbObjectsMap,
@@ -2067,8 +2067,8 @@ export const ConnectionNavigatorTree = forwardRef<
 
   // ── Render helpers ──
 
-  const renderStatusDot = (configId: string) => {
-    const status = activeConnections[configId]?.status ?? 'idle';
+  const renderStatusDot = (connectionId: string) => {
+    const status = activeConnections[connectionId]?.status ?? 'idle';
     if (status === 'connecting') {
       return (
         <span
@@ -2178,8 +2178,8 @@ export const ConnectionNavigatorTree = forwardRef<
             data-db-name={row.dbName}
             className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] hover:bg-surface-raised text-fg-secondary"
             style={{ paddingLeft: depthPadding(row.depth) }}
-            onClick={() => void toggleDb(row.configId, row.connectionId, row.dbName)}
-            onContextMenu={(e) => handleDatabaseContextMenu(e, row.dbName, row.configId)}
+            onClick={() => void toggleDb(row.connectionId, row.dbSessionId, row.dbName)}
+            onContextMenu={(e) => handleDatabaseContextMenu(e, row.dbName, row.connectionId)}
           >
             {row.expanded ? (
               <ChevronDown className="h-3 w-3 shrink-0" />
@@ -2200,9 +2200,9 @@ export const ConnectionNavigatorTree = forwardRef<
             data-schema-name={row.schemaName}
             className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] hover:bg-surface-raised text-fg-secondary"
             style={{ paddingLeft: depthPadding(row.depth) }}
-            onClick={() => toggleSchema(`${row.configId}::${row.dbName}::${row.schemaName}`)}
+            onClick={() => toggleSchema(`${row.connectionId}::${row.dbName}::${row.schemaName}`)}
             onContextMenu={(e) =>
-              handleSchemaContextMenu(e, row.schemaName, row.dbName, row.configId)
+              handleSchemaContextMenu(e, row.schemaName, row.dbName, row.connectionId)
             }
           >
             {row.expanded ? (
@@ -2220,7 +2220,7 @@ export const ConnectionNavigatorTree = forwardRef<
         );
 
       case 'category': {
-        const catConfigId = row.key.split('::')[0];
+        const catConnectionId = row.key.split('::')[0];
         return (
           <button
             type="button"
@@ -2229,14 +2229,14 @@ export const ConnectionNavigatorTree = forwardRef<
             className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
             style={{ paddingLeft: depthPadding(row.depth) }}
             onClick={() => {
-              const conn = connections.find((c) => c.id === catConfigId);
-              const connectionId =
-                conn && activeConnections[conn.id]?.connectionId
-                  ? activeConnections[conn.id].connectionId!
+              const conn = connections.find((c) => c.id === catConnectionId);
+              const dbSessionId =
+                conn && activeConnections[conn.id]?.dbSessionId
+                  ? activeConnections[conn.id].dbSessionId!
                   : '';
-              void toggleCategory(row.key, row.cat.id, connectionId);
+              void toggleCategory(row.key, row.cat.id, dbSessionId);
             }}
-            onContextMenu={(e) => handleCategoryContextMenu(e, row.key, row.cat.id, catConfigId)}
+            onContextMenu={(e) => handleCategoryContextMenu(e, row.key, row.cat.id, catConnectionId)}
           >
             {row.expanded ? (
               <ChevronDown className="h-3 w-3 shrink-0" />
@@ -2267,8 +2267,8 @@ export const ConnectionNavigatorTree = forwardRef<
             style={{ paddingLeft: depthPadding(row.depth) }}
             onClick={() => {
               void (async () => {
-                onSelectConnection(row.configId);
-                await activateDatabase(row.connectionId, row.dbName);
+                onSelectConnection(row.connectionId);
+                await activateDatabase(row.dbSessionId, row.dbName);
                 onSelectTable(row.item.name, row.item.schema ?? undefined, row.dbName);
               })();
             }}
@@ -2329,9 +2329,9 @@ export const ConnectionNavigatorTree = forwardRef<
             style={{ paddingLeft: depthPadding(row.depth) }}
             onClick={() => {
               if (onSelectKvDb) {
-                onSelectKvDb(row.configId, row.dbName);
+                onSelectKvDb(row.connectionId, row.dbName);
               } else {
-                onSelectConnection(row.configId);
+                onSelectConnection(row.connectionId);
                 onSelectTable(row.dbName);
               }
             }}
@@ -2398,7 +2398,7 @@ export const ConnectionNavigatorTree = forwardRef<
                 return next;
               });
               if (willExpand) {
-                void ensureNamespacePath(row.segments, row.connectionId);
+                void ensureNamespacePath(row.segments, row.dbSessionId);
               }
             }}
           >

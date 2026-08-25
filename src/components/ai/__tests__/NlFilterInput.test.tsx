@@ -67,7 +67,7 @@ describe('NlFilterInput', () => {
   it('shows not configured button', async () => {
     aiState.isConfigured = false;
     const { getByText } = render(
-      <NlFilterInput connectionId="c1" database="db" tableName="users" />,
+      <NlFilterInput dbSessionId="c1" database="db" tableName="users" />,
     );
     fireEvent.click(getByText('smartFilter.notConfigured'));
     await waitFor(() => {
@@ -77,12 +77,12 @@ describe('NlFilterInput', () => {
 
   it('expands, parses, and applies filters', async () => {
     const { container, getByText, rerender } = render(
-      <NlFilterInput connectionId="c1" database="db" tableName="users" />,
+      <NlFilterInput dbSessionId="c1" database="db" tableName="users" />,
     );
     fireEvent.click(container.querySelector('button')!);
     const input = container.querySelector('input')!;
     fireEvent.change(input, { target: { value: 'active users' } });
-    rerender(<NlFilterInput connectionId="c1" database="db" tableName="users" />);
+    rerender(<NlFilterInput dbSessionId="c1" database="db" tableName="users" />);
     fireEvent.click(getByText('smartFilter.parse'));
     await waitFor(() => {
       expect(aiState.parseFilter).toHaveBeenCalledWith({
@@ -97,30 +97,30 @@ describe('NlFilterInput', () => {
   it('shows parsing, error, and parsed states', () => {
     aiState.isParsingFilter = true;
     const { container, rerender, getByText } = render(
-      <NlFilterInput connectionId="c1" database="db" tableName="users" />,
+      <NlFilterInput dbSessionId="c1" database="db" tableName="users" />,
     );
     fireEvent.click(container.querySelector('button')!);
     expect(getByText('smartFilter.parsing')).toBeInTheDocument();
 
     aiState.isParsingFilter = false;
     aiState.nlFilterError = 'bad prompt';
-    rerender(<NlFilterInput connectionId="c1" database="db" tableName="users" />);
+    rerender(<NlFilterInput dbSessionId="c1" database="db" tableName="users" />);
     expect(getByText('bad prompt')).toBeInTheDocument();
 
     aiState.nlFilterError = null;
     aiState.parsedFilters = [];
-    rerender(<NlFilterInput connectionId="c1" database="db" tableName="users" />);
+    rerender(<NlFilterInput dbSessionId="c1" database="db" tableName="users" />);
     expect(getByText('smartFilter.noFilters')).toBeInTheDocument();
 
     aiState.parsedFilters = [{ column: 'a' }, { column: 'b' }];
-    rerender(<NlFilterInput connectionId="c1" database="db" tableName="users" />);
+    rerender(<NlFilterInput dbSessionId="c1" database="db" tableName="users" />);
     expect(getByText('smartFilter.parsed')).toBeInTheDocument();
   });
 
   it('clears and collapses on X click', () => {
     aiState.nlFilterInput = 'test';
     const { container } = render(
-      <NlFilterInput connectionId="c1" database="db" tableName="users" />,
+      <NlFilterInput dbSessionId="c1" database="db" tableName="users" />,
     );
     fireEvent.click(container.querySelector('button')!);
     const closeBtn = Array.from(container.querySelectorAll('button')).pop()!;

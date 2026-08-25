@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { driverCommands } from '../commands/driver';
 import type { DriverCommandDefinition } from '../types';
 
-export function useConnectionCommand(connectionId: string | undefined, commandId: string) {
+export function useConnectionCommand(dbSessionId: string | undefined, commandId: string) {
   const [definition, setDefinition] = useState<DriverCommandDefinition | undefined>();
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!connectionId || !commandId) {
+    if (!dbSessionId || !commandId) {
       setDefinition(undefined);
       return;
     }
@@ -15,7 +15,7 @@ export function useConnectionCommand(connectionId: string | undefined, commandId
     let cancelled = false;
     setLoading(true);
     void driverCommands
-      .getConnectionCommands(connectionId)
+      .getConnectionCommands(dbSessionId)
       .then((definitions) => definitions.find((item) => item.id === commandId))
       .then((found) => {
         if (!cancelled) setDefinition(found);
@@ -30,17 +30,17 @@ export function useConnectionCommand(connectionId: string | undefined, commandId
     return () => {
       cancelled = true;
     };
-  }, [connectionId, commandId]);
+  }, [dbSessionId, commandId]);
 
   return { definition, loading };
 }
 
-export function useConnectionCommands(connectionId: string | undefined) {
+export function useConnectionCommands(dbSessionId: string | undefined) {
   const [definitions, setDefinitions] = useState<DriverCommandDefinition[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!connectionId) {
+    if (!dbSessionId) {
       setDefinitions([]);
       return;
     }
@@ -48,7 +48,7 @@ export function useConnectionCommands(connectionId: string | undefined) {
     let cancelled = false;
     setLoading(true);
     void driverCommands
-      .getConnectionCommands(connectionId)
+      .getConnectionCommands(dbSessionId)
       .then((items) => {
         if (!cancelled) setDefinitions(items);
       })
@@ -62,7 +62,7 @@ export function useConnectionCommands(connectionId: string | undefined) {
     return () => {
       cancelled = true;
     };
-  }, [connectionId]);
+  }, [dbSessionId]);
 
   return { definitions, loading };
 }

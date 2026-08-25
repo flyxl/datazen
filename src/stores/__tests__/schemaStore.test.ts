@@ -234,7 +234,7 @@ describe('schemaStore.loadTables', () => {
     useSchemaStore = storeMod.useSchemaStore;
     const cmdMod = await import('../../commands/database');
     databaseCommands = cmdMod.databaseCommands;
-    useSchemaStore.setState({ connectionId: 'test-conn' });
+    useSchemaStore.setState({ dbSessionId: 'test-conn' });
   });
 
   afterEach(() => {
@@ -291,7 +291,7 @@ describe('schemaStore.switchDatabase', () => {
     useSchemaStore = storeMod.useSchemaStore;
     const cmdMod = await import('../../commands/database');
     databaseCommands = cmdMod.databaseCommands;
-    useSchemaStore.setState({ connectionId: 'test-conn' });
+    useSchemaStore.setState({ dbSessionId: 'test-conn' });
   });
 
   afterEach(() => {
@@ -327,7 +327,7 @@ describe('schemaStore.loadColumnMap', () => {
     useSchemaStore = storeMod.useSchemaStore;
     const cmdMod = await import('../../commands/database');
     databaseCommands = cmdMod.databaseCommands;
-    useSchemaStore.setState({ connectionId: 'test-conn' });
+    useSchemaStore.setState({ dbSessionId: 'test-conn' });
   });
 
   it('loads columns for all tables sequentially when called', async () => {
@@ -345,8 +345,8 @@ describe('schemaStore.loadColumnMap', () => {
     });
   });
 
-  it('does nothing when connectionId is null', async () => {
-    useSchemaStore.setState({ connectionId: null });
+  it('does nothing when dbSessionId is null', async () => {
+    useSchemaStore.setState({ dbSessionId: null });
     await useSchemaStore.getState().loadColumnMap();
     expect(databaseCommands.getColumns).not.toHaveBeenCalled();
   });
@@ -364,7 +364,7 @@ describe('schemaStore.ensureColumns', () => {
     const cmdMod = await import('../../commands/database');
     databaseCommands = cmdMod.databaseCommands;
     useSchemaStore.getState().reset();
-    useSchemaStore.setState({ connectionId: 'test-conn', columnMap: {} });
+    useSchemaStore.setState({ dbSessionId: 'test-conn', columnMap: {} });
   });
 
   it('fetches only the requested tables', async () => {
@@ -424,8 +424,8 @@ describe('schemaStore.ensureColumns', () => {
     expect(useSchemaStore.getState().columnMap).toEqual({ users: ['id', 'name'] });
   });
 
-  it('does nothing when connectionId is null', async () => {
-    useSchemaStore.setState({ connectionId: null });
+  it('does nothing when dbSessionId is null', async () => {
+    useSchemaStore.setState({ dbSessionId: null });
     await useSchemaStore.getState().ensureColumns(['users']);
     expect(databaseCommands.getColumns).not.toHaveBeenCalled();
   });
@@ -569,7 +569,7 @@ describe('schemaStore.ensureNamespacePath ensuringCount', () => {
     );
 
     useSchemaStore.setState({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       databaseType: 'mysql',
       currentDatabase: 'app',
       databases: ['app'],
@@ -591,7 +591,7 @@ describe('schemaStore.ensureNamespacePath ensuringCount', () => {
 
   it('does not increment when the path is already loaded', async () => {
     useSchemaStore.setState({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       databaseType: 'mysql',
       currentDatabase: 'app',
       databases: ['app'],
@@ -639,11 +639,11 @@ describe('schemaStore keyed multi-connection', () => {
       databaseType: 'sqlite',
     });
 
-    expect(useSchemaStore.getState().connectionId).toBe('conn-b');
+    expect(useSchemaStore.getState().dbSessionId).toBe('conn-b');
     expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['users_b']);
 
     useSchemaStore.getState().setActiveConnection('conn-a');
-    expect(useSchemaStore.getState().connectionId).toBe('conn-a');
+    expect(useSchemaStore.getState().dbSessionId).toBe('conn-a');
     expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['users_a']);
     expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
   });
@@ -666,7 +666,7 @@ describe('schemaStore keyed multi-connection', () => {
 
     const schemaA = useSchemaStore.getState().getConnectionSchema('conn-a');
     expect(schemaA?.currentDatabase).toBe('db_a');
-    expect(useSchemaStore.getState().connectionId).toBe('conn-b');
+    expect(useSchemaStore.getState().dbSessionId).toBe('conn-b');
   });
 
   it('removeConnection drops cached schema and clears active when removed', async () => {
@@ -677,11 +677,11 @@ describe('schemaStore keyed multi-connection', () => {
 
     useSchemaStore.getState().removeConnection('conn-a');
     expect(useSchemaStore.getState().getConnectionSchema('conn-a')).toBeUndefined();
-    expect(useSchemaStore.getState().connectionId).toBeNull();
+    expect(useSchemaStore.getState().dbSessionId).toBeNull();
     expect(useSchemaStore.getState().tables).toEqual([]);
   });
 
-  it('setState with connectionId switches active and preserves per-connection fields', async () => {
+  it('setState with dbSessionId switches active and preserves per-connection fields', async () => {
     vi.mocked(databaseCommands.getDatabases).mockImplementation(async (conn) => {
       if (conn === 'conn-a') return ['db_a'];
       return ['db_b'];
@@ -697,24 +697,24 @@ describe('schemaStore keyed multi-connection', () => {
       databaseType: 'sqlite',
     });
 
-    useSchemaStore.setState({ connectionId: 'conn-a' });
+    useSchemaStore.setState({ dbSessionId: 'conn-a' });
     expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['t_db_a']);
 
     useSchemaStore.setState({ columnMap: { t_db_a: ['id'] } });
     expect(useSchemaStore.getState().columnMap).toEqual({ t_db_a: ['id'] });
     expect(useSchemaStore.getState().getConnectionSchema('conn-b')?.columnMap).toEqual({});
 
-    useSchemaStore.setState({ connectionId: 'conn-b' });
+    useSchemaStore.setState({ dbSessionId: 'conn-b' });
     expect(useSchemaStore.getState().columnMap).toEqual({});
   });
 
   it('ensureColumns uses per-connection columnInflight', async () => {
-    useSchemaStore.setState({ connectionId: 'conn-a', columnMap: {} });
+    useSchemaStore.setState({ dbSessionId: 'conn-a', columnMap: {} });
     useSchemaStore
       .getState()
       .setLoadedTables('db', [{ name: 'users', tableType: 'table', schema: null, rowCount: null }]);
 
-    useSchemaStore.setState({ connectionId: 'conn-b', columnMap: {} });
+    useSchemaStore.setState({ dbSessionId: 'conn-b', columnMap: {} });
     useSchemaStore
       .getState()
       .setLoadedTables('db', [

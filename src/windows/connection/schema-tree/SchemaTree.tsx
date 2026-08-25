@@ -57,14 +57,14 @@ export function SchemaTree(props: SchemaTreeProps) {
   return <UnifiedSchemaTree {...treeProps} isKeyValue={meta?.isKeyValue ?? false} />;
 }
 
-/** Ensure schemaStore.connectionId is set for custom trees (column autocomplete). */
+/** Ensure schemaStore.dbSessionId is set for custom trees (column autocomplete). */
 function CustomSchemaTreeHost({
   PluginTree,
   ...props
 }: SchemaTreeProps & { PluginTree: ComponentType<Record<string, unknown>> }) {
   useEffect(() => {
     useSchemaStore.setState({
-      connectionId: props.connectionId,
+      dbSessionId: props.connectionId,
       databaseType: props.databaseType,
     });
   }, [props.connectionId, props.databaseType]);

@@ -12,7 +12,7 @@ import { databaseCommands } from '../../commands/database';
 import { CopyableError } from '../../components/ui/CopyableError';
 
 interface TableViewProps {
-  connectionId: string;
+  dbSessionId: string;
   database: string;
   tableName: string;
   databaseType?: string;
@@ -21,7 +21,7 @@ interface TableViewProps {
 }
 
 export function TableView({
-  connectionId,
+  dbSessionId,
   database,
   tableName,
   databaseType,
@@ -77,18 +77,18 @@ export function TableView({
 
   useEffect(() => {
     if (!database) return;
-    if (dbSwitchedRef.current === `${connectionId}\0${database}`) return;
-    dbSwitchedRef.current = `${connectionId}\0${database}`;
-    void databaseCommands.useDatabase(connectionId, database).catch(() => {});
-  }, [connectionId, database]);
+    if (dbSwitchedRef.current === `${dbSessionId}\0${database}`) return;
+    dbSwitchedRef.current = `${dbSessionId}\0${database}`;
+    void databaseCommands.useDatabase(dbSessionId, database).catch(() => {});
+  }, [dbSessionId, database]);
 
   useEffect(() => {
     if (hasData && activeTable !== tableName) {
       switchToTable(tableName);
     } else if (!hasData) {
-      void loadTableData({ connectionId, table: tableName });
+      void loadTableData({ dbSessionId, table: tableName });
     }
-  }, [connectionId, tableName, hasData, activeTable, loadTableData, switchToTable]);
+  }, [dbSessionId, tableName, hasData, activeTable, loadTableData, switchToTable]);
 
   const columns = ts?.columns ?? [];
   const rows = ts?.rows ?? [];
@@ -140,7 +140,7 @@ export function TableView({
           <button
             type="button"
             className="mt-2 text-xs text-accent hover:underline"
-            onClick={() => void loadTableData({ connectionId, table: tableName })}
+            onClick={() => void loadTableData({ dbSessionId, table: tableName })}
           >
             {t('common.retry')}
           </button>
@@ -169,7 +169,7 @@ export function TableView({
           <button
             type="button"
             className="shrink-0 text-xs text-accent hover:underline"
-            onClick={() => void loadTableData({ connectionId, table: tableName })}
+            onClick={() => void loadTableData({ dbSessionId, table: tableName })}
           >
             {t('common.retry')}
           </button>
@@ -191,7 +191,7 @@ export function TableView({
         >
           <Filter className="h-3.5 w-3.5" />
         </button>
-        <NlFilterInput connectionId={connectionId} database={database} tableName={tableName} />
+        <NlFilterInput dbSessionId={dbSessionId} database={database} tableName={tableName} />
       </div>
       <DataTable
         columns={columnDefs}
@@ -227,7 +227,7 @@ export function TableView({
         highlightedRow={detailRowIndex}
         exportTableName={tableName}
         databaseType={databaseType}
-        connectionId={connectionId}
+        dbSessionId={dbSessionId}
         dataExportCapability={dataExportCapability}
         primaryKeyColumns={columns.filter((c) => c.isPrimaryKey).map((c) => c.name)}
         onDeleteRows={handleDeleteRows}

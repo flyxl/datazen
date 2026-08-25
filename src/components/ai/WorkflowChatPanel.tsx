@@ -232,7 +232,7 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
           rows={3}
           isLoading={workflowChat?.isStreaming}
           onStop={handleStop}
-          connectionId={selectedConnection || undefined}
+          dbSessionId={selectedConnection || undefined}
           database={selectedDatabase}
           contextItems={contextItems}
           onContextItemsChange={setContextItems}

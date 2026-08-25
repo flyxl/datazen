@@ -23,13 +23,13 @@ import { splitContextItems } from '../../lib/contextItems';
 import type { AiChatMessage, AiQuestion, ContextItem } from '../../types';
 
 interface AiChatPanelProps {
-  connectionId: string;
+  dbSessionId: string;
   database?: string;
   sqlDialect?: string;
   onInsertSql?: (sql: string) => void;
 }
 
-export function AiChatPanel({ connectionId, database, sqlDialect, onInsertSql }: AiChatPanelProps) {
+export function AiChatPanel({ dbSessionId, database, sqlDialect, onInsertSql }: AiChatPanelProps) {
   const { t } = useI18n();
   const chatSession = useAiStore((s) => s.chatSession);
   const isConfigured = useAiStore((s) => s.isConfigured);
@@ -56,7 +56,7 @@ export function AiChatPanel({ connectionId, database, sqlDialect, onInsertSql }:
     if (!input.trim() || chatSession?.isStreaming) return;
     const { contextFiles, contextTables } = splitContextItems(contextItems);
     void sendMessage({
-      dbSessionId: connectionId,
+      dbSessionId,
       database,
       content: input.trim(),
       contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
@@ -64,7 +64,7 @@ export function AiChatPanel({ connectionId, database, sqlDialect, onInsertSql }:
     });
     setInput('');
     setContextItems([]);
-  }, [input, chatSession, sendMessage, connectionId, database, contextItems]);
+  }, [input, chatSession, sendMessage, dbSessionId, database, contextItems]);
 
   if (!isConfigured) {
     return (
@@ -155,7 +155,7 @@ export function AiChatPanel({ connectionId, database, sqlDialect, onInsertSql }:
 
       {tab === 'workflows' ? (
         <div className="flex-1 overflow-y-auto px-3 py-2">
-          <WorkflowPanel connectionId={connectionId} />
+          <WorkflowPanel dbSessionId={dbSessionId} />
         </div>
       ) : (
         <>
@@ -172,7 +172,7 @@ export function AiChatPanel({ connectionId, database, sqlDialect, onInsertSql }:
                 sqlDialect={sqlDialect}
                 onInsertSql={onInsertSql}
                 onAnswerQuestions={(answers) => {
-                  void sendMessage({ dbSessionId: connectionId, database, content: answers });
+                  void sendMessage({ dbSessionId, database, content: answers });
                 }}
                 isLastAssistant={
                   msg.role === 'assistant' &&
@@ -214,7 +214,7 @@ export function AiChatPanel({ connectionId, database, sqlDialect, onInsertSql }:
               placeholder={t('chat.placeholder')}
               disabled={chatSession?.isStreaming}
               isLoading={chatSession?.isStreaming}
-              connectionId={connectionId}
+              dbSessionId={dbSessionId}
               database={database}
               contextItems={contextItems}
               onContextItemsChange={setContextItems}

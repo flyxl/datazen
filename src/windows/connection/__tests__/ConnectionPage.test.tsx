@@ -304,7 +304,7 @@ describe('ConnectionPage', () => {
 
   it('TC-window: connects via localStorage pending connection and renders content view', async () => {
     setPendingConnection({
-      configId: 'cfg-1',
+      connectionId: 'cfg-1',
       connectionName: 'Local PG',
       databaseType: 'postgresql',
     });
@@ -315,13 +315,13 @@ describe('ConnectionPage', () => {
     await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
     expect(emitCrossWindowMock).toHaveBeenCalledWith(
       'datazen:connection-ready',
-      expect.objectContaining({ configId: 'cfg-1', connectionId: 'conn-live-1' }),
+      expect.objectContaining({ connectionId: 'cfg-1', dbSessionId: 'conn-live-1' }),
     );
   });
 
   it('TC-window: shows connect error UI with retry and close buttons', async () => {
     setPendingConnection({
-      configId: 'cfg-bad',
+      connectionId: 'cfg-bad',
       connectionName: 'Bad',
       databaseType: 'postgresql',
     });
@@ -336,8 +336,8 @@ describe('ConnectionPage', () => {
 
   it('TC-window: uses existing connectionId from pending without reconnect', async () => {
     setPendingConnection({
-      connectionId: 'already-open',
-      configId: 'cfg-1',
+      dbSessionId: 'already-open',
+      connectionId: 'cfg-1',
       connectionName: 'Local PG',
       databaseType: 'postgresql',
     });
@@ -351,12 +351,12 @@ describe('ConnectionPage', () => {
   it('TC-window: reuses activeConnectionStore session when present', async () => {
     getActiveConnectionState.mockReturnValue({
       connections: {
-        'cfg-reuse': { status: 'connected', connectionId: 'reuse-1' },
+        'cfg-reuse': { status: 'connected', dbSessionId: 'reuse-1' },
       },
     });
 
     setPendingConnection({
-      configId: 'cfg-reuse',
+      connectionId: 'cfg-reuse',
       connectionName: 'Reuse',
       databaseType: 'postgresql',
     });
@@ -368,7 +368,7 @@ describe('ConnectionPage', () => {
 
   it('TC-window: renders content view after successful connection', async () => {
     setPendingConnection({
-      configId: 'cfg-dash',
+      connectionId: 'cfg-dash',
       connectionName: 'Dashboard PG',
       databaseType: 'postgresql',
     });
@@ -387,7 +387,7 @@ describe('ConnectionPage', () => {
         }),
     );
     setPendingConnection({
-      configId: 'cfg-slow',
+      connectionId: 'cfg-slow',
       connectionName: 'Slow',
       databaseType: 'postgresql',
     });

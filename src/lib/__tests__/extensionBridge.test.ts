@@ -190,7 +190,7 @@ describe('extensionBridge permission gate (deny-by-default)', () => {
   it('denies command.invoke without command:invoke', async () => {
     const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: [] });
     receive(
-      request('command.invoke', 'r1', { configId: 'c', command: 'query' }),
+      request('command.invoke', 'r1', { connectionId: 'c', command: 'query' }),
       env.iframe.contentWindow,
     );
     await waitUntil(() => env.sent.length > 0);
@@ -226,12 +226,26 @@ describe('extensionBridge permission gate (deny-by-default)', () => {
       permissions: [...ALL_PERMISSIONS],
     });
 
+    // command.invoke resolves the persistent connection id to the live session.
+    activeConnectionStoreState.current = {
+      connections: {
+        'cfg-1': {
+          connectionId: 'cfg-1',
+          dbSessionId: 'live-1',
+          status: 'connected',
+          serverInfo: null,
+          currentDatabase: null,
+          error: null,
+        },
+      },
+    };
+
     receive(request('storage.get', 'a', { key: 'k' }), env.iframe.contentWindow);
     receive(request('storage.set', 'b', { key: 'k', value: { x: 1 } }), env.iframe.contentWindow);
     receive(request('storage.remove', 'c', { key: 'k' }), env.iframe.contentWindow);
     receive(
       request('command.invoke', 'd', {
-        configId: 'cfg-1',
+        connectionId: 'cfg-1',
         command: 'query',
         args: { sql: 'select 1' },
       }),
@@ -251,9 +265,10 @@ describe('extensionBridge permission gate (deny-by-default)', () => {
     expect(storageGetMock).toHaveBeenCalledWith('acme.bill-audit', 'k');
     expect(storageSetMock).toHaveBeenCalledWith('acme.bill-audit', 'k', { x: 1 });
     expect(storageRemoveMock).toHaveBeenCalledWith('acme.bill-audit', 'k');
-    // Driver command maps to execute_driver_command's request shape.
+    // Driver command maps to execute_driver_command's request shape with the
+    // resolved runtime session id.
     expect(driverExecuteMock).toHaveBeenCalledWith({
-      dbSessionId: 'cfg-1',
+      dbSessionId: 'live-1',
       command: 'query',
       input: { sql: 'select 1' },
     });
@@ -396,7 +411,7 @@ describe('extensionBridge rate limiting & timeout', () => {
 
     for (let i = 0; i < MAX_INFLIGHT_REQUESTS; i += 1) {
       receive(
-        request('command.invoke', `r${i}`, { configId: 'c', command: 'query' }),
+        request('command.invoke', `r${i}`, { connectionId: 'c', command: 'query' }),
         env.iframe.contentWindow,
       );
     }
@@ -404,7 +419,7 @@ describe('extensionBridge rate limiting & timeout', () => {
     expect(env.sent.filter((m) => m.type === 'command.invoke.err')).toHaveLength(0);
 
     receive(
-      request('command.invoke', 'overflow', { configId: 'c', command: 'query' }),
+      request('command.invoke', 'overflow', { connectionId: 'c', command: 'query' }),
       env.iframe.contentWindow,
     );
     await waitUntil(() => env.sent.some((m) => m.type === 'command.invoke.err'));
@@ -419,7 +434,7 @@ describe('extensionBridge rate limiting & timeout', () => {
     await flush();
     driverExecuteMock.mockResolvedValue({ data: 42 });
     receive(
-      request('command.invoke', 'after', { configId: 'c', command: 'query' }),
+      request('command.invoke', 'after', { connectionId: 'c', command: 'query' }),
       env.iframe.contentWindow,
     );
     await waitUntil(() => env.sent.some((m) => m.reqId === 'after'));
@@ -459,7 +474,7 @@ describe('extensionBridge rate limiting & timeout', () => {
     });
 
     receive(
-      request('command.invoke', 'slow', { configId: 'c', command: 'query' }),
+      request('command.invoke', 'slow', { connectionId: 'c', command: 'query' }),
       env.iframe.contentWindow,
     );
     await vi.advanceTimersByTimeAsync(29_999);
@@ -551,9 +566,9 @@ describe('extensionBridge context whitelist', () => {
     activeConnectionStoreState.current = {
       connections: {
         conn_1: {
-          configId: 'conn_1',
+          dbSessionId: 'live_1',
+          connectionId: 'conn_1',
           status: 'connected',
-          connectionId: 'live_1',
           serverInfo: null,
           currentDatabase: null,
           error: null,
@@ -575,7 +590,7 @@ describe('extensionBridge command.invoke error mapping', () => {
     const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: ['command:invoke'] });
 
     receive(
-      request('command.invoke', 'miss', { configId: 'cfg-x', command: 'query' }),
+      request('command.invoke', 'miss', { connectionId: 'cfg-x', command: 'query' }),
       env.iframe.contentWindow,
     );
     await waitUntil(() => env.sent.length > 0);

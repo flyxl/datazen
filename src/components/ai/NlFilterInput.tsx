@@ -7,12 +7,12 @@ import { useTableDataStore } from '../../stores/tableDataStore';
 import { cn } from '../../lib/cn';
 
 interface NlFilterInputProps {
-  connectionId: string;
+  dbSessionId: string;
   database: string;
   tableName: string;
 }
 
-export function NlFilterInput({ connectionId, database, tableName }: NlFilterInputProps) {
+export function NlFilterInput({ dbSessionId, database, tableName }: NlFilterInputProps) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const abortRef = useRef(false);
@@ -44,7 +44,7 @@ export function NlFilterInput({ connectionId, database, tableName }: NlFilterInp
   const handleParse = async () => {
     abortRef.current = false;
     const targetTable = tableName;
-    const filters = await parseFilter({ dbSessionId: connectionId, database, table: targetTable });
+    const filters = await parseFilter({ dbSessionId, database, table: targetTable });
 
     if (abortRef.current) return;
 

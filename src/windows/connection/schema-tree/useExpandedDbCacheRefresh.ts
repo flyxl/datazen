@@ -11,8 +11,8 @@ function schemaFingerprint(databases: readonly string[] | undefined, epoch: numb
 }
 
 interface ConnectionRef {
-  /** Runtime connection id, or null/undefined while not connected. */
-  connectionId?: string | null;
+  /** Live database session id, or empty while not connected. */
+  dbSessionId?: string | null;
 }
 
 export interface ExpandedDbCacheRefreshOptions {
@@ -22,14 +22,15 @@ export interface ExpandedDbCacheRefreshOptions {
    */
   activeConnections: Record<string, ConnectionRef | undefined>;
   /**
-   * Expanded db keys in `"<configId>::<dbName>"` form. When a connection's
-   * fingerprint changes, every expanded db of that connection is reloaded.
+   * Expanded db keys in `"<connectionId>::<dbName>"` form (persistent
+   * connection ids). When a connection's fingerprint changes, every expanded
+   * db of that connection is reloaded.
    */
   expandedDbs: ReadonlySet<string>;
   /** Load tables for one database. Must be session-neutral (no useDatabase). */
-  loadTablesForDb: (connectionId: string, dbName: string) => Promise<void>;
-  /** Drop every cached entry belonging to the given runtime connection id. */
-  clearCaches: (connectionId: string) => void;
+  loadTablesForDb: (dbSessionId: string, dbName: string) => Promise<void>;
+  /** Drop every cached entry belonging to the given runtime db session id. */
+  clearCaches: (dbSessionId: string) => void;
 }
 
 /**
@@ -58,29 +59,30 @@ export function useExpandedDbCacheRefresh({
   useEffect(() => {
     const nextFp = new Map<string, string>();
     for (const entry of Object.values(activeConnections)) {
-      if (!entry?.connectionId) continue;
-      const sd = schemas.get(entry.connectionId);
-      if (sd) nextFp.set(entry.connectionId, schemaFingerprint(sd.databases, sd.schemaEpoch));
+      if (!entry?.dbSessionId) continue;
+      const sd = schemas.get(entry.dbSessionId);
+      if (sd) nextFp.set(entry.dbSessionId, schemaFingerprint(sd.databases, sd.schemaEpoch));
     }
 
     const prev = prevFpRef.current;
     prevFpRef.current = nextFp;
     if (prev.size === 0) return;
 
-    for (const [connId, fp] of nextFp) {
-      if (prev.get(connId) === fp) continue;
+    for (const [dbSessionId, fp] of nextFp) {
+      if (prev.get(dbSessionId) === fp) continue;
 
-      handlersRef.current.clearCaches(connId);
+      handlersRef.current.clearCaches(dbSessionId);
 
-      const configId = Object.entries(activeConnections).find(
-        ([, e]) => e?.connectionId === connId,
+      // Map back to the persistent connection id used in expanded-db keys.
+      const connectionId = Object.entries(activeConnections).find(
+        ([, e]) => e?.dbSessionId === dbSessionId,
       )?.[0];
-      if (!configId) continue;
+      if (!connectionId) continue;
 
-      const prefix = `${configId}::`;
+      const prefix = `${connectionId}::`;
       for (const dbKey of expandedDbs) {
         if (!dbKey.startsWith(prefix)) continue;
-        void handlersRef.current.loadTablesForDb(connId, dbKey.slice(prefix.length));
+        void handlersRef.current.loadTablesForDb(dbSessionId, dbKey.slice(prefix.length));
       }
     }
     // Re-run only when the store surface or the expanded set changes; the

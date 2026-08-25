@@ -54,7 +54,7 @@ interface HistoryListItem {
 describe('Workflow 跨库工作流 E2E 测试', () => {
   let mainWindow: string;
   let connWindow: string;
-  let runtimeConnId: string;
+  let dbSessionId: string;
 
   before(async () => {
     await browser.setTimeout({ script: 120000 });
@@ -63,7 +63,7 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
     mainWindow = windows.mainWindow;
     connWindow = windows.connWindow;
 
-    runtimeConnId = (await browser.execute(() => {
+    dbSessionId = (await browser.execute(() => {
       const params = new URLSearchParams(window.location.search);
       return params.get('connectionId') || '';
     })) as string;
@@ -129,7 +129,7 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
   // ── SW-02: Workflow Execution with Structured Result ─────────────
 
   it('SW-02: 应能执行 Workflow 并返回结构化结果', async function () {
-    if (!runtimeConnId) return this.skip();
+    if (!dbSessionId) return this.skip();
     this.timeout(30000);
 
     const workflow = {
@@ -146,7 +146,9 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
     const result = await invokeBackend<WorkflowExecutionResult>('workflow_execute', {
       workflowId: 'e2e-simple-query',
       variables: {},
-      connectionId: runtimeConnId,
+      // workflow_execute targets a persistent connection id; the backend's
+      // dual-mode resolve_session also accepts the live session id passed here.
+      connectionId: dbSessionId,
     });
 
     expect(result.success).toBe(true);
@@ -168,7 +170,7 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
   // ── SW-03: Execution History Persistence ───────────────────────
 
   it('SW-03: 执行后应自动记录历史', async function () {
-    if (!runtimeConnId) return this.skip();
+    if (!dbSessionId) return this.skip();
 
     const history = await invokeBackend<HistoryListItem[]>('workflow_history_list', {
       workflowId: null,
@@ -196,7 +198,7 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
   // ── SW-04: Variable Substitution in SQL ────────────────────────
 
   it('SW-04: Workflow 变量应正确替换到 SQL 模板中', async function () {
-    if (!runtimeConnId) return this.skip();
+    if (!dbSessionId) return this.skip();
     this.timeout(30000);
 
     const workflow = {
@@ -215,7 +217,7 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
     const result = await invokeBackend<WorkflowExecutionResult>('workflow_execute', {
       workflowId: 'e2e-simple-query',
       variables: { val: 'E2E_TEST_VALUE' },
-      connectionId: runtimeConnId,
+      connectionId: dbSessionId,
     });
 
     expect(result.success).toBe(true);
@@ -226,7 +228,7 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
   // ── SW-04b: Multi-step template with data[N].field ─────────────
 
   it('SW-04b: 多步骤模板引用应支持 data[0].field 语法', async function () {
-    if (!runtimeConnId) return this.skip();
+    if (!dbSessionId) return this.skip();
     this.timeout(30000);
 
     const workflow = {
@@ -244,7 +246,9 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
     const result = await invokeBackend<WorkflowExecutionResult>('workflow_execute', {
       workflowId: 'e2e-simple-query',
       variables: {},
-      connectionId: runtimeConnId,
+      // workflow_execute targets a persistent connection id; the backend's
+      // dual-mode resolve_session also accepts the live session id passed here.
+      connectionId: dbSessionId,
     });
 
     expect(result.success).toBe(true);
@@ -265,7 +269,7 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
   // ── SW-04c: Template with result[N].field (alias for data) ────
 
   it('SW-04c: rows[0].field bracket 语法引用', async function () {
-    if (!runtimeConnId) return this.skip();
+    if (!dbSessionId) return this.skip();
     this.timeout(30000);
 
     const workflow = {
@@ -283,7 +287,9 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
     const result = await invokeBackend<WorkflowExecutionResult>('workflow_execute', {
       workflowId: 'e2e-simple-query',
       variables: {},
-      connectionId: runtimeConnId,
+      // workflow_execute targets a persistent connection id; the backend's
+      // dual-mode resolve_session also accepts the live session id passed here.
+      connectionId: dbSessionId,
     });
 
     expect(result.success).toBe(true);
@@ -316,7 +322,7 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
   // ── SW-05: Condition Step Execution ─────────────────────────────
 
   it('SW-05: 条件步骤应根据表达式执行分支', async function () {
-    if (!runtimeConnId) return this.skip();
+    if (!dbSessionId) return this.skip();
     this.timeout(30000);
 
     const workflow = {
@@ -344,7 +350,7 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
     const result = await invokeBackend<WorkflowExecutionResult>('workflow_execute', {
       workflowId: 'e2e-condition-test',
       variables: {},
-      connectionId: runtimeConnId,
+      connectionId: dbSessionId,
     });
 
     expect(result.success).toBe(true);
@@ -358,7 +364,7 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
   // ── SW-06: Error Handling and Display ──────────────────────────
 
   it('SW-06: 无效 SQL 应返回错误但不崩溃', async function () {
-    if (!runtimeConnId) return this.skip();
+    if (!dbSessionId) return this.skip();
     this.timeout(30000);
 
     const workflow = {
@@ -376,7 +382,7 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
       const result = await invokeBackend<WorkflowExecutionResult>('workflow_execute', {
         workflowId: 'e2e-error-test',
         variables: {},
-        connectionId: runtimeConnId,
+        connectionId: dbSessionId,
       });
 
       // Depending on error strategy, might succeed with error in steps

@@ -109,7 +109,7 @@ describe('streamTableExportText', () => {
       await emitAll(usersEvents, onEvent);
     });
     const text = await streamTableExportText({
-      connectionId: 'c1',
+dbSessionId: 'c1',
       tableName: 'users',
       columns: ['id', 'name'],
       format: 'json',
@@ -140,7 +140,7 @@ describe('streamTableExportToSaveDialog', () => {
       abort: vi.fn().mockResolvedValue(undefined),
     };
     const result = await streamTableExportToSaveDialog({
-      connectionId: 'c1',
+dbSessionId: 'c1',
       tableName: 'users',
       columns: ['id', 'name'],
       format: 'csv',
@@ -157,7 +157,7 @@ describe('streamTableExportToSaveDialog', () => {
 
   it('returns cancelled when dialog is dismissed', async () => {
     const result = await streamTableExportToSaveDialog({
-      connectionId: 'c1',
+dbSessionId: 'c1',
       tableName: 'users',
       columns: ['id'],
       format: 'json',

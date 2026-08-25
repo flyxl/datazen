@@ -160,7 +160,7 @@ const connectionsState = {
 
 const activeConnectionsState = {
   connections: {
-    'cfg-mysql': { status: 'connected' as const, connectionId: 'conn-1' },
+    'cfg-mysql': { status: 'connected' as const, dbSessionId: 'conn-1', connectionId: 'cfg-mysql' },
   },
 };
 
@@ -338,7 +338,7 @@ describe('ConnectionNavigatorTree multi-db table selection', () => {
       },
     ];
     activeConnectionsState.connections = {
-      'cfg-pg': { status: 'connected', connectionId: 'conn-1' },
+      'cfg-pg': { status: 'connected', dbSessionId: 'conn-1', connectionId: 'cfg-pg' },
     };
     mockGetTables.mockImplementation((_connId: string, dbName: string) => {
       if (dbName === 'db_a') {
@@ -376,7 +376,7 @@ describe('ConnectionNavigatorTree multi-db table selection', () => {
 
     connectionsState.connections = [MYSQL_CONN];
     activeConnectionsState.connections = {
-      'cfg-mysql': { status: 'connected', connectionId: 'conn-1' },
+      'cfg-mysql': { status: 'connected', dbSessionId: 'conn-1', connectionId: 'cfg-mysql' },
     };
   });
 });
@@ -445,7 +445,7 @@ describe('ConnectionNavigatorTree refresh', () => {
       },
     ];
     activeConnectionsState.connections = {
-      'cfg-pg': { status: 'connected', connectionId: 'conn-1' },
+      'cfg-pg': { status: 'connected', dbSessionId: 'conn-1', connectionId: 'cfg-pg' },
     };
     mockGetTables.mockImplementation((_connId: string, dbName: string) => {
       if (dbName === 'db_a') {
@@ -474,7 +474,7 @@ describe('ConnectionNavigatorTree refresh', () => {
 
     connectionsState.connections = [MYSQL_CONN];
     activeConnectionsState.connections = {
-      'cfg-mysql': { status: 'connected', connectionId: 'conn-1' },
+      'cfg-mysql': { status: 'connected', dbSessionId: 'conn-1', connectionId: 'cfg-mysql' },
     };
   });
 });
@@ -554,7 +554,7 @@ describe('ConnectionNavigatorTree context menu new query', () => {
       },
     ];
     activeConnectionsState.connections = {
-      'cfg-pg': { status: 'connected', connectionId: 'conn-1' },
+      'cfg-pg': { status: 'connected', dbSessionId: 'conn-1', connectionId: 'cfg-pg' },
     };
     mockGetTables.mockImplementation((_connId: string, dbName: string) => {
       if (dbName === 'db_a') {
@@ -587,7 +587,7 @@ describe('ConnectionNavigatorTree context menu new query', () => {
 
     connectionsState.connections = [MYSQL_CONN];
     activeConnectionsState.connections = {
-      'cfg-mysql': { status: 'connected', connectionId: 'conn-1' },
+      'cfg-mysql': { status: 'connected', dbSessionId: 'conn-1', connectionId: 'cfg-mysql' },
     };
   });
 });

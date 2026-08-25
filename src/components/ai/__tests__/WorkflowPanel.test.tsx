@@ -179,7 +179,7 @@ afterEach(() => {
 
 describe('WorkflowPanel', () => {
   it('loads workflows and shows storage dir', async () => {
-    render(<WorkflowPanel connectionId="c1" />);
+    render(<WorkflowPanel dbSessionId="c1" />);
     await waitFor(() => expect(loadWorkflowsMock).toHaveBeenCalled());
     expect(screen.getByText('Workflow One')).toBeInTheDocument();
     expect(screen.getByText('/tmp/workflows')).toBeInTheDocument();
@@ -198,7 +198,7 @@ describe('WorkflowPanel', () => {
   });
 
   it('selects workflow and executes', async () => {
-    render(<WorkflowPanel connectionId="c1" />);
+    render(<WorkflowPanel dbSessionId="c1" />);
     await waitFor(() => screen.getByText('Workflow One'));
     fireEvent.click(screen.getByText('Workflow One'));
     expect(clearWorkflowResultMock).toHaveBeenCalled();
@@ -256,7 +256,7 @@ describe('WorkflowPanel', () => {
 
   it('shows running state while executing', async () => {
     aiStoreState.isExecutingWorkflow = true;
-    render(<WorkflowPanel connectionId="c1" />);
+    render(<WorkflowPanel dbSessionId="c1" />);
     await waitFor(() => screen.getByText('Workflow One'));
     fireEvent.click(screen.getByText('Workflow One'));
     expect(screen.getByText('workflows.running')).toBeInTheDocument();
@@ -424,7 +424,7 @@ describe('WorkflowPanel', () => {
   });
 
   it('fills connection variable for workflow with vars', async () => {
-    render(<WorkflowPanel connectionId="c1" />);
+    render(<WorkflowPanel dbSessionId="c1" />);
     await waitFor(() => screen.getByText('With Vars'));
     fireEvent.click(screen.getByText('With Vars'));
     fireEvent.click(screen.getByRole('button', { name: 'workflows.form.selectConnection' }));

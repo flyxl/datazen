@@ -23,10 +23,10 @@ export type SubTabId = 'data' | 'structure' | 'indexes' | 'foreignKeys' | 'ddl';
 
 interface PanelBase {
   id: string;
-  /** Persistent connection config ID. */
-  configId: string;
-  /** Live connection ID (from activeConnectionStore). */
+  /** Persistent connection id (saved connection this panel belongs to). */
   connectionId: string;
+  /** Live database session id (from activeConnectionStore). */
+  dbSessionId: string;
   connectionName: string;
   databaseType: DatabaseType;
 }
@@ -79,7 +79,7 @@ export interface PrivilegesPanel extends PanelBase {
 /** 服务器仪表盘面板（含 仪表盘 / 状态变量 / 服务器详情 三个内部子标签）。 */
 export interface ServerStatusPanel extends PanelBase {
   type: 'server-status';
-  /** 该面板自身缓存的数据（与 configId 绑定，切换时保留已加载内容）。 */
+  /** 该面板自身缓存的数据（与 connectionId 绑定，切换时保留已加载内容）。 */
   data?: ServerStatusCache;
 }
 
@@ -94,7 +94,7 @@ export interface ServerStatusCache {
 /** 进程列表面板（独立于服务器仪表盘）。 */
 export interface ProcessesPanel extends PanelBase {
   type: 'processes';
-  /** 该面板自身缓存的数据（与 configId 绑定）。 */
+  /** 该面板自身缓存的数据（与 connectionId 绑定）。 */
   data?: ProcessListCacheData;
 }
 
@@ -139,8 +139,8 @@ export function nextPanelId(prefix: string): string {
 // ── Connection context (for panel creation helpers) ──────────────
 
 export interface ConnectionContext {
-  configId: string;
   connectionId: string;
+  dbSessionId: string;
   connectionName: string;
   databaseType: DatabaseType;
 }
@@ -156,7 +156,7 @@ function cancelAndCleanupExec(
     if (panel.type === 'query') {
       const exec = nextExec.get(panel.id);
       if (exec?.running) {
-        queryCommands.cancelQuery(panel.connectionId).catch(() => {});
+        queryCommands.cancelQuery(panel.dbSessionId).catch(() => {});
       }
       nextExec.delete(panel.id);
     }
@@ -192,7 +192,7 @@ interface PanelState {
 interface PanelActions {
   addPanel: (panel: Panel, activate?: boolean) => void;
   removePanel: (panelId: string) => void;
-  removeAllForConnection: (configId: string) => void;
+  removeAllForConnection: (connectionId: string) => void;
   setActivePanel: (panelId: string) => void;
   updatePanel: (panelId: string, patch: Partial<Panel>) => void;
   closeOtherPanels: (panelId: string) => void;
@@ -216,11 +216,11 @@ interface PanelActions {
   setChartConfig: (panelId: string, config: ChartConfig) => void;
   setResultViewMode: (panelId: string, mode: 'table' | 'chart') => void;
 
-  loadHistory: (configId?: string) => Promise<void>;
-  openQueryHistory: (configId?: string) => Promise<void>;
+  loadHistory: (connectionId?: string) => Promise<void>;
+  openQueryHistory: (connectionId?: string) => Promise<void>;
   toggleHistory: () => void;
-  loadFavorites: (configId?: string) => Promise<void>;
-  addFavorite: (title: string, sql: string, configId: string) => Promise<void>;
+  loadFavorites: (connectionId?: string) => Promise<void>;
+  addFavorite: (title: string, sql: string, connectionId: string) => Promise<void>;
   deleteFavorite: (id: string) => Promise<void>;
   toggleFavorites: () => void;
 
@@ -262,10 +262,10 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     });
   },
 
-  removeAllForConnection: (configId) => {
+  removeAllForConnection: (connectionId) => {
     const { panels, activePanelId, queryExec } = get();
-    const toRemove = panels.filter((p) => p.configId === configId);
-    const remaining = panels.filter((p) => p.configId !== configId);
+    const toRemove = panels.filter((p) => p.connectionId === connectionId);
+    const remaining = panels.filter((p) => p.connectionId !== connectionId);
     const nextExec = cancelAndCleanupExec(toRemove, queryExec);
     const activeStillExists = remaining.some((p) => p.id === activePanelId);
     set({
@@ -353,11 +353,11 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const setExec = (next: Map<string, QueryExecState>) => set({ queryExec: next });
 
     if (params && Object.keys(params).length > 0) {
-      await runBoundQuery(panelId, panel.connectionId, sql, params, getExec, setExec);
+      await runBoundQuery(panelId, panel.dbSessionId, sql, params, getExec, setExec);
     } else {
-      await runStreamingQuery(panelId, panel.connectionId, sql, getExec, setExec);
+      await runStreamingQuery(panelId, panel.dbSessionId, sql, getExec, setExec);
     }
-    await get().loadHistory(panel.configId);
+    await get().loadHistory(panel.connectionId);
   },
 
   executeSelection: async (panelId, sql, params) => {
@@ -369,11 +369,11 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const setExec = (next: Map<string, QueryExecState>) => set({ queryExec: next });
 
     if (params && Object.keys(params).length > 0) {
-      await runBoundQuery(panelId, panel.connectionId, sql, params, getExec, setExec);
+      await runBoundQuery(panelId, panel.dbSessionId, sql, params, getExec, setExec);
     } else {
-      await runStreamingQuery(panelId, panel.connectionId, sql, getExec, setExec);
+      await runStreamingQuery(panelId, panel.dbSessionId, sql, getExec, setExec);
     }
-    await get().loadHistory(panel.configId);
+    await get().loadHistory(panel.connectionId);
   },
 
   cancelQuery: async (panelId) => {
@@ -381,7 +381,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const panel = panels.find((p) => p.id === panelId);
     if (!panel) return;
     try {
-      await queryCommands.cancelQuery(panel.connectionId);
+      await queryCommands.cancelQuery(panel.dbSessionId);
     } catch {
       // best-effort
     }
@@ -429,32 +429,32 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
 
   // ── History / Favorites ────────────────────────────────────────
 
-  loadHistory: async (configId) => {
-    const queryHistory = await queryCommands.getQueryHistory(1000, configId);
+  loadHistory: async (connectionId) => {
+    const queryHistory = await queryCommands.getQueryHistory(1000, connectionId);
     set({ queryHistory });
   },
 
-  openQueryHistory: async (configId) => {
+  openQueryHistory: async (connectionId) => {
     set({ historyVisible: true, favoritesVisible: false });
-    await get().loadHistory(configId);
+    await get().loadHistory(connectionId);
   },
 
   toggleHistory: () => set((s) => ({ historyVisible: !s.historyVisible })),
 
-  loadFavorites: async (configId) => {
-    const queryFavorites = await queryCommands.getFavoriteQueries(configId);
+  loadFavorites: async (connectionId) => {
+    const queryFavorites = await queryCommands.getFavoriteQueries(connectionId);
     set({ queryFavorites });
   },
 
-  addFavorite: async (title, sql, configId) => {
-    await queryCommands.addFavoriteQuery(configId, title, sql);
-    await get().loadFavorites(configId);
+  addFavorite: async (title, sql, connectionId) => {
+    await queryCommands.addFavoriteQuery(connectionId, title, sql);
+    await get().loadFavorites(connectionId);
   },
 
   deleteFavorite: async (id) => {
     await queryCommands.deleteFavoriteQuery(id);
     const activePanel = get().panels.find((p) => p.id === get().activePanelId);
-    await get().loadFavorites(activePanel?.configId);
+    await get().loadFavorites(activePanel?.connectionId);
   },
 
   toggleFavorites: () => set((s) => ({ favoritesVisible: !s.favoritesVisible })),

@@ -5,7 +5,7 @@ import {
   E2E_DASHBOARD_PREFIX,
   cleanupDashboard,
   createEmptyDashboard,
-  getSeededConfigId,
+  getSeededConnectionId,
   invokeBackend,
   openDashboardFromMain,
   seedSqlWidget,
@@ -19,10 +19,10 @@ describe('数据看板组件 UX (UJ-05, UJ-06, UJ-09)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await browser.pause(1000);
-    const configId = await getSeededConfigId();
+    const connectionId = await getSeededConnectionId();
     await cleanupDashboard(DASHBOARD_ID);
     await createEmptyDashboard(DASHBOARD_ID, 'E2E UX Board');
-    await seedSqlWidget(DASHBOARD_ID, configId, {
+    await seedSqlWidget(DASHBOARD_ID, connectionId, {
       title: 'E2E UX Widget',
       sql: "SELECT 'A' AS category, 10 AS amount UNION ALL SELECT 'B', 20",
       xAxis: 'category',

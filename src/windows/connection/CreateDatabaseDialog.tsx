@@ -12,18 +12,18 @@ import { useI18n } from '../../hooks/useI18n';
 interface CreateDatabaseDialogProps {
   open: boolean;
   onClose: () => void;
-  connectionId: string;
+  dbSessionId: string;
   onCreated?: (dbName: string) => void | Promise<void>;
 }
 
 export function CreateDatabaseDialog({
   open,
   onClose,
-  connectionId,
+  dbSessionId,
   onCreated,
 }: CreateDatabaseDialogProps) {
   const { t } = useI18n();
-  const { definition } = useConnectionCommand(open ? connectionId : undefined, 'create_database');
+  const { definition } = useConnectionCommand(open ? dbSessionId : undefined, 'create_database');
   const [name, setName] = useState('');
   const [optionalValues, setOptionalValues] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
@@ -54,7 +54,7 @@ export function CreateDatabaseDialog({
         if (value.trim()) input[field] = value.trim();
       }
 
-      await driverCommands.execute({ dbSessionId: connectionId, command: 'create_database', input });
+      await driverCommands.execute({ dbSessionId, command: 'create_database', input });
       const created = name.trim();
       resetForm();
       await onCreated?.(created);
@@ -64,7 +64,7 @@ export function CreateDatabaseDialog({
     } finally {
       setRunning(false);
     }
-  }, [name, optionalValues, connectionId, resetForm, onCreated, onClose]);
+  }, [name, optionalValues, dbSessionId, resetForm, onCreated, onClose]);
 
   return (
     <Dialog

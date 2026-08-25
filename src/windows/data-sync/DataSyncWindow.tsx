@@ -92,12 +92,12 @@ export function DataSyncWindow() {
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     listenCrossWindow('datazen:connection-closed', (payload) => {
-      const { connectionId } = (payload ?? {}) as { connectionId?: string };
-      if (!connectionId) return;
+      const { dbSessionId } = (payload ?? {}) as { dbSessionId?: string };
+      if (!dbSessionId) return;
       setActiveConns((prev) => {
         const next = { ...prev };
-        for (const [cfgId, connId] of Object.entries(next)) {
-          if (connId === connectionId) delete next[cfgId];
+        for (const [connectionId, sessionId] of Object.entries(next)) {
+          if (sessionId === dbSessionId) delete next[connectionId];
         }
         return next;
       });
@@ -168,12 +168,13 @@ export function DataSyncWindow() {
   const targetReadOnly = targetConn?.readOnly === true;
 
   const ensureConnected = useCallback(
-    async (configId: string): Promise<string | null> => {
-      if (activeConns[configId]) return activeConns[configId];
+    async (connectionId: string): Promise<string | null> => {
+      // activeConns maps persistent connection id -> live db session id.
+      if (activeConns[connectionId]) return activeConns[connectionId];
       try {
-        const connectionId = await invoke<string>('connect', { connectionId: configId });
-        setActiveConns((prev) => ({ ...prev, [configId]: connectionId }));
-        return connectionId;
+        const dbSessionId = await invoke<string>('connect', { connectionId });
+        setActiveConns((prev) => ({ ...prev, [connectionId]: dbSessionId }));
+        return dbSessionId;
       } catch (e) {
         setErrorMsg(`${t('sync.connectFailed')} ${e instanceof Error ? e.message : String(e)}`);
         setErrorOpen(true);

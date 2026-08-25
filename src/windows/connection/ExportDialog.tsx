@@ -27,7 +27,7 @@ interface ExportDialogProps {
   rows: Record<string, unknown>[];
   selectedRows: Set<number>;
   databaseType?: string;
-  connectionId?: string;
+  dbSessionId?: string;
   totalRows?: number;
   /** Prefer entire-table when opened from the schema tree (no page loaded). */
   defaultScope?: ExportScope;
@@ -47,7 +47,7 @@ export function ExportDialog({
   rows,
   selectedRows,
   databaseType,
-  connectionId,
+  dbSessionId,
   totalRows,
   defaultScope,
   dataExportCapability = 'full_table',
@@ -55,7 +55,7 @@ export function ExportDialog({
   const { t } = useI18n();
   const exportLocked = dataExportCapability === 'none';
   const allowEntire =
-    !exportLocked && supportsFullTableExport(dataExportCapability) && Boolean(connectionId);
+    !exportLocked && supportsFullTableExport(dataExportCapability) && Boolean(dbSessionId);
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [scope, setScope] = useState<ExportScope>(
     defaultScope ?? (allowEntire && rows.length === 0 ? 'entire_table' : 'current_page'),
@@ -74,9 +74,9 @@ export function ExportDialog({
     if (!open) return;
     setStatus('form');
     setError(null);
-    if (!connectionId) return;
+    if (!dbSessionId) return;
     let cancelled = false;
-    void getCachedTableSchema(connectionId, tableName)
+    void getCachedTableSchema(dbSessionId, tableName)
       .then((schema) => {
         if (cancelled || schema.columns.length === 0) return;
         setLoadedColumns(schema.columns);
@@ -86,7 +86,7 @@ export function ExportDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, connectionId, tableName, columns]);
+  }, [open, dbSessionId, tableName, columns]);
 
   const toggleColumn = useCallback((col: string) => {
     setSelectedCols((prev) => {
@@ -144,7 +144,7 @@ export function ExportDialog({
     try {
       const colNames = loadedColumns.map((c) => c.name).filter((n) => selectedCols.has(n));
       if (scope === 'entire_table') {
-        if (!connectionId) {
+        if (!dbSessionId) {
           throw new Error('Missing connection');
         }
         if (!isStreamableExportFormat(format)) {
@@ -152,7 +152,7 @@ export function ExportDialog({
         }
         const pkName = loadedColumns.find((c) => c.isPrimaryKey)?.name;
         const result = await streamTableExportToSaveDialog({
-          connectionId,
+          dbSessionId,
           tableName,
           columns: colNames,
           format,
@@ -201,7 +201,7 @@ export function ExportDialog({
     scope,
     format,
     databaseType,
-    connectionId,
+    dbSessionId,
     onClose,
   ]);
 

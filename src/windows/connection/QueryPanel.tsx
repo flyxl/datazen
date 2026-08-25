@@ -83,9 +83,10 @@ import { formatLastConnected } from '../../lib/formatters';
 
 interface QueryPanelProps {
   panelId: string;
-  connectionId: string;
+  /** Live database session id used for every query this panel issues. */
+  dbSessionId: string;
   /** Persistent saved-connection ID (stable across restarts). */
-  configId: string;
+  connectionId: string;
   databaseType?: string;
 }
 
@@ -113,7 +114,7 @@ function hasSuspiciousPostgresDoubleQuotedLiteral(sql: string): boolean {
   return /(?:=|<>|!=|\bLIKE\b|\bILIKE\b)\s*"[^"]+"/i.test(sql);
 }
 
-export function QueryPanel({ panelId, connectionId, configId, databaseType }: QueryPanelProps) {
+export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }: QueryPanelProps) {
   const { t } = useI18n();
   const exec = useQueryExec(panelId);
   const historyVisible = usePanelStore((s) => s.historyVisible);
@@ -230,7 +231,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
 
   useEffect(() => {
     void ensureNamespacePath([]);
-  }, [connectionId, currentDatabase, ensureNamespacePath]);
+  }, [dbSessionId, currentDatabase, ensureNamespacePath]);
 
   useEffect(() => {
     if (isPathHierarchy) return;
@@ -293,9 +294,9 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
   }, [exec.sql, syncContextFromSql]);
 
   useEffect(() => {
-    void loadHistory(configId);
-    void loadFavorites(configId);
-  }, [configId, loadHistory, loadFavorites]);
+    void loadHistory(connectionId);
+    void loadFavorites(connectionId);
+  }, [connectionId, loadHistory, loadFavorites]);
 
   useEffect(() => {
     const names = tablesReferencedInSql(exec.sql);
@@ -314,11 +315,11 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
 
   const refreshTxStatus = useCallback(async () => {
     try {
-      setInTransaction(await queryCommands.sessionTransactionStatus(connectionId));
+      setInTransaction(await queryCommands.sessionTransactionStatus(dbSessionId));
     } catch {
       setInTransaction(false);
     }
-  }, [connectionId]);
+  }, [dbSessionId]);
 
   useEffect(() => {
     void refreshTxStatus();
@@ -327,51 +328,51 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
   const handleBeginTx = useCallback(async () => {
     setTxBusy(true);
     try {
-      await queryCommands.beginSessionTransaction(connectionId);
+      await queryCommands.beginSessionTransaction(dbSessionId);
       await refreshTxStatus();
     } catch (e) {
       console.warn(e);
     } finally {
       setTxBusy(false);
     }
-  }, [connectionId, refreshTxStatus]);
+  }, [dbSessionId, refreshTxStatus]);
 
   const handleCommitTx = useCallback(async () => {
     setTxBusy(true);
     try {
-      await queryCommands.commitSessionTransaction(connectionId);
+      await queryCommands.commitSessionTransaction(dbSessionId);
       await refreshTxStatus();
     } catch (e) {
       console.warn(e);
     } finally {
       setTxBusy(false);
     }
-  }, [connectionId, refreshTxStatus]);
+  }, [dbSessionId, refreshTxStatus]);
 
   const handleRollbackTx = useCallback(async () => {
     setTxBusy(true);
     try {
-      await queryCommands.rollbackSessionTransaction(connectionId);
+      await queryCommands.rollbackSessionTransaction(dbSessionId);
       await refreshTxStatus();
     } catch (e) {
       console.warn(e);
     } finally {
       setTxBusy(false);
     }
-  }, [connectionId, refreshTxStatus]);
+  }, [dbSessionId, refreshTxStatus]);
 
   const maybeOfferAbortedDialog = useCallback(
     async (error: string | null | undefined) => {
       await refreshTxStatus();
       const stillInTx = await queryCommands
-        .sessionTransactionStatus(connectionId)
+        .sessionTransactionStatus(dbSessionId)
         .catch(() => false);
       if (stillInTx || isAbortedTransactionError(error)) {
         setTxAbortedDetail(error ?? null);
         setTxAbortedOpen(true);
       }
     },
-    [connectionId, refreshTxStatus],
+    [dbSessionId, refreshTxStatus],
   );
 
   const runExecute = useCallback(
@@ -389,7 +390,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
       );
       if (!autoCommit && !inTransaction) {
         try {
-          await queryCommands.beginSessionTransaction(connectionId);
+          await queryCommands.beginSessionTransaction(dbSessionId);
           setInTransaction(true);
         } catch {
           /* driver may not support transactions; continue */
@@ -418,7 +419,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
       panelId,
       autoCommit,
       inTransaction,
-      configId,
+      connectionId,
       storeExecuteSelection,
       storeExecuteQuery,
       boundPayload,
@@ -472,7 +473,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
   const handleAbortedRollback = useCallback(async () => {
     setTxBusy(true);
     try {
-      await queryCommands.rollbackSessionTransaction(connectionId);
+      await queryCommands.rollbackSessionTransaction(dbSessionId);
       await refreshTxStatus();
     } catch (e) {
       console.warn(e);
@@ -481,7 +482,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
       setTxAbortedOpen(false);
       setTxAbortedDetail(null);
     }
-  }, [connectionId, refreshTxStatus]);
+  }, [dbSessionId, refreshTxStatus]);
 
   const handleAbortedSkip = useCallback(() => {
     setTxAbortedOpen(false);
@@ -514,7 +515,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
     setExplainError(null);
     setShowExplain(true);
     try {
-      const result = await queryCommands.getExplain(connectionId, exec.sql);
+      const result = await queryCommands.getExplain(dbSessionId, exec.sql);
       setExplainResult(result);
     } catch (e) {
       setExplainResult(null);
@@ -522,7 +523,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
     } finally {
       setExplainLoading(false);
     }
-  }, [connectionId, exec.sql]);
+  }, [dbSessionId, exec.sql]);
 
   const openAddFavoriteDialog = useCallback((sql: string) => {
     const trimmed = sql.trim();
@@ -626,7 +627,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
             onClearHistory: () => {
               void (async () => {
                 await queryCommands.clearQueryHistory();
-                await loadHistory(configId);
+                await loadHistory(connectionId);
               })();
             },
           },
@@ -634,7 +635,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
         { x: e.clientX, y: e.clientY },
       );
     },
-    [t, configId, loadHistory],
+    [t, connectionId, loadHistory],
   );
 
   // Group by recorded session database; default scope shows only this panel's
@@ -670,9 +671,9 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
   const handleClearHistory = useCallback(() => {
     void (async () => {
       await queryCommands.clearQueryHistory();
-      await loadHistory(configId);
+      await loadHistory(connectionId);
     })();
-  }, [configId, loadHistory]);
+  }, [connectionId, loadHistory]);
 
   // Keep event bridge for E2E / menubar emit compatibility.
   useEffect(() => {
@@ -839,7 +840,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
           {/* NL2SQL panel (collapsible, aligned with editor) */}
           {nl2sqlVisible && (
             <Nl2SqlPanel
-              connectionId={connectionId}
+              dbSessionId={dbSessionId}
               database={currentDatabase ?? ''}
               onSqlChange={handleApplyAiSql}
             />
@@ -886,7 +887,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && favoriteName.trim()) {
-                        void storeAddFavorite(favoriteName.trim(), favoriteDialogSql, configId);
+                        void storeAddFavorite(favoriteName.trim(), favoriteDialogSql, connectionId);
                         setFavoriteName('');
                         setShowFavoriteDialog(false);
                       }
@@ -913,7 +914,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
                     disabled={!favoriteName.trim()}
                     onClick={() => {
                       if (favoriteName.trim()) {
-                        void storeAddFavorite(favoriteName.trim(), favoriteDialogSql, configId);
+                        void storeAddFavorite(favoriteName.trim(), favoriteDialogSql, connectionId);
                         setFavoriteName('');
                         setShowFavoriteDialog(false);
                       }
@@ -968,7 +969,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
                 )}
                 {!explainLoading && explainResult && (
                   <ExplainPanel
-                    connectionId={connectionId}
+                    dbSessionId={dbSessionId}
                     sql={exec.sql}
                     explainOutput={explainResult.planText}
                     planJson={explainResult.planJson}
@@ -996,7 +997,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
                 </div>
                 {diagnosisVisible && currentDatabase && (
                   <DiagnosisPanel
-                    connectionId={connectionId}
+                    dbSessionId={dbSessionId}
                     database={currentDatabase}
                     sql={exec.sql}
                     errorMessage={exec.error}
@@ -1346,7 +1347,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
               }
               const created = await dashboardCommands.createWidgetFromSql({
                 dashboardId: targetId,
-                connectionId: configId,
+                connectionId,
                 sql: exec.sql,
                 title:
                   (

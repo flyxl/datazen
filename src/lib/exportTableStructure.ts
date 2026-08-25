@@ -6,12 +6,12 @@ import type { DatabaseType } from '../types';
 export type ExportTableStructureResult = 'saved' | 'cancelled' | 'unsupported';
 
 export interface ExportTableStructureOptions {
-  connectionId: string;
+  dbSessionId: string;
   tableName: string;
   databaseType: DatabaseType;
   /** Injectable for tests */
   getDdl?: (
-    connectionId: string,
+    dbSessionId: string,
     tableName: string,
     sql: string,
     extract: (rows: unknown[][]) => string,
@@ -32,7 +32,7 @@ export async function exportTableStructureToFile(
   options: ExportTableStructureOptions,
 ): Promise<ExportTableStructureResult> {
   const {
-    connectionId,
+    dbSessionId,
     tableName,
     databaseType,
     getDdl = getCachedDDL,
@@ -45,7 +45,7 @@ export async function exportTableStructureToFile(
   }
 
   const { sql, extractColumnIndex } = dialect.ddl.getTableDdlQuery(tableName);
-  const ddl = await getDdl(connectionId, tableName, sql, (rows) => {
+  const ddl = await getDdl(dbSessionId, tableName, sql, (rows) => {
     const row = rows[0] as unknown[] | undefined;
     const val = row?.[extractColumnIndex];
     return typeof val === 'string' ? val : val != null ? String(val) : '';

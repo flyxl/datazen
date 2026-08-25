@@ -148,7 +148,8 @@ function routeFor(type: string): PluginPermission | null | undefined {
 }
 
 interface CommandInvokePayload {
-  configId: string;
+  /** Persistent connection id (plugin-visible protocol key). */
+  connectionId: string;
   command: string;
   args?: Record<string, unknown>;
 }
@@ -197,38 +198,39 @@ async function handleGetActiveConnection() {
   );
   if (!connected) return { connection: null };
   const configs = await loadConnections();
-  const config = configs.find((c) => c.id === connected.configId);
+  const config = configs.find((c) => c.id === connected.connectionId);
   return { connection: config ? toPublicConnection(config) : null };
 }
 
 async function handleCommandInvoke(pluginId: string, payload: unknown) {
   const p = (payload ?? {}) as Partial<CommandInvokePayload>;
-  const configId = asString(p.configId);
+  const connectionId = asString(p.connectionId);
   const command = asString(p.command);
-  if (!configId || !command || (typeof p.args !== 'undefined' && typeof p.args !== 'object')) {
+  if (!connectionId || !command || (typeof p.args !== 'undefined' && typeof p.args !== 'object')) {
     throw new BridgeApiError(
       BRIDGE_ERROR.BAD_REQUEST,
-      'command.invoke requires {configId, command, args?}',
+      'command.invoke requires {connectionId, command, args?}',
     );
   }
   // Audit trail without leaking argument contents into logs. The same line
   // lands in {dataDir}/logs/datazen.log via the extension_audit_log command so
   // the webview console is not the only durable record.
-  console.info(`[extension:${pluginId}] command.invoke ${command} via ${configId}`);
-  pluginCommands.auditLog(pluginId, 'command.invoke', `${command} via ${configId}`);
+  console.info(`[extension:${pluginId}] command.invoke ${command} via ${connectionId}`);
+  pluginCommands.auditLog(pluginId, 'command.invoke', `${command} via ${connectionId}`);
+  // Resolve the live db session for the persistent connection id; when the
+  // host has not tracked that connection, fall through with the raw id — the
+  // backend's resolve_session accepts both shapes (dual-mode).
+  const entry = useActiveConnectionStore.getState().connections[connectionId];
+  const dbSessionId = asString(entry?.dbSessionId) ?? connectionId;
   try {
     const result = await driverCommands.execute({
-      // Plugin-visible protocol still sends `configId` (W3 will switch it);
-      // the IPC request field is now dbSessionId. We pass the config
-      // connection id through — backend resolve_session accepts both shapes,
-      // so behavior is unchanged. W3 将提供显式 connectionId 目标参数。
-      dbSessionId: configId,
+      dbSessionId,
       command,
       input: (p.args ?? {}) as Record<string, unknown>,
     });
     return { result: result.data };
   } catch (error) {
-    // Unknown configId/command surface from the backend as rejection text.
+    // Unknown connectionId/command surface from the backend as rejection text.
     const message = error instanceof Error ? error.message : String(error ?? '');
     if (/not found|no such|unknown/i.test(message)) {
       throw new BridgeApiError(BRIDGE_ERROR.NOT_FOUND, message);

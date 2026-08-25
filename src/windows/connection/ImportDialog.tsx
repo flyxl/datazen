@@ -18,7 +18,7 @@ import { useI18n } from '../../hooks/useI18n';
 interface ImportDialogProps {
   open: boolean;
   onClose: () => void;
-  connectionId: string;
+  dbSessionId: string;
   tableName: string | null;
   onImported: () => void;
   databaseType?: string;
@@ -27,7 +27,7 @@ interface ImportDialogProps {
 export function ImportDialog({
   open: isOpen,
   onClose,
-  connectionId,
+  dbSessionId,
   tableName,
   onImported,
   databaseType,
@@ -88,7 +88,7 @@ export function ImportDialog({
         return;
       }
 
-      const queryResult = await queryCommands.executeQuery(connectionId, sql);
+      const queryResult = await queryCommands.executeQuery(dbSessionId, sql);
       const totalAffected = queryResult.results.reduce(
         (sum: number, r: { rowsAffected?: number }) => sum + (r.rowsAffected ?? 0),
         0,
@@ -100,7 +100,7 @@ export function ImportDialog({
     } finally {
       setImporting(false);
     }
-  }, [parsedData, targetTable, connectionId, onImported, databaseType, t]);
+  }, [parsedData, targetTable, dbSessionId, onImported, databaseType, t]);
 
   return (
     <Dialog

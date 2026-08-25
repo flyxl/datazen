@@ -18,8 +18,8 @@ vi.mock('../contentViewHelpers', () => ({
 }));
 
 const baseContext: ConnectionContext = {
-  configId: 'cfg-1',
-  connectionId: 'conn-1',
+  connectionId: 'cfg-1',
+  dbSessionId: 'conn-1',
   connectionName: 'Local PG',
   databaseType: 'postgresql',
 };
@@ -99,8 +99,8 @@ describe('ConnectionWorkspaceHome', () => {
       {
         id: 'panel-1',
         type: 'query' as const,
-        connectionId: 'conn-1',
-        configId: 'cfg-1',
+        connectionId: 'cfg-1',
+        dbSessionId: 'conn-1',
         connectionName: 'Local PG',
         databaseType: 'postgresql' as const,
         label: 'Query 1',

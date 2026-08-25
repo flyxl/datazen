@@ -42,9 +42,9 @@ function extractError(e: unknown): string {
   return t('query.executeFailed');
 }
 
-async function notifySchemaChangedIfNeeded(connectionId: string, sql: string): Promise<void> {
+async function notifySchemaChangedIfNeeded(dbSessionId: string, sql: string): Promise<void> {
   if (!sqlContainsSchemaChangingDdl(sql)) return;
-  await emitCrossWindow('datazen:refresh-connection', { connectionId });
+  await emitCrossWindow('datazen:refresh-connection', { dbSessionId });
 }
 
 let streamRunCounter = 0;
@@ -62,7 +62,7 @@ export function patchExec(
 
 export async function runStreamingQuery(
   panelId: string,
-  connectionId: string,
+  dbSessionId: string,
   sql: string,
   getExec: () => Map<string, QueryExecState>,
   setExec: (exec: Map<string, QueryExecState>) => void,
@@ -87,13 +87,13 @@ export async function runStreamingQuery(
   };
 
   try {
-    await queryCommands.executeQueryStream(connectionId, sql, onEvent);
+    await queryCommands.executeQueryStream(dbSessionId, sql, onEvent);
     const exec = getExec().get(panelId);
     if (exec && exec.streamRunId === runId) {
       const viewMode = resolvePostQueryViewMode(exec.results[0]);
       setExec(patchExec(getExec(), panelId, { resultViewMode: viewMode, running: false }));
       if (!exec.error) {
-        await notifySchemaChangedIfNeeded(connectionId, sql);
+        await notifySchemaChangedIfNeeded(dbSessionId, sql);
       }
     }
   } catch (e) {
@@ -106,7 +106,7 @@ export async function runStreamingQuery(
 
 export async function runBoundQuery(
   panelId: string,
-  connectionId: string,
+  dbSessionId: string,
   sql: string,
   params: BindParams,
   getExec: () => Map<string, QueryExecState>,
@@ -115,7 +115,7 @@ export async function runBoundQuery(
   setExec(patchExec(getExec(), panelId, { running: true, error: null }));
 
   try {
-    const multi = await queryCommands.executeQuery(connectionId, sql, params);
+    const multi = await queryCommands.executeQuery(dbSessionId, sql, params);
     const viewMode = resolvePostQueryViewMode(multi.results[0]);
     setExec(
       patchExec(getExec(), panelId, {
@@ -127,7 +127,7 @@ export async function runBoundQuery(
         resultViewMode: viewMode,
       }),
     );
-    await notifySchemaChangedIfNeeded(connectionId, sql);
+    await notifySchemaChangedIfNeeded(dbSessionId, sql);
   } catch (e) {
     setExec(
       patchExec(getExec(), panelId, {

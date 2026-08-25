@@ -112,8 +112,8 @@ async function saveAndConnect(cfg: typeof PG_SRC): Promise<string> {
   return invokeBackend<string>('connect', { connectionId: cfg.id });
 }
 
-async function runSQL(connectionId: string, sql: string): Promise<void> {
-  const run = () => invokeBackend('execute_query', { connectionId, sql });
+async function runSQL(dbSessionId: string, sql: string): Promise<void> {
+  const run = () => invokeBackend('execute_query', { dbSessionId, sql });
   if (sqlBlockedBySafeMode(sql)) {
     await withSafeModeOff(run);
     return;

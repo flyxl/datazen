@@ -11,13 +11,13 @@ import { getSqlDialect } from '../../lib/sqlDialects';
 import type { DatabaseType } from '../../types';
 
 interface DDLViewProps {
-  connectionId: string;
+  dbSessionId: string;
   tableName: string;
   databaseType?: string;
   isView?: boolean;
 }
 
-export function DDLView({ connectionId, tableName, databaseType, isView }: DDLViewProps) {
+export function DDLView({ dbSessionId, tableName, databaseType, isView }: DDLViewProps) {
   const { t } = useI18n();
   const [ddl, setDdl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -42,7 +42,7 @@ export function DDLView({ connectionId, tableName, databaseType, isView }: DDLVi
         ? dialect.ddl.getViewDdlQuery(tableName)
         : dialect.ddl.getTableDdlQuery(tableName);
 
-    getCachedDDL(connectionId, tableName, sql, (rows) => {
+    getCachedDDL(dbSessionId, tableName, sql, (rows) => {
       const row = rows[0];
       const val = row?.[extractColumnIndex];
       return typeof val === 'string' ? val : val != null ? String(val) : `-- ${t('ddl.getFailed')}`;
@@ -65,7 +65,7 @@ export function DDLView({ connectionId, tableName, databaseType, isView }: DDLVi
     return () => {
       cancelled = true;
     };
-  }, [connectionId, tableName, databaseType, isView, t]);
+  }, [dbSessionId, tableName, databaseType, isView, t]);
 
   const handleCopy = useCallback(async () => {
     if (!ddl) return;

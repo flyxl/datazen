@@ -82,7 +82,7 @@ describe('Client parity P0–P2', () => {
     expect(settings.safeMode).toBe(true);
     const err = await invokeBackendCatch('execute_driver_command', {
       request: {
-        connectionId: pgId,
+        dbSessionId: pgId,
         command: 'query',
         input: { sql: 'UPDATE _e2e_missing SET x = 1' },
       },
@@ -93,7 +93,7 @@ describe('Client parity P0–P2', () => {
   it('Safe Mode blocks DROP', async () => {
     const err = await invokeBackendCatch('execute_driver_command', {
       request: {
-        connectionId: pgId,
+        dbSessionId: pgId,
         command: 'query',
         input: { sql: 'DROP TABLE IF EXISTS _e2e_should_not_drop' },
       },
@@ -106,7 +106,7 @@ describe('Client parity P0–P2', () => {
       'execute_driver_command',
       {
         request: {
-          connectionId: pgId,
+          dbSessionId: pgId,
           command: 'query',
           input: { sql: 'SELECT :n::int AS n', params: { n: 7 } },
         },
@@ -116,17 +116,17 @@ describe('Client parity P0–P2', () => {
   });
 
   it('session transaction begin/commit/rollback', async () => {
-    await invokeBackend('begin_session_transaction', { connectionId: pgId });
-    expect(await invokeBackend<boolean>('session_transaction_status', { connectionId: pgId })).toBe(
+    await invokeBackend('begin_session_transaction', { dbSessionId: pgId });
+    expect(await invokeBackend<boolean>('session_transaction_status', { dbSessionId: pgId })).toBe(
       true,
     );
-    await invokeBackend('rollback_session_transaction', { connectionId: pgId });
-    expect(await invokeBackend<boolean>('session_transaction_status', { connectionId: pgId })).toBe(
+    await invokeBackend('rollback_session_transaction', { dbSessionId: pgId });
+    expect(await invokeBackend<boolean>('session_transaction_status', { dbSessionId: pgId })).toBe(
       false,
     );
-    await invokeBackend('begin_session_transaction', { connectionId: pgId });
-    await invokeBackend('commit_session_transaction', { connectionId: pgId });
-    expect(await invokeBackend<boolean>('session_transaction_status', { connectionId: pgId })).toBe(
+    await invokeBackend('begin_session_transaction', { dbSessionId: pgId });
+    await invokeBackend('commit_session_transaction', { dbSessionId: pgId });
+    expect(await invokeBackend<boolean>('session_transaction_status', { dbSessionId: pgId })).toBe(
       false,
     );
   });
@@ -134,7 +134,7 @@ describe('Client parity P0–P2', () => {
   it('lists routines and privileges on PostgreSQL', async () => {
     for (const kind of ['function', 'procedure', 'trigger'] as const) {
       const rows = await invokeBackend<{ name: string }[]>('get_database_objects', {
-        connectionId: pgId,
+        dbSessionId: pgId,
         kind,
       });
       expect(Array.isArray(rows)).toBe(true);
@@ -142,7 +142,7 @@ describe('Client parity P0–P2', () => {
         expect(typeof row.name).toBe('string');
       }
     }
-    const grants = await invokeBackend<unknown[]>('get_privileges', { connectionId: pgId });
+    const grants = await invokeBackend<unknown[]>('get_privileges', { dbSessionId: pgId });
     expect(Array.isArray(grants)).toBe(true);
   });
 
@@ -176,7 +176,7 @@ describe('Client parity P0–P2', () => {
     const liveId = await invokeBackend<string>('connect', { connectionId: 'conn_e2e_readonly' });
     const err = await invokeBackendCatch('execute_driver_command', {
       request: {
-        connectionId: liveId,
+        dbSessionId: liveId,
         command: 'query',
         input: { sql: 'UPDATE pg_catalog.pg_class SET relname = relname WHERE false' },
       },

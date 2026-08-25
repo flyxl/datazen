@@ -24,9 +24,8 @@ const TAB_LABEL_KEYS: Record<
 };
 
 export function RedisConnectionView({
-  // Host prop stays `connectionId` until W3 renames ConnectionViewProps;
-  // internally the redis UI uses the new name — the value is a db session id.
-  connectionId: dbSessionId,
+  // W3 host contract: `dbSessionId` = live runtime session id.
+  dbSessionId,
   connectionName,
   initialDatabase,
   hideSidebar,
