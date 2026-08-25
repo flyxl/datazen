@@ -115,8 +115,8 @@
           <ul>
             <li>Database 列表 + Key 浏览器，支持 String / Hash / List / Set / ZSet / Stream</li>
             <li>类型与 TTL 一目了然，点开即看字段值</li>
-            <li>内置 SSH 隧道（纯 Rust）、凭据加密落盘、Host Key TOFU 校验</li>
-            <li>连接密码 AES-256-GCM 加密，主密钥入系统钥匙串</li>
+            <li>内置 SSH 隧道、凭据加密存储、首次连接校验主机指纹</li>
+            <li>连接密码加密存储，主密钥在系统钥匙串</li>
           </ul>
         </div>
         <img class="feature-shot" src="../assets/screenshots/15-redis.png" alt="Redis 专属视图" />
@@ -126,9 +126,7 @@
         <div>
           <span class="kicker">ER 图</span>
           <h2>表关系一目了然</h2>
-          <p>
-            自动生成数据库 ER 图（React Flow 渲染），外键关系、表结构可视化，适合快速理解陌生库。
-          </p>
+          <p>自动生成数据库 ER 图，外键关系、表结构可视化，适合快速理解陌生库。</p>
         </div>
         <img class="feature-shot" src="../assets/screenshots/16-er.png" alt="ER 图" />
       </div>
