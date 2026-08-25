@@ -6,6 +6,8 @@
 
 ### 1.1 命令定义
 
+> **注意**：下方为简化示意代码，实际实现位于 `src-tauri/src/commands/`。ID 术语：入参 `connection_id` = 持久化配置连接 id；`db_session_id` = 运行时会话 id（由 `connect` 返回）。SQL/Schema 类命令一律接收 `db_session_id`。
+
 ```rust
 // src-tauri/src/commands/mod.rs
 
@@ -62,13 +64,13 @@ pub async fn test_connection(
         .map_err(|e| e.to_string())
 }
 
-/// 建立连接
+/// 建立连接（入参为持久化配置连接 id，返回运行时 db_session_id）
 #[tauri::command]
 pub async fn connect(
     state: State<'_, AppState>,
-    config_id: String,
+    connection_id: String,
 ) -> Result<String, String> {
-    state.connection_manager.connect(&config_id).await
+    state.connection_manager.connect(&connection_id).await
         .map_err(|e| e.to_string())
 }
 
@@ -76,9 +78,9 @@ pub async fn connect(
 #[tauri::command]
 pub async fn disconnect(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<(), String> {
-    state.connection_manager.disconnect(&connection_id).await
+    state.connection_manager.disconnect(&db_session_id).await
         .map_err(|e| e.to_string())
 }
 
@@ -88,10 +90,10 @@ pub async fn disconnect(
 #[tauri::command]
 pub async fn get_databases(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<Vec<String>, String> {
     let (driver, handle) = state.connection_manager
-        .get_connection(&connection_id).await
+        .get_connection(&db_session_id).await
         .map_err(|e| e.to_string())?;
     
     driver.get_databases(&handle).await
@@ -102,11 +104,11 @@ pub async fn get_databases(
 #[tauri::command]
 pub async fn get_tables(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     database: String,
 ) -> Result<Vec<TableInfo>, String> {
     let (driver, handle) = state.connection_manager
-        .get_connection(&connection_id).await
+        .get_connection(&db_session_id).await
         .map_err(|e| e.to_string())?;
     
     driver.get_tables(&handle, &database).await
@@ -117,11 +119,11 @@ pub async fn get_tables(
 #[tauri::command]
 pub async fn get_table_schema(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     table: String,
 ) -> Result<TableSchema, String> {
     let (driver, handle) = state.connection_manager
-        .get_connection(&connection_id).await
+        .get_connection(&db_session_id).await
         .map_err(|e| e.to_string())?;
     
     driver.get_table_schema(&handle, &table).await
@@ -132,20 +134,23 @@ pub async fn get_table_schema(
 #[tauri::command]
 pub async fn execute_query(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     sql: String,
 ) -> Result<QueryResult, String> {
     let (driver, handle) = state.connection_manager
-        .get_connection(&connection_id).await
+        .get_connection(&db_session_id).await
         .map_err(|e| e.to_string())?;
     
     let result = driver.query(&handle, &sql).await
         .map_err(|e| e.to_string())?;
     
-    // 记录查询历史
+    // 记录查询历史：connection_id 字段存归属的持久化配置连接 id，
+    // 由运行时会话解析（见 ConnectionManager::owner_connection_id）。
     let history_entry = QueryHistoryEntry {
         id: uuid::Uuid::new_v4().to_string(),
-        connection_id: connection_id.clone(),
+        connection_id: state.connection_manager
+            .owner_connection_id(&db_session_id).await
+            .unwrap_or_default(),
         database: String::new(),
         sql: sql.clone(),
         executed_at: chrono::Utc::now(),
@@ -164,11 +169,11 @@ pub async fn execute_query(
 #[tauri::command]
 pub async fn get_explain(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     sql: String,
 ) -> Result<ExplainResult, String> {
     let (driver, handle) = state.connection_manager
-        .get_connection(&connection_id).await
+        .get_connection(&db_session_id).await
         .map_err(|e| e.to_string())?;
     
     driver.explain(&handle, &sql).await
@@ -181,7 +186,7 @@ pub async fn get_explain(
 #[tauri::command]
 pub async fn get_table_data(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     table: String,
     page: u32,
     page_size: u32,
@@ -189,13 +194,13 @@ pub async fn get_table_data(
     sorts: Option<Vec<SortCondition>>,
 ) -> Result<TableDataResult, String> {
     let (driver, handle) = state.connection_manager
-        .get_connection(&connection_id).await
+        .get_connection(&db_session_id).await
         .map_err(|e| e.to_string())?;
     
     let executor = QueryExecutor { schema_cache: state.schema_cache.clone() };
     executor.get_table_data(
         &driver, &handle,
-        &connection_id, "", &table,
+        &db_session_id, "", &table,
         page, page_size, filters, 
         sorts.map(|s| s.first().cloned()).flatten(),
     ).await.map_err(|e| e.to_string())
@@ -205,10 +210,10 @@ pub async fn get_table_data(
 #[tauri::command]
 pub async fn cancel_query(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<(), String> {
     let (driver, handle) = state.connection_manager
-        .get_connection(&connection_id).await
+        .get_connection(&db_session_id).await
         .map_err(|e| e.to_string())?;
     
     driver.cancel_query(&handle).await

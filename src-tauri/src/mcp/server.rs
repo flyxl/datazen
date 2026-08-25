@@ -1289,11 +1289,43 @@ mod tests {
             _ => panic!("expected text resource"),
         }
 
+        // Seed one row so the resource contract below is exercised on real output.
+        test.store
+            .add_query_history(crate::store::QueryHistoryEntry {
+                id: "hist-1".into(),
+                connection_id: "res-inner".into(),
+                database: "app".into(),
+                schema: None,
+                sql: "SELECT 1".into(),
+                executed_at: chrono::Utc::now(),
+                execution_time_ms: 1,
+                rows_affected: None,
+                success: true,
+                error_message: None,
+            })
+            .await
+            .expect("add_query_history");
+
         let hist = server
             .read_resource_inner("datazen://query-history")
             .await
             .unwrap();
+        // External contract: history entries must serialize with `connectionId`
+        // (camelCase of `connection_id`); the legacy `configId` key is gone.
         assert!(!hist.contents.is_empty());
+        match &hist.contents[0] {
+            ResourceContents::TextResourceContents { text, .. } => {
+                assert!(
+                    text.contains("\"connectionId\""),
+                    "query-history resource must expose connectionId, got: {text}"
+                );
+                assert!(
+                    !text.contains("configId"),
+                    "legacy configId key must not appear in resource output"
+                );
+            }
+            _ => panic!("expected text resource"),
+        }
 
         let schema_uri = format!("datazen://schema/{conn_id}/app");
         let schema = server.read_resource_inner(&schema_uri).await.unwrap();

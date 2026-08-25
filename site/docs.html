@@ -1672,7 +1672,7 @@ output:
                 import/export.<br />Source of truth: <code>src-tauri/src/dashboard/</code>,
                 <code>src-tauri/src/monitor/</code>,
                 <code>src/windows/dashboard/</code>.<br />Dashboards reference saved connections by
-                <strong><code>configId</code></strong> (same as MCP). Dashboard files never store
+                <strong><code>connectionId</code></strong> (same as MCP). Dashboard files never store
                 database passwords.
               </p>
             </blockquote>
@@ -1707,7 +1707,7 @@ output:
                 <tr>
                   <td>Connection isolation</td>
                   <td>
-                    Monitor uses <code>monitor:{configId}</code> handles, separate from UI query
+                    Monitor uses <code>monitor:{connectionId}</code> handles, separate from UI query
                     sessions
                   </td>
                 </tr>
@@ -1802,7 +1802,7 @@ output:
                   <td>Tile title</td>
                 </tr>
                 <tr>
-                  <td><code>configId</code></td>
+                  <td><code>connectionId</code></td>
                   <td>Saved connection id (create the connection first)</td>
                 </tr>
                 <tr>
@@ -1901,7 +1901,7 @@ output:
             <h2 id="3-quick-start">3. Quick start</h2>
             <h3 id="31-prerequisites">3.1 Prerequisites</h3>
             <ol>
-              <li>At least one <strong>saved</strong> connection (<code>configId</code>).</li>
+              <li>At least one <strong>saved</strong> connection (<code>connectionId</code>).</li>
               <li>SQL must match the target dialect; monitor opens its own connection.</li>
               <li>(Optional) Allow DataZen notifications in the OS.</li>
               <li>
@@ -2028,7 +2028,7 @@ UNION ALL SELECT &#39;Gamma&#39;, 150
             <h3 id="71-monitorengine">7.1 MonitorEngine</h3>
             <p>
               On app start the engine schedules enabled widgets by <code>refreshSec</code>, limits
-              concurrency, and serializes work per <code>configId</code>. Default query timeout is
+              concurrency, and serializes work per <code>connectionId</code>. Default query timeout is
               about <strong>60s</strong>.
             </p>
             <h3 id="72-tray-settings-monitor">7.2 Tray (Settings → Monitor)</h3>
@@ -2081,7 +2081,7 @@ UNION ALL SELECT &#39;Gamma&#39;, 150
             <h3 id="81-single-file-dashboard">8.1 Single-file dashboard</h3>
             <p>
               Export writes definition-only JSON (no run history, no passwords). Import may assign a
-              new id on conflict. Target machines need matching <code>configId</code> connections or
+              new id on conflict. Target machines need matching <code>connectionId</code> connections or
               you must rebind widgets.
             </p>
             <h3 id="82-app-data-zip">8.2 App-data ZIP</h3>
@@ -2144,7 +2144,7 @@ UNION ALL SELECT &#39;Gamma&#39;, 150
                 </tr>
                 <tr>
                   <td>Widget always errors</td>
-                  <td>Bad <code>configId</code>, SQL, network/ACL</td>
+                  <td>Bad <code>connectionId</code>, SQL, network/ACL</td>
                   <td>Rebind connection; validate SQL in a query tab</td>
                 </tr>
                 <tr>
