@@ -95,7 +95,7 @@ DATAZEN_DRIVERS=all pnpm tauri:build
 
 ### MCP
 
-Server 暴露 Tools/Resources/Prompts（DB tools 使用持久化 `config_id`）；Client 连接外部 MCP Server；`--mcp-stdio` 启动无头模式。详见 [docs/architecture/backend/mcp.md](docs/architecture/backend/mcp.md)。
+Server 暴露 Tools/Resources/Prompts（DB tools 使用持久化 `connection_id`）；Client 连接外部 MCP Server；`--mcp-stdio` 启动无头模式。详见 [docs/architecture/backend/mcp.md](docs/architecture/backend/mcp.md)。
 
 ## Workflows
 
@@ -119,6 +119,10 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 - 右键菜单统一使用 Web Context Menu，禁止 Tauri 原生 `Menu.popup()`
 - **主题包 DataTable 色**：`--dt-*` token + `src/lib/dataTypeColors.ts`（CellRenderer、StructureView、TableHeader 等共用）
 - **Data Synchronization ≠ Transfer ≠ Structure Sync**：Sync 仅同族 + 结构/PK 完全一致；异构 IR 是 Transfer。详见 [docs/architecture/backend/data-sync.md](docs/architecture/backend/data-sync.md)
+
+## ID 术语
+
+**`connectionId`** = 持久化连接配置 id（原 configId，落盘）；**`dbSessionId`** = 运行时数据库会话 id（内存态，永不落盘）。配置/归属/调度语义用 connectionId，操作已建立会话用 dbSessionId；新代码不得依赖 `resolve_session` 双模回退。详见 [docs/architecture/naming.md](docs/architecture/naming.md)。
 
 ## IPC 通信
 

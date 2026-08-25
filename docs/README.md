@@ -61,6 +61,7 @@
 
 | 文档 | 内容 |
 |------|------|
+| [naming](architecture/naming.md) | ID 术语规范：connectionId / dbSessionId 定义、流转与守护规则 |
 | [security](architecture/security.md) | 加密、CSP、路径遍历防护、AI Key 安全 |
 | [windows](architecture/windows.md) | 主工作区 Page 导航、子窗口、windowKind 路由 |
 | [testing](architecture/testing.md) | 测试策略总览（单测 / E2E 分层与落点） |
