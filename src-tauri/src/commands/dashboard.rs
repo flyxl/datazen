@@ -7,70 +7,21 @@ use super::AppState;
 use crate::dashboard::create::{
     create_widget_from_sql as create_widget_from_sql_impl,
     create_widget_from_workflow as create_widget_from_workflow_impl,
-    update_hidden_workflow_sql as update_hidden_workflow_sql_impl, CreateWidgetError,
-    CreateWidgetResult,
+    update_hidden_workflow_sql as update_hidden_workflow_sql_impl, CreateWidgetResult,
 };
-use crate::dashboard::export::{export_dashboard_json, import_dashboard, DashboardExportError};
-use crate::dashboard::runs::{get_run, list_run_index, DashboardRunsError, RunIndexEntry};
+use crate::dashboard::export::{export_dashboard_json, import_dashboard};
+use crate::dashboard::runs::{get_run, list_run_index, RunIndexEntry};
 use crate::dashboard::store::{
     delete_dashboard as store_delete_dashboard, find_workflow_refs,
     get_dashboard as store_get_dashboard, list_dashboards as store_list_dashboards,
     save_dashboard as store_save_dashboard,
-    set_dashboard_refresh_paused as store_set_refresh_paused, DashboardStoreError,
+    set_dashboard_refresh_paused as store_set_refresh_paused,
 };
 use crate::dashboard::types::{ChartConfig, Dashboard, DashboardWidget, ViewMode, WidgetRun};
 
-fn map_store_error(err: DashboardStoreError) -> CommandError {
-    match err {
-        DashboardStoreError::NotFound(id) => CommandError::NotFound(id),
-        DashboardStoreError::Parse(msg) => CommandError::Validation(msg),
-        DashboardStoreError::Db(crate::store::AppDbError::NotFound(id)) => {
-            CommandError::NotFound(id)
-        }
-        DashboardStoreError::Db(e) => CommandError::Internal(e.to_string()),
-    }
-}
-
-fn map_runs_error(err: DashboardRunsError) -> CommandError {
-    match err {
-        DashboardRunsError::NotFound(id) => CommandError::NotFound(id),
-        DashboardRunsError::Parse(msg) => CommandError::Validation(msg),
-        DashboardRunsError::Db(e) => CommandError::Internal(e.to_string()),
-    }
-}
-
-fn map_execute_error(err: crate::dashboard::execute::DashboardExecuteError) -> CommandError {
-    match err {
-        crate::dashboard::execute::DashboardExecuteError::Workflow(msg) => {
-            CommandError::Validation(msg)
-        }
-        crate::dashboard::execute::DashboardExecuteError::Runs(e) => map_runs_error(e),
-        crate::dashboard::execute::DashboardExecuteError::Store(e) => map_store_error(e),
-    }
-}
-
-fn map_export_error(err: DashboardExportError) -> CommandError {
-    match err {
-        DashboardExportError::Validation(msg) => CommandError::Validation(msg),
-        DashboardExportError::Io(e) => CommandError::Io(e),
-        DashboardExportError::Store(e) => map_store_error(e),
-        DashboardExportError::Database(e) => CommandError::Internal(e.to_string()),
-    }
-}
-
-fn map_create_error(err: CreateWidgetError) -> CommandError {
-    match err {
-        CreateWidgetError::Validation(msg) => CommandError::Validation(msg),
-        CreateWidgetError::Workflow(msg) => CommandError::Validation(msg),
-        CreateWidgetError::Store(e) => map_store_error(e),
-    }
-}
-
 pub(crate) async fn list_dashboards_impl(state: &AppState) -> Result<Vec<Dashboard>, CommandError> {
     let app_db = state.store.app_db();
-    store_list_dashboards(&app_db)
-        .map_err(map_store_error)
-        .cmd_err("list_dashboards")
+    store_list_dashboards(&app_db).cmd_err("list_dashboards")
 }
 
 pub(crate) async fn get_dashboard_impl(
@@ -79,9 +30,7 @@ pub(crate) async fn get_dashboard_impl(
 ) -> Result<Dashboard, CommandError> {
     tracing::debug!(%id, "get_dashboard");
     let app_db = state.store.app_db();
-    store_get_dashboard(&app_db, &id)
-        .map_err(map_store_error)
-        .cmd_err("get_dashboard")
+    store_get_dashboard(&app_db, &id).cmd_err("get_dashboard")
 }
 
 pub(crate) async fn save_dashboard_impl(
@@ -91,18 +40,13 @@ pub(crate) async fn save_dashboard_impl(
     tracing::info!(id = %dashboard.id, "save_dashboard");
     let app_db = state.store.app_db();
     let id = dashboard.id.clone();
-    store_save_dashboard(&app_db, dashboard)
-        .map_err(map_store_error)
-        .cmd_err("save_dashboard")?;
+    store_save_dashboard(&app_db, dashboard).cmd_err("save_dashboard")?;
     state
         .monitor_engine
         .reload_from_store()
         .await
-        .map_err(map_store_error)
         .cmd_err("save_dashboard")?;
-    store_get_dashboard(&app_db, &id)
-        .map_err(map_store_error)
-        .cmd_err("save_dashboard")
+    store_get_dashboard(&app_db, &id).cmd_err("save_dashboard")
 }
 
 pub(crate) async fn delete_dashboard_impl(
@@ -111,14 +55,11 @@ pub(crate) async fn delete_dashboard_impl(
 ) -> Result<(), CommandError> {
     tracing::info!(%id, "delete_dashboard");
     let app_db = state.store.app_db();
-    store_delete_dashboard(&app_db, &id)
-        .map_err(map_store_error)
-        .cmd_err("delete_dashboard")?;
+    store_delete_dashboard(&app_db, &id).cmd_err("delete_dashboard")?;
     state
         .monitor_engine
         .reload_from_store()
         .await
-        .map_err(map_store_error)
         .cmd_err("delete_dashboard")
 }
 
@@ -128,14 +69,11 @@ pub(crate) async fn set_dashboard_refresh_paused_impl(
     paused: bool,
 ) -> Result<(), CommandError> {
     let app_db = state.store.app_db();
-    store_set_refresh_paused(&app_db, &id, paused)
-        .map_err(map_store_error)
-        .cmd_err("set_dashboard_refresh_paused")?;
+    store_set_refresh_paused(&app_db, &id, paused).cmd_err("set_dashboard_refresh_paused")?;
     state
         .monitor_engine
         .reload_from_store()
         .await
-        .map_err(map_store_error)
         .cmd_err("set_dashboard_refresh_paused")
 }
 
@@ -144,9 +82,7 @@ pub(crate) fn find_dashboard_workflow_refs_impl(
     workflow_id: String,
 ) -> Result<Vec<crate::dashboard::types::DashboardWorkflowRef>, CommandError> {
     let app_db = state.store.app_db();
-    find_workflow_refs(&app_db, &workflow_id)
-        .map_err(map_store_error)
-        .cmd_err("find_dashboard_workflow_refs")
+    find_workflow_refs(&app_db, &workflow_id).cmd_err("find_dashboard_workflow_refs")
 }
 
 #[tauri::command]
@@ -199,9 +135,7 @@ pub(crate) async fn list_widget_runs_impl(
     limit: usize,
 ) -> Result<Vec<RunIndexEntry>, CommandError> {
     let app_db = state.store.app_db();
-    list_run_index(&app_db, &dashboard_id, &widget_id, limit)
-        .map_err(map_runs_error)
-        .cmd_err("list_widget_runs")
+    list_run_index(&app_db, &dashboard_id, &widget_id, limit).cmd_err("list_widget_runs")
 }
 
 pub(crate) async fn get_widget_run_impl(
@@ -211,9 +145,7 @@ pub(crate) async fn get_widget_run_impl(
     run_id: String,
 ) -> Result<WidgetRun, CommandError> {
     let app_db = state.store.app_db();
-    get_run(&app_db, &dashboard_id, &widget_id, &run_id)
-        .map_err(map_runs_error)
-        .cmd_err("get_widget_run")
+    get_run(&app_db, &dashboard_id, &widget_id, &run_id).cmd_err("get_widget_run")
 }
 
 #[tauri::command]
@@ -243,7 +175,7 @@ pub(crate) async fn run_dashboard_widget_impl(
 ) -> Result<WidgetRun, CommandError> {
     tracing::info!(%dashboard_id, %widget_id, "run_dashboard_widget");
     let app_db = state.store.app_db();
-    let dashboard = store_get_dashboard(&app_db, &dashboard_id).map_err(map_store_error)?;
+    let dashboard = store_get_dashboard(&app_db, &dashboard_id)?;
     let widget = dashboard
         .widgets
         .iter()
@@ -255,7 +187,6 @@ pub(crate) async fn run_dashboard_widget_impl(
         .monitor_engine
         .tick_widget(&dashboard_id, &widget)
         .await
-        .map_err(map_execute_error)
         .cmd_err("run_dashboard_widget")
 }
 
@@ -296,7 +227,6 @@ pub async fn create_widget_from_sql(
         params.chart_config,
     )
     .await
-    .map_err(map_create_error)
     .cmd_err("create_widget_from_sql")
 }
 
@@ -332,7 +262,6 @@ pub async fn update_hidden_widget_sql(
         &params.sql,
     )
     .await
-    .map_err(map_create_error)
     .cmd_err("update_hidden_widget_sql")
 }
 
@@ -351,7 +280,6 @@ pub async fn create_widget_from_workflow(
         params.chart_config,
     )
     .await
-    .map_err(map_create_error)
     .cmd_err("create_widget_from_workflow")
 }
 
@@ -366,7 +294,7 @@ pub async fn export_dashboard_with_dialog(
     use tauri_plugin_dialog::DialogExt;
 
     let app_db = state.store.app_db();
-    let dashboard = store_get_dashboard(&app_db, &dashboard_id).map_err(map_store_error)?;
+    let dashboard = store_get_dashboard(&app_db, &dashboard_id)?;
 
     let picked = app
         .dialog()
@@ -381,7 +309,8 @@ pub async fn export_dashboard_with_dialog(
         .into_path()
         .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
 
-    let json = export_dashboard_json(&app_db, &dashboard).map_err(map_export_error)?;
+    let json =
+        export_dashboard_json(&app_db, &dashboard).cmd_err("export_dashboard_with_dialog")?;
     tokio::fs::write(&dest, json.as_bytes())
         .await
         .cmd_err("export_dashboard_with_dialog")?;
@@ -416,13 +345,11 @@ pub async fn import_dashboard_with_dialog(
     let dashboard = tokio::task::spawn_blocking(move || import_dashboard(&app_db, &bytes))
         .await
         .map_err(|e| CommandError::Internal(format!("import_dashboard_with_dialog task: {e}")))?
-        .map_err(map_export_error)
         .cmd_err("import_dashboard_with_dialog")?;
     state
         .monitor_engine
         .reload_from_store()
         .await
-        .map_err(map_store_error)
         .cmd_err("import_dashboard_with_dialog")?;
     tracing::info!(id = %dashboard.id, "import_dashboard_with_dialog OK");
     Ok(Some(dashboard))
@@ -506,7 +433,7 @@ mod tests {
     fn unknown_dashboard_maps_to_not_found() {
         let db = AppDb::open_in_memory().unwrap();
         let err = store_get_dashboard(&db, "missing-id").unwrap_err();
-        let cmd_err = map_store_error(err);
+        let cmd_err: CommandError = err.into();
         assert!(matches!(cmd_err, CommandError::NotFound(msg) if msg == "missing-id"));
     }
 

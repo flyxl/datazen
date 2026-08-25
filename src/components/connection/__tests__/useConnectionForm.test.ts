@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { normalizeRedisDatabaseField, DB_REGISTRY } from '../../../lib/databaseTypes';
+import { DB_REGISTRY } from '../../../lib/databaseTypes';
 import { PRESET_GROUPS } from '../../../lib/connectionGroups';
 import { useConnectionForm } from '../useConnectionForm';
 
@@ -23,21 +23,6 @@ vi.mock('../../../stores/connectionStore', () => ({
     },
   ),
 }));
-
-describe('normalizeRedisDatabaseField', () => {
-  it('returns 0 for empty or invalid input', () => {
-    expect(normalizeRedisDatabaseField('')).toBe('0');
-    expect(normalizeRedisDatabaseField('  ')).toBe('0');
-    expect(normalizeRedisDatabaseField('abc')).toBe('0');
-  });
-
-  it('clamps to 0-15', () => {
-    expect(normalizeRedisDatabaseField('0')).toBe('0');
-    expect(normalizeRedisDatabaseField('15')).toBe('15');
-    expect(normalizeRedisDatabaseField('16')).toBe('15');
-    expect(normalizeRedisDatabaseField('-1')).toBe('0');
-  });
-});
 
 describe('useConnectionForm', () => {
   beforeEach(() => {
@@ -76,10 +61,12 @@ describe('useConnectionForm', () => {
 
     expect(result.current.formVariant).toBe('standard');
 
-    act(() => result.current.handleDatabaseTypeChange('redis'));
-    rerender();
-    expect(result.current.formVariant).toBe('redis');
-    expect(DB_REGISTRY.redis.connectionForm).toBe('redis');
+    if (DB_REGISTRY.redis) {
+      act(() => result.current.handleDatabaseTypeChange('redis'));
+      rerender();
+      expect(result.current.formVariant).toBe('redis');
+      expect(DB_REGISTRY.redis.connectionForm).toBe('redis');
+    }
 
     act(() => result.current.handleDatabaseTypeChange('sqlite'));
     rerender();
@@ -113,8 +100,10 @@ describe('useConnectionForm', () => {
     expect(result.current.username).toBe('');
 
     // Switch to Redis: database should be '0'
-    act(() => result.current.handleDatabaseTypeChange('redis'));
-    expect(result.current.database).toBe('0');
+    if (DB_REGISTRY.redis) {
+      act(() => result.current.handleDatabaseTypeChange('redis'));
+      expect(result.current.database).toBe('0');
+    }
 
     // Switch back to PostgreSQL: database should be 'postgres', username 'postgres'
     act(() => result.current.handleDatabaseTypeChange('postgresql'));

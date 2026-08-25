@@ -79,7 +79,9 @@ describe('RunHistoryDrawer', () => {
     await waitFor(() => expect(mockListWidgetRuns).toHaveBeenCalledWith('dash-1', 'w1', 50));
     await waitFor(() => expect(mockGetWidgetRun).toHaveBeenCalledWith('dash-1', 'w1', 'run-1'));
     expect(screen.getByTestId('run-history-drawer')).toBeInTheDocument();
-    expect(screen.getByTestId('mock-chart-canvas')).toBeInTheDocument();
+    // The chart renders only after the loading flag commits; poll so CI load
+    // cannot observe the transient loader frame.
+    await waitFor(() => expect(screen.getByTestId('mock-chart-canvas')).toBeInTheDocument());
   });
 
   it('loads a different run when an index entry is selected', async () => {

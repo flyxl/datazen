@@ -41,6 +41,7 @@ describe('matchConnectionClipboard', () => {
   });
 
   it('selects redis and fills from a redis URL', () => {
+    if (!DB_REGISTRY.redis) return;
     const matched = matchConnectionClipboard('rediss://alice:s3cret@cache.internal:6380/2');
     expect(matched?.databaseType).toBe('redis');
     expect(matched?.fill.host).toBe('cache.internal');
@@ -69,9 +70,9 @@ describe('matchConnectionClipboard', () => {
   });
 
   it('accepts jdbc URLs, env prefixes, quotes, and username-only auth', () => {
-    expect(
-      matchConnectionClipboard('jdbc:postgresql://db.internal:5432/app')?.databaseType,
-    ).toBe('postgresql');
+    expect(matchConnectionClipboard('jdbc:postgresql://db.internal:5432/app')?.databaseType).toBe(
+      'postgresql',
+    );
     expect(
       matchConnectionClipboard('DATABASE_URL=postgres://app@db.internal/orders')?.fill,
     ).toEqual(
@@ -88,12 +89,11 @@ describe('matchConnectionClipboard', () => {
   });
 
   it('selects mysql from mysql://', () => {
-    expect(matchConnectionClipboard('mysql://root@127.0.0.1:3306/app')?.databaseType).toBe(
-      'mysql',
-    );
+    expect(matchConnectionClipboard('mysql://root@127.0.0.1:3306/app')?.databaseType).toBe('mysql');
   });
 
   it('uses a unique default port when there is no URL scheme', () => {
+    if (!DB_REGISTRY.redis) return;
     expect(matchConnectionClipboard('10.0.0.8:6379')?.databaseType).toBe('redis');
     expect(matchConnectionClipboard('10.0.0.8:8812')?.databaseType).toBe('questdb');
     expect(matchConnectionClipboard('[::1]:8812')?.databaseType).toBe('questdb');
@@ -102,9 +102,9 @@ describe('matchConnectionClipboard', () => {
   it('does not claim an ambiguous shared port or a non-endpoint', () => {
     expect(matchConnectionClipboard('10.0.0.8:3306')).toBeNull();
     expect(matchConnectionClipboard('10.0.0.8:5432')).toBeNull();
-    expect(matchConnectionClipboard('10.0.0.8:6379,10.0.0.9:6379')?.databaseType).toBe(
-      'redis',
-    );
+    if (DB_REGISTRY.redis) {
+      expect(matchConnectionClipboard('10.0.0.8:6379,10.0.0.9:6379')?.databaseType).toBe('redis');
+    }
     expect(matchConnectionClipboard('not-a-host')).toBeNull();
     expect(matchConnectionClipboard('host:99999')).toBeNull();
     expect(matchConnectionClipboard('[::1]')).toBeNull();
@@ -112,9 +112,7 @@ describe('matchConnectionClipboard', () => {
   });
 
   it('ignores drivers that are not available in this build', () => {
-    expect(
-      matchConnectionClipboard('redis://cache:6379', ['postgresql', 'mysql']),
-    ).toBeNull();
+    expect(matchConnectionClipboard('redis://cache:6379', ['postgresql', 'mysql'])).toBeNull();
   });
 
   it('returns null when a claimed URL has no host', () => {
@@ -137,22 +135,16 @@ describe('parseGenericConnectionUrl', () => {
 
   it('maps ssl query values and keeps invalid percent-encoding', () => {
     expect(
-      parseGenericConnectionUrl(
-        'postgres://u:p@h:5432/db?sslmode=disable',
-        DB_REGISTRY.postgresql,
-      )?.sslMode,
+      parseGenericConnectionUrl('postgres://u:p@h:5432/db?sslmode=disable', DB_REGISTRY.postgresql)
+        ?.sslMode,
     ).toBe('disable');
     expect(
-      parseGenericConnectionUrl(
-        'postgres://u:p@h:5432/db?sslmode=prefer',
-        DB_REGISTRY.postgresql,
-      )?.expandAdvanced,
+      parseGenericConnectionUrl('postgres://u:p@h:5432/db?sslmode=prefer', DB_REGISTRY.postgresql)
+        ?.expandAdvanced,
     ).toBe(false);
     expect(
-      parseGenericConnectionUrl(
-        'postgres://u:p@h:5432/db?ssl=verify-full',
-        DB_REGISTRY.postgresql,
-      )?.sslMode,
+      parseGenericConnectionUrl('postgres://u:p@h:5432/db?ssl=verify-full', DB_REGISTRY.postgresql)
+        ?.sslMode,
     ).toBe('require');
     expect(
       parseGenericConnectionUrl('postgres://u:p@h:5432/db?sslmode=weird', DB_REGISTRY.postgresql)

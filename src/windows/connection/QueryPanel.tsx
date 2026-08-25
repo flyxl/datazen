@@ -5,7 +5,6 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
-  type ReactNode,
 } from 'react';
 import {
   CirclePlay,
@@ -27,6 +26,8 @@ import {
 } from 'lucide-react';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '../../components/ui/Button';
+import { ToolbarShell } from '../../components/ui/ToolbarShell';
+import { ToolbarButton } from '../../components/ui/ToolbarButton';
 import { SqlEditor } from '../../components/SqlEditor';
 import type { SqlEditorHandle } from '../../components/SqlEditor';
 import { buildEditorSchema } from '../../lib/buildEditorSchema';
@@ -76,7 +77,6 @@ import { parseSqlParams, paramsToPayload } from '../../lib/sqlBindParams';
 import { BindParamPanel } from '../../components/query/BindParamPanel';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { ExplainResult, StatementResult } from '../../types';
-import type { ButtonProps } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { analyzeTransactionSql, isAbortedTransactionError } from '../../lib/sqlTransactionGuard';
 import { formatLastConnected } from '../../lib/formatters';
@@ -88,26 +88,6 @@ interface QueryPanelProps {
   /** Persistent saved-connection ID (stable across restarts). */
   connectionId: string;
   databaseType?: string;
-}
-
-interface ToolbarButtonProps extends ButtonProps {
-  compact: boolean;
-  label: string;
-  icon: ReactNode;
-}
-
-function ToolbarButton({ compact, label, icon, className, title, ...props }: ToolbarButtonProps) {
-  return (
-    <Button
-      {...props}
-      title={title ?? label}
-      aria-label={label}
-      className={cn('shrink-0', compact ? 'h-7 px-1.5' : 'h-7 gap-1 px-2 text-xs', className)}
-    >
-      {icon}
-      <span className={cn(compact && 'sr-only')}>{label}</span>
-    </Button>
-  );
 }
 
 function hasSuspiciousPostgresDoubleQuotedLiteral(sql: string): boolean {
@@ -693,10 +673,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Toolbar */}
-      <div
-        ref={toolbarRef}
-        className="flex h-9 shrink-0 flex-nowrap items-center gap-2 overflow-x-auto border-b border-edge bg-surface-alt px-3"
-      >
+      <ToolbarShell ref={toolbarRef} className="h-9 flex-nowrap overflow-x-auto px-3">
         <QueryContextSelectors
           isMultiDb={isMultiDb}
           isPathHierarchy={isPathHierarchy}
@@ -826,7 +803,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
           icon={<Sparkles className="h-3.5 w-3.5" />}
           onClick={() => setNl2sqlVisible((v) => !v)}
         />
-      </div>
+      </ToolbarShell>
 
       <BindParamPanel
         params={sqlParams}

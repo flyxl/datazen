@@ -137,7 +137,7 @@ describe('windowManager — browser', () => {
     expect(vi.mocked(window.open).mock.calls.length).toBe(openCallsBeforeWorkflow);
 
     openDocsWindow('workflows');
-    expect(window.open).toHaveBeenLastCalledWith(`${DOCS_BASE_EN}#workflows`, '_blank', 'noopener');
+    expect(window.open).toHaveBeenLastCalledWith(`${DOCS_BASE_EN}#workflow`, '_blank', 'noopener');
     expect(mockOpenPath).not.toHaveBeenCalled();
 
     const openCallsBeforeDashboard = vi.mocked(window.open).mock.calls.length;

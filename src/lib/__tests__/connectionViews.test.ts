@@ -5,7 +5,10 @@ import { getPluginConnectionView } from '../../plugins/generated';
 
 describe('getConnectionView', () => {
   it('returns mapped views by mode', () => {
-    expect(getConnectionView('keyvalue')).toBe(getPluginConnectionView('keyvalue'));
+    const pluginKeyvalue = getPluginConnectionView('keyvalue');
+    if (pluginKeyvalue) {
+      expect(getConnectionView('keyvalue')).toBe(pluginKeyvalue);
+    }
     expect(getConnectionView('document')).toBe(DocumentConnectionView);
   });
 

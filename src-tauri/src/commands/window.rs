@@ -72,18 +72,22 @@ fn resolved_window_background(app: &AppHandle, override_hex: Option<&str>) -> Co
     window_background_color(cached.as_deref().or(override_hex))
 }
 
-const DOCS_BASE_EN: &str = "https://flyxl.github.io/datazen/docs.html";
-const DOCS_BASE_ZH: &str = "https://flyxl.github.io/datazen/zh/docs.html";
+const DOCS_BASE_EN: &str = "https://flyxl.github.io/datazen/manual.html";
+const DOCS_BASE_ZH: &str = "https://flyxl.github.io/datazen/zh/manual.html";
 
-const DOCS_SECTIONS: &[&str] = &[
-    "overview",
-    "features",
-    "ai",
-    "context",
-    "workflows",
-    "opsDashboard",
-    "schemaDiff",
-];
+/// Legacy section ids (from the removed docs.html) mapped to the closest
+/// manual.html anchors. Mirrors `src/lib/docsUrls.ts`.
+fn remap_section(section: &str) -> Option<&'static str> {
+    match section {
+        "overview" => Some("ui"),
+        "features" => Some("charts"),
+        "ai" | "context" => Some("ai"),
+        "workflows" => Some("workflow"),
+        "opsDashboard" => Some("dashboard"),
+        "schemaDiff" => Some("sync"),
+        _ => None,
+    }
+}
 
 /// Official help docs URL (GitHub Pages). Mirrors `src/lib/docsUrls.ts`.
 pub fn docs_url(language: &str, section: Option<&str>) -> String {
@@ -93,8 +97,8 @@ pub fn docs_url(language: &str, section: Option<&str>) -> String {
         DOCS_BASE_EN
     };
     if let Some(section) = section.map(str::trim).filter(|s| !s.is_empty()) {
-        if DOCS_SECTIONS.contains(&section) {
-            return format!("{base}#{section}");
+        if let Some(anchor) = remap_section(section) {
+            return format!("{base}#{anchor}");
         }
     }
     base.to_string()
@@ -340,8 +344,31 @@ mod tests {
         assert_eq!(docs_url("zh-CN", None), DOCS_BASE_ZH);
         assert_eq!(
             docs_url("zh-TW", Some("workflows")),
-            format!("{DOCS_BASE_ZH}#workflows")
+            format!("{DOCS_BASE_ZH}#workflow")
         );
+    }
+
+    #[test]
+    fn docs_url_remaps_legacy_sections_to_manual_anchors() {
+        let cases = [
+            ("overview", "ui"),
+            ("features", "charts"),
+            ("ai", "ai"),
+            ("context", "ai"),
+            ("workflows", "workflow"),
+            ("opsDashboard", "dashboard"),
+            ("schemaDiff", "sync"),
+        ];
+        for (legacy, anchor) in cases {
+            assert_eq!(
+                docs_url("en", Some(legacy)),
+                format!("{DOCS_BASE_EN}#{anchor}")
+            );
+            assert_eq!(
+                docs_url("zh-CN", Some(legacy)),
+                format!("{DOCS_BASE_ZH}#{anchor}")
+            );
+        }
     }
 
     #[test]

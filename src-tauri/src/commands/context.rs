@@ -158,19 +158,11 @@ pub(crate) async fn read_context_paths(
     paths: &[String],
 ) -> Result<Vec<(String, String)>, CommandError> {
     let mut results = Vec::new();
-    let canonical_base = dir.canonicalize().cmd_err("context_read_files")?;
 
     for rel_path in paths {
         let full_path = dir.join(rel_path);
         // Security: ensure resolved path is under context_dir
-        let canonical = full_path.canonicalize().map_err(|e| {
-            CommandError::Validation(format!("Cannot resolve path {rel_path}: {e}"))
-        })?;
-        if !canonical.starts_with(&canonical_base) {
-            return Err(CommandError::Validation(
-                "Path traversal not allowed".into(),
-            ));
-        }
+        let canonical = super::error::assert_under_dir(dir, &full_path, "context_read_files")?;
 
         if canonical.is_dir() {
             // Read all allowed files in directory recursively
@@ -178,7 +170,7 @@ pub(crate) async fn read_context_paths(
             for file_path in files {
                 if let Ok(content) = read_single_file(&file_path).await {
                     let display = file_path
-                        .strip_prefix(&canonical_base)
+                        .strip_prefix(dir)
                         .unwrap_or(&file_path)
                         .to_string_lossy()
                         .to_string();

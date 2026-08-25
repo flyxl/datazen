@@ -84,11 +84,28 @@ afterEach(() => {
 });
 
 describe('PluginPageShell bridge wiring (F6)', () => {
+  /** Wait for the post-commit attach effect; returns the bridge handle. */
+  async function waitForAttachedHandle(): Promise<ReturnType<typeof makeHandle>> {
+    await vi.waitFor(
+      () => {
+        expect(attachBridgeMock.mock.results.length).toBeGreaterThan(0);
+      },
+      { timeout: 5_000 },
+    );
+    return attachBridgeMock.mock.results[0].value as ReturnType<typeof makeHandle>;
+  }
   it('attaches the bridge once with the shell iframe, manifest permissions and locale', async () => {
     render(<PluginPageShell tab={makeTab()} active />);
     await screen.findByTestId('plugin-iframe', {}, { timeout: 5_000 });
 
-    expect(attachBridgeMock).toHaveBeenCalledTimes(1);
+    // The bridge attach runs in a post-commit effect; under CI load the iframe
+    // can be observed one paint before that effect lands. Poll briefly.
+    await vi.waitFor(
+      () => {
+        expect(attachBridgeMock).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 5_000 },
+    );
     const [iframeEl, opts] = attachBridgeMock.mock.calls[0] as [
       HTMLIFrameElement,
       Record<string, unknown>,
@@ -102,7 +119,7 @@ describe('PluginPageShell bridge wiring (F6)', () => {
   it('pushes a theme snapshot on datazen:theme-pack-changed', async () => {
     render(<PluginPageShell tab={makeTab()} active />);
     await screen.findByTestId('plugin-iframe', {}, { timeout: 5_000 });
-    const handle = attachBridgeMock.mock.results[0].value as ReturnType<typeof makeHandle>;
+    const handle = await waitForAttachedHandle();
     expect(handle.pushThemeSnapshot).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -121,7 +138,7 @@ describe('PluginPageShell bridge wiring (F6)', () => {
   it('pushes a theme snapshot when documentElement class mutates (dark/light switch)', async () => {
     render(<PluginPageShell tab={makeTab()} active />);
     await screen.findByTestId('plugin-iframe', {}, { timeout: 5_000 });
-    const handle = attachBridgeMock.mock.results[0].value as ReturnType<typeof makeHandle>;
+    const handle = await waitForAttachedHandle();
 
     document.documentElement.classList.add('dark');
     await flushObserver();
@@ -140,7 +157,7 @@ describe('PluginPageShell bridge wiring (F6)', () => {
   it('detaches on unmount and stops reacting to theme triggers afterwards', async () => {
     const { unmount } = render(<PluginPageShell tab={makeTab()} active />);
     await screen.findByTestId('plugin-iframe', {}, { timeout: 5_000 });
-    const handle = attachBridgeMock.mock.results[0].value as ReturnType<typeof makeHandle>;
+    const handle = await waitForAttachedHandle();
 
     unmount();
     expect(handle.detach).toHaveBeenCalledTimes(1);
@@ -160,7 +177,7 @@ describe('PluginPageShell bridge wiring (F6)', () => {
     await act(async () => {});
     expect(screen.getByTestId('plugin-iframe')).toBeInTheDocument();
 
-    const firstHandle = attachBridgeMock.mock.results[0].value as ReturnType<typeof makeHandle>;
+    const firstHandle = await waitForAttachedHandle();
 
     // Watchdog fires → reload UI → click remounts the iframe with a new key.
     await act(async () => {
