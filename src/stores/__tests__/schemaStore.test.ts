@@ -3,7 +3,6 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../../commands/database', () => ({
   databaseCommands: {
     getDatabases: vi.fn().mockResolvedValue(['testdb']),
-    useDatabase: vi.fn().mockResolvedValue(undefined),
     getTables: vi.fn().mockResolvedValue([
       { name: 'users', tableType: 'TABLE', schema: 'public', rowCount: null },
       { name: 'products', tableType: 'TABLE', schema: 'public', rowCount: null },
@@ -248,10 +247,9 @@ describe('schemaStore.loadTables', () => {
     expect(databaseCommands.getColumns).not.toHaveBeenCalled();
   });
 
-  it('calls useDatabase before getTables', async () => {
+  it('loads tables for the pinned database without a use_database IPC (F1)', async () => {
     await useSchemaStore.getState().loadTables('testdb');
 
-    expect(databaseCommands.useDatabase).toHaveBeenCalledWith('test-conn', 'testdb');
     expect(databaseCommands.getTables).toHaveBeenCalledWith('test-conn', 'testdb');
   });
 
@@ -298,10 +296,9 @@ describe('schemaStore.switchDatabase', () => {
     vi.useRealTimers();
   });
 
-  it('switches the session database and updates the editor context via setLoadedTables', async () => {
+  it('switches the local database context via setLoadedTables (no use_database IPC)', async () => {
     await useSchemaStore.getState().switchDatabase('otherdb');
 
-    expect(databaseCommands.useDatabase).toHaveBeenCalledWith('test-conn', 'otherdb');
     expect(databaseCommands.getTables).toHaveBeenCalledWith('test-conn', 'otherdb');
     const state = useSchemaStore.getState();
     expect(state.currentDatabase).toBe('otherdb');

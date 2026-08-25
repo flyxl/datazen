@@ -229,15 +229,11 @@ export function UnifiedSchemaTree({
 
   const activateDatabase = useCallback(
     async (dbName: string, items: TableInfo[]) => {
+      // F1: no use_database IPC — setLoadedTables keeps the local active
+      // database; query commands pin it explicitly instead.
       setLoadedTables(dbName, items);
-      try {
-        const { databaseCommands } = await import('../../../commands/database');
-        await databaseCommands.useDatabase(connectionId, dbName);
-      } catch {
-        // best-effort
-      }
     },
-    [connectionId, setLoadedTables],
+    [setLoadedTables],
   );
 
   const handleToggleDb = useCallback(

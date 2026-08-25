@@ -515,13 +515,17 @@ export const ConnectionNavigatorTree = forwardRef<
       const cached = dbTablesMap[tableKey];
       if (cached) {
         useSchemaStore.getState().setLoadedTables(dbName, cached, dbSessionId);
+        return;
       }
-      try {
-        const { databaseCommands } = await import('../../commands/database');
-        await databaseCommands.useDatabase(dbSessionId, dbName);
-      } catch {
-        // Selection still updates; query path may fail until user retries.
-      }
+      // F1: no use_database IPC — track the active database as local UI state;
+      // query commands pin it explicitly and the backend switches lazily.
+      useSchemaStore.setState((state) => {
+        const entry = state.schemas.get(dbSessionId);
+        if (!entry || entry.currentDatabase === dbName) return state;
+        const next = new Map(state.schemas);
+        next.set(dbSessionId, { ...entry, currentDatabase: dbName });
+        return { ...state, schemas: next };
+      });
     },
     [dbTablesMap],
   );
@@ -1273,8 +1277,8 @@ export const ConnectionNavigatorTree = forwardRef<
                           conn.database,
                         );
                         if (fallback) {
-                          const { databaseCommands } = await import('../../commands/database');
-                          await databaseCommands.useDatabase(dbSessionId, fallback);
+                          // F1: no use_database IPC — move the local active
+                          // database to the fallback and refresh tables.
                           const cached = dbTablesMap[`${dbSessionId}::${fallback}`];
                           if (cached) {
                             useSchemaStore
@@ -1283,10 +1287,16 @@ export const ConnectionNavigatorTree = forwardRef<
                           } else {
                             useSchemaStore.setState((state) => {
                               const entry = state.schemas.get(dbSessionId);
-                              if (!entry) return state;
-                              const next = new Map(state.schemas);
-                              next.set(dbSessionId, { ...entry, currentDatabase: fallback });
-                              return { ...state, schemas: next };
+                              let schemas = state.schemas;
+                              if (entry) {
+                                schemas = new Map(state.schemas);
+                                schemas.set(dbSessionId, { ...entry, currentDatabase: fallback });
+                              }
+                              return {
+                                ...state,
+                                schemas,
+                                currentDatabase: state.currentDatabase === dbName ? fallback : state.currentDatabase,
+                              };
                             });
                           }
                         }

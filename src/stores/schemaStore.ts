@@ -415,7 +415,6 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
       if (!dbSessionId) return;
       commitConnectionPatch(dbSessionId, { loading: true, error: null });
       try {
-        await databaseCommands.useDatabase(dbSessionId, database);
         const all = await databaseCommands.getTables(dbSessionId, database);
         get().setLoadedTables(database, all, dbSessionId);
         const schema = get().schemas.get(dbSessionId);
@@ -436,7 +435,8 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
       if (!dbSessionId) return;
       commitConnectionPatch(dbSessionId, { loading: true, error: null });
       try {
-        await databaseCommands.useDatabase(dbSessionId, database);
+        // F1: no use_database IPC — currentDatabase is local UI state; query
+        // commands pin the database explicitly and the backend switches lazily.
         const all = await databaseCommands.getTables(dbSessionId, database);
         get().setLoadedTables(database, all, dbSessionId);
         commitConnectionPatch(dbSessionId, { loading: false });
@@ -505,7 +505,6 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
           get().registerPathAliases(entries, dbSessionId),
         getDatabases: databaseCommands.getDatabases,
         getTables: databaseCommands.getTables,
-        useDatabase: databaseCommands.useDatabase,
       };
       const pending = namespaceEnsurePending(segments, deps);
       if (pending) {

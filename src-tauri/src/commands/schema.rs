@@ -26,37 +26,6 @@ pub(crate) async fn get_databases_impl(
     Ok(dbs)
 }
 
-pub(crate) async fn use_database_impl(
-    state: &AppState,
-    db_session_id: String,
-    database: String,
-) -> Result<(), CommandError> {
-    let start = Instant::now();
-    tracing::info!(%db_session_id, %database, "use_database");
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("use_database")?;
-
-    driver
-        .use_database(&handle, &database)
-        .await
-        .cmd_err("use_database")?;
-    state
-        .connection_manager
-        .set_active_database(&db_session_id, &database)
-        .await
-        .cmd_err("use_database")?;
-    tracing::info!(
-        %db_session_id,
-        %database,
-        ms = start.elapsed().as_millis() as u64,
-        "use_database OK"
-    );
-    Ok(())
-}
-
 pub(crate) async fn get_tables_impl(
     state: &AppState,
     db_session_id: String,
@@ -362,15 +331,6 @@ pub async fn get_databases(
 }
 
 #[tauri::command]
-pub async fn use_database(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    database: String,
-) -> Result<(), CommandError> {
-    use_database_impl(&state, db_session_id, database).await
-}
-
-#[tauri::command]
 pub async fn get_tables(
     state: State<'_, AppState>,
     db_session_id: String,
@@ -449,10 +409,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(dbs, vec!["app"]);
-
-        use_database_impl(&test.state, conn_id.clone(), "app".into())
-            .await
-            .unwrap();
 
         let tables = get_tables_impl(&test.state, conn_id.clone(), "app".into())
             .await

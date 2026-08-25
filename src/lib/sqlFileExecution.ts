@@ -43,8 +43,6 @@ export async function runSqlFileExecution({
   command = 'execute_sql_file_with_dialog',
   successMessageKey = 'backup.restoreSuccess',
 }: RunSqlFileExecutionOptions): Promise<boolean> {
-  await invoke('use_database', { dbSessionId, database });
-
   const options: string[] = [];
 
   if (confirmBeforeExecute) {

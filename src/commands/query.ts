@@ -38,8 +38,9 @@ export const queryCommands = {
     });
   },
 
-  getExplain: (dbSessionId: string, sql: string) =>
-    invoke<ExplainResult>('get_explain', { dbSessionId, sql }),
+  /** `database` pins the session to a database for this explain (F1: no use_database IPC). */
+  getExplain: (dbSessionId: string, sql: string, database?: string | null) =>
+    invoke<ExplainResult>('get_explain', { dbSessionId, sql, database: database ?? null }),
 
   cancelQuery: (dbSessionId: string) => invoke<void>('cancel_query', { dbSessionId }),
 

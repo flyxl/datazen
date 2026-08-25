@@ -67,6 +67,7 @@ pub struct MockDriver {
     query_calls: AtomicU32,
     last_query_limit: Mutex<Option<Option<u32>>>,
     open_txs: Mutex<HashSet<String>>,
+    use_database_calls: Mutex<Vec<String>>,
 }
 
 impl MockDriver {
@@ -79,7 +80,13 @@ impl MockDriver {
             query_calls: AtomicU32::new(0),
             last_query_limit: Mutex::new(None),
             open_txs: Mutex::new(HashSet::new()),
+            use_database_calls: Mutex::new(Vec::new()),
         })
+    }
+
+    /// Databases passed to `use_database`, in call order (F1 session-switch tests).
+    pub fn use_database_calls(&self) -> Vec<String> {
+        self.use_database_calls.lock().ok().map(|g| g.clone()).unwrap_or_default()
     }
 
     pub fn last_query_limit(&self) -> Option<Option<u32>> {
@@ -286,6 +293,17 @@ impl DatabaseDriver for MockDriver {
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+        Ok(())
+    }
+
+    async fn use_database(
+        &self,
+        _handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<(), DriverError> {
+        if let Ok(mut calls) = self.use_database_calls.lock() {
+            calls.push(database.to_string());
+        }
         Ok(())
     }
 
