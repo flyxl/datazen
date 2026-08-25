@@ -11,7 +11,7 @@
 | W1 | 后端核心与服务层术语落地 | `services/connection_manager.rs` 内部命名（`config_id_map`→`session_owner_map` 等）、错误信息区分两种 id；IPC 契约暂不变 | ✅ **已完成（测试通过，0 缺陷）** | 2026-08-24 | 26 文件 +482/-278；核心模块行覆盖 86.94%~96.74%（≥80% 达标）；185 个 IPC 命令签名零变化；报告见 `test-reports/W1-test-report.md` |
 | W2 | IPC 契约切换（前后端原子批） | Tauri 命令参数改名 + `src/commands/*` 封装同步 + 全部前后端调用点 + **MCP 参数直接改名 `connection_id`（不留 `config_id` 别名）** + **SQLite 列与持久化字段直接改名**（历史库按既有迁移模式做一次性列重命名） | ✅ **已完成**（复测通过，BUG-001/002/003 已修复） | 2026-08-24 | 开发 b962b4cc → 测试不通过 ce2ef15f → 修复 d20aa93a → 复测通过；⚠️ e2e:minimal 环境受阻转收尾强制项 |
 | W3 | 前端状态/类型/组件改名 | `types/index.ts`、stores、`connectionViews/types.ts`、组件 props、跨窗口事件 payload、windowManager、extensionBridge 显式目标 | ✅ **已完成**（复测通过，BUG-004/005 已修复） | 2026-08-24 | 开发 80df9968 → 测试通过附 P2×2（31b92f29）→ 修复 a70f5c19 → 复测通过；八链路语义审计无装反；新发现 BUG-006 转独立闭环 |
-| W4 | 外部契约与文档对齐 | MCP 资源输出字段/tool_help 文档、CHANGELOG 破坏性变更记录（D1）、ops-dashboard 指南等 configId 表述替换 | 未开始 | - | SQLite 列已随 W2 直接改名（D1），原"列名保留"子项作废 |
+| W4 | 外部契约与文档对齐 | 新建 CHANGELOG.md（6 条破坏性变更+迁移指引）、活文档清扫 9 文件、MCP 资源输出字段收口 | ✅ 开发完成（待测试） | 2026-08-24 | 11 文件；门禁：lib 1126 过/2 既有失败、vitest 1890 绿、site SEO 触碰文件全过；grep 遗漏=0 |
 | W5 | 文档与守护 | `docs/architecture/naming.md`、AGENTS.md 精简更新、lint/grep 守护规则 | 未开始 | - | |
 
 收尾：回归测试（**含强制补跑 `pnpm e2e:minimal`**——W2 复测因沙箱 EPERM 环境受阻，报告 R5；合并 main 前必须在无沙箱限制环境通过）→ main 合入 feature 并复验 → 文档更新 → 合并 main。
@@ -52,6 +52,8 @@
 | T3R（复测） | W3 | BUG-004：全仓扫描 0 命中 + 反向注入实验证实用例判别力真实，文件 11 用例全过；BUG-005：SyncTask 15/15 字段对照一致、值语义各就各位、变体扫描=0、data-sync-real 零类型错误；补充审计发现 BUG-006（P1）+ OBS-004/005 | **通过**（BUG-004/005 → 已修复）；回归门禁：host vitest 1887 绿 / drivers 84 绿 / host tsc 零错 | 复测 agent 03c401c9，报告已追加复测轮 + R4 节 |
 | F3（修复轮自测） | W3/W2 | BUG-006：file.ts/batchExportJob.ts 键改 dbSessionId + 3 条 IPC 契约守护测试（键集合双向断言/反向断言/静态锚点）；OBS-005 一行修复 | host vitest **1890 绿**（净增 4）；host tsc 零错；e2e tsc 72→71 | 编码 agent 977851e6 |
 | T4R（复测） | W3/W2 | 修复正确性核对（构造点唯一、注释清理）；守护测试反向注入实验（改回旧键→5 用例失败含 2 条契约守护→恢复后 diff 为空）；OBS-005 修复后 e2e tsc 67=main 基线 | **通过**（BUG-006 → 已修复）；host vitest 1890 绿 / drivers 84 绿 / host tsc 零错 | 复测 agent 03c401c9，报告已追加最终复测节 |
+| D5（开发自测） | W4 | CHANGELOG 6 条破坏性变更；活文档 29 处 token 替换+示例代码重写；MCP 资源定向加固测试（输出含 connectionId 不含 configId） | lib 1126 过 / vitest 1890 绿 / SEO 脚本触碰文件全过；grep 3 处全为合法历史演进说明 | 待独立测试 agent 评估 | 编码 agent 4119a5df |
+| T5（独立测试） | W4 | 待测试 agent 产出 | 待测试 | 待评估 | 全新测试 agent |
 
 ## 四、提交记录
 
@@ -69,7 +71,8 @@
 | a70f5c19 | W3 修复里程碑：BUG-004/005 修复（选中态区分性用例 + data-sync-real 载荷对齐后端契约），bug 状态 → **待验证** |
 | 4568546c | W3 复测里程碑：复测**通过**，BUG-004/005 → 已修复，W3 → 已完成；新登记 BUG-006（P1）+ OBS-004/005 + 进度更新 |
 | 897ce98a | BUG-006 修复里程碑：ExportTablesRequest 键对齐 + 3 条守护测试 + OBS-005，bug 状态 → **待验证** |
-| （本次） | BUG-006 复测里程碑：复测**通过**，BUG-006 → 已修复 + 进度更新 |
+| 5bd0623b | BUG-006 复测里程碑：复测**通过**，BUG-006 → 已修复 + 进度更新 |
+| （本次） | W4 开发里程碑：CHANGELOG + 活文档对齐 + MCP 资源收口 + 进度更新 |
 
 ## 五、决策记录
 
