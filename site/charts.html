@@ -1,102 +1,154 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Charts — DataZen</title>
-  <meta name="description" content="DataZen charts: one-click chart view for query results with smart type recommendations. Line, bar, pie, scatter, area. Export PNG/SVG." />
-  <link rel="canonical" href="https://flyxl.github.io/datazen/charts.html" />
-  <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/charts.html" />
-  <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/charts.html" />
-  <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/charts.html" />
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="Charts — DataZen" />
-  <meta property="og:description" content="DataZen charts: one-click chart view for query results with smart type recommendations. Line, bar, pie, scatter, area. Export PNG/SVG." />
-  <meta property="og:url" content="https://flyxl.github.io/datazen/charts.html" />
-  <meta property="og:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <meta property="og:locale" content="en_US" />
-  <meta property="og:locale:alternate" content="zh_CN" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Charts — DataZen" />
-  <meta name="twitter:description" content="DataZen charts: one-click chart view for query results with smart type recommendations. Line, bar, pie, scatter, area. Export PNG/SVG." />
-  <meta name="twitter:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <link rel="icon" href="assets/logo.png" />
-  <link rel="stylesheet" href="assets/css/site.css" />
-</head>
-<body>
-  <header id="site-header"></header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Charts — DataZen</title>
+    <meta
+      name="description"
+      content="DataZen charts: one-click chart view for query results with smart type recommendations. Line, bar, pie, scatter, area. Export PNG/SVG."
+    />
+    <link rel="canonical" href="https://flyxl.github.io/datazen/charts.html" />
+    <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/charts.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/charts.html" />
+    <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/charts.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Charts — DataZen" />
+    <meta
+      property="og:description"
+      content="DataZen charts: one-click chart view for query results with smart type recommendations. Line, bar, pie, scatter, area. Export PNG/SVG."
+    />
+    <meta property="og:url" content="https://flyxl.github.io/datazen/charts.html" />
+    <meta
+      property="og:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Charts — DataZen" />
+    <meta
+      name="twitter:description"
+      content="DataZen charts: one-click chart view for query results with smart type recommendations. Line, bar, pie, scatter, area. Export PNG/SVG."
+    />
+    <meta
+      name="twitter:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <link rel="icon" href="assets/logo.png" />
+    <link rel="stylesheet" href="assets/css/site.css" />
+  </head>
+  <body>
+    <header id="site-header"></header>
 
-  <section class="page-head">
-    <div class="wrap">
-      <p class="breadcrumb"><a href="index.html">Home</a> / Charts</p>
-      <h1>📊 Charts</h1>
-      <p>No need to export query results to Excel — one click turns a table into a chart. Field types are inferred automatically and chart types are recommended smartly for effortless data exploration.</p>
-    </div>
-  </section>
-
-  <section class="wrap">
-    <div class="feature-block">
-      <div>
-        <span class="kicker">One-Click Switch</span>
-        <h2>Table ↔ chart, zero config</h2>
-        <p>After running a query, switch to chart view with one click above the results. On first switch, smart recommendations run automatically: based on field types and row count, the best chart type and axis configuration are suggested.</p>
-        <ul>
-          <li>Time column + numeric column → line chart (time series)</li>
-          <li>Category column + numeric column → bar / pie chart (comparison and distribution)</li>
-          <li>Multiple numeric columns → scatter plot (correlation)</li>
-          <li>Single numeric column → area chart (trend)</li>
-        </ul>
+    <section class="page-head">
+      <div class="wrap">
+        <p class="breadcrumb"><a href="index.html">Home</a> / Charts</p>
+        <h1>📊 Charts</h1>
+        <p>
+          No need to export query results to Excel — one click turns a table into a chart. Field
+          types are inferred automatically and chart types are recommended smartly for effortless
+          data exploration.
+        </p>
       </div>
-      <img class="feature-shot" src="assets/screenshots/02-query-chart.png" alt="One-click chart switch" />
-    </div>
+    </section>
 
-    <div class="feature-block reverse">
-      <div>
-        <span class="kicker">Five Chart Types</span>
-        <h2>Covers common analysis scenarios</h2>
-        <p>Line, bar, pie, scatter, and area charts — axes, aggregation, and grouping dimensions are all configurable via the toolbar.</p>
-        <ul>
-          <li>Numeric aggregation: sum / avg / count / min / max</li>
-          <li>Multi-dimension grouping: series by a second category column</li>
-          <li>Tooltips show field names, values, and percentages (pie charts)</li>
-          <li>5 preset color palettes + dark theme support</li>
-        </ul>
+    <section class="wrap">
+      <div class="feature-block">
+        <div>
+          <span class="kicker">One-Click Switch</span>
+          <h2>Table ↔ chart, zero config</h2>
+          <p>
+            After running a query, switch to chart view with one click above the results. On first
+            switch, smart recommendations run automatically: based on field types and row count, the
+            best chart type and axis configuration are suggested.
+          </p>
+          <ul>
+            <li>Time column + numeric column → line chart (time series)</li>
+            <li>
+              Category column + numeric column → bar / pie chart (comparison and distribution)
+            </li>
+            <li>Multiple numeric columns → scatter plot (correlation)</li>
+            <li>Single numeric column → area chart (trend)</li>
+          </ul>
+        </div>
+        <img
+          class="feature-shot"
+          src="assets/screenshots/02-query-chart.png"
+          alt="One-click chart switch"
+        />
       </div>
-      <img class="feature-shot" src="assets/screenshots/10-chart-types.png" alt="Multiple chart types" />
-    </div>
 
-    <div class="feature-block">
-      <div>
-        <span class="kicker">Export &amp; Reuse</span>
-        <h2>Take results with you</h2>
-        <p>Export charts as high-resolution PNG or vector SVG — ready for documents, slides, and reports. Chart configuration is remembered per query; switch back to table and return without losing settings.</p>
-        <ul>
-          <li>PNG (with dark background) / SVG export formats</li>
-          <li>Chart config persisted per query</li>
-          <li>Workflow step results also support charting</li>
-        </ul>
+      <div class="feature-block reverse">
+        <div>
+          <span class="kicker">Five Chart Types</span>
+          <h2>Covers common analysis scenarios</h2>
+          <p>
+            Line, bar, pie, scatter, and area charts — axes, aggregation, and grouping dimensions
+            are all configurable via the toolbar.
+          </p>
+          <ul>
+            <li>Numeric aggregation: sum / avg / count / min / max</li>
+            <li>Multi-dimension grouping: series by a second category column</li>
+            <li>Tooltips show field names, values, and percentages (pie charts)</li>
+            <li>5 preset color palettes + dark theme support</li>
+          </ul>
+        </div>
+        <img
+          class="feature-shot"
+          src="assets/screenshots/10-chart-types.png"
+          alt="Multiple chart types"
+        />
       </div>
-      <img class="feature-shot" src="assets/screenshots/11-chart-export.png" alt="Chart export" />
-    </div>
-  </section>
 
-  <section class="section">
-    <div class="wrap">
-      <h2 style="font-size:26px;margin-bottom:20px">Chart types at a glance</h2>
-      <div class="grid-4">
-        <div class="card"><div class="icon">📈</div><h3>Line</h3><p>Time series trends; compare multiple numeric columns.</p></div>
-        <div class="card"><div class="icon">📊</div><h3>Bar</h3><p>Category comparison; supports grouping and stacked exploration.</p></div>
-        <div class="card"><div class="icon">🥧</div><h3>Pie</h3><p>Proportion distribution; small category sets at a glance.</p></div>
-        <div class="card"><div class="icon">✨</div><h3>Scatter / Area</h3><p>Correlation analysis / single-value trends.</p></div>
+      <div class="feature-block">
+        <div>
+          <span class="kicker">Export &amp; Reuse</span>
+          <h2>Take results with you</h2>
+          <p>
+            Export charts as high-resolution PNG or vector SVG — ready for documents, slides, and
+            reports. Chart configuration is remembered per query; switch back to table and return
+            without losing settings.
+          </p>
+          <ul>
+            <li>PNG (with dark background) / SVG export formats</li>
+            <li>Chart config persisted per query</li>
+            <li>Workflow step results also support charting</li>
+          </ul>
+        </div>
+        <img class="feature-shot" src="assets/screenshots/11-chart-export.png" alt="Chart export" />
       </div>
-      <div class="callout">
-        <strong>Design trade-off:</strong> charts are built on Recharts — lightweight and consistent with React;
-        compared to ECharts (~400KB), only the necessary rendering capabilities are included to keep the app fast.
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <footer id="site-footer"></footer>
-  <script src="assets/js/site.js"></script>
-</body>
+    <section class="section">
+      <div class="wrap">
+        <h2 style="font-size: 26px; margin-bottom: 20px">Chart types at a glance</h2>
+        <div class="grid-4">
+          <div class="card">
+            <div class="icon">📈</div>
+            <h3>Line</h3>
+            <p>Time series trends; compare multiple numeric columns.</p>
+          </div>
+          <div class="card">
+            <div class="icon">📊</div>
+            <h3>Bar</h3>
+            <p>Category comparison; supports grouping and stacked exploration.</p>
+          </div>
+          <div class="card">
+            <div class="icon">🥧</div>
+            <h3>Pie</h3>
+            <p>Proportion distribution; small category sets at a glance.</p>
+          </div>
+          <div class="card">
+            <div class="icon">✨</div>
+            <h3>Scatter / Area</h3>
+            <p>Correlation analysis / single-value trends.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer id="site-footer"></footer>
+    <script src="assets/js/site.js"></script>
+  </body>
 </html>

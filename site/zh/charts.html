@@ -1,102 +1,147 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>图表可视化 — DataZen</title>
-  <meta name="description" content="DataZen 图表可视化：查询结果一键切换图表，智能推荐类型，支持折线、柱状、饼图、散点、面积，可导出 PNG / SVG。" />
-  <link rel="canonical" href="https://flyxl.github.io/datazen/zh/charts.html" />
-  <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/charts.html" />
-  <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/charts.html" />
-  <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/charts.html" />
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="图表可视化 — DataZen" />
-  <meta property="og:description" content="DataZen 图表可视化：查询结果一键切换图表，智能推荐类型，支持折线、柱状、饼图、散点、面积，可导出 PNG / SVG。" />
-  <meta property="og:url" content="https://flyxl.github.io/datazen/zh/charts.html" />
-  <meta property="og:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <meta property="og:locale" content="zh_CN" />
-  <meta property="og:locale:alternate" content="en_US" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="图表可视化 — DataZen" />
-  <meta name="twitter:description" content="DataZen 图表可视化：查询结果一键切换图表，智能推荐类型，支持折线、柱状、饼图、散点、面积，可导出 PNG / SVG。" />
-  <meta name="twitter:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <link rel="icon" href="../assets/logo.png" />
-  <link rel="stylesheet" href="../assets/css/site.css" />
-</head>
-<body>
-  <header id="site-header"></header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>图表可视化 — DataZen</title>
+    <meta
+      name="description"
+      content="DataZen 图表可视化：查询结果一键切换图表，智能推荐类型，支持折线、柱状、饼图、散点、面积，可导出 PNG / SVG。"
+    />
+    <link rel="canonical" href="https://flyxl.github.io/datazen/zh/charts.html" />
+    <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/charts.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/charts.html" />
+    <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/charts.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="图表可视化 — DataZen" />
+    <meta
+      property="og:description"
+      content="DataZen 图表可视化：查询结果一键切换图表，智能推荐类型，支持折线、柱状、饼图、散点、面积，可导出 PNG / SVG。"
+    />
+    <meta property="og:url" content="https://flyxl.github.io/datazen/zh/charts.html" />
+    <meta
+      property="og:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="图表可视化 — DataZen" />
+    <meta
+      name="twitter:description"
+      content="DataZen 图表可视化：查询结果一键切换图表，智能推荐类型，支持折线、柱状、饼图、散点、面积，可导出 PNG / SVG。"
+    />
+    <meta
+      name="twitter:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <link rel="icon" href="../assets/logo.png" />
+    <link rel="stylesheet" href="../assets/css/site.css" />
+  </head>
+  <body>
+    <header id="site-header"></header>
 
-  <section class="page-head">
-    <div class="wrap">
-      <p class="breadcrumb"><a href="index.html">首页</a> / 图表可视化</p>
-      <h1>📊 图表可视化</h1>
-      <p>查询结果不用导出到 Excel，点一下就从表格变成图。字段类型自动推断、图表智能推荐，数据探索零门槛。</p>
-    </div>
-  </section>
-
-  <section class="wrap">
-    <div class="feature-block">
-      <div>
-        <span class="kicker">一键切换</span>
-        <h2>表格 ↔ 图表，零配置</h2>
-        <p>执行查询后，在结果上方一键切到图表视图。首次切换自动运行智能推荐：根据字段类型和行数，给出最合适的图表与坐标轴配置。</p>
-        <ul>
-          <li>时间列 + 数值列 → 折线图（时间序列）</li>
-          <li>分类列 + 数值列 → 柱状图 / 饼图（对比与分布）</li>
-          <li>多个数值列 → 散点图（相关性）</li>
-          <li>单个数值列 → 面积图（趋势）</li>
-        </ul>
+    <section class="page-head">
+      <div class="wrap">
+        <p class="breadcrumb"><a href="index.html">首页</a> / 图表可视化</p>
+        <h1>📊 图表可视化</h1>
+        <p>
+          查询结果不用导出到
+          Excel，点一下就从表格变成图。字段类型自动推断、图表智能推荐，数据探索零门槛。
+        </p>
       </div>
-      <img class="feature-shot" src="../assets/screenshots/02-query-chart.png" alt="一键切换图表" />
-    </div>
+    </section>
 
-    <div class="feature-block reverse">
-      <div>
-        <span class="kicker">五种图表</span>
-        <h2>覆盖常见分析场景</h2>
-        <p>折线、柱状、饼图、散点、面积五种图表类型，轴、聚合方式与分组维度都可配置，工具栏随时调整。</p>
-        <ul>
-          <li>数值聚合：sum / avg / count / min / max</li>
-          <li>多维度分组：按第二个分类列分系列</li>
-          <li>Tooltip 展示字段名、数值与百分比（饼图）</li>
-          <li>5 套预置调色板 + 暗色主题适配</li>
-        </ul>
+    <section class="wrap">
+      <div class="feature-block">
+        <div>
+          <span class="kicker">一键切换</span>
+          <h2>表格 ↔ 图表，零配置</h2>
+          <p>
+            执行查询后，在结果上方一键切到图表视图。首次切换自动运行智能推荐：根据字段类型和行数，给出最合适的图表与坐标轴配置。
+          </p>
+          <ul>
+            <li>时间列 + 数值列 → 折线图（时间序列）</li>
+            <li>分类列 + 数值列 → 柱状图 / 饼图（对比与分布）</li>
+            <li>多个数值列 → 散点图（相关性）</li>
+            <li>单个数值列 → 面积图（趋势）</li>
+          </ul>
+        </div>
+        <img
+          class="feature-shot"
+          src="../assets/screenshots/02-query-chart.png"
+          alt="一键切换图表"
+        />
       </div>
-      <img class="feature-shot" src="../assets/screenshots/10-chart-types.png" alt="多种图表类型" />
-    </div>
 
-    <div class="feature-block">
-      <div>
-        <span class="kicker">导出与复用</span>
-        <h2>结果带走，汇报无忧</h2>
-        <p>图表可以导出为高清 PNG 或矢量 SVG，直接用于文档、PPT 与报表。图表配置按查询记忆，切回表格再切回来也不丢。</p>
-        <ul>
-          <li>PNG（含暗色背景）/ SVG 两种导出格式</li>
-          <li>图表配置随查询持久化记忆</li>
-          <li>Workflow 步骤结果同样支持图表化</li>
-        </ul>
+      <div class="feature-block reverse">
+        <div>
+          <span class="kicker">五种图表</span>
+          <h2>覆盖常见分析场景</h2>
+          <p>
+            折线、柱状、饼图、散点、面积五种图表类型，轴、聚合方式与分组维度都可配置，工具栏随时调整。
+          </p>
+          <ul>
+            <li>数值聚合：sum / avg / count / min / max</li>
+            <li>多维度分组：按第二个分类列分系列</li>
+            <li>Tooltip 展示字段名、数值与百分比（饼图）</li>
+            <li>5 套预置调色板 + 暗色主题适配</li>
+          </ul>
+        </div>
+        <img
+          class="feature-shot"
+          src="../assets/screenshots/10-chart-types.png"
+          alt="多种图表类型"
+        />
       </div>
-      <img class="feature-shot" src="../assets/screenshots/11-chart-export.png" alt="图表导出" />
-    </div>
-  </section>
 
-  <section class="section">
-    <div class="wrap">
-      <h2 style="font-size:26px;margin-bottom:20px">图表类型速览</h2>
-      <div class="grid-4">
-        <div class="card"><div class="icon">📈</div><h3>折线图</h3><p>时间序列趋势，多条数值列对比。</p></div>
-        <div class="card"><div class="icon">📊</div><h3>柱状图</h3><p>分类对比，支持分组与堆叠式探索。</p></div>
-        <div class="card"><div class="icon">🥧</div><h3>饼图</h3><p>占比分布，小样本分类一目了然。</p></div>
-        <div class="card"><div class="icon">✨</div><h3>散点 / 面积</h3><p>相关性分析 / 单值趋势。</p></div>
+      <div class="feature-block">
+        <div>
+          <span class="kicker">导出与复用</span>
+          <h2>结果带走，汇报无忧</h2>
+          <p>
+            图表可以导出为高清 PNG 或矢量 SVG，直接用于文档、PPT
+            与报表。图表配置按查询记忆，切回表格再切回来也不丢。
+          </p>
+          <ul>
+            <li>PNG（含暗色背景）/ SVG 两种导出格式</li>
+            <li>图表配置随查询持久化记忆</li>
+            <li>Workflow 步骤结果同样支持图表化</li>
+          </ul>
+        </div>
+        <img class="feature-shot" src="../assets/screenshots/11-chart-export.png" alt="图表导出" />
       </div>
-      <div class="callout">
-        <strong>设计取舍：</strong>图表基于 Recharts 构建，轻量且与 React 风格一致；
-        相比 ECharts（约 400KB）只引入必要的渲染能力，保证应用依然轻快。
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <footer id="site-footer"></footer>
-  <script src="../assets/js/site.js"></script>
-</body>
+    <section class="section">
+      <div class="wrap">
+        <h2 style="font-size: 26px; margin-bottom: 20px">图表类型速览</h2>
+        <div class="grid-4">
+          <div class="card">
+            <div class="icon">📈</div>
+            <h3>折线图</h3>
+            <p>时间序列趋势，多条数值列对比。</p>
+          </div>
+          <div class="card">
+            <div class="icon">📊</div>
+            <h3>柱状图</h3>
+            <p>分类对比，支持分组与堆叠式探索。</p>
+          </div>
+          <div class="card">
+            <div class="icon">🥧</div>
+            <h3>饼图</h3>
+            <p>占比分布，小样本分类一目了然。</p>
+          </div>
+          <div class="card">
+            <div class="icon">✨</div>
+            <h3>散点 / 面积</h3>
+            <p>相关性分析 / 单值趋势。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer id="site-footer"></footer>
+    <script src="../assets/js/site.js"></script>
+  </body>
 </html>
