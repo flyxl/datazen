@@ -31,7 +31,7 @@ export function DiagnosisPanel({
   const clearDiagnosis = useAiStore((s) => s.clearDiagnosis);
 
   const handleDiagnose = useCallback(() => {
-    void diagnoseError({ connectionId, database, sql, errorMessage });
+    void diagnoseError({ dbSessionId: connectionId, database, sql, errorMessage });
   }, [diagnoseError, connectionId, database, sql, errorMessage]);
 
   useEffect(() => {

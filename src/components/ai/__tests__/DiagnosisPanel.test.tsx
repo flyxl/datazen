@@ -52,7 +52,7 @@ describe('DiagnosisPanel', () => {
     );
     await waitFor(() => {
       expect(aiState.diagnoseError).toHaveBeenCalledWith({
-        connectionId: 'c1',
+        dbSessionId: 'c1',
         database: 'db',
         sql: 'SELECT bad',
         errorMessage: 'syntax error',

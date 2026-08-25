@@ -76,7 +76,7 @@ export const aiCommands = {
   deleteConfig: () => invoke<void>('ai_delete_config'),
 
   generateSql: (params: {
-    connectionId: string;
+    dbSessionId: string;
     database: string;
     naturalLanguage: string;
     requestId: string;
@@ -86,15 +86,15 @@ export const aiCommands = {
     contextTables?: string[];
   }) => e2eStubInvoke('ai_generate_sql', params, () => invoke<string>('ai_generate_sql', params)),
   diagnoseError: (params: {
-    connectionId: string;
+    dbSessionId: string;
     database: string;
     sql: string;
     errorMessage: string;
   }) => invoke<DiagnosisResult>('ai_diagnose_error', params),
-  analyzeExplain: (params: { connectionId: string; explainOutput: string; originalSql: string }) =>
+  analyzeExplain: (params: { dbSessionId: string; explainOutput: string; originalSql: string }) =>
     invoke<ExplainAnalysis>('ai_analyze_explain', params),
   chat: (params: {
-    connectionId?: string;
+    dbSessionId?: string;
     database?: string;
     messages: AiChatMessage[];
     requestId: string;
@@ -104,7 +104,7 @@ export const aiCommands = {
     contextTables?: string[];
   }) => e2eStubInvoke('ai_chat', params, () => invoke<string>('ai_chat', params)),
   parseFilter: (params: {
-    connectionId: string;
+    dbSessionId: string;
     database: string;
     table: string;
     naturalLanguage: string;
@@ -138,11 +138,11 @@ export const aiCommands = {
   workflowHistoryClear: (workflowId?: string) =>
     invoke<number>('workflow_history_clear', { workflowId: workflowId ?? null }),
 
-  generateSchemaDoc: (params: { connectionId: string; database: string }) =>
+  generateSchemaDoc: (params: { dbSessionId: string; database: string }) =>
     invoke<string>('ai_generate_schema_doc', params),
   diagnoseConnection: (params: { connectionId: string; errorMessage: string }) =>
     invoke<ConnectionDiagnosis>('ai_diagnose_connection', params),
-  analyzeQueries: (params: { connectionId?: string }) =>
+  analyzeQueries: (params: { dbSessionId?: string }) =>
     invoke<QueryAnalysis>('ai_analyze_queries', params),
 
   mcpClientConnect: (config: McpServerConfig) => invoke<void>('mcp_client_connect', { config }),

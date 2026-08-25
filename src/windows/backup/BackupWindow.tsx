@@ -253,7 +253,7 @@ export function BackupWindow() {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const saved = await invoke<boolean>('backup_database_with_dialog', {
-          connectionId: connectedId,
+          dbSessionId: connectedId,
           database: selectedDb,
           defaultFileName: defaultName,
           filterExtension: ext,

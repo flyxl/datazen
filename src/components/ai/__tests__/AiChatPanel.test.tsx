@@ -121,7 +121,7 @@ describe('AiChatPanel', () => {
     fireEvent.change(getByTestId('chat-input'), { target: { value: 'hello' } });
     fireEvent.click(getByTestId('chat-send'));
     expect(aiState.sendChatMessage).toHaveBeenCalledWith({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       database: 'db',
       content: 'hello',
       contextFiles: undefined,

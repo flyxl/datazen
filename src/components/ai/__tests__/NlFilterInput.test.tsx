@@ -86,7 +86,7 @@ describe('NlFilterInput', () => {
     fireEvent.click(getByText('smartFilter.parse'));
     await waitFor(() => {
       expect(aiState.parseFilter).toHaveBeenCalledWith({
-        connectionId: 'c1',
+        dbSessionId: 'c1',
         database: 'db',
         table: 'users',
       });

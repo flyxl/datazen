@@ -353,3 +353,160 @@ mod tests {
         assert_eq!(cfg.database_type, "postgres");
     }
 }
+
+#[cfg(test)]
+mod coverage_tests {
+    //! BUG-002 anchors: exercises the remaining `connection.rs` branches —
+    //! release ref-counting, disconnect's pending-transaction rollback,
+    //! driver-category reporting, and the reorder wrapper.
+
+    use super::*;
+    use crate::db::TransactionHandle;
+    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+
+    #[tokio::test]
+    async fn release_connection_decrements_then_tears_down() {
+        let test = TestAppState::with_tables().await;
+        test.save_connection("r1").await;
+        // Two borrowers hold the same session (refs = 2).
+        let s1 = connect_impl(&test.state, "r1".into()).await.unwrap();
+        let s2 = connect_impl(&test.state, "r1".into()).await.unwrap();
+        assert_eq!(s1, s2, "reuse must hand back the same db session id");
+
+        // First release only decrements: session stays alive.
+        let torn = release_connection_impl(&test.state, s1.clone())
+            .await
+            .unwrap();
+        assert!(!torn);
+        assert!(ping_connection_impl(&test.state, s1.clone()).await.unwrap());
+
+        // Second release hits zero and tears the session down.
+        let torn = release_connection_impl(&test.state, s2.clone())
+            .await
+            .unwrap();
+        assert!(torn);
+        assert!(
+            !ping_connection_impl(&test.state, s1).await.unwrap(),
+            "session must be gone after the final release"
+        );
+
+        // Releasing an unknown session is a benign no-op (reports torn down).
+        let torn = release_connection_impl(&test.state, "missing".into())
+            .await
+            .unwrap();
+        assert!(torn);
+    }
+
+    #[tokio::test]
+    async fn disconnect_rolls_back_open_session_transaction_and_clears_map() {
+        let test = TestAppState::with_tables().await;
+        let (_, conn_id) = test.save_and_connect("tx-1").await;
+
+        // Begin a real transaction through the mock driver so rollback succeeds.
+        let (driver, handle) = test
+            .state
+            .connection_manager
+            .get_session(&conn_id)
+            .await
+            .unwrap();
+        let tx = driver.begin_transaction(&handle).await.unwrap();
+        test.state
+            .session_transactions
+            .lock()
+            .await
+            .insert(conn_id.clone(), tx);
+
+        disconnect_impl(&test.state, conn_id.clone()).await.unwrap();
+        assert!(
+            !test
+                .state
+                .session_transactions
+                .lock()
+                .await
+                .contains_key(&conn_id),
+            "disconnect must consume the pending session transaction entry"
+        );
+        assert!(
+            !ping_connection_impl(&test.state, conn_id.clone())
+                .await
+                .unwrap(),
+            "disconnect must tear down the session"
+        );
+
+        // Rollback-failure branch: an entry whose handle is unknown to the
+        // driver logs a warning but disconnect still succeeds.
+        test.save_and_connect("tx-2").await;
+        test.state.session_transactions.lock().await.insert(
+            format!("{}:bogus", "tx-2"),
+            TransactionHandle {
+                id: "never-begun".into(),
+                connection_id: "never-begun-handle".into(),
+            },
+        );
+        disconnect_impl(&test.state, format!("{}:bogus", "tx-2"))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn get_connection_info_reports_driver_category() {
+        let harness = TestAppState::new().await;
+        for (driver_type, expected_category, category) in [
+            ("kv-mock", "keyvalue", crate::db::DriverCategory::KeyValue),
+            ("doc-mock", "document", crate::db::DriverCategory::Document),
+            ("postgres", "sql", crate::db::DriverCategory::Sql),
+        ] {
+            let opts = MockDriverOptions {
+                category,
+                ..Default::default()
+            };
+            let mock = MockDriver::new(driver_type, opts);
+            harness
+                .state
+                .driver_registry
+                .register_test_driver(driver_type, mock)
+                .await;
+            let mut cfg = sample_postgres_config(driver_type);
+            cfg.database_type = driver_type.into();
+            save_connection_impl(&harness.state, cfg).await.unwrap();
+
+            let conn_id = connect_impl(&harness.state, driver_type.into())
+                .await
+                .unwrap();
+            let info = get_connection_info_impl(&harness.state, conn_id)
+                .await
+                .unwrap();
+            assert_eq!(info["databaseType"], driver_type);
+            assert_eq!(
+                info["driverCategory"], expected_category,
+                "driver {driver_type} must report category {expected_category}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn reorder_connections_persists_new_order() {
+        // `reorder_connections` is a thin IPC wrapper over the store call;
+        // tauri::State cannot be built outside the tauri runtime, so exercise
+        // the store path the wrapper delegates to.
+        let test = TestAppState::new().await;
+        for id in ["a", "b", "c"] {
+            save_connection_impl(&test.state, sample_postgres_config(id))
+                .await
+                .unwrap();
+        }
+        test.state
+            .store
+            .reorder_connections(vec!["c".into(), "a".into(), "b".into()])
+            .await
+            .unwrap();
+        let order: Vec<String> = get_connections_impl(&test.state)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|c| c.id)
+            .collect();
+        assert_eq!(order, vec!["c", "a", "b"]);
+    }
+}

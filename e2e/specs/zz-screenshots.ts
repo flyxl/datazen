@@ -434,7 +434,7 @@ async function pinDemoPgDatabase() {
   if (typeof connId !== 'string' || connId.startsWith('__error')) {
     throw new Error(`connect(${DEMO_PG_CONN_NAME}) failed: ${JSON.stringify(connId)}`);
   }
-  const useDb = await invoke('use_database', { connectionId: connId, database: DEMO_PG_DB });
+  const useDb = await invoke('use_database', { dbSessionId: connId, database: DEMO_PG_DB });
   if (useDb && typeof useDb === 'object' && '__error' in (useDb as object)) {
     throw new Error(`use_database(${DEMO_PG_DB}) failed: ${JSON.stringify(useDb)}`);
   }
@@ -947,7 +947,7 @@ describe('site screenshots', () => {
     if (typeof connId !== 'string' || connId.startsWith('__error')) {
       throw new Error(`connect(${DEMO_PG_CONN_NAME}) failed: ${JSON.stringify(connId)}`);
     }
-    const useDb = await invoke('use_database', { connectionId: connId, database: DEMO_PG_DB });
+    const useDb = await invoke('use_database', { dbSessionId: connId, database: DEMO_PG_DB });
     if (useDb && typeof useDb === 'object' && '__error' in (useDb as object)) {
       throw new Error(`use_database(${DEMO_PG_DB}) failed: ${JSON.stringify(useDb)}`);
     }

@@ -69,7 +69,7 @@ export interface AiStore {
 
   setNl2SqlInput: (input: string) => void;
   generateSql: (params: {
-    connectionId: string;
+    dbSessionId: string;
     database: string;
     currentTable?: string;
     recentQueries?: string[];
@@ -79,7 +79,7 @@ export interface AiStore {
   clearNl2Sql: () => void;
 
   diagnoseError: (params: {
-    connectionId: string;
+    dbSessionId: string;
     database: string;
     sql: string;
     errorMessage: string;
@@ -87,7 +87,7 @@ export interface AiStore {
   clearDiagnosis: () => void;
 
   analyzeExplain: (params: {
-    connectionId: string;
+    dbSessionId: string;
     explainOutput: string;
     originalSql: string;
   }) => Promise<void>;
@@ -95,7 +95,7 @@ export interface AiStore {
 
   setNlFilterInput: (input: string) => void;
   parseFilter: (params: {
-    connectionId: string;
+    dbSessionId: string;
     database: string;
     table: string;
   }) => Promise<FilterCondition[] | null>;
@@ -103,7 +103,7 @@ export interface AiStore {
 
   initChatSession: () => void;
   sendChatMessage: (params: {
-    connectionId?: string;
+    dbSessionId?: string;
     database?: string;
     content: string;
     includeSchema?: boolean;
@@ -115,7 +115,7 @@ export interface AiStore {
   workflowChat: AiChatSession | null;
   initWorkflowChat: () => void;
   sendWorkflowChatMessage: (params: {
-    connectionId?: string;
+    dbSessionId?: string;
     database?: string;
     content: string;
     includeSchema?: boolean;
@@ -153,11 +153,11 @@ export interface AiStore {
   isAnalyzingQueries: boolean;
   queryAnalysisError: string | null;
 
-  generateSchemaDoc: (params: { connectionId: string; database: string }) => Promise<void>;
+  generateSchemaDoc: (params: { dbSessionId: string; database: string }) => Promise<void>;
   clearSchemaDoc: () => void;
   diagnoseConnection: (params: { connectionId: string; errorMessage: string }) => Promise<void>;
   clearConnectionDiagnosis: () => void;
-  analyzeQueries: (params: { connectionId?: string }) => Promise<void>;
+  analyzeQueries: (params: { dbSessionId?: string }) => Promise<void>;
   clearQueryAnalysis: () => void;
 
   mcpServers: McpClientStatus[];

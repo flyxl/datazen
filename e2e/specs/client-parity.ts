@@ -66,7 +66,7 @@ describe('Client parity P0–P2', () => {
       /* ok */
     }
     try {
-      await invokeBackend('disconnect', { connectionId: 'conn_e2e_readonly' });
+      await invokeBackend('disconnect', { dbSessionId: 'conn_e2e_readonly' });
     } catch {
       /* ok */
     }
@@ -182,7 +182,7 @@ describe('Client parity P0–P2', () => {
       },
     });
     expect(err).toMatch(/read-only/i);
-    await invokeBackend('disconnect', { connectionId: liveId }).catch(() => undefined);
+    await invokeBackend('disconnect', { dbSessionId: liveId }).catch(() => undefined);
     await invokeBackend('delete_connection', { id: 'conn_e2e_readonly' });
   });
 

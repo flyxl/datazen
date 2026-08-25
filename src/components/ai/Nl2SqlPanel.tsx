@@ -47,7 +47,7 @@ export function Nl2SqlPanel({
     const { contextFiles, contextTables } = splitContextItems(contextItems);
     lastWrittenRef.current = '';
     void generateSql({
-      connectionId,
+      dbSessionId: connectionId,
       database,
       currentTable,
       contextFiles: contextFiles.length > 0 ? contextFiles : undefined,

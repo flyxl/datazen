@@ -82,7 +82,7 @@ export async function runSqlFileExecution({
 
   try {
     const executed = await invoke<boolean>(command, {
-      connectionId,
+      dbSessionId: connectionId,
       database,
       options,
     });

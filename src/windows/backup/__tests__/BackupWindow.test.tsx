@@ -219,7 +219,7 @@ describe('BackupWindow connection list', () => {
     expect(confirmDialogFn).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('restore_database_with_dialog', {
-        connectionId: 'live-1',
+        dbSessionId: 'live-1',
         database: 'app',
         options: [],
       }),
@@ -305,7 +305,7 @@ describe('BackupWindow connection list', () => {
     await waitFor(() => expect(confirmDialogFn).toHaveBeenCalled());
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('restore_database_with_dialog', {
-        connectionId: 'live-1',
+        dbSessionId: 'live-1',
         database: 'app',
         options: ['overwrite'],
       }),
