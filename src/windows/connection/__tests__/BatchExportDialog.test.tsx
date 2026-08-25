@@ -148,9 +148,8 @@ describe('BatchExportDialog', () => {
     expect(loadTableExportData.mock.calls.map((c) => c[0])).toEqual(['users', 'orders']);
 
     const request = exportTablesStream.mock.calls[0]![0];
-    // IPC contract key stays `connectionId` (resolve_session dual-mode);
-    // the value carried is the live db session id.
-    expect(request.connectionId).toBe('c1');
+    // Wire key mirrors backend ExportTablesRequest (serde camelCase).
+    expect(request.dbSessionId).toBe('c1');
     expect(request.databaseType).toBe('postgres');
     expect(request.tables.map((t: { tableName: string }) => t.tableName)).toEqual([
       'users',

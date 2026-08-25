@@ -73,9 +73,7 @@ export async function runBatchExportJob(
   }
 
   const request: ExportTablesRequest = {
-    // IPC contract key stays `connectionId` (resolve_session is dual-mode);
-    // the value carried is the live db session id.
-    connectionId: dbSessionId,
+    dbSessionId,
     databaseType: databaseType ?? undefined,
     mode,
     dataFormat,
