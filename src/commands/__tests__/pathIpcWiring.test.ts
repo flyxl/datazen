@@ -114,7 +114,7 @@ describe('path IPC frontend wiring', () => {
     expect(hostCaps).not.toContain('new-connection-*');
 
     const docsUrls = readSrc('lib/docsUrls.ts');
-    expect(docsUrls).toContain('flyxl.github.io/datazen/docs.html');
+    expect(docsUrls).toContain('flyxl.github.io/datazen/manual.html');
 
     const rustMenu = fs.readFileSync(path.join(ROOT, '../src-tauri/src/lib.rs'), 'utf8');
     expect(rustMenu).toContain('register_handler_once');
