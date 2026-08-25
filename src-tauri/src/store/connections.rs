@@ -90,6 +90,41 @@ impl Store {
         self.save_json_file("connections.json", &to_disk).await
     }
 
+    /// Persist while the caller already holds `write_lock`. Must NOT go
+    /// through `save_json_file` — it re-acquires the same tokio Mutex and
+    /// would self-deadlock. Writes atomically via `write_file_atomic`.
+    async fn persist_connections_locked(
+        &self,
+        connections: &[ConnectionConfig],
+    ) -> Result<(), StoreError> {
+        let mut to_disk = Vec::with_capacity(connections.len());
+
+        for conn in connections {
+            let mut c = conn.clone();
+            if let Some(pw) = &c.password {
+                c.password = Some(self.encrypt(pw)?);
+            }
+            if let Some(ref mut ssh) = c.ssh_tunnel {
+                if let Some(pw) = &ssh.password {
+                    if !pw.is_empty() {
+                        ssh.password = Some(self.encrypt(pw)?);
+                    }
+                }
+                if let Some(pp) = &ssh.passphrase {
+                    if !pp.is_empty() {
+                        ssh.passphrase = Some(self.encrypt(pp)?);
+                    }
+                }
+            }
+            to_disk.push(c);
+        }
+
+        let content = serde_json::to_string_pretty(&to_disk)
+            .map_err(|e| StoreError::ParseError(e.to_string()))?;
+        let path = self.data_dir.join("connections.json");
+        Self::write_file_atomic(&path, content).await
+    }
+
     pub async fn get_connections(&self) -> Vec<ConnectionConfig> {
         let cache = self.cache.read().await;
         cache.connections.clone()
@@ -101,6 +136,13 @@ impl Store {
     }
 
     pub async fn save_connection(&self, config: ConnectionConfig) -> Result<(), StoreError> {
+        // Serialize the whole update→snapshot→persist sequence under the
+        // store-wide write lock. Snapshotting before acquiring the lock let
+        // an older copy overwrite a newer file when concurrent saves
+        // interleaved (lost update — CI flake where 16 concurrent saves left
+        // only 13 entries on disk).
+        let _guard = self.write_lock.lock().await;
+
         {
             let mut cache = self.cache.write().await;
             if let Some(pos) = cache.connections.iter().position(|c| c.id == config.id) {
@@ -115,7 +157,8 @@ impl Store {
             cache.connections.clone()
         };
 
-        self.persist_connections(&snapshot).await
+        // Already holding write_lock — use the non-locking persist variant.
+        self.persist_connections_locked(&snapshot).await
     }
 
     pub async fn delete_connection(&self, id: &str) -> Result<(), StoreError> {
