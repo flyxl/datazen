@@ -7,9 +7,9 @@ import { expect, browser } from '@wdio/globals';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { closeExtraWindows, openSeededPgConnectionWindow } from '../helpers.js';
+import { closeExtraWindows, openSeededPgConnectionWindow, withSafeModeOff } from '../helpers.js';
 
-async function getConnectionId(): Promise<string | null> {
+async function getConnectionConfigId(): Promise<string | null> {
   const conns = await browser.executeAsync((done: (r: unknown) => void) => {
     (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
       ?.invoke('get_connections')
@@ -22,10 +22,10 @@ async function getConnectionId(): Promise<string | null> {
 
 async function runQuery(dbSessionId: string, sql: string): Promise<unknown> {
   return browser.executeAsync(
-    (cid: string, s: string, done: (r: unknown) => void) => {
+    (sessionId: string, s: string, done: (r: unknown) => void) => {
       (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
         ?.invoke('execute_driver_command', {
-          request: { dbSessionId: cid, command: 'query', input: { sql: s } },
+          request: { dbSessionId: sessionId, command: 'query', input: { sql: s } },
         })
         .then(done)
         .catch((e: unknown) => done({ __error: String(e) }));
@@ -46,16 +46,38 @@ describe('Execute SQL File (SF)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await openSeededPgConnectionWindow(mainWindow);
-    const cid = await getConnectionId();
-    if (!cid) throw new Error('seeded PG connection not found');
-    dbSessionId = cid;
+    const connectionId = await getConnectionConfigId();
+    if (!connectionId) throw new Error('seeded PG connection not found');
+    // Persisted config id → live db session id via connect (backup-database pattern).
+    dbSessionId = (await browser.executeAsync((cid: string, done: (r: unknown) => void) => {
+      (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
+        ?.invoke('connect', { connectionId: cid })
+        .then(done)
+        .catch((e: unknown) => done({ __error: String(e) }));
+    }, connectionId)) as string;
+    if (typeof dbSessionId !== 'string' || !dbSessionId) {
+      throw new Error(`connect(${connectionId}) failed: ${JSON.stringify(dbSessionId)}`);
+    }
     dir = mkdtempSync(join(tmpdir(), 'datazen-sf-'));
   });
 
   after(async () => {
-    if (dbSessionId) {
-      await runQuery(dbSessionId, 'DROP TABLE IF EXISTS ' + T1);
-      await runQuery(dbSessionId, 'DROP TABLE IF EXISTS ' + T2);
+    try {
+      if (dbSessionId) {
+        // Safe mode blocks bare DROP statements — lift it only for cleanup.
+        await withSafeModeOff(async () => {
+          await runQuery(dbSessionId, 'DROP TABLE IF EXISTS ' + T1);
+          await runQuery(dbSessionId, 'DROP TABLE IF EXISTS ' + T2);
+        });
+        await browser.executeAsync((sid: string, done: (r: unknown) => void) => {
+          (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
+            ?.invoke('disconnect', { dbSessionId: sid })
+            .then(done)
+            .catch(() => done(null));
+        }, dbSessionId);
+      }
+    } catch {
+      /* ignore */
     }
     try {
       rmSync(dir, { recursive: true, force: true });
@@ -67,9 +89,9 @@ describe('Execute SQL File (SF)', () => {
 
   function invokeSqlFile(p: string) {
     return browser.executeAsync(
-      (cid: string, path: string, done: (r: unknown) => void) => {
+      (sessionId: string, path: string, done: (r: unknown) => void) => {
         (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
-          ?.invoke('execute_sql_file', { dbSessionId: cid, inputPath: path })
+          ?.invoke('execute_sql_file', { dbSessionId: sessionId, inputPath: path })
           .then(done)
           .catch((e: unknown) => done({ __error: String(e) }));
       },
@@ -85,16 +107,17 @@ describe('Execute SQL File (SF)', () => {
       'INSERT INTO ' + T1 + ' VALUES (1), (2), (3);',
     ].join('\n');
     writeFileSync(file, stmts);
-    const ok = (await invokeSqlFile(file)) as { __error?: string };
+    const ok = (await withSafeModeOff(() => invokeSqlFile(file))) as { __error?: string };
     expect(ok.__error).toBeUndefined();
     expect(ok).toBe(true);
-    const res = (await runQuery(dbSessionId, 'SELECT COUNT(*) AS n FROM ' + T1)) as {
-      data?: { results?: Array<{ rows?: Array<{ n?: number }> }> };
+    const res = (await runQuery(dbSessionId, 'SELECT COUNT(*) FROM ' + T1)) as {
+      data?: { results?: Array<{ rows?: unknown[][] }> };
       __error?: string;
     };
     expect(res.__error).toBeUndefined();
+    // The driver `query` Command returns positional rows (see bugfix-admin-commands).
     const rows = res.data?.results?.[0]?.rows ?? [];
-    expect(rows[0]?.n).toBe(3);
+    expect(rows[0]?.[0]).toBe(3);
   });
 
   it('SF-E02: a failing statement rejects', async () => {
@@ -104,7 +127,7 @@ describe('Execute SQL File (SF)', () => {
       'INSERT INTO no_such_table_' + STAMP + ' VALUES (1);',
     ].join('\n');
     writeFileSync(file, stmts);
-    const res = (await invokeSqlFile(file)) as { __error?: string };
+    const res = (await withSafeModeOff(() => invokeSqlFile(file))) as { __error?: string };
     expect(res.__error).toBeDefined();
   });
 });
