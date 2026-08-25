@@ -208,7 +208,7 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     const tgtConn = (await invokeBackend<string>('connect', { connectionId: TGT_ID })) ?? '';
     expect(tgtConn).toBeTruthy();
     const rows = await invokeBackend('execute_query', {
-      dbSessionId: tgtDbSessionId,
+      dbSessionId: tgtConn,
       sql: `SELECT count(*)::int AS c FROM ${TABLE}`,
     });
     expect(queryScalar(rows, 'c')).toBe(3);
