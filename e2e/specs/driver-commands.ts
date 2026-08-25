@@ -3,8 +3,11 @@ import { expect, browser } from '@wdio/globals';
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
     (c: string, a: string, done: (r: unknown) => void) => {
-      (window as unknown as { __TAURI_INTERNALS__?: { invoke: (cmd: string, args: unknown) => Promise<unknown> } })
-        .__TAURI_INTERNALS__
+      (
+        window as unknown as {
+          __TAURI_INTERNALS__?: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+        }
+      ).__TAURI_INTERNALS__
         ?.invoke(c, JSON.parse(a))
         .then((r) => done(r))
         .catch((e: unknown) => done({ __error: String(e) }));
@@ -24,15 +27,19 @@ describe('Driver Command IPC', () => {
     if (conns.length === 0) {
       return;
     }
+    // Persisted connection id → get_connection_commands contract slot.
     const connectionId = conns[0].id;
     const definitions = await invokeBackend<{ id: string }[]>('get_connection_commands', {
       connectionId,
     });
     expect(definitions.some((d) => d.id === 'query')).toBe(true);
 
+    // Runtime db session id → execute_driver_command contract slot
+    // (do not rely on the backend resolve_session dual-mode fallback).
+    const dbSessionId = await invokeBackend<string>('connect', { connectionId });
     const result = await invokeBackend<{ data: unknown }>('execute_driver_command', {
       request: {
-        connectionId,
+        dbSessionId,
         command: 'query',
         input: { sql: 'SELECT 1 AS n' },
       },
@@ -45,10 +52,13 @@ describe('Driver Command IPC', () => {
     if (conns.length === 0) {
       return;
     }
+    const dbSessionId = await invokeBackend<string>('connect', {
+      connectionId: conns[0].id,
+    });
     await expect(
       invokeBackend('execute_driver_command', {
         request: {
-          dbSessionId: conns[0].id,
+          dbSessionId,
           command: 'not-a-real-command',
           input: {},
         },
