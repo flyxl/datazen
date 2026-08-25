@@ -30,7 +30,7 @@
 | BUG-005 | W3 独立测试 T5/D3 | **P2 e2e 层**：`e2e/specs/data-sync-real.ts` 本地 SyncTask 接口/载荷残留 `sourceConfigId/targetConfigId` 且缺 `sourceDbSessionId/targetDbSessionId`，后端强类型反序列化必挂——GUI E2E 实跑时 SYNC-BATCH-004 失败 | 实跑 data-sync-real SYNC-BATCH-004；或比对本地接口与后端 `commands/sync/types.rs` 字段 | 已修复 | W3 |
 | OBS-002 | W3 独立测试 T5 | clearCaches/dbObjectsMap 键空间错位——main 上同构存在（继承性观察，非本次引入），登记待后续工作项评估 | 见 W3 测试报告 §T5 | 观察 | - |
 | OBS-003 | W3 独立测试 T3 | vitest coverage 门禁 exit 1（10 条阈值 ERROR）在 main 基线同样存在——既有问题非本次引入 | main 上跑 `npx vitest run --coverage` 对照 | 观察 | - |
-| BUG-006 | W3 复测补充审计 R4/D5 | **P1 功能性断裂（W2 清尾遗漏）**：ExportTablesRequest 后端字段已是 `db_session_id`（export.rs L83，resolve_session 双模 L563），前端 `commands/file.ts` 仍以 `connectionId` 键传会话 id、`lib/batchExportJob.ts` 以 `{connectionId: dbSessionId}` 构造并带误导注释——serde 必报 missing field，**多表批量导出当前 HEAD 必挂**；两侧既有测试因 mock/原生构造均无法拦截 | 实跑多表批量导出；或比对 file.ts 接口键与 export.rs 结构体 | 待验证 | W2 |
+| BUG-006 | W3 复测补充审计 R4/D5 | **P1 功能性断裂（W2 清尾遗漏）**：ExportTablesRequest 后端字段已是 `db_session_id`（export.rs L83，resolve_session 双模 L563），前端 `commands/file.ts` 仍以 `connectionId` 键传会话 id、`lib/batchExportJob.ts` 以 `{connectionId: dbSessionId}` 构造并带误导注释——serde 必报 missing field，**多表批量导出当前 HEAD 必挂**；两侧既有测试因 mock/原生构造均无法拦截 | 实跑多表批量导出；或比对 file.ts 接口键与 export.rs 结构体 | 已修复 | W2 |
 | OBS-004 | W3 复测补充审计 R4/OBS-3 | WorkflowChatPanel 将配置 id 塞入 `AiInput.dbSessionId`→ai_chat，后端 get_session 严格查找 + if-let-Ok 静默降级兜底：不硬错但 schema 增强静默失效（main 上行为等价）。改进建议：FE 取活动会话 id 或后端改 resolve_session | 见 W3 测试报告 R4 节 | 观察 | - |
 | OBS-005 | W3 复测 T1/P3 | `e2e/specs/data-transfer-window.ts(211)` 悬空标识符 `tgtDbSessionId`（L208 实为 tgtConn），TS2304——W3 提交 80df9968 引入的一行笔误，e2e 错误总数 68 vs main 基线 67 的唯一增量 | e2e tsconfig 报错列表 | 观察（随 BUG-006 一行修掉） | W3 |
 
@@ -51,7 +51,7 @@
 | F2（修复轮自测） | W3 | BUG-004：4 处旧 prop 改名 + 新增选中态用例（反向注入实验证明缺陷状态下必失败）；BUG-005：复核并收尾 data-sync-real.ts（会话变量改名 ~60 处、legacy 载荷错位清零），e2e ConfigId 变体=0 | host vitest **1887 绿**（含新用例）；drivers 84 绿；host tsc 零错；e2e tsc 68 ≤ 基线（data-sync-real.ts 0 错） | 编码 agent 07f37e84 |
 | T3R（复测） | W3 | BUG-004：全仓扫描 0 命中 + 反向注入实验证实用例判别力真实，文件 11 用例全过；BUG-005：SyncTask 15/15 字段对照一致、值语义各就各位、变体扫描=0、data-sync-real 零类型错误；补充审计发现 BUG-006（P1）+ OBS-004/005 | **通过**（BUG-004/005 → 已修复）；回归门禁：host vitest 1887 绿 / drivers 84 绿 / host tsc 零错 | 复测 agent 03c401c9，报告已追加复测轮 + R4 节 |
 | F3（修复轮自测） | W3/W2 | BUG-006：file.ts/batchExportJob.ts 键改 dbSessionId + 3 条 IPC 契约守护测试（键集合双向断言/反向断言/静态锚点）；OBS-005 一行修复 | host vitest **1890 绿**（净增 4）；host tsc 零错；e2e tsc 72→71 | 编码 agent 977851e6 |
-| T4R（复测） | W3/W2 | 待复测 agent 产出 | 待测试 | 待评估 | 复测 agent 03c401c9 |
+| T4R（复测） | W3/W2 | 修复正确性核对（构造点唯一、注释清理）；守护测试反向注入实验（改回旧键→5 用例失败含 2 条契约守护→恢复后 diff 为空）；OBS-005 修复后 e2e tsc 67=main 基线 | **通过**（BUG-006 → 已修复）；host vitest 1890 绿 / drivers 84 绿 / host tsc 零错 | 复测 agent 03c401c9，报告已追加最终复测节 |
 
 ## 四、提交记录
 
@@ -68,7 +68,8 @@
 | 31b92f29 | W3 测试里程碑：独立测试**通过**（八链路语义审计无装反），登记 BUG-004/005（P2 清尾，验证不通过）+ OBS-002/003 + 测试报告 + 进度更新 |
 | a70f5c19 | W3 修复里程碑：BUG-004/005 修复（选中态区分性用例 + data-sync-real 载荷对齐后端契约），bug 状态 → **待验证** |
 | 4568546c | W3 复测里程碑：复测**通过**，BUG-004/005 → 已修复，W3 → 已完成；新登记 BUG-006（P1）+ OBS-004/005 + 进度更新 |
-| （本次） | BUG-006 修复里程碑：ExportTablesRequest 键对齐 + 3 条守护测试 + OBS-005，bug 状态 → **待验证** |
+| 897ce98a | BUG-006 修复里程碑：ExportTablesRequest 键对齐 + 3 条守护测试 + OBS-005，bug 状态 → **待验证** |
+| （本次） | BUG-006 复测里程碑：复测**通过**，BUG-006 → 已修复 + 进度更新 |
 
 ## 五、决策记录
 
