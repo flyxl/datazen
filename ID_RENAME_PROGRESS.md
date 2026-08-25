@@ -92,7 +92,12 @@
 | d1488615 / 76838afe | 回归执行里程碑：R1 门禁全绿；A 类登记（BUG-008/009/010 验证不通过）+ 回归报告 + 进度记账 |
 | be922ce3 | 回归修复里程碑：BUG-008/009/010 修复（3 spec），bug 状态 → **待验证** |
 | be922ce3 / 7999782e | 回归修复里程碑：BUG-008/009/010 修复 + 记账（bug 状态 → 待验证） |
-| （本次） | 回归修复复测里程碑：复测**通过**，BUG-008/009/010 → 已修复；进入 B 类补跑与合并评估 + 进度更新 |
+| c7875448 | 回归修复复测里程碑：复测**通过**，BUG-008/009/010 → 已修复；A 类阻塞解除 |
+| b8a17f77 | 合并 main 进 feature（冲突按 D2 解决：接受 Create*Panel 删除/site docs.html 删除；main 新测试逻辑保留并适配新契约；合并树门禁 6/6 PASS） |
+| be3ea04b | feature → main 合并（--no-ff，238 文件 +6532/−3106） |
+| bb9ee9dc | 二次合并 origin/main 前进段（网站重构/i18n 8 语言补齐/CI 修复，零冲突）；门禁复验 6/6 PASS |
+| v0.1.0 | 删除旧 tag 并重打至 `bb9ee9dc`，origin+gitee 双推送；GitHub Actions release.yml 触发监控中（中间态构建已取消） |
+| 遗留 | B 类补跑项移交用户本地环境：①完整 `pnpm e2e:minimal` 重跑 ②`--spec e2e/specs/export-import.ts` 批量导出闭环 ③`.env` 补 E2E_PG_RO_USER/PASSWORD、E2E_MYSQL_RO_USER/PASSWORD、E2E_PG_ADMIN_DB、E2E_DB 并核查 E2E_REDIS_PASSSWORD 拼写 ④~20 个 UI 可见性族失败需真机 GUI 对照定论（证据倾向既有/环境） |
 
 ## 五、决策记录
 
