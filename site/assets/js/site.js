@@ -148,7 +148,7 @@
   function currentTheme() {
     const saved = localStorage.getItem(THEME_KEY);
     if (saved === 'light' || saved === 'dark') return saved;
-    return 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
 
   function applyTheme(theme) {
@@ -169,6 +169,13 @@
 
   // Set the attribute as early as possible to avoid theme flash.
   applyTheme(currentTheme());
+
+  // Follow system theme when user hasn't manually chosen one.
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
+    if (localStorage.getItem(THEME_KEY)) return;
+    applyTheme(e.matches ? 'dark' : 'light');
+    document.querySelectorAll('[data-theme-icon]').forEach(syncThemeIcon);
+  });
 
   function renderFooter() {
     const host = document.getElementById('site-footer');
@@ -217,7 +224,7 @@
       t.footerContact +
       '</a></div>' +
       '</div>' +
-      '<div class="copy">© 2026 DataZen · GPLv3 License · macOS / Windows</div>' +
+      '<div class="copy">© 2026 DataZen · GPLv3 License · macOS / Windows / Linux</div>' +
       '</div></footer>';
   }
 
