@@ -69,6 +69,10 @@ pnpm test:unit:e2e-contract:coverage  # 契约纯逻辑单测 ≥80%
 # Kiwi：在 datazen-driver-kiwi 仓 `pnpm e2e:kiwi`（Host 同名脚本会 exit 1）
 ```
 
+> 脚本化封装：受限运行环境（应用数据目录写入受限、需 HOME 沙箱）可用
+> [`scripts/run-regression.sh`](../../scripts/run-regression.sh)（全量回归门禁）与
+> [`scripts/run-e2e-minimal.sh`](../../scripts/run-e2e-minimal.sh)（minimal 集 + `E2E_ENV_FILE`/主检出 `.env` 回退解析）。
+
 ## 插件自有测试（Host 默认不拉）
 
 **驱动相关 E2E / 单测写在对应驱动 crate，不要往 `e2e/specs/` 加驱动方言或专属 Command 用例。** 见 [AGENTS.md](../../AGENTS.md)「驱动测试落点」。
