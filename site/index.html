@@ -6,7 +6,7 @@
     <title>DataZen — Lightweight, Free, Open-Source AI Database Client</title>
     <meta
       name="description"
-      content="DataZen is a Tauri-based cross-platform desktop database client: AI SQL generation, EXPLAIN analysis, charts, and cross-database Workflows. Supports PostgreSQL, MySQL, SQLite, and Redis."
+      content="DataZen is a lightweight free open-source AI database client. Natural-language SQL, error diagnosis, EXPLAIN insights, charts, and cross-database workflows. Under 10 MB. Local-first."
     />
     <link rel="canonical" href="https://flyxl.github.io/datazen/" />
     <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/" />
@@ -19,7 +19,7 @@
     />
     <meta
       property="og:description"
-      content="DataZen is a Tauri-based cross-platform desktop database client: AI SQL generation, EXPLAIN analysis, charts, and cross-database Workflows. Supports PostgreSQL, MySQL, SQLite, and Redis."
+      content="DataZen is a lightweight free open-source AI database client. Natural-language SQL, error diagnosis, EXPLAIN insights, charts, and cross-database workflows. Under 10 MB. Local-first."
     />
     <meta property="og:url" content="https://flyxl.github.io/datazen/" />
     <meta
@@ -35,7 +35,7 @@
     />
     <meta
       name="twitter:description"
-      content="DataZen is a Tauri-based cross-platform desktop database client: AI SQL generation, EXPLAIN analysis, charts, and cross-database Workflows."
+      content="DataZen is a lightweight free open-source AI database client. Natural-language SQL, error diagnosis, EXPLAIN insights, charts, and cross-database workflows."
     />
     <meta
       name="twitter:image"
@@ -54,7 +54,7 @@
         "license": "https://www.gnu.org/licenses/gpl-3.0.html",
         "url": "https://flyxl.github.io/datazen/",
         "image": "https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png",
-        "description": "Lightweight, free, open-source AI database client built with Tauri.",
+        "description": "Lightweight, free, open-source AI database client under 10 MB.",
         "inLanguage": "en"
       }
     </script>
@@ -73,8 +73,8 @@
         </h1>
         <p class="lead">
           DataZen is a desktop database client under 10&nbsp;MB. Query in natural language, diagnose
-          errors with one click, read EXPLAIN plans like a pro, chart every result, and automate
-          cross-database jobs with YAML workflows.
+          errors with one click, understand slow queries, chart every result, and automate
+          cross-database jobs with reusable workflows.
         </p>
         <div class="hero-cta">
           <a class="btn btn-primary btn-lg" href="download.html">Download for macOS / Windows</a>
@@ -105,20 +105,21 @@
         <span class="label">Built-in support</span>
         <span class="db-chip"><i></i>PostgreSQL</span>
         <span class="db-chip"><i></i>MySQL</span>
-        <span class="db-chip"><i></i>MariaDB</span>
         <span class="db-chip"><i></i>SQLite</span>
         <span class="db-chip"><i></i>Redis</span>
-        <span class="pill">+ plugins: KiwiDB / Trino / Superset…</span>
+        <span class="db-chip"><i></i>MongoDB</span>
+        <span class="db-chip"><i></i>ClickHouse</span>
+        <span class="pill">+ 10 more, extensible</span>
       </div>
     </section>
 
     <!-- Stats band -->
     <section class="section-tight">
       <div class="wrap stats-band">
-        <div class="stat"><b>&lt;10 MB</b><span>installer size — Rust core</span></div>
+        <div class="stat"><b>&lt;10 MB</b><span>installer size</span></div>
         <div class="stat"><b>10</b><span>UI languages out of the box</span></div>
-        <div class="stat"><b>5+</b><span>databases, plugin extensible</span></div>
-        <div class="stat"><b>0 €</b><span>free &amp; open source forever</span></div>
+        <div class="stat"><b>15+</b><span>databases, extensible</span></div>
+        <div class="stat"><b>Free</b><span>open source forever</span></div>
       </div>
     </section>
 
@@ -173,8 +174,8 @@
             <div class="body">
               <h3>Workflow Automation</h3>
               <p>
-                YAML workflows spanning multiple databases: queries, commands, conditions, loops,
-                merges — from UI or MCP.
+                Reusable flows across databases: queries, AI steps, conditions, and loops. Run from
+                the app, chat, or external AI tools.
               </p>
               <span class="tag">Explore Workflow →</span>
             </div>
@@ -196,8 +197,7 @@
             <div class="icon">⚡</div>
             <h3>Under 10 MB</h3>
             <p>
-              Tauri v2 + Rust core: tiny installers, instant startup, far lighter than JVM-based
-              clients.
+              Tiny installers and near-instant startup — far lighter than typical heavy clients.
             </p>
           </div>
           <div class="card">
@@ -210,10 +210,10 @@
           </div>
           <div class="card">
             <div class="icon">🧩</div>
-            <h3>Plugin ecosystem</h3>
+            <h3>Extensible drivers</h3>
             <p>
-              Compile-time drivers (KiwiDB, Trino, Superset) and runtime extension pages &amp;
-              themes.
+              15+ databases built in. Add OLAP and specialty engines without bloating the default
+              app.
             </p>
           </div>
           <div class="card">
@@ -240,15 +240,15 @@
             <tr>
               <th scope="col">&nbsp;</th>
               <th scope="col">DataZen</th>
-              <th scope="col">JVM-based clients</th>
-              <th scope="col">Native heavyweights</th>
+              <th scope="col">Typical heavy clients</th>
+              <th scope="col">Native desktop tools</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>Installer size</td>
               <td class="yes">&lt; 10 MB</td>
-              <td class="no">~ 400 MB</td>
+              <td class="no">~ 100–400 MB</td>
               <td class="no">100–300 MB</td>
             </tr>
             <tr>
@@ -264,7 +264,7 @@
               <td class="no">Partial / paid tiers</td>
             </tr>
             <tr>
-              <td>Cross-database YAML workflows</td>
+              <td>Cross-database workflows</td>
               <td class="yes">✓</td>
               <td class="no">—</td>
               <td class="no">—</td>
@@ -316,8 +316,8 @@
     <section class="section" style="padding-top: 0">
       <div class="wrap">
         <div class="cta-band">
-          <h2>Ready to zen your databases?</h2>
-          <p>Download free, connect in seconds, and let the AI do the boring parts.</p>
+          <h2>Ready to simplify your database work?</h2>
+          <p>Download free, connect in seconds, and let AI handle the tedious parts.</p>
           <a class="btn btn-primary btn-lg" href="download.html">Get DataZen</a>
         </div>
       </div>

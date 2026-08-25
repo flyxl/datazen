@@ -6,7 +6,7 @@
     <title>DataZen — 轻量、免费、开源的人工智能数据库客户端</title>
     <meta
       name="description"
-      content="DataZen 是一款基于 Tauri 的跨平台桌面数据库客户端：AI 生成 SQL、EXPLAIN 分析、图表可视化、跨库 Workflow。支持 PostgreSQL、MySQL、SQLite、Redis。"
+      content="DataZen — 轻量免费开源的 AI 数据库客户端。自然语言 SQL、错误诊断、执行计划解读、图表与跨库工作流。支持 PostgreSQL、MySQL、SQLite、Redis、MongoDB、ClickHouse 等 15+ 种数据库。安装包不足 10 MB，数据不出本机。"
     />
     <link rel="canonical" href="https://flyxl.github.io/datazen/zh/" />
     <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/" />
@@ -16,7 +16,7 @@
     <meta property="og:title" content="DataZen — 轻量、免费、开源的人工智能数据库客户端" />
     <meta
       property="og:description"
-      content="DataZen 是一款基于 Tauri 的跨平台桌面数据库客户端：AI 生成 SQL、EXPLAIN 分析、图表可视化、跨库 Workflow。支持 PostgreSQL、MySQL、SQLite、Redis。"
+      content="DataZen — 轻量免费开源的 AI 数据库客户端。自然语言 SQL、错误诊断、执行计划解读、图表与跨库工作流。支持 15+ 种数据库。安装包不足 10 MB，数据不出本机。"
     />
     <meta property="og:url" content="https://flyxl.github.io/datazen/zh/" />
     <meta
@@ -29,7 +29,7 @@
     <meta name="twitter:title" content="DataZen — 轻量、免费、开源的人工智能数据库客户端" />
     <meta
       name="twitter:description"
-      content="DataZen 是一款基于 Tauri 的跨平台桌面数据库客户端：AI 生成 SQL、EXPLAIN 分析、图表可视化、跨库 Workflow。"
+      content="DataZen — 轻量免费开源的 AI 数据库客户端。自然语言 SQL、错误诊断、执行计划解读、图表与跨库工作流。"
     />
     <meta
       name="twitter:image"
@@ -48,7 +48,7 @@
         "license": "https://www.gnu.org/licenses/gpl-3.0.html",
         "url": "https://flyxl.github.io/datazen/zh/",
         "image": "https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png",
-        "description": "DataZen 是一款基于 Tauri 的跨平台桌面数据库客户端：AI 生成 SQL、EXPLAIN 分析、图表可视化、跨库 Workflow。",
+        "description": "DataZen — 轻量免费开源的 AI 数据库客户端，安装包不足 10 MB，数据不出本机。",
         "inLanguage": "zh-CN"
       }
     </script>
@@ -63,7 +63,7 @@
         <h1>把数据库的活儿交给 <span class="grad">AI</span>，<br />让数据自己开口说话。</h1>
         <p class="lead">
           DataZen 是一款不足 10&nbsp;MB 的桌面数据库客户端：自然语言写查询、一键诊断报错、
-          智能解读执行计划、结果一键成图，再用 YAML Workflow 把跨库任务自动化。
+          读懂慢查询、结果一键成图，再用可复用流程把跨库任务自动化。
         </p>
         <div class="hero-cta">
           <a class="btn btn-primary btn-lg" href="download.html">下载 macOS / Windows 版</a>
@@ -94,20 +94,21 @@
         <span class="label">内置支持</span>
         <span class="db-chip"><i></i>PostgreSQL</span>
         <span class="db-chip"><i></i>MySQL</span>
-        <span class="db-chip"><i></i>MariaDB</span>
         <span class="db-chip"><i></i>SQLite</span>
         <span class="db-chip"><i></i>Redis</span>
-        <span class="pill">+ 插件：KiwiDB / Trino / Superset…</span>
+        <span class="db-chip"><i></i>MongoDB</span>
+        <span class="db-chip"><i></i>ClickHouse</span>
+        <span class="pill">+ 10 余种，可扩展</span>
       </div>
     </section>
 
     <!-- 数据带 -->
     <section class="section-tight">
       <div class="wrap stats-band">
-        <div class="stat"><b>&lt;10 MB</b><span>安装包体积 — Rust 内核</span></div>
+        <div class="stat"><b>&lt;10 MB</b><span>安装包体积</span></div>
         <div class="stat"><b>10</b><span>种界面语言开箱即用</span></div>
-        <div class="stat"><b>5+</b><span>种数据库，插件可扩展</span></div>
-        <div class="stat"><b>0 元</b><span>永久免费开源（GPLv3）</span></div>
+        <div class="stat"><b>15+</b><span>种数据库，可扩展</span></div>
+        <div class="stat"><b>永久免费</b><span>开源（GPLv3）</span></div>
       </div>
     </section>
 
@@ -157,7 +158,9 @@
             />
             <div class="body">
               <h3>Workflow 自动化</h3>
-              <p>YAML 工作流跨库编排：查询、命令、条件、循环、合并 —— 界面、MCP、聊天皆可触发。</p>
+              <p>
+                YAML 工作流跨库编排：查询、AI、条件、循环。可在应用内、对话里或外部 AI 工具中触发。
+              </p>
               <span class="tag">了解 Workflow →</span>
             </div>
           </a>
@@ -177,7 +180,7 @@
           <div class="card">
             <div class="icon">⚡</div>
             <h3>安装包 &lt;10 MB</h3>
-            <p>Tauri v2 + Rust 内核：秒级启动、内存占用远低于 JVM 系客户端。</p>
+            <p>安装包小、启动快，远轻于常见重量级客户端。</p>
           </div>
           <div class="card">
             <div class="icon">🛡️</div>
@@ -186,8 +189,8 @@
           </div>
           <div class="card">
             <div class="icon">🧩</div>
-            <h3>插件生态</h3>
-            <p>编译期驱动（KiwiDB、Trino、Superset）+ 运行时扩展页面与主题。</p>
+            <h3>可扩展驱动</h3>
+            <p>内置 15+ 种数据库。按需增加 OLAP 与专用引擎，默认安装保持精简。</p>
           </div>
           <div class="card">
             <div class="icon">🌍</div>
@@ -210,15 +213,15 @@
             <tr>
               <th scope="col">&nbsp;</th>
               <th scope="col">DataZen</th>
-              <th scope="col">JVM 系客户端</th>
-              <th scope="col">原生重型工具</th>
+              <th scope="col">常见重量级客户端</th>
+              <th scope="col">原生桌面工具</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>安装包体积</td>
               <td class="yes">&lt; 10 MB</td>
-              <td class="no">约 400 MB</td>
+              <td class="no">约 100–400 MB</td>
               <td class="no">100–300 MB</td>
             </tr>
             <tr>
@@ -234,7 +237,7 @@
               <td class="no">部分需付费订阅</td>
             </tr>
             <tr>
-              <td>跨库 YAML 工作流</td>
+              <td>跨库工作流</td>
               <td class="yes">✓</td>
               <td class="no">—</td>
               <td class="no">—</td>
@@ -278,7 +281,7 @@
     <section class="section" style="padding-top: 0">
       <div class="wrap">
         <div class="cta-band">
-          <h2>准备好让数据库「禅定」了吗？</h2>
+          <h2>准备好简化数据库工作了吗？</h2>
           <p>免费下载，秒级连库，把枯燥的部分交给 AI。</p>
           <a class="btn btn-primary btn-lg" href="download.html">获取 DataZen</a>
         </div>
