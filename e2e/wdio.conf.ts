@@ -1,6 +1,76 @@
 export const config: WebdriverIO.Config = {
   runner: 'local',
   specs: ['./specs/**/*.ts'],
+  /**
+   * Named groups run via `pnpm e2e:<group>` (package.json) → `--suite <group>`.
+   * Single source of truth for group membership; paths are relative to this
+   * config file (same resolution as `specs`). Keep in sync with docs:
+   * docs/development/e2e-testing.md §2.
+   */
+  suite: {
+    // Core UI, no real DB required (was `pnpm e2e:core`)
+    core: [
+      './specs/main-window.ts',
+      './specs/new-connection.ts',
+      './specs/edit-delete-connection.ts',
+      './specs/connection-search-group.ts',
+      './specs/settings.ts',
+      './specs/i18n-menu.ts',
+      './specs/homepage-features.ts',
+      './specs/drag-drop-groups.ts',
+      './specs/backup-database.ts',
+      './specs/backup-window.ts',
+      './specs/schema-diff-window.ts',
+      './specs/data-sync-window.ts',
+    ],
+    // Real-DB Host specs incl. the host contract matrix (was `pnpm e2e:db`)
+    db: [
+      './specs/connection-window.ts',
+      './specs/sql-query.ts',
+      './specs/table-data.ts',
+      './specs/table-filter.ts',
+      './specs/table-indexes.ts',
+      './specs/table-edit.ts',
+      './specs/table-structure.ts',
+      './specs/export-import.ts',
+      './specs/object-browser.ts',
+      './specs/data-types.ts',
+      './specs/mysql.ts',
+      './specs/mysql-multi-database.ts',
+      './specs/postgres-multi-database.ts',
+      './specs/data-sync-real.ts',
+      './specs/client-parity.ts',
+      './specs/host-contract-matrix.ts',
+    ],
+    // Host contract matrix × PG/MySQL/SQLite (`pnpm e2e:contract:matrix`,
+    // `pnpm e2e:contract:pg` adds --mochaOpts.grep 'Host contract @ postgres')
+    contract: ['./specs/host-contract-matrix.ts'],
+    // Redis driver's own E2E, not part of default full run (`pnpm e2e:redis`)
+    redis: ['../packages/drivers/redis/e2e/*.ts'],
+    // AI features (`pnpm e2e:ai`)
+    ai: [
+      './specs/ai-features.ts',
+      './specs/ai-context.ts',
+      './specs/ai-context-tables.ts',
+      './specs/ai-code-block.ts',
+    ],
+    // App-data backup + i18n locales (`pnpm e2e:i18n-backup`)
+    'i18n-backup': [
+      './specs/app-data-backup.ts',
+      './specs/i18n-10-locales.ts',
+      './specs/system-locale.ts',
+      './specs/i18n-menu.ts',
+    ],
+    // Path IPC hardening + workflow / driver commands (`pnpm e2e:path-ipc`)
+    'path-ipc': [
+      './specs/path-ipc-hardening.ts',
+      './specs/workflow-window.ts',
+      './specs/driver-commands.ts',
+      './specs/app-data-backup.ts',
+    ],
+    // Dashboard (`pnpm e2e:dashboard`)
+    dashboard: ['./specs/data-dashboard*.ts'],
+  },
   maxInstances: 1,
   capabilities: [{}],
   hostname: '127.0.0.1',

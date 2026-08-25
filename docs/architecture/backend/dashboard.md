@@ -47,7 +47,7 @@ Workflow 编辑页支持 **可视化 | YAML** 双模（`WorkflowYamlEditor` + `w
 cargo test -p datazen --lib dashboard::
 cargo test -p datazen --lib monitor::
 npx vitest run src/windows/dashboard src/lib/dashboard
-pnpm e2e:dashboard   # e2e/specs/data-dashboard*.ts
+pnpm e2e:dashboard   # dashboard suite（e2e/specs/data-dashboard*.ts；与其他分组一致，需已有 webdriver 构建）
 ```
 
 详见 [PRD](../../features/ops-dashboard-guide.zh-CN.md) 与 [实施方案](../../features/ops-dashboard-guide.en.md)。
