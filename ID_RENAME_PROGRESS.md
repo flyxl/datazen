@@ -26,8 +26,8 @@
 | BUG-002 | W2 独立测试 T3 | `commands/connection.rs` 行覆盖率 **65.37% < 80%** 验收线（其余核心模块达标：history_db 91.14%、mcp/server 88.11%、driver_command 81.95%、query 80.62%） | `cargo llvm-cov -p datazen --lib --summary-only` 复测 | 已修复 | W2 |
 | BUG-003 | W2 独立测试 T2/G1 | history_db 迁移链缺**存量 v3 库（config_id 列）起点**的固化回归测试（走读与三起点 SQL 等价执行均 PASS，但无自动化测试保护） | 报告 §T2 缺口 G1 | 已修复 | W2 |
 | OBS-001 | W2 独立测试 T1 | store 并发用例负载型偶发失败（隔离重跑 5/5 过；代码 vs main 零改动；main 基线同现象）——既有环境波动，不计缺陷 | 隔离单跑该用例即可复现通过 | 观察 | - |
-| BUG-004 | W3 独立测试 T5/D2 | **P2 测试层**：`ConnectionNavigatorTree.test.tsx` 仍传旧 prop `activeConfigId`（组件已改名 `activeConnectionId`）；因 tsconfig exclude 测试文件致 tsc 不报、用例仍绿，但选中态覆盖被静默削弱 | 打开该测试文件查看传参；对照组件 props 定义 | 验证不通过 | W3 |
-| BUG-005 | W3 独立测试 T5/D3 | **P2 e2e 层**：`e2e/specs/data-sync-real.ts` 本地 SyncTask 接口/载荷残留 `sourceConfigId/targetConfigId` 且缺 `sourceDbSessionId/targetDbSessionId`，后端强类型反序列化必挂——GUI E2E 实跑时 SYNC-BATCH-004 失败 | 实跑 data-sync-real SYNC-BATCH-004；或比对本地接口与后端 `commands/sync/types.rs` 字段 | 验证不通过 | W3 |
+| BUG-004 | W3 独立测试 T5/D2 | **P2 测试层**：`ConnectionNavigatorTree.test.tsx` 仍传旧 prop `activeConfigId`（组件已改名 `activeConnectionId`）；因 tsconfig exclude 测试文件致 tsc 不报、用例仍绿，但选中态覆盖被静默削弱 | 打开该测试文件查看传参；对照组件 props 定义 | 待验证 | W3 |
+| BUG-005 | W3 独立测试 T5/D3 | **P2 e2e 层**：`e2e/specs/data-sync-real.ts` 本地 SyncTask 接口/载荷残留 `sourceConfigId/targetConfigId` 且缺 `sourceDbSessionId/targetDbSessionId`，后端强类型反序列化必挂——GUI E2E 实跑时 SYNC-BATCH-004 失败 | 实跑 data-sync-real SYNC-BATCH-004；或比对本地接口与后端 `commands/sync/types.rs` 字段 | 待验证 | W3 |
 | OBS-002 | W3 独立测试 T5 | clearCaches/dbObjectsMap 键空间错位——main 上同构存在（继承性观察，非本次引入），登记待后续工作项评估 | 见 W3 测试报告 §T5 | 观察 | - |
 | OBS-003 | W3 独立测试 T3 | vitest coverage 门禁 exit 1（10 条阈值 ERROR）在 main 基线同样存在——既有问题非本次引入 | main 上跑 `npx vitest run --coverage` 对照 | 观察 | - |
 
@@ -45,6 +45,8 @@
 | T2R（复测） | W2 | 独立重扫装反=0；含 connection_id 命令仅剩 7 条且全为配置语义无误改；前后端键一致性抽查 4 项过；迁移锚点实测通过 | **通过**（BUG-001/002/003 → 已修复）；lib 1125 过 / vitest 1886 绿 / drivers 84 绿 / tsc+vite ✓；⚠️ 附带条件：e2e:minimal 因沙箱 EPERM 环境受阻（报告 R5），**转为收尾回归强制项：合并 main 前必须在无沙箱限制环境补跑通过** | 复测 agent dc7ba786，报告已追加「复测轮」章节 |
 | D3（开发自测） | W3 | 五域前端改名：store 核心 / lib 层（含 D4 插件桥直改）/ 组件 props 链 / redis UI 适配 / e2e 清尾 | host vitest **1886 绿**；drivers vitest **84 绿**；tsc 零错 + vite ✓；configId 残留 1 处（schemaDiff.ts 历史注释，合理保留）；Rust 零改动 | 待独立测试 agent 评估 | 编码 agent 07f37e84（中止于汇报前，门禁由编排方代跑） |
 | T3（独立测试） | W3 | 12 条用例（10 条 vitest/mock 层实际执行：定向 15 文件 174 用例 + redis 8 用例）；八链路语义审计全 ✅ 无装反；变体扫描发现 BUG-004/005 | **通过**（附 2 项 P2 清尾缺陷 → BUG-004/005 闭环中）；覆盖率：activeConnectionStore 91.83、extensionBridge 99.32、windowManager 92.85 达标，panelStore 69.91（与 main 基线一致，继承性不足）；TOTAL lines 81.84 | 全新测试 agent 03c401c9，报告 `test-reports/W3-test-report.md` |
+| F2（修复轮自测） | W3 | BUG-004：4 处旧 prop 改名 + 新增选中态用例（反向注入实验证明缺陷状态下必失败）；BUG-005：复核并收尾 data-sync-real.ts（会话变量改名 ~60 处、legacy 载荷错位清零），e2e ConfigId 变体=0 | host vitest **1887 绿**（含新用例）；drivers 84 绿；host tsc 零错；e2e tsc 68 ≤ 基线（data-sync-real.ts 0 错） | 编码 agent 07f37e84 |
+| T3R（复测） | W3 | 待复测 agent 产出 | 待测试 | 待评估 | 复测 agent 03c401c9 |
 
 ## 四、提交记录
 
@@ -58,7 +60,8 @@
 | d20aa93a | W2 修复里程碑：BUG-001/002/003 修复（31 文件 +685/-209，净增 11 条 Rust 测试），bug 状态 → **待验证** |
 | 87ceed86 | W2 复测里程碑：复测**通过**，BUG-001/002/003 → 已修复，W2 → 已完成；e2e:minimal 转收尾强制项 + 进度更新 |
 | 80df9968 | W3 开发里程碑：前端五域改名（含 D4 插件桥直改）+ 门禁代跑确认 + 进度更新 |
-| （本次） | W3 测试里程碑：独立测试**通过**（八链路语义审计无装反），登记 BUG-004/005（P2 清尾，验证不通过）+ OBS-002/003 + 测试报告 + 进度更新 |
+| 31b92f29 | W3 测试里程碑：独立测试**通过**（八链路语义审计无装反），登记 BUG-004/005（P2 清尾，验证不通过）+ OBS-002/003 + 测试报告 + 进度更新 |
+| （本次） | W3 修复里程碑：BUG-004/005 修复（选中态区分性用例 + data-sync-real 载荷对齐后端契约），bug 状态 → **待验证** |
 
 ## 五、决策记录
 

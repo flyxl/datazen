@@ -267,7 +267,7 @@ async function triggerSchemaRefresh(
 }
 
 const baseProps = {
-  activeConfigId: 'cfg-mysql',
+  activeConnectionId: 'cfg-mysql',
   onSelectConnection: vi.fn(),
   onSelectTable: vi.fn(),
   onNewConnection: vi.fn(),
@@ -300,6 +300,49 @@ beforeEach(() => {
   mockDriverExecute.mockResolvedValue({});
   useSchemaStore.getState().reset();
   useSchemaStore.getState().setActiveConnection('conn-1');
+});
+
+describe('ConnectionNavigatorTree active connection highlight', () => {
+  it('highlights only the row matching the activeConnectionId prop', async () => {
+    connectionsState.connections = [
+      MYSQL_CONN,
+      { ...MYSQL_CONN, id: 'cfg-pg', name: 'Local PG', databaseType: 'postgresql', port: 5432 },
+    ];
+    activeConnectionsState.connections = {
+      'cfg-mysql': { status: 'connected' as const, dbSessionId: 'conn-1', connectionId: 'cfg-mysql' },
+      'cfg-pg': { status: 'connected' as const, dbSessionId: 'conn-2', connectionId: 'cfg-pg' },
+    };
+
+    const view = render(
+      <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-pg" />,
+    );
+
+    const pgRow = await waitFor(() => {
+      const el = view.container.querySelector<HTMLElement>('[data-conn-name="Local PG"]');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    // Selected style + left accent bar come solely from the activeConnectionId prop.
+    expect(pgRow.className).toContain('bg-accent/10');
+    expect(pgRow.querySelector('span.absolute')).not.toBeNull();
+    const mysqlRow = view.container.querySelector<HTMLElement>('[data-conn-name="Local MySQL"]')!;
+    expect(mysqlRow.className).not.toContain('bg-accent/10');
+
+    // Flipping the prop moves the highlight — proves the assertion can tell
+    // a correctly-wired prop from a stale/ignored one.
+    view.rerender(<ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-mysql" />);
+    await waitFor(() => {
+      const row = view.container.querySelector<HTMLElement>('[data-conn-name="Local MySQL"]');
+      expect(row?.className).toContain('bg-accent/10');
+    });
+    const pgAfter = view.container.querySelector<HTMLElement>('[data-conn-name="Local PG"]')!;
+    expect(pgAfter.className).not.toContain('bg-accent/10');
+
+    connectionsState.connections = [MYSQL_CONN];
+    activeConnectionsState.connections = {
+      'cfg-mysql': { status: 'connected' as const, dbSessionId: 'conn-1', connectionId: 'cfg-mysql' },
+    };
+  });
 });
 
 describe('ConnectionNavigatorTree multi-db table selection', () => {
@@ -353,7 +396,7 @@ describe('ConnectionNavigatorTree multi-db table selection', () => {
     const { findByText, queryAllByText } = render(
       <ConnectionNavigatorTree
         {...baseProps}
-        activeConfigId="cfg-pg"
+        activeConnectionId="cfg-pg"
         onSelectTable={onSelectTable}
       />,
     );
@@ -457,7 +500,7 @@ describe('ConnectionNavigatorTree refresh', () => {
     });
 
     const { findByText } = render(
-      <ConnectionNavigatorTree {...baseProps} activeConfigId="cfg-pg" />,
+      <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-pg" />,
     );
 
     await waitFor(() => findByText('db_a'));
@@ -567,7 +610,7 @@ describe('ConnectionNavigatorTree context menu new query', () => {
 
     const newQuery = vi.fn();
     const { findByText } = render(
-      <ConnectionNavigatorTree {...baseProps} activeConfigId="cfg-pg" viewActions={{ newQuery }} />,
+      <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-pg" viewActions={{ newQuery }} />,
     );
 
     await waitFor(() => findByText('db_a'));
