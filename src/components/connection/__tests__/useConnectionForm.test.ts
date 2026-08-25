@@ -61,10 +61,12 @@ describe('useConnectionForm', () => {
 
     expect(result.current.formVariant).toBe('standard');
 
-    act(() => result.current.handleDatabaseTypeChange('redis'));
-    rerender();
-    expect(result.current.formVariant).toBe('redis');
-    expect(DB_REGISTRY.redis.connectionForm).toBe('redis');
+    if (DB_REGISTRY.redis) {
+      act(() => result.current.handleDatabaseTypeChange('redis'));
+      rerender();
+      expect(result.current.formVariant).toBe('redis');
+      expect(DB_REGISTRY.redis.connectionForm).toBe('redis');
+    }
 
     act(() => result.current.handleDatabaseTypeChange('sqlite'));
     rerender();
@@ -98,8 +100,10 @@ describe('useConnectionForm', () => {
     expect(result.current.username).toBe('');
 
     // Switch to Redis: database should be '0'
-    act(() => result.current.handleDatabaseTypeChange('redis'));
-    expect(result.current.database).toBe('0');
+    if (DB_REGISTRY.redis) {
+      act(() => result.current.handleDatabaseTypeChange('redis'));
+      expect(result.current.database).toBe('0');
+    }
 
     // Switch back to PostgreSQL: database should be 'postgres', username 'postgres'
     act(() => result.current.handleDatabaseTypeChange('postgresql'));

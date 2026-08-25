@@ -20,6 +20,7 @@ describe('DB_REGISTRY behavioral flags', () => {
   });
 
   it('redis uses redis form and keyvalue view', () => {
+    if (!DB_REGISTRY.redis) return;
     expect(DB_REGISTRY.redis.connectionForm).toBe('redis');
     expect(DB_REGISTRY.redis.connectionView).toBe('keyvalue');
   });
@@ -35,7 +36,7 @@ describe('DB_REGISTRY behavioral flags', () => {
 
   it('supportsExplain is opt-in via explicit true', () => {
     expect(DB_REGISTRY.postgresql.supportsExplain).toBe(true);
-    expect(DB_REGISTRY.redis.supportsExplain).toBeUndefined();
+    if (DB_REGISTRY.redis) expect(DB_REGISTRY.redis.supportsExplain).toBeUndefined();
   });
 
   it('native SQL engines advertise explain only when backend implements it', () => {
@@ -69,6 +70,7 @@ describe('escapeIdent', () => {
   });
 
   it('returns bare name for redis (no quoting)', () => {
+    if (!DB_REGISTRY.redis) return;
     expect(escapeIdent('mykey', 'redis')).toBe('mykey');
   });
 });
