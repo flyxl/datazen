@@ -309,13 +309,15 @@ describe('ConnectionNavigatorTree active connection highlight', () => {
       { ...MYSQL_CONN, id: 'cfg-pg', name: 'Local PG', databaseType: 'postgresql', port: 5432 },
     ];
     activeConnectionsState.connections = {
-      'cfg-mysql': { status: 'connected' as const, dbSessionId: 'conn-1', connectionId: 'cfg-mysql' },
+      'cfg-mysql': {
+        status: 'connected' as const,
+        dbSessionId: 'conn-1',
+        connectionId: 'cfg-mysql',
+      },
       'cfg-pg': { status: 'connected' as const, dbSessionId: 'conn-2', connectionId: 'cfg-pg' },
     };
 
-    const view = render(
-      <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-pg" />,
-    );
+    const view = render(<ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-pg" />);
 
     const pgRow = await waitFor(() => {
       const el = view.container.querySelector<HTMLElement>('[data-conn-name="Local PG"]');
@@ -340,7 +342,11 @@ describe('ConnectionNavigatorTree active connection highlight', () => {
 
     connectionsState.connections = [MYSQL_CONN];
     activeConnectionsState.connections = {
-      'cfg-mysql': { status: 'connected' as const, dbSessionId: 'conn-1', connectionId: 'cfg-mysql' },
+      'cfg-mysql': {
+        status: 'connected' as const,
+        dbSessionId: 'conn-1',
+        connectionId: 'cfg-mysql',
+      },
     };
   });
 });
@@ -610,7 +616,11 @@ describe('ConnectionNavigatorTree context menu new query', () => {
 
     const newQuery = vi.fn();
     const { findByText } = render(
-      <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-pg" viewActions={{ newQuery }} />,
+      <ConnectionNavigatorTree
+        {...baseProps}
+        activeConnectionId="cfg-pg"
+        viewActions={{ newQuery }}
+      />,
     );
 
     await waitFor(() => findByText('db_a'));

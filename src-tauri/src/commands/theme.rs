@@ -141,13 +141,7 @@ pub(crate) async fn read_theme_pack_file_impl(
         )));
     }
 
-    let canonical_pack = fs::canonicalize(&pack).cmd_err("read_theme_pack_file")?;
-    let canonical_file = fs::canonicalize(&file_path).cmd_err("read_theme_pack_file")?;
-    if !canonical_file.starts_with(&canonical_pack) {
-        return Err(CommandError::Validation(
-            "path traversal not allowed".into(),
-        ));
-    }
+    super::error::assert_under_dir(&pack, &file_path, "read_theme_pack_file")?;
 
     tokio::fs::read(&file_path)
         .await

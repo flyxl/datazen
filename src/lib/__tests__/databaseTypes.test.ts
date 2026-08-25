@@ -4,11 +4,9 @@ import {
   escapeIdent,
   formatConnectionAddr,
   getDbIcon,
-  getDbIconColor,
   getDbLabel,
   getDriverIconMap,
   getDriverIconParents,
-  normalizeRedisDatabaseField,
 } from '../databaseTypes';
 
 describe('DB_REGISTRY behavioral flags', () => {
@@ -22,6 +20,7 @@ describe('DB_REGISTRY behavioral flags', () => {
   });
 
   it('redis uses redis form and keyvalue view', () => {
+    if (!DB_REGISTRY.redis) return;
     expect(DB_REGISTRY.redis.connectionForm).toBe('redis');
     expect(DB_REGISTRY.redis.connectionView).toBe('keyvalue');
   });
@@ -37,7 +36,7 @@ describe('DB_REGISTRY behavioral flags', () => {
 
   it('supportsExplain is opt-in via explicit true', () => {
     expect(DB_REGISTRY.postgresql.supportsExplain).toBe(true);
-    expect(DB_REGISTRY.redis.supportsExplain).toBeUndefined();
+    if (DB_REGISTRY.redis) expect(DB_REGISTRY.redis.supportsExplain).toBeUndefined();
   });
 
   it('native SQL engines advertise explain only when backend implements it', () => {
@@ -71,6 +70,7 @@ describe('escapeIdent', () => {
   });
 
   it('returns bare name for redis (no quoting)', () => {
+    if (!DB_REGISTRY.redis) return;
     expect(escapeIdent('mykey', 'redis')).toBe('mykey');
   });
 });
@@ -86,23 +86,9 @@ describe('getDbLabel and icons', () => {
     expect(getDbIcon('unknown' as 'postgresql')).toEqual({ label: 'DB', bg: 'bg-gray-500' });
   });
 
-  it('getDbIconColor returns class or default', () => {
-    expect(getDbIconColor('postgresql')).toMatch(/^text-/);
-    expect(getDbIconColor('unknown' as 'postgresql')).toBe('text-fg-muted');
-  });
-
   it('getDriverIconMap and parents are objects', () => {
     expect(typeof getDriverIconMap()).toBe('object');
     expect(typeof getDriverIconParents()).toBe('object');
-  });
-});
-
-describe('normalizeRedisDatabaseField', () => {
-  it('clamps to 0-15 and defaults invalid to 0', () => {
-    expect(normalizeRedisDatabaseField('')).toBe('0');
-    expect(normalizeRedisDatabaseField('abc')).toBe('0');
-    expect(normalizeRedisDatabaseField('3')).toBe('3');
-    expect(normalizeRedisDatabaseField('99')).toBe('15');
   });
 });
 

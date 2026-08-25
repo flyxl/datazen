@@ -1,4 +1,3 @@
-import type { Value } from '../types';
 import { t } from '../locales/t';
 
 export function formatTimestamp(value: unknown): string {
@@ -28,21 +27,4 @@ export function formatLastConnected(iso?: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString();
-}
-
-export function formatResultCell(cell: unknown): string {
-  if (cell === null || cell === undefined) return 'NULL';
-  if (typeof cell === 'boolean') return cell ? 'true' : 'false';
-  if (typeof cell === 'object') {
-    try {
-      return JSON.stringify(cell);
-    } catch {
-      return String(cell);
-    }
-  }
-  return String(cell);
-}
-
-export function displayValueForTitle(value: Value | unknown): string {
-  return formatCell(value);
 }

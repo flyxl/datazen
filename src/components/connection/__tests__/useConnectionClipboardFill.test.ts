@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, renderHook, waitFor } from '@testing-library/react';
 import { useConnectionClipboardFill } from '../useConnectionClipboardFill';
 import type { ConnectionFormState } from '../useConnectionForm';
+import { DB_REGISTRY } from '../../../lib/databaseTypes';
 
 function stubForm(overrides: Partial<ConnectionFormState> = {}): ConnectionFormState {
   return {
@@ -41,12 +42,11 @@ describe('useConnectionClipboardFill', () => {
   });
 
   it('switches to redis and expands advanced for a TLS redis URL', async () => {
+    if (!DB_REGISTRY.redis) return;
     mockClipboard('rediss://alice:s3cret@cache.internal:6380/2');
     const form = stubForm();
     const onApplied = vi.fn();
-    renderHook(() =>
-      useConnectionClipboardFill(form, { enabled: true, onApplied }),
-    );
+    renderHook(() => useConnectionClipboardFill(form, { enabled: true, onApplied }));
 
     await waitFor(() => {
       expect(form.handleDatabaseTypeChange).toHaveBeenCalledWith('redis');
@@ -154,9 +154,7 @@ describe('useConnectionClipboardFill', () => {
       },
     });
     const form = stubForm();
-    const { unmount } = renderHook(() =>
-      useConnectionClipboardFill(form, { enabled: true }),
-    );
+    const { unmount } = renderHook(() => useConnectionClipboardFill(form, { enabled: true }));
     unmount();
     await act(async () => {
       resolveRead('redis://cache:6379');

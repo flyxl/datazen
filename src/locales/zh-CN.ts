@@ -74,7 +74,7 @@ const zhCN = {
   'menu.bringAllToFront': '前置全部窗口',
   'menu.closeWindow': '关闭窗口',
   'menu.help': '帮助',
-  'menu.documentation': '使用说明',
+  'menu.documentation': '使用手册',
   'menu.reportIssue': '报告问题',
   'menu.ctxAddFavorite': '收藏 SQL',
 
@@ -1710,7 +1710,7 @@ const zhCN = {
   'dashboard.alertThreshold': '阈值',
   'dashboard.alertCooldown': '冷却时间（秒）',
   'win.settings': '偏好设置 - DataZen',
-  'win.docs': '使用说明 - DataZen',
+  'win.docs': '使用手册 - DataZen',
   'docs.nav': '目录',
   'docs.openHelp': '使用说明',
   'docs.openAiHelp': 'AI 与上下文说明',

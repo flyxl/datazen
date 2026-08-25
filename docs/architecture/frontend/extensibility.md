@@ -34,8 +34,7 @@ src/windows/connection/
 ├── DocumentConnectionView.tsx  # 文档型连接 UI
 └── schema-tree/
     ├── SchemaTree.tsx
-    ├── StandardSchemaTree.tsx
-    └── MultiDatabaseSchemaTree.tsx
+    └── UnifiedSchemaTree.tsx
 ```
 
 ### 1.3 DB_REGISTRY 行为标志
@@ -45,7 +44,7 @@ src/windows/connection/
 | `connectionView` | 路由到 `CONNECTION_VIEWS`（sql / keyvalue / document） |
 | `connectionForm` | 路由到连接表单 Fields 组件（standard / kiwi / file / index） |
 | `sqlDialect` | 路由到 `sqlDialects/` 策略 |
-| `hasMultiDatabase` | 驱动**能力**标志。未配置逻辑库时走 `MultiDatabaseSchemaTree`；配置了逻辑库且该库 ∈ `get_databases` 时锁定 `StandardSchemaTree`。`databaseFieldType: 'domain'`（Kiwi）时 `connection.database` 为实例域名，**不**触发锁定 |
+| `hasMultiDatabase` | 驱动**能力**标志。`UnifiedSchemaTree` 内部通过 `isSingleDbMode` 切换单库/多库渲染 |
 | `databaseFieldType` | `name` / `path` / `index` / `domain`（Kiwi 实例域名） |
 | `defaultPageSize` | 覆盖默认分页（如 Kiwi 1000 行） |
 | `supportsBackup` | BackupWindow 过滤 + 方言备份选项 |

@@ -2,6 +2,15 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
+// Mock ResizeObserver for useCompactToolbar
+class MockResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+globalThis.ResizeObserver ??= MockResizeObserver as unknown as typeof ResizeObserver;
+
 const { getConnectionViewMock, schemaState, tableDataState, MockRedisView } = vi.hoisted(() => {
   const MockRedisView = () => <div data-testid="mock-redis-view">redis</div>;
   return {

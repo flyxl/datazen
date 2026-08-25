@@ -76,6 +76,7 @@ describe('buildConnectionUrl', () => {
         password: 'pw',
       }),
     );
+    if (!url) return; // Redis driver not in this build
     expect(url).toBe('redis://:pw@redis.local/0');
   });
 

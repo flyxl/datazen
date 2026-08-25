@@ -94,28 +94,7 @@ impl Store {
             .path()
             .app_data_dir()
             .map_err(|e| StoreError::InitError(e.to_string()))?;
-
-        tokio::fs::create_dir_all(&data_dir)
-            .await
-            .map_err(|e| StoreError::InitError(e.to_string()))?;
-
-        let encryption_key = Self::get_or_create_encryption_key(&data_dir).await?;
-
-        let history_db =
-            HistoryDb::open(&data_dir).map_err(|e| StoreError::InitError(e.to_string()))?;
-        let app_db = AppDb::open(&data_dir).map_err(|e| StoreError::InitError(e.to_string()))?;
-
-        let store = Self {
-            data_dir,
-            encryption_key,
-            cache: Arc::new(RwLock::new(StoreCache::default())),
-            write_lock: Mutex::new(()),
-            history_db,
-            app_db,
-        };
-
-        store.load_all().await?;
-        Ok(store)
+        Self::init_with_path(&data_dir).await
     }
 
     pub async fn init_with_path(data_dir: &std::path::Path) -> Result<Self, StoreError> {
