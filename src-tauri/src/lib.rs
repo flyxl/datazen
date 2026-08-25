@@ -816,7 +816,6 @@ pub fn run() {
             commands::get_connection_info,
             commands::get_available_drivers,
             commands::get_databases,
-            commands::use_database,
             commands::get_tables,
             commands::get_columns,
             commands::get_table_schema,

@@ -422,21 +422,22 @@ async function selectQueryPanelDatabase(dbName: string) {
       `database option "${dbName}" not found in query selector; diag=${JSON.stringify(diag)}`,
     );
   }
-  await browser.pause(900); // allow use_database + get_tables to settle
+  await browser.pause(900); // allow get_tables refreshes to settle
 }
 
 /**
- * Pin the runtime session to the primary demo database so SQL / DataTable
- * panels query demo_sales instead of a secondary DB expanded for screenshots.
+ * Verify the primary demo database is reachable so SQL / DataTable panels
+ * query demo_sales (F1: get_tables pins the database explicitly — the session
+ * is switched lazily by query/stream/explain carrying `database`).
  */
 async function pinDemoPgDatabase() {
   const connId = await invoke<string>('connect', { connectionId: DEMO_PG_CONN_ID });
   if (typeof connId !== 'string' || connId.startsWith('__error')) {
     throw new Error(`connect(${DEMO_PG_CONN_NAME}) failed: ${JSON.stringify(connId)}`);
   }
-  const useDb = await invoke('use_database', { dbSessionId: connId, database: DEMO_PG_DB });
-  if (useDb && typeof useDb === 'object' && '__error' in (useDb as object)) {
-    throw new Error(`use_database(${DEMO_PG_DB}) failed: ${JSON.stringify(useDb)}`);
+  const tables = await invoke('get_tables', { dbSessionId: connId, database: DEMO_PG_DB });
+  if (tables && typeof tables === 'object' && '__error' in (tables as object)) {
+    throw new Error(`get_tables(${DEMO_PG_DB}) failed: ${JSON.stringify(tables)}`);
   }
   await browser.pause(300);
 }
@@ -947,9 +948,9 @@ describe('site screenshots', () => {
     if (typeof connId !== 'string' || connId.startsWith('__error')) {
       throw new Error(`connect(${DEMO_PG_CONN_NAME}) failed: ${JSON.stringify(connId)}`);
     }
-    const useDb = await invoke('use_database', { dbSessionId: connId, database: DEMO_PG_DB });
-    if (useDb && typeof useDb === 'object' && '__error' in (useDb as object)) {
-      throw new Error(`use_database(${DEMO_PG_DB}) failed: ${JSON.stringify(useDb)}`);
+    const tables = await invoke('get_tables', { dbSessionId: connId, database: DEMO_PG_DB });
+    if (tables && typeof tables === 'object' && '__error' in (tables as object)) {
+      throw new Error(`get_tables(${DEMO_PG_DB}) failed: ${JSON.stringify(tables)}`);
     }
 
     await invoke('connect', { connectionId: DEMO_MYSQL_CONN_ID });

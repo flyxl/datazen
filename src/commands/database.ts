@@ -28,10 +28,6 @@ export interface RowDeleteBatch {
 export const databaseCommands = {
   getDatabases: (dbSessionId: string) => invoke<string[]>('get_databases', { dbSessionId }),
 
-  /** Switch active database for subsequent unqualified queries (MySQL/MariaDB). */
-  useDatabase: (dbSessionId: string, database: string) =>
-    invoke<void>('use_database', { dbSessionId, database }),
-
   getTables: (dbSessionId: string, database: string) =>
     invoke<TableInfo[]>('get_tables', { dbSessionId, database }),
 

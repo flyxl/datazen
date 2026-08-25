@@ -12,13 +12,52 @@ use datazen_driver_api::{QueryStreamCallback, QueryStreamEvent};
 use tauri::ipc::Channel;
 use tauri::State;
 
+/// F1 (IPC refactor): query-family commands accept an explicit `database` pin
+/// instead of relying on a prior `use_database` IPC round-trip. When the pin
+/// differs from the session's active database, switch the live session first;
+/// `None` (or blank) is a no-op so legacy callers keep their behavior.
+pub(crate) async fn ensure_session_database(
+    state: &AppState,
+    db_session_id: &str,
+    database: Option<&str>,
+    op: &str,
+) -> Result<(), CommandError> {
+    let Some(database) = database.map(str::trim).filter(|db| !db.is_empty()) else {
+        return Ok(());
+    };
+    let active = state
+        .connection_manager
+        .get_session_config(db_session_id)
+        .await
+        .cmd_err(op)?
+        .database;
+    if active.as_deref() == Some(database) {
+        return Ok(());
+    }
+    let (driver, handle) = state
+        .connection_manager
+        .get_session(db_session_id)
+        .await
+        .cmd_err(op)?;
+    driver.use_database(&handle, database).await.cmd_err(op)?;
+    state
+        .connection_manager
+        .set_active_database(db_session_id, database)
+        .await
+        .cmd_err(op)?;
+    tracing::info!(%db_session_id, database = %database, "session active database switched");
+    Ok(())
+}
+
 pub(crate) async fn execute_query_impl(
     state: &AppState,
     db_session_id: String,
     sql: String,
+    database: Option<String>,
 ) -> Result<MultiQueryResult, CommandError> {
     tracing::info!(%db_session_id, sql_len = sql.len(), "execute_query");
     tracing::debug!(%db_session_id, sql_preview = %sql.chars().take(500).collect::<String>(), "execute_query sql");
+    ensure_session_database(state, &db_session_id, database.as_deref(), "execute_query").await?;
     let result = super::driver_command::execute_driver_command_impl(
         state,
         super::driver_command::ExecuteDriverCommandRequest {
@@ -51,9 +90,17 @@ pub(crate) async fn execute_query_stream_impl(
     state: &AppState,
     db_session_id: String,
     sql: String,
+    database: Option<String>,
     on_event: QueryStreamCallback,
     opts: ExecuteQueryStreamOpts,
 ) -> Result<(), CommandError> {
+    ensure_session_database(
+        state,
+        &db_session_id,
+        database.as_deref(),
+        "execute_query_stream",
+    )
+    .await?;
     execute_driver_command_stream_impl(
         state,
         ExecuteDriverCommandStreamRequest {
@@ -76,8 +123,10 @@ pub(crate) async fn get_explain_impl(
     state: &AppState,
     db_session_id: String,
     sql: String,
+    database: Option<String>,
 ) -> Result<ExplainResult, CommandError> {
     tracing::debug!(%db_session_id, "get_explain");
+    ensure_session_database(state, &db_session_id, database.as_deref(), "get_explain").await?;
     let (driver, handle) = state
         .connection_manager
         .get_session(&db_session_id)
@@ -175,8 +224,9 @@ pub async fn execute_query(
     state: State<'_, AppState>,
     db_session_id: String,
     sql: String,
+    database: Option<String>,
 ) -> Result<MultiQueryResult, CommandError> {
-    execute_query_impl(&state, db_session_id, sql).await
+    execute_query_impl(&state, db_session_id, sql, database).await
 }
 
 #[tauri::command]
@@ -184,6 +234,7 @@ pub async fn execute_query_stream(
     state: State<'_, AppState>,
     db_session_id: String,
     sql: String,
+    database: Option<String>,
     on_event: Channel<QueryStreamEvent>,
     apply_result_limit: Option<bool>,
     record_history: Option<bool>,
@@ -195,6 +246,7 @@ pub async fn execute_query_stream(
         &state,
         db_session_id,
         sql,
+        database,
         callback,
         ExecuteQueryStreamOpts {
             apply_result_limit: apply_result_limit.unwrap_or(true),
@@ -209,8 +261,9 @@ pub async fn get_explain(
     state: State<'_, AppState>,
     db_session_id: String,
     sql: String,
+    database: Option<String>,
 ) -> Result<ExplainResult, CommandError> {
-    get_explain_impl(&state, db_session_id, sql).await
+    get_explain_impl(&state, db_session_id, sql, database).await
 }
 
 #[tauri::command]
@@ -432,7 +485,7 @@ mod tests {
     async fn execute_query_success_records_history() {
         let test = TestAppState::with_tables().await;
         let (_, conn_id) = test.save_and_connect("q-cfg").await;
-        let result = execute_query_impl(&test.state, conn_id, "SELECT 1".into())
+        let result = execute_query_impl(&test.state, conn_id, "SELECT 1".into(), None)
             .await
             .unwrap();
         assert_eq!(result.results.len(), 1);
@@ -453,7 +506,7 @@ mod tests {
         test.state.store.save_settings(settings).await.unwrap();
 
         let (_, conn_id) = test.save_and_connect("limit-cfg").await;
-        execute_query_impl(&test.state, conn_id, "SELECT * FROM users".into())
+        execute_query_impl(&test.state, conn_id, "SELECT * FROM users".into(), None)
             .await
             .unwrap();
     }
@@ -473,7 +526,7 @@ mod tests {
         let test = TestAppState::with_options(opts).await;
         let (_, conn_id) = test.save_and_connect("explain-cfg").await;
 
-        let plan = get_explain_impl(&test.state, conn_id.clone(), "SELECT 1".into())
+        let plan = get_explain_impl(&test.state, conn_id.clone(), "SELECT 1".into(), None)
             .await
             .unwrap();
         assert_eq!(plan.plan_text, "Seq Scan");
@@ -485,7 +538,7 @@ mod tests {
     async fn execute_query_not_connected_errors() {
         let test = TestAppState::new().await;
         assert!(
-            execute_query_impl(&test.state, "nope".into(), "SELECT 1".into())
+            execute_query_impl(&test.state, "nope".into(), "SELECT 1".into(), None)
                 .await
                 .is_err()
         );
@@ -528,7 +581,7 @@ mod tests {
     async fn clear_query_history() {
         let test = TestAppState::with_tables().await;
         let (_, conn_id) = test.save_and_connect("hist-cfg").await;
-        execute_query_impl(&test.state, conn_id, "SELECT 1".into())
+        execute_query_impl(&test.state, conn_id, "SELECT 1".into(), None)
             .await
             .unwrap();
         clear_query_history_impl(&test.state).await.unwrap();
@@ -555,7 +608,7 @@ mod tests {
         };
         let test = TestAppState::with_options(opts).await;
         let (_, conn_id) = test.save_and_connect("rows-cfg").await;
-        let result = execute_query_impl(&test.state, conn_id, "SELECT id FROM t".into())
+        let result = execute_query_impl(&test.state, conn_id, "SELECT id FROM t".into(), None)
             .await
             .unwrap();
         assert_eq!(result.results[0].rows.len(), 1);
@@ -575,6 +628,7 @@ mod tests {
             &test.state,
             conn_id,
             "SELECT 1".into(),
+            None,
             cb,
             ExecuteQueryStreamOpts::default(),
         )
@@ -608,6 +662,7 @@ mod tests {
             &test.state,
             conn_id,
             "SELECT * FROM users".into(),
+            None,
             cb,
             ExecuteQueryStreamOpts::default(),
         )
@@ -630,6 +685,7 @@ mod tests {
             &test.state,
             conn_id,
             "SELECT * FROM users".into(),
+            None,
             cb,
             ExecuteQueryStreamOpts {
                 apply_result_limit: false,
@@ -658,6 +714,7 @@ mod tests {
             &test.state,
             conn_id,
             "SELECT 1".into(),
+            None,
             cb,
             ExecuteQueryStreamOpts::default(),
         )
@@ -683,11 +740,80 @@ mod tests {
             &test.state,
             "nope".into(),
             "SELECT 1".into(),
+            None,
             cb,
             ExecuteQueryStreamOpts::default(),
         )
         .await
         .is_err());
+    }
+
+    #[tokio::test]
+    async fn execute_query_switches_session_database_when_pinned_differs() {
+        let test = TestAppState::with_tables().await;
+        let (_, conn_id) = test.save_and_connect("switch-db-cfg").await;
+        // Sample config pins database = "app"; pinning another database must
+        // switch the live session before executing and update the session record.
+        let result =
+            execute_query_impl(&test.state, conn_id.clone(), "SELECT 1".into(), Some("analytics".into()))
+                .await
+                .unwrap();
+        assert_eq!(result.results.len(), 1);
+        assert_eq!(test.mock.use_database_calls(), vec!["analytics".to_string()]);
+        let config = test
+            .state
+            .connection_manager
+            .get_session_config(&conn_id)
+            .await
+            .unwrap();
+        assert_eq!(config.database.as_deref(), Some("analytics"));
+    }
+
+    #[tokio::test]
+    async fn execute_query_skips_switch_when_same_or_none() {
+        let test = TestAppState::with_tables().await;
+        let (_, conn_id) = test.save_and_connect("no-switch-db-cfg").await;
+
+        execute_query_impl(&test.state, conn_id.clone(), "SELECT 1".into(), None)
+            .await
+            .unwrap();
+        // Same as the session's active database ("app") — no driver switch.
+        execute_query_impl(
+            &test.state,
+            conn_id.clone(),
+            "SELECT 1".into(),
+            Some("app".into()),
+        )
+        .await
+        .unwrap();
+        // Blank pins are treated like None.
+        execute_query_impl(
+            &test.state,
+            conn_id.clone(),
+            "SELECT 1".into(),
+            Some("   ".into()),
+        )
+        .await
+        .unwrap();
+
+        assert!(test.mock.use_database_calls().is_empty());
+        let config = test
+            .state
+            .connection_manager
+            .get_session_config(&conn_id)
+            .await
+            .unwrap();
+        assert_eq!(config.database.as_deref(), Some("app"));
+    }
+
+    #[tokio::test]
+    async fn get_explain_switches_session_database_when_pinned_differs() {
+        let test = TestAppState::with_tables().await;
+        let (_, conn_id) = test.save_and_connect("explain-db-cfg").await;
+        get_explain_impl(&test.state, conn_id, "SELECT 1".into(), Some("other".into()))
+            .await
+            .unwrap();
+        assert_eq!(test.mock.use_database_calls(), vec!["other".to_string()]);
     }
 
     #[tokio::test]

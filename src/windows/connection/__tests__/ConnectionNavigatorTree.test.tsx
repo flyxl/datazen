@@ -365,12 +365,10 @@ describe('ConnectionNavigatorTree multi-db table selection', () => {
       expect(useSchemaStore.getState().currentDatabase).toBe('db_b');
     });
 
-    mockUseDatabase.mockClear();
-
     fireEvent.click((await findByText('users')).closest('button')!);
 
     await waitFor(() => {
-      expect(mockUseDatabase).toHaveBeenCalledWith('conn-1', 'db_a');
+      // F1: no use_database IPC — activation only moves the local context.
       expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
     });
     expect(onSelectTable).toHaveBeenCalledWith('users', undefined, 'db_a');
@@ -540,13 +538,11 @@ describe('ConnectionNavigatorTree drop database', () => {
       expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
     });
 
-    mockUseDatabase.mockClear();
-    mockDriverExecute.mockClear();
-
     await triggerDropDatabase(findByText, 'db_a');
 
     await waitFor(() => {
-      expect(mockUseDatabase).toHaveBeenCalledWith('conn-1', 'postgres');
+      // F1: fallback moves the local active database (no use_database IPC).
+      expect(useSchemaStore.getState().currentDatabase).toBe('postgres');
       expect(mockDriverExecute).toHaveBeenCalledWith({
         dbSessionId: 'conn-1',
         command: 'drop_database',

@@ -1,19 +1,17 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, waitFor, cleanup } from '@testing-library/react';
+import { render, waitFor, cleanup, screen } from '@testing-library/react';
 import { TableStructureEditor } from '../TableStructureEditor';
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-const { mockUseDatabase, mockPlanTableStructureChanges } = vi.hoisted(() => ({
-  mockUseDatabase: vi.fn().mockResolvedValue(undefined),
+const { mockPlanTableStructureChanges } = vi.hoisted(() => ({
   mockPlanTableStructureChanges: vi.fn().mockResolvedValue({ statements: [] }),
 }));
 
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
-    useDatabase: (...args: unknown[]) => mockUseDatabase(...args),
     getTableSchema: vi.fn().mockResolvedValue(null),
   },
 }));
@@ -65,14 +63,13 @@ vi.mock('../structure/StructurePlanPreview', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockUseDatabase.mockResolvedValue(undefined);
   mockPlanTableStructureChanges.mockResolvedValue({ statements: [] });
 });
 
 afterEach(cleanup);
 
-describe('TableStructureEditor useDatabase', () => {
-  it('calls useDatabase on mount when database prop is set', async () => {
+describe('TableStructureEditor mount (F1: no use_database IPC)', () => {
+  it('renders without a session database switch when database prop is set', async () => {
     render(
       <TableStructureEditor
         dbSessionId="conn-1"
@@ -85,8 +82,10 @@ describe('TableStructureEditor useDatabase', () => {
       />,
     );
 
+    // F1 removed the useDatabase-on-mount behavior; the editor must come up
+    // directly (queries pin the database explicitly instead).
     await waitFor(() => {
-      expect(mockUseDatabase).toHaveBeenCalledWith('conn-1', 'mydb');
+      expect(screen.getByTestId('column-table')).toBeInTheDocument();
     });
   });
 });

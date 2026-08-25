@@ -188,7 +188,6 @@ describe('BackupWindow connection list', () => {
       if (cmd === 'connect') return 'live-1';
       if (cmd === 'get_connection_info') return { serverVersion: '16' };
       if (cmd === 'get_databases') return ['app', 'postgres'];
-      if (cmd === 'use_database') return undefined;
       if (cmd === 'get_tables') return tables;
       if (cmd === 'restore_database_with_dialog') return true;
       return null;
@@ -210,12 +209,6 @@ describe('BackupWindow connection list', () => {
     await selectRestoreTarget();
     expect(screen.queryByText('backup.startBackup')).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('backup-start-restore'));
-    await waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith('use_database', {
-        dbSessionId: 'live-1',
-        database: 'app',
-      }),
-    );
     expect(confirmDialogFn).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('restore_database_with_dialog', {
@@ -258,7 +251,6 @@ describe('BackupWindow connection list', () => {
       if (cmd === 'connect') return 'live-1';
       if (cmd === 'get_connection_info') return { serverVersion: '16' };
       if (cmd === 'get_databases') return ['app', 'postgres'];
-      if (cmd === 'use_database') return undefined;
       if (cmd === 'get_tables') return [];
       if (cmd === 'restore_database_with_dialog') {
         onProgress?.({

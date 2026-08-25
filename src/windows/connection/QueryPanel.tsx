@@ -495,7 +495,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
     setExplainError(null);
     setShowExplain(true);
     try {
-      const result = await queryCommands.getExplain(dbSessionId, exec.sql);
+      const result = await queryCommands.getExplain(dbSessionId, exec.sql, currentDatabase);
       setExplainResult(result);
     } catch (e) {
       setExplainResult(null);
@@ -503,7 +503,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
     } finally {
       setExplainLoading(false);
     }
-  }, [dbSessionId, exec.sql]);
+  }, [dbSessionId, exec.sql, currentDatabase]);
 
   const openAddFavoriteDialog = useCallback((sql: string) => {
     const trimmed = sql.trim();

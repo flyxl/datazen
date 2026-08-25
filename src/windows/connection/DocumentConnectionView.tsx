@@ -75,7 +75,6 @@ export function DocumentConnectionView({
     async (db: string) => {
       setCollectionsLoading(true);
       try {
-        await databaseCommands.useDatabase(dbSessionId, db);
         const tables = await databaseCommands.getTables(dbSessionId, db);
         setCollections(tables);
       } catch (e) {

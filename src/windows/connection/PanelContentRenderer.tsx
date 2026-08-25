@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
@@ -8,7 +7,6 @@ import { resolveExportScope } from '../../lib/exportCapability';
 import { resolveCreateTableSchema } from '../../lib/structureEditor/resolveCreateTableSchema';
 import { invalidateSchemaCache } from '../../lib/schemaCache';
 import { getConnectionView } from '../../lib/connectionViews';
-import { databaseCommands } from '../../commands/database';
 import { useSchemaStore } from '../../stores/schemaStore';
 import {
   type Panel,
@@ -388,38 +386,9 @@ function CreateTablePanelContent({
 }: CreateTablePanelContentProps) {
   const { t } = useI18n();
   const isMultiDb = useSchemaStore((s) => s.isMultiDatabase);
-  const [dbReady, setDbReady] = useState(!isMultiDb || !database);
-  const dbSwitchedRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!isMultiDb || !database) {
-      setDbReady(true);
-      return;
-    }
-    const key = `${dbSessionId}\0${database}`;
-    if (dbSwitchedRef.current === key) {
-      setDbReady(true);
-      return;
-    }
-    let cancelled = false;
-    setDbReady(false);
-    void databaseCommands
-      .useDatabase(dbSessionId, database)
-      .then(() => {
-        if (cancelled) return;
-        dbSwitchedRef.current = key;
-        setDbReady(true);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setDbReady(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [dbSessionId, database, isMultiDb]);
-
-  if (!dbReady) {
+  // F1: no use_database IPC gate — the editor's queries pin `database`
+  // explicitly and the backend switches the session lazily.
+  if (isMultiDb && !database) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
         {t('common.loading')}
