@@ -34,6 +34,10 @@
 | OBS-004 | W3 复测补充审计 R4/OBS-3 | WorkflowChatPanel 将配置 id 塞入 `AiInput.dbSessionId`→ai_chat，后端 get_session 严格查找 + if-let-Ok 静默降级兜底：不硬错但 schema 增强静默失效（main 上行为等价）。改进建议：FE 取活动会话 id 或后端改 resolve_session | 见 W3 测试报告 R4 节 | 观察 | - |
 | OBS-005 | W3 复测 T1/P3 | `e2e/specs/data-transfer-window.ts(211)` 悬空标识符 `tgtDbSessionId`（L208 实为 tgtConn），TS2304——W3 提交 80df9968 引入的一行笔误，e2e 错误总数 68 vs main 基线 67 的唯一增量 | e2e tsconfig 报错列表 | 观察（随 BUG-006 一行修掉） | W3 |
 | BUG-007 | W4 独立测试 T5/DEFECT-1 | **P3 既有遗留**：`docs/TODO-screenshots.md:35` 描述 toggleDb 参数为 configId+connectionId+dbName，实际签名为 (connectionId, dbSessionId, dbName)——该文件不在归档排除范围、未被 W4 触碰，属活文档残留 | 打开该文件比对实际函数签名 | 已修复 | W5 |
+| BUG-008 | 回归 R2/A-1 | **P2 E2E 测试代码迁移遗漏（确定性复现×2）**：`client-parity.ts` 会话/事务用例以连接 id 冒充 dbSessionId 调用会话域命令 → DB session not found | 对照 backup-database.ts L77 正确范本；隔离环境复跑该 spec | 验证不通过 | 回归修复 |
+| BUG-009 | 回归 R2/A-2 | **P2 同类**：`driver-commands.ts` 相关用例 request 键名未随 W2 迁移（仍发 connectionId，后端已要求 dbSessionId）→ serde required 报错 | 同上 | 验证不通过 | 回归修复 |
+| BUG-010 | 回归 R2/A-3 | **P2 同类**：`execute-sql-file.ts` SF-E01 同类键名遗漏 | 同上 | 验证不通过 | 回归修复 |
+| OBS-006 | 回归脚本开发期/R0 | `ai_generate_schema_doc_selects_tables_when_many` 全量并发偶发、单独复跑稳定（负载型）；run-regression.sh 已内置失败子集复跑兜底，本轮 R1 未触发 | scripts/run-regression.sh 头注释与 .regression-home 日志 | 观察 | - |
 
 ## 三、测试记录
 
@@ -56,6 +60,7 @@
 | D6（开发自测） | W5 | naming.md 规范页 + 双索引挂链；守护脚本 891 文件扫描 exit 0；AGENTS.md 两处精简；BUG-007 按真实签名修正 | vitest **240 文件 / 1894 绿**（+4 守护单测）；tsc 零错；AGENTS.md 无 config_id 残留 | 待独立测试 agent 评估 | 编码 agent 20dfcd5d |
 | T6（独立测试） | W5+BUG-007 | naming.md 六组关键论断对照源码核实一致；守护脚本反向注入三连实验全部按预期 exit 1 并精确报 file:line（含白名单行级精确性验证）；BUG-007 修正叙述与代码行为逐点吻合 | **通过**（0 缺陷）；门禁：guard/test:ids exit 0、vitest 240 文件/1894 绿、tsc 零错、cargo lib 1126 过/2 既有失败 | 全新测试 agent 5994baa4，报告 `test-reports/W5-test-report.md` |
 | R0（回归脚本开发） | 回归阶段 | 新建 `scripts/run-regression.sh`（6 步门禁：注入包装+HOME 沙箱+失败子集复跑+汇总表）与 `scripts/run-e2e-minimal.sh`（复刻 e2e:minimal 免 install + e2e/.env 三级解析 + webdriver 构建容错）；.gitignore+.regression-home/；e2e-testing.md 补脚本链接 | 脚本就绪待回归 agent 实跑；期间发现并解决 capabilities/插件注入不一致阻塞（with-plugin-inject 包装）；OBS-006（ai_generate_schema_doc_* 并发偶发，单测稳定）登记于脚本重试策略 | 回归脚本 agent（worktree 删除后改在主检出 feature 分支工作） |
+| R1-R3（全量回归） | 回归阶段 | R1 门禁 6/6 PASS（cargo lib **1128/0** 第 1 轮即绿、vitest 240 文件/1894、drivers 84、守护 exit 0、tsc/vite 零错）；R2 e2e minimal：E2E_ISOLATE_HOME=1 后应用正常启动，官方总账 76 spec 仅前 38 真执行（7 过/31 败），甄别出确定性重构遗漏 3 处（→BUG-008/009/010）；B 类待用户环境补跑（未执行 ~38 spec 完整重跑 / export-import 单独跑 / e2e/.env 补 E2E_PG_RO_PASSWORD 并核查 E2E_REDIS_PASSSWORD 三连 S 拼写 / ~20 个 UI 可见性族失败需 GUI 对照定论） | **暂不合并**：A 类修复闭环后再评；报告 `test-reports/REGRESSION-report.md` | 全新回归 agent c71b5ed7 |
 | D5（开发自测） | W4 | CHANGELOG 6 条破坏性变更；活文档 29 处 token 替换+示例代码重写；MCP 资源定向加固测试（输出含 connectionId 不含 configId） | lib 1126 过 / vitest 1890 绿 / SEO 脚本触碰文件全过；grep 3 处全为合法历史演进说明 | 待独立测试 agent 评估 | 编码 agent 4119a5df |
 | T5（独立测试） | W4 | CHANGELOG 六条逐一对照代码现实 6/6 相符；文档示例抽查 6/6 一致；zh/en 与 site 双语平行；10 条清单 9 过 1 警示；mcp/server.rs 行覆盖 87.60% ≥80% | **通过**；lib 1126 过 / vitest 1890 绿；发现 BUG-007（P3 既有遗留）+ OBS×4 | 全新测试 agent 9f275212，报告 `test-reports/W4-test-report.md` |
 
@@ -80,7 +85,9 @@
 | 0f7a38e4 | W4 测试里程碑：复测**通过**（CHANGELOG 6/6 相符、示例 6/6 一致）；登记 BUG-007（P3 既有遗留，随 W5 修）+ 进度更新 |
 | 903bf5aa | W5 开发里程碑：naming.md + 守护脚本/test:ids + AGENTS.md 精简 + BUG-007 修复 + 进度更新 |
 | 990c35cc | W5 复测里程碑：复测**通过**（0 缺陷），BUG-007 → 已修复，W5 → 已完成 + 进度更新；全部工作项完成，进入回归阶段 |
-| （本次） | 回归工具里程碑：run-regression.sh / run-e2e-minimal.sh 脚本化封装（沙箱适配 + e2e/.env 集成）+ 文档链接 + 进度更新 |
+| a74e03aa | 回归工具里程碑：run-regression.sh / run-e2e-minimal.sh 脚本化封装（沙箱适配 + e2e/.env 集成）+ 文档链接 + 进度更新 |
+| d1488615 | 回归执行里程碑：R1 门禁全绿；R2 登记 A 类 3 处 spec 迁移遗漏（BUG-008/009/010 验证不通过）+ B 类待补跑清单 + 回归报告 |
+| （本次） | 进度补记：BUG-008/009/010 与 OBS-006 登记 + R1-R3 测试记录 + 提交哈希回填 |
 
 ## 五、决策记录
 
