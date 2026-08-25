@@ -10,7 +10,7 @@
 |---|--------|------|------|----------|------|
 | W1 | 后端核心与服务层术语落地 | `services/connection_manager.rs` 内部命名（`config_id_map`→`session_owner_map` 等）、错误信息区分两种 id；IPC 契约暂不变 | ✅ **已完成（测试通过，0 缺陷）** | 2026-08-24 | 26 文件 +482/-278；核心模块行覆盖 86.94%~96.74%（≥80% 达标）；185 个 IPC 命令签名零变化；报告见 `test-reports/W1-test-report.md` |
 | W2 | IPC 契约切换（前后端原子批） | Tauri 命令参数改名 + `src/commands/*` 封装同步 + 全部前后端调用点 + **MCP 参数直接改名 `connection_id`（不留 `config_id` 别名）** + **SQLite 列与持久化字段直接改名**（历史库按既有迁移模式做一次性列重命名） | ✅ **已完成**（复测通过，BUG-001/002/003 已修复） | 2026-08-24 | 开发 b962b4cc → 测试不通过 ce2ef15f → 修复 d20aa93a → 复测通过；⚠️ e2e:minimal 环境受阻转收尾强制项 |
-| W3 | 前端状态/类型/组件改名 | `types/index.ts`、stores、`connectionViews/types.ts`、组件 props、跨窗口事件 payload、windowManager、extensionBridge 显式目标 | 🔶 测试通过（附 BUG-004/005 P2 清尾缺陷，闭环中） | - | 开发 80df9968；八链路语义审计无装反；核心文件覆盖率达标；详见 Bug 表与 `test-reports/W3-test-report.md` |
+| W3 | 前端状态/类型/组件改名 | `types/index.ts`、stores、`connectionViews/types.ts`、组件 props、跨窗口事件 payload、windowManager、extensionBridge 显式目标 | ✅ **已完成**（复测通过，BUG-004/005 已修复） | 2026-08-24 | 开发 80df9968 → 测试通过附 P2×2（31b92f29）→ 修复 a70f5c19 → 复测通过；八链路语义审计无装反；新发现 BUG-006 转独立闭环 |
 | W4 | 外部契约与文档对齐 | MCP 资源输出字段/tool_help 文档、CHANGELOG 破坏性变更记录（D1）、ops-dashboard 指南等 configId 表述替换 | 未开始 | - | SQLite 列已随 W2 直接改名（D1），原"列名保留"子项作废 |
 | W5 | 文档与守护 | `docs/architecture/naming.md`、AGENTS.md 精简更新、lint/grep 守护规则 | 未开始 | - | |
 
@@ -26,10 +26,13 @@
 | BUG-002 | W2 独立测试 T3 | `commands/connection.rs` 行覆盖率 **65.37% < 80%** 验收线（其余核心模块达标：history_db 91.14%、mcp/server 88.11%、driver_command 81.95%、query 80.62%） | `cargo llvm-cov -p datazen --lib --summary-only` 复测 | 已修复 | W2 |
 | BUG-003 | W2 独立测试 T2/G1 | history_db 迁移链缺**存量 v3 库（config_id 列）起点**的固化回归测试（走读与三起点 SQL 等价执行均 PASS，但无自动化测试保护） | 报告 §T2 缺口 G1 | 已修复 | W2 |
 | OBS-001 | W2 独立测试 T1 | store 并发用例负载型偶发失败（隔离重跑 5/5 过；代码 vs main 零改动；main 基线同现象）——既有环境波动，不计缺陷 | 隔离单跑该用例即可复现通过 | 观察 | - |
-| BUG-004 | W3 独立测试 T5/D2 | **P2 测试层**：`ConnectionNavigatorTree.test.tsx` 仍传旧 prop `activeConfigId`（组件已改名 `activeConnectionId`）；因 tsconfig exclude 测试文件致 tsc 不报、用例仍绿，但选中态覆盖被静默削弱 | 打开该测试文件查看传参；对照组件 props 定义 | 待验证 | W3 |
-| BUG-005 | W3 独立测试 T5/D3 | **P2 e2e 层**：`e2e/specs/data-sync-real.ts` 本地 SyncTask 接口/载荷残留 `sourceConfigId/targetConfigId` 且缺 `sourceDbSessionId/targetDbSessionId`，后端强类型反序列化必挂——GUI E2E 实跑时 SYNC-BATCH-004 失败 | 实跑 data-sync-real SYNC-BATCH-004；或比对本地接口与后端 `commands/sync/types.rs` 字段 | 待验证 | W3 |
+| BUG-004 | W3 独立测试 T5/D2 | **P2 测试层**：`ConnectionNavigatorTree.test.tsx` 仍传旧 prop `activeConfigId`（组件已改名 `activeConnectionId`）；因 tsconfig exclude 测试文件致 tsc 不报、用例仍绿，但选中态覆盖被静默削弱 | 打开该测试文件查看传参；对照组件 props 定义 | 已修复 | W3 |
+| BUG-005 | W3 独立测试 T5/D3 | **P2 e2e 层**：`e2e/specs/data-sync-real.ts` 本地 SyncTask 接口/载荷残留 `sourceConfigId/targetConfigId` 且缺 `sourceDbSessionId/targetDbSessionId`，后端强类型反序列化必挂——GUI E2E 实跑时 SYNC-BATCH-004 失败 | 实跑 data-sync-real SYNC-BATCH-004；或比对本地接口与后端 `commands/sync/types.rs` 字段 | 已修复 | W3 |
 | OBS-002 | W3 独立测试 T5 | clearCaches/dbObjectsMap 键空间错位——main 上同构存在（继承性观察，非本次引入），登记待后续工作项评估 | 见 W3 测试报告 §T5 | 观察 | - |
 | OBS-003 | W3 独立测试 T3 | vitest coverage 门禁 exit 1（10 条阈值 ERROR）在 main 基线同样存在——既有问题非本次引入 | main 上跑 `npx vitest run --coverage` 对照 | 观察 | - |
+| BUG-006 | W3 复测补充审计 R4/D5 | **P1 功能性断裂（W2 清尾遗漏）**：ExportTablesRequest 后端字段已是 `db_session_id`（export.rs L83，resolve_session 双模 L563），前端 `commands/file.ts` 仍以 `connectionId` 键传会话 id、`lib/batchExportJob.ts` 以 `{connectionId: dbSessionId}` 构造并带误导注释——serde 必报 missing field，**多表批量导出当前 HEAD 必挂**；两侧既有测试因 mock/原生构造均无法拦截 | 实跑多表批量导出；或比对 file.ts 接口键与 export.rs 结构体 | 验证不通过 | W2 |
+| OBS-004 | W3 复测补充审计 R4/OBS-3 | WorkflowChatPanel 将配置 id 塞入 `AiInput.dbSessionId`→ai_chat，后端 get_session 严格查找 + if-let-Ok 静默降级兜底：不硬错但 schema 增强静默失效（main 上行为等价）。改进建议：FE 取活动会话 id 或后端改 resolve_session | 见 W3 测试报告 R4 节 | 观察 | - |
+| OBS-005 | W3 复测 T1/P3 | `e2e/specs/data-transfer-window.ts(211)` 悬空标识符 `tgtDbSessionId`（L208 实为 tgtConn），TS2304——W3 提交 80df9968 引入的一行笔误，e2e 错误总数 68 vs main 基线 67 的唯一增量 | e2e tsconfig 报错列表 | 观察（随 BUG-006 一行修掉） | W3 |
 
 ## 三、测试记录
 
@@ -46,7 +49,7 @@
 | D3（开发自测） | W3 | 五域前端改名：store 核心 / lib 层（含 D4 插件桥直改）/ 组件 props 链 / redis UI 适配 / e2e 清尾 | host vitest **1886 绿**；drivers vitest **84 绿**；tsc 零错 + vite ✓；configId 残留 1 处（schemaDiff.ts 历史注释，合理保留）；Rust 零改动 | 待独立测试 agent 评估 | 编码 agent 07f37e84（中止于汇报前，门禁由编排方代跑） |
 | T3（独立测试） | W3 | 12 条用例（10 条 vitest/mock 层实际执行：定向 15 文件 174 用例 + redis 8 用例）；八链路语义审计全 ✅ 无装反；变体扫描发现 BUG-004/005 | **通过**（附 2 项 P2 清尾缺陷 → BUG-004/005 闭环中）；覆盖率：activeConnectionStore 91.83、extensionBridge 99.32、windowManager 92.85 达标，panelStore 69.91（与 main 基线一致，继承性不足）；TOTAL lines 81.84 | 全新测试 agent 03c401c9，报告 `test-reports/W3-test-report.md` |
 | F2（修复轮自测） | W3 | BUG-004：4 处旧 prop 改名 + 新增选中态用例（反向注入实验证明缺陷状态下必失败）；BUG-005：复核并收尾 data-sync-real.ts（会话变量改名 ~60 处、legacy 载荷错位清零），e2e ConfigId 变体=0 | host vitest **1887 绿**（含新用例）；drivers 84 绿；host tsc 零错；e2e tsc 68 ≤ 基线（data-sync-real.ts 0 错） | 编码 agent 07f37e84 |
-| T3R（复测） | W3 | 待复测 agent 产出 | 待测试 | 待评估 | 复测 agent 03c401c9 |
+| T3R（复测） | W3 | BUG-004：全仓扫描 0 命中 + 反向注入实验证实用例判别力真实，文件 11 用例全过；BUG-005：SyncTask 15/15 字段对照一致、值语义各就各位、变体扫描=0、data-sync-real 零类型错误；补充审计发现 BUG-006（P1）+ OBS-004/005 | **通过**（BUG-004/005 → 已修复）；回归门禁：host vitest 1887 绿 / drivers 84 绿 / host tsc 零错 | 复测 agent 03c401c9，报告已追加复测轮 + R4 节 |
 
 ## 四、提交记录
 
@@ -61,7 +64,8 @@
 | 87ceed86 | W2 复测里程碑：复测**通过**，BUG-001/002/003 → 已修复，W2 → 已完成；e2e:minimal 转收尾强制项 + 进度更新 |
 | 80df9968 | W3 开发里程碑：前端五域改名（含 D4 插件桥直改）+ 门禁代跑确认 + 进度更新 |
 | 31b92f29 | W3 测试里程碑：独立测试**通过**（八链路语义审计无装反），登记 BUG-004/005（P2 清尾，验证不通过）+ OBS-002/003 + 测试报告 + 进度更新 |
-| （本次） | W3 修复里程碑：BUG-004/005 修复（选中态区分性用例 + data-sync-real 载荷对齐后端契约），bug 状态 → **待验证** |
+| a70f5c19 | W3 修复里程碑：BUG-004/005 修复（选中态区分性用例 + data-sync-real 载荷对齐后端契约），bug 状态 → **待验证** |
+| （本次） | W3 复测里程碑：复测**通过**，BUG-004/005 → 已修复，W3 → 已完成；新登记 BUG-006（P1）+ OBS-004/005 + 进度更新 |
 
 ## 五、决策记录
 

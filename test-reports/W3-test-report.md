@@ -171,3 +171,71 @@ src/commands/schemaDiff.ts:47:/// connectionId(dbSessionId) terminology (v1 conf
 - T1 四类门禁全部符合预期基线（1886 + 84 前端用例绿；cargo 1126 过 + 2 已知 sandbox 失败；tsc/build 零错；W3 本体零后端改动）。
 - T3 核心文件行覆盖 3/4 达标，唯一未达标的 panelStore（69.91%）与 main 基线逐位一致，属继承性不足。
 - 遗留事项：D2（测试层旧 prop 名）、D3（e2e spec 旧字段+缺新字段，GUI 实跑必挂）两项 P2 清尾遗漏，以及 OBS-1/OBS-2 两项继承性问题，**均不影响本提交运行时行为正确性**，建议随收尾强制项（e2e:minimal 依赖安装 + GUI 回归）一并处理。
+
+---
+
+# 复测轮（修复提交 `a70f5c19`）+ 补充审计
+
+| 项 | 值 |
+|---|---|
+| 复测对象 | `a70f5c19`（`fix(ids): W3 repair BUG-004/005`，位于 `80df9968`/`31b92f29` 之上），改动面：ID_RENAME_PROGRESS.md、e2e/specs/data-sync-real.ts（178 行）、ConnectionNavigatorTree.test.tsx（+51） |
+| 复测方式 | 全新独立执行；反向注入实验使用**临时未跟踪探针文件**（运行后已删除，工作区恢复干净）；基线对照复用 main 主检出 |
+
+## R1 BUG-004 复核（ConnectionNavigatorTree.test.tsx 旧 prop 残留）
+
+| # | 检查 | 结果 | 判定 |
+|---|---|---|---|
+| ① | 全仓 grep `activeConfigId\|catConfigId`（src/packages/e2e/test/scripts，排除 node_modules） | **0 命中** | ✅ |
+| ② | 新增选中态用例断言审阅 + 反向注入实验 | 见下 | ✅ |
+| ③ | 该文件用例数与通过情况 | **11 用例全过**；host 总数 1887 = 原 1886 + 新增 1，吻合 | ✅ |
+
+**② 断言判别力分析**：新增用例 `highlights only the row matching the activeConnectionId prop` 采用「正向 + 翻转」双重断言——初渲染 `activeConnectionId="cfg-pg"` 时 PG 行含 `bg-accent/10` 与左侧 accent 条、MySQL 行不含；rerender 切到 `"cfg-mysql"` 后高亮随 prop 迁移。DOM 侧唯一选中来源为组件 L1797 `isSelected: activeConnectionId === conn.id` → L2134-2143 样式。
+
+**反向注入实验**（临时探针副本，模拟旧缺陷形态「组件收到 undefined」，断言全部反转为"任何行都不得高亮"）：探针通过 ⇒ 无 prop 时**没有任何行**获得选中样式。期间两次探针误报经排查均为探针自身改造瑕疵（BSD sed 不支持 `0,/re/` 首匹配；baseProps 兜底供值 `cfg-mysql`），修正后结论稳定——顺带证明组件选中态**纯由 prop 驱动、无隐藏回退**。因此若接线回归（调用方残留旧名导致组件收到 undefined），原用例的正向断言必然失败：**新用例具备真实判别力**。
+
+## R2 BUG-005 复核（data-sync-real.ts 契约对齐）
+
+| # | 检查 | 结果 | 判定 |
+|---|---|---|---|
+| ① | 本地 SyncTask 接口 ↔ `store/models.rs` SyncTask（serde camelCase）逐字段对照 | **15/15 字段一致**（id / sourceDbSessionId / targetDbSessionId / sourceConnectionId / targetConnectionId / tables / completedTables / currentTable / currentTableOffset / sourceRowCounts / strategy / status / errorMessage / createdAt / updatedAt）；`save_sync_task_direct(task: SyncTask)` 强类型匹配；`createdAt/updatedAt` 以 RFC3339 字符串可反序列化 | ✅ |
+| ② | 构造点值语义抽查 | `saveAndConnect = save_connection + connect({connectionId: cfg.id})` 返回**会话 id**；全部 `*DbSessionId` 槽收 saveAndConnect 返回值（srcSessionId/batchSrcId/resumeSrcId 等），全部 `*ConnectionId` 槽收 `PG_SRC.id/PG_TGT.id` 配置 id —— 各就各位。`inspect_data_sync {sourceDbSessionId, targetDbSessionId}` ↔ 后端同名 snake 参数 ✓。SYNC-BATCH-001 等向 legacy `sync_tables/sync_table` 故意发送新旧键混合载荷属「验证 IPC 已移除」用例，合法保留 | ✅ |
+| ③ | e2e 全目录 `configid/config_id` 变体扫描 | **0 命中** | ✅ |
+| ④ | `npx tsc --noEmit -p e2e/tsconfig.json` | **data-sync-real.ts 0 错误** ✅；总错误 68 vs main 基线 67，唯一新增 = `e2e/specs/data-transfer-window.ts(211) TS2304: Cannot find name 'tgtDbSessionId'`（L208 声明的是 `tgtConn`）。该文件仅被 W2/W3 提交触碰、修复提交 a70f5c19 未涉及 → 由 W3 提交 80df9968 引入的悬空标识符；相对修复前基线（80df9968/31b92f29）错误数持平（68=68） | ✅（核心目标达成）/ 附连带发现 OBS-4 |
+
+> **OBS-4（P3，范围外连带发现）**：`data-transfer-window.ts` L211 引用未声明的 `tgtDbSessionId`（应为 L208 的 `tgtConn`），GUI E2E 类型检查新增 1 错误。一行修复，建议随收尾清理。
+
+## R3 回归门禁
+
+| 门禁 | 结果 | 判定 |
+|---|---|---|
+| host vitest 全量 | 239 文件 / **1887 passed**，exit 0 | ✅ |
+| drivers vitest | 14 文件 / **84 passed**，exit 0 | ✅ |
+| host `tsc --noEmit` | exit 0，零错误 | ✅ |
+
+## R4 补充审计判定（并入 T2/T5，单列）
+
+### 补充① ExportTablesRequest —— **缺陷 D5（P1：功能性断裂）**
+
+事实链（均在当前 HEAD a70f5c19 验证）：
+- 后端 `src-tauri/src/commands/export.rs` L80-89：`ExportTablesRequest.db_session_id: String`（W2 提交 b962b4cc 将 `connection_id` 改名而来，无 serde alias）；体内 L563 `.resolve_session(&request.db_session_id)` 走双模 ✓；命令入口 L912 `export_tables_stream`。
+- 前端 `src/commands/file.ts` L106-113：TS 接口字段仍为 **`connectionId`**；`src/lib/batchExportJob.ts` L75-78 以 `{ connectionId: dbSessionId }` 构造请求，注释声称 "IPC contract key stays connectionId (resolve_session is dual-mode)"。
+- **该注释所述契约已不存在**：serde(rename_all="camelCase") 要求嵌套键 `dbSessionId`，收到 `connectionId` 即 unknown-field 忽略 + 必填字段缺失 → 反序列化拒绝（missing field `dbSessionId`），`resolve_session` 根本不会执行。前端 BatchExportDialog 单测因 mock `fileCommands` 而全绿，Rust 测试因原生构造结构体而不经 wire key，故两侧门禁均无法拦截。
+
+**定性**：值语义正确（传的是实时会话 id）、键名失配 → 比 W2 BUG-001 的"语义装反但碰巧可用"更严重，属**键失配硬失败**：当前 HEAD 多表批量导出（BatchExportDialog → runBatchExportJob → export_tables_stream）每次调用必挂。引入者为 W2 改名提交（非 W3 提交 80df9968，亦非本次修复提交）。
+**修复建议**（同 BUG-001 十三命令款，纯前端闭合、符合"W3 不动后端"边界）：`file.ts` 接口字段改名 `dbSessionId` + `batchExportJob.ts` 键同步 + 删除误导性注释；按 D1"不留别名"原则不加 alias。**建议列为收尾强制项**。
+**边界澄清**：单表"导出表结构"链路（`TableStructureEditor` → `lib/exportTableStructure.ts`）取 `dbSessionId` 经 `getCachedDDL(dbSessionId,…)`+`saveTextWithDialog`，不经过 ExportTablesRequest，链路正确不受影响。
+
+### 补充② WorkflowChatPanel / WorkflowPanel 双模容忍链路 —— **OBS-3（观察项，既有行为，非 W3 回归）+ 一处合规确认**
+
+- **workflow_execute 槽（合规）**：FE 包装器 `commands/ai.ts` L122-124 `workflowExecute({ workflowId, variables, connectionId? })`，WorkflowPage 传入持久配置 id；后端 `workflow/command_runtime.rs` L30-33 `resolve_connection_id(...)` → `resolve_session(connection_id)` 双模解析（session-first，否则按配置 id 建会话）——键名 `connectionId`=配置语义、后端双模是文档化设计（见 driver.ts 注释），**命名与数据流一致，判定合规**。改进建议（可选）：前端持有活动会话时优先传实时 dbSessionId，省一次解析并消除歧义。
+- **WorkflowChatPanel → AiInput.dbSessionId 链（观察项）**：`selectedConnection` 来自 savedConnections 选择器（持久配置 id）→ `handleSend` 以 `sendMessage({ dbSessionId: conn, … })` 传入（WorkflowChatPanel L57-63；AiInput 再下传 ContextPicker）→ `aiCommands.chat({dbSessionId})` → 后端 `ai_chat` 对 `get_session`（严格会话键查，rebuild 仅限曾有会话者，见 connection_manager.rs L310-334）的失败做了 **`if let Ok` 静默降级**（ai.rs L1146 附近）：不会硬错，但所选连接的实时 schema 上下文增强静默失效（AI 创建工作流拿不到库表结构、无提示），ContextPicker 的表清单同样空转。
+- **归因**：main 上等价行为（旧键 `connectionId` + 同样严格 get_session + 同样静默降级）→ **既有行为，W3 仅统一了命名、未改变数据流**；且该链路后端**并无双模兜底**，故不属于"靠 resolve_session 兜底的合规设计"，而是"靠降级容忍掩盖的数据流错位"。
+- **改进建议**：FE 从 `activeConnectionStore.connections[selectedConnection]?.dbSessionId` 取实时会话 id（空则先 connect 或禁用发送），或后端此链路改用 `resolve_session` 双模；同时给降级路径加可观测提示。
+
+## 复测轮结论
+
+- **BUG-004：✅ 通过**（①②③全过；反向注入实验证明新用例判别力真实）。
+- **BUG-005：✅ 通过**（①②③全过；④ data-sync-real.ts 零错误达成，附带 OBS-4 为 W3 早前提交的范围外 P3 遗留，不影响本修复判定）。
+- **回归门禁：✅** 1887 / 84 / tsc 零错。
+- **补充审计**：补充②之 workflow_execute 合规、WorkflowChatPanel 记 OBS-3（既有）；补充①记 **D5（P1，批量导出键失配必挂，W2 引入、尚未修复）**——不阻塞本轮 BUG-004/005 判定，但**建议编排方将其列为收尾强制修复项**。
+- **总体：复测通过**，BUG-004/005 可置「已修复」。
