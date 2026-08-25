@@ -1,120 +1,195 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Features — DataZen</title>
-  <meta name="description" content="DataZen feature overview: SQL editor, data browse/edit, export/import, backup, cross-database sync, secure storage, i18n, and plugins." />
-  <link rel="canonical" href="https://flyxl.github.io/datazen/features.html" />
-  <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/features.html" />
-  <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/features.html" />
-  <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/features.html" />
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="Features — DataZen" />
-  <meta property="og:description" content="DataZen feature overview: SQL editor, data browse/edit, export/import, backup, cross-database sync, secure storage, i18n, and plugins." />
-  <meta property="og:url" content="https://flyxl.github.io/datazen/features.html" />
-  <meta property="og:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <meta property="og:locale" content="en_US" />
-  <meta property="og:locale:alternate" content="zh_CN" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Features — DataZen" />
-  <meta name="twitter:description" content="DataZen feature overview: SQL editor, data browse/edit, export/import, backup, cross-database sync, secure storage, i18n, and plugins." />
-  <meta name="twitter:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <link rel="icon" href="assets/logo.png" />
-  <link rel="stylesheet" href="assets/css/site.css" />
-</head>
-<body>
-  <header id="site-header"></header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Features — DataZen</title>
+    <meta
+      name="description"
+      content="DataZen feature overview: SQL editor, data browse/edit, export/import, backup, cross-database sync, secure storage, i18n, and plugins."
+    />
+    <link rel="canonical" href="https://flyxl.github.io/datazen/features.html" />
+    <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/features.html" />
+    <link
+      rel="alternate"
+      hreflang="zh-CN"
+      href="https://flyxl.github.io/datazen/zh/features.html"
+    />
+    <link
+      rel="alternate"
+      hreflang="x-default"
+      href="https://flyxl.github.io/datazen/features.html"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Features — DataZen" />
+    <meta
+      property="og:description"
+      content="DataZen feature overview: SQL editor, data browse/edit, export/import, backup, cross-database sync, secure storage, i18n, and plugins."
+    />
+    <meta property="og:url" content="https://flyxl.github.io/datazen/features.html" />
+    <meta
+      property="og:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Features — DataZen" />
+    <meta
+      name="twitter:description"
+      content="DataZen feature overview: SQL editor, data browse/edit, export/import, backup, cross-database sync, secure storage, i18n, and plugins."
+    />
+    <meta
+      name="twitter:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <link rel="icon" href="assets/logo.png" />
+    <link rel="stylesheet" href="assets/css/site.css" />
+  </head>
+  <body>
+    <header id="site-header"></header>
 
-  <section class="page-head">
-    <div class="wrap">
-      <p class="breadcrumb"><a href="index.html">Home</a> / Features</p>
-      <h1>🧭 Features</h1>
-      <p>The full capability map of DataZen. The three headline areas (AI / Charts / Workflow) each have their own page; this is the index for everything else.</p>
-    </div>
-  </section>
-
-  <section class="wrap">
-    <div class="grid-4">
-      <a class="card" href="ai.html" style="display:block"><div class="icon">🤖</div><h3>AI Assistant</h3><p>NL2SQL, diagnosis, EXPLAIN, Chat, smart filters</p></a>
-      <a class="card" href="charts.html" style="display:block"><div class="icon">📊</div><h3>Charts</h3><p>Smart recommendations, five chart types, PNG/SVG export</p></a>
-      <a class="card" href="workflow.html" style="display:block"><div class="icon">⚙️</div><h3>Workflow</h3><p>YAML automation, cross-database orchestration, AI generation</p></a>
-      <a class="card" href="databases.html" style="display:block"><div class="icon">🔌</div><h3>Databases</h3><p>PG / MySQL / SQLite / Redis / plugins</p></a>
-    </div>
-
-    <div class="feature-block">
-      <div>
-        <span class="kicker">SQL Editor</span>
-        <h2>Built for everyday queries</h2>
-        <ul>
-          <li>Syntax highlighting + table/column autocomplete (CodeMirror 6)</li>
-          <li>Multi-statement execution, query history, and favorites</li>
-          <li>SQL dialect auto-switches by connection type</li>
-          <li>Configurable result limits — large result sets won't freeze the UI</li>
-        </ul>
+    <section class="page-head">
+      <div class="wrap">
+        <p class="breadcrumb"><a href="index.html">Home</a> / Features</p>
+        <h1>🧭 Features</h1>
+        <p>
+          The full capability map of DataZen. The three headline areas (AI / Charts / Workflow) each
+          have their own page; this is the index for everything else.
+        </p>
       </div>
-      <img class="feature-shot" src="assets/screenshots/17-sql-editor.png" alt="SQL editor" />
-    </div>
+    </section>
 
-    <div class="feature-block reverse">
-      <div>
-        <span class="kicker">Data Browse &amp; Edit</span>
-        <h2>100K rows without lag</h2>
-        <ul>
-          <li>Virtual scrolling for large tables — smooth at 100K+ rows</li>
-          <li>Inline editing, safe batch delete, transaction support</li>
-          <li>Sort, filter, and pagination work together</li>
-          <li>Export CSV / JSON / SQL; import the same formats</li>
-        </ul>
+    <section class="wrap">
+      <div class="grid-4">
+        <a class="card" href="ai.html" style="display: block"
+          ><div class="icon">🤖</div>
+          <h3>AI Assistant</h3>
+          <p>NL2SQL, diagnosis, EXPLAIN, Chat, smart filters</p></a
+        >
+        <a class="card" href="charts.html" style="display: block"
+          ><div class="icon">📊</div>
+          <h3>Charts</h3>
+          <p>Smart recommendations, five chart types, PNG/SVG export</p></a
+        >
+        <a class="card" href="workflow.html" style="display: block"
+          ><div class="icon">⚙️</div>
+          <h3>Workflow</h3>
+          <p>Cross-database orchestration, AI-powered, reusable flows</p></a
+        >
+        <a class="card" href="databases.html" style="display: block"
+          ><div class="icon">🔌</div>
+          <h3>Databases</h3>
+          <p>PG / MySQL / SQLite / Redis / plugins</p></a
+        >
       </div>
-      <img class="feature-shot" src="assets/screenshots/18-data-editor.png" alt="Data browse and edit" />
-    </div>
 
-    <div class="feature-block">
-      <div>
-        <span class="kicker">Backup &amp; Sync</span>
-        <h2>Your data, under control</h2>
-        <ul>
-          <li>One-click SQL backup: Schema-only / Data-only / Gzip</li>
-          <li>Full app data export (including config), atomic writes + ZIP bomb protection</li>
-          <li>PG ↔ MySQL schema compare and data sync with resume support</li>
-          <li>Backup packages automatically exclude key files</li>
-        </ul>
+      <div class="feature-block">
+        <div>
+          <span class="kicker">SQL Editor</span>
+          <h2>Built for everyday queries</h2>
+          <ul>
+            <li>Syntax highlighting + table/column autocomplete</li>
+            <li>Multi-statement execution, query history, and favorites</li>
+            <li>SQL dialect auto-switches by connection type</li>
+            <li>Configurable result limits — large result sets won't freeze the UI</li>
+          </ul>
+        </div>
+        <img class="feature-shot" src="assets/screenshots/17-sql-editor.png" alt="SQL editor" />
       </div>
-      <img class="feature-shot" src="assets/screenshots/19-backup-sync.png" alt="Backup and data sync" />
-    </div>
 
-    <div class="feature-block reverse">
-      <div>
-        <span class="kicker">Security &amp; Privacy</span>
-        <h2>Secure by default</h2>
-        <ul>
-          <li>Connection passwords encrypted with AES-256-GCM; master key in system keychain</li>
-          <li>SSH credentials encrypted; Host Key TOFU verification</li>
-          <li>Hardened path IPC; file access whitelist</li>
-          <li>SQL and natural-language requests not logged at info level by default</li>
-        </ul>
+      <div class="feature-block reverse">
+        <div>
+          <span class="kicker">Data Browse &amp; Edit</span>
+          <h2>100K rows without lag</h2>
+          <ul>
+            <li>Virtual scrolling for large tables — smooth at 100K+ rows</li>
+            <li>Inline editing, safe batch delete, transaction support</li>
+            <li>Sort, filter, and pagination work together</li>
+            <li>Export CSV / JSON / SQL; import the same formats</li>
+          </ul>
+        </div>
+        <img
+          class="feature-shot"
+          src="assets/screenshots/18-data-editor.png"
+          alt="Data browse and edit"
+        />
       </div>
-      <img class="feature-shot" src="assets/screenshots/20-security.png" alt="Security and privacy" />
-    </div>
-  </section>
 
-  <section class="section">
-    <div class="wrap">
-      <h2 style="font-size:26px;margin-bottom:20px">Data capabilities at a glance</h2>
-      <table class="tbl">
-        <tr><th>Capability</th><th>Description</th></tr>
-        <tr><td>Virtual scrolling</td><td>@tanstack/react-virtual, 100K+ rows</td></tr>
-        <tr><td>Export / Import</td><td>CSV, JSON, SQL interchange</td></tr>
-        <tr><td>Backup</td><td>SQL dump (Schema / Data / Gzip)</td></tr>
-        <tr><td>Data sync</td><td>PG ↔ MySQL schema compare + data sync + resume</td></tr>
-        <tr><td>ER diagram</td><td>React Flow auto-generates table relationship graph</td></tr>
-        <tr><td>Redis view</td><td>Key browser: String / Hash / List / Set / ZSet / Stream</td></tr>
-      </table>
-    </div>
-  </section>
+      <div class="feature-block">
+        <div>
+          <span class="kicker">Backup &amp; Sync</span>
+          <h2>Your data, under control</h2>
+          <ul>
+            <li>One-click SQL backup: Schema-only / Data-only / Gzip</li>
+            <li>Full app data export (including config), atomic writes + ZIP bomb protection</li>
+            <li>PG ↔ MySQL schema compare and data sync with resume support</li>
+            <li>Backup packages automatically exclude key files</li>
+          </ul>
+        </div>
+        <img
+          class="feature-shot"
+          src="assets/screenshots/19-backup-sync.png"
+          alt="Backup and data sync"
+        />
+      </div>
 
-  <footer id="site-footer"></footer>
-  <script src="assets/js/site.js"></script>
-</body>
+      <div class="feature-block reverse">
+        <div>
+          <span class="kicker">Security &amp; Privacy</span>
+          <h2>Secure by default</h2>
+          <ul>
+            <li>Connection passwords encrypted at rest; master key in system keychain</li>
+            <li>SSH credentials encrypted; host key verification on first connect</li>
+            <li>Hardened local IPC; file access restricted to trusted paths</li>
+            <li>SQL and natural-language requests not logged at info level by default</li>
+          </ul>
+        </div>
+        <img
+          class="feature-shot"
+          src="assets/screenshots/20-security.png"
+          alt="Security and privacy"
+        />
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <h2 style="font-size: 26px; margin-bottom: 20px">Data capabilities at a glance</h2>
+        <table class="tbl">
+          <tr>
+            <th>Capability</th>
+            <th>Description</th>
+          </tr>
+          <tr>
+            <td>Virtual scrolling</td>
+            <td>Smooth at 100K+ rows</td>
+          </tr>
+          <tr>
+            <td>Export / Import</td>
+            <td>CSV, JSON, SQL interchange</td>
+          </tr>
+          <tr>
+            <td>Backup</td>
+            <td>SQL dump (Schema / Data / Gzip)</td>
+          </tr>
+          <tr>
+            <td>Data sync</td>
+            <td>PG ↔ MySQL schema compare + data sync + resume</td>
+          </tr>
+          <tr>
+            <td>ER diagram</td>
+            <td>Auto-generates table relationship graph</td>
+          </tr>
+          <tr>
+            <td>Redis view</td>
+            <td>Key browser: String / Hash / List / Set / ZSet / Stream</td>
+          </tr>
+        </table>
+      </div>
+    </section>
+
+    <footer id="site-footer"></footer>
+    <script src="assets/js/site.js"></script>
+  </body>
 </html>
