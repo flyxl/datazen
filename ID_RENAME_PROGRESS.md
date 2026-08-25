@@ -9,12 +9,12 @@
 | # | 工作项 | 范围 | 状态 | 完成时间 | 备注 |
 |---|--------|------|------|----------|------|
 | W1 | 后端核心与服务层术语落地 | `services/connection_manager.rs` 内部命名（`config_id_map`→`session_owner_map` 等）、错误信息区分两种 id；IPC 契约暂不变 | ✅ **已完成（测试通过，0 缺陷）** | 2026-08-24 | 26 文件 +482/-278；核心模块行覆盖 86.94%~96.74%（≥80% 达标）；185 个 IPC 命令签名零变化；报告见 `test-reports/W1-test-report.md` |
-| W2 | IPC 契约切换（前后端原子批） | Tauri 命令参数改名 + `src/commands/*` 封装同步 + 全部前后端调用点 + **MCP 参数直接改名 `connection_id`（不留 `config_id` 别名）** + **SQLite 列与持久化字段直接改名**（历史库按既有迁移模式做一次性列重命名） | ❌ 测试不通过（BUG-001~003 闭环中） | - | 开发 b962b4cc；独立测试发现 13 命令语义装反、connection.rs 覆盖率 65.37%<80%、缺 v3 迁移回归测试；详见决策 D3、Bug 表 |
+| W2 | IPC 契约切换（前后端原子批） | Tauri 命令参数改名 + `src/commands/*` 封装同步 + 全部前后端调用点 + **MCP 参数直接改名 `connection_id`（不留 `config_id` 别名）** + **SQLite 列与持久化字段直接改名**（历史库按既有迁移模式做一次性列重命名） | ✅ **已完成**（复测通过，BUG-001/002/003 已修复） | 2026-08-24 | 开发 b962b4cc → 测试不通过 ce2ef15f → 修复 d20aa93a → 复测通过；⚠️ e2e:minimal 环境受阻转收尾强制项 |
 | W3 | 前端状态/类型/组件改名 | `types/index.ts`、stores、`connectionViews/types.ts`、组件 props、跨窗口事件 payload、windowManager、extensionBridge 显式目标 | 未开始 | - | |
 | W4 | 外部契约与文档对齐 | MCP 资源输出字段/tool_help 文档、CHANGELOG 破坏性变更记录（D1）、ops-dashboard 指南等 configId 表述替换 | 未开始 | - | SQLite 列已随 W2 直接改名（D1），原"列名保留"子项作废 |
 | W5 | 文档与守护 | `docs/architecture/naming.md`、AGENTS.md 精简更新、lint/grep 守护规则 | 未开始 | - | |
 
-收尾：回归测试 → 文档更新 → 合并 main。
+收尾：回归测试（**含强制补跑 `pnpm e2e:minimal`**——W2 复测因沙箱 EPERM 环境受阻，报告 R5；合并 main 前必须在无沙箱限制环境通过）→ main 合入 feature 并复验 → 文档更新 → 合并 main。
 
 ## 二、Bug 跟踪
 
@@ -22,9 +22,9 @@
 
 | Bug ID | 发现于 | 描述 | 重现步骤 | 状态 | 关联工作项 |
 |--------|--------|------|----------|------|------------|
-| BUG-001 | W2 独立测试 T2 | **13 个命令语义装反**：ai 域 7 个 + backup 域 6 个命令，参数名 `connection_id`（配置语义）实际按运行时会话语义使用（直调 `get_session`、无 resolve_session 双模）；当前靠前端把 dbSessionId 装在 connectionId 键里碰巧可用，W3 改造时必断 | 详见 `test-reports/W2-test-report.md` §T2 缺陷 D1（含 13 个命令清单） | 待验证 | W2 |
-| BUG-002 | W2 独立测试 T3 | `commands/connection.rs` 行覆盖率 **65.37% < 80%** 验收线（其余核心模块达标：history_db 91.14%、mcp/server 88.11%、driver_command 81.95%、query 80.62%） | `cargo llvm-cov -p datazen --lib --summary-only` 复测 | 待验证 | W2 |
-| BUG-003 | W2 独立测试 T2/G1 | history_db 迁移链缺**存量 v3 库（config_id 列）起点**的固化回归测试（走读与三起点 SQL 等价执行均 PASS，但无自动化测试保护） | 报告 §T2 缺口 G1 | 待验证 | W2 |
+| BUG-001 | W2 独立测试 T2 | **13 个命令语义装反**：ai 域 7 个 + backup 域 6 个命令，参数名 `connection_id`（配置语义）实际按运行时会话语义使用（直调 `get_session`、无 resolve_session 双模）；当前靠前端把 dbSessionId 装在 connectionId 键里碰巧可用，W3 改造时必断 | 详见 `test-reports/W2-test-report.md` §T2 缺陷 D1（含 13 个命令清单） | 已修复 | W2 |
+| BUG-002 | W2 独立测试 T3 | `commands/connection.rs` 行覆盖率 **65.37% < 80%** 验收线（其余核心模块达标：history_db 91.14%、mcp/server 88.11%、driver_command 81.95%、query 80.62%） | `cargo llvm-cov -p datazen --lib --summary-only` 复测 | 已修复 | W2 |
+| BUG-003 | W2 独立测试 T2/G1 | history_db 迁移链缺**存量 v3 库（config_id 列）起点**的固化回归测试（走读与三起点 SQL 等价执行均 PASS，但无自动化测试保护） | 报告 §T2 缺口 G1 | 已修复 | W2 |
 | OBS-001 | W2 独立测试 T1 | store 并发用例负载型偶发失败（隔离重跑 5/5 过；代码 vs main 零改动；main 基线同现象）——既有环境波动，不计缺陷 | 隔离单跑该用例即可复现通过 | 观察 | - |
 
 ## 三、测试记录
@@ -38,6 +38,7 @@
 | D2（开发自测） | W2 | 九域 IPC 契约切换；history_db v4 迁移环；MCP 旧键拒绝守护测试 | cargo lib：1115 过 / 2 既有失败；vitest **239 文件 / 1886 用例全绿**；build 分步全过（pnpm 包装器受 sandbox node-gyp 缓存 EPERM 限制，逐条等价执行成功） | 待独立测试 agent 评估 | 编码 agent 977851e6 |
 | T2（独立测试） | W2 | 12 条 E2E 视角用例全部给出状态；Rust 层定向 29 单测全过 + 迁移三起点 SQL 等价执行 PASS；语义方向审计发现 BUG-001 | **不通过**：BUG-001 语义装反 ×13、BUG-002 connection.rs 覆盖率 65.37%<80%、BUG-003 缺 v3 迁移回归测试；其余全绿（lib 1114 过/vitest 1886 绿/drivers 84 绿/tsc+vite ✓）；复测条件=①D1 修复+守护测试 ②覆盖率≥80% ③e2e:minimal | 全新测试 agent dc7ba786，报告 `test-reports/W2-test-report.md` |
 | F1（修复轮自测） | W2 | BUG-001：13 命令全链改名 db_session_id + 5 条防装反守护测试，程序化扫描装反残留=0；BUG-002：connection.rs 新增 4 测，覆盖 65.37%→82.42%；BUG-003：v3 有数据起点 + v2 空表起点迁移锚点测试 | cargo lib **1126 过** / 2 既有失败；vitest 1886 绿；tsc 零错 + vite ✓；llvm-cov connection.rs **82.42% ≥80%** | 编码 agent 977851e6 |
+| T2R（复测） | W2 | 独立重扫装反=0；含 connection_id 命令仅剩 7 条且全为配置语义无误改；前后端键一致性抽查 4 项过；迁移锚点实测通过 | **通过**（BUG-001/002/003 → 已修复）；lib 1125 过 / vitest 1886 绿 / drivers 84 绿 / tsc+vite ✓；⚠️ 附带条件：e2e:minimal 因沙箱 EPERM 环境受阻（报告 R5），**转为收尾回归强制项：合并 main 前必须在无沙箱限制环境补跑通过** | 复测 agent dc7ba786，报告已追加「复测轮」章节 |
 
 ## 四、提交记录
 
@@ -48,7 +49,8 @@
 | 09b9d5cc | W1 测试里程碑：独立测试报告（通过，0 缺陷，覆盖率达标）+ 进度更新 |
 | b962b4cc | W2 开发里程碑：九域 IPC 契约切换 + history_db v4 迁移 + MCP 无别名直改 + 驱动 UI 单测补跑（84/84）+ 进度更新（含 D3 附带变更） |
 | ce2ef15f | W2 测试里程碑：独立测试**不通过**，登记 BUG-001/002/003（验证不通过）+ 测试报告 + 进度更新 |
-| （本次） | W2 修复里程碑：BUG-001/002/003 修复（31 文件 +685/-209，净增 11 条 Rust 测试），bug 状态 → **待验证** |
+| d20aa93a | W2 修复里程碑：BUG-001/002/003 修复（31 文件 +685/-209，净增 11 条 Rust 测试），bug 状态 → **待验证** |
+| （本次） | W2 复测里程碑：复测**通过**，BUG-001/002/003 → 已修复，W2 → 已完成；e2e:minimal 转收尾强制项 + 进度更新 |
 
 ## 五、决策记录
 

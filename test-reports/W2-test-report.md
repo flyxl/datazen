@@ -260,3 +260,88 @@ vs 分叉基点（三点 diff）与 vs main tip（两点 diff）双重核查：
 - 定向测试：connection_manager::tests ×10、monitor::connections::tests ×3、mcp::server::tests ×3、error::tests ×3、data_sync::session::tests ×12（合计 29 passed）。
 - 迁移等价执行脚本与三种起点库：`/tmp/w2test/{v3,v0,fresh}.sqlite`（临时目录，不入仓）。
 - main 基线对照运行：主仓根目录（main @ e45aae4b，干净树）+ 独立 target 目录 `.worktrees/w2-main-target`。
+
+---
+
+# 复测轮（2026-08-25，修复提交 `d20aa93a`）
+
+- **被测状态**：`feature/db-session-id-rename` @ `d20aa93a`（`fix(ids): W2 repair BUG-001/002/003`），基于首轮报告提交 `ce2ef15f` 之上；工作树干净（本轮除追加本章外零改动）
+- **修复提交规模**：32 files, +691/−213，触及 ai.rs / backup.rs / connection.rs / history_db.rs / mock_driver.rs 及 AI、backup 前端链路与 e2e specs——与三个 BUG 的预期修复面吻合
+- **方法独立性声明**：BUG-001 复核采用自写扫描脚本重新枚举全部命令签名并解析函数体，不采信编码方守护测试
+
+## R1 BUG-001 复核（13 命令语义装反）— ✅ 通过
+
+1. **独立全量重扫**：
+   - 含 `connection_id` 参数的命令从首轮 20 条降至 **7 条**；
+   - 断言「参数含 connection_id 且体内直调 `get_session`/`get_session_config` 且无双模」= **0 条** ✅；
+   - 直调与双模混用 = 0 条；
+   - 原 13 条装反命令全部改名为 `db_session_id`（抽查 `backup_database(_with_dialog)`、`restore_database(_with_dialog)`、`ai_chat(db_session_id: Option<String>)` 等签名确认）✅
+2. **保持配置语义未被误改的 7 条清单核对** ✅：`workflow_execute`、`ai_diagnose_connection`、`connect`、`get_connection_commands`、`add_favorite_query`、`get_favorite_queries`、`get_query_history`——与首轮审计认定的配置语义集合完全一致，无过度改名。
+3. **前后端键一致性抽查（ai×2 + backup×2）** ✅：
+   - `ai_chat`：前端 `chat({ dbSessionId })`（src/commands/ai.ts）↔ 后端 `db_session_id`；AiChatPanel 实发 `{ dbSessionId: … }` ✓
+   - `ai_generate_sql`：前端 `generateSql({ dbSessionId, … })` ↔ 后端已改名 ✓
+   - `backup_database_with_dialog`：BackupWindow 发送 `{ dbSessionId }` ↔ 后端 `db_session_id` ✓
+   - `restore_database_with_dialog`（经 sqlFileExecution.ts 助手）：助手统一发送 `{ dbSessionId }`（use_database/get_tables 同）↔ 后端 `db_session_id` ✓
+   - 反向锚点：`diagnoseConnection` 前端仍发 `{ connectionId }` ↔ 后端配置语义参数未动 ✓
+4. 备注（不计缺陷）：前端内部变量名仍存在以 `connectionId` 命名承载会话 id 的情况（AiChatPanel props、sqlFileExecution 入参、BackupWindow 的 connectedId）——纯内部命名债，wire 键全部正确，属 W3 前端改名工作项范畴。
+5. 建议（随 W5）：落地签名级 lint/grep 守护（禁止 command 参数出现运行时语义 connection_id）；本轮未见编码方新增此类守护测试，不阻塞判定。
+
+## R2 BUG-002 复核（connection.rs 覆盖率）— ✅ 通过
+
+`cargo llvm-cov -p datazen --lib --summary-only -- --skip <两个既有 sandbox 失败>` 实测（插桩套件 1126 passed / 0 failed）：
+
+| 模块 | Regions | Lines | ≥80% |
+|---|---|---|---|
+| **commands/connection.rs** | **82.42%** | **80.08%** | ✅ 双指标达标 |
+| commands/driver_command.rs | 82.45% | 81.95% | ✅ |
+| commands/query.rs | 83.33% | 80.62% | ✅ |
+| mcp/server.rs | 87.65% | 88.11% | ✅ |
+| store/history_db.rs | 88.74% | 92.21% | ✅ |
+| TOTAL（参考记录） | 77.44% | 77.33% | — |
+
+新增覆盖来自 connection.rs 内新增 `mod coverage_tests`（release/disconnect 回滚/get_connection_info/reorder 等用例，经 mock_driver 支撑）。
+
+## R3 BUG-003 复核（迁移锚点测试）— ✅ 通过，G1 闭合
+
+新增模块 `store::history_db::migration_startpoint_tests`，两条锚点实测通过：
+
+1. `legacy_v3_database_with_rows_migrates_to_connection_id_preserving_data`：真实构造 v3 物理形态 SQLite（config_id 列 + config 索引 + version=2→3 + schema 列），灌入 2 历史 + 1 收藏行，经**产品代码** `HistoryDb::open` 迁移后断言：两表列更名 `connection_id`、3 个旧 config 索引全部删除、3 个新索引建立、version=4、数据完整且可按 connection 过滤 ✅（较首轮 SQL 等价验证更强：走真实 Rust 迁移代码）
+2. `empty_v2_database_migrates_cleanly_through_the_full_ring`：v2 空表起点经完整版本环落至 v4 最终态，且 v1→v2 守卫不误触发 ✅
+
+**G1 缺口判定：闭合**（首轮指出的必闭合起点「存量 v3 有数据」「v2 空表」均已固化）。残余微差如实记录（不阻塞）：
+- 「无 schema_version 行老库 + 有数据」组合未单独固化——其迁移路径与 v2 用例完全一致（CREATE TABLE IF NOT EXISTS + COALESCE=0），风险极低；
+- 「v1 SQLite 数据设计性清空」行为仍无显式回归锚（历史设计决策，非升级主路径）。
+
+## R4 全量门禁 — ✅ 通过
+
+| 门禁 | 结果 | 判定 |
+|---|---|---|
+| `cargo test -p datazen --lib` | 1125 passed / 3 failed / 2 ignored | ✅ 3 失败 = 2 个既有 sandbox 失败 + O1 已知负载型偶发（隔离重跑通过；llvm-cov 插桩全量运行 1126/0 failed）。符合「仅既有失败可接受」口径 |
+| `npx vitest run` | 239 文件 / 1886 用例全绿 | ✅ |
+| `npx vitest run --config vitest.drivers.config.ts` | 14 文件 / 84 用例全绿（修复提交未触及 packages/*，复跑确认） | ✅ |
+| `npx tsc --noEmit -p tsconfig.json` | 零错误 | ✅ |
+| `npx vite build` | 成功（4.11s） | ✅ |
+
+## R5 e2e:minimal 有界尝试 — ⛔ 环境受阻（非代码问题）
+
+一次有界尝试，在第一步即被沙箱拒绝，未进入构建/GUI 阶段。确切报错证据：
+
+```text
+[ERROR] Command failed with exit code 1: pnpm install
+.../node_modules/better-sqlite3 install: prebuild-install warn install EPERM:
+    operation not permitted, access '/Users/wuxiaolong/.npm'
+.../node_modules/better-sqlite3 install: gyp ERR! configure error
+.../node_modules/better-sqlite3 install: gyp ERR! stack Error: EPERM:
+    operation not permitted, mkdir '/Users/wuxiaolong/Library/Caches/node-gyp/22.20.0'
+[ELIFECYCLE] Command failed with exit code 1.
+```
+
+- 归类：与任务书已知限制②（pnpm 包装器触发 install 被 sandbox EPERM 拒绝）同一根因——沙箱禁写用户主目录缓存；非被测代码问题。
+- 附注：现有 `target/debug/datazen` 为 08-24 21:33 陈旧产物（早于 b962b4cc / d20aa93a），不可 `--skip-build` 复用，不存在绕过 install 的低成本替代路径。
+- **处置：转为收尾回归阶段的强制项——合并 main 前必须在无沙箱限制的环境执行 `pnpm e2e:minimal` 并通过。**
+
+## 复测结论：**通过**
+
+- BUG-001 ✅ ／ BUG-002 ✅ ／ BUG-003 ✅；四项门禁全绿（R4）。
+- 附带条件（非本轮缺陷）：`pnpm e2e:minimal` 因沙箱环境受阻未能在本轮执行，按 R5 转为**收尾回归阶段强制项**，合并 main 前必须补跑通过。
+- 遗留移交：前端内部 connectionId 命名债（W3）、签名级守护 lint（W5）、迁移锚点两处微差残余（可选加固）。
