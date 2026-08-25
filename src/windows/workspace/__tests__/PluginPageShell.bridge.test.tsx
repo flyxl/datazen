@@ -88,7 +88,14 @@ describe('PluginPageShell bridge wiring (F6)', () => {
     render(<PluginPageShell tab={makeTab()} active />);
     await screen.findByTestId('plugin-iframe', {}, { timeout: 5_000 });
 
-    expect(attachBridgeMock).toHaveBeenCalledTimes(1);
+    // The bridge attach runs in a post-commit effect; under CI load the iframe
+    // can be observed one paint before that effect lands. Poll briefly.
+    await vi.waitFor(
+      () => {
+        expect(attachBridgeMock).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 5_000 },
+    );
     const [iframeEl, opts] = attachBridgeMock.mock.calls[0] as [
       HTMLIFrameElement,
       Record<string, unknown>,
