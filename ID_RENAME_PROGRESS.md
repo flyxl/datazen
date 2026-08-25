@@ -10,7 +10,7 @@
 |---|--------|------|------|----------|------|
 | W1 | 后端核心与服务层术语落地 | `services/connection_manager.rs` 内部命名（`config_id_map`→`session_owner_map` 等）、错误信息区分两种 id；IPC 契约暂不变 | ✅ **已完成（测试通过，0 缺陷）** | 2026-08-24 | 26 文件 +482/-278；核心模块行覆盖 86.94%~96.74%（≥80% 达标）；185 个 IPC 命令签名零变化；报告见 `test-reports/W1-test-report.md` |
 | W2 | IPC 契约切换（前后端原子批） | Tauri 命令参数改名 + `src/commands/*` 封装同步 + 全部前后端调用点 + **MCP 参数直接改名 `connection_id`（不留 `config_id` 别名）** + **SQLite 列与持久化字段直接改名**（历史库按既有迁移模式做一次性列重命名） | ✅ **已完成**（复测通过，BUG-001/002/003 已修复） | 2026-08-24 | 开发 b962b4cc → 测试不通过 ce2ef15f → 修复 d20aa93a → 复测通过；⚠️ e2e:minimal 环境受阻转收尾强制项 |
-| W3 | 前端状态/类型/组件改名 | `types/index.ts`、stores、`connectionViews/types.ts`、组件 props、跨窗口事件 payload、windowManager、extensionBridge 显式目标 | ✅ 开发完成（待测试） | 2026-08-24 | 125 文件 +1514/-1454；含 D4 插件桥协议键直改；host vitest 1886 绿 / drivers 84 绿 / tsc 零错 + vite ✓；configId 残留仅 1 处历史说明注释；Rust 零改动。注：编码 agent 中止于汇报前，门禁由编排方代跑确认 |
+| W3 | 前端状态/类型/组件改名 | `types/index.ts`、stores、`connectionViews/types.ts`、组件 props、跨窗口事件 payload、windowManager、extensionBridge 显式目标 | 🔶 测试通过（附 BUG-004/005 P2 清尾缺陷，闭环中） | - | 开发 80df9968；八链路语义审计无装反；核心文件覆盖率达标；详见 Bug 表与 `test-reports/W3-test-report.md` |
 | W4 | 外部契约与文档对齐 | MCP 资源输出字段/tool_help 文档、CHANGELOG 破坏性变更记录（D1）、ops-dashboard 指南等 configId 表述替换 | 未开始 | - | SQLite 列已随 W2 直接改名（D1），原"列名保留"子项作废 |
 | W5 | 文档与守护 | `docs/architecture/naming.md`、AGENTS.md 精简更新、lint/grep 守护规则 | 未开始 | - | |
 
@@ -26,6 +26,10 @@
 | BUG-002 | W2 独立测试 T3 | `commands/connection.rs` 行覆盖率 **65.37% < 80%** 验收线（其余核心模块达标：history_db 91.14%、mcp/server 88.11%、driver_command 81.95%、query 80.62%） | `cargo llvm-cov -p datazen --lib --summary-only` 复测 | 已修复 | W2 |
 | BUG-003 | W2 独立测试 T2/G1 | history_db 迁移链缺**存量 v3 库（config_id 列）起点**的固化回归测试（走读与三起点 SQL 等价执行均 PASS，但无自动化测试保护） | 报告 §T2 缺口 G1 | 已修复 | W2 |
 | OBS-001 | W2 独立测试 T1 | store 并发用例负载型偶发失败（隔离重跑 5/5 过；代码 vs main 零改动；main 基线同现象）——既有环境波动，不计缺陷 | 隔离单跑该用例即可复现通过 | 观察 | - |
+| BUG-004 | W3 独立测试 T5/D2 | **P2 测试层**：`ConnectionNavigatorTree.test.tsx` 仍传旧 prop `activeConfigId`（组件已改名 `activeConnectionId`）；因 tsconfig exclude 测试文件致 tsc 不报、用例仍绿，但选中态覆盖被静默削弱 | 打开该测试文件查看传参；对照组件 props 定义 | 验证不通过 | W3 |
+| BUG-005 | W3 独立测试 T5/D3 | **P2 e2e 层**：`e2e/specs/data-sync-real.ts` 本地 SyncTask 接口/载荷残留 `sourceConfigId/targetConfigId` 且缺 `sourceDbSessionId/targetDbSessionId`，后端强类型反序列化必挂——GUI E2E 实跑时 SYNC-BATCH-004 失败 | 实跑 data-sync-real SYNC-BATCH-004；或比对本地接口与后端 `commands/sync/types.rs` 字段 | 验证不通过 | W3 |
+| OBS-002 | W3 独立测试 T5 | clearCaches/dbObjectsMap 键空间错位——main 上同构存在（继承性观察，非本次引入），登记待后续工作项评估 | 见 W3 测试报告 §T5 | 观察 | - |
+| OBS-003 | W3 独立测试 T3 | vitest coverage 门禁 exit 1（10 条阈值 ERROR）在 main 基线同样存在——既有问题非本次引入 | main 上跑 `npx vitest run --coverage` 对照 | 观察 | - |
 
 ## 三、测试记录
 
@@ -40,7 +44,7 @@
 | F1（修复轮自测） | W2 | BUG-001：13 命令全链改名 db_session_id + 5 条防装反守护测试，程序化扫描装反残留=0；BUG-002：connection.rs 新增 4 测，覆盖 65.37%→82.42%；BUG-003：v3 有数据起点 + v2 空表起点迁移锚点测试 | cargo lib **1126 过** / 2 既有失败；vitest 1886 绿；tsc 零错 + vite ✓；llvm-cov connection.rs **82.42% ≥80%** | 编码 agent 977851e6 |
 | T2R（复测） | W2 | 独立重扫装反=0；含 connection_id 命令仅剩 7 条且全为配置语义无误改；前后端键一致性抽查 4 项过；迁移锚点实测通过 | **通过**（BUG-001/002/003 → 已修复）；lib 1125 过 / vitest 1886 绿 / drivers 84 绿 / tsc+vite ✓；⚠️ 附带条件：e2e:minimal 因沙箱 EPERM 环境受阻（报告 R5），**转为收尾回归强制项：合并 main 前必须在无沙箱限制环境补跑通过** | 复测 agent dc7ba786，报告已追加「复测轮」章节 |
 | D3（开发自测） | W3 | 五域前端改名：store 核心 / lib 层（含 D4 插件桥直改）/ 组件 props 链 / redis UI 适配 / e2e 清尾 | host vitest **1886 绿**；drivers vitest **84 绿**；tsc 零错 + vite ✓；configId 残留 1 处（schemaDiff.ts 历史注释，合理保留）；Rust 零改动 | 待独立测试 agent 评估 | 编码 agent 07f37e84（中止于汇报前，门禁由编排方代跑） |
-| T3（独立测试） | W3 | 待测试 agent 产出 | 待测试 | 待评估 | 全新测试 agent |
+| T3（独立测试） | W3 | 12 条用例（10 条 vitest/mock 层实际执行：定向 15 文件 174 用例 + redis 8 用例）；八链路语义审计全 ✅ 无装反；变体扫描发现 BUG-004/005 | **通过**（附 2 项 P2 清尾缺陷 → BUG-004/005 闭环中）；覆盖率：activeConnectionStore 91.83、extensionBridge 99.32、windowManager 92.85 达标，panelStore 69.91（与 main 基线一致，继承性不足）；TOTAL lines 81.84 | 全新测试 agent 03c401c9，报告 `test-reports/W3-test-report.md` |
 
 ## 四、提交记录
 
@@ -53,7 +57,8 @@
 | ce2ef15f | W2 测试里程碑：独立测试**不通过**，登记 BUG-001/002/003（验证不通过）+ 测试报告 + 进度更新 |
 | d20aa93a | W2 修复里程碑：BUG-001/002/003 修复（31 文件 +685/-209，净增 11 条 Rust 测试），bug 状态 → **待验证** |
 | 87ceed86 | W2 复测里程碑：复测**通过**，BUG-001/002/003 → 已修复，W2 → 已完成；e2e:minimal 转收尾强制项 + 进度更新 |
-| （本次） | W3 开发里程碑：前端五域改名（含 D4 插件桥直改）+ 门禁代跑确认 + 进度更新 |
+| 80df9968 | W3 开发里程碑：前端五域改名（含 D4 插件桥直改）+ 门禁代跑确认 + 进度更新 |
+| （本次） | W3 测试里程碑：独立测试**通过**（八链路语义审计无装反），登记 BUG-004/005（P2 清尾，验证不通过）+ OBS-002/003 + 测试报告 + 进度更新 |
 
 ## 五、决策记录
 
