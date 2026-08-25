@@ -65,7 +65,7 @@ DataZen 是一款不足 10 MB 的桌面数据库客户端：
 
 | 指标 | 原文 | 优化后 |
 |------|------|--------|
-| 体积 | `<10 MB` installer size — Rust core | **`<10 MB`** installer size |
+| 体积 | `<10 MB` installer size — Rust core | **`<15 MB`** installer size |
 | 语言 | 10 UI languages out of the box | **10** UI languages out of the box |
 | 数据库 | 5+ databases, plugin extensible | **15+** databases, extensible |
 | 价格 | 0 € free & open source forever | **Free** · open source forever |
