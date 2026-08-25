@@ -239,3 +239,45 @@ src/commands/schemaDiff.ts:47:/// connectionId(dbSessionId) terminology (v1 conf
 - **回归门禁：✅** 1887 / 84 / tsc 零错。
 - **补充审计**：补充②之 workflow_execute 合规、WorkflowChatPanel 记 OBS-3（既有）；补充①记 **D5（P1，批量导出键失配必挂，W2 引入、尚未修复）**——不阻塞本轮 BUG-004/005 判定，但**建议编排方将其列为收尾强制修复项**。
 - **总体：复测通过**，BUG-004/005 可置「已修复」。
+
+---
+
+# 最终复测轮（BUG-006 修复提交 `897ce98a`）
+
+| 项 | 值 |
+|---|---|
+| 复测对象 | `897ce98a`（`fix(ids): repair BUG-006 ExportTablesRequest key mismatch`），改动面：src/commands/file.ts、src/lib/batchExportJob.ts、batchExportJob.test.ts（+3 守护用例）、BatchExportDialog.test.tsx（断言对齐）、e2e/specs/data-transfer-window.ts（OBS-004）、ID_RENAME_PROGRESS.md |
+| 方式 | 独立执行；反向注入实验按授权临时改回构造键后**逐字节恢复**（git diff 为空验证） |
+
+## F1 修复正确性
+
+- `file.ts` L106-108：接口键 `connectionId` → **`dbSessionId: string`**，附后端字段对照注释 ✓
+- `batchExportJob.ts` L75-76：构造键改为 `dbSessionId`（简写），两行误导注释（"IPC contract key stays connectionId…"）**已删除** ✓
+- 全前端扫描：ExportTablesRequest 构造点**仅 batchExportJob.ts 一处**，无遗漏；BatchExportDialog.test 断言同步改为 `request.dbSessionId === 'c1'` ✓
+
+## F2 守护测试判别力
+
+新增 3 条契约守护（batchExportJob.test.ts，共 8 用例）：
+1. `builds a payload whose key set matches the backend contract`——`BACKEND_WIRE_KEYS` 六键精确镜像后端 serde camelCase 字段集；
+2. `never emits the retired connectionId key`——禁用退役键 + 值断言；
+3. `statically pins the interface field name to dbSessionId`——接口形状静态钉扎。
+
+**反向注入实验**：临时把构造键改回 `connectionId: dbSessionId` → 目标文件 **5 条用例失败**（含两条契约守护；键集不匹配 + 退役键出现），证明门禁可拦截回归；随后逐字节恢复（`git diff` 为空），复跑 **8/8 绿**。
+
+## F3 OBS-004 复核（data-transfer-window 悬空标识符）
+
+L211 已改为与 L208 声明一致的 `tgtConn`。`tsc -p e2e/tsconfig.json` 总错误 **67 = main 基线**；该文件 TS2304 已消除，剩余 1 条 TS2345 为 main 既有。
+
+## F4 回归门禁
+
+| 门禁 | 结果 | 判定 |
+|---|---|---|
+| host vitest 全量 | 239 文件 / **1890 passed**（1887 + 3 新守护），exit 0 | ✅ |
+| drivers vitest | 14 文件 / **84 passed**，exit 0 | ✅ |
+| host `tsc --noEmit` | exit 0 零错误 | ✅ |
+
+## 最终复测轮结论
+
+- **BUG-006：✅ 通过**——修复面完整、无遗漏构造点、误导注释清除；反向注入实验证明守护测试具备真实拦截力；OBS-004 一并闭合。
+- **总体：通过**，BUG-006 可置「已修复」，W3 可进入 W4。
+- 遗留移交清单（均不阻塞 W4 启动）：OBS-1（clearCaches 键空间错位，继承自 main）、OBS-2（coverage 门禁既有失败）、OBS-3（WorkflowChatPanel 数据流降级容忍，建议改进）；建议 W4 收尾回归中纳入批量导出真机（GUI）验证。
