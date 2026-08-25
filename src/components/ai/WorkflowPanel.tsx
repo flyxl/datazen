@@ -47,7 +47,7 @@ import type { ChartConfig } from '../../types/chart';
 type TFn = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
 interface WorkflowPanelProps {
-  connectionId?: string;
+  dbSessionId?: string;
 }
 
 interface WorkflowStepDraft {
@@ -87,7 +87,7 @@ function emptyDraft() {
 
 type PanelTab = 'workflows' | 'history';
 
-export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
+export function WorkflowPanel({ dbSessionId }: WorkflowPanelProps) {
   const { t } = useI18n();
   const [confirmWf, confirmWfDialog] = useConfirmDialog();
   const workflows = useAiStore((s) => s.workflows);
@@ -149,7 +149,8 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
 
   const handleExecute = async () => {
     if (!selectedWorkflow) return;
-    await executeWorkflow({ workflowId: selectedWorkflow.id, variables, connectionId });
+    // `connectionId` key keeps its IPC name; the value passed is a runtime dbSessionId accepted by the backend's dual-mode resolution.
+    await executeWorkflow({ workflowId: selectedWorkflow.id, variables, connectionId: dbSessionId });
     void loadHistory();
   };
 

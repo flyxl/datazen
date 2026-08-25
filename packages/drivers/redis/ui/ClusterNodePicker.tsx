@@ -21,21 +21,21 @@ interface ClusterNodesResponse {
 }
 
 export interface ClusterNodePickerProps {
-  connectionId: string;
+  dbSessionId: string;
   compact?: boolean;
   value?: string;
   onChange?: (addr: string) => void;
 }
 
 export function ClusterNodePicker({
-  connectionId,
+  dbSessionId,
   compact = false,
   value,
   onChange,
 }: ClusterNodePickerProps) {
   const { t } = useI18n();
   const connection = useConnectionStore((s) =>
-    s.connections.find((c) => c.id === connectionId),
+    s.connections.find((c) => c.id === dbSessionId),
   );
   const pluginSettings = useSettingsStore((s) => s.settings.pluginSettings);
   const clusterRouting = readClusterRouting(pluginSettings?.redis);
@@ -46,7 +46,7 @@ export function ClusterNodePicker({
   const [nodes, setNodes] = useState<ClusterNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [internalPinned, setInternalPinned] = useState(() =>
-    readSessionPinnedNode(connectionId, connection?.options),
+    readSessionPinnedNode(dbSessionId, connection?.options),
   );
   const pinnedNodeAddr = value ?? internalPinned;
 
@@ -54,15 +54,15 @@ export function ClusterNodePicker({
 
   useEffect(() => {
     if (value !== undefined) return;
-    setInternalPinned(readSessionPinnedNode(connectionId, connection?.options));
-  }, [connection?.options, connectionId, value]);
+    setInternalPinned(readSessionPinnedNode(dbSessionId, connection?.options));
+  }, [connection?.options, dbSessionId, value]);
 
   useEffect(() => {
     if (!showPicker) return;
 
     let cancelled = false;
     setLoading(true);
-    void redisCommandInvoke<ClusterNodesResponse>('redis', 'cluster_nodes', { connectionId })
+    void redisCommandInvoke<ClusterNodesResponse>('redis', 'cluster_nodes', { dbSessionId })
       .then((response) => {
         if (cancelled) return;
         setNodes(response.nodes ?? []);
@@ -77,7 +77,7 @@ export function ClusterNodePicker({
     return () => {
       cancelled = true;
     };
-  }, [connectionId, showPicker]);
+  }, [dbSessionId, showPicker]);
 
   const nodeOptions = useMemo(
     () =>
@@ -95,12 +95,12 @@ export function ClusterNodePicker({
       }
       onChange?.(addr);
       try {
-        sessionStorage.setItem(`${SESSION_PREFIX}${connectionId}`, addr);
+        sessionStorage.setItem(`${SESSION_PREFIX}${dbSessionId}`, addr);
       } catch {
         // ignore quota / private mode
       }
     },
-    [connectionId, onChange, value],
+    [dbSessionId, onChange, value],
   );
 
   if (!showPicker) return null;
@@ -131,11 +131,11 @@ export function ClusterNodePicker({
 }
 
 function readSessionPinnedNode(
-  connectionId: string,
+  dbSessionId: string,
   options: Record<string, unknown> | undefined,
 ): string {
   try {
-    const fromSession = sessionStorage.getItem(`${SESSION_PREFIX}${connectionId}`);
+    const fromSession = sessionStorage.getItem(`${SESSION_PREFIX}${dbSessionId}`);
     if (fromSession) return fromSession;
   } catch {
     // ignore
@@ -143,9 +143,9 @@ function readSessionPinnedNode(
   return readRedisOptions(options).pinnedNodeAddr ?? '';
 }
 
-export function readPinnedNodeAddr(connectionId: string): string {
+export function readPinnedNodeAddr(dbSessionId: string): string {
   try {
-    return sessionStorage.getItem(`${SESSION_PREFIX}${connectionId}`) ?? '';
+    return sessionStorage.getItem(`${SESSION_PREFIX}${dbSessionId}`) ?? '';
   } catch {
     return '';
   }

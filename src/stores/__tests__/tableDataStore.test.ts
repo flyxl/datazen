@@ -43,7 +43,7 @@ describe('tableDataStore', () => {
   });
 
   async function loadTable() {
-    await useTableDataStore.getState().loadTableData({ connectionId: 'conn-1', table: 'users' });
+    await useTableDataStore.getState().loadTableData({ dbSessionId: 'conn-1', table: 'users' });
   }
 
   it('detailRowIndex defaults to null', () => {
@@ -81,8 +81,8 @@ describe('tableDataStore', () => {
     );
     const p1 = useTableDataStore
       .getState()
-      .loadTableData({ connectionId: 'conn-1', table: 'users' });
-    await useTableDataStore.getState().loadTableData({ connectionId: 'conn-1', table: 'users' });
+      .loadTableData({ dbSessionId: 'conn-1', table: 'users' });
+    await useTableDataStore.getState().loadTableData({ dbSessionId: 'conn-1', table: 'users' });
     expect(mockDatabaseCommands.getTableData).toHaveBeenCalledTimes(1);
     resolveLoad!();
     await p1;
@@ -94,7 +94,7 @@ describe('tableDataStore', () => {
       ...sampleResponse,
       rows: [[3, 'Carol']],
     });
-    await useTableDataStore.getState().loadTableData({ connectionId: 'conn-1', table: 'orders' });
+    await useTableDataStore.getState().loadTableData({ dbSessionId: 'conn-1', table: 'orders' });
     useTableDataStore.getState().switchToTable('users');
     expect(useTableDataStore.getState().rows[0].name).toBe('Alice');
   });
@@ -194,7 +194,7 @@ describe('tableDataStore', () => {
       page: 0,
       pageSize: 50,
     });
-    await useTableDataStore.getState().loadTableData({ connectionId: 'conn-1', table: 'nopk' });
+    await useTableDataStore.getState().loadTableData({ dbSessionId: 'conn-1', table: 'nopk' });
     useTableDataStore.getState().updateCell(0, 'name', 'y');
     await vi.waitFor(() => expect(useTableDataStore.getState().error).toBeTruthy());
   });
@@ -268,7 +268,7 @@ describe('tableDataStore', () => {
   it('reset clears all state', async () => {
     await loadTable();
     useTableDataStore.getState().reset();
-    expect(useTableDataStore.getState().activeConnectionId).toBeNull();
+    expect(useTableDataStore.getState().activeDbSessionId).toBeNull();
     expect(useTableDataStore.getState().rows).toEqual([]);
   });
 

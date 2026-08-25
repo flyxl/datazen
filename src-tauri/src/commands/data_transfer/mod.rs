@@ -35,8 +35,8 @@ pub fn classify_transfer_pair(
 #[tauri::command]
 pub async fn inspect_data_transfer(
     state: State<'_, AppState>,
-    source_connection_id: String,
-    target_connection_id: String,
+    source_db_session_id: String,
+    target_db_session_id: String,
     source_database: Option<String>,
     target_database: Option<String>,
     mode: TransferMode,
@@ -44,8 +44,8 @@ pub async fn inspect_data_transfer(
 ) -> Result<Vec<TableInspectResult>, CommandError> {
     inspect_data_transfer_impl(
         &state,
-        source_connection_id,
-        target_connection_id,
+        source_db_session_id,
+        target_db_session_id,
         source_database,
         target_database,
         mode,

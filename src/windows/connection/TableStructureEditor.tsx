@@ -37,7 +37,7 @@ import { StructureIndexTable, suggestedIndexName } from './structure/StructureIn
 import { StructurePlanPreview } from './structure/StructurePlanPreview';
 
 interface TableStructureEditorProps {
-  connectionId: string;
+  dbSessionId: string;
   databaseType: DatabaseType;
   /** Logical database for multi-db drivers; ensures session before plan/execute. */
   database?: string | null;
@@ -71,13 +71,13 @@ function resolveIndexMethods(
 }
 
 async function executePlanStatements(
-  connectionId: string,
+  dbSessionId: string,
   plan: StructureChangePlan,
 ): Promise<{ executed: number; error?: string }> {
   let executed = 0;
   for (const stmt of plan.statements) {
     try {
-      await queryCommands.executeQuery(connectionId, stmt.sql);
+      await queryCommands.executeQuery(dbSessionId, stmt.sql);
       executed += 1;
     } catch (e) {
       const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Execution failed';
@@ -88,19 +88,19 @@ async function executePlanStatements(
 }
 
 async function fetchEstimatedTableRows(args: {
-  connectionId: string;
+  dbSessionId: string;
   table: string;
   schema?: string | null;
 }): Promise<number | null> {
   try {
-    const definitions = await driverCommands.getConnectionCommands(args.connectionId);
+    const definitions = await driverCommands.getConnectionCommands(args.dbSessionId);
     if (!hasCommand(definitions, ESTIMATE_TABLE_ROWS_COMMAND)) {
       return null;
     }
     const input: Record<string, unknown> = { table: args.table };
     if (args.schema) input.schema = args.schema;
     const result = await driverCommands.execute({
-      connectionId: args.connectionId,
+      dbSessionId: args.dbSessionId,
       command: ESTIMATE_TABLE_ROWS_COMMAND,
       input,
     });
@@ -114,7 +114,7 @@ async function fetchEstimatedTableRows(args: {
 }
 
 export function TableStructureEditor({
-  connectionId,
+  dbSessionId,
   databaseType,
   database = null,
   schema: requestSchema = null,
@@ -146,11 +146,11 @@ export function TableStructureEditor({
 
   const ensureDatabase = useCallback(async () => {
     if (!database) return;
-    const key = `${connectionId}\0${database}`;
+    const key = `${dbSessionId}\0${database}`;
     if (dbSwitchedRef.current === key) return;
-    await databaseCommands.useDatabase(connectionId, database);
+    await databaseCommands.useDatabase(dbSessionId, database);
     dbSwitchedRef.current = key;
-  }, [connectionId, database]);
+  }, [dbSessionId, database]);
 
   useEffect(() => {
     if (!database) return;
@@ -167,10 +167,10 @@ export function TableStructureEditor({
     setLoading(true);
     setError(null);
 
-    const capsPromise = structureCommands.getStructureCapabilities(connectionId);
+    const capsPromise = structureCommands.getStructureCapabilities(dbSessionId);
     const schemaPromise =
       mode === 'alter' && initialTableName
-        ? databaseCommands.getTableSchema(connectionId, initialTableName)
+        ? databaseCommands.getTableSchema(dbSessionId, initialTableName)
         : Promise.resolve(null);
 
     Promise.all([capsPromise, schemaPromise])
@@ -204,7 +204,7 @@ export function TableStructureEditor({
     return () => {
       cancelled = true;
     };
-  }, [connectionId, mode, initialTableName, uiConfig, t]);
+  }, [dbSessionId, mode, initialTableName, uiConfig, t]);
 
   const originalById = useMemo(
     () => new Map(originalColumns.map((c) => [c.id, c])),
@@ -298,7 +298,7 @@ export function TableStructureEditor({
     setPreviewing(true);
     try {
       await ensureDatabase();
-      const plan = await structureCommands.planTableStructureChanges(connectionId, request);
+      const plan = await structureCommands.planTableStructureChanges(dbSessionId, request);
       setPreviewPlan(plan);
     } catch (e) {
       const msg =
@@ -311,7 +311,7 @@ export function TableStructureEditor({
     } finally {
       setPreviewing(false);
     }
-  }, [buildRequest, connectionId, ensureDatabase, t]);
+  }, [buildRequest, dbSessionId, ensureDatabase, t]);
 
   const handleExecute = useCallback(async () => {
     const request = buildRequest();
@@ -320,7 +320,7 @@ export function TableStructureEditor({
     setExecuting(true);
     try {
       await ensureDatabase();
-      const plan = await structureCommands.planTableStructureChanges(connectionId, request);
+      const plan = await structureCommands.planTableStructureChanges(dbSessionId, request);
       if (plan.statements.length === 0) {
         setError(t('structEditor.noChanges'));
         return;
@@ -329,7 +329,7 @@ export function TableStructureEditor({
       let estimatedRows: number | null = null;
       if (mode === 'alter' && initialTableName) {
         estimatedRows = await fetchEstimatedTableRows({
-          connectionId,
+          dbSessionId,
           table: initialTableName,
           schema: requestSchema,
         });
@@ -345,7 +345,7 @@ export function TableStructureEditor({
         if (!ok) return;
       }
 
-      const result = await executePlanStatements(connectionId, plan);
+      const result = await executePlanStatements(dbSessionId, plan);
       if (result.error) {
         if (result.executed > 0) {
           setError(
@@ -374,7 +374,7 @@ export function TableStructureEditor({
     }
   }, [
     buildRequest,
-    connectionId,
+    dbSessionId,
     confirmApply,
     ensureDatabase,
     initialTableName,
@@ -390,7 +390,7 @@ export function TableStructureEditor({
     setError(null);
     try {
       const result = await exportTableStructureToFile({
-        connectionId,
+        dbSessionId,
         tableName: initialTableName,
         databaseType,
       });
@@ -404,7 +404,7 @@ export function TableStructureEditor({
     } finally {
       setExportingStructure(false);
     }
-  }, [mode, initialTableName, connectionId, databaseType, t]);
+  }, [mode, initialTableName, dbSessionId, databaseType, t]);
 
   const canAddColumn =
     mode === 'create' ? capEnabled(caps, 'createTable') : capEnabled(caps, 'addColumn');

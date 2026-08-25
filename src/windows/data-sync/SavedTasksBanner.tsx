@@ -35,9 +35,9 @@ export function SavedTasksBanner({
       <div className="space-y-2">
         {savedTasks.map((task) => {
           const srcName =
-            connections.find((c) => c.id === task.sourceConfigId)?.name ?? task.sourceConfigId;
+            connections.find((c) => c.id === task.sourceConnectionId)?.name ?? task.sourceConnectionId;
           const tgtName =
-            connections.find((c) => c.id === task.targetConfigId)?.name ?? task.targetConfigId;
+            connections.find((c) => c.id === task.targetConnectionId)?.name ?? task.targetConnectionId;
           return (
             <div
               key={task.id}

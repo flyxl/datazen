@@ -75,8 +75,8 @@ export interface DataTableProps {
   /** Enable data export (button + context menu). Provide a table name for the filename. */
   exportTableName?: string;
   databaseType?: string;
-  /** Live connection — enables entire-table streaming export. */
-  connectionId?: string;
+  /** Live DB session — enables entire-table streaming export. */
+  dbSessionId?: string;
   /**
    * Data-export capability, threaded to the export dialog. Omit for `full_table`.
    * `none` disables the table-data export button entirely.
@@ -136,7 +136,7 @@ export function DataTable({
   rowHeight = 40,
   exportTableName,
   databaseType,
-  connectionId,
+  dbSessionId,
   dataExportCapability,
   primaryKeyColumns,
   onDeleteRows,
@@ -505,7 +505,7 @@ export function DataTable({
           selectedRows={selectedRows}
           tableName={exportTableName}
           databaseType={databaseType}
-          connectionId={connectionId}
+          dbSessionId={dbSessionId}
           totalRows={totalRows}
           primaryKeyColumns={primaryKeyColumns}
           dataExportCapability={dataExportCapability}

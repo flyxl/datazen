@@ -240,9 +240,9 @@ pub async fn execute_transfer_data(
         }
 
         if is_self_table_overwrite(
-            &job.source.connection_id,
+            &job.source.db_session_id,
             &job.source.database,
-            &job.target.connection_id,
+            &job.target.db_session_id,
             &job.target.database,
             &table.source_table,
             &table.target_table,

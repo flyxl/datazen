@@ -44,7 +44,8 @@ describe('activeConnectionStore', () => {
 
     const entry = useActiveConnectionStore.getState().connections['cfg-1'];
     expect(entry.status).toBe('connected');
-    expect(entry.connectionId).toBe('pool-abc');
+    expect(entry.connectionId).toBe('cfg-1');
+    expect(entry.dbSessionId).toBe('pool-abc');
     expect(entry.serverInfo).toEqual({ version: '16' });
     expect(entry.currentDatabase).toBe('mydb');
   });
@@ -65,14 +66,15 @@ describe('activeConnectionStore', () => {
 
     useActiveConnectionStore.getState().markConnected('cfg-2', 'pool-xyz');
     expect(useActiveConnectionStore.getState().connections['cfg-2'].status).toBe('connected');
-    expect(useActiveConnectionStore.getState().connections['cfg-2'].connectionId).toBe('pool-xyz');
+    expect(useActiveConnectionStore.getState().connections['cfg-2'].dbSessionId).toBe('pool-xyz');
+    expect(useActiveConnectionStore.getState().connections['cfg-2'].connectionId).toBe('cfg-2');
 
     useActiveConnectionStore.getState().markError('cfg-2', 'timeout');
     expect(useActiveConnectionStore.getState().connections['cfg-2'].status).toBe('error');
     expect(useActiveConnectionStore.getState().connections['cfg-2'].error).toBe('timeout');
   });
 
-  it('disconnect removes entry when no connectionId', async () => {
+  it('disconnect removes entry when no dbSessionId', async () => {
     useActiveConnectionStore.getState().markConnecting('cfg-3', null);
     await useActiveConnectionStore.getState().disconnect('cfg-3');
     expect(useActiveConnectionStore.getState().connections['cfg-3']).toBeUndefined();
@@ -93,8 +95,8 @@ describe('activeConnectionStore', () => {
     useActiveConnectionStore.setState({
       connections: {
         'cfg-5': {
-          connectionId: 'pool-5',
-          configId: 'cfg-5',
+          dbSessionId: 'pool-5',
+          connectionId: 'cfg-5',
           status: 'connected',
           serverInfo: null,
           currentDatabase: null,
@@ -107,14 +109,14 @@ describe('activeConnectionStore', () => {
     expect(useActiveConnectionStore.getState().connections['cfg-5']).toBeUndefined();
   });
 
-  it('removeByConnectionId removes matching entries', () => {
+  it('removeByDbSessionId removes matching entries', () => {
     useActiveConnectionStore.setState({
       connections: {
-        a: { connectionId: 'pool-a', configId: 'a', status: 'connected', serverInfo: null, currentDatabase: null, error: null },
-        b: { connectionId: 'pool-b', configId: 'b', status: 'connected', serverInfo: null, currentDatabase: null, error: null },
+        a: { dbSessionId: 'pool-a', connectionId: 'a', status: 'connected', serverInfo: null, currentDatabase: null, error: null },
+        b: { dbSessionId: 'pool-b', connectionId: 'b', status: 'connected', serverInfo: null, currentDatabase: null, error: null },
       },
     });
-    useActiveConnectionStore.getState().removeByConnectionId('pool-a');
+    useActiveConnectionStore.getState().removeByDbSessionId('pool-a');
     expect(useActiveConnectionStore.getState().connections['a']).toBeUndefined();
     expect(useActiveConnectionStore.getState().connections['b']).toBeDefined();
   });

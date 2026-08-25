@@ -243,7 +243,7 @@ pub async fn ai_delete_config(
 pub(crate) async fn ai_generate_sql_impl(
     state: &AppState,
     on_chunk: StreamCallback,
-    connection_id: String,
+    db_session_id: String,
     database: String,
     natural_language: String,
     request_id: String,
@@ -256,7 +256,7 @@ pub(crate) async fn ai_generate_sql_impl(
     let mut natural_language = natural_language;
     tracing::info!(
         %request_id,
-        %connection_id,
+        %db_session_id,
         %database,
         input_len = natural_language.len(),
         current_table = ?current_table,
@@ -290,7 +290,7 @@ pub(crate) async fn ai_generate_sql_impl(
 
     let (driver_ref, _) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("ai_generate_sql")?;
 
@@ -310,7 +310,7 @@ pub(crate) async fn ai_generate_sql_impl(
     let pipeline = SchemaContextPipeline::new(state.schema_context_builder.clone());
     let seed = pipeline
         .resolve(
-            &connection_id,
+            &db_session_id,
             &database,
             &pinned,
             supports_tools,
@@ -427,7 +427,7 @@ pub(crate) async fn ai_generate_sql_impl(
 pub async fn ai_generate_sql(
     state: State<'_, AppState>,
     window: WebviewWindow,
-    connection_id: String,
+    db_session_id: String,
     database: String,
     natural_language: String,
     request_id: String,
@@ -439,7 +439,7 @@ pub async fn ai_generate_sql(
     ai_generate_sql_impl(
         &state,
         window_stream_callback(&window),
-        connection_id,
+        db_session_id,
         database,
         natural_language,
         request_id,
@@ -455,25 +455,25 @@ pub async fn ai_generate_sql(
 
 pub(crate) async fn ai_diagnose_error_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     database: String,
     sql: String,
     error_message: String,
 ) -> Result<DiagnosisResult, CommandError> {
     tracing::info!(
-        %connection_id,
+        %db_session_id,
         %database,
         sql_len = sql.len(),
         error_len = error_message.len(),
         "ai_diagnose_error: start"
     );
-    tracing::debug!(%connection_id, error = %error_message, "ai_diagnose_error: error");
+    tracing::debug!(%db_session_id, error = %error_message, "ai_diagnose_error: error");
 
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     let context = state
         .schema_context_builder
-        .build_sql_context(&connection_id, &database, None, &[], budget::DIAGNOSE)
+        .build_sql_context(&db_session_id, &database, None, &[], budget::DIAGNOSE)
         .await
         .cmd_err("ai_diagnose_error")?;
 
@@ -481,7 +481,7 @@ pub(crate) async fn ai_diagnose_error_impl(
 
     let (driver_ref, _) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("ai_diagnose_error")?;
 
@@ -548,24 +548,24 @@ pub(crate) async fn ai_diagnose_error_impl(
 #[tauri::command]
 pub async fn ai_diagnose_error(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     database: String,
     sql: String,
     error_message: String,
 ) -> Result<DiagnosisResult, CommandError> {
-    ai_diagnose_error_impl(&state, connection_id, database, sql, error_message).await
+    ai_diagnose_error_impl(&state, db_session_id, database, sql, error_message).await
 }
 
 // ─── EXPLAIN Analysis ───
 
 pub(crate) async fn ai_analyze_explain_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     explain_output: String,
     original_sql: String,
 ) -> Result<ExplainAnalysis, CommandError> {
     tracing::info!(
-        %connection_id,
+        %db_session_id,
         sql_len = original_sql.len(),
         explain_len = explain_output.len(),
         "ai_analyze_explain: start"
@@ -574,7 +574,7 @@ pub(crate) async fn ai_analyze_explain_impl(
 
     let (driver, _) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("ai_analyze_explain")?;
 
@@ -661,35 +661,35 @@ pub(crate) async fn ai_analyze_explain_impl(
 #[tauri::command]
 pub async fn ai_analyze_explain(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     explain_output: String,
     original_sql: String,
 ) -> Result<ExplainAnalysis, CommandError> {
-    ai_analyze_explain_impl(&state, connection_id, explain_output, original_sql).await
+    ai_analyze_explain_impl(&state, db_session_id, explain_output, original_sql).await
 }
 
 // ─── Smart Filter ───
 
 pub(crate) async fn ai_parse_filter_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     database: String,
     table: String,
     natural_language: String,
 ) -> Result<Vec<crate::services::query_executor::FilterCondition>, CommandError> {
     tracing::info!(
-        %connection_id,
+        %db_session_id,
         %database,
         %table,
         input_len = natural_language.len(),
         "ai_parse_filter: start"
     );
-    tracing::debug!(%connection_id, input = %natural_language, "ai_parse_filter: input");
+    tracing::debug!(%db_session_id, input = %natural_language, "ai_parse_filter: input");
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     let (driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("ai_parse_filter")?;
 
@@ -697,7 +697,7 @@ pub(crate) async fn ai_parse_filter_impl(
 
     let cached = state
         .schema_cache
-        .get_columns(&connection_id, &database, &table, &driver, &handle)
+        .get_columns(&db_session_id, &database, &table, &driver, &handle)
         .await
         .cmd_err("ai_parse_filter")?;
 
@@ -781,12 +781,12 @@ pub(crate) async fn ai_parse_filter_impl(
 #[tauri::command]
 pub async fn ai_parse_filter(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     database: String,
     table: String,
     natural_language: String,
 ) -> Result<Vec<crate::services::query_executor::FilterCondition>, CommandError> {
-    ai_parse_filter_impl(&state, connection_id, database, table, natural_language).await
+    ai_parse_filter_impl(&state, db_session_id, database, table, natural_language).await
 }
 
 // ─── Database Tool Definitions & Execution ───
@@ -808,9 +808,9 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "config_id": { "type": "string", "description": "The config ID from list_connections" }
+                    "connection_id": { "type": "string", "description": "The connection ID from list_connections" }
                 },
-                "required": ["config_id"]
+                "required": ["connection_id"]
             }),
         },
         ToolDefinition {
@@ -819,10 +819,10 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "config_id": { "type": "string", "description": "The config ID from list_connections" },
+                    "connection_id": { "type": "string", "description": "The connection ID from list_connections" },
                     "database": { "type": "string", "description": "Database name (optional for some database types)" }
                 },
-                "required": ["config_id"]
+                "required": ["connection_id"]
             }),
         },
         ToolDefinition {
@@ -831,12 +831,12 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "config_id": { "type": "string", "description": "The config ID from list_connections" },
+                    "connection_id": { "type": "string", "description": "The connection ID from list_connections" },
                     "database": { "type": "string", "description": "Database name" },
                     "pattern": { "type": "string", "description": "Search keyword to match against table names" },
                     "limit": { "type": "integer", "description": "Max results to return (default 20)", "default": 20 }
                 },
-                "required": ["config_id", "pattern"]
+                "required": ["connection_id", "pattern"]
             }),
         },
         ToolDefinition {
@@ -845,14 +845,14 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "config_id": { "type": "string", "description": "The config ID from list_connections" },
+                    "connection_id": { "type": "string", "description": "The connection ID from list_connections" },
                     "tables": {
                         "type": "array",
                         "items": { "type": "string" },
                         "description": "One or more table names to get schema for"
                     }
                 },
-                "required": ["config_id", "tables"]
+                "required": ["connection_id", "tables"]
             }),
         },
     ]
@@ -879,23 +879,24 @@ async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {
     let result = match tool_call.name.as_str() {
         "list_connections" => crate::services::db_tools::list_connections(&state.store).await,
         "list_databases" => {
-            let config_id = args["config_id"].as_str().unwrap_or("");
-            crate::services::db_tools::list_databases(cm, config_id).await
+            let connection_id = args["connection_id"].as_str().unwrap_or("");
+            crate::services::db_tools::list_databases(cm, connection_id).await
         }
         "list_tables" => {
-            let config_id = args["config_id"].as_str().unwrap_or("");
+            let connection_id = args["connection_id"].as_str().unwrap_or("");
             let database = args["database"].as_str().unwrap_or("");
-            crate::services::db_tools::list_tables(cm, config_id, database).await
+            crate::services::db_tools::list_tables(cm, connection_id, database).await
         }
         "search_tables" => {
-            let config_id = args["config_id"].as_str().unwrap_or("");
+            let connection_id = args["connection_id"].as_str().unwrap_or("");
             let database = args["database"].as_str().unwrap_or("");
             let pattern = args["pattern"].as_str().unwrap_or("");
             let limit = args["limit"].as_u64().unwrap_or(20) as usize;
-            crate::services::db_tools::search_tables(cm, config_id, database, pattern, limit).await
+            crate::services::db_tools::search_tables(cm, connection_id, database, pattern, limit)
+                .await
         }
         "get_table_schema" => {
-            let config_id = args["config_id"].as_str().unwrap_or("");
+            let connection_id = args["connection_id"].as_str().unwrap_or("");
             let tables: Vec<String> = args["tables"]
                 .as_array()
                 .map(|a| {
@@ -904,7 +905,7 @@ async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {
                         .collect()
                 })
                 .unwrap_or_default();
-            crate::services::db_tools::get_table_schema(cm, config_id, &tables).await
+            crate::services::db_tools::get_table_schema(cm, connection_id, &tables).await
         }
         other => Err(format!("Unknown tool: {other}")),
     };
@@ -1099,7 +1100,7 @@ async fn run_streaming_tool_loop(
 pub(crate) async fn ai_chat_impl(
     state: &AppState,
     on_chunk: StreamCallback,
-    connection_id: Option<String>,
+    db_session_id: Option<String>,
     database: Option<String>,
     messages: Vec<ChatMessage>,
     request_id: String,
@@ -1117,7 +1118,7 @@ pub(crate) async fn ai_chat_impl(
 
     tracing::info!(
         %request_id,
-        connection_id = ?connection_id,
+        db_session_id = ?db_session_id,
         database = ?database,
         messages_count = messages.len(),
         %include_schema,
@@ -1140,9 +1141,9 @@ pub(crate) async fn ai_chat_impl(
     let mut attach_db_tools = true;
 
     if include_schema {
-        if let Some(ref conn_id) = connection_id {
+        if let Some(ref conn_id) = db_session_id {
             let db = database.as_deref().unwrap_or("");
-            if let Ok((driver, _handle)) = state.connection_manager.get_connection(conn_id).await {
+            if let Ok((driver, _handle)) = state.connection_manager.get_session(conn_id).await {
                 let pinned = context_tables.clone().unwrap_or_default();
                 let supports_tools = provider.supports_tools();
                 let pipeline = SchemaContextPipeline::new(state.schema_context_builder.clone());
@@ -1198,7 +1199,7 @@ pub(crate) async fn ai_chat_impl(
                     Err(e) => {
                         tracing::warn!(
                             %request_id,
-                            connection_id = %conn_id,
+                            db_session_id = %conn_id,
                             database = %db,
                             error = %e,
                             "ai_chat: schema context pipeline resolve failed; disabling DB tools"
@@ -1331,7 +1332,7 @@ pub(crate) async fn ai_chat_impl(
 pub async fn ai_chat(
     state: State<'_, AppState>,
     window: WebviewWindow,
-    connection_id: Option<String>,
+    db_session_id: Option<String>,
     database: Option<String>,
     messages: Vec<ChatMessage>,
     request_id: String,
@@ -1343,7 +1344,7 @@ pub async fn ai_chat(
     ai_chat_impl(
         &state,
         window_stream_callback(&window),
-        connection_id,
+        db_session_id,
         database,
         messages,
         request_id,
@@ -1708,16 +1709,16 @@ pub async fn workflow_history_clear(
 
 pub(crate) async fn ai_generate_schema_doc_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     database: String,
 ) -> Result<String, CommandError> {
-    tracing::info!(%connection_id, %database, "ai_generate_schema_doc: start");
+    tracing::info!(%db_session_id, %database, "ai_generate_schema_doc: start");
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     // Step 1: Get table names only (no column details)
     let (db_type, all_table_names) = state
         .schema_context_builder
-        .get_table_names(&connection_id, &database)
+        .get_table_names(&db_session_id, &database)
         .await
         .cmd_err("ai_generate_schema_doc")?;
 
@@ -1725,7 +1726,7 @@ pub(crate) async fn ai_generate_schema_doc_impl(
 
     let (driver_ref, _) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("ai_generate_schema_doc")?;
 
@@ -1799,7 +1800,7 @@ pub(crate) async fn ai_generate_schema_doc_impl(
     let context = state
         .schema_context_builder
         .build_selective_context(
-            &connection_id,
+            &db_session_id,
             &database,
             &selected_tables,
             budget::SCHEMA_DOC,
@@ -1865,10 +1866,10 @@ pub(crate) async fn ai_generate_schema_doc_impl(
 #[tauri::command]
 pub async fn ai_generate_schema_doc(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     database: String,
 ) -> Result<String, CommandError> {
-    ai_generate_schema_doc_impl(&state, connection_id, database).await
+    ai_generate_schema_doc_impl(&state, db_session_id, database).await
 }
 
 // ─── Phase 8: Connection diagnostics ───
@@ -1998,19 +1999,21 @@ pub struct QueryCategory {
 
 pub(crate) async fn ai_analyze_queries_impl(
     state: &AppState,
-    connection_id: Option<String>,
+    db_session_id: Option<String>,
 ) -> Result<QueryAnalysis, CommandError> {
-    tracing::info!(connection_id = ?connection_id, "ai_analyze_queries: start");
+    tracing::info!(db_session_id = ?db_session_id, "ai_analyze_queries: start");
     let (provider, ai_config) = resolve_ai(&state).await?;
 
-    let config_id = if let Some(ref cid) = connection_id {
-        state.connection_manager.resolve_config_id(cid).await
+    // The IPC parameter is the runtime dbSessionId; resolve the persisted
+    // connection id that owns it so history is filtered by connection.
+    let owner_connection_id = if let Some(ref cid) = db_session_id {
+        state.connection_manager.owner_connection_id(cid).await
     } else {
         None
     };
     let history = state
         .store
-        .get_query_history(200, config_id.as_deref(), None, None)
+        .get_query_history(200, owner_connection_id.as_deref(), None, None)
         .await;
     let filtered: Vec<_> = history.iter().collect();
 
@@ -2078,9 +2081,9 @@ pub(crate) async fn ai_analyze_queries_impl(
 #[tauri::command]
 pub async fn ai_analyze_queries(
     state: State<'_, AppState>,
-    connection_id: Option<String>,
+    db_session_id: Option<String>,
 ) -> Result<QueryAnalysis, CommandError> {
-    ai_analyze_queries_impl(&state, connection_id).await
+    ai_analyze_queries_impl(&state, db_session_id).await
 }
 
 // ─── Prompt management IPC commands ───
@@ -2534,5 +2537,85 @@ mod tests {
             extra: serde_json::json!({}),
         };
         assert!(ai_validate_config_impl(&test.state, cfg).await.is_err());
+    }
+}
+
+#[cfg(test)]
+mod ipc_contract_guards {
+    //! D1 regression anchors: these commands receive a **runtime** db session
+    //! id over IPC, so their wire parameter must be `db_session_id` (frontend
+    //! camelCase `dbSessionId`). An earlier revision shipped them as
+    //! `connection_id` (persisted-configuration semantics) while the bodies
+    //! called strict runtime-session lookups — "renamed but reversed". The
+    //! assertions below pin both directions so it cannot silently return.
+
+    use super::*;
+
+    const SOURCE: &str = include_str!("ai.rs");
+
+    /// Extracts the parameter list of a `pub async fn <command>(...)`.
+    fn command_params(command: &str) -> String {
+        let needle = format!("pub async fn {command}(");
+        let start = SOURCE
+            .find(&needle)
+            .unwrap_or_else(|| panic!("command `{command}` not found in ai.rs"));
+        let rest = &SOURCE[start + needle.len()..];
+        let end = rest.find(')').expect("unterminated parameter list");
+        rest[..end].to_string()
+    }
+
+    #[test]
+    fn session_semantics_commands_take_db_session_id() {
+        for cmd in [
+            "ai_generate_sql",
+            "ai_diagnose_error",
+            "ai_analyze_explain",
+            "ai_parse_filter",
+            "ai_chat",
+            "ai_generate_schema_doc",
+            "ai_analyze_queries",
+        ] {
+            let params = command_params(cmd);
+            assert!(
+                params.contains("db_session_id"),
+                "`{cmd}` must take `db_session_id` (runtime session semantics); got: {params}"
+            );
+            let without_new = params.replace("db_session_id", "");
+            assert!(
+                !without_new.contains("connection_id"),
+                "`{cmd}` must not take (or also take) `connection_id`; got: {params}"
+            );
+        }
+    }
+
+    #[test]
+    fn config_semantics_commands_keep_connection_id() {
+        // workflow_execute feeds a persisted id into the executor's dual-mode
+        // resolve; ai_diagnose_connection looks up the stored configuration.
+        for cmd in ["workflow_execute", "ai_diagnose_connection"] {
+            let params = command_params(cmd);
+            assert!(
+                params.contains("connection_id"),
+                "`{cmd}` keeps persisted-configuration semantics and must take `connection_id`; got: {params}"
+            );
+            assert!(
+                !params.contains("db_session_id"),
+                "`{cmd}` must not take `db_session_id`; got: {params}"
+            );
+        }
+    }
+
+    #[test]
+    fn strict_session_lookups_are_never_fed_a_connection_id_binding() {
+        // Body-level guard mirroring the signature guards above: if any of
+        // these strings reappear, a strict runtime-session lookup is being fed
+        // a variable named after the *persisted* configuration id. The needles
+        // are assembled at runtime so this test module never contains them.
+        let conn = "connection_";
+        let id = "id";
+        let conn_id = format!("{conn}{id}");
+        assert!(!SOURCE.contains(&format!(".get_session(&{conn_id})")));
+        assert!(!SOURCE.contains(&format!(".get_session({conn_id})")));
+        assert!(!SOURCE.contains(&format!("owner_connection_id(&{conn_id})")));
     }
 }

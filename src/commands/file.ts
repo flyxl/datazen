@@ -104,7 +104,8 @@ export interface ExportTableInput {
 }
 
 export interface ExportTablesRequest {
-  connectionId: string;
+  /** Runtime db session id (backend `ExportTablesRequest.db_session_id`). */
+  dbSessionId: string;
   databaseType?: string | null;
   mode: ExportMode;
   dataFormat: ExportDataFormat;

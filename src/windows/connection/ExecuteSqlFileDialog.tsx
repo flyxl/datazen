@@ -12,7 +12,7 @@ import { ProgressLog } from '../backup/ProgressLog';
 interface ExecuteSqlFileDialogProps {
   open: boolean;
   onClose: () => void;
-  connectionId: string;
+  dbSessionId: string;
   database: string | null;
   connectionName: string;
   onExecuted?: () => void;
@@ -23,7 +23,7 @@ type StatusKind = 'idle' | 'running' | 'success' | 'error';
 export function ExecuteSqlFileDialog({
   open,
   onClose,
-  connectionId,
+  dbSessionId,
   database,
   connectionName,
   onExecuted,
@@ -56,7 +56,7 @@ export function ExecuteSqlFileDialog({
     logPumpRef.current.reset([t('backup.restoring')]);
     try {
       const executed = await runSqlFileExecution({
-        connectionId,
+        dbSessionId,
         database,
         t,
         logPump: logPumpRef.current,
@@ -86,7 +86,7 @@ export function ExecuteSqlFileDialog({
     } finally {
       setRunning(false);
     }
-  }, [connectionId, database, confirmExecute, onExecuted, t]);
+  }, [dbSessionId, database, confirmExecute, onExecuted, t]);
 
   const targetLabel = database
     ? t('sqlFile.targetDatabase', { database })

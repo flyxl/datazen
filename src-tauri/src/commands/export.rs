@@ -80,7 +80,7 @@ pub enum OutputMode {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportTablesRequest {
-    pub connection_id: String,
+    pub db_session_id: String,
     pub database_type: Option<String>,
     pub mode: ExportMode,
     pub data_format: DataFormat,
@@ -560,13 +560,13 @@ async fn write_data_file(
 
     let (_runtime_id, driver, handle) = state
         .connection_manager
-        .resolve_session(&request.connection_id)
+        .resolve_session(&request.db_session_id)
         .await
         .cmd_err("export")?;
 
     let read_only = state
         .connection_manager
-        .get_connection_config(&handle.id)
+        .get_session_config(&handle.id)
         .await
         .map(|c| c.read_only)
         .unwrap_or(false);
@@ -1058,7 +1058,7 @@ mod tests {
         };
         // data_and_structure + csv -> structure.sql + data.csv
         let req = ExportTablesRequest {
-            connection_id: "c".into(),
+            db_session_id: "c".into(),
             database_type: Some("postgres".into()),
             mode: ExportMode::DataAndStructure,
             data_format: DataFormat::Csv,

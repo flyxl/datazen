@@ -24,7 +24,8 @@ const TAB_LABEL_KEYS: Record<
 };
 
 export function RedisConnectionView({
-  connectionId,
+  // W3 host contract: `dbSessionId` = live runtime session id.
+  dbSessionId,
   connectionName,
   initialDatabase,
   hideSidebar,
@@ -35,7 +36,7 @@ export function RedisConnectionView({
   const [activeTab, setActiveTab] = useState<ActiveTab>('items');
   const [dbIndex, setDbIndex] = useState(0);
   const [keySuggestions, setKeySuggestions] = useState<string[]>([]);
-  const [pinnedNodeAddr, setPinnedNodeAddr] = useState(() => readPinnedNodeAddr(connectionId));
+  const [pinnedNodeAddr, setPinnedNodeAddr] = useState(() => readPinnedNodeAddr(dbSessionId));
   // Panels stay mounted once visited so tab switches never lose their state
   // (console draft/results, monitor samples, pub/sub subscriptions, …).
   const [visitedTabs, setVisitedTabs] = useState<ActiveTab[]>(['items']);
@@ -44,8 +45,8 @@ export function RedisConnectionView({
   useEffect(() => {
     setDbIndex(0);
     setKeySuggestions([]);
-    setPinnedNodeAddr(readPinnedNodeAddr(connectionId));
-  }, [connectionId]);
+    setPinnedNodeAddr(readPinnedNodeAddr(dbSessionId));
+  }, [dbSessionId]);
 
   const handleSelectDatabase = useCallback((dbName: string) => {
     workbenchRef.current?.selectDatabase(dbName);
@@ -93,7 +94,7 @@ export function RedisConnectionView({
         <div className={cn('flex min-h-0 flex-1 flex-col', activeTab !== 'items' && 'hidden')}>
           <RedisWorkbench
             ref={workbenchRef}
-            connectionId={connectionId}
+            dbSessionId={dbSessionId}
             initialDatabase={initialDatabase}
             hideSidebar={hideSidebar}
             onDbIndexChange={setDbIndex}
@@ -104,7 +105,7 @@ export function RedisConnectionView({
       {visitedTabs.includes('console') && (
         <div className={cn('flex min-h-0 flex-1 flex-col', activeTab !== 'console' && 'hidden')}>
           <RedisConsole
-            connectionId={connectionId}
+            dbSessionId={dbSessionId}
             dbIndex={dbIndex}
             keySuggestions={keySuggestions}
             pinnedNodeAddr={pinnedNodeAddr}
@@ -115,7 +116,7 @@ export function RedisConnectionView({
       {visitedTabs.includes('monitor') && (
         <div className={cn('flex min-h-0 flex-1 flex-col', activeTab !== 'monitor' && 'hidden')}>
           <MonitorPanel
-            connectionId={connectionId}
+            dbSessionId={dbSessionId}
             dbIndex={dbIndex}
             pinnedNodeAddr={pinnedNodeAddr}
             onPinnedNodeAddrChange={setPinnedNodeAddr}
@@ -124,7 +125,7 @@ export function RedisConnectionView({
       )}
       {visitedTabs.includes('pubsub') && (
         <div className={cn('flex min-h-0 flex-1 flex-col', activeTab !== 'pubsub' && 'hidden')}>
-          <PubSubPanel connectionId={connectionId} />
+          <PubSubPanel dbSessionId={dbSessionId} />
         </div>
       )}
     </div>

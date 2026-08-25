@@ -28,7 +28,7 @@ import { ClusterNodePicker } from './ClusterNodePicker';
 import { readClusterRouting, resolvePinnedNodeAddr } from './settingsHelpers';
 
 export interface RedisConsoleProps {
-  connectionId: string;
+  dbSessionId: string;
   dbIndex?: number;
   keySuggestions?: string[];
   pinnedNodeAddr?: string;
@@ -63,7 +63,7 @@ function applyCompletion(
 }
 
 export function RedisConsole({
-  connectionId,
+  dbSessionId,
   dbIndex = 0,
   keySuggestions = [],
   pinnedNodeAddr = '',
@@ -93,12 +93,12 @@ export function RedisConsole({
   const [completionIdx, setCompletionIdx] = useState(0);
 
   useEffect(() => {
-    setHistory(loadConsoleHistory(connectionId));
+    setHistory(loadConsoleHistory(dbSessionId));
     setCommands('');
     setResults([]);
     setError(null);
     setHistoryState({ index: null, draft: '' });
-  }, [connectionId]);
+  }, [dbSessionId]);
 
   const completionPrefix = useMemo(
     () => getCompletionPrefix(commands, cursor),
@@ -131,19 +131,19 @@ export function RedisConsole({
 
     try {
       const response = await redisCommandInvoke<ExecResponse>('redis', 'exec', {
-        connectionId,
+        dbSessionId,
         dbIndex,
         commands: trimmed,
         nodeAddr,
       });
       setResults(response.results ?? []);
-      setHistory(pushConsoleHistory(connectionId, trimmed));
+      setHistory(pushConsoleHistory(dbSessionId, trimmed));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setRunning(false);
     }
-  }, [commands, connectionId, dbIndex, nodeAddr, running]);
+  }, [commands, dbSessionId, dbIndex, nodeAddr, running]);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -233,7 +233,7 @@ export function RedisConsole({
         <span className="text-[11px] text-fg-muted">{t('redis.console.hint')}</span>
         <div className="flex-1" />
         <ClusterNodePicker
-          connectionId={connectionId}
+          dbSessionId={dbSessionId}
           compact
           value={pinnedNodeAddr}
           onChange={onPinnedNodeAddrChange}

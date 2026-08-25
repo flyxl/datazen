@@ -11,7 +11,8 @@ use super::settings::AppSettings;
 #[serde(rename_all = "camelCase")]
 pub struct QueryHistoryEntry {
     pub id: String,
-    pub config_id: String,
+    /// Owning persisted connection id (config).
+    pub connection_id: String,
     /// Session-active logical database when the statement ran ("" = unknown/legacy rows).
     pub database: String,
     /// Schema namespace when known (PG search_path is not session-tracked yet → usually None).
@@ -29,7 +30,8 @@ pub struct QueryHistoryEntry {
 #[serde(rename_all = "camelCase")]
 pub struct FavoriteQuery {
     pub id: String,
-    pub config_id: String,
+    /// Owning persisted connection id (config).
+    pub connection_id: String,
     pub title: String,
     pub sql: String,
     pub created_at: DateTime<Utc>,
@@ -40,10 +42,14 @@ pub struct FavoriteQuery {
 #[serde(rename_all = "camelCase")]
 pub struct SyncTask {
     pub id: String,
+    /// Runtime db session id captured when the task was created/resumed.
+    pub source_db_session_id: String,
+    /// Runtime db session id captured when the task was created/resumed.
+    pub target_db_session_id: String,
+    /// Persisted owning connection id (config) for display / resume lookup.
     pub source_connection_id: String,
+    /// Persisted owning connection id (config) for display / resume lookup.
     pub target_connection_id: String,
-    pub source_config_id: String,
-    pub target_config_id: String,
     /// All tables selected for sync.
     pub tables: Vec<String>,
     /// Tables that have been fully synced.

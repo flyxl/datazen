@@ -94,11 +94,11 @@ describe('windowManager — browser', () => {
 
   it('openConnectionWindow stores pending connection and focuses main workspace', async () => {
     const { openConnectionWindow, PENDING_CONNECTION_KEY } = await import('../windowManager');
-    openConnectionWindow({ connectionId: 'c1', configId: 'cfg1' }, 'My DB', 'app', 'postgresql');
+    openConnectionWindow({ dbSessionId: 'c1', connectionId: 'cfg1' }, 'My DB', 'app', 'postgresql');
     expect(window.open).not.toHaveBeenCalled();
     const pending = JSON.parse(localStorage.getItem(PENDING_CONNECTION_KEY) ?? '{}');
-    expect(pending.configId).toBe('cfg1');
-    expect(pending.connectionId).toBe('c1');
+    expect(pending.connectionId).toBe('cfg1');
+    expect(pending.dbSessionId).toBe('c1');
     expect(pending.database).toBe('app');
   });
 

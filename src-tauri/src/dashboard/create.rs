@@ -54,7 +54,7 @@ fn next_widget_layout(dashboard: &Dashboard) -> WidgetLayout {
 fn hidden_sql_workflow(
     workflow_id: &str,
     title: &str,
-    config_id: &str,
+    connection_id: &str,
     sql: &str,
 ) -> WorkflowDefinition {
     WorkflowDefinition {
@@ -64,7 +64,7 @@ fn hidden_sql_workflow(
         version: None,
         author: None,
         variables: vec![],
-        connection: Some(config_id.to_string()),
+        connection: Some(connection_id.to_string()),
         steps: vec![WorkflowStep::Query {
             id: "q1".into(),
             sql: sql.to_string(),
@@ -85,15 +85,15 @@ pub async fn create_widget_from_sql(
     app_db: &AppDb,
     registry: &WorkflowRegistry,
     dashboard_id: &str,
-    config_id: &str,
+    connection_id: &str,
     sql: &str,
     title: Option<String>,
     view_mode: ViewMode,
     chart_config: Option<ChartConfig>,
 ) -> Result<CreateWidgetResult, CreateWidgetError> {
-    if config_id.trim().is_empty() {
+    if connection_id.trim().is_empty() {
         return Err(CreateWidgetError::Validation(
-            "config_id is required".into(),
+            "connectionId is required".into(),
         ));
     }
     if sql.trim().is_empty() {
@@ -105,7 +105,7 @@ pub async fn create_widget_from_sql(
     let workflow_id = format!("dash-wf-{}", Uuid::new_v4());
     let widget_id = Uuid::new_v4().to_string();
 
-    let def = hidden_sql_workflow(&workflow_id, &widget_title, config_id, sql);
+    let def = hidden_sql_workflow(&workflow_id, &widget_title, connection_id, sql);
     registry
         .save_workflow(&def)
         .await
@@ -137,12 +137,12 @@ pub async fn update_hidden_workflow_sql(
     app_db: &AppDb,
     registry: &WorkflowRegistry,
     workflow_id: &str,
-    config_id: &str,
+    connection_id: &str,
     sql: &str,
 ) -> Result<(), CreateWidgetError> {
-    if config_id.trim().is_empty() {
+    if connection_id.trim().is_empty() {
         return Err(CreateWidgetError::Validation(
-            "config_id is required".into(),
+            "connectionId is required".into(),
         ));
     }
     if sql.trim().is_empty() {
@@ -162,7 +162,7 @@ pub async fn update_hidden_workflow_sql(
         CreateWidgetError::Workflow(format!("Workflow '{workflow_id}' not found"))
     })?;
 
-    def.connection = Some(config_id.to_string());
+    def.connection = Some(connection_id.to_string());
     let mut updated = false;
     for step in &mut def.steps {
         if let WorkflowStep::Query { sql: step_sql, .. } = step {

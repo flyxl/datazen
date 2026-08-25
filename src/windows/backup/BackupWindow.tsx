@@ -41,7 +41,7 @@ export function BackupWindow() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const [selectedConnId, setSelectedConnId] = useState<string | null>(null);
-  const [connectedId, setConnectedId] = useState<string | null>(null);
+  const [dbSessionId, setDbSessionId] = useState<string | null>(null);
   const [serverVersion, setServerVersion] = useState('');
   const [databases, setDatabases] = useState<DatabaseInfo[]>([]);
   const [selectedDb, setSelectedDb] = useState<string | null>(null);
@@ -78,9 +78,9 @@ export function BackupWindow() {
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     listenCrossWindow('datazen:connection-closed', (payload) => {
-      const { connectionId } = (payload ?? {}) as { connectionId?: string };
-      if (!connectionId) return;
-      setConnectedId((prev) => (prev === connectionId ? null : prev));
+      const { dbSessionId } = (payload ?? {}) as { dbSessionId?: string };
+      if (!dbSessionId) return;
+      setDbSessionId((prev) => (prev === dbSessionId ? null : prev));
     }).then((fn) => {
       cleanup = fn;
     });
@@ -116,26 +116,26 @@ export function BackupWindow() {
       setProgress(null);
 
       if (!DB_REGISTRY[conn.databaseType]?.supportsBackup) {
-        setConnectedId(null);
+        setDbSessionId(null);
         setStatusMessage(t('backup.unsupportedType'));
         return;
       }
 
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        const connectionId = await invoke<string>('connect', { configId: conn.id });
-        setConnectedId(connectionId);
+        const sessionId = await invoke<string>('connect', { connectionId: conn.id });
+        setDbSessionId(sessionId);
 
         try {
           const info = await invoke<{ serverVersion?: string }>('get_connection_info', {
-            connectionId,
+            dbSessionId: sessionId,
           });
           if (info.serverVersion) setServerVersion(info.serverVersion);
         } catch {
           /* server version is optional */
         }
 
-        const dbs = await invoke<string[]>('get_databases', { connectionId });
+        const dbs = await invoke<string[]>('get_databases', { dbSessionId: sessionId });
         setDatabases(dbs.map((name) => ({ name })));
 
         const dbPick = preferredDatabase ?? conn.database;
@@ -160,9 +160,10 @@ export function BackupWindow() {
   const prefillAppliedRef = useRef(false);
   useEffect(() => {
     if (prefillAppliedRef.current || connections.length === 0) return;
-    const prefillConfigId = getUrlParam('configId');
-    if (!prefillConfigId) return;
-    const conn = connections.find((c) => c.id === prefillConfigId);
+    // URL param `connectionId` = persistent config connection id.
+    const prefillConnectionId = getUrlParam('connectionId');
+    if (!prefillConnectionId) return;
+    const conn = connections.find((c) => c.id === prefillConnectionId);
     if (!conn) return;
     prefillAppliedRef.current = true;
     void handleSelectConnection(conn, getUrlParam('database') ?? undefined);
@@ -187,7 +188,7 @@ export function BackupWindow() {
   }, []);
 
   const handleRestore = useCallback(async () => {
-    if (!connectedId || !selectedDb) return;
+    if (!dbSessionId || !selectedDb) return;
     try {
       setBacking(true);
       setProgress(null);
@@ -195,7 +196,7 @@ export function BackupWindow() {
       setStatusMessage(t('backup.restoring'));
 
       const executed = await runSqlFileExecution({
-        connectionId: connectedId,
+        dbSessionId,
         database: selectedDb,
         t,
         logPump: logPumpRef.current,
@@ -216,7 +217,7 @@ export function BackupWindow() {
       });
       if (executed) {
         await emitCrossWindow('datazen:refresh-connection', {
-          connectionId: connectedId,
+          dbSessionId,
         });
       }
     } catch (e) {
@@ -228,10 +229,10 @@ export function BackupWindow() {
     } finally {
       setBacking(false);
     }
-  }, [connectedId, selectedDb, confirmRestore, t]);
+  }, [dbSessionId, selectedDb, confirmRestore, t]);
 
   const handleBackup = useCallback(async () => {
-    if (!connectedId || !selectedDb) return;
+    if (!dbSessionId || !selectedDb) return;
 
     try {
       const ext = compressGzip ? 'gz' : enabledOptions.has('format-custom') ? 'dump' : 'sql';
@@ -253,7 +254,7 @@ export function BackupWindow() {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const saved = await invoke<boolean>('backup_database_with_dialog', {
-          connectionId: connectedId,
+          dbSessionId,
           database: selectedDb,
           defaultFileName: defaultName,
           filterExtension: ext,
@@ -283,7 +284,7 @@ export function BackupWindow() {
     } finally {
       setBacking(false);
     }
-  }, [connectedId, selectedDb, fileName, enabledOptions, compressGzip, t]);
+  }, [dbSessionId, selectedDb, fileName, enabledOptions, compressGzip, t]);
 
   const filteredDbs = useMemo(() => {
     const q = searchDb.trim().toLowerCase();
@@ -534,7 +535,7 @@ export function BackupWindow() {
           <div className="flex justify-end">
             <Button
               variant="primary"
-              disabled={!connectedId || !selectedDb || backing}
+              disabled={!dbSessionId || !selectedDb || backing}
               onClick={() => void (isRestore ? handleRestore() : handleBackup())}
               data-testid={isRestore ? 'backup-start-restore' : 'backup-start-backup'}
             >

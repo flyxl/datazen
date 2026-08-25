@@ -18,7 +18,7 @@ import { ClusterNodePicker } from './ClusterNodePicker';
 import { readClusterRouting, resolvePinnedNodeAddr } from './settingsHelpers';
 
 export interface MonitorPanelProps {
-  connectionId: string;
+  dbSessionId: string;
   dbIndex?: number;
   pinnedNodeAddr?: string;
   onPinnedNodeAddrChange?: (addr: string) => void;
@@ -73,7 +73,7 @@ function formatSlowlogClient(entry: SlowlogEntry): string {
 }
 
 export function MonitorPanel({
-  connectionId,
+  dbSessionId,
   dbIndex = 0,
   pinnedNodeAddr = '',
   onPinnedNodeAddrChange,
@@ -115,7 +115,7 @@ export function MonitorPanel({
         ))}
         <div className="flex-1" />
         <ClusterNodePicker
-          connectionId={connectionId}
+          dbSessionId={dbSessionId}
           compact
           value={pinnedNodeAddr}
           onChange={onPinnedNodeAddrChange}
@@ -123,23 +123,23 @@ export function MonitorPanel({
       </div>
 
       {subPage === 'info' ? (
-        <InfoPane connectionId={connectionId} nodeAddr={nodeAddr} />
+        <InfoPane dbSessionId={dbSessionId} nodeAddr={nodeAddr} />
       ) : subPage === 'memory' ? (
-        <MemoryPane connectionId={connectionId} dbIndex={dbIndex} />
+        <MemoryPane dbSessionId={dbSessionId} dbIndex={dbIndex} />
       ) : subPage === 'slowlog' ? (
-        <SlowlogPane connectionId={connectionId} />
+        <SlowlogPane dbSessionId={dbSessionId} />
       ) : (
-        <StreamOverview connectionId={connectionId} dbIndex={dbIndex} />
+        <StreamOverview dbSessionId={dbSessionId} dbIndex={dbIndex} />
       )}
     </div>
   );
 }
 
 function InfoPane({
-  connectionId,
+  dbSessionId,
   nodeAddr,
 }: {
-  connectionId: string;
+  dbSessionId: string;
   nodeAddr: string | null;
 }) {
   const { t } = useI18n();
@@ -153,7 +153,7 @@ function InfoPane({
     setError(null);
     try {
       const raw = await redisCommandInvoke<string>('redis', 'info', {
-        connectionId,
+        dbSessionId,
         section: null,
         nodeAddr,
       });
@@ -166,7 +166,7 @@ function InfoPane({
     } finally {
       setLoading(false);
     }
-  }, [connectionId, nodeAddr]);
+  }, [dbSessionId, nodeAddr]);
 
   useEffect(() => {
     void load();
@@ -242,10 +242,10 @@ function InfoPane({
 }
 
 function MemoryPane({
-  connectionId,
+  dbSessionId,
   dbIndex,
 }: {
-  connectionId: string;
+  dbSessionId: string;
   dbIndex: number;
 }) {
   const { t } = useI18n();
@@ -258,7 +258,7 @@ function MemoryPane({
     setError(null);
     try {
       const data = await redisCommandInvoke<MemorySampleResult>('redis', 'memory_sample', {
-        connectionId,
+        dbSessionId,
         dbIndex,
         limit: MEMORY_SAMPLE_LIMIT,
       });
@@ -269,7 +269,7 @@ function MemoryPane({
     } finally {
       setLoading(false);
     }
-  }, [connectionId, dbIndex]);
+  }, [dbSessionId, dbIndex]);
 
   useEffect(() => {
     void load();
@@ -312,7 +312,7 @@ function MemoryPane({
   );
 }
 
-function SlowlogPane({ connectionId }: { connectionId: string }) {
+function SlowlogPane({ dbSessionId }: { dbSessionId: string }) {
   const { t } = useI18n();
   const [entries, setEntries] = useState<SlowlogEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -326,7 +326,7 @@ function SlowlogPane({ connectionId }: { connectionId: string }) {
     setError(null);
     try {
       const data = await redisCommandInvoke<SlowlogEntry[]>('redis', 'slowlog_get', {
-        connectionId,
+        dbSessionId,
         count: SLOWLOG_COUNT,
       });
       setEntries(data);
@@ -336,7 +336,7 @@ function SlowlogPane({ connectionId }: { connectionId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [connectionId]);
+  }, [dbSessionId]);
 
   useEffect(() => {
     void load();
@@ -347,7 +347,7 @@ function SlowlogPane({ connectionId }: { connectionId: string }) {
     setResetError(null);
     try {
       await redisCommandInvoke('redis', 'slowlog_reset', {
-        connectionId,
+        dbSessionId,
         confirm: true,
       });
       setResetOpen(false);
@@ -357,7 +357,7 @@ function SlowlogPane({ connectionId }: { connectionId: string }) {
     } finally {
       setResetBusy(false);
     }
-  }, [connectionId, load]);
+  }, [dbSessionId, load]);
 
   return (
     <>

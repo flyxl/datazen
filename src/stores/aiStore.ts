@@ -191,7 +191,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
   // ── EXPLAIN Analysis ──
 
   analyzeExplain: async (params) => {
-    console.debug('[AI] analyzeExplain:', { connectionId: params.connectionId, sql_len: params.originalSql?.length });
+    console.debug('[AI] analyzeExplain:', { dbSessionId: params.dbSessionId, sql_len: params.originalSql?.length });
     set({ isAnalyzingExplain: true, explainAnalysis: null, explainError: null });
     try {
       const result = await aiCommands.analyzeExplain(params);
@@ -213,16 +213,16 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
   setNlFilterInput: (input) => set({ nlFilterInput: input }),
 
-  parseFilter: async ({ connectionId, database, table }) => {
+  parseFilter: async ({ dbSessionId, database, table }) => {
     const { nlFilterInput } = get();
     if (!nlFilterInput.trim()) return null;
 
-    console.debug('[AI] parseFilter:', { connectionId, database, table, input: nlFilterInput });
+    console.debug('[AI] parseFilter:', { dbSessionId, database, table, input: nlFilterInput });
     set({ isParsingFilter: true, nlFilterError: null, parsedFilters: null });
 
     try {
       const filters = await aiCommands.parseFilter({
-        connectionId,
+        dbSessionId,
         database,
         table,
         naturalLanguage: nlFilterInput,
@@ -258,11 +258,11 @@ export const useAiStore = create<AiStore>((set, get) => ({
     });
   },
 
-  sendChatMessage: async ({ connectionId, database, content, includeSchema = true, contextFiles, contextTables }) => {
+  sendChatMessage: async ({ dbSessionId, database, content, includeSchema = true, contextFiles, contextTables }) => {
     const { chatSession } = get();
     if (!chatSession) return;
 
-    console.debug('[AI] sendChatMessage:', { connectionId, database, contentLen: content.length, includeSchema, historyLen: chatSession.messages.length });
+    console.debug('[AI] sendChatMessage:', { dbSessionId, database, contentLen: content.length, includeSchema, historyLen: chatSession.messages.length });
 
     const newMessages: AiChatMessage[] = [];
     const lastMsg = chatSession.messages[chatSession.messages.length - 1];
@@ -292,7 +292,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
     try {
       await aiCommands.chat({
-        connectionId,
+        dbSessionId,
         database,
         messages: [...chatSession.messages, ...newMessages],
         requestId,
@@ -352,7 +352,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     });
   },
 
-  sendWorkflowChatMessage: async ({ connectionId, database, content, includeSchema = true, contextFiles, contextTables }) => {
+  sendWorkflowChatMessage: async ({ dbSessionId, database, content, includeSchema = true, contextFiles, contextTables }) => {
     const { workflowChat } = get();
     if (!workflowChat) return;
 
@@ -384,7 +384,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
     try {
       await aiCommands.chat({
-        connectionId,
+        dbSessionId,
         database,
         messages: [...workflowChat.messages, ...newMessages],
         requestId,
@@ -608,10 +608,10 @@ export const useAiStore = create<AiStore>((set, get) => ({
   isAnalyzingQueries: false,
   queryAnalysisError: null,
 
-  generateSchemaDoc: async ({ connectionId, database }) => {
+  generateSchemaDoc: async ({ dbSessionId, database }) => {
     set({ isGeneratingSchemaDoc: true, schemaDoc: null, schemaDocError: null });
     try {
-      const doc = await aiCommands.generateSchemaDoc({ connectionId, database });
+      const doc = await aiCommands.generateSchemaDoc({ dbSessionId, database });
       set({ schemaDoc: doc, isGeneratingSchemaDoc: false });
     } catch (e) {
       set({
@@ -638,10 +638,10 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
   clearConnectionDiagnosis: () => set({ connectionDiagnosis: null, connectionDiagnosisError: null, isDiagnosingConnection: false }),
 
-  analyzeQueries: async ({ connectionId }) => {
+  analyzeQueries: async ({ dbSessionId }) => {
     set({ isAnalyzingQueries: true, queryAnalysis: null, queryAnalysisError: null });
     try {
-      const result = await aiCommands.analyzeQueries({ connectionId });
+      const result = await aiCommands.analyzeQueries({ dbSessionId });
       set({ queryAnalysis: result, isAnalyzingQueries: false });
     } catch (e) {
       set({

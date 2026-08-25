@@ -12,14 +12,14 @@ pub(crate) fn resolve_db_name(selected: Option<&str>, config_default: Option<&st
 }
 
 pub(crate) fn is_self_database(
-    source_connection_id: &str,
-    target_connection_id: &str,
+    source_db_session_id: &str,
+    target_db_session_id: &str,
     source_database: &str,
     target_database: &str,
     source_schema: Option<&str>,
     target_schema: Option<&str>,
 ) -> bool {
-    if source_connection_id != target_connection_id {
+    if source_db_session_id != target_db_session_id {
         return false;
     }
     if source_database != target_database {
@@ -33,12 +33,12 @@ fn normalize_schema(schema: Option<&str>) -> Option<&str> {
 }
 
 pub(crate) fn endpoint_from(
-    connection_id: &str,
+    db_session_id: &str,
     database: &str,
     schema: Option<String>,
 ) -> Endpoint {
     Endpoint {
-        connection_id: connection_id.to_string(),
+        db_session_id: db_session_id.to_string(),
         database: database.to_string(),
         schema,
     }

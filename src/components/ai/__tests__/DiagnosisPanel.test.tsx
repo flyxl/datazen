@@ -42,7 +42,7 @@ describe('DiagnosisPanel', () => {
   it('auto-diagnoses on mount when configured', async () => {
     render(
       <DiagnosisPanel
-        connectionId="c1"
+        dbSessionId="c1"
         database="db"
         sql="SELECT bad"
         errorMessage="syntax error"
@@ -52,7 +52,7 @@ describe('DiagnosisPanel', () => {
     );
     await waitFor(() => {
       expect(aiState.diagnoseError).toHaveBeenCalledWith({
-        connectionId: 'c1',
+        dbSessionId: 'c1',
         database: 'db',
         sql: 'SELECT bad',
         errorMessage: 'syntax error',
@@ -65,7 +65,7 @@ describe('DiagnosisPanel', () => {
     const onClose = vi.fn();
     const { container } = render(
       <DiagnosisPanel
-        connectionId="c1"
+        dbSessionId="c1"
         database="db"
         sql=""
         errorMessage=""
@@ -90,7 +90,7 @@ describe('DiagnosisPanel', () => {
     };
     const { getByText } = render(
       <DiagnosisPanel
-        connectionId="c1"
+        dbSessionId="c1"
         database="db"
         sql="SELECT x"
         errorMessage="column x does not exist"
@@ -109,7 +109,7 @@ describe('DiagnosisPanel', () => {
     aiState.isDiagnosing = true;
     const { getByText, rerender } = render(
       <DiagnosisPanel
-        connectionId="c1"
+        dbSessionId="c1"
         database="db"
         sql=""
         errorMessage=""
@@ -123,7 +123,7 @@ describe('DiagnosisPanel', () => {
     aiState.diagnosisError = 'timeout';
     rerender(
       <DiagnosisPanel
-        connectionId="c1"
+        dbSessionId="c1"
         database="db"
         sql=""
         errorMessage=""

@@ -41,10 +41,10 @@ import { ProcessListView } from '../ProcessListView';
 describe('ProcessListView connection binding', () => {
   beforeEach(() => {
     executeMock.mockReset();
-    executeMock.mockImplementation(async ({ connectionId }: { connectionId: string }) => ({
+    executeMock.mockImplementation(async ({ dbSessionId }: { dbSessionId: string }) => ({
       data: {
         columns: [{ name: 'pid', dataType: 'int' }],
-        rows: [[connectionId === 'conn-pg' ? 111 : 222]],
+        rows: [[dbSessionId === 'conn-pg' ? 111 : 222]],
       },
     }));
   });
@@ -53,23 +53,23 @@ describe('ProcessListView connection binding', () => {
     cleanup();
   });
 
-  it('reloads when connectionId changes so PG/MySQL tabs do not share rows', async () => {
-    const { rerender } = render(<ProcessListView connectionId="conn-pg" connectionName="pg" />);
+  it('reloads when dbSessionId changes so PG/MySQL tabs do not share rows', async () => {
+    const { rerender } = render(<ProcessListView dbSessionId="conn-pg" connectionName="pg" />);
 
     await waitFor(() => {
       expect(executeMock).toHaveBeenCalledWith(
-        expect.objectContaining({ connectionId: 'conn-pg', command: 'list_processes' }),
+        expect.objectContaining({ dbSessionId: 'conn-pg', command: 'list_processes' }),
       );
     });
     await waitFor(() => {
       expect(screen.getByTestId('process-rows').textContent).toContain('111');
     });
 
-    rerender(<ProcessListView connectionId="conn-mysql" connectionName="mysql" />);
+    rerender(<ProcessListView dbSessionId="conn-mysql" connectionName="mysql" />);
 
     await waitFor(() => {
       expect(executeMock).toHaveBeenCalledWith(
-        expect.objectContaining({ connectionId: 'conn-mysql', command: 'list_processes' }),
+        expect.objectContaining({ dbSessionId: 'conn-mysql', command: 'list_processes' }),
       );
     });
     await waitFor(() => {

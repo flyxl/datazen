@@ -94,7 +94,7 @@ function entry(
     Pick<QueryHistoryEntry, 'id' | 'sql' | 'database' | 'executedAt'>,
 ): QueryHistoryEntry {
   return {
-    configId: 'cfg-1',
+    connectionId: 'cfg-1',
     executionTimeMs: 12,
     success: true,
     ...overrides,
@@ -161,8 +161,8 @@ function renderPanel() {
   return render(
     <QueryPanel
       panelId={PANEL_ID}
-      connectionId="conn-1"
-      configId="cfg-1"
+      dbSessionId="sess-cfg-1"
+      connectionId="cfg-1"
       databaseType="postgresql"
     />,
   );

@@ -4,7 +4,7 @@ import {
   E2E_DASHBOARD_PREFIX,
   cleanupDashboard,
   createEmptyDashboard,
-  getSeededConfigId,
+  getSeededConnectionId,
   invokeBackend,
   openDashboardFromMain,
   seedSqlWidget,
@@ -20,10 +20,10 @@ describe('数据看板刷新 (UJ-07)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await browser.pause(1000);
-    const configId = await getSeededConfigId();
+    const connectionId = await getSeededConnectionId();
     await cleanupDashboard(DASHBOARD_ID);
     await createEmptyDashboard(DASHBOARD_ID, 'E2E Refresh Board');
-    const created = await seedSqlWidget(DASHBOARD_ID, configId, {
+    const created = await seedSqlWidget(DASHBOARD_ID, connectionId, {
       title: 'E2E Refresh Widget',
       sql: 'SELECT 1 AS v UNION ALL SELECT 2 UNION ALL SELECT 3',
       xAxis: null,

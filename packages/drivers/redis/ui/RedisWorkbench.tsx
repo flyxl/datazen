@@ -41,7 +41,7 @@ const PAGE_SIZE = 200;
 const REDIS_DB_COUNT = 16;
 
 export interface RedisWorkbenchProps {
-  connectionId: string;
+  dbSessionId: string;
   initialDatabase?: string;
   hideSidebar?: boolean;
   onDbIndexChange?: (dbIndex: number) => void;
@@ -71,7 +71,7 @@ function formatSize(size: number): string {
 
 export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchProps>(
   function RedisWorkbench(
-    { connectionId, initialDatabase, hideSidebar, onDbIndexChange, onKeysChange },
+    { dbSessionId, initialDatabase, hideSidebar, onDbIndexChange, onKeysChange },
     ref,
   ) {
     const { t } = useI18n();
@@ -118,13 +118,13 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
     const [keyCtxError, setKeyCtxError] = useState<string | null>(null);
 
     useEffect(() => {
-      void loadForConnection(connectionId, { skipLoadTables: true });
-    }, [connectionId, loadForConnection]);
+      void loadForConnection(dbSessionId, { skipLoadTables: true });
+    }, [dbSessionId, loadForConnection]);
 
     useEffect(() => {
       let cancelled = false;
       setModules(null);
-      void invokeModulesList(connectionId)
+      void invokeModulesList(dbSessionId)
         .then((list) => {
           if (!cancelled) setModules(list);
         })
@@ -134,7 +134,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       return () => {
         cancelled = true;
       };
-    }, [connectionId]);
+    }, [dbSessionId]);
 
     const createTypes = useMemo(() => {
       const base = ['string', 'hash', 'list', 'set', 'zset'];
@@ -148,7 +148,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       async (idx: number, pattern: string, cur: number, reset: boolean) => {
         setKeysLoading(true);
         try {
-          const result = await invokeScanKeys(connectionId, idx, pattern || '*', cur, PAGE_SIZE);
+          const result = await invokeScanKeys(dbSessionId, idx, pattern || '*', cur, PAGE_SIZE);
           if (reset) {
             setKeys(result.keys);
           } else {
@@ -162,7 +162,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
           setKeysLoading(false);
         }
       },
-      [connectionId],
+      [dbSessionId],
     );
 
     const handleSelectDb = useCallback(
@@ -208,9 +208,9 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
     }, [selectedDb, dbIndex, searchPattern, loadKeys]);
 
     const handleRefresh = useCallback(() => {
-      void loadForConnection(connectionId, { skipLoadTables: true });
+      void loadForConnection(dbSessionId, { skipLoadTables: true });
       refreshKeys();
-    }, [connectionId, loadForConnection, refreshKeys]);
+    }, [dbSessionId, loadForConnection, refreshKeys]);
 
     useImperativeHandle(ref, () => ({ refreshKeys, selectDatabase: handleSelectDb }), [
       refreshKeys,
@@ -237,7 +237,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
         setSelectedKey(key);
         setKeyDetailLoading(true);
         try {
-          const detail = await invokeGetKey(connectionId, dbIndex, key);
+          const detail = await invokeGetKey(dbSessionId, dbIndex, key);
           setKeyDetail(detail);
         } catch (e) {
           console.error('get_key failed:', e);
@@ -246,7 +246,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
           setKeyDetailLoading(false);
         }
       },
-      [connectionId, dbIndex],
+      [dbSessionId, dbIndex],
     );
 
     const reloadDetail = useCallback(async () => {
@@ -278,7 +278,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       setCreateBusy(true);
       setCreateError(null);
       try {
-        await invokeCreateKey(connectionId, dbIndex, name, createType, createValue);
+        await invokeCreateKey(dbSessionId, dbIndex, name, createType, createValue);
         setCreateOpen(false);
         setCreateName('');
         setCreateValue('');
@@ -298,13 +298,13 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       try {
         if (flushDialog === 'db') {
           await redisCommandInvoke('redis', 'flush_db', {
-            connectionId: connectionId,
+            dbSessionId: dbSessionId,
             dbIndex: dbIndex,
             allowFlush: allowFlush,
           });
         } else if (flushDialog === 'all') {
           await redisCommandInvoke('redis', 'flush_all', {
-            connectionId: connectionId,
+            dbSessionId: dbSessionId,
             allowFlush: allowFlush,
           });
         }
@@ -377,7 +377,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
         if (Number.isNaN(secs) || secs < 0) {
           throw new Error(t('redis.ttlSeconds'));
         }
-        await invokeSetTtl(connectionId, dbIndex, keyCtxDialog.key, secs);
+        await invokeSetTtl(dbSessionId, dbIndex, keyCtxDialog.key, secs);
         closeKeyCtxDialog();
         refreshKeys();
         if (selectedKey === keyCtxDialog.key) {
@@ -395,7 +395,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       setKeyCtxBusy(true);
       setKeyCtxError(null);
       try {
-        await invokeSetTtl(connectionId, dbIndex, keyCtxDialog.key, -1);
+        await invokeSetTtl(dbSessionId, dbIndex, keyCtxDialog.key, -1);
         closeKeyCtxDialog();
         refreshKeys();
         if (selectedKey === keyCtxDialog.key) {
@@ -415,7 +415,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       setKeyCtxBusy(true);
       setKeyCtxError(null);
       try {
-        await invokeRename(connectionId, dbIndex, keyCtxDialog.key, next);
+        await invokeRename(dbSessionId, dbIndex, keyCtxDialog.key, next);
         closeKeyCtxDialog();
         if (selectedKey === keyCtxDialog.key) {
           setSelectedKey(next);
@@ -441,7 +441,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       setKeyCtxBusy(true);
       setKeyCtxError(null);
       try {
-        const deleted = await invokeDeleteKeys(connectionId, dbIndex, [keyCtxDialog.key]);
+        const deleted = await invokeDeleteKeys(dbSessionId, dbIndex, [keyCtxDialog.key]);
         setBatchSummary(t('redis.deleted').replace('{count}', String(deleted)));
         if (selectedKey === keyCtxDialog.key) {
           setSelectedKey(null);
@@ -590,7 +590,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
               )}
 
               <BatchBar
-                connectionId={connectionId}
+                dbSessionId={dbSessionId}
                 dbIndex={dbIndex}
                 selectedKeys={[...selectedKeys]}
                 searchPattern={searchPattern}
@@ -638,7 +638,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                         </div>
                       ) : keyDetail ? (
                         <KeyDetailEditor
-                          connectionId={connectionId}
+                          dbSessionId={dbSessionId}
                           dbIndex={dbIndex}
                           detail={keyDetail}
                           modules={modules}
@@ -718,7 +718,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
         </Dialog>
 
         <ImportExport
-          connectionId={connectionId}
+          dbSessionId={dbSessionId}
           dbIndex={dbIndex}
           selectedKeys={[...selectedKeys]}
           searchPattern={searchPattern}

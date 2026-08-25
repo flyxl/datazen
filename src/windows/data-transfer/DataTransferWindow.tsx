@@ -132,12 +132,13 @@ export function DataTransferWindow() {
   const targetReadOnly = targetConn?.readOnly === true;
 
   const ensureConnected = useCallback(
-    async (configId: string): Promise<string | null> => {
-      if (activeConns[configId]) return activeConns[configId];
+    async (connectionId: string): Promise<string | null> => {
+      // activeConns maps persistent connection id -> live db session id.
+      if (activeConns[connectionId]) return activeConns[connectionId];
       try {
-        const connectionId = await invoke<string>('connect', { configId });
-        setActiveConns((prev) => ({ ...prev, [configId]: connectionId }));
-        return connectionId;
+        const dbSessionId = await invoke<string>('connect', { connectionId });
+        setActiveConns((prev) => ({ ...prev, [connectionId]: dbSessionId }));
+        return dbSessionId;
       } catch (e) {
         setErrorMsg(`${t('transfer.connectFailed')} ${e instanceof Error ? e.message : String(e)}`);
         setErrorOpen(true);
@@ -214,8 +215,8 @@ export function DataTransferWindow() {
     const tgtConnId = activeConns[targetId];
     if (!srcConnId || !tgtConnId || !sourceDatabase || !targetDatabase) return null;
     return {
-      source: { connectionId: srcConnId, database: sourceDatabase },
-      target: { connectionId: tgtConnId, database: targetDatabase },
+      source: { dbSessionId: srcConnId, database: sourceDatabase },
+      target: { dbSessionId: tgtConnId, database: targetDatabase },
       mode,
       writeMode,
       tables: tablesToMappings(),

@@ -28,7 +28,7 @@ import type { PrivilegeGrant } from '../../types';
 // ─── Types ────────────────────────────────────────────────────────────
 
 interface PrivilegeViewProps {
-  connectionId: string;
+  dbSessionId: string;
   databaseType?: string;
 }
 
@@ -218,20 +218,20 @@ function PrivilegeLeafRow({
 // ─── Grant Dialog ─────────────────────────────────────────────────────
 
 function GrantDialog({
-  connectionId,
+  dbSessionId,
   users,
   initialUser,
   onGranted,
   onClose,
 }: {
-  connectionId: string;
+  dbSessionId: string;
   users: string[];
   initialUser?: string;
   onGranted: () => void;
   onClose: () => void;
 }) {
   const { t } = useI18n();
-  const { definition: grantDefinition } = useConnectionCommand(connectionId, 'grant_privileges');
+  const { definition: grantDefinition } = useConnectionCommand(dbSessionId, 'grant_privileges');
   const { all: allPrivs } = usePrivilegeOptions(grantDefinition);
 
   const [username, setUsername] = useState(initialUser ?? '');
@@ -255,7 +255,7 @@ function GrantDialog({
     setError(null);
     try {
       await driverCommands.execute({
-        connectionId,
+        dbSessionId,
         command: 'grant_privileges',
         input: {
           username: username.trim(),
@@ -390,14 +390,14 @@ function GrantDialog({
 
 function ByUserView({
   grants,
-  connectionId,
+  dbSessionId,
   supportsDropUser,
   onRefresh,
   actionError,
   setActionError,
 }: {
   grants: PrivilegeGrant[];
-  connectionId: string;
+  dbSessionId: string;
   supportsDropUser: boolean;
   onRefresh: () => void;
   actionError: string | null;
@@ -418,7 +418,7 @@ function ByUserView({
     if (!ok) return;
     setActionError(null);
     try {
-      await driverCommands.execute({ connectionId, command: 'drop_user', input: { username } });
+      await driverCommands.execute({ dbSessionId, command: 'drop_user', input: { username } });
       onRefresh();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : String(e));
@@ -441,7 +441,7 @@ function ByUserView({
     setActionError(null);
     try {
       await driverCommands.execute({
-        connectionId,
+        dbSessionId,
         command: 'revoke_privileges',
         input: { username: grantee, database: objectName, privileges },
       });
@@ -592,13 +592,13 @@ function ByUserView({
 
 function ByObjectView({
   grants,
-  connectionId,
+  dbSessionId,
   onRefresh,
   actionError,
   setActionError,
 }: {
   grants: PrivilegeGrant[];
-  connectionId: string;
+  dbSessionId: string;
   onRefresh: () => void;
   actionError: string | null;
   setActionError: (e: string | null) => void;
@@ -623,7 +623,7 @@ function ByObjectView({
     setActionError(null);
     try {
       await driverCommands.execute({
-        connectionId,
+        dbSessionId,
         command: 'revoke_privileges',
         input: { username: grantee, database: objectName, privileges },
       });
@@ -754,9 +754,9 @@ function ByObjectView({
 
 // ─── Main Component ───────────────────────────────────────────────────
 
-export function PrivilegeView({ connectionId }: PrivilegeViewProps) {
+export function PrivilegeView({ dbSessionId }: PrivilegeViewProps) {
   const { t } = useI18n();
-  const { definitions } = useConnectionCommands(connectionId);
+  const { definitions } = useConnectionCommands(dbSessionId);
   const supportsDropUser = hasCommand(definitions, 'drop_user');
   const [grants, setGrants] = useState<PrivilegeGrant[]>([]);
   const [loading, setLoading] = useState(false);
@@ -773,14 +773,14 @@ export function PrivilegeView({ connectionId }: PrivilegeViewProps) {
     setLoading(true);
     setError(null);
     try {
-      setGrants(await databaseCommands.getPrivileges(connectionId));
+      setGrants(await databaseCommands.getPrivileges(dbSessionId));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setGrants([]);
     } finally {
       setLoading(false);
     }
-  }, [connectionId]);
+  }, [dbSessionId]);
 
   useEffect(() => {
     void load();
@@ -791,7 +791,7 @@ export function PrivilegeView({ connectionId }: PrivilegeViewProps) {
     setRunning(true);
     setRunMessage(null);
     try {
-      await queryCommands.executeQuery(connectionId, sql);
+      await queryCommands.executeQuery(dbSessionId, sql);
       setRunMessage(t('privileges.executeOk'));
       void load();
     } catch (e) {
@@ -799,7 +799,7 @@ export function PrivilegeView({ connectionId }: PrivilegeViewProps) {
     } finally {
       setRunning(false);
     }
-  }, [connectionId, load, sql, t]);
+  }, [dbSessionId, load, sql, t]);
 
   const uniqueGrantees = useMemo(() => {
     return [...new Set(grants.map((g) => g.grantee))].sort();
@@ -865,7 +865,7 @@ export function PrivilegeView({ connectionId }: PrivilegeViewProps) {
       {!loading && !error && viewMode === 'by-user' && (
         <ByUserView
           grants={grants}
-          connectionId={connectionId}
+          dbSessionId={dbSessionId}
           supportsDropUser={supportsDropUser}
           onRefresh={() => void load()}
           actionError={actionError}
@@ -875,7 +875,7 @@ export function PrivilegeView({ connectionId }: PrivilegeViewProps) {
       {!loading && !error && viewMode === 'by-object' && (
         <ByObjectView
           grants={grants}
-          connectionId={connectionId}
+          dbSessionId={dbSessionId}
           onRefresh={() => void load()}
           actionError={actionError}
           setActionError={setActionError}
@@ -907,7 +907,7 @@ export function PrivilegeView({ connectionId }: PrivilegeViewProps) {
       {/* Grant Dialog */}
       {showGrant && (
         <GrantDialog
-          connectionId={connectionId}
+          dbSessionId={dbSessionId}
           users={uniqueGrantees}
           initialUser={grantUser}
           onGranted={() => void load()}

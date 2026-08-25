@@ -17,7 +17,7 @@ const { getConnectionViewMock, schemaState, tableDataState, MockRedisView } = vi
     getConnectionViewMock: vi.fn(() => MockRedisView),
     MockRedisView,
     schemaState: {
-      activeConnectionId: null as string | null,
+      activeDbSessionId: null as string | null,
       currentDatabase: null as string | null,
       tables: [] as { name: string; schema?: string }[],
       views: [] as { name: string; schema?: string }[],
@@ -251,8 +251,8 @@ describe('ContentView', () => {
 
   it('renders tab bar with panels', () => {
     const panel = {
-      configId: 'cfg-1',
-      connectionId: 'conn-1',
+      connectionId: 'cfg-1',
+      dbSessionId: 'conn-1',
       connectionName: 'TestDB',
       databaseType: 'postgresql' as const,
       type: 'table' as const,
@@ -271,8 +271,8 @@ describe('ContentView', () => {
 
   it('shows toolbar buttons for SQL connections', () => {
     const panel = {
-      configId: 'cfg-1',
-      connectionId: 'conn-1',
+      connectionId: 'cfg-1',
+      dbSessionId: 'conn-1',
       connectionName: 'TestDB',
       databaseType: 'postgresql' as const,
       type: 'table' as const,
@@ -298,8 +298,8 @@ describe('ContentView', () => {
 
   it('renders redis panel via getConnectionView', () => {
     const redisPanel = {
-      configId: 'cfg-redis',
-      connectionId: 'conn-redis',
+      connectionId: 'cfg-redis',
+      dbSessionId: 'conn-redis',
       connectionName: 'Redis',
       databaseType: 'redis' as const,
       type: 'redis-db' as const,
@@ -319,8 +319,8 @@ describe('ContentView', () => {
 
   it('hides New Query button for redis panels', () => {
     const redisPanel = {
-      configId: 'cfg-redis',
-      connectionId: 'conn-redis',
+      connectionId: 'cfg-redis',
+      dbSessionId: 'conn-redis',
       connectionName: 'Redis',
       databaseType: 'redis' as const,
       type: 'redis-db' as const,

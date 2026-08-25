@@ -64,7 +64,7 @@ describe('Nl2SqlPanel', () => {
   it('shows not configured state', () => {
     aiState.isConfigured = false;
     const { getByText } = render(
-      <Nl2SqlPanel connectionId="c1" database="mydb" onSqlChange={vi.fn()} />,
+      <Nl2SqlPanel dbSessionId="c1" database="mydb" onSqlChange={vi.fn()} />,
     );
     expect(getByText('nl2sql.notConfigured')).toBeInTheDocument();
     fireEvent.click(getByText('settings.ai.goToConfigure'));
@@ -75,11 +75,11 @@ describe('Nl2SqlPanel', () => {
     const onSqlChange = vi.fn();
     aiState.nl2sql.generatedSql = 'SELECT 1';
     const { rerender, getByText } = render(
-      <Nl2SqlPanel connectionId="c1" database="mydb" onSqlChange={onSqlChange} />,
+      <Nl2SqlPanel dbSessionId="c1" database="mydb" onSqlChange={onSqlChange} />,
     );
     fireEvent.click(getByText('nl2sql.generate'));
     expect(aiState.generateSql).toHaveBeenCalledWith({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       database: 'mydb',
       currentTable: undefined,
       contextFiles: undefined,
@@ -87,7 +87,7 @@ describe('Nl2SqlPanel', () => {
     });
 
     aiState.nl2sql = { ...aiState.nl2sql, isGenerating: false, generatedSql: 'SELECT 1' };
-    rerender(<Nl2SqlPanel connectionId="c1" database="mydb" onSqlChange={onSqlChange} />);
+    rerender(<Nl2SqlPanel dbSessionId="c1" database="mydb" onSqlChange={onSqlChange} />);
     await waitFor(() => expect(onSqlChange).toHaveBeenCalledWith('SELECT 1'));
   });
 
@@ -95,7 +95,7 @@ describe('Nl2SqlPanel', () => {
     aiState.nl2sql.input = 'query';
     aiState.nl2sqlError = 'failed';
     const { getByText } = render(
-      <Nl2SqlPanel connectionId="c1" database="mydb" onSqlChange={vi.fn()} />,
+      <Nl2SqlPanel dbSessionId="c1" database="mydb" onSqlChange={vi.fn()} />,
     );
     fireEvent.click(getByText('nl2sql.generate'));
     expect(getByText('failed')).toBeInTheDocument();
@@ -108,7 +108,7 @@ describe('Nl2SqlPanel', () => {
 
   it('disables generate without database', () => {
     const { getByText } = render(
-      <Nl2SqlPanel connectionId="c1" database="" onSqlChange={vi.fn()} />,
+      <Nl2SqlPanel dbSessionId="c1" database="" onSqlChange={vi.fn()} />,
     );
     expect(getByText('nl2sql.generate').closest('button')).toBeDisabled();
   });

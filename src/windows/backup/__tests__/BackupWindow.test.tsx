@@ -199,7 +199,7 @@ describe('BackupWindow connection list', () => {
     render(<BackupWindow />);
     await waitFor(() => expect(screen.getByText('backup.restoreTitle')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Local PG'));
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('connect', { configId: 'pg-1' }));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('connect', { connectionId: 'pg-1' }));
     await waitFor(() => screen.getByText('app'));
     fireEvent.click(screen.getByText('app'));
     await waitFor(() => expect(screen.getByTestId('backup-start-restore')).not.toBeDisabled());
@@ -212,14 +212,14 @@ describe('BackupWindow connection list', () => {
     fireEvent.click(screen.getByTestId('backup-start-restore'));
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('use_database', {
-        connectionId: 'live-1',
+        dbSessionId: 'live-1',
         database: 'app',
       }),
     );
     expect(confirmDialogFn).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('restore_database_with_dialog', {
-        connectionId: 'live-1',
+        dbSessionId: 'live-1',
         database: 'app',
         options: [],
       }),
@@ -305,7 +305,7 @@ describe('BackupWindow connection list', () => {
     await waitFor(() => expect(confirmDialogFn).toHaveBeenCalled());
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('restore_database_with_dialog', {
-        connectionId: 'live-1',
+        dbSessionId: 'live-1',
         database: 'app',
         options: ['overwrite'],
       }),

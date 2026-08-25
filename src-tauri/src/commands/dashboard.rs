@@ -203,7 +203,7 @@ pub async fn run_dashboard_widget(
 #[serde(rename_all = "camelCase")]
 pub struct CreateWidgetFromSqlParams {
     pub dashboard_id: String,
-    pub config_id: String,
+    pub connection_id: String,
     pub sql: String,
     pub title: Option<String>,
     pub view_mode: ViewMode,
@@ -220,7 +220,7 @@ pub async fn create_widget_from_sql(
         &app_db,
         &state.workflow_registry,
         &params.dashboard_id,
-        &params.config_id,
+        &params.connection_id,
         &params.sql,
         params.title,
         params.view_mode,
@@ -244,7 +244,7 @@ pub struct CreateWidgetFromWorkflowParams {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateHiddenWidgetSqlParams {
     pub workflow_id: String,
-    pub config_id: String,
+    pub connection_id: String,
     pub sql: String,
 }
 
@@ -258,7 +258,7 @@ pub async fn update_hidden_widget_sql(
         &app_db,
         &state.workflow_registry,
         &params.workflow_id,
-        &params.config_id,
+        &params.connection_id,
         &params.sql,
     )
     .await

@@ -28,7 +28,7 @@ export interface RestoreKeysResult {
 }
 
 export interface ImportExportProps {
-  connectionId: string;
+  dbSessionId: string;
   dbIndex: number;
   selectedKeys: string[];
   searchPattern: string;
@@ -41,14 +41,14 @@ export interface ImportExportProps {
 type ExportMode = 'selected' | 'pattern';
 
 async function scanKeysForPattern(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   pattern: string,
 ): Promise<string[]> {
   const keys: string[] = [];
   let cursor = 0;
   do {
-    const page = await invokeScanKeys(connectionId, dbIndex, pattern, cursor, 500);
+    const page = await invokeScanKeys(dbSessionId, dbIndex, pattern, cursor, 500);
     keys.push(...page.keys.map((entry) => entry.key));
     cursor = page.cursor;
   } while (cursor !== 0);
@@ -56,25 +56,25 @@ async function scanKeysForPattern(
 }
 
 async function invokeDumpKeys(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   keys: string[],
 ): Promise<DumpKeysResult> {
   return (await redisCommandInvoke('redis', 'dump_keys', {
-    connectionId,
+    dbSessionId,
     dbIndex,
     keys,
   })) as DumpKeysResult;
 }
 
 async function invokeRestoreKeys(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   entries: RestoreKeyEntry[],
   replace: boolean,
 ): Promise<RestoreKeysResult> {
   return (await redisCommandInvoke('redis', 'restore_keys', {
-    connectionId,
+    dbSessionId,
     dbIndex,
     entries,
     replace,
@@ -82,7 +82,7 @@ async function invokeRestoreKeys(
 }
 
 export function ImportExport({
-  connectionId,
+  dbSessionId,
   dbIndex,
   selectedKeys,
   searchPattern,
@@ -121,12 +121,12 @@ export function ImportExport({
       return selectedKeys;
     }
     const pattern = patternInput.trim() || '*';
-    return scanKeysForPattern(connectionId, dbIndex, pattern);
-  }, [connectionId, dbIndex, exportMode, patternInput, selectedKeys, t]);
+    return scanKeysForPattern(dbSessionId, dbIndex, pattern);
+  }, [dbSessionId, dbIndex, exportMode, patternInput, selectedKeys, t]);
 
   const loadPatternCount = async () => {
     try {
-      const count = await invokeCountMatching(connectionId, dbIndex, patternInput.trim() || '*');
+      const count = await invokeCountMatching(dbSessionId, dbIndex, patternInput.trim() || '*');
       setMatchCount(count);
     } catch {
       setMatchCount(null);
@@ -141,7 +141,7 @@ export function ImportExport({
       if (keys.length === 0) {
         throw new Error(t('redis.importExportNoKeys'));
       }
-      const result = await invokeDumpKeys(connectionId, dbIndex, keys);
+      const result = await invokeDumpKeys(dbSessionId, dbIndex, keys);
       if (result.entries.length === 0) {
         throw new Error(t('redis.importExportDumpFailed'));
       }
@@ -175,7 +175,7 @@ export function ImportExport({
       if (keys.length === 0) {
         throw new Error(t('redis.importExportNoKeys'));
       }
-      const result = await invokeDumpKeys(connectionId, dbIndex, keys);
+      const result = await invokeDumpKeys(dbSessionId, dbIndex, keys);
       if (result.entries.length === 0) {
         throw new Error(t('redis.importExportDumpFailed'));
       }
@@ -218,7 +218,7 @@ export function ImportExport({
         throw new Error(t('redis.importExportEmptyArchive'));
       }
       const result = await invokeRestoreKeys(
-        connectionId,
+        dbSessionId,
         dbIndex,
         restoreEntries,
         replaceExisting,

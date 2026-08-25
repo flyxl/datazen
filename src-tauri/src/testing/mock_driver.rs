@@ -8,8 +8,8 @@ use async_trait::async_trait;
 
 use crate::db::{
     ColumnInfo, ColumnSchema, ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType,
-    DriverError, ExplainResult, MultiQueryResult, QueryResult, ServerInfo, StatementResult,
-    TableInfo, TableSchema, TransactionHandle, Value,
+    DriverCategory, DriverError, ExplainResult, MultiQueryResult, QueryResult, ServerInfo,
+    StatementResult, TableInfo, TableSchema, TransactionHandle, Value,
 };
 use datazen_driver_api::{
     execute_command_definition, execute_schema_object_command, execute_standard_sql_command,
@@ -19,6 +19,8 @@ use datazen_driver_api::{
 
 #[derive(Clone)]
 pub struct MockDriverOptions {
+    /// Driver category reported by `driver_category` (defaults to Sql).
+    pub category: DriverCategory,
     pub columns: Vec<ColumnSchema>,
     pub primary_keys: Vec<String>,
     pub table_schema: Option<TableSchema>,
@@ -35,6 +37,7 @@ pub struct MockDriverOptions {
 impl Default for MockDriverOptions {
     fn default() -> Self {
         Self {
+            category: DriverCategory::Sql,
             columns: Vec::new(),
             primary_keys: Vec::new(),
             table_schema: None,
@@ -137,6 +140,10 @@ impl MockDriver {
 impl DatabaseDriver for MockDriver {
     fn driver_type(&self) -> DatabaseType {
         self.db_type.clone()
+    }
+
+    fn driver_category(&self) -> DriverCategory {
+        self.opts.category.clone()
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {

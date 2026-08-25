@@ -41,7 +41,7 @@ pub(crate) async fn check_sync_conflicts_impl(
 
     let (src_driver, src_handle) = state
         .connection_manager
-        .get_connection(&task.source_connection_id)
+        .get_session(&task.source_db_session_id)
         .await
         .cmd_err("check_sync_conflicts")?;
 

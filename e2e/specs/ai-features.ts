@@ -63,7 +63,7 @@ function getAiConfig() {
 describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
   let mainWindow: string;
   let connWindow: string;
-  let runtimeConnId: string;
+  let dbSessionId: string;
   const aiConfig = getAiConfig();
 
   before(async () => {
@@ -92,12 +92,12 @@ describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
     connWindow = windows.connWindow;
 
     // Extract the runtime connection ID from the connection window's URL
-    const connIdFromUrl = await browser.execute(() => {
+    const connectionIdFromUrl = await browser.execute(() => {
       const params = new URLSearchParams(window.location.search);
       return params.get('connectionId') || '';
     });
-    if (connIdFromUrl) {
-      runtimeConnId = connIdFromUrl as string;
+    if (connectionIdFromUrl) {
+      dbSessionId = connectionIdFromUrl as string;
     }
   });
 
@@ -155,12 +155,12 @@ describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
   // ── AI-002: NL2SQL Generation ──────────────────────────────────
 
   it('AI-002: 应能通过 IPC 生成 SQL', async function () {
-    if (!aiConfig.apiKey || !runtimeConnId) return this.skip();
+    if (!aiConfig.apiKey || !dbSessionId) return this.skip();
     this.timeout(120000);
 
     const requestId = `e2e-nl2sql-${Date.now()}`;
     const result = await invokeWithRetry<string>('ai_generate_sql', {
-      connectionId: runtimeConnId,
+      dbSessionId,
       database: 'postgres',
       naturalLanguage: '列出所有数据库表',
       requestId,
@@ -174,11 +174,11 @@ describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
   // ── AI-003: SQL Error Diagnosis ────────────────────────────────
 
   it('AI-003: 应能诊断 SQL 错误', async function () {
-    if (!aiConfig.apiKey || !runtimeConnId) return this.skip();
+    if (!aiConfig.apiKey || !dbSessionId) return this.skip();
     this.timeout(120000);
 
     const result = await invokeWithRetry<any>('ai_diagnose_error', {
-      connectionId: runtimeConnId,
+      dbSessionId,
       database: 'postgres',
       sql: 'SELECT * FROM non_existent_table_xyz',
       errorMessage: 'ERROR: relation "non_existent_table_xyz" does not exist',
@@ -193,11 +193,11 @@ describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
   // ── AI-004: EXPLAIN Analysis ───────────────────────────────────
 
   it('AI-004: 应能分析 EXPLAIN 输出', async function () {
-    if (!aiConfig.apiKey || !runtimeConnId) return this.skip();
+    if (!aiConfig.apiKey || !dbSessionId) return this.skip();
     this.timeout(120000);
 
     const result = await invokeWithRetry<any>('ai_analyze_explain', {
-      connectionId: runtimeConnId,
+      dbSessionId,
       explainOutput:
         'Seq Scan on pg_class  (cost=0.00..14.12 rows=412 width=265)',
       originalSql: 'SELECT * FROM pg_class',
@@ -231,11 +231,11 @@ describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
   // ── AI-006: Smart Filter ──────────────────────────────────────
 
   it('AI-006: 应能解析自然语言筛选条件', async function () {
-    if (!aiConfig.apiKey || !runtimeConnId) return this.skip();
+    if (!aiConfig.apiKey || !dbSessionId) return this.skip();
     this.timeout(120000);
 
     const result = await invokeWithRetry<any[]>('ai_parse_filter', {
-      connectionId: runtimeConnId,
+      dbSessionId,
       database: 'postgres',
       table: 'pg_class',
       naturalLanguage: 'relkind 等于 r',
@@ -265,11 +265,12 @@ describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
     this.timeout(120000);
 
     const conns = await invokeBackend<any[]>('get_connections');
-    const connId = conns[0]?.id;
-    if (!connId) return this.skip();
+    const connectionId = conns[0]?.id;
+    if (!connectionId) return this.skip();
 
+    // ai_diagnose_connection targets a persistent connection id.
     const result = await invokeWithRetry<any>('ai_diagnose_connection', {
-      connectionId: connId,
+      connectionId,
       errorMessage: 'Connection refused (os error 111)',
     });
 

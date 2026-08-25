@@ -9,7 +9,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { CopyableError } from '../../components/ui/CopyableError';
 
 interface StructureViewProps {
-  connectionId: string;
+  dbSessionId: string;
   tableName: string;
   onEditStructure?: (tableName: string) => void;
 }
@@ -32,7 +32,7 @@ function KeyBadge({ label, tone }: { label: string; tone: 'blue' | 'amber' | 'gr
   );
 }
 
-export function StructureView({ connectionId, tableName, onEditStructure }: StructureViewProps) {
+export function StructureView({ dbSessionId, tableName, onEditStructure }: StructureViewProps) {
   const { t } = useI18n();
   const [schema, setSchema] = useState<TableSchema | null>(null);
   const [loading, setLoading] = useState(false);
@@ -42,9 +42,9 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
     let cancelled = false;
     setLoading(true);
     setError(null);
-    console.log('[StructureView] loading schema', connectionId, tableName);
+    console.log('[StructureView] loading schema', dbSessionId, tableName);
 
-    getCachedTableSchema(connectionId, tableName)
+    getCachedTableSchema(dbSessionId, tableName)
       .then((result) => {
         if (!cancelled) {
           setSchema(result);
@@ -64,7 +64,7 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
     return () => {
       cancelled = true;
     };
-  }, [connectionId, tableName, t]);
+  }, [dbSessionId, tableName, t]);
 
   if (loading) {
     return (

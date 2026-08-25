@@ -6,11 +6,11 @@ import { useI18n } from '../../hooks/useI18n';
 import { CopyableError } from '../../components/ui/CopyableError';
 
 interface ForeignKeysViewProps {
-  connectionId: string;
+  dbSessionId: string;
   tableName: string;
 }
 
-export function ForeignKeysView({ connectionId, tableName }: ForeignKeysViewProps) {
+export function ForeignKeysView({ dbSessionId, tableName }: ForeignKeysViewProps) {
   const { t } = useI18n();
   const [foreignKeys, setForeignKeys] = useState<ForeignKeyInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -21,7 +21,7 @@ export function ForeignKeysView({ connectionId, tableName }: ForeignKeysViewProp
     setLoading(true);
     setError(null);
 
-    getCachedTableSchema(connectionId, tableName)
+    getCachedTableSchema(dbSessionId, tableName)
       .then((schema: TableSchema) => {
         if (!cancelled) {
           setForeignKeys(schema.foreignKeys);
@@ -38,7 +38,7 @@ export function ForeignKeysView({ connectionId, tableName }: ForeignKeysViewProp
     return () => {
       cancelled = true;
     };
-  }, [connectionId, tableName, t]);
+  }, [dbSessionId, tableName, t]);
 
   if (loading) {
     return (

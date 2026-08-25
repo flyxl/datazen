@@ -67,7 +67,7 @@ describe('BatchExportDialog', () => {
       <BatchExportDialog
         open
         onClose={vi.fn()}
-        connectionId="c1"
+        dbSessionId="c1"
         tables={TABLES}
         loadTableExportData={vi.fn()}
       />,
@@ -91,7 +91,7 @@ describe('BatchExportDialog', () => {
       <BatchExportDialog
         open
         onClose={vi.fn()}
-        connectionId="c1"
+        dbSessionId="c1"
         tables={TABLES}
         initialSelected={['orders']}
         loadTableExportData={vi.fn()}
@@ -106,7 +106,7 @@ describe('BatchExportDialog', () => {
       <BatchExportDialog
         open
         onClose={vi.fn()}
-        connectionId="c1"
+        dbSessionId="c1"
         tables={TABLES}
         loadTableExportData={vi.fn()}
       />,
@@ -127,7 +127,7 @@ describe('BatchExportDialog', () => {
       <BatchExportDialog
         open
         onClose={onClose}
-        connectionId="c1"
+        dbSessionId="c1"
         databaseType="postgres"
         tables={TABLES}
         initialSelected={['users', 'orders']}
@@ -148,7 +148,8 @@ describe('BatchExportDialog', () => {
     expect(loadTableExportData.mock.calls.map((c) => c[0])).toEqual(['users', 'orders']);
 
     const request = exportTablesStream.mock.calls[0]![0];
-    expect(request.connectionId).toBe('c1');
+    // Wire key mirrors backend ExportTablesRequest (serde camelCase).
+    expect(request.dbSessionId).toBe('c1');
     expect(request.databaseType).toBe('postgres');
     expect(request.tables.map((t: { tableName: string }) => t.tableName)).toEqual([
       'users',
@@ -167,7 +168,7 @@ describe('BatchExportDialog', () => {
       <BatchExportDialog
         open
         onClose={vi.fn()}
-        connectionId="c1"
+        dbSessionId="c1"
         tables={['users']}
         initialSelected={['users']}
         loadTableExportData={loadTableExportData}
@@ -194,7 +195,7 @@ describe('BatchExportDialog', () => {
       <BatchExportDialog
         open
         onClose={vi.fn()}
-        connectionId="c1"
+        dbSessionId="c1"
         tables={['users']}
         initialSelected={['users']}
         loadTableExportData={loadTableExportData}
@@ -217,7 +218,7 @@ describe('BatchExportDialog', () => {
       <BatchExportDialog
         open
         onClose={onClose}
-        connectionId="c1"
+        dbSessionId="c1"
         tables={['users']}
         initialSelected={['users']}
         loadTableExportData={loadTableExportData}
@@ -250,7 +251,7 @@ describe('BatchExportDialog', () => {
       <BatchExportDialog
         open
         onClose={onClose}
-        connectionId="c1"
+        dbSessionId="c1"
         tables={['users']}
         initialSelected={['users']}
         loadTableExportData={loadTableExportData}

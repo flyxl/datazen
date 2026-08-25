@@ -8,7 +8,7 @@ describe('redis KV invoke helpers', () => {
     invoke.mockResolvedValue({ cursor: 0, keys: [], dbSize: 0 });
     await invokeScanKeys('conn-1', 2, 'user:*', 42, 100, invoke);
     expect(invoke).toHaveBeenCalledWith('redis', 'scan_keys', {
-      connectionId: 'conn-1',
+      dbSessionId: 'conn-1',
       dbIndex: 2,
       pattern: 'user:*',
       cursor: 42,
@@ -26,7 +26,7 @@ describe('redis KV invoke helpers', () => {
     const detail = await invokeGetKey('conn-1', 0, 'user:1', invoke);
     expect(detail.key).toBe('user:1');
     expect(invoke).toHaveBeenCalledWith('redis', 'get_key', {
-      connectionId: 'conn-1',
+      dbSessionId: 'conn-1',
       dbIndex: 0,
       key: 'user:1',
     });

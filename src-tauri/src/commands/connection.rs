@@ -58,89 +58,85 @@ pub(crate) async fn test_connection_impl(
 
 pub(crate) async fn connect_impl(
     state: &AppState,
-    config_id: String,
+    connection_id: String,
 ) -> Result<String, CommandError> {
-    tracing::info!(%config_id, "connect");
-    let conn_id = state
+    tracing::info!(%connection_id, "connect");
+    let db_session_id = state
         .connection_manager
-        .get_or_connect(&config_id)
+        .get_or_connect_session(&connection_id)
         .await
         .cmd_err("connect")?;
 
-    if let Some(mut cfg) = state.store.get_connection(&config_id).await {
+    if let Some(mut cfg) = state.store.get_connection(&connection_id).await {
         cfg.last_connected_at = Some(chrono::Utc::now().to_rfc3339());
         let _ = state.store.save_connection(cfg).await;
     }
 
-    tracing::info!(%config_id, %conn_id, "connect OK");
-    Ok(conn_id)
+    tracing::info!(db_session_id = %db_session_id, "connect OK");
+    Ok(db_session_id)
 }
 
 pub(crate) async fn ping_connection_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<bool, CommandError> {
-    let alive = state.connection_manager.ping(&connection_id).await;
+    let alive = state.connection_manager.ping(&db_session_id).await;
     Ok(alive)
 }
 
 pub(crate) async fn release_connection_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<bool, CommandError> {
-    tracing::info!(%connection_id, "release_connection");
+    tracing::info!(%db_session_id, "release_connection");
     let disconnected = state
         .connection_manager
-        .release(&connection_id)
+        .release(&db_session_id)
         .await
         .cmd_err("release_connection")?;
     if disconnected {
-        state.schema_cache.clear_connection(&connection_id).await;
-        tracing::info!(%connection_id, "release_connection: session torn down (ref=0)");
+        state.schema_cache.clear_connection(&db_session_id).await;
+        tracing::info!(%db_session_id, "release_connection: session torn down (ref=0)");
     } else {
-        tracing::info!(%connection_id, "release_connection: ref decremented, session kept alive");
+        tracing::info!(%db_session_id, "release_connection: ref decremented, session kept alive");
     }
     Ok(disconnected)
 }
 
 pub(crate) async fn disconnect_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<(), CommandError> {
-    tracing::info!(%connection_id, "disconnect (force)");
+    tracing::info!(%db_session_id, "disconnect (force)");
     if let Some(tx) = state
         .session_transactions
         .lock()
         .await
-        .remove(&connection_id)
+        .remove(&db_session_id)
     {
-        if let Ok((driver, _)) = state
-            .connection_manager
-            .get_connection(&connection_id)
-            .await
-        {
+        if let Ok((driver, _)) = state.connection_manager.get_session(&db_session_id).await {
             if let Err(e) = driver.rollback(tx).await {
-                tracing::warn!(%connection_id, error = %e, "rollback session tx on disconnect");
+                tracing::warn!(%db_session_id, error = %e, "rollback session tx on disconnect");
             }
         }
     }
     state
         .connection_manager
-        .disconnect(&connection_id)
+        .disconnect(&db_session_id)
         .await
         .cmd_err("disconnect")?;
-    state.schema_cache.clear_connection(&connection_id).await;
-    tracing::info!(%connection_id, "disconnect OK");
+    state.schema_cache.clear_connection(&db_session_id).await;
+    tracing::info!(%db_session_id, "disconnect OK");
     Ok(())
 }
 
 pub(crate) async fn get_connection_info_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<serde_json::Value, CommandError> {
     let config = state
         .connection_manager
-        .get_connection_config(&connection_id)
+        .get_session_config(&db_session_id)
         .await
         .cmd_err("get_connection_info")?;
 
@@ -202,41 +198,42 @@ pub async fn test_connection(
 #[tauri::command]
 pub async fn connect(
     state: State<'_, AppState>,
-    config_id: String,
+    connection_id: String,
 ) -> Result<String, CommandError> {
-    connect_impl(&state, config_id).await
+    // connection_id = 持久化配置连接 id；返回值为运行时 db_session_id。
+    connect_impl(&state, connection_id).await
 }
 
 #[tauri::command]
 pub async fn ping_connection(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<bool, CommandError> {
-    ping_connection_impl(&state, connection_id).await
+    ping_connection_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
 pub async fn release_connection(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<bool, CommandError> {
-    release_connection_impl(&state, connection_id).await
+    release_connection_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
 pub async fn disconnect(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<(), CommandError> {
-    disconnect_impl(&state, connection_id).await
+    disconnect_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
 pub async fn get_connection_info(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<serde_json::Value, CommandError> {
-    get_connection_info_impl(&state, connection_id).await
+    get_connection_info_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
@@ -354,5 +351,162 @@ mod tests {
     fn sample_config_has_expected_database_type() {
         let cfg = sample_postgres_config("x");
         assert_eq!(cfg.database_type, "postgres");
+    }
+}
+
+#[cfg(test)]
+mod coverage_tests {
+    //! BUG-002 anchors: exercises the remaining `connection.rs` branches —
+    //! release ref-counting, disconnect's pending-transaction rollback,
+    //! driver-category reporting, and the reorder wrapper.
+
+    use super::*;
+    use crate::db::TransactionHandle;
+    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+
+    #[tokio::test]
+    async fn release_connection_decrements_then_tears_down() {
+        let test = TestAppState::with_tables().await;
+        test.save_connection("r1").await;
+        // Two borrowers hold the same session (refs = 2).
+        let s1 = connect_impl(&test.state, "r1".into()).await.unwrap();
+        let s2 = connect_impl(&test.state, "r1".into()).await.unwrap();
+        assert_eq!(s1, s2, "reuse must hand back the same db session id");
+
+        // First release only decrements: session stays alive.
+        let torn = release_connection_impl(&test.state, s1.clone())
+            .await
+            .unwrap();
+        assert!(!torn);
+        assert!(ping_connection_impl(&test.state, s1.clone()).await.unwrap());
+
+        // Second release hits zero and tears the session down.
+        let torn = release_connection_impl(&test.state, s2.clone())
+            .await
+            .unwrap();
+        assert!(torn);
+        assert!(
+            !ping_connection_impl(&test.state, s1).await.unwrap(),
+            "session must be gone after the final release"
+        );
+
+        // Releasing an unknown session is a benign no-op (reports torn down).
+        let torn = release_connection_impl(&test.state, "missing".into())
+            .await
+            .unwrap();
+        assert!(torn);
+    }
+
+    #[tokio::test]
+    async fn disconnect_rolls_back_open_session_transaction_and_clears_map() {
+        let test = TestAppState::with_tables().await;
+        let (_, conn_id) = test.save_and_connect("tx-1").await;
+
+        // Begin a real transaction through the mock driver so rollback succeeds.
+        let (driver, handle) = test
+            .state
+            .connection_manager
+            .get_session(&conn_id)
+            .await
+            .unwrap();
+        let tx = driver.begin_transaction(&handle).await.unwrap();
+        test.state
+            .session_transactions
+            .lock()
+            .await
+            .insert(conn_id.clone(), tx);
+
+        disconnect_impl(&test.state, conn_id.clone()).await.unwrap();
+        assert!(
+            !test
+                .state
+                .session_transactions
+                .lock()
+                .await
+                .contains_key(&conn_id),
+            "disconnect must consume the pending session transaction entry"
+        );
+        assert!(
+            !ping_connection_impl(&test.state, conn_id.clone())
+                .await
+                .unwrap(),
+            "disconnect must tear down the session"
+        );
+
+        // Rollback-failure branch: an entry whose handle is unknown to the
+        // driver logs a warning but disconnect still succeeds.
+        test.save_and_connect("tx-2").await;
+        test.state.session_transactions.lock().await.insert(
+            format!("{}:bogus", "tx-2"),
+            TransactionHandle {
+                id: "never-begun".into(),
+                connection_id: "never-begun-handle".into(),
+            },
+        );
+        disconnect_impl(&test.state, format!("{}:bogus", "tx-2"))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn get_connection_info_reports_driver_category() {
+        let harness = TestAppState::new().await;
+        for (driver_type, expected_category, category) in [
+            ("kv-mock", "keyvalue", crate::db::DriverCategory::KeyValue),
+            ("doc-mock", "document", crate::db::DriverCategory::Document),
+            ("postgres", "sql", crate::db::DriverCategory::Sql),
+        ] {
+            let opts = MockDriverOptions {
+                category,
+                ..Default::default()
+            };
+            let mock = MockDriver::new(driver_type, opts);
+            harness
+                .state
+                .driver_registry
+                .register_test_driver(driver_type, mock)
+                .await;
+            let mut cfg = sample_postgres_config(driver_type);
+            cfg.database_type = driver_type.into();
+            save_connection_impl(&harness.state, cfg).await.unwrap();
+
+            let conn_id = connect_impl(&harness.state, driver_type.into())
+                .await
+                .unwrap();
+            let info = get_connection_info_impl(&harness.state, conn_id)
+                .await
+                .unwrap();
+            assert_eq!(info["databaseType"], driver_type);
+            assert_eq!(
+                info["driverCategory"], expected_category,
+                "driver {driver_type} must report category {expected_category}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn reorder_connections_persists_new_order() {
+        // `reorder_connections` is a thin IPC wrapper over the store call;
+        // tauri::State cannot be built outside the tauri runtime, so exercise
+        // the store path the wrapper delegates to.
+        let test = TestAppState::new().await;
+        for id in ["a", "b", "c"] {
+            save_connection_impl(&test.state, sample_postgres_config(id))
+                .await
+                .unwrap();
+        }
+        test.state
+            .store
+            .reorder_connections(vec!["c".into(), "a".into(), "b".into()])
+            .await
+            .unwrap();
+        let order: Vec<String> = get_connections_impl(&test.state)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|c| c.id)
+            .collect();
+        assert_eq!(order, vec!["c", "a", "b"]);
     }
 }

@@ -77,7 +77,7 @@ describe('ServerStatusView data cards + charts (data-driven)', () => {
 
   it('renders a stat-card grid from available snapshot fields only', async () => {
     executeMock.mockImplementation(async () => ({ data: payload() }));
-    render(<ServerStatusView connectionId="conn-mysql" connectionName="mysql" />);
+    render(<ServerStatusView dbSessionId="conn-mysql" connectionName="mysql" />);
 
     await waitFor(() => {
       expect(screen.getByText('serverStatus.connections')).toBeInTheDocument();
@@ -91,7 +91,7 @@ describe('ServerStatusView data cards + charts (data-driven)', () => {
     executeMock.mockImplementation(async () => ({
       data: payload({ cacheHitRatio: '99.86%' }),
     }));
-    render(<ServerStatusView connectionId="conn-pg" connectionName="pg" />);
+    render(<ServerStatusView dbSessionId="conn-pg" connectionName="pg" />);
 
     await waitFor(() => {
       expect(screen.getByText('serverStatus.cacheHitRatio')).toBeInTheDocument();
@@ -105,7 +105,7 @@ describe('ServerStatusView data cards + charts (data-driven)', () => {
     executeMock.mockImplementation(async () => ({ data }));
     render(
       <ServerStatusView
-        connectionId="conn-mysql"
+        dbSessionId="conn-mysql"
         connectionName="mysql"
         initialData={{
           status: data,
@@ -131,7 +131,7 @@ describe('ServerStatusView data cards + charts (data-driven)', () => {
     executeMock.mockImplementation(async () => ({ data }));
     render(
       <ServerStatusView
-        connectionId="conn-pg"
+        dbSessionId="conn-pg"
         initialData={{
           status: data,
           variables: data.statusVariables,
@@ -156,20 +156,20 @@ describe('ServerStatusView data cards + charts (data-driven)', () => {
     }
   });
 
-  it('reloads snapshot when connectionId changes (per-tab binding)', async () => {
-    executeMock.mockImplementation(async ({ connectionId }: { connectionId: string }) => ({
-      data: payload({ uptimeSeconds: connectionId === 'a' ? 1 : 2 }),
+  it('reloads snapshot when dbSessionId changes (per-tab binding)', async () => {
+    executeMock.mockImplementation(async ({ dbSessionId }: { dbSessionId: string }) => ({
+      data: payload({ uptimeSeconds: dbSessionId === 'a' ? 1 : 2 }),
     }));
-    const { rerender } = render(<ServerStatusView connectionId="a" />);
+    const { rerender } = render(<ServerStatusView dbSessionId="a" />);
     await waitFor(() => {
       expect(executeMock).toHaveBeenCalledWith(
-        expect.objectContaining({ command: 'server_status_snapshot', connectionId: 'a' }),
+        expect.objectContaining({ command: 'server_status_snapshot', dbSessionId: 'a' }),
       );
     });
-    rerender(<ServerStatusView connectionId="b" />);
+    rerender(<ServerStatusView dbSessionId="b" />);
     await waitFor(() => {
       expect(executeMock).toHaveBeenCalledWith(
-        expect.objectContaining({ command: 'server_status_snapshot', connectionId: 'b' }),
+        expect.objectContaining({ command: 'server_status_snapshot', dbSessionId: 'b' }),
       );
     });
   });
@@ -187,7 +187,7 @@ describe('ServerStatusView data cards + charts (data-driven)', () => {
           }),
       );
 
-    render(<ServerStatusView connectionId="conn-mysql" />);
+    render(<ServerStatusView dbSessionId="conn-mysql" />);
     // Auto/initial load finishes → button returns to static (not disabled, no spin).
     await waitFor(() => {
       expect(screen.getByTestId('server-dashboard-refresh')).toBeEnabled();

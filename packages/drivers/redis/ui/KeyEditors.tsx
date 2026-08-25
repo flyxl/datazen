@@ -17,14 +17,14 @@ import {
 export type PluginInvokeFn = RedisInvokeFn;
 
 export async function invokeSetString(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   value: string,
   invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'set_string', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     key,
     value,
@@ -32,7 +32,7 @@ export async function invokeSetString(
 }
 
 export async function invokeHashSet(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   field: string,
@@ -40,7 +40,7 @@ export async function invokeHashSet(
   invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'hash_set', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     key,
     field,
@@ -49,14 +49,14 @@ export async function invokeHashSet(
 }
 
 export async function invokeHashDel(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   fields: string[],
   invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'hash_del', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     key,
     fields,
@@ -64,7 +64,7 @@ export async function invokeHashDel(
 }
 
 export async function invokeListPush(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   side: 'left' | 'right',
@@ -72,7 +72,7 @@ export async function invokeListPush(
   invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'list_push', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     key,
     side,
@@ -81,7 +81,7 @@ export async function invokeListPush(
 }
 
 export async function invokeListSet(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   index: number,
@@ -89,7 +89,7 @@ export async function invokeListSet(
   invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'list_set', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     key,
     index,
@@ -98,14 +98,14 @@ export async function invokeListSet(
 }
 
 export async function invokeListPop(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   side: 'left' | 'right',
   invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'list_pop', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     key,
     side,
@@ -113,14 +113,14 @@ export async function invokeListPop(
 }
 
 export async function invokeSetAdd(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   members: string[],
   invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'set_add', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     key,
     members,
@@ -128,14 +128,14 @@ export async function invokeSetAdd(
 }
 
 export async function invokeSetRemove(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   members: string[],
   invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'set_remove', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     key,
     members,
@@ -143,14 +143,14 @@ export async function invokeSetRemove(
 }
 
 export async function invokeZsetAdd(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   members: { member: string; score: number }[],
   invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'zset_add', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     key,
     members,
@@ -158,14 +158,14 @@ export async function invokeZsetAdd(
 }
 
 export async function invokeZsetRemove(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   members: string[],
   invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'zset_remove', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     key,
     members,
@@ -173,14 +173,14 @@ export async function invokeZsetRemove(
 }
 
 export async function invokeRename(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   newKey: string,
   invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'rename', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     key,
     newKey: newKey,
@@ -188,14 +188,14 @@ export async function invokeRename(
 }
 
 export async function invokeSetTtl(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   ttlSeconds: number,
   invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'set_ttl', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     key,
     ttlSeconds: ttlSeconds,
@@ -203,7 +203,7 @@ export async function invokeSetTtl(
 }
 
 export interface KeyDetailEditorProps {
-  connectionId: string;
+  dbSessionId: string;
   dbIndex: number;
   detail: KeyDetail;
   modules?: string[] | null;
@@ -212,7 +212,7 @@ export interface KeyDetailEditorProps {
 }
 
 export function KeyDetailEditor({
-  connectionId,
+  dbSessionId,
   dbIndex,
   detail,
   modules = null,
@@ -283,7 +283,7 @@ export function KeyDetailEditor({
               if (Number.isNaN(secs) || secs < 0) {
                 throw new Error(t('redis.ttlSeconds'));
               }
-              await invokeSetTtl(connectionId, dbIndex, detail.key, secs);
+              await invokeSetTtl(dbSessionId, dbIndex, detail.key, secs);
             })
           }
         >
@@ -295,7 +295,7 @@ export function KeyDetailEditor({
           disabled={busy}
           onClick={() =>
             void run(async () => {
-              await invokeSetTtl(connectionId, dbIndex, detail.key, -1);
+              await invokeSetTtl(dbSessionId, dbIndex, detail.key, -1);
               setTtlInput('');
             })
           }
@@ -320,7 +320,7 @@ export function KeyDetailEditor({
           onClick={() =>
             void run(async () => {
               const next = renameInput.trim();
-              await invokeRename(connectionId, dbIndex, detail.key, next);
+              await invokeRename(dbSessionId, dbIndex, detail.key, next);
               onRenamed?.(next);
             })
           }
@@ -344,7 +344,7 @@ export function KeyDetailEditor({
 
       {detail.keyType === 'string' && (
         <StringEditor
-          connectionId={connectionId}
+          dbSessionId={dbSessionId}
           dbIndex={dbIndex}
           detail={detail}
           onSaved={() => void onRefresh()}
@@ -353,7 +353,7 @@ export function KeyDetailEditor({
 
       {detail.keyType === 'hash' && (
         <HashEditor
-          connectionId={connectionId}
+          dbSessionId={dbSessionId}
           dbIndex={dbIndex}
           detail={detail}
           onChanged={() => void onRefresh()}
@@ -362,7 +362,7 @@ export function KeyDetailEditor({
 
       {detail.keyType === 'list' && (
         <ListEditor
-          connectionId={connectionId}
+          dbSessionId={dbSessionId}
           dbIndex={dbIndex}
           detail={detail}
           onChanged={() => void onRefresh()}
@@ -371,7 +371,7 @@ export function KeyDetailEditor({
 
       {detail.keyType === 'set' && (
         <SetEditor
-          connectionId={connectionId}
+          dbSessionId={dbSessionId}
           dbIndex={dbIndex}
           detail={detail}
           onChanged={() => void onRefresh()}
@@ -380,7 +380,7 @@ export function KeyDetailEditor({
 
       {detail.keyType === 'zset' && (
         <ZsetEditor
-          connectionId={connectionId}
+          dbSessionId={dbSessionId}
           dbIndex={dbIndex}
           detail={detail}
           onChanged={() => void onRefresh()}
@@ -390,7 +390,7 @@ export function KeyDetailEditor({
       {detail.keyType === 'stream' && (
         <StreamEditor
           key={detail.key}
-          connectionId={connectionId}
+          dbSessionId={dbSessionId}
           dbIndex={dbIndex}
           redisKey={detail.key}
         />
@@ -399,7 +399,7 @@ export function KeyDetailEditor({
       {showJsonEditor && (
         <JsonEditor
           key={detail.key}
-          connectionId={connectionId}
+          dbSessionId={dbSessionId}
           dbIndex={dbIndex}
           redisKey={detail.key}
         />
@@ -418,12 +418,12 @@ export function KeyDetailEditor({
 }
 
 function StringEditor({
-  connectionId,
+  dbSessionId,
   dbIndex,
   detail,
   onSaved,
 }: {
-  connectionId: string;
+  dbSessionId: string;
   dbIndex: number;
   detail: KeyDetail;
   onSaved: () => void;
@@ -445,7 +445,7 @@ function StringEditor({
       setJsonError(null);
     }
     setSaving(true);
-    void invokeSetString(connectionId, dbIndex, detail.key, value)
+    void invokeSetString(dbSessionId, dbIndex, detail.key, value)
       .then(onSaved)
       .finally(() => setSaving(false));
   };
@@ -499,12 +499,12 @@ function StringEditor({
 }
 
 function HashEditor({
-  connectionId,
+  dbSessionId,
   dbIndex,
   detail,
   onChanged,
 }: {
-  connectionId: string;
+  dbSessionId: string;
   dbIndex: number;
   detail: KeyDetail;
   onChanged: () => void;
@@ -553,7 +553,7 @@ function HashEditor({
                     className="h-6 px-1.5 text-[10px]"
                     onClick={() =>
                       void invokeHashSet(
-                        connectionId,
+                        dbSessionId,
                         dbIndex,
                         detail.key,
                         field,
@@ -567,7 +567,7 @@ function HashEditor({
                     type="button"
                     className="rounded p-1 text-danger hover:bg-danger/10"
                     onClick={() =>
-                      void invokeHashDel(connectionId, dbIndex, detail.key, [field]).then(
+                      void invokeHashDel(dbSessionId, dbIndex, detail.key, [field]).then(
                         onChanged,
                       )
                     }
@@ -599,7 +599,7 @@ function HashEditor({
           disabled={!newField.trim()}
           onClick={() =>
             void invokeHashSet(
-              connectionId,
+              dbSessionId,
               dbIndex,
               detail.key,
               newField.trim(),
@@ -626,12 +626,12 @@ function listItems(detail: KeyDetail): string[] {
 }
 
 function ListEditor({
-  connectionId,
+  dbSessionId,
   dbIndex,
   detail,
   onChanged,
 }: {
-  connectionId: string;
+  dbSessionId: string;
   dbIndex: number;
   detail: KeyDetail;
   onChanged: () => void;
@@ -649,7 +649,7 @@ function ListEditor({
           variant="secondary"
           className="h-7 px-2 text-xs"
           onClick={() =>
-            void invokeListPop(connectionId, dbIndex, detail.key, 'left').then(onChanged)
+            void invokeListPop(dbSessionId, dbIndex, detail.key, 'left').then(onChanged)
           }
         >
           {t('redis.popLeft')}
@@ -658,7 +658,7 @@ function ListEditor({
           variant="secondary"
           className="h-7 px-2 text-xs"
           onClick={() =>
-            void invokeListPop(connectionId, dbIndex, detail.key, 'right').then(onChanged)
+            void invokeListPop(dbSessionId, dbIndex, detail.key, 'right').then(onChanged)
           }
         >
           {t('redis.popRight')}
@@ -694,7 +694,7 @@ function ListEditor({
                     className="h-6 px-1.5 text-[10px]"
                     onClick={() =>
                       void invokeListSet(
-                        connectionId,
+                        dbSessionId,
                         dbIndex,
                         detail.key,
                         i,
@@ -736,7 +736,7 @@ function ListEditor({
           className="h-7 px-2 text-xs"
           disabled={!pushValue.trim()}
           onClick={() =>
-            void invokeListPush(connectionId, dbIndex, detail.key, 'left', [
+            void invokeListPush(dbSessionId, dbIndex, detail.key, 'left', [
               pushValue.trim(),
             ]).then(() => {
               setPushValue('');
@@ -751,7 +751,7 @@ function ListEditor({
           className="h-7 px-2 text-xs"
           disabled={!pushValue.trim()}
           onClick={() =>
-            void invokeListPush(connectionId, dbIndex, detail.key, 'right', [
+            void invokeListPush(dbSessionId, dbIndex, detail.key, 'right', [
               pushValue.trim(),
             ]).then(() => {
               setPushValue('');
@@ -773,12 +773,12 @@ function setMembers(detail: KeyDetail): string[] {
 }
 
 function SetEditor({
-  connectionId,
+  dbSessionId,
   dbIndex,
   detail,
   onChanged,
 }: {
-  connectionId: string;
+  dbSessionId: string;
   dbIndex: number;
   detail: KeyDetail;
   onChanged: () => void;
@@ -805,7 +805,7 @@ function SetEditor({
                   type="button"
                   className="rounded p-1 text-danger hover:bg-danger/10"
                   onClick={() =>
-                    void invokeSetRemove(connectionId, dbIndex, detail.key, [member]).then(
+                    void invokeSetRemove(dbSessionId, dbIndex, detail.key, [member]).then(
                       onChanged,
                     )
                   }
@@ -829,7 +829,7 @@ function SetEditor({
           className="h-7 gap-1 px-2 text-xs"
           disabled={!newMember.trim()}
           onClick={() =>
-            void invokeSetAdd(connectionId, dbIndex, detail.key, [newMember.trim()]).then(
+            void invokeSetAdd(dbSessionId, dbIndex, detail.key, [newMember.trim()]).then(
               () => {
                 setNewMember('');
                 onChanged();
@@ -851,12 +851,12 @@ function zsetMembers(detail: KeyDetail): { member: string; score: number }[] {
 }
 
 function ZsetEditor({
-  connectionId,
+  dbSessionId,
   dbIndex,
   detail,
   onChanged,
 }: {
-  connectionId: string;
+  dbSessionId: string;
   dbIndex: number;
   detail: KeyDetail;
   onChanged: () => void;
@@ -886,7 +886,7 @@ function ZsetEditor({
                   type="button"
                   className="rounded p-1 text-danger hover:bg-danger/10"
                   onClick={() =>
-                    void invokeZsetRemove(connectionId, dbIndex, detail.key, [
+                    void invokeZsetRemove(dbSessionId, dbIndex, detail.key, [
                       item.member,
                     ]).then(onChanged)
                   }
@@ -916,7 +916,7 @@ function ZsetEditor({
           className="h-7 gap-1 px-2 text-xs"
           disabled={!newMember.trim()}
           onClick={() =>
-            void invokeZsetAdd(connectionId, dbIndex, detail.key, [
+            void invokeZsetAdd(dbSessionId, dbIndex, detail.key, [
               { member: newMember.trim(), score: parseFloat(newScore) || 0 },
             ]).then(() => {
               setNewMember('');
@@ -933,7 +933,7 @@ function ZsetEditor({
 }
 
 export async function invokeCreateKey(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   keyType: string,
@@ -942,14 +942,14 @@ export async function invokeCreateKey(
 ) {
   switch (keyType) {
     case 'string':
-      await invokeSetString(connectionId, dbIndex, key, initialValue, invoke);
+      await invokeSetString(dbSessionId, dbIndex, key, initialValue, invoke);
       break;
     case 'hash':
-      await invokeHashSet(connectionId, dbIndex, key, 'field', initialValue || '', invoke);
+      await invokeHashSet(dbSessionId, dbIndex, key, 'field', initialValue || '', invoke);
       break;
     case 'list':
       await invokeListPush(
-        connectionId,
+        dbSessionId,
         dbIndex,
         key,
         'right',
@@ -958,11 +958,11 @@ export async function invokeCreateKey(
       );
       break;
     case 'set':
-      await invokeSetAdd(connectionId, dbIndex, key, [initialValue || 'member'], invoke);
+      await invokeSetAdd(dbSessionId, dbIndex, key, [initialValue || 'member'], invoke);
       break;
     case 'zset':
       await invokeZsetAdd(
-        connectionId,
+        dbSessionId,
         dbIndex,
         key,
         [{ member: initialValue || 'member', score: 0 }],
@@ -981,7 +981,7 @@ export async function invokeCreateKey(
         }
       }
       await invoke('redis', 'json_set', {
-        connectionId: connectionId,
+        dbSessionId: dbSessionId,
         dbIndex: dbIndex,
         key,
         path: '$',

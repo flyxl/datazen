@@ -24,7 +24,7 @@ interface DataExportDialogProps {
   selectedRows?: Set<number>;
   tableName?: string;
   databaseType?: string;
-  connectionId?: string;
+  dbSessionId?: string;
   totalRows?: number;
   primaryKeyColumns?: string[];
   /**
@@ -43,7 +43,7 @@ export function DataExportDialog({
   selectedRows = new Set<number>(),
   tableName = 'data',
   databaseType,
-  connectionId,
+  dbSessionId,
   totalRows,
   primaryKeyColumns,
   dataExportCapability = 'full_table',
@@ -53,7 +53,7 @@ export function DataExportDialog({
   const allowEntire =
     !exportLocked &&
     supportsFullTableExport(dataExportCapability) &&
-    Boolean(connectionId) &&
+    Boolean(dbSessionId) &&
     tableName !== 'data';
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [scope, setScope] = useState<ExportScope>('current_page');
@@ -108,10 +108,10 @@ export function DataExportDialog({
     try {
       const columnNames = columns.map((c) => c.name);
       if (scope === 'entire_table') {
-        if (!connectionId) throw new Error('Missing connection');
+        if (!dbSessionId) throw new Error('Missing connection');
         if (!isStreamableExportFormat(format)) throw new Error('xlsx');
         const result = await streamTableExportToSaveDialog({
-          connectionId,
+          dbSessionId,
           tableName,
           columns: columnNames,
           format,
@@ -158,7 +158,7 @@ export function DataExportDialog({
     format,
     tableName,
     databaseType,
-    connectionId,
+    dbSessionId,
     primaryKeyColumns,
     exportLocked,
     onClose,

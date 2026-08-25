@@ -430,11 +430,11 @@ async function selectQueryPanelDatabase(dbName: string) {
  * panels query demo_sales instead of a secondary DB expanded for screenshots.
  */
 async function pinDemoPgDatabase() {
-  const connId = await invoke<string>('connect', { configId: DEMO_PG_CONN_ID });
+  const connId = await invoke<string>('connect', { connectionId: DEMO_PG_CONN_ID });
   if (typeof connId !== 'string' || connId.startsWith('__error')) {
     throw new Error(`connect(${DEMO_PG_CONN_NAME}) failed: ${JSON.stringify(connId)}`);
   }
-  const useDb = await invoke('use_database', { connectionId: connId, database: DEMO_PG_DB });
+  const useDb = await invoke('use_database', { dbSessionId: connId, database: DEMO_PG_DB });
   if (useDb && typeof useDb === 'object' && '__error' in (useDb as object)) {
     throw new Error(`use_database(${DEMO_PG_DB}) failed: ${JSON.stringify(useDb)}`);
   }
@@ -943,16 +943,16 @@ describe('site screenshots', () => {
     await invoke('save_dashboard', { dashboard: buildDemoDashboard(now) });
     await browser.pause(300);
 
-    const connId = await invoke<string>('connect', { configId: DEMO_PG_CONN_ID });
+    const connId = await invoke<string>('connect', { connectionId: DEMO_PG_CONN_ID });
     if (typeof connId !== 'string' || connId.startsWith('__error')) {
       throw new Error(`connect(${DEMO_PG_CONN_NAME}) failed: ${JSON.stringify(connId)}`);
     }
-    const useDb = await invoke('use_database', { connectionId: connId, database: DEMO_PG_DB });
+    const useDb = await invoke('use_database', { dbSessionId: connId, database: DEMO_PG_DB });
     if (useDb && typeof useDb === 'object' && '__error' in (useDb as object)) {
       throw new Error(`use_database(${DEMO_PG_DB}) failed: ${JSON.stringify(useDb)}`);
     }
 
-    await invoke('connect', { configId: DEMO_MYSQL_CONN_ID });
+    await invoke('connect', { connectionId: DEMO_MYSQL_CONN_ID });
     await browser.pause(800);
 
     await browser.url('tauri://localhost');
@@ -1888,7 +1888,7 @@ describe('site screenshots', () => {
   it('15-redis: KV browser with seeded demo keys', async () => {
     // Connect the Redis demo connection directly. The local dev instance may
     // require a password — fall back to E2E_REDIS_PASSWORD from e2e/.env.
-    let connId: unknown = await invoke<string>('connect', { configId: DEMO_REDIS_CONN_ID });
+    let connId: unknown = await invoke<string>('connect', { connectionId: DEMO_REDIS_CONN_ID });
     if (typeof connId !== 'string' || String(connId).startsWith('__error')) {
       const config: Record<string, unknown> = {
         id: DEMO_REDIS_CONN_ID,
@@ -1904,7 +1904,7 @@ describe('site screenshots', () => {
       if (saved && typeof saved === 'object' && '__error' in (saved as object)) {
         throw new Error(`connect(${DEMO_REDIS_CONN_ID}) failed: ${JSON.stringify(connId)}`);
       }
-      connId = await invoke<string>('connect', { configId: DEMO_REDIS_CONN_ID });
+      connId = await invoke<string>('connect', { connectionId: DEMO_REDIS_CONN_ID });
       if (typeof connId !== 'string' || String(connId).startsWith('__error')) {
         throw new Error(`connect(${DEMO_REDIS_CONN_ID}) failed: ${JSON.stringify(connId)}`);
       }

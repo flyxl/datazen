@@ -150,7 +150,7 @@
       return;
     }
     request('command.invoke', {
-      configId: conns[0].id,
+      connectionId: conns[0].id,
       command: 'query',
       args: { sql: 'SELECT 1 AS one' },
     })

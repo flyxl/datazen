@@ -1,14 +1,14 @@
 const STORAGE_PREFIX = 'datazen:redis-console-history:';
 const MAX_ENTRIES = 200;
 
-function storageKey(connectionId: string): string {
-  return `${STORAGE_PREFIX}${connectionId}`;
+function storageKey(dbSessionId: string): string {
+  return `${STORAGE_PREFIX}${dbSessionId}`;
 }
 
 /** Load persisted command history for a connection (newest first). */
-export function loadConsoleHistory(connectionId: string): string[] {
+export function loadConsoleHistory(dbSessionId: string): string[] {
   try {
-    const raw = localStorage.getItem(storageKey(connectionId));
+    const raw = localStorage.getItem(storageKey(dbSessionId));
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -19,22 +19,22 @@ export function loadConsoleHistory(connectionId: string): string[] {
 }
 
 /** Persist command history for a connection. */
-export function saveConsoleHistory(connectionId: string, entries: string[]): void {
+export function saveConsoleHistory(dbSessionId: string, entries: string[]): void {
   try {
-    localStorage.setItem(storageKey(connectionId), JSON.stringify(entries.slice(0, MAX_ENTRIES)));
+    localStorage.setItem(storageKey(dbSessionId), JSON.stringify(entries.slice(0, MAX_ENTRIES)));
   } catch {
     // localStorage may be unavailable in tests or private mode
   }
 }
 
 /** Append a command to history (dedupe, newest first). Returns updated list. */
-export function pushConsoleHistory(connectionId: string, command: string): string[] {
+export function pushConsoleHistory(dbSessionId: string, command: string): string[] {
   const trimmed = command.trim();
-  if (!trimmed) return loadConsoleHistory(connectionId);
+  if (!trimmed) return loadConsoleHistory(dbSessionId);
 
-  const existing = loadConsoleHistory(connectionId).filter((entry) => entry !== trimmed);
+  const existing = loadConsoleHistory(dbSessionId).filter((entry) => entry !== trimmed);
   const next = [trimmed, ...existing].slice(0, MAX_ENTRIES);
-  saveConsoleHistory(connectionId, next);
+  saveConsoleHistory(dbSessionId, next);
   return next;
 }
 

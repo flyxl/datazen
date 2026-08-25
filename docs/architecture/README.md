@@ -187,6 +187,7 @@ Connection 变化后重新 discovery；没有 Step override 时使用 Workflow �
 
 | 文档 | 内容 |
 |------|------|
+| [ID 术语规范](naming.md) | `connectionId` / `dbSessionId` 定义、生命周期、流转图、双模适配点与守护规则 |
 | [安全措施](security.md) | AES-256-GCM + key_store、CSP、路径遍历防护、文件扩展名白名单、AI Key 安全 |
 | [窗口管理](windows.md) | 主工作区 Page（Welcome / Connection / Settings 等）、子窗口、`windowKind` 路由、Docs 官网跳转 |
 | [测试策略](testing.md) | Rust / Vitest / E2E 概览；Host UI 路径覆盖见 [e2e-coverage.md](../development/e2e-coverage.md) |

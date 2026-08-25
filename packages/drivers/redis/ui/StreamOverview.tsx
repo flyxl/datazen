@@ -6,7 +6,7 @@ import { cn } from '../../../../src/lib/cn';
 import { redisCommandInvoke } from './redisInvoke';
 
 export interface StreamOverviewProps {
-  connectionId: string;
+  dbSessionId: string;
   dbIndex?: number;
   limit?: number;
 }
@@ -26,19 +26,19 @@ interface StreamOverviewResult {
 const DEFAULT_LIMIT = 100;
 
 export async function invokeStreamOverview(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   limit?: number,
 ): Promise<StreamOverviewResult> {
   return redisCommandInvoke('redis', 'stream_overview', {
-    connectionId,
+    dbSessionId,
     dbIndex,
     limit: limit ?? null,
   });
 }
 
 export function StreamOverview({
-  connectionId,
+  dbSessionId,
   dbIndex = 0,
   limit = DEFAULT_LIMIT,
 }: StreamOverviewProps) {
@@ -52,7 +52,7 @@ export function StreamOverview({
     setLoading(true);
     setError(null);
     try {
-      const result = await invokeStreamOverview(connectionId, dbIndex, limit);
+      const result = await invokeStreamOverview(dbSessionId, dbIndex, limit);
       setRows(result.rows);
       setTruncated(result.truncated);
     } catch (e) {
@@ -62,7 +62,7 @@ export function StreamOverview({
     } finally {
       setLoading(false);
     }
-  }, [connectionId, dbIndex, limit]);
+  }, [dbSessionId, dbIndex, limit]);
 
   useEffect(() => {
     void load();

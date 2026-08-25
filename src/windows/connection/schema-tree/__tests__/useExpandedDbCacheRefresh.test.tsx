@@ -82,7 +82,7 @@ describe('useExpandedDbCacheRefresh', () => {
     clearCaches: ReturnType<typeof vi.fn>;
   }) {
     const opts = {
-      activeConnections: { 'cfg-1': { connectionId: 'conn-1' } },
+      activeConnections: { 'cfg-1': { dbSessionId: 'conn-1' } },
       expandedDbs: new Set(['cfg-1::db-a', 'cfg-1::db-b']),
       ...handlers,
     };

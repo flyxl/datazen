@@ -4,7 +4,7 @@ import {
   E2E_DASHBOARD_PREFIX,
   cleanupDashboard,
   createEmptyDashboard,
-  getSeededConfigId,
+  getSeededConnectionId,
   invokeBackend,
   openDashboardFromMain,
   seedSqlWidget,
@@ -15,16 +15,16 @@ const WIDGET_TITLE = 'E2E SQL Metric';
 
 describe('数据看板 SQL 添加 (UJ-03, UJ-13)', () => {
   let mainWindow: string;
-  let configId: string;
+  let connectionId: string;
   let widgetId: string;
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await browser.pause(1000);
-    configId = await getSeededConfigId();
+    connectionId = await getSeededConnectionId();
     await cleanupDashboard(DASHBOARD_ID);
     await createEmptyDashboard(DASHBOARD_ID, 'E2E SQL Board');
-    const created = await seedSqlWidget(DASHBOARD_ID, configId, {
+    const created = await seedSqlWidget(DASHBOARD_ID, connectionId, {
       title: WIDGET_TITLE,
       sql: "SELECT 'Alpha' AS category, 100 AS amount UNION ALL SELECT 'Beta', 200 UNION ALL SELECT 'Gamma', 150",
       xAxis: 'category',

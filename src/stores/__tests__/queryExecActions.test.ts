@@ -35,7 +35,7 @@ describe('queryExecActions schema refresh', () => {
     await runBoundQuery('panel-1', 'conn-1', 'CREATE DATABASE app', {}, getExec, setExec);
 
     expect(mockEmitCrossWindow).toHaveBeenCalledWith('datazen:refresh-connection', {
-      connectionId: 'conn-1',
+      dbSessionId: 'conn-1',
     });
     expect(exec.get('panel-1')?.error).toBeNull();
   });
@@ -82,7 +82,7 @@ describe('queryExecActions schema refresh', () => {
     await runStreamingQuery('panel-1', 'conn-1', 'DROP TABLE users', getExec, setExec);
 
     expect(mockEmitCrossWindow).toHaveBeenCalledWith('datazen:refresh-connection', {
-      connectionId: 'conn-1',
+      dbSessionId: 'conn-1',
     });
     expect(exec.get('panel-1')?.running).toBe(false);
   });

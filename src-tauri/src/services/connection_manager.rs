@@ -1,4 +1,24 @@
-//! Manages live connections and coordinates with the driver registry.
+//! Manages live database sessions and coordinates with the driver registry.
+//!
+//! ## ID terminology
+//!
+//! Two distinct kinds of identifiers flow through this module:
+//!
+//! - **`connection_id`** — the id of a *persisted connection configuration*
+//!   ([`ConnectionConfig::id`] as stored in the [`Store`]). It is stable across
+//!   app restarts and is what users pick in the UI sidebar.
+//! - **`db_session_id`** — the *runtime database session* handle id generated
+//!   by the driver once a connection has been established
+//!   ([`ConnectionHandle::id`]). It only exists while a live session is pooled.
+//!
+//! Flow: `connect(connection_id)` loads the persisted config, asks the driver
+//! to establish a session, and returns the resulting `db_session_id`. Callers
+//! use that `db_session_id` for all subsequent operations. The
+//! [`ConnectionManager::session_owner_map`] records `db_session_id →
+//! connection_id` ownership; when a session is evicted for being idle, the map
+//! is kept so [`ConnectionManager::get_session`] can transparently rebuild the
+//! driver session from the *latest* persisted config while reusing the exact
+//! same `db_session_id`.
 
 use crate::db::registry::DriverRegistry;
 use crate::db::{
@@ -13,7 +33,8 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
 
-struct ActiveConnection {
+/// A live driver session plus the effective config it was established with.
+struct ActiveSession {
     handle: ConnectionHandle,
     config: ConnectionConfig,
     #[allow(dead_code)]
@@ -22,30 +43,49 @@ struct ActiveConnection {
     _tunnel: Option<SshTunnel>,
 }
 
-/// Coordinates configuration lookup, driver selection, and pooling handles.
+/// Coordinates connection-config lookup, driver selection, and session pooling.
+///
+/// Keys and maps, by ID kind:
+///
+/// - `connections`: `db_session_id` → live [`ActiveSession`].
+/// - `session_owner_map`: `db_session_id` → owning `connection_id` (the
+///   persisted connection config it was created from). Survives idle eviction
+///   so evicted sessions can be rebuilt under their original `db_session_id`.
+/// - `ref_counts`: `db_session_id` → number of active borrowers.
 pub struct ConnectionManager {
     registry: Arc<DriverRegistry>,
-    connections: Arc<RwLock<HashMap<String, ActiveConnection>>>,
-    /// Maps runtime connectionId → persistent configId so we can reconnect
-    /// after idle eviction using the latest config from the Store.
-    config_id_map: Arc<RwLock<HashMap<String, String>>>,
-    /// Reference counts per runtime connectionId. Each `get_or_connect` caller
-    /// increments; `release` decrements; session is torn down only at zero.
+    connections: Arc<RwLock<HashMap<String, ActiveSession>>>,
+    /// Maps `db_session_id` → its owning `connection_id` (persisted connection
+    /// config id), so we can reconnect after idle eviction using the latest
+    /// config from the Store.
+    session_owner_map: Arc<RwLock<HashMap<String, String>>>,
+    /// Reference counts per `db_session_id`. Each `get_or_connect_session`
+    /// caller increments; `release` decrements; session is torn down only at
+    /// zero.
     ref_counts: Arc<RwLock<HashMap<String, usize>>>,
     store: Arc<Store>,
     idle_timeout: Duration,
-    /// Per-config_id locks to prevent concurrent connect attempts for the same
-    /// configuration. Second+ callers wait and reuse the first caller's result.
+    /// Per-`connection_id` locks to prevent concurrent connect attempts for the
+    /// same persisted configuration. Second+ callers wait and reuse the first
+    /// caller's result.
     connect_locks: std::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 #[derive(Debug, Error)]
 pub enum ConnectionError {
-    #[error("Configuration not found: {0}")]
-    ConfigNotFound(String),
+    /// The persisted connection configuration (`connection_id`) does not exist.
+    #[error(
+        "Connection config '{0}' not found (connectionId refers to a persisted \
+         connection configuration; no such configuration is stored)"
+    )]
+    ConnectionConfigNotFound(String),
 
-    #[error("Connection not found: {0}")]
-    ConnectionNotFound(String),
+    /// No live (or rebuildable) runtime session for this `db_session_id`.
+    #[error(
+        "DB session '{0}' not found (a dbSessionId is a runtime session id; \
+         maybe you passed a connectionId where a dbSessionId was expected)"
+    )]
+    DbSessionNotFound(String),
 
     #[error("Driver not found for type: {0}")]
     DriverNotFound(DatabaseType),
@@ -59,7 +99,7 @@ impl ConnectionManager {
         Self {
             registry,
             connections: Arc::new(RwLock::new(HashMap::new())),
-            config_id_map: Arc::new(RwLock::new(HashMap::new())),
+            session_owner_map: Arc::new(RwLock::new(HashMap::new())),
             ref_counts: Arc::new(RwLock::new(HashMap::new())),
             store,
             idle_timeout: Duration::from_secs(1800),
@@ -67,31 +107,36 @@ impl ConnectionManager {
         }
     }
 
-    pub async fn connect(&self, config_id: &str) -> Result<String, ConnectionError> {
+    /// Establish a database session for the persisted connection configuration
+    /// `connection_id` and register it.
+    ///
+    /// Returns the runtime `db_session_id` (the driver-generated session
+    /// handle id) that callers must use for subsequent operations.
+    pub async fn connect(&self, connection_id: &str) -> Result<String, ConnectionError> {
         let (driver, handle, mut effective_config, tunnel) =
-            self.establish_connection(config_id).await?;
-        let connection_id = handle.id.clone();
+            self.establish_connection(connection_id).await?;
+        let db_session_id = handle.id.clone();
 
         if effective_config.server_version.is_none() {
             if let Ok(info) = driver.get_server_info(&handle).await {
                 effective_config.server_version = Some(info.server_version.clone());
-                // Persist version to the stored config
-                if let Some(mut stored) = self.store.get_connection(config_id).await {
+                // Persist version to the stored connection config
+                if let Some(mut stored) = self.store.get_connection(connection_id).await {
                     stored.server_version = Some(info.server_version);
                     let _ = self.store.save_connection(stored).await;
                 }
             }
         }
 
-        self.config_id_map
+        self.session_owner_map
             .write()
             .await
-            .insert(connection_id.clone(), config_id.to_string());
+            .insert(db_session_id.clone(), connection_id.to_string());
 
         let mut connections = self.connections.write().await;
         connections.insert(
-            connection_id.clone(),
-            ActiveConnection {
+            db_session_id.clone(),
+            ActiveSession {
                 handle,
                 config: effective_config,
                 created_at: Instant::now(),
@@ -100,13 +145,14 @@ impl ConnectionManager {
             },
         );
 
-        Ok(connection_id)
+        Ok(db_session_id)
     }
 
-    /// Open a driver connection without registering in the UI session map.
+    /// Open a driver session for the persisted connection configuration
+    /// `connection_id` without registering it in the UI session map.
     pub(crate) async fn establish_connection(
         &self,
-        config_id: &str,
+        connection_id: &str,
     ) -> Result<
         (
             Arc<dyn DatabaseDriver>,
@@ -118,9 +164,9 @@ impl ConnectionManager {
     > {
         let config = self
             .store
-            .get_connection(config_id)
+            .get_connection(connection_id)
             .await
-            .ok_or_else(|| ConnectionError::ConfigNotFound(config_id.to_string()))?;
+            .ok_or_else(|| ConnectionError::ConnectionConfigNotFound(connection_id.to_string()))?;
 
         let (mut effective_config, tunnel) = self.maybe_start_tunnel(config).await?;
         let pool_size = crate::store::clamp_connection_pool_size(
@@ -147,25 +193,36 @@ impl ConnectionManager {
             .ok_or_else(|| ConnectionError::DriverNotFound(database_type.clone()))
     }
 
-    /// Resolve the persistent `config_id` for a given runtime `connection_id`.
-    /// Returns `None` if the mapping does not exist (e.g. connection was never registered).
-    pub async fn resolve_config_id(&self, connection_id: &str) -> Option<String> {
-        self.config_id_map.read().await.get(connection_id).cloned()
+    /// Resolve the owning `connection_id` (persisted connection config id)
+    /// for a runtime `db_session_id`.
+    /// Returns `None` if the mapping does not exist (e.g. no session was ever
+    /// established for it via this manager).
+    pub async fn owner_connection_id(&self, db_session_id: &str) -> Option<String> {
+        self.session_owner_map
+            .read()
+            .await
+            .get(db_session_id)
+            .cloned()
     }
 
     #[cfg(test)]
-    pub(crate) async fn ui_session_map_len(&self) -> usize {
-        self.config_id_map.read().await.len()
+    pub(crate) async fn session_owner_map_len(&self) -> usize {
+        self.session_owner_map.read().await.len()
     }
 
-    /// Return an existing connection for the given config_id, or create a new one.
-    /// Concurrent callers for the same config_id are serialised: the first caller
-    /// performs the actual connect; subsequent callers wait then reuse its result.
-    pub async fn get_or_connect(&self, config_id: &str) -> Result<String, ConnectionError> {
+    /// Return an existing live `db_session_id` for the given persisted
+    /// `connection_id`, or establish a new session for it.
+    /// Concurrent callers for the same `connection_id` are serialised: the
+    /// first caller performs the actual connect; subsequent callers wait then
+    /// reuse its result.
+    pub async fn get_or_connect_session(
+        &self,
+        connection_id: &str,
+    ) -> Result<String, ConnectionError> {
         let lock = {
             let mut locks = self.connect_locks.lock().unwrap();
             locks
-                .entry(config_id.to_string())
+                .entry(connection_id.to_string())
                 .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
                 .clone()
         };
@@ -173,34 +230,34 @@ impl ConnectionManager {
         let _guard = lock.lock().await;
 
         {
-            let map = self.config_id_map.read().await;
+            let owner_map = self.session_owner_map.read().await;
             let connections = self.connections.read().await;
-            for (conn_id, cfg_id) in map.iter() {
-                if cfg_id == config_id && connections.contains_key(conn_id) {
+            for (session_id, owner_connection_id) in owner_map.iter() {
+                if owner_connection_id == connection_id && connections.contains_key(session_id) {
                     let mut refs = self.ref_counts.write().await;
-                    *refs.entry(conn_id.clone()).or_insert(0) += 1;
-                    tracing::debug!(%conn_id, refs = refs[conn_id], "session ref acquired (reuse)");
-                    return Ok(conn_id.clone());
+                    *refs.entry(session_id.clone()).or_insert(0) += 1;
+                    tracing::debug!(db_session_id = %session_id, refs = refs[session_id], "session ref acquired (reuse)");
+                    return Ok(session_id.clone());
                 }
             }
         }
-        let conn_id = self.connect(config_id).await?;
+        let db_session_id = self.connect(connection_id).await?;
         let mut refs = self.ref_counts.write().await;
-        *refs.entry(conn_id.clone()).or_insert(0) += 1;
-        tracing::debug!(%conn_id, refs = refs[&conn_id], "session ref acquired (new)");
-        Ok(conn_id)
+        *refs.entry(db_session_id.clone()).or_insert(0) += 1;
+        tracing::debug!(db_session_id = %db_session_id, refs = refs[&db_session_id], "session ref acquired (new)");
+        Ok(db_session_id)
     }
 
-    /// Decrement the reference count for a session. Only tears down the
-    /// underlying driver connection when the count reaches zero.
-    pub async fn release(&self, connection_id: &str) -> Result<bool, ConnectionError> {
+    /// Decrement the reference count for a `db_session_id`. Only tears down
+    /// the underlying driver session when the count reaches zero.
+    pub async fn release(&self, db_session_id: &str) -> Result<bool, ConnectionError> {
         let should_disconnect = {
             let mut refs = self.ref_counts.write().await;
-            if let Some(count) = refs.get_mut(connection_id) {
+            if let Some(count) = refs.get_mut(db_session_id) {
                 *count = count.saturating_sub(1);
-                tracing::debug!(%connection_id, refs = *count, "session ref released");
+                tracing::debug!(db_session_id = %db_session_id, refs = *count, "session ref released");
                 if *count == 0 {
-                    refs.remove(connection_id);
+                    refs.remove(db_session_id);
                     true
                 } else {
                     false
@@ -210,19 +267,20 @@ impl ConnectionManager {
             }
         };
         if should_disconnect {
-            self.disconnect(connection_id).await?;
+            self.disconnect(db_session_id).await?;
         }
         Ok(should_disconnect)
     }
 
-    /// Force-disconnect regardless of reference count (e.g. from sidebar).
-    pub async fn disconnect(&self, connection_id: &str) -> Result<(), ConnectionError> {
-        self.ref_counts.write().await.remove(connection_id);
-        self.config_id_map.write().await.remove(connection_id);
+    /// Force-disconnect the session `db_session_id` regardless of reference
+    /// count (e.g. from sidebar). Also drops its owner mapping.
+    pub async fn disconnect(&self, db_session_id: &str) -> Result<(), ConnectionError> {
+        self.ref_counts.write().await.remove(db_session_id);
+        self.session_owner_map.write().await.remove(db_session_id);
 
         let mut connections = self.connections.write().await;
 
-        if let Some(active) = connections.remove(connection_id) {
+        if let Some(active) = connections.remove(db_session_id) {
             if let Some(driver) = self.registry.get(&active.config.database_type).await {
                 let _ = driver.disconnect(active.handle).await;
             }
@@ -231,24 +289,31 @@ impl ConnectionManager {
         Ok(())
     }
 
-    /// Current reference count for a session (0 if not tracked).
+    /// Current reference count for a `db_session_id` (0 if not tracked).
     #[cfg(test)]
-    pub(crate) async fn ref_count(&self, connection_id: &str) -> usize {
+    pub(crate) async fn ref_count(&self, db_session_id: &str) -> usize {
         self.ref_counts
             .read()
             .await
-            .get(connection_id)
+            .get(db_session_id)
             .copied()
             .unwrap_or(0)
     }
 
-    pub async fn get_connection(
+    /// Return the live driver session for `db_session_id`, refreshing its
+    /// last-used timestamp.
+    ///
+    /// If the session was evicted (idle cleanup), it is transparently
+    /// re-established under the SAME `db_session_id`: the surviving
+    /// `session_owner_map` yields the owning `connection_id`, whose latest
+    /// persisted config is used to rebuild the driver session.
+    pub async fn get_session(
         &self,
-        connection_id: &str,
+        db_session_id: &str,
     ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), ConnectionError> {
         {
             let mut connections = self.connections.write().await;
-            if let Some(active) = connections.get_mut(connection_id) {
+            if let Some(active) = connections.get_mut(db_session_id) {
                 active.last_used = Instant::now();
 
                 let driver = self
@@ -263,47 +328,55 @@ impl ConnectionManager {
             }
         }
 
-        // Connection was evicted — reconnect using configId from persistent Store
-        self.reconnect(connection_id).await
+        // Session evicted — rebuild it under the same db_session_id using the
+        // owning connection_id's latest persisted config.
+        self.reconnect(db_session_id).await
     }
 
-    /// Resolve a session from either a runtime connection id or a persistent config id.
+    /// Resolve a session from an id that may be either kind, trying
+    /// **`db_session_id` first**, then falling back to `connection_id`.
     ///
-    /// - Runtime id already live (or reconnectable via `config_id_map`) → returned as-is.
-    /// - Otherwise treat `id` as a config id and `get_or_connect`, then return that runtime id.
+    /// - If `id` matches a live runtime session (or one rebuildable via
+    ///   `session_owner_map`), it is treated as a `db_session_id` and returned
+    ///   as-is.
+    /// - Otherwise `id` is treated as a persisted `connection_id`:
+    ///   `get_or_connect_session` ensures a session exists for it and that
+    ///   (possibly newly created) `db_session_id` is returned.
     pub async fn resolve_session(
         &self,
         id: &str,
     ) -> Result<(String, Arc<dyn DatabaseDriver>, ConnectionHandle), ConnectionError> {
-        if let Ok((driver, handle)) = self.get_connection(id).await {
+        if let Ok((driver, handle)) = self.get_session(id).await {
             return Ok((id.to_string(), driver, handle));
         }
-        let runtime_id = self.get_or_connect(id).await?;
-        let (driver, handle) = self.get_connection(&runtime_id).await?;
-        Ok((runtime_id, driver, handle))
+        let db_session_id = self.get_or_connect_session(id).await?;
+        let (driver, handle) = self.get_session(&db_session_id).await?;
+        Ok((db_session_id, driver, handle))
     }
 
-    /// Transparently re-establish an evicted connection.
-    /// Reads the latest config from the persistent Store via `config_id_map`.
+    /// Transparently re-establish an evicted session under the SAME
+    /// `db_session_id`. The surviving `session_owner_map` provides the owning
+    /// `connection_id`; the latest config for it is read from the persistent
+    /// Store so config edits made while idle are picked up.
     async fn reconnect(
         &self,
-        connection_id: &str,
+        db_session_id: &str,
     ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), ConnectionError> {
-        let config_id = {
-            let map = self.config_id_map.read().await;
-            map.get(connection_id).cloned()
+        let owner_connection_id = {
+            let map = self.session_owner_map.read().await;
+            map.get(db_session_id).cloned()
         };
 
-        let config_id = config_id
-            .ok_or_else(|| ConnectionError::ConnectionNotFound(connection_id.to_string()))?;
+        let connection_id = owner_connection_id
+            .ok_or_else(|| ConnectionError::DbSessionNotFound(db_session_id.to_string()))?;
 
         let config = self
             .store
-            .get_connection(&config_id)
+            .get_connection(&connection_id)
             .await
-            .ok_or_else(|| ConnectionError::ConfigNotFound(config_id.clone()))?;
+            .ok_or_else(|| ConnectionError::ConnectionConfigNotFound(connection_id.clone()))?;
 
-        tracing::info!(%connection_id, %config_id, name = %config.name, "Auto-reconnecting evicted connection");
+        tracing::info!(db_session_id = %db_session_id, %connection_id, name = %config.name, "Auto-reconnecting evicted session");
 
         let (effective_config, tunnel) = self.maybe_start_tunnel(config).await?;
 
@@ -319,8 +392,8 @@ impl ConnectionManager {
 
         let mut connections = self.connections.write().await;
         connections.insert(
-            connection_id.to_string(),
-            ActiveConnection {
+            db_session_id.to_string(),
+            ActiveSession {
                 handle: handle.clone(),
                 config: effective_config,
                 created_at: Instant::now(),
@@ -329,18 +402,19 @@ impl ConnectionManager {
             },
         );
 
-        tracing::info!(%connection_id, "Auto-reconnect succeeded");
+        tracing::info!(db_session_id = %db_session_id, "Auto-reconnect succeeded");
         Ok((driver, handle))
     }
 
-    pub async fn get_connection_config(
+    /// Effective config of the live session `db_session_id`.
+    pub async fn get_session_config(
         &self,
-        connection_id: &str,
+        db_session_id: &str,
     ) -> Result<ConnectionConfig, ConnectionError> {
         let connections = self.connections.read().await;
         let active = connections
-            .get(connection_id)
-            .ok_or_else(|| ConnectionError::ConnectionNotFound(connection_id.to_string()))?;
+            .get(db_session_id)
+            .ok_or_else(|| ConnectionError::DbSessionNotFound(db_session_id.to_string()))?;
         Ok(active.config.clone())
     }
 
@@ -348,13 +422,13 @@ impl ConnectionManager {
     /// Keeps schema-cache keys and metadata lookups aligned with the session.
     pub async fn set_active_database(
         &self,
-        connection_id: &str,
+        db_session_id: &str,
         database: &str,
     ) -> Result<(), ConnectionError> {
         let mut connections = self.connections.write().await;
         let active = connections
-            .get_mut(connection_id)
-            .ok_or_else(|| ConnectionError::ConnectionNotFound(connection_id.to_string()))?;
+            .get_mut(db_session_id)
+            .ok_or_else(|| ConnectionError::DbSessionNotFound(db_session_id.to_string()))?;
         active.config.database = Some(database.to_string());
         active.last_used = Instant::now();
         Ok(())
@@ -380,10 +454,11 @@ impl ConnectionManager {
             .map_err(ConnectionError::DriverError)
     }
 
-    /// Lightweight touch: refreshes `last_used` so idle cleanup doesn't evict.
-    pub async fn ping(&self, connection_id: &str) -> bool {
+    /// Lightweight touch: refreshes a session's `last_used` so idle cleanup
+    /// doesn't evict it.
+    pub async fn ping(&self, db_session_id: &str) -> bool {
         let mut connections = self.connections.write().await;
-        if let Some(active) = connections.get_mut(connection_id) {
+        if let Some(active) = connections.get_mut(db_session_id) {
             active.last_used = Instant::now();
             true
         } else {
@@ -403,14 +478,15 @@ impl ConnectionManager {
 
         for id in &to_remove {
             if let Some(active) = connections.remove(id) {
-                tracing::info!(connection_id = %id, name = %active.config.name,
-                    "Evicting idle connection (config_id mapping preserved for auto-reconnect)");
+                tracing::info!(db_session_id = %id, name = %active.config.name,
+                    "Evicting idle db session (session_owner_map entry kept for auto-reconnect)");
                 if let Some(driver) = self.registry.get(&active.config.database_type).await {
                     let _ = driver.disconnect(active.handle).await;
                 }
             }
         }
-        // Note: config_id_map is NOT cleared here — it stays so reconnect() works
+        // Note: session_owner_map is NOT cleared here — it stays so reconnect()
+        // can rebuild evicted sessions under their original db_session_id
     }
 
     pub fn start_cleanup_task(self: Arc<Self>) {
@@ -425,7 +501,7 @@ impl ConnectionManager {
 
     pub async fn shutdown(&self) {
         self.ref_counts.write().await.clear();
-        self.config_id_map.write().await.clear();
+        self.session_owner_map.write().await.clear();
 
         let mut connections = self.connections.write().await;
 
@@ -476,21 +552,24 @@ impl ConnectionManager {
         Ok((tunneled, Some(tunnel)))
     }
 
+    /// Register a live session directly, bypassing driver connect.
+    /// `db_session_id` is the runtime session handle id; `connection_id` is
+    /// the persisted connection config id that owns it.
     #[cfg(test)]
     pub(crate) async fn insert_test_session(
         &self,
-        runtime_id: &str,
-        config_id: &str,
+        db_session_id: &str,
+        connection_id: &str,
         config: ConnectionConfig,
         handle: ConnectionHandle,
     ) {
-        self.config_id_map
+        self.session_owner_map
             .write()
             .await
-            .insert(runtime_id.to_string(), config_id.to_string());
+            .insert(db_session_id.to_string(), connection_id.to_string());
         self.connections.write().await.insert(
-            runtime_id.to_string(),
-            ActiveConnection {
+            db_session_id.to_string(),
+            ActiveSession {
                 handle,
                 config,
                 created_at: Instant::now(),
@@ -498,6 +577,18 @@ impl ConnectionManager {
                 _tunnel: None,
             },
         );
+    }
+
+    /// Backdate a session's `last_used` beyond the idle timeout so a follow-up
+    /// [`ConnectionManager::cleanup_idle_connections`] evicts it.
+    #[cfg(test)]
+    pub(crate) async fn expire_test_session(&self, db_session_id: &str) {
+        let mut connections = self.connections.write().await;
+        if let Some(active) = connections.get_mut(db_session_id) {
+            active.last_used = Instant::now()
+                .checked_sub(self.idle_timeout + Duration::from_secs(1))
+                .unwrap_or_else(Instant::now);
+        }
     }
 }
 
@@ -612,9 +703,10 @@ mod tests {
         ConnectionManager::new(registry, store)
     }
 
-    fn test_config(config_id: &str) -> ConnectionConfig {
+    /// A persisted connection config whose id (`connection_id`) is `connection_id`.
+    fn test_config(connection_id: &str) -> ConnectionConfig {
         ConnectionConfig {
-            id: config_id.to_string(),
+            id: connection_id.to_string(),
             name: "test".into(),
             database_type: "postgresql".into(),
             host: Some("127.0.0.1".into()),
@@ -638,23 +730,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolve_session_passthrough_runtime_id() {
+    async fn resolve_session_passthrough_db_session_id() {
         let mgr = test_manager_stub().await;
         let handle = ConnectionHandle {
             id: "rt-1".into(),
             pool_id: "pool-1".into(),
         };
+        // Live db session "rt-1" owned by persisted connection config "cfg-1".
         mgr.insert_test_session("rt-1", "cfg-1", test_config("cfg-1"), handle.clone())
             .await;
 
-        let (runtime_id, driver, returned) = mgr.resolve_session("rt-1").await.unwrap();
-        assert_eq!(runtime_id, "rt-1");
+        let (db_session_id, driver, returned) = mgr.resolve_session("rt-1").await.unwrap();
+        assert_eq!(db_session_id, "rt-1");
         assert_eq!(returned.id, "rt-1");
         assert_eq!(driver.driver_type(), "postgresql");
     }
 
     #[tokio::test]
-    async fn resolve_session_config_id_reuses_existing_runtime() {
+    async fn resolve_session_connection_id_reuses_existing_runtime() {
         let mgr = test_manager_stub().await;
         let handle = ConnectionHandle {
             id: "rt-2".into(),
@@ -663,8 +756,10 @@ mod tests {
         mgr.insert_test_session("rt-2", "cfg-2", test_config("cfg-2"), handle)
             .await;
 
-        let (runtime_id, _driver, returned) = mgr.resolve_session("cfg-2").await.unwrap();
-        assert_eq!(runtime_id, "rt-2");
+        // Input is the connection_id of a config whose session already lives:
+        // it must resolve to that existing db_session_id.
+        let (db_session_id, _driver, returned) = mgr.resolve_session("cfg-2").await.unwrap();
+        assert_eq!(db_session_id, "rt-2");
         assert_eq!(returned.id, "rt-2");
     }
 
@@ -718,58 +813,64 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn connect_registers_session_and_returns_runtime_id() {
+    async fn connect_registers_session_and_returns_db_session_id() {
         let (_keyring, mgr, store, _) = test_manager().await;
         store.save_connection(sample_config("cfg-1")).await.unwrap();
-        let conn_id = mgr.connect("cfg-1").await.unwrap();
-        assert!(conn_id.starts_with("mock-cfg-1"));
-        assert_eq!(mgr.ui_session_map_len().await, 1);
+        let db_session_id = mgr.connect("cfg-1").await.unwrap();
+        // db_session_id comes from the driver's runtime handle.
+        assert!(db_session_id.starts_with("mock-cfg-1"));
+        assert_eq!(mgr.session_owner_map_len().await, 1);
+        assert_eq!(
+            mgr.owner_connection_id(&db_session_id).await.as_deref(),
+            Some("cfg-1")
+        );
     }
 
     #[tokio::test]
-    async fn get_or_connect_reuses_existing_session() {
+    async fn get_or_connect_session_reuses_existing_session() {
         let (_keyring, mgr, store, mock) = test_manager().await;
         store.save_connection(sample_config("cfg-1")).await.unwrap();
-        let first = mgr.get_or_connect("cfg-1").await.unwrap();
-        let second = mgr.get_or_connect("cfg-1").await.unwrap();
+        let first = mgr.get_or_connect_session("cfg-1").await.unwrap();
+        let second = mgr.get_or_connect_session("cfg-1").await.unwrap();
         assert_eq!(first, second);
         assert_eq!(mock.get_columns_calls(), 0);
     }
 
     #[tokio::test]
-    async fn get_connection_returns_driver_and_updates_last_used() {
+    async fn get_session_returns_driver_and_updates_last_used() {
         let (_keyring, mgr, store, _) = test_manager().await;
         store.save_connection(sample_config("cfg-1")).await.unwrap();
-        let conn_id = mgr.connect("cfg-1").await.unwrap();
-        let (driver, handle) = mgr.get_connection(&conn_id).await.unwrap();
+        let db_session_id = mgr.connect("cfg-1").await.unwrap();
+        let (driver, handle) = mgr.get_session(&db_session_id).await.unwrap();
         assert_eq!(driver.driver_type(), "postgres");
-        assert_eq!(handle.id, conn_id);
+        assert_eq!(handle.id, db_session_id);
     }
 
     #[tokio::test]
     async fn disconnect_removes_session() {
         let (_keyring, mgr, store, _) = test_manager().await;
         store.save_connection(sample_config("cfg-1")).await.unwrap();
-        let conn_id = mgr.connect("cfg-1").await.unwrap();
-        mgr.disconnect(&conn_id).await.unwrap();
-        assert_eq!(mgr.ui_session_map_len().await, 0);
+        let db_session_id = mgr.connect("cfg-1").await.unwrap();
+        mgr.disconnect(&db_session_id).await.unwrap();
+        assert_eq!(mgr.session_owner_map_len().await, 0);
     }
 
     #[tokio::test]
-    async fn ping_returns_true_for_active_connection() {
+    async fn ping_returns_true_for_active_session() {
         let (_keyring, mgr, store, _) = test_manager().await;
         store.save_connection(sample_config("cfg-1")).await.unwrap();
-        let conn_id = mgr.connect("cfg-1").await.unwrap();
-        assert!(mgr.ping(&conn_id).await);
+        let db_session_id = mgr.connect("cfg-1").await.unwrap();
+        assert!(mgr.ping(&db_session_id).await);
         assert!(!mgr.ping("missing").await);
     }
 
     #[tokio::test]
-    async fn get_connection_config_returns_stored_config() {
+    async fn get_session_config_returns_stored_config() {
         let (_keyring, mgr, store, _) = test_manager().await;
         store.save_connection(sample_config("cfg-1")).await.unwrap();
-        let conn_id = mgr.connect("cfg-1").await.unwrap();
-        let cfg = mgr.get_connection_config(&conn_id).await.unwrap();
+        let db_session_id = mgr.connect("cfg-1").await.unwrap();
+        let cfg = mgr.get_session_config(&db_session_id).await.unwrap();
+        // The session's effective config keeps the owning connection_id.
         assert_eq!(cfg.id, "cfg-1");
         assert_eq!(cfg.name, "Test");
     }
@@ -782,10 +883,106 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn connect_errors_when_config_missing() {
+    async fn connect_errors_when_connection_config_missing() {
         let (_keyring, mgr, _, _) = test_manager().await;
         let err = mgr.connect("missing").await.unwrap_err();
-        assert!(matches!(err, ConnectionError::ConfigNotFound(_)));
+        assert!(matches!(err, ConnectionError::ConnectionConfigNotFound(_)));
+        // The message must make clear which kind of id was not found.
+        assert!(err
+            .to_string()
+            .contains("Connection config 'missing' not found"));
+    }
+
+    /// Invariant: an idle-evicted session is auto-reconnected through
+    /// `session_owner_map` and keeps its original `db_session_id`.
+    #[tokio::test]
+    async fn evicted_session_auto_reconnects_preserving_db_session_id() {
+        let (_keyring, mgr, store, _) = test_manager().await;
+        store.save_connection(sample_config("cfg-1")).await.unwrap();
+        let db_session_id = mgr.get_or_connect_session("cfg-1").await.unwrap();
+        assert_eq!(
+            mgr.owner_connection_id(&db_session_id).await.as_deref(),
+            Some("cfg-1")
+        );
+
+        // Force idle eviction of the live session.
+        mgr.expire_test_session(&db_session_id).await;
+        mgr.cleanup_idle_connections().await;
+        assert!(!mgr.ping(&db_session_id).await);
+        // The ownership mapping survives eviction — this is what enables
+        // auto-reconnect under the same db_session_id.
+        assert_eq!(
+            mgr.owner_connection_id(&db_session_id).await.as_deref(),
+            Some("cfg-1")
+        );
+
+        // Auto-reconnect rebuilds the session from the latest persisted config
+        // and reuses the exact same db_session_id.
+        let (driver, handle) = mgr.get_session(&db_session_id).await.unwrap();
+        assert_eq!(driver.driver_type(), "postgres");
+        assert_eq!(handle.id, db_session_id);
+        assert!(mgr.ping(&db_session_id).await);
+        assert_eq!(
+            mgr.owner_connection_id(&db_session_id).await.as_deref(),
+            Some("cfg-1")
+        );
+    }
+
+    /// Invariant: `resolve_session` tries the id as a **db_session_id first**
+    /// and only falls back to treating it as a connection_id. When one string
+    /// is both a live db_session_id and a persisted connection_id, the runtime
+    /// session wins and no new session is created.
+    #[tokio::test]
+    async fn resolve_session_prefers_db_session_id_over_connection_id() {
+        let (_keyring, mgr, store, _) = test_manager().await;
+        // "dual" is BOTH a persisted connection_id ...
+        store.save_connection(sample_config("dual")).await.unwrap();
+        // ... and the db_session_id of a live session owned by "owner-a".
+        mgr.insert_test_session(
+            "dual",
+            "owner-a",
+            sample_config("dual"),
+            ConnectionHandle {
+                id: "dual".into(),
+                pool_id: "pool-dual".into(),
+            },
+        )
+        .await;
+
+        let before = mgr.session_owner_map_len().await;
+        let (db_session_id, _driver, handle) = mgr.resolve_session("dual").await.unwrap();
+
+        // Resolved as the existing db_session_id, NOT as connection_id "dual"
+        // (which would have created a fresh "mock-dual…" session).
+        assert_eq!(db_session_id, "dual");
+        assert_eq!(handle.id, "dual");
+        assert_eq!(mgr.session_owner_map_len().await, before);
+        assert_eq!(
+            mgr.owner_connection_id(&db_session_id).await.as_deref(),
+            Some("owner-a")
+        );
+    }
+
+    /// Invariant (fallback leg): an id that is no live db_session_id is treated
+    /// as a connection_id; a new session is created and its db_session_id
+    /// returned with the owner mapping recorded.
+    #[tokio::test]
+    async fn resolve_session_falls_back_to_connection_id_and_creates_session() {
+        let (_keyring, mgr, store, _) = test_manager().await;
+        store
+            .save_connection(sample_config("cfg-fb"))
+            .await
+            .unwrap();
+
+        let (db_session_id, driver, handle) = mgr.resolve_session("cfg-fb").await.unwrap();
+        assert_ne!(db_session_id, "cfg-fb");
+        assert!(db_session_id.starts_with("mock-cfg-fb"));
+        assert_eq!(handle.id, db_session_id);
+        assert_eq!(driver.driver_type(), "postgres");
+        assert_eq!(
+            mgr.owner_connection_id(&db_session_id).await.as_deref(),
+            Some("cfg-fb")
+        );
     }
 
     #[tokio::test]
@@ -804,6 +1001,6 @@ mod tests {
         store.save_connection(sample_config("cfg-1")).await.unwrap();
         let _ = mgr.connect("cfg-1").await.unwrap();
         mgr.shutdown().await;
-        assert_eq!(mgr.ui_session_map_len().await, 0);
+        assert_eq!(mgr.session_owner_map_len().await, 0);
     }
 }

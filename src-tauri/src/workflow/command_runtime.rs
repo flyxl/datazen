@@ -60,7 +60,7 @@ pub async fn execute_command_with_mode(
         if let Some(sql) = step.input.get("sql").and_then(|v| v.as_str()) {
             let read_only = app_state
                 .connection_manager
-                .get_connection_config(&handle.id)
+                .get_session_config(&handle.id)
                 .await
                 .map(|c| c.read_only)
                 .unwrap_or(false);

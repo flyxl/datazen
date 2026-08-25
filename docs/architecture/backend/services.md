@@ -6,10 +6,12 @@
 
 | 名称 | 含义 | 示例来源 |
 |------|------|----------|
-| **`config_id`** | 持久化连接配置 ID（`ConnectionConfig.id`，存于 `connections.json`） | GUI 保存的连接、`connect` IPC 入参 |
-| **`connection_id`** | 运行时活动连接句柄（`ConnectionManager` 分配，断开即失效） | `connect` 返回值、大多数查询/Schema IPC |
+| **`connection_id`** | 持久化连接配置 ID（`ConnectionConfig.id`，存于 `connections.json`） | GUI 保存的连接、`connect` IPC 入参、MCP tools / AI db tools 入参 |
+| **`db_session_id`** | 运行时数据库会话 ID（`ConnectionManager` 分配，断开即失效） | `connect` 返回值、大多数查询/Schema IPC |
 
-规则：**GUI 先 `connect(config_id)` → 得到 `connection_id`，后续 SQL/Schema IPC 传 `connection_id`。** MCP tools / AI db tools 与 prompts 直接传 **`config_id`**（`list_connections` 返回值）；内部通过 `db_tools::resolve_connection` 按需连接。`resolve_connection` 仍接受运行时会话 ID，但 MCP/API 调用方应只传 config_id。
+规则：**GUI 先 `connect(connection_id)` → 得到 `db_session_id`，后续 SQL/Schema IPC 传 `db_session_id`。** MCP tools / AI db tools 与 prompts 直接传 **`connection_id`**（`list_connections` 返回值）；内部通过 `db_tools::resolve_connection` 按需连接。`resolve_connection` 底层走 `ConnectionManager::resolve_session` 双模解析（先按 `db_session_id` 查找活动会话，再回退到 `connection_id` 建立新会话），但 MCP/API 调用方应只传 connection_id。
+
+> 历史演进：早期版本中持久化配置 ID 叫 `config_id`、运行时会话句柄叫 `connection_id`；现已统一为上表术语（旧键名不做兼容别名）。
 
 ---
 
@@ -60,13 +62,13 @@ impl ConnectionManager {
         }
     }
     
-    /// 建立新连接
-    pub async fn connect(&self, config_id: &str) -> Result<String, ConnectionError> {
+    /// 建立新连接（入参为持久化配置连接 id，返回运行时会话 id）
+    pub async fn connect(&self, connection_id: &str) -> Result<String, ConnectionError> {
         // 获取配置
         let config = self.config_store
-            .get_connection(config_id)
+            .get_connection(connection_id)
             .await?
-            .ok_or(ConnectionError::ConfigNotFound(config_id.to_string()))?;
+            .ok_or(ConnectionError::ConnectionConfigNotFound(connection_id.to_string()))?;
         
         // 解密密码
         let mut config = config;
@@ -83,25 +85,25 @@ impl ConnectionManager {
         // 建立连接
         let handle = driver.connect(&config).await?;
         
-        let connection_id = handle.id.clone();
+        let db_session_id = handle.id.clone();
         
         // 记录活动连接
         let mut connections = self.connections.write().await;
-        connections.insert(connection_id.clone(), ActiveConnection {
+        connections.insert(db_session_id.clone(), ActiveConnection {
             handle,
             config,
             created_at: Instant::now(),
             last_used: Instant::now(),
         });
         
-        Ok(connection_id)
+        Ok(db_session_id)
     }
     
     /// 断开连接
-    pub async fn disconnect(&self, connection_id: &str) -> Result<(), ConnectionError> {
+    pub async fn disconnect(&self, db_session_id: &str) -> Result<(), ConnectionError> {
         let mut connections = self.connections.write().await;
         
-        if let Some(active) = connections.remove(connection_id) {
+        if let Some(active) = connections.remove(db_session_id) {
             let driver = self.registry.get(&active.config.database_type).await;
             if let Some(driver) = driver {
                 driver.disconnect(active.handle).await?;
@@ -111,13 +113,13 @@ impl ConnectionManager {
         Ok(())
     }
     
-    /// 获取连接
-    pub async fn get_connection(&self, connection_id: &str) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), ConnectionError> {
+    /// 获取会话
+    pub async fn get_session(&self, db_session_id: &str) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), ConnectionError> {
         let mut connections = self.connections.write().await;
         
         let active = connections
-            .get_mut(connection_id)
-            .ok_or(ConnectionError::ConnectionNotFound(connection_id.to_string()))?;
+            .get_mut(db_session_id)
+            .ok_or(ConnectionError::DbSessionNotFound(db_session_id.to_string()))?;
         
         // 更新最后使用时间
         active.last_used = Instant::now();
@@ -188,11 +190,11 @@ impl ConnectionManager {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConnectionError {
-    #[error("Configuration not found: {0}")]
-    ConfigNotFound(String),
+    #[error("Connection config not found: {0}")]
+    ConnectionConfigNotFound(String),
     
-    #[error("Connection not found: {0}")]
-    ConnectionNotFound(String),
+    #[error("DB session not found: {0}")]
+    DbSessionNotFound(String),
     
     #[error("Driver not found for type: {0:?}")]
     DriverNotFound(DatabaseType),
@@ -219,15 +221,17 @@ pub enum ConnectionError {
 ### 1.4 DbTools
 
 `src-tauri/src/services/db_tools.rs` — 共享数据库操作工具，被 AI Chat 工具调用和 MCP Server 复用：
-- `resolve_connection(config_id)` — 从 config_id（或内部兼容的运行时会话 ID）解析驱动和句柄
-- `list_connections()` — 列出所有可用连接（返回 config_id）
-- `query(config_id, …)` / `list_databases` / `list_tables` / `get_table_schema` — MCP 与 AI tools 入参均为 **config_id**
+- `resolve_connection(connection_id)` — 从持久化配置连接 ID 解析驱动和句柄（底层 `ConnectionManager::resolve_session` 双模：先匹配活动 `db_session_id`，再回退按 `connection_id` 建会话）
+- `list_connections()` — 列出所有可用连接（返回 connection_id）
+- `query(connection_id, …)` / `list_databases` / `list_tables` / `get_table_schema` — MCP 与 AI tools 入参均为 **connection_id**
 
 ---
 
 ## 2. 资源安全与防泄露
 
 ### 2.1 连接泄露防护
+
+> **注意**：以下为早期资源安全设计的示意代码（当前源码树中已无独立的 `guard.rs` 模块）；标识符按现行术语书写，`db_session_id` 指运行时会话 ID。
 
 ```rust
 // src-tauri/src/services/guard.rs
@@ -244,18 +248,18 @@ pub struct ConnectionGuard {
     /// 操作描述
     operation: String,
     /// 连接 ID
-    connection_id: String,
+    db_session_id: String,
     /// 是否已归还
     returned: bool,
 }
 
 impl ConnectionGuard {
     /// 创建连接守卫
-    pub fn new(connection_id: String, operation: String) -> Self {
+    pub fn new(db_session_id: String, operation: String) -> Self {
         Self {
             check_out_time: Instant::now(),
             operation,
-            connection_id,
+            db_session_id,
             returned: false,
         }
     }
@@ -274,7 +278,7 @@ impl ConnectionGuard {
         let elapsed = self.check_out_time.elapsed();
         if elapsed > Duration::from_secs(60) {
             Some(LeakInfo {
-                connection_id: self.connection_id.clone(),
+                db_session_id: self.db_session_id.clone(),
                 operation: self.operation.clone(),
                 held_duration: elapsed,
             })
@@ -286,7 +290,7 @@ impl ConnectionGuard {
 
 #[derive(Debug)]
 pub struct LeakInfo {
-    pub connection_id: String,
+    pub db_session_id: String,
     pub operation: String,
     pub held_duration: Duration,
 }
@@ -313,7 +317,7 @@ impl GuardManager {
                     if let Some(leak) = guard.check_leak() {
                         tracing::warn!(
                             "Potential connection leak detected: connection={}, operation={}, duration={:?}",
-                            leak.connection_id,
+                            leak.db_session_id,
                             leak.operation,
                             leak.held_duration
                         );
@@ -326,16 +330,16 @@ impl GuardManager {
     }
     
     /// 注册连接使用
-    pub async fn check_out(&self, connection_id: String, operation: String) {
-        let guard = ConnectionGuard::new(connection_id.clone(), operation);
+    pub async fn check_out(&self, db_session_id: String, operation: String) {
+        let guard = ConnectionGuard::new(db_session_id.clone(), operation);
         let mut guards = self.guards.write().await;
-        guards.insert(connection_id, guard);
+        guards.insert(db_session_id, guard);
     }
     
     /// 标记连接归还
-    pub async fn check_in(&self, connection_id: &str) {
+    pub async fn check_in(&self, db_session_id: &str) {
         let mut guards = self.guards.write().await;
-        if let Some(guard) = guards.get_mut(connection_id) {
+        if let Some(guard) = guards.get_mut(db_session_id) {
             guard.mark_returned();
         }
     }
@@ -343,15 +347,15 @@ impl GuardManager {
 
 /// RAII 连接守卫
 pub struct ScopedConnectionGuard {
-    connection_id: String,
+    db_session_id: String,
     guard_manager: Arc<GuardManager>,
 }
 
 impl ScopedConnectionGuard {
-    pub fn new(connection_id: String, guard_manager: Arc<GuardManager>) -> Self {
+    pub fn new(db_session_id: String, guard_manager: Arc<GuardManager>) -> Self {
         // 在同步上下文中使用 block_on
         let gm = guard_manager.clone();
-        let cid = connection_id.clone();
+        let cid = db_session_id.clone();
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 gm.check_out(cid, "query".to_string()).await;
@@ -359,7 +363,7 @@ impl ScopedConnectionGuard {
         });
         
         Self {
-            connection_id,
+            db_session_id,
             guard_manager,
         }
     }
@@ -368,7 +372,7 @@ impl ScopedConnectionGuard {
 impl Drop for ScopedConnectionGuard {
     fn drop(&mut self) {
         let gm = self.guard_manager.clone();
-        let cid = self.connection_id.clone();
+        let cid = self.db_session_id.clone();
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 gm.check_in(&cid).await;

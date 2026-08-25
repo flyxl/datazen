@@ -10,10 +10,10 @@ use crate::db::{ConnectionConfig, ConnectionHandle, DatabaseDriver};
 use crate::services::connection_manager::{ConnectionError, ConnectionManager};
 use crate::ssh_tunnel::SshTunnel;
 
-/// Logical registry key for a monitor connection (`monitor:{config_id}`).
+/// Logical registry key for a monitor connection (`monitor:{connection_id}`).
 #[cfg_attr(not(test), allow(dead_code))]
-pub fn monitor_registry_key(config_id: &str) -> String {
-    format!("monitor:{config_id}")
+pub fn monitor_registry_key(connection_id: &str) -> String {
+    format!("monitor:{connection_id}")
 }
 
 struct MonitorEntry {
@@ -25,10 +25,11 @@ struct MonitorEntry {
     _tunnel: Option<SshTunnel>,
 }
 
-/// Holds monitor connections keyed by `config_id` (logical key `monitor:{config_id}`).
+/// Holds monitor connections keyed by `connection_id` (logical key `monitor:{connection_id}`).
 ///
-/// Uses [`ConnectionManager::establish_connection`] so handles are never inserted
-/// into the UI `config_id_map`. Each monitor entry gets its own driver pool instance.
+/// Uses [`ConnectionManager::establish_connection`] so sessions are never inserted
+/// into the UI session map (`ConnectionManager::session_owner_map`). Each monitor
+/// entry gets its own driver pool instance.
 pub struct MonitorConnectionRegistry {
     connection_manager: Arc<ConnectionManager>,
     entries: Arc<RwLock<HashMap<String, MonitorEntry>>>,
@@ -44,15 +45,15 @@ impl MonitorConnectionRegistry {
         }
     }
 
-    /// Return an existing monitor handle for `config_id`, or establish a new one.
+    /// Return an existing monitor handle for `connection_id`, or establish a new one.
     pub async fn get_or_connect_monitor(
         &self,
-        config_id: &str,
+        connection_id: &str,
     ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), ConnectionError> {
         let lock = {
             let mut locks = self.connect_locks.lock().unwrap();
             locks
-                .entry(config_id.to_string())
+                .entry(connection_id.to_string())
                 .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
                 .clone()
         };
@@ -60,7 +61,7 @@ impl MonitorConnectionRegistry {
 
         {
             let mut entries = self.entries.write().await;
-            if let Some(entry) = entries.get_mut(config_id) {
+            if let Some(entry) = entries.get_mut(connection_id) {
                 entry.last_used = Instant::now();
                 return Ok((entry.driver.clone(), entry.handle.clone()));
             }
@@ -68,11 +69,11 @@ impl MonitorConnectionRegistry {
 
         let (driver, handle, config, tunnel) = self
             .connection_manager
-            .establish_connection(config_id)
+            .establish_connection(connection_id)
             .await?;
 
         self.entries.write().await.insert(
-            config_id.to_string(),
+            connection_id.to_string(),
             MonitorEntry {
                 driver: driver.clone(),
                 handle: handle.clone(),
@@ -85,9 +86,9 @@ impl MonitorConnectionRegistry {
         Ok((driver, handle))
     }
 
-    /// Disconnect and remove the monitor connection for `config_id`, if present.
-    pub async fn disconnect_monitor(&self, config_id: &str) -> Result<(), ConnectionError> {
-        let entry = self.entries.write().await.remove(config_id);
+    /// Disconnect and remove the monitor connection for `connection_id`, if present.
+    pub async fn disconnect_monitor(&self, connection_id: &str) -> Result<(), ConnectionError> {
+        let entry = self.entries.write().await.remove(connection_id);
         if let Some(entry) = entry {
             let _ = entry.driver.disconnect(entry.handle).await;
         }
@@ -96,15 +97,15 @@ impl MonitorConnectionRegistry {
 
     pub async fn shutdown(&self) {
         let keys: Vec<String> = self.entries.read().await.keys().cloned().collect();
-        for config_id in keys {
-            let _ = self.disconnect_monitor(&config_id).await;
+        for connection_id in keys {
+            let _ = self.disconnect_monitor(&connection_id).await;
         }
     }
 
     #[cfg(test)]
     async fn insert_test_entry(
         &self,
-        config_id: &str,
+        connection_id: &str,
         handle: ConnectionHandle,
         database_type: &str,
     ) {
@@ -205,12 +206,12 @@ impl MonitorConnectionRegistry {
         }
 
         self.entries.write().await.insert(
-            config_id.to_string(),
+            connection_id.to_string(),
             MonitorEntry {
                 driver: Arc::new(StubDriver(database_type.to_string())),
                 handle,
                 config: ConnectionConfig {
-                    id: config_id.to_string(),
+                    id: connection_id.to_string(),
                     name: "test".into(),
                     database_type: database_type.into(),
                     host: None,
@@ -238,16 +239,16 @@ impl MonitorConnectionRegistry {
     }
 
     #[cfg(test)]
-    async fn has_entry(&self, config_id: &str) -> bool {
-        self.entries.read().await.contains_key(config_id)
+    async fn has_entry(&self, connection_id: &str) -> bool {
+        self.entries.read().await.contains_key(connection_id)
     }
 
     #[cfg(test)]
-    async fn entry_pool_id(&self, config_id: &str) -> Option<String> {
+    async fn entry_pool_id(&self, connection_id: &str) -> Option<String> {
         self.entries
             .read()
             .await
-            .get(config_id)
+            .get(connection_id)
             .map(|e| e.handle.pool_id.clone())
     }
 }
@@ -268,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn monitor_registry_key_prefixes_config_id() {
+    fn monitor_registry_key_prefixes_connection_id() {
         assert_eq!(monitor_registry_key("cfg-abc"), "monitor:cfg-abc");
     }
 
@@ -328,7 +329,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn monitor_registry_does_not_touch_ui_config_id_map() {
+    async fn monitor_registry_does_not_touch_ui_session_owner_map() {
         std::env::set_var("DATAZEN_KEYRING", "file");
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
@@ -347,6 +348,6 @@ mod tests {
             )
             .await;
 
-        assert_eq!(connection_manager.ui_session_map_len().await, 0);
+        assert_eq!(connection_manager.session_owner_map_len().await, 0);
     }
 }

@@ -20,7 +20,7 @@ vi.mock('../sqlDialects', () => ({
 describe('exportTableStructureToFile', () => {
   it('returns unsupported when dialect missing', async () => {
     const result = await exportTableStructureToFile({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       tableName: 'users',
       databaseType: 'mongodb' as never,
       getDdl: vi.fn(),
@@ -33,7 +33,7 @@ describe('exportTableStructureToFile', () => {
     const getDdl = vi.fn().mockResolvedValue('CREATE TABLE users (id INT)');
     const saveText = vi.fn().mockResolvedValue(true);
     const result = await exportTableStructureToFile({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       tableName: 'users',
       databaseType: 'mysql',
       getDdl,
@@ -53,7 +53,7 @@ describe('exportTableStructureToFile', () => {
 
   it('returns cancelled when save dialog dismissed', async () => {
     const result = await exportTableStructureToFile({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       tableName: 'users',
       databaseType: 'mysql',
       getDdl: vi.fn().mockResolvedValue('CREATE TABLE t (id INT)'),
@@ -65,7 +65,7 @@ describe('exportTableStructureToFile', () => {
   it('uses fallback comment when DDL blank', async () => {
     const saveText = vi.fn().mockResolvedValue(true);
     await exportTableStructureToFile({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       tableName: 'users',
       databaseType: 'mysql',
       getDdl: vi.fn().mockResolvedValue('  '),

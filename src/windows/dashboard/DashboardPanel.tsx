@@ -93,7 +93,7 @@ export function DashboardPanel({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [widgetToDelete, setWidgetToDelete] = useState<string | null>(null);
   const [editorHiddenSql, setEditorHiddenSql] = useState<
-    { configId: string; sql: string } | undefined
+    { connectionId: string; sql: string } | undefined
   >(undefined);
   const [userWorkflows, setUserWorkflows] = useState<WorkflowListItem[]>([]);
 
@@ -204,7 +204,7 @@ export function DashboardPanel({
         if (wf.visibility === 'dashboardHidden') {
           const queryStep = wf.steps.find((s) => s.type === 'query');
           setEditorHiddenSql({
-            configId: wf.connection ?? queryStep?.connection ?? '',
+            connectionId: wf.connection ?? queryStep?.connection ?? '',
             sql: queryStep?.sql ?? 'SELECT 1 AS v',
           });
         } else {
@@ -215,7 +215,7 @@ export function DashboardPanel({
         /* keep read-only workflow id */
       }
     } else if (asNew) {
-      setEditorHiddenSql({ configId: '', sql: 'SELECT 1 AS v' });
+      setEditorHiddenSql({ connectionId: '', sql: 'SELECT 1 AS v' });
     }
     setEditorOpen(true);
   }, []);
@@ -236,13 +236,13 @@ export function DashboardPanel({
   }, [current, openWidgetEditor, t]);
 
   const handleSaveWidget = useCallback(
-    async (widget: DashboardWidget, hiddenSql?: { configId: string; sql: string }) => {
+    async (widget: DashboardWidget, hiddenSql?: { connectionId: string; sql: string }) => {
       if (!current) return;
       let savedWidget = widget;
       if (isNewWidget && hiddenSql) {
         const created = await dashboardCommands.createWidgetFromSql({
           dashboardId: current.id,
-          configId: hiddenSql.configId,
+          connectionId: hiddenSql.connectionId,
           sql: hiddenSql.sql,
           title: widget.title,
           viewMode: widget.viewMode,
@@ -254,7 +254,7 @@ export function DashboardPanel({
         if (!isNewWidget && hiddenSql) {
           await dashboardCommands.updateHiddenWidgetSql({
             workflowId: widget.workflowId,
-            configId: hiddenSql.configId,
+            connectionId: hiddenSql.connectionId,
             sql: hiddenSql.sql,
           });
         }

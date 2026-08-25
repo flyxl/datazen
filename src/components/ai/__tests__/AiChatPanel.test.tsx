@@ -14,8 +14,8 @@ vi.mock('../../../lib/windowManager', () => ({
 }));
 
 vi.mock('../WorkflowPanel', () => ({
-  WorkflowPanel: ({ connectionId }: { connectionId: string }) => (
-    <div data-testid="workflow-panel">{connectionId}</div>
+  WorkflowPanel: ({ dbSessionId }: { dbSessionId: string }) => (
+    <div data-testid="workflow-panel">{dbSessionId}</div>
   ),
 }));
 
@@ -97,14 +97,14 @@ beforeEach(() => {
 describe('AiChatPanel', () => {
   it('shows not configured empty state', () => {
     aiState.isConfigured = false;
-    const { getByText } = render(<AiChatPanel connectionId="c1" database="db" />);
+    const { getByText } = render(<AiChatPanel dbSessionId="c1" database="db" />);
     fireEvent.click(getByText('settings.ai.goToConfigure'));
     expect(openSettingsWindow).toHaveBeenCalledWith('ai');
   });
 
   it('initializes chat session and shows welcome', () => {
     aiState.chatSession = null as unknown as typeof aiState.chatSession;
-    const { getByText, rerender } = render(<AiChatPanel connectionId="c1" />);
+    const { getByText, rerender } = render(<AiChatPanel dbSessionId="c1" />);
     expect(aiState.initChatSession).toHaveBeenCalled();
     aiState.chatSession = {
       messages: [],
@@ -112,16 +112,16 @@ describe('AiChatPanel', () => {
       streamContent: '',
       streamReasoning: '',
     };
-    rerender(<AiChatPanel connectionId="c1" />);
+    rerender(<AiChatPanel dbSessionId="c1" />);
     expect(getByText('chat.welcome')).toBeInTheDocument();
   });
 
   it('sends message from input', () => {
-    const { getByTestId } = render(<AiChatPanel connectionId="c1" database="db" />);
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
     fireEvent.change(getByTestId('chat-input'), { target: { value: 'hello' } });
     fireEvent.click(getByTestId('chat-send'));
     expect(aiState.sendChatMessage).toHaveBeenCalledWith({
-      connectionId: 'c1',
+      dbSessionId: 'c1',
       database: 'db',
       content: 'hello',
       contextFiles: undefined,
@@ -140,7 +140,7 @@ describe('AiChatPanel', () => {
       },
     ];
     const { getByText, getByTestId, queryByText } = render(
-      <AiChatPanel connectionId="c1" onInsertSql={onInsertSql} />,
+      <AiChatPanel dbSessionId="c1" onInsertSql={onInsertSql} />,
     );
     expect(getByText('help')).toBeInTheDocument();
     expect(getByText('Try:')).toBeInTheDocument();
@@ -158,18 +158,18 @@ describe('AiChatPanel', () => {
   it('shows streaming states', () => {
     aiState.chatSession.isStreaming = true;
     aiState.chatSession.streamContent = 'partial';
-    const { getByText, rerender } = render(<AiChatPanel connectionId="c1" />);
+    const { getByText, rerender } = render(<AiChatPanel dbSessionId="c1" />);
     expect(getByText('partial')).toBeInTheDocument();
 
     aiState.chatSession.streamContent = '';
     aiState.chatSession.streamReasoning = '';
-    rerender(<AiChatPanel connectionId="c1" />);
+    rerender(<AiChatPanel dbSessionId="c1" />);
     expect(getByText('chat.thinking')).toBeInTheDocument();
   });
 
   it('switches to workflows tab and clears chat', () => {
     aiState.chatSession.messages = [{ role: 'user', content: 'x' }];
-    const { getByText, getByTestId } = render(<AiChatPanel connectionId="c1" />);
+    const { getByText, getByTestId } = render(<AiChatPanel dbSessionId="c1" />);
     fireEvent.click(getByText('workflows.title'));
     expect(getByTestId('workflow-panel')).toHaveTextContent('c1');
     fireEvent.click(getByText('chat.title'));
