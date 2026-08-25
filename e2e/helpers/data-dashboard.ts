@@ -63,7 +63,7 @@ export async function getSeededConfigId(): Promise<string> {
   const seeded = conns.find((c) => c.id === 'conn_e2e_pg' || c.name === '本地 PostgreSQL');
   const configId = seeded?.id ?? conns[0]?.id;
   if (!configId) {
-    throw new Error('data-dashboard E2E 需要至少一个已保存连接（config_id）');
+    throw new Error('data-dashboard E2E 需要至少一个已保存连接（持久化连接 id）');
   }
   return configId;
 }
@@ -85,7 +85,7 @@ export async function createEmptyDashboard(id: string, name: string) {
 
 export async function seedSqlWidget(
   dashboardId: string,
-  configId: string,
+  connectionId: string,
   opts: {
     title: string;
     sql: string;
@@ -98,7 +98,7 @@ export async function seedSqlWidget(
     {
       params: {
         dashboardId,
-        configId,
+        connectionId,
         sql: opts.sql,
         title: opts.title,
         viewMode: 'chart',

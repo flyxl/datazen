@@ -55,7 +55,7 @@ describe('Client parity P0–P2', () => {
       throw new Error('No PostgreSQL connection seeded for client-parity E2E');
     }
     pgId = pg.id;
-    await invokeBackend('connect', { configId: pgId });
+    await invokeBackend('connect', { connectionId: pgId });
   });
 
   after(async () => {
@@ -173,7 +173,7 @@ describe('Client parity P0–P2', () => {
     await invokeBackend('save_connection', {
       config: { ...pg, id: 'conn_e2e_readonly', name: 'E2E ReadOnly', readOnly: true },
     });
-    const liveId = await invokeBackend<string>('connect', { configId: 'conn_e2e_readonly' });
+    const liveId = await invokeBackend<string>('connect', { connectionId: 'conn_e2e_readonly' });
     const err = await invokeBackendCatch('execute_driver_command', {
       request: {
         connectionId: liveId,

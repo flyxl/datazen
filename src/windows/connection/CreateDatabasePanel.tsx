@@ -42,7 +42,7 @@ export function CreateDatabasePanel({ connectionId, databaseType }: CreateDataba
       }
 
       await driverCommands.execute({
-        connectionId,
+        dbSessionId: connectionId,
         command: 'create_database',
         input,
       });

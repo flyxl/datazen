@@ -171,9 +171,9 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     );
     getTablesMock.mockReset();
     getTablesMock.mockResolvedValue([{ name: 'users', tableType: 'table' }]);
-    invokeMock.mockImplementation(async (cmd: string, args?: { configId?: string }) => {
+    invokeMock.mockImplementation(async (cmd: string, args?: { connectionId?: string }) => {
       if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
-      if (cmd === 'connect') return `live-${args?.configId}`;
+      if (cmd === 'connect') return `live-${args?.connectionId}`;
       return null;
     });
   });
@@ -316,11 +316,11 @@ describe('DataSyncWindow (Diff Workspace)', () => {
   });
 
   it('gates compare when a database cannot be enumerated', async () => {
-    invokeMock.mockImplementation(async (cmd: string, args?: { configId?: string }) => {
+    invokeMock.mockImplementation(async (cmd: string, args?: { connectionId?: string }) => {
       if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
       if (cmd === 'connect') {
-        if (args?.configId === 'pg-tgt') throw new Error('refused');
-        return `live-${args?.configId}`;
+        if (args?.connectionId === 'pg-tgt') throw new Error('refused');
+        return `live-${args?.connectionId}`;
       }
       return null;
     });

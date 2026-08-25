@@ -3,10 +3,12 @@ import type { Value } from '../types';
 
 export interface SyncTask {
   id: string;
+  /** Runtime db session ids captured when the task was created/resumed. */
+  sourceDbSessionId: string;
+  targetDbSessionId: string;
+  /** Persisted owning connection ids (config) for display / resume lookup. */
   sourceConnectionId: string;
   targetConnectionId: string;
-  sourceConfigId: string;
-  targetConfigId: string;
   tables: string[];
   completedTables: string[];
   currentTable: string | null;
@@ -90,13 +92,13 @@ export const syncCommands = {
     }>('check_sync_conflicts', { taskId }),
 
   executeDataSync: (
-    targetConnectionId: string,
+    targetDbSessionId: string,
     statements: DataSyncSqlStatement[],
     jobId?: string,
     targetDatabase?: string,
   ) =>
     invoke<DataSyncExecutionResult>('execute_data_sync', {
-      targetConnectionId,
+      targetDbSessionId,
       statements,
       jobId: jobId ?? null,
       targetDatabase: targetDatabase ?? null,
@@ -105,8 +107,8 @@ export const syncCommands = {
   cancelDataSync: (jobId: string) => invoke<boolean>('cancel_data_sync', { jobId }),
 
   compareDataSync: (
-    sourceConnectionId: string,
-    targetConnectionId: string,
+    sourceDbSessionId: string,
+    targetDbSessionId: string,
     tables?: string[],
     jobId?: string,
     sourceDatabase?: string,
@@ -116,8 +118,8 @@ export const syncCommands = {
     options?: SyncOptions,
   ) =>
     invoke<DataSyncTableResult[]>('compare_data_sync', {
-      sourceConnectionId,
-      targetConnectionId,
+      sourceDbSessionId,
+      targetDbSessionId,
       tables: tables ?? null,
       jobId: jobId ?? null,
       sourceDatabase: sourceDatabase ?? null,
@@ -128,8 +130,8 @@ export const syncCommands = {
     }),
 
   applyDataSync: (
-    sourceConnectionId: string,
-    targetConnectionId: string,
+    sourceDbSessionId: string,
+    targetDbSessionId: string,
     tables: string[],
     jobId?: string,
     sourceDatabase?: string,
@@ -139,8 +141,8 @@ export const syncCommands = {
     options?: SyncOptions,
   ) =>
     invoke<DataSyncExecutionResult>('apply_data_sync', {
-      sourceConnectionId,
-      targetConnectionId,
+      sourceDbSessionId,
+      targetDbSessionId,
       tables,
       jobId: jobId ?? null,
       sourceDatabase: sourceDatabase ?? null,
@@ -151,16 +153,16 @@ export const syncCommands = {
     }),
 
   inspectDataSync: (
-    sourceConnectionId: string,
-    targetConnectionId: string,
+    sourceDbSessionId: string,
+    targetDbSessionId: string,
     sourceDatabase?: string,
     targetDatabase?: string,
     sourceSchema?: string,
     targetSchema?: string,
   ) =>
     invoke<DataSyncTableResult[]>('inspect_data_sync', {
-      sourceConnectionId,
-      targetConnectionId,
+      sourceDbSessionId,
+      targetDbSessionId,
       sourceDatabase: sourceDatabase ?? null,
       targetDatabase: targetDatabase ?? null,
       sourceSchema: sourceSchema ?? null,
@@ -169,8 +171,8 @@ export const syncCommands = {
 
   /** Expects backend `generate_data_sync_sql` (Phase A); falls back client-side in UI. */
   generateDataSyncSql: (
-    sourceConnectionId: string,
-    targetConnectionId: string,
+    sourceDbSessionId: string,
+    targetDbSessionId: string,
     tables: DataSyncTableResult[],
     options: SyncOptions,
     sourceDatabase?: string,
@@ -179,8 +181,8 @@ export const syncCommands = {
     targetSchema?: string,
   ) =>
     invoke<DataSyncSqlStatement[]>('generate_data_sync_sql', {
-      sourceConnectionId,
-      targetConnectionId,
+      sourceDbSessionId,
+      targetDbSessionId,
       tables,
       options,
       sourceDatabase: sourceDatabase ?? null,

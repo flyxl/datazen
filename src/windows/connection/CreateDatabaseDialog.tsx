@@ -54,7 +54,7 @@ export function CreateDatabaseDialog({
         if (value.trim()) input[field] = value.trim();
       }
 
-      await driverCommands.execute({ connectionId, command: 'create_database', input });
+      await driverCommands.execute({ dbSessionId: connectionId, command: 'create_database', input });
       const created = name.trim();
       resetForm();
       await onCreated?.(created);

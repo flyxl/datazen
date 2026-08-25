@@ -418,7 +418,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
       panelId,
       autoCommit,
       inTransaction,
-      connectionId,
+      configId,
       storeExecuteSelection,
       storeExecuteQuery,
       boundPayload,
@@ -1346,7 +1346,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
               }
               const created = await dashboardCommands.createWidgetFromSql({
                 dashboardId: targetId,
-                configId,
+                connectionId: configId,
                 sql: exec.sql,
                 title:
                   (

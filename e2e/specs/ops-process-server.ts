@@ -120,7 +120,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
         sslMode: 'disable',
       },
     });
-    procConnectionId = await invokeBackend<string>('connect', { configId: PROC_CONN_ID });
+    procConnectionId = await invokeBackend<string>('connect', { connectionId: PROC_CONN_ID });
 
     // 记下该空闲连接的 pid 供断言
     await invokeBackend('execute_query', {
@@ -244,7 +244,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
         sslMode: 'disable',
       },
     });
-    const checkConn = await invokeBackend<string>('connect', { configId: checkId });
+    const checkConn = await invokeBackend<string>('connect', { connectionId: checkId });
     const cnt = await invokeBackend('execute_query', {
       connectionId: checkConn,
       sql: `SELECT count(*)::int AS c FROM pg_stat_activity WHERE pid = ${targetPid}`,

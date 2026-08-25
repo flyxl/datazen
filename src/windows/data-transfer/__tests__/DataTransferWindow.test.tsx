@@ -141,7 +141,7 @@ describe('DataTransferWindow', () => {
     getDatabasesMock.mockResolvedValue(['src', 'tgt']);
     invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
       if (cmd === 'get_connections') return [pgSrc, pgTgt];
-      if (cmd === 'connect') return `live-${args?.configId as string}`;
+      if (cmd === 'connect') return `live-${args?.connectionId as string}`;
       return null;
     });
   });

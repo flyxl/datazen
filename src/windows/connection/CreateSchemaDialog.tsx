@@ -54,7 +54,7 @@ export function CreateSchemaDialog({
         if (value.trim()) input[field] = value.trim();
       }
 
-      await driverCommands.execute({ connectionId, command: 'create_schema', input });
+      await driverCommands.execute({ dbSessionId: connectionId, command: 'create_schema', input });
       resetForm();
       await onCreated?.();
       onClose();

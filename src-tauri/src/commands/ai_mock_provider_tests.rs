@@ -163,7 +163,7 @@ async fn mock_provider_analyze_queries() {
         .store
         .add_query_history(crate::store::QueryHistoryEntry {
             id: uuid::Uuid::new_v4().to_string(),
-            config_id: "mock-hist".into(),
+            connection_id: "mock-hist".into(),
             database: "app".into(),
             schema: None,
             sql: "SELECT 1".into(),

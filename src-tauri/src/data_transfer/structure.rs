@@ -284,12 +284,12 @@ mod tests {
         };
         let job = TransferJob {
             source: super::super::model::Endpoint {
-                connection_id: "s".into(),
+                db_session_id: "s".into(),
                 database: "db".into(),
                 schema: None,
             },
             target: super::super::model::Endpoint {
-                connection_id: "t".into(),
+                db_session_id: "t".into(),
                 database: "db".into(),
                 schema: None,
             },

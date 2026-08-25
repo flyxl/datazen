@@ -19,7 +19,7 @@ import { redisCommandInvoke } from './redisInvoke';
 import { hasRedisJson } from './hasRedisJson';
 
 export interface JsonEditorProps {
-  connectionId: string;
+  dbSessionId: string;
   dbIndex: number;
   redisKey: string;
 }
@@ -72,13 +72,13 @@ function parseScalarInput(raw: string, kind: string): JsonValue {
 }
 
 export async function invokeJsonGet(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   path = '$',
 ): Promise<JsonGetResult> {
   return redisCommandInvoke('redis', 'json_get', {
-    connectionId,
+    dbSessionId,
     dbIndex,
     key,
     path,
@@ -86,14 +86,14 @@ export async function invokeJsonGet(
 }
 
 export async function invokeJsonSet(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   path: string,
   value: JsonValue,
 ): Promise<void> {
   await redisCommandInvoke('redis', 'json_set', {
-    connectionId,
+    dbSessionId,
     dbIndex,
     key,
     path,
@@ -102,25 +102,25 @@ export async function invokeJsonSet(
 }
 
 export async function invokeJsonDel(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   path: string,
 ): Promise<JsonDelResult> {
   return redisCommandInvoke('redis', 'json_del', {
-    connectionId,
+    dbSessionId,
     dbIndex,
     key,
     path,
   }) as Promise<JsonDelResult>;
 }
 
-export async function invokeModulesList(connectionId: string): Promise<string[]> {
-  return redisCommandInvoke('redis', 'modules_list', { connectionId }) as Promise<string[]>;
+export async function invokeModulesList(dbSessionId: string): Promise<string[]> {
+  return redisCommandInvoke('redis', 'modules_list', { dbSessionId }) as Promise<string[]>;
 }
 
 function JsonTreeNode({
-  connectionId,
+  dbSessionId,
   dbIndex,
   redisKey,
   path,
@@ -129,7 +129,7 @@ function JsonTreeNode({
   depth,
   onChanged,
 }: {
-  connectionId: string;
+  dbSessionId: string;
   dbIndex: number;
   redisKey: string;
   path: string;
@@ -170,14 +170,14 @@ function JsonTreeNode({
   const saveScalar = () => {
     void run(async () => {
       const parsed = parseScalarInput(draft, kind);
-      await invokeJsonSet(connectionId, dbIndex, redisKey, path, parsed);
+      await invokeJsonSet(dbSessionId, dbIndex, redisKey, path, parsed);
       setEditing(false);
     });
   };
 
   const deleteNode = () => {
     void run(async () => {
-      await invokeJsonDel(connectionId, dbIndex, redisKey, path);
+      await invokeJsonDel(dbSessionId, dbIndex, redisKey, path);
     });
   };
 
@@ -193,7 +193,7 @@ function JsonTreeNode({
         } catch {
           parsed = addValue;
         }
-        await invokeJsonSet(connectionId, dbIndex, redisKey, child, parsed);
+        await invokeJsonSet(dbSessionId, dbIndex, redisKey, child, parsed);
       } else {
         const child = `${path}[-]`;
         let parsed: JsonValue = addValue;
@@ -202,7 +202,7 @@ function JsonTreeNode({
         } catch {
           parsed = addValue;
         }
-        await invokeJsonSet(connectionId, dbIndex, redisKey, child, parsed);
+        await invokeJsonSet(dbSessionId, dbIndex, redisKey, child, parsed);
       }
       setAddOpen(false);
       setAddName('');
@@ -338,7 +338,7 @@ function JsonTreeNode({
         children.map((child) => (
           <JsonTreeNode
             key={child.path}
-            connectionId={connectionId}
+            dbSessionId={dbSessionId}
             dbIndex={dbIndex}
             redisKey={redisKey}
             path={child.path}
@@ -352,7 +352,7 @@ function JsonTreeNode({
   );
 }
 
-export function JsonEditor({ connectionId, dbIndex, redisKey }: JsonEditorProps) {
+export function JsonEditor({ dbSessionId, dbIndex, redisKey }: JsonEditorProps) {
   const { t } = useI18n();
   const [modules, setModules] = useState<string[] | null>(null);
   const [root, setRoot] = useState<JsonValue | null>(null);
@@ -367,7 +367,7 @@ export function JsonEditor({ connectionId, dbIndex, redisKey }: JsonEditorProps)
     setLoading(true);
     setError(null);
     try {
-      const result = await invokeJsonGet(connectionId, dbIndex, redisKey, '$');
+      const result = await invokeJsonGet(dbSessionId, dbIndex, redisKey, '$');
       setRoot((result.value as JsonValue | null) ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -375,7 +375,7 @@ export function JsonEditor({ connectionId, dbIndex, redisKey }: JsonEditorProps)
     } finally {
       setLoading(false);
     }
-  }, [capable, connectionId, dbIndex, redisKey]);
+  }, [capable, dbSessionId, dbIndex, redisKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -386,14 +386,14 @@ export function JsonEditor({ connectionId, dbIndex, redisKey }: JsonEditorProps)
 
     void (async () => {
       try {
-        const list = await invokeModulesList(connectionId);
+        const list = await invokeModulesList(dbSessionId);
         if (cancelled) return;
         setModules(list);
         if (!hasRedisJson(list)) {
           setLoading(false);
           return;
         }
-        const result = await invokeJsonGet(connectionId, dbIndex, redisKey, '$');
+        const result = await invokeJsonGet(dbSessionId, dbIndex, redisKey, '$');
         if (cancelled) return;
         setRoot((result.value as JsonValue | null) ?? null);
       } catch (e) {
@@ -408,12 +408,12 @@ export function JsonEditor({ connectionId, dbIndex, redisKey }: JsonEditorProps)
     return () => {
       cancelled = true;
     };
-  }, [connectionId, dbIndex, redisKey]);
+  }, [dbSessionId, dbIndex, redisKey]);
 
   const initRoot = () => {
     setInitBusy(true);
     setError(null);
-    void invokeJsonSet(connectionId, dbIndex, redisKey, '$', {})
+    void invokeJsonSet(dbSessionId, dbIndex, redisKey, '$', {})
       .then(() => reload())
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setInitBusy(false));
@@ -457,7 +457,7 @@ export function JsonEditor({ connectionId, dbIndex, redisKey }: JsonEditorProps)
       ) : (
         <div className="max-h-[480px] overflow-auto rounded-md border border-edge bg-surface-alt p-2">
           <JsonTreeNode
-            connectionId={connectionId}
+            dbSessionId={dbSessionId}
             dbIndex={dbIndex}
             redisKey={redisKey}
             path="$"

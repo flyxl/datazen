@@ -24,40 +24,40 @@ export interface BatchRenameResult {
 export type PluginInvokeFn = RedisInvokeFn;
 
 export async function invokeDeleteKeys(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   keys: string[],
   invoke: PluginInvokeFn = redisCommandInvoke,
 ): Promise<number> {
   return (await invoke('redis', 'delete_keys', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     keys,
   })) as number;
 }
 
 export async function invokeBatchDeletePattern(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   pattern: string,
   invoke: PluginInvokeFn = redisCommandInvoke,
 ): Promise<BatchDeleteResult> {
   return (await invoke('redis', 'batch_delete_pattern', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     pattern,
   })) as BatchDeleteResult;
 }
 
 export async function invokeBatchSetTtl(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   keys: string[],
   ttlSeconds: number,
   invoke: PluginInvokeFn = redisCommandInvoke,
 ): Promise<BatchSetTtlResult> {
   return (await invoke('redis', 'batch_set_ttl', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     keys,
     ttlSeconds: ttlSeconds,
@@ -65,7 +65,7 @@ export async function invokeBatchSetTtl(
 }
 
 export async function invokeBatchRenamePrefix(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   oldPrefix: string,
   newPrefix: string,
@@ -73,7 +73,7 @@ export async function invokeBatchRenamePrefix(
   invoke: PluginInvokeFn = redisCommandInvoke,
 ): Promise<BatchRenameResult> {
   return (await invoke('redis', 'batch_rename_prefix', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     oldPrefix: oldPrefix,
     newPrefix: newPrefix,
@@ -82,20 +82,20 @@ export async function invokeBatchRenamePrefix(
 }
 
 export async function invokeCountMatching(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   pattern: string,
   invoke: PluginInvokeFn = redisCommandInvoke,
 ): Promise<number> {
   return (await invoke('redis', 'count_matching', {
-    connectionId: connectionId,
+    dbSessionId: dbSessionId,
     dbIndex: dbIndex,
     pattern,
   })) as number;
 }
 
 export interface BatchBarProps {
-  connectionId: string;
+  dbSessionId: string;
   dbIndex: number;
   selectedKeys: string[];
   searchPattern: string;
@@ -107,7 +107,7 @@ export interface BatchBarProps {
 type DialogMode = 'delete' | 'pattern' | 'ttl' | 'rename' | null;
 
 export function BatchBar({
-  connectionId,
+  dbSessionId,
   dbIndex,
   selectedKeys,
   searchPattern,
@@ -147,7 +147,7 @@ export function BatchBar({
 
   const loadPatternCount = async (pattern: string) => {
     try {
-      const count = await invokeCountMatching(connectionId, dbIndex, pattern);
+      const count = await invokeCountMatching(dbSessionId, dbIndex, pattern);
       setMatchCount(count);
     } catch {
       setMatchCount(null);
@@ -158,7 +158,7 @@ export function BatchBar({
     setBusy(true);
     setError(null);
     try {
-      const deleted = await invokeDeleteKeys(connectionId, dbIndex, selectedKeys);
+      const deleted = await invokeDeleteKeys(dbSessionId, dbIndex, selectedKeys);
       showSummary([t('redis.deleted').replace('{count}', String(deleted))]);
       onClearSelection();
       closeDialog();
@@ -174,7 +174,7 @@ export function BatchBar({
     setBusy(true);
     setError(null);
     try {
-      const result = await invokeBatchDeletePattern(connectionId, dbIndex, patternInput);
+      const result = await invokeBatchDeletePattern(dbSessionId, dbIndex, patternInput);
       const errCount = result.errors.length;
       showSummary([
         t('redis.deleted').replace('{count}', String(result.deleted)),
@@ -200,7 +200,7 @@ export function BatchBar({
         throw new Error(t('redis.ttlSeconds'));
       }
       const result = await invokeBatchSetTtl(
-        connectionId,
+        dbSessionId,
         dbIndex,
         selectedKeys,
         ttl!,
@@ -231,7 +231,7 @@ export function BatchBar({
           ? selectedKeys
           : undefined;
       const result = await invokeBatchRenamePrefix(
-        connectionId,
+        dbSessionId,
         dbIndex,
         oldPrefix,
         newPrefix,

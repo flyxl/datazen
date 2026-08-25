@@ -253,7 +253,7 @@ describe('extensionBridge permission gate (deny-by-default)', () => {
     expect(storageRemoveMock).toHaveBeenCalledWith('acme.bill-audit', 'k');
     // Driver command maps to execute_driver_command's request shape.
     expect(driverExecuteMock).toHaveBeenCalledWith({
-      connectionId: 'cfg-1',
+      dbSessionId: 'cfg-1',
       command: 'query',
       input: { sql: 'select 1' },
     });

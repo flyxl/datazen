@@ -38,7 +38,7 @@ mod tests {
     fn sample_entry(sql: &str) -> QueryHistoryEntry {
         QueryHistoryEntry {
             id: Uuid::new_v4().to_string(),
-            config_id: "cfg1".into(),
+            connection_id: "cfg1".into(),
             database: "app".into(),
             schema: None,
             sql: sql.into(),

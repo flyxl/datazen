@@ -42,7 +42,7 @@ export function CreateSchemaPanel({ connectionId, databaseType }: CreateSchemaPa
       }
 
       await driverCommands.execute({
-        connectionId,
+        dbSessionId: connectionId,
         command: 'create_schema',
         input,
       });

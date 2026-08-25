@@ -357,10 +357,10 @@ async fn sync_task_crud_and_inspect() {
 
     let task = SyncTask {
         id: "task-1".into(),
-        source_connection_id: src_conn.clone(),
-        target_connection_id: tgt_conn,
-        source_config_id: "src-cfg".into(),
-        target_config_id: "tgt-cfg".into(),
+        source_db_session_id: src_conn.clone(),
+        target_db_session_id: tgt_conn,
+        source_connection_id: "src-cfg".into(),
+        target_connection_id: "tgt-cfg".into(),
         tables: vec!["users".into()],
         completed_tables: vec![],
         current_table: None,

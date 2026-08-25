@@ -12,16 +12,17 @@ export const connectionCommands = {
 
   testConnection: (config: ConnectionConfig) => invoke<ServerInfo>('test_connection', { config }),
 
-  connect: (configId: string) => invoke<string>('connect', { configId }),
+  /** connectionId = 持久化配置连接 id；返回值为运行时 dbSessionId。 */
+  connect: (connectionId: string) => invoke<string>('connect', { connectionId }),
 
-  pingConnection: (connectionId: string) => invoke<boolean>('ping_connection', { connectionId }),
+  pingConnection: (dbSessionId: string) => invoke<boolean>('ping_connection', { dbSessionId }),
 
-  releaseConnection: (connectionId: string) =>
-    invoke<boolean>('release_connection', { connectionId }),
+  releaseConnection: (dbSessionId: string) =>
+    invoke<boolean>('release_connection', { dbSessionId }),
 
-  disconnect: (connectionId: string) => invoke<void>('disconnect', { connectionId }),
+  disconnect: (dbSessionId: string) => invoke<void>('disconnect', { dbSessionId }),
 
-  getConnectionInfo: (connectionId: string) =>
+  getConnectionInfo: (dbSessionId: string) =>
     invoke<{
       databaseType: string;
       driverCategory: string;
@@ -31,7 +32,7 @@ export const connectionCommands = {
       database?: string;
       schema?: string;
       serverVersion?: string;
-    }>('get_connection_info', { connectionId }),
+    }>('get_connection_info', { dbSessionId }),
 
   getAvailableDrivers: () => invoke<string[]>('get_available_drivers'),
 

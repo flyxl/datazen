@@ -9,9 +9,9 @@
 | # | 工作项 | 范围 | 状态 | 完成时间 | 备注 |
 |---|--------|------|------|----------|------|
 | W1 | 后端核心与服务层术语落地 | `services/connection_manager.rs` 内部命名（`config_id_map`→`session_owner_map` 等）、错误信息区分两种 id；IPC 契约暂不变 | ✅ **已完成（测试通过，0 缺陷）** | 2026-08-24 | 26 文件 +482/-278；核心模块行覆盖 86.94%~96.74%（≥80% 达标）；185 个 IPC 命令签名零变化；报告见 `test-reports/W1-test-report.md` |
-| W2 | IPC 契约切换（前后端原子批） | Tauri 命令参数改名 + `src/commands/*` 封装同步 + 全部前后端调用点 + MCP 双参数兼容（新增 `connection_id`，保留 `config_id` 别名） | 未开始 | - | |
+| W2 | IPC 契约切换（前后端原子批） | Tauri 命令参数改名 + `src/commands/*` 封装同步 + 全部前后端调用点 + **MCP 参数直接改名 `connection_id`（不留 `config_id` 别名）** + **SQLite 列与持久化字段直接改名**（历史库按既有迁移模式做一次性列重命名） | ✅ 开发完成（待测试） | 2026-08-24 | 109 文件 +1156/-1064；vitest 1886 全绿；lib 1115 过 / 2 既有失败；build 分步全过；残留遗漏类清零；范围修订见 D1，附注见 D3 |
 | W3 | 前端状态/类型/组件改名 | `types/index.ts`、stores、`connectionViews/types.ts`、组件 props、跨窗口事件 payload、windowManager、extensionBridge 显式目标 | 未开始 | - | |
-| W4 | 持久化与外部契约对齐 | SQLite 列名保留 + 注释标注新语义；MCP tool_help/资源文案；allowlist 命名；history_db 迁移注释 | 未开始 | - | |
+| W4 | 外部契约与文档对齐 | MCP 资源输出字段/tool_help 文档、CHANGELOG 破坏性变更记录（D1）、ops-dashboard 指南等 configId 表述替换 | 未开始 | - | SQLite 列已随 W2 直接改名（D1），原"列名保留"子项作废 |
 | W5 | 文档与守护 | `docs/architecture/naming.md`、AGENTS.md 精简更新、lint/grep 守护规则 | 未开始 | - | |
 
 收尾：回归测试 → 文档更新 → 合并 main。
@@ -32,6 +32,8 @@
 |------|--------|----------|------|--------|------------|
 | D1（开发自测） | W1 | 不变式：驱逐自动重连保持 db_session_id；resolve_session 双模解析；错误文案区分两种 id | `cargo test -p datazen --lib`：1115 通过 / 2 失败（既有 sandbox 环境问题，干净 HEAD 复现，非本次引入） | 待独立测试 agent 评估 | 编码 agent ad05a2ae |
 | T1（独立测试） | W1 | 10 条 E2E 视角用例（6 条已在 Rust 单元/IPC 等价层实际执行通过）；独立复核 lib 测试 1115 过 / 2 失败（既有环境问题，基线实机比对确认） | **通过**；llvm-cov 行覆盖：connection_manager 86.94%、db_tools 96.74%、query_executor 89.40%（核心模块 ≥80% 达标，TOTAL 77.03%）；缺陷 0 | 全新测试 agent 1c7f5916 |
+| D2（开发自测） | W2 | 九域 IPC 契约切换；history_db v4 迁移环；MCP 旧键拒绝守护测试 | cargo lib：1115 过 / 2 既有失败；vitest **239 文件 / 1886 用例全绿**；build 分步全过（pnpm 包装器受 sandbox node-gyp 缓存 EPERM 限制，逐条等价执行成功） | 待独立测试 agent 评估 | 编码 agent 977851e6 |
+| T2（独立测试） | W2 | 待测试 agent 产出 | 待测试 | 待评估 | 全新测试 agent |
 
 ## 四、提交记录
 
@@ -39,4 +41,13 @@
 |--------|------|
 | c76118f9 | 进度文件初始化 |
 | f0aa9882 | W1 开发里程碑：后端核心/服务层改名 + 单测 + 进度更新 |
-| （本次） | W1 测试里程碑：独立测试报告（通过，0 缺陷，覆盖率达标）+ 进度更新 |
+| 09b9d5cc | W1 测试里程碑：独立测试报告（通过，0 缺陷，覆盖率达标）+ 进度更新 |
+| （本次） | W2 开发里程碑：九域 IPC 契约切换 + history_db v4 迁移 + MCP 无别名直改 + 进度更新（含 D3 附带变更） |
+
+## 五、决策记录
+
+| # | 日期 | 决策 | 来源 |
+|---|------|------|------|
+| D1 | 2026-08-24 | W2 范围修订：① MCP 工具参数直接改名 `connection_id`，**不**保留 `config_id` 兼容别名（接受外部契约破坏性变更，W4 文档中记录 CHANGELOG）；② SQLite 列名与持久化/配置文件字段名直接改为新术语，**不**做双轨兼容；`query_history`/`favorite_queries` 沿用 history_db 既有的一次性列重命名迁移模式处理存量库。原「保留别名 + 保留旧列名」方案作废。 | 用户指示 |
+| D2 | 2026-08-24 | 合并冲突策略：main ↔ feature 双向合并遇冲突时，**两边修改都要保留**——把 main 侧的新逻辑/修复按本分支新术语（connectionId/dbSessionId）适配后融入，同时不丢失本分支的改名成果；不做"二选一"式解决。无法字面并存处（如同名标识符）以语义融合方式落地，并在进度文件登记具体取舍。收尾顺序：回归通过 → main 合入 feature 并复验编译/测试 → 文档更新 → feature 合回 main。 | 用户指示 |
+| D3 | 2026-08-24 | W2 附带变更两项：① `packages/drivers/redis/ui` 16 文件将 invoke 参数键提前改为 `dbSessionId`（经用户许可的直接改名，宿主 ConnectionViewProps 契约保持至 W3）；② 修复既有环境缺陷 `src/test/setup.ts`（jest-dom 副作用导入在本环境注册为空匹配器集，干净 HEAD 上即导致 285 用例 "Invalid Chai property" 失败），改为显式 `expect.extend`，全量转绿。 | 编码 agent 报告 |

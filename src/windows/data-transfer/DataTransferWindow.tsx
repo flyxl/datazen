@@ -135,7 +135,7 @@ export function DataTransferWindow() {
     async (configId: string): Promise<string | null> => {
       if (activeConns[configId]) return activeConns[configId];
       try {
-        const connectionId = await invoke<string>('connect', { configId });
+        const connectionId = await invoke<string>('connect', { connectionId: configId });
         setActiveConns((prev) => ({ ...prev, [configId]: connectionId }));
         return connectionId;
       } catch (e) {
@@ -214,8 +214,8 @@ export function DataTransferWindow() {
     const tgtConnId = activeConns[targetId];
     if (!srcConnId || !tgtConnId || !sourceDatabase || !targetDatabase) return null;
     return {
-      source: { connectionId: srcConnId, database: sourceDatabase },
-      target: { connectionId: tgtConnId, database: targetDatabase },
+      source: { dbSessionId: srcConnId, database: sourceDatabase },
+      target: { dbSessionId: tgtConnId, database: targetDatabase },
       mode,
       writeMode,
       tables: tablesToMappings(),

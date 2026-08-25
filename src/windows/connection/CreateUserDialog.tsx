@@ -92,7 +92,7 @@ export function CreateUserDialog({
     try {
       const input: Record<string, unknown> = { username: username.trim() };
       if (password) input.password = password;
-      await driverCommands.execute({ connectionId, command: 'create_user', input });
+      await driverCommands.execute({ dbSessionId: connectionId, command: 'create_user', input });
       setCreatedUsername(username.trim());
       setStep('grant');
     } catch (err) {
@@ -108,7 +108,7 @@ export function CreateUserDialog({
     setError(null);
     try {
       await driverCommands.execute({
-        connectionId,
+        dbSessionId: connectionId,
         command: 'grant_privileges',
         input: {
           username: createdUsername,

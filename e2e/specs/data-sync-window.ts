@@ -309,7 +309,7 @@ describe('数据同步 UI 执行闭环 (DSW-EXEC)', () => {
     await invokeSync<unknown>(cmd, args);
   }
   async function dSyncConnect(id: string) {
-    return invokeSync<string>('connect', { configId: id });
+    return invokeSync<string>('connect', { connectionId: id });
   }
   async function dSyncSql(connId: string, sql: string) {
     const run = () => invokeSync('execute_query', { connectionId: connId, sql });

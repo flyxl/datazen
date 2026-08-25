@@ -67,12 +67,12 @@ pub(crate) async fn execute_data_transfer_impl(
 
     let src_config = state
         .connection_manager
-        .get_session_config(&job.source.connection_id)
+        .get_session_config(&job.source.db_session_id)
         .await
         .cmd_err("execute_data_transfer")?;
     let tgt_config = state
         .connection_manager
-        .get_session_config(&job.target.connection_id)
+        .get_session_config(&job.target.db_session_id)
         .await
         .cmd_err("execute_data_transfer")?;
 
@@ -106,8 +106,8 @@ pub(crate) async fn execute_data_transfer_impl(
 
     let inspected = inspect_data_transfer_impl(
         state,
-        job.source.connection_id.clone(),
-        job.target.connection_id.clone(),
+        job.source.db_session_id.clone(),
+        job.target.db_session_id.clone(),
         Some(job.source.database.clone()),
         Some(job.target.database.clone()),
         job.mode,
@@ -117,12 +117,12 @@ pub(crate) async fn execute_data_transfer_impl(
 
     let (src_driver, src_handle) = state
         .connection_manager
-        .get_session(&job.source.connection_id)
+        .get_session(&job.source.db_session_id)
         .await
         .cmd_err("execute_data_transfer")?;
     let (tgt_driver, tgt_handle) = state
         .connection_manager
-        .get_session(&job.target.connection_id)
+        .get_session(&job.target.db_session_id)
         .await
         .cmd_err("execute_data_transfer")?;
 

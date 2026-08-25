@@ -123,19 +123,19 @@ export function BackupWindow() {
 
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        const connectionId = await invoke<string>('connect', { configId: conn.id });
+        const connectionId = await invoke<string>('connect', { connectionId: conn.id });
         setConnectedId(connectionId);
 
         try {
           const info = await invoke<{ serverVersion?: string }>('get_connection_info', {
-            connectionId,
+            dbSessionId: connectionId,
           });
           if (info.serverVersion) setServerVersion(info.serverVersion);
         } catch {
           /* server version is optional */
         }
 
-        const dbs = await invoke<string[]>('get_databases', { connectionId });
+        const dbs = await invoke<string[]>('get_databases', { dbSessionId: connectionId });
         setDatabases(dbs.map((name) => ({ name })));
 
         const dbPick = preferredDatabase ?? conn.database;

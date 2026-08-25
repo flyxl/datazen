@@ -163,13 +163,13 @@ describe('ServerStatusView data cards + charts (data-driven)', () => {
     const { rerender } = render(<ServerStatusView connectionId="a" />);
     await waitFor(() => {
       expect(executeMock).toHaveBeenCalledWith(
-        expect.objectContaining({ command: 'server_status_snapshot', connectionId: 'a' }),
+        expect.objectContaining({ command: 'server_status_snapshot', dbSessionId: 'a' }),
       );
     });
     rerender(<ServerStatusView connectionId="b" />);
     await waitFor(() => {
       expect(executeMock).toHaveBeenCalledWith(
-        expect.objectContaining({ command: 'server_status_snapshot', connectionId: 'b' }),
+        expect.objectContaining({ command: 'server_status_snapshot', dbSessionId: 'b' }),
       );
     });
   });

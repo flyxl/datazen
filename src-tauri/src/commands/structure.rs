@@ -10,13 +10,13 @@ use tauri::State;
 #[tauri::command]
 pub async fn get_structure_capabilities(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<StructureCapabilities, CommandError> {
     let start = Instant::now();
-    tracing::info!(%connection_id, "get_structure_capabilities");
+    tracing::info!(%db_session_id, "get_structure_capabilities");
     let (driver, handle) = state
         .connection_manager
-        .get_session(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("get_structure_capabilities")?;
 
@@ -25,7 +25,7 @@ pub async fn get_structure_capabilities(
         .await
         .cmd_err("get_structure_capabilities")?;
     tracing::info!(
-        %connection_id,
+        %db_session_id,
         dialect = %caps.dialect_id,
         ms = start.elapsed().as_millis() as u64,
         "get_structure_capabilities OK"
@@ -36,12 +36,12 @@ pub async fn get_structure_capabilities(
 #[tauri::command]
 pub async fn plan_table_structure_changes(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     request: StructureChangeRequest,
 ) -> Result<StructureChangePlan, CommandError> {
     let start = Instant::now();
     tracing::info!(
-        %connection_id,
+        %db_session_id,
         mode = ?request.mode,
         schema = ?request.schema,
         table = %request.table,
@@ -49,7 +49,7 @@ pub async fn plan_table_structure_changes(
     );
     let (driver, handle) = state
         .connection_manager
-        .get_session(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("plan_table_structure_changes")?;
 
@@ -58,7 +58,7 @@ pub async fn plan_table_structure_changes(
         .await
         .cmd_err("plan_table_structure_changes")?;
     tracing::info!(
-        %connection_id,
+        %db_session_id,
         statements = plan.statements.len(),
         ms = start.elapsed().as_millis() as u64,
         "plan_table_structure_changes OK"

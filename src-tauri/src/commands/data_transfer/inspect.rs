@@ -13,8 +13,8 @@ use datazen_driver_api::TableType;
 
 pub(crate) async fn inspect_data_transfer_impl(
     state: &AppState,
-    source_connection_id: String,
-    target_connection_id: String,
+    source_db_session_id: String,
+    target_db_session_id: String,
     source_database: Option<String>,
     target_database: Option<String>,
     mode: TransferMode,
@@ -22,12 +22,12 @@ pub(crate) async fn inspect_data_transfer_impl(
 ) -> Result<Vec<TableInspectResult>, CommandError> {
     let src_config = state
         .connection_manager
-        .get_session_config(&source_connection_id)
+        .get_session_config(&source_db_session_id)
         .await
         .cmd_err("inspect_data_transfer")?;
     let tgt_config = state
         .connection_manager
-        .get_session_config(&target_connection_id)
+        .get_session_config(&target_db_session_id)
         .await
         .cmd_err("inspect_data_transfer")?;
 
@@ -38,8 +38,8 @@ pub(crate) async fn inspect_data_transfer_impl(
     let tgt_db = resolve_db_name(target_database.as_deref(), tgt_config.database.as_deref());
 
     if is_self_database(
-        &source_connection_id,
-        &target_connection_id,
+        &source_db_session_id,
+        &target_db_session_id,
         &src_db,
         &tgt_db,
         None,
@@ -53,12 +53,12 @@ pub(crate) async fn inspect_data_transfer_impl(
 
     let (src_driver, src_handle) = state
         .connection_manager
-        .get_session(&source_connection_id)
+        .get_session(&source_db_session_id)
         .await
         .cmd_err("inspect_data_transfer")?;
     let (tgt_driver, tgt_handle) = state
         .connection_manager
-        .get_session(&target_connection_id)
+        .get_session(&target_db_session_id)
         .await
         .cmd_err("inspect_data_transfer")?;
 

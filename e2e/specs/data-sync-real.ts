@@ -109,7 +109,7 @@ async function expectCommandNotFound(invoke: () => Promise<unknown>): Promise<vo
 
 async function saveAndConnect(cfg: typeof PG_SRC): Promise<string> {
   await invokeBackend('save_connection', { config: cfg });
-  return invokeBackend<string>('connect', { configId: cfg.id });
+  return invokeBackend<string>('connect', { connectionId: cfg.id });
 }
 
 async function runSQL(connectionId: string, sql: string): Promise<void> {

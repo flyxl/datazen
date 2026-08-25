@@ -28,7 +28,7 @@ export function CreateUserPanel({ connectionId }: CreateUserPanelProps) {
       if (password) input.password = password;
 
       await driverCommands.execute({
-        connectionId,
+        dbSessionId: connectionId,
         command: 'create_user',
         input,
       });

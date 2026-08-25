@@ -19,7 +19,7 @@ import { cn } from '../../../../src/lib/cn';
 import { redisCommandInvoke } from './redisInvoke';
 
 export interface StreamEditorProps {
-  connectionId: string;
+  dbSessionId: string;
   dbIndex: number;
   redisKey: string;
 }
@@ -48,7 +48,7 @@ type StreamTab = 'entries' | 'groups';
 const ENTRY_PAGE_SIZE = 100;
 
 export async function invokeXrange(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   start = '-',
@@ -56,7 +56,7 @@ export async function invokeXrange(
   count?: number,
 ): Promise<{ entries: StreamEntry[] }> {
   return redisCommandInvoke('redis', 'xrange', {
-    connectionId,
+    dbSessionId,
     dbIndex,
     key,
     start,
@@ -66,14 +66,14 @@ export async function invokeXrange(
 }
 
 export async function invokeXadd(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   fields: Record<string, string>,
   id?: string,
 ): Promise<{ id: string }> {
   return redisCommandInvoke('redis', 'xadd', {
-    connectionId,
+    dbSessionId,
     dbIndex,
     key,
     fields,
@@ -82,26 +82,26 @@ export async function invokeXadd(
 }
 
 export async function invokeXinfoGroups(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
 ): Promise<StreamGroupInfo[]> {
   return redisCommandInvoke('redis', 'xinfo_groups', {
-    connectionId,
+    dbSessionId,
     dbIndex,
     key,
   });
 }
 
 export async function invokeXgroupCreate(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   group: string,
   startId?: string,
 ): Promise<void> {
   await redisCommandInvoke('redis', 'xgroup_create', {
-    connectionId,
+    dbSessionId,
     dbIndex,
     key,
     group,
@@ -110,13 +110,13 @@ export async function invokeXgroupCreate(
 }
 
 export async function invokeXgroupDestroy(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   group: string,
 ): Promise<void> {
   await redisCommandInvoke('redis', 'xgroup_destroy', {
-    connectionId,
+    dbSessionId,
     dbIndex,
     key,
     group,
@@ -124,13 +124,13 @@ export async function invokeXgroupDestroy(
 }
 
 export async function invokeXpending(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   group: string,
 ): Promise<{ total: number; entries: XpendingEntry[] }> {
   return redisCommandInvoke('redis', 'xpending', {
-    connectionId,
+    dbSessionId,
     dbIndex,
     key,
     group,
@@ -142,14 +142,14 @@ export async function invokeXpending(
 }
 
 export async function invokeXack(
-  connectionId: string,
+  dbSessionId: string,
   dbIndex: number,
   key: string,
   group: string,
   ids: string[],
 ): Promise<number> {
   return redisCommandInvoke('redis', 'xack', {
-    connectionId,
+    dbSessionId,
     dbIndex,
     key,
     group,
@@ -163,7 +163,7 @@ function formatFields(fields: Record<string, string>): string {
     .join(' · ');
 }
 
-export function StreamEditor({ connectionId, dbIndex, redisKey }: StreamEditorProps) {
+export function StreamEditor({ dbSessionId, dbIndex, redisKey }: StreamEditorProps) {
   const { t } = useI18n();
   const [tab, setTab] = useState<StreamTab>('entries');
   const [entries, setEntries] = useState<StreamEntry[]>([]);
@@ -193,7 +193,7 @@ export function StreamEditor({ connectionId, dbIndex, redisKey }: StreamEditorPr
     setError(null);
     try {
       const result = await invokeXrange(
-        connectionId,
+        dbSessionId,
         dbIndex,
         redisKey,
         '-',
@@ -207,13 +207,13 @@ export function StreamEditor({ connectionId, dbIndex, redisKey }: StreamEditorPr
     } finally {
       setLoading(false);
     }
-  }, [connectionId, dbIndex, redisKey]);
+  }, [dbSessionId, dbIndex, redisKey]);
 
   const loadGroups = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await invokeXinfoGroups(connectionId, dbIndex, redisKey);
+      const result = await invokeXinfoGroups(dbSessionId, dbIndex, redisKey);
       setGroups(result);
       if (selectedGroup && !result.some((g) => g.name === selectedGroup)) {
         setSelectedGroup(null);
@@ -226,14 +226,14 @@ export function StreamEditor({ connectionId, dbIndex, redisKey }: StreamEditorPr
     } finally {
       setLoading(false);
     }
-  }, [connectionId, dbIndex, redisKey, selectedGroup]);
+  }, [dbSessionId, dbIndex, redisKey, selectedGroup]);
 
   const loadPending = useCallback(
     async (group: string) => {
       setBusy(true);
       setError(null);
       try {
-        const result = await invokeXpending(connectionId, dbIndex, redisKey, group);
+        const result = await invokeXpending(dbSessionId, dbIndex, redisKey, group);
         setPending(result.entries);
         setSelectedPending(new Set());
       } catch (e) {
@@ -243,7 +243,7 @@ export function StreamEditor({ connectionId, dbIndex, redisKey }: StreamEditorPr
         setBusy(false);
       }
     },
-    [connectionId, dbIndex, redisKey],
+    [dbSessionId, dbIndex, redisKey],
   );
 
   useEffect(() => {
@@ -376,7 +376,7 @@ export function StreamEditor({ connectionId, dbIndex, redisKey }: StreamEditorPr
               disabled={busy || !newField.trim()}
               onClick={() =>
                 void runAction(async () => {
-                  await invokeXadd(connectionId, dbIndex, redisKey, {
+                  await invokeXadd(dbSessionId, dbIndex, redisKey, {
                     [newField.trim()]: newValue,
                   });
                   setNewField('');
@@ -435,7 +435,7 @@ export function StreamEditor({ connectionId, dbIndex, redisKey }: StreamEditorPr
                         e.stopPropagation();
                         void runAction(async () => {
                           await invokeXgroupDestroy(
-                            connectionId,
+                            dbSessionId,
                             dbIndex,
                             redisKey,
                             group.name,
@@ -478,7 +478,7 @@ export function StreamEditor({ connectionId, dbIndex, redisKey }: StreamEditorPr
               onClick={() =>
                 void runAction(async () => {
                   await invokeXgroupCreate(
-                    connectionId,
+                    dbSessionId,
                     dbIndex,
                     redisKey,
                     newGroup.trim(),
@@ -507,7 +507,7 @@ export function StreamEditor({ connectionId, dbIndex, redisKey }: StreamEditorPr
                   onClick={() =>
                     void runAction(async () => {
                       await invokeXack(
-                        connectionId,
+                        dbSessionId,
                         dbIndex,
                         redisKey,
                         selectedGroup,

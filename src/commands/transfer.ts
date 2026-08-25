@@ -12,7 +12,7 @@ export type TransferMappingStatus =
   | 'INCOMPATIBLE';
 
 export interface TransferEndpoint {
-  connectionId: string;
+  dbSessionId: string;
   database: string;
   schema?: string | null;
 }

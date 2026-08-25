@@ -356,7 +356,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
     try {
       const res = await databaseCommands.getTableData({
-        connectionId,
+        dbSessionId: connectionId,
         table,
         page,
         pageSize,

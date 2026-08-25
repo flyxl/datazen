@@ -1,19 +1,19 @@
 //! MCP connection allowlist — empty means all saved connections are exposed.
 
-/// Returns true when `config_id` may be used by MCP tools/resources.
+/// Returns true when `connection_id` may be used by MCP tools/resources.
 ///
 /// An empty `allowed` list means unrestricted (all connections).
-pub fn is_connection_allowed(config_id: &str, allowed: &[String]) -> bool {
-    allowed.is_empty() || allowed.iter().any(|id| id == config_id)
+pub fn is_connection_allowed(connection_id: &str, allowed: &[String]) -> bool {
+    allowed.is_empty() || allowed.iter().any(|id| id == connection_id)
 }
 
 /// Returns `Ok(())` when the connection is allowlisted (or allowlist is empty).
-pub fn ensure_connection_allowed(config_id: &str, allowed: &[String]) -> Result<(), String> {
-    if is_connection_allowed(config_id, allowed) {
+pub fn ensure_connection_allowed(connection_id: &str, allowed: &[String]) -> Result<(), String> {
+    if is_connection_allowed(connection_id, allowed) {
         Ok(())
     } else {
         Err(format!(
-            "Connection '{config_id}' is not in the MCP connection allowlist"
+            "Connection '{connection_id}' is not in the MCP connection allowlist"
         ))
     }
 }

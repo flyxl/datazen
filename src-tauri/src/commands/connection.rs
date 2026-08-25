@@ -78,65 +78,65 @@ pub(crate) async fn connect_impl(
 
 pub(crate) async fn ping_connection_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<bool, CommandError> {
-    let alive = state.connection_manager.ping(&connection_id).await;
+    let alive = state.connection_manager.ping(&db_session_id).await;
     Ok(alive)
 }
 
 pub(crate) async fn release_connection_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<bool, CommandError> {
-    tracing::info!(%connection_id, "release_connection");
+    tracing::info!(%db_session_id, "release_connection");
     let disconnected = state
         .connection_manager
-        .release(&connection_id)
+        .release(&db_session_id)
         .await
         .cmd_err("release_connection")?;
     if disconnected {
-        state.schema_cache.clear_connection(&connection_id).await;
-        tracing::info!(%connection_id, "release_connection: session torn down (ref=0)");
+        state.schema_cache.clear_connection(&db_session_id).await;
+        tracing::info!(%db_session_id, "release_connection: session torn down (ref=0)");
     } else {
-        tracing::info!(%connection_id, "release_connection: ref decremented, session kept alive");
+        tracing::info!(%db_session_id, "release_connection: ref decremented, session kept alive");
     }
     Ok(disconnected)
 }
 
 pub(crate) async fn disconnect_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<(), CommandError> {
-    tracing::info!(%connection_id, "disconnect (force)");
+    tracing::info!(%db_session_id, "disconnect (force)");
     if let Some(tx) = state
         .session_transactions
         .lock()
         .await
-        .remove(&connection_id)
+        .remove(&db_session_id)
     {
-        if let Ok((driver, _)) = state.connection_manager.get_session(&connection_id).await {
+        if let Ok((driver, _)) = state.connection_manager.get_session(&db_session_id).await {
             if let Err(e) = driver.rollback(tx).await {
-                tracing::warn!(%connection_id, error = %e, "rollback session tx on disconnect");
+                tracing::warn!(%db_session_id, error = %e, "rollback session tx on disconnect");
             }
         }
     }
     state
         .connection_manager
-        .disconnect(&connection_id)
+        .disconnect(&db_session_id)
         .await
         .cmd_err("disconnect")?;
-    state.schema_cache.clear_connection(&connection_id).await;
-    tracing::info!(%connection_id, "disconnect OK");
+    state.schema_cache.clear_connection(&db_session_id).await;
+    tracing::info!(%db_session_id, "disconnect OK");
     Ok(())
 }
 
 pub(crate) async fn get_connection_info_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<serde_json::Value, CommandError> {
     let config = state
         .connection_manager
-        .get_session_config(&connection_id)
+        .get_session_config(&db_session_id)
         .await
         .cmd_err("get_connection_info")?;
 
@@ -198,41 +198,42 @@ pub async fn test_connection(
 #[tauri::command]
 pub async fn connect(
     state: State<'_, AppState>,
-    config_id: String,
+    connection_id: String,
 ) -> Result<String, CommandError> {
-    connect_impl(&state, config_id).await
+    // connection_id = 持久化配置连接 id；返回值为运行时 db_session_id。
+    connect_impl(&state, connection_id).await
 }
 
 #[tauri::command]
 pub async fn ping_connection(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<bool, CommandError> {
-    ping_connection_impl(&state, connection_id).await
+    ping_connection_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
 pub async fn release_connection(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<bool, CommandError> {
-    release_connection_impl(&state, connection_id).await
+    release_connection_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
 pub async fn disconnect(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<(), CommandError> {
-    disconnect_impl(&state, connection_id).await
+    disconnect_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
 pub async fn get_connection_info(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<serde_json::Value, CommandError> {
-    get_connection_info_impl(&state, connection_id).await
+    get_connection_info_impl(&state, db_session_id).await
 }
 
 #[tauri::command]

@@ -25,19 +25,19 @@ pub struct RowDeleteBatch {
 
 pub(crate) async fn commit_row_updates_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     table: String,
     updates: Vec<RowUpdateBatch>,
 ) -> Result<(), CommandError> {
-    tracing::info!(%connection_id, %table, batch_count = updates.len(), "commit_row_updates");
+    tracing::info!(%db_session_id, %table, batch_count = updates.len(), "commit_row_updates");
     let (driver, handle) = state
         .connection_manager
-        .get_session(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("commit_row_updates")?;
     let read_only = state
         .connection_manager
-        .get_session_config(&connection_id)
+        .get_session_config(&db_session_id)
         .await
         .map(|c| c.read_only)
         .unwrap_or(false);
@@ -51,7 +51,7 @@ pub(crate) async fn commit_row_updates_impl(
         .session_transactions
         .lock()
         .await
-        .contains_key(&connection_id);
+        .contains_key(&db_session_id);
 
     // Prefer DatabaseDriver transaction API; fall back to BEGIN/COMMIT strings
     // for drivers that still stub the trait. Skip wrapping when a session
@@ -98,7 +98,7 @@ pub(crate) async fn commit_row_updates_impl(
     match result {
         Ok(()) => {
             if session_open {
-                tracing::info!(%connection_id, %table, batch_count = updates.len(), "commit_row_updates OK (session tx)");
+                tracing::info!(%db_session_id, %table, batch_count = updates.len(), "commit_row_updates OK (session tx)");
                 return Ok(());
             }
             if let Some(tx) = trait_tx {
@@ -109,7 +109,7 @@ pub(crate) async fn commit_row_updates_impl(
                     .await
                     .cmd_err("commit_row_updates")?;
             }
-            tracing::info!(%connection_id, %table, batch_count = updates.len(), "commit_row_updates OK");
+            tracing::info!(%db_session_id, %table, batch_count = updates.len(), "commit_row_updates OK");
             Ok(())
         }
         Err(e) => {
@@ -131,28 +131,28 @@ pub(crate) async fn commit_row_updates_impl(
 #[tauri::command]
 pub async fn commit_row_updates(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     table: String,
     updates: Vec<RowUpdateBatch>,
 ) -> Result<(), CommandError> {
-    commit_row_updates_impl(&state, connection_id, table, updates).await
+    commit_row_updates_impl(&state, db_session_id, table, updates).await
 }
 
 pub(crate) async fn commit_row_deletes_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
     table: String,
     deletes: Vec<RowDeleteBatch>,
 ) -> Result<(), CommandError> {
-    tracing::info!(%connection_id, %table, batch_count = deletes.len(), "commit_row_deletes");
+    tracing::info!(%db_session_id, %table, batch_count = deletes.len(), "commit_row_deletes");
     let (driver, handle) = state
         .connection_manager
-        .get_session(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("commit_row_deletes")?;
     let read_only = state
         .connection_manager
-        .get_session_config(&connection_id)
+        .get_session_config(&db_session_id)
         .await
         .map(|c| c.read_only)
         .unwrap_or(false);
@@ -176,7 +176,7 @@ pub(crate) async fn commit_row_deletes_impl(
         .session_transactions
         .lock()
         .await
-        .contains_key(&connection_id);
+        .contains_key(&db_session_id);
 
     let trait_tx = if session_open {
         None
@@ -215,7 +215,7 @@ pub(crate) async fn commit_row_deletes_impl(
     match result {
         Ok(()) => {
             if session_open {
-                tracing::info!(%connection_id, %table, batch_count = deletes.len(), "commit_row_deletes OK (session tx)");
+                tracing::info!(%db_session_id, %table, batch_count = deletes.len(), "commit_row_deletes OK (session tx)");
                 return Ok(());
             }
             if let Some(tx) = trait_tx {
@@ -226,7 +226,7 @@ pub(crate) async fn commit_row_deletes_impl(
                     .await
                     .cmd_err("commit_row_deletes")?;
             }
-            tracing::info!(%connection_id, %table, batch_count = deletes.len(), "commit_row_deletes OK");
+            tracing::info!(%db_session_id, %table, batch_count = deletes.len(), "commit_row_deletes OK");
             Ok(())
         }
         Err(e) => {
@@ -248,11 +248,11 @@ pub(crate) async fn commit_row_deletes_impl(
 #[tauri::command]
 pub async fn commit_row_deletes(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
     table: String,
     deletes: Vec<RowDeleteBatch>,
 ) -> Result<(), CommandError> {
-    commit_row_deletes_impl(&state, connection_id, table, deletes).await
+    commit_row_deletes_impl(&state, db_session_id, table, deletes).await
 }
 
 #[cfg(test)]

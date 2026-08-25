@@ -346,7 +346,7 @@ async fn save_ai_config_uses_atomic_encrypted_write() {
 fn sample_history_entry(sql: &str) -> QueryHistoryEntry {
     QueryHistoryEntry {
         id: uuid::Uuid::new_v4().to_string(),
-        config_id: "cfg-1".into(),
+        connection_id: "cfg-1".into(),
         database: "db".into(),
         schema: None,
         sql: sql.into(),
@@ -446,7 +446,7 @@ async fn favorite_queries_crud() {
 
     let fav = FavoriteQuery {
         id: "f1".into(),
-        config_id: "cfg-1".into(),
+        connection_id: "cfg-1".into(),
         title: "Users".into(),
         sql: "SELECT * FROM users".into(),
         created_at: Utc::now(),
@@ -465,10 +465,10 @@ async fn sync_tasks_crud() {
     let now = Utc::now();
     let task = SyncTask {
         id: "t1".into(),
-        source_connection_id: "s".into(),
-        target_connection_id: "t".into(),
-        source_config_id: "sc".into(),
-        target_config_id: "tc".into(),
+        source_db_session_id: "s".into(),
+        target_db_session_id: "t".into(),
+        source_connection_id: "sc".into(),
+        target_connection_id: "tc".into(),
         tables: vec!["users".into()],
         completed_tables: vec![],
         current_table: None,

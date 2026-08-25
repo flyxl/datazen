@@ -414,7 +414,7 @@ describe('F6 security: malformed command.invoke payloads', () => {
     await waitUntil(() => frame.sent.some((m) => m.reqId === 'nullargs'));
 
     expect(driverExecuteMock).toHaveBeenCalledWith({
-      connectionId: 'c',
+      dbSessionId: 'c',
       command: 'query',
       input: {},
     });
@@ -426,7 +426,7 @@ describe('F6 security: malformed command.invoke payloads', () => {
     invoke('arrargs', { configId: 'c', command: 'query', args: ['a', 'b'] });
     await waitUntil(() => frame.sent.some((m) => m.reqId === 'arrargs'));
     expect(driverExecuteMock).toHaveBeenCalledWith({
-      connectionId: 'c',
+      dbSessionId: 'c',
       command: 'query',
       input: ['a', 'b'],
     });
