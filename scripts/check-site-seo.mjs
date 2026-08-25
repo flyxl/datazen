@@ -33,6 +33,16 @@ function mustInclude(html, rel, needle) {
   if (html && !html.includes(needle)) fail(`${rel}: missing ${needle}`);
 }
 
+/**
+ * Prettier (run by the pre-commit hook on staged *.html) may wrap a link's
+ * attributes across lines, so exact single-line substring checks produce
+ * false failures. Normalize every <link ...> element to a single-line tag
+ * before matching.
+ */
+function normalizeLinks(html) {
+  return html.replace(/<link\b[\s\S]*?>/g, (tag) => tag.replace(/\s+/g, " ").trim());
+}
+
 function mustNotInclude(html, rel, needle) {
   if (html && html.includes(needle)) fail(`${rel}: must not contain ${needle}`);
 }
@@ -44,8 +54,8 @@ if (fs.existsSync(path.join(ROOT, "assets/video"))) {
 for (const file of PAGES) {
   const enRel = file;
   const zhRel = path.join("zh", file);
-  const en = read(enRel);
-  const zh = read(zhRel);
+  const en = normalizeLinks(read(enRel));
+  const zh = normalizeLinks(read(zhRel));
 
   const enCanon =
     file === "index.html" ? `${ORIGIN}/` : `${ORIGIN}/${file}`;
