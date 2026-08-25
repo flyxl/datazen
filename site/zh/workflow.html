@@ -53,7 +53,7 @@
       <div class="wrap">
         <p class="breadcrumb"><a href="index.html">首页</a> / Workflow</p>
         <h1>⚙️ Workflow 自动化</h1>
-        <p>把「查数 → 分析 → 决策」固化成可复用的 YAML 流程，跨库执行、AI 参与、随时重跑。</p>
+        <p>把「查数 → 分析 → 决策」固化成可复用流程。跨库执行、可让 AI 参与、随时重跑。</p>
       </div>
     </section>
 
@@ -128,10 +128,7 @@ output:
           <ul>
             <li><strong>连接窗口 AI 侧栏</strong>：选中工作流、填变量、看结果</li>
             <li><strong>独立 Workflow 窗口</strong>：标签页管理多个流程，全屏专注</li>
-            <li>
-              <strong>MCP 调用</strong>：<code>list_workflows</code> /
-              <code>run_workflow</code> 暴露给外部 AI
-            </li>
+            <li><strong>外部 AI 工具</strong>：列出并执行你的流程</li>
             <li><strong>AI 生成</strong>：让 AI 根据需求直接生成一份可执行的工作流</li>
           </ul>
         </div>
@@ -164,9 +161,8 @@ output:
           </div>
         </div>
         <div class="callout">
-          <strong>边界说明：</strong>当前步骤类型聚焦查询与 AI 编排（无独立 HTTP / 脚本步骤）；
-          <code>foreach</code> 默认最多 100 次迭代，MCP 调用通常返回最终输出而非逐步详情。
-          完整语法见<a
+          <strong>边界说明：</strong>当前聚焦查询与 AI 编排（暂无独立 HTTP / 脚本步骤）。
+          循环带有合理默认上限，避免失控。完整语法见<a
             href="https://github.com/flyxl/datazen/blob/main/docs/features/workflow-guide.zh-CN.md"
             target="_blank"
             rel="noopener"
