@@ -114,6 +114,9 @@ src-tauri/tests/.env.test
 # Vitest coverage output
 coverage/
 
+# Regression sandbox HOME (created by scripts/run-regression.sh / run-e2e-minimal.sh)
+.regression-home/
+
 # Duplicate lockfiles (pnpm uses pnpm-lock.yaml; Cargo workspace uses root Cargo.lock)
 package-lock.json
 src-tauri/Cargo.lock
