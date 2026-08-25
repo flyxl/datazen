@@ -54,8 +54,8 @@
         <p class="breadcrumb"><a href="index.html">Home</a> / Workflow</p>
         <h1>⚙️ Workflow Automation</h1>
         <p>
-          Turn "query → analyze → decide" into reusable YAML flows — cross-database execution, AI
-          participation, rerun anytime.
+          Turn "query → analyze → decide" into reusable flows. Run across databases, involve AI, and
+          re-run anytime.
         </p>
       </div>
     </section>
@@ -139,8 +139,8 @@ output:
               full-screen focus
             </li>
             <li>
-              <strong>MCP invocation</strong>: <code>list_workflows</code> /
-              <code>run_workflow</code> exposed to external AI
+              <strong>External AI tools</strong>: list and run your flows from compatible external
+              AI tools
             </li>
             <li>
               <strong>AI generation</strong>: let AI generate an executable workflow from your
@@ -186,9 +186,9 @@ output:
           </div>
         </div>
         <div class="callout">
-          <strong>Scope note:</strong> current step types focus on query and AI orchestration (no
-          standalone HTTP / script steps); <code>foreach</code> defaults to 100 iterations max; MCP
-          calls typically return final output rather than step-by-step details. Full syntax in the
+          <strong>Scope note:</strong> current focus is query and AI orchestration (no standalone
+          HTTP / script steps). Loops have sensible defaults to avoid runaway runs. Full syntax is
+          in the
           <a
             href="https://github.com/flyxl/datazen/blob/main/docs/features/workflow-guide.en.md"
             target="_blank"

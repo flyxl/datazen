@@ -1,165 +1,255 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AI Assistant — DataZen</title>
-  <meta name="description" content="DataZen AI: natural-language SQL, error diagnosis, EXPLAIN analysis, AI Chat sidebar, smart filters, schema docs, and connection troubleshooting." />
-  <link rel="canonical" href="https://flyxl.github.io/datazen/ai.html" />
-  <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/ai.html" />
-  <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/ai.html" />
-  <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/ai.html" />
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="AI Assistant — DataZen" />
-  <meta property="og:description" content="DataZen AI: natural-language SQL, error diagnosis, EXPLAIN analysis, AI Chat sidebar, smart filters, schema docs, and connection troubleshooting." />
-  <meta property="og:url" content="https://flyxl.github.io/datazen/ai.html" />
-  <meta property="og:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <meta property="og:locale" content="en_US" />
-  <meta property="og:locale:alternate" content="zh_CN" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="AI Assistant — DataZen" />
-  <meta name="twitter:description" content="DataZen AI: natural-language SQL, error diagnosis, EXPLAIN analysis, AI Chat sidebar, smart filters, schema docs, and connection troubleshooting." />
-  <meta name="twitter:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
-  <link rel="icon" href="assets/logo.png" />
-  <link rel="stylesheet" href="assets/css/site.css" />
-</head>
-<body>
-  <header id="site-header"></header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Assistant — DataZen</title>
+    <meta
+      name="description"
+      content="Bring your own API key — natural-language SQL, error diagnosis, EXPLAIN insights, chat with database context, smart filters, and integration with external AI tools. Local-first."
+    />
+    <link rel="canonical" href="https://flyxl.github.io/datazen/ai.html" />
+    <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/ai.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/ai.html" />
+    <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/ai.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="AI Assistant — DataZen" />
+    <meta
+      property="og:description"
+      content="Bring your own API key — natural-language SQL, error diagnosis, EXPLAIN insights, chat with database context, smart filters, and integration with external AI tools. Local-first."
+    />
+    <meta property="og:url" content="https://flyxl.github.io/datazen/ai.html" />
+    <meta
+      property="og:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="AI Assistant — DataZen" />
+    <meta
+      name="twitter:description"
+      content="Bring your own API key — natural-language SQL, error diagnosis, EXPLAIN insights, chat with database context, smart filters, and integration with external AI tools. Local-first."
+    />
+    <meta
+      name="twitter:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <link rel="icon" href="assets/logo.png" />
+    <link rel="stylesheet" href="assets/css/site.css" />
+  </head>
+  <body>
+    <header id="site-header"></header>
 
-  <section class="page-head">
-    <div class="wrap">
-      <p class="breadcrumb"><a href="index.html">Home</a> / AI Assistant</p>
-      <h1>🤖 AI Assistant</h1>
-      <p>From writing SQL to understanding data — AI is woven into every step of querying, diagnosis, analysis, and automation.</p>
-    </div>
-  </section>
-
-  <section class="wrap">
-    <!-- NL2SQL -->
-    <div class="feature-block">
-      <div>
-        <span class="kicker">NL2SQL</span>
-        <h2>Generate SQL in natural language</h2>
-        <p>Can't remember a table or function name? Describe what you need in plain language. AI uses the current database schema to generate SQL with streaming output — click to execute. Results can be sent straight to the query editor for further edits.</p>
-        <ul>
-          <li>Auto-injects current database schema as context (compact DDL + token budget control)</li>
-          <li>Streams output as it generates; stop anytime</li>
-          <li>One-click execute or fill the editor with generated SQL</li>
-          <li>Supports OpenAI, Anthropic, DeepSeek, and custom endpoints</li>
-        </ul>
+    <section class="page-head">
+      <div class="wrap">
+        <p class="breadcrumb"><a href="index.html">Home</a> / AI Assistant</p>
+        <h1>🤖 AI Assistant</h1>
+        <p>
+          From writing SQL to understanding data — AI is built into querying, diagnosis, analysis,
+          and automation.
+        </p>
+        <p>
+          You bring your own API key. Works with OpenAI, Anthropic, DeepSeek, and compatible
+          endpoints.
+        </p>
       </div>
-      <img class="feature-shot" src="assets/screenshots/03-ai-nl2sql.png" alt="NL2SQL natural language SQL generation" />
-    </div>
+    </section>
 
-    <!-- Diagnosis -->
-    <div class="feature-block reverse">
-      <div>
-        <span class="kicker">SQL Error Diagnosis</span>
-        <h2>After an error, no more guessing from docs</h2>
-        <p>When a query fails, click "Diagnose". AI combines the error message and schema to pinpoint the cause and suggest corrected SQL — apply it to the editor in one click.</p>
-        <ul>
-          <li>Structured display: original error + AI analysis + fix suggestions</li>
-          <li>One-click apply corrected SQL — no manual editing</li>
-          <li>Handles common syntax, column name, and type mismatch issues well</li>
-        </ul>
-      </div>
-      <img class="feature-shot" src="assets/screenshots/05-ai-diagnosis.png" alt="SQL error diagnosis" />
-    </div>
-
-    <!-- EXPLAIN -->
-    <div class="feature-block">
-      <div>
-        <span class="kicker">EXPLAIN Analysis</span>
-        <h2>Execution plan visualization + AI interpretation</h2>
-        <p>A slow query — what's the plan, where's the bottleneck, are indexes being used? DataZen visualizes EXPLAIN results and lets AI tell you how to optimize.</p>
-        <ul>
-          <li>Tree visualization of execution plans — scan type, row counts, cost at a glance</li>
-          <li>AI identifies bottleneck nodes and suggests optimizations</li>
-          <li>EXPLAIN support for built-in drivers such as PG / MySQL</li>
-        </ul>
-      </div>
-      <img class="feature-shot" src="assets/screenshots/06-ai-explain.png" alt="EXPLAIN analysis" />
-    </div>
-
-    <!-- Chat -->
-    <div class="feature-block reverse">
-      <div>
-        <span class="kicker">AI Chat Sidebar</span>
-        <h2>Conversations with database context</h2>
-        <p>Bring up AI chat from the sidebar anytime — it automatically includes the current connection's schema. SQL in responses can be inserted into the editor with one click; use <code>@</code> to reference local files as context.</p>
-        <ul>
-          <li>Auto-injects Schema context — no need to paste DDL manually</li>
-          <li><code>@</code> references local files (whitelist + 512KB limit + path traversal protection)</li>
-          <li>One-click extract code blocks as SQL into the editor</li>
-          <li>Streaming responses with reasoning and answer shown separately</li>
-        </ul>
-      </div>
-      <img class="feature-shot" src="assets/screenshots/07-ai-chat.png" alt="AI Chat sidebar" />
-    </div>
-
-    <!-- Smart filter -->
-    <div class="feature-block">
-      <div>
-        <span class="kicker">Smart Filters</span>
-        <h2>Table filters in plain language</h2>
-        <p>"Amount greater than 1000 and status is shipped" — type natural language in the filter box. AI parses it into structured filter conditions and applies them, with column validation and null operators handled automatically.</p>
-        <ul>
-          <li>Natural language → structured filter conditions, viewable and editable anytime</li>
-          <li>Validates against current table column names to avoid typos</li>
-          <li>Works seamlessly with sort, pagination, and virtual scrolling</li>
-        </ul>
-      </div>
-      <img class="feature-shot" src="assets/screenshots/08-ai-filter.png" alt="Natural language filters" />
-    </div>
-
-    <!-- More AI -->
-    <div class="feature-block reverse">
-      <div>
-        <span class="kicker">More AI Capabilities</span>
-        <h2>Beyond querying</h2>
-        <ul>
-          <li><strong>Schema documentation</strong>: one-click Markdown docs for your database structure</li>
-          <li><strong>Connection troubleshooting</strong>: when connections fail, diagnose SSL / SSH / timeout settings</li>
-          <li><strong>Query history analysis</strong>: auto-summarize categories and purposes of past queries</li>
-          <li><strong>Configurable prompts</strong>: driver-level + user-level overrides; AI responses follow UI language</li>
-        </ul>
-      </div>
-      <img class="feature-shot" src="assets/screenshots/09-ai-more.png" alt="More AI capabilities" />
-    </div>
-  </section>
-
-  <section class="section">
-    <div class="wrap">
-      <h2 style="font-size:26px;margin-bottom:20px">Models &amp; protocol support</h2>
-      <table class="tbl">
-        <tr><th>Provider</th><th>Protocol</th><th>Notes</th></tr>
-        <tr><td>OpenAI</td><td>Responses / Chat Completions</td><td>Official API or compatible gateway</td></tr>
-        <tr><td>Anthropic</td><td>Messages</td><td>Claude series models</td></tr>
-        <tr><td>DeepSeek</td><td>Chat Completions</td><td>Supports reasoning output</td></tr>
-        <tr><td>Custom endpoint</td><td>Three protocols available</td><td>Any OpenAI-compatible service (e.g. local inference)</td></tr>
-      </table>
-      <div class="callout">
-        <strong>Dynamic model list:</strong> after configuring an API key, available models are fetched automatically — no manual model name entry;
-        supports streaming output, reasoning content, and configurable max_tokens.
-      </div>
-
-      <h2 style="font-size:26px;margin:40px 0 20px">MCP capabilities</h2>
-      <div class="grid-2">
-        <div class="card">
-          <div class="icon">🖥️</div>
-          <h3>MCP Server</h3>
-          <p>Built-in 9 tools (query, Schema, EXPLAIN, Workflow, etc.) + resources + prompts. Supports <code>--mcp-stdio</code> headless mode — connect any MCP client and let external AI operate your databases directly.</p>
+    <section class="wrap">
+      <!-- NL2SQL -->
+      <div class="feature-block">
+        <div>
+          <span class="kicker">NL2SQL</span>
+          <h2>Natural language → SQL</h2>
+          <p>
+            Describe what you need. DataZen uses the current database schema as context and streams
+            SQL you can run or edit.
+          </p>
+          <ul>
+            <li>Schema of the current connection is included automatically</li>
+            <li>Streaming output — stop anytime</li>
+            <li>One-click run, or send to the editor</li>
+            <li>Supports OpenAI, Anthropic, DeepSeek, and custom endpoints</li>
+          </ul>
         </div>
-        <div class="card">
-          <div class="icon">🔌</div>
-          <h3>MCP Client</h3>
-          <p>Connect external MCP servers in AI Chat — bring filesystem, search, third-party tools, and more into the conversation to extend AI's available toolset.</p>
+        <img
+          class="feature-shot"
+          src="assets/screenshots/03-ai-nl2sql.png"
+          alt="NL2SQL natural language SQL generation"
+        />
+      </div>
+
+      <!-- Diagnosis -->
+      <div class="feature-block reverse">
+        <div>
+          <span class="kicker">SQL Error Diagnosis</span>
+          <h2>After an error, no more guessing from docs</h2>
+          <p>
+            When a query fails, click "Diagnose". AI combines the error message and schema to
+            pinpoint the cause and suggest corrected SQL — apply it to the editor in one click.
+          </p>
+          <ul>
+            <li>Structured display: original error + AI analysis + fix suggestions</li>
+            <li>One-click apply corrected SQL — no manual editing</li>
+            <li>Handles common syntax, column name, and type mismatch issues well</li>
+          </ul>
+        </div>
+        <img
+          class="feature-shot"
+          src="assets/screenshots/05-ai-diagnosis.png"
+          alt="SQL error diagnosis"
+        />
+      </div>
+
+      <!-- EXPLAIN -->
+      <div class="feature-block">
+        <div>
+          <span class="kicker">EXPLAIN Analysis</span>
+          <h2>EXPLAIN insights</h2>
+          <p>See the plan, spot the bottleneck, and get plain-language optimization hints.</p>
+          <ul>
+            <li>Visual execution plan — scan type, rows, cost at a glance</li>
+            <li>AI highlights slow nodes and suggests improvements</li>
+            <li>Supported on built-in drivers such as PostgreSQL and MySQL</li>
+          </ul>
+        </div>
+        <img
+          class="feature-shot"
+          src="assets/screenshots/06-ai-explain.png"
+          alt="EXPLAIN analysis"
+        />
+      </div>
+
+      <!-- Chat -->
+      <div class="feature-block reverse">
+        <div>
+          <span class="kicker">AI Chat Sidebar</span>
+          <h2>AI Chat sidebar</h2>
+          <p>
+            Chat with full context of the current connection — schema-aware answers, not generic
+            guesses. Streaming replies; reasoning models supported where the provider allows.
+          </p>
+          <ul>
+            <li>Auto-injects Schema context — no need to paste DDL manually</li>
+            <li>
+              <code>@</code> references local files (whitelist + 512KB limit + path traversal
+              protection)
+            </li>
+            <li>One-click extract code blocks as SQL into the editor</li>
+          </ul>
+        </div>
+        <img class="feature-shot" src="assets/screenshots/07-ai-chat.png" alt="AI Chat sidebar" />
+      </div>
+
+      <!-- Smart filter -->
+      <div class="feature-block">
+        <div>
+          <span class="kicker">Smart Filters</span>
+          <h2>Table filters in plain language</h2>
+          <p>
+            "Amount greater than 1000 and status is shipped" — type natural language in the filter
+            box. AI parses it into structured filter conditions and applies them, with column
+            validation and null operators handled automatically.
+          </p>
+          <ul>
+            <li>Natural language → structured filter conditions, viewable and editable anytime</li>
+            <li>Validates against current table column names to avoid typos</li>
+            <li>Works seamlessly with sort, pagination, and virtual scrolling</li>
+          </ul>
+        </div>
+        <img
+          class="feature-shot"
+          src="assets/screenshots/08-ai-filter.png"
+          alt="Natural language filters"
+        />
+      </div>
+
+      <!-- More AI -->
+      <div class="feature-block reverse">
+        <div>
+          <span class="kicker">More AI Capabilities</span>
+          <h2>Beyond querying</h2>
+          <ul>
+            <li>
+              <strong>Schema documentation</strong>: one-click Markdown docs for your database
+              structure
+            </li>
+            <li>
+              <strong>Connection troubleshooting</strong>: when connections fail, diagnose SSL / SSH
+              / timeout settings
+            </li>
+            <li>
+              <strong>Query history analysis</strong>: auto-summarize categories and purposes of
+              past queries
+            </li>
+            <li>
+              <strong>Configurable prompts</strong>: driver-level + user-level overrides; AI
+              responses follow UI language
+            </li>
+          </ul>
+        </div>
+        <img
+          class="feature-shot"
+          src="assets/screenshots/09-ai-more.png"
+          alt="More AI capabilities"
+        />
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <h2 style="font-size: 26px; margin-bottom: 20px">Model support</h2>
+        <table class="tbl">
+          <tr>
+            <th>Provider</th>
+            <th>Notes</th>
+          </tr>
+          <tr>
+            <td>OpenAI</td>
+            <td>Official API or compatible gateways</td>
+          </tr>
+          <tr>
+            <td>Anthropic</td>
+            <td>Claude models</td>
+          </tr>
+          <tr>
+            <td>DeepSeek</td>
+            <td>Including reasoning-capable models</td>
+          </tr>
+          <tr>
+            <td>Custom endpoint</td>
+            <td>Any OpenAI-compatible service (e.g. local inference)</td>
+          </tr>
+        </table>
+        <div class="callout">
+          <strong>Dynamic model list:</strong> after you add an API key, available models are listed
+          automatically — no manual model names required. Streaming is supported.
+        </div>
+
+        <h2 style="font-size: 26px; margin: 40px 0 20px">Work with external AI tools</h2>
+        <div class="grid-2">
+          <div class="card">
+            <div class="icon">🖥️</div>
+            <h3>Expose DataZen to MCP clients</h3>
+            <p>
+              Expose database query, schema, EXPLAIN, and workflows to MCP-compatible clients —
+              including headless use.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">🔌</div>
+            <h3>Extend AI in chat</h3>
+            <p>
+              In chat, connect external MCP servers (files, search, third-party tools) to extend
+              what AI can do.
+            </p>
+          </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <footer id="site-footer"></footer>
-  <script src="assets/js/site.js"></script>
-</body>
+    <footer id="site-footer"></footer>
+    <script src="assets/js/site.js"></script>
+  </body>
 </html>

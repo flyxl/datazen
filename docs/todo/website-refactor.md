@@ -1,6 +1,6 @@
 # DataZen 官网文案优化完整文档
 
-> 版本：基于 v0.0.8 站点现状  
+> 版本：基于 v0.0.9+ 站点现状（2026-08 更新）  
 > 原则：**只写用户能感知的结果与约束；实现选型（Recharts / Tauri / 编译期驱动等）下沉到 GitHub README / 架构文档**  
 > 范围：首页、AI、Charts、Workflow、Download（中英对照）
 
@@ -65,9 +65,9 @@ DataZen 是一款不足 10 MB 的桌面数据库客户端：
 
 | 指标 | 原文 | 优化后 |
 |------|------|--------|
-| 体积 | `<10 MB` installer size — Rust core | **`<10 MB`** installer size |
+| 体积 | `<10 MB` installer size — Rust core | **`<15 MB`** installer size |
 | 语言 | 10 UI languages out of the box | **10** UI languages out of the box |
-| 数据库 | 5+ databases, plugin extensible | **5+** databases, extensible |
+| 数据库 | 5+ databases, plugin extensible | **15+** databases, extensible |
 | 价格 | 0 € free & open source forever | **Free** · open source forever |
 
 **ZH**
@@ -76,7 +76,7 @@ DataZen 是一款不足 10 MB 的桌面数据库客户端：
 |------|--------|
 | 体积 | **`<10 MB`** 安装包 |
 | 语言 | **10** 种界面语言开箱即用 |
-| 数据库 | **5+** 种数据库，可扩展 |
+| 数据库 | **15+** 种数据库，可扩展 |
 | 价格 | **永久免费** · 开源 |
 
 删除：「Rust 内核 / Rust core」
@@ -153,7 +153,8 @@ Local-first security
 Passwords stay in the OS keychain. No cloud account. Your data never leaves your machine.
 
 Extensible drivers
-Add databases you need (including OLAP and specialty engines) without bloating the default app.
+15+ databases built in (PostgreSQL, MySQL, SQLite, Redis, MongoDB, ClickHouse, and more).
+Add OLAP and specialty engines without bloating the default app.
 
 10 languages
 en / zh-CN / zh-TW / ja / ko / de / es / fr / pt / ru — follows system language on first launch.
@@ -173,7 +174,8 @@ en / zh-CN / zh-TW / ja / ko / de / es / fr / pt / ru — follows system languag
 密码存系统钥匙串，无云端账户；数据永远不离开你的电脑。
 
 可扩展驱动
-按需增加数据库支持（含 OLAP 与专用引擎），默认安装保持精简。
+内置 15+ 种数据库（PostgreSQL、MySQL、SQLite、Redis、MongoDB、ClickHouse 等）。
+按需增加 OLAP 与专用引擎，默认安装保持精简。
 
 10 种语言
 简繁中文 / 英 / 日 / 韩 / 德 / 西 / 法 / 葡 / 俄，首次启动跟随系统语言。
@@ -705,7 +707,9 @@ FAQ
 • Do I need an account? No.
 • Do I need an API key for AI? Yes — you use your own key; keys are not required for basic SQL/Redis work.
 • Is my data uploaded? No. Connections and credentials stay on your machine.
+• Which databases are supported? 15+ including PostgreSQL, MySQL, SQLite, Redis, MongoDB, SQL Server, ClickHouse, DuckDB, Elasticsearch, and more. New databases can be added via plugins.
 • Linux? Yes — see Releases for packages.
+• Does it auto-update? Yes — in-app updates notify you when a new version is available.
 ```
 
 **ZH**
@@ -715,7 +719,9 @@ FAQ
 • 需要注册吗？不需要。
 • AI 需要 API Key 吗？需要，使用你自己的 Key；普通 SQL/Redis 使用不需要。
 • 数据会上传吗？不会。连接与凭据仅保存在本机。
+• 支持哪些数据库？内置 15+ 种：PostgreSQL、MySQL、SQLite、Redis、MongoDB、SQL Server、ClickHouse、DuckDB、Elasticsearch 等，还可通过插件扩展。
 • 支持 Linux 吗？支持，见 Releases 安装包。
+• 支持自动更新吗？支持，有新版本时应用内会提示更新。
 ```
 
 ---
@@ -749,7 +755,7 @@ FAQ
 ```text
 DataZen — lightweight free open-source AI database client.
 Natural-language SQL, error diagnosis, EXPLAIN insights, charts, and cross-database workflows.
-PostgreSQL, MySQL, MariaDB, SQLite, Redis. Under 10 MB. Local-first.
+PostgreSQL, MySQL, MariaDB, SQLite, Redis, MongoDB, ClickHouse, and 10+ more. Under 10 MB. Local-first.
 ```
 
 **ZH**
@@ -757,7 +763,7 @@ PostgreSQL, MySQL, MariaDB, SQLite, Redis. Under 10 MB. Local-first.
 ```text
 DataZen — 轻量免费开源的 AI 数据库客户端。
 自然语言 SQL、错误诊断、执行计划解读、图表与跨库工作流。
-支持 PostgreSQL、MySQL、MariaDB、SQLite、Redis。安装包不足 10 MB，数据不出本机。
+支持 PostgreSQL、MySQL、MariaDB、SQLite、Redis、MongoDB、ClickHouse 等 15+ 种数据库。安装包不足 10 MB，数据不出本机。
 ```
 
 删除 meta 中的「Tauri-based」作为必需要点（可留在 GitHub）。

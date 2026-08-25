@@ -287,3 +287,46 @@ pub async fn execute_sql_file_with_dialog(...) -> Result<bool, CommandError> {
 
 ### Import/Export App Data (3, 从 5 合并)
 `export_app_data` (含 override_path) / `import_app_data` (含 override_path) / `save_encryption_key_with_dialog`
+
+---
+
+## 附录: Git 驱动契约一致性
+
+### 编译时一致性保证
+
+当存在 git 驱动时，`resolve-drivers.mjs` 自动向根 `Cargo.toml` 注入:
+
+```toml
+[patch.crates-io]
+datazen-driver-api = { path = "packages/driver-api" }
+```
+
+所有驱动（path 和 git）编译时共享同一份本地 `driver-api` 源码，Rust 编译器强制 trait 一致性。
+
+### 当前 `DatabaseDriver` trait 的 required 方法（必须实现）
+
+- `driver_type()` / `connect()` / `test_connection()` / `disconnect()`
+- `get_databases()` / `get_tables()` / `get_table_schema()`
+- `query()` / `query_multi()` / `query_with_params()` / `execute()`
+- `cancel_query()`
+
+所有其他方法（约 30+）都有默认实现，不要求驱动显式实现。
+
+### PROTOCOL_VERSION 机制
+
+- 当前版本: `PROTOCOL_VERSION = 2`, `MIN_PROTOCOL_VERSION = 1`
+- Factory 的 `protocol_version()` 默认返回编译时的 `PROTOCOL_VERSION`
+- Host 启动时检查: `< MIN` 被拒绝, `>= MIN && < current` 降级模式
+
+### Git 驱动 Pin 状态
+
+| 驱动 | 最后 pin | 与 trait 差距 | 风险 |
+|------|---------|-------------|------|
+| Kiwi | 2026-08-20 | 无（最新） | 无 |
+| Superset | 2026-08-09 | 16 天 | 低（所有新方法有 default）|
+| OLAP | 同期 | 同上 | 同上 |
+
+### 建议
+
+- 定期更新 git 驱动 pin 以获得新 trait 方法的驱动侧覆盖（如 `dump_view_ddl`）
+- 若需添加 required 方法: 先 bump `PROTOCOL_VERSION`，同步更新所有 git 驱动后再合入
