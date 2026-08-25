@@ -97,7 +97,6 @@
   "kiwi": {
     "source": "git",
     "git": "https://github.com/flyxl/datazen-driver-kiwi.git",
-    "ref": "3e68c8fb144dbab016739856b985bf1f9c276248",
     "feature": "plugin-kiwi",
     "description": "Kiwi cloud database proxy",
     "tauriPlugin": {
@@ -116,7 +115,6 @@
   "superset": {
     "source": "git",
     "git": "https://github.com/flyxl/datazen-driver-superset.git",
-    "ref": "c8d208b340c5e923de00088494bc34d4ce68a574",
     "feature": "plugin-superset",
     "description": "Superset data exploration platform"
   }
