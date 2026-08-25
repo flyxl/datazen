@@ -123,3 +123,6 @@ windows.png
 
 # 打包产物：packages/extensions 构建输出（zip 分发包）
 packages/extensions/dist/
+
+.dsh-vision-toolkit
+tsconfig.node.tsbuildinfo
