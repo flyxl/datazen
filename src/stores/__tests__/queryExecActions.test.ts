@@ -101,3 +101,84 @@ describe('queryExecActions schema refresh', () => {
     expect(exec.get('panel-1')?.error).toBe('syntax error');
   });
 });
+
+describe('queryExecActions carries the panel database (F1 BUG-001)', () => {
+  beforeEach(() => {
+    mockExecuteQuery.mockReset();
+    mockExecuteQueryStream.mockReset();
+    mockEmitCrossWindow.mockReset();
+    mockEmitCrossWindow.mockResolvedValue(undefined);
+  });
+
+  function makeExecContext() {
+    let exec = new Map([['panel-1', emptyQueryExecState()]]);
+    return {
+      getExec: () => exec,
+      setExec: (next: Map<string, ReturnType<typeof emptyQueryExecState>>) => {
+        exec = next;
+      },
+    };
+  }
+
+  it('runBoundQuery forwards database to executeQuery', async () => {
+    mockExecuteQuery.mockResolvedValueOnce({ results: [], totalTimeMs: 5 });
+    const { getExec, setExec } = makeExecContext();
+
+    await runBoundQuery(
+      'panel-1',
+      'conn-1',
+      'SELECT * FROM users',
+      {},
+      getExec,
+      setExec,
+      'db_b',
+    );
+
+    expect(mockExecuteQuery).toHaveBeenCalledWith('conn-1', 'SELECT * FROM users', {}, 'db_b');
+  });
+
+  it('runBoundQuery normalizes a missing database to null', async () => {
+    mockExecuteQuery.mockResolvedValueOnce({ results: [], totalTimeMs: 5 });
+    const { getExec, setExec } = makeExecContext();
+
+    await runBoundQuery('panel-1', 'conn-1', 'SELECT 1', {}, getExec, setExec);
+
+    expect(mockExecuteQuery).toHaveBeenCalledWith('conn-1', 'SELECT 1', {}, null);
+  });
+
+  it('runStreamingQuery forwards database via stream options', async () => {
+    mockExecuteQueryStream.mockImplementationOnce(
+      async (_connId: string, _sql: string, onEvent: (event: unknown) => void) => {
+        onEvent({ type: 'done', totalTimeMs: 5 });
+      },
+    );
+    const { getExec, setExec } = makeExecContext();
+
+    await runStreamingQuery('panel-1', 'conn-1', 'SELECT 1', getExec, setExec, 'analytics');
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'conn-1',
+      'SELECT 1',
+      expect.any(Function),
+      { database: 'analytics' },
+    );
+  });
+
+  it('runStreamingQuery normalizes a missing database to null', async () => {
+    mockExecuteQueryStream.mockImplementationOnce(
+      async (_connId: string, _sql: string, onEvent: (event: unknown) => void) => {
+        onEvent({ type: 'done', totalTimeMs: 5 });
+      },
+    );
+    const { getExec, setExec } = makeExecContext();
+
+    await runStreamingQuery('panel-1', 'conn-1', 'SELECT 1', getExec, setExec);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'conn-1',
+      'SELECT 1',
+      expect.any(Function),
+      { database: null },
+    );
+  });
+});

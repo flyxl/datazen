@@ -9,7 +9,8 @@ use async_trait::async_trait;
 use crate::db::{
     ColumnInfo, ColumnSchema, ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType,
     DriverCategory, DriverError, ExplainResult, MultiQueryResult, QueryResult, ServerInfo,
-    StatementResult, TableInfo, TableSchema, TransactionHandle, Value,
+    StatementResult, StructureChangePlan, StructureChangeRequest, TableInfo, TableSchema,
+    TransactionHandle, Value,
 };
 use datazen_driver_api::{
     execute_command_definition, execute_schema_object_command, execute_standard_sql_command,
@@ -305,6 +306,16 @@ impl DatabaseDriver for MockDriver {
             calls.push(database.to_string());
         }
         Ok(())
+    }
+
+    /// No-op planning support so host-side structure-command tests can assert
+    /// session/database pinning around `plan_structure_changes`.
+    async fn plan_structure_changes(
+        &self,
+        _handle: &ConnectionHandle,
+        _request: &StructureChangeRequest,
+    ) -> Result<StructureChangePlan, DriverError> {
+        Ok(StructureChangePlan::default())
     }
 
     async fn get_server_info(&self, _handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {

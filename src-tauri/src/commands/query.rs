@@ -64,6 +64,8 @@ pub(crate) async fn execute_query_impl(
             db_session_id: Some(db_session_id),
             driver_type: None,
             command: "query".into(),
+            // Session was already pinned by ensure_session_database above.
+            database: None,
             input: serde_json::json!({ "sql": sql }),
         },
     )
@@ -106,6 +108,8 @@ pub(crate) async fn execute_query_stream_impl(
         ExecuteDriverCommandStreamRequest {
             db_session_id: Some(db_session_id),
             command: "query_stream".into(),
+            // Session was already pinned by ensure_session_database above.
+            database: None,
             input: serde_json::json!({ "sql": sql }),
             apply_result_limit: Some(opts.apply_result_limit),
             record_history: Some(opts.record_history),

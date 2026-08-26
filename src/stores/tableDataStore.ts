@@ -119,6 +119,8 @@ function emptyTableState(): TableState {
 interface ConnectionTableState {
   activeTable: string | null;
   databaseType: string | null;
+  /** F1: last target database used for table data loads on this session. */
+  activeDatabase: string | null;
   tableStates: Map<string, TableState>;
   detailRowIndex: number | null;
 }
@@ -127,6 +129,7 @@ function emptyConnectionTableState(): ConnectionTableState {
   return {
     activeTable: null,
     databaseType: null,
+    activeDatabase: null,
     tableStates: new Map(),
     detailRowIndex: null,
   };
@@ -219,6 +222,9 @@ interface TableDataStore extends ConnectionTableState {
     dbSessionId: string;
     table: string;
     skipCount?: boolean;
+    /** F1: explicit target database; remembered per connection so store-driven
+     * refreshes (paging, filters, row edits) keep hitting the right database. */
+    database?: string | null;
   }) => Promise<void>;
   setPage: (page: number) => void;
   setPageSize: (size: number) => void;
@@ -336,12 +342,16 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     commitPatch(get, set, null, { activeTable: table });
   },
 
-  loadTableData: async ({ dbSessionId, table, skipCount }) => {
+  loadTableData: async ({ dbSessionId, table, skipCount, database }) => {
     const state = get();
     const connState = state.perConnection.get(dbSessionId) ?? emptyConnectionTableState();
     const existing = connState.tableStates.get(table) ?? emptyTableState();
 
     if (existing.loading) return;
+
+    // F1: explicit pin wins; otherwise reuse the remembered target database so
+    // store-driven refreshes stay on the panel's database.
+    const targetDatabase = database ?? connState.activeDatabase ?? null;
 
     const { page, filters, sorts, filterLogic } = existing;
     const driverPageSize = DB_REGISTRY[connState.databaseType as DatabaseType]?.defaultPageSize;
@@ -353,7 +363,11 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
     const nextStates = new Map(connState.tableStates);
     nextStates.set(table, { ...existing, loading: true, error: null });
-    commitPatch(get, set, dbSessionId, { activeTable: table, tableStates: nextStates });
+    commitPatch(get, set, dbSessionId, {
+      activeTable: table,
+      tableStates: nextStates,
+      ...(database != null ? { activeDatabase: database } : {}),
+    });
 
     try {
       const res = await databaseCommands.getTableData({
@@ -365,6 +379,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         sorts,
         skipCount,
         filterLogic,
+        database: targetDatabase,
       });
       const latestConn = get().perConnection.get(dbSessionId) ?? emptyConnectionTableState();
       const updated = new Map(latestConn.tableStates);

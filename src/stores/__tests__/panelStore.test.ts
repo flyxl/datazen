@@ -26,6 +26,7 @@ vi.mock('../../commands/query', () => ({
 describe('panelStore', () => {
   let usePanelStore: typeof import('../panelStore').usePanelStore;
   let nextPanelId: typeof import('../panelStore').nextPanelId;
+  let useSchemaStore: typeof import('../schemaStore').useSchemaStore;
   type Panel = import('../panelStore').Panel;
   type TablePanel = import('../panelStore').TablePanel;
 
@@ -51,7 +52,52 @@ describe('panelStore', () => {
     const mod = await import('../panelStore');
     usePanelStore = mod.usePanelStore;
     nextPanelId = mod.nextPanelId;
+    const schemaMod = await import('../schemaStore');
+    useSchemaStore = schemaMod.useSchemaStore;
     usePanelStore.setState({ panels: [], activePanelId: null, queryExec: new Map() });
+  });
+
+  /** Seed schemaStore with a currentDatabase for a runtime session id. */
+  function seedCurrentDatabase(dbSessionId: string | null, database: string | null) {
+    const schemas = new Map();
+    if (dbSessionId && database) {
+      schemas.set(dbSessionId, { currentDatabase: database });
+    }
+    useSchemaStore.setState({ activeDbSessionId: dbSessionId, schemas });
+  }
+
+  // ── Query execution carries the panel's database (F1 BUG-001) ──
+
+  it('executeQuery forwards schemaStore currentDatabase of the panel session', async () => {
+    seedCurrentDatabase('sess-1', 'db_b');
+    const panel: Panel = { ...base, type: 'query', id: nextPanelId('qry'), title: 'Q1' };
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.getState().updateSql(panel.id, 'SELECT DATABASE()');
+
+    await usePanelStore.getState().executeQuery(panel.id);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'sess-1',
+      'SELECT DATABASE()',
+      expect.any(Function),
+      { database: 'db_b' },
+    );
+  });
+
+  it('executeQuery falls back to null when no schema entry exists', async () => {
+    seedCurrentDatabase(null, null);
+    const panel: Panel = { ...base, type: 'query', id: nextPanelId('qry'), title: 'Q1' };
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.getState().updateSql(panel.id, 'SELECT 1');
+
+    await usePanelStore.getState().executeQuery(panel.id);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'sess-1',
+      'SELECT 1',
+      expect.any(Function),
+      { database: null },
+    );
   });
 
   // ── addPanel ─────────────────────────────────────────────────

@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use super::error::{CmdExt, CommandError};
+use super::query::ensure_session_database;
 use super::AppState;
 use crate::mcp::permission::McpPermissionMode;
 use datazen_driver_api::{
@@ -29,6 +30,11 @@ pub struct ExecuteDriverCommandStreamRequest {
     pub command: String,
     #[serde(default)]
     pub input: serde_json::Value,
+    /// F1: optional explicit database pin — the session is switched to this
+    /// logical database before the command runs (same mechanism as the
+    /// query-family commands; `None`/blank keeps the current active database).
+    #[serde(default)]
+    pub database: Option<String>,
     #[serde(default)]
     pub apply_result_limit: Option<bool>,
     #[serde(default)]
@@ -60,6 +66,11 @@ pub struct ExecuteDriverCommandRequest {
     pub command: String,
     #[serde(default)]
     pub input: serde_json::Value,
+    /// F1: optional explicit database pin (session-bound commands only —
+    /// ignored for unbound `driverType` requests). See
+    /// `ensure_session_database` for the switching semantics.
+    #[serde(default)]
+    pub database: Option<String>,
 }
 
 fn unbound_handle() -> ConnectionHandle {
@@ -250,6 +261,16 @@ pub(crate) async fn execute_driver_command_stream_impl(
     let (driver, handle, _bound) =
         resolve_command_driver(state, request.db_session_id.as_ref(), None).await?;
 
+    // F1: pin the session's active database before streaming so unqualified
+    // SQL lands on the caller-selected database (no-op without a pin).
+    ensure_session_database(
+        state,
+        &handle.id,
+        request.database.as_deref(),
+        "execute_driver_command_stream",
+    )
+    .await?;
+
     let definition = driver
         .command_definitions()
         .into_iter()
@@ -395,6 +416,19 @@ pub(crate) async fn execute_driver_command_with_mode(
             "Command '{}' requires a connection",
             request.command
         )));
+    }
+
+    // F1: session-bound commands honor an optional explicit database pin and
+    // switch the live session before execution; unbound driverType requests
+    // have no session to switch and ignore it.
+    if bound {
+        ensure_session_database(
+            state,
+            &handle.id,
+            request.database.as_deref(),
+            "execute_driver_command",
+        )
+        .await?;
     }
 
     let is_sql_command = matches!(definition.id.as_str(), "query" | "execute");
@@ -562,12 +596,14 @@ mod tests {
             driver_type: None,
             command: "query".into(),
             input: serde_json::json!({ "sql": "SELECT 1" }),
+            database: Some("db_b".into()),
         };
 
         let encoded = serde_json::to_value(request).unwrap();
         assert_eq!(encoded["dbSessionId"], "mysql-prod");
         assert_eq!(encoded["command"], "query");
         assert_eq!(encoded["input"]["sql"], "SELECT 1");
+        assert_eq!(encoded["database"], "db_b");
         assert!(encoded.get("db_session_id").is_none());
     }
 
@@ -607,6 +643,91 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_driver_command_pins_session_database_before_execution() {
+        let test = crate::testing::app_state::TestAppState::with_tables().await;
+        let (_, conn_id) = test.save_and_connect("cmd-pin-db").await;
+        // Sample config pins database = "app"; an explicit different pin must
+        // switch the live session before the command runs (BUG-001 fix).
+        execute_driver_command_impl(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                db_session_id: Some(conn_id.clone()),
+                driver_type: None,
+                command: "query".into(),
+                input: serde_json::json!({ "sql": "SELECT 1" }),
+                database: Some("analytics".into()),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            test.mock.use_database_calls(),
+            vec!["analytics".to_string()]
+        );
+        let config = test
+            .state
+            .connection_manager
+            .get_session_config(&conn_id)
+            .await
+            .unwrap();
+        assert_eq!(config.database.as_deref(), Some("analytics"));
+    }
+
+    #[tokio::test]
+    async fn execute_driver_command_skips_switch_when_pin_missing_or_same() {
+        let test = crate::testing::app_state::TestAppState::with_tables().await;
+        let (_, conn_id) = test.save_and_connect("cmd-no-pin").await;
+        for database in [None, Some("app".into()), Some("   ".into())] {
+            execute_driver_command_impl(
+                &test.state,
+                ExecuteDriverCommandRequest {
+                    db_session_id: Some(conn_id.clone()),
+                    driver_type: None,
+                    command: "query".into(),
+                    input: serde_json::json!({ "sql": "SELECT 1" }),
+                    database: database.clone(),
+                },
+            )
+            .await
+            .unwrap();
+        }
+        assert!(test.mock.use_database_calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn stream_pins_session_database_before_query_stream() {
+        let test = crate::testing::app_state::TestAppState::with_tables().await;
+        let (_, conn_id) = test.save_and_connect("stream-pin-db").await;
+        let callback: QueryStreamCallback = Arc::new(|_event| {});
+        execute_driver_command_stream_impl(
+            &test.state,
+            ExecuteDriverCommandStreamRequest {
+                db_session_id: Some(conn_id.clone()),
+                command: "query_stream".into(),
+                input: serde_json::json!({ "sql": "SELECT 1" }),
+                database: Some("analytics".into()),
+                apply_result_limit: Some(true),
+                record_history: Some(false),
+            },
+            callback,
+            ExecuteDriverCommandStreamOpts::default(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            test.mock.use_database_calls(),
+            vec!["analytics".to_string()]
+        );
+        let config = test
+            .state
+            .connection_manager
+            .get_session_config(&conn_id)
+            .await
+            .unwrap();
+        assert_eq!(config.database.as_deref(), Some("analytics"));
+    }
+
+    #[tokio::test]
     async fn executes_query_command_through_ipc() {
         let test = crate::testing::app_state::TestAppState::new().await;
         let (_, conn_id) = test.save_and_connect("cmd-exec").await;
@@ -617,6 +738,7 @@ mod tests {
                 driver_type: None,
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "SELECT 1" }),
+                database: None,
             },
         )
         .await
@@ -645,6 +767,7 @@ mod tests {
                 driver_type: None,
                 command: "not-a-command".into(),
                 input: serde_json::json!({}),
+                database: None,
             },
         )
         .await
@@ -663,6 +786,7 @@ mod tests {
                 driver_type: None,
                 command: "query".into(),
                 input: serde_json::json!({}),
+                database: None,
             },
         )
         .await
@@ -681,6 +805,7 @@ mod tests {
                 driver_type: None,
                 command: "execute".into(),
                 input: serde_json::json!({ "sql": "DELETE FROM t" }),
+                database: None,
             },
             Some(crate::mcp::permission::McpPermissionMode::ReadOnly),
         )
@@ -718,6 +843,7 @@ mod tests {
                 driver_type: Some("postgres".into()),
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "SELECT 1" }),
+                database: None,
             },
         )
         .await
@@ -757,11 +883,15 @@ mod tests {
                 driver_type: Some("postgres".into()),
                 command: "ping".into(),
                 input: serde_json::json!({}),
+                database: Some("ignored-for-unbound".into()),
             },
         )
         .await
         .unwrap();
         assert_eq!(result.data["command"], "ping");
+        // Unbound driverType requests have no session to pin — the explicit
+        // database must be ignored, not error.
+        assert!(test.mock.use_database_calls().is_empty());
     }
 
     #[tokio::test]
@@ -775,6 +905,7 @@ mod tests {
                 driver_type: None,
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "UPDATE t SET x = 1" }),
+                database: None,
             },
         )
         .await
@@ -796,6 +927,7 @@ mod tests {
                 driver_type: None,
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "UPDATE t SET x = 1 WHERE id = 1" }),
+                database: None,
             },
         )
         .await
@@ -817,6 +949,7 @@ mod tests {
                     "sql": "SELECT * FROM t WHERE id = :id",
                     "params": { "id": 7 }
                 }),
+                database: None,
             },
         )
         .await
@@ -838,6 +971,7 @@ mod tests {
                 driver_type: None,
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "UPDATE t SET x = 1" }),
+                database: None,
             },
         )
         .await

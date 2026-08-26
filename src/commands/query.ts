@@ -13,11 +13,14 @@ export const queryCommands = {
     dbSessionId: string,
     sql: string,
     params?: Record<string, string | number | boolean | null>,
+    database?: string | null,
   ) => {
     const result = await driverCommands.execute({
       dbSessionId,
       command: 'query',
       input: params && Object.keys(params).length > 0 ? { sql, params } : { sql },
+      // F1: pin the session to the panel's selected database before running.
+      database: database ?? null,
     });
     return result.data as MultiQueryResult;
   },
@@ -26,7 +29,12 @@ export const queryCommands = {
     dbSessionId: string,
     sql: string,
     onEvent: (event: QueryStreamEvent) => void,
-    options?: { applyResultLimit?: boolean; recordHistory?: boolean },
+    options?: {
+      applyResultLimit?: boolean;
+      recordHistory?: boolean;
+      /** F1: pin the session to this database before streaming. */
+      database?: string | null;
+    },
   ) => {
     await driverCommands.executeStream({
       dbSessionId,
@@ -35,6 +43,7 @@ export const queryCommands = {
       onEvent,
       applyResultLimit: options?.applyResultLimit,
       recordHistory: options?.recordHistory,
+      database: options?.database ?? null,
     });
   },
 
