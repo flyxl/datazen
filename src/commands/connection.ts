@@ -40,21 +40,28 @@ export const connectionCommands = {
 
   saveGroups: (groups: string[]) => invoke<void>('save_groups', { groups }),
 
-  /** @deprecated Legacy path IPC; gated to webdriver builds. Prefer exportConnectionsWithDialog. */
-  exportConnections: (path: string, password: string) =>
-    invoke<number>('export_connections', { path, password }),
+  /**
+   * Decision 3 merged IPC: native save dialog + encrypted export.
+   * The wire-level `override_path` escape hatch is webdriver/E2E-only and is
+   * never sent from production code. Returns the connection count, or null
+   * when the dialog was dismissed.
+   */
+  exportConnections: (password: string, defaultFileName: string) =>
+    invoke<number | null>('export_connections', { password, defaultFileName }),
 
-  exportConnectionsWithDialog: (password: string, defaultFileName: string) =>
-    invoke<number | null>('export_connections_with_dialog', { password, defaultFileName }),
+  importConnectionsPreview: (password: string) =>
+    invoke<{
+      connections: ConnectionConfig[];
+      groups: string[];
+    } | null>('import_connections_preview', { password }),
 
-  /** @deprecated Legacy path IPC; gated to webdriver builds. Prefer importConnectionsWithDialog. */
-  importConnectionsPreview: (path: string, password: string) =>
-    invoke<{ connections: ConnectionConfig[]; groups: string[] }>('import_connections_preview', {
-      path,
-      password,
-    }),
-
-  importConnectionsWithDialog: (password: string) =>
+  /**
+   * Decision 3 merged IPC: native open dialog + decrypt/merge import.
+   * The wire-level `override_path` escape hatch is webdriver/E2E-only and is
+   * never sent from production code. Returns import stats, or null when the
+   * dialog was dismissed.
+   */
+  importConnections: (password: string) =>
     invoke<{
       imported: number;
       overwritten: number;

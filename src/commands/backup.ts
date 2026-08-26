@@ -1,17 +1,22 @@
 import { invoke } from '@tauri-apps/api/core';
 
 export const backupCommands = {
-  /** @deprecated E2E-only; prefer exportAppDataWithDialog. */
-  exportAppData: (path: string) => invoke<void>('export_app_data', { path }),
+  /**
+   * Decision 3 merged IPC: native save dialog + ZIP export.
+   * The wire-level `override_path` escape hatch is webdriver/E2E-only and is
+   * never sent from production code. Returns false when the dialog was
+   * dismissed.
+   */
+  exportAppData: (defaultFileName: string) =>
+    invoke<boolean>('export_app_data', { defaultFileName }),
 
-  /** @deprecated E2E-only; prefer importAppDataWithDialog. */
-  importAppData: (path: string) => invoke<void>('import_app_data', { path }),
-
-  exportAppDataWithDialog: (defaultFileName: string) =>
-    invoke<boolean>('export_app_data_with_dialog', { defaultFileName }),
-
-  importAppDataWithDialog: (confirmTitle: string, confirmMessage: string) =>
-    invoke<boolean>('import_app_data_with_dialog', {
+  /**
+   * Decision 3 merged IPC: native open + confirm + ZIP import.
+   * The wire-level `override_path` escape hatch is webdriver/E2E-only and is
+   * never sent from production code. Returns false on cancel/decline.
+   */
+  importAppData: (confirmTitle: string, confirmMessage: string) =>
+    invoke<boolean>('import_app_data', {
       confirmTitle,
       confirmMessage,
     }),
