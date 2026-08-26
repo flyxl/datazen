@@ -3,20 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>DataZen — 轻量、免费、开源的人工智能数据库客户端</title>
+    <title>DataZen — 面向开发者的 AI 数据库工作台</title>
     <meta
       name="description"
-      content="DataZen — 轻量免费开源的 AI 数据库客户端。自然语言 SQL、错误诊断、执行计划解读、图表与跨库工作流。支持 PostgreSQL、MySQL、SQLite、Redis、MongoDB、ClickHouse 等 15+ 种数据库。安装包不足 15 MB，数据不出本机。"
+      content="DataZen 是一款免费开源的桌面数据库工作台：自然语言 SQL、一键错误诊断、执行计划解读、图表可视化、跨库 Workflow，并内置 MCP Server 供 AI Agent 调用。数据不出本机，安装包不足 15 MB。"
     />
     <link rel="canonical" href="https://flyxl.github.io/datazen/zh/" />
     <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/" />
     <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/" />
     <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="DataZen — 轻量、免费、开源的人工智能数据库客户端" />
+    <meta property="og:title" content="DataZen — 面向开发者的 AI 数据库工作台" />
     <meta
       property="og:description"
-      content="DataZen — 轻量免费开源的 AI 数据库客户端。自然语言 SQL、错误诊断、执行计划解读、图表与跨库工作流。支持 15+ 种数据库。安装包不足 15 MB，数据不出本机。"
+      content="查询、排障、分析、自动化——让 AI 队友陪你搞定数据库，全部在一款轻量桌面应用里本地完成。NL2SQL、错误诊断、EXPLAIN 解读、图表、Workflow、MCP Server。"
     />
     <meta property="og:url" content="https://flyxl.github.io/datazen/zh/" />
     <meta
@@ -26,10 +26,10 @@
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:locale:alternate" content="en_US" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="DataZen — 轻量、免费、开源的人工智能数据库客户端" />
+    <meta name="twitter:title" content="DataZen — 面向开发者的 AI 数据库工作台" />
     <meta
       name="twitter:description"
-      content="DataZen — 轻量免费开源的 AI 数据库客户端。自然语言 SQL、错误诊断、执行计划解读、图表与跨库工作流。"
+      content="查询、排障、分析、自动化——让 AI 队友陪你搞定数据库，全部在一款轻量桌面应用里本地完成。"
     />
     <meta
       name="twitter:image"
@@ -48,7 +48,7 @@
         "license": "https://www.gnu.org/licenses/gpl-3.0.html",
         "url": "https://flyxl.github.io/datazen/zh/",
         "image": "https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png",
-        "description": "DataZen — 轻量免费开源的 AI 数据库客户端，安装包不足 15 MB，数据不出本机。",
+        "description": "免费开源的 AI 数据库工作台：NL2SQL、错误诊断、EXPLAIN 解读、图表、跨库 Workflow 与内置 MCP Server。不足 15 MB，数据不出本机。",
         "inLanguage": "zh-CN"
       }
     </script>
@@ -59,30 +59,83 @@
     <!-- 首屏 -->
     <section class="hero">
       <div class="wrap">
-        <span class="hero-badge"><span class="dot"></span>Latest · 免费开源 · GPLv3</span>
-        <h1>把数据库的活儿交给 <span class="grad">AI</span>，<br />让数据自己开口说话。</h1>
+        <span class="hero-badge"><span class="dot"></span>免费 · 开源</span>
+        <h1>你的数据库，<br />值得一个 <span class="grad">AI 工作台</span>。</h1>
         <p class="lead">
-          DataZen 是一款不足 15&nbsp;MB 的桌面数据库客户端：自然语言写查询、一键诊断报错、
-          读懂慢查询、结果一键成图，再用可复用流程把跨库任务自动化。
+          查询、排障、分析、自动化——让 AI 队友陪你搞定数据库，全部在一款轻量桌面应用里本地完成。
         </p>
         <div class="hero-cta">
-          <a class="btn btn-primary btn-lg" href="download.html">立即下载</a>
+          <a class="btn btn-primary btn-lg" href="download.html">免费下载 DataZen</a>
           <a
             class="btn btn-secondary btn-lg"
             href="https://github.com/flyxl/datazen"
             target="_blank"
             rel="noopener"
-            >GitHub 加星</a
+            >在 GitHub 查看</a
           >
         </div>
-        <p class="hero-note">无需注册账号 · 数据不出本机 · 本地优先设计</p>
+        <p class="hero-note">免费 · 开源 · macOS / Windows / Linux</p>
+        <p class="hero-note">数据库数据留在本机 —— AI 请求只发往你自己配置的服务商。</p>
+
+        <!-- 实时演示：自然语言 → SQL → 结果 → 图表 -->
         <div class="hero-shot">
           <div class="shot-frame">
-            <div class="bar"><i></i><i></i><i></i><span>DataZen — 演示 PostgreSQL</span></div>
-            <img
-              src="../assets/screenshots/01-main-window.png"
-              alt="DataZen 主窗口：连接树与查询结果"
-            />
+            <div class="bar"><i></i><i></i><i></i><span>DataZen — 演示</span></div>
+            <div class="demo-frame" data-demo>
+              <div class="demo-stage active">
+                <span class="demo-tag">1 · 问 AI</span>
+                <span class="demo-bubble">“看一下 2026 年每月的收入。”</span>
+              </div>
+              <div class="demo-stage">
+                <span class="demo-tag">2 · AI 生成 SQL</span>
+                <pre class="demo-code">
+SELECT DATE_TRUNC('month', paid_at) AS month,
+       SUM(amount) AS revenue
+FROM orders
+WHERE paid_at >= '2026-01-01'
+GROUP BY 1 ORDER BY 1;</pre
+                >
+              </div>
+              <div class="demo-stage">
+                <span class="demo-tag">3 · 执行并查看结果</span>
+                <table class="demo-tbl">
+                  <thead>
+                    <tr>
+                      <th>month</th>
+                      <th>revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>2026-01-01</td>
+                      <td>128,400</td>
+                    </tr>
+                    <tr>
+                      <td>2026-02-01</td>
+                      <td>142,150</td>
+                    </tr>
+                    <tr>
+                      <td>2026-03-01</td>
+                      <td>151,980</td>
+                    </tr>
+                    <tr>
+                      <td>2026-04-01</td>
+                      <td>167,320</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="demo-stage">
+                <span class="demo-tag">4 · 一键成图</span>
+                <div class="demo-bars">
+                  <div class="demo-bar" style="--h: 58%"></div>
+                  <div class="demo-bar" style="--h: 64%"></div>
+                  <div class="demo-bar" style="--h: 70%"></div>
+                  <div class="demo-bar" style="--h: 86%"></div>
+                </div>
+                <div class="demo-cap">按月收入趋势 —— 一键出图，支持导出 PNG / SVG</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -91,7 +144,7 @@
     <!-- 支持数据库横条 -->
     <section class="db-strip">
       <div class="wrap db-strip-inner">
-        <span class="label">内置支持</span>
+        <span class="label">开箱即用</span>
         <span class="db-chip"><i></i>PostgreSQL</span>
         <span class="db-chip"><i></i>MySQL</span>
         <span class="db-chip"><i></i>SQLite</span>
@@ -106,97 +159,176 @@
     <section class="section-tight">
       <div class="wrap stats-band">
         <div class="stat"><b>&lt;15 MB</b><span>安装包体积</span></div>
-        <div class="stat"><b>10</b><span>种界面语言开箱即用</span></div>
+        <div class="stat"><b>&lt;1 秒</b><span>冷启动耗时</span></div>
         <div class="stat"><b>15+</b><span>种数据库，可扩展</span></div>
+        <div class="stat"><b>$0</b><span>免费且开源</span></div>
       </div>
     </section>
 
-    <!-- 三大核心能力 -->
+    <!-- 核心差异：三个具体场景 -->
     <section class="section">
       <div class="wrap">
         <div class="section-head center">
-          <span class="kicker">核心能力</span>
-          <h2>日常数据库工作的 AI 队友</h2>
-          <p>不是在表格上套一个聊天框 —— 每个能力都长在真实的查询工作流里。</p>
+          <span class="kicker">核心差异</span>
+          <h2>你的数据库，配一个 AI 队友</h2>
+          <p>不是在表格上套个聊天框 —— 每个能力都长在真实的查询工作流里。</p>
         </div>
         <div class="grid-3">
-          <a class="card media-card" href="ai.html">
-            <img
-              src="../assets/screenshots/03-ai-nl2sql.png"
-              alt="自然语言生成 SQL"
-              loading="lazy"
-            />
-            <div class="body">
-              <h3>AI 助手</h3>
-              <p>
-                自然语言转 SQL、一键错误诊断、智能 EXPLAIN 解读、AI Chat 侧栏、自然语言筛选数据。
-              </p>
-              <span class="tag">了解 AI 助手 →</span>
+          <a class="card media-card" href="ai.html" style="padding: 24px; display: block">
+            <h3>直接问你的数据库</h3>
+            <div class="uc-row ok">
+              <span class="uc-ico">💬</span><span>“找出 30 天没登录的用户。”</span>
             </div>
+            <div class="uc-row">
+              <span class="uc-ico">🤖</span><span><b>AI 读取 Schema</b>，替你写好 SQL</span>
+            </div>
+            <div class="uc-row ok">
+              <span class="uc-ico">▶️</span><span><b>立即执行</b>——可检查、微调或收藏</span>
+            </div>
+            <span class="tag">自然语言 SQL →</span>
           </a>
-          <a class="card media-card" href="charts.html">
-            <img
-              src="../assets/screenshots/02-query-chart.png"
-              alt="查询结果一键成图"
-              loading="lazy"
-            />
-            <div class="body">
-              <h3>图表可视化</h3>
-              <p>
-                结果集一键切图表，智能推荐图型；折线 / 柱状 / 饼图 / 散点 / 面积，支持导出
-                PNG、SVG。
-              </p>
-              <span class="tag">了解图表 →</span>
+          <a class="card media-card" href="ai.html" style="padding: 24px; display: block">
+            <h3>一键修复报错 SQL</h3>
+            <div class="uc-row err">
+              <span class="uc-ico">✕</span><span><code>column "usres" does not exist</code></span>
             </div>
+            <div class="uc-row">
+              <span class="uc-ico">🩺</span><span><b>AI 用大白话解释原因</b></span>
+            </div>
+            <div class="uc-row ok">
+              <span class="uc-ico">✓</span><span><b>生成修正后的 SQL</b>，可直接运行</span>
+            </div>
+            <span class="tag">错误诊断 →</span>
           </a>
-          <a class="card media-card" href="workflow.html">
-            <img
-              src="../assets/screenshots/04-workflow.png"
-              alt="跨库 Workflow 执行结果"
-              loading="lazy"
-            />
-            <div class="body">
-              <h3>Workflow 自动化</h3>
-              <p>
-                可复用的跨库流程：查询、AI 步骤、条件分支与循环。可在应用内、对话里或外部 AI
-                工具中触发。
-              </p>
-              <span class="tag">了解 Workflow →</span>
+          <a class="card media-card" href="ai.html" style="padding: 24px; display: block">
+            <h3>搞清楚查询为什么慢</h3>
+            <div class="uc-row err">
+              <span class="uc-ico">🐢</span><span>EXPLAIN 显示对 1200 万行做了全表扫描</span>
             </div>
+            <div class="uc-row">
+              <span class="uc-ico">🔍</span><span><b>AI 定位执行计划中的瓶颈</b></span>
+            </div>
+            <div class="uc-row ok">
+              <span class="uc-ico">📈</span><span><b>建议加索引</b>——先验证再上线</span>
+            </div>
+            <span class="tag">EXPLAIN 解读 →</span>
           </a>
         </div>
       </div>
     </section>
 
-    <!-- 为什么选 DataZen -->
+    <!-- 目标用户 -->
     <section class="section" style="padding-top: 0">
       <div class="wrap">
-        <div class="section-head">
-          <span class="kicker">为什么是 DataZen</span>
-          <h2>不止是“又一个数据库客户端”</h2>
-          <p>轻量、安全、可扩展 —— 围绕开发者真实工作流设计。</p>
+        <div class="section-head center">
+          <span class="kicker">适合谁用</span>
+          <h2>为每天和数据库打交道的开发者而生</h2>
         </div>
-        <div class="grid-4">
+        <div class="grid-3 audience">
           <div class="card">
-            <div class="icon">⚡</div>
-            <h3>安装包 &lt;15 MB</h3>
-            <p>安装包小、启动快，远轻于常见重量级客户端。</p>
+            <div class="who">主力人群</div>
+            <h3>后端 / 全栈开发者</h3>
+            <p>SQL 编辑器、EXPLAIN 分析、Schema 浏览、ER 图、备份——日常数据库工作的主力工具。</p>
           </div>
           <div class="card">
-            <div class="icon">🛡️</div>
-            <h3>本地优先安全</h3>
-            <p>密码存系统钥匙串，无云端账户；你的数据永远不离开你的电脑。</p>
+            <div class="who">进阶人群</div>
+            <h3>AI 辅助开发者</h3>
+            <p>NL2SQL、Chat 侧栏，以及把数据库接入 Claude、Cursor 等 Agent 的 MCP Server。</p>
           </div>
           <div class="card">
-            <div class="icon">🧩</div>
-            <h3>可扩展驱动</h3>
-            <p>内置 15+ 种数据库。按需增加 OLAP 与专用引擎，默认安装保持精简。</p>
+            <div class="who">同样适用</div>
+            <h3>偏技术的数据使用者</h3>
+            <p>浏览表结构、任意结果集一键成图、自动生成例行报表——不用离开桌面。</p>
           </div>
-          <div class="card">
-            <div class="icon">🌍</div>
-            <h3>10 种语言</h3>
-            <p>简繁中文 / 英 / 日 / 韩 / 德 / 西 / 法 / 葡 / 俄，首次启动跟随系统语言。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- MCP -->
+    <section class="section" style="padding-top: 0">
+      <div class="wrap">
+        <div class="feature-block reverse">
+          <div>
+            <span class="kicker">MCP Server &amp; Client</span>
+            <h2>让你的 AI Agent 直连数据库</h2>
+            <p>
+              DataZen 内置 MCP Server：把查询、Schema 检视、EXPLAIN 乃至整条 Workflow
+              封装成工具，供你已经在用的 Agent 调用。
+            </p>
+            <ul>
+              <li>支持 Claude Desktop、Cursor、Cline 及所有兼容 MCP 的客户端</li>
+              <li>同时也是 MCP Client——可在 DataZen 内连接外部 MCP Server</li>
+              <li>无头模式（<code>--mcp-stdio</code>），可用于服务器、脚本与 CI</li>
+              <li>凭据保存在系统钥匙串——Agent 拿不到原始密码</li>
+            </ul>
+            <a class="tag" href="features.html#mcp">了解 MCP →</a>
           </div>
+          <div>
+            <div class="flow flow-v">
+              <div class="flow-node hl">
+                Claude / Cursor / AI Agent<small>用自然语言提问</small>
+              </div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node">MCP<small>Model Context Protocol</small></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node hl">DataZen<small>tools · schemas · workflows</small></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node">
+                PostgreSQL · MySQL · Redis · MongoDB …<small>你现有的数据库</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Workflow：一个具体故事 -->
+    <section class="section" style="padding-top: 0">
+      <div class="wrap">
+        <div class="section-head center">
+          <span class="kicker">Workflow 自动化</span>
+          <h2>把重复的数据库工作固化成一条流程</h2>
+          <p>例如：每天自动生成一份销售日报：</p>
+        </div>
+        <div class="flow" style="justify-content: center">
+          <div class="flow-node">🐘 PostgreSQL<small>查当日订单</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-node">🐬 MySQL<small>关联客户数据</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-node">🤖 AI<small>汇总分析结论</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-node">📤 报表<small>导出即可分享</small></div>
+        </div>
+        <p class="center mt-2">
+          <a class="tag" href="workflow.html">查询、AI 步骤、条件分支与循环——了解 Workflow →</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- 图表 -->
+    <section class="section" style="padding-top: 0">
+      <div class="wrap">
+        <div class="feature-block">
+          <div>
+            <span class="kicker">图表可视化</span>
+            <h2>查询 → 图表 → 洞察</h2>
+            <p>
+              任意结果集一键变图表。智能推荐折线 / 柱状 / 饼图 / 散点 / 面积，效果满意即导出 PNG /
+              SVG。
+            </p>
+            <ul>
+              <li>无需学习图表构建器——结果集直接渲染</li>
+              <li>根据列名和取值范围智能推荐图型</li>
+              <li>与 NL2SQL 天然配合：提问、执行、看趋势</li>
+            </ul>
+            <a class="tag" href="charts.html">了解图表 →</a>
+          </div>
+          <img
+            class="feature-shot"
+            src="../assets/screenshots/02-query-chart.png"
+            alt="查询结果一键成图"
+            loading="lazy"
+          />
         </div>
       </div>
     </section>
@@ -206,63 +338,133 @@
       <div class="wrap">
         <div class="section-head">
           <span class="kicker">横向对比</span>
-          <h2>重量级选手，该减减肥了</h2>
+          <h2>传统客户端给不了你的东西</h2>
         </div>
         <table class="compare">
           <thead>
             <tr>
               <th scope="col">&nbsp;</th>
               <th scope="col">DataZen</th>
-              <th scope="col">常见重量级客户端</th>
-              <th scope="col">原生桌面工具</th>
+              <th scope="col">传统数据库客户端</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>安装包体积</td>
-              <td class="yes">&lt; 15 MB</td>
-              <td class="no">约 100–400 MB</td>
-              <td class="no">100–300 MB</td>
-            </tr>
-            <tr>
-              <td>启动耗时</td>
-              <td class="yes">&lt; 1 秒</td>
-              <td class="no">5–15 秒</td>
-              <td>1–3 秒</td>
-            </tr>
-            <tr>
-              <td>内置 AI（NL2SQL / 诊断 / EXPLAIN）</td>
+              <td>内置 AI——NL2SQL、错误诊断、EXPLAIN 解读</td>
               <td class="yes">✓</td>
               <td class="no">—</td>
-              <td class="no">部分需付费订阅</td>
             </tr>
             <tr>
-              <td>跨库工作流</td>
+              <td>供 AI Agent 调用的 MCP Server</td>
               <td class="yes">✓</td>
               <td class="no">—</td>
+            </tr>
+            <tr>
+              <td>跨库 Workflow</td>
+              <td class="yes">✓</td>
               <td class="no">—</td>
+            </tr>
+            <tr>
+              <td>本地优先——无需账号、无云端服务</td>
+              <td class="yes">✓</td>
+              <td class="no">因产品而异</td>
             </tr>
             <tr>
               <td>任意结果集出图</td>
               <td class="yes">✓</td>
-              <td>付费插件</td>
-              <td>付费版本</td>
+              <td class="no">多为付费插件</td>
+            </tr>
+            <tr>
+              <td>安装包体积</td>
+              <td class="yes">&lt; 15 MB</td>
+              <td class="no">普遍 100 MB 以上</td>
             </tr>
             <tr>
               <td>价格</td>
               <td class="yes">免费 · GPLv3</td>
-              <td>免费/付费混合</td>
-              <td>$99+/席</td>
+              <td class="no">$99+/席 常见</td>
             </tr>
           </tbody>
         </table>
         <p class="muted" style="font-size: 12.5px; margin-top: 8px">
-          对比数据为截至 2026 年公开安装包的示意值。
+          对比反映的是截至 2026 年主流数据库客户端的常见情况，仅供参考。
         </p>
       </div>
     </section>
 
-    <!-- 截图画廊 -->
+    <!-- 为什么是 DataZen -->
+    <section class="section" id="why" style="padding-top: 0">
+      <div class="wrap">
+        <div class="section-head center">
+          <span class="kicker">为什么是 DataZen</span>
+          <h2>天生轻量、私密、开放</h2>
+        </div>
+        <div class="grid-3">
+          <div class="card">
+            <div class="icon">⚡</div>
+            <h3>安装包 &lt;15 MB</h3>
+            <p>安装包小、秒级启动，远轻于常见的重量级客户端。</p>
+          </div>
+          <div class="card">
+            <div class="icon">🛡️</div>
+            <h3>数据不出本机</h3>
+            <p>DataZen 不运营任何云数据库服务；凭据以 AES 加密存放在系统钥匙串。</p>
+          </div>
+          <div class="card">
+            <div class="icon">🔌</div>
+            <h3>自带 AI 服务商</h3>
+            <p>OpenAI、Anthropic、DeepSeek 或自定义端点——请求发到哪里由你决定。</p>
+          </div>
+          <div class="card">
+            <div class="icon">👤</div>
+            <h3>无需注册账号</h3>
+            <p>下载、安装、连库即可使用，没有任何要注册的东西。</p>
+          </div>
+          <div class="card">
+            <div class="icon">🧩</div>
+            <h3>可扩展驱动</h3>
+            <p>内置 15+ 种数据库；按需增加 OLAP 与专用引擎，默认安装保持精简。</p>
+          </div>
+          <div class="card">
+            <div class="icon">📖</div>
+            <h3>免费开源</h3>
+            <p>GPLv3 协议，完整源码随时可在 GitHub 审计。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 安全与隐私 -->
+    <section class="section" style="padding-top: 0">
+      <div class="wrap">
+        <div class="feature-block reverse">
+          <div>
+            <span class="kicker">安全</span>
+            <h2>你的数据库。你的凭据。你的 AI 服务商。</h2>
+            <p>每个 AI 数据库工具都必须诚实回答的问题：我的数据去哪了？</p>
+            <ul>
+              <li>DataZen 不运营云服务——你的数据不经过我们的任何服务器</li>
+              <li>连接密码使用 AES-256-GCM 加密；主密钥保存在系统钥匙串</li>
+              <li>只有 Schema 和查询上下文会发给 AI——且只发给你配置的服务商</li>
+              <li>完全可审计：GPLv3 全量源码在 GitHub 上公开</li>
+            </ul>
+          </div>
+          <div>
+            <div class="flow flow-v">
+              <div class="flow-node hl">你的数据库<small>完整数据——只在你机器上</small></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node hl">DataZen<small>本地桌面应用</small></div>
+              <div class="flow-note">仅发送 Schema / 查询上下文 ↓</div>
+              <div class="flow-node">
+                你选定的 AI 服务商<small>OpenAI · Anthropic · DeepSeek · 自定义端点</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 截图画廊：差异化优先，经典能力靠后 -->
     <section class="section" style="padding-top: 0">
       <div class="wrap">
         <div class="section-head">
@@ -270,9 +472,24 @@
           <h2>一睹为快</h2>
         </div>
         <div class="shots">
-          <img src="../assets/screenshots/14-multidb.png" alt="多数据库树" loading="lazy" />
+          <img src="../assets/screenshots/03-ai-nl2sql.png" alt="自然语言生成 SQL" loading="lazy" />
+          <img
+            src="../assets/screenshots/05-ai-diagnosis.png"
+            alt="AI 诊断 SQL 报错"
+            loading="lazy"
+          />
+          <img
+            src="../assets/screenshots/06-ai-explain.png"
+            alt="AI 解读 EXPLAIN 执行计划"
+            loading="lazy"
+          />
+          <img src="../assets/screenshots/02-query-chart.png" alt="查询结果成图" loading="lazy" />
+          <img
+            src="../assets/screenshots/12-workflow-crossdb.png"
+            alt="跨库 Workflow"
+            loading="lazy"
+          />
           <img src="../assets/screenshots/16-er.png" alt="外键关系 ER 图" loading="lazy" />
-          <img src="../assets/screenshots/21-dashboard.png" alt="监控仪表盘组件" loading="lazy" />
         </div>
       </div>
     </section>
@@ -281,9 +498,10 @@
     <section class="section" style="padding-top: 0">
       <div class="wrap">
         <div class="cta-band">
-          <h2>准备好简化数据库工作了吗？</h2>
-          <p>免费下载，秒级连库，把枯燥的部分交给 AI。</p>
-          <a class="btn btn-primary btn-lg" href="download.html">获取 DataZen</a>
+          <h2>准备好把枯燥的部分交给 AI 了吗？</h2>
+          <p>免费下载，连上数据库，几分钟后跑通第一条 AI 辅助查询。</p>
+          <a class="btn btn-primary btn-lg" href="download.html">免费下载 DataZen</a>
+          <p class="muted" style="font-size: 13px; margin-top: 14px">无需账号 · 开源 · 本地优先</p>
         </div>
       </div>
     </section>

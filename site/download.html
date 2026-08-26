@@ -183,26 +183,49 @@
     <section class="section-tight">
       <div class="wrap">
         <h2 style="font-size: 24px; margin-bottom: 16px">FAQ</h2>
-        <ul style="line-height: 1.8">
-          <li>
-            <strong>Do I need an account?</strong> No. Download, install, and use — no signup
-            required.
-          </li>
-          <li>
-            <strong>Do I need an API key for AI?</strong> Yes, bring your own key. Regular database
-            queries and browsing work without one.
-          </li>
-          <li>
-            <strong>Is data uploaded?</strong> No. Connections and credentials stay on your machine
-            only.
-          </li>
-          <li><strong>Which databases?</strong> 15+ built-in and extensible via plugins.</li>
-          <li><strong>Linux?</strong> Yes — .deb, .rpm, and AppImage for x86_64.</li>
-          <li>
-            <strong>Auto-update?</strong> Yes. You can check for updates or toggle auto-update in
-            Settings.
-          </li>
-        </ul>
+        <div class="faq">
+          <details>
+            <summary>Do I need an account?</summary>
+            <p>No. Download, install, and use — no signup required.</p>
+          </details>
+          <details>
+            <summary>Where does my data go?</summary>
+            <p>
+              Your database data and credentials stay on your machine — DataZen runs no cloud
+              service, so nothing passes through our servers. Only when you use AI features are
+              schema and query context sent to the AI provider you configure (OpenAI / Anthropic /
+              DeepSeek / custom endpoint).
+            </p>
+          </details>
+          <details>
+            <summary>Do I need an API key for AI?</summary>
+            <p>Yes, bring your own key. Regular database queries and browsing work without one.</p>
+          </details>
+          <details>
+            <summary>Can I use DataZen commercially?</summary>
+            <p>
+              Yes. DataZen is GPLv3-licensed: internal business use is fine. If you distribute
+              DataZen itself or a modified version, you must make the corresponding source available
+              under GPLv3. See the
+              <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener"
+                >GPLv3 license</a
+              >
+              for embedding/redistribution details.
+            </p>
+          </details>
+          <details>
+            <summary>Which databases are supported?</summary>
+            <p>15+ built-in and extensible via plugins.</p>
+          </details>
+          <details>
+            <summary>Is Linux supported?</summary>
+            <p>Yes — .deb, .rpm, and AppImage for x86_64.</p>
+          </details>
+          <details>
+            <summary>Auto-update?</summary>
+            <p>Yes. You can check for updates or toggle auto-update in Settings.</p>
+          </details>
+        </div>
       </div>
     </section>
 

@@ -3,23 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>DataZen — Lightweight, Free, Open-Source AI Database Client</title>
+    <title>DataZen — AI-Powered Database Workspace for Developers</title>
     <meta
       name="description"
-      content="DataZen is a lightweight free open-source AI database client. Natural-language SQL, error diagnosis, EXPLAIN insights, charts, and cross-database workflows. Under 15 MB. Local-first."
+      content="DataZen is a free open-source desktop database workspace: natural-language SQL, one-click error diagnosis, EXPLAIN analysis, charts, cross-database workflows, and a built-in MCP server for AI agents. Local-first, under 15 MB."
     />
     <link rel="canonical" href="https://flyxl.github.io/datazen/" />
     <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/" />
     <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/" />
     <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/" />
     <meta property="og:type" content="website" />
-    <meta
-      property="og:title"
-      content="DataZen — Lightweight, Free, Open-Source AI Database Client"
-    />
+    <meta property="og:title" content="DataZen — AI-Powered Database Workspace for Developers" />
     <meta
       property="og:description"
-      content="DataZen is a lightweight free open-source AI database client. Natural-language SQL, error diagnosis, EXPLAIN insights, charts, and cross-database workflows. Under 15 MB. Local-first."
+      content="Query, debug, analyze and automate your databases with an AI teammate — locally, from one lightweight desktop app. NL2SQL, error diagnosis, EXPLAIN analysis, charts, workflows, MCP server."
     />
     <meta property="og:url" content="https://flyxl.github.io/datazen/" />
     <meta
@@ -29,13 +26,10 @@
     <meta property="og:locale" content="en_US" />
     <meta property="og:locale:alternate" content="zh_CN" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta
-      name="twitter:title"
-      content="DataZen — Lightweight, Free, Open-Source AI Database Client"
-    />
+    <meta name="twitter:title" content="DataZen — AI-Powered Database Workspace for Developers" />
     <meta
       name="twitter:description"
-      content="DataZen is a lightweight free open-source AI database client. Natural-language SQL, error diagnosis, EXPLAIN insights, charts, and cross-database workflows."
+      content="Query, debug, analyze and automate your databases with an AI teammate — locally, from one lightweight desktop app."
     />
     <meta
       name="twitter:image"
@@ -54,7 +48,7 @@
         "license": "https://www.gnu.org/licenses/gpl-3.0.html",
         "url": "https://flyxl.github.io/datazen/",
         "image": "https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png",
-        "description": "Lightweight, free, open-source AI database client under 15 MB.",
+        "description": "Free, open-source AI-powered database workspace: NL2SQL, error diagnosis, EXPLAIN analysis, charts, cross-database workflows and a built-in MCP server. Under 15 MB, local-first.",
         "inLanguage": "en"
       }
     </script>
@@ -65,35 +59,86 @@
     <!-- Hero -->
     <section class="hero">
       <div class="wrap">
-        <span class="hero-badge"
-          ><span class="dot"></span>Latest · Free &amp; Open Source · GPLv3</span
-        >
-        <h1>
-          Let <span class="grad">AI</span> handle the database work.<br />Turn data into charts.
-        </h1>
+        <span class="hero-badge"><span class="dot"></span>Free &amp; Open Source</span>
+        <h1>The <span class="grad">AI workspace</span><br />for your databases.</h1>
         <p class="lead">
-          DataZen is a desktop database client under 15&nbsp;MB. Query in natural language, diagnose
-          errors with one click, understand slow queries, chart every result, and automate
-          cross-database jobs with reusable workflows.
+          Query, debug, analyze and automate your databases with an AI teammate — locally, from one
+          lightweight desktop app.
         </p>
         <div class="hero-cta">
-          <a class="btn btn-primary btn-lg" href="download.html">Download</a>
+          <a class="btn btn-primary btn-lg" href="download.html">Download DataZen — Free</a>
           <a
             class="btn btn-secondary btn-lg"
             href="https://github.com/flyxl/datazen"
             target="_blank"
             rel="noopener"
-            >Star on GitHub</a
+            >View on GitHub</a
           >
         </div>
-        <p class="hero-note">No account. No telemetry of your data. Local-first by design.</p>
+        <p class="hero-note">Free · Open source · macOS / Windows / Linux</p>
+        <p class="hero-note">
+          Your database data stays local — AI requests go only to the provider you configure.
+        </p>
+
+        <!-- Live demo: NL → SQL → result → chart -->
         <div class="hero-shot">
           <div class="shot-frame">
-            <div class="bar"><i></i><i></i><i></i><span>DataZen — 演示 PostgreSQL</span></div>
-            <img
-              src="assets/screenshots/01-main-window.png"
-              alt="DataZen main window with connection tree and query results"
-            />
+            <div class="bar"><i></i><i></i><i></i><span>DataZen — demo</span></div>
+            <div class="demo-frame" data-demo>
+              <div class="demo-stage active">
+                <span class="demo-tag">1 · Ask AI</span>
+                <span class="demo-bubble">“Show me monthly revenue for 2026.”</span>
+              </div>
+              <div class="demo-stage">
+                <span class="demo-tag">2 · AI writes the SQL</span>
+                <pre class="demo-code">
+SELECT DATE_TRUNC('month', paid_at) AS month,
+       SUM(amount) AS revenue
+FROM orders
+WHERE paid_at >= '2026-01-01'
+GROUP BY 1 ORDER BY 1;</pre
+                >
+              </div>
+              <div class="demo-stage">
+                <span class="demo-tag">3 · Run &amp; see results</span>
+                <table class="demo-tbl">
+                  <thead>
+                    <tr>
+                      <th>month</th>
+                      <th>revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>2026-01-01</td>
+                      <td>128,400</td>
+                    </tr>
+                    <tr>
+                      <td>2026-02-01</td>
+                      <td>142,150</td>
+                    </tr>
+                    <tr>
+                      <td>2026-03-01</td>
+                      <td>151,980</td>
+                    </tr>
+                    <tr>
+                      <td>2026-04-01</td>
+                      <td>167,320</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="demo-stage">
+                <span class="demo-tag">4 · Chart it</span>
+                <div class="demo-bars">
+                  <div class="demo-bar" style="--h: 58%"></div>
+                  <div class="demo-bar" style="--h: 64%"></div>
+                  <div class="demo-bar" style="--h: 70%"></div>
+                  <div class="demo-bar" style="--h: 86%"></div>
+                </div>
+                <div class="demo-cap">Revenue by month — one click to chart, PNG / SVG export</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -102,7 +147,7 @@
     <!-- Supported databases strip -->
     <section class="db-strip">
       <div class="wrap db-strip-inner">
-        <span class="label">Built-in support</span>
+        <span class="label">Works with</span>
         <span class="db-chip"><i></i>PostgreSQL</span>
         <span class="db-chip"><i></i>MySQL</span>
         <span class="db-chip"><i></i>SQLite</span>
@@ -117,95 +162,291 @@
     <section class="section-tight">
       <div class="wrap stats-band">
         <div class="stat"><b>&lt;15 MB</b><span>installer size</span></div>
-        <div class="stat"><b>10</b><span>UI languages out of the box</span></div>
+        <div class="stat"><b>&lt;1 s</b><span>cold startup</span></div>
         <div class="stat"><b>15+</b><span>databases, extensible</span></div>
+        <div class="stat"><b>$0</b><span>free &amp; open source</span></div>
       </div>
     </section>
 
-    <!-- Three pillars with real screenshots -->
+    <!-- Core difference: three concrete AI scenarios -->
     <section class="section">
       <div class="wrap">
         <div class="section-head center">
-          <span class="kicker">Core capabilities</span>
-          <h2>An AI teammate for your daily database work</h2>
+          <span class="kicker">The core difference</span>
+          <h2>Your database, with an AI teammate</h2>
           <p>
-            Not a gimmicky chatbot bolted onto a grid — every feature is wired into the actual query
+            Not a chatbot bolted onto a grid — every AI capability lives inside the real query
             workflow.
           </p>
         </div>
         <div class="grid-3">
-          <a class="card media-card" href="ai.html">
-            <img
-              src="assets/screenshots/03-ai-nl2sql.png"
-              alt="Natural-language SQL generation"
-              loading="lazy"
-            />
-            <div class="body">
-              <h3>AI Assistant</h3>
-              <p>
-                Natural-language SQL, one-click error diagnosis, smart EXPLAIN reading, chat
-                sidebar, NL data filters.
-              </p>
-              <span class="tag">Explore AI →</span>
+          <a class="card media-card" href="ai.html" style="padding: 24px; display: block">
+            <h3>Ask your database</h3>
+            <div class="uc-row ok">
+              <span class="uc-ico">💬</span><span>“Show users inactive for 30&nbsp;days.”</span>
             </div>
+            <div class="uc-row">
+              <span class="uc-ico">🤖</span
+              ><span><b>AI reads your schema</b> and writes the SQL</span>
+            </div>
+            <div class="uc-row ok">
+              <span class="uc-ico">▶️</span
+              ><span><b>Executes instantly</b> — review, tweak or save</span>
+            </div>
+            <span class="tag">Natural-language SQL →</span>
           </a>
-          <a class="card media-card" href="charts.html">
-            <img
-              src="assets/screenshots/02-query-chart.png"
-              alt="Charted query results"
-              loading="lazy"
-            />
-            <div class="body">
-              <h3>Charts</h3>
-              <p>
-                One-click chart view with smart type recommendations. Line, bar, pie, scatter, area
-                — export PNG / SVG.
-              </p>
-              <span class="tag">Explore charts →</span>
+          <a class="card media-card" href="ai.html" style="padding: 24px; display: block">
+            <h3>Fix broken SQL in one click</h3>
+            <div class="uc-row err">
+              <span class="uc-ico">✕</span><span><code>column "usres" does not exist</code></span>
             </div>
+            <div class="uc-row">
+              <span class="uc-ico">🩺</span
+              ><span><b>AI explains the cause</b> in plain language</span>
+            </div>
+            <div class="uc-row ok">
+              <span class="uc-ico">✓</span><span><b>Corrected SQL generated</b>, ready to run</span>
+            </div>
+            <span class="tag">Error diagnosis →</span>
           </a>
-          <a class="card media-card" href="workflow.html">
-            <img
-              src="assets/screenshots/04-workflow.png"
-              alt="Cross-database workflow run"
-              loading="lazy"
-            />
-            <div class="body">
-              <h3>Workflow Automation</h3>
-              <p>
-                Reusable flows across databases: queries, AI steps, conditions, and loops. Run from
-                the app, chat, or external AI tools.
-              </p>
-              <span class="tag">Explore Workflow →</span>
+          <a class="card media-card" href="ai.html" style="padding: 24px; display: block">
+            <h3>Know why queries are slow</h3>
+            <div class="uc-row err">
+              <span class="uc-ico">🐢</span><span>EXPLAIN shows a seq scan over 12M rows</span>
             </div>
+            <div class="uc-row">
+              <span class="uc-ico">🔍</span
+              ><span><b>AI pinpoints the bottleneck</b> in the plan</span>
+            </div>
+            <div class="uc-row ok">
+              <span class="uc-ico">📈</span
+              ><span><b>Suggests an index</b> — verify before applying</span>
+            </div>
+            <span class="tag">EXPLAIN analysis →</span>
           </a>
         </div>
       </div>
     </section>
 
-    <!-- Why DataZen -->
+    <!-- Who it's for -->
     <section class="section" style="padding-top: 0">
       <div class="wrap">
-        <div class="section-head">
-          <span class="kicker">Why DataZen</span>
-          <h2>More than “yet another database client”</h2>
-          <p>Lightweight, secure, and extensible — designed around real developer workflows.</p>
+        <div class="section-head center">
+          <span class="kicker">Who it's for</span>
+          <h2>Built for developers who work with databases every day</h2>
         </div>
-        <div class="grid-4">
+        <div class="grid-3 audience">
           <div class="card">
-            <div class="icon">⚡</div>
-            <h3>Under 15 MB</h3>
+            <div class="who">Primary</div>
+            <h3>Backend &amp; full-stack developers</h3>
             <p>
-              Tiny installers and near-instant startup — far lighter than typical heavy clients.
+              SQL editor, EXPLAIN analysis, schema browsing, ER diagrams, backups — the daily driver
+              for real database work.
             </p>
           </div>
           <div class="card">
-            <div class="icon">🛡️</div>
-            <h3>Local-first security</h3>
+            <div class="who">Secondary</div>
+            <h3>AI-assisted developers</h3>
             <p>
-              Passwords live in the OS keychain; nothing to cloud. Your data never leaves your
-              machine.
+              NL2SQL, chat sidebar, and an MCP server that plugs your databases into Claude, Cursor
+              and other agents.
             </p>
+          </div>
+          <div class="card">
+            <div class="who">Also great</div>
+            <h3>Data-oriented technical users</h3>
+            <p>
+              Explore tables, chart any result set, and automate recurring reports — without leaving
+              your desktop.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MCP -->
+    <section class="section" style="padding-top: 0">
+      <div class="wrap">
+        <div class="feature-block reverse">
+          <div>
+            <span class="kicker">MCP Server &amp; Client</span>
+            <h2>Give your AI agents access to your databases</h2>
+            <p>
+              DataZen ships with a built-in MCP server: expose queries, schema inspection, EXPLAIN
+              and even whole workflows as tools for the agents you already use.
+            </p>
+            <ul>
+              <li>Works with Claude Desktop, Cursor, Cline and any MCP-compatible client</li>
+              <li>Doubles as an MCP client — connect external MCP servers inside DataZen</li>
+              <li>Headless mode (<code>--mcp-stdio</code>) for servers, scripts and CI</li>
+              <li>Your credentials stay in the OS keychain — agents never see them raw</li>
+            </ul>
+            <a class="tag" href="features.html#mcp">Learn about MCP →</a>
+          </div>
+          <div>
+            <div class="flow flow-v">
+              <div class="flow-node hl">
+                Claude / Cursor / AI Agent<small>asks in natural language</small>
+              </div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node">MCP<small>Model Context Protocol</small></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node hl">DataZen<small>tools · schemas · workflows</small></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node">
+                PostgreSQL · MySQL · Redis · MongoDB …<small>your existing databases</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Workflows: a concrete story -->
+    <section class="section" style="padding-top: 0">
+      <div class="wrap">
+        <div class="section-head center">
+          <span class="kicker">Workflows</span>
+          <h2>Turn repetitive database work into one reusable flow</h2>
+          <p>Generate a daily sales report automatically:</p>
+        </div>
+        <div class="flow" style="justify-content: center">
+          <div class="flow-node">🐘 PostgreSQL<small>query today's orders</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-node">🐬 MySQL<small>join customer data</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-node">🤖 AI<small>summarize findings</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-node">📤 Report<small>exported &amp; ready to share</small></div>
+        </div>
+        <p class="center mt-2">
+          <a class="tag" href="workflow.html"
+            >Queries, AI steps, conditions and loops — explore Workflows →</a
+          >
+        </p>
+      </div>
+    </section>
+
+    <!-- Charts -->
+    <section class="section" style="padding-top: 0">
+      <div class="wrap">
+        <div class="feature-block">
+          <div>
+            <span class="kicker">Charts</span>
+            <h2>Query → chart → insight</h2>
+            <p>
+              Every result set becomes a chart in one click. Smart recommendations pick line, bar,
+              pie, scatter or area based on your data — export PNG / SVG when it looks right.
+            </p>
+            <ul>
+              <li>No chart builder to learn — it just renders your result</li>
+              <li>Type hints from column names and value ranges</li>
+              <li>Pairs perfectly with NL2SQL: ask, run, see the trend</li>
+            </ul>
+            <a class="tag" href="charts.html">Explore charts →</a>
+          </div>
+          <img
+            class="feature-shot"
+            src="assets/screenshots/02-query-chart.png"
+            alt="Charted query results"
+            loading="lazy"
+          />
+        </div>
+      </div>
+    </section>
+
+    <!-- Compare -->
+    <section class="section" style="padding-top: 0">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="kicker">Compare</span>
+          <h2>What traditional clients don't give you</h2>
+        </div>
+        <table class="compare">
+          <thead>
+            <tr>
+              <th scope="col">&nbsp;</th>
+              <th scope="col">DataZen</th>
+              <th scope="col">Traditional database clients</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Built-in AI — NL2SQL, error diagnosis, EXPLAIN reading</td>
+              <td class="yes">✓</td>
+              <td class="no">—</td>
+            </tr>
+            <tr>
+              <td>MCP server for AI agents</td>
+              <td class="yes">✓</td>
+              <td class="no">—</td>
+            </tr>
+            <tr>
+              <td>Cross-database workflows</td>
+              <td class="yes">✓</td>
+              <td class="no">—</td>
+            </tr>
+            <tr>
+              <td>Local-first — no account, no cloud service</td>
+              <td class="yes">✓</td>
+              <td class="no">Varies</td>
+            </tr>
+            <tr>
+              <td>Charts on any result set</td>
+              <td class="yes">✓</td>
+              <td class="no">Paid add-ons</td>
+            </tr>
+            <tr>
+              <td>Installer size</td>
+              <td class="yes">&lt; 15 MB</td>
+              <td class="no">Often 100 MB+</td>
+            </tr>
+            <tr>
+              <td>Price</td>
+              <td class="yes">Free · GPLv3</td>
+              <td class="no">$99+/seat is common</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="muted" style="font-size: 12.5px; margin-top: 8px">
+          Comparison is indicative of common patterns in established database clients, as of 2026.
+        </p>
+      </div>
+    </section>
+
+    <!-- Why DataZen -->
+    <section class="section" id="why" style="padding-top: 0">
+      <div class="wrap">
+        <div class="section-head center">
+          <span class="kicker">Why DataZen</span>
+          <h2>Lightweight, private and open by design</h2>
+        </div>
+        <div class="grid-3">
+          <div class="card">
+            <div class="icon">⚡</div>
+            <h3>Under 15 MB</h3>
+            <p>Tiny installer, near-instant startup — far lighter than typical heavy clients.</p>
+          </div>
+          <div class="card">
+            <div class="icon">🛡️</div>
+            <h3>Your data stays local</h3>
+            <p>
+              DataZen operates no cloud database service. Credentials are AES-encrypted in the OS
+              keychain.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">🔌</div>
+            <h3>Bring your own AI provider</h3>
+            <p>
+              OpenAI, Anthropic, DeepSeek or a custom endpoint — you choose exactly where requests
+              go.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">👤</div>
+            <h3>No account required</h3>
+            <p>Download, install, connect. Nothing to sign up for, nothing phoning home.</p>
           </div>
           <div class="card">
             <div class="icon">🧩</div>
@@ -216,79 +457,52 @@
             </p>
           </div>
           <div class="card">
-            <div class="icon">🌍</div>
-            <h3>10 languages</h3>
-            <p>
-              en / zh-CN / zh-TW / ja / ko / de / es / fr / pt / ru — follows system language on
-              first launch.
-            </p>
+            <div class="icon">📖</div>
+            <h3>Free &amp; open source</h3>
+            <p>Licensed under GPLv3 — audit the full source on GitHub at any time.</p>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Comparison -->
+    <!-- Security / privacy story -->
     <section class="section" style="padding-top: 0">
       <div class="wrap">
-        <div class="section-head">
-          <span class="kicker">Compare</span>
-          <h2>Heavy client, meet the featherweight</h2>
+        <div class="feature-block reverse">
+          <div>
+            <span class="kicker">Security</span>
+            <h2>Your database. Your credentials. Your AI provider.</h2>
+            <p>The question every AI database tool must answer honestly: where does my data go?</p>
+            <ul>
+              <li>DataZen runs no cloud service — your data never passes through our servers</li>
+              <li>Passwords are AES-256-GCM encrypted; the master key lives in your OS keychain</li>
+              <li>
+                Only schema and query context are shared with AI — and only with the provider you
+                configure
+              </li>
+              <li>Fully auditable: the complete source code is on GitHub under GPLv3</li>
+            </ul>
+          </div>
+          <div>
+            <div class="flow flow-v">
+              <div class="flow-node hl">
+                Your database<small>full data — stays on your machine</small>
+              </div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node hl">DataZen<small>local desktop app</small></div>
+              <div class="flow-note">sends only schema / query context ↓</div>
+              <div class="flow-node">
+                Your chosen AI provider<small
+                  >OpenAI · Anthropic · DeepSeek · Custom endpoint</small
+                >
+              </div>
+            </div>
+          </div>
         </div>
-        <table class="compare">
-          <thead>
-            <tr>
-              <th scope="col">&nbsp;</th>
-              <th scope="col">DataZen</th>
-              <th scope="col">Typical heavy clients</th>
-              <th scope="col">Native desktop tools</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Installer size</td>
-              <td class="yes">&lt; 15 MB</td>
-              <td class="no">~ 100–400 MB</td>
-              <td class="no">100–300 MB</td>
-            </tr>
-            <tr>
-              <td>Startup time</td>
-              <td class="yes">&lt; 1 s</td>
-              <td class="no">5–15 s</td>
-              <td>1–3 s</td>
-            </tr>
-            <tr>
-              <td>Built-in AI (NL2SQL, diagnosis, EXPLAIN)</td>
-              <td class="yes">✓</td>
-              <td class="no">—</td>
-              <td class="no">Partial / paid tiers</td>
-            </tr>
-            <tr>
-              <td>Cross-database workflows</td>
-              <td class="yes">✓</td>
-              <td class="no">—</td>
-              <td class="no">—</td>
-            </tr>
-            <tr>
-              <td>Charts on any result set</td>
-              <td class="yes">✓</td>
-              <td>Paid add-ons</td>
-              <td>Paid editions</td>
-            </tr>
-            <tr>
-              <td>Price</td>
-              <td class="yes">Free · GPLv3</td>
-              <td>Free / paid</td>
-              <td>$99+ / seat</td>
-            </tr>
-          </tbody>
-        </table>
-        <p class="muted" style="font-size: 12.5px; margin-top: 8px">
-          Comparison figures are indicative, based on publicly available installers as of 2026.
-        </p>
       </div>
     </section>
 
-    <!-- Gallery -->
+    <!-- Gallery: differentiation first, classic power later -->
     <section class="section" style="padding-top: 0">
       <div class="wrap">
         <div class="section-head">
@@ -296,15 +510,34 @@
           <h2>A look inside</h2>
         </div>
         <div class="shots">
-          <img src="assets/screenshots/14-multidb.png" alt="Multi-database tree" loading="lazy" />
           <img
-            src="assets/screenshots/16-er.png"
-            alt="ER diagram with foreign-key relations"
+            src="assets/screenshots/03-ai-nl2sql.png"
+            alt="Natural-language SQL generation"
             loading="lazy"
           />
           <img
-            src="assets/screenshots/21-dashboard.png"
-            alt="Monitoring dashboard widgets"
+            src="assets/screenshots/05-ai-diagnosis.png"
+            alt="SQL error diagnosed by AI"
+            loading="lazy"
+          />
+          <img
+            src="assets/screenshots/06-ai-explain.png"
+            alt="EXPLAIN plan analyzed by AI"
+            loading="lazy"
+          />
+          <img
+            src="assets/screenshots/02-query-chart.png"
+            alt="Query results charted"
+            loading="lazy"
+          />
+          <img
+            src="assets/screenshots/12-workflow-crossdb.png"
+            alt="Cross-database workflow"
+            loading="lazy"
+          />
+          <img
+            src="assets/screenshots/16-er.png"
+            alt="ER diagram with foreign-key relations"
             loading="lazy"
           />
         </div>
@@ -315,9 +548,14 @@
     <section class="section" style="padding-top: 0">
       <div class="wrap">
         <div class="cta-band">
-          <h2>Ready to simplify your database work?</h2>
-          <p>Download free, connect in seconds, and let AI handle the tedious parts.</p>
-          <a class="btn btn-primary btn-lg" href="download.html">Get DataZen</a>
+          <h2>Ready to hand the tedious parts to AI?</h2>
+          <p>
+            Download free, connect your database, and run your first AI-assisted query in minutes.
+          </p>
+          <a class="btn btn-primary btn-lg" href="download.html">Download DataZen — Free</a>
+          <p class="muted" style="font-size: 13px; margin-top: 14px">
+            No account · Open source · Local-first
+          </p>
         </div>
       </div>
     </section>

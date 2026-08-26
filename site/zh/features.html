@@ -6,7 +6,7 @@
     <title>功能总览 — DataZen</title>
     <meta
       name="description"
-      content="DataZen 功能总览：SQL 编辑器、数据浏览与编辑、导出导入、备份、跨库同步、安全存储、国际化、插件系统。"
+      content="DataZen 功能总览：AI 助手、图表、Workflow、MCP Server/Client、SQL 编辑器、数据浏览与编辑、导出导入、备份、跨库同步、插件系统。"
     />
     <link rel="canonical" href="https://flyxl.github.io/datazen/zh/features.html" />
     <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/features.html" />
@@ -24,7 +24,7 @@
     <meta property="og:title" content="功能总览 — DataZen" />
     <meta
       property="og:description"
-      content="DataZen 功能总览：SQL 编辑器、数据浏览与编辑、导出导入、备份、跨库同步、安全存储、国际化、插件系统。"
+      content="DataZen 功能总览：AI 助手、图表、Workflow、MCP Server/Client、SQL 编辑器、数据浏览与编辑、导出导入、备份、跨库同步、插件系统。"
     />
     <meta property="og:url" content="https://flyxl.github.io/datazen/zh/features.html" />
     <meta
@@ -37,7 +37,7 @@
     <meta name="twitter:title" content="功能总览 — DataZen" />
     <meta
       name="twitter:description"
-      content="DataZen 功能总览：SQL 编辑器、数据浏览与编辑、导出导入、备份、跨库同步、安全存储、国际化、插件系统。"
+      content="DataZen 功能总览：AI 助手、图表、Workflow、MCP Server/Client、SQL 编辑器、数据浏览与编辑、导出导入、备份、跨库同步、插件系统。"
     />
     <meta
       name="twitter:image"
@@ -53,15 +53,12 @@
       <div class="wrap">
         <p class="breadcrumb"><a href="index.html">首页</a> / 功能总览</p>
         <h1>🧭 功能总览</h1>
-        <p>
-          DataZen 的完整能力地图。核心三大亮点（AI / 图表 /
-          Workflow）各有专属页面，这里是其余能力的索引。
-        </p>
+        <p>DataZen 的完整能力地图——从 AI 助手、MCP Server，到 SQL 编辑器、数据工具与插件系统。</p>
       </div>
     </section>
 
     <section class="wrap">
-      <div class="grid-4">
+      <div class="grid-3">
         <a class="card" href="ai.html" style="display: block"
           ><div class="icon">🤖</div>
           <h3>AI 助手</h3>
@@ -77,11 +74,68 @@
           <h3>Workflow</h3>
           <p>跨库编排、AI 驱动、可复用流程</p></a
         >
+      </div>
+      <div class="grid-2 mt-2">
+        <a class="card" href="#mcp" style="display: block"
+          ><div class="icon">🛰️</div>
+          <h3>MCP Server / Client</h3>
+          <p>把数据库接入 Claude、Cursor 等 AI Agent</p></a
+        >
         <a class="card" href="databases.html" style="display: block"
           ><div class="icon">🔌</div>
           <h3>多数据库</h3>
           <p>PG / MySQL / SQLite / Redis / 插件</p></a
         >
+      </div>
+
+      <div class="feature-block" id="mcp" style="scroll-margin-top: 88px">
+        <div>
+          <span class="kicker">MCP Server &amp; Client</span>
+          <h2>你的数据库，成为 AI Agent 的工具</h2>
+          <p>
+            DataZen 内置 MCP（Model Context Protocol）Server。把 Claude Desktop、Cursor 或任何兼容
+            MCP 的 Agent 指向它，它们就能检视 Schema、执行查询、读取 EXPLAIN 计划——甚至触发整条
+            Workflow。
+          </p>
+          <ul>
+            <li>
+              <strong>MCP Server</strong>：把数据库操作、Schema 检视、EXPLAIN 与 Workflow 封装成 MCP
+              工具
+            </li>
+            <li><strong>MCP Client</strong>：在 DataZen 内连接外部 MCP Server 并调用其工具</li>
+            <li>
+              <strong>无头模式</strong>：用 <code>--mcp-stdio</code> 运行于服务器、脚本或
+              CI，无需界面
+            </li>
+            <li>
+              <strong>凭据留在本地</strong>：Agent 只与 DataZen 通信，密码始终保存在系统钥匙串
+            </li>
+            <li>
+              <strong>持久化连接</strong>：Agent 通过连接 ID 访问已保存的连接，无需接触原始连接串
+            </li>
+          </ul>
+        </div>
+        <div>
+          <pre><code>Claude / Cursor / AI Agent
+        │  自然语言
+        ▼
+     MCP 协议
+        │  tools · resources · prompts
+        ▼
+     DataZen（本地）
+        │  查询 · Schema · EXPLAIN · Workflow
+        ▼
+PostgreSQL · MySQL · SQLite · Redis …</code></pre>
+          <p class="muted mt-2" style="font-size: 13px">
+            配置指南：
+            <a
+              href="https://github.com/flyxl/datazen#mcp-server--client"
+              target="_blank"
+              rel="noopener"
+              >README 中的 MCP Server / Client 章节</a
+            >
+          </p>
+        </div>
       </div>
 
       <div class="feature-block">

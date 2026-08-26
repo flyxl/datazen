@@ -4,26 +4,34 @@
   const STR = {
     en: {
       nav: [
-        { href: 'index.html', label: 'Home' },
-        { href: 'features.html', label: 'Features' },
-        { href: 'ai.html', label: 'AI' },
-        { href: 'charts.html', label: 'Charts' },
-        { href: 'workflow.html', label: 'Workflow' },
-        { href: 'databases.html', label: 'Databases' },
-        { href: 'manual.html', label: 'Manual' },
-        { href: 'download.html', label: 'Download' },
+        {
+          label: 'Product',
+          href: 'features.html',
+          items: [
+            { href: 'ai.html', label: 'AI Assistant' },
+            { href: 'charts.html', label: 'Charts' },
+            { href: 'workflow.html', label: 'Workflows' },
+            { href: 'features.html#mcp', label: 'MCP Server / Client' },
+            { href: 'databases.html', label: 'Databases' },
+          ],
+        },
+        { href: 'index.html#why', label: 'Why DataZen' },
+        { href: 'manual.html', label: 'Docs' },
+        { href: 'https://github.com/flyxl/datazen', label: 'GitHub', external: true },
       ],
-      downloadCta: 'Download',
+      downloadCta: 'Download Free',
       menuAria: 'Menu',
+      productMenuAria: 'Toggle product menu',
       footerAbout:
-        'Lightweight, free, open-source cross-platform desktop database client. Built with Tauri v2 + Rust + React. Licensed under GPLv3.',
+        'The AI-powered database workspace for developers. Query, debug, analyze and automate your databases — locally, from one lightweight desktop app. Licensed under GPLv3.',
       footerProduct: 'Product',
       footerLinks: 'Links',
-      footerFeatures: 'Features',
+      footerFeatures: 'All features',
       footerAi: 'AI Assistant',
       footerCharts: 'Charts',
-      footerWorkflow: 'Workflow',
-      footerManual: 'Manual',
+      footerWorkflow: 'Workflows',
+      footerMcp: 'MCP Server / Client',
+      footerManual: 'Docs',
       footerDatabases: 'Databases',
       footerGithub: 'GitHub',
       footerReleases: 'Releases',
@@ -35,25 +43,33 @@
     },
     zh: {
       nav: [
-        { href: 'index.html', label: '首页' },
-        { href: 'features.html', label: '功能总览' },
-        { href: 'ai.html', label: 'AI 助手' },
-        { href: 'charts.html', label: '图表可视化' },
-        { href: 'workflow.html', label: 'Workflow' },
-        { href: 'databases.html', label: '数据库' },
+        {
+          label: '产品',
+          href: 'features.html',
+          items: [
+            { href: 'ai.html', label: 'AI 助手' },
+            { href: 'charts.html', label: '图表可视化' },
+            { href: 'workflow.html', label: 'Workflow 自动化' },
+            { href: 'features.html#mcp', label: 'MCP Server / Client' },
+            { href: 'databases.html', label: '数据库支持' },
+          ],
+        },
+        { href: 'index.html#why', label: '为什么是 DataZen' },
         { href: 'manual.html', label: '使用手册' },
-        { href: 'download.html', label: '下载' },
+        { href: 'https://github.com/flyxl/datazen', label: 'GitHub', external: true },
       ],
-      downloadCta: '下载',
+      downloadCta: '免费下载',
       menuAria: '菜单',
+      productMenuAria: '展开产品菜单',
       footerAbout:
-        '轻量、免费、开源的跨平台桌面数据库客户端。基于 Tauri v2 + Rust + React 构建，GPLv3 协议开源。',
+        '面向开发者的 AI 数据库工作台：查询、排障、分析、自动化，都在一款轻量桌面应用里本地完成。GPLv3 协议开源。',
       footerProduct: '产品',
       footerLinks: '链接',
       footerFeatures: '功能总览',
       footerAi: 'AI 助手',
       footerCharts: '图表可视化',
-      footerWorkflow: 'Workflow',
+      footerWorkflow: 'Workflow 自动化',
+      footerMcp: 'MCP Server / Client',
       footerManual: '使用手册',
       footerDatabases: '数据库支持',
       footerGithub: 'GitHub 仓库',
@@ -96,12 +112,54 @@
     const t = STR[locale];
     const assets = assetBase(locale);
     const current = currentFile();
+
+    function isActive(href) {
+      return href.split('#')[0] === current;
+    }
+
     const links = t.nav
       .map(function (n) {
-        const active = n.href === current ? ' class="active"' : '';
-        return '<a href="' + n.href + '"' + active + '>' + n.label + '</a>';
+        if (n.items) {
+          const groupActive = n.items.some(function (it) {
+            return isActive(it.href);
+          });
+          const items = n.items
+            .map(function (it) {
+              return (
+                '<a href="' +
+                it.href +
+                '"' +
+                (isActive(it.href) ? ' class="active"' : '') +
+                '>' +
+                it.label +
+                '</a>'
+              );
+            })
+            .join('');
+          return (
+            '<div class="nav-drop' +
+            (groupActive ? ' active' : '') +
+            '">' +
+            '<a class="nav-drop-label" href="' +
+            n.href +
+            '">' +
+            n.label +
+            '</a>' +
+            '<button class="nav-drop-caret" type="button" aria-label="' +
+            t.productMenuAria +
+            '" aria-expanded="false">▾</button>' +
+            '<div class="nav-drop-menu">' +
+            items +
+            '</div>' +
+            '</div>'
+          );
+        }
+        const active = isActive(n.href) && n.href.indexOf('#') === -1 ? ' class="active"' : '';
+        const ext = n.external ? ' target="_blank" rel="noopener"' : '';
+        return '<a href="' + n.href + '"' + ext + active + '>' + n.label + '</a>';
       })
       .join('');
+
     const langHref = counterpartHref(locale);
     host.innerHTML =
       '<nav class="nav"><div class="wrap nav-inner">' +
@@ -132,9 +190,18 @@
       t.downloadCta +
       '</a>' +
       '</div></nav>';
+
     const toggle = host.querySelector('.nav-toggle');
     toggle.addEventListener('click', function () {
       host.querySelector('.nav-links').classList.toggle('open');
+    });
+    host.querySelectorAll('.nav-drop-caret').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        const drop = btn.closest('.nav-drop');
+        const open = drop.classList.toggle('open');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
     });
     const themeBtn = host.querySelector('[data-theme-toggle]');
     themeBtn.addEventListener('click', toggleTheme);
@@ -177,6 +244,31 @@
     document.querySelectorAll('[data-theme-icon]').forEach(syncThemeIcon);
   });
 
+  // ── Hero demo: light up the NL → SQL → result → chart pipeline in a loop ──
+
+  function initHeroDemo() {
+    const demo = document.querySelector('[data-demo]');
+    if (!demo) return;
+    const stages = Array.prototype.slice.call(demo.querySelectorAll('.demo-stage'));
+    if (!stages.length) return;
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      stages.forEach(function (s) {
+        s.classList.add('active');
+      });
+      return;
+    }
+
+    let i = 1;
+    setInterval(function () {
+      i = i > stages.length ? 1 : i;
+      stages.forEach(function (s, idx) {
+        s.classList.toggle('active', idx < i);
+      });
+      i += 1;
+    }, 1500);
+  }
+
   function renderFooter() {
     const host = document.getElementById('site-footer');
     if (!host) return;
@@ -201,6 +293,9 @@
       '</a>' +
       '<a href="workflow.html">' +
       t.footerWorkflow +
+      '</a>' +
+      '<a href="features.html#mcp">' +
+      t.footerMcp +
       '</a>' +
       '<a href="manual.html">' +
       t.footerManual +
@@ -234,5 +329,6 @@
   document.addEventListener('DOMContentLoaded', function () {
     renderNav();
     renderFooter();
+    initHeroDemo();
   });
 })();
