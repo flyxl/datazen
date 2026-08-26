@@ -10,7 +10,7 @@
 |---|------|---------|------|------------|------------|
 | F1 | 废弃 `use_database`，query/stream/explain 显式传参 | 决策 1 | 已完成 | 34a28420 | 3d23cfd1 · 8b85cd49 · 本提交 |
 | F2 | ADB 命令迁移 SQLite 驱动（DriverCommandDefinition） | 决策 2 | 编码完成 | 本提交 | — |
-| F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 编码完成 | 本提交 | — |
+| F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 编码完成 | 本提交 | 本提交 |
 | F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 未开始 | — | — |
 | F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 未开始 | — | — |
 | F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 未开始 | — | — |
@@ -25,6 +25,7 @@
 > 2026-08-26 协调者：F1 测试轮不通过，BUG-001~004 置「验证不通过」，转入修复轮（流程第 4 步）。
 > 2026-08-26 复验代理（全新实例）：BUG-001~004 逐项闭环验证通过，置「已修复」；新发现既有缺陷 F1-BUG-005（连接刷新丢失已展开分类内容）登记为「待验证」，是否并入 F1 由协调者裁决。
 > 2026-08-26 协调者裁决：F1-BUG-005 为既有缺陷、非 F1 引入，**不并入已关闭的 F1**；立为独立修复循环 B5（见功能总览），排期 F7 之后、R 之前，届时按标准循环派修复代理+全新测试代理。
+> 2026-08-26 F3 复验代理（全新实例，被测 commit `d17623d1`）：范围清零 / 门控安全 / 四合一等价性 / 守护测试四项审查全部通过，三件套独立重跑全绿（1133/0/2 · 241 文件 1970 用例 · tsc 0 错误）；覆盖率实测 BackupWindow.tsx 行覆盖 **61.53% < 80%**（登记 F3-BUG-002），另决策 3 文档表述与实现不符（登记 F3-BUG-001）。两项均【低】、待验证不修。**F3 测试轮不通过**，转修复轮；E2E 用例已登记（F3-E2E-001~007，全部留待 R 阶段）。
 
 | Bug ID | 所属功能 | 描述 | 状态 | 记录时间 | 验证记录 |
 |--------|---------|------|------|---------|---------|
@@ -33,6 +34,8 @@
 | F1-BUG-003 | F1 | 【中】结构编辑器 DDL 无库定位：`TableStructureEditor` 移除 ensureDatabase 后，`plan_table_structure_changes` 仅收 dbSessionId → 跨库建表/改表可能作用于 session 活动库而非面板目标库。重现见「F1 缺陷详情」 | 已修复 | 2026-08-26 | 修复轮（同上提交）：`plan_table_structure_changes` 以同一机制处理，编辑器传入目标库。**复验通过**（同上）：wrapper+impl 均收 `database` 且走同一 `ensure_session_database`，无第二套切库语义；preview/execute 两路径透传组件 prop；DDL 语句执行不带参依赖 plan 阶段持久化 pin（设计决策 3），成立；Rust 双单测（pin 切库 / 无 pin 保持）+ 前端断言第三参 `'db_b'`/`null` |
 | F1-BUG-004 | F1 | 【低】改动 TS 文件覆盖率不达标：ConnectionNavigatorTree.tsx 行覆盖 53.13%、TableStructureEditor.tsx 37.64%（要求 ≥80%）；其余数字见「覆盖率」小节 | 已修复 | 2026-08-26 | 修复轮（同上提交）：两文件 vitest 用例扩展达 ≥80% 行覆盖（新数字见「覆盖率」表）；并补 Rust stream 路径独立切库单测。**复验通过**（同上）：全新实例重跑全量 1963 用例 + `--coverage.include` 过滤实测 ConnectionNavigatorTree.tsx 行覆盖 **96.74%**、TableStructureEditor.tsx **97.75%**，与修复轮声称数字逐位一致；ConnectionNavigatorTree.test.tsx 实测 64 用例独立运行全绿 |
 | F1-BUG-005 | F1 | 【中】【既有行为，非本轮引入】连接刷新后已展开对象分类内容丢失且不自动恢复：单库树（如 SQLite）展开 procedure 分类出现条目后，执行连接级或库级刷新，分类行仍呈展开态但条目消失、计数归零，观察窗 3s 内无任何重载。根因指向 `useExpandedDbCacheRefresh` 在 schemaEpoch 变化时 `clearCaches` 清空该会话全部 `dbObjectsMap` 后仅重载展开库的**表缓存**、不重载对象分类缓存，与 `refreshConnection.reloadExpandedObjectCategories` 的重载竞态失败。多库树表节点不受影响（走 `reloadDbTables` 恢复）。临时探针在 4ba4831a（F1 前）/046acf7a（修复轮前）/8b85cd49 三时点症状一致，判定为既有缺陷。是否纳入 F1 范围由协调者裁决；重现步骤见「F1 缺陷详情」 | 待验证 | 2026-08-26 | 复验轮新登记（2026-08-26 复验 commit 8b85cd49 时发现） |
+| F3-BUG-001 | F3 | 【低】【文档】进度文件 F3「设计决策 3」表述与实现不符：声称 filter_extension 白名单校验"保持无条件"、override 路径"同样要求携带合法 filter_extension"；实际校验仅存在于 dialog 分支（`pick_backup_save_path` 入口的 `validate_backup_filter_extension`），`override_path` 为 Some 时该函数不执行、filter_extension 完全不校验。与旧 path 版命令行为一致（旧版无此参数、对路径零校验），**非新引入放宽**；生产构建整体拒绝 override_path，无安全影响。风险在文档误导：遗留注意 3 提议未来放开 override 通道时，维护者可能误信服务端已有扩展名防线。待编码代理二选一：修正决策 3 措辞，或在 override 分支补同款校验 | 待验证 | 2026-08-26 | 复验轮登记（commit d17623d1，详见 F3 小节复验记录） |
+| F3-BUG-002 | F3 | 【低】改动 TS 文件覆盖率验收线未达：BackupWindow.tsx 行覆盖 **61.53%**（语句 60.78% / 分支 62.5% / 函数 54.34%）< 80%。未覆盖集中在 handleBackup 全函数（L233-286，含本轮合并后的 `invoke('backup_database')` 成功/取消/错误三分支——组件级零覆盖）、handleRestore 错误分支（L223-227）、URL 预填（L166-177）、选项下拉/压缩交互（L435-489）等；sqlFileExecution.ts 行覆盖 100% 达标。同 F1-BUG-004 性质：需补 BackupWindow.test.tsx 组件用例（备份 saved=true / 取消 false / 后端报错、toggleOption/compressGzip 交互等）达 ≥80% | 待验证 | 2026-08-26 | 同上 |
 
 > BUG-001~003 与编码说明「遗留注意 1」同根因（非 query 族命令无 database 参数、入口不再预切库），但遗留说明给出的过渡缓解（"由任一带 database 的 query/stream/explain 惰性触发切库"）对编辑器主链路不生效，故按缺陷登记；由编码代理裁决在 F1 内修复（补参数/补预切）或明确降级为后续功能承接。
 
@@ -311,6 +314,67 @@
 1. `docs/reviews/*2026-08-21*.md`、`test-reports/*.md` 为历史评审/测试报告存档，其中的旧命令名不做回写；进度文件 F1-E2E-007 用例描述仍提旧 dialog 命令名，属历史登记，R 阶段回归时按本节映射表对到 `restore_sql_file`。
 2. 本 worktree 的 codegen `src-tauri/capabilities/default.json` 曾含 `redis:default` 导致裸 cargo 构建失败（F1 遗留注意 2 同因），本轮已再次从主检出对齐（gitignore 文件，未入库）。
 3. override_path 未做路径扩展名校验（维持原 path 版行为）；若后续要把该通道开放给更多场景，建议复用 F2 `finish_save_dialog` 的按声明扩展名校验收口。
+
+### E2E 用例（复验轮登记）
+
+> 归属 R 阶段的统一理由：(a) 全部路径形态依赖 `override_path`，仅 webdriver 特性构建生效、生产构建被拒；(b) dialog 形态依赖 OS 原生对话框，WebdriverIO 无法驱动；(c) 恢复/备份断言需真实 PG 实例；按测试约定真实 webdriver 全量回归统一 R 阶段执行。参数形态已被 vitest mock 层锁定（sqlFileExecution.test.ts 6 例 + BackupWindow.test.tsx 7 例），E2E 只差真实构建与实例。
+
+| 编号 | 场景 | 前置 | 步骤 | 断言 | 标注 |
+|------|------|------|------|------|------|
+| F3-E2E-001 | `backup_database` overridePath 直备基础形态 | webdriver 构建 + PG 实例 | e2e BACKUP-003 | 返回 `saved === true`；文件生成、内容为合法 SQL | 【留待 R 阶段回归】同上 (a)(c) |
+| F3-E2E-002 | 备份选项矩阵经 overridePath：schema-only / data-only / clean / create / gzip / multi / routines | 同上 | e2e BACKUP-004~009 | 各选项产物内容断言逐条成立 | 【留待 R 阶段回归】同上 |
+| F3-E2E-003 | 原生保存对话框取消 → 返回 false 且不写文件 | webdriver 构建 + 桌面会话 | 手工触发备份后取消 OS 对话框 | `saved === false`、目标路径无文件产生 | 【留待 R 阶段回归】OS 原生对话框无法自动化，须人工黑盒（R 阶段在 e2e-coverage.md 登记例外） |
+| F3-E2E-004 | `restore_sql_file` overridePath 流式恢复 .sql（含 routines 往返） | webdriver 构建 + PG 实例 + safe_mode 关 | e2e BACKUP-011 | 函数与对象恢复落地 | 【留待 R 阶段回归】(a)(c) |
+| F3-E2E-005 | `restore_sql_file` overridePath + overwrite 覆盖恢复不重复 | 同上 | e2e BACKUP-012 | 对象替换、行数不翻倍 | 【留待 R 阶段回归】同上 |
+| F3-E2E-006 | 旧 execute_sql_file 形态迁移等价（正/负两例） | 同上 | e2e SF-E01/E02（restore_sql_file + overridePath，无 options） | 合法文件执行成功；失败语句 reject | 【留待 R 阶段回归】同上 |
+| F3-E2E-007 | 生产构建负向门控：非 webdriver 构建传 overridePath 必拒 | 生产构建（default features） | 直调 IPC 携带 overridePath | Validation："path override disabled in production" | 【已被单测钉死】`resolve_override_path_gates_without_webdriver_feature` 在 default 构建下断言同文案（本轮 1133 通过之一）；生产包冒烟留 R 阶段 |
+
+### 测试结果（复验轮 2026-08-26，全新测试代理，独立重跑）
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（共享主检出 target） | **1133 passed / 0 failed / 2 ignored**（与编码轮声称一致） |
+| `npx vitest run` | **241 文件 / 1970 用例全过**（exit 0） |
+| `npx tsc --noEmit` | **0 错误**（exit 0） |
+| `cargo check -p datazen --features webdriver` | 通过（exit 0，仅既有警告；override 分支参与编译独立复验） |
+
+### 覆盖率（复验轮实测：vitest --coverage --coverage.include 过滤改动 TS 文件）
+| 文件 | 行 | 语句 | 分支 | 函数 | 判定 |
+|------|----|------|------|------|------|
+| src/lib/sqlFileExecution.ts | 100% | 100% | 88.23% | 100% | ✓ ≥80% |
+| src/windows/backup/BackupWindow.tsx | **61.53%** | 60.78% | 62.5% | 54.34% | ✗ 未达 80% → **F3-BUG-002**（未覆盖行明细见 bug 台账） |
+
+（src/commands/backup.ts 本轮未被 d17623d1 改动，无需测。）
+
+### 门控安全审查结论（复验清单 2）
+| 维度 | file.rs write_file 家族（既有基线） | backup.rs resolve_override_path（本轮新增） | 结论 |
+|------|------|------|------|
+| 门控原语 | `if !cfg!(feature = "webdriver")` → `Validation(deny_path_ipc())` | `require_webdriver_path_ipc` 内同一 `cfg!` 判定 → `Validation(msg)` | 一致（同一 error.rs 助手家族） |
+| 拒绝时机 | 函数入口、先于任何 fs 访问 | 两命令体第一步，先于 dialog/fs | 一致 |
+| 错误文案 | "Direct path file IPC is disabled; use *_with_dialog commands" | "path override disabled in production"（= 计划文档决策 3 示例**原文**） | 与计划文档一致 |
+| None 语义 | N/A（纯路径命令恒门控） | None 恒不触门控（生产 dialog 流零门控开销） | 合理新增，不影响安全面 |
+| webdriver 下附加路径校验 | validate_file_path（".."遍历检查 + 扩展名白名单） | 无路径遍历/扩展名校验 | 与旧 path 版 backup/restore 完全一致（旧版对 output_path/input_path 零校验）——**非本次新引入放宽**；与 file.rs 的差异系沿袭既有差异 |
+
+生产侧运行时验证：Cargo.toml `default = []`（无 webdriver），故 1133 通过中的 `resolve_override_path_gates_without_webdriver_feature` 即在真实生产特性组合下断言 Some → Validation("path override disabled")、None → Ok(None)。扩展名校验缺失对照结论：override 分支不做 filter_extension 校验 = 旧 path 版行为等价延续（见 F3-BUG-001 的文档表述偏差）。
+
+### 四合一等价性映射（复验清单 3）：确认无语义丢失
+| 旧命令（wire 参数，camelCase） | 旧返回 | 新形态 |
+|------|------|------|
+| backup_database(dbSessionId, database, outputPath, options?, compress?) | Result&lt;()&gt; | overridePath=outputPath；返回 bool（成功 true）。e2e 已迁移并补 `saved === true` 断言 |
+| backup_database_with_dialog(dbSessionId, database, defaultFileName, filterExtension, options?, compress?) | Result&lt;bool&gt; | 对话参数逐一保留 + 新增可选 overridePath；取消仍返回 false |
+| restore_database(dbSessionId, inputPath, options?, database?) | Result&lt;()&gt; | overridePath=inputPath；database/options 按名透传（IPC 按名匹配，声明顺序差异无影响） |
+| execute_sql_file(dbSessionId, inputPath, options?, database?) | Result&lt;bool&gt;(true) | 同上；成功 true / 取消 false 语义不变 |
+| restore_database_with_dialog / execute_sql_file_with_dialog(dbSessionId, database?, options?) | Result&lt;bool&gt; | 二者本就同源 `sql_file_with_dialog`；dialog 分支参数逐字相同 |
+
+前端两处调用点核验：sqlFileExecution wrapper 固定 `invoke('restore_sql_file', { dbSessionId, database, options })`（无 overridePath，`command?:` 分叉已删）；ExecuteSqlFileDialog（confirmBeforeExecute 流）与 BackupWindow.handleRestore（confirmOverwrite 流）均经 wrapper；BackupWindow.handleBackup `invoke('backup_database')` 带 dbSessionId/database/defaultFileName/filterExtension/options/compress、无 overridePath。
+行为差异记录（非缺陷）：① 合并命令恒以 `Some(&app)` 发 backup/restore-progress 事件（旧 path 版传 None 不发）→ 只增不减；② 旧三条 gate 文案统一为计划文档文案（仅 webdriver 构建可见该分支，e2e 无对旧文案的断言依赖，BACKUP-010 仅断言错误非空）。
+
+### 守护测试有效性结论（复验清单 4）
+- pathIpcWiring「decision 3+6」用例：三个生产文件（BackupWindow / sqlFileExecution / ExecuteSqlFileDialog）对五个旧名的负向 toContain 断言——文件内重现即 fail ✓；lib.rs 注册面正负双向 ✓（`save_encryption_key_with_dialog` 同时被正向钉住防波及）；生产代码不含 `overridePath` ✓。
+- 局限（记录非缺陷）：前端扫描是文件白名单式，新增文件里的旧名 invoke 不触发该守卫；但注册面是咽喉——旧命令未注册则运行期必错，且 Rust 侧 `lib_rs_registers_merged_commands_only` 以逗号结尾 needle 精确封死五条旧注册（补齐了 pathIpcWiring 未覆盖的 `commands::restore_database_with_dialog` 场景）。两侧合围有效。
+- Rust ipc_contract_guards 四测：签名级钉死 override_path 存在 / output_path·input_path 清零 / dialog 三参保留 / db_session_id 语义延续，needle 运行时拼接避免自引用误报 ✓。
+
+### 复验判定
+**不通过**（唯一不达标项：F3-BUG-002 覆盖率）。范围清零、门控安全、四合一等价性、守护测试全部通过；F3-BUG-001（低，文档）一并登记待验证。转修复轮；修复后按流程另派全新复验代理。
 
 ## F4 connections/app-data 导入导出合并
 （占位）
