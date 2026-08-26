@@ -16,7 +16,7 @@
 | F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 已完成 | d4e33801 | 本提交 |
 | B5 | ConnectionNavigatorTree 刷新丢失已展开分类修复（=F1-BUG-005） | 既有缺陷 | 已完成 | e4b7b6d7 | 本提交 |
 | F7 | 驱动级 SQL 定位重写（限定名内联、无会话切换；PG 系含 database+schema 双维度） | 用户新指令 2026-08-26 | 已完成 | 6184eacc | 本提交 |
-| R | 回归测试 + 文档更新（架构文档/AGENTS.md）+ 合并 main | 步骤 6 | 回归执行完毕·**存在遗留**（R2-BUG-001/002 经复验置已修复；新增 R2-BUG-003【中】BACKUP-011 结构性红待裁决 + E2E 资产漂移群，见 R-2 小节与文末「R-2 复验记录」；文档收口已完成、注册面比对完成。**未达「回归完成·待合并 main」**） | — | 本提交 |
+| R | 回归测试 + 文档更新（架构文档/AGENTS.md）+ 合并 main | 步骤 6 | 回归执行完毕·**存在遗留**（R2-BUG-001/002 经复验置已修复；R2-BUG-003 经裁决采方案 a 已修复并重跑转绿——BACKUP-011 改传 overwrite + BACKUP-012 自持播种，backup-database.ts 12/12 全绿；ADB-001 资产漂移已修正（监听器断言改指 MainPage.tsx），app-data-backup.ts 8/8 全绿。遗留剩：E2E 资产漂移群①③④处置结果见文末「R-3 资产修复记录」。文档收口已完成、注册面比对完成。**未达「回归完成·待合并 main」**） | — | 本提交 |
 
 状态机：`未开始 → 编码中 → 编码完成 → 测试中 → 已完成`；bug 流转见下方 Bug 台账。
 
@@ -46,7 +46,7 @@
 | R1.3-BUG-001 | R-1.3 | 【低】【文档计数/清单遗漏，非代码缺陷】R-1.3 声称收口「19 处」调用点并给出清单，但清单不可复算：逐项求和仅为 18 处，漏列 `config.rs: export_app_data`（save ZIP，基线直连点为已删的 `pick_app_data_save_path`）。实测三口径——基线（bb498cb9^）plugin-dialog 调用代码站点（共享 helper 计 1、folder/file 双形态计 1）= **19**（声称数在此口径下成立）；基线 `.dialog()` 原生调用出现次数 = **20**（pick_connection_import_path 闭包内 folder/file 各一次）；当前网关调用行 = **21**（共享 open 合并后拆为 preview/with_dialog 两条独立 gateway 调用）。实质收口完整性不受影响：Grep 全仓零残留直连，`export_app_data` 同样经网关（config.rs `super::dialog::save_file` ZIP 行）。风险仅在后续维护者按清单复核时对不上账 | 待验证 → 已修复 | 2026-08-26 | 复验代理登记（全新实例，被测 commit bb498cb9，详见 R-1.3 复验记录）。修复建议二选一：a) 清单补 `config.rs: export_app_data`（save）并注明计数口径=调用代码站点；b) 改按原生调用次数口径写 20。不阻塞本轮判定。**协调者合并期修复（选 a）**：R-1.3 清单已补 `export_app_data`（save ZIP）行并在计数处注记三口径（站点 19 / 原生调用 20 / 网关行 21），本提交 |
 | R2-BUG-001 | R-2 回归 | 【高】PG `backup_database` 产物含空标识符语句，恢复链路部分失败：对 goecoride 库备份生成的 SQL 出现空名条目——注释行 `-- Table: `（表名为空）与 `CREATE TABLE IF NOT EXISTS "" (...)`，`restore_sql_file` 执行时报 `zero-length delimited identifier at or near """"`，BACKUP-011 实测 **Partial restore failure (7/45 statements failed)**、BACKUP-012 (2/7)。次要叠加因素：库内历史残留对象（`_e2e_backup_test`/`_e2e_pg_types` 及孤儿序列 `_e2e_backup_test_id_seq1/2/3`）使无 IF NOT EXISTS 的 CREATE 在恢复时报 already exists 并计入部分失败数。空名对象来源未定位：public schema 现存 14 个关系均无空名（pg_class 复核），疑备份列表查询的 JOIN/过滤分支产出，按纪律禁修复仅登记。重现：webdriver 构建 + 本机 PG goecoride 跑 `e2e/specs/backup-database.ts` BACKUP-011/012 | 已修复 | 2026-08-26 | R-2 回归代理登记（全新 webdriver 构建 HEAD 6af65712 实测；错误堆栈见本轮 E2E 日志 backup-database.ts 段）。**修复（2026-08-26，R2 修复代理，本提交）**：根因已定位——非「JOIN/过滤分支产出空名关系」，而是 PG `get_tables` 为**空 schema** 输出的导航标记行（`fetch_tables_from_pool` 的 SCHEMA_MARKER 分支：`name=""`、`TableType::SystemTable`，供连接树显示空 schema 用）漏入共享 dump 管线：`driver-api sql_dump::dump_sql_database_with_progress` 仅按 view-like 分流，标记行落入 base_tables 后被 `dump_one_object` 逐环节物化（空名 `-- Table:` 注释 + `CREATE TABLE IF NOT EXISTS ""` + clean 时 `DROP TABLE IF EXISTS ""` + 数据 SELECT 失败注释）；goecoride 内 3 个 E2E 残留空 schema（`e2e_sch_*`，psql 复核 relations=0）即 3 条空标识符语句。**与 F7 sql_target 重写无关**：`backup.rs` 直调 `driver.dump_database_with_progress`，全程不经 driver_command 信封 / `qualify_sql_target`，重写器无从触及备份列表（SCHEMA_MARKER 引入于 050e3a14 admin 命令，亦早于 F7）。修法=driver-api 新增 `is_dumpable_object`（空白标识符或 SystemTable 一律不进管线，CREATE/DROP/INSERT 三路同时免疫）；测试=driver-api 单测两例（空名 marker 零语句 + 有名 SystemTable 不导出，修复前红）+ PG 驱动 live 回归 `postgres_dump_empty_schema.rs`（建临时空 schema→dump→断言无零长标识符，修复前对真实 PG 实测红：3 条 `zero-length delimited identifier`，修复后绿；无 TEST_PG_* 环境时按惯例跳过）。次要叠加因素属库内残留非代码缺陷，随 E2E 重跑时清库即可消除。**复验通过（核心缺陷）**（2026-08-26 全新实例，被测 commit `6b3c4bd8`）：空标识符类失败三层实证清零——① driver-api 单测两例绿；② PG live 回归 `postgres_dump_empty_schema` 对真实 PG 绿（TEST_PG_* 显式注入，0.17s 未跳过，临时 schema 自建自清）；③ E2E 实测 goecoride 库内 4 个空 schema（`e2e_sch_*`×3 + `datazen_r2_bug001_*`×1）仍在的情况下备份产物零 `""` 语句、语句总数 45→43、BACKUP-012 翻绿（原红即空标识符语句）。过滤位置审查：唯一漏斗 `dump_sql_database_with_progress` 于 `partition_dump_objects` 前过滤，CREATE/clean DROP/INSERT/进度注释四路免疫；PG/MySQL/trait 默认三调用方全经此漏斗。有名 SystemTable 不导出有专测钉死；合法逐对象 DDL 导出走 `dump_table_ddl` 不经此过滤，无既有需求被误杀（现无「备份系统目录」场景，pg_dump/mysqldump 默认亦排除；未来若出现须改选项门控）。**注意**：修复轮「清库即可使 BACKUP-011 转绿」的预测不成立——残留红根因与空标识符无关，转移登记 **R2-BUG-003** |
 | R2-BUG-002 | R-2 回归 | 【中】app-data 导出↔回灌往返被 zip-bomb 守卫误拒：`export_app_data` 成功产出 zip 后，`import_app_data` 报 `zip bomb: compression ratio exceeded (entry datazen.sqlite-shm)` 拒绝导入——应用自产的包无法回灌，ADB-003 失败。待裁决两点：① 压缩比阈值对高压缩比合法条目（SQLite sidecar `-shm` 高度重复内容）过严；② 导出排除规则已有 logs//*.tmp/.key 但不含 `-shm`/`-wal` sidecar，是否应入包。重现：webdriver 构建跑 `e2e/specs/app-data-backup.ts` ADB-003 | 已修复 | 2026-08-26 | R-2 回归代理登记（HEAD 6af65712 实测；后端日志同轮可见 `cmd="import_app_data" error=zip bomb...`）。**修复（2026-08-26，R2 修复代理，本提交）**：裁决选**导出侧排除**方案——`app_data_archive::should_exclude_with_options` 新增 `is_sqlite_sidecar`（相对路径末段以 `-wal`/`-shm` 结尾即排除，任意深度）。理由：① sidecar 本就是 WAL 模式库的瞬态运行时状态，不该进归档（回灌陈旧 sidecar 反而破坏与库文件的配对）；② 守卫侧白名单会削弱对所有导入包的安全边界（攻击者可将炸弹条目命名为 `x.sqlite-shm` 绕过比率检查），故守卫零改动。测试两例：`should_exclude_sqlite_sidecars_on_export`（正/负样张含 lookalike 文件名）、`self_produced_archive_with_sidecar_round_trips`（512KB 高压缩比 `-shm`/`-wal` 自产包 export→import 全往返；修复前红——sidecar 入包且 import 被 ratio 守卫拒绝，修复后绿）。**复验通过**（2026-08-26 全新实例，被测 commit `6b3c4bd8`）：E2E ADB-003 翻绿且同 spec ADB-002/004~008 一并全绿；负样张审查通过——排除键为末段**精确后缀** `-wal`/`-shm`，`notes-wal.txt`/`shm.txt` 类伪装名不误排（`evil.sqlite-shm.txt` 以 `.txt` 结尾同理不命中），真实负载 `datazen.sqlite`/`cache.db`/`connections.json` 不受影响；「修复前红」实证可信——512KB 零值/单字符填充对 deflate 约 500~1000:1 压缩比，远超导入侧 `MAX_COMPRESSION_RATIO=100`，且用例走真实 `export_app_data`→`import_app_data` 全函数往返非 mock；守卫零改动核实（app_data_archive.rs 导入路径未触）。观察（不阻塞）：匹配大小写敏感（SQLite 实际只写小写 sidecar 名）；名为 `*-wal` 的普通文件/目录会被误排，可接受代价 |
-| R2-BUG-003 | R-2 复验 | 【中】【测试设计×环境耦合，非 R2-BUG-001 残留】BACKUP-011 结构性必红：该用例备份 schema-only+routines 后以**无 `overwrite`** 的 `restore_sql_file` 回灌同一活库——PG 驱动 catalog 级 DDL（`fetch_pg_table_ddl_from_catalog`→`build_pg_create_table_ddl`）产出 pg_dump 风格 **无 IF NOT EXISTS** 的 `CREATE TABLE public.x`，撞库内同名关系即报 already exists；`recover_restore_statement` 仅在 `overwrite=true` 时 DROP 重试，无 overwrite 则失败计入 partial 并最终抛错。而冲突对象不可归零：① spec 自身 `before()` 建的 `_e2e_backup_test` 到 `after()` 才删（套件中途恒存在）；② goecoride 常驻 fixture `carbon_ledger`/`product`/`ride_reviews` 出自 `test/setup_goecoride.sql`（约 35 万行业务数据，非可清理残留）；③ 另有 `_e2e_pg_types` 残留。⇒ 任何环境跑必红。复验实测 5/43 全为 named-relation already-exists、零空标识符；原轮 7/45 与本轮差值恰为修复消除的空标识符语句，证明该类失败在修复前即独立存在。候选方案待裁决：a) 用例改传 `options:['overwrite']`（与 BACKUP-012 同款）；b) PG catalog DDL 补 IF NOT EXISTS；c) 无 overwrite 时对 already-exists 容忍跳过。按纪律禁修仅登记 | 待验证 | 2026-08-26 | R2 复验代理登记（全新实例，被测 commit `6b3c4bd8`，webdriver 构建 + 本机 PG goecoride 实测；完整证据链见文末「R-2 复验记录」） |
+| R2-BUG-003 | R-2 复验 | 【中】【测试设计×环境耦合，非 R2-BUG-001 残留】BACKUP-011 结构性必红：该用例备份 schema-only+routines 后以**无 `overwrite`** 的 `restore_sql_file` 回灌同一活库——PG 驱动 catalog 级 DDL（`fetch_pg_table_ddl_from_catalog`→`build_pg_create_table_ddl`）产出 pg_dump 风格 **无 IF NOT EXISTS** 的 `CREATE TABLE public.x`，撞库内同名关系即报 already exists；`recover_restore_statement` 仅在 `overwrite=true` 时 DROP 重试，无 overwrite 则失败计入 partial 并最终抛错。而冲突对象不可归零：① spec 自身 `before()` 建的 `_e2e_backup_test` 到 `after()` 才删（套件中途恒存在）；② goecoride 常驻 fixture `carbon_ledger`/`product`/`ride_reviews` 出自 `test/setup_goecoride.sql`（约 35 万行业务数据，非可清理残留）；③ 另有 `_e2e_pg_types` 残留。⇒ 任何环境跑必红。复验实测 5/43 全为 named-relation already-exists、零空标识符；原轮 7/45 与本轮差值恰为修复消除的空标识符语句，证明该类失败在修复前即独立存在。候选方案待裁决：a) 用例改传 `options:['overwrite']`（与 BACKUP-012 同款）；b) PG catalog DDL 补 IF NOT EXISTS；c) 无 overwrite 时对 already-exists 容忍跳过。按纪律禁修仅登记 | 已修复 | 2026-08-26 | R2 复验代理登记（全新实例，被测 commit `6b3c4bd8`，webdriver 构建 + 本机 PG goecoride 实测；完整证据链见文末「R-2 复验记录」）。**修复（2026-08-26，R 阶段 E2E 资产修复代理·协调者裁决方案 a，本提交）**：BACKUP-011 恢复调用改传 `options: ['overwrite']`（与 BACKUP-012 同款），用例注释注明裁决理由——无 overwrite 撞库内同名关系的部分失败是合理产品语义（由 BACKUP-012 与人工路径覆盖），本用例场景收敛为验证 schema-only+routines dump 的完整恢复（函数回灌）。连带修正一处测试序依赖：011 的 overwrite 恢复会将 `_e2e_backup_test` 按空表重建（schema-only 无 INSERT 可回灌），原 BACKUP-012 隐式依赖 before() 播种的 'alice' 行随之失效（首轮重跑 012 实测 Expected 1 Received 0 复现）；已让 012 用例开头自行 `seedBackupTable` 自持前置条件。重跑 `--skip-build --spec backup-database.ts,app-data-backup.ts` 全绿：backup-database.ts 12/12（含 BACKUP-011/012）、app-data-backup.ts 8/8。**副作用披露**：overwrite × schema-only 会把 goecoride 库内同名常驻关系 DROP 后按空表重建；本机实况仅 product(4 行)/carbon_ledger(0 行)/ride_reviews(0 行) 受影响（setup_goecoride.sql 的 10 万行级目标内容在现库本就不存在，非本次所致），已先行 `pg_dump` 快照 `/tmp/goecoride_pre_r2fix_snapshot.sql` 备查 |
 
 > BUG-001~003 与编码说明「遗留注意 1」同根因（非 query 族命令无 database 参数、入口不再预切库），但遗留说明给出的过渡缓解（"由任一带 database 的 query/stream/explain 惰性触发切库"）对编辑器主链路不生效，故按缺陷登记；由编码代理裁决在 F1 内修复（补参数/补预切）或明确降级为后续功能承接。
 
@@ -1103,9 +1103,9 @@ Rust 侧以新增单测清单佐证（无 llvm-cov 工具链）：sqlite crate a
 #### 五、遗留清单（按序处理建议）
 
 1. ~~**R2-BUG-001【高】** PG 备份空标识符语句 → restore 部分失败（BACKUP-011/012 红）；修复后须重跑 backup-database.ts 全量~~ **已闭环**（commit `6b3c4bd8` + 复验 2026-08-26：空标识符三层实证清零、BACKUP-012 翻绿；BACKUP-011 残留红转移第 1a 项）
-1a. **R2-BUG-003【中】（复验新增）** BACKUP-011 结构性红：无 overwrite 恢复 schema-only dump × PG catalog DDL 无 IF NOT EXISTS × 库内常驻同名关系（spec 自建 `_e2e_backup_test` 中途不删 + goecoride 常驻 fixture carbon_ledger/product/ride_reviews 出自 test/setup_goecoride.sql 非可清理残留）⇒ 任何环境必红；候选方案 a) 用例传 `options:['overwrite']`（与 012 同款）/ b) catalog DDL 补 IF NOT EXISTS / c) 无 overwrite 时容忍 already-exists 跳过——待裁决，按纪律不修
+1a. ~~**R2-BUG-003【中】（复验新增）** BACKUP-011 结构性红：无 overwrite 恢复 schema-only dump × PG catalog DDL 无 IF NOT EXISTS × 库内常驻同名关系~~ **已闭环**（协调者裁决方案 a，commit 本提交：BACKUP-011 改传 `options:['overwrite']` + BACKUP-012 自持播种；重跑 12/12 全绿；副作用披露见台账行与「R-3 资产修复记录」）
 2. ~~**R2-BUG-002【中】** app-data zip-bomb 误拒自产包（ADB-003 红）；裁决阈值或 sidecar 排除规则后重跑 app-data-backup.ts~~ **已闭环**（导出侧 sidecar 排除，commit `6b3c4bd8`；复验 ADB-003 翻绿、负样张防伪装名核实）
-3. **E2E 资产漂移群【测试资产】**：① 新建连接入口已是图标按钮（文案在 title 属性），`button*=新建连接` 类文本选择器失效——波及 path-ipc-hardening.ts PIH-006 UI 半场、ai-context-tables.ts before-all；② ADB-001 仍断言 ConnectionPage.tsx 含 `menu:export/import-connections` 字面量（已迁移 locale 文件，功能本体由 backupCommands 调用点承载且 ADB-002~008 全绿）；③ sql-query.ts before-all 等 `conn-toolbar-new-query` 20s 超时（后端 connect OK，前端工具栏未现原因待查）；④ mysql/postgres-multi-database.ts 多库树仅渲染单库（后端 count=10/11 正常）——F1-E2E-004 及多库树 UI 回归受阻
+3. **E2E 资产漂移群【测试资产】**：① 新建连接入口已是图标按钮（文案在 title 属性），`button*=新建连接` 类文本选择器失效——波及 path-ipc-hardening.ts PIH-006 UI 半场、ai-context-tables.ts before-all（**未处置**，非本轮范围）；② ~~ADB-001 仍断言 ConnectionPage.tsx 含 `menu:export/import-connections` 字面量~~ **已修复**（监听器实际在 MainPage.tsx L61-82，迁移实发生于 commit `e883f834`——F2 改 Page 同日的 in-page dialog 提交，早于 F4 的 `4d0fec83`；spec 断言已按组件归属拆分双文件，app-data-backup.ts 8/8 全绿）；③ ~~sql-query.ts before-all 等 `conn-toolbar-new-query` 20s 超时~~ **已修复·定位器/载体过时而非产品缺陷**（根因查明：连接成功后工作区落在 ConnectionWorkspaceHome，其「新建查询」快捷卡是首入口，ContentToolbar 的该按钮要等首个内容面板打开后才挂载——原 before-all 在面板存在前等按钮属死等；helpers.openQueryTab 增加工作区首页快捷卡回退、before-all 移除不可能满足的预等待，sql-query.ts 复跑 26/26 全绿）；④ ~~mysql/postgres-multi-database.ts 多库树仅渲染单库~~ **已修复·纯定位器过时**（树重构后 DB 节点带 `data-tree-node="db"`+`data-db-name` 稳定属性且类名改 `text-[13px]`，旧 `text-sm && !text-[13px]` 启发式零命中造成「仅渲染单库」假象、后端 get_databases 一直正常；两 spec 定位器改用 data 属性，PG/MySQL 各 3/3 全绿）
 4. ~~**注册面文档漂移 2 处**：commands.md 备份行（应改写为双命令终态并删「待随合入」指针）、配置行导入导出族简写（应如实列 9 命令）~~ **已闭环**（commit `6b3c4bd8` 回写两行；复验对照 lib.rs 注册面逐名核对一致——备份 2 名、配置导入导出族 9 名，旧双轨八名 grep 0 命中且有 backup.rs/config.rs/pathIpcWiring.test.ts 三处守护测试钉死）
 5. **环境/流程备注**：e2e/.env 缺 `*_RO_PASSWORD` 使 run.mjs 内建 setup-sync-dbs 步骤每次告警（手动补齐即过）；worktree 共享 node_modules 符号链接会触发 pnpm verify-deps 的 purge 提示（本轮以本地化安装规避，勿对该提示选确认以免波及共享目录）
 
@@ -1150,3 +1150,56 @@ Rust 侧以新增单测清单佐证（无 llvm-cov 工具链）：sqlite crate a
 - **新增 R2-BUG-003【中】→ 待验证**：BACKUP-011 结构性红（Bug 台账有完整根因链与三个候选方案）
 - 回归矩阵更新：❌ 3→1（两条翻绿、一条根因转移）；统计 ✅21→23
 - **未达「回归完成·待合并 main」**：移交协调者裁决 R2-BUG-003 方案 → 修复 → 重跑 backup-database.ts 全绿 → 下一轮复验收口
+
+### R-3 资产修复记录（2026-08-26，R 阶段 E2E 资产修复代理·全新实例，被测 HEAD `cad4fa43`，仅改测试资产+本进度文件）
+
+> 判定：**R2-BUG-003 按裁决方案 a 修复并重跑转绿；资产漂移群 ②③④ 全部修复转绿；① 未处置（非本轮范围）**。产品代码零改动。仍待下一轮全新复验对「回归完成·待合并 main」收口。
+
+#### 一、R2-BUG-003 → 方案 a 实施（BACKUP-011）
+
+- `e2e/specs/backup-database.ts` BACKUP-011 的 `restore_sql_file` 改传 `options: ['overwrite']`（与 BACKUP-012 同款），用例注释注明裁决理由：无 overwrite 撞库内同名关系的部分失败是合理产品语义（`recover_restore_statement` 仅在 overwrite=true 时 DROP 重试），由 BACKUP-012 与人工路径覆盖；本用例场景收敛为验证 schema-only+routines dump 的完整恢复。
+- **连带修正测试序依赖**：首轮重跑发现 BACKUP-012 翻红（Expected 1 Received 0）——011 的 overwrite 恢复把 `_e2e_backup_test` 按空表重建（schema-only 无 INSERT 可回灌），012 原先隐式依赖 before() 播种的 'alice' 行、且该依赖在旧序下恰被 011 的「全失败无副作用恢复」掩盖；已让 012 开头自行 `seedBackupTable` 自持前置条件。
+- **副作用披露**：overwrite × schema-only 会把 goecoride 库内同名常驻关系 DROP 后按空表重建。修复前实测库内仅 product(4 行)/carbon_ledger(0 行)/ride_reviews(0 行) 受影响——setup_goecoride.sql 的十万行级目标内容在现库本就不存在（早前轮次即已不在，非本次所致）；已先行 `pg_dump -f /tmp/goecoride_pre_r2fix_snapshot.sql` 快照备查。
+
+#### 二、ADB-001 资产漂移修正
+
+- 监听器现状核实（先读源码再改）：`menu:export/import-connections` 八个监听器位于 `src/windows/main/MainPage.tsx` L61-82；ConnectionPage.tsx 仅承载 app-data 侧（backupCommands 调用点 L607/634 + menu:export/import-config L722/725）。
+- 迁移时点勘误：git `-S` 追溯实迁于 commit **`e883f834`**（2026-08-20 in-page connection dialog 提交，F2 Window→Page 改名 `2b91921d` 同日晚间、**早于** F4 的 `4d0fec83`）；R-2 记录「F2 改 Page 时迁移」与本任务书「自 F4 起」均不精确，F4 提交只是带着过期断言改了 spec。
+- spec 修改：断言按组件归属拆分双文件——app-data 四项留 ConnectionPage.tsx，connections 两项改读 MainPage.tsx。
+
+#### 三、遗留清单其余两项核查处置（先探针复现→定性→修）
+
+| 项 | 探针复现 | 定性 | 处置 |
+|---|---|---|---|
+| ③ sql-query.ts before-all | HEAD 实跑同点复红（20s 超时） | **定位器/载体过时·非产品缺陷**：连接成功后工作区落 ConnectionWorkspaceHome（其快捷卡含「新建查询」文案，致 waitForConnectionToolbar 的 body 文本弱校验假通过），ContentToolbar 的 `conn-toolbar-new-query` 要等首个内容面板打开后才挂载——before-all 在面板存在前死等必超时；showNewQuery 链路（ContentView.tsx L129）与 testid 本体均健在 | helpers.openQueryTab 增加 workspace-home 快捷卡回退（多语言标签匹配，工具栏按钮存在时优先原路径，向后兼容全部既有调用方）；sql-query.ts before-all 移除不可能满足的预等待。**已修** |
+| ④ 多库树单库渲染 | PG/MySQL 同点复红（等待 DB 节点超时），后端 `get_databases OK count=8` 正常 | **纯定位器过时**：树行重构后 DB 节点带 `data-tree-node="db"`+`data-db-name` 稳定属性且类名为 `text-[13px]`，spec 旧启发式（`text-sm && !text-[13px] && !pl-8`）对现行标记零命中 → 「仅渲染单库」假象；持久化 MultiDb 连接 database=None 配置正确，排除 fixture 因素 | 两 spec 的 listSidebarDbNames/clickSidebarDb 改用 data 属性定位。**已修** |
+
+两处均为 ≤10 行级定位器修正（每文件计）；未发现需登记的产品行为疑点。
+
+#### 四、真实重跑逐用例结果（webdriver 构建 `target/debug/bundle/macos/DataZen.app` 复用，`--skip-build`，5 spec 一轮）
+
+| Spec | 结果 |
+|------|------|
+| postgres-multi-database.ts | **3/3 ✅** F4-E2E-001/002/003（原 ▲ 载体阻塞→全绿，003 由 skip 转 pass） |
+| mysql-multi-database.ts | **3/3 ✅** F2-E2E-001/002/003（同上） |
+| sql-query.ts | **26/26 ✅** SQ-001~021/SQ-CTX/BIND/EXPLAIN（原 before-all 阻塞 0 执行→全绿；F1-E2E-010 UI 半场随之解锁） |
+| backup-database.ts | **12/12 ✅** 含 BACKUP-011（方案 a 修复）、BACKUP-012（自播种后绿）、BACKUP-010 负例 |
+| app-data-backup.ts | **8/8 ✅** 含 ADB-001（MainPage 断言拆分后绿） |
+
+合计 52 用例 0 失败（`Spec Files: 5 passed, 5 total`）。capabilities 无 redis 报错（default.json 已与主检出对齐，gitignore 不入提交）。
+
+#### 五、三件套（快速档）+ 边界
+
+| 套件 | 结果 |
+|------|------|
+| `npx tsc --noEmit` | **0 错误** |
+| `npx vitest run` | **247 文件 / 2033 passed / 0 failed**（与 R-2 基线逐位一致） |
+| `cargo test -p datazen --lib` | **1139 passed / 0 failed / 2 ignored**（与 R-2 基线逐位一致；TS 资产改动不触及 Rust 面，例行复核） |
+
+边界声明：本轮仅改 `e2e/` 五文件 + 本进度文件；未动 src//src-tauri//packages/ 产品代码；未 add 未跟踪文档（dev-workflow.txt / ipc-refactor-plan.md 保持 untracked）；node_modules 软链维持现状未 install。
+
+#### 六、判定与移交
+
+- R2-BUG-003 → **已修复**（台账行同步）；遗留 1a/②③④ → 已闭环；① 保持待处理
+- 回归矩阵影响：▲ 5→1（多库×2、sql-query 解锁转 ✅）、❌ 1→0、✅ 23→29（BACKUP-011 计入）
+- **仍未达「回归完成·待合并 main」**：须下一轮全新实例复验收口（含 ① 与 PIH-006/ai-context-tables 半场、F1-E2E-004 等解锁用例的全量重跑确认）

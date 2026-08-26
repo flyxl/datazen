@@ -283,10 +283,18 @@ describe('数据库备份功能 (BACKUP)', () => {
       }),
     );
 
+    // R2-BUG-003 ruling — option a (coordinator-adjudicated 2026-08-26): pass
+    // `options: ['overwrite']`, same shape as BACKUP-012. Restoring a dump
+    // *without* overwrite into a live DB legitimately partial-fails when named
+    // relations already exist (`recover_restore_statement` only DROP-retries
+    // when overwrite=true) — that product semantics is covered by BACKUP-012
+    // and manual paths; this case now verifies full recovery of a
+    // schema-only+routines dump (function round-trips).
     await withSafeModeOff(() =>
       invokeBackend('restore_sql_file', {
         dbSessionId,
         overridePath: outPath,
+        options: ['overwrite'],
       }),
     );
 
@@ -308,6 +316,10 @@ describe('数据库备份功能 (BACKUP)', () => {
   it('BACKUP-012: restore overwrite replaces existing objects without duplicating rows', async function () {
     this.timeout(120000);
     const outPath = path.join(TMP_DIR, `datazen-backup-overwrite-${Date.now()}.sql`);
+    // Re-seed here: BACKUP-011's overwrite-restore of a schema-only dump
+    // recreates _e2e_backup_test EMPTY, so the before()-seeded row can no
+    // longer be assumed. This case owns its precondition.
+    await seedBackupTable(dbSessionId);
     await backupToPath(dbSessionId, outPath, {
       options: [],
       compress: false,
