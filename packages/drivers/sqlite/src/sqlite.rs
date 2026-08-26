@@ -617,6 +617,7 @@ impl DatabaseDriver for SqliteDriver {
             query_stream_command_definition(),
         ];
         cmds.extend(schema_object_command_definitions());
+        cmds.extend(crate::adb::adb_command_definitions());
         cmds
     }
 
@@ -639,6 +640,11 @@ impl DatabaseDriver for SqliteDriver {
                 input,
             )
             .await;
+        }
+        // ADB helpers are unbound: they never touch a connection pool, so the
+        // (possibly empty) handle is irrelevant to them.
+        if crate::adb::is_adb_command(command) {
+            return crate::adb::execute_adb_command(command, &input).await;
         }
         Err(DriverError::Unsupported(format!(
             "unsupported driver command: {command}"

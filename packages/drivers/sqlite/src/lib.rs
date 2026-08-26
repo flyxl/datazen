@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use datazen_driver_api::*;
 
+mod adb;
 mod sqlite;
 mod structure;
 mod sync_adapter;
