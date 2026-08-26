@@ -1068,11 +1068,27 @@ function injectCargoToml(plugins, registry) {
  * `{tauriPlugin.id}:default` for each active plugin that exposes commands.
  * Writes the merged result to `default.json` (gitignored).
  */
-function syncPluginCapabilities(plugins, registry) {
+function syncPluginCapabilities(plugins, registry, { codegenOnly = false } = {}) {
   const hostPath = workPath('src-tauri/capabilities/default.json.host');
   if (!existsSync(hostPath)) {
     console.warn(`[resolve-drivers] host capabilities file not found: ${hostPath}`);
     return;
+  }
+
+  let effective = plugins;
+  if (codegenOnly) {
+    const tomlPath = workPath('src-tauri/Cargo.toml');
+    const toml = existsSync(tomlPath) ? readFileSync(tomlPath, 'utf-8') : '';
+    effective = plugins.filter((name) => {
+      const feat = registry[name]?.feature;
+      return Boolean(feat) && toml.includes(feat);
+    });
+    const skipped = plugins.filter((name) => !effective.includes(name));
+    if (skipped.length > 0) {
+      console.log(
+        `[resolve-drivers] codegen-only: skipping capabilities for not-injected plugins: [${skipped.join(', ')}]`,
+      );
+    }
   }
 
   const cap = JSON.parse(readFileSync(hostPath, 'utf-8'));
@@ -1082,7 +1098,7 @@ function syncPluginCapabilities(plugins, registry) {
   }
 
   const added = [];
-  for (const name of plugins) {
+  for (const name of effective) {
     const tp = registry[name]?.tauriPlugin;
     if (!tp?.id) continue;
     const perm = `${tp.id}:default`;
@@ -1217,8 +1233,12 @@ function main() {
       injectCargoToml(plugins, registry);
       injectRootCargoPatches(plugins, registry);
     }
-    // Always generate capabilities (default.json is gitignored, built from default_host.json + plugins)
-    syncPluginCapabilities(plugins, registry);
+    // Always generate capabilities (default.json is gitignored, built from default_host.json + plugins).
+    // In codegen-only mode Cargo.toml is NOT injected, so only plugins whose cargo feature is
+    // already present in src-tauri/Cargo.toml may contribute permissions — otherwise tauri-build
+    // fails with "Permission <plugin>:default not found" (capabilities referencing a plugin that
+    // is not compiled in). Full mode injects first, so all selected plugins qualify.
+    syncPluginCapabilities(plugins, registry, { codegenOnly });
 
     // Write the features file for the build system to consume
     const output = {
