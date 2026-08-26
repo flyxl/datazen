@@ -189,12 +189,19 @@ const appBinary = getAppBinaryPath();
 assertBinaryReady(appBinary);
 
 // Step 2: Start the Tauri app (webdriver plugin on port 4445)
+// Isolate app data: the webdriver binary would otherwise read/write the real
+// production directory (~/Library/Application Support/com.tbeasy.datazen) and
+// connection-wiping specs would destroy real user data. Requires a binary built
+// with DATAZEN_DATA_DIR support in Store::default_app_data_dir / Store::init.
+const isolatedDataDir = path.join(ROOT, 'e2e', '.app-data');
 log(`Starting app: ${appBinary}`);
+log(`App data isolation: DATAZEN_DATA_DIR=${isolatedDataDir}`);
 let sawAssetMissing = false;
 const app = spawn(appBinary, [], {
   stdio: ['ignore', 'pipe', 'pipe'],
   detached: false,
   cwd: ROOT,
+  env: { ...process.env, DATAZEN_DATA_DIR: isolatedDataDir },
 });
 
 function onAppOutput(chunk) {
