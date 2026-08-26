@@ -400,7 +400,7 @@ pub struct AppState {
 | SQL 查询 | `query.rs` | `execute_query`, `execute_query_stream`（委托 `execute_driver_command_stream`）, `get_explain`, `cancel_query`, `get_query_history`, `clear_query_history`, `purge_history`, `get/add/delete_favorite_query` —— 三查询命令均带可选 `database` 定位参数（见 §3.4） |
 | Schema | `schema.rs` | `get_databases`, `get_tables`, `get_columns`, `get_table_schema`, `get_table_data`（可选 `database` 定位）, `get_er_data`, `get_database_objects`, `get_object_ddl`, `get_privileges`（对象/权限命令内部经 Driver Command 执行）；结构变更走 `structure.rs` 的 `plan_table_structure_changes`（可选 `database` 定位） |
 | 表编辑 | `data.rs` | `commit_row_updates`, `commit_row_deletes`（批量行 UPDATE / DELETE） |
-| 备份 | `backup.rs` | `backup_database`（保存对话框；E2E 传 `override_path` 直备，仅 webdriver 构建生效）、`restore_sql_file`（打开对话框 + 流式执行 `.sql`/`.sql.gz`，同样支持 `override_path`）。决策 3+6 已将旧路径/对话框双轨八名（`restore_database`、`execute_sql_file` 及各 `*_with_dialog` 孪生等）自注册面清零（grep 0 命中），见 [ipc-refactor-plan.md](./ipc-refactor-plan.md) 决策 3+6 |
+| 备份 | `backup.rs` | `backup_database`（保存对话框；E2E 传 `override_path` 直备，仅 webdriver 构建生效）、`restore_sql_file`（打开对话框 + 流式执行 `.sql`/`.sql.gz`，同样支持 `override_path`）。决策 3+6 已将旧路径/对话框双轨八名（`restore_database`、`execute_sql_file` 及各 `*_with_dialog` 孪生等）自注册面清零（grep 0 命中） |
 | 同步 | `commands/sync/` | `inspect_data_sync`, `compare_data_sync`, `execute_data_sync`；已移除：`compare_databases`/`sync_table`/`sync_tables`（legacy）、`classify_sync_pair`（前端 `syncPairing.ts` 镜像同逻辑） |
 | Schema Diff Deploy | `schema_diff.rs` | `prepare_schema_diff_plan`, `execute_schema_diff_deploy`, `compare_table_schemas`（`compare_table_data` 未上线已移除） |
 | 配置 | `config.rs` | `get_settings`, `save_settings`, `get_groups`, `save_groups`, `get_log_path`, `open_log_dir/open_workflows_dir/open_context_dir/open_path`, `restart_app`；导入导出族（F4 合并后九命令，逐一列名）：`export_connections`, `import_connections_preview`, `import_connections_with_dialog`, `export_app_data`, `import_app_data`（这三组原 `_with_dialog` 孪生已删，对话框形态并入无后缀命令本体）, `detect_connection_import_path`, `pick_connection_import_path_with_dialog`, `import_connections_from_app`, `save_encryption_key_with_dialog` |
@@ -442,7 +442,7 @@ pub struct AppState {
 - `write_file` / `write_file_base64` / `read_file` 已删除，E2E fixture 改 Node.js fs；对话框系 API 全部保留
 - `get_monitor_paused` / `set_monitor_paused` / `compare_table_data` / `classify_sync_pair` 已删除
 
-> backup/restore 路径/对话框双轨的合并形态见 [ipc-refactor-plan.md](./ipc-refactor-plan.md) 决策 3+6。
+> backup/restore 路径/对话框双轨已合并：单命令 + `override_path`（仅 webdriver 构建生效）。
 
 ## 4. 安全措施总结
 
