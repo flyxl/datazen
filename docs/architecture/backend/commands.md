@@ -395,22 +395,53 @@ pub struct AppState {
 
 | 模块 | 文件 | 关键命令 |
 |------|------|---------|
-| 连接管理 | `connection.rs` | `get_connections`, `save_connection`, `test_connection`, `connect`, `disconnect`, `ping`, `get_server_info`, `available_drivers` |
-| **Driver Command** | `driver_command.rs` | `execute_driver_command`, `execute_driver_command_stream`, `get_connection_commands`, `get_driver_commands` — SQL `query`/`query_stream`/`execute`、Workflow、Redis `scan_keys`/`get_key`、Schema 对象 `list_objects` 等统一入口 |
-| SQL 查询 | `query.rs` | `execute_query`, `execute_query_stream`（委托 `execute_driver_command_stream`）, `get_explain`, `cancel_query`, `get_query_history`, `favorite_query` |
-| Schema | `schema.rs` | `get_databases`, `get_tables`, `get_columns`, `get_table_schema`, `get_table_data`, `get_er_data`；对象/权限经 Driver Command |
-| 表编辑 | `data.rs` | `commit_edits`（批量行 UPDATE） |
-| 备份 | `backup.rs` | `backup_database`, `restore_database` |
+| 连接管理 | `connection.rs` | `get_connections`, `save_connection`, `delete_connection`, `reorder_connections`, `test_connection`, `connect`, `disconnect`, `release_connection`, `ping_connection`, `get_connection_info`, `get_available_drivers` |
+| **Driver Command** | `driver_command.rs` | `execute_driver_command`, `execute_driver_command_stream`, `get_connection_commands`, `get_driver_commands` — SQL `query`/`query_stream`/`execute`、Workflow、Redis `scan_keys`/`get_key`、Schema 对象 `list_objects`、SQLite 驱动内建 ADB 命令（`adb_list_packages` 等，`requiresConnection = false`，决策 2 自 Host 迁入）等统一入口 |
+| SQL 查询 | `query.rs` | `execute_query`, `execute_query_stream`（委托 `execute_driver_command_stream`）, `get_explain`, `cancel_query`, `get_query_history`, `clear_query_history`, `purge_history`, `get/add/delete_favorite_query` —— 三查询命令均带可选 `database` 定位参数（见 §3.4） |
+| Schema | `schema.rs` | `get_databases`, `get_tables`, `get_columns`, `get_table_schema`, `get_table_data`（可选 `database` 定位）, `get_er_data`, `get_database_objects`, `get_object_ddl`, `get_privileges`（对象/权限命令内部经 Driver Command 执行）；结构变更走 `structure.rs` 的 `plan_table_structure_changes`（可选 `database` 定位） |
+| 表编辑 | `data.rs` | `commit_row_updates`, `commit_row_deletes`（批量行 UPDATE / DELETE） |
+| 备份 | `backup.rs` | 直连路径（webdriver 门控）：`backup_database`, `restore_database`, `execute_sql_file`；对话框：`backup_database_with_dialog`, `restore_database_with_dialog`, `execute_sql_file_with_dialog`。决策 3+6 将双轨合并为 `backup_database` + `restore_sql_file`（`override_path` 仅 webdriver 构建生效），见 [ipc-refactor-plan.md](./ipc-refactor-plan.md)；合并代码在 `feature/f3-backup-merge` 分支，待随 F4 合入 |
 | 同步 | `commands/sync/` | `inspect_data_sync`, `compare_data_sync`, `execute_data_sync`；已移除：`compare_databases`/`sync_table`/`sync_tables`（legacy）、`classify_sync_pair`（前端 `syncPairing.ts` 镜像同逻辑） |
 | Schema Diff Deploy | `schema_diff.rs` | `prepare_schema_diff_plan`, `execute_schema_diff_deploy`, `compare_table_schemas`（`compare_table_data` 未上线已移除） |
-| 配置 | `config.rs` | `get_settings`, `save_settings`, `get_groups`, `get_log_path`, `export_connections`, `import_connections` |
+| 配置 | `config.rs` | `get_settings`, `save_settings`, `get_groups`, `save_groups`, `get_log_path`, `open_log_dir/open_workflows_dir/open_context_dir/open_path`, `restart_app`；导入导出族：`export_connections(_with_dialog)`, `import_connections_preview/_with_dialog`, `detect_connection_import_path`, `pick_connection_import_path_with_dialog`, `import_connections_from_app`, `export_app_data(_with_dialog)`, `import_app_data(_with_dialog)`, `save_encryption_key_with_dialog` |
 | 主题包 | `theme.rs` | `list_theme_packs`, `install_theme_pack_with_dialog`, `remove_theme_pack`, `read_theme_pack_file` |
 | AI | `ai.rs` | `ai_generate_sql`, `ai_chat`, `ai_diagnose_error`, `ai_analyze_explain`, `ai_parse_filter`, `workflow_*`, `prompt_*`（约 30 个命令） |
 | 上下文 | `context.rs` | `context_get_dir`, `context_list_files`, `context_read_files` |
-| MCP | `mcp.rs` | `mcp_start`, `mcp_stop`, `mcp_status`, `mcp_client_connect`, `mcp_client_call_tool` |
+| MCP | `mcp.rs` | `mcp_start_stdio`, `mcp_stop`, `mcp_get_status`, `mcp_reload`, `mcp_list_all_tools`, `mcp_client_connect/call_tool/disconnect/list/tools` |
 | 文件 | `file.rs` | 对话框系列：`save_text_with_dialog`, `save_base64_with_dialog`, `begin_save_with_dialog`, `append_save_text`, `finish_save`, `abort_save`, `open_text_with_dialog`, `open_base64_with_dialog`, `export_tables_stream`（纯路径读写 IPC 已删除） |
 | 窗口 | `window.rs` | `create_sub_window` |
-| ADB | `adb.rs` | `adb_list_packages`, `adb_list_databases`, `adb_pull_database` |
+
+### 3.4 库 / Schema 定位机制（IPC 重构终态）
+
+`use_database` IPC 已废弃删除（决策 1），目标库定位统一为「请求显式传参」，分两层：
+
+**宿主会话 pin（会话维度，所有命令可用）**
+
+- `execute_query` / `execute_query_stream` / `get_explain` 及 `execute_driver_command(_stream)` /
+  `get_table_data` / `plan_table_structure_changes` 均接收可选 `database`
+- 宿主在执行前经共享助手 `ensure_session_database`（`commands/query.rs`）前置切库并更新会话活动库记录；
+  `None` / 空白 / 与当前相同 → 零次切换，保持 not-connected 错误语义
+- pin 持久生效：切库后，后续不带定位参数的未限定命令自然落在目标库
+
+**驱动方言内联重写（语句维度，F7 六驱动 SQL 定位重写）**
+
+- driver-command 信封另带可选 `schema`（PG 系 = database + schema 两维；MySQL 系仅 database）
+- 驱动可覆写 `DatabaseDriver::qualify_sql_target`，基于 driver-api 的 `SqlTarget` / `qualify_sql_with`
+  （sqlparser AST 改写）把未限定表引用重写为方言限定名：MySQL/MariaDB `` `db`.`t` ``（真跨库内联）、
+  PostgreSQL/DuckDB `"schema"."t"`（database 维沿用连接池切换）、SQL Server `db.schema.t` 三段名、
+  ClickHouse `db.t`、SQLite 仅 ATTACH 别名场景（通常 no-op）
+- 只改定位语境（FROM / JOIN / INSERT INTO / UPDATE / DELETE FROM / TRUNCATE / CREATE|DROP|ALTER TABLE /
+  CREATE INDEX ON）；跳过 CTE 名、子查询别名、字符串字面量与已限定引用；幂等；解析失败原样放行并记日志
+- 双保险正交并存：pin（会话维度）与 rewrite（语句维度）互不冲突；旧驱动无重写能力时由 pin 兜底
+
+**连带删除面（决策 2 / 4 / 5）**
+
+- ADB 三命令自 Host `commands/adb.rs` 迁入 sqlite 驱动 Command API（`requiresConnection = false`），
+  原生保存对话框由 `DriverSaveDialogSpec` 元数据驱动的宿主薄壳 `finish_save_dialog` 完成
+- `write_file` / `write_file_base64` / `read_file` 已删除，E2E fixture 改 Node.js fs；对话框系 API 全部保留
+- `get_monitor_paused` / `set_monitor_paused` / `compare_table_data` / `classify_sync_pair` 已删除
+
+> backup/restore 路径/对话框双轨的合并形态见 [ipc-refactor-plan.md](./ipc-refactor-plan.md) 决策 3+6。
 
 ## 4. 安全措施总结
 

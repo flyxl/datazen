@@ -21,8 +21,8 @@ DataZen 把三类能力拆开，**本模块只实现 Data Synchronization**（�
 5. 异构 SQL（如 PG→MySQL）走 IR，**不是** Synchronization。
 6. **按 database 同步，不按 connection**：选择连接后，还需各自选定源/目标数据库。IPC 接收
    `source_database` / `target_database`（`Option<String>`），`inspect` / `compare` / `apply` /
-   `execute` / `generate_data_sync_sql` / `revalidate_data_sync` 在查询前对两端连接执行
-   `use_database(db)`；未传则回落到连接的默认 `database`。
+   `execute` / `generate_data_sync_sql` / `revalidate_data_sync` 在查询前对两端连接做驱动层内部
+   切库 `maybe_use_database(db)`（宿主 `use_database` IPC 已随重构移除）；未传则回落到连接的默认 `database`。
    前端用 `get_databases` 枚举并默认选中连接的 `database` 下拉（Compare 前两端都必须有值）。
 
 ## 2. 模块

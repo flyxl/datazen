@@ -303,7 +303,7 @@ Every step has an `id` (string; unique within the workflow for `steps.<id>...` r
   id: get_orders
   sql: "SELECT order_id, amount FROM orders WHERE uid = '{{uid}}'"
   connection: "{{pg_conn}}"   # optional
-  database: "{{db_name}}"     # optional; use_database before run
+  database: "{{db_name}}"     # optional; switch database before run
   timeout_secs: 10            # optional, default 30
   on_error:                   # optional, overrides global
     strategy: skip
@@ -314,7 +314,7 @@ Every step has an `id` (string; unique within the workflow for `steps.<id>...` r
 | `id` | yes | — | Step id |
 | `sql` | yes | — | Supports `{{...}}`; trailing `;` stripped before run |
 | `connection` | no | default connection at execute | After template: session id or **saved connection config id** |
-| `database` | no | — | If non-empty, `use_database` first |
+| `database` | no | — | If non-empty, switches session database before run (driver-level; the `use_database` IPC has been removed) |
 | `timeout_secs` | no | `30` | Step timeout |
 | `on_error` | no | global `error_handling` | See [§10](#10-timeouts-and-error-handling) |
 
