@@ -10,11 +10,11 @@
 |---|------|---------|------|------------|------------|
 | F1 | 废弃 `use_database`，query/stream/explain 显式传参 | 决策 1 | 已完成 | 34a28420 | 3d23cfd1 · 8b85cd49 · 本提交 |
 | F2 | ADB 命令迁移 SQLite 驱动（DriverCommandDefinition） | 决策 2 | 已完成 | 823516c2 | bf588def · f12f9be9 · 本提交 |
-| F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 测试中·修复轮（A 轨，详见 f3-backup-merge 分支进度副本） | d17623d1 | 4bb25365 · 待合并 |
+| F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 已完成（A 轨，待随 F4 一起合并；详见 f3-backup-merge 分支进度副本） | d17623d1 | 4bb25365 · 25aed34c · aae29cfa |
 | F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 未开始 | — | — |
 | F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 已完成 | 本提交 | 本提交 |
 | F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 已完成 | d4e33801 | 本提交 |
-| F7 | 驱动级 SQL 定位重写（限定名内联、无会话切换；PG 系含 database+schema 双维度） | 用户新指令 2026-08-26 | 编码中（C 轨，详见 f7-driver-sql-target 分支进度副本） | — | — |
+| F7 | 驱动级 SQL 定位重写（限定名内联、无会话切换；PG 系含 database+schema 双维度） | 用户新指令 2026-08-26 | 测试中（C 轨，详见 f7-driver-sql-target 分支进度副本；编码 commit 6184eacc） | 6184eacc | — |
 | B5 | ConnectionNavigatorTree 刷新丢失已展开分类修复（=F1-BUG-005） | 既有缺陷 | 已完成 | e4b7b6d7 | 本提交 |
 | R | 回归测试 + 文档更新（架构文档/AGENTS.md）+ 合并 main | 步骤 6 | 未开始 | — | — |
 
