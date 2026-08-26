@@ -35,6 +35,10 @@ pub struct ExecuteDriverCommandStreamRequest {
     /// query-family commands; `None`/blank keeps the current active database).
     #[serde(default)]
     pub database: Option<String>,
+    /// F7: optional target schema (PG-family engines). Rewrite-capable
+    /// drivers inline it as a qualified name; others ignore it.
+    #[serde(default)]
+    pub schema: Option<String>,
     #[serde(default)]
     pub apply_result_limit: Option<bool>,
     #[serde(default)]
@@ -71,6 +75,11 @@ pub struct ExecuteDriverCommandRequest {
     /// `ensure_session_database` for the switching semantics.
     #[serde(default)]
     pub database: Option<String>,
+    /// F7: optional target schema (PG-family engines). Passed through into
+    /// the command input for SQL commands so rewrite-capable drivers can
+    /// inline it; ignored otherwise.
+    #[serde(default)]
+    pub schema: Option<String>,
 }
 
 fn unbound_handle() -> ConnectionHandle {
@@ -113,6 +122,26 @@ fn sql_from_input(input: &serde_json::Value) -> Option<String> {
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .map(str::to_string)
+}
+
+/// F7: copy non-blank envelope targeting fields into the command input object
+/// (no-op for blank values or non-object inputs).
+fn inject_sql_target_fields(
+    input: &mut serde_json::Value,
+    database: Option<&str>,
+    schema: Option<&str>,
+) {
+    let Some(map) = input.as_object_mut() else {
+        return;
+    };
+    let database = database.map(str::trim).filter(|s| !s.is_empty());
+    let schema = schema.map(str::trim).filter(|s| !s.is_empty());
+    if let Some(database) = database {
+        map.insert("database".into(), serde_json::Value::String(database.into()));
+    }
+    if let Some(schema) = schema {
+        map.insert("schema".into(), serde_json::Value::String(schema.into()));
+    }
 }
 
 async fn record_sql_command_outcome(
@@ -301,7 +330,7 @@ pub(crate) async fn execute_driver_command_stream_impl(
             crate::sql_guard::apply_params(&sql, &params).map_err(CommandError::Validation)?;
         request.input["sql"] = serde_json::Value::String(bound_sql);
     }
-    let sql = request
+    let mut sql = request
         .input
         .get("sql")
         .and_then(|v| v.as_str())
@@ -309,6 +338,38 @@ pub(crate) async fn execute_driver_command_stream_impl(
         .ok_or_else(|| {
             CommandError::Validation("command 'query_stream' requires string input 'sql'".into())
         })?;
+
+    // F7: give rewrite-capable drivers the chance to inline the SQL target
+    // (dialect-qualified names, no session switch). Drivers without the
+    // capability execute the SQL as-is and the ensure_session_database pin
+    // above remains the fallback for the database dimension.
+    let target_database = nonempty(request.database.as_ref()).map(str::to_string);
+    let target_schema = nonempty(request.schema.as_ref()).map(str::to_string);
+    if target_database.is_some() || target_schema.is_some() {
+        match driver.qualify_sql_target(
+            &sql,
+            target_database.as_deref(),
+            target_schema.as_deref(),
+        ) {
+            Some(qualified) => {
+                if qualified != sql {
+                    tracing::info!(
+                        db_session_id,
+                        "driver rewrote SQL target qualification for stream"
+                    );
+                }
+                sql = qualified;
+            }
+            None => {
+                tracing::debug!(
+                    db_session_id,
+                    database = target_database.as_deref().unwrap_or(""),
+                    schema = target_schema.as_deref().unwrap_or(""),
+                    "driver has no SQL target rewrite capability; streaming SQL as-is"
+                );
+            }
+        }
+    }
 
     tracing::info!(
         db_session_id,
@@ -449,6 +510,17 @@ pub(crate) async fn execute_driver_command_with_mode(
     let is_sql_command = matches!(definition.id.as_str(), "query" | "execute");
     if definition.id == "query" {
         apply_query_result_limit(state, &mut request.input).await;
+    }
+    // F7: pass envelope targeting into the command input so drivers that
+    // implement dialect-aware qualification (`qualify_sql_target`) can inline
+    // the target. Drivers without the capability ignore the extra fields and
+    // keep relying on the host session pin (ensure_session_database).
+    if is_sql_command {
+        inject_sql_target_fields(
+            &mut request.input,
+            request.database.as_deref(),
+            request.schema.as_deref(),
+        );
     }
 
     validate_command_input(&definition, &request.input).map_err(CommandError::Validation)?;
@@ -690,6 +762,8 @@ pub async fn execute_driver_command_stream(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
 
     #[test]
@@ -700,6 +774,7 @@ mod tests {
             command: "query".into(),
             input: serde_json::json!({ "sql": "SELECT 1" }),
             database: Some("db_b".into()),
+            schema: None,
         };
 
         let encoded = serde_json::to_value(request).unwrap();
@@ -707,7 +782,54 @@ mod tests {
         assert_eq!(encoded["command"], "query");
         assert_eq!(encoded["input"]["sql"], "SELECT 1");
         assert_eq!(encoded["database"], "db_b");
+        // Option fields serialize as explicit null (like `database`), and
+        // serde-default accepts both absent and null on input.
+        assert_eq!(encoded["schema"], serde_json::Value::Null);
         assert!(encoded.get("db_session_id").is_none());
+    }
+
+    #[test]
+    fn request_schema_field_round_trips_and_defaults_to_none() {
+        // F7: optional envelope field — legacy callers omit it, serde default
+        // keeps them compatible (no PROTOCOL_VERSION bump).
+        let without: ExecuteDriverCommandStreamRequest =
+            serde_json::from_value(serde_json::json!({
+                "dbSessionId": "s",
+                "command": "query_stream"
+            }))
+            .unwrap();
+        assert!(without.schema.is_none());
+
+        let with = ExecuteDriverCommandRequest {
+            db_session_id: None,
+            driver_type: None,
+            command: "query".into(),
+            input: serde_json::json!({ "sql": "SELECT 1" }),
+            database: None,
+            schema: Some("sales".into()),
+        };
+        let encoded = serde_json::to_value(with).unwrap();
+        assert_eq!(encoded["schema"], "sales");
+    }
+
+    #[test]
+    fn inject_sql_target_fields_skips_blank_values_and_non_objects() {
+        let mut input = serde_json::json!({ "sql": "SELECT 1" });
+        inject_sql_target_fields(&mut input, Some("  "), Some(""));
+        assert_eq!(
+            input,
+            serde_json::json!({ "sql": "SELECT 1" }),
+            "blank envelope targeting must not be injected"
+        );
+
+        let mut input = serde_json::json!({ "sql": "SELECT 1" });
+        inject_sql_target_fields(&mut input, Some("db"), Some("schema_x"));
+        assert_eq!(input["database"], "db");
+        assert_eq!(input["schema"], "schema_x");
+
+        let mut scalar = serde_json::Value::Null;
+        inject_sql_target_fields(&mut scalar, Some("db"), None);
+        assert_eq!(scalar, serde_json::Value::Null);
     }
 
     #[test]
@@ -759,6 +881,7 @@ mod tests {
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "SELECT 1" }),
                 database: Some("analytics".into()),
+                schema: None,
             },
         )
         .await
@@ -789,6 +912,7 @@ mod tests {
                     command: "query".into(),
                     input: serde_json::json!({ "sql": "SELECT 1" }),
                     database: database.clone(),
+                    schema: None,
                 },
             )
             .await
@@ -809,6 +933,7 @@ mod tests {
                 command: "query_stream".into(),
                 input: serde_json::json!({ "sql": "SELECT 1" }),
                 database: Some("analytics".into()),
+                schema: None,
                 apply_result_limit: Some(true),
                 record_history: Some(false),
             },
@@ -831,6 +956,170 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_driver_command_passes_target_to_qualifying_driver() {
+        // F7: envelope targeting is injected into the command input and the
+        // rewrite-capable driver inlines it (marker comment proves the SQL
+        // the driver actually received).
+        let test = crate::testing::app_state::TestAppState::with_options(
+            crate::testing::mock_driver::MockDriverOptions {
+                rewrite_sql_target: true,
+                ..Default::default()
+            },
+        )
+        .await;
+        let (_, conn_id) = test.save_and_connect("cmd-target-rewrite").await;
+
+        let result = execute_driver_command_impl(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                db_session_id: Some(conn_id.clone()),
+                driver_type: None,
+                command: "query".into(),
+                input: serde_json::json!({ "sql": "SELECT 1" }),
+                database: Some("analytics".into()),
+                schema: Some("sales".into()),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            test.mock.qualify_calls(),
+            vec![(Some("analytics".into()), Some("sales".into()))]
+        );
+        let executed_sql = result.data["results"][0]["sql"].as_str().unwrap();
+        assert!(
+            executed_sql.contains("/* target: db=analytics schema=sales */"),
+            "{executed_sql}"
+        );
+
+        // The session pin (ensure_session_database) still runs alongside the
+        // rewrite — the database dimension stays double-covered.
+        assert_eq!(
+            test.mock.use_database_calls(),
+            vec!["analytics".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_driver_command_falls_back_when_driver_cannot_rewrite() {
+        // F7: a driver without rewrite capability executes SQL unchanged;
+        // ensure_session_database remains the fallback for the database dim.
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let (_, conn_id) = test.save_and_connect("cmd-target-fallback").await;
+
+        let result = execute_driver_command_impl(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                db_session_id: Some(conn_id.clone()),
+                driver_type: None,
+                command: "query".into(),
+                input: serde_json::json!({ "sql": "SELECT 42" }),
+                database: Some("analytics".into()),
+                schema: Some("sales".into()),
+            },
+        )
+        .await
+        .unwrap();
+
+        // SQL reached the driver untouched.
+        let executed_sql = result.data["results"][0]["sql"].as_str().unwrap();
+        assert_eq!(executed_sql, "SELECT 42");
+        assert!(test.mock.qualify_calls().is_empty());
+        // …and the session was still pinned to the requested database.
+        assert_eq!(
+            test.mock.use_database_calls(),
+            vec!["analytics".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_hands_targeting_to_qualifying_driver() {
+        let test = crate::testing::app_state::TestAppState::with_options(
+            crate::testing::mock_driver::MockDriverOptions {
+                rewrite_sql_target: true,
+                ..Default::default()
+            },
+        )
+        .await;
+        let (_, conn_id) = test.save_and_connect("stream-target").await;
+        let started: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let recorder = Arc::clone(&started);
+        let callback: QueryStreamCallback = Arc::new(move |event| {
+            if let QueryStreamEvent::StatementStart { sql, .. } = event {
+                recorder.lock().unwrap().push(sql);
+            }
+        });
+
+        execute_driver_command_stream_impl(
+            &test.state,
+            ExecuteDriverCommandStreamRequest {
+                db_session_id: Some(conn_id.clone()),
+                command: "query_stream".into(),
+                input: serde_json::json!({ "sql": "SELECT 7" }),
+                database: Some("analytics".into()),
+                schema: Some("sales".into()),
+                apply_result_limit: Some(false),
+                record_history: Some(false),
+            },
+            callback,
+            ExecuteDriverCommandStreamOpts {
+                apply_result_limit: false,
+                record_history: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        let started_sql = started.lock().unwrap().join("\n");
+        assert!(
+            started_sql.contains("/* target: db=analytics schema=sales */"),
+            "{started_sql}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_without_capability_keeps_sql_and_pins_session() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let (_, conn_id) = test.save_and_connect("stream-fallback").await;
+        let started: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let recorder = Arc::clone(&started);
+        let callback: QueryStreamCallback = Arc::new(move |event| {
+            if let QueryStreamEvent::StatementStart { sql, .. } = event {
+                recorder.lock().unwrap().push(sql);
+            }
+        });
+
+        execute_driver_command_stream_impl(
+            &test.state,
+            ExecuteDriverCommandStreamRequest {
+                db_session_id: Some(conn_id.clone()),
+                command: "query_stream".into(),
+                input: serde_json::json!({ "sql": "SELECT 7" }),
+                database: Some("analytics".into()),
+                schema: Some("sales".into()),
+                apply_result_limit: Some(false),
+                record_history: Some(false),
+            },
+            callback,
+            ExecuteDriverCommandStreamOpts {
+                apply_result_limit: false,
+                record_history: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        let started_sql = started.lock().unwrap().join("\n");
+        assert_eq!(started_sql, "SELECT 7");
+        assert_eq!(
+            test.mock.use_database_calls(),
+            vec!["analytics".to_string()],
+            "session pin fallback must still run on the stream path"
+        );
+    }
+
+    #[tokio::test]
     async fn executes_query_command_through_ipc() {
         let test = crate::testing::app_state::TestAppState::new().await;
         let (_, conn_id) = test.save_and_connect("cmd-exec").await;
@@ -842,6 +1131,7 @@ mod tests {
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "SELECT 1" }),
                 database: None,
+                schema: None,
             },
         )
         .await
@@ -871,6 +1161,7 @@ mod tests {
                 command: "not-a-command".into(),
                 input: serde_json::json!({}),
                 database: None,
+                schema: None,
             },
         )
         .await
@@ -890,6 +1181,7 @@ mod tests {
                 command: "query".into(),
                 input: serde_json::json!({}),
                 database: None,
+                schema: None,
             },
         )
         .await
@@ -909,6 +1201,7 @@ mod tests {
                 command: "execute".into(),
                 input: serde_json::json!({ "sql": "DELETE FROM t" }),
                 database: None,
+                schema: None,
             },
             Some(crate::mcp::permission::McpPermissionMode::ReadOnly),
             None,
@@ -948,6 +1241,7 @@ mod tests {
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "SELECT 1" }),
                 database: None,
+                schema: None,
             },
         )
         .await
@@ -988,6 +1282,7 @@ mod tests {
                 command: "ping".into(),
                 input: serde_json::json!({}),
                 database: Some("ignored-for-unbound".into()),
+                schema: None,
             },
         )
         .await
@@ -1040,6 +1335,7 @@ mod tests {
                 command: "pull_payload".into(),
                 input: serde_json::json!({}),
                 database: None,
+                schema: None,
             },
         )
         .await
@@ -1062,6 +1358,7 @@ mod tests {
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "UPDATE t SET x = 1" }),
                 database: None,
+                schema: None,
             },
         )
         .await
@@ -1084,6 +1381,7 @@ mod tests {
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "UPDATE t SET x = 1 WHERE id = 1" }),
                 database: None,
+                schema: None,
             },
         )
         .await
@@ -1106,6 +1404,7 @@ mod tests {
                     "params": { "id": 7 }
                 }),
                 database: None,
+                schema: None,
             },
         )
         .await
@@ -1128,6 +1427,7 @@ mod tests {
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "UPDATE t SET x = 1" }),
                 database: None,
+                schema: None,
             },
         )
         .await

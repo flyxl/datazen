@@ -70,6 +70,10 @@ const DEFAULT_SCHEMA_KEY = '__default__';
 /** Per-session schema cache entry (map key = runtime DB session id). */
 export interface ConnectionSchemaState {
   currentDatabase: string | null;
+  /** F7: PG-family current schema — sent as the `schema` envelope field so
+   * rewrite-capable drivers qualify unqualified table references
+   * (`"schema"."t"`). `null` = no schema pin (session default). */
+  currentSchema: string | null;
   databases: string[];
   databaseType: string | null;
   isMultiDatabase: boolean;
@@ -94,6 +98,7 @@ export interface ConnectionSchemaState {
 
 const CONNECTION_STATE_KEYS = [
   'currentDatabase',
+  'currentSchema',
   'databases',
   'databaseType',
   'isMultiDatabase',
@@ -118,6 +123,7 @@ const CONNECTION_STATE_KEYS = [
 function createEmptyConnectionSchema(): ConnectionSchemaState {
   return {
     currentDatabase: null,
+    currentSchema: null,
     databases: [],
     databaseType: null,
     isMultiDatabase: false,
@@ -274,6 +280,9 @@ interface SchemaStore extends ConnectionSchemaState {
    * database dropdown) where the connection schema itself did not change.
    */
   switchDatabase: (database: string, dbSessionId?: string) => Promise<void>;
+  /** F7: pin/clear the PG-family current schema (local UI state; sent as the
+   * `schema` envelope field on query executions). */
+  setCurrentSchema: (schema: string | null, dbSessionId?: string) => void;
   setLoadedTables: (database: string, all: TableInfo[], dbSessionId?: string) => void;
   removeRelation: (name: string, dbSessionId?: string) => void;
   mergeNamespace: (
@@ -446,6 +455,19 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
           error: e instanceof Error ? e.message : t('schema.loadTablesFailed'),
         });
       }
+    },
+
+    /**
+     * F7: set the PG-family current schema (pure local UI state, like
+     * `currentDatabase` in F1 — no IPC). Query executions carry it as the
+     * `schema` envelope field; rewrite-capable drivers inline it as
+     * `"schema"."t"`. `null` clears the pin.
+     */
+    setCurrentSchema: (schema, dbSessionIdOverride) => {
+      const dbSessionId = resolveTargetConnectionId(get(), dbSessionIdOverride);
+      if (!dbSessionId) return;
+      const normalized = schema?.trim() ? schema.trim() : null;
+      commitConnectionPatch(dbSessionId, { currentSchema: normalized });
     },
 
     mergeNamespace: (segments, kind, names, dbSessionIdOverride) => {
