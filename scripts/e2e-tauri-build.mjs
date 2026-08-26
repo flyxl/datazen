@@ -28,6 +28,11 @@ const { features } = JSON.parse(readFileSync(featuresPath, 'utf-8'));
 const featureList = ['webdriver', ...(Array.isArray(features) ? features : [])];
 const args = ['build', '--debug', '-f', featureList.join(',')];
 
+// Gate vite-gated E2E-only attributes (src/lib/tid.ts): the frontend build run by
+// Tauri's beforeBuildCommand inherits this env, so webdriver builds render
+// data-testid locators while plain `pnpm build` (no VITE_E2E) stays clean.
+process.env.VITE_E2E = process.env.VITE_E2E || '1';
+
 const result = spawnTauri(args, {
   log: (msg) => console.log(msg.replace('[ci-tauri-build]', '[e2e-tauri-build]')),
 });

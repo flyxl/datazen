@@ -12,6 +12,7 @@ import {
 import { useI18n } from '../../hooks/useI18n';
 import { useCompactToolbar } from '../../hooks/useCompactToolbar';
 import { openDocsWindow } from '../../lib/windowManager';
+import { tid } from '../../lib/tid';
 import { DetailPanelToggle } from '../../components/DataTable/DetailPanelToggle';
 import { ToolbarShell } from '../../components/ui/ToolbarShell';
 import { ToolbarButton } from '../../components/ui/ToolbarButton';
@@ -68,6 +69,7 @@ export function ContentToolbar({
           label={t('connWin.newQuery')}
           icon={<Plus className="h-4 w-4" />}
           onClick={onNewQuery}
+          {...tid('conn-toolbar-new-query')}
         />
       )}
       {showNewTable && (

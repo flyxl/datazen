@@ -11,6 +11,9 @@ import {
 /**
  * SQL query module tests.
  * Requires a PostgreSQL connection (seeded by wdio.conf.ts before hook).
+ *
+ * Editor toolbar locators use the vite-gated `data-testid` attributes from
+ * src/lib/tid.ts (E2E builds always render them) so they survive i18n switching.
  */
 describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   let mainWindow: string;
@@ -18,7 +21,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+    await $('[data-testid="conn-toolbar-new-query"]').waitForDisplayed({ timeout: 20000 });
     await browser.pause(1000);
 
     await openQueryTab();
@@ -31,7 +34,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   // ── 基础 UI ────────────────────────────────────────────────────
 
   it('SQL 编辑器应显示执行按钮 (SQ-001)', async () => {
-    await expect(await $(`button*=${t('query.execute')}`)).toBeDisplayed();
+    await expect(await $('[data-testid="editor-execute-button"]')).toBeDisplayed();
   });
 
   it('SQ-CTX-001: SQL 带完整库路径时应同步执行栏选择框', async () => {
@@ -50,11 +53,11 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
 
   it('执行查询期间应显示停止按钮 (SQ-001)', async () => {
     await setEditorContent('SELECT pg_sleep(5)');
-    const execBtn = await $(`button*=${t('query.execute')}`);
+    const execBtn = await $('[data-testid="editor-execute-button"]');
     await execBtn.click();
     await browser.pause(500);
 
-    const stopBtn = await $(`button*=${t('query.stop')}`);
+    const stopBtn = await $('[data-testid="editor-stop-button"]');
     const isVisible = await stopBtn.isDisplayed();
     expect(isVisible).toBe(true);
 
@@ -96,7 +99,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   it('执行多条语句应显示多个结果标签 (SQ-011)', async () => {
     await setEditorContent('SELECT 1 AS a; SELECT 2 AS b');
 
-    const execBtn = await $(`button*=${t('query.execute')}`);
+    const execBtn = await $('[data-testid="editor-execute-button"]');
     await execBtn.click();
 
     await browser.waitUntil(
@@ -130,7 +133,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
       'CREATE TABLE IF NOT EXISTS _e2e_sql_test (id SERIAL PRIMARY KEY, val TEXT); ' +
         "INSERT INTO _e2e_sql_test (val) VALUES ('hello')",
     );
-    const execBtn = await $(`button*=${t('query.execute')}`);
+    const execBtn = await $('[data-testid="editor-execute-button"]');
     await execBtn.click();
 
     await browser.waitUntil(async () => (await $('body').getText()).includes('总耗时'), {
@@ -148,7 +151,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     await openQueryTab();
     await setEditorContent('SELECT * FROM nonexistent_table_xyz_12345');
 
-    const execBtn = await $(`button*=${t('query.execute')}`);
+    const execBtn = await $('[data-testid="editor-execute-button"]');
     await execBtn.click();
 
     await browser.waitUntil(
@@ -169,7 +172,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   // ── 历史面板 ───────────────────────────────────────────────────
 
   it('历史按钮应能切换历史面板 (SQ-005)', async () => {
-    const histBtn = await $(`button*=${t('query.history')}`);
+    const histBtn = await $('[data-testid="editor-history-toggle"]');
     await histBtn.click();
     await browser.pause(500);
     await expect(await $(`div*=${t('query.historyTitle')}`)).toBeDisplayed();
@@ -207,7 +210,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   });
 
   it('关闭历史面板 (SQ-005, TC-QUERY-008)', async () => {
-    const histBtn = await $(`button*=${t('query.history')}`);
+    const histBtn = await $('[data-testid="editor-history-toggle"]');
     await histBtn.click();
     await browser.pause(300);
   });
@@ -216,11 +219,11 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
 
   it('执行长查询时应能取消 (SQ-006, TC-QUERY-006)', async () => {
     await setEditorContent('SELECT pg_sleep(10)');
-    const execBtn = await $(`button*=${t('query.execute')}`);
+    const execBtn = await $('[data-testid="editor-execute-button"]');
     await execBtn.click();
     await browser.pause(1500);
 
-    const stopBtn = await $(`button*=${t('query.stop')}`);
+    const stopBtn = await $('[data-testid="editor-stop-button"]');
     if ((await stopBtn.isExisting()) && (await stopBtn.isDisplayed())) {
       await stopBtn.click();
       await browser.pause(3000);
@@ -256,7 +259,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     });
     await browser.pause(300);
 
-    const execBtn = await $(`button*=${t('query.execute')}`);
+    const execBtn = await $('[data-testid="editor-execute-button"]');
     await execBtn.click();
 
     await browser.waitUntil(
@@ -302,7 +305,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   // ── SQL 收藏功能 ──────────────────────────────────────────────────
 
   it('应显示收藏面板按钮 (SQ-015)', async () => {
-    await expect(await $(`button*=${t('query.favorites')}`)).toBeDisplayed();
+    await expect(await $('[data-testid="editor-favorites-toggle"]')).toBeDisplayed();
   });
 
   it('通过 Tauri 事件触发收藏对话框 (SQ-016)', async () => {
@@ -332,7 +335,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   });
 
   it('收藏面板应能打开 (SQ-017)', async () => {
-    const favBtn = await $(`button*=${t('query.favorites')}`);
+    const favBtn = await $('[data-testid="editor-favorites-toggle"]');
     await favBtn.click();
     await browser.pause(500);
 
@@ -345,7 +348,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   });
 
   it('收藏面板可关闭 (SQ-018)', async () => {
-    const favBtn = await $(`button*=${t('query.favorites')}`);
+    const favBtn = await $('[data-testid="editor-favorites-toggle"]');
     await favBtn.click();
     await browser.pause(300);
   });
@@ -360,7 +363,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
       await executeSQL(uniqueSql);
     }
 
-    const histBtn = await $(`button*=${t('query.history')}`);
+    const histBtn = await $('[data-testid="editor-history-toggle"]');
     const histClass = (await histBtn.getAttribute('class')) || '';
     if (!histClass.includes('secondary')) {
       await histBtn.click();
@@ -396,7 +399,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   it('SQ-EXPLAIN-001: EXPLAIN 按钮应打开计划面板', async () => {
     await setEditorContent('SELECT 1 AS n');
     await browser.pause(300);
-    const explainBtn = await $(`button*=${t('explain.title')}`);
+    const explainBtn = await $('[data-testid="editor-explain-button"]');
     await explainBtn.waitForDisplayed({ timeout: 8000 });
     await explainBtn.click();
     await browser.pause(1500);

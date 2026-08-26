@@ -916,6 +916,33 @@ Rust 侧以新增单测清单佐证（无 llvm-cov 工具链）：sqlite crate a
 - **裁决：登记为已知限制，维持现状，不阻塞 R 关闭。** 理由：① 与既有对话框家族及重构前 adb 实现风险等级持平，非本轮引入的回归；② 当前唯一消费方为 ADB 库文件拉取（通常 ≤ 数 MB），远低于风险阈值；③ 加尺寸上限或流式落盘需动 driver-api 信封语义（可能触及 PROTOCOL_VERSION 评估），不宜由 R 文档轮夹带代码变更
 - 建议：后续功能为 save_dialog 形态补可选尺寸上限（超限报 Validation）或分块流式落盘通道；可与插件权限模型收口（第三方驱动 save_dialog 声明校验，见 F2 遗留注意 2）同批处理
 
+### R-1.1 E2E 稳定定位器基建：vite 门控 data-testid helper（2026-08-26，本轮）
+
+> 背景：Host E2E 大量依赖 `text=`/含 i18n 文案的选择器，i18n 切换即断。本轮落地「统一 helper + 仅高频痛点组件补属性」的最小方案，生产构建属性彻底不渲染。
+
+**基建形态**
+
+- 新增 `src/lib/tid.ts`：`tid(id)` 在 `import.meta.env.VITE_E2E` 为真时返回 `{ 'data-testid': id }`，否则返回 `{}`——普通 `pnpm build` / `tauri:build` 不设该变量，属性不落 DOM；命名约定 `<区域>-<元素>-<动作>` kebab-case。单测 `src/lib/__tests__/tid.test.ts` 以 `vi.stubEnv` 锁 VITE_E2E 开/空/缺失三态
+- **构建接线**：`pnpm e2e` / `e2e:minimal` 的构建链路为 `e2e/run.mjs` → `scripts/e2e-tauri-build.mjs`（with-plugin-inject 内层）。后者在 `spawnTauri` 前置 `process.env.VITE_E2E = process.env.VITE_E2E || '1'`，经 `spawnTauri` 默认 `env = process.env` 透传给 Tauri CLI 及 beforeBuildCommand 的 vite build——webdriver 构建恒有属性；`--skip-build` 复用既有二进制的路径不涉及构建，行为不变
+
+**首批接入组件与属性（仅限本文档 E2E 用例表覆盖的路径）**
+
+| 组件 | data-testid |
+|------|-------------|
+| `QueryPanel.tsx` SQL 编辑器工具栏 | `editor-execute-button` / `editor-stop-button` / `editor-explain-button` / `editor-history-toggle` / `editor-favorites-toggle` |
+| `ContentToolbar.tsx` 连接内容工具栏 | `conn-toolbar-new-query`（沿用既有 `conn-toolbar-export` 同款直传风格，经 ToolbarButton rest props 下发） |
+
+**spec 选择器替换**
+
+- `e2e/helpers.ts`：`executeSqlInEditor` 执行/停止按钮、`openQueryTab` 新建查询/执行按钮共 4 处硬编码中文 `button*=` → `[data-testid="…"]`（helpers 被 F1/F3/F4/F7 全部登记用例复用，属最高频痛点）
+- `e2e/specs/sql-query.ts`：16 处 `` button*=${t('…')} `` i18n 文案定位器 → `[data-testid="editor-*"]`（对应 F1-E2E-001~003/010、F7-E2E 编辑器主链路的 R 阶段执行载体）
+
+**明确不铺开（按纪律核查结论）**
+
+- `backup-database.ts` / `execute-sql-file.ts` / `path-ipc-hardening.ts`（PIH-003 段）/ `app-data-backup.ts` 实测均为 `invokeBackend` 后端驱动、无 UI 定位器，无需补属性；BackupWindow UI 无登记用例经 UI 触达（F3 用例已全部走 overridePath）
+- `export-import.ts`（EI-*）及 connections 系列 spec 未登记于本文档 E2E 用例表，本轮不改其定位器；ConnectionShareDialog / ConnectionPage 导入导出入口 / app-data 导入导出设置 UI 同理暂不接 helper，待相应功能轮登记后再补
+
+
 ### R-2 全量回归与 E2E 执行（待 F4 合并后）
 
 - 各功能登记的 E2E 用例统一在 webdriver 构建 + 真实实例下执行：F1-E2E-001~011、F2-E2E-001~005、F5-E2E-*、F6-E2E-001/002、F7-E2E-001~007、B5 渲染回归（单测层已闭环）

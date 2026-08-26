@@ -31,6 +31,7 @@ import { ToolbarButton } from '../../components/ui/ToolbarButton';
 import { SqlEditor } from '../../components/SqlEditor';
 import type { SqlEditorHandle } from '../../components/SqlEditor';
 import { buildEditorSchema } from '../../lib/buildEditorSchema';
+import { tid } from '../../lib/tid';
 import { findGroupForDatabase, groupQueryHistory } from '../../lib/historyGroups';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { buildSqlEditorContextMenuItems } from '../../lib/sqlEditorContextMenu';
@@ -693,6 +694,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
             label={t('query.stop')}
             icon={<Square className="h-3.5 w-3.5" />}
             onClick={handleCancel}
+            {...tid('editor-stop-button')}
           />
         ) : (
           <ToolbarButton
@@ -708,6 +710,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
             }
             onClick={handleExecute}
             disabled={exec.running}
+            {...tid('editor-execute-button')}
           />
         )}
         {supportsExplain && (
@@ -718,6 +721,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
             icon={<FileSearch className="h-3.5 w-3.5" />}
             onClick={() => void handleExplain()}
             disabled={exec.running || !exec.sql.trim()}
+            {...tid('editor-explain-button')}
           />
         )}
         <ToolbarButton
@@ -788,6 +792,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
           label={t('query.history')}
           icon={<Clock className="h-3.5 w-3.5" />}
           onClick={toggleHistory}
+          {...tid('editor-history-toggle')}
         />
         <ToolbarButton
           compact={compactToolbar}
@@ -795,6 +800,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
           label={t('query.favorites')}
           icon={<Bookmark className="h-3.5 w-3.5" />}
           onClick={toggleFavorites}
+          {...tid('editor-favorites-toggle')}
         />
         <ToolbarButton
           compact={compactToolbar}
