@@ -200,7 +200,6 @@ export function BackupWindow() {
         database: selectedDb,
         t,
         logPump: logPumpRef.current,
-        command: 'restore_database_with_dialog',
         confirmOverwrite: async (count) =>
           confirmRestore({
             title: t('backup.restoreTitle'),
@@ -253,7 +252,7 @@ export function BackupWindow() {
 
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        const saved = await invoke<boolean>('backup_database_with_dialog', {
+        const saved = await invoke<boolean>('backup_database', {
           dbSessionId,
           database: selectedDb,
           defaultFileName: defaultName,

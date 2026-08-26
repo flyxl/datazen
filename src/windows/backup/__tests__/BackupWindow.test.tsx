@@ -189,7 +189,7 @@ describe('BackupWindow connection list', () => {
       if (cmd === 'get_connection_info') return { serverVersion: '16' };
       if (cmd === 'get_databases') return ['app', 'postgres'];
       if (cmd === 'get_tables') return tables;
-      if (cmd === 'restore_database_with_dialog') return true;
+      if (cmd === 'restore_sql_file') return true;
       return null;
     });
   }
@@ -211,7 +211,7 @@ describe('BackupWindow connection list', () => {
     fireEvent.click(screen.getByTestId('backup-start-restore'));
     expect(confirmDialogFn).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith('restore_database_with_dialog', {
+      expect(invokeMock).toHaveBeenCalledWith('restore_sql_file', {
         dbSessionId: 'live-1',
         database: 'app',
         options: [],
@@ -252,7 +252,7 @@ describe('BackupWindow connection list', () => {
       if (cmd === 'get_connection_info') return { serverVersion: '16' };
       if (cmd === 'get_databases') return ['app', 'postgres'];
       if (cmd === 'get_tables') return [];
-      if (cmd === 'restore_database_with_dialog') {
+      if (cmd === 'restore_sql_file') {
         onProgress?.({
           payload: { current: 1, total: 2, objectName: 'CREATE TABLE users', phase: 'object' },
         });
@@ -296,7 +296,7 @@ describe('BackupWindow connection list', () => {
     fireEvent.click(screen.getByTestId('backup-start-restore'));
     await waitFor(() => expect(confirmDialogFn).toHaveBeenCalled());
     await waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith('restore_database_with_dialog', {
+      expect(invokeMock).toHaveBeenCalledWith('restore_sql_file', {
         dbSessionId: 'live-1',
         database: 'app',
         options: ['overwrite'],
@@ -310,6 +310,6 @@ describe('BackupWindow connection list', () => {
     await selectRestoreTarget();
     fireEvent.click(screen.getByTestId('backup-start-restore'));
     await waitFor(() => expect(confirmDialogFn).toHaveBeenCalled());
-    expect(invokeMock).not.toHaveBeenCalledWith('restore_database_with_dialog', expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith('restore_sql_file', expect.anything());
   });
 });

@@ -69,6 +69,46 @@ describe('path IPC frontend wiring', () => {
     expect(connectionPage).toContain('appData.backupKeyTitle');
   });
 
+  it('backup/restore use the merged override_path IPCs only (decision 3+6)', () => {
+    const GONE = [
+      'backup_database_with_dialog',
+      'restore_database',
+      'restore_database_with_dialog',
+      'execute_sql_file',
+      'execute_sql_file_with_dialog',
+    ];
+
+    // Restore window: production flow goes through the dialog (no override).
+    const restoreWindow = readSrc('windows/backup/BackupWindow.tsx');
+    expect(restoreWindow).toContain("invoke<boolean>('backup_database'");
+    expect(restoreWindow).not.toContain("'backup_database_with_dialog'");
+
+    // Unified SQL-file wrapper: single command, no per-flow command switch.
+    const sqlFileExecution = readSrc('lib/sqlFileExecution.ts');
+    expect(sqlFileExecution).toContain("invoke<boolean>('restore_sql_file'");
+    expect(sqlFileExecution).not.toContain('command?:');
+
+    for (const gone of GONE) {
+      expect(restoreWindow).not.toContain(gone);
+      expect(sqlFileExecution).not.toContain(gone);
+      expect(readSrc('windows/connection/ExecuteSqlFileDialog.tsx')).not.toContain(gone);
+    }
+
+    // Host registration surface matches the merge.
+    const hostLib = fs.readFileSync(path.join(ROOT, '../src-tauri/src/lib.rs'), 'utf8');
+    expect(hostLib).toContain('commands::backup_database,');
+    expect(hostLib).toContain('commands::restore_sql_file,');
+    expect(hostLib).toContain('commands::save_encryption_key_with_dialog');
+    expect(hostLib).not.toContain('commands::backup_database_with_dialog');
+    expect(hostLib).not.toContain('commands::restore_database,');
+    expect(hostLib).not.toContain('commands::execute_sql_file');
+
+    // The raw-path parameters stay out of the frontend; override_path is an
+    // E2E-only concern and must not appear in any production caller.
+    expect(restoreWindow).not.toContain('overridePath');
+    expect(sqlFileExecution).not.toContain('overridePath');
+  });
+
   it('connection share uses dialog IPC and menu events', () => {
     const connection = readSrc('commands/connection.ts');
     expect(connection).toContain("'export_connections_with_dialog'");
