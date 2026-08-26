@@ -661,24 +661,6 @@ export interface TableSchemaDiff {
   targetDdl?: string;
 }
 
-export type RowMismatchKind = 'source_only' | 'target_only' | 'different';
-
-export interface RowMismatch {
-  key: string;
-  kind: RowMismatchKind;
-  source?: Record<string, unknown>;
-  target?: Record<string, unknown>;
-}
-
-export interface TableDataCompare {
-  table: string;
-  sourceRowCount: number;
-  targetRowCount: number;
-  sampledRows: number;
-  mismatches: RowMismatch[];
-  truncated: boolean;
-}
-
 // ── MCP Client types ──
 
 export interface McpServerConfig {

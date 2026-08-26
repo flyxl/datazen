@@ -355,24 +355,6 @@ pub async fn import_dashboard_with_dialog(
     Ok(Some(dashboard))
 }
 
-/// Legacy global pause IPC — deprecated; returns dashboard refresh_paused for first dashboard.
-#[tauri::command]
-pub fn get_monitor_paused(state: State<'_, AppState>) -> bool {
-    let app_db = state.store.app_db();
-    app_db
-        .list_dashboards()
-        .ok()
-        .and_then(|d| d.into_iter().next())
-        .map(|d| d.refresh_paused)
-        .unwrap_or(false)
-}
-
-/// Legacy global pause IPC — use set_dashboard_refresh_paused instead.
-#[tauri::command]
-pub fn set_monitor_paused(_app: AppHandle, _state: State<'_, AppState>, _paused: bool) {
-    tracing::warn!("set_monitor_paused is deprecated; use set_dashboard_refresh_paused");
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

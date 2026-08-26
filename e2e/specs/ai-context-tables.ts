@@ -1,5 +1,6 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import * as path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import { t } from '../i18n.js';
@@ -202,10 +203,10 @@ describe('AI context tables (CTX-T01~T06)', () => {
     await closeExtraWindows(mainWindow);
 
     contextDir = await invokeBackend<string>('context_get_dir');
-    await invokeBackend('write_file', {
-      path: `${contextDir}/schema.sql`,
-      contents: 'CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100));',
-    });
+    fs.writeFileSync(
+      `${contextDir}/schema.sql`,
+      'CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100));',
+    );
 
     await invokeBackend('ai_save_config', {
       config: {

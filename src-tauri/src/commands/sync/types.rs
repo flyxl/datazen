@@ -3,9 +3,6 @@
 use crate::data_sync::{LargeValueMode, MatchingStrategy, SyncOptions, TableMapping, TableResult};
 use serde::Deserialize;
 
-pub(crate) const DATA_COMPARE_SAMPLE_LIMIT: usize = 1000;
-pub(crate) const DATA_COMPARE_MISMATCH_LIMIT: usize = 50;
-
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncOptionsInput {
