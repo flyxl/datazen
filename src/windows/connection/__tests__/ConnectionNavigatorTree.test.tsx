@@ -1345,6 +1345,65 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     });
   });
 
+  it('F1-BUG-005: connection refresh restores expanded object categories', async () => {
+    const { container, findByText } = await renderWithSqlite(
+      [{ name: 'settings', tableType: 'table', schema: null }],
+      {},
+      {},
+    );
+    await findByText('settings');
+
+    // Expand the procedure category so a refresh has live category state.
+    mockGetDatabaseObjects.mockResolvedValue([{ name: 'pr_x', kind: 'procedure' }]);
+    fireEvent.click(categoryButton(container, 'procedure'));
+    await waitFor(() => {
+      expect(container.querySelector('[data-item-name="pr_x"]')).not.toBeNull();
+    });
+    expect(categoryButton(container, 'procedure').textContent).toContain('1');
+
+    // Connection-level refresh bumps schemaEpoch → epoch-triggered cache
+    // invalidation must not leave the expanded category empty. The recovery
+    // wave re-fetches it and the row keeps its entries + count.
+    mockGetDatabaseObjects.mockClear();
+    await triggerConnectionRefresh(findByText, 'SQLite Conn');
+
+    await waitFor(() => {
+      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'procedure');
+    });
+    await waitFor(() => {
+      expect(container.querySelector('[data-item-name="pr_x"]')).not.toBeNull();
+    });
+    expect(categoryButton(container, 'procedure').textContent).toContain('1');
+  });
+
+  it('F1-BUG-005: single-db database-node refresh restores expanded categories', async () => {
+    const { container, findByText } = await renderWithSqlite(
+      [{ name: 'settings', tableType: 'table', schema: null }],
+      {},
+      {},
+    );
+    await findByText('settings');
+
+    mockGetDatabaseObjects.mockResolvedValue([{ name: 'fn_y', kind: 'function' }]);
+    fireEvent.click(categoryButton(container, 'function'));
+    await waitFor(() => {
+      expect(container.querySelector('[data-item-name="fn_y"]')).not.toBeNull();
+    });
+
+    // Database-node refresh on a single-db tree goes through loadForConnection
+    // too — the expanded function category must recover there as well.
+    mockGetDatabaseObjects.mockClear();
+    await triggerDatabaseRefresh(findByText, '/data/app.db');
+
+    await waitFor(() => {
+      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'function');
+    });
+    await waitFor(() => {
+      expect(container.querySelector('[data-item-name="fn_y"]')).not.toBeNull();
+    });
+    expect(categoryButton(container, 'function').textContent).toContain('1');
+  });
+
   it('schema-level refresh reloads expanded schema-scoped categories', async () => {
     const conn = makeConn({
       id: 'cfg-sql',

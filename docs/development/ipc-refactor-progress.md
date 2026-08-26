@@ -15,7 +15,7 @@
 | F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 未开始 | — | — |
 | F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 未开始 | — | — |
 | F7 | 驱动级 SQL 定位重写（限定名内联、无会话切换；PG 系含 database+schema 双维度） | 用户新指令 2026-08-26 | 未开始 | — | — |
-| B5 | ConnectionNavigatorTree 刷新丢失已展开分类修复（=F1-BUG-005） | 既有缺陷 | 未开始 | — | — |
+| B5 | ConnectionNavigatorTree 刷新丢失已展开分类修复（=F1-BUG-005） | 既有缺陷 | 已完成 | e4b7b6d7 | 本提交 |
 | R | 回归测试 + 文档更新（架构文档/AGENTS.md）+ 合并 main | 步骤 6 | 未开始 | — | — |
 
 状态机：`未开始 → 编码中 → 编码完成 → 测试中 → 已完成`；bug 流转见下方 Bug 台账。
@@ -35,9 +35,8 @@
 | F1-BUG-002 | F1 | 【中】TableView 打开非活动库的表取数错位：挂载期 useDatabase 预切被删后，`get_table_data` 无 database 参数，后端以 session `config.database` 为限定符（`schema.rs get_table_data_impl`）→ 报表不存在或静默返回同名异库数据。重现见「F1 缺陷详情」 | 已修复 | 2026-08-26 | 修复轮（同上提交）：`get_table_data` 新增可选 `database` 并复用 `ensure_session_database`；TableView 打开表时携带面板目标库。**复验通过**（同上）：impl 在解析 session 前置切库；TableView 挂载+两处重试按钮均传 `database`；tableDataStore 按 per-connection 记忆 `activeDatabase` 保证翻页/过滤不漂移且有单测；Rust `get_table_data_pins_session_to_target_database` 断言取数落目标库 |
 | F1-BUG-003 | F1 | 【中】结构编辑器 DDL 无库定位：`TableStructureEditor` 移除 ensureDatabase 后，`plan_table_structure_changes` 仅收 dbSessionId → 跨库建表/改表可能作用于 session 活动库而非面板目标库。重现见「F1 缺陷详情」 | 已修复 | 2026-08-26 | 修复轮（同上提交）：`plan_table_structure_changes` 以同一机制处理，编辑器传入目标库。**复验通过**（同上）：wrapper+impl 均收 `database` 且走同一 `ensure_session_database`，无第二套切库语义；preview/execute 两路径透传组件 prop；DDL 语句执行不带参依赖 plan 阶段持久化 pin（设计决策 3），成立；Rust 双单测（pin 切库 / 无 pin 保持）+ 前端断言第三参 `'db_b'`/`null` |
 | F1-BUG-004 | F1 | 【低】改动 TS 文件覆盖率不达标：ConnectionNavigatorTree.tsx 行覆盖 53.13%、TableStructureEditor.tsx 37.64%（要求 ≥80%）；其余数字见「覆盖率」小节 | 已修复 | 2026-08-26 | 修复轮（同上提交）：两文件 vitest 用例扩展达 ≥80% 行覆盖（新数字见「覆盖率」表）；并补 Rust stream 路径独立切库单测。**复验通过**（同上）：全新实例重跑全量 1963 用例 + `--coverage.include` 过滤实测 ConnectionNavigatorTree.tsx 行覆盖 **96.74%**、TableStructureEditor.tsx **97.75%**，与修复轮声称数字逐位一致；ConnectionNavigatorTree.test.tsx 实测 64 用例独立运行全绿 |
-| F1-BUG-005 | F1 | 【中】【既有行为，非本轮引入】连接刷新后已展开对象分类内容丢失且不自动恢复：单库树（如 SQLite）展开 procedure 分类出现条目后，执行连接级或库级刷新，分类行仍呈展开态但条目消失、计数归零，观察窗 3s 内无任何重载。根因指向 `useExpandedDbCacheRefresh` 在 schemaEpoch 变化时 `clearCaches` 清空该会话全部 `dbObjectsMap` 后仅重载展开库的**表缓存**、不重载对象分类缓存，与 `refreshConnection.reloadExpandedObjectCategories` 的重载竞态失败。多库树表节点不受影响（走 `reloadDbTables` 恢复）。临时探针在 4ba4831a（F1 前）/046acf7a（修复轮前）/8b85cd49 三时点症状一致，判定为既有缺陷。是否纳入 F1 范围由协调者裁决；重现步骤见「F1 缺陷详情」 | 待验证 | 2026-08-26 | 复验轮新登记（2026-08-26 复验 commit 8b85cd49 时发现） |
+| F1-BUG-005 | F1 | 【中】【既有行为，非本轮引入】连接刷新后已展开对象分类内容丢失且不自动恢复：单库树（如 SQLite）展开 procedure 分类出现条目后，执行连接级或库级刷新，分类行仍呈展开态但条目消失、计数归零，观察窗 3s 内无任何重载。根因指向 `useExpandedDbCacheRefresh` 在 schemaEpoch 变化时 `clearCaches` 清空该会话全部 `dbObjectsMap` 后仅重载展开库的**表缓存**、不重载对象分类缓存，与 `refreshConnection.reloadExpandedObjectCategories` 的重载竞态失败。多库树表节点不受影响（走 `reloadDbTables` 恢复）。临时探针在 4ba4831a（F1 前）/046acf7a（修复轮前）/8b85cd49 三时点症状一致，判定为既有缺陷。是否纳入 F1 范围由协调者裁决；重现步骤见「F1 缺陷详情」 | 已修复 | 2026-08-26 | 复验轮新登记（2026-08-26 复验 commit 8b85cd49 时发现）。**B5 编码轮修复（2026-08-26，commit：`fix(ui): restore expanded object categories after refresh (b5)`）**：编码轮实测将根因细化为三层——① 键空间错位：hook 按会话 id 前缀清理 `dbObjectsMap`，但分类键用持久连接 id，生产环境两 id 不同时清理从不命中（掩盖症状）、id 相同的探针环境则整段清空；② epoch effect 清理后仅调度表缓存恢复、不调度分类恢复，恢复全靠 `refreshConnection` 尾部循环与该 effect 竞速，清理落在写入之后即永久丢失；③ 组件内 3 处动态 import databaseCommands 在 vitest 下 mock 穿透不一致，jsdom 中 invoke 抛错被 catch 写成空数组放大症状。修复=hook 单遍「同步清缓存→同批调度表+分类恢复重载」语义 + `clearCaches` 双 id 键空间修正 + 动态导入改静态；新增 hook 层排序/作用域断言与组件层连接级/库级刷新回归各一（修复前实测红、修复后绿），详见 B5 小节。**复验通过**（2026-08-26 全新测试代理，commit：`test(b5): reverify - expanded categories restore`）：独立重跑 vitest 240 文件/1966 用例全绿、tsc 0 错误；覆盖率实测行覆盖 ConnectionNavigatorTree.tsx **96.74%**（与基线逐位一致零回退）、useExpandedDbCacheRefresh.ts **100%**。四项判定全过：①内容级恢复成立（hook 调度 `loadObjectsForCat`→真实 `getDatabaseObjects`→写回 `dbObjectsMap`，渲染断言条目+计数双恢复）；②「clear 与恢复调度同一 effect 体、无 await 间隔」声称属实（invocationCallOrder 断言 clear 严格先于全部表/分类恢复）；③双键空间修正正确（实测组件键构造：表缓存=`dbSessionId::db` 前缀、分类缓存=`connectionId::db[::schema]::cat` 前缀，清理各按其前缀过滤，符合 AGENTS.md ID 术语——归属键用 connectionId、会话操作用 dbSessionId）；④`reloadDbTables` 函数体除动态导入改静态外逐字未变，多库树分支与挂载自动加载路径未触及，多库用例全绿。回归红性实证（不切分支：临时换入 `e4b7b6d7^` 两份实现文件→定向跑→`git checkout --` 还原并字节校验）：两条渲染层回归在修复前代码 2 failed（刷新后恢复链路零 mock 调用）、hook 层新用例 failed——「修复前红」属实，且渲染层红性机理与编码轮层③一致。静态导入副作用评估无风险（commands 链仅依赖 invoke/types 无环；该模块经 schemaStore 本就在组件静态图内，无包体增量）。残余观察（不阻塞）：连续两次指纹变化时前一波未取消的在途响应理论上可能晚于后一波清理落盘（last-write-wins），docstring 已声明取消语义边界，超出本缺陷范围 |
 | F2-BUG-001 | F2 | 【低】改动 TS 文件覆盖率不达标且为零执行覆盖：`src/commands/adb.ts` 全量套件 `--coverage` 实测行覆盖 **14.28%**（7 语句仅 1 覆盖，未覆盖 L23-29 / 33 / 37-39 / 54-58 —— 共享 helper 与三个导出函数全部没有任何单测执行；全仓唯一引用它的 `pathIpcWiring.test.ts` 是源码字符串断言，不执行代码），远低于 ≥80% 门槛。`savedPath ?? null` 取消语义、`driverType='sqlite'` 信封组装、input 透传均无回归保护。重现步骤见「F2 缺陷详情」 | 已修复 | 2026-08-26 | 修复轮（commit：`test(adb): behavioral unit tests for sqlite driver command wrappers (f2 bug 001)`）：新增行为级单测 `src/commands/__tests__/adb.test.ts`（7 用例；按目录既有惯例 `vi.hoisted` + `vi.mock('../driver')` 替换 `driverCommands.execute`），断言三命令信封逐字段等价（driverType='sqlite'、command id、input 与原 IPC 参数一致且无 dbSessionId/database 多余键）、`result.data` 解包透传、pull 成功返回 savedPath 字符串、取消语义 savedPath null/undefined → null（同原 *_with_dialog）；全量套件 `--coverage` 实测行覆盖 **100%**（前 14.28%），vitest 241 文件/1970 用例全绿、`tsc --noEmit` 0 错误。**复验通过**（2026-08-26 全新实例，commit f12f9be9）：7 用例逐条审查均为行为级断言、无空转/永真——三命令信封以 `toEqual` 整对象等价锁定 driverType/command id/input 键值（list 包 input={}、list 库 {package}、pull {package, dbPath}），envelope discipline 用例另断言请求键集恰为 ['command','driverType','input'] 且 dbSessionId/database 均 undefined；`result.data` 解包以 `toBe` 同一性断言透传；取消语义 savedPath=null 与缺失字段 undefined 两路径均归 null；仅 mock `../driver`，被测 wrapper 真实执行。独立重跑：`npx vitest run --coverage --coverage.include='src/commands/adb.ts'` 实测 adb.ts Stmts/Branch/Funcs/Lines 均 **100%**（门槛 ≥80%，无未覆盖行）；全量 `npx vitest run` 241 文件 / 1970 用例全绿；`npx tsc --noEmit` exit 0（单独串行执行，未复现负载超时 flake）；数字与修复轮声称逐位一致 |
-
 > BUG-001~003 与编码说明「遗留注意 1」同根因（非 query 族命令无 database 参数、入口不再预切库），但遗留说明给出的过渡缓解（"由任一带 database 的 query/stream/explain 惰性触发切库"）对编辑器主链路不生效，故按缺陷登记；由编码代理裁决在 F1 内修复（补参数/补预切）或明确降级为后续功能承接。
 
 状态机：`待验证（新发现，编码代理未处理）/ 验证不通过 → 待验证（修复后等待复测）→ 已修复`
@@ -371,6 +370,58 @@ Rust 侧以新增单测清单佐证（无 llvm-cov 工具链）：sqlite crate a
 - **协议**：driver-api 输入 schema 加可选字段，向后兼容不强制 bump PROTOCOL_VERSION；git 驱动更新 pin 后才获得重写能力（顺序依赖登记为风险）
 - **前端**：database 链路已穿透（BUG-001 修复成果）；需补 PG currentSchema 传递（先侦察 schemaStore 是否已有该状态）
 - **测试落点**：重写单测在各驱动 crate（简单 SELECT/JOIN/CTE/子查询/已限定/引号标识符/INSERT|UPDATE|DELETE/DDL 各方言矩阵）；Host 只测信封透传 + 兜底路径
+
+## B5 ConnectionNavigatorTree 刷新丢失已展开分类修复（=F1-BUG-005）
+
+### 根因（编码轮实测修正复验代理的初步定位）
+
+三层叠加，缺一不呈现完整症状：
+
+1. **失效键空间错位**：hook 的 `clearCaches(dbSessionId)` 对 `dbObjectsMap` 按 `${dbSessionId}::` 前缀过滤，但对象分类缓存键实为 `${connectionId}::…`（持久配置 id）。生产环境两 id 必不相同 → epoch 清理对分类缓存**从不命中**（把症状掩盖成「仅竞态」）；id 相同的探针环境则被整段清空。
+2. **清理后无恢复调度**：epoch 变化的 effect 清缓存后仅按 `expandedDbs` 重载**表**缓存，不调度任何分类重载；恢复完全依赖 `refreshConnection` 尾部 `reloadExpandedObjectCategories` 与该 effect 的执行顺序竞速——effect 的清理落在重载写入之后时内容丢失且无人再次触发（3s 观察窗零恢复）。
+3. **测试环境放大器**：组件内 3 处动态 `import('../../commands/database')` 在 vitest 下行为不一致（同文件同 specifier，一处命中 vi.mock、一处穿透真实模块）；jsdom 无 Tauri internals 时 `invoke` 抛错，被 `reloadDbObjectCategory` 的 catch 写成空数组，使症状在探针中必现。
+
+### 修复方案
+
+将「失效→恢复」收敛为 hook 内单遍同步语义：指纹变化时先 `clearCaches(dbSessionId, connectionId)`（双 id 各自匹配两张缓存表的键空间），随后**在同一 effect 体、无 await 间隔**地调度展开库表重载与展开分类重载——每次清理自带恢复波次，「清理后重载被覆盖」的窗口不复存在；显式菜单刷新的重复取数只会以同等新数据落盘，无法回写陈旧内容。选择「清理后重载」而非「保留缓存」：刷新语义本就要求取新数据，保留缓存会让树在 DDL 后显示过期条目；多库树表节点既有 `reloadDbTables` 恢复路径原样保留。
+
+### 改动清单
+
+- `src/windows/connection/schema-tree/useExpandedDbCacheRefresh.ts`
+  - 新增必填选项 `expandedCats` / `loadObjectsForCat`；`clearCaches` 签名扩展为 `(dbSessionId, connectionId?)`
+  - effect 内清缓存后同批次调度分类重载（`tables`/`views` 伪分类与其他连接的分类跳过）；docstring 写明顺序/取消语义
+- `src/windows/connection/ConnectionNavigatorTree.tsx`
+  - hook 调用点传入 `expandedCats` + `reloadDbObjectCategory`；`clearCaches` 按 sessionId 清表缓存、按 connectionId 清分类缓存
+  - `reloadDbObjectCategory` 定义上移至 hook 调用之前（消除 TDZ）；逻辑不变
+  - `databaseCommands` 改静态导入，移除 3 处动态 `import()`（生产端该模块经 schemaStore 静态链早已加载，无分包损失）
+- 测试
+  - `schema-tree/__tests__/useExpandedDbCacheRefresh.test.tsx`：新增 F1-BUG-005 用例——epoch 变化后以 `invocationCallOrder` 断言 clearCaches 严格先于全部表/分类恢复调度，并断言作用域（tables/views 与其他连接的分类不触发）
+  - `connection/__tests__/ConnectionNavigatorTree.test.tsx`：新增连接级刷新、单-db 库节点刷新两条渲染层回归（断言条目与计数恢复）；两用例在修复前代码实测失败、修复后通过
+
+### 验证
+
+- `npx tsc --noEmit`：0 错误
+- `npx vitest run`：240 文件 / **1966 用例全绿**（基线 1963 + 新增 3）
+- 定向行覆盖率（vitest --coverage，v8）：`ConnectionNavigatorTree.tsx` **96.74%**（与 F1 复验基线逐位一致，零回退）、`useExpandedDbCacheRefresh.ts` **100%**（均 ≥80% 达标）
+- 测试层级说明：hook 调度闭包无法从 jsdom 渲染层直接观测（复验代理已实测此限制），故排序语义断言落在 renderHook 层；渲染层回归以最终 DOM 状态（条目+计数恢复）收口，两层互补
+
+### 复验（2026-08-26 全新测试代理，commit：`test(b5): reverify - expanded categories restore`）
+
+**结论：通过。F1-BUG-005 → 已修复，B5 → 已完成。**
+
+- **独立重跑**：`npx vitest run` 240 文件 / 1966 用例全绿；`npx tsc --noEmit` 0 错误。
+- **覆盖率实测**（全量 --coverage，json-summary 摘取）：`ConnectionNavigatorTree.tsx` 行覆盖 **96.74%**（831/859，与基线逐位一致零回退）、`useExpandedDbCacheRefresh.ts` 行覆盖 **100%**（29/29）。备注：全量覆盖率门禁在 dashboard/workflow/ConnectionPage 等处报既有缺口（B5 改动集不含这些文件，属遗留状态，建议 R 阶段统一处理）。
+- **四项判定逐条**：
+  1. 内容级恢复成立——hook 对每个展开分类调度 `loadObjectsForCat` → 组件真实调用 `getDatabaseObjects(dbSessionId, catId)` 写回 `dbObjectsMap[catKey]`，树渲染条目/计数均来自该 map；非仅恢复展开态。
+  2. 竞态消除声称属实——effect 体 L112 `clearCaches` 与 L115-124 两类 `void` 调度间无 await；hook 层用例以 `invocationCallOrder` 断言 clear 严格先于全部表+分类恢复调度。每次清理自带恢复波次，「清理后无人恢复」窗口机制上不存在。
+  3. 双键空间修正正确——实测组件键构造：表缓存 `${dbSessionId}::${db}`、分类缓存 `${connectionId}::${db}[::${schema}]::${cat}`；`clearCaches(sessionId, connectionId)` 各按其前缀过滤对应 map，与 AGENTS.md ID 术语一致（归属/键语义用 connectionId，会话操作用 dbSessionId）。
+  4. 多库树零回归——`reloadDbTables` 函数体除动态导入改静态外逐字未变；多库分支（Promise.all 重载）、挂载自动加载路径均未触及，多库树用例全绿。
+- **回归红性实证**（不切分支、不用 stash：临时写入 `e4b7b6d7^` 的两份实现文件→定向跑→`git checkout --` 还原并 diff 校验字节一致）：
+  - `ConnectionNavigatorTree.test.tsx -t "F1-BUG-005"` 在修复前实现上 **2 failed | 64 skipped**；
+  - `useExpandedDbCacheRefresh.test.tsx` 在修复前 hook 上新用例 failed（`loadObjectsForCat` 零调用，排序断言无从成立）。
+  - 「修复前红」属实。渲染层红性表现（刷新后 mock 零重载调用）与编码轮根因层③（恢复链路动态导入在 vitest 下未命中 mock→catch 写空）一致；hook 层红性与测试环境无关。
+- **静态导入副作用评估**：无循环依赖（`commands/database`→`query`→`driver` 仅依赖 invoke/types）；该模块经 schemaStore 本就在组件静态图内，动态导入是冗余异步边界——改静态无包体增量，且消除测试 mock 行为不确定性，净收益。
+- **残余观察（不阻塞，超出本缺陷范围）**：连续两次指纹变化时，前一波未取消的在途 fetch 响应理论上可能晚于后一波清理落盘（last-write-wins）；hook docstring 已声明取消语义边界。
 
 ## R 回归与收尾
 （占位）
