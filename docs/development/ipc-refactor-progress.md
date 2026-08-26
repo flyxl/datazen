@@ -12,7 +12,7 @@
 | F2 | ADB 命令迁移 SQLite 驱动（DriverCommandDefinition） | 决策 2 | 编码完成 | 本提交 | — |
 | F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 未开始 | — | — |
 | F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 未开始 | — | — |
-| F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 编码完成 | 本提交 | — |
+| F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 已完成 | 本提交 | 本提交 |
 | F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 未开始 | — | — |
 | F7 | 驱动级 SQL 定位重写（限定名内联、无会话切换；PG 系含 database+schema 双维度） | 用户新指令 2026-08-26 | 未开始 | — | — |
 | B5 | ConnectionNavigatorTree 刷新丢失已展开分类修复（=F1-BUG-005） | 既有缺陷 | 未开始 | — | — |
@@ -33,6 +33,7 @@
 | F1-BUG-003 | F1 | 【中】结构编辑器 DDL 无库定位：`TableStructureEditor` 移除 ensureDatabase 后，`plan_table_structure_changes` 仅收 dbSessionId → 跨库建表/改表可能作用于 session 活动库而非面板目标库。重现见「F1 缺陷详情」 | 已修复 | 2026-08-26 | 修复轮（同上提交）：`plan_table_structure_changes` 以同一机制处理，编辑器传入目标库。**复验通过**（同上）：wrapper+impl 均收 `database` 且走同一 `ensure_session_database`，无第二套切库语义；preview/execute 两路径透传组件 prop；DDL 语句执行不带参依赖 plan 阶段持久化 pin（设计决策 3），成立；Rust 双单测（pin 切库 / 无 pin 保持）+ 前端断言第三参 `'db_b'`/`null` |
 | F1-BUG-004 | F1 | 【低】改动 TS 文件覆盖率不达标：ConnectionNavigatorTree.tsx 行覆盖 53.13%、TableStructureEditor.tsx 37.64%（要求 ≥80%）；其余数字见「覆盖率」小节 | 已修复 | 2026-08-26 | 修复轮（同上提交）：两文件 vitest 用例扩展达 ≥80% 行覆盖（新数字见「覆盖率」表）；并补 Rust stream 路径独立切库单测。**复验通过**（同上）：全新实例重跑全量 1963 用例 + `--coverage.include` 过滤实测 ConnectionNavigatorTree.tsx 行覆盖 **96.74%**、TableStructureEditor.tsx **97.75%**，与修复轮声称数字逐位一致；ConnectionNavigatorTree.test.tsx 实测 64 用例独立运行全绿 |
 | F1-BUG-005 | F1 | 【中】【既有行为，非本轮引入】连接刷新后已展开对象分类内容丢失且不自动恢复：单库树（如 SQLite）展开 procedure 分类出现条目后，执行连接级或库级刷新，分类行仍呈展开态但条目消失、计数归零，观察窗 3s 内无任何重载。根因指向 `useExpandedDbCacheRefresh` 在 schemaEpoch 变化时 `clearCaches` 清空该会话全部 `dbObjectsMap` 后仅重载展开库的**表缓存**、不重载对象分类缓存，与 `refreshConnection.reloadExpandedObjectCategories` 的重载竞态失败。多库树表节点不受影响（走 `reloadDbTables` 恢复）。临时探针在 4ba4831a（F1 前）/046acf7a（修复轮前）/8b85cd49 三时点症状一致，判定为既有缺陷。是否纳入 F1 范围由协调者裁决；重现步骤见「F1 缺陷详情」 | 待验证 | 2026-08-26 | 复验轮新登记（2026-08-26 复验 commit 8b85cd49 时发现） |
+| F5-BUG-001 | F5 | 【低】【文档漂移，非代码缺陷】`docs/development/e2e-testing.md` L154 与 `docs/development/e2e-coverage.md` L106 仍表述「webdriver 构建保留 `write_file` / `export_app_data(path)` 等路径 API 供 E2E 使用」，与决策 4（三路径 IPC 已删、E2E 改 Node fs）相悖，会误导后续 E2E 编写者。重现：`grep -rn "write_file" docs/development/e2e-testing.md docs/development/e2e-coverage.md`。commands.md 已同步、两文件不在本决策承诺范围；归属 R 阶段文档收口统一修正，不阻塞 F5 判定 | 待验证 | 2026-08-26 | F5 复验轮新登记（commit 8f9e4a9c 复验时发现） |
 
 > BUG-001~003 与编码说明「遗留注意 1」同根因（非 query 族命令无 database 参数、入口不再预切库），但遗留说明给出的过渡缓解（"由任一带 database 的 query/stream/explain 惰性触发切库"）对编辑器主链路不生效，故按缺陷登记；由编码代理裁决在 F1 内修复（补参数/补预切）或明确降级为后续功能承接。
 
@@ -297,6 +298,30 @@
 
 ### 环境注意
 本 worktree 的 codegen `src-tauri/capabilities/default.json` 曾含 `redis:default`（redis 插件未编译时 tauri-build 权限校验失败，同 F1 遗留注意 2 的坑）；已对齐主检出权限集（28 权限、无 redis）。该文件为 gitignore codegen，不入库。
+
+### 复验（2026-08-26 全新测试代理实例，commit 8f9e4a9c）→ 通过
+
+#### 三项审查
+1. **删除完整性 ✅**：三 IPC 在 src / src-tauri/src / e2e / packages/extensions 全仓清零（残留 `write_file` 命中均为各模块 `#[cfg(test)]` 内同名本地测试辅助与 `store::write_file_atomic`、`read_file` 命中均为 `context_read_files`，非 IPC 残留）；lib.rs 三条注册已删；前端无 camelCase 包装、无解构导入、无字符串 invoke 残留（themePackApply.ts 的 `readFile` 确为本地 `PackFileReader` 形参，编码轮甄别属实）。**甄别复核**：`ALLOWED_EXTENSIONS` 由 `ext_refs()`（file.rs L53）消费且 `ext_refs` 被全部 5 个 dialog 命令调用；`validate_extension` 被 5 个 dialog 命令 + `driver_command.rs` L617 调用——「仍被使用故保留」属实，**非死代码**
+2. **迁移等价性 ✅**：ai-context.ts ×2 / ai-context-tables.ts ×1 目标目录来源（均 `context_get_dir`）、文件名（`${contextDir}/schema.sql`、`${contextDir}/relations.md`）、内容字符串逐字一致；旧 write_file 为 Rust `String::as_bytes()`（UTF-8）、新 Node `fs.writeFileSync` 默认 utf8 且内容纯 ASCII → 字节级等价；`context_get_dir` 返回宿主视角绝对路径（`dir.display()`，store.data_dir()/contexts 或用户自定义 context_dir），E2E Node 进程与本机应用同机同用户，直写后端可读成立——且 CTX-002/003/004 经 `context_list_files`/`context_read_files` 读回断言闭环验证该前提。旧 `validate_file_path` 白名单是针对 webview 输入的防线，测试 fixture 直写不受其删除影响，无安全回归
+3. **安全面 ✅**：`write_file_impl` / `read_file_impl` / `deny_path_ipc` 全仓零引用残留；共享门控 `require_webdriver_path_ipc`（error.rs）未被波及，config.rs ×4（连接导出/导入/app-data 导出/导入）与 backup.rs ×3（backup/restore/restore_sql_file）继续使用；webdriver 构建下无其他合法路径依赖被删三命令
+
+#### 独立重跑结果
+
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（CARGO_TARGET_DIR=主检出 target） | **1123 passed / 0 failed / 2 ignored**（=1130−7，与声称一致） |
+| `npx vitest run` | **241 files / 1971 passed**，全绿 |
+| `npx tsc --noEmit` | **0 错误**（exit 0） |
+| 覆盖率 `src/commands/file.ts`（vitest --coverage.include 过滤实测） | 行/语句/分支/函数 **100%/100%/100%/100%**；file.test.ts 单独运行 8/8 通过 |
+
+#### E2E 用例登记（执行归属：R 阶段，需 `pnpm tauri build --debug --features webdriver` + wdio；本测试轮未执行）
+- **F5-E2E-001** `e2e/specs/ai-context.ts`（CTX-001~006）：Node fs 种子写入 → 后端 `context_list_files`/`context_read_files` 读回断言（迁移核心闭环）
+- **F5-E2E-002** `e2e/specs/ai-context-tables.ts`（CTX-T01~T06）：`fs.writeFileSync` 种子 schema.sql 后 AI @ 引用面板 Files 类目全链路
+- **F5-E2E-003** 负向：生产/无头构建下 `invoke('write_file'|'read_file'|'write_file_base64')` 应报命令不存在（静态已证 lib.rs 注册删除；运行时断言随 R 阶段 E2E 执行）
+
+#### 复验发现
+- F5-BUG-001【低·文档漂移】登记 Bug 台账：e2e-testing.md L154 / e2e-coverage.md L106 仍称 webdriver 构建保留 write_file 路径 API；归属 R 阶段文档收口，不阻塞判定
 
 ## F6 删除冗余命令
 （占位）
