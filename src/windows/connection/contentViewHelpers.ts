@@ -90,7 +90,7 @@ export function getPanelLabel(panel: Panel, t?: (key: TranslationKey) => string)
     case 'server-status':
       return conn(tr('serverStatus.dashboardTitle', 'Server Dashboard'));
     case 'processes':
-      return conn(tr('processList.title', 'Process List'));
+      return conn(tr('common.processList', 'Process List'));
     case 'db-object':
       return (panel as DatabaseObjectPanel).objectName;
     case 'redis-db':

@@ -144,7 +144,7 @@ export function DataSyncWindow() {
   );
 
   const targetOptions = useMemo(() => {
-    const hint = t('sync.unsupportedHint');
+    const hint = t('common.unsupportedPair');
     const srcType = sourceConn?.databaseType;
     return connections.map((c) => {
       const unsupported = Boolean(srcType && !isSyncTargetSupported(srcType, c.databaseType));
@@ -712,7 +712,7 @@ export function DataSyncWindow() {
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
-      <TitleBar title={t('sync.windowTitle')} />
+      <TitleBar title={t('common.dataSyncTitle')} />
 
       <div
         data-testid="data-sync-overwrite-retired"
@@ -823,7 +823,7 @@ export function DataSyncWindow() {
                       className={`px-4 py-2 text-xs font-medium ${rightPanel === 'preview' ? 'border-b-2 border-accent text-fg' : 'text-fg-muted'}`}
                       onClick={() => setRightPanel('preview')}
                     >
-                      {t('sync.sqlPreviewTab')}
+                      {t('common.sqlPreviewLower')}
                     </button>
                   </div>
 
@@ -873,7 +873,7 @@ export function DataSyncWindow() {
       )}
 
       <StatusBar
-        left={<span className="truncate">{t('sync.title')}</span>}
+        left={<span className="truncate">{t('common.dataSync')}</span>}
         right={<span className="tabular-nums">DataZen v0.1.0</span>}
       />
 

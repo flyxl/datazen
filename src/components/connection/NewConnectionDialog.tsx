@@ -122,13 +122,13 @@ export function NewConnectionDialog({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={editId ? t('newConn.editTitle') : t('newConn.title')}
+        aria-label={editId ? t('common.editConnection') : t('common.newConnection')}
         data-testid="new-connection-dialog"
         className="relative z-10 flex h-[min(680px,85vh)] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-edge bg-surface-alt text-fg shadow-xl"
       >
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-edge px-5 py-3">
           <div className="truncate text-sm font-semibold text-fg">
-            {editId ? t('newConn.editTitle') : t('newConn.title')}
+            {editId ? t('common.editConnection') : t('common.newConnection')}
           </div>
           <button
             type="button"

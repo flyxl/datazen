@@ -202,7 +202,7 @@ export function BackupWindow() {
         logPump: logPumpRef.current,
         confirmOverwrite: async (count) =>
           confirmRestore({
-            title: t('backup.restoreTitle'),
+            title: t('common.restoreDatabase'),
             message: t('backup.restoreOverwriteConfirm', {
               database: selectedDb,
               count,
@@ -297,7 +297,7 @@ export function BackupWindow() {
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
-      <TitleBar title={isRestore ? t('backup.restoreTitle') : t('backup.title')} />
+      <TitleBar title={isRestore ? t('common.restoreDatabase') : t('common.backupDatabase')} />
 
       {!isRestore && (
         <div className="flex items-center gap-3 border-b border-edge px-4 py-2">

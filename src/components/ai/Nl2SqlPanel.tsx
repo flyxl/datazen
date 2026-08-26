@@ -68,7 +68,7 @@ export function Nl2SqlPanel({
     return (
       <div className="flex items-center gap-2 px-3 py-2 text-xs text-fg-muted border-b border-edge bg-surface-alt">
         <Sparkles className="h-3.5 w-3.5" />
-        <span className="flex-1">{t('nl2sql.notConfigured')}</span>
+        <span className="flex-1">{t('common.aiNotConfigured')}</span>
         <Button
           variant="primary"
           className="h-6 gap-1 px-2 text-[11px]"

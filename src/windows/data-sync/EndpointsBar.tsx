@@ -75,7 +75,7 @@ export function EndpointsBar({
             value={sourceDatabase}
             options={sourceDatabases.map((db) => ({ value: db, label: db }))}
             onChange={onSourceDatabaseChange}
-            placeholder={t('sync.selectDatabase')}
+            placeholder={t('common.selectDatabase')}
           />
         </div>
         {showSourceSchema && (
@@ -120,7 +120,7 @@ export function EndpointsBar({
             value={targetDatabase || ''}
             options={targetDatabases.map((db) => ({ value: db, label: db }))}
             onChange={onTargetDatabaseChange}
-            placeholder={t('sync.selectDatabase')}
+            placeholder={t('common.selectDatabase')}
           />
         </div>
         {showTargetSchema && (

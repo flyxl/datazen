@@ -352,7 +352,7 @@ export function SettingsContent({
 
                 <div className="flex items-center gap-3">
                   <Button variant="secondary" onClick={() => void settingsCommands.openLogDir()}>
-                    {t('settings.viewLogs')}
+                    {t('common.viewLogs')}
                   </Button>
                 </div>
 

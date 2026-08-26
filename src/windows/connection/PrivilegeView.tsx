@@ -276,7 +276,7 @@ function GrantDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-[420px] rounded-lg border border-edge bg-surface p-4 shadow-lg">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-fg">{t('privileges.grantTitle')}</h3>
+          <h3 className="text-sm font-medium text-fg">{t('common.grantPrivileges')}</h3>
           <button
             type="button"
             className="rounded p-0.5 text-fg-muted hover:text-fg"
@@ -843,7 +843,7 @@ export function PrivilegeView({ dbSessionId }: PrivilegeViewProps) {
         <Button
           variant="ghost"
           className="h-7 w-7 !px-0"
-          title={t('privileges.grantTitle')}
+          title={t('common.grantPrivileges')}
           onClick={() => openGrantDialog()}
         >
           <Plus className="h-3.5 w-3.5" />

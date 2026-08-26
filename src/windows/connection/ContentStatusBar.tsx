@@ -40,7 +40,7 @@ export function ContentStatusBar({
           .join(' · ')}
       </div>
       <div className="shrink-0 text-fg-muted">
-        <kbd className="font-mono">⌘N</kbd> {t('connWin.newQuery')} ·{' '}
+        <kbd className="font-mono">⌘N</kbd> {t('common.newQuery')} ·{' '}
         <kbd className="font-mono">⌘W</kbd> {t('common.close')} ·{' '}
         <kbd className="font-mono">Space</kbd> {t('detail.title')}
       </div>

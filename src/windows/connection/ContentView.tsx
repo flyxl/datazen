@@ -348,16 +348,16 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
           labels: {
             open: kind === 'view' ? t('schemaTree.open') : t('schemaTree.openTable'),
             openStructure: t('schemaTree.openStructure'),
-            copyName: t('schemaTree.copyName'),
-            copyDdl: t('connWin.copyDDL'),
+            copyName: t('common.copyName'),
+            copyDdl: t('common.copyDdl'),
             focusEr: t('erDiagram.focusTable'),
-            exportData: t('connWin.exportData'),
-            importData: t('connWin.importData'),
+            exportData: t('common.exportData'),
+            importData: t('common.importData'),
             refresh: t('connWin.refresh'),
-            newQuery: t('connWin.newQuery'),
+            newQuery: t('common.newQuery'),
             queryHistory: t('main.ctx.queryHistory'),
             copyDatabaseName: t('schemaTree.copyDatabaseName'),
-            newTable: t('connWin.newTable'),
+            newTable: t('common.newTable'),
             batchExport: `${t('batchExport.title')}…`,
             truncate: t('schemaTree.truncate'),
             drop: t('schemaTree.drop'),
@@ -366,13 +366,13 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
             dropSchema: t('schemaTree.dropSchema'),
             viewErDiagram: t('schemaTree.viewErDiagram'),
             newSchema: t('schemaTree.newSchema'),
-            createSchema: t('createSchema.create'),
-            executeSqlFile: t('main.ctx.executeSqlFile'),
-            dataTransfer: t('schemaTree.dataTransfer'),
+            createSchema: t('common.createSchema'),
+            executeSqlFile: t('common.executeSqlFile'),
+            dataTransfer: t('common.dataTransfer'),
             compareSchema: t('schemaTree.compareSchema'),
             compareData: t('schemaTree.compareData'),
-            backup: t('main.ctx.backup'),
-            restore: t('main.ctx.restore'),
+            backup: t('common.backupDatabase'),
+            restore: t('common.restoreDatabase'),
           },
           handlers: {
             onOpen:
@@ -421,11 +421,13 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
             onCopyDatabaseName: kind === 'database' ? () => copyText(name) : undefined,
             onBackup:
               kind === 'database' && ctxDbMeta?.supportsBackup
-                ? () => openBackupWindow('backup', { connectionId: ctx.connectionId, database: name })
+                ? () =>
+                    openBackupWindow('backup', { connectionId: ctx.connectionId, database: name })
                 : undefined,
             onRestore:
               kind === 'database' && ctxDbMeta?.supportsBackup
-                ? () => openBackupWindow('restore', { connectionId: ctx.connectionId, database: name })
+                ? () =>
+                    openBackupWindow('restore', { connectionId: ctx.connectionId, database: name })
                 : undefined,
             onNewTable: handlers.handleCreateTable,
             onTruncate:
@@ -532,7 +534,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
     {
       key: 'mod+n',
       scope: 'global',
-      description: t('connWin.newQuery'),
+      description: t('common.newQuery'),
       action: () => handlers.handleNewQuery(),
     },
     {

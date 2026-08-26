@@ -112,8 +112,8 @@ export function ObjectBrowser({ dbSessionId, databaseType }: ObjectBrowserProps)
         buildObjectBrowserListMenuItems({
           labels: {
             open: t('objects.open'),
-            copyName: t('objects.copyName'),
-            copyDdl: t('objects.copyDdl'),
+            copyName: t('common.copyName'),
+            copyDdl: t('common.copyDdl'),
             refresh: t('objects.refresh'),
           },
           handlers: {

@@ -27,7 +27,7 @@ export function QueryErrorPanel({ message, onDiagnose }: Readonly<QueryErrorPane
     <div className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3">
       <div className="flex items-center gap-2">
         <span className="flex-1 select-none text-xs font-semibold uppercase tracking-wide text-red-400">
-          {t('query.executeFailed')}
+          {t('common.executionFailed')}
         </span>
         <button
           type="button"

@@ -402,7 +402,7 @@ export function DataTable({
               }}
               onChange={onSelectAll}
             />
-            {t('dataTable.selectAll')}
+            {t('common.selectAll')}
           </label>
           {selectedRows.size > 0 && (
             <span className="text-xs text-fg-muted">

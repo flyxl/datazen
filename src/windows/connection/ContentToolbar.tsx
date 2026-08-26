@@ -66,7 +66,7 @@ export function ContentToolbar({
           compact={compact}
           variant="primary"
           className="h-8"
-          label={t('connWin.newQuery')}
+          label={t('common.newQuery')}
           icon={<Plus className="h-4 w-4" />}
           onClick={onNewQuery}
           {...tid('conn-toolbar-new-query')}
@@ -77,7 +77,7 @@ export function ContentToolbar({
           compact={compact}
           variant="secondary"
           className="h-8"
-          label={t('connWin.newTable')}
+          label={t('common.newTable')}
           icon={<TableProperties className="h-4 w-4" />}
           onClick={onCreateTable}
         />
@@ -88,7 +88,7 @@ export function ContentToolbar({
             compact={compact}
             variant="secondary"
             className="h-8"
-            label={t('erDiagram.title')}
+            label={t('common.erDiagram')}
             icon={<GitFork className="h-4 w-4" />}
             onClick={onOpenErDiagram}
           />

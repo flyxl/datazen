@@ -736,33 +736,33 @@ export const ConnectionNavigatorTree = forwardRef<
 
   const contextLabels = useMemo(
     () => ({
-      newGroup: t('main.ctx.newGroup'),
-      newConnection: t('main.newConnection'),
+      newGroup: t('common.newGroup'),
+      newConnection: t('common.newConnection'),
       renameGroup: t('main.ctx.renameGroup'),
       deleteGroup: t('main.ctx.deleteGroup'),
       openConnection: t('main.ctx.openConnection'),
       disconnect: t('main.ctx.disconnect'),
-      editConnection: t('main.ctx.editConnection'),
+      editConnection: t('common.editConnection'),
       duplicateConnection: t('main.ctx.duplicateConnection'),
       moveToGroup: t('main.ctx.moveToGroup'),
       removeFromGroup: t('main.ctx.removeFromGroup'),
-      deleteConnection: t('main.ctx.deleteConnection'),
-      copyName: t('main.ctx.copyName'),
+      deleteConnection: t('common.deleteConnection'),
+      copyName: t('common.copyName'),
       copyConnectionUrl: t('main.ctx.copyConnectionUrl'),
-      newQuery: t('main.ctx.newQuery'),
+      newQuery: t('common.newQuery'),
       queryHistory: t('main.ctx.queryHistory'),
-      executeSqlFile: t('main.ctx.executeSqlFile'),
-      createDatabase: t('createDb.create'),
-      createSchema: t('createSchema.create'),
-      createUser: t('createUser.create'),
+      executeSqlFile: t('common.executeSqlFile'),
+      createDatabase: t('common.createDatabase'),
+      createSchema: t('common.createSchema'),
+      createUser: t('common.createUser'),
       refresh: t('main.ctx.refresh'),
       pinConnection: t('main.ctx.pinConnection'),
       unpinConnection: t('main.ctx.unpinConnection'),
-      objectFilter: t('main.ctx.objectFilter'),
-      processList: t('main.ctx.processList'),
-      serverStatus: t('main.ctx.serverStatus'),
-      backup: t('main.ctx.backup'),
-      restore: t('main.ctx.restore'),
+      objectFilter: t('common.objectFilter'),
+      processList: t('common.processList'),
+      serverStatus: t('common.serverStatus'),
+      backup: t('common.backupDatabase'),
+      restore: t('common.restoreDatabase'),
     }),
     [t],
   );
@@ -771,16 +771,16 @@ export const ConnectionNavigatorTree = forwardRef<
     () => ({
       open: t('schemaTree.openTable'),
       openStructure: t('schemaTree.openStructure'),
-      copyName: t('schemaTree.copyName'),
-      copyDdl: t('connWin.copyDDL'),
+      copyName: t('common.copyName'),
+      copyDdl: t('common.copyDdl'),
       focusEr: '',
-      exportData: t('connWin.exportData'),
-      importData: t('connWin.importData'),
+      exportData: t('common.exportData'),
+      importData: t('common.importData'),
       refresh: t('connWin.refresh'),
-      newQuery: t('connWin.newQuery'),
+      newQuery: t('common.newQuery'),
       queryHistory: t('main.ctx.queryHistory'),
       copyDatabaseName: t('schemaTree.copyDatabaseName'),
-      newTable: t('connWin.newTable'),
+      newTable: t('common.newTable'),
       batchExport: `${t('batchExport.title')}…`,
       truncate: t('schemaTree.truncate'),
       drop: t('schemaTree.drop'),
@@ -788,14 +788,14 @@ export const ConnectionNavigatorTree = forwardRef<
       dropDatabase: t('schemaTree.dropDatabase'),
       viewErDiagram: t('schemaTree.viewErDiagram'),
       newSchema: t('schemaTree.newSchema'),
-      createSchema: t('createSchema.create'),
+      createSchema: t('common.createSchema'),
       dropSchema: t('schemaTree.dropSchema'),
-      executeSqlFile: t('main.ctx.executeSqlFile'),
-      dataTransfer: t('schemaTree.dataTransfer'),
+      executeSqlFile: t('common.executeSqlFile'),
+      dataTransfer: t('common.dataTransfer'),
       compareSchema: t('schemaTree.compareSchema'),
       compareData: t('schemaTree.compareData'),
-      backup: t('main.ctx.backup'),
-      restore: t('main.ctx.restore'),
+      backup: t('common.backupDatabase'),
+      restore: t('common.restoreDatabase'),
     }),
     [t],
   );
@@ -946,7 +946,9 @@ export const ConnectionNavigatorTree = forwardRef<
         await Promise.all(
           [...expandedDbs]
             .filter((dbKey) => dbKey.startsWith(`${connectionId}::`))
-            .map((dbKey) => reloadDbTables(entry.dbSessionId, dbKey.slice(connectionId.length + 2))),
+            .map((dbKey) =>
+              reloadDbTables(entry.dbSessionId, dbKey.slice(connectionId.length + 2)),
+            ),
         );
       }
 
@@ -1303,7 +1305,10 @@ export const ConnectionNavigatorTree = forwardRef<
                               return {
                                 ...state,
                                 schemas,
-                                currentDatabase: state.currentDatabase === dbName ? fallback : state.currentDatabase,
+                                currentDatabase:
+                                  state.currentDatabase === dbName
+                                    ? fallback
+                                    : state.currentDatabase,
                               };
                             });
                           }
@@ -2254,7 +2259,9 @@ export const ConnectionNavigatorTree = forwardRef<
                   : '';
               void toggleCategory(row.key, row.cat.id, dbSessionId);
             }}
-            onContextMenu={(e) => handleCategoryContextMenu(e, row.key, row.cat.id, catConnectionId)}
+            onContextMenu={(e) =>
+              handleCategoryContextMenu(e, row.key, row.cat.id, catConnectionId)
+            }
           >
             {row.expanded ? (
               <ChevronDown className="h-3 w-3 shrink-0" />
@@ -2466,7 +2473,7 @@ export const ConnectionNavigatorTree = forwardRef<
               type="button"
               className="flex h-6 w-6 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
               onClick={onExportConnections}
-              title={t('menu.exportConnections')}
+              title={t('common.exportConnections')}
             >
               <Upload className="h-3.5 w-3.5" />
             </button>
@@ -2476,7 +2483,7 @@ export const ConnectionNavigatorTree = forwardRef<
               type="button"
               className="flex h-6 w-6 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
               onClick={onImportConnections}
-              title={t('menu.importConnections')}
+              title={t('common.importConnections')}
             >
               <Download className="h-3.5 w-3.5" />
             </button>
@@ -2485,7 +2492,7 @@ export const ConnectionNavigatorTree = forwardRef<
             type="button"
             className="flex h-6 w-6 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
             onClick={onNewConnection}
-            title={t('main.newConnection')}
+            title={t('common.newConnection')}
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
@@ -2496,7 +2503,7 @@ export const ConnectionNavigatorTree = forwardRef<
               setNewGroupName('');
               setNewGroupDialogOpen(true);
             }}
-            title={t('main.newGroupTitle')}
+            title={t('common.newGroup')}
           >
             <FolderPlus className="h-3.5 w-3.5" />
           </button>
@@ -2569,7 +2576,7 @@ export const ConnectionNavigatorTree = forwardRef<
       {/* New group dialog */}
       <Dialog
         open={newGroupDialogOpen}
-        title={t('main.newGroupTitle')}
+        title={t('common.newGroup')}
         onClose={() => setNewGroupDialogOpen(false)}
         className="max-w-sm"
         footer={

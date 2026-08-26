@@ -71,7 +71,7 @@ export function AiChatPanel({ dbSessionId, database, sqlDialect, onInsertSql }: 
       <div className="flex h-full items-center justify-center p-4">
         <div className="text-center text-xs text-fg-muted">
           <Sparkles className="mx-auto mb-2 h-5 w-5" />
-          <p className="mb-3">{t('chat.notConfigured')}</p>
+          <p className="mb-3">{t('common.aiNotConfigured')}</p>
           <Button
             variant="primary"
             className="h-7 gap-1 px-3 text-xs"
@@ -102,7 +102,7 @@ export function AiChatPanel({ dbSessionId, database, sqlDialect, onInsertSql }: 
             onClick={() => setTab('chat')}
           >
             <MessageSquare className="h-3 w-3" />
-            {t('chat.title')}
+            {t('common.aiAssistant')}
           </button>
           <button
             type="button"

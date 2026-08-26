@@ -183,7 +183,7 @@ export function StructureIndexTable({
                   type="button"
                   className="mt-0.5 rounded p-1 text-fg-muted hover:bg-danger/10 hover:text-danger disabled:opacity-40"
                   disabled={!canDrop}
-                  title={!canDrop ? disabledTitle('dropIndex') : t('structEditor.deleteIndex')}
+                  title={!canDrop ? disabledTitle('dropIndex') : t('common.deleteIndex')}
                   onClick={() => onRemove(idx.id)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />

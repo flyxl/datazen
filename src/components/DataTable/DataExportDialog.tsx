@@ -167,7 +167,7 @@ export function DataExportDialog({
   return (
     <Dialog
       open={open}
-      title={t('export.title')}
+      title={t('common.exportData')}
       description={tableName !== 'data' ? t('export.description', { table: tableName }) : undefined}
       onClose={onClose}
       footer={

@@ -1300,7 +1300,7 @@ function WorkflowSidebarList({
         labels: {
           open: t('workflows.open'),
           delete: t('workflows.delete'),
-          copyName: t('workflows.copyName'),
+          copyName: t('common.copyName'),
         },
         handlers: {
           onOpen: () => onSelect(w),

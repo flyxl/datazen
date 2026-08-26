@@ -75,7 +75,7 @@ export function ExecuteSqlFileDialog({
         },
         confirmBeforeExecute: async () =>
           confirmExecute({
-            title: t('sqlFile.dialogTitle'),
+            title: t('common.executeSqlFile'),
             message: t('sqlFile.executeConfirm'),
             kind: 'warning',
           }),
@@ -96,7 +96,7 @@ export function ExecuteSqlFileDialog({
     <>
       <Dialog
         open={open}
-        title={t('sqlFile.dialogTitle')}
+        title={t('common.executeSqlFile')}
         description={`${connectionName} · ${targetLabel}`}
         onClose={() => {
           if (!running) onClose();

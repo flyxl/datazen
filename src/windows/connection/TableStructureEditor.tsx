@@ -179,7 +179,7 @@ export function TableStructureEditor({
       })
       .catch((e) => {
         if (cancelled) return;
-        let msg = t('structEditor.loadFailed');
+        let msg = t('common.loadTableStructureFailed');
         if (typeof e === 'string') msg = e;
         else if (e instanceof Error) msg = e.message;
         setError(msg);
@@ -354,11 +354,7 @@ export function TableStructureEditor({
       onSuccess();
     } catch (e) {
       const msg =
-        typeof e === 'string'
-          ? e
-          : e instanceof Error
-            ? e.message
-            : t('structEditor.executeFailed');
+        typeof e === 'string' ? e : e instanceof Error ? e.message : t('common.executionFailed');
       setError(msg);
     } finally {
       setExecuting(false);
@@ -413,7 +409,7 @@ export function TableStructureEditor({
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
         <Loader2 className="h-5 w-5 animate-spin" />
-        {t('structEditor.loading')}
+        {t('common.loadingTableStructure')}
       </div>
     );
   }
@@ -434,8 +430,8 @@ export function TableStructureEditor({
         )}
         <span className="text-base font-semibold text-fg">
           {mode === 'create'
-            ? t('structEditor.newTable')
-            : `${t('structEditor.editTable')} · ${initialTableName}`}
+            ? t('common.newTable')
+            : `${t('common.editTableStructure')} · ${initialTableName}`}
         </span>
         <div className="flex-1" />
         {mode === 'alter' && initialTableName && (

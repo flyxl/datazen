@@ -73,7 +73,7 @@ describe('DiagnosisPanel', () => {
         onClose={onClose}
       />,
     );
-    expect(container.textContent).toContain('diagnosis.notConfigured');
+    expect(container.textContent).toContain('common.aiNotConfigured');
     const closeBtn = [...container.querySelectorAll('button')].at(-1)!;
     fireEvent.click(closeBtn);
     expect(aiState.clearDiagnosis).toHaveBeenCalled();

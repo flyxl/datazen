@@ -63,7 +63,7 @@ describe('DataExportDialog', () => {
         tableName="users"
       />,
     );
-    expect(getByText('export.title')).toBeInTheDocument();
+    expect(getByText('common.exportData')).toBeInTheDocument();
     expect(getByText('export.format')).toBeInTheDocument();
     expect(getByText('export.range')).toBeInTheDocument();
   });

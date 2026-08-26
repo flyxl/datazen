@@ -204,9 +204,11 @@ describe('BackupWindow connection list', () => {
 
   async function selectRestoreTarget() {
     render(<BackupWindow />);
-    await waitFor(() => expect(screen.getByText('backup.restoreTitle')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('common.restoreDatabase')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Local PG'));
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('connect', { connectionId: 'pg-1' }));
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('connect', { connectionId: 'pg-1' }),
+    );
     await waitFor(() => screen.getByText('app'));
     fireEvent.click(screen.getByText('app'));
     await waitFor(() => expect(screen.getByTestId('backup-start-restore')).not.toBeDisabled());
@@ -409,9 +411,7 @@ describe('BackupWindow backup flow (F3-BUG-002 coverage)', () => {
     fireEvent.click(screen.getByTestId('backup-start-backup'));
 
     await waitFor(() => expect(backupDatabaseCall()).toBeTruthy());
-    await waitFor(() =>
-      expect(screen.queryByTestId('backup-status')).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByTestId('backup-status')).not.toBeInTheDocument());
     expect(screen.queryByTestId('backup-progress-log')).not.toBeInTheDocument();
     expect(screen.getByTestId('backup-start-backup')).toHaveTextContent('backup.startBackup');
   });
@@ -481,9 +481,7 @@ describe('BackupWindow backup flow (F3-BUG-002 coverage)', () => {
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('connect', { connectionId: 'pg-1' }),
     );
-    await waitFor(() =>
-      expect(screen.getByTestId('backup-start-backup')).not.toBeDisabled(),
-    );
+    await waitFor(() => expect(screen.getByTestId('backup-start-backup')).not.toBeDisabled());
     expect(screen.getByText('postgres').parentElement?.className).toContain('bg-blue-600/20');
 
     fireEvent.click(screen.getByTestId('backup-start-backup'));

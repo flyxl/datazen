@@ -231,7 +231,7 @@ export function ExplainPanel({
       {!isConfigured && (
         <div className="flex items-center gap-2 p-4 text-xs text-fg-muted">
           <Sparkles className="h-3.5 w-3.5" />
-          <span className="flex-1">{t('explain.notConfigured')}</span>
+          <span className="flex-1">{t('common.aiNotConfigured')}</span>
           <Button
             variant="primary"
             className="h-6 gap-1 px-2 text-[11px]"

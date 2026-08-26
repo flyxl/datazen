@@ -527,7 +527,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
             runSelection: t('query.runSelection'),
             format: t('query.format'),
             comment: t('query.comment'),
-            addFavorite: t('query.addFavorite'),
+            addFavorite: t('common.addToFavorites'),
           },
           handlers: {
             onRun: handleExecute,
@@ -559,7 +559,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
         buildFavoriteSidebarContextMenuItems({
           labels: {
             applySql: t('query.applySql'),
-            copySql: t('query.copySql'),
+            copySql: t('common.copySql'),
             delete: t('common.delete'),
           },
           handlers: {
@@ -584,7 +584,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
         buildHistorySidebarContextMenuItems({
           labels: {
             applySql: t('query.applySql'),
-            copySql: t('query.copySql'),
+            copySql: t('common.copySql'),
           },
           handlers: {
             onApplySql: () => updateSql(panelId, sql),
@@ -856,7 +856,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
           {showFavoriteDialog && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
               <div className="w-[400px] rounded-lg border border-edge bg-surface p-4 shadow-xl">
-                <div className="mb-3 text-sm font-medium text-fg">{t('query.addFavorite')}</div>
+                <div className="mb-3 text-sm font-medium text-fg">{t('common.addToFavorites')}</div>
                 <div className="mb-2">
                   <label className="mb-1 block text-xs text-fg-muted">
                     {t('query.favoriteTitle')}

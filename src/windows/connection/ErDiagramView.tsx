@@ -172,7 +172,7 @@ function ErDiagramInner({
         buildErNodeContextMenuItems({
           labels: {
             openTable: t('schemaTree.openTable'),
-            copyName: t('schemaTree.copyName'),
+            copyName: t('common.copyName'),
             focusTable: t('erDiagram.focusTable'),
           },
           handlers: {

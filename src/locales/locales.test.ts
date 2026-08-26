@@ -16,12 +16,12 @@ import {
 const CRITICAL_KEYS: TranslationKey[] = [
   'common.ok',
   'common.cancel',
-  'menu.exportConfig',
-  'menu.importConfig',
-  'action.exportConfig',
-  'action.importConfig',
+  'common.exportAppData',
+  'common.importAppData',
+  'common.exportAppData',
+  'common.importAppData',
   'appData.exportSuccess',
-  'appData.importConfirmTitle',
+  'common.importAppData',
   'appData.importConfirmMessage',
   'settings.language',
   'main.searchPlaceholder',
@@ -69,9 +69,9 @@ describe('locales', () => {
     'sync.mappingSummary',
     'sync.selectBoth',
     'sync.cannotSame',
-    'sync.unsupportedHint',
+    'common.unsupportedPair',
     'sync.compare',
-    'sync.windowTitle',
+    'common.dataSyncTitle',
   ];
 
   it('resolves Data Sync workspace keys for built-in locales', () => {

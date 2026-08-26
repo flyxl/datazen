@@ -59,13 +59,22 @@ export function DiagnosisPanel({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-fg-muted">
             <Stethoscope className="h-3.5 w-3.5" />
-            <span>{t('diagnosis.notConfigured')}</span>
-            <Button variant="primary" className="h-5 gap-1 px-1.5 text-[10px]" onClick={() => openSettingsWindow('ai')}>
+            <span>{t('common.aiNotConfigured')}</span>
+            <Button
+              variant="primary"
+              className="h-5 gap-1 px-1.5 text-[10px]"
+              onClick={() => openSettingsWindow('ai')}
+            >
               <Settings className="h-2.5 w-2.5" />
               {t('settings.ai.goToConfigure')}
             </Button>
           </div>
-          <button type="button" onMouseDown={(e) => e.preventDefault()} className="text-fg-muted hover:text-fg" onClick={handleClose}>
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            className="text-fg-muted hover:text-fg"
+            onClick={handleClose}
+          >
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -91,7 +100,12 @@ export function DiagnosisPanel({
               {t('diagnosis.diagnose')}
             </Button>
           )}
-          <button type="button" onMouseDown={(e) => e.preventDefault()} className="text-fg-muted hover:text-fg" onClick={handleClose}>
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            className="text-fg-muted hover:text-fg"
+            onClick={handleClose}
+          >
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -157,9 +171,7 @@ export function DiagnosisPanel({
         )}
 
         {!diagnosis && !isDiagnosing && !diagnosisError && (
-          <p className="py-2 text-xs text-fg-muted">
-            {t('diagnosis.diagnose')}
-          </p>
+          <p className="py-2 text-xs text-fg-muted">{t('diagnosis.diagnose')}</p>
         )}
       </div>
     </div>
