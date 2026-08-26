@@ -210,7 +210,7 @@ describe('demo recording', () => {
     // ── 4. Open new query tab ──
     // Post-refactor the workspace may land on ConnectionWorkspaceHome first;
     // prefer its quick-action card, fall back to the content toolbar button.
-    const homeQuick = $('[data-testid="home-quick-new-query"] button');
+    const homeQuick = $('[data-testid="home-quick-new-query"]');
     if (await homeQuick.isExisting()) {
       await homeQuick.click();
     } else {
