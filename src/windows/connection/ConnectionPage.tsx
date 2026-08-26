@@ -604,7 +604,7 @@ export function ConnectionPage() {
     let saved: boolean;
     try {
       const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      saved = await backupCommands.exportAppDataWithDialog(`datazen-backup-${date}.zip`);
+      saved = await backupCommands.exportAppData(`datazen-backup-${date}.zip`);
     } catch (e) {
       showMessageDialog(e instanceof Error ? e.message : t('appData.exportFailed'), 'error');
       return;
@@ -631,7 +631,7 @@ export function ConnectionPage() {
 
   const handleImportConfig = useCallback(async () => {
     try {
-      const imported = await backupCommands.importAppDataWithDialog(
+      const imported = await backupCommands.importAppData(
         t('appData.importConfirmTitle'),
         t('appData.importConfirmMessage'),
       );

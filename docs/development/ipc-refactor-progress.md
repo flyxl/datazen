@@ -11,7 +11,7 @@
 | F1 | 废弃 `use_database`，query/stream/explain 显式传参 | 决策 1 | 已完成 | 34a28420 | 3d23cfd1 · 8b85cd49 · 本提交 |
 | F2 | ADB 命令迁移 SQLite 驱动（DriverCommandDefinition） | 决策 2 | 编码完成 | 本提交 | — |
 | F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 已完成 | d17623d1 | 4bb25365 · 25aed34c · 本提交 |
-| F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 未开始 | — | — |
+| F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 编码完成 | 本提交 | — |
 | F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 未开始 | — | — |
 | F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 未开始 | — | — |
 | F7 | 驱动级 SQL 定位重写（限定名内联、无会话切换；PG 系含 database+schema 双维度） | 用户新指令 2026-08-26 | 未开始 | — | — |
@@ -402,7 +402,63 @@
 - 用例质量审查（git show 25aed34c 对照组件源码逐例核对）：新增 7 例全部行为级——①成功：`toEqual` 精确断言 `backup_database` 全参数 + 断言无 `overridePath` 键（决策 3+6 生产零 override 守护）+ progress 监听注册与 success 文案；②取消 saved=false：状态条卸载、进度日志卸载（progressLog.length 条件渲染）、按钮复位；③后端错误：消息同时进状态条与日志；④选项/gzip/文件名：经 sqlDialects 可配置 ref 注入方言 options，驱动组件真实推导 filterExtension=gz、defaultFileName=nightly.sql.gz、routines 自动默认勾选与 options 数组内容；⑤URL 预填 connectionId/database；⑥restore 后端错误（确认弹窗→报错上屏）；⑦分组折叠/展开。无空转用例。mock 惯例改动保持原行为（ref 默认空列表 = 原 `{backupOptions: []}`，afterEach 重置，仅新用例 4 在自身作用域内变更）；confirmDialogFn 残留污染诊断属实——全局 beforeEach 重置 urlParam/listen/invoke 三者实现而 confirmDialogFn 仅初始化一次、`vi.clearAllMocks()` 不清除 mockResolvedValue 实现，decline 用例的 reject 会泄漏至后续用例，新 describe 局部 beforeEach 重置默认接受为正确修复
 
 ## F4 connections/app-data 导入导出合并
-（占位）
+
+### 范围
+- 后端（`src-tauri/src/commands/config.rs`）：五命令收敛为三 ——
+  - `export_connections` ← 原 path 版（删）+ `export_connections_with_dialog`（删）合并；新增可选 `override_path: Option<String>`；返回值统一 dialog 语义 `Option<u32>`（None = 取消）
+  - `import_connections_preview` ← 原 path 版原地合并：`path: String` → `override_path: Option<String>`，补原生 open-dialog 分支（决策 3 单命令形态）；返回值 `Value` → `Option<Value>`
+  - `import_connections_with_dialog`：保留名（与 preview 语义不同不互并，按计划文档「各自合并 path 参数」），新增可选 `override_path`
+  - `export_app_data` ← 原 path 版（删）+ `export_app_data_with_dialog`（删）合并；新增可选 `override_path`；返回值统一 `bool`
+  - `import_app_data` ← 同上合并；新增可选 `override_path`；override 分支跳过文件选择与确认弹窗（旧 path 版无交互行为等价）
+  - `detect_connection_import_path` / `pick_connection_import_path_with_dialog` / `import_connections_from_app` / `save_encryption_key_with_dialog` 不动
+- **门控原语收口**：F3 的私有助手 `resolve_override_path` + 常量 `OVERRIDE_DISABLED_MSG`（"path override disabled in production"）从 backup.rs 上移到 `commands/error.rs`（pub(crate)），backup.rs 与 config.rs 共用同一实现——单一机制，无第二份拷贝；其单测随迁至 error.rs
+- `lib.rs` 注册块：connections 7 行 → 6 行、app-data 4 行 → 3 行（删 `export_connections_with_dialog` / `export_app_data_with_dialog` / `import_app_data_with_dialog` 三条）
+- 前端 wrapper 收敛：`commands/connection.ts` 删两个 deprecated raw-path 封装，`exportConnectionsWithDialog`→`exportConnections`、`importConnectionsWithDialog`→`importConnections`、preview 签名 `(path, password)`→`(password)`，全部指向合并 IPC 且零 overridePath；`commands/backup.ts` 同构（`exportAppDataWithDialog`→`exportAppData`、`importAppDataWithDialog`→`importAppData`，删 deprecated raw 版）。调用点 `ConnectionShareDialog.tsx` / `ConnectionPage.tsx` 仅换函数名，参数不变
+- 守护/E2E 同步：`pathIpcWiring.test.ts` 新增 decision 3 (f4) 守护用例并更新 connection share 用例断言；e2e `path-ipc-hardening.ts` PIH-003 与 `app-data-backup.ts` ADB 全部改 `overridePath` 形态
+
+### 设计决策
+1. **门控写法完全沿用 F3**：五个合并命令体第一步 `resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)?`，`Some(p)` 先过 `require_webdriver_path_ipc`（`cfg!(feature = "webdriver")` 运行时判定）再转 `PathBuf`，`None` 恒不触门控走 dialog 分支。生产构建传 override_path 得计划文档原文 `"path override disabled in production"`。已另跑 `cargo check --features webdriver` 验证 override 分支参与编译。
+2. **import_connections_preview 补 dialog 分支而非保持纯 path**：计划文档目标清单将其标注为「(含 override_path)」，与其它四个合并命令同构（单命令 + 可选 override_path，None → 原生对话框）。生产 UI 当前无调用点，dialog 分支为未来「先预览后导入」UX 预留；生产安全性不变（override 分支整体被拒、dialog 分支有 OS 级确认）。若坚持纯 path 形态则该命令无法满足「单命令 + Option<String>」的统一契约。
+3. **import 的 override 分支跳过全部交互**（含 import_app_data 的确认弹窗）：旧 path 版行为等价要求——E2E 直调不能被 OS 弹窗阻塞；dialog 分支保留「选文件 + Warning 确认」两步交互。
+4. **返回值统一以 dialog 语义为准**（F3 决策 2 延续）：export_connections `u32|Option<u32>` → `Option<u32>`；import_connections_preview `Value` → `Option<Value>`；export/import_app_data `()|bool` → `bool`。E2E 断言同步（PIH-003 补 not-null、ADB-002 补 saved===true）。
+5. **前端 wrapper 更名而非仅改 invoke 目标**：旧 `-WithDialog` 名字镜像了已删除的后端双命令，保留会造成「一个 IPC 两个名字」。更名后 wrapper 与 IPC 一一对应（camelCase 对齐 snake_case），deprecated raw-path 封装整体删除；生产调用面（ConnectionShareDialog / ConnectionPage）只改函数名，业务参数零变化。
+
+### 单测清单（编码轮）
+- Rust `commands::error::tests`：`resolve_override_path_gates_without_webdriver_feature`（自 backup.rs 迁入：Some → 非 webdriver 报 Validation "path override disabled"、webdriver 放行原路径；None → 两构建均 Ok(None)）
+- Rust `commands::config::tests`：
+  - `merged_connections_export_roundtrips_through_preview_helper`（write_connections_export 写盘返回 count；build_import_preview_from_path 正确密码解析回 connections/sourceFormat、错误密码报错）
+  - `app_data_export_import_helpers_roundtrip_groups_file`（export_app_data_to_dest 产物 ZIP 含 groups.json；import_app_data_from_source 将手工构造的干净归档落盘为目标 data_dir/groups.json）
+- Rust `commands::config::ipc_contract_guards`（include_str! 源码级钉死）：
+  - `merged_commands_take_override_path_not_raw_path_param`（五命令均有 `override_path: Option<String>`、均无裸 `path: String` 参数）
+  - `stale_dialog_twins_are_gone_from_config_rs`（三个 `_with_dialog` 旧 fn 定义清零，needle 运行时拼接防自引用误报）
+  - `lib_rs_registers_merged_commands_only`（五条合并注册 + 四条未动邻居正向钉住，三条旧注册清零）
+  - `merged_commands_route_through_shared_resolve_override_path`（config.rs 无本地重定义、五个命令体都经共享助手门控——单一机制守护）
+- 前端新增 `src/commands/__tests__/importExportCommands.test.ts`（10 用例）：五个合并 wrapper 的 invoke 目标 + camelCase 参数精确断言且无 `overridePath` 键、取消 null/false 透传；connection.ts / backup.ts 其余 wrapper 线面契约回归
+- `pathIpcWiring.test.ts` 新增 decision 3 (f4) 守护：wrapper 层 invoke 目标正断言、三个旧 IPC 名 + 四个旧 wrapper 名负断言、四个生产文件（connection.ts/backup.ts/ConnectionShareDialog.tsx/ConnectionPage.tsx）不含 `overridePath` 与旧名、lib.rs 注册面正负双向
+
+### E2E 用例迁移（真实 webdriver 回归留待 R 阶段）
+| spec | 变更 |
+|------|------|
+| `e2e/specs/path-ipc-hardening.ts` | PIH-003：export_connections 改 `{password, defaultFileName, overridePath}` 并补 `count !== null`；import_connections_preview 改 `{password, overridePath}` 并补非空断言 |
+| `e2e/specs/app-data-backup.ts` | 新增 `exportToPath`/`importFromPath` helper（defaultFileName/confirm 文案 + overridePath）；ADB-002/003/006/008 export、ADB-003/004 import 全部迁移；ADB-002 补 `saved === true`；ADB-001 源码断言改新 wrapper 名 |
+
+### 测试结果（编码轮）
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（共享主检出 target） | **1139 passed / 0 failed / 2 ignored**（较 F3 后基线净 +6：gate 单测随助手迁 error.rs ±0，config 新增 2 行为测试 + 4 守卫测试） |
+| `npx vitest run` | **242 文件 / 1988 用例全过**（净 +1 文件 = importExportCommands.test.ts） |
+| `npx tsc --noEmit` | **0 错误**（exit 0） |
+| `cargo check -p datazen --features webdriver` | 通过（override 分支参与编译） |
+
+### 覆盖率（编码轮实测：vitest --coverage --coverage.include 过滤改动 TS 文件）
+| 文件 | 行 | 语句 | 分支 | 函数 | 判定 |
+|------|----|------|------|------|------|
+| src/commands/connection.ts | 100% | 100% | 100% | 100% | ✓ ≥80% |
+| src/commands/backup.ts | 100% | 100% | 100% | 100% | ✓ ≥80% |
+
+### 非缺陷观察项（供 R 阶段参考）
+1. app-data 导出会把运行中 Store 的 SQLite sidecar（`datazen.sqlite-shm`/`-wal`，零填充高压缩比）打进归档，导入侧 zip-bomb 压缩比守卫（MAX_COMPRESSION_RATIO=100）会拒绝此类归档——本轮单元测试因此改用手工构造的干净归档验证 import 助手。系既有 archive 语义问题、非 F4 引入（F4 只重组命令入口），建议后续在导出侧排除 sqlite sidecar 或在导入侧对 store 自身文件放宽比率检查。
+2. config.rs 中 app-data 对话框分支沿袭旧代码的同步 `blocking_save_file`/`blocking_pick_file` 写法（未走 `run_blocking_dialog`），connections 分支保持 spawn_blocking 模式——两处均为既有行为，本轮不做跨域重构。
 
 ## F5 删除纯文件读写 IPC
 （占位）

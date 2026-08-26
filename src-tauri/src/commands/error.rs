@@ -198,6 +198,28 @@ pub(crate) fn require_webdriver_path_ipc(disabled_msg: &'static str) -> Result<(
     Ok(())
 }
 
+/// Error text used when a merged command receives `override_path` in a
+/// production build (decision 3 example wording, kept verbatim).
+pub(crate) const OVERRIDE_DISABLED_MSG: &str = "path override disabled in production";
+
+/// Webdriver-only escape hatch shared by all decision-3 merged commands
+/// (`backup_database`, `restore_sql_file`, connections/app-data import-export):
+/// `Some(path)` bypasses the native dialog, but is rejected in production
+/// builds — the dialog's OS-level confirmation stays the only user-facing file
+/// selector there. `None` never touches the gate.
+pub(crate) fn resolve_override_path(
+    override_path: Option<String>,
+    disabled_msg: &'static str,
+) -> Result<Option<std::path::PathBuf>, CommandError> {
+    match override_path {
+        Some(p) => {
+            require_webdriver_path_ipc(disabled_msg)?;
+            Ok(Some(std::path::PathBuf::from(p)))
+        }
+        None => Ok(None),
+    }
+}
+
 /// Ensure `target` resolves to a path under `base` after canonicalization.
 /// Returns the canonical target path on success.
 pub(crate) fn assert_under_dir(
@@ -273,5 +295,28 @@ mod tests {
         let mapped = err.cmd_err("test_connection").unwrap_err();
         // IPC payload keeps the original message; only the log line is redacted.
         assert!(mapped.to_string().contains("s3cret"));
+    }
+
+    #[test]
+    fn resolve_override_path_gates_without_webdriver_feature() {
+        // Decision 3: the merged commands' `override_path` replaces the old
+        // raw-path IPCs and must stay webdriver-only. `cfg!` keeps both arms
+        // compiled, so this also pins the production error message.
+        let gated = resolve_override_path(Some("/tmp/override.sql".into()), OVERRIDE_DISABLED_MSG);
+        if cfg!(feature = "webdriver") {
+            assert_eq!(
+                gated.unwrap().map(|p| p.display().to_string()).as_deref(),
+                Some("/tmp/override.sql")
+            );
+        } else {
+            let err = gated.unwrap_err();
+            assert!(matches!(err, CommandError::Validation(ref msg) if msg.contains("disabled")));
+            assert!(err.to_string().contains("path override disabled"));
+        }
+        // No override must never touch the gate (production dialog flow).
+        assert_eq!(
+            resolve_override_path(None, OVERRIDE_DISABLED_MSG).unwrap(),
+            None
+        );
     }
 }
