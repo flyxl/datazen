@@ -1,11 +1,7 @@
 //! Schema Diff Deploy IPC commands.
 
 use super::error::{CmdExt, CommandError};
-use super::sync::compare::{
-    count_rows, diff_table_schemas_ir, fetch_full_column_types, fetch_sample_rows,
-    resolve_pk_columns, row_to_json_map, rows_equal, rows_to_key_map,
-};
-use super::sync::types::DATA_COMPARE_MISMATCH_LIMIT;
+use super::sync::compare::{diff_table_schemas_ir, fetch_full_column_types};
 use super::AppState;
 use crate::schema_diff::deploy::{
     execute_schema_diff_deploy as run_schema_diff_deploy, plan_has_destructive, DeployOptions,
@@ -301,127 +297,6 @@ pub(crate) async fn compare_table_schemas_impl(
     Ok(result)
 }
 
-/// Sample row-level data differences for a single table.
-pub(crate) async fn compare_table_data_impl(
-    state: &AppState,
-    source_db_session_id: String,
-    target_db_session_id: String,
-    table_name: String,
-) -> Result<serde_json::Value, CommandError> {
-    tracing::info!(%source_db_session_id, %target_db_session_id, %table_name, "compare_table_data");
-
-    let (src_driver, src_handle) = state
-        .connection_manager
-        .get_session(&source_db_session_id)
-        .await
-        .cmd_err("compare_table_data")?;
-    let (tgt_driver, tgt_handle) = state
-        .connection_manager
-        .get_session(&target_db_session_id)
-        .await
-        .cmd_err("compare_table_data")?;
-
-    let src_schema = src_driver
-        .get_table_schema(&src_handle, &table_name)
-        .await
-        .cmd_err("compare_table_data")?;
-    let tgt_schema = tgt_driver
-        .get_table_schema(&tgt_handle, &table_name)
-        .await
-        .cmd_err("compare_table_data")?;
-
-    let source_row_count = count_rows(src_driver.as_ref(), &src_handle, &table_name).await?;
-    let target_row_count = count_rows(tgt_driver.as_ref(), &tgt_handle, &table_name).await?;
-
-    let col_names: Vec<String> = src_schema.columns.iter().map(|c| c.name.clone()).collect();
-    let pk_cols = resolve_pk_columns(&src_schema);
-
-    let src_rows = fetch_sample_rows(
-        src_driver.as_ref(),
-        &src_handle,
-        &table_name,
-        &col_names,
-        &pk_cols,
-    )
-    .await?;
-    let tgt_rows = fetch_sample_rows(
-        tgt_driver.as_ref(),
-        &tgt_handle,
-        &table_name,
-        &tgt_schema
-            .columns
-            .iter()
-            .map(|c| c.name.clone())
-            .collect::<Vec<_>>(),
-        &resolve_pk_columns(&tgt_schema),
-    )
-    .await?;
-
-    let src_map = rows_to_key_map(&col_names, &pk_cols, &src_rows);
-    let tgt_col_names: Vec<String> = tgt_schema.columns.iter().map(|c| c.name.clone()).collect();
-    let tgt_map = rows_to_key_map(&tgt_col_names, &resolve_pk_columns(&tgt_schema), &tgt_rows);
-
-    let mut mismatches = Vec::new();
-    let mut truncated = false;
-
-    for (key, src_row) in &src_map {
-        match tgt_map.get(key) {
-            None => {
-                if mismatches.len() >= DATA_COMPARE_MISMATCH_LIMIT {
-                    truncated = true;
-                    break;
-                }
-                mismatches.push(serde_json::json!({
-                    "key": key,
-                    "kind": "source_only",
-                    "source": row_to_json_map(&col_names, src_row),
-                }));
-            }
-            Some(tgt_row) if !rows_equal(&col_names, src_row, &tgt_col_names, tgt_row) => {
-                if mismatches.len() >= DATA_COMPARE_MISMATCH_LIMIT {
-                    truncated = true;
-                    break;
-                }
-                mismatches.push(serde_json::json!({
-                    "key": key,
-                    "kind": "different",
-                    "source": row_to_json_map(&col_names, src_row),
-                    "target": row_to_json_map(&tgt_col_names, tgt_row),
-                }));
-            }
-            _ => {}
-        }
-    }
-
-    if !truncated {
-        for (key, tgt_row) in &tgt_map {
-            if !src_map.contains_key(key) {
-                if mismatches.len() >= DATA_COMPARE_MISMATCH_LIMIT {
-                    truncated = true;
-                    break;
-                }
-                mismatches.push(serde_json::json!({
-                    "key": key,
-                    "kind": "target_only",
-                    "target": row_to_json_map(&tgt_col_names, tgt_row),
-                }));
-            }
-        }
-    }
-
-    let sampled_rows = src_rows.len().max(tgt_rows.len()) as u64;
-
-    tracing::info!(%table_name, mismatches = mismatches.len(), "compare_table_data OK");
-    Ok(serde_json::json!({
-        "table": table_name,
-        "sourceRowCount": source_row_count,
-        "targetRowCount": target_row_count,
-        "sampledRows": sampled_rows,
-        "mismatches": mismatches,
-        "truncated": truncated,
-    }))
-}
-
 #[tauri::command]
 pub async fn compare_table_schemas(
     state: State<'_, AppState>,
@@ -430,22 +305,6 @@ pub async fn compare_table_schemas(
     table_name: String,
 ) -> Result<serde_json::Value, CommandError> {
     compare_table_schemas_impl(
-        &state,
-        source_db_session_id,
-        target_db_session_id,
-        table_name,
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn compare_table_data(
-    state: State<'_, AppState>,
-    source_db_session_id: String,
-    target_db_session_id: String,
-    table_name: String,
-) -> Result<serde_json::Value, CommandError> {
-    compare_table_data_impl(
         &state,
         source_db_session_id,
         target_db_session_id,

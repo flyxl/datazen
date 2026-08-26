@@ -57,10 +57,4 @@ export const dashboardCommands = {
     invoke<boolean>('export_dashboard_with_dialog', { dashboardId, defaultFileName }),
 
   importWithDialog: () => invoke<Dashboard | null>('import_dashboard_with_dialog'),
-
-  /** @deprecated Use setDashboardRefreshPaused */
-  getMonitorPaused: () => invoke<boolean>('get_monitor_paused'),
-
-  /** @deprecated Use setDashboardRefreshPaused */
-  setMonitorPaused: (paused: boolean) => invoke<void>('set_monitor_paused', { paused }),
 };
