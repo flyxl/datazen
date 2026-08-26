@@ -12,11 +12,7 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { createConnection } from 'node:net';
 import { t } from '../i18n.js';
-import {
-  createAndConnectMySQL,
-  closeExtraWindows,
-  openQueryTab,
-} from '../helpers.js';
+import { createAndConnectMySQL, closeExtraWindows, openQueryTab } from '../helpers.js';
 
 const CONN_NAME = 'E2E-MySQL-MultiDb';
 const MYSQL_HOST = process.env.E2E_MYSQL_HOST || '127.0.0.1';
@@ -46,16 +42,16 @@ async function mysqlReachable(timeoutMs = 2000): Promise<boolean> {
   });
 }
 
-/** Collect sidebar button labels that look like database nodes (not table rows). */
+/** Collect sidebar database node names via the tree's stable data attributes. */
 async function listSidebarDbNames(): Promise<string[]> {
   const names = await browser.execute(() => {
     const out: string[] = [];
-    document.querySelectorAll('aside button').forEach((btn) => {
-      const cls = btn.getAttribute('class') || '';
-      // DB nodes use text-sm + teal Database icon; tables use text-[13px] + pl-8
-      if (!cls.includes('text-sm') || cls.includes('pl-8') || cls.includes('text-[13px]')) return;
-      const text = (btn.textContent || '').trim();
-      if (text) out.push(text);
+    // DB nodes carry data-tree-node="db" + data-db-name (ConnectionNavigatorTree);
+    // the old text-sm/text-[13px] class heuristic predates that markup and
+    // matches nothing (asset drift fixed in R phase).
+    document.querySelectorAll('aside [data-tree-node="db"]').forEach((btn) => {
+      const name = btn.getAttribute('data-db-name');
+      if (name) out.push(name);
     });
     return out;
   });
@@ -64,11 +60,9 @@ async function listSidebarDbNames(): Promise<string[]> {
 
 async function clickSidebarDb(dbName: string) {
   const clicked = await browser.execute((name: string) => {
-    const buttons = Array.from(document.querySelectorAll('aside button'));
-    for (const btn of buttons) {
-      const text = (btn.textContent || '').trim();
-      const cls = btn.getAttribute('class') || '';
-      if (text === name && cls.includes('text-sm') && !cls.includes('pl-8')) {
+    const nodes = document.querySelectorAll('aside [data-tree-node="db"]');
+    for (const btn of Array.from(nodes)) {
+      if (btn.getAttribute('data-db-name') === name) {
         (btn as HTMLElement).click();
         return true;
       }
@@ -89,9 +83,7 @@ describe('MySQL 多库会话 UI (F2-E2E)', () => {
       return;
     }
     if (!(await mysqlReachable())) {
-      console.warn(
-        `⏩ Skipping MySQL multi-db E2E: ${MYSQL_HOST}:${MYSQL_PORT} unreachable`,
-      );
+      console.warn(`⏩ Skipping MySQL multi-db E2E: ${MYSQL_HOST}:${MYSQL_PORT} unreachable`);
       shouldSkip = true;
       return;
     }
@@ -121,16 +113,18 @@ describe('MySQL 多库会话 UI (F2-E2E)', () => {
     if (shouldSkip || !mainWindow) return;
     try {
       await closeExtraWindows(mainWindow);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   });
 
   it('无默认库连接后侧边栏应列出多个数据库节点 (F2-E2E-001)', async function () {
     if (shouldSkip) return this.skip();
 
-    await browser.waitUntil(
-      async () => (await listSidebarDbNames()).length >= 2,
-      { timeout: 20000, timeoutMsg: '等待多库 schema 树加载超时' },
-    );
+    await browser.waitUntil(async () => (await listSidebarDbNames()).length >= 2, {
+      timeout: 20000,
+      timeoutMsg: '等待多库 schema 树加载超时',
+    });
 
     const dbNames = await listSidebarDbNames();
     expect(dbNames.length).toBeGreaterThanOrEqual(2);
@@ -138,16 +132,19 @@ describe('MySQL 多库会话 UI (F2-E2E)', () => {
 
     // Multi-db tree should not show StandardSchemaTree section headers before expand
     const asideText = await $('aside').getText();
-    expect(asideText.includes(`${t('schemaTree.tables')} (`) || asideText.startsWith(t('schemaTree.tables'))).toBe(false);
+    expect(
+      asideText.includes(`${t('schemaTree.tables')} (`) ||
+        asideText.startsWith(t('schemaTree.tables')),
+    ).toBe(false);
   });
 
   it('展开数据库节点后应加载表 (F2-E2E-002)', async function () {
     if (shouldSkip) return this.skip();
 
-    await browser.waitUntil(
-      async () => (await listSidebarDbNames()).includes(EXPECTED_DB),
-      { timeout: 15000, timeoutMsg: `等待数据库节点 ${EXPECTED_DB}` },
-    );
+    await browser.waitUntil(async () => (await listSidebarDbNames()).includes(EXPECTED_DB), {
+      timeout: 15000,
+      timeoutMsg: `等待数据库节点 ${EXPECTED_DB}`,
+    });
 
     await clickSidebarDb(EXPECTED_DB);
     await browser.pause(2000);
@@ -156,7 +153,10 @@ describe('MySQL 多库会话 UI (F2-E2E)', () => {
       async () => {
         const text = await $('aside').getText();
         // Either tables appeared or empty-state under the expanded DB
-        return text.includes(t('schemaTree.noTables')) || (await $$('aside button')).length > (await listSidebarDbNames()).length;
+        return (
+          text.includes(t('schemaTree.noTables')) ||
+          (await $$('aside button')).length > (await listSidebarDbNames()).length
+        );
       },
       { timeout: 15000, timeoutMsg: '展开数据库后未加载表' },
     );

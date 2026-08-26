@@ -21,7 +21,10 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
-    await $('[data-testid="conn-toolbar-new-query"]').waitForDisplayed({ timeout: 20000 });
+    // Note: do NOT wait for `conn-toolbar-new-query` here — after connecting,
+    // the workspace shows ConnectionWorkspaceHome and the ContentToolbar
+    // button only mounts once a content panel exists. openQueryTab() opens
+    // the first panel via the workspace-home quick action.
     await browser.pause(1000);
 
     await openQueryTab();

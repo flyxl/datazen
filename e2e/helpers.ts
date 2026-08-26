@@ -652,7 +652,22 @@ async function executeSqlInEditor(sql: string) {
 /** Open a new query tab and wait for the execute button. */
 export async function openQueryTab() {
   // Stable E2E locators (vite-gated data-testid, see src/lib/tid.ts).
-  const newQueryBtn = await $('[data-testid="conn-toolbar-new-query"]');
+  let newQueryBtn = await $('[data-testid="conn-toolbar-new-query"]');
+  if (!(await newQueryBtn.isExisting())) {
+    // A freshly connected session lands on ConnectionWorkspaceHome; its
+    // "new query" quick action opens the first panel. The ContentToolbar
+    // button only mounts after a content panel exists.
+    const home = await $('[data-testid="connection-workspace-home"]');
+    await home.waitForDisplayed({ timeout: 10000 });
+    const labels = ['新建查询', 'New Query', '新查詢', 'Neue Abfrage'];
+    for (const label of labels) {
+      const candidate = await home.$(`button*=${label}`);
+      if (await candidate.isExisting()) {
+        newQueryBtn = candidate;
+        break;
+      }
+    }
+  }
   await newQueryBtn.click();
   await browser.pause(500);
   const execBtn = await $('[data-testid="editor-execute-button"]');

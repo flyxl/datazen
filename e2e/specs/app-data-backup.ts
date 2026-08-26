@@ -103,16 +103,26 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
     await browser.pause(1500);
 
     // macOS uses native menu (MenuBar returns null); assert product wiring instead of DOM buttons.
-    const mainSrc = fs.readFileSync(
+    // App-data config wiring (backupCommands calls + menu:export/import-config
+    // listeners) lives in ConnectionPage.tsx.
+    const connectionSrc = fs.readFileSync(
       path.resolve(import.meta.dirname, '../../src/windows/connection/ConnectionPage.tsx'),
       'utf8',
     );
-    expect(mainSrc).toContain('backupCommands.exportAppData(');
-    expect(mainSrc).toContain('backupCommands.importAppData(');
-    expect(mainSrc).toContain('menu:export-config');
-    expect(mainSrc).toContain('menu:import-config');
-    expect(mainSrc).toContain('menu:export-connections');
-    expect(mainSrc).toContain('menu:import-connections');
+    expect(connectionSrc).toContain('backupCommands.exportAppData(');
+    expect(connectionSrc).toContain('backupCommands.importAppData(');
+    expect(connectionSrc).toContain('menu:export-config');
+    expect(connectionSrc).toContain('menu:import-config');
+
+    // Asset-drift fix (R-phase): the menu:export/import-connections listeners
+    // live in MainPage.tsx since commit e883f834 (in-page connection dialog,
+    // right after F2's Window→Page rename) — not in ConnectionPage.tsx.
+    const mainPageSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, '../../src/windows/main/MainPage.tsx'),
+      'utf8',
+    );
+    expect(mainPageSrc).toContain('menu:export-connections');
+    expect(mainPageSrc).toContain('menu:import-connections');
 
     const zh = fs.readFileSync(
       path.resolve(import.meta.dirname, '../../src/locales/zh-CN.ts'),
