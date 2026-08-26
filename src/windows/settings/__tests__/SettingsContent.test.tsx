@@ -504,7 +504,7 @@ describe('SettingsContent', () => {
     pickSelectOption(0, 'Debug');
     const logPathInput = screen.getByTestId('path-input');
     fireEvent.change(logPathInput, { target: { value: '/var/log/datazen' } });
-    fireEvent.click(screen.getByText('settings.viewLogs'));
+    fireEvent.click(screen.getByText('common.viewLogs'));
     expect(openLogDirMock).toHaveBeenCalled();
 
     fireEvent.click(getSaveButton());
@@ -533,7 +533,7 @@ describe('SettingsContent', () => {
 
     render(<SettingsContent />);
     await waitForSettingsLoad();
-    goToSection('settings.ai');
+    goToSection('common.aiAssistant');
 
     expect(screen.getByText('settings.ai.configured')).toBeInTheDocument();
 
@@ -556,7 +556,7 @@ describe('SettingsContent', () => {
     aiState.remoteModels = [{ id: 'claude-3', displayName: 'Claude 3' }];
     render(<SettingsContent />);
     await waitForSettingsLoad();
-    goToSection('settings.ai');
+    goToSection('common.aiAssistant');
 
     pickSelectOption(0, 'Custom');
     expect(screen.getByText('settings.ai.customHint')).toBeInTheDocument();
@@ -579,7 +579,7 @@ describe('SettingsContent', () => {
   it('covers context directory setting in AI section', async () => {
     render(<SettingsContent />);
     await waitForSettingsLoad();
-    goToSection('settings.ai');
+    goToSection('common.aiAssistant');
 
     await waitFor(() => expect(getContextDirMock).toHaveBeenCalled());
     const pathInput = screen.getByTestId('path-input');
@@ -591,7 +591,7 @@ describe('SettingsContent', () => {
         expect.objectContaining({ contextDir: '/new/context' }),
       ),
     );
-    fireEvent.click(screen.getByText('context.openDir'));
+    fireEvent.click(screen.getByRole('button', { name: 'context.openDir' }));
     expect(openContextDirMock).toHaveBeenCalled();
   });
 
@@ -720,7 +720,7 @@ describe('SettingsContent', () => {
     aiState.configError = 'Invalid API key';
     render(<SettingsContent />);
     await waitForSettingsLoad();
-    goToSection('settings.ai');
+    goToSection('common.aiAssistant');
     expect(screen.getByText('Invalid API key')).toBeInTheDocument();
   });
 });

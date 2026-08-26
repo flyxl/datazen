@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { FolderOpen } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { PathInput } from '../../components/ui/PathInput';
 import { Select } from '../../components/ui/Select';
@@ -20,7 +21,10 @@ function ContextDirSetting() {
 
   useEffect(() => {
     import('../../commands/context').then(({ contextCommands }) => {
-      void contextCommands.getDir().then(setDefaultDir).catch(() => {});
+      void contextCommands
+        .getDir()
+        .then(setDefaultDir)
+        .catch(() => {});
     });
   }, []);
 
@@ -48,10 +52,12 @@ function ContextDirSetting() {
       </Button>
       <Button
         variant="ghost"
-        className="shrink-0 h-9 text-xs"
+        className="shrink-0 h-9 w-9 px-0"
         onClick={() => void settingsCommands.openContextDir()}
+        title={t('context.openDir')}
+        aria-label={t('context.openDir')}
       >
-        {t('context.openDir')}
+        <FolderOpen className="h-4 w-4" />
       </Button>
     </div>
   );
@@ -116,9 +122,7 @@ export function AiSettingsSection() {
   const isCustom = aiDraft.providerType === 'custom';
   const isOllama = aiDraft.providerType === 'ollama';
 
-  const selectedProvider = providers.find(
-    (p) => p.providerType === aiDraft.providerType,
-  );
+  const selectedProvider = providers.find((p) => p.providerType === aiDraft.providerType);
 
   const handleProviderChange = (val: string) => {
     const providerType = val as AiProviderType;
@@ -173,9 +177,7 @@ export function AiSettingsSection() {
 
   const handleSave = async () => {
     setSaveOk(false);
-    const configToSave = isCustom
-      ? { ...aiDraft, extra: { protocol: customProtocol } }
-      : aiDraft;
+    const configToSave = isCustom ? { ...aiDraft, extra: { protocol: customProtocol } } : aiDraft;
     const ok = await saveConfig(configToSave);
     if (ok) {
       setSaveOk(true);
@@ -210,8 +212,7 @@ export function AiSettingsSection() {
 
   const modelOptions = remoteModels.map((m) => ({ value: m.id, label: m.displayName }));
 
-  const canFetchModels =
-    !!(aiDraft.endpoint?.trim()) && (!!aiDraft.apiKey?.trim() || isOllama);
+  const canFetchModels = !!aiDraft.endpoint?.trim() && (!!aiDraft.apiKey?.trim() || isOllama);
 
   const endpointPlaceholder = isCustom
     ? customProtocol === 'anthropic_compatible'
@@ -221,11 +222,12 @@ export function AiSettingsSection() {
         : t('settings.ai.endpointHintOpenAiChat')
     : t('settings.ai.endpointPlaceholder');
 
-  const inputClass = 'h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25';
+  const inputClass =
+    'h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25';
 
   return (
     <>
-      <SectionTitle>{t('settings.ai')}</SectionTitle>
+      <SectionTitle>{t('common.aiAssistant')}</SectionTitle>
       <p className="text-xs text-fg-muted">{t('settings.ai.description')}</p>
 
       {isConfigured && (
@@ -257,9 +259,7 @@ export function AiSettingsSection() {
         <input
           type="password"
           value={aiDraft.apiKey ?? ''}
-          onChange={(e) =>
-            setAiDraft((d) => ({ ...d, apiKey: e.target.value }))
-          }
+          onChange={(e) => setAiDraft((d) => ({ ...d, apiKey: e.target.value }))}
           placeholder={t('settings.ai.apiKeyPlaceholder')}
           className={inputClass}
         />
@@ -269,17 +269,13 @@ export function AiSettingsSection() {
         <input
           type="text"
           value={aiDraft.endpoint ?? ''}
-          onChange={(e) =>
-            setAiDraft((d) => ({ ...d, endpoint: e.target.value }))
-          }
+          onChange={(e) => setAiDraft((d) => ({ ...d, endpoint: e.target.value }))}
           placeholder={endpointPlaceholder}
           className={inputClass}
         />
       </SettingRow>
 
-      {isCustom && (
-        <p className="text-xs text-fg-muted">{t('settings.ai.customHint')}</p>
-      )}
+      {isCustom && <p className="text-xs text-fg-muted">{t('settings.ai.customHint')}</p>}
 
       <div className="flex items-center gap-2">
         <Button
@@ -332,16 +328,10 @@ export function AiSettingsSection() {
         />
       </SettingRow>
 
-      {configError && (
-        <p className="text-xs text-red-500">{configError}</p>
-      )}
+      {configError && <p className="text-xs text-red-500">{configError}</p>}
 
       <div className="flex items-center gap-3">
-        <Button
-          variant="secondary"
-          onClick={() => void handleValidate()}
-          disabled={validating}
-        >
+        <Button variant="secondary" onClick={() => void handleValidate()} disabled={validating}>
           {validating
             ? t('settings.ai.validating')
             : validateOk
@@ -349,12 +339,12 @@ export function AiSettingsSection() {
               : t('settings.ai.validate')}
         </Button>
 
-        <Button
-          variant="primary"
-          onClick={() => void handleSave()}
-          disabled={saving}
-        >
-          {saving ? t('settings.ai.saving') : saveOk ? t('settings.ai.saved') : t('settings.ai.save')}
+        <Button variant="primary" onClick={() => void handleSave()} disabled={saving}>
+          {saving
+            ? t('settings.ai.saving')
+            : saveOk
+              ? t('settings.ai.saved')
+              : t('settings.ai.save')}
         </Button>
 
         {isConfigured && (
@@ -366,7 +356,7 @@ export function AiSettingsSection() {
 
       <SectionTitle>{t('context.title')}</SectionTitle>
 
-      <SettingRow label={t('context.dirSetting')}>
+      <SettingRow label={t('common.aiContextDirectory')}>
         <ContextDirSetting />
       </SettingRow>
       <p className="text-xs text-fg-muted">{t('context.dirSettingDesc')}</p>
