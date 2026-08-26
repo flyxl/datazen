@@ -280,6 +280,8 @@
 
 ## F7 驱动级 SQL 定位重写
 
+**状态：编码完成（2026-08-26，F7 收尾代理）。**
+
 ### 需求（用户新指令 2026-08-26，两轮精化）
 每条 SQL 命令携带定位信息直达驱动层，**驱动按方言把未限定表引用重写为限定名**（如 `select * from users` → `select * from \`mydb\`.users`）；不用 `USE`、不切会话，纯无状态。
 
@@ -292,6 +294,38 @@
 - **协议**：driver-api 输入 schema 加可选字段，向后兼容不强制 bump PROTOCOL_VERSION；git 驱动更新 pin 后才获得重写能力（顺序依赖登记为风险）
 - **前端**：database 链路已穿透（BUG-001 修复成果）；需补 PG currentSchema 传递（先侦察 schemaStore 是否已有该状态）
 - **测试落点**：重写单测在各驱动 crate（简单 SELECT/JOIN/CTE/子查询/已限定/引号标识符/INSERT|UPDATE|DELETE/DDL 各方言矩阵）；Host 只测信封透传 + 兜底路径
+
+### 编码说明
+
+**共用引擎（packages/driver-api/src/sql_target.rs）**
+- `qualify_sql_with(dialect, quote, prefix_parts, sql)`：sqlparser AST visitor 改写，仅触碰定位语境 relation（FROM/JOIN/INSERT INTO/UPDATE/DELETE FROM/TRUNCATE/CREATE TABLE/ALTER TABLE/CREATE INDEX ON 由 visitor 分发；DROP TABLE 的 name 列表上游未标注为 relation，显式补处理且仅限 Table 对象类型）。
+- 跳过规则：多段已限定引用（幂等来源）、CTE 名（全局收集——外层 CTE 影子遮蔽时跳过永远是安全方向）、T-SQL `#temp` 临时表、字符串字面量天然不经过 relation。
+- 注入 qualifier 按方言加引号（Backtick/DoubleQuote/Bracket，Bracket 自行做 `]`→`]]` 转义）；原表标识符保留源形式，仅当其无引号且全小写（避免改变 PG 类引擎的大小写折叠解析）才补引号。
+- 解析失败：warn 日志 + 原文返回（`rewritten=false`），空目标不进解析器。
+
+**逐驱动实现要点**
+| 驱动 | crate | 形态 | 说明 |
+|---|---|---|---|
+| mysql（含 mariadb/doris/starrocks/manticore/ob_oracle 变体共用） | datazen-driver-mysql | `` `db`.`t` `` | schema 参数忽略；真跨库内联 |
+| postgres | datazen-driver-postgres | `"schema"."t"` | database 不内联（沿用宿主池切换）；database-only 目标 = no-op |
+| sqlite | datazen-driver-sqlite | `"alias"."t"` | 仅非 `main`/非 `temp` 显式目标才改写（ATTACH 别名场景），默认 no-op |
+| clickhouse | datazen-driver-clickhouse | `` `db`.`t` `` | ClickHouseDialect；CH 特有 mutation 语法（如 `ALTER TABLE … DELETE WHERE`）sqlparser 不识别 → 走兜底放行 |
+| duckdb | datazen-driver-duckdb | `"schema"."t"` | 同 PG 形态（DuckDbDialect)；database 走会话/池切换 |
+| sqlserver | datazen-driver-sqlserver | `[db].[schema].[t]` | 仅在可构造无歧义前缀时改写：db+schema → 三段；schema-only → 二段 `[schema].t`；**database-only 不内联**（T-SQL 两段名 `[db].t` 会把 db 当 schema 解析，语义错误），该维度交给宿主会话 pin |
+
+**协议与宿主接线**
+- driver-api：`query`/`query_stream`/`execute` 输入 schema 增加可选 `database`/`schema`（serde 缺省兼容，未 bump PROTOCOL_VERSION）；trait 新增默认返回 `None` 的 `DatabaseDriver::qualify_sql_target(sql, database, schema)`；`execute_standard_sql_command` 在输入携带定位字段时调用之。
+- 宿主 `driver_command.rs`：`ExecuteDriverCommandRequest`/`ExecuteDriverCommandStreamRequest` 增加 camelCase 可选 `schema`；非流式路径把非空 envelope 字段注入 command input（blank 值与非 object 输入跳过），流式路径直接调 `driver.qualify_sql_target`。两条路径均保持既有 `ensure_session_database` pin 先行——重写与 pin 双保险，无能力驱动走 debug 日志 + 原样执行（兜底矩阵成立）。Host 单测以 MockDriver 能力开关（`rewrite_sql_target`）覆盖：透传+pin 并存、fallback 原样+pin、stream 两路径对称。
+- `query.rs` / `schema.rs` 内部转发点补 `schema: None`（SQL 编辑器路径已由 ensure_session_database 固定库，不重复注入）。
+
+**前端接线（侦察结论 + 最小改动）**
+- 侦察结论：`src/stores/schemaStore.ts` 此前**没有** currentSchema 状态（只有 `currentDatabase` 与侧边栏 schema 分组的 `schemaNames`/namespaceTree，无 PG schema 选择器 UI）。
+- 本次落地最小链路：`ConnectionSchemaState.currentSchema`（默认 null，keyed map / flatten / patch 全套接入）+ `setCurrentSchema()` action（trim 空值归一为 null，仿 F1 currentDatabase 的纯本地状态模式，无 IPC）→ `panelStore.panelTargetSchema()` → `runBoundQuery`/`runStreamingQuery` → `queryCommands.executeQuery/executeQueryStream` → `driverCommands.execute/executeStream` envelope `schema` 字段。UI 选择器暂缺：任何设置该状态的入口（未来下拉框/扩展 SDK）即刻生效；置 null 时行为与现状完全一致。
+
+**验证数字（三件套）**
+- Host Rust：`cargo test -p datazen --lib` = **1136 通过 / 0 失败**（含信封透传、兜底、stream 对称等 F7 用例）
+- 驱动 crate（`cargo test -p datazen-driver-*`）：mysql 72、postgres 92、sqlite 43、clickhouse 30、duckdb 26、sqlserver 45、driver-api 92 —— 全部通过（每 crate 含 happy path SELECT/FROM、JOIN、CTE 跳过、已限定幂等、解析失败放行矩阵）
+- 前端：`npx vitest run` = **1965 通过 / 0 失败（240 文件）**；`npx tsc --noEmit` 无错误（含 panelStore/queryExecActions 信封断言更新与 F7 schema 传递新用例）
 
 ## R 回归与收尾
 （占位）

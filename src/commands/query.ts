@@ -14,6 +14,7 @@ export const queryCommands = {
     sql: string,
     params?: Record<string, string | number | boolean | null>,
     database?: string | null,
+    schema?: string | null,
   ) => {
     const result = await driverCommands.execute({
       dbSessionId,
@@ -21,6 +22,8 @@ export const queryCommands = {
       input: params && Object.keys(params).length > 0 ? { sql, params } : { sql },
       // F1: pin the session to the panel's selected database before running.
       database: database ?? null,
+      // F7: PG-family schema target — rewrite-capable drivers inline it.
+      schema: schema ?? null,
     });
     return result.data as MultiQueryResult;
   },
@@ -34,6 +37,8 @@ export const queryCommands = {
       recordHistory?: boolean;
       /** F1: pin the session to this database before streaming. */
       database?: string | null;
+      /** F7: PG-family schema target for the stream. */
+      schema?: string | null;
     },
   ) => {
     await driverCommands.executeStream({
@@ -44,6 +49,7 @@ export const queryCommands = {
       applyResultLimit: options?.applyResultLimit,
       recordHistory: options?.recordHistory,
       database: options?.database ?? null,
+      schema: options?.schema ?? null,
     });
   },
 

@@ -232,6 +232,7 @@ async fn run_schema_object_command(
             command: command.to_string(),
             input,
             database: None,
+            schema: None,
         },
     )
     .await?;

@@ -66,6 +66,7 @@ pub(crate) async fn execute_query_impl(
             command: "query".into(),
             // Session was already pinned by ensure_session_database above.
             database: None,
+            schema: None,
             input: serde_json::json!({ "sql": sql }),
         },
     )
@@ -110,6 +111,7 @@ pub(crate) async fn execute_query_stream_impl(
             command: "query_stream".into(),
             // Session was already pinned by ensure_session_database above.
             database: None,
+            schema: None,
             input: serde_json::json!({ "sql": sql }),
             apply_result_limit: Some(opts.apply_result_limit),
             record_history: Some(opts.record_history),

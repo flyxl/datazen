@@ -17,6 +17,7 @@ pub mod schema_objects;
 pub mod sql_dump;
 pub mod sql_split;
 pub mod sqlite_structure;
+pub mod sql_target;
 pub mod sync;
 mod traits;
 mod types;
@@ -44,6 +45,9 @@ pub use schema_objects::{
 };
 pub use sql_dump::{RestoreSession, RestoreStatementGuard};
 pub use sql_split::{SqlStatementScanner, Utf8ChunkDecoder};
+pub use sql_target::{
+    qualify_sql_with, QualifiedSql, QualifierQuote, SqlTarget,
+};
 pub use sync::{
     BoxedSyncAdapter, IRColumn, IRDefault, IRTable, IRType, SyncAdapterFactory, SyncSourceAdapter,
     SyncTargetAdapter,

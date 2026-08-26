@@ -298,6 +298,21 @@ impl DatabaseDriver for SqlServerDriver {
         "sqlserver".to_string()
     }
 
+    /// F7: qualify unqualified table references with the T-SQL three-part
+    /// name (`[db].[schema].t`; `[schema].t` when only a schema is given).
+    /// A database-only target is never inlined — a two-part `[db].t` would
+    /// mean *schema* db in T-SQL — and stays on the host
+    /// `ensure_session_database` pin. Temp tables are skipped. Parse
+    /// failures pass SQL through unchanged; see `sql_target::qualify_sql`.
+    fn qualify_sql_target(
+        &self,
+        sql: &str,
+        database: Option<&str>,
+        schema: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::sql_target::qualify_sql(sql, database, schema))
+    }
+
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
         let mut client = Self::connect_client(config).await?;
         let result = Self::run(&mut client, "SELECT @@VERSION AS version").await?;
