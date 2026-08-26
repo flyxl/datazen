@@ -9,7 +9,7 @@
 | # | 功能 | 对应决策 | 状态 | 编码 commit | 测试 commit |
 |---|------|---------|------|------------|------------|
 | F1 | 废弃 `use_database`，query/stream/explain 显式传参 | 决策 1 | 已完成 | 34a28420 | 3d23cfd1 · 8b85cd49 · 本提交 |
-| F2 | ADB 命令迁移 SQLite 驱动（DriverCommandDefinition） | 决策 2 | 测试中 | 本提交 | 本提交 |
+| F2 | ADB 命令迁移 SQLite 驱动（DriverCommandDefinition） | 决策 2 | 已完成 | 823516c2 | bf588def · f12f9be9 · 本提交 |
 | F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 未开始 | — | — |
 | F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 未开始 | — | — |
 | F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 未开始 | — | — |
@@ -23,6 +23,7 @@
 ## Bug 台账
 
 > 协调者：F2 测试轮不通过（仅覆盖率缺口 F2-BUG-001），转入修复轮。
+> 2026-08-26 复验代理（全新实例，独立重跑 commit f12f9be9）：F2-BUG-001 复验通过置「已修复」，F2 关闭为「已完成」。7 用例逐条审查均为真实行为断言（信封整对象等价 / `result.data` 解包 / 取消语义 null+undefined 双路径 / 无 session 多余键），覆盖率、全量套件、tsc 数字独立重跑与修复轮声称逐位一致；F2-E2E-001~005 按【留待 R 回归】既定安排不阻塞关闭。
 
 > 2026-08-26 协调者：F1 测试轮不通过，BUG-001~004 置「验证不通过」，转入修复轮（流程第 4 步）。
 > 2026-08-26 复验代理（全新实例）：BUG-001~004 逐项闭环验证通过，置「已修复」；新发现既有缺陷 F1-BUG-005（连接刷新丢失已展开分类内容）登记为「待验证」，是否并入 F1 由协调者裁决。
@@ -35,7 +36,7 @@
 | F1-BUG-003 | F1 | 【中】结构编辑器 DDL 无库定位：`TableStructureEditor` 移除 ensureDatabase 后，`plan_table_structure_changes` 仅收 dbSessionId → 跨库建表/改表可能作用于 session 活动库而非面板目标库。重现见「F1 缺陷详情」 | 已修复 | 2026-08-26 | 修复轮（同上提交）：`plan_table_structure_changes` 以同一机制处理，编辑器传入目标库。**复验通过**（同上）：wrapper+impl 均收 `database` 且走同一 `ensure_session_database`，无第二套切库语义；preview/execute 两路径透传组件 prop；DDL 语句执行不带参依赖 plan 阶段持久化 pin（设计决策 3），成立；Rust 双单测（pin 切库 / 无 pin 保持）+ 前端断言第三参 `'db_b'`/`null` |
 | F1-BUG-004 | F1 | 【低】改动 TS 文件覆盖率不达标：ConnectionNavigatorTree.tsx 行覆盖 53.13%、TableStructureEditor.tsx 37.64%（要求 ≥80%）；其余数字见「覆盖率」小节 | 已修复 | 2026-08-26 | 修复轮（同上提交）：两文件 vitest 用例扩展达 ≥80% 行覆盖（新数字见「覆盖率」表）；并补 Rust stream 路径独立切库单测。**复验通过**（同上）：全新实例重跑全量 1963 用例 + `--coverage.include` 过滤实测 ConnectionNavigatorTree.tsx 行覆盖 **96.74%**、TableStructureEditor.tsx **97.75%**，与修复轮声称数字逐位一致；ConnectionNavigatorTree.test.tsx 实测 64 用例独立运行全绿 |
 | F1-BUG-005 | F1 | 【中】【既有行为，非本轮引入】连接刷新后已展开对象分类内容丢失且不自动恢复：单库树（如 SQLite）展开 procedure 分类出现条目后，执行连接级或库级刷新，分类行仍呈展开态但条目消失、计数归零，观察窗 3s 内无任何重载。根因指向 `useExpandedDbCacheRefresh` 在 schemaEpoch 变化时 `clearCaches` 清空该会话全部 `dbObjectsMap` 后仅重载展开库的**表缓存**、不重载对象分类缓存，与 `refreshConnection.reloadExpandedObjectCategories` 的重载竞态失败。多库树表节点不受影响（走 `reloadDbTables` 恢复）。临时探针在 4ba4831a（F1 前）/046acf7a（修复轮前）/8b85cd49 三时点症状一致，判定为既有缺陷。是否纳入 F1 范围由协调者裁决；重现步骤见「F1 缺陷详情」 | 待验证 | 2026-08-26 | 复验轮新登记（2026-08-26 复验 commit 8b85cd49 时发现） |
-| F2-BUG-001 | F2 | 【低】改动 TS 文件覆盖率不达标且为零执行覆盖：`src/commands/adb.ts` 全量套件 `--coverage` 实测行覆盖 **14.28%**（7 语句仅 1 覆盖，未覆盖 L23-29 / 33 / 37-39 / 54-58 —— 共享 helper 与三个导出函数全部没有任何单测执行；全仓唯一引用它的 `pathIpcWiring.test.ts` 是源码字符串断言，不执行代码），远低于 ≥80% 门槛。`savedPath ?? null` 取消语义、`driverType='sqlite'` 信封组装、input 透传均无回归保护。重现步骤见「F2 缺陷详情」 | 待验证 | 2026-08-26 | 修复轮（commit：`test(adb): behavioral unit tests for sqlite driver command wrappers (f2 bug 001)`）：新增行为级单测 `src/commands/__tests__/adb.test.ts`（7 用例；按目录既有惯例 `vi.hoisted` + `vi.mock('../driver')` 替换 `driverCommands.execute`），断言三命令信封逐字段等价（driverType='sqlite'、command id、input 与原 IPC 参数一致且无 dbSessionId/database 多余键）、`result.data` 解包透传、pull 成功返回 savedPath 字符串、取消语义 savedPath null/undefined → null（同原 *_with_dialog）；全量套件 `--coverage` 实测行覆盖 **100%**（前 14.28%），vitest 241 文件/1970 用例全绿、`tsc --noEmit` 0 错误，等待复测 |
+| F2-BUG-001 | F2 | 【低】改动 TS 文件覆盖率不达标且为零执行覆盖：`src/commands/adb.ts` 全量套件 `--coverage` 实测行覆盖 **14.28%**（7 语句仅 1 覆盖，未覆盖 L23-29 / 33 / 37-39 / 54-58 —— 共享 helper 与三个导出函数全部没有任何单测执行；全仓唯一引用它的 `pathIpcWiring.test.ts` 是源码字符串断言，不执行代码），远低于 ≥80% 门槛。`savedPath ?? null` 取消语义、`driverType='sqlite'` 信封组装、input 透传均无回归保护。重现步骤见「F2 缺陷详情」 | 已修复 | 2026-08-26 | 修复轮（commit：`test(adb): behavioral unit tests for sqlite driver command wrappers (f2 bug 001)`）：新增行为级单测 `src/commands/__tests__/adb.test.ts`（7 用例；按目录既有惯例 `vi.hoisted` + `vi.mock('../driver')` 替换 `driverCommands.execute`），断言三命令信封逐字段等价（driverType='sqlite'、command id、input 与原 IPC 参数一致且无 dbSessionId/database 多余键）、`result.data` 解包透传、pull 成功返回 savedPath 字符串、取消语义 savedPath null/undefined → null（同原 *_with_dialog）；全量套件 `--coverage` 实测行覆盖 **100%**（前 14.28%），vitest 241 文件/1970 用例全绿、`tsc --noEmit` 0 错误。**复验通过**（2026-08-26 全新实例，commit f12f9be9）：7 用例逐条审查均为行为级断言、无空转/永真——三命令信封以 `toEqual` 整对象等价锁定 driverType/command id/input 键值（list 包 input={}、list 库 {package}、pull {package, dbPath}），envelope discipline 用例另断言请求键集恰为 ['command','driverType','input'] 且 dbSessionId/database 均 undefined；`result.data` 解包以 `toBe` 同一性断言透传；取消语义 savedPath=null 与缺失字段 undefined 两路径均归 null；仅 mock `../driver`，被测 wrapper 真实执行。独立重跑：`npx vitest run --coverage --coverage.include='src/commands/adb.ts'` 实测 adb.ts Stmts/Branch/Funcs/Lines 均 **100%**（门槛 ≥80%，无未覆盖行）；全量 `npx vitest run` 241 文件 / 1970 用例全绿；`npx tsc --noEmit` exit 0（单独串行执行，未复现负载超时 flake）；数字与修复轮声称逐位一致 |
 
 > BUG-001~003 与编码说明「遗留注意 1」同根因（非 query 族命令无 database 参数、入口不再预切库），但遗留说明给出的过渡缓解（"由任一带 database 的 query/stream/explain 惰性触发切库"）对编辑器主链路不生效，故按缺陷登记；由编码代理裁决在 F1 内修复（补参数/补预切）或明确降级为后续功能承接。
 
@@ -293,15 +294,26 @@
 | `npx vitest run` | **240 文件 / 1963 用例全过**（含改写后的 pathIpcWiring.test.ts） | 一致 ✅ |
 | `npx tsc --noEmit` | **0 错误**（exit 0） | 一致 ✅ |
 
+**修复轮复验（2026-08-26，全新实例，独立重跑 commit f12f9be9，不信前序数字；vitest 与 tsc 串行执行规避已知负载超时 flake）：**
+
+| 套件 | 复验实测 | 与修复轮声称对比 |
+|------|---------|----------------|
+| `npx vitest run` | **241 文件 / 1970 用例全绿** | 一致 ✅ |
+| `npx vitest run --coverage --coverage.include='src/commands/adb.ts'` | adb.ts Stmts / Branch / Funcs / **Lines 均 100%**，无未覆盖行（门槛 ≥80%） | 一致 ✅ |
+| `npx tsc --noEmit` | **0 错误**（exit 0） | 一致 ✅ |
+
+用例质量审查：7 用例均为行为级断言——信封整对象 `toEqual` 等价（含键集恰为 ['command','driverType','input']、dbSessionId/database undefined 的 envelope discipline 用例）、`result.data` 解包以 `toBe` 同一性断言、取消语义 null/undefined 双路径归 null；仅 mock `../driver`，被测 wrapper 真实执行，无空转/永真断言。
+
 ### 覆盖率
 
 度量方式：全量 vitest 套件（240 文件 / 1963 用例）+ `--coverage.include='src/commands/adb.ts'` 过滤（v8 provider，数字取自 coverage/coverage-final.json）。本次改动的其余 TS：`src/types/index.ts` 为纯类型（无运行时代码，N/A）、`pathIpcWiring.test.ts` 为测试文件本身。
 
 > 修复轮补测（2026-08-26，commit `test(adb): behavioral unit tests for sqlite driver command wrappers (f2 bug 001)`）：新增行为级单测 `src/commands/__tests__/adb.test.ts`（mock `./driver` 的 `driverCommands.execute`，7 用例），全量套件（241 文件 / 1970 用例全绿）+ 同一 include 过滤实测 `src/commands/adb.ts` Statements / Lines / Branch / Functions 均 **100%**。
+> 复验轮（2026-08-26，全新实例）：独立重跑同一命令，实测 Statements / Lines / Branch / Functions 均 **100%**、无未覆盖行，与修复轮声称逐位一致。
 
 | 文件 | Statements | **Lines** | ≥80% 行覆盖 |
 |-----|-----------|-----------|------------|
-| `src/commands/adb.ts` | 14.28% (1/7) → **100%** (7/7) | **14.28% → 100%**（Branch/Funcs 亦 100%，无未覆盖行；修复轮新增 `__tests__/adb.test.ts` 后实测） | ✅ 待复验（F2-BUG-001 修复轮） |
+| `src/commands/adb.ts` | 14.28% (1/7) → **100%** (7/7) | **14.28% → 100%**（Branch/Funcs 亦 100%，无未覆盖行；修复轮新增 `__tests__/adb.test.ts` 后实测，复验轮独立重跑逐位复现） | ✅ 复验确认（F2-BUG-001 已修复关闭） |
 
 Rust 侧以新增单测清单佐证（无 llvm-cov 工具链）：sqlite crate adb::tests 13 个（解析×2、包名合法/非法、dbPath 穿越、default_pull_file_name、定义完备性、unbound/hide-from-workflow/save-dialog 元数据、pull input schema required、unknown→Unsupported、缺参→InvalidConfig、先校验后 spawn、缺失二进制→安装指引文案）+ driver-api serde 往返 1 个 + Host 守卫 `save_dialog_commands_rejected_without_interactive_handle` 1 个，均在本轮重跑通过数内。
 
@@ -318,7 +330,9 @@ Rust 侧以新增单测清单佐证（无 llvm-cov 工具链）：sqlite crate a
 2. 落盘路径校验与 file.rs 既有模式逐项对齐：`finish_save_dialog` 流程 = `blocking_save_file`（OS 级用户确认，路径永不来自 JS）→ `dialog_path_to_buf` → `validate_extension(&path, &ext_list)` → `tokio::fs::write`，与 `save_base64_with_dialog`（file.rs L115-142）完全同构，另加空 extensions 声明防御。base64 解码失败映射 Internal（对照 file.rs 为 Validation，均为不入盘的前置失败，无安全差异）。
 3. 【观察项，非缺陷】base64 数据量无上限：与既有 `save_base64_with_dialog` 家族及旧 adb 实现（同样整读字节入内存）风险等级持平，非本轮引入的回归；但新形态峰值内存约为原始文件的 ~3 倍（解码字节 N + base64 字符串 ~1.37N + JSON Value 拷贝，跨 CommandResult 传递），编码说明「内存占用与原实现一致」低估了这一常数因子。建议后续功能为 save_dialog 形态补尺寸上限或流式落盘通道。
 
-**结论：套件全绿、范围红线与安全审查通过；但改动 TS 覆盖率 14.28% 远低于 ≥80% 门槛（F2-BUG-001），F2 保持「测试中」，转编码代理补测后复验。**
+~~**结论：套件全绿、范围红线与安全审查通过；但改动 TS 覆盖率 14.28% 远低于 ≥80% 门槛（F2-BUG-001），F2 保持「测试中」，转编码代理补测后复验。**~~
+
+**[修复轮判定]** ✅ F2-BUG-001 补测后 adb.ts 行覆盖 **100%**（前 14.28%），套件 241 文件 / 1970 用例全绿、tsc 零错误，置「待验证」。**[复验判定]** ✅ 全新实例独立重跑（commit f12f9be9）：7 用例审查为真实行为断言、非空转，覆盖率 / 全量套件 / tsc 数字逐位复现，F2-BUG-001 置「已修复」，**F2 判定通过关闭（已完成）**；F2-E2E-001~005 按【留待 R 回归】既定安排在 R 阶段执行，不阻塞关闭。
 
 #### F2 缺陷详情（重现步骤 / 相关文件）
 
