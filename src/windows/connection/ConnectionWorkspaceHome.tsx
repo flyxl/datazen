@@ -173,13 +173,14 @@ export function ConnectionWorkspaceHome({
             </h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {quickActions.map((action) => (
-                <QuickAction
-                  key={action.key}
-                  icon={action.icon}
-                  label={action.label}
-                  onClick={action.onClick}
-                  primary={action.primary}
-                />
+                <div key={action.key} data-testid={`home-quick-${action.key}`}>
+                  <QuickAction
+                    icon={action.icon}
+                    label={action.label}
+                    onClick={action.onClick}
+                    primary={action.primary}
+                  />
+                </div>
               ))}
             </div>
           </section>
