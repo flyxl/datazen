@@ -76,9 +76,11 @@ export function TableView({
     if (hasData && activeTable !== tableName) {
       switchToTable(tableName);
     } else if (!hasData) {
-      void loadTableData({ dbSessionId, table: tableName });
+      // F1: carry the panel's target database so cross-database tables load
+      // correctly even when the session's active database differs.
+      void loadTableData({ dbSessionId, table: tableName, database });
     }
-  }, [dbSessionId, tableName, hasData, activeTable, loadTableData, switchToTable]);
+  }, [dbSessionId, tableName, hasData, activeTable, loadTableData, switchToTable, database]);
 
   const columns = ts?.columns ?? [];
   const rows = ts?.rows ?? [];
@@ -130,7 +132,7 @@ export function TableView({
           <button
             type="button"
             className="mt-2 text-xs text-accent hover:underline"
-            onClick={() => void loadTableData({ dbSessionId, table: tableName })}
+            onClick={() => void loadTableData({ dbSessionId, table: tableName, database })}
           >
             {t('common.retry')}
           </button>
@@ -159,7 +161,7 @@ export function TableView({
           <button
             type="button"
             className="shrink-0 text-xs text-accent hover:underline"
-            onClick={() => void loadTableData({ dbSessionId, table: tableName })}
+            onClick={() => void loadTableData({ dbSessionId, table: tableName, database })}
           >
             {t('common.retry')}
           </button>

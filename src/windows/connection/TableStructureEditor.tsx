@@ -116,6 +116,7 @@ async function fetchEstimatedTableRows(args: {
 export function TableStructureEditor({
   dbSessionId,
   databaseType,
+  database,
   schema: requestSchema = null,
   mode,
   tableName: initialTableName,
@@ -281,7 +282,11 @@ export function TableStructureEditor({
     setError(null);
     setPreviewing(true);
     try {
-      const plan = await structureCommands.planTableStructureChanges(dbSessionId, request);
+      const plan = await structureCommands.planTableStructureChanges(
+        dbSessionId,
+        request,
+        database ?? null,
+      );
       setPreviewPlan(plan);
     } catch (e) {
       const msg =
@@ -294,7 +299,7 @@ export function TableStructureEditor({
     } finally {
       setPreviewing(false);
     }
-  }, [buildRequest, dbSessionId, t]);
+  }, [buildRequest, dbSessionId, database, t]);
 
   const handleExecute = useCallback(async () => {
     const request = buildRequest();
@@ -302,7 +307,11 @@ export function TableStructureEditor({
     setError(null);
     setExecuting(true);
     try {
-      const plan = await structureCommands.planTableStructureChanges(dbSessionId, request);
+      const plan = await structureCommands.planTableStructureChanges(
+        dbSessionId,
+        request,
+        database ?? null,
+      );
       if (plan.statements.length === 0) {
         setError(t('structEditor.noChanges'));
         return;
@@ -358,6 +367,7 @@ export function TableStructureEditor({
     buildRequest,
     dbSessionId,
     confirmApply,
+    database,
     initialTableName,
     mode,
     onSuccess,

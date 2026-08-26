@@ -49,6 +49,8 @@ export const databaseCommands = {
     sorts?: SortCondition[];
     skipCount?: boolean;
     filterLogic?: 'and' | 'or';
+    /** F1: optional explicit target database — host pins the session before reading. */
+    database?: string | null;
   }) =>
     invoke<TableDataResult>('get_table_data', {
       dbSessionId: params.dbSessionId,
@@ -59,6 +61,7 @@ export const databaseCommands = {
       sorts: params.sorts,
       skipCount: params.skipCount,
       filterLogic: params.filterLogic,
+      database: params.database ?? null,
     }),
 
   executeSQL: (dbSessionId: string, sql: string) => queryCommands.executeQuery(dbSessionId, sql),
