@@ -122,8 +122,20 @@ bash e2e/setup-e2e-env.sh
 
 `e2e/run.mjs` 在启动 WDIO 前也会调用 `setup-e2e-env.sh`；失败只警告，不中止整套 UI spec。
 
+### 应用数据隔离（DATAZEN_DATA_DIR）
+
+`e2e/run.mjs` 启动 webdriver 应用时会注入 `DATAZEN_DATA_DIR=<repo>/e2e/.app-data`（gitignored），
+宿主 `Store::default_app_data_dir()` / `Store::init()` 优先读取该变量。**没有它，E2E 会直接读写
+真实生产数据**（`~/Library/Application Support/com.tbeasy.datazen`），清连接类 spec 会删掉真实
+连接列表。注意：
+
+- 该隔离只对**包含此支持的二进制**生效（2026-08 之后的构建）；旧二进制忽略该变量
+- spec 层仍应遵循 zz-screenshots 的「备份 → 清理 → 恢复」模式作为双保险
+- 手工启动 webdriver 二进制调试时，如需隔离请自行 `DATAZEN_DATA_DIR=...` 前缀
+
 | 变量前缀 | 用途 |
 |----------|------|
+| `DATAZEN_DATA_DIR` | 应用数据目录覆盖（E2E 隔离用；未设置时行为不变） |
 | `E2E_PG_*` / `PG_*` | PostgreSQL。`E2E_PG_DB` 默认 `datazen_e2e`（由 setup 创建并锁定到 Host 连接） |
 | `E2E_MYSQL_*` | MySQL |
 | `E2E_REDIS_*` | Redis Standalone（`redis.ts`）：`HOST` / `PORT` / `PASSWORD` |

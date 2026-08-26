@@ -81,19 +81,34 @@ impl Store {
         self.app_db.clone()
     }
 
+    /// Optional app-data directory override via env `DATAZEN_DATA_DIR`.
+    /// Lets E2E/headless harnesses isolate runs from production app data;
+    /// unset/empty env keeps the default platform location.
+    fn data_dir_override() -> Option<std::path::PathBuf> {
+        std::env::var_os("DATAZEN_DATA_DIR")
+            .filter(|v| !v.is_empty())
+            .map(std::path::PathBuf::from)
+    }
+
     /// Default app data directory for headless entry points (MCP stdio, early logging).
     /// Matches Tauri `app_data_dir()` for the configured bundle identifier.
     pub fn default_app_data_dir() -> Result<PathBuf, StoreError> {
+        if let Some(dir) = Self::data_dir_override() {
+            return Ok(dir);
+        }
         dirs::data_dir()
             .map(|d| d.join(APP_IDENTIFIER))
             .ok_or_else(|| StoreError::InitError("Cannot determine data dir".into()))
     }
 
     pub async fn init(app_handle: &tauri::AppHandle) -> Result<Self, StoreError> {
-        let data_dir = app_handle
-            .path()
-            .app_data_dir()
-            .map_err(|e| StoreError::InitError(e.to_string()))?;
+        let data_dir = match Self::data_dir_override() {
+            Some(dir) => dir,
+            None => app_handle
+                .path()
+                .app_data_dir()
+                .map_err(|e| StoreError::InitError(e.to_string()))?,
+        };
         Self::init_with_path(&data_dir).await
     }
 

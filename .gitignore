@@ -130,3 +130,4 @@ packages/extensions/dist/
 
 .dsh-vision-toolkit
 tsconfig.node.tsbuildinfo
+e2e/.app-data/

@@ -1068,27 +1068,24 @@ function injectCargoToml(plugins, registry) {
  * `{tauriPlugin.id}:default` for each active plugin that exposes commands.
  * Writes the merged result to `default.json` (gitignored).
  */
-function syncPluginCapabilities(plugins, registry, { codegenOnly = false } = {}) {
+function syncPluginCapabilities(plugins, registry) {
   const hostPath = workPath('src-tauri/capabilities/default.json.host');
   if (!existsSync(hostPath)) {
     console.warn(`[resolve-drivers] host capabilities file not found: ${hostPath}`);
     return;
   }
 
-  let effective = plugins;
-  if (codegenOnly) {
-    const tomlPath = workPath('src-tauri/Cargo.toml');
-    const toml = existsSync(tomlPath) ? readFileSync(tomlPath, 'utf-8') : '';
-    effective = plugins.filter((name) => {
-      const feat = registry[name]?.feature;
-      return Boolean(feat) && toml.includes(feat);
-    });
-    const skipped = plugins.filter((name) => !effective.includes(name));
-    if (skipped.length > 0) {
-      console.log(
-        `[resolve-drivers] codegen-only: skipping capabilities for not-injected plugins: [${skipped.join(', ')}]`,
-      );
-    }
+  const tomlPath = workPath('src-tauri/Cargo.toml');
+  const toml = existsSync(tomlPath) ? readFileSync(tomlPath, 'utf-8') : '';
+  const effective = plugins.filter((name) => {
+    const feat = registry[name]?.feature;
+    return Boolean(feat) && toml.includes(feat);
+  });
+  const skipped = plugins.filter((name) => !effective.includes(name));
+  if (skipped.length > 0) {
+    console.log(
+      `[resolve-drivers] skipping capabilities for not-injected plugins: [${skipped.join(', ')}]`,
+    );
   }
 
   const cap = JSON.parse(readFileSync(hostPath, 'utf-8'));
@@ -1234,11 +1231,13 @@ function main() {
       injectRootCargoPatches(plugins, registry);
     }
     // Always generate capabilities (default.json is gitignored, built from default_host.json + plugins).
-    // In codegen-only mode Cargo.toml is NOT injected, so only plugins whose cargo feature is
-    // already present in src-tauri/Cargo.toml may contribute permissions — otherwise tauri-build
-    // fails with "Permission <plugin>:default not found" (capabilities referencing a plugin that
-    // is not compiled in). Full mode injects first, so all selected plugins qualify.
-    syncPluginCapabilities(plugins, registry, { codegenOnly });
+    // Capabilities ALWAYS mirror src-tauri/Cargo.toml's actual injection state: only plugins whose
+    // cargo feature is present may contribute permissions. In full mode injectCargoToml runs first,
+    // so every selected plugin qualifies; in codegen-only / post-restore states the file stays
+    // consistent with what cargo will actually compile (otherwise tauri-build fails with
+    // "Permission <plugin>:default not found"). This also self-heals stale capabilities left by a
+    // stash restore after a full build.
+    syncPluginCapabilities(plugins, registry);
 
     // Write the features file for the build system to consume
     const output = {

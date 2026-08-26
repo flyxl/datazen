@@ -7,6 +7,12 @@ fn use_file_key_backend() {
     std::env::set_var("DATAZEN_KEYRING", "file");
 }
 
+/// Serialize tests that mutate process env vars.
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 async fn init_store_for_test(dir: &std::path::Path) -> Store {
     use_file_key_backend();
     Store::init_with_path(dir).await.unwrap()
@@ -163,6 +169,8 @@ async fn ssh_credentials_roundtrip_after_reload() {
 
 #[test]
 fn default_app_data_dir_uses_bundle_identifier() {
+    let _g = env_lock();
+    std::env::remove_var("DATAZEN_DATA_DIR");
     let dir = Store::default_app_data_dir().unwrap();
     assert!(
         dir.ends_with(APP_IDENTIFIER),
@@ -173,11 +181,23 @@ fn default_app_data_dir_uses_bundle_identifier() {
 
 #[test]
 fn default_app_data_dir_matches_resolve_log_settings_path() {
+    let _g = env_lock();
+    std::env::remove_var("DATAZEN_DATA_DIR");
     let store_dir = Store::default_app_data_dir().unwrap();
     let log_dir = dirs::data_dir()
         .map(|d| d.join(APP_IDENTIFIER))
         .expect("data dir");
     assert_eq!(store_dir, log_dir);
+}
+
+#[test]
+fn data_dir_env_override_wins() {
+    let _g = env_lock();
+    let override_dir = std::env::temp_dir().join("datazen-e2e-override-test");
+    std::env::set_var("DATAZEN_DATA_DIR", &override_dir);
+    let dir = Store::default_app_data_dir().unwrap();
+    std::env::remove_var("DATAZEN_DATA_DIR");
+    assert_eq!(dir, override_dir, "DATAZEN_DATA_DIR must win over default");
 }
 
 #[test]
