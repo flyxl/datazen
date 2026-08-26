@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use tauri::AppHandle;
-use tauri_plugin_dialog::DialogExt;
 use tokio::io::AsyncWriteExt;
 
 struct SaveSession {
@@ -20,11 +19,7 @@ const ALLOWED_EXTENSIONS: &[&str] = &[
     "dump", "xlsx",
 ];
 
-fn deny_path_ipc() -> CommandError {
-    CommandError::Validation("Direct path file IPC is disabled; use *_with_dialog commands".into())
-}
-
-fn validate_extension(path: &Path, allowed: &[&str]) -> Result<(), CommandError> {
+pub(crate) fn validate_extension(path: &Path, allowed: &[&str]) -> Result<(), CommandError> {
     let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
         return Err(CommandError::Validation(
             "File must have an extension".into(),
@@ -37,20 +32,6 @@ fn validate_extension(path: &Path, allowed: &[&str]) -> Result<(), CommandError>
         )));
     }
     Ok(())
-}
-
-fn validate_file_path(path: &Path) -> Result<(), CommandError> {
-    if path.to_string_lossy().contains("..") {
-        return Err(CommandError::Validation(
-            "Path traversal not allowed".into(),
-        ));
-    }
-    validate_extension(path, ALLOWED_EXTENSIONS)
-}
-
-fn dialog_path_to_buf(path: tauri_plugin_dialog::FilePath) -> Result<PathBuf, CommandError> {
-    path.into_path()
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))
 }
 
 fn ext_refs(extensions: &[String]) -> Result<Vec<&str>, CommandError> {
@@ -91,16 +72,18 @@ pub async fn save_text_with_dialog(
     extensions: Vec<String>,
 ) -> Result<bool, CommandError> {
     let ext_list = ext_refs(&extensions)?;
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter(&filter_name, &ext_list)
-        .set_file_name(&default_file_name)
-        .blocking_save_file();
-    let Some(fp) = picked else {
+    let picked = super::dialog::save_file(
+        &app,
+        (
+            filter_name,
+            ext_list.iter().map(|s| (*s).to_string()).collect(),
+        ),
+        default_file_name,
+    )
+    .await?;
+    let Some(path) = picked else {
         return Ok(false);
     };
-    let path = dialog_path_to_buf(fp)?;
     validate_extension(&path, &ext_list)?;
     tokio::fs::write(&path, contents.as_bytes())
         .await
@@ -122,16 +105,18 @@ pub async fn save_base64_with_dialog(
     let bytes = BASE64
         .decode(data_base64.trim())
         .map_err(|e| CommandError::Validation(format!("Invalid base64: {e}")))?;
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter(&filter_name, &ext_list)
-        .set_file_name(&default_file_name)
-        .blocking_save_file();
-    let Some(fp) = picked else {
+    let picked = super::dialog::save_file(
+        &app,
+        (
+            filter_name,
+            ext_list.iter().map(|s| (*s).to_string()).collect(),
+        ),
+        default_file_name,
+    )
+    .await?;
+    let Some(path) = picked else {
         return Ok(false);
     };
-    let path = dialog_path_to_buf(fp)?;
     validate_extension(&path, &ext_list)?;
     tokio::fs::write(&path, bytes)
         .await
@@ -164,15 +149,14 @@ pub async fn open_base64_with_dialog(
 ) -> Result<Option<OpenedBinaryFile>, CommandError> {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
     let ext_list = ext_refs(&extensions)?;
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter(&filter_name, &ext_list)
-        .blocking_pick_file();
-    let Some(fp) = picked else {
+    let filters = vec![(
+        filter_name,
+        ext_list.iter().map(|s| (*s).to_string()).collect(),
+    )];
+    let picked = super::dialog::open_file(&app, filters).await?;
+    let Some(path) = picked else {
         return Ok(None);
     };
-    let path = dialog_path_to_buf(fp)?;
     validate_extension(&path, &ext_list)?;
     let bytes = tokio::fs::read(&path)
         .await
@@ -196,15 +180,14 @@ pub async fn open_text_with_dialog(
     extensions: Vec<String>,
 ) -> Result<Option<OpenedTextFile>, CommandError> {
     let ext_list = ext_refs(&extensions)?;
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter(&filter_name, &ext_list)
-        .blocking_pick_file();
-    let Some(fp) = picked else {
+    let filters = vec![(
+        filter_name,
+        ext_list.iter().map(|s| (*s).to_string()).collect(),
+    )];
+    let picked = super::dialog::open_file(&app, filters).await?;
+    let Some(path) = picked else {
         return Ok(None);
     };
-    let path = dialog_path_to_buf(fp)?;
     validate_extension(&path, &ext_list)?;
     let content = tokio::fs::read_to_string(&path)
         .await
@@ -240,16 +223,18 @@ pub async fn begin_save_with_dialog(
     extensions: Vec<String>,
 ) -> Result<Option<String>, CommandError> {
     let ext_list = ext_refs(&extensions)?;
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter(&filter_name, &ext_list)
-        .set_file_name(&default_file_name)
-        .blocking_save_file();
-    let Some(fp) = picked else {
+    let picked = super::dialog::save_file(
+        &app,
+        (
+            filter_name,
+            ext_list.iter().map(|s| (*s).to_string()).collect(),
+        ),
+        default_file_name,
+    )
+    .await?;
+    let Some(path) = picked else {
         return Ok(None);
     };
-    let path = dialog_path_to_buf(fp)?;
     validate_extension(&path, &ext_list)?;
     let token = insert_save_session(path).await?;
     Ok(Some(token))
@@ -290,53 +275,6 @@ pub async fn abort_save(token: String) -> Result<(), CommandError> {
     Ok(())
 }
 
-/// Legacy path-based write — only available in webdriver/E2E builds.
-#[tauri::command]
-pub async fn write_file(path: String, contents: String) -> Result<(), CommandError> {
-    write_file_impl(path, contents).await
-}
-
-#[tauri::command]
-pub async fn write_file_base64(path: String, data_base64: String) -> Result<(), CommandError> {
-    if !cfg!(feature = "webdriver") {
-        return Err(deny_path_ipc());
-    }
-    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-    let p = PathBuf::from(&path);
-    validate_file_path(&p)?;
-    let bytes = BASE64
-        .decode(data_base64.trim())
-        .map_err(|e| CommandError::Validation(format!("Invalid base64: {e}")))?;
-    tokio::fs::write(&p, bytes)
-        .await
-        .cmd_err("write_file_base64")
-}
-
-pub(crate) async fn read_file_impl(path: String) -> Result<String, CommandError> {
-    if !cfg!(feature = "webdriver") {
-        return Err(deny_path_ipc());
-    }
-    let p = PathBuf::from(&path);
-    validate_file_path(&p)?;
-    tokio::fs::read_to_string(&p).await.cmd_err("read_file")
-}
-
-pub(crate) async fn write_file_impl(path: String, contents: String) -> Result<(), CommandError> {
-    if !cfg!(feature = "webdriver") {
-        return Err(deny_path_ipc());
-    }
-    let p = PathBuf::from(&path);
-    validate_file_path(&p)?;
-    tokio::fs::write(&p, contents.as_bytes())
-        .await
-        .cmd_err("write_file")
-}
-
-#[tauri::command]
-pub async fn read_file(path: String) -> Result<String, CommandError> {
-    read_file_impl(path).await
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -359,96 +297,9 @@ mod tests {
     }
 
     #[test]
-    fn validate_file_path_accepts_allowed_extensions() {
-        let valid = [
-            "/tmp/test.csv",
-            "/home/user/data.json",
-            "/var/data/query.sql",
-            "notes.md",
-            "readme.txt",
-            "config.xml",
-            "settings.yaml",
-            "settings.yml",
-            "diagram.png",
-            "diagram.svg",
-            "backup.zip",
-            "data.xlsx",
-        ];
-        for path in valid {
-            assert!(
-                validate_file_path(Path::new(path)).is_ok(),
-                "expected valid path: {path}"
-            );
-        }
-    }
-
-    #[test]
-    fn validate_file_path_rejects_path_traversal() {
-        let err = validate_file_path(Path::new("../../../etc/passwd")).unwrap_err();
-        assert_eq!(err.to_string(), "Path traversal not allowed");
-    }
-
-    #[test]
-    fn validate_file_path_rejects_disallowed_extensions() {
-        for path in ["malware.exe", "script.sh", "source.rs"] {
-            let err = validate_file_path(Path::new(path)).unwrap_err();
-            let msg = err.to_string();
-            assert!(
-                msg.starts_with("File extension '.") && msg.ends_with("' not allowed"),
-                "unexpected error for {path}: {msg}"
-            );
-        }
-    }
-
-    #[test]
-    fn validate_file_path_rejects_missing_extension() {
-        let err = validate_file_path(Path::new("/tmp/noext")).unwrap_err();
-        assert_eq!(err.to_string(), "File must have an extension");
-    }
-
-    #[test]
     fn ext_refs_rejects_unknown_extension() {
         let err = ext_refs(&["exe".into()]).unwrap_err();
         assert!(err.to_string().contains("not allowed"));
-    }
-
-    #[test]
-    fn path_ipc_write_file_gated_without_webdriver() {
-        if cfg!(feature = "webdriver") {
-            return;
-        }
-        let result = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(write_file("/tmp/e2e-gate-test.txt".into(), "x".into()));
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("disabled"));
-    }
-
-    #[test]
-    fn path_ipc_read_file_gated_without_webdriver() {
-        if cfg!(feature = "webdriver") {
-            return;
-        }
-        let result = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(read_file("/tmp/e2e-gate-test.txt".into()));
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("disabled"));
-    }
-
-    #[test]
-    fn path_ipc_write_file_base64_gated_without_webdriver() {
-        if cfg!(feature = "webdriver") {
-            return;
-        }
-        let result = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(write_file_base64(
-                "/tmp/e2e-gate-test.png".into(),
-                "AAAA".into(),
-            ));
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("disabled"));
     }
 
     #[tokio::test]

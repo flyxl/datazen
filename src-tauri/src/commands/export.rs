@@ -21,7 +21,6 @@ use std::sync::{Arc, Mutex};
 use datazen_driver_api::{QueryStreamCallback, QueryStreamEvent, Value};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
-use tauri_plugin_dialog::DialogExt;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
@@ -927,18 +926,15 @@ pub async fn export_tables_stream(
     } else {
         request.data_format.extension()
     };
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("Export", &[ext])
-        .set_file_name(&default_export_name(&request, use_zip))
-        .blocking_save_file();
-    let Some(fp) = picked else {
+    let picked = super::dialog::save_file(
+        &app,
+        ("Export".into(), vec![ext.to_string()]),
+        default_export_name(&request, use_zip),
+    )
+    .await?;
+    let Some(target) = picked else {
         return Ok(ExportTablesResult::Cancelled);
     };
-    let target = fp
-        .into_path()
-        .map_err(|e| CommandError::Validation(format!("invalid dialog path: {e}")))?;
     validate_export_path(&target)?;
 
     let rows_total = if use_zip {

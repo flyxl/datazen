@@ -578,7 +578,8 @@ export async function executeSQL(sql: string) {
 
 async function executeSqlInEditor(sql: string) {
   await setEditorContent(sql);
-  const execBtn = await $('button*=执行');
+  // Stable E2E locator (vite-gated data-testid, see src/lib/tid.ts) — survives i18n switching.
+  const execBtn = await $('[data-testid="editor-execute-button"]');
   const prevTotal = await browser.execute(() => {
     const spans = Array.from(document.querySelectorAll('span'));
     return spans.find((s) => s.textContent?.includes('总耗时'))?.textContent ?? '';
@@ -621,7 +622,7 @@ async function executeSqlInEditor(sql: string) {
       ) {
         return true;
       }
-      const stop = await $('button*=停止');
+      const stop = await $('[data-testid="editor-stop-button"]');
       if ((await stop.isExisting()) && (await stop.isDisplayed().catch(() => false))) {
         return false;
       }
@@ -650,10 +651,26 @@ async function executeSqlInEditor(sql: string) {
 
 /** Open a new query tab and wait for the execute button. */
 export async function openQueryTab() {
-  const newQueryBtn = await $('button*=新建查询');
+  // Stable E2E locators (vite-gated data-testid, see src/lib/tid.ts).
+  let newQueryBtn = await $('[data-testid="conn-toolbar-new-query"]');
+  if (!(await newQueryBtn.isExisting())) {
+    // A freshly connected session lands on ConnectionWorkspaceHome; its
+    // "new query" quick action opens the first panel. The ContentToolbar
+    // button only mounts after a content panel exists.
+    const home = await $('[data-testid="connection-workspace-home"]');
+    await home.waitForDisplayed({ timeout: 10000 });
+    const labels = ['新建查询', 'New Query', '新查詢', 'Neue Abfrage'];
+    for (const label of labels) {
+      const candidate = await home.$(`button*=${label}`);
+      if (await candidate.isExisting()) {
+        newQueryBtn = candidate;
+        break;
+      }
+    }
+  }
   await newQueryBtn.click();
   await browser.pause(500);
-  const execBtn = await $('button*=执行');
+  const execBtn = await $('[data-testid="editor-execute-button"]');
   await execBtn.waitForDisplayed({ timeout: 5000 });
 }
 

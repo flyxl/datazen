@@ -142,4 +142,49 @@ describe('TableView', () => {
     fireEvent.click(screen.getByTestId('copyable-error-copy'));
     expect(clipboardSpy).toHaveBeenCalledWith(errorMsg);
   });
+
+  it('loads data through the panel target database on mount (F1 BUG-002)', () => {
+    render(
+      <TableView dbSessionId="c1" database="db_b" tableName="users" databaseType="postgresql" />,
+    );
+
+    expect(tableState.loadTableData).toHaveBeenCalledWith({
+      dbSessionId: 'c1',
+      table: 'users',
+      database: 'db_b',
+    });
+  });
+
+  it('retries failed loads with the panel target database (F1 BUG-002)', () => {
+    tableState.tableStates.set('users', {
+      columns: [],
+      rows: [],
+      totalRows: 0,
+      page: 0,
+      pageSize: 50,
+      sorts: [],
+      filters: [],
+      filterLogic: 'and',
+      draftFilters: [],
+      draftFilterLogic: 'and',
+      filterPanelOpen: false,
+      editingCell: null,
+      selectedRows: new Set<number>(),
+      loading: false,
+      error: 'table not found in current database',
+    });
+
+    render(
+      <TableView dbSessionId="c1" database="db_b" tableName="users" databaseType="postgresql" />,
+    );
+
+    fireEvent.click(screen.getByText('common.retry'));
+    // The mount effect also fetches once; the retry click must be the last
+    // call and must carry the panel's target database.
+    expect(tableState.loadTableData).toHaveBeenLastCalledWith({
+      dbSessionId: 'c1',
+      table: 'users',
+      database: 'db_b',
+    });
+  });
 });

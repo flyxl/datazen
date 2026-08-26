@@ -119,6 +119,21 @@ impl DatabaseDriver for SqliteDriver {
         "sqlite".to_string()
     }
 
+    /// F7: qualify unqualified table references with the ATTACH alias
+    /// (`"alias"."t"`). A DataZen SQLite connection is a single file
+    /// (`main`), so this is a no-op unless the caller targets an explicit
+    /// non-`main` database — i.e. a session where that database was
+    /// `ATTACH`ed under the same alias; see `sql_target::qualify_sql`.
+    /// Parse failures pass SQL through unchanged.
+    fn qualify_sql_target(
+        &self,
+        sql: &str,
+        database: Option<&str>,
+        schema: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::sql_target::qualify_sql(sql, database, schema))
+    }
+
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
         let path = db_path(config)?;
         let url = format!("sqlite:{}", path);
@@ -617,6 +632,7 @@ impl DatabaseDriver for SqliteDriver {
             query_stream_command_definition(),
         ];
         cmds.extend(schema_object_command_definitions());
+        cmds.extend(crate::adb::adb_command_definitions());
         cmds
     }
 
@@ -639,6 +655,11 @@ impl DatabaseDriver for SqliteDriver {
                 input,
             )
             .await;
+        }
+        // ADB helpers are unbound: they never touch a connection pool, so the
+        // (possibly empty) handle is irrelevant to them.
+        if crate::adb::is_adb_command(command) {
+            return crate::adb::execute_adb_command(command, &input).await;
         }
         Err(DriverError::Unsupported(format!(
             "unsupported driver command: {command}"

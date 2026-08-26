@@ -291,23 +291,18 @@ pub async fn export_dashboard_with_dialog(
     dashboard_id: String,
     default_file_name: String,
 ) -> Result<bool, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
     let app_db = state.store.app_db();
     let dashboard = store_get_dashboard(&app_db, &dashboard_id)?;
 
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("DataZen Dashboard", &["json"])
-        .set_file_name(&default_file_name)
-        .blocking_save_file();
-    let Some(fp) = picked else {
+    let dest = super::dialog::save_file(
+        &app,
+        ("DataZen Dashboard".into(), vec!["json".into()]),
+        default_file_name,
+    )
+    .await?;
+    let Some(dest) = dest else {
         return Ok(false);
     };
-    let dest = fp
-        .into_path()
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
 
     let json =
         export_dashboard_json(&app_db, &dashboard).cmd_err("export_dashboard_with_dialog")?;
@@ -324,19 +319,14 @@ pub async fn import_dashboard_with_dialog(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Option<Dashboard>, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("DataZen Dashboard", &["json"])
-        .blocking_pick_file();
-    let Some(fp) = picked else {
+    let source = super::dialog::open_file(
+        &app,
+        vec![("DataZen Dashboard".into(), vec!["json".into()])],
+    )
+    .await?;
+    let Some(source) = source else {
         return Ok(None);
     };
-    let source = fp
-        .into_path()
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
 
     let bytes = tokio::fs::read(&source)
         .await
@@ -353,24 +343,6 @@ pub async fn import_dashboard_with_dialog(
         .cmd_err("import_dashboard_with_dialog")?;
     tracing::info!(id = %dashboard.id, "import_dashboard_with_dialog OK");
     Ok(Some(dashboard))
-}
-
-/// Legacy global pause IPC — deprecated; returns dashboard refresh_paused for first dashboard.
-#[tauri::command]
-pub fn get_monitor_paused(state: State<'_, AppState>) -> bool {
-    let app_db = state.store.app_db();
-    app_db
-        .list_dashboards()
-        .ok()
-        .and_then(|d| d.into_iter().next())
-        .map(|d| d.refresh_paused)
-        .unwrap_or(false)
-}
-
-/// Legacy global pause IPC — use set_dashboard_refresh_paused instead.
-#[tauri::command]
-pub fn set_monitor_paused(_app: AppHandle, _state: State<'_, AppState>, _paused: bool) {
-    tracing::warn!("set_monitor_paused is deprecated; use set_dashboard_refresh_paused");
 }
 
 #[cfg(test)]

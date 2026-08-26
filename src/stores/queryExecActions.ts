@@ -66,6 +66,10 @@ export async function runStreamingQuery(
   sql: string,
   getExec: () => Map<string, QueryExecState>,
   setExec: (exec: Map<string, QueryExecState>) => void,
+  /** F1: panel's selected database — pinned on the backend before execution. */
+  database?: string | null,
+  /** F7: panel's PG-family schema target — drivers inline it when supported. */
+  schema?: string | null,
 ): Promise<void> {
   const runId = ++streamRunCounter;
   setExec(
@@ -87,7 +91,10 @@ export async function runStreamingQuery(
   };
 
   try {
-    await queryCommands.executeQueryStream(dbSessionId, sql, onEvent);
+    await queryCommands.executeQueryStream(dbSessionId, sql, onEvent, {
+      database: database ?? null,
+      schema: schema ?? null,
+    });
     const exec = getExec().get(panelId);
     if (exec && exec.streamRunId === runId) {
       const viewMode = resolvePostQueryViewMode(exec.results[0]);
@@ -111,11 +118,21 @@ export async function runBoundQuery(
   params: BindParams,
   getExec: () => Map<string, QueryExecState>,
   setExec: (exec: Map<string, QueryExecState>) => void,
+  /** F1: panel's selected database — pinned on the backend before execution. */
+  database?: string | null,
+  /** F7: panel's PG-family schema target — drivers inline it when supported. */
+  schema?: string | null,
 ): Promise<void> {
   setExec(patchExec(getExec(), panelId, { running: true, error: null }));
 
   try {
-    const multi = await queryCommands.executeQuery(dbSessionId, sql, params);
+    const multi = await queryCommands.executeQuery(
+      dbSessionId,
+      sql,
+      params,
+      database ?? null,
+      schema ?? null,
+    );
     const viewMode = resolvePostQueryViewMode(multi.results[0]);
     setExec(
       patchExec(getExec(), panelId, {

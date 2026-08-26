@@ -716,6 +716,11 @@ pub fn run() {
     #[cfg(feature = "webdriver")]
     let builder = builder.plugin(tauri_plugin_webdriver::init());
 
+    // E2E-only dialog-injection state (see commands/dialog.rs). Production
+    // builds never manage it — the injection IPCs are compiled out entirely.
+    #[cfg(feature = "webdriver")]
+    let builder = builder.manage(commands::DialogInjectionQueue::default());
+
     let builder = plugin_init::register_plugins(builder);
 
     // `datazen://` plugin asset service + deep links (F2). Windows exposes
@@ -816,7 +821,6 @@ pub fn run() {
             commands::get_connection_info,
             commands::get_available_drivers,
             commands::get_databases,
-            commands::use_database,
             commands::get_tables,
             commands::get_columns,
             commands::get_table_schema,
@@ -857,21 +861,15 @@ pub fn run() {
             commands::open_workflows_dir,
             commands::open_context_dir,
             commands::export_connections,
-            commands::export_connections_with_dialog,
             commands::import_connections_preview,
             commands::import_connections_with_dialog,
             commands::detect_connection_import_path,
             commands::pick_connection_import_path_with_dialog,
             commands::import_connections_from_app,
             commands::export_app_data,
-            commands::export_app_data_with_dialog,
             commands::import_app_data,
-            commands::import_app_data_with_dialog,
             commands::save_encryption_key_with_dialog,
             commands::restart_app,
-            commands::write_file,
-            commands::write_file_base64,
-            commands::read_file,
             commands::save_text_with_dialog,
             commands::save_base64_with_dialog,
             commands::begin_save_with_dialog,
@@ -881,16 +879,10 @@ pub fn run() {
             commands::open_text_with_dialog,
             commands::open_base64_with_dialog,
             commands::backup_database,
-            commands::backup_database_with_dialog,
-            commands::restore_database,
-            commands::restore_database_with_dialog,
-            commands::execute_sql_file_with_dialog,
-            commands::execute_sql_file,
-            commands::classify_sync_pair,
+            commands::restore_sql_file,
             commands::prepare_schema_diff_plan,
             commands::execute_schema_diff_deploy,
             commands::compare_table_schemas,
-            commands::compare_table_data,
             commands::execute_data_sync,
             commands::cancel_data_sync,
             commands::compare_data_sync,
@@ -941,10 +933,6 @@ pub fn run() {
             commands::mcp_client_tools,
             commands::mcp_client_call_tool,
             commands::create_sub_window,
-            commands::adb_list_packages,
-            commands::adb_list_databases,
-            commands::adb_pull_database,
-            commands::adb_pull_database_with_dialog,
             commands::prompt_list,
             commands::prompt_set_override,
             commands::prompt_remove_override,
@@ -973,8 +961,6 @@ pub fn run() {
             commands::create_widget_from_sql,
             commands::create_widget_from_workflow,
             commands::update_hidden_widget_sql,
-            commands::get_monitor_paused,
-            commands::set_monitor_paused,
             commands::list_plugins,
             commands::inspect_plugin_package,
             commands::install_plugin_from_path,
@@ -987,6 +973,13 @@ pub fn run() {
             commands::read_plugin_file,
             commands::extension_audit_log,
             rebuild_menu,
+            // E2E-only dialog-injection surface (commands/dialog.rs): each
+            // entry carries its own cfg gate so production registration
+            // surfaces never contain these commands.
+            #[cfg(feature = "webdriver")]
+            commands::test_inject_dialog_result,
+            #[cfg(feature = "webdriver")]
+            commands::test_reset_dialog_queue,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

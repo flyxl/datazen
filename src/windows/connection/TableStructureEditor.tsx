@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Download, Loader2, Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -116,7 +116,7 @@ async function fetchEstimatedTableRows(args: {
 export function TableStructureEditor({
   dbSessionId,
   databaseType,
-  database = null,
+  database,
   schema: requestSchema = null,
   mode,
   tableName: initialTableName,
@@ -141,21 +141,6 @@ export function TableStructureEditor({
   const [previewPlan, setPreviewPlan] = useState<StructureChangePlan | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [exportingStructure, setExportingStructure] = useState(false);
-
-  const dbSwitchedRef = useRef<string | null>(null);
-
-  const ensureDatabase = useCallback(async () => {
-    if (!database) return;
-    const key = `${dbSessionId}\0${database}`;
-    if (dbSwitchedRef.current === key) return;
-    await databaseCommands.useDatabase(dbSessionId, database);
-    dbSwitchedRef.current = key;
-  }, [dbSessionId, database]);
-
-  useEffect(() => {
-    if (!database) return;
-    void ensureDatabase().catch(() => {});
-  }, [database, ensureDatabase]);
 
   useEffect(() => {
     if (!uiConfig) {
@@ -297,8 +282,11 @@ export function TableStructureEditor({
     setError(null);
     setPreviewing(true);
     try {
-      await ensureDatabase();
-      const plan = await structureCommands.planTableStructureChanges(dbSessionId, request);
+      const plan = await structureCommands.planTableStructureChanges(
+        dbSessionId,
+        request,
+        database ?? null,
+      );
       setPreviewPlan(plan);
     } catch (e) {
       const msg =
@@ -311,7 +299,7 @@ export function TableStructureEditor({
     } finally {
       setPreviewing(false);
     }
-  }, [buildRequest, dbSessionId, ensureDatabase, t]);
+  }, [buildRequest, dbSessionId, database, t]);
 
   const handleExecute = useCallback(async () => {
     const request = buildRequest();
@@ -319,8 +307,11 @@ export function TableStructureEditor({
     setError(null);
     setExecuting(true);
     try {
-      await ensureDatabase();
-      const plan = await structureCommands.planTableStructureChanges(dbSessionId, request);
+      const plan = await structureCommands.planTableStructureChanges(
+        dbSessionId,
+        request,
+        database ?? null,
+      );
       if (plan.statements.length === 0) {
         setError(t('structEditor.noChanges'));
         return;
@@ -376,7 +367,7 @@ export function TableStructureEditor({
     buildRequest,
     dbSessionId,
     confirmApply,
-    ensureDatabase,
+    database,
     initialTableName,
     mode,
     onSuccess,

@@ -78,6 +78,20 @@ pub fn partition_dump_objects(tables: Vec<TableInfo>) -> (Vec<TableInfo>, Vec<Ta
     (base, views)
 }
 
+/// True when a listed relation may enter the dump pipeline.
+///
+/// Drivers surface navigation-only rows in [`DatabaseDriver::get_tables`]:
+/// PostgreSQL reports one entry with a **blank** name per empty schema (the
+/// schema marker, typed [`TableType::SystemTable`]), and MySQL maps catalog
+/// `SYSTEM VIEW`s to the same type. Dumping such rows would fabricate
+/// statements containing zero-length identifiers
+/// (`CREATE TABLE IF NOT EXISTS ""`) that restore then rejects — and system
+/// catalog objects are never business data. Skip them before any statement
+/// (CREATE / clean DROP / INSERT) is generated.
+pub fn is_dumpable_object(table: &TableInfo) -> bool {
+    !table.name.trim().is_empty() && !matches!(table.table_type, TableType::SystemTable)
+}
+
 /// `schema.name` when `schema` is a real grouping label; otherwise just `name`.
 pub fn qualified_ident(
     quote_ident: &dyn Fn(&str) -> String,
@@ -410,7 +424,12 @@ where
     D: DatabaseDriver + ?Sized,
     F: FnMut(DumpProgress),
 {
-    let tables = driver.get_tables(handle, database).await?;
+    let tables: Vec<TableInfo> = driver
+        .get_tables(handle, database)
+        .await?
+        .into_iter()
+        .filter(is_dumpable_object)
+        .collect();
     let (base_tables, views) = partition_dump_objects(tables);
 
     let mut out = String::new();
@@ -932,6 +951,216 @@ mod tests {
             "1050 (42S01): Table 'users' already exists"
         ));
         assert!(!relation_already_exists("syntax error"));
+    }
+
+    /// Minimal driver whose table listing is configurable; every other method
+    /// keeps the default trait behaviour the dump pipeline relies on.
+    struct TableListingDriver {
+        tables: Vec<TableInfo>,
+    }
+
+    impl TableListingDriver {
+        fn new(tables: Vec<TableInfo>) -> Self {
+            Self { tables }
+        }
+    }
+
+    const LISTING_HANDLE: std::sync::LazyLock<ConnectionHandle> =
+        std::sync::LazyLock::new(|| ConnectionHandle {
+            id: "conn".into(),
+            pool_id: "pool".into(),
+        });
+
+    #[async_trait::async_trait]
+    impl DatabaseDriver for TableListingDriver {
+        fn driver_type(&self) -> DatabaseType {
+            "listing".into()
+        }
+
+        async fn connect(
+            &self,
+            _config: &ConnectionConfig,
+        ) -> Result<ConnectionHandle, DriverError> {
+            Ok(LISTING_HANDLE.clone())
+        }
+
+        async fn test_connection(
+            &self,
+            _config: &ConnectionConfig,
+        ) -> Result<ServerInfo, DriverError> {
+            Ok(ServerInfo {
+                server_version: String::new(),
+                server_type: self.driver_type(),
+            })
+        }
+
+        async fn disconnect(&self, _handle: ConnectionHandle) -> Result<(), DriverError> {
+            Ok(())
+        }
+
+        async fn get_databases(
+            &self,
+            _handle: &ConnectionHandle,
+        ) -> Result<Vec<String>, DriverError> {
+            Ok(vec![])
+        }
+
+        async fn get_tables(
+            &self,
+            _handle: &ConnectionHandle,
+            _database: &str,
+        ) -> Result<Vec<TableInfo>, DriverError> {
+            Ok(self.tables.clone())
+        }
+
+        async fn get_table_schema(
+            &self,
+            _handle: &ConnectionHandle,
+            table: &str,
+        ) -> Result<TableSchema, DriverError> {
+            // Mirrors the real drivers: the requested name is echoed back
+            // verbatim into `table_name` (a blank name would flow straight
+            // into `build_create_table_sql`).
+            Ok(TableSchema {
+                table_name: table.to_string(),
+                columns: vec![ColumnSchema {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    nullable: false,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: true,
+                    is_auto_increment: false,
+                }],
+                primary_keys: vec!["id".into()],
+                indexes: vec![],
+                foreign_keys: vec![],
+            })
+        }
+
+        async fn query(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+        ) -> Result<QueryResult, DriverError> {
+            Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: Some(0),
+                execution_time_ms: 0,
+            })
+        }
+
+        async fn query_multi(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+            _limit: Option<u32>,
+        ) -> Result<MultiQueryResult, DriverError> {
+            Ok(MultiQueryResult {
+                results: vec![],
+                total_time_ms: 0,
+            })
+        }
+
+        async fn query_with_params(
+            &self,
+            handle: &ConnectionHandle,
+            sql: &str,
+            _params: &[Value],
+        ) -> Result<QueryResult, DriverError> {
+            self.query(handle, sql).await
+        }
+
+        async fn execute(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+        ) -> Result<u64, DriverError> {
+            Ok(0)
+        }
+
+        async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+            Ok(())
+        }
+    }
+
+    fn listing_table(name: &str) -> TableInfo {
+        TableInfo {
+            schema: Some("public".into()),
+            name: name.into(),
+            table_type: TableType::Table,
+            row_count: None,
+        }
+    }
+
+    /// R2-BUG-001: PostgreSQL reports one navigation-only marker row with a
+    /// **blank** name per empty schema (`SystemTable`); the dump pipeline used
+    /// to turn each marker into `-- Table:` + `CREATE TABLE IF NOT EXISTS ""`,
+    /// which restore then rejects (`zero-length delimited identifier`).
+    #[tokio::test]
+    async fn dump_skips_blank_identifier_marker_rows() {
+        let driver = TableListingDriver::new(vec![
+            listing_table("orders"),
+            TableInfo {
+                schema: Some("e2e_sch_empty".into()),
+                name: String::new(),
+                table_type: TableType::SystemTable,
+                row_count: None,
+            },
+        ]);
+        let opts = BackupDumpOptions {
+            clean: true,
+            ..Default::default()
+        };
+
+        let out = dump_sql_database(&driver, &LISTING_HANDLE, "app", &opts)
+            .await
+            .unwrap();
+
+        // The real table is still dumped completely.
+        assert!(out.contains("-- Table: orders"), "{out}");
+        assert!(
+            out.contains("CREATE TABLE IF NOT EXISTS \"orders\""),
+            "{out}"
+        );
+        // No per-object failure comments may appear for skipped rows.
+        assert!(!out.contains("-- Error dumping data for"), "{out}");
+        // Blank identifiers must never reach statement generation — neither as
+        // CREATE, nor DROP (clean), nor data SELECT, nor progress comments.
+        assert!(!out.contains("\"\""), "blank identifier in dump: {out}");
+        assert!(!out.contains("-- Table: \n"), "{out}");
+        assert!(!out.contains("-- View: \n"), "{out}");
+    }
+
+    /// System-table entries carry catalog objects, never business data; they
+    /// must not enter the dump either (MySQL `SYSTEM VIEW`, PG markers).
+    #[tokio::test]
+    async fn dump_skips_system_table_entries() {
+        let driver = TableListingDriver::new(vec![
+            listing_table("orders"),
+            TableInfo {
+                schema: None,
+                name: "pg_catalog_overview".into(),
+                table_type: TableType::SystemTable,
+                row_count: None,
+            },
+        ]);
+
+        let out = dump_sql_database(
+            &driver,
+            &LISTING_HANDLE,
+            "app",
+            &BackupDumpOptions::default(),
+        )
+        .await
+        .unwrap();
+
+        assert!(out.contains("-- Table: orders"), "{out}");
+        assert!(
+            !out.contains("pg_catalog_overview"),
+            "system-table entry leaked into dump: {out}"
+        );
     }
 
     #[test]

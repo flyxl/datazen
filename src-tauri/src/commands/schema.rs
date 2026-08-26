@@ -26,37 +26,6 @@ pub(crate) async fn get_databases_impl(
     Ok(dbs)
 }
 
-pub(crate) async fn use_database_impl(
-    state: &AppState,
-    db_session_id: String,
-    database: String,
-) -> Result<(), CommandError> {
-    let start = Instant::now();
-    tracing::info!(%db_session_id, %database, "use_database");
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("use_database")?;
-
-    driver
-        .use_database(&handle, &database)
-        .await
-        .cmd_err("use_database")?;
-    state
-        .connection_manager
-        .set_active_database(&db_session_id, &database)
-        .await
-        .cmd_err("use_database")?;
-    tracing::info!(
-        %db_session_id,
-        %database,
-        ms = start.elapsed().as_millis() as u64,
-        "use_database OK"
-    );
-    Ok(())
-}
-
 pub(crate) async fn get_tables_impl(
     state: &AppState,
     db_session_id: String,
@@ -139,9 +108,21 @@ pub(crate) async fn get_table_data_impl(
     sorts: Option<Vec<SortCondition>>,
     skip_count: Option<bool>,
     filter_logic: Option<String>,
+    database: Option<String>,
 ) -> Result<TableDataResult, CommandError> {
     let start = Instant::now();
     tracing::info!(%db_session_id, %table, page, page_size, "get_table_data");
+    // F1: optional explicit database pin — switch the session to the caller's
+    // target database before reading (same mechanism as the query-family
+    // commands), so `config.database` below qualifies rows correctly even when
+    // the table lives outside the session's current active database.
+    super::query::ensure_session_database(
+        state,
+        &db_session_id,
+        database.as_deref(),
+        "get_table_data",
+    )
+    .await?;
     let (driver, handle) = state
         .connection_manager
         .get_session(&db_session_id)
@@ -255,6 +236,8 @@ async fn run_schema_object_command(
             driver_type: None,
             command: command.to_string(),
             input,
+            database: None,
+            schema: None,
         },
     )
     .await?;
@@ -362,15 +345,6 @@ pub async fn get_databases(
 }
 
 #[tauri::command]
-pub async fn use_database(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    database: String,
-) -> Result<(), CommandError> {
-    use_database_impl(&state, db_session_id, database).await
-}
-
-#[tauri::command]
 pub async fn get_tables(
     state: State<'_, AppState>,
     db_session_id: String,
@@ -408,6 +382,7 @@ pub async fn get_table_data(
     sorts: Option<Vec<SortCondition>>,
     skip_count: Option<bool>,
     filter_logic: Option<String>,
+    database: Option<String>,
 ) -> Result<TableDataResult, CommandError> {
     get_table_data_impl(
         &state,
@@ -419,6 +394,7 @@ pub async fn get_table_data(
         sorts,
         skip_count,
         filter_logic,
+        database,
     )
     .await
 }
@@ -450,10 +426,6 @@ mod tests {
             .unwrap();
         assert_eq!(dbs, vec!["app"]);
 
-        use_database_impl(&test.state, conn_id.clone(), "app".into())
-            .await
-            .unwrap();
-
         let tables = get_tables_impl(&test.state, conn_id.clone(), "app".into())
             .await
             .unwrap();
@@ -483,6 +455,7 @@ mod tests {
                 column: "id".into(),
                 descending: false,
             }]),
+            None,
             None,
             None,
         )
@@ -551,6 +524,7 @@ mod tests {
             None,
             None,
             Some(true),
+            None,
             None,
         )
         .await
@@ -716,9 +690,44 @@ mod tests {
             None,
             Some(true),
             Some("or".into()),
+            None,
         )
         .await
         .unwrap();
         assert_eq!(data.rows.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn get_table_data_pins_session_to_target_database() {
+        let test = TestAppState::with_tables().await;
+        let (_, conn_id) = test.save_and_connect("tdata-pin-db").await;
+        // Sample config pins database = "app"; opening a table that lives in
+        // another database must switch the session before reading (BUG-002).
+        let data = get_table_data_impl(
+            &test.state,
+            conn_id.clone(),
+            "users".into(),
+            0,
+            50,
+            None,
+            None,
+            Some(true),
+            None,
+            Some("analytics".into()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(data.rows.len(), 1);
+        assert_eq!(
+            test.mock.use_database_calls(),
+            vec!["analytics".to_string()]
+        );
+        let config = test
+            .state
+            .connection_manager
+            .get_session_config(&conn_id)
+            .await
+            .unwrap();
+        assert_eq!(config.database.as_deref(), Some("analytics"));
     }
 }

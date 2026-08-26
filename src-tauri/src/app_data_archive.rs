@@ -14,6 +14,24 @@ fn has_key_component(rel_path: &Path) -> bool {
         .any(|c| matches!(c, Component::Normal(name) if name.to_string_lossy() == ".key"))
 }
 
+/// True when the final component names a SQLite WAL sidecar (`<db>-wal` /
+/// `<db>-shm`, any depth).
+///
+/// These files are transient runtime state of a live WAL-mode database:
+/// archiving them is meaningless at best (a stale sidecar restored next to a
+/// fresh database file corrupts the pair) and harmful in practice — their
+/// near-zero-entropy content deflates far beyond the import-side zip-bomb
+/// compression-ratio limit, so an archive the app itself produced was rejected
+/// as a "zip bomb" (R2-BUG-002). Excluded at **export** time; the import-side
+/// ratio guard stays untouched so its security posture is unchanged.
+fn is_sqlite_sidecar(rel_path: &Path) -> bool {
+    let Some(Component::Normal(name)) = rel_path.components().next_back() else {
+        return false;
+    };
+    let s = name.to_string_lossy();
+    s.ends_with("-wal") || s.ends_with("-shm")
+}
+
 /// Shared exclusions for logs, staging dirs, and temp files.
 fn should_exclude_common(rel_path: &Path) -> bool {
     let mut first = true;
@@ -63,7 +81,8 @@ pub fn should_exclude(rel_path: &Path) -> bool {
 
 /// Like [`should_exclude`] but respects export options (e.g. skip `dashboard-runs/`).
 pub fn should_exclude_with_options(rel_path: &Path, options: ExportOptions) -> bool {
-    if should_exclude_common(rel_path) || has_key_component(rel_path) {
+    if should_exclude_common(rel_path) || has_key_component(rel_path) || is_sqlite_sidecar(rel_path)
+    {
         return true;
     }
     if !options.include_dashboard_runs && is_dashboard_runs_path(rel_path) {
@@ -729,6 +748,72 @@ mod tests {
         assert!(!should_exclude(Path::new("workflows/daily.yaml")));
         assert!(!should_exclude(Path::new("contexts/rules.md")));
         assert!(!should_exclude(Path::new("not-logs/app.log")));
+    }
+
+    /// R2-BUG-002: SQLite `-shm` / `-wal` sidecars are transient runtime state
+    /// and must never enter an app-data archive. Their near-zero-entropy
+    /// content otherwise trips the import-side compression-ratio guard, so a
+    /// package produced by the app itself was rejected as a "zip bomb".
+    #[test]
+    fn should_exclude_sqlite_sidecars_on_export() {
+        // The app's own sqlite sidecar files (root of the data dir).
+        assert!(should_exclude(Path::new("datazen.sqlite-shm")));
+        assert!(should_exclude(Path::new("datazen.sqlite-wal")));
+        // Sidecars next to any database file, at any depth.
+        assert!(should_exclude(Path::new("nested/cache.db-shm")));
+        assert!(should_exclude(Path::new("nested/cache.db-wal")));
+
+        // Real payloads must keep shipping.
+        assert!(!should_exclude(Path::new("datazen.sqlite")));
+        assert!(!should_exclude(Path::new("nested/cache.db")));
+        assert!(!should_exclude(Path::new("connections.json")));
+        // Suffix lookalikes that are not SQLite sidecars.
+        assert!(!should_exclude(Path::new("notes-wal.txt")));
+        assert!(!should_exclude(Path::new("shm.txt")));
+    }
+
+    /// R2-BUG-002 end-to-end: export → import round-trip must succeed even when
+    /// the data dir holds a highly compressible `-shm` sidecar. Before the
+    /// export-side exclusion this exact archive was rejected by the zip-bomb
+    /// ratio guard (`compression ratio exceeded (entry datazen.sqlite-shm)`).
+    #[test]
+    fn self_produced_archive_with_sidecar_round_trips() {
+        let source = TempDir::new().unwrap();
+        write_file(source.path(), "settings.json", r#"{"theme":"dark"}"#);
+        write_file(source.path(), "connections.json", r#"{"connections":[]}"#);
+        // SQLite -shm pages are dominated by long runs of repeated words —
+        // deflate crushes them far below the 1:100 guard ratio.
+        write_file(
+            source.path(),
+            "datazen.sqlite-shm",
+            &"\u{0}".repeat(512 * 1024),
+        );
+        write_file(source.path(), "datazen.sqlite-wal", &"a".repeat(512 * 1024));
+
+        let out = TempDir::new().unwrap();
+        let zip_path = out.path().join("app-data.zip");
+        export_app_data(source.path(), &zip_path).unwrap();
+
+        let file = File::open(&zip_path).unwrap();
+        let mut archive = ZipArchive::new(file).unwrap();
+        let names: Vec<String> = (0..archive.len())
+            .map(|i| archive.by_index(i).unwrap().name().to_string())
+            .collect();
+        assert!(
+            !names
+                .iter()
+                .any(|n| n.ends_with("-shm") || n.ends_with("-wal")),
+            "sidecar entered archive: {names:?}"
+        );
+        assert!(names.iter().any(|n| n == "settings.json"));
+
+        // Import must pass the ratio guard and restore business files.
+        let target = TempDir::new().unwrap();
+        import_app_data(target.path(), &zip_path).unwrap();
+        assert_eq!(
+            fs::read_to_string(target.path().join("settings.json")).unwrap(),
+            r#"{"theme":"dark"}"#
+        );
     }
 
     #[test]

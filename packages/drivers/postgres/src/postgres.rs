@@ -471,6 +471,19 @@ impl DatabaseDriver for PostgresDriver {
         "postgresql".to_string()
     }
 
+    /// F7: qualify unqualified table references with the target schema
+    /// (`"schema"."t"`). The database dimension is not inlined — PG resolves
+    /// it through the host pool switch (`ensure_session_database`); parse
+    /// failures pass SQL through unchanged. See `sql_target::qualify_sql`.
+    fn qualify_sql_target(
+        &self,
+        sql: &str,
+        database: Option<&str>,
+        schema: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::sql_target::qualify_sql(sql, database, schema))
+    }
+
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
         let opts = build_pg_options(config)?;
         let timeout = Duration::from_secs(config.connection_timeout as u64);

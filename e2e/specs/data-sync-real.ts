@@ -561,13 +561,13 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
     }
   });
 
-  it('SYNC-REAL-020: classify_sync_pair rejects PG→MySQL heterogeneous pair', async () => {
-    const view = await invokeBackend<{ path: string; supported: boolean }>('classify_sync_pair', {
-      sourceDatabaseType: 'postgresql',
-      targetDatabaseType: 'mysql',
-    });
-    expect(view.path).toBe('ir');
-    expect(view.supported).toBe(false);
+  it('SYNC-REAL-020: classify_sync_pair IPC is removed (pairing mirrored in frontend syncPairing)', async () => {
+    await expectCommandNotFound(() =>
+      invokeBackend('classify_sync_pair', {
+        sourceDatabaseType: 'postgresql',
+        targetDatabaseType: 'mysql',
+      }),
+    );
   });
 
   it('SYNC-REAL-021: legacy sync_table IPC is removed for PG→MySQL', async () => {
@@ -755,13 +755,13 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
     );
   });
 
-  it('SYNC-BATCH-002: classify_sync_pair rejects heterogeneous IR for Data Sync', async () => {
-    const view = await invokeBackend<{ path: string; supported: boolean }>('classify_sync_pair', {
-      sourceDatabaseType: 'postgresql',
-      targetDatabaseType: 'mysql',
-    });
-    expect(view.path).toBe('ir');
-    expect(view.supported).toBe(false);
+  it('SYNC-BATCH-002: classify_sync_pair IPC is removed (pairing mirrored in frontend syncPairing)', async () => {
+    await expectCommandNotFound(() =>
+      invokeBackend('classify_sync_pair', {
+        sourceDatabaseType: 'postgresql',
+        targetDatabaseType: 'mysql',
+      }),
+    );
   });
 
   it('SYNC-BATCH-003: legacy sync_table IPC is removed', async () => {

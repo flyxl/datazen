@@ -13,11 +13,17 @@ export const queryCommands = {
     dbSessionId: string,
     sql: string,
     params?: Record<string, string | number | boolean | null>,
+    database?: string | null,
+    schema?: string | null,
   ) => {
     const result = await driverCommands.execute({
       dbSessionId,
       command: 'query',
       input: params && Object.keys(params).length > 0 ? { sql, params } : { sql },
+      // F1: pin the session to the panel's selected database before running.
+      database: database ?? null,
+      // F7: PG-family schema target — rewrite-capable drivers inline it.
+      schema: schema ?? null,
     });
     return result.data as MultiQueryResult;
   },
@@ -26,7 +32,14 @@ export const queryCommands = {
     dbSessionId: string,
     sql: string,
     onEvent: (event: QueryStreamEvent) => void,
-    options?: { applyResultLimit?: boolean; recordHistory?: boolean },
+    options?: {
+      applyResultLimit?: boolean;
+      recordHistory?: boolean;
+      /** F1: pin the session to this database before streaming. */
+      database?: string | null;
+      /** F7: PG-family schema target for the stream. */
+      schema?: string | null;
+    },
   ) => {
     await driverCommands.executeStream({
       dbSessionId,
@@ -35,11 +48,14 @@ export const queryCommands = {
       onEvent,
       applyResultLimit: options?.applyResultLimit,
       recordHistory: options?.recordHistory,
+      database: options?.database ?? null,
+      schema: options?.schema ?? null,
     });
   },
 
-  getExplain: (dbSessionId: string, sql: string) =>
-    invoke<ExplainResult>('get_explain', { dbSessionId, sql }),
+  /** `database` pins the session to a database for this explain (F1: no use_database IPC). */
+  getExplain: (dbSessionId: string, sql: string, database?: string | null) =>
+    invoke<ExplainResult>('get_explain', { dbSessionId, sql, database: database ?? null }),
 
   cancelQuery: (dbSessionId: string) => invoke<void>('cancel_query', { dbSessionId }),
 

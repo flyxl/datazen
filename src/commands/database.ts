@@ -28,10 +28,6 @@ export interface RowDeleteBatch {
 export const databaseCommands = {
   getDatabases: (dbSessionId: string) => invoke<string[]>('get_databases', { dbSessionId }),
 
-  /** Switch active database for subsequent unqualified queries (MySQL/MariaDB). */
-  useDatabase: (dbSessionId: string, database: string) =>
-    invoke<void>('use_database', { dbSessionId, database }),
-
   getTables: (dbSessionId: string, database: string) =>
     invoke<TableInfo[]>('get_tables', { dbSessionId, database }),
 
@@ -53,6 +49,8 @@ export const databaseCommands = {
     sorts?: SortCondition[];
     skipCount?: boolean;
     filterLogic?: 'and' | 'or';
+    /** F1: optional explicit target database — host pins the session before reading. */
+    database?: string | null;
   }) =>
     invoke<TableDataResult>('get_table_data', {
       dbSessionId: params.dbSessionId,
@@ -63,6 +61,7 @@ export const databaseCommands = {
       sorts: params.sorts,
       skipCount: params.skipCount,
       filterLogic: params.filterLogic,
+      database: params.database ?? null,
     }),
 
   executeSQL: (dbSessionId: string, sql: string) => queryCommands.executeQuery(dbSessionId, sql),

@@ -109,6 +109,30 @@ describe('tableDataStore', () => {
     );
   });
 
+  it('forwards the explicit database and remembers it for refreshes (F1 BUG-002)', async () => {
+    await useTableDataStore
+      .getState()
+      .loadTableData({ dbSessionId: 'conn-1', table: 'users', database: 'db_b' });
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ table: 'users', database: 'db_b' }),
+    );
+
+    // Store-driven refreshes (paging) keep targeting the same database.
+    mockDatabaseCommands.getTableData.mockClear();
+    useTableDataStore.getState().setPage(1);
+    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 1, database: 'db_b' }),
+    );
+  });
+
+  it('sends a null database when no explicit target is given', async () => {
+    await loadTable();
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+      expect.objectContaining({ table: 'users', database: null }),
+    );
+  });
+
   it('addFilter edits draft only; applyFilters reloads', async () => {
     await loadTable();
     mockDatabaseCommands.getTableData.mockClear();

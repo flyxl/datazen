@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Filter, Loader2 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
@@ -8,7 +8,6 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { cn } from '../../lib/cn';
-import { databaseCommands } from '../../commands/database';
 import { CopyableError } from '../../components/ui/CopyableError';
 
 interface TableViewProps {
@@ -73,22 +72,15 @@ export function TableView({
   const ts: TableState | undefined = tableStates.get(tableName);
   const hasData = ts != null && ts.columns.length > 0;
 
-  const dbSwitchedRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!database) return;
-    if (dbSwitchedRef.current === `${dbSessionId}\0${database}`) return;
-    dbSwitchedRef.current = `${dbSessionId}\0${database}`;
-    void databaseCommands.useDatabase(dbSessionId, database).catch(() => {});
-  }, [dbSessionId, database]);
-
   useEffect(() => {
     if (hasData && activeTable !== tableName) {
       switchToTable(tableName);
     } else if (!hasData) {
-      void loadTableData({ dbSessionId, table: tableName });
+      // F1: carry the panel's target database so cross-database tables load
+      // correctly even when the session's active database differs.
+      void loadTableData({ dbSessionId, table: tableName, database });
     }
-  }, [dbSessionId, tableName, hasData, activeTable, loadTableData, switchToTable]);
+  }, [dbSessionId, tableName, hasData, activeTable, loadTableData, switchToTable, database]);
 
   const columns = ts?.columns ?? [];
   const rows = ts?.rows ?? [];
@@ -140,7 +132,7 @@ export function TableView({
           <button
             type="button"
             className="mt-2 text-xs text-accent hover:underline"
-            onClick={() => void loadTableData({ dbSessionId, table: tableName })}
+            onClick={() => void loadTableData({ dbSessionId, table: tableName, database })}
           >
             {t('common.retry')}
           </button>
@@ -169,7 +161,7 @@ export function TableView({
           <button
             type="button"
             className="shrink-0 text-xs text-accent hover:underline"
-            onClick={() => void loadTableData({ dbSessionId, table: tableName })}
+            onClick={() => void loadTableData({ dbSessionId, table: tableName, database })}
           >
             {t('common.retry')}
           </button>

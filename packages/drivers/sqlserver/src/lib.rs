@@ -5,6 +5,7 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod admin_commands;
+mod sql_target;
 mod sqlserver;
 mod structure;
 mod sync_adapter;

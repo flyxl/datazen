@@ -9,7 +9,8 @@ use async_trait::async_trait;
 use crate::db::{
     ColumnInfo, ColumnSchema, ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType,
     DriverCategory, DriverError, ExplainResult, MultiQueryResult, QueryResult, ServerInfo,
-    StatementResult, TableInfo, TableSchema, TransactionHandle, Value,
+    StatementResult, StructureChangePlan, StructureChangeRequest, TableInfo, TableSchema,
+    TransactionHandle, Value,
 };
 use datazen_driver_api::{
     execute_command_definition, execute_schema_object_command, execute_standard_sql_command,
@@ -32,6 +33,9 @@ pub struct MockDriverOptions {
     pub server_version: String,
     pub extra_commands: Vec<DriverCommandDefinition>,
     pub query_error: Option<String>,
+    /// F7: when true, `qualify_sql_target` rewrites SQL by appending a
+    /// marker comment recording the requested target (capability simulation).
+    pub rewrite_sql_target: bool,
 }
 
 impl Default for MockDriverOptions {
@@ -55,6 +59,7 @@ impl Default for MockDriverOptions {
             server_version: String::new(),
             extra_commands: Vec::new(),
             query_error: None,
+            rewrite_sql_target: false,
         }
     }
 }
@@ -67,6 +72,8 @@ pub struct MockDriver {
     query_calls: AtomicU32,
     last_query_limit: Mutex<Option<Option<u32>>>,
     open_txs: Mutex<HashSet<String>>,
+    use_database_calls: Mutex<Vec<String>>,
+    qualify_calls: Mutex<Vec<(Option<String>, Option<String>)>>,
 }
 
 impl MockDriver {
@@ -79,7 +86,28 @@ impl MockDriver {
             query_calls: AtomicU32::new(0),
             last_query_limit: Mutex::new(None),
             open_txs: Mutex::new(HashSet::new()),
+            use_database_calls: Mutex::new(Vec::new()),
+            qualify_calls: Mutex::new(Vec::new()),
         })
+    }
+
+    /// Databases passed to `use_database`, in call order (F1 session-switch tests).
+    pub fn use_database_calls(&self) -> Vec<String> {
+        self.use_database_calls
+            .lock()
+            .ok()
+            .map(|g| g.clone())
+            .unwrap_or_default()
+    }
+
+    /// (database, schema) pairs passed to `qualify_sql_target`, in call
+    /// order (F7 envelope passthrough tests).
+    pub fn qualify_calls(&self) -> Vec<(Option<String>, Option<String>)> {
+        self.qualify_calls
+            .lock()
+            .ok()
+            .map(|g| g.clone())
+            .unwrap_or_default()
     }
 
     pub fn last_query_limit(&self) -> Option<Option<u32>> {
@@ -287,6 +315,52 @@ impl DatabaseDriver for MockDriver {
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
+    }
+
+    async fn use_database(
+        &self,
+        _handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<(), DriverError> {
+        if let Ok(mut calls) = self.use_database_calls.lock() {
+            calls.push(database.to_string());
+        }
+        Ok(())
+    }
+
+    /// F7 capability simulation: appends a `/* target: db=… schema=… */`
+    /// marker so host tests can assert which SQL actually reached the driver.
+    fn qualify_sql_target(
+        &self,
+        sql: &str,
+        database: Option<&str>,
+        schema: Option<&str>,
+    ) -> Option<String> {
+        if !self.opts.rewrite_sql_target {
+            return None;
+        }
+        if let Ok(mut calls) = self.qualify_calls.lock() {
+            calls.push((database.map(str::to_string), schema.map(str::to_string)));
+        }
+        let mut marker = String::from("/* target:");
+        if let Some(database) = database {
+            marker.push_str(&format!(" db={database}"));
+        }
+        if let Some(schema) = schema {
+            marker.push_str(&format!(" schema={schema}"));
+        }
+        marker.push_str(" */");
+        Some(format!("{sql} {marker}"))
+    }
+
+    /// No-op planning support so host-side structure-command tests can assert
+    /// session/database pinning around `plan_structure_changes`.
+    async fn plan_structure_changes(
+        &self,
+        _handle: &ConnectionHandle,
+        _request: &StructureChangeRequest,
+    ) -> Result<StructureChangePlan, DriverError> {
+        Ok(StructureChangePlan::default())
     }
 
     async fn get_server_info(&self, _handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {

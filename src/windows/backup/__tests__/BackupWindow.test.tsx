@@ -4,15 +4,22 @@ import { BackupWindow } from '../BackupWindow';
 import { PRESET_GROUPS } from '../../../lib/connectionGroups';
 import type { ConnectionConfig } from '../../../types';
 
-const { invokeMock, loadSettingsMock, urlParamMock, confirmDialogFn, listenMock } = vi.hoisted(
-  () => ({
-    invokeMock: vi.fn(),
-    loadSettingsMock: vi.fn().mockResolvedValue(undefined),
-    urlParamMock: vi.fn((name: string) => (name === 'mode' ? null : null)),
-    confirmDialogFn: vi.fn().mockResolvedValue(true),
-    listenMock: vi.fn(async () => () => {}),
-  }),
-);
+const {
+  invokeMock,
+  loadSettingsMock,
+  urlParamMock,
+  confirmDialogFn,
+  listenMock,
+  backupOptionsRef,
+} = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+  loadSettingsMock: vi.fn().mockResolvedValue(undefined),
+  urlParamMock: vi.fn((name: string) => (name === 'mode' ? null : null)),
+  confirmDialogFn: vi.fn().mockResolvedValue(true),
+  listenMock: vi.fn(async () => () => {}),
+  // Mutable per-test dialect backup options; defaults to the previous empty list.
+  backupOptionsRef: { current: [] as Array<{ id: string; label: string }> },
+}));
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({
@@ -47,7 +54,7 @@ vi.mock('../../../components/TitleBar', () => ({
 }));
 
 vi.mock('../../../lib/sqlDialects', () => ({
-  getSqlDialect: () => ({ backupOptions: [] }),
+  getSqlDialect: () => ({ backupOptions: backupOptionsRef.current }),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -141,6 +148,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  backupOptionsRef.current = [];
   vi.clearAllMocks();
 });
 
@@ -188,9 +196,8 @@ describe('BackupWindow connection list', () => {
       if (cmd === 'connect') return 'live-1';
       if (cmd === 'get_connection_info') return { serverVersion: '16' };
       if (cmd === 'get_databases') return ['app', 'postgres'];
-      if (cmd === 'use_database') return undefined;
       if (cmd === 'get_tables') return tables;
-      if (cmd === 'restore_database_with_dialog') return true;
+      if (cmd === 'restore_sql_file') return true;
       return null;
     });
   }
@@ -210,15 +217,9 @@ describe('BackupWindow connection list', () => {
     await selectRestoreTarget();
     expect(screen.queryByText('backup.startBackup')).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('backup-start-restore'));
-    await waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith('use_database', {
-        dbSessionId: 'live-1',
-        database: 'app',
-      }),
-    );
     expect(confirmDialogFn).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith('restore_database_with_dialog', {
+      expect(invokeMock).toHaveBeenCalledWith('restore_sql_file', {
         dbSessionId: 'live-1',
         database: 'app',
         options: [],
@@ -258,9 +259,8 @@ describe('BackupWindow connection list', () => {
       if (cmd === 'connect') return 'live-1';
       if (cmd === 'get_connection_info') return { serverVersion: '16' };
       if (cmd === 'get_databases') return ['app', 'postgres'];
-      if (cmd === 'use_database') return undefined;
       if (cmd === 'get_tables') return [];
-      if (cmd === 'restore_database_with_dialog') {
+      if (cmd === 'restore_sql_file') {
         onProgress?.({
           payload: { current: 1, total: 2, objectName: 'CREATE TABLE users', phase: 'object' },
         });
@@ -304,7 +304,7 @@ describe('BackupWindow connection list', () => {
     fireEvent.click(screen.getByTestId('backup-start-restore'));
     await waitFor(() => expect(confirmDialogFn).toHaveBeenCalled());
     await waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith('restore_database_with_dialog', {
+      expect(invokeMock).toHaveBeenCalledWith('restore_sql_file', {
         dbSessionId: 'live-1',
         database: 'app',
         options: ['overwrite'],
@@ -318,6 +318,219 @@ describe('BackupWindow connection list', () => {
     await selectRestoreTarget();
     fireEvent.click(screen.getByTestId('backup-start-restore'));
     await waitFor(() => expect(confirmDialogFn).toHaveBeenCalled());
-    expect(invokeMock).not.toHaveBeenCalledWith('restore_database_with_dialog', expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith('restore_sql_file', expect.anything());
+  });
+});
+
+describe('BackupWindow backup flow (F3-BUG-002 coverage)', () => {
+  // An earlier suite case leaves `mockResolvedValue(false)` behind; restore the
+  // default accept so the overwrite confirmation behaves per-test.
+  beforeEach(() => {
+    confirmDialogFn.mockResolvedValue(true);
+  });
+
+  function pgOnlyConnections() {
+    return [
+      conn({
+        id: 'pg-1',
+        name: 'Local PG',
+        databaseType: 'postgresql',
+        group: PRESET_GROUPS.development,
+        host: 'localhost',
+        database: 'app',
+      }),
+    ];
+  }
+
+  function setupInvoke(backupDatabaseImpl: () => Promise<boolean>) {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_connections') return pgOnlyConnections();
+      if (cmd === 'get_groups') return [PRESET_GROUPS.development];
+      if (cmd === 'connect') return 'live-1';
+      if (cmd === 'get_connection_info') return { serverVersion: '16' };
+      if (cmd === 'get_databases') return ['app', 'postgres'];
+      if (cmd === 'backup_database') return backupDatabaseImpl();
+      return null;
+    });
+  }
+
+  async function selectBackupTarget() {
+    render(<BackupWindow />);
+    await waitFor(() => screen.getByText('Local PG'));
+    fireEvent.click(screen.getByText('Local PG'));
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('connect', { connectionId: 'pg-1' }),
+    );
+    await waitFor(() => screen.getByText('app'));
+    fireEvent.click(screen.getByText('app'));
+    await waitFor(() => expect(screen.getByTestId('backup-start-backup')).not.toBeDisabled());
+  }
+
+  function backupDatabaseCall(): { command: string; args: Record<string, unknown> } {
+    const call = invokeMock.mock.calls.find((c) => c[0] === 'backup_database');
+    expect(call).toBeTruthy();
+    return { command: String(call![0]), args: call![1] as Record<string, unknown> };
+  }
+
+  it('backup success: invokes backup_database without overridePath and reports success', async () => {
+    setupInvoke(async () => true);
+    await selectBackupTarget();
+
+    fireEvent.click(screen.getByTestId('backup-start-backup'));
+
+    const { command, args } = await waitFor(() => {
+      const found = backupDatabaseCall();
+      expect(found.args.database).toBe('app');
+      return found;
+    });
+    expect(command).toBe('backup_database');
+    expect(args).toEqual({
+      dbSessionId: 'live-1',
+      database: 'app',
+      defaultFileName: 'untitled.sql',
+      filterExtension: 'sql',
+      options: [],
+      compress: false,
+    });
+    // Decision 3+6 guard: the production dialog flow must never carry override_path.
+    expect(Object.keys(args)).not.toContain('overridePath');
+
+    expect(listenMock).toHaveBeenCalledWith('backup-progress', expect.any(Function));
+    await waitFor(() =>
+      expect(screen.getByTestId('backup-status')).toHaveTextContent('backup.success'),
+    );
+    expect(screen.getByTestId('backup-progress-log')).toHaveTextContent('backup.success');
+  });
+
+  it('backup cancelled (saved=false): clears status and re-enables start without success log', async () => {
+    setupInvoke(async () => false);
+    await selectBackupTarget();
+
+    fireEvent.click(screen.getByTestId('backup-start-backup'));
+
+    await waitFor(() => expect(backupDatabaseCall()).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.queryByTestId('backup-status')).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('backup-progress-log')).not.toBeInTheDocument();
+    expect(screen.getByTestId('backup-start-backup')).toHaveTextContent('backup.startBackup');
+  });
+
+  it('backup backend error: surfaces message in status and progress log', async () => {
+    setupInvoke(async () => {
+      throw new Error('pg_dump exited with code 1');
+    });
+    await selectBackupTarget();
+
+    fireEvent.click(screen.getByTestId('backup-start-backup'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('backup-status')).toHaveTextContent('pg_dump exited with code 1'),
+    );
+    expect(screen.getByTestId('backup-progress-log')).toHaveTextContent(
+      'pg_dump exited with code 1',
+    );
+    expect(screen.queryByTestId('backup-start-backup')).toHaveTextContent('backup.startBackup');
+  });
+
+  it('option dropdown, custom format, gzip and file name drive filterExtension/defaultFileName', async () => {
+    backupOptionsRef.current = [
+      { id: 'format-custom', label: 'custom-format' },
+      { id: 'routines', label: 'routines' },
+    ];
+    setupInvoke(async () => true);
+    await selectBackupTarget();
+
+    // routines is auto-enabled as a default for SQL dialects.
+    fireEvent.click(screen.getByText('backup.addOption')); // open dropdown
+    const checkboxes = screen.getAllByRole('checkbox');
+    fireEvent.click(checkboxes[0]); // format-custom
+    fireEvent.click(checkboxes[checkboxes.length - 1]); // compress gzip
+
+    fireEvent.change(screen.getByDisplayValue('untitled'), {
+      target: { value: 'nightly' },
+    });
+
+    fireEvent.click(screen.getByTestId('backup-start-backup'));
+
+    const { args } = await waitFor(() => {
+      const found = backupDatabaseCall();
+      expect(found.args.compress).toBe(true);
+      return found;
+    });
+    expect(args).toEqual({
+      dbSessionId: 'live-1',
+      database: 'app',
+      defaultFileName: 'nightly.sql.gz',
+      filterExtension: 'gz',
+      options: ['routines', 'format-custom'],
+      compress: true,
+    });
+    expect(Object.keys(args)).not.toContain('overridePath');
+  });
+
+  it('prefills connection + database from URL params', async () => {
+    urlParamMock.mockImplementation((name: string) => {
+      if (name === 'connectionId') return 'pg-1';
+      if (name === 'database') return 'postgres';
+      return null;
+    });
+    setupInvoke(async () => true);
+
+    render(<BackupWindow />);
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('connect', { connectionId: 'pg-1' }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('backup-start-backup')).not.toBeDisabled(),
+    );
+    expect(screen.getByText('postgres').parentElement?.className).toContain('bg-blue-600/20');
+
+    fireEvent.click(screen.getByTestId('backup-start-backup'));
+    const { args } = await waitFor(() => {
+      const found = backupDatabaseCall();
+      expect(found.args.database).toBe('postgres');
+      return found;
+    });
+    expect(args.dbSessionId).toBe('live-1');
+  });
+
+  it('restore backend error surfaces in status and progress log', async () => {
+    urlParamMock.mockImplementation((name: string) => (name === 'mode' ? 'restore' : null));
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_connections') return pgOnlyConnections();
+      if (cmd === 'get_groups') return [PRESET_GROUPS.development];
+      if (cmd === 'connect') return 'live-1';
+      if (cmd === 'get_connection_info') return { serverVersion: '16' };
+      if (cmd === 'get_databases') return ['app', 'postgres'];
+      if (cmd === 'get_tables') return [{ name: 'users', tableType: 'table' }];
+      if (cmd === 'restore_sql_file') throw new Error('restore boom');
+      return null;
+    });
+
+    render(<BackupWindow />);
+    await waitFor(() => screen.getByText('Local PG'));
+    fireEvent.click(screen.getByText('Local PG'));
+    await waitFor(() => expect(screen.getByTestId('backup-start-restore')).not.toBeDisabled());
+
+    fireEvent.click(screen.getByTestId('backup-start-restore'));
+
+    await waitFor(() => expect(confirmDialogFn).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByTestId('backup-status')).toHaveTextContent('restore boom'),
+    );
+    expect(screen.getByTestId('backup-progress-log')).toHaveTextContent('restore boom');
+  });
+
+  it('collapses and expands a group on header click', async () => {
+    setupInvoke(async () => true);
+    render(<BackupWindow />);
+    await waitFor(() => screen.getByText('Local PG'));
+
+    fireEvent.click(screen.getByTestId('backup-group-header'));
+    expect(screen.queryByText('Local PG')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('backup-group-header'));
+    await waitFor(() => screen.getByText('Local PG'));
   });
 });
