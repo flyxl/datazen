@@ -93,13 +93,21 @@ impl MockDriver {
 
     /// Databases passed to `use_database`, in call order (F1 session-switch tests).
     pub fn use_database_calls(&self) -> Vec<String> {
-        self.use_database_calls.lock().ok().map(|g| g.clone()).unwrap_or_default()
+        self.use_database_calls
+            .lock()
+            .ok()
+            .map(|g| g.clone())
+            .unwrap_or_default()
     }
 
     /// (database, schema) pairs passed to `qualify_sql_target`, in call
     /// order (F7 envelope passthrough tests).
     pub fn qualify_calls(&self) -> Vec<(Option<String>, Option<String>)> {
-        self.qualify_calls.lock().ok().map(|g| g.clone()).unwrap_or_default()
+        self.qualify_calls
+            .lock()
+            .ok()
+            .map(|g| g.clone())
+            .unwrap_or_default()
     }
 
     pub fn last_query_limit(&self) -> Option<Option<u32>> {
@@ -332,10 +340,7 @@ impl DatabaseDriver for MockDriver {
             return None;
         }
         if let Ok(mut calls) = self.qualify_calls.lock() {
-            calls.push((
-                database.map(str::to_string),
-                schema.map(str::to_string),
-            ));
+            calls.push((database.map(str::to_string), schema.map(str::to_string)));
         }
         let mut marker = String::from("/* target:");
         if let Some(database) = database {

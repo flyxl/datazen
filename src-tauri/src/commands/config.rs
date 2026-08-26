@@ -320,7 +320,9 @@ pub async fn export_connections(
         return Ok(None); // user dismissed the dialog
     };
 
-    Ok(Some(write_connections_export(&state, &password, dest).await?))
+    Ok(Some(
+        write_connections_export(&state, &password, dest).await?,
+    ))
 }
 
 fn import_password_option(password: &str) -> Option<&str> {
@@ -408,7 +410,9 @@ pub async fn import_connections_preview(
         return Ok(None); // user dismissed the dialog
     };
     tracing::info!(path = %source.display(), "import_connections_preview");
-    Ok(Some(build_import_preview_from_path(&password, source).await?))
+    Ok(Some(
+        build_import_preview_from_path(&password, source).await?,
+    ))
 }
 
 /// Parse + decrypt + merge-import a connections file picked through the native
@@ -580,7 +584,10 @@ async fn export_app_data_to_dest(state: &AppState, dest: PathBuf) -> Result<(), 
 }
 
 /// Import an app data ZIP archive from `source`.
-async fn import_app_data_from_source(state: &AppState, source: PathBuf) -> Result<(), CommandError> {
+async fn import_app_data_from_source(
+    state: &AppState,
+    source: PathBuf,
+) -> Result<(), CommandError> {
     let data_dir = state.store.data_dir().clone();
     tokio::task::spawn_blocking(move || app_data_archive::import_app_data(&data_dir, &source))
         .await
@@ -1094,9 +1101,7 @@ mod tests {
         assert_eq!(preview["sourceFormat"], "DataZen");
 
         // Wrong password must fail the same decrypt path.
-        assert!(build_import_preview_from_path("wrong", dest)
-            .await
-            .is_err());
+        assert!(build_import_preview_from_path("wrong", dest).await.is_err());
     }
 
     #[tokio::test]

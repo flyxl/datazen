@@ -137,7 +137,10 @@ fn inject_sql_target_fields(
     let database = database.map(str::trim).filter(|s| !s.is_empty());
     let schema = schema.map(str::trim).filter(|s| !s.is_empty());
     if let Some(database) = database {
-        map.insert("database".into(), serde_json::Value::String(database.into()));
+        map.insert(
+            "database".into(),
+            serde_json::Value::String(database.into()),
+        );
     }
     if let Some(schema) = schema {
         map.insert("schema".into(), serde_json::Value::String(schema.into()));
@@ -346,11 +349,8 @@ pub(crate) async fn execute_driver_command_stream_impl(
     let target_database = nonempty(request.database.as_ref()).map(str::to_string);
     let target_schema = nonempty(request.schema.as_ref()).map(str::to_string);
     if target_database.is_some() || target_schema.is_some() {
-        match driver.qualify_sql_target(
-            &sql,
-            target_database.as_deref(),
-            target_schema.as_deref(),
-        ) {
+        match driver.qualify_sql_target(&sql, target_database.as_deref(), target_schema.as_deref())
+        {
             Some(qualified) => {
                 if qualified != sql {
                     tracing::info!(

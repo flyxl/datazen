@@ -83,16 +83,17 @@ mod tests {
 
     #[test]
     fn insert_update_delete_ddl_qualify() {
+        assert!(qualify("INSERT INTO users (id) VALUES (1)", Some("mydb"))
+            .contains("INSERT INTO `mydb`.`users`"));
         assert!(
-            qualify("INSERT INTO users (id) VALUES (1)", Some("mydb"))
-                .contains("INSERT INTO `mydb`.`users`")
+            qualify("ALTER TABLE users ADD COLUMN c UInt32", Some("mydb"))
+                .contains("ALTER TABLE `mydb`.`users`")
         );
-        assert!(qualify("ALTER TABLE users ADD COLUMN c UInt32", Some("mydb"))
-            .contains("ALTER TABLE `mydb`.`users`"));
-        assert!(
-            qualify("CREATE TABLE users (id UInt32) ENGINE = MergeTree ORDER BY id", Some("mydb"))
-                .contains("CREATE TABLE `mydb`.`users`")
-        );
+        assert!(qualify(
+            "CREATE TABLE users (id UInt32) ENGINE = MergeTree ORDER BY id",
+            Some("mydb")
+        )
+        .contains("CREATE TABLE `mydb`.`users`"));
         assert!(qualify("DROP TABLE users", Some("mydb")).contains("DROP TABLE `mydb`.`users`"));
     }
 

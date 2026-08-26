@@ -96,10 +96,7 @@ mod tests {
 
     #[test]
     fn string_literals_are_not_touched() {
-        let out = qualify(
-            "SELECT * FROM logs WHERE msg = 'from users'",
-            Some("mydb"),
-        );
+        let out = qualify("SELECT * FROM logs WHERE msg = 'from users'", Some("mydb"));
         assert!(out.contains("'from users'"), "{out}");
         assert!(out.contains("`mydb`.`logs`"), "{out}");
         assert!(!out.contains("'from `mydb"), "{out}");
@@ -112,10 +109,7 @@ mod tests {
             "INSERT INTO `mydb`.`users` (id, name) VALUES (1, 'a')"
         );
         let update = qualify("UPDATE users SET name = 'b' WHERE id = 1", Some("mydb"));
-        assert!(
-            update.starts_with("UPDATE `mydb`.`users` SET"),
-            "{update}"
-        );
+        assert!(update.starts_with("UPDATE `mydb`.`users` SET"), "{update}");
         assert_eq!(
             qualify("DELETE FROM users WHERE id = 1", Some("mydb")),
             "DELETE FROM `mydb`.`users` WHERE id = 1"
@@ -124,17 +118,18 @@ mod tests {
 
     #[test]
     fn ddl_statements_qualify() {
-        assert!(qualify("TRUNCATE TABLE users", Some("mydb"))
-            .contains("TRUNCATE TABLE `mydb`.`users`"));
-        assert!(qualify(
-            "CREATE TABLE users (id INT PRIMARY KEY)",
-            Some("mydb")
-        )
-        .contains("CREATE TABLE `mydb`.`users`"));
+        assert!(
+            qualify("TRUNCATE TABLE users", Some("mydb")).contains("TRUNCATE TABLE `mydb`.`users`")
+        );
+        assert!(
+            qualify("CREATE TABLE users (id INT PRIMARY KEY)", Some("mydb"))
+                .contains("CREATE TABLE `mydb`.`users`")
+        );
         assert!(qualify("ALTER TABLE users ADD COLUMN c INT", Some("mydb"))
             .contains("ALTER TABLE `mydb`.`users`"));
-        assert!(qualify("CREATE INDEX ix ON users (id)", Some("mydb"))
-            .contains("ON `mydb`.`users`"));
+        assert!(
+            qualify("CREATE INDEX ix ON users (id)", Some("mydb")).contains("ON `mydb`.`users`")
+        );
         assert!(qualify("DROP TABLE users", Some("mydb")).contains("DROP TABLE `mydb`.`users`"));
     }
 
@@ -163,10 +158,7 @@ mod tests {
 
     #[test]
     fn multi_statement_strings_keep_every_statement_targeted() {
-        let out = qualify(
-            "SELECT * FROM a; INSERT INTO b VALUES (1);",
-            Some("mydb"),
-        );
+        let out = qualify("SELECT * FROM a; INSERT INTO b VALUES (1);", Some("mydb"));
         assert!(out.contains("`mydb`.`a`"), "{out}");
         assert!(out.contains("INSERT INTO `mydb`.`b`"), "{out}");
     }

@@ -217,10 +217,7 @@ fn sql_target_input_schema_properties() -> serde_json::Map<String, JsonValue> {
 /// Build the standard SQL `query_stream` command definition.
 pub fn query_stream_command_definition() -> DriverCommandDefinition {
     let mut properties = sql_target_input_schema_properties();
-    properties.insert(
-        "sql".into(),
-        serde_json::json!({ "type": "string" }),
-    );
+    properties.insert("sql".into(), serde_json::json!({ "type": "string" }));
     properties.insert(
         "limit".into(),
         serde_json::json!({ "type": ["integer", "null"], "minimum": 1 }),
@@ -250,10 +247,7 @@ pub fn query_stream_command_definition() -> DriverCommandDefinition {
 /// Build the standard SQL `query` command definition.
 pub fn query_command_definition() -> DriverCommandDefinition {
     let mut properties = sql_target_input_schema_properties();
-    properties.insert(
-        "sql".into(),
-        serde_json::json!({ "type": "string" }),
-    );
+    properties.insert("sql".into(), serde_json::json!({ "type": "string" }));
     properties.insert(
         "limit".into(),
         serde_json::json!({ "type": ["integer", "null"], "minimum": 1 }),
@@ -283,10 +277,7 @@ pub fn query_command_definition() -> DriverCommandDefinition {
 /// Build the standard SQL `execute` command definition.
 pub fn execute_command_definition() -> DriverCommandDefinition {
     let mut properties = sql_target_input_schema_properties();
-    properties.insert(
-        "sql".into(),
-        serde_json::json!({ "type": "string" }),
-    );
+    properties.insert("sql".into(), serde_json::json!({ "type": "string" }));
     DriverCommandDefinition {
         id: "execute".into(),
         name: "Execute".into(),
