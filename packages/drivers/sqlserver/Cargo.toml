@@ -14,5 +14,7 @@ tiberius = { version = "0.12", default-features = false, features = ["tds73", "c
 tokio-util = { version = "0.7", features = ["compat"] }
 serde_json = "1"
 tracing = "0.1"
+# F7: AST-level dialect-aware SQL target qualification (dialect binding lives in src/sql_target.rs)
+sqlparser = { version = "0.59", features = ["visitor"] }
 uuid = { version = "1", features = ["v4"] }
 futures-util = "0.3"

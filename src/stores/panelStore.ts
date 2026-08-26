@@ -238,6 +238,16 @@ function panelTargetDatabase(dbSessionId: string): string | null {
   return useSchemaStore.getState().schemas.get(dbSessionId)?.currentDatabase ?? null;
 }
 
+/**
+ * F7: the PG-family current schema is pure local state
+ * (`schemaStore.currentSchema`, set via `setCurrentSchema`), so executions
+ * carry it explicitly as the envelope `schema` field — rewrite-capable
+ * drivers inline it (`"schema"."t"`); others ignore it.
+ */
+function panelTargetSchema(dbSessionId: string): string | null {
+  return useSchemaStore.getState().schemas.get(dbSessionId)?.currentSchema ?? null;
+}
+
 export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
   panels: [],
   activePanelId: null,
@@ -372,6 +382,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         getExec,
         setExec,
         panelTargetDatabase(panel.dbSessionId),
+        panelTargetSchema(panel.dbSessionId),
       );
     } else {
       await runStreamingQuery(
@@ -381,6 +392,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         getExec,
         setExec,
         panelTargetDatabase(panel.dbSessionId),
+        panelTargetSchema(panel.dbSessionId),
       );
     }
     await get().loadHistory(panel.connectionId);
@@ -403,6 +415,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         getExec,
         setExec,
         panelTargetDatabase(panel.dbSessionId),
+        panelTargetSchema(panel.dbSessionId),
       );
     } else {
       await runStreamingQuery(
@@ -412,6 +425,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         getExec,
         setExec,
         panelTargetDatabase(panel.dbSessionId),
+        panelTargetSchema(panel.dbSessionId),
       );
     }
     await get().loadHistory(panel.connectionId);

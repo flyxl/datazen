@@ -6,6 +6,7 @@ use datazen_driver_api::*;
 
 mod admin_commands;
 mod mysql;
+mod sql_target;
 mod structure;
 mod sync_adapter;
 pub use mysql::*;
