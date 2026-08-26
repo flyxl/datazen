@@ -1118,3 +1118,327 @@ html[data-theme='light'] .docs-prose pre {
     padding: 4px 0;
   }
 }
+
+/* ============================================================
+   V2 additions: nav dropdown, hero demo, flow diagrams,
+   use-case cards, privacy diagram, FAQ
+   ============================================================ */
+
+:root {
+  --danger: #f87171;
+}
+html[data-theme='light'] {
+  --danger: #dc2626;
+}
+
+/* ---------- Nav dropdown ---------- */
+.nav-drop {
+  position: relative;
+}
+.nav-drop-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  padding: 6px 11px;
+  border-radius: 8px;
+  font-size: 14px;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+.nav-drop-label:hover {
+  color: var(--text);
+  background: var(--surface-2);
+  text-decoration: none;
+}
+.nav-drop.active > .nav-drop-label {
+  color: var(--text);
+  background: var(--surface-2);
+  font-weight: 600;
+}
+.nav-drop-caret {
+  display: none;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 6px 4px;
+}
+.nav-drop-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 190px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+  padding: 6px;
+  z-index: 60;
+}
+.nav-drop-menu a {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.nav-drop-menu a:hover {
+  color: var(--text);
+  background: var(--surface-2);
+  text-decoration: none;
+}
+.nav-drop-menu a.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+.nav-drop:hover .nav-drop-menu,
+.nav-drop:focus-within .nav-drop-menu {
+  display: block;
+}
+.nav-drop.open .nav-drop-menu {
+  display: block;
+}
+.nav-gh {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 5px;
+}
+@media (max-width: 860px) {
+  .nav-drop-caret {
+    display: inline-flex;
+    margin-left: -6px;
+  }
+  .nav-drop-menu {
+    position: static;
+    min-width: 0;
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    padding: 0 0 4px 14px;
+  }
+}
+
+/* ---------- Hero demo ---------- */
+.demo-frame {
+  padding: 16px 18px 20px;
+}
+.demo-stage {
+  border: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 13px 16px;
+  margin-top: 12px;
+  opacity: 0.45;
+  transition:
+    opacity 0.4s ease,
+    border-color 0.4s ease;
+}
+.demo-stage:first-child {
+  margin-top: 0;
+}
+.demo-stage.active {
+  opacity: 1;
+  border-left-color: var(--accent);
+}
+.demo-tag {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+  margin-bottom: 7px;
+}
+.demo-bubble {
+  display: inline-block;
+  background: var(--surface-2);
+  border-radius: 10px 10px 10px 3px;
+  padding: 8px 13px;
+  font-size: 13.5px;
+}
+.demo-code {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre;
+  overflow-x: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px 13px;
+  color: var(--text);
+}
+html[data-theme='light'] .demo-code {
+  background: #17233a;
+  color: #dce7f7;
+}
+.demo-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.demo-tbl th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 3px 12px 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.demo-tbl td {
+  padding: 4px 12px 4px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.demo-tbl tr:last-child td {
+  border-bottom: none;
+}
+.demo-tbl td:last-child,
+.demo-tbl th:last-child {
+  text-align: right;
+}
+.demo-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  height: 108px;
+  padding: 4px 6px 0;
+}
+.demo-bar {
+  flex: 1;
+  border-radius: 6px 6px 0 0;
+  background: var(--gradient);
+  opacity: 0.85;
+  height: 10%;
+  transition: height 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.demo-stage.active .demo-bar {
+  height: var(--h, 40%);
+}
+.demo-cap {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 8px;
+  text-align: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .demo-stage,
+  .demo-bar {
+    transition: none;
+  }
+}
+
+/* ---------- Flow diagrams (horizontal / vertical) ---------- */
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 10px;
+}
+.flow-v {
+  flex-direction: column;
+  align-items: stretch;
+  max-width: 420px;
+}
+.flow-node {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 11px;
+  padding: 9px 15px;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.flow-node small {
+  display: block;
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.flow-node.hl {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+.flow-arrow {
+  align-self: center;
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 15px;
+  padding: 0 2px;
+}
+.flow-v .flow-arrow {
+  transform: rotate(90deg);
+  align-self: center;
+  padding: 0;
+}
+.flow-note {
+  font-size: 11.5px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ---------- Use-case cards ---------- */
+.uc-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 6px 0;
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+.uc-row .uc-ico {
+  flex: none;
+  width: 20px;
+  text-align: center;
+  font-size: 13px;
+}
+.uc-row b {
+  color: var(--text);
+  font-weight: 600;
+}
+.uc-row.ok .uc-ico {
+  color: var(--accent);
+}
+.uc-row.err .uc-ico {
+  color: var(--danger);
+}
+
+/* ---------- FAQ ---------- */
+.faq details {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 14px 18px;
+  margin-bottom: 10px;
+}
+.faq summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 15px;
+}
+.faq details p {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* ---------- Audience cards ---------- */
+.audience .card h3 {
+  font-size: 16px;
+}
+.audience .card .who {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+  margin-bottom: 6px;
+}

@@ -6,7 +6,7 @@
     <title>Features — DataZen</title>
     <meta
       name="description"
-      content="DataZen feature overview: SQL editor, data browse/edit, export/import, backup, cross-database sync, secure storage, i18n, and plugins."
+      content="DataZen feature overview: AI assistant, charts, workflows, MCP server/client, SQL editor, data browse/edit, export/import, backup, cross-database sync, and plugins."
     />
     <link rel="canonical" href="https://flyxl.github.io/datazen/features.html" />
     <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/features.html" />
@@ -24,7 +24,7 @@
     <meta property="og:title" content="Features — DataZen" />
     <meta
       property="og:description"
-      content="DataZen feature overview: SQL editor, data browse/edit, export/import, backup, cross-database sync, secure storage, i18n, and plugins."
+      content="DataZen feature overview: AI assistant, charts, workflows, MCP server/client, SQL editor, data browse/edit, export/import, backup, cross-database sync, and plugins."
     />
     <meta property="og:url" content="https://flyxl.github.io/datazen/features.html" />
     <meta
@@ -37,7 +37,7 @@
     <meta name="twitter:title" content="Features — DataZen" />
     <meta
       name="twitter:description"
-      content="DataZen feature overview: SQL editor, data browse/edit, export/import, backup, cross-database sync, secure storage, i18n, and plugins."
+      content="DataZen feature overview: AI assistant, charts, workflows, MCP server/client, SQL editor, data browse/edit, export/import, backup, cross-database sync, and plugins."
     />
     <meta
       name="twitter:image"
@@ -54,14 +54,14 @@
         <p class="breadcrumb"><a href="index.html">Home</a> / Features</p>
         <h1>🧭 Features</h1>
         <p>
-          The full capability map of DataZen. The three headline areas (AI / Charts / Workflow) each
-          have their own page; this is the index for everything else.
+          The full capability map of DataZen — from the AI assistant and MCP server to the SQL
+          editor, data tools, and plugins.
         </p>
       </div>
     </section>
 
     <section class="wrap">
-      <div class="grid-4">
+      <div class="grid-3">
         <a class="card" href="ai.html" style="display: block"
           ><div class="icon">🤖</div>
           <h3>AI Assistant</h3>
@@ -77,11 +77,73 @@
           <h3>Workflow</h3>
           <p>Cross-database orchestration, AI-powered, reusable flows</p></a
         >
+      </div>
+      <div class="grid-2 mt-2">
+        <a class="card" href="#mcp" style="display: block"
+          ><div class="icon">🛰️</div>
+          <h3>MCP Server / Client</h3>
+          <p>Plug your databases into Claude, Cursor and other AI agents</p></a
+        >
         <a class="card" href="databases.html" style="display: block"
           ><div class="icon">🔌</div>
           <h3>Databases</h3>
           <p>PG / MySQL / SQLite / Redis / plugins</p></a
         >
+      </div>
+
+      <div class="feature-block" id="mcp" style="scroll-margin-top: 88px">
+        <div>
+          <span class="kicker">MCP Server &amp; Client</span>
+          <h2>Your databases, as tools for AI agents</h2>
+          <p>
+            DataZen includes a built-in MCP (Model Context Protocol) server. Point Claude Desktop,
+            Cursor or any MCP-compatible agent at it, and they can inspect schemas, run queries,
+            read EXPLAIN plans — even trigger whole workflows.
+          </p>
+          <ul>
+            <li>
+              <strong>MCP server</strong>: expose database operations, schema inspection, EXPLAIN
+              and workflows as MCP tools
+            </li>
+            <li>
+              <strong>MCP client</strong>: connect external MCP servers and call their tools from
+              inside DataZen
+            </li>
+            <li>
+              <strong>Headless mode</strong>: run with <code>--mcp-stdio</code> on servers, scripts
+              or CI — no UI required
+            </li>
+            <li>
+              <strong>Credentials stay local</strong>: agents talk to DataZen; passwords remain in
+              your OS keychain
+            </li>
+            <li>
+              <strong>Persistent connections</strong>: agents address saved connections by ID
+              instead of raw connection strings
+            </li>
+          </ul>
+        </div>
+        <div>
+          <pre><code>Claude / Cursor / AI Agent
+        │  natural language
+        ▼
+     MCP protocol
+        │  tools · resources · prompts
+        ▼
+     DataZen (local)
+        │  queries · schema · EXPLAIN · workflows
+        ▼
+PostgreSQL · MySQL · SQLite · Redis …</code></pre>
+          <p class="muted mt-2" style="font-size: 13px">
+            Setup guide:
+            <a
+              href="https://github.com/flyxl/datazen#mcp-server--client"
+              target="_blank"
+              rel="noopener"
+              >MCP server &amp; client in the README</a
+            >
+          </p>
+        </div>
       </div>
 
       <div class="feature-block">
