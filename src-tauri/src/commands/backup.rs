@@ -102,44 +102,31 @@ pub(crate) fn validate_backup_filter_extension(
     Ok(ext)
 }
 
-/// Native save-dialog branch of [`backup_database`]; `None` = dialog cancelled.
-fn pick_backup_save_path(
+/// Save-dialog branch of [`backup_database`]; `None` = dialog cancelled.
+///
+/// Goes through the central dialog gateway (`super::dialog`), so webdriver
+/// builds can replace it with an injected result; production always reaches
+/// the native save dialog.
+async fn pick_backup_save_path(
     app: &tauri::AppHandle,
     default_file_name: &str,
     filter_extension: &str,
 ) -> Result<Option<PathBuf>, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
     let ext = validate_backup_filter_extension(filter_extension)?;
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("Backup", &[ext.as_str()])
-        .set_file_name(default_file_name)
-        .blocking_save_file();
-    let Some(fp) = picked else {
-        return Ok(None);
-    };
-    fp.into_path()
-        .map(Some)
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))
+    super::dialog::save_file(
+        app,
+        ("Backup".into(), vec![ext]),
+        default_file_name.to_string(),
+    )
+    .await
 }
 
-/// Native open-dialog branch of [`restore_sql_file`]; `None` = dialog cancelled.
-fn pick_sql_open_path(app: &tauri::AppHandle) -> Result<Option<PathBuf>, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("SQL", &["sql"])
-        .blocking_pick_file();
-    let Some(fp) = picked else {
-        return Ok(None);
-    };
-    fp.into_path()
-        .map(Some)
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))
+/// Open-dialog branch of [`restore_sql_file`]; `None` = dialog cancelled.
+///
+/// Central dialog gateway (`super::dialog`) — same injection contract as
+/// [`pick_backup_save_path`].
+async fn pick_sql_open_path(app: &tauri::AppHandle) -> Result<Option<PathBuf>, CommandError> {
+    super::dialog::open_file(app, vec![("SQL".into(), vec!["sql".into()])]).await
 }
 
 /// Native save dialog + database backup. Returns `true` if written.
@@ -162,7 +149,7 @@ pub async fn backup_database(
 ) -> Result<bool, CommandError> {
     let output_path = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
         Some(path) => Some(path),
-        None => pick_backup_save_path(&app, &default_file_name, &filter_extension)?,
+        None => pick_backup_save_path(&app, &default_file_name, &filter_extension).await?,
     };
     let Some(output_path) = output_path else {
         return Ok(false); // user dismissed the dialog
@@ -282,7 +269,7 @@ pub async fn restore_sql_file(
 ) -> Result<bool, CommandError> {
     let input_path = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
         Some(path) => Some(path),
-        None => pick_sql_open_path(&app)?,
+        None => pick_sql_open_path(&app).await?,
     };
     let Some(input_path) = input_path else {
         return Ok(false); // user dismissed the dialog

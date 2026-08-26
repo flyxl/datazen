@@ -409,6 +409,7 @@ pub struct AppState {
 | 上下文 | `context.rs` | `context_get_dir`, `context_list_files`, `context_read_files` |
 | MCP | `mcp.rs` | `mcp_start_stdio`, `mcp_stop`, `mcp_get_status`, `mcp_reload`, `mcp_list_all_tools`, `mcp_client_connect/call_tool/disconnect/list/tools` |
 | 文件 | `file.rs` | 对话框系列：`save_text_with_dialog`, `save_base64_with_dialog`, `begin_save_with_dialog`, `append_save_text`, `finish_save`, `abort_save`, `open_text_with_dialog`, `open_base64_with_dialog`, `export_tables_stream`（纯路径读写 IPC 已删除） |
+| 对话框网关 | `dialog.rs` | 生产命令零注册——本模块是全部 `tauri-plugin-dialog` 调用的中央收口（save/open/folder/message 四个 gateway + 注入队列）；仅 webdriver 构建额外注册两条测试命令：`test_inject_dialog_result`（入队 `{canceled:true}` 或 `{path}`）、`test_reset_dialog_queue`（清空队列，用例隔离）。生产构建经 cfg 门控编译期消除，注册面不含这两条命令 |
 | 窗口 | `window.rs` | `create_sub_window` |
 
 ### 3.4 库 / Schema 定位机制（IPC 重构终态）
