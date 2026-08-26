@@ -151,8 +151,9 @@ e2e/wdio.conf.ts
 ```
 
 - Spec 写法：通过 `browser.executeAsync` + `__TAURI_INTERNALS__.invoke` 调后端；UI 用 WebdriverIO `$` / `expect`。  
-- 路径类 IPC：生产构建走 `*_with_dialog`；**webdriver 构建**保留 `write_file` / `export_app_data(path)` 等路径 API 供 E2E 使用。  
-- 原生系统对话框（另存为）在自动化里难以点选 → E2E 用路径 IPC 或 mock `invoke`。
+- 纯文件读写 IPC（`write_file` / `write_file_base64` / `read_file`）已删除（IPC 重构决策 4）：E2E 的 fixture 准备直接用 Node.js `fs`（E2E 进程本身即 Node），不再经后端写读文件。  
+- 路径类 IPC：生产构建一律走对话框系 `*_with_dialog`；webdriver 构建仅保留少量受 `require_webdriver_path_ipc` 门控的直连变体（连接/app-data 导入导出、`backup_database` / `restore_database` / `execute_sql_file`）供 E2E 驱动真实落盘链路，后续按决策 3 以 `override_path` 参数收敛。  
+- 原生系统对话框（另存为）在自动化里难以点选 → E2E 用上述门控路径 IPC 或 mock `invoke`；fixture 文件一律 Node fs。
 
 ## 6. Spec 索引（节选）
 

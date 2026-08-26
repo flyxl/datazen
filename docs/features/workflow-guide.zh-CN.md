@@ -304,7 +304,7 @@ if: "some_flag"
   id: get_orders
   sql: "SELECT order_id, amount FROM orders WHERE uid = '{{uid}}'"
   connection: "{{pg_conn}}"   # 可选
-  database: "{{db_name}}"     # 可选，执行前 use_database
+  database: "{{db_name}}"     # 可选，执行前切到该库
   timeout_secs: 10            # 可选，默认 30
   on_error:                   # 可选，覆盖全局
     strategy: skip
@@ -315,7 +315,7 @@ if: "some_flag"
 | `id` | 是 | — | 步骤 ID |
 | `sql` | 是 | — | 支持 `{{...}}`；执行前去掉末尾 `;` |
 | `connection` | 否 | 执行时传入的默认连接 | 模板解析后为 session ID 或**已保存连接的 config ID** |
-| `database` | 否 | — | 非空则先 `use_database` |
+| `database` | 否 | — | 非空则执行前切到该库（驱动层会话切换，非 IPC 调用；`use_database` IPC 已移除） |
 | `timeout_secs` | 否 | `30` | 本步超时 |
 | `on_error` | 否 | 用全局 `error_handling` | 见 [§10](#10-超时与错误处理) |
 
