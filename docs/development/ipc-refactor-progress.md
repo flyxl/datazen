@@ -22,6 +22,8 @@
 
 ## Bug 台账
 
+> 协调者：F3 测试轮不通过（F3-BUG-001 文档失实 / F3-BUG-002 覆盖率缺口），转入修复轮。
+
 > 2026-08-26 协调者：F1 测试轮不通过，BUG-001~004 置「验证不通过」，转入修复轮（流程第 4 步）。
 > 2026-08-26 复验代理（全新实例）：BUG-001~004 逐项闭环验证通过，置「已修复」；新发现既有缺陷 F1-BUG-005（连接刷新丢失已展开分类内容）登记为「待验证」，是否并入 F1 由协调者裁决。
 > 2026-08-26 协调者裁决：F1-BUG-005 为既有缺陷、非 F1 引入，**不并入已关闭的 F1**；立为独立修复循环 B5（见功能总览），排期 F7 之后、R 之前，届时按标准循环派修复代理+全新测试代理。
@@ -34,8 +36,8 @@
 | F1-BUG-003 | F1 | 【中】结构编辑器 DDL 无库定位：`TableStructureEditor` 移除 ensureDatabase 后，`plan_table_structure_changes` 仅收 dbSessionId → 跨库建表/改表可能作用于 session 活动库而非面板目标库。重现见「F1 缺陷详情」 | 已修复 | 2026-08-26 | 修复轮（同上提交）：`plan_table_structure_changes` 以同一机制处理，编辑器传入目标库。**复验通过**（同上）：wrapper+impl 均收 `database` 且走同一 `ensure_session_database`，无第二套切库语义；preview/execute 两路径透传组件 prop；DDL 语句执行不带参依赖 plan 阶段持久化 pin（设计决策 3），成立；Rust 双单测（pin 切库 / 无 pin 保持）+ 前端断言第三参 `'db_b'`/`null` |
 | F1-BUG-004 | F1 | 【低】改动 TS 文件覆盖率不达标：ConnectionNavigatorTree.tsx 行覆盖 53.13%、TableStructureEditor.tsx 37.64%（要求 ≥80%）；其余数字见「覆盖率」小节 | 已修复 | 2026-08-26 | 修复轮（同上提交）：两文件 vitest 用例扩展达 ≥80% 行覆盖（新数字见「覆盖率」表）；并补 Rust stream 路径独立切库单测。**复验通过**（同上）：全新实例重跑全量 1963 用例 + `--coverage.include` 过滤实测 ConnectionNavigatorTree.tsx 行覆盖 **96.74%**、TableStructureEditor.tsx **97.75%**，与修复轮声称数字逐位一致；ConnectionNavigatorTree.test.tsx 实测 64 用例独立运行全绿 |
 | F1-BUG-005 | F1 | 【中】【既有行为，非本轮引入】连接刷新后已展开对象分类内容丢失且不自动恢复：单库树（如 SQLite）展开 procedure 分类出现条目后，执行连接级或库级刷新，分类行仍呈展开态但条目消失、计数归零，观察窗 3s 内无任何重载。根因指向 `useExpandedDbCacheRefresh` 在 schemaEpoch 变化时 `clearCaches` 清空该会话全部 `dbObjectsMap` 后仅重载展开库的**表缓存**、不重载对象分类缓存，与 `refreshConnection.reloadExpandedObjectCategories` 的重载竞态失败。多库树表节点不受影响（走 `reloadDbTables` 恢复）。临时探针在 4ba4831a（F1 前）/046acf7a（修复轮前）/8b85cd49 三时点症状一致，判定为既有缺陷。是否纳入 F1 范围由协调者裁决；重现步骤见「F1 缺陷详情」 | 待验证 | 2026-08-26 | 复验轮新登记（2026-08-26 复验 commit 8b85cd49 时发现） |
-| F3-BUG-001 | F3 | 【低】【文档】进度文件 F3「设计决策 3」表述与实现不符：声称 filter_extension 白名单校验"保持无条件"、override 路径"同样要求携带合法 filter_extension"；实际校验仅存在于 dialog 分支（`pick_backup_save_path` 入口的 `validate_backup_filter_extension`），`override_path` 为 Some 时该函数不执行、filter_extension 完全不校验。与旧 path 版命令行为一致（旧版无此参数、对路径零校验），**非新引入放宽**；生产构建整体拒绝 override_path，无安全影响。风险在文档误导：遗留注意 3 提议未来放开 override 通道时，维护者可能误信服务端已有扩展名防线。待编码代理二选一：修正决策 3 措辞，或在 override 分支补同款校验 | 待验证 | 2026-08-26 | 复验轮登记（commit d17623d1，详见 F3 小节复验记录） |
-| F3-BUG-002 | F3 | 【低】改动 TS 文件覆盖率验收线未达：BackupWindow.tsx 行覆盖 **61.53%**（语句 60.78% / 分支 62.5% / 函数 54.34%）< 80%。未覆盖集中在 handleBackup 全函数（L233-286，含本轮合并后的 `invoke('backup_database')` 成功/取消/错误三分支——组件级零覆盖）、handleRestore 错误分支（L223-227）、URL 预填（L166-177）、选项下拉/压缩交互（L435-489）等；sqlFileExecution.ts 行覆盖 100% 达标。同 F1-BUG-004 性质：需补 BackupWindow.test.tsx 组件用例（备份 saved=true / 取消 false / 后端报错、toggleOption/compressGzip 交互等）达 ≥80% | 待验证 | 2026-08-26 | 同上 |
+| F3-BUG-001 | F3 | 【低】【文档】进度文件 F3「设计决策 3」表述与实现不符：声称 filter_extension 白名单校验"保持无条件"、override 路径"同样要求携带合法 filter_extension"；实际校验仅存在于 dialog 分支（`pick_backup_save_path` 入口的 `validate_backup_filter_extension`），`override_path` 为 Some 时该函数不执行、filter_extension 完全不校验。与旧 path 版命令行为一致（旧版无此参数、对路径零校验），**非新引入放宽**；生产构建整体拒绝 override_path，无安全影响。风险在文档误导：遗留注意 3 提议未来放开 override 通道时，维护者可能误信服务端已有扩展名防线。待编码代理二选一：修正决策 3 措辞，或在 override 分支补同款校验 | 验证不通过 | 2026-08-26 | 复验轮登记（commit d17623d1，详见 F3 小节复验记录） |
+| F3-BUG-002 | F3 | 【低】改动 TS 文件覆盖率验收线未达：BackupWindow.tsx 行覆盖 **61.53%**（语句 60.78% / 分支 62.5% / 函数 54.34%）< 80%。未覆盖集中在 handleBackup 全函数（L233-286，含本轮合并后的 `invoke('backup_database')` 成功/取消/错误三分支——组件级零覆盖）、handleRestore 错误分支（L223-227）、URL 预填（L166-177）、选项下拉/压缩交互（L435-489）等；sqlFileExecution.ts 行覆盖 100% 达标。同 F1-BUG-004 性质：需补 BackupWindow.test.tsx 组件用例（备份 saved=true / 取消 false / 后端报错、toggleOption/compressGzip 交互等）达 ≥80% | 验证不通过 | 2026-08-26 | 同上 |
 
 > BUG-001~003 与编码说明「遗留注意 1」同根因（非 query 族命令无 database 参数、入口不再预切库），但遗留说明给出的过渡缓解（"由任一带 database 的 query/stream/explain 惰性触发切库"）对编辑器主链路不生效，故按缺陷登记；由编码代理裁决在 F1 内修复（补参数/补预切）或明确降级为后续功能承接。
 
