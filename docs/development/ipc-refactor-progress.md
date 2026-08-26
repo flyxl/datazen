@@ -13,7 +13,7 @@
 | F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 未开始 | — | — |
 | F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 未开始 | — | — |
 | F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 已完成 | 本提交 | 本提交 |
-| F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 编码完成 | 本提交 | — |
+| F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 已完成 | d4e33801 | 本提交 |
 | F7 | 驱动级 SQL 定位重写（限定名内联、无会话切换；PG 系含 database+schema 双维度） | 用户新指令 2026-08-26 | 未开始 | — | — |
 | B5 | ConnectionNavigatorTree 刷新丢失已展开分类修复（=F1-BUG-005） | 既有缺陷 | 未开始 | — | — |
 | R | 回归测试 + 文档更新（架构文档/AGENTS.md）+ 合并 main | 步骤 6 | 未开始 | — | — |
@@ -325,7 +325,7 @@
 
 ## F6 删除冗余命令
 
-> 状态：**编码完成**（2026-08-26，轨道 B 第二棒编码代理）
+> 状态：**已完成**（2026-08-26，轨道 B 第二棒编码代理；同日全新测试代理复验通过，见下方复验小节）
 
 ### 范围
 
@@ -383,6 +383,30 @@
 - **F6-E2E-001** `data-sync-real.ts` SYNC-REAL-020：`invokeBackend('classify_sync_pair')` 应报 command not found（改造后负断言）
 - **F6-E2E-002** `data-sync-real.ts` SYNC-BATCH-002：同上（批量语境重复守护）
 
+### 复验（2026-08-26 全新测试代理实例，commit d4e33801）→ 通过
+
+#### 三项审查
+
+1. **删除完整性 ✅**：四命令在 src / src-tauri/src / e2e / packages 全仓清零（残留命中逐一甄别：`classify_sync_pair` 仅存 docs 历史记录（ipc-refactor-plan / commands.md / data-sync.md Legacy 行 / W2 报告）、进度文件自身、`sync/tests.rs::legacy_transfer_ir_compare_ipc_removed` 防回潮负断言字符串、e2e 两处 `expectCommandNotFound` 负断言参数；`compare_table_data` 仅存 commands.md 移除注记与计划文档；monitor_paused 仅存计划/进度文档）；lib.rs 四条注册删除经 diff 核实（L882 区 classify_sync_pair / compare_table_data + L963 区 get/set_monitor_paused）；前端 camelCase 包装零残留
+2. **孤儿清理正确性 ✅**：8 助手 + 2 常量删除后全仓零消费者——现存同名 `values_equal` / `rows_equal` 属 `data_sync/model.rs` 既有函数（签名 `(&Value, &Value)`，被 data_sync 内部消费并经 mod.rs 再导出），与所删 `commands/sync/compare.rs` 版本（`Option<&Option<Value>>` 参数）不同源；tests.rs / sql.rs 的 `row_key:` 为结构体字段非函数引用。本轮 commit **零新增** `#[allow(dead_code)]`（types.rs:104 既有注解掩盖的是 `TableMappingInput` 结构体，与本次清理无关）；保留函数消费链逐一核实：`count_rows` → tasks.rs + data_transfer/inspect.rs、`fetch_full_column_types` / `diff_table_schemas_ir` → schema_diff.rs + data_transfer、`format_ir_type` → compare.rs 自用 + tests、`value_as_u64` → compare.rs 自用 + tests。`DashboardPanel.tsx` L89/174/345 本地 `monitorPaused` useState 完好未动
+3. **impl 裁决 ✅**：d4e33801~1 全仓 grep 证实 `compare_table_data_impl` 生产引用仅定义自身（schema_diff.rs:305）与 IPC 包装调用（:448），另有 tests.rs 导入 + 调用一处；`prepare_schema_diff_plan` / `compare_table_schemas_impl` 从未引用它；现存行级比对真源为 `compare_data_sync` → `compare_data_sync_impl`（sync/mod.rs:100，lib.rs:890 注册在案）——「删包装后 impl 仅剩测试使用」裁决成立
+
+#### E2E 负断言审查 ✅
+
+`expectCommandNotFound`（dda1dfb6 引入，先于 F6 的成熟模式）直连 `__TAURI_INTERNALS__.invoke` 原生通道、绕过任何前端包装：命令若回潮注册则 invoke 成功 → message 为空串 → `toMatch(/command .+ not found|unknown command/i)` 必失败；命令存在但报其他错同样 fail-loud。唯一通过路径即「命令确不存在且 Tauri 报 not found」，防回潮成立；SYNC-REAL-020 / SYNC-BATCH-002 与同 spec SYNC-REAL-021/022、SYNC-BATCH-001/003 模式一致。
+
+#### 独立重跑结果
+
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（CARGO_TARGET_DIR=主检出 target） | **1111 passed / 0 failed / 2 ignored**（与声称一致） |
+| `npx vitest run` | **243 files / 1992 passed**，全绿（较 F5 后 241/1971 = +2 files/+21 tests，与新增两套件 14+7 吻合） |
+| `npx tsc --noEmit` | **0 错误**（exit 0） |
+| 覆盖率 dashboard.ts / schemaDiff.ts（--coverage.include 过滤实测） | 两文件均行/语句/分支/函数 **100%/100%/100%/100%** |
+
+#### 复验发现
+
+无 bug。cargo 净减 12 与逐项清单吻合（tests.rs 删 13 个测试 fn：11 助手单测 + classify_sync_pair 单测 + 被改名瘦身的 `compare_table_schemas_and_data_impl`，新增改名版 `compare_table_schemas_impl_returns_diff_for_table`）。E2E 归属不变：F6-E2E-001/002 执行归 R 阶段（需 webdriver 构建 + PG/MySQL 实例），本测试轮未执行。
 
 ## F7 驱动级 SQL 定位重写
 
