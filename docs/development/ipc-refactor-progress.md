@@ -893,6 +893,8 @@ Rust 侧以新增单测清单佐证（无 llvm-cov 工具链）：sqlite crate a
 
 ## R 回归与收尾
 
+> **状态：回归完成·待合并 main**（2026-08-26 终局收口裁定，详见文末「R 终局收口记录」；终局矩阵 ✅29 / ◐5 / ❌0 / ▲1 / ⛔7，唯一 ▲ 为重构前既有测试资产债务·已定性登记，非本分支引入）
+
 ### R-1 文档收口（2026-08-26，本轮）
 
 > 总览 R 行已同步为「进行中·文档收口」；全量回归与 E2E 执行仍待 F4 合并后统一进行。本小节仅记录文档工作，未改任何 src / src-tauri 代码。
@@ -1105,7 +1107,7 @@ Rust 侧以新增单测清单佐证（无 llvm-cov 工具链）：sqlite crate a
 1. ~~**R2-BUG-001【高】** PG 备份空标识符语句 → restore 部分失败（BACKUP-011/012 红）；修复后须重跑 backup-database.ts 全量~~ **已闭环**（commit `6b3c4bd8` + 复验 2026-08-26：空标识符三层实证清零、BACKUP-012 翻绿；BACKUP-011 残留红转移第 1a 项）
 1a. ~~**R2-BUG-003【中】（复验新增）** BACKUP-011 结构性红：无 overwrite 恢复 schema-only dump × PG catalog DDL 无 IF NOT EXISTS × 库内常驻同名关系~~ **已闭环**（协调者裁决方案 a，commit 本提交：BACKUP-011 改传 `options:['overwrite']` + BACKUP-012 自持播种；重跑 12/12 全绿；副作用披露见台账行与「R-3 资产修复记录」）
 2. ~~**R2-BUG-002【中】** app-data zip-bomb 误拒自产包（ADB-003 红）；裁决阈值或 sidecar 排除规则后重跑 app-data-backup.ts~~ **已闭环**（导出侧 sidecar 排除，commit `6b3c4bd8`；复验 ADB-003 翻绿、负样张防伪装名核实）
-3. **E2E 资产漂移群【测试资产】**：① 新建连接入口已是图标按钮（文案在 title 属性），`button*=新建连接` 类文本选择器失效——波及 path-ipc-hardening.ts PIH-006 UI 半场、ai-context-tables.ts before-all（**未处置**，非本轮范围）；② ~~ADB-001 仍断言 ConnectionPage.tsx 含 `menu:export/import-connections` 字面量~~ **已修复**（监听器实际在 MainPage.tsx L61-82，迁移实发生于 commit `e883f834`——F2 改 Page 同日的 in-page dialog 提交，早于 F4 的 `4d0fec83`；spec 断言已按组件归属拆分双文件，app-data-backup.ts 8/8 全绿）；③ ~~sql-query.ts before-all 等 `conn-toolbar-new-query` 20s 超时~~ **已修复·定位器/载体过时而非产品缺陷**（根因查明：连接成功后工作区落在 ConnectionWorkspaceHome，其「新建查询」快捷卡是首入口，ContentToolbar 的该按钮要等首个内容面板打开后才挂载——原 before-all 在面板存在前等按钮属死等；helpers.openQueryTab 增加工作区首页快捷卡回退、before-all 移除不可能满足的预等待，sql-query.ts 复跑 26/26 全绿）；④ ~~mysql/postgres-multi-database.ts 多库树仅渲染单库~~ **已修复·纯定位器过时**（树重构后 DB 节点带 `data-tree-node="db"`+`data-db-name` 稳定属性且类名改 `text-[13px]`，旧 `text-sm && !text-[13px]` 启发式零命中造成「仅渲染单库」假象、后端 get_databases 一直正常；两 spec 定位器改用 data 属性，PG/MySQL 各 3/3 全绿）
+3. **E2E 资产漂移群【测试资产】**：① 新建连接入口已是图标按钮（文案在 title 属性），`button*=新建连接` 类文本选择器失效——波及 path-ipc-hardening.ts PIH-006 UI 半场、ai-context-tables.ts before-all——**已定性·登记不修（重构前既有债务，终局收口轮裁定）**：git -S 追溯断点为 **main 提交 `bd5b2673`（2026-08-18「统一导航树」）将入口图标化**，早于分支分叉点 `986f4fa6`（08-25），非 F1-F7/B5 任一提交所致（F2 仅改 PIH-006 docstring、F4/F5 未触及定位器行；ai-context-tables 旧定位器自诞生提交 `cb24f5a8`（08-09，main）未变）；且同类失效 `button*=action.newConnection` 定位器遍布 ≥11 个 spec 文件（sqlite/connection-validation/backup-window/schema-diff-window/object-browser/client-parity/host-contract-matrix/data-sync-window/data-transfer-window/hotkeys 等），仅修两个会掩盖债务全貌——留待独立资产修复轮统一迁移至仓库既有先例 `button[title="${t('main.newConnection')}"]`（main-window/homepage-features/hotkeys/contract open-fixture 已用）；② ~~ADB-001 仍断言 ConnectionPage.tsx 含 `menu:export/import-connections` 字面量~~ **已修复**（监听器实际在 MainPage.tsx L61-82，迁移实发生于 commit `e883f834`——F2 改 Page 同日的 in-page dialog 提交，早于 F4 的 `4d0fec83`；spec 断言已按组件归属拆分双文件，app-data-backup.ts 8/8 全绿）；③ ~~sql-query.ts before-all 等 `conn-toolbar-new-query` 20s 超时~~ **已修复·定位器/载体过时而非产品缺陷**（根因查明：连接成功后工作区落在 ConnectionWorkspaceHome，其「新建查询」快捷卡是首入口，ContentToolbar 的该按钮要等首个内容面板打开后才挂载——原 before-all 在面板存在前等按钮属死等；helpers.openQueryTab 增加工作区首页快捷卡回退、before-all 移除不可能满足的预等待，sql-query.ts 复跑 26/26 全绿）；④ ~~mysql/postgres-multi-database.ts 多库树仅渲染单库~~ **已修复·纯定位器过时**（树重构后 DB 节点带 `data-tree-node="db"`+`data-db-name` 稳定属性且类名改 `text-[13px]`，旧 `text-sm && !text-[13px]` 启发式零命中造成「仅渲染单库」假象、后端 get_databases 一直正常；两 spec 定位器改用 data 属性，PG/MySQL 各 3/3 全绿）
 4. ~~**注册面文档漂移 2 处**：commands.md 备份行（应改写为双命令终态并删「待随合入」指针）、配置行导入导出族简写（应如实列 9 命令）~~ **已闭环**（commit `6b3c4bd8` 回写两行；复验对照 lib.rs 注册面逐名核对一致——备份 2 名、配置导入导出族 9 名，旧双轨八名 grep 0 命中且有 backup.rs/config.rs/pathIpcWiring.test.ts 三处守护测试钉死）
 5. **环境/流程备注**：e2e/.env 缺 `*_RO_PASSWORD` 使 run.mjs 内建 setup-sync-dbs 步骤每次告警（手动补齐即过）；worktree 共享 node_modules 符号链接会触发 pnpm verify-deps 的 purge 提示（本轮以本地化安装规避，勿对该提示选确认以免波及共享目录）
 
@@ -1203,3 +1205,48 @@ Rust 侧以新增单测清单佐证（无 llvm-cov 工具链）：sqlite crate a
 - R2-BUG-003 → **已修复**（台账行同步）；遗留 1a/②③④ → 已闭环；① 保持待处理
 - 回归矩阵影响：▲ 5→1（多库×2、sql-query 解锁转 ✅）、❌ 1→0、✅ 23→29（BACKUP-011 计入）
 - **仍未达「回归完成·待合并 main」**：须下一轮全新实例复验收口（含 ① 与 PIH-006/ai-context-tables 半场、F1-E2E-004 等解锁用例的全量重跑确认）
+
+### R 终局收口记录（2026-08-26，R 阶段最终收口代理·全新实例，被测 HEAD `bdd43e14`，仅改测试资产（无）+ 本进度文件）
+
+> 判定：**回归完成·待合并 main**。R 阶段全部可执行用例绿、缺陷台账清零、唯一遗留①已按判定规则处置完毕。
+
+#### 一、遗留① 处置：定性为重构前既有债务，登记不修
+
+按任务书判定规则执行 `git log -S` 成因追溯，证据链如下：
+
+| 环节 | 事实 |
+|------|------|
+| 断点提交 | **`bd5b2673`**（2026-08-18 14:33「feat: unified navigator tree with single virtualizer and UX improvements」）：新建连接入口由带可见文案的文本按钮改为纯图标 `<button title={t('main.newConnection')}>`（ConnectionNavigatorTree.tsx），`button*=文本` 选择器自此零命中 |
+| 归属判定 | 该提交在 **origin/main 上**，早于分支分叉点 `986f4fa6`（2026-08-25）→ **非 F1-F7/B5 任一重构提交所致** |
+| F 轨清白核查 | F2 `823516c2` 仅改 PIH-006 docstring；F4 `4d0fec83` 未触及该 spec 定位器行；F5 `8f9e4a9c` 未触及 ai-context-tables 定位器行——其 `button*=${t('action.newConnection')}` 自诞生提交 `cb24f5a8`（2026-08-09，main）从未改动 |
+| 波及面核查 | 同类失效定位器遍布 **≥11 个 spec 文件**（sqlite / connection-validation / backup-window / schema-diff-window / object-browser / client-parity / host-contract-matrix / data-sync-window / data-transfer-window / hotkeys 等）；仓库已有标准修法先例 `button[title="${t('main.newConnection')}"]`（main-window.ts L40、homepage-features.ts、hotkeys.ts、contract/open-fixture.ts 均在用） |
+
+**处置结论：不修，如实登记。** 理由：(a) 判定规则以成因为准——系 main 既有债务而非重构期 UI 变更；(b) 修复本身虽 ≤10 行/文件且模式现成，但仅修波及两 spec 会掩盖 ≥11 文件的债务全貌，正确归宿是独立的测试资产修复轮统一迁移 title 属性定位器（与 F 轨无关，不阻塞本分支合并）。影响登记：PIH-006 源码断言半场维持 ✅（R-2 已证）、UI 半场与 CTX-T01~T06 维持 ▲；两者均非产品缺陷、非本分支回归。
+
+#### 二、独立抽验 R-3 成果（webdriver 构建 `target/debug/bundle/macos/DataZen.app` 复用，`node e2e/run.mjs --skip-build --spec backup-database.ts,sql-query.ts`）
+
+| Spec | 结果 |
+|------|------|
+| backup-database.ts | **12/12 ✅**——含 BACKUP-011（方案 a overwrite 恢复）与 BACKUP-012（自播种 + 行数不翻倍断言），BACKUP-010 负例同绿 |
+| sql-query.ts | **26/26 ✅**——SQ-001~021/SQ-CTX/BIND/EXPLAIN 全绿（含流式不截断、取消、选中执行） |
+
+`Spec Files: 2 passed, 2 total (100%)`，与 R-3 声称逐位一致 → **R-3 五项修复（BACKUP-011/012、ADB-001、③④）独立复核通过**。capabilities 无 redis 报错（default.json 已与主检出对齐，gitignored codegen 不入提交）。
+
+#### 三、终局回归矩阵
+
+| 维度 | 终态 | 说明 |
+|------|------|------|
+| ✅ 执行通过 | **29** | 含 R-3 解锁的多库×2、sql-query 26 例与 BACKUP-011 |
+| ◐ 部分通过 | **5** | 信封层/单测已钉死的既定口径残项（stream 探针、生产冒烟等），历轮登记在案 |
+| ❌ 失败 | **0** | R2-BUG-001/002/003 全部修复并经独立复验 |
+| ▲ 未执行（载体/资产） | **1** | 即遗留①两处半场——终局定性：重构前既有资产债务（见本节一），非本分支引入、非产品缺陷 |
+| ⛔ 未执行（环境不可达） | **7** | adb 真机 ×4、SQL Server / ClickHouse / DuckDB ×3，历来如此 |
+| 附增探针 | 2 ✅ | import 确认取消、三删除命令运行时负断言 |
+
+单元级基线（R-2/R-3 两轮逐位一致，本轮未触代码不重复执行）：`cargo test -p datazen --lib` 1139 passed / 0 failed / 2 ignored；`npx vitest run` 247 文件 / 2033 用例全绿；`npx tsc --noEmit` 0 错误。
+
+#### 四、终局判定
+
+- **达成「回归完成·待合并 main」**：❌=0 且缺陷台账清零；✅29 覆盖全部重构面（F1-F7/B5 注册面变更、语义变更、删除命令负断言）；唯一 ▲ 与 ⛔ 均为登记在案的非阻塞项（前者重构前债务、后者环境限制），合并本分支不劣化任何现状。
+- 非阻塞移交项（后续独立处理，不属 R 阶段）：**测试资产修复轮**——≥11 个 spec 的 `button*=` 新建连接定位器统一迁移 `button[title=…]`（含 PIH-006 UI 半场与 ai-context-tables 解锁）；e2e/.env 补 `*_RO_PASSWORD` 消 setup 告警。
+- 边界声明：本轮零代码改动（两 spec 未修）、仅更新本进度文件；未 add 未跟踪文档（dev-workflow.txt / ipc-refactor-plan.md 保持 untracked）；node_modules 软链未 install。
