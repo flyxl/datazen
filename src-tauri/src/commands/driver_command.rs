@@ -7,8 +7,8 @@ use super::AppState;
 use crate::mcp::permission::McpPermissionMode;
 use datazen_driver_api::{
     check_command_access, validate_command_input, CommandAccessLevel, CommandResult,
-    ConnectionHandle, DatabaseDriver, DriverCommandDefinition, QueryStreamCallback,
-    QueryStreamEvent,
+    ConnectionHandle, DatabaseDriver, DriverCommandDefinition, DriverSaveDialogSpec,
+    QueryStreamCallback, QueryStreamEvent,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
@@ -234,7 +234,9 @@ pub(crate) async fn execute_driver_command_impl(
     state: &AppState,
     request: ExecuteDriverCommandRequest,
 ) -> Result<CommandResult, CommandError> {
-    execute_driver_command_with_mode(state, request, None).await
+    // Internal reuse (query/schema IPCs, MCP tools): never shows a native
+    // dialog — commands declaring a save dialog are rejected here.
+    execute_driver_command_with_mode(state, request, None, None).await
 }
 
 pub(crate) async fn execute_driver_command_stream_impl(
@@ -395,6 +397,7 @@ pub(crate) async fn execute_driver_command_with_mode(
     state: &AppState,
     mut request: ExecuteDriverCommandRequest,
     permission_mode: Option<McpPermissionMode>,
+    dialog: Option<&tauri::AppHandle>,
 ) -> Result<CommandResult, CommandError> {
     let (driver, handle, bound) = resolve_command_driver(
         state,
@@ -416,6 +419,18 @@ pub(crate) async fn execute_driver_command_with_mode(
             "Command '{}' requires a connection",
             request.command
         )));
+    }
+
+    // Save-dialog commands are interactive-only: the host thin shell pops the
+    // native dialog after execution, which is impossible headless (MCP /
+    // workflow / internal reuse). Reject before doing any work.
+    if definition.metadata.save_dialog.is_some() {
+        if permission_mode.is_some() || dialog.is_none() {
+            return Err(CommandError::Validation(format!(
+                "Command '{}' requires an interactive session to show its save dialog",
+                request.command
+            )));
+        }
     }
 
     // F1: session-bound commands honor an optional explicit database pin and
@@ -514,6 +529,16 @@ pub(crate) async fn execute_driver_command_with_mode(
                     }
                 }
             }
+            // Generic host thin shell for metadata-declared save dialogs: no
+            // driver-type branching — any driver opting in gets the same flow.
+            if let Some(spec) = definition.metadata.save_dialog.as_ref() {
+                return finish_save_dialog(
+                    dialog.expect("save dialog checked above"),
+                    spec,
+                    result,
+                )
+                .await;
+            }
             Ok(result)
         }
         Err(err) => {
@@ -536,6 +561,82 @@ pub(crate) async fn execute_driver_command_with_mode(
     }
 }
 
+/// Thin shell shared by every command whose metadata declares a save dialog:
+/// decode the command's byte payload, ask the user where to store it through a
+/// native save dialog, write the bytes and replace the result data with
+/// `{ <resultPathField>: savedPath | null }` (`null` on cancel). The absolute
+/// path is user-chosen in an OS dialog, mirroring the former dedicated
+/// `*_with_dialog` IPCs.
+async fn finish_save_dialog(
+    app: &tauri::AppHandle,
+    spec: &DriverSaveDialogSpec,
+    mut result: CommandResult,
+) -> Result<CommandResult, CommandError> {
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+    use tauri_plugin_dialog::DialogExt;
+
+    if spec.extensions.is_empty() {
+        return Err(CommandError::Validation(
+            "Save-dialog command must declare at least one file extension".into(),
+        ));
+    }
+    let ext_list: Vec<&str> = spec.extensions.iter().map(String::as_str).collect();
+
+    let data_base64 = result
+        .data
+        .get(&spec.data_base64_field)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            CommandError::Internal(format!(
+                "Save-dialog command did not return '{}' byte data",
+                spec.data_base64_field
+            ))
+        })?
+        .to_string();
+    let bytes = BASE64
+        .decode(data_base64.trim())
+        .map_err(|e| CommandError::Internal(format!("Command returned invalid base64: {e}")))?;
+    let file_name = result
+        .data
+        .get(&spec.file_name_field)
+        .and_then(serde_json::Value::as_str)
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or("download")
+        .to_string();
+
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter(&spec.filter_name, &ext_list)
+        .set_file_name(&file_name)
+        .blocking_save_file();
+    let saved = match picked {
+        None => None,
+        Some(fp) => {
+            let path = super::file::dialog_path_to_buf(fp)?;
+            super::file::validate_extension(&path, &ext_list)?;
+            let byte_count = bytes.len();
+            tokio::fs::write(&path, bytes)
+                .await
+                .cmd_err("execute_driver_command")?;
+            tracing::info!(
+                bytes = byte_count,
+                saved = %path.display(),
+                "driver command payload saved via native dialog"
+            );
+            Some(path.to_string_lossy().into_owned())
+        }
+    };
+
+    let mut data = serde_json::Map::new();
+    data.insert(
+        spec.result_path_field.clone(),
+        saved.map(serde_json::Value::String).unwrap_or_default(),
+    );
+    result.data = serde_json::Value::Object(data);
+    Ok(result)
+}
+
 /// Discover commands from a Driver type. No live Connection is required.
 #[tauri::command]
 pub async fn get_driver_commands(
@@ -556,10 +657,12 @@ pub async fn get_connection_commands(
 
 #[tauri::command]
 pub async fn execute_driver_command(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: ExecuteDriverCommandRequest,
 ) -> Result<CommandResult, CommandError> {
-    execute_driver_command_impl(&state, request).await
+    // GUI IPC passes the AppHandle so metadata-declared save dialogs can run.
+    execute_driver_command_with_mode(&state, request, None, Some(&app)).await
 }
 
 #[tauri::command]
@@ -808,6 +911,7 @@ mod tests {
                 database: None,
             },
             Some(crate::mcp::permission::McpPermissionMode::ReadOnly),
+            None,
         )
         .await
         .unwrap_err();
@@ -892,6 +996,58 @@ mod tests {
         // Unbound driverType requests have no session to pin — the explicit
         // database must be ignored, not error.
         assert!(test.mock.use_database_calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn save_dialog_commands_rejected_without_interactive_handle() {
+        use datazen_driver_api::{
+            CommandCategory, DriverCommandDefinition, DriverCommandMetadata, DriverSaveDialogSpec,
+        };
+
+        let pull = DriverCommandDefinition {
+            id: "pull_payload".into(),
+            name: "Pull Payload".into(),
+            description: None,
+            input_schema: serde_json::json!({ "type": "object" }),
+            output_schema: None,
+            permissions: vec![],
+            metadata: DriverCommandMetadata::new(CommandCategory::Io, CommandAccessLevel::Write)
+                .unbound()
+                .hide_from_workflow()
+                .save_dialog(DriverSaveDialogSpec {
+                    file_name_field: "fileName".into(),
+                    data_base64_field: "dataBase64".into(),
+                    filter_name: "SQLite Database".into(),
+                    extensions: vec!["db".into()],
+                    result_path_field: "savedPath".into(),
+                }),
+        };
+        let test = crate::testing::app_state::TestAppState::with_options(
+            crate::testing::mock_driver::MockDriverOptions {
+                extra_commands: vec![pull],
+                ..Default::default()
+            },
+        )
+        .await;
+
+        // Internal reuse path (`execute_driver_command_impl`): no AppHandle →
+        // the command must be rejected before any execution happens.
+        let err = execute_driver_command_impl(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                db_session_id: None,
+                driver_type: Some("postgres".into()),
+                command: "pull_payload".into(),
+                input: serde_json::json!({}),
+                database: None,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("interactive session"),
+            "unexpected error: {err}"
+        );
     }
 
     #[tokio::test]

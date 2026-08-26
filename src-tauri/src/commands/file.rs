@@ -24,7 +24,7 @@ fn deny_path_ipc() -> CommandError {
     CommandError::Validation("Direct path file IPC is disabled; use *_with_dialog commands".into())
 }
 
-fn validate_extension(path: &Path, allowed: &[&str]) -> Result<(), CommandError> {
+pub(crate) fn validate_extension(path: &Path, allowed: &[&str]) -> Result<(), CommandError> {
     let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
         return Err(CommandError::Validation(
             "File must have an extension".into(),
@@ -48,7 +48,9 @@ fn validate_file_path(path: &Path) -> Result<(), CommandError> {
     validate_extension(path, ALLOWED_EXTENSIONS)
 }
 
-fn dialog_path_to_buf(path: tauri_plugin_dialog::FilePath) -> Result<PathBuf, CommandError> {
+pub(crate) fn dialog_path_to_buf(
+    path: tauri_plugin_dialog::FilePath,
+) -> Result<PathBuf, CommandError> {
     path.into_path()
         .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))
 }

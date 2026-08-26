@@ -34,6 +34,31 @@ pub enum CommandCategory {
     Io,
 }
 
+/// Declarative native save dialog attached to a command (host thin shell).
+///
+/// Drivers cannot pop OS dialogs themselves: instead a command returns its
+/// payload as `{ <fileNameField>: string, <dataBase64Field>: base64-bytes }`
+/// and declares this spec. When the host executes the command through an
+/// interactive `execute_driver_command` call it — generically, without any
+/// driver-specific branch — shows a native save dialog seeded by
+/// `fileNameField`, writes the decoded bytes to the picked location and
+/// replaces the result data with `{ <resultPathField>: savedPath | null }`
+/// (`null` when the user cancelled).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriverSaveDialogSpec {
+    /// Key in the command result data holding the suggested file name.
+    pub file_name_field: String,
+    /// Key in the command result data holding base64-encoded file bytes.
+    pub data_base64_field: String,
+    /// Dialog filter label, e.g. "SQLite Database".
+    pub filter_name: String,
+    /// Allowed/advertised extensions (without dot), e.g. ["db", "sqlite"].
+    pub extensions: Vec<String>,
+    /// Key written back into the result data with the saved absolute path.
+    pub result_path_field: String,
+}
+
 /// Optional command metadata. Missing fields deserialize to workflow/UI-enabled defaults.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,6 +79,12 @@ pub struct DriverCommandMetadata {
     /// When false, the host may execute this command without a live Connection.
     #[serde(default = "default_true")]
     pub requires_connection: bool,
+    /// When set, the host thin shell saves the command's returned bytes through
+    /// a native save dialog (see [`DriverSaveDialogSpec`]). Commands declaring
+    /// this are interactive-only: MCP / workflow / headless callers are
+    /// rejected before execution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub save_dialog: Option<DriverSaveDialogSpec>,
 }
 
 impl Default for DriverCommandMetadata {
@@ -66,6 +97,7 @@ impl Default for DriverCommandMetadata {
             deprecated: false,
             replaced_by: None,
             requires_connection: true,
+            save_dialog: None,
         }
     }
 }
@@ -86,6 +118,13 @@ impl DriverCommandMetadata {
 
     pub fn unbound(mut self) -> Self {
         self.requires_connection = false;
+        self
+    }
+
+    /// Declare that the host must save this command's byte payload through a
+    /// native save dialog (generic mechanism — see [`DriverSaveDialogSpec`]).
+    pub fn save_dialog(mut self, spec: DriverSaveDialogSpec) -> Self {
+        self.save_dialog = Some(spec);
         self
     }
 }
@@ -450,6 +489,39 @@ mod tests {
             .map(|d| d.id)
             .collect();
         assert_eq!(ids, vec!["query"]);
+    }
+
+    #[test]
+    fn save_dialog_spec_round_trips_and_defaults_to_none() {
+        // Metadata without a spec omits the key entirely (backward compatible).
+        let plain = serde_json::to_value(DriverCommandMetadata::default()).unwrap();
+        assert!(plain.get("saveDialog").is_none());
+        assert_eq!(plain["requiresConnection"], serde_json::json!(true));
+
+        let metadata = DriverCommandMetadata::new(CommandCategory::Io, CommandAccessLevel::Write)
+            .unbound()
+            .hide_from_workflow()
+            .save_dialog(DriverSaveDialogSpec {
+                file_name_field: "fileName".into(),
+                data_base64_field: "dataBase64".into(),
+                filter_name: "SQLite Database".into(),
+                extensions: vec!["db".into(), "sqlite".into(), "sqlite3".into()],
+                result_path_field: "savedPath".into(),
+            });
+        let encoded = serde_json::to_value(&metadata).unwrap();
+        assert_eq!(encoded["requiresConnection"], false);
+        assert_eq!(encoded["category"], "io");
+        assert_eq!(encoded["workflow"], false);
+        assert_eq!(encoded["saveDialog"]["fileNameField"], "fileName");
+        assert_eq!(encoded["saveDialog"]["dataBase64Field"], "dataBase64");
+        assert_eq!(encoded["saveDialog"]["filterName"], "SQLite Database");
+        assert_eq!(
+            encoded["saveDialog"]["extensions"],
+            serde_json::json!(["db", "sqlite", "sqlite3"])
+        );
+        assert_eq!(encoded["saveDialog"]["resultPathField"], "savedPath");
+        let decoded: DriverCommandMetadata = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded, metadata);
     }
 
     #[test]

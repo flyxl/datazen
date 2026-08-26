@@ -33,10 +33,30 @@ describe('path IPC frontend wiring', () => {
     expect(workflowPage).toContain('openWorkflowsDir');
   });
 
-  it('adb command wrapper exposes dialog IPC', () => {
+  it('adb command wrapper routes through execute_driver_command (decision 2)', () => {
     const src = readSrc('commands/adb.ts');
-    expect(src).toContain("'adb_pull_database_with_dialog'");
-    expect(src).toContain('adbPullDatabaseWithDialog');
+    // Unified Driver Command API entry point — no dedicated host adb IPCs.
+    expect(src).toContain('driverCommands.execute');
+    expect(src).toContain("driverType: ADB_DRIVER_TYPE");
+    expect(src).toContain("'adb_pull_database'");
+    expect(src).toContain('savedPath');
+    // The legacy direct Tauri IPC invocations must be gone.
+    expect(src).not.toContain('@tauri-apps/api/core');
+    expect(src).not.toMatch(/invoke[<(]/);
+
+    const hostLib = fs.readFileSync(
+      path.join(ROOT, '../src-tauri/src/lib.rs'),
+      'utf8',
+    );
+    expect(hostLib).not.toContain('adb_list_packages');
+    expect(hostLib).not.toContain('adb_pull_database');
+
+    const hostMod = fs.readFileSync(
+      path.join(ROOT, '../src-tauri/src/commands/mod.rs'),
+      'utf8',
+    );
+    expect(hostMod).not.toContain('mod adb');
+    expect(fs.existsSync(path.join(ROOT, '../src-tauri/src/commands/adb.rs'))).toBe(false);
   });
 
   it('backup command wrapper exposes encryption key dialog IPC', () => {

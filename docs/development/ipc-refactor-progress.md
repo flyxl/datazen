@@ -9,7 +9,7 @@
 | # | 功能 | 对应决策 | 状态 | 编码 commit | 测试 commit |
 |---|------|---------|------|------------|------------|
 | F1 | 废弃 `use_database`，query/stream/explain 显式传参 | 决策 1 | 已完成 | 34a28420 | 3d23cfd1 · 8b85cd49 · 本提交 |
-| F2 | ADB 命令迁移 SQLite 驱动（DriverCommandDefinition） | 决策 2 | 未开始 | — | — |
+| F2 | ADB 命令迁移 SQLite 驱动（DriverCommandDefinition） | 决策 2 | 编码完成 | 本提交 | — |
 | F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 未开始 | — | — |
 | F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 未开始 | — | — |
 | F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 未开始 | — | — |
@@ -227,7 +227,44 @@
 ---
 
 ## F2 ADB 迁移 SQLite 驱动
-（占位）
+
+### 范围
+- **sqlite 驱动 crate**（`packages/drivers/sqlite/src/adb.rs` 新增）：三个 DriverCommandDefinition（`adb_list_packages` / `adb_list_databases` / `adb_pull_database`，均 `requiresConnection = false`、`hide_from_workflow`）+ `execute_command` 分派（无连接会话，忽略 handle）；解析/校验纯函数与单测自 Host `commands/adb.rs` 迁入；原 webdriver-gated 直连路径变体不迁移
+- **driver-api**：`DriverCommandMetadata` 新增可选 `save_dialog: Option<DriverSaveDialogSpec>`（字段 `fileNameField` / `dataBase64Field` / `filterName` / `extensions` / `resultPathField`）。serde default + `skip_serializing_if`，向后兼容，不 bump PROTOCOL_VERSION
+- **Host**：删除 `src-tauri/src/commands/adb.rs` 及 lib.rs 四条注册、`mod.rs` 导出；`execute_driver_command` IPC 增加 `AppHandle` 参数，新增通用薄壳 `finish_save_dialog`；内部复用路径 `execute_driver_command_impl` 不携带 AppHandle
+- **前端**：`src/commands/adb.ts` 改走 `driverCommands.execute({ driverType: "sqlite", … })`，导出函数名与 TS 类型保持不变（`FileConnectionFields.tsx` 零改动）；`types/index.ts` 补 `DriverSaveDialogSpec`
+- **守护测试改写**：`pathIpcWiring.test.ts` 与 `e2e/specs/path-ipc-hardening.ts` PIH-006 改断言新形态（execute_driver_command 路径 + Host 无 adb 注册残留）
+
+### Dialog 方案选择（决策记录）
+选「命令元数据声明需要保存对话框」机制，叠加「命令返回建议文件名 + 字节数据流」形态：
+1. 宿主对 `requiresConnection = false` 命令的执行路径（`resolve_command_driver` unbound 分支）原本没有 AppHandle/dialog 回调，驱动层无法弹原生框——排除了"驱动直接弹框"
+2. UI 需要拿回 savedPath 回填连接表单（原 `form.setDatabase(saved)` 语义）；现有通用 `save_base64_with_dialog` 只返回 bool 且扩展白名单不含 db/sqlite/sqlite3，无法等价替换，故不复用该 IPC
+3. 形态：驱动命令返回 `{ fileName, dataBase64 }`（内存占用与原实现一致——原实现同样是先整读字节再弹框）；宿主 `finish_save_dialog` 弹原生保存框 → 按声明扩展名校验 → 落盘 → 结果替换为 `{ savedPath: string | null }`，取消返回 null（与原 `*_with_dialog` 语义一致）
+4. 通用性红线满足：流程完全由命令元数据驱动，任何驱动/插件声明 spec 即可复用同一宿主薄壳，Host 无任何 `pluginId === 'sqlite'` 分支；非交互调用面（MCP / workflow / 内部复用）在执行前即拒绝（workflow 侧另被 `hide_from_workflow` 双重挡住），不会出现无头阻塞弹框
+5. E2E 说明：真实拉取需 Android 设备，本就无法自动化；PIH-006 改为源码断言 + ADB 面板 UI 探活。若后续决策 3 的 override_path 模式推广到驱动命令，可再补测试注入通道
+
+### 行为等价性说明
+- 列表命令输出 JSON 键保持原样（`package_name`、`path`/`name`），前端类型零改动
+- adb 二进制缺失：spawn NotFound 映射为 `DriverError::InvalidConfig`，文案与原 `CommandError::NotConfigured` 一致（"adb command not found. Please install Android SDK Platform Tools…"）；经 `From<DriverError>` 展示时多出 "Invalid configuration: " 前缀（轻微展示差异，语义与安装指引一致）
+- 输入校验（包名字符白名单、dbPath 穿越/空字节拒绝）在 spawn 之前执行，与原实现同序
+
+### 单测清单（编码轮）
+- driver-api：`save_dialog_spec_round_trips_and_defaults_to_none`（serde 往返 + 缺省省略）
+- datazen-driver-sqlite `adb::tests`（13 个）：解析×2、包名合法/非法×2、dbPath 穿越、default_pull_file_name、定义完备性（ids 精确匹配）、unbound/hide-from-workflow/save-dialog 元数据断言、pull input schema required、unknown command → Unsupported、缺参 → InvalidConfig、pull 先校验后 spawn、缺失二进制 → 安装指引文案
+- Host `driver_command::tests`：`save_dialog_commands_rejected_without_interactive_handle`
+
+### 测试结果（编码轮）
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen-driver-sqlite` | lib 29 passed（含 adb 13）/ tests 2+3 passed，全绿 |
+| `cargo test -p datazen-driver-api` | 83 passed，全绿 |
+| `cargo test -p datazen --lib` | 1130 passed / 0 failed / 2 ignored（较重构前 -9 = 删除的 Host adb 测试，+1 = 新增守卫测试） |
+| `npx vitest run` | 240 files / 1963 passed，全绿（含改写后的 pathIpcWiring） |
+| `npx tsc --noEmit` | 0 错误 |
+
+### 遗留注意
+1. `execute_driver_command_stream` 仅支持 query_stream，天然不受 save_dialog 影响；未来若开放更多流式命令需同步考虑对话框语义
+2. 第三方插件驱动若声明 save_dialog，宿主当前不做额外权限校验（信任插件声明的过滤器/扩展名，路径仍由用户在 OS 对话框中选定）；插件权限模型完善时可收口
 
 ## F3 backup/restore 合并 + restore_sql_file
 （占位）

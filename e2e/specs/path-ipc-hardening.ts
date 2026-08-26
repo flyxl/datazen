@@ -10,7 +10,8 @@
  * PIH-003  export_connections + import_connections_preview round-trip
  * PIH-004  Settings logging uses open_log_dir (source + button visible)
  * PIH-005  Settings AI context uses open_context_dir (source + button visible)
- * PIH-006  ADB pull uses dialog command (source + ADB UI has no path field)
+ * PIH-006  ADB pull saves via the host save dialog through execute_driver_command
+ *          (decision 2; source + ADB UI has no path field)
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -172,9 +173,20 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
     expect(fieldsSrc).not.toContain('localSavePath');
     expect(fieldsSrc).not.toContain('adbLocalPath');
 
+    // Decision 2: adb helpers route through execute_driver_command; the
+    // dedicated host IPCs are gone.
     const adbSrc = fs.readFileSync(ADB_TS, 'utf8');
-    expect(adbSrc).toContain('adb_pull_database_with_dialog');
-    expect(adbSrc).toContain('adbPullDatabaseWithDialog');
+    expect(adbSrc).toContain('driverCommands.execute');
+    expect(adbSrc).toContain("'adb_pull_database'");
+    expect(adbSrc).toContain('savedPath');
+    expect(adbSrc).not.toMatch(/invoke[<(]/);
+
+    const hostLib = fs.readFileSync(
+      path.join(ROOT, 'src-tauri/src/lib.rs'),
+      'utf8',
+    );
+    expect(hostLib).not.toContain('adb_list_packages');
+    expect(hostLib).not.toContain('adb_pull_database');
 
     await browser.url('tauri://localhost');
     await browser.pause(1000);
