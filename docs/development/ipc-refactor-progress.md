@@ -12,7 +12,7 @@
 | F2 | ADB 命令迁移 SQLite 驱动（DriverCommandDefinition） | 决策 2 | 编码完成 | 本提交 | — |
 | F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 未开始 | — | — |
 | F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 未开始 | — | — |
-| F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 未开始 | — | — |
+| F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 编码完成 | 本提交 | — |
 | F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 未开始 | — | — |
 | F7 | 驱动级 SQL 定位重写（限定名内联、无会话切换；PG 系含 database+schema 双维度） | 用户新指令 2026-08-26 | 未开始 | — | — |
 | B5 | ConnectionNavigatorTree 刷新丢失已展开分类修复（=F1-BUG-005） | 既有缺陷 | 未开始 | — | — |
@@ -273,7 +273,30 @@
 （占位）
 
 ## F5 删除纯文件读写 IPC
-（占位）
+
+### 范围
+- **Host**：删除 `src-tauri/src/commands/file.rs` 的 `write_file` / `write_file_base64` / `read_file` 三个 `#[tauri::command]` 及内部实现 `write_file_impl` / `read_file_impl`、webdriver 门控辅助 `deny_path_ipc`、仅为其服务的 `validate_file_path`（含专属单测 ×4）；删除门控单测 ×3（`path_ipc_{write_file,read_file,write_file_base64}_gated_without_webdriver`）；`lib.rs` 删除三条注册。dialog 系列（save/open/begin/append/finish/abort/export_tables_stream）全部保留，`ALLOWED_EXTENSIONS` / `validate_extension` 仍被对话框过滤器使用故保留
+- **前端**：删除 `src/commands/file.ts` 的 `writeFile` / `writeFileBase64` / `readFile` 三包装；新增 `src/commands/__tests__/file.test.ts`（8 用例）覆盖全部现存封装的参数透传与 `onExportProgress` 订阅
+- **E2E**：`e2e/specs/ai-context.ts`（2 处）与 `e2e/specs/ai-context-tables.ts`（1 处）fixture 准备由 `invokeBackend('write_file')` 改为 Node.js `fs.writeFileSync()`；目标路径逻辑不变（仍写入 `context_get_dir` 返回的应用上下文目录），仅换写入手段（E2E 进程即 Node）
+- **文档**：`docs/architecture/backend/commands.md`「文件」行更新为对话框系列清单并注明纯路径读写 IPC 已删
+
+### themePackApply 甄别结论
+`src/lib/themePackApply.ts` L164 的 `readFile(relPath)` 是本地函数参数（`rewriteCssUrls(css, readFile: PackFileReader)` 的回调形参），非 `commands/file.ts` 的 IPC 封装，与本任务无关，未改动。全仓 Grep 确认三包装在 src/ 内无其他业务调用方。
+
+### 守护测试说明
+`src/commands/__tests__/pathIpcWiring.test.ts` 以当前分支内容核实：不含三包装相关断言（F2 改写后仅覆盖 ADB/dialog/open_* 路径），无需更新。另以全仓 grep 验证 `'write_file'` / `'write_file_base64'` / `'read_file'` / `writeFileBase64` / `fileCommands.writeFile` / `fileCommands.readFile` 在 src、src-tauri/src、e2e、packages/extensions 清零。
+
+### 测试结果（编码轮）
+
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（共享主检出 target） | 1123 passed / 0 failed / 2 ignored（较 F2 后 1130 −7 = 删除的 validate_file_path×4 + 门控×3 专属单测） |
+| `npx vitest run` | 241 files / 1971 passed，全绿（+1 file/+8 tests = 新增 file.test.ts） |
+| `npx tsc --noEmit` | 0 错误 |
+| 覆盖率（改动 TS：`src/commands/file.ts`，vitest --coverage.include 过滤实测） | 行/语句/分支/函数 **100%**（≥80% 达标；e2e 两 spec 不在 vitest 覆盖域） |
+
+### 环境注意
+本 worktree 的 codegen `src-tauri/capabilities/default.json` 曾含 `redis:default`（redis 插件未编译时 tauri-build 权限校验失败，同 F1 遗留注意 2 的坑）；已对齐主检出权限集（28 权限、无 redis）。该文件为 gitignore codegen，不入库。
 
 ## F6 删除冗余命令
 （占位）
