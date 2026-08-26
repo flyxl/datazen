@@ -261,28 +261,30 @@ async fn write_connections_export(
     Ok(count)
 }
 
-/// Native save-dialog branch of [`export_connections`]; `None` = dialog cancelled.
-///
-/// Uses [`run_blocking_dialog`] — async commands must not call `blocking_*`
-/// on the runtime thread (macOS freeze, see that helper's docs).
-async fn pick_connections_save_path(
-    app: &AppHandle,
-    default_file_name: &str,
-) -> Result<Option<PathBuf>, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
-    let app_for_dialog = app.clone();
-    let file_name = default_file_name.to_string();
-    let picked = run_blocking_dialog(move || {
-        app_for_dialog
-            .dialog()
-            .file()
-            .add_filter("DataZen", &["datazenconnection"])
-            .set_file_name(&file_name)
-            .blocking_save_file()
-    })
-    .await?;
-    dialog_file_path_to_buf(picked)
+/// Open-dialog filters shared by [`import_connections_preview`] and
+/// [`import_connections_with_dialog`] (pure data — the invocation itself lives
+/// in the central [`super::dialog`] gateway).
+fn connections_open_filters() -> Vec<(String, Vec<String>)> {
+    vec![
+        (
+            "Connections".into(),
+            vec![
+                "json".into(),
+                "xml".into(),
+                "ncx".into(),
+                "datazenconnection".into(),
+                "tableplusconnection".into(),
+            ],
+        ),
+        (
+            "DataZen".into(),
+            vec!["datazenconnection".into(), "json".into()],
+        ),
+        ("DataGrip XML".into(), vec!["xml".into()]),
+        ("Navicat NCX".into(), vec!["ncx".into(), "xml".into()]),
+        ("DBeaver JSON".into(), vec!["json".into()]),
+        ("TablePlus".into(), vec!["tableplusconnection".into()]),
+    ]
 }
 
 /// Native save dialog + RNCryptor `.datazenconnection` export.
@@ -305,7 +307,14 @@ pub async fn export_connections(
 
     let dest = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
         Some(path) => Some(path),
-        None => pick_connections_save_path(&app, &default_file_name).await?,
+        None => {
+            super::dialog::save_file(
+                &app,
+                ("DataZen".into(), vec!["datazenconnection".into()]),
+                default_file_name,
+            )
+            .await?
+        }
     };
     let Some(dest) = dest else {
         return Ok(None); // user dismissed the dialog
@@ -379,39 +388,6 @@ async fn build_import_preview_from_path(
     Ok(build_import_preview_json(&parsed))
 }
 
-/// Native open-dialog branch shared by [`import_connections_preview`] and
-/// [`import_connections_with_dialog`]; `None` = dialog cancelled.
-///
-/// Uses [`run_blocking_dialog`] (macOS freeze, see that helper's docs).
-async fn pick_connections_open_path(app: &AppHandle) -> Result<Option<PathBuf>, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
-    let app_for_dialog = app.clone();
-    let picked = run_blocking_dialog(move || {
-        app_for_dialog
-            .dialog()
-            .file()
-            .add_filter(
-                "Connections",
-                &[
-                    "json",
-                    "xml",
-                    "ncx",
-                    "datazenconnection",
-                    "tableplusconnection",
-                ],
-            )
-            .add_filter("DataZen", &["datazenconnection", "json"])
-            .add_filter("DataGrip XML", &["xml"])
-            .add_filter("Navicat NCX", &["ncx", "xml"])
-            .add_filter("DBeaver JSON", &["json"])
-            .add_filter("TablePlus", &["tableplusconnection"])
-            .blocking_pick_file()
-    })
-    .await?;
-    dialog_file_path_to_buf(picked)
-}
-
 /// Preview the contents of a connections file without importing.
 ///
 /// Decision 3 form: production callers omit `override_path` and pick the file
@@ -426,7 +402,7 @@ pub async fn import_connections_preview(
 ) -> Result<Option<serde_json::Value>, CommandError> {
     let source = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
         Some(path) => Some(path),
-        None => pick_connections_open_path(&app).await?,
+        None => super::dialog::open_file(&app, connections_open_filters()).await?,
     };
     let Some(source) = source else {
         return Ok(None); // user dismissed the dialog
@@ -450,7 +426,7 @@ pub async fn import_connections_with_dialog(
 ) -> Result<Option<ImportConnectionsResult>, CommandError> {
     let source = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
         Some(path) => Some(path),
-        None => pick_connections_open_path(&app).await?,
+        None => super::dialog::open_file(&app, connections_open_filters()).await?,
     };
     let Some(source) = source else {
         return Ok(None); // user dismissed the dialog
@@ -515,35 +491,6 @@ fn import_file_filters(app: ImportApp) -> (&'static str, &'static [&'static str]
     }
 }
 
-/// Convert a native dialog result into a filesystem path. `None` means cancelled.
-pub(crate) fn dialog_file_path_to_buf(
-    picked: Option<tauri_plugin_dialog::FilePath>,
-) -> Result<Option<PathBuf>, CommandError> {
-    let Some(fp) = picked else {
-        return Ok(None);
-    };
-    fp.into_path()
-        .map(Some)
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))
-}
-
-/// Run a blocking native dialog on a worker thread.
-///
-/// Sync IPC + `blocking_pick_*` freezes macOS (main thread waits for Finder,
-/// Finder waits for the main thread). Callback `pick_file` + `oneshot` await
-/// also freezes: the plugin `block_on`s the dialog on the same runtime the
-/// command is waiting on. Async command + `spawn_blocking` + `blocking_pick_*`
-/// is the pattern tauri-plugin-dialog documents for async commands.
-async fn run_blocking_dialog<T, F>(f: F) -> Result<T, CommandError>
-where
-    F: FnOnce() -> T + Send + 'static,
-    T: Send + 'static,
-{
-    tauri::async_runtime::spawn_blocking(f)
-        .await
-        .map_err(|e| CommandError::Internal(format!("native dialog task: {e}")))
-}
-
 /// Native file or folder picker for competitor data/install paths. Path never crosses as a write.
 #[tauri::command]
 pub async fn pick_connection_import_path_with_dialog(
@@ -551,23 +498,22 @@ pub async fn pick_connection_import_path_with_dialog(
     mode: String,
     source: String,
 ) -> Result<Option<String>, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
     let import_app = ImportApp::parse(&source)?;
     let is_folder = mode.trim().eq_ignore_ascii_case("folder");
-    let picked = run_blocking_dialog(move || {
-        if is_folder {
-            app.dialog().file().blocking_pick_folder()
-        } else {
-            let (label, exts) = import_file_filters(import_app);
-            app.dialog()
-                .file()
-                .add_filter(label, exts)
-                .blocking_pick_file()
-        }
-    })
-    .await?;
-    Ok(dialog_file_path_to_buf(picked)?.map(|p| p.to_string_lossy().into_owned()))
+    let picked = if is_folder {
+        super::dialog::pick_folder(&app).await?
+    } else {
+        let (label, exts) = import_file_filters(import_app);
+        super::dialog::open_file(
+            &app,
+            vec![(
+                label.to_string(),
+                exts.iter().map(|s| (*s).to_string()).collect(),
+            )],
+        )
+        .await?
+    };
+    Ok(picked.map(|p| p.to_string_lossy().into_owned()))
 }
 
 #[tauri::command]
@@ -644,44 +590,6 @@ async fn import_app_data_from_source(state: &AppState, source: PathBuf) -> Resul
     Ok(())
 }
 
-/// Native open-dialog branch of [`import_app_data`]; `None` = dialog cancelled.
-fn pick_app_data_open_path(app: &AppHandle) -> Result<Option<PathBuf>, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("ZIP", &["zip"])
-        .blocking_pick_file();
-    let Some(fp) = picked else {
-        return Ok(None);
-    };
-    fp.into_path()
-        .map(Some)
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))
-}
-
-/// Native save-dialog branch of [`export_app_data`]; `None` = dialog cancelled.
-fn pick_app_data_save_path(
-    app: &AppHandle,
-    default_file_name: &str,
-) -> Result<Option<PathBuf>, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("ZIP", &["zip"])
-        .set_file_name(default_file_name)
-        .blocking_save_file();
-    let Some(fp) = picked else {
-        return Ok(None);
-    };
-    fp.into_path()
-        .map(Some)
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))
-}
-
 /// Native save dialog + ZIP export of the app data directory.
 ///
 /// Merges the former webdriver-only raw-path `export_app_data(path)` and
@@ -698,7 +606,10 @@ pub async fn export_app_data(
 ) -> Result<bool, CommandError> {
     let dest = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
         Some(path) => Some(path),
-        None => pick_app_data_save_path(&app, &default_file_name)?,
+        None => {
+            super::dialog::save_file(&app, ("ZIP".into(), vec!["zip".into()]), default_file_name)
+                .await?
+        }
     };
     let Some(dest) = dest else {
         return Ok(false); // user dismissed the dialog
@@ -723,22 +634,17 @@ pub async fn import_app_data(
     confirm_message: String,
     override_path: Option<String>,
 ) -> Result<bool, CommandError> {
-    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-
     let source = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
         Some(path) => path,
         None => {
-            let Some(source) = pick_app_data_open_path(&app)? else {
+            let Some(source) =
+                super::dialog::open_file(&app, vec![("ZIP".into(), vec!["zip".into()])]).await?
+            else {
                 return Ok(false); // user dismissed the dialog
             };
-            // OkCancelCustom: callback/blocking_show returns true when the first (OK) button is pressed.
-            let confirmed = app
-                .dialog()
-                .message(&confirm_message)
-                .title(&confirm_title)
-                .kind(MessageDialogKind::Warning)
-                .buttons(MessageDialogButtons::OkCancel)
-                .blocking_show();
+            // OkCancelCustom: confirm_message returns true when the first (OK) button is pressed.
+            let confirmed =
+                super::dialog::confirm_message(&app, &confirm_title, &confirm_message).await?;
             if !confirmed {
                 return Ok(false);
             }
@@ -763,23 +669,18 @@ pub async fn save_encryption_key_with_dialog(
     state: State<'_, AppState>,
     default_file_name: String,
 ) -> Result<bool, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
     let key_b64 = state.store.encryption_key_b64();
     let bytes = encryption_key_export_bytes(&key_b64);
 
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("Encryption Key", &["key"])
-        .set_file_name(&default_file_name)
-        .blocking_save_file();
-    let Some(fp) = picked else {
+    let picked = super::dialog::save_file(
+        &app,
+        ("Encryption Key".into(), vec!["key".into()]),
+        default_file_name,
+    )
+    .await?;
+    let Some(dest) = picked else {
         return Ok(false);
     };
-    let dest = fp
-        .into_path()
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
     tokio::fs::write(&dest, &bytes)
         .await
         .cmd_err("save_encryption_key_with_dialog")?;
@@ -828,14 +729,16 @@ mod tests {
     }
 
     #[test]
-    fn dialog_file_path_to_buf_none_is_cancel() {
-        assert_eq!(dialog_file_path_to_buf(None).unwrap(), None);
-    }
-
-    #[tokio::test]
-    async fn run_blocking_dialog_runs_off_caller() {
-        let value = run_blocking_dialog(|| 7u8).await.unwrap();
-        assert_eq!(value, 7);
+    fn connections_open_filters_cover_all_sources() {
+        let filters = connections_open_filters();
+        assert_eq!(filters.len(), 6);
+        assert_eq!(filters[0].0, "Connections");
+        // Every filter declares at least one extension (gateway contract).
+        assert!(filters.iter().all(|(_, exts)| !exts.is_empty()));
+        assert!(filters
+            .iter()
+            .flat_map(|(_, exts)| exts.iter())
+            .all(|ext| !ext.starts_with('.')));
     }
 
     #[test]

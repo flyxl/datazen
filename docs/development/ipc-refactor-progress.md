@@ -943,6 +943,34 @@ Rust 侧以新增单测清单佐证（无 llvm-cov 工具链）：sqlite crate a
 - `export-import.ts`（EI-*）及 connections 系列 spec 未登记于本文档 E2E 用例表，本轮不改其定位器；ConnectionShareDialog / ConnectionPage 导入导出入口 / app-data 导入导出设置 UI 同理暂不接 helper，待相应功能轮登记后再补
 
 
+### R-1.3 E2E 对话框注入基建：webdriver 门控的原生对话框结果预注入（2026-08-26，本轮）
+
+> 背景：原生文件选择器阻塞 E2E——决策 3 的 `override_path` 只覆盖「无对话框直连」正向流程，所有【弹框取消】类用例（F3-E2E-003 等）此前只能人工黑盒。本轮落地单一机制的注入基建：宿主在调用原生 plugin-dialog 前先消费注入队列，生产构建编译期消除全部测试面。
+
+**基建形态（单一机制原则）**
+
+- 新增 `src-tauri/src/commands/dialog.rs` 中央对话框网关：全仓 Grep 出的 **19 处** tauri-plugin-dialog 调用点全部收口为四个 gateway——`save_file` / `open_file` / `pick_folder` / `confirm_message`；每个 gateway 统一走「查注入队列 → 有则 FIFO 消费注入值返回 → 无则真原生对话框」，命令代码不再直接触碰 plugin-dialog、不出现第二套判断逻辑
+- 收口的调用点清单（文件:函数）：`backup.rs`: `pick_backup_save_path` / `pick_sql_open_path`；`config.rs`: `export_connections`（save）、`import_connections_preview` + `import_connections_with_dialog`（open，共享 `connections_open_filters()` 静态过滤器表）、`pick_connection_import_path_with_dialog`（folder/file 双形态）、`import_app_data`（open + OkCancel Warning 确认弹窗 `confirm_message`）、`save_encryption_key_with_dialog`（save）；`file.rs`: `save_text_with_dialog` / `save_base64_with_dialog` / `begin_save_with_dialog`（save）、`open_text_with_dialog` / `open_base64_with_dialog`（open）；`dashboard.rs`: `export_dashboard_with_dialog`（save）/ `import_dashboard_with_dialog`（open）；`export.rs`: `export_tables_stream`（save）；`theme.rs`: `install_theme_pack_with_dialog`（open）；`driver_command.rs`: `finish_save_dialog`（DriverSaveDialogSpec 元数据薄壳，save）
+- 原生调用执行 shim 统一上收：config.rs 私有的 `run_blocking_dialog`（async 命令 + `spawn_blocking` + `blocking_*` 的 macOS 防冻结模式）移入 dialog.rs 成为唯一执行通道；原直连 `.blocking_*()` 的调用点随之统一到该模式（行为等价、线程位置更安全），`FilePath→PathBuf` 转换亦合并为 `picked_opt_to_path`（替代 file.rs `dialog_path_to_buf` 与 config.rs `dialog_file_path_to_buf` 两份重复实现）
+- **注入 IPC（仅 webdriver feature 存在）**：`test_inject_dialog_result(result)` 入队 `{canceled:true}` 或 `{path:"…"}` 两形态（反序列化后归一为内部 `DialogAnswer::{Cancelled,Path}`，非法形态在注入时报 Validation 而非静默落空）；`test_reset_dialog_queue()` 清空队列供用例隔离。注册方式沿用既有门控先例（对照 lib.rs webdriver 插件行 / error.rs `require_webdriver_path_ipc`）：两条命令定义处各自 `#[cfg(feature = "webdriver")]`，lib.rs `generate_handler!` 内逐条目同款 cfg 门控（tauri-macros 支持条目级属性，生成 match arm 时消除），managed 队列状态 `DialogInjectionQueue` 同样仅在 webdriver 构建下 `.manage()`——生产构建注册面零残留
+- 队列状态：`tauri::State<DialogInjectionQueue>` = `Mutex<VecDeque<DialogAnswer>>`（std Mutex，同步命令与 spawn_blocking 工作线程均可安全访问）；类型集中定义于 dialog.rs 便于 serde（wire 形态序列化严格为 `{"canceled":true}` / `{"path":"…"}`）
+- 守护测试三件（对照 error.rs 门控测试风格）：队列 FIFO 跨两形态 + reset 清空；wire 形态解析/序列化/非法拒绝；源码级门控守护（include_str 断言两条命令定义、lib.rs 注册行、manage 行各自紧贴 `#[cfg(feature = "webdriver")]` 门控，default 与 webdriver 两种特性组合下均执行）
+
+**spec 示范（R 回归代理可执行的样板）**
+
+- 新增 `e2e/specs/dialog-injection.ts` 四用例：DI-001 即 F3-E2E-003 注入式改写——invoke `test_inject_dialog_result({canceled:true})` → 以生产同款参数（无 overridePath）直调 `backup_database` 对话框分支 → 断言取消反馈 `saved === false`（对话框分支先于会话查找执行，占位 session id 即可证明走的是真实对话框路径）；DI-002 正向 `{path}` 注入写盘往返；DI-003 FIFO 跨两形态消费顺序 + reset 隔离；DI-004 非法注入形态响亮报错。其余既有 spec 用例一律不改（回归代理统一处理）
+
+**原【环境不可达】用例因此转为可执行的盘点**
+
+| 用例 | 原阻塞原因 | 现状 |
+|------|-----------|------|
+| F3-E2E-003 备份原生保存对话框取消 | OS 原生对话框无法自动化，须人工黑盒 | ✅ 已改写为 DI-001（本提交），R 回归可直接执行 |
+| F2-E2E-004 ADB 拉取取消语义 = null | 需真机 + 原生 dialog 人工取消 | 可执行性已具备（`finish_save_dialog` 已收口，注入 canceled 即得 savedPath=null）；真机前置不变，用例改写归 R 回归代理 |
+| import_app_data 的 Warning OkCancel 确认弹窗取消分支（F4 决策内交互） | 同为 OS 弹窗 | 可执行性已具备（`confirm_message` 已收口，注入 canceled → false）；用例改写归 R 回归代理 |
+| F1-E2E-007 等「原生 dialog 流程」正向用例 | 原生对话框人工选文件 | 可执行性部分具备（注入 `{path}` 替代人工选择）；仍需真实实例，归 R 回归代理 |
+
+**验证数字（本提交，独立重跑）**：`cargo test -p datazen --lib` 1137 通过 / 0 失败 / 2 忽略（default 与 `--features webdriver` 两种特性组合各跑一遍均全绿）；`cargo check -p datazen --lib --features webdriver` 0 错误；`npx vitest run` 全绿；`npx tsc --noEmit` 0 错误。
+
 ### R-2 全量回归与 E2E 执行（待 F4 合并后）
 
 - 各功能登记的 E2E 用例统一在 webdriver 构建 + 真实实例下执行：F1-E2E-001~011、F2-E2E-001~005、F5-E2E-*、F6-E2E-001/002、F7-E2E-001~007、B5 渲染回归（单测层已闭环）

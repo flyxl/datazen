@@ -716,6 +716,11 @@ pub fn run() {
     #[cfg(feature = "webdriver")]
     let builder = builder.plugin(tauri_plugin_webdriver::init());
 
+    // E2E-only dialog-injection state (see commands/dialog.rs). Production
+    // builds never manage it — the injection IPCs are compiled out entirely.
+    #[cfg(feature = "webdriver")]
+    let builder = builder.manage(commands::DialogInjectionQueue::default());
+
     let builder = plugin_init::register_plugins(builder);
 
     // `datazen://` plugin asset service + deep links (F2). Windows exposes
@@ -968,6 +973,13 @@ pub fn run() {
             commands::read_plugin_file,
             commands::extension_audit_log,
             rebuild_menu,
+            // E2E-only dialog-injection surface (commands/dialog.rs): each
+            // entry carries its own cfg gate so production registration
+            // surfaces never contain these commands.
+            #[cfg(feature = "webdriver")]
+            commands::test_inject_dialog_result,
+            #[cfg(feature = "webdriver")]
+            commands::test_reset_dialog_queue,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

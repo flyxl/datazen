@@ -187,13 +187,23 @@ describe('path IPC frontend wiring', () => {
       'utf8',
     );
     expect(rustConfig).toContain('pub async fn pick_connection_import_path_with_dialog');
-    expect(rustConfig).toContain('run_blocking_dialog');
+    // R-1.3: native dialog invocation is centralised in commands/dialog.rs.
+    // The picker routes through the gateway and the blocking execution shim
+    // (macOS anti-freeze pattern) lives there — config.rs must not call
+    // plugin-dialog directly.
+    const rustDialog = fs.readFileSync(
+      path.join(ROOT, '../src-tauri/src/commands/dialog.rs'),
+      'utf8',
+    );
+    expect(rustDialog).toContain('async fn run_blocking_dialog');
+    expect(rustDialog).toContain('blocking_pick_file');
+    expect(rustDialog).toContain('blocking_pick_folder');
     const pickFn = rustConfig.slice(
       rustConfig.indexOf('pub async fn pick_connection_import_path_with_dialog'),
       rustConfig.indexOf('pub async fn import_connections_from_app'),
     );
-    expect(pickFn).toContain('blocking_pick_file');
-    expect(pickFn).toContain('blocking_pick_folder');
+    expect(pickFn).toContain('super::dialog::pick_folder');
+    expect(pickFn).toContain('super::dialog::open_file');
     expect(pickFn).not.toContain('.pick_file(');
     expect(pickFn).not.toContain('.pick_folder(');
 

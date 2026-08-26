@@ -645,7 +645,6 @@ async fn finish_save_dialog(
     mut result: CommandResult,
 ) -> Result<CommandResult, CommandError> {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-    use tauri_plugin_dialog::DialogExt;
 
     if spec.extensions.is_empty() {
         return Err(CommandError::Validation(
@@ -676,16 +675,17 @@ async fn finish_save_dialog(
         .unwrap_or("download")
         .to_string();
 
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter(&spec.filter_name, &ext_list)
-        .set_file_name(&file_name)
-        .blocking_save_file();
-    let saved = match picked {
+    // Central dialog gateway: webdriver builds may replace this save dialog
+    // with an injected result (commands/dialog.rs).
+    let saved = match super::dialog::save_file(
+        app,
+        (spec.filter_name.clone(), spec.extensions.clone()),
+        file_name,
+    )
+    .await?
+    {
         None => None,
-        Some(fp) => {
-            let path = super::file::dialog_path_to_buf(fp)?;
+        Some(path) => {
             super::file::validate_extension(&path, &ext_list)?;
             let byte_count = bytes.len();
             tokio::fs::write(&path, bytes)

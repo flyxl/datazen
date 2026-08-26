@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use tauri::AppHandle;
-use tauri_plugin_dialog::DialogExt;
 use tokio::io::AsyncWriteExt;
 
 struct SaveSession {
@@ -33,13 +32,6 @@ pub(crate) fn validate_extension(path: &Path, allowed: &[&str]) -> Result<(), Co
         )));
     }
     Ok(())
-}
-
-pub(crate) fn dialog_path_to_buf(
-    path: tauri_plugin_dialog::FilePath,
-) -> Result<PathBuf, CommandError> {
-    path.into_path()
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))
 }
 
 fn ext_refs(extensions: &[String]) -> Result<Vec<&str>, CommandError> {
@@ -80,16 +72,18 @@ pub async fn save_text_with_dialog(
     extensions: Vec<String>,
 ) -> Result<bool, CommandError> {
     let ext_list = ext_refs(&extensions)?;
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter(&filter_name, &ext_list)
-        .set_file_name(&default_file_name)
-        .blocking_save_file();
-    let Some(fp) = picked else {
+    let picked = super::dialog::save_file(
+        &app,
+        (
+            filter_name,
+            ext_list.iter().map(|s| (*s).to_string()).collect(),
+        ),
+        default_file_name,
+    )
+    .await?;
+    let Some(path) = picked else {
         return Ok(false);
     };
-    let path = dialog_path_to_buf(fp)?;
     validate_extension(&path, &ext_list)?;
     tokio::fs::write(&path, contents.as_bytes())
         .await
@@ -111,16 +105,18 @@ pub async fn save_base64_with_dialog(
     let bytes = BASE64
         .decode(data_base64.trim())
         .map_err(|e| CommandError::Validation(format!("Invalid base64: {e}")))?;
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter(&filter_name, &ext_list)
-        .set_file_name(&default_file_name)
-        .blocking_save_file();
-    let Some(fp) = picked else {
+    let picked = super::dialog::save_file(
+        &app,
+        (
+            filter_name,
+            ext_list.iter().map(|s| (*s).to_string()).collect(),
+        ),
+        default_file_name,
+    )
+    .await?;
+    let Some(path) = picked else {
         return Ok(false);
     };
-    let path = dialog_path_to_buf(fp)?;
     validate_extension(&path, &ext_list)?;
     tokio::fs::write(&path, bytes)
         .await
@@ -153,15 +149,14 @@ pub async fn open_base64_with_dialog(
 ) -> Result<Option<OpenedBinaryFile>, CommandError> {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
     let ext_list = ext_refs(&extensions)?;
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter(&filter_name, &ext_list)
-        .blocking_pick_file();
-    let Some(fp) = picked else {
+    let filters = vec![(
+        filter_name,
+        ext_list.iter().map(|s| (*s).to_string()).collect(),
+    )];
+    let picked = super::dialog::open_file(&app, filters).await?;
+    let Some(path) = picked else {
         return Ok(None);
     };
-    let path = dialog_path_to_buf(fp)?;
     validate_extension(&path, &ext_list)?;
     let bytes = tokio::fs::read(&path)
         .await
@@ -185,15 +180,14 @@ pub async fn open_text_with_dialog(
     extensions: Vec<String>,
 ) -> Result<Option<OpenedTextFile>, CommandError> {
     let ext_list = ext_refs(&extensions)?;
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter(&filter_name, &ext_list)
-        .blocking_pick_file();
-    let Some(fp) = picked else {
+    let filters = vec![(
+        filter_name,
+        ext_list.iter().map(|s| (*s).to_string()).collect(),
+    )];
+    let picked = super::dialog::open_file(&app, filters).await?;
+    let Some(path) = picked else {
         return Ok(None);
     };
-    let path = dialog_path_to_buf(fp)?;
     validate_extension(&path, &ext_list)?;
     let content = tokio::fs::read_to_string(&path)
         .await
@@ -229,16 +223,18 @@ pub async fn begin_save_with_dialog(
     extensions: Vec<String>,
 ) -> Result<Option<String>, CommandError> {
     let ext_list = ext_refs(&extensions)?;
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter(&filter_name, &ext_list)
-        .set_file_name(&default_file_name)
-        .blocking_save_file();
-    let Some(fp) = picked else {
+    let picked = super::dialog::save_file(
+        &app,
+        (
+            filter_name,
+            ext_list.iter().map(|s| (*s).to_string()).collect(),
+        ),
+        default_file_name,
+    )
+    .await?;
+    let Some(path) = picked else {
         return Ok(None);
     };
-    let path = dialog_path_to_buf(fp)?;
     validate_extension(&path, &ext_list)?;
     let token = insert_save_session(path).await?;
     Ok(Some(token))

@@ -5,7 +5,6 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
-use tauri_plugin_dialog::DialogExt;
 
 use super::error::{CmdExt, CommandError};
 use super::AppState;
@@ -160,17 +159,9 @@ pub async fn install_theme_pack_with_dialog(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<ThemePackSummary, CommandError> {
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("Theme pack", &["zip"])
-        .blocking_pick_file();
-    let Some(fp) = picked else {
-        return Err(CommandError::Validation("cancelled".into()));
-    };
-    let zip_path = fp
-        .into_path()
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
+    let zip_path = super::dialog::open_file(&app, vec![("Theme pack".into(), vec!["zip".into()])])
+        .await?
+        .ok_or_else(|| CommandError::Validation("cancelled".into()))?;
 
     let root = themes_root(&state);
     let manifest = tokio::task::spawn_blocking(move || install_theme_zip(&zip_path, &root))
