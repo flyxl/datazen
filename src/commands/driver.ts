@@ -12,6 +12,9 @@ export interface ExecuteDriverCommandRequest {
   /** F1: optional explicit database pin — the host switches the session to
    * this logical database before executing (session-bound commands only). */
   database?: string | null;
+  /** F7: optional target schema (PG-family). Rewrite-capable drivers inline
+   * it as a qualified name; others ignore it. */
+  schema?: string | null;
 }
 
 export interface ExecuteDriverCommandStreamRequest {
@@ -21,6 +24,9 @@ export interface ExecuteDriverCommandStreamRequest {
   onEvent: (event: QueryStreamEvent) => void;
   /** F1: optional explicit database pin, applied before streaming. */
   database?: string | null;
+  /** F7: optional target schema (PG-family), forwarded with the stream
+   * request like `database`. */
+  schema?: string | null;
   applyResultLimit?: boolean;
   recordHistory?: boolean;
 }
@@ -48,6 +54,7 @@ export const driverCommands = {
         command: request.command,
         input: request.input,
         database: request.database ?? null,
+        schema: request.schema ?? null,
       },
       onEvent: onEventChannel,
       applyResultLimit: request.applyResultLimit,

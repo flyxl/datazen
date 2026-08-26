@@ -58,10 +58,14 @@ describe('panelStore', () => {
   });
 
   /** Seed schemaStore with a currentDatabase for a runtime session id. */
-  function seedCurrentDatabase(dbSessionId: string | null, database: string | null) {
+  function seedCurrentDatabase(
+    dbSessionId: string | null,
+    database: string | null,
+    schema: string | null = null,
+  ) {
     const schemas = new Map();
     if (dbSessionId && database) {
-      schemas.set(dbSessionId, { currentDatabase: database });
+      schemas.set(dbSessionId, { currentDatabase: database, currentSchema: schema });
     }
     useSchemaStore.setState({ activeDbSessionId: dbSessionId, schemas });
   }
@@ -80,7 +84,7 @@ describe('panelStore', () => {
       'sess-1',
       'SELECT DATABASE()',
       expect.any(Function),
-      { database: 'db_b' },
+      { database: 'db_b', schema: null },
     );
   });
 
@@ -96,7 +100,23 @@ describe('panelStore', () => {
       'sess-1',
       'SELECT 1',
       expect.any(Function),
-      { database: null },
+      { database: null, schema: null },
+    );
+  });
+
+  it('executeQuery forwards the F7 currentSchema of the panel session (PG)', async () => {
+    seedCurrentDatabase('sess-1', 'db_b', 'sales');
+    const panel: Panel = { ...base, type: 'query', id: nextPanelId('qry'), title: 'Q1' };
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.getState().updateSql(panel.id, 'SELECT * FROM users');
+
+    await usePanelStore.getState().executeQuery(panel.id);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'sess-1',
+      'SELECT * FROM users',
+      expect.any(Function),
+      { database: 'db_b', schema: 'sales' },
     );
   });
 

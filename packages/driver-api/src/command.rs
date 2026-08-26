@@ -196,22 +196,49 @@ pub fn validate_command_input(
     Ok(())
 }
 
+/// Optional F7 targeting fields injected by the host into SQL command inputs
+/// (serde-default on the wire: absent fields keep legacy behavior).
+fn sql_target_input_schema_properties() -> serde_json::Map<String, JsonValue> {
+    serde_json::json!({
+        "database": {
+            "description": "Optional target database (F7): drivers that support dialect-aware qualification rewrite unqualified table references; others ignore it",
+            "type": ["string", "null"]
+        },
+        "schema": {
+            "description": "Optional target schema (F7, PG-family engines): inlined as qualified name when the driver supports it",
+            "type": ["string", "null"]
+        }
+    })
+    .as_object()
+    .expect("static json object")
+    .clone()
+}
+
 /// Build the standard SQL `query_stream` command definition.
 pub fn query_stream_command_definition() -> DriverCommandDefinition {
+    let mut properties = sql_target_input_schema_properties();
+    properties.insert(
+        "sql".into(),
+        serde_json::json!({ "type": "string" }),
+    );
+    properties.insert(
+        "limit".into(),
+        serde_json::json!({ "type": ["integer", "null"], "minimum": 1 }),
+    );
+    properties.insert(
+        "params".into(),
+        serde_json::json!({
+            "description": "Named or positional bind values substituted by the host before execution",
+            "type": ["object", "array", "null"]
+        }),
+    );
     DriverCommandDefinition {
         id: "query_stream".into(),
         name: "Query Stream".into(),
         description: Some("Execute a SQL query and stream result rows in batches".into()),
         input_schema: serde_json::json!({
             "type": "object",
-            "properties": {
-                "sql": { "type": "string" },
-                "limit": { "type": ["integer", "null"], "minimum": 1 },
-                "params": {
-                    "description": "Named or positional bind values substituted by the host before execution",
-                    "type": ["object", "array", "null"]
-                }
-            },
+            "properties": properties,
             "required": ["sql"]
         }),
         output_schema: None,
@@ -222,20 +249,29 @@ pub fn query_stream_command_definition() -> DriverCommandDefinition {
 
 /// Build the standard SQL `query` command definition.
 pub fn query_command_definition() -> DriverCommandDefinition {
+    let mut properties = sql_target_input_schema_properties();
+    properties.insert(
+        "sql".into(),
+        serde_json::json!({ "type": "string" }),
+    );
+    properties.insert(
+        "limit".into(),
+        serde_json::json!({ "type": ["integer", "null"], "minimum": 1 }),
+    );
+    properties.insert(
+        "params".into(),
+        serde_json::json!({
+            "description": "Named or positional bind values substituted by the host before execution",
+            "type": ["object", "array", "null"]
+        }),
+    );
     DriverCommandDefinition {
         id: "query".into(),
         name: "Query".into(),
         description: Some("Execute a SQL query and return its result".into()),
         input_schema: serde_json::json!({
             "type": "object",
-            "properties": {
-                "sql": { "type": "string" },
-                "limit": { "type": ["integer", "null"], "minimum": 1 },
-                "params": {
-                    "description": "Named or positional bind values substituted by the host before execution",
-                    "type": ["object", "array", "null"]
-                }
-            },
+            "properties": properties,
             "required": ["sql"]
         }),
         output_schema: None,
@@ -246,13 +282,18 @@ pub fn query_command_definition() -> DriverCommandDefinition {
 
 /// Build the standard SQL `execute` command definition.
 pub fn execute_command_definition() -> DriverCommandDefinition {
+    let mut properties = sql_target_input_schema_properties();
+    properties.insert(
+        "sql".into(),
+        serde_json::json!({ "type": "string" }),
+    );
     DriverCommandDefinition {
         id: "execute".into(),
         name: "Execute".into(),
         description: Some("Execute a SQL statement".into()),
         input_schema: serde_json::json!({
             "type": "object",
-            "properties": { "sql": { "type": "string" } },
+            "properties": properties,
             "required": ["sql"]
         }),
         output_schema: Some(serde_json::json!({

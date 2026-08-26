@@ -165,6 +165,19 @@ impl DatabaseDriver for ClickHouseDriver {
         "clickhouse".to_string()
     }
 
+    /// F7: qualify unqualified table references with the target database
+    /// (`` `db`.`t` `` — true cross-database inline qualifier). The schema
+    /// argument has no meaning on ClickHouse and is ignored. Parse failures
+    /// pass SQL through unchanged; see `sql_target::qualify_sql`.
+    fn qualify_sql_target(
+        &self,
+        sql: &str,
+        database: Option<&str>,
+        schema: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::sql_target::qualify_sql(sql, database, schema))
+    }
+
     fn supports_explain(&self) -> bool {
         true
     }

@@ -263,6 +263,33 @@ pub trait DatabaseDriver: Send + Sync {
         Ok(())
     }
 
+    /// F7: dialect-aware SQL target qualification.
+    ///
+    /// Given optional targeting information (`database`, and for PG-family
+    /// engines `schema`), rewrite unqualified table references in `sql` into
+    /// dialect-qualified names (AST-level, see [`crate::sql_target`]). This
+    /// lets a command land on the caller-selected target with no session
+    /// switch and no `USE`.
+    ///
+    /// Return value:
+    /// - `Some(qualified_sql)` — the driver can rewrite; parse failures pass
+    ///   the original text back through (the rewrite is best-effort).
+    /// - `None` — the driver has no rewrite capability (default). The host
+    ///   executes the SQL as-is, logs, and the existing host-side
+    ///   `ensure_session_database` pin remains the fallback for the database
+    ///   dimension.
+    ///
+    /// Implementations must be pure/stateless and idempotent (re-qualifying
+    /// already-qualified SQL is a no-op).
+    fn qualify_sql_target(
+        &self,
+        _sql: &str,
+        _database: Option<&str>,
+        _schema: Option<&str>,
+    ) -> Option<String> {
+        None
+    }
+
     /// Return driver-specific prompt overrides for AI features.
     ///
     /// Templates can use `{{variable}}` placeholders. Available variables per
@@ -448,6 +475,12 @@ pub trait DatabaseDriver: Send + Sync {
 }
 
 /// Default `query` / `execute` command dispatch shared by SQL drivers.
+///
+/// F7: the input object may carry optional targeting fields `database` /
+/// `schema` (injected by the host from the IPC envelope). When present, the
+/// SQL is rewritten through [`DatabaseDriver::qualify_sql_target`] before
+/// execution; drivers without the capability execute as-is (logged), keeping
+/// the host session pin as fallback.
 pub async fn execute_standard_sql_command<D: DatabaseDriver + ?Sized>(
     driver: &D,
     handle: &ConnectionHandle,
@@ -456,24 +489,20 @@ pub async fn execute_standard_sql_command<D: DatabaseDriver + ?Sized>(
 ) -> Result<CommandResult, DriverError> {
     match command {
         "query" => {
-            let sql = input.get("sql").and_then(|v| v.as_str()).ok_or_else(|| {
-                DriverError::InvalidConfig("command 'query' requires string input 'sql'".into())
-            })?;
+            let sql = sql_input_with_target(driver, &input, "query")?;
             let limit = input
                 .get("limit")
                 .and_then(|v| v.as_u64())
                 .map(|v| v.min(u32::MAX as u64) as u32);
-            let result = driver.query_multi(handle, sql, limit).await?;
+            let result = driver.query_multi(handle, &sql, limit).await?;
             let data = serde_json::to_value(result).map_err(|e| {
                 DriverError::QueryFailed(format!("failed to serialize query result: {e}"))
             })?;
             Ok(CommandResult::new(data))
         }
         "execute" => {
-            let sql = input.get("sql").and_then(|v| v.as_str()).ok_or_else(|| {
-                DriverError::InvalidConfig("command 'execute' requires string input 'sql'".into())
-            })?;
-            let rows_affected = driver.execute(handle, sql).await?;
+            let sql = sql_input_with_target(driver, &input, "execute")?;
+            let rows_affected = driver.execute(handle, &sql).await?;
             Ok(CommandResult::new(serde_json::json!({
                 "rowsAffected": rows_affected
             })))
@@ -482,6 +511,63 @@ pub async fn execute_standard_sql_command<D: DatabaseDriver + ?Sized>(
             "unsupported driver command: {other}"
         ))),
     }
+}
+
+/// Extract the `sql` input of a standard SQL command and apply F7 target
+/// qualification when the host injected `database` / `schema` fields.
+fn sql_input_with_target<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    input: &serde_json::Value,
+    command: &str,
+) -> Result<String, DriverError> {
+    let sql = input
+        .get("sql")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            DriverError::InvalidConfig(format!("command '{command}' requires string input 'sql'"))
+        })?
+        .to_string();
+
+    let database = optional_target_field(input, "database");
+    let schema = optional_target_field(input, "schema");
+    if database.is_none() && schema.is_none() {
+        return Ok(sql);
+    }
+
+    match driver.qualify_sql_target(&sql, database.as_deref(), schema.as_deref()) {
+        Some(qualified) => {
+            if qualified != sql {
+                tracing::info!(
+                    command,
+                    database = database.as_deref().unwrap_or(""),
+                    schema = schema.as_deref().unwrap_or(""),
+                    "SQL target qualification applied by driver"
+                );
+            }
+            Ok(qualified)
+        }
+        None => {
+            // Legacy/rewrite-incapable driver: execute unchanged. The host's
+            // ensure_session_database pin covers the database dimension; a
+            // requested PG-family schema cannot be honored here.
+            tracing::debug!(
+                command,
+                database = database.as_deref().unwrap_or(""),
+                schema = schema.as_deref().unwrap_or(""),
+                "driver has no SQL target rewrite capability; executing SQL as-is"
+            );
+            Ok(sql)
+        }
+    }
+}
+
+fn optional_target_field(input: &serde_json::Value, key: &str) -> Option<String> {
+    input
+        .get(key)
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 #[cfg(test)]

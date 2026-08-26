@@ -14,8 +14,8 @@
 | F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 未开始 | — | — |
 | F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 已完成 | 本提交 | 本提交 |
 | F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 已完成 | d4e33801 | 本提交 |
-| F7 | 驱动级 SQL 定位重写（限定名内联、无会话切换；PG 系含 database+schema 双维度） | 用户新指令 2026-08-26 | 测试中（C 轨，详见 f7-driver-sql-target 分支进度副本；编码 commit 6184eacc） | 6184eacc | — |
 | B5 | ConnectionNavigatorTree 刷新丢失已展开分类修复（=F1-BUG-005） | 既有缺陷 | 已完成 | e4b7b6d7 | 本提交 |
+| F7 | 驱动级 SQL 定位重写（限定名内联、无会话切换；PG 系含 database+schema 双维度） | 用户新指令 2026-08-26 | 已完成 | 6184eacc | 本提交 |
 | R | 回归测试 + 文档更新（架构文档/AGENTS.md）+ 合并 main | 步骤 6 | 未开始 | — | — |
 
 状态机：`未开始 → 编码中 → 编码完成 → 测试中 → 已完成`；bug 流转见下方 Bug 台账。
@@ -488,6 +488,8 @@ Rust 侧以新增单测清单佐证（无 llvm-cov 工具链）：sqlite crate a
 
 ## F7 驱动级 SQL 定位重写
 
+**状态：编码完成（2026-08-26，F7 收尾代理）。**
+
 ### 需求（用户新指令 2026-08-26，两轮精化）
 每条 SQL 命令携带定位信息直达驱动层，**驱动按方言把未限定表引用重写为限定名**（如 `select * from users` → `select * from \`mydb\`.users`）；不用 `USE`、不切会话，纯无状态。
 
@@ -552,6 +554,96 @@ Rust 侧以新增单测清单佐证（无 llvm-cov 工具链）：sqlite crate a
   - 「修复前红」属实。渲染层红性表现（刷新后 mock 零重载调用）与编码轮根因层③（恢复链路动态导入在 vitest 下未命中 mock→catch 写空）一致；hook 层红性与测试环境无关。
 - **静态导入副作用评估**：无循环依赖（`commands/database`→`query`→`driver` 仅依赖 invoke/types）；该模块经 schemaStore 本就在组件静态图内，动态导入是冗余异步边界——改静态无包体增量，且消除测试 mock 行为不确定性，净收益。
 - **残余观察（不阻塞，超出本缺陷范围）**：连续两次指纹变化时，前一波未取消的在途 fetch 响应理论上可能晚于后一波清理落盘（last-write-wins）；hook docstring 已声明取消语义边界。
+
+### 编码说明
+
+**共用引擎（packages/driver-api/src/sql_target.rs）**
+- `qualify_sql_with(dialect, quote, prefix_parts, sql)`：sqlparser AST visitor 改写，仅触碰定位语境 relation（FROM/JOIN/INSERT INTO/UPDATE/DELETE FROM/TRUNCATE/CREATE TABLE/ALTER TABLE/CREATE INDEX ON 由 visitor 分发；DROP TABLE 的 name 列表上游未标注为 relation，显式补处理且仅限 Table 对象类型）。
+- 跳过规则：多段已限定引用（幂等来源）、CTE 名（全局收集——外层 CTE 影子遮蔽时跳过永远是安全方向）、T-SQL `#temp` 临时表、字符串字面量天然不经过 relation。
+- 注入 qualifier 按方言加引号（Backtick/DoubleQuote/Bracket，Bracket 自行做 `]`→`]]` 转义）；原表标识符保留源形式，仅当其无引号且全小写（避免改变 PG 类引擎的大小写折叠解析）才补引号。
+- 解析失败：warn 日志 + 原文返回（`rewritten=false`），空目标不进解析器。
+
+**逐驱动实现要点**
+| 驱动 | crate | 形态 | 说明 |
+|---|---|---|---|
+| mysql（含 mariadb/doris/starrocks/manticore/ob_oracle 变体共用） | datazen-driver-mysql | `` `db`.`t` `` | schema 参数忽略；真跨库内联 |
+| postgres | datazen-driver-postgres | `"schema"."t"` | database 不内联（沿用宿主池切换）；database-only 目标 = no-op |
+| sqlite | datazen-driver-sqlite | `"alias"."t"` | 仅非 `main`/非 `temp` 显式目标才改写（ATTACH 别名场景），默认 no-op |
+| clickhouse | datazen-driver-clickhouse | `` `db`.`t` `` | ClickHouseDialect；CH 特有 mutation 语法（如 `ALTER TABLE … DELETE WHERE`）sqlparser 不识别 → 走兜底放行 |
+| duckdb | datazen-driver-duckdb | `"schema"."t"` | 同 PG 形态（DuckDbDialect)；database 走会话/池切换 |
+| sqlserver | datazen-driver-sqlserver | `[db].[schema].[t]` | 仅在可构造无歧义前缀时改写：db+schema → 三段；schema-only → 二段 `[schema].t`；**database-only 不内联**（T-SQL 两段名 `[db].t` 会把 db 当 schema 解析，语义错误），该维度交给宿主会话 pin |
+
+**协议与宿主接线**
+- driver-api：`query`/`query_stream`/`execute` 输入 schema 增加可选 `database`/`schema`（serde 缺省兼容，未 bump PROTOCOL_VERSION）；trait 新增默认返回 `None` 的 `DatabaseDriver::qualify_sql_target(sql, database, schema)`；`execute_standard_sql_command` 在输入携带定位字段时调用之。
+- 宿主 `driver_command.rs`：`ExecuteDriverCommandRequest`/`ExecuteDriverCommandStreamRequest` 增加 camelCase 可选 `schema`；非流式路径把非空 envelope 字段注入 command input（blank 值与非 object 输入跳过），流式路径直接调 `driver.qualify_sql_target`。两条路径均保持既有 `ensure_session_database` pin 先行——重写与 pin 双保险，无能力驱动走 debug 日志 + 原样执行（兜底矩阵成立）。Host 单测以 MockDriver 能力开关（`rewrite_sql_target`）覆盖：透传+pin 并存、fallback 原样+pin、stream 两路径对称。
+- `query.rs` / `schema.rs` 内部转发点补 `schema: None`（SQL 编辑器路径已由 ensure_session_database 固定库，不重复注入）。
+
+**前端接线（侦察结论 + 最小改动）**
+- 侦察结论：`src/stores/schemaStore.ts` 此前**没有** currentSchema 状态（只有 `currentDatabase` 与侧边栏 schema 分组的 `schemaNames`/namespaceTree，无 PG schema 选择器 UI）。
+- 本次落地最小链路：`ConnectionSchemaState.currentSchema`（默认 null，keyed map / flatten / patch 全套接入）+ `setCurrentSchema()` action（trim 空值归一为 null，仿 F1 currentDatabase 的纯本地状态模式，无 IPC）→ `panelStore.panelTargetSchema()` → `runBoundQuery`/`runStreamingQuery` → `queryCommands.executeQuery/executeQueryStream` → `driverCommands.execute/executeStream` envelope `schema` 字段。UI 选择器暂缺：任何设置该状态的入口（未来下拉框/扩展 SDK）即刻生效；置 null 时行为与现状完全一致。
+
+**验证数字（三件套）**
+- Host Rust：`cargo test -p datazen --lib` = **1136 通过 / 0 失败**（含信封透传、兜底、stream 对称等 F7 用例）
+- 驱动 crate（`cargo test -p datazen-driver-*`）：mysql 72、postgres 92、sqlite 43、clickhouse 30、duckdb 26、sqlserver 45、driver-api 92 —— 全部通过（每 crate 含 happy path SELECT/FROM、JOIN、CTE 跳过、已限定幂等、解析失败放行矩阵）
+- 前端：`npx vitest run` = **1965 通过 / 0 失败（240 文件）**；`npx tsc --noEmit` 无错误（含 panelStore/queryExecActions 信封断言更新与 F7 schema 传递新用例）
+
+### 测试结果（测试轮复验）
+
+**全新测试代理独立复验（2026-08-26，commit 6184eacc，worktree `feature/f7-driver-sql-target`，不信前序数字）：**
+
+| 套件 | 复验实测 | 与编码轮声称对比 |
+|------|---------|----------------|
+| `cargo test -p datazen --lib` | **1136 passed / 0 failed / 2 ignored** | 一致 ✅ |
+| `cargo test -p datazen-driver-api` | **92 passed / 0 failed** | 一致 ✅ |
+| `cargo test -p datazen-driver-mysql` | **72 passed / 0 failed**（lib 64 + 集成 8） | 一致 ✅ |
+| `cargo test -p datazen-driver-postgres` | **92 passed / 0 failed**（lib 80 + 集成 12） | 一致 ✅ |
+| `cargo test -p datazen-driver-sqlite` | **43 passed / 0 failed**（lib 38 + 集成 5） | 一致 ✅ |
+| `cargo test -p datazen-driver-clickhouse` | **30 passed / 0 failed**（lib 26 + 集成 4） | 一致 ✅ |
+| `cargo test -p datazen-driver-duckdb` | **26 passed / 0 failed**（lib 22 + 集成 4） | 一致 ✅ |
+| `cargo test -p datazen-driver-sqlserver` | **45 passed / 0 failed**（lib 42 + 集成 3） | 一致 ✅ |
+| `npx vitest run` | **240 文件 / 1965 用例全过** | 一致 ✅ |
+| `npx tsc --noEmit` | **0 错误**（exit 0） | 一致 ✅ |
+
+三项重点审查结论：
+
+1. **方言矩阵逐驱动抽查（每 crate 全量读断言体，超出抽 3 要求）**：六驱动 sql_target.rs 单测全部真断言 SQL 字符串——mysql/pg/sqlite 多处 `assert_eq!` 精确比对全文（如 ``SELECT * FROM `mydb`.`users` `` / `"sales"."users"`），其余为带 `{out}` 的 contains 断言且附负向断言（`!contains("FROM users")` 等），无空转断言。跳过规则逐条有实证：CTE 名（每 crate）、字符串字面量（`'from users'` 不被改写 + 负向断言）、已限定名（整句原样返回 `assert_eq!(qualify(sql,…), sql)`）、别名保留（`` `shop`.`users` AS u ``）；派生表别名无 ObjectName 天然不进 visitor（sql_target.rs 模块文档 L19-21）。
+2. **sqlserver 偏离基线裁决审查：✅ 正确且已文档化。** 实现（sqlserver/src/sql_target.rs L24-39）仅 db+schema → `[db].[schema].t` 三段、schema-only → `[schema].t` 二段；database-only 直接原文返回。T-SQL 两段名解析为 `schema.object`，`[db].t` 会把 db 当 schema——裁决语义正确。文档化两处齐备：模块 doc L8-12（含"交宿主会话 pin"）+ 本文件设计基线表 L314；并有专项测试 `database_only_target_is_not_inlined_two_part_name_is_ambiguous` 锁定该行为。其余五驱动对照基线表无漂移：mysql/ch `` `db`.`t` ``（Backtick）、pg/duckdb `"schema"."t"`（database-only no-op 有专测）、sqlite 仅非 main/temp 显式目标才改写（默认 no-op 五种输入枚举测试）、ch 特有 mutation 语法放行有专测。
+3. **兜底语义：✅ 成立。** trait 默认实现返回 `None`（traits.rs L284-291）；redis/mongodb 等非 SQL 驱动零 override、零路径进入（Grep 全 drivers 目录确认无 override 命中）；信封无定位字段时 `sql_input_with_target` 提前返回原文（traits.rs L533-535），对 SQL 驱动亦零开销；parse-fail 在共享引擎统一 warn 日志 + 原文返回（rewritten=false），六 crate 各有 `parse_failure_passes_through_unchanged` 断言；幂等性 driver-api 层（二次调用 rewritten==false）+ 每 crate `rewrite_is_idempotent` 双层断言。
+
+双保险机制复查：非流式路径 `ensure_session_database` 先 pin（driver_command.rs L500-508）→ 注入 input → 默认 execute_command → `execute_standard_sql_command` 改写；流式路径同序（L300 pin → L342-372 qualify）。单测 `execute_driver_command_passes_target_to_qualifying_driver` 同时断言改写 marker 到达驱动与 `use_database_calls==["analytics"]`（pin 并存不冲突），fallback/stream 对称各有专测。PG 维度正交：database 走池切换、schema 走内联，来源同一请求字段不会互相矛盾。
+
+前端链路审计：currentSchema 默认 null（createEmptyConnectionSchema / CONNECTION_STATE_KEYS 接入 keyed map 全套）；null 时 panelTargetSchema 返回 null → envelope `schema: null` → Rust `#[serde(default)] Option<String>` 反序列化为 None → 宿主两条路径均短路（不注入、不调 qualify）——与 F1 database 字段同一传输模式（`?? null` 显式置空键，服务端 None 等价于不携带），行为零变化成立；panelStore/queryExecActions 新增用例同时锁定 null（`{database:'db_b', schema:null}`）与非 null（`schema:'sales'`）两种形态。executeStream payload 透传正确（driver.ts L57）。
+
+### 覆盖率（测试轮实测）
+
+度量方式：全量 vitest 套件（240 文件 / 1965 用例）+ `--coverage.include` 过滤本次五个改动 TS 文件（v8 provider，coverage-final.json 取数）：
+
+| 文件 | Statements | Branch | Funcs | **Lines** | ≥80% 行覆盖 |
+|-----|-----------|--------|-------|-----------|------------|
+| `src/stores/schemaStore.ts` | 88.08% | 75.40% | 93.33% | **90.20%** | ✅ |
+| `src/stores/queryExecActions.ts` | 92.68% | 75.00% | 100% | **97.29%** | ✅ |
+| `src/stores/panelStore.ts` | 74.26% | 52.23% | 83.09% | **80.00%** | ✅（压线达标） |
+| `src/commands/query.ts` | 13.33% | 0% | 7.69% | 13.33% | 免测（见下） |
+| `src/commands/driver.ts` | 28.57% | 0% | 25% | 28.57% | 免测（见下） |
+
+- queryCommands/driverCommands 为薄 Tauri invoke 封装，按项目已批准的 Option C 门禁明确豁免（vitest.config.ts 注释："Thin `src/commands/**` invoke wrappers … stay out of the fail gate"）；其 F7 变更（`schema: … ?? null` 透传）的信封→宿主行为由 Host Rust serde 反序列化用例 + MockDriver qualify_calls 录制端到端覆盖。
+- 观察项（不阻塞）：panelStore 行覆盖恰在 80% 线上；F7 新增的 executeSelection 两处 `panelTargetSchema` 调用点与 executeQuery params 分支处于既有的单测未覆盖区（executeSelection 此前即无直接单测，属存量缺口而非 F7 回归），语句覆盖 74.26% 低于行覆盖即源于此。
+
+### E2E 用例
+
+> F7 的方言定位正确性最终取决于真实引擎的名称解析（尤其 PG search_path、T-SQL 两段名歧义、CH mutation 语法），必须依赖 webdriver 构建 + 真实实例回归；AST 改写形态已由各驱动 crate 单测锁死。PG currentSchema UI 选择器本轮未落（纯本地状态链路先行），E2E 触发可经 WebdriverIO `browser.execute` 直调 store 或 invokeBackend 直调信封（同 F1-E2E-008 先例）。全部登记为【留待 R 阶段回归】。
+
+| 编号 | 场景 | 前置 | 步骤 | 断言 | 标注 |
+|------|------|------|------|------|------|
+| F7-E2E-001 | MySQL 跨库内联定位 | webdriver 构建；MySQL 实例 db_a（连接默认库）/ db_b 各含 users 表且数据可区分 | 编辑器会话库=db_a，经 store 或信封携带 `database=db_b` 执行 `SELECT * FROM users`（bound 与 stream 各一次） | 返回 db_b.users 数据（行数可区分）；`SELECT DATABASE()` 仍为 db_a（证明无会话切换，纯内联）；日志出现一次 qualification applied 且无 switched 记录 | 【留待 R 阶段回归】需真实 MySQL 多库 |
+| F7-E2E-002 | PostgreSQL schema 内联 + database 走池切换 | PG 实例同库下 sales/public schema 各含 users 表（数据可区分） | 携带 `schema=sales` 执行 `SELECT * FROM users`；再携带 `database=其他库&schema=sales` 重复 | 前者命中 sales.users；后者命中目标库 sales.users（池切换生效）；日志可见 pin 与 rewrite 并存 | 【留待 R 阶段回归】需真实 PG 双 schema（+可选跨库） |
+| F7-E2E-003 | SQL Server db+schema 三段名 & database-only 走 pin | SQL Server 实例；AdventureWorks.sales 与当前库 dbo 各含可区分表 | ① 携带 `database=AdventureWorks&schema=sales` 执行未限定查询；② 仅携带 `database=AdventureWorks` 执行 | ① 命中 [AdventureWorks].[sales] 表（三段内联）；② 无内联（SQL 原样到达）但会话 pin 生效命中目标库——两段名歧义路径不存在 | 【留待 R 阶段回归】需真实 SQL Server |
+| F7-E2E-004 | SQLite 默认 main 零变化 + ATTACH 别名场景 | sqlite 连接；另建 fixture 库经 ATTACH AS stats | ① 携带 `database=main` 执行未限定查询；② ATTACH 后携带 `database=stats` 执行 | ① SQL 原样执行（no-op，行为与现状一致）；② 命中 stats 别名下同名表 | 【留待 R 阶段回归】需 ATTACH 场景编排 |
+| F7-E2E-005 | ClickHouse 内联 + mutation 语法兜底 | CH 实例多库；目标库含可区分表 | ① 携带 `database=<目标>` 执行 SELECT/INSERT；② 执行 `ALTER TABLE t DELETE WHERE id=1`（携带同目标） | ① 命中目标库表；② SQL 原样放行不报解析错、由 pin 保证落库正确 | 【留待 R 阶段回归】需真实 CH 多库 |
+| F7-E2E-006 | DuckDB schema 内联（PG 同形态） | DuckDB 实例 main + 自建 schema 各含可区分表 | 携带 `schema=<自建>` 执行未限定查询 | 命自建 schema 表；database-only 请求时 SQL 原样（走会话切换维度） | 【留待 R 阶段回归】需真实 DuckDB |
+| F7-E2E-007 | 已限定 SQL 幂等回归（全方言抽样） | 同 F7-E2E-001/002 实例 | 执行已写全限定名的 SQL（`` `db_b`.users `` / `public.users` / `[db].[dbo].[t]`），携带相同定位字段 | 结果正确且日志无 rewrite 记录（二次限定不发生，SQL 未被双重包裹） | 【留待 R 阶段回归】随 R 全矩阵执行 |
+
+**测试轮判定：通过 —— 六驱动形态与基线一致、sqlserver 裁决正确且文档化、兜底/幂等/双保险断言齐备、全矩阵独立重跑全绿，F7 置「已完成」；无新增缺陷（bug 清单：无）。**
 
 ## R 回归与收尾
 （占位）

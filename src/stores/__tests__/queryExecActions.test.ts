@@ -132,9 +132,10 @@ describe('queryExecActions carries the panel database (F1 BUG-001)', () => {
       getExec,
       setExec,
       'db_b',
+      'sales',
     );
 
-    expect(mockExecuteQuery).toHaveBeenCalledWith('conn-1', 'SELECT * FROM users', {}, 'db_b');
+    expect(mockExecuteQuery).toHaveBeenCalledWith('conn-1', 'SELECT * FROM users', {}, 'db_b', 'sales');
   });
 
   it('runBoundQuery normalizes a missing database to null', async () => {
@@ -143,7 +144,7 @@ describe('queryExecActions carries the panel database (F1 BUG-001)', () => {
 
     await runBoundQuery('panel-1', 'conn-1', 'SELECT 1', {}, getExec, setExec);
 
-    expect(mockExecuteQuery).toHaveBeenCalledWith('conn-1', 'SELECT 1', {}, null);
+    expect(mockExecuteQuery).toHaveBeenCalledWith('conn-1', 'SELECT 1', {}, null, null);
   });
 
   it('runStreamingQuery forwards database via stream options', async () => {
@@ -160,7 +161,7 @@ describe('queryExecActions carries the panel database (F1 BUG-001)', () => {
       'conn-1',
       'SELECT 1',
       expect.any(Function),
-      { database: 'analytics' },
+      { database: 'analytics', schema: null },
     );
   });
 
@@ -178,7 +179,33 @@ describe('queryExecActions carries the panel database (F1 BUG-001)', () => {
       'conn-1',
       'SELECT 1',
       expect.any(Function),
-      { database: null },
+      { database: null, schema: null },
+    );
+  });
+
+  it('runStreamingQuery forwards the F7 schema target via stream options', async () => {
+    mockExecuteQueryStream.mockImplementationOnce(
+      async (_connId: string, _sql: string, onEvent: (event: unknown) => void) => {
+        onEvent({ type: 'done', totalTimeMs: 5 });
+      },
+    );
+    const { getExec, setExec } = makeExecContext();
+
+    await runStreamingQuery(
+      'panel-1',
+      'conn-1',
+      'SELECT 1',
+      getExec,
+      setExec,
+      'analytics',
+      'sales',
+    );
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'conn-1',
+      'SELECT 1',
+      expect.any(Function),
+      { database: 'analytics', schema: 'sales' },
     );
   });
 });
