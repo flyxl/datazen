@@ -2,7 +2,7 @@
  * E2E — App data ZIP backup / restore (typical user scenarios via IPC + UI).
  *
  * ADB-001  Homepage shows Export/Import App Data actions
- * ADB-002  export_app_data writes a zip under a temp path
+ * ADB-002  export_app_data writes a zip under a temp path (overridePath form)
  * ADB-003  Export zip is non-empty and re-import IPC succeeds (no restart)
  * ADB-004  Import of path-traversal zip fails safely
  * ADB-005  get_system_ui_language returns a supported locale (related first-run)
@@ -31,6 +31,24 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
     throw new Error((result as { __error: string }).__error);
   }
   return result as T;
+}
+
+// Decision 3 (F4): export_app_data / import_app_data are merged path/dialog
+// IPCs. Raw paths go through `overridePath`, which only webdriver builds
+// accept and which skips both native dialogs (old raw-path behavior).
+function exportToPath(zipPath: string) {
+  return invokeBackend<boolean>('export_app_data', {
+    defaultFileName: 'datazen-backup.zip',
+    overridePath: zipPath,
+  });
+}
+
+function importFromPath(zipPath: string) {
+  return invokeBackend<boolean>('import_app_data', {
+    confirmTitle: 'e2e',
+    confirmMessage: 'e2e',
+    overridePath: zipPath,
+  });
 }
 
 const SUPPORTED = new Set(['en', 'zh-CN', 'zh-TW', 'es', 'fr', 'de', 'ja', 'pt-BR', 'ru', 'ko']);
@@ -89,8 +107,8 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
       path.resolve(import.meta.dirname, '../../src/windows/connection/ConnectionPage.tsx'),
       'utf8',
     );
-    expect(mainSrc).toContain('exportAppDataWithDialog');
-    expect(mainSrc).toContain('importAppDataWithDialog');
+    expect(mainSrc).toContain('backupCommands.exportAppData(');
+    expect(mainSrc).toContain('backupCommands.importAppData(');
     expect(mainSrc).toContain('menu:export-config');
     expect(mainSrc).toContain('menu:import-config');
     expect(mainSrc).toContain('menu:export-connections');
@@ -105,7 +123,8 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
   });
 
   it('ADB-002: export_app_data should write a zip file', async () => {
-    await invokeBackend('export_app_data', { path: backupPath });
+    const saved = await exportToPath(backupPath);
+    expect(saved).toBe(true);
     expect(fs.existsSync(backupPath)).toBe(true);
     const stat = fs.statSync(backupPath);
     expect(stat.size).toBeGreaterThan(0);
@@ -113,8 +132,8 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
 
   it('ADB-003: re-importing the exported zip via IPC should succeed', async () => {
     // Idempotent restore of current snapshot (no restart — Store stays in memory).
-    await invokeBackend('export_app_data', { path: backupPath });
-    await invokeBackend('import_app_data', { path: backupPath });
+    await exportToPath(backupPath);
+    await importFromPath(backupPath);
     const settings = await invokeBackend<Record<string, unknown>>('get_settings');
     expect(settings).toBeTruthy();
     expect(typeof settings.language).toBe('string');
@@ -124,7 +143,7 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
     makeTraversalZip(evilPath);
     let failed = false;
     try {
-      await invokeBackend('import_app_data', { path: evilPath });
+      await importFromPath(evilPath);
     } catch (e) {
       failed = true;
       expect(String(e)).toMatch(/traversal|InvalidInput|absolute|failed|error/i);
@@ -138,7 +157,7 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
   });
 
   it('ADB-006: exported zip should exclude logs/ and *.tmp', async () => {
-    await invokeBackend('export_app_data', { path: backupPath });
+    await exportToPath(backupPath);
     const py = `
 import zipfile, sys
 names = zipfile.ZipFile(sys.argv[1]).namelist()
@@ -158,7 +177,7 @@ sys.exit(1 if bad else 0)
   });
 
   it('ADB-008: exported zip should exclude .key (encryption key material)', async () => {
-    await invokeBackend('export_app_data', { path: backupPath });
+    await exportToPath(backupPath);
     const py = `
 import zipfile, sys
 names = zipfile.ZipFile(sys.argv[1]).namelist()

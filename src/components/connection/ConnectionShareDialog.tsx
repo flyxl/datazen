@@ -138,7 +138,7 @@ export function ConnectionShareDialog({
     try {
       if (mode === 'export') {
         const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const count = await connectionCommands.exportConnectionsWithDialog(
+        const count = await connectionCommands.exportConnections(
           password,
           `datazen-connections-${date}.datazenconnection`,
         );
@@ -155,7 +155,7 @@ export function ConnectionShareDialog({
         onClose();
         onImportSuccess(result);
       } else {
-        const result = await connectionCommands.importConnectionsWithDialog(password);
+        const result = await connectionCommands.importConnections(password);
         onClose();
         if (result !== null) {
           onImportSuccess(result);

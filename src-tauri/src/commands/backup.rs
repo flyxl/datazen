@@ -1,4 +1,4 @@
-use super::error::{CmdExt, CommandError};
+use super::error::{resolve_override_path, CmdExt, CommandError, OVERRIDE_DISABLED_MSG};
 use super::AppState;
 use crate::db::{
     BackupDumpOptions, BackupRestoreOptions, ConnectionHandle, DatabaseDriver, DriverError,
@@ -61,10 +61,6 @@ impl<'a> ThrottledRestoreProgress<'a> {
     }
 }
 
-fn require_webdriver_path_ipc(disabled_msg: &'static str) -> Result<(), CommandError> {
-    super::error::require_webdriver_path_ipc(disabled_msg)
-}
-
 pub(crate) fn parse_backup_options(options: &[String]) -> Result<BackupDumpOptions, CommandError> {
     if options.iter().any(|o| o == "format-custom") {
         return Err(CommandError::Validation(
@@ -106,31 +102,54 @@ pub(crate) fn validate_backup_filter_extension(
     Ok(ext)
 }
 
-#[tauri::command]
-pub async fn backup_database(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    database: Option<String>,
-    output_path: String,
-    options: Option<Vec<String>>,
-    compress: Option<bool>,
-) -> Result<(), CommandError> {
-    require_webdriver_path_ipc("Direct path backup disabled; use backup_database_with_dialog")?;
-    backup_database_to_path(
-        &state,
-        db_session_id,
-        database,
-        PathBuf::from(output_path),
-        options,
-        compress,
-        None,
-    )
-    .await
+/// Native save-dialog branch of [`backup_database`]; `None` = dialog cancelled.
+fn pick_backup_save_path(
+    app: &tauri::AppHandle,
+    default_file_name: &str,
+    filter_extension: &str,
+) -> Result<Option<PathBuf>, CommandError> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let ext = validate_backup_filter_extension(filter_extension)?;
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Backup", &[ext.as_str()])
+        .set_file_name(default_file_name)
+        .blocking_save_file();
+    let Some(fp) = picked else {
+        return Ok(None);
+    };
+    fp.into_path()
+        .map(Some)
+        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))
+}
+
+/// Native open-dialog branch of [`restore_sql_file`]; `None` = dialog cancelled.
+fn pick_sql_open_path(app: &tauri::AppHandle) -> Result<Option<PathBuf>, CommandError> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("SQL", &["sql"])
+        .blocking_pick_file();
+    let Some(fp) = picked else {
+        return Ok(None);
+    };
+    fp.into_path()
+        .map(Some)
+        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))
 }
 
 /// Native save dialog + database backup. Returns `true` if written.
+///
+/// Merges the former `backup_database` (webdriver-only raw-path variant) and
+/// `backup_database_with_dialog` into one IPC: production callers always omit
+/// `override_path` and go through the dialog; E2E passes `override_path`,
+/// which requires a webdriver build (`cfg!(feature = "webdriver")`).
 #[tauri::command]
-pub async fn backup_database_with_dialog(
+pub async fn backup_database(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     db_session_id: String,
@@ -139,28 +158,20 @@ pub async fn backup_database_with_dialog(
     filter_extension: String,
     options: Option<Vec<String>>,
     compress: Option<bool>,
+    override_path: Option<String>,
 ) -> Result<bool, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
-    let ext = validate_backup_filter_extension(&filter_extension)?;
-
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("Backup", &[ext.as_str()])
-        .set_file_name(&default_file_name)
-        .blocking_save_file();
-    let Some(fp) = picked else {
-        return Ok(false);
+    let output_path = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
+        Some(path) => Some(path),
+        None => pick_backup_save_path(&app, &default_file_name, &filter_extension)?,
     };
-    let path = fp
-        .into_path()
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
+    let Some(output_path) = output_path else {
+        return Ok(false); // user dismissed the dialog
+    };
     backup_database_to_path(
         &state,
         db_session_id,
         database,
-        path,
+        output_path,
         options,
         compress,
         Some(&app),
@@ -251,96 +262,40 @@ async fn backup_database_to_path(
     Ok(())
 }
 
+/// Native open dialog + streaming `.sql` execution against one database.
+/// Returns `true` if executed, `false` when the dialog is dismissed.
+///
+/// Four-in-one merge (decision 3+6) of the former `restore_database`,
+/// `restore_database_with_dialog`, `execute_sql_file` and
+/// `execute_sql_file_with_dialog`, which already shared one pipeline:
+/// - dialog-era parameters (`db_session_id`, `database`, `options`) unchanged;
+/// - both raw-path variants map to `override_path` (webdriver builds only —
+///   rejected with [`OVERRIDE_DISABLED_MSG`] in production).
 #[tauri::command]
-pub async fn restore_database(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    input_path: String,
-    options: Option<Vec<String>>,
-    database: Option<String>,
-) -> Result<(), CommandError> {
-    require_webdriver_path_ipc("Direct path restore disabled; use restore_database_with_dialog")?;
-    restore_database_from_path(
-        &state,
-        None,
-        db_session_id,
-        database,
-        PathBuf::from(input_path),
-        options,
-    )
-    .await
-}
-
-/// Native open dialog + restore. Returns `true` if restored.
-#[tauri::command]
-pub async fn restore_database_with_dialog(
+pub async fn restore_sql_file(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     db_session_id: String,
     database: Option<String>,
     options: Option<Vec<String>>,
+    override_path: Option<String>,
 ) -> Result<bool, CommandError> {
-    sql_file_with_dialog(&app, &state, db_session_id, database, options).await
-}
-
-/// Native open dialog + execute a `.sql` file against the current connection.
-/// Shares the same streaming restore pipeline as `restore_database_with_dialog`.
-#[tauri::command]
-pub async fn execute_sql_file_with_dialog(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-    db_session_id: String,
-    database: Option<String>,
-    options: Option<Vec<String>>,
-) -> Result<bool, CommandError> {
-    sql_file_with_dialog(&app, &state, db_session_id, database, options).await
-}
-/// Direct-path `.sql` file execution (no dialog). Available only in webdriver
-/// builds so E2E can drive the streaming pipeline without a native picker.
-#[tauri::command]
-pub async fn execute_sql_file(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    input_path: String,
-    options: Option<Vec<String>>,
-    database: Option<String>,
-) -> Result<bool, CommandError> {
-    require_webdriver_path_ipc(
-        "Direct path sql file execution disabled; use execute_sql_file_with_dialog",
-    )?;
+    let input_path = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
+        Some(path) => Some(path),
+        None => pick_sql_open_path(&app)?,
+    };
+    let Some(input_path) = input_path else {
+        return Ok(false); // user dismissed the dialog
+    };
     restore_database_from_path(
         &state,
-        None,
+        Some(&app),
         db_session_id,
         database,
-        PathBuf::from(input_path),
+        input_path,
         options,
     )
     .await?;
-    Ok(true)
-}
-
-async fn sql_file_with_dialog(
-    app: &tauri::AppHandle,
-    state: &AppState,
-    db_session_id: String,
-    database: Option<String>,
-    options: Option<Vec<String>>,
-) -> Result<bool, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("SQL", &["sql"])
-        .blocking_pick_file();
-    let Some(fp) = picked else {
-        return Ok(false);
-    };
-    let path = fp
-        .into_path()
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
-    restore_database_from_path(state, Some(app), db_session_id, database, path, options).await?;
     Ok(true)
 }
 
@@ -635,19 +590,6 @@ mod tests {
     }
 
     #[test]
-    fn require_webdriver_path_ipc_gates_without_feature() {
-        let result = require_webdriver_path_ipc(
-            "Direct path backup disabled; use backup_database_with_dialog",
-        );
-        if cfg!(feature = "webdriver") {
-            assert!(result.is_ok());
-        } else {
-            assert!(result.is_err());
-            assert!(result.unwrap_err().to_string().contains("disabled"));
-        }
-    }
-
-    #[test]
     fn driver_err_not_supported_is_validation() {
         let err = CommandError::from(DriverError::NotSupported("create".into()));
         assert!(matches!(err, CommandError::Validation(msg) if msg == "create"));
@@ -771,15 +713,16 @@ mod tests {
 
 #[cfg(test)]
 mod ipc_contract_guards {
-    //! D1 regression anchors: all six backup/restore commands operate on the
+    //! D1 regression anchors: the merged backup/restore commands operate on the
     //! **current runtime session** (strict `get_session` / `get_session_config`
     //! lookups), so their wire parameter must be `db_session_id` (frontend
     //! camelCase `dbSessionId`). They previously shipped as `connection_id`
     //! while using session semantics — "renamed but reversed". These tests pin
-    /// the contract in both directions.
+    /// the contract in both directions, plus the decision 3+6 merge surface.
     use super::*;
 
     const SOURCE: &str = include_str!("backup.rs");
+    const LIB_RS: &str = include_str!("../lib.rs");
 
     /// Extracts the parameter list of a `pub async fn <command>(...)`.
     fn command_params(command: &str) -> String {
@@ -794,14 +737,7 @@ mod ipc_contract_guards {
 
     #[test]
     fn session_semantics_commands_take_db_session_id() {
-        for cmd in [
-            "backup_database",
-            "backup_database_with_dialog",
-            "restore_database",
-            "restore_database_with_dialog",
-            "execute_sql_file",
-            "execute_sql_file_with_dialog",
-        ] {
+        for cmd in ["backup_database", "restore_sql_file"] {
             let params = command_params(cmd);
             assert!(
                 params.contains("db_session_id"),
@@ -811,6 +747,86 @@ mod ipc_contract_guards {
             assert!(
                 !without_new.contains("connection_id"),
                 "`{cmd}` must not take (or also take) `connection_id`; got: {params}"
+            );
+        }
+    }
+
+    #[test]
+    fn merged_backup_database_takes_override_path_not_raw_output_path() {
+        let params = command_params("backup_database");
+        assert!(
+            params.contains("override_path: Option<String>"),
+            "`backup_database` must expose the webdriver-only override; got: {params}"
+        );
+        assert!(
+            !params.contains("output_path"),
+            "raw `output_path` must not return after the dialog/path merge; got: {params}"
+        );
+        // Dialog-era wire parameters stay compatible for production callers.
+        for param in ["default_file_name", "filter_extension", "options"] {
+            assert!(
+                params.contains(param),
+                "`backup_database` must keep dialog param `{param}`; got: {params}"
+            );
+        }
+    }
+
+    #[test]
+    fn restore_sql_file_maps_four_former_commands_params() {
+        let params = command_params("restore_sql_file");
+        assert!(
+            params.contains("override_path: Option<String>"),
+            "`override_path` replaces both raw-path variants' `input_path`; got: {params}"
+        );
+        assert!(
+            !params.contains("input_path"),
+            "raw `input_path` must not return after the four-way merge; got: {params}"
+        );
+        // Compat mapping:
+        //   restore_database(db_session_id, input_path, options, database)
+        //   execute_sql_file(db_session_id, input_path, options, database)
+        //   restore_database_with_dialog(db_session_id, database, options)
+        //   execute_sql_file_with_dialog(db_session_id, database, options)
+        // → restore_sql_file(db_session_id, database, options, override_path)
+        assert!(params.contains("database: Option<String>"));
+        assert!(params.contains("options: Option<Vec<String>>"));
+        // The old entry points must be gone from this module. Needles are
+        // assembled at runtime so this test's own source never contains them
+        // (mirroring strict_session_lookups… below).
+        let fn_prefix = "pub async fn ";
+        let with_dialog = "_with_";
+        let dialog_kind = "dialog";
+        for name in ["restore_database", "execute_sql_file"] {
+            let plain = format!("{fn_prefix}{name}(");
+            assert!(!SOURCE.contains(&plain), "stale raw-path command `{plain}`");
+            let variant = format!("{fn_prefix}{name}{with_dialog}{dialog_kind}(");
+            assert!(
+                !SOURCE.contains(&variant),
+                "stale dialog command `{variant}`"
+            );
+        }
+    }
+
+    #[test]
+    fn lib_rs_registers_merged_commands_only() {
+        assert!(
+            LIB_RS.contains("commands::backup_database,"),
+            "merged `backup_database` must stay registered"
+        );
+        assert!(
+            LIB_RS.contains("commands::restore_sql_file,"),
+            "`restore_sql_file` must be registered"
+        );
+        for gone in [
+            "commands::backup_database_with_dialog,",
+            "commands::restore_database,",
+            "commands::restore_database_with_dialog,",
+            "commands::execute_sql_file,",
+            "commands::execute_sql_file_with_dialog,",
+        ] {
+            assert!(
+                !LIB_RS.contains(gone),
+                "`{gone}` must no longer be registered in lib.rs"
             );
         }
     }
