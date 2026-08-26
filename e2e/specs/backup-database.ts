@@ -67,6 +67,25 @@ async function dropBackupTable(dbSessionId: string) {
 // Group 1: Backend backup command tests
 // ═════════════════════════════════════════════════════════════════════
 
+// Decision 3+6: backup_database is the merged dialog/path IPC — E2E bypasses
+// the native save dialog via the webdriver-only `overridePath`.
+async function backupToPath(
+  dbSessionId: string,
+  outPath: string,
+  opts: Record<string, unknown> = {},
+): Promise<boolean> {
+  const base = path.basename(outPath);
+  const filterExtension = base.endsWith('.sql.gz') ? 'gz' : path.extname(base).replace('.', '');
+  return invokeBackend<boolean>('backup_database', {
+    dbSessionId,
+    database: PG_CONFIG.database,
+    defaultFileName: base,
+    filterExtension,
+    overridePath: outPath,
+    ...opts,
+  });
+}
+
 describe('数据库备份功能 (BACKUP)', () => {
   let dbSessionId: string;
 
@@ -111,13 +130,11 @@ describe('数据库备份功能 (BACKUP)', () => {
   it('BACKUP-003: backup_database creates a SQL file', async () => {
     const outPath = path.join(TMP_DIR, `datazen-backup-test-${Date.now()}.sql`);
 
-    await invokeBackend('backup_database', {
-      dbSessionId,
-      database: PG_CONFIG.database,
-      outputPath: outPath,
+    const saved = await backupToPath(dbSessionId, outPath, {
       options: [],
       compress: false,
     });
+    expect(saved).toBe(true);
 
     const exists = fs.existsSync(outPath);
     expect(exists).toBe(true);
@@ -134,10 +151,7 @@ describe('数据库备份功能 (BACKUP)', () => {
   it('BACKUP-004: backup with --schema-only produces no INSERT statements', async () => {
     const outPath = path.join(TMP_DIR, `datazen-backup-schema-${Date.now()}.sql`);
 
-    await invokeBackend('backup_database', {
-      dbSessionId,
-      database: PG_CONFIG.database,
-      outputPath: outPath,
+    await backupToPath(dbSessionId, outPath, {
       options: ['schema-only'],
       compress: false,
     });
@@ -157,10 +171,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     const outPath = path.join(TMP_DIR, `datazen-backup-data-${Date.now()}.sql`);
 
     // Use a small table subset via pg_dump -t to avoid dumping 1M+ rows
-    await invokeBackend('backup_database', {
-      dbSessionId,
-      database: PG_CONFIG.database,
-      outputPath: outPath,
+    await backupToPath(dbSessionId, outPath, {
       options: ['data-only'],
       compress: false,
     });
@@ -176,10 +187,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     this.timeout(120000);
     const outPath = path.join(TMP_DIR, `datazen-backup-clean-${Date.now()}.sql`);
 
-    await invokeBackend('backup_database', {
-      dbSessionId,
-      database: PG_CONFIG.database,
-      outputPath: outPath,
+    await backupToPath(dbSessionId, outPath, {
       options: ['clean', 'schema-only'],
       compress: false,
     });
@@ -196,10 +204,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     this.timeout(120000);
     const outPath = path.join(TMP_DIR, `datazen-backup-create-${Date.now()}.sql`);
 
-    await invokeBackend('backup_database', {
-      dbSessionId,
-      database: PG_CONFIG.database,
-      outputPath: outPath,
+    await backupToPath(dbSessionId, outPath, {
       options: ['create', 'schema-only'],
       compress: false,
     });
@@ -215,10 +220,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     this.timeout(120000);
     const outPath = path.join(TMP_DIR, `datazen-backup-gz-${Date.now()}.sql.gz`);
 
-    await invokeBackend('backup_database', {
-      dbSessionId,
-      database: PG_CONFIG.database,
-      outputPath: outPath,
+    await backupToPath(dbSessionId, outPath, {
       options: ['schema-only'],
       compress: true,
     });
@@ -239,10 +241,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     this.timeout(120000);
     const outPath = path.join(TMP_DIR, `datazen-backup-multi-${Date.now()}.sql`);
 
-    await invokeBackend('backup_database', {
-      dbSessionId,
-      database: PG_CONFIG.database,
-      outputPath: outPath,
+    await backupToPath(dbSessionId, outPath, {
       options: ['clean', 'schema-only'],
       compress: false,
     });
@@ -268,10 +267,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     );
 
     const outPath = path.join(TMP_DIR, `datazen-backup-routines-${Date.now()}.sql`);
-    await invokeBackend('backup_database', {
-      dbSessionId,
-      database: PG_CONFIG.database,
-      outputPath: outPath,
+    await backupToPath(dbSessionId, outPath, {
       options: ['schema-only', 'routines'],
       compress: false,
     });
@@ -288,9 +284,9 @@ describe('数据库备份功能 (BACKUP)', () => {
     );
 
     await withSafeModeOff(() =>
-      invokeBackend('restore_database', {
+      invokeBackend('restore_sql_file', {
         dbSessionId,
-        inputPath: outPath,
+        overridePath: outPath,
       }),
     );
 
@@ -312,18 +308,15 @@ describe('数据库备份功能 (BACKUP)', () => {
   it('BACKUP-012: restore overwrite replaces existing objects without duplicating rows', async function () {
     this.timeout(120000);
     const outPath = path.join(TMP_DIR, `datazen-backup-overwrite-${Date.now()}.sql`);
-    await invokeBackend('backup_database', {
-      dbSessionId,
-      database: PG_CONFIG.database,
-      outputPath: outPath,
+    await backupToPath(dbSessionId, outPath, {
       options: [],
       compress: false,
     });
 
     await withSafeModeOff(() =>
-      invokeBackend('restore_database', {
+      invokeBackend('restore_sql_file', {
         dbSessionId,
-        inputPath: outPath,
+        overridePath: outPath,
         database: PG_CONFIG.database,
         options: ['overwrite'],
       }),
@@ -346,10 +339,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     const outPath = path.join(TMP_DIR, `datazen-backup-fail-${Date.now()}.sql`);
     let errorMsg = '';
     try {
-      await invokeBackend('backup_database', {
-        dbSessionId: 'nonexistent-id',
-        database: PG_CONFIG.database,
-        outputPath: outPath,
+      await backupToPath('nonexistent-id', outPath, {
         options: [],
         compress: false,
       });

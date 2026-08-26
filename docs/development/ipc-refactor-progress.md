@@ -10,7 +10,7 @@
 |---|------|---------|------|------------|------------|
 | F1 | 废弃 `use_database`，query/stream/explain 显式传参 | 决策 1 | 已完成 | 34a28420 | 3d23cfd1 · 8b85cd49 · 本提交 |
 | F2 | ADB 命令迁移 SQLite 驱动（DriverCommandDefinition） | 决策 2 | 编码完成 | 本提交 | — |
-| F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 未开始 | — | — |
+| F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 编码完成 | 本提交 | — |
 | F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 未开始 | — | — |
 | F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 未开始 | — | — |
 | F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 未开始 | — | — |
@@ -267,7 +267,50 @@
 2. 第三方插件驱动若声明 save_dialog，宿主当前不做额外权限校验（信任插件声明的过滤器/扩展名，路径仍由用户在 OS 对话框中选定）；插件权限模型完善时可收口
 
 ## F3 backup/restore 合并 + restore_sql_file
-（占位）
+
+### 范围
+- 后端（`src-tauri/src/commands/backup.rs`）：六命令收敛为二 ——
+  - `backup_database` ← 原 path 版（删）+ `backup_database_with_dialog`（保留名字）合并；新增可选 `override_path: Option<String>`，返回值统一 `Result<bool>`
+  - `restore_sql_file`（新名）← 四合一：`restore_database` / `restore_database_with_dialog` / `execute_sql_file` / `execute_sql_file_with_dialog` 全删（Rust 实现本就同源 `sql_file_with_dialog`）
+  - `save_encryption_key_with_dialog` 不动
+- `lib.rs` 注册块六行 → 两行；前端 `lib/sqlFileExecution.ts` 删除 `command?` 分叉参数、固定 invoke `restore_sql_file`；`windows/backup/BackupWindow.tsx` 去掉 command 行、改调 `backup_database`
+- 守护/E2E 同步：`pathIpcWiring.test.ts` 新增决策 3+6 守护用例、BackupWindow.test.tsx mock 迁移、e2e `backup-database.ts` 与 `execute-sql-file.ts` 全部改 `overridePath` 形态
+
+### 设计决策
+1. **override_path 门控写法**：对照 file.rs write_file 家族的运行时门控风格，backup.rs 以共享助手 `resolve_override_path(Option<String>, msg)` 收口两个合并命令——`Some(p)` 先过 `require_webdriver_path_ipc`（内部 `if !cfg!(feature = "webdriver")` 返回 Validation）再转 `PathBuf`，`None` 恒不触门控。用 `cfg!()` 宏而非 `#[cfg]` 属性：两条分支都参与编译，生产/webdriver 构建编译路径完全一致（已另跑 `cargo check --features webdriver` 验证）。生产构建下传 override_path 得到计划文档示例原文错误 `"path override disabled in production"`。
+2. **返回值统一 bool（dialog 语义为准）**：写入/执行成功 → `true`；用户取消原生对话框 → `false`。原 path 版 backup 的 `()` 与 execute_sql_file 的 `true` 由调用方按需断言（E2E BACKUP-003 已补 `saved === true`）。
+3. **filter_extension 校验保持无条件**：与原 dialog 版一致在入口做 sql/gz/dump 白名单校验；override 路径同样要求携带合法 filter_extension（E2E helper 按输出文件名自动推导 `.sql.gz→gz`），但不额外校验 override 路径自身的扩展名（维持原 path 版行为，避免 E2E 场景回归）。
+4. **前端零 override**：生产调用面（BackupWindow / ExecuteSqlFileDialog / sqlFileExecution wrapper）一律无 override_path 走 dialog 分支；仅 E2E 直调 IPC 时传 `overridePath`。wrapper 的 `command?:` 双入口分叉整体删除。
+5. **日志标签非 IPC 面**：共享 impl（`backup_database_to_path` / `restore_database_from_path`）内部的 tracing/cmd_err 标签沿用旧名（如 `"restore_database streaming"`），仅为日志上下文，不改。
+
+### 单测清单（编码轮）
+- Rust `commands::backup::tests`：`resolve_override_path_gates_without_webdriver_feature`（Some → 非 webdriver 报 Validation "disabled"、webdriver 放行原路径；None → 两构建均 `Ok(None)` 零门控开销）
+- Rust `ipc_contract_guards`：
+  - `session_semantics_commands_take_db_session_id` 收敛为两命令（db_session_id 语义守护延续）
+  - `merged_backup_database_takes_override_path_not_raw_output_path`（有 override_path、无 output_path 残留、dialog 三参数保留）
+  - `restore_sql_file_maps_four_former_commands_params`（override_path 替代 input_path；database/options 参数兼容映射注释化断言；四个旧 fn 定义清零——needle 运行时拼接避免自引用误报）
+  - `lib_rs_registers_merged_commands_only`（include_str! lib.rs 精确匹配注册面，五条旧注册清零）
+- 前端新增 `src/lib/__tests__/sqlFileExecution.test.ts`（6 用例）：统一 invoke `restore_sql_file` 且旧四名零调用、overwrite 选项追加/拒绝中止（空库不询问）、pre-confirm 拒绝零 IPC、取消 dialog 返回 false、后端错误透传 rethrow
+- `pathIpcWiring.test.ts` 新增「decision 3+6」守护：BackupWindow/sqlFileExecution/ExecuteSqlFileDialog 生产源码无五个旧名、wrapper 无 `command?:`、lib.rs 注册面匹配、生产代码不出现 `overridePath`
+
+### E2E 用例迁移（真实 webdriver 回归留待 R 阶段）
+| spec | 变更 |
+|------|------|
+| `e2e/specs/backup-database.ts` | 10 处 backup_database 调用收敛到 `backupToPath` helper（defaultFileName + filterExtension + overridePath）；BACKUP-003 补返回值断言；BACKUP-011/012 两处 restore_database → `restore_sql_file` + overridePath |
+| `e2e/specs/execute-sql-file.ts` | SF-E01/E02 invoke `execute_sql_file` → `restore_sql_file` + overridePath |
+
+### 测试结果（编码轮）
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（共享主检出 target） | **1133 passed / 0 failed / 2 ignored**（较 F2 后基线净 +3 = 删 1 个旧门控测试、新增 4 个守卫/门控测试） |
+| `npx vitest run` | **241 文件 / 1970 用例全过**（净 +1 文件 +7 用例 = sqlFileExecution.test.ts 6 用例 + pathIpcWiring 1 用例） |
+| `npx tsc --noEmit` | **0 错误**（exit 0） |
+| `cargo check -p datazen --features webdriver` | 通过（override 分支参与编译） |
+
+### 遗留注意
+1. `docs/reviews/*2026-08-21*.md`、`test-reports/*.md` 为历史评审/测试报告存档，其中的旧命令名不做回写；进度文件 F1-E2E-007 用例描述仍提旧 dialog 命令名，属历史登记，R 阶段回归时按本节映射表对到 `restore_sql_file`。
+2. 本 worktree 的 codegen `src-tauri/capabilities/default.json` 曾含 `redis:default` 导致裸 cargo 构建失败（F1 遗留注意 2 同因），本轮已再次从主检出对齐（gitignore 文件，未入库）。
+3. override_path 未做路径扩展名校验（维持原 path 版行为）；若后续要把该通道开放给更多场景，建议复用 F2 `finish_save_dialog` 的按声明扩展名校验收口。
 
 ## F4 connections/app-data 导入导出合并
 （占位）
