@@ -31,6 +31,8 @@
     "e2e:i18n-backup": "node e2e/run.mjs --skip-build -- --suite i18n-backup",
     "e2e:path-ipc": "node e2e/run.mjs --skip-build -- --suite path-ipc",
     "e2e:dashboard": "node e2e/run.mjs --skip-build -- --suite dashboard",
+    "e2e:demo": "bash e2e/record-demo.sh",
+    "e2e:demo:skip-build": "bash e2e/record-demo.sh --skip-build",
     "pretest": "node scripts/resolve-drivers.mjs --codegen-only --drivers=basic",
     "posttest": "node scripts/plugin-file-stash.mjs restore",
     "pretest:unit": "node scripts/resolve-drivers.mjs --codegen-only --drivers=basic",

@@ -59,6 +59,11 @@
 
     <section class="section-tight">
       <div class="wrap">
+        <div class="download-callout">
+          <strong>macOS 用户注意：</strong>DataZen 尚未通过 Apple
+          公证。下载后如果提示"已损坏"或"无法验证"，运行
+          <code>xattr -cr /Applications/DataZen.app</code> 后右键 → 打开 → "打开"。
+        </div>
         <div class="grid-3">
           <div class="card">
             <div class="icon">🍎</div>
@@ -105,6 +110,28 @@
             >github.com/flyxl/datazen/releases</a
           >
         </p>
+        <h3 style="font-size: 16px; margin: 28px 0 10px">包管理器</h3>
+        <div class="install-cmd">
+          <code>brew install datazen</code>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText('brew install datazen')">
+            复制
+          </button>
+        </div>
+        <div class="install-cmd">
+          <code>winget install flyxl.datazen</code>
+          <button
+            class="copy-btn"
+            onclick="navigator.clipboard.writeText('winget install flyxl.datazen')"
+          >
+            复制
+          </button>
+        </div>
+        <div class="install-cmd">
+          <code>scoop install datazen</code>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText('scoop install datazen')">
+            复制
+          </button>
+        </div>
       </div>
     </section>
 
@@ -209,7 +236,7 @@
           </details>
           <details>
             <summary>支持哪些数据库？</summary>
-            <p>内置 15+ 种，可通过插件扩展。</p>
+            <p>PostgreSQL、MySQL / MariaDB、SQLite、Redis 内置；其他数据库可通过插件扩展。</p>
           </details>
           <details>
             <summary>支持 Linux？</summary>
@@ -224,6 +251,51 @@
     </section>
 
     <footer id="site-footer"></footer>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "需要注册账号吗？",
+            "acceptedAnswer": { "@type": "Answer", "text": "不需要。下载安装即可使用，无需注册。" }
+          },
+          {
+            "@type": "Question",
+            "name": "我的数据会上传到哪里？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "数据库数据和凭据全部留在本机，DataZen 不运行云服务。仅 AI 功能会将 schema 和查询上下文发送到你配置的服务商。"
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "AI 功能需要 API Key 吗？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "需要，使用你自己的 API Key。普通数据库查询和浏览不需要。"
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "可以商用吗？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "可以。GPLv3 协议，内部使用无限制。分发修改版本需同步开源。"
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "支持哪些数据库？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "PostgreSQL、MySQL、MariaDB、SQLite、Redis 内置；其他数据库可通过插件扩展。"
+            }
+          }
+        ]
+      }
+    </script>
     <script src="../assets/js/site.js"></script>
   </body>
 </html>
