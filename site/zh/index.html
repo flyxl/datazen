@@ -65,77 +65,42 @@
           查询、排障、分析、自动化——让 AI 队友陪你搞定数据库，全部在一款轻量桌面应用里本地完成。
         </p>
         <div class="hero-cta">
-          <a class="btn btn-primary btn-lg" href="download.html">免费下载 DataZen</a>
+          <a class="btn btn-primary btn-lg" id="hero-download" href="download.html"
+            >免费下载 DataZen</a
+          >
           <a
             class="btn btn-secondary btn-lg"
             href="https://github.com/flyxl/datazen"
             target="_blank"
             rel="noopener"
-            >在 GitHub 查看</a
-          >
+            >在 GitHub 查看 <span id="star-count" class="star-badge"></span
+          ></a>
         </div>
         <p class="hero-note">免费 · 开源 · macOS / Windows / Linux</p>
+        <p class="hero-note" id="hero-notarize-note" style="display: none">
+          <strong>macOS 提示：</strong>如果提示"已损坏"或"无法验证"，运行
+          <code>xattr -cr /Applications/DataZen.app</code> 后右键 → 打开。
+        </p>
         <p class="hero-note">数据库数据留在本机 —— AI 请求只发往你自己配置的服务商。</p>
 
         <!-- 实时演示：自然语言 → SQL → 结果 → 图表 -->
+        <!-- 产品演示视频 -->
         <div class="hero-shot">
           <div class="shot-frame">
-            <div class="bar"><i></i><i></i><i></i><span>DataZen — 演示</span></div>
-            <div class="demo-frame" data-demo>
-              <div class="demo-stage active">
-                <span class="demo-tag">1 · 问 AI</span>
-                <span class="demo-bubble">“看一下 2026 年每月的收入。”</span>
-              </div>
-              <div class="demo-stage">
-                <span class="demo-tag">2 · AI 生成 SQL</span>
-                <pre class="demo-code">
-SELECT DATE_TRUNC('month', paid_at) AS month,
-       SUM(amount) AS revenue
-FROM orders
-WHERE paid_at >= '2026-01-01'
-GROUP BY 1 ORDER BY 1;</pre
-                >
-              </div>
-              <div class="demo-stage">
-                <span class="demo-tag">3 · 执行并查看结果</span>
-                <table class="demo-tbl">
-                  <thead>
-                    <tr>
-                      <th>month</th>
-                      <th>revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>2026-01-01</td>
-                      <td>128,400</td>
-                    </tr>
-                    <tr>
-                      <td>2026-02-01</td>
-                      <td>142,150</td>
-                    </tr>
-                    <tr>
-                      <td>2026-03-01</td>
-                      <td>151,980</td>
-                    </tr>
-                    <tr>
-                      <td>2026-04-01</td>
-                      <td>167,320</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div class="demo-stage">
-                <span class="demo-tag">4 · 一键成图</span>
-                <div class="demo-bars">
-                  <div class="demo-bar" style="--h: 58%"></div>
-                  <div class="demo-bar" style="--h: 64%"></div>
-                  <div class="demo-bar" style="--h: 70%"></div>
-                  <div class="demo-bar" style="--h: 86%"></div>
-                </div>
-                <div class="demo-cap">按月收入趋势 —— 一键出图，支持导出 PNG / SVG</div>
-              </div>
-            </div>
+            <div class="bar"><i></i><i></i><i></i><span>DataZen</span></div>
+            <video
+              class="hero-video"
+              autoplay
+              muted
+              loop
+              playsinline
+              poster="../assets/video/demo-poster.webp"
+              width="1280"
+              height="816"
+            >
+              <source src="../assets/video/demo-recording.webm" type="video/webm" />
+              <source src="../assets/video/demo-recording.mp4" type="video/mp4" />
+            </video>
           </div>
         </div>
       </div>
@@ -160,7 +125,7 @@ GROUP BY 1 ORDER BY 1;</pre
       <div class="wrap stats-band">
         <div class="stat"><b>&lt;15 MB</b><span>安装包体积</span></div>
         <div class="stat"><b>&lt;1 秒</b><span>冷启动耗时</span></div>
-        <div class="stat"><b>15+</b><span>种数据库，可扩展</span></div>
+        <div class="stat"><b>4+</b><span>内置数据库</span></div>
         <div class="stat"><b>$0</b><span>免费且开源</span></div>
       </div>
     </section>
@@ -372,7 +337,7 @@ GROUP BY 1 ORDER BY 1;</pre
             <tr>
               <td>任意结果集出图</td>
               <td class="yes">✓</td>
-              <td class="no">多为付费插件</td>
+              <td class="no">因产品而异</td>
             </tr>
             <tr>
               <td>安装包体积</td>
@@ -382,7 +347,7 @@ GROUP BY 1 ORDER BY 1;</pre
             <tr>
               <td>价格</td>
               <td class="yes">免费 · GPLv3</td>
-              <td class="no">$99+/席 常见</td>
+              <td class="no">多为付费</td>
             </tr>
           </tbody>
         </table>
@@ -401,32 +366,32 @@ GROUP BY 1 ORDER BY 1;</pre
         </div>
         <div class="grid-3">
           <div class="card">
-            <div class="icon">⚡</div>
+            <div class="icon" aria-hidden="true">⚡</div>
             <h3>安装包 &lt;15 MB</h3>
             <p>安装包小、秒级启动，远轻于常见的重量级客户端。</p>
           </div>
           <div class="card">
-            <div class="icon">🛡️</div>
+            <div class="icon" aria-hidden="true">🛡️</div>
             <h3>数据不出本机</h3>
             <p>DataZen 不运营任何云数据库服务；凭据以 AES 加密存放在系统钥匙串。</p>
           </div>
           <div class="card">
-            <div class="icon">🔌</div>
+            <div class="icon" aria-hidden="true">🔌</div>
             <h3>自带 AI 服务商</h3>
             <p>OpenAI、Anthropic、DeepSeek 或自定义端点——请求发到哪里由你决定。</p>
           </div>
           <div class="card">
-            <div class="icon">👤</div>
+            <div class="icon" aria-hidden="true">👤</div>
             <h3>无需注册账号</h3>
             <p>下载、安装、连库即可使用，没有任何要注册的东西。</p>
           </div>
           <div class="card">
-            <div class="icon">🧩</div>
+            <div class="icon" aria-hidden="true">🧩</div>
             <h3>可扩展驱动</h3>
-            <p>内置 15+ 种数据库；按需增加 OLAP 与专用引擎，默认安装保持精简。</p>
+            <p>PostgreSQL、MySQL、SQLite、Redis 内置；OLAP 等专用引擎可通过插件扩展。</p>
           </div>
           <div class="card">
-            <div class="icon">📖</div>
+            <div class="icon" aria-hidden="true">📖</div>
             <h3>免费开源</h3>
             <p>GPLv3 协议，完整源码随时可在 GitHub 审计。</p>
           </div>
@@ -472,24 +437,48 @@ GROUP BY 1 ORDER BY 1;</pre
           <h2>一睹为快</h2>
         </div>
         <div class="shots">
-          <img src="../assets/screenshots/03-ai-nl2sql.png" alt="自然语言生成 SQL" loading="lazy" />
           <img
+            class="gallery-img"
+            src="../assets/screenshots/03-ai-nl2sql.png"
+            alt="自然语言生成 SQL"
+            loading="lazy"
+            data-caption="AI 自然语言生成 SQL"
+          />
+          <img
+            class="gallery-img"
             src="../assets/screenshots/05-ai-diagnosis.png"
             alt="AI 诊断 SQL 报错"
             loading="lazy"
+            data-caption="一键诊断 SQL 错误"
           />
           <img
+            class="gallery-img"
             src="../assets/screenshots/06-ai-explain.png"
             alt="AI 解读 EXPLAIN 执行计划"
             loading="lazy"
+            data-caption="AI 解读查询执行计划"
           />
-          <img src="../assets/screenshots/02-query-chart.png" alt="查询结果成图" loading="lazy" />
           <img
+            class="gallery-img"
+            src="../assets/screenshots/02-query-chart.png"
+            alt="查询结果成图"
+            loading="lazy"
+            data-caption="查询结果一键成图"
+          />
+          <img
+            class="gallery-img"
             src="../assets/screenshots/12-workflow-crossdb.png"
             alt="跨库 Workflow"
             loading="lazy"
+            data-caption="跨库 Workflow 编排"
           />
-          <img src="../assets/screenshots/16-er.png" alt="外键关系 ER 图" loading="lazy" />
+          <img
+            class="gallery-img"
+            src="../assets/screenshots/16-er.png"
+            alt="外键关系 ER 图"
+            loading="lazy"
+            data-caption="自动生成 ER 关系图"
+          />
         </div>
       </div>
     </section>
@@ -502,6 +491,28 @@ GROUP BY 1 ORDER BY 1;</pre
           <p>免费下载，连上数据库，几分钟后跑通第一条 AI 辅助查询。</p>
           <a class="btn btn-primary btn-lg" href="download.html">免费下载 DataZen</a>
           <p class="muted" style="font-size: 13px; margin-top: 14px">无需账号 · 开源 · 本地优先</p>
+          <p class="muted" style="font-size: 13px; margin-top: 8px">
+            <a
+              href="https://github.com/flyxl/datazen/releases/latest"
+              target="_blank"
+              rel="noopener"
+              >最新版本</a
+            >
+            ·
+            <a
+              href="https://github.com/flyxl/datazen/blob/main/CHANGELOG.md"
+              target="_blank"
+              rel="noopener"
+              >更新日志</a
+            >
+            ·
+            <a
+              href="https://github.com/flyxl/datazen/blob/main/docs/development/roadmap.md"
+              target="_blank"
+              rel="noopener"
+              >路线图</a
+            >
+          </p>
         </div>
       </div>
     </section>

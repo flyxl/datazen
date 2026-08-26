@@ -59,6 +59,11 @@
 
     <section class="section-tight">
       <div class="wrap">
+        <div class="download-callout">
+          <strong>macOS note:</strong> DataZen is not yet Apple-notarized. After downloading, if you
+          see "damaged or cannot verify", run <code>xattr -cr /Applications/DataZen.app</code> then
+          right-click → Open → "Open".
+        </div>
         <div class="grid-3">
           <div class="card">
             <div class="icon">🍎</div>
@@ -105,6 +110,28 @@
             >github.com/flyxl/datazen/releases</a
           >
         </p>
+        <h3 style="font-size: 16px; margin: 28px 0 10px">Package managers</h3>
+        <div class="install-cmd">
+          <code>brew install datazen</code>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText('brew install datazen')">
+            Copy
+          </button>
+        </div>
+        <div class="install-cmd">
+          <code>winget install flyxl.datazen</code>
+          <button
+            class="copy-btn"
+            onclick="navigator.clipboard.writeText('winget install flyxl.datazen')"
+          >
+            Copy
+          </button>
+        </div>
+        <div class="install-cmd">
+          <code>scoop install datazen</code>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText('scoop install datazen')">
+            Copy
+          </button>
+        </div>
       </div>
     </section>
 
@@ -215,7 +242,10 @@
           </details>
           <details>
             <summary>Which databases are supported?</summary>
-            <p>15+ built-in and extensible via plugins.</p>
+            <p>
+              PostgreSQL, MySQL / MariaDB, SQLite, and Redis are built in. Additional databases
+              (Presto, Trino, ClickHouse, and more) are available via plugins.
+            </p>
           </details>
           <details>
             <summary>Is Linux supported?</summary>
@@ -225,11 +255,90 @@
             <summary>Auto-update?</summary>
             <p>Yes. You can check for updates or toggle auto-update in Settings.</p>
           </details>
+          <details>
+            <summary>Can I use DataZen offline?</summary>
+            <p>
+              Yes. All database queries and browsing work fully offline. AI features require an
+              internet connection to your configured provider, but the app itself never phones home.
+            </p>
+          </details>
+          <details>
+            <summary>How do I connect to my database?</summary>
+            <p>
+              Click "New Connection" in the sidebar, choose your database type, and enter host /
+              port / credentials. DataZen supports SSL, SSH tunnels, and multi-database sessions for
+              PostgreSQL and MySQL.
+            </p>
+          </details>
+          <details>
+            <summary>Does DataZen support team sharing?</summary>
+            <p>
+              Connection configs can be exported and imported, but DataZen is a local desktop app —
+              there is no cloud sync or team server. For shared access, use the built-in MCP server
+              to expose databases to AI agents.
+            </p>
+          </details>
         </div>
       </div>
     </section>
 
     <footer id="site-footer"></footer>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Do I need an account?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. Download, install, and use — no signup required."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Where does my data go?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Your database data and credentials stay on your machine. DataZen runs no cloud service. Only AI features send schema and query context to the provider you configure."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need an API key for AI?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes, bring your own key. Regular database queries and browsing work without one."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I use DataZen commercially?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. GPLv3-licensed: internal business use is fine. Distributing modified versions requires corresponding source under GPLv3."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Which databases are supported?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "PostgreSQL, MySQL, MariaDB, SQLite, and Redis are built in. Additional databases available via plugins."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I use DataZen offline?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. All database queries and browsing work fully offline. AI features require internet."
+            }
+          }
+        ]
+      }
+    </script>
     <script src="assets/js/site.js"></script>
   </body>
 </html>

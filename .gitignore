@@ -133,3 +133,7 @@ tsconfig.node.tsbuildinfo
 e2e/.app-data/
 e2e/demo-recording.png
 e2e/demo-recording.mp4
+e2e/demo-recording.webm
+e2e/demo-poster.jpg
+e2e/demo-poster.webp
+e2e/.demo-recording/

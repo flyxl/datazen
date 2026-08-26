@@ -37,6 +37,7 @@ bash "${SCRIPT_DIR}/setup-demo-data.sh" 2>/dev/null \
 
 rm -rf "$FRAMES"
 pkill -f "target/debug/datazen" 2>/dev/null || true
+pkill -f "DataZen.app" 2>/dev/null || true
 sleep 1
 
 echo "[3/3] Driving the demo flow + capturing WebDriver frames..."

@@ -66,16 +66,22 @@
           lightweight desktop app.
         </p>
         <div class="hero-cta">
-          <a class="btn btn-primary btn-lg" href="download.html">Download DataZen — Free</a>
+          <a class="btn btn-primary btn-lg" id="hero-download" href="download.html"
+            >Download DataZen — Free</a
+          >
           <a
             class="btn btn-secondary btn-lg"
             href="https://github.com/flyxl/datazen"
             target="_blank"
             rel="noopener"
-            >View on GitHub</a
-          >
+            >View on GitHub <span id="star-count" class="star-badge"></span
+          ></a>
         </div>
         <p class="hero-note">Free · Open source · macOS / Windows / Linux</p>
+        <p class="hero-note" id="hero-notarize-note" style="display: none">
+          <strong>macOS note:</strong> If you see "damaged or cannot verify", run
+          <code>xattr -cr /Applications/DataZen.app</code> then right-click → Open.
+        </p>
         <p class="hero-note">
           Your database data stays local — AI requests go only to the provider you configure.
         </p>
@@ -83,64 +89,23 @@
         <!-- Live demo: NL → SQL → result → chart -->
         <div class="hero-shot">
           <div class="shot-frame">
-            <div class="bar"><i></i><i></i><i></i><span>DataZen — demo</span></div>
-            <div class="demo-frame" data-demo>
-              <div class="demo-stage active">
-                <span class="demo-tag">1 · Ask AI</span>
-                <span class="demo-bubble">“Show me monthly revenue for 2026.”</span>
-              </div>
-              <div class="demo-stage">
-                <span class="demo-tag">2 · AI writes the SQL</span>
-                <pre class="demo-code">
-SELECT DATE_TRUNC('month', paid_at) AS month,
-       SUM(amount) AS revenue
-FROM orders
-WHERE paid_at >= '2026-01-01'
-GROUP BY 1 ORDER BY 1;</pre
-                >
-              </div>
-              <div class="demo-stage">
-                <span class="demo-tag">3 · Run &amp; see results</span>
-                <table class="demo-tbl">
-                  <thead>
-                    <tr>
-                      <th>month</th>
-                      <th>revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>2026-01-01</td>
-                      <td>128,400</td>
-                    </tr>
-                    <tr>
-                      <td>2026-02-01</td>
-                      <td>142,150</td>
-                    </tr>
-                    <tr>
-                      <td>2026-03-01</td>
-                      <td>151,980</td>
-                    </tr>
-                    <tr>
-                      <td>2026-04-01</td>
-                      <td>167,320</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div class="demo-stage">
-                <span class="demo-tag">4 · Chart it</span>
-                <div class="demo-bars">
-                  <div class="demo-bar" style="--h: 58%"></div>
-                  <div class="demo-bar" style="--h: 64%"></div>
-                  <div class="demo-bar" style="--h: 70%"></div>
-                  <div class="demo-bar" style="--h: 86%"></div>
-                </div>
-                <div class="demo-cap">Revenue by month — one click to chart, PNG / SVG export</div>
-              </div>
-            </div>
+            <div class="bar"><i></i><i></i><i></i><span>DataZen</span></div>
+            <video
+              class="hero-video"
+              autoplay
+              muted
+              loop
+              playsinline
+              poster="assets/video/demo-poster.webp"
+              width="1280"
+              height="816"
+            >
+              <source src="assets/video/demo-recording.webm" type="video/webm" />
+              <source src="assets/video/demo-recording.mp4" type="video/mp4" />
+            </video>
           </div>
         </div>
+        <div style="display: none"><!-- placeholder for initHeroDemo() --></div>
       </div>
     </section>
 
@@ -154,7 +119,7 @@ GROUP BY 1 ORDER BY 1;</pre
         <span class="db-chip"><i></i>Redis</span>
         <span class="db-chip"><i></i>MongoDB</span>
         <span class="db-chip"><i></i>ClickHouse</span>
-        <span class="pill">+ 10 more, extensible</span>
+        <span class="pill">+ plugin drivers</span>
       </div>
     </section>
 
@@ -163,7 +128,7 @@ GROUP BY 1 ORDER BY 1;</pre
       <div class="wrap stats-band">
         <div class="stat"><b>&lt;15 MB</b><span>installer size</span></div>
         <div class="stat"><b>&lt;1 s</b><span>cold startup</span></div>
-        <div class="stat"><b>15+</b><span>databases, extensible</span></div>
+        <div class="stat"><b>4+</b><span>databases built-in</span></div>
         <div class="stat"><b>$0</b><span>free &amp; open source</span></div>
       </div>
     </section>
@@ -394,7 +359,7 @@ GROUP BY 1 ORDER BY 1;</pre
             <tr>
               <td>Charts on any result set</td>
               <td class="yes">✓</td>
-              <td class="no">Paid add-ons</td>
+              <td class="no">Varies</td>
             </tr>
             <tr>
               <td>Installer size</td>
@@ -404,7 +369,7 @@ GROUP BY 1 ORDER BY 1;</pre
             <tr>
               <td>Price</td>
               <td class="yes">Free · GPLv3</td>
-              <td class="no">$99+/seat is common</td>
+              <td class="no">Often paid</td>
             </tr>
           </tbody>
         </table>
@@ -423,12 +388,12 @@ GROUP BY 1 ORDER BY 1;</pre
         </div>
         <div class="grid-3">
           <div class="card">
-            <div class="icon">⚡</div>
+            <div class="icon" aria-hidden="true">⚡</div>
             <h3>Under 15 MB</h3>
             <p>Tiny installer, near-instant startup — far lighter than typical heavy clients.</p>
           </div>
           <div class="card">
-            <div class="icon">🛡️</div>
+            <div class="icon" aria-hidden="true">🛡️</div>
             <h3>Your data stays local</h3>
             <p>
               DataZen operates no cloud database service. Credentials are AES-encrypted in the OS
@@ -436,7 +401,7 @@ GROUP BY 1 ORDER BY 1;</pre
             </p>
           </div>
           <div class="card">
-            <div class="icon">🔌</div>
+            <div class="icon" aria-hidden="true">🔌</div>
             <h3>Bring your own AI provider</h3>
             <p>
               OpenAI, Anthropic, DeepSeek or a custom endpoint — you choose exactly where requests
@@ -444,20 +409,19 @@ GROUP BY 1 ORDER BY 1;</pre
             </p>
           </div>
           <div class="card">
-            <div class="icon">👤</div>
+            <div class="icon" aria-hidden="true">👤</div>
             <h3>No account required</h3>
             <p>Download, install, connect. Nothing to sign up for, nothing phoning home.</p>
           </div>
           <div class="card">
-            <div class="icon">🧩</div>
+            <div class="icon" aria-hidden="true">🧩</div>
             <h3>Extensible drivers</h3>
             <p>
-              15+ databases built in. Add OLAP and specialty engines without bloating the default
-              app.
+              PostgreSQL, MySQL, SQLite, Redis built in. Add OLAP and specialty engines via plugins.
             </p>
           </div>
           <div class="card">
-            <div class="icon">📖</div>
+            <div class="icon" aria-hidden="true">📖</div>
             <h3>Free &amp; open source</h3>
             <p>Licensed under GPLv3 — audit the full source on GitHub at any time.</p>
           </div>
@@ -511,34 +475,46 @@ GROUP BY 1 ORDER BY 1;</pre
         </div>
         <div class="shots">
           <img
+            class="gallery-img"
             src="assets/screenshots/03-ai-nl2sql.png"
             alt="Natural-language SQL generation"
             loading="lazy"
+            data-caption="AI writes SQL from natural language"
           />
           <img
+            class="gallery-img"
             src="assets/screenshots/05-ai-diagnosis.png"
             alt="SQL error diagnosed by AI"
             loading="lazy"
+            data-caption="One-click SQL error diagnosis"
           />
           <img
+            class="gallery-img"
             src="assets/screenshots/06-ai-explain.png"
             alt="EXPLAIN plan analyzed by AI"
             loading="lazy"
+            data-caption="AI explains query execution plans"
           />
           <img
+            class="gallery-img"
             src="assets/screenshots/02-query-chart.png"
             alt="Query results charted"
             loading="lazy"
+            data-caption="Query results to charts in one click"
           />
           <img
+            class="gallery-img"
             src="assets/screenshots/12-workflow-crossdb.png"
             alt="Cross-database workflow"
             loading="lazy"
+            data-caption="Cross-database workflow orchestration"
           />
           <img
+            class="gallery-img"
             src="assets/screenshots/16-er.png"
             alt="ER diagram with foreign-key relations"
             loading="lazy"
+            data-caption="Auto-generated ER diagrams"
           />
         </div>
       </div>
@@ -555,6 +531,28 @@ GROUP BY 1 ORDER BY 1;</pre
           <a class="btn btn-primary btn-lg" href="download.html">Download DataZen — Free</a>
           <p class="muted" style="font-size: 13px; margin-top: 14px">
             No account · Open source · Local-first
+          </p>
+          <p class="muted" style="font-size: 13px; margin-top: 8px">
+            <a
+              href="https://github.com/flyxl/datazen/releases/latest"
+              target="_blank"
+              rel="noopener"
+              >Latest release</a
+            >
+            ·
+            <a
+              href="https://github.com/flyxl/datazen/blob/main/CHANGELOG.md"
+              target="_blank"
+              rel="noopener"
+              >Changelog</a
+            >
+            ·
+            <a
+              href="https://github.com/flyxl/datazen/blob/main/docs/development/roadmap.md"
+              target="_blank"
+              rel="noopener"
+              >Roadmap</a
+            >
           </p>
         </div>
       </div>

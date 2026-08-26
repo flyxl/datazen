@@ -269,6 +269,70 @@
     }, 1500);
   }
 
+  // ── Platform detection: hero download button shows OS-specific label ──
+  function initPlatformDetect() {
+    var btn = document.getElementById('hero-download');
+    if (!btn) return;
+    var ua = navigator.userAgent || '';
+    var isMac = /Macintosh|Mac OS X/.test(ua);
+    var isWin = /Windows/.test(ua);
+    var isLinux = /Linux/.test(ua) && !/Android/.test(ua);
+    if (isMac) btn.textContent = 'Download for macOS';
+    else if (isWin) btn.textContent = 'Download for Windows';
+    else if (isLinux) btn.textContent = 'Download for Linux';
+
+    // macOS notarization note
+    if (isMac) {
+      var note = document.getElementById('hero-notarize-note');
+      if (note) note.style.display = '';
+    }
+  }
+
+  // ── GitHub star badge ──
+  function initStarBadge() {
+    var el = document.getElementById('star-count');
+    if (!el) return;
+    fetch('https://api.github.com/repos/flyxl/datazen')
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (d) {
+        if (d && d.stargazers_count != null) {
+          el.textContent = d.stargazers_count.toLocaleString();
+        }
+      })
+      .catch(function () {});
+  }
+
+  // ── Gallery lightbox ──
+  function initLightbox() {
+    var overlay = document.createElement('div');
+    overlay.className = 'lightbox-overlay';
+    overlay.innerHTML = '<img src="" alt="" /><div class="lightbox-caption"></div>';
+    document.body.appendChild(overlay);
+    var lbImg = overlay.querySelector('img');
+    var lbCap = overlay.querySelector('.lightbox-caption');
+
+    function close() {
+      overlay.classList.remove('active');
+      document.body.style.overflow = '';
+    }
+    overlay.addEventListener('click', close);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') close();
+    });
+
+    document.querySelectorAll('.gallery-img').forEach(function (img) {
+      img.addEventListener('click', function () {
+        lbImg.src = img.src;
+        lbImg.alt = img.alt;
+        lbCap.textContent = img.getAttribute('data-caption') || '';
+        overlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+      });
+    });
+  }
+
   function renderFooter() {
     const host = document.getElementById('site-footer');
     if (!host) return;
@@ -330,5 +394,8 @@
     renderNav();
     renderFooter();
     initHeroDemo();
+    initPlatformDetect();
+    initStarBadge();
+    initLightbox();
   });
 })();
