@@ -408,7 +408,7 @@ pub struct AppState {
 | AI | `ai.rs` | `ai_generate_sql`, `ai_chat`, `ai_diagnose_error`, `ai_analyze_explain`, `ai_parse_filter`, `workflow_*`, `prompt_*`（约 30 个命令） |
 | 上下文 | `context.rs` | `context_get_dir`, `context_list_files`, `context_read_files` |
 | MCP | `mcp.rs` | `mcp_start`, `mcp_stop`, `mcp_status`, `mcp_client_connect`, `mcp_client_call_tool` |
-| 文件 | `file.rs` | `read_file`, `write_file` |
+| 文件 | `file.rs` | 对话框系列：`save_text_with_dialog`, `save_base64_with_dialog`, `begin_save_with_dialog`, `append_save_text`, `finish_save`, `abort_save`, `open_text_with_dialog`, `open_base64_with_dialog`, `export_tables_stream`（纯路径读写 IPC 已删除） |
 | 窗口 | `window.rs` | `create_sub_window` |
 | ADB | `adb.rs` | `adb_list_packages`, `adb_list_databases`, `adb_pull_database` |
 
