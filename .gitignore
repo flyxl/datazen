@@ -131,3 +131,5 @@ packages/extensions/dist/
 .dsh-vision-toolkit
 tsconfig.node.tsbuildinfo
 e2e/.app-data/
+e2e/demo-recording.png
+e2e/demo-recording.mp4
