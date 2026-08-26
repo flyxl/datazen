@@ -104,7 +104,7 @@ function CreateIndexDialog({
       aria-modal="true"
     >
       <div className="w-[480px] rounded-lg border border-edge bg-surface p-5 shadow-xl">
-        <h3 className="mb-4 text-base font-semibold text-fg">{t('indexes.newIndex')}</h3>
+        <h3 className="mb-4 text-base font-semibold text-fg">{t('common.newIndex')}</h3>
 
         {/* Index name — default filled, always editable */}
         <div className="mb-3">
@@ -193,7 +193,7 @@ function CreateIndexDialog({
         {selectedCols.length > 0 && (
           <div className="mb-4 rounded border border-edge bg-surface-alt p-2.5">
             <div className="mb-1 text-[10px] font-medium uppercase text-fg-muted">
-              {t('indexes.sqlPreview')}
+              {t('common.sqlPreview')}
             </div>
             <code className="block whitespace-pre-wrap text-xs text-green-400">
               {buildCreateIndexSql(indexName.trim() || autoName, selectedCols)}
@@ -388,7 +388,7 @@ export function IndexesView({
       <div className="flex items-center gap-2 px-4 py-3">
         <span className="text-base font-semibold text-fg">{tableName}</span>
         <span className="text-sm text-fg-muted">
-          · {t('indexes.count', { count: indexes.length })}
+          · {t('common.indexCount', { count: indexes.length })}
         </span>
         <div className="flex-1" />
         {onEditStructure && (
@@ -407,7 +407,7 @@ export function IndexesView({
           onClick={() => setShowCreate(true)}
         >
           <Plus className="h-3.5 w-3.5" />
-          {t('indexes.newIndex')}
+          {t('common.newIndex')}
         </Button>
       </div>
 
@@ -496,7 +496,7 @@ export function IndexesView({
                     {!idx.isPrimary && !safeMode && (
                       <button
                         className="rounded p-1 text-fg-muted opacity-0 transition hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
-                        title={t('indexes.deleteIndex')}
+                        title={t('common.deleteIndex')}
                         onClick={() => setDeleteTarget(idx.name)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />

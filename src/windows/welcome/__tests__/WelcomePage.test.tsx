@@ -44,12 +44,12 @@ describe('WelcomePage', () => {
     expect(screen.getByText('welcome.feature.connections.title')).toBeInTheDocument();
     expect(screen.getByText('welcome.feature.dashboard.title')).toBeInTheDocument();
     expect(screen.getByText('welcome.feature.workflow.title')).toBeInTheDocument();
-    expect(screen.getByText('welcome.feature.ai.title')).toBeInTheDocument();
+    expect(screen.getByText('common.aiAssistant')).toBeInTheDocument();
     expect(screen.getByTestId('welcome-create-connection')).toHaveTextContent(
       'welcome.createConnection',
     );
     expect(screen.getByTestId('welcome-import-connection')).toHaveTextContent(
-      'welcome.importConnection',
+      'common.importConnections',
     );
     expect(screen.getByText('welcome.importConnectionHint')).toBeInTheDocument();
   });

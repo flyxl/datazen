@@ -75,10 +75,10 @@ export function NlFilterInput({ dbSessionId, database, tableName }: NlFilterInpu
         onClick={() => {
           void import('../../lib/windowManager').then((m) => m.openSettingsWindow('ai'));
         }}
-        title={t('smartFilter.notConfigured')}
+        title={t('common.aiNotConfigured')}
       >
         <Sparkles className="h-3.5 w-3.5 shrink-0" />
-        <span className="max-w-[14rem] truncate text-[11px]">{t('smartFilter.notConfigured')}</span>
+        <span className="max-w-[14rem] truncate text-[11px]">{t('common.aiNotConfigured')}</span>
       </button>
     );
   }

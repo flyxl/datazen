@@ -68,7 +68,7 @@ export function CreateSchemaDialog({
   return (
     <Dialog
       open={open}
-      title={t('createSchema.title')}
+      title={t('common.createSchema')}
       onClose={handleClose}
       className="max-w-md"
       footer={
@@ -82,7 +82,7 @@ export function CreateSchemaDialog({
             disabled={!name.trim() || running}
           >
             {running && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {t('createSchema.create')}
+            {t('common.createSchema')}
           </Button>
         </>
       }

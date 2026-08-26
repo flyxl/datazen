@@ -20,7 +20,7 @@ export const SETTINGS_SECTIONS: { id: SettingsSection; labelKey: TranslationKey 
   { id: 'editor', labelKey: 'settings.editor' },
   { id: 'behavior', labelKey: 'settings.behavior' },
   { id: 'logging', labelKey: 'settings.logging' },
-  { id: 'ai', labelKey: 'settings.ai' },
+  { id: 'ai', labelKey: 'common.aiAssistant' },
   { id: 'prompts', labelKey: 'settings.prompts' },
   { id: 'mcpServer', labelKey: 'mcp.title' },
   { id: 'mcpClient', labelKey: 'mcpClient.title' },

@@ -208,7 +208,7 @@ export function ExportDialog({
   return (
     <Dialog
       open={open}
-      title={t('export.title')}
+      title={t('common.exportData')}
       description={t('export.description', { table: tableName })}
       onClose={onClose}
       footer={

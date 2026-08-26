@@ -91,7 +91,7 @@ export function MappingPanel({
                       className="text-[10px]"
                       onClick={onOpenSchemaDiff}
                     >
-                      {t('sync.openSchemaDiff')}
+                      {t('common.schemaDiff')}
                     </Button>
                     {onOpenDataTransfer && (
                       <Button
@@ -101,7 +101,7 @@ export function MappingPanel({
                         data-testid="data-sync-open-transfer"
                         onClick={onOpenDataTransfer}
                       >
-                        {t('sync.openDataTransfer')}
+                        {t('common.dataTransfer')}
                       </Button>
                     )}
                   </>

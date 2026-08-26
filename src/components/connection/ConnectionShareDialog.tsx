@@ -109,7 +109,7 @@ export function ConnectionShareDialog({
           setLocalError(null);
         }
       } catch (e) {
-        onError(e instanceof Error ? e.message : t('connShare.importFailed'));
+        onError(e instanceof Error ? e.message : t('common.importFailed'));
       }
     },
     [importSource, onError, t],
@@ -166,8 +166,8 @@ export function ConnectionShareDialog({
         e instanceof Error
           ? e.message
           : mode === 'export'
-            ? t('connShare.exportFailed')
-            : t('connShare.importFailed');
+            ? t('common.exportFailed')
+            : t('common.importFailed');
       onError(message);
     } finally {
       setSubmitting(false);
@@ -189,10 +189,10 @@ export function ConnectionShareDialog({
 
   const title =
     mode === 'export'
-      ? t('connShare.exportTitle')
+      ? t('common.exportConnections')
       : appImport && isImportApp(importSource)
         ? t('connShare.importFromAppTitle', { app: CONNECTION_IMPORT_APP_LABEL[importSource] })
-        : t('connShare.importTitle');
+        : t('common.importConnections');
 
   return (
     <Dialog

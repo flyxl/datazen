@@ -59,10 +59,10 @@ async function createAndConnectRedis() {
         }
       }
     }, CONN_NAME);
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000, timeoutMsg: 'Timed out waiting for Redis connection window' },
-    );
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 30000,
+      timeoutMsg: 'Timed out waiting for Redis connection window',
+    });
     const handles = await browser.getWindowHandles();
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
@@ -70,7 +70,7 @@ async function createAndConnectRedis() {
     return { mainWindow, connWindow };
   }
 
-  const newConnBtn = await $(`button*=${t('action.newConnection')}`);
+  const newConnBtn = await $(`button*=${t('common.newConnection')}`);
   await newConnBtn.click();
   await switchToNewWindow(mainWindow);
 
@@ -116,10 +116,10 @@ async function createAndConnectRedis() {
 
   const saveBtn = await $(`button*=${t('common.save')}`);
   await saveBtn.click();
-  await browser.waitUntil(
-    async () => (await browser.getWindowHandles()).length === 1,
-    { timeout: 10000, timeoutMsg: 'Window did not close after saving connection' },
-  );
+  await browser.waitUntil(async () => (await browser.getWindowHandles()).length === 1, {
+    timeout: 10000,
+    timeoutMsg: 'Window did not close after saving connection',
+  });
   await browser.switchToWindow(mainWindow);
   await browser.pause(1000);
 
@@ -135,10 +135,10 @@ async function createAndConnectRedis() {
     }
   }, CONN_NAME);
 
-  await browser.waitUntil(
-    async () => (await browser.getWindowHandles()).length > 1,
-    { timeout: 30000, timeoutMsg: 'Timed out waiting for Redis connection window' },
-  );
+  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+    timeout: 30000,
+    timeoutMsg: 'Timed out waiting for Redis connection window',
+  });
   const handles = await browser.getWindowHandles();
   const connWindow = handles.find((h) => h !== mainWindow)!;
   await browser.switchToWindow(connWindow);
@@ -188,8 +188,9 @@ async function setTextareaByPlaceholder(placeholder: string, value: string) {
 async function setConsoleCommand(cmd: string) {
   const ok = await browser.execute((val: string) => {
     const textareas = Array.from(document.querySelectorAll('textarea'));
-    const el = (textareas.find((ta) => ta.className.includes('resize-none')) ??
-      textareas[0]) as HTMLTextAreaElement | undefined;
+    const el = (textareas.find((ta) => ta.className.includes('resize-none')) ?? textareas[0]) as
+      | HTMLTextAreaElement
+      | undefined;
     if (!el) return false;
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
     setter?.call(el, val);
@@ -321,9 +322,7 @@ async function createStringKey(keyName: string, value: string) {
   // Prefer the dialog primary button (footer), not any other "创建" match.
   await browser.execute((label: string) => {
     const buttons = Array.from(document.querySelectorAll('button'));
-    const confirm = buttons
-      .filter((b) => (b.textContent || '').trim() === label)
-      .pop();
+    const confirm = buttons.filter((b) => (b.textContent || '').trim() === label).pop();
     (confirm as HTMLElement | undefined)?.click();
   }, t('redis.create'));
   await browser.pause(2000);
@@ -366,9 +365,7 @@ describe('Redis 数据库支持 (RD-001~RD-023)', () => {
       return;
     }
     if (!(await redisReachable())) {
-      console.warn(
-        `⏩ Skipping Redis E2E: ${REDIS_HOST}:${REDIS_PORT} unreachable`,
-      );
+      console.warn(`⏩ Skipping Redis E2E: ${REDIS_HOST}:${REDIS_PORT} unreachable`);
       shouldSkip = true;
       return;
     }
@@ -415,10 +412,14 @@ describe('Redis 数据库支持 (RD-001~RD-023)', () => {
         await executeRedisCommand('DEL e2e:set:tags e2e:zset:scores');
         await executeRedisCommand('DEL e2e:write:crud e2e:write:batch:a e2e:write:batch:b');
       }
-    } catch { /* best-effort cleanup */ }
+    } catch {
+      /* best-effort cleanup */
+    }
     try {
       await closeExtraWindows(mainWindow);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   });
 
   // ── Connection Window Layout ──
@@ -585,7 +586,8 @@ describe('Redis 数据库支持 (RD-001~RD-023)', () => {
   it('应能执行 LRANGE 命令 (RD-011)', async () => {
     await executeRedisCommand('LRANGE e2e:list:items 0 -1');
     const body = await $('body').getText();
-    const hasListItems = body.includes('cherry') || body.includes('banana') || body.includes('apple');
+    const hasListItems =
+      body.includes('cherry') || body.includes('banana') || body.includes('apple');
     expect(hasListItems).toBe(true);
   });
 
@@ -651,10 +653,10 @@ describe('Redis 数据库支持 (RD-001~RD-023)', () => {
     await setTextareaByPlaceholder(t('redis.pubsubPublishMessagePlaceholder'), message);
     await clickButtonExact(t('redis.pubsubPublishAction'));
 
-    await browser.waitUntil(
-      async () => bodyContains(message),
-      { timeout: 15000, timeoutMsg: 'Timed out waiting for Pub/Sub message delivery' },
-    );
+    await browser.waitUntil(async () => bodyContains(message), {
+      timeout: 15000,
+      timeoutMsg: 'Timed out waiting for Pub/Sub message delivery',
+    });
     expect(await bodyContains(channel)).toBe(true);
   });
 

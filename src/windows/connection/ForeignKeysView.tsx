@@ -70,7 +70,7 @@ export function ForeignKeysView({ dbSessionId, tableName }: ForeignKeysViewProps
       <div className="flex items-baseline gap-2 px-4 py-3">
         <span className="text-base font-semibold text-fg">{tableName}</span>
         <span className="text-sm text-fg-muted">
-          · {t('fk.count', { count: foreignKeys.length })}
+          · {t('common.foreignKeyCount', { count: foreignKeys.length })}
         </span>
       </div>
 

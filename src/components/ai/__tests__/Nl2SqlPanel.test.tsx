@@ -46,7 +46,9 @@ vi.mock('../AiInput', () => ({
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
       />
-      <button type="button" data-testid="nl2sql-submit" onClick={onSubmit}>submit</button>
+      <button type="button" data-testid="nl2sql-submit" onClick={onSubmit}>
+        submit
+      </button>
     </div>
   ),
 }));
@@ -66,7 +68,7 @@ describe('Nl2SqlPanel', () => {
     const { getByText } = render(
       <Nl2SqlPanel dbSessionId="c1" database="mydb" onSqlChange={vi.fn()} />,
     );
-    expect(getByText('nl2sql.notConfigured')).toBeInTheDocument();
+    expect(getByText('common.aiNotConfigured')).toBeInTheDocument();
     fireEvent.click(getByText('settings.ai.goToConfigure'));
     expect(openSettingsWindow).toHaveBeenCalledWith('ai');
   });
@@ -99,8 +101,8 @@ describe('Nl2SqlPanel', () => {
     );
     fireEvent.click(getByText('nl2sql.generate'));
     expect(getByText('failed')).toBeInTheDocument();
-    const trashBtn = Array.from(document.querySelectorAll('button')).find(
-      (b) => b.querySelector('.lucide-trash2'),
+    const trashBtn = Array.from(document.querySelectorAll('button')).find((b) =>
+      b.querySelector('.lucide-trash2'),
     )!;
     fireEvent.click(trashBtn);
     expect(aiState.clearNl2Sql).toHaveBeenCalled();

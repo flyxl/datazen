@@ -105,7 +105,7 @@ export function ImportDialog({
   return (
     <Dialog
       open={isOpen}
-      title={t('import.title')}
+      title={t('common.importData')}
       description={t('import.description')}
       onClose={onClose}
       footer={

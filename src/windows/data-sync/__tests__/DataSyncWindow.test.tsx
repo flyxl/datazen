@@ -312,7 +312,7 @@ describe('DataSyncWindow (Diff Workspace)', () => {
       return el;
     });
     const mysql = Array.from(list.children).find((el) => (el.textContent || '').includes('My Tgt'));
-    expect(mysql?.textContent).toContain('sync.unsupportedHint');
+    expect(mysql?.textContent).toContain('common.unsupportedPair');
   });
 
   it('gates compare when a database cannot be enumerated', async () => {

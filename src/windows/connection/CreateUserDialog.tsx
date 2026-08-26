@@ -19,12 +19,7 @@ interface CreateUserDialogProps {
   onCreated?: (username: string) => void;
 }
 
-export function CreateUserDialog({
-  open,
-  onClose,
-  dbSessionId,
-  onCreated,
-}: CreateUserDialogProps) {
+export function CreateUserDialog({ open, onClose, dbSessionId, onCreated }: CreateUserDialogProps) {
   const { t } = useI18n();
   const { definition: grantDefinition } = useConnectionCommand(
     open ? dbSessionId : undefined,
@@ -151,7 +146,7 @@ export function CreateUserDialog({
   return (
     <Dialog
       open={open}
-      title={step === 'create' ? t('createUser.title') : t('createUser.grantPrivileges')}
+      title={step === 'create' ? t('common.createUser') : t('common.grantPrivileges')}
       onClose={handleClose}
       className="max-w-md"
       footer={
@@ -166,7 +161,7 @@ export function CreateUserDialog({
               disabled={!username.trim() || running}
             >
               {running && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t('createUser.create')}
+              {t('common.createUser')}
             </Button>
           </>
         ) : (

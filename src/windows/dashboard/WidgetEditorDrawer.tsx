@@ -166,7 +166,7 @@ export function WidgetEditorDrawer({
                   value={hiddenSql.connectionId}
                   onChange={(v) => setHiddenSql((s) => ({ ...s, connectionId: v }))}
                   options={connOptions}
-                  placeholder={t('dashboard.selectConnection')}
+                  placeholder={t('common.selectConnection')}
                 />
               </label>
               <label className="block space-y-1">

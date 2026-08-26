@@ -269,7 +269,7 @@ describe('WorkflowPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'workflows.form.defaultConnection' }));
     fireEvent.mouseDown(await screen.findByText('My'));
     await waitFor(() => expect(getDatabasesMock).toHaveBeenCalledWith('c2'));
-    fireEvent.click(screen.getByRole('button', { name: 'workflows.form.selectDatabase' }));
+    fireEvent.click(screen.getByRole('button', { name: 'common.selectDatabase' }));
     expect(await screen.findByText('db1')).toBeInTheDocument();
   });
 
@@ -427,7 +427,7 @@ describe('WorkflowPanel', () => {
     render(<WorkflowPanel dbSessionId="c1" />);
     await waitFor(() => screen.getByText('With Vars'));
     fireEvent.click(screen.getByText('With Vars'));
-    fireEvent.click(screen.getByRole('button', { name: 'workflows.form.selectConnection' }));
+    fireEvent.click(screen.getByRole('button', { name: 'common.selectConnection' }));
     fireEvent.mouseDown(await screen.findByText('PG'));
     fireEvent.click(screen.getByText('workflows.run'));
     await waitFor(() =>

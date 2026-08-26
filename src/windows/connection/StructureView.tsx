@@ -54,7 +54,11 @@ export function StructureView({ dbSessionId, tableName, onEditStructure }: Struc
       .catch((e) => {
         if (!cancelled) {
           const msg =
-            typeof e === 'string' ? e : e instanceof Error ? e.message : t('structView.loadFailed');
+            typeof e === 'string'
+              ? e
+              : e instanceof Error
+                ? e.message
+                : t('common.loadTableStructureFailed');
           console.error('[StructureView] error', msg);
           setError(msg);
           setLoading(false);
@@ -70,7 +74,7 @@ export function StructureView({ dbSessionId, tableName, onEditStructure }: Struc
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
         <Loader2 className="h-5 w-5 animate-spin" />
-        {t('structView.loading')}
+        {t('common.loadingTableStructure')}
       </div>
     );
   }
@@ -103,7 +107,7 @@ export function StructureView({ dbSessionId, tableName, onEditStructure }: Struc
             onClick={() => onEditStructure(tableName)}
           >
             <Pencil className="h-3.5 w-3.5" />
-            {t('structView.editStructure')}
+            {t('common.editStructure')}
           </Button>
         )}
       </div>
@@ -192,9 +196,9 @@ export function StructureView({ dbSessionId, tableName, onEditStructure }: Struc
           })}
         </span>
         <span className="text-edge">|</span>
-        <span>{t('structView.indexCount', { count: schema.indexes.length })}</span>
+        <span>{t('common.indexCount', { count: schema.indexes.length })}</span>
         <span className="text-edge">|</span>
-        <span>{t('structView.foreignKeyCount', { count: schema.foreignKeys.length })}</span>
+        <span>{t('common.foreignKeyCount', { count: schema.foreignKeys.length })}</span>
       </div>
     </div>
   );

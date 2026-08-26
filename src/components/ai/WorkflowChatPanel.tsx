@@ -19,7 +19,11 @@ import { useAiStore } from '../../stores/aiStore';
 import { aiCommands } from '../../commands/ai';
 import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
-import { extractWorkflowYaml, parseWorkflowYaml, validateWorkflowFields } from '../../lib/workflowYaml';
+import {
+  extractWorkflowYaml,
+  parseWorkflowYaml,
+  validateWorkflowFields,
+} from '../../lib/workflowYaml';
 import { splitContextItems } from '../../lib/contextItems';
 import type { AiChatMessage, ContextItem, WorkflowDefinition } from '../../types';
 import { QuestionBlock } from './AiChatPanel';
@@ -87,40 +91,54 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
       msgs.push({ role: 'assistant', content: collected, reasoning: reasoning || undefined });
     }
     useAiStore.setState({
-      workflowChat: { ...session, messages: msgs, isStreaming: false, streamContent: '', streamReasoning: '', requestId: null },
+      workflowChat: {
+        ...session,
+        messages: msgs,
+        isStreaming: false,
+        streamContent: '',
+        streamReasoning: '',
+        requestId: null,
+      },
     });
   }, [workflowChat]);
 
-  const handleSaveYaml = useCallback(async (yaml: string) => {
-    setSaving(true);
-    setSaveError('');
-    try {
-      const parsed = parseWorkflowYaml(yaml);
-      const missing = validateWorkflowFields(parsed);
-      if (missing) {
-        setSaveError(t('workflows.aiCreate.missingField', { field: missing }));
+  const handleSaveYaml = useCallback(
+    async (yaml: string) => {
+      setSaving(true);
+      setSaveError('');
+      try {
+        const parsed = parseWorkflowYaml(yaml);
+        const missing = validateWorkflowFields(parsed);
+        if (missing) {
+          setSaveError(t('workflows.aiCreate.missingField', { field: missing }));
+          setSaving(false);
+          return;
+        }
+        const workflow = parsed as unknown as WorkflowDefinition;
+        await aiCommands.workflowSave(workflow);
+        setSaveOk(true);
         setSaving(false);
-        return;
+        onSaved?.();
+        setTimeout(() => setSaveOk(false), 3000);
+      } catch (e) {
+        setSaveError(e instanceof Error ? e.message : String(e));
+        setSaving(false);
       }
-      const workflow = parsed as unknown as WorkflowDefinition;
-      await aiCommands.workflowSave(workflow);
-      setSaveOk(true);
-      setSaving(false);
-      onSaved?.();
-      setTimeout(() => setSaveOk(false), 3000);
-    } catch (e) {
-      setSaveError(e instanceof Error ? e.message : String(e));
-      setSaving(false);
-    }
-  }, [t, onSaved]);
+    },
+    [t, onSaved],
+  );
 
   if (!isConfigured) {
     return (
       <div className="flex h-full items-center justify-center p-4">
         <div className="text-center text-xs text-fg-muted">
           <Sparkles className="mx-auto mb-2 h-5 w-5" />
-          <p className="mb-3">{t('chat.notConfigured')}</p>
-          <Button variant="primary" className="h-7 gap-1 px-3 text-xs" onClick={() => openSettingsWindow('ai')}>
+          <p className="mb-3">{t('common.aiNotConfigured')}</p>
+          <Button
+            variant="primary"
+            className="h-7 gap-1 px-3 text-xs"
+            onClick={() => openSettingsWindow('ai')}
+          >
             <Settings className="h-3.5 w-3.5" />
             {t('settings.ai.goToConfigure')}
           </Button>
@@ -143,7 +161,12 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
       {/* Header */}
       <div className="flex shrink-0 items-center gap-2 border-b border-edge px-3 py-1.5">
         {onBack && (
-          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={onBack} className="text-fg-muted hover:text-fg p-0.5 rounded">
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={onBack}
+            className="text-fg-muted hover:text-fg p-0.5 rounded"
+          >
             <ArrowLeft className="h-3.5 w-3.5" />
           </button>
         )}
@@ -158,7 +181,9 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
       {/* Connection selector */}
       <div className="shrink-0 border-b border-edge px-3 py-1.5">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-fg-muted shrink-0">{t('workflows.aiCreate.connection')}:</span>
+          <span className="text-[11px] text-fg-muted shrink-0">
+            {t('workflows.aiCreate.connection')}:
+          </span>
           <Select
             value={selectedConnection}
             options={connectionOptions}
@@ -200,24 +225,27 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
           />
         ))}
 
-        {workflowChat?.isStreaming && (workflowChat.streamContent || workflowChat.streamReasoning) && (
-          <WorkflowChatBubble
-            message={{
-              role: 'assistant',
-              content: workflowChat.streamContent,
-              reasoning: workflowChat.streamReasoning || undefined,
-            }}
-            isStreaming
-            t={t}
-          />
-        )}
+        {workflowChat?.isStreaming &&
+          (workflowChat.streamContent || workflowChat.streamReasoning) && (
+            <WorkflowChatBubble
+              message={{
+                role: 'assistant',
+                content: workflowChat.streamContent,
+                reasoning: workflowChat.streamReasoning || undefined,
+              }}
+              isStreaming
+              t={t}
+            />
+          )}
 
-        {workflowChat?.isStreaming && !workflowChat.streamContent && !workflowChat.streamReasoning && (
-          <div className="flex items-center gap-2 py-2 text-xs text-fg-muted">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            {t('chat.thinking')}
-          </div>
-        )}
+        {workflowChat?.isStreaming &&
+          !workflowChat.streamContent &&
+          !workflowChat.streamReasoning && (
+            <div className="flex items-center gap-2 py-2 text-xs text-fg-muted">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {t('chat.thinking')}
+            </div>
+          )}
 
         <div ref={messagesEndRef} />
       </div>
@@ -281,20 +309,23 @@ function WorkflowChatBubble({
       <div
         className={cn(
           'max-w-[90%] rounded-lg px-3 py-2 text-xs',
-          isUser
-            ? 'bg-blue-500/20 text-fg'
-            : 'bg-surface-alt text-fg-secondary',
+          isUser ? 'bg-blue-500/20 text-fg' : 'bg-surface-alt text-fg-secondary',
           isStreaming && !message.content && message.reasoning && 'animate-pulse',
         )}
       >
         {message.reasoning && (
           <div className="mb-2">
             <button
-              type="button" onMouseDown={(e) => e.preventDefault()}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
               className="flex items-center gap-1 text-[10px] text-fg-muted hover:text-fg transition-colors"
               onClick={() => setReasoningOpen(!reasoningOpen)}
             >
-              {reasoningOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              {reasoningOpen ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
               <Sparkles className="h-2.5 w-2.5" />
               {t('chat.reasoning')}
             </button>
@@ -325,18 +356,26 @@ function WorkflowChatBubble({
               <div key={idx} className="rounded border border-accent/30 bg-accent/5 p-2">
                 <div className="flex items-center gap-1.5 mb-1">
                   <FileCode className="h-3 w-3 text-accent" />
-                  <span className="text-[10px] font-medium text-accent">{t('workflows.aiCreate.yamlDetected')}</span>
+                  <span className="text-[10px] font-medium text-accent">
+                    {t('workflows.aiCreate.yamlDetected')}
+                  </span>
                 </div>
                 <div className="flex gap-1">
                   <button
-                    type="button" onMouseDown={(e) => e.preventDefault()}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
                     className="rounded bg-surface px-1.5 py-0.5 text-[10px] text-fg-muted hover:text-fg"
                     onClick={() => handleCopy(yaml, idx)}
                   >
-                    {copiedIdx === idx ? <Check className="inline h-2.5 w-2.5" /> : <Copy className="inline h-2.5 w-2.5" />}
+                    {copiedIdx === idx ? (
+                      <Check className="inline h-2.5 w-2.5" />
+                    ) : (
+                      <Copy className="inline h-2.5 w-2.5" />
+                    )}
                   </button>
                   <button
-                    type="button" onMouseDown={(e) => e.preventDefault()}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
                     className="rounded bg-surface px-1.5 py-0.5 text-[10px] text-fg-muted hover:text-fg"
                     onClick={() => setPreviewYaml(previewYaml === yaml ? null : yaml)}
                   >
@@ -344,7 +383,8 @@ function WorkflowChatBubble({
                   </button>
                   {onSaveYaml && (
                     <button
-                      type="button" onMouseDown={(e) => e.preventDefault()}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
                       className={cn(
                         'flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px]',
                         saveOk ? 'text-green-500' : 'text-accent hover:text-accent/80',
@@ -359,7 +399,11 @@ function WorkflowChatBubble({
                       ) : (
                         <Save className="inline h-2.5 w-2.5" />
                       )}
-                      {saving ? t('workflows.aiCreate.saving') : saveOk ? t('workflows.aiCreate.saved') : t('workflows.aiCreate.save')}
+                      {saving
+                        ? t('workflows.aiCreate.saving')
+                        : saveOk
+                          ? t('workflows.aiCreate.saved')
+                          : t('workflows.aiCreate.save')}
                     </button>
                   )}
                 </div>
@@ -368,21 +412,21 @@ function WorkflowChatBubble({
                     {yaml}
                   </pre>
                 )}
-                {saveError && (
-                  <p className="mt-1 text-[10px] text-red-400">{saveError}</p>
-                )}
+                {saveError && <p className="mt-1 text-[10px] text-red-400">{saveError}</p>}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {!isUser && !isStreaming && message.questions && message.questions.length > 0 && isLastAssistant && onAnswerQuestions && (
-        <QuestionBlock
-          questions={message.questions}
-          onSubmit={onAnswerQuestions}
-        />
-      )}
+      {!isUser &&
+        !isStreaming &&
+        message.questions &&
+        message.questions.length > 0 &&
+        isLastAssistant &&
+        onAnswerQuestions && (
+          <QuestionBlock questions={message.questions} onSubmit={onAnswerQuestions} />
+        )}
     </div>
   );
 }

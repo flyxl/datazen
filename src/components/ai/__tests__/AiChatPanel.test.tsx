@@ -172,13 +172,13 @@ describe('AiChatPanel', () => {
     const { getByText, getByTestId } = render(<AiChatPanel dbSessionId="c1" />);
     fireEvent.click(getByText('workflows.title'));
     expect(getByTestId('workflow-panel')).toHaveTextContent('c1');
-    fireEvent.click(getByText('chat.title'));
+    fireEvent.click(getByText('common.aiAssistant'));
     const clearBtn = Array.from(document.querySelectorAll('button')).find(
       (b) => !b.disabled && b.querySelector('.lucide-trash2'),
     )!;
     fireEvent.click(clearBtn);
     expect(aiState.clearChat).toHaveBeenCalled();
-    fireEvent.click(getByText('chat.title'));
+    fireEvent.click(getByText('common.aiAssistant'));
     const docsBtn = Array.from(document.querySelectorAll('button')).find(
       (b) => b.getAttribute('title') === 'docs.openAiHelp',
     );

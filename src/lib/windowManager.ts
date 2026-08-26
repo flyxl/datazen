@@ -133,7 +133,7 @@ export function openDataSyncWindow() {
     height: 700,
     minWidth: 600,
     minHeight: 480,
-    title: t('win.dataSync'),
+    title: t('common.dataSyncTitle'),
   });
 }
 

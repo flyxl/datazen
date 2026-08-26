@@ -282,7 +282,7 @@ export function SchemaDiffWindow() {
   return (
     <div className="flex h-screen flex-col bg-canvas text-fg">
       <TitleBar
-        title={t('schemaDiff.title')}
+        title={t('common.schemaDiff')}
         rightContent={
           <Button
             variant="secondary"
@@ -362,7 +362,7 @@ export function SchemaDiffWindow() {
           {plan && (
             <Button variant="secondary" onClick={() => void handleCopySql()}>
               <Copy className="h-4 w-4" />
-              {t('schemaDiff.copySql')}
+              {t('common.copySql')}
             </Button>
           )}
           <Button variant="ghost" onClick={() => void handleExportConfig()}>
@@ -421,7 +421,7 @@ export function SchemaDiffWindow() {
           </div>
         )}
       </div>
-      <StatusBar left={<span className="truncate">{t('schemaDiff.title')}</span>} />
+      <StatusBar left={<span className="truncate">{t('common.schemaDiff')}</span>} />
     </div>
   );
 }

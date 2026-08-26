@@ -97,7 +97,7 @@ export function SqlPreview({
     <div data-testid="data-sync-preview" className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-edge px-3 py-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
-          {t('sync.sqlPreviewTitle')}
+          {t('common.sqlPreviewLower')}
         </span>
         <div className="flex flex-wrap gap-1">
           {filters.map((f) => (

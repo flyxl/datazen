@@ -65,7 +65,7 @@ async function nodeReachable(node: string, timeoutMs = 2000): Promise<boolean> {
 }
 
 async function openRedisNewConnectionDialog(mainWindow: string) {
-  const newConnBtn = await $(`button*=${t('action.newConnection')}`);
+  const newConnBtn = await $(`button*=${t('common.newConnection')}`);
   await newConnBtn.click();
   await browser.waitUntil(
     async () => await $('[data-testid="new-connection-dialog"]').isExisting(),

@@ -150,7 +150,11 @@ export function WorkflowPanel({ dbSessionId }: WorkflowPanelProps) {
   const handleExecute = async () => {
     if (!selectedWorkflow) return;
     // `connectionId` key keeps its IPC name; the value passed is a runtime dbSessionId accepted by the backend's dual-mode resolution.
-    await executeWorkflow({ workflowId: selectedWorkflow.id, variables, connectionId: dbSessionId });
+    await executeWorkflow({
+      workflowId: selectedWorkflow.id,
+      variables,
+      connectionId: dbSessionId,
+    });
     void loadHistory();
   };
 
@@ -444,7 +448,7 @@ export function WorkflowPanel({ dbSessionId }: WorkflowPanelProps) {
                       className="!h-8 !text-xs"
                       disabled={isExecuting}
                       options={[
-                        { value: '', label: t('workflows.form.selectConnection') },
+                        { value: '', label: t('common.selectConnection') },
                         ...savedConnections.map((c) => ({ value: c.id, label: c.name })),
                       ]}
                     />
@@ -503,7 +507,7 @@ function ExecutionResultPanel({ result, t }: { result: WorkflowExecutionResult; 
       >
         <span>
           {result.success ? '✓' : '✗'}{' '}
-          {result.success ? t('workflows.result') : t('workflows.executionFailed')}
+          {result.success ? t('workflows.result') : t('common.executionFailed')}
         </span>
         <span className="text-fg-muted font-normal">{result.totalTimeMs}ms</span>
       </div>
@@ -1187,7 +1191,7 @@ function DatabasePicker({
           onChange={(val) => onUpdate('database', val || undefined)}
           className="!h-8 !text-xs"
           options={[
-            { value: '', label: t('workflows.form.selectDatabase') },
+            { value: '', label: t('common.selectDatabase') },
             ...databases.map((db) => ({ value: db, label: db })),
           ]}
         />

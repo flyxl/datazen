@@ -71,7 +71,7 @@ export function TableListPanel({
           <input
             type="search"
             className="h-8 w-full rounded-md border border-edge bg-surface pl-8 pr-2 text-xs"
-            placeholder={t('sync.searchTables')}
+            placeholder={t('common.searchTables')}
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
           />

@@ -73,7 +73,7 @@ describe('BatchExportDialog', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText('batchExport.selectAll'));
+    fireEvent.click(screen.getByText('common.selectAll'));
     for (const name of TABLES) {
       const checkbox = screen.getByLabelText(name) as HTMLInputElement;
       expect(checkbox.checked).toBe(true);
@@ -113,9 +113,9 @@ describe('BatchExportDialog', () => {
     );
 
     expect(screen.getByTestId('data-format')).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText('batchExport.modeStructureOnly'));
+    fireEvent.click(screen.getByLabelText('common.structureOnly'));
     expect(screen.queryByTestId('data-format')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText('batchExport.modeDataOnly'));
+    fireEvent.click(screen.getByLabelText('common.dataOnly'));
     expect(screen.getByTestId('data-format')).toBeInTheDocument();
   });
 
@@ -175,7 +175,7 @@ describe('BatchExportDialog', () => {
       />,
     );
 
-    fireEvent.click(screen.getByLabelText('batchExport.modeStructureOnly'));
+    fireEvent.click(screen.getByLabelText('common.structureOnly'));
     fireEvent.click(screen.getByLabelText('batchExport.outputSingle'));
     fireEvent.click(screen.getByText('batchExport.export'));
 

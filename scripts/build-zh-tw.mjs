@@ -31,7 +31,7 @@ const MANUAL = {
   'common.rows': '列',
   'common.columns': '欄',
   'menu.settings': '設定',
-  'menu.ctxAddFavorite': '加入收藏',
+  'common.addToFavorites': '加入收藏',
   'action.exportConfig': '匯出應用資料…',
   'action.importConfig': '匯入應用資料…',
   'appData.exportSuccess':

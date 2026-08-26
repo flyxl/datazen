@@ -110,7 +110,7 @@ export function DataTransferWindow() {
   );
 
   const targetOptions = useMemo(() => {
-    const hint = t('transfer.unsupportedHint');
+    const hint = t('common.unsupportedPair');
     const srcType = sourceConn?.databaseType;
     return connections.map((c) => {
       const unsupported = Boolean(srcType && !isTransferTargetSupported(srcType, c.databaseType));
@@ -447,7 +447,7 @@ export function DataTransferWindow() {
 
   return (
     <div data-testid="data-transfer-window" className="flex h-screen flex-col bg-bg text-fg">
-      <TitleBar title={t('transfer.title')} />
+      <TitleBar title={t('common.dataTransfer')} />
       <div className="border-b border-border px-4 py-2">
         <div className="flex flex-wrap gap-2 text-xs text-fg-muted">
           {STEPS.map((s, i) => (
@@ -470,7 +470,7 @@ export function DataTransferWindow() {
               <Select
                 value={sourceId}
                 onChange={setSourceId}
-                options={[{ value: '', label: t('transfer.pickConnection') }, ...connOptions]}
+                options={[{ value: '', label: t('common.selectConnection') }, ...connOptions]}
               />
               {sourceId && (
                 <div className="mt-2" data-testid="data-transfer-source-database">
@@ -487,7 +487,7 @@ export function DataTransferWindow() {
               <Select
                 value={targetId}
                 onChange={setTargetId}
-                options={[{ value: '', label: t('transfer.pickConnection') }, ...targetOptions]}
+                options={[{ value: '', label: t('common.selectConnection') }, ...targetOptions]}
               />
               {targetId && (
                 <div className="mt-2" data-testid="data-transfer-target-database">
@@ -506,7 +506,7 @@ export function DataTransferWindow() {
               <p data-testid="data-transfer-path" className="text-xs text-fg-muted md:col-span-2">
                 {pairing.supported
                   ? t(`transfer.path.${pairing.path}`)
-                  : (pairing.reason ?? t('transfer.unsupportedHint'))}
+                  : (pairing.reason ?? t('common.unsupportedPair'))}
               </p>
             )}
           </div>
@@ -522,7 +522,7 @@ export function DataTransferWindow() {
                 onChange={() => setMode('structure')}
                 data-testid="data-transfer-mode-structure"
               />
-              {t('transfer.mode.structure')}
+              {t('common.structureOnly')}
             </label>
             <label className="flex items-center gap-2">
               <input
@@ -532,7 +532,7 @@ export function DataTransferWindow() {
                 onChange={() => setMode('data')}
                 data-testid="data-transfer-mode-data"
               />
-              {t('transfer.mode.data')}
+              {t('common.dataOnly')}
             </label>
             <label className="flex items-center gap-2">
               <input

@@ -69,7 +69,7 @@ export function CreateDatabaseDialog({
   return (
     <Dialog
       open={open}
-      title={t('createDb.title')}
+      title={t('common.createDatabase')}
       onClose={handleClose}
       className="max-w-md"
       footer={
@@ -83,7 +83,7 @@ export function CreateDatabaseDialog({
             disabled={!name.trim() || running}
           >
             {running && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {t('createDb.create')}
+            {t('common.createDatabase')}
           </Button>
         </>
       }

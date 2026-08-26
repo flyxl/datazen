@@ -17,7 +17,9 @@ vi.mock('../../../hooks/useAiKeyboard', () => ({
 const aiState = vi.hoisted(() => ({
   isConfigured: true,
   nlFilterInput: '',
-  setNlFilterInput: vi.fn((v: string) => { aiState.nlFilterInput = v; }),
+  setNlFilterInput: vi.fn((v: string) => {
+    aiState.nlFilterInput = v;
+  }),
   parsedFilters: null as unknown[] | null,
   isParsingFilter: false,
   nlFilterError: null as string | null,
@@ -40,10 +42,9 @@ vi.mock('../../../stores/aiStore', () => ({
 }));
 
 vi.mock('../../../stores/tableDataStore', () => ({
-  useTableDataStore: Object.assign(
-    (sel: (s: typeof tableState) => unknown) => sel(tableState),
-    { getState: () => tableState },
-  ),
+  useTableDataStore: Object.assign((sel: (s: typeof tableState) => unknown) => sel(tableState), {
+    getState: () => tableState,
+  }),
 }));
 
 const openSettingsWindow = vi.fn();
@@ -69,7 +70,7 @@ describe('NlFilterInput', () => {
     const { getByText } = render(
       <NlFilterInput dbSessionId="c1" database="db" tableName="users" />,
     );
-    fireEvent.click(getByText('smartFilter.notConfigured'));
+    fireEvent.click(getByText('common.aiNotConfigured'));
     await waitFor(() => {
       expect(openSettingsWindow).toHaveBeenCalledWith('ai');
     });

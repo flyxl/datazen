@@ -126,7 +126,7 @@ describe('DataTable', () => {
     );
     fireEvent.click(getByTitle('export.export'));
     await waitFor(() => {
-      expect(getByText('export.title')).toBeInTheDocument();
+      expect(getByText('common.exportData')).toBeInTheDocument();
     });
   });
 
@@ -137,7 +137,7 @@ describe('DataTable', () => {
     const exportBtns = getAllByTitle('export.export');
     expect(exportBtns.length).toBeGreaterThan(0);
     fireEvent.click(exportBtns[0]);
-    await waitFor(() => expect(getByText('export.title')).toBeInTheDocument());
+    await waitFor(() => expect(getByText('common.exportData')).toBeInTheDocument());
     const dialogExportBtns = getAllByText('export.export');
     fireEvent.click(dialogExportBtns[dialogExportBtns.length - 1]);
     await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());
@@ -192,7 +192,7 @@ describe('DataTable', () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('Alice'));
 
     menuItems.find((i) => i.id === 'export')!.action?.();
-    await waitFor(() => expect(getByText('export.title')).toBeInTheDocument());
+    await waitFor(() => expect(getByText('common.exportData')).toBeInTheDocument());
     const dialogExportBtns = getAllByText('export.export');
     fireEvent.click(dialogExportBtns[dialogExportBtns.length - 1]);
     await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());

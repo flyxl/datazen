@@ -54,7 +54,7 @@ export function WelcomePage() {
     },
     {
       icon: Sparkles,
-      title: t('welcome.feature.ai.title'),
+      title: t('common.aiAssistant'),
       description: t('welcome.feature.ai.description'),
     },
   ];
@@ -101,7 +101,7 @@ export function WelcomePage() {
                 onClick={() => openConnectionShareDialog('import')}
               >
                 <Upload className="h-4 w-4" />
-                {t('welcome.importConnection')}
+                {t('common.importConnections')}
               </Button>
             </div>
             <p className="max-w-md text-center text-xs text-fg-muted">

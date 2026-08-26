@@ -567,7 +567,7 @@ export function ConnectionPage() {
       const conn = connections.find((c) => c.id === connectionId);
       if (!conn) return;
       void confirmDelete({
-        title: t('main.ctx.deleteConnection'),
+        title: t('common.deleteConnection'),
         message: t('main.ctx.confirmDeleteConnection', { name: conn.name }),
         kind: 'warning',
       }).then((ok) => {
@@ -606,7 +606,7 @@ export function ConnectionPage() {
       const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       saved = await backupCommands.exportAppData(`datazen-backup-${date}.zip`);
     } catch (e) {
-      showMessageDialog(e instanceof Error ? e.message : t('appData.exportFailed'), 'error');
+      showMessageDialog(e instanceof Error ? e.message : t('common.exportFailed'), 'error');
       return;
     }
     if (!saved) return;
@@ -632,13 +632,13 @@ export function ConnectionPage() {
   const handleImportConfig = useCallback(async () => {
     try {
       const imported = await backupCommands.importAppData(
-        t('appData.importConfirmTitle'),
+        t('common.importAppData'),
         t('appData.importConfirmMessage'),
       );
       if (!imported) return;
       await backupCommands.restartApp();
     } catch (e) {
-      showMessageDialog(e instanceof Error ? e.message : t('appData.importFailed'), 'error');
+      showMessageDialog(e instanceof Error ? e.message : t('common.importFailed'), 'error');
     }
   }, [showMessageDialog, t]);
 

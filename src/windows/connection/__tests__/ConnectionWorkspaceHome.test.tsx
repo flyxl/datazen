@@ -89,7 +89,7 @@ describe('ConnectionWorkspaceHome', () => {
       />,
     );
     expect(screen.getByText('Local PG')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('connWin.newQuery'));
+    fireEvent.click(screen.getByText('common.newQuery'));
     expect(onNewQuery).toHaveBeenCalledOnce();
   });
 

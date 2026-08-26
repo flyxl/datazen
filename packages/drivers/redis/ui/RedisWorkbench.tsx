@@ -337,7 +337,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
         void showNativeContextMenu(
           buildRedisKeyContextMenuItems({
             labels: {
-              copyKey: t('schemaTree.copyName'),
+              copyKey: t('common.copyName'),
               setTtl: t('redis.setTtl'),
               rename: t('redis.renameKey'),
               delete: t('common.delete'),

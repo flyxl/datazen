@@ -110,8 +110,8 @@ export function BatchExportDialog({
 
   const modeOptions = useMemo(
     () => [
-      { value: 'structure_only' as const, label: t('batchExport.modeStructureOnly') },
-      { value: 'data_only' as const, label: t('batchExport.modeDataOnly') },
+      { value: 'structure_only' as const, label: t('common.structureOnly') },
+      { value: 'data_only' as const, label: t('common.dataOnly') },
       { value: 'data_and_structure' as const, label: t('batchExport.modeDataAndStructure') },
     ],
     [t],
@@ -183,7 +183,7 @@ export function BatchExportDialog({
       setError(
         message === 'no_tables_selected'
           ? t('batchExport.noTablesSelected')
-          : `${t('batchExport.failed')}: ${message}`,
+          : `${t('common.exportFailed')}: ${message}`,
       );
     } finally {
       unlisten?.();
@@ -285,7 +285,7 @@ export function BatchExportDialog({
                   onClick={selectAll}
                   disabled={tables.length === 0 || allSelected}
                 >
-                  {t('batchExport.selectAll')}
+                  {t('common.selectAll')}
                 </button>
                 <button
                   type="button"

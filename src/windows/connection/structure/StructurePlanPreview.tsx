@@ -23,12 +23,8 @@ export function StructurePlanPreview({ plan, onClose }: StructurePlanPreviewProp
   return (
     <div className="border-t border-edge bg-surface-alt">
       <div className="flex items-center justify-between px-4 py-2">
-        <span className="text-xs font-medium text-fg-secondary">{t('structEditor.sqlPreview')}</span>
-        <button
-          type="button"
-          className="text-xs text-fg-muted hover:text-fg"
-          onClick={onClose}
-        >
+        <span className="text-xs font-medium text-fg-secondary">{t('common.sqlPreview')}</span>
+        <button type="button" className="text-xs text-fg-muted hover:text-fg" onClick={onClose}>
           {t('common.close')}
         </button>
       </div>

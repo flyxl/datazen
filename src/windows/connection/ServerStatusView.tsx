@@ -79,7 +79,7 @@ const METRIC_LABELS: Record<string, TranslationKey> = {
   maxConnections: 'serverStatus.maxConnections',
   activeQueries: 'serverStatus.activeQueries',
   databaseSize: 'serverStatus.databaseSize',
-  qps: 'serverStatus.qps',
+  qps: 'common.queriesPerSec',
   slowQueries: 'serverStatus.slowQueries',
   networkIn: 'serverStatus.networkIn',
   networkOut: 'serverStatus.networkOut',
@@ -89,7 +89,7 @@ const METRIC_LABELS: Record<string, TranslationKey> = {
   walBytes: 'serverStatus.walRate',
   cacheHitRatio: 'serverStatus.cacheHitRatio',
   innodbHitRatio: 'serverStatus.innodbHitRatio',
-  txsPerSec: 'serverStatus.qps',
+  txsPerSec: 'common.queriesPerSec',
 };
 
 function asStatusRecord(data: unknown): StatusRecord | null {
@@ -399,7 +399,7 @@ export function ServerStatusView({
     const defs: MetricCard[] = [
       {
         key: 'qps',
-        label: t('serverStatus.qps'),
+        label: t('common.queriesPerSec'),
         icon: <Activity className="h-4 w-4 text-emerald-400" />,
         value: qpsValue,
         available: qpsValue !== '—',
@@ -490,7 +490,7 @@ export function ServerStatusView({
     // MySQL / 通用：每秒查询（QPS）
     const transactions: ChartCard = {
       key: 'transactions',
-      label: t('serverStatus.qps'),
+      label: t('common.queriesPerSec'),
       seriesKeys: ['qps'],
       seriesLabels: [t('serverStatus.trendTotal')],
       chartType: 'area',
