@@ -82,6 +82,7 @@ export function ChartToolbar({
             type="button"
             title={t(labelKey as never)}
             aria-label={t(labelKey as never)}
+            data-testid={`chart-type-${type}`}
             className={cn(
               'rounded px-2 py-1 transition-colors',
               config.chartType === type

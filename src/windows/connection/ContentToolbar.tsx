@@ -83,14 +83,16 @@ export function ContentToolbar({
         />
       )}
       {showErDiagram && (
-        <ToolbarButton
-          compact={compact}
-          variant="secondary"
-          className="h-8"
-          label={t('erDiagram.title')}
-          icon={<GitFork className="h-4 w-4" />}
-          onClick={onOpenErDiagram}
-        />
+        <span data-testid="content-toolbar-er-diagram">
+          <ToolbarButton
+            compact={compact}
+            variant="secondary"
+            className="h-8"
+            label={t('erDiagram.title')}
+            icon={<GitFork className="h-4 w-4" />}
+            onClick={onOpenErDiagram}
+          />
+        </span>
       )}
       {showObjects && (
         <>

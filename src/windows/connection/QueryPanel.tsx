@@ -1046,6 +1046,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
                       <div className="flex items-center gap-0.5 rounded-md bg-surface p-0.5 my-1">
                         <button
                           type="button"
+                          {...tid('result-view-table')}
                           className={cn(
                             'flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors',
                             resultViewMode === 'table'
@@ -1059,6 +1060,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
                         </button>
                         <button
                           type="button"
+                          {...tid('result-view-chart')}
                           className={cn(
                             'flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors',
                             resultViewMode === 'chart'
