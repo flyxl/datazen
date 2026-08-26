@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { TableDataCompare, TableSchemaDiff } from '../types';
+import type { TableSchemaDiff } from '../types';
 
 export type StatementRisk = 'additive' | 'destructive' | 'rewrite';
 
@@ -83,13 +83,6 @@ export const schemaDiffCommands = {
     tableName: string,
   ) =>
     invoke<TableSchemaDiff>('compare_table_schemas', {
-      sourceDbSessionId,
-      targetDbSessionId,
-      tableName,
-    }),
-
-  compareTableData: (sourceDbSessionId: string, targetDbSessionId: string, tableName: string) =>
-    invoke<TableDataCompare>('compare_table_data', {
       sourceDbSessionId,
       targetDbSessionId,
       tableName,

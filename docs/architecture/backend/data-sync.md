@@ -101,9 +101,8 @@ execute_statements（begin → query_with_params → commit；失败/Cancel 则 
 | `apply_data_sync` | compare → generate → execute 一步闭环 |
 | `execute_data_sync` | 执行已生成的 `SqlStatement[]` |
 | `cancel_data_sync` | 取消进行中的 compare/execute job |
-| `classify_sync_pair` | 前端 pairing 提示（direct vs IR） |
 
-Legacy：`sync_table` / `sync_tables` / `compare_databases` 已移除。
+Legacy：`sync_table` / `sync_tables` / `compare_databases` / `classify_sync_pair` 已移除（pairing 提示由前端 `src/lib/syncPairing.ts` 镜像 `data_sync/pairing.rs` 实现）。
 
 ## 6. 前端 Diff Workspace
 

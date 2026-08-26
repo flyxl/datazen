@@ -401,8 +401,8 @@ pub struct AppState {
 | Schema | `schema.rs` | `get_databases`, `get_tables`, `get_columns`, `get_table_schema`, `get_table_data`, `get_er_data`；对象/权限经 Driver Command |
 | 表编辑 | `data.rs` | `commit_edits`（批量行 UPDATE） |
 | 备份 | `backup.rs` | `backup_database`, `restore_database` |
-| 同步 | `commands/sync/` | `inspect_data_sync`, `compare_data_sync`, `execute_data_sync`, `classify_sync_pair`；legacy `compare_databases`/`sync_table`/`sync_tables` 已移除 |
-| Schema Diff Deploy | `schema_diff.rs` | `prepare_schema_diff_plan`, `execute_schema_diff_deploy` |
+| 同步 | `commands/sync/` | `inspect_data_sync`, `compare_data_sync`, `execute_data_sync`；已移除：`compare_databases`/`sync_table`/`sync_tables`（legacy）、`classify_sync_pair`（前端 `syncPairing.ts` 镜像同逻辑） |
+| Schema Diff Deploy | `schema_diff.rs` | `prepare_schema_diff_plan`, `execute_schema_diff_deploy`, `compare_table_schemas`（`compare_table_data` 未上线已移除） |
 | 配置 | `config.rs` | `get_settings`, `save_settings`, `get_groups`, `get_log_path`, `export_connections`, `import_connections` |
 | 主题包 | `theme.rs` | `list_theme_packs`, `install_theme_pack_with_dialog`, `remove_theme_pack`, `read_theme_pack_file` |
 | AI | `ai.rs` | `ai_generate_sql`, `ai_chat`, `ai_diagnose_error`, `ai_analyze_explain`, `ai_parse_filter`, `workflow_*`, `prompt_*`（约 30 个命令） |
