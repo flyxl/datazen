@@ -167,6 +167,8 @@ cargo test -p datazen                  # Host Rust 单元测试（不含驱动 c
 cargo test -p datazen-driver-postgres  # 示例：某个 path 驱动的 Rust 测试
 ```
 
+多功能需求由主代理协调编码/测试子代理并行开发：三角色模型、bug 流转状态机、worktree 轨道编排与子代理恢复协议见 [docs/development/subagent-dev-playbook.md](docs/development/subagent-dev-playbook.md)（轨道 bootstrap 用 `scripts/new-feature-worktree.sh <track>`）。
+
 ### E2E
 
 完整流程见 [docs/development/e2e-testing.md](docs/development/e2e-testing.md)；覆盖矩阵见 [docs/development/e2e-coverage.md](docs/development/e2e-coverage.md)。

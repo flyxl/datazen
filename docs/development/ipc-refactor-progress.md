@@ -1,0 +1,1252 @@
+# IPC 重构进度管理
+
+> 依据 [dev-workflow.txt](./dev-workflow.txt) 与 [ipc-refactor-plan.md](./ipc-refactor-plan.md)。
+> 分支：`feature/ipc-refactor`（worktree：`../datazen-ipc-refactor`）。
+> 每个功能：编码子代理开发+单测 → commit → **全新**测试子代理测试（E2E 用例+结果、bug 记录、覆盖率≥80%）→ commit → bug 流转循环。
+
+## 功能总览
+
+| # | 功能 | 对应决策 | 状态 | 编码 commit | 测试 commit |
+|---|------|---------|------|------------|------------|
+| F1 | 废弃 `use_database`，query/stream/explain 显式传参 | 决策 1 | 已完成 | 34a28420 | 3d23cfd1 · 8b85cd49 · 本提交 |
+| F2 | ADB 命令迁移 SQLite 驱动（DriverCommandDefinition） | 决策 2 | 已完成 | 823516c2 | bf588def · f12f9be9 · 本提交 |
+| F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 已完成 | d17623d1 | 4bb25365 · 25aed34c · aae29cfa |
+| F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 已完成 | 4d0fec83 | 85b38cca |
+| F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 已完成 | 本提交 | 本提交 |
+| F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 已完成 | d4e33801 | 本提交 |
+| B5 | ConnectionNavigatorTree 刷新丢失已展开分类修复（=F1-BUG-005） | 既有缺陷 | 已完成 | e4b7b6d7 | 本提交 |
+| F7 | 驱动级 SQL 定位重写（限定名内联、无会话切换；PG 系含 database+schema 双维度） | 用户新指令 2026-08-26 | 已完成 | 6184eacc | 本提交 |
+| R | 回归测试 + 文档更新（架构文档/AGENTS.md）+ 合并 main | 步骤 6 | 回归执行完毕·**存在遗留**（R2-BUG-001/002 经复验置已修复；R2-BUG-003 经裁决采方案 a 已修复并重跑转绿——BACKUP-011 改传 overwrite + BACKUP-012 自持播种，backup-database.ts 12/12 全绿；ADB-001 资产漂移已修正（监听器断言改指 MainPage.tsx），app-data-backup.ts 8/8 全绿。遗留剩：E2E 资产漂移群①③④处置结果见文末「R-3 资产修复记录」。文档收口已完成、注册面比对完成。**未达「回归完成·待合并 main」**） | — | 本提交 |
+
+状态机：`未开始 → 编码中 → 编码完成 → 测试中 → 已完成`；bug 流转见下方 Bug 台账。
+
+## Bug 台账
+
+> 协调者：F2 测试轮不通过（仅覆盖率缺口 F2-BUG-001），转入修复轮。
+> 2026-08-26 复验代理（全新实例，独立重跑 commit f12f9be9）：F2-BUG-001 复验通过置「已修复」，F2 关闭为「已完成」。7 用例逐条审查均为真实行为断言（信封整对象等价 / `result.data` 解包 / 取消语义 null+undefined 双路径 / 无 session 多余键），覆盖率、全量套件、tsc 数字独立重跑与修复轮声称逐位一致；F2-E2E-001~005 按【留待 R 回归】既定安排不阻塞关闭。
+> 协调者：F3 测试轮不通过（F3-BUG-001 文档失实 / F3-BUG-002 覆盖率缺口），转入修复轮。
+
+> 2026-08-26 协调者：F1 测试轮不通过，BUG-001~004 置「验证不通过」，转入修复轮（流程第 4 步）。
+> 2026-08-26 复验代理（全新实例）：BUG-001~004 逐项闭环验证通过，置「已修复」；新发现既有缺陷 F1-BUG-005（连接刷新丢失已展开分类内容）登记为「待验证」，是否并入 F1 由协调者裁决。
+> 2026-08-26 协调者裁决：F1-BUG-005 为既有缺陷、非 F1 引入，**不并入已关闭的 F1**；立为独立修复循环 B5（见功能总览），排期 F7 之后、R 之前，届时按标准循环派修复代理+全新测试代理。
+> 2026-08-26 F3 复验代理（全新实例，被测 commit `d17623d1`）：范围清零 / 门控安全 / 四合一等价性 / 守护测试四项审查全部通过，三件套独立重跑全绿（1133/0/2 · 241 文件 1970 用例 · tsc 0 错误）；覆盖率实测 BackupWindow.tsx 行覆盖 **61.53% < 80%**（登记 F3-BUG-002），另决策 3 文档表述与实现不符（登记 F3-BUG-001）。两项均【低】、待验证不修。**F3 测试轮不通过**，转修复轮；E2E 用例已登记（F3-E2E-001~007，全部留待 R 阶段）。
+> 2026-08-26 R2 复验代理（全新实例，被测 commit `6b3c4bd8`）：R2-BUG-001/002 复验通过置「已修复」——三层实证：driver-api 单测 + PG live 回归真实跑绿（非跳过）+ E2E 关键用例 BACKUP-012/ADB-003 如期翻绿。新发现 BACKUP-011 残留红根因与两已修缺陷无关，登记 **R2-BUG-003**【中】待验证（restore 无 overwrite 与库内常驻关系冲突，结构性必红）。独立重跑 cargo lib 1139 / vitest 2033 / tsc 0 错误 / driver-api 94，与修复轮声称逐位一致。**未达「回归完成·待合并 main」**，待 R2-BUG-003 裁决处理；详见文末「R-2 复验记录」。
+
+| Bug ID | 所属功能 | 描述 | 状态 | 记录时间 | 验证记录 |
+|--------|---------|------|------|---------|---------|
+| F1-BUG-001 | F1 | 【高】SQL 编辑器库下拉切换不再作用于后端会话：`switchDatabase` 改纯本地状态后，编辑器执行链路（`panelStore.executeQuery` → `queryExecActions.runStreamingQuery/runBoundQuery` → `driverCommands.execute/executeStream`，command=`query`/`query_stream`）不携带 database，且 driver_command 输入 schema（`packages/driver-api/src/command.rs` query/query_stream 定义）无 `database` 字段 → 未限定 SQL 仍打到旧活动库。编码说明「其余查询路径经 driver_command 的会话已被惰性切换」在主链路不成立（仅 Explain 触发切库）。重现与文件见下方「F1 缺陷详情」 | 已修复 | 2026-08-26 | 修复轮（commit：`fix(ipc): f1 bugs - db scoping on driver_command path, table data/ddl targeting, coverage`）：driver_command 请求信封新增可选 `database`，宿主统一前置切库；前端编辑器全链路携带面板目标库。**复验通过**（2026-08-26 全新实例，commit 8b85cd49）：信封字段 `#[serde(default)]` 向后兼容；stream/bound 两入口均先 `ensure_session_database`（unbound driverType 显式忽略）；`handle.id` 即运行时 dbSessionId；前端 panelStore(`panelTargetDatabase`)→queryExecActions→queryCommands→driverCommands 全部调用点带参；Rust 单测断言切库+session 记录更新+零调用分支、前端单测断言真实透传值，非空转 |
+| F1-BUG-002 | F1 | 【中】TableView 打开非活动库的表取数错位：挂载期 useDatabase 预切被删后，`get_table_data` 无 database 参数，后端以 session `config.database` 为限定符（`schema.rs get_table_data_impl`）→ 报表不存在或静默返回同名异库数据。重现见「F1 缺陷详情」 | 已修复 | 2026-08-26 | 修复轮（同上提交）：`get_table_data` 新增可选 `database` 并复用 `ensure_session_database`；TableView 打开表时携带面板目标库。**复验通过**（同上）：impl 在解析 session 前置切库；TableView 挂载+两处重试按钮均传 `database`；tableDataStore 按 per-connection 记忆 `activeDatabase` 保证翻页/过滤不漂移且有单测；Rust `get_table_data_pins_session_to_target_database` 断言取数落目标库 |
+| F1-BUG-003 | F1 | 【中】结构编辑器 DDL 无库定位：`TableStructureEditor` 移除 ensureDatabase 后，`plan_table_structure_changes` 仅收 dbSessionId → 跨库建表/改表可能作用于 session 活动库而非面板目标库。重现见「F1 缺陷详情」 | 已修复 | 2026-08-26 | 修复轮（同上提交）：`plan_table_structure_changes` 以同一机制处理，编辑器传入目标库。**复验通过**（同上）：wrapper+impl 均收 `database` 且走同一 `ensure_session_database`，无第二套切库语义；preview/execute 两路径透传组件 prop；DDL 语句执行不带参依赖 plan 阶段持久化 pin（设计决策 3），成立；Rust 双单测（pin 切库 / 无 pin 保持）+ 前端断言第三参 `'db_b'`/`null` |
+| F1-BUG-004 | F1 | 【低】改动 TS 文件覆盖率不达标：ConnectionNavigatorTree.tsx 行覆盖 53.13%、TableStructureEditor.tsx 37.64%（要求 ≥80%）；其余数字见「覆盖率」小节 | 已修复 | 2026-08-26 | 修复轮（同上提交）：两文件 vitest 用例扩展达 ≥80% 行覆盖（新数字见「覆盖率」表）；并补 Rust stream 路径独立切库单测。**复验通过**（同上）：全新实例重跑全量 1963 用例 + `--coverage.include` 过滤实测 ConnectionNavigatorTree.tsx 行覆盖 **96.74%**、TableStructureEditor.tsx **97.75%**，与修复轮声称数字逐位一致；ConnectionNavigatorTree.test.tsx 实测 64 用例独立运行全绿 |
+| F1-BUG-005 | F1 | 【中】【既有行为，非本轮引入】连接刷新后已展开对象分类内容丢失且不自动恢复：单库树（如 SQLite）展开 procedure 分类出现条目后，执行连接级或库级刷新，分类行仍呈展开态但条目消失、计数归零，观察窗 3s 内无任何重载。根因指向 `useExpandedDbCacheRefresh` 在 schemaEpoch 变化时 `clearCaches` 清空该会话全部 `dbObjectsMap` 后仅重载展开库的**表缓存**、不重载对象分类缓存，与 `refreshConnection.reloadExpandedObjectCategories` 的重载竞态失败。多库树表节点不受影响（走 `reloadDbTables` 恢复）。临时探针在 4ba4831a（F1 前）/046acf7a（修复轮前）/8b85cd49 三时点症状一致，判定为既有缺陷。是否纳入 F1 范围由协调者裁决；重现步骤见「F1 缺陷详情」 | 已修复 | 2026-08-26 | 复验轮新登记（2026-08-26 复验 commit 8b85cd49 时发现）。**B5 编码轮修复（2026-08-26，commit：`fix(ui): restore expanded object categories after refresh (b5)`）**：编码轮实测将根因细化为三层——① 键空间错位：hook 按会话 id 前缀清理 `dbObjectsMap`，但分类键用持久连接 id，生产环境两 id 不同时清理从不命中（掩盖症状）、id 相同的探针环境则整段清空；② epoch effect 清理后仅调度表缓存恢复、不调度分类恢复，恢复全靠 `refreshConnection` 尾部循环与该 effect 竞速，清理落在写入之后即永久丢失；③ 组件内 3 处动态 import databaseCommands 在 vitest 下 mock 穿透不一致，jsdom 中 invoke 抛错被 catch 写成空数组放大症状。修复=hook 单遍「同步清缓存→同批调度表+分类恢复重载」语义 + `clearCaches` 双 id 键空间修正 + 动态导入改静态；新增 hook 层排序/作用域断言与组件层连接级/库级刷新回归各一（修复前实测红、修复后绿），详见 B5 小节。**复验通过**（2026-08-26 全新测试代理，commit：`test(b5): reverify - expanded categories restore`）：独立重跑 vitest 240 文件/1966 用例全绿、tsc 0 错误；覆盖率实测行覆盖 ConnectionNavigatorTree.tsx **96.74%**（与基线逐位一致零回退）、useExpandedDbCacheRefresh.ts **100%**。四项判定全过：①内容级恢复成立（hook 调度 `loadObjectsForCat`→真实 `getDatabaseObjects`→写回 `dbObjectsMap`，渲染断言条目+计数双恢复）；②「clear 与恢复调度同一 effect 体、无 await 间隔」声称属实（invocationCallOrder 断言 clear 严格先于全部表/分类恢复）；③双键空间修正正确（实测组件键构造：表缓存=`dbSessionId::db` 前缀、分类缓存=`connectionId::db[::schema]::cat` 前缀，清理各按其前缀过滤，符合 AGENTS.md ID 术语——归属键用 connectionId、会话操作用 dbSessionId）；④`reloadDbTables` 函数体除动态导入改静态外逐字未变，多库树分支与挂载自动加载路径未触及，多库用例全绿。回归红性实证（不切分支：临时换入 `e4b7b6d7^` 两份实现文件→定向跑→`git checkout --` 还原并字节校验）：两条渲染层回归在修复前代码 2 failed（刷新后恢复链路零 mock 调用）、hook 层新用例 failed——「修复前红」属实，且渲染层红性机理与编码轮层③一致。静态导入副作用评估无风险（commands 链仅依赖 invoke/types 无环；该模块经 schemaStore 本就在组件静态图内，无包体增量）。残余观察（不阻塞）：连续两次指纹变化时前一波未取消的在途响应理论上可能晚于后一波清理落盘（last-write-wins），docstring 已声明取消语义边界，超出本缺陷范围 |
+| F2-BUG-001 | F2 | 【低】改动 TS 文件覆盖率不达标且为零执行覆盖：`src/commands/adb.ts` 全量套件 `--coverage` 实测行覆盖 **14.28%**（7 语句仅 1 覆盖，未覆盖 L23-29 / 33 / 37-39 / 54-58 —— 共享 helper 与三个导出函数全部没有任何单测执行；全仓唯一引用它的 `pathIpcWiring.test.ts` 是源码字符串断言，不执行代码），远低于 ≥80% 门槛。`savedPath ?? null` 取消语义、`driverType='sqlite'` 信封组装、input 透传均无回归保护。重现步骤见「F2 缺陷详情」 | 已修复 | 2026-08-26 | 修复轮（commit：`test(adb): behavioral unit tests for sqlite driver command wrappers (f2 bug 001)`）：新增行为级单测 `src/commands/__tests__/adb.test.ts`（7 用例；按目录既有惯例 `vi.hoisted` + `vi.mock('../driver')` 替换 `driverCommands.execute`），断言三命令信封逐字段等价（driverType='sqlite'、command id、input 与原 IPC 参数一致且无 dbSessionId/database 多余键）、`result.data` 解包透传、pull 成功返回 savedPath 字符串、取消语义 savedPath null/undefined → null（同原 *_with_dialog）；全量套件 `--coverage` 实测行覆盖 **100%**（前 14.28%），vitest 241 文件/1970 用例全绿、`tsc --noEmit` 0 错误。**复验通过**（2026-08-26 全新实例，commit f12f9be9）：7 用例逐条审查均为行为级断言、无空转/永真——三命令信封以 `toEqual` 整对象等价锁定 driverType/command id/input 键值（list 包 input={}、list 库 {package}、pull {package, dbPath}），envelope discipline 用例另断言请求键集恰为 ['command','driverType','input'] 且 dbSessionId/database 均 undefined；`result.data` 解包以 `toBe` 同一性断言透传；取消语义 savedPath=null 与缺失字段 undefined 两路径均归 null；仅 mock `../driver`，被测 wrapper 真实执行。独立重跑：`npx vitest run --coverage --coverage.include='src/commands/adb.ts'` 实测 adb.ts Stmts/Branch/Funcs/Lines 均 **100%**（门槛 ≥80%，无未覆盖行）；全量 `npx vitest run` 241 文件 / 1970 用例全绿；`npx tsc --noEmit` exit 0（单独串行执行，未复现负载超时 flake）；数字与修复轮声称逐位一致 |
+| F5-BUG-001 | F5 | 【低】【文档漂移，非代码缺陷】`docs/development/e2e-testing.md` L154 与 `docs/development/e2e-coverage.md` L106 仍表述「webdriver 构建保留 `write_file` / `export_app_data(path)` 等路径 API 供 E2E 使用」，与决策 4（三路径 IPC 已删、E2E 改 Node fs）相悖，会误导后续 E2E 编写者。重现：`grep -rn "write_file" docs/development/e2e-testing.md docs/development/e2e-coverage.md`。commands.md 已同步、两文件不在本决策承诺范围；归属 R 阶段文档收口统一修正，不阻塞 F5 判定 | 待验证 → 已修复 | 2026-08-26 | F5 复验轮新登记（commit 8f9e4a9c 复验时发现）。**R 文档收口修复（2026-08-26，R 阶段代理，本提交）**：两处失实表述改为决策 4 后事实——三纯文件读写 IPC 已删、E2E fixture 改 Node fs、对话框系 API 保留、残余路径变体如实标注为 `require_webdriver_path_ipc` 门控并按决策 3 收敛；全仓 Grep 复核同类漂移一并清理（TODO-screenshots.md、workflow-guide zh/en 的 `use_database` IPC 提及、data-sync.md 切库描述改驱动层内部 `maybe_use_database`），历史存档（docs/reviews、test-reports）不回写 |
+| F3-BUG-001 | F3 | 【低】【文档】进度文件 F3「设计决策 3」表述与实现不符：声称 filter_extension 白名单校验"保持无条件"、override 路径"同样要求携带合法 filter_extension"；实际校验仅存在于 dialog 分支（`pick_backup_save_path` 入口的 `validate_backup_filter_extension`），`override_path` 为 Some 时该函数不执行、filter_extension 完全不校验。与旧 path 版命令行为一致（旧版无此参数、对路径零校验），**非新引入放宽**；生产构建整体拒绝 override_path，无安全影响。风险在文档误导：遗留注意 3 提议未来放开 override 通道时，维护者可能误信服务端已有扩展名防线。待编码代理二选一：修正决策 3 措辞，或在 override 分支补同款校验 | 待验证 | 2026-08-26 | 复验轮登记（commit d17623d1，详见 F3 小节复验记录）。修复轮选**方案 a**（行为等价优先）：决策 3 改写为「filter_extension 校验仅覆盖 dialog 分支」如实描述实现——override 分支零校验系旧 path 版行为等价延续，生产由门控整体拒绝 override_path 兜底；不选 b 的理由：会给仅 webdriver 构建可达的分支引入新拒绝行为，且需评估 E2E fixture 文件名（如非白名单扩展名的临时产物）被新校验误拒的回归风险，而生产安全收益为零。本提交（修复轮）。**复验通过**（2026-08-26 全新实例）：决策 3 新措辞与实现逐点核对一致——Rust 侧 `validate_backup_filter_extension` 仅在 `pick_backup_save_path`（dialog 分支）内调用，`override_path` 为 Some 时确不执行；「override 零校验系旧 path 版等价延续、生产由 resolve_override_path 门控整体拒绝兜底、缺口仅 webdriver 构建可达」表述属实；遗留注意 3「未来放开前先补同源校验」交叉引用保留于决策 3 内 |
+| F3-BUG-002 | F3 | 【低】改动 TS 文件覆盖率验收线未达：BackupWindow.tsx 行覆盖 **61.53%**（语句 60.78% / 分支 62.5% / 函数 54.34%）< 80%。未覆盖集中在 handleBackup 全函数（L233-286，含本轮合并后的 `invoke('backup_database')` 成功/取消/错误三分支——组件级零覆盖）、handleRestore 错误分支（L223-227）、URL 预填（L166-177）、选项下拉/压缩交互（L435-489）等；sqlFileExecution.ts 行覆盖 100% 达标。同 F1-BUG-004 性质：需补 BackupWindow.test.tsx 组件用例（备份 saved=true / 取消 false / 后端报错、toggleOption/compressGzip 交互等）达 ≥80% | 已修复 | 2026-08-26 | 修复轮（本提交）：BackupWindow.test.tsx 新增「backup flow」组件用例 7 例——`invoke('backup_database')` 成功/取消/错误三分支 + 参数精确断言且无 `overridePath` 键、选项下拉/format-custom/gzip/文件名驱动 filterExtension 与 defaultFileName、URL 预填、恢复后端错误分支、分组折叠；BackupWindow.tsx 行覆盖 **61.53% → 93.4%**（语句 90.68% / 分支 81.94% / 函数 84.78%）。附带修复测试基建隐患：既有用例残留的 `confirmDialogFn.mockResolvedValue(false)` 不被 clearAllMocks 清除，新 describe 以 beforeEach 重置默认确认值。**复验通过**（2026-08-26 全新实例独立重跑）：`--coverage.include` 过滤实测行覆盖 **93.4%** / 语句 90.68% / 分支 81.94% / 函数 84.78%，与声称逐位一致；BackupWindow.test.tsx 14 用例全绿；7 新例均行为级非空转——成功分支 `toEqual` 精确断言 invoke 参数且断言无 `overridePath` 键、取消/错误分支断言组件真实状态转换（状态条卸载、日志卸载、按钮复位）、选项用例经可配置 ref 驱动真实 filterExtension/defaultFileName 推导与 routines 自动勾选；mock 惯例改动（sqlDialects 可配置 ref）对既有用例行为不变；confirmDialogFn 残留污染诊断属实（clearAllMocks 不清实现）且 beforeEach 重置修复正确 |
+| R1.3-BUG-001 | R-1.3 | 【低】【文档计数/清单遗漏，非代码缺陷】R-1.3 声称收口「19 处」调用点并给出清单，但清单不可复算：逐项求和仅为 18 处，漏列 `config.rs: export_app_data`（save ZIP，基线直连点为已删的 `pick_app_data_save_path`）。实测三口径——基线（bb498cb9^）plugin-dialog 调用代码站点（共享 helper 计 1、folder/file 双形态计 1）= **19**（声称数在此口径下成立）；基线 `.dialog()` 原生调用出现次数 = **20**（pick_connection_import_path 闭包内 folder/file 各一次）；当前网关调用行 = **21**（共享 open 合并后拆为 preview/with_dialog 两条独立 gateway 调用）。实质收口完整性不受影响：Grep 全仓零残留直连，`export_app_data` 同样经网关（config.rs `super::dialog::save_file` ZIP 行）。风险仅在后续维护者按清单复核时对不上账 | 待验证 → 已修复 | 2026-08-26 | 复验代理登记（全新实例，被测 commit bb498cb9，详见 R-1.3 复验记录）。修复建议二选一：a) 清单补 `config.rs: export_app_data`（save）并注明计数口径=调用代码站点；b) 改按原生调用次数口径写 20。不阻塞本轮判定。**协调者合并期修复（选 a）**：R-1.3 清单已补 `export_app_data`（save ZIP）行并在计数处注记三口径（站点 19 / 原生调用 20 / 网关行 21），本提交 |
+| R2-BUG-001 | R-2 回归 | 【高】PG `backup_database` 产物含空标识符语句，恢复链路部分失败：对 goecoride 库备份生成的 SQL 出现空名条目——注释行 `-- Table: `（表名为空）与 `CREATE TABLE IF NOT EXISTS "" (...)`，`restore_sql_file` 执行时报 `zero-length delimited identifier at or near """"`，BACKUP-011 实测 **Partial restore failure (7/45 statements failed)**、BACKUP-012 (2/7)。次要叠加因素：库内历史残留对象（`_e2e_backup_test`/`_e2e_pg_types` 及孤儿序列 `_e2e_backup_test_id_seq1/2/3`）使无 IF NOT EXISTS 的 CREATE 在恢复时报 already exists 并计入部分失败数。空名对象来源未定位：public schema 现存 14 个关系均无空名（pg_class 复核），疑备份列表查询的 JOIN/过滤分支产出，按纪律禁修复仅登记。重现：webdriver 构建 + 本机 PG goecoride 跑 `e2e/specs/backup-database.ts` BACKUP-011/012 | 已修复 | 2026-08-26 | R-2 回归代理登记（全新 webdriver 构建 HEAD 6af65712 实测；错误堆栈见本轮 E2E 日志 backup-database.ts 段）。**修复（2026-08-26，R2 修复代理，本提交）**：根因已定位——非「JOIN/过滤分支产出空名关系」，而是 PG `get_tables` 为**空 schema** 输出的导航标记行（`fetch_tables_from_pool` 的 SCHEMA_MARKER 分支：`name=""`、`TableType::SystemTable`，供连接树显示空 schema 用）漏入共享 dump 管线：`driver-api sql_dump::dump_sql_database_with_progress` 仅按 view-like 分流，标记行落入 base_tables 后被 `dump_one_object` 逐环节物化（空名 `-- Table:` 注释 + `CREATE TABLE IF NOT EXISTS ""` + clean 时 `DROP TABLE IF EXISTS ""` + 数据 SELECT 失败注释）；goecoride 内 3 个 E2E 残留空 schema（`e2e_sch_*`，psql 复核 relations=0）即 3 条空标识符语句。**与 F7 sql_target 重写无关**：`backup.rs` 直调 `driver.dump_database_with_progress`，全程不经 driver_command 信封 / `qualify_sql_target`，重写器无从触及备份列表（SCHEMA_MARKER 引入于 050e3a14 admin 命令，亦早于 F7）。修法=driver-api 新增 `is_dumpable_object`（空白标识符或 SystemTable 一律不进管线，CREATE/DROP/INSERT 三路同时免疫）；测试=driver-api 单测两例（空名 marker 零语句 + 有名 SystemTable 不导出，修复前红）+ PG 驱动 live 回归 `postgres_dump_empty_schema.rs`（建临时空 schema→dump→断言无零长标识符，修复前对真实 PG 实测红：3 条 `zero-length delimited identifier`，修复后绿；无 TEST_PG_* 环境时按惯例跳过）。次要叠加因素属库内残留非代码缺陷，随 E2E 重跑时清库即可消除。**复验通过（核心缺陷）**（2026-08-26 全新实例，被测 commit `6b3c4bd8`）：空标识符类失败三层实证清零——① driver-api 单测两例绿；② PG live 回归 `postgres_dump_empty_schema` 对真实 PG 绿（TEST_PG_* 显式注入，0.17s 未跳过，临时 schema 自建自清）；③ E2E 实测 goecoride 库内 4 个空 schema（`e2e_sch_*`×3 + `datazen_r2_bug001_*`×1）仍在的情况下备份产物零 `""` 语句、语句总数 45→43、BACKUP-012 翻绿（原红即空标识符语句）。过滤位置审查：唯一漏斗 `dump_sql_database_with_progress` 于 `partition_dump_objects` 前过滤，CREATE/clean DROP/INSERT/进度注释四路免疫；PG/MySQL/trait 默认三调用方全经此漏斗。有名 SystemTable 不导出有专测钉死；合法逐对象 DDL 导出走 `dump_table_ddl` 不经此过滤，无既有需求被误杀（现无「备份系统目录」场景，pg_dump/mysqldump 默认亦排除；未来若出现须改选项门控）。**注意**：修复轮「清库即可使 BACKUP-011 转绿」的预测不成立——残留红根因与空标识符无关，转移登记 **R2-BUG-003** |
+| R2-BUG-002 | R-2 回归 | 【中】app-data 导出↔回灌往返被 zip-bomb 守卫误拒：`export_app_data` 成功产出 zip 后，`import_app_data` 报 `zip bomb: compression ratio exceeded (entry datazen.sqlite-shm)` 拒绝导入——应用自产的包无法回灌，ADB-003 失败。待裁决两点：① 压缩比阈值对高压缩比合法条目（SQLite sidecar `-shm` 高度重复内容）过严；② 导出排除规则已有 logs//*.tmp/.key 但不含 `-shm`/`-wal` sidecar，是否应入包。重现：webdriver 构建跑 `e2e/specs/app-data-backup.ts` ADB-003 | 已修复 | 2026-08-26 | R-2 回归代理登记（HEAD 6af65712 实测；后端日志同轮可见 `cmd="import_app_data" error=zip bomb...`）。**修复（2026-08-26，R2 修复代理，本提交）**：裁决选**导出侧排除**方案——`app_data_archive::should_exclude_with_options` 新增 `is_sqlite_sidecar`（相对路径末段以 `-wal`/`-shm` 结尾即排除，任意深度）。理由：① sidecar 本就是 WAL 模式库的瞬态运行时状态，不该进归档（回灌陈旧 sidecar 反而破坏与库文件的配对）；② 守卫侧白名单会削弱对所有导入包的安全边界（攻击者可将炸弹条目命名为 `x.sqlite-shm` 绕过比率检查），故守卫零改动。测试两例：`should_exclude_sqlite_sidecars_on_export`（正/负样张含 lookalike 文件名）、`self_produced_archive_with_sidecar_round_trips`（512KB 高压缩比 `-shm`/`-wal` 自产包 export→import 全往返；修复前红——sidecar 入包且 import 被 ratio 守卫拒绝，修复后绿）。**复验通过**（2026-08-26 全新实例，被测 commit `6b3c4bd8`）：E2E ADB-003 翻绿且同 spec ADB-002/004~008 一并全绿；负样张审查通过——排除键为末段**精确后缀** `-wal`/`-shm`，`notes-wal.txt`/`shm.txt` 类伪装名不误排（`evil.sqlite-shm.txt` 以 `.txt` 结尾同理不命中），真实负载 `datazen.sqlite`/`cache.db`/`connections.json` 不受影响；「修复前红」实证可信——512KB 零值/单字符填充对 deflate 约 500~1000:1 压缩比，远超导入侧 `MAX_COMPRESSION_RATIO=100`，且用例走真实 `export_app_data`→`import_app_data` 全函数往返非 mock；守卫零改动核实（app_data_archive.rs 导入路径未触）。观察（不阻塞）：匹配大小写敏感（SQLite 实际只写小写 sidecar 名）；名为 `*-wal` 的普通文件/目录会被误排，可接受代价 |
+| R2-BUG-003 | R-2 复验 | 【中】【测试设计×环境耦合，非 R2-BUG-001 残留】BACKUP-011 结构性必红：该用例备份 schema-only+routines 后以**无 `overwrite`** 的 `restore_sql_file` 回灌同一活库——PG 驱动 catalog 级 DDL（`fetch_pg_table_ddl_from_catalog`→`build_pg_create_table_ddl`）产出 pg_dump 风格 **无 IF NOT EXISTS** 的 `CREATE TABLE public.x`，撞库内同名关系即报 already exists；`recover_restore_statement` 仅在 `overwrite=true` 时 DROP 重试，无 overwrite 则失败计入 partial 并最终抛错。而冲突对象不可归零：① spec 自身 `before()` 建的 `_e2e_backup_test` 到 `after()` 才删（套件中途恒存在）；② goecoride 常驻 fixture `carbon_ledger`/`product`/`ride_reviews` 出自 `test/setup_goecoride.sql`（约 35 万行业务数据，非可清理残留）；③ 另有 `_e2e_pg_types` 残留。⇒ 任何环境跑必红。复验实测 5/43 全为 named-relation already-exists、零空标识符；原轮 7/45 与本轮差值恰为修复消除的空标识符语句，证明该类失败在修复前即独立存在。候选方案待裁决：a) 用例改传 `options:['overwrite']`（与 BACKUP-012 同款）；b) PG catalog DDL 补 IF NOT EXISTS；c) 无 overwrite 时对 already-exists 容忍跳过。按纪律禁修仅登记 | 已修复 | 2026-08-26 | R2 复验代理登记（全新实例，被测 commit `6b3c4bd8`，webdriver 构建 + 本机 PG goecoride 实测；完整证据链见文末「R-2 复验记录」）。**修复（2026-08-26，R 阶段 E2E 资产修复代理·协调者裁决方案 a，本提交）**：BACKUP-011 恢复调用改传 `options: ['overwrite']`（与 BACKUP-012 同款），用例注释注明裁决理由——无 overwrite 撞库内同名关系的部分失败是合理产品语义（由 BACKUP-012 与人工路径覆盖），本用例场景收敛为验证 schema-only+routines dump 的完整恢复（函数回灌）。连带修正一处测试序依赖：011 的 overwrite 恢复会将 `_e2e_backup_test` 按空表重建（schema-only 无 INSERT 可回灌），原 BACKUP-012 隐式依赖 before() 播种的 'alice' 行随之失效（首轮重跑 012 实测 Expected 1 Received 0 复现）；已让 012 用例开头自行 `seedBackupTable` 自持前置条件。重跑 `--skip-build --spec backup-database.ts,app-data-backup.ts` 全绿：backup-database.ts 12/12（含 BACKUP-011/012）、app-data-backup.ts 8/8。**副作用披露**：overwrite × schema-only 会把 goecoride 库内同名常驻关系 DROP 后按空表重建；本机实况仅 product(4 行)/carbon_ledger(0 行)/ride_reviews(0 行) 受影响（setup_goecoride.sql 的 10 万行级目标内容在现库本就不存在，非本次所致），已先行 `pg_dump` 快照 `/tmp/goecoride_pre_r2fix_snapshot.sql` 备查 |
+
+> BUG-001~003 与编码说明「遗留注意 1」同根因（非 query 族命令无 database 参数、入口不再预切库），但遗留说明给出的过渡缓解（"由任一带 database 的 query/stream/explain 惰性触发切库"）对编辑器主链路不生效，故按缺陷登记；由编码代理裁决在 F1 内修复（补参数/补预切）或明确降级为后续功能承接。
+
+状态机：`待验证（新发现，编码代理未处理）/ 验证不通过 → 待验证（修复后等待复测）→ 已修复`
+
+## 测试约定
+
+- 单测：Host Rust（`cargo test -p datazen --lib`，共享主检出 target 缓存）、前端 vitest（受影响配置）
+- 覆盖率：改动 TS 以 `vitest --coverage` 度量 ≥80%；Rust 无 llvm-cov 工具链时以新增单测清单佐证
+- E2E 用例：每个功能在本文档登记用例清单与执行结果；真实 webdriver 全量回归统一在 R 阶段执行
+- 测试代理只输出结果，不修复问题
+
+## F1 废弃 use_database
+
+### 范围
+- 后端：`execute_query` / `execute_query_stream` / `get_explain` 增加 `database: Option<String>`；impl 内若与 session 当前库不同先 `driver.use_database()` 再执行；删除 `use_database` IPC 注册（`src-tauri/src/lib.rs` ~L819、`commands/schema.rs` 的 IPC 包装保留内部 impl 供内部调用则需评估）
+- 前端：移除 `src/commands/database.ts` 的 useDatabase 封装及全部调用点（sqlFileExecution.ts 等）；schemaStore 仅维护前端 currentDatabase 状态
+- E2E spec 同步：`bugfix-admin-commands.ts`、`zz-screenshots.ts` 改显式 database 参数
+- 内部 `maybe_use_database`（sync/transfer/workflow 的 driver 层调用）不在本功能范围
+
+### E2E 用例
+
+> F1 的全部语义围绕"后端 session 活动库"这一运行时概念，端到端正确性必须依赖 webdriver 构建 + 真实多库实例（MySQL/PG）；本地状态迁移半场已由 vitest mock 层覆盖。故本轮无用例可标【本机可执行】，全部登记为【留待 R 阶段回归】。BUG-001/002/003 对应用例须在修复复测后执行。
+
+| 编号 | 场景 | 前置 | 步骤 | 断言 | 标注 |
+|------|------|------|------|------|------|
+| F1-E2E-001 | 编辑器切库端到端生效（回归 BUG-001） | webdriver 构建；MySQL 实例含 db_a（连接默认库）与 db_b；已保存连接 | 连接 → 打开 SQL 编辑器 → 库下拉选 db_b → 执行 `SELECT DATABASE()` → 再查询 db_b 独有表 | `SELECT DATABASE()` 返回 db_b；独有表查询成功不报错 | 【留待 R 阶段回归】需真实 MySQL 多库；~~当前代码推演预期失败~~ **[复验补注]** 修复后主链路已闭环：bound(`query`) 与 stream(`query_stream`) 两路径均经 driver_command 信封 `database` 字段由宿主 `ensure_session_database` 前置切库，本用例应补验流式长结果路径（点击执行即 stream），并观察日志出现一次 `session active database switched` |
+| F1-E2E-002 | pin≠当前库惰性切库 + 会话记录更新 | 同上（PG 或 MySQL），会话活动库=db_a | 面板切到 db_b 后点 Explain → 再执行不带限定的 SQL | Explain 针对 db_b 成功返回计划；后续未限定 SQL 落在 db_b（`SELECT DATABASE()`/`current_schema()` 验证）；日志出现 `session active database switched` | 【留待 R 阶段回归】需真实多库实例与后端日志观测 |
+| F1-E2E-003 | None/相同库零切库开销 | 会话活动库=面板当前库=db_a | 连续执行两次普通查询 + 一次流式长结果查询 | 全部成功；日志无 switched 记录（零次 driver.use_database） | 【留待 R 阶段回归】需日志观测 + 真实驱动 |
+| F1-E2E-004 | 多库树打开非活动库表（回归 BUG-002） | MySQL 多库，db_a/db_b 各含 users 表且数据行数可区分 | 导航树展开 db_b → 点击其 users 表 | TableView 显示 db_b.users 数据（行数与 db_a 可区分），无报表不存在错误 | 【留待 R 阶段回归】需真实实例；当前推演预期失败 |
+| F1-E2E-005 | 结构编辑器跨库 DDL 落库正确（回归 BUG-003） | MySQL 多库，活动库=db_a | 在 db_b 节点新建表 t_f1（CreateTable 面板）→ 填列执行 → 分别 `SHOW TABLES` 于 db_a/db_b | t_f1 仅出现在 db_b；db_a 无该表 | 【留待 R 阶段回归】需真实实例；当前推演存在落错库风险 |
+| F1-E2E-006 | drop database 后 fallback 迁移 | ≥3 个库的真实实例；活动库=db_b 且具备 DROP 权限 | 右键删除 db_b 并确认 | 本地活动库迁移至 fallback（连接默认库方向）；树刷新无残留节点；后续未限定查询落在 fallback 库 | 【留待 R 阶段回归】需 DROP 权限真实实例 |
+| F1-E2E-007 | restore / SQL 文件执行目标库正确 | PG 或 MySQL + 含建表语句的 .sql fixture；备份窗口或 SQL 文件入口 | 对指定库执行 restore_database_with_dialog / execute_sql_file_with_dialog | 对象落在命令自带的 database 参数库（不经 session 状态）；进度事件正常 | 【留待 R 阶段回归】需原生 dialog 流程 + 真实实例 |
+| F1-E2E-008 | admin spec 显式参数回归 | TEST_MYSQL_*/TEST_PG_* 环境变量可用 | 运行 `e2e/specs/bugfix-admin-commands.ts` 全量 | 全部通过；spec 内无 use_database 调用（get_tables 显式 database 生效） | 【留待 R 阶段回归】需真实 MySQL/PG |
+| F1-E2E-009 | 截图链路探活替代 | demo PG 实例 + 完整构建 | 运行 zz-screenshots 中 pinDemoPgDatabase 相关用例 | get_tables({database}) 探活成功；不再出现 use_database 报错 | 【留待 R 阶段回归】需 demo 数据与完整构建 |
+| F1-E2E-010 | explain 面板显式传 currentDatabase | 任一支持 explain 的多库连接 | 切库 → 点击 Explain | ExplainResult 正常渲染且针对所选库（对不存在于旧库的对象给出预期计划/报错行为一致） | 【留待 R 阶段回归】UI 半场已被单测覆盖，端到端语义需真库 |
+| F1-E2E-011 | 连接刷新保留已展开对象分类（回归 F1-BUG-005，若纳入修复范围则必测） | 单库树驱动（SQLite）+ 含 procedure/function 对象的实例；多库树对照 | 展开某对象分类出现条目 → 右键连接「刷新」（及库节点「刷新」）→ 观察分类内容；再手动收起重展验证可恢复 | 【修复后期望】刷新后条目仍在或自动重载恢复；【当前实测】内容清空且计数归零，需手动收起重展（既有缺陷，见 F1-BUG-005） | 【留待 R 阶段回归】归属待协调者裁决 |
+
+### 测试结果
+
+**修复轮复验（2026-08-26，全新测试实例，独立重跑 commit 8b85cd49，不信前序数字）：**
+
+| 套件 | 复验实测 | 与修复轮声称对比 |
+|------|---------|----------------|
+| `cargo test -p datazen --lib`（共享主检出 target） | **1138 passed / 0 failed / 2 ignored** | 一致 ✅ |
+| `npx vitest run` | **240 文件 / 1963 用例全过**（ConnectionNavigatorTree.test.tsx 单独运行 64/64 全绿） | 一致 ✅ |
+| `npx tsc --noEmit` | **0 错误**（exit 0） | 一致 ✅ |
+
+覆盖率独立重测（全量套件 + `--coverage.include` 两文件过滤，v8 provider）：ConnectionNavigatorTree.tsx 行覆盖 **96.74%**、TableStructureEditor.tsx **97.75%**，与修复轮声称逐位一致。
+
+回归面复查：✅ 无 `use_database` IPC 回潮 —— 生产前端零命中；宿主侧剩余命中仅为 `ensure_session_database` 内部对 driver trait 的调用、mock/测试录制器、以及明确不在 F1 范围的 sync/transfer/workflow 内层调用；e2e 仅注释提及。修复提交未触碰任何 codegen/untracked 文件及 `packages/`（driver-api 输入 schema 未动，无需 PROTOCOL_VERSION 变更）。
+
+**结论：BUG-001~004 全部闭环，F1 判定通过关闭；新登记既有缺陷 F1-BUG-005 待协调者裁决归属。**
+
+---
+
+测试代理独立复测（2026-08-26，commit 34a28420，worktree `feature/ipc-refactor`）：
+
+| 套件 | 结果 | 与编码声明对比 |
+|------|------|---------------|
+| `cargo test -p datazen --lib`（共享主检出 target） | **1132 passed / 0 failed / 2 ignored** | 一致 ✅ |
+| `npx vitest run` | **240 文件 / 1882 用例全过** | 一致 ✅ |
+| `npx tsc --noEmit` | **0 错误**（exit 0） | 一致 ✅ |
+
+新增 Rust 单测确认：`execute_query_switches_session_database_when_pinned_differs` / `execute_query_skips_switch_when_same_or_none` / `get_explain_switches_session_database_when_pinned_differs` 经 `cargo test -- --list` 确认存在且包含于上述通过数。
+
+范围完整性审查（对照决策 1 五步）：✅ 无遗漏 ——
+1. 三命令 impl + Tauri 包装均新增 `database: Option<String>`（query.rs diff 核对）；
+2. 后端分发逻辑正确：pin trim 后非空且 ≠ session 当前库 → `driver.use_database` + `set_active_database`（与原 use_database_impl 行为等价）；None/空白/相同 → 短路且不提前解析 session（保留 not-connected 错误语义）；
+3. IPC 注册（lib.rs）、schema.rs 包装与 use_database_impl、mock 测试调用全部删净；
+4. 生产代码 `use_database|useDatabase` 调用点清零（Grep 工具全仓扫描；剩余命中仅为文档、驱动内部 trait 方法/maybe_use_database（明确不在 F1 范围）、注释与测试死 mock）；
+5. E2E spec 同步完成：bugfix-admin-commands.ts 5 处 + zz-screenshots.ts 2 处，与编码说明一致。
+
+逻辑正确性审查发现缺陷 4 项（F1-BUG-001~004，见台账），故 F1 保持「测试中」。
+
+非缺陷观察项（不阻塞，供后续参考）：
+- `ConnectionNavigatorTree.activateDatabase` 非缓存分支只更新 per-session entry、不刷新顶层扁平 `currentDatabase`；现调用点表格行渲染必来自 `dbTablesMap` 缓存（L1905），实际不可达，建议统一改走 `commitConnectionPatch` 消除双份状态的不对称。
+- `ensure_session_database` 将"切库→执行"竞态窗口从一次 IPC 往返收窄到同一命令内 `use_database` 与 SQL 执行之间（无 per-session 互斥），并发异库 pin 理论上仍可交错，属架构固有权衡。
+- 陈旧痕迹：QueryPanel.tsx ~L234 注释仍提 "racing the session useDatabase"；ConnectionNavigatorTree.test.tsx L122/L129、SchemaTree.test.tsx L95、TableView.test.tsx L20 残留死 mock。
+- 全量 `--coverage` 下项目 Option C 门槛存在多处未达（DataTable statements 76.35%、ConnectionPage 52.8%、dashboard/** 等）——非 F1 引入，另行跟踪。
+- F1 改造的 `execute_query` / `execute_query_stream` Tauri 命令当前在前端无调用点（编辑器实际走 driver_command 的 query/query_stream；仅 E2E invokeBackend 直调），新参数对 UI 仅 get_explain 生效——与 BUG-001 相关。
+
+### 覆盖率
+
+度量方式：全量 vitest 套件 + `--coverage.include` 过滤本次改动 TS 文件（v8 provider）。任务给定的"定向子集"命令（只跑 4 个测试路径）会显著低估（如 schemaStore 仅 46.05%），已按预案改用全量套件度量。**[修复轮更新]** 全量套件现为 240 文件 / 1963 用例；BUG-004 两文件以 `--coverage.include=ConnectionNavigatorTree.tsx --coverage.include=TableStructureEditor.tsx` 过滤全量度量（两文件不在项目 Option C include 名单，数字取自 v8 coverage-final.json）。
+
+| 文件 | Statements | Branch | Funcs | **Lines** | ≥80% 行覆盖 |
+|-----|-----------|--------|-------|-----------|------------|
+| `src/lib/ensureNamespace.ts` | 95.07% (135/142) | 83.15% | 100% | **100%** (120/120) | ✅ |
+| `src/stores/schemaStore.ts` | 87.86% (239/272) | 74.86% | 93.22% | **90.45%** (218/241) | ✅ |
+| `src/windows/connection/ConnectionNavigatorTree.tsx` | 92.64% (932/1006) | 84.82% | 94.14% | **96.74%** (832/860) | ✅（修复轮：53.13% → 96.74%） |
+| `src/windows/connection/TableStructureEditor.tsx` | 92.38% (194/210) | 80% | 97.83% | **97.75%** (174/178) | ✅（修复轮：37.64% → 97.75%） |
+
+补充说明：
+- 其余改动 TS 文件（QueryPanel / TableView / PanelContentRenderer / DocumentConnectionView / UnifiedSchemaTree / sqlFileExecution / commands/*）不在项目 Option C coverage include 配置范围内，v8 默认不采集，无法给出数字。
+- Rust 无 llvm-cov 工具链，以单测清单 + 被测分支枚举佐证：`ensure_session_database` 四分支中"pin≠当前→切库并更新 session 记录""相同库/空白/None 零调用""explain 路径切库"有直接单测；**[修复轮更新]** stream 路径独立切库单测已补（`stream_pins_session_database_before_query_stream`），另有 driver_command / get_table_data / plan_table_structure_changes 三入口的 pin 生效与零调用单测（见上方「修复轮 Rust 单测补充」）。
+- ~~判定：❌ 2/4 文件未达 ≥80%，登记 F1-BUG-004。~~ **[修复轮判定]** ✅ BUG-004 两文件行覆盖修复后分别为 96.74% / 97.75%（全量 1963 用例套件下以 `--coverage.include` 过滤度量，数字来自 v8 coverage-final.json 汇总）。**[复验判定]** ✅ 全新实例独立重跑同口径度量，两文件数字逐位复现（96.74% / 97.75%），BUG-004 关闭。
+
+#### F1 缺陷详情（重现步骤 / 相关文件）
+
+**F1-BUG-001（高）SQL 编辑器库下拉切换不作用于后端会话**
+- 重现（代码链路推演，GUI 实证留待 E2E F1-E2E-001）：
+  1. 连接 MySQL 多库实例，连接默认库 db_a，另有 db_b；
+  2. 打开 SQL 编辑器，库下拉由 db_a 切至 db_b（`schemaStore.switchDatabase` 现仅 `get_tables` + 本地状态）；
+  3. 执行 `SELECT DATABASE()`。
+- 预期：返回 db_b。实际（推演）：返回 db_a —— 执行走 `panelStore.executeQuery`(L343) → `queryExecActions.runStreamingQuery`(L90)/`runBoundQuery`(L118) → `driverCommands.execute/executeStream(command=query/query_stream)` → `execute_driver_command(_stream)`，全程无 database；driver-api 输入 schema（command.rs L190/L214）亦无该字段；后端按 session 活动库执行。
+- 相关文件：`src/stores/schemaStore.ts`、`src/stores/queryExecActions.ts`、`src/commands/query.ts`、`packages/driver-api/src/command.rs`、`src-tauri/src/commands/driver_command.rs`、`src/windows/connection/QueryPanel.tsx`
+
+**F1-BUG-002（中）TableView 打开非活动库的表取数错位**
+- 重现（推演，留待 F1-E2E-004）：MySQL 多库 db_a/db_b 各有 users 表（数据可区分）→ 会话活动库 db_a → 导航树点击 db_b 的 users 表 → TableView 取数。
+- 预期：显示 db_b.users。实际（推演）：`get_table_data` 无 database 参数，后端以 session `config.database`=db_a 解析（`schema.rs get_table_data_impl` L120-125）→ 报表不存在；若同名表存在则静默返回错误库数据。`commit_row_updates/deletes` 同路径受累。
+- 相关文件：`src/windows/connection/TableView.tsx`、`src-tauri/src/commands/schema.rs`、`src/windows/connection/PanelContentRenderer.tsx`、`src/commands/database.ts`
+
+**F1-BUG-003（中）结构编辑器跨库 DDL 无库定位**
+- 重现（推演，留待 F1-E2E-005）：活动库 db_a → 在 db_b 节点 CreateTable → 填列执行。
+- 预期：t_f1 建于 db_b。实际（推演）：`planTableStructureChanges(dbSessionId, request)` 不含 database（`src/commands/structure.ts` L12），DDL 作用于 session 活动库 db_a 或直接报错。
+- 相关文件：`src/windows/connection/TableStructureEditor.tsx`、`src/commands/structure.ts`、`src/windows/connection/PanelContentRenderer.tsx`
+
+**F1-BUG-004（低）改动 TS 文件覆盖率 <80%**
+- 重现：见「覆盖率」小节度量命令与数字（ConnectionNavigatorTree.tsx 53.13%、TableStructureEditor.tsx 37.64%）。
+- 建议：为两组件的关键交互分支补单测（树行渲染/右键动作、编辑器 DDL 构建/预览路径），并顺带补 stream 路径切库单测；两文件缺口大概率为既有欠账，但按本功能验收口径登记。
+- 相关文件：`src/windows/connection/__tests__/ConnectionNavigatorTree.test.tsx`、`src/windows/connection/__tests__/TableStructureEditor.test.tsx`
+- **[复验结论]** 已修复：扩展用例真实有效（非空转断言），覆盖率数字独立重跑逐位一致。
+
+**F1-BUG-005（中，既有行为非本轮引入）连接刷新后已展开对象分类内容丢失且不自动恢复**
+- 重现（jsdom 探针实证，GUI 实证留待 E2E F1-E2E-011）：
+  1. 单库树驱动（SQLite，`/data/app.db`）已连接；
+  2. 展开对象分类（如 procedure）→ 条目渲染正常、计数 1；
+  3. 右键连接行「刷新」（或库节点「刷新」）。
+- 预期：条目保留或自动重载。实际（探针实测）：分类行仍呈展开态（chevron 向下、`expandedCats` 未清），但条目消失、计数归零；3s 观察窗内零次 `getDatabaseObjects` 重载成功落位——重载请求即使发出（菜单路径实测发出 1 次）也被随后的缓存清除覆盖。
+- 根因定位（源码级）：`loadForConnection → loadTables` 递增 `schemaEpoch` 触发 `useExpandedDbCacheRefresh` 指纹 effect → `clearCaches` 清空该会话全部 `dbObjectsMap` 后仅按 `expandedDbs` 重载表缓存，不重载对象分类缓存；`refreshConnection` 末尾的 `reloadExpandedObjectCategories` 与该 effect 竞态失败。多库树表节点因走 `reloadDbTables` 不受影响（探针对照通过）。
+- 非本轮引入的实证：同一探针在 4ba4831a（F1 编码前基线）、046acf7a（修复轮前）、8b85cd49（HEAD）三个时点症状逐项一致。
+- 相关文件：`src/windows/connection/schema-tree/useExpandedDbCacheRefresh.ts`、`src/windows/connection/ConnectionNavigatorTree.tsx`（refreshConnection / reloadExpandedObjectCategories / clearCaches 回调）
+- 处置建议：修复方向为 hook 清缓存后同步重载展开的对象分类（或将 clearCaches 收窄为仅表缓存、分类缓存单独失效+重载）；是否纳入 F1 或另立后续功能，由协调者裁决。
+
+### 编码说明（F1）
+
+**改动清单**
+
+后端（src-tauri/）：
+- `commands/query.rs`：新增共享助手 `ensure_session_database(state, db_session_id, database: Option<&str>, op)`；`execute_query` / `execute_query_stream` / `get_explain` 的 impl 与 Tauri 包装均新增 `database: Option<String>`。impl 执行前：pin 非空且 ≠ session 当前库 → 先 `driver.use_database(&handle, db)` 再 `set_active_database` 更新 session 记录；`None` / 空白 / 相同 → 不动（不提前解析 session，保持原 not-connected 错误语义）
+- `commands/schema.rs`：删除 IPC 包装 `pub async fn use_database` 与 `use_database_impl`；`schema_commands_with_connected_mock` 移除对应调用
+- `lib.rs`：移除 `commands::use_database` 注册
+- `testing/mock_driver.rs`：MockDriver 覆写 trait `use_database` 并按序记录到 `use_database_calls()`（供宿主单测断言）
+
+前端（src/）：
+- `commands/database.ts`：删除 `useDatabase` 封装
+- `commands/query.ts`：`getExplain(dbSessionId, sql, database?)` 透传可选参数
+- `stores/schemaStore.ts`：`loadTables` / `switchDatabase` 不再发切库 IPC，仅维护本地 currentDatabase；`ensureNamespacePath` deps 去掉 `useDatabase`
+- `lib/ensureNamespace.ts`：`EnsureDeps` 移除 `useDatabase`，4 处调用点删除（`getTables` 本就显式带 database）
+- 组件去 IPC 化：`QueryPanel.tsx`（explain 传 currentDatabase）、`TableView.tsx`、`TableStructureEditor.tsx`（ensureDatabase 体系整体移除）、`PanelContentRenderer.tsx`（CreateTable 门控改本地判断）、`DocumentConnectionView.tsx`、`ConnectionNavigatorTree.tsx`（activateDatabase / drop-database fallback 改为更新本地 currentDatabase，含顶层与 per-session 两份）、`schema-tree/UnifiedSchemaTree.tsx`
+- `lib/sqlFileExecution.ts`：删除 `invoke('use_database', …)`
+
+测试同步：
+- 前端：`schemaStore.test.ts`、`ensureNamespace.test.ts`、`ConnectionNavigatorTree.test.tsx`、`TableStructureEditor.test.tsx`、`BackupWindow.test.tsx` 断言/mock 改为无 use_database 行为
+- E2E spec 显式参数模式：`e2e/specs/bugfix-admin-commands.ts`（5 处）、`e2e/specs/zz-screenshots.ts`（pinDemoPgDatabase 等 2 处）→ `get_tables({ dbSessionId, database })`
+
+**新签名**
+- `execute_query(db_session_id, sql, database? Option<String>) -> MultiQueryResult`
+- `execute_query_stream(…, sql, database?, on_event, apply_result_limit?, record_history?)`
+- `get_explain(db_session_id, sql, database?) -> ExplainResult`
+- 前端 `queryCommands.getExplain(dbSessionId, sql, database?)`；其余查询路径经 driver_command 的会话已被上述命令惰性切换
+
+**新增 Rust 单测**（`commands/query.rs` tests，connected-mock 基建 TestAppState + MockDriver 录制）
+1. `execute_query_switches_session_database_when_pinned_differs` — pin ≠ 当前库 → 触发切库后执行，且 session config.database 同步更新
+2. `execute_query_skips_switch_when_same_or_none` — None / 相同库 / 空白 → 零次 driver.use_database
+3. `get_explain_switches_session_database_when_pinned_differs` — explain 路径同样触发切库
+
+**设计决策（修复轮）**
+
+1. **单一切库机制**：BUG-001~003 宿主侧统一复用 `ensure_session_database`（`commands/query.rs`），在 `execute_driver_command(_stream)`、`get_table_data`、`plan_table_structure_changes` 执行前前置调用；不引入第二套切库语义。pin 为 `None` / 空白 / 与 session 当前库相同 → 零次 `driver.use_database`，保持原有 not-connected 错误语义（不提前解析 session）。
+2. **PROTOCOL_VERSION 兼容性评估**：`database` pin 只加在**宿主 IPC 信封**（`src-tauri/src/commands/driver_command.rs` 的 `ExecuteDriverCommandRequest` / `ExecuteDriverCommandStreamRequest` 及相关 Tauri 命令参数），**不改** driver-api Command 输入 schema（`packages/driver-api/src/command.rs` 的 query/query_stream 定义未动）。理由：库限定是宿主会话层关注点——切库由宿主持有的 `driver.use_database` + session `config.database` 承载，驱动对"当前活动库"无感知；若把字段下沉进每个 Command 的 input schema，会把宿主会话语义泄漏进驱动协议，并要求所有插件同步升 `PROTOCOL_VERSION`。故本次**无需 PROTOCOL_VERSION 变更、无需插件联动**；旧前端/插件请求不带该字段时行为完全不变（serde `#[serde(default)]` 反序列化为 `None`）。
+3. **pin 的持久化语义**：pin 命中时先 `driver.use_database(&handle, db)` 再 `set_active_database` 更新 session 记录，因此后续不带 pin 的未限定命令（`commit_row_updates/deletes`、结构 DDL 执行等）自然落在目标库；入口只在打开面板 / 执行前 pin 一次即可。
+4. **前端取值口径**：SQL 编辑器链路以 `schemaStore` 中该 panel 会话的 `currentDatabase` 为目标库（`panelTargetDatabase`）；TableView/tableDataStore 显式携带并在 per-connection 状态记忆 `activeDatabase`，保证翻页 / 过滤 / 重试等 store 驱动的刷新不漂移；TableStructureEditor 直接透传组件 `database` prop。
+
+**修复轮 Rust 单测补充**
+- `commands/driver_command.rs`：`execute_driver_command_pins_session_database_before_execution`（BUG-001 切库生效 + session 记录更新）、`execute_driver_command_skips_switch_when_pin_missing_or_same`（None/相同/空白零调用）、`stream_pins_session_database_before_query_stream`（**stream 路径独立切库单测**，BUG-004 附带项）、unbound `driverType` 请求显式忽略 database
+- `commands/schema.rs`：`get_table_data_pins_session_to_target_database`（BUG-002 跨库取数）
+- `commands/structure.rs`：`plan_switches_session_database_when_pinned_differs` / `plan_without_pin_keeps_active_database`（BUG-003）
+- `testing/mock_driver.rs`：MockDriver 补 `plan_structure_changes` no-op 覆写 + `use_database_calls()` 录制供断言
+
+**验证三件套结果**
+- 编码轮：`cargo test -p datazen --lib` **1132 passed / 0 failed / 2 ignored**；`npx vitest run` 240 文件 / 1882 用例全过；`npx tsc --noEmit` 0 错误
+- **修复轮（本提交前复跑）**：`cargo test -p datazen --lib` **1138 passed / 0 failed / 2 ignored**（净增 6 个 F1 宿主单测）；`npx vitest run` **240 文件 / 1963 用例全过**（含 ConnectionNavigatorTree.test.tsx 修复轮扩至 64 用例全绿）；`npx tsc --noEmit` **0 错误**
+
+**遗留注意**
+1. 非 query 族命令（`get_table_data` / `commit_row_updates` / structure DDL / 通用 `execute_driver_command` 等）尚无 `database` 参数：原先依赖「先切库再操作」的入口（TableView 打开非活动库的表、建表/结构编辑等）在 F1 后不再预切 session，需等后续功能给这些命令补显式 `database` 参数；过渡期跨库操作由任一带 `database` 的 query/stream/explain 惰性触发切库。
+   **[修复轮更新]** `execute_driver_command(_stream)` / `get_table_data` / `plan_table_structure_changes` 已补可选 `database` 参数（统一走 `ensure_session_database`）。因该机制会持久切换 session 活动库，`commit_row_updates/deletes`、结构 DDL 执行等后续未限定命令自然落在目标库，无需各自加参；仍不带 pin 的命令（如 `get_table_schema`）语义为"作用于 session 当前活动库"，由入口先 pin 保证正确性。
+2. `src-tauri/capabilities/default.json` 为 codegen：本 worktree 曾被新版 resolve-drivers 写入 `redis:default`，导致裸 `cargo test -p datazen --lib`（default features=[]，redis 插件未编译）构建失败；现已对齐主检出权限集（无 redis）。若后续以 `--drivers=all` 等选型重新生成，需用带 feature 的构建验证。
+3. 截图脚本 `zz-screenshots.ts` 的「钉住 demo 库」改为 `get_tables({database})` 探活；会话级钉住语义现完全依赖查询显式携带 `database`。
+
+---
+
+## F2 ADB 迁移 SQLite 驱动
+
+### 范围
+- **sqlite 驱动 crate**（`packages/drivers/sqlite/src/adb.rs` 新增）：三个 DriverCommandDefinition（`adb_list_packages` / `adb_list_databases` / `adb_pull_database`，均 `requiresConnection = false`、`hide_from_workflow`）+ `execute_command` 分派（无连接会话，忽略 handle）；解析/校验纯函数与单测自 Host `commands/adb.rs` 迁入；原 webdriver-gated 直连路径变体不迁移
+- **driver-api**：`DriverCommandMetadata` 新增可选 `save_dialog: Option<DriverSaveDialogSpec>`（字段 `fileNameField` / `dataBase64Field` / `filterName` / `extensions` / `resultPathField`）。serde default + `skip_serializing_if`，向后兼容，不 bump PROTOCOL_VERSION
+- **Host**：删除 `src-tauri/src/commands/adb.rs` 及 lib.rs 四条注册、`mod.rs` 导出；`execute_driver_command` IPC 增加 `AppHandle` 参数，新增通用薄壳 `finish_save_dialog`；内部复用路径 `execute_driver_command_impl` 不携带 AppHandle
+- **前端**：`src/commands/adb.ts` 改走 `driverCommands.execute({ driverType: "sqlite", … })`，导出函数名与 TS 类型保持不变（`FileConnectionFields.tsx` 零改动）；`types/index.ts` 补 `DriverSaveDialogSpec`
+- **守护测试改写**：`pathIpcWiring.test.ts` 与 `e2e/specs/path-ipc-hardening.ts` PIH-006 改断言新形态（execute_driver_command 路径 + Host 无 adb 注册残留）
+
+### Dialog 方案选择（决策记录）
+选「命令元数据声明需要保存对话框」机制，叠加「命令返回建议文件名 + 字节数据流」形态：
+1. 宿主对 `requiresConnection = false` 命令的执行路径（`resolve_command_driver` unbound 分支）原本没有 AppHandle/dialog 回调，驱动层无法弹原生框——排除了"驱动直接弹框"
+2. UI 需要拿回 savedPath 回填连接表单（原 `form.setDatabase(saved)` 语义）；现有通用 `save_base64_with_dialog` 只返回 bool 且扩展白名单不含 db/sqlite/sqlite3，无法等价替换，故不复用该 IPC
+3. 形态：驱动命令返回 `{ fileName, dataBase64 }`（内存占用与原实现一致——原实现同样是先整读字节再弹框）；宿主 `finish_save_dialog` 弹原生保存框 → 按声明扩展名校验 → 落盘 → 结果替换为 `{ savedPath: string | null }`，取消返回 null（与原 `*_with_dialog` 语义一致）
+4. 通用性红线满足：流程完全由命令元数据驱动，任何驱动/插件声明 spec 即可复用同一宿主薄壳，Host 无任何 `pluginId === 'sqlite'` 分支；非交互调用面（MCP / workflow / 内部复用）在执行前即拒绝（workflow 侧另被 `hide_from_workflow` 双重挡住），不会出现无头阻塞弹框
+5. E2E 说明：真实拉取需 Android 设备，本就无法自动化；PIH-006 改为源码断言 + ADB 面板 UI 探活。若后续决策 3 的 override_path 模式推广到驱动命令，可再补测试注入通道
+
+### 行为等价性说明
+- 列表命令输出 JSON 键保持原样（`package_name`、`path`/`name`），前端类型零改动
+- adb 二进制缺失：spawn NotFound 映射为 `DriverError::InvalidConfig`，文案与原 `CommandError::NotConfigured` 一致（"adb command not found. Please install Android SDK Platform Tools…"）；经 `From<DriverError>` 展示时多出 "Invalid configuration: " 前缀（轻微展示差异，语义与安装指引一致）
+- 输入校验（包名字符白名单、dbPath 穿越/空字节拒绝）在 spawn 之前执行，与原实现同序
+
+### 单测清单（编码轮）
+- driver-api：`save_dialog_spec_round_trips_and_defaults_to_none`（serde 往返 + 缺省省略）
+- datazen-driver-sqlite `adb::tests`（13 个）：解析×2、包名合法/非法×2、dbPath 穿越、default_pull_file_name、定义完备性（ids 精确匹配）、unbound/hide-from-workflow/save-dialog 元数据断言、pull input schema required、unknown command → Unsupported、缺参 → InvalidConfig、pull 先校验后 spawn、缺失二进制 → 安装指引文案
+- Host `driver_command::tests`：`save_dialog_commands_rejected_without_interactive_handle`
+
+### 测试结果（编码轮）
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen-driver-sqlite` | lib 29 passed（含 adb 13）/ tests 2+3 passed，全绿 |
+| `cargo test -p datazen-driver-api` | 83 passed，全绿 |
+| `cargo test -p datazen --lib` | 1130 passed / 0 failed / 2 ignored（较重构前 -9 = 删除的 Host adb 测试，+1 = 新增守卫测试） |
+| `npx vitest run` | 240 files / 1963 passed，全绿（含改写后的 pathIpcWiring） |
+| `npx tsc --noEmit` | 0 错误 |
+
+### 遗留注意
+1. `execute_driver_command_stream` 仅支持 query_stream，天然不受 save_dialog 影响；未来若开放更多流式命令需同步考虑对话框语义
+2. 第三方插件驱动若声明 save_dialog，宿主当前不做额外权限校验（信任插件声明的过滤器/扩展名，路径仍由用户在 OS 对话框中选定）；插件权限模型完善时可收口
+
+### E2E 用例
+
+> 标注说明：真实拉取链路必须真机 adb + Android 设备（且目标 app 需 debuggable），本机无法自动化；PIH-006 无设备半场（源码断言 + UI 探活）需要 `pnpm tauri build --debug --features webdriver` 构建——worktree 当前无现成 webdriver 构建（共享 target 内旧二进制早于本提交，且 run.mjs 要求二进制来自 tauri build 而非裸 cargo build），按「真实 webdriver 全量回归统一在 R 阶段执行」约定留待 R。源码断言半场已由 vitest 的 `pathIpcWiring.test.ts`（本轮全绿）先行覆盖。
+
+| 编号 | 场景 | 前置 | 步骤 | 断言 | 标注 |
+|------|------|------|------|------|------|
+| F2-E2E-001 | ADB 包列表经统一 Driver Command 入口展示 | webdriver 构建；本机装 adb + Android 真机已开 USB 调试；应用内进入 SQLite 连接表单 | 新建 SQLite 连接 → 开启「从 Android 设备拉取」ADB 模式 → 加载包列表 | 下拉出现设备第三方包；界面无本地路径输入框；adb 未安装时展示含 "Android SDK Platform Tools" 的安装指引文案 | 【留待 R 回归】需真机 adb + Android 设备 |
+| F2-E2E-002 | 库文件列表键形状回归（path/name） | 同上；设备上目标 app 含 databases/*.db | 选定包 → 触发库列表加载 | 列表项渲染 name、携带 path；非 debuggable 应用或空目录时给可理解错误/空列表，不崩溃 | 【留待 R 回归】需真机 + debuggable 目标 app |
+| F2-E2E-003 | 拉取落盘成功路径（save_dialog 元数据驱动薄壳） | 同 F2-E2E-002 | 选库文件 → 点拉取 → 原生保存对话框选定 db/sqlite/sqlite3 扩展名位置并确认 | 返回 savedPath 非空并自动回填连接 database 字段（form.setDatabase）；落盘文件为有效 SQLite（header "SQLite format 3"）；日志出现 "driver command payload saved via native dialog" | 【留待 R 回归】需真机 + 原生 dialog 人工确认 |
+| F2-E2E-004 | 拉取取消语义 = null（与原 *_with_dialog 等价） | 同 F2-E2E-003 | 拉取时在原生对话框点取消 | savedPath=null → 前端不回填、无成功提示、无报错（FileConnectionFields `if (!saved) return` 分支） | 【留待 R 回归】需真机 + 原生 dialog 人工取消 |
+| F2-E2E-005 | PIH-006 webdriver 探活：宿主零 adb 注册残留 + ADB 面板无路径字段 | `pnpm tauri build --debug --features webdriver` 构建 | 运行 `e2e/specs/path-ipc-hardening.ts` PIH-006 全部断言 | 源码断言（driverCommands.execute / 无 invoke / lib.rs 与 mod.rs 无 adb / adb.rs 文件不存在）+ 打开连接页 ADB 面板无本地路径输入 | 【留待 R 回归】无需真机但需完整 webdriver 构建；按测试约定统一 R 阶段执行 |
+
+### 测试结果（测试轮）
+
+**独立重跑（2026-08-26，全新测试实例，commit 823516c2，不信编码轮数字）：**
+
+| 套件 | 复验实测 | 与编码声称对比 |
+|------|---------|----------------|
+| `cargo test -p datazen-driver-sqlite` | **lib 29 passed / 0 failed**（含 adb::tests 13）+ 集成 tests 2 passed、3 passed | 一致 ✅ |
+| `cargo test -p datazen-driver-api` | **83 passed / 0 failed**（doc-tests 2 ignored） | 一致 ✅ |
+| `cargo test -p datazen --lib` | **1130 passed / 0 failed / 2 ignored**（1138 − 删除的 9 个 Host adb 测试 + 1 个新守卫测试，数目自洽） | 一致 ✅ |
+| `npx vitest run` | **240 文件 / 1963 用例全过**（含改写后的 pathIpcWiring.test.ts） | 一致 ✅ |
+| `npx tsc --noEmit` | **0 错误**（exit 0） | 一致 ✅ |
+
+**修复轮复验（2026-08-26，全新实例，独立重跑 commit f12f9be9，不信前序数字；vitest 与 tsc 串行执行规避已知负载超时 flake）：**
+
+| 套件 | 复验实测 | 与修复轮声称对比 |
+|------|---------|----------------|
+| `npx vitest run` | **241 文件 / 1970 用例全绿** | 一致 ✅ |
+| `npx vitest run --coverage --coverage.include='src/commands/adb.ts'` | adb.ts Stmts / Branch / Funcs / **Lines 均 100%**，无未覆盖行（门槛 ≥80%） | 一致 ✅ |
+| `npx tsc --noEmit` | **0 错误**（exit 0） | 一致 ✅ |
+
+用例质量审查：7 用例均为行为级断言——信封整对象 `toEqual` 等价（含键集恰为 ['command','driverType','input']、dbSessionId/database undefined 的 envelope discipline 用例）、`result.data` 解包以 `toBe` 同一性断言、取消语义 null/undefined 双路径归 null；仅 mock `../driver`，被测 wrapper 真实执行，无空转/永真断言。
+
+### 覆盖率
+
+度量方式：全量 vitest 套件（240 文件 / 1963 用例）+ `--coverage.include='src/commands/adb.ts'` 过滤（v8 provider，数字取自 coverage/coverage-final.json）。本次改动的其余 TS：`src/types/index.ts` 为纯类型（无运行时代码，N/A）、`pathIpcWiring.test.ts` 为测试文件本身。
+
+> 修复轮补测（2026-08-26，commit `test(adb): behavioral unit tests for sqlite driver command wrappers (f2 bug 001)`）：新增行为级单测 `src/commands/__tests__/adb.test.ts`（mock `./driver` 的 `driverCommands.execute`，7 用例），全量套件（241 文件 / 1970 用例全绿）+ 同一 include 过滤实测 `src/commands/adb.ts` Statements / Lines / Branch / Functions 均 **100%**。
+> 复验轮（2026-08-26，全新实例）：独立重跑同一命令，实测 Statements / Lines / Branch / Functions 均 **100%**、无未覆盖行，与修复轮声称逐位一致。
+
+| 文件 | Statements | **Lines** | ≥80% 行覆盖 |
+|-----|-----------|-----------|------------|
+| `src/commands/adb.ts` | 14.28% (1/7) → **100%** (7/7) | **14.28% → 100%**（Branch/Funcs 亦 100%，无未覆盖行；修复轮新增 `__tests__/adb.test.ts` 后实测，复验轮独立重跑逐位复现） | ✅ 复验确认（F2-BUG-001 已修复关闭） |
+
+Rust 侧以新增单测清单佐证（无 llvm-cov 工具链）：sqlite crate adb::tests 13 个（解析×2、包名合法/非法、dbPath 穿越、default_pull_file_name、定义完备性、unbound/hide-from-workflow/save-dialog 元数据、pull input schema required、unknown→Unsupported、缺参→InvalidConfig、先校验后 spawn、缺失二进制→安装指引文案）+ driver-api serde 往返 1 个 + Host 守卫 `save_dialog_commands_rejected_without_interactive_handle` 1 个，均在本轮重跑通过数内。
+
+### 审查结论（范围红线 / 行为等价 / 安全）
+
+**A. 范围与红线 — 通过**
+1. Host adb 删净：lib.rs 四条注册删除、mod.rs `mod adb`/`pub use adb::*` 删除、`src-tauri/src/commands/adb.rs` 文件删除；Grep 工具全仓扫描，剩余命中仅为文档、守护测试的否定断言（not.toContain）、新 sqlite 驱动 crate 与前端 wrapper 自身，无生产残留引用。
+2. 零 pluginId==='sqlite' 分支：`finish_save_dialog` 完全由 `DriverSaveDialogSpec` 元数据驱动（fileNameField/dataBase64Field/filterName/extensions/resultPathField 五字段参数化），任何驱动声明即可复用；src-tauri 全量 grep "sqlite" 仅命中既有方言映射（schema_diff/transfer/connection_import/data_sync），与本流程无关。前端 `ADB_DRIVER_TYPE='sqlite'` 是决策 2 明文规定的调用形态（按 driverType 执行 requiresConnection=false 命令），不属宿主硬编码。
+3. 行为等价：输出 JSON 键逐一比对一致（`package_name`；`path`/`name`）；adb 参数与旧实现逐字相同（`pm list packages -3` / `run-as … find ./databases …` / `exec-out run-as … cat …`）；输入校验时机同序（包名字符白名单、dbPath 穿越/空字节拒绝均在 spawn 前）；取消返回 null 端到端等价（宿主写 `{savedPath: null}` → TS `?? null` → 组件 `if (!saved) return`）。错误文案核心内容一致，仅错误类别前缀有已声明的展示差异（NotConfigured/Internal/Validation → InvalidConfig 显示为 "Invalid configuration: " 前缀、QueryFailed 等，编码说明已登记，语义与安装指引一致）。轻微差异两处（非缺陷）：① 新实现落盘前增加扩展名白名单复检（旧 *_with_dialog 弹框后不复检），比旧实现更严、与 file.rs 家族同标准；② 旧 webdriver-gated 直连路径变体 `adb_pull_database` 及其前端 deprecated 导出整体移除（决策 2 明文删除四条 IPC，E2E 注入通道损失已在 Dialog 方案选择第 5 点声明）。
+4. serde default 向后兼容论证成立：`#[serde(default, skip_serializing_if = "Option::is_none")]` 双向兼容——旧元数据 JSON 缺 `saveDialog` 键反序列化为 None；新元数据 None 时序列化完全省略该键；且有 `save_dialog_spec_round_trips_and_defaults_to_none` 单测锁死。git 驱动经 `[patch.crates-io]` 编译期强制共享本地 driver-api（见计划附录），不存在结构体版本偏移面；纯增量可选元数据不构成 PROTOCOL_VERSION bump 依据，判定无需联动插件。
+
+**B. 安全审查 — 通过（一项观察项）**
+1. 权限门控：save_dialog 命令在执行前拒绝全部无头调用面——内部复用 impl（query/schema IPC）dialog=None 拒绝（有单测）、MCP permission_mode=Some 拒绝、workflow 侧 `metadata.workflow=false` 拒绝 + workflow runtime 本就要求活会话、stream 入口仅放行 query_stream；GUI IPC 独占 AppHandle。不会出现无头阻塞弹框。
+2. 落盘路径校验与 file.rs 既有模式逐项对齐：`finish_save_dialog` 流程 = `blocking_save_file`（OS 级用户确认，路径永不来自 JS）→ `dialog_path_to_buf` → `validate_extension(&path, &ext_list)` → `tokio::fs::write`，与 `save_base64_with_dialog`（file.rs L115-142）完全同构，另加空 extensions 声明防御。base64 解码失败映射 Internal（对照 file.rs 为 Validation，均为不入盘的前置失败，无安全差异）。
+3. 【观察项，非缺陷】base64 数据量无上限：与既有 `save_base64_with_dialog` 家族及旧 adb 实现（同样整读字节入内存）风险等级持平，非本轮引入的回归；但新形态峰值内存约为原始文件的 ~3 倍（解码字节 N + base64 字符串 ~1.37N + JSON Value 拷贝，跨 CommandResult 传递），编码说明「内存占用与原实现一致」低估了这一常数因子。建议后续功能为 save_dialog 形态补尺寸上限或流式落盘通道。
+
+~~**结论：套件全绿、范围红线与安全审查通过；但改动 TS 覆盖率 14.28% 远低于 ≥80% 门槛（F2-BUG-001），F2 保持「测试中」，转编码代理补测后复验。**~~
+
+**[修复轮判定]** ✅ F2-BUG-001 补测后 adb.ts 行覆盖 **100%**（前 14.28%），套件 241 文件 / 1970 用例全绿、tsc 零错误，置「待验证」。**[复验判定]** ✅ 全新实例独立重跑（commit f12f9be9）：7 用例审查为真实行为断言、非空转，覆盖率 / 全量套件 / tsc 数字逐位复现，F2-BUG-001 置「已修复」，**F2 判定通过关闭（已完成）**；F2-E2E-001~005 按【留待 R 回归】既定安排在 R 阶段执行，不阻塞关闭。
+
+#### F2 缺陷详情（重现步骤 / 相关文件）
+
+**F2-BUG-001（低）改动 TS 文件覆盖率不达标且为零执行覆盖**
+- 重现：
+  1. worktree 根目录执行 `npx vitest run --coverage --coverage.include='src/commands/adb.ts'`；
+  2. 观察 v8 报表：`adb.ts` Lines **14.28%**，Uncovered Line #s 23-58 区段（7 语句仅覆盖 L10 常量导出）；
+  3. Grep 确认全仓唯一引用方 `src/commands/__tests__/pathIpcWiring.test.ts` 只做 `readSrc` 字符串包含断言，不 import 执行该模块。
+- 影响：`driverType='sqlite'` 信封组装、三命令 id/input 透传、`result.data as T` 解包、`savedPath ?? null` 取消语义均无行为级回归保护；未来 driver.ts 信封字段变更不会被测试捕获。
+- 建议：新增 `src/commands/__tests__/adb.test.ts`，mock `./driver` 的 `driverCommands.execute`，断言：list 包/库/pull 三调用的 driverType、command id、input 对象逐字段正确；resolve 值 `data` 正确解包；pull 取消（savedPath undefined/null）返回 null、成功返回字符串。预期行覆盖 >90%，即可关闭本缺陷。
+- 相关文件：`src/commands/adb.ts`、`src/commands/__tests__/pathIpcWiring.test.ts`
+
+## F3 backup/restore 合并 + restore_sql_file
+
+### 范围
+- 后端（`src-tauri/src/commands/backup.rs`）：六命令收敛为二 ——
+  - `backup_database` ← 原 path 版（删）+ `backup_database_with_dialog`（保留名字）合并；新增可选 `override_path: Option<String>`，返回值统一 `Result<bool>`
+  - `restore_sql_file`（新名）← 四合一：`restore_database` / `restore_database_with_dialog` / `execute_sql_file` / `execute_sql_file_with_dialog` 全删（Rust 实现本就同源 `sql_file_with_dialog`）
+  - `save_encryption_key_with_dialog` 不动
+- `lib.rs` 注册块六行 → 两行；前端 `lib/sqlFileExecution.ts` 删除 `command?` 分叉参数、固定 invoke `restore_sql_file`；`windows/backup/BackupWindow.tsx` 去掉 command 行、改调 `backup_database`
+- 守护/E2E 同步：`pathIpcWiring.test.ts` 新增决策 3+6 守护用例、BackupWindow.test.tsx mock 迁移、e2e `backup-database.ts` 与 `execute-sql-file.ts` 全部改 `overridePath` 形态
+
+### 设计决策
+1. **override_path 门控写法**：对照 file.rs write_file 家族的运行时门控风格，backup.rs 以共享助手 `resolve_override_path(Option<String>, msg)` 收口两个合并命令——`Some(p)` 先过 `require_webdriver_path_ipc`（内部 `if !cfg!(feature = "webdriver")` 返回 Validation）再转 `PathBuf`，`None` 恒不触门控。用 `cfg!()` 宏而非 `#[cfg]` 属性：两条分支都参与编译，生产/webdriver 构建编译路径完全一致（已另跑 `cargo check --features webdriver` 验证）。生产构建下传 override_path 得到计划文档示例原文错误 `"path override disabled in production"`。
+2. **返回值统一 bool（dialog 语义为准）**：写入/执行成功 → `true`；用户取消原生对话框 → `false`。原 path 版 backup 的 `()` 与 execute_sql_file 的 `true` 由调用方按需断言（E2E BACKUP-003 已补 `saved === true`）。
+3. **filter_extension 校验仅覆盖 dialog 分支**（F3-BUG-001 修复轮按实现修正原表述）：sql/gz/dump 白名单校验在 `pick_backup_save_path` 入口执行（`validate_backup_filter_extension`），即只有用户经原生对话框选路径时生效；`override_path` 为 Some 时该函数不执行——filter_extension 参数与 override 路径自身扩展名均不校验。这是旧 path 版命令（对 output/input 路径零校验）行为的等价延续，非新引入放宽；安全面由门控兜底：生产构建整体拒绝 override_path（决策 1），该校验缺口仅在 webdriver 构建内可达。若未来把 override 通道开放给更多场景，须先补同源扩展名校验（呼应本节遗留注意 3）。
+4. **前端零 override**：生产调用面（BackupWindow / ExecuteSqlFileDialog / sqlFileExecution wrapper）一律无 override_path 走 dialog 分支；仅 E2E 直调 IPC 时传 `overridePath`。wrapper 的 `command?:` 双入口分叉整体删除。
+5. **日志标签非 IPC 面**：共享 impl（`backup_database_to_path` / `restore_database_from_path`）内部的 tracing/cmd_err 标签沿用旧名（如 `"restore_database streaming"`），仅为日志上下文，不改。
+
+### 单测清单（编码轮）
+- Rust `commands::backup::tests`：`resolve_override_path_gates_without_webdriver_feature`（Some → 非 webdriver 报 Validation "disabled"、webdriver 放行原路径；None → 两构建均 `Ok(None)` 零门控开销）
+- Rust `ipc_contract_guards`：
+  - `session_semantics_commands_take_db_session_id` 收敛为两命令（db_session_id 语义守护延续）
+  - `merged_backup_database_takes_override_path_not_raw_output_path`（有 override_path、无 output_path 残留、dialog 三参数保留）
+  - `restore_sql_file_maps_four_former_commands_params`（override_path 替代 input_path；database/options 参数兼容映射注释化断言；四个旧 fn 定义清零——needle 运行时拼接避免自引用误报）
+  - `lib_rs_registers_merged_commands_only`（include_str! lib.rs 精确匹配注册面，五条旧注册清零）
+- 前端新增 `src/lib/__tests__/sqlFileExecution.test.ts`（6 用例）：统一 invoke `restore_sql_file` 且旧四名零调用、overwrite 选项追加/拒绝中止（空库不询问）、pre-confirm 拒绝零 IPC、取消 dialog 返回 false、后端错误透传 rethrow
+- `pathIpcWiring.test.ts` 新增「decision 3+6」守护：BackupWindow/sqlFileExecution/ExecuteSqlFileDialog 生产源码无五个旧名、wrapper 无 `command?:`、lib.rs 注册面匹配、生产代码不出现 `overridePath`
+
+### E2E 用例迁移（真实 webdriver 回归留待 R 阶段）
+| spec | 变更 |
+|------|------|
+| `e2e/specs/backup-database.ts` | 10 处 backup_database 调用收敛到 `backupToPath` helper（defaultFileName + filterExtension + overridePath）；BACKUP-003 补返回值断言；BACKUP-011/012 两处 restore_database → `restore_sql_file` + overridePath |
+| `e2e/specs/execute-sql-file.ts` | SF-E01/E02 invoke `execute_sql_file` → `restore_sql_file` + overridePath |
+
+### 测试结果（编码轮）
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（共享主检出 target） | **1133 passed / 0 failed / 2 ignored**（较 F2 后基线净 +3 = 删 1 个旧门控测试、新增 4 个守卫/门控测试） |
+| `npx vitest run` | **241 文件 / 1970 用例全过**（净 +1 文件 +7 用例 = sqlFileExecution.test.ts 6 用例 + pathIpcWiring 1 用例） |
+| `npx tsc --noEmit` | **0 错误**（exit 0） |
+| `cargo check -p datazen --features webdriver` | 通过（override 分支参与编译） |
+
+### 遗留注意
+1. `docs/reviews/*2026-08-21*.md`、`test-reports/*.md` 为历史评审/测试报告存档，其中的旧命令名不做回写；进度文件 F1-E2E-007 用例描述仍提旧 dialog 命令名，属历史登记，R 阶段回归时按本节映射表对到 `restore_sql_file`。
+2. 本 worktree 的 codegen `src-tauri/capabilities/default.json` 曾含 `redis:default` 导致裸 cargo 构建失败（F1 遗留注意 2 同因），本轮已再次从主检出对齐（gitignore 文件，未入库）。
+3. override_path 未做路径扩展名校验（维持原 path 版行为）；若后续要把该通道开放给更多场景，建议复用 F2 `finish_save_dialog` 的按声明扩展名校验收口。
+
+### E2E 用例（复验轮登记）
+
+> 归属 R 阶段的统一理由：(a) 全部路径形态依赖 `override_path`，仅 webdriver 特性构建生效、生产构建被拒；(b) dialog 形态依赖 OS 原生对话框，WebdriverIO 无法驱动；(c) 恢复/备份断言需真实 PG 实例；按测试约定真实 webdriver 全量回归统一 R 阶段执行。参数形态已被 vitest mock 层锁定（sqlFileExecution.test.ts 6 例 + BackupWindow.test.tsx 7 例），E2E 只差真实构建与实例。
+
+| 编号 | 场景 | 前置 | 步骤 | 断言 | 标注 |
+|------|------|------|------|------|------|
+| F3-E2E-001 | `backup_database` overridePath 直备基础形态 | webdriver 构建 + PG 实例 | e2e BACKUP-003 | 返回 `saved === true`；文件生成、内容为合法 SQL | 【留待 R 阶段回归】同上 (a)(c) |
+| F3-E2E-002 | 备份选项矩阵经 overridePath：schema-only / data-only / clean / create / gzip / multi / routines | 同上 | e2e BACKUP-004~009 | 各选项产物内容断言逐条成立 | 【留待 R 阶段回归】同上 |
+| F3-E2E-003 | 原生保存对话框取消 → 返回 false 且不写文件 | webdriver 构建 + 桌面会话 | 手工触发备份后取消 OS 对话框 | `saved === false`、目标路径无文件产生 | 【留待 R 阶段回归】OS 原生对话框无法自动化，须人工黑盒（R 阶段在 e2e-coverage.md 登记例外） |
+| F3-E2E-004 | `restore_sql_file` overridePath 流式恢复 .sql（含 routines 往返） | webdriver 构建 + PG 实例 + safe_mode 关 | e2e BACKUP-011 | 函数与对象恢复落地 | 【留待 R 阶段回归】(a)(c) |
+| F3-E2E-005 | `restore_sql_file` overridePath + overwrite 覆盖恢复不重复 | 同上 | e2e BACKUP-012 | 对象替换、行数不翻倍 | 【留待 R 阶段回归】同上 |
+| F3-E2E-006 | 旧 execute_sql_file 形态迁移等价（正/负两例） | 同上 | e2e SF-E01/E02（restore_sql_file + overridePath，无 options） | 合法文件执行成功；失败语句 reject | 【留待 R 阶段回归】同上 |
+| F3-E2E-007 | 生产构建负向门控：非 webdriver 构建传 overridePath 必拒 | 生产构建（default features） | 直调 IPC 携带 overridePath | Validation："path override disabled in production" | 【已被单测钉死】`resolve_override_path_gates_without_webdriver_feature` 在 default 构建下断言同文案（本轮 1133 通过之一）；生产包冒烟留 R 阶段 |
+
+### 测试结果（复验轮 2026-08-26，全新测试代理，独立重跑）
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（共享主检出 target） | **1133 passed / 0 failed / 2 ignored**（与编码轮声称一致） |
+| `npx vitest run` | **241 文件 / 1970 用例全过**（exit 0） |
+| `npx tsc --noEmit` | **0 错误**（exit 0） |
+| `cargo check -p datazen --features webdriver` | 通过（exit 0，仅既有警告；override 分支参与编译独立复验） |
+
+### 覆盖率（复验轮实测：vitest --coverage --coverage.include 过滤改动 TS 文件）
+| 文件 | 行 | 语句 | 分支 | 函数 | 判定 |
+|------|----|------|------|------|------|
+| src/lib/sqlFileExecution.ts | 100% | 100% | 88.23% | 100% | ✓ ≥80% |
+| src/windows/backup/BackupWindow.tsx | **61.53%** | 60.78% | 62.5% | 54.34% | ✗ 未达 80% → **F3-BUG-002**（未覆盖行明细见 bug 台账） |
+
+（src/commands/backup.ts 本轮未被 d17623d1 改动，无需测。）
+
+### 门控安全审查结论（复验清单 2）
+| 维度 | file.rs write_file 家族（既有基线） | backup.rs resolve_override_path（本轮新增） | 结论 |
+|------|------|------|------|
+| 门控原语 | `if !cfg!(feature = "webdriver")` → `Validation(deny_path_ipc())` | `require_webdriver_path_ipc` 内同一 `cfg!` 判定 → `Validation(msg)` | 一致（同一 error.rs 助手家族） |
+| 拒绝时机 | 函数入口、先于任何 fs 访问 | 两命令体第一步，先于 dialog/fs | 一致 |
+| 错误文案 | "Direct path file IPC is disabled; use *_with_dialog commands" | "path override disabled in production"（= 计划文档决策 3 示例**原文**） | 与计划文档一致 |
+| None 语义 | N/A（纯路径命令恒门控） | None 恒不触门控（生产 dialog 流零门控开销） | 合理新增，不影响安全面 |
+| webdriver 下附加路径校验 | validate_file_path（".."遍历检查 + 扩展名白名单） | 无路径遍历/扩展名校验 | 与旧 path 版 backup/restore 完全一致（旧版对 output_path/input_path 零校验）——**非本次新引入放宽**；与 file.rs 的差异系沿袭既有差异 |
+
+生产侧运行时验证：Cargo.toml `default = []`（无 webdriver），故 1133 通过中的 `resolve_override_path_gates_without_webdriver_feature` 即在真实生产特性组合下断言 Some → Validation("path override disabled")、None → Ok(None)。扩展名校验缺失对照结论：override 分支不做 filter_extension 校验 = 旧 path 版行为等价延续（见 F3-BUG-001 的文档表述偏差）。
+
+### 四合一等价性映射（复验清单 3）：确认无语义丢失
+| 旧命令（wire 参数，camelCase） | 旧返回 | 新形态 |
+|------|------|------|
+| backup_database(dbSessionId, database, outputPath, options?, compress?) | Result&lt;()&gt; | overridePath=outputPath；返回 bool（成功 true）。e2e 已迁移并补 `saved === true` 断言 |
+| backup_database_with_dialog(dbSessionId, database, defaultFileName, filterExtension, options?, compress?) | Result&lt;bool&gt; | 对话参数逐一保留 + 新增可选 overridePath；取消仍返回 false |
+| restore_database(dbSessionId, inputPath, options?, database?) | Result&lt;()&gt; | overridePath=inputPath；database/options 按名透传（IPC 按名匹配，声明顺序差异无影响） |
+| execute_sql_file(dbSessionId, inputPath, options?, database?) | Result&lt;bool&gt;(true) | 同上；成功 true / 取消 false 语义不变 |
+| restore_database_with_dialog / execute_sql_file_with_dialog(dbSessionId, database?, options?) | Result&lt;bool&gt; | 二者本就同源 `sql_file_with_dialog`；dialog 分支参数逐字相同 |
+
+前端两处调用点核验：sqlFileExecution wrapper 固定 `invoke('restore_sql_file', { dbSessionId, database, options })`（无 overridePath，`command?:` 分叉已删）；ExecuteSqlFileDialog（confirmBeforeExecute 流）与 BackupWindow.handleRestore（confirmOverwrite 流）均经 wrapper；BackupWindow.handleBackup `invoke('backup_database')` 带 dbSessionId/database/defaultFileName/filterExtension/options/compress、无 overridePath。
+行为差异记录（非缺陷）：① 合并命令恒以 `Some(&app)` 发 backup/restore-progress 事件（旧 path 版传 None 不发）→ 只增不减；② 旧三条 gate 文案统一为计划文档文案（仅 webdriver 构建可见该分支，e2e 无对旧文案的断言依赖，BACKUP-010 仅断言错误非空）。
+
+### 守护测试有效性结论（复验清单 4）
+- pathIpcWiring「decision 3+6」用例：三个生产文件（BackupWindow / sqlFileExecution / ExecuteSqlFileDialog）对五个旧名的负向 toContain 断言——文件内重现即 fail ✓；lib.rs 注册面正负双向 ✓（`save_encryption_key_with_dialog` 同时被正向钉住防波及）；生产代码不含 `overridePath` ✓。
+- 局限（记录非缺陷）：前端扫描是文件白名单式，新增文件里的旧名 invoke 不触发该守卫；但注册面是咽喉——旧命令未注册则运行期必错，且 Rust 侧 `lib_rs_registers_merged_commands_only` 以逗号结尾 needle 精确封死五条旧注册（补齐了 pathIpcWiring 未覆盖的 `commands::restore_database_with_dialog` 场景）。两侧合围有效。
+- Rust ipc_contract_guards 四测：签名级钉死 override_path 存在 / output_path·input_path 清零 / dialog 三参保留 / db_session_id 语义延续，needle 运行时拼接避免自引用误报 ✓。
+
+### 复验判定
+**不通过**（唯一不达标项：F3-BUG-002 覆盖率）。范围清零、门控安全、四合一等价性、守护测试全部通过；F3-BUG-001（低，文档）一并登记待验证。转修复轮；修复后按流程另派全新复验代理。
+
+### 修复轮（2026-08-26，F3-BUG-001 + F3-BUG-002）
+- **BUG-001 选方案 a**：设计决策 3 改写为「filter_extension 校验仅覆盖 dialog 分支」。理由：实现与旧 path 版命令行为等价（对路径零校验），且生产构建由 `resolve_override_path` 门控整体拒绝 override_path，无安全面影响；方案 b 只会影响 webdriver-only 分支（生产不可达），还要评估 E2E fixture 文件名被白名单误拒的回归风险，收益/风险不成立。遗留注意 3 的「未来放开前先补校验」建议保留并已在决策 3 内交叉引用。
+- **BUG-002**：`src/windows/backup/__tests__/BackupWindow.test.tsx` 新增 backup flow describe 7 例；覆盖率实测见下表。
+- 测试基建附带修复：既有「restore does not start when overwrite is declined」用例残留 `confirmDialogFn.mockResolvedValue(false)`（`vi.clearAllMocks` 不清除实现、原 beforeEach 未重置），会静默污染其后所有确认弹窗流程；新 describe 以局部 `beforeEach` 重置默认接受。
+
+### 覆盖率（修复轮实测：vitest --coverage --coverage.include 过滤）
+| 文件 | 行 | 语句 | 分支 | 函数 | 判定 |
+|------|----|------|------|------|------|
+| src/windows/backup/BackupWindow.tsx | **93.4%** | 90.68% | 81.94% | 84.78% | ✓ ≥80%（修复前 61.53%） |
+| src/lib/sqlFileExecution.ts | 100% | 100% | 88.23% | 100% | ✓（未变，上轮已达标） |
+
+### 测试结果（修复轮）
+| 套件 | 结果 |
+|------|------|
+| `npx vitest run` | 全绿（BackupWindow.test.tsx 14 用例 = 原 7 + 新增 7） |
+| `npx tsc --noEmit` | 0 错误 |
+
+### 复验判定（修复后，2026-08-26 全新实例独立重跑）
+**通过**：F3-BUG-001（文档如实性）与 F3-BUG-002（覆盖率）均关闭，F3 整体已完成。
+- 覆盖率复测：`npx vitest run --coverage --coverage.include='src/windows/backup/BackupWindow.tsx'` 实测行 **93.4%** / 语句 90.68% / 分支 81.94% / 函数 84.78%（≥80% 达标，与修复轮声称逐位一致）
+- 独立重跑：`npx vitest run` 241 文件 / **1977 用例全绿**；`npx tsc --noEmit` **0 错误**
+- 用例质量审查（git show 25aed34c 对照组件源码逐例核对）：新增 7 例全部行为级——①成功：`toEqual` 精确断言 `backup_database` 全参数 + 断言无 `overridePath` 键（决策 3+6 生产零 override 守护）+ progress 监听注册与 success 文案；②取消 saved=false：状态条卸载、进度日志卸载（progressLog.length 条件渲染）、按钮复位；③后端错误：消息同时进状态条与日志；④选项/gzip/文件名：经 sqlDialects 可配置 ref 注入方言 options，驱动组件真实推导 filterExtension=gz、defaultFileName=nightly.sql.gz、routines 自动默认勾选与 options 数组内容；⑤URL 预填 connectionId/database；⑥restore 后端错误（确认弹窗→报错上屏）；⑦分组折叠/展开。无空转用例。mock 惯例改动保持原行为（ref 默认空列表 = 原 `{backupOptions: []}`，afterEach 重置，仅新用例 4 在自身作用域内变更）；confirmDialogFn 残留污染诊断属实——全局 beforeEach 重置 urlParam/listen/invoke 三者实现而 confirmDialogFn 仅初始化一次、`vi.clearAllMocks()` 不清除 mockResolvedValue 实现，decline 用例的 reject 会泄漏至后续用例，新 describe 局部 beforeEach 重置默认接受为正确修复
+
+## F4 connections/app-data 导入导出合并
+
+### 范围
+- 后端（`src-tauri/src/commands/config.rs`）：五命令收敛为三 ——
+  - `export_connections` ← 原 path 版（删）+ `export_connections_with_dialog`（删）合并；新增可选 `override_path: Option<String>`；返回值统一 dialog 语义 `Option<u32>`（None = 取消）
+  - `import_connections_preview` ← 原 path 版原地合并：`path: String` → `override_path: Option<String>`，补原生 open-dialog 分支（决策 3 单命令形态）；返回值 `Value` → `Option<Value>`
+  - `import_connections_with_dialog`：保留名（与 preview 语义不同不互并，按计划文档「各自合并 path 参数」），新增可选 `override_path`
+  - `export_app_data` ← 原 path 版（删）+ `export_app_data_with_dialog`（删）合并；新增可选 `override_path`；返回值统一 `bool`
+  - `import_app_data` ← 同上合并；新增可选 `override_path`；override 分支跳过文件选择与确认弹窗（旧 path 版无交互行为等价）
+  - `detect_connection_import_path` / `pick_connection_import_path_with_dialog` / `import_connections_from_app` / `save_encryption_key_with_dialog` 不动
+- **门控原语收口**：F3 的私有助手 `resolve_override_path` + 常量 `OVERRIDE_DISABLED_MSG`（"path override disabled in production"）从 backup.rs 上移到 `commands/error.rs`（pub(crate)），backup.rs 与 config.rs 共用同一实现——单一机制，无第二份拷贝；其单测随迁至 error.rs
+- `lib.rs` 注册块：connections 7 行 → 6 行、app-data 4 行 → 3 行（删 `export_connections_with_dialog` / `export_app_data_with_dialog` / `import_app_data_with_dialog` 三条）
+- 前端 wrapper 收敛：`commands/connection.ts` 删两个 deprecated raw-path 封装，`exportConnectionsWithDialog`→`exportConnections`、`importConnectionsWithDialog`→`importConnections`、preview 签名 `(path, password)`→`(password)`，全部指向合并 IPC 且零 overridePath；`commands/backup.ts` 同构（`exportAppDataWithDialog`→`exportAppData`、`importAppDataWithDialog`→`importAppData`，删 deprecated raw 版）。调用点 `ConnectionShareDialog.tsx` / `ConnectionPage.tsx` 仅换函数名，参数不变
+- 守护/E2E 同步：`pathIpcWiring.test.ts` 新增 decision 3 (f4) 守护用例并更新 connection share 用例断言；e2e `path-ipc-hardening.ts` PIH-003 与 `app-data-backup.ts` ADB 全部改 `overridePath` 形态
+
+### 设计决策
+1. **门控写法完全沿用 F3**：五个合并命令体第一步 `resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)?`，`Some(p)` 先过 `require_webdriver_path_ipc`（`cfg!(feature = "webdriver")` 运行时判定）再转 `PathBuf`，`None` 恒不触门控走 dialog 分支。生产构建传 override_path 得计划文档原文 `"path override disabled in production"`。已另跑 `cargo check --features webdriver` 验证 override 分支参与编译。
+2. **import_connections_preview 补 dialog 分支而非保持纯 path**：计划文档目标清单将其标注为「(含 override_path)」，与其它四个合并命令同构（单命令 + 可选 override_path，None → 原生对话框）。生产 UI 当前无调用点，dialog 分支为未来「先预览后导入」UX 预留；生产安全性不变（override 分支整体被拒、dialog 分支有 OS 级确认）。若坚持纯 path 形态则该命令无法满足「单命令 + Option<String>」的统一契约。
+3. **import 的 override 分支跳过全部交互**（含 import_app_data 的确认弹窗）：旧 path 版行为等价要求——E2E 直调不能被 OS 弹窗阻塞；dialog 分支保留「选文件 + Warning 确认」两步交互。
+4. **返回值统一以 dialog 语义为准**（F3 决策 2 延续）：export_connections `u32|Option<u32>` → `Option<u32>`；import_connections_preview `Value` → `Option<Value>`；export/import_app_data `()|bool` → `bool`。E2E 断言同步（PIH-003 补 not-null、ADB-002 补 saved===true）。
+5. **前端 wrapper 更名而非仅改 invoke 目标**：旧 `-WithDialog` 名字镜像了已删除的后端双命令，保留会造成「一个 IPC 两个名字」。更名后 wrapper 与 IPC 一一对应（camelCase 对齐 snake_case），deprecated raw-path 封装整体删除；生产调用面（ConnectionShareDialog / ConnectionPage）只改函数名，业务参数零变化。
+
+### 单测清单（编码轮）
+- Rust `commands::error::tests`：`resolve_override_path_gates_without_webdriver_feature`（自 backup.rs 迁入：Some → 非 webdriver 报 Validation "path override disabled"、webdriver 放行原路径；None → 两构建均 Ok(None)）
+- Rust `commands::config::tests`：
+  - `merged_connections_export_roundtrips_through_preview_helper`（write_connections_export 写盘返回 count；build_import_preview_from_path 正确密码解析回 connections/sourceFormat、错误密码报错）
+  - `app_data_export_import_helpers_roundtrip_groups_file`（export_app_data_to_dest 产物 ZIP 含 groups.json；import_app_data_from_source 将手工构造的干净归档落盘为目标 data_dir/groups.json）
+- Rust `commands::config::ipc_contract_guards`（include_str! 源码级钉死）：
+  - `merged_commands_take_override_path_not_raw_path_param`（五命令均有 `override_path: Option<String>`、均无裸 `path: String` 参数）
+  - `stale_dialog_twins_are_gone_from_config_rs`（三个 `_with_dialog` 旧 fn 定义清零，needle 运行时拼接防自引用误报）
+  - `lib_rs_registers_merged_commands_only`（五条合并注册 + 四条未动邻居正向钉住，三条旧注册清零）
+  - `merged_commands_route_through_shared_resolve_override_path`（config.rs 无本地重定义、五个命令体都经共享助手门控——单一机制守护）
+- 前端新增 `src/commands/__tests__/importExportCommands.test.ts`（10 用例）：五个合并 wrapper 的 invoke 目标 + camelCase 参数精确断言且无 `overridePath` 键、取消 null/false 透传；connection.ts / backup.ts 其余 wrapper 线面契约回归
+- `pathIpcWiring.test.ts` 新增 decision 3 (f4) 守护：wrapper 层 invoke 目标正断言、三个旧 IPC 名 + 四个旧 wrapper 名负断言、四个生产文件（connection.ts/backup.ts/ConnectionShareDialog.tsx/ConnectionPage.tsx）不含 `overridePath` 与旧名、lib.rs 注册面正负双向
+
+### E2E 用例迁移（真实 webdriver 回归留待 R 阶段）
+| spec | 变更 |
+|------|------|
+| `e2e/specs/path-ipc-hardening.ts` | PIH-003：export_connections 改 `{password, defaultFileName, overridePath}` 并补 `count !== null`；import_connections_preview 改 `{password, overridePath}` 并补非空断言 |
+| `e2e/specs/app-data-backup.ts` | 新增 `exportToPath`/`importFromPath` helper（defaultFileName/confirm 文案 + overridePath）；ADB-002/003/006/008 export、ADB-003/004 import 全部迁移；ADB-002 补 `saved === true`；ADB-001 源码断言改新 wrapper 名 |
+
+### 测试结果（编码轮）
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（共享主检出 target） | **1139 passed / 0 failed / 2 ignored**（较 F3 后基线净 +6：gate 单测随助手迁 error.rs ±0，config 新增 2 行为测试 + 4 守卫测试） |
+| `npx vitest run` | **242 文件 / 1988 用例全过**（净 +1 文件 = importExportCommands.test.ts） |
+| `npx tsc --noEmit` | **0 错误**（exit 0） |
+| `cargo check -p datazen --features webdriver` | 通过（override 分支参与编译） |
+
+### 覆盖率（编码轮实测：vitest --coverage --coverage.include 过滤改动 TS 文件）
+| 文件 | 行 | 语句 | 分支 | 函数 | 判定 |
+|------|----|------|------|------|------|
+| src/commands/connection.ts | 100% | 100% | 100% | 100% | ✓ ≥80% |
+| src/commands/backup.ts | 100% | 100% | 100% | 100% | ✓ ≥80% |
+
+### 非缺陷观察项（供 R 阶段参考）
+1. app-data 导出会把运行中 Store 的 SQLite sidecar（`datazen.sqlite-shm`/`-wal`，零填充高压缩比）打进归档，导入侧 zip-bomb 压缩比守卫（MAX_COMPRESSION_RATIO=100）会拒绝此类归档——本轮单元测试因此改用手工构造的干净归档验证 import 助手。系既有 archive 语义问题、非 F4 引入（F4 只重组命令入口），建议后续在导出侧排除 sqlite sidecar 或在导入侧对 store 自身文件放宽比率检查。
+2. config.rs 中 app-data 对话框分支沿袭旧代码的同步 `blocking_save_file`/`blocking_pick_file` 写法（未走 `run_blocking_dialog`），connections 分支保持 spawn_blocking 模式——两处均为既有行为，本轮不做跨域重构。
+
+### 复验判定（2026-08-26，全新测试代理，被测 commit `4d0fec83`）
+**通过 → 已完成**，无 bug 登记。合并完整性 / 五组语义等价性 / 门控单一机制 / 前端换名审计全部通过；三件套独立重跑全绿且与声称逐位一致；覆盖率 100% 达标。
+
+#### 合并完整性
+- 全仓 Grep 三条旧命令名与四个旧 wrapper 名：生产代码零残留。命中仅为 ① `pathIpcWiring.test.ts` 守护负断言、② config.rs 文档注释 + ipc_contract_guards 运行时拼接 needle、③ 计划/进度文档的历史表述。
+- lib.rs 注册面（git show 逐行核对）：删 `export_connections_with_dialog` / `export_app_data_with_dialog` / `import_app_data_with_dialog` 三行、增 0 行；connections 块 7→6、app-data 对块（export/import 两对，不含 `save_encryption_key_with_dialog`）4→3，与编码轮声称一致。
+- config.rs 函数清单一一对照：仅三个 `_with_dialog` 孪生删除 + 7 个提取助手（write_connections_export / build_import_preview_from_path / pick_connections_open_path / pick_connections_save_path / export_app_data_to_dest / import_app_data_from_source / pick_app_data_open_path·save_path）+ 6 个新测试，其余函数签名零变化。
+
+#### 五组语义等价性（逐组）
+| 组 | 判定 | 要点 |
+|----|------|------|
+| export_connections | 等价 ✓ | dialog 分支顺序保持「校验密码→对话框→写盘」，取消 Ok(None)/成功 Some(count) 与旧 dialog 版一致；override 分支=旧 path 版同一 `require_webdriver_path_ipc` 门控，密码校验经 `build_encrypted_connections_export` 内部既有调用延续（新前置校验幂等叠加，坏密码仍在写盘前失败）；返回 u32→Option&lt;u32&gt; 统一 dialog 语义，PIH-003 补 not-null 断言 |
+| import_connections_preview | 等价 ✓ | None→dialog 触发条件正确：仅 `resolve_override_path` 返回 Ok(None)（即参数为 None）才走 `pick_connections_open_path`；该助手自旧 import_connections_with_dialog 原样提取，filter 集逐字相同（Connections[json/xml/ncx/datazenconnection/tableplusconnection] + DataZen / DataGrip XML / Navicat NCX / DBeaver JSON / TablePlus）；读盘→parse_import_file→预览 JSON 零 store 写入语义不变；Value→Option&lt;Value&gt; 仅新增「取消=null」 |
+| import_connections_with_dialog | 等价 ✓ | 新增可选 override_path 走同一门控；dialog 分支为共享助手原样提取；导入/merge 主体零改动。行为差异记录（非缺陷）：cmd_err/log 标签去 `_with_dialog` 后缀（错误上下文文案变化，无测试对旧文案断言） |
+| export_app_data | 等价 ✓ | dialog 分支同步 blocking 写法原样保留（观察项 2）；取消 false/成功 true 不变；export 本无确认弹窗，override 分支只替换取径方式；()|bool→bool 统一，ADB-002 补 saved===true |
+| import_app_data | 等价 ✓ | override 分支跳过「文件选择+Warning OkCancel 确认」两步交互 = 旧 path 版零交互等价（E2E 直调不被 OS 弹窗阻塞），无新增交互；dialog 分支两步交互逐字保留（同 Warning kind / OkCancel buttons / confirm 文案透传）；两条取消路径均返回 false |
+
+未动四邻居 `detect_connection_import_path` / `pick_connection_import_path_with_dialog` / `import_connections_from_app` / `save_encryption_key_with_dialog`：函数清单 diff 零命中 + 注册保留 + wrapper 未动，确认未被波及。
+
+#### 门控单一机制
+- `resolve_override_path` 全仓唯一定义于 error.rs（pub(crate)）：backup.rs 2 处（backup_database/restore_sql_file）+ config.rs 5 处全部经它；backup.rs 本地副本删除、其单测随迁 error.rs::tests（即本轮 1139 之一）。config.rs 残留的本地 `require_webdriver_path_ipc` 转发 shim 属 open_path_impl 既有基线，非第二套 override 实现。
+- `OVERRIDE_DISABLED_MSG` = "path override disabled in production"，与计划文档决策 3 示例原文一致。
+- Rust 守护 `merged_commands_route_through_shared_resolve_override_path`：钉死五命令体门控计数=5 且禁本地重定义；`cargo check --features webdriver` 独立复验通过（override 分支参与编译）。
+
+#### 前端换名审计
+- ConnectionShareDialog.tsx 两处、ConnectionPage.tsx 两处均为纯函数名替换，实参逐字不变；ConnectionShareDialog.test.tsx mock 键同步换名。
+- 生产 invoke 字符串全仓扫描：相关九个 IPC 只出现在 src/commands/connection.ts / backup.ts wrapper 层，零 overridePath。
+- 守护有效性：pathIpcWiring f4 用例 = wrapper invoke 正断言 + 3 旧 IPC 名 / 4 旧 wrapper 名负断言 + 四生产文件 overridePath 与旧名双负 + lib.rs 正负双向；Rust ipc_contract_guards 以 include_str! 钉死签名与注册面。局限同 F3 记录（前端白名单式扫描不覆盖新增文件），由注册面咽喉 + Rust 侧合围兜底。
+
+#### E2E 用例（归属 R）
+| ID | 场景 | 环境 | 入口 | 通过判据 | 归属 |
+|----|------|------|------|---------|------|
+| F4-E2E-001 | export_connections overridePath 导出 .datazenconnection | webdriver 构建 | e2e PIH-003 前半 | count 非 null 且为 number；文件落盘且为合法加密载荷 | 【留待 R 阶段回归】 |
+| F4-E2E-002 | import_connections_preview overridePath 预览往返 | 同上 | e2e PIH-003 后半 | preview 非 null、connections 数组、sourceFormat=DataZen | 【留待 R 阶段回归】 |
+| F4-E2E-003 | export_app_data overridePath 导出 zip 及排除规则 | 同上 | e2e ADB-002/006/008 | saved===true；zip 非空；排除 logs//*.tmp/.key | 【留待 R 阶段回归】 |
+| F4-E2E-004 | export→import_app_data overridePath 幂等回灌 | 同上 | e2e ADB-003 | import true、get_settings 可读 | 【留待 R 阶段回归】 |
+| F4-E2E-005 | 路径遍历 zip 在 override 分支安全拒绝 | 同上 | e2e ADB-004 | reject 且匹配 traversal/InvalidInput | 【留待 R 阶段回归】 |
+| F4-E2E-006 | 生产构建负向门控：五合并命令传 overridePath 必拒 | 生产构建（default features） | 直调 IPC | Validation："path override disabled in production" | 【已被单测钉死】共享 resolve_override_path 单测在 default 特性组合下断言同文案 + config.rs 五命令体门控守卫（本轮 1139 通过之一）；生产包冒烟留 R |
+
+#### 测试结果（复验轮独立重跑）
+| 套件 | 结果 | 对照声称 |
+|------|------|---------|
+| `cargo test -p datazen --lib`（共享主检出 target） | **1139 passed / 0 failed / 2 ignored** | 一致 ✅（较 F3 复验终态 1133 净 +6 = 2 行为 + 4 守卫，gate 单测随迁 ±0，自洽） |
+| `npx vitest run` | **242 文件 / 1988 用例全过**（exit 0，一次通过） | 一致 ✅；编码轮报告的 1 例 flake 未复现，维持既有 flake 定性 |
+| `npx tsc --noEmit` | **0 错误** | 一致 ✅ |
+| `cargo check -p datazen --features webdriver` | 通过（exit 0，仅既有警告） | override 分支参与编译独立复验 |
+
+#### 覆盖率（复验轮实测：vitest --coverage --coverage.include 过滤）
+| 文件 | 行 | 语句 | 分支 | 函数 | 判定 |
+|------|----|------|------|------|------|
+| src/commands/connection.ts | 100% | 100% | 100% | 100% | ✓ ≥80% |
+| src/commands/backup.ts | 100% | 100% | 100% | 100% | ✓ ≥80% |
+
+## F5 删除纯文件读写 IPC
+
+### 范围
+- **Host**：删除 `src-tauri/src/commands/file.rs` 的 `write_file` / `write_file_base64` / `read_file` 三个 `#[tauri::command]` 及内部实现 `write_file_impl` / `read_file_impl`、webdriver 门控辅助 `deny_path_ipc`、仅为其服务的 `validate_file_path`（含专属单测 ×4）；删除门控单测 ×3（`path_ipc_{write_file,read_file,write_file_base64}_gated_without_webdriver`）；`lib.rs` 删除三条注册。dialog 系列（save/open/begin/append/finish/abort/export_tables_stream）全部保留，`ALLOWED_EXTENSIONS` / `validate_extension` 仍被对话框过滤器使用故保留
+- **前端**：删除 `src/commands/file.ts` 的 `writeFile` / `writeFileBase64` / `readFile` 三包装；新增 `src/commands/__tests__/file.test.ts`（8 用例）覆盖全部现存封装的参数透传与 `onExportProgress` 订阅
+- **E2E**：`e2e/specs/ai-context.ts`（2 处）与 `e2e/specs/ai-context-tables.ts`（1 处）fixture 准备由 `invokeBackend('write_file')` 改为 Node.js `fs.writeFileSync()`；目标路径逻辑不变（仍写入 `context_get_dir` 返回的应用上下文目录），仅换写入手段（E2E 进程即 Node）
+- **文档**：`docs/architecture/backend/commands.md`「文件」行更新为对话框系列清单并注明纯路径读写 IPC 已删
+
+### themePackApply 甄别结论
+`src/lib/themePackApply.ts` L164 的 `readFile(relPath)` 是本地函数参数（`rewriteCssUrls(css, readFile: PackFileReader)` 的回调形参），非 `commands/file.ts` 的 IPC 封装，与本任务无关，未改动。全仓 Grep 确认三包装在 src/ 内无其他业务调用方。
+
+### 守护测试说明
+`src/commands/__tests__/pathIpcWiring.test.ts` 以当前分支内容核实：不含三包装相关断言（F2 改写后仅覆盖 ADB/dialog/open_* 路径），无需更新。另以全仓 grep 验证 `'write_file'` / `'write_file_base64'` / `'read_file'` / `writeFileBase64` / `fileCommands.writeFile` / `fileCommands.readFile` 在 src、src-tauri/src、e2e、packages/extensions 清零。
+
+### 测试结果（编码轮）
+
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（共享主检出 target） | 1123 passed / 0 failed / 2 ignored（较 F2 后 1130 −7 = 删除的 validate_file_path×4 + 门控×3 专属单测） |
+| `npx vitest run` | 241 files / 1971 passed，全绿（+1 file/+8 tests = 新增 file.test.ts） |
+| `npx tsc --noEmit` | 0 错误 |
+| 覆盖率（改动 TS：`src/commands/file.ts`，vitest --coverage.include 过滤实测） | 行/语句/分支/函数 **100%**（≥80% 达标；e2e 两 spec 不在 vitest 覆盖域） |
+
+### 环境注意
+本 worktree 的 codegen `src-tauri/capabilities/default.json` 曾含 `redis:default`（redis 插件未编译时 tauri-build 权限校验失败，同 F1 遗留注意 2 的坑）；已对齐主检出权限集（28 权限、无 redis）。该文件为 gitignore codegen，不入库。
+
+### 复验（2026-08-26 全新测试代理实例，commit 8f9e4a9c）→ 通过
+
+#### 三项审查
+1. **删除完整性 ✅**：三 IPC 在 src / src-tauri/src / e2e / packages/extensions 全仓清零（残留 `write_file` 命中均为各模块 `#[cfg(test)]` 内同名本地测试辅助与 `store::write_file_atomic`、`read_file` 命中均为 `context_read_files`，非 IPC 残留）；lib.rs 三条注册已删；前端无 camelCase 包装、无解构导入、无字符串 invoke 残留（themePackApply.ts 的 `readFile` 确为本地 `PackFileReader` 形参，编码轮甄别属实）。**甄别复核**：`ALLOWED_EXTENSIONS` 由 `ext_refs()`（file.rs L53）消费且 `ext_refs` 被全部 5 个 dialog 命令调用；`validate_extension` 被 5 个 dialog 命令 + `driver_command.rs` L617 调用——「仍被使用故保留」属实，**非死代码**
+2. **迁移等价性 ✅**：ai-context.ts ×2 / ai-context-tables.ts ×1 目标目录来源（均 `context_get_dir`）、文件名（`${contextDir}/schema.sql`、`${contextDir}/relations.md`）、内容字符串逐字一致；旧 write_file 为 Rust `String::as_bytes()`（UTF-8）、新 Node `fs.writeFileSync` 默认 utf8 且内容纯 ASCII → 字节级等价；`context_get_dir` 返回宿主视角绝对路径（`dir.display()`，store.data_dir()/contexts 或用户自定义 context_dir），E2E Node 进程与本机应用同机同用户，直写后端可读成立——且 CTX-002/003/004 经 `context_list_files`/`context_read_files` 读回断言闭环验证该前提。旧 `validate_file_path` 白名单是针对 webview 输入的防线，测试 fixture 直写不受其删除影响，无安全回归
+3. **安全面 ✅**：`write_file_impl` / `read_file_impl` / `deny_path_ipc` 全仓零引用残留；共享门控 `require_webdriver_path_ipc`（error.rs）未被波及，config.rs ×4（连接导出/导入/app-data 导出/导入）与 backup.rs ×3（backup/restore/restore_sql_file）继续使用；webdriver 构建下无其他合法路径依赖被删三命令
+
+#### 独立重跑结果
+
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（CARGO_TARGET_DIR=主检出 target） | **1123 passed / 0 failed / 2 ignored**（=1130−7，与声称一致） |
+| `npx vitest run` | **241 files / 1971 passed**，全绿 |
+| `npx tsc --noEmit` | **0 错误**（exit 0） |
+| 覆盖率 `src/commands/file.ts`（vitest --coverage.include 过滤实测） | 行/语句/分支/函数 **100%/100%/100%/100%**；file.test.ts 单独运行 8/8 通过 |
+
+#### E2E 用例登记（执行归属：R 阶段，需 `pnpm tauri build --debug --features webdriver` + wdio；本测试轮未执行）
+- **F5-E2E-001** `e2e/specs/ai-context.ts`（CTX-001~006）：Node fs 种子写入 → 后端 `context_list_files`/`context_read_files` 读回断言（迁移核心闭环）
+- **F5-E2E-002** `e2e/specs/ai-context-tables.ts`（CTX-T01~T06）：`fs.writeFileSync` 种子 schema.sql 后 AI @ 引用面板 Files 类目全链路
+- **F5-E2E-003** 负向：生产/无头构建下 `invoke('write_file'|'read_file'|'write_file_base64')` 应报命令不存在（静态已证 lib.rs 注册删除；运行时断言随 R 阶段 E2E 执行）
+
+#### 复验发现
+- F5-BUG-001【低·文档漂移】登记 Bug 台账：e2e-testing.md L154 / e2e-coverage.md L106 仍称 webdriver 构建保留 write_file 路径 API；归属 R 阶段文档收口，不阻塞判定
+
+## F6 删除冗余命令
+
+> 状态：**已完成**（2026-08-26，轨道 B 第二棒编码代理；同日全新测试代理复验通过，见下方复验小节）
+
+### 范围
+
+- **Host**：删除 4 条 `#[tauri::command]` 及注册——`commands/dashboard.rs` 的 `get_monitor_paused` / `set_monitor_paused`（lib.rs 注册 ×2）、`commands/schema_diff.rs` 的 `compare_table_data` IPC 包装、`commands/sync/mod.rs` 的 `classify_sync_pair`
+- **Host 连带清理**（孤儿代码，F5 先例）：`commands/sync/compare.rs` 删除仅被 `compare_table_data_impl` 消费的 8 个助手（`resolve_pk_columns` / `fetch_sample_rows` / `row_key` / `value_key_part` / `rows_to_key_map` / `row_to_json_map` / `values_equal` / `rows_equal`）及随之失活的 `use`（`TableSchema, Value`、`Hash, Hasher`、`DATA_COMPARE_SAMPLE_LIMIT`）；`commands/sync/types.rs` 删除双常量 `DATA_COMPARE_SAMPLE_LIMIT` / `DATA_COMPARE_MISMATCH_LIMIT`。`count_rows`（tasks.rs/inspect.rs 仍用）、`fetch_full_column_types` / `diff_table_schemas_ir` / `format_ir_type`（schema_diff 与既有测试仍用）、`value_as_u64` / `maybe_use_database` 均保留
+- **前端**：`src/commands/dashboard.ts` 删除 `getMonitorPaused` / `setMonitorPaused` 包装；`src/commands/schemaDiff.ts` 删除 `compareTableData` 包装及 `TableDataCompare` import；`src/types/index.ts` 删除孤儿类型 `TableDataCompare` / `RowMismatch` / `RowMismatchKind`。`DashboardPanel.tsx` 的同名 `monitorPaused` 为本地 useState（UI 暂停态），与 IPC 无关，未改动
+- **E2E**：`e2e/specs/data-sync-real.ts` SYNC-REAL-020 / SYNC-BATCH-002 由「调用 classify_sync_pair 断言 ir 拒绝」改为 `expectCommandNotFound` 负断言（命令已不存在），与本 spec 既有 SYNC-REAL-021 / SYNC-BATCH-001/003 的「legacy IPC 已移除」守护模式一致
+- **文档**：`docs/architecture/backend/commands.md` 同步行更新（同步行去 classify_sync_pair、Schema Diff 行补 compare_table_schemas 并注明 compare_table_data 移除）；`docs/architecture/backend/data-sync.md` IPC 表删 classify_sync_pair 行并归入 Legacy 说明
+
+### compare_table_data_impl 去留裁决
+
+**裁决：impl 一并删除（连同 sync/tests.rs 中其专属消费）。** 判断依据：全仓 grep 证实 `compare_table_data_impl` 在生产代码中仅有两个引用点——schema_diff.rs 的 IPC 包装（本轮删除对象）自身，以及 `sync/tests.rs::compare_table_schemas_and_data_impl` 的测试调用；`prepare_schema_diff_plan` / `compare_table_schemas_impl` 等 schema diff 功能域现存代码均不经过它（行级比对引擎走 data_sync 的 compare_data_sync 链路，非此函数）。即删除包装后 impl 仅剩测试使用，符合任务书「连 impl+测试一并删」分支。处置：impl 整体删除；原测试拆留 schema 半场改名为 `compare_table_schemas_impl_returns_diff_for_table`（数据半场随 impl 消失）；由此失活的 8 助手+2 常量连带删除（见范围），其 11 个专属单测同轮删除——`cargo test` 净减 12（11 助手单测 + classify_sync_pair 单测）与逐项清单精确吻合。
+
+### 守护测试说明
+
+- Host：`sync/tests.rs::legacy_transfer_ir_compare_ipc_removed` 追加断言 `!mod.rs.contains("classify_sync_pair")`（源码级防回潮，沿用该测试既有的 include_str! 模式）
+- E2E：SYNC-REAL-020 / SYNC-BATCH-002 改为运行时负断言（比源码级更强：验证构建产物中命令确已注销）；classify 的业务语义（PG→MySQL 应判 ir/不支持）由前端 `src/lib/syncPairing.ts` 镜像逻辑承载，后端真源测试保留在 `data_sync/pairing.rs` 单测（mysql/mariadb 直通、PG→MySQL ir、sqlite、redis 四分支未动）
+- 前端：新增 `src/commands/__tests__/dashboard.test.ts`（14 用例）与 `src/commands/__tests__/schemaDiff.test.ts`（7 用例）覆盖两文件全部现存封装的参数透传 + schemaDiff 纯函数（F5 file.test.ts 同模式），同时把两个改动文件的覆盖率从 6.66%/20% 提至 100%
+
+### 测试结果（编码轮）
+
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（CARGO_TARGET_DIR=主检出 target） | **1111 passed / 0 failed / 2 ignored**（较 F5 后 1123 净减 12，逐项见裁决小节） |
+| `npx vitest run` | **243 files / 1992 passed** 全绿（+2 files/+21 tests = 新增 dashboard.test.ts + schemaDiff.test.ts） |
+| `npx tsc --noEmit` | **0 错误** |
+| 警告面 | cargo check 警告与基线（HEAD=31 条）逐条一致，零新增（孤儿助手若漏删会以 dead_code 警告暴露，已全部清理） |
+
+### 覆盖率（改动 TS 文件）
+
+全量 vitest 套件 + `--coverage.include` 过滤（v8 provider）：
+
+| 文件 | Stmts | Branch | Funcs | Lines | ≥80% |
+|-----|-------|--------|-------|-------|------|
+| `src/commands/dashboard.ts` | 100% | 100% | 100% | **100%** | ✅ |
+| `src/commands/schemaDiff.ts` | 100% | 100% | 100% | **100%** | ✅ |
+| `src/types/index.ts` | — | — | — | N/A | ✅（纯类型导出，本轮仅删类型声明，v8 无可执行行可采） |
+
+`e2e/specs/data-sync-real.ts` 不在 vitest 覆盖域（webdriver E2E，归属 R 阶段回归）。
+
+### 编码说明（F6）
+
+**四命令删除路径**：
+1. `get_monitor_paused` / `set_monitor_paused`：dashboard.rs 两 `#[tauri::command]` + lib.rs 注册 ×2 + dashboard.ts 两包装。前者本为读第一个 dashboard 的 refresh_paused 的 legacy 兼容读口，后者纯 warn no-op；替代命令 `set_dashboard_refresh_paused`（含 id 维度）及其前端包装 `setDashboardRefreshPaused` 原样保留。
+2. `compare_table_data`：schema_diff.rs IPC 包装 + 无主 impl（裁决见上）+ 孤儿助手/常量 + schemaDiff.ts 包装 + index.ts 类型三件套。
+3. `classify_sync_pair`：sync/mod.rs 命令（serde_json 薄包装，真源 `data_sync::classify_data_sync_pair` 未动）+ lib.rs 注册 + tests.rs 单测（其断言的 JSON 形状属 IPC 信封而非分类逻辑，分类逻辑已有 pairing.rs 直测覆盖，故删而不迁）+ e2e 两处负断言化。
+
+**设计决策**：
+1. E2E 处置选「expectCommandNotFound 负断言」而非纯删除或源码级断言：任务书给出两选项，但本 spec 已存在更强的第三模式（对已移除 legacy IPC 的运行时注销验证），保持文件内一致性且守护力最强；两条用例编号保留不删。
+2. `compare_table_schemas_and_data_impl` 改名 `compare_table_schemas_impl_returns_diff_for_table` 并顺带去掉仅为数据采样服务的 `MockDriverOptions` 定制（query_rows/count_total），改 `TestAppState::new()`。
+3. 文档同步仅触及 tracked 架构文档两处表格；`ipc-refactor-plan.md`（untracked 决策文档）与历史报告 `test-reports/W2-test-report.md` 按纪律不改。
+
+### E2E 用例登记（执行归属：R 阶段，需 webdriver 构建 + PG/MySQL 实例；本轮未执行）
+
+- **F6-E2E-001** `data-sync-real.ts` SYNC-REAL-020：`invokeBackend('classify_sync_pair')` 应报 command not found（改造后负断言）
+- **F6-E2E-002** `data-sync-real.ts` SYNC-BATCH-002：同上（批量语境重复守护）
+
+### 复验（2026-08-26 全新测试代理实例，commit d4e33801）→ 通过
+
+#### 三项审查
+
+1. **删除完整性 ✅**：四命令在 src / src-tauri/src / e2e / packages 全仓清零（残留命中逐一甄别：`classify_sync_pair` 仅存 docs 历史记录（ipc-refactor-plan / commands.md / data-sync.md Legacy 行 / W2 报告）、进度文件自身、`sync/tests.rs::legacy_transfer_ir_compare_ipc_removed` 防回潮负断言字符串、e2e 两处 `expectCommandNotFound` 负断言参数；`compare_table_data` 仅存 commands.md 移除注记与计划文档；monitor_paused 仅存计划/进度文档）；lib.rs 四条注册删除经 diff 核实（L882 区 classify_sync_pair / compare_table_data + L963 区 get/set_monitor_paused）；前端 camelCase 包装零残留
+2. **孤儿清理正确性 ✅**：8 助手 + 2 常量删除后全仓零消费者——现存同名 `values_equal` / `rows_equal` 属 `data_sync/model.rs` 既有函数（签名 `(&Value, &Value)`，被 data_sync 内部消费并经 mod.rs 再导出），与所删 `commands/sync/compare.rs` 版本（`Option<&Option<Value>>` 参数）不同源；tests.rs / sql.rs 的 `row_key:` 为结构体字段非函数引用。本轮 commit **零新增** `#[allow(dead_code)]`（types.rs:104 既有注解掩盖的是 `TableMappingInput` 结构体，与本次清理无关）；保留函数消费链逐一核实：`count_rows` → tasks.rs + data_transfer/inspect.rs、`fetch_full_column_types` / `diff_table_schemas_ir` → schema_diff.rs + data_transfer、`format_ir_type` → compare.rs 自用 + tests、`value_as_u64` → compare.rs 自用 + tests。`DashboardPanel.tsx` L89/174/345 本地 `monitorPaused` useState 完好未动
+3. **impl 裁决 ✅**：d4e33801~1 全仓 grep 证实 `compare_table_data_impl` 生产引用仅定义自身（schema_diff.rs:305）与 IPC 包装调用（:448），另有 tests.rs 导入 + 调用一处；`prepare_schema_diff_plan` / `compare_table_schemas_impl` 从未引用它；现存行级比对真源为 `compare_data_sync` → `compare_data_sync_impl`（sync/mod.rs:100，lib.rs:890 注册在案）——「删包装后 impl 仅剩测试使用」裁决成立
+
+#### E2E 负断言审查 ✅
+
+`expectCommandNotFound`（dda1dfb6 引入，先于 F6 的成熟模式）直连 `__TAURI_INTERNALS__.invoke` 原生通道、绕过任何前端包装：命令若回潮注册则 invoke 成功 → message 为空串 → `toMatch(/command .+ not found|unknown command/i)` 必失败；命令存在但报其他错同样 fail-loud。唯一通过路径即「命令确不存在且 Tauri 报 not found」，防回潮成立；SYNC-REAL-020 / SYNC-BATCH-002 与同 spec SYNC-REAL-021/022、SYNC-BATCH-001/003 模式一致。
+
+#### 独立重跑结果
+
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（CARGO_TARGET_DIR=主检出 target） | **1111 passed / 0 failed / 2 ignored**（与声称一致） |
+| `npx vitest run` | **243 files / 1992 passed**，全绿（较 F5 后 241/1971 = +2 files/+21 tests，与新增两套件 14+7 吻合） |
+| `npx tsc --noEmit` | **0 错误**（exit 0） |
+| 覆盖率 dashboard.ts / schemaDiff.ts（--coverage.include 过滤实测） | 两文件均行/语句/分支/函数 **100%/100%/100%/100%** |
+
+#### 复验发现
+
+无 bug。cargo 净减 12 与逐项清单吻合（tests.rs 删 13 个测试 fn：11 助手单测 + classify_sync_pair 单测 + 被改名瘦身的 `compare_table_schemas_and_data_impl`，新增改名版 `compare_table_schemas_impl_returns_diff_for_table`）。E2E 归属不变：F6-E2E-001/002 执行归 R 阶段（需 webdriver 构建 + PG/MySQL 实例），本测试轮未执行。
+
+## F7 驱动级 SQL 定位重写
+
+**状态：编码完成（2026-08-26，F7 收尾代理）。**
+
+### 需求（用户新指令 2026-08-26，两轮精化）
+每条 SQL 命令携带定位信息直达驱动层，**驱动按方言把未限定表引用重写为限定名**（如 `select * from users` → `select * from \`mydb\`.users`）；不用 `USE`、不切会话，纯无状态。
+
+### 设计基线
+- **定位信息**：MySQL 系 = database；PG 系 = database + schema。信封在修复轮已有可选 `database`，本功能补 `schema`
+- **方言形态**：mysql/mariadb `` `db`.`t` ``（真跨库内联）；postgres `"schema"."t"`（PG 引擎限制跨库不可内联 → database 维度沿用连接池切换=现有机制，schema 维度内联重写）；sqlite `alias.t`（仅 ATTACH 别名场景，通常 no-op）；sqlserver `db.schema.t`；clickhouse `db.t`；duckdb 同 PG 形态
+- **覆盖面**：全部 SQL 型驱动（含各 path 驱动）；redis / mongodb 非 SQL 执行模型，N/A
+- **解析与改写**：各驱动 crate 内用 `sqlparser` crate 按方言 AST 改写；仅定位语境（FROM/JOIN/INSERT INTO/UPDATE/DELETE FROM/TRUNCATE/CREATE|DROP|ALTER TABLE/CREATE INDEX ON）；跳过 CTE 名、子查询别名、字符串字面量、已限定引用；幂等
+- **兜底**：解析失败 → 原样放行 + 日志 + 现有宿主 `ensure_session_database` 兜底（git 旧 pin 驱动无重写能力时的安全网）
+- **协议**：driver-api 输入 schema 加可选字段，向后兼容不强制 bump PROTOCOL_VERSION；git 驱动更新 pin 后才获得重写能力（顺序依赖登记为风险）
+- **前端**：database 链路已穿透（BUG-001 修复成果）；需补 PG currentSchema 传递（先侦察 schemaStore 是否已有该状态）
+- **测试落点**：重写单测在各驱动 crate（简单 SELECT/JOIN/CTE/子查询/已限定/引号标识符/INSERT|UPDATE|DELETE/DDL 各方言矩阵）；Host 只测信封透传 + 兜底路径
+
+## B5 ConnectionNavigatorTree 刷新丢失已展开分类修复（=F1-BUG-005）
+
+### 根因（编码轮实测修正复验代理的初步定位）
+
+三层叠加，缺一不呈现完整症状：
+
+1. **失效键空间错位**：hook 的 `clearCaches(dbSessionId)` 对 `dbObjectsMap` 按 `${dbSessionId}::` 前缀过滤，但对象分类缓存键实为 `${connectionId}::…`（持久配置 id）。生产环境两 id 必不相同 → epoch 清理对分类缓存**从不命中**（把症状掩盖成「仅竞态」）；id 相同的探针环境则被整段清空。
+2. **清理后无恢复调度**：epoch 变化的 effect 清缓存后仅按 `expandedDbs` 重载**表**缓存，不调度任何分类重载；恢复完全依赖 `refreshConnection` 尾部 `reloadExpandedObjectCategories` 与该 effect 的执行顺序竞速——effect 的清理落在重载写入之后时内容丢失且无人再次触发（3s 观察窗零恢复）。
+3. **测试环境放大器**：组件内 3 处动态 `import('../../commands/database')` 在 vitest 下行为不一致（同文件同 specifier，一处命中 vi.mock、一处穿透真实模块）；jsdom 无 Tauri internals 时 `invoke` 抛错，被 `reloadDbObjectCategory` 的 catch 写成空数组，使症状在探针中必现。
+
+### 修复方案
+
+将「失效→恢复」收敛为 hook 内单遍同步语义：指纹变化时先 `clearCaches(dbSessionId, connectionId)`（双 id 各自匹配两张缓存表的键空间），随后**在同一 effect 体、无 await 间隔**地调度展开库表重载与展开分类重载——每次清理自带恢复波次，「清理后重载被覆盖」的窗口不复存在；显式菜单刷新的重复取数只会以同等新数据落盘，无法回写陈旧内容。选择「清理后重载」而非「保留缓存」：刷新语义本就要求取新数据，保留缓存会让树在 DDL 后显示过期条目；多库树表节点既有 `reloadDbTables` 恢复路径原样保留。
+
+### 改动清单
+
+- `src/windows/connection/schema-tree/useExpandedDbCacheRefresh.ts`
+  - 新增必填选项 `expandedCats` / `loadObjectsForCat`；`clearCaches` 签名扩展为 `(dbSessionId, connectionId?)`
+  - effect 内清缓存后同批次调度分类重载（`tables`/`views` 伪分类与其他连接的分类跳过）；docstring 写明顺序/取消语义
+- `src/windows/connection/ConnectionNavigatorTree.tsx`
+  - hook 调用点传入 `expandedCats` + `reloadDbObjectCategory`；`clearCaches` 按 sessionId 清表缓存、按 connectionId 清分类缓存
+  - `reloadDbObjectCategory` 定义上移至 hook 调用之前（消除 TDZ）；逻辑不变
+  - `databaseCommands` 改静态导入，移除 3 处动态 `import()`（生产端该模块经 schemaStore 静态链早已加载，无分包损失）
+- 测试
+  - `schema-tree/__tests__/useExpandedDbCacheRefresh.test.tsx`：新增 F1-BUG-005 用例——epoch 变化后以 `invocationCallOrder` 断言 clearCaches 严格先于全部表/分类恢复调度，并断言作用域（tables/views 与其他连接的分类不触发）
+  - `connection/__tests__/ConnectionNavigatorTree.test.tsx`：新增连接级刷新、单-db 库节点刷新两条渲染层回归（断言条目与计数恢复）；两用例在修复前代码实测失败、修复后通过
+
+### 验证
+
+- `npx tsc --noEmit`：0 错误
+- `npx vitest run`：240 文件 / **1966 用例全绿**（基线 1963 + 新增 3）
+- 定向行覆盖率（vitest --coverage，v8）：`ConnectionNavigatorTree.tsx` **96.74%**（与 F1 复验基线逐位一致，零回退）、`useExpandedDbCacheRefresh.ts` **100%**（均 ≥80% 达标）
+- 测试层级说明：hook 调度闭包无法从 jsdom 渲染层直接观测（复验代理已实测此限制），故排序语义断言落在 renderHook 层；渲染层回归以最终 DOM 状态（条目+计数恢复）收口，两层互补
+
+### 复验（2026-08-26 全新测试代理，commit：`test(b5): reverify - expanded categories restore`）
+
+**结论：通过。F1-BUG-005 → 已修复，B5 → 已完成。**
+
+- **独立重跑**：`npx vitest run` 240 文件 / 1966 用例全绿；`npx tsc --noEmit` 0 错误。
+- **覆盖率实测**（全量 --coverage，json-summary 摘取）：`ConnectionNavigatorTree.tsx` 行覆盖 **96.74%**（831/859，与基线逐位一致零回退）、`useExpandedDbCacheRefresh.ts` 行覆盖 **100%**（29/29）。备注：全量覆盖率门禁在 dashboard/workflow/ConnectionPage 等处报既有缺口（B5 改动集不含这些文件，属遗留状态，建议 R 阶段统一处理）。
+- **四项判定逐条**：
+  1. 内容级恢复成立——hook 对每个展开分类调度 `loadObjectsForCat` → 组件真实调用 `getDatabaseObjects(dbSessionId, catId)` 写回 `dbObjectsMap[catKey]`，树渲染条目/计数均来自该 map；非仅恢复展开态。
+  2. 竞态消除声称属实——effect 体 L112 `clearCaches` 与 L115-124 两类 `void` 调度间无 await；hook 层用例以 `invocationCallOrder` 断言 clear 严格先于全部表+分类恢复调度。每次清理自带恢复波次，「清理后无人恢复」窗口机制上不存在。
+  3. 双键空间修正正确——实测组件键构造：表缓存 `${dbSessionId}::${db}`、分类缓存 `${connectionId}::${db}[::${schema}]::${cat}`；`clearCaches(sessionId, connectionId)` 各按其前缀过滤对应 map，与 AGENTS.md ID 术语一致（归属/键语义用 connectionId，会话操作用 dbSessionId）。
+  4. 多库树零回归——`reloadDbTables` 函数体除动态导入改静态外逐字未变；多库分支（Promise.all 重载）、挂载自动加载路径均未触及，多库树用例全绿。
+- **回归红性实证**（不切分支、不用 stash：临时写入 `e4b7b6d7^` 的两份实现文件→定向跑→`git checkout --` 还原并 diff 校验字节一致）：
+  - `ConnectionNavigatorTree.test.tsx -t "F1-BUG-005"` 在修复前实现上 **2 failed | 64 skipped**；
+  - `useExpandedDbCacheRefresh.test.tsx` 在修复前 hook 上新用例 failed（`loadObjectsForCat` 零调用，排序断言无从成立）。
+  - 「修复前红」属实。渲染层红性表现（刷新后 mock 零重载调用）与编码轮根因层③（恢复链路动态导入在 vitest 下未命中 mock→catch 写空）一致；hook 层红性与测试环境无关。
+- **静态导入副作用评估**：无循环依赖（`commands/database`→`query`→`driver` 仅依赖 invoke/types）；该模块经 schemaStore 本就在组件静态图内，动态导入是冗余异步边界——改静态无包体增量，且消除测试 mock 行为不确定性，净收益。
+- **残余观察（不阻塞，超出本缺陷范围）**：连续两次指纹变化时，前一波未取消的在途 fetch 响应理论上可能晚于后一波清理落盘（last-write-wins）；hook docstring 已声明取消语义边界。
+
+### 编码说明
+
+**共用引擎（packages/driver-api/src/sql_target.rs）**
+- `qualify_sql_with(dialect, quote, prefix_parts, sql)`：sqlparser AST visitor 改写，仅触碰定位语境 relation（FROM/JOIN/INSERT INTO/UPDATE/DELETE FROM/TRUNCATE/CREATE TABLE/ALTER TABLE/CREATE INDEX ON 由 visitor 分发；DROP TABLE 的 name 列表上游未标注为 relation，显式补处理且仅限 Table 对象类型）。
+- 跳过规则：多段已限定引用（幂等来源）、CTE 名（全局收集——外层 CTE 影子遮蔽时跳过永远是安全方向）、T-SQL `#temp` 临时表、字符串字面量天然不经过 relation。
+- 注入 qualifier 按方言加引号（Backtick/DoubleQuote/Bracket，Bracket 自行做 `]`→`]]` 转义）；原表标识符保留源形式，仅当其无引号且全小写（避免改变 PG 类引擎的大小写折叠解析）才补引号。
+- 解析失败：warn 日志 + 原文返回（`rewritten=false`），空目标不进解析器。
+
+**逐驱动实现要点**
+| 驱动 | crate | 形态 | 说明 |
+|---|---|---|---|
+| mysql（含 mariadb/doris/starrocks/manticore/ob_oracle 变体共用） | datazen-driver-mysql | `` `db`.`t` `` | schema 参数忽略；真跨库内联 |
+| postgres | datazen-driver-postgres | `"schema"."t"` | database 不内联（沿用宿主池切换）；database-only 目标 = no-op |
+| sqlite | datazen-driver-sqlite | `"alias"."t"` | 仅非 `main`/非 `temp` 显式目标才改写（ATTACH 别名场景），默认 no-op |
+| clickhouse | datazen-driver-clickhouse | `` `db`.`t` `` | ClickHouseDialect；CH 特有 mutation 语法（如 `ALTER TABLE … DELETE WHERE`）sqlparser 不识别 → 走兜底放行 |
+| duckdb | datazen-driver-duckdb | `"schema"."t"` | 同 PG 形态（DuckDbDialect)；database 走会话/池切换 |
+| sqlserver | datazen-driver-sqlserver | `[db].[schema].[t]` | 仅在可构造无歧义前缀时改写：db+schema → 三段；schema-only → 二段 `[schema].t`；**database-only 不内联**（T-SQL 两段名 `[db].t` 会把 db 当 schema 解析，语义错误），该维度交给宿主会话 pin |
+
+**协议与宿主接线**
+- driver-api：`query`/`query_stream`/`execute` 输入 schema 增加可选 `database`/`schema`（serde 缺省兼容，未 bump PROTOCOL_VERSION）；trait 新增默认返回 `None` 的 `DatabaseDriver::qualify_sql_target(sql, database, schema)`；`execute_standard_sql_command` 在输入携带定位字段时调用之。
+- 宿主 `driver_command.rs`：`ExecuteDriverCommandRequest`/`ExecuteDriverCommandStreamRequest` 增加 camelCase 可选 `schema`；非流式路径把非空 envelope 字段注入 command input（blank 值与非 object 输入跳过），流式路径直接调 `driver.qualify_sql_target`。两条路径均保持既有 `ensure_session_database` pin 先行——重写与 pin 双保险，无能力驱动走 debug 日志 + 原样执行（兜底矩阵成立）。Host 单测以 MockDriver 能力开关（`rewrite_sql_target`）覆盖：透传+pin 并存、fallback 原样+pin、stream 两路径对称。
+- `query.rs` / `schema.rs` 内部转发点补 `schema: None`（SQL 编辑器路径已由 ensure_session_database 固定库，不重复注入）。
+
+**前端接线（侦察结论 + 最小改动）**
+- 侦察结论：`src/stores/schemaStore.ts` 此前**没有** currentSchema 状态（只有 `currentDatabase` 与侧边栏 schema 分组的 `schemaNames`/namespaceTree，无 PG schema 选择器 UI）。
+- 本次落地最小链路：`ConnectionSchemaState.currentSchema`（默认 null，keyed map / flatten / patch 全套接入）+ `setCurrentSchema()` action（trim 空值归一为 null，仿 F1 currentDatabase 的纯本地状态模式，无 IPC）→ `panelStore.panelTargetSchema()` → `runBoundQuery`/`runStreamingQuery` → `queryCommands.executeQuery/executeQueryStream` → `driverCommands.execute/executeStream` envelope `schema` 字段。UI 选择器暂缺：任何设置该状态的入口（未来下拉框/扩展 SDK）即刻生效；置 null 时行为与现状完全一致。
+
+**验证数字（三件套）**
+- Host Rust：`cargo test -p datazen --lib` = **1136 通过 / 0 失败**（含信封透传、兜底、stream 对称等 F7 用例）
+- 驱动 crate（`cargo test -p datazen-driver-*`）：mysql 72、postgres 92、sqlite 43、clickhouse 30、duckdb 26、sqlserver 45、driver-api 92 —— 全部通过（每 crate 含 happy path SELECT/FROM、JOIN、CTE 跳过、已限定幂等、解析失败放行矩阵）
+- 前端：`npx vitest run` = **1965 通过 / 0 失败（240 文件）**；`npx tsc --noEmit` 无错误（含 panelStore/queryExecActions 信封断言更新与 F7 schema 传递新用例）
+
+### 测试结果（测试轮复验）
+
+**全新测试代理独立复验（2026-08-26，commit 6184eacc，worktree `feature/f7-driver-sql-target`，不信前序数字）：**
+
+| 套件 | 复验实测 | 与编码轮声称对比 |
+|------|---------|----------------|
+| `cargo test -p datazen --lib` | **1136 passed / 0 failed / 2 ignored** | 一致 ✅ |
+| `cargo test -p datazen-driver-api` | **92 passed / 0 failed** | 一致 ✅ |
+| `cargo test -p datazen-driver-mysql` | **72 passed / 0 failed**（lib 64 + 集成 8） | 一致 ✅ |
+| `cargo test -p datazen-driver-postgres` | **92 passed / 0 failed**（lib 80 + 集成 12） | 一致 ✅ |
+| `cargo test -p datazen-driver-sqlite` | **43 passed / 0 failed**（lib 38 + 集成 5） | 一致 ✅ |
+| `cargo test -p datazen-driver-clickhouse` | **30 passed / 0 failed**（lib 26 + 集成 4） | 一致 ✅ |
+| `cargo test -p datazen-driver-duckdb` | **26 passed / 0 failed**（lib 22 + 集成 4） | 一致 ✅ |
+| `cargo test -p datazen-driver-sqlserver` | **45 passed / 0 failed**（lib 42 + 集成 3） | 一致 ✅ |
+| `npx vitest run` | **240 文件 / 1965 用例全过** | 一致 ✅ |
+| `npx tsc --noEmit` | **0 错误**（exit 0） | 一致 ✅ |
+
+三项重点审查结论：
+
+1. **方言矩阵逐驱动抽查（每 crate 全量读断言体，超出抽 3 要求）**：六驱动 sql_target.rs 单测全部真断言 SQL 字符串——mysql/pg/sqlite 多处 `assert_eq!` 精确比对全文（如 ``SELECT * FROM `mydb`.`users` `` / `"sales"."users"`），其余为带 `{out}` 的 contains 断言且附负向断言（`!contains("FROM users")` 等），无空转断言。跳过规则逐条有实证：CTE 名（每 crate）、字符串字面量（`'from users'` 不被改写 + 负向断言）、已限定名（整句原样返回 `assert_eq!(qualify(sql,…), sql)`）、别名保留（`` `shop`.`users` AS u ``）；派生表别名无 ObjectName 天然不进 visitor（sql_target.rs 模块文档 L19-21）。
+2. **sqlserver 偏离基线裁决审查：✅ 正确且已文档化。** 实现（sqlserver/src/sql_target.rs L24-39）仅 db+schema → `[db].[schema].t` 三段、schema-only → `[schema].t` 二段；database-only 直接原文返回。T-SQL 两段名解析为 `schema.object`，`[db].t` 会把 db 当 schema——裁决语义正确。文档化两处齐备：模块 doc L8-12（含"交宿主会话 pin"）+ 本文件设计基线表 L314；并有专项测试 `database_only_target_is_not_inlined_two_part_name_is_ambiguous` 锁定该行为。其余五驱动对照基线表无漂移：mysql/ch `` `db`.`t` ``（Backtick）、pg/duckdb `"schema"."t"`（database-only no-op 有专测）、sqlite 仅非 main/temp 显式目标才改写（默认 no-op 五种输入枚举测试）、ch 特有 mutation 语法放行有专测。
+3. **兜底语义：✅ 成立。** trait 默认实现返回 `None`（traits.rs L284-291）；redis/mongodb 等非 SQL 驱动零 override、零路径进入（Grep 全 drivers 目录确认无 override 命中）；信封无定位字段时 `sql_input_with_target` 提前返回原文（traits.rs L533-535），对 SQL 驱动亦零开销；parse-fail 在共享引擎统一 warn 日志 + 原文返回（rewritten=false），六 crate 各有 `parse_failure_passes_through_unchanged` 断言；幂等性 driver-api 层（二次调用 rewritten==false）+ 每 crate `rewrite_is_idempotent` 双层断言。
+
+双保险机制复查：非流式路径 `ensure_session_database` 先 pin（driver_command.rs L500-508）→ 注入 input → 默认 execute_command → `execute_standard_sql_command` 改写；流式路径同序（L300 pin → L342-372 qualify）。单测 `execute_driver_command_passes_target_to_qualifying_driver` 同时断言改写 marker 到达驱动与 `use_database_calls==["analytics"]`（pin 并存不冲突），fallback/stream 对称各有专测。PG 维度正交：database 走池切换、schema 走内联，来源同一请求字段不会互相矛盾。
+
+前端链路审计：currentSchema 默认 null（createEmptyConnectionSchema / CONNECTION_STATE_KEYS 接入 keyed map 全套）；null 时 panelTargetSchema 返回 null → envelope `schema: null` → Rust `#[serde(default)] Option<String>` 反序列化为 None → 宿主两条路径均短路（不注入、不调 qualify）——与 F1 database 字段同一传输模式（`?? null` 显式置空键，服务端 None 等价于不携带），行为零变化成立；panelStore/queryExecActions 新增用例同时锁定 null（`{database:'db_b', schema:null}`）与非 null（`schema:'sales'`）两种形态。executeStream payload 透传正确（driver.ts L57）。
+
+### 覆盖率（测试轮实测）
+
+度量方式：全量 vitest 套件（240 文件 / 1965 用例）+ `--coverage.include` 过滤本次五个改动 TS 文件（v8 provider，coverage-final.json 取数）：
+
+| 文件 | Statements | Branch | Funcs | **Lines** | ≥80% 行覆盖 |
+|-----|-----------|--------|-------|-----------|------------|
+| `src/stores/schemaStore.ts` | 88.08% | 75.40% | 93.33% | **90.20%** | ✅ |
+| `src/stores/queryExecActions.ts` | 92.68% | 75.00% | 100% | **97.29%** | ✅ |
+| `src/stores/panelStore.ts` | 74.26% | 52.23% | 83.09% | **80.00%** | ✅（压线达标） |
+| `src/commands/query.ts` | 13.33% | 0% | 7.69% | 13.33% | 免测（见下） |
+| `src/commands/driver.ts` | 28.57% | 0% | 25% | 28.57% | 免测（见下） |
+
+- queryCommands/driverCommands 为薄 Tauri invoke 封装，按项目已批准的 Option C 门禁明确豁免（vitest.config.ts 注释："Thin `src/commands/**` invoke wrappers … stay out of the fail gate"）；其 F7 变更（`schema: … ?? null` 透传）的信封→宿主行为由 Host Rust serde 反序列化用例 + MockDriver qualify_calls 录制端到端覆盖。
+- 观察项（不阻塞）：panelStore 行覆盖恰在 80% 线上；F7 新增的 executeSelection 两处 `panelTargetSchema` 调用点与 executeQuery params 分支处于既有的单测未覆盖区（executeSelection 此前即无直接单测，属存量缺口而非 F7 回归），语句覆盖 74.26% 低于行覆盖即源于此。
+
+### E2E 用例
+
+> F7 的方言定位正确性最终取决于真实引擎的名称解析（尤其 PG search_path、T-SQL 两段名歧义、CH mutation 语法），必须依赖 webdriver 构建 + 真实实例回归；AST 改写形态已由各驱动 crate 单测锁死。PG currentSchema UI 选择器本轮未落（纯本地状态链路先行），E2E 触发可经 WebdriverIO `browser.execute` 直调 store 或 invokeBackend 直调信封（同 F1-E2E-008 先例）。全部登记为【留待 R 阶段回归】。
+
+| 编号 | 场景 | 前置 | 步骤 | 断言 | 标注 |
+|------|------|------|------|------|------|
+| F7-E2E-001 | MySQL 跨库内联定位 | webdriver 构建；MySQL 实例 db_a（连接默认库）/ db_b 各含 users 表且数据可区分 | 编辑器会话库=db_a，经 store 或信封携带 `database=db_b` 执行 `SELECT * FROM users`（bound 与 stream 各一次） | 返回 db_b.users 数据（行数可区分）；`SELECT DATABASE()` 仍为 db_a（证明无会话切换，纯内联）；日志出现一次 qualification applied 且无 switched 记录 | 【留待 R 阶段回归】需真实 MySQL 多库 |
+| F7-E2E-002 | PostgreSQL schema 内联 + database 走池切换 | PG 实例同库下 sales/public schema 各含 users 表（数据可区分） | 携带 `schema=sales` 执行 `SELECT * FROM users`；再携带 `database=其他库&schema=sales` 重复 | 前者命中 sales.users；后者命中目标库 sales.users（池切换生效）；日志可见 pin 与 rewrite 并存 | 【留待 R 阶段回归】需真实 PG 双 schema（+可选跨库） |
+| F7-E2E-003 | SQL Server db+schema 三段名 & database-only 走 pin | SQL Server 实例；AdventureWorks.sales 与当前库 dbo 各含可区分表 | ① 携带 `database=AdventureWorks&schema=sales` 执行未限定查询；② 仅携带 `database=AdventureWorks` 执行 | ① 命中 [AdventureWorks].[sales] 表（三段内联）；② 无内联（SQL 原样到达）但会话 pin 生效命中目标库——两段名歧义路径不存在 | 【留待 R 阶段回归】需真实 SQL Server |
+| F7-E2E-004 | SQLite 默认 main 零变化 + ATTACH 别名场景 | sqlite 连接；另建 fixture 库经 ATTACH AS stats | ① 携带 `database=main` 执行未限定查询；② ATTACH 后携带 `database=stats` 执行 | ① SQL 原样执行（no-op，行为与现状一致）；② 命中 stats 别名下同名表 | 【留待 R 阶段回归】需 ATTACH 场景编排 |
+| F7-E2E-005 | ClickHouse 内联 + mutation 语法兜底 | CH 实例多库；目标库含可区分表 | ① 携带 `database=<目标>` 执行 SELECT/INSERT；② 执行 `ALTER TABLE t DELETE WHERE id=1`（携带同目标） | ① 命中目标库表；② SQL 原样放行不报解析错、由 pin 保证落库正确 | 【留待 R 阶段回归】需真实 CH 多库 |
+| F7-E2E-006 | DuckDB schema 内联（PG 同形态） | DuckDB 实例 main + 自建 schema 各含可区分表 | 携带 `schema=<自建>` 执行未限定查询 | 命自建 schema 表；database-only 请求时 SQL 原样（走会话切换维度） | 【留待 R 阶段回归】需真实 DuckDB |
+| F7-E2E-007 | 已限定 SQL 幂等回归（全方言抽样） | 同 F7-E2E-001/002 实例 | 执行已写全限定名的 SQL（`` `db_b`.users `` / `public.users` / `[db].[dbo].[t]`），携带相同定位字段 | 结果正确且日志无 rewrite 记录（二次限定不发生，SQL 未被双重包裹） | 【留待 R 阶段回归】随 R 全矩阵执行 |
+
+**测试轮判定：通过 —— 六驱动形态与基线一致、sqlserver 裁决正确且文档化、兜底/幂等/双保险断言齐备、全矩阵独立重跑全绿，F7 置「已完成」；无新增缺陷（bug 清单：无）。**
+
+## R 回归与收尾
+
+> **状态：回归完成·待合并 main**（2026-08-26 终局收口裁定，详见文末「R 终局收口记录」；终局矩阵 ✅29 / ◐5 / ❌0 / ▲1 / ⛔7，唯一 ▲ 为重构前既有测试资产债务·已定性登记，非本分支引入）
+
+### R-1 文档收口（2026-08-26，本轮）
+
+> 总览 R 行已同步为「进行中·文档收口」；全量回归与 E2E 执行仍待 F4 合并后统一进行。本小节仅记录文档工作，未改任何 src / src-tauri 代码。
+
+**漂移修正（F5-BUG-001 及同类，Grep 全仓复核）**
+
+- `docs/development/e2e-testing.md` 架构说明节：删除「webdriver 构建保留 `write_file` / `export_app_data(path)` 等路径 API」失实表述，改为决策 4 后事实——三纯文件读写 IPC（`write_file`/`write_file_base64`/`read_file`）已删、fixture 准备改 Node fs、对话框系 API 保留、残余路径变体均为 `require_webdriver_path_ipc` 门控并按决策 3 以 `override_path` 收敛
+- `docs/development/e2e-coverage.md` 例外登记「原生对话框点选」替代覆盖同步改写
+- `docs/TODO-screenshots.md`：修复方向中的 `use_database` IPC 引用改为显式 `database` 传参探活
+- `docs/features/workflow-guide.zh-CN.md` / `.en.md`：query 步骤 `database` 字段说明不再指向已删 IPC，改为「执行前驱动层会话切换」（对应 `workflow/command_runtime.rs` 内部 `driver.use_database` 调用，非 IPC）
+- `docs/architecture/backend/data-sync.md`：硬门闸第 6 条切库描述改为驱动层内部 `maybe_use_database`
+- 不回写：`docs/reviews/*`、`test-reports/*` 为历史存档；两份 ipc-refactor-plan 的决策条目属计划文本（描述目标形态），非失实
+
+**架构文档落位核对（决策 1-6 对照 lib.rs 注册面抽查）**
+
+- `docs/architecture/backend/commands.md`：
+  - 删除 ADB 模块行（`commands/adb.rs` 已随 F2 删除）；Driver Command 行补注 sqlite 驱动内建 `adb_*` 命令经统一入口
+  - 备份行改写为本分支真实六命令形态（直连路径 webdriver 门控 ×3 + 对话框 ×3），并注明决策 3+6 合并目标 `backup_database` + `restore_sql_file` 在 `feature/f3-backup-merge` 分支待随 F4 合入
+  - 连接管理 / SQL 查询 / Schema / 表编辑 / 配置 / MCP 行命令名与 lib.rs 注册面对齐（修正 `ping`→`ping_connection`、`available_drivers`→`get_available_drivers`、`favorite_query`→收藏三命令、`commit_edits`→`commit_row_updates/deletes`、`import_connections`→实际导入族、`mcp_start/mcp_status`→`mcp_start_stdio/mcp_get_status` 等失实名）
+  - 新增 §3.4「库 / Schema 定位机制」：use_database 废弃后的信封显式传参终态——F1 宿主 `ensure_session_database` pin + F7 driver-api `SqlTarget`/`qualify_sql_with` 方言内联重写（六驱动方言形态、定位语境白名单、幂等、解析失败放行）、双保险正交兜底，及决策 2/4/5 删除面摘要
+- `docs/architecture/backend/drivers.md` §3.1 模块表：`file.rs` 职责行按 F5 后事实修正
+- 复核无误、无需改动：data-sync.md Legacy 行与 commands.md 同步 / Schema Diff 行（F6 轮已更新）；`docs/architecture/backend/workflow.md`（Legacy query 兼容描述不涉及已删 IPC）；`docs/architecture/testing.md` 的 `use_database` 提及指驱动 trait 方法测试落点（`packages/drivers/*/tests/`），非 IPC，保留
+
+**base64 大小上限观察项裁决（F2 遗留观察项，见 F2 小节审查结论）**
+
+- 现状核对：`finish_save_dialog` 与既有 `save_base64_with_dialog` 家族均无数据量上限；新 save_dialog 形态峰值内存 ≈ 原始文件 ~3 倍（base64 字符串 ~1.37N + 解码字节 N + JSON Value 拷贝跨 CommandResult 传递）
+- **裁决：登记为已知限制，维持现状，不阻塞 R 关闭。** 理由：① 与既有对话框家族及重构前 adb 实现风险等级持平，非本轮引入的回归；② 当前唯一消费方为 ADB 库文件拉取（通常 ≤ 数 MB），远低于风险阈值；③ 加尺寸上限或流式落盘需动 driver-api 信封语义（可能触及 PROTOCOL_VERSION 评估），不宜由 R 文档轮夹带代码变更
+- 建议：后续功能为 save_dialog 形态补可选尺寸上限（超限报 Validation）或分块流式落盘通道；可与插件权限模型收口（第三方驱动 save_dialog 声明校验，见 F2 遗留注意 2）同批处理
+
+### R-1.1 E2E 稳定定位器基建：vite 门控 data-testid helper（2026-08-26，本轮）
+
+> 背景：Host E2E 大量依赖 `text=`/含 i18n 文案的选择器，i18n 切换即断。本轮落地「统一 helper + 仅高频痛点组件补属性」的最小方案，生产构建属性彻底不渲染。
+
+**基建形态**
+
+- 新增 `src/lib/tid.ts`：`tid(id)` 在 `import.meta.env.VITE_E2E` 为真时返回 `{ 'data-testid': id }`，否则返回 `{}`——普通 `pnpm build` / `tauri:build` 不设该变量，属性不落 DOM；命名约定 `<区域>-<元素>-<动作>` kebab-case。单测 `src/lib/__tests__/tid.test.ts` 以 `vi.stubEnv` 锁 VITE_E2E 开/空/缺失三态
+- **构建接线**：`pnpm e2e` / `e2e:minimal` 的构建链路为 `e2e/run.mjs` → `scripts/e2e-tauri-build.mjs`（with-plugin-inject 内层）。后者在 `spawnTauri` 前置 `process.env.VITE_E2E = process.env.VITE_E2E || '1'`，经 `spawnTauri` 默认 `env = process.env` 透传给 Tauri CLI 及 beforeBuildCommand 的 vite build——webdriver 构建恒有属性；`--skip-build` 复用既有二进制的路径不涉及构建，行为不变
+
+**首批接入组件与属性（仅限本文档 E2E 用例表覆盖的路径）**
+
+| 组件 | data-testid |
+|------|-------------|
+| `QueryPanel.tsx` SQL 编辑器工具栏 | `editor-execute-button` / `editor-stop-button` / `editor-explain-button` / `editor-history-toggle` / `editor-favorites-toggle` |
+| `ContentToolbar.tsx` 连接内容工具栏 | `conn-toolbar-new-query`（沿用既有 `conn-toolbar-export` 同款直传风格，经 ToolbarButton rest props 下发） |
+
+**spec 选择器替换**
+
+- `e2e/helpers.ts`：`executeSqlInEditor` 执行/停止按钮、`openQueryTab` 新建查询/执行按钮共 4 处硬编码中文 `button*=` → `[data-testid="…"]`（helpers 被 F1/F3/F4/F7 全部登记用例复用，属最高频痛点）
+- `e2e/specs/sql-query.ts`：16 处 `` button*=${t('…')} `` i18n 文案定位器 → `[data-testid="editor-*"]`（对应 F1-E2E-001~003/010、F7-E2E 编辑器主链路的 R 阶段执行载体）
+
+**明确不铺开（按纪律核查结论）**
+
+- `backup-database.ts` / `execute-sql-file.ts` / `path-ipc-hardening.ts`（PIH-003 段）/ `app-data-backup.ts` 实测均为 `invokeBackend` 后端驱动、无 UI 定位器，无需补属性；BackupWindow UI 无登记用例经 UI 触达（F3 用例已全部走 overridePath）
+- `export-import.ts`（EI-*）及 connections 系列 spec 未登记于本文档 E2E 用例表，本轮不改其定位器；ConnectionShareDialog / ConnectionPage 导入导出入口 / app-data 导入导出设置 UI 同理暂不接 helper，待相应功能轮登记后再补
+
+
+### R-1.3 E2E 对话框注入基建：webdriver 门控的原生对话框结果预注入（2026-08-26，本轮）
+
+> 背景：原生文件选择器阻塞 E2E——决策 3 的 `override_path` 只覆盖「无对话框直连」正向流程，所有【弹框取消】类用例（F3-E2E-003 等）此前只能人工黑盒。本轮落地单一机制的注入基建：宿主在调用原生 plugin-dialog 前先消费注入队列，生产构建编译期消除全部测试面。
+
+**基建形态（单一机制原则）**
+
+- 新增 `src-tauri/src/commands/dialog.rs` 中央对话框网关：全仓 Grep 出的 **19 处** tauri-plugin-dialog 调用点全部收口为四个 gateway——`save_file` / `open_file` / `pick_folder` / `confirm_message`（计数口径=调用代码站点：共享 helper 计 1、folder/file 双形态计 1；按 `.dialog()` 出现次数口径为 20、现网关调用行为 21）；每个 gateway 统一走「查注入队列 → 有则 FIFO 消费注入值返回 → 无则真原生对话框」，命令代码不再直接触碰 plugin-dialog、不出现第二套判断逻辑
+- 收口的调用点清单（文件:函数）：`backup.rs`: `pick_backup_save_path` / `pick_sql_open_path`；`config.rs`: `export_connections`（save）、`import_connections_preview` + `import_connections_with_dialog`（open，共享 `connections_open_filters()` 静态过滤器表）、`pick_connection_import_path_with_dialog`（folder/file 双形态）、`import_app_data`（open + OkCancel Warning 确认弹窗 `confirm_message`）、`save_encryption_key_with_dialog`（save）、`export_app_data`（save ZIP，基线直连点为已删的 `pick_app_data_save_path`）；`file.rs`: `save_text_with_dialog` / `save_base64_with_dialog` / `begin_save_with_dialog`（save）、`open_text_with_dialog` / `open_base64_with_dialog`（open）；`dashboard.rs`: `export_dashboard_with_dialog`（save）/ `import_dashboard_with_dialog`（open）；`export.rs`: `export_tables_stream`（save）；`theme.rs`: `install_theme_pack_with_dialog`（open）；`driver_command.rs`: `finish_save_dialog`（DriverSaveDialogSpec 元数据薄壳，save）
+- 原生调用执行 shim 统一上收：config.rs 私有的 `run_blocking_dialog`（async 命令 + `spawn_blocking` + `blocking_*` 的 macOS 防冻结模式）移入 dialog.rs 成为唯一执行通道；原直连 `.blocking_*()` 的调用点随之统一到该模式（行为等价、线程位置更安全），`FilePath→PathBuf` 转换亦合并为 `picked_opt_to_path`（替代 file.rs `dialog_path_to_buf` 与 config.rs `dialog_file_path_to_buf` 两份重复实现）
+- **注入 IPC（仅 webdriver feature 存在）**：`test_inject_dialog_result(result)` 入队 `{canceled:true}` 或 `{path:"…"}` 两形态（反序列化后归一为内部 `DialogAnswer::{Cancelled,Path}`，非法形态在注入时报 Validation 而非静默落空）；`test_reset_dialog_queue()` 清空队列供用例隔离。注册方式沿用既有门控先例（对照 lib.rs webdriver 插件行 / error.rs `require_webdriver_path_ipc`）：两条命令定义处各自 `#[cfg(feature = "webdriver")]`，lib.rs `generate_handler!` 内逐条目同款 cfg 门控（tauri-macros 支持条目级属性，生成 match arm 时消除），managed 队列状态 `DialogInjectionQueue` 同样仅在 webdriver 构建下 `.manage()`——生产构建注册面零残留
+- 队列状态：`tauri::State<DialogInjectionQueue>` = `Mutex<VecDeque<DialogAnswer>>`（std Mutex，同步命令与 spawn_blocking 工作线程均可安全访问）；类型集中定义于 dialog.rs 便于 serde（wire 形态序列化严格为 `{"canceled":true}` / `{"path":"…"}`）
+- 守护测试三件（对照 error.rs 门控测试风格）：队列 FIFO 跨两形态 + reset 清空；wire 形态解析/序列化/非法拒绝；源码级门控守护（include_str 断言两条命令定义、lib.rs 注册行、manage 行各自紧贴 `#[cfg(feature = "webdriver")]` 门控，default 与 webdriver 两种特性组合下均执行）
+
+**spec 示范（R 回归代理可执行的样板）**
+
+- 新增 `e2e/specs/dialog-injection.ts` 四用例：DI-001 即 F3-E2E-003 注入式改写——invoke `test_inject_dialog_result({canceled:true})` → 以生产同款参数（无 overridePath）直调 `backup_database` 对话框分支 → 断言取消反馈 `saved === false`（对话框分支先于会话查找执行，占位 session id 即可证明走的是真实对话框路径）；DI-002 正向 `{path}` 注入写盘往返；DI-003 FIFO 跨两形态消费顺序 + reset 隔离；DI-004 非法注入形态响亮报错。其余既有 spec 用例一律不改（回归代理统一处理）
+
+**原【环境不可达】用例因此转为可执行的盘点**
+
+| 用例 | 原阻塞原因 | 现状 |
+|------|-----------|------|
+| F3-E2E-003 备份原生保存对话框取消 | OS 原生对话框无法自动化，须人工黑盒 | ✅ 已改写为 DI-001（本提交），R 回归可直接执行 |
+| F2-E2E-004 ADB 拉取取消语义 = null | 需真机 + 原生 dialog 人工取消 | 可执行性已具备（`finish_save_dialog` 已收口，注入 canceled 即得 savedPath=null）；真机前置不变，用例改写归 R 回归代理 |
+| import_app_data 的 Warning OkCancel 确认弹窗取消分支（F4 决策内交互） | 同为 OS 弹窗 | 可执行性已具备（`confirm_message` 已收口，注入 canceled → false）；用例改写归 R 回归代理 |
+| F1-E2E-007 等「原生 dialog 流程」正向用例 | 原生对话框人工选文件 | 可执行性部分具备（注入 `{path}` 替代人工选择）；仍需真实实例，归 R 回归代理 |
+
+**验证数字（本提交，独立重跑）**：`cargo test -p datazen --lib` 1137 通过 / 0 失败 / 2 忽略（default 与 `--features webdriver` 两种特性组合各跑一遍均全绿）；`cargo check -p datazen --lib --features webdriver` 0 错误；`npx vitest run` 全绿；`npx tsc --noEmit` 0 错误。
+
+**复验记录（2026-08-26 对话框注入基建测试代理，全新实例，被测 commit `bb498cb9`）——判定：通过**
+
+1. **收口完整性 ✓**：Grep 全仓 `FileDialogBuilder|blocking_save_file|blocking_pick_folder|blocking_pick_file|blocking_show|\.dialog\(\)|DialogExt` 仅命中 `commands/dialog.rs` 网关内部（lib.rs 仅 plugin init 行）；基线 20 个原生调用 occurrence 全部改经网关（现 21 行 gateway 调用）；`run_blocking_dialog` 唯一执行 shim 属实（唯一定义 dialog.rs，前端守护 pathIpcWiring.test.ts 已同步改断言网关收口）。「19 处」按调用代码站点口径成立，但清单漏列 `export_app_data`，登记 **R1.3-BUG-001**（低/文档，待验证不修）
+2. **生产面排除 ✓**：三处钉死位置逐一核实——dialog.rs 两命令定义各自 `#[cfg(feature = "webdriver")]`、lib.rs `generate_handler!` 条目级 cfg（L979-982）、`.manage(DialogInjectionQueue)` 条目级 cfg（L721-722）；default 构建全量编译+1137 测试绿即注册面消除的运行实证；include_str 门控守护三件在 default 与 webdriver 双组合下均真实执行（定向 `commands::dialog::` 12/12 × 双特性）
+3. **队列语义 ✓**：VecDeque push_back/pop_front FIFO 有跨形态测试；`{canceled:true}` / `{path}` 双形态解析与序列化锁定；`{}` / `{canceled:false}` / `{canceled:null}` 注入即拒 Validation；std Mutex 仅在 push/pop/clear 短临界区加锁、无跨 await 持锁，同步命令线程与 spawn_blocking 工作线程均可达安全；reset 清空有测试且 spec before/after 落地。观察（不阻塞）：`{"path":""}` 形态合法会注入空路径（下游写盘报 OS 错而非注入期拒绝）；`canceled` 与 `path` 同给时 canceled 优先——均不影响 E2E fixture 使用
+4. **行为等价抽查 ✓（非注入路径同语义）**：① backup `pick_backup_save_path`：filter("Backup",[ext]) / set_file_name / 取消→Ok(None) / `"Invalid dialog path: {e}"` 文案逐项相同；② config `import_app_data` confirm_message：title/message/Warning/OkCancel 与 bool 映射(true=OK)相同（旧注释 OkCancelCustom 系笔误，新文案为修正）；③ file.rs `save_base64_with_dialog`：decode→filter→set_file_name→取消 false→validate_extension→write 链路与错误文案相同。共性差异仅执行线程位置（原部分直连点在 async fn 内同步 `blocking_*`，统一上收 spawn_blocking，进度文件已声明且更安全）
+5. **独立重跑（本机）✓**：`cargo test -p datazen --lib` default **1137 通过 / 0 失败 / 2 忽略**；`--features webdriver` **1137 / 0 / 2**（与声称逐位一致）；`npx vitest run` **247 文件 / 2033 用例全绿**；`npx tsc --noEmit` **0 错误**
+6. **DI spec 质量 ✓**：DI-001~004 均真实断言非空转——DI-001 无 overridePath 直调生产对话框分支、占位 dbSessionId 依赖「对话框先于会话查找」实现顺序（与 backup_database 源码核对一致）；DI-002 注入路径写盘后字节级回读校验+清理；DI-003 跨形态 FIFO 顺序 + token 类型断言 + abort 收尾 + reset 隔离；DI-004 非法形态 `rejects.toThrow(/canceled/)`。invoke 参数名与命令签名逐一核对匹配。属 webdriver 构建 + 真实例 E2E，本机未执行（按既定安排留待 R 回归）
+
+### R-2 全量回归与 E2E 执行（2026-08-26，R 回归代理，被测 HEAD `6af65712`）
+
+> 判定：**不满足「全绿·待合并 main」**。单元级全绿；E2E 实际执行通过 21 条（另 5 条部分通过）、失败 3 条（登记 R2-BUG-001/002 + BACKUP-011/012 同因）、未执行 13 条（环境不可达 7 / 载体阻塞·资产漂移 5 / 无自动化载体并入前者）；注册面比对完成（2 处文档漂移）。遗留清单见本小节末尾。
+
+#### 一、单元级全量回归（独立重新计数）
+
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（共享主检出 target） | **1137 passed / 0 failed / 2 ignored** |
+| `cargo test -p datazen-driver-mysql`（f7c target） | **72 passed / 0 failed**（lib 64 + 集成 8） |
+| `cargo test -p datazen-driver-postgres` | **92 passed / 0 failed**（lib 80 + 集成 12） |
+| `cargo test -p datazen-driver-sqlite` | **43 passed / 0 failed**（lib 38 + 集成 5） |
+| `cargo test -p datazen-driver-clickhouse` | **30 passed / 0 failed** |
+| `cargo test -p datazen-driver-duckdb` | **26 passed / 0 failed** |
+| `cargo test -p datazen-driver-sqlserver` | **45 passed / 0 failed** |
+| `cargo test -p datazen-driver-api`（6af65712 直接触及其源码故加测） | **92 passed / 0 failed** |
+| `npx vitest run` | **247 文件 / 2033 用例全绿**（与 R-1.3 复验声称一致） |
+| `npx tsc --noEmit` | **0 错误**（exit 0） |
+
+说明：驱动 crate 数字在 9af0e07c 与 6af65712 两个 HEAD 各跑一遍均全绿且计数一致；`9af0e07c` 时点宿主 lib 为 1126/0/2、vitest 为 246 文件/2029 用例，供对照。
+
+#### 二、E2E 执行环境
+
+- webdriver 构建：`pnpm tauri build --debug --features webdriver`（经 `with-plugin-inject --drivers=basic` → postgres/mysql/sqlite/redis；`e2e-tauri-build.mjs` 自动前置 VITE_E2E=1），HEAD `6af65712` 全新构建
+- 真实实例：PG 18.6 @ localhost:5432、MySQL 9.3 @ 127.0.0.1:3306，`e2e/.env` 凭据实测可用；`setup-e2e-env.sh` + `setup-sync-dbs.sh`（手动补 RO 密码）后 sync/demo/e2e 库全部就绪
+- 不可达：无 adb + Android 真机；无 ClickHouse / DuckDB / SQL Server 实例；无 docker
+
+#### 三、逐条结果矩阵（41 条登记用例）
+
+图例：✅ 执行通过 · ◐ 部分通过 · ❌ 失败 · ▲ 未执行（载体阻塞/资产漂移/无载体） · ⛔ 未执行（环境不可达）
+
+**F1 废弃 use_database（11）**
+
+| 编号 | 结果 | 证据与说明 |
+|------|------|-----------|
+| F1-E2E-001 | ◐ | 信封层实证 ✅：`execute_query(database=f7_db_b)` → `SELECT DATABASE()`=f7_db_b、日志一次 `session active database switched`、后续未限定查询命中 f7_db_b；UI 库下拉半场受 sql-query.ts 载体阻塞（遗留-3③）。stream 路径未单独探针 |
+| F1-E2E-002 | ✅ | pin 惰性切库+会话记录更新实证（同上 switched 日志 + follow-up 未限定查询落目标库）；Explain 路径同一 `ensure_session_database` 机制有 Rust 单测覆盖 |
+| F1-E2E-003 | ✅ | 零切换开销实证：连续相同 target 的 switched 计数保持不变（1→1→1） |
+| F1-E2E-004 | ▲ | mysql/postgres-multi-database.ts 前端树仅渲染单库而 `get_databases OK count=10/11` 后端正常——载体阻塞（遗留-3④） |
+| F1-E2E-005 | ▲ | 跨库 DDL CreateTable UI 流程无自动化载体（环境本身可达） |
+| F1-E2E-006 | ▲ | drop database fallback 无自动化载体 |
+| F1-E2E-007 | ✅ | 注入式改写执行：F3/F4 合并后按 F3 遗留注意映射为 `restore_sql_file` 对话框分支——注入 `{path}` 正向恢复 PG 成功（返回 true + 数据验证 count=2），不经 session 状态 |
+| F1-E2E-008 | ✅ | bugfix-admin-commands.ts **19/19 全绿**（显式 database 的 get_tables/admin 族 PG+MySQL、负断言「主窗口右键无 Execute SQL File」） |
+| F1-E2E-009 | ◐ | 显式 database 探活语义已由 F1-008 spec 与探针证明；zz-screenshots 本体未执行 |
+| F1-E2E-010 | ▲ | sql-query.ts before-all 在 `[data-testid=conn-toolbar-new-query]` 20s 超时（后端 connect OK）——载体阻塞（遗留-3③）；Explain UI 半场已有单测 |
+| F1-E2E-011 | ✅ | =B5，渲染回归已在单测层闭环（B5 复验轮），无需 E2E |
+
+**F2 ADB 迁移 SQLite 驱动（5）**
+
+| 编号 | 结果 | 证据与说明 |
+|------|------|-----------|
+| F2-E2E-001~004 | ⛔ | 需真机 adb + Android 设备（环境不可达）；其中 003/004 的对话框半场机制已被 R-1.3 网关收口+DI 样板证明可注入，待有设备时按 DI 模式改写 |
+| F2-E2E-005 | ◐ | PIH-006 源码断言半场 ✅（driverCommands.execute、无 invoke、lib.rs/mod.rs 零 adb 注册、adb.rs 不存在）；UI 半场 ▲ 新建连接图标按钮定位器漂移（遗留-3①） |
+
+**F3 backup/restore 合并（7）**
+
+| 编号 | 结果 | 证据与说明 |
+|------|------|-----------|
+| F3-E2E-001 | ✅ | BACKUP-003：overridePath 直备 saved=true、文件合法 SQL |
+| F3-E2E-002 | ✅ | BACKUP-004~009 六选项矩阵逐项通过（schema-only/data-only/clean/create/gzip/multi/routines 组合产物断言） |
+| F3-E2E-003 | ✅ | **DI-001 注入式改写执行**（原「人工黑盒」例外转自动化）：注入 canceled → 生产对话框分支返回 saved=false 且零副作用；DI-002~004 一并全绿（正向写盘往返 / FIFO+reset 隔离 / 非法形态响亮报错） |
+| F3-E2E-004 | ❌ | BACKUP-011 复验仍红但根因已转移：空标识符类清零（原 7/45 含之，现 0 命中），余 5/43 均 named-relation already-exists —— **R2-BUG-003**（结构性；R2-BUG-001 部分闭环证据见下行 BACKUP-012） |
+| F3-E2E-005 | ✅ | BACKUP-012 复验翻绿（2026-08-26 commit `6b3c4bd8`）：overwrite 恢复往返、行数不翻倍；原 2/7 失败即空标识符语句，R2-BUG-001 修复直接消证 |
+| F3-E2E-006 | ✅ | SF-E01/E02（restore_sql_file + overridePath 正/负两例） |
+| F3-E2E-007 | ◐ | 生产负向门控已被 `resolve_override_path_gates_without_webdriver_feature` 单测钉死；生产包运行时冒烟未执行（需 default 特性构建） |
+
+**F4 connections/app-data 合并（6 + 附增 1）**
+
+| 编号 | 结果 | 证据与说明 |
+|------|------|-----------|
+| F4-E2E-001/002 | ✅ | PIH-003 export_connections overridePath 导出 + import preview 往返 |
+| F4-E2E-003 | ✅ | ADB-002/006/008（zip 写出、排除 logs//*.tmp/.key） |
+| F4-E2E-004 | ✅ | ADB-003 复验翻绿（2026-08-26 commit `6b3c4bd8`）：自产 zip 回灌通过 ratio 守卫；同 spec ADB-002/004~008 一并全绿（ADB-001 红系已知资产漂移·遗留-3②，与本缺陷无关） |
+| F4-E2E-005 | ✅ | ADB-004 path-traversal zip 安全拒绝 |
+| F4-E2E-006 | ◐ | 同 F3-E2E-007（单测钉死、生产冒烟未跑） |
+| 附增（R-1.3 盘点转化项） | ✅ | import_app_data 确认弹窗取消分支：注入 `{path}`→确认框注入 canceled → 返回 false、无导入（探针经原生 WebDriver executeAsync 直调信封） |
+
+**F5 删除纯文件读写 IPC（3）**
+
+| 编号 | 结果 | 证据与说明 |
+|------|------|-----------|
+| F5-E2E-001 | ✅ | ai-context.ts CTX-001~006 全绿（Node fs 种子写入 + context_list/read_files 读回闭环 + traversal 拒绝 + AI 面板触发器） |
+| F5-E2E-002 | ▲ | ai-context-tables.ts before-all 定位器漂移（遗留-3①），T01~T06 未执行 |
+| F5-E2E-003 | ✅ | 运行时负断言探针（原生 WebDriver 直调 `__TAURI_INTERNALS__.invoke`）：`write_file` / `read_file` / `write_file_base64` 均报 `Command … not found`——注册面删除的运行时实证 |
+
+**F6 删除冗余命令（2）**
+
+| 编号 | 结果 | 证据与说明 |
+|------|------|-----------|
+| F6-E2E-001 | ✅ | SYNC-REAL-020 expectCommandNotFound（classify_sync_pair 运行时注销） |
+| F6-E2E-002 | ✅ | SYNC-BATCH-002 同上（批量语境重复守护） |
+
+**F7 驱动级 SQL 定位重写（7）**
+
+| 编号 | 结果 | 证据与说明 |
+|------|------|-----------|
+| F7-E2E-001 | ✅ | MySQL 内联改写实证：envelope `database=f7_db_b` → 回显 SQL `` SELECT … FROM `f7_db_b`.`users` ``、数据命中 from_db_b、日志 `qualification applied`；未限定默认路径仍落 f7_db_a。**语义注记**：终态下 driver_command 信封 `database` 同时触发宿主 pin（commands.md §3.4 双保险正交设计），故 `DATABASE()` 返回 f7_db_b 且 switched 日志出现——登记表原文「DATABASE() 不变的纯内联」预期已被终态语义取代，属设计内行为非缺陷。bound 路径已证，stream 路径未单独探针 |
+| F7-E2E-002 | ✅ | PG：`schema=sales` 内联 `"sales"."users"` 命中 sales.users；`database=f7_pg_b&schema=sales` 池切换+重写并存（pin switched 日志与 qualification 日志同现） |
+| F7-E2E-003 | ⛔ | 无 SQL Server 实例 |
+| F7-E2E-004 | ✅ | SQLite：`database=main` SQL 原样放行（no-op 与现状一致）；ATTACH stats 后 envelope `database=stats` 改写 `"stats"."users"` 命中别名表 |
+| F7-E2E-005 | ⛔ | 无 ClickHouse 实例（mutation 兜底场景随之不可达） |
+| F7-E2E-006 | ⛔ | 无 DuckDB 实例 |
+| F7-E2E-007 | ✅ | 幂等抽样：MySQL 反引号全限定查询 SQL 原样回显、qualification 计数不变；PG `sales.users` 全限定同样零二次改写（改写后结果正确） |
+
+统计：41 条中 ✅ 23 · ◐ 5 · ❌ 1 · ▲ 5 · ⛔ 7（另有附增探针 2 项：import 确认取消、三命令运行时负断言，均 ✅）。**复验轮更新（2026-08-26，commit `6b3c4bd8`）**：原 3 条 ❌ 中两条翻绿（F3-E2E-005 BACKUP-012、F4-E2E-004 ADB-003），F3-E2E-004 根因转移 **R2-BUG-003** 保持 ❌。
+
+#### 四、注册面一致性复核（lib.rs generate_handler vs commands.md）
+
+- **连接管理行 ✅ 11/11 一致**（get_connections…get_available_drivers 逐名核对）
+- **备份行 ❌ 漂移**：文档仍列六命令双轨（backup_database/restore_database/execute_sql_file + 三 *_with_dialog）并注明「合并代码在 feature/f3-backup-merge 分支待随 F4 合入」；实际 HEAD 注册面仅 **`backup_database` + `restore_sql_file`** 两行（lib.rs L876-877），八旧名 grep 0 命中。根因：R-1 收口早于 F4 合并，合并后未回写该行（R-1 自述的「待随合入」指针现已过期）
+- **配置行导入导出族 ⚠️ 漂移**：`export_connections(_with_dialog)`、`export_app_data(_with_dialog)`、`import_app_data(_with_dialog)` 简写暗示的三个 dialog 孪生已被 F4 删除；实际 9 命令中仅 import_connections_with_dialog 保留 _with_dialog 后缀，其余名逐一在注册面
+- **加分核对 ✅**：bb498cb9 新增「对话框网关」行与 lib.rs 实况一致——`test_inject_dialog_result`/`test_reset_dialog_queue` 仅 webdriver 构建经条目级 `#[cfg(feature)]` 注册（L979-982），生产构建注册面零残留
+- 其余各行（Driver Command/SQL 查询/Schema/表编辑/同步/Schema Diff/主题包/AI/上下文/MCP/文件/窗口）抽查一致；dashboard/plugins/transfer/workflow_history/prompt/事务族等命令归属各域架构文档（dashboard.md/plugins.md 等），不在本轮三行 mandate 内
+
+#### 五、遗留清单（按序处理建议）
+
+1. ~~**R2-BUG-001【高】** PG 备份空标识符语句 → restore 部分失败（BACKUP-011/012 红）；修复后须重跑 backup-database.ts 全量~~ **已闭环**（commit `6b3c4bd8` + 复验 2026-08-26：空标识符三层实证清零、BACKUP-012 翻绿；BACKUP-011 残留红转移第 1a 项）
+1a. ~~**R2-BUG-003【中】（复验新增）** BACKUP-011 结构性红：无 overwrite 恢复 schema-only dump × PG catalog DDL 无 IF NOT EXISTS × 库内常驻同名关系~~ **已闭环**（协调者裁决方案 a，commit 本提交：BACKUP-011 改传 `options:['overwrite']` + BACKUP-012 自持播种；重跑 12/12 全绿；副作用披露见台账行与「R-3 资产修复记录」）
+2. ~~**R2-BUG-002【中】** app-data zip-bomb 误拒自产包（ADB-003 红）；裁决阈值或 sidecar 排除规则后重跑 app-data-backup.ts~~ **已闭环**（导出侧 sidecar 排除，commit `6b3c4bd8`；复验 ADB-003 翻绿、负样张防伪装名核实）
+3. **E2E 资产漂移群【测试资产】**：① 新建连接入口已是图标按钮（文案在 title 属性），`button*=新建连接` 类文本选择器失效——波及 path-ipc-hardening.ts PIH-006 UI 半场、ai-context-tables.ts before-all——**已定性·登记不修（重构前既有债务，终局收口轮裁定）**：git -S 追溯断点为 **main 提交 `bd5b2673`（2026-08-18「统一导航树」）将入口图标化**，早于分支分叉点 `986f4fa6`（08-25），非 F1-F7/B5 任一提交所致（F2 仅改 PIH-006 docstring、F4/F5 未触及定位器行；ai-context-tables 旧定位器自诞生提交 `cb24f5a8`（08-09，main）未变）；且同类失效 `button*=action.newConnection` 定位器遍布 ≥11 个 spec 文件（sqlite/connection-validation/backup-window/schema-diff-window/object-browser/client-parity/host-contract-matrix/data-sync-window/data-transfer-window/hotkeys 等），仅修两个会掩盖债务全貌——留待独立资产修复轮统一迁移至仓库既有先例 `button[title="${t('main.newConnection')}"]`（main-window/homepage-features/hotkeys/contract open-fixture 已用）；② ~~ADB-001 仍断言 ConnectionPage.tsx 含 `menu:export/import-connections` 字面量~~ **已修复**（监听器实际在 MainPage.tsx L61-82，迁移实发生于 commit `e883f834`——F2 改 Page 同日的 in-page dialog 提交，早于 F4 的 `4d0fec83`；spec 断言已按组件归属拆分双文件，app-data-backup.ts 8/8 全绿）；③ ~~sql-query.ts before-all 等 `conn-toolbar-new-query` 20s 超时~~ **已修复·定位器/载体过时而非产品缺陷**（根因查明：连接成功后工作区落在 ConnectionWorkspaceHome，其「新建查询」快捷卡是首入口，ContentToolbar 的该按钮要等首个内容面板打开后才挂载——原 before-all 在面板存在前等按钮属死等；helpers.openQueryTab 增加工作区首页快捷卡回退、before-all 移除不可能满足的预等待，sql-query.ts 复跑 26/26 全绿）；④ ~~mysql/postgres-multi-database.ts 多库树仅渲染单库~~ **已修复·纯定位器过时**（树重构后 DB 节点带 `data-tree-node="db"`+`data-db-name` 稳定属性且类名改 `text-[13px]`，旧 `text-sm && !text-[13px]` 启发式零命中造成「仅渲染单库」假象、后端 get_databases 一直正常；两 spec 定位器改用 data 属性，PG/MySQL 各 3/3 全绿）
+4. ~~**注册面文档漂移 2 处**：commands.md 备份行（应改写为双命令终态并删「待随合入」指针）、配置行导入导出族简写（应如实列 9 命令）~~ **已闭环**（commit `6b3c4bd8` 回写两行；复验对照 lib.rs 注册面逐名核对一致——备份 2 名、配置导入导出族 9 名，旧双轨八名 grep 0 命中且有 backup.rs/config.rs/pathIpcWiring.test.ts 三处守护测试钉死）
+5. **环境/流程备注**：e2e/.env 缺 `*_RO_PASSWORD` 使 run.mjs 内建 setup-sync-dbs 步骤每次告警（手动补齐即过）；worktree 共享 node_modules 符号链接会触发 pnpm verify-deps 的 purge 提示（本轮以本地化安装规避，勿对该提示选确认以免波及共享目录）
+
+### R-2 复验记录（2026-08-26，R2 复验测试代理·全新实例，被测 commit `6b3c4bd8`）
+
+> 判定：**R2-BUG-001/002 修复本身验证通过（置「已修复」），整体未达「回归完成·待合并 main」**——关键 spec 中 BACKUP-012/ADB-003 如期翻绿；BACKUP-011 残留红根因为新登记的 **R2-BUG-003**【中】（与两已修缺陷无关的结构性测试×环境耦合），须先行裁决处理并重跑全绿后由下一轮复验收口。
+
+#### 一、真实重跑关键 spec（webdriver 构建 `target/debug/bundle/macos/DataZen.app`，共享 target 增量构建 ~22s；`node e2e/run.mjs --skip-build --spec backup-database.ts,app-data-backup.ts`）
+
+| 用例 | R-2 轮 @6af65712 | 本次复验 @6b3c4bd8 |
+|------|------|------|
+| BACKUP-001~010 | ✅ | ✅ 全绿 |
+| BACKUP-011 | ❌ 7/45（含空标识符） | ❌ 5/43 —— **零空标识符**，余 5 条均 named-relation already-exists（`_e2e_backup_test`/`_e2e_pg_types`/`carbon_ledger`/`product`/`ride_reviews`）→ **R2-BUG-003** |
+| BACKUP-012 | ❌ 2/7 | ✅ **翻绿**（原失败即空标识符语句，修复直接消证；overwrite 往返行数不翻倍断言过） |
+| ADB-001 | ❌（资产漂移·遗留-3② 已登记） | ❌ 同前——spec 断言 ConnectionPage.tsx 含 `menu:export/import-connections` 字面量，监听器实际在 MainPage.tsx L61-70（F2 改 Page 时迁移）；非本提交引入 |
+| ADB-002/004~008 | ✅ | ✅ 全绿 |
+| ADB-003 | ❌ zip-bomb 误拒 | ✅ **翻绿**（自产包 export→import 过 ratio 守卫） |
+
+文件级「0 passed / 2 failed」完全由 ADB-001（已知漂移）与 BACKUP-011（R2-BUG-003）贡献。capabilities redis 报错按预案处理：cargo lib 首跑触发 `Permission redis:default not found`，cp 主检出 `src-tauri/capabilities/default.json` 对齐后通过（gitignored codegen，不入提交）。
+
+#### 二、修复质量四项审查
+
+1. **is_dumpable_object 过滤位置 ✓**：唯一漏斗 `sql_dump::dump_sql_database_with_progress` 在 `partition_dump_objects` **之前**过滤 ⇒ CREATE / clean DROP / INSERT(数据 SELECT) / 进度注释四路同时免疫；三调用方（PG `postgres.rs:1453`、MySQL `mysql.rs:1589`、trait 默认 `traits.rs:376`）全经此漏斗无旁路；空白名用 `trim()` 判定（纯空白名同样免疫）。**不误杀审查**：有名 SystemTable 有专测钉死不导出（MySQL SYSTEM VIEW=information_schema 系、PG SCHEMA_MARKER 均非业务数据，pg_dump/mysqldump 默认亦排除）；合法的逐对象 DDL 导出（`dump_table_ddl`/`get_object_ddl` 族）不经此过滤零影响；现无任何「备份系统目录」需求场景——若未来出现，应改选项门控而非放开本过滤。
+2. **sidecar 负样张 ✓**：`is_sqlite_sidecar` 取相对路径末段做精确后缀匹配 `-wal`/`-shm`；测试钉死 `notes-wal.txt`/`shm.txt` 不误排（`evil.sqlite-shm.txt` 以 `.txt` 结尾同理不命中后缀），真实负载（datazen.sqlite/cache.db/nested/connections.json）不受伤。观察（不阻塞）：大小写敏感（`-WAL` 不排除；SQLite 实际只写小写 sidecar 名）；名为 `*-wal` 的普通文件/目录会被误排，可接受代价。
+3. **「修复前红」实证可信 ✓**：BUG-002 往返单测走真实 `export_app_data`→`import_app_data` 非 mock，512KB 高压缩内容 vs 导入侧 `MAX_COMPRESSION_RATIO=100` 数学上必触发（deflate 后 <1KB ≈ 500~1000:1）；BUG-001 PG live 回归先显式断言 marker 行前置条件（blank name + `SystemTable` 类型）再 dump，红因明确可复现。
+4. **commands.md 两行回写 ✓**：备份行 = lib.rs 实注册 `backup_database`+`restore_sql_file`（L881-882），八旧名 grep 0 命中，且 backup.rs/config.rs/pathIpcWiring.test.ts 三处守护测试以运行时拼针断言其不在注册面；配置行 9 名与 lib.rs L863-871 逐一对应（仅 import_connections_with_dialog / pick_connection_import_path_with_dialog / save_encryption_key_with_dialog 合法保留 `_with_dialog` 后缀，export_connections/export_app_data/import_app_data 三组孪生确删）。
+
+#### 三、独立重跑三件套 + driver-api（与修复轮声称逐位一致）
+
+| 套件 | 声称 | 实测 |
+|------|------|------|
+| `cargo test -p datazen --lib` | 1139 (+2) | **1139 passed / 0 failed / 2 ignored** |
+| `npx vitest run` | 2033 | **247 文件 / 2033 passed / 0 failed** |
+| `npx tsc --noEmit` | 0 错误 | **0 错误** |
+| `cargo test -p datazen-driver-api` | 94 | **94 passed / 0 failed**（另 2 ignored 为 live 门控惯例） |
+| `cargo test -p datazen-driver-postgres --test postgres_dump_empty_schema`（TEST_PG_* 显式注入真实 PG） | 绿 | **1 passed**（0.17s 非跳过；临时 schema 自建自清） |
+
+#### 四、判定与移交
+
+- **R2-BUG-001 → 已修复**：核心症状（空标识符语句）在单元 / live / E2E 三层实证清零
+- **R2-BUG-002 → 已修复**：ADB-003 翻绿 + 单测 + 守卫零改动核实
+- **新增 R2-BUG-003【中】→ 待验证**：BACKUP-011 结构性红（Bug 台账有完整根因链与三个候选方案）
+- 回归矩阵更新：❌ 3→1（两条翻绿、一条根因转移）；统计 ✅21→23
+- **未达「回归完成·待合并 main」**：移交协调者裁决 R2-BUG-003 方案 → 修复 → 重跑 backup-database.ts 全绿 → 下一轮复验收口
+
+### R-3 资产修复记录（2026-08-26，R 阶段 E2E 资产修复代理·全新实例，被测 HEAD `cad4fa43`，仅改测试资产+本进度文件）
+
+> 判定：**R2-BUG-003 按裁决方案 a 修复并重跑转绿；资产漂移群 ②③④ 全部修复转绿；① 未处置（非本轮范围）**。产品代码零改动。仍待下一轮全新复验对「回归完成·待合并 main」收口。
+
+#### 一、R2-BUG-003 → 方案 a 实施（BACKUP-011）
+
+- `e2e/specs/backup-database.ts` BACKUP-011 的 `restore_sql_file` 改传 `options: ['overwrite']`（与 BACKUP-012 同款），用例注释注明裁决理由：无 overwrite 撞库内同名关系的部分失败是合理产品语义（`recover_restore_statement` 仅在 overwrite=true 时 DROP 重试），由 BACKUP-012 与人工路径覆盖；本用例场景收敛为验证 schema-only+routines dump 的完整恢复。
+- **连带修正测试序依赖**：首轮重跑发现 BACKUP-012 翻红（Expected 1 Received 0）——011 的 overwrite 恢复把 `_e2e_backup_test` 按空表重建（schema-only 无 INSERT 可回灌），012 原先隐式依赖 before() 播种的 'alice' 行、且该依赖在旧序下恰被 011 的「全失败无副作用恢复」掩盖；已让 012 开头自行 `seedBackupTable` 自持前置条件。
+- **副作用披露**：overwrite × schema-only 会把 goecoride 库内同名常驻关系 DROP 后按空表重建。修复前实测库内仅 product(4 行)/carbon_ledger(0 行)/ride_reviews(0 行) 受影响——setup_goecoride.sql 的十万行级目标内容在现库本就不存在（早前轮次即已不在，非本次所致）；已先行 `pg_dump -f /tmp/goecoride_pre_r2fix_snapshot.sql` 快照备查。
+
+#### 二、ADB-001 资产漂移修正
+
+- 监听器现状核实（先读源码再改）：`menu:export/import-connections` 八个监听器位于 `src/windows/main/MainPage.tsx` L61-82；ConnectionPage.tsx 仅承载 app-data 侧（backupCommands 调用点 L607/634 + menu:export/import-config L722/725）。
+- 迁移时点勘误：git `-S` 追溯实迁于 commit **`e883f834`**（2026-08-20 in-page connection dialog 提交，F2 Window→Page 改名 `2b91921d` 同日晚间、**早于** F4 的 `4d0fec83`）；R-2 记录「F2 改 Page 时迁移」与本任务书「自 F4 起」均不精确，F4 提交只是带着过期断言改了 spec。
+- spec 修改：断言按组件归属拆分双文件——app-data 四项留 ConnectionPage.tsx，connections 两项改读 MainPage.tsx。
+
+#### 三、遗留清单其余两项核查处置（先探针复现→定性→修）
+
+| 项 | 探针复现 | 定性 | 处置 |
+|---|---|---|---|
+| ③ sql-query.ts before-all | HEAD 实跑同点复红（20s 超时） | **定位器/载体过时·非产品缺陷**：连接成功后工作区落 ConnectionWorkspaceHome（其快捷卡含「新建查询」文案，致 waitForConnectionToolbar 的 body 文本弱校验假通过），ContentToolbar 的 `conn-toolbar-new-query` 要等首个内容面板打开后才挂载——before-all 在面板存在前死等必超时；showNewQuery 链路（ContentView.tsx L129）与 testid 本体均健在 | helpers.openQueryTab 增加 workspace-home 快捷卡回退（多语言标签匹配，工具栏按钮存在时优先原路径，向后兼容全部既有调用方）；sql-query.ts before-all 移除不可能满足的预等待。**已修** |
+| ④ 多库树单库渲染 | PG/MySQL 同点复红（等待 DB 节点超时），后端 `get_databases OK count=8` 正常 | **纯定位器过时**：树行重构后 DB 节点带 `data-tree-node="db"`+`data-db-name` 稳定属性且类名为 `text-[13px]`，spec 旧启发式（`text-sm && !text-[13px] && !pl-8`）对现行标记零命中 → 「仅渲染单库」假象；持久化 MultiDb 连接 database=None 配置正确，排除 fixture 因素 | 两 spec 的 listSidebarDbNames/clickSidebarDb 改用 data 属性定位。**已修** |
+
+两处均为 ≤10 行级定位器修正（每文件计）；未发现需登记的产品行为疑点。
+
+#### 四、真实重跑逐用例结果（webdriver 构建 `target/debug/bundle/macos/DataZen.app` 复用，`--skip-build`，5 spec 一轮）
+
+| Spec | 结果 |
+|------|------|
+| postgres-multi-database.ts | **3/3 ✅** F4-E2E-001/002/003（原 ▲ 载体阻塞→全绿，003 由 skip 转 pass） |
+| mysql-multi-database.ts | **3/3 ✅** F2-E2E-001/002/003（同上） |
+| sql-query.ts | **26/26 ✅** SQ-001~021/SQ-CTX/BIND/EXPLAIN（原 before-all 阻塞 0 执行→全绿；F1-E2E-010 UI 半场随之解锁） |
+| backup-database.ts | **12/12 ✅** 含 BACKUP-011（方案 a 修复）、BACKUP-012（自播种后绿）、BACKUP-010 负例 |
+| app-data-backup.ts | **8/8 ✅** 含 ADB-001（MainPage 断言拆分后绿） |
+
+合计 52 用例 0 失败（`Spec Files: 5 passed, 5 total`）。capabilities 无 redis 报错（default.json 已与主检出对齐，gitignore 不入提交）。
+
+#### 五、三件套（快速档）+ 边界
+
+| 套件 | 结果 |
+|------|------|
+| `npx tsc --noEmit` | **0 错误** |
+| `npx vitest run` | **247 文件 / 2033 passed / 0 failed**（与 R-2 基线逐位一致） |
+| `cargo test -p datazen --lib` | **1139 passed / 0 failed / 2 ignored**（与 R-2 基线逐位一致；TS 资产改动不触及 Rust 面，例行复核） |
+
+边界声明：本轮仅改 `e2e/` 五文件 + 本进度文件；未动 src//src-tauri//packages/ 产品代码；未 add 未跟踪文档（dev-workflow.txt / ipc-refactor-plan.md 保持 untracked）；node_modules 软链维持现状未 install。
+
+#### 六、判定与移交
+
+- R2-BUG-003 → **已修复**（台账行同步）；遗留 1a/②③④ → 已闭环；① 保持待处理
+- 回归矩阵影响：▲ 5→1（多库×2、sql-query 解锁转 ✅）、❌ 1→0、✅ 23→29（BACKUP-011 计入）
+- **仍未达「回归完成·待合并 main」**：须下一轮全新实例复验收口（含 ① 与 PIH-006/ai-context-tables 半场、F1-E2E-004 等解锁用例的全量重跑确认）
+
+### R 终局收口记录（2026-08-26，R 阶段最终收口代理·全新实例，被测 HEAD `bdd43e14`，仅改测试资产（无）+ 本进度文件）
+
+> 判定：**回归完成·待合并 main**。R 阶段全部可执行用例绿、缺陷台账清零、唯一遗留①已按判定规则处置完毕。
+
+#### 一、遗留① 处置：定性为重构前既有债务，登记不修
+
+按任务书判定规则执行 `git log -S` 成因追溯，证据链如下：
+
+| 环节 | 事实 |
+|------|------|
+| 断点提交 | **`bd5b2673`**（2026-08-18 14:33「feat: unified navigator tree with single virtualizer and UX improvements」）：新建连接入口由带可见文案的文本按钮改为纯图标 `<button title={t('main.newConnection')}>`（ConnectionNavigatorTree.tsx），`button*=文本` 选择器自此零命中 |
+| 归属判定 | 该提交在 **origin/main 上**，早于分支分叉点 `986f4fa6`（2026-08-25）→ **非 F1-F7/B5 任一重构提交所致** |
+| F 轨清白核查 | F2 `823516c2` 仅改 PIH-006 docstring；F4 `4d0fec83` 未触及该 spec 定位器行；F5 `8f9e4a9c` 未触及 ai-context-tables 定位器行——其 `button*=${t('action.newConnection')}` 自诞生提交 `cb24f5a8`（2026-08-09，main）从未改动 |
+| 波及面核查 | 同类失效定位器遍布 **≥11 个 spec 文件**（sqlite / connection-validation / backup-window / schema-diff-window / object-browser / client-parity / host-contract-matrix / data-sync-window / data-transfer-window / hotkeys 等）；仓库已有标准修法先例 `button[title="${t('main.newConnection')}"]`（main-window.ts L40、homepage-features.ts、hotkeys.ts、contract/open-fixture.ts 均在用） |
+
+**处置结论：不修，如实登记。** 理由：(a) 判定规则以成因为准——系 main 既有债务而非重构期 UI 变更；(b) 修复本身虽 ≤10 行/文件且模式现成，但仅修波及两 spec 会掩盖 ≥11 文件的债务全貌，正确归宿是独立的测试资产修复轮统一迁移 title 属性定位器（与 F 轨无关，不阻塞本分支合并）。影响登记：PIH-006 源码断言半场维持 ✅（R-2 已证）、UI 半场与 CTX-T01~T06 维持 ▲；两者均非产品缺陷、非本分支回归。
+
+#### 二、独立抽验 R-3 成果（webdriver 构建 `target/debug/bundle/macos/DataZen.app` 复用，`node e2e/run.mjs --skip-build --spec backup-database.ts,sql-query.ts`）
+
+| Spec | 结果 |
+|------|------|
+| backup-database.ts | **12/12 ✅**——含 BACKUP-011（方案 a overwrite 恢复）与 BACKUP-012（自播种 + 行数不翻倍断言），BACKUP-010 负例同绿 |
+| sql-query.ts | **26/26 ✅**——SQ-001~021/SQ-CTX/BIND/EXPLAIN 全绿（含流式不截断、取消、选中执行） |
+
+`Spec Files: 2 passed, 2 total (100%)`，与 R-3 声称逐位一致 → **R-3 五项修复（BACKUP-011/012、ADB-001、③④）独立复核通过**。capabilities 无 redis 报错（default.json 已与主检出对齐，gitignored codegen 不入提交）。
+
+#### 三、终局回归矩阵
+
+| 维度 | 终态 | 说明 |
+|------|------|------|
+| ✅ 执行通过 | **29** | 含 R-3 解锁的多库×2、sql-query 26 例与 BACKUP-011 |
+| ◐ 部分通过 | **5** | 信封层/单测已钉死的既定口径残项（stream 探针、生产冒烟等），历轮登记在案 |
+| ❌ 失败 | **0** | R2-BUG-001/002/003 全部修复并经独立复验 |
+| ▲ 未执行（载体/资产） | **1** | 即遗留①两处半场——终局定性：重构前既有资产债务（见本节一），非本分支引入、非产品缺陷 |
+| ⛔ 未执行（环境不可达） | **7** | adb 真机 ×4、SQL Server / ClickHouse / DuckDB ×3，历来如此 |
+| 附增探针 | 2 ✅ | import 确认取消、三删除命令运行时负断言 |
+
+单元级基线（R-2/R-3 两轮逐位一致，本轮未触代码不重复执行）：`cargo test -p datazen --lib` 1139 passed / 0 failed / 2 ignored；`npx vitest run` 247 文件 / 2033 用例全绿；`npx tsc --noEmit` 0 错误。
+
+#### 四、终局判定
+
+- **达成「回归完成·待合并 main」**：❌=0 且缺陷台账清零；✅29 覆盖全部重构面（F1-F7/B5 注册面变更、语义变更、删除命令负断言）；唯一 ▲ 与 ⛔ 均为登记在案的非阻塞项（前者重构前债务、后者环境限制），合并本分支不劣化任何现状。
+- 非阻塞移交项（后续独立处理，不属 R 阶段）：**测试资产修复轮**——≥11 个 spec 的 `button*=` 新建连接定位器统一迁移 `button[title=…]`（含 PIH-006 UI 半场与 ai-context-tables 解锁）；e2e/.env 补 `*_RO_PASSWORD` 消 setup 告警。
+- 边界声明：本轮零代码改动（两 spec 未修）、仅更新本进度文件；未 add 未跟踪文档（dev-workflow.txt / ipc-refactor-plan.md 保持 untracked）；node_modules 软链未 install。

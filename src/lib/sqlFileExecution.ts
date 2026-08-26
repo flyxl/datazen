@@ -21,15 +21,14 @@ export interface RunSqlFileExecutionOptions {
   onProgress?: (payload: BackupProgressPayload | null, statusLine: string) => void;
   onError?: (message: string) => void;
   logPump?: ReturnType<typeof createProgressLogPump>;
-  /** Defaults to `execute_sql_file_with_dialog`; restore window uses `restore_database_with_dialog`. */
-  command?: 'execute_sql_file_with_dialog' | 'restore_database_with_dialog';
   /** Defaults to `backup.restoreSuccess`. */
   successMessageKey?: I18nKey;
 }
 
 /**
  * Pick a `.sql` file via native dialog and stream-execute it on the backend
- * (same pipeline as Restore Database). Never loads file contents into JS.
+ * through the unified `restore_sql_file` IPC (decision 3+6 merged
+ * path+dialog entry points). Never loads file contents into JS.
  */
 export async function runSqlFileExecution({
   dbSessionId,
@@ -40,11 +39,8 @@ export async function runSqlFileExecution({
   onProgress,
   onError,
   logPump: externalLogPump,
-  command = 'execute_sql_file_with_dialog',
   successMessageKey = 'backup.restoreSuccess',
 }: RunSqlFileExecutionOptions): Promise<boolean> {
-  await invoke('use_database', { dbSessionId, database });
-
   const options: string[] = [];
 
   if (confirmBeforeExecute) {
@@ -81,7 +77,7 @@ export async function runSqlFileExecution({
   });
 
   try {
-    const executed = await invoke<boolean>(command, {
+    const executed = await invoke<boolean>('restore_sql_file', {
       dbSessionId,
       database,
       options,

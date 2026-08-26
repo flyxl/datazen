@@ -431,6 +431,20 @@ export type CommandCategory = 'query' | 'mutate' | 'admin' | 'observe' | 'pubSub
 
 export type CommandAccessLevel = 'read' | 'write' | 'highRisk';
 
+/**
+ * Declarative native save dialog attached to a command (host thin shell).
+ * The command returns `{ fileNameField, dataBase64Field }`; an interactive
+ * `execute_driver_command` call pops the native save dialog, writes the bytes
+ * and replaces the result with `{ resultPathField: savedPath | null }`.
+ */
+export interface DriverSaveDialogSpec {
+  fileNameField: string;
+  dataBase64Field: string;
+  filterName: string;
+  extensions: string[];
+  resultPathField: string;
+}
+
 export interface DriverCommandMetadata {
   category: CommandCategory;
   risk?: CommandAccessLevel | null;
@@ -439,6 +453,7 @@ export interface DriverCommandMetadata {
   deprecated: boolean;
   replacedBy?: string | null;
   requiresConnection: boolean;
+  saveDialog?: DriverSaveDialogSpec | null;
 }
 
 export interface DriverCommandDefinition {
@@ -644,24 +659,6 @@ export interface TableSchemaDiff {
   changed: ChangedColumnDiff[];
   sourceDdl?: string;
   targetDdl?: string;
-}
-
-export type RowMismatchKind = 'source_only' | 'target_only' | 'different';
-
-export interface RowMismatch {
-  key: string;
-  kind: RowMismatchKind;
-  source?: Record<string, unknown>;
-  target?: Record<string, unknown>;
-}
-
-export interface TableDataCompare {
-  table: string;
-  sourceRowCount: number;
-  targetRowCount: number;
-  sampledRows: number;
-  mismatches: RowMismatch[];
-  truncated: boolean;
 }
 
 // ── MCP Client types ──

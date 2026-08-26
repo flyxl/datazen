@@ -43,7 +43,6 @@ function makeDeps(overrides: Partial<EnsureDeps> = {}): EnsureDeps {
     currentDatabase: null,
     getDatabases: vi.fn().mockResolvedValue([]),
     getTables: vi.fn().mockResolvedValue([]),
-    useDatabase: vi.fn().mockResolvedValue(undefined),
     ...overrides,
     pathAliases: overrides.pathAliases ?? pathAliases,
     loadedPaths: overrides.loadedPaths ?? loadedPaths,
@@ -236,7 +235,7 @@ describe('ensureNamespacePath — default-sql (mysql)', () => {
     expect(deps.mergeNamespace).toHaveBeenCalledWith([], 'branch', ['app', 'test']);
   });
 
-  it("['app'] uses useDatabase + getTables and excludes views", async () => {
+  it("['app'] uses getTables and excludes views", async () => {
     const deps = makeDeps({
       databaseType: 'mysql',
       pathAliases: {},
@@ -248,7 +247,6 @@ describe('ensureNamespacePath — default-sql (mysql)', () => {
 
     await ensureNamespacePath(['app'], deps);
 
-    expect(deps.useDatabase).toHaveBeenCalledWith('conn-1', 'app');
     expect(deps.getTables).toHaveBeenCalledWith('conn-1', 'app');
     expect(deps.mergeNamespace).toHaveBeenCalledWith(['app'], 'tables', ['users']);
   });
@@ -298,7 +296,6 @@ describe('ensureNamespacePath — postgresql', () => {
       ] satisfies TableInfo[]),
     });
     await ensureNamespacePath([], deps);
-    expect(deps.useDatabase).toHaveBeenCalledWith('conn-1', 'app');
     expect(deps.mergeNamespace).toHaveBeenCalledWith([], 'branch', ['public', 'audit']);
     expect(deps.mergeNamespace).toHaveBeenCalledWith(['public'], 'tables', ['users', 'v_users']);
     expect(deps.mergeNamespace).toHaveBeenCalledWith(['audit'], 'tables', ['logs']);
@@ -316,7 +313,6 @@ describe('ensureNamespacePath — postgresql', () => {
         ] satisfies TableInfo[]),
     });
     await ensureNamespacePath(['db1'], deps);
-    expect(deps.useDatabase).toHaveBeenCalledWith('conn-1', 'db1');
     expect(deps.mergeNamespace).toHaveBeenCalledWith(['db1'], 'branch', ['public']);
     expect(deps.mergeNamespace).toHaveBeenCalledWith(['db1', 'public'], 'tables', ['t1']);
   });
@@ -349,7 +345,6 @@ describe('ensureNamespacePath — postgresql', () => {
       ] satisfies TableInfo[]),
     });
     await ensureNamespacePath(['public'], deps);
-    expect(deps.useDatabase).toHaveBeenCalledWith('conn-1', 'app');
     expect(deps.getTables).toHaveBeenCalledWith('conn-1', 'app');
     expect(deps.mergeNamespace).toHaveBeenCalledWith(['public'], 'tables', ['users']);
   });

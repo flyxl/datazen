@@ -3,6 +3,7 @@ import { queryCommands } from '../commands/query';
 import type { DatabaseType, FavoriteQuery, QueryHistoryEntry, Value } from '../types';
 import type { ChartConfig } from '../types/chart';
 import type { TrendSeries } from '../lib/serverStatusTrends';
+import { useSchemaStore } from './schemaStore';
 import {
   type BindParams,
   type QueryExecState,
@@ -227,6 +228,26 @@ interface PanelActions {
   reset: () => void;
 }
 
+/**
+ * F1: the SQL editor's database dropdown is pure local state
+ * (`schemaStore.currentDatabase`), so every execution must carry the panel's
+ * selected database explicitly — the backend pins the session to it before
+ * running unqualified SQL (BUG-001 fix).
+ */
+function panelTargetDatabase(dbSessionId: string): string | null {
+  return useSchemaStore.getState().schemas.get(dbSessionId)?.currentDatabase ?? null;
+}
+
+/**
+ * F7: the PG-family current schema is pure local state
+ * (`schemaStore.currentSchema`, set via `setCurrentSchema`), so executions
+ * carry it explicitly as the envelope `schema` field — rewrite-capable
+ * drivers inline it (`"schema"."t"`); others ignore it.
+ */
+function panelTargetSchema(dbSessionId: string): string | null {
+  return useSchemaStore.getState().schemas.get(dbSessionId)?.currentSchema ?? null;
+}
+
 export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
   panels: [],
   activePanelId: null,
@@ -353,9 +374,26 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const setExec = (next: Map<string, QueryExecState>) => set({ queryExec: next });
 
     if (params && Object.keys(params).length > 0) {
-      await runBoundQuery(panelId, panel.dbSessionId, sql, params, getExec, setExec);
+      await runBoundQuery(
+        panelId,
+        panel.dbSessionId,
+        sql,
+        params,
+        getExec,
+        setExec,
+        panelTargetDatabase(panel.dbSessionId),
+        panelTargetSchema(panel.dbSessionId),
+      );
     } else {
-      await runStreamingQuery(panelId, panel.dbSessionId, sql, getExec, setExec);
+      await runStreamingQuery(
+        panelId,
+        panel.dbSessionId,
+        sql,
+        getExec,
+        setExec,
+        panelTargetDatabase(panel.dbSessionId),
+        panelTargetSchema(panel.dbSessionId),
+      );
     }
     await get().loadHistory(panel.connectionId);
   },
@@ -369,9 +407,26 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const setExec = (next: Map<string, QueryExecState>) => set({ queryExec: next });
 
     if (params && Object.keys(params).length > 0) {
-      await runBoundQuery(panelId, panel.dbSessionId, sql, params, getExec, setExec);
+      await runBoundQuery(
+        panelId,
+        panel.dbSessionId,
+        sql,
+        params,
+        getExec,
+        setExec,
+        panelTargetDatabase(panel.dbSessionId),
+        panelTargetSchema(panel.dbSessionId),
+      );
     } else {
-      await runStreamingQuery(panelId, panel.dbSessionId, sql, getExec, setExec);
+      await runStreamingQuery(
+        panelId,
+        panel.dbSessionId,
+        sql,
+        getExec,
+        setExec,
+        panelTargetDatabase(panel.dbSessionId),
+        panelTargetSchema(panel.dbSessionId),
+      );
     }
     await get().loadHistory(panel.connectionId);
   },

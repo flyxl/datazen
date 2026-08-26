@@ -52,7 +52,7 @@ pnpm e2e:skip-build -- --spec e2e/specs/zz-screenshots.ts
 - 新建查询 tab 后编辑器未获得焦点
 
 **修复方向**：
-1. 测试开头用 IPC `use_database` 显式切到 `postgres`
+1. 测试开头显式定位到 `postgres` 库：查询携带 `database: 'postgres'` 参数，或先 `get_tables({ database: 'postgres' })` 探活（原 `use_database` IPC 已随 IPC 重构移除）
 2. 等待 `[data-dt-row]` 出现前先检查 `exec.running` 状态
 3. 14-multidb 修复后此用例可能自动通过（级联失败）
 

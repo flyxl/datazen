@@ -16,6 +16,7 @@ pub mod schema_object_commands;
 pub mod schema_objects;
 pub mod sql_dump;
 pub mod sql_split;
+pub mod sql_target;
 pub mod sqlite_structure;
 pub mod sync;
 mod traits;
@@ -26,7 +27,7 @@ pub use command::{
     query_command_definition, query_command_definition_for, query_only_command_definitions,
     query_stream_command_definition, required_access_level, statement_command_definitions,
     validate_command_input, CommandAccessLevel, CommandCategory, CommandResult,
-    DriverCommandDefinition, DriverCommandMetadata,
+    DriverCommandDefinition, DriverCommandMetadata, DriverSaveDialogSpec,
 };
 pub use explain_plan::{normalize_mysql_explain_plan, normalize_postgres_explain_plan};
 pub use factory::*;
@@ -44,6 +45,7 @@ pub use schema_objects::{
 };
 pub use sql_dump::{RestoreSession, RestoreStatementGuard};
 pub use sql_split::{SqlStatementScanner, Utf8ChunkDecoder};
+pub use sql_target::{qualify_sql_with, QualifiedSql, QualifierQuote, SqlTarget};
 pub use sync::{
     BoxedSyncAdapter, IRColumn, IRDefault, IRTable, IRType, SyncAdapterFactory, SyncSourceAdapter,
     SyncTargetAdapter,

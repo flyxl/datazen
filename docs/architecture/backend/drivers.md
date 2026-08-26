@@ -978,7 +978,7 @@ pub async fn init_drivers() -> DriverRegistry {
 | `commands/sync/` | Data Sync IPC（`inspect_data_sync` / `compare_data_sync` / `execute_data_sync`；legacy sync IPC 已移除） |
 | `kiwi.rs` | Kiwi OAuth 登录/实例列表 |
 | `config.rs` | 设置、分组、导入导出（含加密） |
-| `file.rs` | 文件读写、编辑器右键菜单 |
+| `file.rs` | 对话框系文件保存/打开与流式导出、编辑器右键菜单（纯路径读写 IPC 已随 IPC 重构删除） |
 
 ### 3.2 驱动接口隔离
 

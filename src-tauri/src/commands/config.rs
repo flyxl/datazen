@@ -2,7 +2,7 @@ use super::connection_import::{
     self, detect_import_path, format_label, parse_from_app, parse_import_file, ImportApp,
     PathContext,
 };
-use super::error::{CmdExt, CommandError};
+use super::error::{resolve_override_path, CmdExt, CommandError, OVERRIDE_DISABLED_MSG};
 use super::AppState;
 use crate::app_data_archive;
 use crate::db::ConnectionConfig;
@@ -241,65 +241,88 @@ fn build_encrypted_connections_export(
     connection_import::build_tableplus_export(connections, password)
 }
 
-#[tauri::command]
-pub async fn export_connections(
-    state: State<'_, AppState>,
-    path: String,
-    password: String,
+/// Build the encrypted `.datazenconnection` payload and write it to `dest`.
+async fn write_connections_export(
+    state: &AppState,
+    password: &str,
+    dest: PathBuf,
 ) -> Result<u32, CommandError> {
-    require_webdriver_path_ipc("Direct path connection export disabled")?;
-    tracing::info!(%path, "export_connections");
     let connections = state.store.get_connections().await;
     let groups = state.store.get_groups().await;
     let count = connections.len() as u32;
 
-    let bytes = build_encrypted_connections_export(&connections, &groups, &password)?;
+    let bytes = build_encrypted_connections_export(&connections, &groups, password)?;
 
-    tokio::fs::write(PathBuf::from(&path), &bytes)
+    tokio::fs::write(&dest, &bytes)
         .await
         .cmd_err("export_connections")?;
 
-    tracing::info!(%path, count, "export_connections OK");
+    tracing::info!(path = %dest.display(), count, "export_connections OK");
     Ok(count)
 }
 
-/// Native save dialog + RNCryptor `.datazenconnection` export. Returns connection count if saved, `None` if cancelled.
+/// Open-dialog filters shared by [`import_connections_preview`] and
+/// [`import_connections_with_dialog`] (pure data — the invocation itself lives
+/// in the central [`super::dialog`] gateway).
+fn connections_open_filters() -> Vec<(String, Vec<String>)> {
+    vec![
+        (
+            "Connections".into(),
+            vec![
+                "json".into(),
+                "xml".into(),
+                "ncx".into(),
+                "datazenconnection".into(),
+                "tableplusconnection".into(),
+            ],
+        ),
+        (
+            "DataZen".into(),
+            vec!["datazenconnection".into(), "json".into()],
+        ),
+        ("DataGrip XML".into(), vec!["xml".into()]),
+        ("Navicat NCX".into(), vec!["ncx".into(), "xml".into()]),
+        ("DBeaver JSON".into(), vec!["json".into()]),
+        ("TablePlus".into(), vec!["tableplusconnection".into()]),
+    ]
+}
+
+/// Native save dialog + RNCryptor `.datazenconnection` export.
+///
+/// Merges the former webdriver-only raw-path `export_connections(path)` and
+/// `export_connections_with_dialog` into one IPC (decision 3): production
+/// callers omit `override_path` and go through the dialog; E2E passes
+/// `override_path`, which requires a webdriver build (`cfg!(feature =
+/// "webdriver")`, see [`super::error::resolve_override_path`]). Returns the
+/// connection count if saved, `None` if cancelled.
 #[tauri::command]
-pub async fn export_connections_with_dialog(
+pub async fn export_connections(
     app: AppHandle,
     state: State<'_, AppState>,
     password: String,
     default_file_name: String,
+    override_path: Option<String>,
 ) -> Result<Option<u32>, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
     validate_share_password(&password)?;
 
-    let app_for_dialog = app.clone();
-    let picked = run_blocking_dialog(move || {
-        app_for_dialog
-            .dialog()
-            .file()
-            .add_filter("DataZen", &["datazenconnection"])
-            .set_file_name(&default_file_name)
-            .blocking_save_file()
-    })
-    .await?;
-    let Some(dest) = dialog_file_path_to_buf(picked)? else {
-        return Ok(None);
+    let dest = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
+        Some(path) => Some(path),
+        None => {
+            super::dialog::save_file(
+                &app,
+                ("DataZen".into(), vec!["datazenconnection".into()]),
+                default_file_name,
+            )
+            .await?
+        }
+    };
+    let Some(dest) = dest else {
+        return Ok(None); // user dismissed the dialog
     };
 
-    let connections = state.store.get_connections().await;
-    let groups = state.store.get_groups().await;
-    let count = connections.len() as u32;
-    let bytes = build_encrypted_connections_export(&connections, &groups, &password)?;
-
-    tokio::fs::write(dest, &bytes)
-        .await
-        .cmd_err("export_connections_with_dialog")?;
-
-    tracing::info!(count, "export_connections_with_dialog OK");
-    Ok(Some(count))
+    Ok(Some(
+        write_connections_export(&state, &password, dest).await?,
+    ))
 }
 
 fn import_password_option(password: &str) -> Option<&str> {
@@ -355,63 +378,67 @@ pub(crate) async fn apply_connection_import_impl(
     })
 }
 
-#[tauri::command]
-pub async fn import_connections_preview(
-    path: String,
-    password: String,
+/// Parse an imported connections file into a preview payload (no store writes).
+async fn build_import_preview_from_path(
+    password: &str,
+    source: PathBuf,
 ) -> Result<serde_json::Value, CommandError> {
-    require_webdriver_path_ipc("Direct path connection import disabled")?;
-    tracing::info!(%path, "import_connections_preview");
-    let source = PathBuf::from(&path);
     let bytes = tokio::fs::read(&source)
         .await
         .cmd_err("import_connections_preview")?;
-
-    let parsed = parse_import_file(&source, &bytes, import_password_option(&password))?;
-
+    let parsed = parse_import_file(&source, &bytes, import_password_option(password))?;
     Ok(build_import_preview_json(&parsed))
 }
 
-/// Native open dialog + decrypt/merge import. Returns stats if imported, `None` if cancelled.
+/// Preview the contents of a connections file without importing.
+///
+/// Decision 3 form: production callers omit `override_path` and pick the file
+/// through the native open dialog; E2E passes `override_path`, which requires
+/// a webdriver build. Returns the preview JSON, or `None` when the dialog was
+/// dismissed.
+#[tauri::command]
+pub async fn import_connections_preview(
+    app: AppHandle,
+    password: String,
+    override_path: Option<String>,
+) -> Result<Option<serde_json::Value>, CommandError> {
+    let source = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
+        Some(path) => Some(path),
+        None => super::dialog::open_file(&app, connections_open_filters()).await?,
+    };
+    let Some(source) = source else {
+        return Ok(None); // user dismissed the dialog
+    };
+    tracing::info!(path = %source.display(), "import_connections_preview");
+    Ok(Some(
+        build_import_preview_from_path(&password, source).await?,
+    ))
+}
+
+/// Parse + decrypt + merge-import a connections file picked through the native
+/// open dialog. Returns stats if imported, `None` if cancelled.
 /// Password may be empty for DataGrip / Navicat / DBeaver / DBX plain JSON.
+///
+/// Decision 3 form: `override_path` (webdriver builds only) replaces the
+/// dialog-picked file for E2E; production callers omit it.
 #[tauri::command]
 pub async fn import_connections_with_dialog(
     app: AppHandle,
     state: State<'_, AppState>,
     password: String,
+    override_path: Option<String>,
 ) -> Result<Option<ImportConnectionsResult>, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
-    let app_for_dialog = app.clone();
-    let picked = run_blocking_dialog(move || {
-        app_for_dialog
-            .dialog()
-            .file()
-            .add_filter(
-                "Connections",
-                &[
-                    "json",
-                    "xml",
-                    "ncx",
-                    "datazenconnection",
-                    "tableplusconnection",
-                ],
-            )
-            .add_filter("DataZen", &["datazenconnection", "json"])
-            .add_filter("DataGrip XML", &["xml"])
-            .add_filter("Navicat NCX", &["ncx", "xml"])
-            .add_filter("DBeaver JSON", &["json"])
-            .add_filter("TablePlus", &["tableplusconnection"])
-            .blocking_pick_file()
-    })
-    .await?;
-    let Some(source) = dialog_file_path_to_buf(picked)? else {
-        return Ok(None);
+    let source = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
+        Some(path) => Some(path),
+        None => super::dialog::open_file(&app, connections_open_filters()).await?,
+    };
+    let Some(source) = source else {
+        return Ok(None); // user dismissed the dialog
     };
 
     let bytes = tokio::fs::read(&source)
         .await
-        .cmd_err("import_connections_with_dialog")?;
+        .cmd_err("import_connections")?;
 
     let parsed = parse_import_file(&source, &bytes, import_password_option(&password))?;
     let incoming = parsed.connections;
@@ -434,7 +461,7 @@ pub async fn import_connections_with_dialog(
         groups_added = result.groups_added,
         skipped = result.skipped.len(),
         %source_format,
-        "import_connections_with_dialog OK"
+        "import_connections OK"
     );
     Ok(Some(result))
 }
@@ -468,35 +495,6 @@ fn import_file_filters(app: ImportApp) -> (&'static str, &'static [&'static str]
     }
 }
 
-/// Convert a native dialog result into a filesystem path. `None` means cancelled.
-pub(crate) fn dialog_file_path_to_buf(
-    picked: Option<tauri_plugin_dialog::FilePath>,
-) -> Result<Option<PathBuf>, CommandError> {
-    let Some(fp) = picked else {
-        return Ok(None);
-    };
-    fp.into_path()
-        .map(Some)
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))
-}
-
-/// Run a blocking native dialog on a worker thread.
-///
-/// Sync IPC + `blocking_pick_*` freezes macOS (main thread waits for Finder,
-/// Finder waits for the main thread). Callback `pick_file` + `oneshot` await
-/// also freezes: the plugin `block_on`s the dialog on the same runtime the
-/// command is waiting on. Async command + `spawn_blocking` + `blocking_pick_*`
-/// is the pattern tauri-plugin-dialog documents for async commands.
-async fn run_blocking_dialog<T, F>(f: F) -> Result<T, CommandError>
-where
-    F: FnOnce() -> T + Send + 'static,
-    T: Send + 'static,
-{
-    tauri::async_runtime::spawn_blocking(f)
-        .await
-        .map_err(|e| CommandError::Internal(format!("native dialog task: {e}")))
-}
-
 /// Native file or folder picker for competitor data/install paths. Path never crosses as a write.
 #[tauri::command]
 pub async fn pick_connection_import_path_with_dialog(
@@ -504,23 +502,22 @@ pub async fn pick_connection_import_path_with_dialog(
     mode: String,
     source: String,
 ) -> Result<Option<String>, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
     let import_app = ImportApp::parse(&source)?;
     let is_folder = mode.trim().eq_ignore_ascii_case("folder");
-    let picked = run_blocking_dialog(move || {
-        if is_folder {
-            app.dialog().file().blocking_pick_folder()
-        } else {
-            let (label, exts) = import_file_filters(import_app);
-            app.dialog()
-                .file()
-                .add_filter(label, exts)
-                .blocking_pick_file()
-        }
-    })
-    .await?;
-    Ok(dialog_file_path_to_buf(picked)?.map(|p| p.to_string_lossy().into_owned()))
+    let picked = if is_folder {
+        super::dialog::pick_folder(&app).await?
+    } else {
+        let (label, exts) = import_file_filters(import_app);
+        super::dialog::open_file(
+            &app,
+            vec![(
+                label.to_string(),
+                exts.iter().map(|s| (*s).to_string()).collect(),
+            )],
+        )
+        .await?
+    };
+    Ok(picked.map(|p| p.to_string_lossy().into_owned()))
 }
 
 #[tauri::command]
@@ -571,14 +568,11 @@ pub async fn import_connections_from_app(
     Ok(result)
 }
 
-#[tauri::command]
-pub async fn export_app_data(state: State<'_, AppState>, path: String) -> Result<(), CommandError> {
-    require_webdriver_path_ipc("Direct path export disabled; use export_app_data_with_dialog")?;
-    tracing::info!(%path, "export_app_data");
+/// Export the app data ZIP archive to `dest` with options from settings.
+async fn export_app_data_to_dest(state: &AppState, dest: PathBuf) -> Result<(), CommandError> {
     let data_dir = state.store.data_dir().clone();
     let settings = state.store.get_settings().await;
     let options = export_options_from_settings(&settings);
-    let dest = PathBuf::from(path);
     tokio::task::spawn_blocking(move || {
         app_data_archive::export_app_data_with_options(&data_dir, &dest, options)
     })
@@ -589,46 +583,12 @@ pub async fn export_app_data(state: State<'_, AppState>, path: String) -> Result
     Ok(())
 }
 
-/// Native save dialog + ZIP export. Path never crosses the webview.
-/// Returns `true` if exported, `false` if cancelled.
-#[tauri::command]
-pub async fn export_app_data_with_dialog(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    default_file_name: String,
-) -> Result<bool, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("ZIP", &["zip"])
-        .set_file_name(&default_file_name)
-        .blocking_save_file();
-    let Some(fp) = picked else {
-        return Ok(false);
-    };
-    let dest = fp
-        .into_path()
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
+/// Import an app data ZIP archive from `source`.
+async fn import_app_data_from_source(
+    state: &AppState,
+    source: PathBuf,
+) -> Result<(), CommandError> {
     let data_dir = state.store.data_dir().clone();
-    let settings = state.store.get_settings().await;
-    let options = export_options_from_settings(&settings);
-    tokio::task::spawn_blocking(move || {
-        app_data_archive::export_app_data_with_options(&data_dir, &dest, options)
-    })
-    .await
-    .map_err(|e| CommandError::Internal(format!("export_app_data_with_dialog task: {e}")))?
-    .cmd_err("export_app_data_with_dialog")?;
-    Ok(true)
-}
-
-#[tauri::command]
-pub async fn import_app_data(state: State<'_, AppState>, path: String) -> Result<(), CommandError> {
-    require_webdriver_path_ipc("Direct path import disabled; use import_app_data_with_dialog")?;
-    tracing::info!(%path, "import_app_data");
-    let data_dir = state.store.data_dir().clone();
-    let source = PathBuf::from(path);
     tokio::task::spawn_blocking(move || app_data_archive::import_app_data(&data_dir, &source))
         .await
         .map_err(|e| CommandError::Internal(format!("import_app_data task: {e}")))?
@@ -637,45 +597,69 @@ pub async fn import_app_data(state: State<'_, AppState>, path: String) -> Result
     Ok(())
 }
 
-/// Native open + confirm + ZIP import. Returns `true` if imported.
+/// Native save dialog + ZIP export of the app data directory.
+///
+/// Merges the former webdriver-only raw-path `export_app_data(path)` and
+/// `export_app_data_with_dialog` into one IPC (decision 3): production callers
+/// omit `override_path` and go through the dialog; E2E passes `override_path`,
+/// which requires a webdriver build. Returns `true` if exported, `false` if
+/// cancelled.
 #[tauri::command]
-pub async fn import_app_data_with_dialog(
+pub async fn export_app_data(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    default_file_name: String,
+    override_path: Option<String>,
+) -> Result<bool, CommandError> {
+    let dest = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
+        Some(path) => Some(path),
+        None => {
+            super::dialog::save_file(&app, ("ZIP".into(), vec!["zip".into()]), default_file_name)
+                .await?
+        }
+    };
+    let Some(dest) = dest else {
+        return Ok(false); // user dismissed the dialog
+    };
+    export_app_data_to_dest(&state, dest).await?;
+    Ok(true)
+}
+
+/// Native open + confirm + ZIP import. Returns `true` if imported.
+///
+/// Merges the former webdriver-only raw-path `import_app_data(path)` and
+/// `import_app_data_with_dialog` into one IPC (decision 3): production callers
+/// omit `override_path`, pick the archive and confirm the overwrite warning
+/// through native dialogs; E2E passes `override_path`, which requires a
+/// webdriver build **and skips both dialogs** — the old raw-path behavior
+/// (no interactive prompt).
+#[tauri::command]
+pub async fn import_app_data(
     app: AppHandle,
     state: State<'_, AppState>,
     confirm_title: String,
     confirm_message: String,
+    override_path: Option<String>,
 ) -> Result<bool, CommandError> {
-    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("ZIP", &["zip"])
-        .blocking_pick_file();
-    let Some(fp) = picked else {
-        return Ok(false);
+    let source = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
+        Some(path) => path,
+        None => {
+            let Some(source) =
+                super::dialog::open_file(&app, vec![("ZIP".into(), vec!["zip".into()])]).await?
+            else {
+                return Ok(false); // user dismissed the dialog
+            };
+            // OkCancelCustom: confirm_message returns true when the first (OK) button is pressed.
+            let confirmed =
+                super::dialog::confirm_message(&app, &confirm_title, &confirm_message).await?;
+            if !confirmed {
+                return Ok(false);
+            }
+            source
+        }
     };
-    let source = fp
-        .into_path()
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
 
-    // OkCancelCustom: callback/blocking_show returns true when the first (OK) button is pressed.
-    let confirmed = app
-        .dialog()
-        .message(&confirm_message)
-        .title(&confirm_title)
-        .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancel)
-        .blocking_show();
-    if !confirmed {
-        return Ok(false);
-    }
-
-    let data_dir = state.store.data_dir().clone();
-    tokio::task::spawn_blocking(move || app_data_archive::import_app_data(&data_dir, &source))
-        .await
-        .map_err(|e| CommandError::Internal(format!("import_app_data_with_dialog task: {e}")))?
-        .cmd_err("import_app_data_with_dialog")?;
+    import_app_data_from_source(&state, source).await?;
     Ok(true)
 }
 
@@ -692,23 +676,18 @@ pub async fn save_encryption_key_with_dialog(
     state: State<'_, AppState>,
     default_file_name: String,
 ) -> Result<bool, CommandError> {
-    use tauri_plugin_dialog::DialogExt;
-
     let key_b64 = state.store.encryption_key_b64();
     let bytes = encryption_key_export_bytes(&key_b64);
 
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("Encryption Key", &["key"])
-        .set_file_name(&default_file_name)
-        .blocking_save_file();
-    let Some(fp) = picked else {
+    let picked = super::dialog::save_file(
+        &app,
+        ("Encryption Key".into(), vec!["key".into()]),
+        default_file_name,
+    )
+    .await?;
+    let Some(dest) = picked else {
         return Ok(false);
     };
-    let dest = fp
-        .into_path()
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
     tokio::fs::write(&dest, &bytes)
         .await
         .cmd_err("save_encryption_key_with_dialog")?;
@@ -757,14 +736,16 @@ mod tests {
     }
 
     #[test]
-    fn dialog_file_path_to_buf_none_is_cancel() {
-        assert_eq!(dialog_file_path_to_buf(None).unwrap(), None);
-    }
-
-    #[tokio::test]
-    async fn run_blocking_dialog_runs_off_caller() {
-        let value = run_blocking_dialog(|| 7u8).await.unwrap();
-        assert_eq!(value, 7);
+    fn connections_open_filters_cover_all_sources() {
+        let filters = connections_open_filters();
+        assert_eq!(filters.len(), 6);
+        assert_eq!(filters[0].0, "Connections");
+        // Every filter declares at least one extension (gateway contract).
+        assert!(filters.iter().all(|(_, exts)| !exts.is_empty()));
+        assert!(filters
+            .iter()
+            .flat_map(|(_, exts)| exts.iter())
+            .all(|ext| !ext.starts_with('.')));
     }
 
     #[test]
@@ -1095,5 +1076,193 @@ mod tests {
         save_settings_impl(&test.state, settings).await.unwrap();
         let log_path = get_log_path_impl(&test.state).await.unwrap();
         assert!(log_path.contains("custom-logs"));
+    }
+
+    #[tokio::test]
+    async fn merged_connections_export_roundtrips_through_preview_helper() {
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::new().await;
+        test.save_connection("exp-1").await;
+
+        // Merged export impl: writes the encrypted payload, returns the count.
+        let dest = test._temp.path().join("share.datazenconnection");
+        let count = write_connections_export(&test.state, "share-secret", dest.clone())
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // Merged preview impl parses the export back (param passthrough:
+        // password reaches the decryptor).
+        let preview = build_import_preview_from_path("share-secret", dest.clone())
+            .await
+            .unwrap();
+        assert_eq!(preview["connections"].as_array().unwrap().len(), 1);
+        assert_eq!(preview["sourceFormat"], "DataZen");
+
+        // Wrong password must fail the same decrypt path.
+        assert!(build_import_preview_from_path("wrong", dest).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn app_data_export_lists_store_files_and_import_helper_extracts() {
+        use crate::testing::app_state::TestAppState;
+
+        // Export impl: real store dir → ZIP containing the JSON store files.
+        let source = TestAppState::new().await;
+        source
+            .store
+            .save_groups(vec!["Alpha".into()])
+            .await
+            .unwrap();
+        let zip_path = source._temp.path().join("app-backup.zip");
+        export_app_data_to_dest(&source.state, zip_path.clone())
+            .await
+            .unwrap();
+
+        let file = std::fs::File::open(&zip_path).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let names: Vec<String> = (0..archive.len())
+            .map(|i| archive.by_index(i).unwrap().name().to_string())
+            .collect();
+        assert!(
+            names.iter().any(|n| n.ends_with("groups.json")),
+            "export must carry groups.json; entries: {names:?}"
+        );
+
+        // Import impl param passthrough: extracts into the target state's data
+        // dir. A hand-crafted clean archive keeps live sqlite sidecar files
+        // (zero-filled -wal/-shm trip the import zip-bomb ratio guard) out of
+        // the fixture.
+        let clean_zip = source._temp.path().join("clean.zip");
+        {
+            use std::io::Write;
+            let file = std::fs::File::create(&clean_zip).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            writer.start_file("groups.json", options).unwrap();
+            writer.write_all(br#"["Alpha"]"#).unwrap();
+            writer.finish().unwrap();
+        }
+
+        let target = TestAppState::new().await;
+        import_app_data_from_source(&target.state, clean_zip)
+            .await
+            .unwrap();
+        let groups_on_disk =
+            std::fs::read_to_string(target.state.store.data_dir().join("groups.json")).unwrap();
+        assert!(
+            groups_on_disk.contains("Alpha"),
+            "imported archive must land as groups.json: {groups_on_disk}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod ipc_contract_guards {
+    //! Decision 3 (F4): the connections/app-data import-export path/dialog
+    //! pairs are merged into single IPCs whose raw-path variants collapse into
+    //! a webdriver-gated `override_path`. These guards pin the wire surface in
+    //! both directions.
+    use super::*;
+
+    const SOURCE: &str = include_str!("config.rs");
+    const LIB_RS: &str = include_str!("../lib.rs");
+
+    /// Extracts the parameter list of a `pub async fn <command>(...)`.
+    fn command_params(command: &str) -> String {
+        let needle = format!("pub async fn {command}(");
+        let start = SOURCE
+            .find(&needle)
+            .unwrap_or_else(|| panic!("command `{command}` not found in config.rs"));
+        let rest = &SOURCE[start + needle.len()..];
+        let end = rest.find(')').expect("unterminated parameter list");
+        rest[..end].to_string()
+    }
+
+    // Runtime-assembled needles (avoid self-reference in include_str! source).
+    const resolve: &str = "resolve";
+    const override_path: &str = "override_path";
+
+    #[test]
+    fn merged_commands_take_override_path_not_raw_path_param() {
+        for cmd in [
+            "export_connections",
+            "import_connections_preview",
+            "import_connections_with_dialog",
+            "export_app_data",
+            "import_app_data",
+        ] {
+            let params = command_params(cmd);
+            assert!(
+                params.contains("override_path: Option<String>"),
+                "`{cmd}` must expose the webdriver-only override; got: {params}"
+            );
+            assert!(
+                !params.contains("path: String"),
+                "raw `path` parameter must not return after the merge; got: {params}"
+            );
+        }
+    }
+
+    #[test]
+    fn stale_dialog_twins_are_gone_from_config_rs() {
+        // Needle parts are assembled at runtime so this test's own source never
+        // contains them (mirroring backup.rs guards).
+        let fn_prefix = "pub async fn ";
+        let with_dialog = "_with_";
+        let dialog_kind = "dialog(";
+        for name in ["export_connections", "export_app_data", "import_app_data"] {
+            let variant = format!("{fn_prefix}{name}{with_dialog}{dialog_kind}");
+            assert!(!SOURCE.contains(&variant), "stale dialog twin `{variant}`");
+        }
+    }
+
+    #[test]
+    fn lib_rs_registers_merged_commands_only() {
+        for kept in [
+            "commands::export_connections,",
+            "commands::import_connections_preview,",
+            "commands::import_connections_with_dialog,",
+            "commands::export_app_data,",
+            "commands::import_app_data,",
+            // Untouched neighbours stay pinned against accidental removal.
+            "commands::detect_connection_import_path,",
+            "commands::pick_connection_import_path_with_dialog,",
+            "commands::import_connections_from_app,",
+            "commands::save_encryption_key_with_dialog,",
+        ] {
+            assert!(LIB_RS.contains(kept), "`{kept}` must stay registered");
+        }
+        for gone in [
+            "commands::export_connections_with_dialog,",
+            "commands::export_app_data_with_dialog,",
+            "commands::import_app_data_with_dialog,",
+        ] {
+            assert!(
+                !LIB_RS.contains(gone),
+                "`{gone}` must no longer be registered in lib.rs"
+            );
+        }
+    }
+
+    #[test]
+    fn merged_commands_route_through_shared_resolve_override_path() {
+        // Single mechanism: config.rs must reuse the error.rs helper (F3
+        // pattern) instead of redefining a local copy, and every merged
+        // command body must gate through it. Needles are assembled at runtime
+        // so this test's own source never contains them.
+        let local_def = format!("fn {resolve}_{override_path}(");
+        assert!(
+            !SOURCE.contains(&local_def),
+            "config.rs must not redefine resolve_override_path"
+        );
+        let call = format!("{resolve}_{override_path}(override_path");
+        let gated_bodies = SOURCE.matches(&call).count();
+        assert!(
+            gated_bodies == 5,
+            "all five merged commands must gate their override branch; found {gated_bodies}"
+        );
     }
 }

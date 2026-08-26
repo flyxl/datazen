@@ -139,14 +139,8 @@ describe('MySQL admin commands (IPC)', () => {
   it('should show new DB after simulated loadForConnection refresh', async function () {
     if (!connId) return this.skip();
 
-    // Simulate the frontend refresh flow:
-    // 1. use_database('') to reset
-    // 2. get_databases → must include new DB
-    try {
-      await invokeBackend('use_database', { dbSessionId: connId, database: '' });
-    } catch {
-      /* ok */
-    }
+    // Simulate the frontend refresh flow: get_databases is session-neutral
+    // (F1 removed use_database) → must include the new DB.
     const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
     expect(dbs).toContain(MYSQL_TEST_DB);
     expect(dbs.length).toBeGreaterThanOrEqual(2);
@@ -160,10 +154,10 @@ describe('MySQL admin commands (IPC)', () => {
     expect(dbs).toContain(MYSQL_TEST_DB);
   });
 
-  it('should list tables for a specific database after use_database', async function () {
+  it('should list tables for a specific database via explicit param', async function () {
     if (!connId) return this.skip();
 
-    await invokeBackend('use_database', { dbSessionId: connId, database: MYSQL_TEST_DB });
+    // F1: get_tables takes the database explicitly — no use_database needed.
     const tables = await invokeBackend<{ name: string }[]>('get_tables', {
       dbSessionId: connId,
       database: MYSQL_TEST_DB,
@@ -278,8 +272,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       },
     });
 
-    // Simulate frontend loadTables flow: use_database + get_tables
-    await invokeBackend('use_database', { dbSessionId: connId, database: PG_DB });
+    // Simulate frontend loadTables flow: get_tables with explicit database (F1)
     const tablesResult = await invokeBackend<{ name: string; schema: string; tableType: string }[]>(
       'get_tables',
       { dbSessionId: connId, database: PG_DB },
@@ -305,7 +298,6 @@ describe('PostgreSQL admin commands (IPC)', () => {
     const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
     expect(dbs).toContain(PG_DB);
 
-    await invokeBackend('use_database', { dbSessionId: connId, database: PG_DB });
     const tablesResult = await invokeBackend<{ name: string; schema: string; tableType: string }[]>(
       'get_tables',
       { dbSessionId: connId, database: PG_DB },
@@ -459,7 +451,6 @@ describe('PostgreSQL admin commands (IPC)', () => {
       },
     });
 
-    await invokeBackend('use_database', { dbSessionId: connId, database: PG_DB });
     const tablesBefore = await invokeBackend<{ name: string; schema: string }[]>('get_tables', {
       dbSessionId: connId,
       database: PG_DB,

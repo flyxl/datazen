@@ -27,7 +27,6 @@ export interface EnsureDeps {
   registerPathAliases: (entries: { name: string; id: string }[]) => void;
   getDatabases: (dbSessionId: string) => Promise<string[]>;
   getTables: (dbSessionId: string, database: string) => Promise<TableInfo[]>;
-  useDatabase: (dbSessionId: string, database: string) => Promise<void>;
 }
 
 const inflight = new Map<string, Promise<void>>();
@@ -122,7 +121,6 @@ async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<v
       databases[0];
     if (!preferred) return;
 
-    await deps.useDatabase(dbSessionId, preferred);
     const all = await deps.getTables(dbSessionId, preferred);
     const bySchema = new Map<string, string[]>();
     for (const item of all) {
@@ -141,7 +139,6 @@ async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<v
 
   if (isMultiDatabase && segments.length === 1) {
     const [db] = segments;
-    await deps.useDatabase(dbSessionId, db);
     const all = await deps.getTables(dbSessionId, db);
     const tableItems = all.filter((item) => item.tableType !== 'view');
     const bySchema = new Map<string, string[]>();
@@ -176,7 +173,6 @@ async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<v
       databases[0];
     if (!preferred) return;
 
-    await deps.useDatabase(dbSessionId, preferred);
     const all = await deps.getTables(dbSessionId, preferred);
     const names = all
       .filter((item) => item.tableType !== 'view' && item.schema === schema)
@@ -196,7 +192,6 @@ async function ensureDefaultSql(segments: string[], deps: EnsureDeps): Promise<v
 
   if (segments.length === 1) {
     const [db] = segments;
-    await deps.useDatabase(dbSessionId, db);
     const all = await deps.getTables(dbSessionId, db);
     deps.mergeNamespace([db], 'tables', tableNames(all));
   }

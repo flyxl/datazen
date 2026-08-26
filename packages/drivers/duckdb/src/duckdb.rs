@@ -101,6 +101,20 @@ impl DatabaseDriver for DuckDbDriver {
         "duckdb".to_string()
     }
 
+    /// F7: qualify unqualified table references with the target schema
+    /// (`"schema"."t"`, same shape as PostgreSQL per the F7 baseline). The
+    /// database dimension is not inlined — it keeps using the host session /
+    /// pool switch (`ensure_session_database`). Parse failures pass SQL
+    /// through unchanged; see `sql_target::qualify_sql`.
+    fn qualify_sql_target(
+        &self,
+        sql: &str,
+        database: Option<&str>,
+        schema: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::sql_target::qualify_sql(sql, database, schema))
+    }
+
     fn supports_explain(&self) -> bool {
         true
     }

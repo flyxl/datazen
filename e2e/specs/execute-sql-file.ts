@@ -1,7 +1,7 @@
 /**
- * E2E: Execute SQL File via webdriver-only path IPC (TS-SF-E01/E02).
- * Uses execute_sql_file (direct path, no native dialog) to drive the
- * same streaming pipeline as the dialog entry.
+ * E2E: Execute SQL File via webdriver-only override_path (TS-SF-E01/E02).
+ * Uses restore_sql_file (decision 3+6 merged IPC) with `overridePath` to drive
+ * the same streaming pipeline as the native-dialog entry.
  */
 import { expect, browser } from '@wdio/globals';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
@@ -91,7 +91,7 @@ describe('Execute SQL File (SF)', () => {
     return browser.executeAsync(
       (sessionId: string, path: string, done: (r: unknown) => void) => {
         (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
-          ?.invoke('execute_sql_file', { dbSessionId: sessionId, inputPath: path })
+          ?.invoke('restore_sql_file', { dbSessionId: sessionId, overridePath: path })
           .then(done)
           .catch((e: unknown) => done({ __error: String(e) }));
       },

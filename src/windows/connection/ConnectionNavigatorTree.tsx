@@ -59,6 +59,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { shouldUseMultiDatabaseTree } from './schema-tree/SchemaTree';
 import { useExpandedDbCacheRefresh } from './schema-tree/useExpandedDbCacheRefresh';
 import { connectionCommands } from '../../commands/connection';
+import { databaseCommands } from '../../commands/database';
 import { driverCommands } from '../../commands/driver';
 import { hasCommand } from '../../lib/commandSchema';
 import { SERVER_STATUS_SNAPSHOT_COMMAND, LIST_PROCESSES_COMMAND } from '../../lib/driverCommandIds';
@@ -498,7 +499,6 @@ export const ConnectionNavigatorTree = forwardRef<
   const reloadDbTables = useCallback(async (dbSessionId: string, dbName: string) => {
     const tableKey = `${dbSessionId}::${dbName}`;
     try {
-      const { databaseCommands } = await import('../../commands/database');
       // No useDatabase here: get_tables is session-neutral in every driver,
       // so refreshing a cache must never flip the shared SQL session.
       const all = await databaseCommands.getTables(dbSessionId, dbName);
@@ -515,13 +515,17 @@ export const ConnectionNavigatorTree = forwardRef<
       const cached = dbTablesMap[tableKey];
       if (cached) {
         useSchemaStore.getState().setLoadedTables(dbName, cached, dbSessionId);
+        return;
       }
-      try {
-        const { databaseCommands } = await import('../../commands/database');
-        await databaseCommands.useDatabase(dbSessionId, dbName);
-      } catch {
-        // Selection still updates; query path may fail until user retries.
-      }
+      // F1: no use_database IPC — track the active database as local UI state;
+      // query commands pin it explicitly and the backend switches lazily.
+      useSchemaStore.setState((state) => {
+        const entry = state.schemas.get(dbSessionId);
+        if (!entry || entry.currentDatabase === dbName) return state;
+        const next = new Map(state.schemas);
+        next.set(dbSessionId, { ...entry, currentDatabase: dbName });
+        return { ...state, schemas: next };
+      });
     },
     [dbTablesMap],
   );
@@ -572,24 +576,47 @@ export const ConnectionNavigatorTree = forwardRef<
     [],
   );
 
+  const reloadDbObjectCategory = useCallback(
+    async (dbSessionId: string, catKey: string, catId: string) => {
+      if (catId === 'tables' || catId === 'views') return;
+      try {
+        const objs = await databaseCommands.getDatabaseObjects(dbSessionId, catId);
+        setDbObjectsMap((prev) => ({ ...prev, [catKey]: objs }));
+      } catch {
+        setDbObjectsMap((prev) => ({ ...prev, [catKey]: [] }));
+      }
+    },
+    [],
+  );
+
   // Invalidate + reload per-db caches when the connection's schema surface
   // genuinely changes (db list or epoch). Shared hook — no useDatabase inside.
+  // F1-BUG-005: the epoch-triggered invalidation used to drop object-category
+  // caches without reloading them (and filtered them by session id although
+  // their keys use the persistent connection id). The hook now wipes with both
+  // ids and schedules its own category recovery wave, so expanded categories
+  // always come back after a refresh instead of staying empty.
   useExpandedDbCacheRefresh({
     activeConnections,
     expandedDbs,
+    expandedCats,
     loadTablesForDb: reloadDbTables,
-    clearCaches: (connId: string) => {
+    loadObjectsForCat: reloadDbObjectCategory,
+    clearCaches: (sessionId: string, connectionId?: string) => {
       setDbTablesMap((m) => {
         const next: Record<string, TableInfo[]> = {};
         for (const key of Object.keys(m)) {
-          if (!key.startsWith(connId + '::')) next[key] = m[key];
+          if (!key.startsWith(sessionId + '::')) next[key] = m[key];
         }
         return next;
       });
+      if (!connectionId) return;
+      // Object-category keys are "<connectionId>::<dbName>::[<schema>::]<cat>".
       setDbObjectsMap((m) => {
+        const prefix = connectionId + '::';
         const next: Record<string, DatabaseObject[]> = {};
         for (const key of Object.keys(m)) {
-          if (!key.startsWith(connId + '::')) next[key] = m[key];
+          if (!key.startsWith(prefix)) next[key] = m[key];
         }
         return next;
       });
@@ -870,7 +897,6 @@ export const ConnectionNavigatorTree = forwardRef<
       if (dbObjectsMap[catKey]) return;
 
       try {
-        const { databaseCommands } = await import('../../commands/database');
         const objs = await databaseCommands.getDatabaseObjects(dbSessionId, catId);
         setDbObjectsMap((prev) => ({ ...prev, [catKey]: objs }));
       } catch {
@@ -878,20 +904,6 @@ export const ConnectionNavigatorTree = forwardRef<
       }
     },
     [expandedCats, dbObjectsMap],
-  );
-
-  const reloadDbObjectCategory = useCallback(
-    async (dbSessionId: string, catKey: string, catId: string) => {
-      if (catId === 'tables' || catId === 'views') return;
-      try {
-        const { databaseCommands } = await import('../../commands/database');
-        const objs = await databaseCommands.getDatabaseObjects(dbSessionId, catId);
-        setDbObjectsMap((prev) => ({ ...prev, [catKey]: objs }));
-      } catch {
-        setDbObjectsMap((prev) => ({ ...prev, [catKey]: [] }));
-      }
-    },
-    [],
   );
 
   const reloadExpandedObjectCategories = useCallback(
@@ -1273,8 +1285,8 @@ export const ConnectionNavigatorTree = forwardRef<
                           conn.database,
                         );
                         if (fallback) {
-                          const { databaseCommands } = await import('../../commands/database');
-                          await databaseCommands.useDatabase(dbSessionId, fallback);
+                          // F1: no use_database IPC — move the local active
+                          // database to the fallback and refresh tables.
                           const cached = dbTablesMap[`${dbSessionId}::${fallback}`];
                           if (cached) {
                             useSchemaStore
@@ -1283,10 +1295,16 @@ export const ConnectionNavigatorTree = forwardRef<
                           } else {
                             useSchemaStore.setState((state) => {
                               const entry = state.schemas.get(dbSessionId);
-                              if (!entry) return state;
-                              const next = new Map(state.schemas);
-                              next.set(dbSessionId, { ...entry, currentDatabase: fallback });
-                              return { ...state, schemas: next };
+                              let schemas = state.schemas;
+                              if (entry) {
+                                schemas = new Map(state.schemas);
+                                schemas.set(dbSessionId, { ...entry, currentDatabase: fallback });
+                              }
+                              return {
+                                ...state,
+                                schemas,
+                                currentDatabase: state.currentDatabase === dbName ? fallback : state.currentDatabase,
+                              };
                             });
                           }
                         }
