@@ -28,13 +28,21 @@ interface QuickActionProps {
   label: string;
   onClick: () => void;
   primary?: boolean;
+  testId?: string;
 }
 
-function QuickAction({ icon, label, onClick, primary = false }: Readonly<QuickActionProps>) {
+function QuickAction({
+  icon,
+  label,
+  onClick,
+  primary = false,
+  testId,
+}: Readonly<QuickActionProps>) {
   return (
     <button
       type="button"
       onClick={onClick}
+      data-testid={testId}
       className={cn(
         'flex min-h-[88px] flex-col items-start justify-between rounded-xl border p-4 text-left transition-colors',
         primary
@@ -109,7 +117,7 @@ export function ConnectionWorkspaceHome({
     showNewQuery
       ? {
           key: 'new-query',
-          label: t('connWin.newQuery'),
+          label: t('common.newQuery'),
           icon: <Code2 className="h-4 w-4" />,
           onClick: onNewQuery,
           primary: true,
@@ -118,7 +126,7 @@ export function ConnectionWorkspaceHome({
     showNewTable
       ? {
           key: 'new-table',
-          label: t('connWin.newTable'),
+          label: t('common.newTable'),
           icon: <TableProperties className="h-4 w-4" />,
           onClick: onCreateTable,
         }
@@ -126,7 +134,7 @@ export function ConnectionWorkspaceHome({
     showErDiagram
       ? {
           key: 'er-diagram',
-          label: t('erDiagram.title'),
+          label: t('common.erDiagram'),
           icon: <GitFork className="h-4 w-4" />,
           onClick: onOpenErDiagram,
         }
@@ -173,14 +181,14 @@ export function ConnectionWorkspaceHome({
             </h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {quickActions.map((action) => (
-                <div key={action.key} data-testid={`home-quick-${action.key}`}>
-                  <QuickAction
-                    icon={action.icon}
-                    label={action.label}
-                    onClick={action.onClick}
-                    primary={action.primary}
-                  />
-                </div>
+                <QuickAction
+                  key={action.key}
+                  testId={`home-quick-${action.key}`}
+                  icon={action.icon}
+                  label={action.label}
+                  onClick={action.onClick}
+                  primary={action.primary}
+                />
               ))}
             </div>
           </section>
