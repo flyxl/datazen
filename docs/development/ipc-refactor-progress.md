@@ -9,7 +9,7 @@
 | # | 功能 | 对应决策 | 状态 | 编码 commit | 测试 commit |
 |---|------|---------|------|------------|------------|
 | F1 | 废弃 `use_database`，query/stream/explain 显式传参 | 决策 1 | 已完成 | 34a28420 | 3d23cfd1 · 8b85cd49 · 本提交 |
-| F2 | ADB 命令迁移 SQLite 驱动（DriverCommandDefinition） | 决策 2 | 编码完成 | 本提交 | — |
+| F2 | ADB 命令迁移 SQLite 驱动（DriverCommandDefinition） | 决策 2 | 测试中 | 本提交 | 本提交 |
 | F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 未开始 | — | — |
 | F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 未开始 | — | — |
 | F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 未开始 | — | — |
@@ -33,6 +33,7 @@
 | F1-BUG-003 | F1 | 【中】结构编辑器 DDL 无库定位：`TableStructureEditor` 移除 ensureDatabase 后，`plan_table_structure_changes` 仅收 dbSessionId → 跨库建表/改表可能作用于 session 活动库而非面板目标库。重现见「F1 缺陷详情」 | 已修复 | 2026-08-26 | 修复轮（同上提交）：`plan_table_structure_changes` 以同一机制处理，编辑器传入目标库。**复验通过**（同上）：wrapper+impl 均收 `database` 且走同一 `ensure_session_database`，无第二套切库语义；preview/execute 两路径透传组件 prop；DDL 语句执行不带参依赖 plan 阶段持久化 pin（设计决策 3），成立；Rust 双单测（pin 切库 / 无 pin 保持）+ 前端断言第三参 `'db_b'`/`null` |
 | F1-BUG-004 | F1 | 【低】改动 TS 文件覆盖率不达标：ConnectionNavigatorTree.tsx 行覆盖 53.13%、TableStructureEditor.tsx 37.64%（要求 ≥80%）；其余数字见「覆盖率」小节 | 已修复 | 2026-08-26 | 修复轮（同上提交）：两文件 vitest 用例扩展达 ≥80% 行覆盖（新数字见「覆盖率」表）；并补 Rust stream 路径独立切库单测。**复验通过**（同上）：全新实例重跑全量 1963 用例 + `--coverage.include` 过滤实测 ConnectionNavigatorTree.tsx 行覆盖 **96.74%**、TableStructureEditor.tsx **97.75%**，与修复轮声称数字逐位一致；ConnectionNavigatorTree.test.tsx 实测 64 用例独立运行全绿 |
 | F1-BUG-005 | F1 | 【中】【既有行为，非本轮引入】连接刷新后已展开对象分类内容丢失且不自动恢复：单库树（如 SQLite）展开 procedure 分类出现条目后，执行连接级或库级刷新，分类行仍呈展开态但条目消失、计数归零，观察窗 3s 内无任何重载。根因指向 `useExpandedDbCacheRefresh` 在 schemaEpoch 变化时 `clearCaches` 清空该会话全部 `dbObjectsMap` 后仅重载展开库的**表缓存**、不重载对象分类缓存，与 `refreshConnection.reloadExpandedObjectCategories` 的重载竞态失败。多库树表节点不受影响（走 `reloadDbTables` 恢复）。临时探针在 4ba4831a（F1 前）/046acf7a（修复轮前）/8b85cd49 三时点症状一致，判定为既有缺陷。是否纳入 F1 范围由协调者裁决；重现步骤见「F1 缺陷详情」 | 待验证 | 2026-08-26 | 复验轮新登记（2026-08-26 复验 commit 8b85cd49 时发现） |
+| F2-BUG-001 | F2 | 【低】改动 TS 文件覆盖率不达标且为零执行覆盖：`src/commands/adb.ts` 全量套件 `--coverage` 实测行覆盖 **14.28%**（7 语句仅 1 覆盖，未覆盖 L23-29 / 33 / 37-39 / 54-58 —— 共享 helper 与三个导出函数全部没有任何单测执行；全仓唯一引用它的 `pathIpcWiring.test.ts` 是源码字符串断言，不执行代码），远低于 ≥80% 门槛。`savedPath ?? null` 取消语义、`driverType='sqlite'` 信封组装、input 透传均无回归保护。重现步骤见「F2 缺陷详情」 | 待验证 | 2026-08-26 | F2 测试轮新登记（2026-08-26 测试 commit 本提交时发现） |
 
 > BUG-001~003 与编码说明「遗留注意 1」同根因（非 query 族命令无 database 参数、入口不再预切库），但遗留说明给出的过渡缓解（"由任一带 database 的 query/stream/explain 惰性触发切库"）对编辑器主链路不生效，故按缺陷登记；由编码代理裁决在 F1 内修复（补参数/补预切）或明确降级为后续功能承接。
 
@@ -265,6 +266,66 @@
 ### 遗留注意
 1. `execute_driver_command_stream` 仅支持 query_stream，天然不受 save_dialog 影响；未来若开放更多流式命令需同步考虑对话框语义
 2. 第三方插件驱动若声明 save_dialog，宿主当前不做额外权限校验（信任插件声明的过滤器/扩展名，路径仍由用户在 OS 对话框中选定）；插件权限模型完善时可收口
+
+### E2E 用例
+
+> 标注说明：真实拉取链路必须真机 adb + Android 设备（且目标 app 需 debuggable），本机无法自动化；PIH-006 无设备半场（源码断言 + UI 探活）需要 `pnpm tauri build --debug --features webdriver` 构建——worktree 当前无现成 webdriver 构建（共享 target 内旧二进制早于本提交，且 run.mjs 要求二进制来自 tauri build 而非裸 cargo build），按「真实 webdriver 全量回归统一在 R 阶段执行」约定留待 R。源码断言半场已由 vitest 的 `pathIpcWiring.test.ts`（本轮全绿）先行覆盖。
+
+| 编号 | 场景 | 前置 | 步骤 | 断言 | 标注 |
+|------|------|------|------|------|------|
+| F2-E2E-001 | ADB 包列表经统一 Driver Command 入口展示 | webdriver 构建；本机装 adb + Android 真机已开 USB 调试；应用内进入 SQLite 连接表单 | 新建 SQLite 连接 → 开启「从 Android 设备拉取」ADB 模式 → 加载包列表 | 下拉出现设备第三方包；界面无本地路径输入框；adb 未安装时展示含 "Android SDK Platform Tools" 的安装指引文案 | 【留待 R 回归】需真机 adb + Android 设备 |
+| F2-E2E-002 | 库文件列表键形状回归（path/name） | 同上；设备上目标 app 含 databases/*.db | 选定包 → 触发库列表加载 | 列表项渲染 name、携带 path；非 debuggable 应用或空目录时给可理解错误/空列表，不崩溃 | 【留待 R 回归】需真机 + debuggable 目标 app |
+| F2-E2E-003 | 拉取落盘成功路径（save_dialog 元数据驱动薄壳） | 同 F2-E2E-002 | 选库文件 → 点拉取 → 原生保存对话框选定 db/sqlite/sqlite3 扩展名位置并确认 | 返回 savedPath 非空并自动回填连接 database 字段（form.setDatabase）；落盘文件为有效 SQLite（header "SQLite format 3"）；日志出现 "driver command payload saved via native dialog" | 【留待 R 回归】需真机 + 原生 dialog 人工确认 |
+| F2-E2E-004 | 拉取取消语义 = null（与原 *_with_dialog 等价） | 同 F2-E2E-003 | 拉取时在原生对话框点取消 | savedPath=null → 前端不回填、无成功提示、无报错（FileConnectionFields `if (!saved) return` 分支） | 【留待 R 回归】需真机 + 原生 dialog 人工取消 |
+| F2-E2E-005 | PIH-006 webdriver 探活：宿主零 adb 注册残留 + ADB 面板无路径字段 | `pnpm tauri build --debug --features webdriver` 构建 | 运行 `e2e/specs/path-ipc-hardening.ts` PIH-006 全部断言 | 源码断言（driverCommands.execute / 无 invoke / lib.rs 与 mod.rs 无 adb / adb.rs 文件不存在）+ 打开连接页 ADB 面板无本地路径输入 | 【留待 R 回归】无需真机但需完整 webdriver 构建；按测试约定统一 R 阶段执行 |
+
+### 测试结果（测试轮）
+
+**独立重跑（2026-08-26，全新测试实例，commit 823516c2，不信编码轮数字）：**
+
+| 套件 | 复验实测 | 与编码声称对比 |
+|------|---------|----------------|
+| `cargo test -p datazen-driver-sqlite` | **lib 29 passed / 0 failed**（含 adb::tests 13）+ 集成 tests 2 passed、3 passed | 一致 ✅ |
+| `cargo test -p datazen-driver-api` | **83 passed / 0 failed**（doc-tests 2 ignored） | 一致 ✅ |
+| `cargo test -p datazen --lib` | **1130 passed / 0 failed / 2 ignored**（1138 − 删除的 9 个 Host adb 测试 + 1 个新守卫测试，数目自洽） | 一致 ✅ |
+| `npx vitest run` | **240 文件 / 1963 用例全过**（含改写后的 pathIpcWiring.test.ts） | 一致 ✅ |
+| `npx tsc --noEmit` | **0 错误**（exit 0） | 一致 ✅ |
+
+### 覆盖率
+
+度量方式：全量 vitest 套件（240 文件 / 1963 用例）+ `--coverage.include='src/commands/adb.ts'` 过滤（v8 provider，数字取自 coverage/coverage-final.json）。本次改动的其余 TS：`src/types/index.ts` 为纯类型（无运行时代码，N/A）、`pathIpcWiring.test.ts` 为测试文件本身。
+
+| 文件 | Statements | **Lines** | ≥80% 行覆盖 |
+|-----|-----------|-----------|------------|
+| `src/commands/adb.ts` | 14.28% (1/7) | **14.28%** (1/17 语句行；未覆盖 L23-29/33/37-39/54-58) | ❌ → 登记 F2-BUG-001 |
+
+Rust 侧以新增单测清单佐证（无 llvm-cov 工具链）：sqlite crate adb::tests 13 个（解析×2、包名合法/非法、dbPath 穿越、default_pull_file_name、定义完备性、unbound/hide-from-workflow/save-dialog 元数据、pull input schema required、unknown→Unsupported、缺参→InvalidConfig、先校验后 spawn、缺失二进制→安装指引文案）+ driver-api serde 往返 1 个 + Host 守卫 `save_dialog_commands_rejected_without_interactive_handle` 1 个，均在本轮重跑通过数内。
+
+### 审查结论（范围红线 / 行为等价 / 安全）
+
+**A. 范围与红线 — 通过**
+1. Host adb 删净：lib.rs 四条注册删除、mod.rs `mod adb`/`pub use adb::*` 删除、`src-tauri/src/commands/adb.rs` 文件删除；Grep 工具全仓扫描，剩余命中仅为文档、守护测试的否定断言（not.toContain）、新 sqlite 驱动 crate 与前端 wrapper 自身，无生产残留引用。
+2. 零 pluginId==='sqlite' 分支：`finish_save_dialog` 完全由 `DriverSaveDialogSpec` 元数据驱动（fileNameField/dataBase64Field/filterName/extensions/resultPathField 五字段参数化），任何驱动声明即可复用；src-tauri 全量 grep "sqlite" 仅命中既有方言映射（schema_diff/transfer/connection_import/data_sync），与本流程无关。前端 `ADB_DRIVER_TYPE='sqlite'` 是决策 2 明文规定的调用形态（按 driverType 执行 requiresConnection=false 命令），不属宿主硬编码。
+3. 行为等价：输出 JSON 键逐一比对一致（`package_name`；`path`/`name`）；adb 参数与旧实现逐字相同（`pm list packages -3` / `run-as … find ./databases …` / `exec-out run-as … cat …`）；输入校验时机同序（包名字符白名单、dbPath 穿越/空字节拒绝均在 spawn 前）；取消返回 null 端到端等价（宿主写 `{savedPath: null}` → TS `?? null` → 组件 `if (!saved) return`）。错误文案核心内容一致，仅错误类别前缀有已声明的展示差异（NotConfigured/Internal/Validation → InvalidConfig 显示为 "Invalid configuration: " 前缀、QueryFailed 等，编码说明已登记，语义与安装指引一致）。轻微差异两处（非缺陷）：① 新实现落盘前增加扩展名白名单复检（旧 *_with_dialog 弹框后不复检），比旧实现更严、与 file.rs 家族同标准；② 旧 webdriver-gated 直连路径变体 `adb_pull_database` 及其前端 deprecated 导出整体移除（决策 2 明文删除四条 IPC，E2E 注入通道损失已在 Dialog 方案选择第 5 点声明）。
+4. serde default 向后兼容论证成立：`#[serde(default, skip_serializing_if = "Option::is_none")]` 双向兼容——旧元数据 JSON 缺 `saveDialog` 键反序列化为 None；新元数据 None 时序列化完全省略该键；且有 `save_dialog_spec_round_trips_and_defaults_to_none` 单测锁死。git 驱动经 `[patch.crates-io]` 编译期强制共享本地 driver-api（见计划附录），不存在结构体版本偏移面；纯增量可选元数据不构成 PROTOCOL_VERSION bump 依据，判定无需联动插件。
+
+**B. 安全审查 — 通过（一项观察项）**
+1. 权限门控：save_dialog 命令在执行前拒绝全部无头调用面——内部复用 impl（query/schema IPC）dialog=None 拒绝（有单测）、MCP permission_mode=Some 拒绝、workflow 侧 `metadata.workflow=false` 拒绝 + workflow runtime 本就要求活会话、stream 入口仅放行 query_stream；GUI IPC 独占 AppHandle。不会出现无头阻塞弹框。
+2. 落盘路径校验与 file.rs 既有模式逐项对齐：`finish_save_dialog` 流程 = `blocking_save_file`（OS 级用户确认，路径永不来自 JS）→ `dialog_path_to_buf` → `validate_extension(&path, &ext_list)` → `tokio::fs::write`，与 `save_base64_with_dialog`（file.rs L115-142）完全同构，另加空 extensions 声明防御。base64 解码失败映射 Internal（对照 file.rs 为 Validation，均为不入盘的前置失败，无安全差异）。
+3. 【观察项，非缺陷】base64 数据量无上限：与既有 `save_base64_with_dialog` 家族及旧 adb 实现（同样整读字节入内存）风险等级持平，非本轮引入的回归；但新形态峰值内存约为原始文件的 ~3 倍（解码字节 N + base64 字符串 ~1.37N + JSON Value 拷贝，跨 CommandResult 传递），编码说明「内存占用与原实现一致」低估了这一常数因子。建议后续功能为 save_dialog 形态补尺寸上限或流式落盘通道。
+
+**结论：套件全绿、范围红线与安全审查通过；但改动 TS 覆盖率 14.28% 远低于 ≥80% 门槛（F2-BUG-001），F2 保持「测试中」，转编码代理补测后复验。**
+
+#### F2 缺陷详情（重现步骤 / 相关文件）
+
+**F2-BUG-001（低）改动 TS 文件覆盖率不达标且为零执行覆盖**
+- 重现：
+  1. worktree 根目录执行 `npx vitest run --coverage --coverage.include='src/commands/adb.ts'`；
+  2. 观察 v8 报表：`adb.ts` Lines **14.28%**，Uncovered Line #s 23-58 区段（7 语句仅覆盖 L10 常量导出）；
+  3. Grep 确认全仓唯一引用方 `src/commands/__tests__/pathIpcWiring.test.ts` 只做 `readSrc` 字符串包含断言，不 import 执行该模块。
+- 影响：`driverType='sqlite'` 信封组装、三命令 id/input 透传、`result.data as T` 解包、`savedPath ?? null` 取消语义均无行为级回归保护；未来 driver.ts 信封字段变更不会被测试捕获。
+- 建议：新增 `src/commands/__tests__/adb.test.ts`，mock `./driver` 的 `driverCommands.execute`，断言：list 包/库/pull 三调用的 driverType、command id、input 对象逐字段正确；resolve 值 `data` 正确解包；pull 取消（savedPath undefined/null）返回 null、成功返回字符串。预期行覆盖 >90%，即可关闭本缺陷。
+- 相关文件：`src/commands/adb.ts`、`src/commands/__tests__/pathIpcWiring.test.ts`
 
 ## F3 backup/restore 合并 + restore_sql_file
 （占位）
