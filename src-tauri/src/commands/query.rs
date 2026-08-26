@@ -760,12 +760,19 @@ mod tests {
         let (_, conn_id) = test.save_and_connect("switch-db-cfg").await;
         // Sample config pins database = "app"; pinning another database must
         // switch the live session before executing and update the session record.
-        let result =
-            execute_query_impl(&test.state, conn_id.clone(), "SELECT 1".into(), Some("analytics".into()))
-                .await
-                .unwrap();
+        let result = execute_query_impl(
+            &test.state,
+            conn_id.clone(),
+            "SELECT 1".into(),
+            Some("analytics".into()),
+        )
+        .await
+        .unwrap();
         assert_eq!(result.results.len(), 1);
-        assert_eq!(test.mock.use_database_calls(), vec!["analytics".to_string()]);
+        assert_eq!(
+            test.mock.use_database_calls(),
+            vec!["analytics".to_string()]
+        );
         let config = test
             .state
             .connection_manager
@@ -816,9 +823,14 @@ mod tests {
     async fn get_explain_switches_session_database_when_pinned_differs() {
         let test = TestAppState::with_tables().await;
         let (_, conn_id) = test.save_and_connect("explain-db-cfg").await;
-        get_explain_impl(&test.state, conn_id, "SELECT 1".into(), Some("other".into()))
-            .await
-            .unwrap();
+        get_explain_impl(
+            &test.state,
+            conn_id,
+            "SELECT 1".into(),
+            Some("other".into()),
+        )
+        .await
+        .unwrap();
         assert_eq!(test.mock.use_database_calls(), vec!["other".to_string()]);
     }
 

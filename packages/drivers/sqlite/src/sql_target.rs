@@ -71,7 +71,10 @@ mod tests {
         );
         assert!(out.contains("\"stats\".\"users\" AS u"), "{out}");
         assert!(out.contains("\"stats\".\"orders\" AS o"), "{out}");
-        assert!(out.contains("(SELECT uid FROM \"stats\".\"admins\")"), "{out}");
+        assert!(
+            out.contains("(SELECT uid FROM \"stats\".\"admins\")"),
+            "{out}"
+        );
     }
 
     #[test]
@@ -99,23 +102,35 @@ mod tests {
 
     #[test]
     fn writes_and_ddl_qualify() {
-        assert!(qualify_sql("INSERT INTO users (id) VALUES (1)", Some("stats"), None)
-            .contains("INSERT INTO \"stats\".\"users\""));
+        assert!(
+            qualify_sql("INSERT INTO users (id) VALUES (1)", Some("stats"), None)
+                .contains("INSERT INTO \"stats\".\"users\"")
+        );
         assert!(qualify_sql("UPDATE users SET a = 1", Some("stats"), None)
             .contains("UPDATE \"stats\".\"users\" SET"));
-        assert!(qualify_sql("DELETE FROM users WHERE id = 1", Some("stats"), None)
-            .contains("DELETE FROM \"stats\".\"users\" WHERE"));
-        assert!(qualify_sql("CREATE TABLE users (id INTEGER)", Some("stats"), None)
-            .contains("CREATE TABLE \"stats\".\"users\""));
-        assert!(qualify_sql("ALTER TABLE users ADD COLUMN c TEXT", Some("stats"), None)
-            .contains("ALTER TABLE \"stats\".\"users\""));
+        assert!(
+            qualify_sql("DELETE FROM users WHERE id = 1", Some("stats"), None)
+                .contains("DELETE FROM \"stats\".\"users\" WHERE")
+        );
+        assert!(
+            qualify_sql("CREATE TABLE users (id INTEGER)", Some("stats"), None)
+                .contains("CREATE TABLE \"stats\".\"users\"")
+        );
+        assert!(
+            qualify_sql("ALTER TABLE users ADD COLUMN c TEXT", Some("stats"), None)
+                .contains("ALTER TABLE \"stats\".\"users\"")
+        );
         assert!(qualify_sql("DROP TABLE users", Some("stats"), None)
             .contains("DROP TABLE \"stats\".\"users\""));
     }
 
     #[test]
     fn rewrite_is_idempotent() {
-        let once = qualify_sql("SELECT * FROM users WHERE id IN (SELECT uid FROM admins)", Some("stats"), None);
+        let once = qualify_sql(
+            "SELECT * FROM users WHERE id IN (SELECT uid FROM admins)",
+            Some("stats"),
+            None,
+        );
         let twice = qualify_sql(&once, Some("stats"), None);
         assert_eq!(once, twice);
     }

@@ -146,9 +146,14 @@ mod tests {
     async fn plan_without_pin_keeps_active_database() {
         let test = TestAppState::with_tables().await;
         let (_, conn_id) = test.save_and_connect("struct-no-pin").await;
-        plan_table_structure_changes_impl(&test.state, conn_id.clone(), create_request("t_f1"), None)
-            .await
-            .unwrap();
+        plan_table_structure_changes_impl(
+            &test.state,
+            conn_id.clone(),
+            create_request("t_f1"),
+            None,
+        )
+        .await
+        .unwrap();
         assert!(test.mock.use_database_calls().is_empty());
         let config = test
             .state

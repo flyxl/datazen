@@ -315,7 +315,10 @@ mod tests {
                 "CREATE TABLE users (id int)",
                 "CREATE TABLE \"s\".\"users\"",
             ),
-            ("ALTER TABLE users ADD COLUMN c int", "ALTER TABLE \"s\".\"users\""),
+            (
+                "ALTER TABLE users ADD COLUMN c int",
+                "ALTER TABLE \"s\".\"users\"",
+            ),
             ("CREATE INDEX ix ON users (id)", "ON \"s\".\"users\""),
             ("DROP TABLE users", "DROP TABLE \"s\".\"users\""),
         ] {
@@ -340,13 +343,7 @@ mod tests {
         );
         let twice = qualify(&dialect, QualifierQuote::Backtick, &["db"], &once);
         assert_eq!(once, twice);
-        assert!(!qualify_sql_with(
-            &dialect,
-            QualifierQuote::Backtick,
-            &["db"],
-            &once
-        )
-        .rewritten);
+        assert!(!qualify_sql_with(&dialect, QualifierQuote::Backtick, &["db"], &once).rewritten);
     }
 
     #[test]

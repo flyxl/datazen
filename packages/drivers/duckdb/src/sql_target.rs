@@ -81,19 +81,19 @@ mod tests {
 
     #[test]
     fn insert_update_delete_ddl_qualify() {
-        assert!(
-            qualify("INSERT INTO users (id) VALUES (1)", Some("sales"))
-                .contains("INSERT INTO \"sales\".\"users\"")
-        );
+        assert!(qualify("INSERT INTO users (id) VALUES (1)", Some("sales"))
+            .contains("INSERT INTO \"sales\".\"users\""));
         assert!(
             qualify("UPDATE users SET a = 1", Some("sales")).contains("UPDATE \"sales\".\"users\"")
         );
-        assert!(qualify("DELETE FROM users", Some("sales")).contains("DELETE FROM \"sales\".\"users\""));
         assert!(
-            qualify("CREATE TABLE users (id INTEGER)", Some("sales"))
-                .contains("CREATE TABLE \"sales\".\"users\"")
+            qualify("DELETE FROM users", Some("sales")).contains("DELETE FROM \"sales\".\"users\"")
         );
-        assert!(qualify("DROP TABLE users", Some("sales")).contains("DROP TABLE \"sales\".\"users\""));
+        assert!(qualify("CREATE TABLE users (id INTEGER)", Some("sales"))
+            .contains("CREATE TABLE \"sales\".\"users\""));
+        assert!(
+            qualify("DROP TABLE users", Some("sales")).contains("DROP TABLE \"sales\".\"users\"")
+        );
     }
 
     #[test]

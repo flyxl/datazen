@@ -116,8 +116,13 @@ pub(crate) async fn get_table_data_impl(
     // target database before reading (same mechanism as the query-family
     // commands), so `config.database` below qualifies rows correctly even when
     // the table lives outside the session's current active database.
-    super::query::ensure_session_database(state, &db_session_id, database.as_deref(), "get_table_data")
-        .await?;
+    super::query::ensure_session_database(
+        state,
+        &db_session_id,
+        database.as_deref(),
+        "get_table_data",
+    )
+    .await?;
     let (driver, handle) = state
         .connection_manager
         .get_session(&db_session_id)

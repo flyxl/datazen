@@ -23,7 +23,13 @@ pub(crate) fn qualify_sql(sql: &str, database: Option<&str>, schema: Option<&str
         .filter(|s| !s.is_empty())
         .into_iter()
         .collect();
-    qualify_sql_with(&PostgreSqlDialect {}, QualifierQuote::DoubleQuote, &parts, sql).sql
+    qualify_sql_with(
+        &PostgreSqlDialect {},
+        QualifierQuote::DoubleQuote,
+        &parts,
+        sql,
+    )
+    .sql
 }
 
 #[cfg(test)]
@@ -100,11 +106,17 @@ mod tests {
     #[test]
     fn insert_update_delete_qualify() {
         assert_eq!(
-            qualify("INSERT INTO users (id, name) VALUES (1, 'a')", Some("sales")),
+            qualify(
+                "INSERT INTO users (id, name) VALUES (1, 'a')",
+                Some("sales")
+            ),
             "INSERT INTO \"sales\".\"users\" (id, name) VALUES (1, 'a')"
         );
         let update = qualify("UPDATE users SET name = 'b' WHERE id = 1", Some("sales"));
-        assert!(update.starts_with("UPDATE \"sales\".\"users\" SET"), "{update}");
+        assert!(
+            update.starts_with("UPDATE \"sales\".\"users\" SET"),
+            "{update}"
+        );
         assert_eq!(
             qualify("DELETE FROM users WHERE id = 1", Some("sales")),
             "DELETE FROM \"sales\".\"users\" WHERE id = 1"
@@ -115,18 +127,22 @@ mod tests {
     fn ddl_statements_qualify() {
         assert!(qualify("TRUNCATE TABLE users", Some("sales"))
             .contains("TRUNCATE TABLE \"sales\".\"users\""));
-        assert!(qualify(
-            "CREATE TABLE users (id integer PRIMARY KEY)",
-            Some("sales")
-        )
-        .contains("CREATE TABLE \"sales\".\"users\""));
+        assert!(
+            qualify("CREATE TABLE users (id integer PRIMARY KEY)", Some("sales"))
+                .contains("CREATE TABLE \"sales\".\"users\"")
+        );
         assert!(qualify("ALTER TABLE users ADD COLUMN c int", Some("sales"))
             .contains("ALTER TABLE \"sales\".\"users\""));
         assert!(qualify("CREATE INDEX ix ON users (id)", Some("sales"))
             .contains("ON \"sales\".\"users\""));
         // DROP TABLE qualifies; other object kinds are left alone.
-        assert!(qualify("DROP TABLE users", Some("sales")).contains("DROP TABLE \"sales\".\"users\""));
-        assert_eq!(qualify("DROP VIEW users_view", Some("sales")), "DROP VIEW users_view");
+        assert!(
+            qualify("DROP TABLE users", Some("sales")).contains("DROP TABLE \"sales\".\"users\"")
+        );
+        assert_eq!(
+            qualify("DROP VIEW users_view", Some("sales")),
+            "DROP VIEW users_view"
+        );
     }
 
     #[test]
