@@ -11,7 +11,7 @@
 | F1 | 废弃 `use_database`，query/stream/explain 显式传参 | 决策 1 | 已完成 | 34a28420 | 3d23cfd1 · 8b85cd49 · 本提交 |
 | F2 | ADB 命令迁移 SQLite 驱动（DriverCommandDefinition） | 决策 2 | 编码完成 | 本提交 | — |
 | F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 已完成 | d17623d1 | 4bb25365 · 25aed34c · 本提交 |
-| F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 编码完成 | 本提交 | — |
+| F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 已完成 | 4d0fec83 | 本提交 |
 | F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 未开始 | — | — |
 | F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 未开始 | — | — |
 | F7 | 驱动级 SQL 定位重写（限定名内联、无会话切换；PG 系含 database+schema 双维度） | 用户新指令 2026-08-26 | 未开始 | — | — |
@@ -459,6 +459,59 @@
 ### 非缺陷观察项（供 R 阶段参考）
 1. app-data 导出会把运行中 Store 的 SQLite sidecar（`datazen.sqlite-shm`/`-wal`，零填充高压缩比）打进归档，导入侧 zip-bomb 压缩比守卫（MAX_COMPRESSION_RATIO=100）会拒绝此类归档——本轮单元测试因此改用手工构造的干净归档验证 import 助手。系既有 archive 语义问题、非 F4 引入（F4 只重组命令入口），建议后续在导出侧排除 sqlite sidecar 或在导入侧对 store 自身文件放宽比率检查。
 2. config.rs 中 app-data 对话框分支沿袭旧代码的同步 `blocking_save_file`/`blocking_pick_file` 写法（未走 `run_blocking_dialog`），connections 分支保持 spawn_blocking 模式——两处均为既有行为，本轮不做跨域重构。
+
+### 复验判定（2026-08-26，全新测试代理，被测 commit `4d0fec83`）
+**通过 → 已完成**，无 bug 登记。合并完整性 / 五组语义等价性 / 门控单一机制 / 前端换名审计全部通过；三件套独立重跑全绿且与声称逐位一致；覆盖率 100% 达标。
+
+#### 合并完整性
+- 全仓 Grep 三条旧命令名与四个旧 wrapper 名：生产代码零残留。命中仅为 ① `pathIpcWiring.test.ts` 守护负断言、② config.rs 文档注释 + ipc_contract_guards 运行时拼接 needle、③ 计划/进度文档的历史表述。
+- lib.rs 注册面（git show 逐行核对）：删 `export_connections_with_dialog` / `export_app_data_with_dialog` / `import_app_data_with_dialog` 三行、增 0 行；connections 块 7→6、app-data 对块（export/import 两对，不含 `save_encryption_key_with_dialog`）4→3，与编码轮声称一致。
+- config.rs 函数清单一一对照：仅三个 `_with_dialog` 孪生删除 + 7 个提取助手（write_connections_export / build_import_preview_from_path / pick_connections_open_path / pick_connections_save_path / export_app_data_to_dest / import_app_data_from_source / pick_app_data_open_path·save_path）+ 6 个新测试，其余函数签名零变化。
+
+#### 五组语义等价性（逐组）
+| 组 | 判定 | 要点 |
+|----|------|------|
+| export_connections | 等价 ✓ | dialog 分支顺序保持「校验密码→对话框→写盘」，取消 Ok(None)/成功 Some(count) 与旧 dialog 版一致；override 分支=旧 path 版同一 `require_webdriver_path_ipc` 门控，密码校验经 `build_encrypted_connections_export` 内部既有调用延续（新前置校验幂等叠加，坏密码仍在写盘前失败）；返回 u32→Option&lt;u32&gt; 统一 dialog 语义，PIH-003 补 not-null 断言 |
+| import_connections_preview | 等价 ✓ | None→dialog 触发条件正确：仅 `resolve_override_path` 返回 Ok(None)（即参数为 None）才走 `pick_connections_open_path`；该助手自旧 import_connections_with_dialog 原样提取，filter 集逐字相同（Connections[json/xml/ncx/datazenconnection/tableplusconnection] + DataZen / DataGrip XML / Navicat NCX / DBeaver JSON / TablePlus）；读盘→parse_import_file→预览 JSON 零 store 写入语义不变；Value→Option&lt;Value&gt; 仅新增「取消=null」 |
+| import_connections_with_dialog | 等价 ✓ | 新增可选 override_path 走同一门控；dialog 分支为共享助手原样提取；导入/merge 主体零改动。行为差异记录（非缺陷）：cmd_err/log 标签去 `_with_dialog` 后缀（错误上下文文案变化，无测试对旧文案断言） |
+| export_app_data | 等价 ✓ | dialog 分支同步 blocking 写法原样保留（观察项 2）；取消 false/成功 true 不变；export 本无确认弹窗，override 分支只替换取径方式；()|bool→bool 统一，ADB-002 补 saved===true |
+| import_app_data | 等价 ✓ | override 分支跳过「文件选择+Warning OkCancel 确认」两步交互 = 旧 path 版零交互等价（E2E 直调不被 OS 弹窗阻塞），无新增交互；dialog 分支两步交互逐字保留（同 Warning kind / OkCancel buttons / confirm 文案透传）；两条取消路径均返回 false |
+
+未动四邻居 `detect_connection_import_path` / `pick_connection_import_path_with_dialog` / `import_connections_from_app` / `save_encryption_key_with_dialog`：函数清单 diff 零命中 + 注册保留 + wrapper 未动，确认未被波及。
+
+#### 门控单一机制
+- `resolve_override_path` 全仓唯一定义于 error.rs（pub(crate)）：backup.rs 2 处（backup_database/restore_sql_file）+ config.rs 5 处全部经它；backup.rs 本地副本删除、其单测随迁 error.rs::tests（即本轮 1139 之一）。config.rs 残留的本地 `require_webdriver_path_ipc` 转发 shim 属 open_path_impl 既有基线，非第二套 override 实现。
+- `OVERRIDE_DISABLED_MSG` = "path override disabled in production"，与计划文档决策 3 示例原文一致。
+- Rust 守护 `merged_commands_route_through_shared_resolve_override_path`：钉死五命令体门控计数=5 且禁本地重定义；`cargo check --features webdriver` 独立复验通过（override 分支参与编译）。
+
+#### 前端换名审计
+- ConnectionShareDialog.tsx 两处、ConnectionPage.tsx 两处均为纯函数名替换，实参逐字不变；ConnectionShareDialog.test.tsx mock 键同步换名。
+- 生产 invoke 字符串全仓扫描：相关九个 IPC 只出现在 src/commands/connection.ts / backup.ts wrapper 层，零 overridePath。
+- 守护有效性：pathIpcWiring f4 用例 = wrapper invoke 正断言 + 3 旧 IPC 名 / 4 旧 wrapper 名负断言 + 四生产文件 overridePath 与旧名双负 + lib.rs 正负双向；Rust ipc_contract_guards 以 include_str! 钉死签名与注册面。局限同 F3 记录（前端白名单式扫描不覆盖新增文件），由注册面咽喉 + Rust 侧合围兜底。
+
+#### E2E 用例（归属 R）
+| ID | 场景 | 环境 | 入口 | 通过判据 | 归属 |
+|----|------|------|------|---------|------|
+| F4-E2E-001 | export_connections overridePath 导出 .datazenconnection | webdriver 构建 | e2e PIH-003 前半 | count 非 null 且为 number；文件落盘且为合法加密载荷 | 【留待 R 阶段回归】 |
+| F4-E2E-002 | import_connections_preview overridePath 预览往返 | 同上 | e2e PIH-003 后半 | preview 非 null、connections 数组、sourceFormat=DataZen | 【留待 R 阶段回归】 |
+| F4-E2E-003 | export_app_data overridePath 导出 zip 及排除规则 | 同上 | e2e ADB-002/006/008 | saved===true；zip 非空；排除 logs//*.tmp/.key | 【留待 R 阶段回归】 |
+| F4-E2E-004 | export→import_app_data overridePath 幂等回灌 | 同上 | e2e ADB-003 | import true、get_settings 可读 | 【留待 R 阶段回归】 |
+| F4-E2E-005 | 路径遍历 zip 在 override 分支安全拒绝 | 同上 | e2e ADB-004 | reject 且匹配 traversal/InvalidInput | 【留待 R 阶段回归】 |
+| F4-E2E-006 | 生产构建负向门控：五合并命令传 overridePath 必拒 | 生产构建（default features） | 直调 IPC | Validation："path override disabled in production" | 【已被单测钉死】共享 resolve_override_path 单测在 default 特性组合下断言同文案 + config.rs 五命令体门控守卫（本轮 1139 通过之一）；生产包冒烟留 R |
+
+#### 测试结果（复验轮独立重跑）
+| 套件 | 结果 | 对照声称 |
+|------|------|---------|
+| `cargo test -p datazen --lib`（共享主检出 target） | **1139 passed / 0 failed / 2 ignored** | 一致 ✅（较 F3 复验终态 1133 净 +6 = 2 行为 + 4 守卫，gate 单测随迁 ±0，自洽） |
+| `npx vitest run` | **242 文件 / 1988 用例全过**（exit 0，一次通过） | 一致 ✅；编码轮报告的 1 例 flake 未复现，维持既有 flake 定性 |
+| `npx tsc --noEmit` | **0 错误** | 一致 ✅ |
+| `cargo check -p datazen --features webdriver` | 通过（exit 0，仅既有警告） | override 分支参与编译独立复验 |
+
+#### 覆盖率（复验轮实测：vitest --coverage --coverage.include 过滤）
+| 文件 | 行 | 语句 | 分支 | 函数 | 判定 |
+|------|----|------|------|------|------|
+| src/commands/connection.ts | 100% | 100% | 100% | 100% | ✓ ≥80% |
+| src/commands/backup.ts | 100% | 100% | 100% | 100% | ✓ ≥80% |
 
 ## F5 删除纯文件读写 IPC
 （占位）
