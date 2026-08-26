@@ -1,4 +1,5 @@
 import { expect, browser, $ } from '@wdio/globals';
+import fs from 'node:fs';
 import {
   openConnectionWindow,
   closeExtraWindows,
@@ -31,15 +32,16 @@ describe('AI 上下文引用 E2E 测试 (CTX-001~CTX-006)', () => {
     // Get context directory path
     contextDir = await invokeBackend<string>('context_get_dir');
 
-    // Seed context files via filesystem
-    await invokeBackend('write_file', {
-      path: `${contextDir}/schema.sql`,
-      contents: 'CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100), email VARCHAR(200));',
-    });
-    await invokeBackend('write_file', {
-      path: `${contextDir}/relations.md`,
-      contents: '# Table Relations\n\n- users has_many orders\n- orders belongs_to users',
-    });
+    // Seed context files via filesystem (E2E process is Node — write directly,
+    // the app reads them back over its own context IPCs).
+    fs.writeFileSync(
+      `${contextDir}/schema.sql`,
+      'CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100), email VARCHAR(200));',
+    );
+    fs.writeFileSync(
+      `${contextDir}/relations.md`,
+      '# Table Relations\n\n- users has_many orders\n- orders belongs_to users',
+    );
   });
 
   after(async () => {

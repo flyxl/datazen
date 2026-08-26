@@ -1,12 +1,9 @@
-use super::compare::{
-    diff_table_schemas_ir, format_ir_type, resolve_pk_columns, row_key, row_to_json_map,
-    rows_equal, rows_to_key_map, value_key_part, values_equal,
-};
+use super::compare::{diff_table_schemas_ir, format_ir_type};
 use super::tasks::{
     check_sync_conflicts_impl, delete_sync_task_impl, get_sync_tasks_impl,
     save_sync_task_direct_impl,
 };
-use crate::commands::schema_diff::{compare_table_data_impl, compare_table_schemas_impl};
+use crate::commands::schema_diff::compare_table_schemas_impl;
 use crate::schema_diff::diff_table_schemas;
 use crate::store::SyncTask;
 use crate::transfer::ir::{IRColumn, IRTable, IRType};
@@ -211,111 +208,6 @@ fn diff_table_schemas_detects_added_removed_changed() {
     assert!(diff.changed[0].changes.contains(&"dataType".into()));
 }
 
-#[test]
-fn resolve_pk_columns_prefers_primary_keys_list() {
-    let schema = table(
-        "t",
-        vec![col("a", "int", false, true), col("b", "int", false, false)],
-        vec!["b".into()],
-    );
-    assert_eq!(resolve_pk_columns(&schema), vec!["b".to_string()]);
-}
-
-#[test]
-fn resolve_pk_columns_falls_back_to_column_flags() {
-    let schema = table(
-        "t",
-        vec![col("a", "int", false, true), col("b", "int", false, false)],
-        vec![],
-    );
-    assert_eq!(resolve_pk_columns(&schema), vec!["a".to_string()]);
-}
-
-#[test]
-fn row_key_uses_pk_values() {
-    let cols = vec!["id".into(), "name".into()];
-    let row = vec![
-        Some(Value::Integer(42)),
-        Some(Value::String("alice".into())),
-    ];
-    let key = row_key(&cols, &["id".into()], &row);
-    assert!(key.contains("42"));
-    assert!(!key.starts_with("h:"));
-}
-
-#[test]
-fn row_key_hashes_when_no_pk() {
-    let cols = vec!["name".into()];
-    let row = vec![Some(Value::String("bob".into()))];
-    let key = row_key(&cols, &[], &row);
-    assert!(key.starts_with("h:"));
-    assert_eq!(key, row_key(&cols, &[], &row));
-}
-
-#[test]
-fn value_key_part_serializes_null_and_values() {
-    assert_eq!(value_key_part(&None), "\\N");
-    assert_eq!(
-        value_key_part(&Some(Value::Integer(1))),
-        serde_json::to_string(&Value::Integer(1)).unwrap()
-    );
-}
-
-#[test]
-fn rows_to_key_map_last_row_wins_duplicate_keys() {
-    let cols = vec!["id".into()];
-    let rows = vec![vec![Some(Value::Integer(1))], vec![Some(Value::Integer(1))]];
-    let map = rows_to_key_map(&cols, &["id".into()], &rows);
-    assert_eq!(map.len(), 1);
-}
-
-#[test]
-fn row_to_json_map_aligns_columns() {
-    let cols = vec!["id".into(), "name".into()];
-    let row = vec![Some(Value::Integer(7)), Some(Value::String("x".into()))];
-    let json = row_to_json_map(&cols, &row);
-    assert_eq!(json["id"], 7);
-    assert_eq!(json["name"], "x");
-}
-
-#[test]
-fn rows_equal_requires_matching_values_for_all_source_columns() {
-    let src_cols = vec!["id".into(), "name".into()];
-    let tgt_cols = vec!["id".into(), "extra".into()];
-    let src_row = vec![Some(Value::Integer(1)), Some(Value::String("a".into()))];
-    let tgt_row = vec![
-        Some(Value::Integer(1)),
-        Some(Value::String("ignored".into())),
-    ];
-    assert!(!rows_equal(&src_cols, &src_row, &tgt_cols, &tgt_row));
-}
-
-#[test]
-fn rows_equal_true_when_columns_align() {
-    let cols = vec!["id".into(), "name".into()];
-    let a = vec![Some(Value::Integer(1)), Some(Value::String("a".into()))];
-    let b = vec![Some(Value::Integer(1)), Some(Value::String("a".into()))];
-    assert!(rows_equal(&cols, &a, &cols, &b));
-}
-
-#[test]
-fn rows_equal_detects_mismatch() {
-    let cols = vec!["id".into()];
-    let a = vec![Some(Value::Integer(1))];
-    let b = vec![Some(Value::Integer(2))];
-    assert!(!rows_equal(&cols, &a, &cols, &b));
-}
-
-#[test]
-fn values_equal_treats_missing_and_null_as_distinct() {
-    assert!(values_equal(Some(&None), Some(&None)));
-    assert!(!values_equal(None, Some(&Some(Value::Null))));
-    assert!(values_equal(
-        Some(&Some(Value::String("a".into()))),
-        Some(&Some(Value::String("a".into())))
-    ));
-}
-
 #[tokio::test]
 async fn sync_task_crud_and_inspect() {
     use crate::data_sync::TableMappingStatus;
@@ -387,20 +279,10 @@ async fn sync_task_crud_and_inspect() {
 }
 
 #[tokio::test]
-async fn compare_table_schemas_and_data_impl() {
-    use crate::db::Value;
+async fn compare_table_schemas_impl_returns_diff_for_table() {
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
-    use crate::testing::mock_driver::MockDriverOptions;
 
-    let opts = MockDriverOptions {
-        count_total: 1,
-        query_rows: vec![vec![
-            Some(Value::Integer(1)),
-            Some(Value::String("alice".into())),
-        ]],
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
+    let test = TestAppState::new().await;
     test.store
         .save_connection(sample_postgres_config("src"))
         .await
@@ -417,11 +299,6 @@ async fn compare_table_schemas_and_data_impl() {
             .await
             .unwrap();
     assert_eq!(schema_diff["table"], "users");
-
-    let data_diff = compare_table_data_impl(&test.state, src, tgt, "users".into())
-        .await
-        .unwrap();
-    assert_eq!(data_diff["table"], "users");
 }
 
 #[test]
@@ -443,6 +320,10 @@ fn legacy_transfer_ir_compare_ipc_removed() {
     assert!(
         !sync_mod.contains("sync_tables"),
         "legacy sync_tables IPC must not be registered in sync mod"
+    );
+    assert!(
+        !sync_mod.contains("classify_sync_pair"),
+        "redundant classify_sync_pair IPC must stay removed (frontend mirrors pairing in syncPairing.ts)"
     );
 }
 
@@ -487,16 +368,6 @@ fn is_self_sync_requires_matching_schema_on_same_connection() {
         Some("public"),
         Some("app")
     ));
-}
-
-#[test]
-fn classify_sync_pair_rejects_ir_and_allows_mysql_family() {
-    let mysql = super::classify_sync_pair("mysql".into(), "mariadb".into()).unwrap();
-    assert_eq!(mysql["path"], "direct");
-    assert_eq!(mysql["supported"], true);
-    let ir = super::classify_sync_pair("postgresql".into(), "mysql".into()).unwrap();
-    assert_eq!(ir["path"], "ir");
-    assert_eq!(ir["supported"], false);
 }
 
 #[tokio::test]

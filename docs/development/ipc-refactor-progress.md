@@ -12,8 +12,8 @@
 | F2 | ADB 命令迁移 SQLite 驱动（DriverCommandDefinition） | 决策 2 | 已完成 | 823516c2 | bf588def · f12f9be9 · 本提交 |
 | F3 | backup/restore 合并 + `restore_sql_file` 四合一（override_path 模式） | 决策 3+6 | 未开始 | — | — |
 | F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 未开始 | — | — |
-| F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 未开始 | — | — |
-| F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 未开始 | — | — |
+| F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 已完成 | 本提交 | 本提交 |
+| F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 已完成 | d4e33801 | 本提交 |
 | F7 | 驱动级 SQL 定位重写（限定名内联、无会话切换；PG 系含 database+schema 双维度） | 用户新指令 2026-08-26 | 未开始 | — | — |
 | B5 | ConnectionNavigatorTree 刷新丢失已展开分类修复（=F1-BUG-005） | 既有缺陷 | 已完成 | e4b7b6d7 | 本提交 |
 | R | 回归测试 + 文档更新（架构文档/AGENTS.md）+ 合并 main | 步骤 6 | 未开始 | — | — |
@@ -37,6 +37,7 @@
 | F1-BUG-004 | F1 | 【低】改动 TS 文件覆盖率不达标：ConnectionNavigatorTree.tsx 行覆盖 53.13%、TableStructureEditor.tsx 37.64%（要求 ≥80%）；其余数字见「覆盖率」小节 | 已修复 | 2026-08-26 | 修复轮（同上提交）：两文件 vitest 用例扩展达 ≥80% 行覆盖（新数字见「覆盖率」表）；并补 Rust stream 路径独立切库单测。**复验通过**（同上）：全新实例重跑全量 1963 用例 + `--coverage.include` 过滤实测 ConnectionNavigatorTree.tsx 行覆盖 **96.74%**、TableStructureEditor.tsx **97.75%**，与修复轮声称数字逐位一致；ConnectionNavigatorTree.test.tsx 实测 64 用例独立运行全绿 |
 | F1-BUG-005 | F1 | 【中】【既有行为，非本轮引入】连接刷新后已展开对象分类内容丢失且不自动恢复：单库树（如 SQLite）展开 procedure 分类出现条目后，执行连接级或库级刷新，分类行仍呈展开态但条目消失、计数归零，观察窗 3s 内无任何重载。根因指向 `useExpandedDbCacheRefresh` 在 schemaEpoch 变化时 `clearCaches` 清空该会话全部 `dbObjectsMap` 后仅重载展开库的**表缓存**、不重载对象分类缓存，与 `refreshConnection.reloadExpandedObjectCategories` 的重载竞态失败。多库树表节点不受影响（走 `reloadDbTables` 恢复）。临时探针在 4ba4831a（F1 前）/046acf7a（修复轮前）/8b85cd49 三时点症状一致，判定为既有缺陷。是否纳入 F1 范围由协调者裁决；重现步骤见「F1 缺陷详情」 | 已修复 | 2026-08-26 | 复验轮新登记（2026-08-26 复验 commit 8b85cd49 时发现）。**B5 编码轮修复（2026-08-26，commit：`fix(ui): restore expanded object categories after refresh (b5)`）**：编码轮实测将根因细化为三层——① 键空间错位：hook 按会话 id 前缀清理 `dbObjectsMap`，但分类键用持久连接 id，生产环境两 id 不同时清理从不命中（掩盖症状）、id 相同的探针环境则整段清空；② epoch effect 清理后仅调度表缓存恢复、不调度分类恢复，恢复全靠 `refreshConnection` 尾部循环与该 effect 竞速，清理落在写入之后即永久丢失；③ 组件内 3 处动态 import databaseCommands 在 vitest 下 mock 穿透不一致，jsdom 中 invoke 抛错被 catch 写成空数组放大症状。修复=hook 单遍「同步清缓存→同批调度表+分类恢复重载」语义 + `clearCaches` 双 id 键空间修正 + 动态导入改静态；新增 hook 层排序/作用域断言与组件层连接级/库级刷新回归各一（修复前实测红、修复后绿），详见 B5 小节。**复验通过**（2026-08-26 全新测试代理，commit：`test(b5): reverify - expanded categories restore`）：独立重跑 vitest 240 文件/1966 用例全绿、tsc 0 错误；覆盖率实测行覆盖 ConnectionNavigatorTree.tsx **96.74%**（与基线逐位一致零回退）、useExpandedDbCacheRefresh.ts **100%**。四项判定全过：①内容级恢复成立（hook 调度 `loadObjectsForCat`→真实 `getDatabaseObjects`→写回 `dbObjectsMap`，渲染断言条目+计数双恢复）；②「clear 与恢复调度同一 effect 体、无 await 间隔」声称属实（invocationCallOrder 断言 clear 严格先于全部表/分类恢复）；③双键空间修正正确（实测组件键构造：表缓存=`dbSessionId::db` 前缀、分类缓存=`connectionId::db[::schema]::cat` 前缀，清理各按其前缀过滤，符合 AGENTS.md ID 术语——归属键用 connectionId、会话操作用 dbSessionId）；④`reloadDbTables` 函数体除动态导入改静态外逐字未变，多库树分支与挂载自动加载路径未触及，多库用例全绿。回归红性实证（不切分支：临时换入 `e4b7b6d7^` 两份实现文件→定向跑→`git checkout --` 还原并字节校验）：两条渲染层回归在修复前代码 2 failed（刷新后恢复链路零 mock 调用）、hook 层新用例 failed——「修复前红」属实，且渲染层红性机理与编码轮层③一致。静态导入副作用评估无风险（commands 链仅依赖 invoke/types 无环；该模块经 schemaStore 本就在组件静态图内，无包体增量）。残余观察（不阻塞）：连续两次指纹变化时前一波未取消的在途响应理论上可能晚于后一波清理落盘（last-write-wins），docstring 已声明取消语义边界，超出本缺陷范围 |
 | F2-BUG-001 | F2 | 【低】改动 TS 文件覆盖率不达标且为零执行覆盖：`src/commands/adb.ts` 全量套件 `--coverage` 实测行覆盖 **14.28%**（7 语句仅 1 覆盖，未覆盖 L23-29 / 33 / 37-39 / 54-58 —— 共享 helper 与三个导出函数全部没有任何单测执行；全仓唯一引用它的 `pathIpcWiring.test.ts` 是源码字符串断言，不执行代码），远低于 ≥80% 门槛。`savedPath ?? null` 取消语义、`driverType='sqlite'` 信封组装、input 透传均无回归保护。重现步骤见「F2 缺陷详情」 | 已修复 | 2026-08-26 | 修复轮（commit：`test(adb): behavioral unit tests for sqlite driver command wrappers (f2 bug 001)`）：新增行为级单测 `src/commands/__tests__/adb.test.ts`（7 用例；按目录既有惯例 `vi.hoisted` + `vi.mock('../driver')` 替换 `driverCommands.execute`），断言三命令信封逐字段等价（driverType='sqlite'、command id、input 与原 IPC 参数一致且无 dbSessionId/database 多余键）、`result.data` 解包透传、pull 成功返回 savedPath 字符串、取消语义 savedPath null/undefined → null（同原 *_with_dialog）；全量套件 `--coverage` 实测行覆盖 **100%**（前 14.28%），vitest 241 文件/1970 用例全绿、`tsc --noEmit` 0 错误。**复验通过**（2026-08-26 全新实例，commit f12f9be9）：7 用例逐条审查均为行为级断言、无空转/永真——三命令信封以 `toEqual` 整对象等价锁定 driverType/command id/input 键值（list 包 input={}、list 库 {package}、pull {package, dbPath}），envelope discipline 用例另断言请求键集恰为 ['command','driverType','input'] 且 dbSessionId/database 均 undefined；`result.data` 解包以 `toBe` 同一性断言透传；取消语义 savedPath=null 与缺失字段 undefined 两路径均归 null；仅 mock `../driver`，被测 wrapper 真实执行。独立重跑：`npx vitest run --coverage --coverage.include='src/commands/adb.ts'` 实测 adb.ts Stmts/Branch/Funcs/Lines 均 **100%**（门槛 ≥80%，无未覆盖行）；全量 `npx vitest run` 241 文件 / 1970 用例全绿；`npx tsc --noEmit` exit 0（单独串行执行，未复现负载超时 flake）；数字与修复轮声称逐位一致 |
+| F5-BUG-001 | F5 | 【低】【文档漂移，非代码缺陷】`docs/development/e2e-testing.md` L154 与 `docs/development/e2e-coverage.md` L106 仍表述「webdriver 构建保留 `write_file` / `export_app_data(path)` 等路径 API 供 E2E 使用」，与决策 4（三路径 IPC 已删、E2E 改 Node fs）相悖，会误导后续 E2E 编写者。重现：`grep -rn "write_file" docs/development/e2e-testing.md docs/development/e2e-coverage.md`。commands.md 已同步、两文件不在本决策承诺范围；归属 R 阶段文档收口统一修正，不阻塞 F5 判定 | 待验证 | 2026-08-26 | F5 复验轮新登记（commit 8f9e4a9c 复验时发现） |
 > BUG-001~003 与编码说明「遗留注意 1」同根因（非 query 族命令无 database 参数、入口不再预切库），但遗留说明给出的过渡缓解（"由任一带 database 的 query/stream/explain 惰性触发切库"）对编辑器主链路不生效，故按缺陷登记；由编码代理裁决在 F1 内修复（补参数/补预切）或明确降级为后续功能承接。
 
 状态机：`待验证（新发现，编码代理未处理）/ 验证不通过 → 待验证（修复后等待复测）→ 已修复`
@@ -351,10 +352,139 @@ Rust 侧以新增单测清单佐证（无 llvm-cov 工具链）：sqlite crate a
 （占位）
 
 ## F5 删除纯文件读写 IPC
-（占位）
+
+### 范围
+- **Host**：删除 `src-tauri/src/commands/file.rs` 的 `write_file` / `write_file_base64` / `read_file` 三个 `#[tauri::command]` 及内部实现 `write_file_impl` / `read_file_impl`、webdriver 门控辅助 `deny_path_ipc`、仅为其服务的 `validate_file_path`（含专属单测 ×4）；删除门控单测 ×3（`path_ipc_{write_file,read_file,write_file_base64}_gated_without_webdriver`）；`lib.rs` 删除三条注册。dialog 系列（save/open/begin/append/finish/abort/export_tables_stream）全部保留，`ALLOWED_EXTENSIONS` / `validate_extension` 仍被对话框过滤器使用故保留
+- **前端**：删除 `src/commands/file.ts` 的 `writeFile` / `writeFileBase64` / `readFile` 三包装；新增 `src/commands/__tests__/file.test.ts`（8 用例）覆盖全部现存封装的参数透传与 `onExportProgress` 订阅
+- **E2E**：`e2e/specs/ai-context.ts`（2 处）与 `e2e/specs/ai-context-tables.ts`（1 处）fixture 准备由 `invokeBackend('write_file')` 改为 Node.js `fs.writeFileSync()`；目标路径逻辑不变（仍写入 `context_get_dir` 返回的应用上下文目录），仅换写入手段（E2E 进程即 Node）
+- **文档**：`docs/architecture/backend/commands.md`「文件」行更新为对话框系列清单并注明纯路径读写 IPC 已删
+
+### themePackApply 甄别结论
+`src/lib/themePackApply.ts` L164 的 `readFile(relPath)` 是本地函数参数（`rewriteCssUrls(css, readFile: PackFileReader)` 的回调形参），非 `commands/file.ts` 的 IPC 封装，与本任务无关，未改动。全仓 Grep 确认三包装在 src/ 内无其他业务调用方。
+
+### 守护测试说明
+`src/commands/__tests__/pathIpcWiring.test.ts` 以当前分支内容核实：不含三包装相关断言（F2 改写后仅覆盖 ADB/dialog/open_* 路径），无需更新。另以全仓 grep 验证 `'write_file'` / `'write_file_base64'` / `'read_file'` / `writeFileBase64` / `fileCommands.writeFile` / `fileCommands.readFile` 在 src、src-tauri/src、e2e、packages/extensions 清零。
+
+### 测试结果（编码轮）
+
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（共享主检出 target） | 1123 passed / 0 failed / 2 ignored（较 F2 后 1130 −7 = 删除的 validate_file_path×4 + 门控×3 专属单测） |
+| `npx vitest run` | 241 files / 1971 passed，全绿（+1 file/+8 tests = 新增 file.test.ts） |
+| `npx tsc --noEmit` | 0 错误 |
+| 覆盖率（改动 TS：`src/commands/file.ts`，vitest --coverage.include 过滤实测） | 行/语句/分支/函数 **100%**（≥80% 达标；e2e 两 spec 不在 vitest 覆盖域） |
+
+### 环境注意
+本 worktree 的 codegen `src-tauri/capabilities/default.json` 曾含 `redis:default`（redis 插件未编译时 tauri-build 权限校验失败，同 F1 遗留注意 2 的坑）；已对齐主检出权限集（28 权限、无 redis）。该文件为 gitignore codegen，不入库。
+
+### 复验（2026-08-26 全新测试代理实例，commit 8f9e4a9c）→ 通过
+
+#### 三项审查
+1. **删除完整性 ✅**：三 IPC 在 src / src-tauri/src / e2e / packages/extensions 全仓清零（残留 `write_file` 命中均为各模块 `#[cfg(test)]` 内同名本地测试辅助与 `store::write_file_atomic`、`read_file` 命中均为 `context_read_files`，非 IPC 残留）；lib.rs 三条注册已删；前端无 camelCase 包装、无解构导入、无字符串 invoke 残留（themePackApply.ts 的 `readFile` 确为本地 `PackFileReader` 形参，编码轮甄别属实）。**甄别复核**：`ALLOWED_EXTENSIONS` 由 `ext_refs()`（file.rs L53）消费且 `ext_refs` 被全部 5 个 dialog 命令调用；`validate_extension` 被 5 个 dialog 命令 + `driver_command.rs` L617 调用——「仍被使用故保留」属实，**非死代码**
+2. **迁移等价性 ✅**：ai-context.ts ×2 / ai-context-tables.ts ×1 目标目录来源（均 `context_get_dir`）、文件名（`${contextDir}/schema.sql`、`${contextDir}/relations.md`）、内容字符串逐字一致；旧 write_file 为 Rust `String::as_bytes()`（UTF-8）、新 Node `fs.writeFileSync` 默认 utf8 且内容纯 ASCII → 字节级等价；`context_get_dir` 返回宿主视角绝对路径（`dir.display()`，store.data_dir()/contexts 或用户自定义 context_dir），E2E Node 进程与本机应用同机同用户，直写后端可读成立——且 CTX-002/003/004 经 `context_list_files`/`context_read_files` 读回断言闭环验证该前提。旧 `validate_file_path` 白名单是针对 webview 输入的防线，测试 fixture 直写不受其删除影响，无安全回归
+3. **安全面 ✅**：`write_file_impl` / `read_file_impl` / `deny_path_ipc` 全仓零引用残留；共享门控 `require_webdriver_path_ipc`（error.rs）未被波及，config.rs ×4（连接导出/导入/app-data 导出/导入）与 backup.rs ×3（backup/restore/restore_sql_file）继续使用；webdriver 构建下无其他合法路径依赖被删三命令
+
+#### 独立重跑结果
+
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（CARGO_TARGET_DIR=主检出 target） | **1123 passed / 0 failed / 2 ignored**（=1130−7，与声称一致） |
+| `npx vitest run` | **241 files / 1971 passed**，全绿 |
+| `npx tsc --noEmit` | **0 错误**（exit 0） |
+| 覆盖率 `src/commands/file.ts`（vitest --coverage.include 过滤实测） | 行/语句/分支/函数 **100%/100%/100%/100%**；file.test.ts 单独运行 8/8 通过 |
+
+#### E2E 用例登记（执行归属：R 阶段，需 `pnpm tauri build --debug --features webdriver` + wdio；本测试轮未执行）
+- **F5-E2E-001** `e2e/specs/ai-context.ts`（CTX-001~006）：Node fs 种子写入 → 后端 `context_list_files`/`context_read_files` 读回断言（迁移核心闭环）
+- **F5-E2E-002** `e2e/specs/ai-context-tables.ts`（CTX-T01~T06）：`fs.writeFileSync` 种子 schema.sql 后 AI @ 引用面板 Files 类目全链路
+- **F5-E2E-003** 负向：生产/无头构建下 `invoke('write_file'|'read_file'|'write_file_base64')` 应报命令不存在（静态已证 lib.rs 注册删除；运行时断言随 R 阶段 E2E 执行）
+
+#### 复验发现
+- F5-BUG-001【低·文档漂移】登记 Bug 台账：e2e-testing.md L154 / e2e-coverage.md L106 仍称 webdriver 构建保留 write_file 路径 API；归属 R 阶段文档收口，不阻塞判定
 
 ## F6 删除冗余命令
-（占位）
+
+> 状态：**已完成**（2026-08-26，轨道 B 第二棒编码代理；同日全新测试代理复验通过，见下方复验小节）
+
+### 范围
+
+- **Host**：删除 4 条 `#[tauri::command]` 及注册——`commands/dashboard.rs` 的 `get_monitor_paused` / `set_monitor_paused`（lib.rs 注册 ×2）、`commands/schema_diff.rs` 的 `compare_table_data` IPC 包装、`commands/sync/mod.rs` 的 `classify_sync_pair`
+- **Host 连带清理**（孤儿代码，F5 先例）：`commands/sync/compare.rs` 删除仅被 `compare_table_data_impl` 消费的 8 个助手（`resolve_pk_columns` / `fetch_sample_rows` / `row_key` / `value_key_part` / `rows_to_key_map` / `row_to_json_map` / `values_equal` / `rows_equal`）及随之失活的 `use`（`TableSchema, Value`、`Hash, Hasher`、`DATA_COMPARE_SAMPLE_LIMIT`）；`commands/sync/types.rs` 删除双常量 `DATA_COMPARE_SAMPLE_LIMIT` / `DATA_COMPARE_MISMATCH_LIMIT`。`count_rows`（tasks.rs/inspect.rs 仍用）、`fetch_full_column_types` / `diff_table_schemas_ir` / `format_ir_type`（schema_diff 与既有测试仍用）、`value_as_u64` / `maybe_use_database` 均保留
+- **前端**：`src/commands/dashboard.ts` 删除 `getMonitorPaused` / `setMonitorPaused` 包装；`src/commands/schemaDiff.ts` 删除 `compareTableData` 包装及 `TableDataCompare` import；`src/types/index.ts` 删除孤儿类型 `TableDataCompare` / `RowMismatch` / `RowMismatchKind`。`DashboardPanel.tsx` 的同名 `monitorPaused` 为本地 useState（UI 暂停态），与 IPC 无关，未改动
+- **E2E**：`e2e/specs/data-sync-real.ts` SYNC-REAL-020 / SYNC-BATCH-002 由「调用 classify_sync_pair 断言 ir 拒绝」改为 `expectCommandNotFound` 负断言（命令已不存在），与本 spec 既有 SYNC-REAL-021 / SYNC-BATCH-001/003 的「legacy IPC 已移除」守护模式一致
+- **文档**：`docs/architecture/backend/commands.md` 同步行更新（同步行去 classify_sync_pair、Schema Diff 行补 compare_table_schemas 并注明 compare_table_data 移除）；`docs/architecture/backend/data-sync.md` IPC 表删 classify_sync_pair 行并归入 Legacy 说明
+
+### compare_table_data_impl 去留裁决
+
+**裁决：impl 一并删除（连同 sync/tests.rs 中其专属消费）。** 判断依据：全仓 grep 证实 `compare_table_data_impl` 在生产代码中仅有两个引用点——schema_diff.rs 的 IPC 包装（本轮删除对象）自身，以及 `sync/tests.rs::compare_table_schemas_and_data_impl` 的测试调用；`prepare_schema_diff_plan` / `compare_table_schemas_impl` 等 schema diff 功能域现存代码均不经过它（行级比对引擎走 data_sync 的 compare_data_sync 链路，非此函数）。即删除包装后 impl 仅剩测试使用，符合任务书「连 impl+测试一并删」分支。处置：impl 整体删除；原测试拆留 schema 半场改名为 `compare_table_schemas_impl_returns_diff_for_table`（数据半场随 impl 消失）；由此失活的 8 助手+2 常量连带删除（见范围），其 11 个专属单测同轮删除——`cargo test` 净减 12（11 助手单测 + classify_sync_pair 单测）与逐项清单精确吻合。
+
+### 守护测试说明
+
+- Host：`sync/tests.rs::legacy_transfer_ir_compare_ipc_removed` 追加断言 `!mod.rs.contains("classify_sync_pair")`（源码级防回潮，沿用该测试既有的 include_str! 模式）
+- E2E：SYNC-REAL-020 / SYNC-BATCH-002 改为运行时负断言（比源码级更强：验证构建产物中命令确已注销）；classify 的业务语义（PG→MySQL 应判 ir/不支持）由前端 `src/lib/syncPairing.ts` 镜像逻辑承载，后端真源测试保留在 `data_sync/pairing.rs` 单测（mysql/mariadb 直通、PG→MySQL ir、sqlite、redis 四分支未动）
+- 前端：新增 `src/commands/__tests__/dashboard.test.ts`（14 用例）与 `src/commands/__tests__/schemaDiff.test.ts`（7 用例）覆盖两文件全部现存封装的参数透传 + schemaDiff 纯函数（F5 file.test.ts 同模式），同时把两个改动文件的覆盖率从 6.66%/20% 提至 100%
+
+### 测试结果（编码轮）
+
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（CARGO_TARGET_DIR=主检出 target） | **1111 passed / 0 failed / 2 ignored**（较 F5 后 1123 净减 12，逐项见裁决小节） |
+| `npx vitest run` | **243 files / 1992 passed** 全绿（+2 files/+21 tests = 新增 dashboard.test.ts + schemaDiff.test.ts） |
+| `npx tsc --noEmit` | **0 错误** |
+| 警告面 | cargo check 警告与基线（HEAD=31 条）逐条一致，零新增（孤儿助手若漏删会以 dead_code 警告暴露，已全部清理） |
+
+### 覆盖率（改动 TS 文件）
+
+全量 vitest 套件 + `--coverage.include` 过滤（v8 provider）：
+
+| 文件 | Stmts | Branch | Funcs | Lines | ≥80% |
+|-----|-------|--------|-------|-------|------|
+| `src/commands/dashboard.ts` | 100% | 100% | 100% | **100%** | ✅ |
+| `src/commands/schemaDiff.ts` | 100% | 100% | 100% | **100%** | ✅ |
+| `src/types/index.ts` | — | — | — | N/A | ✅（纯类型导出，本轮仅删类型声明，v8 无可执行行可采） |
+
+`e2e/specs/data-sync-real.ts` 不在 vitest 覆盖域（webdriver E2E，归属 R 阶段回归）。
+
+### 编码说明（F6）
+
+**四命令删除路径**：
+1. `get_monitor_paused` / `set_monitor_paused`：dashboard.rs 两 `#[tauri::command]` + lib.rs 注册 ×2 + dashboard.ts 两包装。前者本为读第一个 dashboard 的 refresh_paused 的 legacy 兼容读口，后者纯 warn no-op；替代命令 `set_dashboard_refresh_paused`（含 id 维度）及其前端包装 `setDashboardRefreshPaused` 原样保留。
+2. `compare_table_data`：schema_diff.rs IPC 包装 + 无主 impl（裁决见上）+ 孤儿助手/常量 + schemaDiff.ts 包装 + index.ts 类型三件套。
+3. `classify_sync_pair`：sync/mod.rs 命令（serde_json 薄包装，真源 `data_sync::classify_data_sync_pair` 未动）+ lib.rs 注册 + tests.rs 单测（其断言的 JSON 形状属 IPC 信封而非分类逻辑，分类逻辑已有 pairing.rs 直测覆盖，故删而不迁）+ e2e 两处负断言化。
+
+**设计决策**：
+1. E2E 处置选「expectCommandNotFound 负断言」而非纯删除或源码级断言：任务书给出两选项，但本 spec 已存在更强的第三模式（对已移除 legacy IPC 的运行时注销验证），保持文件内一致性且守护力最强；两条用例编号保留不删。
+2. `compare_table_schemas_and_data_impl` 改名 `compare_table_schemas_impl_returns_diff_for_table` 并顺带去掉仅为数据采样服务的 `MockDriverOptions` 定制（query_rows/count_total），改 `TestAppState::new()`。
+3. 文档同步仅触及 tracked 架构文档两处表格；`ipc-refactor-plan.md`（untracked 决策文档）与历史报告 `test-reports/W2-test-report.md` 按纪律不改。
+
+### E2E 用例登记（执行归属：R 阶段，需 webdriver 构建 + PG/MySQL 实例；本轮未执行）
+
+- **F6-E2E-001** `data-sync-real.ts` SYNC-REAL-020：`invokeBackend('classify_sync_pair')` 应报 command not found（改造后负断言）
+- **F6-E2E-002** `data-sync-real.ts` SYNC-BATCH-002：同上（批量语境重复守护）
+
+### 复验（2026-08-26 全新测试代理实例，commit d4e33801）→ 通过
+
+#### 三项审查
+
+1. **删除完整性 ✅**：四命令在 src / src-tauri/src / e2e / packages 全仓清零（残留命中逐一甄别：`classify_sync_pair` 仅存 docs 历史记录（ipc-refactor-plan / commands.md / data-sync.md Legacy 行 / W2 报告）、进度文件自身、`sync/tests.rs::legacy_transfer_ir_compare_ipc_removed` 防回潮负断言字符串、e2e 两处 `expectCommandNotFound` 负断言参数；`compare_table_data` 仅存 commands.md 移除注记与计划文档；monitor_paused 仅存计划/进度文档）；lib.rs 四条注册删除经 diff 核实（L882 区 classify_sync_pair / compare_table_data + L963 区 get/set_monitor_paused）；前端 camelCase 包装零残留
+2. **孤儿清理正确性 ✅**：8 助手 + 2 常量删除后全仓零消费者——现存同名 `values_equal` / `rows_equal` 属 `data_sync/model.rs` 既有函数（签名 `(&Value, &Value)`，被 data_sync 内部消费并经 mod.rs 再导出），与所删 `commands/sync/compare.rs` 版本（`Option<&Option<Value>>` 参数）不同源；tests.rs / sql.rs 的 `row_key:` 为结构体字段非函数引用。本轮 commit **零新增** `#[allow(dead_code)]`（types.rs:104 既有注解掩盖的是 `TableMappingInput` 结构体，与本次清理无关）；保留函数消费链逐一核实：`count_rows` → tasks.rs + data_transfer/inspect.rs、`fetch_full_column_types` / `diff_table_schemas_ir` → schema_diff.rs + data_transfer、`format_ir_type` → compare.rs 自用 + tests、`value_as_u64` → compare.rs 自用 + tests。`DashboardPanel.tsx` L89/174/345 本地 `monitorPaused` useState 完好未动
+3. **impl 裁决 ✅**：d4e33801~1 全仓 grep 证实 `compare_table_data_impl` 生产引用仅定义自身（schema_diff.rs:305）与 IPC 包装调用（:448），另有 tests.rs 导入 + 调用一处；`prepare_schema_diff_plan` / `compare_table_schemas_impl` 从未引用它；现存行级比对真源为 `compare_data_sync` → `compare_data_sync_impl`（sync/mod.rs:100，lib.rs:890 注册在案）——「删包装后 impl 仅剩测试使用」裁决成立
+
+#### E2E 负断言审查 ✅
+
+`expectCommandNotFound`（dda1dfb6 引入，先于 F6 的成熟模式）直连 `__TAURI_INTERNALS__.invoke` 原生通道、绕过任何前端包装：命令若回潮注册则 invoke 成功 → message 为空串 → `toMatch(/command .+ not found|unknown command/i)` 必失败；命令存在但报其他错同样 fail-loud。唯一通过路径即「命令确不存在且 Tauri 报 not found」，防回潮成立；SYNC-REAL-020 / SYNC-BATCH-002 与同 spec SYNC-REAL-021/022、SYNC-BATCH-001/003 模式一致。
+
+#### 独立重跑结果
+
+| 套件 | 结果 |
+|------|------|
+| `cargo test -p datazen --lib`（CARGO_TARGET_DIR=主检出 target） | **1111 passed / 0 failed / 2 ignored**（与声称一致） |
+| `npx vitest run` | **243 files / 1992 passed**，全绿（较 F5 后 241/1971 = +2 files/+21 tests，与新增两套件 14+7 吻合） |
+| `npx tsc --noEmit` | **0 错误**（exit 0） |
+| 覆盖率 dashboard.ts / schemaDiff.ts（--coverage.include 过滤实测） | 两文件均行/语句/分支/函数 **100%/100%/100%/100%** |
+
+#### 复验发现
+
+无 bug。cargo 净减 12 与逐项清单吻合（tests.rs 删 13 个测试 fn：11 助手单测 + classify_sync_pair 单测 + 被改名瘦身的 `compare_table_schemas_and_data_impl`，新增改名版 `compare_table_schemas_impl_returns_diff_for_table`）。E2E 归属不变：F6-E2E-001/002 执行归 R 阶段（需 webdriver 构建 + PG/MySQL 实例），本测试轮未执行。
 
 ## F7 驱动级 SQL 定位重写
 

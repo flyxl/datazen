@@ -15,16 +15,6 @@ export interface OpenedBinaryFile {
  * Dialog + read/write happen atomically in Rust.
  */
 export const fileCommands = {
-  /** @deprecated Prefer saveTextWithDialog — path-based writes are E2E-only. */
-  writeFile: (path: string, contents: string) => invoke<void>('write_file', { path, contents }),
-
-  /** @deprecated Prefer saveBase64WithDialog. */
-  writeFileBase64: (path: string, dataBase64: string) =>
-    invoke<void>('write_file_base64', { path, dataBase64 }),
-
-  /** @deprecated Prefer openTextWithDialog. */
-  readFile: (path: string) => invoke<string>('read_file', { path }),
-
   /** Save UTF-8 text via native OS dialog. Returns false if cancelled. */
   saveTextWithDialog: (
     contents: string,

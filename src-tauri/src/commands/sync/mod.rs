@@ -30,16 +30,6 @@ use tauri::State;
 use types::{resolve_options, SyncOptionsInput};
 
 #[tauri::command]
-pub fn classify_sync_pair(
-    source_database_type: String,
-    target_database_type: String,
-) -> Result<serde_json::Value, CommandError> {
-    let view =
-        crate::data_sync::classify_data_sync_pair(&source_database_type, &target_database_type);
-    serde_json::to_value(view).map_err(CommandError::from)
-}
-
-#[tauri::command]
 pub async fn get_sync_tasks(state: State<'_, AppState>) -> Result<Vec<SyncTask>, CommandError> {
     get_sync_tasks_impl(&state).await
 }
