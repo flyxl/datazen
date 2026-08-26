@@ -14,6 +14,8 @@
 | F4 | connections / app-data 导入导出 override_path 合并 | 决策 3 | 未开始 | — | — |
 | F5 | 删除纯文件读写 IPC（write_file/write_file_base64/read_file），E2E 改 Node fs | 决策 4 | 未开始 | — | — |
 | F6 | 删除冗余命令（monitor_paused×2 / compare_table_data / classify_sync_pair） | 决策 5 | 未开始 | — | — |
+| F7 | 驱动级 SQL 定位重写（限定名内联、无会话切换；PG 系含 database+schema 双维度） | 用户新指令 2026-08-26 | 未开始 | — | — |
+| B5 | ConnectionNavigatorTree 刷新丢失已展开分类修复（=F1-BUG-005） | 既有缺陷 | 未开始 | — | — |
 | R | 回归测试 + 文档更新（架构文档/AGENTS.md）+ 合并 main | 步骤 6 | 未开始 | — | — |
 
 状态机：`未开始 → 编码中 → 编码完成 → 测试中 → 已完成`；bug 流转见下方 Bug 台账。
@@ -22,6 +24,7 @@
 
 > 2026-08-26 协调者：F1 测试轮不通过，BUG-001~004 置「验证不通过」，转入修复轮（流程第 4 步）。
 > 2026-08-26 复验代理（全新实例）：BUG-001~004 逐项闭环验证通过，置「已修复」；新发现既有缺陷 F1-BUG-005（连接刷新丢失已展开分类内容）登记为「待验证」，是否并入 F1 由协调者裁决。
+> 2026-08-26 协调者裁决：F1-BUG-005 为既有缺陷、非 F1 引入，**不并入已关闭的 F1**；立为独立修复循环 B5（见功能总览），排期 F7 之后、R 之前，届时按标准循环派修复代理+全新测试代理。
 
 | Bug ID | 所属功能 | 描述 | 状态 | 记录时间 | 验证记录 |
 |--------|---------|------|------|---------|---------|
@@ -237,6 +240,21 @@
 
 ## F6 删除冗余命令
 （占位）
+
+## F7 驱动级 SQL 定位重写
+
+### 需求（用户新指令 2026-08-26，两轮精化）
+每条 SQL 命令携带定位信息直达驱动层，**驱动按方言把未限定表引用重写为限定名**（如 `select * from users` → `select * from \`mydb\`.users`）；不用 `USE`、不切会话，纯无状态。
+
+### 设计基线
+- **定位信息**：MySQL 系 = database；PG 系 = database + schema。信封在修复轮已有可选 `database`，本功能补 `schema`
+- **方言形态**：mysql/mariadb `` `db`.`t` ``（真跨库内联）；postgres `"schema"."t"`（PG 引擎限制跨库不可内联 → database 维度沿用连接池切换=现有机制，schema 维度内联重写）；sqlite `alias.t`（仅 ATTACH 别名场景，通常 no-op）；sqlserver `db.schema.t`；clickhouse `db.t`；duckdb 同 PG 形态
+- **覆盖面**：全部 SQL 型驱动（含各 path 驱动）；redis / mongodb 非 SQL 执行模型，N/A
+- **解析与改写**：各驱动 crate 内用 `sqlparser` crate 按方言 AST 改写；仅定位语境（FROM/JOIN/INSERT INTO/UPDATE/DELETE FROM/TRUNCATE/CREATE|DROP|ALTER TABLE/CREATE INDEX ON）；跳过 CTE 名、子查询别名、字符串字面量、已限定引用；幂等
+- **兜底**：解析失败 → 原样放行 + 日志 + 现有宿主 `ensure_session_database` 兜底（git 旧 pin 驱动无重写能力时的安全网）
+- **协议**：driver-api 输入 schema 加可选字段，向后兼容不强制 bump PROTOCOL_VERSION；git 驱动更新 pin 后才获得重写能力（顺序依赖登记为风险）
+- **前端**：database 链路已穿透（BUG-001 修复成果）；需补 PG currentSchema 传递（先侦察 schemaStore 是否已有该状态）
+- **测试落点**：重写单测在各驱动 crate（简单 SELECT/JOIN/CTE/子查询/已限定/引号标识符/INSERT|UPDATE|DELETE/DDL 各方言矩阵）；Host 只测信封透传 + 兜底路径
 
 ## R 回归与收尾
 （占位）
