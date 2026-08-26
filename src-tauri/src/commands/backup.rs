@@ -1,4 +1,4 @@
-use super::error::{CmdExt, CommandError};
+use super::error::{resolve_override_path, CmdExt, CommandError, OVERRIDE_DISABLED_MSG};
 use super::AppState;
 use crate::db::{
     BackupDumpOptions, BackupRestoreOptions, ConnectionHandle, DatabaseDriver, DriverError,
@@ -61,10 +61,6 @@ impl<'a> ThrottledRestoreProgress<'a> {
     }
 }
 
-fn require_webdriver_path_ipc(disabled_msg: &'static str) -> Result<(), CommandError> {
-    super::error::require_webdriver_path_ipc(disabled_msg)
-}
-
 pub(crate) fn parse_backup_options(options: &[String]) -> Result<BackupDumpOptions, CommandError> {
     if options.iter().any(|o| o == "format-custom") {
         return Err(CommandError::Validation(
@@ -105,25 +101,6 @@ pub(crate) fn validate_backup_filter_extension(
     }
     Ok(ext)
 }
-
-/// Webdriver-only escape hatch shared by the merged backup/restore commands
-/// (decision 3+6): `Some(path)` bypasses the native dialog, but is rejected in
-/// production builds — the dialog's OS-level confirmation stays the only
-/// user-facing file selector there.
-fn resolve_override_path(
-    override_path: Option<String>,
-    disabled_msg: &'static str,
-) -> Result<Option<PathBuf>, CommandError> {
-    match override_path {
-        Some(p) => {
-            require_webdriver_path_ipc(disabled_msg)?;
-            Ok(Some(PathBuf::from(p)))
-        }
-        None => Ok(None),
-    }
-}
-
-const OVERRIDE_DISABLED_MSG: &str = "path override disabled in production";
 
 /// Native save-dialog branch of [`backup_database`]; `None` = dialog cancelled.
 fn pick_backup_save_path(
@@ -610,29 +587,6 @@ mod tests {
         assert_eq!(validate_backup_filter_extension("sql").unwrap(), "sql");
         assert_eq!(validate_backup_filter_extension(".GZ").unwrap(), "gz");
         assert!(validate_backup_filter_extension("exe").is_err());
-    }
-
-    #[test]
-    fn resolve_override_path_gates_without_webdriver_feature() {
-        // Decision 3+6: the merged commands' `override_path` replaces the old
-        // raw-path IPCs and must stay webdriver-only. `cfg!` keeps both arms
-        // compiled, so this also pins the production error message.
-        let gated = resolve_override_path(Some("/tmp/override.sql".into()), OVERRIDE_DISABLED_MSG);
-        if cfg!(feature = "webdriver") {
-            assert_eq!(
-                gated.unwrap().map(|p| p.display().to_string()).as_deref(),
-                Some("/tmp/override.sql")
-            );
-        } else {
-            let err = gated.unwrap_err();
-            assert!(matches!(err, CommandError::Validation(ref msg) if msg.contains("disabled")));
-            assert!(err.to_string().contains("path override disabled"));
-        }
-        // No override must never touch the gate (production dialog flow).
-        assert_eq!(
-            resolve_override_path(None, OVERRIDE_DISABLED_MSG).unwrap(),
-            None
-        );
     }
 
     #[test]

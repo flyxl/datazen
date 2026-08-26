@@ -108,10 +108,14 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
   });
 
   it('PIH-003: export_connections + import_connections_preview round-trip', async () => {
-    const count = await invokeBackend<number>('export_connections', {
-      path: exportPath,
+    // Decision 3 (F4): both commands are merged path/dialog IPCs; raw paths go
+    // through `overridePath`, which only webdriver builds accept.
+    const count = await invokeBackend<number | null>('export_connections', {
       password: 'e2e-pih-password',
+      defaultFileName: 'connections-export.datazenconnection',
+      overridePath: exportPath,
     });
+    expect(count).not.toBeNull();
     expect(typeof count).toBe('number');
     expect(fs.existsSync(exportPath)).toBe(true);
     const raw = fs.readFileSync(exportPath);
@@ -120,11 +124,12 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
 
     const preview = await invokeBackend<{
       connections: unknown[];
-    }>('import_connections_preview', {
-      path: exportPath,
+    } | null>('import_connections_preview', {
       password: 'e2e-pih-password',
+      overridePath: exportPath,
     });
-    expect(Array.isArray(preview.connections)).toBe(true);
+    expect(preview).not.toBeNull();
+    expect(Array.isArray(preview!.connections)).toBe(true);
   });
 
   it('PIH-004: Settings logging button wires open_log_dir', async function () {

@@ -10,8 +10,8 @@ const pickMock = vi.fn();
 
 vi.mock('../../../commands/connection', () => ({
   connectionCommands: {
-    exportConnectionsWithDialog: (...args: unknown[]) => exportMock(...args),
-    importConnectionsWithDialog: (...args: unknown[]) => importFileMock(...args),
+    exportConnections: (...args: unknown[]) => exportMock(...args),
+    importConnections: (...args: unknown[]) => importFileMock(...args),
     importConnectionsFromApp: (...args: unknown[]) => importAppMock(...args),
     detectConnectionImportPath: (...args: unknown[]) => detectMock(...args),
     pickConnectionImportPathWithDialog: (...args: unknown[]) => pickMock(...args),
