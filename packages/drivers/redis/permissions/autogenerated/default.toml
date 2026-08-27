@@ -1,3 +1,0 @@
-[default]
-description = "Redis plugin setup only; operations use Driver Command IPC"
-permissions = []
