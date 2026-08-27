@@ -7,7 +7,7 @@
 
 | 编号 | 功能 | 状态 | 编码 commit | 测试 commit |
 |------|------|------|------------|------------|
-| F1 | Track A：Cargo feature / plugin_init → driver | 已完成 | 377c23e5 | 377c23e5 |
+| F1 | Track A：Cargo feature / plugin_init → driver | 已完成 | 377c23e5 | deab51ee |
 | F2 | Track B：plugins/ → extensions/ + 前端重命名 | 已完成 | （本分支 commit） | （本分支 commit） |
 | F3 | Track C：Legacy ThemePack 清理 | 未开始 | — | — |
 
@@ -28,18 +28,45 @@
 ## F1：Track A — Cargo feature / plugin_init → driver
 
 **Status:** ✅ COMPLETED  
-**Branch:** `feature/rename-driver`（已合并 main）
+**Branch:** `feature/rename-driver`（已合并 main）  
+**F1 测试代理：** 2026-08-27 独立复验（main @ ba6028e6 基线）
 
 ### 测试结果
 
 ```
-scripts/__tests__/  78 passed
-cargo check -p datazen --features driver-*  OK
+node scripts/resolve-drivers.mjs --codegen-only --drivers=basic  exit 0
+  → features: driver-postgres,driver-mysql,driver-sqlite,driver-redis
+  → 生成 .driver-features.json / driver_init.rs
+
+cargo check -p datazen                    exit 0（66s；31 warnings，均为既有 dead_code/unused_import + codegen-only 未注入 Cargo.toml 导致的 unexpected-cfg driver-*，非失败）
+
+npx vitest run scripts/__tests__/         10 files, 78 passed, 0 failed（1.06s）
 ```
 
-### 遗留
+### grep 验收（对照计划 §Track A）
 
-- `plugin-file-stash.mjs` 脚本名与 `.plugin-file-stash/` 目录保持（stash 机制，非 driver 命名）
+| 检查项 | 结果 |
+|--------|------|
+| `plugin-` in `src-tauri/Cargo.toml`（feature 名） | ✅ 无（仅 `tauri-plugin-*` 外部 crate） |
+| `plugin_init` in `src-tauri/src/`、`scripts/` | ✅ 无 |
+| `cfg(feature = "plugin-")` in `src-tauri/src/` | ✅ 无 |
+| `driver_init.rs` 存在 / `plugin_init.rs` 不存在 | ✅ |
+| `drivers-registry.json` feature 前缀 | ✅ 全部 `driver-*` |
+| `<<driver-*>>` markers（root + src-tauri Cargo.toml） | ✅ |
+| `.gitignore` → `driver_init.rs` / `.driver-features.json` | ✅ |
+| `lib.rs` → `mod driver_init` / `register_drivers` | ✅ |
+| `resolve-drivers.mjs` 生成 `driver_init.rs` / `.driver-features.json` | ✅ |
+| `scripts/__tests__/` 无 `plugin-postgres` 等旧断言 | ✅ |
+| CI（`.github/workflows/ci.yml`）读 `.driver-features.json` | ✅ |
+
+### 遗留（by design / 非缺陷）
+
+- `plugin-file-stash.mjs` 脚本名与 `.plugin-file-stash/` 目录保持（stash 机制，非 driver feature 命名）
+- 工作区未跟踪 `.plugin-features.json`（旧格式本地残留；codegen 已写 `.driver-features.json`，无代码引用旧文件名）
+
+### Bug 台账（F1）
+
+无
 
 ## F2：Track B — plugins/ → extensions/ + 前端重命名
 
