@@ -18,7 +18,7 @@ describe('数据同步窗口 (DSW-001~DSW-008)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
+    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
   });
 
   after(async () => {

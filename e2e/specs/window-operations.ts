@@ -53,6 +53,7 @@ describe('窗口操作 (TC-WIN-001~005)', () => {
   it('TC-WIN-004: 新建连接弹窗打开后应阻止其他操作', async () => {
     await browser.switchToWindow(mainWindow);
     await openNewConnectionDialogFromUi();
+    await captureJourneyStep('new-connection-dialog', 0, true);
 
     const dialog = await $('[data-testid="new-connection-dialog"]');
     const isVisible = await dialog.isExisting();
