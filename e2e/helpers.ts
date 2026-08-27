@@ -544,6 +544,23 @@ export async function invokeBackend<T>(
   return invokeSettings<T>(cmd, args);
 }
 
+// ── native dialog injection (webdriver builds only) ─────────────────
+
+/** Clear the FIFO dialog injection queue between specs / cases. */
+export async function resetDialogQueue() {
+  await invokeBackend('test_reset_dialog_queue');
+}
+
+/** Pre-queue a save/open dialog answer that selects `filePath` (real dialog branch). */
+export async function injectDialogPath(filePath: string) {
+  await invokeBackend('test_inject_dialog_result', { result: { path: filePath } });
+}
+
+/** Pre-queue a canceled native dialog (user dismissed). */
+export async function injectDialogCanceled() {
+  await invokeBackend('test_inject_dialog_result', { result: { canceled: true } });
+}
+
 /** Normalize `execute_query` payloads (rows array or legacy `{ data: [...] }`). */
 export function parseQueryRows(payload: QueryResultPayload): unknown[][] {
   if (Array.isArray(payload.rows)) return payload.rows;

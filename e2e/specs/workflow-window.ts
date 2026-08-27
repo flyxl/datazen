@@ -293,13 +293,15 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     await selectWorkflow();
     await executeAndWait();
 
+    const stepB = await $('button*=step_b');
+    await stepB.click();
+    await browser.pause(400);
     const stepA = await $('button*=step_a');
     await stepA.click();
     await browser.pause(500);
-    await captureJourneyStep('workflow-step-result');
-
     const body = await $('body').getText();
     expect(body.includes('val') || body.includes('label') || body.includes('alpha')).toBe(true);
+    await captureJourneyStep('workflow-step-result');
   });
 
   it('关闭 tab 后应回到空状态', async function () {

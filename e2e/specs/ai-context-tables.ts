@@ -131,7 +131,6 @@ async function openAiChatPanel() {
   });
   expect(clicked).toBe(true);
   await browser.pause(800);
-  await captureJourneyStep('ai-chat-open');
 }
 
 async function aiChatTextarea() {
@@ -192,7 +191,6 @@ async function selectFirstTableItem() {
   );
   await $('[data-testid="context-item"][data-kind="table"]').click();
   await browser.pause(300);
-  await captureJourneyStep('ai-context-table-selected');
 }
 
 describe('AI context tables (CTX-T01~T06)', () => {
@@ -312,8 +310,8 @@ describe('AI context tables (CTX-T01~T06)', () => {
     await textarea.setValue('@');
     await waitForPicker();
     await selectFirstTableItem();
-
     await expect($('[data-testid="context-token"][data-kind="table"]')).toBeExisting();
+    await captureJourneyStep('ai-context-table-selected');
 
     await textarea.click();
     await textarea.setValue('');

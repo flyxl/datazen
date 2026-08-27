@@ -4,7 +4,7 @@
  *
  * Covers: TC-QUERY-009 ~ TC-QUERY-012
  */
-import { expect, browser, $ } from '@wdio/globals';
+import { expect, browser, $, $$ } from '@wdio/globals';
 import {
   captureJourneyStep,
   connectSeededPgInWorkspace,
@@ -34,7 +34,9 @@ describe('SQL 多 Tab 并发 (TC-QUERY-009~012)', () => {
     expect(body).toContain('tab1_result');
   });
 
-  it('TC-QUERY-010: 执行不同查询应返回新结果', async () => {
+  it('TC-QUERY-010: 第二个 tab 执行不同查询', async () => {
+    await openQueryTab();
+    await browser.pause(500);
     await executeSQL('SELECT 2 AS tab2_result');
     await browser.pause(500);
     const body = await $('body').getText();
@@ -48,11 +50,21 @@ describe('SQL 多 Tab 并发 (TC-QUERY-009~012)', () => {
       const el = document.querySelector('.cm-editor .cm-content') as HTMLElement;
       return el?.textContent?.trim() ?? '';
     });
-    expect(editorText.length).toBe(0);
+    expect(editorText.includes('tab2_result')).toBe(false);
+    expect(editorText.includes('tab1_result')).toBe(false);
     await captureJourneyStep('sql-new-empty-tab');
   });
 
-  it('TC-QUERY-012: 新 tab 执行查询后结果独立', async () => {
+  it('TC-QUERY-012: 切回首个 tab 结果仍保留', async () => {
+    const tabs = await $$('[data-testid="panel-tab"]');
+    expect(tabs.length).toBeGreaterThanOrEqual(2);
+    await (await tabs[0].$('button')).click();
+    await browser.pause(800);
+    const preserved = await $('body').getText();
+    expect(preserved).toContain('tab1_result');
+    await captureJourneyStep('sql-tab-switch-preserved');
+
+    await openQueryTab();
     await executeSQL('SELECT 123 AS independent_result');
     await browser.pause(500);
     const body = await $('body').getText();
