@@ -47,7 +47,8 @@
 | 连接工作区首页（无 panel 空状态） | `unified-main-window.ts`, `unified-tab-bar.ts` (UTB-005) | Covered |
 | 新建 / 编辑 / 删除连接 | `new-connection.ts`, `edit-delete-connection.ts` | Covered |
 | 连接工具栏、表树、子标签（统一主窗口内） | `connection-window.ts`, `unified-tab-bar.ts` | Covered |
-| 侧栏删表后树立即刷新（不再需关窗） | `schemaStore.test.ts` / `SchemaTree.test.tsx` / `sqlNamespace.test.ts` | Covered（原生 Drop 确认框见例外） |
+| 侧栏删表后树立即刷新（不再需关窗） | `ConnectionNavigatorTree.test.tsx` / `schemaStore.test.ts` | Covered（原生 Drop 确认框见例外） |
+| 连接导航树右键菜单（连接/库/Schema/表·视图） | `navigator-context-menu.ts` (NCM-*) | Covered（Drop 确认执行见例外 NCM-046） |
 | 查询执行 / 历史 / 收藏 | `sql-query.ts` | Covered |
 | 绑定参数面板填值并执行 | `sql-query.ts` (SQ-BIND-*) | Covered |
 | EXPLAIN 面板 | `sql-query.ts` (SQ-EXPLAIN-*) | Covered |
@@ -116,7 +117,7 @@
 | `ConnectionSettingsDialog` | 当前未挂到可点击入口（非用户可达） | 组件单测；挂接 UI 后须立刻补 E2E |
 | E2E 夹具 `DROP`/`TRUNCATE` | Safe Mode 默认开启会拦截 | `executeSQL` / `withSafeModeOff` 临时关闭；`client-parity` 断言 DROP 被拦 |
 | 删除行确认框（`confirmOnDelete`） | 原生 `ask` 对话框无法点选 | `DataTable.test.tsx` 工具栏/Delete 键；`commit_row_deletes` Rust 单测；E2E 断言删除按钮出现 |
-| 侧栏 Drop 表/视图确认 | 原生 `ask` 无法点选 | `removeRelation` + `setLoadedTables` replace；`SchemaTree.test.tsx` 断言树立刻少表 |
+| 侧栏 Drop 表/视图/Schema 确认 | 原生 `ask` 无法点选 | `ConnectionNavigatorTree.test.tsx` drop/truncate 流程；`navigator-context-menu.ts` NCM-044/022/046 断言菜单项 |
 | 主窗口在子窗口未关时关闭 | 原生窗口关闭 + 阻塞对话框 | `window.rs` `non_main_window_labels` 单测 |
 | 恢复覆盖确认（原生 `ask`）+ 选 SQL 文件 | OS 对话框不可点选 | `BackupWindow.test.tsx` ask/overwrite；`backup-database.ts` BACKUP-012 IPC overwrite |
 | 恢复执行日志截断（>1500 行省略标记 / 字符预算） | 需 >1500 条 SQL 语句的真实大备份，E2E 不可行 | `backupProgress.test.ts`（行/字符预算、头尾保留、累计省略数、超长单行截断）；`BackupWindow.test.tsx` 覆盖日志渲染路径 |

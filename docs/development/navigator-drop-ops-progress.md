@@ -6,8 +6,8 @@
 
 | 编号 | 功能 | 状态 | 编码 commit | 测试 commit |
 |------|------|------|-------------|-------------|
-| F1 | 表节点右键删除表 | 编码完成 | — | — |
-| F2 | Schema 节点右键删除 Schema | 已完成（既有实现） | — | — |
+| F1 | 表节点右键删除表 | 已完成 | c3784b8a | — |
+| F2 | Schema 节点右键删除 Schema | 已完成 | （既有） | — |
 
 ## Bug 台账
 
@@ -31,12 +31,13 @@
 
 | 编号 | 前置 | 步骤 | 断言 | 备注 |
 |------|------|------|------|------|
-| E2E-F1-1 | PG 连接，存在测试表 | 侧栏表节点右键 → Drop → 确认 | 表从树消失 | 【留待 R 回归】原生 ask 难自动化 |
+| E2E-F1-1 | PG 连接，存在测试表 | 侧栏表节点右键 → Drop → 确认 | 表从树消失 | 【留待 R 回归】；NCM-044/046 覆盖菜单项 |
 
 ### 测试结果
 
 - vitest：`ConnectionNavigatorTree.test.tsx` 68 passed
 - tsc：`--noEmit` 通过
+- E2E 登记：`navigator-context-menu.ts` NCM-044/046
 
 ---
 
@@ -48,8 +49,9 @@
 
 | 编号 | 前置 | 步骤 | 断言 | 备注 |
 |------|------|------|------|------|
-| E2E-F2-1 | PG 多 schema | 侧栏 schema 右键 → Drop Schema → 确认 | schema 从树消失 | 【留待 R 回归】 |
+| E2E-F2-1 | PG 多 schema | 侧栏 schema 右键 → Drop Schema → 确认 | schema 从树消失 | 【留待 R 回归】；NCM-022 覆盖菜单项 |
 
 ### 测试结果
 
-- vitest：待跑
+- vitest：`ConnectionNavigatorTree.test.tsx` 68 passed
+- E2E 登记：`navigator-context-menu.ts` NCM-022/046 + `e2e-coverage.md`

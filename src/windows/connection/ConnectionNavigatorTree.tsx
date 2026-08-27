@@ -40,7 +40,7 @@ import { cn } from '../../lib/cn';
 import { formatGroupLabel } from '../../lib/connectionGroups';
 import { DB_REGISTRY, escapeIdent } from '../../lib/databaseTypes';
 import { getSqlDialect } from '../../lib/sqlDialects';
-import { invalidateSchemaCache } from '../../lib/schemaCache';
+import { invalidateSchemaCache, getCachedDDL } from '../../lib/schemaCache';
 import { isLeaf, pathKey, type SqlNamespace } from '../../lib/sqlNamespace';
 import {
   buildMainConnectionContextMenuItems,
@@ -358,12 +358,9 @@ function extractErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-function quoteRelationName(
-  name: string,
-  schema: string | undefined,
-  databaseType: string,
-): string {
-  const quote = (part: string) => escapeIdent(part, databaseType as ConnectionConfig['databaseType']);
+function quoteRelationName(name: string, schema: string | undefined, databaseType: string): string {
+  const quote = (part: string) =>
+    escapeIdent(part, databaseType as ConnectionConfig['databaseType']);
   return schema ? `${quote(schema)}.${quote(name)}` : quote(name);
 }
 
@@ -1505,6 +1502,7 @@ export const ConnectionNavigatorTree = forwardRef<
       const readOnly = conn?.readOnly === true || dbMeta?.readOnly === true;
       const quoted = quoteRelationName(name, schema, conn?.databaseType ?? 'postgresql');
       const isView = kind === 'view';
+      const supportsErDiagram = dbMeta?.supportsErDiagram !== false;
 
       const refreshAfterMutation = () => {
         invalidateSchemaCache(dbSessionId, name);
@@ -1534,6 +1532,24 @@ export const ConnectionNavigatorTree = forwardRef<
             onCopyName: () => {
               void navigator.clipboard.writeText(name);
             },
+            onCopyDdl: () => {
+              const dialect = getSqlDialect(conn?.databaseType ?? 'postgresql');
+              if (!dialect) return;
+              const { sql, extractColumnIndex } = dialect.ddl.getTableDdlQuery(name);
+              void getCachedDDL(dbSessionId, name, sql, (rows) => {
+                const row = rows[0];
+                const val = row?.[extractColumnIndex];
+                const ddl = typeof val === 'string' ? val : val != null ? String(val) : '';
+                if (ddl) void navigator.clipboard.writeText(ddl);
+              }).catch((err) => console.warn(err));
+            },
+            onFocusEr:
+              kind === 'table' && supportsErDiagram
+                ? () => {
+                    onSelectConnection(connectionId);
+                    viewActions?.openErDiagram?.(name);
+                  }
+                : undefined,
             onNewQuery: () => {
               onSelectConnection(connectionId);
               useSchemaStore.setState({ currentDatabase: dbName });
@@ -1561,7 +1577,10 @@ export const ConnectionNavigatorTree = forwardRef<
                       try {
                         await queryCommands.executeQuery(dbSessionId, sql);
                       } catch (err) {
-                        onShowMessage?.(extractErrorMessage(err, t('schemaTree.truncateFailed')), 'error');
+                        onShowMessage?.(
+                          extractErrorMessage(err, t('schemaTree.truncateFailed')),
+                          'error',
+                        );
                       }
                     })();
                   }
@@ -1596,6 +1615,7 @@ export const ConnectionNavigatorTree = forwardRef<
           },
           readOnly,
           safeMode,
+          showErFocus: supportsErDiagram,
         }),
         { x: e.clientX, y: e.clientY },
       );
