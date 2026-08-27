@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type KeyboardEvent } from 'react';
+import { tid } from '../../lib/tid';
 import { Download, Trash2 } from 'lucide-react';
 import type { FilterCondition, SortCondition } from '../../types';
 import type { CellEdit } from '../../stores/tableDataStore';
@@ -425,6 +426,7 @@ export function DataTable({
             {exportEnabled && (
               <button
                 type="button"
+                {...tid('data-table-export')}
                 className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-fg-secondary hover:bg-surface-raised hover:text-fg"
                 onClick={() => setExportOpen(true)}
                 title={t('export.export')}
@@ -486,6 +488,7 @@ export function DataTable({
         <div className="flex shrink-0 items-center justify-end border-t border-edge bg-surface-alt px-2 py-1">
           <button
             type="button"
+            {...tid('data-table-export')}
             className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-fg-secondary hover:bg-surface-raised hover:text-fg"
             onClick={() => setExportOpen(true)}
             title={t('export.export')}

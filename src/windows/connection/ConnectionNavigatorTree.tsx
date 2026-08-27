@@ -1541,6 +1541,7 @@ export const ConnectionNavigatorTree = forwardRef<
                 const val = row?.[extractColumnIndex];
                 const ddl = typeof val === 'string' ? val : val != null ? String(val) : '';
                 if (ddl) void navigator.clipboard.writeText(ddl);
+                return ddl;
               }).catch((err) => console.warn(err));
             },
             onFocusEr:
