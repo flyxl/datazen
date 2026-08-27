@@ -11,7 +11,10 @@ let journeySpec: string | undefined;
 let journeyTest: string | undefined;
 let stepSeq = 0;
 let savedStepCount = 0;
+/** Consecutive-frame dedupe within the active `it()`. */
 let lastDigest: string | null = null;
+/** Cross-`it()` dedupe within the active spec file (`beforeSuite` resets). */
+let specDigests = new Set<string>();
 
 export function isScreenshotTraceEnabled(): boolean {
   return process.env.E2E_SCREENSHOT === '1';
@@ -41,6 +44,11 @@ export function journeyStepsSaved(): number {
   return savedStepCount;
 }
 
+/** Reset per-spec digest set (wdio `beforeSuite`). */
+export function beginJourneySuite(_specFilePath: string | undefined) {
+  specDigests = new Set();
+}
+
 /** Reset per-`it()` journey state. */
 export function beginJourneyTest(specFilePath: string | undefined, testTitle: string) {
   journeySpec = specFilePath;
@@ -66,7 +74,8 @@ function digestFile(filePath: string): string {
 
 /**
  * Save a journey screenshot when `E2E_SCREENSHOT=1`.
- * Skips consecutive pixel-identical frames unless `force` is set.
+ * Skips pixel-identical frames within the same `it()` or anywhere in the spec file
+ * (except `fail` frames).
  */
 export async function saveJourneyScreenshot(
   browser: Browser,
@@ -85,13 +94,22 @@ export async function saveJourneyScreenshot(
   await browser.saveScreenshot(out);
 
   const digest = digestFile(out);
-  if (!force && lastDigest !== null && digest === lastDigest) {
+  const isFailFrame = sanitizeScreenshotLabel(stepLabel) === 'fail';
+
+  if (!isFailFrame && specDigests.has(digest)) {
+    fs.unlinkSync(out);
+    stepSeq -= 1;
+    return undefined;
+  }
+
+  if (!force && !isFailFrame && lastDigest !== null && digest === lastDigest) {
     fs.unlinkSync(out);
     stepSeq -= 1;
     return undefined;
   }
 
   lastDigest = digest;
+  specDigests.add(digest);
   savedStepCount += 1;
   return out;
 }

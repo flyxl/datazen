@@ -1,4 +1,5 @@
 import {
+  beginJourneySuite,
   beginJourneyTest,
   ensureScreenshotRoot,
   isScreenshotTraceEnabled,
@@ -159,7 +160,8 @@ export const config: WebdriverIO.Config = {
     });
     await browser.pause(500);
   },
-  beforeSuite: async function () {
+  beforeSuite: async function (suite) {
+    beginJourneySuite(suite.file);
     // Same Tauri process is reused across spec files; close leftover sub-windows
     // so Host specs do not attach to a previous MultiDb / SQLite session.
     try {
