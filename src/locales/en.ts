@@ -1384,14 +1384,22 @@ const en: Record<TranslationKey, string> = {
   // ── MCP Client ──
   'mcpClient.title': 'External MCP Servers',
   'mcpClient.description': 'Connect to external MCP Servers to extend AI assistant capabilities.',
+  'mcpClient.savedConfigs': 'Saved Servers',
+  'mcpClient.runtimeStatus': 'Connected Servers',
   'mcpClient.addServer': 'Add MCP Server',
   'mcpClient.serverName': 'Name',
   'mcpClient.command': 'Command',
   'mcpClient.args': 'Arguments',
+  'mcpClient.save': 'Save',
+  'mcpClient.saving': 'Saving…',
+  'mcpClient.edit': 'Edit',
+  'mcpClient.delete': 'Delete',
+  'mcpClient.enabled': 'Enabled',
   'mcpClient.connect': 'Connect',
   'mcpClient.connecting': 'Connecting…',
   'mcpClient.disconnect': 'Disconnect',
   'mcpClient.tools': 'tools',
+  'mcpClient.noSavedConfigs': 'No saved MCP server configs.',
   'mcpClient.noServers': 'No MCP servers connected.',
 
   // ── Workflows ──

@@ -263,6 +263,14 @@ fn plugin_settings_defaults_when_key_missing() {
 }
 
 #[test]
+fn mcp_client_servers_defaults_when_key_missing() {
+    let mut value = serde_json::to_value(AppSettings::default()).unwrap();
+    value.as_object_mut().unwrap().remove("mcpClientServers");
+    let parsed: AppSettings = serde_json::from_value(value).unwrap();
+    assert!(parsed.mcp_client_servers.is_empty());
+}
+
+#[test]
 fn plugin_settings_roundtrip_opaque() {
     let settings = AppSettings {
         plugin_settings: {

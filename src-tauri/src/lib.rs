@@ -787,6 +787,23 @@ pub fn run() {
                         tracing::warn!(error = %e, "Failed to auto-start embedded MCP Server");
                     }
                 }
+
+                let client_configs = tauri::async_runtime::block_on(state.store.get_settings())
+                    .mcp_client_servers
+                    .into_iter()
+                    .filter(|c| c.enabled)
+                    .collect::<Vec<_>>();
+                for config in client_configs {
+                    let app_state = state.inner().clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(e) = commands::mcp_client_connect_impl(&app_state, config).await {
+                            tracing::warn!(
+                                error = %e,
+                                "Failed to auto-connect external MCP client on startup"
+                            );
+                        }
+                    });
+                }
             }
 
             #[cfg(target_os = "macos")]
