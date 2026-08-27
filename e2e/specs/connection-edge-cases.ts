@@ -112,6 +112,7 @@ describe('连接管理边界用例 (TC-EDGE-009~013)', () => {
     const hostInput = await $('input[placeholder="prod-db.example.com"]');
     await hostInput.clearValue();
     await hostInput.setValue('192.0.2.1');
+    await captureJourneyStep('test-connection-bad-host', 0, true);
 
     // Click Test Connection with bad host — should not crash
     await browser.execute(() => {

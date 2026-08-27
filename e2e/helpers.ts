@@ -43,7 +43,6 @@ export async function openNewConnectionDialogFromUi() {
   });
   if (!clicked) throw new Error('Could not find "新建连接" button');
   await waitForNewConnectionDialog();
-  await captureJourneyStep('new-connection-dialog');
 }
 
 /** Close the new-connection dialog via Cancel (stays on main window). */
@@ -61,7 +60,6 @@ export async function closeNewConnectionDialogFromUi() {
     async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
     { timeout: 10000, timeoutMsg: '等待新建连接弹窗关闭超时' },
   );
-  await captureJourneyStep('new-connection-closed');
 }
 
 export async function switchToNewWindow(originalHandle: string): Promise<string> {

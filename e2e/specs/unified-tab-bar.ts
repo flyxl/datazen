@@ -18,8 +18,8 @@ import {
 describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
   before(async () => {
     await connectSeededPgInWorkspace();
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
-    await browser.pause(1000);
+    await openQueryTab();
+    await browser.pause(500);
   });
 
   it('工具栏应显示新建查询按钮 (UTB-001)', async () => {
