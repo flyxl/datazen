@@ -291,6 +291,7 @@ impl ConnectionManager {
 
     /// Current reference count for a `db_session_id` (0 if not tracked).
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) async fn ref_count(&self, db_session_id: &str) -> usize {
         self.ref_counts
             .read()

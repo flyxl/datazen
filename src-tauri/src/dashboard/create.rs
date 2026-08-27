@@ -340,7 +340,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_widget_from_workflow_rejects_hidden() {
-        let (db, registry, dash) = setup().await;
+        let (db, _registry, dash) = setup().await;
         db.upsert_workflow(&WorkflowRecord {
             id: "hidden".into(),
             name: "Hidden".into(),
