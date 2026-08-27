@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { tid } from '../../lib/tid';
 
 export interface DialogProps {
   open: boolean;
@@ -11,6 +12,8 @@ export interface DialogProps {
   onClose: () => void;
   footer?: ReactNode;
   className?: string;
+  /** E2E-only stable locator (see `tid()`); omitted in production builds. */
+  testId?: string;
 }
 
 export function Dialog({
@@ -21,6 +24,7 @@ export function Dialog({
   onClose,
   footer,
   className,
+  testId,
 }: DialogProps) {
   if (!open) return null;
 
@@ -31,6 +35,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        {...(testId ? tid(testId) : {})}
         className={cn(
           'relative z-10 w-full max-w-xl overflow-hidden rounded-xl border border-edge bg-surface-alt shadow-xl',
           className,

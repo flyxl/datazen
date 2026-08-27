@@ -5,6 +5,7 @@
  * feature-specific assertions.
  */
 import { browser, $, $$ } from '@wdio/globals';
+import { t } from './i18n.js';
 import { isScreenshotTraceEnabled, saveJourneyScreenshot } from './lib/screenshotTrace.js';
 
 /** Manual journey step capture (`--screenshot`); also used by helpers below. */
@@ -806,15 +807,30 @@ async function navigatorHasTableButtons(): Promise<boolean> {
 
 /** Wait until the DataTable export dialog is visible (E2E webdriver builds only). */
 export async function waitForDataExportDialog(timeout = 8000) {
-  const dlg = await $('[data-testid="data-export-dialog"]');
-  await dlg.waitForDisplayed({ timeout });
+  await browser.waitUntil(
+    async () => {
+      const byTestId = await $('[data-testid="data-export-dialog"]');
+      if ((await byTestId.isExisting()) && (await byTestId.isDisplayed().catch(() => false))) {
+        return true;
+      }
+      const body = await $('body').getText();
+      return body.includes(t('export.format')) && body.includes(t('export.range'));
+    },
+    { timeout, timeoutMsg: 'Timed out waiting for data export dialog' },
+  );
 }
 
 /** Dismiss the DataTable export dialog if open. */
 export async function closeDataExportDialogIfOpen() {
   const dlg = await $('[data-testid="data-export-dialog"]');
-  if (!(await dlg.isExisting()) || !(await dlg.isDisplayed().catch(() => false))) return;
-  const cancel = await dlg.$(`button*=${'取消'}`);
+  const open =
+    (await dlg.isExisting()) && (await dlg.isDisplayed().catch(() => false))
+      ? dlg
+      : (await $('body').getText()).includes(t('export.format'))
+        ? await $('.fixed.inset-0.z-50')
+        : null;
+  if (!open) return;
+  const cancel = await $(`button*=${t('common.cancel')}`);
   if (await cancel.isExisting()) await cancel.click();
   await browser.pause(400);
 }
