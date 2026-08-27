@@ -8,7 +8,6 @@ import { expect, browser, $ } from '@wdio/globals';
 import {
   captureJourneyStep,
   closeExtraWindows,
-  expandAllGroups,
   invokeBackend,
   openSettingsInMainWindow,
 } from '../helpers.js';
