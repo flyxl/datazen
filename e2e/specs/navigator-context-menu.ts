@@ -12,9 +12,12 @@ import {
   openQueryTab,
   executeSQL,
   waitForSchemaTreeLoaded,
+  setSafeMode,
+  confirmWebDialog,
 } from '../helpers.js';
 
 const TEST_TABLE = '_e2e_ctx_menu';
+const DROP_SCHEMA = '_e2e_nav_drop_schema';
 
 /** Right-click a DOM element matched by selector + text filter via JS dispatch. */
 async function rightClick(selector: string, textMatch?: string) {
@@ -326,6 +329,39 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       expect(text).toContain(t('schemaTree.dropSchema'));
       await dismissMenu();
     });
+
+    it('NCM-023: 删除 schema 确认后应从导航树消失', async () => {
+      await executeSQL(`CREATE SCHEMA IF NOT EXISTS ${DROP_SCHEMA}`);
+      await browser.pause(800);
+      await rightClick('[data-tree-node="db"]');
+      await clickMenuItem(t('connWin.refresh'));
+      await browser.pause(2000);
+
+      await expandSchema(DROP_SCHEMA);
+      await browser.pause(500);
+
+      const schemaNode = await browser.execute((name: string) => {
+        return Array.from(document.querySelectorAll('[data-tree-node="schema"]')).some((n) =>
+          n.textContent?.includes(name),
+        );
+      }, DROP_SCHEMA);
+      if (!schemaNode) {
+        console.log('NCM-023: drop schema node not visible, skipping');
+        return;
+      }
+
+      await rightClick('[data-tree-node="schema"]', DROP_SCHEMA);
+      await clickMenuItem(t('schemaTree.dropSchema'));
+      await confirmWebDialog();
+      await browser.pause(1500);
+
+      const stillThere = await browser.execute((name: string) => {
+        return Array.from(document.querySelectorAll('[data-tree-node="schema"]')).some((n) =>
+          n.textContent?.includes(name),
+        );
+      }, DROP_SCHEMA);
+      expect(stillThere).toBe(false);
+    });
   });
 
   // ── Category Context Menu ────────────────────────────────────────
@@ -377,11 +413,16 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
 
   describe('表节点上下文菜单', () => {
     before(async () => {
+      await setSafeMode(false);
       const tableNodes = await $$('[data-tree-node="table"]');
       if (tableNodes.length === 0) {
         await expandCategory('tables');
         await browser.pause(2000);
       }
+    });
+
+    after(async () => {
+      await setSafeMode(true);
     });
 
     it('NCM-040: 右键表显示菜单含必要项', async () => {
@@ -481,19 +522,24 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       expect(bodyText.toLowerCase()).toContain('er');
     });
 
-    /**
-     * NCM-046: 删除表完整流程（含原生确认框）无法 E2E 自动化。
-     * 菜单项可见性由 NCM-044 覆盖；执行与树刷新由 ConnectionNavigatorTree.test.tsx 覆盖。
-     */
-    it('NCM-046: 表-删除菜单项可见（确认框留待 R 回归手工/单测）', async () => {
+    it('NCM-046: 删除表确认后应从导航树消失', async () => {
       await rightClick(`[data-tree-node="table"][data-item-name="${TEST_TABLE}"]`);
       const menuVisible = await isMenuDisplayed();
       if (!menuVisible) {
         await rightClick('[data-tree-node="table"]');
       }
-      const text = await getMenuText();
-      expect(text).toContain(t('schemaTree.drop'));
-      await dismissMenu();
+      await clickMenuItem(t('schemaTree.drop'));
+      await confirmWebDialog();
+      await browser.pause(1500);
+
+      await browser.waitUntil(
+        async () => {
+          return browser.execute((name: string) => {
+            return !document.querySelector(`[data-item-name="${name}"]`);
+          }, TEST_TABLE);
+        },
+        { timeout: 15000, timeoutMsg: `表 ${TEST_TABLE} 删除后仍显示在导航树中` },
+      );
     });
   });
 

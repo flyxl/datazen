@@ -31,13 +31,13 @@
 
 | 编号 | 前置 | 步骤 | 断言 | 备注 |
 |------|------|------|------|------|
-| E2E-F1-1 | PG 连接，存在测试表 | 侧栏表节点右键 → Drop → 确认 | 表从树消失 | 【留待 R 回归】；NCM-044/046 覆盖菜单项 |
+| E2E-F1-1 | PG 连接，存在测试表 | 侧栏表节点右键 → Drop → Web 确认 | 表从树消失 | NCM-046 |
 
 ### 测试结果
 
 - vitest：`ConnectionNavigatorTree.test.tsx` 68 passed
 - tsc：`--noEmit` 通过
-- E2E 登记：`navigator-context-menu.ts` NCM-044/046
+- E2E：`navigator-context-menu.ts` NCM-023/046（Web ConfirmDialog）
 
 ---
 
@@ -49,9 +49,9 @@
 
 | 编号 | 前置 | 步骤 | 断言 | 备注 |
 |------|------|------|------|------|
-| E2E-F2-1 | PG 多 schema | 侧栏 schema 右键 → Drop Schema → 确认 | schema 从树消失 | 【留待 R 回归】；NCM-022 覆盖菜单项 |
+| E2E-F2-1 | PG 多 schema | 侧栏 schema 右键 → Drop Schema → Web 确认 | schema 从树消失 | NCM-023 |
 
 ### 测试结果
 
 - vitest：`ConnectionNavigatorTree.test.tsx` 68 passed
-- E2E 登记：`navigator-context-menu.ts` NCM-022/046 + `e2e-coverage.md`
+- E2E：`navigator-context-menu.ts` NCM-022/023

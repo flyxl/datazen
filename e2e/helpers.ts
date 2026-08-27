@@ -602,6 +602,22 @@ export async function withSafeModeOff<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Persist Safe Mode on/off (e.g. keep off for a whole describe block). */
+export async function setSafeMode(enabled: boolean): Promise<void> {
+  const settings = await invokeSettings<SettingsLike>('get_settings');
+  if (settings.safeMode === enabled) return;
+  await invokeSettings('save_settings', { settings: { ...settings, safeMode: enabled } });
+  await browser.pause(300);
+}
+
+/** Click the in-app ConfirmDialog primary button (useConfirmDialog / ConfirmDialog). */
+export async function confirmWebDialog(timeout = 5000): Promise<void> {
+  const okBtn = await $('[data-testid="confirm-dialog-ok"]');
+  await okBtn.waitForDisplayed({ timeout });
+  await okBtn.click();
+  await browser.pause(800);
+}
+
 /** Replace CodeMirror editor content using execCommand. */
 export async function setEditorContent(sql: string) {
   await browser.execute((text: string) => {
@@ -788,6 +804,21 @@ async function navigatorHasTableButtons(): Promise<boolean> {
   });
 }
 
+/** Wait until the DataTable export dialog is visible (E2E webdriver builds only). */
+export async function waitForDataExportDialog(timeout = 8000) {
+  const dlg = await $('[data-testid="data-export-dialog"]');
+  await dlg.waitForDisplayed({ timeout });
+}
+
+/** Dismiss the DataTable export dialog if open. */
+export async function closeDataExportDialogIfOpen() {
+  const dlg = await $('[data-testid="data-export-dialog"]');
+  if (!(await dlg.isExisting()) || !(await dlg.isDisplayed().catch(() => false))) return;
+  const cancel = await dlg.$(`button*=${'取消'}`);
+  if (await cancel.isExisting()) await cancel.click();
+  await browser.pause(400);
+}
+
 /** Wait until the connection navigator lists at least one table entry. */
 export async function waitForSchemaTreeLoaded(timeout = 20000) {
   await browser.waitUntil(
@@ -822,35 +853,168 @@ export async function waitForSchemaTreeLoaded(timeout = 20000) {
   );
 }
 
-/** Click a table by exact name in the sidebar. */
-export async function clickTableInSidebar(tableName: string) {
-  await waitForSchemaTreeLoaded();
+/** Expand db → schema → Tables category in the virtualized navigator tree. */
+export async function expandSchemaTableCategory(schemaName = 'public') {
+  await browser.execute((schema: string) => {
+    const isCollapsed = (el: Element) => {
+      const cls = el.querySelector('svg')?.getAttribute('class') ?? '';
+      return cls.includes('chevron-right');
+    };
+    const expandIfCollapsed = (el: Element | null | undefined) => {
+      if (el instanceof HTMLElement && isCollapsed(el)) el.click();
+    };
+    expandIfCollapsed(document.querySelector('[data-tree-node="db"]'));
+    const schemas = Array.from(document.querySelectorAll('[data-tree-node="schema"]'));
+    const target =
+      schemas.find((el) => el.textContent?.toLowerCase().includes(schema.toLowerCase())) ??
+      schemas[0];
+    expandIfCollapsed(target);
+    for (const cat of document.querySelectorAll(
+      '[data-tree-node="category"][data-cat-id="tables"]',
+    )) {
+      expandIfCollapsed(cat);
+    }
+  }, schemaName);
+  await browser.pause(800);
+}
+
+async function setNavigatorSearch(query: string) {
   const aside = await connectionNavigatorAside();
-  const asideButtons = await aside.$$('button');
-  for (const btn of asideButtons) {
-    const text = (await btn.getText()).trim();
-    if (text === tableName || text.endsWith(`.${tableName}`) || text.endsWith(`/${tableName}`)) {
-      await btn.click();
+  const input = await aside.$('input');
+  if (query) await input.setValue(query);
+  else await input.clearValue();
+  await browser.pause(600);
+}
+
+async function scrollSchemaTree(pass: number) {
+  await browser.execute((p: number) => {
+    const scrollers = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '[class*="overflow-y-auto"], [class*="overflow-auto"]',
+      ),
+    ).filter((s) => s.scrollHeight > s.clientHeight);
+    if (scrollers.length === 0) return;
+    if (p === 0) {
+      for (const s of scrollers) s.scrollTop = 0;
       return;
     }
+    const step = 250 * p;
+    for (const s of scrollers) s.scrollTop = Math.min(s.scrollHeight, step);
+  }, pass);
+}
+
+/** Wait until a table/view node is mounted in the virtualized schema tree. */
+export async function waitForTableInSidebar(tableName: string, timeout = 20000) {
+  await waitForSchemaTreeLoaded();
+  await setNavigatorSearch(tableName);
+  let scrollPass = 0;
+  try {
+    await browser.waitUntil(
+      async () => {
+        if (await tableNodeExistsInNavigator(tableName)) return true;
+        await expandSchemaTableCategory();
+        await scrollSchemaTree(scrollPass);
+        scrollPass++;
+        return false;
+      },
+      { timeout, timeoutMsg: `等待表 "${tableName}" 出现在 schema 树` },
+    );
+  } finally {
+    await setNavigatorSearch('');
   }
-  const clicked = await browser.execute((name: string) => {
+}
+
+async function tableNodeExistsInNavigator(tableName: string): Promise<boolean> {
+  return browser.execute((name: string) => {
     const nav =
       document.querySelector('[data-testid="connection-navigator-aside"]') ??
       Array.from(document.querySelectorAll('aside')).find((a) =>
         a.querySelector('[data-conn-item]'),
       );
     if (!nav) return false;
-    const btn = Array.from(nav.querySelectorAll('button')).find((b) => {
-      const label = (b.textContent ?? '').trim();
-      return label === name || label.endsWith(`.${name}`) || label.endsWith(`/${name}`);
-    });
-    if (!btn) return false;
-    btn.click();
-    return true;
+    const matchName = (label: string) =>
+      label === name || label.endsWith(`.${name}`) || label.endsWith(`/${name}`);
+    return Array.from(
+      nav.querySelectorAll('[data-tree-node="table"], [data-tree-node="view"]'),
+    ).some((n) => matchName(n.getAttribute('data-item-name') ?? ''));
   }, tableName);
-  if (!clicked) {
-    throw new Error(`未找到表 "${tableName}"`);
+}
+
+/** Click a table by exact name in the sidebar (virtualized tree safe). */
+export async function clickTableInSidebar(tableName: string) {
+  await waitForSchemaTreeLoaded();
+  await setNavigatorSearch(tableName);
+  let scrollPass = 0;
+  try {
+    await browser.waitUntil(
+      async () => {
+        const clicked = await browser.execute((name: string) => {
+          const nav =
+            document.querySelector('[data-testid="connection-navigator-aside"]') ??
+            Array.from(document.querySelectorAll('aside')).find((a) =>
+              a.querySelector('[data-conn-item]'),
+            );
+          if (!nav) return false;
+          const matchName = (label: string) =>
+            label === name || label.endsWith(`.${name}`) || label.endsWith(`/${name}`);
+          const node = Array.from(
+            nav.querySelectorAll<HTMLElement>('[data-tree-node="table"], [data-tree-node="view"]'),
+          ).find((n) => matchName(n.getAttribute('data-item-name') ?? ''));
+          if (!node) return false;
+          node.scrollIntoView({ block: 'center' });
+          node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          return true;
+        }, tableName);
+        if (clicked) return true;
+        await expandSchemaTableCategory();
+        await scrollSchemaTree(scrollPass);
+        scrollPass++;
+        return false;
+      },
+      { timeout: 20000, timeoutMsg: `未找到表 "${tableName}"` },
+    );
+  } finally {
+    await setNavigatorSearch('');
+  }
+}
+
+/** Right-click a table/view row in the navigator (keeps search active until menu opens). */
+export async function rightClickTableInSidebar(tableName: string) {
+  await waitForSchemaTreeLoaded();
+  await setNavigatorSearch(tableName);
+  try {
+    await browser.waitUntil(
+      async () => {
+        const opened = await browser.execute((name: string) => {
+          const nav =
+            document.querySelector('[data-testid="connection-navigator-aside"]') ??
+            Array.from(document.querySelectorAll('aside')).find((a) =>
+              a.querySelector('[data-conn-item]'),
+            );
+          if (!nav) return false;
+          const node = nav.querySelector(
+            `[data-tree-node="table"][data-item-name="${name}"], [data-tree-node="view"][data-item-name="${name}"]`,
+          ) as HTMLElement | null;
+          if (!node) return false;
+          node.scrollIntoView({ block: 'center' });
+          node.dispatchEvent(
+            new MouseEvent('contextmenu', {
+              bubbles: true,
+              cancelable: true,
+              clientX: 80,
+              clientY: 120,
+            }),
+          );
+          return !!document.querySelector('[data-testid="web-context-menu"]');
+        }, tableName);
+        if (opened) return true;
+        await expandSchemaTableCategory();
+        return false;
+      },
+      { timeout: 10000, timeoutMsg: `无法右键打开表 "${tableName}" 的上下文菜单` },
+    );
+  } finally {
+    await setNavigatorSearch('');
   }
 }
 
