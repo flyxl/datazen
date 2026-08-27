@@ -37,24 +37,18 @@ describe('path IPC frontend wiring', () => {
     const src = readSrc('commands/adb.ts');
     // Unified Driver Command API entry point — no dedicated host adb IPCs.
     expect(src).toContain('driverCommands.execute');
-    expect(src).toContain("driverType: ADB_DRIVER_TYPE");
+    expect(src).toContain('driverType: ADB_DRIVER_TYPE');
     expect(src).toContain("'adb_pull_database'");
     expect(src).toContain('savedPath');
     // The legacy direct Tauri IPC invocations must be gone.
     expect(src).not.toContain('@tauri-apps/api/core');
     expect(src).not.toMatch(/invoke[<(]/);
 
-    const hostLib = fs.readFileSync(
-      path.join(ROOT, '../src-tauri/src/lib.rs'),
-      'utf8',
-    );
+    const hostLib = fs.readFileSync(path.join(ROOT, '../src-tauri/src/lib.rs'), 'utf8');
     expect(hostLib).not.toContain('adb_list_packages');
     expect(hostLib).not.toContain('adb_pull_database');
 
-    const hostMod = fs.readFileSync(
-      path.join(ROOT, '../src-tauri/src/commands/mod.rs'),
-      'utf8',
-    );
+    const hostMod = fs.readFileSync(path.join(ROOT, '../src-tauri/src/commands/mod.rs'), 'utf8');
     expect(hostMod).not.toContain('mod adb');
     expect(fs.existsSync(path.join(ROOT, '../src-tauri/src/commands/adb.rs'))).toBe(false);
   });
@@ -144,7 +138,8 @@ describe('path IPC frontend wiring', () => {
     // Production callers: dialog flow only, no overridePath anywhere.
     const shareDialog = readSrc('components/connection/ConnectionShareDialog.tsx');
     expect(shareDialog).toContain('connectionCommands.exportConnections(');
-    expect(shareDialog).toContain('connectionCommands.importConnections(');
+    expect(shareDialog).toContain('connectionCommands.importConnectionsAtPath(');
+    expect(shareDialog).toContain('connectionCommands.pickConnectionsImportFile(');
     const connectionPage = readSrc('windows/connection/ConnectionPage.tsx');
     expect(connectionPage).toContain('backupCommands.exportAppData(');
     expect(connectionPage).toContain('backupCommands.importAppData(');

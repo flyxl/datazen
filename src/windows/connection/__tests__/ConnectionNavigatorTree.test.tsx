@@ -48,7 +48,9 @@ const openSchemaDiffWindowMock = vi.hoisted(() => vi.fn());
 const openDataTransferWindowMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../commands/connection', () => ({
-  connectionCommands: { reorderConnections: (...args: unknown[]) => mockReorderConnections(...args) },
+  connectionCommands: {
+    reorderConnections: (...args: unknown[]) => mockReorderConnections(...args),
+  },
 }));
 
 vi.mock('../../../plugins/generated', () => {
@@ -370,7 +372,9 @@ const baseProps = {
 
 // ── Shared helpers for the extended suites ──────────────────────
 
-function makeConn(overrides: Partial<ConnectionConfig> & { id: string; name: string }): ConnectionConfig {
+function makeConn(
+  overrides: Partial<ConnectionConfig> & { id: string; name: string },
+): ConnectionConfig {
   return {
     databaseType: 'mysql',
     host: '127.0.0.1',
@@ -809,7 +813,7 @@ describe('ConnectionNavigatorTree context menu new query', () => {
     // Set a different active database to verify the fix
     useSchemaStore.setState({ currentDatabase: 'db_b' });
 
-        await triggerContextMenuAction((await findByText('public')).closest('button')!, 'new-query');
+    await triggerContextMenuAction((await findByText('public')).closest('button')!, 'new-query');
 
     expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
     expect(newQuery).toHaveBeenCalled();
@@ -887,8 +891,8 @@ describe('ConnectionNavigatorTree toolbar and empty states', () => {
 
     await ensureDbTableVisible(findByText, queryAllByText, 'db_a', 'users');
 
-    fireEvent.click(container.querySelector('button[title="menu.exportConnections"]')!);
-    fireEvent.click(container.querySelector('button[title="menu.importConnections"]')!);
+    fireEvent.click(container.querySelector('button[title="common.exportConnections"]')!);
+    fireEvent.click(container.querySelector('button[title="common.importConnections"]')!);
     fireEvent.click(container.querySelector('button[title="connWin.refresh"]')!);
     fireEvent.click(container.querySelector('button[title="connWin.collapseSidebar"]')!);
     expect(onExportConnections).toHaveBeenCalledTimes(1);
@@ -905,7 +909,7 @@ describe('ConnectionNavigatorTree toolbar and empty states', () => {
 
     // New-connection toolbar button still dispatches.
     newConnectionSpy.mockClear();
-    fireEvent.click(container.querySelector('button[title="main.newConnection"]')!);
+    fireEvent.click(container.querySelector('button[title="common.newConnection"]')!);
     expect(newConnectionSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -1337,9 +1341,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
 
     // Database context menu → refresh → non-multi-db reloads via loadForConnection.
     mockGetDatabases.mockClear();
-    await triggerContextMenuRefresh(
-      (await findByText('/data/app.db')).closest('button')!,
-    );
+    await triggerContextMenuRefresh((await findByText('/data/app.db')).closest('button')!);
     await waitFor(() => {
       expect(mockGetDatabases).toHaveBeenCalled();
     });
@@ -1421,7 +1423,11 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     ] as TableInfo[]);
     const onShowMessage = vi.fn();
     const { container, findByText } = render(
-      <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-sql" onShowMessage={onShowMessage} />,
+      <ConnectionNavigatorTree
+        {...baseProps}
+        activeConnectionId="cfg-sql"
+        onShowMessage={onShowMessage}
+      />,
     );
     await findByText('/data/app.db');
     await settleSessionLoad('conn-sql');
@@ -1558,11 +1564,7 @@ async function renderPgTree(extraProps: Partial<ConnectionNavigatorTreeProps> = 
       : Promise.resolve([]),
   );
   return render(
-    <ConnectionNavigatorTree
-      {...baseProps}
-      activeConnectionId="cfg-pg"
-      {...extraProps}
-    />,
+    <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-pg" {...extraProps} />,
   );
 }
 
@@ -1727,9 +1729,7 @@ describe('ConnectionNavigatorTree multi-db tree variants', () => {
   });
 
   it('falls back to another listed database when postgres is absent', async () => {
-    connectionsState.connections = [
-      makeConn({ id: 'cfg-mysql', name: 'Local MySQL' }),
-    ];
+    connectionsState.connections = [makeConn({ id: 'cfg-mysql', name: 'Local MySQL' })];
     mockGetDatabases.mockResolvedValue(['first', 'second']);
     const { findByText } = render(<ConnectionNavigatorTree {...baseProps} />);
 
@@ -1925,9 +1925,7 @@ describe('ConnectionNavigatorTree group management', () => {
 
   it('creates, renames and deletes groups from the group context menu', async () => {
     connectionsState.groups = ['work'];
-    connectionsState.connections = [
-      makeConn({ id: 'cfg-w', name: 'Work Conn', group: 'work' }),
-    ];
+    connectionsState.connections = [makeConn({ id: 'cfg-w', name: 'Work Conn', group: 'work' })];
     const { container, findByText } = render(<ConnectionNavigatorTree {...baseProps} />);
     await findByText('Work Conn');
     const header = [...container.querySelectorAll('[data-group-header]')].find((el) =>
@@ -1937,7 +1935,9 @@ describe('ConnectionNavigatorTree group management', () => {
 
     // Rename prefills the current label and commits on Enter.
     await openMenuAndPick(header, 'rename-group');
-    const renameDialog = document.querySelector('[role="dialog"][aria-label="main.ctx.renameGroup"]')!;
+    const renameDialog = document.querySelector(
+      '[role="dialog"][aria-label="main.ctx.renameGroup"]',
+    )!;
     const renameInput = renameDialog.querySelector('input')!;
     expect((renameInput as HTMLInputElement).value).toBe('work');
     fireEvent.change(renameInput, { target: { value: 'work2' } });
@@ -1954,7 +1954,7 @@ describe('ConnectionNavigatorTree group management', () => {
 
     // New group dialog commits on Enter.
     await openMenuAndPick(header, 'new-group');
-    const dialog = document.querySelector('[role="dialog"][aria-label="main.newGroupTitle"]')!;
+    const dialog = document.querySelector('[role="dialog"][aria-label="common.newGroup"]')!;
     const input = dialog.querySelector('input')!;
     fireEvent.change(input, { target: { value: 'fresh' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -1980,28 +1980,32 @@ describe('ConnectionNavigatorTree group dialogs', () => {
   it('opens the new-group dialog from the toolbar and validates input', async () => {
     const { container, findByText } = render(<ConnectionNavigatorTree {...baseProps} />);
     await findByText('Local MySQL');
-    const toolbarBtn = container.querySelector('button[title="main.newGroupTitle"]')!;
+    const toolbarBtn = container.querySelector('button[title="common.newGroup"]')!;
 
     // Empty name → OK just closes without dispatching.
     fireEvent.click(toolbarBtn);
-    const dialog = document.querySelector('[role="dialog"][aria-label="main.newGroupTitle"]')!;
-    fireEvent.click([...dialog.querySelectorAll('button')].find((b) => b.textContent === 'common.ok')!);
+    const dialog = document.querySelector('[role="dialog"][aria-label="common.newGroup"]')!;
+    fireEvent.click(
+      [...dialog.querySelectorAll('button')].find((b) => b.textContent === 'common.ok')!,
+    );
     expect(connectionsState.addGroup).not.toHaveBeenCalled();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
 
     // Valid name via OK button.
     fireEvent.click(toolbarBtn);
-    const dialog2 = document.querySelector('[role="dialog"][aria-label="main.newGroupTitle"]')!;
+    const dialog2 = document.querySelector('[role="dialog"][aria-label="common.newGroup"]')!;
     const input = dialog2.querySelector('input')!;
     fireEvent.change(input, { target: { value: 'grp' } });
-    fireEvent.click([...dialog2.querySelectorAll('button')].find((b) => b.textContent === 'common.ok')!);
+    fireEvent.click(
+      [...dialog2.querySelectorAll('button')].find((b) => b.textContent === 'common.ok')!,
+    );
     await waitFor(() => {
       expect(connectionsState.addGroup).toHaveBeenCalledWith('grp');
     });
 
     // Cancel closes without dispatching.
     fireEvent.click(toolbarBtn);
-    const dialog3 = document.querySelector('[role="dialog"][aria-label="main.newGroupTitle"]')!;
+    const dialog3 = document.querySelector('[role="dialog"][aria-label="common.newGroup"]')!;
     fireEvent.click(
       [...dialog3.querySelectorAll('button')].find((b) => b.textContent === 'common.cancel')!,
     );
@@ -2010,9 +2014,7 @@ describe('ConnectionNavigatorTree group dialogs', () => {
 
   it('rename-group dialog cancel leaves the group untouched', async () => {
     connectionsState.groups = ['work'];
-    connectionsState.connections = [
-      makeConn({ id: 'cfg-w', name: 'Work Conn', group: 'work' }),
-    ];
+    connectionsState.connections = [makeConn({ id: 'cfg-w', name: 'Work Conn', group: 'work' })];
     const { container, findByText } = render(<ConnectionNavigatorTree {...baseProps} />);
     await findByText('Work Conn');
     const header = [...container.querySelectorAll('[data-group-header]')].find((el) =>
@@ -2020,7 +2022,9 @@ describe('ConnectionNavigatorTree group dialogs', () => {
     )!;
     await openMenuAndPick(header, 'rename-group');
     const dialog = document.querySelector('[role="dialog"][aria-label="main.ctx.renameGroup"]')!;
-    fireEvent.click([...dialog.querySelectorAll('button')].find((b) => b.textContent === 'common.cancel')!);
+    fireEvent.click(
+      [...dialog.querySelectorAll('button')].find((b) => b.textContent === 'common.cancel')!,
+    );
     expect(connectionsState.renameGroup).not.toHaveBeenCalled();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
@@ -2033,9 +2037,7 @@ describe('ConnectionNavigatorTree connection context menu actions', () => {
       { id: 'server_status_snapshot' },
       { id: 'list_processes' },
     ]);
-    const view = render(
-      <ConnectionNavigatorTree {...baseProps} viewActions={viewActions} />,
-    );
+    const view = render(<ConnectionNavigatorTree {...baseProps} viewActions={viewActions} />);
     await view.findByText('db_a');
     return connRow(view.container, 'Local MySQL');
   }
@@ -2119,9 +2121,7 @@ describe('ConnectionNavigatorTree connection context menu actions', () => {
 
   it('moves a grouped connection out of its group via the submenu', async () => {
     connectionsState.groups = ['work'];
-    connectionsState.connections = [
-      makeConn({ id: 'cfg-w', name: 'Work Conn', group: 'work' }),
-    ];
+    connectionsState.connections = [makeConn({ id: 'cfg-w', name: 'Work Conn', group: 'work' })];
     const { container } = render(<ConnectionNavigatorTree {...baseProps} />);
     await waitFor(() => connRow(container, 'Work Conn'));
     const row = connRow(container, 'Work Conn');
@@ -2161,7 +2161,7 @@ describe('ConnectionNavigatorTree connection context menu actions', () => {
     const row = connRow(container, 'Local MySQL');
 
     await openMenuAndPick(row, 'object-filter');
-    const dialog = document.querySelector('[role="dialog"][aria-label="objectFilter.title"]')!;
+    const dialog = document.querySelector('[role="dialog"][aria-label="common.objectFilter"]')!;
     expect(dialog).toBeTruthy();
 
     mockGetDatabases.mockClear();
@@ -2184,9 +2184,7 @@ describe('ConnectionNavigatorTree connection context menu actions', () => {
 });
 
 describe('ConnectionNavigatorTree path-hierarchy namespace trees', () => {
-  async function renderNamespaceTree(
-    extraProps: Partial<ConnectionNavigatorTreeProps> = {},
-  ) {
+  async function renderNamespaceTree(extraProps: Partial<ConnectionNavigatorTreeProps> = {}) {
     connectionsState.connections = [
       makeConn({ id: 'cfg-doris', name: 'Doris Conn', databaseType: 'doris' }),
     ];
@@ -2221,7 +2219,10 @@ describe('ConnectionNavigatorTree path-hierarchy namespace trees', () => {
   it('renders branches and typed leaves, and lazy-loads on expand', async () => {
     const onSelectTable = vi.fn();
     const onNodeContextMenu = vi.fn();
-    const { container, findByText } = await renderNamespaceTree({ onSelectTable, onNodeContextMenu });
+    const { container, findByText } = await renderNamespaceTree({
+      onSelectTable,
+      onNodeContextMenu,
+    });
 
     // Top-level leaves render immediately; materializedView maps to kind "view".
     const mvNode = container.querySelector('[data-item-name="mv1"]')!;
@@ -2353,10 +2354,7 @@ describe('ConnectionNavigatorTree imperative refresh guards', () => {
   });
 
   it('refreshAllConnections only touches connected sessions', async () => {
-    connectionsState.connections = [
-      MYSQL_CONN,
-      makeConn({ id: 'cfg-idle', name: 'Idle Conn' }),
-    ];
+    connectionsState.connections = [MYSQL_CONN, makeConn({ id: 'cfg-idle', name: 'Idle Conn' })];
     activeConnectionsState.connections = {
       'cfg-mysql': { status: 'connected', dbSessionId: 'conn-1', connectionId: 'cfg-mysql' },
     };
