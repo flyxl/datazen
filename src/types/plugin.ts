@@ -58,6 +58,8 @@ export interface PluginManifest {
   apiVersion: number;
   author?: string | null;
   description?: string | null;
+  /** Optional package-level icon (square brand image) shown in plugin lists. */
+  icon?: string | null;
   entry?: string | null;
   contributes: Contributions;
   permissions: PluginPermission[];
@@ -87,6 +89,8 @@ export interface PluginSummary {
   apiVersion: number;
   author?: string;
   description?: string;
+  /** Optional package-level icon path (mirrors PluginManifest.icon). */
+  icon?: string;
   enabled: boolean;
   permissions: PluginPermission[];
   pages: PluginPageSummary[];

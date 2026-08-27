@@ -5,6 +5,7 @@
   "apiVersion": 2,
   "author": "DataZen",
   "description": "Full-featured sample extension: workspace page exercising every v1 bridge API (context / command.invoke / storage / notify) plus a dark theme contribution",
+  "icon": "assets/icon.svg",
   "entry": "index.html",
   "contributes": {
     "pages": [

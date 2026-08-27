@@ -6,6 +6,7 @@ import { Input } from '../../components/ui/Input';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
+import { pluginCommands } from '../../commands/plugins';
 import { usePluginStore } from '../../stores/pluginStore';
 import { useWorkspaceTabsStore } from '../../stores/workspaceTabsStore';
 import { EXTENSION_API_VERSION, type PluginSummary } from '../../types/plugin';
@@ -27,6 +28,76 @@ function matchesFilter(p: PluginSummary, filter: PluginFilter): boolean {
   if (filter === 'workspace') return hasPages(p);
   if (filter === 'theme') return hasThemes(p);
   return true;
+}
+
+const ICON_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+};
+
+function mimeForIcon(path: string): string {
+  const dot = path.lastIndexOf('.');
+  const ext = dot >= 0 ? path.slice(dot).toLowerCase() : '';
+  return ICON_MIME[ext] ?? 'application/octet-stream';
+}
+
+/**
+ * Renders a plugin's package-level icon as an image loaded through
+ * `read_plugin_file`. Falls back to the letter avatar when the plugin declares
+ * no icon, the file cannot be read, or the plugin is disabled.
+ */
+function PluginCardIcon({ plugin }: { plugin: PluginSummary }) {
+  const initials = plugin.name.slice(0, 1).toUpperCase();
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const iconPath = plugin.icon;
+    if (!iconPath || !plugin.enabled) {
+      setUrl(null);
+      return;
+    }
+    let revoked = false;
+    let objectUrl: string | null = null;
+    let cancelled = false;
+
+    void pluginCommands
+      .readPluginFile(plugin.id, iconPath)
+      .then((bytes) => {
+        if (cancelled) return;
+        const blob = new Blob([new Uint8Array(bytes)], { type: mimeForIcon(iconPath) });
+        objectUrl = URL.createObjectURL(blob);
+        if (!revoked) setUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setUrl(null);
+      });
+
+    return () => {
+      cancelled = true;
+      revoked = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [plugin.id, plugin.icon, plugin.enabled]);
+
+  return (
+    <span
+      data-testid="plugin-card-icon"
+      className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-raised text-base font-semibold text-accent"
+    >
+      {url ? (
+        <img
+          src={url}
+          alt=""
+          draggable={false}
+          className="h-full w-full object-contain"
+          data-testid="plugin-card-icon-img"
+        />
+      ) : (
+        initials
+      )}
+    </span>
+  );
 }
 
 export interface PluginManagementPageProps {
@@ -131,9 +202,7 @@ export function PluginManagementPage({ onOpenInWorkspace }: PluginManagementPage
         )}
       >
         <div className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface-raised text-base font-semibold text-accent">
-            {plugin.name.slice(0, 1).toUpperCase()}
-          </span>
+          <PluginCardIcon plugin={plugin} />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="truncate text-sm font-semibold text-fg">{plugin.name}</span>
