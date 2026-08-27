@@ -20,7 +20,7 @@ import { existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { resolve, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { FULLY_GENERATED_MANAGED } from './plugin-deinject.mjs';
+import { FULLY_GENERATED_MANAGED } from './driver-deinject.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(__dirname, '..');

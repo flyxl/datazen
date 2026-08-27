@@ -25,7 +25,7 @@ import {
   MANAGED_FILES,
   ROOT,
 } from './driver-file-stash.mjs';
-import { PLUGIN_ACL_IDS } from './plugin-deinject.mjs';
+import { PLUGIN_ACL_IDS } from './driver-deinject.mjs';
 
 export { PLUGIN_ACL_IDS };
 

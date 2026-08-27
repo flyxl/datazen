@@ -31,7 +31,7 @@ import {
 import { resolve, dirname, relative, basename } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { randomBytes } from 'crypto';
-import { deinjectManagedContent } from './plugin-deinject.mjs';
+import { deinjectManagedContent } from './driver-deinject.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(__dirname, '..');

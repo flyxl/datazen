@@ -8,7 +8,7 @@ import {
   shouldGenerate,
   runEnsureGeneratedDrivers,
 } from '../ensure-generated-drivers.mjs';
-import { FULLY_GENERATED_MANAGED } from '../plugin-deinject.mjs';
+import { FULLY_GENERATED_MANAGED } from '../driver-deinject.mjs';
 import { resetDir } from './fixture';
 
 const ALL_GENERATED = [...FULLY_GENERATED_MANAGED, 'src-tauri/capabilities/default.json'];

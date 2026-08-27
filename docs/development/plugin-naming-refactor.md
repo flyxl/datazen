@@ -15,7 +15,7 @@
 6. `src-tauri/src/redis_flush_gate.rs`：`#[cfg(feature = "plugin-redis")]` → `driver-redis`
 7. `src-tauri/src/transfer/adapter_registry.rs`：所有 `#[cfg(feature = "plugin-*")]` → `driver-*`
 8. `scripts/resolve-drivers.mjs`：生成逻辑中的 `plugin-` 前缀 → `driver-`
-9. `scripts/plugin-deinject.mjs`：marker 名 `plugin-*` → `driver-*`
+9. `scripts/driver-deinject.mjs`：marker 名 `plugin-*` → `driver-*`
 10. `scripts/driver-stash-precommit.mjs`：检测逻辑更新
 11. `scripts/ensure-generated-drivers.mjs`：注释更新
 12. `scripts/check-managed-stubs.mjs`：注释更新
