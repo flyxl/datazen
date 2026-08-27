@@ -1,5 +1,6 @@
 import { $, browser } from '@wdio/globals';
 import { expect } from '@wdio/globals';
+import { switchWorkspaceNav } from '../helpers.js';
 import { t } from '../i18n.js';
 
 describe('统一主窗口回归', () => {
@@ -19,14 +20,12 @@ describe('统一主窗口回归', () => {
     const search = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await search.waitForDisplayed({ timeout: 15000 });
 
-    await workflowNav.click();
+    await switchWorkspaceNav('workspace-nav-workflow', 'workflow-workspace', 'workspace-workflow');
     const workflowWorkspace = await $('[data-testid="workflow-workspace"]');
-    await workflowWorkspace.waitForDisplayed({ timeout: 15000 });
     await expect(workflowWorkspace).toBeDisplayed();
 
-    await dashboardNav.click();
+    await switchWorkspaceNav('workspace-nav-dashboard', 'dashboard-panel', 'workspace-dashboard');
     const dashboardPanel = await $('[data-testid="dashboard-panel"]');
-    await dashboardPanel.waitForDisplayed({ timeout: 15000 });
     await expect(dashboardPanel).toBeDisplayed();
 
     const size = await browser.getWindowSize();
@@ -35,11 +34,12 @@ describe('统一主窗口回归', () => {
   });
 
   it('未打开 panel 时应显示工作区首页', async () => {
-    const connectionsNav = await $('[data-testid="workspace-nav-connections"]');
-    await connectionsNav.click();
-    await browser.pause(500);
+    await switchWorkspaceNav(
+      'workspace-nav-connections',
+      'connection-workspace-home',
+      'workspace-connections-home',
+    );
     const home = await $('[data-testid="connection-workspace-home"]');
-    await home.waitForDisplayed({ timeout: 10000 });
     await expect(home).toBeDisplayed();
   });
 

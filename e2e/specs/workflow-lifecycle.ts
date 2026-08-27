@@ -5,7 +5,12 @@
  * Covers: TC-WF-007 ~ TC-WF-012
  */
 import { expect, browser, $ } from '@wdio/globals';
-import { closeExtraWindows, openConnectionWindow } from '../helpers.js';
+import {
+  captureJourneyStep,
+  closeExtraWindows,
+  openConnectionWindow,
+  switchWorkspaceNav,
+} from '../helpers.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
@@ -101,17 +106,9 @@ describe('工作流完整生命周期 (TC-WF-007~012)', () => {
   });
 
   it('TC-WF-011: 工作流列表右键不应有"立即运行"菜单项', async () => {
-    // Navigate to workflow tab in main window
     await browser.switchToWindow(mainWindow);
-    await browser.execute(() => {
-      const btns = Array.from(document.querySelectorAll('button'));
-      const btn = btns.find((b) => {
-        const text = b.textContent || '';
-        return text.includes('工作流') || text.includes('Workflow');
-      });
-      if (btn) (btn as HTMLElement).click();
-    });
-    await browser.pause(1500);
+    await switchWorkspaceNav('workspace-nav-workflow', 'workflow-workspace', 'workflow-tab-open');
+    await browser.pause(500);
 
     const rightClicked = await browser.execute(() => {
       const items = document.querySelectorAll('[data-workflow-item], [class*="workflow"] li');
@@ -125,6 +122,7 @@ describe('工作流完整生命周期 (TC-WF-007~012)', () => {
     });
     if (rightClicked) {
       await browser.pause(500);
+      await captureJourneyStep('workflow-context-menu');
       const body = await $('body').getText();
       const hasRun = body.includes('立即运行') || body.includes('Run Now');
       expect(hasRun).toBe(false);

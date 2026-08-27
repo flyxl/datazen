@@ -27,7 +27,11 @@ import { readFile, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { browser, $, $$, expect } from '@wdio/globals';
 import { invokeBackend } from '../helpers/data-dashboard.js';
-import { backFromSettingsInMainWindow, openSettingsInMainWindow } from '../helpers.js';
+import {
+  backFromSettingsInMainWindow,
+  captureJourneyStep,
+  openSettingsInMainWindow,
+} from '../helpers.js';
 
 const PLUGIN_ID = 'datazen.sample';
 const PAGE_KEY = `${PLUGIN_ID}:hello`;
@@ -151,6 +155,7 @@ async function openPluginsPage() {
   await nav.waitForDisplayed({ timeout: 10000 });
   await nav.click();
   await $('[data-testid="plugin-management-page"]').waitForDisplayed({ timeout: 10000 });
+  await captureJourneyStep('plugins-page');
 }
 
 async function openWorkspaceMode() {
@@ -158,6 +163,7 @@ async function openWorkspaceMode() {
   await nav.waitForDisplayed({ timeout: 10000 });
   await nav.click();
   await $('[data-testid="workspace-navigator"]').waitForDisplayed({ timeout: 10000 });
+  await captureJourneyStep('workspace-pages-nav');
 }
 
 async function sampleCard() {
@@ -177,6 +183,7 @@ async function openSampleTabFromNavigator() {
   await $('[data-testid="workspace-tabbar"]').waitForDisplayed({ timeout: 10000 });
   const iframe = await $('[data-testid="plugin-iframe"]');
   await iframe.waitForExist({ timeout: 15000 });
+  await captureJourneyStep('plugin-tab-open');
   return iframe;
 }
 
