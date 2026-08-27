@@ -193,7 +193,7 @@ export const config: WebdriverIO.Config = {
       console.warn('[e2e-screenshot]', err);
     }
   },
-  onComplete: async function () {
+  after: async function () {
     try {
       await cleanupAppDataViaIpc(browser);
     } catch (err) {
