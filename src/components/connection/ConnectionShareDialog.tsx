@@ -19,6 +19,12 @@ export const CONNECTION_IMPORT_APP_LABEL: Record<ConnectionImportApp, string> = 
   tableplus: 'TablePlus',
 };
 
+function ipcErrorMessage(e: unknown, fallback: string): string {
+  if (typeof e === 'string' && e.trim()) return e;
+  if (e instanceof Error && e.message.trim()) return e.message;
+  return fallback;
+}
+
 interface ConnectionShareDialogProps {
   open: boolean;
   mode: ConnectionShareMode;
@@ -109,7 +115,7 @@ export function ConnectionShareDialog({
           setLocalError(null);
         }
       } catch (e) {
-        onError(e instanceof Error ? e.message : t('common.importFailed'));
+        onError(ipcErrorMessage(e, t('common.importFailed')));
       }
     },
     [importSource, onError, t],
@@ -162,13 +168,9 @@ export function ConnectionShareDialog({
         }
       }
     } catch (e) {
-      const message =
-        e instanceof Error
-          ? e.message
-          : mode === 'export'
-            ? t('common.exportFailed')
-            : t('common.importFailed');
-      onError(message);
+      onError(
+        ipcErrorMessage(e, mode === 'export' ? t('common.exportFailed') : t('common.importFailed')),
+      );
     } finally {
       setSubmitting(false);
     }

@@ -206,6 +206,12 @@ fn validate_share_password(password: &str) -> Result<(), CommandError> {
     Ok(())
 }
 
+/// Trim export/import share passwords so encrypt and decrypt use the same bytes.
+fn normalize_share_password(password: String) -> Result<String, CommandError> {
+    validate_share_password(&password)?;
+    Ok(password.trim().to_string())
+}
+
 fn merge_connection_import_stats(
     existing_ids: &HashSet<String>,
     incoming: &[ConnectionConfig],
@@ -303,7 +309,7 @@ pub async fn export_connections(
     default_file_name: String,
     override_path: Option<String>,
 ) -> Result<Option<u32>, CommandError> {
-    validate_share_password(&password)?;
+    let password = normalize_share_password(password)?;
 
     let dest = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
         Some(path) => Some(path),
@@ -402,6 +408,7 @@ pub async fn import_connections_preview(
     password: String,
     override_path: Option<String>,
 ) -> Result<Option<serde_json::Value>, CommandError> {
+    let password = password.trim().to_string();
     let source = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
         Some(path) => Some(path),
         None => super::dialog::open_file(&app, connections_open_filters()).await?,
@@ -428,6 +435,7 @@ pub async fn import_connections_with_dialog(
     password: String,
     override_path: Option<String>,
 ) -> Result<Option<ImportConnectionsResult>, CommandError> {
+    let password = password.trim().to_string();
     let source = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
         Some(path) => Some(path),
         None => super::dialog::open_file(&app, connections_open_filters()).await?,
@@ -527,6 +535,7 @@ pub async fn import_connections_from_app(
     password: String,
     data_path: String,
 ) -> Result<ImportConnectionsResult, CommandError> {
+    let password = password.trim().to_string();
     let app = ImportApp::parse(&source)?;
     let custom = {
         let trimmed = data_path.trim();

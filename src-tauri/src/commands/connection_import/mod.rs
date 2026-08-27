@@ -55,6 +55,31 @@ fn looks_like_rncryptor_v3(bytes: &[u8]) -> bool {
     bytes.len() >= 66 && bytes[0] == 0x03 && bytes[1] == 0x01
 }
 
+/// Legacy DataZen exports were pretty-printed JSON (often `.json`). Treat
+/// UTF-8 `{`/`[` payloads as text even when the path ends in
+/// `.datazenconnection` so we do not mis-route them to RNCryptor.
+fn looks_like_json_text(bytes: &[u8]) -> bool {
+    bytes
+        .iter()
+        .find(|b| !b.is_ascii_whitespace())
+        .is_some_and(|b| *b == b'{' || *b == b'[')
+}
+
+fn rncryptor_format_label(ext: &str) -> &'static str {
+    if is_datazen_connection_ext(ext) {
+        "DataZen"
+    } else if ext == "tableplusconnection" {
+        "TablePlus"
+    } else {
+        "Encrypted connection"
+    }
+}
+
+fn should_parse_as_rncryptor(bytes: &[u8], ext: &str) -> bool {
+    looks_like_rncryptor_v3(bytes)
+        || (is_encrypted_connection_ext(ext) && !looks_like_json_text(bytes))
+}
+
 fn is_datazen_connection_ext(ext: &str) -> bool {
     ext == "datazenconnection" || ext == "datazenconnections"
 }
@@ -117,13 +142,13 @@ pub fn parse_import_file(
         .to_ascii_lowercase();
     let pw = password.unwrap_or("").trim();
 
-    if is_encrypted_connection_ext(&ext) || looks_like_rncryptor_v3(bytes) {
+    if should_parse_as_rncryptor(bytes, &ext) {
         if pw.is_empty() {
             return Err(CommandError::Validation(
                 "Password is required for encrypted connection import".into(),
             ));
         }
-        let mut parsed = tableplus::parse(bytes, pw)?;
+        let mut parsed = tableplus::parse(bytes, pw, rncryptor_format_label(&ext))?;
         // Same RNCryptor payload as TablePlus; label by our export extension.
         if is_datazen_connection_ext(&ext) {
             parsed.format = ImportFormat::DataZen;
@@ -415,5 +440,63 @@ mod tests {
         let parsed = parse_from_app(ImportApp::Navicat, Some(&ncx), None, &ctx).unwrap();
         assert_eq!(parsed.format, ImportFormat::Navicat);
         assert_eq!(parsed.connections[0].name, "PG");
+    }
+
+    fn sample_conn(id: &str) -> crate::db::ConnectionConfig {
+        use crate::db::{ConnectionConfig, SslMode};
+        ConnectionConfig {
+            id: id.into(),
+            name: "Demo".into(),
+            database_type: "postgresql".into(),
+            host: Some("localhost".into()),
+            port: Some(5432),
+            database: Some("app".into()),
+            schema: None,
+            username: Some("alice".into()),
+            password: Some("pw".into()),
+            ssl_mode: SslMode::default(),
+            connection_timeout: 30,
+            max_pool_size: 10,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: Some("Prod".into()),
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+            read_only: false,
+            pinned: false,
+        }
+    }
+
+    #[test]
+    fn legacy_datazen_json_import_roundtrip() {
+        use super::datazen::build_encrypted_export;
+        let json =
+            build_encrypted_export(&[sample_conn("c1")], &["Prod".into()], "share-secret").unwrap();
+        let parsed = parse_import_file(
+            Path::new("datazen-connections.json"),
+            json.as_bytes(),
+            Some("share-secret"),
+        )
+        .unwrap();
+        assert_eq!(parsed.format, ImportFormat::DataZen);
+        assert_eq!(parsed.connections.len(), 1);
+        assert_eq!(parsed.connections[0].id, "c1");
+        assert_eq!(parsed.connections[0].password.as_deref(), Some("pw"));
+    }
+
+    #[test]
+    fn legacy_datazen_json_with_datazenconnection_ext_imports() {
+        use super::datazen::build_encrypted_export;
+        let json =
+            build_encrypted_export(&[sample_conn("c1")], &["Prod".into()], "share-secret").unwrap();
+        let parsed = parse_import_file(
+            Path::new("datazen-connections.datazenconnection"),
+            json.as_bytes(),
+            Some("share-secret"),
+        )
+        .unwrap();
+        assert_eq!(parsed.format, ImportFormat::DataZen);
+        assert_eq!(parsed.connections[0].id, "c1");
     }
 }

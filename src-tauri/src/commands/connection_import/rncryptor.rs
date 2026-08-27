@@ -13,26 +13,31 @@ type HmacSha256 = Hmac<Sha256>;
 
 const PBKDF2_ITERS: u32 = 10_000;
 
-pub fn decrypt_password(data: &[u8], password: &str) -> Result<Vec<u8>, CommandError> {
+pub fn decrypt_password(
+    data: &[u8],
+    password: &str,
+    format_label: &str,
+) -> Result<Vec<u8>, CommandError> {
     if password.is_empty() {
-        return Err(CommandError::Validation(
-            "Password is required for TablePlus import".into(),
-        ));
+        return Err(CommandError::Validation(format!(
+            "Password is required for {format_label} import"
+        )));
     }
     if data.len() < 66 {
-        return Err(CommandError::Validation(
-            "Invalid TablePlus file: too short".into(),
-        ));
+        return Err(CommandError::Validation(format!(
+            "Invalid {format_label} file: too short"
+        )));
     }
     if data[0] != 0x03 {
-        return Err(CommandError::Validation(
-            "Invalid TablePlus file: unsupported RNCryptor version".into(),
-        ));
+        return Err(CommandError::Validation(format!(
+            "Invalid {format_label} file: unsupported RNCryptor version \
+             (if this is a legacy DataZen .json export, import the .json file instead)"
+        )));
     }
     if data[1] != 0x01 {
-        return Err(CommandError::Validation(
-            "Invalid TablePlus file: expected password-based encryption".into(),
-        ));
+        return Err(CommandError::Validation(format!(
+            "Invalid {format_label} file: expected password-based encryption"
+        )));
     }
 
     let enc_salt = &data[2..10];
@@ -51,9 +56,11 @@ pub fn decrypt_password(data: &[u8], password: &str) -> Result<Vec<u8>, CommandE
         HmacSha256::new_from_slice(&hmac_key).map_err(|e| CommandError::Internal(e.to_string()))?;
     mac.update(header_and_cipher);
     mac.verify_slice(hmac).map_err(|_| {
-        CommandError::Validation(
-            "TablePlus decryption failed: wrong password or corrupt file".into(),
-        )
+        CommandError::Validation(format!(
+            "{format_label} decryption failed: wrong password or corrupt file. \
+             Use the same password as export. Legacy DataZen exports used \
+             password-protected .json (not .datazenconnection)."
+        ))
     })?;
 
     let mut buf = ciphertext.to_vec();
@@ -61,9 +68,9 @@ pub fn decrypt_password(data: &[u8], password: &str) -> Result<Vec<u8>, CommandE
         .map_err(|e| CommandError::Internal(format!("AES init failed: {e}")))?
         .decrypt_padded_mut::<Pkcs7>(&mut buf)
         .map_err(|_| {
-            CommandError::Validation(
-                "TablePlus decryption failed: wrong password or corrupt file".into(),
-            )
+            CommandError::Validation(format!(
+                "{format_label} decryption failed: wrong password or corrupt file"
+            ))
         })?;
     Ok(plain.to_vec())
 }
@@ -127,13 +134,13 @@ mod tests {
         let plain = br#"[{"ConnectionName":"demo","Driver":"PostgreSQL"}]"#;
         let enc = encrypt_password(plain, "secret").unwrap();
         assert_eq!(&enc[0..2], &[0x03, 0x01]);
-        let dec = decrypt_password(&enc, "secret").unwrap();
+        let dec = decrypt_password(&enc, "secret", "TablePlus").unwrap();
         assert_eq!(dec, plain);
     }
 
     #[test]
     fn wrong_password_fails() {
         let enc = encrypt_password(b"hello", "right").unwrap();
-        assert!(decrypt_password(&enc, "wrong").is_err());
+        assert!(decrypt_password(&enc, "wrong", "TablePlus").is_err());
     }
 }
