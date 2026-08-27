@@ -1363,6 +1363,7 @@ const zhCN = {
   'mcpClient.tools': '工具',
   'mcpClient.noSavedConfigs': '暂无已保存的 MCP 服务配置。',
   'mcpClient.noServers': '暂无已连接的 MCP 服务。',
+  'mcpClient.noTools': '该服务未报告任何工具。',
 
   // ── Workflows ──
   'workflows.title': '工作流',

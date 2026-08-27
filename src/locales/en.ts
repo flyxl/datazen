@@ -1401,6 +1401,7 @@ const en: Record<TranslationKey, string> = {
   'mcpClient.tools': 'tools',
   'mcpClient.noSavedConfigs': 'No saved MCP server configs.',
   'mcpClient.noServers': 'No MCP servers connected.',
+  'mcpClient.noTools': 'No tools reported by this server.',
 
   // ── Workflows ──
   'workflows.title': 'Workflows',
