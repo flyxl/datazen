@@ -64,7 +64,7 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
     await erView.waitForDisplayed({ timeout: 15000 });
     const reactFlow = await erView.$('.react-flow');
     await expect(reactFlow).toBeDisplayed();
-    await captureJourneyStep('er-canvas-visible');
+    await captureJourneyStep('er-canvas-visible', 0, true);
   });
 
   it('ER-004: 面板 tab 应出现 ER Diagram 标签', async () => {
@@ -80,7 +80,7 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
     const controls = await $('[data-testid="er-diagram-view"] .react-flow__controls');
     await controls.waitForDisplayed({ timeout: 10000 });
     await expect(controls).toBeDisplayed();
-    await captureJourneyStep('er-controls-visible');
+    await captureJourneyStep('er-controls-visible', 0, true);
   });
 
   it('ER-006: 统计面板应显示表/关系数量', async () => {
@@ -90,6 +90,7 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
     const text = await stats.getText();
     expect(text.length).toBeGreaterThan(0);
     expect(text).toMatch(/\d/);
+    await captureJourneyStep('er-stats-visible', 0, true);
   });
 
   it('ER-007: 搜索框应可过滤表节点', async () => {
@@ -98,7 +99,7 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
     await search.waitForDisplayed({ timeout: 10000 });
     await search.setValue('pg_');
     await browser.pause(500);
-    await captureJourneyStep('er-search-filtered');
+    await captureJourneyStep('er-search-filtered', 0, true);
     const nodeCount = await browser.execute(
       () => document.querySelectorAll('[data-testid="er-diagram-view"] .react-flow__node').length,
     );
@@ -111,5 +112,6 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
     const exportSvg = await $('[data-testid="er-diagram-export-svg"]');
     await expect(exportPng).toBeDisplayed();
     await expect(exportSvg).toBeDisplayed();
+    await captureJourneyStep('er-export-buttons', 0, true);
   });
 });
