@@ -1,4 +1,4 @@
-import { themeCommands } from '../commands/theme';
+import { invoke } from '@tauri-apps/api/core';
 
 export const DEFAULT_SURFACE_DARK = '#0f172a';
 export const DEFAULT_SURFACE_LIGHT = '#ffffff';
@@ -23,9 +23,7 @@ export function cssColorToHex(value: string): string | null {
   }
   const rgb = trimmed.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
   if (!rgb) return null;
-  const hex = [rgb[1], rgb[2], rgb[3]]
-    .map((n) => Number(n).toString(16).padStart(2, '0'))
-    .join('');
+  const hex = [rgb[1], rgb[2], rgb[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('');
   return `#${hex}`;
 }
 
@@ -34,7 +32,7 @@ export function persistSurfaceBackground(isDark: boolean, cssColor: string): voi
   const hex = cssColorToHex(cssColor);
   if (!hex) return;
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
-  void themeCommands.setSurfaceBackground(hex, isDark).catch(() => {
+  void invoke('set_surface_background', { hex, dark: isDark }).catch(() => {
     // Cache write is best-effort; next window still has in-memory Rust state if IPC reached set().
   });
 }

@@ -1,5 +1,4 @@
 import { extensionCommands } from '../commands/extensions';
-import { themeCommands } from '../commands/theme';
 import { emitCrossWindow } from './crossWindowBus';
 import { bootstrapDefaultIconResolver } from './bootstrapIconResolver';
 import { UI_ICON_IDS } from './iconIds';
@@ -105,14 +104,6 @@ function notifyThemePackChanged(): void {
   document.dispatchEvent(new CustomEvent('datazen:theme-pack-changed'));
 }
 
-async function readPackFile(packId: string, relativePath: string): Promise<number[] | null> {
-  try {
-    return await themeCommands.readThemePackFile(packId, relativePath);
-  } catch {
-    return null;
-  }
-}
-
 async function readExtensionFileOrNull(
   pluginId: string,
   relativePath: string,
@@ -175,33 +166,6 @@ async function rewriteCssUrls(css: string, readFile: PackFileReader): Promise<st
     result = `${result.slice(0, start)}url("${url}")${result.slice(end)}`;
   }
   return result;
-}
-
-export async function rewriteFontUrls(css: string, packId: string): Promise<string> {
-  return rewriteCssUrls(css, (relPath) => readPackFile(packId, relPath));
-}
-
-async function probePackIcon(packId: string, semanticId: string): Promise<string | null> {
-  for (const ext of ICON_EXTENSIONS) {
-    const relPath = `icons/${semanticId}${ext}`;
-    const bytes = await readPackFile(packId, relPath);
-    if (bytes && bytes.length > 0) {
-      return bytesToBlobUrl(bytes, mimeForPath(relPath));
-    }
-  }
-  return null;
-}
-
-async function loadPackIcons(packId: string): Promise<IconSourceMap> {
-  const ids = [...UI_ICON_IDS, ...Object.keys(getDriverIconMap())];
-  const map: IconSourceMap = {};
-  await Promise.all(
-    ids.map(async (id) => {
-      const url = await probePackIcon(packId, id);
-      if (url) map[id] = url;
-    }),
-  );
-  return map;
 }
 
 function installIconResolver(packIcons: IconSourceMap): void {
@@ -384,8 +348,7 @@ async function applyPluginThemePackId(
 /**
  * Apply a theme contributed by an enabled UI plugin: reads `tokens.css` (and
  * any local assets referenced by its `url(...)`s) as bytes through
- * `read_plugin_file` and injects them into the same style element used by
- * legacy `{appData}/themes/` packs.
+ * `read_extension_file` and injects them into the host theme style element.
  */
 export async function applyPluginTheme(
   theme: PluginThemeRef,
@@ -411,51 +374,5 @@ export async function applyThemePack(
     return { ok: true };
   }
 
-  try {
-    const tokensBytes = await readPackFile(packId, 'tokens.css');
-    if (!tokensBytes) {
-      throw new Error('tokens.css missing');
-    }
-
-    let css = await rewriteFontUrls(decodeUtf8(tokensBytes), packId);
-
-    const fontsBytes = await readPackFile(packId, 'fonts.css');
-    if (fontsBytes) {
-      const fontsCss = await rewriteFontUrls(decodeUtf8(fontsBytes), packId);
-      css = `${css}\n${fontsCss}`;
-    }
-
-    injectThemePackCss(css);
-
-    const packIcons = await loadPackIcons(packId);
-    installIconResolver(packIcons);
-
-    const editorBytes = await readPackFile(packId, 'editor.json');
-    if (editorBytes) {
-      try {
-        const overlay = parsePackEditorOverlay(JSON.parse(decodeUtf8(editorBytes)) as unknown);
-        setPackEditorColorOverlay(overlay);
-      } catch (err) {
-        console.warn('[theme] failed to parse editor.json', err);
-      }
-    }
-
-    const chartsBytes = await readPackFile(packId, 'charts.json');
-    if (chartsBytes) {
-      setChartPaletteOverride(parseChartsJson(chartsBytes));
-    }
-
-    syncWebviewBackgroundFromTokens();
-    notifyThemePackChanged();
-    if (broadcast) void emitCrossWindow('datazen:theme-pack-changed', packId);
-    return { ok: true };
-  } catch (err) {
-    console.warn('[theme] failed to apply pack', packId, err);
-    resetPackState();
-    syncWebviewBackgroundFromTokens();
-    notifyThemePackChanged();
-    if (broadcast) void emitCrossWindow('datazen:theme-pack-changed', null);
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: message };
-  }
+  return { ok: false, error: `unknown theme pack: ${packId}` };
 }

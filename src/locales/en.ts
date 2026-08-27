@@ -241,48 +241,12 @@ const en: Record<TranslationKey, string> = {
   'connShare.importFormatsHint':
     'Supports DataZen (.datazenconnection), DBX, DataGrip (dataSources.xml), Navicat (.ncx), DBeaver (data-sources.json), and TablePlus (.tableplusconnection). Place credentials-config.json beside data-sources.json to import DBeaver passwords when possible.',
   'connShare.exportAction': 'Export',
-  'connShare.exportHint':
-    'Save all connections as an encrypted .datazenconnection file. Use the same password when importing.',
   'connShare.importAction': 'Import',
-  'connShare.chooseImportFile': 'Choose file…',
-  'connShare.selectedImportFile': 'Selected file',
-  'connShare.changeImportFile': 'Change file',
-  'connShare.encryptedImportPasswordRequired':
-    'Password is required for encrypted connection files',
   'connShare.exportSuccess': 'Exported {count} connection(s)',
   'connShare.importSuccess':
     'Imported {imported} new, updated {overwritten}, added {groupsAdded} group(s)',
   'connShare.importSuccessWithSkipped':
     'Imported {imported} new, updated {overwritten}, added {groupsAdded} group(s), skipped {skipped} unsupported',
-  'connShare.error.passwordRequired': 'Password is required',
-  'connShare.error.encryptedImportPasswordRequired':
-    'Password is required for encrypted connection import',
-  'connShare.error.dbxEncryptedPasswordRequired': 'Password is required for DBX encrypted import',
-  'connShare.error.datazenEncryptedPasswordRequired':
-    'Password is required for DataZen encrypted import',
-  'connShare.error.datazenPasswordRequired': 'Password is required for DataZen import',
-  'connShare.error.formatPasswordRequired': 'Password is required for {format} import',
-  'connShare.error.invalidUtf8':
-    'Import file is not valid UTF-8 text (for DataZen use .datazenconnection)',
-  'connShare.error.unrecognizedFormat': 'Unrecognized connection import format',
-  'connShare.error.noFiles': 'No connection files to import',
-  'connShare.error.readFailed': 'Failed to read the import file',
-  'connShare.error.unknownImportSource': 'Unknown import source',
-  'connShare.error.decryptionWrongPassword': 'Decryption failed: wrong password',
-  'connShare.error.missingConnectionsField': "Invalid import file: missing 'connections' field",
-  'connShare.error.missingConnections': 'Missing connections',
-  'connShare.error.dbxWrongPassphrase': 'DBX decryption failed: wrong passphrase',
-  'connShare.error.dbxMissingConnections': 'DBX import: missing connections array',
-  'connShare.error.invalidFileTooShort': 'Invalid {format} file: too short',
-  'connShare.error.invalidFileRncryptorVersion':
-    'Invalid {format} file: unsupported RNCryptor version (if this is a legacy DataZen .json export, import the .json file instead)',
-  'connShare.error.invalidFileEncryptionType':
-    'Invalid {format} file: expected password-based encryption',
-  'connShare.error.decryptionFailed': '{format} decryption failed: wrong password or corrupt file',
-  'connShare.error.decryptionFailedLegacyHint':
-    '{format} decryption failed: wrong password or corrupt file. Use the same password as export. Legacy DataZen exports used password-protected .json (not .datazenconnection).',
-  'connShare.error.invalidJsonAfterDecrypt': 'Invalid {format} JSON after decrypt',
-  'connShare.error.payloadNotUtf8': '{format} payload is not UTF-8',
 
   // ── Connection Item / Card ──
   'conn.connected': 'Connected',
@@ -386,14 +350,6 @@ const en: Record<TranslationKey, string> = {
   'settings.extensions.title': 'Extensions',
   'settings.extensions.empty': 'No plugin extensions are available in this build.',
   'settings.theme': 'Theme',
-  'settings.theme.pack': 'Theme pack',
-  'settings.colorScheme': 'Color scheme',
-  'settings.theme.packDefault': 'Built-in default',
-  'settings.theme.packMissing': 'Missing pack ({id})',
-  'settings.theme.packMissingHint': 'The selected theme pack is no longer installed.',
-  'settings.theme.packReset': 'Reset to default',
-  'settings.theme.import': 'Import pack',
-  'settings.theme.remove': 'Remove pack',
   'settings.appearance': 'Appearance',
   'settings.appearance.subtitle':
     'Themes come from installed plugins. Click a card to apply it; manage installation on the Plugins page.',

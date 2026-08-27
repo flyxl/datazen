@@ -326,25 +326,24 @@ export async function applyThemeLocally(mode: ThemeMode) {
 // updateSettings({ theme: { mode, packId } }) → 持久化 + applyTheme + 跨窗口广播
 ```
 
-### 7.4 运行时主题包
+### 7.4 扩展主题
 
-用户从设置页（`ThemePackSection`）安装本地 ZIP，启用后由 `themePackApply.ts` 加载：
+Settings「外观」列出已启用扩展的 `contributes.themes[]`；选择后 `settings.theme.packId` 为 `plugin:{extensionId}:{themeId}`，由 `themePackApply.ts` 经 `read_extension_file` 加载：
 
 ```
-settings.theme.packId  →  read_theme_pack_file (IPC)
+settings.theme.packId  →  read_extension_file (IPC)
                       →  injectThemePackCss (<style id="datazen-theme-pack">)
-                      →  register pack icon blob URLs + font faces
+                      →  register icon blob URLs + font faces
                       →  optional editor.json / charts.json overlays
 ```
 
 | 模块 | 路径 | 职责 |
 |------|------|------|
-| IPC 封装 | `src/commands/theme.ts` | `listThemePacks`, `installThemePackWithDialog`, `removeThemePack`, `readThemePackFile` |
 | 应用逻辑 | `src/lib/themePackApply.ts` | 注入/移除 pack CSS、字体、通知跨窗口刷新；把解析后的 `--c-surface` 经 IPC 写入 `{appData}/surface-bg.json` |
 | 首屏背景 | `surface-boot` plugin `initialization_script` | parse 前注入上次 hex + `html.dark`；主窗口与子窗口同一路径 |
 | 图标解析 | `src/lib/iconResolver.ts` | pack → Lucide/驱动 → 占位 |
 | 组件 | `ThemedIcon`, `DbTypeBadge` | 消费 IconResolver |
-| 设置 UI | `windows/settings/ThemePackSection.tsx` | 安装、启用、删除主题包 |
+| 设置 UI | `windows/settings/AppearanceSection.tsx` | 选择已安装扩展主题 |
 
 **图标解析顺序**
 

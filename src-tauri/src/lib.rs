@@ -23,6 +23,7 @@ mod store;
 mod theme;
 pub mod transfer;
 mod tray;
+mod util;
 pub mod workflow;
 
 pub use store::{AppDb, HistoryDb};
@@ -944,10 +945,6 @@ pub fn run() {
             commands::workflow_history_list,
             commands::workflow_history_get,
             commands::workflow_history_clear,
-            commands::list_theme_packs,
-            commands::install_theme_pack_with_dialog,
-            commands::remove_theme_pack,
-            commands::read_theme_pack_file,
             commands::set_surface_background,
             commands::list_dashboards,
             commands::get_dashboard,

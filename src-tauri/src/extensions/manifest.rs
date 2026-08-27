@@ -1,6 +1,6 @@
 //! Runtime extension manifest: schema types and validation rules.
 //!
-//! Mirrors [`crate::theme::validate`] conventions: strict serde parsing,
+//! Mirrors shared zip path validation conventions: strict serde parsing,
 //! `<publisher>.<name>` id format, semver versions, path-traversal
 //! protection, and package size/file-count quotas.
 

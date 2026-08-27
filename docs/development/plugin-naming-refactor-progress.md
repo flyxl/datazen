@@ -8,8 +8,8 @@
 | 编号 | 功能 | 状态 | 编码 commit | 测试 commit |
 |------|------|------|------------|------------|
 | F1 | Track A：Cargo feature / plugin_init → driver | 已完成 | 377c23e5 | deab51ee |
-| F2 | Track B：plugins/ → extensions/ + 前端重命名 | 已完成 | a7251e0f | （本 commit） |
-| F3 | Track C：Legacy ThemePack 清理 | 未开始 | — | — |
+| F2 | Track B：plugins/ → extensions/ + 前端重命名 | 已完成 | a7251e0f | b5e93a5c |
+| F3 | Track C：Legacy ThemePack 清理 | 已完成 | 43db00a6 | 93a5f822 |
 
 ## Bug 台账
 
@@ -124,8 +124,30 @@ tsc --noEmit                                                      OK
 
 ## F3：Track C — Legacy ThemePack 清理
 
-### 范围
-见计划文档 §Track C（低优先级，未启动）
+**Status:** ✅ COMPLETED（F3 独立复验通过）  
+**Branch:** `feature/track-c`（已合并 main）  
+**编码 commit:** `43db00a6`  
+**测试 commit:** `93a5f822`
 
-### 测试结果
-（未开始）
+### 范围摘要
+
+| 层 | 变更 |
+|----|------|
+| Rust | `validate_theme_zip_path` → `util/theme_zip.rs`；删除 `theme/validate.rs`、`theme/install.rs`；`theme/` 仅 `mod.rs` + `surface_bg.rs`；`commands/theme.rs` 仅保留 `set_surface_background` |
+| 前端 | 删除 `commands/theme.ts`、`types/themePack.ts`、`ThemePackSection.tsx`；`themePackApply.ts` 仅 extension 路径 |
+| i18n | 删除 en/zh-CN 中 ThemePack 专属 key |
+| 文档 | `theme.md`、`components.md`、`commands.md`、`extensions.md`、`AGENTS.md` |
+
+### 测试结果（F3 独立复验）
+
+```
+cargo test -p datazen --lib     1113 passed, 0 failed, 2 ignored
+npx vitest run                  2018 passed, 7 failed（与 main 基线相同）
+tsc --noEmit                    OK
+theme 相关 vitest               32 passed
+```
+
+### Bug 台账（F3）
+
+无
+

@@ -61,7 +61,7 @@
 
 ## 主题应用
 
-Settings「外观」仅列出已启用插件的 themes 贡献（packId 形如 `plugin:{pluginId}:{themeId}`）。`themePackApply.applyPluginTheme` 经 `read_plugin_file` 读 tokens.css 并 blob 重写 `url()` 相对资产；icons/editor/charts 三类可选资产随后应用，失败只降级对应切片。切换/清除由 `resetPackState()` 统一回收。旧 `{appData}/themes/` 运行时入口已移除（Q8 一次性切换），遗留读取代码仅为测试保留。
+Settings「外观」仅列出已启用插件的 themes 贡献（packId 形如 `plugin:{pluginId}:{themeId}`）。`themePackApply.applyPluginTheme` 经 `read_extension_file` 读 tokens.css 并 blob 重写 `url()` 相对资产；icons/editor/charts 三类可选资产随后应用，失败只降级对应切片。切换/清除由 `resetPackState()` 统一回收。旧 `{appData}/themes/` 运行时入口已移除。
 
 ## 测试分层
 
