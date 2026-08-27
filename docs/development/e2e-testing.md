@@ -159,7 +159,7 @@ pnpm e2e:screenshot
 pnpm e2e:skip-build -- --screenshot --spec e2e/specs/main-window.ts
 ```
 
-`e2e/run.mjs` 解析 `--screenshot` 并设置 `E2E_SCREENSHOT=1`；`e2e/wdio.conf.ts` 在每个 `it()` 的 **开始/结束** 各截一张，且 `e2e/helpers.ts` 中常用 journey 步骤（连接、开查询 Tab、执行 SQL、切表/子 Tab、打开设置等）会自动留痕。PNG 按 journey 分子目录：
+`e2e/run.mjs` 解析 `--screenshot` 并设置 `E2E_SCREENSHOT=1`；`e2e/wdio.conf.ts` 在每个 `it()` 的 **开始/结束** 各截一张，且 `e2e/helpers.ts` 中常用 journey 步骤（连接、开查询 Tab、执行 SQL、切表/子 Tab、打开设置、工作区导航、ER 图入口、DzSelect 等）会自动留痕。PNG 按 journey 分子目录：
 
 `e2e/screenshots/<spec>/<test-title>/01_start.png` … `02_connect-seeded-pg.png` … `99_end-pass.png`
 

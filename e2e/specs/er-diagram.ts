@@ -7,25 +7,15 @@
 import { expect, browser, $ } from '@wdio/globals';
 import {
   closeExtraWindows,
+  captureJourneyStep,
   connectSeededPgInWorkspace,
   invokeBackend,
+  openErDiagramFromUi,
   openQueryTab,
   waitForConnectionToolbar,
 } from '../helpers.js';
 
 const SEEDED_CONN_ID = 'conn_e2e_pg';
-
-async function openErDiagramFromUi() {
-  const homeQuick = await $('[data-testid="home-quick-er-diagram"]');
-  if (await homeQuick.isExisting()) {
-    await homeQuick.click();
-    return;
-  }
-  const toolbarWrap = await $('[data-testid="content-toolbar-er-diagram"]');
-  const toolbarBtn = await toolbarWrap.$('button');
-  await toolbarBtn.waitForClickable({ timeout: 10000 });
-  await toolbarBtn.click();
-}
 
 describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
   let mainWindow: string;
@@ -74,6 +64,7 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
     await erView.waitForDisplayed({ timeout: 15000 });
     const reactFlow = await erView.$('.react-flow');
     await expect(reactFlow).toBeDisplayed();
+    await captureJourneyStep('er-canvas-visible');
   });
 
   it('ER-004: 面板 tab 应出现 ER Diagram 标签', async () => {
@@ -89,6 +80,7 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
     const controls = await $('[data-testid="er-diagram-view"] .react-flow__controls');
     await controls.waitForDisplayed({ timeout: 10000 });
     await expect(controls).toBeDisplayed();
+    await captureJourneyStep('er-controls-visible');
   });
 
   it('ER-006: 统计面板应显示表/关系数量', async () => {
@@ -106,6 +98,7 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
     await search.waitForDisplayed({ timeout: 10000 });
     await search.setValue('pg_');
     await browser.pause(500);
+    await captureJourneyStep('er-search-filtered');
     const nodeCount = await browser.execute(
       () => document.querySelectorAll('[data-testid="er-diagram-view"] .react-flow__node').length,
     );

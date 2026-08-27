@@ -1,6 +1,7 @@
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
+  captureJourneyStep,
   closeExtraWindows,
   invokeBackend,
   queryScalar,
@@ -31,6 +32,7 @@ describe('数据传输窗口 (DTW-001~DTW-003)', () => {
     await browser.pause(1500);
     const root = await $('[data-testid="data-transfer-window"]');
     await expect(root).toBeDisplayed();
+    await captureJourneyStep('transfer-window-open');
     const body = await $('body').getText();
     expect(body).toContain(t('transfer.title'));
     expect(body).toContain(t('transfer.source'));
@@ -154,6 +156,7 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     await next.waitForClickable({ timeout: 8000 });
     await next.click();
     await browser.pause(1200);
+    await captureJourneyStep('transfer-wizard-next');
   }
 
   it('DT-CL-001: 选择两端点并进入下一步', async () => {
@@ -203,6 +206,7 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     // 断言结果面板出现
     const result = await $('[data-testid="data-transfer-result"]');
     await result.waitForDisplayed({ timeout: 15000 });
+    await captureJourneyStep('transfer-executed');
 
     // 落库断言：目标库该表应有 3 行
     const tgtConn = (await invokeBackend<string>('connect', { connectionId: TGT_ID })) ?? '';

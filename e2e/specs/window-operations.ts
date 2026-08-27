@@ -8,7 +8,8 @@ import { expect, browser, $ } from '@wdio/globals';
 import {
   clickCardConnectButton,
   closeExtraWindows,
-  invokeBackend,
+  closeNewConnectionDialogFromUi,
+  openNewConnectionDialogFromUi,
   openQueryTab,
   waitForConnectionToolbar,
 } from '../helpers.js';
@@ -51,19 +52,7 @@ describe('窗口操作 (TC-WIN-001~005)', () => {
 
   it('TC-WIN-004: 新建连接弹窗打开后应阻止其他操作', async () => {
     await browser.switchToWindow(mainWindow);
-    // Open new connection dialog
-    const opened = await browser.execute(() => {
-      const btns = Array.from(document.querySelectorAll('button'));
-      const btn = btns.find(
-        (b) => b.textContent?.includes('新建连接') || b.textContent?.includes('New Connection'),
-      );
-      if (btn) {
-        btn.click();
-        return true;
-      }
-      return false;
-    });
-    if (!opened) return;
+    await openNewConnectionDialogFromUi();
 
     const dialog = await $('[data-testid="new-connection-dialog"]');
     const isVisible = await dialog.isExisting();
@@ -77,10 +66,7 @@ describe('窗口操作 (TC-WIN-001~005)', () => {
     });
     expect(hasOverlay).toBe(true);
 
-    // Cancel
-    const cancelBtn = await $('button*=取消');
-    if (await cancelBtn.isExisting()) await cancelBtn.click();
-    await browser.pause(500);
+    await closeNewConnectionDialogFromUi();
   });
 
   it('TC-WIN-005: 关闭连接 tab 后应返回工作区首页', async () => {

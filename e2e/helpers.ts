@@ -61,6 +61,7 @@ export async function closeNewConnectionDialogFromUi() {
     async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
     { timeout: 10000, timeoutMsg: '等待新建连接弹窗关闭超时' },
   );
+  await captureJourneyStep('new-connection-closed');
 }
 
 export async function switchToNewWindow(originalHandle: string): Promise<string> {
@@ -159,6 +160,7 @@ export async function clickCardConnectButton(nameFragment = E2E_PG_CONN_NAME) {
     }
     return false;
   }, nameFragment);
+  if (found) await captureJourneyStep('connect-card-dblclick');
   return found;
 }
 
@@ -178,7 +180,7 @@ export async function findCardByName(connName: string) {
 }
 
 export async function dblclickConnByExactName(connName: string) {
-  return browser.execute((n: string) => {
+  const ok = await browser.execute((n: string) => {
     const items = Array.from(document.querySelectorAll('[data-conn-item]'));
     const item = items.find((el) => {
       const attr = el.getAttribute('data-conn-name');
@@ -189,6 +191,8 @@ export async function dblclickConnByExactName(connName: string) {
     item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     return true;
   }, connName);
+  if (ok) await captureJourneyStep(`connect-${connName}`);
+  return ok;
 }
 
 // ── unified workspace / connection helpers ──────────────────────────
@@ -208,6 +212,7 @@ export async function waitForConnectionToolbar(timeout = 20000) {
     { timeout, timeoutMsg: 'Timed out waiting for connection toolbar' },
   );
   await browser.pause(800);
+  await captureJourneyStep('connection-toolbar');
 }
 
 /** Double-click seeded PG connection and wait for toolbar in the unified main window. */
@@ -249,6 +254,7 @@ export async function openSeededPgConnectionWindow(mainWindow: string) {
 async function finishConnectInWorkspace(mainWindow: string) {
   await browser.switchToWindow(mainWindow);
   await waitForConnectionToolbar();
+  await captureJourneyStep('connection-workspace-ready');
   return { mainWindow, connWindow: mainWindow };
 }
 
@@ -771,6 +777,7 @@ export async function doubleClickCellByText(text: string) {
     el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
   }, text);
   await browser.pause(500);
+  await captureJourneyStep(`cell-edit-${text}`);
 }
 
 /** Wait for the inline editing input to appear and return it. */
@@ -805,9 +812,39 @@ export async function selectDzOption(triggerLabel: string, optionLabel: string) 
     optionLabel,
   );
   await browser.pause(200);
+  await captureJourneyStep(`select-${optionLabel}`);
 }
 
-// ── settings (F1: main-window SettingsPage) ─────────────────────────
+// ── workspace navigation ────────────────────────────────────────────
+
+/** Click workspace left-nav and wait for target panel (screenshot-traced). */
+export async function switchWorkspaceNav(
+  navTestId: string,
+  waitTestId: string,
+  stepLabel?: string,
+) {
+  const nav = await $(`[data-testid="${navTestId}"]`);
+  await nav.waitForDisplayed({ timeout: 15000 });
+  await nav.click();
+  const target = await $(`[data-testid="${waitTestId}"]`);
+  await target.waitForDisplayed({ timeout: 15000 });
+  await captureJourneyStep(stepLabel ?? navTestId.replace('workspace-nav-', 'workspace-'));
+}
+
+/** Open ER diagram from home quick action or connection toolbar. */
+export async function openErDiagramFromUi() {
+  const homeQuick = await $('[data-testid="home-quick-er-diagram"]');
+  if (await homeQuick.isExisting()) {
+    await homeQuick.click();
+    await captureJourneyStep('er-diagram-open');
+    return;
+  }
+  const toolbarWrap = await $('[data-testid="content-toolbar-er-diagram"]');
+  const toolbarBtn = await toolbarWrap.$('button');
+  await toolbarBtn.waitForClickable({ timeout: 10000 });
+  await toolbarBtn.click();
+  await captureJourneyStep('er-diagram-open');
+}
 
 /** Emit a cross-window menu event on the main Tauri window. */
 export async function emitCrossWindowEvent(event: string, payload?: Record<string, unknown>) {
@@ -854,4 +891,5 @@ export async function backFromSettingsInMainWindow() {
     timeoutMsg: 'SettingsPage did not close after back',
   });
   await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 10000 });
+  await captureJourneyStep('settings-closed');
 }
