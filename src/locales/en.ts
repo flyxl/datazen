@@ -1402,6 +1402,15 @@ const en: Record<TranslationKey, string> = {
   'mcpClient.noSavedConfigs': 'No saved MCP server configs.',
   'mcpClient.noServers': 'No MCP servers connected.',
   'mcpClient.noTools': 'No tools reported by this server.',
+  'mcpClient.toolList': 'Tools',
+  'mcpClient.reconnect': 'Retry',
+  'mcpClient.connectFailed': 'Failed',
+  'mcpClient.envVars': 'Environment Variables',
+  'mcpClient.envKey': 'Variable name',
+  'mcpClient.envValue': 'Value',
+  'mcpClient.addEnv': 'Add variable',
+  'mcpClient.removeEnv': 'Remove variable',
+  'mcpClient.noEnvVars': 'No environment variables configured.',
 
   // ── Workflows ──
   'workflows.title': 'Workflows',

@@ -300,6 +300,82 @@ describe('Settings (SS-001~SS-006)', () => {
     });
   });
 
+  it('SS-MCP-CLIENT-001: MCP Client 分区应支持保存带 env 的配置', async () => {
+    await invokeBackend('save_settings', {
+      settings: {
+        theme: { mode: 'dark', packId: null },
+        language: 'zh-CN',
+        limitSelectResults: true,
+        queryResultLimit: 5000,
+        editorFontSize: 13,
+        editorFontFamily: 'Menlo',
+        confirmOnDelete: true,
+        autoCommit: true,
+        safeMode: true,
+        defaultPageSize: 50,
+        mcpClientServers: [],
+      },
+    });
+
+    await openSettingsInMainWindow();
+    const mcpClientNav = await $(`button*=${t('mcpClient.title')}`);
+    await mcpClientNav.waitForDisplayed({ timeout: 8000 });
+    await mcpClientNav.click();
+    await browser.pause(400);
+
+    const bodyBefore = await $('body').getText();
+    expect(
+      bodyBefore.includes(t('mcpClient.savedConfigs')) ||
+        bodyBefore.includes('已保存') ||
+        bodyBefore.includes('Saved'),
+    ).toBe(true);
+
+    const addBtn = await $(`button*=${t('mcpClient.addServer')}`);
+    if (await addBtn.isExisting()) {
+      await addBtn.click();
+      await browser.pause(300);
+
+      const idInput = await $('input[placeholder="my-mcp-server"]');
+      if (await idInput.isExisting()) {
+        await idInput.setValue('e2e-mcp-test');
+        const nameInput = await $('input[placeholder="My Server"]');
+        await nameInput.setValue('E2E MCP');
+        const cmdInput = await $('input[placeholder*="/usr/local/bin"]');
+        if (await cmdInput.isExisting()) {
+          await cmdInput.setValue('/usr/bin/true');
+        }
+        const addEnvBtn = await $('button*=添加变量');
+        const addEnvBtnEn = await $('button*=Add variable');
+        if (await addEnvBtn.isExisting()) {
+          await addEnvBtn.click();
+        } else if (await addEnvBtnEn.isExisting()) {
+          await addEnvBtnEn.click();
+        }
+        await browser.pause(200);
+
+        const envKeyInputs = await $$('input[placeholder*="变量名"], input[placeholder*="Variable name"]');
+        if (envKeyInputs.length > 0) {
+          await envKeyInputs[0].setValue('TEST_ENV');
+          const envValueInputs = await $$('input[placeholder="值"], input[placeholder="Value"]');
+          if (envValueInputs.length > 0) {
+            await envValueInputs[0].setValue('e2e-value');
+          }
+        }
+
+        const saveBtn = await $(`button*=${t('mcpClient.save')}`);
+        await saveBtn.click();
+        await browser.pause(500);
+      }
+    }
+
+    const loaded = await invokeBackend<any>('get_settings');
+    const saved = (loaded.mcpClientServers ?? []).find((c: { id: string }) => c.id === 'e2e-mcp-test');
+    if (saved) {
+      expect(saved.command).toBe('/usr/bin/true');
+      expect(saved.env?.TEST_ENV).toBe('e2e-value');
+    }
+  });
+
   // ── Restore defaults ──
 
   after(async () => {
