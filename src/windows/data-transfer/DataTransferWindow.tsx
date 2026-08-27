@@ -26,6 +26,7 @@ import { isTransferTargetSupported, resolveTransferPairing } from '../../lib/tra
 import type { ConnectionConfig } from '../../types';
 import { TransferMappingStep } from './TransferMappingStep';
 import { normalizeColumnMappings, tableHasActiveMappings } from './transferMappingView';
+import { SqlCodeBlock } from '../../components/SqlCodeBlock';
 
 type WizardStep =
   | 'endpoints'
@@ -365,9 +366,6 @@ export function DataTransferWindow() {
   ]);
 
   const goNext = useCallback(async () => {
-    if (step === 'objects' && tables.length === 0) {
-      await runInspect();
-    }
     if (step === 'preview') {
       setStep('execute');
       return;
@@ -377,10 +375,11 @@ export function DataTransferWindow() {
       setStep('preview');
       return;
     }
-    if (step === 'mapping' && tables.length === 0) {
+
+    const next = STEPS[stepIndex + 1];
+    if ((next === 'objects' || next === 'mapping') && tables.length === 0) {
       await runInspect();
     }
-    const next = STEPS[stepIndex + 1];
     if (next) setStep(next);
   }, [step, stepIndex, tables.length, runInspect, runPreview]);
 
@@ -635,9 +634,14 @@ export function DataTransferWindow() {
           <div data-testid="data-transfer-preview" className="space-y-3 text-sm">
             {preview.blockReason && <p className="text-warning">{preview.blockReason}</p>}
             {preview.ddl.map((item) => (
-              <pre key={item.sourceTable} className="overflow-auto rounded bg-bg-muted p-2 text-xs">
-                {item.ddl}
-              </pre>
+              <div key={item.sourceTable} className="overflow-hidden rounded border border-border">
+                <div className="border-b border-border px-3 py-1.5 text-xs text-fg-muted">
+                  {item.sourceTable} → {item.targetTable}
+                </div>
+                <div className="h-48 min-h-[8rem] bg-bg-muted">
+                  <SqlCodeBlock code={item.ddl} dialect={targetConn?.databaseType ?? 'mysql'} />
+                </div>
+              </div>
             ))}
             {preview.writePlans.map((plan) => (
               <div key={plan.sourceTable} className="rounded border border-border p-2">

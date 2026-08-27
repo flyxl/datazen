@@ -222,7 +222,8 @@ pub async fn execute_transfer_data(
 
     job.options.validate()?;
 
-    let quote = tgt_driver.quote_char();
+    let src_quote = src_driver.quote_char();
+    let tgt_quote = tgt_driver.quote_char();
     let batch = job.options.batch_size as usize;
     let mut tables_out = Vec::new();
     let mut total_rows = 0u64;
@@ -318,7 +319,7 @@ pub async fn execute_transfer_data(
                 continue;
             }
         } else if job.write_mode == WriteMode::TruncateInsert {
-            let truncate_sql = build_truncate_sql(&table.target_table, quote);
+            let truncate_sql = build_truncate_sql(&table.target_table, tgt_quote);
             if let Err(e) = tgt_driver
                 .execute(tgt_handle, &truncate_sql)
                 .await
@@ -341,12 +342,12 @@ pub async fn execute_transfer_data(
 
         let select_cols: Vec<String> = columns
             .iter()
-            .map(|c| quote_ident_sql(&c.source_column, quote))
+            .map(|c| quote_ident_sql(&c.source_column, src_quote))
             .collect();
         let base_sql = format!(
             "SELECT {} FROM {}",
             select_cols.join(", "),
-            quote_ident_sql(&table.source_table, quote)
+            quote_ident_sql(&table.source_table, src_quote)
         );
 
         let mut offset = 0usize;
@@ -517,6 +518,27 @@ mod tests {
     fn truncate_sql_quotes_table() {
         let sql = build_truncate_sql("users", '"');
         assert_eq!(sql, r#"TRUNCATE TABLE "users""#);
+    }
+
+    #[test]
+    fn cross_family_source_select_uses_postgres_double_quotes() {
+        let cols = vec![ColumnMapping {
+            source_column: "id".into(),
+            target_column: "id".into(),
+            skip: false,
+        }];
+        let refs: Vec<&ColumnMapping> = cols.iter().collect();
+        let src_quote = '"';
+        let select_cols: Vec<String> = refs
+            .iter()
+            .map(|c| quote_ident_sql(&c.source_column, src_quote))
+            .collect();
+        let sql = format!(
+            "SELECT {} FROM {}",
+            select_cols.join(", "),
+            quote_ident_sql("users", src_quote)
+        );
+        assert_eq!(sql, r#"SELECT "id" FROM "users""#);
     }
 
     #[test]
