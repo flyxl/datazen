@@ -232,12 +232,43 @@ const zhCN = {
   'connShare.importFormatsHint':
     '支持 DataZen（.datazenconnection）、DBX、DataGrip（dataSources.xml）、Navicat（.ncx）、DBeaver（data-sources.json）与 TablePlus（.tableplusconnection）。将 credentials-config.json 与 data-sources.json 放在同一目录时可尝试导入 DBeaver 密码。',
   'connShare.exportAction': '导出',
+  'connShare.exportHint': '将所有连接导出为加密的 .datazenconnection 文件。导入时需使用相同密码。',
   'connShare.importAction': '导入',
+  'connShare.chooseImportFile': '选择文件…',
+  'connShare.selectedImportFile': '已选文件',
+  'connShare.changeImportFile': '更换文件',
+  'connShare.encryptedImportPasswordRequired': '加密连接文件需要输入密码',
   'connShare.exportSuccess': '已导出 {count} 个连接',
   'connShare.importSuccess':
     '导入 {imported} 个新连接，更新 {overwritten} 个，新增 {groupsAdded} 个分组',
   'connShare.importSuccessWithSkipped':
     '导入 {imported} 个新连接，更新 {overwritten} 个，新增 {groupsAdded} 个分组，跳过 {skipped} 个不支持的类型',
+  'connShare.error.passwordRequired': '请输入密码',
+  'connShare.error.encryptedImportPasswordRequired': '加密连接文件需要输入密码',
+  'connShare.error.dbxEncryptedPasswordRequired': 'DBX 加密导入需要输入密码',
+  'connShare.error.datazenEncryptedPasswordRequired': 'DataZen 加密导入需要输入密码',
+  'connShare.error.datazenPasswordRequired': 'DataZen 导入需要输入密码',
+  'connShare.error.formatPasswordRequired': '{format} 导入需要输入密码',
+  'connShare.error.invalidUtf8':
+    '导入文件不是有效的 UTF-8 文本（DataZen 请使用 .datazenconnection）',
+  'connShare.error.unrecognizedFormat': '无法识别的连接导入格式',
+  'connShare.error.noFiles': '没有可导入的连接文件',
+  'connShare.error.readFailed': '读取导入文件失败',
+  'connShare.error.unknownImportSource': '未知的导入来源',
+  'connShare.error.decryptionWrongPassword': '解密失败：密码错误',
+  'connShare.error.missingConnectionsField': '导入文件无效：缺少 connections 字段',
+  'connShare.error.missingConnections': '缺少 connections',
+  'connShare.error.dbxWrongPassphrase': 'DBX 解密失败：口令错误',
+  'connShare.error.dbxMissingConnections': 'DBX 导入：缺少 connections 数组',
+  'connShare.error.invalidFileTooShort': '{format} 文件无效：内容过短',
+  'connShare.error.invalidFileRncryptorVersion':
+    '{format} 文件无效：不支持的 RNCryptor 版本（若为旧版 DataZen .json 导出，请导入 .json 文件）',
+  'connShare.error.invalidFileEncryptionType': '{format} 文件无效：需要基于密码的加密格式',
+  'connShare.error.decryptionFailed': '{format} 解密失败：密码错误或文件已损坏',
+  'connShare.error.decryptionFailedLegacyHint':
+    '{format} 解密失败：密码错误或文件已损坏。请使用与导出时相同的密码。旧版 DataZen 导出为加密的 .json（非 .datazenconnection）。',
+  'connShare.error.invalidJsonAfterDecrypt': '{format} 解密后的 JSON 无效',
+  'connShare.error.payloadNotUtf8': '{format} 内容不是 UTF-8 文本',
 
   // ── Connection Item / Card ──
   'conn.connected': '已连接',
@@ -341,6 +372,14 @@ const zhCN = {
   'settings.extensions.title': '扩展',
   'settings.extensions.empty': '当前构建中没有可用的插件扩展。',
   'settings.theme': '主题',
+  'settings.theme.pack': '主题包',
+  'settings.colorScheme': '配色方案',
+  'settings.theme.packDefault': '内置默认',
+  'settings.theme.packMissing': '缺失的主题包 ({id})',
+  'settings.theme.packMissingHint': '所选主题包已不存在。',
+  'settings.theme.packReset': '恢复默认',
+  'settings.theme.import': '导入主题包',
+  'settings.theme.remove': '移除主题包',
   'settings.appearance': '外观',
   'settings.appearance.subtitle':
     '主题来自已安装的插件，点击卡片即可应用；安装管理请前往插件页面。',

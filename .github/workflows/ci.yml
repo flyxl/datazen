@@ -88,7 +88,7 @@ jobs:
 
       - name: Restore managed files
         if: always()
-        run: node scripts/plugin-file-stash.mjs restore
+        run: node scripts/driver-file-stash.mjs restore
 
       - name: Rust unit tests (datazen-ai-api)
         run: cargo test -p datazen-ai-api --lib

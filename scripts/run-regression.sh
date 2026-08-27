@@ -29,7 +29,7 @@
 #
 # 已知副作用（正常瞬态，脚本不做任何 git 操作）：
 #   - 注入周期会使 src-tauri/Cargo.lock 相对 HEAD 变化，由编排方在提交前还原；
-#   - 包装器可能留下 .plugin-file-stash/（有孤儿清理机制），不要动也不要提交；
+#   - 包装器可能留下 .driver-file-stash/（有孤儿清理机制），不要动也不要提交；
 #   - 注入会改写 gitignored 的 src-tauri/capabilities/default.json（合并插件权限），
 #     脚本已做快照并在退出时还原（见下方 trap）；
 #   - .regression-home/ 为沙箱 HOME（已 gitignore），可整目录删除。

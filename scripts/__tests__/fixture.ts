@@ -3,7 +3,7 @@
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'fs';
 import { join, dirname } from 'path';
-import { MANAGED_FILES } from '../plugin-file-stash.mjs';
+import { MANAGED_FILES } from '../driver-file-stash.mjs';
 
 export const CLEAN_CONTENTS: Record<string, string> = {
   'Cargo.toml': `[workspace]\n\n# <<driver-patches>>\n# <</driver-patches>>\n`,

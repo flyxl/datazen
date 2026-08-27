@@ -7,7 +7,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, existsSync, writeFileSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { createPluginFileStash, MANAGED_FILES } from '../plugin-file-stash.mjs';
+import { createDriverFileStash, MANAGED_FILES } from '../driver-file-stash.mjs';
 import { runPluginStashPrecommit } from '../plugin-stash-precommit.mjs';
 import {
   CLEAN_CONTENTS,
@@ -19,12 +19,12 @@ import {
 
 describe('stash inject restore workflow', () => {
   let root: string;
-  let stash: ReturnType<typeof createPluginFileStash>;
+  let stash: ReturnType<typeof createDriverFileStash>;
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'stash-flow-'));
     writeManagedFiles(root, CLEAN_CONTENTS);
-    stash = createPluginFileStash(root, { quiet: true });
+    stash = createDriverFileStash(root, { quiet: true });
   });
 
   afterEach(() => {

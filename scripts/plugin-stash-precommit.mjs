@@ -21,10 +21,10 @@ import { resolve } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { execSync } from 'child_process';
 import {
-  createPluginFileStash,
+  createDriverFileStash,
   MANAGED_FILES,
   ROOT,
-} from './plugin-file-stash.mjs';
+} from './driver-file-stash.mjs';
 import { PLUGIN_ACL_IDS } from './plugin-deinject.mjs';
 
 export { PLUGIN_ACL_IDS };
@@ -113,7 +113,7 @@ export function fileHasInjection(relPath, content, pluginIds = PLUGIN_ACL_IDS) {
 export function runPluginStashPrecommit(opts = {}) {
   const root = opts.root ?? ROOT;
   const log = opts.log ?? console.log;
-  const stash = createPluginFileStash(root, { quiet: opts.quiet ?? false });
+  const stash = createDriverFileStash(root, { quiet: opts.quiet ?? false });
 
   const isStaged =
     opts.isStaged ??
@@ -203,7 +203,7 @@ export function runPluginStashPrecommit(opts = {}) {
   }
 
   if (existsSync(stash.STASH_DIR)) {
-    log('[pre-commit] ERROR: .plugin-file-stash/ still present after restore');
+    log('[pre-commit] ERROR: .driver-file-stash/ still present after restore');
     return { status: 1, reason: 'stash-dir-remains', restored: true };
   }
 

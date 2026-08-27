@@ -9,7 +9,7 @@ import {
   fileHasInjection,
   runPluginStashPrecommit,
 } from '../plugin-stash-precommit.mjs';
-import { createPluginFileStash, MANAGED_FILES } from '../plugin-file-stash.mjs';
+import { createDriverFileStash, MANAGED_FILES } from '../driver-file-stash.mjs';
 import { mkdtempSync, existsSync, unlinkSync, readFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { tmpdir } from 'os';
@@ -146,7 +146,7 @@ describe('runPluginStashPrecommit', () => {
   it('restores when working tree is fully injected and stash is complete', () => {
     const { root, opts, staged, cleanup } = setup();
     try {
-      const stash = createPluginFileStash(root, { quiet: true });
+      const stash = createDriverFileStash(root, { quiet: true });
       stash.stashManagedFiles();
       writeManagedFiles(root, INJECTED_CONTENTS);
       staged.add('Cargo.toml');
@@ -154,7 +154,7 @@ describe('runPluginStashPrecommit', () => {
       const result = runPluginStashPrecommit(opts);
       expect(result.status).toBe(0);
       expect(result.restored).toBe(true);
-      expect(existsSync(join(root, '.plugin-file-stash'))).toBe(false);
+      expect(existsSync(join(root, '.driver-file-stash'))).toBe(false);
       for (const f of MANAGED_FILES) {
         expect(readManaged(root, f)).toBe(CLEAN_CONTENTS[f]);
       }
@@ -179,7 +179,7 @@ describe('runPluginStashPrecommit', () => {
   it('deinjects cargo when stash is incomplete (one tracked stash file deleted)', () => {
     const { root, opts, cleanup } = setup();
     try {
-      const stash = createPluginFileStash(root, { quiet: true });
+      const stash = createDriverFileStash(root, { quiet: true });
       stash.stashManagedFiles();
       writeManagedFiles(root, INJECTED_CONTENTS);
       unlinkSync(stash.stashPath('src-tauri/Cargo.toml'));
@@ -197,14 +197,14 @@ describe('runPluginStashPrecommit', () => {
   it('discards stash without overwriting when work looks clean', () => {
     const { root, opts, cleanup } = setup();
     try {
-      const stash = createPluginFileStash(root, { quiet: true });
+      const stash = createDriverFileStash(root, { quiet: true });
       stash.stashManagedFiles();
 
       const result = runPluginStashPrecommit(opts);
       expect(result.status).toBe(0);
       expect(result.restored).toBe(false);
       expect(result.discardedStash).toBe(true);
-      expect(existsSync(join(root, '.plugin-file-stash'))).toBe(false);
+      expect(existsSync(join(root, '.driver-file-stash'))).toBe(false);
     } finally {
       cleanup();
     }
@@ -287,7 +287,7 @@ describe('runPluginStashPrecommit', () => {
   it('restages only previously staged managed files', () => {
     const { root, opts, staged, cleanup } = setup();
     try {
-      const stash = createPluginFileStash(root, { quiet: true });
+      const stash = createDriverFileStash(root, { quiet: true });
       stash.stashManagedFiles();
       writeManagedFiles(root, INJECTED_CONTENTS);
       staged.add('Cargo.toml');
