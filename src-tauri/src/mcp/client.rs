@@ -38,13 +38,20 @@ pub struct McpClientManager {
     clients: RwLock<HashMap<String, McpClientEntry>>,
 }
 
+/// Qualified tool name for AI routing: `mcp/{serverId}/{toolName}`.
+pub fn mcp_qualified_name(server_id: &str, tool_name: &str) -> String {
+    format!("mcp/{server_id}/{tool_name}")
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct McpToolInfo {
     pub server_id: String,
     pub server_name: String,
     pub tool_name: String,
+    pub qualified_name: String,
     pub description: Option<String>,
+    pub input_schema: serde_json::Value,
 }
 
 impl McpClientManager {
@@ -140,11 +147,18 @@ impl McpClientManager {
         clients
             .iter()
             .flat_map(|(server_id, info)| {
-                info.tools.iter().map(move |tool| McpToolInfo {
-                    server_id: server_id.clone(),
-                    server_name: info.name.clone(),
-                    tool_name: tool.name.to_string(),
-                    description: tool.description.as_ref().map(|d| d.to_string()),
+                info.tools.iter().map(move |tool| {
+                    let tool_name = tool.name.to_string();
+                    McpToolInfo {
+                        server_id: server_id.clone(),
+                        server_name: info.name.clone(),
+                        qualified_name: mcp_qualified_name(server_id, &tool_name),
+                        tool_name,
+                        description: tool.description.as_ref().map(|d| d.to_string()),
+                        input_schema: serde_json::Value::Object(
+                            tool.input_schema.as_ref().clone(),
+                        ),
+                    }
                 })
             })
             .collect()
@@ -226,17 +240,33 @@ mod tests {
     }
 
     #[test]
+    fn mcp_qualified_name_format() {
+        assert_eq!(
+            mcp_qualified_name("my-server", "search"),
+            "mcp/my-server/search"
+        );
+    }
+
+    #[test]
     fn test_mcp_tool_info_serialization() {
         let info = McpToolInfo {
             server_id: "s1".into(),
             server_name: "Server 1".into(),
             tool_name: "tool1".into(),
+            qualified_name: mcp_qualified_name("s1", "tool1"),
             description: Some("A test tool".into()),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": { "query": { "type": "string" } }
+            }),
         };
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("serverId"));
         assert!(json.contains("serverName"));
         assert!(json.contains("toolName"));
+        assert!(json.contains("qualifiedName"));
+        assert!(json.contains("inputSchema"));
+        assert!(json.contains("mcp/s1/tool1"));
     }
 
     #[test]

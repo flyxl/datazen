@@ -685,5 +685,7 @@ export interface McpToolInfo {
   serverId: string;
   serverName: string;
   toolName: string;
+  qualifiedName: string;
   description?: string;
+  inputSchema: Record<string, unknown>;
 }

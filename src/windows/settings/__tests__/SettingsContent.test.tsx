@@ -97,12 +97,14 @@ const {
     clearError: vi.fn(),
     setupEventListeners: vi.fn().mockResolvedValue(() => {}),
     mcpServers: [] as { serverId: string; serverName: string; toolsCount: number }[],
+    mcpTools: [] as { serverId: string; toolName: string; qualifiedName: string }[],
     mcpConnecting: false,
     mcpError: null as string | null,
     connectMcpServer: vi.fn().mockResolvedValue(undefined),
     disconnectMcpServer: vi.fn().mockResolvedValue(undefined),
     saveMcpClientServers: vi.fn().mockResolvedValue(undefined),
     loadMcpServers: vi.fn().mockResolvedValue(undefined),
+    loadMcpTools: vi.fn().mockResolvedValue(undefined),
     clearMcpError: vi.fn(),
   };
 
