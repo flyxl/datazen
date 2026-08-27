@@ -178,3 +178,23 @@ npx vitest run scripts/__tests__/with-driver-inject.test.ts scripts/__tests__/st
 - Git 驱动 crate 名 `datazen-plugin-*`（外部仓库）
 - `{appData}/plugins/` 磁盘目录、`plugins:changed` 事件字符串
 
+## 全仓 grep 验收（2026-08-27）
+
+| 检查项 | 结果 |
+|--------|------|
+| `plugin_init` / `cfg(feature = "plugin-")` in `src-tauri/`、`scripts/` | ✅ 无（仅文档历史描述） |
+| `"plugin-*"` Cargo features in `src-tauri/Cargo.toml` | ✅ 无 |
+| `PluginManager` / `mod plugins` / `list_plugins`（Rust） | ✅ 无 |
+| `usePluginStore` / `pluginCommands`（TS，排除 `generated*`） | ✅ 无 |
+| `ThemePackSection` / `ThemePackSummary` / `commands/theme.ts` | ✅ 无（`commands/theme.rs` 仅 surface_bg） |
+| `with-plugin-inject` / `PLUGIN_ACL_IDS` / `DATAZEN_PLUGIN_INJECT_ACTIVE` | ✅ 无（已改 driver 命名） |
+| `# <<plugin-*>>` markers in Cargo.toml | ✅ 无 |
+
+**by design 保留（grep 会命中，属预期）：**
+
+- `src/plugins/generated.ts`、`src/plugins/generated-locales.ts`（driver codegen）
+- `tauri-plugin-*` 外部 crate 依赖名
+- i18n `plugins.page.*`、Settings `pluginSettings` 字段
+- 磁盘 `{appData}/plugins/`、事件 `plugins:changed` / `plugins:open-page`
+- 文档 `plugin-naming-refactor*.md` 中的历史术语说明
+

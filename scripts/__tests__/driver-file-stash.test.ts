@@ -21,7 +21,7 @@ describe('createDriverFileStash', () => {
   let stash: ReturnType<typeof createDriverFileStash>;
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), 'plugin-stash-'));
+    root = mkdtempSync(join(tmpdir(), 'driver-stash-'));
     writeManagedFiles(root, CLEAN_CONTENTS);
     stash = createDriverFileStash(root, { quiet: true });
   });

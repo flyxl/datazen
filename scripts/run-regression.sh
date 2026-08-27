@@ -75,7 +75,7 @@ mkdir -p "$SANDBOX_HOME"
 # 注入周期副作用防护：快照并还原 src-tauri/capabilities/default.json。
 # with-driver-inject 会把 active 插件权限（如 redis:default）合并进该 gitignored
 # 生成文件；还原快照可避免污染后续裸 cargo 命令（tauri-build ACL 校验）。
-# Cargo.toml / Cargo.lock 的注入与还原由 plugin-file-stash 负责，脚本不做 git 操作。
+# Cargo.toml / Cargo.lock 的注入与还原由 driver-file-stash 负责，脚本不做 git 操作。
 # ---------------------------------------------------------------------------
 CAP_DEFAULT="src-tauri/capabilities/default.json"
 CAP_BACKUP="$SANDBOX_HOME/capabilities.default.json.bak"
