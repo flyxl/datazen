@@ -182,6 +182,7 @@ const mockGetDatabases = vi.fn();
 const mockGetTables = vi.fn();
 const mockUseDatabase = vi.fn();
 const mockDriverExecute = vi.fn();
+const mockExecuteQuery = vi.fn();
 
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
@@ -196,6 +197,12 @@ vi.mock('../../../commands/driver', () => ({
   driverCommands: {
     execute: (...args: unknown[]) => mockDriverExecute(...args),
     getDriverCommands: (...args: unknown[]) => mockGetDriverCommands(...args),
+  },
+}));
+
+vi.mock('../../../commands/query', () => ({
+  queryCommands: {
+    executeQuery: (...args: unknown[]) => mockExecuteQuery(...args),
   },
 }));
 
@@ -480,6 +487,7 @@ beforeEach(() => {
   });
   mockUseDatabase.mockResolvedValue(undefined);
   mockDriverExecute.mockResolvedValue({});
+  mockExecuteQuery.mockResolvedValue({});
   mockGetDatabaseObjects.mockResolvedValue([]);
   mockGetDriverCommands.mockResolvedValue([]);
   useSchemaStore.getState().reset();
@@ -1127,7 +1135,6 @@ describe('ConnectionNavigatorTree search filtering', () => {
 
 describe('ConnectionNavigatorTree standard single-db trees', () => {
   it('renders tables and views for the auto-expanded sqlite database', async () => {
-    const onNodeContextMenu = vi.fn();
     const { container } = await renderWithSqlite(
       [
         { name: 'settings', tableType: 'table', schema: null },
@@ -1135,7 +1142,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
         { name: 'idx_log', tableType: 'systemTable', schema: null },
       ],
       {},
-      { onNodeContextMenu },
+      {},
     );
 
     const dbNode = await waitFor(() => {
@@ -1160,9 +1167,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
 
     fireEvent.contextMenu(container.querySelector('[data-item-name="settings"]')!);
     await waitFor(() => {
-      expect(onNodeContextMenu).toHaveBeenCalledWith(
-        expect.objectContaining({ kind: 'table', name: 'settings' }),
-      );
+      expect(lastMenuItems().some((i) => i.id === 'drop')).toBe(true);
     });
   });
 
@@ -1908,6 +1913,49 @@ describe('ConnectionNavigatorTree schema context menu', () => {
       expect(lastMenuItems().some((i) => i.id === 'drop-schema')).toBe(false);
     }
   });
+
+  it('drops a table after confirmation and reloads tables', async () => {
+    const { findByText, queryAllByText } = await renderPgTree();
+    await waitFor(() => findByText('db_a'));
+    fireEvent.click((await findByText('public')).closest('button')!);
+    const tablesCategory = await waitFor(() => {
+      const nodes = queryAllByText('schemaTree.tables');
+      expect(nodes.length).toBeGreaterThan(0);
+      return nodes[nodes.length - 1]!;
+    });
+    fireEvent.click(tablesCategory.closest('button')!);
+    mockGetTables.mockClear();
+
+    await openMenuAndPick((await findByText('users')).closest('button')!, 'drop');
+
+    await waitFor(() => {
+      expect(mockExecuteQuery).toHaveBeenCalledWith(
+        'conn-pg',
+        'DROP TABLE "public"."users"',
+      );
+      expect(mockGetTables).toHaveBeenCalledWith('conn-pg', 'db_a');
+    });
+  });
+
+  it('reports an error when dropping a table fails', async () => {
+    const onShowMessage = vi.fn();
+    const { findByText, queryAllByText } = await renderPgTree({ onShowMessage });
+    await waitFor(() => findByText('db_a'));
+    fireEvent.click((await findByText('public')).closest('button')!);
+    const tablesCategory = await waitFor(() => {
+      const nodes = queryAllByText('schemaTree.tables');
+      expect(nodes.length).toBeGreaterThan(0);
+      return nodes[nodes.length - 1]!;
+    });
+    fireEvent.click(tablesCategory.closest('button')!);
+    mockExecuteQuery.mockRejectedValueOnce(new Error('permission denied'));
+
+    await openMenuAndPick((await findByText('users')).closest('button')!, 'drop');
+
+    await waitFor(() => {
+      expect(onShowMessage).toHaveBeenCalledWith('permission denied', 'error');
+    });
+  });
 });
 
 describe('ConnectionNavigatorTree group management', () => {
@@ -2218,10 +2266,8 @@ describe('ConnectionNavigatorTree path-hierarchy namespace trees', () => {
 
   it('renders branches and typed leaves, and lazy-loads on expand', async () => {
     const onSelectTable = vi.fn();
-    const onNodeContextMenu = vi.fn();
     const { container, findByText } = await renderNamespaceTree({
       onSelectTable,
-      onNodeContextMenu,
     });
 
     // Top-level leaves render immediately; materializedView maps to kind "view".
@@ -2249,9 +2295,7 @@ describe('ConnectionNavigatorTree path-hierarchy namespace trees', () => {
     const mvButton = container.querySelector('[data-item-name="mv1"]')!.closest('button')!;
     fireEvent.contextMenu(mvButton);
     await waitFor(() => {
-      expect(onNodeContextMenu).toHaveBeenCalledWith(
-        expect.objectContaining({ kind: 'view', name: 'mv1' }),
-      );
+      expect(lastMenuItems().some((i) => i.id === 'drop-view')).toBe(true);
     });
 
     // Collapse again hides the children.

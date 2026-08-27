@@ -583,6 +583,8 @@ const en: Record<TranslationKey, string> = {
     'Drop schema "{name}"? All objects in this schema will be permanently lost. This cannot be undone.',
   'schemaTree.dropDatabaseFailed': 'Failed to drop database.',
   'schemaTree.dropSchemaFailed': 'Failed to drop schema.',
+  'schemaTree.dropRelationFailed': 'Failed to drop table or view.',
+  'schemaTree.truncateFailed': 'Failed to truncate table.',
 
   // ── ER Diagram ──
   'erDiagram.noTables': 'No tables in this database',
