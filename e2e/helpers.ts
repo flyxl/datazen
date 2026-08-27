@@ -994,10 +994,42 @@ export async function clickTableInSidebar(tableName: string) {
   }
 }
 
+/** Open a table/view panel from the navigator context menu. */
+export async function openTableFromSidebar(tableName: string) {
+  await rightClickTableInSidebar(tableName);
+  await browser.execute((openLabel: string) => {
+    const items = document.querySelectorAll('[data-testid="web-context-menu"] button');
+    for (const item of items) {
+      if (item.textContent?.includes(openLabel)) {
+        (item as HTMLElement).click();
+        return;
+      }
+    }
+  }, t('schemaTree.openTable'));
+  await browser.pause(2000);
+}
+
+/** Switch the active table/view panel to the data sub-tab. */
+export async function switchTablePanelToDataTab() {
+  await browser.execute((label: string) => {
+    const bars = document.querySelectorAll('.border-b.border-edge.bg-surface-alt');
+    for (const bar of bars) {
+      for (const btn of bar.querySelectorAll('button')) {
+        if ((btn.textContent ?? '').trim() === label) {
+          (btn as HTMLElement).click();
+          return;
+        }
+      }
+    }
+  }, t('connWin.data'));
+  await browser.pause(800);
+}
+
 /** Right-click a table/view row in the navigator (keeps search active until menu opens). */
 export async function rightClickTableInSidebar(tableName: string) {
   await waitForSchemaTreeLoaded();
   await setNavigatorSearch(tableName);
+  let scrollPass = 0;
   try {
     await browser.waitUntil(
       async () => {
@@ -1008,9 +1040,11 @@ export async function rightClickTableInSidebar(tableName: string) {
               a.querySelector('[data-conn-item]'),
             );
           if (!nav) return false;
-          const node = nav.querySelector(
-            `[data-tree-node="table"][data-item-name="${name}"], [data-tree-node="view"][data-item-name="${name}"]`,
-          ) as HTMLElement | null;
+          const matchName = (label: string) =>
+            label === name || label.endsWith(`.${name}`) || label.endsWith(`/${name}`);
+          const node = Array.from(
+            nav.querySelectorAll<HTMLElement>('[data-tree-node="table"], [data-tree-node="view"]'),
+          ).find((n) => matchName(n.getAttribute('data-item-name') ?? ''));
           if (!node) return false;
           node.scrollIntoView({ block: 'center' });
           node.dispatchEvent(
@@ -1025,9 +1059,11 @@ export async function rightClickTableInSidebar(tableName: string) {
         }, tableName);
         if (opened) return true;
         await expandSchemaTableCategory();
+        await scrollSchemaTree(scrollPass);
+        scrollPass++;
         return false;
       },
-      { timeout: 10000, timeoutMsg: `无法右键打开表 "${tableName}" 的上下文菜单` },
+      { timeout: 20000, timeoutMsg: `无法右键打开表 "${tableName}" 的上下文菜单` },
     );
   } finally {
     await setNavigatorSearch('');
