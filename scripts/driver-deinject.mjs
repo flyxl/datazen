@@ -253,7 +253,7 @@ export function cleanFullyGeneratedContent(relPath) {
   if (relPath.endsWith('generated-locales.ts')) return cleanGeneratedLocalesContent();
   if (relPath.endsWith('generated.ts')) return cleanGeneratedTsContent();
   if (relPath.endsWith('driver_init.rs')) return cleanDriverInitContent();
-  throw new Error(`[plugin-deinject] no clean stub for ${relPath}`);
+  throw new Error(`[driver-deinject] no clean stub for ${relPath}`);
 }
 
 function escapeRegex(s) {

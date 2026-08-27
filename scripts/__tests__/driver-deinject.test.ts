@@ -10,10 +10,10 @@ import {
   emptyBeginEndSection,
   emptyMarkerBlock,
   isFullyGeneratedManagedFile,
-} from '../plugin-deinject.mjs';
+} from '../driver-deinject.mjs';
 import { CLEAN_CONTENTS, INJECTED_CONTENTS } from './fixture';
 
-describe('plugin-deinject', () => {
+describe('driver-deinject', () => {
   it('empties cargo marker bodies', () => {
     expect(emptyMarkerBlock(INJECTED_CONTENTS['Cargo.toml'], 'driver-patches')).toBe(
       CLEAN_CONTENTS['Cargo.toml'],
