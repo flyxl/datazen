@@ -121,16 +121,16 @@ export const transferCommands = {
     }),
 
   inspect: (
-    sourceConnectionId: string,
-    targetConnectionId: string,
+    sourceDbSessionId: string,
+    targetDbSessionId: string,
     mode: TransferMode,
     sourceDatabase?: string,
     targetDatabase?: string,
     tables?: TransferTableMapping[],
   ) =>
     invoke<TransferTableResult[]>('inspect_data_transfer', {
-      sourceConnectionId,
-      targetConnectionId,
+      sourceDbSessionId,
+      targetDbSessionId,
       sourceDatabase: sourceDatabase ?? null,
       targetDatabase: targetDatabase ?? null,
       mode,
