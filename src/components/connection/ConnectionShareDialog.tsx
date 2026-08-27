@@ -238,10 +238,14 @@ export function ConnectionShareDialog({
         ? t('connShare.importFromAppTitle', { app: CONNECTION_IMPORT_APP_LABEL[importSource] })
         : t('common.importConnections');
 
+  const dialogWidthClass = mode === 'export' ? 'max-w-sm' : appImport ? 'max-w-lg' : 'max-w-md';
+
   return (
     <Dialog
       open={open}
       title={title}
+      description={mode === 'export' ? t('connShare.exportHint') : undefined}
+      className={dialogWidthClass}
       onClose={onClose}
       footer={
         <>
@@ -258,7 +262,7 @@ export function ConnectionShareDialog({
         </>
       }
     >
-      <div className="space-y-4">
+      <div className={mode === 'export' ? 'space-y-3' : 'space-y-4'}>
         {mode === 'import' && !appImport && (
           <p className="text-xs leading-relaxed text-fg-muted">
             {t('connShare.importFormatsHint')}
@@ -323,7 +327,36 @@ export function ConnectionShareDialog({
           </div>
         )}
 
-        {(mode === 'export' || appImport || (fileImport && selectedImportFile)) && (
+        {mode === 'export' && (
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-fg-secondary">
+                {t('connShare.password')}
+              </label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                disabled={submitting}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-fg-secondary">
+                {t('connShare.confirmPassword')}
+              </label>
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+                disabled={submitting}
+              />
+            </div>
+          </div>
+        )}
+
+        {(appImport || (fileImport && selectedImportFile)) && (
           <div>
             <label className="mb-1 block text-xs font-medium text-fg-secondary">
               {t('connShare.password')}
@@ -340,21 +373,6 @@ export function ConnectionShareDialog({
               autoComplete="new-password"
               disabled={submitting}
               placeholder={mode === 'import' ? t('connShare.passwordImportPlaceholder') : undefined}
-            />
-          </div>
-        )}
-
-        {mode === 'export' && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-fg-secondary">
-              {t('connShare.confirmPassword')}
-            </label>
-            <Input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              autoComplete="new-password"
-              disabled={submitting}
             />
           </div>
         )}
