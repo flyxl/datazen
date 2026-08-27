@@ -657,7 +657,9 @@ export const useAiStore = create<AiStore>((set, get) => ({
   mcpServers: [],
   mcpTools: [],
   mcpConnecting: false,
+  mcpConnectingServerId: null,
   mcpError: null,
+  mcpServerErrors: {},
 
   connectMcpServer: async (serverId) => {
     const config = useSettingsStore.getState().settings.mcpClientServers?.find((c) => c.id === serverId);
@@ -666,15 +668,28 @@ export const useAiStore = create<AiStore>((set, get) => ({
       set({ mcpError: msg });
       throw new Error(msg);
     }
-    set({ mcpConnecting: true, mcpError: null });
+    set((s) => {
+      const nextErrors = { ...s.mcpServerErrors };
+      delete nextErrors[serverId];
+      return {
+        mcpConnecting: true,
+        mcpConnectingServerId: serverId,
+        mcpError: null,
+        mcpServerErrors: nextErrors,
+      };
+    });
     try {
       await aiCommands.mcpClientConnect(config);
       await get().loadMcpServers();
       await get().loadMcpTools();
-      set({ mcpConnecting: false });
+      set({ mcpConnecting: false, mcpConnectingServerId: null });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      set({ mcpConnecting: false, mcpError: msg });
+      set((s) => ({
+        mcpConnecting: false,
+        mcpConnectingServerId: null,
+        mcpServerErrors: { ...s.mcpServerErrors, [serverId]: msg },
+      }));
       throw new Error(msg);
     }
   },
@@ -746,6 +761,13 @@ export const useAiStore = create<AiStore>((set, get) => ({
   },
 
   clearMcpError: () => set({ mcpError: null }),
+
+  clearMcpServerError: (serverId) =>
+    set((s) => {
+      const next = { ...s.mcpServerErrors };
+      delete next[serverId];
+      return { mcpServerErrors: next };
+    }),
 }));
 
 // Listen for cross-window config changes so all windows stay in sync.

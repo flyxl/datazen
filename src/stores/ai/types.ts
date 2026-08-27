@@ -163,7 +163,9 @@ export interface AiStore {
   mcpServers: McpClientStatus[];
   mcpTools: McpToolInfo[];
   mcpConnecting: boolean;
+  mcpConnectingServerId: string | null;
   mcpError: string | null;
+  mcpServerErrors: Record<string, string>;
 
   connectMcpServer: (serverId: string) => Promise<void>;
   disconnectMcpServer: (serverId: string) => Promise<void>;
@@ -176,6 +178,7 @@ export interface AiStore {
     arguments: Record<string, unknown>;
   }) => Promise<string>;
   clearMcpError: () => void;
+  clearMcpServerError: (serverId: string) => void;
 }
 
 // Re-export message types used by store consumers that import from aiStore path.

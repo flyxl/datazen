@@ -99,13 +99,16 @@ const {
     mcpServers: [] as { serverId: string; serverName: string; toolsCount: number }[],
     mcpTools: [] as { serverId: string; toolName: string; qualifiedName: string }[],
     mcpConnecting: false,
+    mcpConnectingServerId: null as string | null,
     mcpError: null as string | null,
+    mcpServerErrors: {} as Record<string, string>,
     connectMcpServer: vi.fn().mockResolvedValue(undefined),
     disconnectMcpServer: vi.fn().mockResolvedValue(undefined),
     saveMcpClientServers: vi.fn().mockResolvedValue(undefined),
     loadMcpServers: vi.fn().mockResolvedValue(undefined),
     loadMcpTools: vi.fn().mockResolvedValue(undefined),
     clearMcpError: vi.fn(),
+    clearMcpServerError: vi.fn(),
   };
 
   return {
@@ -377,7 +380,9 @@ beforeEach(() => {
     fetchingRemoteModels: false,
     mcpServers: [],
     mcpConnecting: false,
+    mcpConnectingServerId: null,
     mcpError: null,
+    mcpServerErrors: {},
   });
   aiState.validateConfig.mockResolvedValue(true);
   aiState.saveConfig.mockResolvedValue(true);
@@ -688,8 +693,8 @@ describe('SettingsContent', () => {
         enabled: true,
       },
     ];
-    aiState.mcpServers = [{ serverId: 'srv1', serverName: 'Test MCP', toolsCount: 3 }];
-    aiState.mcpError = 'connect failed';
+    aiState.mcpServers = [];
+    aiState.mcpServerErrors = { srv1: 'connect failed' };
 
     render(<SettingsContent />);
     await waitForSettingsLoad();
@@ -699,14 +704,34 @@ describe('SettingsContent', () => {
     expect(screen.getByText('mcpClient.savedConfigs')).toBeInTheDocument();
     expect(screen.getByText('mcpClient.runtimeStatus')).toBeInTheDocument();
     expect(screen.getByText('connect failed')).toBeInTheDocument();
+    expect(screen.getByText('mcpClient.reconnect')).toBeInTheDocument();
     const errorBanner = screen.getByText('connect failed').closest('div')!;
     fireEvent.click(within(errorBanner).getByText('common.close'));
-    expect(clearMcpErrorMock).toHaveBeenCalled();
+    expect(aiState.clearMcpServerError).toHaveBeenCalledWith('srv1');
+
+    aiState.mcpServers = [{ serverId: 'srv1', serverName: 'Test MCP', toolsCount: 3 }];
+    aiState.mcpServerErrors = {};
+    cleanup();
+    currentSettings.mcpClientServers = [
+      {
+        id: 'srv1',
+        name: 'Test MCP',
+        transport: 'stdio',
+        command: '/usr/bin/mcp',
+        args: [],
+        env: {},
+        enabled: true,
+      },
+    ];
+    render(<SettingsContent />);
+    await waitForSettingsLoad();
+    goToSection('mcpClient.title');
 
     fireEvent.click(screen.getByText('mcpClient.disconnect'));
     await waitFor(() => expect(disconnectMcpServerMock).toHaveBeenCalledWith('srv1'));
 
     aiState.mcpServers = [];
+    aiState.mcpServerErrors = {};
     aiState.mcpError = null;
     cleanup();
     currentSettings.mcpClientServers = [];
@@ -728,8 +753,21 @@ describe('SettingsContent', () => {
     fireEvent.change(document.querySelector('textarea') as HTMLTextAreaElement, {
       target: { value: '--stdio\n--verbose' },
     });
+    fireEvent.click(screen.getByText('+ mcpClient.addEnv'));
+    const envInputs = screen.getAllByPlaceholderText('mcpClient.envKey');
+    fireEvent.change(envInputs[0], { target: { value: 'API_KEY' } });
+    fireEvent.change(screen.getByPlaceholderText('mcpClient.envValue'), {
+      target: { value: 'secret' },
+    });
     fireEvent.click(screen.getByText('mcpClient.save'));
     await waitFor(() => expect(saveMcpClientServersMock).toHaveBeenCalled());
+    expect(saveMcpClientServersMock).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: 'my-server',
+        env: { API_KEY: 'secret' },
+        args: ['--stdio', '--verbose'],
+      }),
+    ]);
     await waitFor(() =>
       expect(connectMcpServerMock).not.toHaveBeenCalled(),
     );
