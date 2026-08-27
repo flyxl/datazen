@@ -205,7 +205,7 @@ describe('BatchExportDialog', () => {
     fireEvent.click(screen.getByText('batchExport.export'));
 
     await waitFor(() => {
-      expect(screen.getByText(/batchExport\.failed/)).toBeInTheDocument();
+      expect(screen.getByText(/common\.exportFailed/)).toBeInTheDocument();
     });
   });
 

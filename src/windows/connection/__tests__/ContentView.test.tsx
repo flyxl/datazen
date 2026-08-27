@@ -286,14 +286,14 @@ describe('ContentView', () => {
     });
 
     render(<ContentView />);
-    expect(screen.getByRole('button', { name: /connWin.newQuery/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /common.newQuery/ })).toBeInTheDocument();
   });
 
   it('hides SQL toolbar buttons when no active panel', () => {
     panelStore.usePanelStore.setState({ panels: [], activePanelId: null });
 
     render(<ContentView />);
-    expect(screen.queryByRole('button', { name: /connWin.newQuery/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /common.newQuery/ })).not.toBeInTheDocument();
   });
 
   it('renders redis panel via getConnectionView', () => {
@@ -333,6 +333,6 @@ describe('ContentView', () => {
     });
 
     render(<ContentView />);
-    expect(screen.queryByRole('button', { name: /connWin.newQuery/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /common.newQuery/ })).not.toBeInTheDocument();
   });
 });
