@@ -5,6 +5,13 @@
  * feature-specific assertions.
  */
 import { browser, $, $$ } from '@wdio/globals';
+import { isScreenshotTraceEnabled, saveJourneyScreenshot } from './lib/screenshotTrace.js';
+
+/** Manual journey step capture (`--screenshot`); also used by helpers below. */
+export async function captureJourneyStep(label: string, settleMs = 400) {
+  if (!isScreenshotTraceEnabled()) return;
+  await saveJourneyScreenshot(browser, label, settleMs);
+}
 
 // ── window management ───────────────────────────────────────────────
 
@@ -36,6 +43,7 @@ export async function openNewConnectionDialogFromUi() {
   });
   if (!clicked) throw new Error('Could not find "新建连接" button');
   await waitForNewConnectionDialog();
+  await captureJourneyStep('new-connection-dialog');
 }
 
 /** Close the new-connection dialog via Cancel (stays on main window). */
@@ -103,6 +111,7 @@ export async function expandAllGroups() {
     });
   });
   await browser.pause(500);
+  await captureJourneyStep('expand-groups');
 }
 
 /** Seeded by wdio.conf.ts — locked to E2E_PG_DB so StandardSchemaTree is used. */
@@ -210,6 +219,7 @@ export async function connectSeededPgInWorkspace() {
   });
   await clickCardConnectButton();
   await waitForConnectionToolbar();
+  await captureJourneyStep('connect-seeded-pg');
 }
 
 /**
@@ -647,6 +657,7 @@ async function executeSqlInEditor(sql: string) {
     }
   }
   await browser.pause(500);
+  await captureJourneyStep('sql-executed');
 }
 
 /** Open a new query tab and wait for the execute button. */
@@ -678,6 +689,7 @@ export async function openQueryTab() {
     execBtn = await $('button[aria-label="执行"]');
   }
   await execBtn.waitForDisplayed({ timeout: 10000 });
+  await captureJourneyStep('query-tab-open');
 }
 
 // ── schema sidebar ──────────────────────────────────────────────────
@@ -700,6 +712,7 @@ export async function waitForSchemaTreeLoaded(timeout = 20000) {
     timeout,
     timeoutMsg: '等待 schema 树加载超时',
   });
+  await captureJourneyStep('schema-tree-loaded');
 }
 
 /** Click a table by exact name in the sidebar. */
@@ -710,6 +723,7 @@ export async function clickTableInSidebar(tableName: string) {
     const text = (await btn.getText()).trim();
     if (text === tableName) {
       await btn.click();
+      await captureJourneyStep(`table-${tableName}`);
       return;
     }
   }
@@ -725,6 +739,7 @@ export async function clickFirstTable() {
     const cls = (await btn.getAttribute('class')) || '';
     if (cls.includes('text-left') && cls.includes('13px') && text.length > 0) {
       await btn.click();
+      await captureJourneyStep(`table-${text}`);
       return text;
     }
   }
@@ -736,6 +751,7 @@ export async function switchSubTab(label: string) {
   const tab = await $(`button*=${label}`);
   await tab.click();
   await browser.pause(500);
+  await captureJourneyStep(`subtab-${label}`);
 }
 
 // ── DataTable cell interaction ──────────────────────────────────────
@@ -823,6 +839,7 @@ export async function openSettingsInMainWindow(section?: string) {
   await emitCrossWindowEvent('menu:open-settings', section ? { section } : undefined);
   const settingsPage = await $('[data-testid="settings-page"]');
   await settingsPage.waitForDisplayed({ timeout: 15000 });
+  await captureJourneyStep(section ? `settings-${section}` : 'settings-open');
 }
 
 /** Click SettingsPage back control and wait for workspace shell. */

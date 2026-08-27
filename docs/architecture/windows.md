@@ -30,7 +30,7 @@
 **Settings** 与 **Docs** 均不是子窗口：
 
 - **Settings**：`openSettingsWindow(section?)` 聚焦 `main` 并 emit `menu:open-settings`，渲染 `SettingsPage`。
-- **Docs / Help**：`openDocsWindow(section?)` 在系统浏览器打开 GitHub Pages（`src/lib/docsUrls.ts` → `https://flyxl.github.io/datazen/docs.html` 或 `/zh/docs.html`，可选 `#section`）。Rust `open_docs_window` 同样打开该 URL。
+- **Docs / Help**：`openDocsWindow(section?)` 在系统浏览器打开 GitHub Pages 使用手册（`src/lib/docsUrls.ts` → `https://flyxl.github.io/datazen/manual.html` 或 `/zh/manual.html`；旧 section id 如 `context` 会 remap 到 manual anchor）。Rust `open_docs_window` 同样打开该 URL。
 
 `openConnectionWindow()` 聚焦主工作区并通过 `localStorage` + `datazen:open-connection` 投递连接 payload，**不再**创建 `connection-*` 子窗口。
 

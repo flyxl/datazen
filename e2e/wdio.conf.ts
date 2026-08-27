@@ -1,3 +1,9 @@
+import {
+  beginJourneyTest,
+  isScreenshotTraceEnabled,
+  saveJourneyScreenshot,
+} from './lib/screenshotTrace.js';
+
 export const config: WebdriverIO.Config = {
   runner: 'local',
   specs: ['./specs/**/*.ts'],
@@ -210,6 +216,24 @@ export const config: WebdriverIO.Config = {
       if (main) await browser.switchToWindow(main);
     } catch {
       /* ignore */
+    }
+  },
+  beforeTest: async function (test) {
+    beginJourneyTest(test.file, test.title);
+    if (isScreenshotTraceEnabled()) {
+      try {
+        await saveJourneyScreenshot(browser, 'start', 200);
+      } catch (err) {
+        console.warn('[e2e-screenshot]', err);
+      }
+    }
+  },
+  afterTest: async function (test, _context, { passed }) {
+    if (!isScreenshotTraceEnabled()) return;
+    try {
+      await saveJourneyScreenshot(browser, passed ? 'end-pass' : 'end-fail', 200);
+    } catch (err) {
+      console.warn('[e2e-screenshot]', err);
     }
   },
 };

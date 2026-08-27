@@ -147,6 +147,24 @@ bash e2e/setup-e2e-env.sh
 
 无数据库时，仅 UI/设置类 spec（如 `settings.ts`、`i18n-*`、部分 `path-ipc-hardening`）仍可能通过；依赖真实连接的 suite 会失败。需要 Kiwi / OLAP 等插件驱动的 spec 必须用默认 `pnpm e2e`（全部插件）构建。
 
+### Journey 截图留痕（`--screenshot`）
+
+为调试或文档留痕，可在 E2E 运行时开启每个 `it()` 结束后的全屏截图：
+
+```bash
+# 全量（需已有 webdriver 构建）
+pnpm e2e:screenshot
+
+# 指定 spec
+pnpm e2e:skip-build -- --screenshot --spec e2e/specs/main-window.ts
+```
+
+`e2e/run.mjs` 解析 `--screenshot` 并设置 `E2E_SCREENSHOT=1`；`e2e/wdio.conf.ts` 在每个 `it()` 的 **开始/结束** 各截一张，且 `e2e/helpers.ts` 中常用 journey 步骤（连接、开查询 Tab、执行 SQL、切表/子 Tab、打开设置等）会自动留痕。PNG 按 journey 分子目录：
+
+`e2e/screenshots/<spec>/<test-title>/01_start.png` … `02_connect-seeded-pg.png` … `99_end-pass.png`
+
+spec 内自定义中间步骤可调用 `captureJourneyStep('my-step')`（从 `e2e/helpers.ts` 导入）。目录 gitignored。营销用固定场景截图仍见 `e2e/specs/zz-screenshots.ts`。
+
 ## 5. 架构说明
 
 ```
