@@ -7,13 +7,12 @@ import {
   captureJourneyStep,
   connectSeededPgInWorkspace,
   closeExtraWindows,
-  executeSQL,
-  injectDialogPath,
-  openQueryTab,
   clickTableInSidebar,
+  closeDataExportDialogIfOpen,
+  injectDialogPath,
   resetDialogQueue,
-  switchSubTab,
-  waitForSchemaTreeLoaded,
+  rightClickTableInSidebar,
+  waitForDataExportDialog,
 } from '../helpers.js';
 
 /**
@@ -21,22 +20,73 @@ import {
  * Export dialog is opened via DataTable toolbar (native OS context menus are not DOM-assertable).
  * Batch export dialog is opened via Connection Window toolbar (EI-BE-001); Schema-tree native menu path is skipped.
  * Import dialog is only reachable via schema-tree native context menu → those cases are skipped.
- * Requires a PostgreSQL connection (seeded by wdio.conf.ts before hook).
+ * Uses the seeded `product` table (see e2e/setup-e2e-env.sh) to avoid flaky post-DDL schema refresh.
  */
 
-const TEST_TABLE = '_e2e_export_test';
+const TEST_TABLE = 'product';
+const SAMPLE_CELL = 'Widget';
+
+async function openTestTableDataView() {
+  await clickTableInSidebar(TEST_TABLE);
+  await browser.pause(400);
+  await browser.execute(
+    (tableName: string, openLabel: string) => {
+      const node = document.querySelector(
+        `[data-tree-node="table"][data-item-name="${tableName}"]`,
+      ) as HTMLElement | null;
+      if (!node) return;
+      node.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 80,
+          clientY: 120,
+        }),
+      );
+      const menuItems = document.querySelectorAll('[data-testid="web-context-menu"] button');
+      for (const item of menuItems) {
+        if (item.textContent?.includes(openLabel)) {
+          (item as HTMLElement).click();
+          return;
+        }
+      }
+    },
+    TEST_TABLE,
+    t('schemaTree.openTable'),
+  );
+  await browser.pause(2000);
+  await browser.execute((label: string) => {
+    const bars = document.querySelectorAll('.border-b.border-edge.bg-surface-alt');
+    for (const bar of bars) {
+      for (const btn of bar.querySelectorAll('button')) {
+        if ((btn.textContent ?? '').trim() === label) {
+          (btn as HTMLElement).click();
+          return;
+        }
+      }
+    }
+  }, t('connWin.data'));
+  await browser.pause(800);
+  await browser.waitUntil(
+    async () => {
+      const body = await $('body').getText();
+      return body.includes(SAMPLE_CELL) || body.includes(t('common.selectAll'));
+    },
+    { timeout: 15000, timeoutMsg: 'Timed out waiting for table data to load' },
+  );
+}
 
 async function openTableExportDialog() {
-  await clickTableInSidebar(TEST_TABLE);
-  await browser.pause(800);
-  await switchSubTab(t('connWin.data'));
-  await browser.pause(800);
+  await closeDataExportDialogIfOpen();
+  await openTestTableDataView();
   const exportBtn = await $(`button[title="${t('export.export')}"]`);
   await exportBtn.waitForDisplayed({ timeout: 10000 });
   await exportBtn.click();
-  await browser.pause(600);
-  const body = await $('body').getText();
-  expect(body).toContain(t('export.format'));
+  await waitForDataExportDialog();
+}
+
+async function rightClickTableNode(tableName: string) {
+  await rightClickTableInSidebar(tableName);
 }
 
 describe('导出和导入 (EI-001~EI-006)', () => {
@@ -47,59 +97,10 @@ describe('导出和导入 (EI-001~EI-006)', () => {
     await connectSeededPgInWorkspace();
     await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
     await browser.pause(1500);
-
-    // Create test table with data
-    await openQueryTab();
-    await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
-    await executeSQL(`
-      CREATE TABLE ${TEST_TABLE} (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(100) NOT NULL,
-        email VARCHAR(200)
-      )
-    `);
-    await executeSQL(`
-      INSERT INTO ${TEST_TABLE} (name, email) VALUES
-        ('Alice', 'alice@example.com'),
-        ('Bob', 'bob@example.com'),
-        ('Charlie', 'charlie@example.com')
-    `);
-
-    // Refresh sidebar
-    const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
-    await refreshBtn.click();
-    await waitForSchemaTreeLoaded(20000);
-    await browser.pause(1500);
-
-    await browser.waitUntil(
-      async () => {
-        const found = await browser.execute((tableName: string) => {
-          const buttons = Array.from(document.querySelectorAll('aside button'));
-          return buttons.some((b) => b.textContent?.trim() === tableName);
-        }, TEST_TABLE);
-        return found;
-      },
-      { timeout: 30000, timeoutMsg: `schema tree missing table ${TEST_TABLE}` },
-    );
-
-    // Open the test table
-    await clickTableInSidebar(TEST_TABLE);
-    await browser.pause(2000);
-    await switchSubTab(t('connWin.data'));
-    await browser.waitUntil(async () => (await $('body').getText()).includes('Alice'), {
-      timeout: 10000,
-      timeoutMsg: 'Timed out waiting for table data to load',
-    });
+    await openTestTableDataView();
   });
 
   after(async () => {
-    try {
-      await browser.switchToWindow(mainWindow);
-      await openQueryTab();
-      await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
-    } catch {
-      // best-effort cleanup
-    }
     if (mainWindow) {
       await closeExtraWindows(mainWindow);
     }
@@ -108,33 +109,15 @@ describe('导出和导入 (EI-001~EI-006)', () => {
   // ── 导出对话框 ─────────────────────────────────────────────────
 
   it('右键表名应显示导出数据与导出 (EI-001)', async () => {
-    await clickTableInSidebar(TEST_TABLE);
-    await browser.pause(400);
-    await browser.execute((tableName: string) => {
-      const buttons = Array.from(document.querySelectorAll('aside button'));
-      const btn = buttons.find((b) => b.textContent?.trim() === tableName) as
-        | HTMLElement
-        | undefined;
-      btn?.dispatchEvent(
-        new MouseEvent('contextmenu', { bubbles: true, clientX: 80, clientY: 120 }),
-      );
-    }, TEST_TABLE);
-    const menu = await $('[data-testid="web-context-menu"]');
-    await menu.waitForDisplayed({ timeout: 5000 });
-    const text = await menu.getText();
+    await rightClickTableNode(TEST_TABLE);
+    const text = await $('[data-testid="web-context-menu"]').getText();
     expect(text).toContain(t('connWin.exportData'));
     expect(text).toContain(t('batchExport.title'));
     await browser.keys('Escape');
   });
 
   it('点击工具栏导出应打开导出对话框 (EI-001 → toolbar)', async () => {
-    const exportBtn = await $(`button[title="${t('export.export')}"]`);
-    await exportBtn.waitForDisplayed({ timeout: 10000 });
-    await exportBtn.click();
-    await browser.pause(1000);
-
-    const body = await $('body').getText();
-    expect(body).toContain(t('export.format'));
+    await openTableExportDialog();
   });
 
   it('导出对话框应显示格式选项 (EI-002)', async () => {
@@ -157,7 +140,7 @@ describe('导出和导入 (EI-001~EI-006)', () => {
   it('导出对话框应显示导出摘要 (EI-002a)', async () => {
     await openTableExportDialog();
     const body = await $('body').getText();
-    expect(body).toContain(t('export.willExport', { rows: 3, cols: 3 }));
+    expect(body).toContain(t('export.willExport', { rows: 4, cols: 3 }));
     expect(body).toContain('CSV');
   });
 
@@ -283,17 +266,7 @@ describe('导出和导入 (EI-001~EI-006)', () => {
   });
 
   it('Schema 树右键应显示批量导出选项 (EI-BE-002)', async () => {
-    await clickTableInSidebar(TEST_TABLE);
-    await browser.pause(300);
-    await browser.execute((tableName: string) => {
-      const buttons = Array.from(document.querySelectorAll('aside button'));
-      const btn = buttons.find((b) => b.textContent?.trim() === tableName) as
-        | HTMLElement
-        | undefined;
-      btn?.dispatchEvent(
-        new MouseEvent('contextmenu', { bubbles: true, clientX: 80, clientY: 140 }),
-      );
-    }, TEST_TABLE);
+    await rightClickTableNode(TEST_TABLE);
     const item = await $('[data-testid="web-context-item-batch-export"]');
     await item.waitForDisplayed({ timeout: 5000 });
     await item.click();
@@ -333,9 +306,11 @@ describe('导出和导入 (EI-001~EI-006)', () => {
       const exportConfirm = await $(`button*=${t('export.export')}`);
       await exportConfirm.waitForClickable({ timeout: 5000 });
       await exportConfirm.click();
-      await browser.pause(2500);
-      expect(fs.existsSync(outPath)).toBe(true);
-      expect(fs.readFileSync(outPath, 'utf-8')).toContain('Alice');
+      await browser.waitUntil(() => fs.existsSync(outPath), {
+        timeout: 20000,
+        timeoutMsg: 'Timed out waiting for export file',
+      });
+      expect(fs.readFileSync(outPath, 'utf-8')).toContain(SAMPLE_CELL);
       await captureJourneyStep('export-csv-saved', 0, true);
     } finally {
       try {
@@ -349,21 +324,9 @@ describe('导出和导入 (EI-001~EI-006)', () => {
   });
 
   it('EI-GRID-001: DataTable 工具栏导出应打开导出对话框', async () => {
-    await clickTableInSidebar(TEST_TABLE);
-    await browser.pause(1200);
-    await switchSubTab(t('connWin.data'));
-    await browser.pause(1000);
-    const exportBtn = await $(`button[title="${t('export.export')}"]`);
-    await exportBtn.waitForDisplayed({ timeout: 10000 });
-    await exportBtn.click();
-    await browser.pause(600);
+    await openTableExportDialog();
     const body = await $('body').getText();
-    expect(body).toContain(t('export.export'));
-    // Dialog should offer format choices
     expect(body.includes('CSV') || body.includes('JSON') || body.includes('SQL')).toBe(true);
-    const cancel = await $(`button*=${t('common.cancel')}`);
-    if (await cancel.isDisplayed()) {
-      await cancel.click();
-    }
+    await closeDataExportDialogIfOpen();
   });
 });

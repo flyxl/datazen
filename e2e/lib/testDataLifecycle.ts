@@ -118,6 +118,7 @@ export async function seedDefaultPgConnection(browser: Browser): Promise<void> {
         group: 'E2E 测试',
         colorTag: 'blue',
         sslMode: 'disable',
+        options: {},
       };
       (window as unknown as { __TAURI_INTERNALS__: { invoke: Function } }).__TAURI_INTERNALS__
         .invoke('save_connection', { config })
