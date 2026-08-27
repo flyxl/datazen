@@ -9,7 +9,6 @@ import {
   Files,
   Gauge,
   HardDrive,
-  LayoutDashboard,
   Loader2,
   RefreshCw,
   Users,
@@ -677,7 +676,7 @@ export function ServerStatusView({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-edge bg-surface-alt px-4 py-3">
-        <LayoutDashboard className="h-4 w-4 text-emerald-400" />
+        <Gauge className="h-4 w-4 text-emerald-400" />
         <span className="text-sm font-medium text-fg">{t('serverStatus.dashboardTitle')}</span>
         {connectionName && (
           <span className="rounded bg-surface-raised px-1.5 py-0.5 text-xs text-fg">

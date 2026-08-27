@@ -1,12 +1,4 @@
-import {
-  Database,
-  LayoutDashboard,
-  Plus,
-  Sparkles,
-  Upload,
-  Workflow,
-  type LucideIcon,
-} from 'lucide-react';
+import { Database, Gauge, Plus, Sparkles, Upload, Workflow, type LucideIcon } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { MenuBar } from '../../components/MenuBar';
 import { ThemeToggle } from '../../components/ThemeToggle';
@@ -43,7 +35,7 @@ export function WelcomePage() {
       description: t('welcome.feature.connections.description'),
     },
     {
-      icon: LayoutDashboard,
+      icon: Gauge,
       title: t('welcome.feature.dashboard.title'),
       description: t('welcome.feature.dashboard.description'),
     },
