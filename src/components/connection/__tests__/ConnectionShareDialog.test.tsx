@@ -170,11 +170,7 @@ describe('ConnectionShareDialog', () => {
       target: { value: 'bad-password' },
     });
     fireEvent.click(screen.getByText('connShare.importAction'));
-    await waitFor(() =>
-      expect(onError).toHaveBeenCalledWith(
-        'DataZen decryption failed: wrong password or corrupt file',
-      ),
-    );
+    await waitFor(() => expect(onError).toHaveBeenCalledWith('connShare.error.decryptionFailed'));
   });
 
   it('export uses a TablePlus binary filename', async () => {

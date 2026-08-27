@@ -254,6 +254,35 @@ const en: Record<TranslationKey, string> = {
     'Imported {imported} new, updated {overwritten}, added {groupsAdded} group(s)',
   'connShare.importSuccessWithSkipped':
     'Imported {imported} new, updated {overwritten}, added {groupsAdded} group(s), skipped {skipped} unsupported',
+  'connShare.error.passwordRequired': 'Password is required',
+  'connShare.error.encryptedImportPasswordRequired':
+    'Password is required for encrypted connection import',
+  'connShare.error.dbxEncryptedPasswordRequired': 'Password is required for DBX encrypted import',
+  'connShare.error.datazenEncryptedPasswordRequired':
+    'Password is required for DataZen encrypted import',
+  'connShare.error.datazenPasswordRequired': 'Password is required for DataZen import',
+  'connShare.error.formatPasswordRequired': 'Password is required for {format} import',
+  'connShare.error.invalidUtf8':
+    'Import file is not valid UTF-8 text (for DataZen use .datazenconnection)',
+  'connShare.error.unrecognizedFormat': 'Unrecognized connection import format',
+  'connShare.error.noFiles': 'No connection files to import',
+  'connShare.error.readFailed': 'Failed to read the import file',
+  'connShare.error.unknownImportSource': 'Unknown import source',
+  'connShare.error.decryptionWrongPassword': 'Decryption failed: wrong password',
+  'connShare.error.missingConnectionsField': "Invalid import file: missing 'connections' field",
+  'connShare.error.missingConnections': 'Missing connections',
+  'connShare.error.dbxWrongPassphrase': 'DBX decryption failed: wrong passphrase',
+  'connShare.error.dbxMissingConnections': 'DBX import: missing connections array',
+  'connShare.error.invalidFileTooShort': 'Invalid {format} file: too short',
+  'connShare.error.invalidFileRncryptorVersion':
+    'Invalid {format} file: unsupported RNCryptor version (if this is a legacy DataZen .json export, import the .json file instead)',
+  'connShare.error.invalidFileEncryptionType':
+    'Invalid {format} file: expected password-based encryption',
+  'connShare.error.decryptionFailed': '{format} decryption failed: wrong password or corrupt file',
+  'connShare.error.decryptionFailedLegacyHint':
+    '{format} decryption failed: wrong password or corrupt file. Use the same password as export. Legacy DataZen exports used password-protected .json (not .datazenconnection).',
+  'connShare.error.invalidJsonAfterDecrypt': 'Invalid {format} JSON after decrypt',
+  'connShare.error.payloadNotUtf8': '{format} payload is not UTF-8',
 
   // ── Connection Item / Card ──
   'conn.connected': 'Connected',

@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { ResultMessageDialog } from '../ui/ResultMessageDialog';
 import { useI18n } from '../../hooks/useI18n';
 import { useConnectionStore } from '../../stores/connectionStore';
+import { formatConnectionImportSuccess } from '../../lib/connectionShareError';
 import { closeConnectionShareDialog, useConnectionShareStore } from '../../lib/connectionShare';
 import { ConnectionShareDialog } from './ConnectionShareDialog';
 
@@ -42,13 +43,7 @@ export function ConnectionShareDialogHost() {
         }}
         onImportSuccess={(result) => {
           closeConnectionShareDialog();
-          showMessageDialog(
-            t('connShare.importSuccess', {
-              imported: result.imported,
-              skipped: result.skipped?.length ?? 0,
-            }),
-            'success',
-          );
+          showMessageDialog(formatConnectionImportSuccess(result, t), 'success');
           handleRefresh();
         }}
         onError={(message) => {
