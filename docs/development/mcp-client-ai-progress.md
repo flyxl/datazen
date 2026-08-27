@@ -8,12 +8,14 @@
 
 | 编号 | 功能 | 来源 | 状态 | 编码 commit | 测试 commit |
 |------|------|------|------|-------------|-------------|
-| F1 | Phase 1 配置持久化与启动重连 | 计划 Phase 1 | 编码完成 | 3a11036d | — |
-| F2 | Phase 2 Tool Schema 暴露 | 计划 Phase 2 | 编码完成 | 6b6bfc5a | — |
-| F3 | Phase 3 AI Tool Loop 集成 | 计划 Phase 3 | 编码完成 | 42d863d0 | — |
+| F1 | Phase 1 配置持久化与启动重连 | 计划 Phase 1 | 已完成 | 3a11036d | a0084091 |
+| F2 | Phase 2 Tool Schema 暴露 | 计划 Phase 2 | 已完成 | 6b6bfc5a | a0084091 |
+| F3 | Phase 3 AI Tool Loop 集成 | 计划 Phase 3 | 已完成 | 42d863d0 | a0084091 |
 | F4 | Phase 4 UI polish + 文档 + E2E | 计划 Phase 4 | 已完成 | 1702a98e | a0084091 |
-| F5 | Rust 核心缺口补齐 | 计划遗漏项 | 编码完成 | cc13ebf5 | — |
-| F6 | 前端/文档/E2E 缺口补齐 | 计划遗漏项 | 编码完成 | 70686d8c | — |
+| F5 | Rust 核心缺口补齐 | 计划遗漏项 | 已完成 | cc13ebf5 | 43a5e1b2 |
+| F6 | 前端/文档/E2E 缺口补齐 | 计划遗漏项 | 已完成 | 70686d8c | 43a5e1b2 |
+
+**总览：** F1–F6 编码与三件套复验均已完成；完整 `pnpm e2e` 留待 R 回归。
 
 ## 2. Bug 台账
 
@@ -68,7 +70,7 @@
 | AI Chat 注册 MCP tools | ✅ | `ai_chat_impl` → `mcp_tool_definitions` + `supports_tools()` gate |
 | Tool loop 路由执行 MCP | ✅ | `classify_tool` / `execute_mcp_tool` / loop 重构 |
 | Settings UI（saved + tools + env） | ✅ | `McpClientSection.tsx` 两区 + env 编辑 |
-| Rust 集成测试 + Settings E2E | ⚠️ 部分 | E2E-001 已登记；缺计划 §6.2 `ai_chat_mcp_tool_roundtrip`、`ai_chat_mcp_and_db_same_round` |
+| Rust 集成测试 + Settings E2E | ✅ | §6.2 集成测试 + SS-MCP-CLIENT-001 已登记（F5/F6 补齐） |
 | 对齐 `ai.md` 文档 | ✅ | §1.10 AI Chat MCP 工具已更新 |
 
 **逻辑正确性审查（`git diff 71f9163d..HEAD` 要点）：**
@@ -88,4 +90,45 @@
 
 - Tool 命名：`mcp/{serverId}/{toolName}`
 - HTTP transport：Phase 5 未实现
-- 同轮 ask_questions + MCP：已知边界（executable 与 terminal 分类已处理）
+- 同轮 ask_questions + MCP：executable 先执行、terminal 分类后停止（F5 集成测试覆盖）
+
+### F5–F6 缺口补齐（计划遗漏项复验）
+
+**范围：** Rust 集成测试（MCP roundtrip / DB+MCP 同轮 / ask_questions 混合轮）、`serverId` 校验、`enabledForAi` gate、非 text MCP 结果 warn、`chat.txt` / README / AiChatPanel 流式提示、Settings E2E 加强。
+
+**对照计划遗漏项：**
+
+| 遗漏项 | 状态 | 验证依据 |
+|--------|------|----------|
+| `ai_chat_mcp_tool_roundtrip` | ✅ | `ai_integration_tests.rs` — cargo ok |
+| `ai_chat_mcp_and_db_same_round` | ✅ | `ai_integration_tests.rs` — cargo ok |
+| `ai_chat_ask_questions_with_executable_runs_tools_then_stops` | ✅ | 同轮 ask_questions + DB + MCP — cargo ok |
+| `validate_mcp_server_id` | ✅ | `mcp/client.rs` 单元测试 — cargo ok |
+| `enabledForAi` gate | ✅ | `mcp_tool_definitions_respects_enabled_for_ai` — cargo ok |
+| 非 text MCP 结果 warn | ✅ | `format_call_tool_result_warns_on_non_text_only` — cargo ok |
+| `chat.txt` MCP 前缀说明 | ✅ | `src-tauri/resources/prompts/en/chat.txt` |
+| README MCP Client 小节 | ✅ | `README.md` §MCP Client |
+| AiChatPanel "Calling mcp/…" hint | ✅ | `AiChatPanel.test.tsx` + `streamMcpToolName` |
+| Settings E2E 加强 | ✅ | `e2e/specs/settings.ts` SS-MCP-CLIENT-001（登记；未跑 e2e） |
+
+**测试结果（测试代理 2026-08-27 缺口复验，基线 846ed602）：**
+
+| 套件 | 结果 | 数字 |
+|------|------|------|
+| `cargo test -p datazen --lib` | ✅ 通过 | 1136 passed, 0 failed, 2 ignored |
+| `npx vitest run` | ✅ 通过 | 249 files, 2045 passed |
+| `pnpm exec tsc --noEmit` | ✅ 通过 | 0 errors |
+
+**关键 Rust 集成/单元测试（cargo 摘录）：**
+
+- `ai_chat_mcp_tool_roundtrip` — ok
+- `ai_chat_mcp_and_db_same_round` — ok
+- `ai_chat_ask_questions_with_executable_runs_tools_then_stops` — ok
+- `mcp_tool_definitions_respects_enabled_for_ai` — ok
+- `validate_mcp_server_id_accepts_alphanumeric_dash_underscore` / `_rejects_invalid_chars` — ok
+- `format_call_tool_result_warns_on_non_text_only` — ok
+
+**新增前端单测（vitest +2）：**
+
+- `aiStore.test.ts` — `streamMcpToolName` 从 tool_calls 提取
+- `AiChatPanel.test.tsx` — `chat.callingMcpTool` 流式提示
