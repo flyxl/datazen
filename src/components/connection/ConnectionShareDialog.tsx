@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { useI18n } from '../../hooks/useI18n';
 import { connectionCommands } from '../../commands/connection';
+import { ipcConnectionShareError } from '../../lib/connectionShareError';
 import { importFileDisplayName, importFilePasswordPolicy } from '../../lib/importConnectionFile';
 
 export type ConnectionShareMode = 'export' | 'import';
@@ -19,12 +20,6 @@ export const CONNECTION_IMPORT_APP_LABEL: Record<ConnectionImportApp, string> = 
   dbeaver: 'DBeaver',
   tableplus: 'TablePlus',
 };
-
-function ipcErrorMessage(e: unknown, fallback: string): string {
-  if (typeof e === 'string' && e.trim()) return e;
-  if (e instanceof Error && e.message.trim()) return e.message;
-  return fallback;
-}
 
 interface ConnectionShareDialogProps {
   open: boolean;
@@ -122,7 +117,7 @@ export function ConnectionShareDialog({
           setLocalError(null);
         }
       } catch (e) {
-        onError(ipcErrorMessage(e, t('common.importFailed')));
+        onError(ipcConnectionShareError(e, t, t('common.importFailed')));
       }
     },
     [importSource, onError, t],
@@ -189,7 +184,11 @@ export function ConnectionShareDialog({
       }
     } catch (e) {
       onError(
-        ipcErrorMessage(e, mode === 'export' ? t('common.exportFailed') : t('common.importFailed')),
+        ipcConnectionShareError(
+          e,
+          t,
+          mode === 'export' ? t('common.exportFailed') : t('common.importFailed'),
+        ),
       );
     } finally {
       setSubmitting(false);
