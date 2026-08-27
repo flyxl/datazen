@@ -13,6 +13,7 @@ pub struct Endpoint {
 }
 
 impl Endpoint {
+    #[allow(dead_code)]
     pub fn normalized_schema(&self) -> Option<&str> {
         self.schema
             .as_deref()

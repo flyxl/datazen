@@ -197,6 +197,7 @@ fn parse_dashboard_file_inner(
 }
 
 /// Parse and validate a single-file dashboard export. Strips accidental webhook fields.
+#[cfg(test)]
 pub fn parse_dashboard_file(bytes: &[u8]) -> Result<Dashboard, DashboardExportError> {
     parse_dashboard_file_inner(bytes).map(|(dashboard, _)| dashboard)
 }

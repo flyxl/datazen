@@ -81,6 +81,7 @@ fn build_timeout_run(
 }
 
 /// Build and persist an error-status run using monitor retention settings.
+#[allow(dead_code)]
 pub(crate) fn persist_error_run(
     app_db: &AppDb,
     settings: &AppSettings,

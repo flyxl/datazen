@@ -1,6 +1,7 @@
 //! Unit tests for Data Transfer IPC helpers.
 
-use crate::data_transfer::{auto_map_columns, classify_transfer_pair, TableMapping};
+use crate::data_transfer::mapping::auto_map_columns;
+use crate::data_transfer::{classify_transfer_pair, TableMapping};
 use datazen_driver_api::{ColumnSchema, TableSchema};
 
 #[test]

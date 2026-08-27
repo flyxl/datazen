@@ -17,7 +17,7 @@ use crate::dashboard::store::{
     save_dashboard as store_save_dashboard,
     set_dashboard_refresh_paused as store_set_refresh_paused,
 };
-use crate::dashboard::types::{ChartConfig, Dashboard, DashboardWidget, ViewMode, WidgetRun};
+use crate::dashboard::types::{ChartConfig, Dashboard, ViewMode, WidgetRun};
 
 pub(crate) async fn list_dashboards_impl(state: &AppState) -> Result<Vec<Dashboard>, CommandError> {
     let app_db = state.store.app_db();
@@ -348,7 +348,9 @@ pub async fn import_dashboard_with_dialog(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dashboard::types::{DashboardLayout, RefreshMode, RefreshPolicy, WidgetLayout};
+    use crate::dashboard::types::{
+        DashboardLayout, DashboardWidget, RefreshMode, RefreshPolicy, WidgetLayout,
+    };
     use crate::store::{AppDb, WorkflowRecord, WorkflowVisibility};
     use chrono::Utc;
 

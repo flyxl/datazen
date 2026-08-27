@@ -1,7 +1,6 @@
 //! Runtime UI-extension IPC: list / install / remove / enable, manifest lookup,
 //! per-extension KV storage, and sandbox-constrained file reads.
 
-use std::fs;
 use std::path::PathBuf;
 
 use serde::Serialize;
@@ -462,6 +461,7 @@ mod tests {
     use super::*;
     use crate::testing::app_state::TestAppState;
     use serde_json::json;
+    use std::fs;
     use std::io::Write as _;
     use std::path::Path;
     use tempfile::TempDir;

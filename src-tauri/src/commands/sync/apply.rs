@@ -5,8 +5,6 @@ use super::super::AppState;
 use super::exec::execute_data_sync_impl;
 use super::inspect::inspect_data_sync_impl;
 use super::keyset_source::DriverKeysetSource;
-pub(crate) use super::types::resolve_options;
-use super::types::SyncOptionsInput;
 use crate::data_sync::{
     compare_table_pages, generate_table_sql, mysql_placeholder, postgres_placeholder,
     quote_ident_sql, ChangeSet, ComparisonResult, SyncOptions, TableMapping, TableMappingStatus,
@@ -311,7 +309,8 @@ pub(crate) async fn revalidate_data_sync_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::{ident_quote, resolve_options, SyncOptionsInput};
+    use super::ident_quote;
+    use crate::commands::sync::types::{resolve_options, SyncOptionsInput};
 
     #[test]
     fn mysql_uses_backticks_postgres_uses_double_quotes() {

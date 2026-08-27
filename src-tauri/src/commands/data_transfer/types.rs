@@ -1,7 +1,5 @@
 //! Shared helpers for Data Transfer IPC.
 
-use crate::data_transfer::Endpoint;
-
 pub(crate) fn resolve_db_name(selected: Option<&str>, config_default: Option<&str>) -> String {
     selected
         .map(str::trim)
@@ -30,16 +28,4 @@ pub(crate) fn is_self_database(
 
 fn normalize_schema(schema: Option<&str>) -> Option<&str> {
     schema.map(str::trim).filter(|s| !s.is_empty())
-}
-
-pub(crate) fn endpoint_from(
-    db_session_id: &str,
-    database: &str,
-    schema: Option<String>,
-) -> Endpoint {
-    Endpoint {
-        db_session_id: db_session_id.to_string(),
-        database: database.to_string(),
-        schema,
-    }
 }

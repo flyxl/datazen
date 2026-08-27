@@ -1,13 +1,12 @@
 //! Create dashboard widgets from SQL or existing workflows.
 
-use chrono::Utc;
 use uuid::Uuid;
 
 use super::store::{get_dashboard, save_dashboard, DashboardStoreError};
 use super::types::{
     ChartConfig, Dashboard, DashboardWidget, RefreshMode, RefreshPolicy, ViewMode, WidgetLayout,
 };
-use crate::store::{AppDb, WorkflowRecord, WorkflowVisibility};
+use crate::store::{AppDb, WorkflowVisibility};
 use crate::workflow::model::{
     WorkflowDefinition, WorkflowStep, WorkflowVisibility as WfVisibility,
 };
@@ -238,7 +237,8 @@ mod tests {
     use super::*;
     use crate::dashboard::store::save_dashboard;
     use crate::dashboard::types::DashboardLayout;
-    use crate::store::AppDb;
+    use crate::store::{AppDb, WorkflowRecord};
+    use chrono::Utc;
 
     async fn setup() -> (std::sync::Arc<AppDb>, WorkflowRegistry, Dashboard) {
         let db = AppDb::open_in_memory().unwrap();

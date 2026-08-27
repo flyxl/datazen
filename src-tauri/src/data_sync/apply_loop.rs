@@ -4,10 +4,9 @@ use std::collections::BTreeMap;
 
 use datazen_driver_api::Value;
 
-use super::changeset::ChangeSet;
 use super::compare::{cmp_keys, compare_sorted_rows, extract_key};
 use super::error::DataSyncError;
-use super::model::{ChangeOperation, ComparisonResult, Row, RowChange, SyncOptions, TableResult};
+use super::model::{ChangeOperation, Row, RowChange, SyncOptions, TableResult};
 
 fn key_bytes(key: &[Value]) -> Vec<u8> {
     serde_json::to_vec(key).unwrap_or_default()
@@ -81,7 +80,8 @@ pub fn remaining_mutating_changes(result: &TableResult) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_sync::model::SyncOptions;
+    use crate::data_sync::changeset::ChangeSet;
+    use crate::data_sync::model::{ComparisonResult, SyncOptions};
 
     fn i(n: i64) -> Option<Value> {
         Some(Value::Integer(n))

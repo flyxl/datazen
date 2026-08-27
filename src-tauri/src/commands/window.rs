@@ -5,7 +5,7 @@ use serde::Deserialize;
 use tauri::webview::PageLoadEvent;
 use tauri::window::Color;
 use tauri::{
-    AppHandle, LogicalSize, Manager, Size, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    AppHandle, LogicalSize, Manager, Size, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 
 /// Main window defaults from `tauri.conf.json`.

@@ -53,6 +53,7 @@ pub fn active_column_mappings(mappings: &[ColumnMapping]) -> Vec<&ColumnMapping>
     mappings.iter().filter(|m| !m.skip).collect()
 }
 
+#[allow(dead_code)]
 pub fn build_insert_sql(
     table: &str,
     columns: &[&ColumnMapping],
@@ -449,6 +450,7 @@ pub async fn execute_transfer_data(
 }
 
 /// Same-family convenience wrapper (kept for tests and backward compatibility).
+#[allow(dead_code)]
 pub async fn execute_same_family_data(
     src_driver: &dyn DatabaseDriver,
     src_handle: &ConnectionHandle,
