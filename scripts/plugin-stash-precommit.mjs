@@ -34,7 +34,7 @@ export function hasInjectedCargoContent(content) {
   const lines = content.split('\n');
   let inMarker = false;
   for (const line of lines) {
-    if (/# <<plugin-/.test(line)) {
+    if (/# <<driver-/.test(line)) {
       inMarker = true;
       continue;
     }

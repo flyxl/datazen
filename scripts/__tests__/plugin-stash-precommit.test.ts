@@ -28,7 +28,7 @@ describe('injection detectors', () => {
     expect(hasInjectedCargoContent(INJECTED_CONTENTS['Cargo.toml'])).toBe(true);
     expect(
       hasInjectedCargoContent(
-        `# <<plugin-dependencies>>\n# comment only\n# <</plugin-dependencies>>\n`,
+        `# <<driver-dependencies>>\n# comment only\n# <</driver-dependencies>>\n`,
       ),
     ).toBe(false);
   });
