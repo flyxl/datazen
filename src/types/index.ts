@@ -402,6 +402,8 @@ export interface AiChatSession {
   isStreaming: boolean;
   streamContent: string;
   streamReasoning: string;
+  /** Qualified MCP tool name (mcp/server/tool) shown during streaming tool execution. */
+  streamMcpToolName: string | null;
   requestId: string | null;
 }
 

@@ -13,7 +13,7 @@
 | F3 | Phase 3 AI Tool Loop 集成 | 计划 Phase 3 | 编码完成 | 42d863d0 | — |
 | F4 | Phase 4 UI polish + 文档 + E2E | 计划 Phase 4 | 已完成 | 1702a98e | a0084091 |
 | F5 | Rust 核心缺口补齐 | 计划遗漏项 | 编码完成 | cc13ebf5 | — |
-| F6 | 前端/文档/E2E 缺口补齐 | 计划遗漏项 | 未开始 | — | — |
+| F6 | 前端/文档/E2E 缺口补齐 | 计划遗漏项 | 编码完成 | — | — |
 
 ## 2. Bug 台账
 
@@ -80,8 +80,8 @@
 
 **遗漏 / 非阻塞项：**
 
-- `chat.txt` MCP 前缀说明（计划 Task 3.6 可选）— 未实现
-- `AiChatPanel` "Calling mcp/…" 流式提示（计划 Task 4.3 可选）— 未实现
+- ~~`chat.txt` MCP 前缀说明（计划 Task 3.6 可选）~~ — F6 已实现
+- ~~`AiChatPanel` "Calling mcp/…" 流式提示（计划 Task 4.3 可选）~~ — F6 已实现
 - HTTP transport — Phase 5，计划外
 
 **设计决策 / 遗留：**

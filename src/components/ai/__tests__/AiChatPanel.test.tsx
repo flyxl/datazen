@@ -66,6 +66,7 @@ const aiState = vi.hoisted(() => ({
     isStreaming: false,
     streamContent: '',
     streamReasoning: '',
+    streamMcpToolName: null as string | null,
   },
   initChatSession: vi.fn(),
   sendChatMessage: vi.fn().mockResolvedValue(undefined),
@@ -111,6 +112,7 @@ describe('AiChatPanel', () => {
       isStreaming: false,
       streamContent: '',
       streamReasoning: '',
+      streamMcpToolName: null,
     };
     rerender(<AiChatPanel dbSessionId="c1" />);
     expect(getByText('chat.welcome')).toBeInTheDocument();
@@ -163,8 +165,13 @@ describe('AiChatPanel', () => {
 
     aiState.chatSession.streamContent = '';
     aiState.chatSession.streamReasoning = '';
+    aiState.chatSession.streamMcpToolName = null;
     rerender(<AiChatPanel dbSessionId="c1" />);
     expect(getByText('chat.thinking')).toBeInTheDocument();
+
+    aiState.chatSession.streamMcpToolName = 'mcp/files/read_file';
+    rerender(<AiChatPanel dbSessionId="c1" />);
+    expect(getByText('chat.callingMcpTool')).toBeInTheDocument();
   });
 
   it('switches to workflows tab and clears chat', () => {

@@ -29,6 +29,11 @@ interface AiChatPanelProps {
   onInsertSql?: (sql: string) => void;
 }
 
+function formatMcpToolDisplayName(qualifiedName: string): string {
+  const parts = qualifiedName.split('/');
+  return parts.length >= 3 ? parts.slice(2).join('/') : qualifiedName;
+}
+
 export function AiChatPanel({ dbSessionId, database, sqlDialect, onInsertSql }: AiChatPanelProps) {
   const { t } = useI18n();
   const chatSession = useAiStore((s) => s.chatSession);
@@ -198,7 +203,11 @@ export function AiChatPanel({ dbSessionId, database, sqlDialect, onInsertSql }: 
             {chatSession?.isStreaming && !chatSession.streamContent && (
               <div className="flex items-center gap-2 py-2 text-xs text-fg-muted">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {t('chat.thinking')}
+                {chatSession.streamMcpToolName
+                  ? t('chat.callingMcpTool', {
+                      name: formatMcpToolDisplayName(chatSession.streamMcpToolName),
+                    })
+                  : t('chat.thinking')}
               </div>
             )}
 

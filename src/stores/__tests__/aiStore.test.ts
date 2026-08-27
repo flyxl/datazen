@@ -24,7 +24,7 @@ const mockAiCommands = {
   mcpClientCallTool: vi.fn(),
 };
 
-const mockUpdateSettings = vi.fn().mockResolvedValue(undefined);
+const mockUpdateSettings = vi.fn();
 let mockMcpClientServers: Array<{
   id: string;
   name: string;
@@ -32,6 +32,17 @@ let mockMcpClientServers: Array<{
   command?: string;
   enabled: boolean;
 }> = [];
+
+function syncMcpSettingsMock() {
+  mockUpdateSettings.mockImplementation(
+    async (partial?: { mcpClientServers?: typeof mockMcpClientServers }) => {
+      if (partial?.mcpClientServers) {
+        mockMcpClientServers = partial.mcpClientServers;
+      }
+    },
+  );
+}
+syncMcpSettingsMock();
 
 vi.mock('../settingsStore', () => ({
   useSettingsStore: {
@@ -66,7 +77,7 @@ describe('aiStore', () => {
     vi.resetModules();
     vi.clearAllMocks();
     mockMcpClientServers = [];
-    mockUpdateSettings.mockResolvedValue(undefined);
+    syncMcpSettingsMock();
     (globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = {};
     const mod = await import('../aiStore');
     useAiStore = mod.useAiStore;
@@ -173,13 +184,19 @@ describe('aiStore', () => {
     it('diagnoseError success and error', async () => {
       mockAiCommands.diagnoseError.mockResolvedValueOnce({ changes: [{ sql: 'fix' }] });
       await useAiStore.getState().diagnoseError({
-        connectionId: 'c', database: 'db', sql: 'SELECT', errorMessage: 'syntax',
+        connectionId: 'c',
+        database: 'db',
+        sql: 'SELECT',
+        errorMessage: 'syntax',
       });
       expect(useAiStore.getState().diagnosis?.changes).toHaveLength(1);
 
       mockAiCommands.diagnoseError.mockRejectedValueOnce(new Error('diag fail'));
       await useAiStore.getState().diagnoseError({
-        connectionId: 'c', database: 'db', sql: 'SELECT', errorMessage: 'syntax',
+        connectionId: 'c',
+        database: 'db',
+        sql: 'SELECT',
+        errorMessage: 'syntax',
       });
       expect(useAiStore.getState().diagnosisError).toBe('diag fail');
     });
@@ -193,13 +210,17 @@ describe('aiStore', () => {
     it('analyzeExplain success and error', async () => {
       mockAiCommands.analyzeExplain.mockResolvedValueOnce({ bottlenecks: [], suggestions: [] });
       await useAiStore.getState().analyzeExplain({
-        connectionId: 'c', explainOutput: 'Seq Scan', originalSql: 'SELECT 1',
+        connectionId: 'c',
+        explainOutput: 'Seq Scan',
+        originalSql: 'SELECT 1',
       });
       expect(useAiStore.getState().explainAnalysis).not.toBeNull();
 
       mockAiCommands.analyzeExplain.mockRejectedValueOnce(new Error('explain fail'));
       await useAiStore.getState().analyzeExplain({
-        connectionId: 'c', explainOutput: 'x', originalSql: 'y',
+        connectionId: 'c',
+        explainOutput: 'x',
+        originalSql: 'y',
       });
       expect(useAiStore.getState().explainError).toBe('explain fail');
     });
@@ -213,24 +234,34 @@ describe('aiStore', () => {
   describe('smart filter', () => {
     it('parseFilter skips empty input', async () => {
       const result = await useAiStore.getState().parseFilter({
-        connectionId: 'c', database: 'db', table: 'users',
+        connectionId: 'c',
+        database: 'db',
+        table: 'users',
       });
       expect(result).toBeNull();
     });
 
     it('parseFilter success and error', async () => {
       useAiStore.getState().setNlFilterInput('age > 18');
-      mockAiCommands.parseFilter.mockResolvedValueOnce([{ column: 'age', operator: '>', value: 18 }]);
+      mockAiCommands.parseFilter.mockResolvedValueOnce([
+        { column: 'age', operator: '>', value: 18 },
+      ]);
       const filters = await useAiStore.getState().parseFilter({
-        connectionId: 'c', database: 'db', table: 'users',
+        connectionId: 'c',
+        database: 'db',
+        table: 'users',
       });
       expect(filters).toHaveLength(1);
 
       useAiStore.getState().setNlFilterInput('bad');
       mockAiCommands.parseFilter.mockRejectedValueOnce(new Error('parse fail'));
-      expect(await useAiStore.getState().parseFilter({
-        connectionId: 'c', database: 'db', table: 'users',
-      })).toBeNull();
+      expect(
+        await useAiStore.getState().parseFilter({
+          connectionId: 'c',
+          database: 'db',
+          table: 'users',
+        }),
+      ).toBeNull();
       expect(useAiStore.getState().nlFilterError).toBe('parse fail');
     });
 
@@ -261,11 +292,13 @@ describe('aiStore', () => {
       useAiStore.setState({
         chatSession: {
           ...session,
-          messages: [{
-            role: 'assistant',
-            content: '',
-            toolCalls: [{ id: 'tc-1', name: 'ask_questions', arguments: {} }],
-          }],
+          messages: [
+            {
+              role: 'assistant',
+              content: '',
+              toolCalls: [{ id: 'tc-1', name: 'ask_questions', arguments: {} }],
+            },
+          ],
         },
       });
       mockAiCommands.chat.mockResolvedValueOnce(undefined);
@@ -319,15 +352,34 @@ describe('aiStore', () => {
         chatSession: { ...useAiStore.getState().chatSession!, requestId, isStreaming: true },
       });
       useAiStore.getState().handleStreamChunk({
-        requestId, content: 'Hello', done: false,
+        requestId,
+        content: 'Hello',
+        done: false,
       });
       expect(useAiStore.getState().chatSession!.streamContent).toBe('Hello');
 
       useAiStore.getState().handleStreamChunk({
-        requestId, content: ' world', done: true,
+        requestId,
+        content: ' world',
+        done: true,
       });
       const msgs = useAiStore.getState().chatSession!.messages;
       expect(msgs[msgs.length - 1].role).toBe('assistant');
+    });
+
+    it('handleStreamChunk tracks MCP tool name during stream', () => {
+      useAiStore.getState().initChatSession();
+      const requestId = useAiStore.getState().chatSession!.requestId ?? 'req-mcp';
+      useAiStore.setState({
+        chatSession: { ...useAiStore.getState().chatSession!, requestId, isStreaming: true },
+      });
+      useAiStore.getState().handleStreamChunk({
+        requestId,
+        content: '',
+        done: false,
+        toolCalls: [{ id: 'tc-1', name: 'mcp/files/read_file', arguments: {} }],
+      });
+      expect(useAiStore.getState().chatSession!.streamMcpToolName).toBe('mcp/files/read_file');
     });
 
     it('setupEventListeners wires chunk and error handlers', async () => {
@@ -355,7 +407,10 @@ describe('aiStore', () => {
 
       mockAiCommands.workflowExecute.mockResolvedValueOnce({ success: true, output: 'ok' });
       await useAiStore.getState().executeWorkflow({ workflowId: 'wf-1', variables: {} });
-      expect(useAiStore.getState().workflowExecutionResult).toEqual({ success: true, output: 'ok' });
+      expect(useAiStore.getState().workflowExecutionResult).toEqual({
+        success: true,
+        output: 'ok',
+      });
 
       mockAiCommands.workflowExecute.mockRejectedValueOnce(new Error('exec fail'));
       await useAiStore.getState().executeWorkflow({ workflowId: 'wf-1', variables: {} });
@@ -380,7 +435,9 @@ describe('aiStore', () => {
 
     it('diagnoseConnection and clearConnectionDiagnosis', async () => {
       mockAiCommands.diagnoseConnection.mockResolvedValueOnce({ suggestions: [] });
-      await useAiStore.getState().diagnoseConnection({ connectionId: 'c', errorMessage: 'timeout' });
+      await useAiStore
+        .getState()
+        .diagnoseConnection({ connectionId: 'c', errorMessage: 'timeout' });
       expect(useAiStore.getState().connectionDiagnosis).not.toBeNull();
       useAiStore.getState().clearConnectionDiagnosis();
       expect(useAiStore.getState().connectionDiagnosis).toBeNull();
@@ -448,6 +505,37 @@ describe('aiStore', () => {
       expect(mockAiCommands.mcpClientDisconnect).toHaveBeenCalledWith('s1');
     });
 
+    it('saveMcpClientServers reconnects when connected server config changes', async () => {
+      mockMcpClientServers = [
+        { id: 's1', name: 'Server', transport: 'stdio', command: 'node', enabled: true },
+      ];
+      useAiStore.setState({
+        mcpServers: [{ serverId: 's1', serverName: 'Server', toolsCount: 1 }],
+      });
+      mockAiCommands.mcpClientDisconnect.mockResolvedValue(undefined);
+      mockAiCommands.mcpClientConnect.mockResolvedValue(undefined);
+      mockAiCommands.mcpClientList.mockResolvedValue([
+        { serverId: 's1', serverName: 'Server', toolsCount: 1 },
+      ]);
+      mockAiCommands.mcpClientTools.mockResolvedValue([]);
+
+      const updated = [
+        {
+          id: 's1',
+          name: 'Server',
+          transport: 'stdio' as const,
+          command: 'node-v2',
+          enabled: true,
+        },
+      ];
+      await useAiStore.getState().saveMcpClientServers(updated);
+
+      expect(mockAiCommands.mcpClientDisconnect).toHaveBeenCalledWith('s1');
+      expect(mockAiCommands.mcpClientConnect).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 's1', command: 'node-v2' }),
+      );
+    });
+
     it('disconnectMcpServer and callMcpTool', async () => {
       mockAiCommands.mcpClientDisconnect.mockResolvedValueOnce(undefined);
       mockAiCommands.mcpClientList.mockResolvedValueOnce([]);
@@ -456,7 +544,9 @@ describe('aiStore', () => {
 
       mockAiCommands.mcpClientCallTool.mockResolvedValueOnce('result');
       const out = await useAiStore.getState().callMcpTool({
-        serverId: 's1', toolName: 't', arguments: {},
+        serverId: 's1',
+        toolName: 't',
+        arguments: {},
       });
       expect(out).toBe('result');
 
