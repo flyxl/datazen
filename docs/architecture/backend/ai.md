@@ -74,7 +74,7 @@ pub trait AiProvider: Send + Sync {
 | `ai_generate_sql` | NL2SQL | Tauri Events |
 | `ai_diagnose_error` | SQL 错误诊断 | - |
 | `ai_analyze_explain` | EXPLAIN 计划 AI 分析 | - |
-| `ai_chat` | AI 对话（支持 MCP 工具调用） | Tauri Events |
+| `ai_chat` | AI 对话（DB tools + 已连接 MCP Client tools） | Tauri Events |
 | `ai_parse_filter` | 自然语言筛选解析 | - |
 | `ai_generate_schema_doc` | Schema 文档生成 | - |
 | `ai_diagnose_connection` | 连接故障排查 | - |
@@ -180,3 +180,18 @@ groups:
 **解析模块**：`src-tauri/src/ai/ctx_yaml.rs`
 
 **前端识别**：`ContextPicker` 中 `.ctx.yaml` 文件使用 `Layers` 图标区分于普通文件。
+
+### 1.10 AI Chat MCP 工具
+
+`ai_chat` 在流式 tool loop 中合并两类工具定义：
+
+1. **DB tools** — `list_tables`、`search_tables`、`query_db` 等，经 `ConnectionManager` / Driver Command API 执行。
+2. **MCP Client tools** — 来自 Settings 中已连接的外部 MCP Server，qualified name 形如 `mcp/{serverId}/{toolName}`。
+
+实现要点（`commands/ai.rs`）：
+
+- `collect_mcp_tool_definitions()` 从 `McpClientManager` 拉取已连接 server 的 tool schema，转换为 Provider 的 `ToolDefinition`。
+- `run_streaming_tool_loop` 识别 `mcp/` 前缀并调用 `mcp_client_call_tool`；DB tool 与 MCP tool 可在同一轮对话中交替执行。
+- 未连接 MCP Server 时行为与原先一致，仅暴露 DB tools。
+
+配置与连接管理见 [`mcp.md` — MCP Client AI 集成](./mcp.md#mcp-client-ai-集成)。
