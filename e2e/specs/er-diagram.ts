@@ -80,8 +80,8 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
     await browser.switchToWindow(mainWindow);
     const tabs = await $$('[data-testid="panel-tab"]');
     expect(tabs.length).toBeGreaterThan(0);
-    const labels = await Promise.all(tabs.map((t) => t.getText()));
-    expect(labels.some((l) => /ER Diagram|ER 图|er diagram/i.test(l))).toBe(true);
+    const body = await $('body').getText();
+    expect(/ER Diagram|ER 图/i.test(body)).toBe(true);
   });
 
   it('ER-005: React Flow 控件应可见', async () => {

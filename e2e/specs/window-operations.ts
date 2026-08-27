@@ -43,21 +43,10 @@ describe('窗口操作 (TC-WIN-001~005)', () => {
 
   it('TC-WIN-003: 打开查询 tab 后 tab 数应正确', async () => {
     await browser.switchToWindow(mainWindow);
-    const body = await $('body').getText();
-    const connected = body.includes('新建查询') || body.includes('New Query');
-    if (connected) {
-      await openQueryTab();
-      await browser.pause(500);
-      const tabCount = await browser.execute(
-        () => document.querySelectorAll('[role="tab"]').length,
-      );
-      expect(tabCount).toBeGreaterThanOrEqual(1);
-    } else {
-      const tabCount = await browser.execute(
-        () => document.querySelectorAll('[role="tab"]').length,
-      );
-      expect(tabCount).toBeGreaterThanOrEqual(0);
-    }
+    await openQueryTab();
+    await browser.pause(500);
+    const tabCount = await $$('[data-testid="panel-tab"]').length;
+    expect(tabCount).toBeGreaterThanOrEqual(1);
   });
 
   it('TC-WIN-004: 新建连接弹窗打开后应阻止其他操作', async () => {
