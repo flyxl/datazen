@@ -63,9 +63,10 @@
 | 管理命令（创建/删除数据库·Schema·用户·授权/撤销权限） | `bugfix-admin-commands.ts` | Covered |
 | 侧栏导出 / 导入 | `export-import.ts` | Covered |
 | 顶栏导出对话框 / DataTable 导出 / 整表范围 / Schema 树 Web 菜单导出 | `export-import.ts` (EI-BE / EI-GRID / EI-001 / EI-002) | Covered |
-| ER 图 | `er-diagram.ts` | Partial |
+| ER 图 | `er-diagram.ts` (ER-001~ER-008) | Covered |
 | 图表 | `chart-views.ts`, `chart-expand.ts` | Covered |
-| AI Chat / @ 上下文 | `ai-context*.ts`, `ai-features.ts` | Covered / Partial（需 API Key 的路径见 Exception） |
+| AI Chat / @ 上下文 | `ai-context*.ts`, `ai-features.ts` | Covered（需 API Key 的路径见 Exception） |
+| AI 无 Key 降级 | `ai-no-key-fallback.ts` (TC-AI-007~009) | Covered |
 | 智能筛选未配置提示 | `table-filter.ts` (TF-AI-*) | Covered |
 
 ## 其他窗口 / 设置
@@ -87,8 +88,7 @@
 | 数据同步 Diff Workspace（Options / Swap / Compare / Summary / row-diff / preview / Execute chrome） | `data-sync-window.ts` (DSW-001~008, DSW-MAP/WS) | Covered（Execute 对 live DB 见 IPC spec；无 PG 夹具时 MAP/WS 用例 soft-skip） |
 | 数据同步 UI 执行闭环（compare→preview→execute 后回查目标行数） | `data-sync-window.ts` (DSW-EXEC-001) | Covered |
 | 数据同步 IPC（inspect / compare / generate SQL / apply / revalidate） | `data-sync-real.ts` | Covered（需 `e2e/setup-sync-dbs.sh` PG 夹具；SYNC-REAL-009 apply→recompare） |
-| 数据传输窗口（V1 向导 shell） | `data-transfer-window.ts` | Partial（打开 / 步骤 / 模式 / 未选端点校验；跨方言 Execute 未 E2E） |
-| 数据传输真实迁移闭环（preview + execute 后目标 count） | `data-transfer-window.ts` (DTW-X / DT-CL) | Covered |
+| 数据传输窗口 + PG→PG 迁移闭环 | `data-transfer-window.ts` (DTW-001~003, DTW-CL) | Covered（跨方言 Execute 见 V1 限制 / 例外） |
 | 连接 Pin 置顶 | `ops-pin.ts` | Covered |
 | 连接边界：快速新建/删除、并发 tab、生命周期 | `connection-edge-cases.ts` (TC-EDGE-009~013) | Covered |
 | 设置持久化：主题/语言/字体/确认删除开关 | `settings-persistence.ts` (TC-SET-007~010) | Covered |

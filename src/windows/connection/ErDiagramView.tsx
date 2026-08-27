@@ -259,7 +259,7 @@ function ErDiagramInner({
   }
 
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full" data-testid="er-diagram-view">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -288,6 +288,7 @@ function ErDiagramInner({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('common.search')}
+            data-testid="er-diagram-search"
             className="h-7 w-40 bg-transparent text-xs text-fg outline-none placeholder:text-fg-muted"
           />
         </Panel>
@@ -295,30 +296,34 @@ function ErDiagramInner({
           position="top-right"
           className="flex items-center gap-2 rounded-lg bg-surface/80 px-3 py-1.5 text-xs text-fg-muted backdrop-blur"
         >
-          <Button
-            variant="ghost"
-            className="h-7 gap-1 px-2 text-xs"
-            onClick={handleExportPng}
-            title={t('erDiagram.exportPng')}
-          >
-            <Download className="h-3.5 w-3.5" />
-            PNG
-          </Button>
-          <Button
-            variant="ghost"
-            className="h-7 gap-1 px-2 text-xs"
-            onClick={handleExportSvg}
-            title={t('erDiagram.exportSvg')}
-          >
-            <Download className="h-3.5 w-3.5" />
-            SVG
-          </Button>
-          <span className="text-edge">·</span>
-          <span>{t('erDiagram.tableCount').replace('{count}', String(stats.tableCount))}</span>
-          <span className="text-edge">·</span>
-          <span>
-            {t('erDiagram.relationCount').replace('{count}', String(stats.relationCount))}
-          </span>
+          <div data-testid="er-diagram-stats" className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={handleExportPng}
+              title={t('erDiagram.exportPng')}
+              data-testid="er-diagram-export-png"
+            >
+              <Download className="h-3.5 w-3.5" />
+              PNG
+            </Button>
+            <Button
+              variant="ghost"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={handleExportSvg}
+              title={t('erDiagram.exportSvg')}
+              data-testid="er-diagram-export-svg"
+            >
+              <Download className="h-3.5 w-3.5" />
+              SVG
+            </Button>
+            <span className="text-edge">·</span>
+            <span>{t('erDiagram.tableCount').replace('{count}', String(stats.tableCount))}</span>
+            <span className="text-edge">·</span>
+            <span>
+              {t('erDiagram.relationCount').replace('{count}', String(stats.relationCount))}
+            </span>
+          </div>
         </Panel>
       </ReactFlow>
     </div>
