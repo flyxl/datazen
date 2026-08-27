@@ -233,6 +233,10 @@ const zhCN = {
     '支持 DataZen（.datazenconnection）、DBX、DataGrip（dataSources.xml）、Navicat（.ncx）、DBeaver（data-sources.json）与 TablePlus（.tableplusconnection）。将 credentials-config.json 与 data-sources.json 放在同一目录时可尝试导入 DBeaver 密码。',
   'connShare.exportAction': '导出',
   'connShare.importAction': '导入',
+  'connShare.chooseImportFile': '选择文件…',
+  'connShare.selectedImportFile': '已选文件',
+  'connShare.changeImportFile': '更换文件',
+  'connShare.encryptedImportPasswordRequired': '加密连接文件需要输入密码',
   'connShare.exportSuccess': '已导出 {count} 个连接',
   'connShare.importSuccess':
     '导入 {imported} 个新连接，更新 {overwritten} 个，新增 {groupsAdded} 个分组',

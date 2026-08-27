@@ -422,6 +422,62 @@ pub async fn import_connections_preview(
     ))
 }
 
+async fn import_connections_from_path(
+    state: &AppState,
+    password: &str,
+    source: PathBuf,
+) -> Result<ImportConnectionsResult, CommandError> {
+    let bytes = tokio::fs::read(&source)
+        .await
+        .cmd_err("import_connections")?;
+
+    let parsed = parse_import_file(&source, &bytes, import_password_option(password))?;
+    let incoming = parsed.connections;
+    let incoming_groups = parsed.groups;
+    let skipped = parsed.skipped;
+    let source_format = format_label(parsed.format).to_string();
+
+    let result = apply_connection_import_impl(
+        state,
+        incoming,
+        incoming_groups,
+        skipped,
+        source_format.clone(),
+    )
+    .await?;
+
+    tracing::info!(
+        imported = result.imported,
+        overwritten = result.overwritten,
+        groups_added = result.groups_added,
+        skipped = result.skipped.len(),
+        %source_format,
+        path = %source.display(),
+        "import_connections OK"
+    );
+    Ok(result)
+}
+
+/// Open the native file picker for connection import (file only; no parse).
+#[tauri::command]
+pub async fn pick_connections_import_file(app: AppHandle) -> Result<Option<String>, CommandError> {
+    let picked = super::dialog::open_file(&app, connections_open_filters()).await?;
+    Ok(picked.map(|p| p.to_string_lossy().into_owned()))
+}
+
+/// Import connections from a path already chosen in the UI (TablePlus-style:
+/// pick file first, then decrypt/import with the password entered afterward).
+#[tauri::command]
+pub async fn import_connections_at_path(
+    state: State<'_, AppState>,
+    password: String,
+    path: String,
+) -> Result<ImportConnectionsResult, CommandError> {
+    let password = password.trim().to_string();
+    let source = PathBuf::from(path);
+    import_connections_from_path(&state, &password, source).await
+}
+
 /// Parse + decrypt + merge-import a connections file picked through the native
 /// open dialog. Returns stats if imported, `None` if cancelled.
 /// Password may be empty for DataGrip / Navicat / DBeaver / DBX plain JSON.
@@ -444,34 +500,9 @@ pub async fn import_connections_with_dialog(
         return Ok(None); // user dismissed the dialog
     };
 
-    let bytes = tokio::fs::read(&source)
-        .await
-        .cmd_err("import_connections")?;
-
-    let parsed = parse_import_file(&source, &bytes, import_password_option(&password))?;
-    let incoming = parsed.connections;
-    let incoming_groups = parsed.groups;
-    let skipped = parsed.skipped;
-    let source_format = format_label(parsed.format).to_string();
-
-    let result = apply_connection_import_impl(
-        &state,
-        incoming,
-        incoming_groups,
-        skipped,
-        source_format.clone(),
-    )
-    .await?;
-
-    tracing::info!(
-        imported = result.imported,
-        overwritten = result.overwritten,
-        groups_added = result.groups_added,
-        skipped = result.skipped.len(),
-        %source_format,
-        "import_connections OK"
-    );
-    Ok(Some(result))
+    Ok(Some(
+        import_connections_from_path(&state, &password, source).await?,
+    ))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

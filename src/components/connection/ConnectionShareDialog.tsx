@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { useI18n } from '../../hooks/useI18n';
 import { connectionCommands } from '../../commands/connection';
+import { importFileDisplayName, importFilePasswordPolicy } from '../../lib/importConnectionFile';
 
 export type ConnectionShareMode = 'export' | 'import';
 
@@ -62,7 +63,12 @@ export function ConnectionShareDialog({
   const [detecting, setDetecting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [selectedImportFile, setSelectedImportFile] = useState<string | null>(null);
   const appImport = mode === 'import' && isImportApp(importSource);
+  const fileImport = mode === 'import' && !appImport;
+  const importPasswordPolicy = selectedImportFile
+    ? importFilePasswordPolicy(selectedImportFile)
+    : null;
 
   useEffect(() => {
     if (!open) {
@@ -73,6 +79,7 @@ export function ConnectionShareDialog({
       setLocalError(null);
       setSubmitting(false);
       setDetecting(false);
+      setSelectedImportFile(null);
       return;
     }
     if (mode !== 'import' || !isImportApp(importSource)) {
@@ -160,12 +167,25 @@ export function ConnectionShareDialog({
         );
         onClose();
         onImportSuccess(result);
-      } else {
-        const result = await connectionCommands.importConnections(password);
-        onClose();
-        if (result !== null) {
-          onImportSuccess(result);
+      } else if (fileImport) {
+        if (!selectedImportFile) {
+          const picked = await connectionCommands.pickConnectionsImportFile();
+          if (!picked) return;
+          setSelectedImportFile(picked);
+          return;
         }
+
+        if (importFilePasswordPolicy(selectedImportFile) === 'required' && !password.trim()) {
+          setLocalError(t('connShare.encryptedImportPasswordRequired'));
+          return;
+        }
+
+        const result = await connectionCommands.importConnectionsAtPath(
+          password,
+          selectedImportFile,
+        );
+        onClose();
+        onImportSuccess(result);
       }
     } catch (e) {
       onError(
@@ -178,6 +198,7 @@ export function ConnectionShareDialog({
     appImport,
     confirmPassword,
     dataPath,
+    fileImport,
     importSource,
     mode,
     onClose,
@@ -186,8 +207,29 @@ export function ConnectionShareDialog({
     onImportSuccess,
     password,
     pathFound,
+    selectedImportFile,
     t,
   ]);
+
+  const handlePickImportFile = useCallback(async () => {
+    setLocalError(null);
+    setSubmitting(true);
+    try {
+      const picked = await connectionCommands.pickConnectionsImportFile();
+      if (picked) setSelectedImportFile(picked);
+    } catch (e) {
+      onError(ipcErrorMessage(e, t('common.importFailed')));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [onError, t]);
+
+  const primaryActionLabel =
+    mode === 'export'
+      ? t('connShare.exportAction')
+      : fileImport && !selectedImportFile
+        ? t('connShare.chooseImportFile')
+        : t('connShare.importAction');
 
   const title =
     mode === 'export'
@@ -211,7 +253,7 @@ export function ConnectionShareDialog({
             onClick={() => void handleSubmit()}
             disabled={submitting || detecting}
           >
-            {mode === 'export' ? t('connShare.exportAction') : t('connShare.importAction')}
+            {primaryActionLabel}
           </Button>
         </>
       }
@@ -257,24 +299,50 @@ export function ConnectionShareDialog({
           </div>
         )}
 
-        <div>
-          <label className="mb-1 block text-xs font-medium text-fg-secondary">
-            {t('connShare.password')}
-            {mode === 'import' ? (
-              <span className="ml-1 font-normal text-fg-muted">
-                ({t('connShare.passwordOptional')})
+        {fileImport && selectedImportFile && (
+          <div className="space-y-2">
+            <label className="mb-1 block text-xs font-medium text-fg-secondary">
+              {t('connShare.selectedImportFile')}
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className="min-w-0 flex-1 truncate text-sm text-fg-primary"
+                data-testid="import-selected-file"
+                title={selectedImportFile}
+              >
+                {importFileDisplayName(selectedImportFile)}
               </span>
-            ) : null}
-          </label>
-          <Input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="new-password"
-            disabled={submitting}
-            placeholder={mode === 'import' ? t('connShare.passwordImportPlaceholder') : undefined}
-          />
-        </div>
+              <Button
+                variant="secondary"
+                onClick={() => void handlePickImportFile()}
+                disabled={submitting}
+              >
+                {t('connShare.changeImportFile')}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {(mode === 'export' || appImport || (fileImport && selectedImportFile)) && (
+          <div>
+            <label className="mb-1 block text-xs font-medium text-fg-secondary">
+              {t('connShare.password')}
+              {mode === 'import' && importPasswordPolicy !== 'required' ? (
+                <span className="ml-1 font-normal text-fg-muted">
+                  ({t('connShare.passwordOptional')})
+                </span>
+              ) : null}
+            </label>
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+              disabled={submitting}
+              placeholder={mode === 'import' ? t('connShare.passwordImportPlaceholder') : undefined}
+            />
+          </div>
+        )}
 
         {mode === 'export' && (
           <div>

@@ -56,10 +56,8 @@ export const connectionCommands = {
     } | null>('import_connections_preview', { password }),
 
   /**
-   * Decision 3 merged IPC: native open dialog + decrypt/merge import.
-   * The wire-level `override_path` escape hatch is webdriver/E2E-only and is
-   * never sent from production code. Returns import stats, or null when the
-   * dialog was dismissed.
+   * Legacy merged IPC (password then file). Prefer pickConnectionsImportFile +
+   * importConnectionsAtPath for the TablePlus-style file-first flow.
    */
   importConnections: (password: string) =>
     invoke<{
@@ -69,6 +67,19 @@ export const connectionCommands = {
       skipped?: string[];
       sourceFormat?: string;
     } | null>('import_connections_with_dialog', { password }),
+
+  /** Native open dialog only; returns the picked path or null if cancelled. */
+  pickConnectionsImportFile: () => invoke<string | null>('pick_connections_import_file'),
+
+  /** Import after the file has already been chosen in the UI. */
+  importConnectionsAtPath: (password: string, path: string) =>
+    invoke<{
+      imported: number;
+      overwritten: number;
+      groupsAdded: number;
+      skipped?: string[];
+      sourceFormat?: string;
+    }>('import_connections_at_path', { password, path }),
 
   detectConnectionImportPath: (source: string) =>
     invoke<{ path: string; found: boolean }>('detect_connection_import_path', { source }),

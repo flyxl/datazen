@@ -56,6 +56,27 @@ describe('merged import/export wrappers (decision 3, f4)', () => {
     expectSingleInvoke('import_connections_with_dialog', { password: 'pw' });
   });
 
+  it('pickConnectionsImportFile opens the native file picker only', async () => {
+    invokeMock.mockResolvedValue('/tmp/share.datazenconnection');
+    await expect(connectionCommands.pickConnectionsImportFile()).resolves.toBe(
+      '/tmp/share.datazenconnection',
+    );
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledWith('pick_connections_import_file');
+  });
+
+  it('importConnectionsAtPath forwards password and path', async () => {
+    const stats = { imported: 1, overwritten: 0, groupsAdded: 0 };
+    invokeMock.mockResolvedValue(stats);
+    await expect(
+      connectionCommands.importConnectionsAtPath('pw', '/tmp/share.datazenconnection'),
+    ).resolves.toEqual(stats);
+    expectSingleInvoke('import_connections_at_path', {
+      password: 'pw',
+      path: '/tmp/share.datazenconnection',
+    });
+  });
+
   it('exportAppData passes defaultFileName to export_app_data', async () => {
     invokeMock.mockResolvedValue(true);
     await expect(backupCommands.exportAppData('datazen-backup.zip')).resolves.toBe(true);
