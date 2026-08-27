@@ -8,7 +8,7 @@ import { mkdtempSync, existsSync, writeFileSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createDriverFileStash, MANAGED_FILES } from '../driver-file-stash.mjs';
-import { runPluginStashPrecommit } from '../plugin-stash-precommit.mjs';
+import { runDriverStashPrecommit } from '../driver-stash-precommit.mjs';
 import {
   CLEAN_CONTENTS,
   INJECTED_CONTENTS,
@@ -46,7 +46,7 @@ describe('stash inject restore workflow', () => {
     writeFileSync(stash.workPath('Cargo.toml'), INJECTED_CONTENTS['Cargo.toml']);
     // other work files intentionally left clean
 
-    const result = runPluginStashPrecommit({
+    const result = runDriverStashPrecommit({
       root,
       quiet: true,
       isStaged: () => false,
