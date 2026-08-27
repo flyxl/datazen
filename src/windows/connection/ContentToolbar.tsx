@@ -153,6 +153,7 @@ export function ContentToolbar({
         label="AI"
         icon={<MessageSquare className="h-3.5 w-3.5" />}
         onClick={onToggleAiChat}
+        data-testid="conn-toolbar-ai"
       />
 
       {detailPanelApplicable && <DetailPanelToggle open={detailOpen} onToggle={onToggleDetail} />}

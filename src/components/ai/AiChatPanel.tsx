@@ -68,7 +68,7 @@ export function AiChatPanel({ dbSessionId, database, sqlDialect, onInsertSql }: 
 
   if (!isConfigured) {
     return (
-      <div className="flex h-full items-center justify-center p-4">
+      <div className="flex h-full items-center justify-center p-4" data-testid="ai-not-configured">
         <div className="text-center text-xs text-fg-muted">
           <Sparkles className="mx-auto mb-2 h-5 w-5" />
           <p className="mb-3">{t('common.aiNotConfigured')}</p>
@@ -86,7 +86,7 @@ export function AiChatPanel({ dbSessionId, database, sqlDialect, onInsertSql }: 
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col" data-testid="ai-chat-panel">
       {/* Header with tabs */}
       <div className="flex shrink-0 items-center justify-between border-b border-edge px-3 py-1.5">
         <div className="flex items-center gap-1">
