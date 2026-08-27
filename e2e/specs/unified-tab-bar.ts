@@ -1,6 +1,7 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
+  captureJourneyStep,
   connectSeededPgInWorkspace,
   openQueryTab,
   clickFirstTable,
@@ -33,6 +34,7 @@ describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
 
     const body = await $('body').getText();
     expect(body).toContain(tableName);
+    await captureJourneyStep('tab-bar-table-tab');
   });
 
   it('新建查询应创建查询 tab (UTB-003)', async () => {
@@ -42,6 +44,7 @@ describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
     const body = await $('body').getText();
     const hasQueryTab = body.includes(t('connWin.newQuery')) || body.includes('Query');
     expect(hasQueryTab).toBe(true);
+    await captureJourneyStep('tab-bar-query-tab');
   });
 
   it('关闭 tab 后 tab bar 更新 (UTB-004)', async () => {
@@ -74,6 +77,7 @@ describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
 
     const home = await $('[data-testid="connection-workspace-home"]');
     await expect(home).toBeDisplayed();
+    await captureJourneyStep('tab-bar-empty-home');
   });
 
   it('多个 tab 可以来回切换 (UTB-006)', async () => {
@@ -90,6 +94,7 @@ describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
       await browser.pause(300);
       const body1 = await $('body').getText();
       expect(body1).toContain(tableName);
+      await captureJourneyStep('tab-bar-switch');
     }
   });
 });

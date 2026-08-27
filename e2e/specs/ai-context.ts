@@ -1,9 +1,6 @@
 import { expect, browser, $ } from '@wdio/globals';
 import fs from 'node:fs';
-import {
-  openConnectionWindow,
-  closeExtraWindows,
-} from '../helpers.js';
+import { openConnectionWindow, closeExtraWindows, captureJourneyStep } from '../helpers.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
@@ -104,6 +101,7 @@ describe('AI 上下文引用 E2E 测试 (CTX-001~CTX-006)', () => {
     if (await chatToggle.isExisting()) {
       await chatToggle.click();
       await browser.pause(500);
+      await captureJourneyStep('ai-chat-open');
     }
 
     // Find an AI input area (either chat or NL2SQL)
@@ -120,6 +118,7 @@ describe('AI 上下文引用 E2E 测试 (CTX-001~CTX-006)', () => {
       // At minimum, the textarea should accept the @ character
       const val = await textarea.getValue();
       expect(val).toContain('@');
+      await captureJourneyStep('ai-context-at-picker');
     }
 
     await closeExtraWindows(mainWindow);
