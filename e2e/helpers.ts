@@ -707,9 +707,24 @@ export function isSchemaSectionLabel(text: string): boolean {
   return SCHEMA_TREE_SECTION_MARKERS.some((m) => text.startsWith(m));
 }
 
+/** Connection navigator sidebar (not the 40px workspace mode rail). */
+export async function connectionNavigatorAside() {
+  const byTestId = await $('[data-testid="connection-navigator-aside"]');
+  if (await byTestId.isExisting()) {
+    return byTestId;
+  }
+  const asides = await $$('aside');
+  for (const aside of asides) {
+    const { width } = await aside.getSize();
+    if (width > 100) return aside;
+  }
+  throw new Error('connection navigator aside not found');
+}
+
 /** Wait until the connection window sidebar shows table/key sections. */
 export async function waitForSchemaTreeLoaded(timeout = 20000) {
-  await browser.waitUntil(async () => asideHasSchemaSections(await $('aside').getText()), {
+  const aside = await connectionNavigatorAside();
+  await browser.waitUntil(async () => asideHasSchemaSections(await aside.getText()), {
     timeout,
     timeoutMsg: '等待 schema 树加载超时',
   });
@@ -719,7 +734,8 @@ export async function waitForSchemaTreeLoaded(timeout = 20000) {
 /** Click a table by exact name in the sidebar. */
 export async function clickTableInSidebar(tableName: string) {
   await waitForSchemaTreeLoaded();
-  const asideButtons = await $$('aside button');
+  const aside = await connectionNavigatorAside();
+  const asideButtons = await aside.$$('button');
   for (const btn of asideButtons) {
     const text = (await btn.getText()).trim();
     if (text === tableName) {
@@ -734,7 +750,8 @@ export async function clickTableInSidebar(tableName: string) {
 /** Click the first table/view entry in the sidebar and return its name. */
 export async function clickFirstTable() {
   await waitForSchemaTreeLoaded();
-  const asideButtons = await $$('aside button');
+  const aside = await connectionNavigatorAside();
+  const asideButtons = await aside.$$('button');
   for (const btn of asideButtons) {
     const text = (await btn.getText()).trim();
     const cls = (await btn.getAttribute('class')) || '';

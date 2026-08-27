@@ -57,9 +57,37 @@ function runEnvSetup() {
   }
 }
 
+function runEnvTeardown() {
+  if (process.env.E2E_SKIP_TEARDOWN === '1') {
+    log('Skipping DB teardown (E2E_SKIP_TEARDOWN=1)');
+    return;
+  }
+  const script = path.join(__dirname, 'teardown-e2e-env.sh');
+  if (!fs.existsSync(script)) return;
+  log('Resetting E2E databases (e2e/teardown-e2e-env.sh)...');
+  try {
+    execSync(`bash "${script}"`, { stdio: 'inherit', cwd: ROOT, env: process.env });
+  } catch {
+    log('WARNING: e2e/teardown-e2e-env.sh failed; ephemeral DB objects may remain.');
+  }
+}
+
+function resetAppDataDir(dir, keep) {
+  fs.mkdirSync(dir, { recursive: true });
+  if (keep) {
+    log(`Keeping existing isolated app data: ${dir}`);
+    return;
+  }
+  log(`Resetting isolated app data: ${dir}`);
+  for (const entry of fs.readdirSync(dir)) {
+    fs.rmSync(path.join(dir, entry), { recursive: true, force: true });
+  }
+}
+
 const args = process.argv.slice(2);
 const skipBuild = args.includes('--skip-build');
 const screenshotTrace = args.includes('--screenshot');
+const keepAppData = args.includes('--keep-app-data');
 const minimalDrivers =
   process.env.DATAZEN_DRIVERS === 'basic' || args.includes('--minimal-drivers');
 if (screenshotTrace) {
@@ -78,6 +106,7 @@ const wdioArgs = [];
       a !== '--minimal-drivers' &&
       a !== '--minimal-plugins' &&
       a !== '--screenshot' &&
+      a !== '--keep-app-data' &&
       a !== '--',
   );
   for (let i = 0; i < filtered.length; i++) {
@@ -204,6 +233,7 @@ assertBinaryReady(appBinary);
 // connection-wiping specs would destroy real user data. Requires a binary built
 // with DATAZEN_DATA_DIR support in Store::default_app_data_dir / Store::init.
 const isolatedDataDir = path.join(ROOT, 'e2e', '.app-data');
+resetAppDataDir(isolatedDataDir, keepAppData);
 log(`Starting app: ${appBinary}`);
 log(`App data isolation: DATAZEN_DATA_DIR=${isolatedDataDir}`);
 let sawAssetMissing = false;
@@ -300,7 +330,8 @@ const exitCode = await new Promise((resolve) => {
   wdio.on('close', (code) => resolve(code ?? 1));
 });
 
-// Step 4: Cleanup
+// Step 4: Cleanup (IPC teardown runs in wdio onComplete while app is still alive)
 cleanup();
+runEnvTeardown();
 log(exitCode === 0 ? 'All tests passed!' : `Tests failed (exit code ${exitCode})`);
 process.exit(exitCode);

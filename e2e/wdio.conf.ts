@@ -4,6 +4,7 @@ import {
   isScreenshotTraceEnabled,
   saveJourneyScreenshot,
 } from './lib/screenshotTrace.js';
+import { cleanupAppDataViaIpc, seedDefaultPgConnection } from './lib/testDataLifecycle.js';
 
 export const config: WebdriverIO.Config = {
   runner: 'local',
@@ -140,47 +141,7 @@ export const config: WebdriverIO.Config = {
         .catch((e: unknown) => done(String(e)));
     });
 
-    // Ensure a PostgreSQL connection with env credentials exists (upsert)
-    {
-      const pgHost = process.env.E2E_PG_HOST || process.env.PG_HOST || '127.0.0.1';
-      const pgPort = Number(process.env.E2E_PG_PORT || process.env.PG_PORT) || 5432;
-      const pgUser = process.env.E2E_PG_USER || process.env.PG_USER || 'postgres';
-      const pgPassword = process.env.E2E_PG_PASSWORD || process.env.PG_PASSWORD || '';
-      const pgDatabase = process.env.E2E_PG_DB || process.env.PG_DATABASE || 'postgres';
-      await browser.executeAsync(
-        (
-          host: string,
-          port: number,
-          user: string,
-          pw: string,
-          db: string,
-          done: (r: unknown) => void,
-        ) => {
-          const config = {
-            id: 'conn_e2e_pg',
-            name: '本地 PostgreSQL',
-            databaseType: 'postgresql',
-            host,
-            port,
-            username: user,
-            password: pw,
-            database: db,
-            group: 'E2E 测试',
-            colorTag: 'blue',
-            sslMode: 'disable',
-          };
-          (window as any).__TAURI_INTERNALS__
-            .invoke('save_connection', { config })
-            .then(() => done(null))
-            .catch((e: unknown) => done(String(e)));
-        },
-        pgHost,
-        pgPort,
-        pgUser,
-        pgPassword,
-        pgDatabase,
-      );
-    }
+    await seedDefaultPgConnection(browser);
 
     // Reload page so the new language and seeded connections take effect
     await browser.execute(() => location.reload());
@@ -229,6 +190,13 @@ export const config: WebdriverIO.Config = {
       await saveJourneyScreenshot(browser, 'fail', 300, true);
     } catch (err) {
       console.warn('[e2e-screenshot]', err);
+    }
+  },
+  onComplete: async function () {
+    try {
+      await cleanupAppDataViaIpc(browser);
+    } catch (err) {
+      console.warn('[e2e-teardown]', err);
     }
   },
 };
