@@ -9,7 +9,7 @@
  * and are not deinjected — they stay as the last resolve-drivers output.
  */
 
-export const PLUGIN_ACL_IDS = ['kiwi', 'olap', 'superset', 'redis'];
+export const DRIVER_ACL_IDS = ['kiwi', 'olap', 'superset', 'redis'];
 
 export const FULLY_GENERATED_MANAGED = [
   'src-tauri/src/driver_init.rs',

@@ -26,7 +26,7 @@ for arg in "$@"; do [[ "$arg" == "--skip-build" ]] && SKIP_BUILD=1; done
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
   echo "[1/3] Building app with webdriver feature..."
   node scripts/generate-menu-labels.mjs
-  node scripts/with-plugin-inject.mjs -- node scripts/e2e-tauri-build.mjs
+  node scripts/with-driver-inject.mjs -- node scripts/e2e-tauri-build.mjs
 else
   echo "[1/3] Skipping build (--skip-build)"
 fi

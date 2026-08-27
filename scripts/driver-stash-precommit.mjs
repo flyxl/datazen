@@ -2,7 +2,7 @@
 /**
  * driver-stash-precommit.mjs
  *
- * Shared pre-commit logic for restoring plugin-injected managed files.
+ * Shared pre-commit logic for restoring driver-injected managed files.
  * Invoked by `.husky/pre-commit`. Safe to unit-test with an injectable root.
  *
  * Strategy:
@@ -25,9 +25,9 @@ import {
   MANAGED_FILES,
   ROOT,
 } from './driver-file-stash.mjs';
-import { PLUGIN_ACL_IDS } from './driver-deinject.mjs';
+import { DRIVER_ACL_IDS } from './driver-deinject.mjs';
 
-export { PLUGIN_ACL_IDS };
+export { DRIVER_ACL_IDS };
 
 export function hasInjectedCargoContent(content) {
   if (!content) return false;
@@ -73,9 +73,9 @@ export function hasInjectedGeneratedLocales(content) {
   return !/=\s*never\b/.test(typeLine);
 }
 
-export function hasInjectedCapabilities(content, pluginIds = PLUGIN_ACL_IDS) {
+export function hasInjectedCapabilities(content, driverIds = DRIVER_ACL_IDS) {
   if (!content) return false;
-  const re = new RegExp(`"(${pluginIds.map(escapeRegex).join('|')}):`);
+  const re = new RegExp(`"(${driverIds.map(escapeRegex).join('|')}):`);
   return re.test(content);
 }
 
@@ -86,15 +86,15 @@ function escapeRegex(s) {
 /**
  * @param {string} relPath
  * @param {string} content
- * @param {string[]} [pluginIds]
+ * @param {string[]} [driverIds]
  */
-export function fileHasInjection(relPath, content, pluginIds = PLUGIN_ACL_IDS) {
+export function fileHasInjection(relPath, content, driverIds = DRIVER_ACL_IDS) {
   if (relPath.endsWith('Cargo.toml')) return hasInjectedCargoContent(content);
   if (relPath.endsWith('driver_init.rs')) return hasInjectedDriverInit(content);
   if (relPath.endsWith('generated-locales.ts')) return hasInjectedGeneratedLocales(content);
   if (relPath.endsWith('generated.ts')) return hasInjectedGeneratedTs(content);
   if (relPath.endsWith('capabilities/default.json')) {
-    return hasInjectedCapabilities(content, pluginIds);
+    return hasInjectedCapabilities(content, driverIds);
   }
   return false;
 }
@@ -177,7 +177,7 @@ export function runDriverStashPrecommit(opts = {}) {
   }
 
   log(
-    `[pre-commit] Deinjecting ${injectedFiles.length} managed file(s) (keep user edits, strip plugin injection)...`,
+    `[pre-commit] Deinjecting ${injectedFiles.length} managed file(s) (keep user edits, strip driver injection)...`,
   );
 
   try {
@@ -208,7 +208,7 @@ export function runDriverStashPrecommit(opts = {}) {
   }
 
   log(
-    '[pre-commit] Restored injected files: user edits kept, plugin injection removed.',
+    '[pre-commit] Restored injected files: user edits kept, driver injection removed.',
   );
   return { status: 0, restored: true };
 }

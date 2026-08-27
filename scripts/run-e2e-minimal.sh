@@ -19,7 +19,7 @@
 #   注：e2e/run.mjs 自身也会加载 e2e/.env（不覆盖已有变量），与本脚本互补。
 #
 # 构建链（文档认可形式，见 docs/development/e2e-testing.md 与 e2e/run.mjs）：
-#   node scripts/with-plugin-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs
+#   node scripts/with-driver-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs
 #   → tauri build --debug -f webdriver,driver-postgres,... （自带 webdriver feature 与
 #   `.driver-features.json` 检查；beforeBuildCommand 负责生成 dist 并嵌入资产）。
 #   禁止裸 `cargo build -p datazen --features webdriver`（会报 asset not found 或
@@ -291,7 +291,7 @@ build_webdriver_app() {
   local start_epoch
   start_epoch="$(date +%s)"
   local rc=0
-  "${BUILD_ENV_PREFIX[@]}" node scripts/with-plugin-inject.mjs --drivers=basic \
+  "${BUILD_ENV_PREFIX[@]}" node scripts/with-driver-inject.mjs --drivers=basic \
     -- node scripts/e2e-tauri-build.mjs >"$out_log" 2>&1 || rc=$?
 
   if ((rc == 0)); then

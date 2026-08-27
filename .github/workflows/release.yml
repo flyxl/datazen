@@ -235,7 +235,7 @@ jobs:
           if [ "${UPDATER_BUILD}" = "1" ]; then
             UPDATER_FLAG="--updater"
           fi
-          node scripts/with-plugin-inject.mjs --drivers="${{ matrix.drivers }}" -- node scripts/ci-tauri-build.mjs --target=${{ matrix.target }} ${UPDATER_FLAG}
+          node scripts/with-driver-inject.mjs --drivers="${{ matrix.drivers }}" -- node scripts/ci-tauri-build.mjs --target=${{ matrix.target }} ${UPDATER_FLAG}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DATAZEN_DRIVERS: ${{ matrix.drivers }}

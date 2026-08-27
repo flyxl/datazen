@@ -2,13 +2,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   INJECT_ACTIVE_ENV,
-  planPluginInjectLifecycle,
-  runWithPluginInject,
-} from '../with-plugin-inject.mjs';
+  planDriverInjectLifecycle,
+  runWithDriverInject,
+} from '../with-driver-inject.mjs';
 
-describe('runWithPluginInject rejected flags', () => {
+describe('runWithDriverInject rejected flags', () => {
   it('returns status 1 for --plugins', () => {
-    const result = runWithPluginInject({
+    const result = runWithDriverInject({
       argv: ['--plugins=kiwi', '--', 'true'],
       stashExistsFn: () => false,
       env: {},
@@ -22,7 +22,7 @@ describe('runWithPluginInject rejected flags', () => {
   });
 
   it('returns status 1 for DATAZEN_PLUGINS', () => {
-    const result = runWithPluginInject({
+    const result = runWithDriverInject({
       argv: ['--', 'true'],
       stashExistsFn: () => false,
       env: { DATAZEN_PLUGINS: 'kiwi' },
@@ -35,9 +35,9 @@ describe('runWithPluginInject rejected flags', () => {
   });
 });
 
-describe('planPluginInjectLifecycle', () => {
+describe('planDriverInjectLifecycle', () => {
   it('owns stash when none exists', () => {
-    expect(planPluginInjectLifecycle({ exists: () => false, env: {} })).toEqual({
+    expect(planDriverInjectLifecycle({ exists: () => false, env: {} })).toEqual({
       ownStash: true,
       nested: false,
       orphanStash: false,
@@ -45,7 +45,7 @@ describe('planPluginInjectLifecycle', () => {
   });
 
   it('treats leftover stash without env as orphan (take ownership)', () => {
-    expect(planPluginInjectLifecycle({ exists: () => true, env: {} })).toEqual({
+    expect(planDriverInjectLifecycle({ exists: () => true, env: {} })).toEqual({
       ownStash: true,
       nested: false,
       orphanStash: true,
@@ -54,7 +54,7 @@ describe('planPluginInjectLifecycle', () => {
 
   it('is nested only when inject-active env is set', () => {
     expect(
-      planPluginInjectLifecycle({
+      planDriverInjectLifecycle({
         exists: () => true,
         env: { [INJECT_ACTIVE_ENV]: '1' },
       }),
@@ -68,7 +68,7 @@ describe('planPluginInjectLifecycle', () => {
   it('accepts legacy function form for exists', () => {
     vi.stubEnv(INJECT_ACTIVE_ENV, '');
     try {
-      expect(planPluginInjectLifecycle(() => false)).toEqual({
+      expect(planDriverInjectLifecycle(() => false)).toEqual({
         ownStash: true,
         nested: false,
         orphanStash: false,
@@ -79,10 +79,10 @@ describe('planPluginInjectLifecycle', () => {
   });
 });
 
-describe('runWithPluginInject nested ownership', () => {
+describe('runWithDriverInject nested ownership', () => {
   it('outer: resolves, runs command, restores', () => {
     const calls: string[] = [];
-    const result = runWithPluginInject({
+    const result = runWithDriverInject({
       argv: ['--drivers=basic', '--', 'echo', 'ok'],
       stashExistsFn: () => false,
       env: {},
@@ -112,7 +112,7 @@ describe('runWithPluginInject nested ownership', () => {
   it('orphan stash: restore then resolve/command/restore', () => {
     const calls: string[] = [];
     const logs: string[] = [];
-    const result = runWithPluginInject({
+    const result = runWithDriverInject({
       argv: ['--', 'echo', 'ok'],
       stashExistsFn: () => true,
       env: {},
@@ -139,7 +139,7 @@ describe('runWithPluginInject nested ownership', () => {
   it('nested via env: skips resolve and restore', () => {
     const calls: string[] = [];
     const logs: string[] = [];
-    const result = runWithPluginInject({
+    const result = runWithDriverInject({
       argv: ['--', 'tsc'],
       stashExistsFn: () => true,
       env: { [INJECT_ACTIVE_ENV]: '1' },
@@ -168,7 +168,7 @@ describe('runWithPluginInject nested ownership', () => {
 
   it('ownStash with no command still resolves and restores', () => {
     const calls: string[] = [];
-    const result = runWithPluginInject({
+    const result = runWithDriverInject({
       argv: ['--drivers=basic'],
       stashExistsFn: () => false,
       env: {},
@@ -186,7 +186,7 @@ describe('runWithPluginInject nested ownership', () => {
   });
 
   it('maps null command status to 1', () => {
-    const result = runWithPluginInject({
+    const result = runWithDriverInject({
       argv: ['--', 'false'],
       stashExistsFn: () => false,
       env: {},
@@ -200,7 +200,7 @@ describe('runWithPluginInject nested ownership', () => {
 
   it('nested with no command still does not restore', () => {
     const calls: string[] = [];
-    const result = runWithPluginInject({
+    const result = runWithDriverInject({
       argv: ['--drivers=kiwi'],
       stashExistsFn: () => true,
       env: { [INJECT_ACTIVE_ENV]: '1' },

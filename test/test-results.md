@@ -484,7 +484,7 @@
 | **测试人员** | AI Test Agent |
 | **计划文档** | `docs/test-plan-recent-update.md` |
 | **版本基准** | `origin/main` @ `a4d8ce3` |
-| **构建** | `pnpm build` + `with-plugin-inject --drivers=basic` + `e2e-tauri-build`（webdriver） |
+| **构建** | `pnpm build` + `with-driver-inject --drivers=basic` + `e2e-tauri-build`（webdriver） |
 | **测试工具** | Vitest / Cargo / WebdriverIO；手工 computer-use（锁屏阻塞） |
 | **可视化报告** | Cursor Canvas `recent-update-test-report.canvas.tsx` |
 

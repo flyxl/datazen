@@ -63,8 +63,8 @@ const minimalDrivers =
   process.env.DATAZEN_DRIVERS === 'basic' || args.includes('--minimal-drivers');
 /** Inject drivers then build with webdriver + plugin Cargo features (see scripts/e2e-tauri-build.mjs). */
 const BUILD_CMD = minimalDrivers
-  ? 'node scripts/generate-menu-labels.mjs && node scripts/with-plugin-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs'
-  : 'node scripts/generate-menu-labels.mjs && node scripts/with-plugin-inject.mjs -- node scripts/e2e-tauri-build.mjs';
+  ? 'node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs'
+  : 'node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs -- node scripts/e2e-tauri-build.mjs';
 const wdioArgs = [];
 {
   const filtered = args.filter(

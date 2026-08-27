@@ -1,0 +1,15 @@
+{
+  "plugins": [
+    "postgres",
+    "mysql",
+    "sqlite",
+    "redis"
+  ],
+  "features": [
+    "plugin-postgres",
+    "plugin-mysql",
+    "plugin-sqlite",
+    "plugin-redis"
+  ],
+  "cargoArgs": "--features \"plugin-postgres,plugin-mysql,plugin-sqlite,plugin-redis\""
+}

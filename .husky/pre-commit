@@ -17,6 +17,6 @@ if [ -n "$FRONTEND_FILES" ]; then
   git add -- $FRONTEND_FILES
 fi
 
-# Restore plugin-injected tracked files (Cargo.toml / capabilities).
+# Restore driver-injected tracked files (Cargo.toml / capabilities).
 # Implementation lives in scripts/driver-stash-precommit.mjs for testability.
 node scripts/driver-stash-precommit.mjs

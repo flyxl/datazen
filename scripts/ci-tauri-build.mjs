@@ -2,7 +2,7 @@
 /**
  * ci-tauri-build.mjs — run the Tauri CLI using .driver-features.json.
  *
- * Used by CI inside with-plugin-inject so we never nest `bash -c` through
+ * Used by CI inside with-driver-inject so we never nest `bash -c` through
  * Node spawn (that loses the -c script argument on Windows).
  *
  * Invokes `node node_modules/@tauri-apps/cli/tauri.js` directly. Going through
