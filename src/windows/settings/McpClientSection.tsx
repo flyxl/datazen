@@ -62,6 +62,12 @@ export function McpClientSection() {
   const [argsText, setArgsText] = useState('');
   const [envRows, setEnvRows] = useState<EnvRow[]>([]);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const trimmedDraftId = draft.id.trim();
+  const idInvalid = trimmedDraftId.length > 0 && !isValidMcpServerId(trimmedDraftId);
+  const idDuplicate =
+    !editingId && trimmedDraftId.length > 0 && savedConfigs.some((c) => c.id === trimmedDraftId);
 
   const connectedIds = new Set(mcpServers.map((s) => s.serverId));
 
@@ -87,6 +93,7 @@ export function McpClientSection() {
     setDraft(EMPTY_DRAFT);
     setArgsText('');
     setEnvRows([]);
+    setSaveError(null);
     setShowForm(true);
   };
 
@@ -95,13 +102,21 @@ export function McpClientSection() {
     setDraft({ ...config });
     setArgsText((config.args ?? []).join('\n'));
     setEnvRows(envToRows(config.env));
+    setSaveError(null);
     setShowForm(true);
   };
 
   const handleSave = async () => {
     if (!draft.id.trim() || !draft.command?.trim()) return;
     const trimmedId = draft.id.trim();
-    if (!isValidMcpServerId(trimmedId)) return;
+    if (!isValidMcpServerId(trimmedId)) {
+      setSaveError(t('mcpClient.invalidId'));
+      return;
+    }
+    if (!editingId && savedConfigs.some((c) => c.id === trimmedId)) {
+      setSaveError(t('mcpClient.duplicateId'));
+      return;
+    }
     const config: McpServerConfig = {
       ...draft,
       id: trimmedId,
@@ -112,9 +127,9 @@ export function McpClientSection() {
         .filter(Boolean),
       env: rowsToEnv(envRows),
     };
-    if (!editingId && savedConfigs.some((c) => c.id === config.id)) return;
 
     setSaving(true);
+    setSaveError(null);
     try {
       const next = editingId
         ? savedConfigs.map((c) => (c.id === editingId ? config : c))
@@ -252,14 +267,20 @@ export function McpClientSection() {
       {showForm ? (
         <div className="space-y-3 rounded-md border border-edge bg-surface-alt p-3">
           <SettingRow label="ID">
-            <input
-              type="text"
-              value={draft.id}
-              onChange={(e) => setDraft((d) => ({ ...d, id: e.target.value }))}
-              placeholder="my-mcp-server"
-              disabled={Boolean(editingId)}
-              className={inputClass}
-            />
+            <div className="space-y-1">
+              <input
+                type="text"
+                value={draft.id}
+                onChange={(e) => {
+                  setDraft((d) => ({ ...d, id: e.target.value }));
+                  setSaveError(null);
+                }}
+                placeholder="my-mcp-server"
+                disabled={Boolean(editingId)}
+                className={inputClass}
+              />
+              {idInvalid && <p className="text-xs text-red-500">{t('mcpClient.invalidId')}</p>}
+            </div>
           </SettingRow>
           <SettingRow label={t('mcpClient.serverName')}>
             <input
@@ -343,10 +364,20 @@ export function McpClientSection() {
             checked={draft.enabled}
             onChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
           />
+          <ToggleRow
+            label={t('mcpClient.enabledForAi')}
+            checked={draft.enabledForAi ?? true}
+            onChange={(enabledForAi) => setDraft((d) => ({ ...d, enabledForAi }))}
+          />
+          {(saveError || idDuplicate) && (
+            <p className="text-xs text-red-500">{saveError ?? t('mcpClient.duplicateId')}</p>
+          )}
           <div className="flex gap-2">
             <Button
               variant="primary"
-              disabled={saving || !draft.id.trim() || !draft.command?.trim()}
+              disabled={
+                saving || !draft.id.trim() || !draft.command?.trim() || idInvalid || idDuplicate
+              }
               onClick={() => void handleSave()}
             >
               {saving ? t('mcpClient.saving') : t('mcpClient.save')}

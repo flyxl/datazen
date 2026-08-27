@@ -7,6 +7,11 @@ import type { AiChatMessage } from '../types';
 import { initialNl2Sql, type AiStore } from './ai/types';
 import { useSettingsStore } from './settingsStore';
 
+function findMcpToolName(toolCalls?: { name: string }[]): string | null {
+  const mcpCall = toolCalls?.find((tc) => tc.name.startsWith('mcp/'));
+  return mcpCall?.name ?? null;
+}
+
 export type { AiStore } from './ai/types';
 export { initialNl2Sql } from './ai/types';
 
@@ -261,6 +266,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         isStreaming: false,
         streamContent: '',
         streamReasoning: '',
+        streamMcpToolName: null,
         requestId: null,
       },
     });
@@ -307,6 +313,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         isStreaming: true,
         streamContent: '',
         streamReasoning: '',
+        streamMcpToolName: null,
         requestId,
       },
     });
@@ -330,6 +337,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
             isStreaming: false,
             streamContent: '',
             streamReasoning: '',
+            streamMcpToolName: null,
             requestId: null,
             messages: [
               ...session.messages,
@@ -353,6 +361,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
           messages: [],
           isStreaming: false,
           streamContent: '',
+          streamMcpToolName: null,
           requestId: null,
         },
       });
@@ -371,6 +380,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         isStreaming: false,
         streamContent: '',
         streamReasoning: '',
+        streamMcpToolName: null,
         requestId: null,
       },
     });
@@ -409,6 +419,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         isStreaming: true,
         streamContent: '',
         streamReasoning: '',
+        streamMcpToolName: null,
         requestId,
       },
     });
@@ -433,6 +444,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
             isStreaming: false,
             streamContent: '',
             streamReasoning: '',
+            streamMcpToolName: null,
             requestId: null,
             messages: [
               ...session.messages,
@@ -456,6 +468,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
           messages: [],
           isStreaming: false,
           streamContent: '',
+          streamMcpToolName: null,
           requestId: null,
         },
       });
@@ -492,6 +505,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
       const session = (targetSession === 'chatSession' ? chatSession : workflowChat)!;
       const newContent = (session.streamContent || '') + (payload.content || '');
       const newReasoning = (session.streamReasoning || '') + (payload.reasoning || '');
+      const mcpToolName = findMcpToolName(payload.toolCalls) ?? session.streamMcpToolName ?? null;
       if (payload.done) {
         const { cleanContent, questions: xmlQuestions } = extractQuestions(newContent);
         const toolCalls =
@@ -517,6 +531,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
             isStreaming: false,
             streamContent: '',
             streamReasoning: '',
+            streamMcpToolName: null,
             requestId: null,
           },
         });
@@ -526,6 +541,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
             ...session,
             streamContent: newContent,
             streamReasoning: newReasoning,
+            streamMcpToolName: mcpToolName,
           },
         });
       }
@@ -558,6 +574,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
             ...session,
             isStreaming: false,
             streamContent: '',
+            streamMcpToolName: null,
             requestId: null,
             messages: [
               ...session.messages,

@@ -1170,6 +1170,25 @@ async fn run_streaming_tool_loop(
             tool_call_id: None,
         });
 
+        let mcp_tool_calls: Vec<ToolCall> = classified
+            .iter()
+            .filter(|(_, kind)| matches!(kind, ToolKind::Mcp { .. }))
+            .map(|(tc, _)| tc.clone())
+            .collect();
+        if !mcp_tool_calls.is_empty() {
+            on_chunk(
+                request_id,
+                Ok(StreamChunk {
+                    content: String::new(),
+                    reasoning: None,
+                    done: false,
+                    usage: None,
+                    tool_calls: Some(mcp_tool_calls),
+                    response_id: None,
+                }),
+            );
+        }
+
         for (tc, kind) in &classified {
             let tool_result = match kind {
                 ToolKind::AskQuestions => continue,
