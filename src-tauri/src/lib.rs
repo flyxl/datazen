@@ -1094,6 +1094,36 @@ mod tests {
     }
 
     #[test]
+    fn menu_labels_localize_tools_submenu_across_locales() {
+        // Every Tools-submenu item id passed to MenuItemBuilder::new(t(...))
+        // must resolve to a real, non-empty label in every supported locale.
+        // A missing key would otherwise fall back to the raw id (e.g. the
+        // "data-transfer" bug), which is never the intended label.
+        let tools_keys = [
+            "schema-diff",
+            "data-sync",
+            "data-transfer",
+            "workflow",
+            "dashboard",
+            "backup",
+            "restore",
+            "view-logs",
+        ];
+        for lang in ["en", "zh-CN"] {
+            let labels = menu_labels(lang);
+            for key in tools_keys {
+                let value = labels
+                    .get(key)
+                    .unwrap_or_else(|| panic!("menu-labels.json[{lang}] is missing key {key:?}"));
+                assert!(
+                    !value.is_empty(),
+                    "menu-labels.json[{lang}][{key:?}] is empty"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn menu_labels_unknown_falls_back_to_en() {
         let fallback = menu_labels("xx-not-a-locale");
         let en = menu_labels("en");

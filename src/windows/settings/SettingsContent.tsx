@@ -10,7 +10,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { settingsCommands } from '../../commands/settings';
 import type { AppSettings } from '../../types';
-import { getExtensionLocales } from '../../locales';
+import { BUILTIN_LOCALES, BUILTIN_LOCALE_LABELS, getExtensionLocales } from '../../locales';
 import { UpdateSection } from './UpdateSection';
 import { PluginSettingsSection } from './PluginSettingsSection';
 import { AiSettingsSection } from './AiSettingsSection';
@@ -32,19 +32,6 @@ const LOG_LEVEL_OPTIONS: { value: AppSettings['logLevel']; label: string }[] = [
   { value: 'info', label: 'Info' },
   { value: 'warn', label: 'Warn' },
   { value: 'error', label: 'Error' },
-];
-
-const BUILTIN_LANGUAGE_OPTIONS = [
-  { value: 'zh-CN', label: '简体中文' },
-  { value: 'zh-TW', label: '繁體中文' },
-  { value: 'en', label: 'English' },
-  { value: 'es', label: 'Español' },
-  { value: 'fr', label: 'Français' },
-  { value: 'de', label: 'Deutsch' },
-  { value: 'ja', label: '日本語' },
-  { value: 'pt-BR', label: 'Português (Brasil)' },
-  { value: 'ru', label: 'Русский' },
-  { value: 'ko', label: '한국어' },
 ];
 
 export interface SettingsContentProps {
@@ -75,7 +62,13 @@ export function SettingsContent({
   const settingsHydrated = useRef(false);
 
   const languageOptions = useMemo(
-    () => [...BUILTIN_LANGUAGE_OPTIONS, ...getExtensionLocales()],
+    () => [
+      ...BUILTIN_LOCALES.map((code) => ({
+        value: code,
+        label: BUILTIN_LOCALE_LABELS[code],
+      })),
+      ...getExtensionLocales(),
+    ],
     [],
   );
 

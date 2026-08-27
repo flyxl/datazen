@@ -28,22 +28,43 @@ const CRITICAL_KEYS: TranslationKey[] = [
 ];
 
 describe('locales', () => {
-  it('registers 2 built-in locales (en, zh-CN)', () => {
-    expect(BUILTIN_LOCALES).toHaveLength(2);
-    expect([...BUILTIN_LOCALES].sort()).toEqual(['en', 'zh-CN'].sort());
+  it('always exposes en as a built-in locale (fallback invariant)', () => {
+    // en is the unconditional fallback dictionary; no generated/build issue
+    // should ever drop it from BUILTIN_LOCALES.
+    expect([...BUILTIN_LOCALES]).toContain('en');
+    expect(BUILTIN_LOCALES.length).toBeGreaterThan(0);
   });
 
   it('loads every built-in locale with non-empty host dictionaries', () => {
     for (const locale of BUILTIN_LOCALES) {
       const dict = getHostTranslations(locale);
-      expect(Object.keys(dict).length).toBeGreaterThan(0);
+      expect(Object.keys(dict).length, `${locale} empty dict`).toBeGreaterThan(0);
     }
   });
 
-  it('keeps host key parity between en and zh-CN', () => {
+  // The always-on shipping base. Optional built-in locales (added via
+  // `pnpm locales:add`) may ship partially translated — their missing keys
+  // fall back to en — so they are not forced into full parity here.
+  const BASE_BUILTIN = ['en', 'zh-CN'];
+
+  it('keeps host key parity between en and zh-CN (base shipping pair)', () => {
     const enKeys = Object.keys(getHostTranslations('en')).sort();
-    const zhKeys = Object.keys(getHostTranslations('zh-CN')).sort();
-    expect(zhKeys).toEqual(enKeys);
+    for (const locale of BASE_BUILTIN) {
+      const keys = Object.keys(getHostTranslations(locale)).sort();
+      expect(keys, `${locale} key parity`).toEqual(enKeys);
+    }
+  });
+
+  it('every built-in locale resolves every UI key without leaking a raw key', () => {
+    const enKeys = Object.keys(getHostTranslations('en')) as TranslationKey[];
+    for (const locale of BUILTIN_LOCALES) {
+      for (const key of enKeys) {
+        const text = getTranslation(locale, key);
+        // Translated, or fell back to en — never the literal raw key. (Some
+        // keys are intentionally the empty string, e.g. option separators.)
+        expect(text, `${locale}:${key}`).not.toBe(key);
+      }
+    }
   });
 
   it('falls back to en for unsupported locale codes', () => {

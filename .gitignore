@@ -64,6 +64,9 @@ src/plugins/generated.ts
 src/plugins/generated-locales.ts
 src-tauri/src/driver_init.rs
 
+# Built-in locale codegen (written by generate-builtin-locales.mjs; not committed)
+src/locales/builtinLocales.ts
+
 # Generated capabilities (merged from default_host.json + plugin capabilities by resolve-drivers.mjs)
 src-tauri/capabilities/default.json
 
