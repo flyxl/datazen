@@ -1262,6 +1262,7 @@ const en: Record<TranslationKey, string> = {
   'chat.clear': 'Clear Chat',
   'chat.stop': 'Stop generating',
   'chat.thinking': 'Thinking…',
+  'chat.callingMcpTool': 'Calling MCP tool {name}…',
   'common.aiNotConfigured': 'Please configure an AI provider in Settings first',
   'chat.welcome':
     "Hello! I'm your database assistant. Ask me about SQL queries, database concepts, or data analysis.",
@@ -1395,6 +1396,9 @@ const en: Record<TranslationKey, string> = {
   'mcpClient.edit': 'Edit',
   'mcpClient.delete': 'Delete',
   'mcpClient.enabled': 'Enabled',
+  'mcpClient.enabledForAi': 'Expose to AI Chat',
+  'mcpClient.invalidId': 'ID may only contain letters, numbers, underscores, and hyphens.',
+  'mcpClient.duplicateId': 'A server with this ID already exists.',
   'mcpClient.connect': 'Connect',
   'mcpClient.connecting': 'Connecting…',
   'mcpClient.disconnect': 'Disconnect',

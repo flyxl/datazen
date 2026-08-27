@@ -104,6 +104,11 @@ Expose database operations, schema inspection, EXPLAIN, and workflows to externa
 
 Connect external MCP servers to DataZen AI Chat and bring additional tools and context into database conversations.
 
+1. Open **Settings → External MCP Servers** and add a server (command, optional args/env).
+2. Enable **Expose to AI Chat** so the assistant can call that server's tools.
+3. Connect the server (or restart DataZen — enabled servers auto-reconnect on launch).
+4. In **AI Chat**, ask naturally; when the model needs an external capability it calls tools named `mcp/{serverId}/{toolName}` alongside built-in database tools.
+
 This makes DataZen useful not only as a GUI, but also as a database tool inside larger AI-assisted development workflows.
 
 ## Extensible database drivers
