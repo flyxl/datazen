@@ -243,18 +243,8 @@ pub async fn mcp_client_call_tool(
         .await
         .cmd_err("mcp_client_call_tool")?;
 
-    let output = result
-        .content
-        .iter()
-        .filter_map(|c| {
-            if let rmcp::model::ContentBlock::Text(t) = c {
-                Some(t.text.clone())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+    let qualified = crate::mcp::client::mcp_qualified_name(&server_id, &tool_name);
+    let output = crate::mcp::format_call_tool_result(&result, &qualified);
 
     if result.is_error == Some(true) {
         return Err(CommandError::Internal(output));

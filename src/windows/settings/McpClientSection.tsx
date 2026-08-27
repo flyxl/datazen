@@ -6,6 +6,7 @@ import { useAiStore } from '../../stores/aiStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
 import type { McpServerConfig } from '../../types';
+import { isValidMcpServerId } from '../../types';
 import { SectionTitle, SettingRow, ToggleRow } from './settingsUi';
 
 const EMPTY_DRAFT: McpServerConfig = {
@@ -16,6 +17,7 @@ const EMPTY_DRAFT: McpServerConfig = {
   args: [],
   env: {},
   enabled: true,
+  enabledForAi: true,
 };
 
 type EnvRow = { key: string; value: string };
@@ -98,9 +100,11 @@ export function McpClientSection() {
 
   const handleSave = async () => {
     if (!draft.id.trim() || !draft.command?.trim()) return;
+    const trimmedId = draft.id.trim();
+    if (!isValidMcpServerId(trimmedId)) return;
     const config: McpServerConfig = {
       ...draft,
-      id: draft.id.trim(),
+      id: trimmedId,
       name: draft.name.trim() || draft.id.trim(),
       args: argsText
         .split('\n')
@@ -168,10 +172,7 @@ export function McpClientSection() {
             const isConnected = connectedIds.has(config.id);
 
             return (
-              <div
-                key={config.id}
-                className="rounded-md border border-edge bg-surface p-2"
-              >
+              <div key={config.id} className="rounded-md border border-edge bg-surface p-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -371,10 +372,7 @@ export function McpClientSection() {
             const serverTools = (mcpTools ?? []).filter((tool) => tool.serverId === s.serverId);
             const expanded = expandedServers.has(s.serverId);
             return (
-              <div
-                key={s.serverId}
-                className="rounded-md border border-edge bg-surface p-2"
-              >
+              <div key={s.serverId} className="rounded-md border border-edge bg-surface p-2">
                 <div className="flex items-center justify-between">
                   <button
                     type="button"
@@ -392,10 +390,7 @@ export function McpClientSection() {
                       ({s.toolsCount} {t('mcpClient.tools')})
                     </span>
                   </button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => void disconnectMcpServer(s.serverId)}
-                  >
+                  <Button variant="secondary" onClick={() => void disconnectMcpServer(s.serverId)}>
                     {t('mcpClient.disconnect')}
                   </Button>
                 </div>
