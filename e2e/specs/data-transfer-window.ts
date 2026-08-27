@@ -14,6 +14,13 @@ import {
  * Full cross-dialect execute paths are not covered here — see data-transfer-guide.md V1 limits.
  */
 
+async function openTransferWindow() {
+  await browser.url('tauri://localhost/window.html?window=data-transfer');
+  await browser.pause(1500);
+  await $('[data-testid="data-transfer-window"]').waitForDisplayed({ timeout: 10000 });
+  await $('[data-testid="data-transfer-step-endpoints"]').waitForDisplayed({ timeout: 10000 });
+}
+
 describe('数据传输窗口 (DTW-001~DTW-003)', () => {
   let mainWindow: string;
 
@@ -40,6 +47,7 @@ describe('数据传输窗口 (DTW-001~DTW-003)', () => {
   });
 
   it('DTW-002: 应显示向导步骤与模式选项', async () => {
+    await openTransferWindow();
     await expect(await $('[data-testid="data-transfer-step-endpoints"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-transfer-mode-structure"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-transfer-mode-data"]')).toBeDisplayed();
@@ -47,6 +55,7 @@ describe('数据传输窗口 (DTW-001~DTW-003)', () => {
   });
 
   it('DTW-003: 未选两端点 Next 应提示错误', async () => {
+    await openTransferWindow();
     const next = await $('[data-testid="data-transfer-next"]');
     await next.waitForDisplayed({ timeout: 8000 });
     await next.click();
@@ -151,35 +160,40 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     await closeExtraWindows(mainWindow);
   });
 
-  async function clickNext(): Promise<void> {
+  async function selectTransferEndpoints(): Promise<void> {
+    await selectDzOption(t('transfer.pickConnection'), SRC_NAME);
+    await selectDzOption(t('transfer.pickConnection'), TGT_NAME);
+    await browser.pause(1500);
+  }
+
+  async function clickNext(label = 'transfer-wizard-next'): Promise<void> {
     const next = await $('[data-testid="data-transfer-next"]');
     await next.waitForClickable({ timeout: 8000 });
     await next.click();
     await browser.pause(1200);
-    await captureJourneyStep('transfer-wizard-next');
+    await captureJourneyStep(label);
   }
 
   it('DT-CL-001: 选择两端点并进入下一步', async () => {
-    await browser.url('tauri://localhost/window.html?window=data-transfer');
-    await browser.pause(1500);
-    await expect(await $('[data-testid="data-transfer-window"]')).toBeDisplayed();
-
-    await selectDzOption(t('transfer.pickConnection'), SRC_NAME);
-    await selectDzOption(t('transfer.pickConnection'), TGT_NAME);
-    await browser.pause(1500);
+    await openTransferWindow();
+    await selectTransferEndpoints();
 
     await expect(await $('[data-testid="data-transfer-source-database"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-transfer-target-database"]')).toBeDisplayed();
     // 支持组合提示应出现（同族 direct）
-    await clickNext();
+    await clickNext('transfer-step-endpoints');
   });
 
   it('DTW-X-002: 选择 data 模式并推进到对象/数据迁移', async () => {
+    await openTransferWindow();
+    await selectTransferEndpoints();
+    await clickNext('transfer-step-endpoints'); // endpoints → mode
+
     // 默认 mode = data，直接 Next 经过 mode
-    await clickNext(); // mode → objects
+    await clickNext('transfer-step-mode'); // mode → objects
     // Objects 步：Next 触发 inspect
     await browser.pause(2000);
-    await clickNext(); // 触发 inspect → mapping
+    await clickNext('transfer-step-objects'); // 触发 inspect → mapping
 
     // 断言某一步到达 preview 后看到源表/DLL 或行计划
     await browser.pause(1500);
@@ -188,6 +202,9 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
   });
 
   it('DTW-X-003: 预览存在后可执行并断言落库行数=3', async () => {
+    await openTransferWindow();
+    await selectTransferEndpoints();
+
     // 兜底：若尚未到 options/preview，持续推进
     for (let i = 0; i < 8; i++) {
       const stepExecute = await $('[data-testid="data-transfer-execute"]');
@@ -201,12 +218,12 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     const execute = await $('[data-testid="data-transfer-execute"]');
     await execute.waitForClickable({ timeout: 15000 });
     await execute.click();
+    await captureJourneyStep('transfer-executed');
     await browser.pause(1500);
 
     // 断言结果面板出现
     const result = await $('[data-testid="data-transfer-result"]');
     await result.waitForDisplayed({ timeout: 15000 });
-    await captureJourneyStep('transfer-executed');
 
     // 落库断言：目标库该表应有 3 行
     const tgtConn = (await invokeBackend<string>('connect', { connectionId: TGT_ID })) ?? '';

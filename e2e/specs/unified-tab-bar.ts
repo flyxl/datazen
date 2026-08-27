@@ -87,8 +87,29 @@ describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
 
     await openQueryTab();
     await browser.pause(500);
+
+    const tabs = await $$('[data-testid="panel-tab"]');
+    for (const tab of tabs) {
+      const text = await tab.getText();
+      if (text.includes(tableName)) {
+        await (await tab.$('button')).click();
+        await browser.pause(500);
+        break;
+      }
+    }
+    expect(await $('body').getText()).toContain(tableName);
+    await captureJourneyStep('tab-bar-switch-to-table');
+
+    for (const tab of tabs) {
+      const text = await tab.getText();
+      if (/Query|查询/i.test(text)) {
+        await (await tab.$('button')).click();
+        await browser.pause(500);
+        break;
+      }
+    }
     const bodyQuery = await $('body').getText();
     expect(bodyQuery.includes(t('connWin.newQuery')) || bodyQuery.includes('Query')).toBe(true);
-    await captureJourneyStep('tab-bar-switch');
+    await captureJourneyStep('tab-bar-switch-to-query');
   });
 });

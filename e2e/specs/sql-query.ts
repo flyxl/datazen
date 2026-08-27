@@ -64,11 +64,11 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     const stopBtn = await $('[data-testid="editor-stop-button"]');
     const isVisible = await stopBtn.isDisplayed();
     expect(isVisible).toBe(true);
+    await captureJourneyStep('query-stop-visible');
 
     // Cancel to not block other tests
     await stopBtn.click();
     await browser.pause(2000);
-    await captureJourneyStep('query-stop-visible');
   });
 
   // ── 执行查询 ───────────────────────────────────────────────────

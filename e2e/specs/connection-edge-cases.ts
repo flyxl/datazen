@@ -124,11 +124,9 @@ describe('连接管理边界用例 (TC-EDGE-009~013)', () => {
       if (btn) (btn as HTMLElement).click();
     });
     await browser.pause(5000);
-    await captureJourneyStep('test-connection-failed');
-
-    // Dialog should still be open (app didn't crash)
     const dialogStillOpen = await $('[data-testid="new-connection-dialog"]').isExisting();
     expect(dialogStillOpen).toBe(true);
+    await captureJourneyStep('test-connection-failed');
 
     await closeNewConnectionDialogFromUi();
   });

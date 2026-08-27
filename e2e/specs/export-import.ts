@@ -1,12 +1,19 @@
 import { expect, browser, $ } from '@wdio/globals';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { t } from '../i18n.js';
 import {
+  captureJourneyStep,
   connectSeededPgInWorkspace,
   closeExtraWindows,
   executeSQL,
+  injectDialogPath,
   openQueryTab,
   clickTableInSidebar,
+  resetDialogQueue,
   switchSubTab,
+  waitForSchemaTreeLoaded,
 } from '../helpers.js';
 
 /**
@@ -18,6 +25,19 @@ import {
  */
 
 const TEST_TABLE = '_e2e_export_test';
+
+async function openTableExportDialog() {
+  await clickTableInSidebar(TEST_TABLE);
+  await browser.pause(800);
+  await switchSubTab(t('connWin.data'));
+  await browser.pause(800);
+  const exportBtn = await $(`button[title="${t('export.export')}"]`);
+  await exportBtn.waitForDisplayed({ timeout: 10000 });
+  await exportBtn.click();
+  await browser.pause(600);
+  const body = await $('body').getText();
+  expect(body).toContain(t('export.format'));
+}
 
 describe('导出和导入 (EI-001~EI-006)', () => {
   let mainWindow: string;
@@ -48,7 +68,19 @@ describe('导出和导入 (EI-001~EI-006)', () => {
     // Refresh sidebar
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
-    await browser.pause(2000);
+    await waitForSchemaTreeLoaded(20000);
+    await browser.pause(1500);
+
+    await browser.waitUntil(
+      async () => {
+        const found = await browser.execute((tableName: string) => {
+          const buttons = Array.from(document.querySelectorAll('aside button'));
+          return buttons.some((b) => b.textContent?.trim() === tableName);
+        }, TEST_TABLE);
+        return found;
+      },
+      { timeout: 30000, timeoutMsg: `schema tree missing table ${TEST_TABLE}` },
+    );
 
     // Open the test table
     await clickTableInSidebar(TEST_TABLE);
@@ -106,11 +138,13 @@ describe('导出和导入 (EI-001~EI-006)', () => {
   });
 
   it('导出对话框应显示格式选项 (EI-002)', async () => {
+    await openTableExportDialog();
     const body = await $('body').getText();
     expect(body).toContain(t('export.format'));
   });
 
   it('导出对话框应显示导出范围 (EI-002)', async () => {
+    await openTableExportDialog();
     const body = await $('body').getText();
     expect(body).toContain(t('export.range'));
     expect(body).toContain(t('export.entireTable'));
@@ -121,12 +155,14 @@ describe('导出和导入 (EI-001~EI-006)', () => {
   it.skip('导出对话框应显示列名 (EI-002) — SKIPPED: DataExportDialog has no column checkboxes', async () => {});
 
   it('导出对话框应显示导出摘要 (EI-002a)', async () => {
+    await openTableExportDialog();
     const body = await $('body').getText();
     expect(body).toContain(t('export.willExport', { rows: 3, cols: 3 }));
     expect(body).toContain('CSV');
   });
 
   it('切换导出格式为 JSON 应更新摘要 (EI-002b)', async () => {
+    await openTableExportDialog();
     await browser.execute(() => {
       const dlg = document.querySelector('.fixed.inset-0.z-50');
       if (!dlg) return;
@@ -153,6 +189,7 @@ describe('导出和导入 (EI-001~EI-006)', () => {
   });
 
   it('切换导出格式为 SQL INSERT 应更新摘要 (EI-002b)', async () => {
+    await openTableExportDialog();
     await browser.execute(() => {
       const dlg = document.querySelector('.fixed.inset-0.z-50');
       if (!dlg) return;
@@ -189,6 +226,7 @@ describe('导出和导入 (EI-001~EI-006)', () => {
   it.skip('恢复列选择后导出按钮应可用 (EI-002d) — SKIPPED: DataExportDialog has no column checkboxes', async () => {});
 
   it('点击取消应关闭导出对话框 (EI-003)', async () => {
+    await openTableExportDialog();
     await browser.execute(
       (cancelLabel, closeLabel) => {
         const dlg = document.querySelector('.fixed.inset-0.z-50');
@@ -285,6 +323,30 @@ describe('导出和导入 (EI-001~EI-006)', () => {
   it.skip('导入对话框应显示文件格式提示 (EI-005c) — SKIPPED: Import dialog not openable without native menu', async () => {});
 
   it.skip('点击取消应关闭导入对话框 (EI-006) — SKIPPED: Import dialog not openable without native menu', async () => {});
+
+  it('EI-007: CSV 导出应通过注入对话框落盘', async () => {
+    await openTableExportDialog();
+    await resetDialogQueue();
+    const outPath = path.join(os.tmpdir(), `datazen-export-${Date.now()}.csv`);
+    try {
+      await injectDialogPath(outPath);
+      const exportConfirm = await $(`button*=${t('export.export')}`);
+      await exportConfirm.waitForClickable({ timeout: 5000 });
+      await exportConfirm.click();
+      await browser.pause(2500);
+      expect(fs.existsSync(outPath)).toBe(true);
+      expect(fs.readFileSync(outPath, 'utf-8')).toContain('Alice');
+      await captureJourneyStep('export-csv-saved', 0, true);
+    } finally {
+      try {
+        fs.unlinkSync(outPath);
+      } catch {
+        /* ok */
+      }
+      const cancel = await $(`button*=${t('common.cancel')}`);
+      if (await cancel.isDisplayed()) await cancel.click();
+    }
+  });
 
   it('EI-GRID-001: DataTable 工具栏导出应打开导出对话框', async () => {
     await clickTableInSidebar(TEST_TABLE);

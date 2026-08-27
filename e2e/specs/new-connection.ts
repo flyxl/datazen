@@ -59,7 +59,6 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await expect(await $('button*=测试连接')).toBeDisplayed();
     await expect(await $('button*=取消')).toBeDisplayed();
     await expect(await $('button*=保存')).toBeDisplayed();
-    await captureJourneyStep('dialog-form-complete', 0, true);
   });
 
   it('应默认选中 PostgreSQL 并显示对应字段 (CM-002)', async () => {

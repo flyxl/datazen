@@ -136,7 +136,6 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
 
     if (clickedNext) {
       await browser.pause(1000);
-      await captureJourneyStep('table-next-page');
       const newFirstCell = await browser.execute(() => {
         const cells = document.querySelectorAll('td span[title], td span');
         for (const c of cells) {
@@ -148,6 +147,9 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
       if (firstCell && newFirstCell) {
         expect(newFirstCell).not.toBe(firstCell);
       }
+      await captureJourneyStep('table-next-page');
+    } else {
+      expect(clickedNext).toBe(true);
     }
   });
 
