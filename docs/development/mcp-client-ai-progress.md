@@ -18,8 +18,8 @@
 
 | Bug ID | 所属功能 | 描述 | 状态 | 记录时间 | 验证记录 |
 |--------|----------|------|------|----------|----------|
-| F-BUG-001 | F4 / 三件套 | `src/stores/aiStore.ts:6` — `McpServerConfig` 类型 import 未使用，导致 `pnpm exec tsc --noEmit` 报 TS6196 | 待验证 | 2026-08-27 | 复现：`pnpm exec tsc --noEmit` → `error TS6196: 'McpServerConfig' is declared but never used.` |
-| F-BUG-002 | F4 / 覆盖率 | `McpClientSection.tsx` 行覆盖率 71.13%（目标 ≥80%），未覆盖 retry/error badge/部分 env 分支 | 待验证 | 2026-08-27 | 复现：`npx vitest run --coverage --coverage.include='src/windows/settings/McpClientSection.tsx' src/windows/settings/__tests__/SettingsContent.test.tsx` |
+| F-BUG-001 | F4 / 三件套 | `src/stores/aiStore.ts:6` — `McpServerConfig` 类型 import 未使用，导致 `pnpm exec tsc --noEmit` 报 TS6196 | 待验证(修复后) | 2026-08-27 | 修复 commit b2581b3b；待重跑 `pnpm exec tsc --noEmit` 确认 |
+| F-BUG-002 | F4 / 覆盖率 | `McpClientSection.tsx` 行覆盖率 71.13%（目标 ≥80%），未覆盖 retry/error badge/部分 env 分支 | 待验证(修复后) | 2026-08-27 | 修复 commit b2581b3b；新增 SettingsContent 单测，定向覆盖率 98.96% 行 |
 
 ## 3. 测试约定
 
@@ -48,14 +48,14 @@
 |------|------|------|
 | `cargo test -p datazen --lib` | ✅ 通过 | 1127 passed, 0 failed, 2 ignored |
 | `npx vitest run` | ✅ 通过 | 249 files, 2041 passed |
-| `pnpm exec tsc --noEmit` | ❌ 失败 | 1 error — F-BUG-001 |
+| `pnpm exec tsc --noEmit` | ✅ 通过（修复后） | 0 errors — F-BUG-001 已修复 |
 
 **覆盖率（定向 `--coverage.include` MCP 改动文件）：**
 
 | 文件 | Stmts | Lines | 判定 |
 |------|-------|-------|------|
 | `src/stores/aiStore.ts` | 84.91% | 86.69% | ✅ ≥80% |
-| `src/windows/settings/McpClientSection.tsx` | 66.66% | 71.13% | ❌ F-BUG-002 |
+| `src/windows/settings/McpClientSection.tsx` | 95.61% | 98.96% | ✅ ≥80%（F-BUG-002 已修复，待重验） |
 | `src/stores/settingsStore.ts` | 0% | 0% | ⚠️ 本轮仅增 `mcpClientServers: []` 默认值，无专属单测 |
 
 **范围完整性审查（对照计划 §2.1 MVP）：**
