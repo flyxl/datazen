@@ -145,27 +145,27 @@ mod tests {
             "starrocks",
             "manticore",
             "ob_oracle",
-            #[cfg(feature = "plugin-sqlserver")]
+            #[cfg(feature = "driver-sqlserver")]
             "sqlserver",
-            #[cfg(feature = "plugin-clickhouse")]
+            #[cfg(feature = "driver-clickhouse")]
             "clickhouse",
-            #[cfg(feature = "plugin-duckdb")]
+            #[cfg(feature = "driver-duckdb")]
             "duckdb",
-            #[cfg(feature = "plugin-elasticsearch")]
+            #[cfg(feature = "driver-elasticsearch")]
             "elasticsearch",
-            #[cfg(feature = "plugin-mongodb")]
+            #[cfg(feature = "driver-mongodb")]
             "mongodb",
-            #[cfg(feature = "plugin-influxdb")]
+            #[cfg(feature = "driver-influxdb")]
             "influxdb",
-            #[cfg(feature = "plugin-victoriametrics")]
+            #[cfg(feature = "driver-victoriametrics")]
             "victoriametrics",
-            #[cfg(feature = "plugin-hbase")]
+            #[cfg(feature = "driver-hbase")]
             "hbase",
-            #[cfg(feature = "plugin-vector")]
+            #[cfg(feature = "driver-vector")]
             "vector",
-            #[cfg(feature = "plugin-olap")]
+            #[cfg(feature = "driver-olap")]
             "trino",
-            #[cfg(feature = "plugin-olap")]
+            #[cfg(feature = "driver-olap")]
             "presto",
         ] {
             assert!(

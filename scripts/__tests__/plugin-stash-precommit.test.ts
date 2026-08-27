@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   hasInjectedCargoContent,
-  hasInjectedPluginInit,
+  hasInjectedDriverInit,
   hasInjectedGeneratedTs,
   hasInjectedGeneratedLocales,
   hasInjectedCapabilities,
@@ -33,9 +33,9 @@ describe('injection detectors', () => {
     ).toBe(false);
   });
 
-  it('detects plugin_init injection but not comment-only extern crate', () => {
-    expect(hasInjectedPluginInit(CLEAN_CONTENTS['src-tauri/src/plugin_init.rs'])).toBe(false);
-    expect(hasInjectedPluginInit(INJECTED_CONTENTS['src-tauri/src/plugin_init.rs'])).toBe(true);
+  it('detects driver_init injection but not comment-only extern crate', () => {
+    expect(hasInjectedDriverInit(CLEAN_CONTENTS['src-tauri/src/driver_init.rs'])).toBe(false);
+    expect(hasInjectedDriverInit(INJECTED_CONTENTS['src-tauri/src/driver_init.rs'])).toBe(true);
   });
 
   it('detects generated.ts PluginDatabaseType != never', () => {
@@ -63,8 +63,8 @@ describe('injection detectors', () => {
     ).toBe(true);
     expect(
       fileHasInjection(
-        'src-tauri/src/plugin_init.rs',
-        INJECTED_CONTENTS['src-tauri/src/plugin_init.rs'],
+        'src-tauri/src/driver_init.rs',
+        INJECTED_CONTENTS['src-tauri/src/driver_init.rs'],
       ),
     ).toBe(true);
     expect(fileHasInjection('README.md', 'hello')).toBe(false);
@@ -78,7 +78,7 @@ describe('injection detectors', () => {
     expect(hasInjectedGeneratedLocales(CLEAN_CONTENTS['src/plugins/generated-locales.ts'])).toBe(
       false,
     );
-    expect(hasInjectedPluginInit('')).toBe(false);
+    expect(hasInjectedDriverInit('')).toBe(false);
     expect(hasInjectedCapabilities('')).toBe(false);
   });
 });

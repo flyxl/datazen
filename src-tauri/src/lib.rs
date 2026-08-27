@@ -10,7 +10,7 @@ mod i18n_locale;
 mod log_redact;
 pub mod mcp;
 mod monitor;
-mod plugin_init;
+mod driver_init;
 mod plugins;
 mod redis_flush_gate;
 pub mod schema_diff;
@@ -721,7 +721,7 @@ pub fn run() {
     #[cfg(feature = "webdriver")]
     let builder = builder.manage(commands::DialogInjectionQueue::default());
 
-    let builder = plugin_init::register_plugins(builder);
+    let builder = driver_init::register_drivers(builder);
 
     // `datazen://` plugin asset service + deep links (F2). Windows exposes
     // this as `http://datazen./...`; parsing accepts both forms.

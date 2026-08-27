@@ -3,7 +3,7 @@
  * e2e-tauri-build.mjs — `tauri build --debug` with webdriver + plugin features.
  *
  * Must run inside `with-plugin-inject` (or after resolve-drivers) so
- * `.plugin-features.json` exists. Mirrors `ci-tauri-build.mjs` but always
+ * `.driver-features.json` exists. Mirrors `ci-tauri-build.mjs` but always
  * enables the webdriver feature for WDIO.
  *
  * Usage:
@@ -18,9 +18,9 @@ import { spawnTauri } from './ci-tauri-build.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
-const featuresPath = resolve(ROOT, '.plugin-features.json');
+const featuresPath = resolve(ROOT, '.driver-features.json');
 if (!existsSync(featuresPath)) {
-  console.error('[e2e-tauri-build] missing .plugin-features.json — run resolve-drivers / with-plugin-inject first');
+  console.error('[e2e-tauri-build] missing .driver-features.json — run resolve-drivers / with-plugin-inject first');
   process.exit(1);
 }
 

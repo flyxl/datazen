@@ -4,7 +4,7 @@
  * Run on a clean checkout (before resolve-drivers) so CI catches accidental
  * commits of Cargo.toml / capabilities plugin injection.
  *
- * Driver codegen (generated.ts / plugin_init.rs) is gitignored and not checked.
+ * Driver codegen (generated.ts / driver_init.rs) is gitignored and not checked.
  */
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';

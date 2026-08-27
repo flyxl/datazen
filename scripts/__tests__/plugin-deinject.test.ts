@@ -4,7 +4,7 @@ import {
   cleanFullyGeneratedContent,
   cleanGeneratedLocalesContent,
   cleanGeneratedTsContent,
-  cleanPluginInitContent,
+  cleanDriverInitContent,
   deinjectCargoContent,
   deinjectManagedContent,
   emptyBeginEndSection,
@@ -15,7 +15,7 @@ import { CLEAN_CONTENTS, INJECTED_CONTENTS } from './fixture';
 
 describe('plugin-deinject', () => {
   it('empties cargo marker bodies', () => {
-    expect(emptyMarkerBlock(INJECTED_CONTENTS['Cargo.toml'], 'plugin-patches')).toBe(
+    expect(emptyMarkerBlock(INJECTED_CONTENTS['Cargo.toml'], 'driver-patches')).toBe(
       CLEAN_CONTENTS['Cargo.toml'],
     );
     expect(deinjectCargoContent(INJECTED_CONTENTS['src-tauri/Cargo.toml'])).toBe(
@@ -35,26 +35,26 @@ describe('plugin-deinject', () => {
   it('classifies fully-generated codegen paths', () => {
     expect(isFullyGeneratedManagedFile('src/plugins/generated.ts')).toBe(true);
     expect(isFullyGeneratedManagedFile('src/plugins/generated-locales.ts')).toBe(true);
-    expect(isFullyGeneratedManagedFile('src-tauri/src/plugin_init.rs')).toBe(true);
+    expect(isFullyGeneratedManagedFile('src-tauri/src/driver_init.rs')).toBe(true);
     expect(isFullyGeneratedManagedFile('Cargo.toml')).toBe(false);
   });
 
   it('returns canonical empty codegen stubs', () => {
     expect(cleanGeneratedTsContent()).toContain('export type DatabaseType = never');
     expect(cleanGeneratedLocalesContent()).toContain('export type PluginTranslationKey = never');
-    expect(cleanPluginInitContent()).toContain('No plugins with Tauri commands enabled');
+    expect(cleanDriverInitContent()).toContain('No plugins with Tauri commands enabled');
     expect(cleanFullyGeneratedContent('src/plugins/generated.ts')).toBe(cleanGeneratedTsContent());
     expect(cleanFullyGeneratedContent('src/plugins/generated-locales.ts')).toBe(
       cleanGeneratedLocalesContent(),
     );
-    expect(cleanFullyGeneratedContent('src-tauri/src/plugin_init.rs')).toBe(
-      cleanPluginInitContent(),
+    expect(cleanFullyGeneratedContent('src-tauri/src/driver_init.rs')).toBe(
+      cleanDriverInitContent(),
     );
     expect(() => cleanFullyGeneratedContent('Cargo.toml')).toThrow(/no clean stub/);
   });
 
   it('emptyMarkerBlock / emptyBeginEndSection no-op when markers are absent', () => {
-    expect(emptyMarkerBlock('no markers here', 'plugin-patches')).toBe('no markers here');
+    expect(emptyMarkerBlock('no markers here', 'driver-patches')).toBe('no markers here');
     expect(emptyBeginEndSection('no sections', 'PLUGIN DEPS')).toBe('no sections');
   });
 });

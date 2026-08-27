@@ -56,7 +56,7 @@ For example:
   "mydb": {
     "source": "path",
     "path": "../datazen-driver-mydb",
-    "feature": "plugin-mydb",
+    "feature": "driver-mydb",
     "description": "MyDB driver"
   }
 }
@@ -249,7 +249,7 @@ During development:
   "mydb": {
     "source": "path",
     "path": "../datazen-driver-mydb",
-    "feature": "plugin-mydb"
+    "feature": "driver-mydb"
   }
 }
 ```
@@ -262,7 +262,7 @@ For a committed Datazen registry entry, the plugin can instead be pinned to a Gi
     "source": "git",
     "git": "https://github.com/example/datazen-driver-mydb.git",
     "ref": "<commit-sha>",
-    "feature": "plugin-mydb"
+    "feature": "driver-mydb"
   }
 }
 ```
