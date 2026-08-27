@@ -10,7 +10,7 @@ const {
   connectionStoreState,
   activeConnectionStoreState,
   notificationInvokeMock,
-  readPluginFileMock,
+  readExtensionFileMock,
   auditLogMock,
 } = vi.hoisted(() => ({
   storageGetMock: vi.fn(),
@@ -23,7 +23,7 @@ const {
   },
   activeConnectionStoreState: { current: { connections: {} } },
   notificationInvokeMock: vi.fn(),
-  readPluginFileMock: vi.fn(),
+  readExtensionFileMock: vi.fn(),
   auditLogMock: vi.fn(),
 }));
 
@@ -35,12 +35,12 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => notificationInvokeMock(...args),
 }));
 
-vi.mock('../../commands/plugins', () => ({
-  pluginCommands: {
-    pluginStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    pluginStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    pluginStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    readPluginFile: (...args: unknown[]) => readPluginFileMock(...args),
+vi.mock('../../commands/extensions', () => ({
+  extensionCommands: {
+    extensionStorageGet: (...args: unknown[]) => storageGetMock(...args),
+    extensionStorageSet: (...args: unknown[]) => storageSetMock(...args),
+    extensionStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
+    readExtensionFile: (...args: unknown[]) => readExtensionFileMock(...args),
     auditLog: (...args: unknown[]) => auditLogMock(...args),
   },
 }));
@@ -279,7 +279,7 @@ describe('extensionBridge permission gate (deny-by-default)', () => {
   });
 
   it('resolves i18n.getString from plugin locales with en fallback', async () => {
-    readPluginFileMock.mockImplementation(async (_id: string, path: string) => {
+    readExtensionFileMock.mockImplementation(async (_id: string, path: string) => {
       if (path === 'locales/zh-CN.json') return toBytes('{"greet":"你好"}');
       if (path === 'locales/zh.json') return toBytes('{}');
       if (path === 'locales/en.json') return toBytes('{"greet":"Hello"}');
@@ -313,7 +313,7 @@ describe('extensionBridge permission gate (deny-by-default)', () => {
     await waitUntil(() => env.sent.length > 0);
     expect(env.sent[0].type).toBe('i18n.getString.err');
     expect((env.sent[0].payload as Record<string, unknown>).code).toBe(BRIDGE_ERROR.BAD_REQUEST);
-    expect(readPluginFileMock).not.toHaveBeenCalled();
+    expect(readExtensionFileMock).not.toHaveBeenCalled();
     handle.detach();
   });
 });

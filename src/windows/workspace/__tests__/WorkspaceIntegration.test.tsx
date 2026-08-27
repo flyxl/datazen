@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { WorkspaceView } from '../WorkspaceView';
 import { useWorkspaceTabsStore } from '../../../stores/workspaceTabsStore';
-import type { PluginSummary } from '../../../types/plugin';
+import type { ExtensionSummary } from '../../../types/extension';
 
 const { listenMock, pluginState, getManifestMock } = vi.hoisted(() => ({
   listenMock: vi.fn(),
   pluginState: {
-    plugins: [] as Array<Record<string, unknown>>,
+    extensions: [] as Array<Record<string, unknown>>,
     loaded: true,
     error: null as string | null,
   },
@@ -22,19 +22,19 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../commands/plugins', () => ({
-  PLUGINS_CHANGED_EVENT: 'plugins:changed',
-  pluginCommands: {
-    getPluginManifest: (...args: unknown[]) => getManifestMock(...args),
+vi.mock('../../../commands/extensions', () => ({
+  EXTENSIONS_CHANGED_EVENT: 'plugins:changed',
+  extensionCommands: {
+    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
   },
 }));
 
-vi.mock('../../../stores/pluginStore', () => ({
-  usePluginStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+vi.mock('../../../stores/extensionStore', () => ({
+  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
     getState: () => ({
       ...pluginState,
       fetch: vi.fn().mockResolvedValue(undefined),
-      byId: (id: string) => (pluginState.plugins as Array<{ id: string }>).find((p) => p.id === id),
+      byId: (id: string) => (pluginState.extensions as Array<{ id: string }>).find((p) => p.id === id),
     }),
   }),
 }));
@@ -42,7 +42,7 @@ vi.mock('../../../stores/pluginStore', () => ({
 // NOTE: `workspaceTabsStore` is intentionally NOT mocked — the real store
 // drives the TabBar ⇆ DefaultCards mutual exclusion and shell lifecycle.
 
-function makePlugin(overrides: Partial<PluginSummary> = {}): PluginSummary {
+function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary {
   return {
     id: 'acme.bill-audit',
     name: 'Bill Audit',
@@ -63,7 +63,7 @@ function openPageHandler(): ((event: { payload?: unknown }) => void) | undefined
 
 beforeEach(() => {
   useWorkspaceTabsStore.setState({ tabs: [], activeKey: null });
-  pluginState.plugins = [];
+  pluginState.extensions = [];
   pluginState.loaded = true;
   pluginState.error = null;
   listenMock.mockReset().mockResolvedValue(() => {});
@@ -78,7 +78,7 @@ afterEach(cleanup);
 
 describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', () => {
   it('shows default cards only while no tab is open', async () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
 
     render(<WorkspaceView />);
     await act(async () => {});
@@ -89,7 +89,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
   });
 
   it('opens a tab from the navigator click: tab bar appears, cards disappear, sandboxed iframe mounts', async () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
 
     render(<WorkspaceView />);
     await act(async () => {});
@@ -107,7 +107,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
   });
 
   it('opens a tab from a default card click as well', async () => {
-    pluginState.plugins = [
+    pluginState.extensions = [
       makePlugin({ id: 'acme.afi', name: 'AFI', pages: [{ id: 'pricing', title: 'Pricing' }] }),
     ];
     getManifestMock.mockResolvedValue({ id: 'acme.afi', version: '1.0.0', entry: 'ui.html' });
@@ -124,7 +124,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
   });
 
   it('closing the last tab restores the default card view and unmounts the iframe', async () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
 
     render(<WorkspaceView />);
     await act(async () => {});
@@ -142,7 +142,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
   });
 
   it('keeps inactive shells mounted-but-hidden while another tab is active', async () => {
-    pluginState.plugins = [
+    pluginState.extensions = [
       makePlugin(),
       makePlugin({ id: 'acme.afi', name: 'AFI', pages: [{ id: 'pricing', title: 'Pricing' }] }),
     ];
@@ -167,7 +167,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
   });
 
   it('ignores malformed plugins:open-page payloads without opening any tab', async () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
 
     render(<WorkspaceView />);
     await act(async () => {});
@@ -187,7 +187,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
   });
 
   it('closes an open plugin tab when an external refresh disables the plugin (BUG-F4-01)', async () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     const view = render(<WorkspaceView />);
     await act(async () => {});
 
@@ -196,7 +196,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
 
     // Another window disables the plugin; the refreshed plugin list arrives
     // through the shared store while this window never touched the toggle.
-    pluginState.plugins = [makePlugin({ enabled: false })];
+    pluginState.extensions = [makePlugin({ enabled: false })];
     await act(async () => {
       view.rerender(<WorkspaceView />);
     });
@@ -207,7 +207,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
     expect(screen.queryByTestId('plugin-iframe')).not.toBeInTheDocument();
 
     // Re-enabling restores the navigator entry so the page can reopen.
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     await act(async () => {
       view.rerender(<WorkspaceView />);
     });

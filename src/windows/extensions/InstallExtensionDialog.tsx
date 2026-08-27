@@ -5,16 +5,16 @@ import { CopyableError } from '../../components/ui/CopyableError';
 import { Dialog } from '../../components/ui/Dialog';
 import { PathInput } from '../../components/ui/PathInput';
 import { useI18n } from '../../hooks/useI18n';
-import { pluginCommands } from '../../commands/plugins';
-import { usePluginStore } from '../../stores/pluginStore';
-import type { PluginManifest, PluginSummary } from '../../types/plugin';
+import { extensionCommands } from '../../commands/extensions';
+import { useExtensionStore } from '../../stores/extensionStore';
+import type { ExtensionManifest, ExtensionSummary } from '../../types/extension';
 import { PERMISSION_LABELS } from './permissionLabels';
 
-export interface InstallPluginDialogProps {
+export interface InstallExtensionDialogProps {
   open: boolean;
   onClose: () => void;
   /** Called after a successful install and store refresh. */
-  onInstalled?: (plugin: PluginSummary) => void;
+  onInstalled?: (plugin: ExtensionSummary) => void;
 }
 
 type InstallStep = 'select' | 'review';
@@ -26,11 +26,11 @@ type InstallStep = 'select' | 'review';
  * nothing written) → review name/version/author/permission badges → explicit
  * confirmation performs the actual install.
  */
-export function InstallPluginDialog({ open, onClose, onInstalled }: InstallPluginDialogProps) {
+export function InstallExtensionDialog({ open, onClose, onInstalled }: InstallExtensionDialogProps) {
   const { t } = useI18n();
   const [path, setPath] = useState('');
   const [step, setStep] = useState<InstallStep>('select');
-  const [manifest, setManifest] = useState<PluginManifest | null>(null);
+  const [manifest, setManifest] = useState<ExtensionManifest | null>(null);
   const [inspecting, setInspecting] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +47,7 @@ export function InstallPluginDialog({ open, onClose, onInstalled }: InstallPlugi
     setInspecting(true);
     setError(null);
     try {
-      setManifest(await pluginCommands.inspectPluginPackage(path.trim()));
+      setManifest(await extensionCommands.inspectExtensionPackage(path.trim()));
       setStep('review');
     } catch (e) {
       setManifest(null);
@@ -63,8 +63,8 @@ export function InstallPluginDialog({ open, onClose, onInstalled }: InstallPlugi
     setInstalling(true);
     setError(null);
     try {
-      const installed = await pluginCommands.installPluginFromPath(path.trim());
-      await usePluginStore.getState().fetch();
+      const installed = await extensionCommands.installExtensionFromPath(path.trim());
+      await useExtensionStore.getState().fetch();
       setPath('');
       backToSelect();
       onClose();

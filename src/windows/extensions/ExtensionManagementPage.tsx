@@ -6,25 +6,25 @@ import { Input } from '../../components/ui/Input';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
-import { pluginCommands } from '../../commands/plugins';
-import { usePluginStore } from '../../stores/pluginStore';
+import { extensionCommands } from '../../commands/extensions';
+import { useExtensionStore } from '../../stores/extensionStore';
 import { useWorkspaceTabsStore } from '../../stores/workspaceTabsStore';
-import { EXTENSION_API_VERSION, type PluginSummary } from '../../types/plugin';
+import { EXTENSION_API_VERSION, type ExtensionSummary } from '../../types/extension';
 import { openPluginPage } from '../workspace/workspacePages';
-import { InstallPluginDialog } from './InstallPluginDialog';
+import { InstallExtensionDialog } from './InstallExtensionDialog';
 import { PERMISSION_LABELS } from './permissionLabels';
 
 type PluginFilter = 'all' | 'workspace' | 'theme';
 
-function hasPages(p: PluginSummary): boolean {
+function hasPages(p: ExtensionSummary): boolean {
   return p.pages.length > 0;
 }
 
-function hasThemes(p: PluginSummary): boolean {
+function hasThemes(p: ExtensionSummary): boolean {
   return p.themes.length > 0;
 }
 
-function matchesFilter(p: PluginSummary, filter: PluginFilter): boolean {
+function matchesFilter(p: ExtensionSummary, filter: PluginFilter): boolean {
   if (filter === 'workspace') return hasPages(p);
   if (filter === 'theme') return hasThemes(p);
   return true;
@@ -44,16 +44,16 @@ function mimeForIcon(path: string): string {
 
 /**
  * Renders a plugin's package-level icon as an image loaded through
- * `read_plugin_file`. Falls back to the letter avatar when the plugin declares
+ * `read_extension_file`. Falls back to the letter avatar when the plugin declares
  * no icon, the file cannot be read, or the plugin is disabled.
  */
-function PluginCardIcon({ plugin }: { plugin: PluginSummary }) {
-  const initials = plugin.name.slice(0, 1).toUpperCase();
+function ExtensionCardIcon({ extension }: { extension: ExtensionSummary }) {
+  const initials = extension.name.slice(0, 1).toUpperCase();
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    const iconPath = plugin.icon;
-    if (!iconPath || !plugin.enabled) {
+    const iconPath = extension.icon;
+    if (!iconPath || !extension.enabled) {
       setUrl(null);
       return;
     }
@@ -61,8 +61,8 @@ function PluginCardIcon({ plugin }: { plugin: PluginSummary }) {
     let objectUrl: string | null = null;
     let cancelled = false;
 
-    void pluginCommands
-      .readPluginFile(plugin.id, iconPath)
+    void extensionCommands
+      .readExtensionFile(extension.id, iconPath)
       .then((bytes) => {
         if (cancelled) return;
         const blob = new Blob([new Uint8Array(bytes)], { type: mimeForIcon(iconPath) });
@@ -78,7 +78,7 @@ function PluginCardIcon({ plugin }: { plugin: PluginSummary }) {
       revoked = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [plugin.id, plugin.icon, plugin.enabled]);
+  }, [extension.id, extension.icon, extension.enabled]);
 
   return (
     <span
@@ -100,7 +100,7 @@ function PluginCardIcon({ plugin }: { plugin: PluginSummary }) {
   );
 }
 
-export interface PluginManagementPageProps {
+export interface ExtensionManagementPageProps {
   /**
    * Invoked after a workspace plugin's [Open] action so the host can switch
    * the workspace mode to the workspace view.
@@ -108,11 +108,11 @@ export interface PluginManagementPageProps {
   onOpenInWorkspace?: () => void;
 }
 
-export function PluginManagementPage({ onOpenInWorkspace }: PluginManagementPageProps) {
+export function ExtensionManagementPage({ onOpenInWorkspace }: ExtensionManagementPageProps) {
   const { t } = useI18n();
-  const plugins = usePluginStore((s) => s.plugins);
-  const loaded = usePluginStore((s) => s.loaded);
-  const storeError = usePluginStore((s) => s.error);
+  const plugins = useExtensionStore((s) => s.extensions);
+  const loaded = useExtensionStore((s) => s.loaded);
+  const storeError = useExtensionStore((s) => s.error);
   const [search, setSearch] = useState('');
   // PRD §4.3: the content body defaults to the Workspace filter.
   const [filter, setFilter] = useState<PluginFilter>('workspace');
@@ -121,7 +121,7 @@ export function PluginManagementPage({ onOpenInWorkspace }: PluginManagementPage
   const [confirmRemove, confirmRemoveDialog] = useConfirmDialog();
 
   useEffect(() => {
-    if (!loaded) void usePluginStore.getState().fetch();
+    if (!loaded) void useExtensionStore.getState().fetch();
   }, [loaded]);
 
   const filtered = useMemo(() => {
@@ -154,10 +154,10 @@ export function PluginManagementPage({ onOpenInWorkspace }: PluginManagementPage
     ];
   }, [filtered, filter]);
 
-  const handleToggle = async (plugin: PluginSummary) => {
+  const handleToggle = async (plugin: ExtensionSummary) => {
     setActionError(null);
     try {
-      await usePluginStore.getState().setEnabled(plugin.id, !plugin.enabled);
+      await useExtensionStore.getState().setEnabled(plugin.id, !plugin.enabled);
       if (plugin.enabled) {
         // Disabling removes its pages → close the plugin's workspace tabs.
         useWorkspaceTabsStore.getState().closeByPlugin(plugin.id);
@@ -167,7 +167,7 @@ export function PluginManagementPage({ onOpenInWorkspace }: PluginManagementPage
     }
   };
 
-  const handleRemove = (plugin: PluginSummary) => {
+  const handleRemove = (plugin: ExtensionSummary) => {
     void confirmRemove({
       title: t('plugins.page.uninstallTitle'),
       message: t('plugins.page.uninstallMessage', { name: plugin.name }),
@@ -176,7 +176,7 @@ export function PluginManagementPage({ onOpenInWorkspace }: PluginManagementPage
       if (!ok) return;
       setActionError(null);
       try {
-        await usePluginStore.getState().remove(plugin.id);
+        await useExtensionStore.getState().remove(plugin.id);
         useWorkspaceTabsStore.getState().closeByPlugin(plugin.id);
       } catch (e) {
         setActionError(e instanceof Error ? e.message : String(e));
@@ -184,11 +184,11 @@ export function PluginManagementPage({ onOpenInWorkspace }: PluginManagementPage
     });
   };
 
-  const handleOpen = (plugin: PluginSummary) => {
+  const handleOpen = (plugin: ExtensionSummary) => {
     if (openPluginPage(plugin.id)) onOpenInWorkspace?.();
   };
 
-  const renderCard = (plugin: PluginSummary) => {
+  const renderCard = (plugin: ExtensionSummary) => {
     const apiMismatch = plugin.apiVersion !== EXTENSION_API_VERSION;
     const dimmed = apiMismatch || !plugin.enabled;
     return (
@@ -202,7 +202,7 @@ export function PluginManagementPage({ onOpenInWorkspace }: PluginManagementPage
         )}
       >
         <div className="flex items-center gap-2.5">
-          <PluginCardIcon plugin={plugin} />
+          <ExtensionCardIcon extension={plugin} />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="truncate text-sm font-semibold text-fg">{plugin.name}</span>
@@ -395,7 +395,7 @@ export function PluginManagementPage({ onOpenInWorkspace }: PluginManagementPage
       </div>
 
       {confirmRemoveDialog}
-      <InstallPluginDialog open={installOpen} onClose={() => setInstallOpen(false)} />
+      <InstallExtensionDialog open={installOpen} onClose={() => setInstallOpen(false)} />
     </div>
   );
 }

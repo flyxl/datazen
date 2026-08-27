@@ -191,8 +191,8 @@ vi.mock('../../workspace/WorkspaceView', () => ({
   ),
 }));
 
-vi.mock('../../plugins/PluginManagementPage', () => ({
-  PluginManagementPage: ({ onOpenInWorkspace }: { onOpenInWorkspace?: () => void }) => (
+vi.mock('../../extensions/ExtensionManagementPage', () => ({
+  ExtensionManagementPage: ({ onOpenInWorkspace }: { onOpenInWorkspace?: () => void }) => (
     <div data-testid="plugins-management-page">
       plugins-management-page
       <button type="button" data-testid="plugins-goto-workspace" onClick={onOpenInWorkspace}>

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { InstallPluginDialog } from '../InstallPluginDialog';
-import type { PluginManifest, PluginSummary } from '../../../types/plugin';
+import { InstallExtensionDialog } from '../InstallExtensionDialog';
+import type { ExtensionManifest, ExtensionSummary } from '../../../types/extension';
 
 const { inspectPackageMock, installFromPathMock, fetchMock, onCloseMock } = vi.hoisted(() => ({
   inspectPackageMock: vi.fn(),
@@ -14,21 +14,21 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../commands/plugins', () => ({
-  PLUGINS_CHANGED_EVENT: 'plugins:changed',
-  pluginCommands: {
-    inspectPluginPackage: (...args: unknown[]) => inspectPackageMock(...args),
-    installPluginFromPath: (...args: unknown[]) => installFromPathMock(...args),
+vi.mock('../../../commands/extensions', () => ({
+  EXTENSIONS_CHANGED_EVENT: 'plugins:changed',
+  extensionCommands: {
+    inspectExtensionPackage: (...args: unknown[]) => inspectPackageMock(...args),
+    installExtensionFromPath: (...args: unknown[]) => installFromPathMock(...args),
   },
 }));
 
-vi.mock('../../../stores/pluginStore', () => ({
-  usePluginStore: {
+vi.mock('../../../stores/extensionStore', () => ({
+  useExtensionStore: {
     getState: () => ({ fetch: fetchMock }),
   },
 }));
 
-const REVIEW_MANIFEST: PluginManifest = {
+const REVIEW_MANIFEST: ExtensionManifest = {
   id: 'acme.demo',
   name: 'Demo Plugin',
   version: '1.2.3',
@@ -40,8 +40,8 @@ const REVIEW_MANIFEST: PluginManifest = {
   permissions: ['context:connections', 'command:invoke'],
 };
 
-function renderOpen(onInstalled?: (plugin: PluginSummary) => void) {
-  return render(<InstallPluginDialog open onClose={onCloseMock} onInstalled={onInstalled} />);
+function renderOpen(onInstalled?: (plugin: ExtensionSummary) => void) {
+  return render(<InstallExtensionDialog open onClose={onCloseMock} onInstalled={onInstalled} />);
 }
 
 /** Types a path and advances to the review step (inspection must succeed). */
@@ -71,7 +71,7 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-describe('InstallPluginDialog', () => {
+describe('InstallExtensionDialog', () => {
   it('keeps continue disabled until a non-blank path is entered', () => {
     renderOpen();
 
@@ -97,7 +97,7 @@ describe('InstallPluginDialog', () => {
   });
 
   it('walks the two-step flow: inspect → review details/permissions → install', async () => {
-    const installed = { id: 'acme.new', name: 'New' } as unknown as PluginSummary;
+    const installed = { id: 'acme.new', name: 'New' } as unknown as ExtensionSummary;
     const onInstalled = vi.fn();
     installFromPathMock.mockResolvedValue(installed);
 

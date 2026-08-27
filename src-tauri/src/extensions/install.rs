@@ -1,4 +1,4 @@
-//! Install runtime plugins from a ZIP archive or a source directory.
+//! Install runtime extensions from a ZIP archive or a source directory.
 //!
 //! Flow (mirrors [`crate::theme::install`]): extract/copy into
 //! `{plugins_dir}/.staging-{uuid}` → full validation → atomic rename onto
@@ -13,8 +13,8 @@ use uuid::Uuid;
 use zip::ZipArchive;
 
 use super::manifest::{
-    allowed_plugin_extension, parse_manifest, validate_manifest, validate_plugin_dir,
-    PluginManifest, MAX_PLUGIN_FILES, MAX_PLUGIN_UNCOMPRESSED,
+    allowed_extension_file_ext, parse_manifest, validate_manifest, validate_extension_dir,
+    ExtensionManifest, MAX_EXTENSION_FILES, MAX_EXTENSION_UNCOMPRESSED,
 };
 use crate::app_data_archive::MAX_COMPRESSION_RATIO;
 
@@ -22,12 +22,12 @@ const STAGING_PREFIX: &str = ".staging-";
 const BACKUP_SUFFIX: &str = ".old.bak";
 const INSPECT_PREFIX: &str = ".datazen-inspect-";
 
-/// Install a plugin ZIP into `{plugins_dir}/{manifest.id}/`.
-pub fn install_from_zip(zip_path: &Path, plugins_dir: &Path) -> Result<PluginManifest, String> {
+/// Install an extension ZIP into `{plugins_dir}/{manifest.id}/`.
+pub fn install_from_zip(zip_path: &Path, plugins_dir: &Path) -> Result<ExtensionManifest, String> {
     fs::create_dir_all(plugins_dir).map_err(|e| format!("create plugins dir: {e}"))?;
 
     let staging = staging_dir(plugins_dir);
-    let result = (|| -> Result<PluginManifest, String> {
+    let result = (|| -> Result<ExtensionManifest, String> {
         extract_plugin_zip(zip_path, &staging)?;
         finalize_staged_package(&staging, plugins_dir)
     })();
@@ -36,18 +36,18 @@ pub fn install_from_zip(zip_path: &Path, plugins_dir: &Path) -> Result<PluginMan
     result
 }
 
-/// Install a plugin from a plain directory into `{plugins_dir}/{manifest.id}/`.
+/// Install an extension from a plain directory into `{plugins_dir}/{manifest.id}/`.
 /// Hidden files/dirs are skipped; everything else must pass the same rules a
 /// ZIP would.
-pub fn install_from_dir(src_dir: &Path, plugins_dir: &Path) -> Result<PluginManifest, String> {
+pub fn install_from_dir(src_dir: &Path, plugins_dir: &Path) -> Result<ExtensionManifest, String> {
     if !src_dir.is_dir() {
         return Err(format!("source directory not found: {}", src_dir.display()));
     }
     fs::create_dir_all(plugins_dir).map_err(|e| format!("create plugins dir: {e}"))?;
 
     let staging = staging_dir(plugins_dir);
-    let result = (|| -> Result<PluginManifest, String> {
-        copy_plugin_dir(src_dir, &staging)?;
+    let result = (|| -> Result<ExtensionManifest, String> {
+        copy_extension_dir(src_dir, &staging)?;
         finalize_staged_package(&staging, plugins_dir)
     })();
 
@@ -60,10 +60,10 @@ pub fn install_from_dir(src_dir: &Path, plugins_dir: &Path) -> Result<PluginMani
 /// as the real install runs against it. On success the manifest is returned
 /// (name/version/permissions) so the UI can ask for confirmation; nothing is
 /// ever written to `{plugins_dir}`.
-pub fn inspect_plugin_package(package_path: &Path) -> Result<PluginManifest, String> {
+pub fn inspect_extension_package(package_path: &Path) -> Result<ExtensionManifest, String> {
     if !package_path.exists() {
         return Err(format!(
-            "plugin package not found: {}",
+            "extension package not found: {}",
             package_path.display()
         ));
     }
@@ -74,11 +74,11 @@ pub fn inspect_plugin_package(package_path: &Path) -> Result<PluginManifest, Str
             .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"));
 
     let staging = std::env::temp_dir().join(format!("{INSPECT_PREFIX}{}", Uuid::new_v4()));
-    let result = (|| -> Result<PluginManifest, String> {
+    let result = (|| -> Result<ExtensionManifest, String> {
         if is_zip {
             extract_plugin_zip(package_path, &staging)?;
         } else {
-            copy_plugin_dir(package_path, &staging)?;
+            copy_extension_dir(package_path, &staging)?;
         }
 
         let pack_root = resolve_pack_root(&staging)?;
@@ -102,7 +102,7 @@ fn staging_dir(plugins_dir: &Path) -> PathBuf {
 fn finalize_staged_package(
     staging_root: &Path,
     plugins_dir: &Path,
-) -> Result<PluginManifest, String> {
+) -> Result<ExtensionManifest, String> {
     let pack_root = resolve_pack_root(staging_root)?;
 
     // Full rule set (1–7) against the staged content.
@@ -116,23 +116,23 @@ fn finalize_staged_package(
     atomic_replace_dir(&dest, &pack_root)?;
 
     // Belt and suspenders: the installed folder must revalidate cleanly.
-    validate_plugin_dir(&dest)?;
+    validate_extension_dir(&dest)?;
     Ok(manifest)
 }
 
 #[derive(Clone, Copy, Debug)]
-struct PluginZipLimits {
+struct ExtensionZipLimits {
     max_uncompressed_bytes: u64,
     max_compression_ratio: u64,
     max_entries: usize,
 }
 
-impl Default for PluginZipLimits {
+impl Default for ExtensionZipLimits {
     fn default() -> Self {
         Self {
-            max_uncompressed_bytes: MAX_PLUGIN_UNCOMPRESSED,
+            max_uncompressed_bytes: MAX_EXTENSION_UNCOMPRESSED,
             max_compression_ratio: MAX_COMPRESSION_RATIO,
-            max_entries: MAX_PLUGIN_FILES,
+            max_entries: MAX_EXTENSION_FILES,
         }
     }
 }
@@ -219,13 +219,13 @@ fn reject_hidden_components(entry_name: &str) -> Result<(), String> {
 }
 
 fn extract_plugin_zip(zip_path: &Path, dest: &Path) -> Result<(), String> {
-    extract_plugin_zip_with_limits(zip_path, dest, PluginZipLimits::default())
+    extract_plugin_zip_with_limits(zip_path, dest, ExtensionZipLimits::default())
 }
 
 fn extract_plugin_zip_with_limits(
     zip_path: &Path,
     dest: &Path,
-    limits: PluginZipLimits,
+    limits: ExtensionZipLimits,
 ) -> Result<(), String> {
     fs::create_dir_all(dest).map_err(|e| e.to_string())?;
     let file = File::open(zip_path).map_err(|e| e.to_string())?;
@@ -324,7 +324,7 @@ fn reject_forbidden_extension(entry_name: &str) -> Result<(), String> {
     if ext.is_empty() {
         return Err(format!("file without extension: {entry_name}"));
     }
-    if !allowed_plugin_extension(&ext) {
+    if !allowed_extension_file_ext(&ext) {
         return Err(format!("forbidden extension .{ext}: {entry_name}"));
     }
     Ok(())
@@ -332,7 +332,7 @@ fn reject_forbidden_extension(entry_name: &str) -> Result<(), String> {
 
 /// Copy a source tree into staging with the same rules a ZIP must satisfy:
 /// no symlinks, no hidden entries, whitelisted extensions, size/count quotas.
-fn copy_plugin_dir(src: &Path, dest: &Path) -> Result<(), String> {
+fn copy_extension_dir(src: &Path, dest: &Path) -> Result<(), String> {
     fs::create_dir_all(dest).map_err(|e| e.to_string())?;
     let mut stats = CopyStats::default();
     copy_dir_recursive(src, dest, src, &mut stats)
@@ -379,17 +379,17 @@ fn copy_dir_recursive(
         reject_forbidden_extension(&rel)?;
 
         stats.files += 1;
-        if stats.files > MAX_PLUGIN_FILES {
-            return Err(format!("too many files (max {MAX_PLUGIN_FILES})"));
+        if stats.files > MAX_EXTENSION_FILES {
+            return Err(format!("too many files (max {MAX_EXTENSION_FILES})"));
         }
 
         stats.total_bytes = stats
             .total_bytes
             .checked_add(meta.len())
             .ok_or_else(|| "package size overflow".to_string())?;
-        if stats.total_bytes > MAX_PLUGIN_UNCOMPRESSED {
+        if stats.total_bytes > MAX_EXTENSION_UNCOMPRESSED {
             return Err(format!(
-                "package size exceeds limit ({MAX_PLUGIN_UNCOMPRESSED} bytes)"
+                "package size exceeds limit ({MAX_EXTENSION_UNCOMPRESSED} bytes)"
             ));
         }
 
@@ -546,7 +546,7 @@ mod tests {
             fs::read_to_string(installed.join("index.html")).unwrap(),
             "<html>v1</html>"
         );
-        validate_plugin_dir(&installed).unwrap();
+        validate_extension_dir(&installed).unwrap();
     }
 
     #[test]
@@ -643,9 +643,9 @@ mod tests {
         }
 
         let dest = tmp.path().join("out");
-        let limits = PluginZipLimits {
+        let limits = ExtensionZipLimits {
             max_uncompressed_bytes: 32 * 1024,
-            ..PluginZipLimits::default()
+            ..ExtensionZipLimits::default()
         };
         let err = extract_plugin_zip_with_limits(&zip_path, &dest, limits).unwrap_err();
         assert!(err.contains("uncompressed size limit"), "unexpected: {err}");
@@ -782,7 +782,7 @@ mod tests {
         let installed = plugins_root.path().join("acme.demo");
         assert!(!installed.join(".DS_Store").exists());
         assert!(!installed.join(".git").exists());
-        validate_plugin_dir(&installed).unwrap();
+        validate_extension_dir(&installed).unwrap();
     }
 
     #[test]
@@ -817,7 +817,7 @@ mod tests {
     // Inspect staging dirs are created in the global temp dir by production
     // code, so parallel tests would observe each other's transient
     // `.datazen-inspect-*` entries and race on count_inspect_dirs(). Every
-    // test below that calls inspect_plugin_package holds this lock for its
+    // test below that calls inspect_extension_package holds this lock for its
     // whole body; no other test module creates that prefix.
     static INSPECT_TMP_LOCK: Mutex<()> = Mutex::new(());
 
@@ -840,14 +840,14 @@ mod tests {
     }
 
     #[test]
-    fn inspect_plugin_package_returns_manifest_without_installing() {
+    fn inspect_extension_package_returns_manifest_without_installing() {
         let _inspect_guard = inspect_tmp_lock();
         let tmp = TempDir::new().unwrap();
         let zip_path = tmp.path().join("demo.zip");
         write_demo_zip(&zip_path, None);
 
         let before = count_inspect_dirs();
-        let manifest = inspect_plugin_package(&zip_path).unwrap();
+        let manifest = inspect_extension_package(&zip_path).unwrap();
         assert_eq!(manifest.id, "acme.demo");
         assert_eq!(manifest.name, "Demo");
         assert_eq!(manifest.version, "1.0.0");
@@ -865,12 +865,12 @@ mod tests {
     }
 
     #[test]
-    fn inspect_plugin_package_accepts_top_level_folder_and_plain_dirs() {
+    fn inspect_extension_package_accepts_top_level_folder_and_plain_dirs() {
         let _inspect_guard = inspect_tmp_lock();
         let tmp = TempDir::new().unwrap();
         let zip_path = tmp.path().join("demo.zip");
         write_demo_zip(&zip_path, Some("acme.demo"));
-        let manifest = inspect_plugin_package(&zip_path).unwrap();
+        let manifest = inspect_extension_package(&zip_path).unwrap();
         assert_eq!(manifest.id, "acme.demo");
 
         // Directory sources keep install semantics: the folder name does not
@@ -878,16 +878,16 @@ mod tests {
         let src = TempDir::new().unwrap();
         fs::write(src.path().join("manifest.json"), DEMO_MANIFEST).unwrap();
         fs::write(src.path().join("index.html"), "<html></html>").unwrap();
-        let manifest = inspect_plugin_package(src.path()).unwrap();
+        let manifest = inspect_extension_package(src.path()).unwrap();
         assert_eq!(manifest.id, "acme.demo");
     }
 
     #[test]
-    fn inspect_plugin_package_rejects_invalid_packages() {
+    fn inspect_extension_package_rejects_invalid_packages() {
         let _inspect_guard = inspect_tmp_lock();
         // Missing path.
         let err =
-            inspect_plugin_package(Path::new("/nonexistent/datazen-inspect.zip")).unwrap_err();
+            inspect_extension_package(Path::new("/nonexistent/datazen-inspect.zip")).unwrap_err();
         assert!(err.contains("not found"), "unexpected: {err}");
 
         // Manifest failing validation (apiVersion mismatch).
@@ -903,7 +903,7 @@ mod tests {
             add_file(&mut zip, "index.html", "<html></html>", options);
             zip.finish().unwrap();
         }
-        let err = inspect_plugin_package(&bad).unwrap_err();
+        let err = inspect_extension_package(&bad).unwrap_err();
         assert!(err.contains("apiVersion"), "unexpected: {err}");
 
         // Malicious traversal entry is rejected by the shared extraction rules.
@@ -916,7 +916,7 @@ mod tests {
             add_file(&mut zip, "../outside.html", "<html>evil</html>", options);
             zip.finish().unwrap();
         }
-        let err = inspect_plugin_package(&evil).unwrap_err();
+        let err = inspect_extension_package(&evil).unwrap_err();
         assert!(
             err.contains("traversal") || err.contains("invalid zip entry"),
             "unexpected: {err}"

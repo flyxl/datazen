@@ -51,7 +51,7 @@ import { DashboardPanel } from '../dashboard/DashboardPanel';
 import { WorkflowPage } from '../workflow/WorkflowPage';
 import { SettingsPage } from '../settings/SettingsPage';
 import { WorkspaceView } from '../workspace/WorkspaceView';
-import { PluginManagementPage } from '../plugins/PluginManagementPage';
+import { ExtensionManagementPage } from '../extensions/ExtensionManagementPage';
 
 interface WorkspaceShortcutButtonProps {
   icon: LucideIcon;
@@ -970,7 +970,7 @@ export function ConnectionPage() {
               ) : workspaceMode === 'workspace' ? (
                 <WorkspaceView onOpenPlugins={() => setWorkspaceMode('plugins')} />
               ) : workspaceMode === 'plugins' ? (
-                <PluginManagementPage onOpenInWorkspace={() => setWorkspaceMode('workspace')} />
+                <ExtensionManagementPage onOpenInWorkspace={() => setWorkspaceMode('workspace')} />
               ) : (
                 <DashboardPanel
                   initialDashboardId={embeddedDashboardId}

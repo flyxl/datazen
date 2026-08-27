@@ -1,4 +1,4 @@
-import { pluginCommands } from '../commands/plugins';
+import { extensionCommands } from '../commands/extensions';
 import { themeCommands } from '../commands/theme';
 import { emitCrossWindow } from './crossWindowBus';
 import { bootstrapDefaultIconResolver } from './bootstrapIconResolver';
@@ -7,7 +7,7 @@ import { createIconResolver, setActiveIconResolver, type IconSourceMap } from '.
 import { getDbIcon, getDriverIconMap } from './databaseTypes';
 import { buildHostLucideById } from './hostLucideMap';
 import type { DatabaseType } from '../types';
-import type { ThemeContribution as PluginThemeContribution } from '../types/plugin';
+import type { ThemeContribution as PluginThemeContribution } from '../types/extension';
 import { parsePackEditorOverlay, setPackEditorColorOverlay } from './themeEditorColors';
 import { setChartPaletteOverride } from './chart/colors';
 import {
@@ -113,12 +113,12 @@ async function readPackFile(packId: string, relativePath: string): Promise<numbe
   }
 }
 
-async function readPluginFileOrNull(
+async function readExtensionFileOrNull(
   pluginId: string,
   relativePath: string,
 ): Promise<number[] | null> {
   try {
-    return await pluginCommands.readPluginFile(pluginId, relativePath);
+    return await extensionCommands.readExtensionFile(pluginId, relativePath);
   } catch {
     return null;
   }
@@ -275,7 +275,7 @@ async function loadPluginThemeContribution(
   pluginId: string,
   themeId: string,
 ): Promise<PluginThemeContribution> {
-  const manifest = await pluginCommands.getPluginManifest(pluginId);
+  const manifest = await extensionCommands.getExtensionManifest(pluginId);
   const theme = manifest.contributes.themes.find((th) => th.id === themeId);
   if (!theme) {
     throw new Error(`Theme "${themeId}" not found in plugin "${pluginId}"`);
@@ -291,7 +291,7 @@ async function probePluginIcon(
 ): Promise<string | null> {
   for (const ext of ICON_EXTENSIONS) {
     const relPath = joinRelativePath(iconsDir, `${semanticId}${ext}`);
-    const bytes = await readPluginFileOrNull(pluginId, relPath);
+    const bytes = await readExtensionFileOrNull(pluginId, relPath);
     if (bytes && bytes.length > 0) {
       return bytesToBlobUrl(bytes, mimeForPath(relPath));
     }
@@ -325,7 +325,7 @@ async function applyPluginThemePackId(
   try {
     const theme = await loadPluginThemeContribution(pluginId, themeId);
     const tokensPath = theme.tokensCss;
-    const tokensBytes = await readPluginFileOrNull(pluginId, tokensPath);
+    const tokensBytes = await readExtensionFileOrNull(pluginId, tokensPath);
     if (!tokensBytes) {
       throw new Error('tokens.css missing');
     }
@@ -335,7 +335,7 @@ async function applyPluginThemePackId(
       ? tokensPath.slice(0, tokensPath.lastIndexOf('/'))
       : '';
     const css = await rewriteCssUrls(decodeUtf8(tokensBytes), (relPath) =>
-      readPluginFileOrNull(pluginId, joinRelativePath(baseDir, relPath)),
+      readExtensionFileOrNull(pluginId, joinRelativePath(baseDir, relPath)),
     );
     injectThemePackCss(css);
 
@@ -348,7 +348,7 @@ async function applyPluginThemePackId(
     }
 
     if (theme.editorJson) {
-      const editorBytes = await readPluginFileOrNull(pluginId, theme.editorJson);
+      const editorBytes = await readExtensionFileOrNull(pluginId, theme.editorJson);
       if (editorBytes) {
         try {
           const overlay = parsePackEditorOverlay(JSON.parse(decodeUtf8(editorBytes)) as unknown);
@@ -360,7 +360,7 @@ async function applyPluginThemePackId(
     }
 
     if (theme.chartsJson) {
-      const chartsBytes = await readPluginFileOrNull(pluginId, theme.chartsJson);
+      const chartsBytes = await readExtensionFileOrNull(pluginId, theme.chartsJson);
       if (chartsBytes) {
         setChartPaletteOverride(parseChartsJson(chartsBytes));
       }

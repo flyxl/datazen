@@ -42,11 +42,11 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => notificationInvokeMock(...args),
 }));
 
-vi.mock('../../commands/plugins', () => ({
-  pluginCommands: {
-    pluginStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    pluginStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    pluginStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
+vi.mock('../../commands/extensions', () => ({
+  extensionCommands: {
+    extensionStorageGet: (...args: unknown[]) => storageGetMock(...args),
+    extensionStorageSet: (...args: unknown[]) => storageSetMock(...args),
+    extensionStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
     auditLog: (...args: unknown[]) => auditLogMock(...args),
   },
 }));

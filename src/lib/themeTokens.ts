@@ -7,7 +7,7 @@
  * names are stored here — values are read live from computed styles so
  * snapshots always reflect the active base theme + applied theme pack.
  */
-import { EXTENSION_API_VERSION } from '../types/plugin';
+import { EXTENSION_API_VERSION } from '../types/extension';
 
 export const THEME_TOKENS = [
   // Backgrounds

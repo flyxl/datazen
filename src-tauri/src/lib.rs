@@ -11,7 +11,7 @@ mod log_redact;
 pub mod mcp;
 mod monitor;
 mod driver_init;
-mod plugins;
+mod extensions;
 mod redis_flush_gate;
 pub mod schema_diff;
 mod schema_objects;
@@ -613,11 +613,11 @@ pub(crate) fn finish_app_state(
     let history_db = store.history_db();
     let app_db = store.app_db();
 
-    // Runtime plugins: scan {appData}/plugins/ for installed packages.
+    // Runtime extensions: scan {appData}/plugins/ for installed packages.
     // Invalid packages are skipped (warn) so one bad install can't break boot.
-    let plugin_manager = Arc::new(plugins::PluginManager::new(data_dir.join("plugins")));
-    let plugin_count = plugin_manager.load_from_disk();
-    tracing::info!("[startup]   ui plugins loaded: {plugin_count}");
+    let extension_manager = Arc::new(extensions::ExtensionManager::new(data_dir.join("plugins")));
+    let extension_count = extension_manager.load_from_disk();
+    tracing::info!("[startup]   ui extensions loaded: {extension_count}");
 
     // AI / prompts / workflows / history / MCP client: empty shells.
     // Nothing here touches disk or network — window can show immediately.
@@ -640,7 +640,7 @@ pub(crate) fn finish_app_state(
         mcp_client_manager: Arc::new(mcp::McpClientManager::new()),
         session_transactions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         workflow_scheduler: workflow::scheduler::WorkflowScheduler::new(),
-        plugins: plugin_manager,
+        extensions: extension_manager,
     };
     monitor_engine.attach_app_state(Arc::new(state.clone()));
     state
@@ -726,7 +726,7 @@ pub fn run() {
     // `datazen://` plugin asset service + deep links (F2). Windows exposes
     // this as `http://datazen./...`; parsing accepts both forms.
     let builder = builder.register_uri_scheme_protocol("datazen", |ctx, request| {
-        plugins::protocol::handle_datazen_request(ctx, request)
+        extensions::protocol::handle_datazen_request(ctx, request)
     });
 
     let t_builder = Instant::now();
@@ -963,16 +963,16 @@ pub fn run() {
             commands::create_widget_from_sql,
             commands::create_widget_from_workflow,
             commands::update_hidden_widget_sql,
-            commands::list_plugins,
-            commands::inspect_plugin_package,
-            commands::install_plugin_from_path,
-            commands::remove_plugin,
-            commands::set_plugin_enabled,
-            commands::get_plugin_manifest,
-            commands::plugin_storage_get,
-            commands::plugin_storage_set,
-            commands::plugin_storage_remove,
-            commands::read_plugin_file,
+            commands::list_extensions,
+            commands::inspect_extension_package,
+            commands::install_extension_from_path,
+            commands::remove_extension,
+            commands::set_extension_enabled,
+            commands::get_extension_manifest,
+            commands::extension_storage_get,
+            commands::extension_storage_set,
+            commands::extension_storage_remove,
+            commands::read_extension_file,
             commands::extension_audit_log,
             rebuild_menu,
             // E2E-only dialog-injection surface (commands/dialog.rs): each

@@ -1,22 +1,22 @@
 /**
- * UI plugin host types.
+ * Runtime UI extension host types.
  *
- * Mirrors `src-tauri/src/plugins/manifest.rs` (serde camelCase) and the
- * `PluginSummary` payload returned by the `list_plugins` IPC command
- * (`src-tauri/src/commands/plugins.rs`).
+ * Mirrors `src-tauri/src/extensions/manifest.rs` (serde camelCase) and the
+ * `ExtensionSummary` payload returned by the `list_extensions` IPC command
+ * (`src-tauri/src/commands/extensions.rs`).
  */
 
-/** API version handshake; must match `PLUGIN_API_VERSION` on the Rust side. */
+/** API version handshake; must match `EXTENSION_API_VERSION` on the Rust side. */
 export const EXTENSION_API_VERSION = 2;
 
 /** Serialized strings of the Rust `Permission` enum (serde renames). */
-export type PluginPermission =
+export type ExtensionPermission =
   | 'context:connections'
   | 'command:invoke'
   | 'storage:local'
   | 'ui:notify';
 
-/** Page contribution from a plugin manifest. */
+/** Page contribution from an extension manifest. */
 export interface PageContribution {
   id: string;
   title: string;
@@ -25,7 +25,7 @@ export interface PageContribution {
   showIn: string;
 }
 
-/** Theme contribution from a plugin manifest. */
+/** Theme contribution from an extension manifest. */
 export interface ThemeContribution {
   id: string;
   name: string;
@@ -50,8 +50,8 @@ export interface Contributions {
   themes: ThemeContribution[];
 }
 
-/** Full manifest as returned by `get_plugin_manifest`. */
-export interface PluginManifest {
+/** Full manifest as returned by `get_extension_manifest`. */
+export interface ExtensionManifest {
   id: string;
   name: string;
   version: string;
@@ -62,27 +62,27 @@ export interface PluginManifest {
   icon?: string | null;
   entry?: string | null;
   contributes: Contributions;
-  permissions: PluginPermission[];
-  /** Reserved for P2 backend plugins; must be null/absent in v1. */
+  permissions: ExtensionPermission[];
+  /** Reserved for P2 backend extensions; must be null/absent in v1. */
   backend?: unknown | null;
 }
 
-/** Page entry inside a `PluginSummary` payload. */
-export interface PluginPageSummary {
+/** Page entry inside an `ExtensionSummary` payload. */
+export interface ExtensionPageSummary {
   id: string;
   title: string;
   icon?: string;
 }
 
-/** Theme entry inside a `PluginSummary` payload. */
-export interface PluginThemeSummary {
+/** Theme entry inside an `ExtensionSummary` payload. */
+export interface ExtensionThemeSummary {
   id: string;
   name: string;
   modes: string[];
 }
 
-/** Installed-plugin row as returned by `list_plugins`. */
-export interface PluginSummary {
+/** Installed extension row as returned by `list_extensions`. */
+export interface ExtensionSummary {
   id: string;
   name: string;
   version: string;
@@ -92,7 +92,7 @@ export interface PluginSummary {
   /** Optional package-level icon path (mirrors PluginManifest.icon). */
   icon?: string;
   enabled: boolean;
-  permissions: PluginPermission[];
-  pages: PluginPageSummary[];
-  themes: PluginThemeSummary[];
+  permissions: ExtensionPermission[];
+  pages: ExtensionPageSummary[];
+  themes: ExtensionThemeSummary[];
 }

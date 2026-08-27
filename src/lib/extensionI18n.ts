@@ -1,4 +1,4 @@
-import { pluginCommands } from '../commands/plugins';
+import { extensionCommands } from '../commands/extensions';
 
 /**
  * Plugin-provided translations for the `i18n.getString` bridge API.
@@ -21,8 +21,8 @@ function readDictionary(pluginId: string, locale: string): Promise<Dictionary | 
   const cacheKey = `${pluginId}:${locale}`;
   const cached = dictionaryCache.get(cacheKey);
   if (cached !== undefined) return Promise.resolve(cached);
-  return pluginCommands
-    .readPluginFile(pluginId, `locales/${locale}.json`)
+  return extensionCommands
+    .readExtensionFile(pluginId, `locales/${locale}.json`)
     .then((bytes) => {
       let parsed: unknown;
       try {

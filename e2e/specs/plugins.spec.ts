@@ -131,7 +131,7 @@ interface PersistedSettings {
 
 async function removeSamplePluginViaIpc() {
   try {
-    await invokeBackend('remove_plugin', { id: PLUGIN_ID });
+    await invokeBackend('remove_extension', { id: PLUGIN_ID });
   } catch {
     /* not installed yet */
   }
@@ -240,8 +240,8 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
     expect(await toggle.getAttribute('aria-checked')).toBe('true');
   });
 
-  it('J1-002: list_plugins reports the installed plugin as enabled', async () => {
-    const plugins = await invokeBackend<PluginSummaryRow[]>('list_plugins');
+  it('J1-002: list_extensions reports the installed plugin as enabled', async () => {
+    const plugins = await invokeBackend<PluginSummaryRow[]>('list_extensions');
     const row = plugins.find((p) => p.id === PLUGIN_ID);
     expect(row).toBeDefined();
     expect(row?.enabled).toBe(true);
@@ -471,7 +471,7 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
       timeoutMsg: 'plugin card still present after uninstall',
     });
 
-    const plugins = await invokeBackend<PluginSummaryRow[]>('list_plugins');
+    const plugins = await invokeBackend<PluginSummaryRow[]>('list_extensions');
     expect(plugins.find((p) => p.id === PLUGIN_ID)).toBeUndefined();
   });
 
