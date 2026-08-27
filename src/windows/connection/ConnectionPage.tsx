@@ -158,6 +158,7 @@ export function ConnectionPage() {
   const deleteConnection = useConnectionStore((s) => s.deleteConnection);
   const connections = useConnectionStore((s) => s.connections);
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
+  const [confirmBackupKey, confirmBackupKeyDialog] = useConfirmDialog();
   const [messageDialogOpen, setMessageDialogOpen] = useState(false);
   const [messageDialogText, setMessageDialogText] = useState('');
   const [messageDialogKind, setMessageDialogKind] = useState<'error' | 'success'>('error');
@@ -613,9 +614,10 @@ export function ConnectionPage() {
     showMessageDialog(t('appData.exportSuccess'), 'success');
 
     try {
-      const { ask } = await import('@tauri-apps/plugin-dialog');
-      const wantKey = await ask(t('appData.backupKeyMessage'), {
+      const wantKey = await confirmBackupKey({
         title: t('appData.backupKeyTitle'),
+        message: t('appData.backupKeyMessage'),
+        confirmLabel: t('common.save'),
         kind: 'info',
       });
       if (wantKey) {
@@ -627,7 +629,7 @@ export function ConnectionPage() {
     } catch (e) {
       showMessageDialog(e instanceof Error ? e.message : t('appData.backupKeyFailed'), 'error');
     }
-  }, [showMessageDialog, t]);
+  }, [confirmBackupKey, showMessageDialog, t]);
 
   const handleImportConfig = useCallback(async () => {
     try {
@@ -985,6 +987,7 @@ export function ConnectionPage() {
       )}
 
       {confirmDeleteDialog}
+      {confirmBackupKeyDialog}
       <ResultMessageDialog
         open={messageDialogOpen}
         kind={messageDialogKind}

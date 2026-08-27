@@ -14,10 +14,43 @@ import {
   waitForSchemaTreeLoaded,
   setSafeMode,
   confirmWebDialog,
+  invokeBackend,
+  queryScalar,
+  type QueryResultPayload,
 } from '../helpers.js';
 
 const TEST_TABLE = '_e2e_ctx_menu';
 const DROP_SCHEMA = '_e2e_nav_drop_schema';
+const SEEDED_CONN_ID = 'conn_e2e_pg';
+
+async function pgScalar(dbSessionId: string, sql: string): Promise<number> {
+  const payload = await invokeBackend<QueryResultPayload>('execute_query', { dbSessionId, sql });
+  return queryScalar(payload);
+}
+
+function sqlLiteral(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+async function pgTableExists(
+  dbSessionId: string,
+  table: string,
+  schema = 'public',
+): Promise<boolean> {
+  const c = await pgScalar(
+    dbSessionId,
+    `SELECT COUNT(*)::int AS c FROM information_schema.tables WHERE table_schema = '${sqlLiteral(schema)}' AND table_name = '${sqlLiteral(table)}'`,
+  );
+  return c > 0;
+}
+
+async function pgSchemaExists(dbSessionId: string, schema: string): Promise<boolean> {
+  const c = await pgScalar(
+    dbSessionId,
+    `SELECT COUNT(*)::int AS c FROM information_schema.schemata WHERE schema_name = '${sqlLiteral(schema)}'`,
+  );
+  return c > 0;
+}
 
 /** Right-click a DOM element matched by selector + text filter via JS dispatch. */
 async function rightClick(selector: string, textMatch?: string) {
@@ -144,17 +177,20 @@ async function expandCategory(catId: string) {
 
 describe('导航树上下文菜单 (Navigator Context Menu)', () => {
   let mainWindow: string;
+  let pgDbSessionId: string;
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
     await browser.pause(1500);
+    pgDbSessionId = await invokeBackend<string>('connect', { connectionId: SEEDED_CONN_ID });
 
     await openQueryTab();
     await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
     await executeSQL(`CREATE TABLE ${TEST_TABLE} (id SERIAL PRIMARY KEY, name TEXT NOT NULL)`);
     await executeSQL(`INSERT INTO ${TEST_TABLE}(name) VALUES ('test_ctx_row')`);
     await browser.pause(1000);
+    expect(await pgTableExists(pgDbSessionId, TEST_TABLE)).toBe(true);
   });
 
   after(async () => {
@@ -330,9 +366,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await dismissMenu();
     });
 
-    it('NCM-023: 删除 schema 确认后应从导航树消失', async () => {
+    it('NCM-023: 删除 schema 确认后应从导航树与数据库消失', async () => {
       await executeSQL(`CREATE SCHEMA IF NOT EXISTS ${DROP_SCHEMA}`);
       await browser.pause(800);
+      expect(await pgSchemaExists(pgDbSessionId, DROP_SCHEMA)).toBe(true);
       await rightClick('[data-tree-node="db"]');
       await clickMenuItem(t('connWin.refresh'));
       await browser.pause(2000);
@@ -349,6 +386,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
         console.log('NCM-023: drop schema node not visible, skipping');
         return;
       }
+      expect(await pgSchemaExists(pgDbSessionId, DROP_SCHEMA)).toBe(true);
 
       await rightClick('[data-tree-node="schema"]', DROP_SCHEMA);
       await clickMenuItem(t('schemaTree.dropSchema'));
@@ -361,6 +399,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
         );
       }, DROP_SCHEMA);
       expect(stillThere).toBe(false);
+      expect(await pgSchemaExists(pgDbSessionId, DROP_SCHEMA)).toBe(false);
     });
   });
 
@@ -522,7 +561,9 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       expect(bodyText.toLowerCase()).toContain('er');
     });
 
-    it('NCM-046: 删除表确认后应从导航树消失', async () => {
+    it('NCM-046: 删除表确认后应从导航树与数据库消失', async () => {
+      expect(await pgTableExists(pgDbSessionId, TEST_TABLE)).toBe(true);
+
       await rightClick(`[data-tree-node="table"][data-item-name="${TEST_TABLE}"]`);
       const menuVisible = await isMenuDisplayed();
       if (!menuVisible) {
@@ -540,6 +581,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
         },
         { timeout: 15000, timeoutMsg: `表 ${TEST_TABLE} 删除后仍显示在导航树中` },
       );
+      expect(await pgTableExists(pgDbSessionId, TEST_TABLE)).toBe(false);
     });
   });
 
