@@ -151,3 +151,30 @@ theme 相关 vitest               32 passed
 
 无
 
+## F4：脚本命名收尾（driver inject / ACL）
+
+**Status:** ✅ COMPLETED  
+**Branch:** `main`
+
+### 范围摘要
+
+| 变更 | 说明 |
+|------|------|
+| `with-plugin-inject.mjs` → `with-driver-inject.mjs` | 含 `runWithDriverInject` / `planDriverInjectLifecycle` |
+| `DATAZEN_PLUGIN_INJECT_ACTIVE` → `DATAZEN_DRIVER_INJECT_ACTIVE` | 嵌套 inject 环境变量 |
+| `PLUGIN_ACL_IDS` → `DRIVER_ACL_IDS` | `driver-deinject.mjs` / `driver-stash-precommit.mjs` |
+| 引用更新 | `package.json`、CI release、e2e 脚本、文档 |
+
+### 测试结果
+
+```
+npx vitest run scripts/__tests__/with-driver-inject.test.ts scripts/__tests__/stash-workflow.test.ts scripts/__tests__/driver-stash-precommit.test.ts
+  3 files, 34 passed, 0 failed
+```
+
+### 不改动（by design）
+
+- `src/plugins/generated.ts`（driver codegen 路径）
+- Git 驱动 crate 名 `datazen-plugin-*`（外部仓库）
+- `{appData}/plugins/` 磁盘目录、`plugins:changed` 事件字符串
+

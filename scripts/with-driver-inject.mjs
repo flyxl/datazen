@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 /**
- * with-plugin-inject.mjs — resolve-drivers once, run command, restore stash.
+ * with-driver-inject.mjs — resolve-drivers once, run command, restore stash.
  *
  * Intended as the single inject boundary for packaging (`tauri:build`, CI).
  * `pnpm build` / beforeBuildCommand must NOT call this — they only compile the
  * frontend against already-injected Cargo.toml / already-generated codegen.
  *
- * Nesting: set DATAZEN_PLUGIN_INJECT_ACTIVE=1 on child processes. Inner
- * with-plugin-inject sees that and skips resolve/restore. A leftover
+ * Nesting: set DATAZEN_DRIVER_INJECT_ACTIVE=1 on child processes. Inner
+ * with-driver-inject sees that and skips resolve/restore. A leftover
  * `.driver-file-stash/` without that env is treated as orphaned and cleaned
  * before this wrapper takes ownership (avoids leaving Cargo.toml injected).
  *
  * Usage:
- *   node scripts/with-plugin-inject.mjs [--drivers=...] -- <cmd> [args...]
- *   node scripts/with-plugin-inject.mjs -- tauri build
+ *   node scripts/with-driver-inject.mjs [--drivers=...] -- <cmd> [args...]
+ *   node scripts/with-driver-inject.mjs -- tauri build
  */
 
 import { execSync, spawnSync } from 'child_process';
@@ -25,7 +25,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
 /** Child processes of an owning inject wrapper set this so nested wrappers skip. */
-export const INJECT_ACTIVE_ENV = 'DATAZEN_PLUGIN_INJECT_ACTIVE';
+export const INJECT_ACTIVE_ENV = 'DATAZEN_DRIVER_INJECT_ACTIVE';
 
 /**
  * Decide whether this wrapper owns stash lifecycle.
@@ -35,7 +35,7 @@ export const INJECT_ACTIVE_ENV = 'DATAZEN_PLUGIN_INJECT_ACTIVE';
  * }} [opts]
  * @returns {{ ownStash: boolean, nested: boolean, orphanStash: boolean }}
  */
-export function planPluginInjectLifecycle(opts = {}) {
+export function planDriverInjectLifecycle(opts = {}) {
   const exists = typeof opts === 'function' ? opts : (opts.exists ?? stashExists);
   const env = typeof opts === 'function' ? process.env : (opts.env ?? process.env);
   const markedNested = env[INJECT_ACTIVE_ENV] === '1';
@@ -63,7 +63,7 @@ export function planPluginInjectLifecycle(opts = {}) {
  *   log?: (msg: string) => void,
  * }} [options]
  */
-export function runWithPluginInject(options = {}) {
+export function runWithDriverInject(options = {}) {
   const argv = options.argv ?? process.argv.slice(2);
   const root = options.root ?? ROOT;
   const existsFn = options.stashExistsFn ?? stashExists;
@@ -78,7 +78,7 @@ export function runWithPluginInject(options = {}) {
     baseEnv.DATAZEN_PLUGINS
   ) {
     console.error(
-      '[with-plugin-inject] --plugins / DATAZEN_PLUGINS are no longer supported. Use --drivers=... or DATAZEN_DRIVERS.',
+      '[with-driver-inject] --plugins / DATAZEN_PLUGINS are no longer supported. Use --drivers=... or DATAZEN_DRIVERS.',
     );
     return { status: 1, ownStash: false, nested: false, orphanStash: false };
   }
@@ -106,7 +106,7 @@ export function runWithPluginInject(options = {}) {
           env: baseEnv,
         });
       } catch {
-        console.error('[with-plugin-inject] stash restore failed');
+        console.error('[with-driver-inject] stash restore failed');
       }
     });
 
@@ -129,18 +129,18 @@ export function runWithPluginInject(options = {}) {
       });
     });
 
-  const { ownStash, nested, orphanStash } = planPluginInjectLifecycle({
+  const { ownStash, nested, orphanStash } = planDriverInjectLifecycle({
     exists: existsFn,
     env: baseEnv,
   });
 
   if (nested) {
     log(
-      `[with-plugin-inject] ${INJECT_ACTIVE_ENV}=1; skipping resolve/restore (nested)`,
+      `[with-driver-inject] ${INJECT_ACTIVE_ENV}=1; skipping resolve/restore (nested)`,
     );
   } else if (orphanStash) {
     log(
-      '[with-plugin-inject] orphan .driver-file-stash/ detected; restoring before resolve',
+      '[with-driver-inject] orphan .driver-file-stash/ detected; restoring before resolve',
     );
     runRestore();
   }
@@ -169,7 +169,7 @@ export function runWithPluginInject(options = {}) {
 }
 
 function main() {
-  const result = runWithPluginInject();
+  const result = runWithDriverInject();
   process.exit(result.status);
 }
 

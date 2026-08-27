@@ -16,7 +16,7 @@
 正确构建链路：
 
 ```
-node scripts/with-plugin-inject.mjs [--drivers=basic] -- node scripts/e2e-tauri-build.mjs
+node scripts/with-driver-inject.mjs [--drivers=basic] -- node scripts/e2e-tauri-build.mjs
   → resolve-drivers → .driver-features.json
   → pnpm tauri build --debug -f webdriver,driver-postgres,...
   → beforeBuildCommand: pnpm build   # 生成 dist/index.html 等
@@ -96,7 +96,7 @@ pnpm test:unit:e2e-contract:coverage  # 契约纯逻辑单测 ≥80%
 
 ```bash
 # 1) 构建（唯一合法的 E2E 二进制来源；含驱动 feature）
-node scripts/generate-menu-labels.mjs && node scripts/with-plugin-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs
+node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs
 
 # 2) 确认产物
 ls dist/index.html
@@ -151,7 +151,7 @@ bash e2e/setup-e2e-env.sh
 
 ```
 e2e/run.mjs
-  ├─ (可选) with-plugin-inject → e2e-tauri-build.mjs  # webdriver + 驱动 features
+  ├─ (可选) with-driver-inject → e2e-tauri-build.mjs  # webdriver + 驱动 features
   ├─ 启动 target/debug/.../datazen   # 插件监听 127.0.0.1:4445
   └─ npx wdio run e2e/wdio.conf.ts [--spec ...]
 

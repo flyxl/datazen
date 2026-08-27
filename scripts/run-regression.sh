@@ -14,7 +14,7 @@
 # 步骤①的驱动注入与 HOME 沙箱包装：
 #   - 注入：worktree 生成态 capabilities/default.json 含 redis:default，要求
 #     Cargo.toml 插件 feature 注入才能通过 tauri-build ACL 校验。经仓库正规解法
-#     scripts/with-plugin-inject.mjs --drivers=basic 执行（注入 → 执行 → 自动还原，
+#     scripts/with-driver-inject.mjs --drivers=basic 执行（注入 → 执行 → 自动还原，
 #     与 .github/workflows/ci.yml 一致）。注入器本身不需要 HOME 包装。
 #   - HOME 包装只包 cargo 这一步：部分用例经 Store::default_app_data_dir() →
 #     dirs::data_dir() 写入真实用户目录（macOS: $HOME/Library/Application Support），
@@ -73,7 +73,7 @@ mkdir -p "$SANDBOX_HOME"
 
 # ---------------------------------------------------------------------------
 # 注入周期副作用防护：快照并还原 src-tauri/capabilities/default.json。
-# with-plugin-inject 会把 active 插件权限（如 redis:default）合并进该 gitignored
+# with-driver-inject 会把 active 插件权限（如 redis:default）合并进该 gitignored
 # 生成文件；还原快照可避免污染后续裸 cargo 命令（tauri-build ACL 校验）。
 # Cargo.toml / Cargo.lock 的注入与还原由 plugin-file-stash 负责，脚本不做 git 操作。
 # ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ echo "真实 HOME    : ${REAL_HOME}"
 echo "沙箱 HOME    : ${SANDBOX_HOME}"
 
 # ---------------------------------------------------------------------------
-# ① Host Rust 单测：with-plugin-inject(basic) 外层，env 只包 cargo；
+# ① Host Rust 单测：with-driver-inject(basic) 外层，env 只包 cargo；
 #    第 1 轮失败的用例集合在第 2 轮单独复跑（两轮结果都记录）。
 # ---------------------------------------------------------------------------
 run_cargo_lib_with_retry() {
@@ -163,7 +163,7 @@ run_cargo_lib_with_retry() {
 
   echo "--- 第 1 轮（全量，HOME 沙箱包装）---"
   # shellcheck disable=SC2086
-  node scripts/with-plugin-inject.mjs --drivers=basic -- \
+  node scripts/with-driver-inject.mjs --drivers=basic -- \
     env \
       HOME="$SANDBOX_HOME" \
       CARGO_HOME="$CARGO_HOME_WRAPPED" \
@@ -187,7 +187,7 @@ run_cargo_lib_with_retry() {
   echo "--- 第 2 轮（仅复跑失败子集，共 $(wc -l <<<"$failed_names" | tr -d ' ') 例）---"
   printf '%s\n' "$failed_names"
   # shellcheck disable=SC2086
-  node scripts/with-plugin-inject.mjs --drivers=basic -- \
+  node scripts/with-driver-inject.mjs --drivers=basic -- \
     env \
       HOME="$SANDBOX_HOME" \
       CARGO_HOME="$CARGO_HOME_WRAPPED" \
