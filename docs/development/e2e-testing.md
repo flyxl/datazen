@@ -170,7 +170,7 @@ pnpm e2e:skip-build -- --screenshot --spec e2e/specs/main-window.ts
 
 - `e2e/run.mjs` 设置 `E2E_SCREENSHOT=1` 并 `mkdir -p e2e/screenshots/`（目录 gitignored，不存在时会自动创建）
 - **仅 spec 内**在断言通过、UI 达到目标状态后调用 `captureJourneyStep(label, 0, true)`；helpers **不再**自动截图（避免 connect / openTab 链产生重复帧）
-- 同一 spec 文件内跨 `it()` 的 **相同 PNG** 会自动去重（`fail` 帧除外）；同一 `it()` 内连续相同帧也会丢弃
+- 同一 spec 文件内跨 `it()` 的 **相同 PNG** 会自动去重（`fail` 帧除外）；同一 `it()` 内连续相同帧也会丢弃；被去重时 **不会** 留下空目录
 - 输出：`e2e/screenshots/<spec>/<test-title>/01_<label>.png` …
 
 纯 IPC 用例（无 UI 操作）通常 **零截图**，属预期行为。营销固定场景仍见 `e2e/specs/zz-screenshots.ts`。

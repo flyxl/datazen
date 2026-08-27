@@ -72,6 +72,23 @@ function digestFile(filePath: string): string {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
+function removeDirIfEmpty(dir: string): void {
+  try {
+    if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
+      fs.rmdirSync(dir);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function discardScreenshot(out: string, testDir: string): undefined {
+  fs.unlinkSync(out);
+  stepSeq -= 1;
+  removeDirIfEmpty(testDir);
+  return undefined;
+}
+
 /**
  * Save a journey screenshot when `E2E_SCREENSHOT=1`.
  * Skips pixel-identical frames within the same `it()` or anywhere in the spec file
@@ -90,22 +107,19 @@ export async function saveJourneyScreenshot(
 
   stepSeq += 1;
   const num = String(stepSeq).padStart(2, '0');
-  const out = path.join(journeyTestDir(), `${num}_${sanitizeScreenshotLabel(stepLabel)}.png`);
+  const testDir = journeyTestDir();
+  const out = path.join(testDir, `${num}_${sanitizeScreenshotLabel(stepLabel)}.png`);
   await browser.saveScreenshot(out);
 
   const digest = digestFile(out);
   const isFailFrame = sanitizeScreenshotLabel(stepLabel) === 'fail';
 
   if (!isFailFrame && specDigests.has(digest)) {
-    fs.unlinkSync(out);
-    stepSeq -= 1;
-    return undefined;
+    return discardScreenshot(out, testDir);
   }
 
   if (!force && !isFailFrame && lastDigest !== null && digest === lastDigest) {
-    fs.unlinkSync(out);
-    stepSeq -= 1;
-    return undefined;
+    return discardScreenshot(out, testDir);
   }
 
   lastDigest = digest;
