@@ -5,7 +5,13 @@
  * Covers: TC-SET-007 ~ TC-SET-010
  */
 import { expect, browser, $ } from '@wdio/globals';
-import { closeExtraWindows, expandAllGroups, invokeBackend } from '../helpers.js';
+import {
+  captureJourneyStep,
+  closeExtraWindows,
+  expandAllGroups,
+  invokeBackend,
+  openSettingsInMainWindow,
+} from '../helpers.js';
 
 async function getSettings() {
   return invokeBackend<Record<string, unknown>>('get_settings');
@@ -34,29 +40,13 @@ describe('主题切换与设置持久化 (TC-SET-007~010)', () => {
 
   it('TC-SET-007: 暗色/亮色主题切换应改变 CSS 变量', async () => {
     await browser.switchToWindow(mainWindow);
-    // Navigate to settings
-    const settingsNav = await browser.execute(() => {
-      const btns = Array.from(document.querySelectorAll('button'));
-      const btn = btns.find((b) => {
-        const text = b.textContent || '';
-        const label = b.getAttribute('aria-label') || '';
-        return text.includes('设置') || text.includes('Settings') || label.includes('设置');
-      });
-      if (btn) {
-        btn.click();
-        return true;
-      }
-      // Try Cmd+, shortcut indicator
-      return false;
-    });
-    await browser.pause(1500);
+    await openSettingsInMainWindow('appearance');
+    await browser.pause(500);
 
-    // Get current theme
     const currentTheme = await browser.execute(() => {
       return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
     });
 
-    // Toggle theme
     const toggled = await browser.execute(() => {
       const toggles = document.querySelectorAll(
         'button[role="switch"], [data-testid*="theme"], [class*="theme-toggle"]',
@@ -83,6 +73,7 @@ describe('主题切换与设置持久化 (TC-SET-007~010)', () => {
         return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
       });
       expect(newTheme).not.toBe(currentTheme);
+      await captureJourneyStep('theme-toggled');
     }
   });
 

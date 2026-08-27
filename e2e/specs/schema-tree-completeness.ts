@@ -6,6 +6,8 @@
  */
 import { expect, browser, $ } from '@wdio/globals';
 import {
+  captureJourneyStep,
+  clickFirstTable,
   connectSeededPgInWorkspace,
   closeExtraWindows,
   executeSQL,
@@ -74,23 +76,8 @@ describe('Schema 树完整性 (TC-TREE-001~006)', () => {
   });
 
   it('TC-TREE-003: 点击表名应打开数据 tab', async () => {
-    const clicked = await browser.execute(() => {
-      const aside = document.querySelector('aside');
-      if (!aside) return false;
-      const buttons = Array.from(aside.querySelectorAll('button'));
-      const tableBtn = buttons.find((b) => {
-        const cls = b.getAttribute('class') || '';
-        return (
-          cls.includes('text-left') && cls.includes('13px') && b.textContent!.trim().length > 0
-        );
-      });
-      if (tableBtn) {
-        tableBtn.click();
-        return tableBtn.textContent!.trim();
-      }
-      return false;
-    });
-    expect(clicked).not.toBe(false);
+    const tableName = await clickFirstTable();
+    expect(tableName).toBeTruthy();
     await browser.pause(1000);
     const body = await $('body').getText();
     expect(
@@ -116,6 +103,7 @@ describe('Schema 树完整性 (TC-TREE-001~006)', () => {
       if (!menuVisible) {
         console.log('TC-TREE-004: Context menu did not appear (non-critical)');
       }
+      await captureJourneyStep('schema-context-menu');
     }
   });
 
@@ -147,6 +135,7 @@ describe('Schema 树完整性 (TC-TREE-001~006)', () => {
     await browser.pause(2000);
     const body = await $('body').getText();
     expect(body.includes(testTable)).toBe(true);
+    await captureJourneyStep('schema-tree-refreshed');
     await withSafeModeOff(async () => {
       await executeSQL(`DROP TABLE IF EXISTS ${testTable}`);
     });

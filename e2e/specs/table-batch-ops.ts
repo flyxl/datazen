@@ -5,7 +5,14 @@
  * Covers: TC-TABLE-009 ~ TC-TABLE-014
  */
 import { expect, browser, $ } from '@wdio/globals';
-import { closeExtraWindows, connectSeededPgInWorkspace, executeSQL } from '../helpers.js';
+import {
+  captureJourneyStep,
+  clickTableInSidebar,
+  closeExtraWindows,
+  connectSeededPgInWorkspace,
+  executeSQL,
+  openQueryTab,
+} from '../helpers.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
@@ -36,26 +43,6 @@ async function withSafeModeOff<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function openNewQueryTab() {
-  const btn = await $('[data-testid="conn-toolbar-new-query"]');
-  if (await btn.isExisting()) {
-    await btn.click();
-  } else {
-    const home = await $('[data-testid="connection-workspace-home"]');
-    if (await home.isExisting()) {
-      for (const label of ['新建查询', 'New Query']) {
-        const candidate = await home.$(`button*=${label}`);
-        if (await candidate.isExisting()) {
-          await candidate.click();
-          break;
-        }
-      }
-    }
-  }
-  const execBtn = await $('[data-testid="editor-execute-button"]');
-  await execBtn.waitForDisplayed({ timeout: 10000 });
-}
-
 const BATCH_TABLE = 'e2e_batch_ops_test';
 
 describe('数据表批量操作 (TC-TABLE-009~014)', () => {
@@ -65,7 +52,7 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
     await browser.pause(1000);
-    await openNewQueryTab();
+    await openQueryTab();
 
     await withSafeModeOff(async () => {
       await executeSQL(`DROP TABLE IF EXISTS ${BATCH_TABLE}`);
@@ -84,7 +71,7 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
   });
 
   after(async () => {
-    await openNewQueryTab();
+    await openQueryTab();
     await withSafeModeOff(async () => {
       await executeSQL(`DROP TABLE IF EXISTS ${BATCH_TABLE}`);
     });
@@ -92,18 +79,10 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
   });
 
   it('TC-TABLE-009: 点击表名应显示数据行', async () => {
-    const aside = await $('aside');
-    const tableBtns = await aside.$$('button');
-    let found = false;
-    for (const btn of tableBtns) {
-      if ((await btn.getText()).trim() === BATCH_TABLE) {
-        await btn.click();
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      await openNewQueryTab();
+    try {
+      await clickTableInSidebar(BATCH_TABLE);
+    } catch {
+      await openQueryTab();
       await executeSQL(`SELECT * FROM ${BATCH_TABLE} LIMIT 1`);
     }
     await browser.pause(1000);
@@ -111,6 +90,7 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
       return document.querySelectorAll('table tbody tr, [role="row"]').length > 0;
     });
     expect(hasData).toBe(true);
+    await captureJourneyStep('table-data-visible');
   });
 
   it('TC-TABLE-010: 分页控件应显示总行数', async () => {
@@ -156,6 +136,7 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
 
     if (clickedNext) {
       await browser.pause(1000);
+      await captureJourneyStep('table-next-page');
       const newFirstCell = await browser.execute(() => {
         const cells = document.querySelectorAll('td span[title], td span');
         for (const c of cells) {
@@ -197,6 +178,7 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
         }
       });
       await browser.pause(500);
+      await captureJourneyStep('table-multi-select');
     }
   });
 
@@ -207,6 +189,7 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
     });
     await browser.keys(['Meta', 'a']);
     await browser.pause(500);
+    await captureJourneyStep('table-select-all');
   });
 
   it('TC-TABLE-014: 分页边界 — 第一页不应有上一页按钮', async () => {
