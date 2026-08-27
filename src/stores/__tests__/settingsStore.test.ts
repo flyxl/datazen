@@ -148,6 +148,7 @@ describe('settingsStore', () => {
 
     expect(useSettingsStore.getState().settings.language).toBe('zh-CN');
     expect(useSettingsStore.getState().settings.theme.mode).toBe(DEFAULT_THEME_PREFERENCE.mode);
+    expect(useSettingsStore.getState().settings.mcpClientServers).toEqual([]);
   });
 
   it('updateSettings merges partial and saves', async () => {

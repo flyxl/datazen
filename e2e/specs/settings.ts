@@ -250,7 +250,10 @@ describe('Settings (SS-001~SS-006)', () => {
         expectText: [t('settings.ai.provider'), t('settings.ai.apiKey'), 'API'],
       },
       { label: t('mcp.title'), expectText: ['MCP', t('mcp.title')] },
-      { label: t('mcpClient.title'), expectText: [t('mcpClient.title'), t('mcpClient.savedConfigs'), 'MCP'] },
+      {
+        label: t('mcpClient.title'),
+        expectText: [t('mcpClient.title'), t('mcpClient.savedConfigs'), 'MCP'],
+      },
       {
         label: t('settings.extensions.title'),
         expectText: [t('settings.extensions.title'), t('settings.extensions.empty'), '扩展'],
@@ -330,57 +333,50 @@ describe('Settings (SS-001~SS-006)', () => {
     await mcpClientNav.click();
     await browser.pause(400);
 
-    const bodyBefore = await $('body').getText();
-    expect(
-      bodyBefore.includes(t('mcpClient.savedConfigs')) ||
-        bodyBefore.includes('已保存') ||
-        bodyBefore.includes('Saved'),
-    ).toBe(true);
+    const savedConfigsLabel = await $(`*=${t('mcpClient.savedConfigs')}`);
+    await savedConfigsLabel.waitForDisplayed({ timeout: 5000 });
 
     const addBtn = await $(`button*=${t('mcpClient.addServer')}`);
-    if (await addBtn.isExisting()) {
-      await addBtn.click();
-      await browser.pause(300);
+    await addBtn.waitForDisplayed({ timeout: 5000 });
+    await addBtn.click();
+    await browser.pause(300);
 
-      const idInput = await $('input[placeholder="my-mcp-server"]');
-      if (await idInput.isExisting()) {
-        await idInput.setValue('e2e-mcp-test');
-        const nameInput = await $('input[placeholder="My Server"]');
-        await nameInput.setValue('E2E MCP');
-        const cmdInput = await $('input[placeholder*="/usr/local/bin"]');
-        if (await cmdInput.isExisting()) {
-          await cmdInput.setValue('/usr/bin/true');
-        }
-        const addEnvBtn = await $('button*=添加变量');
-        const addEnvBtnEn = await $('button*=Add variable');
-        if (await addEnvBtn.isExisting()) {
-          await addEnvBtn.click();
-        } else if (await addEnvBtnEn.isExisting()) {
-          await addEnvBtnEn.click();
-        }
-        await browser.pause(200);
+    const idInput = await $('input[placeholder="my-mcp-server"]');
+    await idInput.waitForDisplayed({ timeout: 5000 });
+    await idInput.setValue('e2e-mcp-test');
+    const nameInput = await $('input[placeholder="My Server"]');
+    await nameInput.setValue('E2E MCP');
+    const cmdInput = await $('input[placeholder*="/usr/local/bin"]');
+    await cmdInput.waitForDisplayed({ timeout: 5000 });
+    await cmdInput.setValue('/usr/bin/true');
 
-        const envKeyInputs = await $$('input[placeholder*="变量名"], input[placeholder*="Variable name"]');
-        if (envKeyInputs.length > 0) {
-          await envKeyInputs[0].setValue('TEST_ENV');
-          const envValueInputs = await $$('input[placeholder="值"], input[placeholder="Value"]');
-          if (envValueInputs.length > 0) {
-            await envValueInputs[0].setValue('e2e-value');
-          }
-        }
+    const addEnvBtn = await $(`button*=${t('mcpClient.addEnv')}`);
+    await addEnvBtn.waitForDisplayed({ timeout: 5000 });
+    await addEnvBtn.click();
+    await browser.pause(200);
 
-        const saveBtn = await $(`button*=${t('mcpClient.save')}`);
-        await saveBtn.click();
-        await browser.pause(500);
-      }
-    }
+    const envKeyInputs = await $$(
+      'input[placeholder*="变量名"], input[placeholder*="Variable name"]',
+    );
+    expect(envKeyInputs.length).toBeGreaterThan(0);
+    await envKeyInputs[0].setValue('TEST_ENV');
+    const envValueInputs = await $$('input[placeholder="值"], input[placeholder="Value"]');
+    expect(envValueInputs.length).toBeGreaterThan(0);
+    await envValueInputs[0].setValue('e2e-value');
+
+    const saveBtn = await $(`button*=${t('mcpClient.save')}`);
+    await saveBtn.click();
+    await browser.pause(500);
+
+    const bodyAfter = await $('body').getText();
+    expect(bodyAfter).toContain('e2e-mcp-test');
 
     const loaded = await invokeBackend<any>('get_settings');
-    const saved = (loaded.mcpClientServers ?? []).find((c: { id: string }) => c.id === 'e2e-mcp-test');
-    if (saved) {
-      expect(saved.command).toBe('/usr/bin/true');
-      expect(saved.env?.TEST_ENV).toBe('e2e-value');
-    }
+    expect(Array.isArray(loaded.mcpClientServers)).toBe(true);
+    const saved = loaded.mcpClientServers.find((c: { id: string }) => c.id === 'e2e-mcp-test');
+    expect(saved).toBeDefined();
+    expect(saved.command).toBe('/usr/bin/true');
+    expect(saved.env?.TEST_ENV).toBe('e2e-value');
   });
 
   // ── Restore defaults ──
