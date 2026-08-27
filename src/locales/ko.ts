@@ -131,12 +131,49 @@ const translations = {
   'connShare.importFormatsHint':
     'DataZen(.datazenconnection), DBX, DataGrip, Navicat, DBeaver, TablePlus 지원. 비밀번호가 없으면 다시 입력하세요.',
   'connShare.exportAction': '내보내다…',
+  'connShare.exportHint':
+    '모든 연결을 암호화된 .datazenconnection 파일로 저장합니다. 가져올 때 동일한 비밀번호를 사용하세요.',
   'connShare.importAction': '수입…',
+  'connShare.chooseImportFile': '파일 선택…',
+  'connShare.selectedImportFile': '선택한 파일',
+  'connShare.changeImportFile': '파일 변경',
+  'connShare.encryptedImportPasswordRequired': '암호화된 연결 파일에는 비밀번호가 필요합니다',
   'connShare.exportSuccess': '{count} 연결을 내보냈습니다.',
   'connShare.importSuccess':
     '{imported} 신규 가져오기, {overwritten} 업데이트, {groupsAdded} 그룹 추가',
   'connShare.importSuccessWithSkipped':
     '{imported} 신규 가져오기, {overwritten} 업데이트, {groupsAdded} 그룹 추가, {skipped}개 건너뜀',
+  'connShare.error.passwordRequired': '비밀번호가 필요합니다',
+  'connShare.error.encryptedImportPasswordRequired':
+    '암호화된 연결 가져오기에는 비밀번호가 필요합니다',
+  'connShare.error.dbxEncryptedPasswordRequired': 'DBX 암호화 가져오기에는 비밀번호가 필요합니다',
+  'connShare.error.datazenEncryptedPasswordRequired':
+    'DataZen 암호화 가져오기에는 비밀번호가 필요합니다',
+  'connShare.error.datazenPasswordRequired': 'DataZen 가져오기에는 비밀번호가 필요합니다',
+  'connShare.error.formatPasswordRequired': '{format} 가져오기에는 비밀번호가 필요합니다',
+  'connShare.error.invalidUtf8':
+    '가져오기 파일이 유효한 UTF-8 텍스트가 아닙니다(DataZen은 .datazenconnection 사용)',
+  'connShare.error.unrecognizedFormat': '인식할 수 없는 연결 가져오기 형식입니다',
+  'connShare.error.noFiles': '가져올 연결 파일이 없습니다',
+  'connShare.error.readFailed': '가져오기 파일을 읽지 못했습니다',
+  'connShare.error.unknownImportSource': '알 수 없는 가져오기 소스입니다',
+  'connShare.error.decryptionWrongPassword': '복호화 실패: 비밀번호가 올바르지 않습니다',
+  'connShare.error.missingConnectionsField':
+    '유효하지 않은 가져오기 파일: connections 필드가 없습니다',
+  'connShare.error.missingConnections': 'connections가 없습니다',
+  'connShare.error.dbxWrongPassphrase': 'DBX 복호화 실패: 암호가 올바르지 않습니다',
+  'connShare.error.dbxMissingConnections': 'DBX 가져오기: connections 배열이 없습니다',
+  'connShare.error.invalidFileTooShort': '유효하지 않은 {format} 파일: 너무 짧습니다',
+  'connShare.error.invalidFileRncryptorVersion':
+    '유효하지 않은 {format} 파일: 지원되지 않는 RNCryptor 버전입니다(레거시 DataZen .json 내보내기인 경우 .json 파일을 가져오세요)',
+  'connShare.error.invalidFileEncryptionType':
+    '유효하지 않은 {format} 파일: 비밀번호 기반 암호화가 필요합니다',
+  'connShare.error.decryptionFailed':
+    '{format} 복호화 실패: 비밀번호가 올바르지 않거나 파일이 손상되었습니다',
+  'connShare.error.decryptionFailedLegacyHint':
+    '{format} 복호화 실패: 비밀번호가 올바르지 않거나 파일이 손상되었습니다. 내보낼 때와 동일한 비밀번호를 사용하세요. 레거시 DataZen 내보내기는 비밀번호로 보호된 .json(.datazenconnection 아님)이었습니다.',
+  'connShare.error.invalidJsonAfterDecrypt': '복호화 후 {format} JSON이 유효하지 않습니다',
+  'connShare.error.payloadNotUtf8': '{format} 내용이 UTF-8 텍스트가 아닙니다',
   'conn.connected': '연결됨',
   'conn.connecting': '연결 중…',
   'conn.failed': '연결 실패',
