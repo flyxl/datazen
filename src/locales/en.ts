@@ -351,6 +351,7 @@ const en: Record<TranslationKey, string> = {
   'settings.extensions.empty': 'No plugin extensions are available in this build.',
   'settings.theme': 'Theme',
   'settings.theme.pack': 'Theme pack',
+  'settings.colorScheme': 'Color scheme',
   'settings.theme.packDefault': 'Built-in default',
   'settings.theme.packMissing': 'Missing pack ({id})',
   'settings.theme.packMissingHint': 'The selected theme pack is no longer installed.',
