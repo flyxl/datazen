@@ -4,11 +4,11 @@ import {
   workspaceTabKey,
   type WorkspaceTab,
 } from '../../stores/workspaceTabsStore';
-import { usePluginStore } from '../../stores/pluginStore';
-import type { PluginPageSummary, PluginSummary } from '../../types/plugin';
+import { useExtensionStore } from '../../stores/extensionStore';
+import type { ExtensionPageSummary, ExtensionSummary } from '../../types/extension';
 
-/** Mirrors `PLUGINS_OPEN_PAGE_EVENT` in `src-tauri/src/plugins/protocol.rs`. */
-export const PLUGINS_OPEN_PAGE_EVENT = 'plugins:open-page';
+/** Mirrors `EXTENSIONS_OPEN_PAGE_EVENT` in `src-tauri/src/extensions/protocol.rs`. */
+export const EXTENSIONS_OPEN_PAGE_EVENT = 'plugins:open-page';
 
 /** Payload of the `plugins:open-page` deep-link event (`datazen://…/open?page=…`). */
 export interface OpenPageEventPayload {
@@ -30,7 +30,7 @@ export interface WorkspacePageEntry {
   description?: string;
 }
 
-function toEntry(plugin: PluginSummary, page: PluginPageSummary): WorkspacePageEntry {
+function toEntry(plugin: ExtensionSummary, page: ExtensionPageSummary): WorkspacePageEntry {
   return {
     key: workspaceTabKey(plugin.id, page.id),
     pluginId: plugin.id,
@@ -44,7 +44,7 @@ function toEntry(plugin: PluginSummary, page: PluginPageSummary): WorkspacePageE
 }
 
 /** All pages contributed by enabled plugins, in install order. */
-export function deriveWorkspacePages(plugins: PluginSummary[]): WorkspacePageEntry[] {
+export function deriveWorkspacePages(plugins: ExtensionSummary[]): WorkspacePageEntry[] {
   return plugins
     .filter((p) => p.enabled && p.pages.length > 0)
     .flatMap((p) => p.pages.map((page) => toEntry(p, page)));
@@ -52,11 +52,11 @@ export function deriveWorkspacePages(plugins: PluginSummary[]): WorkspacePageEnt
 
 /** Reactive list of workspace pages (memoized on the plugin list reference). */
 export function useWorkspacePages(): WorkspacePageEntry[] {
-  const plugins = usePluginStore((s) => s.plugins);
+  const plugins = useExtensionStore((s) => s.extensions);
   return useMemo(() => deriveWorkspacePages(plugins), [plugins]);
 }
 
-export function buildWorkspaceTab(plugin: PluginSummary, page: PluginPageSummary): WorkspaceTab {
+export function buildWorkspaceTab(plugin: ExtensionSummary, page: ExtensionPageSummary): WorkspaceTab {
   const entry = toEntry(plugin, page);
   return {
     key: entry.key,
@@ -74,7 +74,7 @@ export function buildWorkspaceTab(plugin: PluginSummary, page: PluginPageSummary
  * surface that to the user.
  */
 export function openPluginPage(pluginId: string, pageId?: string): boolean {
-  const plugin = usePluginStore.getState().byId(pluginId);
+  const plugin = useExtensionStore.getState().byId(pluginId);
   if (!plugin?.enabled || plugin.pages.length === 0) return false;
   const page = pageId ? plugin.pages.find((p) => p.id === pageId) : plugin.pages[0];
   if (!page) return false;

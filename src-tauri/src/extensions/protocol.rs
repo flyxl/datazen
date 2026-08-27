@@ -7,7 +7,7 @@
 //!   Content-Type table.
 //! - **command form** (`datazen://acme.bill-audit/open?page=quota-check&uid=1`):
 //!   first path segment `open` is a reserved deep link; the host emits
-//!   [`PLUGINS_OPEN_PAGE_EVENT`] to the frontend instead of serving bytes.
+//!   [`EXTENSIONS_OPEN_PAGE_EVENT`] to the frontend instead of serving bytes.
 //!
 //! On Windows the WebView exposes custom schemes as
 //! `http://datazen./<host>/<path>` while macOS/Linux keep
@@ -24,12 +24,12 @@ use std::path::{Path, PathBuf};
 use serde_json::{Map, Value};
 use tauri::{http, Emitter, Manager, Runtime, UriSchemeContext};
 
-use super::{is_valid_plugin_id, PluginManager};
+use super::{is_valid_extension_id, ExtensionManager};
 use crate::commands::AppState;
 
 /// Event emitted when a `open` deep link resolves to a contributed page.
 /// Payload: `{ pluginId, pageId, params }`.
-pub const PLUGINS_OPEN_PAGE_EVENT: &str = "plugins:open-page";
+pub const EXTENSIONS_OPEN_PAGE_EVENT: &str = "plugins:open-page";
 
 /// Reserved first path segment marking a deep-link command (not an asset).
 pub const OPEN_COMMAND: &str = "open";
@@ -57,7 +57,7 @@ pub enum DatazenOutcome {
         content_type: &'static str,
         bytes: Vec<u8>,
     },
-    /// Emit [`PLUGINS_OPEN_PAGE_EVENT`] and answer 200 with an empty body.
+    /// Emit [`EXTENSIONS_OPEN_PAGE_EVENT`] and answer 200 with an empty body.
     OpenPage {
         plugin_id: String,
         page_id: String,
@@ -91,8 +91,8 @@ pub fn parse_datazen_uri(uri: &str) -> Result<(String, String, QueryMap), String
 
     // Host must be a valid `<publisher>.<name>` plugin id; this rejects hosts
     // without the publisher dot, uppercase ids and overlong segments.
-    if !is_valid_plugin_id(host) {
-        return Err(format!("invalid plugin host: `{host}`"));
+    if !is_valid_extension_id(host) {
+        return Err(format!("invalid extension host: `{host}`"));
     }
 
     let path = percent_decode(raw_path);
@@ -226,7 +226,7 @@ pub(crate) fn content_type_for(ext: &str) -> Option<&'static str> {
 /// → command/asset dispatch. Errors are bare status codes (404 / 403) so the
 /// HTTP layer can respond without leaking details.
 pub(crate) fn route_datazen_request(
-    manager: &PluginManager,
+    manager: &ExtensionManager,
     plugin_id: &str,
     path: &str,
     query: &QueryMap,
@@ -325,7 +325,7 @@ pub fn handle_datazen_request<R: Runtime>(
             datazen_response(StatusCode::NOT_FOUND, None, Vec::new())
         }
         Ok((plugin_id, path, query)) => {
-            match route_datazen_request(&state.plugins, &plugin_id, &path, &query) {
+            match route_datazen_request(&state.extensions, &plugin_id, &path, &query) {
                 Ok(DatazenOutcome::Asset {
                     content_type,
                     bytes,
@@ -360,7 +360,7 @@ fn emit_open_page<R: Runtime>(app: &tauri::AppHandle<R>, outcome: &DatazenOutcom
         "pageId": page_id,
         "params": params,
     });
-    if let Err(error) = app.emit(PLUGINS_OPEN_PAGE_EVENT, payload) {
+    if let Err(error) = app.emit(EXTENSIONS_OPEN_PAGE_EVENT, payload) {
         tracing::warn!(error = %error, "failed to emit plugins:open-page");
     }
 }
@@ -406,7 +406,7 @@ mod tests {
         fs::write(path, content).unwrap();
     }
 
-    fn manager_with_page_plugin(dir: &Path) -> PluginManager {
+    fn manager_with_page_plugin(dir: &Path) -> ExtensionManager {
         write_file(dir, "acme.bill-audit/manifest.json", PAGE_MANIFEST);
         write_file(dir, "acme.bill-audit/index.html", "<html>bill-audit</html>");
         write_file(dir, "acme.bill-audit/assets/icon.svg", "<svg/>");
@@ -414,12 +414,12 @@ mod tests {
         write_file(dir, "acme.bill-audit/.storage.json", "{}");
         write_file(dir, "acme.bill-audit/.enabled", "1\n");
 
-        let manager = PluginManager::new(dir.to_path_buf());
+        let manager = ExtensionManager::new(dir.to_path_buf());
         assert_eq!(manager.load_from_disk(), 1);
         manager
     }
 
-    fn route(manager: &PluginManager, uri: &str) -> Result<DatazenOutcome, http::StatusCode> {
+    fn route(manager: &ExtensionManager, uri: &str) -> Result<DatazenOutcome, http::StatusCode> {
         let (plugin_id, path, query) =
             parse_datazen_uri(uri).map_err(|_| http::StatusCode::NOT_FOUND)?;
         route_datazen_request(manager, &plugin_id, &path, &query)
@@ -709,7 +709,7 @@ mod tests {
         write_file(dir.path(), "acme.bill-audit/manifest.json", PAGE_MANIFEST);
         write_file(dir.path(), "acme.bill-audit/blob.txt", "nope");
 
-        let manager = PluginManager::new(dir.path().to_path_buf());
+        let manager = ExtensionManager::new(dir.path().to_path_buf());
         // Register directly: simulates a file dropped into a plugin dir after
         // install-time validation (which itself rejects `.txt` packages).
         let manifest = super::super::parse_manifest(PAGE_MANIFEST).unwrap();

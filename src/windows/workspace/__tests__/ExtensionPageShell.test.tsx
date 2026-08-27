@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { PluginPageShell, clearPluginEntryCache } from '../PluginPageShell';
+import { ExtensionPageShell, clearExtensionEntryCache } from '../ExtensionPageShell';
 import type { WorkspaceTab } from '../../../stores/workspaceTabsStore';
 
 const { getManifestMock, summaryHolder } = vi.hoisted(() => ({
@@ -12,14 +12,14 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../commands/plugins', () => ({
-  pluginCommands: {
-    getPluginManifest: (...args: unknown[]) => getManifestMock(...args),
+vi.mock('../../../commands/extensions', () => ({
+  extensionCommands: {
+    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
   },
 }));
 
-vi.mock('../../../stores/pluginStore', () => ({
-  usePluginStore: {
+vi.mock('../../../stores/extensionStore', () => ({
+  useExtensionStore: {
     getState: () => ({ byId: () => summaryHolder.current }),
   },
 }));
@@ -36,13 +36,13 @@ function makeTab(overrides: Partial<WorkspaceTab> = {}): WorkspaceTab {
 }
 
 async function renderActive(tab: WorkspaceTab) {
-  const utils = render(<PluginPageShell tab={tab} active />);
+  const utils = render(<ExtensionPageShell tab={tab} active />);
   await act(async () => {});
   return utils;
 }
 
 beforeEach(() => {
-  clearPluginEntryCache();
+  clearExtensionEntryCache();
   getManifestMock.mockReset();
   summaryHolder.current = undefined;
 });
@@ -52,16 +52,16 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('PluginPageShell', () => {
+describe('ExtensionPageShell', () => {
   it('lazily mounts the iframe only after first activation', async () => {
     getManifestMock.mockResolvedValue({ id: 'x', version: '1.0.0', entry: 'index.html' });
-    const utils = render(<PluginPageShell tab={makeTab()} active={false} />);
+    const utils = render(<ExtensionPageShell tab={makeTab()} active={false} />);
     expect(screen.queryByTestId('plugin-iframe')).not.toBeInTheDocument();
     // Shell itself is hidden while its tab is inactive.
     expect(screen.getByTestId('plugin-page-shell').className).toMatch(/hidden/);
 
     await act(async () => {
-      utils.rerender(<PluginPageShell tab={makeTab()} active />);
+      utils.rerender(<ExtensionPageShell tab={makeTab()} active />);
     });
     expect(await screen.findByTestId('plugin-iframe')).toBeInTheDocument();
   });
@@ -110,7 +110,7 @@ describe('PluginPageShell', () => {
     getManifestMock.mockResolvedValue({ id: 'x', version: '1.0.0', entry: 'index.html' });
     const utils = await renderActive(makeTab());
 
-    utils.rerender(<PluginPageShell tab={makeTab()} active={false} />);
+    utils.rerender(<ExtensionPageShell tab={makeTab()} active={false} />);
 
     const shell = screen.getByTestId('plugin-page-shell');
     expect(shell.className).toMatch(/hidden/);
@@ -123,7 +123,7 @@ describe('PluginPageShell', () => {
     vi.useFakeTimers();
     getManifestMock.mockResolvedValue({ id: 'x', version: '1.0.0', entry: 'index.html' });
 
-    render(<PluginPageShell tab={makeTab()} active />);
+    render(<ExtensionPageShell tab={makeTab()} active />);
     await act(async () => {});
     expect(screen.getByTestId('plugin-iframe')).toBeInTheDocument();
     expect(screen.queryByTestId('plugin-shell-reload')).not.toBeInTheDocument();

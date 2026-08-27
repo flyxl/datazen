@@ -4,11 +4,11 @@ import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
-import { pluginCommands } from '../../commands/plugins';
-import { usePluginStore } from '../../stores/pluginStore';
+import { extensionCommands } from '../../commands/extensions';
+import { useExtensionStore } from '../../stores/extensionStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { attachBridge, type ExtensionBridgeHandle } from '../../lib/extensionBridge';
-import type { PluginPermission } from '../../types/plugin';
+import type { ExtensionPermission } from '../../types/extension';
 import type { WorkspaceTab } from '../../stores/workspaceTabsStore';
 import { PluginIcon } from './PluginIcon';
 
@@ -23,7 +23,7 @@ interface EntryCacheHit {
 const entryCache = new Map<string, EntryCacheHit>();
 
 /** Test seam: resets the memoized manifest entry cache. */
-export function clearPluginEntryCache(): void {
+export function clearExtensionEntryCache(): void {
   entryCache.clear();
 }
 
@@ -33,7 +33,7 @@ export function clearPluginEntryCache(): void {
  * `get_plugin_manifest` and caches it.
  */
 async function resolveEntry(pluginId: string): Promise<string> {
-  const summary = usePluginStore.getState().byId(pluginId);
+  const summary = useExtensionStore.getState().byId(pluginId);
   const inline =
     summary && typeof summary === 'object' && 'entry' in summary
       ? (summary as unknown as { entry?: unknown }).entry
@@ -44,7 +44,7 @@ async function resolveEntry(pluginId: string): Promise<string> {
   }
 
   try {
-    const manifest = await pluginCommands.getPluginManifest(pluginId);
+    const manifest = await extensionCommands.getExtensionManifest(pluginId);
     if (!manifest.entry) throw new Error(`plugin "${pluginId}" declares no entry`);
     entryCache.set(pluginId, { version: manifest.version, entry: manifest.entry });
     return manifest.entry;
@@ -71,7 +71,7 @@ type EntryPhase =
   | { kind: 'ready'; src: string }
   | { kind: 'missing' };
 
-export interface PluginPageShellProps {
+export interface ExtensionPageShellProps {
   tab: WorkspaceTab;
   /** Whether the owning workspace tab is active; inactive shells stay mounted but hidden. */
   active: boolean;
@@ -83,7 +83,7 @@ export interface PluginPageShellProps {
  * Lifecycle: lazy-mount on first activation → CSS-hidden (instance preserved)
  * while inactive → unmounted together with its tab (shell key = tab key).
  */
-export function PluginPageShell({ tab, active }: PluginPageShellProps) {
+export function ExtensionPageShell({ tab, active }: ExtensionPageShellProps) {
   const { t } = useI18n();
   const [everActivated, setEverActivated] = useState(active);
   const [phase, setPhase] = useState<EntryPhase>(() => {
@@ -104,8 +104,8 @@ export function PluginPageShell({ tab, active }: PluginPageShellProps) {
   useEffect(() => {
     const el = iframeRef.current;
     if (phase.kind !== 'ready' || !el) return;
-    const permissions: PluginPermission[] =
-      usePluginStore.getState().byId(tab.pluginId)?.permissions ?? [];
+    const permissions: ExtensionPermission[] =
+      useExtensionStore.getState().byId(tab.pluginId)?.permissions ?? [];
     const bridge = attachBridge(el, {
       pluginId: tab.pluginId,
       permissions,

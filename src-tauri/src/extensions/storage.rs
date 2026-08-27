@@ -1,8 +1,8 @@
-//! Per-plugin key-value storage backed by `{plugins_dir}/{id}/.storage.json`.
+//! Per-extension key-value storage backed by `{plugins_dir}/{id}/.storage.json`.
 //!
-//! Values are namespaced by plugin directory, so two plugins writing the same
+//! Values are namespaced by extension directory, so two extensions writing the same
 //! key can never interfere. Writes are atomic (temp file + rename) and capped
-//! at 1 MB per plugin.
+//! at 1 MB per extension.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,26 +10,26 @@ use std::sync::{LazyLock, Mutex};
 
 use serde_json::{Map, Value};
 
-/// Host-managed per-plugin KV file (hidden from package scans and reads).
+/// Host-managed per-extension KV file (hidden from package scans and reads).
 pub const STORAGE_FILE: &str = ".storage.json";
 
-/// Maximum serialized storage size per plugin.
+/// Maximum serialized storage size per extension.
 pub const MAX_STORAGE_BYTES: usize = 1024 * 1024;
 
 /// Serializes read-modify-write cycles so concurrent updates cannot clobber
 /// each other's temp files or lose writes.
 static STORAGE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
-/// Validate a plugin id used as a path segment for storage operations.
-fn validate_plugin_id(plugin_id: &str) -> Result<(), String> {
-    if plugin_id.is_empty()
-        || plugin_id.starts_with('.')
-        || plugin_id.contains('/')
-        || plugin_id.contains('\\')
-        || plugin_id.contains("..")
-        || plugin_id.contains('\0')
+/// Validate an extension id used as a path segment for storage operations.
+fn validate_extension_id(extension_id: &str) -> Result<(), String> {
+    if extension_id.is_empty()
+        || extension_id.starts_with('.')
+        || extension_id.contains('/')
+        || extension_id.contains('\\')
+        || extension_id.contains("..")
+        || extension_id.contains('\0')
     {
-        return Err(format!("invalid plugin id: {plugin_id}"));
+        return Err(format!("invalid extension id: {extension_id}"));
     }
     Ok(())
 }
@@ -41,9 +41,9 @@ fn validate_key(key: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn storage_file_path(plugins_dir: &Path, plugin_id: &str) -> Result<PathBuf, String> {
-    validate_plugin_id(plugin_id)?;
-    Ok(plugins_dir.join(plugin_id).join(STORAGE_FILE))
+pub(crate) fn storage_file_path(plugins_dir: &Path, extension_id: &str) -> Result<PathBuf, String> {
+    validate_extension_id(extension_id)?;
+    Ok(plugins_dir.join(extension_id).join(STORAGE_FILE))
 }
 
 fn read_storage_map(path: &Path) -> Result<Map<String, Value>, String> {
@@ -64,7 +64,7 @@ fn write_storage_atomic(path: &Path, map: &Map<String, Value>) -> Result<(), Str
         serde_json::to_string_pretty(map).map_err(|e| format!("encode storage: {e}"))?;
     if serialized.len() > MAX_STORAGE_BYTES {
         return Err(format!(
-            "plugin storage exceeds limit ({MAX_STORAGE_BYTES} bytes)"
+            "extension storage exceeds limit ({MAX_STORAGE_BYTES} bytes)"
         ));
     }
 
@@ -90,14 +90,14 @@ fn write_storage_atomic(path: &Path, map: &Map<String, Value>) -> Result<(), Str
     Ok(())
 }
 
-/// Read a single key; `None` when the plugin has no stored value for it.
+/// Read a single key; `None` when the extension has no stored value for it.
 pub fn storage_get(
     plugins_dir: &Path,
-    plugin_id: &str,
+    extension_id: &str,
     key: &str,
 ) -> Result<Option<Value>, String> {
     validate_key(key)?;
-    let path = storage_file_path(plugins_dir, plugin_id)?;
+    let path = storage_file_path(plugins_dir, extension_id)?;
 
     let _guard = STORAGE_LOCK.lock().map_err(|_| "storage lock poisoned")?;
     read_storage_map(&path).map(|map| map.get(key).cloned())
@@ -107,12 +107,12 @@ pub fn storage_get(
 /// [`MAX_STORAGE_BYTES`].
 pub fn storage_set(
     plugins_dir: &Path,
-    plugin_id: &str,
+    extension_id: &str,
     key: &str,
     value: Value,
 ) -> Result<(), String> {
     validate_key(key)?;
-    let path = storage_file_path(plugins_dir, plugin_id)?;
+    let path = storage_file_path(plugins_dir, extension_id)?;
 
     let _guard = STORAGE_LOCK.lock().map_err(|_| "storage lock poisoned")?;
     let mut map = read_storage_map(&path)?;
@@ -121,9 +121,9 @@ pub fn storage_set(
 }
 
 /// Delete a single key; returns whether it existed.
-pub fn storage_remove(plugins_dir: &Path, plugin_id: &str, key: &str) -> Result<bool, String> {
+pub fn storage_remove(plugins_dir: &Path, extension_id: &str, key: &str) -> Result<bool, String> {
     validate_key(key)?;
-    let path = storage_file_path(plugins_dir, plugin_id)?;
+    let path = storage_file_path(plugins_dir, extension_id)?;
 
     let _guard = STORAGE_LOCK.lock().map_err(|_| "storage lock poisoned")?;
     let mut map = read_storage_map(&path)?;
@@ -224,12 +224,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_plugin_ids_and_keys() {
+    fn rejects_invalid_extension_ids_and_keys() {
         let dir = TempDir::new().unwrap();
         for bad in ["../escape", ".hidden", "a/b", "a\\b", ""] {
             assert!(
                 storage_set(dir.path(), bad, "k", json!(1)).is_err(),
-                "plugin id `{bad}` should be rejected"
+                "extension id `{bad}` should be rejected"
             );
         }
         assert!(storage_set(dir.path(), "acme.ok", "", json!(1)).is_err());

@@ -9,13 +9,13 @@ import {
 import { emitCrossWindow } from '../crossWindowBus';
 
 const mockReadPluginFile = vi.fn();
-const mockGetPluginManifest = vi.fn();
+const mockGetExtensionManifest = vi.fn();
 const mockReadThemePackFile = vi.fn();
 
-vi.mock('../../commands/plugins', () => ({
-  pluginCommands: {
-    readPluginFile: (...args: unknown[]) => mockReadPluginFile(...args),
-    getPluginManifest: (...args: unknown[]) => mockGetPluginManifest(...args),
+vi.mock('../../commands/extensions', () => ({
+  extensionCommands: {
+    readExtensionFile: (...args: unknown[]) => mockReadPluginFile(...args),
+    getExtensionManifest: (...args: unknown[]) => mockGetExtensionManifest(...args),
   },
 }));
 
@@ -103,12 +103,12 @@ describe('applyPluginTheme', () => {
   beforeEach(() => {
     clearThemePackDom();
     mockReadPluginFile.mockReset();
-    mockGetPluginManifest.mockReset().mockResolvedValue(MANIFEST);
+    mockGetExtensionManifest.mockReset().mockResolvedValue(MANIFEST);
     mockReadThemePackFile.mockReset();
     mockEmitCrossWindow.mockClear();
   });
 
-  it('loads tokens.css from the plugin via readPluginFile and injects it', async () => {
+  it('loads tokens.css from the plugin via readExtensionFile and injects it', async () => {
     mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
       if (path === 'themes/midnight-blue/tokens.css') {
         return toBytes(':root { --c-accent: #1122ff; }');
@@ -122,7 +122,7 @@ describe('applyPluginTheme', () => {
       name: 'Midnight Blue',
     });
     expect(result).toEqual({ ok: true });
-    expect(mockGetPluginManifest).toHaveBeenCalledWith('acme.bill-audit');
+    expect(mockGetExtensionManifest).toHaveBeenCalledWith('acme.bill-audit');
     expect(mockReadPluginFile).toHaveBeenCalledWith(
       'acme.bill-audit',
       'themes/midnight-blue/tokens.css',
@@ -131,7 +131,7 @@ describe('applyPluginTheme', () => {
     expect(document.getElementById('datazen-theme-pack')?.textContent).toContain('--c-accent');
   });
 
-  it('rewrites local url(...) references to blob URLs via readPluginFile', async () => {
+  it('rewrites local url(...) references to blob URLs via readExtensionFile', async () => {
     mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
       if (path === 'themes/solar/tokens.css') {
         return toBytes('@font-face { src: url("./fonts/custom.woff2"); }');
@@ -263,7 +263,7 @@ describe('applyPluginTheme', () => {
     });
 
     try {
-      mockGetPluginManifest.mockResolvedValue({
+      mockGetExtensionManifest.mockResolvedValue({
         ...MANIFEST,
         contributes: {
           pages: [],
@@ -319,7 +319,7 @@ describe('applyPluginTheme', () => {
     mockEmitCrossWindow.mockClear();
 
     // Plugin got disabled / files removed → manifest lookup fails.
-    mockGetPluginManifest.mockRejectedValue(new Error('plugin disabled or missing'));
+    mockGetExtensionManifest.mockRejectedValue(new Error('plugin disabled or missing'));
     const result = await applyPluginTheme({
       pluginId: 'acme.bill-audit',
       themeId: 'midnight-blue',
@@ -347,7 +347,7 @@ describe('applyThemePack dispatches encoded plugin ids to the plugin path', () =
   beforeEach(() => {
     clearThemePackDom();
     mockReadPluginFile.mockReset();
-    mockGetPluginManifest.mockReset().mockResolvedValue(MANIFEST);
+    mockGetExtensionManifest.mockReset().mockResolvedValue(MANIFEST);
     mockReadThemePackFile.mockReset();
     mockEmitCrossWindow.mockClear();
   });
@@ -412,7 +412,7 @@ describe('applyPluginTheme legacy-parity assets', () => {
   beforeEach(() => {
     clearThemePackDom();
     mockReadPluginFile.mockReset();
-    mockGetPluginManifest.mockReset().mockResolvedValue(RICH_MANIFEST);
+    mockGetExtensionManifest.mockReset().mockResolvedValue(RICH_MANIFEST);
     mockReadThemePackFile.mockReset();
     mockEmitCrossWindow.mockClear();
     vi.mocked(setChartPaletteOverride).mockClear();

@@ -1,36 +1,80 @@
-# Plugin Naming Refactor Progress
+# Plugin 命名统一改造 — 进度跟踪
 
-## Track A: Compile-time driver `plugin-` → `driver-` rename
+> 启动时间：2026-08-27
+> 计划文档：`docs/development/plugin-naming-refactor.md`
+
+## 功能总览表
+
+| 编号 | 功能 | 状态 | 编码 commit | 测试 commit |
+|------|------|------|------------|------------|
+| F1 | Track A：Cargo feature / plugin_init → driver | 已完成 | 377c23e5 | 377c23e5 |
+| F2 | Track B：plugins/ → extensions/ + 前端重命名 | 已完成 | （本分支 commit） | （本分支 commit） |
+| F3 | Track C：Legacy ThemePack 清理 | 未开始 | — | — |
+
+## Bug 台账
+
+| Bug ID | 所属功能 | 描述 | 状态 | 记录时间 | 验证记录 |
+|--------|---------|------|------|---------|---------|
+| — | — | — | — | — | — |
+
+## 测试约定
+
+- Rust：`cargo test -p datazen --lib`
+- 前端：`npx vitest run`
+- 类型：`tsc --noEmit`
+- 覆盖率：改动文件 ≥80% 实测
+- E2E：功能级测试轮只登记用例，留待 R 回归
+
+## F1：Track A — Cargo feature / plugin_init → driver
 
 **Status:** ✅ COMPLETED  
-**Commit:** `9b0395e6`  
-**Branch:** `feature/rename-driver`  
+**Branch:** `feature/rename-driver`（已合并 main）
 
-### Changes Summary (29 files)
-
-| Category | Files | Key Changes |
-|----------|-------|-------------|
-| Config | `drivers-registry.json`, `Cargo.toml` (root), `src-tauri/Cargo.toml` | All `plugin-*` feature values and marker blocks → `driver-*` |
-| Rust | `driver_init.rs` (renamed from `plugin_init.rs`), `lib.rs`, `redis_flush_gate.rs`, `transfer/adapter_registry.rs` | File rename, `#[cfg(feature)]`, `mod` declaration, function call |
-| Scripts | `resolve-drivers.mjs`, `plugin-deinject.mjs`, `plugin-stash-precommit.mjs`, `ensure-generated-drivers.mjs`, `check-managed-stubs.mjs`, `run-e2e-minimal.sh`, `new-feature-worktree.sh`, `ci-tauri-build.mjs`, `e2e-tauri-build.mjs`, `tauri-dev.mjs`, `plugin-file-stash.mjs` | Marker names, file paths, variable names, output paths |
-| Gitignore | `.gitignore` | `plugin_init.rs` → `driver_init.rs`, `.plugin-features.json` → `.driver-features.json`, `.plugin-file-stash/` → `.driver-file-stash/` |
-| Artifacts | `.plugin-features.json` → `.driver-features.json` | File renamed |
-| Tests | `fixture.ts`, `plugin-stash-precommit.test.ts`, `plugin-deinject.test.ts`, `ci-tauri-build.test.ts` | Updated fixture data, import names, assertions |
-| Docs | `AGENTS.md`, `CONTRIBUTING.md`, `e2e-testing.md`, `independent-plugin-development.en.md`, `independent-plugin-development.zh-CN.md` | File references, feature examples |
-| CI/CD | `.github/workflows/ci.yml` | `.plugin-features.json` → `.driver-features.json` |
-| Driver | `packages/drivers/redis/src/ops.rs` | Comment update |
-
-### Verification Results
+### 测试结果
 
 ```
-✅ No plugin- driver features in src-tauri/Cargo.toml (tauri-plugin-* are Tauri packages)
-✅ No plugin_init references in src-tauri/src/ or scripts/
-✅ No cfg(feature = "plugin-*") in src-tauri/src/
-✅ All gitignored files renamed correctly
+scripts/__tests__/  78 passed
+cargo check -p datazen --features driver-*  OK
 ```
 
-### Not Changed (by design)
-- `plugin-file-stash.mjs` script name and `.plugin-file-stash/` directory (stash mechanism, not driver naming)
-- `src-tauri/src/plugins/` directory (Track B scope)
-- Frontend files like `src/commands/plugins.ts` (Track B scope)
-- External Git driver crate names (`datazen-plugin-kiwi`, etc.)
+### 遗留
+
+- `plugin-file-stash.mjs` 脚本名与 `.plugin-file-stash/` 目录保持（stash 机制，非 driver 命名）
+
+## F2：Track B — plugins/ → extensions/ + 前端重命名
+
+**Status:** ✅ COMPLETED  
+**Branch:** `feature/rename-extension`
+
+### 范围摘要
+
+| 层 | 变更 |
+|----|------|
+| Rust | `src-tauri/src/plugins/` → `extensions/`；`ExtensionManager` / `ExtensionManifest`；`commands/extensions.rs` + IPC `list_extensions` 等 |
+| 前端 | `extensionCommands` / `useExtensionStore` / `types/extension.ts`；`windows/extensions/`；`ExtensionPageShell` |
+| E2E | `e2e/specs/plugins.spec.ts` IPC 命令名更新 |
+| 文档 | `AGENTS.md`；`docs/architecture/backend/extensions.md` |
+
+### 测试结果
+
+```
+cargo test -p datazen --lib     1140 passed, 0 failed, 2 ignored
+npx vitest run (extension 相关) 139 passed
+npx vitest run (全量)           2026 passed, 7 failed（与 main 基线相同，非本轨引入）
+tsc --noEmit                    OK
+```
+
+### 不改动（by design）
+
+- `{appData}/plugins/` 磁盘目录名
+- `plugins:changed` / `plugins:open-page` 事件字符串
+- `src/plugins/generated.ts`（编译时 driver codegen）
+- i18n key 前缀 `plugins.page.*`（用户可见文案）
+
+## F3：Track C — Legacy ThemePack 清理
+
+### 范围
+见计划文档 §Track C（低优先级，未启动）
+
+### 测试结果
+（未开始）

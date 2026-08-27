@@ -13,9 +13,9 @@ use tauri::http;
 
 use super::protocol::{
     content_type_for, parse_datazen_uri, route_datazen_request, safe_relative_path, DatazenOutcome,
-    PLUGINS_OPEN_PAGE_EVENT,
+    EXTENSIONS_OPEN_PAGE_EVENT,
 };
-use super::{parse_manifest, PluginManager};
+use super::{parse_manifest, ExtensionManager};
 
 const MANIFEST: &str = r#"{
   "id": "acme.bill-audit",
@@ -40,7 +40,7 @@ fn write_bytes(dir: &Path, rel: &str, content: &[u8]) {
 
 /// Fixture whose package passed install-time validation (`load_from_disk`),
 /// containing one file per whitelisted extension plus host-managed state.
-fn rich_manager(dir: &Path) -> PluginManager {
+fn rich_manager(dir: &Path) -> ExtensionManager {
     write_text(dir, "acme.bill-audit/manifest.json", MANIFEST);
     write_text(dir, "acme.bill-audit/index.html", "<html>bill-audit</html>");
     write_text(dir, "acme.bill-audit/app.js", "console.log(1)");
@@ -56,27 +56,27 @@ fn rich_manager(dir: &Path) -> PluginManager {
     write_text(dir, "acme.bill-audit/.storage.json", "{}");
     write_text(dir, "acme.bill-audit/.enabled", "1\n");
 
-    let manager = PluginManager::new(dir.to_path_buf());
+    let manager = ExtensionManager::new(dir.to_path_buf());
     assert_eq!(manager.load_from_disk(), 1);
     manager
 }
 
 /// Fixture registered without a package rescan, simulating files dropped
 /// into an installed plugin directory after install-time validation.
-fn registered_manager(dir: &Path) -> PluginManager {
+fn registered_manager(dir: &Path) -> ExtensionManager {
     write_text(dir, "acme.bill-audit/manifest.json", MANIFEST);
     write_text(dir, "acme.bill-audit/index.html", "<html>bill-audit</html>");
     write_text(dir, "acme.bill-audit/data.json", "{\"k\":1}");
     write_text(dir, "acme.bill-audit/assets/icon.svg", "<svg/>");
 
-    let manager = PluginManager::new(dir.to_path_buf());
+    let manager = ExtensionManager::new(dir.to_path_buf());
     manager
         .register(parse_manifest(MANIFEST).unwrap(), true)
         .unwrap();
     manager
 }
 
-fn route(manager: &PluginManager, uri: &str) -> Result<DatazenOutcome, http::StatusCode> {
+fn route(manager: &ExtensionManager, uri: &str) -> Result<DatazenOutcome, http::StatusCode> {
     let (plugin_id, path, query) =
         parse_datazen_uri(uri).map_err(|_| http::StatusCode::NOT_FOUND)?;
     route_datazen_request(manager, &plugin_id, &path, &query)
@@ -483,7 +483,7 @@ fn duplicate_page_param_last_wins() {
 fn open_page_event_constant_matches_spec() {
     // Payload contract `{pluginId, pageId, params}` is built in
     // `emit_open_page`; the channel name is part of the frontend contract.
-    assert_eq!(PLUGINS_OPEN_PAGE_EVENT, "plugins:open-page");
+    assert_eq!(EXTENSIONS_OPEN_PAGE_EVENT, "plugins:open-page");
 }
 
 // ---------------------------------------------------------------------------

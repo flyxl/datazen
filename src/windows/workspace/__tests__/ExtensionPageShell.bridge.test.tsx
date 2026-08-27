@@ -1,5 +1,5 @@
 /**
- * F6 — PluginPageShell ⇄ bridge wiring tests (test agent).
+ * F6 — ExtensionPageShell ⇄ bridge wiring tests (test agent).
  *
  * Covers the shell-level trigger paths from PRD §4.4:
  * - bridge attached once per ready iframe with manifest permissions + locale
@@ -25,19 +25,19 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../commands/plugins', () => ({
-  pluginCommands: {
-    getPluginManifest: (...args: unknown[]) => getManifestMock(...args),
+vi.mock('../../../commands/extensions', () => ({
+  extensionCommands: {
+    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
   },
 }));
 
-vi.mock('../../../stores/pluginStore', () => ({
-  usePluginStore: {
+vi.mock('../../../stores/extensionStore', () => ({
+  useExtensionStore: {
     getState: () => ({ byId: () => summaryHolder.current }),
   },
 }));
 
-import { PluginPageShell, clearPluginEntryCache } from '../PluginPageShell';
+import { ExtensionPageShell, clearExtensionEntryCache } from '../ExtensionPageShell';
 
 function makeHandle() {
   return { pushThemeSnapshot: vi.fn(), detach: vi.fn() };
@@ -62,7 +62,7 @@ async function flushObserver(): Promise<void> {
 }
 
 beforeEach(() => {
-  clearPluginEntryCache();
+  clearExtensionEntryCache();
   getManifestMock.mockReset().mockResolvedValue({
     id: 'acme.bill-audit',
     version: '1.0.0',
@@ -83,7 +83,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('PluginPageShell bridge wiring (F6)', () => {
+describe('ExtensionPageShell bridge wiring (F6)', () => {
   /** Wait for the post-commit attach effect; returns the bridge handle. */
   async function waitForAttachedHandle(): Promise<ReturnType<typeof makeHandle>> {
     await vi.waitFor(
@@ -95,7 +95,7 @@ describe('PluginPageShell bridge wiring (F6)', () => {
     return attachBridgeMock.mock.results[0].value as ReturnType<typeof makeHandle>;
   }
   it('attaches the bridge once with the shell iframe, manifest permissions and locale', async () => {
-    render(<PluginPageShell tab={makeTab()} active />);
+    render(<ExtensionPageShell tab={makeTab()} active />);
     await screen.findByTestId('plugin-iframe', {}, { timeout: 5_000 });
 
     // The bridge attach runs in a post-commit effect; under CI load the iframe
@@ -117,7 +117,7 @@ describe('PluginPageShell bridge wiring (F6)', () => {
   });
 
   it('pushes a theme snapshot on datazen:theme-pack-changed', async () => {
-    render(<PluginPageShell tab={makeTab()} active />);
+    render(<ExtensionPageShell tab={makeTab()} active />);
     await screen.findByTestId('plugin-iframe', {}, { timeout: 5_000 });
     const handle = await waitForAttachedHandle();
     expect(handle.pushThemeSnapshot).not.toHaveBeenCalled();
@@ -136,7 +136,7 @@ describe('PluginPageShell bridge wiring (F6)', () => {
   });
 
   it('pushes a theme snapshot when documentElement class mutates (dark/light switch)', async () => {
-    render(<PluginPageShell tab={makeTab()} active />);
+    render(<ExtensionPageShell tab={makeTab()} active />);
     await screen.findByTestId('plugin-iframe', {}, { timeout: 5_000 });
     const handle = await waitForAttachedHandle();
 
@@ -155,7 +155,7 @@ describe('PluginPageShell bridge wiring (F6)', () => {
   });
 
   it('detaches on unmount and stops reacting to theme triggers afterwards', async () => {
-    const { unmount } = render(<PluginPageShell tab={makeTab()} active />);
+    const { unmount } = render(<ExtensionPageShell tab={makeTab()} active />);
     await screen.findByTestId('plugin-iframe', {}, { timeout: 5_000 });
     const handle = await waitForAttachedHandle();
 
@@ -173,7 +173,7 @@ describe('PluginPageShell bridge wiring (F6)', () => {
 
   it('reattaches a fresh bridge when the watchdog reload remounts the iframe', async () => {
     vi.useFakeTimers();
-    render(<PluginPageShell tab={makeTab()} active />);
+    render(<ExtensionPageShell tab={makeTab()} active />);
     await act(async () => {});
     expect(screen.getByTestId('plugin-iframe')).toBeInTheDocument();
 

@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { encodePluginThemePackId, parsePluginThemePackId } from '../../lib/themePackApply';
-import { usePluginStore } from '../../stores/pluginStore';
+import { useExtensionStore } from '../../stores/extensionStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { ThemeMode } from '../../types/theme';
-import type { PluginSummary } from '../../types/plugin';
+import type { ExtensionSummary } from '../../types/extension';
 import { SectionTitle, SettingRow } from './settingsUi';
 
 /** Sentinel option value representing the built-in default theme (packId = null). */
@@ -24,7 +24,7 @@ interface ThemeOption {
 }
 
 /** Flatten enabled plugins into a single theme-option list (no plugin hardcoding). */
-function collectThemeOptions(plugins: PluginSummary[]): ThemeOption[] {
+function collectThemeOptions(plugins: ExtensionSummary[]): ThemeOption[] {
   return plugins
     .filter((p) => p.enabled)
     .flatMap((plugin) =>
@@ -38,14 +38,14 @@ function collectThemeOptions(plugins: PluginSummary[]): ThemeOption[] {
 
 export function AppearanceSection() {
   const { t } = useI18n();
-  const plugins = usePluginStore((s) => s.plugins);
-  const loaded = usePluginStore((s) => s.loaded);
+  const plugins = useExtensionStore((s) => s.extensions);
+  const loaded = useExtensionStore((s) => s.loaded);
   const settings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!loaded) void usePluginStore.getState().fetch();
+    if (!loaded) void useExtensionStore.getState().fetch();
   }, [loaded]);
 
   // PRD §4.5: only themes contributed by *enabled* plugins are switchable here.

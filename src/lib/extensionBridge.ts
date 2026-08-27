@@ -14,9 +14,9 @@
  *   around the host-internal promise.
  */
 import { invoke } from '@tauri-apps/api/core';
-import type { PluginPermission } from '../types/plugin';
-import { EXTENSION_API_VERSION } from '../types/plugin';
-import { pluginCommands } from '../commands/plugins';
+import type { ExtensionPermission } from '../types/extension';
+import { EXTENSION_API_VERSION } from '../types/extension';
+import { extensionCommands } from '../commands/extensions';
 import { driverCommands } from '../commands/driver';
 import { connectionCommands } from '../commands/connection';
 import { resolvePluginString } from './extensionI18n';
@@ -127,7 +127,7 @@ function responseTypeOf(requestType: string, ok: boolean): string {
 // Deny-by-default: unknown types are not routable at all (E_NOT_FOUND).
 // ---------------------------------------------------------------------------
 
-const API_ROUTES: Record<string, PluginPermission | null> = {
+const API_ROUTES: Record<string, ExtensionPermission | null> = {
   'context.getConnections': 'context:connections',
   'context.getActiveConnection': 'context:connections',
   'command.invoke': 'command:invoke',
@@ -143,7 +143,7 @@ const API_ROUTES: Record<string, PluginPermission | null> = {
  * `constructor`/`toString` must be treated as unknown APIs (E_NOT_FOUND),
  * never resolve through the record's prototype chain to E_PERMISSION.
  */
-function routeFor(type: string): PluginPermission | null | undefined {
+function routeFor(type: string): ExtensionPermission | null | undefined {
   return Object.prototype.hasOwnProperty.call(API_ROUTES, type) ? API_ROUTES[type] : undefined;
 }
 
@@ -216,7 +216,7 @@ async function handleCommandInvoke(pluginId: string, payload: unknown) {
   // lands in {dataDir}/logs/datazen.log via the extension_audit_log command so
   // the webview console is not the only durable record.
   console.info(`[extension:${pluginId}] command.invoke ${command} via ${connectionId}`);
-  pluginCommands.auditLog(pluginId, 'command.invoke', `${command} via ${connectionId}`);
+  extensionCommands.auditLog(pluginId, 'command.invoke', `${command} via ${connectionId}`);
   // Resolve the live db session for the persistent connection id; when the
   // host has not tracked that connection, fall through with the raw id — the
   // backend's resolve_session accepts both shapes (dual-mode).
@@ -247,14 +247,14 @@ async function handleStorage(pluginId: string, type: string, payload: unknown) {
   }
   switch (type) {
     case 'storage.get': {
-      const value = await pluginCommands.pluginStorageGet(pluginId, key);
+      const value = await extensionCommands.extensionStorageGet(pluginId, key);
       return { value: value ?? null };
     }
     case 'storage.set':
-      await pluginCommands.pluginStorageSet(pluginId, key, p.value);
+      await extensionCommands.extensionStorageSet(pluginId, key, p.value);
       return {};
     default:
-      await pluginCommands.pluginStorageRemove(pluginId, key);
+      await extensionCommands.extensionStorageRemove(pluginId, key);
       return {};
   }
 }
@@ -271,7 +271,7 @@ function showNotification(title: string, body?: string): Promise<void> {
 export interface AttachBridgeOptions {
   pluginId: string;
   /** Manifest-declared permissions; deny-by-default for anything missing. */
-  permissions: PluginPermission[];
+  permissions: ExtensionPermission[];
   /** Locale reported in the handshake snapshot. */
   locale?: string;
   apiVersion?: number;

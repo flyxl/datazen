@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { PluginManagementPage } from '../PluginManagementPage';
-import { EXTENSION_API_VERSION, type PluginSummary } from '../../../types/plugin';
+import { ExtensionManagementPage } from '../ExtensionManagementPage';
+import { EXTENSION_API_VERSION, type ExtensionSummary } from '../../../types/extension';
 
 const {
   pluginState,
@@ -12,11 +12,11 @@ const {
   openTabMock,
   inspectPackageMock,
   installFromPathMock,
-  readPluginFileMock,
+  readExtensionFileMock,
   confirmSpy,
 } = vi.hoisted(() => ({
   pluginState: {
-    plugins: [] as Array<Record<string, unknown>>,
+    extensions: [] as Array<Record<string, unknown>>,
     loaded: true,
     error: null as string | null,
   },
@@ -27,7 +27,7 @@ const {
   openTabMock: vi.fn(),
   inspectPackageMock: vi.fn(),
   installFromPathMock: vi.fn(),
-  readPluginFileMock: vi.fn(),
+  readExtensionFileMock: vi.fn(),
   confirmSpy: vi.fn(),
 }));
 
@@ -39,14 +39,14 @@ vi.mock('../../../hooks/useConfirmDialog', () => ({
   useConfirmDialog: () => [confirmSpy, null],
 }));
 
-vi.mock('../../../stores/pluginStore', () => ({
-  usePluginStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+vi.mock('../../../stores/extensionStore', () => ({
+  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
     getState: () => ({
       ...pluginState,
       fetch: fetchMock,
       setEnabled: setEnabledMock,
       remove: removeMock,
-      byId: (id: string) => (pluginState.plugins as Array<{ id: string }>).find((p) => p.id === id),
+      byId: (id: string) => (pluginState.extensions as Array<{ id: string }>).find((p) => p.id === id),
     }),
   }),
 }));
@@ -61,16 +61,16 @@ vi.mock('../../../stores/workspaceTabsStore', () => ({
   ),
 }));
 
-vi.mock('../../../commands/plugins', () => ({
-  PLUGINS_CHANGED_EVENT: 'plugins:changed',
-  pluginCommands: {
-    inspectPluginPackage: (...args: unknown[]) => inspectPackageMock(...args),
-    installPluginFromPath: (...args: unknown[]) => installFromPathMock(...args),
-    readPluginFile: (...args: unknown[]) => readPluginFileMock(...args),
+vi.mock('../../../commands/extensions', () => ({
+  EXTENSIONS_CHANGED_EVENT: 'plugins:changed',
+  extensionCommands: {
+    inspectExtensionPackage: (...args: unknown[]) => inspectPackageMock(...args),
+    installExtensionFromPath: (...args: unknown[]) => installFromPathMock(...args),
+    readExtensionFile: (...args: unknown[]) => readExtensionFileMock(...args),
   },
 }));
 
-function makePlugin(overrides: Partial<PluginSummary> = {}): PluginSummary {
+function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary {
   return {
     id: 'acme.bill-audit',
     name: 'Bill Audit',
@@ -95,7 +95,7 @@ function card(id: string): HTMLElement {
 }
 
 beforeEach(() => {
-  pluginState.plugins = [];
+  pluginState.extensions = [];
   pluginState.loaded = true;
   pluginState.error = null;
   setEnabledMock.mockReset().mockResolvedValue(undefined);
@@ -111,7 +111,7 @@ beforeEach(() => {
     permissions: ['storage:local'],
   });
   installFromPathMock.mockReset();
-  readPluginFileMock.mockReset().mockResolvedValue(new Uint8Array([137, 80, 78, 71]));
+  readExtensionFileMock.mockReset().mockResolvedValue(new Uint8Array([137, 80, 78, 71]));
   closeByPluginMock.mockReset();
   openTabMock.mockReset();
   confirmSpy.mockReset().mockResolvedValue(true);
@@ -119,11 +119,11 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-describe('PluginManagementPage', () => {
+describe('ExtensionManagementPage', () => {
   it('renders header with installed count and one card per plugin', () => {
-    pluginState.plugins = [makePlugin(), makePlugin({ id: 'acme.midnight', name: 'Midnight' })];
+    pluginState.extensions = [makePlugin(), makePlugin({ id: 'acme.midnight', name: 'Midnight' })];
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
 
     expect(screen.getByTestId('plugin-management-page')).toBeInTheDocument();
     expect(screen.getByText('plugins.page.title')).toBeInTheDocument();
@@ -136,7 +136,7 @@ describe('PluginManagementPage', () => {
   });
 
   it('defaults the filter to Workspace and switches through all/theme chips', () => {
-    pluginState.plugins = [
+    pluginState.extensions = [
       makePlugin(),
       makePlugin({
         id: 'acme.midnight',
@@ -146,7 +146,7 @@ describe('PluginManagementPage', () => {
       }),
     ];
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
 
     // PRD §4.3: default filter is Workspace — theme-only plugins start hidden.
     expect(screen.getAllByTestId('plugin-card')).toHaveLength(1);
@@ -164,7 +164,7 @@ describe('PluginManagementPage', () => {
   });
 
   it('renders the all view grouped into Workspace pages and Themes sections', () => {
-    pluginState.plugins = [
+    pluginState.extensions = [
       makePlugin({
         id: 'acme.midnight',
         name: 'Midnight',
@@ -176,7 +176,7 @@ describe('PluginManagementPage', () => {
       makePlugin({ id: 'acme.both', name: 'Both' }),
     ];
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
     fireEvent.click(screen.getByTestId('plugin-filter-all'));
 
     expect(screen.getByTestId('plugin-group-workspace')).toHaveTextContent(
@@ -193,9 +193,9 @@ describe('PluginManagementPage', () => {
   });
 
   it('hides empty groups in the all view and keeps the flat grid for single-kind filters', () => {
-    pluginState.plugins = [makePlugin(), makePlugin({ id: 'acme.afi', name: 'AFI Pricing' })];
+    pluginState.extensions = [makePlugin(), makePlugin({ id: 'acme.afi', name: 'AFI Pricing' })];
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
     fireEvent.click(screen.getByTestId('plugin-filter-all'));
 
     expect(screen.queryByTestId('plugin-group-theme')).not.toBeInTheDocument();
@@ -210,9 +210,9 @@ describe('PluginManagementPage', () => {
   });
 
   it('narrows cards by search text across name/id/description', () => {
-    pluginState.plugins = [makePlugin(), makePlugin({ id: 'acme.afi', name: 'AFI Pricing' })];
+    pluginState.extensions = [makePlugin(), makePlugin({ id: 'acme.afi', name: 'AFI Pricing' })];
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
     fireEvent.change(screen.getByTestId('plugin-search-input'), {
       target: { value: 'afi' },
     });
@@ -222,19 +222,19 @@ describe('PluginManagementPage', () => {
   });
 
   it('shows an empty state when nothing matches', () => {
-    pluginState.plugins = [];
+    pluginState.extensions = [];
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
 
     expect(screen.getByTestId('plugin-page-empty')).toBeInTheDocument();
     expect(screen.queryByTestId('plugin-card')).not.toBeInTheDocument();
   });
 
   it('toggles a plugin off through the store and closes its workspace tabs', async () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     setEnabledMock.mockResolvedValue(undefined);
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
     fireEvent.click(within(card('acme.bill-audit')).getByTestId('plugin-toggle'));
 
     await waitFor(() => expect(setEnabledMock).toHaveBeenCalledWith('acme.bill-audit', false));
@@ -242,9 +242,9 @@ describe('PluginManagementPage', () => {
   });
 
   it('enables a disabled plugin without closing tabs', async () => {
-    pluginState.plugins = [makePlugin({ enabled: false })];
+    pluginState.extensions = [makePlugin({ enabled: false })];
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
     fireEvent.click(within(card('acme.bill-audit')).getByTestId('plugin-toggle'));
 
     await waitFor(() => expect(setEnabledMock).toHaveBeenCalledWith('acme.bill-audit', true));
@@ -252,10 +252,10 @@ describe('PluginManagementPage', () => {
   });
 
   it('surfaces store errors from a failed toggle', async () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     setEnabledMock.mockRejectedValue(new Error('backend refused'));
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
     fireEvent.click(within(card('acme.bill-audit')).getByTestId('plugin-toggle'));
 
     await waitFor(() =>
@@ -264,10 +264,10 @@ describe('PluginManagementPage', () => {
   });
 
   it('uninstalls after confirmation and closes related tabs', async () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     removeMock.mockResolvedValue(undefined);
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
     fireEvent.click(within(card('acme.bill-audit')).getByTestId('plugin-uninstall'));
 
     await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
@@ -280,10 +280,10 @@ describe('PluginManagementPage', () => {
   });
 
   it('keeps the plugin when uninstall is cancelled', async () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     confirmSpy.mockResolvedValue(false);
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
     fireEvent.click(within(card('acme.bill-audit')).getByTestId('plugin-uninstall'));
 
     await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
@@ -291,10 +291,10 @@ describe('PluginManagementPage', () => {
   });
 
   it('opens a workspace plugin tab and switches to the workspace view', () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     const onOpenInWorkspace = vi.fn();
 
-    render(<PluginManagementPage onOpenInWorkspace={onOpenInWorkspace} />);
+    render(<ExtensionManagementPage onOpenInWorkspace={onOpenInWorkspace} />);
     fireEvent.click(within(card('acme.bill-audit')).getByTestId('plugin-open'));
 
     expect(openTabMock).toHaveBeenCalledWith({
@@ -309,7 +309,7 @@ describe('PluginManagementPage', () => {
   });
 
   it('renders theme-only cards without an open action and with the settings hint', () => {
-    pluginState.plugins = [
+    pluginState.extensions = [
       makePlugin({
         id: 'acme.midnight',
         name: 'Midnight',
@@ -319,7 +319,7 @@ describe('PluginManagementPage', () => {
       }),
     ];
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
     fireEvent.click(screen.getByTestId('plugin-filter-theme'));
     const themeCard = card('acme.midnight');
 
@@ -329,9 +329,9 @@ describe('PluginManagementPage', () => {
   });
 
   it('greys out API-mismatched plugins and blocks their toggle/open actions', () => {
-    pluginState.plugins = [makePlugin({ apiVersion: EXTENSION_API_VERSION + 1 })];
+    pluginState.extensions = [makePlugin({ apiVersion: EXTENSION_API_VERSION + 1 })];
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
     const mismatched = card('acme.bill-audit');
 
     expect(mismatched.className).toMatch(/opacity-60/);
@@ -346,7 +346,7 @@ describe('PluginManagementPage', () => {
     installFromPathMock.mockResolvedValue({ id: 'acme.new' });
     fetchMock.mockResolvedValue(undefined);
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
     fireEvent.click(screen.getByTestId('plugin-install-button'));
 
     expect(screen.getByText('plugins.install.title')).toBeInTheDocument();
@@ -372,7 +372,7 @@ describe('PluginManagementPage', () => {
   it('shows a copyable error when package inspection fails', async () => {
     inspectPackageMock.mockRejectedValue(new Error('manifest invalid'));
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
     fireEvent.click(screen.getByTestId('plugin-install-button'));
     fireEvent.change(await screen.findByPlaceholderText('plugins.install.pathPlaceholder'), {
       target: { value: '/tmp/broken.zip' },
@@ -389,7 +389,7 @@ describe('PluginManagementPage', () => {
   });
 
   it('renders the package icon image when the plugin declares one', async () => {
-    pluginState.plugins = [
+    pluginState.extensions = [
       makePlugin({
         id: 'acme.branded',
         name: 'Branded',
@@ -397,36 +397,36 @@ describe('PluginManagementPage', () => {
         enabled: true,
       }),
     ];
-    readPluginFileMock.mockResolvedValue(new Uint8Array([60, 115, 118, 103])); // "<svg"
+    readExtensionFileMock.mockResolvedValue(new Uint8Array([60, 115, 118, 103])); // "<svg"
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
 
     const iconSlot = within(card('acme.branded')).getByTestId('plugin-card-icon');
     await waitFor(() =>
       expect(within(iconSlot).getByTestId('plugin-card-icon-img')).toBeInTheDocument(),
     );
-    expect(readPluginFileMock).toHaveBeenCalledWith('acme.branded', 'assets/logo.svg');
+    expect(readExtensionFileMock).toHaveBeenCalledWith('acme.branded', 'assets/logo.svg');
   });
 
   it('falls back to the letter avatar when no icon is declared', () => {
-    pluginState.plugins = [makePlugin({ id: 'acme.plain', name: 'Plain' })];
-    render(<PluginManagementPage />);
+    pluginState.extensions = [makePlugin({ id: 'acme.plain', name: 'Plain' })];
+    render(<ExtensionManagementPage />);
 
     const slot = within(card('acme.plain')).getByTestId('plugin-card-icon');
     expect(slot).toHaveTextContent('P');
     expect(slot.querySelector('[data-testid="plugin-card-icon-img"]')).toBeNull();
-    expect(readPluginFileMock).not.toHaveBeenCalled();
+    expect(readExtensionFileMock).not.toHaveBeenCalled();
   });
 
   it('falls back to the letter avatar when the icon cannot be read', async () => {
-    pluginState.plugins = [
+    pluginState.extensions = [
       makePlugin({ id: 'acme.broken', name: 'Broken', icon: 'assets/icon.svg' }),
     ];
-    readPluginFileMock.mockRejectedValue(new Error('plugin disabled or missing'));
+    readExtensionFileMock.mockRejectedValue(new Error('plugin disabled or missing'));
 
-    render(<PluginManagementPage />);
+    render(<ExtensionManagementPage />);
     const slot = within(card('acme.broken')).getByTestId('plugin-card-icon');
     await waitFor(() => expect(slot).toHaveTextContent('B'));
-    expect(readPluginFileMock).toHaveBeenCalledWith('acme.broken', 'assets/icon.svg');
+    expect(readExtensionFileMock).toHaveBeenCalledWith('acme.broken', 'assets/icon.svg');
   });
 });

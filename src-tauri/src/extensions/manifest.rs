@@ -1,4 +1,4 @@
-//! Runtime plugin manifest: schema types and validation rules.
+//! Runtime extension manifest: schema types and validation rules.
 //!
 //! Mirrors [`crate::theme::validate`] conventions: strict serde parsing,
 //! `<publisher>.<name>` id format, semver versions, path-traversal
@@ -11,17 +11,17 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use super::PLUGIN_API_VERSION;
+use super::EXTENSION_API_VERSION;
 
 /// Total uncompressed package size limit (rule 6).
-pub const MAX_PLUGIN_UNCOMPRESSED: u64 = 50 * 1024 * 1024;
+pub const MAX_EXTENSION_UNCOMPRESSED: u64 = 50 * 1024 * 1024;
 /// Maximum number of files in a package (rule 6).
-pub const MAX_PLUGIN_FILES: usize = 2000;
+pub const MAX_EXTENSION_FILES: usize = 2000;
 
 const MAX_SVG_BYTES: usize = 256 * 1024;
 
-static PLUGIN_ID_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[a-z0-9][a-z0-9-]{0,30}\.[a-z][a-z0-9-]{1,31}$").expect("valid plugin id regex")
+static EXTENSION_ID_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^[a-z0-9][a-z0-9-]{0,30}\.[a-z][a-z0-9-]{1,31}$").expect("valid extension id regex")
 });
 
 static SEMVER_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -39,7 +39,7 @@ static PAGE_ID_RE: LazyLock<Regex> =
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct PluginManifest {
+pub struct ExtensionManifest {
     pub id: String,
     pub name: String,
     pub version: String,
@@ -140,12 +140,12 @@ impl std::fmt::Display for Permission {
 }
 
 /// Whether `id` matches the `<publisher>.<name>` format enforced by rule 1.
-pub fn is_valid_plugin_id(id: &str) -> bool {
-    PLUGIN_ID_RE.is_match(id)
+pub fn is_valid_extension_id(id: &str) -> bool {
+    EXTENSION_ID_RE.is_match(id)
 }
 
 /// Whether `ext` is in the package file-type whitelist.
-pub fn allowed_plugin_extension(ext: &str) -> bool {
+pub fn allowed_extension_file_ext(ext: &str) -> bool {
     matches!(
         ext.to_ascii_lowercase().as_str(),
         "html" | "js" | "mjs" | "css" | "json" | "svg" | "png" | "webp" | "woff2" | "woff"
@@ -153,12 +153,12 @@ pub fn allowed_plugin_extension(ext: &str) -> bool {
 }
 
 /// Parse a manifest.json payload; unknown fields are rejected.
-pub fn parse_manifest(content: &str) -> Result<PluginManifest, String> {
+pub fn parse_manifest(content: &str) -> Result<ExtensionManifest, String> {
     serde_json::from_str(content).map_err(|e| format!("invalid manifest.json: {e}"))
 }
 
 /// Read and parse `{dir}/manifest.json`.
-fn read_manifest_from_dir(dir: &Path) -> Result<PluginManifest, String> {
+fn read_manifest_from_dir(dir: &Path) -> Result<ExtensionManifest, String> {
     let manifest_path = dir.join("manifest.json");
     if !manifest_path.is_file() {
         return Err("missing manifest.json".into());
@@ -168,17 +168,17 @@ fn read_manifest_from_dir(dir: &Path) -> Result<PluginManifest, String> {
     parse_manifest(&content)
 }
 
-/// Validate an installed plugin directory; folder name must equal `manifest.id`.
-pub fn validate_plugin_dir(dir: &Path) -> Result<PluginManifest, String> {
+/// Validate an installed extension directory; folder name must equal `manifest.id`.
+pub fn validate_extension_dir(dir: &Path) -> Result<ExtensionManifest, String> {
     let manifest = read_manifest_from_dir(dir)?;
 
     let folder_name = dir
         .file_name()
         .and_then(|n| n.to_str())
-        .ok_or_else(|| "invalid plugin directory path".to_string())?;
+        .ok_or_else(|| "invalid extension directory path".to_string())?;
     if folder_name != manifest.id {
         return Err(format!(
-            "plugin directory name `{folder_name}` does not match manifest id `{}`",
+            "extension directory name `{folder_name}` does not match manifest id `{}`",
             manifest.id
         ));
     }
@@ -188,16 +188,16 @@ pub fn validate_plugin_dir(dir: &Path) -> Result<PluginManifest, String> {
 }
 
 /// Validate a manifest against its on-disk package directory (rules 1–7).
-pub fn validate_manifest(manifest: &PluginManifest, plugin_dir: &Path) -> Result<(), String> {
+pub fn validate_manifest(manifest: &ExtensionManifest, plugin_dir: &Path) -> Result<(), String> {
     // Rule 1: `<publisher>.<name>` id format.
-    if !PLUGIN_ID_RE.is_match(&manifest.id) {
-        return Err(format!("invalid plugin id: {}", manifest.id));
+    if !EXTENSION_ID_RE.is_match(&manifest.id) {
+        return Err(format!("invalid extension id: {}", manifest.id));
     }
 
     // Rule 2: API version handshake; mismatch means a newer host is required.
-    if manifest.api_version != PLUGIN_API_VERSION {
+    if manifest.api_version != EXTENSION_API_VERSION {
         return Err(format!(
-            "unsupported apiVersion: {} (expected {PLUGIN_API_VERSION}); \
+            "unsupported apiVersion: {} (expected {EXTENSION_API_VERSION}); \
              需要更新版本的 DataZen >= {}",
             manifest.api_version,
             env!("CARGO_PKG_VERSION")
@@ -357,7 +357,7 @@ fn ensure_allowed_extension(declared: &str) -> Result<(), String> {
         .and_then(|e| e.to_str())
         .map(str::to_ascii_lowercase)
         .unwrap_or_default();
-    if ext.is_empty() || !allowed_plugin_extension(&ext) {
+    if ext.is_empty() || !allowed_extension_file_ext(&ext) {
         return Err(format!("forbidden extension .{ext}: {declared}"));
     }
     Ok(())
@@ -372,8 +372,8 @@ pub(crate) struct PackageLimits {
 impl Default for PackageLimits {
     fn default() -> Self {
         Self {
-            max_total_bytes: MAX_PLUGIN_UNCOMPRESSED,
-            max_files: MAX_PLUGIN_FILES,
+            max_total_bytes: MAX_EXTENSION_UNCOMPRESSED,
+            max_files: MAX_EXTENSION_FILES,
         }
     }
 }
@@ -445,7 +445,7 @@ fn scan_dir(
         if ext.is_empty() {
             return Err(format!("file without extension: {rel}"));
         }
-        if !allowed_plugin_extension(&ext) {
+        if !allowed_extension_file_ext(&ext) {
             return Err(format!("forbidden extension .{ext}: {rel}"));
         }
 
@@ -545,7 +545,7 @@ mod tests {
         write_file(dir, "themes/midnight-blue/preview.png", "pretend-png");
     }
 
-    fn parsed(json: &str) -> PluginManifest {
+    fn parsed(json: &str) -> ExtensionManifest {
         parse_manifest(json).unwrap()
     }
 
@@ -556,9 +556,9 @@ mod tests {
         let pack = dir.path().join("acme.bill-audit");
         write_page_plugin(&pack);
 
-        let manifest = validate_plugin_dir(&pack).unwrap();
+        let manifest = validate_extension_dir(&pack).unwrap();
         assert_eq!(manifest.id, "acme.bill-audit");
-        assert_eq!(manifest.api_version, PLUGIN_API_VERSION);
+        assert_eq!(manifest.api_version, EXTENSION_API_VERSION);
         assert_eq!(
             manifest.permissions,
             vec![Permission::ContextConnections, Permission::StorageLocal]
@@ -571,7 +571,7 @@ mod tests {
         let pack = dir.path().join("acme.midnight");
         write_theme_plugin(&pack);
 
-        let manifest = validate_plugin_dir(&pack).unwrap();
+        let manifest = validate_extension_dir(&pack).unwrap();
         assert!(manifest.entry.is_none());
         assert!(manifest.permissions.is_empty());
         assert_eq!(manifest.contributes.themes.len(), 1);
@@ -584,24 +584,24 @@ mod tests {
         let mut m = parsed(PAGE_MANIFEST);
         m.id = "bill-audit".into();
         let err = validate_manifest(&m, dir.path()).unwrap_err();
-        assert!(err.contains("invalid plugin id"), "unexpected: {err}");
+        assert!(err.contains("invalid extension id"), "unexpected: {err}");
     }
 
     #[test]
     fn rejects_uppercase_id() {
-        assert!(!is_valid_plugin_id("Acme.bill-audit"));
-        assert!(!is_valid_plugin_id("acme.Bill-Audit"));
+        assert!(!is_valid_extension_id("Acme.bill-audit"));
+        assert!(!is_valid_extension_id("acme.Bill-Audit"));
     }
 
     #[test]
     fn rejects_overlong_id_segments() {
         // publisher segment: leading char + up to 30 more (31 total)
-        assert!(is_valid_plugin_id(&format!("{}x.bill", "a".repeat(30))));
-        assert!(!is_valid_plugin_id(&format!("{}x.bill", "a".repeat(31))));
+        assert!(is_valid_extension_id(&format!("{}x.bill", "a".repeat(30))));
+        assert!(!is_valid_extension_id(&format!("{}x.bill", "a".repeat(31))));
         // name segment: leading char + up to 31 more (32 total)
-        assert!(is_valid_plugin_id(&format!("acme.{}", "b".repeat(31))));
-        assert!(!is_valid_plugin_id(&format!("acme.{}", "b".repeat(33))));
-        assert!(is_valid_plugin_id("acme.bill-audit"));
+        assert!(is_valid_extension_id(&format!("acme.{}", "b".repeat(31))));
+        assert!(!is_valid_extension_id(&format!("acme.{}", "b".repeat(33))));
+        assert!(is_valid_extension_id("acme.bill-audit"));
     }
 
     #[test]
@@ -717,7 +717,7 @@ mod tests {
         let pack = dir.path().join("wrong-folder");
         fs::create_dir_all(&pack).unwrap();
         write_page_plugin(&pack);
-        let err = validate_plugin_dir(&pack).unwrap_err();
+        let err = validate_extension_dir(&pack).unwrap_err();
         assert!(
             err.contains("does not match manifest id"),
             "unexpected: {err}"
@@ -959,7 +959,7 @@ mod tests {
         write_page_plugin(dir.path());
 
         let tiny_files = PackageLimits {
-            max_total_bytes: MAX_PLUGIN_UNCOMPRESSED,
+            max_total_bytes: MAX_EXTENSION_UNCOMPRESSED,
             max_files: 2,
         };
         let err = scan_package_files(dir.path(), tiny_files).unwrap_err();
@@ -967,7 +967,7 @@ mod tests {
 
         let tiny_bytes = PackageLimits {
             max_total_bytes: 8,
-            max_files: MAX_PLUGIN_FILES,
+            max_files: MAX_EXTENSION_FILES,
         };
         let err = scan_package_files(dir.path(), tiny_bytes).unwrap_err();
         assert!(err.contains("size exceeds limit"), "unexpected: {err}");

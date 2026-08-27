@@ -10,14 +10,14 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::install::install_from_dir;
-use super::manifest::{parse_manifest, validate_manifest, validate_plugin_dir};
-use super::PLUGIN_API_VERSION;
+use super::manifest::{parse_manifest, validate_manifest, validate_extension_dir};
+use super::EXTENSION_API_VERSION;
 
 fn sample_plugin_fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../e2e/fixtures/sample-plugin")
 }
 
-fn load_fixture_manifest() -> (PathBuf, super::PluginManifest) {
+fn load_fixture_manifest() -> (PathBuf, super::ExtensionManifest) {
     let dir = sample_plugin_fixture();
     let content = fs::read_to_string(dir.join("manifest.json"))
         .unwrap_or_else(|e| panic!("read fixture manifest.json: {e}"));
@@ -37,7 +37,7 @@ fn e2e_sample_plugin_fixture_passes_manifest_validation() {
         .unwrap_or_else(|e| panic!("sample-plugin fixture drifted out of spec: {e}"));
 
     assert_eq!(manifest.id, "datazen.sample");
-    assert_eq!(manifest.api_version, PLUGIN_API_VERSION);
+    assert_eq!(manifest.api_version, EXTENSION_API_VERSION);
     assert_eq!(manifest.name, "Sample Hello");
     assert_eq!(manifest.entry.as_deref(), Some("index.html"));
     assert_eq!(manifest.contributes.pages.len(), 1);
@@ -83,7 +83,7 @@ fn e2e_sample_plugin_fixture_installs_through_the_real_path() {
     // The staged copy was renamed to `{plugins_dir}/{id}` and revalidates
     // cleanly there (this also enforces folder name == manifest.id).
     let installed = plugins_root.path().join("datazen.sample");
-    validate_plugin_dir(&installed)
+    validate_extension_dir(&installed)
         .unwrap_or_else(|e| panic!("installed fixture must revalidate: {e}"));
     assert_eq!(manifest.id, "datazen.sample");
     assert!(installed.join("index.html").is_file());
@@ -115,10 +115,10 @@ fn repo_extension_packages_pass_manifest_validation() {
         if !name.contains('.') {
             continue; // skip non-package helper directories (e.g. dist/)
         }
-        let manifest = validate_plugin_dir(&path)
+        let manifest = validate_extension_dir(&path)
             .unwrap_or_else(|e| panic!("extension package `{name}` failed validation: {e}"));
         assert_eq!(
-            manifest.api_version, PLUGIN_API_VERSION,
+            manifest.api_version, EXTENSION_API_VERSION,
             "extension `{name}` apiVersion drifted"
         );
         seen.insert(manifest.id);
@@ -140,7 +140,7 @@ fn repo_extension_packages_pass_manifest_validation() {
 #[test]
 fn community_slate_blue_extension_declares_theme_contribution() {
     let dir = extensions_root().join("community.slate-blue");
-    let manifest = validate_plugin_dir(&dir)
+    let manifest = validate_extension_dir(&dir)
         .unwrap_or_else(|e| panic!("community.slate-blue extension invalid: {e}"));
     assert!(
         manifest.entry.is_none(),

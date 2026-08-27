@@ -1,5 +1,5 @@
-//! Runtime UI-plugin IPC: list / install / remove / enable, manifest lookup,
-//! per-plugin KV storage, and sandbox-constrained file reads.
+//! Runtime UI-extension IPC: list / install / remove / enable, manifest lookup,
+//! per-extension KV storage, and sandbox-constrained file reads.
 
 use std::fs;
 use std::path::PathBuf;
@@ -10,19 +10,19 @@ use tauri::{AppHandle, Emitter, State};
 
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::plugins::{
+use crate::extensions::{
     install::{install_from_dir, install_from_zip},
-    storage_get, storage_remove, storage_set, LoadedPlugin, PluginManifest,
+    storage_get, storage_remove, storage_set, LoadedExtension, ExtensionManifest,
 };
 
 /// Emitted after any install/remove/enable change so the frontend can refresh.
-pub const PLUGINS_CHANGED_EVENT: &str = "plugins:changed";
+pub const EXTENSIONS_CHANGED_EVENT: &str = "plugins:changed";
 
-fn ensure_plugin_exists(state: &AppState, id: &str) -> Result<LoadedPlugin, CommandError> {
+fn ensure_extension_exists(state: &AppState, id: &str) -> Result<LoadedExtension, CommandError> {
     state
-        .plugins
+        .extensions
         .get(id)
-        .ok_or_else(|| CommandError::NotFound(format!("plugin not found: {id}")))
+        .ok_or_else(|| CommandError::NotFound(format!("extension not found: {id}")))
 }
 
 // ---------------------------------------------------------------------------
@@ -31,7 +31,7 @@ fn ensure_plugin_exists(state: &AppState, id: &str) -> Result<LoadedPlugin, Comm
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PluginPageSummary {
+pub struct ExtensionPageSummary {
     pub id: String,
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -40,7 +40,7 @@ pub struct PluginPageSummary {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PluginThemeSummary {
+pub struct ExtensionThemeSummary {
     pub id: String,
     pub name: String,
     pub modes: Vec<String>,
@@ -48,7 +48,7 @@ pub struct PluginThemeSummary {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PluginSummary {
+pub struct ExtensionSummary {
     pub id: String,
     pub name: String,
     pub version: String,
@@ -62,13 +62,13 @@ pub struct PluginSummary {
     pub icon: Option<String>,
     pub enabled: bool,
     pub permissions: Vec<String>,
-    pub pages: Vec<PluginPageSummary>,
-    pub themes: Vec<PluginThemeSummary>,
+    pub pages: Vec<ExtensionPageSummary>,
+    pub themes: Vec<ExtensionThemeSummary>,
 }
 
-impl From<&LoadedPlugin> for PluginSummary {
-    fn from(plugin: &LoadedPlugin) -> Self {
-        let manifest = &plugin.manifest;
+impl From<&LoadedExtension> for ExtensionSummary {
+    fn from(extension: &LoadedExtension) -> Self {
+        let manifest = &extension.manifest;
         Self {
             id: manifest.id.clone(),
             name: manifest.name.clone(),
@@ -77,7 +77,7 @@ impl From<&LoadedPlugin> for PluginSummary {
             author: manifest.author.clone(),
             description: manifest.description.clone(),
             icon: manifest.icon.clone(),
-            enabled: plugin.enabled,
+            enabled: extension.enabled,
             permissions: manifest
                 .permissions
                 .iter()
@@ -87,7 +87,7 @@ impl From<&LoadedPlugin> for PluginSummary {
                 .contributes
                 .pages
                 .iter()
-                .map(|page| PluginPageSummary {
+                .map(|page| ExtensionPageSummary {
                     id: page.id.clone(),
                     title: page.title.clone(),
                     icon: page.icon.clone(),
@@ -97,7 +97,7 @@ impl From<&LoadedPlugin> for PluginSummary {
                 .contributes
                 .themes
                 .iter()
-                .map(|theme| PluginThemeSummary {
+                .map(|theme| ExtensionThemeSummary {
                     id: theme.id.clone(),
                     name: theme.name.clone(),
                     modes: theme.modes.clone(),
@@ -111,35 +111,35 @@ impl From<&LoadedPlugin> for PluginSummary {
 // Implementations (shared by commands and unit tests)
 // ---------------------------------------------------------------------------
 
-pub(crate) fn list_plugins_impl(state: &AppState) -> Vec<PluginSummary> {
+pub(crate) fn list_extensions_impl(state: &AppState) -> Vec<ExtensionSummary> {
     state
-        .plugins
+        .extensions
         .list()
         .iter()
-        .map(PluginSummary::from)
+        .map(ExtensionSummary::from)
         .collect()
 }
 
-pub(crate) fn get_plugin_manifest_impl(
+pub(crate) fn get_extension_manifest_impl(
     state: &AppState,
     id: &str,
-) -> Result<PluginManifest, CommandError> {
-    ensure_plugin_exists(state, id).map(|loaded| loaded.manifest)
+) -> Result<ExtensionManifest, CommandError> {
+    ensure_extension_exists(state, id).map(|loaded| loaded.manifest)
 }
 
-pub(crate) async fn install_plugin_from_path_impl(
+pub(crate) async fn install_extension_from_path_impl(
     state: &AppState,
     path: String,
-) -> Result<PluginSummary, CommandError> {
+) -> Result<ExtensionSummary, CommandError> {
     let source = PathBuf::from(&path);
     if !source.exists() {
         return Err(CommandError::NotFound(format!(
-            "plugin package not found: {}",
+            "extension package not found: {}",
             source.display()
         )));
     }
 
-    let plugins_dir = state.plugins.plugins_dir().to_path_buf();
+    let extensions_dir = state.extensions.extensions_dir().to_path_buf();
     let manifest = tokio::task::spawn_blocking(move || {
         let is_zip = source.is_file()
             && source
@@ -147,123 +147,123 @@ pub(crate) async fn install_plugin_from_path_impl(
                 .and_then(|ext| ext.to_str())
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"));
         if is_zip {
-            install_from_zip(&source, &plugins_dir)
+            install_from_zip(&source, &extensions_dir)
         } else {
-            install_from_dir(&source, &plugins_dir)
+            install_from_dir(&source, &extensions_dir)
         }
     })
     .await
-    .map_err(|e| CommandError::Internal(format!("install_plugin_from_path task: {e}")))?
+    .map_err(|e| CommandError::Internal(format!("install_extension_from_path task: {e}")))?
     .map_err(CommandError::Validation)?;
 
     state
-        .plugins
+        .extensions
         .register(manifest.clone(), true)
         .map_err(CommandError::Validation)?;
-    tracing::info!(id = %manifest.id, version = %manifest.version, "install_plugin_from_path OK");
+    tracing::info!(id = %manifest.id, version = %manifest.version, "install_extension_from_path OK");
 
-    Ok(PluginSummary::from(&LoadedPlugin {
+    Ok(ExtensionSummary::from(&LoadedExtension {
         manifest,
         enabled: true,
     }))
 }
 
-pub(crate) async fn inspect_plugin_package_impl(
+pub(crate) async fn inspect_extension_package_impl(
     path: String,
-) -> Result<PluginManifest, CommandError> {
+) -> Result<ExtensionManifest, CommandError> {
     let source = PathBuf::from(&path);
     if !source.exists() {
         return Err(CommandError::NotFound(format!(
-            "plugin package not found: {}",
+            "extension package not found: {}",
             source.display()
         )));
     }
 
     // Full rule-set validation in a throwaway temp dir; nothing touches
-    // `{plugins_dir}` until `install_plugin_from_path` runs.
-    tokio::task::spawn_blocking(move || crate::plugins::install::inspect_plugin_package(&source))
+    // `{extensions_dir}` until `install_extension_from_path` runs.
+    tokio::task::spawn_blocking(move || crate::extensions::install::inspect_extension_package(&source))
         .await
-        .map_err(|e| CommandError::Internal(format!("inspect_plugin_package task: {e}")))?
+        .map_err(|e| CommandError::Internal(format!("inspect_extension_package task: {e}")))?
         .map_err(CommandError::Validation)
 }
 
-pub(crate) async fn remove_plugin_impl(state: &AppState, id: String) -> Result<(), CommandError> {
-    ensure_plugin_exists(state, &id)?;
+pub(crate) async fn remove_extension_impl(state: &AppState, id: String) -> Result<(), CommandError> {
+    ensure_extension_exists(state, &id)?;
 
-    let manager = state.plugins.clone();
+    let manager = state.extensions.clone();
     let removed_id = id.clone();
     tokio::task::spawn_blocking(move || manager.remove(&removed_id))
         .await
-        .map_err(|e| CommandError::Internal(format!("remove_plugin task: {e}")))?
+        .map_err(|e| CommandError::Internal(format!("remove_extension task: {e}")))?
         .map_err(CommandError::Validation)?;
 
-    tracing::info!(%id, "remove_plugin OK");
+    tracing::info!(%id, "remove_extension OK");
     Ok(())
 }
 
-pub(crate) async fn set_plugin_enabled_impl(
+pub(crate) async fn set_extension_enabled_impl(
     state: &AppState,
     id: String,
     enabled: bool,
 ) -> Result<(), CommandError> {
-    ensure_plugin_exists(state, &id)?;
+    ensure_extension_exists(state, &id)?;
 
-    let manager = state.plugins.clone();
+    let manager = state.extensions.clone();
     let toggled_id = id.clone();
     tokio::task::spawn_blocking(move || manager.set_enabled(&toggled_id, enabled))
         .await
-        .map_err(|e| CommandError::Internal(format!("set_plugin_enabled task: {e}")))?
+        .map_err(|e| CommandError::Internal(format!("set_extension_enabled task: {e}")))?
         .map_err(CommandError::Validation)?;
 
-    tracing::info!(%id, %enabled, "set_plugin_enabled OK");
+    tracing::info!(%id, %enabled, "set_extension_enabled OK");
     Ok(())
 }
 
-pub(crate) async fn plugin_storage_get_impl(
+pub(crate) async fn extension_storage_get_impl(
     state: &AppState,
-    plugin_id: String,
+    extension_id: String,
     key: String,
 ) -> Result<Option<Value>, CommandError> {
-    ensure_plugin_exists(state, &plugin_id)?;
+    ensure_extension_exists(state, &extension_id)?;
 
-    let plugins_dir = state.plugins.plugins_dir().to_path_buf();
+    let extensions_dir = state.extensions.extensions_dir().to_path_buf();
     run_storage_op(
-        move || storage_get(&plugins_dir, &plugin_id, &key),
-        "plugin_storage_get",
+        move || storage_get(&extensions_dir, &extension_id, &key),
+        "extension_storage_get",
     )
     .await
 }
 
-pub(crate) async fn plugin_storage_set_impl(
+pub(crate) async fn extension_storage_set_impl(
     state: &AppState,
-    plugin_id: String,
+    extension_id: String,
     key: String,
     value: Value,
 ) -> Result<(), CommandError> {
-    ensure_plugin_exists(state, &plugin_id)?;
+    ensure_extension_exists(state, &extension_id)?;
 
-    let plugins_dir = state.plugins.plugins_dir().to_path_buf();
+    let extensions_dir = state.extensions.extensions_dir().to_path_buf();
     run_storage_op(
-        move || storage_set(&plugins_dir, &plugin_id, &key, value),
-        "plugin_storage_set",
+        move || storage_set(&extensions_dir, &extension_id, &key, value),
+        "extension_storage_set",
     )
     .await
 }
 
-pub(crate) async fn plugin_storage_remove_impl(
+pub(crate) async fn extension_storage_remove_impl(
     state: &AppState,
-    plugin_id: String,
+    extension_id: String,
     key: String,
 ) -> Result<(), CommandError> {
-    ensure_plugin_exists(state, &plugin_id)?;
+    ensure_extension_exists(state, &extension_id)?;
 
-    let plugins_dir = state.plugins.plugins_dir().to_path_buf();
+    let extensions_dir = state.extensions.extensions_dir().to_path_buf();
     run_storage_op(
         move || {
-            storage_remove(&plugins_dir, &plugin_id, &key)?;
+            storage_remove(&extensions_dir, &extension_id, &key)?;
             Ok(())
         },
-        "plugin_storage_remove",
+        "extension_storage_remove",
     )
     .await
 }
@@ -281,22 +281,22 @@ where
         .map_err(CommandError::Validation)
 }
 
-pub(crate) async fn read_plugin_file_impl(
+pub(crate) async fn read_extension_file_impl(
     state: &AppState,
     id: String,
     relative_path: String,
 ) -> Result<Vec<u8>, CommandError> {
-    let loaded = ensure_plugin_exists(state, &id)?;
+    let loaded = ensure_extension_exists(state, &id)?;
     if !loaded.enabled {
         return Err(CommandError::Validation(format!(
-            "plugin is disabled: {id}"
+            "extension is disabled: {id}"
         )));
     }
 
     // Path component checks: no absolute paths, no traversal, no hidden files
     // (`.storage.json` / `.enabled` are host-managed and never readable).
     let rel = crate::app_data_archive::validate_zip_entry_path(&relative_path).map_err(|e| {
-        CommandError::Validation(format!("unsafe plugin file path `{relative_path}`: {e}"))
+        CommandError::Validation(format!("unsafe extension file path `{relative_path}`: {e}"))
     })?;
     for component in rel.components() {
         match component {
@@ -309,25 +309,25 @@ pub(crate) async fn read_plugin_file_impl(
             }
             _ => {
                 return Err(CommandError::Validation(format!(
-                    "unsafe plugin file path: {relative_path}"
+                    "unsafe extension file path: {relative_path}"
                 )));
             }
         }
     }
 
-    let plugin_dir = state.plugins.plugin_dir(&id);
-    let file_path = plugin_dir.join(&rel);
+    let extension_dir = state.extensions.plugin_dir(&id);
+    let file_path = extension_dir.join(&rel);
     if !file_path.is_file() {
         return Err(CommandError::NotFound(format!(
-            "plugin file not found: {relative_path}"
+            "extension file not found: {relative_path}"
         )));
     }
 
-    super::error::assert_under_dir(&plugin_dir, &file_path, "read_plugin_file")?;
+    super::error::assert_under_dir(&extension_dir, &file_path, "read_extension_file")?;
 
     tokio::fs::read(&file_path)
         .await
-        .cmd_err("read_plugin_file")
+        .cmd_err("read_extension_file")
 }
 
 // ---------------------------------------------------------------------------
@@ -335,42 +335,42 @@ pub(crate) async fn read_plugin_file_impl(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub async fn list_plugins(state: State<'_, AppState>) -> Result<Vec<PluginSummary>, CommandError> {
-    Ok(list_plugins_impl(&state))
+pub async fn list_extensions(state: State<'_, AppState>) -> Result<Vec<ExtensionSummary>, CommandError> {
+    Ok(list_extensions_impl(&state))
 }
 
 #[tauri::command]
-pub async fn get_plugin_manifest(
+pub async fn get_extension_manifest(
     state: State<'_, AppState>,
     id: String,
-) -> Result<PluginManifest, CommandError> {
-    get_plugin_manifest_impl(&state, &id)
+) -> Result<ExtensionManifest, CommandError> {
+    get_extension_manifest_impl(&state, &id)
 }
 
 #[tauri::command]
-pub async fn install_plugin_from_path(
+pub async fn install_extension_from_path(
     app: AppHandle,
     state: State<'_, AppState>,
     path: String,
-) -> Result<PluginSummary, CommandError> {
-    let summary = install_plugin_from_path_impl(&state, path).await?;
-    let _ = app.emit(PLUGINS_CHANGED_EVENT, ());
+) -> Result<ExtensionSummary, CommandError> {
+    let summary = install_extension_from_path_impl(&state, path).await?;
+    let _ = app.emit(EXTENSIONS_CHANGED_EVENT, ());
     Ok(summary)
 }
 
 #[tauri::command]
-pub async fn inspect_plugin_package(path: String) -> Result<PluginManifest, CommandError> {
-    inspect_plugin_package_impl(path).await
+pub async fn inspect_extension_package(path: String) -> Result<ExtensionManifest, CommandError> {
+    inspect_extension_package_impl(path).await
 }
 
 #[tauri::command]
-pub async fn remove_plugin(
+pub async fn remove_extension(
     app: AppHandle,
     state: State<'_, AppState>,
     id: String,
 ) -> Result<(), CommandError> {
-    remove_plugin_impl(&state, id).await?;
-    let _ = app.emit(PLUGINS_CHANGED_EVENT, ());
+    remove_extension_impl(&state, id).await?;
+    let _ = app.emit(EXTENSIONS_CHANGED_EVENT, ());
     Ok(())
 }
 
@@ -402,52 +402,52 @@ pub async fn extension_audit_log(
 }
 
 #[tauri::command]
-pub async fn set_plugin_enabled(
+pub async fn set_extension_enabled(
     app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     enabled: bool,
 ) -> Result<(), CommandError> {
-    set_plugin_enabled_impl(&state, id, enabled).await?;
-    let _ = app.emit(PLUGINS_CHANGED_EVENT, ());
+    set_extension_enabled_impl(&state, id, enabled).await?;
+    let _ = app.emit(EXTENSIONS_CHANGED_EVENT, ());
     Ok(())
 }
 
 #[tauri::command]
-pub async fn plugin_storage_get(
+pub async fn extension_storage_get(
     state: State<'_, AppState>,
-    plugin_id: String,
+    extension_id: String,
     key: String,
 ) -> Result<Option<Value>, CommandError> {
-    plugin_storage_get_impl(&state, plugin_id, key).await
+    extension_storage_get_impl(&state, extension_id, key).await
 }
 
 #[tauri::command]
-pub async fn plugin_storage_set(
+pub async fn extension_storage_set(
     state: State<'_, AppState>,
-    plugin_id: String,
+    extension_id: String,
     key: String,
     value: Value,
 ) -> Result<(), CommandError> {
-    plugin_storage_set_impl(&state, plugin_id, key, value).await
+    extension_storage_set_impl(&state, extension_id, key, value).await
 }
 
 #[tauri::command]
-pub async fn plugin_storage_remove(
+pub async fn extension_storage_remove(
     state: State<'_, AppState>,
-    plugin_id: String,
+    extension_id: String,
     key: String,
 ) -> Result<(), CommandError> {
-    plugin_storage_remove_impl(&state, plugin_id, key).await
+    extension_storage_remove_impl(&state, extension_id, key).await
 }
 
 #[tauri::command]
-pub async fn read_plugin_file(
+pub async fn read_extension_file(
     state: State<'_, AppState>,
     id: String,
     relative_path: String,
 ) -> Result<Vec<u8>, CommandError> {
-    read_plugin_file_impl(&state, id, relative_path).await
+    read_extension_file_impl(&state, id, relative_path).await
 }
 
 #[cfg(test)]
@@ -515,8 +515,8 @@ mod tests {
         }
     }
 
-    async fn install_zip(test: &TestAppState, path: &Path) -> PluginSummary {
-        install_plugin_from_path_impl(&test.state, path.to_string_lossy().to_string())
+    async fn install_zip(test: &TestAppState, path: &Path) -> ExtensionSummary {
+        install_extension_from_path_impl(&test.state, path.to_string_lossy().to_string())
             .await
             .unwrap()
     }
@@ -524,7 +524,7 @@ mod tests {
     #[tokio::test]
     async fn install_list_enable_disable_remove_flow() {
         let test = TestAppState::new().await;
-        assert!(list_plugins_impl(&test.state).is_empty());
+        assert!(list_extensions_impl(&test.state).is_empty());
 
         let tmp = TempDir::new().unwrap();
         let zip_path = tmp.path().join("demo.zip");
@@ -544,7 +544,7 @@ mod tests {
         assert_eq!(summary.themes[0].id, "demo-dark");
 
         // -- listed with enabled=true
-        let plugins = list_plugins_impl(&test.state);
+        let plugins = list_extensions_impl(&test.state);
         assert_eq!(plugins.len(), 1);
         assert_eq!(plugins[0].id, "acme.demo");
         assert!(plugins[0].enabled);
@@ -558,14 +558,14 @@ mod tests {
             .is_file());
 
         // -- manifest lookup
-        let manifest = get_plugin_manifest_impl(&test.state, "acme.demo").unwrap();
+        let manifest = get_extension_manifest_impl(&test.state, "acme.demo").unwrap();
         assert_eq!(manifest.version, "1.0.0");
 
         // -- disable: still listed, enabled=false, marker removed
-        set_plugin_enabled_impl(&test.state, "acme.demo".into(), false)
+        set_extension_enabled_impl(&test.state, "acme.demo".into(), false)
             .await
             .unwrap();
-        let plugins = list_plugins_impl(&test.state);
+        let plugins = list_extensions_impl(&test.state);
         assert_eq!(plugins.len(), 1);
         assert!(!plugins[0].enabled);
         assert!(!test
@@ -576,22 +576,22 @@ mod tests {
             .exists());
 
         // -- reads are refused while disabled
-        let err = read_plugin_file_impl(&test.state, "acme.demo".into(), "index.html".into())
+        let err = read_extension_file_impl(&test.state, "acme.demo".into(), "index.html".into())
             .await
             .unwrap_err();
         assert!(err.to_string().contains("disabled"));
 
         // -- enable again
-        set_plugin_enabled_impl(&test.state, "acme.demo".into(), true)
+        set_extension_enabled_impl(&test.state, "acme.demo".into(), true)
             .await
             .unwrap();
-        assert!(list_plugins_impl(&test.state)[0].enabled);
+        assert!(list_extensions_impl(&test.state)[0].enabled);
 
         // -- remove deletes the directory and unregisters
-        remove_plugin_impl(&test.state, "acme.demo".into())
+        remove_extension_impl(&test.state, "acme.demo".into())
             .await
             .unwrap();
-        assert!(list_plugins_impl(&test.state).is_empty());
+        assert!(list_extensions_impl(&test.state).is_empty());
         assert!(!test
             .state
             .store
@@ -600,10 +600,10 @@ mod tests {
             .exists());
 
         // -- unknown ids error cleanly
-        assert!(remove_plugin_impl(&test.state, "acme.demo".into())
+        assert!(remove_extension_impl(&test.state, "acme.demo".into())
             .await
             .is_err());
-        assert!(get_plugin_manifest_impl(&test.state, "acme.demo").is_err());
+        assert!(get_extension_manifest_impl(&test.state, "acme.demo").is_err());
     }
 
     #[tokio::test]
@@ -613,16 +613,16 @@ mod tests {
         write_demo_dir(src.path());
 
         let summary =
-            install_plugin_from_path_impl(&test.state, src.path().to_string_lossy().to_string())
+            install_extension_from_path_impl(&test.state, src.path().to_string_lossy().to_string())
                 .await
                 .unwrap();
         assert_eq!(summary.id, "acme.demo");
 
         // Reinstall over the same id keeps exactly one entry.
-        install_plugin_from_path_impl(&test.state, src.path().to_string_lossy().to_string())
+        install_extension_from_path_impl(&test.state, src.path().to_string_lossy().to_string())
             .await
             .unwrap();
-        assert_eq!(list_plugins_impl(&test.state).len(), 1);
+        assert_eq!(list_extensions_impl(&test.state).len(), 1);
     }
 
     #[tokio::test]
@@ -630,7 +630,7 @@ mod tests {
         let test = TestAppState::new().await;
 
         // Missing path.
-        let err = install_plugin_from_path_impl(&test.state, "/nonexistent/pkg.zip".into())
+        let err = install_extension_from_path_impl(&test.state, "/nonexistent/pkg.zip".into())
             .await
             .unwrap_err();
         assert!(err.to_string().contains("not found"));
@@ -648,20 +648,20 @@ mod tests {
             zip.write_all(manifest.as_bytes()).unwrap();
             zip.finish().unwrap();
         }
-        let err = install_plugin_from_path_impl(&test.state, bad.to_string_lossy().to_string())
+        let err = install_extension_from_path_impl(&test.state, bad.to_string_lossy().to_string())
             .await
             .unwrap_err();
         assert!(err.to_string().contains("apiVersion"), "{err}");
-        assert!(list_plugins_impl(&test.state).is_empty());
+        assert!(list_extensions_impl(&test.state).is_empty());
     }
 
     #[tokio::test]
-    async fn inspect_plugin_package_previews_manifest_without_writing() {
+    async fn inspect_extension_package_previews_manifest_without_writing() {
         let test = TestAppState::new().await;
-        let plugins_dir = test.state.plugins.plugins_dir().to_path_buf();
+        let extensions_dir = test.state.extensions.extensions_dir().to_path_buf();
 
         // Unknown path → NotFound.
-        let err = inspect_plugin_package_impl("/nonexistent/pkg.zip".into())
+        let err = inspect_extension_package_impl("/nonexistent/pkg.zip".into())
             .await
             .unwrap_err();
         assert!(err.to_string().contains("not found"), "{err}");
@@ -671,14 +671,14 @@ mod tests {
         write_demo_zip(&zip_path);
 
         // Valid package: manifest returned, plugins dir untouched.
-        assert!(!plugins_dir.exists() || plugins_dir.read_dir().unwrap().next().is_none());
-        let manifest = inspect_plugin_package_impl(zip_path.to_string_lossy().to_string())
+        assert!(!extensions_dir.exists() || extensions_dir.read_dir().unwrap().next().is_none());
+        let manifest = inspect_extension_package_impl(zip_path.to_string_lossy().to_string())
             .await
             .unwrap();
         assert_eq!(manifest.id, "acme.demo");
         assert_eq!(manifest.version, "1.0.0");
-        assert!(list_plugins_impl(&test.state).is_empty());
-        assert!(!plugins_dir.join("acme.demo").exists());
+        assert!(list_extensions_impl(&test.state).is_empty());
+        assert!(!extensions_dir.join("acme.demo").exists());
 
         // Invalid package surfaces the validation error.
         let bad = tmp.path().join("bad.zip");
@@ -692,7 +692,7 @@ mod tests {
             zip.write_all(manifest.as_bytes()).unwrap();
             zip.finish().unwrap();
         }
-        let err = inspect_plugin_package_impl(bad.to_string_lossy().to_string())
+        let err = inspect_extension_package_impl(bad.to_string_lossy().to_string())
             .await
             .unwrap_err();
         assert!(err.to_string().contains("apiVersion"), "{err}");
@@ -704,7 +704,7 @@ mod tests {
 
         // Unknown plugin id is rejected before touching the disk.
         assert!(
-            plugin_storage_get_impl(&test.state, "acme.ghost".into(), "k".into())
+            extension_storage_get_impl(&test.state, "acme.ghost".into(), "k".into())
                 .await
                 .is_err()
         );
@@ -714,7 +714,7 @@ mod tests {
         write_demo_zip(&zip_path);
         install_zip(&test, &zip_path).await;
 
-        plugin_storage_set_impl(
+        extension_storage_set_impl(
             &test.state,
             "acme.demo".into(),
             "lastUid".into(),
@@ -723,15 +723,15 @@ mod tests {
         .await
         .unwrap();
 
-        let value = plugin_storage_get_impl(&test.state, "acme.demo".into(), "lastUid".into())
+        let value = extension_storage_get_impl(&test.state, "acme.demo".into(), "lastUid".into())
             .await
             .unwrap();
         assert_eq!(value, Some(json!(58043285)));
 
-        plugin_storage_remove_impl(&test.state, "acme.demo".into(), "lastUid".into())
+        extension_storage_remove_impl(&test.state, "acme.demo".into(), "lastUid".into())
             .await
             .unwrap();
-        let value = plugin_storage_get_impl(&test.state, "acme.demo".into(), "lastUid".into())
+        let value = extension_storage_get_impl(&test.state, "acme.demo".into(), "lastUid".into())
             .await
             .unwrap();
         assert_eq!(value, None);
@@ -747,19 +747,19 @@ mod tests {
         install_zip(&test, &zip_path).await;
 
         // Normal read.
-        let html = read_plugin_file_impl(&test.state, "acme.demo".into(), "index.html".into())
+        let html = read_extension_file_impl(&test.state, "acme.demo".into(), "index.html".into())
             .await
             .unwrap();
         assert_eq!(html, b"<html>demo</html>");
 
         // Nested read inside assets/.
-        read_plugin_file_impl(&test.state, "acme.demo".into(), "assets/icon.svg".into())
+        read_extension_file_impl(&test.state, "acme.demo".into(), "assets/icon.svg".into())
             .await
             .unwrap();
 
         // Host-managed hidden files are refused.
         for hidden in [".storage.json", ".enabled"] {
-            let err = read_plugin_file_impl(&test.state, "acme.demo".into(), hidden.into())
+            let err = read_extension_file_impl(&test.state, "acme.demo".into(), hidden.into())
                 .await
                 .unwrap_err();
             assert!(
@@ -769,19 +769,19 @@ mod tests {
         }
 
         // Traversal is refused.
-        let err = read_plugin_file_impl(&test.state, "acme.demo".into(), "../settings.json".into())
+        let err = read_extension_file_impl(&test.state, "acme.demo".into(), "../settings.json".into())
             .await
             .unwrap_err();
         assert!(err.to_string().contains("unsafe"), "{err}");
 
         // Missing files are NotFound.
-        let err = read_plugin_file_impl(&test.state, "acme.demo".into(), "nope.html".into())
+        let err = read_extension_file_impl(&test.state, "acme.demo".into(), "nope.html".into())
             .await
             .unwrap_err();
         assert!(err.to_string().contains("not found"), "{err}");
 
         // Unknown plugins are NotFound before any path handling.
-        let err = read_plugin_file_impl(&test.state, "acme.ghost".into(), "index.html".into())
+        let err = read_extension_file_impl(&test.state, "acme.ghost".into(), "index.html".into())
             .await
             .unwrap_err();
         assert!(err.to_string().contains("not found"), "{err}");
@@ -794,15 +794,15 @@ mod tests {
         let zip_path = tmp.path().join("demo.zip");
         write_demo_zip(&zip_path);
         install_zip(&test, &zip_path).await;
-        set_plugin_enabled_impl(&test.state, "acme.demo".into(), false)
+        set_extension_enabled_impl(&test.state, "acme.demo".into(), false)
             .await
             .unwrap();
 
         // Simulate a restart: fresh manager over the same app-data dir.
         let reloaded =
-            crate::plugins::PluginManager::new(test.state.store.data_dir().join("plugins"));
+            crate::extensions::ExtensionManager::new(test.state.store.data_dir().join("plugins"));
         reloaded.load_from_disk();
-        let restored = reloaded.get("acme.demo").expect("plugin restored");
+        let restored = reloaded.get("acme.demo").expect("extension restored");
         assert!(!restored.enabled);
         assert_eq!(restored.manifest.name, "Demo Plugin");
     }
@@ -812,8 +812,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let pack = dir.path().join("acme.demo");
         write_demo_dir(&pack);
-        let manifest = crate::plugins::validate_plugin_dir(&pack).unwrap();
-        let summary = PluginSummary::from(&LoadedPlugin {
+        let manifest = crate::extensions::validate_extension_dir(&pack).unwrap();
+        let summary = ExtensionSummary::from(&LoadedExtension {
             manifest,
             enabled: true,
         });

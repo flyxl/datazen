@@ -11,7 +11,7 @@
  */
 export const BRIDGE_CHANNEL = 'datazen-extension';
 
-/** Must match `EXTENSION_API_VERSION` on the host (`src/types/plugin.ts`). */
+/** Must match `EXTENSION_API_VERSION` on the host (`src/types/extension.ts`). */
 export const EXTENSION_API_VERSION = 2;
 
 /** Mirrors the host router deadline (`extensionBridge.ts`). */

@@ -26,7 +26,7 @@ import {
   THEME_TOKENS,
   buildThemeSnapshot,
 } from '../../../src/lib/themeTokens';
-import { EXTENSION_API_VERSION as HOST_API_VERSION } from '../../../src/types/plugin';
+import { EXTENSION_API_VERSION as HOST_API_VERSION } from '../../../src/types/extension';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HOST_ROOT = resolve(HERE, '../../..');

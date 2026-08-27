@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AppearanceSection } from '../AppearanceSection';
-import { EXTENSION_API_VERSION, type PluginSummary } from '../../../types/plugin';
+import { EXTENSION_API_VERSION, type ExtensionSummary } from '../../../types/extension';
 import { encodePluginThemePackId } from '../../../lib/themePackApply';
 
 const { pluginState, fetchMock, settingsState, updateSettingsMock } = vi.hoisted(() => {
   const updateSettingsFn = vi.fn();
   return {
     pluginState: {
-      plugins: [] as Array<Record<string, unknown>>,
+      extensions: [] as Array<Record<string, unknown>>,
       loaded: true,
       error: null as string | null,
     },
@@ -29,8 +29,8 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string, params?: Record<string, string | number>) => key }),
 }));
 
-vi.mock('../../../stores/pluginStore', () => ({
-  usePluginStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+vi.mock('../../../stores/extensionStore', () => ({
+  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
     getState: () => ({ ...pluginState, fetch: fetchMock }),
   }),
 }));
@@ -44,7 +44,7 @@ vi.mock('../../../stores/settingsStore', () => ({
   ),
 }));
 
-function makePlugin(overrides: Partial<PluginSummary> = {}): PluginSummary {
+function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary {
   return {
     id: 'acme.bill-audit',
     name: 'Bill Audit',
@@ -80,7 +80,7 @@ function pickOption(trigger: HTMLElement, optionLabel: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   updateSettingsMock.mockResolvedValue(undefined);
-  pluginState.plugins = [];
+  pluginState.extensions = [];
   pluginState.loaded = true;
   pluginState.error = null;
   settingsState.settings = {
@@ -94,7 +94,7 @@ afterEach(cleanup);
 
 describe('AppearanceSection', () => {
   it('renders color-scheme and theme-pack selects with the built-in default option', () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     render(<AppearanceSection />);
 
     expect(screen.getByText('settings.colorScheme')).toBeInTheDocument();
@@ -107,7 +107,7 @@ describe('AppearanceSection', () => {
   });
 
   it('lists themes of enabled plugins as options in the theme select', () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     render(<AppearanceSection />);
 
     const [, theme] = allSelectTriggers();
@@ -117,7 +117,7 @@ describe('AppearanceSection', () => {
   });
 
   it('hides themes contributed by disabled plugins', () => {
-    pluginState.plugins = [
+    pluginState.extensions = [
       makePlugin(),
       makePlugin({
         id: 'acme.disabled-themes',
@@ -136,7 +136,7 @@ describe('AppearanceSection', () => {
   });
 
   it('applies a plugin theme on selection and persists the encoded pack id', async () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     render(<AppearanceSection />);
 
     const [, theme] = allSelectTriggers();
@@ -157,7 +157,7 @@ describe('AppearanceSection', () => {
       language: 'en',
       pluginSettings: {},
     };
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     render(<AppearanceSection />);
 
     const [, theme] = allSelectTriggers();
@@ -182,7 +182,7 @@ describe('AppearanceSection', () => {
       language: 'en',
       pluginSettings: {},
     };
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     render(<AppearanceSection />);
 
     const [, theme] = allSelectTriggers();
@@ -191,7 +191,7 @@ describe('AppearanceSection', () => {
   });
 
   it('changes the color scheme and persists the new mode', async () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     render(<AppearanceSection />);
 
     const [scheme] = allSelectTriggers();
@@ -208,7 +208,7 @@ describe('AppearanceSection', () => {
 
   it('shows an error when applying a theme fails', async () => {
     updateSettingsMock.mockRejectedValueOnce(new Error('tokens.css missing'));
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     render(<AppearanceSection />);
 
     const [, theme] = allSelectTriggers();
@@ -230,7 +230,7 @@ describe('AppearanceSection', () => {
       language: 'en',
       pluginSettings: {},
     };
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     render(<AppearanceSection />);
 
     expect(screen.getByTestId('appearance-orphan-hint')).toHaveTextContent(
@@ -245,7 +245,7 @@ describe('AppearanceSection', () => {
   });
 
   it('shows the empty state hint when no themes are contributed', () => {
-    pluginState.plugins = [makePlugin({ themes: [] })];
+    pluginState.extensions = [makePlugin({ themes: [] })];
     render(<AppearanceSection />);
 
     expect(screen.getByTestId('appearance-more-placeholder')).toBeInTheDocument();

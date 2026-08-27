@@ -8,12 +8,12 @@
 
 ```text
 ┌──────────────────────────── Main Window (React) ────────────────────────────┐
-│ aside(workspace/plugins) │ WorkspaceNavigator │ WorkspaceTabBar              │
-│ pluginStore/workspaceTabsStore │ PluginPageShell ── postMessage(extension)──┐│
+│ aside(workspace/extensions) │ WorkspaceNavigator │ WorkspaceTabBar              │
+│ extensionStore/workspaceTabsStore │ ExtensionPageShell ── postMessage(extension)──┐│
 └──────────────────────────┬──────────────────────────────┼──────────────────┘│
                            │ Tauri IPC                    │ datazen://{id}/…  │
 ┌──────────────────────────▼──────────────────────────────▼──────────────┐    │
-│ src-tauri: commands/plugins.rs → plugins/{mod,manifest,install,storage} │    │
+│ src-tauri: commands/extensions.rs → extensions/{mod,manifest,install,storage} │    │
 │ register_uri_scheme_protocol("datazen") 资产服务 + open 深链             │    │
 │ execute_driver_command（复用，零改动）                                    │    │
 └─────────────────────────────────────────────────────────────────────────┘    │
@@ -28,7 +28,7 @@
 
 ## Manifest（apiVersion = 2）
 
-`src-tauri/src/plugins/manifest.rs` 为唯一权威 schema（serde camelCase + deny_unknown_fields）。要点：
+`src-tauri/src/extensions/manifest.rs` 为唯一权威 schema（serde camelCase + deny_unknown_fields）。要点：
 
 - id：`^[a-z0-9][a-z0-9-]{0,30}\.[a-z][a-z0-9-]{1,31}$`
 - `contributes.pages[]`：`{id,title,icon?,showIn?="workspace"}`

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { WorkspaceNavigator } from '../WorkspaceNavigator';
-import type { PluginSummary } from '../../../types/plugin';
+import type { ExtensionSummary } from '../../../types/extension';
 
 const { pluginState, tabsState, openMock } = vi.hoisted(() => ({
   pluginState: {
-    plugins: [] as Array<Record<string, unknown>>,
+    extensions: [] as Array<Record<string, unknown>>,
     loaded: true,
     error: null as string | null,
   },
@@ -19,11 +19,11 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../stores/pluginStore', () => ({
-  usePluginStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+vi.mock('../../../stores/extensionStore', () => ({
+  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
     getState: () => ({
       ...pluginState,
-      byId: (id: string) => (pluginState.plugins as Array<{ id: string }>).find((p) => p.id === id),
+      byId: (id: string) => (pluginState.extensions as Array<{ id: string }>).find((p) => p.id === id),
       fetch: vi.fn(),
     }),
   }),
@@ -36,7 +36,7 @@ vi.mock('../../../stores/workspaceTabsStore', () => ({
   }),
 }));
 
-function makePlugin(overrides: Partial<PluginSummary> = {}): PluginSummary {
+function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary {
   return {
     id: 'acme.bill-audit',
     name: 'Bill Audit',
@@ -53,7 +53,7 @@ function makePlugin(overrides: Partial<PluginSummary> = {}): PluginSummary {
 }
 
 beforeEach(() => {
-  pluginState.plugins = [];
+  pluginState.extensions = [];
   pluginState.error = null;
   tabsState.activeKey = null;
   openMock.mockClear();
@@ -63,7 +63,7 @@ afterEach(cleanup);
 
 describe('WorkspaceNavigator', () => {
   it('renders one item per enabled-plugin page with title and description', () => {
-    pluginState.plugins = [
+    pluginState.extensions = [
       makePlugin(),
       makePlugin({
         id: 'acme.afi',
@@ -95,7 +95,7 @@ describe('WorkspaceNavigator', () => {
   });
 
   it('highlights the item matching the active tab key', () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     tabsState.activeKey = 'acme.bill-audit:quota-check';
 
     render(<WorkspaceNavigator />);
@@ -105,7 +105,7 @@ describe('WorkspaceNavigator', () => {
   });
 
   it('opens the corresponding tab on click', () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
 
     render(<WorkspaceNavigator />);
     fireEvent.click(screen.getByTestId('workspace-nav-item'));
@@ -130,7 +130,7 @@ describe('WorkspaceNavigator', () => {
   });
 
   it('cleans up after unmount', () => {
-    pluginState.plugins = [makePlugin()];
+    pluginState.extensions = [makePlugin()];
     const { unmount } = render(<WorkspaceNavigator />);
     unmount();
     cleanup();

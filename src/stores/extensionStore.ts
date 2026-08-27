@@ -1,50 +1,47 @@
 import { create } from 'zustand';
 import { listen } from '@tauri-apps/api/event';
-import { PLUGINS_CHANGED_EVENT, pluginCommands } from '../commands/plugins';
-import type { PluginSummary } from '../types/plugin';
+import { EXTENSIONS_CHANGED_EVENT, extensionCommands } from '../commands/extensions';
+import type { ExtensionSummary } from '../types/extension';
 
 function toErrorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-interface PluginStore {
-  plugins: PluginSummary[];
+interface ExtensionStore {
+  extensions: ExtensionSummary[];
   loaded: boolean;
   error: string | null;
   fetch: () => Promise<void>;
   /** Optimistically flips the flag, then reconciles with an authoritative refetch. */
   setEnabled: (id: string, enabled: boolean) => Promise<void>;
   remove: (id: string) => Promise<void>;
-  byId: (id: string) => PluginSummary | undefined;
+  byId: (id: string) => ExtensionSummary | undefined;
 }
 
-export const usePluginStore = create<PluginStore>((set, get) => ({
-  plugins: [],
+export const useExtensionStore = create<ExtensionStore>((set, get) => ({
+  extensions: [],
   loaded: false,
   error: null,
 
   fetch: async () => {
     try {
-      const plugins = await pluginCommands.listPlugins();
-      set({ plugins, loaded: true, error: null });
+      const extensions = await extensionCommands.listExtensions();
+      set({ extensions, loaded: true, error: null });
     } catch (e) {
       set({ loaded: true, error: toErrorMessage(e) });
     }
   },
 
   setEnabled: async (id, enabled) => {
-    const previous = get().plugins;
-    // Optimistic flip; rolled back via refetch if the backend rejects.
+    const previous = get().extensions;
     set({
-      plugins: previous.map((p) => (p.id === id ? { ...p, enabled } : p)),
+      extensions: previous.map((p) => (p.id === id ? { ...p, enabled } : p)),
       error: null,
     });
     try {
-      await pluginCommands.setPluginEnabled(id, enabled);
+      await extensionCommands.setExtensionEnabled(id, enabled);
       await get().fetch();
     } catch (e) {
-      // Roll back through an authoritative refetch, then surface the error
-      // (fetch itself clears `error` on success, so it is re-set afterwards).
       await get().fetch();
       set({ error: toErrorMessage(e) });
       throw e;
@@ -53,7 +50,7 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
 
   remove: async (id) => {
     try {
-      await pluginCommands.removePlugin(id);
+      await extensionCommands.removeExtension(id);
       await get().fetch();
     } catch (e) {
       set({ error: toErrorMessage(e) });
@@ -61,7 +58,7 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
     }
   },
 
-  byId: (id) => get().plugins.find((p) => p.id === id),
+  byId: (id) => get().extensions.find((p) => p.id === id),
 }));
 
 let subscriptionStarted = false;
@@ -71,14 +68,14 @@ let subscriptionStarted = false;
  * instance. The failure path resets the guard so a later retry can succeed
  * (e.g. when first attempted outside the Tauri runtime).
  */
-export function ensurePluginsChangedListener(): void {
+export function ensureExtensionsChangedListener(): void {
   if (subscriptionStarted) return;
   subscriptionStarted = true;
-  listen(PLUGINS_CHANGED_EVENT, () => {
-    void usePluginStore.getState().fetch();
+  listen(EXTENSIONS_CHANGED_EVENT, () => {
+    void useExtensionStore.getState().fetch();
   }).catch(() => {
     subscriptionStarted = false;
   });
 }
 
-ensurePluginsChangedListener();
+ensureExtensionsChangedListener();
