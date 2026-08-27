@@ -217,7 +217,7 @@ export function ConnectionShareDialog({
       const picked = await connectionCommands.pickConnectionsImportFile();
       if (picked) setSelectedImportFile(picked);
     } catch (e) {
-      onError(ipcErrorMessage(e, t('common.importFailed')));
+      onError(ipcConnectionShareError(e, t, t('common.importFailed')));
     } finally {
       setSubmitting(false);
     }
