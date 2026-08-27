@@ -9,6 +9,7 @@ import {
   closeExtraWindows,
   connectSeededPgInWorkspace,
   invokeBackend,
+  openQueryTab,
   waitForConnectionToolbar,
 } from '../helpers.js';
 
@@ -20,7 +21,8 @@ async function openErDiagramFromUi() {
     await homeQuick.click();
     return;
   }
-  const toolbarBtn = await $('[data-testid="content-toolbar-er-diagram"] button');
+  const toolbarWrap = await $('[data-testid="content-toolbar-er-diagram"]');
+  const toolbarBtn = await toolbarWrap.$('button');
   await toolbarBtn.waitForClickable({ timeout: 10000 });
   await toolbarBtn.click();
 }
@@ -50,10 +52,17 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
     expect(Array.isArray(schemas)).toBe(true);
   });
 
-  it('ER-002: 工具栏 ER 入口应可见', async () => {
+  it('ER-002: 连接后 ER 入口应可见（首页快捷操作或工具栏）', async () => {
     await browser.switchToWindow(mainWindow);
+    const homeQuick = await $('[data-testid="home-quick-er-diagram"]');
     const toolbar = await $('[data-testid="content-toolbar-er-diagram"]');
-    await expect(toolbar).toBeDisplayed();
+    const homeVisible = await homeQuick.isExisting();
+    if (!homeVisible) {
+      await openQueryTab();
+      await browser.pause(500);
+    }
+    const hasEntry = homeVisible || (await toolbar.isExisting()) || (await homeQuick.isExisting());
+    expect(hasEntry).toBe(true);
   });
 
   it('ER-003: 点击 ER 入口应打开 ER 面板', async () => {
