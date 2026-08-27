@@ -1,6 +1,7 @@
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
-import { closeExtraWindows, captureJourneyStep } from '../helpers.js';
+import { closeExtraWindows, captureJourneyStep, selectDzOption } from '../helpers.js';
+import { seedSecondPgConnection } from '../lib/testDataLifecycle.js';
 
 /**
  * Schema Diff window shell + primary controls (SD-001~SD-003).
@@ -23,7 +24,7 @@ describe('结构对比窗口 (SD-001~SD-003)', () => {
     await browser.url('tauri://localhost/window.html?window=schema-diff');
     await browser.pause(1500);
     const body = await $('body').getText();
-    expect(body).toContain(t('schemaDiff.title'));
+    expect(body).toContain(t('common.schemaDiff'));
     expect(body).toContain(t('schemaDiff.stepCompare'));
     await captureJourneyStep('schema-diff-window-open');
   });
@@ -36,6 +37,13 @@ describe('结构对比窗口 (SD-001~SD-003)', () => {
   });
 
   it('未填表名点对比应提示必填 (SD-003)', async () => {
+    await seedSecondPgConnection(browser);
+    await browser.url('tauri://localhost/window.html?window=schema-diff');
+    await browser.pause(1500);
+
+    await selectDzOption(t('sync.selectSource'), '本地 PostgreSQL');
+    await selectDzOption(t('sync.selectTarget'), 'E2E-PG-目标');
+
     const compareBtn = await $(`button*=${t('schemaDiff.compare')}`);
     await compareBtn.waitForDisplayed({ timeout: 8000 });
     await compareBtn.click();

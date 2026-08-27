@@ -121,6 +121,19 @@ bash e2e/setup-e2e-env.sh
 ```
 
 `e2e/run.mjs` 在启动 WDIO 前也会调用 `setup-e2e-env.sh`；失败只警告，不中止整套 UI spec。
+跑完后会自动调用 `teardown-e2e-env.sh` 清理测试库中的临时表并重置 `product` seed。
+
+### 测试数据生命周期
+
+| 阶段 | 动作 | 位置 |
+|------|------|------|
+| **跑前** | 创建/重置 PG `datazen_e2e`、MySQL `datazen_test`、sync 库、`product` seed | `e2e/setup-e2e-env.sh`（`run.mjs` 自动调用） |
+| **跑前** | 清空 `e2e/.app-data/`（隔离的应用数据目录） | `e2e/run.mjs`（`--keep-app-data` 保留） |
+| **WDIO before** | upsert 默认 PG 连接 `conn_e2e_pg` | `e2e/wdio.conf.ts` → `seedDefaultPgConnection` |
+| **WDIO onComplete** | 删除 `e2e-*` / `E2E-*` 连接、`e2e-*` workflow、清空 query history | `e2e/lib/testDataLifecycle.ts` |
+| **跑后** | DROP 名称含 `e2e` / 前缀 `sync_` 的表，重 seed `product` | `e2e/teardown-e2e-env.sh`（`run.mjs` 自动调用） |
+
+跳过 DB teardown：`E2E_SKIP_TEARDOWN=1 pnpm e2e:skip-build`。各 spec 内的 `after` hook 仍应清理本用例创建的连接/表（双保险）。
 
 ### 应用数据隔离（DATAZEN_DATA_DIR）
 
@@ -254,4 +267,6 @@ Tauri 2 前端传参为 **camelCase**（如 `defaultFileName`），不要用 sna
 | `e2e/specs/` | 用例 |
 | `e2e/.env.example` | 环境变量模板 |
 | `e2e/setup-e2e-env.sh` | 创建 E2E 库、seed `product`、RO 用户 |
+| `e2e/teardown-e2e-env.sh` | 跑后清理临时表、重置 seed |
+| `e2e/lib/testDataLifecycle.ts` | WDIO 全局 IPC setup/teardown |
 | `src-tauri/Cargo.toml` → `webdriver` feature | 启用 `tauri-plugin-webdriver` |

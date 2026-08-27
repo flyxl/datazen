@@ -807,6 +807,7 @@ export function ConnectionPage() {
       ) : (
         <>
           <aside
+            data-testid="connection-navigator-aside"
             style={{ width: sidebarWidth }}
             className="flex h-full min-h-0 shrink-0 flex-col border-r border-edge bg-surface-alt"
           >
