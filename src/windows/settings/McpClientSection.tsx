@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { PathInput } from '../../components/ui/PathInput';
@@ -18,6 +18,21 @@ const EMPTY_DRAFT: McpServerConfig = {
   enabled: true,
 };
 
+type EnvRow = { key: string; value: string };
+
+function envToRows(env?: Record<string, string>): EnvRow[] {
+  return Object.entries(env ?? {}).map(([key, value]) => ({ key, value }));
+}
+
+function rowsToEnv(rows: EnvRow[]): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const row of rows) {
+    const key = row.key.trim();
+    if (key) env[key] = row.value;
+  }
+  return env;
+}
+
 export function McpClientSection() {
   const { t } = useI18n();
   const savedConfigs = useSettingsStore((s) => s.settings.mcpClientServers ?? []);
@@ -25,13 +40,16 @@ export function McpClientSection() {
     mcpServers,
     mcpTools,
     mcpConnecting,
+    mcpConnectingServerId,
     mcpError,
+    mcpServerErrors,
     connectMcpServer,
     disconnectMcpServer,
     loadMcpServers,
     loadMcpTools,
     saveMcpClientServers,
     clearMcpError,
+    clearMcpServerError,
   } = useAiStore();
 
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set());
@@ -40,6 +58,7 @@ export function McpClientSection() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<McpServerConfig>(EMPTY_DRAFT);
   const [argsText, setArgsText] = useState('');
+  const [envRows, setEnvRows] = useState<EnvRow[]>([]);
   const [saving, setSaving] = useState(false);
 
   const connectedIds = new Set(mcpServers.map((s) => s.serverId));
@@ -65,6 +84,7 @@ export function McpClientSection() {
     setEditingId(null);
     setDraft(EMPTY_DRAFT);
     setArgsText('');
+    setEnvRows([]);
     setShowForm(true);
   };
 
@@ -72,6 +92,7 @@ export function McpClientSection() {
     setEditingId(config.id);
     setDraft({ ...config });
     setArgsText((config.args ?? []).join('\n'));
+    setEnvRows(envToRows(config.env));
     setShowForm(true);
   };
 
@@ -85,6 +106,7 @@ export function McpClientSection() {
         .split('\n')
         .map((s) => s.trim())
         .filter(Boolean),
+      env: rowsToEnv(envRows),
     };
     if (!editingId && savedConfigs.some((c) => c.id === config.id)) return;
 
@@ -98,6 +120,7 @@ export function McpClientSection() {
       setEditingId(null);
       setDraft(EMPTY_DRAFT);
       setArgsText('');
+      setEnvRows([]);
     } finally {
       setSaving(false);
     }
@@ -106,6 +129,7 @@ export function McpClientSection() {
   const handleDelete = async (id: string) => {
     const next = savedConfigs.filter((c) => c.id !== id);
     await saveMcpClientServers(next);
+    clearMcpServerError(id);
   };
 
   const handleToggleEnabled = async (id: string, enabled: boolean) => {
@@ -138,50 +162,89 @@ export function McpClientSection() {
 
       {savedConfigs.length > 0 && (
         <div className="space-y-1">
-          {savedConfigs.map((config) => (
-            <div
-              key={config.id}
-              className="flex items-center justify-between gap-2 rounded-md border border-edge bg-surface p-2"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="text-sm text-fg">{config.name}</div>
-                <div className="text-xs text-fg-muted">{config.id}</div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={config.enabled}
-                  aria-label={t('mcpClient.enabled')}
-                  onClick={() => void handleToggleEnabled(config.id, !config.enabled)}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
-                    config.enabled ? 'bg-accent' : 'bg-edge'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
-                      config.enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
-                    }`}
-                  />
-                </button>
-                {!connectedIds.has(config.id) && config.enabled && (
-                  <Button
-                    variant="secondary"
-                    disabled={mcpConnecting}
-                    onClick={() => void connectMcpServer(config.id)}
-                  >
-                    {mcpConnecting ? t('mcpClient.connecting') : t('mcpClient.connect')}
-                  </Button>
+          {savedConfigs.map((config) => {
+            const serverError = mcpServerErrors[config.id];
+            const isConnecting = mcpConnecting && mcpConnectingServerId === config.id;
+            const isConnected = connectedIds.has(config.id);
+
+            return (
+              <div
+                key={config.id}
+                className="rounded-md border border-edge bg-surface p-2"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm text-fg">{config.name}</div>
+                      {serverError && (
+                        <span
+                          className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-medium text-red-500"
+                          title={serverError}
+                        >
+                          {t('mcpClient.connectFailed')}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-fg-muted">{config.id}</div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={config.enabled}
+                      aria-label={t('mcpClient.enabled')}
+                      onClick={() => void handleToggleEnabled(config.id, !config.enabled)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
+                        config.enabled ? 'bg-accent' : 'bg-edge'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+                          config.enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                        }`}
+                      />
+                    </button>
+                    {!isConnected && config.enabled && !serverError && (
+                      <Button
+                        variant="secondary"
+                        disabled={mcpConnecting}
+                        onClick={() => void connectMcpServer(config.id)}
+                      >
+                        {isConnecting ? t('mcpClient.connecting') : t('mcpClient.connect')}
+                      </Button>
+                    )}
+                    {!isConnected && config.enabled && serverError && (
+                      <Button
+                        variant="secondary"
+                        disabled={mcpConnecting}
+                        onClick={() => void connectMcpServer(config.id)}
+                      >
+                        {isConnecting ? t('mcpClient.connecting') : t('mcpClient.reconnect')}
+                      </Button>
+                    )}
+                    <Button variant="secondary" onClick={() => startEdit(config)}>
+                      {t('mcpClient.edit')}
+                    </Button>
+                    <Button variant="secondary" onClick={() => void handleDelete(config.id)}>
+                      {t('mcpClient.delete')}
+                    </Button>
+                  </div>
+                </div>
+                {serverError && (
+                  <div className="mt-1.5 flex items-start justify-between gap-2 rounded border border-red-500/20 bg-red-500/5 px-2 py-1">
+                    <span className="text-xs text-red-500">{serverError}</span>
+                    <button
+                      type="button"
+                      onClick={() => clearMcpServerError(config.id)}
+                      className="shrink-0 text-xs text-red-500 underline"
+                    >
+                      {t('common.close')}
+                    </button>
+                  </div>
                 )}
-                <Button variant="secondary" onClick={() => startEdit(config)}>
-                  {t('mcpClient.edit')}
-                </Button>
-                <Button variant="secondary" onClick={() => void handleDelete(config.id)}>
-                  {t('mcpClient.delete')}
-                </Button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -225,6 +288,55 @@ export function McpClientSection() {
               className="w-full rounded-md border border-edge bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-blue-500"
             />
           </SettingRow>
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm text-fg-secondary">{t('mcpClient.envVars')}</span>
+              <button
+                type="button"
+                onClick={() => setEnvRows((rows) => [...rows, { key: '', value: '' }])}
+                className="text-xs text-accent hover:underline"
+              >
+                + {t('mcpClient.addEnv')}
+              </button>
+            </div>
+            {envRows.length === 0 && (
+              <p className="text-xs text-fg-muted">{t('mcpClient.noEnvVars')}</p>
+            )}
+            {envRows.map((row, i) => (
+              <div key={i} className="mb-2 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={row.key}
+                  onChange={(e) => {
+                    const next = [...envRows];
+                    next[i] = { ...next[i], key: e.target.value };
+                    setEnvRows(next);
+                  }}
+                  placeholder={t('mcpClient.envKey')}
+                  className={`${inputClass} flex-1`}
+                />
+                <input
+                  type="text"
+                  value={row.value}
+                  onChange={(e) => {
+                    const next = [...envRows];
+                    next[i] = { ...next[i], value: e.target.value };
+                    setEnvRows(next);
+                  }}
+                  placeholder={t('mcpClient.envValue')}
+                  className={`${inputClass} flex-1`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setEnvRows((rows) => rows.filter((_, j) => j !== i))}
+                  className="p-1 text-fg-muted hover:text-red-400"
+                  aria-label={t('mcpClient.removeEnv')}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
           <ToggleRow
             label={t('mcpClient.enabled')}
             checked={draft.enabled}
@@ -288,22 +400,27 @@ export function McpClientSection() {
                   </Button>
                 </div>
                 {expanded && serverTools.length > 0 && (
-                  <ul className="mt-2 space-y-1 border-t border-edge pt-2">
-                    {serverTools.map((tool) => (
-                      <li
-                        key={tool.qualifiedName}
-                        className="rounded border border-edge/60 bg-surface-alt px-2 py-1.5"
-                      >
-                        <div className="text-sm font-medium text-fg">{tool.toolName}</div>
-                        {tool.description && (
-                          <div className="text-xs text-fg-muted">{tool.description}</div>
-                        )}
-                        <div className="mt-0.5 font-mono text-xs text-fg-muted">
-                          {tool.qualifiedName}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="mt-2 border-t border-edge pt-2">
+                    <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+                      {t('mcpClient.toolList')}
+                    </div>
+                    <ul className="space-y-1">
+                      {serverTools.map((tool) => (
+                        <li
+                          key={tool.qualifiedName}
+                          className="rounded border border-edge/60 bg-surface-alt px-2 py-1.5"
+                        >
+                          <div className="text-sm font-medium text-fg">{tool.toolName}</div>
+                          {tool.description && (
+                            <div className="text-xs text-fg-muted">{tool.description}</div>
+                          )}
+                          <div className="mt-0.5 font-mono text-xs text-fg-muted">
+                            {tool.qualifiedName}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
                 {expanded && serverTools.length === 0 && (
                   <p className="mt-2 border-t border-edge pt-2 text-xs text-fg-muted">

@@ -50,6 +50,22 @@ Workflow 引擎本身在 [`workflow` 模块](./workflow.md)（若尚未拆文档
 - stdio transport 支持（TokioChildProcess）
 - 30s 连接超时保护
 - connect 失败时自动进程清理
+- 配置持久化于 `AppSettings.mcpClientServers`（command / args / env / enabled）
+- 应用启动时对 `enabled` 配置非阻塞 auto-reconnect
+- 已连接工具以 `mcp/{serverId}/{toolName}` 命名空间注册，供 AI Chat tool loop 调用
+
+#### MCP Client AI 集成
+
+Settings → **External MCP Servers** 管理已保存配置与运行时连接态（分离 UI）：
+
+| 层 | 职责 |
+|----|------|
+| `McpClientManager` | stdio 子进程生命周期、工具发现、`call_tool` |
+| `commands/mcp.rs` | IPC：`mcp_client_connect` / `disconnect` / `list` / `tools` / `call_tool` |
+| `commands/ai.rs` | `collect_mcp_tool_definitions()` 合并 DB tools + MCP tools；`run_streaming_tool_loop` 路由 `mcp/*` 前缀 |
+| 前端 `McpClientSection` | 配置 CRUD、env 编辑、连接/重试、运行时工具列表 |
+
+AI Chat（`ai_chat`）在已连接外部 MCP 时将 MCP 工具与内置 DB tools 一并注入 Provider；模型调用 `mcp/…` 工具时由后端经 `McpClientManager` 转发至对应子进程。详见 [`ai.md` — AI Chat MCP 工具](./ai.md#110-ai-chat-mcp-工具)。
 
 ### 1.3 连接 ID（connection_id vs db_session_id）
 

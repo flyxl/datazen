@@ -1364,6 +1364,15 @@ const zhCN = {
   'mcpClient.noSavedConfigs': '暂无已保存的 MCP 服务配置。',
   'mcpClient.noServers': '暂无已连接的 MCP 服务。',
   'mcpClient.noTools': '该服务未报告任何工具。',
+  'mcpClient.toolList': '工具列表',
+  'mcpClient.reconnect': '重试',
+  'mcpClient.connectFailed': '连接失败',
+  'mcpClient.envVars': '环境变量',
+  'mcpClient.envKey': '变量名',
+  'mcpClient.envValue': '值',
+  'mcpClient.addEnv': '添加变量',
+  'mcpClient.removeEnv': '删除变量',
+  'mcpClient.noEnvVars': '未配置环境变量。',
 
   // ── Workflows ──
   'workflows.title': '工作流',

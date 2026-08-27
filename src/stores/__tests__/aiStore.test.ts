@@ -425,6 +425,8 @@ describe('aiStore', () => {
       ];
       mockAiCommands.mcpClientConnect.mockRejectedValueOnce(new Error('connect fail'));
       await expect(useAiStore.getState().connectMcpServer('s1')).rejects.toThrow('connect fail');
+      expect(useAiStore.getState().mcpServerErrors.s1).toBe('connect fail');
+      expect(useAiStore.getState().mcpError).toBeNull();
     });
 
     it('saveMcpClientServers persists via settingsStore', async () => {
@@ -468,6 +470,12 @@ describe('aiStore', () => {
       useAiStore.setState({ mcpError: 'err' });
       useAiStore.getState().clearMcpError();
       expect(useAiStore.getState().mcpError).toBeNull();
+    });
+
+    it('clearMcpServerError', () => {
+      useAiStore.setState({ mcpServerErrors: { s1: 'fail' } });
+      useAiStore.getState().clearMcpServerError('s1');
+      expect(useAiStore.getState().mcpServerErrors).toEqual({});
     });
   });
 });
