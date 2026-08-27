@@ -10,7 +10,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::install::install_from_dir;
-use super::manifest::{parse_manifest, validate_manifest, validate_extension_dir};
+use super::manifest::{parse_manifest, validate_extension_dir, validate_manifest};
 use super::EXTENSION_API_VERSION;
 
 fn sample_plugin_fixture() -> PathBuf {

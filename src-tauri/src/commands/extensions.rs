@@ -12,7 +12,7 @@ use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::extensions::{
     install::{install_from_dir, install_from_zip},
-    storage_get, storage_remove, storage_set, LoadedExtension, ExtensionManifest,
+    storage_get, storage_remove, storage_set, ExtensionManifest, LoadedExtension,
 };
 
 /// Emitted after any install/remove/enable change so the frontend can refresh.
@@ -181,13 +181,18 @@ pub(crate) async fn inspect_extension_package_impl(
 
     // Full rule-set validation in a throwaway temp dir; nothing touches
     // `{extensions_dir}` until `install_extension_from_path` runs.
-    tokio::task::spawn_blocking(move || crate::extensions::install::inspect_extension_package(&source))
-        .await
-        .map_err(|e| CommandError::Internal(format!("inspect_extension_package task: {e}")))?
-        .map_err(CommandError::Validation)
+    tokio::task::spawn_blocking(move || {
+        crate::extensions::install::inspect_extension_package(&source)
+    })
+    .await
+    .map_err(|e| CommandError::Internal(format!("inspect_extension_package task: {e}")))?
+    .map_err(CommandError::Validation)
 }
 
-pub(crate) async fn remove_extension_impl(state: &AppState, id: String) -> Result<(), CommandError> {
+pub(crate) async fn remove_extension_impl(
+    state: &AppState,
+    id: String,
+) -> Result<(), CommandError> {
     ensure_extension_exists(state, &id)?;
 
     let manager = state.extensions.clone();
@@ -335,7 +340,9 @@ pub(crate) async fn read_extension_file_impl(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub async fn list_extensions(state: State<'_, AppState>) -> Result<Vec<ExtensionSummary>, CommandError> {
+pub async fn list_extensions(
+    state: State<'_, AppState>,
+) -> Result<Vec<ExtensionSummary>, CommandError> {
     Ok(list_extensions_impl(&state))
 }
 
@@ -769,9 +776,10 @@ mod tests {
         }
 
         // Traversal is refused.
-        let err = read_extension_file_impl(&test.state, "acme.demo".into(), "../settings.json".into())
-            .await
-            .unwrap_err();
+        let err =
+            read_extension_file_impl(&test.state, "acme.demo".into(), "../settings.json".into())
+                .await
+                .unwrap_err();
         assert!(err.to_string().contains("unsafe"), "{err}");
 
         // Missing files are NotFound.

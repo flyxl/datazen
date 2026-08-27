@@ -8,8 +8,8 @@ import {
 
 /**
  * Contract fixtures (F3 test agent): these payloads mirror exactly what the
- * Rust side serializes — `ExtensionSummary` in src-tauri/src/commands/plugins.rs
- * and `ExtensionManifest` in src-tauri/src/plugins/manifest.rs, both
+ * Rust side serializes — `ExtensionSummary` in src-tauri/src/commands/extensions.rs
+ * and `ExtensionManifest` in src-tauri/src/extensions/manifest.rs, both
  * `#[serde(rename_all = "camelCase")]` with `skip_serializing_if` on the
  * optional fields. The `satisfies` clauses make drift a compile error.
  */

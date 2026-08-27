@@ -27,8 +27,8 @@ use std::sync::RwLock;
 // consumed via `crate::extensions::…` paths, so unused-import lint is expected.
 #[allow(unused_imports)]
 pub use manifest::{
-    allowed_extension_file_ext, is_valid_extension_id, parse_manifest, validate_manifest,
-    validate_extension_dir, Contributions, PageContribution, Permission, ExtensionManifest,
+    allowed_extension_file_ext, is_valid_extension_id, parse_manifest, validate_extension_dir,
+    validate_manifest, Contributions, ExtensionManifest, PageContribution, Permission,
     ThemeContribution, MAX_EXTENSION_FILES, MAX_EXTENSION_UNCOMPRESSED,
 };
 #[allow(unused_imports)]
@@ -85,7 +85,10 @@ impl ExtensionManager {
     /// foreign directories are skipped with a warning. Staging/backup entries
     /// (dot-prefixed) are ignored. Returns the number of loaded extensions.
     pub fn load_from_disk(&self) -> usize {
-        let mut map = self.extensions.write().expect("extension registry poisoned");
+        let mut map = self
+            .extensions
+            .write()
+            .expect("extension registry poisoned");
         map.clear();
 
         let Ok(entries) = fs::read_dir(&self.extensions_dir) else {
@@ -181,7 +184,10 @@ impl ExtensionManager {
 
         persist_enabled_marker(&dir, enabled)?;
 
-        let mut map = self.extensions.write().expect("extension registry poisoned");
+        let mut map = self
+            .extensions
+            .write()
+            .expect("extension registry poisoned");
         if let Some(loaded) = map.get_mut(id) {
             loaded.enabled = enabled;
         }

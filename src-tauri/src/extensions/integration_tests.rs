@@ -16,12 +16,12 @@ use zip::{CompressionMethod, ZipWriter};
 
 use super::storage::MAX_STORAGE_BYTES;
 use super::{
-    is_valid_extension_id, parse_manifest, storage_get, storage_remove, validate_manifest,
-    validate_extension_dir, ExtensionManager,
+    is_valid_extension_id, parse_manifest, storage_get, storage_remove, validate_extension_dir,
+    validate_manifest, ExtensionManager,
 };
 use crate::commands::{
-    get_extension_manifest_impl, install_extension_from_path_impl, list_extensions_impl,
     extension_storage_get_impl, extension_storage_remove_impl, extension_storage_set_impl,
+    get_extension_manifest_impl, install_extension_from_path_impl, list_extensions_impl,
     read_extension_file_impl, remove_extension_impl, set_extension_enabled_impl,
 };
 use crate::testing::app_state::TestAppState;
