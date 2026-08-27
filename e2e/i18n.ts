@@ -15,6 +15,8 @@ const KEY_ALIASES: Record<string, TranslationKey> = {
   'action.dataSync': 'common.dataSync',
   'backup.title': 'common.backupDatabase',
   'connWin.newQuery': 'common.newQuery',
+  'connWin.copyDDL': 'common.copyDdl',
+  'connWin.newTable': 'common.newTable',
   'sync.windowTitle': 'common.dataSyncTitle',
 };
 

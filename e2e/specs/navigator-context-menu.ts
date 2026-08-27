@@ -314,6 +314,18 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       });
       expect(clip).toContain('public');
     });
+
+    it('NCM-022: schema 菜单应包含删除 Schema 项', async () => {
+      const schemaNodes = await $$('[data-tree-node="schema"]');
+      if (schemaNodes.length === 0) {
+        console.log('No schema nodes found, skipping NCM-022');
+        return;
+      }
+      await rightClick('[data-tree-node="schema"]', 'public');
+      const text = await getMenuText();
+      expect(text).toContain(t('schemaTree.dropSchema'));
+      await dismissMenu();
+    });
   });
 
   // ── Category Context Menu ────────────────────────────────────────
@@ -467,6 +479,21 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
 
       const bodyText = await $('body').getText();
       expect(bodyText.toLowerCase()).toContain('er');
+    });
+
+    /**
+     * NCM-046: 删除表完整流程（含原生确认框）无法 E2E 自动化。
+     * 菜单项可见性由 NCM-044 覆盖；执行与树刷新由 ConnectionNavigatorTree.test.tsx 覆盖。
+     */
+    it('NCM-046: 表-删除菜单项可见（确认框留待 R 回归手工/单测）', async () => {
+      await rightClick(`[data-tree-node="table"][data-item-name="${TEST_TABLE}"]`);
+      const menuVisible = await isMenuDisplayed();
+      if (!menuVisible) {
+        await rightClick('[data-tree-node="table"]');
+      }
+      const text = await getMenuText();
+      expect(text).toContain(t('schemaTree.drop'));
+      await dismissMenu();
     });
   });
 
