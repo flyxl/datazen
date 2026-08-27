@@ -768,9 +768,181 @@ describe('SettingsContent', () => {
         args: ['--stdio', '--verbose'],
       }),
     ]);
+    await waitFor(() => expect(connectMcpServerMock).not.toHaveBeenCalled());
+  });
+
+  it('covers MCP client error banner, connect, edit, delete, and runtime tools', async () => {
+    currentSettings.mcpClientServers = [
+      {
+        id: 'srv1',
+        name: 'Test MCP',
+        transport: 'stdio',
+        command: '/usr/bin/mcp',
+        args: ['--flag'],
+        env: { TOKEN: 'abc' },
+        enabled: true,
+      },
+      {
+        id: 'srv2',
+        name: 'Other MCP',
+        transport: 'stdio',
+        command: '/usr/bin/other',
+        args: [],
+        env: {},
+        enabled: false,
+      },
+    ];
+    aiState.mcpError = 'global mcp error';
+    aiState.mcpServers = [];
+    aiState.mcpTools = [];
+    aiState.mcpConnecting = false;
+    aiState.mcpServerErrors = {};
+
+    render(<SettingsContent />);
+    await waitForSettingsLoad();
+    goToSection('mcpClient.title');
+
+    expect(screen.getByText('global mcp error')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByText('common.close')[0]);
+    expect(clearMcpErrorMock).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('mcpClient.connect'));
+    await waitFor(() => expect(connectMcpServerMock).toHaveBeenCalledWith('srv1'));
+
+    fireEvent.click(screen.getAllByText('mcpClient.edit')[0]);
+    expect(screen.getByDisplayValue('srv1')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('TOKEN')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('+ mcpClient.addEnv'));
+    const envKeyInputs = screen.getAllByPlaceholderText('mcpClient.envKey');
+    fireEvent.change(envKeyInputs[envKeyInputs.length - 1], {
+      target: { value: 'NEW_KEY' },
+    });
+    const envValueInputs = screen.getAllByPlaceholderText('mcpClient.envValue');
+    fireEvent.change(envValueInputs[envValueInputs.length - 1], {
+      target: { value: 'new-val' },
+    });
+    fireEvent.click(screen.getAllByLabelText('mcpClient.removeEnv')[0]);
+    fireEvent.click(screen.getByText('mcpClient.save'));
+    await waitFor(() => expect(saveMcpClientServersMock).toHaveBeenCalled());
+    expect(saveMcpClientServersMock).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: 'srv1',
+        env: { NEW_KEY: 'new-val' },
+      }),
+      expect.objectContaining({ id: 'srv2' }),
+    ]);
+
+    fireEvent.click(screen.getAllByText('mcpClient.edit')[0]);
+    fireEvent.click(screen.getByText('common.cancel'));
+
+    const enabledSwitch = screen.getAllByRole('switch', { name: 'mcpClient.enabled' })[1];
+    fireEvent.click(enabledSwitch);
+    await waitFor(() => expect(saveMcpClientServersMock).toHaveBeenCalled());
+
+    fireEvent.click(screen.getAllByText('mcpClient.delete')[0]);
     await waitFor(() =>
-      expect(connectMcpServerMock).not.toHaveBeenCalled(),
+      expect(saveMcpClientServersMock).toHaveBeenCalledWith([
+        expect.objectContaining({ id: 'srv2' }),
+      ]),
     );
+
+    aiState.mcpServers = [{ serverId: 'srv2', serverName: 'Other MCP', toolsCount: 2 }];
+    aiState.mcpTools = [
+      {
+        serverId: 'srv2',
+        toolName: 'read_file',
+        qualifiedName: 'mcp/srv2/read_file',
+        description: 'Read a file',
+      },
+    ];
+    cleanup();
+    currentSettings.mcpClientServers = [
+      {
+        id: 'srv2',
+        name: 'Other MCP',
+        transport: 'stdio',
+        command: '/usr/bin/other',
+        args: [],
+        env: {},
+        enabled: true,
+      },
+    ];
+    render(<SettingsContent />);
+    await waitForSettingsLoad();
+    goToSection('mcpClient.title');
+
+    const expandBtn = screen.getByRole('button', { name: /Other MCP/ });
+    fireEvent.click(expandBtn);
+    expect(screen.getByText('read_file')).toBeInTheDocument();
+    expect(screen.getByText('Read a file')).toBeInTheDocument();
+    fireEvent.click(expandBtn);
+
+    aiState.mcpTools = [];
+    cleanup();
+    currentSettings.mcpClientServers = [
+      {
+        id: 'srv2',
+        name: 'Other MCP',
+        transport: 'stdio',
+        command: '/usr/bin/other',
+        args: [],
+        env: {},
+        enabled: true,
+      },
+    ];
+    aiState.mcpServers = [{ serverId: 'srv2', serverName: 'Other MCP', toolsCount: 0 }];
+    render(<SettingsContent />);
+    await waitForSettingsLoad();
+    goToSection('mcpClient.title');
+    fireEvent.click(screen.getByRole('button', { name: /Other MCP/ }));
+    expect(screen.getByText('mcpClient.noTools')).toBeInTheDocument();
+  });
+
+  it('shows connectFailed badge, connecting state, and reconnect', async () => {
+    currentSettings.mcpClientServers = [
+      {
+        id: 'err-srv',
+        name: 'Error Server',
+        transport: 'stdio',
+        command: '/usr/bin/mcp',
+        args: [],
+        env: {},
+        enabled: true,
+      },
+    ];
+    aiState.mcpServerErrors = { 'err-srv': 'connection refused' };
+    aiState.mcpConnecting = true;
+    aiState.mcpConnectingServerId = 'err-srv';
+
+    render(<SettingsContent />);
+    await waitForSettingsLoad();
+    goToSection('mcpClient.title');
+
+    expect(screen.getByText('mcpClient.connectFailed')).toBeInTheDocument();
+    expect(screen.getByText('connection refused')).toBeInTheDocument();
+    expect(screen.getByText('mcpClient.connecting')).toBeInTheDocument();
+
+    aiState.mcpConnecting = false;
+    aiState.mcpConnectingServerId = null;
+    cleanup();
+    currentSettings.mcpClientServers = [
+      {
+        id: 'err-srv',
+        name: 'Error Server',
+        transport: 'stdio',
+        command: '/usr/bin/mcp',
+        args: [],
+        env: {},
+        enabled: true,
+      },
+    ];
+    aiState.mcpServerErrors = { 'err-srv': 'connection refused' };
+    render(<SettingsContent />);
+    await waitForSettingsLoad();
+    goToSection('mcpClient.title');
+
+    fireEvent.click(screen.getByText('mcpClient.reconnect'));
+    await waitFor(() => expect(connectMcpServerMock).toHaveBeenCalledWith('err-srv'));
   });
 
   it('shows extensions section', async () => {
