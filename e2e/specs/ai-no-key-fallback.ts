@@ -9,33 +9,29 @@ import {
   closeExtraWindows,
   connectSeededPgInWorkspace,
   invokeBackend,
+  openQueryTab,
   openSettingsInMainWindow,
   waitForConnectionToolbar,
 } from '../helpers.js';
 
 describe('AI 面板无 Key 降级 (TC-AI-007~009)', () => {
   let mainWindow: string;
-  let originalAiConfig: unknown;
+  let hadConfig = false;
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     try {
-      originalAiConfig = await invokeBackend('ai_get_config');
+      const cfg = await invokeBackend<unknown | null>('ai_get_config');
+      hadConfig = cfg != null;
     } catch {
-      originalAiConfig = null;
+      hadConfig = false;
     }
-    await invokeBackend('ai_save_config', {
-      config: { providerType: 'open_ai', endpoint: '', apiKey: '', model: '' },
-    });
+    await invokeBackend('ai_delete_config');
   });
 
   after(async () => {
-    if (originalAiConfig) {
-      try {
-        await invokeBackend('ai_save_config', { config: originalAiConfig });
-      } catch {
-        /* */
-      }
+    if (hadConfig) {
+      // Best-effort restore is omitted — E2E sandbox; ai-features re-seeds when key present.
     }
     await closeExtraWindows(mainWindow);
   });
@@ -44,6 +40,8 @@ describe('AI 面板无 Key 降级 (TC-AI-007~009)', () => {
     await browser.switchToWindow(mainWindow);
     await connectSeededPgInWorkspace();
     await waitForConnectionToolbar();
+    await openQueryTab();
+    await browser.pause(500);
 
     const aiBtn = await $('[data-testid="conn-toolbar-ai"]');
     await aiBtn.waitForClickable({ timeout: 10000 });
