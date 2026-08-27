@@ -56,6 +56,10 @@ vi.mock('../../../components/StatusBar', () => ({
   StatusBar: () => <div data-testid="status-bar" />,
 }));
 
+vi.mock('../../../components/SqlCodeBlock', () => ({
+  SqlCodeBlock: ({ code }: { code: string }) => <pre data-testid="sql-code-block">{code}</pre>,
+}));
+
 const pgSrc: ConnectionConfig = {
   id: 'pg-src',
   name: 'PG Src',
@@ -126,12 +130,15 @@ async function advanceToMappingStep() {
 
   fireEvent.click(screen.getByTestId('data-transfer-next'));
   fireEvent.click(screen.getByTestId('data-transfer-mode-data'));
-  fireEvent.click(screen.getByTestId('data-transfer-next'));
 
   inspectTransferMock.mockResolvedValue(inspectRows);
   fireEvent.click(screen.getByTestId('data-transfer-next'));
 
   await waitFor(() => expect(inspectTransferMock).toHaveBeenCalled());
+  await waitFor(() => expect(screen.getByTestId('data-transfer-table-row')).toBeTruthy());
+
+  fireEvent.click(screen.getByTestId('data-transfer-next'));
+
   await waitFor(() => expect(screen.getByTestId('data-transfer-mapping-step')).toBeTruthy());
 }
 
