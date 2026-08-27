@@ -18,7 +18,6 @@ import {
 describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
   before(async () => {
     await connectSeededPgInWorkspace();
-    await openQueryTab();
     await browser.pause(500);
   });
 
@@ -81,6 +80,7 @@ describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
   });
 
   it('多个 tab 可以来回切换 (UTB-006)', async () => {
+    await connectSeededPgInWorkspace();
     const tableName = await clickFirstTable();
     await browser.pause(500);
     await openQueryTab();

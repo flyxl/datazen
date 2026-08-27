@@ -5,6 +5,7 @@ import {
   saveJourneyScreenshot,
 } from './lib/screenshotTrace.js';
 import { cleanupAppDataViaIpc, seedDefaultPgConnection } from './lib/testDataLifecycle.js';
+import { browser } from '@wdio/globals';
 
 export const config: WebdriverIO.Config = {
   runner: 'local',
