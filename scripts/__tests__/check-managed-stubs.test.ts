@@ -4,7 +4,7 @@ import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { checkManagedStubs } from '../check-managed-stubs.mjs';
-import { MANAGED_FILES } from '../plugin-file-stash.mjs';
+import { MANAGED_FILES } from '../driver-file-stash.mjs';
 import { CLEAN_CONTENTS, INJECTED_CONTENTS, writeManagedFiles, resetDir } from './fixture';
 
 describe('checkManagedStubs', () => {
@@ -60,6 +60,6 @@ describe('checkManagedStubs', () => {
       }),
     ).toBe(1);
     expect(errors.some((e) => /Cargo\.toml looks injected/.test(e))).toBe(true);
-    expect(errors.some((e) => /plugin-file-stash\.mjs restore/.test(e))).toBe(true);
+    expect(errors.some((e) => /driver-file-stash\.mjs restore/.test(e))).toBe(true);
   });
 });

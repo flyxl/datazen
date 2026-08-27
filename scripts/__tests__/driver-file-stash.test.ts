@@ -4,10 +4,10 @@ import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readFileSync, unlink
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
-  createPluginFileStash,
+  createDriverFileStash,
   MANAGED_FILES,
-  runPluginFileStashCli,
-} from '../plugin-file-stash.mjs';
+  runDriverFileStashCli,
+} from '../driver-file-stash.mjs';
 import {
   CLEAN_CONTENTS,
   INJECTED_CONTENTS,
@@ -16,14 +16,14 @@ import {
   resetDir,
 } from './fixture';
 
-describe('createPluginFileStash', () => {
+describe('createDriverFileStash', () => {
   let root: string;
-  let stash: ReturnType<typeof createPluginFileStash>;
+  let stash: ReturnType<typeof createDriverFileStash>;
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'plugin-stash-'));
     writeManagedFiles(root, CLEAN_CONTENTS);
-    stash = createPluginFileStash(root, { quiet: true });
+    stash = createDriverFileStash(root, { quiet: true });
   });
 
   afterEach(() => {
@@ -155,28 +155,28 @@ describe('createPluginFileStash', () => {
     expect(lines.some((l) => /Cargo\.toml: stash=no work=yes/.test(l))).toBe(true);
   });
 
-  it('runPluginFileStashCli dispatches stash / restore / status / usage', () => {
+  it('runDriverFileStashCli dispatches stash / restore / status / usage', () => {
     const errors: string[] = [];
     expect(
-      runPluginFileStashCli(['status'], {
+      runDriverFileStashCli(['status'], {
         api: stash,
         error: (msg) => errors.push(String(msg)),
       }),
     ).toBe(0);
     expect(
-      runPluginFileStashCli(['stash'], {
+      runDriverFileStashCli(['stash'], {
         api: stash,
         error: (msg) => errors.push(String(msg)),
       }),
     ).toBe(0);
     expect(
-      runPluginFileStashCli(['restore'], {
+      runDriverFileStashCli(['restore'], {
         api: stash,
         error: (msg) => errors.push(String(msg)),
       }),
     ).toBe(0);
     expect(
-      runPluginFileStashCli(['nope'], {
+      runDriverFileStashCli(['nope'], {
         api: stash,
         error: (msg) => errors.push(String(msg)),
       }),
@@ -184,16 +184,16 @@ describe('createPluginFileStash', () => {
     expect(errors.some((e) => /Usage:/.test(e))).toBe(true);
   });
 
-  it('runPluginFileStashCli returns 1 when the command throws', () => {
+  it('runDriverFileStashCli returns 1 when the command throws', () => {
     const errors: string[] = [];
     expect(
-      runPluginFileStashCli(['stash'], {
+      runDriverFileStashCli(['stash'], {
         api: stash,
         error: (msg) => errors.push(String(msg)),
       }),
     ).toBe(0);
     expect(
-      runPluginFileStashCli(['stash'], {
+      runDriverFileStashCli(['stash'], {
         api: stash,
         error: (msg) => errors.push(String(msg)),
       }),

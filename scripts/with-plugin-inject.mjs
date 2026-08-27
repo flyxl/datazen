@@ -8,7 +8,7 @@
  *
  * Nesting: set DATAZEN_PLUGIN_INJECT_ACTIVE=1 on child processes. Inner
  * with-plugin-inject sees that and skips resolve/restore. A leftover
- * `.plugin-file-stash/` without that env is treated as orphaned and cleaned
+ * `.driver-file-stash/` without that env is treated as orphaned and cleaned
  * before this wrapper takes ownership (avoids leaving Cargo.toml injected).
  *
  * Usage:
@@ -19,7 +19,7 @@
 import { execSync, spawnSync } from 'child_process';
 import { resolve, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { stashExists } from './plugin-file-stash.mjs';
+import { stashExists } from './driver-file-stash.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -100,7 +100,7 @@ export function runWithPluginInject(options = {}) {
     options.runRestore ??
     (() => {
       try {
-        execSync('node scripts/plugin-file-stash.mjs restore', {
+        execSync('node scripts/driver-file-stash.mjs restore', {
           cwd: root,
           stdio: 'inherit',
           env: baseEnv,
@@ -140,7 +140,7 @@ export function runWithPluginInject(options = {}) {
     );
   } else if (orphanStash) {
     log(
-      '[with-plugin-inject] orphan .plugin-file-stash/ detected; restoring before resolve',
+      '[with-plugin-inject] orphan .driver-file-stash/ detected; restoring before resolve',
     );
     runRestore();
   }

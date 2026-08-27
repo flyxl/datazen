@@ -9,7 +9,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { MANAGED_FILES } from './plugin-file-stash.mjs';
+import { MANAGED_FILES } from './driver-file-stash.mjs';
 import { fileHasInjection } from './plugin-stash-precommit.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,7 +42,7 @@ export function checkManagedStubs(opts = {}) {
       error(
         `[check-managed-stubs] ${rel} looks injected (plugin deps / ACL present).`,
       );
-      error('  Restore with: node scripts/plugin-file-stash.mjs restore');
+      error('  Restore with: node scripts/driver-file-stash.mjs restore');
       failed = true;
       continue;
     }

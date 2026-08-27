@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * plugin-file-stash.mjs
+ * driver-file-stash.mjs
  *
  * Backup / restore managed files that resolve-drivers injects at build/dev time.
  *
  * Flow (cp + atomic rename — working paths always remain):
- *   1. `stash`  — copyFileSync clean working files → .plugin-file-stash/<path>
+ *   1. `stash`  — copyFileSync clean working files → .driver-file-stash/<path>
  *                 (working tree stays in place so editors/git keep seeing the files)
  *   2. resolve-drivers overwrites working paths with injected content
  *   3. `restore` — deinject cargo/capabilities (keep user edits); then remove
@@ -13,9 +13,9 @@
  *                 driver_init.rs) are left as-is.
  *
  * Usage:
- *   node scripts/plugin-file-stash.mjs stash
- *   node scripts/plugin-file-stash.mjs restore
- *   node scripts/plugin-file-stash.mjs status
+ *   node scripts/driver-file-stash.mjs stash
+ *   node scripts/driver-file-stash.mjs restore
+ *   node scripts/driver-file-stash.mjs status
  */
 
 import {
@@ -69,9 +69,9 @@ export function atomicReplaceWithCopy(src, dest) {
  * @param {string} root
  * @param {{ quiet?: boolean }} [options]
  */
-export function createPluginFileStash(root, options = {}) {
+export function createDriverFileStash(root, options = {}) {
   const quiet = Boolean(options.quiet);
-  const STASH_DIR = resolve(root, '.plugin-file-stash');
+  const STASH_DIR = resolve(root, '.driver-file-stash');
 
   function stashPath(relPath) {
     return resolve(STASH_DIR, relPath);
@@ -115,15 +115,15 @@ export function createPluginFileStash(root, options = {}) {
     const existing = MANAGED_FILES.filter((f) => existsSync(stashPath(f)));
     if (existing.length > 0) {
       throw new Error(
-        `[plugin-file-stash] stash already exists for: ${existing.join(', ')}. ` +
-          `Run \`node scripts/plugin-file-stash.mjs restore\` first.`,
+        `[driver-file-stash] stash already exists for: ${existing.join(', ')}. ` +
+          `Run \`node scripts/driver-file-stash.mjs restore\` first.`,
       );
     }
 
     const missing = missingWorkFiles();
     if (missing.length > 0) {
       throw new Error(
-        `[plugin-file-stash] cannot stash; missing working files: ${missing.join(', ')}`,
+        `[driver-file-stash] cannot stash; missing working files: ${missing.join(', ')}`,
       );
     }
 
@@ -136,7 +136,7 @@ export function createPluginFileStash(root, options = {}) {
 
     if (!quiet) {
       console.log(
-        `[plugin-file-stash] copied ${MANAGED_FILES.length} file(s) → ${relative(root, STASH_DIR)}/`,
+        `[driver-file-stash] copied ${MANAGED_FILES.length} file(s) → ${relative(root, STASH_DIR)}/`,
       );
     }
   }
@@ -158,7 +158,7 @@ export function createPluginFileStash(root, options = {}) {
     }
     if (!hasWork) {
       throw new Error(
-        `[plugin-file-stash] cannot restore; missing work and stash for: ${relPath}`,
+        `[driver-file-stash] cannot restore; missing work and stash for: ${relPath}`,
       );
     }
 
@@ -190,7 +190,7 @@ export function createPluginFileStash(root, options = {}) {
     const blocking = missingStashFiles().filter((f) => !existsSync(workPath(f)));
     if (blocking.length > 0) {
       throw new Error(
-        `[plugin-file-stash] cannot restore; stash missing for: ${blocking.join(', ')}. ` +
+        `[driver-file-stash] cannot restore; stash missing for: ${blocking.join(', ')}. ` +
           `Injected files may be dirty — restore the clean versions manually.`,
       );
     }
@@ -202,7 +202,7 @@ export function createPluginFileStash(root, options = {}) {
     cleanupStashDir();
     if (!quiet) {
       console.log(
-        `[plugin-file-stash] restored ${MANAGED_FILES.length} file(s) (deinject + stash)`,
+        `[driver-file-stash] restored ${MANAGED_FILES.length} file(s) (deinject + stash)`,
       );
     }
   }
@@ -217,7 +217,7 @@ export function createPluginFileStash(root, options = {}) {
     );
     if (missingOptional.length > 0) {
       throw new Error(
-        `[plugin-file-stash] cannot restore selection; stash missing for: ${missingOptional.join(', ')}`,
+        `[driver-file-stash] cannot restore selection; stash missing for: ${missingOptional.join(', ')}`,
       );
     }
 
@@ -228,7 +228,7 @@ export function createPluginFileStash(root, options = {}) {
     cleanupStashDir();
     if (!quiet) {
       console.log(
-        `[plugin-file-stash] restored ${relPaths.length} injected file(s) via deinject; discarded remaining stash`,
+        `[driver-file-stash] restored ${relPaths.length} injected file(s) via deinject; discarded remaining stash`,
       );
     }
   }
@@ -261,7 +261,7 @@ export function createPluginFileStash(root, options = {}) {
   };
 }
 
-const defaultApi = createPluginFileStash(ROOT);
+const defaultApi = createDriverFileStash(ROOT);
 
 export const STASH_DIR = defaultApi.STASH_DIR;
 export const stashPath = defaultApi.stashPath;
@@ -277,12 +277,12 @@ export const restoreSelectedFiles = defaultApi.restoreSelectedFiles;
 /**
  * @param {string[]} [argv]
  * @param {{
- *   api?: ReturnType<typeof createPluginFileStash>,
+ *   api?: ReturnType<typeof createDriverFileStash>,
  *   error?: (...args: unknown[]) => void,
  * }} [options]
  * @returns {number}
  */
-export function runPluginFileStashCli(argv = process.argv.slice(2), options = {}) {
+export function runDriverFileStashCli(argv = process.argv.slice(2), options = {}) {
   const api = options.api ?? defaultApi;
   const error = options.error ?? console.error.bind(console);
   const cmd = argv[0];
@@ -294,7 +294,7 @@ export function runPluginFileStashCli(argv = process.argv.slice(2), options = {}
     } else if (cmd === 'status') {
       api.printStatus();
     } else {
-      error('Usage: node scripts/plugin-file-stash.mjs <stash|restore|status>');
+      error('Usage: node scripts/driver-file-stash.mjs <stash|restore|status>');
       return 1;
     }
     return 0;
@@ -305,7 +305,7 @@ export function runPluginFileStashCli(argv = process.argv.slice(2), options = {}
 }
 
 function main() {
-  process.exit(runPluginFileStashCli());
+  process.exit(runDriverFileStashCli());
 }
 
 if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href) {

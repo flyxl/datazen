@@ -39,7 +39,7 @@ import {
   workPath,
   allStashed,
   ROOT as STASH_ROOT,
-} from './plugin-file-stash.mjs';
+} from './driver-file-stash.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = STASH_ROOT;
@@ -1269,7 +1269,7 @@ function main() {
       );
     } else {
       console.log(
-        `[resolve-drivers] managed files are injected; run \`node scripts/plugin-file-stash.mjs restore\` after build`,
+        `[resolve-drivers] managed files are injected; run \`node scripts/driver-file-stash.mjs restore\` after build`,
       );
     }
   } catch (err) {

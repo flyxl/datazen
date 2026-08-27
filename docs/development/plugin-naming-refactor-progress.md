@@ -61,7 +61,7 @@ npx vitest run scripts/__tests__/         10 files, 78 passed, 0 failed（1.06s�
 
 ### 遗留（by design / 非缺陷）
 
-- `plugin-file-stash.mjs` 脚本名与 `.plugin-file-stash/` 目录保持（stash 机制，非 driver feature 命名）
+- `driver-file-stash.mjs` 脚本名与 `.driver-file-stash/` 目录保持（stash 机制，非 driver feature 命名）
 - 工作区未跟踪 `.plugin-features.json`（旧格式本地残留；codegen 已写 `.driver-features.json`，无代码引用旧文件名）
 
 ### Bug 台账（F1）
