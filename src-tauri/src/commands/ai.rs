@@ -867,9 +867,7 @@ pub(crate) async fn mcp_tool_definitions(state: &AppState) -> Vec<ToolDefinition
         .into_iter()
         .map(|tool| ToolDefinition {
             name: tool.qualified_name,
-            description: tool
-                .description
-                .unwrap_or_else(|| tool.tool_name.clone()),
+            description: tool.description.unwrap_or_else(|| tool.tool_name.clone()),
             parameters: tool.input_schema,
         })
         .collect()
@@ -1129,12 +1127,7 @@ async fn run_streaming_tool_loop(
 
         let executable_count = classified
             .iter()
-            .filter(|(_, kind)| {
-                matches!(
-                    kind,
-                    ToolKind::Db(_) | ToolKind::Mcp { .. }
-                )
-            })
+            .filter(|(_, kind)| matches!(kind, ToolKind::Db(_) | ToolKind::Mcp { .. }))
             .count();
 
         let all_ask_questions = classified
