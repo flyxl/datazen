@@ -3,7 +3,8 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { ConnectionShareDialog } from '../ConnectionShareDialog';
 
 const exportMock = vi.fn();
-const importFileMock = vi.fn();
+const pickImportFileMock = vi.fn();
+const importAtPathMock = vi.fn();
 const importAppMock = vi.fn();
 const detectMock = vi.fn();
 const pickMock = vi.fn();
@@ -11,7 +12,8 @@ const pickMock = vi.fn();
 vi.mock('../../../commands/connection', () => ({
   connectionCommands: {
     exportConnections: (...args: unknown[]) => exportMock(...args),
-    importConnections: (...args: unknown[]) => importFileMock(...args),
+    pickConnectionsImportFile: (...args: unknown[]) => pickImportFileMock(...args),
+    importConnectionsAtPath: (...args: unknown[]) => importAtPathMock(...args),
     importConnectionsFromApp: (...args: unknown[]) => importAppMock(...args),
     detectConnectionImportPath: (...args: unknown[]) => detectMock(...args),
     pickConnectionImportPathWithDialog: (...args: unknown[]) => pickMock(...args),
@@ -52,7 +54,8 @@ function renderImport(source: 'file' | 'dbx' | 'navicat' = 'file') {
 describe('ConnectionShareDialog', () => {
   beforeEach(() => {
     exportMock.mockReset();
-    importFileMock.mockReset();
+    pickImportFileMock.mockReset();
+    importAtPathMock.mockReset();
     importAppMock.mockReset();
     detectMock.mockReset();
     pickMock.mockReset();
@@ -61,7 +64,8 @@ describe('ConnectionShareDialog', () => {
     onImportSuccess.mockReset();
     onError.mockReset();
     detectMock.mockResolvedValue({ path: '/tmp/com.dbx.app/dbx.db', found: true });
-    importFileMock.mockResolvedValue({ imported: 1, overwritten: 0, groupsAdded: 0 });
+    pickImportFileMock.mockResolvedValue('/tmp/share/datazen-connections.datazenconnection');
+    importAtPathMock.mockResolvedValue({ imported: 1, overwritten: 0, groupsAdded: 0 });
     importAppMock.mockResolvedValue({
       imported: 2,
       overwritten: 0,
@@ -74,11 +78,25 @@ describe('ConnectionShareDialog', () => {
     cleanup();
   });
 
-  it('imports from file picker without a path field', async () => {
+  it('file import picks the file before asking for a password', async () => {
     renderImport('file');
     expect(screen.queryByTestId('import-data-path')).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue('')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('connShare.chooseImportFile'));
+    await waitFor(() => expect(pickImportFileMock).toHaveBeenCalled());
+    expect(screen.getByTestId('import-selected-file')).toHaveTextContent(
+      'datazen-connections.datazenconnection',
+    );
+    fireEvent.change(document.querySelector('input[type="password"]')!, {
+      target: { value: 'share-secret' },
+    });
     fireEvent.click(screen.getByText('connShare.importAction'));
-    await waitFor(() => expect(importFileMock).toHaveBeenCalledWith(''));
+    await waitFor(() =>
+      expect(importAtPathMock).toHaveBeenCalledWith(
+        'share-secret',
+        '/tmp/share/datazen-connections.datazenconnection',
+      ),
+    );
     expect(onImportSuccess).toHaveBeenCalled();
   });
 
@@ -144,8 +162,10 @@ describe('ConnectionShareDialog', () => {
   });
 
   it('surfaces string IPC errors from import instead of a generic fallback', async () => {
-    importFileMock.mockRejectedValue('DataZen decryption failed: wrong password or corrupt file');
+    importAtPathMock.mockRejectedValue('DataZen decryption failed: wrong password or corrupt file');
     renderImport('file');
+    fireEvent.click(screen.getByText('connShare.chooseImportFile'));
+    await waitFor(() => expect(screen.getByTestId('import-selected-file')).toBeInTheDocument());
     fireEvent.change(document.querySelector('input[type="password"]')!, {
       target: { value: 'bad-password' },
     });
@@ -169,7 +189,6 @@ describe('ConnectionShareDialog', () => {
         onError={onError}
       />,
     );
-    const passwords = screen.getAllByDisplayValue('');
     const inputs = document.querySelectorAll('input[type="password"]');
     fireEvent.change(inputs[0]!, { target: { value: 'secret' } });
     fireEvent.change(inputs[1]!, { target: { value: 'secret' } });

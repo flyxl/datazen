@@ -863,6 +863,8 @@ pub fn run() {
             commands::export_connections,
             commands::import_connections_preview,
             commands::import_connections_with_dialog,
+            commands::pick_connections_import_file,
+            commands::import_connections_at_path,
             commands::detect_connection_import_path,
             commands::pick_connection_import_path_with_dialog,
             commands::import_connections_from_app,
