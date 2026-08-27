@@ -10,7 +10,6 @@ import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { settingsCommands } from '../../commands/settings';
 import type { AppSettings } from '../../types';
-import type { ThemeMode } from '../../types/theme';
 import { getExtensionLocales } from '../../locales';
 import { UpdateSection } from './UpdateSection';
 import { PluginSettingsSection } from './PluginSettingsSection';
@@ -33,12 +32,6 @@ const LOG_LEVEL_OPTIONS: { value: AppSettings['logLevel']; label: string }[] = [
   { value: 'info', label: 'Info' },
   { value: 'warn', label: 'Warn' },
   { value: 'error', label: 'Error' },
-];
-
-const THEME_KEYS = [
-  { value: 'light' as const, key: 'theme.light' as const },
-  { value: 'dark' as const, key: 'theme.dark' as const },
-  { value: 'system' as const, key: 'theme.system' as const },
 ];
 
 const BUILTIN_LANGUAGE_OPTIONS = [
@@ -133,11 +126,6 @@ export function SettingsContent({
 
   const isDirty = JSON.stringify(draft) !== JSON.stringify(settings);
 
-  const themeOptions = THEME_KEYS.map((tk) => ({
-    value: tk.value,
-    label: t(tk.key),
-  }));
-
   return (
     <>
       <div className="flex min-h-0 flex-1">
@@ -190,14 +178,6 @@ export function SettingsContent({
                     value={draft.language}
                     options={languageOptions}
                     onChange={(v) => updateField('language', v)}
-                  />
-                </SettingRow>
-
-                <SettingRow label={t('settings.theme')}>
-                  <Select
-                    value={draft.theme.mode}
-                    options={themeOptions}
-                    onChange={(v) => updateField('theme', { ...draft.theme, mode: v as ThemeMode })}
                   />
                 </SettingRow>
 

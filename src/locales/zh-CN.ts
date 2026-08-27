@@ -342,6 +342,7 @@ const zhCN = {
   'settings.extensions.empty': '当前构建中没有可用的插件扩展。',
   'settings.theme': '主题',
   'settings.theme.pack': '主题包',
+  'settings.colorScheme': '配色方案',
   'settings.theme.packDefault': '内置默认',
   'settings.theme.packMissing': '缺失的主题包 ({id})',
   'settings.theme.packMissingHint': '所选主题包已不存在。',
