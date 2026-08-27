@@ -12,6 +12,7 @@ mod i18n_locale;
 mod log_redact;
 pub mod mcp;
 mod monitor;
+mod product_features;
 mod redis_flush_gate;
 pub mod schema_diff;
 mod schema_objects;
@@ -363,15 +364,6 @@ fn setup_menu(
         .item(&import_connections_file_item)
         .build()?;
 
-    let schema_diff_item = MenuItemBuilder::new(t("schema-diff"))
-        .id("schema-diff")
-        .build(handle)?;
-    let data_sync_item = MenuItemBuilder::new(t("data-sync"))
-        .id("data-sync")
-        .build(handle)?;
-    let data_transfer_item = MenuItemBuilder::new(t("data-transfer"))
-        .id("data-transfer")
-        .build(handle)?;
     let workflow_item = MenuItemBuilder::new(t("workflow"))
         .id("workflow")
         .build(handle)?;
@@ -387,6 +379,44 @@ fn setup_menu(
     let view_logs_item = MenuItemBuilder::new(t("view-logs"))
         .id("view-logs")
         .build(handle)?;
+
+    // ── Tools ──
+    use crate::product_features;
+    let mut tools_builder = SubmenuBuilder::new(handle, t("tools"));
+    let mut migration_menu = false;
+    if product_features::SCHEMA_DIFF_MENU {
+        let schema_diff_item = MenuItemBuilder::new(t("schema-diff"))
+            .id("schema-diff")
+            .build(handle)?;
+        tools_builder = tools_builder.item(&schema_diff_item);
+        migration_menu = true;
+    }
+    if product_features::DATA_SYNC_MENU {
+        let data_sync_item = MenuItemBuilder::new(t("data-sync"))
+            .id("data-sync")
+            .build(handle)?;
+        tools_builder = tools_builder.item(&data_sync_item);
+        migration_menu = true;
+    }
+    if product_features::DATA_TRANSFER_MENU {
+        let data_transfer_item = MenuItemBuilder::new(t("data-transfer"))
+            .id("data-transfer")
+            .build(handle)?;
+        tools_builder = tools_builder.item(&data_transfer_item);
+        migration_menu = true;
+    }
+    if migration_menu {
+        tools_builder = tools_builder.separator();
+    }
+    let tools_menu = tools_builder
+        .item(&workflow_item)
+        .item(&dashboard_item)
+        .separator()
+        .item(&backup_item)
+        .item(&restore_item)
+        .separator()
+        .item(&view_logs_item)
+        .build()?;
 
     let docs_item = MenuItemBuilder::new(t("documentation"))
         .id("help-docs")
@@ -451,21 +481,6 @@ fn setup_menu(
         .item(&theme_menu)
         .separator()
         .fullscreen_with_text(t("fullscreen"))
-        .build()?;
-
-    // ── Tools ──
-    let tools_menu = SubmenuBuilder::new(handle, t("tools"))
-        .item(&schema_diff_item)
-        .item(&data_sync_item)
-        .item(&data_transfer_item)
-        .separator()
-        .item(&workflow_item)
-        .item(&dashboard_item)
-        .separator()
-        .item(&backup_item)
-        .item(&restore_item)
-        .separator()
-        .item(&view_logs_item)
         .build()?;
 
     // ── Window ──

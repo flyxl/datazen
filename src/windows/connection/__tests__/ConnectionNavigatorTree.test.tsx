@@ -1807,15 +1807,6 @@ describe('ConnectionNavigatorTree multi-db tree variants', () => {
     await openMenuAndPick(dbButton, 'new-table');
     expect(createTable).toHaveBeenCalled();
 
-    await openMenuAndPick(dbButton, 'data-transfer');
-    expect(openDataTransferWindowMock).toHaveBeenCalled();
-
-    await openMenuAndPick(dbButton, 'compare-schema');
-    expect(openSchemaDiffWindowMock).toHaveBeenCalled();
-
-    await openMenuAndPick(dbButton, 'compare-data');
-    expect(openDataSyncWindowMock).toHaveBeenCalled();
-
     await openMenuAndPick(dbButton, 'backup');
     expect(openBackupWindowMock).toHaveBeenCalledWith('backup', {
       connectionId: 'cfg-mysql',
@@ -1865,12 +1856,6 @@ describe('ConnectionNavigatorTree schema context menu', () => {
 
     await openMenuAndPick(schemaButton, 'new-table');
     expect(createTable).toHaveBeenCalled();
-
-    await openMenuAndPick(schemaButton, 'data-transfer');
-    expect(openDataTransferWindowMock).toHaveBeenCalled();
-
-    await openMenuAndPick(schemaButton, 'compare-data');
-    expect(openDataSyncWindowMock).toHaveBeenCalled();
   });
 
   it('drops a schema after confirmation and reloads the connection', async () => {
@@ -1929,10 +1914,7 @@ describe('ConnectionNavigatorTree schema context menu', () => {
     await openMenuAndPick((await findByText('users')).closest('button')!, 'drop');
 
     await waitFor(() => {
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        'conn-pg',
-        'DROP TABLE "public"."users"',
-      );
+      expect(mockExecuteQuery).toHaveBeenCalledWith('conn-pg', 'DROP TABLE "public"."users"');
       expect(mockGetTables).toHaveBeenCalledWith('conn-pg', 'db_a');
     });
   });
