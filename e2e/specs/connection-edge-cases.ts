@@ -6,8 +6,10 @@
  */
 import { expect, browser, $ } from '@wdio/globals';
 import {
+  captureJourneyStep,
   clickCardConnectButton,
   closeExtraWindows,
+  closeNewConnectionDialogFromUi,
   expandAllGroups,
   invokeBackend,
   openNewConnectionDialogFromUi,
@@ -96,6 +98,7 @@ describe('连接管理边界用例 (TC-EDGE-009~013)', () => {
     const body = await $('body').getText();
     expect(body).toContain('E2E-编辑后');
     expect(body).not.toContain('E2E-编辑前');
+    await captureJourneyStep('edge-conn-list-refreshed');
     await deleteConn(editId);
   });
 
@@ -120,21 +123,13 @@ describe('连接管理边界用例 (TC-EDGE-009~013)', () => {
       if (btn) (btn as HTMLElement).click();
     });
     await browser.pause(5000);
+    await captureJourneyStep('test-connection-failed');
 
     // Dialog should still be open (app didn't crash)
     const dialogStillOpen = await $('[data-testid="new-connection-dialog"]').isExisting();
     expect(dialogStillOpen).toBe(true);
 
-    // Cancel
-    await browser.execute(() => {
-      const btns = Array.from(document.querySelectorAll('button'));
-      const btn = btns.find((b) => {
-        const text = b.textContent || '';
-        return text.includes('取消') || text.includes('Cancel');
-      });
-      if (btn) (btn as HTMLElement).click();
-    });
-    await browser.pause(500);
+    await closeNewConnectionDialogFromUi();
   });
 
   it('TC-EDGE-012: 重复打开同一连接应复用已有 tab', async () => {
@@ -146,15 +141,7 @@ describe('连接管理边界用例 (TC-EDGE-009~013)', () => {
     });
     expect(connCount).toBeGreaterThan(0);
 
-    // Double-click the first PG connection
-    await browser.execute(() => {
-      const items = Array.from(document.querySelectorAll('[data-conn-item]'));
-      const pg = items.find((item) => {
-        const text = item.textContent || '';
-        return text.includes('PostgreSQL') || text.includes('Postgres') || text.includes('本地');
-      });
-      if (pg) pg.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-    });
+    await clickCardConnectButton();
     await waitForConnectionToolbar();
     await browser.pause(500);
 

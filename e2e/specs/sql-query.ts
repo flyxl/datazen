@@ -1,6 +1,7 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
+  captureJourneyStep,
   connectSeededPgInWorkspace,
   closeExtraWindows,
   setEditorContent,
@@ -67,6 +68,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     // Cancel to not block other tests
     await stopBtn.click();
     await browser.pause(2000);
+    await captureJourneyStep('query-stop-visible');
   });
 
   // ── 执行查询 ───────────────────────────────────────────────────
@@ -115,6 +117,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
 
     await expect(await $(`button*=${t('query.result')} 1`)).toBeDisplayed();
     await expect(await $(`button*=${t('query.result')} 2`)).toBeDisplayed();
+    await captureJourneyStep('multi-result-tabs');
   });
 
   it('应能切换结果标签 (SQ-011)', async () => {
@@ -170,6 +173,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
       },
       { timeout: 20000, timeoutMsg: 'Timed out waiting for error message' },
     );
+    await captureJourneyStep('sql-error-shown');
   });
 
   // ── 历史面板 ───────────────────────────────────────────────────
@@ -179,6 +183,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     await histBtn.click();
     await browser.pause(500);
     await expect(await $(`div*=${t('query.historyTitle')}`)).toBeDisplayed();
+    await captureJourneyStep('history-panel-open');
   });
 
   it('历史面板应显示之前执行的 SQL 记录 (SQ-005)', async () => {
@@ -245,6 +250,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
       const body = await $('body').getText();
       expect(body.length).toBeGreaterThan(0);
     }
+    await captureJourneyStep('query-cancelled');
   });
 
   // ── 执行选中 SQL ─────────────────────────────────────────────────
@@ -348,6 +354,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
       body.includes(t('query.noFavorites')) ||
       body.includes('我的测试收藏');
     expect(hasFav).toBe(true);
+    await captureJourneyStep('favorites-panel-open');
   });
 
   it('收藏面板可关闭 (SQ-018)', async () => {
@@ -414,5 +421,6 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
         body.includes('Result') ||
         body.includes('PLAN'),
     ).toBe(true);
+    await captureJourneyStep('explain-panel-open');
   });
 });
