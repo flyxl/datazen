@@ -3,7 +3,7 @@ import { aiCommands, onAiStreamChunk, onAiStreamError, onAiConfigChanged } from 
 import { extractSqlFromResponse } from '../lib/extractSql';
 import { normalizeAiProviders } from '../lib/aiProviders';
 import { extractQuestions, parseToolCallQuestions } from '../lib/extractQuestions';
-import type { AiChatMessage, McpServerConfig } from '../types';
+import type { AiChatMessage } from '../types';
 import { initialNl2Sql, type AiStore } from './ai/types';
 import { useSettingsStore } from './settingsStore';
 
@@ -133,8 +133,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
   // ── NL2SQL ──
 
-  setNl2SqlInput: (input) =>
-    set((s) => ({ nl2sql: { ...s.nl2sql, input } })),
+  setNl2SqlInput: (input) => set((s) => ({ nl2sql: { ...s.nl2sql, input } })),
 
   generateSql: async (params) => {
     const { nl2sql } = get();
@@ -172,7 +171,10 @@ export const useAiStore = create<AiStore>((set, get) => ({
   // ── Diagnosis ──
 
   diagnoseError: async (params) => {
-    console.debug('[AI] diagnoseError:', { sql_len: params.sql?.length, error: params.errorMessage });
+    console.debug('[AI] diagnoseError:', {
+      sql_len: params.sql?.length,
+      error: params.errorMessage,
+    });
     set({ isDiagnosing: true, diagnosisError: null, diagnosis: null });
     try {
       const result = await aiCommands.diagnoseError(params);
@@ -186,17 +188,22 @@ export const useAiStore = create<AiStore>((set, get) => ({
     }
   },
 
-  clearDiagnosis: () =>
-    set({ diagnosis: null, isDiagnosing: false, diagnosisError: null }),
+  clearDiagnosis: () => set({ diagnosis: null, isDiagnosing: false, diagnosisError: null }),
 
   // ── EXPLAIN Analysis ──
 
   analyzeExplain: async (params) => {
-    console.debug('[AI] analyzeExplain:', { dbSessionId: params.dbSessionId, sql_len: params.originalSql?.length });
+    console.debug('[AI] analyzeExplain:', {
+      dbSessionId: params.dbSessionId,
+      sql_len: params.originalSql?.length,
+    });
     set({ isAnalyzingExplain: true, explainAnalysis: null, explainError: null });
     try {
       const result = await aiCommands.analyzeExplain(params);
-      console.debug('[AI] analyzeExplain result:', { bottlenecks: result?.bottlenecks?.length, suggestions: result?.suggestions?.length });
+      console.debug('[AI] analyzeExplain result:', {
+        bottlenecks: result?.bottlenecks?.length,
+        suggestions: result?.suggestions?.length,
+      });
       set({ explainAnalysis: result, isAnalyzingExplain: false });
     } catch (e) {
       console.error('[AI] analyzeExplain error:', e);
@@ -259,11 +266,24 @@ export const useAiStore = create<AiStore>((set, get) => ({
     });
   },
 
-  sendChatMessage: async ({ dbSessionId, database, content, includeSchema = true, contextFiles, contextTables }) => {
+  sendChatMessage: async ({
+    dbSessionId,
+    database,
+    content,
+    includeSchema = true,
+    contextFiles,
+    contextTables,
+  }) => {
     const { chatSession } = get();
     if (!chatSession) return;
 
-    console.debug('[AI] sendChatMessage:', { dbSessionId, database, contentLen: content.length, includeSchema, historyLen: chatSession.messages.length });
+    console.debug('[AI] sendChatMessage:', {
+      dbSessionId,
+      database,
+      contentLen: content.length,
+      includeSchema,
+      historyLen: chatSession.messages.length,
+    });
 
     const newMessages: AiChatMessage[] = [];
     const lastMsg = chatSession.messages[chatSession.messages.length - 1];
@@ -313,7 +333,10 @@ export const useAiStore = create<AiStore>((set, get) => ({
             requestId: null,
             messages: [
               ...session.messages,
-              { role: 'assistant', content: `Error: ${e instanceof Error ? e.message : String(e)}` },
+              {
+                role: 'assistant',
+                content: `Error: ${e instanceof Error ? e.message : String(e)}`,
+              },
             ],
           },
         });
@@ -353,7 +376,14 @@ export const useAiStore = create<AiStore>((set, get) => ({
     });
   },
 
-  sendWorkflowChatMessage: async ({ dbSessionId, database, content, includeSchema = true, contextFiles, contextTables }) => {
+  sendWorkflowChatMessage: async ({
+    dbSessionId,
+    database,
+    content,
+    includeSchema = true,
+    contextFiles,
+    contextTables,
+  }) => {
     const { workflowChat } = get();
     if (!workflowChat) return;
 
@@ -406,7 +436,10 @@ export const useAiStore = create<AiStore>((set, get) => ({
             requestId: null,
             messages: [
               ...session.messages,
-              { role: 'assistant', content: `Error: ${e instanceof Error ? e.message : String(e)}` },
+              {
+                role: 'assistant',
+                content: `Error: ${e instanceof Error ? e.message : String(e)}`,
+              },
             ],
           },
         });
@@ -461,7 +494,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
       const newReasoning = (session.streamReasoning || '') + (payload.reasoning || '');
       if (payload.done) {
         const { cleanContent, questions: xmlQuestions } = extractQuestions(newContent);
-        const toolCalls = payload.toolCalls && payload.toolCalls.length > 0 ? payload.toolCalls : undefined;
+        const toolCalls =
+          payload.toolCalls && payload.toolCalls.length > 0 ? payload.toolCalls : undefined;
 
         let questions = xmlQuestions.length > 0 ? xmlQuestions : undefined;
         if (!questions && toolCalls) {
@@ -594,8 +628,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     }
   },
 
-  clearWorkflowResult: () =>
-    set({ workflowExecutionResult: null, workflowError: null }),
+  clearWorkflowResult: () => set({ workflowExecutionResult: null, workflowError: null }),
 
   schemaDoc: null,
   isGeneratingSchemaDoc: false,
@@ -622,10 +655,15 @@ export const useAiStore = create<AiStore>((set, get) => ({
     }
   },
 
-  clearSchemaDoc: () => set({ schemaDoc: null, schemaDocError: null, isGeneratingSchemaDoc: false }),
+  clearSchemaDoc: () =>
+    set({ schemaDoc: null, schemaDocError: null, isGeneratingSchemaDoc: false }),
 
   diagnoseConnection: async ({ connectionId, errorMessage }) => {
-    set({ isDiagnosingConnection: true, connectionDiagnosis: null, connectionDiagnosisError: null });
+    set({
+      isDiagnosingConnection: true,
+      connectionDiagnosis: null,
+      connectionDiagnosisError: null,
+    });
     try {
       const result = await aiCommands.diagnoseConnection({ connectionId, errorMessage });
       set({ connectionDiagnosis: result, isDiagnosingConnection: false });
@@ -637,7 +675,12 @@ export const useAiStore = create<AiStore>((set, get) => ({
     }
   },
 
-  clearConnectionDiagnosis: () => set({ connectionDiagnosis: null, connectionDiagnosisError: null, isDiagnosingConnection: false }),
+  clearConnectionDiagnosis: () =>
+    set({
+      connectionDiagnosis: null,
+      connectionDiagnosisError: null,
+      isDiagnosingConnection: false,
+    }),
 
   analyzeQueries: async ({ dbSessionId }) => {
     set({ isAnalyzingQueries: true, queryAnalysis: null, queryAnalysisError: null });
@@ -652,7 +695,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
     }
   },
 
-  clearQueryAnalysis: () => set({ queryAnalysis: null, queryAnalysisError: null, isAnalyzingQueries: false }),
+  clearQueryAnalysis: () =>
+    set({ queryAnalysis: null, queryAnalysisError: null, isAnalyzingQueries: false }),
 
   mcpServers: [],
   mcpTools: [],
@@ -662,7 +706,9 @@ export const useAiStore = create<AiStore>((set, get) => ({
   mcpServerErrors: {},
 
   connectMcpServer: async (serverId) => {
-    const config = useSettingsStore.getState().settings.mcpClientServers?.find((c) => c.id === serverId);
+    const config = useSettingsStore
+      .getState()
+      .settings.mcpClientServers?.find((c) => c.id === serverId);
     if (!config) {
       const msg = `MCP server config not found: ${serverId}`;
       set({ mcpError: msg });

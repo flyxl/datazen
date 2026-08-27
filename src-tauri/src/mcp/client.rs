@@ -155,9 +155,7 @@ impl McpClientManager {
                         qualified_name: mcp_qualified_name(server_id, &tool_name),
                         tool_name,
                         description: tool.description.as_ref().map(|d| d.to_string()),
-                        input_schema: serde_json::Value::Object(
-                            tool.input_schema.as_ref().clone(),
-                        ),
+                        input_schema: serde_json::Value::Object(tool.input_schema.as_ref().clone()),
                     }
                 })
             })

@@ -818,13 +818,7 @@ async fn classify_tool_mcp_db_and_ask_paths() {
 #[tokio::test]
 async fn execute_mcp_tool_not_connected_returns_qualified_error() {
     let test = TestAppState::new().await;
-    let out = execute_mcp_tool(
-        &test.state,
-        "ext-server",
-        "ping",
-        r#"{"message":"hi"}"#,
-    )
-    .await;
+    let out = execute_mcp_tool(&test.state, "ext-server", "ping", r#"{"message":"hi"}"#).await;
     assert!(out.starts_with("MCP tool error (mcp/ext-server/ping):"));
 }
 
