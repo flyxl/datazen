@@ -132,12 +132,51 @@ const translations = {
   'connShare.importFormatsHint':
     'Admite DataZen (.datazenconnection), DBX, DataGrip, Navicat, DBeaver y TablePlus. Vuelva a introducir contraseñas si faltan.',
   'connShare.exportAction': 'Exportar…',
+  'connShare.exportHint':
+    'Guarde todas las conexiones en un archivo .datazenconnection cifrado. Use la misma contraseña al importar.',
   'connShare.importAction': 'Importar…',
+  'connShare.chooseImportFile': 'Elegir archivo…',
+  'connShare.selectedImportFile': 'Archivo seleccionado',
+  'connShare.changeImportFile': 'Cambiar archivo',
+  'connShare.encryptedImportPasswordRequired':
+    'Se requiere contraseña para archivos de conexión cifrados',
   'connShare.exportSuccess': 'Conexión(es) {count} exportadas',
   'connShare.importSuccess':
     'Importado {imported} nuevo, actualizado {overwritten}, agregado(s) {groupsAdded} grupo(s)',
   'connShare.importSuccessWithSkipped':
     'Importado {imported} nuevo, actualizado {overwritten}, agregado(s) {groupsAdded} grupo(s), omitidos {skipped}',
+  'connShare.error.passwordRequired': 'Se requiere contraseña',
+  'connShare.error.encryptedImportPasswordRequired':
+    'Se requiere contraseña para importar conexiones cifradas',
+  'connShare.error.dbxEncryptedPasswordRequired':
+    'Se requiere contraseña para importación cifrada de DBX',
+  'connShare.error.datazenEncryptedPasswordRequired':
+    'Se requiere contraseña para importación cifrada de DataZen',
+  'connShare.error.datazenPasswordRequired': 'Se requiere contraseña para importar DataZen',
+  'connShare.error.formatPasswordRequired': 'Se requiere contraseña para importar {format}',
+  'connShare.error.invalidUtf8':
+    'El archivo de importación no es texto UTF-8 válido (para DataZen use .datazenconnection)',
+  'connShare.error.unrecognizedFormat': 'Formato de importación de conexiones no reconocido',
+  'connShare.error.noFiles': 'No hay archivos de conexión para importar',
+  'connShare.error.readFailed': 'No se pudo leer el archivo de importación',
+  'connShare.error.unknownImportSource': 'Origen de importación desconocido',
+  'connShare.error.decryptionWrongPassword': 'Descifrado fallido: contraseña incorrecta',
+  'connShare.error.missingConnectionsField':
+    "Archivo de importación no válido: falta el campo 'connections'",
+  'connShare.error.missingConnections': 'Faltan connections',
+  'connShare.error.dbxWrongPassphrase': 'Descifrado DBX fallido: frase de contraseña incorrecta',
+  'connShare.error.dbxMissingConnections': 'Importación DBX: falta el arreglo connections',
+  'connShare.error.invalidFileTooShort': 'Archivo {format} no válido: demasiado corto',
+  'connShare.error.invalidFileRncryptorVersion':
+    'Archivo {format} no válido: versión RNCryptor no compatible (si es una exportación legacy .json de DataZen, importe el archivo .json)',
+  'connShare.error.invalidFileEncryptionType':
+    'Archivo {format} no válido: se esperaba cifrado basado en contraseña',
+  'connShare.error.decryptionFailed':
+    'Descifrado de {format} fallido: contraseña incorrecta o archivo dañado',
+  'connShare.error.decryptionFailedLegacyHint':
+    'Descifrado de {format} fallido: contraseña incorrecta o archivo dañado. Use la misma contraseña que al exportar. Las exportaciones legacy de DataZen usaban .json protegido por contraseña (no .datazenconnection).',
+  'connShare.error.invalidJsonAfterDecrypt': 'JSON de {format} no válido tras descifrar',
+  'connShare.error.payloadNotUtf8': 'El contenido de {format} no es texto UTF-8',
   'conn.connected': 'Conectado',
   'conn.connecting': 'Conectando…',
   'conn.failed': 'La conexión falló',

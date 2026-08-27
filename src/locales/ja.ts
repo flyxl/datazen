@@ -133,12 +133,49 @@ const translations = {
   'connShare.importFormatsHint':
     'DataZen（.datazenconnection）、DBX、DataGrip、Navicat、DBeaver、TablePlus に対応。パスワードが無い場合は再入力してください。',
   'connShare.exportAction': '輸出…',
+  'connShare.exportHint':
+    'すべての接続を暗号化された .datazenconnection ファイルとして保存します。インポート時は同じパスワードを使用してください。',
   'connShare.importAction': '輸入…',
+  'connShare.chooseImportFile': 'ファイルを選択…',
+  'connShare.selectedImportFile': '選択したファイル',
+  'connShare.changeImportFile': 'ファイルを変更',
+  'connShare.encryptedImportPasswordRequired': '暗号化された接続ファイルにはパスワードが必要です',
   'connShare.exportSuccess': '{count} 接続をエクスポートしました',
   'connShare.importSuccess':
     '{imported} を新規インポート、{overwritten} を更新、{groupsAdded} グループを追加',
   'connShare.importSuccessWithSkipped':
     '{imported} を新規インポート、{overwritten} を更新、{groupsAdded} グループを追加、{skipped} 件をスキップ',
+  'connShare.error.passwordRequired': 'パスワードが必要です',
+  'connShare.error.encryptedImportPasswordRequired':
+    '暗号化された接続のインポートにはパスワードが必要です',
+  'connShare.error.dbxEncryptedPasswordRequired': 'DBX 暗号化インポートにはパスワードが必要です',
+  'connShare.error.datazenEncryptedPasswordRequired':
+    'DataZen 暗号化インポートにはパスワードが必要です',
+  'connShare.error.datazenPasswordRequired': 'DataZen インポートにはパスワードが必要です',
+  'connShare.error.formatPasswordRequired': '{format} インポートにはパスワードが必要です',
+  'connShare.error.invalidUtf8':
+    'インポートファイルは有効な UTF-8 テキストではありません（DataZen は .datazenconnection を使用）',
+  'connShare.error.unrecognizedFormat': '認識できない接続インポート形式です',
+  'connShare.error.noFiles': 'インポートする接続ファイルがありません',
+  'connShare.error.readFailed': 'インポートファイルの読み取りに失敗しました',
+  'connShare.error.unknownImportSource': '不明なインポートソースです',
+  'connShare.error.decryptionWrongPassword': '復号に失敗しました：パスワードが正しくありません',
+  'connShare.error.missingConnectionsField':
+    '無効なインポートファイル：connections フィールドがありません',
+  'connShare.error.missingConnections': 'connections がありません',
+  'connShare.error.dbxWrongPassphrase': 'DBX 復号に失敗しました：パスフレーズが正しくありません',
+  'connShare.error.dbxMissingConnections': 'DBX インポート：connections 配列がありません',
+  'connShare.error.invalidFileTooShort': '無効な {format} ファイル：短すぎます',
+  'connShare.error.invalidFileRncryptorVersion':
+    '無効な {format} ファイル：サポートされていない RNCryptor バージョンです（旧 DataZen .json エクスポートの場合は .json ファイルをインポートしてください）',
+  'connShare.error.invalidFileEncryptionType':
+    '無効な {format} ファイル：パスワードベースの暗号化が必要です',
+  'connShare.error.decryptionFailed':
+    '{format} の復号に失敗しました：パスワードが正しくないか、ファイルが破損しています',
+  'connShare.error.decryptionFailedLegacyHint':
+    '{format} の復号に失敗しました：パスワードが正しくないか、ファイルが破損しています。エクスポート時と同じパスワードを使用してください。旧 DataZen エクスポートはパスワード保護された .json（.datazenconnection ではありません）でした。',
+  'connShare.error.invalidJsonAfterDecrypt': '復号後の {format} JSON が無効です',
+  'connShare.error.payloadNotUtf8': '{format} の内容は UTF-8 テキストではありません',
   'conn.connected': '接続済み',
   'conn.connecting': '接続中…',
   'conn.failed': '接続に失敗しました',

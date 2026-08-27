@@ -133,12 +133,50 @@ const translations = {
   'connShare.importFormatsHint':
     'Prend en charge DataZen (.datazenconnection), DBX, DataGrip, Navicat, DBeaver et TablePlus. Saisissez les mots de passe manquants si besoin.',
   'connShare.exportAction': 'Exporter…',
+  'connShare.exportHint':
+    "Enregistrez toutes les connexions dans un fichier .datazenconnection chiffré. Utilisez le même mot de passe lors de l'import.",
   'connShare.importAction': 'Importer…',
+  'connShare.chooseImportFile': 'Choisir un fichier…',
+  'connShare.selectedImportFile': 'Fichier sélectionné',
+  'connShare.changeImportFile': 'Changer de fichier',
+  'connShare.encryptedImportPasswordRequired':
+    'Mot de passe requis pour les fichiers de connexion chiffrés',
   'connShare.exportSuccess': 'Connexion(s) {count} exportée(s)',
   'connShare.importSuccess':
     '{imported} nouveau importé, {overwritten} mis à jour, groupe(s) {groupsAdded} ajouté(s)',
   'connShare.importSuccessWithSkipped':
     '{imported} nouveau importé, {overwritten} mis à jour, groupe(s) {groupsAdded} ajouté(s), {skipped} ignoré(s)',
+  'connShare.error.passwordRequired': 'Mot de passe requis',
+  'connShare.error.encryptedImportPasswordRequired':
+    "Mot de passe requis pour l'import de connexions chiffrées",
+  'connShare.error.dbxEncryptedPasswordRequired': "Mot de passe requis pour l'import chiffré DBX",
+  'connShare.error.datazenEncryptedPasswordRequired':
+    "Mot de passe requis pour l'import chiffré DataZen",
+  'connShare.error.datazenPasswordRequired': "Mot de passe requis pour l'import DataZen",
+  'connShare.error.formatPasswordRequired': "Mot de passe requis pour l'import {format}",
+  'connShare.error.invalidUtf8':
+    "Le fichier d'import n'est pas du texte UTF-8 valide (pour DataZen, utilisez .datazenconnection)",
+  'connShare.error.unrecognizedFormat': "Format d'import de connexions non reconnu",
+  'connShare.error.noFiles': 'Aucun fichier de connexion à importer',
+  'connShare.error.readFailed': "Échec de la lecture du fichier d'import",
+  'connShare.error.unknownImportSource': "Source d'import inconnue",
+  'connShare.error.decryptionWrongPassword': 'Échec du déchiffrement : mot de passe incorrect',
+  'connShare.error.missingConnectionsField':
+    "Fichier d'import invalide : champ 'connections' manquant",
+  'connShare.error.missingConnections': 'connections manquant',
+  'connShare.error.dbxWrongPassphrase': 'Échec du déchiffrement DBX : phrase secrète incorrecte',
+  'connShare.error.dbxMissingConnections': 'Import DBX : tableau connections manquant',
+  'connShare.error.invalidFileTooShort': 'Fichier {format} invalide : trop court',
+  'connShare.error.invalidFileRncryptorVersion':
+    'Fichier {format} invalide : version RNCryptor non prise en charge (pour un export legacy DataZen .json, importez le fichier .json)',
+  'connShare.error.invalidFileEncryptionType':
+    'Fichier {format} invalide : chiffrement par mot de passe attendu',
+  'connShare.error.decryptionFailed':
+    'Échec du déchiffrement {format} : mot de passe incorrect ou fichier corrompu',
+  'connShare.error.decryptionFailedLegacyHint':
+    "Échec du déchiffrement {format} : mot de passe incorrect ou fichier corrompu. Utilisez le même mot de passe qu'à l'export. Les exports legacy DataZen utilisaient un .json protégé par mot de passe (pas .datazenconnection).",
+  'connShare.error.invalidJsonAfterDecrypt': 'JSON {format} invalide après déchiffrement',
+  'connShare.error.payloadNotUtf8': "Le contenu {format} n'est pas du texte UTF-8",
   'conn.connected': 'Connecté',
   'conn.connecting': 'De liaison…',
   'conn.failed': 'La connexion a échoué',

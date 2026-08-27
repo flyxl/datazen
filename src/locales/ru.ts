@@ -131,12 +131,50 @@ const translations = {
   'connShare.importFormatsHint':
     'Поддерживает DataZen (.datazenconnection), DBX, DataGrip, Navicat, DBeaver и TablePlus. При отсутствии паролей введите вручную.',
   'connShare.exportAction': 'Экспортировать…',
+  'connShare.exportHint':
+    'Сохраните все подключения в зашифрованный файл .datazenconnection. При импорте используйте тот же пароль.',
   'connShare.importAction': 'Импортировать…',
+  'connShare.chooseImportFile': 'Выбрать файл…',
+  'connShare.selectedImportFile': 'Выбранный файл',
+  'connShare.changeImportFile': 'Сменить файл',
+  'connShare.encryptedImportPasswordRequired':
+    'Для зашифрованных файлов подключений требуется пароль',
   'connShare.exportSuccess': 'Экспортированные соединения {count}',
   'connShare.importSuccess':
     'Импортирован новый {imported}, обновлен {overwritten}, добавлены группы {groupsAdded}.',
   'connShare.importSuccessWithSkipped':
     'Импортирован новый {imported}, обновлен {overwritten}, добавлены группы {groupsAdded}, пропущено {skipped}',
+  'connShare.error.passwordRequired': 'Требуется пароль',
+  'connShare.error.encryptedImportPasswordRequired':
+    'Требуется пароль для импорта зашифрованных подключений',
+  'connShare.error.dbxEncryptedPasswordRequired': 'Требуется пароль для зашифрованного импорта DBX',
+  'connShare.error.datazenEncryptedPasswordRequired':
+    'Требуется пароль для зашифрованного импорта DataZen',
+  'connShare.error.datazenPasswordRequired': 'Требуется пароль для импорта DataZen',
+  'connShare.error.formatPasswordRequired': 'Требуется пароль для импорта {format}',
+  'connShare.error.invalidUtf8':
+    'Файл импорта не является допустимым текстом UTF-8 (для DataZen используйте .datazenconnection)',
+  'connShare.error.unrecognizedFormat': 'Нераспознанный формат импорта подключений',
+  'connShare.error.noFiles': 'Нет файлов подключений для импорта',
+  'connShare.error.readFailed': 'Не удалось прочитать файл импорта',
+  'connShare.error.unknownImportSource': 'Неизвестный источник импорта',
+  'connShare.error.decryptionWrongPassword': 'Ошибка расшифровки: неверный пароль',
+  'connShare.error.missingConnectionsField':
+    "Недопустимый файл импорта: отсутствует поле 'connections'",
+  'connShare.error.missingConnections': 'Отсутствует connections',
+  'connShare.error.dbxWrongPassphrase': 'Ошибка расшифровки DBX: неверная passphrase',
+  'connShare.error.dbxMissingConnections': 'Импорт DBX: отсутствует массив connections',
+  'connShare.error.invalidFileTooShort': 'Недопустимый файл {format}: слишком короткий',
+  'connShare.error.invalidFileRncryptorVersion':
+    'Недопустимый файл {format}: неподдерживаемая версия RNCryptor (для legacy-экспорта DataZen .json импортируйте файл .json)',
+  'connShare.error.invalidFileEncryptionType':
+    'Недопустимый файл {format}: ожидается шифрование на основе пароля',
+  'connShare.error.decryptionFailed':
+    'Ошибка расшифровки {format}: неверный пароль или поврежденный файл',
+  'connShare.error.decryptionFailedLegacyHint':
+    'Ошибка расшифровки {format}: неверный пароль или поврежденный файл. Используйте тот же пароль, что и при экспорте. Legacy-экспорты DataZen использовали защищенный паролем .json (не .datazenconnection).',
+  'connShare.error.invalidJsonAfterDecrypt': 'Недопустимый JSON {format} после расшифровки',
+  'connShare.error.payloadNotUtf8': 'Содержимое {format} не является текстом UTF-8',
   'conn.connected': 'Подключено',
   'conn.connecting': 'Подключение…',
   'conn.failed': 'Соединение не удалось',
