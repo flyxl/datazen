@@ -1,6 +1,12 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
-import { closeExtraWindows, queryScalar, selectDzOption, withSafeModeOff } from '../helpers.js';
+import {
+  closeExtraWindows,
+  captureJourneyStep,
+  queryScalar,
+  selectDzOption,
+  withSafeModeOff,
+} from '../helpers.js';
 
 /**
  * Data Sync Diff Workspace Host journeys (DSW-001~DSW-008).
@@ -30,6 +36,7 @@ describe('数据同步窗口 (DSW-001~DSW-008)', () => {
     expect(body).toContain(t('sync.windowTitle'));
     expect(body).toContain(t('sync.source'));
     expect(body).toContain(t('sync.target'));
+    await captureJourneyStep('data-sync-window-open');
   });
 
   it('DSW-002: 应显示比较按钮、Options 与 Swap', async () => {
@@ -55,6 +62,7 @@ describe('数据同步窗口 (DSW-001~DSW-008)', () => {
     const err = await $('[data-testid="data-sync-error"]');
     await expect(err).toBeDisplayed();
     expect(await err.getText()).toContain(t('sync.selectBoth'));
+    await captureJourneyStep('data-sync-select-both-error');
     const ok = await $(`button*=${t('common.ok')}`);
     if (await ok.isDisplayed()) {
       await ok.click();

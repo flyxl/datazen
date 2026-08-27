@@ -97,9 +97,15 @@ describe('AI 上下文引用 E2E 测试 (CTX-001~CTX-006)', () => {
     await browser.switchToWindow(windows.connWindow);
 
     // Open AI Chat sidebar
-    const chatToggle = await $('button[title*="AI"]');
-    if (await chatToggle.isExisting()) {
+    const chatToggle = await $('[data-testid="conn-toolbar-ai"]');
+    if (!(await chatToggle.isExisting())) {
+      const legacy = await $('button[title*="AI"]');
+      if (await legacy.isExisting()) await legacy.click();
+    } else {
+      await chatToggle.waitForClickable({ timeout: 10000 });
       await chatToggle.click();
+    }
+    if (await $('aside textarea, [data-testid="ai-not-configured"]').isExisting()) {
       await browser.pause(500);
       await captureJourneyStep('ai-chat-open');
     }

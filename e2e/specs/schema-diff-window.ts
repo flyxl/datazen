@@ -1,6 +1,6 @@
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
-import { closeExtraWindows } from '../helpers.js';
+import { closeExtraWindows, captureJourneyStep } from '../helpers.js';
 
 /**
  * Schema Diff window shell + primary controls (SD-001~SD-003).
@@ -25,6 +25,7 @@ describe('结构对比窗口 (SD-001~SD-003)', () => {
     const body = await $('body').getText();
     expect(body).toContain(t('schemaDiff.title'));
     expect(body).toContain(t('schemaDiff.stepCompare'));
+    await captureJourneyStep('schema-diff-window-open');
   });
 
   it('应显示对比 / 生成计划等主操作 (SD-002)', async () => {
@@ -41,5 +42,6 @@ describe('结构对比窗口 (SD-001~SD-003)', () => {
     await browser.pause(500);
     const body = await $('body').getText();
     expect(body).toContain(t('schemaDiff.tableRequired'));
+    await captureJourneyStep('schema-diff-table-required');
   });
 });

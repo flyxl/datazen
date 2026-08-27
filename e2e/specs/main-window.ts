@@ -1,5 +1,10 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
-import { closeExtraWindows, expandAllGroups, connectSeededPgInWorkspace } from '../helpers.js';
+import {
+  closeExtraWindows,
+  captureJourneyStep,
+  expandAllGroups,
+  connectSeededPgInWorkspace,
+} from '../helpers.js';
 import { t } from '../i18n.js';
 
 describe('主窗口 / 统一工作区 (CM-001)', () => {
@@ -74,8 +79,8 @@ describe('主窗口 / 统一工作区 (CM-001)', () => {
 
     await firstHeader.click();
     await browser.pause(300);
-
     const countAfterCollapse = (await $$('[data-conn-item]')).length;
+    await captureJourneyStep('group-collapsed');
     expect(countAfterCollapse).toBeLessThanOrEqual(countBefore);
 
     await firstHeader.click();

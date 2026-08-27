@@ -1,5 +1,9 @@
 import { expect, browser, $ } from '@wdio/globals';
-import { backFromSettingsInMainWindow, openSettingsInMainWindow } from '../helpers.js';
+import {
+  backFromSettingsInMainWindow,
+  captureJourneyStep,
+  openSettingsInMainWindow,
+} from '../helpers.js';
 import { t } from '../i18n.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -55,6 +59,7 @@ describe('Settings (SS-001~SS-006)', () => {
     await expect(await $('button*=浅色')).toBeDisplayed();
     await expect(await $('button*=深色')).toBeDisplayed();
     await expect(await $('button*=跟随系统')).toBeDisplayed();
+    await captureJourneyStep('theme-menu-open');
   });
 
   it('SS-001: light theme should remove dark class', async () => {
@@ -191,6 +196,7 @@ describe('Settings (SS-001~SS-006)', () => {
         body.includes('字号') ||
         body.includes('字'),
     ).toBe(true);
+    await captureJourneyStep('settings-editor-section');
   });
 
   it('TC-SET-004: 设置窗口数据浏览分区应显示分页/限制相关项', async () => {
@@ -208,6 +214,7 @@ describe('Settings (SS-001~SS-006)', () => {
         body.includes('limit') ||
         body.includes('行'),
     ).toBe(true);
+    await captureJourneyStep('settings-data-section');
   });
 
   it('TC-SET-007: 设置窗口应有 Prompt 自定义入口', async () => {
