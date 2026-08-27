@@ -7,8 +7,8 @@ import {
   hasInjectedGeneratedLocales,
   hasInjectedCapabilities,
   fileHasInjection,
-  runPluginStashPrecommit,
-} from '../plugin-stash-precommit.mjs';
+  runDriverStashPrecommit,
+} from '../driver-stash-precommit.mjs';
 import { createDriverFileStash, MANAGED_FILES } from '../driver-file-stash.mjs';
 import { mkdtempSync, existsSync, unlinkSync, readFileSync } from 'fs';
 import { execSync } from 'child_process';
@@ -83,7 +83,7 @@ describe('injection detectors', () => {
   });
 });
 
-describe('runPluginStashPrecommit', () => {
+describe('runDriverStashPrecommit', () => {
   function setup() {
     const root = mkdtempSync(join(tmpdir(), 'precommit-stash-'));
     writeManagedFiles(root, CLEAN_CONTENTS);
@@ -118,7 +118,7 @@ describe('runPluginStashPrecommit', () => {
     try {
       execSync('git init', { cwd: root, stdio: 'pipe' });
       execSync('git add -A', { cwd: root, stdio: 'pipe' });
-      const result = runPluginStashPrecommit({
+      const result = runDriverStashPrecommit({
         root,
         quiet: true,
         log: () => {},
@@ -133,7 +133,7 @@ describe('runPluginStashPrecommit', () => {
   it('no-ops when clean and no stash', () => {
     const { root, opts, cleanup } = setup();
     try {
-      const result = runPluginStashPrecommit(opts);
+      const result = runDriverStashPrecommit(opts);
       expect(result).toEqual({ status: 0, restored: false });
       for (const f of MANAGED_FILES) {
         expect(readManaged(root, f)).toBe(CLEAN_CONTENTS[f]);
@@ -151,7 +151,7 @@ describe('runPluginStashPrecommit', () => {
       writeManagedFiles(root, INJECTED_CONTENTS);
       staged.add('Cargo.toml');
 
-      const result = runPluginStashPrecommit(opts);
+      const result = runDriverStashPrecommit(opts);
       expect(result.status).toBe(0);
       expect(result.restored).toBe(true);
       expect(existsSync(join(root, '.driver-file-stash'))).toBe(false);
@@ -167,7 +167,7 @@ describe('runPluginStashPrecommit', () => {
     const { root, opts, cleanup } = setup();
     try {
       writeManagedFiles(root, INJECTED_CONTENTS);
-      const result = runPluginStashPrecommit(opts);
+      const result = runDriverStashPrecommit(opts);
       expect(result.status).toBe(0);
       expect(result.restored).toBe(true);
       expect(hasInjectedCargoContent(readManaged(root, 'Cargo.toml'))).toBe(false);
@@ -184,7 +184,7 @@ describe('runPluginStashPrecommit', () => {
       writeManagedFiles(root, INJECTED_CONTENTS);
       unlinkSync(stash.stashPath('src-tauri/Cargo.toml'));
 
-      const result = runPluginStashPrecommit(opts);
+      const result = runDriverStashPrecommit(opts);
       expect(result.status).toBe(0);
       expect(result.restored).toBe(true);
       expect(hasInjectedCargoContent(readManaged(root, 'Cargo.toml'))).toBe(false);
@@ -200,7 +200,7 @@ describe('runPluginStashPrecommit', () => {
       const stash = createDriverFileStash(root, { quiet: true });
       stash.stashManagedFiles();
 
-      const result = runPluginStashPrecommit(opts);
+      const result = runDriverStashPrecommit(opts);
       expect(result.status).toBe(0);
       expect(result.restored).toBe(false);
       expect(result.discardedStash).toBe(true);
@@ -218,7 +218,7 @@ describe('runPluginStashPrecommit', () => {
         'Cargo.toml': INJECTED_CONTENTS['Cargo.toml'],
       });
 
-      const result = runPluginStashPrecommit(opts);
+      const result = runDriverStashPrecommit(opts);
       expect(result.status).toBe(0);
       expect(result.restored).toBe(true);
       expect(readManaged(root, 'Cargo.toml')).toBe(CLEAN_CONTENTS['Cargo.toml']);
@@ -236,7 +236,7 @@ describe('runPluginStashPrecommit', () => {
 
       // Worktree is already clean; deinject is a no-op on disk, then restage
       // picks up the clean worktree (real `git add`). Staged blob must update.
-      const result = runPluginStashPrecommit({
+      const result = runDriverStashPrecommit({
         ...opts,
         restage: (f) => {
           staged.add(f);
@@ -255,7 +255,7 @@ describe('runPluginStashPrecommit', () => {
     const { root, opts, cleanup } = setup();
     try {
       unlinkSync(join(root, 'Cargo.toml'));
-      const result = runPluginStashPrecommit({
+      const result = runDriverStashPrecommit({
         ...opts,
         getContent: (rel) =>
           rel === 'Cargo.toml' ? INJECTED_CONTENTS['Cargo.toml'] : opts.getContent(rel),
@@ -272,7 +272,7 @@ describe('runPluginStashPrecommit', () => {
     const { root, opts, cleanup } = setup();
     try {
       writeManagedFiles(root, INJECTED_CONTENTS);
-      const result = runPluginStashPrecommit({
+      const result = runDriverStashPrecommit({
         ...opts,
         getContent: (rel) => INJECTED_CONTENTS[rel] ?? null,
       });
@@ -292,7 +292,7 @@ describe('runPluginStashPrecommit', () => {
       writeManagedFiles(root, INJECTED_CONTENTS);
       staged.add('Cargo.toml');
       const restaged: string[] = [];
-      const result = runPluginStashPrecommit({
+      const result = runDriverStashPrecommit({
         ...opts,
         restage: (f) => {
           restaged.push(f);

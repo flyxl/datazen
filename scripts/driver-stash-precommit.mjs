@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * plugin-stash-precommit.mjs
+ * driver-stash-precommit.mjs
  *
  * Shared pre-commit logic for restoring plugin-injected managed files.
  * Invoked by `.husky/pre-commit`. Safe to unit-test with an injectable root.
@@ -110,7 +110,7 @@ export function fileHasInjection(relPath, content, pluginIds = PLUGIN_ACL_IDS) {
  * }} [opts]
  * @returns {{ status: number, reason?: string, restored?: boolean, discardedStash?: boolean }}
  */
-export function runPluginStashPrecommit(opts = {}) {
+export function runDriverStashPrecommit(opts = {}) {
   const root = opts.root ?? ROOT;
   const log = opts.log ?? console.log;
   const stash = createDriverFileStash(root, { quiet: opts.quiet ?? false });
@@ -214,7 +214,7 @@ export function runPluginStashPrecommit(opts = {}) {
 }
 
 function main() {
-  const result = runPluginStashPrecommit({ root: ROOT });
+  const result = runDriverStashPrecommit({ root: ROOT });
   process.exit(result.status);
 }
 

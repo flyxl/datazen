@@ -10,7 +10,7 @@ import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { MANAGED_FILES } from './driver-file-stash.mjs';
-import { fileHasInjection } from './plugin-stash-precommit.mjs';
+import { fileHasInjection } from './driver-stash-precommit.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
