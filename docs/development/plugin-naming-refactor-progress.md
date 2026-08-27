@@ -8,7 +8,7 @@
 | 编号 | 功能 | 状态 | 编码 commit | 测试 commit |
 |------|------|------|------------|------------|
 | F1 | Track A：Cargo feature / plugin_init → driver | 已完成 | 377c23e5 | deab51ee |
-| F2 | Track B：plugins/ → extensions/ + 前端重命名 | 已完成 | （本分支 commit） | （本分支 commit） |
+| F2 | Track B：plugins/ → extensions/ + 前端重命名 | 已完成 | a7251e0f | （本 commit） |
 | F3 | Track C：Legacy ThemePack 清理 | 未开始 | — | — |
 
 ## Bug 台账
@@ -70,8 +70,19 @@ npx vitest run scripts/__tests__/         10 files, 78 passed, 0 failed（1.06s�
 
 ## F2：Track B — plugins/ → extensions/ + 前端重命名
 
-**Status:** ✅ COMPLETED  
-**Branch:** `feature/rename-extension`
+**Status:** ✅ COMPLETED（F2 独立复验通过）  
+**Branch:** `main`（已合并 `feature/rename-extension`）  
+**编码 commit:** `a7251e0f`（`refactor: rename runtime plugins module to extensions`）  
+**测试 commit:** （本 commit）
+
+### 范围完整性（F2 复验 grep）
+
+| 检查项 | 结果 |
+|--------|------|
+| `src-tauri/src/plugins/` 不存在 | ✅ 已迁移为 `extensions/`（8 源文件） |
+| `PluginManager` / `mod plugins` / `commands::plugins`（Rust） | ✅ 无匹配 |
+| `usePluginStore` / `pluginCommands` / `pluginStore` / `commands/plugins`（TS，排除 `src/plugins/generated*`） | ✅ 无匹配 |
+| `list_plugins` / `PluginSummary` / `LoadedPlugin`（源码） | ✅ 无残留（E2E `plugins.spec.ts` 局部类型别名 + `list_extensions` invoke 为预期） |
 
 ### 范围摘要
 
@@ -82,14 +93,27 @@ npx vitest run scripts/__tests__/         10 files, 78 passed, 0 failed（1.06s�
 | E2E | `e2e/specs/plugins.spec.ts` IPC 命令名更新 |
 | 文档 | `AGENTS.md`；`docs/architecture/backend/extensions.md` |
 
-### 测试结果
+### 测试结果（F2 独立复验，2026-08-27）
 
 ```
-cargo test -p datazen --lib     1140 passed, 0 failed, 2 ignored
-npx vitest run (extension 相关) 139 passed
-npx vitest run (全量)           2026 passed, 7 failed（与 main 基线相同，非本轨引入）
-tsc --noEmit                    OK
+node scripts/resolve-drivers.mjs --codegen-only --drivers=basic   OK
+cargo test -p datazen --lib                                       1140 passed, 0 failed, 2 ignored
+npx vitest run（extension 核心 10 文件）                          125 passed, 0 failed
+npx vitest run（extension 关联 15 文件）                          175 passed, 0 failed
+npx vitest run（全量）                                            2026 passed, 7 failed（4 files）
+tsc --noEmit                                                      OK
 ```
+
+**全量 7 fail 明细（与 main 基线相同，非 Track B 引入）：**
+
+1. `WorkflowPanel.test.tsx` — `shows workflow error and failed execution via history`
+2. `BatchExportDialog.test.tsx` — `shows error when export fails`
+3. `ConnectionNavigatorTree.test.tsx` — `wires optional toolbar buttons...`（4 条同文件）
+4. `ContentView.test.tsx` — `shows toolbar buttons for SQL connections`
+
+### Bug 台账（F2）
+
+无新增 bug。
 
 ### 不改动（by design）
 
