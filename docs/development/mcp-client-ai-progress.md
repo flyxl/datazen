@@ -12,7 +12,7 @@
 | F2 | Phase 2 Tool Schema 暴露 | 计划 Phase 2 | 编码完成 | 6b6bfc5a | — |
 | F3 | Phase 3 AI Tool Loop 集成 | 计划 Phase 3 | 编码完成 | 42d863d0 | — |
 | F4 | Phase 4 UI polish + 文档 + E2E | 计划 Phase 4 | 已完成 | 1702a98e | a0084091 |
-| F5 | Rust 核心缺口补齐 | 计划遗漏项 | 编码完成 | — | — |
+| F5 | Rust 核心缺口补齐 | 计划遗漏项 | 编码完成 | cc13ebf5 | — |
 | F6 | 前端/文档/E2E 缺口补齐 | 计划遗漏项 | 未开始 | — | — |
 
 ## 2. Bug 台账
