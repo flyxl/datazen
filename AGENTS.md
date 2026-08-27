@@ -60,7 +60,7 @@ datazen/
 ### 驱动选型（编译时，类似 Caddy 2）
 
 1. `drivers-registry.json` 定义 path 驱动 + git 驱动；Git 可钉 `ref`
-2. `scripts/resolve-drivers.mjs` 构建前执行选型、克隆 Git driver，并生成 `generated.ts`、`plugin_init.rs`、`.plugin-features.json`（前两者 gitignore；`pnpm install` / `pnpm build` 会 `--codegen-only` 补齐）
+2. `scripts/resolve-drivers.mjs` 构建前执行选型、克隆 Git driver，并生成 `generated.ts`、`driver_init.rs`、`.driver-features.json`（前两者 gitignore；`pnpm install` / `pnpm build` 会 `--codegen-only` 补齐）
 3. 通过 `inventory` crate 实现链接时自动注册；宿主 `DriverRegistry` 仅走 factories
 
 ```bash
@@ -224,7 +224,7 @@ PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`。改了驱动�
 - 以下文件均为 gitignore 的 codegen，由 `resolve-drivers` / `ensure-generated-drivers` 生成，不要提交：
   - `src/plugins/generated.ts`
   - `src/plugins/generated-locales.ts`
-  - `src-tauri/src/plugin_init.rs`
+  - `src-tauri/src/driver_init.rs`
   - `src-tauri/capabilities/default.json`（由 `default_host.json` + 插件 capabilities 合并生成）
 - `pnpm install`（prepare）若上述文件缺失则 `--codegen-only --drivers=basic`；已存在则保留当前选型
 - **Capabilities 管理**：`src-tauri/capabilities/default.json.host` 是 git 跟踪的 host 权限源文件（`.json.host` 扩展名避免 Tauri 构建系统扫描）；需要添加新 host capability 时直接修改该文件。`src-tauri/capabilities/default.json` 在构建时由 `resolve-drivers.mjs` 合并 `default.json.host` + 活跃插件权限自动生成，**不要手动编辑或提交**

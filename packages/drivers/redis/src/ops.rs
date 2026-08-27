@@ -437,7 +437,7 @@ where
 /// Host-synced mirror of `AppSettings.pluginSettings.redis.allowFlush`.
 static SETTINGS_ALLOW_FLUSH: AtomicBool = AtomicBool::new(false);
 
-/// Called by the host when settings are loaded or saved (feature `plugin-redis`).
+/// Called by the host when settings are loaded or saved (feature `driver-redis`).
 pub fn set_settings_allow_flush(allow: bool) {
     SETTINGS_ALLOW_FLUSH.store(allow, Ordering::Relaxed);
 }

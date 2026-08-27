@@ -55,7 +55,7 @@ execSync(`node scripts/resolve-drivers.mjs ${driversStr}`, {
   stdio: 'inherit',
 });
 
-const featuresFile = resolve(ROOT, '.plugin-features.json');
+const featuresFile = resolve(ROOT, '.driver-features.json');
 const { features } = JSON.parse(readFileSync(featuresFile, 'utf-8'));
 
 const tauriArgs = ['tauri', 'dev'];

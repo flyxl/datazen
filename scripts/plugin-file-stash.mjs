@@ -10,7 +10,7 @@
  *   2. resolve-drivers overwrites working paths with injected content
  *   3. `restore` — deinject cargo/capabilities (keep user edits); then remove
  *                 stash copies. Gitignored codegen files (generated.ts /
- *                 plugin_init.rs) are left as-is.
+ *                 driver_init.rs) are left as-is.
  *
  * Usage:
  *   node scripts/plugin-file-stash.mjs stash

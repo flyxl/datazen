@@ -5,7 +5,7 @@
  * Files:
  *   src/plugins/generated.ts
  *   src/plugins/generated-locales.ts
- *   src-tauri/src/plugin_init.rs
+ *   src-tauri/src/driver_init.rs
  *   src-tauri/capabilities/default.json (merged from default_host.json + plugins)
  *
  * Used by `pnpm install` (prepare) and `pnpm build` so tsc / rust-analyzer /

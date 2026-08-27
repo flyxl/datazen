@@ -2,25 +2,25 @@
   "postgres": {
     "source": "path",
     "path": "packages/drivers/postgres",
-    "feature": "plugin-postgres",
+    "feature": "driver-postgres",
     "description": "PostgreSQL + QuestDB/Cloudberry wire reuse"
   },
   "mysql": {
     "source": "path",
     "path": "packages/drivers/mysql",
-    "feature": "plugin-mysql",
+    "feature": "driver-mysql",
     "description": "MySQL / MariaDB + Doris/StarRocks/Manticore/OceanBase wire reuse"
   },
   "sqlite": {
     "source": "path",
     "path": "packages/drivers/sqlite",
-    "feature": "plugin-sqlite",
+    "feature": "driver-sqlite",
     "description": "SQLite driver"
   },
   "redis": {
     "source": "path",
     "path": "packages/drivers/redis",
-    "feature": "plugin-redis",
+    "feature": "driver-redis",
     "description": "Redis key-value store",
     "tauriPlugin": {
       "id": "redis",
@@ -31,73 +31,73 @@
   "mongodb": {
     "source": "path",
     "path": "packages/drivers/mongodb",
-    "feature": "plugin-mongodb",
+    "feature": "driver-mongodb",
     "description": "MongoDB document store"
   },
   "sqlserver": {
     "source": "path",
     "path": "packages/drivers/sqlserver",
-    "feature": "plugin-sqlserver",
+    "feature": "driver-sqlserver",
     "description": "Microsoft SQL Server"
   },
   "clickhouse": {
     "source": "path",
     "path": "packages/drivers/clickhouse",
-    "feature": "plugin-clickhouse",
+    "feature": "driver-clickhouse",
     "description": "ClickHouse HTTP interface"
   },
   "duckdb": {
     "source": "path",
     "path": "packages/drivers/duckdb",
-    "feature": "plugin-duckdb",
+    "feature": "driver-duckdb",
     "description": "DuckDB embedded analytics"
   },
   "elasticsearch": {
     "source": "path",
     "path": "packages/drivers/elasticsearch",
-    "feature": "plugin-elasticsearch",
+    "feature": "driver-elasticsearch",
     "description": "Elasticsearch"
   },
   "rqlite": {
     "source": "path",
     "path": "packages/drivers/rqlite",
-    "feature": "plugin-rqlite",
+    "feature": "driver-rqlite",
     "description": "RQLite distributed SQLite"
   },
   "turso": {
     "source": "path",
     "path": "packages/drivers/turso",
-    "feature": "plugin-turso",
+    "feature": "driver-turso",
     "description": "Turso / libSQL"
   },
   "influxdb": {
     "source": "path",
     "path": "packages/drivers/influxdb",
-    "feature": "plugin-influxdb",
+    "feature": "driver-influxdb",
     "description": "InfluxDB"
   },
   "victoriametrics": {
     "source": "path",
     "path": "packages/drivers/victoriametrics",
-    "feature": "plugin-victoriametrics",
+    "feature": "driver-victoriametrics",
     "description": "VictoriaMetrics"
   },
   "hbase": {
     "source": "path",
     "path": "packages/drivers/hbase",
-    "feature": "plugin-hbase",
+    "feature": "driver-hbase",
     "description": "HBase REST"
   },
   "vector": {
     "source": "path",
     "path": "packages/drivers/vector",
-    "feature": "plugin-vector",
+    "feature": "driver-vector",
     "description": "Vector database (generic HTTP)"
   },
   "kiwi": {
     "source": "git",
     "git": "https://github.com/flyxl/datazen-driver-kiwi.git",
-    "feature": "plugin-kiwi",
+    "feature": "driver-kiwi",
     "description": "Kiwi cloud database proxy",
     "tauriPlugin": {
       "id": "kiwi",
@@ -109,13 +109,13 @@
     "source": "git",
     "git": "https://github.com/flyxl/datazen-driver-olap.git",
     "ref": "6a122aa4fc7455f7fdbb3ec0eb85e80500783b9a",
-    "feature": "plugin-olap",
+    "feature": "driver-olap",
     "description": "Presto / Trino OLAP engines"
   },
   "superset": {
     "source": "git",
     "git": "https://github.com/flyxl/datazen-driver-superset.git",
-    "feature": "plugin-superset",
+    "feature": "driver-superset",
     "description": "Superset data exploration platform"
   }
 }

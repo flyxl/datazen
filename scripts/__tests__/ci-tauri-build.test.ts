@@ -35,10 +35,10 @@ describe('ci-tauri-build args', () => {
   });
 
   it('omits --config unless updater is requested', () => {
-    expect(buildTauriArgs({ features: ['plugin-redis'] })).toEqual([
+    expect(buildTauriArgs({ features: ['driver-redis'] })).toEqual([
       'build',
       '-f',
-      'plugin-redis',
+      'driver-redis',
     ]);
   });
 

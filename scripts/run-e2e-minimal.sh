@@ -20,8 +20,8 @@
 #
 # 构建链（文档认可形式，见 docs/development/e2e-testing.md 与 e2e/run.mjs）：
 #   node scripts/with-plugin-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs
-#   → tauri build --debug -f webdriver,plugin-postgres,... （自带 webdriver feature 与
-#   `.plugin-features.json` 检查；beforeBuildCommand 负责生成 dist 并嵌入资产）。
+#   → tauri build --debug -f webdriver,driver-postgres,... （自带 webdriver feature 与
+#   `.driver-features.json` 检查；beforeBuildCommand 负责生成 dist 并嵌入资产）。
 #   禁止裸 `cargo build -p datazen --features webdriver`（会报 asset not found 或
 #   4445 不监听）。底层 cargo 天然增量编译并尊重既有 CARGO_TARGET_DIR；
 #   --skip-build 可跳过构建复用既有产物。
@@ -37,7 +37,7 @@
 #
 # 已知副作用（正常瞬态，脚本不做任何 git 操作）：
 #   - 注入周期会使 src-tauri/Cargo.lock 相对 HEAD 变化，由编排方在提交前还原；
-#   - 包装器可能留下 .plugin-file-stash/（有孤儿清理机制），不要动也不要提交；
+#   - 包装器可能留下 .driver-file-stash/（有孤儿清理机制），不要动也不要提交；
 #   - 注入会改写 gitignored 的 src-tauri/capabilities/default.json，脚本已做快照并
 #     在退出时还原（见下方 trap）；
 #   - .regression-home/ 为沙箱 HOME（已 gitignore），可整目录删除。
@@ -253,7 +253,7 @@ if [[ "${E2E_ISOLATE_HOME:-0}" == "1" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# ① codegen 就绪检查（generated.ts / plugin_init.rs 缺失则补齐 basic 选型）
+# ① codegen 就绪检查（generated.ts / driver_init.rs 缺失则补齐 basic 选型）
 # ---------------------------------------------------------------------------
 check_codegen() {
   local missing=0
@@ -261,8 +261,8 @@ check_codegen() {
     echo "  缺少 src/plugins/generated.ts"
     missing=1
   }
-  [[ -f src-tauri/src/plugin_init.rs ]] || {
-    echo "  缺少 src-tauri/src/plugin_init.rs"
+  [[ -f src-tauri/src/driver_init.rs ]] || {
+    echo "  缺少 src-tauri/src/driver_init.rs"
     missing=1
   }
   if ((missing)); then

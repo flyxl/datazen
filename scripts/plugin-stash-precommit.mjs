@@ -9,7 +9,7 @@
  *   - Detect tracked files that still carry injection (plugin compile ran).
  *   - For those files only: strip injection while keeping user edits
  *     (e.g. new window labels in capabilities).
- *   - Gitignored codegen (generated.ts / plugin_init.rs) is left as-is.
+ *   - Gitignored codegen (generated.ts / driver_init.rs) is left as-is.
  *
  * Exit codes:
  *   0 — clean / restored successfully
@@ -49,9 +49,9 @@ export function hasInjectedCargoContent(content) {
   return false;
 }
 
-export function hasInjectedPluginInit(content) {
+export function hasInjectedDriverInit(content) {
   if (!content) return false;
-  return /^extern crate |^#\[cfg\(feature = "plugin-/m.test(content);
+  return /^extern crate |^#\[cfg\(feature = "driver-/m.test(content);
 }
 
 export function hasInjectedGeneratedTs(content) {
@@ -90,7 +90,7 @@ function escapeRegex(s) {
  */
 export function fileHasInjection(relPath, content, pluginIds = PLUGIN_ACL_IDS) {
   if (relPath.endsWith('Cargo.toml')) return hasInjectedCargoContent(content);
-  if (relPath.endsWith('plugin_init.rs')) return hasInjectedPluginInit(content);
+  if (relPath.endsWith('driver_init.rs')) return hasInjectedDriverInit(content);
   if (relPath.endsWith('generated-locales.ts')) return hasInjectedGeneratedLocales(content);
   if (relPath.endsWith('generated.ts')) return hasInjectedGeneratedTs(content);
   if (relPath.endsWith('capabilities/default.json')) {

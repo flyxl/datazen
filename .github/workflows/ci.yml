@@ -80,7 +80,7 @@ jobs:
 
       - name: Rust unit tests (datazen)
         run: |
-          FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.plugin-features.json','utf8')).features.join(','))")
+          FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
           cargo test -p datazen --lib --features "$FEATURES"
 
       - name: Rust unit tests (basic path drivers)

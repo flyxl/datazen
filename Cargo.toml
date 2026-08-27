@@ -24,6 +24,6 @@ lto = true
 codegen-units = 1
 opt-level = "s"
 
-# Plugin patches — injected by resolve-drivers.mjs at build time; do NOT add manually.
-# <<plugin-patches>>
-# <</plugin-patches>>
+# Driver patches — injected by resolve-drivers.mjs at build time; do NOT add manually.
+# <<driver-patches>>
+# <</driver-patches>>

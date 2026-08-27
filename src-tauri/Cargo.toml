@@ -50,8 +50,8 @@ reqwest = { version = "0.13.3", features = ["json", "cookies", "stream", "query"
 futures-util = "0.3"
 
 # Driver crates — injected by resolve-drivers.mjs at build time; do NOT add manually.
-# <<plugin-dependencies>>
-# <</plugin-dependencies>>
+# <<driver-dependencies>>
+# <</driver-dependencies>>
 rmcp = { version = "2.2.0", features = ["server", "client", "transport-io", "transport-child-process", "transport-streamable-http-server", "macros", "schemars"] }
 schemars = "1.2.2"
 tokio-util = { version = "0.7.19", features = ["rt", "compat"] }
@@ -72,8 +72,8 @@ sha2 = "0.10"
 default = []
 webdriver = ["tauri-plugin-webdriver"]
 # Driver features — injected by resolve-drivers.mjs at build time; do NOT add manually.
-# <<plugin-features>>
-# <</plugin-features>>
+# <<driver-features>>
+# <</driver-features>>
 
 
 [dev-dependencies]
@@ -85,6 +85,6 @@ datazen-driver-mysql = { path = "../packages/drivers/mysql" }
 datazen-driver-sqlite = { path = "../packages/drivers/sqlite" }
 
 [lints.rust]
-# `plugin-olap` is injected by resolve-drivers.mjs at build time; declare it here
+# `driver-olap` is injected by resolve-drivers.mjs at build time; declare it here
 # so standalone `cargo check` does not treat it as an unexpected cfg.
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("plugin-olap"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("driver-olap"))'] }

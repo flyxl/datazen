@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * ci-tauri-build.mjs — run the Tauri CLI using .plugin-features.json.
+ * ci-tauri-build.mjs — run the Tauri CLI using .driver-features.json.
  *
  * Used by CI inside with-plugin-inject so we never nest `bash -c` through
  * Node spawn (that loses the -c script argument on Windows).
@@ -76,9 +76,9 @@ function main() {
   const targetArg = process.argv.find((a) => a.startsWith('--target='));
   const target = targetArg ? targetArg.slice('--target='.length) : null;
 
-  const featuresPath = resolve(ROOT, '.plugin-features.json');
+  const featuresPath = resolve(ROOT, '.driver-features.json');
   if (!existsSync(featuresPath)) {
-    console.error('[ci-tauri-build] missing .plugin-features.json — run resolve-drivers first');
+    console.error('[ci-tauri-build] missing .driver-features.json — run resolve-drivers first');
     process.exit(1);
   }
 

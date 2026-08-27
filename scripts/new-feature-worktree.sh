@@ -7,7 +7,7 @@
 # 自动完成:
 #   1. git worktree + 新分支
 #   2. node_modules 软链到主检出（禁 pnpm install 的前提）
-#   3. resolve-drivers --codegen-only --drivers=basic（generated*.ts / plugin_init.rs）
+#   3. resolve-drivers --codegen-only --drivers=basic（generated*.ts / driver_init.rs）
 #   4. 拷贝主检出 docs/development 下未跟踪的规格文档（worktree 里不存在且不可提交）
 #   5. 拷贝 e2e/.env（如存在）
 set -euo pipefail
