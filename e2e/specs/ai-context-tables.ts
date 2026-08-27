@@ -6,6 +6,7 @@ import { execSync } from 'node:child_process';
 import { t } from '../i18n.js';
 import {
   closeExtraWindows,
+  captureJourneyStep,
   waitForNewConnectionDialog,
   findCardByName,
   expandAllGroups,
@@ -130,6 +131,7 @@ async function openAiChatPanel() {
   });
   expect(clicked).toBe(true);
   await browser.pause(800);
+  await captureJourneyStep('ai-chat-open');
 }
 
 async function aiChatTextarea() {
@@ -190,6 +192,7 @@ async function selectFirstTableItem() {
   );
   await $('[data-testid="context-item"][data-kind="table"]').click();
   await browser.pause(300);
+  await captureJourneyStep('ai-context-table-selected');
 }
 
 describe('AI context tables (CTX-T01~T06)', () => {
@@ -250,6 +253,7 @@ describe('AI context tables (CTX-T01~T06)', () => {
     await waitForPicker();
     await expect($('[data-testid="context-cat-tables"]')).toBeExisting();
     await expect($('[data-testid="context-cat-files"]')).toBeExisting();
+    await captureJourneyStep('ai-context-categories');
   });
 
   it('CTX-T02: drill Tables then back', async () => {

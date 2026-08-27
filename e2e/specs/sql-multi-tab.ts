@@ -5,26 +5,13 @@
  * Covers: TC-QUERY-009 ~ TC-QUERY-012
  */
 import { expect, browser, $ } from '@wdio/globals';
-import { connectSeededPgInWorkspace, closeExtraWindows, executeSQL } from '../helpers.js';
-
-async function openFirstQueryTab() {
-  // First tab: workspace-home quick action
-  const quickAction = await $('[data-testid="home-quick-new-query"]');
-  if (await quickAction.isExisting()) {
-    await quickAction.click();
-  } else {
-    // Already in connected state with toolbar
-    const toolbarBtn = await $('[data-testid="conn-toolbar-new-query"]');
-    if (await toolbarBtn.isExisting()) {
-      await toolbarBtn.click();
-    }
-  }
-  let execBtn = await $('[data-testid="editor-execute-button"]');
-  if (!(await execBtn.isExisting())) {
-    execBtn = await $('button[aria-label="执行"]');
-  }
-  await execBtn.waitForDisplayed({ timeout: 10000 });
-}
+import {
+  captureJourneyStep,
+  connectSeededPgInWorkspace,
+  closeExtraWindows,
+  executeSQL,
+  openQueryTab,
+} from '../helpers.js';
 
 describe('SQL 多 Tab 并发 (TC-QUERY-009~012)', () => {
   let mainWindow: string;
@@ -33,7 +20,7 @@ describe('SQL 多 Tab 并发 (TC-QUERY-009~012)', () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
     await browser.pause(1000);
-    await openFirstQueryTab();
+    await openQueryTab();
   });
 
   after(async () => {
@@ -55,22 +42,14 @@ describe('SQL 多 Tab 并发 (TC-QUERY-009~012)', () => {
   });
 
   it('TC-QUERY-011: 新建 tab 后编辑器应为空', async () => {
-    // After first tab, toolbar button should be available
-    const btn = await $('[data-testid="conn-toolbar-new-query"]');
-    if (await btn.isExisting()) {
-      await btn.click();
-    }
-    let execBtn = await $('[data-testid="editor-execute-button"]');
-    if (!(await execBtn.isExisting())) {
-      execBtn = await $('button[aria-label="执行"]');
-    }
-    await execBtn.waitForDisplayed({ timeout: 10000 });
+    await openQueryTab();
     await browser.pause(1000);
     const editorText = await browser.execute(() => {
       const el = document.querySelector('.cm-editor .cm-content') as HTMLElement;
       return el?.textContent?.trim() ?? '';
     });
     expect(editorText.length).toBe(0);
+    await captureJourneyStep('sql-new-empty-tab');
   });
 
   it('TC-QUERY-012: 新 tab 执行查询后结果独立', async () => {

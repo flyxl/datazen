@@ -1,5 +1,5 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
-import { closeExtraWindows } from '../helpers.js';
+import { closeExtraWindows, captureJourneyStep, switchWorkspaceNav } from '../helpers.js';
 import { t } from '../i18n.js';
 
 /**
@@ -93,11 +93,11 @@ async function findAndClickButton(textFragments: string[]) {
 async function openWorkflowWorkspace(mainHandle: string) {
   await browser.switchToWindow(mainHandle);
   await browser.pause(300);
-  const workflowNav = await $('[data-testid="workspace-nav-workflow"]');
-  await workflowNav.waitForDisplayed({ timeout: 15000 });
-  await workflowNav.click();
-  const workflowWorkspace = await $('[data-testid="workflow-workspace"]');
-  await workflowWorkspace.waitForDisplayed({ timeout: 15000 });
+  await switchWorkspaceNav(
+    'workspace-nav-workflow',
+    'workflow-workspace',
+    'workflow-workspace-open',
+  );
 }
 
 async function waitForWorkflowList() {
@@ -115,6 +115,7 @@ async function selectWorkflow() {
   const wfItem = await $('div*=E2E Tab Test WF');
   await wfItem.click();
   await browser.pause(500);
+  await captureJourneyStep('workflow-selected');
 }
 
 async function executeAndWait() {
@@ -144,6 +145,7 @@ async function executeAndWait() {
   );
 
   await browser.pause(500);
+  await captureJourneyStep('workflow-executed');
 }
 
 describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
@@ -206,6 +208,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     expect(text).toContain(t('workflows.delete'));
     expect(text).not.toContain(t('workflows.run'));
     await browser.keys('Escape');
+    await captureJourneyStep('workflow-context-menu');
   });
 
   it('WF-CTX-002: 执行记录右键不弹出菜单', async () => {
@@ -265,6 +268,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     const stepA = await $('button*=step_a');
     await stepA.click();
     await browser.pause(500);
+    await captureJourneyStep('workflow-step-result');
 
     const body = await $('body').getText();
     expect(body.includes('val') || body.includes('label') || body.includes('alpha')).toBe(true);
