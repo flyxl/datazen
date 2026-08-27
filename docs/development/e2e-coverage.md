@@ -90,6 +90,14 @@
 | 数据传输窗口（V1 向导 shell） | `data-transfer-window.ts` | Partial（打开 / 步骤 / 模式 / 未选端点校验；跨方言 Execute 未 E2E） |
 | 数据传输真实迁移闭环（preview + execute 后目标 count） | `data-transfer-window.ts` (DTW-X / DT-CL) | Covered |
 | 连接 Pin 置顶 | `ops-pin.ts` | Covered |
+| 连接边界：快速新建/删除、并发 tab、生命周期 | `connection-edge-cases.ts` (TC-EDGE-009~013) | Covered |
+| 设置持久化：主题/语言/字体/确认删除开关 | `settings-persistence.ts` (TC-SET-007~010) | Covered |
+| 窗口操作：单窗口模式、tab 状态 | `window-operations.ts` (TC-WIN-001~005) | Covered |
+| SQL 多 Tab：独立查询结果 | `sql-multi-tab.ts` (TC-QUERY-009~012) | Covered |
+| Schema 树完整性：加载/右键/DDL 后刷新 | `schema-tree-completeness.ts` (TC-TREE-001~006) | Covered |
+| 表批量操作：多选/分页边界 | `table-batch-ops.ts` (TC-TABLE-009~014) | Covered |
+| 工作流完整生命周期 | `workflow-lifecycle.ts` (TC-WF-007~012) | Covered |
+| AI 无 Key 降级 UI | `ai-no-key-fallback.ts` | Covered |
 | 对象过滤器对话框与树过滤持久化 | `object-filter.ts` | Covered |
 | 进程列表 / 服务器状态面板 | `ops-process-server.ts` | Covered |
 | DB 节点备份/还原预填入口 | `ops-ddl-backup.ts` | Covered |

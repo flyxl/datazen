@@ -22,6 +22,12 @@ export const config: WebdriverIO.Config = {
       './specs/backup-window.ts',
       './specs/schema-diff-window.ts',
       './specs/data-sync-window.ts',
+      './specs/connection-edge-cases.ts',
+      './specs/settings-persistence.ts',
+      './specs/window-operations.ts',
+      './specs/unified-main-window.ts',
+      './specs/unified-tab-bar.ts',
+      './specs/plugins.spec.ts',
     ],
     // Real-DB Host specs incl. the host contract matrix (was `pnpm e2e:db`)
     db: [
@@ -41,6 +47,12 @@ export const config: WebdriverIO.Config = {
       './specs/data-sync-real.ts',
       './specs/client-parity.ts',
       './specs/host-contract-matrix.ts',
+      './specs/sql-multi-tab.ts',
+      './specs/schema-tree-completeness.ts',
+      './specs/table-batch-ops.ts',
+      './specs/workflow-lifecycle.ts',
+      './specs/er-diagram.ts',
+      './specs/data-transfer-window.ts',
     ],
     // Host contract matrix × PG/MySQL/SQLite (`pnpm e2e:contract:matrix`,
     // `pnpm e2e:contract:pg` adds --mochaOpts.grep 'Host contract @ postgres')
@@ -53,6 +65,7 @@ export const config: WebdriverIO.Config = {
       './specs/ai-context.ts',
       './specs/ai-context-tables.ts',
       './specs/ai-code-block.ts',
+      './specs/ai-no-key-fallback.ts',
     ],
     // App-data backup + i18n locales (`pnpm e2e:i18n-backup`)
     'i18n-backup': [
@@ -92,21 +105,30 @@ export const config: WebdriverIO.Config = {
 
     // Force language to zh-CN so all Chinese selectors work
     await browser.executeAsync((done: (r: unknown) => void) => {
-      (window as any).__TAURI_INTERNALS__
-        .invoke('save_settings', {
-          settings: {
-            theme: 'dark',
-            language: 'zh-CN',
-            limitSelectResults: true,
-            queryResultLimit: 1000,
-            editorFontSize: 14,
-            editorFontFamily: 'monospace',
-            confirmOnDelete: true,
-            autoCommit: true, // per-statement isolation; false leaves PG aborted after first error
-            safeMode: true,
-            defaultPageSize: 50,
-          },
-        })
+      const inv = (window as any).__TAURI_INTERNALS__.invoke.bind(
+        (window as any).__TAURI_INTERNALS__,
+      );
+      inv('get_settings')
+        .then((settings: Record<string, unknown>) =>
+          inv('save_settings', {
+            settings: {
+              ...settings,
+              language: 'zh-CN',
+              theme:
+                settings.theme && typeof settings.theme === 'object'
+                  ? { ...(settings.theme as object), mode: 'dark' }
+                  : { mode: 'dark', packId: null },
+              limitSelectResults: true,
+              queryResultLimit: 1000,
+              editorFontSize: 14,
+              editorFontFamily: 'monospace',
+              confirmOnDelete: true,
+              autoCommit: true,
+              safeMode: true,
+              defaultPageSize: 50,
+            },
+          }),
+        )
         .then(() => done(null))
         .catch((e: unknown) => done(String(e)));
     });
