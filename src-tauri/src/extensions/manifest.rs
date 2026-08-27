@@ -21,7 +21,8 @@ pub const MAX_EXTENSION_FILES: usize = 2000;
 const MAX_SVG_BYTES: usize = 256 * 1024;
 
 static EXTENSION_ID_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[a-z0-9][a-z0-9-]{0,30}\.[a-z][a-z0-9-]{1,31}$").expect("valid extension id regex")
+    Regex::new(r"^[a-z0-9][a-z0-9-]{0,30}\.[a-z][a-z0-9-]{1,31}$")
+        .expect("valid extension id regex")
 });
 
 static SEMVER_RE: LazyLock<Regex> = LazyLock::new(|| {

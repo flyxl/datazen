@@ -13,7 +13,7 @@ use uuid::Uuid;
 use zip::ZipArchive;
 
 use super::manifest::{
-    allowed_extension_file_ext, parse_manifest, validate_manifest, validate_extension_dir,
+    allowed_extension_file_ext, parse_manifest, validate_extension_dir, validate_manifest,
     ExtensionManifest, MAX_EXTENSION_FILES, MAX_EXTENSION_UNCOMPRESSED,
 };
 use crate::app_data_archive::MAX_COMPRESSION_RATIO;
