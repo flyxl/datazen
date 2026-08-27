@@ -149,21 +149,18 @@ bash e2e/setup-e2e-env.sh
 
 ### Journey 截图留痕（`--screenshot`）
 
-为调试或文档留痕，可在 E2E 运行时开启每个 `it()` 结束后的全屏截图：
+为调试或文档留痕，可在 E2E 运行时保存 **UI 状态发生变化** 的全屏截图：
 
 ```bash
-# 全量（需已有 webdriver 构建）
-pnpm e2e:screenshot
-
-# 指定 spec
 pnpm e2e:skip-build -- --screenshot --spec e2e/specs/main-window.ts
 ```
 
-`e2e/run.mjs` 解析 `--screenshot` 并设置 `E2E_SCREENSHOT=1`；`e2e/wdio.conf.ts` 在每个 `it()` 的 **开始/结束** 各截一张，且 `e2e/helpers.ts` 中常用 journey 步骤（连接、开查询 Tab、执行 SQL、切表/子 Tab、打开设置、工作区导航、ER 图入口、DzSelect 等）会自动留痕。PNG 按 journey 分子目录：
+- `e2e/run.mjs` 设置 `E2E_SCREENSHOT=1` 并 `mkdir -p e2e/screenshots/`（目录 gitignored，不存在时会自动创建）
+- 仅在 **helpers / spec 显式调用** `captureJourneyStep()` 或关键 helper（连接、开 Tab、执行 SQL 等）时留痕；**不再**对每个 `it()` 无脑截 start/end
+- 连续帧若 PNG 内容相同会自动去重（失败用例额外强制截一张 `fail`）
+- 输出：`e2e/screenshots/<spec>/<test-title>/01_connect-seeded-pg.png` …
 
-`e2e/screenshots/<spec>/<test-title>/01_start.png` … `02_connect-seeded-pg.png` … `99_end-pass.png`
-
-spec 内自定义中间步骤可调用 `captureJourneyStep('my-step')`（从 `e2e/helpers.ts` 导入）。目录 gitignored。营销用固定场景截图仍见 `e2e/specs/zz-screenshots.ts`。
+纯 IPC 用例（无 UI 操作）通常 **零截图**，属预期行为。营销固定场景仍见 `e2e/specs/zz-screenshots.ts`。
 
 ## 5. 架构说明
 

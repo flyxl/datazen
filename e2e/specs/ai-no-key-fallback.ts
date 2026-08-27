@@ -51,7 +51,7 @@ describe('AI 面板无 Key 降级 (TC-AI-007~009)', () => {
 
     const notConfigured = await $('[data-testid="ai-not-configured"]');
     await notConfigured.waitForDisplayed({ timeout: 10000 });
-    await captureJourneyStep('ai-panel-no-key');
+    await captureJourneyStep('ai-panel-no-key', 0, true);
     const body = await $('body').getText();
     expect(body.includes('Uncaught') || body.includes('Fatal')).toBe(false);
   });
