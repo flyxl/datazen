@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { PathInput } from '../../components/ui/PathInput';
@@ -22,14 +23,18 @@ export function McpClientSection() {
   const savedConfigs = useSettingsStore((s) => s.settings.mcpClientServers ?? []);
   const {
     mcpServers,
+    mcpTools,
     mcpConnecting,
     mcpError,
     connectMcpServer,
     disconnectMcpServer,
     loadMcpServers,
+    loadMcpTools,
     saveMcpClientServers,
     clearMcpError,
   } = useAiStore();
+
+  const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set());
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -41,7 +46,20 @@ export function McpClientSection() {
 
   useEffect(() => {
     void loadMcpServers();
-  }, [loadMcpServers]);
+    void loadMcpTools();
+  }, [loadMcpServers, loadMcpTools]);
+
+  const toggleServerTools = (serverId: string) => {
+    setExpandedServers((prev) => {
+      const next = new Set(prev);
+      if (next.has(serverId)) {
+        next.delete(serverId);
+      } else {
+        next.add(serverId);
+      }
+      return next;
+    });
+  };
 
   const startAdd = () => {
     setEditingId(null);
@@ -237,22 +255,64 @@ export function McpClientSection() {
         <p className="text-xs text-fg-muted">{t('mcpClient.noServers')}</p>
       ) : (
         <div className="space-y-1">
-          {mcpServers.map((s) => (
-            <div
-              key={s.serverId}
-              className="flex items-center justify-between rounded-md border border-edge bg-surface p-2"
-            >
-              <div>
-                <span className="text-sm text-fg">{s.serverName}</span>
-                <span className="ml-2 text-xs text-fg-muted">
-                  ({s.toolsCount} {t('mcpClient.tools')})
-                </span>
+          {mcpServers.map((s) => {
+            const serverTools = (mcpTools ?? []).filter((tool) => tool.serverId === s.serverId);
+            const expanded = expandedServers.has(s.serverId);
+            return (
+              <div
+                key={s.serverId}
+                className="rounded-md border border-edge bg-surface p-2"
+              >
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center gap-1 text-left"
+                    onClick={() => toggleServerTools(s.serverId)}
+                    aria-expanded={expanded}
+                  >
+                    {expanded ? (
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-fg-muted" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-fg-muted" />
+                    )}
+                    <span className="text-sm text-fg">{s.serverName}</span>
+                    <span className="text-xs text-fg-muted">
+                      ({s.toolsCount} {t('mcpClient.tools')})
+                    </span>
+                  </button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => void disconnectMcpServer(s.serverId)}
+                  >
+                    {t('mcpClient.disconnect')}
+                  </Button>
+                </div>
+                {expanded && serverTools.length > 0 && (
+                  <ul className="mt-2 space-y-1 border-t border-edge pt-2">
+                    {serverTools.map((tool) => (
+                      <li
+                        key={tool.qualifiedName}
+                        className="rounded border border-edge/60 bg-surface-alt px-2 py-1.5"
+                      >
+                        <div className="text-sm font-medium text-fg">{tool.toolName}</div>
+                        {tool.description && (
+                          <div className="text-xs text-fg-muted">{tool.description}</div>
+                        )}
+                        <div className="mt-0.5 font-mono text-xs text-fg-muted">
+                          {tool.qualifiedName}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {expanded && serverTools.length === 0 && (
+                  <p className="mt-2 border-t border-edge pt-2 text-xs text-fg-muted">
+                    {t('mcpClient.noTools')}
+                  </p>
+                )}
               </div>
-              <Button variant="secondary" onClick={() => void disconnectMcpServer(s.serverId)}>
-                {t('mcpClient.disconnect')}
-              </Button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </>
