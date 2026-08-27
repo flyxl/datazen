@@ -1,17 +1,21 @@
-import zhCN, { type TranslationKey } from './zh-CN';
+import type { TranslationKey } from './zh-CN';
 import en from './en';
+import zhCN from './zh-CN';
+import {
+  BUILTIN_LOCALES,
+  builtinLocales,
+  BUILTIN_LOCALE_LABELS,
+  type BuiltinLocale,
+} from './builtinLocales';
 import type { MongoTranslationKey } from '../../packages/drivers/mongodb/locales/en';
 import { PLUGIN_LOCALES, type PluginTranslationKey } from '../plugins/generated-locales';
 
 export type { TranslationKey, PluginTranslationKey, MongoTranslationKey };
+export { BUILTIN_LOCALES, builtinLocales, BUILTIN_LOCALE_LABELS };
+export type { BuiltinLocale };
 
 /** Host keys plus merged plugin keys from enabled drivers. */
 export type I18nKey = TranslationKey | PluginTranslationKey | MongoTranslationKey;
-
-/** Built-in locales bundled with the application. */
-export const BUILTIN_LOCALES = ['en', 'zh-CN'] as const;
-
-export type BuiltinLocale = (typeof BUILTIN_LOCALES)[number];
 
 /**
  * Registered extension locale packs (added at runtime by language plugins).
@@ -51,11 +55,6 @@ export function getExtensionLocales(): Array<{ value: string; label: string }> {
   }));
 }
 
-const builtinLocales: Record<BuiltinLocale, Record<TranslationKey, string>> = {
-  en,
-  'zh-CN': zhCN,
-};
-
 const pluginLocalesEn = PLUGIN_LOCALES.en;
 
 function isBuiltinLocale(locale: string): locale is BuiltinLocale {
@@ -71,10 +70,10 @@ export function getTranslation(
 
   if (isBuiltinLocale(locale)) {
     const dict = builtinLocales[locale];
-    const pluginDict = PLUGIN_LOCALES[locale];
+    const pluginDict = PLUGIN_LOCALES[locale] as Record<string, string> | undefined;
     text =
       dict[key as TranslationKey] ??
-      pluginDict[key] ??
+      pluginDict?.[key] ??
       en[key as TranslationKey] ??
       pluginLocalesEn[key] ??
       zhCN[key as TranslationKey];

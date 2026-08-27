@@ -60,6 +60,7 @@ const RUST_TO_LOCALE = {
   'new-connection': 'common.newConnection',
   'data-sync': 'common.dataSync',
   'schema-diff': 'common.schemaDiff',
+  'data-transfer': 'common.dataTransfer',
   workflow: 'menu.workflow',
   dashboard: 'menu.dashboard',
   backup: 'common.backupDatabase',
@@ -78,10 +79,27 @@ const RUST_TO_LOCALE = {
   'ctx-add-favorite': 'common.addToFavorites',
 };
 
-const LOCALES = [
-  { code: 'en', file: 'src/locales/en.ts' },
-  { code: 'zh-CN', file: 'src/locales/zh-CN.ts' },
-];
+/**
+ * Built-in locale set comes from the same source of truth as the frontend
+ * (`src/locales/builtin-locales.json`, managed via `pnpm locales:*`). The
+ * native menus only ship the built-in languages — add a language there and
+ * rebuild, and the menu picks it up.
+ */
+function builtinLocales() {
+  let raw;
+  try {
+    raw = JSON.parse(readFileSync(resolve(ROOT, 'src/locales/builtin-locales.json'), 'utf-8'));
+  } catch {
+    return ['en', 'zh-CN'];
+  }
+  const entries = Array.isArray(raw?.locales) ? raw.locales : [];
+  return entries.map(({ code }) => code).filter((code) => typeof code === 'string' && code);
+}
+
+const LOCALES = builtinLocales().map((code) => ({
+  code,
+  file: `src/locales/${code}.ts`,
+}));
 
 function parseLocaleTs(source) {
   const map = new Map();
