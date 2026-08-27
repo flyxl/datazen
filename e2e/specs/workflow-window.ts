@@ -100,7 +100,22 @@ async function openWorkflowWorkspace(mainHandle: string) {
   );
 }
 
+async function switchToWorkflowsSidebarTab() {
+  await openWorkflowWorkspace(await browser.getWindowHandle());
+  await browser.execute(() => {
+    for (const btn of document.querySelectorAll('button')) {
+      const text = (btn.textContent ?? '').trim();
+      if (text === 'Workflows' || text.startsWith('Workflows')) {
+        btn.click();
+        return;
+      }
+    }
+  });
+  await browser.pause(400);
+}
+
 async function waitForWorkflowList() {
+  await switchToWorkflowsSidebarTab();
   await browser.waitUntil(
     async () => {
       const text = await $('body').getText();
@@ -108,6 +123,23 @@ async function waitForWorkflowList() {
     },
     { timeout: 8000, timeoutMsg: 'Timed out waiting for test workflow in list' },
   );
+}
+
+async function openWorkflowEditor(workflowName = 'E2E Tab Test WF') {
+  await waitForWorkflowList();
+  const opened = await browser.execute((name: string) => {
+    for (const edit of document.querySelectorAll('[data-testid="workflow-item-edit"]')) {
+      const row = edit.closest('.group');
+      if (row?.textContent?.includes(name)) {
+        (edit as HTMLElement).click();
+        return true;
+      }
+    }
+    return false;
+  }, workflowName);
+  expect(opened).toBe(true);
+  await browser.pause(600);
+  await $('[data-testid="workflow-editor-mode-tabs"]').waitForDisplayed({ timeout: 10000 });
 }
 
 async function selectWorkflow() {
@@ -196,18 +228,13 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     await expect(item).toBeDisplayed();
   });
 
-  it('WF-CTX-001: workflow 右键菜单无运行项', async () => {
+  it('WF-CTX-001: workflow 列表右键使用原生菜单（非 Web 菜单）', async () => {
     await openWorkflowWorkspace(mainWindow);
     await waitForWorkflowList();
     const item = await $('div*=E2E Tab Test WF');
     await item.click({ button: 'right' });
-    const menu = await $('[data-testid="web-context-menu"]');
-    await menu.waitForDisplayed({ timeout: 5000 });
-    const text = await menu.getText();
-    expect(text).toContain(t('workflows.open'));
-    expect(text).toContain(t('workflows.delete'));
-    expect(text).not.toContain(t('workflows.run'));
-    await browser.keys('Escape');
+    await browser.pause(400);
+    expect(await $('[data-testid="web-context-menu"]').isExisting()).toBe(false);
     await captureJourneyStep('workflow-context-menu');
   });
 
@@ -518,33 +545,23 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
   });
 
   it('WF-SQL-001: 可视化编辑查询步骤应使用 SQL 高亮编辑器', async () => {
-    await openWorkflowWorkspace(mainWindow);
-    await waitForWorkflowList();
-    await browser.execute(() => {
-      const edit = document.querySelector(
-        '[data-testid="workflow-item-edit"]',
-      ) as HTMLElement | null;
-      edit?.click();
-    });
+    await openWorkflowEditor();
     const editor = await $('[data-testid="workflow-sql-editor"]');
     await editor.waitForDisplayed({ timeout: 10000 });
     await expect(await $('[data-testid="workflow-sql-editor"] .cm-editor')).toBeDisplayed();
   });
 
-  it('WF-SQL-002: 编辑 workflow 时 SQL 编辑器右键为 Web 菜单', async () => {
+  it('WF-SQL-002: 编辑 workflow 时 SQL 编辑器右键为原生菜单', async () => {
+    await openWorkflowEditor();
     const editor = await $('[data-testid="workflow-sql-editor"] .cm-editor');
     await editor.waitForDisplayed({ timeout: 5000 });
     await editor.click({ button: 'right' });
-    const menu = await $('[data-testid="web-context-menu"]');
-    await menu.waitForDisplayed({ timeout: 5000 });
-    const text = await menu.getText();
-    expect(text).toContain(t('query.format'));
-    expect(text).toContain(t('query.comment'));
-    await browser.keys('Escape');
+    await browser.pause(400);
+    expect(await $('[data-testid="web-context-menu"]').isExisting()).toBe(false);
   });
 
   it('WF-YAML-001: 应能切换到 YAML 编辑模式', async () => {
-    await selectWorkflow();
+    await openWorkflowEditor();
     const yamlTab = await $('[data-testid="workflow-mode-yaml"]');
     await yamlTab.waitForDisplayed({ timeout: 10000 });
     await yamlTab.click();
@@ -553,6 +570,10 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
   });
 
   it('WF-YAML-002: YAML 模式应显示保存入口', async () => {
+    await openWorkflowEditor();
+    const yamlTab = await $('[data-testid="workflow-mode-yaml"]');
+    await yamlTab.click();
+    await browser.pause(400);
     const saveBtn = await $('[data-testid="workflow-yaml-save"]');
     await expect(saveBtn).toBeDisplayed();
     const visualTab = await $('[data-testid="workflow-mode-visual"]');
