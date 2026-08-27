@@ -3,6 +3,7 @@ import {
   closeNewConnectionDialogFromUi,
   openNewConnectionDialogFromUi,
   closeExtraWindows,
+  captureJourneyStep,
   expandAllGroups,
 } from '../helpers.js';
 
@@ -91,6 +92,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await expect(fileInput).toBeDisplayed();
     const hostInput = await $('input[placeholder="prod-db.example.com"]');
     await expect(hostInput).not.toBeExisting();
+    await captureJourneyStep('new-conn-sqlite-fields');
   });
 
   it('切换数据库类型为 MySQL 应更新默认端口 (CM-002)', async () => {
