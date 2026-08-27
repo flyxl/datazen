@@ -858,6 +858,23 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
+/// Convert connected MCP client tools into AI `ToolDefinition`s (Phase 3 wires into chat).
+pub(crate) async fn mcp_tool_definitions(state: &AppState) -> Vec<ToolDefinition> {
+    state
+        .mcp_client_manager
+        .all_tools()
+        .await
+        .into_iter()
+        .map(|tool| ToolDefinition {
+            name: tool.qualified_name,
+            description: tool
+                .description
+                .unwrap_or_else(|| tool.tool_name.clone()),
+            parameters: tool.input_schema,
+        })
+        .collect()
+}
+
 fn is_db_tool(name: &str) -> bool {
     matches!(
         name,
@@ -2537,6 +2554,14 @@ mod tests {
             extra: serde_json::json!({}),
         };
         assert!(ai_validate_config_impl(&test.state, cfg).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn mcp_tool_definitions_empty_when_no_connections() {
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::new().await;
+        assert!(mcp_tool_definitions(&test.state).await.is_empty());
     }
 }
 
