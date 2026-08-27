@@ -12,6 +12,7 @@ const {
   openTabMock,
   inspectPackageMock,
   installFromPathMock,
+  readPluginFileMock,
   confirmSpy,
 } = vi.hoisted(() => ({
   pluginState: {
@@ -26,6 +27,7 @@ const {
   openTabMock: vi.fn(),
   inspectPackageMock: vi.fn(),
   installFromPathMock: vi.fn(),
+  readPluginFileMock: vi.fn(),
   confirmSpy: vi.fn(),
 }));
 
@@ -64,6 +66,7 @@ vi.mock('../../../commands/plugins', () => ({
   pluginCommands: {
     inspectPluginPackage: (...args: unknown[]) => inspectPackageMock(...args),
     installPluginFromPath: (...args: unknown[]) => installFromPathMock(...args),
+    readPluginFile: (...args: unknown[]) => readPluginFileMock(...args),
   },
 }));
 
@@ -108,6 +111,7 @@ beforeEach(() => {
     permissions: ['storage:local'],
   });
   installFromPathMock.mockReset();
+  readPluginFileMock.mockReset().mockResolvedValue(new Uint8Array([137, 80, 78, 71]));
   closeByPluginMock.mockReset();
   openTabMock.mockReset();
   confirmSpy.mockReset().mockResolvedValue(true);
@@ -382,5 +386,47 @@ describe('PluginManagementPage', () => {
     // Nothing was written; dialog stays open so the user can retry or copy.
     expect(installFromPathMock).not.toHaveBeenCalled();
     expect(screen.getByText('plugins.install.title')).toBeInTheDocument();
+  });
+
+  it('renders the package icon image when the plugin declares one', async () => {
+    pluginState.plugins = [
+      makePlugin({
+        id: 'acme.branded',
+        name: 'Branded',
+        icon: 'assets/logo.svg',
+        enabled: true,
+      }),
+    ];
+    readPluginFileMock.mockResolvedValue(new Uint8Array([60, 115, 118, 103])); // "<svg"
+
+    render(<PluginManagementPage />);
+
+    const iconSlot = within(card('acme.branded')).getByTestId('plugin-card-icon');
+    await waitFor(() =>
+      expect(within(iconSlot).getByTestId('plugin-card-icon-img')).toBeInTheDocument(),
+    );
+    expect(readPluginFileMock).toHaveBeenCalledWith('acme.branded', 'assets/logo.svg');
+  });
+
+  it('falls back to the letter avatar when no icon is declared', () => {
+    pluginState.plugins = [makePlugin({ id: 'acme.plain', name: 'Plain' })];
+    render(<PluginManagementPage />);
+
+    const slot = within(card('acme.plain')).getByTestId('plugin-card-icon');
+    expect(slot).toHaveTextContent('P');
+    expect(slot.querySelector('[data-testid="plugin-card-icon-img"]')).toBeNull();
+    expect(readPluginFileMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the letter avatar when the icon cannot be read', async () => {
+    pluginState.plugins = [
+      makePlugin({ id: 'acme.broken', name: 'Broken', icon: 'assets/icon.svg' }),
+    ];
+    readPluginFileMock.mockRejectedValue(new Error('plugin disabled or missing'));
+
+    render(<PluginManagementPage />);
+    const slot = within(card('acme.broken')).getByTestId('plugin-card-icon');
+    await waitFor(() => expect(slot).toHaveTextContent('B'));
+    expect(readPluginFileMock).toHaveBeenCalledWith('acme.broken', 'assets/icon.svg');
   });
 });

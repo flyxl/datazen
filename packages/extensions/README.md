@@ -22,6 +22,7 @@ packages/extensions/<publisher>.<name>/
   "name": "显示名",
   "version": "1.0.0",              // semver
   "apiVersion": 2,
+  "icon": "assets/icon.png",       // 可选：插件方形图标（png/webp/svg），显示在插件管理列表
   "entry": "index.html",           // 仅 pages 需要；纯主题插件可省略
   "contributes": {
     "pages":  [{ "id": "page-id", "title": "…", "icon": "assets/icon.svg", "showIn": "workspace" }],
@@ -30,6 +31,8 @@ packages/extensions/<publisher>.<name>/
   "permissions": ["context:connections", "command:invoke", "storage:local", "ui:notify"]
 }
 ```
+
+> `icon`（可选，插件列表用）：相对路径的方形品牌图标，`png|webp|svg`；与 `entry`/`pages[].icon` 一样走规则 5 安全路径校验，声明了就必须存在。
 
 文件白名单：`html/js/mjs/css/json/svg/png/webp/woff2/woff`；SVG ≤256KB 且禁止 `<script>`/事件处理器/`javascript:` URL；整包 ≤50MB、≤2000 文件；拒绝符号链接与路径穿越。
 
