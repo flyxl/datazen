@@ -90,6 +90,7 @@ pub fn filter_tables_by_schema(
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct GenerateSqlRequest {
     pub source_db_session_id: String,
     pub target_db_session_id: String,

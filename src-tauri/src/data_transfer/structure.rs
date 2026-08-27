@@ -13,7 +13,6 @@ use crate::transfer::ir::{IRTable, IRType};
 use super::error::TransferError;
 use super::model::{
     TableExecutionResult, TableInspectResult, TableMappingStatus, TransferJob, TransferMode,
-    WriteMode,
 };
 use super::preview::build_create_ddl;
 
@@ -196,6 +195,7 @@ pub fn table_eligible_for_data(table: &TableInspectResult, job: &TransferJob) ->
 
 #[cfg(test)]
 mod tests {
+    use super::super::model::WriteMode;
     use super::*;
     use crate::db::Value;
     use crate::transfer::ir::{IRColumn, IRDefault};

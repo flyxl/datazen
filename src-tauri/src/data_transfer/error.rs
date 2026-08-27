@@ -9,6 +9,7 @@ pub enum TransferError {
     #[error("{0}")]
     Unsupported(String),
     #[error("{0}")]
+    #[allow(dead_code)]
     NotImplemented(String),
     #[error("{0}")]
     Cancelled(String),
@@ -23,6 +24,7 @@ impl TransferError {
         Self::Unsupported(msg.into())
     }
 
+    #[allow(dead_code)]
     pub fn not_implemented(msg: impl Into<String>) -> Self {
         Self::NotImplemented(msg.into())
     }

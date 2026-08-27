@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub const MIN_REFRESH_SEC: u32 = 30;
+#[allow(dead_code)]
 pub const REFRESH_WARN_BELOW_SEC: u32 = 60;
 
 pub fn clamp_refresh_sec(n: u32) -> u32 {
@@ -8,6 +9,7 @@ pub fn clamp_refresh_sec(n: u32) -> u32 {
 }
 
 /// Non-blocking UI warning when interval refresh is denser than this threshold.
+#[allow(dead_code)]
 pub fn should_warn_refresh_sec(refresh_sec: u32) -> bool {
     refresh_sec < REFRESH_WARN_BELOW_SEC
 }
