@@ -799,6 +799,36 @@ async fn ai_chat_stream_http_error_propagates() {
 }
 
 #[tokio::test]
+async fn classify_tool_mcp_db_and_ask_paths() {
+    assert_eq!(classify_tool("ask_questions"), ToolKind::AskQuestions);
+    assert_eq!(
+        classify_tool("list_tables"),
+        ToolKind::Db("list_tables".into())
+    );
+    assert_eq!(
+        classify_tool("mcp/browser/search"),
+        ToolKind::Mcp {
+            server_id: "browser".into(),
+            tool_name: "search".into(),
+        }
+    );
+    assert_eq!(classify_tool("not_a_tool"), ToolKind::Unknown);
+}
+
+#[tokio::test]
+async fn execute_mcp_tool_not_connected_returns_qualified_error() {
+    let test = TestAppState::new().await;
+    let out = execute_mcp_tool(
+        &test.state,
+        "ext-server",
+        "ping",
+        r#"{"message":"hi"}"#,
+    )
+    .await;
+    assert!(out.starts_with("MCP tool error (mcp/ext-server/ping):"));
+}
+
+#[tokio::test]
 async fn ai_chat_non_db_tool_returns_pending_message() {
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, ResponseTemplate};
