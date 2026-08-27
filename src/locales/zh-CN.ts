@@ -1346,14 +1346,22 @@ const zhCN = {
   // ── MCP Client ──
   'mcpClient.title': '外部 MCP 服务',
   'mcpClient.description': '连接外部 MCP Server，扩展 AI 助手能力。',
+  'mcpClient.savedConfigs': '已保存的服务',
+  'mcpClient.runtimeStatus': '已连接的服务',
   'mcpClient.addServer': '添加 MCP 服务',
   'mcpClient.serverName': '名称',
   'mcpClient.command': '命令',
   'mcpClient.args': '参数',
+  'mcpClient.save': '保存',
+  'mcpClient.saving': '保存中…',
+  'mcpClient.edit': '编辑',
+  'mcpClient.delete': '删除',
+  'mcpClient.enabled': '启用',
   'mcpClient.connect': '连接',
   'mcpClient.connecting': '连接中…',
   'mcpClient.disconnect': '断开',
   'mcpClient.tools': '工具',
+  'mcpClient.noSavedConfigs': '暂无已保存的 MCP 服务配置。',
   'mcpClient.noServers': '暂无已连接的 MCP 服务。',
 
   // ── Workflows ──
