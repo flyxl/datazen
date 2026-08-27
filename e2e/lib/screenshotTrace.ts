@@ -75,6 +75,7 @@ export async function saveJourneyScreenshot(
   force = false,
 ): Promise<string | undefined> {
   if (!isScreenshotTraceEnabled()) return;
+  if (!journeyTest && !force) return;
   ensureScreenshotRoot();
   if (settleMs > 0) await browser.pause(settleMs);
 
