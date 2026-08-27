@@ -10,19 +10,11 @@ import { emitCrossWindow } from '../crossWindowBus';
 
 const mockReadPluginFile = vi.fn();
 const mockGetExtensionManifest = vi.fn();
-const mockReadThemePackFile = vi.fn();
 
 vi.mock('../../commands/extensions', () => ({
   extensionCommands: {
     readExtensionFile: (...args: unknown[]) => mockReadPluginFile(...args),
     getExtensionManifest: (...args: unknown[]) => mockGetExtensionManifest(...args),
-  },
-}));
-
-vi.mock('../../commands/theme', () => ({
-  themeCommands: {
-    readThemePackFile: (...args: unknown[]) => mockReadThemePackFile(...args),
-    setSurfaceBackground: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -104,7 +96,6 @@ describe('applyPluginTheme', () => {
     clearThemePackDom();
     mockReadPluginFile.mockReset();
     mockGetExtensionManifest.mockReset().mockResolvedValue(MANIFEST);
-    mockReadThemePackFile.mockReset();
     mockEmitCrossWindow.mockClear();
   });
 
@@ -127,7 +118,6 @@ describe('applyPluginTheme', () => {
       'acme.bill-audit',
       'themes/midnight-blue/tokens.css',
     );
-    expect(mockReadThemePackFile).not.toHaveBeenCalled();
     expect(document.getElementById('datazen-theme-pack')?.textContent).toContain('--c-accent');
   });
 
@@ -348,7 +338,6 @@ describe('applyThemePack dispatches encoded plugin ids to the plugin path', () =
     clearThemePackDom();
     mockReadPluginFile.mockReset();
     mockGetExtensionManifest.mockReset().mockResolvedValue(MANIFEST);
-    mockReadThemePackFile.mockReset();
     mockEmitCrossWindow.mockClear();
   });
 
@@ -364,19 +353,12 @@ describe('applyThemePack dispatches encoded plugin ids to the plugin path', () =
     );
     expect(result).toEqual({ ok: true });
     expect(mockReadPluginFile).toHaveBeenCalled();
-    expect(mockReadThemePackFile).not.toHaveBeenCalled();
     expect(document.getElementById('datazen-theme-pack')?.textContent).toContain('--c-accent');
   });
 
-  it('still resolves plain legacy pack ids through read_theme_pack_file', async () => {
-    mockReadThemePackFile.mockImplementation(async (_id: string, path: string) => {
-      if (path === 'tokens.css') return toBytes(':root { --c-accent: #abcdef; }');
-      return null;
-    });
-
+  it('rejects plain legacy pack ids', async () => {
     const result = await applyThemePack('classic-pack');
-    expect(result).toEqual({ ok: true });
-    expect(mockReadThemePackFile).toHaveBeenCalledWith('classic-pack', 'tokens.css');
+    expect(result).toEqual({ ok: false, error: 'unknown theme pack: classic-pack' });
     expect(mockReadPluginFile).not.toHaveBeenCalled();
   });
 });
@@ -413,7 +395,6 @@ describe('applyPluginTheme legacy-parity assets', () => {
     clearThemePackDom();
     mockReadPluginFile.mockReset();
     mockGetExtensionManifest.mockReset().mockResolvedValue(RICH_MANIFEST);
-    mockReadThemePackFile.mockReset();
     mockEmitCrossWindow.mockClear();
     vi.mocked(setChartPaletteOverride).mockClear();
     vi.mocked(setPackEditorColorOverlay).mockClear();

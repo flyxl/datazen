@@ -148,7 +148,7 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 | 管理命令 | `Create*Dialog.tsx` + `schemaTreeContextMenu.ts` | `execute_driver_command` + Driver `admin_commands`（create/drop DB/schema/user, grant/revoke） |
 | Schema 对象 | 连接树 routines/triggers 等 | `execute_driver_command`（`list_objects` / `get_object_ddl` / `list_privileges`） |
 | Redis 深度运维 | `packages/drivers/redis/ui/*` | `execute_command` / `execute_driver_command` |
-| 主题包 | `windows/settings/ThemePackSection.tsx` | `theme/` + `commands/theme.rs` |
+| 扩展主题 | `windows/settings/AppearanceSection.tsx` | `extensions/` + `themePackApply.ts` |
 | 插件系统 | `windows/workspace/` + `windows/extensions/ExtensionManagementPage.tsx` | `extensions/` + `commands/extensions.rs`（`datazen://` 协议 / 桥接 `lib/extensionBridge.ts`） |
 | 插件示例包 | `packages/extensions/*`（含 README 安装测试步骤） | 同上；守护测试 `plugins::fixture_tests` + `extensionThemes.test.ts` |
 

@@ -1,39 +1,29 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Select } from '../../components/ui/Select';
+import { PackageOpen } from 'lucide-react';
+import { Badge } from '../../components/ui/Badge';
 import { useI18n } from '../../hooks/useI18n';
+import { cn } from '../../lib/cn';
 import { encodePluginThemePackId, parsePluginThemePackId } from '../../lib/themePackApply';
 import { useExtensionStore } from '../../stores/extensionStore';
 import { useSettingsStore } from '../../stores/settingsStore';
-import type { ThemeMode } from '../../types/theme';
-import type { ExtensionSummary } from '../../types/extension';
-import { SectionTitle, SettingRow } from './settingsUi';
+import type { ExtensionSummary, ExtensionThemeSummary } from '../../types/extension';
+import { SectionTitle } from './settingsUi';
 
-/** Sentinel option value representing the built-in default theme (packId = null). */
-const BUILTIN_PACK_VALUE = '__builtin__';
-
-const MODE_OPTIONS: { value: ThemeMode; key: 'theme.light' | 'theme.dark' | 'theme.system' }[] = [
-  { value: 'light', key: 'theme.light' },
-  { value: 'dark', key: 'theme.dark' },
-  { value: 'system', key: 'theme.system' },
-];
-
-interface ThemeOption {
+interface ThemeCardEntry {
+  plugin: ExtensionSummary;
+  theme: ExtensionThemeSummary;
+  /** Encoded id persisted in `settings.theme.packId`. */
   packId: string;
-  value: string;
-  label: string;
 }
 
-/** Flatten enabled plugins into a single theme-option list (no plugin hardcoding). */
-function collectThemeOptions(plugins: ExtensionSummary[]): ThemeOption[] {
-  return plugins
-    .filter((p) => p.enabled)
-    .flatMap((plugin) =>
-      plugin.themes.map((theme) => ({
-        packId: encodePluginThemePackId(plugin.id, theme.id),
-        value: encodePluginThemePackId(plugin.id, theme.id),
-        label: `${theme.name}`,
-      })),
-    );
+/** Deterministic accent hue for a theme's color swatch (no plugin hardcoding). */
+function hueForTheme(pluginId: string, themeId: string): number {
+  const input = `${pluginId}:${themeId}`;
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % 360;
 }
 
 export function AppearanceSection() {
@@ -49,27 +39,30 @@ export function AppearanceSection() {
   }, [loaded]);
 
   // PRD §4.5: only themes contributed by *enabled* plugins are switchable here.
-  const themeOptions = useMemo(() => collectThemeOptions(plugins), [plugins]);
+  const cards = useMemo<ThemeCardEntry[]>(
+    () =>
+      plugins
+        .filter((p) => p.enabled)
+        .flatMap((plugin) =>
+          plugin.themes.map((theme) => ({
+            plugin,
+            theme,
+            packId: encodePluginThemePackId(plugin.id, theme.id),
+          })),
+        ),
+    [plugins],
+  );
 
   const activePackId = settings.theme.packId;
   const activePluginThemeMissing =
-    parsePluginThemePackId(activePackId) !== null &&
-    !themeOptions.some((o) => o.packId === activePackId);
+    parsePluginThemePackId(activePackId) !== null && !cards.some((c) => c.packId === activePackId);
 
-  const handleModeChange = (mode: string) => {
-    const theme = useSettingsStore.getState().settings.theme;
-    void updateSettings({ theme: { ...theme, mode: mode as ThemeMode } }).catch((e) => {
-      setError(e instanceof Error ? e.message : String(e));
-    });
-  };
-
-  const handleThemeChange = async (value: string) => {
-    const theme = useSettingsStore.getState().settings.theme;
-    const packId = value === BUILTIN_PACK_VALUE ? null : value;
-    if (packId === theme.packId) return;
+  const handleApply = async (card: ThemeCardEntry) => {
+    if (card.packId === useSettingsStore.getState().settings.theme.packId) return;
     setError(null);
     try {
-      await updateSettings({ theme: { ...theme, packId } });
+      const theme = useSettingsStore.getState().settings.theme;
+      await updateSettings({ theme: { ...theme, packId: card.packId } });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -80,31 +73,72 @@ export function AppearanceSection() {
       <SectionTitle>{t('settings.appearance')}</SectionTitle>
       <p className="text-xs text-fg-muted">{t('settings.appearance.subtitle')}</p>
 
-      <div className="mt-4 space-y-4">
-        <SettingRow label={t('settings.colorScheme')}>
-          <Select
-            value={settings.theme.mode}
-            options={MODE_OPTIONS.map((m) => ({ value: m.value, label: t(m.key) }))}
-            onChange={handleModeChange}
-          />
-        </SettingRow>
-
-        <SettingRow
-          label={t('settings.theme.pack')}
-          hint={themeOptions.length === 0 ? t('settings.appearance.emptyHint') : undefined}
+      {cards.length === 0 ? (
+        <div
+          data-testid="appearance-empty"
+          className="mt-6 flex flex-col items-center gap-2 rounded-lg border border-dashed border-edge px-4 py-10 text-center"
         >
-          <Select
-            value={activePackId ?? BUILTIN_PACK_VALUE}
-            options={[
-              { value: BUILTIN_PACK_VALUE, label: t('settings.theme.packDefault') },
-              ...themeOptions.map((o) => ({ value: o.value, label: o.label })),
-            ]}
-            onChange={handleThemeChange}
-          />
-        </SettingRow>
-      </div>
+          <PackageOpen className="h-6 w-6 text-fg-muted" />
+          <p className="text-sm text-fg-secondary">{t('settings.appearance.emptyTitle')}</p>
+          <p className="max-w-sm text-xs text-fg-muted">{t('settings.appearance.emptyHint')}</p>
+        </div>
+      ) : (
+        <div
+          className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3"
+          data-testid="appearance-theme-grid"
+        >
+          {cards.map((card) => {
+            const isActive = card.packId === activePackId;
+            return (
+              <button
+                key={card.packId}
+                type="button"
+                data-testid="appearance-theme-card"
+                data-theme-id={card.theme.id}
+                data-plugin-id={card.plugin.id}
+                aria-pressed={isActive}
+                onClick={() => void handleApply(card)}
+                className={cn(
+                  'flex flex-col gap-2.5 rounded-lg border p-3 text-left transition-colors',
+                  isActive
+                    ? 'border-accent/60 bg-accent/10'
+                    : 'border-edge bg-surface-alt hover:border-accent/40',
+                )}
+              >
+                <div className="flex items-center gap-2.5">
+                  <span
+                    aria-hidden
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-base font-semibold text-white"
+                    style={{
+                      backgroundColor: `hsl(${hueForTheme(card.plugin.id, card.theme.id)} 45% 42%)`,
+                    }}
+                  >
+                    {card.theme.name.slice(0, 1).toUpperCase()}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-fg">{card.theme.name}</div>
+                    <div className="truncate text-[11px] text-fg-muted">
+                      v{card.plugin.version} · {card.plugin.name}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-1">
+                  {card.theme.modes.map((mode) => (
+                    <Badge key={mode}>{mode}</Badge>
+                  ))}
+                  {isActive && (
+                    <Badge tone="accent" data-testid="appearance-current-badge">
+                      {t('settings.appearance.current')}
+                    </Badge>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-      {activePluginThemeMissing && (
+      {activePluginThemeMissing && cards.length > 0 && (
         <p className="mt-3 text-xs text-amber-500" data-testid="appearance-orphan-hint">
           {t('settings.appearance.missingHint')}
         </p>

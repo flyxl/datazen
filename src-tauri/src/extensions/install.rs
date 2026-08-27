@@ -246,7 +246,7 @@ fn extract_plugin_zip_with_limits(
     for i in 0..entry_count {
         let entry = archive.by_index(i).map_err(|e| e.to_string())?;
         let entry_name = entry.name().to_string();
-        crate::theme::validate_theme_zip_path(&entry_name)?;
+        crate::util::theme_zip::validate_theme_zip_path(&entry_name)?;
         reject_hidden_components(&entry_name)?;
         if entry.is_symlink() {
             return Err(format!("symlink zip entry not allowed: {entry_name}"));
@@ -287,7 +287,7 @@ fn extract_plugin_zip_with_limits(
     for i in 0..entry_count {
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
         let entry_name = entry.name().to_string();
-        crate::theme::validate_theme_zip_path(&entry_name)?;
+        crate::util::theme_zip::validate_theme_zip_path(&entry_name)?;
         let rel = crate::app_data_archive::validate_zip_entry_path(&entry_name)
             .map_err(|e| e.to_string())?;
         let out_path = dest.join(&rel);
