@@ -38,7 +38,9 @@ import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { formatGroupLabel } from '../../lib/connectionGroups';
-import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { DB_REGISTRY, escapeIdent } from '../../lib/databaseTypes';
+import { getSqlDialect } from '../../lib/sqlDialects';
+import { invalidateSchemaCache } from '../../lib/schemaCache';
 import { isLeaf, pathKey, type SqlNamespace } from '../../lib/sqlNamespace';
 import {
   buildMainConnectionContextMenuItems,
@@ -61,6 +63,7 @@ import { useExpandedDbCacheRefresh } from './schema-tree/useExpandedDbCacheRefre
 import { connectionCommands } from '../../commands/connection';
 import { databaseCommands } from '../../commands/database';
 import { driverCommands } from '../../commands/driver';
+import { queryCommands } from '../../commands/query';
 import { hasCommand } from '../../lib/commandSchema';
 import { SERVER_STATUS_SNAPSHOT_COMMAND, LIST_PROCESSES_COMMAND } from '../../lib/driverCommandIds';
 import {
@@ -355,6 +358,15 @@ function extractErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+function quoteRelationName(
+  name: string,
+  schema: string | undefined,
+  databaseType: string,
+): string {
+  const quote = (part: string) => escapeIdent(part, databaseType as ConnectionConfig['databaseType']);
+  return schema ? `${quote(schema)}.${quote(name)}` : quote(name);
+}
+
 // ── Props ───────────────────────────────────────────────────────
 
 export interface ConnectionNavigatorTreeHandle {
@@ -422,7 +434,6 @@ export const ConnectionNavigatorTree = forwardRef<
     onExportConnections,
     onImportConnections,
     onCollapseSidebar,
-    onNodeContextMenu,
     onShowMessage,
     viewActions,
   },
@@ -469,6 +480,9 @@ export const ConnectionNavigatorTree = forwardRef<
   const [confirmDeleteGroup, confirmDeleteGroupDialog] = useConfirmDialog();
   const [confirmDropDatabase, confirmDropDatabaseDialog] = useConfirmDialog();
   const [confirmDropSchema, confirmDropSchemaDialog] = useConfirmDialog();
+  const [confirmDropRelation, confirmDropRelationDialog] = useConfirmDialog();
+  const [confirmTruncateTable, confirmTruncateTableDialog] = useConfirmDialog();
+  const removeRelation = useSchemaStore((s) => s.removeRelation);
   const [objectFilterConn, setObjectFilterConn] = useState<ConnectionConfig | null>(null);
   const schemas = useSchemaStore((s) => s.schemas);
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
@@ -1471,6 +1485,138 @@ export const ConnectionNavigatorTree = forwardRef<
     ],
   );
 
+  const handleTableContextMenu = useCallback(
+    (
+      e: React.MouseEvent,
+      args: {
+        kind: 'table' | 'view';
+        name: string;
+        schema?: string;
+        dbName: string;
+        connectionId: string;
+        dbSessionId: string;
+      },
+    ) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const { kind, name, schema, dbName, connectionId, dbSessionId } = args;
+      const conn = connections.find((c) => c.id === connectionId);
+      const dbMeta = conn ? DB_REGISTRY[conn.databaseType] : undefined;
+      const readOnly = conn?.readOnly === true || dbMeta?.readOnly === true;
+      const quoted = quoteRelationName(name, schema, conn?.databaseType ?? 'postgresql');
+      const isView = kind === 'view';
+
+      const refreshAfterMutation = () => {
+        invalidateSchemaCache(dbSessionId, name);
+        removeRelation(name, dbSessionId);
+        const tableKey = `${dbSessionId}::${dbName}`;
+        setDbTablesMap((prev) => {
+          const current = prev[tableKey];
+          if (!current) return prev;
+          return {
+            ...prev,
+            [tableKey]: current.filter((item) => item.name !== name),
+          };
+        });
+        void reloadDbTables(dbSessionId, dbName);
+      };
+
+      showWebContextMenu(
+        buildSchemaTreeContextMenuItems({
+          kind,
+          labels: schemaLabels,
+          handlers: {
+            onOpen: () => {
+              onSelectConnection(connectionId);
+              void activateDatabase(dbSessionId, dbName);
+              onSelectTable(name, schema, dbName);
+            },
+            onCopyName: () => {
+              void navigator.clipboard.writeText(name);
+            },
+            onNewQuery: () => {
+              onSelectConnection(connectionId);
+              useSchemaStore.setState({ currentDatabase: dbName });
+              if (kind === 'table') {
+                viewActions?.newQuery?.(`SELECT * FROM ${quoted} LIMIT 100`);
+              } else {
+                viewActions?.newQuery?.();
+              }
+            },
+            onTruncate:
+              kind === 'table' && !readOnly && !safeMode
+                ? () => {
+                    void (async () => {
+                      const ok = await confirmTruncateTable({
+                        title: t('schemaTree.truncate'),
+                        message: t('schemaTree.confirmTruncate', { name }),
+                        confirmLabel: t('schemaTree.truncate'),
+                        kind: 'warning',
+                      });
+                      if (!ok) return;
+                      const dialect = getSqlDialect(conn?.databaseType ?? 'postgresql');
+                      const sql = dialect?.getTruncateTableSql
+                        ? dialect.getTruncateTableSql(quoted)
+                        : `TRUNCATE TABLE ${quoted}`;
+                      try {
+                        await queryCommands.executeQuery(dbSessionId, sql);
+                      } catch (err) {
+                        onShowMessage?.(extractErrorMessage(err, t('schemaTree.truncateFailed')), 'error');
+                      }
+                    })();
+                  }
+                : undefined,
+            onDrop:
+              !readOnly && !safeMode
+                ? () => {
+                    void (async () => {
+                      const ok = await confirmDropRelation({
+                        title: t(isView ? 'schemaTree.dropView' : 'schemaTree.drop'),
+                        message: t(
+                          isView ? 'schemaTree.confirmDropView' : 'schemaTree.confirmDrop',
+                          { name },
+                        ),
+                        confirmLabel: t(isView ? 'schemaTree.dropView' : 'schemaTree.drop'),
+                        kind: 'warning',
+                      });
+                      if (!ok) return;
+                      const sql = isView ? `DROP VIEW ${quoted}` : `DROP TABLE ${quoted}`;
+                      try {
+                        await queryCommands.executeQuery(dbSessionId, sql);
+                        refreshAfterMutation();
+                      } catch (err) {
+                        onShowMessage?.(
+                          extractErrorMessage(err, t('schemaTree.dropRelationFailed')),
+                          'error',
+                        );
+                      }
+                    })();
+                  }
+                : undefined,
+          },
+          readOnly,
+          safeMode,
+        }),
+        { x: e.clientX, y: e.clientY },
+      );
+    },
+    [
+      activateDatabase,
+      confirmDropRelation,
+      confirmTruncateTable,
+      connections,
+      onSelectConnection,
+      onSelectTable,
+      onShowMessage,
+      reloadDbTables,
+      removeRelation,
+      safeMode,
+      schemaLabels,
+      t,
+      viewActions,
+    ],
+  );
+
   const handleCategoryContextMenu = useCallback(
     (e: React.MouseEvent, catKey: string, catId: string, connectionId: string) => {
       e.preventDefault();
@@ -2298,14 +2444,13 @@ export const ConnectionNavigatorTree = forwardRef<
               })();
             }}
             onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onNodeContextMenu?.({
+              handleTableContextMenu(e, {
                 kind: row.catId === 'views' ? 'view' : 'table',
                 name: row.item.name,
-                x: e.clientX,
-                y: e.clientY,
                 schema: row.item.schema ?? undefined,
+                dbName: row.dbName,
+                connectionId: row.connectionId,
+                dbSessionId: row.dbSessionId,
               });
             }}
           >
@@ -2398,9 +2543,28 @@ export const ConnectionNavigatorTree = forwardRef<
               style={{ paddingLeft: depthPadding(row.depth) }}
               onClick={() => onSelectTable(row.name)}
               onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onNodeContextMenu?.({ kind: menuKind, name: row.name, x: e.clientX, y: e.clientY });
+                if (
+                  row.leafKind === 'function' ||
+                  row.leafKind === 'procedure' ||
+                  row.leafKind === 'trigger'
+                ) {
+                  handleObjectContextMenu(e, row.name);
+                  return;
+                }
+                const conn = connections.find((c) => c.id === row.connectionId);
+                const dbName =
+                  conn?.database ??
+                  useSchemaStore.getState().schemas.get(row.dbSessionId)?.currentDatabase ??
+                  '';
+                const relationKind =
+                  row.leafKind === 'view' || row.leafKind === 'materializedView' ? 'view' : 'table';
+                handleTableContextMenu(e, {
+                  kind: relationKind,
+                  name: row.name,
+                  dbName,
+                  connectionId: row.connectionId,
+                  dbSessionId: row.dbSessionId,
+                });
               }}
             >
               <LeafIcon className={`h-3.5 w-3.5 shrink-0 ${leafIcon.color}`} />
@@ -2670,6 +2834,8 @@ export const ConnectionNavigatorTree = forwardRef<
       {confirmDeleteGroupDialog}
       {confirmDropDatabaseDialog}
       {confirmDropSchemaDialog}
+      {confirmDropRelationDialog}
+      {confirmTruncateTableDialog}
     </div>
   );
 });
