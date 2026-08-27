@@ -210,6 +210,30 @@ export async function waitForConnectionToolbar(timeout = 20000) {
   await browser.pause(800);
 }
 
+/** Single-click expand chevron on a connected card so schema children load. */
+export async function expandConnectedConnectionInNavigator(nameFragment = E2E_PG_CONN_NAME) {
+  await browser.waitUntil(
+    async () =>
+      browser.execute((frag: string) => {
+        const items = Array.from(document.querySelectorAll('[data-conn-item]'));
+        const item = items.find((el) => (el.textContent || '').includes(frag));
+        return !!item?.querySelector('button[aria-expanded]');
+      }, nameFragment),
+    { timeout: 15000, timeoutMsg: '等待连接就绪以展开 schema 树' },
+  );
+  await browser.execute((frag: string) => {
+    const items = Array.from(document.querySelectorAll('[data-conn-item]'));
+    const item = items.find((el) => (el.textContent || '').includes(frag));
+    const chevron = item?.querySelector('button[aria-expanded]') as HTMLElement | null;
+    if (chevron && chevron.getAttribute('aria-expanded') !== 'true') {
+      chevron.click();
+    } else {
+      item?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    }
+  }, nameFragment);
+  await browser.pause(800);
+}
+
 /** Double-click seeded PG connection and wait for toolbar in the unified main window. */
 export async function connectSeededPgInWorkspace() {
   await expandAllGroups();
@@ -219,6 +243,7 @@ export async function connectSeededPgInWorkspace() {
   });
   await clickCardConnectButton();
   await waitForConnectionToolbar();
+  await expandConnectedConnectionInNavigator();
   await captureJourneyStep('connect-seeded-pg');
 }
 
@@ -734,13 +759,55 @@ export async function connectionNavigatorAside() {
   throw new Error('connection navigator aside not found');
 }
 
-/** Wait until the connection window sidebar shows table/key sections. */
-export async function waitForSchemaTreeLoaded(timeout = 20000) {
-  const aside = await connectionNavigatorAside();
-  await browser.waitUntil(async () => asideHasSchemaSections(await aside.getText()), {
-    timeout,
-    timeoutMsg: '等待 schema 树加载超时',
+async function navigatorHasTableButtons(): Promise<boolean> {
+  return browser.execute(() => {
+    const nav =
+      document.querySelector('[data-testid="connection-navigator-aside"]') ??
+      Array.from(document.querySelectorAll('aside')).find((a) =>
+        a.querySelector('[data-conn-item]'),
+      );
+    if (!nav) return false;
+    return Array.from(nav.querySelectorAll('button')).some((b) => {
+      const label = (b.textContent ?? '').trim();
+      if (!label || label.startsWith('表') || label.startsWith('Tables')) return false;
+      if (label.includes('PostgreSQL') || label.includes('本地')) return false;
+      return /^[\w.-]+$/.test(label);
+    });
   });
+}
+
+/** Wait until the connection navigator lists at least one table entry. */
+export async function waitForSchemaTreeLoaded(timeout = 20000) {
+  await browser.waitUntil(
+    async () => {
+      if (await navigatorHasTableButtons()) return true;
+      await expandConnectedConnectionInNavigator();
+      await browser.execute(() => {
+        const nav =
+          document.querySelector('[data-testid="connection-navigator-aside"]') ??
+          Array.from(document.querySelectorAll('aside')).find((a) =>
+            a.querySelector('[data-conn-item]'),
+          );
+        if (!nav) return;
+        const dbBtn = Array.from(nav.querySelectorAll('button')).find((b) => {
+          const label = (b.textContent ?? '').trim();
+          return label.length > 0 && !label.startsWith('表') && !label.includes('PostgreSQL');
+        });
+        dbBtn?.click();
+        const tablesBtn = Array.from(nav.querySelectorAll('button')).find((b) => {
+          const label = (b.textContent ?? '').trim();
+          return label.startsWith('表') || label.startsWith('Tables');
+        });
+        tablesBtn?.click();
+      });
+      await browser.pause(500);
+      return false;
+    },
+    {
+      timeout,
+      timeoutMsg: '等待 schema 树加载超时',
+    },
+  );
   await captureJourneyStep('schema-tree-loaded');
 }
 
@@ -751,30 +818,58 @@ export async function clickTableInSidebar(tableName: string) {
   const asideButtons = await aside.$$('button');
   for (const btn of asideButtons) {
     const text = (await btn.getText()).trim();
-    if (text === tableName) {
+    if (text === tableName || text.endsWith(`.${tableName}`) || text.endsWith(`/${tableName}`)) {
       await btn.click();
       await captureJourneyStep(`table-${tableName}`);
       return;
     }
   }
-  throw new Error(`未找到表 "${tableName}"`);
+  const clicked = await browser.execute((name: string) => {
+    const nav =
+      document.querySelector('[data-testid="connection-navigator-aside"]') ??
+      Array.from(document.querySelectorAll('aside')).find((a) =>
+        a.querySelector('[data-conn-item]'),
+      );
+    if (!nav) return false;
+    const btn = Array.from(nav.querySelectorAll('button')).find((b) => {
+      const label = (b.textContent ?? '').trim();
+      return label === name || label.endsWith(`.${name}`) || label.endsWith(`/${name}`);
+    });
+    if (!btn) return false;
+    btn.click();
+    return true;
+  }, tableName);
+  if (!clicked) {
+    throw new Error(`未找到表 "${tableName}"`);
+  }
+  await captureJourneyStep(`table-${tableName}`);
 }
 
 /** Click the first table/view entry in the sidebar and return its name. */
 export async function clickFirstTable() {
   await waitForSchemaTreeLoaded();
-  const aside = await connectionNavigatorAside();
-  const asideButtons = await aside.$$('button');
-  for (const btn of asideButtons) {
-    const text = (await btn.getText()).trim();
-    const cls = (await btn.getAttribute('class')) || '';
-    if (cls.includes('text-left') && cls.includes('13px') && text.length > 0) {
-      await btn.click();
-      await captureJourneyStep(`table-${text}`);
-      return text;
+  const name = await browser.execute(() => {
+    const nav =
+      document.querySelector('[data-testid="connection-navigator-aside"]') ??
+      Array.from(document.querySelectorAll('aside')).find((a) =>
+        a.querySelector('[data-conn-item]'),
+      );
+    if (!nav) return null;
+    for (const btn of Array.from(nav.querySelectorAll('button'))) {
+      const label = (btn.textContent ?? '').trim();
+      if (!label || label.startsWith('表') || label.startsWith('Tables')) continue;
+      if (label.includes('PostgreSQL') || label.includes('本地')) continue;
+      if (!/^[\w.-]+$/.test(label)) continue;
+      btn.click();
+      return label;
     }
+    return null;
+  });
+  if (!name) {
+    throw new Error('未找到可点击的表节点');
   }
-  return null;
+  await captureJourneyStep(`table-${name}`);
+  return name;
 }
 
 /** Switch to a sub-tab inside a table panel (数据/结构/索引/外键/DDL). */
