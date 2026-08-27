@@ -64,6 +64,7 @@ const minimalDrivers =
   process.env.DATAZEN_DRIVERS === 'basic' || args.includes('--minimal-drivers');
 if (screenshotTrace) {
   process.env.E2E_SCREENSHOT = '1';
+  fs.mkdirSync(path.join(__dirname, 'screenshots'), { recursive: true });
 }
 /** Inject drivers then build with webdriver + plugin Cargo features (see scripts/e2e-tauri-build.mjs). */
 const BUILD_CMD = minimalDrivers

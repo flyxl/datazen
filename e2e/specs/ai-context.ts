@@ -1,6 +1,11 @@
 import { expect, browser, $ } from '@wdio/globals';
 import fs from 'node:fs';
-import { openConnectionWindow, closeExtraWindows, captureJourneyStep } from '../helpers.js';
+import {
+  openConnectionWindow,
+  closeExtraWindows,
+  captureJourneyStep,
+  openQueryTab,
+} from '../helpers.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
@@ -95,36 +100,22 @@ describe('AI 上下文引用 E2E 测试 (CTX-001~CTX-006)', () => {
 
     // Switch to connection window
     await browser.switchToWindow(windows.connWindow);
+    await openQueryTab();
 
-    // Open AI Chat sidebar
     const chatToggle = await $('[data-testid="conn-toolbar-ai"]');
-    if (!(await chatToggle.isExisting())) {
-      const legacy = await $('button[title*="AI"]');
-      if (await legacy.isExisting()) await legacy.click();
-    } else {
-      await chatToggle.waitForClickable({ timeout: 10000 });
-      await chatToggle.click();
-    }
-    if (await $('aside textarea, [data-testid="ai-not-configured"]').isExisting()) {
-      await browser.pause(500);
-      await captureJourneyStep('ai-chat-open');
-    }
+    await chatToggle.waitForClickable({ timeout: 10000 });
+    await chatToggle.click();
+    await browser.pause(1000);
+    await captureJourneyStep('ai-panel-open', 0, true);
 
-    // Find an AI input area (either chat or NL2SQL)
-    const textarea = await $('textarea');
+    const textarea = await $('aside textarea');
     if (await textarea.isExisting()) {
       await textarea.click();
       await textarea.setValue('@');
       await browser.pause(1000);
-
-      // The ContextPicker should appear as a floating dropdown
-      const picker = await $('[class*="bottom-full"]');
-      const pickerExists = await picker.isExisting();
-      // May or may not have context enabled on this specific textarea
-      // At minimum, the textarea should accept the @ character
       const val = await textarea.getValue();
       expect(val).toContain('@');
-      await captureJourneyStep('ai-context-at-picker');
+      await captureJourneyStep('ai-context-at-picker', 0, true);
     }
 
     await closeExtraWindows(mainWindow);

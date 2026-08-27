@@ -8,9 +8,9 @@ import { browser, $, $$ } from '@wdio/globals';
 import { isScreenshotTraceEnabled, saveJourneyScreenshot } from './lib/screenshotTrace.js';
 
 /** Manual journey step capture (`--screenshot`); also used by helpers below. */
-export async function captureJourneyStep(label: string, settleMs = 400) {
+export async function captureJourneyStep(label: string, settleMs = 400, force = false) {
   if (!isScreenshotTraceEnabled()) return;
-  await saveJourneyScreenshot(browser, label, settleMs);
+  await saveJourneyScreenshot(browser, label, settleMs, force);
 }
 
 // ── window management ───────────────────────────────────────────────
@@ -112,7 +112,6 @@ export async function expandAllGroups() {
     });
   });
   await browser.pause(500);
-  await captureJourneyStep('expand-groups');
 }
 
 /** Seeded by wdio.conf.ts — locked to E2E_PG_DB so StandardSchemaTree is used. */
@@ -160,7 +159,6 @@ export async function clickCardConnectButton(nameFragment = E2E_PG_CONN_NAME) {
     }
     return false;
   }, nameFragment);
-  if (found) await captureJourneyStep('connect-card-dblclick');
   return found;
 }
 
@@ -212,7 +210,6 @@ export async function waitForConnectionToolbar(timeout = 20000) {
     { timeout, timeoutMsg: 'Timed out waiting for connection toolbar' },
   );
   await browser.pause(800);
-  await captureJourneyStep('connection-toolbar');
 }
 
 /** Double-click seeded PG connection and wait for toolbar in the unified main window. */
