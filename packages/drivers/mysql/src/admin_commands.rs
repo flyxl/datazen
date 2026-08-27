@@ -1,3 +1,4 @@
+use crate::mysql::{decode_mysql_text, decode_mysql_text_opt, MysqlDriver};
 use datazen_driver_api::*;
 use serde_json::json;
 use sqlx::Row;
@@ -374,8 +375,8 @@ async fn fetch_mysql_server_status(pool: &sqlx::MySqlPool) -> Result<CommandResu
     let mut com_update: i64 = 0;
     let mut com_delete: i64 = 0;
     for row in status_rows {
-        let name: String = row.get("Variable_name");
-        let value: String = row.get("Value");
+        let name = decode_mysql_text(&row, "Variable_name");
+        let value = decode_mysql_text(&row, "Value");
         let parsed = value.parse::<i64>().unwrap_or(0);
         match name.as_str() {
             "Uptime" => uptime_seconds = parsed,
@@ -425,11 +426,11 @@ async fn fetch_mysql_server_status(pool: &sqlx::MySqlPool) -> Result<CommandResu
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
     let mut status_variables: Vec<serde_json::Value> = Vec::new();
     for row in all_status {
-        let name: String = row.get("Variable_name");
+        let name = decode_mysql_text(&row, "Variable_name");
         if name.eq_ignore_ascii_case("Rsa_public_key") {
             continue;
         }
-        let value: String = row.get("Value");
+        let value = decode_mysql_text(&row, "Value");
         status_variables.push(json!({ "name": name, "value": value }));
     }
 
@@ -550,12 +551,12 @@ async fn fetch_mysql_process_list(pool: &sqlx::MySqlPool) -> Result<CommandResul
         .map(|row| {
             json!({
                 "pid": row.get::<i64, _>("pid"),
-                "user": row.try_get::<String, _>("user").ok(),
-                "database": row.try_get::<String, _>("database").ok(),
-                "state": row.try_get::<String, _>("state").ok(),
-                "query": row.try_get::<String, _>("query").ok(),
+                "user": decode_mysql_text_opt(row, "user"),
+                "database": decode_mysql_text_opt(row, "database"),
+                "state": decode_mysql_text_opt(row, "state"),
+                "query": decode_mysql_text_opt(row, "query"),
                 "durationMs": row.try_get::<i64, _>("durationMs").unwrap_or(0),
-                "client": row.try_get::<String, _>("client").ok(),
+                "client": decode_mysql_text_opt(row, "client"),
             })
         })
         .collect();

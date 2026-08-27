@@ -4,6 +4,7 @@ use crate::structure;
 use async_trait::async_trait;
 use datazen_driver_api::*;
 use rust_decimal::prelude::ToPrimitive;
+use sqlx::mysql::MySqlRow;
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 use sqlx::pool::PoolConnection;
 use sqlx::{Column, MySql, MySqlPool, Row};
@@ -14,6 +15,34 @@ use tokio::sync::{Mutex, RwLock};
 
 const JS_MAX_SAFE_INT: i64 = 9_007_199_254_740_991;
 const JS_MIN_SAFE_INT: i64 = -9_007_199_254_740_991;
+
+/// Decode a MySQL text column that sqlx 0.8+ may report as BINARY
+/// (information_schema ENUM, SHOW metadata, utf8mb4_*_bin collations, etc.).
+pub(crate) fn decode_mysql_text(row: &MySqlRow, col: &str) -> String {
+    row.try_get::<String, _>(col)
+        .or_else(|_| {
+            row.try_get::<Vec<u8>, _>(col)
+                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn decode_mysql_text_opt(row: &MySqlRow, col: &str) -> Option<String> {
+    row.try_get::<String, _>(col).ok().or_else(|| {
+        row.try_get::<Vec<u8>, _>(col)
+            .ok()
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+    })
+}
+
+pub(crate) fn decode_mysql_text_idx(row: &MySqlRow, index: usize) -> String {
+    row.try_get::<String, _>(index)
+        .or_else(|_| {
+            row.try_get::<Vec<u8>, _>(index)
+                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        })
+        .unwrap_or_default()
+}
 
 pub struct MysqlDriver {
     pools: RwLock<HashMap<String, MySqlPool>>,
@@ -167,10 +196,10 @@ impl MysqlDriver {
         let columns: Vec<ColumnSchema> = cols
             .iter()
             .map(|r| {
-                let name: String = r.get("COLUMN_NAME");
-                let nullable: String = r.get("IS_NULLABLE");
-                let key: String = r.get("COLUMN_KEY");
-                let extra: String = r.get("EXTRA");
+                let name = decode_mysql_text(r, "COLUMN_NAME");
+                let nullable = decode_mysql_text(r, "IS_NULLABLE");
+                let key = decode_mysql_text(r, "COLUMN_KEY");
+                let extra = decode_mysql_text(r, "EXTRA");
                 let is_pk = key == "PRI";
                 if is_pk {
                     pk_names.push(name.clone());
@@ -178,13 +207,17 @@ impl MysqlDriver {
                 ColumnSchema {
                     is_primary_key: is_pk,
                     name,
-                    data_type: r.get("COLUMN_TYPE"),
+                    data_type: decode_mysql_text(r, "COLUMN_TYPE"),
                     nullable: nullable == "YES",
                     default_value: r.try_get("COLUMN_DEFAULT").ok(),
-                    comment: r
-                        .try_get::<String, _>("COLUMN_COMMENT")
-                        .ok()
-                        .filter(|s| !s.is_empty()),
+                    comment: {
+                        let s = decode_mysql_text(r, "COLUMN_COMMENT");
+                        if s.is_empty() {
+                            None
+                        } else {
+                            Some(s)
+                        }
+                    },
                     is_auto_increment: extra.contains("auto_increment"),
                 }
             })
@@ -748,7 +781,7 @@ impl DatabaseDriver for MysqlDriver {
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
-        Ok(rows.iter().map(|r| r.get::<String, _>(0)).collect())
+        Ok(rows.iter().map(|r| decode_mysql_text_idx(r, 0)).collect())
     }
 
     async fn get_tables(
@@ -775,10 +808,10 @@ impl DatabaseDriver for MysqlDriver {
         Ok(rows
             .iter()
             .map(|r| {
-                let tt: String = r.get("TABLE_TYPE");
+                let tt = decode_mysql_text(r, "TABLE_TYPE");
                 TableInfo {
                     schema: None,
-                    name: r.get("TABLE_NAME"),
+                    name: decode_mysql_text(r, "TABLE_NAME"),
                     table_type: match tt.as_str() {
                         "VIEW" => TableType::View,
                         "SYSTEM VIEW" => TableType::SystemTable,
@@ -859,15 +892,19 @@ impl DatabaseDriver for MysqlDriver {
         let columns: Vec<ColumnSchema> = col_rows
             .iter()
             .map(|r| {
-                let name: String = r.get("Field");
-                let col_type: String = r.get("Type");
-                let nullable: String = r.get("Null");
-                let key: String = r.try_get::<String, _>("Key").unwrap_or_default();
-                let extra: String = r.try_get::<String, _>("Extra").unwrap_or_default();
-                let comment: Option<String> = r
-                    .try_get::<String, _>("Comment")
-                    .ok()
-                    .filter(|s| !s.is_empty());
+                let name = decode_mysql_text(r, "Field");
+                let col_type = decode_mysql_text(r, "Type");
+                let nullable = decode_mysql_text(r, "Null");
+                let key = decode_mysql_text(r, "Key");
+                let extra = decode_mysql_text(r, "Extra");
+                let comment: Option<String> = {
+                    let s = decode_mysql_text(r, "Comment");
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Some(s)
+                    }
+                };
                 let is_pk = key == "PRI";
                 if is_pk {
                     pk_names.push(name.clone());
@@ -887,10 +924,10 @@ impl DatabaseDriver for MysqlDriver {
         // ── indexes from SHOW INDEX ──
         let mut idx_map: HashMap<String, IndexInfo> = HashMap::new();
         for r in &idx_rows {
-            let idx_name: String = r.get("Key_name");
-            let col_name: String = r.get("Column_name");
+            let idx_name = decode_mysql_text(r, "Key_name");
+            let col_name = decode_mysql_text(r, "Column_name");
             let non_unique: i64 = r.try_get::<i64, _>("Non_unique").unwrap_or(1);
-            let idx_type: String = r.try_get::<String, _>("Index_type").unwrap_or_default();
+            let idx_type = decode_mysql_text(r, "Index_type");
 
             let entry = idx_map
                 .entry(idx_name.clone())
@@ -908,7 +945,7 @@ impl DatabaseDriver for MysqlDriver {
         indexes.sort_by(|a, b| b.is_primary.cmp(&a.is_primary).then(a.name.cmp(&b.name)));
 
         // ── foreign keys parsed from SHOW CREATE TABLE output ──
-        let create_sql: String = create_row.try_get(1).unwrap_or_default();
+        let create_sql = decode_mysql_text_idx(&create_row, 1);
         let foreign_keys = Self::parse_fk_from_create_table(&create_sql);
 
         tracing::info!(%table, cols = columns.len(), indexes = indexes.len(), fks = foreign_keys.len(),
