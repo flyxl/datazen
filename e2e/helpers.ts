@@ -715,8 +715,21 @@ export async function connectionNavigatorAside() {
   }
   const asides = await $$('aside');
   for (const aside of asides) {
+    if (await aside.$('[data-conn-item]').isExisting()) {
+      return aside;
+    }
+  }
+  for (const aside of asides) {
+    const text = await aside.getText();
+    if (asideHasSchemaSections(text)) {
+      return aside;
+    }
+  }
+  for (const aside of asides) {
     const { width } = await aside.getSize();
-    if (width > 100) return aside;
+    if (width > 200) {
+      return aside;
+    }
   }
   throw new Error('connection navigator aside not found');
 }
