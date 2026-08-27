@@ -1112,3 +1112,264 @@ async fn dashboard_hidden_workflow_execute_skips_history() {
         "dashboardHidden workflows must not write workflow_history"
     );
 }
+
+async fn register_echo_test_mcp(
+    state: &crate::commands::AppState,
+) -> Arc<std::sync::atomic::AtomicUsize> {
+    use crate::mcp::McpServerConfig;
+    use rmcp::model::{CallToolResult, ContentBlock, Tool};
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let calls_c = calls.clone();
+    let input_schema = serde_json::json!({
+        "type": "object",
+        "properties": { "message": { "type": "string" } }
+    });
+    let echo_tool = Tool::new(
+        "echo",
+        "Echo a message",
+        input_schema.as_object().unwrap().clone(),
+    );
+
+    state
+        .mcp_client_manager
+        .register_test_server(
+            "test_srv",
+            "Test MCP",
+            vec![echo_tool],
+            Arc::new(move |tool_name, args| {
+                calls_c.fetch_add(1, Ordering::SeqCst);
+                if tool_name != "echo" {
+                    return Err(format!("unknown tool {tool_name}"));
+                }
+                let message = args
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                Ok(CallToolResult::success(vec![ContentBlock::text(format!(
+                    "echo:{message}"
+                ))]))
+            }),
+        )
+        .await;
+
+    let mut settings = state.store.get_settings().await;
+    settings.mcp_client_servers = vec![McpServerConfig {
+        id: "test_srv".into(),
+        name: "Test MCP".into(),
+        transport: "stdio".into(),
+        command: None,
+        args: vec![],
+        env: HashMap::new(),
+        enabled: true,
+        enabled_for_ai: true,
+    }];
+    state.store.save_settings(settings).await.unwrap();
+
+    calls
+}
+
+#[tokio::test]
+async fn ai_chat_mcp_tool_roundtrip() {
+    use datazen_ai_api::{MessageRole, StreamChunk, ToolCall};
+
+    let (test, mock) = TestAppState::with_mock_ai().await;
+    let _mcp_calls = register_echo_test_mcp(&test.state).await;
+
+    mock.push_stream_chunks(vec![StreamChunk {
+        content: String::new(),
+        reasoning: None,
+        done: true,
+        usage: None,
+        tool_calls: Some(vec![ToolCall {
+            id: "call_mcp".into(),
+            name: "mcp/test_srv/echo".into(),
+            arguments: r#"{"message":"hello"}"#.into(),
+        }]),
+        response_id: None,
+    }]);
+    mock.push_stream_text("done");
+
+    let (cb, _) = collecting_stream_callback();
+    ai_chat_impl(
+        &test.state,
+        cb,
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "Echo please".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-mcp-roundtrip".into(),
+        false,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(mock.call_count(), 2, "tool round + final text round");
+    let follow_up = mock.last_request().expect("follow-up request");
+    let tool_msg = follow_up
+        .messages
+        .iter()
+        .find(|m| m.role == MessageRole::Tool)
+        .expect("tool result message");
+    assert!(tool_msg.content.contains("echo:hello"));
+    assert!(!tool_msg.content.contains("Pending"));
+}
+
+#[tokio::test]
+async fn ai_chat_mcp_and_db_same_round() {
+    use datazen_ai_api::{MessageRole, StreamChunk, ToolCall};
+    use std::sync::atomic::Ordering;
+
+    let (test, mock) = TestAppState::with_mock_ai_tables().await;
+    test.save_connection("same-round-cfg").await;
+    let mcp_calls = register_echo_test_mcp(&test.state).await;
+
+    mock.push_stream_chunks(vec![StreamChunk {
+        content: String::new(),
+        reasoning: None,
+        done: true,
+        usage: None,
+        tool_calls: Some(vec![
+            ToolCall {
+                id: "call_db".into(),
+                name: "list_connections".into(),
+                arguments: "{}".into(),
+            },
+            ToolCall {
+                id: "call_mcp".into(),
+                name: "mcp/test_srv/echo".into(),
+                arguments: r#"{"message":"hi"}"#.into(),
+            },
+        ]),
+        response_id: None,
+    }]);
+    mock.push_stream_text("all done");
+
+    let (cb, _) = collecting_stream_callback();
+    ai_chat_impl(
+        &test.state,
+        cb,
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "List and echo".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-mcp-db-same".into(),
+        false,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(mcp_calls.load(Ordering::SeqCst), 1);
+    let follow_up = mock.last_request().expect("follow-up request");
+    let tool_msgs: Vec<_> = follow_up
+        .messages
+        .iter()
+        .filter(|m| m.role == MessageRole::Tool)
+        .collect();
+    assert_eq!(tool_msgs.len(), 2, "both DB and MCP tool results expected");
+    assert!(
+        tool_msgs
+            .iter()
+            .any(|m| m.content.contains("same-round-cfg")),
+        "DB tool should list saved connection"
+    );
+    assert!(
+        tool_msgs.iter().any(|m| m.content.contains("echo:hi")),
+        "MCP tool should return echo output"
+    );
+    assert!(
+        !tool_msgs.iter().any(|m| m.content.contains("Pending")),
+        "executable tools must not leave Pending placeholders"
+    );
+}
+
+#[tokio::test]
+async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
+    use datazen_ai_api::{MessageRole, StreamChunk, ToolCall};
+    use std::sync::atomic::Ordering;
+
+    let (test, mock) = TestAppState::with_mock_ai_tables().await;
+    test.save_connection("mixed-round-cfg").await;
+    let mcp_calls = register_echo_test_mcp(&test.state).await;
+
+    let done_chunks: Arc<Mutex<Vec<(String, bool)>>> = Arc::new(Mutex::new(Vec::new()));
+    let done_log = done_chunks.clone();
+    let cb: StreamCallback = Arc::new(move |request_id, result| {
+        if let Ok(chunk) = result {
+            if chunk.done {
+                done_log
+                    .lock()
+                    .unwrap()
+                    .push((request_id.to_string(), chunk.tool_calls.is_some()));
+            }
+        }
+    });
+
+    mock.push_stream_chunks(vec![StreamChunk {
+        content: String::new(),
+        reasoning: None,
+        done: true,
+        usage: None,
+        tool_calls: Some(vec![
+            ToolCall {
+                id: "call_db".into(),
+                name: "list_connections".into(),
+                arguments: "{}".into(),
+            },
+            ToolCall {
+                id: "call_mcp".into(),
+                name: "mcp/test_srv/echo".into(),
+                arguments: r#"{"message":"q"}"#.into(),
+            },
+            ToolCall {
+                id: "call_ask".into(),
+                name: "ask_questions".into(),
+                arguments: r#"{"questions":[{"id":"q1","prompt":"Pick?"}]}"#.into(),
+            },
+        ]),
+        response_id: None,
+    }]);
+
+    ai_chat_impl(
+        &test.state,
+        cb.clone(),
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "Mixed tools".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-mixed".into(),
+        false,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(mcp_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(mock.call_count(), 1, "should stop after mixed round");
+}

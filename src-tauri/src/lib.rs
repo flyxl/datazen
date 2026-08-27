@@ -796,12 +796,23 @@ pub fn run() {
                 for config in client_configs {
                     let app_state = state.inner().clone();
                     tauri::async_runtime::spawn(async move {
-                        if let Err(e) = commands::mcp_client_connect_impl(&app_state, config).await
+                        if let Err(e) =
+                            commands::mcp_client_connect_impl(&app_state, config.clone()).await
                         {
                             tracing::warn!(
                                 error = %e,
+                                server_id = %config.id,
                                 "Failed to auto-connect external MCP client on startup"
                             );
+                            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                            if let Err(retry_err) =
+                                commands::mcp_client_connect_impl(&app_state, config).await
+                            {
+                                tracing::warn!(
+                                    error = %retry_err,
+                                    "External MCP client startup retry also failed"
+                                );
+                            }
                         }
                     });
                 }

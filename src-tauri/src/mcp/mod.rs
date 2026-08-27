@@ -6,7 +6,10 @@ pub mod permission;
 mod server;
 pub mod tool_help;
 
-pub use client::{McpClientManager, McpServerConfig, McpToolInfo};
+pub use client::{
+    format_call_tool_result, is_valid_mcp_server_id, validate_mcp_server_id, McpClientManager,
+    McpServerConfig, McpToolInfo,
+};
 pub use server::{DataZenMcpServer, MCP_ALL_TOOLS};
 
 use crate::commands::AppState;

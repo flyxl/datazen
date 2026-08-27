@@ -468,7 +468,14 @@ export interface DriverCommandDefinition {
   metadata: DriverCommandMetadata;
 }
 
-export type WorkflowStepType = 'query' | 'command' | 'ai' | 'condition' | 'foreach' | 'merge' | 'transform';
+export type WorkflowStepType =
+  | 'query'
+  | 'command'
+  | 'ai'
+  | 'condition'
+  | 'foreach'
+  | 'merge'
+  | 'transform';
 
 export interface ErrorHandlingConfig {
   strategy: 'abort' | 'skip' | 'fallback';
@@ -673,6 +680,13 @@ export interface McpServerConfig {
   args?: string[];
   env?: Record<string, string>;
   enabled: boolean;
+  /** When false, tools from this server are excluded from AI Chat. Default true. */
+  enabledForAi?: boolean;
+}
+
+/** Mirrors Rust `validate_mcp_server_id`: ^[a-zA-Z0-9_-]+$ */
+export function isValidMcpServerId(id: string): boolean {
+  return /^[a-zA-Z0-9_-]+$/.test(id);
 }
 
 export interface McpClientStatus {
