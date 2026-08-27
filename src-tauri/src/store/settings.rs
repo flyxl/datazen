@@ -1,5 +1,6 @@
 use crate::dashboard::types::MonitorSettings;
 use crate::mcp::permission::McpPermissionMode;
+use crate::mcp::McpServerConfig;
 use serde::{Deserialize, Serialize};
 
 /// Light / dark / system mode plus optional installed theme pack.
@@ -87,6 +88,9 @@ pub struct AppSettings {
     /// Opaque per-plugin settings keyed by plugin id (e.g. `"redis"`).
     #[serde(default)]
     pub plugin_settings: serde_json::Map<String, serde_json::Value>,
+    /// Saved external MCP Client server configs (stdio). Runtime connections are separate.
+    #[serde(default)]
+    pub mcp_client_servers: Vec<McpServerConfig>,
 }
 
 fn default_limit_select() -> bool {
@@ -144,6 +148,7 @@ impl Default for AppSettings {
             auto_chart_on_query: false,
             monitor: MonitorSettings::default(),
             plugin_settings: serde_json::Map::new(),
+            mcp_client_servers: Vec::new(),
         }
     }
 }

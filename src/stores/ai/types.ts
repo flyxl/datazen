@@ -165,8 +165,9 @@ export interface AiStore {
   mcpConnecting: boolean;
   mcpError: string | null;
 
-  connectMcpServer: (config: McpServerConfig) => Promise<void>;
+  connectMcpServer: (serverId: string) => Promise<void>;
   disconnectMcpServer: (serverId: string) => Promise<void>;
+  saveMcpClientServers: (configs: McpServerConfig[]) => Promise<void>;
   loadMcpServers: () => Promise<void>;
   loadMcpTools: () => Promise<void>;
   callMcpTool: (params: {

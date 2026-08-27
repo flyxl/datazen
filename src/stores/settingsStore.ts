@@ -31,6 +31,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoChartOnQuery: false,
   monitor: DEFAULT_MONITOR_SETTINGS,
   pluginSettings: {},
+  mcpClientServers: [],
 };
 
 const THEME_STORAGE_KEY = 'datazen-theme';

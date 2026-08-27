@@ -3,8 +3,9 @@ import { aiCommands, onAiStreamChunk, onAiStreamError, onAiConfigChanged } from 
 import { extractSqlFromResponse } from '../lib/extractSql';
 import { normalizeAiProviders } from '../lib/aiProviders';
 import { extractQuestions, parseToolCallQuestions } from '../lib/extractQuestions';
-import type { AiChatMessage } from '../types';
+import type { AiChatMessage, McpServerConfig } from '../types';
 import { initialNl2Sql, type AiStore } from './ai/types';
+import { useSettingsStore } from './settingsStore';
 
 export type { AiStore } from './ai/types';
 export { initialNl2Sql } from './ai/types';
@@ -658,7 +659,13 @@ export const useAiStore = create<AiStore>((set, get) => ({
   mcpConnecting: false,
   mcpError: null,
 
-  connectMcpServer: async (config) => {
+  connectMcpServer: async (serverId) => {
+    const config = useSettingsStore.getState().settings.mcpClientServers?.find((c) => c.id === serverId);
+    if (!config) {
+      const msg = `MCP server config not found: ${serverId}`;
+      set({ mcpError: msg });
+      throw new Error(msg);
+    }
     set({ mcpConnecting: true, mcpError: null });
     try {
       await aiCommands.mcpClientConnect(config);
@@ -679,6 +686,34 @@ export const useAiStore = create<AiStore>((set, get) => ({
       await get().loadMcpTools();
     } catch (e) {
       set({ mcpError: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  saveMcpClientServers: async (configs) => {
+    const prevConfigs = useSettingsStore.getState().settings.mcpClientServers ?? [];
+    const connectedIds = new Set(get().mcpServers.map((s) => s.serverId));
+    const nextIds = new Set(configs.map((c) => c.id));
+
+    await useSettingsStore.getState().updateSettings({ mcpClientServers: configs });
+
+    for (const id of connectedIds) {
+      if (!nextIds.has(id)) {
+        await get().disconnectMcpServer(id);
+      }
+    }
+
+    for (const config of configs) {
+      if (!connectedIds.has(config.id)) continue;
+      const prev = prevConfigs.find((c) => c.id === config.id);
+      if (!prev || JSON.stringify(prev) === JSON.stringify(config)) continue;
+      await get().disconnectMcpServer(config.id);
+      if (config.enabled) {
+        try {
+          await get().connectMcpServer(config.id);
+        } catch {
+          // connectMcpServer already records mcpError
+        }
+      }
     }
   },
 
