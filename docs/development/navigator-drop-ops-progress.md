@@ -31,7 +31,7 @@
 
 | 编号 | 前置 | 步骤 | 断言 | 备注 |
 |------|------|------|------|------|
-| E2E-F1-1 | PG 连接，存在测试表 | 侧栏表节点右键 → Drop → Web 确认 | 表从树消失 | NCM-046 |
+| E2E-F1-1 | PG 连接，存在测试表 | 侧栏 Drop → Web 确认 | 树与 `information_schema` 均无该表 | NCM-046 |
 
 ### 测试结果
 
@@ -49,7 +49,7 @@
 
 | 编号 | 前置 | 步骤 | 断言 | 备注 |
 |------|------|------|------|------|
-| E2E-F2-1 | PG 多 schema | 侧栏 schema 右键 → Drop Schema → Web 确认 | schema 从树消失 | NCM-023 |
+| E2E-F2-1 | PG 多 schema | 侧栏 Drop Schema → Web 确认 | 树与 `information_schema.schemata` 均无该 schema | NCM-023 |
 
 ### 测试结果
 
