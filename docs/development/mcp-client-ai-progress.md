@@ -12,14 +12,14 @@
 | F2 | Phase 2 Tool Schema 暴露 | 计划 Phase 2 | 编码完成 | 6b6bfc5a | — |
 | F3 | Phase 3 AI Tool Loop 集成 | 计划 Phase 3 | 编码完成 | 42d863d0 | — |
 | F4 | Phase 4 UI polish + 文档 + E2E | 计划 Phase 4 | 编码完成 | 1702a98e | — |
-| **合计** | MCP Client → AI Chat MVP | — | **测试中·不通过** | 1702a98e | 0e01c33a |
+| **合计** | MCP Client → AI Chat MVP | — | **已完成** | 1702a98e | 7f46b1b6 |
 
 ## 2. Bug 台账
 
 | Bug ID | 所属功能 | 描述 | 状态 | 记录时间 | 验证记录 |
 |--------|----------|------|------|----------|----------|
-| F-BUG-001 | F4 / 三件套 | `src/stores/aiStore.ts:6` — `McpServerConfig` 类型 import 未使用，导致 `pnpm exec tsc --noEmit` 报 TS6196 | 待验证(修复后) | 2026-08-27 | 修复 commit b2581b3b；待重跑 `pnpm exec tsc --noEmit` 确认 |
-| F-BUG-002 | F4 / 覆盖率 | `McpClientSection.tsx` 行覆盖率 71.13%（目标 ≥80%），未覆盖 retry/error badge/部分 env 分支 | 待验证(修复后) | 2026-08-27 | 修复 commit b2581b3b；新增 SettingsContent 单测，定向覆盖率 98.96% 行 |
+| F-BUG-001 | F4 / 三件套 | `src/stores/aiStore.ts:6` — `McpServerConfig` 类型 import 未使用，导致 `pnpm exec tsc --noEmit` 报 TS6196 | 已修复 | 2026-08-27 | 修复 b2581b3b；复验 b1627443：`tsc --noEmit` 0 errors |
+| F-BUG-002 | F4 / 覆盖率 | `McpClientSection.tsx` 行覆盖率 71.13%（目标 ≥80%），未覆盖 retry/error badge/部分 env 分支 | 已修复 | 2026-08-27 | 修复 b2581b3b；复验 b1627443：定向行覆盖率 98.96% |
 
 ## 3. 测试约定
 
@@ -42,20 +42,20 @@
 | SS-MCP-CLIENT-002 | 连接 filesystem MCP | Chat 请求读文件 | 返回文件内容 | 【留待 R 回归】需真实 MCP + LLM |
 | SS-MCP-CLIENT-003 | 重启应用 | enabled server | auto-reconnect | 【本机可执行】手工 |
 
-**测试结果（测试代理 2026-08-27，基线 1702a98e）：**
+**测试结果（测试代理 2026-08-27 复验，基线 b1627443）：**
 
 | 套件 | 结果 | 数字 |
 |------|------|------|
 | `cargo test -p datazen --lib` | ✅ 通过 | 1127 passed, 0 failed, 2 ignored |
-| `npx vitest run` | ✅ 通过 | 249 files, 2041 passed |
-| `pnpm exec tsc --noEmit` | ✅ 通过（修复后） | 0 errors — F-BUG-001 已修复 |
+| `npx vitest run` | ✅ 通过 | 249 files, 2043 passed |
+| `pnpm exec tsc --noEmit` | ✅ 通过 | 0 errors |
 
-**覆盖率（定向 `--coverage.include` MCP 改动文件）：**
+**覆盖率（定向 `--coverage.include` MCP 改动文件，复验 b1627443）：**
 
 | 文件 | Stmts | Lines | 判定 |
 |------|-------|-------|------|
-| `src/stores/aiStore.ts` | 84.91% | 86.69% | ✅ ≥80% |
-| `src/windows/settings/McpClientSection.tsx` | 95.61% | 98.96% | ✅ ≥80%（F-BUG-002 已修复，待重验） |
+| `src/stores/aiStore.ts` | 84.91% | 86.74% | ✅ ≥80% |
+| `src/windows/settings/McpClientSection.tsx` | 95.61% | 98.96% | ✅ ≥80% |
 | `src/stores/settingsStore.ts` | 0% | 0% | ⚠️ 本轮仅增 `mcpClientServers: []` 默认值，无专属单测 |
 
 **范围完整性审查（对照计划 §2.1 MVP）：**
