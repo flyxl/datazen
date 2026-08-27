@@ -16,6 +16,7 @@ const {
   loadMcpServersMock,
   connectMcpServerMock,
   disconnectMcpServerMock,
+  saveMcpClientServersMock,
   clearMcpErrorMock,
   getLogPathMock,
   getDefaultLogDirMock,
@@ -53,6 +54,7 @@ const {
     mcpPermissionMode: 'read_only',
     contextDir: '/tmp/context',
     pluginSettings: {},
+    mcpClientServers: [],
     monitor: {
       enabled: false,
       pollIntervalSecs: 60,
@@ -99,6 +101,7 @@ const {
     mcpError: null as string | null,
     connectMcpServer: vi.fn().mockResolvedValue(undefined),
     disconnectMcpServer: vi.fn().mockResolvedValue(undefined),
+    saveMcpClientServers: vi.fn().mockResolvedValue(undefined),
     loadMcpServers: vi.fn().mockResolvedValue(undefined),
     clearMcpError: vi.fn(),
   };
@@ -124,6 +127,7 @@ const {
     loadMcpServersMock: aiState.loadMcpServers,
     connectMcpServerMock: aiState.connectMcpServer,
     disconnectMcpServerMock: aiState.disconnectMcpServer,
+    saveMcpClientServersMock: aiState.saveMcpClientServers,
     clearMcpErrorMock: aiState.clearMcpError,
     getLogPathMock: vi.fn().mockResolvedValue('/tmp/logs'),
     getDefaultLogDirMock: vi.fn().mockResolvedValue('/tmp/logs'),
@@ -351,6 +355,7 @@ beforeEach(() => {
     mcpPermissionMode: 'read_only',
     contextDir: '/tmp/context',
     pluginSettings: {},
+    mcpClientServers: [],
     monitor: {
       enabled: false,
       pollIntervalSecs: 60,
@@ -377,6 +382,7 @@ beforeEach(() => {
   aiState.fetchRemoteModels.mockResolvedValue([]);
   aiState.connectMcpServer.mockResolvedValue(undefined);
   aiState.disconnectMcpServer.mockResolvedValue(undefined);
+  aiState.saveMcpClientServers.mockResolvedValue(undefined);
 });
 
 afterEach(cleanup);
@@ -668,7 +674,18 @@ describe('SettingsContent', () => {
     await waitFor(() => expect(screen.getByText('start failed')).toBeInTheDocument());
   });
 
-  it('covers MCP client connect and disconnect', async () => {
+  it('covers MCP client save, connect and disconnect', async () => {
+    currentSettings.mcpClientServers = [
+      {
+        id: 'srv1',
+        name: 'Test MCP',
+        transport: 'stdio',
+        command: '/usr/bin/mcp',
+        args: [],
+        env: {},
+        enabled: true,
+      },
+    ];
     aiState.mcpServers = [{ serverId: 'srv1', serverName: 'Test MCP', toolsCount: 3 }];
     aiState.mcpError = 'connect failed';
 
@@ -677,6 +694,8 @@ describe('SettingsContent', () => {
     goToSection('mcpClient.title');
 
     await waitFor(() => expect(loadMcpServersMock).toHaveBeenCalled());
+    expect(screen.getByText('mcpClient.savedConfigs')).toBeInTheDocument();
+    expect(screen.getByText('mcpClient.runtimeStatus')).toBeInTheDocument();
     expect(screen.getByText('connect failed')).toBeInTheDocument();
     const errorBanner = screen.getByText('connect failed').closest('div')!;
     fireEvent.click(within(errorBanner).getByText('common.close'));
@@ -688,10 +707,12 @@ describe('SettingsContent', () => {
     aiState.mcpServers = [];
     aiState.mcpError = null;
     cleanup();
+    currentSettings.mcpClientServers = [];
     render(<SettingsContent />);
     await waitForSettingsLoad();
     goToSection('mcpClient.title');
 
+    expect(screen.getByText('mcpClient.noSavedConfigs')).toBeInTheDocument();
     fireEvent.click(screen.getByText('mcpClient.addServer'));
     fireEvent.change(screen.getByPlaceholderText('my-mcp-server'), {
       target: { value: 'my-server' },
@@ -705,8 +726,11 @@ describe('SettingsContent', () => {
     fireEvent.change(document.querySelector('textarea') as HTMLTextAreaElement, {
       target: { value: '--stdio\n--verbose' },
     });
-    fireEvent.click(screen.getByText('mcpClient.connect'));
-    await waitFor(() => expect(connectMcpServerMock).toHaveBeenCalled());
+    fireEvent.click(screen.getByText('mcpClient.save'));
+    await waitFor(() => expect(saveMcpClientServersMock).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(connectMcpServerMock).not.toHaveBeenCalled(),
+    );
   });
 
   it('shows extensions section', async () => {

@@ -243,7 +243,7 @@ describe('Settings (SS-001~SS-006)', () => {
         expectText: [t('settings.ai.provider'), t('settings.ai.apiKey'), 'API'],
       },
       { label: t('mcp.title'), expectText: ['MCP', t('mcp.title')] },
-      { label: t('mcpClient.title'), expectText: [t('mcpClient.title'), 'MCP'] },
+      { label: t('mcpClient.title'), expectText: [t('mcpClient.title'), t('mcpClient.savedConfigs'), 'MCP'] },
       {
         label: t('settings.extensions.title'),
         expectText: [t('settings.extensions.title'), t('settings.extensions.empty'), '扩展'],

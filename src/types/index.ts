@@ -251,6 +251,8 @@ export interface AppSettings {
   monitor: MonitorSettings;
   /** Opaque per-plugin settings keyed by plugin id (e.g. `"redis"`). */
   pluginSettings: Record<string, unknown>;
+  /** Saved external MCP Client server configs. Runtime connections are separate. */
+  mcpClientServers?: McpServerConfig[];
 }
 
 export type FilterOperator =

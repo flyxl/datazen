@@ -24,6 +24,24 @@ const mockAiCommands = {
   mcpClientCallTool: vi.fn(),
 };
 
+const mockUpdateSettings = vi.fn().mockResolvedValue(undefined);
+let mockMcpClientServers: Array<{
+  id: string;
+  name: string;
+  transport: 'stdio';
+  command?: string;
+  enabled: boolean;
+}> = [];
+
+vi.mock('../settingsStore', () => ({
+  useSettingsStore: {
+    getState: () => ({
+      settings: { mcpClientServers: mockMcpClientServers },
+      updateSettings: mockUpdateSettings,
+    }),
+  },
+}));
+
 const mockUnlisten = vi.fn();
 const streamChunkHandler = vi.fn();
 const streamErrorHandler = vi.fn();
@@ -47,6 +65,8 @@ describe('aiStore', () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+    mockMcpClientServers = [];
+    mockUpdateSettings.mockResolvedValue(undefined);
     (globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = {};
     const mod = await import('../aiStore');
     useAiStore = mod.useAiStore;
@@ -376,20 +396,54 @@ describe('aiStore', () => {
   });
 
   describe('MCP', () => {
-    it('connectMcpServer loads servers and tools', async () => {
+    it('connectMcpServer loads servers and tools from saved config', async () => {
+      mockMcpClientServers = [
+        { id: 's1', name: 'Server', transport: 'stdio', command: 'node', enabled: true },
+      ];
       mockAiCommands.mcpClientConnect.mockResolvedValueOnce(undefined);
-      mockAiCommands.mcpClientList.mockResolvedValueOnce([{ id: 's1', name: 'Server' }]);
-      mockAiCommands.mcpClientTools.mockResolvedValueOnce([{ name: 'tool1', serverId: 's1' }]);
-      await useAiStore.getState().connectMcpServer({ id: 's1', name: 'Server', transport: 'stdio', command: 'node' });
+      mockAiCommands.mcpClientList.mockResolvedValueOnce([
+        { serverId: 's1', serverName: 'Server', toolsCount: 1 },
+      ]);
+      mockAiCommands.mcpClientTools.mockResolvedValueOnce([{ toolName: 'tool1', serverId: 's1' }]);
+      await useAiStore.getState().connectMcpServer('s1');
+      expect(mockAiCommands.mcpClientConnect).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 's1', command: 'node' }),
+      );
       expect(useAiStore.getState().mcpServers).toHaveLength(1);
       expect(useAiStore.getState().mcpTools).toHaveLength(1);
     });
 
+    it('connectMcpServer throws when saved config missing', async () => {
+      await expect(useAiStore.getState().connectMcpServer('missing')).rejects.toThrow(
+        'MCP server config not found: missing',
+      );
+    });
+
     it('connectMcpServer throws on error', async () => {
+      mockMcpClientServers = [
+        { id: 's1', name: 'S', transport: 'stdio', command: 'x', enabled: true },
+      ];
       mockAiCommands.mcpClientConnect.mockRejectedValueOnce(new Error('connect fail'));
-      await expect(
-        useAiStore.getState().connectMcpServer({ id: 's1', name: 'S', transport: 'stdio', command: 'x' }),
-      ).rejects.toThrow('connect fail');
+      await expect(useAiStore.getState().connectMcpServer('s1')).rejects.toThrow('connect fail');
+    });
+
+    it('saveMcpClientServers persists via settingsStore', async () => {
+      const configs = [
+        { id: 's1', name: 'Server', transport: 'stdio' as const, command: 'node', enabled: true },
+      ];
+      await useAiStore.getState().saveMcpClientServers(configs);
+      expect(mockUpdateSettings).toHaveBeenCalledWith({ mcpClientServers: configs });
+    });
+
+    it('saveMcpClientServers disconnects removed connected servers', async () => {
+      useAiStore.setState({
+        mcpServers: [{ serverId: 's1', serverName: 'Server', toolsCount: 1 }],
+      });
+      mockAiCommands.mcpClientDisconnect.mockResolvedValueOnce(undefined);
+      mockAiCommands.mcpClientList.mockResolvedValueOnce([]);
+      mockAiCommands.mcpClientTools.mockResolvedValueOnce([]);
+      await useAiStore.getState().saveMcpClientServers([]);
+      expect(mockAiCommands.mcpClientDisconnect).toHaveBeenCalledWith('s1');
     });
 
     it('disconnectMcpServer and callMcpTool', async () => {
