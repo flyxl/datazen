@@ -18,6 +18,7 @@
     "tauri:dev": "node scripts/tauri-dev.mjs",
     "tauri:build": "node scripts/generate-menu-labels.mjs && node scripts/with-plugin-inject.mjs -- tauri build",
     "tauri:build:minimal": "node scripts/generate-menu-labels.mjs && node scripts/with-plugin-inject.mjs --drivers=basic -- tauri build",
+    "ext:pack": "node scripts/pack-extensions.mjs",
     "e2e": "node e2e/run.mjs",
     "e2e:minimal": "node e2e/run.mjs --minimal-drivers",
     "e2e:skip-build": "node e2e/run.mjs --skip-build",

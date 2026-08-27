@@ -398,7 +398,7 @@ describe('WorkflowPanel', () => {
     fireEvent.click(screen.getByText('workflows.history.title'));
     await waitFor(() => screen.getByText('Failed Run'));
     fireEvent.click(screen.getByText('Failed Run'));
-    await waitFor(() => expect(screen.getByText(/workflows\.executionFailed/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/common\.executionFailed/)).toBeInTheDocument());
     fireEvent.click(screen.getByText('s1'));
     expect(screen.getByText('err')).toBeInTheDocument();
   });
