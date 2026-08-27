@@ -1,4 +1,5 @@
 import type { NativeMenuItemDef } from './nativeContextMenu';
+import { isProductFeatureEnabled } from './productFeatures';
 
 export type SchemaTreeNodeKind =
   | 'table'
@@ -119,6 +120,23 @@ function push(...defs: Array<NativeMenuItemDef | null>): NativeMenuItemDef[] {
   return defs.filter((d): d is NativeMenuItemDef => d != null);
 }
 
+function migrationToolItems(
+  labels: SchemaTreeContextMenuLabels,
+  handlers: SchemaTreeContextMenuHandlers,
+): NativeMenuItemDef[] {
+  return push(
+    isProductFeatureEnabled('dataTransfer')
+      ? item('data-transfer', labels.dataTransfer, handlers.onDataTransfer)
+      : null,
+    isProductFeatureEnabled('schemaDiff')
+      ? item('compare-schema', labels.compareSchema, handlers.onCompareSchema)
+      : null,
+    isProductFeatureEnabled('dataSync')
+      ? item('compare-data', labels.compareData, handlers.onCompareData)
+      : null,
+  );
+}
+
 /**
  * Build native context-menu items for Schema tree nodes (table / view / database / blank).
  * Table order aligns with TablePlus: Open → Structure → New Query → Copy… → Export… → Truncate/Drop.
@@ -203,11 +221,7 @@ export function buildSchemaTreeContextMenuItems(
         !readOnly && showNewTable ? item('new-table', labels.newTable, handlers.onNewTable) : null,
         item('create-schema', labels.createSchema, handlers.onCreateSchema),
       );
-      const syncItems = push(
-        item('data-transfer', labels.dataTransfer, handlers.onDataTransfer),
-        item('compare-schema', labels.compareSchema, handlers.onCompareSchema),
-        item('compare-data', labels.compareData, handlers.onCompareData),
-      );
+      const syncItems = migrationToolItems(labels, handlers);
       const backupItems = push(
         item('backup', labels.backup, handlers.onBackup),
         item('restore', labels.restore, handlers.onRestore),
@@ -237,11 +251,7 @@ export function buildSchemaTreeContextMenuItems(
         !readOnly ? item('import', labels.importData, handlers.onImport) : null,
         !readOnly ? item('new-table', labels.newTable, handlers.onNewTable) : null,
       );
-      const schemaSyncItems = push(
-        item('data-transfer', labels.dataTransfer, handlers.onDataTransfer),
-        item('compare-schema', labels.compareSchema, handlers.onCompareSchema),
-        item('compare-data', labels.compareData, handlers.onCompareData),
-      );
+      const schemaSyncItems = migrationToolItems(labels, handlers);
       const dropSch = !readOnly
         ? item('drop-schema', labels.dropSchema, handlers.onDropSchema)
         : null;

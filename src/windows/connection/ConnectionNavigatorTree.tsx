@@ -47,6 +47,7 @@ import {
   buildMainGroupContextMenuItems,
 } from '../../lib/mainWindowContextMenu';
 import { buildSchemaTreeContextMenuItems } from '../../lib/schemaTreeContextMenu';
+import { isProductFeatureEnabled } from '../../lib/productFeatures';
 import { buildConnectionUrl } from '../../lib/buildConnectionUrl';
 import {
   groupConnectionsWithPinnedSection,
@@ -1344,9 +1345,15 @@ export const ConnectionNavigatorTree = forwardRef<
                   })();
                 }
               : undefined,
-            onDataTransfer: () => openDataTransferWindow(),
-            onCompareSchema: () => openSchemaDiffWindow(),
-            onCompareData: () => openDataSyncWindow(),
+            onDataTransfer: isProductFeatureEnabled('dataTransfer')
+              ? () => openDataTransferWindow()
+              : undefined,
+            onCompareSchema: isProductFeatureEnabled('schemaDiff')
+              ? () => openSchemaDiffWindow()
+              : undefined,
+            onCompareData: isProductFeatureEnabled('dataSync')
+              ? () => openDataSyncWindow()
+              : undefined,
             onBackup: dbMeta?.supportsBackup
               ? () => {
                   openBackupWindow('backup', { connectionId, database: dbName });
@@ -1458,9 +1465,15 @@ export const ConnectionNavigatorTree = forwardRef<
                     })();
                   }
                 : undefined,
-            onDataTransfer: () => openDataTransferWindow(),
-            onCompareSchema: () => openSchemaDiffWindow(),
-            onCompareData: () => openDataSyncWindow(),
+            onDataTransfer: isProductFeatureEnabled('dataTransfer')
+              ? () => openDataTransferWindow()
+              : undefined,
+            onCompareSchema: isProductFeatureEnabled('schemaDiff')
+              ? () => openSchemaDiffWindow()
+              : undefined,
+            onCompareData: isProductFeatureEnabled('dataSync')
+              ? () => openDataSyncWindow()
+              : undefined,
           },
           readOnly,
           safeMode,

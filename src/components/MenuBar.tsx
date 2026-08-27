@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../lib/cn';
 import { useI18n } from '../hooks/useI18n';
+import { isProductFeatureEnabled } from '../lib/productFeatures';
 import { useSettingsStore } from '../stores/settingsStore';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import { usePlatform } from '../hooks/usePlatform';
@@ -26,6 +27,21 @@ interface Menu {
 function useMenus(): Menu[] {
   const { t } = useI18n();
   const theme = useSettingsStore((s) => s.settings.theme.mode);
+
+  const toolsItems: MenuItem[] = [];
+  if (isProductFeatureEnabled('schemaDiff')) {
+    toolsItems.push({ id: 'schema-diff', label: t('common.schemaDiff') });
+    toolsItems.push({ id: 'sep-3', label: '', separator: true });
+  }
+  toolsItems.push(
+    { id: 'workflow', label: t('menu.workflow') },
+    { id: 'dashboard', label: t('menu.dashboard') },
+    { id: 'sep-3b', label: '', separator: true },
+    { id: 'backup', label: t('common.backupDatabase') },
+    { id: 'restore', label: t('common.restoreDatabase') },
+    { id: 'sep-4', label: '', separator: true },
+    { id: 'view-logs', label: t('common.viewLogs') },
+  );
 
   return [
     {
@@ -80,17 +96,7 @@ function useMenus(): Menu[] {
     {
       id: 'tools',
       label: t('menu.tools'),
-      items: [
-        { id: 'schema-diff', label: t('common.schemaDiff') },
-        { id: 'sep-3', label: '', separator: true },
-        { id: 'workflow', label: t('menu.workflow') },
-        { id: 'dashboard', label: t('menu.dashboard') },
-        { id: 'sep-3b', label: '', separator: true },
-        { id: 'backup', label: t('common.backupDatabase') },
-        { id: 'restore', label: t('common.restoreDatabase') },
-        { id: 'sep-4', label: '', separator: true },
-        { id: 'view-logs', label: t('common.viewLogs') },
-      ],
+      items: toolsItems,
     },
     {
       id: 'help',

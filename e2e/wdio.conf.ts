@@ -63,6 +63,9 @@ export const config: WebdriverIO.Config = {
       './specs/workflow-lifecycle.ts',
       './specs/er-diagram.ts',
       './specs/data-transfer-window.ts',
+      './specs/journeys/schema-diff-journey.ts',
+      './specs/journeys/data-sync-journey.ts',
+      './specs/journeys/data-transfer-journey.ts',
     ],
     // Host contract matrix × PG/MySQL/SQLite (`pnpm e2e:contract:matrix`,
     // `pnpm e2e:contract:pg` adds --mochaOpts.grep 'Host contract @ postgres')
@@ -93,6 +96,12 @@ export const config: WebdriverIO.Config = {
     ],
     // Dashboard (`pnpm e2e:dashboard`)
     dashboard: ['./specs/data-dashboard*.ts'],
+    // Full user journeys for hidden v0.1.0 windows (`pnpm e2e:journeys`)
+    journeys: [
+      './specs/journeys/schema-diff-journey.ts',
+      './specs/journeys/data-sync-journey.ts',
+      './specs/journeys/data-transfer-journey.ts',
+    ],
   },
   maxInstances: 1,
   capabilities: [{}],
