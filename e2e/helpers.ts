@@ -187,7 +187,6 @@ export async function dblclickConnByExactName(connName: string) {
     item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     return true;
   }, connName);
-  if (ok) await captureJourneyStep(`connect-${connName}`);
   return ok;
 }
 
@@ -244,7 +243,6 @@ export async function connectSeededPgInWorkspace() {
   await clickCardConnectButton();
   await waitForConnectionToolbar();
   await expandConnectedConnectionInNavigator();
-  await captureJourneyStep('connect-seeded-pg');
 }
 
 /**
@@ -274,7 +272,6 @@ export async function openSeededPgConnectionWindow(mainWindow: string) {
 async function finishConnectInWorkspace(mainWindow: string) {
   await browser.switchToWindow(mainWindow);
   await waitForConnectionToolbar();
-  await captureJourneyStep('connection-workspace-ready');
   return { mainWindow, connWindow: mainWindow };
 }
 
@@ -683,7 +680,6 @@ async function executeSqlInEditor(sql: string) {
     }
   }
   await browser.pause(500);
-  await captureJourneyStep('sql-executed');
 }
 
 /** Open a new query tab and wait for the execute button. */
@@ -715,7 +711,6 @@ export async function openQueryTab() {
     execBtn = await $('button[aria-label="执行"]');
   }
   await execBtn.waitForDisplayed({ timeout: 10000 });
-  await captureJourneyStep('query-tab-open');
 }
 
 // ── schema sidebar ──────────────────────────────────────────────────
@@ -808,7 +803,6 @@ export async function waitForSchemaTreeLoaded(timeout = 20000) {
       timeoutMsg: '等待 schema 树加载超时',
     },
   );
-  await captureJourneyStep('schema-tree-loaded');
 }
 
 /** Click a table by exact name in the sidebar. */
@@ -820,7 +814,6 @@ export async function clickTableInSidebar(tableName: string) {
     const text = (await btn.getText()).trim();
     if (text === tableName || text.endsWith(`.${tableName}`) || text.endsWith(`/${tableName}`)) {
       await btn.click();
-      await captureJourneyStep(`table-${tableName}`);
       return;
     }
   }
@@ -842,7 +835,6 @@ export async function clickTableInSidebar(tableName: string) {
   if (!clicked) {
     throw new Error(`未找到表 "${tableName}"`);
   }
-  await captureJourneyStep(`table-${tableName}`);
 }
 
 /** Click the first table/view entry in the sidebar and return its name. */
@@ -868,7 +860,6 @@ export async function clickFirstTable() {
   if (!name) {
     throw new Error('未找到可点击的表节点');
   }
-  await captureJourneyStep(`table-${name}`);
   return name;
 }
 
@@ -877,7 +868,6 @@ export async function switchSubTab(label: string) {
   const tab = await $(`button*=${label}`);
   await tab.click();
   await browser.pause(500);
-  await captureJourneyStep(`subtab-${label}`);
 }
 
 // ── DataTable cell interaction ──────────────────────────────────────
@@ -897,7 +887,6 @@ export async function doubleClickCellByText(text: string) {
     el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
   }, text);
   await browser.pause(500);
-  await captureJourneyStep(`cell-edit-${text}`);
 }
 
 /** Wait for the inline editing input to appear and return it. */
@@ -932,23 +921,21 @@ export async function selectDzOption(triggerLabel: string, optionLabel: string) 
     optionLabel,
   );
   await browser.pause(200);
-  await captureJourneyStep(`select-${optionLabel}`);
 }
 
 // ── workspace navigation ────────────────────────────────────────────
 
-/** Click workspace left-nav and wait for target panel (screenshot-traced). */
+/** Click workspace left-nav and wait for target panel. */
 export async function switchWorkspaceNav(
   navTestId: string,
   waitTestId: string,
-  stepLabel?: string,
+  _stepLabel?: string,
 ) {
   const nav = await $(`[data-testid="${navTestId}"]`);
   await nav.waitForDisplayed({ timeout: 15000 });
   await nav.click();
   const target = await $(`[data-testid="${waitTestId}"]`);
   await target.waitForDisplayed({ timeout: 15000 });
-  await captureJourneyStep(stepLabel ?? navTestId.replace('workspace-nav-', 'workspace-'));
 }
 
 /** Open ER diagram from home quick action or connection toolbar. */
@@ -956,14 +943,12 @@ export async function openErDiagramFromUi() {
   const homeQuick = await $('[data-testid="home-quick-er-diagram"]');
   if (await homeQuick.isExisting()) {
     await homeQuick.click();
-    await captureJourneyStep('er-diagram-open');
     return;
   }
   const toolbarWrap = await $('[data-testid="content-toolbar-er-diagram"]');
   const toolbarBtn = await toolbarWrap.$('button');
   await toolbarBtn.waitForClickable({ timeout: 10000 });
   await toolbarBtn.click();
-  await captureJourneyStep('er-diagram-open');
 }
 
 /** Emit a cross-window menu event on the main Tauri window. */
@@ -996,7 +981,6 @@ export async function openSettingsInMainWindow(section?: string) {
   await emitCrossWindowEvent('menu:open-settings', section ? { section } : undefined);
   const settingsPage = await $('[data-testid="settings-page"]');
   await settingsPage.waitForDisplayed({ timeout: 15000 });
-  await captureJourneyStep(section ? `settings-${section}` : 'settings-open');
 }
 
 /** Click SettingsPage back control and wait for workspace shell. */
@@ -1011,5 +995,4 @@ export async function backFromSettingsInMainWindow() {
     timeoutMsg: 'SettingsPage did not close after back',
   });
   await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 10000 });
-  await captureJourneyStep('settings-closed');
 }

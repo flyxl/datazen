@@ -211,6 +211,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     await openWorkflowWorkspace(mainWindow);
     const workflowWorkspace = await $('[data-testid="workflow-workspace"]');
     await expect(workflowWorkspace).toBeDisplayed();
+    await captureJourneyStep('workflow-workspace-open', 0, true);
   });
 
   it('工作区应显示 Workflows 和执行记录侧边栏标签', async () => {

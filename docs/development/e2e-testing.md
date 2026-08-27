@@ -169,9 +169,9 @@ pnpm e2e:skip-build -- --screenshot --spec e2e/specs/main-window.ts
 ```
 
 - `e2e/run.mjs` 设置 `E2E_SCREENSHOT=1` 并 `mkdir -p e2e/screenshots/`（目录 gitignored，不存在时会自动创建）
-- 仅在 **helpers / spec 显式调用** `captureJourneyStep()` 或关键 helper（连接、开 Tab、执行 SQL 等）时留痕；**不再**对每个 `it()` 无脑截 start/end
-- 连续帧若 PNG 内容相同会自动去重（失败用例额外强制截一张 `fail`）
-- 输出：`e2e/screenshots/<spec>/<test-title>/01_connect-seeded-pg.png` …
+- **仅 spec 内**在断言通过、UI 达到目标状态后调用 `captureJourneyStep(label, 0, true)`；helpers **不再**自动截图（避免 connect / openTab 链产生重复帧）
+- 连续帧若 PNG 内容相同会自动去重（`force=true` 跳过去重；失败用例额外强制截一张 `fail`）
+- 输出：`e2e/screenshots/<spec>/<test-title>/01_<label>.png` …
 
 纯 IPC 用例（无 UI 操作）通常 **零截图**，属预期行为。营销固定场景仍见 `e2e/specs/zz-screenshots.ts`。
 

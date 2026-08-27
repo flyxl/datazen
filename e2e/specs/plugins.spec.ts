@@ -155,7 +155,7 @@ async function openPluginsPage() {
   await nav.waitForDisplayed({ timeout: 10000 });
   await nav.click();
   await $('[data-testid="plugin-management-page"]').waitForDisplayed({ timeout: 10000 });
-  await captureJourneyStep('plugins-page');
+  await captureJourneyStep('plugins-page', 0, true);
 }
 
 async function openWorkspaceMode() {
@@ -163,7 +163,7 @@ async function openWorkspaceMode() {
   await nav.waitForDisplayed({ timeout: 10000 });
   await nav.click();
   await $('[data-testid="workspace-navigator"]').waitForDisplayed({ timeout: 10000 });
-  await captureJourneyStep('workspace-pages-nav');
+  await captureJourneyStep('workspace-pages-nav', 0, true);
 }
 
 async function sampleCard() {
@@ -183,7 +183,7 @@ async function openSampleTabFromNavigator() {
   await $('[data-testid="workspace-tabbar"]').waitForDisplayed({ timeout: 10000 });
   const iframe = await $('[data-testid="plugin-iframe"]');
   await iframe.waitForExist({ timeout: 15000 });
-  await captureJourneyStep('plugin-tab-open');
+  await captureJourneyStep('plugin-tab-open', 0, true);
   return iframe;
 }
 
@@ -223,6 +223,7 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
     const review = await $('[data-testid="plugin-install-review"]').getText();
     expect(review).toContain('Sample Hello');
     expect(review).toContain('1.0.0');
+    await captureJourneyStep('plugin-install-review', 0, true);
 
     const badges = await $$('[data-testid="plugin-install-permissions"] [title]');
     expect(badges.length).toBe(3); // context:connections / command:invoke / storage:local
@@ -245,6 +246,7 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
     // Enabled by default after install.
     const toggle = await card.$('[data-testid="plugin-toggle"]');
     expect(await toggle.getAttribute('aria-checked')).toBe('true');
+    await captureJourneyStep('plugin-installed', 0, true);
   });
 
   it('J1-002: list_extensions reports the installed plugin as enabled', async () => {
