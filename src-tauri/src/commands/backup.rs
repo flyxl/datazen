@@ -706,7 +706,6 @@ mod ipc_contract_guards {
     //! camelCase `dbSessionId`). They previously shipped as `connection_id`
     //! while using session semantics — "renamed but reversed". These tests pin
     /// the contract in both directions, plus the decision 3+6 merge surface.
-    use super::*;
 
     const SOURCE: &str = include_str!("backup.rs");
     const LIB_RS: &str = include_str!("../lib.rs");

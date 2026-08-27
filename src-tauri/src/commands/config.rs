@@ -1205,8 +1205,6 @@ mod ipc_contract_guards {
     //! pairs are merged into single IPCs whose raw-path variants collapse into
     //! a webdriver-gated `override_path`. These guards pin the wire surface in
     //! both directions.
-    use super::*;
-
     const SOURCE: &str = include_str!("config.rs");
     const LIB_RS: &str = include_str!("../lib.rs");
 
@@ -1222,7 +1220,9 @@ mod ipc_contract_guards {
     }
 
     // Runtime-assembled needles (avoid self-reference in include_str! source).
+    #[allow(non_upper_case_globals)]
     const resolve: &str = "resolve";
+    #[allow(non_upper_case_globals)]
     const override_path: &str = "override_path";
 
     #[test]

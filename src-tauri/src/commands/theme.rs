@@ -2,7 +2,7 @@
 
 use tauri::{AppHandle, Manager};
 
-use super::error::{CmdExt, CommandError};
+use super::error::CommandError;
 use crate::theme::surface_bg::SurfaceBgCache;
 
 #[tauri::command]

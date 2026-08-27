@@ -202,7 +202,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancel_mid_run_rolls_back() {
-        let mut exec = RecordingExecutor::default();
+        let _exec = RecordingExecutor::default();
         let flag = Arc::new(AtomicBool::new(false));
         // First execute will run; flip cancel after begin by wrapping — simulate mid-loop
         // by setting flag after begin via fail path: set flag true before second statement

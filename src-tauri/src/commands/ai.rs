@@ -2549,8 +2549,6 @@ mod ipc_contract_guards {
     //! called strict runtime-session lookups — "renamed but reversed". The
     //! assertions below pin both directions so it cannot silently return.
 
-    use super::*;
-
     const SOURCE: &str = include_str!("ai.rs");
 
     /// Extracts the parameter list of a `pub async fn <command>(...)`.

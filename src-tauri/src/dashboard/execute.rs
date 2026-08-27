@@ -278,7 +278,7 @@ pub async fn execute_widget_once(
 mod tests {
     use super::*;
     use crate::dashboard::runs::{get_run, list_run_index};
-    use crate::dashboard::types::{RefreshMode, RefreshPolicy, ViewMode, WidgetLayout};
+    use crate::dashboard::types::{RefreshPolicy, ViewMode, WidgetLayout};
     use crate::store::AppSettings;
     use crate::workflow::model::{StepExecutionResult, StepStatus, WorkflowExecutionResult};
 
