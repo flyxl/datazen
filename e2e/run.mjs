@@ -59,8 +59,12 @@ function runEnvSetup() {
 
 const args = process.argv.slice(2);
 const skipBuild = args.includes('--skip-build');
+const screenshotTrace = args.includes('--screenshot');
 const minimalDrivers =
   process.env.DATAZEN_DRIVERS === 'basic' || args.includes('--minimal-drivers');
+if (screenshotTrace) {
+  process.env.E2E_SCREENSHOT = '1';
+}
 /** Inject drivers then build with webdriver + plugin Cargo features (see scripts/e2e-tauri-build.mjs). */
 const BUILD_CMD = minimalDrivers
   ? 'node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs'
@@ -68,7 +72,12 @@ const BUILD_CMD = minimalDrivers
 const wdioArgs = [];
 {
   const filtered = args.filter(
-    (a) => a !== '--skip-build' && a !== '--minimal-drivers' && a !== '--minimal-plugins' && a !== '--',
+    (a) =>
+      a !== '--skip-build' &&
+      a !== '--minimal-drivers' &&
+      a !== '--minimal-plugins' &&
+      a !== '--screenshot' &&
+      a !== '--',
   );
   for (let i = 0; i < filtered.length; i++) {
     if (filtered[i] === '--spec' && filtered[i + 1]) {
@@ -276,6 +285,9 @@ if (sawAssetMissing) {
 }
 
 // Step 3: Run WDIO
+if (screenshotTrace) {
+  log('Screenshot trace enabled (E2E_SCREENSHOT=1) → e2e/screenshots/<spec>/');
+}
 log('Running E2E tests...');
 const wdio = spawn(
   'npx',

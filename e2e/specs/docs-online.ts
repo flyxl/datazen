@@ -28,8 +28,8 @@ const WINDOW_KIND = path.join(ROOT, 'src/lib/windowKind.ts');
 const MENU_BAR = path.join(ROOT, 'src/components/MenuBar.tsx');
 const RUST_WINDOW = path.join(ROOT, 'src-tauri/src/commands/window.rs');
 
-const DOCS_BASE_EN = 'https://flyxl.github.io/datazen/docs.html';
-const DOCS_BASE_ZH = 'https://flyxl.github.io/datazen/zh/docs.html';
+const DOCS_BASE_EN = 'https://flyxl.github.io/datazen/manual.html';
+const DOCS_BASE_ZH = 'https://flyxl.github.io/datazen/zh/manual.html';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
@@ -67,7 +67,7 @@ describe('Online Help Docs (DOCS-001~DOCS-007)', () => {
     expect(settings).toContain("invoke<void>('open_path', { path })");
   });
 
-  it('DOCS-002: docsUrls.ts defines official GitHub Pages bases and sections', () => {
+  it('DOCS-002: docsUrls.ts defines manual.html bases and legacy section remap', () => {
     const src = fs.readFileSync(DOCS_URLS, 'utf8');
     expect(src).toContain(DOCS_BASE_EN);
     expect(src).toContain(DOCS_BASE_ZH);
@@ -80,7 +80,7 @@ describe('Online Help Docs (DOCS-001~DOCS-007)', () => {
       'opsDashboard',
       'schemaDiff',
     ]) {
-      expect(src).toContain(`'${section}'`);
+      expect(src).toContain(`${section}:`);
     }
 
     const rust = fs.readFileSync(RUST_WINDOW, 'utf8');
@@ -99,11 +99,11 @@ describe('Online Help Docs (DOCS-001~DOCS-007)', () => {
     expect(kind).toContain('LEGACY_MAIN_ALIASES');
   });
 
-  it('DOCS-004: open_path IPC accepts https docs URLs (EN, ZH, section hash)', async () => {
+  it('DOCS-004: open_path IPC accepts manual.html URLs (EN, ZH, section hash)', async () => {
     await invokeBackend('open_path', { path: DOCS_BASE_EN });
     await invokeBackend('open_path', { path: DOCS_BASE_ZH });
-    await invokeBackend('open_path', { path: `${DOCS_BASE_EN}#workflows` });
-    await invokeBackend('open_path', { path: `${DOCS_BASE_ZH}#context` });
+    await invokeBackend('open_path', { path: `${DOCS_BASE_EN}#workflow` });
+    await invokeBackend('open_path', { path: `${DOCS_BASE_ZH}#ai` });
   });
 
   it('DOCS-005: MenuBar help-docs wires openDocsWindow (source)', () => {
