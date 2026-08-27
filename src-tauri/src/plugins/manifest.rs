@@ -48,6 +48,10 @@ pub struct PluginManifest {
     pub author: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
+    /// Optional package-level icon (square brand image) shown in plugin lists.
+    /// Rule-5 validated path; `png|webp|svg` allowed.
+    #[serde(default)]
+    pub icon: Option<String>,
     #[serde(default)]
     pub entry: Option<String>,
     pub contributes: Contributions,
@@ -229,6 +233,16 @@ pub fn validate_manifest(manifest: &PluginManifest, plugin_dir: &Path) -> Result
         ensure_allowed_extension(entry)?;
         if !entry_path.is_file() {
             return Err(format!("entry file not found: {entry}"));
+        }
+    }
+
+    // Rule 5: package-level icon (when declared) must be a safe, whitelisted,
+    // present image file.
+    if let Some(icon) = &manifest.icon {
+        let icon_path = safe_declared_path(plugin_dir, icon)?;
+        ensure_allowed_extension(icon)?;
+        if !icon_path.is_file() {
+            return Err(format!("plugin icon not found: {icon}"));
         }
     }
 
@@ -735,6 +749,64 @@ mod tests {
             let err = validate_manifest(&m, dir.path()).unwrap_err();
             assert!(err.contains("invalid page id"), "id `{bad}`: {err}");
         }
+    }
+
+    /// PAGE_MANIFEST plus a valid top-level package icon.
+    fn icon_manifest(icon: &str) -> String {
+        PAGE_MANIFEST.replacen("\"entry\"", &format!("\"icon\": \"{icon}\", \"entry\""), 1)
+    }
+
+    #[test]
+    fn accepts_valid_package_icon() {
+        let dir = TempDir::new().unwrap();
+        write_file(
+            dir.path(),
+            "manifest.json",
+            &icon_manifest("assets/icon.png"),
+        );
+        write_file(dir.path(), "index.html", "<html/>");
+        write_file(dir.path(), "assets/icon.svg", "<svg/>");
+        write_file(dir.path(), "assets/icon.png", "fake-png");
+        let m = parsed(&icon_manifest("assets/icon.png"));
+        validate_manifest(&m, dir.path()).unwrap();
+    }
+
+    #[test]
+    fn accepts_plugin_without_package_icon() {
+        let dir = TempDir::new().unwrap();
+        write_page_plugin(dir.path());
+        validate_manifest(&parsed(PAGE_MANIFEST), dir.path()).unwrap();
+    }
+
+    #[test]
+    fn rejects_missing_package_icon_file() {
+        let dir = TempDir::new().unwrap();
+        write_file(
+            dir.path(),
+            "manifest.json",
+            &icon_manifest("assets/theme.png"),
+        );
+        write_file(dir.path(), "index.html", "<html/>");
+        write_file(dir.path(), "assets/icon.svg", "<svg/>");
+        let m = parsed(&icon_manifest("assets/theme.png"));
+        let err = validate_manifest(&m, dir.path()).unwrap_err();
+        assert!(err.contains("plugin icon not found"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn rejects_disallowed_package_icon_extension() {
+        let dir = TempDir::new().unwrap();
+        write_file(
+            dir.path(),
+            "manifest.json",
+            &icon_manifest("assets/icon.ico"),
+        );
+        write_file(dir.path(), "index.html", "<html/>");
+        write_file(dir.path(), "assets/icon.svg", "<svg/>");
+        write_file(dir.path(), "assets/icon.ico", "fake");
+        let m = parsed(&icon_manifest("assets/icon.ico"));
+        let err = validate_manifest(&m, dir.path()).unwrap_err();
+        assert!(err.contains("forbidden extension"), "unexpected: {err}");
     }
 
     #[test]

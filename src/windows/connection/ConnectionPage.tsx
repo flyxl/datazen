@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Database,
-  LayoutDashboard,
+  Gauge,
   LayoutGrid,
   PanelLeftOpen,
   Puzzle,
@@ -927,7 +927,7 @@ export function ConnectionPage() {
                   onClick={handleOpenWorkflow}
                 />
                 <WorkspaceModeButton
-                  icon={LayoutDashboard}
+                  icon={Gauge}
                   iconId="action.dashboard"
                   label={t('nav.dashboard')}
                   testId="workspace-nav-dashboard"

@@ -57,6 +57,9 @@ pub struct PluginSummary {
     pub author: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Optional package-level icon path (mirrors `PluginManifest.icon`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
     pub enabled: bool,
     pub permissions: Vec<String>,
     pub pages: Vec<PluginPageSummary>,
@@ -73,6 +76,7 @@ impl From<&LoadedPlugin> for PluginSummary {
             api_version: manifest.api_version,
             author: manifest.author.clone(),
             description: manifest.description.clone(),
+            icon: manifest.icon.clone(),
             enabled: plugin.enabled,
             permissions: manifest
                 .permissions
