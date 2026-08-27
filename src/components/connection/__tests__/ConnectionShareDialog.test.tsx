@@ -143,6 +143,20 @@ describe('ConnectionShareDialog', () => {
     expect(screen.getByText('connShare.passwordRequired')).toBeInTheDocument();
   });
 
+  it('surfaces string IPC errors from import instead of a generic fallback', async () => {
+    importFileMock.mockRejectedValue('DataZen decryption failed: wrong password or corrupt file');
+    renderImport('file');
+    fireEvent.change(document.querySelector('input[type="password"]')!, {
+      target: { value: 'bad-password' },
+    });
+    fireEvent.click(screen.getByText('connShare.importAction'));
+    await waitFor(() =>
+      expect(onError).toHaveBeenCalledWith(
+        'DataZen decryption failed: wrong password or corrupt file',
+      ),
+    );
+  });
+
   it('export uses a TablePlus binary filename', async () => {
     exportMock.mockResolvedValue(1);
     render(

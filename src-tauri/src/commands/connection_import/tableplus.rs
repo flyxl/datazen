@@ -194,13 +194,18 @@ fn default_port(db_type: &str) -> Option<u16> {
     }
 }
 
-pub fn parse(bytes: &[u8], password: &str) -> Result<ParsedImport, CommandError> {
-    let plain = rncryptor::decrypt_password(bytes, password)?;
-    let text = String::from_utf8(plain)
-        .map_err(|e| CommandError::Validation(format!("TablePlus payload is not UTF-8: {e}")))?;
+pub fn parse(
+    bytes: &[u8],
+    password: &str,
+    format_label: &str,
+) -> Result<ParsedImport, CommandError> {
+    let plain = rncryptor::decrypt_password(bytes, password, format_label)?;
+    let text = String::from_utf8(plain).map_err(|e| {
+        CommandError::Validation(format!("{format_label} payload is not UTF-8: {e}"))
+    })?;
 
     let items: Vec<TablePlusConnection> = serde_json::from_str(&text).map_err(|e| {
-        CommandError::Validation(format!("Invalid TablePlus JSON after decrypt: {e}"))
+        CommandError::Validation(format!("Invalid {format_label} JSON after decrypt: {e}"))
     })?;
     from_items(items)
 }
@@ -609,7 +614,7 @@ mod tests {
           }
         ]"#;
         let enc = rncryptor::encrypt_password(json.as_bytes(), "pass").unwrap();
-        let parsed = parse(&enc, "pass").unwrap();
+        let parsed = parse(&enc, "pass", "TablePlus").unwrap();
         assert_eq!(parsed.format, ImportFormat::TablePlus);
         assert_eq!(parsed.connections.len(), 1);
         assert_eq!(parsed.skipped.len(), 1);
@@ -649,7 +654,7 @@ mod tests {
         };
         let bytes = export_connections(&[conn], "share-secret").unwrap();
         assert_eq!(&bytes[0..2], &[0x03, 0x01]);
-        let parsed = parse(&bytes, "share-secret").unwrap();
+        let parsed = parse(&bytes, "share-secret", "DataZen").unwrap();
         assert_eq!(parsed.connections.len(), 1);
         let c = &parsed.connections[0];
         assert_eq!(c.name, "Demo");
@@ -683,7 +688,7 @@ mod tests {
             pinned: false,
         };
         let bytes = export_connections(&[conn], "pw").unwrap();
-        let parsed = parse(&bytes, "pw").unwrap();
+        let parsed = parse(&bytes, "pw", "DataZen").unwrap();
         assert_eq!(parsed.connections[0].database_type, "kiwi");
     }
 
