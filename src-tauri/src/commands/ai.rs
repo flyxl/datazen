@@ -886,6 +886,80 @@ fn is_db_tool(name: &str) -> bool {
     )
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ToolKind {
+    AskQuestions,
+    Db(String),
+    Mcp {
+        server_id: String,
+        tool_name: String,
+    },
+    Unknown,
+}
+
+pub(crate) fn classify_tool(name: &str) -> ToolKind {
+    if name == "ask_questions" {
+        return ToolKind::AskQuestions;
+    }
+    if is_db_tool(name) {
+        return ToolKind::Db(name.to_string());
+    }
+    if let Some(rest) = name.strip_prefix("mcp/") {
+        if let Some((server_id, tool_name)) = rest.split_once('/') {
+            if !server_id.is_empty() && !tool_name.is_empty() {
+                return ToolKind::Mcp {
+                    server_id: server_id.to_string(),
+                    tool_name: tool_name.to_string(),
+                };
+            }
+        }
+    }
+    ToolKind::Unknown
+}
+
+pub(crate) async fn execute_mcp_tool(
+    state: &AppState,
+    server_id: &str,
+    tool_name: &str,
+    arguments: &str,
+) -> String {
+    let qualified = crate::mcp::client::mcp_qualified_name(server_id, tool_name);
+    let args: serde_json::Value = match serde_json::from_str(arguments) {
+        Ok(v) => v,
+        Err(e) => {
+            return format!("MCP tool error ({qualified}): invalid JSON arguments: {e}");
+        }
+    };
+
+    match state
+        .mcp_client_manager
+        .call_tool(server_id, tool_name, args)
+        .await
+    {
+        Ok(result) => {
+            let output = result
+                .content
+                .iter()
+                .filter_map(|c| {
+                    if let rmcp::model::ContentBlock::Text(t) = c {
+                        Some(t.text.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            if result.is_error == Some(true) {
+                format!("MCP tool error ({qualified}): {output}")
+            } else {
+                output
+            }
+        }
+        Err(msg) => format!("MCP tool error ({qualified}): {msg}"),
+    }
+}
+
 async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {
     let args: serde_json::Value = serde_json::from_str(&tool_call.arguments).unwrap_or_default();
     let args_str = args.to_string();
@@ -1027,18 +1101,47 @@ async fn run_streaming_tool_loop(
             return Ok(request_id.to_string());
         }
 
-        let db_tools: Vec<ToolCall> = result
-            .tool_calls
-            .as_ref()
-            .map(|tcs| {
-                tcs.iter()
-                    .filter(|tc| is_db_tool(&tc.name))
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default();
+        let all_tcs = match result.tool_calls {
+            Some(tcs) if !tcs.is_empty() => tcs,
+            _ => {
+                on_chunk(
+                    request_id,
+                    Ok(StreamChunk {
+                        content: String::new(),
+                        reasoning: None,
+                        done: true,
+                        usage: result.usage,
+                        tool_calls: result.tool_calls,
+                        response_id: result.response_id,
+                    }),
+                );
+                return Ok(request_id.to_string());
+            }
+        };
 
-        if db_tools.is_empty() {
+        let classified: Vec<(ToolCall, ToolKind)> = all_tcs
+            .into_iter()
+            .map(|tc| {
+                let kind = classify_tool(&tc.name);
+                (tc, kind)
+            })
+            .collect();
+
+        let executable_count = classified
+            .iter()
+            .filter(|(_, kind)| {
+                matches!(
+                    kind,
+                    ToolKind::Db(_) | ToolKind::Mcp { .. }
+                )
+            })
+            .count();
+
+        let all_ask_questions = classified
+            .iter()
+            .all(|(_, kind)| matches!(kind, ToolKind::AskQuestions));
+
+        if executable_count == 0 && all_ask_questions {
             on_chunk(
                 request_id,
                 Ok(StreamChunk {
@@ -1046,7 +1149,7 @@ async fn run_streaming_tool_loop(
                     reasoning: None,
                     done: true,
                     usage: result.usage,
-                    tool_calls: result.tool_calls,
+                    tool_calls: Some(classified.iter().map(|(tc, _)| tc.clone()).collect()),
                     response_id: result.response_id,
                 }),
             );
@@ -1056,16 +1159,16 @@ async fn run_streaming_tool_loop(
         tracing::info!(
             %request_id,
             round,
-            db_tool_count = db_tools.len(),
-            tool_names = ?db_tools.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
+            executable_count,
+            tool_names = ?classified.iter().map(|(t, _)| t.name.as_str()).collect::<Vec<_>>(),
             response_id = ?result.response_id,
-            "{cmd_label}: executing database tools (round {round})"
+            "{cmd_label}: executing tools (round {round})"
         );
         tracing::debug!(
             %request_id,
             round,
-            tools = ?db_tools.iter().map(|t| format!("{}({})", t.name, t.arguments)).collect::<Vec<_>>(),
-            "{cmd_label}: database tool arguments"
+            tools = ?classified.iter().map(|(t, _)| format!("{}({})", t.name, t.arguments)).collect::<Vec<_>>(),
+            "{cmd_label}: tool arguments"
         );
 
         request.messages.push(ChatMessage {
@@ -1076,16 +1179,19 @@ async fn run_streaming_tool_loop(
             } else {
                 Some(result.reasoning)
             },
-            tool_calls: result.tool_calls.clone(),
+            tool_calls: Some(classified.iter().map(|(tc, _)| tc.clone()).collect()),
             tool_call_id: None,
         });
 
-        let all_tcs = result.tool_calls.unwrap_or_default();
-        for tc in &all_tcs {
-            let tool_result = if is_db_tool(&tc.name) {
-                execute_db_tool(state, tc).await
-            } else {
-                "Pending: waiting for user response.".to_string()
+        for (tc, kind) in &classified {
+            let tool_result = match kind {
+                ToolKind::AskQuestions => "Pending: waiting for user response.".to_string(),
+                ToolKind::Db(_) => execute_db_tool(state, tc).await,
+                ToolKind::Mcp {
+                    server_id,
+                    tool_name,
+                } => execute_mcp_tool(state, server_id, tool_name, &tc.arguments).await,
+                ToolKind::Unknown => format!("Unknown tool: {}", tc.name),
             };
             request.messages.push(ChatMessage {
                 role: MessageRole::Tool,
@@ -1320,6 +1426,9 @@ pub(crate) async fn ai_chat_impl(
     let mut all_tools = vec![ask_questions_tool];
     if attach_db_tools {
         all_tools.extend(db_tool_definitions());
+    }
+    if provider.supports_tools() {
+        all_tools.extend(mcp_tool_definitions(state).await);
     }
 
     let mut request = CompletionRequest {
@@ -2312,6 +2421,52 @@ mod tests {
         assert!(!is_db_tool("ask_questions"));
         assert!(!is_db_tool("unknown_tool"));
         assert!(!is_db_tool(""));
+    }
+
+    #[test]
+    fn test_classify_tool() {
+        assert_eq!(classify_tool("ask_questions"), ToolKind::AskQuestions);
+        assert_eq!(
+            classify_tool("list_connections"),
+            ToolKind::Db("list_connections".into())
+        );
+        assert_eq!(
+            classify_tool("mcp/files/read_file"),
+            ToolKind::Mcp {
+                server_id: "files".into(),
+                tool_name: "read_file".into(),
+            }
+        );
+        assert_eq!(
+            classify_tool("mcp/my-server/my_tool_name"),
+            ToolKind::Mcp {
+                server_id: "my-server".into(),
+                tool_name: "my_tool_name".into(),
+            }
+        );
+        assert_eq!(classify_tool("mcp/bad"), ToolKind::Unknown);
+        assert_eq!(classify_tool("mcp//tool"), ToolKind::Unknown);
+        assert_eq!(classify_tool("unknown_tool"), ToolKind::Unknown);
+    }
+
+    #[tokio::test]
+    async fn execute_mcp_tool_errors_when_server_not_connected() {
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::new().await;
+        let out = execute_mcp_tool(&test.state, "missing", "search", r#"{"q":"x"}"#).await;
+        assert!(out.contains("MCP tool error (mcp/missing/search)"));
+        assert!(out.contains("not connected"));
+    }
+
+    #[tokio::test]
+    async fn execute_mcp_tool_rejects_invalid_json() {
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::new().await;
+        let out = execute_mcp_tool(&test.state, "srv", "tool", "not-json").await;
+        assert!(out.contains("MCP tool error (mcp/srv/tool)"));
+        assert!(out.contains("invalid JSON arguments"));
     }
 
     #[test]
