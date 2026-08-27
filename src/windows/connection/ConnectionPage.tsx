@@ -13,7 +13,7 @@ import { TitleBar } from '../../components/TitleBar';
 import { MenuBar } from '../../components/MenuBar';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { ThemedIcon } from '../../components/ThemedIcon';
-import { Dialog } from '../../components/ui/Dialog';
+import { ResultMessageDialog } from '../../components/ui/ResultMessageDialog';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -984,20 +984,12 @@ export function ConnectionPage() {
       )}
 
       {confirmDeleteDialog}
-      <Dialog
+      <ResultMessageDialog
         open={messageDialogOpen}
-        title={messageDialogKind === 'error' ? t('common.error') : t('common.success')}
+        kind={messageDialogKind}
+        message={messageDialogText}
         onClose={() => setMessageDialogOpen(false)}
-        footer={null}
-      >
-        <div
-          className={`copyable whitespace-pre-wrap break-words text-sm ${
-            messageDialogKind === 'error' ? 'text-red-400' : 'text-green-400'
-          }`}
-        >
-          {messageDialogText}
-        </div>
-      </Dialog>
+      />
     </div>
   );
 }
