@@ -860,11 +860,20 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
 
 /// Convert connected MCP client tools into AI `ToolDefinition`s (Phase 3 wires into chat).
 pub(crate) async fn mcp_tool_definitions(state: &AppState) -> Vec<ToolDefinition> {
+    let settings = state.store.get_settings().await;
     state
         .mcp_client_manager
         .all_tools()
         .await
         .into_iter()
+        .filter(|tool| {
+            settings
+                .mcp_client_servers
+                .iter()
+                .find(|c| c.id == tool.server_id)
+                .map(|c| c.enabled_for_ai)
+                .unwrap_or(true)
+        })
         .map(|tool| ToolDefinition {
             name: tool.qualified_name,
             description: tool.description.unwrap_or_else(|| tool.tool_name.clone()),
@@ -934,26 +943,7 @@ pub(crate) async fn execute_mcp_tool(
         .call_tool(server_id, tool_name, args)
         .await
     {
-        Ok(result) => {
-            let output = result
-                .content
-                .iter()
-                .filter_map(|c| {
-                    if let rmcp::model::ContentBlock::Text(t) = c {
-                        Some(t.text.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            if result.is_error == Some(true) {
-                format!("MCP tool error ({qualified}): {output}")
-            } else {
-                output
-            }
-        }
+        Ok(result) => crate::mcp::format_call_tool_result(&result, &qualified),
         Err(msg) => format!("MCP tool error ({qualified}): {msg}"),
     }
 }
@@ -1130,6 +1120,9 @@ async fn run_streaming_tool_loop(
             .filter(|(_, kind)| matches!(kind, ToolKind::Db(_) | ToolKind::Mcp { .. }))
             .count();
 
+        let has_ask_questions = classified
+            .iter()
+            .any(|(_, kind)| matches!(kind, ToolKind::AskQuestions));
         let all_ask_questions = classified
             .iter()
             .all(|(_, kind)| matches!(kind, ToolKind::AskQuestions));
@@ -1153,6 +1146,7 @@ async fn run_streaming_tool_loop(
             %request_id,
             round,
             executable_count,
+            has_ask_questions,
             tool_names = ?classified.iter().map(|(t, _)| t.name.as_str()).collect::<Vec<_>>(),
             response_id = ?result.response_id,
             "{cmd_label}: executing tools (round {round})"
@@ -1178,7 +1172,7 @@ async fn run_streaming_tool_loop(
 
         for (tc, kind) in &classified {
             let tool_result = match kind {
-                ToolKind::AskQuestions => "Pending: waiting for user response.".to_string(),
+                ToolKind::AskQuestions => continue,
                 ToolKind::Db(_) => execute_db_tool(state, tc).await,
                 ToolKind::Mcp {
                     server_id,
@@ -1193,6 +1187,26 @@ async fn run_streaming_tool_loop(
                 tool_calls: None,
                 tool_call_id: Some(tc.id.clone()),
             });
+        }
+
+        if has_ask_questions {
+            let ask_tool_calls: Vec<ToolCall> = classified
+                .iter()
+                .filter(|(_, kind)| matches!(kind, ToolKind::AskQuestions))
+                .map(|(tc, _)| tc.clone())
+                .collect();
+            on_chunk(
+                request_id,
+                Ok(StreamChunk {
+                    content: String::new(),
+                    reasoning: None,
+                    done: true,
+                    usage: result.usage,
+                    tool_calls: Some(ask_tool_calls),
+                    response_id: result.response_id,
+                }),
+            );
+            return Ok(request_id.to_string());
         }
     }
 
@@ -2710,6 +2724,74 @@ mod tests {
 
         let test = TestAppState::new().await;
         assert!(mcp_tool_definitions(&test.state).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn mcp_tool_definitions_respects_enabled_for_ai() {
+        use crate::mcp::{McpServerConfig, McpToolInfo};
+        use crate::testing::app_state::TestAppState;
+        use rmcp::model::{CallToolResult, ContentBlock, Tool};
+        use std::collections::HashMap;
+        use std::sync::Arc;
+
+        let test = TestAppState::new().await;
+        let schema = serde_json::json!({"type": "object"});
+        let tool = Tool::new("ping", "Ping", schema.as_object().unwrap().clone());
+        test.state
+            .mcp_client_manager
+            .register_test_server(
+                "hidden_srv",
+                "Hidden",
+                vec![tool],
+                Arc::new(|_, _| Ok(CallToolResult::success(vec![ContentBlock::text("pong")]))),
+            )
+            .await;
+
+        let mut settings = test.state.store.get_settings().await;
+        settings.mcp_client_servers = vec![McpServerConfig {
+            id: "hidden_srv".into(),
+            name: "Hidden".into(),
+            transport: "stdio".into(),
+            command: None,
+            args: vec![],
+            env: HashMap::new(),
+            enabled: true,
+            enabled_for_ai: false,
+        }];
+        test.state.store.save_settings(settings).await.unwrap();
+
+        assert!(mcp_tool_definitions(&test.state).await.is_empty());
+
+        let tools = test.state.mcp_client_manager.all_tools().await;
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].tool_name, "ping");
+        let _info: McpToolInfo = tools[0].clone();
+    }
+
+    #[tokio::test]
+    async fn mcp_connect_rejects_invalid_server_id() {
+        use crate::mcp::McpServerConfig;
+        use crate::testing::app_state::TestAppState;
+        use std::collections::HashMap;
+
+        let test = TestAppState::new().await;
+        let config = McpServerConfig {
+            id: "bad id".into(),
+            name: "Bad".into(),
+            transport: "stdio".into(),
+            command: Some("/bin/echo".into()),
+            args: vec![],
+            env: HashMap::new(),
+            enabled: true,
+            enabled_for_ai: true,
+        };
+        let err = test
+            .state
+            .mcp_client_manager
+            .connect(&config)
+            .await
+            .unwrap_err();
+        assert!(err.contains("Invalid MCP server id"));
     }
 }
 

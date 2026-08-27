@@ -1,11 +1,13 @@
 //! MCP Client — connect to external MCP Servers and invoke their tools.
 
-use rmcp::model::{CallToolRequestParams, CallToolResult, Tool};
+use regex::Regex;
+use rmcp::model::{CallToolRequestParams, CallToolResult, ContentBlock, Tool};
 use rmcp::service::RunningService;
 use rmcp::transport::{ConfigureCommandExt, TokioChildProcess};
 use rmcp::{RoleClient, ServiceExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::sync::RwLock;
 
@@ -22,10 +24,97 @@ pub struct McpServerConfig {
     pub env: HashMap<String, String>,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// When false, tools from this server are excluded from AI Chat tool registration.
+    #[serde(default = "default_true")]
+    pub enabled_for_ai: bool,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn mcp_server_id_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"^[a-zA-Z0-9_-]+$").unwrap())
+}
+
+/// Returns true when `id` matches `^[a-zA-Z0-9_-]+$` (non-empty).
+pub fn is_valid_mcp_server_id(id: &str) -> bool {
+    !id.is_empty() && mcp_server_id_regex().is_match(id)
+}
+
+/// Validates MCP server id; exported for IPC/tests and mirrored in frontend validation.
+pub fn validate_mcp_server_id(id: &str) -> Result<(), String> {
+    if is_valid_mcp_server_id(id) {
+        Ok(())
+    } else {
+        Err(format!(
+            "Invalid MCP server id '{id}': must match ^[a-zA-Z0-9_-]+$"
+        ))
+    }
+}
+
+/// Extract text from MCP tool result blocks; warn on non-text; summarize when only non-text.
+pub fn format_call_tool_result(result: &CallToolResult, qualified: &str) -> String {
+    let mut text_parts = Vec::new();
+    let mut non_text_count = 0usize;
+
+    for block in &result.content {
+        match block {
+            ContentBlock::Text(t) => text_parts.push(t.text.clone()),
+            ContentBlock::Image(_) => {
+                non_text_count += 1;
+                tracing::warn!(
+                    qualified = %qualified,
+                    block_type = "image",
+                    "MCP tool returned non-text content block"
+                );
+            }
+            ContentBlock::Audio(_) => {
+                non_text_count += 1;
+                tracing::warn!(
+                    qualified = %qualified,
+                    block_type = "audio",
+                    "MCP tool returned non-text content block"
+                );
+            }
+            ContentBlock::Resource(_) => {
+                non_text_count += 1;
+                tracing::warn!(
+                    qualified = %qualified,
+                    block_type = "resource",
+                    "MCP tool returned non-text content block"
+                );
+            }
+            ContentBlock::ResourceLink(_) => {
+                non_text_count += 1;
+                tracing::warn!(
+                    qualified = %qualified,
+                    block_type = "resource_link",
+                    "MCP tool returned non-text content block"
+                );
+            }
+            _ => {
+                non_text_count += 1;
+                tracing::warn!(
+                    qualified = %qualified,
+                    block_type = "unknown",
+                    "MCP tool returned non-text content block"
+                );
+            }
+        }
+    }
+
+    let output = text_parts.join("\n");
+    if result.is_error == Some(true) {
+        return format!("MCP tool error ({qualified}): {output}");
+    }
+    if output.is_empty() && non_text_count > 0 {
+        return format!(
+            "MCP tool ({qualified}) returned {non_text_count} non-text content block(s); no text output available."
+        );
+    }
+    output
 }
 
 struct McpClientEntry {
@@ -34,8 +123,21 @@ struct McpClientEntry {
     service: RunningService<RoleClient, ()>,
 }
 
+#[cfg(test)]
+type TestCallHandler =
+    Arc<dyn Fn(&str, serde_json::Value) -> Result<CallToolResult, String> + Send + Sync>;
+
+#[cfg(test)]
+struct TestMcpClientEntry {
+    name: String,
+    tools: Vec<Tool>,
+    call_handler: TestCallHandler,
+}
+
 pub struct McpClientManager {
     clients: RwLock<HashMap<String, McpClientEntry>>,
+    #[cfg(test)]
+    test_clients: RwLock<HashMap<String, TestMcpClientEntry>>,
 }
 
 /// Qualified tool name for AI routing: `mcp/{serverId}/{toolName}`.
@@ -58,12 +160,37 @@ impl McpClientManager {
     pub fn new() -> Self {
         Self {
             clients: RwLock::new(HashMap::new()),
+            #[cfg(test)]
+            test_clients: RwLock::new(HashMap::new()),
         }
+    }
+
+    /// Register an in-memory MCP server for integration tests (no subprocess).
+    #[cfg(test)]
+    pub async fn register_test_server(
+        &self,
+        server_id: impl Into<String>,
+        name: impl Into<String>,
+        tools: Vec<Tool>,
+        call_handler: TestCallHandler,
+    ) {
+        let server_id = server_id.into();
+        let mut test_clients = self.test_clients.write().await;
+        test_clients.insert(
+            server_id,
+            TestMcpClientEntry {
+                name: name.into(),
+                tools,
+                call_handler,
+            },
+        );
     }
 
     const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
     pub async fn connect(&self, config: &McpServerConfig) -> Result<(), String> {
+        validate_mcp_server_id(&config.id)?;
+
         if config.transport != "stdio" {
             return Err(format!("Unsupported transport: {}", config.transport));
         }
@@ -126,6 +253,10 @@ impl McpClientManager {
     }
 
     pub async fn disconnect(&self, server_id: &str) -> Result<(), String> {
+        #[cfg(test)]
+        {
+            self.test_clients.write().await.remove(server_id);
+        }
         let mut clients = self.clients.write().await;
         if let Some(entry) = clients.remove(server_id) {
             let _ = entry.service.cancel().await;
@@ -144,7 +275,7 @@ impl McpClientManager {
 
     pub async fn all_tools(&self) -> Vec<McpToolInfo> {
         let clients = self.clients.read().await;
-        clients
+        let mut tools: Vec<McpToolInfo> = clients
             .iter()
             .flat_map(|(server_id, info)| {
                 info.tools.iter().map(move |tool| {
@@ -159,7 +290,27 @@ impl McpClientManager {
                     }
                 })
             })
-            .collect()
+            .collect();
+
+        #[cfg(test)]
+        {
+            let test_clients = self.test_clients.read().await;
+            for (server_id, info) in test_clients.iter() {
+                for tool in &info.tools {
+                    let tool_name = tool.name.to_string();
+                    tools.push(McpToolInfo {
+                        server_id: server_id.clone(),
+                        server_name: info.name.clone(),
+                        qualified_name: mcp_qualified_name(server_id, &tool_name),
+                        tool_name,
+                        description: tool.description.as_ref().map(|d| d.to_string()),
+                        input_schema: serde_json::Value::Object(tool.input_schema.as_ref().clone()),
+                    });
+                }
+            }
+        }
+
+        tools
     }
 
     pub async fn call_tool(
@@ -168,6 +319,14 @@ impl McpClientManager {
         tool_name: &str,
         arguments: serde_json::Value,
     ) -> Result<CallToolResult, String> {
+        #[cfg(test)]
+        {
+            let test_clients = self.test_clients.read().await;
+            if let Some(entry) = test_clients.get(server_id) {
+                return (entry.call_handler)(tool_name, arguments);
+            }
+        }
+
         let peer = {
             let clients = self.clients.read().await;
             let entry = clients
@@ -193,10 +352,20 @@ impl McpClientManager {
 
     pub async fn connected_servers(&self) -> Vec<(String, String, usize)> {
         let clients = self.clients.read().await;
-        clients
+        let mut servers: Vec<(String, String, usize)> = clients
             .iter()
             .map(|(id, e)| (id.clone(), e.name.clone(), e.tools.len()))
-            .collect()
+            .collect();
+
+        #[cfg(test)]
+        {
+            let test_clients = self.test_clients.read().await;
+            for (id, e) in test_clients.iter() {
+                servers.push((id.clone(), e.name.clone(), e.tools.len()));
+            }
+        }
+
+        servers
     }
 }
 
@@ -270,6 +439,39 @@ mod tests {
     #[test]
     fn default_true_enables_servers_by_default() {
         assert!(default_true());
+    }
+
+    #[test]
+    fn validate_mcp_server_id_accepts_alphanumeric_dash_underscore() {
+        assert!(is_valid_mcp_server_id("my-server_1"));
+        assert!(validate_mcp_server_id("test_srv").is_ok());
+    }
+
+    #[test]
+    fn validate_mcp_server_id_rejects_invalid_chars() {
+        assert!(!is_valid_mcp_server_id(""));
+        assert!(!is_valid_mcp_server_id("bad id"));
+        assert!(!is_valid_mcp_server_id("bad/id"));
+        assert!(validate_mcp_server_id("bad id").is_err());
+    }
+
+    #[test]
+    fn mcp_server_config_enabled_for_ai_defaults_true() {
+        let json = r#"{
+            "id": "minimal",
+            "name": "Minimal",
+            "transport": "stdio"
+        }"#;
+        let config: McpServerConfig = serde_json::from_str(json).unwrap();
+        assert!(config.enabled_for_ai);
+    }
+
+    #[test]
+    fn format_call_tool_result_warns_on_non_text_only() {
+        let result = CallToolResult::success(vec![ContentBlock::image("abc", "image/png")]);
+        let out = format_call_tool_result(&result, "mcp/test/ping");
+        assert!(out.contains("non-text content block"));
+        assert!(!out.is_empty());
     }
 
     #[tokio::test]
