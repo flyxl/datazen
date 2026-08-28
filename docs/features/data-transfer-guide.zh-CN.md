@@ -67,7 +67,7 @@
 | Truncate + insert | 清空目标表后插入（破坏性） |
 | Drop + create + insert | 删表重建后插入（破坏性） |
 
-破坏性模式在 Setup 步须勾选确认才能 Next；Execute 前另有二次确认 Modal（若已实现）。
+破坏性模式在 Setup 步须勾选确认才能 Next；Execute 前会弹出二次确认 Modal，列出将受影响的目标表。
 
 其他选项：**Batch size**（默认 500）、**Stop on first error**。
 
