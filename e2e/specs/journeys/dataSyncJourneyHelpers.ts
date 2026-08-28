@@ -320,6 +320,11 @@ export async function runExecuteAndVerify(f: SyncJourneyFixture) {
   if (await err.isDisplayed().catch(() => false)) {
     throw new Error(`execute error: ${await err.getText()}`);
   }
+  const doneBanner = await $('[data-testid="data-sync-execute-done"]');
+  await expect(doneBanner).toBeDisplayed();
+  expect(await doneBanner.getText()).toContain(t('sync.executeDone'));
+  const syncState = await $('[data-testid="data-sync-window"]').getAttribute('data-sync-state');
+  expect(syncState).toBe('done');
   await expect(await $('[data-testid="data-sync-summary"]')).toBeDisplayed();
 
   const tgtSession = await connectConfig(f.tgtId);

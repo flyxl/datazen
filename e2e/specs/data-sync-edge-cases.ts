@@ -34,6 +34,21 @@ async function dismissOkDialog() {
   }
 }
 
+async function getSyncState(): Promise<string | null> {
+  const win = await $('[data-testid="data-sync-window"]');
+  return win.getAttribute('data-sync-state');
+}
+
+async function waitForSyncStateNotBusy(timeoutMsg: string) {
+  await browser.waitUntil(
+    async () => {
+      const state = await getSyncState();
+      return state !== 'inspecting' && state !== 'comparing' && state !== 'executing';
+    },
+    { timeout: 15000, timeoutMsg },
+  );
+}
+
 function pgConfig(id: string, name: string, database: string) {
   return {
     id,
@@ -224,7 +239,13 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
       .catch(() => false);
     expect(sawCancel).toBe(true);
     await cancel.click();
-    await browser.pause(600);
+    await waitForSyncStateNotBusy('compare cancel did not restore idle/compared state');
+    const state = await getSyncState();
+    expect(state).not.toBe('inspecting');
+    expect(state).not.toBe('comparing');
+    const compareBtn = await $('[data-testid="data-sync-compare"]');
+    await expect(compareBtn).toBeDisplayed();
+    expect(await compareBtn.getAttribute('disabled')).toBe(null);
     const err = await $('[data-testid="data-sync-error"]');
     if (await err.isDisplayed().catch(() => false)) {
       expect(await err.getText()).toContain('cancel');
@@ -233,6 +254,155 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     await captureStep('ds-edge-12-compare-cancelled');
 
     for (const id of [SRC_ID, TGT_ID]) {
+      try {
+        await invokeBackend('delete_connection', { id });
+      } catch {
+        /* ok */
+      }
+    }
+  });
+
+  it('DS-EDGE-013: 只读目标应禁用 Execute 并显示 targetReadOnly', async () => {
+    const STAMP = Date.now().toString(36);
+    const SRC_ID = `e2e_ds_ro_src_${STAMP}`;
+    const TGT_ID = `e2e_ds_ro_tgt_${STAMP}`;
+    const TABLE = `e2e_ds_ro_${STAMP}`;
+    await invokeBackend('save_connection', {
+      config: pgConfig(SRC_ID, `DS-RO-Src-${STAMP}`, 'datazen_sync_src'),
+    });
+    await invokeBackend('save_connection', {
+      config: {
+        ...pgConfig(TGT_ID, `DS-RO-Tgt-${STAMP}`, 'datazen_sync_tgt'),
+        readOnly: true,
+      },
+    });
+
+    const srcSession = await connectConfig(SRC_ID);
+    const tgtSession = await connectConfig(TGT_ID);
+    await withSafeModeOff(async () => {
+      await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
+      await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
+      await executeQuery(
+        srcSession,
+        `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
+      );
+      await executeQuery(
+        tgtSession,
+        `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
+      );
+      await executeQuery(
+        srcSession,
+        `INSERT INTO ${TABLE} (id, name) VALUES (1,'a'),(2,'b'),(3,'c')`,
+      );
+      await executeQuery(tgtSession, `INSERT INTO ${TABLE} (id, name) VALUES (1,'a')`);
+    });
+
+    await openDataSyncWindow();
+    await selectDzOption(t('sync.selectSource'), `DS-RO-Src-${STAMP}`);
+    await selectDzOption(t('sync.selectTarget'), `DS-RO-Tgt-${STAMP}`);
+    await browser.pause(1500);
+    await $('[data-testid="data-sync-compare"]').click();
+    await browser.waitUntil(
+      async () => {
+        const cancel = await $('[data-testid="data-sync-cancel"]');
+        return !(await cancel.isDisplayed().catch(() => false));
+      },
+      { timeout: 120000, timeoutMsg: 'read-only compare did not finish' },
+    );
+    await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 20000 });
+
+    await expect(await $('[data-testid="data-sync-start-disabled"]')).toBeDisplayed();
+    const body = await $('body').getText();
+    expect(body).toContain(t('sync.targetReadOnly'));
+    await captureStep('ds-edge-13-readonly-target');
+
+    try {
+      await withSafeModeOff(async () => {
+        await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
+        await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
+      });
+    } catch {
+      /* ok */
+    }
+    for (const id of [SRC_ID, TGT_ID]) {
+      try {
+        await invokeBackend('delete_connection', { id });
+      } catch {
+        /* ok */
+      }
+    }
+  });
+
+  it('DS-EDGE-015: 变更源连接应清除 mapping', async () => {
+    const STAMP = Date.now().toString(36);
+    const SRC_ID = `e2e_ds_chg_src_${STAMP}`;
+    const ALT_SRC_ID = `e2e_ds_chg_alt_${STAMP}`;
+    const TGT_ID = `e2e_ds_chg_tgt_${STAMP}`;
+    const TABLE = `e2e_ds_chg_${STAMP}`;
+    await invokeBackend('save_connection', {
+      config: pgConfig(SRC_ID, `DS-Chg-Src-${STAMP}`, 'datazen_sync_src'),
+    });
+    await invokeBackend('save_connection', {
+      config: pgConfig(ALT_SRC_ID, `DS-Chg-Alt-${STAMP}`, 'datazen_sync_src'),
+    });
+    await invokeBackend('save_connection', {
+      config: pgConfig(TGT_ID, `DS-Chg-Tgt-${STAMP}`, 'datazen_sync_tgt'),
+    });
+
+    const srcSession = await connectConfig(SRC_ID);
+    const tgtSession = await connectConfig(TGT_ID);
+    await withSafeModeOff(async () => {
+      await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
+      await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
+      await executeQuery(
+        srcSession,
+        `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
+      );
+      await executeQuery(
+        tgtSession,
+        `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
+      );
+      await executeQuery(srcSession, `INSERT INTO ${TABLE} (id, name) VALUES (1,'a'),(2,'b')`);
+      await executeQuery(tgtSession, `INSERT INTO ${TABLE} (id, name) VALUES (1,'a')`);
+    });
+
+    await openDataSyncWindow();
+    await selectDzOption(t('sync.selectSource'), `DS-Chg-Src-${STAMP}`);
+    await selectDzOption(t('sync.selectTarget'), `DS-Chg-Tgt-${STAMP}`);
+    await browser.pause(1500);
+    await $('[data-testid="data-sync-compare"]').click();
+    await browser.waitUntil(
+      async () => {
+        const cancel = await $('[data-testid="data-sync-cancel"]');
+        return !(await cancel.isDisplayed().catch(() => false));
+      },
+      { timeout: 120000, timeoutMsg: 'endpoint-change compare did not finish' },
+    );
+    await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 20000 });
+    const rowCountBefore = await browser.execute(
+      () => document.querySelectorAll('[data-testid="data-sync-mapping-row"]').length,
+    );
+    expect(rowCountBefore).toBeGreaterThan(0);
+
+    await selectDzOption(t('sync.selectSource'), `DS-Chg-Alt-${STAMP}`);
+    await browser.pause(800);
+    expect(await getSyncState()).toBe('idle');
+    const rowCountAfter = await browser.execute(
+      () => document.querySelectorAll('[data-testid="data-sync-mapping-row"]').length,
+    );
+    expect(rowCountAfter).toBe(0);
+    expect(await $('body').getText()).toContain(t('sync.selectPrompt'));
+    await captureStep('ds-edge-15-source-change-clears-mapping');
+
+    try {
+      await withSafeModeOff(async () => {
+        await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
+        await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
+      });
+    } catch {
+      /* ok */
+    }
+    for (const id of [SRC_ID, ALT_SRC_ID, TGT_ID]) {
       try {
         await invokeBackend('delete_connection', { id });
       } catch {
@@ -390,5 +560,32 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
     const allFilter = await $(`button*=${t('sync.filter.all')}`);
     await allFilter.click();
     await browser.pause(200);
+  });
+
+  it('DS-EDGE-014: 执行后应显示 executeDone 成功 banner', async () => {
+    const insertOpt = await $('[data-testid="data-sync-option-insert"]');
+    if (!(await insertOpt.isSelected())) {
+      await insertOpt.click();
+      await browser.pause(200);
+    }
+    const start = await $('[data-testid="data-sync-start"]');
+    await start.waitForClickable({ timeout: 20000 });
+    await start.click();
+    await browser.waitUntil(
+      async () => {
+        const cancel = await $('[data-testid="data-sync-cancel"]');
+        return !(await cancel.isDisplayed().catch(() => false));
+      },
+      { timeout: 120000, timeoutMsg: 'execute did not finish' },
+    );
+    const err = await $('[data-testid="data-sync-error"]');
+    if (await err.isDisplayed().catch(() => false)) {
+      throw new Error(`execute error: ${await err.getText()}`);
+    }
+    const doneBanner = await $('[data-testid="data-sync-execute-done"]');
+    await expect(doneBanner).toBeDisplayed();
+    expect(await doneBanner.getText()).toContain(t('sync.executeDone'));
+    expect(await getSyncState()).toBe('done');
+    await captureStep('ds-edge-post-06-execute-done');
   });
 });
