@@ -1,3 +1,4 @@
+import { useCallback, useState } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 import { Button } from '../../components/ui/Button';
 import type { CompareSummaryStats } from './mappingView';
@@ -16,6 +17,14 @@ export function CompareSummary({
   explainLoading = false,
 }: CompareSummaryProps) {
   const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyReport = useCallback(() => {
+    if (!onCopyReport) return;
+    onCopyReport();
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [onCopyReport]);
 
   return (
     <div
@@ -49,9 +58,9 @@ export function CompareSummary({
               variant="ghost"
               size="sm"
               data-testid="data-sync-copy-report"
-              onClick={onCopyReport}
+              onClick={handleCopyReport}
             >
-              {t('sync.copyReport')}
+              {copied ? t('common.copied') : t('sync.copyReport')}
             </Button>
           )}
           {onExplainDiff && (

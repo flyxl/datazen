@@ -20,6 +20,10 @@ interface EndpointsBarProps {
   targetOptions: { value: string; label: string; disabled?: boolean; title?: string }[];
   activePairing: SyncPairingResult | null;
   busy: boolean;
+  compareDisabled?: boolean;
+  targetReadOnly?: boolean;
+  sourceSessionError?: string;
+  targetSessionError?: string;
   onSourceChange: (id: string) => void;
   onTargetChange: (id: string) => void;
   onSourceDatabaseChange: (db: string) => void;
@@ -45,6 +49,10 @@ export function EndpointsBar({
   targetOptions,
   activePairing,
   busy,
+  compareDisabled = false,
+  targetReadOnly = false,
+  sourceSessionError,
+  targetSessionError,
   onSourceChange,
   onTargetChange,
   onSourceDatabaseChange,
@@ -71,6 +79,9 @@ export function EndpointsBar({
           placeholder={t('sync.selectSource')}
         />
         <div data-testid="data-sync-source-database" className="mt-2">
+          <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-fg-muted">
+            {t('query.database')}
+          </label>
           <Select
             value={sourceDatabase}
             options={sourceDatabases.map((db) => ({ value: db, label: db }))}
@@ -90,6 +101,14 @@ export function EndpointsBar({
               placeholder={t('sync.selectSchema')}
             />
           </div>
+        )}
+        {sourceSessionError && (
+          <p
+            data-testid="data-sync-source-session-error"
+            className="mt-1 text-xs text-red-600 dark:text-red-400"
+          >
+            {sourceSessionError}
+          </p>
         )}
       </div>
 
@@ -116,6 +135,9 @@ export function EndpointsBar({
           placeholder={t('sync.selectTarget')}
         />
         <div data-testid="data-sync-target-database" className="mt-2">
+          <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-fg-muted">
+            {t('query.database')}
+          </label>
           <Select
             value={targetDatabase || ''}
             options={targetDatabases.map((db) => ({ value: db, label: db }))}
@@ -123,6 +145,11 @@ export function EndpointsBar({
             placeholder={t('common.selectDatabase')}
           />
         </div>
+        {targetReadOnly && (
+          <p className="mt-2 rounded border border-warning/30 bg-warning/10 px-2 py-1 text-xs text-warning">
+            {t('transfer.readOnlyHint')}
+          </p>
+        )}
         {showTargetSchema && (
           <div data-testid="data-sync-target-schema" className="mt-2">
             <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-fg-muted">
@@ -135,6 +162,14 @@ export function EndpointsBar({
               placeholder={t('sync.selectSchema')}
             />
           </div>
+        )}
+        {targetSessionError && (
+          <p
+            data-testid="data-sync-target-session-error"
+            className="mt-1 text-xs text-red-600 dark:text-red-400"
+          >
+            {targetSessionError}
+          </p>
         )}
       </div>
 
@@ -158,7 +193,7 @@ export function EndpointsBar({
           variant="primary"
           data-testid="data-sync-compare"
           onClick={onCompare}
-          disabled={busy}
+          disabled={busy || compareDisabled}
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
           {t('sync.compare')}

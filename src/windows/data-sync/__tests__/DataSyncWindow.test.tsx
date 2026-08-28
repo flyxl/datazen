@@ -321,7 +321,7 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     expect(mysql?.textContent).toContain('common.unsupportedPair');
   });
 
-  it('gates compare when a database cannot be enumerated', async () => {
+  it('surfaces error when database list cannot be loaded', async () => {
     invokeMock.mockImplementation(async (cmd: string, args?: { connectionId?: string }) => {
       if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
       if (cmd === 'connect_dedicated') {
@@ -336,8 +336,10 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
     await pickSelect('data-sync-source', 'PG Src');
     await pickSelect('data-sync-target', 'PG Tgt');
-    fireEvent.click(screen.getByTestId('data-sync-compare'));
-    expect(await screen.findByTestId('data-sync-error')).toHaveTextContent('sync.selectDbRequired');
+    expect(await screen.findByTestId('data-sync-error')).toHaveTextContent(
+      'sync.loadDatabasesFailedrefused',
+    );
+    expect(inspectDataSyncMock).not.toHaveBeenCalled();
   });
 
   it('surfaces data-sync comparison errors', async () => {
