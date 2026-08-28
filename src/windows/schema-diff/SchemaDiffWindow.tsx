@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, Copy, Loader2 } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, Copy, Loader2 } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
@@ -13,24 +13,31 @@ import {
   type SchemaDiffDeployResult,
   type SchemaDiffPlan,
 } from '../../commands/schemaDiff';
+import { databaseCommands } from '../../commands/database';
 import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { openDocsWindow } from '../../lib/windowManager';
+import { cn } from '../../lib/cn';
+import { MigrationEndpointsBar } from '../../components/migration/MigrationEndpointsBar';
 import type { TableSchemaDiff } from '../../types';
 import { isSchemaDiffLimitationsDismissed } from '../../lib/schemaDiffLimitationsPrefs';
 import { SchemaDiffLimitationsDialog } from './SchemaDiffLimitationsDialog';
-import { SchemaDiffEndpointsBar } from './SchemaDiffEndpointsBar';
 import { SchemaDiffTableListPanel } from './SchemaDiffTableListPanel';
-import { SchemaDiffRightPanel, type SchemaDiffRightPanelTab } from './SchemaDiffRightPanel';
+import { SchemaDiffRightPanel } from './SchemaDiffRightPanel';
+import { SchemaDiffObjectsStep } from './SchemaDiffObjectsStep';
 import { useSchemaDiffEndpoints } from './useSchemaDiffEndpoints';
+import {
+  enabledTableNames,
+  filterTablesForSchema,
+  qualifySchemaDiffTableName,
+  type SchemaDiffTablePick,
+} from './schemaDiffTableNames';
 
-function parseTableList(raw: string): string[] {
-  return raw
-    .split(/[\n,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
+type WizardStep = 'endpoints' | 'objects' | 'compare' | 'plan' | 'deploy';
+
+const STEPS: WizardStep[] = ['endpoints', 'objects', 'compare', 'plan', 'deploy'];
+const NARROW_STEPS: WizardStep[] = ['endpoints', 'objects', 'deploy'];
 
 function tableDiffHasChanges(diff: TableSchemaDiff): boolean {
   const missing = diff.missingOnTarget ?? diff.added;
@@ -43,10 +50,11 @@ export function SchemaDiffWindow() {
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
 
-  const [tableNamesRaw, setTableNamesRaw] = useState('');
+  const [step, setStep] = useState<WizardStep>('endpoints');
+  const [tablePicks, setTablePicks] = useState<SchemaDiffTablePick[]>([]);
+  const [objectsLoading, setObjectsLoading] = useState(false);
   const [diffs, setDiffs] = useState<TableSchemaDiff[]>([]);
   const [plan, setPlan] = useState<SchemaDiffPlan | null>(null);
-  const [rightTab, setRightTab] = useState<SchemaDiffRightPanelTab>('plan');
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [allowDestructive, setAllowDestructive] = useState(false);
   const [includeIndexes, setIncludeIndexes] = useState(true);
@@ -61,6 +69,8 @@ export function SchemaDiffWindow() {
 
   const endpoints = useSchemaDiffEndpoints({ onError: setError });
 
+  const selectedTables = useMemo(() => enabledTableNames(tablePicks), [tablePicks]);
+
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
@@ -71,17 +81,34 @@ export function SchemaDiffWindow() {
     }
   }, []);
 
-  const parsedTables = useMemo(() => parseTableList(tableNamesRaw), [tableNamesRaw]);
+  useEffect(() => {
+    setTablePicks([]);
+    setDiffs([]);
+    setPlan(null);
+    setDeployResult(null);
+    setSelectedTable(null);
+    if (step !== 'endpoints') {
+      setStep('endpoints');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset wizard when endpoints change
+  }, [
+    endpoints.sourceId,
+    endpoints.targetId,
+    endpoints.sourceDatabase,
+    endpoints.targetDatabase,
+    endpoints.sourceSchema,
+    endpoints.targetSchema,
+  ]);
 
   useEffect(() => {
-    if (parsedTables.length === 0) {
+    if (selectedTables.length === 0) {
       setSelectedTable(null);
       return;
     }
     setSelectedTable((prev) =>
-      prev && parsedTables.includes(prev) ? prev : parsedTables[0] ?? null,
+      prev && selectedTables.includes(prev) ? prev : (selectedTables[0] ?? null),
     );
-  }, [parsedTables]);
+  }, [selectedTables]);
 
   const tableHasDiff = useMemo(() => {
     const map: Record<string, boolean> = {};
@@ -101,42 +128,68 @@ export function SchemaDiffWindow() {
     return c ? `${c.name} (${c.databaseType})` : endpoints.targetId;
   }, [endpoints.targetConn, endpoints.targetId]);
 
-  const handleCompare = useCallback(async () => {
+  const stepIndex = STEPS.indexOf(step);
+
+  const loadSourceTables = useCallback(async () => {
+    if (!endpoints.validateEndpoints()) return;
+    setObjectsLoading(true);
+    setError('');
+    try {
+      const srcConnId = await endpoints.ensureConnected('source');
+      if (!srcConnId) return;
+      const rows = await databaseCommands.getTables(srcConnId, endpoints.sourceDatabase);
+      const filtered = filterTablesForSchema(rows, endpoints.sourceSchema || undefined);
+      const picks = filtered.map((table) => ({
+        name: qualifySchemaDiffTableName(table, endpoints.sourceSchema || undefined),
+        enabled: true,
+      }));
+      picks.sort((a, b) => a.name.localeCompare(b.name));
+      setTablePicks(picks);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setTablePicks([]);
+    } finally {
+      setObjectsLoading(false);
+    }
+  }, [endpoints]);
+
+  const runCompare = useCallback(async (): Promise<boolean> => {
     setError('');
     setDiffs([]);
     setPlan(null);
     setDeployResult(null);
-    setRightTab('plan');
-    if (!endpoints.validateEndpoints()) return;
+    if (!endpoints.validateEndpoints()) return false;
 
-    const tables = parseTableList(tableNamesRaw);
+    const tables = enabledTableNames(tablePicks);
     if (tables.length === 0) {
       setError(t('schemaDiff.tableRequired'));
-      return;
+      return false;
     }
 
     setLoading(true);
     try {
       const srcConnId = await endpoints.ensureConnected('source');
       const tgtConnId = await endpoints.ensureConnected('target');
-      if (!srcConnId || !tgtConnId) return;
+      if (!srcConnId || !tgtConnId) return false;
       const results: TableSchemaDiff[] = [];
       for (const table of tables) {
         results.push(await schemaDiffCommands.compareTableSchemas(srcConnId, tgtConnId, table));
       }
       setDiffs(results);
       setSelectedTable(tables[0] ?? null);
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
       setLoading(false);
     }
-  }, [endpoints, tableNamesRaw, t]);
+  }, [endpoints, tablePicks, t]);
 
   const buildPlan = useCallback(async () => {
     setError('');
     setDeployResult(null);
-    const tables = parseTableList(tableNamesRaw);
+    const tables = enabledTableNames(tablePicks);
     if (tables.length === 0) {
       setError(t('schemaDiff.tableRequired'));
       return;
@@ -156,7 +209,6 @@ export function SchemaDiffWindow() {
         includeIndexes,
       });
       setPlan(next);
-      setRightTab('plan');
       setUseTransaction(dialectSupportsTransactionalDdl(next.targetDialect));
       setConfirmText('');
     } catch (e) {
@@ -164,7 +216,7 @@ export function SchemaDiffWindow() {
     } finally {
       setLoading(false);
     }
-  }, [allowDestructive, endpoints, includeIndexes, tableNamesRaw, t]);
+  }, [allowDestructive, endpoints, includeIndexes, tablePicks, t]);
 
   const handleDeploy = useCallback(async () => {
     if (!plan) return;
@@ -180,13 +232,74 @@ export function SchemaDiffWindow() {
         confirmDestructive: planHasDestructive(plan) ? confirmText.trim() : undefined,
       });
       setDeployResult(result);
-      setRightTab('deploy');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
   }, [confirmText, endpoints, plan, useTransaction]);
+
+  const canNext = useMemo(() => {
+    switch (step) {
+      case 'endpoints':
+        return Boolean(
+          endpoints.sourceId &&
+            endpoints.targetId &&
+            endpoints.sourceId !== endpoints.targetId &&
+            endpoints.sourceDatabase &&
+            endpoints.targetDatabase &&
+            !endpoints.isSameEndpoint(),
+        );
+      case 'objects':
+        return selectedTables.length > 0 && !objectsLoading;
+      case 'compare':
+        return diffs.length > 0 && !loading;
+      case 'plan':
+        return plan !== null && !loading;
+      default:
+        return false;
+    }
+  }, [
+    step,
+    endpoints.sourceId,
+    endpoints.targetId,
+    endpoints.sourceDatabase,
+    endpoints.targetDatabase,
+    endpoints.isSameEndpoint,
+    selectedTables.length,
+    objectsLoading,
+    diffs.length,
+    loading,
+    plan,
+  ]);
+
+  const goNext = useCallback(async () => {
+    const next = STEPS[stepIndex + 1];
+    if (step === 'objects' && next === 'compare') {
+      const ok = await runCompare();
+      if (ok) setStep('compare');
+      return;
+    }
+    if (step === 'plan' && next === 'deploy') {
+      setStep('deploy');
+      return;
+    }
+    if (next === 'objects' && tablePicks.length === 0) {
+      await loadSourceTables();
+    }
+    if (next) setStep(next);
+  }, [step, stepIndex, runCompare, tablePicks.length, loadSourceTables]);
+
+  const goBack = () => {
+    const prev = STEPS[stepIndex - 1];
+    if (prev) setStep(prev);
+  };
+
+  const toggleTable = (name: string) => {
+    setTablePicks((prev) =>
+      prev.map((row) => (row.name === name ? { ...row, enabled: !row.enabled } : row)),
+    );
+  };
 
   const handleCopySummary = async () => {
     if (diffs.length === 0) return;
@@ -215,7 +328,7 @@ export function SchemaDiffWindow() {
       version: 2,
       sourceConnectionId: endpoints.sourceId,
       targetConnectionId: endpoints.targetId,
-      tables: parseTableList(tableNamesRaw),
+      tables: selectedTables,
       allowDestructive,
       includeIndexes,
       requireRollback,
@@ -239,20 +352,27 @@ export function SchemaDiffWindow() {
       }
       endpoints.setSourceId(cfg.sourceConnectionId);
       endpoints.setTargetId(cfg.targetConnectionId);
-      setTableNamesRaw((cfg.tables ?? []).join('\n'));
+      setTablePicks((cfg.tables ?? []).map((name) => ({ name, enabled: true })));
       setAllowDestructive(Boolean(cfg.allowDestructive));
       setIncludeIndexes(cfg.includeIndexes ?? true);
       setRequireRollback(Boolean(cfg.requireRollback));
       setPlan(null);
       setDiffs([]);
       setDeployResult(null);
-      setRightTab('plan');
+      setStep('objects');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
 
-  const showCompareLoading = loading && diffs.length === 0;
+  const endpointsCrossDialectNote = endpoints.isCrossDialect ? (
+    <span
+      data-testid="schema-diff-cross-dialect-note"
+      className="mt-4 inline-block max-w-full rounded border border-edge bg-surface px-2 py-1 text-xs text-fg-muted"
+    >
+      {t('schemaDiff.crossDialectNote')}
+    </span>
+  ) : undefined;
 
   return (
     <div
@@ -273,132 +393,196 @@ export function SchemaDiffWindow() {
         }
       />
 
-      <SchemaDiffEndpointsBar
-        sourceId={endpoints.sourceId}
-        targetId={endpoints.targetId}
-        sourceDatabase={endpoints.sourceDatabase}
-        targetDatabase={endpoints.targetDatabase}
-        sourceSchema={endpoints.sourceSchema}
-        targetSchema={endpoints.targetSchema}
-        sourceDatabases={endpoints.sourceDatabases}
-        targetDatabases={endpoints.targetDatabases}
-        sourceSchemas={endpoints.sourceSchemas}
-        targetSchemas={endpoints.targetSchemas}
-        connOptions={endpoints.connOptions}
-        targetOptions={endpoints.targetOptions}
-        isCrossDialect={endpoints.isCrossDialect}
-        busy={loading}
-        onSourceChange={endpoints.setSourceId}
-        onTargetChange={endpoints.setTargetId}
-        onSourceDatabaseChange={endpoints.setSourceDatabase}
-        onTargetDatabaseChange={endpoints.setTargetDatabase}
-        onSourceSchemaChange={endpoints.setSourceSchema}
-        onTargetSchemaChange={endpoints.setTargetSchema}
-        onSwap={endpoints.handleSwap}
-        onCompare={() => void handleCompare()}
-      />
-
-      <div className="shrink-0 border-b border-edge px-6 py-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="min-w-[12rem] flex-1 space-y-1 text-sm">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
-              {t('schemaDiff.tables')}
-            </span>
-            <textarea
-              className="min-h-[56px] w-full rounded-md border border-edge bg-surface-alt px-3 py-2 font-mono text-sm text-fg"
-              value={tableNamesRaw}
-              onChange={(e) => setTableNamesRaw(e.target.value)}
-              placeholder={
-                endpoints.sourceSchema
-                  ? `${endpoints.sourceSchema}.table_name`
-                  : t('schemaDiff.tablesPlaceholder')
-              }
-              data-testid="schema-diff-tables-input"
-            />
-          </label>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="secondary"
-              disabled={
-                loading ||
-                !endpoints.sourceId ||
-                !endpoints.targetId ||
-                parsedTables.length === 0
-              }
-              onClick={() => void buildPlan()}
-              data-testid="schema-diff-generate-plan"
-            >
-              {loading && rightTab === 'plan' && !plan ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : null}
-              {t('schemaDiff.generatePlan')}
-            </Button>
-            {diffs.length > 0 && (
-              <Button variant="secondary" onClick={() => void handleCopySummary()}>
-                <Copy className="h-4 w-4" />
-                {copied ? t('common.copied') : t('schemaDiff.copySummary')}
-              </Button>
-            )}
-            {plan && (
-              <Button variant="secondary" onClick={() => void handleCopySql()}>
-                <Copy className="h-4 w-4" />
-                {t('common.copySql')}
-              </Button>
-            )}
-            <Button variant="ghost" onClick={() => void handleExportConfig()}>
-              {t('schemaDiff.exportConfig')}
-            </Button>
-            <Button variant="ghost" onClick={() => void handleImportConfig()}>
-              {t('schemaDiff.importConfig')}
-            </Button>
-          </div>
+      <div className="border-b border-edge px-6 py-3">
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-1">
+          {STEPS.map((s, i) => (
+            <div key={s} className="flex items-center gap-1">
+              {i > 0 && <ChevronRight className="h-3 w-3 shrink-0 text-fg-muted" aria-hidden />}
+              <span
+                data-testid={`schema-diff-step-${s}`}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs',
+                  i === stepIndex
+                    ? 'font-semibold text-accent'
+                    : i < stepIndex
+                      ? 'text-accent/80'
+                      : 'text-fg-muted',
+                )}
+              >
+                <span
+                  className={cn(
+                    'flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold',
+                    i === stepIndex
+                      ? 'bg-accent text-white'
+                      : i < stepIndex
+                        ? 'bg-accent/20 text-accent'
+                        : 'bg-surface-raised text-fg-muted',
+                  )}
+                >
+                  {i + 1}
+                </span>
+                {t(`schemaDiff.step.${s}`)}
+              </span>
+            </div>
+          ))}
         </div>
-
-        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {showCompareLoading && (
-          <div className="flex flex-1 items-center justify-center gap-2 text-sm text-fg-muted">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {t('schemaDiff.compare')}
-          </div>
-        )}
+        <div
+          className={cn(
+            'mx-auto flex min-h-0 w-full flex-1 flex-col px-6 py-6',
+            NARROW_STEPS.includes(step) ? 'max-w-2xl overflow-auto' : 'max-w-6xl',
+          )}
+        >
+          {step === 'endpoints' && (
+            <MigrationEndpointsBar
+              layout="grid"
+              testIdPrefix="schema-diff"
+              showSwap={false}
+              showCompare={false}
+              sourceId={endpoints.sourceId}
+              targetId={endpoints.targetId}
+              sourceDatabase={endpoints.sourceDatabase}
+              targetDatabase={endpoints.targetDatabase}
+              sourceSchema={endpoints.sourceSchema}
+              targetSchema={endpoints.targetSchema}
+              sourceDatabases={endpoints.sourceDatabases}
+              targetDatabases={endpoints.targetDatabases}
+              sourceSchemas={endpoints.sourceSchemas}
+              targetSchemas={endpoints.targetSchemas}
+              connOptions={endpoints.connOptions}
+              targetOptions={endpoints.targetOptions}
+              footerNote={endpointsCrossDialectNote}
+              onSourceChange={endpoints.setSourceId}
+              onTargetChange={endpoints.setTargetId}
+              onSourceDatabaseChange={endpoints.setSourceDatabase}
+              onTargetDatabaseChange={endpoints.setTargetDatabase}
+              onSourceSchemaChange={endpoints.setSourceSchema}
+              onTargetSchemaChange={endpoints.setTargetSchema}
+            />
+          )}
 
-        {!showCompareLoading && (
-          <div className="flex min-h-0 flex-1">
-            <div className="flex min-h-0 min-w-0 flex-1">
-              <SchemaDiffTableListPanel
-                className="w-48 max-w-[40%] flex-none"
-                tables={parsedTables}
-                selectedTable={selectedTable}
-                onSelect={setSelectedTable}
-                tableHasDiff={diffs.length > 0 ? tableHasDiff : undefined}
-              />
+          {step === 'objects' && (
+            <SchemaDiffObjectsStep
+              loading={objectsLoading}
+              tables={tablePicks}
+              onToggle={toggleTable}
+              onSelectAll={() =>
+                setTablePicks((prev) => prev.map((row) => ({ ...row, enabled: true })))
+              }
+              onSelectNone={() =>
+                setTablePicks((prev) => prev.map((row) => ({ ...row, enabled: false })))
+              }
+            />
+          )}
 
-              <div
-                className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto bg-surface-alt/30"
-                data-testid="schema-diff-detail-panel"
-              >
-                {selectedDiff ? (
-                  <div className="p-4">
-                    <h3 className="mb-3 font-mono text-sm font-medium text-fg">
-                      {selectedDiff.table}
-                    </h3>
-                    <SchemaDiffPanel diff={selectedDiff} />
+          {step === 'compare' && (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              {loading && diffs.length === 0 ? (
+                <div className="flex flex-1 items-center justify-center gap-2 text-sm text-fg-muted">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {t('schemaDiff.compare')}
+                </div>
+              ) : (
+                <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-edge">
+                  <SchemaDiffTableListPanel
+                    className="w-48 max-w-[40%] flex-none"
+                    tables={selectedTables}
+                    selectedTable={selectedTable}
+                    onSelect={setSelectedTable}
+                    tableHasDiff={diffs.length > 0 ? tableHasDiff : undefined}
+                  />
+                  <div
+                    className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto bg-surface-alt/30"
+                    data-testid="schema-diff-detail-panel"
+                  >
+                    {selectedDiff ? (
+                      <div className="p-4">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <h3 className="font-mono text-sm font-medium text-fg">
+                            {selectedDiff.table}
+                          </h3>
+                          {diffs.length > 0 && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => void handleCopySummary()}
+                            >
+                              <Copy className="h-4 w-4" />
+                              {copied ? t('common.copied') : t('schemaDiff.copySummary')}
+                            </Button>
+                          )}
+                        </div>
+                        <SchemaDiffPanel diff={selectedDiff} />
+                      </div>
+                    ) : (
+                      <div className="flex flex-1 items-center justify-center p-4 text-sm text-fg-muted">
+                        {t('schemaDiff.selectTableHint')}
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="flex flex-1 items-center justify-center p-4 text-sm text-fg-muted">
-                    {diffs.length === 0 ? t('schemaDiff.compare') : t('schemaDiff.tableRequired')}
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
+          )}
 
+          {step === 'plan' && (
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  disabled={loading || selectedTables.length === 0}
+                  onClick={() => void buildPlan()}
+                  data-testid="schema-diff-generate-plan"
+                >
+                  {loading && !plan ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {t('schemaDiff.generatePlan')}
+                </Button>
+                {plan && (
+                  <Button variant="secondary" onClick={() => void handleCopySql()}>
+                    <Copy className="h-4 w-4" />
+                    {t('common.copySql')}
+                  </Button>
+                )}
+                <Button variant="ghost" onClick={() => void handleExportConfig()}>
+                  {t('schemaDiff.exportConfig')}
+                </Button>
+                <Button variant="ghost" onClick={() => void handleImportConfig()}>
+                  {t('schemaDiff.importConfig')}
+                </Button>
+              </div>
+              <SchemaDiffRightPanel
+                className="min-h-0 flex-1 border border-edge"
+                activeTab="plan"
+                onTabChange={() => {}}
+                plan={plan}
+                allowDestructive={allowDestructive}
+                includeIndexes={includeIndexes}
+                onAllowDestructiveChange={setAllowDestructive}
+                onIncludeIndexesChange={setIncludeIndexes}
+                onRegenerate={() => void buildPlan()}
+                regenerating={loading && Boolean(plan)}
+                targetLabel={targetLabel}
+                useTransaction={useTransaction}
+                onUseTransactionChange={setUseTransaction}
+                requireRollback={requireRollback}
+                onRequireRollbackChange={setRequireRollback}
+                confirmText={confirmText}
+                onConfirmTextChange={setConfirmText}
+                deploying={false}
+                onDeploy={() => {}}
+                deployResult={null}
+                hideTabs
+              />
+            </div>
+          )}
+
+          {step === 'deploy' && (
             <SchemaDiffRightPanel
-              activeTab={rightTab}
-              onTabChange={setRightTab}
+              className="min-h-0 flex-1 border border-edge"
+              activeTab="deploy"
+              onTabChange={() => {}}
               plan={plan}
               allowDestructive={allowDestructive}
               includeIndexes={includeIndexes}
@@ -413,12 +597,42 @@ export function SchemaDiffWindow() {
               onRequireRollbackChange={setRequireRollback}
               confirmText={confirmText}
               onConfirmTextChange={setConfirmText}
-              deploying={loading && rightTab === 'deploy'}
+              deploying={loading}
               onDeploy={() => void handleDeploy()}
               deployResult={deployResult}
+              hideTabs
             />
-          </div>
-        )}
+          )}
+
+          {error && <p className="mt-3 text-sm text-danger">{error}</p>}
+        </div>
+      </div>
+
+      <div className="flex shrink-0 items-center justify-between border-t border-edge px-6 py-3">
+        <Button variant="ghost" disabled={stepIndex === 0 || loading} onClick={goBack}>
+          <ChevronLeft className="h-4 w-4" /> {t('transfer.back')}
+        </Button>
+        <div className="flex items-center gap-2">
+          {step === 'deploy' ? (
+            <Button
+              variant="primary"
+              data-testid="schema-diff-deploy"
+              disabled={!plan || loading}
+              onClick={() => void handleDeploy()}
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('schemaDiff.deploy')}
+            </Button>
+          ) : (
+            <Button
+              data-testid="schema-diff-next"
+              disabled={!canNext || loading}
+              onClick={() => void goNext()}
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('transfer.next')}
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
 
       <SchemaDiffLimitationsDialog

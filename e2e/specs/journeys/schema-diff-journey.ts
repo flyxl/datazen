@@ -15,6 +15,7 @@ import {
   selectDzOption,
   setSchemaDiffTables,
   clickSchemaDiffCompare,
+  clickSchemaDiffNext,
   clickSchemaDiffGeneratePlan,
   advanceSchemaDiffToReview,
   deploySchemaDiffPlan,
@@ -83,19 +84,31 @@ describe('结构对比完整用户旅程 (SD-JOURNEY)', () => {
   it('Step 1: 通过 URL 打开结构对比窗口', async () => {
     await openSchemaDiffWindow();
     const body = await $('body').getText();
-    expect(body).toContain(t('schemaDiff.stepCompare'));
-    expect(body).toContain(t('schemaDiff.stepPlan'));
-    expect(body).toContain(t('schemaDiff.stepReview'));
+    expect(body).toContain(t('schemaDiff.step.endpoints'));
+    expect(body).toContain(t('schemaDiff.step.plan'));
+    expect(body).toContain(t('schemaDiff.step.deploy'));
     await captureJourneyStep('sd-journey-01-window-open', 0, true);
   });
 
-  it('Step 2: 选择源/目标后未填表名点对比应提示必填', async () => {
+  it('Step 2: 选择源/目标后未选表点下一步应提示必填', async () => {
     await seedSecondPgConnection(browser);
     await openSchemaDiffWindow();
     await selectDzOption(t('sync.selectSource'), '本地 PostgreSQL');
     await selectDzOption(t('sync.selectTarget'), 'E2E-PG-目标');
     await captureJourneyStep('sd-journey-02-endpoints-selected', 0, true);
-    await clickSchemaDiffCompare();
+    await clickSchemaDiffNext();
+    const objectsPanel = await $('[data-testid="schema-diff-objects-panel"]');
+    await objectsPanel.waitForDisplayed({ timeout: 15000 });
+    await browser.waitUntil(
+      async () => (await $$('[data-testid="schema-diff-table-row"]').length) > 0,
+      { timeout: 20000, timeoutMsg: '等待表列表加载' },
+    );
+    const rows = await $$('[data-testid="schema-diff-table-row"]');
+    for (const row of rows) {
+      const checkbox = await row.$('input[type="checkbox"]');
+      if (await checkbox.isSelected()) await checkbox.click();
+    }
+    await clickSchemaDiffNext();
     const body = await $('body').getText();
     expect(body).toContain(t('schemaDiff.tableRequired'));
     await captureJourneyStep('sd-journey-03-table-required', 0, true);
@@ -118,6 +131,7 @@ describe('结构对比完整用户旅程 (SD-JOURNEY)', () => {
   });
 
   it('Step 5~7: 生成计划→审阅→部署并验证 extra_col', async () => {
+    await clickSchemaDiffNext();
     await clickSchemaDiffGeneratePlan();
     let body = await $('body').getText();
     expect(body).toContain(t('schemaDiff.stepPlan'));

@@ -65,16 +65,14 @@ describe('SchemaDiffWindow', () => {
     cleanup();
   });
 
-  it('renders Sync-style shell with endpoints bar and dual-panel workspace', () => {
+  it('renders wizard shell with endpoints step and navigation', () => {
     render(<SchemaDiffWindow />);
 
     expect(screen.getByTestId('schema-diff-window')).toBeInTheDocument();
     expect(screen.getByTestId('schema-diff-source')).toBeInTheDocument();
     expect(screen.getByTestId('schema-diff-target')).toBeInTheDocument();
-    expect(screen.getByTestId('schema-diff-compare')).toBeInTheDocument();
-    expect(screen.getByTestId('schema-diff-tables-input')).toBeInTheDocument();
-    expect(screen.getByTestId('schema-diff-generate-plan')).toBeInTheDocument();
-    expect(screen.getByTestId('schema-diff-table-list')).toBeInTheDocument();
-    expect(screen.getByTestId('schema-diff-right-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('schema-diff-step-endpoints')).toBeInTheDocument();
+    expect(screen.getByTestId('schema-diff-step-objects')).toBeInTheDocument();
+    expect(screen.getByTestId('schema-diff-next')).toBeInTheDocument();
   });
 });

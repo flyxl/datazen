@@ -27,6 +27,8 @@ export interface SchemaDiffRightPanelProps {
   onDeploy: () => void;
   deployResult: SchemaDiffDeployResult | null;
   className?: string;
+  /** Hide Plan / Deploy tab strip (wizard mode shows one step at a time). */
+  hideTabs?: boolean;
 }
 
 export function SchemaDiffRightPanel({
@@ -50,6 +52,7 @@ export function SchemaDiffRightPanel({
   onDeploy,
   deployResult,
   className,
+  hideTabs = false,
 }: SchemaDiffRightPanelProps) {
   const { t } = useI18n();
 
@@ -59,32 +62,36 @@ export function SchemaDiffRightPanel({
       data-testid="schema-diff-right-panel"
     >
       <div className="flex shrink-0 border-b border-edge">
-        <button
-          type="button"
-          className={cn(
-            'px-4 py-2 text-xs font-medium',
-            activeTab === 'plan'
-              ? 'border-b-2 border-accent text-fg'
-              : 'text-fg-muted hover:text-fg',
-          )}
-          onClick={() => onTabChange('plan')}
-          data-testid="schema-diff-plan-tab"
-        >
-          {t('schemaDiff.stepPlan')}
-        </button>
-        <button
-          type="button"
-          className={cn(
-            'px-4 py-2 text-xs font-medium',
-            activeTab === 'deploy'
-              ? 'border-b-2 border-accent text-fg'
-              : 'text-fg-muted hover:text-fg',
-          )}
-          onClick={() => onTabChange('deploy')}
-          data-testid="schema-diff-deploy-tab"
-        >
-          {t('schemaDiff.stepReview')}
-        </button>
+        {!hideTabs && (
+          <>
+            <button
+              type="button"
+              className={cn(
+                'px-4 py-2 text-xs font-medium',
+                activeTab === 'plan'
+                  ? 'border-b-2 border-accent text-fg'
+                  : 'text-fg-muted hover:text-fg',
+              )}
+              onClick={() => onTabChange('plan')}
+              data-testid="schema-diff-plan-tab"
+            >
+              {t('schemaDiff.stepPlan')}
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'px-4 py-2 text-xs font-medium',
+                activeTab === 'deploy'
+                  ? 'border-b-2 border-accent text-fg'
+                  : 'text-fg-muted hover:text-fg',
+              )}
+              onClick={() => onTabChange('deploy')}
+              data-testid="schema-diff-deploy-tab"
+            >
+              {t('schemaDiff.stepReview')}
+            </button>
+          </>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto p-4">

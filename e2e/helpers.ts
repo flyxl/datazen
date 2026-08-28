@@ -1476,17 +1476,63 @@ export async function openSchemaDiffWindow(
   }
 }
 
+export async function clickSchemaDiffNext(opts: { timeout?: number; pauseMs?: number } = {}) {
+  const next = await $('[data-testid="schema-diff-next"]');
+  await next.waitForClickable({ timeout: opts.timeout ?? 10000 });
+  await next.click();
+  await browser.pause(opts.pauseMs ?? 1500);
+}
+
 export async function setSchemaDiffTables(tableList: string) {
-  const input = await $('[data-testid="schema-diff-tables-input"]');
-  await input.waitForDisplayed({ timeout: 8000 });
-  await input.setValue(tableList);
+  const names = new Set(
+    tableList
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+
+  const objectsPanel = await $('[data-testid="schema-diff-objects-panel"]');
+  if (!(await objectsPanel.isDisplayed().catch(() => false))) {
+    await clickSchemaDiffNext();
+    await objectsPanel.waitForDisplayed({ timeout: 15000 });
+  }
+
+  await browser.waitUntil(
+    async () => {
+      const rows = await $$('[data-testid="schema-diff-table-row"]');
+      return (await rows.length) > 0;
+    },
+    { timeout: 20000, timeoutMsg: '等待结构对比表列表加载超时' },
+  );
+
+  const rows = await $$('[data-testid="schema-diff-table-row"]');
+  for (const row of rows) {
+    const tableName = await row.getAttribute('data-table-name');
+    const checkbox = await row.$('input[type="checkbox"]');
+    const shouldEnable = names.has(tableName ?? '');
+    const isChecked = await checkbox.isSelected();
+    if (shouldEnable !== isChecked) {
+      await checkbox.click();
+    }
+  }
 }
 
 export async function clickSchemaDiffCompare() {
-  const btn = await $('[data-testid="schema-diff-compare"]');
-  await btn.waitForClickable({ timeout: 10000 });
-  await btn.click();
-  await browser.pause(2500);
+  const detailPanel = await $('[data-testid="schema-diff-detail-panel"]');
+  if (await detailPanel.isDisplayed().catch(() => false)) {
+    return;
+  }
+
+  const objectsPanel = await $('[data-testid="schema-diff-objects-panel"]');
+  if (!(await objectsPanel.isDisplayed().catch(() => false))) {
+    await clickSchemaDiffNext();
+    await objectsPanel.waitForDisplayed({ timeout: 15000 });
+    await browser.pause(1000);
+  }
+
+  await clickSchemaDiffNext();
+  await detailPanel.waitForDisplayed({ timeout: 20000 });
+  await browser.pause(500);
 }
 
 export async function clickSchemaDiffGeneratePlan() {
@@ -1496,12 +1542,12 @@ export async function clickSchemaDiffGeneratePlan() {
   await browser.pause(2500);
 }
 
-/** Switch right panel to Deploy tab (option B UI; replaces legacy step-review button). */
+/** Advance from plan step to deploy step in the wizard. */
 export async function advanceSchemaDiffToReview() {
-  const deployTab = await $('[data-testid="schema-diff-deploy-tab"]');
-  await deployTab.waitForClickable({ timeout: 10000 });
-  await deployTab.click();
   const deployPanel = await $('[data-testid="schema-diff-deploy-panel"]');
+  if (!(await deployPanel.isDisplayed().catch(() => false))) {
+    await clickSchemaDiffNext();
+  }
   await deployPanel.waitForDisplayed({ timeout: 8000 });
   await browser.pause(300);
 }
