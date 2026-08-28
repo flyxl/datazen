@@ -9,7 +9,7 @@
 |------|------|------|------|-------------|-------------|
 | F1 | EndpointsBar + dedicated db/schema 会话 | schema-diff-ui-endpoints | 编码完成 | 79357dec | — |
 | F2 | 双栏面板（左表/diff · 右 plan/deploy） | schema-diff-ui-panels | 编码完成 | a0eca1f8 | — |
-| F3 | SchemaDiffWindow 集成 + bg-surface shell | schema-diff-ui-b | 未开始 | — | — |
+| F3 | SchemaDiffWindow 集成 + bg-surface shell | schema-diff-ui-b | 编码完成 | c80c1030 | — |
 | F4 | Host 单测 | schema-diff-ui-tests | 未开始 | — | — |
 | F5 | E2E 适配 | schema-diff-ui-e2e | 未开始 | — | — |
 
@@ -62,9 +62,15 @@
 
 - **范围**：`SchemaDiffWindow.tsx` 重构为 Sync 式布局；接入 F1/F2 组件
 - **验收**：
-  - [ ] `bg-surface`；无双栏滚动堆叠旧 UI
-  - [ ] Limitations 弹窗仍可用
-  - [ ] 行为回归：compare → plan → deploy 闭环
+  - [x] `bg-surface`；无双栏滚动堆叠旧 UI
+  - [x] Limitations 弹窗仍可用
+  - [x] 行为回归：compare → plan → deploy 闭环
+- **测试**（`npx vitest run src/windows/schema-diff`）：
+  - `SchemaDiffWindow.test.tsx`：smoke（shell + endpoints + 双栏 testid）
+- **E2E testid 变更（F5 适配）**：
+  - **移除**：`schema-diff-step-review`（原 Plan 卡片内 Review 按钮；改点 `schema-diff-deploy-tab`）
+  - **新增**：`schema-diff-detail-panel`、`schema-diff-table-list`、`schema-diff-table-row-{name}`、`schema-diff-right-panel`、`schema-diff-plan-tab`、`schema-diff-deploy-tab`、`schema-diff-plan-panel`、`schema-diff-deploy-panel`、`schema-diff-swap`、`*-database`、`*-schema`
+  - **保留**：`schema-diff-window`、`schema-diff-compare`、`schema-diff-generate-plan`、`schema-diff-tables-input`、`schema-diff-allow-destructive`、`schema-diff-include-indexes`、`schema-diff-deploy`、`schema-diff-limitations*`
 
 ### F4 / F5 测试轨
 
