@@ -20,9 +20,11 @@ import {
 import { useI18n } from '../../hooks/useI18n';
 import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
-
+import { cn } from '../../lib/cn';
+import { isTransferLimitationsDismissed } from '../../lib/transferLimitationsPrefs';
 import { isTransferTargetSupported, resolveTransferPairing } from '../../lib/transferPairing';
 import type { ConnectionConfig } from '../../types';
+import { TransferLimitationsDialog } from './TransferLimitationsDialog';
 import { TransferMappingStep } from './TransferMappingStep';
 import { normalizeColumnMappings, tableHasActiveMappings } from './transferMappingView';
 import { SqlCodeBlock } from '../../components/SqlCodeBlock';
@@ -33,34 +35,11 @@ import {
   type DedicatedSideSession,
 } from '../../lib/dedicatedDbSession';
 
-type WizardStep =
-  | 'endpoints'
-  | 'mode'
-  | 'objects'
-  | 'mapping'
-  | 'options'
-  | 'preview'
-  | 'execute'
-  | 'result';
+type WizardStep = 'endpoints' | 'setup' | 'objects' | 'mapping' | 'preview' | 'result';
 
-const STEPS: WizardStep[] = [
-  'endpoints',
-  'mode',
-  'objects',
-  'mapping',
-  'options',
-  'preview',
-  'execute',
-  'result',
-];
+const STEPS: WizardStep[] = ['endpoints', 'setup', 'objects', 'mapping', 'preview', 'result'];
 
-const TRANSFER_LIMITATION_KEYS = [
-  'transfer.limitations.noViews',
-  'transfer.limitations.noFkIndexes',
-  'transfer.limitations.crossDialect',
-  'transfer.limitations.baseTables',
-  'transfer.limitations.noResume',
-] as const;
+const NARROW_STEPS: WizardStep[] = ['endpoints', 'setup', 'result'];
 
 export function DataTransferWindow() {
   useSettings();
@@ -89,12 +68,19 @@ export function DataTransferWindow() {
   const [executing, setExecuting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
+  const [limitationsOpen, setLimitationsOpen] = useState(false);
   const [selectedMappingTable, setSelectedMappingTable] = useState('');
   const jobIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
+
+  useEffect(() => {
+    if (!isTransferLimitationsDismissed()) {
+      setLimitationsOpen(true);
+    }
+  }, []);
 
   const loadConnections = useCallback(() => {
     void invoke<ConnectionConfig[]>('get_connections')
@@ -269,7 +255,7 @@ export function DataTransferWindow() {
 
   const updateTableDdlOverride = useCallback((sourceTable: string, ddl: string) => {
     setTables((prev) =>
-      prev.map((t) => (t.sourceTable === sourceTable ? { ...t, ddlOverride: ddl } : t)),
+      prev.map((row) => (row.sourceTable === sourceTable ? { ...row, ddlOverride: ddl } : row)),
     );
   }, []);
 
@@ -352,9 +338,9 @@ export function DataTransferWindow() {
       setTables(enabled);
       if (enabled.length > 0) {
         setSelectedMappingTable((prev) =>
-          prev && enabled.some((t) => t.sourceTable === prev)
+          prev && enabled.some((row) => row.sourceTable === prev)
             ? prev
-            : (enabled.find((t) => t.enabled)?.sourceTable ?? enabled[0].sourceTable),
+            : (enabled.find((row) => row.enabled)?.sourceTable ?? enabled[0].sourceTable),
         );
       }
     } catch (e) {
@@ -423,17 +409,13 @@ export function DataTransferWindow() {
         return Boolean(
           sourceId && targetId && sourceDatabase && targetDatabase && pairing?.supported,
         );
-      case 'mode':
+      case 'setup':
+        if (writeMode !== 'insert' && !confirmedDestructive) return false;
         return true;
       case 'objects':
         return tables.length === 0 || tables.some((tbl) => tbl.enabled);
       case 'mapping':
         return tables.some((tbl) => tbl.enabled && tableHasActiveMappings(tbl));
-      case 'options':
-        if (writeMode !== 'insert' && !confirmedDestructive) return false;
-        return true;
-      case 'preview':
-        return preview?.canExecute === true && !targetReadOnly;
       default:
         return false;
     }
@@ -447,23 +429,21 @@ export function DataTransferWindow() {
     tables,
     writeMode,
     confirmedDestructive,
-    preview,
-    targetReadOnly,
   ]);
 
+  const canExecute = useMemo(
+    () => preview?.canExecute === true && !targetReadOnly && !loading,
+    [preview, targetReadOnly, loading],
+  );
+
   const goNext = useCallback(async () => {
-    if (step === 'preview') {
-      setStep('execute');
-      return;
-    }
-    if (step === 'options') {
+    const next = STEPS[stepIndex + 1];
+    if (step === 'mapping' && next === 'preview') {
       await runPreview();
       setStep('preview');
       return;
     }
-
-    const next = STEPS[stepIndex + 1];
-    if ((next === 'objects' || next === 'mapping') && tables.length === 0) {
+    if (next === 'objects' && tables.length === 0) {
       await runInspect();
     }
     if (next) setStep(next);
@@ -538,333 +518,388 @@ export function DataTransferWindow() {
     );
   };
 
+  const modeOptions: { value: TransferMode; label: string; hint: string; testId: string }[] = [
+    {
+      value: 'data',
+      label: t('common.dataOnly'),
+      hint: t('transfer.mode.dataHint'),
+      testId: 'data-transfer-mode-data',
+    },
+    {
+      value: 'structure',
+      label: t('common.structureOnly'),
+      hint: t('transfer.mode.structureHint'),
+      testId: 'data-transfer-mode-structure',
+    },
+    {
+      value: 'structureAndData',
+      label: t('transfer.mode.both'),
+      hint: t('transfer.mode.bothHint'),
+      testId: 'data-transfer-mode-both',
+    },
+  ];
+
   return (
-    <div data-testid="data-transfer-window" className="flex h-screen flex-col bg-bg text-fg">
+    <div data-testid="data-transfer-window" className="flex h-screen flex-col bg-surface text-fg">
       <TitleBar title={t('common.dataTransfer')} />
-      <div className="border-b border-border px-4 py-2">
-        <div className="flex flex-wrap gap-2 text-xs text-fg-muted">
+
+      <div className="border-b border-edge px-6 py-3">
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-1">
           {STEPS.map((s, i) => (
-            <span
-              key={s}
-              data-testid={`data-transfer-step-${s}`}
-              className={i === stepIndex ? 'font-semibold text-accent' : ''}
-            >
-              {i + 1}. {t(`transfer.step.${s}`)}
-            </span>
+            <div key={s} className="flex items-center gap-1">
+              {i > 0 && <ChevronRight className="h-3 w-3 shrink-0 text-fg-muted" aria-hidden />}
+              <span
+                data-testid={`data-transfer-step-${s}`}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs',
+                  i === stepIndex
+                    ? 'font-semibold text-accent'
+                    : i < stepIndex
+                      ? 'text-accent/80'
+                      : 'text-fg-muted',
+                )}
+              >
+                <span
+                  className={cn(
+                    'flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold',
+                    i === stepIndex
+                      ? 'bg-accent text-white'
+                      : i < stepIndex
+                        ? 'bg-accent/20 text-accent'
+                        : 'bg-surface-raised text-fg-muted',
+                  )}
+                >
+                  {i + 1}
+                </span>
+                {t(`transfer.step.${s}`)}
+              </span>
+            </div>
           ))}
         </div>
       </div>
 
-      <div
-        data-testid="data-transfer-limitations"
-        className="border-b border-border bg-surface/40 px-4 py-2 text-xs text-fg-muted"
-      >
-        <p className="mb-1 font-medium text-fg">{t('transfer.limitations.title')}</p>
-        <ul className="list-disc space-y-0.5 pl-4">
-          {TRANSFER_LIMITATION_KEYS.map((key) => (
-            <li key={key}>{t(key)}</li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
-        {step === 'endpoints' && (
-          <div className="grid gap-4 md:grid-cols-2">
-            <div data-testid="data-transfer-source">
-              <label className="mb-1 block text-sm">{t('transfer.source')}</label>
-              <Select
-                value={sourceId}
-                onChange={setSourceId}
-                options={[{ value: '', label: t('common.selectConnection') }, ...connOptions]}
-              />
-              {sourceId && (
-                <div className="mt-2" data-testid="data-transfer-source-database">
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+        <div
+          className={cn(
+            'mx-auto w-full flex-1 px-6 py-8',
+            NARROW_STEPS.includes(step) ? 'max-w-2xl' : 'max-w-6xl',
+          )}
+        >
+          {step === 'endpoints' && (
+            <div className="rounded-lg border border-edge bg-surface-alt p-6">
+              <div className="grid gap-6 md:grid-cols-2">
+                <div data-testid="data-transfer-source">
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
+                    {t('transfer.source')}
+                  </label>
                   <Select
-                    value={sourceDatabase}
-                    onChange={setSourceDatabase}
-                    options={sourceDatabases.map((d) => ({ value: d, label: d }))}
+                    value={sourceId}
+                    onChange={setSourceId}
+                    options={[{ value: '', label: t('common.selectConnection') }, ...connOptions]}
                   />
+                  {sourceId && (
+                    <div className="mt-2" data-testid="data-transfer-source-database">
+                      <Select
+                        value={sourceDatabase}
+                        onChange={setSourceDatabase}
+                        options={sourceDatabases.map((d) => ({ value: d, label: d }))}
+                      />
+                    </div>
+                  )}
                 </div>
+                <div data-testid="data-transfer-target">
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
+                    {t('transfer.target')}
+                  </label>
+                  <Select
+                    value={targetId}
+                    onChange={setTargetId}
+                    options={[{ value: '', label: t('common.selectConnection') }, ...targetOptions]}
+                  />
+                  {targetId && (
+                    <div className="mt-2" data-testid="data-transfer-target-database">
+                      <Select
+                        value={targetDatabase}
+                        onChange={setTargetDatabase}
+                        options={targetDatabases.map((d) => ({ value: d, label: d }))}
+                      />
+                    </div>
+                  )}
+                  {targetReadOnly && (
+                    <p className="mt-2 rounded border border-warning/30 bg-warning/10 px-2 py-1 text-xs text-warning">
+                      {t('transfer.readOnlyHint')}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {pairing && (
+                <p
+                  data-testid="data-transfer-path"
+                  className="mt-4 inline-block rounded border border-edge bg-surface px-2 py-1 text-xs text-fg-muted"
+                >
+                  {pairing.supported
+                    ? t(`transfer.path.${pairing.path}`)
+                    : (pairing.reason ?? t('common.unsupportedPair'))}
+                </p>
               )}
             </div>
-            <div data-testid="data-transfer-target">
-              <label className="mb-1 block text-sm">{t('transfer.target')}</label>
-              <Select
-                value={targetId}
-                onChange={setTargetId}
-                options={[{ value: '', label: t('common.selectConnection') }, ...targetOptions]}
-              />
-              {targetId && (
-                <div className="mt-2" data-testid="data-transfer-target-database">
-                  <Select
-                    value={targetDatabase}
-                    onChange={setTargetDatabase}
-                    options={targetDatabases.map((d) => ({ value: d, label: d }))}
-                  />
-                </div>
-              )}
-              {targetReadOnly && (
-                <p className="mt-1 text-xs text-warning">{t('transfer.readOnlyHint')}</p>
-              )}
-            </div>
-            {pairing && (
-              <p data-testid="data-transfer-path" className="text-xs text-fg-muted md:col-span-2">
-                {pairing.supported
-                  ? t(`transfer.path.${pairing.path}`)
-                  : (pairing.reason ?? t('common.unsupportedPair'))}
-              </p>
-            )}
-          </div>
-        )}
+          )}
 
-        {step === 'mode' && (
-          <div className="flex flex-col gap-3">
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="transfer-mode"
-                checked={mode === 'structure'}
-                onChange={() => setMode('structure')}
-                data-testid="data-transfer-mode-structure"
-              />
-              {t('common.structureOnly')}
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="transfer-mode"
-                checked={mode === 'data'}
-                onChange={() => setMode('data')}
-                data-testid="data-transfer-mode-data"
-              />
-              {t('common.dataOnly')}
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="transfer-mode"
-                checked={mode === 'structureAndData'}
-                onChange={() => setMode('structureAndData')}
-                data-testid="data-transfer-mode-both"
-              />
-              {t('transfer.mode.both')}
-            </label>
-          </div>
-        )}
-
-        {step === 'objects' && (
-          <div>
-            {loading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <ul className="divide-y divide-border rounded border border-border">
-                {tables.map((tbl) => (
-                  <li
-                    key={tbl.sourceTable}
-                    data-testid="data-transfer-table-row"
-                    className="flex items-center gap-2 px-3 py-2 text-sm"
+          {step === 'setup' && (
+            <div className="space-y-6 rounded-lg border border-edge bg-surface-alt p-6">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-fg">{t('transfer.setup.modeSection')}</p>
+                {modeOptions.map((opt) => (
+                  <label
+                    key={opt.value}
+                    className={cn(
+                      'flex cursor-pointer flex-col rounded-lg border px-4 py-3 transition-colors',
+                      mode === opt.value
+                        ? 'border-accent bg-surface ring-1 ring-accent'
+                        : 'border-edge bg-surface hover:border-edge/80',
+                    )}
                   >
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      <input
+                        type="radio"
+                        name="transfer-mode"
+                        checked={mode === opt.value}
+                        onChange={() => setMode(opt.value)}
+                        data-testid={opt.testId}
+                      />
+                      {opt.label}
+                    </span>
+                    <span className="mt-1 pl-6 text-xs text-fg-muted">{opt.hint}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="space-y-3 border-t border-edge pt-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
+                  {t('transfer.setup.optionsSection')}
+                </p>
+                <label className="block text-sm">
+                  {t('transfer.writeMode.label')}
+                  <Select
+                    value={writeMode}
+                    onChange={(v) => setWriteMode(v as WriteMode)}
+                    options={[
+                      { value: 'insert', label: t('transfer.writeMode.insert') },
+                      { value: 'truncateInsert', label: t('transfer.writeMode.truncateInsert') },
+                      { value: 'dropCreateInsert', label: t('transfer.writeMode.dropCreate') },
+                    ]}
+                  />
+                </label>
+                {writeMode !== 'insert' && (
+                  <label className="flex items-center gap-2 text-sm text-warning">
                     <input
                       type="checkbox"
-                      checked={tbl.enabled}
-                      onChange={() => toggleTable(tbl.sourceTable)}
+                      checked={confirmedDestructive}
+                      onChange={(e) => setConfirmedDestructive(e.target.checked)}
+                      data-testid="data-transfer-destructive-confirm"
                     />
-                    <span className="flex-1">{tbl.sourceTable}</span>
-                    <span className="text-fg-muted">→ {tbl.targetTable || '—'}</span>
-                    <span className="text-xs uppercase text-fg-muted">{tbl.status}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+                    {t('transfer.destructiveConfirm')}
+                  </label>
+                )}
+                <label className="block text-sm">
+                  {t('transfer.batchSize')}
+                  <input
+                    type="number"
+                    min={1}
+                    className="mt-1 w-full rounded border border-edge bg-surface px-2 py-1"
+                    value={batchSize}
+                    onChange={(e) => setBatchSize(Number(e.target.value) || 500)}
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={stopOnError}
+                    onChange={(e) => setStopOnError(e.target.checked)}
+                  />
+                  {t('transfer.stopOnError')}
+                </label>
+              </div>
+            </div>
+          )}
 
-        {step === 'mapping' && (
-          <TransferMappingStep
-            tables={tables}
-            selectedSourceTable={selectedMappingTable}
-            mode={mode}
-            onSelectTable={setSelectedMappingTable}
-            onUpdateTable={updateTable}
-            onTargetTableCommit={(sourceTable) => void refreshTableMapping(sourceTable)}
-          />
-        )}
-
-        {step === 'options' && (
-          <div className="flex max-w-md flex-col gap-3">
-            <label className="text-sm">
-              {t('transfer.writeMode.label')}
-              <Select
-                value={writeMode}
-                onChange={(v) => setWriteMode(v as WriteMode)}
-                options={[
-                  { value: 'insert', label: t('transfer.writeMode.insert') },
-                  { value: 'truncateInsert', label: t('transfer.writeMode.truncateInsert') },
-                  { value: 'dropCreateInsert', label: t('transfer.writeMode.dropCreate') },
-                ]}
-              />
-            </label>
-            {writeMode !== 'insert' && (
-              <label className="flex items-center gap-2 text-sm text-warning">
-                <input
-                  type="checkbox"
-                  checked={confirmedDestructive}
-                  onChange={(e) => setConfirmedDestructive(e.target.checked)}
-                  data-testid="data-transfer-destructive-confirm"
-                />
-                {t('transfer.destructiveConfirm')}
-              </label>
-            )}
-            <label className="text-sm">
-              {t('transfer.batchSize')}
-              <input
-                type="number"
-                min={1}
-                className="mt-1 w-full rounded border border-border bg-bg px-2 py-1"
-                value={batchSize}
-                onChange={(e) => setBatchSize(Number(e.target.value) || 500)}
-              />
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={stopOnError}
-                onChange={(e) => setStopOnError(e.target.checked)}
-              />
-              {t('transfer.stopOnError')}
-            </label>
-          </div>
-        )}
-
-        {step === 'preview' && preview && (
-          <div data-testid="data-transfer-preview" className="space-y-3 text-sm">
-            {preview.blockReason && (
-              <p className="select-text text-warning">{preview.blockReason}</p>
-            )}
-            {preview.ddl.map((item) => {
-              const table = tables.find((t) => t.sourceTable === item.sourceTable);
-              const ddlValue = table?.ddlOverride ?? item.ddl;
-              return (
-                <div
-                  key={item.sourceTable}
-                  className="overflow-hidden rounded border border-border"
-                >
-                  <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5 text-xs text-fg-muted">
-                    <span>
-                      {item.sourceTable} → {item.targetTable}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      data-testid={`data-transfer-copy-ddl-${item.sourceTable}`}
-                      onClick={() => void navigator.clipboard.writeText(ddlValue)}
+          {step === 'objects' && (
+            <div>
+              {loading ? (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-accent" />
+                </div>
+              ) : (
+                <ul className="divide-y divide-edge overflow-hidden rounded-lg border border-edge bg-surface-alt">
+                  {tables.map((tbl) => (
+                    <li
+                      key={tbl.sourceTable}
+                      data-testid="data-transfer-table-row"
+                      className="flex items-center gap-2 px-3 py-2 text-sm"
                     >
-                      {t('common.copyDdl')}
-                    </Button>
-                  </div>
+                      <input
+                        type="checkbox"
+                        checked={tbl.enabled}
+                        onChange={() => toggleTable(tbl.sourceTable)}
+                      />
+                      <span className="flex-1 font-mono text-xs">{tbl.sourceTable}</span>
+                      <span className="text-fg-muted">→ {tbl.targetTable || '—'}</span>
+                      <span className="text-xs uppercase text-fg-muted">{tbl.status}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {step === 'mapping' && (
+            <TransferMappingStep
+              tables={tables}
+              selectedSourceTable={selectedMappingTable}
+              mode={mode}
+              onSelectTable={setSelectedMappingTable}
+              onUpdateTable={updateTable}
+              onTargetTableCommit={(sourceTable) => void refreshTableMapping(sourceTable)}
+            />
+          )}
+
+          {step === 'preview' && preview && (
+            <div data-testid="data-transfer-preview" className="space-y-3 text-sm">
+              {preview.blockReason && (
+                <p className="rounded border border-warning/30 bg-warning/10 px-3 py-2 select-text text-warning">
+                  {preview.blockReason}
+                </p>
+              )}
+              {preview.ddl.map((item) => {
+                const table = tables.find((row) => row.sourceTable === item.sourceTable);
+                const ddlValue = table?.ddlOverride ?? item.ddl;
+                return (
                   <div
-                    className="h-48 min-h-[12rem] bg-bg-muted"
-                    data-testid={`data-transfer-ddl-editor-${item.sourceTable}`}
+                    key={item.sourceTable}
+                    className="overflow-hidden rounded-lg border border-edge bg-surface-alt"
                   >
-                    <SqlCodeBlock
-                      code={ddlValue}
-                      dialect={targetConn?.databaseType ?? 'mysql'}
-                      onChange={(next) => updateTableDdlOverride(item.sourceTable, next)}
-                    />
-                  </div>
-                  <p className="border-t border-border px-3 py-1.5 text-[11px] text-fg-muted">
-                    {t('transfer.ddlOverrideHint')}
-                  </p>
-                </div>
-              );
-            })}
-            {preview.writePlans.map((plan) => (
-              <div key={plan.sourceTable} className="rounded border border-border p-2">
-                <div>
-                  {plan.sourceTable} → {plan.targetTable} ({plan.writeMode})
-                </div>
-                <div className="text-fg-muted">
-                  {t('transfer.estimatedRows')}: {plan.estimatedRows ?? '—'}
-                </div>
-              </div>
-            ))}
-            {preview.warnings.map((w) => (
-              <p key={w} className="text-xs text-fg-muted">
-                {w}
-              </p>
-            ))}
-          </div>
-        )}
-
-        {step === 'execute' && (
-          <div className="flex flex-col items-start gap-3">
-            <p className="text-sm">{t('transfer.executePrompt')}</p>
-            <Button
-              data-testid="data-transfer-execute"
-              disabled={executing || targetReadOnly}
-              onClick={() => void runExecute()}
-            >
-              {executing ? <Loader2 className="h-4 w-4 animate-spin" /> : t('transfer.execute')}
-            </Button>
-            {executing && (
-              <Button
-                variant="ghost"
-                data-testid="data-transfer-cancel"
-                onClick={() => void handleCancel()}
-              >
-                {t('transfer.cancel')}
-              </Button>
-            )}
-          </div>
-        )}
-
-        {step === 'result' && result && (
-          <div data-testid="data-transfer-result" className="space-y-2 text-sm">
-            <p>
-              {t('transfer.rowsInserted')}: {result.rowsInserted}
-            </p>
-            {result.tables.map((tbl) => (
-              <div key={tbl.sourceTable} className="rounded border border-border p-2">
-                <div className="font-medium">
-                  {tbl.sourceTable}: {tbl.success ? t('transfer.success') : t('transfer.error')}
-                </div>
-                {!tbl.success && tbl.error ? (
-                  <div className="mt-2 flex items-start justify-between gap-2">
-                    <pre className="min-w-0 flex-1 select-text whitespace-pre-wrap break-all text-xs text-danger">
-                      {tbl.error}
-                    </pre>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => void navigator.clipboard.writeText(tbl.error ?? '')}
+                    <div className="flex items-center justify-between gap-2 border-b border-edge px-3 py-1.5 text-xs text-fg-muted">
+                      <span>
+                        {item.sourceTable} → {item.targetTable}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`data-transfer-copy-ddl-${item.sourceTable}`}
+                        onClick={() => void navigator.clipboard.writeText(ddlValue)}
+                      >
+                        {t('common.copyDdl')}
+                      </Button>
+                    </div>
+                    <div
+                      className="h-48 min-h-[12rem] bg-surface"
+                      data-testid={`data-transfer-ddl-editor-${item.sourceTable}`}
                     >
-                      {t('common.copy')}
-                    </Button>
+                      <SqlCodeBlock
+                        code={ddlValue}
+                        dialect={targetConn?.databaseType ?? 'mysql'}
+                        onChange={(next) => updateTableDdlOverride(item.sourceTable, next)}
+                      />
+                    </div>
+                    <p className="border-t border-edge px-3 py-1.5 text-[11px] text-fg-muted">
+                      {t('transfer.ddlOverrideHint')}
+                    </p>
                   </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        )}
+                );
+              })}
+              {preview.writePlans.map((plan) => (
+                <div
+                  key={plan.sourceTable}
+                  className="rounded-lg border border-edge bg-surface-alt p-3"
+                >
+                  <div>
+                    {plan.sourceTable} → {plan.targetTable} ({plan.writeMode})
+                  </div>
+                  <div className="text-fg-muted">
+                    {t('transfer.estimatedRows')}: {plan.estimatedRows ?? '—'}
+                  </div>
+                </div>
+              ))}
+              {preview.warnings.map((w) => (
+                <p key={w} className="text-xs text-fg-muted">
+                  {w}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {step === 'result' && result && (
+            <div
+              data-testid="data-transfer-result"
+              className="space-y-3 rounded-lg border border-edge bg-surface-alt p-6 text-sm"
+            >
+              <p className="text-base font-medium">
+                {t('transfer.rowsInserted')}: {result.rowsInserted}
+              </p>
+              {result.tables.map((tbl) => (
+                <div key={tbl.sourceTable} className="rounded-lg border border-edge bg-surface p-3">
+                  <div className="font-medium">
+                    {tbl.sourceTable}: {tbl.success ? t('transfer.success') : t('transfer.error')}
+                  </div>
+                  {!tbl.success && tbl.error ? (
+                    <div className="mt-2 flex items-start justify-between gap-2">
+                      <pre className="min-w-0 flex-1 select-text whitespace-pre-wrap break-all text-xs text-danger">
+                        {tbl.error}
+                      </pre>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void navigator.clipboard.writeText(tbl.error ?? '')}
+                      >
+                        {t('common.copy')}
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center justify-between border-t border-border px-4 py-2">
-        <Button variant="ghost" disabled={stepIndex === 0} onClick={goBack}>
+      <div className="flex shrink-0 items-center justify-between border-t border-edge px-6 py-3">
+        <Button variant="ghost" disabled={stepIndex === 0 || executing} onClick={goBack}>
           <ChevronLeft className="h-4 w-4" /> {t('transfer.back')}
         </Button>
-        {step !== 'result' && step !== 'execute' && (
-          <Button
-            data-testid="data-transfer-next"
-            disabled={!canNext || loading}
-            onClick={() => void goNext()}
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('transfer.next')}
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {step === 'preview' && executing && (
+            <Button variant="ghost" data-testid="data-transfer-cancel" onClick={() => void handleCancel()}>
+              {t('transfer.cancel')}
+            </Button>
+          )}
+          {step === 'preview' ? (
+            <Button
+              variant="primary"
+              data-testid="data-transfer-execute"
+              disabled={!canExecute || executing}
+              onClick={() => void runExecute()}
+            >
+              {executing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                t('transfer.execute')
+              )}
+            </Button>
+          ) : step !== 'result' ? (
+            <Button
+              data-testid="data-transfer-next"
+              disabled={!canNext || loading}
+              onClick={() => void goNext()}
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('transfer.next')}
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <StatusBar />
+
+      <TransferLimitationsDialog open={limitationsOpen} onClose={() => setLimitationsOpen(false)} />
 
       <Dialog
         open={errorOpen}
