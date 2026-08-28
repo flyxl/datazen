@@ -1,26 +1,38 @@
-# Schema Diff UI 重构需求（设计规格）
+# Schema Diff UI 设计规格（方案 B · 已实施）
 
-> **状态**：待实施（当前代码保持单页三阶段滚动，不做提前大重构）  
-> **关联**：[UI 审查报告](./schema-diff-ui-review.zh-CN.md) · [用户手册](./schema-diff-guide.zh-CN.md) · [Deploy 速览](./schema-diff-deploy.md) · **参照 UI**：[Data Transfer 重构](./data-transfer-ui-redesign.zh-CN.md) · [Data Sync 窗口](../architecture/windows.md)
+> **状态**：✅ 已于 2026-08 合入 `main`（方案 B：Sync 式双栏）  
+> **用户手册**：[schema-diff-guide.zh-CN.md](./schema-diff-guide.zh-CN.md)  
+> **关联**：[Deploy 速览](./schema-diff-deploy.md) · [Data Transfer UI](./data-transfer-ui-redesign.zh-CN.md) · [Data Sync 窗口](../architecture/windows.md)  
+> 下文保留设计决策与线框存档；**以用户手册与源码为准**。
 
 ---
 
-## 1. 问题陈述（当前 UI）
+## 当前实现摘要
 
-| 问题 | 表现 |
+| 区域 | 实现 |
 |------|------|
-| **配色不统一** | 窗口根节点 `bg-canvas`；Transfer/Sync 已统一 `bg-surface` |
-| **端点区简陋** | 仅连接 Select，无 database/schema、无 swap（Sync/Transfer 均有或规划中） |
-| **步骤指示弱** | 纯文字面包屑 `Compare → Plan → Review`，无圆形 stepper |
-| **操作条分散** | Compare / Generate / Copy / Export 混排，无分区 |
-| **Deploy 按钮不一致** | `SchemaDiffDeployPanel` 使用原生 `<button>`，非 `Button` 组件 |
-| **与迁移工具割裂** | 限制弹窗 WIP 已对齐 Transfer；整体布局仍像独立工具 |
-| **帮助链接漂移** | BookOpen 落到文档 Sync 章节 |
+| 布局 | `bg-surface`；EndpointsBar 常驻；左表列表 + 中 diff + 右 Plan/Deploy 标签页 |
+| 端点 | `useSchemaDiffEndpoints`：连接、database、schema、Swap、dedicated session |
+| 安全 | `allowDestructive` + `DEPLOY` token + rollback 完整性 gate（未改） |
+| 限制 | `SchemaDiffLimitationsDialog` + localStorage dismiss |
+| 源码 | `src/windows/schema-diff/` |
 
-**不改为问题（保留）：**
+---
 
-- 单页滚动 + 三阶段（对比 DDL 计划需并排阅读，不适合 Transfer 式分页）
-- `DEPLOY` token 确认（比 Execute Modal 更适合逐条审 SQL）
+## 1. 问题陈述（重构前 · 已解决）
+
+| 问题 | 原表现 | 现状 |
+|------|--------|------|
+| 配色不统一 | `bg-canvas` | `bg-surface` |
+| 端点区简陋 | 仅连接 Select | EndpointsBar + db/schema + Swap |
+| 布局 | 单页三卡片纵向堆叠 | 双栏工作台 |
+| Deploy 按钮 | 原生 `<button>` | 统一 Button / deploy panel |
+| 帮助链接 | 落到 Sync 章节 | 待后续改为 schema-diff anchor |
+
+**保留的设计决策：**
+
+- 不做 6 步分页向导（DDL 需并排阅读 Plan）
+- 保留 `DEPLOY` token（优于 Transfer Execute Modal）
 
 ---
 
@@ -76,17 +88,16 @@
 **与 Transfer 对齐点：** EndpointsBar 样式、Stepper 视觉、Limitations 弹窗、surface token。  
 **与 Transfer 不同点：** 无 Footer Next/Back；阶段由内容展开驱动（生成计划 → 点 Review → Deploy）。
 
-### 方案 B（长期）：Sync 式双栏
+### 方案 B（已采用）：Sync 式双栏
 
 ```
 EndpointsBar（常驻）
-├ 左：表列表 + diff 摘要
-└ 右：Plan SQL 编辑器 tab + Deploy 抽屉
+├ 左：表列表 + diff 摘要/badge
+├ 中：SchemaDiffPanel 列级详情
+└ 右：Plan tab + Review/Deploy tab（SchemaDiffRightPanel）
 ```
 
-工作量大；建议在方案 A 稳定、E2E 全绿后再评估。
-
-**本规格 wireframe 按方案 A 绘制。**
+**本规格 wireframe 中方案 A 线框仅供存档；产品 UI 以方案 B 为准。**
 
 ---
 
@@ -279,5 +290,5 @@ flowchart TD
 
 ## 13. 与审查报告的关系
 
-- [schema-diff-ui-review.zh-CN.md](./schema-diff-ui-review.zh-CN.md) — **现状**与差距分析  
+- [schema-diff-guide.zh-CN.md](./schema-diff-guide.zh-CN.md) — **用户手册**
 - **本文档** — **目标态**规格与 wireframe，供实施与 subagent 轨道拆分

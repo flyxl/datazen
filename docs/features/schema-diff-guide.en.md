@@ -13,38 +13,39 @@
 | **Plan** | Generate deploy SQL (additive-only by default) |
 | **Review / Deploy** | Confirm transaction options and type `DEPLOY` when needed, then run on the target |
 
-**Direction (same as DBX)**
-
-| Side | Meaning |
-|------|---------|
-| Source | Desired schema |
-| Target | Apply site |
-
-Labels:
-
-- **Missing on target (ADD)** — on source only → usually `ADD COLUMN`
-- **Extra on target (DROP)** — on target only → requires **Allow destructive**
-- **Changed** — type / nullability / PK flag differ
+**Direction:** source = desired schema; target = apply site.
 
 ---
 
-## 2. Quick start
+## 2. UI layout
 
-1. Open the **Schema Diff** window  
-2. Choose **source** and **target** (must differ)  
-3. Enter one or more table names (one per line or comma-separated)  
+Sync-style **dual-panel workspace**:
+
+- **EndpointsBar** — source/target connection, database, schema (when supported), Swap, Compare
+- **Left** — table list with diff badges  
+- **Center** — column-level diff (`SchemaDiffPanel`)  
+- **Right** — **Plan** tab (options + SQL list) and **Review / Deploy** tab  
+
+First open shows a **limitations** dialog (optional “don’t show again”).  
+Code: `src/windows/schema-diff/`.
+
+---
+
+## 3. Quick start
+
+1. Open **Schema Diff** (dismiss limitations dialog if shown)  
+2. Pick **source** and **target** connections and **databases** in the EndpointsBar  
+3. Enter table name(s) (one per line or comma-separated)  
 4. Click **Compare**  
-5. Click **Generate deploy script**  
-6. Review each statement and its risk badge (`additive` / `destructive` / `rewrite`)  
-7. Open **Review / Deploy**; set transaction / rollback-completeness options  
-8. If the plan is destructive or rewrite-heavy, type **`DEPLOY`**, then **Deploy to target**  
-9. Read status: `committed` / `rolled_back` / `mixed` / `failed`
+5. Click **Generate deploy script** — review SQL in the Plan tab  
+6. Switch to **Review / Deploy**, set options, type **`DEPLOY`** if required  
+7. Click **Deploy to target** and read status (`committed` / `rolled_back` / `mixed` / `failed`)
 
-You can **Copy SQL** or **Copy summary** at any time without deploying.
+You can **Copy SQL** or **Copy summary** without deploying.
 
 ---
 
-## 3. Safety defaults
+## 4. Safety defaults
 
 - Default plan is **additive-only** (ADD COLUMN, widen nullability, CREATE INDEX, …)  
 - Enable **Allow destructive** for DROP COLUMN/INDEX, narrowing ALTERs, SET NOT NULL, …  
@@ -55,7 +56,7 @@ For production: copy SQL out for human review and take a backup first.
 
 ---
 
-## 4. Transactions & atomicity
+## 5. Transactions & atomicity
 
 | Dialect | DDL atomicity | Mid-failure status |
 |---------|---------------|--------------------|
@@ -68,7 +69,7 @@ The transaction checkbox is disabled when the target dialect does not support tr
 
 ---
 
-## 5. Multi-table & indexes
+## 6. Multi-table & indexes
 
 - Multiple tables are planned in one batch  
 - Uncheck **Include indexes** to plan column changes only  
@@ -78,7 +79,7 @@ Primary-key structure changes are **not** auto-planned; follow warnings and appl
 
 ---
 
-## 6. Cross-dialect
+## 7. Cross-dialect
 
 When dialects differ, types are mapped through the **sync IR** (`column_to_ir` → `ir_type_to_native`).
 
@@ -89,7 +90,7 @@ SQLite remains ADD COLUMN / index oriented; complex DROP/MODIFY emits unsupporte
 
 ---
 
-## 7. Config JSON
+## 8. Config JSON
 
 Export / import clipboard JSON (config IDs only — no secrets):
 
@@ -109,14 +110,14 @@ After import, run Compare / Generate again; connections must already exist local
 
 ---
 
-## 8. Relation to Data Sync
+## 9. Relation to Data Sync / Data Transfer
 
 - **Data Sync**: compare + row copy; schema diff view shares source=desired semantics  
 - **Schema Diff**: structural align + gated DDL deploy (no row sync)  
 
 ---
 
-## 9. Out of scope
+## 10. Out of scope
 
 - Views / functions / triggers / procedures  
 - Online schema change (pt-osc / gh-ost)  
@@ -126,7 +127,7 @@ After import, run Compare / Generate again; connections must already exist local
 
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 | Symptom | Likely cause |
 |---------|----------------|

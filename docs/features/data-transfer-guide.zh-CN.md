@@ -1,7 +1,7 @@
 # Data Transfer 用户指南
 
 > 产品定义见 [data-transfer-prd.zh-CN.md](./data-transfer-prd.zh-CN.md)。  
-> UI 规格见 [data-transfer-ui-redesign.zh-CN.md](./data-transfer-ui-redesign.zh-CN.md)。  
+> UI 设计存档见 [data-transfer-ui-redesign.zh-CN.md](./data-transfer-ui-redesign.zh-CN.md)（6 步向导 · 已实施）。
 > 与 **Data Synchronization**（同族 + 结构一致 + 相同 PK 的行级 Diff）和 **Schema Diff**（结构对齐）是独立产品。
 
 ## 入口
