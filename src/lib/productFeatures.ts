@@ -1,10 +1,9 @@
 /**
- * Product-level feature gates. v0.1.0 hides migration tools that are not yet production-ready.
- * Re-enable individually when each module reaches release quality.
+ * Product-level feature gates. v0.1.0 hides schema diff until production-ready.
  */
 export const PRODUCT_FEATURES = {
   schemaDiff: false,
-  dataSync: false,
+  dataSync: true,
   dataTransfer: true,
 } as const;
 
