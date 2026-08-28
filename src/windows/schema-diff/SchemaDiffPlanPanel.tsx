@@ -39,6 +39,7 @@ export function SchemaDiffPlanPanel({
             type="checkbox"
             checked={allowDestructive}
             onChange={(e) => onAllowDestructiveChange(e.target.checked)}
+            data-testid="schema-diff-allow-destructive"
           />
           {t('schemaDiff.allowDestructive')}
         </label>
@@ -47,6 +48,7 @@ export function SchemaDiffPlanPanel({
             type="checkbox"
             checked={includeIndexes}
             onChange={(e) => onIncludeIndexesChange(e.target.checked)}
+            data-testid="schema-diff-include-indexes"
           />
           {t('schemaDiff.includeIndexes')}
         </label>

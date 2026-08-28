@@ -85,7 +85,11 @@
 | 恢复：覆盖确认 + 分步进度 | `backup-database.ts` (BACKUP-012) + `BackupWindow.test.tsx` | Covered（Web ConfirmDialog；打开文件见例外） |
 | 新建查询不弹出对象加载补全框 | `connection-window.ts` (SQ-AC-001), `mysql.ts` (MY-AC-001) | Covered |
 | SQL 补全只拉取语句中已加载完整表名的列（禁止前缀 get_columns） | `schemaStore.test.ts` / `sqlEditorDefaults.test.ts` / `buildEditorSchema.test.ts` | Covered |
-| Schema Diff 窗口打开与步骤控件 | `schema-diff-window.ts` | Covered |
+| Schema Diff 窗口 + 限制说明 | `schema-diff-window.ts` (SD-001~004, SD-LIM) | Covered |
+| 结构对比宽类型 **19 列** + 多表 **10 张** | `schema-diff-diverse-types.ts` (SD-COMP) | Covered |
+| 结构对比 PG↔MySQL 跨方言 deploy | `schema-diff-cross-dialect.ts` (SD-CROSS) | Covered |
+| 结构对比 allowDestructive / includeIndexes 矩阵 | `schema-diff-options-matrix.ts` (SD-OPT) | Covered |
+| 结构对比 PG→PG / PG→MySQL / MySQL→PG 用户旅程 | `journeys/schema-diff-*-journey.ts` | Covered |
 | 数据同步 Diff Workspace（Options / Swap / Compare / Summary / row-diff / preview / Execute chrome） | `data-sync-window.ts` (DSW-001~008, DSW-MAP/WS) | Covered（Execute 对 live DB 见 IPC spec；无 PG 夹具时 MAP/WS 用例 soft-skip） |
 | 数据同步边界与异常（selectBoth / same endpoint / unsupported pair / delete confirm / post-compare filters / read-only target / cancel recovery / endpoint reset） | `data-sync-edge-cases.ts` (DS-EDGE-001~015) | Covered（PG 夹具；每步 `--screenshot`） |
 | 数据同步完整用户旅程（compare→preview→execute→executeDone banner→回查） | `journeys/data-sync-journey.ts` (DS-JOURNEY-PG / DS-JOURNEY-MYSQL) | Covered（PG + MySQL 双驱动；含 PG unsupportedPair 子用例；校验/Review/Execute 全分支；executeDone 断言；每步 `--screenshot`） |

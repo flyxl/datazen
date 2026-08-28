@@ -68,6 +68,8 @@ pnpm e2e:path-ipc
 pnpm e2e:dashboard      # data-dashboard*.ts（同样 skip-build）
 pnpm e2e:data-transfer  # 数据传输专用：preflight 清理 + 全量 transfer suite（2500 行宽类型）
 pnpm e2e:data-transfer:build  # 同上，但会先完整 webdriver 构建
+pnpm e2e:schema-diff  # 结构对比专用：preflight 清理 + 全量 schema-diff suite（19 列宽类型 + 跨方言）
+pnpm e2e:schema-diff:build  # 同上，但会先完整 webdriver 构建
 pnpm e2e:contract:matrix          # Host UI/IPC × PG/MySQL/SQLite 连接窗
 pnpm e2e:contract:pg              # 仅 PostgreSQL 契约冒烟
 pnpm test:unit:e2e-contract:coverage  # 契约纯逻辑单测 ≥80%

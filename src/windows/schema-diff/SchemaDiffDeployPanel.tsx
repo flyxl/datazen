@@ -105,6 +105,7 @@ export function SchemaDiffDeployPanel({
         className="rounded-md bg-accent px-3 py-2 text-sm text-accent-fg disabled:opacity-50"
         disabled={!canRun || deploying}
         onClick={onDeploy}
+        data-testid="schema-diff-deploy"
       >
         {deploying ? t('schemaDiff.deploying') : t('schemaDiff.deploy')}
       </button>
