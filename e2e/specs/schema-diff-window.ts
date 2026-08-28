@@ -5,7 +5,7 @@ import {
   closeExtraWindows,
   openSchemaDiffWindow,
   selectDzOption,
-  clickSchemaDiffCompare,
+  clickSchemaDiffNext,
 } from '../helpers.js';
 import { seedSecondPgConnection } from '../lib/testDataLifecycle.js';
 
@@ -31,24 +31,39 @@ describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
     await expect(await $('[data-testid="schema-diff-window"]')).toBeDisplayed();
     const body = await $('body').getText();
     expect(body).toContain(t('common.schemaDiff'));
-    expect(body).toContain(t('schemaDiff.stepCompare'));
+    expect(body).toContain(t('schemaDiff.step.endpoints'));
+    expect(body).toContain(t('schemaDiff.step.objects'));
     await captureJourneyStep('schema-diff-window-open');
   });
 
-  it('SD-002: 应显示对比 / 生成计划等主操作', async () => {
+  it('SD-002: 应显示向导步骤与下一步导航', async () => {
     await openSchemaDiffWindow();
-    await expect(await $('[data-testid="schema-diff-compare"]')).toBeDisplayed();
-    await expect(await $('[data-testid="schema-diff-generate-plan"]')).toBeDisplayed();
+    await expect(await $('[data-testid="schema-diff-next"]')).toBeDisplayed();
+    await expect(await $('[data-testid="schema-diff-step-compare"]')).toBeDisplayed();
     const body = await $('body').getText();
-    expect(body).toContain(t('schemaDiff.tables'));
+    expect(body).toContain(t('schemaDiff.step.plan'));
   });
 
-  it('SD-003: 未填表名点对比应提示必填', async () => {
+  it('SD-003: 未选表点下一步应提示必填', async () => {
     await seedSecondPgConnection(browser);
     await openSchemaDiffWindow();
     await selectDzOption(t('sync.selectSource'), '本地 PostgreSQL');
     await selectDzOption(t('sync.selectTarget'), 'E2E-PG-目标');
-    await clickSchemaDiffCompare();
+    await clickSchemaDiffNext();
+    const objectsPanel = await $('[data-testid="schema-diff-objects-panel"]');
+    await objectsPanel.waitForDisplayed({ timeout: 15000 });
+    await browser.waitUntil(
+      async () => (await $$('[data-testid="schema-diff-table-row"]').length) > 0,
+      { timeout: 20000, timeoutMsg: '等待表列表加载' },
+    );
+    const rows = await $$('[data-testid="schema-diff-table-row"]');
+    for (const row of rows) {
+      const checkbox = await row.$('input[type="checkbox"]');
+      if (await checkbox.isSelected()) {
+        await checkbox.click();
+      }
+    }
+    await clickSchemaDiffNext();
     const body = await $('body').getText();
     expect(body).toContain(t('schemaDiff.tableRequired'));
     await captureJourneyStep('schema-diff-table-required');

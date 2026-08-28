@@ -650,12 +650,8 @@ export function DataTransferWindow() {
               onSourceDatabaseChange={setSourceDatabase}
               onTargetDatabaseChange={setTargetDatabase}
               footerNote={
-                pairing ? (
-                  <TransferPairingNote
-                    supported={pairing.supported}
-                    path={pairing.path}
-                    reason={pairing.reason}
-                  />
+                pairing && !pairing.supported ? (
+                  <TransferPairingNote reason={pairing.reason} />
                 ) : undefined
               }
             />

@@ -299,16 +299,8 @@ export function MigrationEndpointsBar({
   );
 }
 
-/** Pairing/path badge for Data Transfer endpoints step. */
-export function TransferPairingNote({
-  supported,
-  path,
-  reason,
-}: {
-  supported: boolean;
-  path?: string;
-  reason?: string | null;
-}) {
+/** Shown on the Transfer endpoints step only when the selected pair is unsupported. */
+export function TransferPairingNote({ reason }: { reason?: string | null }) {
   const { t } = useI18n();
   return (
     <p
@@ -317,7 +309,7 @@ export function TransferPairingNote({
         'mt-4 inline-block rounded border border-edge bg-surface px-2 py-1 text-xs text-fg-muted',
       )}
     >
-      {supported ? t(`transfer.path.${path}`) : (reason ?? t('common.unsupportedPair'))}
+      {reason ?? t('common.unsupportedPair')}
     </p>
   );
 }

@@ -144,17 +144,14 @@ describe('数据传输 MySQL→PG 跨方言旅程 (DT-MYSQL-PG-JOURNEY)', () => 
     await captureJourneyStep('dt-mysql-pg-01-window-open', 0, true);
   });
 
-  it('Step 2: 选择 MySQL 源与 PG 目标并显示 IR 路径', async () => {
+  it('Step 2: 选择 MySQL 源与 PG 目标', async () => {
     await openDataTransferWindow();
     await selectDzOption(t('transfer.pickConnection'), SRC_NAME);
     await selectDzOption(t('transfer.pickConnection'), TGT_NAME);
     await browser.pause(1500);
     await expect(await $('[data-testid="data-transfer-source-database"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-transfer-target-database"]')).toBeDisplayed();
-    const path = await $('[data-testid="data-transfer-path"]');
-    await expect(path).toBeDisplayed();
-    expect(await path.getText()).toContain(t('transfer.path.ir'));
-    await captureJourneyStep('dt-mysql-pg-02-ir-path', 0, true);
+    await captureJourneyStep('dt-mysql-pg-02-endpoints', 0, true);
   });
 
   it('Step 3: 进入 setup 并选择 data 模式', async () => {
