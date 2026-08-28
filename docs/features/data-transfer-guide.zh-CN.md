@@ -95,7 +95,7 @@
 
 ## 与 Data Sync 的 UI 差异
 
-Data Sync 为**单页工作台**；Data Transfer 为 **6 步向导**（视觉 token 已与 Sync 对齐），映射能力更强。仍缺：端点 swap、schema 下拉、Objects 搜索、执行进度面板、右键预填 Source 等（见 PRD backlog）。
+Data Sync 为**单页工作台**；Data Transfer 为 **6 步向导**（视觉 token 已与 Sync 对齐），映射能力更强。仍缺：端点 swap、schema 下拉、Objects 搜索、执行进度面板、右键预填 Source 等（见 [Backlog](../todo/migration-tools-backlog.md#data-transfer)）。
 
 ## 常见问题
 

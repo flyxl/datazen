@@ -20,10 +20,11 @@ IPC: `commands/schema_diff.rs` → `compare_table_schemas`, `prepare_schema_diff
 
 | Component | Role |
 |-----------|------|
-| `SchemaDiffWindow.tsx` | Shell; compare / plan / deploy orchestration |
-| `SchemaDiffEndpointsBar.tsx` + `useSchemaDiffEndpoints.ts` | Connection, database, schema, swap, dedicated sessions |
-| `SchemaDiffTableListPanel.tsx` | Left table list + diff badges |
-| `SchemaDiffRightPanel.tsx` | Plan tab + Review/Deploy tab |
+| `SchemaDiffWindow.tsx` | 5 步向导 shell；compare / plan / deploy 编排 |
+| `useSchemaDiffEndpoints.ts` + `MigrationEndpointsBar` | Connection, database, schema; dedicated sessions |
+| `SchemaDiffObjectsStep.tsx` | Objects 步表多选 |
+| `SchemaDiffTableListPanel.tsx` | Compare 步左侧表列表 + diff badges |
+| `SchemaDiffRightPanel.tsx` | Plan / Deploy 步 SQL 与部署面板 |
 | `SchemaDiffLimitationsDialog.tsx` | First-run capability limits |
 
 ## Sync IR link
@@ -45,6 +46,7 @@ Deploy on PostgreSQL wraps statements in a driver-held transaction (`deploy.rs` 
 - [schema-diff-guide.zh-CN.md](../../features/schema-diff-guide.zh-CN.md)
 - [schema-diff-deploy.md](../../features/schema-diff-deploy.md)
 - [migration-tools-review-v0.1.0.md](../../development/migration-tools-review-v0.1.0.md)
+- [migration-tools-backlog.md](../../todo/migration-tools-backlog.md)
 
 ## Tests
 

@@ -1,9 +1,10 @@
 # Schema Diff UI 设计规格（方案 B · 已实施）
 
-> **状态**：✅ 已于 2026-08 合入 `main`（方案 B：Sync 式双栏）  
+> **状态**：✅ 已于 2026-08 合入 `main`（当前为 **5 步向导** + Compare 步双栏 diff）  
 > **用户手册**：[schema-diff-guide.zh-CN.md](./schema-diff-guide.zh-CN.md)  
+> **Backlog**：[migration-tools-backlog.md](../todo/migration-tools-backlog.md)  
 > **关联**：[Deploy 速览](./schema-diff-deploy.md) · [Data Transfer UI](./data-transfer-ui-redesign.zh-CN.md) · [Data Sync 窗口](../architecture/windows.md)  
-> 下文保留设计决策与线框存档；**以用户手册与源码为准**。
+> 下文保留设计决策与线框存档；**以用户手册、Backlog 与源码为准**。
 
 ---
 
@@ -11,10 +12,12 @@
 
 | 区域 | 实现 |
 |------|------|
-| 布局 | `bg-surface`；EndpointsBar 常驻；左表列表 + 中 diff + 右 Plan/Deploy 标签页 |
-| 端点 | `useSchemaDiffEndpoints`：连接、database、schema、Swap、dedicated session |
+| 布局 | 5 步 stepper；Compare 步为左表列表 + 中 diff；Plan / Deploy 独立步骤 |
+| 端点 | `useSchemaDiffEndpoints`：连接、database、schema；Endpoints 步 `showSwap={false}` |
+| Objects | 自源库拉表多选（`SchemaDiffObjectsStep`） |
 | 安全 | `allowDestructive` + `DEPLOY` token + rollback 完整性 gate（未改） |
 | 限制 | `SchemaDiffLimitationsDialog` + localStorage dismiss |
+| 帮助 | TitleBar → 在线手册 `#sync`（待独立 `#schema-diff` 锚点） |
 | 源码 | `src/windows/schema-diff/` |
 
 ---

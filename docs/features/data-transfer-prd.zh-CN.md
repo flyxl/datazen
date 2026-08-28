@@ -222,6 +222,8 @@ src-tauri/src/transfer/          ← IR 适配器 + DDL 生成（与 data_sync �
 
 ### 6.2 Backlog（非阻塞）
 
+完整清单与优先级见 [migration-tools-backlog.md](../todo/migration-tools-backlog.md#data-transfer)。
+
 | 项 | 优先级 | 说明 |
 |----|--------|------|
 | 执行进度面板 | P1 | 当前以 spinner 为主 |
