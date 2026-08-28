@@ -33,6 +33,10 @@ function useMenus(): Menu[] {
     toolsItems.push({ id: 'schema-diff', label: t('common.schemaDiff') });
     toolsItems.push({ id: 'sep-3', label: '', separator: true });
   }
+  if (isProductFeatureEnabled('dataTransfer')) {
+    toolsItems.push({ id: 'data-transfer', label: t('common.dataTransfer') });
+    toolsItems.push({ id: 'sep-3a', label: '', separator: true });
+  }
   toolsItems.push(
     { id: 'workflow', label: t('menu.workflow') },
     { id: 'dashboard', label: t('menu.dashboard') },
@@ -135,8 +139,10 @@ async function handleMenuAction(id: string) {
     case 'help-report':
       void settingsCommands.openPath('https://github.com/flyxl/datazen/issues/new');
       break;
-    default:
-      void emitCrossWindow(`menu:${id}`);
+    default: {
+      const { emitMenuAction } = await import('../lib/windowManager');
+      void emitMenuAction(id);
+    }
   }
 }
 
