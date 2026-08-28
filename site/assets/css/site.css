@@ -1485,10 +1485,12 @@ html[data-theme='light'] .demo-code {
   justify-content: center;
   cursor: zoom-out;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.25s ease;
 }
 .lightbox-overlay.active {
   opacity: 1;
+  pointer-events: auto;
 }
 .lightbox-overlay img {
   max-width: 90vw;
