@@ -51,6 +51,9 @@
         opacity: 0.65;
         margin: 0 0 22px;
       }
+      .shots .manual-shot {
+        margin: 0;
+      }
       .kbd {
         display: inline-block;
         padding: 1px 7px;
@@ -560,18 +563,49 @@ output:
         <section id="sync" class="docs-section">
           <h2 class="docs-section-title">11. Sync · Transfer · Schema Diff</h2>
           <div class="docs-prose">
-            <img
-              class="manual-shot"
-              src="assets/screenshots/19-backup-sync.png"
-              alt="Data sync"
-              loading="lazy"
-            />
-            <p>Three tools with distinct jobs — pick by scenario:</p>
+            <p>
+              Three dedicated sub-windows — opened from <strong>File</strong> (Tools menu on macOS)
+              or the connection / database context menu. Pick by scenario:
+            </p>
+            <pre><code>Structure mismatch / no PK / target table missing / cross-dialect  →  Schema Diff and/or Data Transfer
+Structure aligned + same PK + same dialect family              →  Data Sync</code></pre>
+            <div class="shots">
+              <div>
+                <img
+                  class="manual-shot gallery-img"
+                  src="assets/screenshots/26-data-sync.png"
+                  alt="Data Sync window"
+                  loading="lazy"
+                  data-caption="Data Sync — compare and apply row-level diffs"
+                />
+                <p class="manual-shot-caption">Data Sync — same-family row diff</p>
+              </div>
+              <div>
+                <img
+                  class="manual-shot gallery-img"
+                  src="assets/screenshots/28-data-transfer.png"
+                  alt="Data Transfer wizard"
+                  loading="lazy"
+                  data-caption="Data Transfer — heterogeneous one-way migration"
+                />
+                <p class="manual-shot-caption">Data Transfer — cross-dialect migration</p>
+              </div>
+              <div>
+                <img
+                  class="manual-shot gallery-img"
+                  src="assets/screenshots/27-schema-diff.png"
+                  alt="Schema Diff deploy"
+                  loading="lazy"
+                  data-caption="Schema Diff — compare structure and deploy DDL"
+                />
+                <p class="manual-shot-caption">Schema Diff — structure compare &amp; deploy</p>
+              </div>
+            </div>
             <table>
               <thead>
                 <tr>
                   <th>Tool</th>
-                  <th>Scenario</th>
+                  <th>When to use</th>
                   <th>Flow</th>
                 </tr>
               </thead>
@@ -579,33 +613,34 @@ output:
                 <tr>
                   <td><strong>Data Sync</strong></td>
                   <td>
-                    Row-level sync within the same dialect family (MySQL↔MySQL, PG↔PG) when table
-                    structure and primary keys match exactly
+                    Row-level sync within the <strong>same dialect family</strong> (MySQL↔MySQL,
+                    PG↔PG) when table structure and primary keys match exactly
                   </td>
                   <td>
-                    Compare → Review &amp; check diffs → Preview SQL → Execute (DELETE excluded by
-                    default; enabling it requires double confirmation)
+                    Select source/target + database → <strong>Compare</strong> → Review &amp; check
+                    diffs → Preview SQL → Execute (DELETE off by default; enabling it requires
+                    double confirmation)
                   </td>
                 </tr>
                 <tr>
                   <td><strong>Data Transfer</strong></td>
                   <td>
-                    One-way copy between heterogeneous databases (e.g. MySQL → PostgreSQL),
-                    structure and/or data
+                    One-way copy between <strong>heterogeneous</strong> databases (e.g. MySQL →
+                    PostgreSQL), or when structure differs / target table must be created
                   </td>
                   <td>
-                    Eight-step wizard: source/target → mode → objects → mapping → options → preview
-                    → execute → result
+                    Six-step wizard: Endpoints → Setup (mode + write options) → Objects → Mapping →
+                    Preview (editable DDL) → Result
                   </td>
                 </tr>
                 <tr>
                   <td><strong>Schema Diff</strong></td>
                   <td>
-                    Treat the source structure as the desired state and deploy controlled DDL to the
-                    target
+                    Treat the <strong>source</strong> structure as the desired state and deploy
+                    controlled DDL to the target
                   </td>
                   <td>
-                    Compare → Plan → Review → Deploy; additive-only by default, destructive
+                    Compare → Plan → Review → Deploy; additive-only by default — destructive
                     statements require a checkbox plus typing <code>DEPLOY</code>
                   </td>
                 </tr>
@@ -613,13 +648,21 @@ output:
             </table>
             <ul>
               <li>
-                Data Sync hard gates: same dialect family, identical structure, identical non-empty
-                primary keys. Incompatible tables offer a one-click jump to Schema Diff.
+                <strong>Data Sync gates</strong>: same dialect family, identical
+                columns/types/nullability, identical non-empty primary keys, target table must
+                already exist. INCOMPATIBLE tables offer a one-click jump to Schema Diff;
+                heterogeneous target pairs are marked unsupported with a hint to use Transfer.
               </li>
               <li>
-                Schema Diff runs transactionally on PostgreSQL / SQLite (auto-rollback on failure);
-                MySQL commits statement-by-statement, so partial success is reported as
-                <code>mixed</code>.
+                <strong>Data Transfer</strong>: first open shows a limitations dialog (no
+                views/triggers/FK migration; destructive write modes need explicit confirmation).
+                Endpoints show <code>direct</code> / <code>ir</code> /
+                <code>unsupported</code> pairing paths.
+              </li>
+              <li>
+                <strong>Schema Diff</strong>: runs transactionally on PostgreSQL / SQLite
+                (auto-rollback on failure); MySQL commits statement-by-statement, so partial success
+                is reported as <code>mixed</code>.
               </li>
               <li>When a target connection is read-only, every write path is disabled.</li>
             </ul>
@@ -630,6 +673,13 @@ output:
                 target="_blank"
                 rel="noopener"
                 >Data Sync guide</a
+              >
+              ·
+              <a
+                href="https://github.com/flyxl/datazen/blob/main/docs/features/data-transfer-guide.zh-CN.md"
+                target="_blank"
+                rel="noopener"
+                >Data Transfer guide</a
               >
               ·
               <a

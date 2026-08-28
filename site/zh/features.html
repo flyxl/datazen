@@ -177,14 +177,16 @@ PostgreSQL · MySQL · SQLite · Redis …</code></pre>
           <ul>
             <li>一键备份为 SQL 文件：Schema-only / Data-only / Gzip</li>
             <li>完整应用数据打包导出（含配置），原子写入 + ZIP 炸弹防护</li>
-            <li>PG ↔ MySQL 表结构对比与数据同步，支持断点续传</li>
+            <li><strong>Data Sync</strong> — 同方言族、结构与主键一致时的行级差异同步</li>
+            <li><strong>Data Transfer</strong> — 异构库单向迁移，六步向导（结构 / 数据 / 二者）</li>
+            <li><strong>Schema Diff</strong> — 结构对比与受控 DDL 部署（默认仅增量变更）</li>
             <li>备份包自动排除密钥文件</li>
           </ul>
         </div>
         <img
           class="feature-shot"
-          src="../assets/screenshots/19-backup-sync.png"
-          alt="备份与数据同步"
+          src="../assets/screenshots/26-data-sync.png"
+          alt="Data Sync、Transfer 与 Schema Diff"
         />
       </div>
 
@@ -224,8 +226,16 @@ PostgreSQL · MySQL · SQLite · Redis …</code></pre>
             <td>SQL dump（Schema / Data / Gzip）</td>
           </tr>
           <tr>
-            <td>数据同步</td>
-            <td>PG ↔ MySQL 结构对比 + 数据同步 + 断点续传</td>
+            <td>Data Sync</td>
+            <td>同族库、结构与 PK 一致时的行级差异同步</td>
+          </tr>
+          <tr>
+            <td>Data Transfer</td>
+            <td>异构库单向迁移（结构 / 数据 / 二者）</td>
+          </tr>
+          <tr>
+            <td>Schema Diff</td>
+            <td>结构对比 + 受控 DDL 部署</td>
           </tr>
           <tr>
             <td>ER 图</td>
