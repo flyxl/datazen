@@ -1510,5 +1510,18 @@ export async function deploySchemaDiffPlan() {
   const deployBtn = await $('[data-testid="schema-diff-deploy"]');
   await deployBtn.waitForClickable({ timeout: 15000 });
   await deployBtn.click();
-  await browser.pause(3000);
+  const deployPanel = await $('[data-testid="schema-diff-deploy-panel"]');
+  await browser.waitUntil(
+    async () => {
+      const text = await deployPanel.getText();
+      return (
+        text.includes(t('schemaDiff.deployStatus')) && !text.includes(t('schemaDiff.deploying'))
+      );
+    },
+    {
+      timeout: 90000,
+      interval: 500,
+      timeoutMsg: 'schema diff deploy did not finish',
+    },
+  );
 }
