@@ -11,7 +11,7 @@
 | F2 | 双栏面板（左表/diff · 右 plan/deploy） | schema-diff-ui-panels | 编码完成 | a0eca1f8 | — |
 | F3 | SchemaDiffWindow 集成 + bg-surface shell | schema-diff-ui-b | 编码完成 | c80c1030 | — |
 | F4 | Host 单测 | schema-diff-ui-tests | 未开始 | — | — |
-| F5 | E2E 适配 | schema-diff-ui-e2e | 未开始 | — | — |
+| F5 | E2E 适配 | schema-diff-ui-e2e | 已完成 | — | aaa7b6df |
 
 ## 2. Bug 台账
 
@@ -71,6 +71,21 @@
   - **移除**：`schema-diff-step-review`（原 Plan 卡片内 Review 按钮；改点 `schema-diff-deploy-tab`）
   - **新增**：`schema-diff-detail-panel`、`schema-diff-table-list`、`schema-diff-table-row-{name}`、`schema-diff-right-panel`、`schema-diff-plan-tab`、`schema-diff-deploy-tab`、`schema-diff-plan-panel`、`schema-diff-deploy-panel`、`schema-diff-swap`、`*-database`、`*-schema`
   - **保留**：`schema-diff-window`、`schema-diff-compare`、`schema-diff-generate-plan`、`schema-diff-tables-input`、`schema-diff-allow-destructive`、`schema-diff-include-indexes`、`schema-diff-deploy`、`schema-diff-limitations*`
+
+### F5 schema-diff-ui-e2e（E2E 适配）
+
+- **范围**：`e2e/helpers.ts`（`advanceSchemaDiffToReview` → 点击 `schema-diff-deploy-tab`）；依赖该 helper 的 journey / cross-dialect / diverse-types spec 无需改 import
+- **验收**：
+  - [x] `advanceSchemaDiffToReview()` 改点 Deploy tab + 等待 `schema-diff-deploy-panel`
+  - [x] Host 单测仍绿：`npx vitest run src/windows/schema-diff`（6 passed）
+  - [ ] 【留待 R 回归】`pnpm e2e:schema-diff`（完整 build + WebdriverIO）
+- **变更 spec 清单**（helper 级，spec 文件本身未改）：
+  - `e2e/specs/schema-diff-window.ts`（无 direct testid 引用）
+  - `e2e/specs/schema-diff-diverse-types.ts`
+  - `e2e/specs/schema-diff-cross-dialect.ts`
+  - `e2e/specs/journeys/schema-diff-journey.ts`
+  - `e2e/specs/journeys/schema-diff-pg-mysql-journey.ts`
+  - `e2e/specs/journeys/schema-diff-mysql-pg-journey.ts`
 
 ### F4 / F5 测试轨
 
