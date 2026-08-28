@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" width="960" height="640" role="img" aria-label="Data Transfer overall layout wireframe">
+  <rect width="960" height="640" fill="#0f172a"/>
+  <rect x="0" y="0" width="960" height="32" fill="#1e293b" stroke="#334155"/>
+  <text x="16" y="21" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="12">Data Transfer - TitleBar</text>
+  <rect x="0" y="32" width="960" height="56" fill="#1e293b" stroke="#334155"/>
+  <g transform="translate(280,48)">
+    <circle cx="12" cy="12" r="12" fill="#3b82f6"/>
+    <text x="8" y="16" fill="#fff" font-size="10" font-family="system-ui">1</text>
+    <text x="32" y="16" fill="#e2e8f0" font-size="11" font-family="system-ui">Endpoints</text>
+    <text x="120" y="16" fill="#64748b" font-size="14">&gt;</text>
+    <circle cx="148" cy="12" r="12" fill="#334155"/>
+    <text x="144" y="16" fill="#94a3b8" font-size="10">2</text>
+    <text x="168" y="16" fill="#64748b" font-size="11">Setup</text>
+    <text x="230" y="16" fill="#64748b" font-size="14">&gt;</text>
+    <circle cx="258" cy="12" r="12" fill="#334155"/>
+    <text x="254" y="16" fill="#94a3b8" font-size="10">3</text>
+    <text x="278" y="16" fill="#64748b" font-size="11">Objects</text>
+    <text x="350" y="16" fill="#64748b" font-size="14">&gt;</text>
+    <text x="378" y="16" fill="#64748b" font-size="11">... Preview / Result</text>
+  </g>
+  <rect x="280" y="120" width="400" height="360" rx="8" fill="#1e293b" stroke="#334155"/>
+  <text x="300" y="150" fill="#64748b" font-size="10" font-family="system-ui" letter-spacing="1">SOURCE</text>
+  <rect x="300" y="160" width="360" height="28" rx="4" fill="#0f172a" stroke="#475569"/>
+  <text x="300" y="210" fill="#64748b" font-size="10" font-family="system-ui" letter-spacing="1">TARGET</text>
+  <rect x="300" y="220" width="360" height="28" rx="4" fill="#0f172a" stroke="#475569"/>
+  <rect x="300" y="270" width="120" height="22" rx="4" fill="#1e3a5f" stroke="#3b82f6"/>
+  <text x="310" y="285" fill="#60a5fa" font-size="10" font-family="system-ui">direct path</text>
+  <text x="480" y="320" fill="#475569" font-size="11" font-family="system-ui" text-anchor="middle">max-w-2xl / mx-auto</text>
+  <rect x="0" y="552" width="960" height="48" fill="#1e293b" stroke="#334155"/>
+  <text x="24" y="582" fill="#94a3b8" font-size="12" font-family="system-ui">&lt; Back</text>
+  <rect x="820" y="564" width="116" height="28" rx="4" fill="#3b82f6"/>
+  <text x="848" y="582" fill="#fff" font-size="12" font-family="system-ui">Next &gt;</text>
+  <rect x="0" y="600" width="960" height="40" fill="#0f172a" stroke="#334155"/>
+  <text x="16" y="625" fill="#64748b" font-size="11" font-family="system-ui">StatusBar</text>
+</svg>

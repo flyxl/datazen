@@ -53,7 +53,7 @@ beforeEach(() => {
 
 describe('ObjectBrowser', () => {
   it('lists objects, opens DDL, and executes it', async () => {
-    render(<ObjectBrowser dbSessionId="c1" databaseType="postgresql" />);
+    render(<ObjectBrowser dbSessionId="c1" databaseType="postgresql" database="db_a" />);
     await screen.findByText('fn_ok');
     expect(getDatabaseObjects).toHaveBeenCalledWith('c1', 'function');
 
@@ -65,13 +65,39 @@ describe('ObjectBrowser', () => {
 
     fireEvent.click(screen.getByText('query.execute'));
     await waitFor(() => {
-      expect(executeQuery).toHaveBeenCalled();
+      expect(executeQuery).toHaveBeenCalledWith(
+        'c1',
+        expect.stringContaining('CREATE FUNCTION'),
+        undefined,
+        'db_a',
+        'public',
+      );
       expect(screen.getByText('objects.executeOk')).toBeInTheDocument();
     });
 
     executeQuery.mockRejectedValueOnce(new Error('exec failed'));
     fireEvent.click(screen.getByText('query.execute'));
     await screen.findByText('exec failed');
+  });
+
+  it('executes DDL against the panel database pin regardless of global schema store', async () => {
+    render(<ObjectBrowser dbSessionId="c1" databaseType="postgresql" database="goecoride" />);
+    await screen.findByText('fn_ok');
+    fireEvent.click(screen.getByText('fn_ok'));
+    await waitFor(() => {
+      expect(getObjectDdl).toHaveBeenCalledWith('c1', 'function', 'fn_ok', 'public');
+    });
+
+    fireEvent.click(screen.getByText('query.execute'));
+    await waitFor(() => {
+      expect(executeQuery).toHaveBeenCalledWith(
+        'c1',
+        expect.stringContaining('CREATE FUNCTION'),
+        undefined,
+        'goecoride',
+        'public',
+      );
+    });
   });
 
   it('opens a web context menu on a routine item', async () => {

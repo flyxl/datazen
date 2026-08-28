@@ -290,6 +290,7 @@ async function ensureDbTableVisible(
   queryAllByText: (text: string) => HTMLElement[],
   dbName: string,
   tableName: string,
+  dbSessionId = 'conn-1',
 ) {
   await waitFor(() => findByText(dbName));
 
@@ -297,7 +298,39 @@ async function ensureDbTableVisible(
 
   fireEvent.click((await findByText(dbName)).closest('button')!);
   await waitFor(() => {
-    expect(mockGetTables).toHaveBeenCalledWith('conn-1', dbName);
+    expect(mockGetTables).toHaveBeenCalledWith(dbSessionId, dbName);
+    expect(queryAllByText(tableName).length).toBeGreaterThan(0);
+  });
+}
+
+/** Activate the local SQL context on `dbName` by opening one of its tables. */
+async function activateDatabaseContext(
+  findByText: (text: string) => Promise<HTMLElement>,
+  dbName: string,
+  tableName: string,
+) {
+  fireEvent.click((await findByText(tableName)).closest('button')!);
+  await waitFor(() => {
+    expect(useSchemaStore.getState().currentDatabase).toBe(dbName);
+  });
+}
+
+/** Expand a PG database → schema path until `tableName` is visible. */
+async function ensurePgSchemaTableVisible(
+  findByText: (text: string) => Promise<HTMLElement>,
+  queryAllByText: (text: string) => HTMLElement[],
+  dbName: string,
+  schemaName: string,
+  tableName: string,
+  dbSessionId = 'conn-pg',
+) {
+  await waitFor(() => findByText(dbName));
+  fireEvent.click((await findByText(dbName)).closest('button')!);
+  await waitFor(() => {
+    expect(mockGetTables).toHaveBeenCalledWith(dbSessionId, dbName);
+  });
+  fireEvent.click((await findByText(schemaName)).closest('button')!);
+  await waitFor(() => {
     expect(queryAllByText(tableName).length).toBeGreaterThan(0);
   });
 }
@@ -719,7 +752,7 @@ describe('ConnectionNavigatorTree refresh', () => {
 });
 
 describe('ConnectionNavigatorTree drop database', () => {
-  it('switches away from the active database before dropping it', async () => {
+  it('pins the backend session to fallback before dropping the active database', async () => {
     const onShowMessage = vi.fn();
     const { findByText, queryAllByText } = render(
       <ConnectionNavigatorTree {...baseProps} onShowMessage={onShowMessage} />,
@@ -733,8 +766,35 @@ describe('ConnectionNavigatorTree drop database', () => {
     await triggerDropDatabase(findByText, 'db_a');
 
     await waitFor(() => {
-      // F1: fallback moves the local active database (no use_database IPC).
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'postgres');
       expect(useSchemaStore.getState().currentDatabase).toBe('postgres');
+      expect(mockDriverExecute).toHaveBeenCalledWith({
+        dbSessionId: 'conn-1',
+        command: 'drop_database',
+        input: { name: 'db_a' },
+      });
+    });
+    expect(onShowMessage).not.toHaveBeenCalled();
+  });
+
+  it('pins backend session away when dropping a non-active database while session is pinned there', async () => {
+    const onShowMessage = vi.fn();
+    const { findByText, queryAllByText } = render(
+      <ConnectionNavigatorTree {...baseProps} onShowMessage={onShowMessage} />,
+    );
+
+    await ensureDbTableVisible(findByText, queryAllByText, 'db_a', 'users');
+    await ensureDbTableVisible(findByText, queryAllByText, 'db_b', 'orders');
+    await waitFor(() => {
+      expect(useSchemaStore.getState().currentDatabase).toBe('db_b');
+    });
+
+    mockGetTables.mockClear();
+
+    await triggerDropDatabase(findByText, 'db_a');
+
+    await waitFor(() => {
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'postgres');
       expect(mockDriverExecute).toHaveBeenCalledWith({
         dbSessionId: 'conn-1',
         command: 'drop_database',
@@ -1708,6 +1768,7 @@ describe('ConnectionNavigatorTree multi-db tree variants', () => {
     await triggerDropDatabase(findByText, 'db_a');
 
     await waitFor(() => {
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'postgres');
       expect(mockDriverExecute).toHaveBeenCalledWith({
         dbSessionId: 'conn-1',
         command: 'drop_database',
@@ -1827,6 +1888,7 @@ describe('ConnectionNavigatorTree multi-db tree variants', () => {
     const dbButton = (await findByText('db_a')).closest('button')!;
     await openMenuAndPick(dbButton, 'create-schema');
     expect(openCreateSchema).toHaveBeenCalled();
+    expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
   });
 });
 
@@ -1870,8 +1932,9 @@ describe('ConnectionNavigatorTree schema context menu', () => {
         dbSessionId: 'conn-pg',
         command: 'drop_schema',
         input: { name: 'public', cascade: true },
+        database: 'db_a',
       });
-      expect(mockGetDatabases).toHaveBeenCalled();
+      expect(mockGetTables).toHaveBeenCalledWith('conn-pg', 'db_a');
     });
   });
 
@@ -1914,8 +1977,104 @@ describe('ConnectionNavigatorTree schema context menu', () => {
     await openMenuAndPick((await findByText('users')).closest('button')!, 'drop');
 
     await waitFor(() => {
-      expect(mockExecuteQuery).toHaveBeenCalledWith('conn-pg', 'DROP TABLE "public"."users"');
+      expect(mockExecuteQuery).toHaveBeenCalledWith(
+        'conn-pg',
+        'DROP TABLE "public"."users"',
+        undefined,
+        'db_a',
+        'public',
+      );
       expect(mockGetTables).toHaveBeenCalledWith('conn-pg', 'db_a');
+    });
+  });
+
+  it('pins drop table to the right-clicked database for MySQL', async () => {
+    const { findByText, queryAllByText } = render(<ConnectionNavigatorTree {...baseProps} />);
+    await ensureDbTableVisible(findByText, queryAllByText, 'db_a', 'users');
+    await ensureDbTableVisible(findByText, queryAllByText, 'db_b', 'orders');
+    await waitFor(() => {
+      expect(useSchemaStore.getState().currentDatabase).toBe('db_b');
+    });
+    await activateDatabaseContext(findByText, 'db_a', 'users');
+    mockExecuteQuery.mockClear();
+
+    await openMenuAndPick((await findByText('orders')).closest('button')!, 'drop');
+
+    await waitFor(() => {
+      expect(mockExecuteQuery).toHaveBeenCalledWith(
+        'conn-1',
+        'DROP TABLE `orders`',
+        undefined,
+        'db_b',
+        null,
+      );
+    });
+  });
+
+  it('pins drop_schema to the right-clicked database while session context stays on another db', async () => {
+    connectionsState.connections = [
+      makeConn({ id: 'cfg-pg', name: 'PG Conn', databaseType: 'postgresql', port: 5432 }),
+    ];
+    activeConnectionsState.connections = {
+      'cfg-pg': { status: 'connected', dbSessionId: 'conn-pg', connectionId: 'cfg-pg' },
+    };
+    mockGetDatabases.mockResolvedValue(['db_a', 'db_b']);
+    mockGetTables.mockImplementation((_c: string, db: string) =>
+      db === 'db_a'
+        ? Promise.resolve([{ name: 'users', tableType: 'table', schema: 'public' }] as TableInfo[])
+        : db === 'db_b'
+          ? Promise.resolve([
+              { name: 't1', tableType: 'table', schema: 'analytics' },
+            ] as TableInfo[])
+          : Promise.resolve([]),
+    );
+
+    const { findByText } = render(
+      <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-pg" />,
+    );
+    await waitFor(() => findByText('db_b'));
+    seedSessionSchema('conn-pg', {
+      currentDatabase: 'db_a',
+      databases: ['db_a', 'db_b'],
+    });
+    useSchemaStore.setState({ currentDatabase: 'db_a' });
+
+    fireEvent.click((await findByText('db_b')).closest('button')!);
+    await waitFor(() => {
+      expect(mockGetTables).toHaveBeenCalledWith('conn-pg', 'db_b');
+    });
+    await findByText('analytics');
+    mockDriverExecute.mockClear();
+
+    await openMenuAndPick((await findByText('analytics')).closest('button')!, 'drop-schema');
+
+    await waitFor(() => {
+      expect(mockDriverExecute).toHaveBeenCalledWith({
+        dbSessionId: 'conn-pg',
+        command: 'drop_schema',
+        input: { name: 'analytics', cascade: true },
+        database: 'db_b',
+      });
+    });
+  });
+
+  it('pins truncate table to the right-clicked database while session context stays on another db', async () => {
+    const { findByText, queryAllByText } = render(<ConnectionNavigatorTree {...baseProps} />);
+    await ensureDbTableVisible(findByText, queryAllByText, 'db_a', 'users');
+    await ensureDbTableVisible(findByText, queryAllByText, 'db_b', 'orders');
+    await activateDatabaseContext(findByText, 'db_a', 'users');
+    mockExecuteQuery.mockClear();
+
+    await openMenuAndPick((await findByText('orders')).closest('button')!, 'truncate');
+
+    await waitFor(() => {
+      expect(mockExecuteQuery).toHaveBeenCalledWith(
+        'conn-1',
+        'TRUNCATE TABLE `orders`',
+        undefined,
+        'db_b',
+        null,
+      );
     });
   });
 
