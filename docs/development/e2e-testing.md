@@ -133,9 +133,19 @@ bash e2e/setup-e2e-env.sh
 | **跑前** | 清空 `e2e/.app-data/`（隔离的应用数据目录） | `e2e/run.mjs`（`--keep-app-data` 保留） |
 | **WDIO before** | upsert 默认 PG 连接 `conn_e2e_pg` | `e2e/wdio.conf.ts` → `seedDefaultPgConnection` |
 | **WDIO onComplete** | 删除 `e2e-*` / `E2E-*` 连接、`e2e-*` workflow、清空 query history | `e2e/lib/testDataLifecycle.ts` |
-| **跑后** | DROP 名称含 `e2e` / 前缀 `sync_` 的表，重 seed `product` | `e2e/teardown-e2e-env.sh`（`run.mjs` 自动调用） |
+| **跑后** | DROP 名称含 `e2e` / 前缀 `sync_` / 遗留 `ds_j_` / `ds_edge_` 的表，重 seed `product` | `e2e/teardown-e2e-env.sh`（`run.mjs` 自动调用） |
 
 跳过 DB teardown：`E2E_SKIP_TEARDOWN=1 pnpm e2e:skip-build`。各 spec 内的 `after` hook 仍应清理本用例创建的连接/表（双保险）。
+
+#### Data Sync 夹具约定
+
+| 层级 | 数据量 / 类型 | 清理 |
+|------|--------------|------|
+| **UI Journey**（`journeys/data-sync-journey.ts`） | 单表 5+3 行；`int` PK + `text`/`varchar`；INSERT+UPDATE+DELETE（Execute 确认） | 表名 `e2e_ds_j_*`；`after` + teardown |
+| **Edge**（`data-sync-edge-cases.ts`） | 同上 | 表名 `e2e_ds_edge_*` |
+| **IPC**（`data-sync-real.ts`） | 多表；含 `sync_pg_types` 宽类型（numeric/bool/timestamptz/uuid 等） | 表前缀 `sync_*`；spec `after` |
+
+Journey 用小数据集保证 UI 路径稳定；类型与 apply 闭环见 `SYNC-REAL-*`（`SYNC-REAL-024` 覆盖 numeric/bool/double 的 PG apply；uuid/timestamptz 等同族 compare 可测但 apply SQL 字面量_cast 仍为已知限制）。修改前端/Rust 后应用 `pnpm e2e:minimal` 重建 webdriver binary，避免 `e2e:skip-build` 跑旧嵌入资源。
 
 ### 应用数据隔离（DATAZEN_DATA_DIR）
 

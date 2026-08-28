@@ -90,7 +90,7 @@
 | 数据同步边界与异常（selectBoth / same endpoint / unsupported pair / delete confirm / post-compare filters） | `data-sync-edge-cases.ts` (DS-EDGE-001~012) | Covered（PG 夹具；每步 `--screenshot`） |
 | 数据同步完整用户旅程（compare→preview→execute→回查） | `journeys/data-sync-journey.ts` (DS-JOURNEY-PG / DS-JOURNEY-MYSQL) | Covered（PG + MySQL 双驱动；含 PG unsupportedPair 子用例；校验/Review/Execute 全分支；每步 `--screenshot`） |
 | 数据同步 UI 执行闭环（compare→preview→execute 后回查目标行数） | `data-sync-window.ts` (DSW-EXEC-001) | Covered |
-| 数据同步 IPC（inspect / compare / generate SQL / apply / revalidate） | `data-sync-real.ts` | Covered（需 `e2e/setup-sync-dbs.sh` PG 夹具；SYNC-REAL-009 apply→recompare） |
+| 数据同步 IPC（inspect / compare / generate SQL / apply / revalidate） | `data-sync-real.ts` | Covered（需 `e2e/setup-sync-dbs.sh` PG 夹具；SYNC-REAL-009 apply→recompare；SYNC-REAL-024 PG 宽类型 apply） |
 | 数据传输窗口 + PG→PG 迁移闭环 | `data-transfer-window.ts` (DTW-001~004, DTW-CL) | Covered |
 | 数据传输类型映射 Preview DDL | `data-transfer-type-mapping.ts` (DT-TYPE-001) | Covered（PG→MySQL create-new） |
 | 数据传输限制说明 + PG↔MySQL 宽类型 **2500 行**（19 列） | `data-transfer-diverse-types.ts` (DT-COMP) | Covered |
