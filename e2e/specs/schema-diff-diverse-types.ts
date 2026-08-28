@@ -11,7 +11,7 @@ import {
   closeExtraWindows,
   invokeBackend,
   openSchemaDiffWindow,
-  selectDzOption,
+  selectSchemaDiffEndpoints,
   setSchemaDiffTables,
   clickSchemaDiffCompare,
   clickSchemaDiffGeneratePlan,
@@ -60,8 +60,7 @@ describe(`PG→PG 宽类型 ${SCHEMA_DIFF_WIDE_COLUMN_COUNT} 列 (SD-COMP-PG-PG)
 
   it('SD-COMP-001: 对比应显示缺失列差异', async () => {
     await openSchemaDiffWindow();
-    await selectDzOption(t('sync.selectSource'), SRC_NAME);
-    await selectDzOption(t('sync.selectTarget'), TGT_NAME);
+    await selectSchemaDiffEndpoints(SRC_NAME, TGT_NAME);
     await setSchemaDiffTables(TABLE);
     await clickSchemaDiffCompare();
     const detail = await $('[data-testid="schema-diff-detail-panel"]');
@@ -121,8 +120,7 @@ describe(`PG→PG 多表 ${SCHEMA_DIFF_MULTI_TABLE_COUNT} 张 (SD-COMP-MULTI)`, 
 
   it('SD-COMP-MULTI-001: 批量对比应列出全部表', async () => {
     await openSchemaDiffWindow();
-    await selectDzOption(t('sync.selectSource'), SRC_NAME);
-    await selectDzOption(t('sync.selectTarget'), TGT_NAME);
+    await selectSchemaDiffEndpoints(SRC_NAME, TGT_NAME);
     await setSchemaDiffTables(tables.join('\n'));
     await clickSchemaDiffCompare();
     const body = await $('body').getText();

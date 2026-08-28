@@ -4,7 +4,7 @@ import {
   captureJourneyStep,
   closeExtraWindows,
   openSchemaDiffWindow,
-  selectDzOption,
+  selectSchemaDiffEndpoints,
   clickSchemaDiffNext,
 } from '../helpers.js';
 import { seedSecondPgConnection } from '../lib/testDataLifecycle.js';
@@ -47,8 +47,7 @@ describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
   it('SD-003: 未选表点下一步应提示必填', async () => {
     await seedSecondPgConnection(browser);
     await openSchemaDiffWindow();
-    await selectDzOption(t('sync.selectSource'), '本地 PostgreSQL');
-    await selectDzOption(t('sync.selectTarget'), 'E2E-PG-目标');
+    await selectSchemaDiffEndpoints('本地 PostgreSQL', 'E2E-PG-目标');
     await clickSchemaDiffNext();
     const objectsPanel = await $('[data-testid="schema-diff-objects-panel"]');
     await objectsPanel.waitForDisplayed({ timeout: 15000 });
@@ -63,7 +62,7 @@ describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
         await checkbox.click();
       }
     }
-    await clickSchemaDiffNext();
+    await clickSchemaDiffNext({ requireEnabled: false });
     const body = await $('body').getText();
     expect(body).toContain(t('schemaDiff.tableRequired'));
     await captureJourneyStep('schema-diff-table-required');
