@@ -5,7 +5,7 @@
 export const PRODUCT_FEATURES = {
   schemaDiff: false,
   dataSync: false,
-  dataTransfer: false,
+  dataTransfer: true,
 } as const;
 
 export type ProductFeatureKey = keyof typeof PRODUCT_FEATURES;
