@@ -1553,7 +1553,7 @@ const zhCN = {
   'schemaDiff.tablePlaceholder': '例如 public.users 或 users',
   'schemaDiff.tables': '表名（多表）',
   'schemaDiff.tablesPlaceholder': '每行一个表名，或用逗号分隔',
-  'schemaDiff.tableRequired': '请输入要对比的表名',
+  'schemaDiff.tableRequired': '请至少选择一张表进行对比',
   'schemaDiff.compare': '对比',
   'schemaDiff.copySummary': '复制摘要',
   'schemaDiff.generatePlan': '生成部署脚本',
