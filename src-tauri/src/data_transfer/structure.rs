@@ -111,7 +111,11 @@ pub fn enrich_create_new_target_types(
     }
 }
 
-pub fn apply_column_type_overrides(ir: &mut IRTable, mapping: &super::model::TableMapping) {
+pub fn apply_column_type_overrides(
+    ir: &mut IRTable,
+    mapping: &super::model::TableMapping,
+    tgt_adapter: &dyn SyncTargetAdapter,
+) {
     for col_map in &mapping.column_mappings {
         let Some(native) = col_map
             .target_native_type
@@ -126,7 +130,10 @@ pub fn apply_column_type_overrides(ir: &mut IRTable, mapping: &super::model::Tab
             .iter_mut()
             .find(|c| c.name == col_map.source_column)
         {
-            col.ir_type = IRType::Other(native.to_string());
+            let natural = tgt_adapter.ir_type_to_native(&col.ir_type);
+            if !native.eq_ignore_ascii_case(natural.trim()) {
+                col.ir_type = IRType::Other(native.to_string());
+            }
         }
     }
 }
@@ -217,7 +224,7 @@ pub async fn create_target_tables(
         let mut ir =
             source_schema_to_target_ir(src_adapter, schema, Some(&full_types), &table.target_table);
         if let Some(mapping) = table_mapping {
-            apply_column_type_overrides(&mut ir, mapping);
+            apply_column_type_overrides(&mut ir, mapping, tgt_adapter);
         }
         let ddl = build_create_ddl(&ir, tgt_adapter);
 
@@ -511,8 +518,72 @@ mod tests {
             }],
             ddl_override: None,
         };
-        apply_column_type_overrides(&mut ir, &mapping);
+        apply_column_type_overrides(&mut ir, &mapping, &DummyTarget);
         assert_eq!(ir.columns[0].ir_type, IRType::Other("BIGINT".into()));
+    }
+
+    #[test]
+    fn apply_column_type_overrides_keeps_ir_when_native_matches_adapter() {
+        let mut ir = IRTable {
+            name: "t".into(),
+            columns: vec![IRColumn {
+                name: "created_at".into(),
+                ir_type: IRType::Timestamp {
+                    with_timezone: false,
+                },
+                nullable: false,
+                default_expr: Some(IRDefault::CurrentTimestamp),
+                is_primary_key: false,
+                is_auto_increment: false,
+                comment: None,
+            }],
+            primary_keys: vec![],
+            table_options: None,
+        };
+        let mapping = super::super::model::TableMapping {
+            source_table: "t".into(),
+            target_table: "t".into(),
+            create_new: true,
+            enabled: true,
+            column_mappings: vec![super::super::model::ColumnMapping {
+                source_column: "created_at".into(),
+                target_column: "created_at".into(),
+                skip: false,
+                target_native_type: Some("DATETIME".into()),
+            }],
+            ddl_override: None,
+        };
+
+        struct TgtAdapter;
+        impl SyncTargetAdapter for TgtAdapter {
+            fn ir_type_to_native(&self, ir: &IRType) -> String {
+                match ir {
+                    IRType::Timestamp { .. } => "DATETIME".into(),
+                    _ => "TEXT".into(),
+                }
+            }
+            fn format_default(&self, d: &IRDefault) -> Option<String> {
+                match d {
+                    IRDefault::CurrentTimestamp => Some("CURRENT_TIMESTAMP".into()),
+                    _ => None,
+                }
+            }
+            fn allows_column_default(&self, ir: &IRType) -> bool {
+                matches!(ir, IRType::Timestamp { .. })
+            }
+            fn format_literal(&self, _v: &Option<Value>, _ir: &IRType) -> String {
+                "NULL".into()
+            }
+        }
+
+        apply_column_type_overrides(&mut ir, &mapping, &TgtAdapter);
+        assert!(matches!(
+            ir.columns[0].ir_type,
+            IRType::Timestamp {
+                with_timezone: false
+            }
+        ));
+        assert!(ir.columns[0].default_expr.is_some());
     }
 
     #[test]
