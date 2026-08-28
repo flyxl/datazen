@@ -175,16 +175,19 @@ describe('数据传输类型映射 Preview DDL (DT-TYPE-MAP)', () => {
 
     const createdTypeInput = await $('[data-testid="data-transfer-target-type-created_at"]');
     await createdTypeInput.waitForDisplayed({ timeout: 15000 });
+    await captureJourneyStep('dt-type-mapping-create-new', 0, true);
     const createdTypeValue = await createdTypeInput.getValue();
     expect(createdTypeValue.toUpperCase()).toContain('DATETIME');
 
     const nameTypeInput = await $('[data-testid="data-transfer-target-type-name"]');
     await nameTypeInput.waitForDisplayed({ timeout: 8000 });
+    await captureJourneyStep('dt-type-mapping-with-types', 0, true);
     await nameTypeInput.clearValue();
     await nameTypeInput.setValue('VARCHAR(64)');
     await browser.pause(300);
+    await captureJourneyStep('dt-type-mapping-edited', 0, true);
 
-    await clickNext('dt-type-mapping');
+    await clickNext('dt-type-mapping-after');
     await clickNext('dt-type-options');
 
     await $('[data-testid="data-transfer-preview"]').waitForDisplayed({ timeout: 15000 });
