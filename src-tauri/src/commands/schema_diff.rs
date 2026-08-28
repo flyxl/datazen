@@ -76,7 +76,10 @@ pub async fn prepare_schema_diff_plan(
             .get_table_schema(&tgt_handle, &tgt_table)
             .await
             .cmd_err("prepare_schema_diff_plan")?;
-        pairs.push((table.clone(), src_schema, tgt_schema));
+        // DDL in the plan targets the target dialect, so the pair's table identifier must be
+        // target-resolved. Using `table` here leaks the source's schema qualification into the
+        // target DDL (e.g. `public.table` on MySQL) and breaks deploy.
+        pairs.push((tgt_table, src_schema, tgt_schema));
     }
 
     let src_d = normalize_dialect(&src_config.database_type);
