@@ -87,8 +87,8 @@
 | SQL 补全只拉取语句中已加载完整表名的列（禁止前缀 get_columns） | `schemaStore.test.ts` / `sqlEditorDefaults.test.ts` / `buildEditorSchema.test.ts` | Covered |
 | Schema Diff 窗口打开与步骤控件 | `schema-diff-window.ts` | Covered |
 | 数据同步 Diff Workspace（Options / Swap / Compare / Summary / row-diff / preview / Execute chrome） | `data-sync-window.ts` (DSW-001~008, DSW-MAP/WS) | Covered（Execute 对 live DB 见 IPC spec；无 PG 夹具时 MAP/WS 用例 soft-skip） |
-| 数据同步边界与异常（selectBoth / same endpoint / unsupported pair / delete confirm / post-compare filters） | `data-sync-edge-cases.ts` (DS-EDGE-001~012) | Covered（PG 夹具；每步 `--screenshot`） |
-| 数据同步完整用户旅程（compare→preview→execute→回查） | `journeys/data-sync-journey.ts` (DS-JOURNEY-PG / DS-JOURNEY-MYSQL) | Covered（PG + MySQL 双驱动；含 PG unsupportedPair 子用例；校验/Review/Execute 全分支；每步 `--screenshot`） |
+| 数据同步边界与异常（selectBoth / same endpoint / unsupported pair / delete confirm / post-compare filters / read-only target / cancel recovery / endpoint reset） | `data-sync-edge-cases.ts` (DS-EDGE-001~015) | Covered（PG 夹具；每步 `--screenshot`） |
+| 数据同步完整用户旅程（compare→preview→execute→executeDone banner→回查） | `journeys/data-sync-journey.ts` (DS-JOURNEY-PG / DS-JOURNEY-MYSQL) | Covered（PG + MySQL 双驱动；含 PG unsupportedPair 子用例；校验/Review/Execute 全分支；executeDone 断言；每步 `--screenshot`） |
 | 数据同步 UI 执行闭环（compare→preview→execute 后回查目标行数） | `data-sync-window.ts` (DSW-EXEC-001) | Covered |
 | 数据同步 IPC（inspect / compare / generate SQL / apply / revalidate） | `data-sync-real.ts` | Covered（需 `e2e/setup-sync-dbs.sh` PG 夹具；SYNC-REAL-009 apply→recompare；SYNC-REAL-024 PG 宽类型 apply） |
 | 数据传输窗口 + PG→PG 迁移闭环 | `data-transfer-window.ts` (DTW-001~004, DTW-CL) | Covered |
