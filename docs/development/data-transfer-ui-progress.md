@@ -7,11 +7,11 @@
 
 | 编号 | 功能 | 轨道 | 状态 | 编码 commit | 测试 commit |
 |------|------|------|------|-------------|-------------|
-| F1 | 能力限制弹窗（打开窗口 + 不再提示） | transfer-ui-window | 编码完成 | ba1ffb8a | — |
-| F2 | 6 步向导 UI 重构（token / stepper / Preview+Execute） | transfer-ui-window | 编码完成 | ba1ffb8a | — |
-| F3 | Mapping 子组件 token 对齐 | transfer-ui-mapping | 编码完成 | fc869f28 | — |
-| F4 | Host 单元测试适配 | transfer-ui-tests | 测试中 | — | — |
-| F5 | Host E2E 适配 | transfer-ui-e2e | 编码完成 | — | — |
+| F1 | 能力限制弹窗（打开窗口 + 不再提示） | transfer-ui-window | 已完成 | ba1ffb8a | a94da506 |
+| F2 | 6 步向导 UI 重构（token / stepper / Preview+Execute） | transfer-ui-window | 已完成 | ba1ffb8a | a94da506 |
+| F3 | Mapping 子组件 token 对齐 | transfer-ui-mapping | 已完成 | fc869f28 | — |
+| F4 | Host 单元测试适配 | transfer-ui-tests | 已完成 | a94da506 | a94da506 |
+| F5 | Host E2E 适配 | transfer-ui-e2e | 已完成 | 856a5dda | 856a5dda |
 
 ## 2. Bug 台账
 
