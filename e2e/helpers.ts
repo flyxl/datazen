@@ -1496,11 +1496,14 @@ export async function clickSchemaDiffGeneratePlan() {
   await browser.pause(2500);
 }
 
+/** Switch right panel to Deploy tab (option B UI; replaces legacy step-review button). */
 export async function advanceSchemaDiffToReview() {
-  const reviewBtn = await $('[data-testid="schema-diff-step-review"]');
-  await reviewBtn.waitForClickable({ timeout: 10000 });
-  await reviewBtn.click();
-  await browser.pause(800);
+  const deployTab = await $('[data-testid="schema-diff-deploy-tab"]');
+  await deployTab.waitForClickable({ timeout: 10000 });
+  await deployTab.click();
+  const deployPanel = await $('[data-testid="schema-diff-deploy-panel"]');
+  await deployPanel.waitForDisplayed({ timeout: 8000 });
+  await browser.pause(300);
 }
 
 export async function deploySchemaDiffPlan() {
