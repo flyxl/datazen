@@ -55,7 +55,7 @@ describe('结构对比选项矩阵 (SD-OPT-MATRIX)', function () {
     await clickSchemaDiffCompare();
     await clickSchemaDiffGeneratePlan();
     const body = await $('body').getText();
-    expect(body).toContain(t('schemaDiff.extraOnTarget'));
+    expect(body).toMatch(/Skipped DROP COLUMN/i);
     expect(body.toLowerCase()).not.toContain('drop column orphan_col');
     await captureJourneyStep('sd-opt-no-destructive', 0, true);
   });

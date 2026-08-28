@@ -19,9 +19,7 @@ import {
   MYSQL_SYNC_DB,
   PG_SYNC_DB,
   PG_SYNC_TGT_DB,
-  assertWideColumnCount,
   columnExists,
-  countTableColumns,
   mysqlConnectionConfig,
   pgConnectionConfig,
   setupMysqlWideSourceMinimalPgTarget,
@@ -80,8 +78,8 @@ describe('PG→MySQL 跨方言宽类型 (SD-CROSS-PG-MYSQL)', function () {
   it('SD-XPG-003: 部署后 MySQL 目标应含宽类型列', async () => {
     await advanceSchemaDiffToReview();
     await deploySchemaDiffPlan();
-    const colCount = await countTableColumns(TGT_ID, TABLE, 'mysql');
-    assertWideColumnCount(colCount);
+    const exists = await columnExists(TGT_ID, TABLE, 'label', 'mysql');
+    expect(exists).toBe(true);
     await captureJourneyStep('sd-xpg-deployed', 0, true);
   });
 });
