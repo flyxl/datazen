@@ -79,7 +79,6 @@ describe('locales', () => {
   });
 
   const SYNC_KEYS: TranslationKey[] = [
-    'sync.overwriteRetiredBanner',
     'sync.applyUnavailable',
     'sync.rowDiffs',
     'sync.mappingMatched',
