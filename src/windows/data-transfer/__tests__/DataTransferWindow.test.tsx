@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConnectionConfig } from '../../../types';
 import type { TransferTableResult } from '../../../commands/transfer';
+import { transferCommands } from '../../../commands/transfer';
 import { clearTransferLimitationsDismissed } from '../../../lib/transferLimitationsPrefs';
 
 const { invokeMock, inspectTransferMock, getDatabasesMock, stableT } = vi.hoisted(() => {
@@ -42,8 +43,25 @@ vi.mock('../../../commands/transfer', () => ({
   DEFAULT_TRANSFER_OPTIONS: { batchSize: 500, stopOnError: true, confirmedDestructive: false },
   transferCommands: {
     inspect: (...args: unknown[]) => inspectTransferMock(...args),
-    preview: vi.fn().mockResolvedValue({ canExecute: true, ddl: [], writePlans: [], warnings: [] }),
-    execute: vi.fn(),
+    preview: vi.fn().mockResolvedValue({
+      canExecute: true,
+      ddl: [],
+      writePlans: [
+        {
+          sourceTable: 'users',
+          targetTable: 'users',
+          writeMode: 'truncateInsert',
+          mappedColumns: [],
+          preamble: [],
+          estimatedRows: 3,
+        },
+      ],
+      warnings: [],
+      pairingPath: 'direct',
+      mode: 'data',
+      writeMode: 'truncateInsert',
+    }),
+    execute: vi.fn().mockResolvedValue({ rowsInserted: 3, tables: [] }),
     cancel: vi.fn(),
     classifyPair: vi.fn(),
   },
@@ -160,6 +178,36 @@ async function advanceToMappingStep() {
   await waitFor(() => expect(screen.getByTestId('data-transfer-mapping-step')).toBeTruthy());
 }
 
+async function advanceToPreviewStep(writeMode: 'insert' | 'truncateInsert' = 'truncateInsert') {
+  const { DataTransferWindow } = await import('../DataTransferWindow');
+  render(<DataTransferWindow />);
+
+  await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
+  await dismissLimitationsDialog();
+
+  await pickSelect('data-transfer-source', 'PG Src (postgresql)');
+  await pickSelect('data-transfer-target', 'PG Tgt (postgresql)');
+  await waitFor(() => expect(getDatabasesMock).toHaveBeenCalled());
+
+  fireEvent.click(screen.getByTestId('data-transfer-next'));
+  await waitFor(() => expect(screen.getByTestId('data-transfer-mode-data')).toBeTruthy());
+  fireEvent.click(screen.getByTestId('data-transfer-mode-data'));
+
+  if (writeMode !== 'insert') {
+    await waitFor(() => expect(screen.getByTestId('data-transfer-write-mode')).toBeTruthy());
+    await pickSelect('data-transfer-write-mode', 'transfer.writeMode.truncateInsert');
+    fireEvent.click(screen.getByTestId('data-transfer-destructive-confirm'));
+  }
+
+  inspectTransferMock.mockResolvedValue(inspectRows);
+  fireEvent.click(screen.getByTestId('data-transfer-next'));
+  await waitFor(() => expect(screen.getByTestId('data-transfer-table-row')).toBeTruthy());
+  fireEvent.click(screen.getByTestId('data-transfer-next'));
+  await waitFor(() => expect(screen.getByTestId('data-transfer-mapping-step')).toBeTruthy());
+  fireEvent.click(screen.getByTestId('data-transfer-next'));
+  await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
+}
+
 describe('DataTransferWindow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -252,5 +300,27 @@ describe('DataTransferWindow', () => {
 
     expect(screen.getByTestId('data-transfer-skip-extra')).not.toBeChecked();
     expect(screen.queryByTestId('data-transfer-unmapped-target-warning')).toBeNull();
+  });
+
+  it('shows execute confirm dialog for destructive write mode before running', async () => {
+    await advanceToPreviewStep('truncateInsert');
+
+    fireEvent.click(screen.getByTestId('data-transfer-execute'));
+    await waitFor(() => {
+      expect(screen.getByTestId('data-transfer-execute-confirm')).toBeTruthy();
+      expect(screen.getByTestId('data-transfer-execute-confirm-table-users')).toBeTruthy();
+    });
+    expect(transferCommands.execute).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('data-transfer-execute-confirm-proceed'));
+    await waitFor(() => expect(transferCommands.execute).toHaveBeenCalled());
+  });
+
+  it('runs execute immediately for insert write mode without confirm dialog', async () => {
+    await advanceToPreviewStep('insert');
+
+    fireEvent.click(screen.getByTestId('data-transfer-execute'));
+    await waitFor(() => expect(transferCommands.execute).toHaveBeenCalled());
+    expect(screen.queryByTestId('data-transfer-execute-confirm')).toBeNull();
   });
 });
