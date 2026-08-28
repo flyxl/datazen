@@ -21,7 +21,7 @@
     <meta property="og:url" content="https://flyxl.github.io/datazen/zh/" />
     <meta
       property="og:image"
-      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+      content="https://flyxl.github.io/datazen/assets/screenshots/03-ai-nl2sql.png"
     />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:locale:alternate" content="en_US" />
@@ -33,7 +33,7 @@
     />
     <meta
       name="twitter:image"
-      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+      content="https://flyxl.github.io/datazen/assets/screenshots/03-ai-nl2sql.png"
     />
     <link rel="icon" href="../assets/logo.png" />
     <link rel="stylesheet" href="../assets/css/site.css" />
@@ -47,9 +47,54 @@
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "license": "https://www.gnu.org/licenses/gpl-3.0.html",
         "url": "https://flyxl.github.io/datazen/zh/",
-        "image": "https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png",
+        "image": "https://flyxl.github.io/datazen/assets/screenshots/03-ai-nl2sql.png",
+        "downloadUrl": "https://github.com/flyxl/datazen/releases/latest",
+        "codeRepository": "https://github.com/flyxl/datazen",
+        "softwareHelp": "https://flyxl.github.io/datazen/zh/manual.html",
+        "sameAs": ["https://github.com/flyxl/datazen", "https://x.com/xiaolongwu3"],
+        "featureList": "自然语言生成 SQL、SQL 错误诊断、EXPLAIN 分析、查询图表、跨数据库工作流、MCP Server、MCP Client、可扩展数据库驱动",
         "description": "免费开源的 AI 数据库工作台：NL2SQL、错误诊断、EXPLAIN 解读、图表、跨库 Workflow 与内置 MCP Server。不足 15 MB，数据不出本机。",
         "inLanguage": "zh-CN"
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "DataZen 是什么？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "DataZen 是一款免费开源的桌面数据库工作台，提供自然语言 SQL、错误诊断、EXPLAIN 分析、图表、工作流和 MCP 集成。"
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "DataZen 支持哪些数据库？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "默认版本支持 PostgreSQL、MySQL 和 MariaDB、SQLite、Redis；可选驱动还包括 MongoDB、ClickHouse、DuckDB、SQL Server 等。"
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "DataZen 会把数据库数据上传到云端吗？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "不会。数据库凭据加密保存在本机，AI 请求只会发送给用户自行配置的服务商。"
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "AI Agent 可以调用 DataZen 吗？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "可以。DataZen 可作为 MCP Server 向外部 AI Agent 提供数据库能力，也可作为 MCP Client 将外部工具接入数据库上下文。"
+            }
+          }
+        ]
       }
     </script>
   </head>
@@ -479,6 +524,57 @@
             loading="lazy"
             data-caption="自动生成 ER 关系图"
           />
+        </div>
+      </div>
+    </section>
+
+    <!-- 常见问题 -->
+    <section class="section" id="faq" style="padding-top: 0">
+      <div class="wrap">
+        <div class="section-head center">
+          <span class="kicker">常见问题</span>
+          <h2>快速了解 DataZen</h2>
+        </div>
+        <div class="grid-3">
+          <div class="card">
+            <h3>DataZen 是什么？</h3>
+            <p>
+              一款免费开源的桌面数据库工作台，把 AI 查询、分析、可视化、自动化和 MCP
+              集成放进真实数据库工作流。
+            </p>
+          </div>
+          <div class="card">
+            <h3>支持哪些数据库？</h3>
+            <p>
+              默认支持 PostgreSQL、MySQL/MariaDB、SQLite 和 Redis，并可选编译
+              MongoDB、ClickHouse、DuckDB、SQL Server 等驱动。
+            </p>
+          </div>
+          <div class="card">
+            <h3>数据会离开本机吗？</h3>
+            <p>数据库凭据加密保存在本机；AI 请求只发送给你自行配置的服务商和端点。</p>
+          </div>
+          <div class="card">
+            <h3>AI Agent 能调用吗？</h3>
+            <p>
+              可以。DataZen 既能作为 MCP Server 提供数据库能力，也能作为 MCP Client 把外部工具接入
+              AI Chat。
+            </p>
+          </div>
+          <div class="card">
+            <h3>真的免费吗？</h3>
+            <p>
+              是。DataZen 使用 GPLv3 协议，无需注册 DataZen 账号，并提供 macOS、Windows、Linux
+              版本。
+            </p>
+          </div>
+          <div class="card">
+            <h3>和普通数据库客户端有何不同？</h3>
+            <p>
+              AI 能直接使用真实 Schema
+              和错误上下文，图表及跨数据库工作流也都在同一款轻量桌面应用中完成。
+            </p>
+          </div>
         </div>
       </div>
     </section>
