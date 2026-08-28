@@ -9,7 +9,7 @@
 |------|------|------|-------------|-------------|
 | F1 | 核心状态机（H1/H2/H4/M1/M2/M8/M9/M10/L1/L8 + rolledBack） | 完成 | 4dbe2efd | — |
 | F2 | 子组件 UX/a11y（M3–M7/L4/L5/L7 + 只读 banner + tabs） | 完成 | 0fbb120f | — |
-| F3 | 死代码清理（H3/L2 删除未接入组件 + i18n prune） | 未开始 | — | — |
+| F3 | 死代码清理（H3/L2 删除未接入组件 + i18n prune） | 完成 | 26ae3373 | — |
 | F4 | 测试与 E2E（H5/L6 + 可测试性改进） | 完成 | — | （本 commit） |
 
 ## Bug 台账
@@ -25,9 +25,9 @@
 
 ## E2E 运行记录
 
-- **F4 编码阶段**：worktree 无 webdriver debug 构建（`target/debug/datazen` 不存在），E2E 仅完成 spec 设计，未执行。待 `pnpm tauri build --debug --features webdriver` 后跑：
-  - `pnpm e2e:skip-build -- --spec e2e/specs/data-sync-edge-cases.ts`
-  - `pnpm e2e:skip-build -- --spec e2e/specs/journeys/data-sync-journey.ts`
+- **R 阶段（2026-08-28）**：`CI=true node e2e/run.mjs --minimal-drivers` 重建后
+  - `data-sync-edge-cases.ts` — **15 passing**
+  - `data-sync-journey.ts` — **3 passing**
 
 ---
 
@@ -66,9 +66,9 @@
 ## F3 — 死代码清理
 
 **验收**：
-- [ ] 删除 SavedTasksBanner / SyncProgressPanel / ResumeSyncDialog
-- [ ] 清理仅被上述组件使用的 i18n 键
-- [ ] 保留仍被 IPC/其他模块引用的 sync task 键
+- [x] 删除 SavedTasksBanner / SyncProgressPanel / ResumeSyncDialog
+- [x] 清理仅被上述组件使用的 i18n 键
+- [x] 保留仍被 IPC/其他模块引用的 sync task 键
 
 ## F4 — 测试与 E2E
 
