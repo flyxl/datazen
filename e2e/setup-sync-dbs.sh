@@ -77,9 +77,10 @@ echo "  Granted read-only access on datazen_sync_tgt"
 echo ""
 echo "=== MySQL setup ==="
 
+mysql_cmd -e "CREATE DATABASE IF NOT EXISTS datazen_sync_mysql_src;"
 mysql_cmd -e "CREATE DATABASE IF NOT EXISTS datazen_sync_mysql_tgt;"
 mysql_cmd -e "CREATE DATABASE IF NOT EXISTS \`$MYSQL_DB\`;"
-echo "  Ensured DBs datazen_sync_mysql_tgt and $MYSQL_DB"
+echo "  Ensured DBs datazen_sync_mysql_src, datazen_sync_mysql_tgt and $MYSQL_DB"
 
 mysql_cmd <<SQL
 CREATE USER IF NOT EXISTS '${MYSQL_READONLY}'@'localhost' IDENTIFIED BY '${MYSQL_READONLY_PW}';

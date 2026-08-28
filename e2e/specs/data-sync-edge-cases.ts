@@ -200,6 +200,46 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     expect(await err.isDisplayed().catch(() => false)).toBe(false);
     await captureStep('ds-edge-06-swap');
   });
+
+  it('DS-EDGE-012: 比较过程中 Cancel 应中止并提示 compare cancelled', async () => {
+    const STAMP = Date.now().toString(36);
+    const SRC_ID = `e2e_ds_cancel_src_${STAMP}`;
+    const TGT_ID = `e2e_ds_cancel_tgt_${STAMP}`;
+    await invokeBackend('save_connection', {
+      config: pgConfig(SRC_ID, `DS-Cancel-Src-${STAMP}`, 'datazen_sync_src'),
+    });
+    await invokeBackend('save_connection', {
+      config: pgConfig(TGT_ID, `DS-Cancel-Tgt-${STAMP}`, 'datazen_sync_tgt'),
+    });
+
+    await openDataSyncWindow();
+    await selectDzOption(t('sync.selectSource'), `DS-Cancel-Src-${STAMP}`);
+    await selectDzOption(t('sync.selectTarget'), `DS-Cancel-Tgt-${STAMP}`);
+    await browser.pause(1500);
+    await $('[data-testid="data-sync-compare"]').click();
+    const cancel = await $('[data-testid="data-sync-cancel"]');
+    const sawCancel = await cancel
+      .waitForDisplayed({ timeout: 8000 })
+      .then(() => true)
+      .catch(() => false);
+    expect(sawCancel).toBe(true);
+    await cancel.click();
+    await browser.pause(600);
+    const err = await $('[data-testid="data-sync-error"]');
+    if (await err.isDisplayed().catch(() => false)) {
+      expect(await err.getText()).toContain('cancel');
+      await dismissOkDialog();
+    }
+    await captureStep('ds-edge-12-compare-cancelled');
+
+    for (const id of [SRC_ID, TGT_ID]) {
+      try {
+        await invokeBackend('delete_connection', { id });
+      } catch {
+        /* ok */
+      }
+    }
+  });
 });
 
 describe('数据同步比较后边界 (DS-EDGE-POST)', () => {

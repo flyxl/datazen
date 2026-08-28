@@ -19,8 +19,12 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useAiStore } from '../../stores/aiStore';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
 import { openDataTransferWindow, openSchemaDiffWindow } from '../../lib/windowManager';
-import { releaseDedicatedSession, listDatabasesDedicated } from '../../lib/dedicatedDbSession';
-import { connectionCommands } from '../../commands/connection';
+import {
+  ensureDedicatedSession,
+  listDatabasesDedicated,
+  releaseDedicatedSession,
+  type DedicatedSideSession,
+} from '../../lib/dedicatedDbSession';
 import { resolveSyncPairing, isSyncTargetSupported } from '../../lib/syncPairing';
 import type { ConnectionConfig } from '../../types';
 import type { SyncState } from './utils';
@@ -50,10 +54,6 @@ import { buildCompareReportText } from './compareReport';
 
 type RightPanel = 'detail' | 'preview';
 
-function dedicatedSessionKey(connectionId: string, database: string): string {
-  return `${connectionId}\0${database}`;
-}
-
 export function DataSyncWindow() {
   useSettings();
   const { t } = useI18n();
@@ -62,7 +62,8 @@ export function DataSyncWindow() {
   const loadAiConfig = useAiStore((s) => s.loadConfig);
 
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
-  const [activeConns, setActiveConns] = useState<Record<string, string>>({});
+  const [sourceSession, setSourceSession] = useState<DedicatedSideSession | null>(null);
+  const [targetSession, setTargetSession] = useState<DedicatedSideSession | null>(null);
   const [sourceId, setSourceId] = useState('');
   const [targetId, setTargetId] = useState('');
   const [sourceDatabases, setSourceDatabases] = useState<string[]>([]);
@@ -100,13 +101,8 @@ export function DataSyncWindow() {
     listenCrossWindow('datazen:connection-closed', (payload) => {
       const { dbSessionId } = (payload ?? {}) as { dbSessionId?: string };
       if (!dbSessionId) return;
-      setActiveConns((prev) => {
-        const next = { ...prev };
-        for (const [key, sessionId] of Object.entries(next)) {
-          if (sessionId === dbSessionId) delete next[key];
-        }
-        return next;
-      });
+      setSourceSession((prev) => (prev?.dbSessionId === dbSessionId ? null : prev));
+      setTargetSession((prev) => (prev?.dbSessionId === dbSessionId ? null : prev));
     }).then((fn) => {
       cleanup = fn;
     });
@@ -173,29 +169,41 @@ export function DataSyncWindow() {
 
   const targetReadOnly = targetConn?.readOnly === true;
 
-  const ensureConnected = useCallback(
-    async (connectionId: string, database: string): Promise<string | null> => {
-      if (!connectionId || !database) return null;
-      const key = dedicatedSessionKey(connectionId, database);
-      if (activeConns[key]) return activeConns[key];
-      try {
-        const dbSessionId = await connectionCommands.connectDedicated(connectionId, database);
-        setActiveConns((prev) => ({ ...prev, [key]: dbSessionId }));
-        return dbSessionId;
-      } catch (e) {
-        setErrorMsg(`${t('sync.connectFailed')} ${e instanceof Error ? e.message : String(e)}`);
-        setErrorOpen(true);
-        return null;
-      }
-    },
-    [activeConns, t],
-  );
+  useEffect(() => {
+    const dbSessionId = sourceSession?.dbSessionId;
+    return () => {
+      void releaseDedicatedSession(dbSessionId);
+    };
+  }, [sourceSession?.dbSessionId]);
 
   useEffect(() => {
+    const dbSessionId = targetSession?.dbSessionId;
     return () => {
-      void Promise.all(Object.values(activeConns).map((id) => releaseDedicatedSession(id)));
+      void releaseDedicatedSession(dbSessionId);
     };
-  }, [activeConns]);
+  }, [targetSession?.dbSessionId]);
+
+  const refreshEndpointSessions = useCallback(async () => {
+    if (!sourceId || !targetId || !sourceDatabase || !targetDatabase) {
+      return {
+        source: null as DedicatedSideSession | null,
+        target: null as DedicatedSideSession | null,
+      };
+    }
+    try {
+      const [source, target] = await Promise.all([
+        ensureDedicatedSession(sourceSession, sourceId, sourceDatabase),
+        ensureDedicatedSession(targetSession, targetId, targetDatabase),
+      ]);
+      setSourceSession(source);
+      setTargetSession(target);
+      return { source, target };
+    } catch (e) {
+      setErrorMsg(`${t('sync.connectFailed')} ${e instanceof Error ? e.message : String(e)}`);
+      setErrorOpen(true);
+      return { source: null, target: null };
+    }
+  }, [sourceSession, targetSession, sourceId, targetId, sourceDatabase, targetDatabase, t]);
 
   const resetCompareState = useCallback(() => {
     setMappingResults([]);
@@ -209,6 +217,7 @@ export function DataSyncWindow() {
       setSourceDatabases([]);
       setSourceSchemas([]);
       setSourceSchema('');
+      setSourceSession(null);
       return;
     }
     let cancelled = false;
@@ -241,6 +250,7 @@ export function DataSyncWindow() {
       setTargetDatabases([]);
       setTargetSchemas([]);
       setTargetSchema('');
+      setTargetSession(null);
       return;
     }
     let cancelled = false;
@@ -269,16 +279,54 @@ export function DataSyncWindow() {
   }, [targetId, connections]);
 
   useEffect(() => {
+    if (!sourceId || !sourceDatabase) {
+      setSourceSession(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const next = await ensureDedicatedSession(sourceSession, sourceId, sourceDatabase);
+      if (!cancelled) setSourceSession(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reconnect when endpoint or catalog changes
+  }, [sourceId, sourceDatabase]);
+
+  useEffect(() => {
+    if (!targetId || !targetDatabase) {
+      setTargetSession(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const next = await ensureDedicatedSession(targetSession, targetId, targetDatabase);
+      if (!cancelled) setTargetSession(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reconnect when endpoint or catalog changes
+  }, [targetId, targetDatabase]);
+
+  useEffect(() => {
     if (!sourceId || !sourceDatabase || sourceConn?.databaseType !== 'postgresql') {
       setSourceSchemas([]);
       setSourceSchema('');
       return;
     }
+    const connId = sourceSession?.dbSessionId;
+    if (
+      !connId ||
+      sourceSession.connectionId !== sourceId ||
+      sourceSession.database !== sourceDatabase
+    ) {
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
-        const connId = await ensureConnected(sourceId, sourceDatabase);
-        if (!connId || cancelled) return;
         const tables = await databaseCommands.getTables(connId, sourceDatabase);
         if (cancelled) return;
         const schemas = uniqueSchemasFromTables(tables);
@@ -294,7 +342,7 @@ export function DataSyncWindow() {
     return () => {
       cancelled = true;
     };
-  }, [sourceId, sourceDatabase, sourceConn?.databaseType, ensureConnected]);
+  }, [sourceId, sourceDatabase, sourceConn?.databaseType, sourceSession]);
 
   useEffect(() => {
     if (!targetId || !targetDatabase || targetConn?.databaseType !== 'postgresql') {
@@ -302,11 +350,17 @@ export function DataSyncWindow() {
       setTargetSchema('');
       return;
     }
+    const connId = targetSession?.dbSessionId;
+    if (
+      !connId ||
+      targetSession.connectionId !== targetId ||
+      targetSession.database !== targetDatabase
+    ) {
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
-        const connId = await ensureConnected(targetId, targetDatabase);
-        if (!connId || cancelled) return;
         const tables = await databaseCommands.getTables(connId, targetDatabase);
         if (cancelled) return;
         const schemas = uniqueSchemasFromTables(tables);
@@ -322,7 +376,7 @@ export function DataSyncWindow() {
     return () => {
       cancelled = true;
     };
-  }, [targetId, targetDatabase, targetConn?.databaseType, ensureConnected]);
+  }, [targetId, targetDatabase, targetConn?.databaseType, targetSession]);
 
   const isSameEndpoint = useCallback(() => {
     const norm = (s: string) => s.trim();
@@ -426,8 +480,9 @@ export function DataSyncWindow() {
     jobIdRef.current = jobId;
 
     try {
-      const srcConnId = await ensureConnected(sourceId, sourceDatabase);
-      const tgtConnId = await ensureConnected(targetId, targetDatabase);
+      const { source, target } = await refreshEndpointSessions();
+      const srcConnId = source?.dbSessionId;
+      const tgtConnId = target?.dbSessionId;
       if (!srcConnId || !tgtConnId) {
         setSyncState('idle');
         return;
@@ -477,7 +532,7 @@ export function DataSyncWindow() {
     }
   }, [
     validateEndpoints,
-    ensureConnected,
+    refreshEndpointSessions,
     sourceId,
     targetId,
     sourceDatabase,
@@ -559,8 +614,9 @@ export function DataSyncWindow() {
     jobIdRef.current = jobId;
 
     try {
-      const srcConnId = await ensureConnected(sourceId, sourceDatabase);
-      const tgtConnId = await ensureConnected(targetId, targetDatabase);
+      const { source, target } = await refreshEndpointSessions();
+      const srcConnId = source?.dbSessionId;
+      const tgtConnId = target?.dbSessionId;
       if (!srcConnId || !tgtConnId) {
         setSyncState('compared');
         return;
@@ -652,7 +708,7 @@ export function DataSyncWindow() {
     targetId,
     mappingResults,
     syncOptions,
-    ensureConnected,
+    refreshEndpointSessions,
     sourceDatabase,
     targetDatabase,
     sourceSchema,
@@ -695,9 +751,7 @@ export function DataSyncWindow() {
     setExplainText('');
     void (async () => {
       try {
-        const connectionId =
-          activeConns[dedicatedSessionKey(sourceId, sourceDatabase)] ??
-          activeConns[dedicatedSessionKey(targetId, targetDatabase)];
+        const connectionId = sourceSession?.dbSessionId ?? targetSession?.dbSessionId;
         const text = await aiCommands.chat({
           dbSessionId: connectionId,
           database: sourceDatabase || targetDatabase || undefined,
@@ -721,9 +775,8 @@ export function DataSyncWindow() {
     isAiConfigured,
     mappingResults,
     compareStats,
-    activeConns,
-    sourceId,
-    targetId,
+    sourceSession,
+    targetSession,
     sourceDatabase,
     targetDatabase,
     t,
@@ -853,11 +906,11 @@ export function DataSyncWindow() {
                       </div>
                     )}
                     {rightPanel === 'preview' &&
-                      activeConns[dedicatedSessionKey(sourceId, sourceDatabase)] &&
-                      activeConns[dedicatedSessionKey(targetId, targetDatabase)] && (
+                      sourceSession?.dbSessionId &&
+                      targetSession?.dbSessionId && (
                         <SqlPreview
-                          sourceConnId={activeConns[dedicatedSessionKey(sourceId, sourceDatabase)]}
-                          targetConnId={activeConns[dedicatedSessionKey(targetId, targetDatabase)]}
+                          sourceConnId={sourceSession.dbSessionId}
+                          targetConnId={targetSession.dbSessionId}
                           sourceDatabase={sourceDatabase}
                           targetDatabase={targetDatabase}
                           sourceSchema={sourceSchema}

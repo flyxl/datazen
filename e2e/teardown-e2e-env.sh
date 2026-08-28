@@ -118,6 +118,7 @@ seed_product_table
 echo ""
 echo "=== E2E teardown: MySQL ==="
 drop_mysql_ephemeral_tables "$MYSQL_DB"
+drop_mysql_ephemeral_tables datazen_sync_mysql_src
 drop_mysql_ephemeral_tables datazen_sync_mysql_tgt
 
 echo ""
