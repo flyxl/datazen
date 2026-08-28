@@ -3,7 +3,8 @@
 use super::compare::{diff_indexes, diff_table_schemas};
 use super::dialects::{mysql, postgres, sqlite};
 use super::types::{
-    normalize_dialect, ColumnSnapshot, RollbackCompleteness, SchemaDiffPlan, StatementRisk,
+    normalize_dialect, resolve_table_for_dialect, ColumnSnapshot, RollbackCompleteness,
+    SchemaDiffPlan, StatementRisk,
 };
 use crate::db::TableSchema;
 
@@ -249,8 +250,9 @@ pub fn build_schema_diff_plan(
     let mut tables = Vec::new();
     for (table, src, tgt) in pairs {
         tables.push(table.clone());
+        let deploy_table = resolve_table_for_dialect(&tgt_d, table);
         plan_single_table(
-            table,
+            &deploy_table,
             src,
             tgt,
             &tgt_d,
@@ -319,6 +321,29 @@ mod tests {
             indexes: vec![],
             foreign_keys: vec![],
         }
+    }
+
+    #[test]
+    fn pg_to_mysql_strips_schema_prefix_in_ddl() {
+        let src = schema(vec![col("id", "int"), col("email", "text")]);
+        let tgt = schema(vec![col("id", "int")]);
+        let plan = build_schema_diff_plan(
+            &[("public.users".into(), src, tgt)],
+            "postgresql",
+            "mysql",
+            PlanOptions {
+                allow_destructive: false,
+                include_indexes: false,
+                type_mapper: None,
+            },
+        );
+        let add = plan
+            .statements
+            .iter()
+            .find(|s| s.sql.contains("email"))
+            .expect("ADD COLUMN for email");
+        assert!(add.sql.contains("`users`"));
+        assert!(!add.sql.contains("public."));
     }
 
     #[test]
