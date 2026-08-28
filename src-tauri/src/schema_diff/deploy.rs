@@ -4,7 +4,8 @@ use super::types::{
     ddl_atomicity, DdlAtomicity, DeployStatus, SchemaDiffDeployResult, SchemaDiffPlan,
     StatementExecResult, StatementRisk,
 };
-use crate::db::{ConnectionHandle, DatabaseDriver};
+use crate::db::{ConnectionHandle, DatabaseDriver, TransactionHandle};
+use tokio::sync::Mutex;
 
 #[derive(Debug, Clone)]
 pub struct DeployOptions {
@@ -30,16 +31,59 @@ pub trait StatementExecutor: Send + Sync {
 pub struct DriverStatementExecutor<'a> {
     pub driver: &'a dyn DatabaseDriver,
     pub handle: &'a ConnectionHandle,
+    /// Held for the duration of deploy BEGIN…COMMIT/ROLLBACK (must not use pool.execute for tx).
+    tx: Mutex<Option<TransactionHandle>>,
+}
+
+impl<'a> DriverStatementExecutor<'a> {
+    pub fn new(driver: &'a dyn DatabaseDriver, handle: &'a ConnectionHandle) -> Self {
+        Self {
+            driver,
+            handle,
+            tx: Mutex::new(None),
+        }
+    }
 }
 
 #[async_trait::async_trait]
 impl StatementExecutor for DriverStatementExecutor<'_> {
     async fn exec(&self, sql: &str) -> Result<(), String> {
-        self.driver
-            .execute(self.handle, sql)
-            .await
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+        match sql {
+            "BEGIN" => {
+                let mut slot = self.tx.lock().await;
+                if slot.is_some() {
+                    return Ok(());
+                }
+                let tx = self
+                    .driver
+                    .begin_transaction(self.handle)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                *slot = Some(tx);
+                Ok(())
+            }
+            "COMMIT" => {
+                let tx = self
+                    .tx
+                    .lock()
+                    .await
+                    .take()
+                    .ok_or_else(|| "no open transaction".to_string())?;
+                self.driver.commit(tx).await.map_err(|e| e.to_string())
+            }
+            "ROLLBACK" => {
+                if let Some(tx) = self.tx.lock().await.take() {
+                    let _ = self.driver.rollback(tx).await;
+                }
+                Ok(())
+            }
+            _ => self
+                .driver
+                .execute(self.handle, sql)
+                .await
+                .map(|_| ())
+                .map_err(|e| e.to_string()),
+        }
     }
 }
 
@@ -161,7 +205,7 @@ pub async fn execute_schema_diff_deploy(
     plan: &SchemaDiffPlan,
     opts: DeployOptions,
 ) -> SchemaDiffDeployResult {
-    let exec = DriverStatementExecutor { driver, handle };
+    let exec = DriverStatementExecutor::new(driver, handle);
     run_deploy_with_executor(&exec, plan, &opts).await
 }
 
