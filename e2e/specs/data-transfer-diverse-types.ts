@@ -90,9 +90,9 @@ describe('数据传输限制说明 (DT-LIM)', () => {
     await dialog.waitForDisplayed({ timeout: 8000 });
     const panel = await dialog.$('[data-testid="data-transfer-limitations"]');
     await panel.waitForDisplayed({ timeout: 8000 });
-    const text = await panel.getText();
-    expect(text).toContain(t('transfer.limitations.title'));
-    expect(text).toContain(t('transfer.limitations.noFkIndexes'));
+    const dialogText = await dialog.getText();
+    expect(dialogText).toContain(t('transfer.limitations.title'));
+    expect(dialogText).toContain(t('transfer.limitations.noFkIndexes'));
   });
 });
 

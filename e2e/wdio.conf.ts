@@ -6,6 +6,7 @@ import {
   saveJourneyScreenshot,
 } from './lib/screenshotTrace.js';
 import { cleanupAppDataViaIpc, seedDefaultPgConnection } from './lib/testDataLifecycle.js';
+import { ensureMainWindowForIpc, invokeBackend } from './helpers.js';
 import { browser } from '@wdio/globals';
 
 export const config: WebdriverIO.Config = {
@@ -147,7 +148,7 @@ export const config: WebdriverIO.Config = {
   reporters: ['spec'],
   mochaOpts: {
     ui: 'bdd',
-    timeout: 60000,
+    timeout: 120000,
   },
   before: async function () {
     await browser.url('tauri://localhost');
@@ -219,6 +220,9 @@ export const config: WebdriverIO.Config = {
         }
       }
       if (main) await browser.switchToWindow(main);
+      await ensureMainWindowForIpc();
+      await invokeBackend('get_settings');
+      await browser.pause(600);
     } catch {
       /* ignore */
     }

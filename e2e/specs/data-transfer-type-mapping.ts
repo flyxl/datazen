@@ -182,7 +182,6 @@ describe('数据传输类型映射 Preview DDL (DT-TYPE-MAP)', () => {
     await captureJourneyStep('dt-type-mapping-edited', 0, true);
 
     await clickNext('dt-type-mapping-after');
-    await clickNext('dt-type-options');
 
     await $('[data-testid="data-transfer-preview"]').waitForDisplayed({ timeout: 15000 });
     await browser.pause(800);

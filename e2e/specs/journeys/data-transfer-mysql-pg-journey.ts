@@ -8,6 +8,8 @@ import { t } from '../../i18n.js';
 import {
   captureJourneyStep,
   closeExtraWindows,
+  connectBackend,
+  disconnectBackend,
   invokeBackend,
   openDataTransferWindow,
   queryScalar,
@@ -46,6 +48,8 @@ function mysqlConfig(id: string, name: string, database: string) {
 
 describe('数据传输 MySQL→PG 跨方言旅程 (DT-MYSQL-PG-JOURNEY)', () => {
   let mainWindow: string;
+  let setupSrcSession: string | undefined;
+  let setupTgtSession: string | undefined;
   const STAMP = Date.now().toString(36);
   const SRC_ID = `e2e_dt_mysql_src_${STAMP}`;
   const TGT_ID = `e2e_dt_pg_tgt_${STAMP}`;
@@ -72,28 +76,28 @@ describe('数据传输 MySQL→PG 跨方言旅程 (DT-MYSQL-PG-JOURNEY)', () => 
       config: pgConfig(TGT_ID, TGT_NAME, 'datazen_sync_tgt'),
     });
 
-    const srcSession = await invokeBackend<string>('connect', { connectionId: SRC_ID });
-    const tgtSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
+    setupSrcSession = await connectBackend(SRC_ID);
+    setupTgtSession = await connectBackend(TGT_ID);
 
     await withSafeModeOff(async () => {
       await invokeBackend('execute_query', {
-        dbSessionId: srcSession,
+        dbSessionId: setupSrcSession!,
         sql: `DROP TABLE IF EXISTS ${TABLE}`,
       });
       await invokeBackend('execute_query', {
-        dbSessionId: tgtSession,
+        dbSessionId: setupTgtSession!,
         sql: `DROP TABLE IF EXISTS ${TABLE}`,
       });
       await invokeBackend('execute_query', {
-        dbSessionId: srcSession,
+        dbSessionId: setupSrcSession!,
         sql: `CREATE TABLE ${TABLE} (id INT PRIMARY KEY, name VARCHAR(255) NOT NULL, qty INT)`,
       });
       await invokeBackend('execute_query', {
-        dbSessionId: srcSession,
+        dbSessionId: setupSrcSession!,
         sql: `INSERT INTO ${TABLE} (id, name, qty) VALUES (1,'a',10),(2,'b',20),(3,'c',30)`,
       });
       await invokeBackend('execute_query', {
-        dbSessionId: tgtSession,
+        dbSessionId: setupTgtSession!,
         sql: `CREATE TABLE ${TABLE} (id INT PRIMARY KEY, name TEXT NOT NULL, qty INT)`,
       });
     });
@@ -101,8 +105,8 @@ describe('数据传输 MySQL→PG 跨方言旅程 (DT-MYSQL-PG-JOURNEY)', () => 
 
   after(async () => {
     try {
-      const srcSession = await invokeBackend<string>('connect', { connectionId: SRC_ID });
-      const tgtSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
+      const srcSession = setupSrcSession ?? (await connectBackend(SRC_ID));
+      const tgtSession = setupTgtSession ?? (await connectBackend(TGT_ID));
       await withSafeModeOff(async () => {
         await invokeBackend('execute_query', {
           dbSessionId: srcSession,
@@ -113,9 +117,13 @@ describe('数据传输 MySQL→PG 跨方言旅程 (DT-MYSQL-PG-JOURNEY)', () => 
           sql: `DROP TABLE IF EXISTS ${TABLE}`,
         });
       });
+      if (!setupSrcSession) await disconnectBackend(srcSession);
+      if (!setupTgtSession) await disconnectBackend(tgtSession);
     } catch {
       /* ok */
     }
+    if (setupSrcSession) await disconnectBackend(setupSrcSession);
+    if (setupTgtSession) await disconnectBackend(setupTgtSession);
     try {
       await invokeBackend('delete_connection', { id: SRC_ID });
     } catch {
@@ -200,7 +208,7 @@ describe('数据传输 MySQL→PG 跨方言旅程 (DT-MYSQL-PG-JOURNEY)', () => 
     expect(resultText).not.toContain(t('transfer.error'));
     await captureJourneyStep('dt-mysql-pg-10-result', 0, true);
 
-    const tgtSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
+    const tgtSession = await connectBackend(TGT_ID);
     const rows = await invokeBackend<QueryResultPayload>('execute_query', {
       dbSessionId: tgtSession,
       sql: `SELECT count(*)::int AS c FROM ${TABLE}`,
