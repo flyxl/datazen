@@ -10,7 +10,7 @@
 | F1 | EndpointsBar + dedicated db/schema 会话 | schema-diff-ui-endpoints | 编码完成 | 79357dec | — |
 | F2 | 双栏面板（左表/diff · 右 plan/deploy） | schema-diff-ui-panels | 编码完成 | a0eca1f8 | — |
 | F3 | SchemaDiffWindow 集成 + bg-surface shell | schema-diff-ui-b | 编码完成 | c80c1030 | — |
-| F4 | Host 单测 | schema-diff-ui-tests | 已完成 | — | (pending) |
+| F4 | Host 单测 | schema-diff-ui-tests | 已完成 | — | 18c2bdab |
 | F5 | E2E 适配 | schema-diff-ui-e2e | 已完成 | 19f6954c, ffc8b011 | 294c92d7 |
 
 ## 2. Bug 台账
