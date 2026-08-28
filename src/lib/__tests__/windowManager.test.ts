@@ -205,4 +205,25 @@ describe('windowManager — Tauri', () => {
     );
     errSpy.mockRestore();
   });
+
+  it('opens distinct migration singletons without blocking each other', async () => {
+    vi.resetModules();
+    const { openDataSyncWindow, openDataTransferWindow, openSchemaDiffWindow } = await import(
+      '../windowManager'
+    );
+    openDataSyncWindow();
+    openDataTransferWindow();
+    openSchemaDiffWindow();
+    await vi.waitFor(() => expect(mockInvoke).toHaveBeenCalledTimes(3));
+    const labels = mockInvoke.mock.calls.map(
+      (call) => (call[1] as { options: { label: string } }).options.label,
+    );
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        'data-sync-singleton',
+        'data-transfer-singleton',
+        'schema-diff-singleton',
+      ]),
+    );
+  });
 });

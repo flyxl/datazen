@@ -91,6 +91,8 @@ pub(crate) enum MenuAction {
     OpenDocs,
     OpenReportIssue,
     AddFavorite,
+    OpenMigrationWindow(commands::MigrationSubWindow),
+    OpenLogDir,
     Ignore,
 }
 
@@ -126,13 +128,15 @@ pub(crate) fn menu_action_for_id(id: &str) -> MenuAction {
     match id {
         "open-settings" => MenuAction::Emit("menu:open-settings"),
         "new-connection" => MenuAction::Emit("menu:new-connection"),
-        "schema-diff" => MenuAction::Emit("menu:schema-diff"),
-        "data-sync" => MenuAction::Emit("menu:data-sync"),
-        "data-transfer" => MenuAction::Emit("menu:data-transfer"),
+        "schema-diff" => MenuAction::OpenMigrationWindow(commands::MigrationSubWindow::SchemaDiff),
+        "data-sync" => MenuAction::OpenMigrationWindow(commands::MigrationSubWindow::DataSync),
+        "data-transfer" => {
+            MenuAction::OpenMigrationWindow(commands::MigrationSubWindow::DataTransfer)
+        }
         "workflow" => MenuAction::Emit("menu:workflow"),
         "dashboard" => MenuAction::Emit("menu:dashboard"),
-        "backup" => MenuAction::Emit("menu:backup"),
-        "restore" => MenuAction::Emit("menu:restore"),
+        "backup" => MenuAction::OpenMigrationWindow(commands::MigrationSubWindow::Backup),
+        "restore" => MenuAction::OpenMigrationWindow(commands::MigrationSubWindow::Restore),
         "export-config" => MenuAction::Emit("menu:export-config"),
         "import-config" => MenuAction::Emit("menu:import-config"),
         "export-connections" => MenuAction::Emit("menu:export-connections"),
@@ -144,7 +148,7 @@ pub(crate) fn menu_action_for_id(id: &str) -> MenuAction {
         "import-connections-datagrip" => MenuAction::Emit("menu:import-connections-datagrip"),
         "import-connections-dbeaver" => MenuAction::Emit("menu:import-connections-dbeaver"),
         "import-connections-tableplus" => MenuAction::Emit("menu:import-connections-tableplus"),
-        "view-logs" => MenuAction::Emit("menu:view-logs"),
+        "view-logs" => MenuAction::OpenLogDir,
         "help-docs" => MenuAction::OpenDocs,
         "help-report" => MenuAction::OpenReportIssue,
         "ctx-add-favorite" => MenuAction::AddFavorite,
@@ -311,6 +315,23 @@ mod native_menu {
                 }
                 MenuAction::AddFavorite => {
                     let _ = app_handle.emit("menu:add-favorite", ());
+                }
+                MenuAction::OpenMigrationWindow(kind) => {
+                    let app = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(e) = commands::open_migration_sub_window(app, kind).await {
+                            tracing::warn!(error = %e, ?kind, "menu migration sub-window open failed");
+                        }
+                    });
+                }
+                MenuAction::OpenLogDir => {
+                    let app = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let state = app.state::<AppState>();
+                        if let Err(e) = commands::open_log_dir(state).await {
+                            tracing::warn!(error = %e, "menu view-logs: open log dir failed");
+                        }
+                    });
                 }
                 MenuAction::Ignore => {}
             }
@@ -1388,21 +1409,16 @@ mod tests {
         assert!(menu_emit_needs_main_focus("menu:open-settings"));
         assert!(menu_emit_needs_main_focus("menu:new-connection"));
         assert!(menu_emit_needs_main_focus("menu:workflow"));
-        assert!(!menu_emit_needs_main_focus("menu:data-sync"));
         assert!(!menu_emit_needs_main_focus("menu:backup"));
-        assert!(!menu_emit_needs_main_focus("menu:view-logs"));
     }
 
     #[test]
-    fn menu_action_for_id_covers_all_emit_events() {
+    fn menu_action_for_id_covers_shell_emit_events() {
         for id in [
             "open-settings",
             "new-connection",
-            "schema-diff",
             "workflow",
             "dashboard",
-            "backup",
-            "restore",
             "export-config",
             "import-config",
             "export-connections",
@@ -1413,13 +1429,38 @@ mod tests {
             "import-connections-datagrip",
             "import-connections-dbeaver",
             "import-connections-tableplus",
-            "view-logs",
         ] {
             match menu_action_for_id(id) {
                 MenuAction::Emit(_) => {}
                 other => panic!("expected Emit for {id}, got {other:?}"),
             }
         }
+    }
+
+    #[test]
+    fn menu_action_for_id_opens_migration_windows_in_rust() {
+        use commands::MigrationSubWindow;
+        assert_eq!(
+            menu_action_for_id("schema-diff"),
+            MenuAction::OpenMigrationWindow(MigrationSubWindow::SchemaDiff)
+        );
+        assert_eq!(
+            menu_action_for_id("data-sync"),
+            MenuAction::OpenMigrationWindow(MigrationSubWindow::DataSync)
+        );
+        assert_eq!(
+            menu_action_for_id("data-transfer"),
+            MenuAction::OpenMigrationWindow(MigrationSubWindow::DataTransfer)
+        );
+        assert_eq!(
+            menu_action_for_id("backup"),
+            MenuAction::OpenMigrationWindow(MigrationSubWindow::Backup)
+        );
+        assert_eq!(
+            menu_action_for_id("restore"),
+            MenuAction::OpenMigrationWindow(MigrationSubWindow::Restore)
+        );
+        assert_eq!(menu_action_for_id("view-logs"), MenuAction::OpenLogDir);
     }
 
     #[tokio::test]

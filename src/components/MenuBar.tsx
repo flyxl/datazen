@@ -118,10 +118,37 @@ function useMenus(): Menu[] {
   ];
 }
 
+const MIGRATION_MENU_OPENERS: Record<string, () => void> = {
+  'schema-diff': () => {
+    void import('../lib/windowManager').then((m) => m.openSchemaDiffWindow());
+  },
+  'data-sync': () => {
+    void import('../lib/windowManager').then((m) => m.openDataSyncWindow());
+  },
+  'data-transfer': () => {
+    void import('../lib/windowManager').then((m) => m.openDataTransferWindow());
+  },
+  backup: () => {
+    void import('../lib/windowManager').then((m) => m.openBackupWindow('backup'));
+  },
+  restore: () => {
+    void import('../lib/windowManager').then((m) => m.openBackupWindow('restore'));
+  },
+  'view-logs': () => {
+    void settingsCommands.openLogDir();
+  },
+};
+
 async function handleMenuAction(id: string) {
   if (id.startsWith('theme-')) {
     const theme = id.replace('theme-', '') as ThemeMode;
     void emitCrossWindow('menu:theme-change', theme);
+    return;
+  }
+
+  const openMigration = MIGRATION_MENU_OPENERS[id];
+  if (openMigration) {
+    openMigration();
     return;
   }
 
