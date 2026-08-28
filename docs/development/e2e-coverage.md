@@ -92,7 +92,9 @@
 | 数据传输窗口 + PG→PG 迁移闭环 | `data-transfer-window.ts` (DTW-001~004, DTW-CL) | Covered |
 | 数据传输类型映射 Preview DDL | `data-transfer-type-mapping.ts` (DT-TYPE-001) | Covered（PG→MySQL create-new） |
 | 数据传输限制说明 + PG↔MySQL 多类型 100 行 | `data-transfer-diverse-types.ts` (DT-LIM/DIV) | Covered |
-| 数据传输 PG→MySQL / PG→PG 用户旅程 | `journeys/data-transfer-*.ts` | Covered |
+| 数据传输 PG→MySQL / MySQL→PG 类型映射 Preview | `data-transfer-type-mapping*.ts` | Covered |
+| 数据传输模式矩阵 data/structure/both × PG↔PG/PG↔MySQL/MySQL↔PG | `data-transfer-mode-paths.ts` (DT-MODE) | Covered |
+| 数据传输 PG→PG / PG→MySQL / MySQL→PG 用户旅程 | `journeys/data-transfer-*-journey.ts` | Covered |
 | 连接 Pin 置顶 | `ops-pin.ts` | Covered |
 | 连接边界：快速新建/删除、并发 tab、生命周期 | `connection-edge-cases.ts` (TC-EDGE-009~013) | Covered |
 | 设置持久化：主题/语言/字体/确认删除开关 | `settings-persistence.ts` (TC-SET-007~010) | Covered |
