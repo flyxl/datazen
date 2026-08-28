@@ -1,7 +1,42 @@
 //! Generic DDL builder driven entirely by the IR and a target adapter.
 
 use super::adapter::SyncTargetAdapter;
-use super::ir::IRTable;
+use super::ir::{IRTable, IRType};
+
+/// Explicit `IRType::Other(native)` from transfer mapping overrides must not be
+/// auto-downgraded (e.g. user `VARCHAR(64)` must not become `VARCHAR(16383)`).
+fn ddl_ir_type_for_column(
+    ir_type: &IRType,
+    has_default: bool,
+    tgt: &dyn SyncTargetAdapter,
+) -> IRType {
+    if matches!(ir_type, IRType::Other(_)) {
+        return ir_type.clone();
+    }
+    if has_default && !tgt.allows_column_default(ir_type) {
+        return tgt
+            .default_capable_type_for(ir_type)
+            .unwrap_or_else(|| ir_type.clone());
+    }
+    ir_type.clone()
+}
+
+fn native_type_allows_default(native: &str) -> bool {
+    let upper = native.trim().to_ascii_uppercase();
+    !(upper.starts_with("TEXT")
+        || upper.starts_with("BLOB")
+        || upper.starts_with("JSON")
+        || upper.starts_with("LONGBLOB")
+        || upper.starts_with("MEDIUMBLOB")
+        || upper.starts_with("TINYBLOB"))
+}
+
+fn column_allows_default(ddl_ir_type: &IRType, tgt: &dyn SyncTargetAdapter) -> bool {
+    match ddl_ir_type {
+        IRType::Other(native) => native_type_allows_default(native),
+        _ => tgt.allows_column_default(ddl_ir_type),
+    }
+}
 
 /// Build a `CREATE TABLE` statement from an `IRTable` using the target adapter
 /// for type rendering, quoting and capability flags.
@@ -12,13 +47,7 @@ pub fn build_create_table_ddl(ir_table: &IRTable, tgt: &dyn SyncTargetAdapter) -
         .columns
         .iter()
         .map(|c| {
-            let ddl_ir_type = if c.default_expr.is_some() && !tgt.allows_column_default(&c.ir_type)
-            {
-                tgt.default_capable_type_for(&c.ir_type)
-                    .unwrap_or(c.ir_type.clone())
-            } else {
-                c.ir_type.clone()
-            };
+            let ddl_ir_type = ddl_ir_type_for_column(&c.ir_type, c.default_expr.is_some(), tgt);
             let mut def = format!("  {} {}", q(&c.name), tgt.ir_type_to_native(&ddl_ir_type));
 
             if !c.nullable {
@@ -32,7 +61,7 @@ pub fn build_create_table_ddl(ir_table: &IRTable, tgt: &dyn SyncTargetAdapter) -
             }
 
             if let Some(ref d) = c.default_expr {
-                if tgt.allows_column_default(&ddl_ir_type) {
+                if column_allows_default(&ddl_ir_type, tgt) {
                     if let Some(s) = tgt.format_default(d) {
                         def.push_str(&format!(" DEFAULT {s}"));
                     }
@@ -93,6 +122,7 @@ mod tests {
                 IRType::Int32 => "INT".into(),
                 IRType::Varchar { length: Some(n) } => format!("VARCHAR({n})"),
                 IRType::Varchar { length: None } => "TEXT".into(),
+                IRType::Other(native) => native.clone(),
                 _ => "TEXT".into(),
             }
         }
@@ -112,6 +142,9 @@ mod tests {
         fn default_capable_type_for(&self, ir_type: &IRType) -> Option<IRType> {
             match ir_type {
                 IRType::Text => Some(IRType::Varchar { length: Some(100) }),
+                IRType::Other(_) => Some(IRType::Varchar {
+                    length: Some(16_383),
+                }),
                 _ => None,
             }
         }
@@ -244,5 +277,28 @@ mod tests {
         };
         let ddl = build_create_table_ddl(&table, &DummyTarget::new());
         assert!(ddl.contains("/* user note */"), "ddl={ddl}");
+    }
+
+    #[test]
+    fn ddl_honors_explicit_other_native_type_with_default() {
+        let table = IRTable {
+            name: "products".into(),
+            columns: vec![IRColumn {
+                name: "name".into(),
+                ir_type: IRType::Other("VARCHAR(64)".into()),
+                nullable: true,
+                default_expr: Some(IRDefault::Literal("'unnamed'".into())),
+                is_primary_key: false,
+                is_auto_increment: false,
+                comment: None,
+            }],
+            primary_keys: vec![],
+            table_options: None,
+        };
+
+        let ddl = build_create_table_ddl(&table, &DummyTarget::new());
+        assert!(ddl.contains("VARCHAR(64)"), "ddl={ddl}");
+        assert!(!ddl.contains("16383"), "ddl={ddl}");
+        assert!(ddl.contains("DEFAULT 'unnamed'"), "ddl={ddl}");
     }
 }
