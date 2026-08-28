@@ -84,12 +84,16 @@ export function DataSyncWindow() {
   const [rightPanel, setRightPanel] = useState<RightPanel>('detail');
   const [errorMsg, setErrorMsg] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
+  const [statusMsg, setStatusMsg] = useState('');
+  const [sourceSessionError, setSourceSessionError] = useState('');
+  const [targetSessionError, setTargetSessionError] = useState('');
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [executeConfirmOpen, setExecuteConfirmOpen] = useState(false);
   const [explainOpen, setExplainOpen] = useState(false);
   const [explainLoading, setExplainLoading] = useState(false);
   const [explainText, setExplainText] = useState('');
   const jobIdRef = useRef<string | null>(null);
+  const compareGenerationRef = useRef(0);
 
   useEffect(() => {
     void loadSettings();
@@ -235,8 +239,14 @@ export function DataSyncWindow() {
               ? prev
               : (databases[0] ?? ''),
         );
-      } catch {
-        if (!cancelled) setSourceDatabases([]);
+      } catch (e) {
+        if (!cancelled) {
+          setSourceDatabases([]);
+          setErrorMsg(
+            `${t('sync.loadDatabasesFailed')}${e instanceof Error ? e.message : String(e)}`,
+          );
+          setErrorOpen(true);
+        }
       }
     })();
     return () => {
@@ -268,8 +278,14 @@ export function DataSyncWindow() {
               ? prev
               : (databases[0] ?? ''),
         );
-      } catch {
-        if (!cancelled) setTargetDatabases([]);
+      } catch (e) {
+        if (!cancelled) {
+          setTargetDatabases([]);
+          setErrorMsg(
+            `${t('sync.loadDatabasesFailed')}${e instanceof Error ? e.message : String(e)}`,
+          );
+          setErrorOpen(true);
+        }
       }
     })();
     return () => {
@@ -281,34 +297,60 @@ export function DataSyncWindow() {
   useEffect(() => {
     if (!sourceId || !sourceDatabase) {
       setSourceSession(null);
+      setSourceSessionError('');
       return;
     }
     let cancelled = false;
     (async () => {
-      const next = await ensureDedicatedSession(sourceSession, sourceId, sourceDatabase);
-      if (!cancelled) setSourceSession(next);
+      try {
+        const next = await ensureDedicatedSession(sourceSession, sourceId, sourceDatabase);
+        if (!cancelled) {
+          setSourceSession(next);
+          setSourceSessionError('');
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setSourceSession(null);
+          setSourceSessionError(
+            `${t('sync.sessionFailed')}${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
     })();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reconnect when endpoint or catalog changes
-  }, [sourceId, sourceDatabase]);
+  }, [sourceId, sourceDatabase, t]);
 
   useEffect(() => {
     if (!targetId || !targetDatabase) {
       setTargetSession(null);
+      setTargetSessionError('');
       return;
     }
     let cancelled = false;
     (async () => {
-      const next = await ensureDedicatedSession(targetSession, targetId, targetDatabase);
-      if (!cancelled) setTargetSession(next);
+      try {
+        const next = await ensureDedicatedSession(targetSession, targetId, targetDatabase);
+        if (!cancelled) {
+          setTargetSession(next);
+          setTargetSessionError('');
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setTargetSession(null);
+          setTargetSessionError(
+            `${t('sync.sessionFailed')}${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
     })();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reconnect when endpoint or catalog changes
-  }, [targetId, targetDatabase]);
+  }, [targetId, targetDatabase, t]);
 
   useEffect(() => {
     if (!sourceId || !sourceDatabase || sourceConn?.databaseType !== 'postgresql') {
@@ -415,6 +457,22 @@ export function DataSyncWindow() {
     resetCompareState,
   ]);
 
+  const handleSourceChange = useCallback(
+    (id: string) => {
+      setSourceId(id);
+      resetCompareState();
+    },
+    [resetCompareState],
+  );
+
+  const handleTargetChange = useCallback(
+    (id: string) => {
+      setTargetId(id);
+      resetCompareState();
+    },
+    [resetCompareState],
+  );
+
   const handleSourceDatabaseChange = useCallback(
     (db: string) => {
       setSourceDatabase(db);
@@ -474,13 +532,16 @@ export function DataSyncWindow() {
   const handleCompare = useCallback(async () => {
     if (!validateEndpoints()) return;
 
+    const generation = ++compareGenerationRef.current;
     setSyncState('inspecting');
     setSelectedTableKey(null);
+    setStatusMsg('');
     const jobId = crypto.randomUUID();
     jobIdRef.current = jobId;
 
     try {
       const { source, target } = await refreshEndpointSessions();
+      if (generation !== compareGenerationRef.current) return;
       const srcConnId = source?.dbSessionId;
       const tgtConnId = target?.dbSessionId;
       if (!srcConnId || !tgtConnId) {
@@ -496,6 +557,7 @@ export function DataSyncWindow() {
         sourceSchema || undefined,
         targetSchema || undefined,
       );
+      if (generation !== compareGenerationRef.current) return;
       const withDisabled = markDisabledTables(inspected, disabledTables);
       setMappingResults(withDisabled);
 
@@ -514,6 +576,7 @@ export function DataSyncWindow() {
         syncOptions,
       );
 
+      if (generation !== compareGenerationRef.current) return;
       const merged = mergeCompareIntoMappings(withDisabled, compared).map((row) => {
         if (row.status !== 'MATCHED' || !row.rows) return row;
         return {
@@ -526,6 +589,7 @@ export function DataSyncWindow() {
       if (firstDiff) setSelectedTableKey(tableKey(firstDiff));
       setSyncState('compared');
     } catch (e) {
+      if (generation !== compareGenerationRef.current) return;
       setErrorMsg(e instanceof Error ? e.message : String(e));
       setErrorOpen(true);
       setSyncState('idle');
@@ -545,9 +609,14 @@ export function DataSyncWindow() {
 
   const handleCancel = useCallback(async () => {
     const jobId = jobIdRef.current;
-    if (!jobId) return;
-    await syncCommands.cancelDataSync(jobId);
-  }, []);
+    if (jobId) {
+      await syncCommands.cancelDataSync(jobId);
+      jobIdRef.current = null;
+    }
+    compareGenerationRef.current += 1;
+    setSyncState(mappingResults.length > 0 ? 'compared' : 'idle');
+    setStatusMsg(t('sync.compareCancelled'));
+  }, [mappingResults.length, t]);
 
   const toggleDisabledTable = useCallback((sourceTable: string) => {
     setDisabledTables((prev) => {
@@ -627,6 +696,7 @@ export function DataSyncWindow() {
       );
 
       let executed = false;
+      let usedApplyFallback = false;
       try {
         const stmts = await syncCommands.generateDataSyncSql(
           srcConnId,
@@ -647,7 +717,7 @@ export function DataSyncWindow() {
             targetDatabase,
           );
           if (result.rolledBack) {
-            setErrorMsg(t('sync.failedMsg') + t('common.cancel'));
+            setErrorMsg(t('sync.rolledBack'));
             setErrorOpen(true);
             setSyncState('compared');
             return;
@@ -659,6 +729,7 @@ export function DataSyncWindow() {
       }
 
       if (!executed) {
+        usedApplyFallback = true;
         const tableNames = tablesWithSelection.map((r) => r.sourceTable);
         const result = await syncCommands.applyDataSync(
           srcConnId,
@@ -672,7 +743,7 @@ export function DataSyncWindow() {
           syncOptions,
         );
         if (result.rolledBack) {
-          setErrorMsg(t('sync.failedMsg') + t('common.cancel'));
+          setErrorMsg(t('sync.rolledBack'));
           setErrorOpen(true);
           setSyncState('compared');
           return;
@@ -698,6 +769,11 @@ export function DataSyncWindow() {
         });
       });
       setSyncState('done');
+      if (usedApplyFallback) {
+        setStatusMsg(t('sync.applyFallbackUsed'));
+      } else {
+        setStatusMsg('');
+      }
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : String(e));
       setErrorOpen(true);
@@ -731,6 +807,7 @@ export function DataSyncWindow() {
 
   const compared = syncState === 'compared' || syncState === 'executing' || syncState === 'done';
   const busy = syncState === 'inspecting' || syncState === 'comparing' || syncState === 'executing';
+  const compareDisabled = Boolean(sourceSessionError || targetSessionError);
   const compareStats = useMemo(() => summarizeCompare(mappingResults), [mappingResults]);
 
   const handleCopyCompareReport = useCallback(() => {
@@ -783,7 +860,11 @@ export function DataSyncWindow() {
   ]);
 
   return (
-    <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
+    <div
+      data-testid="data-sync-window"
+      data-sync-state={syncState}
+      className="flex h-screen min-h-0 flex-col bg-surface text-fg"
+    >
       <TitleBar title={t('common.dataSyncTitle')} />
 
       <EndpointsBar
@@ -801,8 +882,12 @@ export function DataSyncWindow() {
         targetOptions={targetOptions}
         activePairing={activePairing}
         busy={busy}
-        onSourceChange={setSourceId}
-        onTargetChange={setTargetId}
+        compareDisabled={compareDisabled}
+        sourceSessionError={sourceSessionError}
+        targetSessionError={targetSessionError}
+        targetReadOnly={targetReadOnly}
+        onSourceChange={handleSourceChange}
+        onTargetChange={handleTargetChange}
         onSourceDatabaseChange={handleSourceDatabaseChange}
         onTargetDatabaseChange={handleTargetDatabaseChange}
         onSourceSchemaChange={handleSourceSchemaChange}
@@ -851,12 +936,30 @@ export function DataSyncWindow() {
             />
 
             {compared && (
-              <CompareSummary
-                stats={compareStats}
-                onCopyReport={handleCopyCompareReport}
-                onExplainDiff={handleExplainDiff}
-                explainLoading={explainLoading}
-              />
+              <>
+                {syncState === 'done' && (
+                  <div
+                    data-testid="data-sync-execute-done"
+                    className="flex shrink-0 items-center gap-3 border-b border-edge bg-green-500/10 px-6 py-2 text-sm text-green-700 dark:text-green-400"
+                  >
+                    <span>{t('sync.executeDone')}</span>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      data-testid="data-sync-re-compare"
+                      onClick={() => void handleCompare()}
+                    >
+                      {t('sync.reCompare')}
+                    </Button>
+                  </div>
+                )}
+                <CompareSummary
+                  stats={compareStats}
+                  onCopyReport={handleCopyCompareReport}
+                  onExplainDiff={handleExplainDiff}
+                  explainLoading={explainLoading}
+                />
+              </>
             )}
 
             {compared && (
@@ -875,9 +978,12 @@ export function DataSyncWindow() {
                 />
 
                 <div className="flex min-h-0 min-w-0 flex-[1.4] flex-col">
-                  <div className="flex shrink-0 border-b border-edge">
+                  <div role="tablist" className="flex shrink-0 border-b border-edge">
                     <button
                       type="button"
+                      role="tab"
+                      aria-selected={rightPanel === 'detail'}
+                      data-testid="data-sync-tab-detail"
                       className={`px-4 py-2 text-xs font-medium ${rightPanel === 'detail' ? 'border-b-2 border-accent text-fg' : 'text-fg-muted'}`}
                       onClick={() => setRightPanel('detail')}
                     >
@@ -885,6 +991,9 @@ export function DataSyncWindow() {
                     </button>
                     <button
                       type="button"
+                      role="tab"
+                      aria-selected={rightPanel === 'preview'}
+                      data-testid="data-sync-tab-preview"
                       className={`px-4 py-2 text-xs font-medium ${rightPanel === 'preview' ? 'border-b-2 border-accent text-fg' : 'text-fg-muted'}`}
                       onClick={() => setRightPanel('preview')}
                     >
@@ -905,6 +1014,15 @@ export function DataSyncWindow() {
                         {t('sync.selectTableForDetail')}
                       </div>
                     )}
+                    {rightPanel === 'preview' &&
+                      (!sourceSession?.dbSessionId || !targetSession?.dbSessionId) && (
+                        <div
+                          data-testid="data-sync-preview-session-required"
+                          className="flex flex-1 items-center justify-center text-sm text-fg-muted"
+                        >
+                          {t('sync.sessionRequired')}
+                        </div>
+                      )}
                     {rightPanel === 'preview' &&
                       sourceSession?.dbSessionId &&
                       targetSession?.dbSessionId && (
@@ -939,10 +1057,7 @@ export function DataSyncWindow() {
         />
       )}
 
-      <StatusBar
-        left={<span className="truncate">{t('common.dataSync')}</span>}
-        right={<span className="tabular-nums">DataZen v0.1.0</span>}
-      />
+      <StatusBar left={<span className="truncate">{statusMsg || t('common.dataSync')}</span>} />
 
       <Dialog
         open={errorOpen}
