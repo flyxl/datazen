@@ -88,10 +88,17 @@ describe('merged import/export wrappers (decision 3, f4)', () => {
     await expect(backupCommands.exportAppData('datazen-backup.zip')).resolves.toBe(false);
   });
 
-  it('importAppData passes confirm dialog texts to import_app_data', async () => {
+  it('pickAppDataImportFile opens the native file picker only', async () => {
+    invokeMock.mockResolvedValue('/tmp/datazen-backup.zip');
+    await expect(backupCommands.pickAppDataImportFile()).resolves.toBe('/tmp/datazen-backup.zip');
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledWith('pick_app_data_import_file');
+  });
+
+  it('importAppData passes sourcePath to import_app_data', async () => {
     invokeMock.mockResolvedValue(true);
-    await expect(backupCommands.importAppData('title', 'message')).resolves.toBe(true);
-    expectSingleInvoke('import_app_data', { confirmTitle: 'title', confirmMessage: 'message' });
+    await expect(backupCommands.importAppData('/tmp/datazen-backup.zip')).resolves.toBe(true);
+    expectSingleInvoke('import_app_data', { sourcePath: '/tmp/datazen-backup.zip' });
   });
 });
 

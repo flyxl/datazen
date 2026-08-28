@@ -151,6 +151,7 @@ export function ConnectionPage() {
   const connections = useConnectionStore((s) => s.connections);
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [confirmBackupKey, confirmBackupKeyDialog] = useConfirmDialog();
+  const [confirmImportAppData, confirmImportAppDataDialog] = useConfirmDialog();
   const [messageDialogOpen, setMessageDialogOpen] = useState(false);
   const [messageDialogText, setMessageDialogText] = useState('');
   const [messageDialogKind, setMessageDialogKind] = useState<'error' | 'success'>('error');
@@ -633,16 +634,21 @@ export function ConnectionPage() {
 
   const handleImportConfig = useCallback(async () => {
     try {
-      const imported = await backupCommands.importAppData(
-        t('common.importAppData'),
-        t('appData.importConfirmMessage'),
-      );
-      if (!imported) return;
+      const picked = await backupCommands.pickAppDataImportFile();
+      if (!picked) return;
+      const confirmed = await confirmImportAppData({
+        title: t('common.importAppData'),
+        message: t('appData.importConfirmMessage'),
+        confirmLabel: t('common.confirm'),
+        kind: 'warning',
+      });
+      if (!confirmed) return;
+      await backupCommands.importAppData(picked);
       await backupCommands.restartApp();
     } catch (e) {
       showMessageDialog(e instanceof Error ? e.message : t('common.importFailed'), 'error');
     }
-  }, [showMessageDialog, t]);
+  }, [confirmImportAppData, showMessageDialog, t]);
 
   const handleOpenDashboard = useCallback(async () => {
     await fetchDashboards();
@@ -970,6 +976,7 @@ export function ConnectionPage() {
 
       {confirmDeleteDialog}
       {confirmBackupKeyDialog}
+      {confirmImportAppDataDialog}
       <ResultMessageDialog
         open={messageDialogOpen}
         kind={messageDialogKind}

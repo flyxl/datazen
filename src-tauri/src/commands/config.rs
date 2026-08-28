@@ -665,37 +665,36 @@ pub async fn export_app_data(
     Ok(true)
 }
 
-/// Native open + confirm + ZIP import. Returns `true` if imported.
+/// Open the native file picker for app-data ZIP import (file only; no import).
+#[tauri::command]
+pub async fn pick_app_data_import_file(app: AppHandle) -> Result<Option<String>, CommandError> {
+    let picked = super::dialog::open_file(&app, vec![("ZIP".into(), vec!["zip".into()])]).await?;
+    Ok(picked.map(|p| p.to_string_lossy().into_owned()))
+}
+
+/// ZIP import from a path chosen in the UI (TablePlus-style: pick file first,
+/// then confirm in the webview, then import). Returns `true` if imported.
 ///
 /// Merges the former webdriver-only raw-path `import_app_data(path)` and
 /// `import_app_data_with_dialog` into one IPC (decision 3): production callers
-/// omit `override_path`, pick the archive and confirm the overwrite warning
-/// through native dialogs; E2E passes `override_path`, which requires a
-/// webdriver build **and skips both dialogs** — the old raw-path behavior
-/// (no interactive prompt).
+/// pass `source_path` from [`pick_app_data_import_file`] after a web confirm;
+/// E2E passes `override_path`, which requires a webdriver build and skips the
+/// native file picker (old raw-path behavior).
 #[tauri::command]
 pub async fn import_app_data(
-    app: AppHandle,
     state: State<'_, AppState>,
-    confirm_title: String,
-    confirm_message: String,
+    source_path: Option<String>,
     override_path: Option<String>,
 ) -> Result<bool, CommandError> {
     let source = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
         Some(path) => path,
         None => {
-            let Some(source) =
-                super::dialog::open_file(&app, vec![("ZIP".into(), vec!["zip".into()])]).await?
-            else {
-                return Ok(false); // user dismissed the dialog
+            let Some(path_str) = source_path else {
+                return Err(CommandError::Validation(
+                    "No app data import file selected".into(),
+                ));
             };
-            // OkCancelCustom: confirm_message returns true when the first (OK) button is pressed.
-            let confirmed =
-                super::dialog::confirm_message(&app, &confirm_title, &confirm_message).await?;
-            if !confirmed {
-                return Ok(false);
-            }
-            source
+            PathBuf::from(path_str)
         }
     };
 
@@ -1266,6 +1265,7 @@ mod ipc_contract_guards {
             "commands::import_connections_preview,",
             "commands::import_connections_with_dialog,",
             "commands::export_app_data,",
+            "commands::pick_app_data_import_file,",
             "commands::import_app_data,",
             // Untouched neighbours stay pinned against accidental removal.
             "commands::detect_connection_import_path,",

@@ -124,6 +124,7 @@ describe('path IPC frontend wiring', () => {
 
     const backup = readSrc('commands/backup.ts');
     expect(backup).toContain("invoke<boolean>('export_app_data'");
+    expect(backup).toContain("'pick_app_data_import_file'");
     expect(backup).toContain("invoke<boolean>('import_app_data'");
 
     for (const gone of GONE_IPCS) {
@@ -142,6 +143,7 @@ describe('path IPC frontend wiring', () => {
     expect(shareDialog).toContain('connectionCommands.pickConnectionsImportFile(');
     const connectionPage = readSrc('windows/connection/ConnectionPage.tsx');
     expect(connectionPage).toContain('backupCommands.exportAppData(');
+    expect(connectionPage).toContain('backupCommands.pickAppDataImportFile(');
     expect(connectionPage).toContain('backupCommands.importAppData(');
     for (const prod of [connection, backup, shareDialog, connectionPage]) {
       expect(prod).not.toContain('overridePath');
@@ -157,6 +159,7 @@ describe('path IPC frontend wiring', () => {
       'commands::import_connections_preview,',
       'commands::import_connections_with_dialog,',
       'commands::export_app_data,',
+      'commands::pick_app_data_import_file,',
       'commands::import_app_data,',
     ]) {
       expect(hostLib).toContain(kept);
