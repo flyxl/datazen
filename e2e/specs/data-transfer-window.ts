@@ -66,6 +66,28 @@ describe('数据传输窗口 (DTW-001~DTW-003)', () => {
     expect(panels).toHaveLength(1);
     await expect(await $('[data-testid="data-transfer-source"]')).toBeDisplayed();
   });
+
+  it('DTW-005: 勾选「不再显示此提示」后再次打开不应弹出限制说明', async () => {
+    await openDataTransferWindow({ dismissLimitations: false });
+    const dialog = await $('[data-testid="data-transfer-limitations-dialog"]');
+    await dialog.waitForDisplayed({ timeout: 8000 });
+
+    const dismiss = await $('[data-testid="data-transfer-limitations-dismiss"]');
+    await dismiss.click();
+    const closeBtn = await $('[data-testid="data-transfer-limitations-close"]');
+    await closeBtn.click();
+    await browser.waitUntil(async () => !(await dialog.isDisplayed().catch(() => false)), {
+      timeout: 8000,
+      timeoutMsg: '等待限制说明弹窗关闭超时',
+    });
+
+    await closeExtraWindows(mainWindow);
+    await browser.switchToWindow(mainWindow);
+    await openDataTransferWindow({ dismissLimitations: false, clearLimitationsPref: false });
+
+    const dialogAgain = await $('[data-testid="data-transfer-limitations-dialog"]');
+    expect(await dialogAgain.isExisting().catch(() => false)).toBe(false);
+  });
 });
 
 /**
