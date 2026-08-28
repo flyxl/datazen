@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import type { SyncOptions } from '../../commands/sync';
@@ -35,6 +35,10 @@ function operationBadgeClass(op: string): string {
 export function DiffDetail({ table, options, onUpdateRows }: DiffDetailProps) {
   const { t } = useI18n();
   const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    setPage(0);
+  }, [table.sourceTable]);
 
   const diffRows = useMemo(
     () => (table.rows ?? []).filter((r) => r.operation !== 'UNCHANGED'),
@@ -125,7 +129,11 @@ export function DiffDetail({ table, options, onUpdateRows }: DiffDetailProps) {
               <th className="border-b border-edge p-2 text-left">{t('sync.op')}</th>
               <th className="border-b border-edge p-2 text-left">{t('sync.rowKey')}</th>
               {Array.from({ length: maxCols }, (_, i) => (
-                <th key={i} className="border-b border-edge p-2 text-left">
+                <th
+                  key={i}
+                  className="border-b border-edge p-2 text-left"
+                  title={t('sync.colIndexHint', { n: i + 1 })}
+                >
                   {t('sync.colN', { n: i + 1 })}
                 </th>
               ))}
