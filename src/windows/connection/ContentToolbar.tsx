@@ -10,12 +10,49 @@ import {
   TableProperties,
 } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
-import { useCompactToolbar } from '../../hooks/useCompactToolbar';
+import {
+  estimateExpandedToolbarWidth,
+  TOOLBAR_GAP,
+  useCompactToolbar,
+} from '../../hooks/useCompactToolbar';
 import { openDocsWindow } from '../../lib/windowManager';
 import { tid } from '../../lib/tid';
 import { DetailPanelToggle } from '../../components/DataTable/DetailPanelToggle';
 import { ToolbarShell } from '../../components/ui/ToolbarShell';
 import { ToolbarButton } from '../../components/ui/ToolbarButton';
+
+/** Minimum toolbar width (px) to show text labels for the visible left-side actions. */
+export function contentToolbarExpandedMinWidth({
+  showNewQuery,
+  showNewTable,
+  showErDiagram,
+  showObjects,
+  showBatchExport,
+  detailPanelApplicable,
+}: Pick<
+  ContentToolbarProps,
+  | 'showNewQuery'
+  | 'showNewTable'
+  | 'showErDiagram'
+  | 'showObjects'
+  | 'showBatchExport'
+  | 'detailPanelApplicable'
+>): number {
+  let leftButtons = 0;
+  if (showNewQuery) leftButtons += 1;
+  if (showNewTable) leftButtons += 1;
+  if (showErDiagram) leftButtons += 1;
+  if (showObjects) leftButtons += 2;
+  if (showBatchExport && showNewQuery) leftButtons += 1;
+
+  const rightCluster = 120;
+  const detailToggle = detailPanelApplicable ? 36 : 0;
+
+  return estimateExpandedToolbarWidth({
+    expandedButtonCount: leftButtons,
+    fixedExtraWidth: TOOLBAR_GAP + rightCluster + detailToggle,
+  });
+}
 
 export interface ContentToolbarProps {
   showNewQuery: boolean;
@@ -57,7 +94,15 @@ export function ContentToolbar({
   onRefresh,
 }: ContentToolbarProps) {
   const { t } = useI18n();
-  const { ref: toolbarRef, compact } = useCompactToolbar(960);
+  const expandedMinWidth = contentToolbarExpandedMinWidth({
+    showNewQuery,
+    showNewTable,
+    showErDiagram,
+    showObjects,
+    showBatchExport,
+    detailPanelApplicable,
+  });
+  const { ref: toolbarRef, compact } = useCompactToolbar(expandedMinWidth);
 
   return (
     <ToolbarShell ref={toolbarRef} className="h-12 min-h-[48px] px-4">
