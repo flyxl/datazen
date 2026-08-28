@@ -46,23 +46,19 @@ describe('数据传输窗口 (DTW-001~DTW-003)', () => {
     expect(body).toContain(t('transfer.target'));
   });
 
-  it('DTW-002: 应显示向导步骤与模式选项', async () => {
+  it('DTW-002: 应显示端点步骤；模式选择在下一步', async () => {
     await openTransferWindow();
     await expect(await $('[data-testid="data-transfer-step-endpoints"]')).toBeDisplayed();
-    await expect(await $('[data-testid="data-transfer-mode-structure"]')).toBeDisplayed();
-    await expect(await $('[data-testid="data-transfer-mode-data"]')).toBeDisplayed();
-    await expect(await $('[data-testid="data-transfer-mode-both"]')).toBeDisplayed();
+    const body = await $('body').getText();
+    expect(body).toContain(t('transfer.source'));
+    expect(body).toContain(t('transfer.target'));
   });
 
-  it('DTW-003: 未选两端点 Next 应提示错误', async () => {
+  it('DTW-003: 未选两端点时 Next 应禁用', async () => {
     await openTransferWindow();
     const next = await $('[data-testid="data-transfer-next"]');
     await next.waitForDisplayed({ timeout: 8000 });
-    await next.click();
-    await browser.pause(500);
-    const err = await $('[data-testid="data-transfer-error"]');
-    await expect(err).toBeDisplayed();
-    expect(await err.getText()).toContain(t('transfer.selectBoth'));
+    expect(await next.isEnabled()).toBe(false);
   });
 });
 
