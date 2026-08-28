@@ -33,6 +33,10 @@ function useMenus(): Menu[] {
     toolsItems.push({ id: 'schema-diff', label: t('common.schemaDiff') });
     toolsItems.push({ id: 'sep-3', label: '', separator: true });
   }
+  if (isProductFeatureEnabled('dataSync')) {
+    toolsItems.push({ id: 'data-sync', label: t('common.dataSync') });
+    toolsItems.push({ id: 'sep-3b', label: '', separator: true });
+  }
   if (isProductFeatureEnabled('dataTransfer')) {
     toolsItems.push({ id: 'data-transfer', label: t('common.dataTransfer') });
     toolsItems.push({ id: 'sep-3a', label: '', separator: true });
