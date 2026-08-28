@@ -10,7 +10,7 @@
 | F1 | EndpointsBar + dedicated db/schema 会话 | schema-diff-ui-endpoints | 编码完成 | 79357dec | — |
 | F2 | 双栏面板（左表/diff · 右 plan/deploy） | schema-diff-ui-panels | 编码完成 | a0eca1f8 | — |
 | F3 | SchemaDiffWindow 集成 + bg-surface shell | schema-diff-ui-b | 编码完成 | c80c1030 | — |
-| F4 | Host 单测 | schema-diff-ui-tests | 未开始 | — | — |
+| F4 | Host 单测 | schema-diff-ui-tests | 已完成 | — | (pending) |
 | F5 | E2E 适配 | schema-diff-ui-e2e | 已完成 | 19f6954c, ffc8b011 | 294c92d7 |
 
 ## 2. Bug 台账
@@ -38,7 +38,7 @@
   - [x] 复用 Sync EndpointsBar 视觉 token（`border-edge px-6 py-4`）
 - **测试**（`npx vitest run src/windows/schema-diff`）：
   - `SchemaDiffEndpointsBar.test.tsx`：3 passed（渲染 testid、swap/compare 回调、空 schema 隐藏）
-  - Hook 单测：F4 轨（集成后补 `useSchemaDiffEndpoints` mock 覆盖）
+  - Hook 单测：`useSchemaDiffEndpoints.test.tsx`（6 passed：connections 加载、cross-dialect、validateEndpoints、swap、ensureConnected）
 - **F3 集成遗留**：
   - `SchemaDiffWindow` 接入 `useSchemaDiffEndpoints` + `SchemaDiffEndpointsBar`；移除内联连接 Select
   - Compare/Plan/Deploy 改用 hook 的 `ensureConnected('source'|'target')` 与 `validateEndpoints()`
@@ -93,4 +93,5 @@
 
 ### F4 / F5 测试轨
 
-- 编码合并后启动；E2E 用例变更登记于本文件
+- F4：`npx vitest run src/windows/schema-diff` — 12 passed（含 `useSchemaDiffEndpoints` hook 单测）
+- F5 编码合并后启动；E2E 用例变更登记于本文件
