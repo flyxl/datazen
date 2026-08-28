@@ -10,7 +10,9 @@ use crate::schema_diff::deploy::{
 use crate::schema_diff::diff_table_schemas;
 use crate::schema_diff::plan::{build_schema_diff_plan, PlanOptions};
 use crate::schema_diff::types::TableColumnDiff;
-use crate::schema_diff::types::{normalize_dialect, SchemaDiffDeployResult, SchemaDiffPlan};
+use crate::schema_diff::types::{
+    normalize_dialect, resolve_table_for_dialect, SchemaDiffDeployResult, SchemaDiffPlan,
+};
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::transfer::ddl::build_create_table_ddl;
 use std::sync::Arc;
@@ -64,12 +66,14 @@ pub async fn prepare_schema_diff_plan(
 
     let mut pairs = Vec::new();
     for table in &table_names {
+        let src_table = resolve_table_for_dialect(&src_config.database_type, table);
+        let tgt_table = resolve_table_for_dialect(&tgt_config.database_type, table);
         let src_schema = src_driver
-            .get_table_schema(&src_handle, table)
+            .get_table_schema(&src_handle, &src_table)
             .await
             .cmd_err("prepare_schema_diff_plan")?;
         let tgt_schema = tgt_driver
-            .get_table_schema(&tgt_handle, table)
+            .get_table_schema(&tgt_handle, &tgt_table)
             .await
             .cmd_err("prepare_schema_diff_plan")?;
         pairs.push((table.clone(), src_schema, tgt_schema));
@@ -219,12 +223,15 @@ pub(crate) async fn compare_table_schemas_impl(
         .await
         .cmd_err("compare_table_schemas")?;
 
+    let src_table = resolve_table_for_dialect(&src_config.database_type, &table_name);
+    let tgt_table = resolve_table_for_dialect(&tgt_config.database_type, &table_name);
+
     let src_schema = src_driver
-        .get_table_schema(&src_handle, &table_name)
+        .get_table_schema(&src_handle, &src_table)
         .await
         .cmd_err("compare_table_schemas")?;
     let tgt_schema = tgt_driver
-        .get_table_schema(&tgt_handle, &table_name)
+        .get_table_schema(&tgt_handle, &tgt_table)
         .await
         .cmd_err("compare_table_schemas")?;
 
@@ -255,7 +262,7 @@ pub(crate) async fn compare_table_schemas_impl(
                 src_adapter.as_ref(),
                 src_driver.as_ref(),
                 &src_handle,
-                &table_name,
+                &src_table,
             )
             .await
             .ok();
@@ -263,7 +270,7 @@ pub(crate) async fn compare_table_schemas_impl(
                 tgt_src_adapter.as_ref(),
                 tgt_driver.as_ref(),
                 &tgt_handle,
-                &table_name,
+                &tgt_table,
             )
             .await
             .ok();
