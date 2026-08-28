@@ -247,9 +247,16 @@ export function DataTransferWindow() {
           createNew: tbl.createNew,
           enabled: tbl.enabled,
           columnMappings: normalizeColumnMappings(tbl),
+          ddlOverride: tbl.ddlOverride?.trim() ? tbl.ddlOverride.trim() : undefined,
         })),
     [tables],
   );
+
+  const updateTableDdlOverride = useCallback((sourceTable: string, ddl: string) => {
+    setTables((prev) =>
+      prev.map((t) => (t.sourceTable === sourceTable ? { ...t, ddlOverride: ddl } : t)),
+    );
+  }, []);
 
   const buildJob = useCallback((): TransferJob | null => {
     const srcConnId = sourceSession?.dbSessionId;
@@ -685,17 +692,43 @@ export function DataTransferWindow() {
 
         {step === 'preview' && preview && (
           <div data-testid="data-transfer-preview" className="space-y-3 text-sm">
-            {preview.blockReason && <p className="text-warning">{preview.blockReason}</p>}
-            {preview.ddl.map((item) => (
-              <div key={item.sourceTable} className="overflow-hidden rounded border border-border">
-                <div className="border-b border-border px-3 py-1.5 text-xs text-fg-muted">
-                  {item.sourceTable} → {item.targetTable}
+            {preview.blockReason && (
+              <p className="select-text text-warning">{preview.blockReason}</p>
+            )}
+            {preview.ddl.map((item) => {
+              const table = tables.find((t) => t.sourceTable === item.sourceTable);
+              const ddlValue = table?.ddlOverride ?? item.ddl;
+              return (
+                <div
+                  key={item.sourceTable}
+                  className="overflow-hidden rounded border border-border"
+                >
+                  <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5 text-xs text-fg-muted">
+                    <span>
+                      {item.sourceTable} → {item.targetTable}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid={`data-transfer-copy-ddl-${item.sourceTable}`}
+                      onClick={() => void navigator.clipboard.writeText(ddlValue)}
+                    >
+                      {t('common.copyDdl')}
+                    </Button>
+                  </div>
+                  <textarea
+                    className="min-h-[12rem] w-full resize-y bg-bg-muted p-3 font-mono text-xs text-fg select-text outline-none focus:ring-1 focus:ring-accent"
+                    data-testid={`data-transfer-ddl-editor-${item.sourceTable}`}
+                    value={ddlValue}
+                    spellCheck={false}
+                    onChange={(e) => updateTableDdlOverride(item.sourceTable, e.target.value)}
+                  />
+                  <p className="border-t border-border px-3 py-1.5 text-[11px] text-fg-muted">
+                    {t('transfer.ddlOverrideHint')}
+                  </p>
                 </div>
-                <div className="h-48 min-h-[8rem] bg-bg-muted">
-                  <SqlCodeBlock code={item.ddl} dialect={targetConn?.databaseType ?? 'mysql'} />
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {preview.writePlans.map((plan) => (
               <div key={plan.sourceTable} className="rounded border border-border p-2">
                 <div>
@@ -742,8 +775,24 @@ export function DataTransferWindow() {
               {t('transfer.rowsInserted')}: {result.rowsInserted}
             </p>
             {result.tables.map((tbl) => (
-              <div key={tbl.sourceTable}>
-                {tbl.sourceTable}: {tbl.success ? t('transfer.success') : tbl.error}
+              <div key={tbl.sourceTable} className="rounded border border-border p-2">
+                <div className="font-medium">
+                  {tbl.sourceTable}: {tbl.success ? t('transfer.success') : t('transfer.error')}
+                </div>
+                {!tbl.success && tbl.error ? (
+                  <div className="mt-2 flex items-start justify-between gap-2">
+                    <pre className="min-w-0 flex-1 select-text whitespace-pre-wrap break-all text-xs text-danger">
+                      {tbl.error}
+                    </pre>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void navigator.clipboard.writeText(tbl.error ?? '')}
+                    >
+                      {t('common.copy')}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
@@ -768,8 +817,26 @@ export function DataTransferWindow() {
 
       <StatusBar />
 
-      <Dialog open={errorOpen} onClose={() => setErrorOpen(false)} title={t('transfer.error')}>
-        <p data-testid="data-transfer-error">{errorMsg}</p>
+      <Dialog
+        open={errorOpen}
+        onClose={() => setErrorOpen(false)}
+        title={t('transfer.error')}
+        footer={
+          <Button
+            variant="ghost"
+            data-testid="data-transfer-copy-error"
+            onClick={() => void navigator.clipboard.writeText(errorMsg)}
+          >
+            {t('common.copy')}
+          </Button>
+        }
+      >
+        <pre
+          data-testid="data-transfer-error"
+          className="max-h-64 select-text overflow-auto whitespace-pre-wrap break-all text-sm"
+        >
+          {errorMsg}
+        </pre>
       </Dialog>
     </div>
   );

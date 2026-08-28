@@ -68,6 +68,7 @@ export function mergeInspectTables(
       columnMappings: t.columnMappings.length > 0 ? t.columnMappings : next.columnMappings,
       targetTable: t.targetTable || next.targetTable,
       createNew: t.createNew,
+      ddlOverride: t.ddlOverride ?? next.ddlOverride,
     };
   });
 }

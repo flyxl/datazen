@@ -557,6 +557,7 @@ mod tests {
             source_column: "id".into(),
             target_column: "id".into(),
             skip: false,
+            target_native_type: None,
         }];
         let refs: Vec<&ColumnMapping> = cols.iter().collect();
         let sql = build_batch_insert_sql(
@@ -581,6 +582,7 @@ mod tests {
             source_column: "id".into(),
             target_column: "id".into(),
             skip: false,
+            target_native_type: None,
         }];
         let refs: Vec<&ColumnMapping> = cols.iter().collect();
         let src_quote = '"';
@@ -628,6 +630,7 @@ mod tests {
             source_column: "id".into(),
             target_column: "id".into(),
             skip: false,
+            target_native_type: None,
         }];
         let refs: Vec<&ColumnMapping> = cols.iter().collect();
         let mut ir_types = HashMap::new();

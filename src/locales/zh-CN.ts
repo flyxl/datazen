@@ -1578,6 +1578,9 @@ const zhCN = {
   'transfer.mapping.autoMatch': '按名称自动匹配',
   'transfer.mapping.clearUnmapped': '清除未映射',
   'transfer.mapping.unmappedTargetWarning': '以下目标列未映射：{columns}',
+  'transfer.mapping.sourceType': '源类型',
+  'transfer.mapping.targetType': '目标类型',
+  'transfer.ddlOverrideHint': '可直接编辑上方 CREATE 语句；执行时将使用修改后的 SQL。',
   'schemaDiff.description':
     '以源库为目标态，对比并生成 DDL，审阅后部署到目标连接。默认仅加法变更。',
   'schemaDiff.table': '表名',

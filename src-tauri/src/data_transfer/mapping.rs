@@ -46,6 +46,7 @@ pub fn auto_map_columns(source: &TableSchema, target: &TableSchema) -> Vec<Colum
                     source_column: col.name.clone(),
                     target_column: col.name.clone(),
                     skip: false,
+                    target_native_type: None,
                 })
             } else {
                 None
@@ -86,6 +87,7 @@ pub fn effective_table_mappings(
                     create_new: true,
                     enabled: true,
                     column_mappings: Vec::new(),
+                    ddl_override: None,
                 }
             } else {
                 TableMapping {
@@ -94,6 +96,7 @@ pub fn effective_table_mappings(
                     create_new: false,
                     enabled: false,
                     column_mappings: Vec::new(),
+                    ddl_override: None,
                 }
             }
         })
@@ -135,6 +138,7 @@ pub fn inspect_tables(
                 column_mappings: mapping.column_mappings.clone(),
                 source_columns: source_column_names(source_schemas, &mapping.source_table),
                 target_columns: target_column_names(target_schemas, &mapping.target_table),
+                source_column_types: HashMap::new(),
                 incompatible_reason: None,
                 source_row_count: source_row_counts.get(&mapping.source_table).copied(),
             });
@@ -151,6 +155,7 @@ pub fn inspect_tables(
                 column_mappings: mapping.column_mappings.clone(),
                 source_columns: source_column_names(source_schemas, &mapping.source_table),
                 target_columns: target_column_names(target_schemas, &mapping.target_table),
+                source_column_types: HashMap::new(),
                 incompatible_reason: Some(format!(
                     "source table '{}' not found",
                     mapping.source_table
@@ -170,6 +175,7 @@ pub fn inspect_tables(
                 column_mappings: mapping.column_mappings.clone(),
                 source_columns: source_column_names(source_schemas, &mapping.source_table),
                 target_columns: target_column_names(target_schemas, &mapping.target_table),
+                source_column_types: HashMap::new(),
                 incompatible_reason: Some(format!(
                     "source '{}' is not a base table",
                     mapping.source_table
@@ -194,6 +200,7 @@ pub fn inspect_tables(
                             source_column: name.clone(),
                             target_column: name.clone(),
                             skip: false,
+                            target_native_type: None,
                         })
                         .collect()
                 } else {
@@ -201,6 +208,7 @@ pub fn inspect_tables(
                 },
                 source_columns,
                 target_columns: Vec::new(),
+                source_column_types: HashMap::new(),
                 incompatible_reason: None,
                 source_row_count: source_row_counts.get(&mapping.source_table).copied(),
             });
@@ -225,6 +233,7 @@ pub fn inspect_tables(
                 column_mappings: mapping.column_mappings.clone(),
                 source_columns: source_column_names(source_schemas, &mapping.source_table),
                 target_columns: target_column_names(target_schemas, &mapping.target_table),
+                source_column_types: HashMap::new(),
                 incompatible_reason: Some(reason),
                 source_row_count: source_row_counts.get(&mapping.source_table).copied(),
             });
@@ -241,6 +250,7 @@ pub fn inspect_tables(
                 column_mappings: mapping.column_mappings.clone(),
                 source_columns: source_column_names(source_schemas, &mapping.source_table),
                 target_columns: target_column_names(target_schemas, &mapping.target_table),
+                source_column_types: HashMap::new(),
                 incompatible_reason: Some(format!(
                     "target '{}' is not a base table",
                     mapping.target_table
@@ -271,6 +281,7 @@ pub fn inspect_tables(
             column_mappings,
             source_columns: source_column_names(source_schemas, &mapping.source_table),
             target_columns: target_column_names(target_schemas, &mapping.target_table),
+            source_column_types: HashMap::new(),
             incompatible_reason: None,
             source_row_count: source_row_counts.get(&mapping.source_table).copied(),
         });
@@ -292,6 +303,7 @@ pub fn inspect_tables(
             column_mappings: Vec::new(),
             source_columns: source_column_names(source_schemas, &table.name),
             target_columns: Vec::new(),
+            source_column_types: HashMap::new(),
             incompatible_reason: None,
             source_row_count: source_row_counts.get(&table.name).copied(),
         });
@@ -313,9 +325,26 @@ pub fn inspect_tables(
             column_mappings: Vec::new(),
             source_columns: Vec::new(),
             target_columns: target_column_names(target_schemas, &table.name),
+            source_column_types: HashMap::new(),
             incompatible_reason: None,
             source_row_count: None,
         });
+    }
+
+    for result in &mut results {
+        if result.source_table.is_empty() {
+            continue;
+        }
+        result.source_column_types = source_schemas
+            .get(result.source_table.as_str())
+            .map(|schema| {
+                schema
+                    .columns
+                    .iter()
+                    .map(|c| (c.name.clone(), c.data_type.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
     }
 
     results

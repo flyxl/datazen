@@ -64,6 +64,33 @@ pub fn column_ir_types_by_source(ir: &IRTable) -> HashMap<String, IRType> {
         .collect()
 }
 
+pub fn table_mapping_for<'a>(
+    job: &'a TransferJob,
+    source_table: &str,
+) -> Option<&'a super::model::TableMapping> {
+    job.tables.iter().find(|m| m.source_table == source_table)
+}
+
+pub fn apply_column_type_overrides(ir: &mut IRTable, mapping: &super::model::TableMapping) {
+    for col_map in &mapping.column_mappings {
+        let Some(native) = col_map
+            .target_native_type
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        if let Some(col) = ir
+            .columns
+            .iter_mut()
+            .find(|c| c.name == col_map.source_column)
+        {
+            col.ir_type = IRType::Other(native.to_string());
+        }
+    }
+}
+
 /// CREATE tables marked `CreateNew` when mode includes structure.
 pub async fn create_target_tables(
     src_adapter: &dyn SyncSourceAdapter,
@@ -112,12 +139,46 @@ pub async fn create_target_tables(
             continue;
         };
 
+        let table_mapping = table_mapping_for(job, &table.source_table);
+
+        if let Some(ddl) = table_mapping
+            .and_then(|m| m.ddl_override.as_deref())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            match tgt_driver.execute(tgt_handle, ddl).await {
+                Ok(_) => results.push(TableExecutionResult {
+                    source_table: table.source_table.clone(),
+                    target_table: table.target_table.clone(),
+                    rows_inserted: 0,
+                    success: true,
+                    error: None,
+                }),
+                Err(e) => {
+                    results.push(TableExecutionResult {
+                        source_table: table.source_table.clone(),
+                        target_table: table.target_table.clone(),
+                        rows_inserted: 0,
+                        success: false,
+                        error: Some(format!("CREATE failed: {e}")),
+                    });
+                    if job.options.stop_on_error {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+
         let full_types =
             fetch_full_column_types(src_adapter, src_driver, src_handle, &table.source_table)
                 .await
                 .unwrap_or_default();
-        let ir =
+        let mut ir =
             source_schema_to_target_ir(src_adapter, schema, Some(&full_types), &table.target_table);
+        if let Some(mapping) = table_mapping {
+            apply_column_type_overrides(&mut ir, mapping);
+        }
         let ddl = build_create_ddl(&ir, tgt_adapter);
 
         match tgt_driver.execute(tgt_handle, &ddl).await {
@@ -279,6 +340,7 @@ mod tests {
             column_mappings: vec![],
             source_columns: vec![],
             target_columns: vec![],
+            source_column_types: HashMap::new(),
             incompatible_reason: None,
             source_row_count: None,
         };

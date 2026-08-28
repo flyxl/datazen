@@ -1617,6 +1617,10 @@ const en: Record<TranslationKey, string> = {
   'transfer.mapping.autoMatch': 'Auto-match by name',
   'transfer.mapping.clearUnmapped': 'Clear unmapped',
   'transfer.mapping.unmappedTargetWarning': 'Target columns not mapped: {columns}',
+  'transfer.mapping.sourceType': 'Source type',
+  'transfer.mapping.targetType': 'Target type',
+  'transfer.ddlOverrideHint':
+    'Edit the CREATE statement above; execute will run your modified SQL.',
   'schemaDiff.description':
     'Treat source as desired state: compare, generate DDL, review, then deploy to target. Additive-only by default.',
   'schemaDiff.table': 'Table name',
