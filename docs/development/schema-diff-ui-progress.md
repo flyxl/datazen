@@ -11,7 +11,7 @@
 | F2 | 双栏面板（左表/diff · 右 plan/deploy） | schema-diff-ui-panels | 编码完成 | a0eca1f8 | — |
 | F3 | SchemaDiffWindow 集成 + bg-surface shell | schema-diff-ui-b | 编码完成 | c80c1030 | — |
 | F4 | Host 单测 | schema-diff-ui-tests | 未开始 | — | — |
-| F5 | E2E 适配 | schema-diff-ui-e2e | 已完成 | — | aaa7b6df |
+| F5 | E2E 适配 | schema-diff-ui-e2e | 已完成 | 19f6954c, ffc8b011 | 294c92d7 |
 
 ## 2. Bug 台账
 
@@ -78,7 +78,11 @@
 - **验收**：
   - [x] `advanceSchemaDiffToReview()` 改点 Deploy tab + 等待 `schema-diff-deploy-panel`
   - [x] Host 单测仍绿：`npx vitest run src/windows/schema-diff`（6 passed）
-  - [ ] 【留待 R 回归】`pnpm e2e:schema-diff`（完整 build + WebdriverIO）
+  - [x] `pnpm e2e:schema-diff:build` 全绿（7 spec，2026-08-28，~3m12s）
+- **R 回归修复**（`ffc8b011` / `19f6954c`）：
+  - IR `diff_table_schemas_ir` 误用 `src_map` → 同方言对比误报「结构一致」
+  - PG deploy 改用 `begin_transaction` API，避免 pool `execute("BEGIN")` 导致 idle-in-transaction 锁表
+  - `deploySchemaDiffPlan` 轮询至「部署状态」出现（18 条 ADD 语句场景）
 - **变更 spec 清单**（helper 级，spec 文件本身未改）：
   - `e2e/specs/schema-diff-window.ts`（无 direct testid 引用）
   - `e2e/specs/schema-diff-diverse-types.ts`
