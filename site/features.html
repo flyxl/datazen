@@ -185,14 +185,25 @@ PostgreSQL · MySQL · SQLite · Redis …</code></pre>
           <ul>
             <li>One-click SQL backup: Schema-only / Data-only / Gzip</li>
             <li>Full app data export (including config), atomic writes + ZIP bomb protection</li>
-            <li>PG ↔ MySQL schema compare and data sync with resume support</li>
+            <li>
+              <strong>Data Sync</strong> — row-level diff within the same dialect family when
+              structure &amp; PK match
+            </li>
+            <li>
+              <strong>Data Transfer</strong> — heterogeneous one-way migration with a six-step
+              wizard (structure and/or data)
+            </li>
+            <li>
+              <strong>Schema Diff</strong> — compare structure and deploy controlled DDL (additive
+              by default)
+            </li>
             <li>Backup packages automatically exclude key files</li>
           </ul>
         </div>
         <img
           class="feature-shot"
-          src="assets/screenshots/19-backup-sync.png"
-          alt="Backup and data sync"
+          src="assets/screenshots/26-data-sync.png"
+          alt="Data Sync, Transfer and Schema Diff"
         />
       </div>
 
@@ -236,8 +247,16 @@ PostgreSQL · MySQL · SQLite · Redis …</code></pre>
             <td>SQL dump (Schema / Data / Gzip)</td>
           </tr>
           <tr>
-            <td>Data sync</td>
-            <td>PG ↔ MySQL schema compare + data sync + resume</td>
+            <td>Data Sync</td>
+            <td>Same-family row-level diff when structure &amp; PK match</td>
+          </tr>
+          <tr>
+            <td>Data Transfer</td>
+            <td>Heterogeneous one-way migration (structure and/or data)</td>
+          </tr>
+          <tr>
+            <td>Schema Diff</td>
+            <td>Structure compare + controlled DDL deploy</td>
           </tr>
           <tr>
             <td>ER diagram</td>

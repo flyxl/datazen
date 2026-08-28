@@ -51,6 +51,9 @@
         opacity: 0.65;
         margin: 0 0 22px;
       }
+      .shots .manual-shot {
+        margin: 0;
+      }
       .kbd {
         display: inline-block;
         padding: 1px 7px;
@@ -519,18 +522,49 @@ output:
         <section id="sync" class="docs-section">
           <h2 class="docs-section-title">11. 数据同步 · 迁移 · 结构对比</h2>
           <div class="docs-prose">
-            <img
-              class="manual-shot"
-              src="../assets/screenshots/19-backup-sync.png"
-              alt="数据同步"
-              loading="lazy"
-            />
-            <p>三个工具职责不同，按场景选择：</p>
+            <p>
+              三个独立子窗口 — 从<strong>文件</strong>菜单（macOS 为 Tools）或连接 /
+              数据库右键菜单打开。按场景选择：
+            </p>
+            <pre><code>结构不一致 / 无 PK / 目标表不存在 / 异构库  →  Schema Diff 和/或 Data Transfer
+结构一致 + 相同 PK + 同方言族            →  Data Sync</code></pre>
+            <div class="shots">
+              <div>
+                <img
+                  class="manual-shot gallery-img"
+                  src="../assets/screenshots/26-data-sync.png"
+                  alt="Data Sync 窗口"
+                  loading="lazy"
+                  data-caption="Data Sync — 比较并应用行级差异"
+                />
+                <p class="manual-shot-caption">Data Sync — 同族行级差异同步</p>
+              </div>
+              <div>
+                <img
+                  class="manual-shot gallery-img"
+                  src="../assets/screenshots/28-data-transfer.png"
+                  alt="Data Transfer 向导"
+                  loading="lazy"
+                  data-caption="Data Transfer — 异构单向迁移"
+                />
+                <p class="manual-shot-caption">Data Transfer — 异构库迁移</p>
+              </div>
+              <div>
+                <img
+                  class="manual-shot gallery-img"
+                  src="../assets/screenshots/27-schema-diff.png"
+                  alt="Schema Diff 部署"
+                  loading="lazy"
+                  data-caption="Schema Diff — 结构对比与 DDL 部署"
+                />
+                <p class="manual-shot-caption">Schema Diff — 结构对比与部署</p>
+              </div>
+            </div>
             <table>
               <thead>
                 <tr>
                   <th>工具</th>
-                  <th>场景</th>
+                  <th>适用场景</th>
                   <th>流程</th>
                 </tr>
               </thead>
@@ -538,25 +572,30 @@ output:
                 <tr>
                   <td><strong>Data Sync 数据同步</strong></td>
                   <td>
-                    同族数据库（MySQL↔MySQL、PG↔PG）、表结构与主键完全一致的<strong>行级差异</strong>同步
+                    <strong>同方言族</strong
+                    >（MySQL↔MySQL、PG↔PG）、表结构与主键完全一致的行级差异同步
                   </td>
                   <td>
-                    Compare → Review 勾选差异 → Preview SQL → Execute（默认不含
-                    DELETE，勾选需双重确认）
+                    选源/目标 + database → <strong>Compare</strong> → Review 勾选差异 → Preview SQL
+                    → Execute（DELETE 默认关闭，启用需双重确认）
                   </td>
                 </tr>
                 <tr>
                   <td><strong>Data Transfer 数据迁移</strong></td>
-                  <td>异构数据库间的单向搬运（如 MySQL → PostgreSQL），支持结构 + 数据</td>
                   <td>
-                    八步向导：源/目标 → 模式 → 对象 → 字段映射 → 写入选项 → 预览 → 执行 → 结果
+                    <strong>异构</strong>数据库间单向搬运（如 MySQL → PostgreSQL），或结构不同 /
+                    需在目标建表
+                  </td>
+                  <td>
+                    六步向导：Endpoints → Setup（模式 + 写入选项）→ Objects → Mapping →
+                    Preview（可编辑 DDL）→ Result
                   </td>
                 </tr>
                 <tr>
                   <td><strong>Schema Diff 结构对比</strong></td>
-                  <td>将源库结构作为期望状态，生成受控 DDL 并部署到目标库</td>
+                  <td>将<strong>源库</strong>结构作为期望状态，生成受控 DDL 并部署到目标库</td>
                   <td>
-                    Compare → Plan → Review → Deploy；默认只生成增量变更，破坏性语句需勾选并输入
+                    Compare → Plan → Review → Deploy；默认仅增量变更，破坏性语句需勾选并输入
                     <code>DEPLOY</code>
                   </td>
                 </tr>
@@ -564,13 +603,19 @@ output:
             </table>
             <ul>
               <li>
-                Data Sync
-                的硬性门闸：同方言族、结构完全一致、主键一致且非空；不满足时窗口内可一键跳转 Schema
-                Diff。
+                <strong>Data Sync 门闸</strong
+                >：同方言族、列/类型/可空性完全一致、主键一致且非空、目标表须已存在。 INCOMPATIBLE
+                表可一键跳转 Schema Diff；异构目标对会标为 unsupported 并提示使用 Transfer。
               </li>
               <li>
-                Schema Diff 支持 PG / SQLite 事务执行失败自动回滚；MySQL DDL
-                逐条提交，部分成功会标记 <code>mixed</code>。
+                <strong>Data Transfer</strong
+                >：首次打开弹出能力限制说明（不迁移视图/触发器/外键；破坏性写入模式须显式确认）。
+                Endpoints 步显示 <code>direct</code> / <code>ir</code> /
+                <code>unsupported</code> 配对路径。
+              </li>
+              <li>
+                <strong>Schema Diff</strong>：PG / SQLite 支持事务执行失败自动回滚；MySQL DDL
+                逐条提交，部分成功标记为 <code>mixed</code>。
               </li>
               <li>目标连接为只读时，所有写入型操作的执行按钮均被禁用。</li>
             </ul>
@@ -581,6 +626,12 @@ output:
                 target="_blank"
                 rel="noopener"
                 >数据同步指南</a
+              >、
+              <a
+                href="https://github.com/flyxl/datazen/blob/main/docs/features/data-transfer-guide.zh-CN.md"
+                target="_blank"
+                rel="noopener"
+                >数据迁移指南</a
               >、
               <a
                 href="https://github.com/flyxl/datazen/blob/main/docs/features/schema-diff-guide.zh-CN.md"
