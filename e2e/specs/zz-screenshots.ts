@@ -1667,7 +1667,7 @@ describe('site screenshots', () => {
         handles = await browser.getWindowHandles();
         await browser.switchToWindow(handles.find((h) => h !== mainWindow)!);
         await browser.pause(1200);
-        await shot('26-data-sync.png');
+        await shot('26-data-sync-en.png');
         await browser.closeWindow();
         await browser.switchToWindow(mainWindow);
       } catch (e) {
@@ -1699,7 +1699,7 @@ describe('site screenshots', () => {
         await browser.switchToWindow(hs.find((h) => h !== mainWindow)!);
         await dismissLimitationsDialogIfOpen('schema-diff');
         await browser.pause(1200);
-        await shot('27-schema-diff.png');
+        await shot('27-schema-diff-en.png');
         await browser.closeWindow();
         await browser.switchToWindow(mainWindow);
       } catch (e) {
@@ -1721,7 +1721,7 @@ describe('site screenshots', () => {
         await browser.switchToWindow(hs.find((h) => h !== mainWindow)!);
         await dismissLimitationsDialogIfOpen('data-transfer');
         await browser.pause(1200);
-        await shot('28-data-transfer.png');
+        await shot('28-data-transfer-en.png');
         await browser.closeWindow();
         await browser.switchToWindow(mainWindow);
       } catch (e) {
