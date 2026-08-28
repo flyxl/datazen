@@ -40,6 +40,7 @@ pub use model::{
 pub use pairing::{classify_data_sync_pair, require_data_sync_family, DataSyncPairingView};
 pub use session::SyncSession;
 pub use sql::{
-    generate_table_sql, mysql_placeholder, postgres_placeholder, quote_ident_sql, SqlStatement,
+    generate_table_sql, mysql_placeholder, postgres_placeholder, postgres_typed_placeholder,
+    quote_ident_sql, SqlStatement,
 };
 pub use state::SyncPhase;

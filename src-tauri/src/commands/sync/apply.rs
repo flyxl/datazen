@@ -6,7 +6,7 @@ use super::exec::execute_data_sync_impl;
 use super::inspect::inspect_data_sync_impl;
 use super::keyset_source::DriverKeysetSource;
 use crate::data_sync::{
-    compare_table_pages, generate_table_sql, mysql_placeholder, postgres_placeholder,
+    compare_table_pages, generate_table_sql, mysql_placeholder, postgres_typed_placeholder,
     quote_ident_sql, ChangeSet, ComparisonResult, SyncOptions, TableMapping, TableMappingStatus,
     TableResult,
 };
@@ -175,6 +175,8 @@ pub(crate) async fn generate_data_sync_sql_impl(
             .await
             .cmd_err("generate_data_sync_sql")?;
         let column_names: Vec<String> = schema.columns.iter().map(|c| c.name.clone()).collect();
+        let column_types: Vec<String> =
+            schema.columns.iter().map(|c| c.data_type.clone()).collect();
         let pk = schema.primary_keys.clone();
         let stmts = if family == "mysql" {
             generate_table_sql(
@@ -182,8 +184,9 @@ pub(crate) async fn generate_data_sync_sql_impl(
                 target_database.as_deref(),
                 &pk,
                 &column_names,
+                &column_types,
                 |n| quote_ident_sql(n, quote),
-                mysql_placeholder,
+                |idx, _| mysql_placeholder(idx),
             )
         } else {
             generate_table_sql(
@@ -191,8 +194,9 @@ pub(crate) async fn generate_data_sync_sql_impl(
                 target_schema.as_deref(),
                 &pk,
                 &column_names,
+                &column_types,
                 |n| quote_ident_sql(n, quote),
-                postgres_placeholder,
+                postgres_typed_placeholder,
             )
         }
         .map_err(CommandError::from)?;
