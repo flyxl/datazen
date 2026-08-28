@@ -1656,9 +1656,19 @@ describe('site screenshots', () => {
       }
     }
 
-    // 结构对比 (compare schema): heterogeneous PG ↔ MySQL.
+    // 结构对比 (schema diff): hidden from ctx menu when schemaDiff flag is off — open sub-window via IPC.
     try {
-      await openDbContextMenu(DEMO_MYSQL_DB ?? DEMO_PG_DB, '比较架构');
+      await browser.switchToWindow(mainWindow);
+      await goToConnections();
+      await invoke('create_sub_window', {
+        options: {
+          label: 'schema-diff-singleton',
+          url: 'window.html?window=schema-diff',
+          title: '结构对比 - DataZen',
+          width: 900,
+          height: 640,
+        },
+      });
       await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
         timeout: 10000,
         timeoutMsg: '结构对比窗口未打开',
