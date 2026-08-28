@@ -42,6 +42,23 @@ function isTauri(): boolean {
   return '__TAURI_INTERNALS__' in window;
 }
 
+/** Menu item ids whose handlers live in the main workspace shell. */
+const MAIN_SHELL_MENU_IDS = new Set([
+  'open-settings',
+  'new-connection',
+  'workflow',
+  'dashboard',
+  'export-config',
+  'import-config',
+  'export-connections',
+  'import-connections-file',
+  'import-connections-dbx',
+  'import-connections-navicat',
+  'import-connections-datagrip',
+  'import-connections-dbeaver',
+  'import-connections-tableplus',
+]);
+
 async function focusMainWindow(): Promise<void> {
   if (!isTauri()) return;
   const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
@@ -52,12 +69,35 @@ async function focusMainWindow(): Promise<void> {
   await main.setFocus();
 }
 
+/** True when any sub-window (backup, data-sync, …) is still open. */
+export async function hasOpenChildWindows(): Promise<boolean> {
+  if (!isTauri()) return false;
+  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+  const windows = await WebviewWindow.getAll();
+  return windows.some((window) => window.label !== 'main');
+}
+
 /** Sub-window HTML entry — no splash (see `window.html`). Main stays on `index.html`. */
 const SUB_WINDOW_ENTRY = 'window.html';
+
+import { cssColorToHex } from './surfaceBgCache';
+
+/** Coalesce concurrent singleton opens (duplicate menu listeners / double-click). */
+const singletonOpenInFlight = new Map<string, Promise<void>>();
+
+function resolveOpenerBackgroundColor(): string | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const inline = document.documentElement.style.backgroundColor;
+  const fromInline = inline ? cssColorToHex(inline) : null;
+  if (fromInline) return fromInline;
+  const computed = getComputedStyle(document.documentElement).backgroundColor;
+  return cssColorToHex(computed) ?? undefined;
+}
 
 async function openTauriWindow(label: string, options: OpenWindowOptions) {
   const qs = new URLSearchParams(options.params ?? {}).toString();
   const url = qs ? `${SUB_WINDOW_ENTRY}?${qs}` : SUB_WINDOW_ENTRY;
+  const backgroundColor = resolveOpenerBackgroundColor();
 
   try {
     await invoke('create_sub_window', {
@@ -70,6 +110,7 @@ async function openTauriWindow(label: string, options: OpenWindowOptions) {
         minWidth: options.minWidth,
         minHeight: options.minHeight,
         center: options.center ?? true,
+        ...(backgroundColor ? { backgroundColor } : {}),
       },
     });
   } catch (e) {
@@ -96,25 +137,25 @@ function openBrowserWindow(options: OpenWindowOptions) {
   window.open(url, '_blank', `width=${options.width ?? 800},height=${options.height ?? 640}`);
 }
 
-function openWindow(label: string, options: OpenWindowOptions) {
-  if (isTauri()) {
-    void openTauriWindow(label, options).catch(() => {});
-  } else {
-    openBrowserWindow(options);
-  }
-}
-
-/**
- * Open a singleton window.
- *
- * Reuse is handled in Rust: `create_sub_window` shows and focuses an
- * existing window with the same label. Resolving it here instead would
- * only focus the window, which silently does nothing when the window
- * exists but never became visible.
- *
- */
 function openSingletonWindow(label: string, options: OpenWindowOptions) {
-  openWindow(label, options);
+  const inflight = singletonOpenInFlight.get(label);
+  if (inflight) {
+    void inflight.catch(() => {});
+    return;
+  }
+
+  const task = (async () => {
+    if (isTauri()) {
+      await openTauriWindow(label, options);
+    } else {
+      openBrowserWindow(options);
+    }
+  })().finally(() => {
+    singletonOpenInFlight.delete(label);
+  });
+
+  singletonOpenInFlight.set(label, task);
+  void task.catch(() => {});
 }
 
 // ── In-app dialogs (main window) ────────────────────────────────────
@@ -184,10 +225,15 @@ export function openWorkflowWindow() {
   void focusMainWindow().then(() => emitCrossWindow('menu:workflow'));
 }
 
+export async function emitMenuAction(id: string, payload?: unknown): Promise<void> {
+  if (MAIN_SHELL_MENU_IDS.has(id)) {
+    await focusMainWindow();
+  }
+  await emitCrossWindow(`menu:${id}`, payload);
+}
+
 export function openSettingsWindow(section?: string) {
-  void focusMainWindow().then(() =>
-    emitCrossWindow('menu:open-settings', section ? { section } : undefined),
-  );
+  void emitMenuAction('open-settings', section ? { section } : undefined);
 }
 
 /** Open official help docs in the system browser (GitHub Pages). */
