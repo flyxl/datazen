@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConnectionConfig } from '../../../types';
 import type { TransferTableResult } from '../../../commands/transfer';
+import { clearTransferLimitationsDismissed } from '../../../lib/transferLimitationsPrefs';
 
 const { invokeMock, inspectTransferMock, getDatabasesMock, stableT } = vi.hoisted(() => {
   const stableT = (key: string, params?: Record<string, string | number>) =>
@@ -117,26 +118,43 @@ async function pickSelect(testId: string, optionLabel: string) {
   fireEvent.mouseDown(option!);
 }
 
+async function dismissLimitationsDialog() {
+  await waitFor(() => {
+    expect(screen.getByTestId('data-transfer-limitations')).toBeTruthy();
+  });
+  fireEvent.click(screen.getByTestId('data-transfer-limitations-close'));
+  await waitFor(() => {
+    expect(screen.queryByTestId('data-transfer-limitations')).toBeNull();
+  });
+}
+
 async function advanceToMappingStep() {
   const { DataTransferWindow } = await import('../DataTransferWindow');
   render(<DataTransferWindow />);
 
   await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
 
+  await dismissLimitationsDialog();
+
   await pickSelect('data-transfer-source', 'PG Src (postgresql)');
   await pickSelect('data-transfer-target', 'PG Tgt (postgresql)');
 
   await waitFor(() => expect(getDatabasesMock).toHaveBeenCalled());
 
+  // endpoints → setup
   fireEvent.click(screen.getByTestId('data-transfer-next'));
+  await waitFor(() => expect(screen.getByTestId('data-transfer-mode-data')).toBeTruthy());
+
   fireEvent.click(screen.getByTestId('data-transfer-mode-data'));
 
   inspectTransferMock.mockResolvedValue(inspectRows);
+  // setup → objects
   fireEvent.click(screen.getByTestId('data-transfer-next'));
 
   await waitFor(() => expect(inspectTransferMock).toHaveBeenCalled());
   await waitFor(() => expect(screen.getByTestId('data-transfer-table-row')).toBeTruthy());
 
+  // objects → mapping
   fireEvent.click(screen.getByTestId('data-transfer-next'));
 
   await waitFor(() => expect(screen.getByTestId('data-transfer-mapping-step')).toBeTruthy());
@@ -145,6 +163,7 @@ async function advanceToMappingStep() {
 describe('DataTransferWindow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearTransferLimitationsDismissed();
     getDatabasesMock.mockResolvedValue(['src', 'tgt']);
     invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
       if (cmd === 'get_connections') return [pgSrc, pgTgt];
@@ -168,8 +187,43 @@ describe('DataTransferWindow', () => {
     render(<DataTransferWindow />);
     expect(screen.getByTestId('data-transfer-window')).toBeTruthy();
     expect(screen.getByTestId('data-transfer-step-endpoints')).toBeTruthy();
+    expect(screen.getByTestId('data-transfer-step-setup')).toBeTruthy();
     expect(screen.getByTestId('data-transfer-source')).toBeTruthy();
     expect(screen.getByTestId('data-transfer-target')).toBeTruthy();
+  });
+
+  it('opens limitations dialog on first visit', async () => {
+    const { DataTransferWindow } = await import('../DataTransferWindow');
+    render(<DataTransferWindow />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('data-transfer-limitations')).toBeTruthy();
+      expect(screen.getByTestId('data-transfer-limitations-close')).toBeTruthy();
+    });
+  });
+
+  it('does not reopen limitations dialog after dontShowAgain is checked', async () => {
+    const { DataTransferWindow } = await import('../DataTransferWindow');
+    const { unmount } = render(<DataTransferWindow />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('data-transfer-limitations')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId('data-transfer-limitations-dismiss'));
+    fireEvent.click(screen.getByTestId('data-transfer-limitations-close'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('data-transfer-limitations')).toBeNull();
+    });
+
+    unmount();
+    cleanup();
+
+    render(<DataTransferWindow />);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
+
+    expect(screen.queryByTestId('data-transfer-limitations')).toBeNull();
   });
 
   it('allows editing column mappings on mapping step', async () => {
