@@ -15,6 +15,7 @@ pub struct DriverKeysetSource {
     driver: Arc<dyn DatabaseDriver>,
     handle: ConnectionHandle,
     table: String,
+    database: Option<String>,
     schema: Option<String>,
     columns: Vec<String>,
     pk_columns: Vec<String>,
@@ -27,6 +28,7 @@ impl DriverKeysetSource {
         driver: Arc<dyn DatabaseDriver>,
         handle: ConnectionHandle,
         table: String,
+        database: Option<String>,
         schema: Option<String>,
         columns: Vec<String>,
         pk_columns: Vec<String>,
@@ -37,6 +39,7 @@ impl DriverKeysetSource {
             driver,
             handle,
             table,
+            database,
             schema,
             columns,
             pk_columns,
@@ -57,7 +60,9 @@ impl RowPageSource for DriverKeysetSource {
         let quote = self.quote;
         let (sql, params) = build_keyset_select_sql(
             &self.table,
+            self.database.as_deref(),
             self.schema.as_deref(),
+            &family,
             &self.columns,
             &self.pk_columns,
             after_key,

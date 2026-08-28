@@ -35,6 +35,32 @@ pub fn qualify_table_sql(schema: Option<&str>, table: &str, quote: char) -> Stri
     }
 }
 
+/// Qualify a table reference for DML/SELECT without switching the session catalog.
+///
+/// - MySQL/MariaDB: `` `database`.`table` `` when `database` is set.
+/// - PostgreSQL and similar: `"schema"."table"` when `schema` is set.
+/// - Otherwise: bare `table`.
+pub fn qualify_relation_sql(
+    family: &str,
+    database: Option<&str>,
+    schema: Option<&str>,
+    table: &str,
+    quote: char,
+) -> String {
+    let family = family.to_ascii_lowercase();
+    if matches!(family.as_str(), "mysql" | "mariadb") {
+        return match database.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(db) => format!(
+                "{}.{}",
+                quote_ident_sql(db, quote),
+                quote_ident_sql(table, quote)
+            ),
+            None => quote_ident_sql(table, quote),
+        };
+    }
+    qualify_table_sql(schema, table, quote)
+}
+
 pub fn qualify_table_ident<Q>(schema: Option<&str>, table: &str, quote_ident: Q) -> String
 where
     Q: Fn(&str) -> String,
@@ -436,6 +462,50 @@ mod tests {
         .is_err());
         assert!(
             generate_table_sql(&table, None, &[], &["id".into()], q, mysql_placeholder).is_err()
+        );
+    }
+
+    #[test]
+    fn mysql_catalog_qualified_target_table() {
+        let options = SyncOptions::default();
+        let insert = RowChange::insert(
+            vec![Value::Integer(1)],
+            vec![Some(Value::Integer(1)), Some(Value::String("a".into()))],
+            &options,
+        );
+        let table = TableChangeSet {
+            source_table: "users".into(),
+            target_table: "clients".into(),
+            changes: vec![insert],
+        };
+        let stmts = generate_table_sql(
+            &table,
+            Some("mydb"),
+            &["id".into()],
+            &["id".into(), "name".into()],
+            |n| quote_ident_sql(n, '`'),
+            mysql_placeholder,
+        )
+        .unwrap();
+        assert_eq!(
+            stmts[0].sql,
+            "INSERT INTO `mydb`.`clients` (`id`, `name`) VALUES (?, ?)"
+        );
+    }
+
+    #[test]
+    fn qualify_relation_sql_mysql_uses_database() {
+        assert_eq!(
+            qualify_relation_sql("mysql", Some("mydb"), None, "users", '`'),
+            "`mydb`.`users`"
+        );
+    }
+
+    #[test]
+    fn qualify_relation_sql_postgres_uses_schema() {
+        assert_eq!(
+            qualify_relation_sql("postgresql", Some("ignored"), Some("public"), "users", '"'),
+            r#""public"."users""#
         );
     }
 

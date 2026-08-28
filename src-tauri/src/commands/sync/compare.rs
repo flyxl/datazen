@@ -1,4 +1,4 @@
-use super::super::error::{CmdExt, CommandError};
+use crate::data_sync::sql::qualify_relation_sql;
 use crate::schema_diff::types::{ChangedColumnDiff, ColumnSnapshot, TableColumnDiff};
 use crate::transfer::ir::{IRColumn, IRTable, IRType};
 use std::collections::HashMap;
@@ -45,9 +45,14 @@ pub(super) fn value_as_u64(value: &crate::db::Value) -> Option<u64> {
 pub(crate) async fn count_rows(
     driver: &dyn crate::db::DatabaseDriver,
     handle: &crate::db::ConnectionHandle,
+    family: &str,
+    database: Option<&str>,
+    schema: Option<&str>,
     table: &str,
 ) -> Result<u64, CommandError> {
-    let sql = format!("SELECT COUNT(*) FROM {}", driver.quote_ident(table));
+    let quote = if family == "mysql" { '`' } else { '"' };
+    let qualified = qualify_relation_sql(family, database, schema, table, quote);
+    let sql = format!("SELECT COUNT(*) FROM {qualified}");
     let res = driver.query(handle, &sql).await.cmd_err("count_rows")?;
     if let Some(row) = res.rows.first() {
         if let Some(Some(v)) = row.first() {

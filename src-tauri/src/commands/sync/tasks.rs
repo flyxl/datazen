@@ -45,6 +45,12 @@ pub(crate) async fn check_sync_conflicts_impl(
         .await
         .cmd_err("check_sync_conflicts")?;
 
+    let src_config = state
+        .connection_manager
+        .get_session_config(&task.source_db_session_id)
+        .await
+        .cmd_err("check_sync_conflicts")?;
+
     let mut conflicts = Vec::<serde_json::Value>::new();
 
     for table in &task.tables {
@@ -53,7 +59,15 @@ pub(crate) async fn check_sync_conflicts_impl(
         }
 
         let original_count = task.source_row_counts.get(table).copied().unwrap_or(0);
-        let current_count = count_rows(src_driver.as_ref(), &src_handle, table).await?;
+        let current_count = count_rows(
+            src_driver.as_ref(),
+            &src_handle,
+            &src_config.database_type,
+            src_config.database.as_deref(),
+            None,
+            table,
+        )
+        .await?;
 
         if current_count != original_count {
             conflicts.push(serde_json::json!({
