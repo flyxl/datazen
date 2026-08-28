@@ -45,8 +45,8 @@ export function TransferMappingStep({
 
   return (
     <div className="flex min-h-0 flex-1 gap-4" data-testid="data-transfer-mapping-step">
-      <div className="flex w-56 shrink-0 flex-col gap-1 overflow-auto rounded-lg border border-border bg-surface">
-        <div className="border-b border-border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
+      <div className="flex w-56 shrink-0 flex-col gap-1 overflow-auto rounded-lg border border-edge bg-surface">
+        <div className="border-b border-edge px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
           {t('transfer.mapping.tables')}
         </div>
         {enabledTables.map((tbl) => (

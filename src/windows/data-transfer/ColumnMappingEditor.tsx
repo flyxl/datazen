@@ -62,7 +62,7 @@ export function ColumnMappingEditor({
           <span className="text-fg-muted">{t('transfer.mapping.targetTable')}</span>
           <input
             type="text"
-            className="rounded border border-border bg-bg px-2 py-1 font-mono text-sm"
+            className="rounded border border-edge bg-surface px-2 py-1 font-mono text-sm"
             value={table.targetTable}
             data-testid="data-transfer-target-table-input"
             onChange={(e) => onChange({ targetTable: e.target.value })}
@@ -116,8 +116,8 @@ export function ColumnMappingEditor({
         </p>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-surface">
-        <div className="sticky top-0 flex items-center gap-3 border-b border-border bg-surface-alt px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
+      <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-edge bg-surface">
+        <div className="sticky top-0 flex items-center gap-3 border-b border-edge bg-surface-alt px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
           <div className="min-w-0 flex-1">{t('transfer.mapping.sourceColumn')}</div>
           {showTargetType && (
             <div className="w-28 shrink-0">{t('transfer.mapping.sourceType')}</div>
@@ -169,7 +169,7 @@ function ColumnMappingRow({
     <div
       data-testid="data-transfer-column-row"
       className={cn(
-        'flex items-center gap-3 border-t border-border px-3 py-1.5 text-sm',
+        'flex items-center gap-3 border-t border-edge px-3 py-1.5 text-sm',
         unmapped && 'bg-amber-500/5',
       )}
     >
@@ -186,7 +186,7 @@ function ColumnMappingRow({
         {createNew ? (
           <input
             type="text"
-            className="w-full rounded border border-border bg-bg px-2 py-1 font-mono text-xs"
+            className="w-full rounded border border-edge bg-surface px-2 py-1 font-mono text-xs"
             value={row.targetColumn}
             data-testid={`data-transfer-target-col-${row.sourceColumn}`}
             onChange={(e) =>
@@ -208,7 +208,7 @@ function ColumnMappingRow({
         <div className="w-36 shrink-0">
           <input
             type="text"
-            className="w-full rounded border border-border bg-bg px-2 py-1 font-mono text-[11px]"
+            className="w-full rounded border border-edge bg-surface px-2 py-1 font-mono text-[11px]"
             placeholder="VARCHAR(255)"
             value={row.targetNativeType ?? ''}
             data-testid={`data-transfer-target-type-${row.sourceColumn}`}
