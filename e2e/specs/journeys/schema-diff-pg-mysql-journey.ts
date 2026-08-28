@@ -79,13 +79,10 @@ describe('结构对比 PG→MySQL 跨方言旅程 (SD-PG-MYSQL-JOURNEY)', functi
     await captureJourneyStep('sd-jpg-04-plan', 0, true);
   });
 
-  it('Step 5: 审阅并部署', async () => {
+  it('Step 5~6: 审阅部署并验证 MySQL label 列', async () => {
     await advanceSchemaDiffToReview();
     await deploySchemaDiffPlan();
     await captureJourneyStep('sd-jpg-05-deploy', 0, true);
-  });
-
-  it('Step 6: 验证 MySQL 目标已添加 label 列', async () => {
     const exists = await columnExists(TGT_ID, TABLE, 'label', 'mysql');
     expect(exists).toBe(true);
     await captureJourneyStep('sd-jpg-06-verified', 0, true);

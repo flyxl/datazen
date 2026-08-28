@@ -27,7 +27,7 @@ import {
   countTableColumns,
   pgConnectionConfig,
   setupMultiTableSchemaDiff,
-  setupPgWideSourceMinimalTarget,
+  setupPgManyColumnsSourceMinimalTarget,
   teardownSchemaDiffFixture,
 } from '../lib/schemaDiffFixtures.js';
 
@@ -49,7 +49,7 @@ describe(`PG→PG 宽类型 ${SCHEMA_DIFF_WIDE_COLUMN_COUNT} 列 (SD-COMP-PG-PG)
     await invokeBackend('save_connection', {
       config: pgConnectionConfig(TGT_ID, TGT_NAME, PG_SYNC_TGT_DB),
     });
-    await setupPgWideSourceMinimalTarget(SRC_ID, TGT_ID, TABLE);
+    await setupPgManyColumnsSourceMinimalTarget(SRC_ID, TGT_ID, TABLE);
   });
 
   after(async () => {
@@ -64,9 +64,11 @@ describe(`PG→PG 宽类型 ${SCHEMA_DIFF_WIDE_COLUMN_COUNT} 列 (SD-COMP-PG-PG)
     await selectDzOption(t('sync.selectTarget'), TGT_NAME);
     await setSchemaDiffTables(TABLE);
     await clickSchemaDiffCompare();
-    const body = await $('body').getText();
-    expect(body).toContain(TABLE);
-    expect(body).toContain(t('schemaDiff.missingOnTarget'));
+    const detail = await $('[data-testid="schema-diff-detail-panel"]');
+    await detail.waitForDisplayed({ timeout: 10000 });
+    const detailText = await detail.getText();
+    expect(detailText).toContain(TABLE);
+    expect(detailText).toContain(t('schemaDiff.missingOnTarget'));
     await captureJourneyStep('sd-comp-compare', 0, true);
   });
 

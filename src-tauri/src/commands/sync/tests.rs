@@ -78,6 +78,32 @@ fn ir_diff_treats_equivalent_varchar_as_same() {
 }
 
 #[test]
+fn ir_diff_detects_columns_missing_on_target() {
+    let src = IRTable {
+        name: "t".into(),
+        columns: vec![
+            ir_col("id", IRType::Int64, false, true),
+            ir_col("email", IRType::Text, true, false),
+        ],
+        primary_keys: vec!["id".into()],
+        table_options: None,
+    };
+    let tgt = IRTable {
+        name: "t".into(),
+        columns: vec![ir_col("id", IRType::Int64, false, true)],
+        primary_keys: vec!["id".into()],
+        table_options: None,
+    };
+
+    let diff = diff_table_schemas_ir("t", &src, &tgt);
+    assert_eq!(diff.missing_on_target.len(), 1);
+    assert_eq!(diff.missing_on_target[0].name, "email");
+    assert_eq!(diff.added.len(), 1);
+    assert!(diff.extra_on_target.is_empty());
+    assert!(diff.changed.is_empty());
+}
+
+#[test]
 fn ir_diff_detects_type_nullable_and_pk_changes() {
     let src = IRTable {
         name: "t".into(),

@@ -117,25 +117,21 @@ describe('结构对比完整用户旅程 (SD-JOURNEY)', () => {
     await captureJourneyStep('sd-journey-05-compare-result', 0, true);
   });
 
-  it('Step 5: 生成部署计划应进入 Plan 步骤', async () => {
+  it('Step 5~7: 生成计划→审阅→部署并验证 extra_col', async () => {
     await clickSchemaDiffGeneratePlan();
-    const body = await $('body').getText();
+    let body = await $('body').getText();
     expect(body).toContain(t('schemaDiff.stepPlan'));
     expect(body).toContain(t('schemaDiff.statements'));
     await captureJourneyStep('sd-journey-06-plan-generated', 0, true);
-  });
 
-  it('Step 6: 进入审阅 / 部署步骤', async () => {
     await advanceSchemaDiffToReview();
-    const body = await $('body').getText();
+    body = await $('body').getText();
     expect(body).toContain(t('schemaDiff.reviewTarget'));
     expect(body).toContain(t('schemaDiff.deploy'));
     await captureJourneyStep('sd-journey-07-review-step', 0, true);
-  });
 
-  it('Step 7: 部署到目标并验证 extra_col 列已添加', async () => {
     await deploySchemaDiffPlan();
-    const body = await $('body').getText();
+    body = await $('body').getText();
     expect(body).toContain(t('schemaDiff.deployStatus'));
     await captureJourneyStep('sd-journey-08-deploy-complete', 0, true);
 

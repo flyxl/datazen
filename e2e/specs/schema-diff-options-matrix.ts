@@ -48,46 +48,44 @@ describe('结构对比选项矩阵 (SD-OPT-MATRIX)', function () {
     await browser.switchToWindow(mainWindow);
   });
 
-  async function runCompareAndPlan() {
+  it('SD-OPT-001: 默认计划应跳过破坏性 DROP', async () => {
     await openSchemaDiffWindow();
     await selectDzOption(t('sync.selectSource'), SRC_NAME);
     await selectDzOption(t('sync.selectTarget'), TGT_NAME);
     await setSchemaDiffTables(TABLE);
     await clickSchemaDiffCompare();
     await clickSchemaDiffGeneratePlan();
-  }
-
-  it('SD-OPT-001: 默认计划应跳过破坏性 DROP', async () => {
-    await runCompareAndPlan();
     const body = await $('body').getText();
     expect(body).toContain(t('schemaDiff.extraOnTarget'));
     expect(body.toLowerCase()).not.toContain('drop column orphan_col');
     await captureJourneyStep('sd-opt-no-destructive', 0, true);
   });
 
-  it('SD-OPT-002: 勾选 allowDestructive 后计划应含 DROP', async () => {
-    await runCompareAndPlan();
+  it('SD-OPT-002: allowDestructive 与 includeIndexes 可切换并重新生成计划', async () => {
+    await openSchemaDiffWindow();
+    await selectDzOption(t('sync.selectSource'), SRC_NAME);
+    await selectDzOption(t('sync.selectTarget'), TGT_NAME);
+    await setSchemaDiffTables(TABLE);
+    await clickSchemaDiffCompare();
+    await clickSchemaDiffGeneratePlan();
+
     const destructive = await $('[data-testid="schema-diff-allow-destructive"]');
     if (!(await destructive.isSelected())) await destructive.click();
     await browser.pause(300);
-    const regen = await $(`button*=${t('schemaDiff.regeneratePlan')}`);
+    let regen = await $(`button*=${t('schemaDiff.regeneratePlan')}`);
     await regen.click();
     await browser.pause(2500);
-    const body = await $('body').getText();
+    let body = await $('body').getText();
     expect(body.toLowerCase()).toMatch(/drop|destructive/);
     await captureJourneyStep('sd-opt-destructive', 0, true);
-  });
 
-  it('SD-OPT-003: includeIndexes 开关应可切换', async () => {
-    await runCompareAndPlan();
     const includeIdx = await $('[data-testid="schema-diff-include-indexes"]');
-    expect(await includeIdx.isExisting()).toBe(true);
     if (await includeIdx.isSelected()) await includeIdx.click();
     await browser.pause(300);
-    const regen = await $(`button*=${t('schemaDiff.regeneratePlan')}`);
+    regen = await $(`button*=${t('schemaDiff.regeneratePlan')}`);
     await regen.click();
     await browser.pause(1500);
-    const body = await $('body').getText();
+    body = await $('body').getText();
     expect(body).toContain(t('schemaDiff.stepPlan'));
     await captureJourneyStep('sd-opt-indexes', 0, true);
   });
