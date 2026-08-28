@@ -249,7 +249,7 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
   const TGT_ID = `e2e_ds_edge_tgt_${STAMP}`;
   const SRC_NAME = `DS-Edge-Src-${STAMP}`;
   const TGT_NAME = `DS-Edge-Tgt-${STAMP}`;
-  const TABLE = `ds_edge_${STAMP}`;
+  const TABLE = `e2e_ds_edge_${STAMP}`;
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();

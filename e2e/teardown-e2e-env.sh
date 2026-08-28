@@ -64,6 +64,8 @@ BEGIN
         tablename ILIKE '%e2e%'
         OR tablename LIKE 'sync\_%' ESCAPE '\'
         OR tablename LIKE '_e2e\_%' ESCAPE '\'
+        OR tablename LIKE 'ds\_j\_%' ESCAPE '\'
+        OR tablename LIKE 'ds\_edge\_%' ESCAPE '\'
       )
   LOOP
     EXECUTE format('DROP TABLE IF EXISTS %I CASCADE', r.tablename);
@@ -87,6 +89,8 @@ drop_mysql_ephemeral_tables() {
         table_name LIKE '%e2e%'
         OR table_name LIKE 'sync\_%'
         OR table_name LIKE '_e2e\_%'
+        OR table_name LIKE 'ds\_j\_%'
+        OR table_name LIKE 'ds\_edge\_%'
       );
   " | mysql_cmd "$db" || true
   echo "  Dropped ephemeral tables in MySQL $db"

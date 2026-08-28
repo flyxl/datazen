@@ -439,6 +439,74 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     );
     expect(pending.length).toBe(0);
   });
+
+  it('SYNC-REAL-024: compare + apply on PG wide-type table (numeric, bool, double)', async () => {
+    await runSQL(
+      srcSessionId,
+      `
+      DROP TABLE IF EXISTS sync_pg_types;
+      CREATE TABLE sync_pg_types (
+        id integer NOT NULL PRIMARY KEY,
+        name text NOT NULL,
+        price numeric(10,2),
+        ratio double precision,
+        is_active boolean NOT NULL DEFAULT true,
+        note varchar(200)
+      );
+      INSERT INTO sync_pg_types (id, name, price, ratio, is_active, note) VALUES
+        (1, 'Alpha', 19.99, 3.14, true, 'first'),
+        (2, 'Beta', 29.50, 2.71, false, 'second');
+    `,
+    );
+    await runSQL(
+      tgtSessionId,
+      `
+      DROP TABLE IF EXISTS sync_pg_types;
+      CREATE TABLE sync_pg_types (
+        id integer NOT NULL PRIMARY KEY,
+        name text NOT NULL,
+        price numeric(10,2),
+        ratio double precision,
+        is_active boolean NOT NULL DEFAULT true,
+        note varchar(200)
+      );
+      INSERT INTO sync_pg_types (id, name, price, ratio, is_active, note) VALUES
+        (1, 'Alpha', 19.99, 3.14, true, 'first');
+    `,
+    );
+
+    const compared = await invokeBackend<CompareDataSyncResult[]>('compare_data_sync', {
+      sourceDbSessionId: srcSessionId,
+      targetDbSessionId: tgtSessionId,
+      tables: ['sync_pg_types'],
+      options: { insert: true, update: true, delete: false },
+    });
+    const table = compared.find((r) => r.sourceTable === 'sync_pg_types');
+    expect(table).toBeDefined();
+    expect(table!.rows?.some((r) => r.operation === 'INSERT')).toBe(true);
+
+    const applyResult = await invokeBackend<ExecutionResult>('apply_data_sync', {
+      sourceDbSessionId: srcSessionId,
+      targetDbSessionId: tgtSessionId,
+      tables: ['sync_pg_types'],
+      options: { insert: true, update: true, delete: false },
+    });
+    expect(applyResult.applied).toBeGreaterThan(0);
+    expect(applyResult.rolledBack).toBe(false);
+
+    const after = await invokeBackend<CompareDataSyncResult[]>('compare_data_sync', {
+      sourceDbSessionId: srcSessionId,
+      targetDbSessionId: tgtSessionId,
+      tables: ['sync_pg_types'],
+      options: { insert: true, update: true, delete: false },
+    });
+    const synced = after.find((r) => r.sourceTable === 'sync_pg_types');
+    expect(synced).toBeDefined();
+    const pending = (synced!.rows ?? []).filter(
+      (r) => r.operation === 'INSERT' || r.operation === 'UPDATE' || r.operation === 'DELETE',
+    );
+    expect(pending.length).toBe(0);
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════

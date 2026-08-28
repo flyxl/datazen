@@ -21,6 +21,7 @@ import {
   runDeleteEnableAcceptBranch,
   runEndpointSwapBranch,
   runExecuteAndVerify,
+  runExecuteDeleteConfirmBranch,
   runPostCompareReviewBranches,
   runPreCompareValidationBranches,
   runUnsupportedPairHintBranch,
@@ -124,6 +125,9 @@ function defineDriverJourney(label: string, driver: 'postgresql' | 'mysql') {
 
       await runExecuteAndVerify(f);
       await captureStep(`${f.screenshotPrefix}-15-execute-verified`);
+
+      await runExecuteDeleteConfirmBranch(f);
+      await captureStep(`${f.screenshotPrefix}-18-delete-execute-verified`);
     });
   });
 }

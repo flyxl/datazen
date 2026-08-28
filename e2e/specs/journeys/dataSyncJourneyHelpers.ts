@@ -66,7 +66,7 @@ export function createFixture(driver: SyncDriverKind, stamp: string): SyncJourne
     tgtId: `e2e_ds_j_${tag}_tgt_${stamp}`,
     srcName: `DS-J-${tag.toUpperCase()}-Src-${stamp}`,
     tgtName: `DS-J-${tag.toUpperCase()}-Tgt-${stamp}`,
-    table: `ds_j_${tag}_${stamp}`,
+    table: `e2e_ds_j_${tag}_${stamp}`,
     srcDatabase: driver === 'postgresql' ? 'datazen_sync_src' : 'datazen_sync_mysql_src',
     tgtDatabase: driver === 'postgresql' ? 'datazen_sync_tgt' : 'datazen_sync_mysql_tgt',
     screenshotPrefix: `ds-journey-${tag}`,
@@ -339,6 +339,101 @@ export async function runExecuteAndVerify(f: SyncJourneyFixture) {
   const nameRows = await executeQuery(tgtSession, `SELECT name FROM ${f.table} WHERE id = 2`);
   const names = parseQueryRows(nameRows);
   expect(String(names[0]?.[0])).toContain('B-new');
+}
+
+/** After initial sync: add tgt-only row, re-compare, enable delete, confirm execute. */
+export async function runExecuteDeleteConfirmBranch(f: SyncJourneyFixture) {
+  const tgtSession = await connectConfig(f.tgtId);
+  await withSafeModeOff(async () => {
+    await executeQuery(tgtSession, `INSERT INTO ${f.table} (id, name) VALUES (6,'extra')`);
+  });
+
+  const deleteOpt = await $('[data-testid="data-sync-option-delete"]');
+  await deleteOpt.click();
+  await browser.pause(400);
+  const enableBtn = await $(`button*=${t('sync.enableDelete')}`);
+  await enableBtn.waitForDisplayed({ timeout: 5000 });
+  await enableBtn.click();
+  await browser.pause(300);
+  expect(await deleteOpt.isSelected()).toBe(true);
+
+  await $('[data-testid="data-sync-compare"]').click();
+  await browser.waitUntil(
+    async () => {
+      const cancel = await $('[data-testid="data-sync-cancel"]');
+      return !(await cancel.isDisplayed().catch(() => false));
+    },
+    { timeout: 120000, timeoutMsg: 'delete re-compare did not finish' },
+  );
+  const err = await $('[data-testid="data-sync-error"]');
+  if (await err.isDisplayed().catch(() => false)) {
+    throw new Error(`delete re-compare error: ${await err.getText()}`);
+  }
+  await captureStep(`${f.screenshotPrefix}-16-delete-recompared`);
+
+  const deleteFilter = await $(`button*=${t('sync.filter.delete')}`);
+  await deleteFilter.click();
+  await browser.pause(300);
+
+  await browser.execute((tableName: string) => {
+    const rows = document.querySelectorAll('[data-testid="data-sync-mapping-row"]');
+    for (const row of rows) {
+      if ((row.textContent || '').includes(tableName)) {
+        (row as HTMLElement).click();
+      }
+    }
+  }, f.table);
+  await browser.pause(400);
+
+  const selectAllDelete = await $(`button*=${t('sync.selectAllDelete')}`);
+  await selectAllDelete.waitForDisplayed({ timeout: 10000 });
+  await selectAllDelete.click();
+  await browser.pause(300);
+
+  const start = await $('[data-testid="data-sync-start"]');
+  await start.waitForClickable({ timeout: 20000 });
+  await start.click();
+  await browser.pause(400);
+  expect(await $('body').getText()).toContain(t('sync.executeDeleteTitle'));
+  await captureStep(`${f.screenshotPrefix}-17-delete-execute-confirm`);
+  const execButtons = await $$(`button*=${t('sync.execute')}`);
+  let clicked = false;
+  for (let i = execButtons.length - 1; i >= 0; i--) {
+    const btn = execButtons[i];
+    if (await btn.isDisplayed().catch(() => false)) {
+      await btn.click();
+      clicked = true;
+      break;
+    }
+  }
+  expect(clicked).toBe(true);
+
+  await browser.waitUntil(
+    async () => {
+      const cancel = await $('[data-testid="data-sync-cancel"]');
+      return !(await cancel.isDisplayed().catch(() => false));
+    },
+    { timeout: 120000, timeoutMsg: 'delete execute did not finish' },
+  );
+
+  await browser.waitUntil(
+    async () => {
+      const rows = await executeQuery(
+        tgtSession,
+        f.driver === 'postgresql'
+          ? `SELECT count(*)::int AS c FROM ${f.table}`
+          : `SELECT count(*) AS c FROM ${f.table}`,
+      );
+      return queryScalar(rows, 'c') === 5;
+    },
+    { timeout: 30000, interval: 1000, timeoutMsg: 'row count after delete execute not 5' },
+  );
+
+  const orphan = await executeQuery(
+    tgtSession,
+    `SELECT count(*) AS c FROM ${f.table} WHERE id = 6`,
+  );
+  expect(queryScalar(orphan, 'c')).toBe(0);
 }
 
 /** Validation branches reachable before a successful compare (driver-agnostic UI). */
