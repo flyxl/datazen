@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use datazen_driver_api::TableSchema;
 
-use crate::data_sync::sql::{format_literal, quote_ident_sql};
+use crate::data_sync::sql::{format_literal, qualify_relation_sql, quote_ident_sql};
 use crate::db::{ConnectionHandle, DatabaseDriver, Value};
 use crate::transfer::adapter::SyncTargetAdapter;
 use crate::transfer::ir::IRType;
@@ -77,6 +77,15 @@ pub fn build_batch_insert_sql(
     rows: &[Vec<Option<Value>>],
     quote: char,
 ) -> String {
+    build_batch_insert_sql_ref(&quote_ident_sql(table, quote), columns, rows, quote)
+}
+
+pub fn build_batch_insert_sql_ref(
+    table_ref: &str,
+    columns: &[&ColumnMapping],
+    rows: &[Vec<Option<Value>>],
+    quote: char,
+) -> String {
     if rows.is_empty() {
         return String::new();
     }
@@ -91,7 +100,7 @@ pub fn build_batch_insert_sql(
         .collect();
     format!(
         "INSERT INTO {} ({}) VALUES {}",
-        q(table),
+        table_ref,
         col_list.join(", "),
         value_groups.join(", ")
     )
@@ -99,6 +108,22 @@ pub fn build_batch_insert_sql(
 
 pub fn build_batch_insert_sql_ir(
     table: &str,
+    columns: &[&ColumnMapping],
+    rows: &[Vec<Option<Value>>],
+    tgt_adapter: &dyn SyncTargetAdapter,
+    source_column_ir_types: &HashMap<String, IRType>,
+) -> String {
+    build_batch_insert_sql_ir_ref(
+        &tgt_adapter.quote_ident(table),
+        columns,
+        rows,
+        tgt_adapter,
+        source_column_ir_types,
+    )
+}
+
+pub fn build_batch_insert_sql_ir_ref(
+    table_ref: &str,
     columns: &[&ColumnMapping],
     rows: &[Vec<Option<Value>>],
     tgt_adapter: &dyn SyncTargetAdapter,
@@ -129,14 +154,18 @@ pub fn build_batch_insert_sql_ir(
         .collect();
     format!(
         "INSERT INTO {} ({}) VALUES {}",
-        q(table),
+        table_ref,
         col_list.join(", "),
         value_groups.join(", ")
     )
 }
 
 pub fn build_truncate_sql(table: &str, quote: char) -> String {
-    format!("TRUNCATE TABLE {}", quote_ident_sql(table, quote))
+    build_truncate_sql_ref(&quote_ident_sql(table, quote))
+}
+
+pub fn build_truncate_sql_ref(table_ref: &str) -> String {
+    format!("TRUNCATE TABLE {table_ref}")
 }
 
 pub fn map_row_values(
@@ -167,19 +196,25 @@ pub fn map_row_values(
 }
 
 fn build_insert_for_rows(
-    table: &str,
+    table_ref: &str,
     columns: &[&ColumnMapping],
     rows: &[Vec<Option<Value>>],
     formatter: &ValueFormatter<'_>,
 ) -> String {
     match formatter {
         ValueFormatter::SameFamily { quote } => {
-            build_batch_insert_sql(table, columns, rows, *quote)
+            build_batch_insert_sql_ref(table_ref, columns, rows, *quote)
         }
         ValueFormatter::Ir {
             tgt_adapter,
             source_column_ir_types,
-        } => build_batch_insert_sql_ir(table, columns, rows, *tgt_adapter, source_column_ir_types),
+        } => build_batch_insert_sql_ir_ref(
+            table_ref,
+            columns,
+            rows,
+            *tgt_adapter,
+            source_column_ir_types,
+        ),
     }
 }
 
@@ -224,6 +259,8 @@ pub async fn execute_transfer_data(
 
     let src_quote = src_driver.quote_char();
     let tgt_quote = tgt_driver.quote_char();
+    let src_family = src_driver.driver_type();
+    let tgt_family = tgt_driver.driver_type();
     let batch = job.options.batch_size as usize;
     let mut tables_out = Vec::new();
     let mut total_rows = 0u64;
@@ -319,7 +356,14 @@ pub async fn execute_transfer_data(
                 continue;
             }
         } else if job.write_mode == WriteMode::TruncateInsert {
-            let truncate_sql = build_truncate_sql(&table.target_table, tgt_quote);
+            let tgt_table_ref = qualify_relation_sql(
+                &tgt_family,
+                Some(&job.target.database),
+                job.target.schema.as_deref(),
+                &table.target_table,
+                tgt_quote,
+            );
+            let truncate_sql = build_truncate_sql_ref(&tgt_table_ref);
             if let Err(e) = tgt_driver
                 .execute(tgt_handle, &truncate_sql)
                 .await
@@ -340,15 +384,26 @@ pub async fn execute_transfer_data(
             }
         }
 
+        let src_table_ref = qualify_relation_sql(
+            &src_family,
+            Some(&job.source.database),
+            job.source.schema.as_deref(),
+            &table.source_table,
+            src_quote,
+        );
+        let tgt_table_ref = qualify_relation_sql(
+            &tgt_family,
+            Some(&job.target.database),
+            job.target.schema.as_deref(),
+            &table.target_table,
+            tgt_quote,
+        );
+
         let select_cols: Vec<String> = columns
             .iter()
             .map(|c| quote_ident_sql(&c.source_column, src_quote))
             .collect();
-        let base_sql = format!(
-            "SELECT {} FROM {}",
-            select_cols.join(", "),
-            quote_ident_sql(&table.source_table, src_quote)
-        );
+        let base_sql = format!("SELECT {} FROM {}", select_cols.join(", "), src_table_ref);
 
         let mut offset = 0usize;
         let mut table_rows = 0u64;
@@ -392,7 +447,7 @@ pub async fn execute_transfer_data(
             match mapped_rows {
                 Ok(rows) => {
                     let insert_sql =
-                        build_insert_for_rows(&table.target_table, &columns, &rows, formatter);
+                        build_insert_for_rows(&tgt_table_ref, &columns, &rows, formatter);
                     if insert_sql.is_empty() {
                         break;
                     }
@@ -533,12 +588,22 @@ mod tests {
             .iter()
             .map(|c| quote_ident_sql(&c.source_column, src_quote))
             .collect();
-        let sql = format!(
-            "SELECT {} FROM {}",
-            select_cols.join(", "),
-            quote_ident_sql("users", src_quote)
-        );
+        let src_table_ref =
+            qualify_relation_sql("postgresql", Some("goecoride"), None, "users", src_quote);
+        let sql = format!("SELECT {} FROM {}", select_cols.join(", "), src_table_ref);
         assert_eq!(sql, r#"SELECT "id" FROM "users""#);
+    }
+
+    #[test]
+    fn mysql_transfer_uses_catalog_qualified_table_refs() {
+        let src_ref = qualify_relation_sql("mysql", Some("srcdb"), None, "users", '`');
+        let tgt_ref = qualify_relation_sql("mysql", Some("tgtdb"), None, "users", '`');
+        assert_eq!(src_ref, "`srcdb`.`users`");
+        assert_eq!(tgt_ref, "`tgtdb`.`users`");
+        assert_eq!(
+            build_truncate_sql_ref(&tgt_ref),
+            "TRUNCATE TABLE `tgtdb`.`users`"
+        );
     }
 
     #[test]

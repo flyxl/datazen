@@ -95,7 +95,16 @@ pub(crate) async fn inspect_data_transfer_impl(
         .iter()
         .filter(|t| matches!(t.table_type, TableType::Table))
     {
-        if let Ok(n) = count_rows(src_driver.as_ref(), &src_handle, &table.name).await {
+        if let Ok(n) = count_rows(
+            src_driver.as_ref(),
+            &src_handle,
+            &src_config.database_type,
+            Some(&src_db),
+            None,
+            &table.name,
+        )
+        .await
+        {
             source_row_counts.insert(table.name.clone(), n);
         }
     }

@@ -104,6 +104,7 @@ pub(crate) async fn compare_data_sync_impl(
             src_driver.clone(),
             src_handle.clone(),
             mapping.source_table.clone(),
+            source_database.clone(),
             source_schema.clone(),
             column_names.clone(),
             pk_columns.clone(),
@@ -114,6 +115,7 @@ pub(crate) async fn compare_data_sync_impl(
             tgt_driver.clone(),
             tgt_handle.clone(),
             mapping.target_table.clone(),
+            target_database.clone(),
             target_schema.clone(),
             column_names.clone(),
             pk_columns,
@@ -177,7 +179,7 @@ pub(crate) async fn generate_data_sync_sql_impl(
         let stmts = if family == "mysql" {
             generate_table_sql(
                 table,
-                None,
+                target_database.as_deref(),
                 &pk,
                 &column_names,
                 |n| quote_ident_sql(n, quote),

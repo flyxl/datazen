@@ -11,7 +11,9 @@ use super::sql::quote_ident_sql;
 /// `(pk1, pk2, …) > (placeholder…)` matching the PK `ORDER BY`.
 pub fn build_keyset_select_sql<P>(
     table: &str,
+    database: Option<&str>,
     schema: Option<&str>,
+    family: &str,
     columns: &[String],
     pk_columns: &[String],
     after_key: Option<&[Value]>,
@@ -67,7 +69,7 @@ where
         String::new()
     };
 
-    let qualified = super::sql::qualify_table_sql(schema, table, quote);
+    let qualified = super::sql::qualify_relation_sql(family, database, schema, table, quote);
     let sql = format!(
         "SELECT {select_cols} FROM {qualified}{where_clause} ORDER BY {order_cols} LIMIT {limit}",
         limit = limit.max(1),
@@ -97,6 +99,8 @@ mod tests {
         let (sql, params) = build_keyset_select_sql(
             "users",
             None,
+            None,
+            "mysql",
             &cols(),
             &pk1(),
             None,
@@ -113,10 +117,34 @@ mod tests {
     }
 
     #[test]
+    fn mysql_catalog_qualified_table() {
+        let (sql, params) = build_keyset_select_sql(
+            "users",
+            Some("mydb"),
+            None,
+            "mysql",
+            &cols(),
+            &pk1(),
+            None,
+            100,
+            '`',
+            mysql_placeholder,
+        )
+        .unwrap();
+        assert!(params.is_empty());
+        assert_eq!(
+            sql,
+            "SELECT `id`, `name`, `age` FROM `mydb`.`users` ORDER BY `id` ASC LIMIT 100"
+        );
+    }
+
+    #[test]
     fn mysql_next_page_single_pk() {
         let (sql, params) = build_keyset_select_sql(
             "users",
             None,
+            None,
+            "mysql",
             &cols(),
             &pk1(),
             Some(&[Value::Integer(42)]),
@@ -139,6 +167,8 @@ mod tests {
         let (sql, params) = build_keyset_select_sql(
             "shards",
             None,
+            None,
+            "mysql",
             &cols,
             &pk2(),
             Some(&[Value::Integer(1), Value::String("east".into())]),
@@ -162,6 +192,8 @@ mod tests {
         let (sql, params) = build_keyset_select_sql(
             "users",
             None,
+            None,
+            "postgresql",
             &cols(),
             &pk1(),
             None,
@@ -183,6 +215,8 @@ mod tests {
         let (sql, params) = build_keyset_select_sql(
             "shards",
             None,
+            None,
+            "postgresql",
             &cols,
             &pk2(),
             Some(&[Value::Integer(2), Value::String("west".into())]),
@@ -204,9 +238,19 @@ mod tests {
 
     #[test]
     fn rejects_empty_pk() {
-        let err =
-            build_keyset_select_sql("t", None, &cols(), &[], None, 1, '"', postgres_placeholder)
-                .unwrap_err();
+        let err = build_keyset_select_sql(
+            "t",
+            None,
+            None,
+            "postgresql",
+            &cols(),
+            &[],
+            None,
+            1,
+            '"',
+            postgres_placeholder,
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("primary key"));
     }
 
@@ -215,6 +259,8 @@ mod tests {
         let err = build_keyset_select_sql(
             "t",
             None,
+            None,
+            "postgresql",
             &cols(),
             &pk2(),
             Some(&[Value::Integer(1)]),
@@ -230,7 +276,9 @@ mod tests {
     fn postgres_schema_qualified_table() {
         let (sql, params) = build_keyset_select_sql(
             "users",
+            None,
             Some("public"),
+            "postgresql",
             &cols(),
             &pk1(),
             None,
