@@ -234,7 +234,11 @@ describe('TableStructureEditor targets the panel database (F1 BUG-003)', () => {
   it('executes DDL against the target database and succeeds', async () => {
     mockPlanTableStructureChanges.mockResolvedValue({
       statements: [
-        { sql: 'CREATE TABLE "t_f1" ("id" integer NOT NULL)', summary: 'create table', risk: 'additive' },
+        {
+          sql: 'CREATE TABLE "t_f1" ("id" integer NOT NULL)',
+          summary: 'create table',
+          risk: 'additive',
+        },
       ],
     });
     const onSuccess = vi.fn();
@@ -256,6 +260,9 @@ describe('TableStructureEditor targets the panel database (F1 BUG-003)', () => {
     expect(mockExecuteQuery).toHaveBeenCalledWith(
       'conn-1',
       'CREATE TABLE "t_f1" ("id" integer NOT NULL)',
+      undefined,
+      'db_b',
+      null,
     );
   });
 
@@ -404,10 +411,18 @@ describe('TableStructureEditor branches', () => {
         dbSessionId: 'conn-1',
         command: 'estimate_table_rows',
         input: expect.objectContaining({ table: 'users' }),
+        database: 'db_b',
+        schema: null,
       }),
     );
     expect(mockConfirmApply).toHaveBeenCalled();
-    expect(mockExecuteQuery).toHaveBeenCalledWith('conn-1', 'DROP COLUMN legacy');
+    expect(mockExecuteQuery).toHaveBeenCalledWith(
+      'conn-1',
+      'DROP COLUMN legacy',
+      undefined,
+      'db_b',
+      null,
+    );
   });
 
   it('aborts risky alters when the user declines the confirmation', async () => {

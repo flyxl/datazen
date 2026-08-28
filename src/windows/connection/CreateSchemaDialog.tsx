@@ -13,6 +13,8 @@ interface CreateSchemaDialogProps {
   open: boolean;
   onClose: () => void;
   dbSessionId: string;
+  /** F1: target catalog for create_schema (PG / SQL Server). */
+  database?: string | null;
   onCreated?: () => void | Promise<void>;
 }
 
@@ -20,6 +22,7 @@ export function CreateSchemaDialog({
   open,
   onClose,
   dbSessionId,
+  database = null,
   onCreated,
 }: CreateSchemaDialogProps) {
   const { t } = useI18n();
@@ -54,7 +57,12 @@ export function CreateSchemaDialog({
         if (value.trim()) input[field] = value.trim();
       }
 
-      await driverCommands.execute({ dbSessionId, command: 'create_schema', input });
+      await driverCommands.execute({
+        dbSessionId,
+        command: 'create_schema',
+        input,
+        database,
+      });
       resetForm();
       await onCreated?.();
       onClose();
@@ -63,7 +71,7 @@ export function CreateSchemaDialog({
     } finally {
       setRunning(false);
     }
-  }, [name, optionalValues, dbSessionId, resetForm, onCreated, onClose]);
+  }, [name, optionalValues, dbSessionId, database, resetForm, onCreated, onClose]);
 
   return (
     <Dialog

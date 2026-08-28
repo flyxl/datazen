@@ -13,6 +13,10 @@ const {
   listenCrossWindowMock,
   getActiveConnectionState,
   closeMock,
+  minimizeMock,
+  closeRequestedHandler,
+  webviewGetAllMock,
+  hasOpenChildWindowsMock,
   fetchConnectionsMock,
   fetchGroupsMock,
   fetchDashboardsMock,
@@ -41,6 +45,12 @@ const {
     connections: {} as Record<string, { status: string; connectionId?: string }>,
   })),
   closeMock: vi.fn().mockResolvedValue(undefined),
+  minimizeMock: vi.fn().mockResolvedValue(undefined),
+  closeRequestedHandler: {
+    current: null as null | ((event: { preventDefault: () => void }) => Promise<void>),
+  },
+  webviewGetAllMock: vi.fn().mockResolvedValue([{ label: 'main' }]),
+  hasOpenChildWindowsMock: vi.fn().mockResolvedValue(false),
   fetchConnectionsMock: vi.fn().mockResolvedValue(undefined),
   fetchGroupsMock: vi.fn().mockResolvedValue(undefined),
   fetchDashboardsMock: vi.fn().mockResolvedValue(undefined),
@@ -156,6 +166,7 @@ vi.mock('../../../commands/connection', () => ({
 
 vi.mock('../../../lib/windowManager', () => ({
   PENDING_CONNECTION_KEY: 'datazen:pending-connection',
+  hasOpenChildWindows: (...args: unknown[]) => hasOpenChildWindowsMock(...args),
   openNewConnectionDialog: (...args: unknown[]) => openNewConnectionDialogMock(...args),
   openBackupWindow: (...args: unknown[]) => openBackupWindowMock(...args),
   openDataSyncWindow: (...args: unknown[]) => openDataSyncWindowMock(...args),
@@ -258,8 +269,18 @@ vi.mock('../../../lib/databaseTypes', async () => {
 vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: () => ({
     close: closeMock,
-    onCloseRequested: vi.fn().mockResolvedValue(() => {}),
+    minimize: minimizeMock,
+    onCloseRequested: vi.fn((handler: (event: { preventDefault: () => void }) => Promise<void>) => {
+      closeRequestedHandler.current = handler;
+      return Promise.resolve(() => {});
+    }),
   }),
+}));
+
+vi.mock('@tauri-apps/api/webviewWindow', () => ({
+  WebviewWindow: {
+    getAll: (...args: unknown[]) => webviewGetAllMock(...args),
+  },
 }));
 
 function setPendingConnection(data: Record<string, string>) {
@@ -269,6 +290,9 @@ function setPendingConnection(data: Record<string, string>) {
 beforeEach(() => {
   vi.clearAllMocks();
   menuOpenSettingsHandler.current = null;
+  closeRequestedHandler.current = null;
+  hasOpenChildWindowsMock.mockResolvedValue(false);
+  webviewGetAllMock.mockResolvedValue([{ label: 'main' }]);
   localStorage.clear();
   getActiveConnectionState.mockReturnValue({ connections: {} });
   connectMock.mockResolvedValue('conn-live-1');
@@ -487,5 +511,47 @@ describe('ConnectionPage', () => {
 
     expect(connectionsNav.className).toMatch(/bg-accent\/20/);
     expect(settingsNav.className).not.toMatch(/bg-accent\/20/);
+  });
+
+  it('TC-window: minimizes main instead of closing when sub-windows are open', async () => {
+    hasOpenChildWindowsMock.mockResolvedValueOnce(true);
+    setPendingConnection({
+      connectionId: 'cfg-1',
+      connectionName: 'Local PG',
+      databaseType: 'postgresql',
+    });
+
+    render(<ConnectionPage />);
+    await waitFor(() => expect(connectMock).toHaveBeenCalledWith('cfg-1'));
+    await waitFor(() => expect(closeRequestedHandler.current).not.toBeNull());
+
+    const preventDefault = vi.fn();
+    await closeRequestedHandler.current?.({ preventDefault });
+
+    expect(preventDefault).toHaveBeenCalled();
+    expect(minimizeMock).toHaveBeenCalled();
+    expect(releaseConnectionMock).not.toHaveBeenCalled();
+    expect(closeMock).not.toHaveBeenCalled();
+  });
+
+  it('TC-window: releases connections and closes when no sub-windows remain', async () => {
+    hasOpenChildWindowsMock.mockResolvedValueOnce(false);
+    setPendingConnection({
+      connectionId: 'cfg-1',
+      connectionName: 'Local PG',
+      databaseType: 'postgresql',
+    });
+
+    render(<ConnectionPage />);
+    await waitFor(() => expect(connectMock).toHaveBeenCalledWith('cfg-1'));
+    await waitFor(() => expect(closeRequestedHandler.current).not.toBeNull());
+
+    const preventDefault = vi.fn();
+    await closeRequestedHandler.current?.({ preventDefault });
+
+    expect(preventDefault).toHaveBeenCalled();
+    expect(minimizeMock).not.toHaveBeenCalled();
+    expect(releaseConnectionMock).toHaveBeenCalledWith('conn-live-1');
+    expect(closeMock).toHaveBeenCalled();
   });
 });

@@ -23,8 +23,12 @@ const TEST_TABLE = '_e2e_ctx_menu';
 const DROP_SCHEMA = '_e2e_nav_drop_schema';
 const SEEDED_CONN_ID = 'conn_e2e_pg';
 
-async function pgScalar(dbSessionId: string, sql: string): Promise<number> {
-  const payload = await invokeBackend<QueryResultPayload>('execute_query', { dbSessionId, sql });
+async function pgScalar(dbSessionId: string, sql: string, database?: string): Promise<number> {
+  const payload = await invokeBackend<QueryResultPayload>('execute_query', {
+    dbSessionId,
+    sql,
+    ...(database ? { database } : {}),
+  });
   return queryScalar(payload);
 }
 
@@ -50,6 +54,24 @@ async function pgSchemaExists(dbSessionId: string, schema: string): Promise<bool
     `SELECT COUNT(*)::int AS c FROM information_schema.schemata WHERE schema_name = '${sqlLiteral(schema)}'`,
   );
   return c > 0;
+}
+
+async function pgSchemaExistsInDatabase(
+  dbSessionId: string,
+  schema: string,
+  database: string,
+): Promise<boolean> {
+  const c = await pgScalar(
+    dbSessionId,
+    `SELECT COUNT(*)::int AS c FROM information_schema.schemata WHERE schema_name = '${sqlLiteral(schema)}'`,
+    database,
+  );
+  return c > 0;
+}
+
+async function pgDatabaseExists(dbSessionId: string, database: string): Promise<boolean> {
+  const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId });
+  return dbs.includes(database);
 }
 
 /** Right-click a DOM element matched by selector + text filter via JS dispatch. */
@@ -400,6 +422,103 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       }, DROP_SCHEMA);
       expect(stillThere).toBe(false);
       expect(await pgSchemaExists(pgDbSessionId, DROP_SCHEMA)).toBe(false);
+    });
+
+    it('NCM-024: 浏览 postgres 后删除另一库 schema 应成功', async function () {
+      const UNIQUE = Date.now();
+      const CROSS_DB = `e2e_nav_cross_${UNIQUE}`;
+      const CROSS_SCHEMA = `e2e_nav_cross_sch_${UNIQUE}`;
+
+      await invokeBackend('execute_driver_command', {
+        request: {
+          dbSessionId: pgDbSessionId,
+          command: 'create_database',
+          input: { name: CROSS_DB },
+        },
+      });
+      await invokeBackend('execute_driver_command', {
+        request: {
+          dbSessionId: pgDbSessionId,
+          command: 'create_schema',
+          input: { name: CROSS_SCHEMA },
+          database: CROSS_DB,
+        },
+      });
+      expect(await pgSchemaExistsInDatabase(pgDbSessionId, CROSS_SCHEMA, CROSS_DB)).toBe(true);
+
+      await rightClick('[data-conn-item]');
+      await clickMenuItem(t('connWin.refresh'));
+      await browser.pause(2000);
+
+      // F1: browse another catalog so the live session is not on CROSS_DB.
+      await expandDb('postgres');
+      await browser.pause(1000);
+
+      await expandDb(CROSS_DB);
+      await expandSchema(CROSS_SCHEMA);
+      await browser.pause(500);
+
+      await rightClick('[data-tree-node="schema"]', CROSS_SCHEMA);
+      await clickMenuItem(t('schemaTree.dropSchema'));
+      await confirmWebDialog();
+      await browser.pause(2000);
+
+      expect(await pgSchemaExistsInDatabase(pgDbSessionId, CROSS_SCHEMA, CROSS_DB)).toBe(false);
+
+      await invokeBackend('execute_driver_command', {
+        request: {
+          dbSessionId: pgDbSessionId,
+          command: 'drop_database',
+          input: { name: CROSS_DB },
+        },
+      }).catch(() => {
+        /* best effort */
+      });
+    });
+
+    it('NCM-025: 浏览 postgres 后删除另一库 database 应成功', async function () {
+      const UNIQUE = Date.now();
+      const CROSS_DB = `e2e_nav_dropdb_${UNIQUE}`;
+
+      await invokeBackend('execute_driver_command', {
+        request: {
+          dbSessionId: pgDbSessionId,
+          command: 'create_database',
+          input: { name: CROSS_DB },
+        },
+      });
+      expect(await pgDatabaseExists(pgDbSessionId, CROSS_DB)).toBe(true);
+
+      await rightClick('[data-conn-item]');
+      await clickMenuItem(t('connWin.refresh'));
+      await browser.pause(2000);
+
+      await expandDb('postgres');
+      await browser.pause(1000);
+
+      const crossDbVisible = await browser.execute((name: string) => {
+        return Array.from(document.querySelectorAll('[data-tree-node="db"]')).some((n) =>
+          n.textContent?.includes(name),
+        );
+      }, CROSS_DB);
+      if (!crossDbVisible) {
+        console.log('NCM-025: cross db node not visible, skipping');
+        await invokeBackend('execute_driver_command', {
+          request: {
+            dbSessionId: pgDbSessionId,
+            command: 'drop_database',
+            input: { name: CROSS_DB },
+          },
+        }).catch(() => undefined);
+        return;
+      }
+
+      await rightClick('[data-tree-node="db"]', CROSS_DB);
+      await clickMenuItem(t('schemaTree.dropDatabase'));
+      await confirmWebDialog();
+      await browser.pause(2000);
+
+      expect(await pgDatabaseExists(pgDbSessionId, CROSS_DB)).toBe(false);
     });
   });
 

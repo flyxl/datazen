@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 560" width="640" height="560" role="img" aria-label="Step 3 Objects screen">
+  <rect width="640" height="560" rx="8" fill="#0f172a" stroke="#334155"/>
+  <rect width="640" height="28" fill="#1e293b" stroke="#334155"/>
+  <text x="12" y="18" fill="#64748b" font-size="10" font-family="system-ui">Data Transfer</text>
+  <rect y="28" width="640" height="44" fill="#1e293b" stroke="#334155"/>
+  <text x="108" y="54" fill="#64748b" font-size="10" font-family="system-ui">Endpoints</text>
+  <text x="188" y="54" fill="#64748b" font-size="10" font-family="system-ui">Setup</text>
+  <circle cx="256" cy="50" r="10" fill="#3b82f6"/><text x="252" y="54" fill="#fff" font-size="8">3</text>
+  <text x="272" y="54" fill="#60a5fa" font-size="10" font-weight="600" font-family="system-ui">Objects</text>
+  <text x="335" y="54" fill="#64748b" font-size="10" font-family="system-ui">Mapping</text>
+  <text x="400" y="54" fill="#64748b" font-size="10" font-family="system-ui">Preview</text>
+  <text x="465" y="54" fill="#64748b" font-size="10" font-family="system-ui">Result</text>
+  <rect x="48" y="92" width="544" height="28" rx="4" fill="#1e293b" stroke="#334155"/>
+  <text x="60" y="110" fill="#64748b" font-size="9" font-family="system-ui">Search tables...</text>
+  <text x="520" y="110" fill="#64748b" font-size="9" font-family="system-ui">3 selected</text>
+  <rect x="48" y="128" width="544" height="332" rx="6" fill="#1e293b" stroke="#334155"/>
+  <rect x="56" y="136" width="528" height="30" fill="#0f172a"/>
+  <text x="76" y="156" fill="#cbd5e1" font-size="10" font-family="system-ui">[x] users</text>
+  <text x="300" y="156" fill="#64748b" font-size="10" font-family="system-ui">-&gt; users</text>
+  <rect x="480" y="144" width="56" height="16" rx="3" fill="#14532d" stroke="#22c55e"/>
+  <text x="492" y="156" fill="#86efac" font-size="8" font-family="system-ui">matched</text>
+  <rect x="56" y="170" width="528" height="30" fill="#1e293b"/>
+  <text x="76" y="190" fill="#cbd5e1" font-size="10" font-family="system-ui">[x] orders</text>
+  <text x="300" y="190" fill="#64748b" font-size="10" font-family="system-ui">-&gt; orders</text>
+  <rect x="480" y="178" width="56" height="16" rx="3" fill="#14532d" stroke="#22c55e"/>
+  <text x="492" y="190" fill="#86efac" font-size="8" font-family="system-ui">matched</text>
+  <rect x="56" y="204" width="528" height="30" fill="#0f172a"/>
+  <text x="76" y="224" fill="#cbd5e1" font-size="10" font-family="system-ui">[x] products</text>
+  <text x="300" y="224" fill="#64748b" font-size="10" font-family="system-ui">-&gt; products</text>
+  <rect x="480" y="212" width="72" height="16" rx="3" fill="#422006" stroke="#f59e0b"/>
+  <text x="488" y="224" fill="#fbbf24" font-size="8" font-family="system-ui">create new</text>
+  <rect x="56" y="238" width="528" height="30" fill="#1e293b"/>
+  <text x="76" y="258" fill="#cbd5e1" font-size="10" font-family="system-ui">[ ] legacy_log</text>
+  <text x="300" y="258" fill="#64748b" font-size="10" font-family="system-ui">-&gt; -</text>
+  <rect x="480" y="246" width="80" height="16" rx="3" fill="#450a0a" stroke="#ef4444"/>
+  <text x="488" y="258" fill="#fca5a5" font-size="8" font-family="system-ui">incompatible</text>
+  <rect y="500" width="640" height="36" fill="#1e293b" stroke="#334155"/>
+  <text x="16" y="522" fill="#64748b" font-size="10" font-family="system-ui">&lt; Back</text>
+  <rect x="540" y="508" width="84" height="24" rx="4" fill="#3b82f6"/>
+  <text x="568" y="524" fill="#fff" font-size="10" font-weight="600" font-family="system-ui">Next &gt;</text>
+  <rect y="536" width="640" height="24" fill="#0f172a" stroke="#334155"/>
+</svg>

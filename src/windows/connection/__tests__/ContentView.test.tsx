@@ -22,6 +22,7 @@ const { getConnectionViewMock, schemaState, tableDataState, MockRedisView } = vi
       tables: [] as { name: string; schema?: string }[],
       views: [] as { name: string; schema?: string }[],
       databases: [] as string[],
+      schemas: new Map<string, { currentDatabase?: string | null }>(),
       loadForConnection: vi.fn(),
       loadTables: vi.fn(),
       removeRelation: vi.fn(),
@@ -48,8 +49,16 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
+const confirmMock = vi.hoisted(() => vi.fn().mockResolvedValue(false));
+const showNativeContextMenuMock = vi.hoisted(() =>
+  vi.fn((items: Array<{ id?: string; action?: () => void }>) => {
+    items.find((item) => item.id === 'drop')?.action?.();
+  }),
+);
+const executeQueryMock = vi.hoisted(() => vi.fn().mockResolvedValue({}));
+
 vi.mock('../../../hooks/useConfirmDialog', () => ({
-  useConfirmDialog: () => [vi.fn().mockResolvedValue(false), null],
+  useConfirmDialog: () => [confirmMock, null],
 }));
 
 vi.mock('../../../hooks/useKeyboardShortcuts', () => ({
@@ -134,24 +143,27 @@ vi.mock('../../../lib/schemaCache', () => ({
 }));
 
 vi.mock('../../../lib/nativeContextMenu', () => ({
-  showNativeContextMenu: vi.fn(),
+  showNativeContextMenu: (...args: unknown[]) => showNativeContextMenuMock(...args),
 }));
+
+vi.mock('../../../lib/schemaTreeContextMenu', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../lib/schemaTreeContextMenu')>();
+  return actual;
+});
 
 vi.mock('../../../lib/connectionTabContextMenu', () => ({
   buildConnectionTabContextMenuItems: vi.fn(() => []),
 }));
 
-vi.mock('../../../lib/schemaTreeContextMenu', () => ({
-  buildSchemaTreeContextMenuItems: vi.fn(() => []),
-}));
-
 vi.mock('../../../lib/sqlDialects', () => ({
-  getSqlDialect: vi.fn(),
+  getSqlDialect: () => ({
+    getTruncateTableSql: (quoted: string) => `TRUNCATE TABLE ${quoted}`,
+  }),
 }));
 
 vi.mock('../../../commands/query', () => ({
   queryCommands: {
-    executeQuery: vi.fn(),
+    executeQuery: (...args: unknown[]) => executeQueryMock(...args),
   },
 }));
 
@@ -233,7 +245,14 @@ describe('ContentView', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     getConnectionViewMock.mockImplementation(() => MockRedisView);
-    vi.resetModules();
+    schemaState.activeDbSessionId = null;
+    schemaState.currentDatabase = null;
+    schemaState.tables = [];
+    schemaState.views = [];
+    schemaState.schemas = new Map();
+    schemaState.loadForConnection = vi.fn();
+    schemaState.loadTables = vi.fn();
+    schemaState.removeRelation = vi.fn();
     panelStore = await import('../../../stores/panelStore');
     panelStore.usePanelStore.setState({ panels: [], activePanelId: null, queryExec: new Map() });
     ({ ContentView } = await import('../ContentView'));
@@ -266,7 +285,7 @@ describe('ContentView', () => {
     });
 
     render(<ContentView />);
-    expect(screen.getByText('users')).toBeInTheDocument();
+    expect(screen.getByText(/users/)).toBeInTheDocument();
   });
 
   it('shows toolbar buttons for SQL connections', () => {
@@ -334,5 +353,51 @@ describe('ContentView', () => {
 
     render(<ContentView />);
     expect(screen.queryByRole('button', { name: /common.newQuery/ })).not.toBeInTheDocument();
+  });
+
+  it('pins sidebar drop SQL to currentDatabase while session may differ', async () => {
+    confirmMock.mockResolvedValueOnce(true);
+    const nodeContextMenuRef = {
+      current: undefined as ((payload: unknown) => void) | undefined,
+    };
+    const panel = {
+      connectionId: 'cfg-1',
+      dbSessionId: 'conn-1',
+      connectionName: 'TestDB',
+      databaseType: 'postgresql' as const,
+      type: 'table' as const,
+      id: 'panel-tbl-1',
+      tableName: 'users',
+      subTab: 'data' as const,
+    };
+    panelStore.usePanelStore.setState({
+      panels: [panel],
+      activePanelId: panel.id,
+    });
+    schemaState.activeDbSessionId = 'conn-1';
+    schemaState.currentDatabase = 'db_b';
+    schemaState.tables = [{ name: 'users', schema: 'public' }];
+    schemaState.loadForConnection = vi.fn();
+
+    render(<ContentView nodeContextMenuRef={nodeContextMenuRef} />);
+    expect(nodeContextMenuRef.current).toBeTypeOf('function');
+
+    nodeContextMenuRef.current?.({
+      kind: 'table',
+      name: 'users',
+      schema: 'public',
+      x: 0,
+      y: 0,
+    });
+
+    await vi.waitFor(() => {
+      expect(executeQueryMock).toHaveBeenCalledWith(
+        'conn-1',
+        'DROP TABLE "users"',
+        undefined,
+        'db_b',
+        'public',
+      );
+    });
   });
 });

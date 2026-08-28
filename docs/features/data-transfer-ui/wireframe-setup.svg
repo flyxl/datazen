@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360" width="480" height="360" role="img" aria-label="Setup step wireframe">
+  <rect width="480" height="360" fill="#1e293b" stroke="#334155" rx="8"/>
+  <text x="24" y="32" fill="#e2e8f0" font-size="13" font-weight="600" font-family="system-ui">Mode and options</text>
+  <rect x="24" y="48" width="432" height="56" rx="6" fill="#0f172a" stroke="#3b82f6" stroke-width="2"/>
+  <text x="40" y="72" fill="#e2e8f0" font-size="12" font-family="system-ui">[x] Data only</text>
+  <text x="40" y="90" fill="#64748b" font-size="10" font-family="system-ui">Copy rows to existing tables</text>
+  <rect x="24" y="112" width="432" height="40" rx="6" fill="#0f172a" stroke="#475569"/>
+  <text x="40" y="138" fill="#94a3b8" font-size="12" font-family="system-ui">[ ] Structure only</text>
+  <rect x="24" y="160" width="432" height="40" rx="6" fill="#0f172a" stroke="#475569"/>
+  <text x="40" y="186" fill="#94a3b8" font-size="12" font-family="system-ui">[ ] Structure + data</text>
+  <line x1="24" y1="220" x2="456" y2="220" stroke="#334155"/>
+  <text x="24" y="244" fill="#64748b" font-size="10" font-family="system-ui" letter-spacing="1">WRITE MODE</text>
+  <rect x="24" y="252" width="432" height="28" rx="4" fill="#0f172a" stroke="#475569"/>
+  <text x="24" y="300" fill="#64748b" font-size="10" font-family="system-ui">Batch size: 500 | Stop on error: yes</text>
+</svg>

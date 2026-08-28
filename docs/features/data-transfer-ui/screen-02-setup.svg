@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 560" width="640" height="560" role="img" aria-label="Step 2 Setup screen">
+  <rect width="640" height="560" rx="8" fill="#0f172a" stroke="#334155"/>
+  <rect width="640" height="28" fill="#1e293b" stroke="#334155"/>
+  <text x="12" y="18" fill="#64748b" font-size="10" font-family="system-ui">Data Transfer</text>
+  <rect y="28" width="640" height="44" fill="#1e293b" stroke="#334155"/>
+  <text x="120" y="54" fill="#64748b" font-size="10" font-family="system-ui">Endpoints</text>
+  <circle cx="188" cy="50" r="10" fill="#3b82f6"/><text x="184" y="54" fill="#fff" font-size="8">2</text>
+  <text x="204" y="54" fill="#60a5fa" font-size="10" font-weight="600" font-family="system-ui">Setup</text>
+  <text x="260" y="54" fill="#64748b" font-size="10" font-family="system-ui">Objects</text>
+  <text x="325" y="54" fill="#64748b" font-size="10" font-family="system-ui">Mapping</text>
+  <text x="390" y="54" fill="#64748b" font-size="10" font-family="system-ui">Preview</text>
+  <text x="455" y="54" fill="#64748b" font-size="10" font-family="system-ui">Result</text>
+  <rect x="140" y="100" width="360" height="360" rx="8" fill="#1e293b" stroke="#334155"/>
+  <text x="160" y="128" fill="#e2e8f0" font-size="12" font-weight="600" font-family="system-ui">Mode and options</text>
+  <rect x="160" y="140" width="320" height="52" rx="6" fill="#0f172a" stroke="#3b82f6" stroke-width="2"/>
+  <text x="176" y="162" fill="#cbd5e1" font-size="10" font-family="system-ui">[x] Structure + data</text>
+  <text x="176" y="178" fill="#64748b" font-size="9" font-family="system-ui">Create tables and copy rows</text>
+  <rect x="160" y="200" width="320" height="34" rx="6" fill="#0f172a" stroke="#475569"/>
+  <text x="176" y="222" fill="#64748b" font-size="10" font-family="system-ui">[ ] Data only</text>
+  <rect x="160" y="242" width="320" height="34" rx="6" fill="#0f172a" stroke="#475569"/>
+  <text x="176" y="264" fill="#64748b" font-size="10" font-family="system-ui">[ ] Structure only</text>
+  <line x1="160" y1="292" x2="480" y2="292" stroke="#334155"/>
+  <text x="160" y="312" fill="#64748b" font-size="9" font-weight="600" font-family="system-ui" letter-spacing="0.06em">WRITE MODE</text>
+  <rect x="160" y="320" width="320" height="26" rx="4" fill="#0f172a" stroke="#475569"/>
+  <text x="172" y="337" fill="#cbd5e1" font-size="10" font-family="system-ui">Insert (append)</text>
+  <text x="160" y="368" fill="#64748b" font-size="9" font-family="system-ui">Batch 500 | Stop on first error</text>
+  <rect y="500" width="640" height="36" fill="#1e293b" stroke="#334155"/>
+  <text x="16" y="522" fill="#64748b" font-size="10" font-family="system-ui">&lt; Back</text>
+  <rect x="540" y="508" width="84" height="24" rx="4" fill="#3b82f6"/>
+  <text x="568" y="524" fill="#fff" font-size="10" font-weight="600" font-family="system-ui">Next &gt;</text>
+  <rect y="536" width="640" height="24" fill="#0f172a" stroke="#334155"/>
+</svg>

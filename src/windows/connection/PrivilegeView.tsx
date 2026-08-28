@@ -30,6 +30,8 @@ import type { PrivilegeGrant } from '../../types';
 interface PrivilegeViewProps {
   dbSessionId: string;
   databaseType?: string;
+  /** F1: active catalog for grant/revoke/SQL execution in multi-db sessions. */
+  database?: string | null;
 }
 
 type ViewMode = 'by-user' | 'by-object';
@@ -219,12 +221,14 @@ function PrivilegeLeafRow({
 
 function GrantDialog({
   dbSessionId,
+  sessionDatabase,
   users,
   initialUser,
   onGranted,
   onClose,
 }: {
   dbSessionId: string;
+  sessionDatabase?: string | null;
   users: string[];
   initialUser?: string;
   onGranted: () => void;
@@ -262,6 +266,7 @@ function GrantDialog({
           database: database.trim() || undefined,
           privileges: [...selected],
         },
+        database: sessionDatabase ?? null,
       });
       onGranted();
       onClose();
@@ -391,6 +396,7 @@ function GrantDialog({
 function ByUserView({
   grants,
   dbSessionId,
+  sessionDatabase,
   supportsDropUser,
   onRefresh,
   actionError,
@@ -398,6 +404,7 @@ function ByUserView({
 }: {
   grants: PrivilegeGrant[];
   dbSessionId: string;
+  sessionDatabase?: string | null;
   supportsDropUser: boolean;
   onRefresh: () => void;
   actionError: string | null;
@@ -444,6 +451,7 @@ function ByUserView({
         dbSessionId,
         command: 'revoke_privileges',
         input: { username: grantee, database: objectName, privileges },
+        database: sessionDatabase ?? null,
       });
       onRefresh();
     } catch (e) {
@@ -593,12 +601,14 @@ function ByUserView({
 function ByObjectView({
   grants,
   dbSessionId,
+  sessionDatabase,
   onRefresh,
   actionError,
   setActionError,
 }: {
   grants: PrivilegeGrant[];
   dbSessionId: string;
+  sessionDatabase?: string | null;
   onRefresh: () => void;
   actionError: string | null;
   setActionError: (e: string | null) => void;
@@ -626,6 +636,7 @@ function ByObjectView({
         dbSessionId,
         command: 'revoke_privileges',
         input: { username: grantee, database: objectName, privileges },
+        database: sessionDatabase ?? null,
       });
       onRefresh();
     } catch (e) {
@@ -754,7 +765,7 @@ function ByObjectView({
 
 // ─── Main Component ───────────────────────────────────────────────────
 
-export function PrivilegeView({ dbSessionId }: PrivilegeViewProps) {
+export function PrivilegeView({ dbSessionId, database = null }: PrivilegeViewProps) {
   const { t } = useI18n();
   const { definitions } = useConnectionCommands(dbSessionId);
   const supportsDropUser = hasCommand(definitions, 'drop_user');
@@ -791,7 +802,7 @@ export function PrivilegeView({ dbSessionId }: PrivilegeViewProps) {
     setRunning(true);
     setRunMessage(null);
     try {
-      await queryCommands.executeQuery(dbSessionId, sql);
+      await queryCommands.executeQuery(dbSessionId, sql, undefined, database, null);
       setRunMessage(t('privileges.executeOk'));
       void load();
     } catch (e) {
@@ -799,7 +810,7 @@ export function PrivilegeView({ dbSessionId }: PrivilegeViewProps) {
     } finally {
       setRunning(false);
     }
-  }, [dbSessionId, load, sql, t]);
+  }, [database, dbSessionId, load, sql, t]);
 
   const uniqueGrantees = useMemo(() => {
     return [...new Set(grants.map((g) => g.grantee))].sort();
@@ -866,6 +877,7 @@ export function PrivilegeView({ dbSessionId }: PrivilegeViewProps) {
         <ByUserView
           grants={grants}
           dbSessionId={dbSessionId}
+          sessionDatabase={database}
           supportsDropUser={supportsDropUser}
           onRefresh={() => void load()}
           actionError={actionError}
@@ -876,6 +888,7 @@ export function PrivilegeView({ dbSessionId }: PrivilegeViewProps) {
         <ByObjectView
           grants={grants}
           dbSessionId={dbSessionId}
+          sessionDatabase={database}
           onRefresh={() => void load()}
           actionError={actionError}
           setActionError={setActionError}
@@ -908,6 +921,7 @@ export function PrivilegeView({ dbSessionId }: PrivilegeViewProps) {
       {showGrant && (
         <GrantDialog
           dbSessionId={dbSessionId}
+          sessionDatabase={database}
           users={uniqueGrantees}
           initialUser={grantUser}
           onGranted={() => void load()}

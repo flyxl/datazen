@@ -329,8 +329,15 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
       ) => {
         const confirmed = await confirmAction({ title, message, kind: 'warning' });
         if (!confirmed) return;
+        const database = currentDatabase ?? initialDatabase ?? null;
         try {
-          await queryCommands.executeQuery(ctx.dbSessionId, sql);
+          await queryCommands.executeQuery(
+            ctx.dbSessionId,
+            sql,
+            undefined,
+            database,
+            schema ?? null,
+          );
           afterSuccess?.();
         } catch (e) {
           console.warn(e);
@@ -487,6 +494,8 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
     },
     [
       sidebarConnCtx,
+      currentDatabase,
+      initialDatabase,
       t,
       handleSelectTableWithSchema,
       handlers,
@@ -825,6 +834,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
           open={createSchemaOpen}
           onClose={() => setCreateSchemaOpen(false)}
           dbSessionId={sidebarConnCtx.dbSessionId}
+          database={currentDatabase ?? initialDatabase ?? null}
           onCreated={async () => {
             const sessionId = sidebarConnCtx.dbSessionId;
             const db = currentDatabase ?? initialDatabase;

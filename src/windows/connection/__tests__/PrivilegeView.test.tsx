@@ -65,8 +65,8 @@ beforeEach(() => {
 });
 
 describe('PrivilegeView', () => {
-  it('renders grants in tree view and executes SQL', async () => {
-    render(<PrivilegeView dbSessionId="c1" />);
+  it('executes grant SQL against the panel database pin', async () => {
+    render(<PrivilegeView dbSessionId="c1" database="goecoride" />);
     await screen.findByText('alice');
     expect(screen.getByText('public')).toBeInTheDocument();
     expect(screen.getByText('users')).toBeInTheDocument();
@@ -74,7 +74,13 @@ describe('PrivilegeView', () => {
 
     fireEvent.click(screen.getByText('query.execute'));
     await waitFor(() => {
-      expect(executeQuery).toHaveBeenCalledWith('c1', expect.stringContaining('GRANT SELECT'));
+      expect(executeQuery).toHaveBeenCalledWith(
+        'c1',
+        expect.stringContaining('GRANT SELECT'),
+        undefined,
+        'goecoride',
+        null,
+      );
       expect(screen.getByText('privileges.executeOk')).toBeInTheDocument();
     });
   });

@@ -73,11 +73,19 @@ function resolveIndexMethods(
 async function executePlanStatements(
   dbSessionId: string,
   plan: StructureChangePlan,
+  database?: string | null,
+  schema?: string | null,
 ): Promise<{ executed: number; error?: string }> {
   let executed = 0;
   for (const stmt of plan.statements) {
     try {
-      await queryCommands.executeQuery(dbSessionId, stmt.sql);
+      await queryCommands.executeQuery(
+        dbSessionId,
+        stmt.sql,
+        undefined,
+        database ?? null,
+        schema ?? null,
+      );
       executed += 1;
     } catch (e) {
       const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Execution failed';
@@ -91,6 +99,7 @@ async function fetchEstimatedTableRows(args: {
   dbSessionId: string;
   table: string;
   schema?: string | null;
+  database?: string | null;
 }): Promise<number | null> {
   try {
     const definitions = await driverCommands.getConnectionCommands(args.dbSessionId);
@@ -103,6 +112,8 @@ async function fetchEstimatedTableRows(args: {
       dbSessionId: args.dbSessionId,
       command: ESTIMATE_TABLE_ROWS_COMMAND,
       input,
+      database: args.database ?? null,
+      schema: args.schema ?? null,
     });
     const data = result.data;
     if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
@@ -323,6 +334,7 @@ export function TableStructureEditor({
           dbSessionId,
           table: initialTableName,
           schema: requestSchema,
+          database,
         });
       }
 
@@ -336,7 +348,7 @@ export function TableStructureEditor({
         if (!ok) return;
       }
 
-      const result = await executePlanStatements(dbSessionId, plan);
+      const result = await executePlanStatements(dbSessionId, plan, database, requestSchema);
       if (result.error) {
         if (result.executed > 0) {
           setError(

@@ -303,11 +303,23 @@ function SqlPanelContent({
   }
 
   if (panel.type === 'objects') {
-    return <ObjectBrowser dbSessionId={panel.dbSessionId} databaseType={panel.databaseType} />;
+    return (
+      <ObjectBrowser
+        dbSessionId={panel.dbSessionId}
+        databaseType={panel.databaseType}
+        database={currentDatabase}
+      />
+    );
   }
 
   if (panel.type === 'privileges') {
-    return <PrivilegeView dbSessionId={panel.dbSessionId} databaseType={panel.databaseType} />;
+    return (
+      <PrivilegeView
+        dbSessionId={panel.dbSessionId}
+        databaseType={panel.databaseType}
+        database={currentDatabase}
+      />
+    );
   }
 
   if (panel.type === 'server-status') {
@@ -356,6 +368,7 @@ function SqlPanelContent({
       <DatabaseObjectView
         dbSessionId={panel.dbSessionId}
         databaseType={panel.databaseType}
+        database={currentDatabase}
         objectKind={(panel as import('../../stores/panelStore').DatabaseObjectPanel).objectKind}
         objectName={(panel as import('../../stores/panelStore').DatabaseObjectPanel).objectName}
         objectSchema={(panel as import('../../stores/panelStore').DatabaseObjectPanel).objectSchema}

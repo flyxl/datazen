@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 920" width="1280" height="920" role="img" aria-label="Data Transfer complete user journey">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#64748b"/>
+    </marker>
+    <marker id="arrow-accent" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#3b82f6"/>
+    </marker>
+    <marker id="arrow-danger" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#ef4444"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="920" fill="#0f172a"/>
+
+  <!-- Title -->
+  <text x="640" y="36" fill="#e2e8f0" font-size="18" font-weight="600" font-family="system-ui,sans-serif" text-anchor="middle">Data Transfer - User Journey (Target: 6-step wizard)</text>
+  <text x="640" y="58" fill="#64748b" font-size="11" font-family="system-ui,sans-serif" text-anchor="middle">Happy path (blue) | Gates / blocks (red) | Optional / future (gray dashed)</text>
+
+  <!-- Legend -->
+  <rect x="40" y="72" width="1200" height="52" rx="6" fill="#1e293b" stroke="#334155"/>
+  <rect x="60" y="88" width="16" height="16" rx="3" fill="#1e3a5f" stroke="#3b82f6"/>
+  <text x="84" y="100" fill="#94a3b8" font-size="10" font-family="system-ui">Step screen</text>
+  <rect x="200" y="88" width="16" height="16" rx="8" fill="#422006" stroke="#f59e0b"/>
+  <text x="224" y="100" fill="#94a3b8" font-size="10" font-family="system-ui">Decision / gate</text>
+  <rect x="360" y="88" width="16" height="16" rx="3" fill="#450a0a" stroke="#ef4444"/>
+  <text x="384" y="100" fill="#94a3b8" font-size="10" font-family="system-ui">Blocked</text>
+  <rect x="480" y="88" width="16" height="16" rx="3" fill="#14532d" stroke="#22c55e"/>
+  <text x="504" y="100" fill="#94a3b8" font-size="10" font-family="system-ui">Success exit</text>
+  <line x1="620" y1="96" x2="660" y2="96" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="672" y="100" fill="#94a3b8" font-size="10" font-family="system-ui">Primary flow</text>
+  <line x1="780" y1="96" x2="820" y2="96" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5,4"/>
+  <text x="832" y="100" fill="#64748b" font-size="10" font-family="system-ui">Back / change / cancel</text>
+
+  <!-- ENTRY -->
+  <rect x="500" y="148" width="280" height="44" rx="6" fill="#334155" stroke="#64748b"/>
+  <text x="640" y="168" fill="#e2e8f0" font-size="11" font-weight="600" font-family="system-ui" text-anchor="middle">ENTRY</text>
+  <text x="640" y="184" fill="#94a3b8" font-size="10" font-family="system-ui" text-anchor="middle">Tools menu | Connection tree context menu</text>
+
+  <!-- Future prefill -->
+  <rect x="820" y="140" width="200" height="36" rx="4" fill="none" stroke="#475569" stroke-dasharray="4,3"/>
+  <text x="920" y="156" fill="#64748b" font-size="9" font-family="system-ui" text-anchor="middle">Future: pre-fill source</text>
+  <text x="920" y="168" fill="#64748b" font-size="9" font-family="system-ui" text-anchor="middle">from context menu (P0)</text>
+  <line x1="780" y1="158" x2="820" y2="158" stroke="#475569" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+
+  <line x1="640" y1="192" x2="640" y2="228" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrow-accent)"/>
+
+  <!-- STEP 1 Endpoints -->
+  <rect x="480" y="232" width="320" height="72" rx="6" fill="#1e3a5f" stroke="#3b82f6" stroke-width="2"/>
+  <text x="640" y="254" fill="#60a5fa" font-size="12" font-weight="600" font-family="system-ui" text-anchor="middle">1. Endpoints</text>
+  <text x="640" y="272" fill="#94a3b8" font-size="10" font-family="system-ui" text-anchor="middle">Select source + target connection and database</text>
+  <text x="640" y="288" fill="#64748b" font-size="9" font-family="system-ui" text-anchor="middle">Show path badge: direct | ir | unsupported</text>
+
+  <!-- Gate: unsupported -->
+  <line x1="800" y1="268" x2="880" y2="268" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arrow-danger)"/>
+  <rect x="884" y="248" width="160" height="40" rx="4" fill="#450a0a" stroke="#ef4444"/>
+  <text x="964" y="266" fill="#fca5a5" font-size="10" font-family="system-ui" text-anchor="middle">BLOCKED</text>
+  <text x="964" y="280" fill="#f87171" font-size="9" font-family="system-ui" text-anchor="middle">unsupported pairing</text>
+
+  <!-- Gate: read_only -->
+  <line x1="640" y1="304" x2="640" y2="340" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <ellipse cx="640" cy="360" rx="100" ry="24" fill="#422006" stroke="#f59e0b"/>
+  <text x="640" y="358" fill="#fbbf24" font-size="9" font-family="system-ui" text-anchor="middle">Target read_only?</text>
+  <text x="640" y="370" fill="#fbbf24" font-size="8" font-family="system-ui" text-anchor="middle">Warn now, block Execute later</text>
+
+  <line x1="640" y1="384" x2="640" y2="420" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrow-accent)"/>
+
+  <!-- STEP 2 Setup -->
+  <rect x="480" y="424" width="320" height="72" rx="6" fill="#1e3a5f" stroke="#3b82f6" stroke-width="2"/>
+  <text x="640" y="446" fill="#60a5fa" font-size="12" font-weight="600" font-family="system-ui" text-anchor="middle">2. Setup (Mode + Options)</text>
+  <text x="640" y="464" fill="#94a3b8" font-size="10" font-family="system-ui" text-anchor="middle">Mode: structure | data | structure+data</text>
+  <text x="640" y="480" fill="#94a3b8" font-size="10" font-family="system-ui" text-anchor="middle">Write mode, batch size, stop on error</text>
+
+  <!-- Gate: destructive -->
+  <line x1="480" y1="460" x2="340" y2="460" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <ellipse cx="240" cy="460" rx="88" ry="22" fill="#422006" stroke="#f59e0b"/>
+  <text x="240" y="456" fill="#fbbf24" font-size="8" font-family="system-ui" text-anchor="middle">Destructive write</text>
+  <text x="240" y="468" fill="#fbbf24" font-size="8" font-family="system-ui" text-anchor="middle">mode selected?</text>
+  <line x1="240" y1="438" x2="240" y2="424" stroke="#ef4444" stroke-width="1" marker-end="url(#arrow-danger)"/>
+  <rect x="160" y="392" width="160" height="28" rx="4" fill="#450a0a" stroke="#ef4444"/>
+  <text x="240" y="410" fill="#f87171" font-size="9" font-family="system-ui" text-anchor="middle">Next disabled until confirmed</text>
+
+  <line x1="640" y1="496" x2="640" y2="532" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrow-accent)"/>
+
+  <!-- STEP 3 Objects -->
+  <rect x="480" y="536" width="320" height="72" rx="6" fill="#1e3a5f" stroke="#3b82f6" stroke-width="2"/>
+  <text x="640" y="558" fill="#60a5fa" font-size="12" font-weight="600" font-family="system-ui" text-anchor="middle">3. Objects</text>
+  <text x="640" y="576" fill="#94a3b8" font-size="10" font-family="system-ui" text-anchor="middle">Auto Inspect on enter | Select tables</text>
+  <text x="640" y="592" fill="#64748b" font-size="9" font-family="system-ui" text-anchor="middle">Status: matched | create_new | incompatible</text>
+
+  <!-- Loading branch -->
+  <line x1="800" y1="572" x2="900" y2="572" stroke="#64748b" stroke-width="1" marker-end="url(#arrow)"/>
+  <rect x="904" y="554" width="120" height="36" rx="4" fill="#1e293b" stroke="#475569"/>
+  <text x="964" y="570" fill="#94a3b8" font-size="9" font-family="system-ui" text-anchor="middle">Loading...</text>
+  <text x="964" y="582" fill="#64748b" font-size="8" font-family="system-ui" text-anchor="middle">inspect tables</text>
+
+  <!-- Change endpoints loop -->
+  <path d="M 480 572 L 120 572 L 120 268 L 480 268" fill="none" stroke="#475569" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+  <text x="100" y="420" fill="#64748b" font-size="9" font-family="system-ui" transform="rotate(-90 100 420)">Back or change endpoints: clear tables</text>
+
+  <line x1="640" y1="608" x2="640" y2="644" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrow-accent)"/>
+
+  <!-- STEP 4 Mapping -->
+  <rect x="120" y="648" width="280" height="72" rx="6" fill="#1e3a5f" stroke="#3b82f6" stroke-width="2"/>
+  <text x="260" y="670" fill="#60a5fa" font-size="12" font-weight="600" font-family="system-ui" text-anchor="middle">4. Mapping</text>
+  <text x="260" y="688" fill="#94a3b8" font-size="10" font-family="system-ui" text-anchor="middle">Table list + column mapping editor</text>
+  <text x="260" y="704" fill="#64748b" font-size="9" font-family="system-ui" text-anchor="middle">Auto-match, skip, create new, IR types</text>
+
+  <line x1="400" y1="684" x2="480" y2="684" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrow-accent)"/>
+
+  <!-- STEP 5 Preview + Execute -->
+  <rect x="480" y="648" width="320" height="88" rx="6" fill="#1e3a5f" stroke="#3b82f6" stroke-width="2"/>
+  <text x="640" y="670" fill="#60a5fa" font-size="12" font-weight="600" font-family="system-ui" text-anchor="middle">5. Preview + Execute</text>
+  <text x="640" y="688" fill="#94a3b8" font-size="10" font-family="system-ui" text-anchor="middle">Editable DDL + write plans + warnings</text>
+  <text x="640" y="704" fill="#94a3b8" font-size="10" font-family="system-ui" text-anchor="middle">Footer: Execute transfer (no empty Execute page)</text>
+  <rect x="560" y="712" width="160" height="18" rx="3" fill="#3b82f6"/>
+  <text x="640" y="724" fill="#fff" font-size="9" font-weight="600" font-family="system-ui" text-anchor="middle">Execute transfer</text>
+
+  <!-- Preview gates -->
+  <line x1="800" y1="684" x2="900" y2="684" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <ellipse cx="980" cy="684" rx="90" ry="28" fill="#422006" stroke="#f59e0b"/>
+  <text x="980" y="680" fill="#fbbf24" font-size="8" font-family="system-ui" text-anchor="middle">canExecute?</text>
+  <text x="980" y="692" fill="#fbbf24" font-size="8" font-family="system-ui" text-anchor="middle">blockReason shown</text>
+  <line x1="1070" y1="684" x2="1140" y2="684" stroke="#ef4444" marker-end="url(#arrow-danger)"/>
+  <rect x="1144" y="666" width="100" height="36" rx="4" fill="#450a0a" stroke="#ef4444"/>
+  <text x="1194" y="682" fill="#f87171" font-size="9" font-family="system-ui" text-anchor="middle">Execute</text>
+  <text x="1194" y="694" fill="#f87171" font-size="9" font-family="system-ui" text-anchor="middle">disabled</text>
+
+  <!-- Destructive confirm modal -->
+  <line x1="640" y1="736" x2="640" y2="768" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="520" y="772" width="240" height="44" rx="6" fill="#422006" stroke="#f59e0b"/>
+  <text x="640" y="790" fill="#fbbf24" font-size="10" font-weight="600" font-family="system-ui" text-anchor="middle">Confirm destructive modal</text>
+  <text x="640" y="806" fill="#fcd34d" font-size="9" font-family="system-ui" text-anchor="middle">List tables to TRUNCATE / DROP</text>
+
+  <line x1="640" y1="816" x2="640" y2="844" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrow-accent)"/>
+
+  <!-- Executing -->
+  <rect x="500" y="848" width="280" height="40" rx="6" fill="#1e293b" stroke="#475569"/>
+  <text x="640" y="864" fill="#94a3b8" font-size="10" font-family="system-ui" text-anchor="middle">Executing... Progress modal (P0 backlog)</text>
+  <text x="640" y="878" fill="#64748b" font-size="9" font-family="system-ui" text-anchor="middle">Cancel job | partial / stopOnError</text>
+
+  <!-- Cancel branch -->
+  <line x1="500" y1="868" x2="380" y2="868" stroke="#475569" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+  <rect x="240" y="850" width="136" height="36" rx="4" fill="#1e293b" stroke="#475569"/>
+  <text x="308" y="866" fill="#94a3b8" font-size="9" font-family="system-ui" text-anchor="middle">Cancelled</text>
+  <text x="308" y="878" fill="#64748b" font-size="8" font-family="system-ui" text-anchor="middle">best-effort stop</text>
+
+  <line x1="780" y1="868" x2="880" y2="868" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrow-accent)"/>
+
+  <!-- STEP 6 Result -->
+  <rect x="884" y="848" width="200" height="52" rx="6" fill="#14532d" stroke="#22c55e" stroke-width="2"/>
+  <text x="984" y="868" fill="#86efac" font-size="12" font-weight="600" font-family="system-ui" text-anchor="middle">6. Result</text>
+  <text x="984" y="884" fill="#bbf7d0" font-size="9" font-family="system-ui" text-anchor="middle">Per-table rows / errors</text>
+  <text x="984" y="896" fill="#64748b" font-size="8" font-family="system-ui" text-anchor="middle">Copy error report | Close window</text>
+
+  <!-- Self-overlap gate (early) -->
+  <rect x="40" y="232" width="180" height="56" rx="4" fill="#450a0a" stroke="#ef4444"/>
+  <text x="130" y="252" fill="#fca5a5" font-size="9" font-family="system-ui" text-anchor="middle">Same conn + db + table</text>
+  <text x="130" y="266" fill="#f87171" font-size="9" font-family="system-ui" text-anchor="middle">self-overwrite blocked</text>
+  <text x="130" y="280" fill="#64748b" font-size="8" font-family="system-ui" text-anchor="middle">checked at Execute</text>
+  <line x1="220" y1="260" x2="480" y2="260" stroke="#ef4444" stroke-dasharray="3,3"/>
+
+  <!-- Note: current vs target -->
+  <rect x="40" y="760" width="360" height="56" rx="4" fill="#1e293b" stroke="#334155"/>
+  <text x="56" y="780" fill="#94a3b8" font-size="10" font-weight="600" font-family="system-ui">Current V1 (8 steps) vs Target (6 steps)</text>
+  <text x="56" y="796" fill="#64748b" font-size="9" font-family="system-ui">V1: mode + options separate; empty Execute page</text>
+  <text x="56" y="808" fill="#64748b" font-size="9" font-family="system-ui">Target: merge Setup; Execute on Preview footer</text>
+</svg>

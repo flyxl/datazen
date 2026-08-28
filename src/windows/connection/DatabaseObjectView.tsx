@@ -10,6 +10,7 @@ import type { DatabaseObjectKind } from '../../types';
 interface DatabaseObjectViewProps {
   dbSessionId: string;
   databaseType?: string;
+  database?: string | null;
   objectKind: DatabaseObjectKind;
   objectName: string;
   objectSchema?: string;
@@ -18,6 +19,7 @@ interface DatabaseObjectViewProps {
 export function DatabaseObjectView({
   dbSessionId,
   databaseType,
+  database = null,
   objectKind,
   objectName,
   objectSchema,
@@ -56,14 +58,14 @@ export function DatabaseObjectView({
     setRunning(true);
     setMessage(null);
     try {
-      await queryCommands.executeQuery(dbSessionId, ddl);
+      await queryCommands.executeQuery(dbSessionId, ddl, undefined, database, objectSchema ?? null);
       setMessage(t('objects.executeOk'));
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
     } finally {
       setRunning(false);
     }
-  }, [dbSessionId, ddl, t]);
+  }, [database, dbSessionId, ddl, objectSchema, t]);
 
   const kindLabel =
     objectKind === 'function'

@@ -1276,6 +1276,7 @@ export const ConnectionNavigatorTree = forwardRef<
             onCreateSchema: dbMeta?.supportsCreateSchema
               ? () => {
                   onSelectConnection(connectionId);
+                  useSchemaStore.setState({ currentDatabase: dbName });
                   viewActions?.openCreateSchema?.();
                 }
               : undefined,
@@ -1292,15 +1293,16 @@ export const ConnectionNavigatorTree = forwardRef<
                     try {
                       const schemaData = useSchemaStore.getState().schemas.get(dbSessionId);
                       const activeDb = schemaData?.currentDatabase;
-                      if (activeDb === dbName && schemaData) {
-                        const fallback = resolveDropDatabaseFallback(
-                          schemaData.databases,
-                          dbName,
-                          conn.database,
-                        );
-                        if (fallback) {
-                          // F1: no use_database IPC — move the local active
-                          // database to the fallback and refresh tables.
+                      const fallback = resolveDropDatabaseFallback(
+                        schemaData?.databases ?? [],
+                        dbName,
+                        conn.database,
+                      );
+                      if (fallback) {
+                        // Pin the backend session away from the database being
+                        // dropped (PG rejects DROP DATABASE on the open catalog).
+                        await databaseCommands.getTables(dbSessionId, fallback);
+                        if (activeDb === dbName && schemaData) {
                           const cached = dbTablesMap[`${dbSessionId}::${fallback}`];
                           if (cached) {
                             useSchemaStore
@@ -1450,12 +1452,11 @@ export const ConnectionNavigatorTree = forwardRef<
                           dbSessionId: dbSessionId,
                           command: 'drop_schema',
                           input: { name: schemaName, cascade: true },
+                          // F1: pin to the tree database — drop_schema runs in the
+                          // session's current catalog, not the right-clicked one.
+                          database: dbName,
                         });
-                        await loadForConnection(dbSessionId, {
-                          preferredDatabase: conn.database,
-                          databaseType: conn.databaseType,
-                          skipLoadTables: false,
-                        });
+                        await refreshDatabase(connectionId, dbName);
                       } catch (e) {
                         onShowMessage?.(
                           extractErrorMessage(e, t('schemaTree.dropSchemaFailed')),
@@ -1485,9 +1486,9 @@ export const ConnectionNavigatorTree = forwardRef<
       activeConnections,
       confirmDropSchema,
       connections,
-      loadForConnection,
       onSelectConnection,
       onShowMessage,
+      refreshDatabase,
       refreshSchema,
       schemaLabels,
       t,
@@ -1589,7 +1590,13 @@ export const ConnectionNavigatorTree = forwardRef<
                         ? dialect.getTruncateTableSql(quoted)
                         : `TRUNCATE TABLE ${quoted}`;
                       try {
-                        await queryCommands.executeQuery(dbSessionId, sql);
+                        await queryCommands.executeQuery(
+                          dbSessionId,
+                          sql,
+                          undefined,
+                          dbName,
+                          schema ?? null,
+                        );
                       } catch (err) {
                         onShowMessage?.(
                           extractErrorMessage(err, t('schemaTree.truncateFailed')),
@@ -1615,7 +1622,13 @@ export const ConnectionNavigatorTree = forwardRef<
                       if (!ok) return;
                       const sql = isView ? `DROP VIEW ${quoted}` : `DROP TABLE ${quoted}`;
                       try {
-                        await queryCommands.executeQuery(dbSessionId, sql);
+                        await queryCommands.executeQuery(
+                          dbSessionId,
+                          sql,
+                          undefined,
+                          dbName,
+                          schema ?? null,
+                        );
                         refreshAfterMutation();
                       } catch (err) {
                         onShowMessage?.(

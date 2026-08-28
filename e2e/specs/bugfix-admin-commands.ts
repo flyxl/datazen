@@ -448,6 +448,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
         dbSessionId: connId,
         command: 'create_schema',
         input: { name: dropSchema },
+        database: PG_DB,
       },
     });
 
@@ -463,6 +464,50 @@ describe('PostgreSQL admin commands (IPC)', () => {
         dbSessionId: connId,
         command: 'drop_schema',
         input: { name: dropSchema, cascade: true },
+        database: PG_DB,
+      },
+    });
+
+    const tablesAfter = await invokeBackend<{ name: string; schema: string }[]>('get_tables', {
+      dbSessionId: connId,
+      database: PG_DB,
+    });
+    const schemasAfter = [...new Set(tablesAfter.map((t) => t.schema).filter(Boolean))];
+    expect(schemasAfter).not.toContain(dropSchema);
+  });
+
+  it('should drop a schema with explicit database pin after switching session catalog', async function () {
+    if (!connId) return this.skip();
+
+    const dropSchema = `e2e_drop_sch_pin_${UNIQUE}`;
+    await invokeBackend('execute_driver_command', {
+      request: {
+        dbSessionId: connId,
+        command: 'create_schema',
+        input: { name: dropSchema },
+        database: PG_DB,
+      },
+    });
+
+    // Move the live session to another catalog (simulates browsing another db in the tree).
+    await invokeBackend('get_tables', { dbSessionId: connId, database: 'postgres' });
+
+    await expect(
+      invokeBackend('execute_driver_command', {
+        request: {
+          dbSessionId: connId,
+          command: 'drop_schema',
+          input: { name: dropSchema, cascade: true },
+        },
+      }),
+    ).rejects.toThrow(/does not exist/i);
+
+    await invokeBackend('execute_driver_command', {
+      request: {
+        dbSessionId: connId,
+        command: 'drop_schema',
+        input: { name: dropSchema, cascade: true },
+        database: PG_DB,
       },
     });
 

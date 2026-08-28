@@ -20,9 +20,10 @@ const KINDS: DatabaseObjectKind[] = ['function', 'procedure', 'trigger'];
 interface ObjectBrowserProps {
   dbSessionId: string;
   databaseType?: string;
+  database?: string | null;
 }
 
-export function ObjectBrowser({ dbSessionId, databaseType }: ObjectBrowserProps) {
+export function ObjectBrowser({ dbSessionId, databaseType, database = null }: ObjectBrowserProps) {
   const { t } = useI18n();
   const [kind, setKind] = useState<DatabaseObjectKind>('function');
   const [objects, setObjects] = useState<DatabaseObject[]>([]);
@@ -94,7 +95,13 @@ export function ObjectBrowser({ dbSessionId, databaseType }: ObjectBrowserProps)
     setRunning(true);
     setRunMessage(null);
     try {
-      await queryCommands.executeQuery(dbSessionId, ddl);
+      await queryCommands.executeQuery(
+        dbSessionId,
+        ddl,
+        undefined,
+        database,
+        selected?.schema ?? null,
+      );
       setRunMessage(t('objects.executeOk'));
       void load(kind);
     } catch (e) {
@@ -102,7 +109,7 @@ export function ObjectBrowser({ dbSessionId, databaseType }: ObjectBrowserProps)
     } finally {
       setRunning(false);
     }
-  }, [dbSessionId, ddl, kind, load, t]);
+  }, [database, dbSessionId, ddl, kind, load, selected?.schema, t]);
 
   const handleListContextMenu = useCallback(
     (e: React.MouseEvent, obj: DatabaseObject) => {

@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1180" width="1920" height="1180" role="img" aria-label="Data Transfer UI screens user journey storyboard">
+  <defs>
+    <style>
+      .t-title { font: 600 11px system-ui, sans-serif; fill: #e2e8f0; }
+      .t-label { font: 600 9px system-ui, sans-serif; fill: #64748b; letter-spacing: 0.06em; }
+      .t-body { font: 10px system-ui, sans-serif; fill: #cbd5e1; }
+      .t-muted { font: 9px system-ui, sans-serif; fill: #64748b; }
+      .t-accent { font: 600 10px system-ui, sans-serif; fill: #60a5fa; }
+      .t-btn { font: 600 10px system-ui, sans-serif; fill: #ffffff; }
+      .t-mono { font: 9px ui-monospace, monospace; fill: #64748b; }
+    </style>
+  </defs>
+
+  <rect width="1920" height="1180" fill="#020617"/>
+  <text x="960" y="36" class="t-title" font-size="16" text-anchor="middle">Data Transfer - UI Screen Journey (Target 6-step, consistent chrome)</text>
+  <text x="960" y="56" class="t-muted" font-size="10" text-anchor="middle">Each frame: TitleBar / centered Stepper / step content / Footer / StatusBar - tokens aligned with Data Sync</text>
+
+  <!-- ========== SCREEN 1: Endpoints ========== -->
+  <g transform="translate(40, 80)">
+    <rect width="600" height="520" rx="8" fill="#0f172a" stroke="#334155"/>
+    <!-- chrome -->
+    <rect width="600" height="28" fill="#1e293b" stroke="#334155"/>
+    <text x="12" y="18" class="t-muted">Data Transfer</text>
+    <!-- stepper -->
+    <rect y="28" width="600" height="44" fill="#1e293b" stroke="#334155"/>
+    <circle cx="130" cy="50" r="10" fill="#3b82f6"/><text x="126" y="54" fill="#fff" font-size="8">1</text>
+    <text x="146" y="54" class="t-accent">Endpoints</text>
+    <text x="220" y="54" class="t-muted">Setup</text>
+    <text x="280" y="54" class="t-muted">Objects</text>
+    <text x="345" y="54" class="t-muted">Mapping</text>
+    <text x="410" y="54" class="t-muted">Preview</text>
+    <text x="475" y="54" class="t-muted">Result</text>
+    <!-- content centered card -->
+    <rect x="120" y="100" width="360" height="340" rx="8" fill="#1e293b" stroke="#334155"/>
+    <text x="140" y="128" class="t-label">SOURCE</text>
+    <rect x="140" y="136" width="320" height="26" rx="4" fill="#0f172a" stroke="#475569"/>
+    <text x="152" y="153" class="t-body">PostgreSQL (local) - postgres</text>
+    <text x="140" y="188" class="t-label">TARGET</text>
+    <rect x="140" y="196" width="320" height="26" rx="4" fill="#0f172a" stroke="#475569"/>
+    <text x="152" y="213" class="t-body">PostgreSQL (staging) - app_db</text>
+    <rect x="140" y="240" width="96" height="20" rx="4" fill="#1e3a5f" stroke="#3b82f6"/>
+    <text x="150" y="254" class="t-accent" font-size="9">direct path</text>
+    <!-- footer -->
+    <rect y="460" width="600" height="36" fill="#1e293b" stroke="#334155"/>
+    <text x="16" y="482" class="t-muted">&lt; Back</text>
+    <rect x="500" y="468" width="84" height="24" rx="4" fill="#3b82f6"/>
+    <text x="528" y="484" class="t-btn">Next &gt;</text>
+    <rect y="496" width="600" height="24" fill="#0f172a" stroke="#334155"/>
+    <text x="12" y="512" class="t-muted">Ready</text>
+    <text x="300" y="72" class="t-accent" text-anchor="middle">Step 1 / 6</text>
+  </g>
+
+  <!-- ========== SCREEN 2: Setup ========== -->
+  <g transform="translate(660, 80)">
+    <rect width="600" height="520" rx="8" fill="#0f172a" stroke="#334155"/>
+    <rect width="600" height="28" fill="#1e293b" stroke="#334155"/>
+    <text x="12" y="18" class="t-muted">Data Transfer</text>
+    <rect y="28" width="600" height="44" fill="#1e293b" stroke="#334155"/>
+    <text x="100" y="54" class="t-muted">Endpoints</text>
+    <circle cx="168" cy="50" r="10" fill="#3b82f6"/><text x="164" y="54" fill="#fff" font-size="8">2</text>
+    <text x="184" y="54" class="t-accent">Setup</text>
+    <text x="240" y="54" class="t-muted">Objects</text>
+    <text x="305" y="54" class="t-muted">Mapping</text>
+    <text x="370" y="54" class="t-muted">Preview</text>
+    <text x="435" y="54" class="t-muted">Result</text>
+    <rect x="120" y="100" width="360" height="340" rx="8" fill="#1e293b" stroke="#334155"/>
+    <text x="140" y="124" class="t-title">Mode and options</text>
+    <rect x="140" y="136" width="320" height="48" rx="6" fill="#0f172a" stroke="#3b82f6" stroke-width="2"/>
+    <text x="156" y="156" class="t-body">[x] Structure + data</text>
+    <text x="156" y="172" class="t-muted">Create tables and copy rows</text>
+    <rect x="140" y="192" width="320" height="32" rx="6" fill="#0f172a" stroke="#475569"/>
+    <text x="156" y="212" class="t-muted">[ ] Data only</text>
+    <rect x="140" y="232" width="320" height="32" rx="6" fill="#0f172a" stroke="#475569"/>
+    <text x="156" y="252" class="t-muted">[ ] Structure only</text>
+    <line x1="140" y1="280" x2="460" y2="280" stroke="#334155"/>
+    <text x="140" y="300" class="t-label">WRITE MODE</text>
+    <rect x="140" y="308" width="320" height="24" rx="4" fill="#0f172a" stroke="#475569"/>
+    <text x="152" y="324" class="t-body">Insert (append)</text>
+    <text x="140" y="352" class="t-muted">Batch 500 | Stop on first error</text>
+    <rect y="460" width="600" height="36" fill="#1e293b" stroke="#334155"/>
+    <text x="16" y="482" class="t-muted">&lt; Back</text>
+    <rect x="500" y="468" width="84" height="24" rx="4" fill="#3b82f6"/>
+    <text x="528" y="484" class="t-btn">Next &gt;</text>
+    <rect y="496" width="600" height="24" fill="#0f172a" stroke="#334155"/>
+    <text x="300" y="72" class="t-accent" text-anchor="middle">Step 2 / 6</text>
+  </g>
+
+  <!-- ========== SCREEN 3: Objects ========== -->
+  <g transform="translate(1280, 80)">
+    <rect width="600" height="520" rx="8" fill="#0f172a" stroke="#334155"/>
+    <rect width="600" height="28" fill="#1e293b" stroke="#334155"/>
+    <text x="12" y="18" class="t-muted">Data Transfer</text>
+    <rect y="28" width="600" height="44" fill="#1e293b" stroke="#334155"/>
+    <text x="88" y="54" class="t-muted">Endpoints</text>
+    <text x="168" y="54" class="t-muted">Setup</text>
+    <circle cx="236" cy="50" r="10" fill="#3b82f6"/><text x="232" y="54" fill="#fff" font-size="8">3</text>
+    <text x="252" y="54" class="t-accent">Objects</text>
+    <text x="315" y="54" class="t-muted">Mapping</text>
+    <text x="380" y="54" class="t-muted">Preview</text>
+    <text x="445" y="54" class="t-muted">Result</text>
+    <!-- wide content -->
+    <rect x="40" y="88" width="520" height="28" rx="4" fill="#1e293b" stroke="#334155"/>
+    <text x="52" y="106" class="t-muted">Search tables...</text>
+    <text x="480" y="106" class="t-muted">3 selected</text>
+    <rect x="40" y="124" width="520" height="316" rx="6" fill="#1e293b" stroke="#334155"/>
+    <!-- rows -->
+    <rect x="48" y="132" width="504" height="28" fill="#0f172a"/>
+    <text x="68" y="150" class="t-body">[x] users</text>
+    <text x="280" y="150" class="t-muted">-&gt; users</text>
+    <rect x="440" y="138" width="56" height="16" rx="3" fill="#14532d" stroke="#22c55e"/>
+    <text x="452" y="150" fill="#86efac" font-size="8">matched</text>
+    <rect x="48" y="164" width="504" height="28" fill="#1e293b"/>
+    <text x="68" y="182" class="t-body">[x] orders</text>
+    <text x="280" y="182" class="t-muted">-&gt; orders</text>
+    <rect x="440" y="170" width="72" height="16" rx="3" fill="#14532d" stroke="#22c55e"/>
+    <text x="448" y="182" fill="#86efac" font-size="8">matched</text>
+    <rect x="48" y="196" width="504" height="28" fill="#0f172a"/>
+    <text x="68" y="214" class="t-body">[x] products</text>
+    <text x="280" y="214" class="t-muted">-&gt; products</text>
+    <rect x="440" y="202" width="80" height="16" rx="3" fill="#422006" stroke="#f59e0b"/>
+    <text x="448" y="214" fill="#fbbf24" font-size="8">create new</text>
+    <rect x="48" y="228" width="504" height="28" fill="#1e293b"/>
+    <text x="68" y="246" class="t-body">[ ] legacy_log</text>
+    <text x="280" y="246" class="t-muted">-&gt; -</text>
+    <rect x="440" y="234" width="80" height="16" rx="3" fill="#450a0a" stroke="#ef4444"/>
+    <text x="448" y="246" fill="#fca5a5" font-size="8">incompatible</text>
+    <rect y="460" width="600" height="36" fill="#1e293b" stroke="#334155"/>
+    <text x="16" y="482" class="t-muted">&lt; Back</text>
+    <rect x="500" y="468" width="84" height="24" rx="4" fill="#3b82f6"/>
+    <text x="528" y="484" class="t-btn">Next &gt;</text>
+    <rect y="496" width="600" height="24" fill="#0f172a" stroke="#334155"/>
+    <text x="300" y="72" class="t-accent" text-anchor="middle">Step 3 / 6</text>
+  </g>
+
+  <!-- ========== SCREEN 4: Mapping ========== -->
+  <g transform="translate(40, 640)">
+    <rect width="600" height="520" rx="8" fill="#0f172a" stroke="#334155"/>
+    <rect width="600" height="28" fill="#1e293b" stroke="#334155"/>
+    <text x="12" y="18" class="t-muted">Data Transfer</text>
+    <rect y="28" width="600" height="44" fill="#1e293b" stroke="#334155"/>
+    <text x="72" y="54" class="t-muted">Endpoints</text>
+    <text x="148" y="54" class="t-muted">Setup</text>
+    <text x="210" y="54" class="t-muted">Objects</text>
+    <circle cx="278" cy="50" r="10" fill="#3b82f6"/><text x="274" y="54" fill="#fff" font-size="8">4</text>
+    <text x="294" y="54" class="t-accent">Mapping</text>
+    <text x="360" y="54" class="t-muted">Preview</text>
+    <text x="425" y="54" class="t-muted">Result</text>
+    <!-- split panel -->
+    <rect x="16" y="88" width="160" height="360" rx="6" fill="#1e293b" stroke="#334155"/>
+    <rect x="24" y="100" width="144" height="24" rx="4" fill="#1e3a5f" stroke="#3b82f6"/>
+    <text x="36" y="116" class="t-accent" font-size="9">users</text>
+    <rect x="24" y="130" width="144" height="24" rx="4" fill="#0f172a" stroke="#475569"/>
+    <text x="36" y="146" class="t-muted">orders</text>
+    <rect x="24" y="160" width="144" height="24" rx="4" fill="#0f172a" stroke="#475569"/>
+    <text x="36" y="176" class="t-muted">products</text>
+    <rect x="188" y="88" width="396" height="360" rx="6" fill="#1e293b" stroke="#334155"/>
+    <text x="200" y="108" class="t-label">TARGET TABLE</text>
+    <rect x="200" y="114" width="180" height="22" rx="4" fill="#0f172a" stroke="#475569"/>
+    <text x="208" y="129" class="t-body">users</text>
+    <text x="200" y="156" class="t-muted">Auto-match | Clear unmapped</text>
+    <!-- column mapping table -->
+    <rect x="200" y="168" width="372" height="20" fill="#0f172a" stroke="#334155"/>
+    <text x="208" y="182" class="t-label" font-size="8">SOURCE</text>
+    <text x="300" y="182" class="t-label" font-size="8">TARGET</text>
+    <text x="420" y="182" class="t-label" font-size="8">SKIP</text>
+    <rect x="200" y="188" width="372" height="22" fill="#1e293b"/>
+    <text x="208" y="203" class="t-body">id</text>
+    <text x="300" y="203" class="t-body">id</text>
+    <rect x="200" y="210" width="372" height="22" fill="#0f172a"/>
+    <text x="208" y="225" class="t-body">email</text>
+    <text x="300" y="225" class="t-body">email</text>
+    <rect x="200" y="232" width="372" height="22" fill="#1e293b"/>
+    <text x="208" y="247" class="t-body">created_at</text>
+    <text x="300" y="247" class="t-body">created_at</text>
+    <rect y="460" width="600" height="36" fill="#1e293b" stroke="#334155"/>
+    <text x="16" y="482" class="t-muted">&lt; Back</text>
+    <rect x="500" y="468" width="84" height="24" rx="4" fill="#3b82f6"/>
+    <text x="528" y="484" class="t-btn">Next &gt;</text>
+    <rect y="496" width="600" height="24" fill="#0f172a" stroke="#334155"/>
+    <text x="300" y="632" class="t-accent" text-anchor="middle">Step 4 / 6</text>
+  </g>
+
+  <!-- ========== SCREEN 5: Preview + Execute ========== -->
+  <g transform="translate(660, 640)">
+    <rect width="600" height="520" rx="8" fill="#0f172a" stroke="#334155"/>
+    <rect width="600" height="28" fill="#1e293b" stroke="#334155"/>
+    <text x="12" y="18" class="t-muted">Data Transfer</text>
+    <rect y="28" width="600" height="44" fill="#1e293b" stroke="#334155"/>
+    <text x="72" y="54" class="t-muted">Endpoints</text>
+    <text x="148" y="54" class="t-muted">Setup</text>
+    <text x="210" y="54" class="t-muted">Objects</text>
+    <text x="278" y="54" class="t-muted">Mapping</text>
+    <circle cx="346" cy="50" r="10" fill="#3b82f6"/><text x="342" y="54" fill="#fff" font-size="8">5</text>
+    <text x="362" y="54" class="t-accent">Preview</text>
+    <text x="425" y="54" class="t-muted">Result</text>
+    <rect x="24" y="88" width="552" height="100" rx="6" fill="#1e293b" stroke="#334155"/>
+    <text x="36" y="106" class="t-muted">users -&gt; users | Copy DDL</text>
+    <rect x="36" y="114" width="528" height="64" rx="4" fill="#0f172a" stroke="#475569"/>
+    <text x="44" y="132" class="t-mono">CREATE TABLE users (</text>
+    <text x="52" y="148" class="t-mono">  id serial PRIMARY KEY,</text>
+    <text x="52" y="164" class="t-mono">  email varchar(255) NOT NULL</text>
+    <rect x="24" y="198" width="552" height="36" rx="6" fill="#1e293b" stroke="#334155"/>
+    <text x="36" y="220" class="t-body">orders -&gt; orders | insert | ~1,240 rows</text>
+    <rect x="24" y="242" width="552" height="36" rx="6" fill="#1e293b" stroke="#334155"/>
+    <text x="36" y="264" class="t-body">products -&gt; products | insert | ~86 rows</text>
+    <!-- footer with Execute -->
+    <rect y="460" width="600" height="36" fill="#1e293b" stroke="#334155"/>
+    <text x="16" y="482" class="t-muted">&lt; Back</text>
+    <rect x="440" y="468" width="144" height="24" rx="4" fill="#3b82f6"/>
+    <text x="468" y="484" class="t-btn">Execute transfer</text>
+    <rect y="496" width="600" height="24" fill="#0f172a" stroke="#334155"/>
+    <text x="300" y="632" class="t-accent" text-anchor="middle">Step 5 / 6</text>
+  </g>
+
+  <!-- ========== SCREEN 6: Result ========== -->
+  <g transform="translate(1280, 640)">
+    <rect width="600" height="520" rx="8" fill="#0f172a" stroke="#334155"/>
+    <rect width="600" height="28" fill="#1e293b" stroke="#334155"/>
+    <text x="12" y="18" class="t-muted">Data Transfer</text>
+    <rect y="28" width="600" height="44" fill="#1e293b" stroke="#334155"/>
+    <text x="72" y="54" class="t-muted">Endpoints</text>
+    <text x="148" y="54" class="t-muted">Setup</text>
+    <text x="210" y="54" class="t-muted">Objects</text>
+    <text x="278" y="54" class="t-muted">Mapping</text>
+    <text x="346" y="54" class="t-muted">Preview</text>
+    <circle cx="414" cy="50" r="10" fill="#3b82f6"/><text x="410" y="54" fill="#fff" font-size="8">6</text>
+    <text x="430" y="54" class="t-accent">Result</text>
+    <rect x="120" y="100" width="360" height="340" rx="8" fill="#1e293b" stroke="#334155"/>
+    <rect x="140" y="120" width="120" height="24" rx="4" fill="#14532d" stroke="#22c55e"/>
+    <text x="168" y="136" fill="#86efac" font-size="10" font-weight="600">Completed</text>
+    <text x="140" y="164" class="t-title">3 tables | 2,326 rows inserted</text>
+    <text x="140" y="184" class="t-muted">Duration: 12.4s</text>
+    <rect x="140" y="200" width="320" height="44" rx="4" fill="#0f172a" stroke="#334155"/>
+    <text x="152" y="218" class="t-body">users - Success (120 rows)</text>
+    <text x="152" y="234" class="t-muted">orders - Success (1,240 rows)</text>
+    <rect x="140" y="252" width="320" height="44" rx="4" fill="#0f172a" stroke="#334155"/>
+    <text x="152" y="270" class="t-body">products - Success (966 rows)</text>
+    <rect x="140" y="320" width="120" height="28" rx="4" fill="#334155"/>
+    <text x="176" y="338" class="t-body" text-anchor="middle">Close</text>
+    <rect y="460" width="600" height="36" fill="#1e293b" stroke="#334155"/>
+    <text x="16" y="482" class="t-muted">&lt; Back</text>
+    <rect y="496" width="600" height="24" fill="#0f172a" stroke="#334155"/>
+    <text x="12" y="512" class="t-muted">Transfer finished</text>
+    <text x="300" y="632" class="t-accent" text-anchor="middle">Step 6 / 6</text>
+  </g>
+
+  <!-- Row labels -->
+  <text x="340" y="628" class="t-muted" text-anchor="middle">Configure endpoints</text>
+  <text x="960" y="628" class="t-muted" text-anchor="middle">Choose mode and write options</text>
+  <text x="1580" y="628" class="t-muted" text-anchor="middle">Select tables to transfer</text>
+  <text x="340" y="1180" class="t-muted" text-anchor="middle">Map columns per table</text>
+  <text x="960" y="1180" class="t-muted" text-anchor="middle">Review DDL and execute</text>
+  <text x="1580" y="1180" class="t-muted" text-anchor="middle">View results</text>
+</svg>
