@@ -254,6 +254,7 @@ mod tests {
         fn ir_type_to_native(&self, ir: &IRType) -> String {
             match ir {
                 IRType::Int32 => "INT".into(),
+                IRType::Other(native) => native.clone(),
                 _ => "TEXT".into(),
             }
         }
@@ -432,5 +433,71 @@ mod tests {
         assert!(preview.ddl[0].ddl.contains("CREATE TABLE"));
         assert!(preview.ddl[0].ddl.contains("\"users_copy\""));
         assert!(!preview.ddl[0].ddl.contains("-- CREATE TABLE"));
+    }
+
+    #[test]
+    fn preview_create_ddl_honors_target_native_type_override() {
+        let mut job = sample_job(TransferMode::Structure, WriteMode::Insert);
+        job.tables = vec![TableMapping {
+            source_table: "users".into(),
+            target_table: "users_copy".into(),
+            create_new: true,
+            enabled: true,
+            column_mappings: vec![super::super::model::ColumnMapping {
+                source_column: "id".into(),
+                target_column: "id".into(),
+                skip: false,
+                target_native_type: Some("BIGINT".into()),
+            }],
+            ddl_override: None,
+        }];
+        let schema = TableSchema {
+            table_name: "users".into(),
+            columns: vec![datazen_driver_api::ColumnSchema {
+                name: "id".into(),
+                data_type: "int".into(),
+                nullable: false,
+                default_value: None,
+                comment: None,
+                is_primary_key: true,
+                is_auto_increment: false,
+            }],
+            primary_keys: vec!["id".into()],
+            indexes: vec![],
+            foreign_keys: vec![],
+        };
+        let mut schemas = HashMap::new();
+        schemas.insert("users".into(), schema);
+
+        let inspected = vec![TableInspectResult {
+            source_table: "users".into(),
+            target_table: "users_copy".into(),
+            status: TableMappingStatus::CreateNew,
+            create_new: true,
+            enabled: true,
+            column_mappings: vec![],
+            source_columns: vec!["id".into()],
+            target_columns: vec![],
+            source_column_types: HashMap::new(),
+            incompatible_reason: None,
+            source_row_count: None,
+        }];
+
+        let preview = build_preview(
+            &job,
+            &inspected,
+            &SyncPairing::Ir,
+            &schemas,
+            true,
+            Some(TransferPreviewAdapters {
+                src_adapter: &DummySource,
+                tgt_adapter: &DummyTarget,
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(preview.ddl.len(), 1);
+        assert!(preview.ddl[0].ddl.contains("BIGINT"));
+        assert!(!preview.ddl[0].ddl.contains(" INT"));
     }
 }

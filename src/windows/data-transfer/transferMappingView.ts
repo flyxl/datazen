@@ -22,14 +22,18 @@ export function normalizeColumnMappings(table: TransferTableResult): TransferCol
 export function autoMatchColumnMappings(
   sourceColumns: string[],
   targetColumns: string[],
+  existing: TransferColumnMapping[] = [],
 ): TransferColumnMapping[] {
+  const existingBySource = new Map(existing.map((m) => [m.sourceColumn, m]));
   const targetSet = new Set(targetColumns);
   return sourceColumns.map((sourceColumn) => {
     const matched = targetSet.has(sourceColumn);
+    const prev = existingBySource.get(sourceColumn);
     return {
       sourceColumn,
       targetColumn: matched ? sourceColumn : '',
       skip: !matched,
+      targetNativeType: prev?.targetNativeType,
     };
   });
 }

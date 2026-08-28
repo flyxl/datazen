@@ -36,7 +36,7 @@ export function ColumnMappingEditor({
   const handleAutoMatch = () => {
     const sourceColumns = table.sourceColumns ?? mappings.map((m) => m.sourceColumn);
     const targetColumns = table.createNew ? sourceColumns : (table.targetColumns ?? []);
-    updateMappings(autoMatchColumnMappings(sourceColumns, targetColumns));
+    updateMappings(autoMatchColumnMappings(sourceColumns, targetColumns, mappings));
   };
 
   const handleClearUnmapped = () => {

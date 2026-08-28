@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { EditorView, lineNumbers } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
+import { EditorState, Transaction } from '@codemirror/state';
 import { sql, PostgreSQL, MySQL, MariaSQL, SQLite, StandardSQL } from '@codemirror/lang-sql';
 import type { SQLDialect } from '@codemirror/lang-sql';
 import {
@@ -68,7 +68,10 @@ function codeBlockExtensions(
   if (onDocChange) {
     extensions.push(
       EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
+        if (
+          update.docChanged &&
+          !update.transactions.some((tr) => tr.annotation(Transaction.remote))
+        ) {
           onDocChange(update.state.doc.toString());
         }
       }),
@@ -131,7 +134,10 @@ export function SqlCodeBlock({ code, dialect = 'postgresql', onChange }: SqlCode
     if (!view) return;
     const current = view.state.doc.toString();
     if (current !== code) {
-      view.dispatch({ changes: { from: 0, to: current.length, insert: code } });
+      view.dispatch({
+        changes: { from: 0, to: current.length, insert: code },
+        annotations: Transaction.remote.of(true),
+      });
     }
   }, [code]);
 
