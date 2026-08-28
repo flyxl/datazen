@@ -21,6 +21,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/cn';
+import { listenCrossWindow } from '../../lib/crossWindowBus';
 import { isTransferLimitationsDismissed } from '../../lib/transferLimitationsPrefs';
 import { isTransferTargetSupported, resolveTransferPairing } from '../../lib/transferPairing';
 import type { ConnectionConfig } from '../../types';
@@ -92,6 +93,27 @@ export function DataTransferWindow() {
 
   useEffect(() => {
     loadConnections();
+  }, [loadConnections]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    listenCrossWindow('datazen:connection-closed', (payload) => {
+      const { dbSessionId } = (payload ?? {}) as { dbSessionId?: string };
+      if (!dbSessionId) return;
+      setSourceSession((prev) => (prev?.dbSessionId === dbSessionId ? null : prev));
+      setTargetSession((prev) => (prev?.dbSessionId === dbSessionId ? null : prev));
+    }).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, []);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    listenCrossWindow('datazen:connections-changed', loadConnections).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
   }, [loadConnections]);
 
   const sourceConn = useMemo(
