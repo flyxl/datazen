@@ -86,7 +86,7 @@ pub fn build_preview(
                 let mut ir =
                     source_schema_to_target_ir(adapters.src_adapter, schema, None, target_table);
                 if let Some(mapping) = table_mapping {
-                    apply_column_type_overrides(&mut ir, mapping);
+                    apply_column_type_overrides(&mut ir, mapping, adapters.tgt_adapter);
                 }
                 Some(build_create_table_ddl(&ir, adapters.tgt_adapter))
             } else {
@@ -499,5 +499,135 @@ mod tests {
         assert_eq!(preview.ddl.len(), 1);
         assert!(preview.ddl[0].ddl.contains("BIGINT"));
         assert!(!preview.ddl[0].ddl.contains(" INT"));
+    }
+
+    #[test]
+    fn preview_timestamp_keeps_datetime_when_target_native_type_matches() {
+        struct TgtAdapter;
+        impl SyncTargetAdapter for TgtAdapter {
+            fn ir_type_to_native(&self, ir: &IRType) -> String {
+                match ir {
+                    IRType::Timestamp { .. } => "DATETIME".into(),
+                    _ => "TEXT".into(),
+                }
+            }
+            fn format_default(&self, d: &IRDefault) -> Option<String> {
+                match d {
+                    IRDefault::CurrentTimestamp => Some("CURRENT_TIMESTAMP".into()),
+                    _ => None,
+                }
+            }
+            fn allows_column_default(&self, ir: &IRType) -> bool {
+                matches!(ir, IRType::Timestamp { .. })
+            }
+            fn default_capable_type_for(&self, ir: &IRType) -> Option<IRType> {
+                match ir {
+                    IRType::Other(_) => Some(IRType::Varchar {
+                        length: Some(16383),
+                    }),
+                    _ => None,
+                }
+            }
+            fn format_literal(&self, _v: &Option<Value>, _ir: &IRType) -> String {
+                "NULL".into()
+            }
+        }
+
+        struct TsSource;
+        impl SyncSourceAdapter for TsSource {
+            fn column_to_ir(
+                &self,
+                column: &datazen_driver_api::ColumnSchema,
+                _native_full_type: Option<&str>,
+            ) -> IRColumn {
+                IRColumn {
+                    name: column.name.clone(),
+                    ir_type: IRType::Timestamp {
+                        with_timezone: false,
+                    },
+                    nullable: false,
+                    default_expr: Some(IRDefault::CurrentTimestamp),
+                    is_primary_key: false,
+                    is_auto_increment: false,
+                    comment: None,
+                }
+            }
+        }
+
+        let mut job = sample_job(TransferMode::Structure, WriteMode::Insert);
+        job.tables = vec![TableMapping {
+            source_table: "reviews".into(),
+            target_table: "reviews".into(),
+            create_new: true,
+            enabled: true,
+            column_mappings: vec![super::super::model::ColumnMapping {
+                source_column: "created_at".into(),
+                target_column: "created_at".into(),
+                skip: false,
+                target_native_type: Some("DATETIME".into()),
+            }],
+            ddl_override: None,
+        }];
+        let schema = TableSchema {
+            table_name: "reviews".into(),
+            columns: vec![datazen_driver_api::ColumnSchema {
+                name: "created_at".into(),
+                data_type: "timestamp".into(),
+                nullable: false,
+                default_value: Some("now()".into()),
+                comment: None,
+                is_primary_key: false,
+                is_auto_increment: false,
+            }],
+            primary_keys: vec![],
+            indexes: vec![],
+            foreign_keys: vec![],
+        };
+        let mut schemas = HashMap::new();
+        schemas.insert("reviews".into(), schema);
+
+        let inspected = vec![TableInspectResult {
+            source_table: "reviews".into(),
+            target_table: "reviews".into(),
+            status: TableMappingStatus::CreateNew,
+            create_new: true,
+            enabled: true,
+            column_mappings: vec![],
+            source_columns: vec!["created_at".into()],
+            target_columns: vec![],
+            source_column_types: HashMap::new(),
+            incompatible_reason: None,
+            source_row_count: None,
+        }];
+
+        let preview = build_preview(
+            &job,
+            &inspected,
+            &SyncPairing::Ir,
+            &schemas,
+            true,
+            Some(TransferPreviewAdapters {
+                src_adapter: &TsSource,
+                tgt_adapter: &TgtAdapter,
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(preview.ddl.len(), 1);
+        assert!(
+            preview.ddl[0].ddl.contains("DATETIME"),
+            "ddl={}",
+            preview.ddl[0].ddl
+        );
+        assert!(
+            !preview.ddl[0].ddl.contains("VARCHAR"),
+            "ddl={}",
+            preview.ddl[0].ddl
+        );
+        assert!(
+            preview.ddl[0].ddl.contains("DEFAULT CURRENT_TIMESTAMP"),
+            "ddl={}",
+            preview.ddl[0].ddl
+        );
     }
 }
