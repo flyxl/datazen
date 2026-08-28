@@ -141,3 +141,7 @@ e2e/demo-recording.webm
 e2e/demo-poster.jpg
 e2e/demo-poster.webp
 e2e/.demo-recording/
+
+# Local AI assistant tooling (Codex / agent metadata)
+.agents/
+.codex/
