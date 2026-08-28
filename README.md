@@ -16,7 +16,7 @@ Natural-language SQL · Query analysis · Charts · Workflows · MCP · Extensib
 
 </div>
 
-![DataZen main window](site/assets/screenshots/01-main-window.png)
+![DataZen natural-language SQL with database schema context](site/assets/screenshots/03-ai-nl2sql.png)
 
 ## Why DataZen?
 

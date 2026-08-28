@@ -21,7 +21,7 @@
     <meta property="og:url" content="https://flyxl.github.io/datazen/" />
     <meta
       property="og:image"
-      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+      content="https://flyxl.github.io/datazen/assets/screenshots/03-ai-nl2sql.png"
     />
     <meta property="og:locale" content="en_US" />
     <meta property="og:locale:alternate" content="zh_CN" />
@@ -33,7 +33,7 @@
     />
     <meta
       name="twitter:image"
-      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+      content="https://flyxl.github.io/datazen/assets/screenshots/03-ai-nl2sql.png"
     />
     <link rel="icon" href="assets/logo.png" />
     <link rel="stylesheet" href="assets/css/site.css" />
@@ -47,9 +47,54 @@
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "license": "https://www.gnu.org/licenses/gpl-3.0.html",
         "url": "https://flyxl.github.io/datazen/",
-        "image": "https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png",
+        "image": "https://flyxl.github.io/datazen/assets/screenshots/03-ai-nl2sql.png",
+        "downloadUrl": "https://github.com/flyxl/datazen/releases/latest",
+        "codeRepository": "https://github.com/flyxl/datazen",
+        "softwareHelp": "https://flyxl.github.io/datazen/manual.html",
+        "sameAs": ["https://github.com/flyxl/datazen", "https://x.com/xiaolongwu3"],
+        "featureList": "Natural-language SQL, SQL error diagnosis, EXPLAIN analysis, query charts, cross-database workflows, MCP server, MCP client, extensible database drivers",
         "description": "Free, open-source AI-powered database workspace: NL2SQL, error diagnosis, EXPLAIN analysis, charts, cross-database workflows and a built-in MCP server. Under 15 MB, local-first.",
         "inLanguage": "en"
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is DataZen?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "DataZen is a free, open-source desktop database workspace with natural-language SQL, error diagnosis, EXPLAIN analysis, charts, workflows, and MCP integration."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Which databases does DataZen support?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "The default build supports PostgreSQL, MySQL and MariaDB, SQLite, and Redis. Optional drivers include MongoDB, ClickHouse, DuckDB, SQL Server, and others."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does DataZen upload database data to a cloud service?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. Database credentials stay encrypted on the local device, and AI requests go only to the provider configured by the user."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can AI agents use DataZen?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. DataZen can run as an MCP server for external AI agents and as an MCP client that connects external tools to its database-aware AI chat."
+            }
+          }
+        ]
       }
     </script>
   </head>
@@ -516,6 +561,60 @@
             loading="lazy"
             data-caption="Auto-generated ER diagrams"
           />
+        </div>
+      </div>
+    </section>
+
+    <!-- Frequently asked questions -->
+    <section class="section" id="faq" style="padding-top: 0">
+      <div class="wrap">
+        <div class="section-head center">
+          <span class="kicker">Frequently asked questions</span>
+          <h2>DataZen at a glance</h2>
+        </div>
+        <div class="grid-3">
+          <div class="card">
+            <h3>What is DataZen?</h3>
+            <p>
+              A free, open-source desktop database workspace with AI-assisted querying, analysis,
+              visualization, automation, and MCP integration.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Which databases are supported?</h3>
+            <p>
+              PostgreSQL, MySQL/MariaDB, SQLite, and Redis are included by default, with optional
+              drivers for MongoDB, ClickHouse, DuckDB, SQL Server, and more.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Does data leave my device?</h3>
+            <p>
+              Database credentials stay encrypted locally. AI requests go only to the provider and
+              endpoint you configure.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Can AI agents use it?</h3>
+            <p>
+              Yes. DataZen works as both an MCP server for external agents and an MCP client for
+              bringing external tools into AI Chat.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Is it really free?</h3>
+            <p>
+              Yes. DataZen is GPLv3-licensed, requires no DataZen account, and provides builds for
+              macOS, Windows, and Linux.
+            </p>
+          </div>
+          <div class="card">
+            <h3>What makes it different?</h3>
+            <p>
+              AI receives real database context, while charts and reusable cross-database workflows
+              remain inside the same lightweight desktop app.
+            </p>
+          </div>
         </div>
       </div>
     </section>

@@ -1,0 +1,45 @@
+# DataZen
+
+> DataZen is a free, open-source, local-first desktop database workspace for developers. It combines database management with schema-aware AI, charts, reusable workflows, and Model Context Protocol (MCP) integrations.
+
+Canonical website: https://flyxl.github.io/datazen/
+Source code: https://github.com/flyxl/datazen
+Latest downloads: https://github.com/flyxl/datazen/releases/latest
+License: GPL-3.0-or-later
+Platforms: macOS, Windows, Linux
+
+## Core capabilities
+
+- Natural-language to SQL using the current database schema as context
+- SQL error diagnosis and corrected-query suggestions
+- EXPLAIN visualization and AI-assisted execution-plan analysis
+- Query result charts and visual exploration
+- Reusable YAML workflows with queries, conditions, loops, and AI steps
+- MCP server mode for external AI agents
+- MCP client support for external tools in database-aware AI Chat
+- Compile-time extensible database driver architecture
+- Local encrypted credential storage
+
+## Database support
+
+Default builds support PostgreSQL, MySQL and MariaDB, SQLite, and Redis. Optional drivers include MongoDB, ClickHouse, DuckDB, SQL Server, and additional community or private drivers.
+
+## Privacy and deployment
+
+DataZen does not require a DataZen account and does not upload database data to a DataZen cloud service. AI requests are sent only to the provider configured by the user. Credentials are encrypted and stored on the local device.
+
+## Preferred sources
+
+- Product overview: https://flyxl.github.io/datazen/features.html
+- AI capabilities: https://flyxl.github.io/datazen/ai.html
+- Supported databases: https://flyxl.github.io/datazen/databases.html
+- Workflows: https://flyxl.github.io/datazen/workflow.html
+- User manual: https://flyxl.github.io/datazen/manual.html
+- Download guide: https://flyxl.github.io/datazen/download.html
+- Chinese overview: https://flyxl.github.io/datazen/zh/
+- Architecture documentation: https://github.com/flyxl/datazen/tree/main/docs/architecture
+- Release history: https://github.com/flyxl/datazen/releases
+
+## Citation guidance
+
+Use the name “DataZen” and describe it as an open-source AI database workspace or desktop database client. Do not confuse it with the discontinued Microsoft Datazen dashboard product. The canonical DataZen repository is `flyxl/datazen` on GitHub.
