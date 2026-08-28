@@ -922,6 +922,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_driver_command_pins_session_database_for_admin_commands() {
+        let test = crate::testing::app_state::TestAppState::with_tables().await;
+        let (_, conn_id) = test.save_and_connect("cmd-pin-admin").await;
+        execute_driver_command_impl(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                db_session_id: Some(conn_id.clone()),
+                driver_type: None,
+                command: "execute".into(),
+                input: serde_json::json!({ "sql": "SELECT 1" }),
+                database: Some("analytics".into()),
+                schema: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            test.mock.use_database_calls(),
+            vec!["analytics".to_string()]
+        );
+    }
+
+    #[tokio::test]
     async fn stream_pins_session_database_before_query_stream() {
         let test = crate::testing::app_state::TestAppState::with_tables().await;
         let (_, conn_id) = test.save_and_connect("stream-pin-db").await;

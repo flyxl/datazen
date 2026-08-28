@@ -186,7 +186,7 @@ impl SyncTargetAdapter for MysqlSyncAdapter {
             IRType::Json => "JSON".into(),
             IRType::Uuid => "CHAR(36)".into(),
             IRType::Bit { length } => format!("BIT({length})"),
-            IRType::Other(_) => "TEXT".into(),
+            IRType::Other(native) => native.clone(),
         }
     }
 
@@ -195,6 +195,27 @@ impl SyncTargetAdapter for MysqlSyncAdapter {
             IRDefault::CurrentTimestamp => Some("CURRENT_TIMESTAMP".into()),
             IRDefault::Literal(s) => Some(s.clone()),
             IRDefault::RawExpression(_) => None,
+        }
+    }
+
+    fn allows_column_default(&self, ir_type: &IRType) -> bool {
+        !matches!(
+            ir_type,
+            IRType::Text
+                | IRType::Blob
+                | IRType::Json
+                | IRType::Binary { length: None }
+                | IRType::Other(_)
+        )
+    }
+
+    fn default_capable_type_for(&self, ir_type: &IRType) -> Option<IRType> {
+        match ir_type {
+            IRType::Text | IRType::Other(_) => Some(IRType::Varchar {
+                // utf8mb4 row-limit friendly max; PG text longer than this may truncate.
+                length: Some(16_383),
+            }),
+            _ => None,
         }
     }
 
@@ -325,6 +346,26 @@ mod tests {
 
         let ir = adapter().column_to_ir(&col("x", "geometry"), None);
         assert_eq!(ir.ir_type, IRType::Other("geometry".into()));
+    }
+
+    #[test]
+    fn mysql_text_with_default_maps_to_varchar() {
+        let a = adapter();
+        assert_eq!(
+            a.default_capable_type_for(&IRType::Text),
+            Some(IRType::Varchar {
+                length: Some(16_383)
+            })
+        );
+    }
+
+    #[test]
+    fn mysql_text_column_default_not_allowed() {
+        let a = adapter();
+        assert!(!a.allows_column_default(&IRType::Text));
+        assert!(!a.allows_column_default(&IRType::Blob));
+        assert!(!a.allows_column_default(&IRType::Json));
+        assert!(a.allows_column_default(&IRType::Varchar { length: Some(100) }));
     }
 
     #[test]

@@ -99,6 +99,26 @@ pub(crate) fn take_once_slot(flag: &AtomicBool) -> bool {
     !flag.swap(true, Ordering::SeqCst)
 }
 
+/// Menu events that target the main workspace shell and must raise the main window first.
+pub(crate) fn menu_emit_needs_main_focus(event: &str) -> bool {
+    matches!(
+        event,
+        "menu:open-settings"
+            | "menu:new-connection"
+            | "menu:workflow"
+            | "menu:dashboard"
+            | "menu:export-config"
+            | "menu:import-config"
+            | "menu:export-connections"
+            | "menu:import-connections-file"
+            | "menu:import-connections-dbx"
+            | "menu:import-connections-navicat"
+            | "menu:import-connections-datagrip"
+            | "menu:import-connections-dbeaver"
+            | "menu:import-connections-tableplus"
+    )
+}
+
 pub(crate) fn menu_action_for_id(id: &str) -> MenuAction {
     if let Some(theme) = id.strip_prefix("theme-") {
         return MenuAction::ThemeChange(theme.to_string());
@@ -273,6 +293,9 @@ mod native_menu {
                     let _ = app_handle.emit("menu:theme-change", theme);
                 }
                 MenuAction::Emit(event) => {
+                    if menu_emit_needs_main_focus(event) {
+                        tray::focus_main_window(app_handle);
+                    }
                     let _ = app_handle.emit(event, ());
                 }
                 MenuAction::OpenDocs => {
@@ -1357,6 +1380,16 @@ mod tests {
     fn should_auto_start_embedded_mcp_follows_setting() {
         assert!(should_auto_start_embedded_mcp(true));
         assert!(!should_auto_start_embedded_mcp(false));
+    }
+
+    #[test]
+    fn menu_emit_needs_main_focus_for_shell_actions_only() {
+        assert!(menu_emit_needs_main_focus("menu:open-settings"));
+        assert!(menu_emit_needs_main_focus("menu:new-connection"));
+        assert!(menu_emit_needs_main_focus("menu:workflow"));
+        assert!(!menu_emit_needs_main_focus("menu:data-sync"));
+        assert!(!menu_emit_needs_main_focus("menu:backup"));
+        assert!(!menu_emit_needs_main_focus("menu:view-logs"));
     }
 
     #[test]

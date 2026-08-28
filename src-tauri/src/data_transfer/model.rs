@@ -1,5 +1,7 @@
 //! Core Data Transfer types (Navicat-style one-way copy).
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use super::error::TransferError;
@@ -53,6 +55,9 @@ pub struct ColumnMapping {
     pub target_column: String,
     #[serde(default)]
     pub skip: bool,
+    /// Native DDL type on the target (e.g. `VARCHAR(255)`); cross-dialect create-new only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_native_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -66,6 +71,9 @@ pub struct TableMapping {
     pub enabled: bool,
     #[serde(default)]
     pub column_mappings: Vec<ColumnMapping>,
+    /// When set, structure phase executes this SQL instead of auto-generated CREATE TABLE.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ddl_override: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -81,6 +89,7 @@ impl TableMapping {
             create_new: false,
             enabled: true,
             column_mappings: Vec::new(),
+            ddl_override: None,
         }
     }
 }
@@ -150,6 +159,8 @@ pub struct TableInspectResult {
     pub source_columns: Vec<String>,
     #[serde(default)]
     pub target_columns: Vec<String>,
+    #[serde(default)]
+    pub source_column_types: HashMap<String, String>,
     pub incompatible_reason: Option<String>,
     pub source_row_count: Option<u64>,
 }

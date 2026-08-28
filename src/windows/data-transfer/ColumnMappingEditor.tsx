@@ -27,6 +27,7 @@ export function ColumnMappingEditor({
   const mappings = normalizeColumnMappings(table);
   const unmappedTargets = unmappedTargetColumns(table);
   const showCreateNewToggle = structureMode || table.status === 'CREATE_NEW' || table.createNew;
+  const showTargetType = structureMode && table.createNew;
 
   const updateMappings = (next: TransferColumnMapping[]) => {
     onChange({ columnMappings: next });
@@ -118,14 +119,22 @@ export function ColumnMappingEditor({
       <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-surface">
         <div className="sticky top-0 flex items-center gap-3 border-b border-border bg-surface-alt px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
           <div className="min-w-0 flex-1">{t('transfer.mapping.sourceColumn')}</div>
+          {showTargetType && (
+            <div className="w-28 shrink-0">{t('transfer.mapping.sourceType')}</div>
+          )}
           <div className="min-w-0 flex-1">{t('transfer.mapping.targetColumn')}</div>
-          <div className="w-16 text-center">{t('transfer.mapping.skip')}</div>
+          {showTargetType && (
+            <div className="w-36 shrink-0">{t('transfer.mapping.targetType')}</div>
+          )}
+          <div className="w-16 shrink-0 text-center">{t('transfer.mapping.skip')}</div>
         </div>
         {mappings.map((row) => (
           <ColumnMappingRow
             key={row.sourceColumn}
             row={row}
             createNew={table.createNew}
+            showTargetType={showTargetType}
+            sourceType={table.sourceColumnTypes?.[row.sourceColumn]}
             targetOptions={targetOptions(row.targetColumn)}
             onChange={(patch) => {
               updateMappings(
@@ -142,11 +151,15 @@ export function ColumnMappingEditor({
 function ColumnMappingRow({
   row,
   createNew,
+  showTargetType,
+  sourceType,
   targetOptions,
   onChange,
 }: {
   row: TransferColumnMapping;
   createNew: boolean;
+  showTargetType: boolean;
+  sourceType?: string;
   targetOptions: { value: string; label: string }[];
   onChange: (patch: Partial<TransferColumnMapping>) => void;
 }) {
@@ -161,6 +174,14 @@ function ColumnMappingRow({
       )}
     >
       <div className="min-w-0 flex-1 truncate font-mono text-xs">{row.sourceColumn}</div>
+      {showTargetType && (
+        <div
+          className="w-28 shrink-0 truncate font-mono text-[11px] text-fg-muted"
+          title={sourceType}
+        >
+          {sourceType ?? '—'}
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         {createNew ? (
           <input
@@ -183,7 +204,21 @@ function ColumnMappingRow({
           </div>
         )}
       </div>
-      <div className="flex w-16 justify-center">
+      {showTargetType && (
+        <div className="w-36 shrink-0">
+          <input
+            type="text"
+            className="w-full rounded border border-border bg-bg px-2 py-1 font-mono text-[11px]"
+            placeholder="VARCHAR(255)"
+            value={row.targetNativeType ?? ''}
+            data-testid={`data-transfer-target-type-${row.sourceColumn}`}
+            onChange={(e) =>
+              onChange({ targetNativeType: e.target.value.trim() ? e.target.value : undefined })
+            }
+          />
+        </div>
+      )}
+      <div className="flex w-16 shrink-0 justify-center">
         <input
           type="checkbox"
           checked={row.skip ?? false}

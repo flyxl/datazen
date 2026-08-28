@@ -71,6 +71,21 @@ pub trait SyncTargetAdapter: Send + Sync {
     /// whose default is handled by the database engine).
     fn format_default(&self, default: &IRDefault) -> Option<String>;
 
+    /// Whether a `DEFAULT` clause is valid for this IR type on the target engine.
+    /// MySQL rejects defaults on TEXT/BLOB/JSON/GEOMETRY columns.
+    fn allows_column_default(&self, ir_type: &IRType) -> bool {
+        let _ = ir_type;
+        true
+    }
+
+    /// When [`allows_column_default`](Self::allows_column_default) is false but the
+    /// source column still has a default, return a narrower IR type that can carry
+    /// the default on this engine (e.g. PG `text` → MySQL `VARCHAR(16383)`).
+    fn default_capable_type_for(&self, ir_type: &IRType) -> Option<IRType> {
+        let _ = ir_type;
+        None
+    }
+
     /// Format a runtime `Value` as a SQL literal suitable for INSERT statements.
     fn format_literal(&self, value: &Option<Value>, ir_type: &IRType) -> String;
 

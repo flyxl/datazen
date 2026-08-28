@@ -21,6 +21,8 @@ export interface TransferColumnMapping {
   sourceColumn: string;
   targetColumn: string;
   skip?: boolean;
+  /** Native target DDL type override (cross-dialect create-new). */
+  targetNativeType?: string;
 }
 
 export interface TransferTableMapping {
@@ -29,6 +31,8 @@ export interface TransferTableMapping {
   createNew?: boolean;
   enabled?: boolean;
   columnMappings?: TransferColumnMapping[];
+  /** Execute this CREATE instead of auto-generated DDL. */
+  ddlOverride?: string;
 }
 
 export interface TransferOptions {
@@ -55,6 +59,8 @@ export interface TransferTableResult {
   columnMappings: TransferColumnMapping[];
   sourceColumns?: string[];
   targetColumns?: string[];
+  sourceColumnTypes?: Record<string, string>;
+  ddlOverride?: string;
   incompatibleReason?: string | null;
   sourceRowCount?: number | null;
 }

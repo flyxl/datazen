@@ -53,6 +53,23 @@ async function bootstrap() {
 
 void bootstrap();
 
+/** DEV-only: expose hidden migration tool windows when productFeatures gates UI entries. */
+if (import.meta.env.DEV && getWindowKind() === 'main') {
+  void import('./lib/windowManager').then((wm) => {
+    const dev = {
+      openDataTransfer: () => wm.openDataTransferWindow(),
+      openDataSync: () => wm.openDataSyncWindow(),
+      openSchemaDiff: () => wm.openSchemaDiffWindow(),
+    };
+    (globalThis as Record<string, unknown>).__datazenDev = dev;
+
+    const autoOpen = import.meta.env.VITE_DEV_OPEN_WINDOW;
+    if (autoOpen === 'data-transfer') dev.openDataTransfer();
+    else if (autoOpen === 'data-sync') dev.openDataSync();
+    else if (autoOpen === 'schema-diff') dev.openSchemaDiff();
+  });
+}
+
 if ('__TAURI_INTERNALS__' in globalThis) {
   import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
     const win = getCurrentWindow();
@@ -60,11 +77,14 @@ if ('__TAURI_INTERNALS__' in globalThis) {
       // Theme + splash already applied in index.html; show only after that paint.
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          void win.show().then(() => {
-            win.setFocus().catch(() => {});
-          }).catch((e) => {
-            console.error(`[bootstrap] failed to show window "${win.label}"`, e);
-          });
+          void win
+            .show()
+            .then(() => {
+              win.setFocus().catch(() => {});
+            })
+            .catch((e) => {
+              console.error(`[bootstrap] failed to show window "${win.label}"`, e);
+            });
         });
       });
     }

@@ -13,7 +13,10 @@ use super::model::{
     DdlPreviewItem, TableInspectResult, TableMappingStatus, TransferJob, TransferMode,
     TransferPreview, WriteMode, WritePlanItem,
 };
-use super::structure::{build_drop_table_sql, source_schema_to_target_ir};
+use super::structure::{
+    apply_column_type_overrides, build_drop_table_sql, source_schema_to_target_ir,
+    table_mapping_for,
+};
 
 /// Optional IR adapters for real DDL generation and execute eligibility.
 pub struct TransferPreviewAdapters<'a> {
@@ -74,12 +77,17 @@ pub fn build_preview(
             continue;
         }
 
+        let table_mapping = table_mapping_for(job, &table.source_table);
+
         let create_ddl_for_table = |source_table: &str, target_table: &str| -> Option<String> {
             let schema = source_schemas.get(source_table)?;
             if let Some(adapters) = &adapters {
                 // Full types are resolved at execute time; preview uses schema types only.
-                let ir =
+                let mut ir =
                     source_schema_to_target_ir(adapters.src_adapter, schema, None, target_table);
+                if let Some(mapping) = table_mapping {
+                    apply_column_type_overrides(&mut ir, mapping);
+                }
                 Some(build_create_table_ddl(&ir, adapters.tgt_adapter))
             } else {
                 None
@@ -87,7 +95,19 @@ pub fn build_preview(
         };
 
         if needs_structure && table.create_new {
-            if let Some(ddl_sql) = create_ddl_for_table(&table.source_table, &table.target_table) {
+            if let Some(override_ddl) = table_mapping
+                .and_then(|m| m.ddl_override.as_deref())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                ddl.push(DdlPreviewItem {
+                    source_table: table.source_table.clone(),
+                    target_table: table.target_table.clone(),
+                    ddl: override_ddl.to_string(),
+                });
+            } else if let Some(ddl_sql) =
+                create_ddl_for_table(&table.source_table, &table.target_table)
+            {
                 ddl.push(DdlPreviewItem {
                     source_table: table.source_table.clone(),
                     target_table: table.target_table.clone(),
@@ -300,9 +320,11 @@ mod tests {
                 source_column: "id".into(),
                 target_column: "id".into(),
                 skip: false,
+                target_native_type: None,
             }],
             source_columns: vec!["id".into()],
             target_columns: vec!["id".into()],
+            source_column_types: HashMap::new(),
             incompatible_reason: None,
             source_row_count: Some(10),
         }];
@@ -334,9 +356,11 @@ mod tests {
                 source_column: "id".into(),
                 target_column: "id".into(),
                 skip: false,
+                target_native_type: None,
             }],
             source_columns: vec!["id".into()],
             target_columns: vec!["id".into()],
+            source_column_types: HashMap::new(),
             incompatible_reason: None,
             source_row_count: Some(10),
         }];
@@ -386,6 +410,7 @@ mod tests {
             column_mappings: vec![],
             source_columns: vec!["id".into()],
             target_columns: vec![],
+            source_column_types: HashMap::new(),
             incompatible_reason: None,
             source_row_count: None,
         }];

@@ -12,7 +12,14 @@ pub fn build_create_table_ddl(ir_table: &IRTable, tgt: &dyn SyncTargetAdapter) -
         .columns
         .iter()
         .map(|c| {
-            let mut def = format!("  {} {}", q(&c.name), tgt.ir_type_to_native(&c.ir_type));
+            let ddl_ir_type = if c.default_expr.is_some() && !tgt.allows_column_default(&c.ir_type)
+            {
+                tgt.default_capable_type_for(&c.ir_type)
+                    .unwrap_or(c.ir_type.clone())
+            } else {
+                c.ir_type.clone()
+            };
+            let mut def = format!("  {} {}", q(&c.name), tgt.ir_type_to_native(&ddl_ir_type));
 
             if !c.nullable {
                 def.push_str(" NOT NULL");
@@ -25,8 +32,10 @@ pub fn build_create_table_ddl(ir_table: &IRTable, tgt: &dyn SyncTargetAdapter) -
             }
 
             if let Some(ref d) = c.default_expr {
-                if let Some(s) = tgt.format_default(d) {
-                    def.push_str(&format!(" DEFAULT {s}"));
+                if tgt.allows_column_default(&ddl_ir_type) {
+                    if let Some(s) = tgt.format_default(d) {
+                        def.push_str(&format!(" DEFAULT {s}"));
+                    }
                 }
             }
 
@@ -93,6 +102,17 @@ mod tests {
                 IRDefault::CurrentTimestamp => Some("CURRENT_TIMESTAMP".into()),
                 IRDefault::Literal(s) => Some(s.clone()),
                 IRDefault::RawExpression(_) => None,
+            }
+        }
+
+        fn allows_column_default(&self, ir_type: &IRType) -> bool {
+            !matches!(ir_type, IRType::Varchar { length: None } | IRType::Text)
+        }
+
+        fn default_capable_type_for(&self, ir_type: &IRType) -> Option<IRType> {
+            match ir_type {
+                IRType::Text => Some(IRType::Varchar { length: Some(100) }),
+                _ => None,
             }
         }
 
@@ -182,6 +202,28 @@ mod tests {
             ddl.ends_with("ENGINE = MergeTree\nORDER BY (ts)"),
             "ddl={ddl}"
         );
+    }
+
+    #[test]
+    fn ddl_uses_fallback_type_when_default_on_disallowed_type() {
+        let table = IRTable {
+            name: "logs".into(),
+            columns: vec![IRColumn {
+                name: "msg".into(),
+                ir_type: IRType::Text,
+                nullable: true,
+                default_expr: Some(IRDefault::Literal("'hello'".into())),
+                is_primary_key: false,
+                is_auto_increment: false,
+                comment: None,
+            }],
+            primary_keys: vec![],
+            table_options: None,
+        };
+
+        let ddl = build_create_table_ddl(&table, &DummyTarget::new());
+        assert!(ddl.contains("VARCHAR(100)"), "ddl={ddl}");
+        assert!(ddl.contains("DEFAULT 'hello'"), "ddl={ddl}");
     }
 
     #[test]
