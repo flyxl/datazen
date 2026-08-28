@@ -71,6 +71,46 @@ pub fn table_mapping_for<'a>(
     job.tables.iter().find(|m| m.source_table == source_table)
 }
 
+/// Fill `target_native_type` on create-new column mappings from IR → target native DDL types.
+pub fn enrich_create_new_target_types(
+    results: &mut [TableInspectResult],
+    source_schemas: &HashMap<String, TableSchema>,
+    src_adapter: &dyn SyncSourceAdapter,
+    tgt_adapter: &dyn SyncTargetAdapter,
+) {
+    for result in results.iter_mut() {
+        if !result.create_new || result.source_table.is_empty() {
+            continue;
+        }
+        let Some(schema) = source_schemas.get(&result.source_table) else {
+            continue;
+        };
+        let ir = src_adapter.table_to_ir(schema, None);
+        for col_map in &mut result.column_mappings {
+            if col_map
+                .target_native_type
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty())
+            {
+                continue;
+            }
+            let Some(ir_col) = ir.columns.iter().find(|c| c.name == col_map.source_column) else {
+                continue;
+            };
+            let ddl_ir_type = if ir_col.default_expr.is_some()
+                && !tgt_adapter.allows_column_default(&ir_col.ir_type)
+            {
+                tgt_adapter
+                    .default_capable_type_for(&ir_col.ir_type)
+                    .unwrap_or_else(|| ir_col.ir_type.clone())
+            } else {
+                ir_col.ir_type.clone()
+            };
+            col_map.target_native_type = Some(tgt_adapter.ir_type_to_native(&ddl_ir_type));
+        }
+    }
+}
+
 pub fn apply_column_type_overrides(ir: &mut IRTable, mapping: &super::model::TableMapping) {
     for col_map in &mapping.column_mappings {
         let Some(native) = col_map
@@ -259,7 +299,7 @@ mod tests {
     use super::super::model::WriteMode;
     use super::*;
     use crate::db::Value;
-    use crate::transfer::ir::{IRColumn, IRDefault};
+    use crate::transfer::ir::{IRColumn, IRDefault, IRTable, IRType};
 
     struct DummyTarget;
 
@@ -327,6 +367,152 @@ mod tests {
         let ir = source_schema_to_target_ir(&SrcAdapter, &schema, None, "tgt_name");
         assert_eq!(ir.name, "tgt_name");
         assert_eq!(ir.columns[0].name, "id");
+    }
+
+    #[test]
+    fn enrich_create_new_fills_target_native_types() {
+        let schema = TableSchema {
+            table_name: "reviews".into(),
+            columns: vec![
+                datazen_driver_api::ColumnSchema {
+                    name: "id".into(),
+                    data_type: "bigint".into(),
+                    nullable: false,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: true,
+                    is_auto_increment: false,
+                },
+                datazen_driver_api::ColumnSchema {
+                    name: "rating".into(),
+                    data_type: "smallint".into(),
+                    nullable: true,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: false,
+                    is_auto_increment: false,
+                },
+            ],
+            primary_keys: vec!["id".into()],
+            indexes: vec![],
+            foreign_keys: vec![],
+        };
+        let mut schemas = HashMap::new();
+        schemas.insert("reviews".into(), schema);
+
+        struct SrcAdapter;
+        impl SyncSourceAdapter for SrcAdapter {
+            fn column_to_ir(
+                &self,
+                column: &datazen_driver_api::ColumnSchema,
+                _native_full_type: Option<&str>,
+            ) -> IRColumn {
+                let ir_type = match column.data_type.as_str() {
+                    "bigint" => IRType::Int64,
+                    "smallint" => IRType::Int16,
+                    _ => IRType::Text,
+                };
+                IRColumn {
+                    name: column.name.clone(),
+                    ir_type,
+                    nullable: column.nullable,
+                    default_expr: None,
+                    is_primary_key: column.is_primary_key,
+                    is_auto_increment: false,
+                    comment: None,
+                }
+            }
+        }
+
+        let mut results = vec![TableInspectResult {
+            source_table: "reviews".into(),
+            target_table: "reviews".into(),
+            status: TableMappingStatus::CreateNew,
+            create_new: true,
+            enabled: true,
+            column_mappings: vec![
+                super::super::model::ColumnMapping {
+                    source_column: "id".into(),
+                    target_column: "id".into(),
+                    skip: false,
+                    target_native_type: None,
+                },
+                super::super::model::ColumnMapping {
+                    source_column: "rating".into(),
+                    target_column: "rating".into(),
+                    skip: false,
+                    target_native_type: None,
+                },
+            ],
+            source_columns: vec!["id".into(), "rating".into()],
+            target_columns: vec![],
+            source_column_types: HashMap::new(),
+            incompatible_reason: None,
+            source_row_count: None,
+        }];
+
+        struct TgtAdapter;
+        impl SyncTargetAdapter for TgtAdapter {
+            fn ir_type_to_native(&self, ir: &IRType) -> String {
+                match ir {
+                    IRType::Int64 => "BIGINT".into(),
+                    IRType::Int16 => "SMALLINT".into(),
+                    _ => "TEXT".into(),
+                }
+            }
+            fn format_default(&self, d: &IRDefault) -> Option<String> {
+                match d {
+                    IRDefault::Literal(s) => Some(s.clone()),
+                    _ => None,
+                }
+            }
+            fn format_literal(&self, _v: &Option<Value>, _ir: &IRType) -> String {
+                "NULL".into()
+            }
+        }
+
+        enrich_create_new_target_types(&mut results, &schemas, &SrcAdapter, &TgtAdapter);
+        assert_eq!(
+            results[0].column_mappings[0].target_native_type.as_deref(),
+            Some("BIGINT")
+        );
+        assert_eq!(
+            results[0].column_mappings[1].target_native_type.as_deref(),
+            Some("SMALLINT")
+        );
+    }
+
+    #[test]
+    fn apply_column_type_overrides_sets_ir_other() {
+        let mut ir = IRTable {
+            name: "t".into(),
+            columns: vec![IRColumn {
+                name: "id".into(),
+                ir_type: IRType::Int32,
+                nullable: false,
+                default_expr: None,
+                is_primary_key: true,
+                is_auto_increment: false,
+                comment: None,
+            }],
+            primary_keys: vec!["id".into()],
+            table_options: None,
+        };
+        let mapping = super::super::model::TableMapping {
+            source_table: "t".into(),
+            target_table: "t".into(),
+            create_new: true,
+            enabled: true,
+            column_mappings: vec![super::super::model::ColumnMapping {
+                source_column: "id".into(),
+                target_column: "id".into(),
+                skip: false,
+                target_native_type: Some("BIGINT".into()),
+            }],
+            ddl_override: None,
+        };
+        apply_column_type_overrides(&mut ir, &mapping);
+        assert_eq!(ir.columns[0].ir_type, IRType::Other("BIGINT".into()));
     }
 
     #[test]

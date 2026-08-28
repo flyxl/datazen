@@ -468,7 +468,14 @@ export function DataTransferWindow() {
 
   const updateTable = useCallback((sourceTable: string, patch: Partial<TransferTableResult>) => {
     setTables((prev) =>
-      prev.map((tbl) => (tbl.sourceTable === sourceTable ? { ...tbl, ...patch } : tbl)),
+      prev.map((tbl) => {
+        if (tbl.sourceTable !== sourceTable) return tbl;
+        const next = { ...tbl, ...patch };
+        if (patch.columnMappings !== undefined) {
+          next.ddlOverride = undefined;
+        }
+        return next;
+      }),
     );
   }, []);
 

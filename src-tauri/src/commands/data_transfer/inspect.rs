@@ -7,7 +7,8 @@ use super::super::AppState;
 use super::types::{is_self_database, resolve_db_name};
 use crate::commands::sync::compare::count_rows;
 use crate::data_transfer::{
-    enforce_transfer_pairing, inspect_tables, TableInspectResult, TableMapping, TransferMode,
+    enforce_transfer_pairing, inspect_tables, structure::enrich_create_new_target_types,
+    TableInspectResult, TableMapping, TransferMode,
 };
 use datazen_driver_api::TableType;
 
@@ -109,7 +110,7 @@ pub(crate) async fn inspect_data_transfer_impl(
         }
     }
 
-    Ok(inspect_tables(
+    let mut results = inspect_tables(
         &src_tables,
         &tgt_tables,
         mappings,
@@ -117,5 +118,25 @@ pub(crate) async fn inspect_data_transfer_impl(
         &target_schemas,
         mode,
         &source_row_counts,
-    ))
+    );
+
+    if state
+        .sync_adapters
+        .ensure_pair(&src_config.database_type, &tgt_config.database_type)
+        .is_ok()
+    {
+        if let (Some(src), Some(tgt)) = (
+            state.sync_adapters.get_source(&src_config.database_type),
+            state.sync_adapters.get_target(&tgt_config.database_type),
+        ) {
+            enrich_create_new_target_types(
+                &mut results,
+                &source_schemas,
+                src.as_ref(),
+                tgt.as_ref(),
+            );
+        }
+    }
+
+    Ok(results)
 }
