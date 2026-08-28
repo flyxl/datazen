@@ -68,13 +68,8 @@ export function SchemaDiffWindow() {
     listenCrossWindow('datazen:connection-closed', (payload) => {
       const { dbSessionId } = (payload ?? {}) as { dbSessionId?: string };
       if (!dbSessionId) return;
-      setActiveConns((prev) => {
-        const next = { ...prev };
-        for (const [connectionId, sessionId] of Object.entries(next)) {
-          if (sessionId === dbSessionId) delete next[connectionId];
-        }
-        return next;
-      });
+      setSourceSessionId((prev) => (prev === dbSessionId ? '' : prev));
+      setTargetSessionId((prev) => (prev === dbSessionId ? '' : prev));
     }).then((fn) => {
       cleanup = fn;
     });

@@ -23,7 +23,6 @@ import { useTableDataStore } from '../../stores/tableDataStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { connectionCommands } from '../../commands/connection';
 import { backupCommands } from '../../commands/backup';
-import { settingsCommands } from '../../commands/settings';
 import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
 import { getDbLabel } from '../../lib/databaseTypes';
 import { openConnectionShareDialog } from '../../lib/connectionShare';
