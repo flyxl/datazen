@@ -190,12 +190,10 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     cleanup();
   });
 
-  it('shows the overwrite-retired banner and idle prompt', async () => {
+  it('shows idle prompt and primary controls', async () => {
     render(<DataSyncWindow />);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
-    expect(screen.getByTestId('data-sync-overwrite-retired')).toHaveTextContent(
-      'sync.overwriteRetiredBanner',
-    );
+    expect(screen.queryByTestId('data-sync-overwrite-retired')).toBeNull();
     expect(screen.getByText('sync.selectPrompt')).toBeTruthy();
     expect(screen.getByTestId('data-sync-compare')).toBeTruthy();
     expect(screen.getByTestId('data-sync-swap')).toBeTruthy();
