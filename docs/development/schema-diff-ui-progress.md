@@ -7,7 +7,7 @@
 
 | 编号 | 功能 | 轨道 | 状态 | 编码 commit | 测试 commit |
 |------|------|------|------|-------------|-------------|
-| F1 | EndpointsBar + dedicated db/schema 会话 | schema-diff-ui-endpoints | 编码中 | — | — |
+| F1 | EndpointsBar + dedicated db/schema 会话 | schema-diff-ui-endpoints | 编码完成 | 0c2e4a51 | — |
 | F2 | 双栏面板（左表/diff · 右 plan/deploy） | schema-diff-ui-panels | 编码中 | — | — |
 | F3 | SchemaDiffWindow 集成 + bg-surface shell | schema-diff-ui-b | 未开始 | — | — |
 | F4 | Host 单测 | schema-diff-ui-tests | 未开始 | — | — |
@@ -31,11 +31,19 @@
 
 - **范围**：`SchemaDiffEndpointsBar.tsx`、`useSchemaDiffEndpoints.ts`（新文件，勿改 `SchemaDiffWindow.tsx`）
 - **验收**：
-  - [ ] 源/目标连接 + database + schema（有则显示）Select
-  - [ ] Swap 按钮交换源/目标
-  - [ ] Compare 主按钮在 bar 内
-  - [ ] testid：`schema-diff-source`、`schema-diff-target`、`*-database`、`*-schema`
-  - [ ] 复用 Sync EndpointsBar 视觉 token（`border-edge px-6 py-4`）
+  - [x] 源/目标连接 + database + schema（有则显示）Select
+  - [x] Swap 按钮交换源/目标
+  - [x] Compare 主按钮在 bar 内
+  - [x] testid：`schema-diff-source`、`schema-diff-target`、`*-database`、`*-schema`
+  - [x] 复用 Sync EndpointsBar 视觉 token（`border-edge px-6 py-4`）
+- **测试**（`npx vitest run src/windows/schema-diff`）：
+  - `SchemaDiffEndpointsBar.test.tsx`：3 passed（渲染 testid、swap/compare 回调、空 schema 隐藏）
+  - Hook 单测：F4 轨（集成后补 `useSchemaDiffEndpoints` mock 覆盖）
+- **F3 集成遗留**：
+  - `SchemaDiffWindow` 接入 `useSchemaDiffEndpoints` + `SchemaDiffEndpointsBar`；移除内联连接 Select
+  - Compare/Plan/Deploy 改用 hook 的 `ensureConnected('source'|'target')` 与 `validateEndpoints()`
+  - 表名 placeholder 可默认前缀 `sourceSchema.`（PG）；config import/export 需写入 database/schema 字段（v3？）
+  - `busy` 由 window 传入（compare/plan/deploy loading）
 
 ### F2 schema-diff-ui-panels
 
