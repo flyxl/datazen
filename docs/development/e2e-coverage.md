@@ -89,7 +89,10 @@
 | 数据同步 Diff Workspace（Options / Swap / Compare / Summary / row-diff / preview / Execute chrome） | `data-sync-window.ts` (DSW-001~008, DSW-MAP/WS) | Covered（Execute 对 live DB 见 IPC spec；无 PG 夹具时 MAP/WS 用例 soft-skip） |
 | 数据同步 UI 执行闭环（compare→preview→execute 后回查目标行数） | `data-sync-window.ts` (DSW-EXEC-001) | Covered |
 | 数据同步 IPC（inspect / compare / generate SQL / apply / revalidate） | `data-sync-real.ts` | Covered（需 `e2e/setup-sync-dbs.sh` PG 夹具；SYNC-REAL-009 apply→recompare） |
-| 数据传输窗口 + PG→PG 迁移闭环 | `data-transfer-window.ts` (DTW-001~003, DTW-CL) | Covered（跨方言 Execute 见 V1 限制 / 例外） |
+| 数据传输窗口 + PG→PG 迁移闭环 | `data-transfer-window.ts` (DTW-001~004, DTW-CL) | Covered |
+| 数据传输类型映射 Preview DDL | `data-transfer-type-mapping.ts` (DT-TYPE-001) | Covered（PG→MySQL create-new） |
+| 数据传输限制说明 + PG↔MySQL 多类型 100 行 | `data-transfer-diverse-types.ts` (DT-LIM/DIV) | Covered |
+| 数据传输 PG→MySQL / PG→PG 用户旅程 | `journeys/data-transfer-*.ts` | Covered |
 | 连接 Pin 置顶 | `ops-pin.ts` | Covered |
 | 连接边界：快速新建/删除、并发 tab、生命周期 | `connection-edge-cases.ts` (TC-EDGE-009~013) | Covered |
 | 设置持久化：主题/语言/字体/确认删除开关 | `settings-persistence.ts` (TC-SET-007~010) | Covered |
