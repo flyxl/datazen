@@ -66,6 +66,8 @@ pnpm e2e:redis          # 显式：packages/drivers/redis/e2e/（不进默认 pn
 pnpm e2e:i18n-backup
 pnpm e2e:path-ipc
 pnpm e2e:dashboard      # data-dashboard*.ts（同样 skip-build）
+pnpm e2e:data-transfer  # 数据传输专用：preflight 清理 + 全量 transfer suite（2500 行宽类型）
+pnpm e2e:data-transfer:build  # 同上，但会先完整 webdriver 构建
 pnpm e2e:contract:matrix          # Host UI/IPC × PG/MySQL/SQLite 连接窗
 pnpm e2e:contract:pg              # 仅 PostgreSQL 契约冒烟
 pnpm test:unit:e2e-contract:coverage  # 契约纯逻辑单测 ≥80%
@@ -187,7 +189,7 @@ e2e/wdio.conf.ts
   ├─ hostname/port: 127.0.0.1:4445
   ├─ before: 强制 language=zh-CN，必要时 seed PostgreSQL 连接
   ├─ specs: e2e/specs/**/*.ts
-  └─ suites: 分组清单（core/db/contract/redis/ai/i18n-backup/path-ipc/dashboard/journeys），供 --suite 选择
+  └─ suites: 分组清单（core/db/contract/redis/ai/i18n-backup/path-ipc/dashboard/data-transfer/journeys），供 --suite 选择
 ```
 
 - Spec 写法：通过 `browser.executeAsync` + `__TAURI_INTERNALS__.invoke` 调后端；UI 用 WebdriverIO `$` / `expect`。  

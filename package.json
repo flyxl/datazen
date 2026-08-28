@@ -38,6 +38,8 @@
     "e2e:path-ipc": "node e2e/run.mjs --skip-build -- --suite path-ipc",
     "e2e:dashboard": "node e2e/run.mjs --skip-build -- --suite dashboard",
     "e2e:journeys": "node e2e/run.mjs --skip-build --screenshot -- --suite journeys",
+    "e2e:data-transfer": "bash e2e/setup-data-transfer-e2e.sh && node e2e/run.mjs --skip-build -- --suite data-transfer",
+    "e2e:data-transfer:build": "bash e2e/setup-data-transfer-e2e.sh && node e2e/run.mjs -- --suite data-transfer",
     "e2e:demo": "bash e2e/record-demo.sh",
     "e2e:demo:skip-build": "bash e2e/record-demo.sh --skip-build",
     "pretest": "node scripts/resolve-drivers.mjs --codegen-only --drivers=basic && node scripts/generate-builtin-locales.mjs",
