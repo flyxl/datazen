@@ -161,8 +161,21 @@ INSERT INTO test_logistics (order_id, carrier, tracking_no, status) VALUES
   ('ORD-2026-001', '顺丰速运', 'SF1432456789012', '已签收'),
   ('ORD-2026-002', '中通快递', 'ZT7543210987654', '派送中'),
   ('ORD-2026-005', '京东物流', 'JD8876543210123', '运输中');
+CREATE TABLE IF NOT EXISTS test_orders (
+  order_id     VARCHAR(32) PRIMARY KEY,
+  uid          VARCHAR(32) NOT NULL,
+  product_name VARCHAR(128) NOT NULL,
+  amount       DECIMAL(10,2) NOT NULL,
+  status       VARCHAR(32) NOT NULL,
+  created_at   DATETIME NOT NULL
+);
+DELETE FROM test_orders;
+INSERT INTO test_orders (order_id, uid, product_name, amount, status, created_at) VALUES
+  ('ORD-2026-005', 'U001', '机械键盘 K870',   599.00,  '已发货', '2026-06-28 10:15:00'),
+  ('ORD-2026-002', 'U001', '无线鼠标 M330',   199.00,  '运输中', '2026-06-21 16:40:00'),
+  ('ORD-2026-001', 'U001', '降噪耳机 H900',   1299.00, '已完成', '2026-06-12 09:05:00');
 SQL
-echo "  MySQL ${DEMO_MYSQL_DB}.test_logistics seeded"
+echo "  MySQL ${DEMO_MYSQL_DB}.test_logistics + test_orders seeded"
 
 # ── PG: ER-diagram relations (FK graph for 16-er.png) ──
 # Separate tables so existing demo_sales/test_orders consumers stay stable.
