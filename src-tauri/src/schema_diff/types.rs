@@ -124,3 +124,45 @@ pub fn normalize_dialect(raw: &str) -> String {
         other => other.to_string(),
     }
 }
+
+/// Map a source-side table pick to the identifier expected by a driver's `get_table_schema`.
+///
+/// UI picks from PostgreSQL are often schema-qualified (`public.users`). MySQL/SQLite
+/// sessions use the active database and expect an unqualified table name.
+pub fn resolve_table_for_dialect(dialect: &str, table: &str) -> String {
+    let trimmed = table.trim();
+    match normalize_dialect(dialect).as_str() {
+        "mysql" | "sqlite" => trimmed
+            .rsplit_once('.')
+            .map(|(_, name)| name.to_string())
+            .unwrap_or_else(|| trimmed.to_string()),
+        _ => trimmed.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod resolve_tests {
+    use super::resolve_table_for_dialect;
+
+    #[test]
+    fn mysql_strips_pg_schema_prefix() {
+        assert_eq!(
+            resolve_table_for_dialect("mysql", "public.sd_cross_pg_mysql_abc"),
+            "sd_cross_pg_mysql_abc"
+        );
+    }
+
+    #[test]
+    fn postgres_keeps_schema_qualified_name() {
+        assert_eq!(
+            resolve_table_for_dialect("postgresql", "public.users"),
+            "public.users"
+        );
+    }
+
+    #[test]
+    fn bare_name_unchanged_for_all_dialects() {
+        assert_eq!(resolve_table_for_dialect("mysql", "users"), "users");
+        assert_eq!(resolve_table_for_dialect("postgresql", "users"), "users");
+    }
+}
