@@ -733,13 +733,6 @@ export function DataSyncWindow() {
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
       <TitleBar title={t('common.dataSyncTitle')} />
 
-      <div
-        data-testid="data-sync-overwrite-retired"
-        className="shrink-0 border-b border-amber-500/40 bg-amber-500/10 px-6 py-2 text-xs text-fg-secondary"
-      >
-        {t('sync.overwriteRetiredBanner')}
-      </div>
-
       <EndpointsBar
         sourceId={sourceId}
         targetId={targetId}

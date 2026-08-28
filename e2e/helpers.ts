@@ -545,6 +545,42 @@ export async function invokeBackend<T>(
   return invokeSettings<T>(cmd, args);
 }
 
+/** Connect by persisted config id (handles legacy `configId` IPC arg on older builds). */
+export async function connectConfig(connectionId: string): Promise<string> {
+  try {
+    return await invokeBackend<string>('connect', { connectionId });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('configId')) {
+      return invokeBackend<string>('connect', { configId: connectionId });
+    }
+    throw e;
+  }
+}
+
+/** Run SQL on a session (handles legacy `connectionId` arg on older builds). */
+export async function executeQuery(
+  dbSessionId: string,
+  sql: string,
+  database?: string,
+): Promise<QueryResultPayload> {
+  const args: Record<string, unknown> = { dbSessionId, sql };
+  if (database !== undefined) args.database = database;
+  try {
+    return await invokeBackend<QueryResultPayload>('execute_query', args);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('connectionId')) {
+      return invokeBackend<QueryResultPayload>('execute_query', {
+        connectionId: dbSessionId,
+        sql,
+        database,
+      });
+    }
+    throw e;
+  }
+}
+
 // ── native dialog injection (webdriver builds only) ─────────────────
 
 /** Clear the FIFO dialog injection queue between specs / cases. */

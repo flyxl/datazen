@@ -9,11 +9,12 @@ import { t } from '../../i18n.js';
 import {
   captureJourneyStep,
   closeExtraWindows,
+  connectConfig,
+  executeQuery,
   invokeBackend,
   queryScalar,
   selectDzOption,
   withSafeModeOff,
-  type QueryResultPayload,
 } from '../../helpers.js';
 
 async function openDataSyncWindow() {
@@ -38,8 +39,8 @@ function pgConfig(id: string, name: string, database: string) {
 
 describe('数据同步完整用户旅程 (DS-JOURNEY)', () => {
   /**
-   * Documented user flow:
-   * 1. Open Data Sync window via direct URL; verify retired overwrite banner
+   * Documented user flow (single sequential session; screenshot each step with --screenshot):
+   * 1. Open Data Sync window via direct URL
    * 2. Toggle sync options (insert/update/delete) and database selectors
    * 3. Compare without endpoints → selectBoth error
    * 4. Select source/target PG sync connections
@@ -67,50 +68,38 @@ describe('数据同步完整用户旅程 (DS-JOURNEY)', () => {
       config: pgConfig(TGT_ID, TGT_NAME, 'datazen_sync_tgt'),
     });
 
-    const srcSession = await invokeBackend<string>('connect', { connectionId: SRC_ID });
-    const tgtSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
+    const srcSession = await connectConfig(SRC_ID);
+    const tgtSession = await connectConfig(TGT_ID);
 
     await withSafeModeOff(async () => {
-      await invokeBackend('execute_query', {
-        dbSessionId: srcSession,
-        sql: `DROP TABLE IF EXISTS ${TABLE}`,
-      });
-      await invokeBackend('execute_query', {
-        dbSessionId: tgtSession,
-        sql: `DROP TABLE IF EXISTS ${TABLE}`,
-      });
-      await invokeBackend('execute_query', {
-        dbSessionId: srcSession,
-        sql: `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
-      });
-      await invokeBackend('execute_query', {
-        dbSessionId: tgtSession,
-        sql: `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
-      });
-      await invokeBackend('execute_query', {
-        dbSessionId: srcSession,
-        sql: `INSERT INTO ${TABLE} (id, name) VALUES (1,'a'),(2,'b'),(3,'c'),(4,'d'),(5,'e')`,
-      });
-      await invokeBackend('execute_query', {
-        dbSessionId: tgtSession,
-        sql: `INSERT INTO ${TABLE} (id, name) VALUES (1,'a'),(2,'b'),(3,'c')`,
-      });
+      await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
+      await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
+      await executeQuery(
+        srcSession,
+        `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
+      );
+      await executeQuery(
+        tgtSession,
+        `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
+      );
+      await executeQuery(
+        srcSession,
+        `INSERT INTO ${TABLE} (id, name) VALUES (1,'a'),(2,'b'),(3,'c'),(4,'d'),(5,'e')`,
+      );
+      await executeQuery(
+        tgtSession,
+        `INSERT INTO ${TABLE} (id, name) VALUES (1,'a'),(2,'b'),(3,'c')`,
+      );
     });
   });
 
   after(async () => {
     try {
-      const srcSession = await invokeBackend<string>('connect', { connectionId: SRC_ID });
-      const tgtSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
+      const srcSession = await connectConfig(SRC_ID);
+      const tgtSession = await connectConfig(TGT_ID);
       await withSafeModeOff(async () => {
-        await invokeBackend('execute_query', {
-          dbSessionId: srcSession,
-          sql: `DROP TABLE IF EXISTS ${TABLE}`,
-        });
-        await invokeBackend('execute_query', {
-          dbSessionId: tgtSession,
-          sql: `DROP TABLE IF EXISTS ${TABLE}`,
-        });
+        await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
+        await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
       });
     } catch {
       /* ok */
@@ -131,9 +120,6 @@ describe('数据同步完整用户旅程 (DS-JOURNEY)', () => {
 
   it('Step 1: 通过 URL 打开数据同步窗口', async () => {
     await openDataSyncWindow();
-    const banner = await $('[data-testid="data-sync-overwrite-retired"]');
-    await expect(banner).toBeDisplayed();
-    expect(await banner.getText()).toContain(t('sync.overwriteRetiredBanner'));
     await expect(await $('[data-testid="data-sync-compare"]')).toBeDisplayed();
     await captureJourneyStep('ds-journey-01-window-open', 0, true);
   });
@@ -148,7 +134,6 @@ describe('数据同步完整用户旅程 (DS-JOURNEY)', () => {
   });
 
   it('Step 3: 未选两端点比较应提示 selectBoth', async () => {
-    await openDataSyncWindow();
     const compare = await $('[data-testid="data-sync-compare"]');
     await compare.click();
     await browser.pause(500);
@@ -164,7 +149,6 @@ describe('数据同步完整用户旅程 (DS-JOURNEY)', () => {
   });
 
   it('Step 4: 选择源/目标同步连接', async () => {
-    await openDataSyncWindow();
     await selectDzOption(t('sync.selectSource'), SRC_NAME);
     await selectDzOption(t('sync.selectTarget'), TGT_NAME);
     await browser.pause(1500);
@@ -216,11 +200,8 @@ describe('数据同步完整用户旅程 (DS-JOURNEY)', () => {
     await expect(await $('[data-testid="data-sync-summary"]')).toBeDisplayed();
     await captureJourneyStep('ds-journey-08-execute-complete', 0, true);
 
-    const tgtSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
-    const rows = await invokeBackend<QueryResultPayload>('execute_query', {
-      dbSessionId: tgtSession,
-      sql: `SELECT count(*)::int AS c FROM ${TABLE}`,
-    });
+    const tgtSession = await connectConfig(TGT_ID);
+    const rows = await executeQuery(tgtSession, `SELECT count(*)::int AS c FROM ${TABLE}`);
     expect(queryScalar(rows, 'c')).toBe(5);
     await captureJourneyStep('ds-journey-09-rows-verified', 0, true);
   });

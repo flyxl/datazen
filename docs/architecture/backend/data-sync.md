@@ -113,7 +113,6 @@ Legacy：`sync_table` / `sync_tables` / `compare_databases` / `classify_sync_pai
 - Compare 后：`data-sync-summary`、行 Diff `data-sync-row-diff`、Preview `data-sync-preview`
 - Execute 底栏：`data-sync-execute`（容器）/ `data-sync-start`（按钮）/ `data-sync-start-disabled`
 - 比较/执行中 Cancel：`data-sync-cancel` → `cancel_data_sync(jobId)`
-- 覆盖拷贝横幅：`data-sync-overwrite-retired`
 - Pairing：`src/lib/syncPairing.ts`（与 Rust `pairing.rs` 对齐）
 - IPC 封装：`src/commands/sync.ts`
 

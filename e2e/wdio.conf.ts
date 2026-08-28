@@ -55,6 +55,7 @@ export const config: WebdriverIO.Config = {
       './specs/mysql-multi-database.ts',
       './specs/postgres-multi-database.ts',
       './specs/data-sync-real.ts',
+      './specs/data-sync-edge-cases.ts',
       './specs/client-parity.ts',
       './specs/host-contract-matrix.ts',
       './specs/sql-multi-tab.ts',
@@ -124,6 +125,13 @@ export const config: WebdriverIO.Config = {
       './specs/data-transfer-type-mapping-mysql-pg.ts',
       './specs/data-transfer-diverse-types.ts',
       './specs/data-transfer-mode-paths.ts',
+    ],
+    // Data Sync: UI smoke + edge cases + IPC + full journey (`pnpm e2e:data-sync`)
+    'data-sync': [
+      './specs/data-sync-window.ts',
+      './specs/data-sync-edge-cases.ts',
+      './specs/journeys/data-sync-journey.ts',
+      './specs/data-sync-real.ts',
     ],
   },
   maxInstances: 1,

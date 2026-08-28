@@ -32,11 +32,8 @@ describe('数据同步窗口 (DSW-001~DSW-008)', () => {
     await browser.switchToWindow(mainWindow);
   });
 
-  it('DSW-001: 应能通过 URL 打开数据同步窗口并看到覆盖拷贝退役横幅', async () => {
+  it('DSW-001: 应能通过 URL 打开数据同步窗口', async () => {
     await openDataSyncWindow();
-    const banner = await $('[data-testid="data-sync-overwrite-retired"]');
-    await expect(banner).toBeDisplayed();
-    expect(await banner.getText()).toContain(t('sync.overwriteRetiredBanner'));
     const body = await $('body').getText();
     expect(body).toContain(t('sync.windowTitle'));
     expect(body).toContain(t('sync.source'));
@@ -83,6 +80,7 @@ describe('数据同步窗口 (DSW-001~DSW-008)', () => {
     await expect(compare).toBeEnabled();
     const body = await $('body').getText();
     expect(body).not.toContain('DROP TABLE');
+    await captureJourneyStep('data-sync-idle-compare');
   });
 
   it('DSW-005: 主页不再暴露数据同步入口，窗口改为 URL 直达', async () => {
@@ -94,7 +92,6 @@ describe('数据同步窗口 (DSW-001~DSW-008)', () => {
     await captureJourneyStep('data-sync-hidden-on-home');
 
     await openDataSyncWindow();
-    await expect(await $('[data-testid="data-sync-overwrite-retired"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-sync-compare"]')).toBeDisplayed();
   });
 
@@ -124,6 +121,7 @@ describe('数据同步窗口 (DSW-001~DSW-008)', () => {
     await expect(await $('[data-testid="data-sync-start"]')).not.toBeDisplayed();
     await expect(await $('[data-testid="data-sync-start-disabled"]')).not.toBeDisplayed();
     await expect(await $('[data-testid="data-sync-summary"]')).not.toBeDisplayed();
+    await captureJourneyStep('data-sync-no-execute-before-compare');
   });
 });
 
