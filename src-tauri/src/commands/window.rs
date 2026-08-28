@@ -84,7 +84,9 @@ fn remap_section(section: &str) -> Option<&'static str> {
         "ai" | "context" => Some("ai"),
         "workflows" => Some("workflow"),
         "opsDashboard" => Some("dashboard"),
-        "schemaDiff" => Some("sync"),
+        "dataSync" => Some("data-sync"),
+        "dataTransfer" => Some("data-transfer"),
+        "schemaDiff" => Some("schema-diff"),
         _ => None,
     }
 }
@@ -455,7 +457,9 @@ mod tests {
             ("context", "ai"),
             ("workflows", "workflow"),
             ("opsDashboard", "dashboard"),
-            ("schemaDiff", "sync"),
+            ("dataSync", "data-sync"),
+            ("dataTransfer", "data-transfer"),
+            ("schemaDiff", "schema-diff"),
         ];
         for (legacy, anchor) in cases {
             assert_eq!(

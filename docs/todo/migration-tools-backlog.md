@@ -24,7 +24,7 @@
 |----|-----|--------|-------------|----------|
 | SD-1 | **配置 JSON 含 database/schema** | P1 | 导出为 `version: 2`，仅含 `sourceConnectionId` / `targetConnectionId` 与表列表；导入后不恢复库/schema 选择 | 扩展 `SchemaDiffConfigJson`（v2 字段或 v3），`handleImportConfig` 写入 `useSchemaDiffEndpoints` |
 | SD-2 | **Endpoints 步 Swap** | P2 | `MigrationEndpointsBar` 在 Schema Diff 中 `showSwap={false}` | 启用 Swap 并重置 wizard 状态（与 Data Sync 行为一致） |
-| SD-3 | **帮助链接独立锚点** | P2 | TitleBar 帮助按钮经 `openDocsWindow('schemaDiff')` 落到在线手册 `#sync` | `site/manual.html` 增加 `#schema-diff`；`docsUrls.ts` 的 `SECTION_REMAP.schemaDiff` 指向新锚点 |
+| SD-3 | **帮助链接独立锚点** | ✅ | TitleBar 帮助 → `#schema-diff`（`docsUrls.ts` + 在线手册） | — |
 | SD-4 | **连接树预填 Source** | P2 | 右键「Compare Schema」仅 `openSchemaDiffWindow()`，无 URL params | 仿 `openBackupWindow`：`connectionId` + `database` (+ `schema`) query params + window 内读取 |
 | SD-5 | **Objects 步增强** | P3 | 自源库拉表 + 全选/取消；无搜索、无行数 | 搜索过滤、按 schema 分组、显示 approximate row count（若驱动支持） |
 | SD-6 | **视图 / 函数 / 触发器** | P3 | 产品明确 out of scope | 需 IR + plan 扩展；单独 RFC |
@@ -65,7 +65,7 @@
 
 | ID | 项 | 优先级 | 说明 |
 |----|-----|--------|------|
-| DOC-1 | **manual.html 三分法锚点** | P2 | 当前 `#sync` 章节混合 Data Sync / Transfer / Schema Diff；帮助深链不精确 |
+| DOC-1 | **manual.html 三分法锚点** | ✅ | `#data-sync` / `#data-transfer` / `#schema-diff` 子章节 + TOC 子链接 |
 | DOC-2 | **Schema Diff 手册与 UI 同步** | P1 | 产品已改为 **5 步向导**（Endpoints → Objects → Compare → Plan → Deploy）；部分架构/设计存档仍写「双栏单页」 |
 | DOC-3 | **配置 JSON 示例** | P1 | 手册应写 `version: 2` + `sourceConnectionId` / `targetConnectionId`（非 v1 `configId`） |
 

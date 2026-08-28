@@ -25,7 +25,9 @@ describe('buildDocsUrl', () => {
       ['context', 'ai'],
       ['workflows', 'workflow'],
       ['opsDashboard', 'dashboard'],
-      ['schemaDiff', 'sync'],
+      ['dataSync', 'data-sync'],
+      ['dataTransfer', 'data-transfer'],
+      ['schemaDiff', 'schema-diff'],
     ];
     for (const [id, anchor] of cases) {
       expect(buildDocsUrl('en', id)).toBe(`${DOCS_BASE_EN}#${anchor}`);

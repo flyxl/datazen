@@ -100,6 +100,9 @@
         <a class="docs-toc-link" href="#workflow">9. Workflows 自动化</a>
         <a class="docs-toc-link" href="#dashboard">10. 运营看板</a>
         <a class="docs-toc-link" href="#sync">11. 同步 · 迁移 · 结构对比</a>
+        <a class="docs-toc-link docs-toc-sublink" href="#data-sync">Data Sync 数据同步</a>
+        <a class="docs-toc-link docs-toc-sublink" href="#data-transfer">Data Transfer 数据迁移</a>
+        <a class="docs-toc-link docs-toc-sublink" href="#schema-diff">Schema Diff 结构对比</a>
         <a class="docs-toc-link" href="#redis">12. Redis 工具</a>
         <a class="docs-toc-link" href="#backup">13. 备份与恢复</a>
         <a class="docs-toc-link" href="#plugins">14. 插件与主题</a>
@@ -528,117 +531,108 @@ output:
             </p>
             <pre><code>结构不一致 / 无 PK / 目标表不存在 / 异构库  →  Schema Diff 和/或 Data Transfer
 结构一致 + 相同 PK + 同方言族            →  Data Sync</code></pre>
-            <div class="shots">
-              <div>
-                <img
-                  class="manual-shot gallery-img"
-                  src="../assets/screenshots/26-data-sync-en.png"
-                  alt="Data Sync 窗口"
-                  loading="lazy"
-                  data-caption="Data Sync — 比较并应用行级差异"
-                />
-                <p class="manual-shot-caption">Data Sync — 同族行级差异同步</p>
-              </div>
-              <div>
-                <img
-                  class="manual-shot gallery-img"
-                  src="../assets/screenshots/28-data-transfer-en.png"
-                  alt="Data Transfer 向导"
-                  loading="lazy"
-                  data-caption="Data Transfer — 异构单向迁移"
-                />
-                <p class="manual-shot-caption">Data Transfer — 异构库迁移</p>
-              </div>
-              <div>
-                <img
-                  class="manual-shot gallery-img"
-                  src="../assets/screenshots/27-schema-diff-en.png"
-                  alt="Schema Diff 部署"
-                  loading="lazy"
-                  data-caption="Schema Diff — 结构对比与 DDL 部署"
-                />
-                <p class="manual-shot-caption">Schema Diff — 结构对比与部署</p>
-              </div>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>工具</th>
-                  <th>适用场景</th>
-                  <th>流程</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td><strong>Data Sync 数据同步</strong></td>
-                  <td>
-                    <strong>同方言族</strong
-                    >（MySQL↔MySQL、PG↔PG）、表结构与主键完全一致的行级差异同步
-                  </td>
-                  <td>
-                    选源/目标 + database → <strong>Compare</strong> → Review 勾选差异 → Preview SQL
-                    → Execute（DELETE 默认关闭，启用需双重确认）
-                  </td>
-                </tr>
-                <tr>
-                  <td><strong>Data Transfer 数据迁移</strong></td>
-                  <td>
-                    <strong>异构</strong>数据库间单向搬运（如 MySQL → PostgreSQL），或结构不同 /
-                    需在目标建表
-                  </td>
-                  <td>
-                    六步向导：Endpoints → Setup（模式 + 写入选项）→ Objects → Mapping →
-                    Preview（可编辑 DDL）→ Result
-                  </td>
-                </tr>
-                <tr>
-                  <td><strong>Schema Diff 结构对比</strong></td>
-                  <td>将<strong>源库</strong>结构作为期望状态，生成受控 DDL 并部署到目标库</td>
-                  <td>
-                    Compare → Plan → Review → Deploy；默认仅增量变更，破坏性语句需勾选并输入
-                    <code>DEPLOY</code>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <p>目标连接为只读时，所有写入型操作的执行按钮均被禁用。</p>
+
+            <h3 id="data-sync" class="docs-anchor">Data Sync 数据同步</h3>
+            <img
+              class="manual-shot gallery-img"
+              src="../assets/screenshots/26-data-sync-en.png"
+              alt="Data Sync 窗口"
+              loading="lazy"
+              data-caption="Data Sync — 比较并应用行级差异"
+            />
+            <p class="manual-shot-caption">Data Sync — 同族行级差异同步</p>
+            <p>
+              <strong>同方言族</strong
+              >（MySQL↔MySQL、PG↔PG）、表结构与主键完全一致的行级差异同步。
+            </p>
+            <p>
+              <strong>流程：</strong>选源/目标 + database → <strong>Compare</strong> → Review
+              勾选差异 → Preview SQL → Execute（DELETE 默认关闭，启用需双重确认）。
+            </p>
             <ul>
               <li>
-                <strong>Data Sync 门闸</strong
-                >：同方言族、列/类型/可空性完全一致、主键一致且非空、目标表须已存在。 INCOMPATIBLE
-                表可一键跳转 Schema Diff；异构目标对会标为 unsupported 并提示使用 Transfer。
+                <strong>门闸</strong
+                >：同方言族、列/类型/可空性完全一致、主键一致且非空、目标表须已存在。
               </li>
               <li>
-                <strong>Data Transfer</strong
-                >：首次打开弹出能力限制说明（不迁移视图/触发器/外键；破坏性写入模式须显式确认）。
-                Endpoints 步显示 <code>direct</code> / <code>ir</code> /
-                <code>unsupported</code> 配对路径。
+                INCOMPATIBLE 表可一键跳转 Schema Diff；异构目标对会标为 unsupported 并提示使用
+                Transfer。
               </li>
-              <li>
-                <strong>Schema Diff</strong>：PG / SQLite 支持事务执行失败自动回滚；MySQL DDL
-                逐条提交，部分成功标记为 <code>mixed</code>。
-              </li>
-              <li>目标连接为只读时，所有写入型操作的执行按钮均被禁用。</li>
             </ul>
             <p>
-              详细步骤见
               <a
                 href="https://github.com/flyxl/datazen/blob/main/docs/features/data-sync-guide.zh-CN.md"
                 target="_blank"
                 rel="noopener"
                 >数据同步指南</a
-              >、
+              >
+            </p>
+
+            <h3 id="data-transfer" class="docs-anchor">Data Transfer 数据迁移</h3>
+            <img
+              class="manual-shot gallery-img"
+              src="../assets/screenshots/28-data-transfer-en.png"
+              alt="Data Transfer 向导"
+              loading="lazy"
+              data-caption="Data Transfer — 异构单向迁移"
+            />
+            <p class="manual-shot-caption">Data Transfer — 异构库迁移</p>
+            <p>
+              <strong>异构</strong>数据库间单向搬运（如 MySQL → PostgreSQL），或结构不同 /
+              需在目标建表。
+            </p>
+            <p>
+              <strong>流程：</strong>六步向导 — Endpoints → Setup（模式 + 写入选项）→ Objects →
+              Mapping → Preview（可编辑 DDL）→ Result。
+            </p>
+            <ul>
+              <li>
+                首次打开弹出能力限制说明（不迁移视图/触发器/外键；破坏性写入模式须显式确认）。
+              </li>
+              <li>
+                Endpoints 步显示 <code>direct</code> / <code>ir</code> / <code>unsupported</code>
+                配对路径。
+              </li>
+            </ul>
+            <p>
               <a
                 href="https://github.com/flyxl/datazen/blob/main/docs/features/data-transfer-guide.zh-CN.md"
                 target="_blank"
                 rel="noopener"
                 >数据迁移指南</a
-              >、
+              >
+            </p>
+
+            <h3 id="schema-diff" class="docs-anchor">Schema Diff 结构对比</h3>
+            <img
+              class="manual-shot gallery-img"
+              src="../assets/screenshots/27-schema-diff-en.png"
+              alt="Schema Diff 部署"
+              loading="lazy"
+              data-caption="Schema Diff — 结构对比与 DDL 部署"
+            />
+            <p class="manual-shot-caption">Schema Diff — 结构对比与部署</p>
+            <p>
+              将<strong>源库</strong>结构作为期望状态，生成受控 DDL 并部署到目标库（不灌行数据）。
+            </p>
+            <p>
+              <strong>流程：</strong>五步向导 — Endpoints → Objects（选表）→ Compare → Plan →
+              Deploy；默认仅增量变更，破坏性语句需勾选并输入 <code>DEPLOY</code>。
+            </p>
+            <ul>
+              <li>
+                PG / SQLite 支持事务执行失败自动回滚；MySQL DDL 逐条提交，部分成功标记为
+                <code>mixed</code>。
+              </li>
+            </ul>
+            <p>
               <a
                 href="https://github.com/flyxl/datazen/blob/main/docs/features/schema-diff-guide.zh-CN.md"
                 target="_blank"
                 rel="noopener"
                 >结构对比指南</a
-              >。
+              >
             </p>
           </div>
         </section>

@@ -1016,6 +1016,13 @@ pre code {
   color: var(--accent);
   text-decoration: none;
 }
+.docs-toc-sublink {
+  padding-left: 14px;
+  font-size: 13px;
+}
+.docs-anchor {
+  scroll-margin-top: 88px;
+}
 .docs-section {
   scroll-margin-top: 88px;
   margin-bottom: 56px;

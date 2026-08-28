@@ -101,6 +101,9 @@
         <a class="docs-toc-link" href="#workflow">9. Workflows</a>
         <a class="docs-toc-link" href="#dashboard">10. Ops Dashboard</a>
         <a class="docs-toc-link" href="#sync">11. Sync · Transfer · Schema Diff</a>
+        <a class="docs-toc-link docs-toc-sublink" href="#data-sync">Data Sync</a>
+        <a class="docs-toc-link docs-toc-sublink" href="#data-transfer">Data Transfer</a>
+        <a class="docs-toc-link docs-toc-sublink" href="#schema-diff">Schema Diff</a>
         <a class="docs-toc-link" href="#redis">12. Redis Tools</a>
         <a class="docs-toc-link" href="#backup">13. Backup &amp; Restore</a>
         <a class="docs-toc-link" href="#plugins">14. Plugins &amp; Themes</a>
@@ -569,119 +572,107 @@ output:
             </p>
             <pre><code>Structure mismatch / no PK / target table missing / cross-dialect  →  Schema Diff and/or Data Transfer
 Structure aligned + same PK + same dialect family              →  Data Sync</code></pre>
-            <div class="shots">
-              <div>
-                <img
-                  class="manual-shot gallery-img"
-                  src="assets/screenshots/26-data-sync-en.png"
-                  alt="Data Sync window"
-                  loading="lazy"
-                  data-caption="Data Sync — compare and apply row-level diffs"
-                />
-                <p class="manual-shot-caption">Data Sync — same-family row diff</p>
-              </div>
-              <div>
-                <img
-                  class="manual-shot gallery-img"
-                  src="assets/screenshots/28-data-transfer-en.png"
-                  alt="Data Transfer wizard"
-                  loading="lazy"
-                  data-caption="Data Transfer — heterogeneous one-way migration"
-                />
-                <p class="manual-shot-caption">Data Transfer — cross-dialect migration</p>
-              </div>
-              <div>
-                <img
-                  class="manual-shot gallery-img"
-                  src="assets/screenshots/27-schema-diff-en.png"
-                  alt="Schema Diff deploy"
-                  loading="lazy"
-                  data-caption="Schema Diff — compare structure and deploy DDL"
-                />
-                <p class="manual-shot-caption">Schema Diff — structure compare &amp; deploy</p>
-              </div>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Tool</th>
-                  <th>When to use</th>
-                  <th>Flow</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td><strong>Data Sync</strong></td>
-                  <td>
-                    Row-level sync within the <strong>same dialect family</strong> (MySQL↔MySQL,
-                    PG↔PG) when table structure and primary keys match exactly
-                  </td>
-                  <td>
-                    Select source/target + database → <strong>Compare</strong> → Review &amp; check
-                    diffs → Preview SQL → Execute (DELETE off by default; enabling it requires
-                    double confirmation)
-                  </td>
-                </tr>
-                <tr>
-                  <td><strong>Data Transfer</strong></td>
-                  <td>
-                    One-way copy between <strong>heterogeneous</strong> databases (e.g. MySQL →
-                    PostgreSQL), or when structure differs / target table must be created
-                  </td>
-                  <td>
-                    Six-step wizard: Endpoints → Setup (mode + write options) → Objects → Mapping →
-                    Preview (editable DDL) → Result
-                  </td>
-                </tr>
-                <tr>
-                  <td><strong>Schema Diff</strong></td>
-                  <td>
-                    Treat the <strong>source</strong> structure as the desired state and deploy
-                    controlled DDL to the target
-                  </td>
-                  <td>
-                    Compare → Plan → Review → Deploy; additive-only by default — destructive
-                    statements require a checkbox plus typing <code>DEPLOY</code>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <p>When a target connection is read-only, every write path is disabled.</p>
+
+            <h3 id="data-sync" class="docs-anchor">Data Sync</h3>
+            <img
+              class="manual-shot gallery-img"
+              src="assets/screenshots/26-data-sync-en.png"
+              alt="Data Sync window"
+              loading="lazy"
+              data-caption="Data Sync — compare and apply row-level diffs"
+            />
+            <p class="manual-shot-caption">Data Sync — same-family row diff</p>
+            <p>
+              Row-level sync within the <strong>same dialect family</strong> (MySQL↔MySQL, PG↔PG)
+              when table structure and primary keys match exactly.
+            </p>
+            <p>
+              <strong>Flow:</strong> Select source/target + database → <strong>Compare</strong> →
+              Review &amp; check diffs → Preview SQL → Execute (DELETE off by default; enabling it
+              requires double confirmation).
+            </p>
             <ul>
               <li>
-                <strong>Data Sync gates</strong>: same dialect family, identical
-                columns/types/nullability, identical non-empty primary keys, target table must
-                already exist. INCOMPATIBLE tables offer a one-click jump to Schema Diff;
-                heterogeneous target pairs are marked unsupported with a hint to use Transfer.
+                <strong>Gates</strong>: same dialect family, identical columns/types/nullability,
+                identical non-empty primary keys, target table must already exist.
               </li>
               <li>
-                <strong>Data Transfer</strong>: first open shows a limitations dialog (no
-                views/triggers/FK migration; destructive write modes need explicit confirmation).
-                Endpoints show <code>direct</code> / <code>ir</code> /
-                <code>unsupported</code> pairing paths.
+                INCOMPATIBLE tables offer a one-click jump to Schema Diff; heterogeneous target
+                pairs are marked unsupported with a hint to use Transfer.
               </li>
-              <li>
-                <strong>Schema Diff</strong>: runs transactionally on PostgreSQL / SQLite
-                (auto-rollback on failure); MySQL commits statement-by-statement, so partial success
-                is reported as <code>mixed</code>.
-              </li>
-              <li>When a target connection is read-only, every write path is disabled.</li>
             </ul>
             <p>
-              Deep dives:
               <a
                 href="https://github.com/flyxl/datazen/blob/main/docs/features/data-sync-guide.zh-CN.md"
                 target="_blank"
                 rel="noopener"
                 >Data Sync guide</a
               >
-              ·
+            </p>
+
+            <h3 id="data-transfer" class="docs-anchor">Data Transfer</h3>
+            <img
+              class="manual-shot gallery-img"
+              src="assets/screenshots/28-data-transfer-en.png"
+              alt="Data Transfer wizard"
+              loading="lazy"
+              data-caption="Data Transfer — heterogeneous one-way migration"
+            />
+            <p class="manual-shot-caption">Data Transfer — cross-dialect migration</p>
+            <p>
+              One-way copy between <strong>heterogeneous</strong> databases (e.g. MySQL →
+              PostgreSQL), or when structure differs / the target table must be created.
+            </p>
+            <p>
+              <strong>Flow:</strong> Six-step wizard — Endpoints → Setup (mode + write options) →
+              Objects → Mapping → Preview (editable DDL) → Result.
+            </p>
+            <ul>
+              <li>
+                First open shows a limitations dialog (no views/triggers/FK migration; destructive
+                write modes need explicit confirmation).
+              </li>
+              <li>
+                Endpoints show <code>direct</code> / <code>ir</code> / <code>unsupported</code>
+                pairing paths.
+              </li>
+            </ul>
+            <p>
               <a
                 href="https://github.com/flyxl/datazen/blob/main/docs/features/data-transfer-guide.zh-CN.md"
                 target="_blank"
                 rel="noopener"
                 >Data Transfer guide</a
               >
-              ·
+            </p>
+
+            <h3 id="schema-diff" class="docs-anchor">Schema Diff</h3>
+            <img
+              class="manual-shot gallery-img"
+              src="assets/screenshots/27-schema-diff-en.png"
+              alt="Schema Diff deploy"
+              loading="lazy"
+              data-caption="Schema Diff — compare structure and deploy DDL"
+            />
+            <p class="manual-shot-caption">Schema Diff — structure compare &amp; deploy</p>
+            <p>
+              Treat the <strong>source</strong> structure as the desired state and deploy controlled
+              DDL to the target (no row data copy).
+            </p>
+            <p>
+              <strong>Flow:</strong> Five-step wizard — Endpoints → Objects (pick tables) → Compare
+              → Plan → Deploy. Additive-only by default; destructive statements require a checkbox
+              plus typing <code>DEPLOY</code>.
+            </p>
+            <ul>
+              <li>
+                Runs transactionally on PostgreSQL / SQLite (auto-rollback on failure); MySQL
+                commits statement-by-statement, so partial success is reported as
+                <code>mixed</code>.
+              </li>
+            </ul>
+            <p>
               <a
                 href="https://github.com/flyxl/datazen/blob/main/docs/features/schema-diff-guide.en.md"
                 target="_blank"
