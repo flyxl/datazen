@@ -67,6 +67,26 @@ async function invoke<T = unknown>(cmd: string, args: Record<string, unknown> = 
   ) as Promise<T>;
 }
 
+/** Switch UI language and reload the main window so i18n strings update. */
+async function setAppLanguage(mainWin: string, language: 'en' | 'zh-CN') {
+  const settings = await invoke<Record<string, unknown>>('get_settings');
+  await invoke('save_settings', { settings: { ...settings, language } });
+  await browser.switchToWindow(mainWin);
+  await browser.execute(() => location.reload());
+  await browser.pause(2000);
+  await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+}
+
+async function dismissLimitationsDialogIfOpen(testIdPrefix: string) {
+  await browser.execute((prefix: string) => {
+    const close = document.querySelector(
+      `[data-testid="${prefix}-limitations-close"]`,
+    ) as HTMLElement | null;
+    close?.click();
+  }, testIdPrefix);
+  await browser.pause(400);
+}
+
 async function setWindowSize(w = 2400, h = 1600) {
   await invoke('plugin:window|set_size', { size: { width: w, height: h } });
   await browser.pause(600);
@@ -1631,81 +1651,88 @@ describe('site screenshots', () => {
   // ─────────────────────── 26/27/28 sub-windows ────────────────────────────
 
   it('26-data-sync / 27-schema-diff / 28-data-transfer windows', async () => {
-    await goToConnections();
-    await ensureDemoPgConnectedInTree();
-
-    // 数据同步 (compare data): demo PG primary ↔ analytics DB.
+    await setAppLanguage(mainWindow, 'en');
     try {
-      await openDbContextMenu(DEMO_PG_DB, '比较数据');
-      let handles = await browser.getWindowHandles();
-      await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-        timeout: 10000,
-        timeoutMsg: '数据同步窗口未打开',
-      });
-      handles = await browser.getWindowHandles();
-      await browser.switchToWindow(handles.find((h) => h !== mainWindow)!);
-      await browser.pause(1200);
-      await shot('26-data-sync.png');
-      await browser.closeWindow();
-      await browser.switchToWindow(mainWindow);
-    } catch (e) {
-      console.warn(`[warn] 26-data-sync skipped: ${e}`);
-      if ((await browser.getWindowHandles()).length > 1) {
-        await browser.closeWindow();
-        await browser.switchToWindow(mainWindow);
-      }
-    }
-
-    // 结构对比 (schema diff): hidden from ctx menu when schemaDiff flag is off — open sub-window via IPC.
-    try {
-      await browser.switchToWindow(mainWindow);
       await goToConnections();
-      await invoke('create_sub_window', {
-        options: {
-          label: 'schema-diff-singleton',
-          url: 'window.html?window=schema-diff',
-          title: '结构对比 - DataZen',
-          width: 900,
-          height: 640,
-        },
-      });
-      await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-        timeout: 10000,
-        timeoutMsg: '结构对比窗口未打开',
-      });
-      const hs = await browser.getWindowHandles();
-      await browser.switchToWindow(hs.find((h) => h !== mainWindow)!);
-      await browser.pause(1200);
-      await shot('27-schema-diff.png');
-      await browser.closeWindow();
-      await browser.switchToWindow(mainWindow);
-    } catch (e) {
-      console.warn(`[warn] 27-schema-diff skipped: ${e}`);
-      if ((await browser.getWindowHandles()).length > 1) {
-        await browser.closeWindow();
-        await browser.switchToWindow(mainWindow);
-      }
-    }
+      await ensureDemoPgConnectedInTree();
 
-    // 数据传输 (data transfer).
-    try {
-      await openDbContextMenu(DEMO_PG_DB, '数据传输');
-      await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-        timeout: 10000,
-        timeoutMsg: '数据传输窗口未打开',
-      });
-      const hs = await browser.getWindowHandles();
-      await browser.switchToWindow(hs.find((h) => h !== mainWindow)!);
-      await browser.pause(1200);
-      await shot('28-data-transfer.png');
-      await browser.closeWindow();
-      await browser.switchToWindow(mainWindow);
-    } catch (e) {
-      console.warn(`[warn] 28-data-transfer skipped: ${e}`);
-      if ((await browser.getWindowHandles()).length > 1) {
+      // Data Sync: demo PG primary ↔ analytics DB.
+      try {
+        await openDbContextMenu(DEMO_PG_DB, 'Compare Data');
+        let handles = await browser.getWindowHandles();
+        await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+          timeout: 10000,
+          timeoutMsg: 'Data Sync window did not open',
+        });
+        handles = await browser.getWindowHandles();
+        await browser.switchToWindow(handles.find((h) => h !== mainWindow)!);
+        await browser.pause(1200);
+        await shot('26-data-sync.png');
         await browser.closeWindow();
         await browser.switchToWindow(mainWindow);
+      } catch (e) {
+        console.warn(`[warn] 26-data-sync skipped: ${e}`);
+        if ((await browser.getWindowHandles()).length > 1) {
+          await browser.closeWindow();
+          await browser.switchToWindow(mainWindow);
+        }
       }
+
+      // Schema Diff: hidden from ctx menu when schemaDiff flag is off — open sub-window via IPC.
+      try {
+        await browser.switchToWindow(mainWindow);
+        await goToConnections();
+        await invoke('create_sub_window', {
+          options: {
+            label: 'schema-diff-singleton',
+            url: 'window.html?window=schema-diff',
+            title: 'Schema Diff - DataZen',
+            width: 900,
+            height: 640,
+          },
+        });
+        await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+          timeout: 10000,
+          timeoutMsg: 'Schema Diff window did not open',
+        });
+        const hs = await browser.getWindowHandles();
+        await browser.switchToWindow(hs.find((h) => h !== mainWindow)!);
+        await dismissLimitationsDialogIfOpen('schema-diff');
+        await browser.pause(1200);
+        await shot('27-schema-diff.png');
+        await browser.closeWindow();
+        await browser.switchToWindow(mainWindow);
+      } catch (e) {
+        console.warn(`[warn] 27-schema-diff skipped: ${e}`);
+        if ((await browser.getWindowHandles()).length > 1) {
+          await browser.closeWindow();
+          await browser.switchToWindow(mainWindow);
+        }
+      }
+
+      // Data Transfer.
+      try {
+        await openDbContextMenu(DEMO_PG_DB, 'Data Transfer');
+        await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+          timeout: 10000,
+          timeoutMsg: 'Data Transfer window did not open',
+        });
+        const hs = await browser.getWindowHandles();
+        await browser.switchToWindow(hs.find((h) => h !== mainWindow)!);
+        await dismissLimitationsDialogIfOpen('data-transfer');
+        await browser.pause(1200);
+        await shot('28-data-transfer.png');
+        await browser.closeWindow();
+        await browser.switchToWindow(mainWindow);
+      } catch (e) {
+        console.warn(`[warn] 28-data-transfer skipped: ${e}`);
+        if ((await browser.getWindowHandles()).length > 1) {
+          await browser.closeWindow();
+          await browser.switchToWindow(mainWindow);
+        }
+      }
+    } finally {
+      await setAppLanguage(mainWindow, 'zh-CN');
     }
   });
 
