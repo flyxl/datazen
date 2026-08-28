@@ -145,7 +145,7 @@ bash e2e/setup-e2e-env.sh
 | **Edge**（`data-sync-edge-cases.ts`） | 同上 | 表名 `e2e_ds_edge_*` |
 | **IPC**（`data-sync-real.ts`） | 多表；含 `sync_pg_types` 宽类型（numeric/bool/timestamptz/uuid 等） | 表前缀 `sync_*`；spec `after` |
 
-Journey 用小数据集保证 UI 路径稳定；类型与 apply 闭环见 `SYNC-REAL-*`（`SYNC-REAL-024` 覆盖 numeric/bool/double 的 PG apply；uuid/timestamptz 等同族 compare 可测但 apply SQL 字面量_cast 仍为已知限制）。修改前端/Rust 后应用 `pnpm e2e:minimal` 重建 webdriver binary，避免 `e2e:skip-build` 跑旧嵌入资源。
+Journey 用小数据集保证 UI 路径稳定；类型与 apply 闭环见 `SYNC-REAL-*`（`SYNC-REAL-024` 覆盖 numeric/bool/double/uuid/timestamptz 的 PG apply）。修改前端/Rust 后应用 `pnpm e2e:minimal` 重建 webdriver binary，避免 `e2e:skip-build` 跑旧嵌入资源。
 
 ### 应用数据隔离（DATAZEN_DATA_DIR）
 

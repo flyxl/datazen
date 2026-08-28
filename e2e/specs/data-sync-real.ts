@@ -440,7 +440,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     expect(pending.length).toBe(0);
   });
 
-  it('SYNC-REAL-024: compare + apply on PG wide-type table (numeric, bool, double)', async () => {
+  it('SYNC-REAL-024: compare + apply on PG wide-type table (numeric, bool, double, uuid, timestamptz)', async () => {
     await runSQL(
       srcSessionId,
       `
@@ -451,11 +451,13 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
         price numeric(10,2),
         ratio double precision,
         is_active boolean NOT NULL DEFAULT true,
-        note varchar(200)
+        note varchar(200),
+        uid uuid NOT NULL,
+        created_at timestamptz NOT NULL
       );
-      INSERT INTO sync_pg_types (id, name, price, ratio, is_active, note) VALUES
-        (1, 'Alpha', 19.99, 3.14, true, 'first'),
-        (2, 'Beta', 29.50, 2.71, false, 'second');
+      INSERT INTO sync_pg_types (id, name, price, ratio, is_active, note, uid, created_at) VALUES
+        (1, 'Alpha', 19.99, 3.14, true, 'first', '550e8400-e29b-41d4-a716-446655440000', '2024-01-15 10:30:00+00'),
+        (2, 'Beta', 29.50, 2.71, false, 'second', '6ba7b810-9dad-11d1-80b4-00c04fd430c8', '2024-02-20 14:00:00+00');
     `,
     );
     await runSQL(
@@ -468,10 +470,12 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
         price numeric(10,2),
         ratio double precision,
         is_active boolean NOT NULL DEFAULT true,
-        note varchar(200)
+        note varchar(200),
+        uid uuid NOT NULL,
+        created_at timestamptz NOT NULL
       );
-      INSERT INTO sync_pg_types (id, name, price, ratio, is_active, note) VALUES
-        (1, 'Alpha', 19.99, 3.14, true, 'first');
+      INSERT INTO sync_pg_types (id, name, price, ratio, is_active, note, uid, created_at) VALUES
+        (1, 'Alpha', 19.99, 3.14, true, 'first', '550e8400-e29b-41d4-a716-446655440000', '2024-01-15 10:30:00+00');
     `,
     );
 

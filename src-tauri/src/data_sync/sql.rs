@@ -79,6 +79,51 @@ pub fn postgres_placeholder(index: usize) -> String {
     format!("${index}")
 }
 
+/// Optional PostgreSQL cast suffix for parameterized placeholders and preview literals.
+pub fn postgres_type_cast(data_type: &str) -> Option<&'static str> {
+    let t = data_type.trim().to_ascii_lowercase();
+    if t == "uuid" {
+        return Some("uuid");
+    }
+    if t.contains("timestamp with time zone") || t == "timestamptz" {
+        return Some("timestamptz");
+    }
+    if t.contains("timestamp without time zone") || t == "timestamp" {
+        return Some("timestamp");
+    }
+    if t == "date" {
+        return Some("date");
+    }
+    if t == "time without time zone" || t == "time" {
+        return Some("time");
+    }
+    if t == "jsonb" {
+        return Some("jsonb");
+    }
+    if t == "json" {
+        return Some("json");
+    }
+    None
+}
+
+pub fn postgres_typed_placeholder(index: usize, data_type: Option<&str>) -> String {
+    match data_type.and_then(postgres_type_cast) {
+        Some(cast) => format!("${index}::{cast}"),
+        None => postgres_placeholder(index),
+    }
+}
+
+fn column_type<'a>(
+    column_names: &[String],
+    column_types: &'a [String],
+    col: &str,
+) -> Option<&'a str> {
+    column_names
+        .iter()
+        .position(|c| c == col)
+        .and_then(|i| column_types.get(i).map(|s| s.as_str()))
+}
+
 pub fn format_literal(value: &Option<Value>) -> String {
     match value {
         None | Some(Value::Null) => "NULL".into(),
@@ -93,17 +138,29 @@ pub fn format_literal(value: &Option<Value>) -> String {
     }
 }
 
+pub fn format_typed_literal(value: &Option<Value>, data_type: Option<&str>) -> String {
+    let lit = format_literal(value);
+    if matches!(lit.as_str(), "NULL" | "TRUE" | "FALSE") {
+        return lit;
+    }
+    match data_type.and_then(postgres_type_cast) {
+        Some(cast) if lit.starts_with('\'') => format!("{lit}::{cast}"),
+        _ => lit,
+    }
+}
+
 pub fn generate_table_sql<Q, P>(
     table: &TableChangeSet,
     target_schema: Option<&str>,
     pk_columns: &[String],
     column_names: &[String],
+    column_types: &[String],
     quote_ident: Q,
     placeholder: P,
 ) -> Result<Vec<SqlStatement>, DataSyncError>
 where
     Q: Fn(&str) -> String + Copy,
-    P: Fn(usize) -> String,
+    P: Fn(usize, Option<&str>) -> String,
 {
     if pk_columns.is_empty() {
         return Err(DataSyncError::validation(
@@ -118,6 +175,7 @@ where
             change,
             pk_columns,
             column_names,
+            column_types,
             &quote_ident,
             &placeholder,
         )?);
@@ -131,12 +189,13 @@ fn statement_for_change<Q, P>(
     change: &RowChange,
     pk_columns: &[String],
     column_names: &[String],
+    column_types: &[String],
     quote_ident: &Q,
     placeholder: &P,
 ) -> Result<SqlStatement, DataSyncError>
 where
     Q: Fn(&str) -> String,
-    P: Fn(usize) -> String,
+    P: Fn(usize, Option<&str>) -> String,
 {
     match change.operation {
         ChangeOperation::Insert => insert_sql(
@@ -144,6 +203,7 @@ where
             schema,
             change,
             column_names,
+            column_types,
             quote_ident,
             placeholder,
         ),
@@ -153,12 +213,20 @@ where
             change,
             pk_columns,
             column_names,
+            column_types,
             quote_ident,
             placeholder,
         ),
-        ChangeOperation::Delete => {
-            delete_sql(table, schema, change, pk_columns, quote_ident, placeholder)
-        }
+        ChangeOperation::Delete => delete_sql(
+            table,
+            schema,
+            change,
+            pk_columns,
+            column_names,
+            column_types,
+            quote_ident,
+            placeholder,
+        ),
         ChangeOperation::Unchanged => Err(DataSyncError::validation(
             "unchanged rows must not generate SQL",
         )),
@@ -178,12 +246,13 @@ fn insert_sql<Q, P>(
     schema: Option<&str>,
     change: &RowChange,
     column_names: &[String],
+    column_types: &[String],
     quote_ident: &Q,
     placeholder: &P,
 ) -> Result<SqlStatement, DataSyncError>
 where
     Q: Fn(&str) -> String,
-    P: Fn(usize) -> String,
+    P: Fn(usize, Option<&str>) -> String,
 {
     let row = change
         .source_row
@@ -203,9 +272,10 @@ where
     let mut preview_vals = Vec::new();
     let mut placeholders = Vec::new();
     for (i, cell) in row.iter().enumerate() {
-        placeholders.push(placeholder(i + 1));
+        let col_type = column_types.get(i).map(|s| s.as_str());
+        placeholders.push(placeholder(i + 1, col_type));
         params.push(cell.clone().unwrap_or(Value::Null));
-        preview_vals.push(format_literal(cell));
+        preview_vals.push(format_typed_literal(cell, col_type));
     }
     let qtable = sql_table_ref(table, schema, quote_ident);
     Ok(SqlStatement {
@@ -230,12 +300,13 @@ fn update_sql<Q, P>(
     change: &RowChange,
     pk_columns: &[String],
     column_names: &[String],
+    column_types: &[String],
     quote_ident: &Q,
     placeholder: &P,
 ) -> Result<SqlStatement, DataSyncError>
 where
     Q: Fn(&str) -> String,
-    P: Fn(usize) -> String,
+    P: Fn(usize, Option<&str>) -> String,
 {
     let row = change
         .source_row
@@ -255,13 +326,29 @@ where
             DataSyncError::validation(format!("changed column '{col}' is not in the column list"))
         })?;
         let cell = row.get(pos).cloned().flatten();
-        set_ph.push(format!("{} = {}", quote_ident(col), placeholder(idx)));
-        set_lit.push(format!("{} = {}", quote_ident(col), format_literal(&cell)));
+        let col_type = column_type(column_names, column_types, col);
+        set_ph.push(format!(
+            "{} = {}",
+            quote_ident(col),
+            placeholder(idx, col_type)
+        ));
+        set_lit.push(format!(
+            "{} = {}",
+            quote_ident(col),
+            format_typed_literal(&cell, col_type)
+        ));
         params.push(cell.unwrap_or(Value::Null));
         idx += 1;
     }
-    let (where_ph, where_lit, where_params) =
-        where_pk(pk_columns, &change.key, idx, quote_ident, placeholder)?;
+    let (where_ph, where_lit, where_params) = where_pk(
+        pk_columns,
+        &change.key,
+        idx,
+        column_names,
+        column_types,
+        quote_ident,
+        placeholder,
+    )?;
     params.extend(where_params);
     let qtable = sql_table_ref(table, schema, quote_ident);
     Ok(SqlStatement {
@@ -287,15 +374,24 @@ fn delete_sql<Q, P>(
     schema: Option<&str>,
     change: &RowChange,
     pk_columns: &[String],
+    column_names: &[String],
+    column_types: &[String],
     quote_ident: &Q,
     placeholder: &P,
 ) -> Result<SqlStatement, DataSyncError>
 where
     Q: Fn(&str) -> String,
-    P: Fn(usize) -> String,
+    P: Fn(usize, Option<&str>) -> String,
 {
-    let (where_ph, where_lit, params) =
-        where_pk(pk_columns, &change.key, 1, quote_ident, placeholder)?;
+    let (where_ph, where_lit, params) = where_pk(
+        pk_columns,
+        &change.key,
+        1,
+        column_names,
+        column_types,
+        quote_ident,
+        placeholder,
+    )?;
     let qtable = sql_table_ref(table, schema, quote_ident);
     Ok(SqlStatement {
         table: table.into(),
@@ -311,12 +407,14 @@ fn where_pk<Q, P>(
     pk_columns: &[String],
     key: &[Value],
     start_index: usize,
+    column_names: &[String],
+    column_types: &[String],
     quote_ident: &Q,
     placeholder: &P,
 ) -> Result<(String, String, Vec<Value>), DataSyncError>
 where
     Q: Fn(&str) -> String,
-    P: Fn(usize) -> String,
+    P: Fn(usize, Option<&str>) -> String,
 {
     if pk_columns.len() != key.len() {
         return Err(DataSyncError::validation(
@@ -335,8 +433,13 @@ where
                 lit.push(format!("{ident} IS NULL"));
             }
             v => {
-                ph.push(format!("{} = {}", ident, placeholder(index)));
-                lit.push(format!("{} = {}", ident, format_literal(&Some(v.clone()))));
+                let col_type = column_type(column_names, column_types, col);
+                ph.push(format!("{} = {}", ident, placeholder(index, col_type)));
+                lit.push(format!(
+                    "{} = {}",
+                    ident,
+                    format_typed_literal(&Some(v.clone()), col_type)
+                ));
                 params.push(v.clone());
                 index += 1;
             }
@@ -359,6 +462,14 @@ mod tests {
         let mut o = SyncOptions::default();
         o.delete = true;
         o
+    }
+
+    fn pg_ph(idx: usize, _: Option<&str>) -> String {
+        postgres_placeholder(idx)
+    }
+
+    fn my_ph(idx: usize, _: Option<&str>) -> String {
+        mysql_placeholder(idx)
     }
 
     #[test]
@@ -392,8 +503,9 @@ mod tests {
             None,
             &["id".into()],
             &["id".into(), "name".into()],
+            &[],
             q,
-            postgres_placeholder,
+            pg_ph,
         )
         .unwrap();
         assert_eq!(stmts.len(), 3);
@@ -432,8 +544,9 @@ mod tests {
             None,
             &["id".into()],
             &["id".into()],
+            &[],
             |n| quote_ident_sql(n, '`'),
-            mysql_placeholder,
+            my_ph,
         )
         .unwrap();
         assert_eq!(stmts[0].sql, "INSERT INTO `t` (`id`) VALUES (?)");
@@ -451,18 +564,11 @@ mod tests {
             target_table: "t".into(),
             changes: vec![same],
         };
-        assert!(generate_table_sql(
-            &table,
-            None,
-            &["id".into()],
-            &["id".into()],
-            q,
-            mysql_placeholder
-        )
-        .is_err());
         assert!(
-            generate_table_sql(&table, None, &[], &["id".into()], q, mysql_placeholder).is_err()
+            generate_table_sql(&table, None, &["id".into()], &["id".into()], &[], q, my_ph)
+                .is_err()
         );
+        assert!(generate_table_sql(&table, None, &[], &["id".into()], &[], q, my_ph).is_err());
     }
 
     #[test]
@@ -483,8 +589,9 @@ mod tests {
             Some("mydb"),
             &["id".into()],
             &["id".into(), "name".into()],
+            &[],
             |n| quote_ident_sql(n, '`'),
-            mysql_placeholder,
+            my_ph,
         )
         .unwrap();
         assert_eq!(
@@ -527,8 +634,9 @@ mod tests {
             Some("public"),
             &["id".into()],
             &["id".into(), "name".into()],
+            &[],
             q,
-            postgres_placeholder,
+            pg_ph,
         )
         .unwrap();
         assert_eq!(
@@ -548,17 +656,50 @@ mod tests {
             target_table: "t".into(),
             changes: vec![del],
         };
+        let stmts = generate_table_sql(&table, None, &["id".into()], &["id".into()], &[], q, pg_ph)
+            .unwrap();
+        assert_eq!(stmts[0].sql, r#"DELETE FROM "t" WHERE "id" IS NULL"#);
+        assert!(stmts[0].parameters.is_empty());
+    }
+
+    #[test]
+    fn postgres_typed_placeholders_for_uuid_and_timestamptz() {
+        let options = SyncOptions::default();
+        let insert = RowChange::insert(
+            vec![Value::Integer(1)],
+            vec![
+                Some(Value::Integer(1)),
+                Some(Value::String("550e8400-e29b-41d4-a716-446655440000".into())),
+                Some(Value::Timestamp("2024-01-15 10:30:00+00".into())),
+            ],
+            &options,
+        );
+        let table = TableChangeSet {
+            source_table: "events".into(),
+            target_table: "events".into(),
+            changes: vec![insert],
+        };
+        let col_types = vec![
+            "integer".into(),
+            "uuid".into(),
+            "timestamp with time zone".into(),
+        ];
         let stmts = generate_table_sql(
             &table,
             None,
             &["id".into()],
-            &["id".into()],
+            &["id".into(), "uid".into(), "created_at".into()],
+            &col_types,
             q,
-            postgres_placeholder,
+            postgres_typed_placeholder,
         )
         .unwrap();
-        assert_eq!(stmts[0].sql, r#"DELETE FROM "t" WHERE "id" IS NULL"#);
-        assert!(stmts[0].parameters.is_empty());
+        assert_eq!(
+            stmts[0].sql,
+            r#"INSERT INTO "events" ("id", "uid", "created_at") VALUES ($1, $2::uuid, $3::timestamptz)"#
+        );
+        assert!(stmts[0].preview_sql.contains("::uuid"));
+        assert!(stmts[0].preview_sql.contains("::timestamptz"));
     }
 
     #[test]
