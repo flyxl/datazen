@@ -285,6 +285,104 @@ fn focus_existing_window(app: &AppHandle, label: &str, url: &str) -> bool {
     true
 }
 
+/// Singleton migration tool sub-windows opened from the native Tools menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MigrationSubWindow {
+    DataSync,
+    DataTransfer,
+    SchemaDiff,
+    Backup,
+    Restore,
+}
+
+impl MigrationSubWindow {
+    fn spec(self) -> (&'static str, &'static str, f64, f64, f64, f64) {
+        match self {
+            Self::DataSync => (
+                "data-sync-singleton",
+                "window.html?window=data-sync",
+                1000.0,
+                700.0,
+                600.0,
+                480.0,
+            ),
+            Self::DataTransfer => (
+                "data-transfer-singleton",
+                "window.html?window=data-transfer",
+                1000.0,
+                720.0,
+                640.0,
+                480.0,
+            ),
+            Self::SchemaDiff => (
+                "schema-diff-singleton",
+                "window.html?window=schema-diff",
+                900.0,
+                640.0,
+                560.0,
+                420.0,
+            ),
+            Self::Backup => (
+                "backup-singleton",
+                "window.html?window=backup",
+                750.0,
+                520.0,
+                600.0,
+                400.0,
+            ),
+            Self::Restore => (
+                "backup-restore-singleton",
+                "window.html?window=backup&mode=restore",
+                750.0,
+                520.0,
+                600.0,
+                400.0,
+            ),
+        }
+    }
+
+    fn menu_title_key(self) -> &'static str {
+        match self {
+            Self::DataSync => "data-sync",
+            Self::DataTransfer => "data-transfer",
+            Self::SchemaDiff => "schema-diff",
+            Self::Backup => "backup",
+            Self::Restore => "restore",
+        }
+    }
+}
+
+/// Open (or focus) a migration/backup singleton from the native menu — one Rust
+/// handler avoids duplicate JS listeners across multiple webviews.
+pub async fn open_migration_sub_window(
+    app: AppHandle,
+    kind: MigrationSubWindow,
+) -> Result<(), CommandError> {
+    let state = app.state::<AppState>();
+    let settings = state.store.get_settings().await;
+    let menu_title = crate::menu_label(&settings.language, kind.menu_title_key());
+    let title = format!("{menu_title} - DataZen");
+    let (label, url, width, height, min_width, min_height) = kind.spec();
+
+    create_sub_window(
+        app,
+        CreateWindowOptions {
+            label: label.into(),
+            url: url.into(),
+            title,
+            width,
+            height,
+            min_width: Some(min_width),
+            min_height: Some(min_height),
+            center: true,
+            accept_first_mouse: true,
+            transparent: None,
+            background_color: None,
+        },
+    )
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -382,6 +480,44 @@ mod tests {
         let labels = non_main_window_labels(["main", "backup-singleton", "connection-1"]);
         assert_eq!(labels, vec!["backup-singleton", "connection-1"]);
         assert!(non_main_window_labels(["main"]).is_empty());
+    }
+
+    #[test]
+    fn migration_sub_window_specs_match_frontend_singleton_labels() {
+        use super::MigrationSubWindow;
+        assert_eq!(
+            MigrationSubWindow::DataSync.spec(),
+            (
+                "data-sync-singleton",
+                "window.html?window=data-sync",
+                1000.0,
+                700.0,
+                600.0,
+                480.0
+            )
+        );
+        assert_eq!(
+            MigrationSubWindow::DataTransfer.spec(),
+            (
+                "data-transfer-singleton",
+                "window.html?window=data-transfer",
+                1000.0,
+                720.0,
+                640.0,
+                480.0
+            )
+        );
+        assert_eq!(
+            MigrationSubWindow::SchemaDiff.spec(),
+            (
+                "schema-diff-singleton",
+                "window.html?window=schema-diff",
+                900.0,
+                640.0,
+                560.0,
+                420.0
+            )
+        );
     }
 
     #[test]

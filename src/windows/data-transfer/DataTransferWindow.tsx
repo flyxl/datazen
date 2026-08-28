@@ -28,6 +28,10 @@ import type { ConnectionConfig } from '../../types';
 import { TransferLimitationsDialog } from './TransferLimitationsDialog';
 import { TransferExecuteConfirmDialog } from './TransferExecuteConfirmDialog';
 import { TransferMappingStep } from './TransferMappingStep';
+import {
+  MigrationEndpointsBar,
+  TransferPairingNote,
+} from '../../components/migration/MigrationEndpointsBar';
 import { normalizeColumnMappings, tableHasActiveMappings } from './transferMappingView';
 import { SqlCodeBlock } from '../../components/SqlCodeBlock';
 import {
@@ -623,63 +627,38 @@ export function DataTransferWindow() {
           )}
         >
           {step === 'endpoints' && (
-            <div className="rounded-lg border border-edge bg-surface-alt p-6">
-              <div className="grid gap-6 md:grid-cols-2">
-                <div data-testid="data-transfer-source">
-                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
-                    {t('transfer.source')}
-                  </label>
-                  <Select
-                    value={sourceId}
-                    onChange={setSourceId}
-                    options={[{ value: '', label: t('common.selectConnection') }, ...connOptions]}
+            <MigrationEndpointsBar
+              layout="grid"
+              testIdPrefix="data-transfer"
+              showSwap={false}
+              showCompare={false}
+              includeEmptyConnectionOption
+              hideDatabaseUntilConnected
+              sourceLabelKey="transfer.source"
+              targetLabelKey="transfer.target"
+              sourceId={sourceId}
+              targetId={targetId}
+              sourceDatabase={sourceDatabase}
+              targetDatabase={targetDatabase}
+              sourceDatabases={sourceDatabases}
+              targetDatabases={targetDatabases}
+              connOptions={connOptions}
+              targetOptions={targetOptions}
+              targetReadOnly={targetReadOnly}
+              onSourceChange={setSourceId}
+              onTargetChange={setTargetId}
+              onSourceDatabaseChange={setSourceDatabase}
+              onTargetDatabaseChange={setTargetDatabase}
+              footerNote={
+                pairing ? (
+                  <TransferPairingNote
+                    supported={pairing.supported}
+                    path={pairing.path}
+                    reason={pairing.reason}
                   />
-                  {sourceId && (
-                    <div className="mt-2" data-testid="data-transfer-source-database">
-                      <Select
-                        value={sourceDatabase}
-                        onChange={setSourceDatabase}
-                        options={sourceDatabases.map((d) => ({ value: d, label: d }))}
-                      />
-                    </div>
-                  )}
-                </div>
-                <div data-testid="data-transfer-target">
-                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
-                    {t('transfer.target')}
-                  </label>
-                  <Select
-                    value={targetId}
-                    onChange={setTargetId}
-                    options={[{ value: '', label: t('common.selectConnection') }, ...targetOptions]}
-                  />
-                  {targetId && (
-                    <div className="mt-2" data-testid="data-transfer-target-database">
-                      <Select
-                        value={targetDatabase}
-                        onChange={setTargetDatabase}
-                        options={targetDatabases.map((d) => ({ value: d, label: d }))}
-                      />
-                    </div>
-                  )}
-                  {targetReadOnly && (
-                    <p className="mt-2 rounded border border-warning/30 bg-warning/10 px-2 py-1 text-xs text-warning">
-                      {t('transfer.readOnlyHint')}
-                    </p>
-                  )}
-                </div>
-              </div>
-              {pairing && (
-                <p
-                  data-testid="data-transfer-path"
-                  className="mt-4 inline-block rounded border border-edge bg-surface px-2 py-1 text-xs text-fg-muted"
-                >
-                  {pairing.supported
-                    ? t(`transfer.path.${pairing.path}`)
-                    : (pairing.reason ?? t('common.unsupportedPair'))}
-                </p>
-              )}
-            </div>
+                ) : undefined
+              }
+            />
           )}
 
           {step === 'setup' && (
