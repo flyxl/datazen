@@ -13,6 +13,7 @@ import { ConnectionEditorDialogHost } from '../../components/connection/NewConne
 import { ConnectionShareDialogHost } from '../../components/connection/ConnectionShareDialogHost';
 import { ConnectionPage } from '../connection/ConnectionPage';
 import { WelcomePage } from '../welcome/WelcomePage';
+import { useMigrationWindowMenuActions } from '../../hooks/useMigrationWindowMenuActions';
 
 /**
  * Main window entry: first-run welcome when no saved connections,
@@ -20,6 +21,7 @@ import { WelcomePage } from '../welcome/WelcomePage';
  */
 export function MainPage() {
   const { t } = useI18n();
+  useMigrationWindowMenuActions();
   const connections = useConnectionStore((s) => s.connections);
   const connectionsLoaded = useConnectionStore((s) => s.connectionsLoaded);
   const loadError = useConnectionStore((s) => s.error);

@@ -27,14 +27,7 @@ import { settingsCommands } from '../../commands/settings';
 import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
 import { getDbLabel } from '../../lib/databaseTypes';
 import { openConnectionShareDialog } from '../../lib/connectionShare';
-import {
-  openBackupWindow,
-  openDataSyncWindow,
-  openDataTransferWindow,
-  openNewConnectionDialog,
-  openSchemaDiffWindow,
-  PENDING_CONNECTION_KEY,
-} from '../../lib/windowManager';
+import { openNewConnectionDialog, PENDING_CONNECTION_KEY } from '../../lib/windowManager';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { usePanelStore, nextPanelId, type RedisDbPanel } from '../../stores/panelStore';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
@@ -421,7 +414,7 @@ export function ConnectionPage() {
     return () => clearInterval(timer);
   }, [tabs]);
 
-  // ── Window close → release all connections ──
+  // ── Window close → release all connections (minimize when sub-windows stay open) ──
 
   useEffect(() => {
     if (!('__TAURI_INTERNALS__' in globalThis)) return;
@@ -430,9 +423,17 @@ export function ConnectionPage() {
 
     void (async () => {
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const { hasOpenChildWindows } = await import('../../lib/windowManager');
       const win = getCurrentWindow();
       unlisten = await win.onCloseRequested(async (event) => {
         if (isClosing) return;
+
+        if (await hasOpenChildWindows()) {
+          event.preventDefault();
+          await win.minimize();
+          return;
+        }
+
         isClosing = true;
         event.preventDefault();
         for (const tab of tabs) {
@@ -693,15 +694,6 @@ export function ConnectionPage() {
       const data = payload as { section?: string } | undefined;
       openSettingsInShell(data?.section);
     }).then((fn) => cleanups.push(fn));
-    void listenCrossWindow('menu:data-sync', () => {
-      openDataSyncWindow();
-    }).then((fn) => cleanups.push(fn));
-    void listenCrossWindow('menu:data-transfer', () => {
-      openDataTransferWindow();
-    }).then((fn) => cleanups.push(fn));
-    void listenCrossWindow('menu:schema-diff', () => {
-      openSchemaDiffWindow();
-    }).then((fn) => cleanups.push(fn));
     void listenCrossWindow('menu:workflow', () => {
       handleOpenWorkflow();
     }).then((fn) => cleanups.push(fn));
@@ -711,15 +703,6 @@ export function ConnectionPage() {
     void listenCrossWindow('menu:open-dashboard', (payload) => {
       const data = payload as { dashboardId?: string; dashboardName?: string } | undefined;
       handleOpenDashboardById(data?.dashboardId, data?.dashboardName);
-    }).then((fn) => cleanups.push(fn));
-    void listenCrossWindow('menu:backup', () => {
-      openBackupWindow('backup');
-    }).then((fn) => cleanups.push(fn));
-    void listenCrossWindow('menu:restore', () => {
-      openBackupWindow('restore');
-    }).then((fn) => cleanups.push(fn));
-    void listenCrossWindow('menu:view-logs', () => {
-      void settingsCommands.openLogDir();
     }).then((fn) => cleanups.push(fn));
     void listenCrossWindow('menu:export-config', () => {
       void handleExportConfig();
