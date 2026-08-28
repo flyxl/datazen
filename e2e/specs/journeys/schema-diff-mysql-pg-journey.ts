@@ -65,15 +65,13 @@ describe('结构对比 MySQL→PG 跨方言旅程 (SD-MYSQL-PG-JOURNEY)', functi
     await captureJourneyStep('sd-jmysql-02-endpoints', 0, true);
   });
 
-  it('Step 3: 对比并生成计划', async () => {
+  it('Step 3~4: 对比→计划→部署并验证 label 列', async () => {
     await clickSchemaDiffCompare();
     await clickSchemaDiffGeneratePlan();
-    const body = await $('body').getText();
+    let body = await $('body').getText();
     expect(body).toContain(t('schemaDiff.stepPlan'));
     await captureJourneyStep('sd-jmysql-03-plan', 0, true);
-  });
 
-  it('Step 4: 部署并验证 label 列', async () => {
     await advanceSchemaDiffToReview();
     await deploySchemaDiffPlan();
     const exists = await columnExists(TGT_ID, TABLE, 'label', 'postgresql');

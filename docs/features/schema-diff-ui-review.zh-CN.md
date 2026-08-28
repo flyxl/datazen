@@ -2,7 +2,7 @@
 
 > 审查日期：2026-08-28  
 > 代码基线：`main` + 本地 WIP（limitations 弹窗、E2E 套件、`schemaDiff` 功能门闸）  
-> 关联文档：[schema-diff-guide.zh-CN.md](./schema-diff-guide.zh-CN.md)、[schema-diff-deploy.md](./schema-diff-deploy.md)、[architecture/backend/schema-diff.md](../architecture/backend/schema-diff.md)
+> 关联文档：[schema-diff-ui-redesign.zh-CN.md](./schema-diff-ui-redesign.zh-CN.md) · [schema-diff-guide.zh-CN.md](./schema-diff-guide.zh-CN.md) · [schema-diff-deploy.md](./schema-diff-deploy.md) · [architecture/backend/schema-diff.md](../architecture/backend/schema-diff.md)
 
 ---
 

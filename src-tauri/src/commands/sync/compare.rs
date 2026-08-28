@@ -127,7 +127,7 @@ pub(crate) fn diff_table_schemas_ir(
     let mut changed = Vec::new();
 
     for col in &src_ir.columns {
-        if !src_map.contains_key(col.name.as_str()) {
+        if !tgt_map.contains_key(col.name.as_str()) {
             missing_on_target.push(ir_column_snapshot(col));
         }
     }

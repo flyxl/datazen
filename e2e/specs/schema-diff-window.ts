@@ -3,14 +3,9 @@ import { t } from '../i18n.js';
 import {
   captureJourneyStep,
   closeExtraWindows,
-  invokeBackend,
   openSchemaDiffWindow,
   selectDzOption,
-  setSchemaDiffTables,
   clickSchemaDiffCompare,
-  clickSchemaDiffGeneratePlan,
-  advanceSchemaDiffToReview,
-  deploySchemaDiffPlan,
 } from '../helpers.js';
 import { seedSecondPgConnection } from '../lib/testDataLifecycle.js';
 
@@ -18,7 +13,7 @@ import { seedSecondPgConnection } from '../lib/testDataLifecycle.js';
  * Schema Diff window shell + primary controls (SD-001~SD-004).
  */
 
-describe('结构对比窗口 (SD-001~SD-004)', () => {
+describe('结构对比窗口 (SD-001~SD-004, SD-LIM)', () => {
   let mainWindow: string;
 
   before(async () => {
@@ -67,20 +62,6 @@ describe('结构对比窗口 (SD-001~SD-004)', () => {
     await panel.waitForDisplayed({ timeout: 8000 });
     expect(await panel.getText()).toContain(t('schemaDiff.limitations.noViews'));
     await expect(await $('[data-testid="schema-diff-window"]')).toBeDisplayed();
-  });
-});
-
-describe('结构对比限制说明 (SD-LIM)', () => {
-  let mainWindow: string;
-
-  before(async () => {
-    mainWindow = await browser.getWindowHandle();
-    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
-  });
-
-  after(async () => {
-    await closeExtraWindows(mainWindow);
-    await browser.switchToWindow(mainWindow);
   });
 
   it('SD-LIM-001: 勾选「不再显示」后再次打开不应弹出限制说明', async () => {

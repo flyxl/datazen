@@ -50,6 +50,41 @@ export function pgSimpleTargetCreateSql(table: string): string {
   )`;
 }
 
+export function pgManyColumnsSourceSql(
+  table: string,
+  columnCount = SCHEMA_DIFF_WIDE_COLUMN_COUNT,
+): string {
+  const extraCols = Array.from(
+    { length: columnCount - 1 },
+    (_, i) => `col_${i} text NOT NULL DEFAULT ''`,
+  ).join(',\n    ');
+  return `CREATE TABLE ${table} (
+    id BIGINT PRIMARY KEY,
+    ${extraCols}
+  )`;
+}
+
+export async function setupPgManyColumnsSourceMinimalTarget(
+  srcConnectionId: string,
+  tgtConnectionId: string,
+  table: string,
+): Promise<void> {
+  const srcSession = await invokeBackend<string>('connect', { connectionId: srcConnectionId });
+  const tgtSession = await invokeBackend<string>('connect', { connectionId: tgtConnectionId });
+  await withSafeModeOff(async () => {
+    await dropTableIfExists(srcSession, table);
+    await dropTableIfExists(tgtSession, table);
+    await invokeBackend('execute_query', {
+      dbSessionId: srcSession,
+      sql: pgManyColumnsSourceSql(table),
+    });
+    await invokeBackend('execute_query', {
+      dbSessionId: tgtSession,
+      sql: pgMinimalTargetCreateSql(table),
+    });
+  });
+}
+
 export async function setupPgWideSourceMinimalTarget(
   srcConnectionId: string,
   tgtConnectionId: string,
