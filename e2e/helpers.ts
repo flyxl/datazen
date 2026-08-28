@@ -508,25 +508,63 @@ export async function connectToCard(cardName: string) {
 
 type SettingsLike = { safeMode?: boolean } & Record<string, unknown>;
 
-async function invokeSettings<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
-  const result = await browser.executeAsync(
-    (c: string, a: string, done: (r: unknown) => void) => {
-      (
-        window as unknown as {
-          __TAURI_INTERNALS__?: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
-        }
-      ).__TAURI_INTERNALS__
-        ?.invoke(c, JSON.parse(a))
-        .then((r) => done(r))
-        .catch((e: unknown) => done({ __error: String(e) }));
-    },
-    cmd,
-    JSON.stringify(args),
-  );
-  if (result && typeof result === 'object' && result !== null && '__error' in result) {
-    throw new Error(String((result as { __error: string }).__error));
+const IPC_SCRIPT_TIMEOUT_MS = 90_000;
+const IPC_MAX_ATTEMPTS = 3;
+
+function isRetryableIpcError(err: unknown): boolean {
+  const msg = String(err);
+  return /timeout|aborted|ECONNRESET|not reachable|disconnected/i.test(msg);
+}
+
+/** Ensure the main workspace window is active before backend IPC (avoids hung executeAsync). */
+export async function ensureMainWindowForIpc() {
+  try {
+    const nav = await $('[data-testid="workspace-nav-connections"]');
+    if (await nav.isDisplayed().catch(() => false)) return;
+  } catch {
+    /* fall through */
   }
-  return result as T;
+  try {
+    await browser.url('tauri://localhost');
+    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+  } catch {
+    const handles = await browser.getWindowHandles();
+    if (handles[0]) await browser.switchToWindow(handles[0]);
+  }
+  await browser.pause(400);
+}
+
+async function invokeSettings<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= IPC_MAX_ATTEMPTS; attempt++) {
+    try {
+      await browser.setTimeout({ script: IPC_SCRIPT_TIMEOUT_MS });
+      const result = await browser.executeAsync(
+        (c: string, a: string, done: (r: unknown) => void) => {
+          (
+            window as unknown as {
+              __TAURI_INTERNALS__?: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+            }
+          ).__TAURI_INTERNALS__
+            ?.invoke(c, JSON.parse(a))
+            .then((r) => done(r))
+            .catch((e: unknown) => done({ __error: String(e) }));
+        },
+        cmd,
+        JSON.stringify(args),
+      );
+      if (result && typeof result === 'object' && result !== null && '__error' in result) {
+        throw new Error(String((result as { __error: string }).__error));
+      }
+      return result as T;
+    } catch (err) {
+      lastError = err;
+      if (!isRetryableIpcError(err) || attempt >= IPC_MAX_ATTEMPTS) throw err;
+      await ensureMainWindowForIpc();
+      await browser.pause(1500 * attempt);
+    }
+  }
+  throw lastError;
 }
 
 // ── Tauri IPC / query results ───────────────────────────────────────
@@ -578,6 +616,21 @@ export async function executeQuery(
       });
     }
     throw e;
+  }
+}
+
+/** Open a DB session via IPC; ensures main window is active first. */
+export async function connectBackend(connectionId: string): Promise<string> {
+  await ensureMainWindowForIpc();
+  return connectConfig(connectionId);
+}
+
+/** Close a DB session opened via connectBackend (errors ignored). */
+export async function disconnectBackend(dbSessionId: string): Promise<void> {
+  try {
+    await invokeBackend('disconnect', { dbSessionId });
+  } catch {
+    /* session may already be gone */
   }
 }
 
@@ -1326,6 +1379,35 @@ export async function dismissTransferLimitationsDialogIfOpen() {
     timeoutMsg: '等待数据传输限制说明弹窗关闭超时',
   });
   await browser.pause(300);
+}
+
+/** Click Next on the data-transfer wizard when it is present and clickable. */
+export async function clickTransferNext(opts: { timeout?: number; pauseMs?: number } = {}) {
+  const next = await $('[data-testid="data-transfer-next"]');
+  await next.waitForClickable({ timeout: opts.timeout ?? 10000 });
+  await next.click();
+  await browser.pause(opts.pauseMs ?? 1200);
+}
+
+/** Advance with Next until Preview is shown (Preview footer uses Execute, not Next). */
+export async function advanceTransferWizardToPreview(maxSteps = 8) {
+  for (let i = 0; i < maxSteps; i++) {
+    const preview = await $('[data-testid="data-transfer-preview"]');
+    if (await preview.isDisplayed().catch(() => false)) return;
+
+    const next = await $('[data-testid="data-transfer-next"]');
+    if (!(await next.isExisting().catch(() => false))) {
+      const execute = await $('[data-testid="data-transfer-execute"]');
+      if (await execute.isExisting().catch(() => false)) return;
+      break;
+    }
+    if (!(await next.isEnabled().catch(() => false))) {
+      await browser.pause(1000);
+      continue;
+    }
+    await clickTransferNext();
+  }
+  await $('[data-testid="data-transfer-preview"]').waitForDisplayed({ timeout: 15000 });
 }
 
 /** Open the data-transfer sub-window; optionally dismiss the limitations dialog. */

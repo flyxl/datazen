@@ -178,7 +178,6 @@ describe('MySQL→PG 类型映射 Preview DDL (DT-TYPE-MYSQL-PG)', () => {
     await captureJourneyStep('dt-mp-type-mapping', 0, true);
 
     await clickNext('dt-mp-type-mapping-next');
-    await clickNext('dt-mp-type-options');
 
     await $('[data-testid="data-transfer-preview"]').waitForDisplayed({ timeout: 15000 });
     await browser.pause(800);

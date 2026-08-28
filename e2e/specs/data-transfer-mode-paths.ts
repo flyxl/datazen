@@ -6,6 +6,8 @@
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
+  advanceTransferWizardToPreview,
+  clickTransferNext,
   closeExtraWindows,
   invokeBackend,
   openDataTransferWindow,
@@ -46,26 +48,6 @@ function mysqlConfig(id: string, name: string, database: string) {
   };
 }
 
-async function clickNext() {
-  const next = await $('[data-testid="data-transfer-next"]');
-  await next.waitForClickable({ timeout: 10000 });
-  await next.click();
-  await browser.pause(1200);
-}
-
-async function advanceToPreview() {
-  for (let i = 0; i < 10; i++) {
-    const preview = await $('[data-testid="data-transfer-preview"]');
-    if (await preview.isDisplayed().catch(() => false)) return;
-    const execute = await $('[data-testid="data-transfer-execute"]');
-    if (await execute.isExisting().catch(() => false)) {
-      await clickNext();
-      return;
-    }
-    await clickNext();
-  }
-}
-
 async function runWizard(
   srcName: string,
   tgtName: string,
@@ -77,7 +59,7 @@ async function runWizard(
   await selectDzOption(t('transfer.pickConnection'), srcName);
   await selectDzOption(t('transfer.pickConnection'), tgtName);
   await browser.pause(1500);
-  await clickNext();
+  await clickTransferNext();
 
   const modeTestId =
     mode === 'data'
@@ -87,14 +69,14 @@ async function runWizard(
         : 'data-transfer-mode-both';
   await (await $(`[data-testid="${modeTestId}"]`)).click();
   await browser.pause(300);
-  await clickNext();
+  await clickTransferNext();
 
   await browser.pause(2000);
   const tableRow = await $(`[data-testid="data-transfer-table-row"]*=${table}`);
   await tableRow.waitForDisplayed({ timeout: 15000 });
   const checkbox = await tableRow.$('input[type="checkbox"]');
   if (!(await checkbox.isSelected())) await checkbox.click();
-  await clickNext();
+  await clickTransferNext();
 
   if (createNew) {
     await $('[data-testid="data-transfer-mapping-step"]').waitForDisplayed({ timeout: 15000 });
@@ -108,12 +90,7 @@ async function runWizard(
     }
   }
 
-  for (let i = 0; i < 6; i++) {
-    const preview = await $('[data-testid="data-transfer-preview"]');
-    if (await preview.isDisplayed().catch(() => false)) break;
-    await clickNext();
-  }
-  await $('[data-testid="data-transfer-preview"]').waitForDisplayed({ timeout: 15000 });
+  await advanceTransferWizardToPreview();
 }
 
 describe('数据传输模式路径矩阵 (DT-MODE-MATRIX)', () => {
@@ -271,8 +248,6 @@ describe('数据传输模式路径矩阵 (DT-MODE-MATRIX)', () => {
   it('DT-MODE-pg-pg-data-exec: PG→PG data 模式执行后行数=2', async () => {
     const p = pairs[0];
     await runWizard(p.srcName, p.tgtName, p.table, 'data', false);
-    await advanceToPreview();
-    await clickNext();
     const execute = await $('[data-testid="data-transfer-execute"]');
     await execute.waitForClickable({ timeout: 10000 });
     await execute.click();
