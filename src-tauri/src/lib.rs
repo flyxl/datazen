@@ -938,6 +938,7 @@ pub fn run() {
             commands::pick_connection_import_path_with_dialog,
             commands::import_connections_from_app,
             commands::export_app_data,
+            commands::pick_app_data_import_file,
             commands::import_app_data,
             commands::save_encryption_key_with_dialog,
             commands::restart_app,
