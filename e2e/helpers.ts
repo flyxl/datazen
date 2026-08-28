@@ -1411,9 +1411,13 @@ export async function advanceTransferWizardToPreview(maxSteps = 8) {
 }
 
 /** Open the data-transfer sub-window; optionally dismiss the limitations dialog. */
-export async function openDataTransferWindow(opts: { dismissLimitations?: boolean } = {}) {
-  const { dismissLimitations = true } = opts;
-  await clearTransferLimitationsDismissPref();
+export async function openDataTransferWindow(
+  opts: { dismissLimitations?: boolean; clearLimitationsPref?: boolean } = {},
+) {
+  const { dismissLimitations = true, clearLimitationsPref = true } = opts;
+  if (clearLimitationsPref) {
+    await clearTransferLimitationsDismissPref();
+  }
   await browser.url('tauri://localhost/window.html?window=data-transfer');
   await browser.pause(1500);
   await $('[data-testid="data-transfer-window"]').waitForDisplayed({ timeout: 10000 });
@@ -1421,4 +1425,81 @@ export async function openDataTransferWindow(opts: { dismissLimitations?: boolea
     await dismissTransferLimitationsDialogIfOpen();
   }
   await $('[data-testid="data-transfer-step-endpoints"]').waitForDisplayed({ timeout: 10000 });
+}
+
+// ── schema diff window ──────────────────────────────────────────────
+
+const SCHEMA_DIFF_LIMITATIONS_DISMISS_KEY = 'datazen:schema-diff-limitations-dismissed';
+
+export async function clearSchemaDiffLimitationsDismissPref() {
+  await browser.execute((key: string) => {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* localStorage may be unavailable */
+    }
+  }, SCHEMA_DIFF_LIMITATIONS_DISMISS_KEY);
+}
+
+export async function dismissSchemaDiffLimitationsDialogIfOpen() {
+  const dialog = await $('[data-testid="schema-diff-limitations-dialog"]');
+  if (!(await dialog.isExisting().catch(() => false))) return;
+  if (!(await dialog.isDisplayed().catch(() => false))) return;
+  const closeBtn = await $('[data-testid="schema-diff-limitations-close"]');
+  await closeBtn.waitForClickable({ timeout: 5000 });
+  await closeBtn.click();
+  await browser.waitUntil(async () => !(await dialog.isDisplayed().catch(() => false)), {
+    timeout: 8000,
+    timeoutMsg: '等待结构对比限制说明弹窗关闭超时',
+  });
+  await browser.pause(300);
+}
+
+export async function openSchemaDiffWindow(
+  opts: { dismissLimitations?: boolean; clearLimitationsPref?: boolean } = {},
+) {
+  const { dismissLimitations = true, clearLimitationsPref = true } = opts;
+  if (clearLimitationsPref) {
+    await clearSchemaDiffLimitationsDismissPref();
+  }
+  await browser.url('tauri://localhost/window.html?window=schema-diff');
+  await browser.pause(1500);
+  await $('[data-testid="schema-diff-window"]').waitForDisplayed({ timeout: 10000 });
+  if (dismissLimitations) {
+    await dismissSchemaDiffLimitationsDialogIfOpen();
+  }
+}
+
+export async function setSchemaDiffTables(tableList: string) {
+  const input = await $('[data-testid="schema-diff-tables-input"]');
+  await input.waitForDisplayed({ timeout: 8000 });
+  await input.setValue(tableList);
+}
+
+export async function clickSchemaDiffCompare() {
+  const btn = await $('[data-testid="schema-diff-compare"]');
+  await btn.waitForClickable({ timeout: 10000 });
+  await btn.click();
+  await browser.pause(2500);
+}
+
+export async function clickSchemaDiffGeneratePlan() {
+  const btn = await $('[data-testid="schema-diff-generate-plan"]');
+  await btn.waitForClickable({ timeout: 10000 });
+  await btn.click();
+  await browser.pause(2500);
+}
+
+export async function advanceSchemaDiffToReview() {
+  const reviewBtn = await $('[data-testid="schema-diff-step-review"]');
+  await reviewBtn.waitForClickable({ timeout: 10000 });
+  await reviewBtn.click();
+  await browser.pause(800);
+}
+
+export async function deploySchemaDiffPlan() {
+  const deployBtn = await $('[data-testid="schema-diff-deploy"]');
+  await deployBtn.waitForClickable({ timeout: 15000 });
+  await deployBtn.click();
+  await browser.pause(3000);
 }
