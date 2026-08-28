@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" width="960" height="720" role="img" aria-label="Schema Diff UI journey storyboard">
+  <rect width="960" height="720" fill="#0f172a"/>
+  <text x="480" y="28" fill="#e2e8f0" font-size="16" font-family="system-ui" text-anchor="middle" font-weight="600">Schema Diff UI Journey (3 phases, single page)</text>
+  <g transform="translate(16,48)">
+    <rect width="296" height="640" rx="6" fill="#1e293b" stroke="#334155"/>
+    <text x="148" y="24" fill="#3b82f6" font-size="12" font-family="system-ui" text-anchor="middle" font-weight="600">1 Compare</text>
+    <rect x="12" y="36" width="272" height="20" fill="#0f172a" stroke="#475569"/>
+    <rect x="12" y="64" width="130" height="24" rx="4" fill="#3b82f6"/>
+    <text x="24" y="80" fill="#fff" font-size="10" font-family="system-ui">Compare</text>
+    <rect x="12" y="100" width="272" height="80" rx="4" fill="#0f172a" stroke="#475569"/>
+    <text x="20" y="120" fill="#94a3b8" font-size="9" font-family="system-ui">SchemaDiffPanel per table</text>
+  </g>
+  <g transform="translate(332,48)">
+    <rect width="296" height="640" rx="6" fill="#1e293b" stroke="#334155"/>
+    <text x="148" y="24" fill="#3b82f6" font-size="12" font-family="system-ui" text-anchor="middle" font-weight="600">2 Plan</text>
+    <rect x="12" y="64" width="272" height="120" rx="4" fill="#0f172a" stroke="#475569"/>
+    <text x="20" y="84" fill="#94a3b8" font-size="9" font-family="system-ui">allowDestructive / includeIndexes</text>
+    <text x="20" y="100" fill="#94a3b8" font-size="9" font-family="system-ui">SQL list + risk badges</text>
+    <rect x="12" y="196" width="120" height="28" rx="4" fill="#3b82f6"/>
+    <text x="24" y="214" fill="#fff" font-size="10" font-family="system-ui">Review / Deploy</text>
+  </g>
+  <g transform="translate(648,48)">
+    <rect width="296" height="640" rx="6" fill="#1e293b" stroke="#334155"/>
+    <text x="148" y="24" fill="#3b82f6" font-size="12" font-family="system-ui" text-anchor="middle" font-weight="600">3 Review / Deploy</text>
+    <rect x="12" y="64" width="272" height="100" rx="4" fill="#0f172a" stroke="#475569"/>
+    <text x="20" y="84" fill="#94a3b8" font-size="9" font-family="system-ui">tx / requireRollback</text>
+    <text x="20" y="100" fill="#f59e0b" font-size="9" font-family="system-ui">Type DEPLOY if destructive</text>
+    <rect x="12" y="176" width="272" height="28" rx="4" fill="#dc2626"/>
+    <text x="24" y="194" fill="#fff" font-size="10" font-family="system-ui">Deploy to target</text>
+  </g>
+</svg>

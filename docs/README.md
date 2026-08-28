@@ -21,6 +21,8 @@
 | [data-transfer-guide](features/data-transfer-guide.zh-CN.md) | 中 | 异构数据迁移（跨方言向导、IR 类型映射） |
 | [data-transfer-prd](features/data-transfer-prd.zh-CN.md) | 中 | Data Transfer 产品定义（PRD） |
 | [data-transfer-ui-redesign](features/data-transfer-ui-redesign.zh-CN.md) | 中 | Data Transfer UI 重构需求与 SVG 线框 |
+| [schema-diff-ui-redesign](features/schema-diff-ui-redesign.zh-CN.md) | 中 | Schema Diff UI 重构需求与 SVG 线框（对齐 Transfer 设计语言） |
+| [schema-diff-ui-review](features/schema-diff-ui-review.zh-CN.md) | 中 | Schema Diff UI 审查报告（现状） |
 | [schema-diff-guide](features/schema-diff-guide.zh-CN.md) / [en](features/schema-diff-guide.en.md) | 中 / 英 | 结构对比与 DDL 部署（Compare → Plan → Review → Deploy） |
 | [schema-diff-deploy](features/schema-diff-deploy.md) | 英 | Schema Diff Deploy 速览（安全默认值矩阵） |
 | [ops-dashboard-guide](features/ops-dashboard-guide.zh-CN.md) / [en](features/ops-dashboard-guide.en.md) | 中 / 英 | 运营看板：Widget、监控调度、告警与导出 |
