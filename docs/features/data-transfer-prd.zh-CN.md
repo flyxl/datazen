@@ -1,8 +1,8 @@
 # Data Transfer 产品定义（PRD）
 
-> **状态**：V1 基础能力已实现；`productFeatures.dataTransfer` 门闸控制是否对用户可见。  
+> **状态**：V1 已 GA；`productFeatures.dataTransfer` 为 `true`；6 步向导与 E2E 已合入。  
 > **用户手册**：[data-transfer-guide.zh-CN.md](./data-transfer-guide.zh-CN.md)  
-> **UI 重构规格**：[data-transfer-ui-redesign.zh-CN.md](./data-transfer-ui-redesign.zh-CN.md)（待实施，含 SVG 线框）  
+> **UI 设计存档**：[data-transfer-ui-redesign.zh-CN.md](./data-transfer-ui-redesign.zh-CN.md)（含 SVG 线框）  
 > **架构**：[data-sync.md](../architecture/backend/data-sync.md)（Transfer 与 Sync 引擎分离说明）
 
 ---
@@ -211,27 +211,25 @@ src-tauri/src/transfer/          ← IR 适配器 + DDL 生成（与 data_sync �
 
 ---
 
-## 6. UI/UX 原则与现状差距
+## 6. UI/UX 原则与 Backlog
 
-### 6.1 设计原则（目标态）
+### 6.1 设计原则（已对齐部分）
 
-1. **与 Data Sync 视觉同源**：Endpoints 顶栏、表列表 + 详情、底栏 Execute
-2. **专业但不晦涩**：status 人类可读，不暴露裸 enum
-3. **先审查后破坏**：Preview 必达，破坏性操作多次确认
-4. **可恢复反馈**：进度、取消、失败重试、复制错误报告
+1. **与 Data Sync 视觉同源** — `bg-surface` / `border-edge`、居中 stepper、Endpoints 步样式 ✅
+2. **专业但不晦涩** — status 人类可读 ✅
+3. **先审查后破坏** — Preview 必达，破坏性操作多次确认 ✅
+4. **可恢复反馈** — Cancel、Result 汇总 ✅；细粒度进度面板仍为 backlog
 
-### 6.2 V1 现状 vs 目标（Backlog 优先级）
+### 6.2 Backlog（非阻塞）
 
-| 项 | 优先级 | 现状 | 目标 |
-|----|--------|------|------|
-| 执行进度 | P0 | Spinner only | Progress Panel |
-| 右键预填 Source | P0 | 未实现 | query params + localStorage |
-| Objects 信息密度 | P0 | 表名 + enum status | 行数、原因、图标 |
-| Preview+Execute 合并 | P0 | 8 步 | **6 步**（见 [UI 重构规格](./data-transfer-ui-redesign.zh-CN.md)） |
-| Schema 选择 | P1 | 无 UI | 同 Sync EndpointsBar |
-| Swap 端点 | P1 | 无 | 一键交换 |
-| 单页布局 | P2 | 线性向导 | Sync 式工作台 |
-| 保存任务模板 | P2 | 无 | 命名 job 复用 |
+| 项 | 优先级 | 说明 |
+|----|--------|------|
+| 执行进度面板 | P1 | 当前以 spinner 为主 |
+| 右键预填 Source | P1 | query params + localStorage |
+| Objects 信息密度 | P1 | 行数、原因、图标 |
+| Endpoints schema + Swap | P2 | 同 Sync EndpointsBar |
+| 单页工作台 | P3 | 长期可选 |
+| 保存任务模板 | P3 | 命名 job 复用 |
 
 ---
 
@@ -239,26 +237,19 @@ src-tauri/src/transfer/          ← IR 适配器 + DDL 生成（与 data_sync �
 
 ### 7.1 功能验收
 
-- [ ] PG→PG：`structure` / `data` / `structure+data` × `insert` 闭环
-- [ ] PG→MySQL（或 MySQL→PG）：IR 路径 `data` + `insert` 闭环（E2E）
-- [ ] `truncateInsert` / `dropCreateInsert` 同族执行 + 破坏性确认
-- [ ] 列映射 UI：auto-match、skip、create new、targetNativeType
-- [ ] DDL override 生效于 execute
-- [ ] Cancel 可中止长跑 job
-- [ ] read_only / unsupported pairing / 自覆盖 正确阻断
+- [x] PG→PG：`structure` / `data` / `structure+data` × `insert` 闭环（E2E）
+- [x] PG↔MySQL：IR 路径 journey + 宽类型 fixture（E2E）
+- [x] 列映射 UI：auto-match、skip、create new、targetNativeType（structure + create-new）
+- [x] DDL override 生效于 execute
+- [x] Cancel 可中止长跑 job
+- [x] read_only / unsupported pairing / 自覆盖 正确阻断
+- [x] `productFeatures.dataTransfer` 为 true
 
-### 7.2 文档验收
+### 7.2 文档与测试
 
-- [x] 用户指南与 UI 能力一致（Mapping 可编辑、DDL 非只读）
-- [x] PRD 与 Sync / Schema Diff 边界清晰
-
-### 7.3 启用门闸前（Cross-cutting）
-
-参考 [migration-tools-review-v0.1.0.md](../development/migration-tools-review-v0.1.0.md)：
-
-- [ ] 跨方言 Execute E2E 稳定
-- [ ] `productFeatures.dataTransfer` 设为 true
-- [ ] Host E2E 覆盖主路径；e2e-coverage.md 登记
+- [x] 用户指南与 UI 能力一致
+- [x] Host E2E：`pnpm e2e:data-transfer`（见 [e2e-coverage.md](../development/e2e-coverage.md)）
+- [x] 就绪度摘要：[migration-tools-review-v0.1.0.md](../development/migration-tools-review-v0.1.0.md)
 
 ---
 
@@ -266,10 +257,10 @@ src-tauri/src/transfer/          ← IR 适配器 + DDL 生成（与 data_sync �
 
 | 版本 | 范围 |
 |------|------|
-| **V1.0（当前）** | 8 步向导、direct + IR、映射 UI、preview/execute、cancel |
-| **V1.1** | UI 重构（6 步 + token 对齐）、预填入口、进度面板、Objects 增强、Execute 确认 Dialog |
-| **V1.2** | Schema 选择、swap、与 Sync/Diff 互跳 |
-| **V2.0** | 单页工作台、保存/加载任务、失败重试、可选调度 |
+| **V1.0（当前）** | 6 步向导、direct + IR、映射 UI、preview/execute、cancel、E2E |
+| **V1.1** | 预填入口、进度面板、Objects 增强 |
+| **V1.2** | Endpoints schema + swap、与 Sync/Diff 互跳 |
+| **V2.0** | 单页工作台、保存/加载任务、可选调度 |
 
 ---
 

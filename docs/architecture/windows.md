@@ -16,8 +16,8 @@
 | 对话框 | `NewConnectionDialog` | 新建/编辑连接（主窗内 modal，非 OS 子窗口） |
 | 子窗口 | `BackupWindow` | 备份/恢复（单例） |
 | 子窗口 | `DataSyncWindow` | 同族 Data Sync Diff Workspace（单例） |
-| 子窗口 | `SchemaDiffWindow` | Schema Diff（单例） |
-| 子窗口 | `DataTransferWindow` | 异构 Data Transfer 向导（单例） |
+| 子窗口 | `SchemaDiffWindow` | 结构对比（单例；Sync 式双栏 + EndpointsBar） |
+| 子窗口 | `DataTransferWindow` | 异构 Data Transfer 6 步向导（单例） |
 
 | 窗口 | Label / `?window=` |
 |------|-------------------|

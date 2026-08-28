@@ -1,21 +1,24 @@
-# Data Transfer UI 重构需求（设计规格）
+# Data Transfer UI 设计规格（6 步向导 · 已实施）
 
-> **状态**：待实施（当前代码保持 8 步向导，不做提前重构）  
-> **关联**：[PRD](./data-transfer-prd.zh-CN.md) · [用户手册](./data-transfer-guide.zh-CN.md) · **参照 UI**：[Data Sync 窗口](../architecture/windows.md)（`DataSyncWindow`）
+> **状态**：✅ 已于 2026-08 合入 `main`（8 步 → 6 步，token 对齐 Data Sync）  
+> **用户手册**：[data-transfer-guide.zh-CN.md](./data-transfer-guide.zh-CN.md)  
+> **关联**：[PRD](./data-transfer-prd.zh-CN.md) · **参照 UI**：[Data Sync 窗口](../architecture/windows.md)  
+> 下文保留设计决策与线框存档。
 
 ---
 
-## 1. 问题陈述（当前 V1 UI）
+## 当前实现摘要
 
-用户反馈与内部评审一致，当前 `DataTransferWindow` 存在：
+| 步骤 | testid / 说明 |
+|------|----------------|
+| 1 Endpoints | 源/目标连接 + database；路径 badge（direct / ir） |
+| 2 Setup | 传输模式 + write mode + batch / stopOnError |
+| 3 Objects | Inspect 后勾选表 |
+| 4 Mapping | `ColumnMappingEditor`；structure 模式可编辑 Target type |
+| 5 Preview | DDL 可编辑；底栏 **Execute transfer** |
+| 6 Result | 每表成功/失败汇总 |
 
-| 问题 | 表现 |
-|------|------|
-| **配色不统一** | 使用 `bg-bg`、`border-border` 等 token，主应用与 Data Sync 使用 `bg-surface`、`border-edge`、`bg-surface-alt` |
-| **布局偏左上** | 内容区 `p-4` 全宽左对齐，窄步骤（Mode / Options / Execute）大量留白 |
-| **步骤过碎** | 8 步线性向导，其中 Mode、Options、Execute 单页内容极少 |
-| **步骤指示弱** | 顶部纯文字 `1. Source / Target  2. Mode …`，无进度感、不可点击 |
-| **与 Sync 割裂** | Sync 为顶栏端点 + 主从布局 + 底栏 Execute；Transfer 仍是独立风格 |
+限制说明：首次打开 `TransferLimitationsDialog`；向导内亦有 `transfer.limitations.*` 摘要。
 
 ---
 
