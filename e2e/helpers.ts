@@ -1192,6 +1192,38 @@ export async function selectDzOption(triggerLabel: string, optionLabel: string) 
   await browser.pause(200);
 }
 
+/** Open a Host Select inside a wrapper test id, then pick an option. */
+export async function selectDzOptionInWrap(wrapTestId: string, optionLabel: string) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await browser.execute(
+        (testId: string, option: string) => {
+          const wrap = document.querySelector(`[data-testid="${testId}"]`);
+          const btn = wrap?.querySelector('button[aria-haspopup="listbox"]') as HTMLElement | null;
+          if (!btn) throw new Error(`Select trigger not found in ${testId}`);
+          btn.click();
+          const list = document.getElementById('dz-select-listbox');
+          if (!list) throw new Error('dz-select-listbox not open');
+          const item = Array.from(list.children).find((el) =>
+            (el.textContent || '').includes(option),
+          );
+          if (!item) throw new Error(`Select option not found: ${option}`);
+          item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        },
+        wrapTestId,
+        optionLabel,
+      );
+      await browser.pause(300);
+      return;
+    } catch (e) {
+      lastError = e;
+      await browser.pause(400);
+    }
+  }
+  throw lastError;
+}
+
 // ── workspace navigation ────────────────────────────────────────────
 
 /** Click workspace left-nav and wait for target panel. */
