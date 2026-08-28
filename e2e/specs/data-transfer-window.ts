@@ -60,6 +60,13 @@ describe('数据传输窗口 (DTW-001~DTW-003)', () => {
     await next.waitForDisplayed({ timeout: 8000 });
     expect(await next.isEnabled()).toBe(false);
   });
+
+  it('DTW-004: 应显示当前版本限制说明', async () => {
+    await openTransferWindow();
+    const panel = await $('[data-testid="data-transfer-limitations"]');
+    await panel.waitForDisplayed({ timeout: 8000 });
+    expect(await panel.getText()).toContain(t('transfer.limitations.noFkIndexes'));
+  });
 });
 
 /**

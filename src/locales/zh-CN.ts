@@ -1580,6 +1580,12 @@ const zhCN = {
   'transfer.mapping.unmappedTargetWarning': '以下目标列未映射：{columns}',
   'transfer.mapping.sourceType': '源类型',
   'transfer.mapping.targetType': '目标类型',
+  'transfer.limitations.title': '当前版本限制',
+  'transfer.limitations.noViews': '不迁移视图、函数、触发器与存储过程',
+  'transfer.limitations.noFkIndexes': '不迁移外键与二级索引（仅 PRIMARY KEY）',
+  'transfer.limitations.crossDialect': '跨方言传输可能丢失时区信息或调整列默认值',
+  'transfer.limitations.baseTables': '仅支持基表（不含视图、物化视图等）',
+  'transfer.limitations.noResume': '不支持表级断点续传；取消仅停止当前任务',
   'transfer.ddlOverrideHint': '可直接编辑上方 CREATE 语句；执行时将使用修改后的 SQL。',
   'schemaDiff.description':
     '以源库为目标态，对比并生成 DDL，审阅后部署到目标连接。默认仅加法变更。',
