@@ -47,9 +47,6 @@ pub(crate) async fn preview_data_transfer_impl(
         .await
         .cmd_err("preview_data_transfer")?;
 
-    super::exec::maybe_use_database(src_driver.as_ref(), &src_handle, Some(&job.source.database))
-        .await?;
-
     let src_tables = src_driver
         .get_tables(&src_handle, &job.source.database)
         .await

@@ -112,15 +112,35 @@ impl ConnectionManager {
     ///
     /// Returns the runtime `db_session_id` (the driver-generated session
     /// handle id) that callers must use for subsequent operations.
-    pub async fn connect(&self, connection_id: &str) -> Result<String, ConnectionError> {
-        let (driver, handle, mut effective_config, tunnel) =
-            self.establish_connection(connection_id).await?;
+    /// Establish a **new** runtime session for `connection_id`, optionally
+    /// pinning the initial catalog/database, without reusing an existing session.
+    /// Used by Transfer / Sync / Schema Diff sub-windows so they do not share
+    /// live session state (active database, transactions) with the main workspace.
+    pub async fn connect_dedicated(
+        &self,
+        connection_id: &str,
+        database: Option<&str>,
+    ) -> Result<String, ConnectionError> {
+        let db_session_id = self.connect_with_config(connection_id, database).await?;
+        let mut refs = self.ref_counts.write().await;
+        *refs.entry(db_session_id.clone()).or_insert(0) += 1;
+        tracing::debug!(db_session_id = %db_session_id, refs = refs[&db_session_id], "dedicated session ref acquired");
+        Ok(db_session_id)
+    }
+
+    async fn connect_with_config(
+        &self,
+        connection_id: &str,
+        database_override: Option<&str>,
+    ) -> Result<String, ConnectionError> {
+        let (driver, handle, mut effective_config, tunnel) = self
+            .establish_connection(connection_id, database_override)
+            .await?;
         let db_session_id = handle.id.clone();
 
         if effective_config.server_version.is_none() {
             if let Ok(info) = driver.get_server_info(&handle).await {
                 effective_config.server_version = Some(info.server_version.clone());
-                // Persist version to the stored connection config
                 if let Some(mut stored) = self.store.get_connection(connection_id).await {
                     stored.server_version = Some(info.server_version);
                     let _ = self.store.save_connection(stored).await;
@@ -148,11 +168,16 @@ impl ConnectionManager {
         Ok(db_session_id)
     }
 
+    pub async fn connect(&self, connection_id: &str) -> Result<String, ConnectionError> {
+        self.connect_with_config(connection_id, None).await
+    }
+
     /// Open a driver session for the persisted connection configuration
     /// `connection_id` without registering it in the UI session map.
     pub(crate) async fn establish_connection(
         &self,
         connection_id: &str,
+        database_override: Option<&str>,
     ) -> Result<
         (
             Arc<dyn DatabaseDriver>,
@@ -169,6 +194,9 @@ impl ConnectionManager {
             .ok_or_else(|| ConnectionError::ConnectionConfigNotFound(connection_id.to_string()))?;
 
         let (mut effective_config, tunnel) = self.maybe_start_tunnel(config).await?;
+        if let Some(db) = database_override.map(str::trim).filter(|s| !s.is_empty()) {
+            effective_config.database = Some(db.to_string());
+        }
         let pool_size = crate::store::clamp_connection_pool_size(
             self.store.get_settings().await.connection_pool_size,
         );

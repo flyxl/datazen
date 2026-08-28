@@ -76,6 +76,28 @@ pub(crate) async fn connect_impl(
     Ok(db_session_id)
 }
 
+pub(crate) async fn connect_dedicated_impl(
+    state: &AppState,
+    connection_id: String,
+    database: Option<String>,
+) -> Result<String, CommandError> {
+    tracing::info!(%connection_id, database = ?database, "connect_dedicated");
+    let db = database.as_deref();
+    let db_session_id = state
+        .connection_manager
+        .connect_dedicated(&connection_id, db)
+        .await
+        .cmd_err("connect_dedicated")?;
+
+    if let Some(mut cfg) = state.store.get_connection(&connection_id).await {
+        cfg.last_connected_at = Some(chrono::Utc::now().to_rfc3339());
+        let _ = state.store.save_connection(cfg).await;
+    }
+
+    tracing::info!(db_session_id = %db_session_id, "connect_dedicated OK");
+    Ok(db_session_id)
+}
+
 pub(crate) async fn ping_connection_impl(
     state: &AppState,
     db_session_id: String,
@@ -202,6 +224,15 @@ pub async fn connect(
 ) -> Result<String, CommandError> {
     // connection_id = 持久化配置连接 id；返回值为运行时 db_session_id。
     connect_impl(&state, connection_id).await
+}
+
+#[tauri::command]
+pub async fn connect_dedicated(
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: Option<String>,
+) -> Result<String, CommandError> {
+    connect_dedicated_impl(&state, connection_id, database).await
 }
 
 #[tauri::command]
@@ -364,6 +395,28 @@ mod coverage_tests {
     use crate::db::TransactionHandle;
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
     use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+
+    #[tokio::test]
+    async fn connect_dedicated_opens_separate_session_from_reuse() {
+        let test = TestAppState::with_tables().await;
+        test.save_connection("d1").await;
+        let shared = connect_impl(&test.state, "d1".into()).await.unwrap();
+        let dedicated = connect_dedicated_impl(&test.state, "d1".into(), Some("postgres".into()))
+            .await
+            .unwrap();
+        assert_ne!(shared, dedicated);
+        assert!(ping_connection_impl(&test.state, shared.clone())
+            .await
+            .unwrap());
+        assert!(ping_connection_impl(&test.state, dedicated.clone())
+            .await
+            .unwrap());
+        let torn = release_connection_impl(&test.state, dedicated)
+            .await
+            .unwrap();
+        assert!(torn);
+        assert!(ping_connection_impl(&test.state, shared).await.unwrap());
+    }
 
     #[tokio::test]
     async fn release_connection_decrements_then_tears_down() {

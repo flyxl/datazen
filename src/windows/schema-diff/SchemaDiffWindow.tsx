@@ -20,6 +20,8 @@ import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
 import { openDocsWindow } from '../../lib/windowManager';
+import { connectionCommands } from '../../commands/connection';
+import { releaseDedicatedSession } from '../../lib/dedicatedDbSession';
 import type { ConnectionConfig, TableSchemaDiff } from '../../types';
 import { SchemaDiffPlanPanel } from './SchemaDiffPlanPanel';
 import { SchemaDiffDeployPanel } from './SchemaDiffDeployPanel';
@@ -39,7 +41,8 @@ export function SchemaDiffWindow() {
   const loadSettings = useSettingsStore((s) => s.loadSettings);
 
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
-  const [activeConns, setActiveConns] = useState<Record<string, string>>({});
+  const [sourceSessionId, setSourceSessionId] = useState('');
+  const [targetSessionId, setTargetSessionId] = useState('');
   const [sourceId, setSourceId] = useState('');
   const [targetId, setTargetId] = useState('');
   const [tableNamesRaw, setTableNamesRaw] = useState('');
@@ -112,19 +115,34 @@ export function SchemaDiffWindow() {
 
   const ensureConnected = useCallback(
     async (connectionId: string): Promise<string | null> => {
-      // activeConns maps persistent connection id -> live db session id.
-      if (activeConns[connectionId]) return activeConns[connectionId];
+      const cfg = connections.find((c) => c.id === connectionId);
+      const database = cfg?.database;
+      const cached =
+        connectionId === sourceId
+          ? sourceSessionId
+          : connectionId === targetId
+            ? targetSessionId
+            : '';
+      if (cached) return cached;
       try {
-        const dbSessionId = await invoke<string>('connect', { connectionId });
-        setActiveConns((prev) => ({ ...prev, [connectionId]: dbSessionId }));
+        const dbSessionId = await connectionCommands.connectDedicated(connectionId, database);
+        if (connectionId === sourceId) setSourceSessionId(dbSessionId);
+        if (connectionId === targetId) setTargetSessionId(dbSessionId);
         return dbSessionId;
       } catch (e) {
         setError(`${t('sync.connectFailed')} ${e instanceof Error ? e.message : String(e)}`);
         return null;
       }
     },
-    [activeConns, t],
+    [connections, sourceId, targetId, sourceSessionId, targetSessionId, t],
   );
+
+  useEffect(() => {
+    return () => {
+      void releaseDedicatedSession(sourceSessionId);
+      void releaseDedicatedSession(targetSessionId);
+    };
+  }, [sourceSessionId, targetSessionId]);
 
   const handleCompare = async () => {
     setError('');

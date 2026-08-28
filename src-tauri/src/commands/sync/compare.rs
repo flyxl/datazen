@@ -3,20 +3,6 @@ use crate::schema_diff::types::{ChangedColumnDiff, ColumnSnapshot, TableColumnDi
 use crate::transfer::ir::{IRColumn, IRTable, IRType};
 use std::collections::HashMap;
 
-pub(super) async fn maybe_use_database(
-    driver: &dyn crate::db::DatabaseDriver,
-    handle: &crate::db::ConnectionHandle,
-    database: Option<&str>,
-) -> Result<(), CommandError> {
-    let Some(db) = database.map(str::trim).filter(|s| !s.is_empty()) else {
-        return Ok(());
-    };
-    driver
-        .use_database(handle, db)
-        .await
-        .cmd_err("maybe_use_database")
-}
-
 // ── Helpers ─────────────────────────────────────────────────────────
 
 /// Run adapter-provided full-type SQL (if any) and map `(name, full_type)` rows.

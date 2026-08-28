@@ -860,6 +860,7 @@ pub fn run() {
             commands::save_groups,
             commands::test_connection,
             commands::connect,
+            commands::connect_dedicated,
             commands::ping_connection,
             commands::release_connection,
             commands::disconnect,

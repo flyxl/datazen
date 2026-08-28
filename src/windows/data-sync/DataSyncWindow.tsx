@@ -19,6 +19,8 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useAiStore } from '../../stores/aiStore';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
 import { openDataTransferWindow, openSchemaDiffWindow } from '../../lib/windowManager';
+import { releaseDedicatedSession, listDatabasesDedicated } from '../../lib/dedicatedDbSession';
+import { connectionCommands } from '../../commands/connection';
 import { resolveSyncPairing, isSyncTargetSupported } from '../../lib/syncPairing';
 import type { ConnectionConfig } from '../../types';
 import type { SyncState } from './utils';
@@ -47,6 +49,10 @@ import {
 import { buildCompareReportText } from './compareReport';
 
 type RightPanel = 'detail' | 'preview';
+
+function dedicatedSessionKey(connectionId: string, database: string): string {
+  return `${connectionId}\0${database}`;
+}
 
 export function DataSyncWindow() {
   useSettings();
@@ -96,8 +102,8 @@ export function DataSyncWindow() {
       if (!dbSessionId) return;
       setActiveConns((prev) => {
         const next = { ...prev };
-        for (const [connectionId, sessionId] of Object.entries(next)) {
-          if (sessionId === dbSessionId) delete next[connectionId];
+        for (const [key, sessionId] of Object.entries(next)) {
+          if (sessionId === dbSessionId) delete next[key];
         }
         return next;
       });
@@ -168,12 +174,13 @@ export function DataSyncWindow() {
   const targetReadOnly = targetConn?.readOnly === true;
 
   const ensureConnected = useCallback(
-    async (connectionId: string): Promise<string | null> => {
-      // activeConns maps persistent connection id -> live db session id.
-      if (activeConns[connectionId]) return activeConns[connectionId];
+    async (connectionId: string, database: string): Promise<string | null> => {
+      if (!connectionId || !database) return null;
+      const key = dedicatedSessionKey(connectionId, database);
+      if (activeConns[key]) return activeConns[key];
       try {
-        const dbSessionId = await invoke<string>('connect', { connectionId });
-        setActiveConns((prev) => ({ ...prev, [connectionId]: dbSessionId }));
+        const dbSessionId = await connectionCommands.connectDedicated(connectionId, database);
+        setActiveConns((prev) => ({ ...prev, [key]: dbSessionId }));
         return dbSessionId;
       } catch (e) {
         setErrorMsg(`${t('sync.connectFailed')} ${e instanceof Error ? e.message : String(e)}`);
@@ -183,6 +190,12 @@ export function DataSyncWindow() {
     },
     [activeConns, t],
   );
+
+  useEffect(() => {
+    return () => {
+      void Promise.all(Object.values(activeConns).map((id) => releaseDedicatedSession(id)));
+    };
+  }, [activeConns]);
 
   const resetCompareState = useCallback(() => {
     setMappingResults([]);
@@ -202,14 +215,16 @@ export function DataSyncWindow() {
     const cfg = connections.find((c) => c.id === sourceId);
     (async () => {
       try {
-        const connId = await ensureConnected(sourceId);
-        if (!connId || cancelled) return;
-        const dbs = await databaseCommands.getDatabases(connId);
+        const { databases } = await listDatabasesDedicated(sourceId, cfg?.database);
         if (cancelled) return;
-        setSourceDatabases(dbs);
+        setSourceDatabases(databases);
         const preferred = cfg?.database ?? '';
         setSourceDatabase((prev) =>
-          dbs.includes(preferred) ? preferred : prev && dbs.includes(prev) ? prev : (dbs[0] ?? ''),
+          databases.includes(preferred)
+            ? preferred
+            : prev && databases.includes(prev)
+              ? prev
+              : (databases[0] ?? ''),
         );
       } catch {
         if (!cancelled) setSourceDatabases([]);
@@ -219,7 +234,7 @@ export function DataSyncWindow() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceId, connections, ensureConnected]);
+  }, [sourceId, connections]);
 
   useEffect(() => {
     if (!targetId) {
@@ -232,14 +247,16 @@ export function DataSyncWindow() {
     const cfg = connections.find((c) => c.id === targetId);
     (async () => {
       try {
-        const connId = await ensureConnected(targetId);
-        if (!connId || cancelled) return;
-        const dbs = await databaseCommands.getDatabases(connId);
+        const { databases } = await listDatabasesDedicated(targetId, cfg?.database);
         if (cancelled) return;
-        setTargetDatabases(dbs);
+        setTargetDatabases(databases);
         const preferred = cfg?.database ?? '';
         setTargetDatabase((prev) =>
-          dbs.includes(preferred) ? preferred : prev && dbs.includes(prev) ? prev : (dbs[0] ?? ''),
+          databases.includes(preferred)
+            ? preferred
+            : prev && databases.includes(prev)
+              ? prev
+              : (databases[0] ?? ''),
         );
       } catch {
         if (!cancelled) setTargetDatabases([]);
@@ -249,7 +266,7 @@ export function DataSyncWindow() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetId, connections, ensureConnected]);
+  }, [targetId, connections]);
 
   useEffect(() => {
     if (!sourceId || !sourceDatabase || sourceConn?.databaseType !== 'postgresql') {
@@ -260,7 +277,7 @@ export function DataSyncWindow() {
     let cancelled = false;
     (async () => {
       try {
-        const connId = await ensureConnected(sourceId);
+        const connId = await ensureConnected(sourceId, sourceDatabase);
         if (!connId || cancelled) return;
         const tables = await databaseCommands.getTables(connId, sourceDatabase);
         if (cancelled) return;
@@ -288,7 +305,7 @@ export function DataSyncWindow() {
     let cancelled = false;
     (async () => {
       try {
-        const connId = await ensureConnected(targetId);
+        const connId = await ensureConnected(targetId, targetDatabase);
         if (!connId || cancelled) return;
         const tables = await databaseCommands.getTables(connId, targetDatabase);
         if (cancelled) return;
@@ -409,8 +426,8 @@ export function DataSyncWindow() {
     jobIdRef.current = jobId;
 
     try {
-      const srcConnId = await ensureConnected(sourceId);
-      const tgtConnId = await ensureConnected(targetId);
+      const srcConnId = await ensureConnected(sourceId, sourceDatabase);
+      const tgtConnId = await ensureConnected(targetId, targetDatabase);
       if (!srcConnId || !tgtConnId) {
         setSyncState('idle');
         return;
@@ -542,8 +559,8 @@ export function DataSyncWindow() {
     jobIdRef.current = jobId;
 
     try {
-      const srcConnId = await ensureConnected(sourceId);
-      const tgtConnId = await ensureConnected(targetId);
+      const srcConnId = await ensureConnected(sourceId, sourceDatabase);
+      const tgtConnId = await ensureConnected(targetId, targetDatabase);
       if (!srcConnId || !tgtConnId) {
         setSyncState('compared');
         return;
@@ -678,7 +695,9 @@ export function DataSyncWindow() {
     setExplainText('');
     void (async () => {
       try {
-        const connectionId = activeConns[sourceId] ?? activeConns[targetId];
+        const connectionId =
+          activeConns[dedicatedSessionKey(sourceId, sourceDatabase)] ??
+          activeConns[dedicatedSessionKey(targetId, targetDatabase)];
         const text = await aiCommands.chat({
           dbSessionId: connectionId,
           database: sourceDatabase || targetDatabase || undefined,
@@ -840,18 +859,20 @@ export function DataSyncWindow() {
                         {t('sync.selectTableForDetail')}
                       </div>
                     )}
-                    {rightPanel === 'preview' && activeConns[sourceId] && activeConns[targetId] && (
-                      <SqlPreview
-                        sourceConnId={activeConns[sourceId]}
-                        targetConnId={activeConns[targetId]}
-                        sourceDatabase={sourceDatabase}
-                        targetDatabase={targetDatabase}
-                        sourceSchema={sourceSchema}
-                        targetSchema={targetSchema}
-                        tables={mappingResults}
-                        options={syncOptions}
-                      />
-                    )}
+                    {rightPanel === 'preview' &&
+                      activeConns[dedicatedSessionKey(sourceId, sourceDatabase)] &&
+                      activeConns[dedicatedSessionKey(targetId, targetDatabase)] && (
+                        <SqlPreview
+                          sourceConnId={activeConns[dedicatedSessionKey(sourceId, sourceDatabase)]}
+                          targetConnId={activeConns[dedicatedSessionKey(targetId, targetDatabase)]}
+                          sourceDatabase={sourceDatabase}
+                          targetDatabase={targetDatabase}
+                          sourceSchema={sourceSchema}
+                          targetSchema={targetSchema}
+                          tables={mappingResults}
+                          options={syncOptions}
+                        />
+                      )}
                   </div>
                 </div>
               </div>
