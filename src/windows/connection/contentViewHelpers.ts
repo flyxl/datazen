@@ -19,6 +19,7 @@ import {
   type TablePanel,
   type ViewPanel,
   type QueryPanel,
+  type CreateTablePanel,
   type DatabaseObjectPanel,
   type RedisDbPanel,
   type ConnectionContext,
@@ -69,9 +70,8 @@ export function getPanelIcon(panel: Panel): ReactNode {
   }
 }
 
-export function getPanelLabel(panel: Panel, t?: (key: TranslationKey) => string): string {
+export function getPanelShortLabel(panel: Panel, t?: (key: TranslationKey) => string): string {
   const tr = (key: TranslationKey, fallback: string) => (t ? t(key) : fallback);
-  const conn = (label: string) => `${panel.connectionName} · ${label}`;
   switch (panel.type) {
     case 'table':
       return (panel as TablePanel).tableName;
@@ -80,24 +80,60 @@ export function getPanelLabel(panel: Panel, t?: (key: TranslationKey) => string)
     case 'query':
       return (panel as QueryPanel).title;
     case 'create-table':
-      return 'New Table';
+      return tr('common.newTable', 'New Table');
     case 'er-diagram':
-      return 'ER Diagram';
+      return tr('common.erDiagram', 'ER Diagram');
     case 'objects':
-      return 'Objects';
+      return tr('objects.title', 'Objects');
     case 'privileges':
-      return 'Privileges';
+      return tr('privileges.title', 'Privileges');
     case 'server-status':
-      return conn(tr('serverStatus.dashboardTitle', 'Server Dashboard'));
+      return tr('serverStatus.dashboardTitle', 'Server Dashboard');
     case 'processes':
-      return conn(tr('common.processList', 'Process List'));
+      return tr('common.processList', 'Process List');
     case 'db-object':
       return (panel as DatabaseObjectPanel).objectName;
     case 'redis-db':
-      return `${panel.connectionName}@${(panel as RedisDbPanel).dbName}`;
+      return (panel as RedisDbPanel).dbName;
     default:
       return '';
   }
+}
+
+export function resolvePanelTabDatabase(
+  panel: Panel,
+  sessionDatabase?: string | null,
+): string | null {
+  switch (panel.type) {
+    case 'table':
+      return (panel as TablePanel).database ?? sessionDatabase ?? null;
+    case 'view':
+      return (panel as ViewPanel).database ?? sessionDatabase ?? null;
+    case 'create-table':
+      return (panel as CreateTablePanel).database ?? sessionDatabase ?? null;
+    case 'redis-db':
+      return (panel as RedisDbPanel).dbName;
+    default:
+      return sessionDatabase ?? null;
+  }
+}
+
+/** Tab title: `connection · database · object` (database omitted when unknown). */
+export function getPanelTabLabel(
+  panel: Panel,
+  sessionDatabase?: string | null,
+  t?: (key: TranslationKey) => string,
+): string {
+  const short = getPanelShortLabel(panel, t);
+  const database = resolvePanelTabDatabase(panel, sessionDatabase)?.trim();
+  const parts = [panel.connectionName];
+  if (database) parts.push(database);
+  if (short) parts.push(short);
+  return parts.join(' · ');
+}
+
+export function getPanelLabel(panel: Panel, t?: (key: TranslationKey) => string): string {
+  return getPanelShortLabel(panel, t);
 }
 
 export function getSubTabs(

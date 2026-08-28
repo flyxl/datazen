@@ -65,7 +65,11 @@ import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
-import { useCompactToolbar } from '../../hooks/useCompactToolbar';
+import {
+  estimateExpandedToolbarWidth,
+  TOOLBAR_GAP,
+  useCompactToolbar,
+} from '../../hooks/useCompactToolbar';
 import { cn } from '../../lib/cn';
 import { queryCommands } from '../../commands/query';
 import { dashboardCommands } from '../../commands/dashboard';
@@ -158,7 +162,6 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
     maxSize: 900,
     storageKey: 'query-editor-height',
   });
-  const { ref: toolbarRef, compact: compactToolbar } = useCompactToolbar();
 
   useEffect(() => {
     if (!exec.running) {
@@ -185,6 +188,16 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
   const dbMeta = databaseType ? DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY] : undefined;
   const supportsExplain = dbMeta?.supportsExplain === true;
   const isPathHierarchy = dbMeta?.namespaceEnsure === 'path-hierarchy';
+  const hasContextSelectors =
+    (isPathHierarchy && namespaceRootsFrom(namespaceTree, pathAliases, databases).length > 0) ||
+    (isMultiDb && databases.length > 0);
+  const queryToolbarExpandedMinWidth = estimateExpandedToolbarWidth({
+    expandedButtonCount: 1 + (supportsExplain ? 1 : 0) + 1 + 3 + 3,
+    fixedExtraWidth: (hasContextSelectors ? 160 : 0) + TOOLBAR_GAP + 8,
+  });
+  const { ref: toolbarRef, compact: compactToolbar } = useCompactToolbar(
+    queryToolbarExpandedMinWidth,
+  );
   const [contextPath, setContextPath] = useState<string[]>([]);
   const editorSchema = useMemo(
     () =>

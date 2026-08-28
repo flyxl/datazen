@@ -2,8 +2,9 @@ import type { MouseEvent } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import type { Panel } from '../../stores/panelStore';
-import { getPanelIcon, getPanelLabel } from './contentViewHelpers';
+import { getPanelIcon, getPanelTabLabel } from './contentViewHelpers';
 import { useI18n } from '../../hooks/useI18n';
+import { useSchemaStore } from '../../stores/schemaStore';
 
 export interface PanelTabBarProps {
   panels: Panel[];
@@ -21,6 +22,7 @@ export function PanelTabBar({
   onContextMenu,
 }: PanelTabBarProps) {
   const { t } = useI18n();
+  const schemas = useSchemaStore((s) => s.schemas);
   if (panels.length === 0) return null;
 
   return (
@@ -34,6 +36,8 @@ export function PanelTabBar({
       >
         {panels.map((panel) => {
           const isActive = panel.id === activePanelId;
+          const sessionDatabase = schemas.get(panel.dbSessionId)?.currentDatabase ?? null;
+          const tabLabel = getPanelTabLabel(panel, sessionDatabase, t);
           return (
             <div
               key={panel.id}
@@ -44,7 +48,7 @@ export function PanelTabBar({
                   ? 'bg-surface text-fg'
                   : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
               )}
-              title={`${panel.connectionName} · ${getPanelLabel(panel, t)}`}
+              title={tabLabel}
               onContextMenu={(e) => onContextMenu(panel.id, e)}
             >
               <button
@@ -53,7 +57,7 @@ export function PanelTabBar({
                 onClick={() => onSelectPanel(panel.id)}
               >
                 {getPanelIcon(panel)}
-                <span className="max-w-[160px] truncate">{getPanelLabel(panel, t)}</span>
+                <span className="max-w-[200px] truncate">{tabLabel}</span>
               </button>
               <button
                 type="button"
