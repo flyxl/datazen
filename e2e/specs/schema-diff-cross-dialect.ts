@@ -8,7 +8,7 @@ import {
   closeExtraWindows,
   invokeBackend,
   openSchemaDiffWindow,
-  selectDzOption,
+  selectSchemaDiffEndpoints,
   setSchemaDiffTables,
   clickSchemaDiffCompare,
   clickSchemaDiffGeneratePlan,
@@ -58,8 +58,7 @@ describe('PG→MySQL 跨方言宽类型 (SD-CROSS-PG-MYSQL)', function () {
 
   it('SD-XPG-001: 跨方言对比应显示警告或差异', async () => {
     await openSchemaDiffWindow();
-    await selectDzOption(t('sync.selectSource'), SRC_NAME);
-    await selectDzOption(t('sync.selectTarget'), TGT_NAME);
+    await selectSchemaDiffEndpoints(SRC_NAME, TGT_NAME);
     await setSchemaDiffTables(TABLE);
     await clickSchemaDiffCompare();
     const body = await $('body').getText();
@@ -116,8 +115,7 @@ describe('MySQL→PG 跨方言宽类型 (SD-CROSS-MYSQL-PG)', function () {
 
   it('SD-XMYSQL-001: 跨方言对比应列出表差异', async () => {
     await openSchemaDiffWindow();
-    await selectDzOption(t('sync.selectSource'), SRC_NAME);
-    await selectDzOption(t('sync.selectTarget'), TGT_NAME);
+    await selectSchemaDiffEndpoints(SRC_NAME, TGT_NAME);
     await setSchemaDiffTables(TABLE);
     await clickSchemaDiffCompare();
     const body = await $('body').getText();

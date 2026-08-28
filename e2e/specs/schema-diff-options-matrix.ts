@@ -8,7 +8,7 @@ import {
   closeExtraWindows,
   invokeBackend,
   openSchemaDiffWindow,
-  selectDzOption,
+  selectSchemaDiffEndpoints,
   setSchemaDiffTables,
   clickSchemaDiffCompare,
   clickSchemaDiffGeneratePlan,
@@ -50,8 +50,7 @@ describe('结构对比选项矩阵 (SD-OPT-MATRIX)', function () {
 
   it('SD-OPT-001: 默认计划应跳过破坏性 DROP', async () => {
     await openSchemaDiffWindow();
-    await selectDzOption(t('sync.selectSource'), SRC_NAME);
-    await selectDzOption(t('sync.selectTarget'), TGT_NAME);
+    await selectSchemaDiffEndpoints(SRC_NAME, TGT_NAME);
     await setSchemaDiffTables(TABLE);
     await clickSchemaDiffCompare();
     await clickSchemaDiffGeneratePlan();
@@ -63,8 +62,7 @@ describe('结构对比选项矩阵 (SD-OPT-MATRIX)', function () {
 
   it('SD-OPT-002: allowDestructive 与 includeIndexes 可切换并重新生成计划', async () => {
     await openSchemaDiffWindow();
-    await selectDzOption(t('sync.selectSource'), SRC_NAME);
-    await selectDzOption(t('sync.selectTarget'), TGT_NAME);
+    await selectSchemaDiffEndpoints(SRC_NAME, TGT_NAME);
     await setSchemaDiffTables(TABLE);
     await clickSchemaDiffCompare();
     await clickSchemaDiffGeneratePlan();

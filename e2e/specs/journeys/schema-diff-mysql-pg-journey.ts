@@ -8,7 +8,7 @@ import {
   closeExtraWindows,
   invokeBackend,
   openSchemaDiffWindow,
-  selectDzOption,
+  selectSchemaDiffEndpoints,
   setSchemaDiffTables,
   clickSchemaDiffCompare,
   clickSchemaDiffGeneratePlan,
@@ -59,8 +59,7 @@ describe('结构对比 MySQL→PG 跨方言旅程 (SD-MYSQL-PG-JOURNEY)', functi
   });
 
   it('Step 2: 选择 MySQL→PG 端点', async () => {
-    await selectDzOption(t('sync.selectSource'), SRC_NAME);
-    await selectDzOption(t('sync.selectTarget'), TGT_NAME);
+    await selectSchemaDiffEndpoints(SRC_NAME, TGT_NAME);
     await setSchemaDiffTables(TABLE);
     await captureJourneyStep('sd-jmysql-02-endpoints', 0, true);
   });

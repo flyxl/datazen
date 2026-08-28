@@ -1227,21 +1227,25 @@ export async function waitForEditInput() {
 
 /** Open a Host Select by matching the trigger's visible label, then pick an option. */
 export async function selectDzOption(triggerLabel: string, optionLabel: string) {
-  await browser.execute(
-    (trigger: string, option: string) => {
-      const buttons = Array.from(document.querySelectorAll('button[aria-haspopup="listbox"]'));
-      const btn = buttons.find((b) => (b.textContent || '').includes(trigger));
-      if (!btn) throw new Error(`Select trigger not found: ${trigger}`);
-      (btn as HTMLElement).click();
-      const list = document.getElementById('dz-select-listbox');
-      if (!list) throw new Error('dz-select-listbox not open');
-      const item = Array.from(list.children).find((el) => (el.textContent || '').includes(option));
-      if (!item) throw new Error(`Select option not found: ${option}`);
-      item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-    },
-    triggerLabel,
-    optionLabel,
+  await browser.execute((trigger: string) => {
+    const buttons = Array.from(document.querySelectorAll('button[aria-haspopup="listbox"]'));
+    const btn = buttons.find((b) => (b.textContent || '').includes(trigger));
+    if (!btn) throw new Error(`Select trigger not found: ${trigger}`);
+    (btn as HTMLElement).click();
+  }, triggerLabel);
+
+  await browser.waitUntil(
+    async () => browser.execute(() => Boolean(document.getElementById('dz-select-listbox'))),
+    { timeout: 5000, timeoutMsg: `Select listbox did not open for trigger: ${triggerLabel}` },
   );
+
+  await browser.execute((option: string) => {
+    const list = document.getElementById('dz-select-listbox');
+    if (!list) throw new Error('dz-select-listbox not open');
+    const item = Array.from(list.children).find((el) => (el.textContent || '').includes(option));
+    if (!item) throw new Error(`Select option not found: ${option}`);
+    item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+  }, optionLabel);
   await browser.pause(200);
 }
 
@@ -1250,23 +1254,27 @@ export async function selectDzOptionInWrap(wrapTestId: string, optionLabel: stri
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      await browser.execute(
-        (testId: string, option: string) => {
-          const wrap = document.querySelector(`[data-testid="${testId}"]`);
-          const btn = wrap?.querySelector('button[aria-haspopup="listbox"]') as HTMLElement | null;
-          if (!btn) throw new Error(`Select trigger not found in ${testId}`);
-          btn.click();
-          const list = document.getElementById('dz-select-listbox');
-          if (!list) throw new Error('dz-select-listbox not open');
-          const item = Array.from(list.children).find((el) =>
-            (el.textContent || '').includes(option),
-          );
-          if (!item) throw new Error(`Select option not found: ${option}`);
-          item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-        },
-        wrapTestId,
-        optionLabel,
+      await browser.execute((testId: string) => {
+        const wrap = document.querySelector(`[data-testid="${testId}"]`);
+        const btn = wrap?.querySelector('button[aria-haspopup="listbox"]') as HTMLElement | null;
+        if (!btn) throw new Error(`Select trigger not found in ${testId}`);
+        btn.click();
+      }, wrapTestId);
+
+      await browser.waitUntil(
+        async () => browser.execute(() => Boolean(document.getElementById('dz-select-listbox'))),
+        { timeout: 5000, timeoutMsg: `Select listbox did not open in ${wrapTestId}` },
       );
+
+      await browser.execute((option: string) => {
+        const list = document.getElementById('dz-select-listbox');
+        if (!list) throw new Error('dz-select-listbox not open');
+        const item = Array.from(list.children).find((el) =>
+          (el.textContent || '').includes(option),
+        );
+        if (!item) throw new Error(`Select option not found: ${option}`);
+        item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      }, optionLabel);
       await browser.pause(300);
       return;
     } catch (e) {
@@ -1476,9 +1484,43 @@ export async function openSchemaDiffWindow(
   }
 }
 
-export async function clickSchemaDiffNext(opts: { timeout?: number; pauseMs?: number } = {}) {
+async function waitForSchemaDiffNextEnabled(timeout = 20000) {
+  await browser.waitUntil(
+    async () => {
+      const next = await $('[data-testid="schema-diff-next"]');
+      if (!(await next.isExisting().catch(() => false))) return false;
+      return await next.isEnabled().catch(() => false);
+    },
+    { timeout, timeoutMsg: '等待 schema-diff-next 可点击超时' },
+  );
+}
+
+/** Select source/target on the Schema Diff endpoints step and wait until Next is enabled. */
+export async function selectSchemaDiffEndpoints(sourceName: string, targetName: string) {
+  await selectDzOptionInWrap('schema-diff-source', sourceName);
+  await browser.pause(600);
+  await selectDzOptionInWrap('schema-diff-target', targetName);
+  await browser.pause(800);
+  await waitForSchemaDiffNextEnabled();
+}
+
+function schemaDiffTableMatches(rowName: string, wanted: string): boolean {
+  if (rowName === wanted) return true;
+  const unqualified = rowName.includes('.') ? (rowName.split('.').pop() ?? rowName) : rowName;
+  return unqualified === wanted || rowName.endsWith(`.${wanted}`);
+}
+
+export async function clickSchemaDiffNext(
+  opts: { timeout?: number; pauseMs?: number; requireEnabled?: boolean } = {},
+) {
+  const requireEnabled = opts.requireEnabled ?? true;
+  if (requireEnabled) {
+    await waitForSchemaDiffNextEnabled(opts.timeout ?? 20000);
+  } else {
+    const next = await $('[data-testid="schema-diff-next"]');
+    await next.waitForDisplayed({ timeout: opts.timeout ?? 10000 });
+  }
   const next = await $('[data-testid="schema-diff-next"]');
-  await next.waitForClickable({ timeout: opts.timeout ?? 10000 });
   await next.click();
   await browser.pause(opts.pauseMs ?? 1500);
 }
@@ -1509,7 +1551,9 @@ export async function setSchemaDiffTables(tableList: string) {
   for (const row of rows) {
     const tableName = await row.getAttribute('data-table-name');
     const checkbox = await row.$('input[type="checkbox"]');
-    const shouldEnable = names.has(tableName ?? '');
+    const shouldEnable = [...names].some((wanted) =>
+      schemaDiffTableMatches(tableName ?? '', wanted),
+    );
     const isChecked = await checkbox.isSelected();
     if (shouldEnable !== isChecked) {
       await checkbox.click();
@@ -1537,7 +1581,10 @@ export async function clickSchemaDiffCompare() {
 
 export async function clickSchemaDiffGeneratePlan() {
   const btn = await $('[data-testid="schema-diff-generate-plan"]');
-  await btn.waitForClickable({ timeout: 10000 });
+  if (!(await btn.isDisplayed().catch(() => false))) {
+    await clickSchemaDiffNext();
+  }
+  await btn.waitForClickable({ timeout: 15000 });
   await btn.click();
   await browser.pause(2500);
 }

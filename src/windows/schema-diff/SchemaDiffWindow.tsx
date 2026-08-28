@@ -251,7 +251,7 @@ export function SchemaDiffWindow() {
             !endpoints.isSameEndpoint(),
         );
       case 'objects':
-        return selectedTables.length > 0 && !objectsLoading;
+        return !objectsLoading;
       case 'compare':
         return diffs.length > 0 && !loading;
       case 'plan':

@@ -1596,7 +1596,7 @@ const en: Record<TranslationKey, string> = {
   'schemaDiff.tablePlaceholder': 'e.g. public.users or users',
   'schemaDiff.tables': 'Tables',
   'schemaDiff.tablesPlaceholder': 'One table per line, or comma-separated',
-  'schemaDiff.tableRequired': 'Enter a table name to compare',
+  'schemaDiff.tableRequired': 'Select at least one table to compare',
   'schemaDiff.compare': 'Compare',
   'schemaDiff.copySummary': 'Copy summary',
   'schemaDiff.generatePlan': 'Generate deploy script',

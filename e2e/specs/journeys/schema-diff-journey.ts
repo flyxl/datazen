@@ -12,7 +12,7 @@ import {
   invokeBackend,
   openSchemaDiffWindow,
   queryScalar,
-  selectDzOption,
+  selectSchemaDiffEndpoints,
   setSchemaDiffTables,
   clickSchemaDiffCompare,
   clickSchemaDiffNext,
@@ -93,8 +93,7 @@ describe('结构对比完整用户旅程 (SD-JOURNEY)', () => {
   it('Step 2: 选择源/目标后未选表点下一步应提示必填', async () => {
     await seedSecondPgConnection(browser);
     await openSchemaDiffWindow();
-    await selectDzOption(t('sync.selectSource'), '本地 PostgreSQL');
-    await selectDzOption(t('sync.selectTarget'), 'E2E-PG-目标');
+    await selectSchemaDiffEndpoints('本地 PostgreSQL', 'E2E-PG-目标');
     await captureJourneyStep('sd-journey-02-endpoints-selected', 0, true);
     await clickSchemaDiffNext();
     const objectsPanel = await $('[data-testid="schema-diff-objects-panel"]');
@@ -108,7 +107,7 @@ describe('结构对比完整用户旅程 (SD-JOURNEY)', () => {
       const checkbox = await row.$('input[type="checkbox"]');
       if (await checkbox.isSelected()) await checkbox.click();
     }
-    await clickSchemaDiffNext();
+    await clickSchemaDiffNext({ requireEnabled: false });
     const body = await $('body').getText();
     expect(body).toContain(t('schemaDiff.tableRequired'));
     await captureJourneyStep('sd-journey-03-table-required', 0, true);
@@ -116,8 +115,7 @@ describe('结构对比完整用户旅程 (SD-JOURNEY)', () => {
 
   it('Step 3: 选择同步专用连接并填写表名', async () => {
     await openSchemaDiffWindow();
-    await selectDzOption(t('sync.selectSource'), SRC_NAME);
-    await selectDzOption(t('sync.selectTarget'), TGT_NAME);
+    await selectSchemaDiffEndpoints(SRC_NAME, TGT_NAME);
     await setSchemaDiffTables(TABLE);
     await captureJourneyStep('sd-journey-04-table-entered', 0, true);
   });
