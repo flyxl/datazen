@@ -8,7 +8,7 @@
 | 编号 | 功能 | 轨道 | 状态 | 编码 commit | 测试 commit |
 |------|------|------|------|-------------|-------------|
 | F1 | EndpointsBar + dedicated db/schema 会话 | schema-diff-ui-endpoints | 编码完成 | 79357dec | — |
-| F2 | 双栏面板（左表/diff · 右 plan/deploy） | schema-diff-ui-panels | 编码中 | — | — |
+| F2 | 双栏面板（左表/diff · 右 plan/deploy） | schema-diff-ui-panels | 编码完成 | a0eca1f8 | — |
 | F3 | SchemaDiffWindow 集成 + bg-surface shell | schema-diff-ui-b | 未开始 | — | — |
 | F4 | Host 单测 | schema-diff-ui-tests | 未开始 | — | — |
 | F5 | E2E 适配 | schema-diff-ui-e2e | 未开始 | — | — |
@@ -47,12 +47,16 @@
 
 ### F2 schema-diff-ui-panels
 
-- **范围**：`SchemaDiffTableListPanel.tsx`、`SchemaDiffRightPanel.tsx`、`SchemaDiffDeployDrawer.tsx`（新文件）
+- **范围**：`SchemaDiffTableListPanel.tsx`、`SchemaDiffRightPanel.tsx`（新文件；`SchemaDiffDeployDrawer` 延后至 F3 集成评估）
 - **验收**：
-  - [ ] 左栏：表列表 + 选中高亮 + diff 摘要/badge
-  - [ ] 右栏：Plan tab（SQL 列表 + options）+ Deploy 区（含 DEPLOY 输入）
-  - [ ] Props 驱动，无 window 状态耦合
-  - [ ] testid 覆盖 list、plan、deploy
+  - [x] 左栏：表列表 + 选中高亮 + diff 摘要/badge
+  - [x] 右栏：Plan tab（SQL 列表 + options）+ Deploy 区（含 DEPLOY 输入）
+  - [x] Props 驱动，无 window 状态耦合
+  - [x] testid 覆盖 list、plan、deploy
+- **导出接口**：
+  - `SchemaDiffTableListPanelProps` — `tables`, `selectedTable`, `onSelect`, `tableHasDiff?`
+  - `SchemaDiffRightPanelProps` + `SchemaDiffRightPanelTab` — tab 状态 + plan/deploy 全套回调
+- **单测**：`src/windows/schema-diff/__tests__/SchemaDiffPanels.test.tsx`
 
 ### F3 schema-diff-ui-b（集成）
 
