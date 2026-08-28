@@ -39,50 +39,80 @@ function makeTheme(dark: boolean, colors: EditorColorContract) {
   );
 }
 
-function codeBlockExtensions(dark: boolean, sqlDialect: SQLDialect) {
+function resolveDialect(dialect: string): SQLDialect {
+  const dialectMap: Record<string, SQLDialect> = {
+    postgresql: PostgreSQL,
+    mysql: MySQL,
+    mariadb: MariaSQL,
+    sqlite: SQLite,
+  };
+  return dialectMap[dialect] ?? StandardSQL;
+}
+
+function codeBlockExtensions(
+  dark: boolean,
+  sqlDialect: SQLDialect,
+  readOnly: boolean,
+  onDocChange?: (code: string) => void,
+) {
   const colors = readEditorColorsFromElement();
-  return [
-    EditorState.readOnly.of(true),
-    EditorView.editable.of(false),
+  const extensions = [
     lineNumbers(),
     sql({ dialect: sqlDialect }),
     editorSyntaxHighlighting(colors, dark),
     makeTheme(dark, colors),
   ];
+  if (readOnly) {
+    return [EditorState.readOnly.of(true), EditorView.editable.of(false), ...extensions];
+  }
+  if (onDocChange) {
+    extensions.push(
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+          onDocChange(update.state.doc.toString());
+        }
+      }),
+    );
+  }
+  return extensions;
 }
 
 interface SqlCodeBlockProps {
   code: string;
   dialect?: string;
+  /** When set, the block is editable and streams changes through this callback. */
+  onChange?: (code: string) => void;
 }
 
-export function SqlCodeBlock({ code, dialect = 'postgresql' }: SqlCodeBlockProps) {
+export function SqlCodeBlock({ code, dialect = 'postgresql', onChange }: SqlCodeBlockProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const readOnly = !onChange;
 
   useEffect(() => {
     if (!containerRef.current) return;
     const dark = document.documentElement.classList.contains('dark');
-    const dialectMap: Record<string, SQLDialect> = {
-      postgresql: PostgreSQL,
-      mysql: MySQL,
-      mariadb: MariaSQL,
-      sqlite: SQLite,
-    };
-    const sqlDialect = dialectMap[dialect] ?? StandardSQL;
+    const sqlDialect = resolveDialect(dialect);
 
     const state = EditorState.create({
       doc: code,
-      extensions: codeBlockExtensions(dark, sqlDialect),
+      extensions: codeBlockExtensions(dark, sqlDialect, readOnly, (next) =>
+        onChangeRef.current?.(next),
+      ),
     });
     const view = new EditorView({ state, parent: containerRef.current });
     viewRef.current = view;
 
     const observer = new MutationObserver(() => {
       const nowDark = document.documentElement.classList.contains('dark');
+      const doc = view.state.doc.toString();
       const newState = EditorState.create({
-        doc: view.state.doc.toString(),
-        extensions: codeBlockExtensions(nowDark, sqlDialect),
+        doc,
+        extensions: codeBlockExtensions(nowDark, sqlDialect, readOnly, (next) =>
+          onChangeRef.current?.(next),
+        ),
       });
       view.setState(newState);
     });
@@ -93,7 +123,17 @@ export function SqlCodeBlock({ code, dialect = 'postgresql' }: SqlCodeBlockProps
       view.destroy();
       viewRef.current = null;
     };
-  }, [code, dialect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount once; code synced below
+  }, [dialect, readOnly]);
 
-  return <div ref={containerRef} className="h-full w-full overflow-hidden" />;
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    const current = view.state.doc.toString();
+    if (current !== code) {
+      view.dispatch({ changes: { from: 0, to: current.length, insert: code } });
+    }
+  }, [code]);
+
+  return <div ref={containerRef} className="h-full w-full overflow-hidden select-text" />;
 }
