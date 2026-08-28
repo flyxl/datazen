@@ -13,12 +13,14 @@ import {
   executeQuery,
   invokeBackend,
   selectDzOption,
+  selectDzOptionInWrap,
   withSafeModeOff,
 } from '../helpers.js';
 
 async function openDataSyncWindow() {
   await browser.url('tauri://localhost/window.html?window=data-sync');
   await browser.pause(1500);
+  await $('[data-testid="data-sync-window"]').waitForDisplayed({ timeout: 10000 });
   await $('[data-testid="data-sync-compare"]').waitForDisplayed({ timeout: 10000 });
 }
 
@@ -270,6 +272,10 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     await invokeBackend('save_connection', {
       config: pgConfig(SRC_ID, `DS-RO-Src-${STAMP}`, 'datazen_sync_src'),
     });
+    const SETUP_TGT_ID = `e2e_ds_ro_setup_${STAMP}`;
+    await invokeBackend('save_connection', {
+      config: pgConfig(SETUP_TGT_ID, `DS-RO-Setup-${STAMP}`, 'datazen_sync_tgt'),
+    });
     await invokeBackend('save_connection', {
       config: {
         ...pgConfig(TGT_ID, `DS-RO-Tgt-${STAMP}`, 'datazen_sync_tgt'),
@@ -278,23 +284,23 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     });
 
     const srcSession = await connectConfig(SRC_ID);
-    const tgtSession = await connectConfig(TGT_ID);
+    const setupTgtSession = await connectConfig(SETUP_TGT_ID);
     await withSafeModeOff(async () => {
       await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
-      await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
+      await executeQuery(setupTgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
       await executeQuery(
         srcSession,
         `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
       );
       await executeQuery(
-        tgtSession,
+        setupTgtSession,
         `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
       );
       await executeQuery(
         srcSession,
         `INSERT INTO ${TABLE} (id, name) VALUES (1,'a'),(2,'b'),(3,'c')`,
       );
-      await executeQuery(tgtSession, `INSERT INTO ${TABLE} (id, name) VALUES (1,'a')`);
+      await executeQuery(setupTgtSession, `INSERT INTO ${TABLE} (id, name) VALUES (1,'a')`);
     });
 
     await openDataSyncWindow();
@@ -319,12 +325,12 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     try {
       await withSafeModeOff(async () => {
         await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
-        await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
+        await executeQuery(setupTgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
       });
     } catch {
       /* ok */
     }
-    for (const id of [SRC_ID, TGT_ID]) {
+    for (const id of [SRC_ID, TGT_ID, SETUP_TGT_ID]) {
       try {
         await invokeBackend('delete_connection', { id });
       } catch {
@@ -384,7 +390,7 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     );
     expect(rowCountBefore).toBeGreaterThan(0);
 
-    await selectDzOption(t('sync.selectSource'), `DS-Chg-Alt-${STAMP}`);
+    await selectDzOptionInWrap('data-sync-source', `DS-Chg-Alt-${STAMP}`);
     await browser.pause(800);
     expect(await getSyncState()).toBe('idle');
     const rowCountAfter = await browser.execute(
@@ -515,31 +521,58 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
   });
 
   it('DS-EDGE-009: 取消映射表勾选后 Execute 应禁用', async () => {
-    const toggled = await browser.execute((tableName: string) => {
+    const unchecked = await browser.execute((tableName: string) => {
+      let count = 0;
       const rows = document.querySelectorAll('[data-testid="data-sync-mapping-row"]');
       for (const row of rows) {
-        if ((row.textContent || '').includes(tableName)) {
-          const cb = row.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
-          cb?.click();
-          return true;
-        }
+        const cb = row.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+        if (!cb || cb.disabled || !cb.checked) continue;
+        cb.click();
+        count += 1;
+        if ((row.textContent || '').includes(tableName)) break;
       }
-      return false;
+      return count;
     }, TABLE);
-    expect(toggled).toBe(true);
+    expect(unchecked).toBeGreaterThan(0);
     await browser.pause(400);
-    await expect(await $('[data-testid="data-sync-start-disabled"]')).toBeDisplayed();
+    const stillEnabled = await $('[data-testid="data-sync-start"]')
+      .isDisplayed()
+      .catch(() => false);
+    const disabled = await $('[data-testid="data-sync-start-disabled"]')
+      .isDisplayed()
+      .catch(() => false);
+    expect(stillEnabled || disabled).toBe(true);
+    if (!stillEnabled) {
+      await expect(await $('[data-testid="data-sync-start-disabled"]')).toBeDisplayed();
+    } else {
+      // Other tables may still have diffs — disable every included matched table.
+      await browser.execute(() => {
+        document
+          .querySelectorAll('[data-testid="data-sync-mapping-row"] input[type="checkbox"]:checked')
+          .forEach((cb) => (cb as HTMLInputElement).click());
+      });
+      await browser.pause(400);
+      await expect(await $('[data-testid="data-sync-start-disabled"]')).toBeDisplayed();
+    }
     await captureStep('ds-edge-post-03-mapping-unchecked');
-    await browser.execute((tableName: string) => {
-      const rows = document.querySelectorAll('[data-testid="data-sync-mapping-row"]');
-      for (const row of rows) {
-        if ((row.textContent || '').includes(tableName)) {
-          const cb = row.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
-          cb?.click();
-        }
-      }
-    }, TABLE);
+    await browser.execute(() => {
+      document
+        .querySelectorAll('[data-testid="data-sync-mapping-row"] input[type="checkbox"]')
+        .forEach((cb) => {
+          const input = cb as HTMLInputElement;
+          if (!input.disabled && !input.checked) input.click();
+        });
+    });
     await browser.pause(300);
+    await $('[data-testid="data-sync-compare"]').click();
+    await browser.waitUntil(
+      async () => {
+        const cancel = await $('[data-testid="data-sync-cancel"]');
+        return !(await cancel.isDisplayed().catch(() => false));
+      },
+      { timeout: 120000, timeoutMsg: 're-compare after mapping toggle did not finish' },
+    );
+    await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 20000 });
   });
 
   it('DS-EDGE-010: Copy report 按钮应可点击', async () => {
