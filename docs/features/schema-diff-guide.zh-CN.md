@@ -21,39 +21,40 @@
 
 ## 2. 界面概览
 
-Schema Diff 采用与 **Data Sync** 对齐的 **双栏工作台**：
+Schema Diff 为 **5 步向导**（与 Data Transfer 相同的 stepper 视觉）：
 
 ```text
 ┌ TitleBar（标题 + 帮助）────────────────────────────────┐
-├ EndpointsBar：源/目标（连接 · database · schema）+ ⇄ + 对比 ┤
-├ 表名输入 · 生成计划 · 复制/导出配置 ────────────────────────┤
-├ 左：表列表 │ 中：列级 diff │ 右：Plan / Review·Deploy 标签页 ┤
+├ Stepper：Endpoints → Objects → Compare → Plan → Deploy ┤
+├ ① Endpoints：源/目标（连接 · database · schema）        ┤
+├ ② Objects：源库表多选（全选/取消）                      ┤
+├ ③ Compare：左表列表 │ 列级 diff 详情                   ┤
+├ ④ Plan：选项 + SQL 列表 + 导出/导入配置                 ┤
+├ ⑤ Deploy：事务选项 · DEPLOY 确认 · 部署结果             ┤
 └ StatusBar ───────────────────────────────────────────────┘
 ```
 
 - **首次打开**会弹出当前版本**能力限制**说明（可勾选「不再显示」）。
-- **EndpointsBar** 使用 dedicated session 拉取 database 列表；PostgreSQL 等会列出 schema。
-- **Swap（⇄）** 交换源/目标端点（含 session）。
-- **右栏 Plan**：`allowDestructive`、`includeIndexes`、SQL 列表与风险 badge。
-- **右栏 Review / Deploy**：事务选项、`DEPLOY` 确认词、部署结果。
+- **Endpoints** 使用 dedicated session 拉取 database 列表；PostgreSQL 等会列出 schema（**Swap 暂未启用**，见 backlog）。
+- **Objects** 从源库加载表列表，勾选要比对的表。
+- **Plan** 步可勾选 `allowDestructive`、`includeIndexes`，查看 SQL 与风险 badge。
+- **Deploy** 步：`DEPLOY` 确认词、事务与部署状态。
 
-源码：`src/windows/schema-diff/`（`SchemaDiffWindow`、`SchemaDiffEndpointsBar`、`SchemaDiffTableListPanel`、`SchemaDiffRightPanel`）。
+源码：`src/windows/schema-diff/`（`SchemaDiffWindow`、`SchemaDiffObjectsStep`、`SchemaDiffTableListPanel`、`SchemaDiffRightPanel`）。
 
 ---
 
 ## 3. 快速入门
 
 1. 打开 **Schema Diff** 窗口（若首次打开，阅读限制说明并关闭弹窗）  
-2. 在 **EndpointsBar** 选择 **源**、**目标**连接及 **database**（不能是同一连接；PG 可选 **schema**）  
-3. 在「表名」框填写一张或多张表（每行一个，或逗号分隔；可用 `schema.table`）  
-4. 点击 **对比** — 左侧表列表显示变更 badge，中间面板列出缺失/多余/变更列  
-5. 点击 **生成部署脚本** — 右栏 **Plan** 标签显示 SQL  
-6. 核对每条 SQL 与风险标记（`additive` / `destructive` / `rewrite`）  
-7. 切换到 **审阅 / Deploy** 标签，按需勾选事务与回滚完整性  
-8. 若含破坏性或改写类语句，输入确认词 **`DEPLOY`** 后再点 **部署到目标**  
-9. 查看部署状态：`committed` / `rolled_back` / `mixed` / `failed`
+2. **Endpoints** 步：选择 **源**、**目标**连接及 **database**（不能是同一连接；PG 可选 **schema**），点 **下一步**  
+3. **Objects** 步：勾选要比对的表，点 **下一步**（Compare 会自动运行）  
+4. **Compare** 步：左侧表列表显示变更 badge，中间面板列出缺失/多余/变更列，点 **下一步**  
+5. **Plan** 步：点击 **生成部署脚本**，核对 SQL 与风险标记（`additive` / `destructive` / `rewrite`）  
+6. **Deploy** 步：按需勾选事务与回滚完整性；若含破坏性或改写类语句，输入 **`DEPLOY`** 后再点 **部署到目标**  
+7. 查看部署状态：`committed` / `rolled_back` / `mixed` / `failed`
 
-也可随时 **复制 SQL** 或 **复制摘要**，不必真正执行部署。
+Plan 步可随时 **复制 SQL** 或 **导出/导入配置**，不必真正执行部署。
 
 ---
 
@@ -108,9 +109,9 @@ SQLite 侧仍以 `ADD COLUMN` / 索引为主；复杂 `DROP`/`MODIFY` 会提示�
 
 ```json
 {
-  "version": 1,
-  "sourceConfigId": "...",
-  "targetConfigId": "...",
+  "version": 2,
+  "sourceConnectionId": "...",
+  "targetConnectionId": "...",
   "tables": ["users", "orders"],
   "allowDestructive": false,
   "includeIndexes": true,
@@ -118,7 +119,7 @@ SQLite 侧仍以 `ADD COLUMN` / 索引为主；复杂 `DROP`/`MODIFY` 会提示�
 }
 ```
 
-导入后需再点对比 / 生成计划；连接须已存在于本机配置列表。
+导入后进入 **Objects** 步并恢复表勾选；**database / schema 需手动重选**（v2 尚未持久化，见 [backlog](../todo/migration-tools-backlog.md#schema-diff)）。连接须已存在于本机配置列表。
 
 ---
 

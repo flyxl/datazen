@@ -22,7 +22,7 @@
 | [data-transfer-prd](features/data-transfer-prd.zh-CN.md) | 中 | Data Transfer 产品定义（PRD） |
 | [data-transfer-ui-redesign](features/data-transfer-ui-redesign.zh-CN.md) | 中 | Data Transfer UI 设计存档（6 步向导 · 已实施） |
 | [schema-diff-ui-redesign](features/schema-diff-ui-redesign.zh-CN.md) | 中 | Schema Diff UI 设计存档（双栏方案 B · 已实施） |
-| [schema-diff-guide](features/schema-diff-guide.zh-CN.md) / [en](features/schema-diff-guide.en.md) | 中 / 英 | 结构对比与 DDL 部署（EndpointsBar + 双栏 Plan/Deploy） |
+| [schema-diff-guide](features/schema-diff-guide.zh-CN.md) / [en](features/schema-diff-guide.en.md) | 中 / 英 | 结构对比与 DDL 部署（5 步向导） |
 | [schema-diff-deploy](features/schema-diff-deploy.md) | 英 | Schema Diff Deploy 速览（安全默认值矩阵） |
 | [ops-dashboard-guide](features/ops-dashboard-guide.zh-CN.md) / [en](features/ops-dashboard-guide.en.md) | 中 / 英 | 运营看板：Widget、监控调度、告警与导出 |
 
@@ -77,6 +77,7 @@
 | [e2e-testing](development/e2e-testing.md) | WebdriverIO E2E 完整流程（构建、运行、调试） |
 | [e2e-coverage](development/e2e-coverage.md) | Host UI E2E 覆盖矩阵与例外登记 |
 | [migration-tools-review](development/migration-tools-review-v0.1.0.md) | Schema Diff / Data Sync / Data Transfer 就绪度与测试命令 |
+| [migration-tools-backlog](todo/migration-tools-backlog.md) | 三项迁移工具后续增强 Backlog（P1–P3） |
 | [ci-private-plugins](development/ci-private-plugins.md) | 私有 Git 驱动的 CI Deploy Key / Environment 配置 |
 | [independent-plugin-development](development/independent-plugin-development.en.md) / [中文](development/independent-plugin-development.zh-CN.md) | 独立仓库驱动插件开发指南 |
 | [driver-api-dependency-boundary](development/driver-api-dependency-boundary.md) | datazen-driver-api 公共 API 依赖边界 |

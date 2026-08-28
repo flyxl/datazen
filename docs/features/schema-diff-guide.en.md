@@ -19,14 +19,16 @@
 
 ## 2. UI layout
 
-Sync-style **dual-panel workspace**:
+**Five-step wizard** (same stepper chrome as Data Transfer):
 
-- **EndpointsBar** — source/target connection, database, schema (when supported), Swap, Compare
-- **Left** — table list with diff badges  
-- **Center** — column-level diff (`SchemaDiffPanel`)  
-- **Right** — **Plan** tab (options + SQL list) and **Review / Deploy** tab  
+1. **Endpoints** — source/target connection, database, schema (when supported)  
+2. **Objects** — multi-select tables loaded from the source catalog  
+3. **Compare** — table list + column-level diff panel  
+4. **Plan** — options, SQL list, export/import config  
+5. **Deploy** — transaction options, `DEPLOY` token, deploy result  
 
 First open shows a **limitations** dialog (optional “don’t show again”).  
+**Swap** on Endpoints is not enabled yet (see [backlog](../todo/migration-tools-backlog.md)).  
 Code: `src/windows/schema-diff/`.
 
 ---
@@ -34,14 +36,14 @@ Code: `src/windows/schema-diff/`.
 ## 3. Quick start
 
 1. Open **Schema Diff** (dismiss limitations dialog if shown)  
-2. Pick **source** and **target** connections and **databases** in the EndpointsBar  
-3. Enter table name(s) (one per line or comma-separated)  
-4. Click **Compare**  
-5. Click **Generate deploy script** — review SQL in the Plan tab  
-6. Switch to **Review / Deploy**, set options, type **`DEPLOY`** if required  
-7. Click **Deploy to target** and read status (`committed` / `rolled_back` / `mixed` / `failed`)
+2. **Endpoints:** pick source/target connections and databases → **Next**  
+3. **Objects:** select tables → **Next** (compare runs automatically)  
+4. **Compare:** review diffs → **Next**  
+5. **Plan:** click **Generate deploy script** and review SQL + risk badges  
+6. **Deploy:** set options, type **`DEPLOY`** if required, click **Deploy to target**  
+7. Read status (`committed` / `rolled_back` / `mixed` / `failed`)
 
-You can **Copy SQL** or **Copy summary** without deploying.
+You can **Copy SQL** or export/import config from the Plan step without deploying.
 
 ---
 
@@ -96,9 +98,9 @@ Export / import clipboard JSON (config IDs only — no secrets):
 
 ```json
 {
-  "version": 1,
-  "sourceConfigId": "...",
-  "targetConfigId": "...",
+  "version": 2,
+  "sourceConnectionId": "...",
+  "targetConnectionId": "...",
   "tables": ["users", "orders"],
   "allowDestructive": false,
   "includeIndexes": true,
@@ -106,7 +108,7 @@ Export / import clipboard JSON (config IDs only — no secrets):
 }
 ```
 
-After import, run Compare / Generate again; connections must already exist locally.
+Import lands on **Objects** with table picks restored; **database / schema must be re-selected** (v2 does not persist them yet — see [backlog](../todo/migration-tools-backlog.md)). Connections must already exist locally.
 
 ---
 
