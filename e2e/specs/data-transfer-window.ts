@@ -1,9 +1,10 @@
-import { expect, browser, $ } from '@wdio/globals';
+import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
   captureJourneyStep,
   closeExtraWindows,
   invokeBackend,
+  openDataTransferWindow,
   queryScalar,
   selectDzOption,
   withSafeModeOff,
@@ -13,13 +14,6 @@ import {
  * Data Transfer window smoke (DTW-001~DTW-003).
  * Full cross-dialect execute paths are not covered here — see data-transfer-guide.md V1 limits.
  */
-
-async function openTransferWindow() {
-  await browser.url('tauri://localhost/window.html?window=data-transfer');
-  await browser.pause(1500);
-  await $('[data-testid="data-transfer-window"]').waitForDisplayed({ timeout: 10000 });
-  await $('[data-testid="data-transfer-step-endpoints"]').waitForDisplayed({ timeout: 10000 });
-}
 
 describe('数据传输窗口 (DTW-001~DTW-003)', () => {
   let mainWindow: string;
@@ -35,8 +29,7 @@ describe('数据传输窗口 (DTW-001~DTW-003)', () => {
   });
 
   it('DTW-001: 应能通过 URL 打开数据传输窗口', async () => {
-    await browser.url('tauri://localhost/window.html?window=data-transfer');
-    await browser.pause(1500);
+    await openDataTransferWindow();
     const root = await $('[data-testid="data-transfer-window"]');
     await expect(root).toBeDisplayed();
     await captureJourneyStep('transfer-window-open');
@@ -46,8 +39,8 @@ describe('数据传输窗口 (DTW-001~DTW-003)', () => {
     expect(body).toContain(t('transfer.target'));
   });
 
-  it('DTW-002: 应显示端点步骤；模式选择在下一步', async () => {
-    await openTransferWindow();
+  it('DTW-002: 应显示端点步骤；模式选择在 setup 步', async () => {
+    await openDataTransferWindow();
     await expect(await $('[data-testid="data-transfer-step-endpoints"]')).toBeDisplayed();
     const body = await $('body').getText();
     expect(body).toContain(t('transfer.source'));
@@ -55,24 +48,30 @@ describe('数据传输窗口 (DTW-001~DTW-003)', () => {
   });
 
   it('DTW-003: 未选两端点时 Next 应禁用', async () => {
-    await openTransferWindow();
+    await openDataTransferWindow();
     const next = await $('[data-testid="data-transfer-next"]');
     await next.waitForDisplayed({ timeout: 8000 });
     expect(await next.isEnabled()).toBe(false);
   });
 
-  it('DTW-004: 应显示当前版本限制说明', async () => {
-    await openTransferWindow();
-    const panel = await $('[data-testid="data-transfer-limitations"]');
+  it('DTW-004: 应通过弹窗显示当前版本限制说明', async () => {
+    await openDataTransferWindow({ dismissLimitations: false });
+    const dialog = await $('[data-testid="data-transfer-limitations-dialog"]');
+    await dialog.waitForDisplayed({ timeout: 8000 });
+    const panel = await dialog.$('[data-testid="data-transfer-limitations"]');
     await panel.waitForDisplayed({ timeout: 8000 });
     expect(await panel.getText()).toContain(t('transfer.limitations.noFkIndexes'));
+    // Limitations render inside the modal dialog, not as an embedded wizard panel.
+    const panels = await $$('[data-testid="data-transfer-limitations"]');
+    expect(panels).toHaveLength(1);
+    await expect(await $('[data-testid="data-transfer-source"]')).toBeDisplayed();
   });
 });
 
 /**
  * Data Transfer 真实迁移闭环（DTW-CL-00x）。
  * PG→PG：`datazen_sync_src` → `datazen_sync_tgt`（由 setup-sync-dbs.sh 保证存在），
- * 走 UI 向导（endpoints → mode → objects → mapping → options → preview → execute），
+ * 走 UI 向导（endpoints → setup → objects → mapping → preview/execute → result），
  * 以落库查询断言目标表行数。需要已运行 `e2e/setup-sync-dbs.sh` 且 PG 可写。
  */
 describe('数据传输真实迁移 (DTW-CL)', () => {
@@ -178,7 +177,7 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
   }
 
   it('DT-CL-001: 选择两端点并进入下一步', async () => {
-    await openTransferWindow();
+    await openDataTransferWindow();
     await selectTransferEndpoints();
 
     await expect(await $('[data-testid="data-transfer-source-database"]')).toBeDisplayed();
@@ -188,12 +187,12 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
   });
 
   it('DTW-X-002: 选择 data 模式并推进到对象/数据迁移', async () => {
-    await openTransferWindow();
+    await openDataTransferWindow();
     await selectTransferEndpoints();
-    await clickNext('transfer-step-endpoints'); // endpoints → mode
+    await clickNext('transfer-step-endpoints'); // endpoints → setup
 
-    // 默认 mode = data，直接 Next 经过 mode
-    await clickNext('transfer-step-mode'); // mode → objects
+    // 默认 mode = data，直接 Next 经过 setup
+    await clickNext('transfer-step-setup'); // setup → objects
     // Objects 步：Next 触发 inspect
     await browser.pause(2000);
     await clickNext('transfer-step-objects'); // 触发 inspect → mapping
@@ -205,10 +204,10 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
   });
 
   it('DTW-X-003: 预览存在后可执行并断言落库行数=3', async () => {
-    await openTransferWindow();
+    await openDataTransferWindow();
     await selectTransferEndpoints();
 
-    // 兜底：若尚未到 options/preview，持续推进
+    // 兜底：若尚未到 preview/execute，持续推进
     for (let i = 0; i < 8; i++) {
       const stepExecute = await $('[data-testid="data-transfer-execute"]');
       if (await stepExecute.isExisting().catch(() => false)) break;

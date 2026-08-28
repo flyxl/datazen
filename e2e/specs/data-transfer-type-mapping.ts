@@ -9,16 +9,10 @@ import {
   captureJourneyStep,
   closeExtraWindows,
   invokeBackend,
+  openDataTransferWindow,
   selectDzOption,
   withSafeModeOff,
 } from '../helpers.js';
-
-async function openTransferWindow() {
-  await browser.url('tauri://localhost/window.html?window=data-transfer');
-  await browser.pause(1500);
-  await $('[data-testid="data-transfer-window"]').waitForDisplayed({ timeout: 10000 });
-  await $('[data-testid="data-transfer-step-endpoints"]').waitForDisplayed({ timeout: 10000 });
-}
 
 function pgConfig(id: string, name: string, database: string) {
   return {
@@ -139,7 +133,7 @@ describe('数据传输类型映射 Preview DDL (DT-TYPE-MAP)', () => {
   });
 
   it('DT-TYPE-001: 映射 VARCHAR(64)/DATETIME 应出现在 Preview CREATE TABLE', async () => {
-    await openTransferWindow();
+    await openDataTransferWindow();
     await selectDzOption(t('transfer.pickConnection'), SRC_NAME);
     await selectDzOption(t('transfer.pickConnection'), TGT_NAME);
     await browser.pause(1500);
