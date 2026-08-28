@@ -74,17 +74,6 @@ pub(crate) async fn compare_data_sync_impl(
         .await
         .cmd_err("compare_data_sync")?;
 
-    let src_db = source_database
-        .as_deref()
-        .filter(|s| !s.trim().is_empty())
-        .or(src_config.database.as_deref());
-    let tgt_db = target_database
-        .as_deref()
-        .filter(|s| !s.trim().is_empty())
-        .or(tgt_config.database.as_deref());
-    super::compare::maybe_use_database(src_driver.as_ref(), &src_handle, src_db).await?;
-    super::compare::maybe_use_database(tgt_driver.as_ref(), &tgt_handle, tgt_db).await?;
-
     let mut out = Vec::new();
     for mapping in inspected {
         if mapping.status != TableMappingStatus::Matched
@@ -176,12 +165,6 @@ pub(crate) async fn generate_data_sync_sql_impl(
         .get_session(&target_db_session_id)
         .await
         .cmd_err("generate_data_sync_sql")?;
-
-    let tgt_db = target_database
-        .as_deref()
-        .filter(|s| !s.trim().is_empty())
-        .or(tgt_config.database.as_deref());
-    super::compare::maybe_use_database(tgt_driver.as_ref(), &tgt_handle, tgt_db).await?;
 
     let mut statements = Vec::new();
     for table in &set.tables {

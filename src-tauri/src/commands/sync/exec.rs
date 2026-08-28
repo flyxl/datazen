@@ -69,7 +69,7 @@ pub(crate) async fn execute_data_sync_impl(
     target_db_session_id: String,
     statements: Vec<SqlStatement>,
     job_id: Option<String>,
-    target_database: Option<String>,
+    _target_database: Option<String>,
 ) -> Result<ExecutionResult, CommandError> {
     let config = state
         .connection_manager
@@ -81,14 +81,6 @@ pub(crate) async fn execute_data_sync_impl(
         .get_session(&target_db_session_id)
         .await
         .cmd_err("execute_data_sync")?;
-    // Apply the target database (if provided) so the writes hit the chosen DB.
-    let db = target_database.as_deref().filter(|s| !s.trim().is_empty());
-    if let Some(db) = db {
-        driver
-            .use_database(&handle, db)
-            .await
-            .map_err(|e| CommandError::Validation(format!("use database: {e}")))?;
-    }
     let mut executor = LiveExecutor {
         driver,
         handle,

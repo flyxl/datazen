@@ -171,11 +171,19 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     );
     getTablesMock.mockReset();
     getTablesMock.mockResolvedValue([{ name: 'users', tableType: 'table' }]);
-    invokeMock.mockImplementation(async (cmd: string, args?: { connectionId?: string }) => {
-      if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
-      if (cmd === 'connect') return `live-${args?.connectionId}`;
-      return null;
-    });
+    invokeMock.mockImplementation(
+      async (cmd: string, args?: { connectionId?: string; database?: string | null }) => {
+        if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
+        if (cmd === 'connect_dedicated') {
+          const conn = args?.connectionId ?? 'unknown';
+          const db = args?.database ?? 'default';
+          return `dedicated-${conn}-${db}`;
+        }
+        if (cmd === 'release_connection') return false;
+        if (cmd === 'connect') return `live-${args?.connectionId}`;
+        return null;
+      },
+    );
   });
 
   afterEach(() => {
@@ -228,8 +236,8 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     fireEvent.click(screen.getByTestId('data-sync-compare'));
     await waitFor(() =>
       expect(inspectDataSyncMock).toHaveBeenCalledWith(
-        'live-pg-src',
-        'live-pg-tgt',
+        'dedicated-pg-src-src',
+        'dedicated-pg-tgt-tgt',
         'src',
         'tgt',
         undefined,
@@ -238,8 +246,8 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     );
     await waitFor(() =>
       expect(compareDataSyncMock).toHaveBeenCalledWith(
-        'live-pg-src',
-        'live-pg-tgt',
+        'dedicated-pg-src-src',
+        'dedicated-pg-tgt-tgt',
         ['users'],
         expect.any(String),
         'src',
@@ -260,8 +268,8 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     fireEvent.click(execute);
     await waitFor(() =>
       expect(applyDataSyncMock).toHaveBeenCalledWith(
-        'live-pg-src',
-        'live-pg-tgt',
+        'dedicated-pg-src-src',
+        'dedicated-pg-tgt-tgt',
         ['users'],
         expect.any(String),
         'src',
@@ -273,8 +281,8 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     );
     await waitFor(() =>
       expect(compareDataSyncMock).toHaveBeenLastCalledWith(
-        'live-pg-src',
-        'live-pg-tgt',
+        'dedicated-pg-src-src',
+        'dedicated-pg-tgt-tgt',
         ['users'],
         expect.any(String),
         'src',
@@ -318,10 +326,12 @@ describe('DataSyncWindow (Diff Workspace)', () => {
   it('gates compare when a database cannot be enumerated', async () => {
     invokeMock.mockImplementation(async (cmd: string, args?: { connectionId?: string }) => {
       if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
-      if (cmd === 'connect') {
+      if (cmd === 'connect_dedicated') {
         if (args?.connectionId === 'pg-tgt') throw new Error('refused');
-        return `live-${args?.connectionId}`;
+        return `dedicated-${args?.connectionId}-db`;
       }
+      if (cmd === 'release_connection') return false;
+      if (cmd === 'connect') return `live-${args?.connectionId}`;
       return null;
     });
     render(<DataSyncWindow />);

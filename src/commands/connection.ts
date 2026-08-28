@@ -15,6 +15,10 @@ export const connectionCommands = {
   /** connectionId = 持久化配置连接 id；返回值为运行时 dbSessionId。 */
   connect: (connectionId: string) => invoke<string>('connect', { connectionId }),
 
+  /** Sub-window only: always opens a new db session, optionally pinned to `database`. */
+  connectDedicated: (connectionId: string, database?: string) =>
+    invoke<string>('connect_dedicated', { connectionId, database: database ?? null }),
+
   pingConnection: (dbSessionId: string) => invoke<boolean>('ping_connection', { dbSessionId }),
 
   releaseConnection: (dbSessionId: string) =>

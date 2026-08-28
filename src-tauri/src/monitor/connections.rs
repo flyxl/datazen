@@ -69,7 +69,7 @@ impl MonitorConnectionRegistry {
 
         let (driver, handle, config, tunnel) = self
             .connection_manager
-            .establish_connection(connection_id)
+            .establish_connection(connection_id, None)
             .await?;
 
         self.entries.write().await.insert(

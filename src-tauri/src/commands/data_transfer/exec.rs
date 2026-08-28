@@ -16,20 +16,6 @@ use crate::data_transfer::{
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use datazen_driver_api::TableType;
 
-pub(super) async fn maybe_use_database(
-    driver: &dyn crate::db::DatabaseDriver,
-    handle: &crate::db::ConnectionHandle,
-    database: Option<&str>,
-) -> Result<(), CommandError> {
-    let Some(db) = database.map(str::trim).filter(|s| !s.is_empty()) else {
-        return Ok(());
-    };
-    driver
-        .use_database(handle, db)
-        .await
-        .cmd_err("maybe_use_database")
-}
-
 struct TransferAdapters {
     src_source: Arc<dyn SyncSourceAdapter>,
     tgt_target: Arc<dyn SyncTargetAdapter>,
@@ -125,9 +111,6 @@ pub(crate) async fn execute_data_transfer_impl(
         .get_session(&job.target.db_session_id)
         .await
         .cmd_err("execute_data_transfer")?;
-
-    maybe_use_database(src_driver.as_ref(), &src_handle, Some(&job.source.database)).await?;
-    maybe_use_database(tgt_driver.as_ref(), &tgt_handle, Some(&job.target.database)).await?;
 
     let src_tables = src_driver
         .get_tables(&src_handle, &job.source.database)

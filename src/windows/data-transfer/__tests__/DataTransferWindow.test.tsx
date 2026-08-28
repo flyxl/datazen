@@ -148,6 +148,12 @@ describe('DataTransferWindow', () => {
     getDatabasesMock.mockResolvedValue(['src', 'tgt']);
     invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
       if (cmd === 'get_connections') return [pgSrc, pgTgt];
+      if (cmd === 'connect_dedicated') {
+        const conn = args?.connectionId as string;
+        const db = (args?.database as string | null | undefined) ?? 'default';
+        return `dedicated-${conn}-${db}`;
+      }
+      if (cmd === 'release_connection') return false;
       if (cmd === 'connect') return `live-${args?.connectionId as string}`;
       return null;
     });

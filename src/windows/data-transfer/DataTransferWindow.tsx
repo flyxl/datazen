@@ -17,7 +17,6 @@ import {
   type TransferExecutionResult,
   type WriteMode,
 } from '../../commands/transfer';
-import { databaseCommands } from '../../commands/database';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -27,6 +26,12 @@ import type { ConnectionConfig } from '../../types';
 import { TransferMappingStep } from './TransferMappingStep';
 import { normalizeColumnMappings, tableHasActiveMappings } from './transferMappingView';
 import { SqlCodeBlock } from '../../components/SqlCodeBlock';
+import {
+  ensureDedicatedSession,
+  listDatabasesDedicated,
+  releaseDedicatedSession,
+  type DedicatedSideSession,
+} from '../../lib/dedicatedDbSession';
 
 type WizardStep =
   | 'endpoints'
@@ -55,7 +60,8 @@ export function DataTransferWindow() {
   const loadSettings = useSettingsStore((s) => s.loadSettings);
 
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
-  const [activeConns, setActiveConns] = useState<Record<string, string>>({});
+  const [sourceSession, setSourceSession] = useState<DedicatedSideSession | null>(null);
+  const [targetSession, setTargetSession] = useState<DedicatedSideSession | null>(null);
   const [sourceId, setSourceId] = useState('');
   const [targetId, setTargetId] = useState('');
   const [sourceDatabases, setSourceDatabases] = useState<string[]>([]);
@@ -132,37 +138,33 @@ export function DataTransferWindow() {
 
   const targetReadOnly = targetConn?.readOnly === true;
 
-  const ensureConnected = useCallback(
-    async (connectionId: string): Promise<string | null> => {
-      // activeConns maps persistent connection id -> live db session id.
-      if (activeConns[connectionId]) return activeConns[connectionId];
-      try {
-        const dbSessionId = await invoke<string>('connect', { connectionId });
-        setActiveConns((prev) => ({ ...prev, [connectionId]: dbSessionId }));
-        return dbSessionId;
-      } catch (e) {
-        setErrorMsg(`${t('transfer.connectFailed')} ${e instanceof Error ? e.message : String(e)}`);
-        setErrorOpen(true);
-        return null;
-      }
-    },
-    [activeConns, t],
-  );
+  useEffect(() => {
+    return () => {
+      void releaseDedicatedSession(sourceSession?.dbSessionId);
+      void releaseDedicatedSession(targetSession?.dbSessionId);
+    };
+  }, [sourceSession?.dbSessionId, targetSession?.dbSessionId]);
 
   useEffect(() => {
-    if (!sourceId) return;
+    if (!sourceId) {
+      setSourceDatabases([]);
+      setSourceSession(null);
+      return;
+    }
     let cancelled = false;
     const cfg = connections.find((c) => c.id === sourceId);
     (async () => {
-      const connId = await ensureConnected(sourceId);
-      if (!connId || cancelled) return;
       try {
-        const dbs = await databaseCommands.getDatabases(connId);
+        const { databases } = await listDatabasesDedicated(sourceId, cfg?.database);
         if (cancelled) return;
-        setSourceDatabases(dbs);
+        setSourceDatabases(databases);
         const preferred = cfg?.database ?? '';
         setSourceDatabase((prev) =>
-          dbs.includes(preferred) ? preferred : prev && dbs.includes(prev) ? prev : (dbs[0] ?? ''),
+          databases.includes(preferred)
+            ? preferred
+            : prev && databases.includes(prev)
+              ? prev
+              : (databases[0] ?? ''),
         );
       } catch {
         if (!cancelled) setSourceDatabases([]);
@@ -171,22 +173,44 @@ export function DataTransferWindow() {
     return () => {
       cancelled = true;
     };
-  }, [sourceId, connections, ensureConnected]);
+  }, [sourceId, connections]);
 
   useEffect(() => {
-    if (!targetId) return;
+    if (!sourceId || !sourceDatabase) {
+      setSourceSession(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const next = await ensureDedicatedSession(sourceSession, sourceId, sourceDatabase);
+      if (!cancelled) setSourceSession(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reconnect when endpoint or catalog changes
+  }, [sourceId, sourceDatabase]);
+
+  useEffect(() => {
+    if (!targetId) {
+      setTargetDatabases([]);
+      setTargetSession(null);
+      return;
+    }
     let cancelled = false;
     const cfg = connections.find((c) => c.id === targetId);
     (async () => {
-      const connId = await ensureConnected(targetId);
-      if (!connId || cancelled) return;
       try {
-        const dbs = await databaseCommands.getDatabases(connId);
+        const { databases } = await listDatabasesDedicated(targetId, cfg?.database);
         if (cancelled) return;
-        setTargetDatabases(dbs);
+        setTargetDatabases(databases);
         const preferred = cfg?.database ?? '';
         setTargetDatabase((prev) =>
-          dbs.includes(preferred) ? preferred : prev && dbs.includes(prev) ? prev : (dbs[0] ?? ''),
+          databases.includes(preferred)
+            ? preferred
+            : prev && databases.includes(prev)
+              ? prev
+              : (databases[0] ?? ''),
         );
       } catch {
         if (!cancelled) setTargetDatabases([]);
@@ -195,7 +219,23 @@ export function DataTransferWindow() {
     return () => {
       cancelled = true;
     };
-  }, [targetId, connections, ensureConnected]);
+  }, [targetId, connections]);
+
+  useEffect(() => {
+    if (!targetId || !targetDatabase) {
+      setTargetSession(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const next = await ensureDedicatedSession(targetSession, targetId, targetDatabase);
+      if (!cancelled) setTargetSession(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reconnect when endpoint or catalog changes
+  }, [targetId, targetDatabase]);
 
   const tablesToMappings = useCallback(
     (): TransferTableMapping[] =>
@@ -212,8 +252,8 @@ export function DataTransferWindow() {
   );
 
   const buildJob = useCallback((): TransferJob | null => {
-    const srcConnId = activeConns[sourceId];
-    const tgtConnId = activeConns[targetId];
+    const srcConnId = sourceSession?.dbSessionId;
+    const tgtConnId = targetSession?.dbSessionId;
     if (!srcConnId || !tgtConnId || !sourceDatabase || !targetDatabase) return null;
     return {
       source: { dbSessionId: srcConnId, database: sourceDatabase },
@@ -228,9 +268,8 @@ export function DataTransferWindow() {
       },
     };
   }, [
-    activeConns,
-    sourceId,
-    targetId,
+    sourceSession?.dbSessionId,
+    targetSession?.dbSessionId,
     sourceDatabase,
     targetDatabase,
     mode,
@@ -243,8 +282,8 @@ export function DataTransferWindow() {
   ]);
 
   const runInspect = useCallback(async () => {
-    const srcConnId = await ensureConnected(sourceId);
-    const tgtConnId = await ensureConnected(targetId);
+    const srcConnId = sourceSession?.dbSessionId;
+    const tgtConnId = targetSession?.dbSessionId;
     if (!srcConnId || !tgtConnId || !sourceDatabase || !targetDatabase) {
       setErrorMsg(t('transfer.selectBoth'));
       setErrorOpen(true);
@@ -279,7 +318,14 @@ export function DataTransferWindow() {
     } finally {
       setLoading(false);
     }
-  }, [ensureConnected, sourceId, targetId, sourceDatabase, targetDatabase, mode, t]);
+  }, [
+    sourceSession?.dbSessionId,
+    targetSession?.dbSessionId,
+    sourceDatabase,
+    targetDatabase,
+    mode,
+    t,
+  ]);
 
   const runPreview = useCallback(async () => {
     const job = buildJob();
@@ -396,8 +442,8 @@ export function DataTransferWindow() {
 
   const refreshTableMapping = useCallback(
     async (sourceTable: string) => {
-      const srcConnId = activeConns[sourceId];
-      const tgtConnId = activeConns[targetId];
+      const srcConnId = sourceSession?.dbSessionId;
+      const tgtConnId = targetSession?.dbSessionId;
       if (!srcConnId || !tgtConnId || !sourceDatabase || !targetDatabase) return;
 
       const payload = tablesToMappings();
@@ -433,7 +479,14 @@ export function DataTransferWindow() {
         // Keep local edits if refresh fails.
       }
     },
-    [activeConns, sourceId, targetId, sourceDatabase, targetDatabase, mode, tablesToMappings],
+    [
+      sourceSession?.dbSessionId,
+      targetSession?.dbSessionId,
+      sourceDatabase,
+      targetDatabase,
+      mode,
+      tablesToMappings,
+    ],
   );
 
   const toggleTable = (sourceTable: string) => {

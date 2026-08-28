@@ -57,9 +57,6 @@ pub(crate) async fn inspect_data_sync_impl(
         .await
         .cmd_err("inspect_data_sync")?;
 
-    super::compare::maybe_use_database(src_driver.as_ref(), &src_handle, Some(&src_db)).await?;
-    super::compare::maybe_use_database(tgt_driver.as_ref(), &tgt_handle, Some(&tgt_db)).await?;
-
     let src_tables = filter_tables_by_schema(
         src_driver
             .get_tables(&src_handle, &src_db)
