@@ -33,7 +33,12 @@ export async function ensureDedicatedSession(
     current.database === database &&
     current.dbSessionId
   ) {
-    return current;
+    try {
+      const alive = await connectionCommands.pingConnection(current.dbSessionId);
+      if (alive) return current;
+    } catch {
+      // Session gone — reconnect below.
+    }
   }
   await releaseDedicatedSession(current?.dbSessionId);
   const dbSessionId = await connectionCommands.connectDedicated(connectionId, database);

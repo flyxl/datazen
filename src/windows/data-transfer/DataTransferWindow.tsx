@@ -139,11 +139,18 @@ export function DataTransferWindow() {
   const targetReadOnly = targetConn?.readOnly === true;
 
   useEffect(() => {
+    const dbSessionId = sourceSession?.dbSessionId;
     return () => {
-      void releaseDedicatedSession(sourceSession?.dbSessionId);
-      void releaseDedicatedSession(targetSession?.dbSessionId);
+      void releaseDedicatedSession(dbSessionId);
     };
-  }, [sourceSession?.dbSessionId, targetSession?.dbSessionId]);
+  }, [sourceSession?.dbSessionId]);
+
+  useEffect(() => {
+    const dbSessionId = targetSession?.dbSessionId;
+    return () => {
+      void releaseDedicatedSession(dbSessionId);
+    };
+  }, [targetSession?.dbSessionId]);
 
   useEffect(() => {
     if (!sourceId) {
@@ -258,39 +265,62 @@ export function DataTransferWindow() {
     );
   }, []);
 
-  const buildJob = useCallback((): TransferJob | null => {
-    const srcConnId = sourceSession?.dbSessionId;
-    const tgtConnId = targetSession?.dbSessionId;
-    if (!srcConnId || !tgtConnId || !sourceDatabase || !targetDatabase) return null;
-    return {
-      source: { dbSessionId: srcConnId, database: sourceDatabase },
-      target: { dbSessionId: tgtConnId, database: targetDatabase },
+  const refreshEndpointSessions = useCallback(async () => {
+    if (!sourceId || !targetId || !sourceDatabase || !targetDatabase) {
+      return {
+        source: null as DedicatedSideSession | null,
+        target: null as DedicatedSideSession | null,
+      };
+    }
+    const [source, target] = await Promise.all([
+      ensureDedicatedSession(sourceSession, sourceId, sourceDatabase),
+      ensureDedicatedSession(targetSession, targetId, targetDatabase),
+    ]);
+    setSourceSession(source);
+    setTargetSession(target);
+    return { source, target };
+  }, [sourceSession, targetSession, sourceId, targetId, sourceDatabase, targetDatabase]);
+
+  const buildJob = useCallback(
+    (sessions?: {
+      source: DedicatedSideSession | null;
+      target: DedicatedSideSession | null;
+    }): TransferJob | null => {
+      const srcConnId = sessions?.source?.dbSessionId ?? sourceSession?.dbSessionId;
+      const tgtConnId = sessions?.target?.dbSessionId ?? targetSession?.dbSessionId;
+      if (!srcConnId || !tgtConnId || !sourceDatabase || !targetDatabase) return null;
+      return {
+        source: { dbSessionId: srcConnId, database: sourceDatabase },
+        target: { dbSessionId: tgtConnId, database: targetDatabase },
+        mode,
+        writeMode,
+        tables: tablesToMappings(),
+        options: {
+          batchSize,
+          stopOnError,
+          confirmedDestructive,
+        },
+      };
+    },
+    [
+      sourceSession?.dbSessionId,
+      targetSession?.dbSessionId,
+      sourceDatabase,
+      targetDatabase,
       mode,
       writeMode,
-      tables: tablesToMappings(),
-      options: {
-        batchSize,
-        stopOnError,
-        confirmedDestructive,
-      },
-    };
-  }, [
-    sourceSession?.dbSessionId,
-    targetSession?.dbSessionId,
-    sourceDatabase,
-    targetDatabase,
-    mode,
-    writeMode,
-    tables,
-    tablesToMappings,
-    batchSize,
-    stopOnError,
-    confirmedDestructive,
-  ]);
+      tables,
+      tablesToMappings,
+      batchSize,
+      stopOnError,
+      confirmedDestructive,
+    ],
+  );
 
   const runInspect = useCallback(async () => {
-    const srcConnId = sourceSession?.dbSessionId;
-    const tgtConnId = targetSession?.dbSessionId;
+    const { source, target } = await refreshEndpointSessions();
+    const srcConnId = source?.dbSessionId;
+    const tgtConnId = target?.dbSessionId;
     if (!srcConnId || !tgtConnId || !sourceDatabase || !targetDatabase) {
       setErrorMsg(t('transfer.selectBoth'));
       setErrorOpen(true);
@@ -325,17 +355,11 @@ export function DataTransferWindow() {
     } finally {
       setLoading(false);
     }
-  }, [
-    sourceSession?.dbSessionId,
-    targetSession?.dbSessionId,
-    sourceDatabase,
-    targetDatabase,
-    mode,
-    t,
-  ]);
+  }, [refreshEndpointSessions, sourceDatabase, targetDatabase, mode, t]);
 
   const runPreview = useCallback(async () => {
-    const job = buildJob();
+    const sessions = await refreshEndpointSessions();
+    const job = buildJob(sessions);
     if (!job) {
       setErrorMsg(t('transfer.selectBoth'));
       setErrorOpen(true);
@@ -351,10 +375,11 @@ export function DataTransferWindow() {
     } finally {
       setLoading(false);
     }
-  }, [buildJob, t]);
+  }, [refreshEndpointSessions, buildJob, t]);
 
   const runExecute = useCallback(async () => {
-    const job = buildJob();
+    const sessions = await refreshEndpointSessions();
+    const job = buildJob(sessions);
     if (!job) return;
     if (targetReadOnly) {
       setErrorMsg(t('transfer.readOnlyBlock'));
@@ -375,7 +400,7 @@ export function DataTransferWindow() {
       setExecuting(false);
       jobIdRef.current = null;
     }
-  }, [buildJob, targetReadOnly, t]);
+  }, [refreshEndpointSessions, buildJob, targetReadOnly, t]);
 
   const handleCancel = useCallback(async () => {
     const id = jobIdRef.current;
@@ -449,8 +474,9 @@ export function DataTransferWindow() {
 
   const refreshTableMapping = useCallback(
     async (sourceTable: string) => {
-      const srcConnId = sourceSession?.dbSessionId;
-      const tgtConnId = targetSession?.dbSessionId;
+      const { source, target } = await refreshEndpointSessions();
+      const srcConnId = source?.dbSessionId;
+      const tgtConnId = target?.dbSessionId;
       if (!srcConnId || !tgtConnId || !sourceDatabase || !targetDatabase) return;
 
       const payload = tablesToMappings();
@@ -486,14 +512,7 @@ export function DataTransferWindow() {
         // Keep local edits if refresh fails.
       }
     },
-    [
-      sourceSession?.dbSessionId,
-      targetSession?.dbSessionId,
-      sourceDatabase,
-      targetDatabase,
-      mode,
-      tablesToMappings,
-    ],
+    [refreshEndpointSessions, sourceDatabase, targetDatabase, mode, tablesToMappings],
   );
 
   const toggleTable = (sourceTable: string) => {
@@ -716,13 +735,16 @@ export function DataTransferWindow() {
                       {t('common.copyDdl')}
                     </Button>
                   </div>
-                  <textarea
-                    className="min-h-[12rem] w-full resize-y bg-bg-muted p-3 font-mono text-xs text-fg select-text outline-none focus:ring-1 focus:ring-accent"
+                  <div
+                    className="h-48 min-h-[12rem] bg-bg-muted"
                     data-testid={`data-transfer-ddl-editor-${item.sourceTable}`}
-                    value={ddlValue}
-                    spellCheck={false}
-                    onChange={(e) => updateTableDdlOverride(item.sourceTable, e.target.value)}
-                  />
+                  >
+                    <SqlCodeBlock
+                      code={ddlValue}
+                      dialect={targetConn?.databaseType ?? 'mysql'}
+                      onChange={(next) => updateTableDdlOverride(item.sourceTable, next)}
+                    />
+                  </div>
                   <p className="border-t border-border px-3 py-1.5 text-[11px] text-fg-muted">
                     {t('transfer.ddlOverrideHint')}
                   </p>

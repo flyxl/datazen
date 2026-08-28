@@ -1,3 +1,4 @@
+use crate::commands::error::{CmdExt, CommandError};
 use crate::data_sync::sql::qualify_relation_sql;
 use crate::schema_diff::types::{ChangedColumnDiff, ColumnSnapshot, TableColumnDiff};
 use crate::transfer::ir::{IRColumn, IRTable, IRType};
