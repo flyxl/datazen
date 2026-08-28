@@ -90,7 +90,7 @@
 
 - 无 schema 选择 UI（类型存在）
 - 用户指南写「V1 不支持列映射 UI」，但 `ColumnMappingEditor` 已实现 — **文档过时**
-- 跨方言 Execute E2E：**无**
+- 跨方言 Execute E2E：**PG→MySQL insert**（`data-transfer-pg-mysql-journey.ts`）
 
 ### 测试覆盖
 
@@ -135,7 +135,7 @@
 ### Data Transfer
 
 - [ ] 更新用户指南
-- [ ] PG→MySQL data insert E2E
+- [x] PG→MySQL data insert E2E
 - [ ] truncate+insert / drop+create E2E
 - [ ] structure / structure+data E2E
 
@@ -150,5 +150,5 @@
 ## Related
 
 - Architecture: [schema-diff.md](../architecture/backend/schema-diff.md), [data-sync.md](../architecture/backend/data-sync.md)
-- E2E journeys: `e2e/specs/journeys/*-journey.ts`（`pnpm e2e:skip-build -- --suite journeys`）
+- E2E journeys: `e2e/specs/journeys/*-journey.ts`（`pnpm e2e:journeys`）
 - Feature gates: `src/lib/productFeatures.ts`, `src-tauri/src/product_features.rs`

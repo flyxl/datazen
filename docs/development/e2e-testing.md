@@ -57,7 +57,7 @@ pnpm e2e:skip-build
 pnpm e2e:skip-build -- --spec e2e/specs/path-ipc-hardening.ts
 
 # 分组快捷方式（均默认 --skip-build，前提是已做过 webdriver 构建）
-# 分组清单统一定义为 WDIO suites（e2e/wdio.conf.ts 的 suite 字段），单一事实来源；
+# 分组清单统一定义为 WDIO suites（e2e/wdio.conf.ts 的 suites 字段），单一事实来源；
 # 临时跑某个分组也可直接：pnpm e2e:skip-build -- --suite <name>
 pnpm e2e:core
 pnpm e2e:db
@@ -187,7 +187,7 @@ e2e/wdio.conf.ts
   ├─ hostname/port: 127.0.0.1:4445
   ├─ before: 强制 language=zh-CN，必要时 seed PostgreSQL 连接
   ├─ specs: e2e/specs/**/*.ts
-  └─ suite: 分组清单（core/db/contract/redis/ai/i18n-backup/path-ipc/dashboard），供 --suite 选择
+  └─ suites: 分组清单（core/db/contract/redis/ai/i18n-backup/path-ipc/dashboard/journeys），供 --suite 选择
 ```
 
 - Spec 写法：通过 `browser.executeAsync` + `__TAURI_INTERNALS__.invoke` 调后端；UI 用 WebdriverIO `$` / `expect`。  

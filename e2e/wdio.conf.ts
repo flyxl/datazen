@@ -17,7 +17,7 @@ export const config: WebdriverIO.Config = {
    * config file (same resolution as `specs`). Keep in sync with docs:
    * docs/development/e2e-testing.md §2.
    */
-  suite: {
+  suites: {
     // Core UI, no real DB required (was `pnpm e2e:core`)
     core: [
       './specs/main-window.ts',
@@ -66,6 +66,7 @@ export const config: WebdriverIO.Config = {
       './specs/journeys/schema-diff-journey.ts',
       './specs/journeys/data-sync-journey.ts',
       './specs/journeys/data-transfer-journey.ts',
+      './specs/journeys/data-transfer-pg-mysql-journey.ts',
     ],
     // Host contract matrix × PG/MySQL/SQLite (`pnpm e2e:contract:matrix`,
     // `pnpm e2e:contract:pg` adds --mochaOpts.grep 'Host contract @ postgres')
@@ -101,6 +102,7 @@ export const config: WebdriverIO.Config = {
       './specs/journeys/schema-diff-journey.ts',
       './specs/journeys/data-sync-journey.ts',
       './specs/journeys/data-transfer-journey.ts',
+      './specs/journeys/data-transfer-pg-mysql-journey.ts',
     ],
   },
   maxInstances: 1,

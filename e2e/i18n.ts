@@ -18,6 +18,9 @@ const KEY_ALIASES: Record<string, TranslationKey> = {
   'connWin.copyDDL': 'common.copyDdl',
   'connWin.newTable': 'common.newTable',
   'sync.windowTitle': 'common.dataSyncTitle',
+  'sync.sqlPreviewTab': 'common.sqlPreviewLower',
+  'transfer.title': 'common.dataTransfer',
+  'transfer.pickConnection': 'common.selectConnection',
 };
 
 /**
