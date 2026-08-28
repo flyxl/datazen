@@ -102,6 +102,17 @@ export const config: WebdriverIO.Config = {
     ],
     // Dashboard (`pnpm e2e:dashboard`)
     dashboard: ['./specs/data-dashboard*.ts'],
+    // Data Transfer only (`pnpm e2e:data-transfer`)
+    'data-transfer': [
+      './specs/data-transfer-window.ts',
+      './specs/data-transfer-type-mapping.ts',
+      './specs/data-transfer-type-mapping-mysql-pg.ts',
+      './specs/data-transfer-diverse-types.ts',
+      './specs/data-transfer-mode-paths.ts',
+      './specs/journeys/data-transfer-journey.ts',
+      './specs/journeys/data-transfer-pg-mysql-journey.ts',
+      './specs/journeys/data-transfer-mysql-pg-journey.ts',
+    ],
     // Full user journeys for hidden v0.1.0 windows (`pnpm e2e:journeys`)
     journeys: [
       './specs/journeys/schema-diff-journey.ts',
