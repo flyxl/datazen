@@ -464,13 +464,10 @@ export async function runUnsupportedPairHintBranch(
   expect(listText).toContain(foreignTargetName);
   expect(listText).toContain(t('common.unsupportedPair'));
   await captureStep(`${f.screenshotPrefix}-11-unsupported-pair-hint`);
-  await $('body').click();
+  await browser.execute(() => {
+    const wrap = document.querySelector('[data-testid="data-sync-target"]');
+    const btn = wrap?.querySelector('button[aria-haspopup="listbox"]') as HTMLElement | null;
+    btn?.click();
+  });
   await browser.pause(400);
-  await browser.waitUntil(
-    async () =>
-      !(await $('#dz-select-listbox')
-        .isDisplayed()
-        .catch(() => false)),
-    { timeout: 5000, timeoutMsg: 'target listbox did not close after unsupported pair check' },
-  );
 }

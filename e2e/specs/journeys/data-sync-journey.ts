@@ -9,12 +9,13 @@
  */
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../../i18n.js';
-import { closeExtraWindows, invokeBackend } from '../../helpers.js';
+import { closeExtraWindows, invokeBackend, selectDzOptionInWrap } from '../../helpers.js';
 import {
   captureStep,
   cleanupFixture,
   createFixture,
   mysqlConfig,
+  openDataSyncWindow,
   pgConfig,
   runCompare,
   runDeleteEnableAcceptBranch,
@@ -22,6 +23,7 @@ import {
   runExecuteAndVerify,
   runPostCompareReviewBranches,
   runPreCompareValidationBranches,
+  runUnsupportedPairHintBranch,
   saveFixtureConnections,
   seedFixtureTable,
   selectFixtureEndpoints,
@@ -34,6 +36,8 @@ function defineDriverJourney(label: string, driver: 'postgresql' | 'mysql') {
     let f: SyncJourneyFixture;
     let sameEndpointId: string;
     let sameEndpointName: string;
+    let foreignTargetId: string | undefined;
+    let foreignTargetName: string | undefined;
 
     before(async () => {
       mainWindow = await browser.getWindowHandle();
@@ -54,6 +58,14 @@ function defineDriverJourney(label: string, driver: 'postgresql' | 'mysql') {
 
       await saveFixtureConnections(f);
       await seedFixtureTable(f);
+
+      if (driver === 'postgresql') {
+        foreignTargetId = `e2e_ds_j_foreign_my_${stamp}`;
+        foreignTargetName = `DS-J-Foreign-My-${stamp}`;
+        await invokeBackend('save_connection', {
+          config: mysqlConfig(foreignTargetId, foreignTargetName, f.tgtDatabase),
+        });
+      }
     });
 
     after(async () => {
@@ -63,11 +75,29 @@ function defineDriverJourney(label: string, driver: 'postgresql' | 'mysql') {
       } catch {
         /* ok */
       }
+      if (foreignTargetId) {
+        try {
+          await invokeBackend('delete_connection', { id: foreignTargetId });
+        } catch {
+          /* ok */
+        }
+      }
       await closeExtraWindows(mainWindow);
       await browser.switchToWindow(mainWindow);
       await browser.url('tauri://localhost/');
       await browser.pause(500);
     });
+
+    if (driver === 'postgresql') {
+      it('PG 源下 MySQL 目标应标记 unsupportedPair', async () => {
+        await openDataSyncWindow();
+        await selectDzOptionInWrap('data-sync-source', f.srcName);
+        await browser.pause(500);
+        await runUnsupportedPairHintBranch(f, foreignTargetName!);
+        await closeExtraWindows(mainWindow);
+        await browser.switchToWindow(mainWindow);
+      });
+    }
 
     it('完整旅程：校验 → 比较 → Review → 执行', async () => {
       await runPreCompareValidationBranches(f, sameEndpointId, sameEndpointName);
