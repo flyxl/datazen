@@ -25,6 +25,7 @@ import { isTransferLimitationsDismissed } from '../../lib/transferLimitationsPre
 import { isTransferTargetSupported, resolveTransferPairing } from '../../lib/transferPairing';
 import type { ConnectionConfig } from '../../types';
 import { TransferLimitationsDialog } from './TransferLimitationsDialog';
+import { TransferExecuteConfirmDialog } from './TransferExecuteConfirmDialog';
 import { TransferMappingStep } from './TransferMappingStep';
 import { normalizeColumnMappings, tableHasActiveMappings } from './transferMappingView';
 import { SqlCodeBlock } from '../../components/SqlCodeBlock';
@@ -69,6 +70,7 @@ export function DataTransferWindow() {
   const [errorMsg, setErrorMsg] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
   const [limitationsOpen, setLimitationsOpen] = useState(false);
+  const [executeConfirmOpen, setExecuteConfirmOpen] = useState(false);
   const [selectedMappingTable, setSelectedMappingTable] = useState('');
   const jobIdRef = useRef<string | null>(null);
 
@@ -396,6 +398,19 @@ export function DataTransferWindow() {
     }
   }, [refreshEndpointSessions, buildJob, targetReadOnly, t]);
 
+  const handleExecuteClick = useCallback(() => {
+    if (writeMode !== 'insert') {
+      setExecuteConfirmOpen(true);
+      return;
+    }
+    void runExecute();
+  }, [writeMode, runExecute]);
+
+  const handleExecuteConfirm = useCallback(() => {
+    setExecuteConfirmOpen(false);
+    void runExecute();
+  }, [runExecute]);
+
   const handleCancel = useCallback(async () => {
     const id = jobIdRef.current;
     if (id) await transferCommands.cancel(id).catch(() => {});
@@ -679,15 +694,17 @@ export function DataTransferWindow() {
                 </p>
                 <label className="block text-sm">
                   {t('transfer.writeMode.label')}
-                  <Select
-                    value={writeMode}
-                    onChange={(v) => setWriteMode(v as WriteMode)}
-                    options={[
-                      { value: 'insert', label: t('transfer.writeMode.insert') },
-                      { value: 'truncateInsert', label: t('transfer.writeMode.truncateInsert') },
-                      { value: 'dropCreateInsert', label: t('transfer.writeMode.dropCreate') },
-                    ]}
-                  />
+                  <div className="mt-1" data-testid="data-transfer-write-mode">
+                    <Select
+                      value={writeMode}
+                      onChange={(v) => setWriteMode(v as WriteMode)}
+                      options={[
+                        { value: 'insert', label: t('transfer.writeMode.insert') },
+                        { value: 'truncateInsert', label: t('transfer.writeMode.truncateInsert') },
+                        { value: 'dropCreateInsert', label: t('transfer.writeMode.dropCreate') },
+                      ]}
+                    />
+                  </div>
                 </label>
                 {writeMode !== 'insert' && (
                   <label className="flex items-center gap-2 text-sm text-warning">
@@ -867,7 +884,11 @@ export function DataTransferWindow() {
         </Button>
         <div className="flex items-center gap-2">
           {step === 'preview' && executing && (
-            <Button variant="ghost" data-testid="data-transfer-cancel" onClick={() => void handleCancel()}>
+            <Button
+              variant="ghost"
+              data-testid="data-transfer-cancel"
+              onClick={() => void handleCancel()}
+            >
               {t('transfer.cancel')}
             </Button>
           )}
@@ -876,13 +897,9 @@ export function DataTransferWindow() {
               variant="primary"
               data-testid="data-transfer-execute"
               disabled={!canExecute || executing}
-              onClick={() => void runExecute()}
+              onClick={handleExecuteClick}
             >
-              {executing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                t('transfer.execute')
-              )}
+              {executing ? <Loader2 className="h-4 w-4 animate-spin" /> : t('transfer.execute')}
             </Button>
           ) : step !== 'result' ? (
             <Button
@@ -900,6 +917,14 @@ export function DataTransferWindow() {
       <StatusBar />
 
       <TransferLimitationsDialog open={limitationsOpen} onClose={() => setLimitationsOpen(false)} />
+
+      <TransferExecuteConfirmDialog
+        open={executeConfirmOpen}
+        writeMode={writeMode}
+        writePlans={preview?.writePlans ?? []}
+        onClose={() => setExecuteConfirmOpen(false)}
+        onConfirm={handleExecuteConfirm}
+      />
 
       <Dialog
         open={errorOpen}

@@ -1590,6 +1590,11 @@ const en: Record<TranslationKey, string> = {
   'transfer.writeMode.truncateInsert': 'Truncate + insert (destructive)',
   'transfer.writeMode.dropCreate': 'Drop + create + insert (destructive)',
   'transfer.destructiveConfirm': 'I understand this may destroy target data',
+  'transfer.executeConfirm.title': 'Confirm destructive transfer',
+  'transfer.executeConfirm.introTruncate':
+    'The following target tables will be truncated before rows are inserted:',
+  'transfer.executeConfirm.introDrop':
+    'The following target tables will be dropped and recreated before rows are inserted:',
   'transfer.batchSize': 'Batch size',
   'transfer.stopOnError': 'Stop on first error',
   'transfer.estimatedRows': 'Estimated rows',
