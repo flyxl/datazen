@@ -1297,3 +1297,46 @@ export async function backFromSettingsInMainWindow() {
   });
   await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 10000 });
 }
+
+// ── data transfer window ────────────────────────────────────────────
+
+const TRANSFER_LIMITATIONS_DISMISS_KEY = 'datazen:transfer-limitations-dismissed';
+
+/** Clear "don't show again" pref so limitations dialog appears on next open. */
+export async function clearTransferLimitationsDismissPref() {
+  await browser.execute((key: string) => {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* localStorage may be unavailable */
+    }
+  }, TRANSFER_LIMITATIONS_DISMISS_KEY);
+}
+
+/** Close the transfer limitations dialog when it is open (does not check "don't show again"). */
+export async function dismissTransferLimitationsDialogIfOpen() {
+  const dialog = await $('[data-testid="data-transfer-limitations-dialog"]');
+  if (!(await dialog.isExisting().catch(() => false))) return;
+  if (!(await dialog.isDisplayed().catch(() => false))) return;
+  const closeBtn = await $('[data-testid="data-transfer-limitations-close"]');
+  await closeBtn.waitForClickable({ timeout: 5000 });
+  await closeBtn.click();
+  await browser.waitUntil(async () => !(await dialog.isDisplayed().catch(() => false)), {
+    timeout: 8000,
+    timeoutMsg: '等待数据传输限制说明弹窗关闭超时',
+  });
+  await browser.pause(300);
+}
+
+/** Open the data-transfer sub-window; optionally dismiss the limitations dialog. */
+export async function openDataTransferWindow(opts: { dismissLimitations?: boolean } = {}) {
+  const { dismissLimitations = true } = opts;
+  await clearTransferLimitationsDismissPref();
+  await browser.url('tauri://localhost/window.html?window=data-transfer');
+  await browser.pause(1500);
+  await $('[data-testid="data-transfer-window"]').waitForDisplayed({ timeout: 10000 });
+  if (dismissLimitations) {
+    await dismissTransferLimitationsDialogIfOpen();
+  }
+  await $('[data-testid="data-transfer-step-endpoints"]').waitForDisplayed({ timeout: 10000 });
+}

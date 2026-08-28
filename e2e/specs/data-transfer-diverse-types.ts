@@ -10,6 +10,7 @@ import {
   captureJourneyStep,
   closeExtraWindows,
   invokeBackend,
+  openDataTransferWindow,
   selectDzOption,
 } from '../helpers.js';
 import {
@@ -26,12 +27,6 @@ import {
   teardownTransferFixture,
 } from '../lib/dataTransferFixtures.js';
 
-async function openTransferWindow() {
-  await browser.url('tauri://localhost/window.html?window=data-transfer');
-  await browser.pause(1500);
-  await $('[data-testid="data-transfer-window"]').waitForDisplayed({ timeout: 10000 });
-}
-
 async function clickNext(label: string) {
   const next = await $('[data-testid="data-transfer-next"]');
   await next.waitForClickable({ timeout: 10000 });
@@ -41,7 +36,7 @@ async function clickNext(label: string) {
 }
 
 async function runDataTransferWizard(sourceName: string, targetName: string, tableName: string) {
-  await openTransferWindow();
+  await openDataTransferWindow();
   await selectDzOption(t('transfer.pickConnection'), sourceName);
   await selectDzOption(t('transfer.pickConnection'), targetName);
   await browser.pause(1500);
@@ -49,7 +44,7 @@ async function runDataTransferWizard(sourceName: string, targetName: string, tab
 
   await (await $('[data-testid="data-transfer-mode-data"]')).click();
   await browser.pause(300);
-  await clickNext('dt-comp-mode');
+  await clickNext('dt-comp-setup');
 
   await browser.pause(2000);
   const tableRow = await $(`[data-testid="data-transfer-table-row"]*=${tableName}`);
@@ -89,9 +84,11 @@ describe('数据传输限制说明 (DT-LIM)', () => {
     await browser.switchToWindow(mainWindow);
   });
 
-  it('DT-LIM-001: 应显示当前版本限制说明', async () => {
-    await openTransferWindow();
-    const panel = await $('[data-testid="data-transfer-limitations"]');
+  it('DT-LIM-001: 应通过弹窗显示当前版本限制说明', async () => {
+    await openDataTransferWindow({ dismissLimitations: false });
+    const dialog = await $('[data-testid="data-transfer-limitations-dialog"]');
+    await dialog.waitForDisplayed({ timeout: 8000 });
+    const panel = await dialog.$('[data-testid="data-transfer-limitations"]');
     await panel.waitForDisplayed({ timeout: 8000 });
     const text = await panel.getText();
     expect(text).toContain(t('transfer.limitations.title'));

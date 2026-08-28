@@ -8,6 +8,7 @@ import { t } from '../i18n.js';
 import {
   closeExtraWindows,
   invokeBackend,
+  openDataTransferWindow,
   queryScalar,
   selectDzOption,
   withSafeModeOff,
@@ -45,12 +46,6 @@ function mysqlConfig(id: string, name: string, database: string) {
   };
 }
 
-async function openTransferWindow() {
-  await browser.url('tauri://localhost/window.html?window=data-transfer');
-  await browser.pause(1500);
-  await $('[data-testid="data-transfer-window"]').waitForDisplayed({ timeout: 10000 });
-}
-
 async function clickNext() {
   const next = await $('[data-testid="data-transfer-next"]');
   await next.waitForClickable({ timeout: 10000 });
@@ -78,7 +73,7 @@ async function runWizard(
   mode: TransferModeUi,
   createNew: boolean,
 ) {
-  await openTransferWindow();
+  await openDataTransferWindow();
   await selectDzOption(t('transfer.pickConnection'), srcName);
   await selectDzOption(t('transfer.pickConnection'), tgtName);
   await browser.pause(1500);

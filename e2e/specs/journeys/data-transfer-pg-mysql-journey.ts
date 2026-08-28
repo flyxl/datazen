@@ -9,18 +9,12 @@ import {
   captureJourneyStep,
   closeExtraWindows,
   invokeBackend,
+  openDataTransferWindow,
   queryScalar,
   selectDzOption,
   withSafeModeOff,
   type QueryResultPayload,
 } from '../../helpers.js';
-
-async function openTransferWindow() {
-  await browser.url('tauri://localhost/window.html?window=data-transfer');
-  await browser.pause(1500);
-  await $('[data-testid="data-transfer-window"]').waitForDisplayed({ timeout: 10000 });
-  await $('[data-testid="data-transfer-step-endpoints"]').waitForDisplayed({ timeout: 10000 });
-}
 
 function pgConfig(id: string, name: string, database: string) {
   return {
@@ -137,13 +131,13 @@ describe('数据传输 PG→MySQL 跨方言旅程 (DT-PG-MYSQL-JOURNEY)', () => 
   });
 
   it('Step 1: 通过 URL 打开数据传输窗口', async () => {
-    await openTransferWindow();
+    await openDataTransferWindow();
     await expect(await $('[data-testid="data-transfer-window"]')).toBeDisplayed();
     await captureJourneyStep('dt-pg-mysql-01-window-open', 0, true);
   });
 
   it('Step 2: 选择 PG 源与 MySQL 目标并显示 IR 路径', async () => {
-    await openTransferWindow();
+    await openDataTransferWindow();
     await selectDzOption(t('transfer.pickConnection'), SRC_NAME);
     await selectDzOption(t('transfer.pickConnection'), TGT_NAME);
     await browser.pause(1500);
@@ -155,8 +149,8 @@ describe('数据传输 PG→MySQL 跨方言旅程 (DT-PG-MYSQL-JOURNEY)', () => 
     await captureJourneyStep('dt-pg-mysql-02-ir-path', 0, true);
   });
 
-  it('Step 3: 进入模式选择并选择 data 模式', async () => {
-    await clickNext('dt-pg-mysql-03-mode-step');
+  it('Step 3: 进入 setup 并选择 data 模式', async () => {
+    await clickNext('dt-pg-mysql-03-setup-step');
     await expect(await $('[data-testid="data-transfer-mode-data"]')).toBeDisplayed();
     const dataMode = await $('[data-testid="data-transfer-mode-data"]');
     await dataMode.click();

@@ -1,7 +1,7 @@
 /**
  * Data Transfer wizard full user journey — direct URL entry (hidden in v0.1.0 UI).
  *
- * Flow: Open → endpoints → mode → objects → mapping → preview → execute → verify rows.
+ * Flow: Open → endpoints → setup → objects → mapping → preview/execute → result.
  * Requires PostgreSQL sync DBs (`e2e/setup-sync-dbs.sh`).
  */
 import { expect, browser, $ } from '@wdio/globals';
@@ -10,18 +10,12 @@ import {
   captureJourneyStep,
   closeExtraWindows,
   invokeBackend,
+  openDataTransferWindow,
   queryScalar,
   selectDzOption,
   withSafeModeOff,
   type QueryResultPayload,
 } from '../../helpers.js';
-
-async function openTransferWindow() {
-  await browser.url('tauri://localhost/window.html?window=data-transfer');
-  await browser.pause(1500);
-  await $('[data-testid="data-transfer-window"]').waitForDisplayed({ timeout: 10000 });
-  await $('[data-testid="data-transfer-step-endpoints"]').waitForDisplayed({ timeout: 10000 });
-}
 
 function pgConfig(id: string, name: string, database: string) {
   return {
@@ -44,9 +38,9 @@ describe('数据传输完整用户旅程 (DT-JOURNEY)', () => {
    * 2. Verify wizard step chrome and transfer modes
    * 3. Validate Next without endpoints → selectBoth error
    * 4. Select source/target PG sync connections
-   * 5. Advance through endpoints → mode step
+   * 5. Advance through endpoints → setup step
    * 6. Choose data mode and advance to objects (inspect)
-   * 7. Advance through mapping / options toward preview
+   * 7. Advance through mapping toward preview
    * 8. Execute transfer and verify target row count
    */
   let mainWindow: string;
@@ -135,7 +129,7 @@ describe('数据传输完整用户旅程 (DT-JOURNEY)', () => {
   }
 
   it('Step 1: 通过 URL 打开数据传输窗口', async () => {
-    await openTransferWindow();
+    await openDataTransferWindow();
     const root = await $('[data-testid="data-transfer-window"]');
     await expect(root).toBeDisplayed();
     const body = await $('body').getText();
@@ -153,7 +147,7 @@ describe('数据传输完整用户旅程 (DT-JOURNEY)', () => {
   });
 
   it('Step 3: 未选两端点时 Next 应禁用', async () => {
-    await openTransferWindow();
+    await openDataTransferWindow();
     const next = await $('[data-testid="data-transfer-next"]');
     await next.waitForDisplayed({ timeout: 8000 });
     expect(await next.isEnabled()).toBe(false);
@@ -161,7 +155,7 @@ describe('数据传输完整用户旅程 (DT-JOURNEY)', () => {
   });
 
   it('Step 4: 选择源/目标连接', async () => {
-    await openTransferWindow();
+    await openDataTransferWindow();
     await selectDzOption(t('transfer.pickConnection'), SRC_NAME);
     await selectDzOption(t('transfer.pickConnection'), TGT_NAME);
     await browser.pause(1500);
@@ -170,8 +164,8 @@ describe('数据传输完整用户旅程 (DT-JOURNEY)', () => {
     await captureJourneyStep('dt-journey-04-endpoints-selected', 0, true);
   });
 
-  it('Step 5: 进入模式选择步骤', async () => {
-    await clickNext('dt-journey-05-mode-step');
+  it('Step 5: 进入 setup 步骤（模式与选项）', async () => {
+    await clickNext('dt-journey-05-setup-step');
     await expect(await $('[data-testid="data-transfer-mode-data"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-transfer-mode-structure"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-transfer-mode-both"]')).toBeDisplayed();
