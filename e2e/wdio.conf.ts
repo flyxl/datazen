@@ -115,9 +115,21 @@ export const config: WebdriverIO.Config = {
       './specs/journeys/data-transfer-pg-mysql-journey.ts',
       './specs/journeys/data-transfer-mysql-pg-journey.ts',
     ],
+    // Schema Diff only (`pnpm e2e:schema-diff`)
+    'schema-diff': [
+      './specs/schema-diff-window.ts',
+      './specs/schema-diff-diverse-types.ts',
+      './specs/schema-diff-cross-dialect.ts',
+      './specs/schema-diff-options-matrix.ts',
+      './specs/journeys/schema-diff-journey.ts',
+      './specs/journeys/schema-diff-pg-mysql-journey.ts',
+      './specs/journeys/schema-diff-mysql-pg-journey.ts',
+    ],
     // Full user journeys for hidden v0.1.0 windows (`pnpm e2e:journeys`)
     journeys: [
       './specs/journeys/schema-diff-journey.ts',
+      './specs/journeys/schema-diff-pg-mysql-journey.ts',
+      './specs/journeys/schema-diff-mysql-pg-journey.ts',
       './specs/journeys/data-sync-journey.ts',
       './specs/journeys/data-transfer-journey.ts',
       './specs/journeys/data-transfer-pg-mysql-journey.ts',

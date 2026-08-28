@@ -1627,6 +1627,18 @@ const en: Record<TranslationKey, string> = {
   'schemaDiff.executed': 'executed',
   'schemaDiff.missingOnTarget': 'Missing on target (ADD)',
   'schemaDiff.extraOnTarget': 'Extra on target (DROP)',
+  'schemaDiff.limitations.title': 'Current limitations',
+  'schemaDiff.limitations.noViews':
+    'Does not sync views, functions, triggers, or stored procedures',
+  'schemaDiff.limitations.noOnlineAlter':
+    'No online schema change tools (pt-osc / gh-ost); DDL runs directly on the target',
+  'schemaDiff.limitations.noRenameGuess': 'No similarity-based column or table rename guessing',
+  'schemaDiff.limitations.crossDialect':
+    'Cross-dialect deploy may adjust types, defaults, or timezone semantics',
+  'schemaDiff.limitations.noAutoBackup': 'No automatic backup before deploy',
+  'schemaDiff.limitations.noMcpDeploy':
+    'No one-click deploy via MCP (may come later as high-risk tool)',
+  'schemaDiff.limitations.dontShowAgain': 'Do not show this again',
   'win.workflow': 'Workflow - DataZen',
   'win.dashboard': 'Dashboards - DataZen',
   'win.connections': 'Connections - DataZen',

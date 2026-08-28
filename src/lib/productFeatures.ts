@@ -1,8 +1,8 @@
 /**
- * Product-level feature gates. v0.1.0 hides schema diff until production-ready.
+ * Product-level feature gates.
  */
 export const PRODUCT_FEATURES = {
-  schemaDiff: false,
+  schemaDiff: true,
   dataSync: true,
   dataTransfer: true,
 } as const;

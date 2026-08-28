@@ -23,6 +23,8 @@ import { openDocsWindow } from '../../lib/windowManager';
 import { connectionCommands } from '../../commands/connection';
 import { releaseDedicatedSession } from '../../lib/dedicatedDbSession';
 import type { ConnectionConfig, TableSchemaDiff } from '../../types';
+import { isSchemaDiffLimitationsDismissed } from '../../lib/schemaDiffLimitationsPrefs';
+import { SchemaDiffLimitationsDialog } from './SchemaDiffLimitationsDialog';
 import { SchemaDiffPlanPanel } from './SchemaDiffPlanPanel';
 import { SchemaDiffDeployPanel } from './SchemaDiffDeployPanel';
 
@@ -58,10 +60,17 @@ export function SchemaDiffWindow() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [limitationsOpen, setLimitationsOpen] = useState(false);
 
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
+
+  useEffect(() => {
+    if (!isSchemaDiffLimitationsDismissed()) {
+      setLimitationsOpen(true);
+    }
+  }, []);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -293,7 +302,7 @@ export function SchemaDiffWindow() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-canvas text-fg">
+    <div className="flex h-screen flex-col bg-canvas text-fg" data-testid="schema-diff-window">
       <TitleBar
         title={t('common.schemaDiff')}
         rightContent={
@@ -349,11 +358,17 @@ export function SchemaDiffWindow() {
             value={tableNamesRaw}
             onChange={(e) => setTableNamesRaw(e.target.value)}
             placeholder={t('schemaDiff.tablesPlaceholder')}
+            data-testid="schema-diff-tables-input"
           />
         </label>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="primary" disabled={loading} onClick={() => void handleCompare()}>
+          <Button
+            variant="primary"
+            disabled={loading}
+            onClick={() => void handleCompare()}
+            data-testid="schema-diff-compare"
+          >
             {loading && step === 'compare' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {t('schemaDiff.compare')}
           </Button>
@@ -363,6 +378,7 @@ export function SchemaDiffWindow() {
               loading || !sourceId || !targetId || parseTableList(tableNamesRaw).length === 0
             }
             onClick={() => void buildPlan()}
+            data-testid="schema-diff-generate-plan"
           >
             {t('schemaDiff.generatePlan')}
           </Button>
@@ -408,7 +424,11 @@ export function SchemaDiffWindow() {
               onRegenerate={() => void buildPlan()}
             />
             <div className="mt-4">
-              <Button variant="primary" onClick={() => setStep('review')}>
+              <Button
+                variant="primary"
+                onClick={() => setStep('review')}
+                data-testid="schema-diff-step-review"
+              >
                 {t('schemaDiff.stepReview')}
               </Button>
             </div>
@@ -434,6 +454,10 @@ export function SchemaDiffWindow() {
           </div>
         )}
       </div>
+      <SchemaDiffLimitationsDialog
+        open={limitationsOpen}
+        onClose={() => setLimitationsOpen(false)}
+      />
       <StatusBar left={<span className="truncate">{t('common.schemaDiff')}</span>} />
     </div>
   );

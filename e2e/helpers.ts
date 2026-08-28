@@ -1463,8 +1463,14 @@ export async function openSchemaDiffWindow(
     await clearSchemaDiffLimitationsDismissPref();
   }
   await browser.url('tauri://localhost/window.html?window=schema-diff');
-  await browser.pause(1500);
-  await $('[data-testid="schema-diff-window"]').waitForDisplayed({ timeout: 10000 });
+  await browser.pause(2000);
+  await browser.waitUntil(
+    async () => {
+      const el = await $('[data-testid="schema-diff-window"]');
+      return el.isDisplayed().catch(() => false);
+    },
+    { timeout: 20000, timeoutMsg: '等待结构对比窗口加载超时' },
+  );
   if (dismissLimitations) {
     await dismissSchemaDiffLimitationsDialogIfOpen();
   }
