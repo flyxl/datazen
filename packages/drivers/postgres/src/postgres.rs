@@ -15,6 +15,21 @@ use tokio::sync::{Mutex, RwLock};
 const JS_MAX_SAFE_INT: i64 = 9_007_199_254_740_991;
 const JS_MIN_SAFE_INT: i64 = -9_007_199_254_740_991;
 
+/// Split `schema.table` into `(Some(schema), table)`. Unqualified names use `None`.
+fn parse_pg_table_ref(table: &str) -> (Option<&str>, &str) {
+    match table.split_once('.') {
+        Some((schema, name)) if !schema.is_empty() && !name.is_empty() => (Some(schema), name),
+        _ => (None, table),
+    }
+}
+
+fn pg_regclass_name(schema: Option<&str>, table: &str) -> String {
+    match schema {
+        Some(s) => format!("{s}.{table}"),
+        None => table.to_string(),
+    }
+}
+
 pub struct PostgresDriver {
     pools: RwLock<HashMap<String, PgPool>>,
     /// Template connection config (host/user/pass/timeout) for reconnecting to other databases.
@@ -618,6 +633,8 @@ impl DatabaseDriver for PostgresDriver {
     ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
+        let (schema, bare_table) = parse_pg_table_ref(table);
+        let regclass = pg_regclass_name(schema, bare_table);
 
         let cols = sqlx::query(
             r#"
@@ -625,10 +642,12 @@ impl DatabaseDriver for PostgresDriver {
                            col_description((quote_ident(table_schema)||'.'||quote_ident(table_name))::regclass, ordinal_position) as comment
                     FROM information_schema.columns
                     WHERE table_name = $1
+                      AND ($2::text IS NULL OR table_schema = $2)
                     ORDER BY ordinal_position
                     "#,
         )
-        .bind(table)
+        .bind(bare_table)
+        .bind(schema)
         .fetch_all(pool)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
@@ -640,13 +659,10 @@ impl DatabaseDriver for PostgresDriver {
                     SELECT a.attname
                     FROM pg_index i
                     JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-                    JOIN pg_class c ON c.oid = i.indrelid
-                    JOIN pg_namespace n ON n.oid = c.relnamespace
-                    WHERE c.relname = $1 AND i.indisprimary
-                      AND n.nspname = ANY (current_schemas(true))
+                    WHERE i.indrelid = $1::regclass AND i.indisprimary
                     "#,
         )
-        .bind(table)
+        .bind(&regclass)
         .fetch_all(pool)
         .await
         .unwrap_or_default();
@@ -679,6 +695,8 @@ impl DatabaseDriver for PostgresDriver {
     ) -> Result<TableSchema, DriverError> {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
+        let (schema, bare_table) = parse_pg_table_ref(table);
+        let regclass = pg_regclass_name(schema, bare_table);
 
         let cols = sqlx::query(
             r#"
@@ -686,10 +704,12 @@ impl DatabaseDriver for PostgresDriver {
                    col_description((quote_ident(table_schema)||'.'||quote_ident(table_name))::regclass, ordinal_position) as comment
             FROM information_schema.columns
             WHERE table_name = $1
+              AND ($2::text IS NULL OR table_schema = $2)
             ORDER BY ordinal_position
             "#,
         )
-        .bind(table)
+        .bind(bare_table)
+        .bind(schema)
         .fetch_all(pool)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
@@ -699,10 +719,10 @@ impl DatabaseDriver for PostgresDriver {
             SELECT a.attname
             FROM pg_index i
             JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-            WHERE i.indrelid = quote_ident($1)::regclass AND i.indisprimary
+            WHERE i.indrelid = $1::regclass AND i.indisprimary
             "#,
         )
-        .bind(table)
+        .bind(&regclass)
         .fetch_all(pool)
         .await
         .unwrap_or_default();
@@ -740,12 +760,12 @@ impl DatabaseDriver for PostgresDriver {
             JOIN pg_am   am ON am.oid  = i.relam
             JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, n) ON true
             JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
-            WHERE ix.indrelid = quote_ident($1)::regclass
+            WHERE ix.indrelid = $1::regclass
             GROUP BY i.relname, ix.indisunique, ix.indisprimary, am.amname
             ORDER BY ix.indisprimary DESC, i.relname
             "#,
         )
-        .bind(table)
+        .bind(&regclass)
         .fetch_all(pool)
         .await
         .unwrap_or_default();
@@ -783,11 +803,13 @@ impl DatabaseDriver for PostgresDriver {
              AND rc.constraint_schema = tc.table_schema
             WHERE tc.constraint_type = 'FOREIGN KEY'
               AND tc.table_name = $1
+              AND ($2::text IS NULL OR tc.table_schema = $2)
             GROUP BY tc.constraint_name, ccu.table_name, rc.update_rule, rc.delete_rule
             ORDER BY tc.constraint_name
             "#,
         )
-        .bind(table)
+        .bind(bare_table)
+        .bind(schema)
         .fetch_all(pool)
         .await
         .unwrap_or_default();
@@ -1959,6 +1981,15 @@ mod tests {
         assert!(SQL.contains("pg_is_other_temp_schema"));
         assert!(SQL.contains("pg_my_temp_schema"));
         assert!(!SQL.contains("LIKE 'pg_%'"));
+    }
+
+    #[test]
+    fn parse_pg_table_ref_splits_schema_prefix() {
+        assert_eq!(
+            parse_pg_table_ref("public.users"),
+            (Some("public"), "users")
+        );
+        assert_eq!(parse_pg_table_ref("users"), (None, "users"));
     }
 
     #[test]
