@@ -8,6 +8,7 @@ import {
   rowDiffCounts,
   summarizeMappings,
   tableHasRowDiffs,
+  tableKey,
   type DataSyncTableResult,
 } from './mappingView';
 
@@ -58,58 +59,60 @@ export function MappingPanel({
           const canToggle = row.status === 'MATCHED' || row.status === 'DISABLED';
           return (
             <div
-              key={`${row.status}:${name}`}
+              key={tableKey(row)}
               data-testid="data-sync-mapping-row"
               className={cn(
-                'flex items-center gap-3 border-t border-edge px-3 py-1.5 text-sm',
+                'border-t border-edge px-3 py-1.5',
                 row.status === 'INCOMPATIBLE' && 'bg-amber-500/5',
                 isDisabled && 'opacity-60',
               )}
             >
-              <input
-                type="checkbox"
-                className="h-3.5 w-3.5"
-                checked={!isDisabled}
-                disabled={!canToggle}
-                title={canToggle ? t('sync.includeTable') : undefined}
-                onChange={() => {
-                  if (canToggle && row.sourceTable) onToggleDisabled(row.sourceTable);
-                }}
-              />
-              <div className="min-w-0 flex-1 truncate font-mono text-xs">{name}</div>
-              <div className="w-40 text-right text-xs text-fg-secondary">
-                {row.status === 'MATCHED' && compared && tableHasRowDiffs(row)
-                  ? t('sync.rowDiffs', rowDiffCounts(row))
-                  : t(mappingLabelKey(row.status))}
-              </div>
-              <div className="flex w-24 justify-end gap-1">
-                {row.status === 'INCOMPATIBLE' && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-[10px]"
-                      onClick={onOpenSchemaDiff}
-                    >
-                      {t('common.schemaDiff')}
-                    </Button>
-                    {onOpenDataTransfer && (
+              <div className="flex items-center gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5"
+                  checked={!isDisabled}
+                  disabled={!canToggle}
+                  title={canToggle ? t('sync.includeTable') : undefined}
+                  onChange={() => {
+                    if (canToggle && row.sourceTable) onToggleDisabled(row.sourceTable);
+                  }}
+                />
+                <div className="min-w-0 flex-1 truncate font-mono text-xs">{name}</div>
+                <div className="w-40 text-right text-xs text-fg-secondary">
+                  {row.status === 'MATCHED' && compared && tableHasRowDiffs(row)
+                    ? t('sync.rowDiffs', rowDiffCounts(row))
+                    : t(mappingLabelKey(row.status))}
+                </div>
+                <div className="flex w-24 justify-end gap-1">
+                  {row.status === 'INCOMPATIBLE' && (
+                    <>
                       <Button
                         variant="ghost"
                         size="sm"
                         className="text-[10px]"
-                        data-testid="data-sync-open-transfer"
-                        onClick={onOpenDataTransfer}
+                        onClick={onOpenSchemaDiff}
                       >
-                        {t('common.dataTransfer')}
+                        {t('common.schemaDiff')}
                       </Button>
-                    )}
-                  </>
-                )}
+                      {onOpenDataTransfer && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-[10px]"
+                          data-testid="data-sync-open-transfer"
+                          onClick={onOpenDataTransfer}
+                        >
+                          {t('common.dataTransfer')}
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
               {row.incompatibleReason && (
                 <div
-                  className="max-w-xs truncate text-[11px] text-amber-600 dark:text-amber-400"
+                  className="ml-9 truncate text-[11px] text-amber-600 dark:text-amber-400"
                   title={row.incompatibleReason}
                 >
                   {row.incompatibleReason}

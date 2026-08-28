@@ -83,6 +83,8 @@ export function TableListPanel({
               variant={filter === f ? 'secondary' : 'ghost'}
               size="sm"
               className="text-[10px]"
+              aria-pressed={filter === f}
+              data-testid={`data-sync-filter-${f}`}
               onClick={() => onFilterChange(f)}
             >
               {t(`sync.filter.${f}` as 'sync.filter.all')}

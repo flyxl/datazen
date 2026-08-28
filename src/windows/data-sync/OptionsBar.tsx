@@ -48,6 +48,7 @@ export function OptionsBar({ options, onChange, onEnableDelete }: OptionsBarProp
         />
         {t('sync.optionDelete')}
       </label>
+      <span className="text-xs text-fg-muted">{t('sync.optionsHint')}</span>
     </div>
   );
 }
