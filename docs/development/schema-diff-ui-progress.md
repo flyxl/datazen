@@ -7,7 +7,7 @@
 
 | 编号 | 功能 | 轨道 | 状态 | 编码 commit | 测试 commit |
 |------|------|------|------|-------------|-------------|
-| F1 | EndpointsBar + dedicated db/schema 会话 | schema-diff-ui-endpoints | 编码完成 | 0c2e4a51 | — |
+| F1 | EndpointsBar + dedicated db/schema 会话 | schema-diff-ui-endpoints | 编码完成 | 79357dec | — |
 | F2 | 双栏面板（左表/diff · 右 plan/deploy） | schema-diff-ui-panels | 编码中 | — | — |
 | F3 | SchemaDiffWindow 集成 + bg-surface shell | schema-diff-ui-b | 未开始 | — | — |
 | F4 | Host 单测 | schema-diff-ui-tests | 未开始 | — | — |
