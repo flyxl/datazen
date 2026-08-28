@@ -17,7 +17,7 @@
 | Objects | 自源库拉表多选（`SchemaDiffObjectsStep`） |
 | 安全 | `allowDestructive` + `DEPLOY` token + rollback 完整性 gate（未改） |
 | 限制 | `SchemaDiffLimitationsDialog` + localStorage dismiss |
-| 帮助 | TitleBar → 在线手册 `#sync`（待独立 `#schema-diff` 锚点） |
+| 帮助 | TitleBar → 在线手册 `#schema-diff` |
 | 源码 | `src/windows/schema-diff/` |
 
 ---

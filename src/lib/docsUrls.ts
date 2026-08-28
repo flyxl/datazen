@@ -17,7 +17,9 @@ const SECTION_REMAP: Record<string, string> = {
   context: 'ai',
   workflows: 'workflow',
   opsDashboard: 'dashboard',
-  schemaDiff: 'sync',
+  dataSync: 'data-sync',
+  dataTransfer: 'data-transfer',
+  schemaDiff: 'schema-diff',
 };
 
 export type DocsSectionId = keyof typeof SECTION_REMAP;
