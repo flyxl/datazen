@@ -258,7 +258,7 @@ flowchart TD
 - [ ] Deploy 使用 `Button`，destructive 时用 `variant="danger"`
 - [ ] 现有 SD-* E2E 全通过；新增 testid 有对应用例
 - [ ] 与 Transfer 窗口并排截图，无明显两套产品感
-- [ ] 帮助链接指向 Schema Diff 专章（非 `#sync`）
+- [x] 帮助链接指向 Schema Diff 专章（`#schema-diff`）
 
 ---
 
