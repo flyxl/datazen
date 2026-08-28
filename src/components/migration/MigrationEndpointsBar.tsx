@@ -3,6 +3,7 @@ import { ArrowLeftRight, Loader2, RefreshCcw } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
 import { useI18n } from '../../hooks/useI18n';
+import type { I18nKey } from '../../locales';
 import { cn } from '../../lib/cn';
 
 export interface MigrationSelectOption {
@@ -17,8 +18,8 @@ export interface MigrationEndpointsBarProps {
   testIdPrefix: string;
   /** `bar` = Sync/Schema Diff top bar; `grid` = Transfer wizard endpoints card. */
   layout?: 'bar' | 'grid';
-  sourceLabelKey?: string;
-  targetLabelKey?: string;
+  sourceLabelKey?: I18nKey;
+  targetLabelKey?: I18nKey;
   sourceId: string;
   targetId: string;
   sourceDatabase: string;
@@ -58,10 +59,10 @@ export interface MigrationEndpointsBarProps {
 
 interface EndpointColumnProps {
   testId: string;
-  labelKey: string;
+  labelKey: I18nKey;
   connectionId: string;
   connectionOptions: MigrationSelectOption[];
-  connectionPlaceholderKey: string;
+  connectionPlaceholderKey: I18nKey;
   database: string;
   databases: string[];
   schema?: string;
