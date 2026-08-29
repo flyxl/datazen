@@ -14,7 +14,9 @@ mod tests;
 
 use super::error::CommandError;
 use super::AppState;
-use crate::data_sync::{classify_data_sync_pair as classify_data_sync_pair_impl, DataSyncPairingView};
+use crate::data_sync::{
+    classify_data_sync_pair as classify_data_sync_pair_impl, DataSyncPairingView,
+};
 use crate::store::SyncTask;
 pub(crate) use apply::{
     apply_data_sync_impl, compare_data_sync_impl, generate_data_sync_sql_impl,

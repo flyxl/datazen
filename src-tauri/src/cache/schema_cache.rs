@@ -185,7 +185,10 @@ impl SchemaCache {
         driver: &Arc<dyn DatabaseDriver>,
         handle: &ConnectionHandle,
     ) -> Result<TableSchema, DriverError> {
-        if let Some(schema) = self.try_get_cached_schema(connection_id, database, table).await {
+        if let Some(schema) = self
+            .try_get_cached_schema(connection_id, database, table)
+            .await
+        {
             return Ok(schema);
         }
 

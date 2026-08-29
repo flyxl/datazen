@@ -84,9 +84,7 @@ pub fn schema_catalog_command_definitions() -> Vec<DriverCommandDefinition> {
         DriverCommandDefinition {
             id: "get_table_schema".into(),
             name: "Get Table Schema".into(),
-            description: Some(
-                "Return full table schema (columns, indexes, foreign keys)".into(),
-            ),
+            description: Some("Return full table schema (columns, indexes, foreign keys)".into()),
             input_schema: json!({
                 "type": "object",
                 "properties": {
