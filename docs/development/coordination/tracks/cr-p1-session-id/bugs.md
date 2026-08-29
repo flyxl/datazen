@@ -2,8 +2,8 @@
 
 | Bug ID | 描述 | 状态 | 记录时间 | 重现步骤 | 验证记录 |
 |--------|------|------|----------|----------|----------|
-| BUG-001 | `extensionBridge` 单测未随 live-session 解析更新，6 例失败 | 待修复 | 2026-08-29 | `npx vitest run src/lib/__tests__/extensionBridge.test.ts src/lib/__tests__/extensionBridge.security.test.ts`；未 seed `activeConnectionStore` 的 `command.invoke` 用例收到 `E_NOT_FOUND` 而非继续执行 | 测试代理 @390d4efc |
-| BUG-002 | `cargo test -p datazen --lib` 全量 1 失败：`connect_dedicated_opens_separate_session_from_reuse` | 待修复 | 2026-08-29 | `CARGO_TARGET_DIR=.../target cargo test -p datazen --lib`；MockDriver `connect` 固定返回 `mock-{config.id}`，`connect` 与 `connect_dedicated` 得到相同 id | 测试代理 @390d4efc；根因可能在分支更早 commit `dfa1a5a6` |
+| BUG-001 | `extensionBridge` 单测未随 live-session 解析更新，6 例失败 | 已修复 | 2026-08-29 | `npx vitest run src/lib/__tests__/extensionBridge.test.ts src/lib/__tests__/extensionBridge.security.test.ts`；未 seed `activeConnectionStore` 的 `command.invoke` 用例收到 `E_NOT_FOUND` 而非继续执行 | 修复代理：seed `activeConnectionStore` + 断言 `live-*`；vitest 49/49 |
+| BUG-002 | `cargo test -p datazen --lib` 全量 1 失败：`connect_dedicated_opens_separate_session_from_reuse` | 已修复 | 2026-08-29 | `CARGO_TARGET_DIR=.../target cargo test -p datazen --lib`；MockDriver `connect` 固定返回 `mock-{config.id}`，`connect` 与 `connect_dedicated` 得到相同 id | 修复代理：MockDriver 递增 session id + reconnect 保留 db_session_id；cargo 1174/1174 |
 
 ## BUG-001 详情
 
