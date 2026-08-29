@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Check,
@@ -16,6 +16,7 @@ import { AiInput } from './AiInput';
 import { Select } from '../ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
+import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { aiCommands } from '../../commands/ai';
 import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
@@ -44,6 +45,15 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
 
   const [input, setInput] = useState('');
   const [selectedConnection, setSelectedConnection] = useState('');
+  const activeConnections = useActiveConnectionStore((s) => s.connections);
+  const selectedDbSessionId = useMemo(() => {
+    if (!selectedConnection) return undefined;
+    const entry = activeConnections[selectedConnection];
+    if (entry?.status === 'connected' && entry.dbSessionId) {
+      return entry.dbSessionId;
+    }
+    return undefined;
+  }, [selectedConnection, activeConnections]);
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveOk, setSaveOk] = useState(false);
@@ -60,18 +70,17 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
 
   const handleSend = useCallback(() => {
     if (!input.trim() || workflowChat?.isStreaming) return;
-    const conn = selectedConnection || undefined;
     const { contextFiles, contextTables } = splitContextItems(contextItems);
     void sendMessage({
-      dbSessionId: conn,
+      dbSessionId: selectedDbSessionId,
       content: input.trim(),
-      includeSchema: !!conn,
+      includeSchema: !!selectedDbSessionId,
       contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
       contextTables: contextTables.length > 0 ? contextTables : undefined,
     });
     setInput('');
     setContextItems([]);
-  }, [input, workflowChat, sendMessage, selectedConnection, contextItems]);
+  }, [input, workflowChat, sendMessage, selectedDbSessionId, contextItems]);
 
   const handleNewChat = useCallback(() => {
     clearChat();
@@ -212,9 +221,9 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
             t={t}
             onAnswerQuestions={(answers) => {
               void sendMessage({
-                dbSessionId: selectedConnection || undefined,
+                dbSessionId: selectedDbSessionId,
                 content: answers,
-                includeSchema: !!selectedConnection,
+                includeSchema: !!selectedDbSessionId,
               });
             }}
             isLastAssistant={
@@ -260,7 +269,7 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
           rows={3}
           isLoading={workflowChat?.isStreaming}
           onStop={handleStop}
-          dbSessionId={selectedConnection || undefined}
+          dbSessionId={selectedDbSessionId}
           database={selectedDatabase}
           contextItems={contextItems}
           onContextItemsChange={setContextItems}

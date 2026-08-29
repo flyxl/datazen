@@ -111,6 +111,24 @@ const CONNECTIONS = [
   { id: 'c1', name: 'PG', databaseType: 'postgresql', database: 'postgres' },
 ];
 
+const activeConnectionState = vi.hoisted(() => ({
+  connections: {
+    c1: {
+      dbSessionId: 'mock-c1-session',
+      connectionId: 'c1',
+      status: 'connected' as const,
+      serverInfo: null,
+      currentDatabase: 'postgres',
+      error: null,
+    },
+  },
+}));
+
+vi.mock('../../../stores/activeConnectionStore', () => ({
+  useActiveConnectionStore: (sel: (s: typeof activeConnectionState) => unknown) =>
+    sel(activeConnectionState),
+}));
+
 describe('WorkflowChatPanel', () => {
   it('shows not configured state', () => {
     aiState.isConfigured = false;
@@ -125,7 +143,7 @@ describe('WorkflowChatPanel', () => {
     fireEvent.change(getByTestId('wf-chat-input'), { target: { value: 'make workflow' } });
     fireEvent.click(getByTestId('wf-chat-send'));
     expect(aiState.sendWorkflowChatMessage).toHaveBeenCalledWith({
-      dbSessionId: 'c1',
+      dbSessionId: 'mock-c1-session',
       content: 'make workflow',
       includeSchema: true,
       contextFiles: undefined,
