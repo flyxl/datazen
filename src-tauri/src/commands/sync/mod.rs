@@ -14,6 +14,7 @@ mod tests;
 
 use super::error::CommandError;
 use super::AppState;
+use crate::data_sync::{classify_data_sync_pair as classify_data_sync_pair_impl, DataSyncPairingView};
 use crate::store::SyncTask;
 pub(crate) use apply::{
     apply_data_sync_impl, compare_data_sync_impl, generate_data_sync_sql_impl,
@@ -28,6 +29,17 @@ pub(crate) use tasks::{
 };
 use tauri::State;
 use types::{resolve_options, SyncOptionsInput};
+
+#[tauri::command]
+pub fn classify_data_sync_pair(
+    source_database_type: String,
+    target_database_type: String,
+) -> Result<DataSyncPairingView, CommandError> {
+    Ok(classify_data_sync_pair_impl(
+        &source_database_type,
+        &target_database_type,
+    ))
+}
 
 #[tauri::command]
 pub async fn get_sync_tasks(state: State<'_, AppState>) -> Result<Vec<SyncTask>, CommandError> {

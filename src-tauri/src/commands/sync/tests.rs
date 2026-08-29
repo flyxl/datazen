@@ -349,7 +349,11 @@ fn legacy_transfer_ir_compare_ipc_removed() {
     );
     assert!(
         !sync_mod.contains("classify_sync_pair"),
-        "redundant classify_sync_pair IPC must stay removed (frontend mirrors pairing in syncPairing.ts)"
+        "legacy classify_sync_pair IPC must stay removed"
+    );
+    assert!(
+        sync_mod.contains("classify_data_sync_pair"),
+        "classify_data_sync_pair IPC must be registered for single-source pairing"
     );
 }
 

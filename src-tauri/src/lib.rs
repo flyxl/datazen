@@ -987,6 +987,7 @@ pub fn run() {
             commands::generate_data_sync_sql,
             commands::revalidate_data_sync,
             commands::inspect_data_sync,
+            commands::classify_data_sync_pair,
             commands::classify_transfer_pair,
             commands::inspect_data_transfer,
             commands::preview_data_transfer,
