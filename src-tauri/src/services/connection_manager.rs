@@ -421,7 +421,10 @@ impl ConnectionManager {
                 effective_config.database_type.clone(),
             ))?;
 
-        let handle = driver.connect(&effective_config).await?;
+        let mut handle = driver.connect(&effective_config).await?;
+        // Preserve the runtime session id across eviction/reconnect; the driver
+        // may assign a fresh pool handle id on each connect.
+        handle.id = db_session_id.to_string();
 
         let mut connections = self.connections.write().await;
         connections.insert(

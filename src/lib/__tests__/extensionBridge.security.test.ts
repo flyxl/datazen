@@ -122,6 +122,21 @@ function request(type: string, reqId?: string, payload?: unknown): PluginRequest
   return { ch: BRIDGE_CHANNEL, type, target: 'host', ...(reqId ? { reqId } : {}), payload };
 }
 
+function seedActiveSession(connectionId: string, dbSessionId = `live-${connectionId}`): void {
+  activeConnectionStoreState.current = {
+    connections: {
+      [connectionId]: {
+        connectionId,
+        dbSessionId,
+        status: 'connected',
+        serverInfo: null,
+        currentDatabase: null,
+        error: null,
+      },
+    },
+  };
+}
+
 afterEach(() => {
   handle?.detach();
   handle = null;
@@ -229,6 +244,7 @@ describe('F6 security: credential whitelisting', () => {
   });
 
   it('INTERNAL error responses carry messages only — never Rust stacks', async () => {
+    seedActiveSession('cfg');
     const bomb = new Error(`query failed after ${'x'.repeat(800)} chars`);
     (bomb as Error & { stack: string }).stack =
       `Error: query failed\n    at execute_driver_command (rust${'y'.repeat(
@@ -251,6 +267,7 @@ describe('F6 security: credential whitelisting', () => {
   });
 
   it('audit log prefixes [extension:{id}] and never logs argument contents', async () => {
+    seedActiveSession('cfg');
     driverExecuteMock.mockResolvedValue({ data: null });
     handle = attachBridge(frame.iframe, {
       pluginId: 'acme.bill-audit',
@@ -409,12 +426,13 @@ describe('F6 security: malformed command.invoke payloads', () => {
   });
 
   it('treats args:null as an empty input object (benign, pinned behavior)', async () => {
+    seedActiveSession('c');
     driverExecuteMock.mockResolvedValue({ data: 'ok' });
     invoke('nullargs', { connectionId: 'c', command: 'query', args: null });
     await waitUntil(() => frame.sent.some((m) => m.reqId === 'nullargs'));
 
     expect(driverExecuteMock).toHaveBeenCalledWith({
-      dbSessionId: 'c',
+      dbSessionId: 'live-c',
       command: 'query',
       input: {},
     });
@@ -422,11 +440,12 @@ describe('F6 security: malformed command.invoke payloads', () => {
   });
 
   it('forwards array args verbatim without treating them as key/value maps', async () => {
+    seedActiveSession('c');
     driverExecuteMock.mockResolvedValue({ data: 'ok' });
     invoke('arrargs', { connectionId: 'c', command: 'query', args: ['a', 'b'] });
     await waitUntil(() => frame.sent.some((m) => m.reqId === 'arrargs'));
     expect(driverExecuteMock).toHaveBeenCalledWith({
-      dbSessionId: 'c',
+      dbSessionId: 'live-c',
       command: 'query',
       input: ['a', 'b'],
     });
@@ -441,6 +460,7 @@ describe('F6 security: prototype pollution containment', () => {
   });
 
   it('passes polluted-key args verbatim to IPC without merging them anywhere', async () => {
+    seedActiveSession('c');
     driverExecuteMock.mockResolvedValue({ data: null });
     handle = attachBridge(frame.iframe, { pluginId: 'p', permissions: ['command:invoke'] });
 
