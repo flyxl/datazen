@@ -121,7 +121,11 @@ impl QueryExecutor {
             filter_logic,
         );
         tracing::info!(%table, "query_executor: count query");
-        tracing::debug!(%table, %count_sql, "query_executor: count sql");
+        tracing::debug!(
+            %table,
+            count_sql = %crate::log_redact::sql_preview_for_log(&count_sql),
+            "query_executor: count sql"
+        );
 
         let (count_res, data_res) = tokio::try_join!(
             driver.query(handle, &count_sql),
