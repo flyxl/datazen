@@ -1,8 +1,8 @@
 //! AI chat IPC and tool-loop execution.
 
 use super::util::{
-    build_connections_context, inject_language_hint, resolve_ai, truncate_str, StreamCallback,
-    window_stream_callback,
+    build_connections_context, inject_language_hint, resolve_ai, truncate_str,
+    window_stream_callback, StreamCallback,
 };
 use crate::ai::budget;
 use crate::ai::*;

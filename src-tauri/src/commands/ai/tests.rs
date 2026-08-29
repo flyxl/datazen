@@ -7,12 +7,12 @@ use datazen_ai_api::AiProviderType;
 #[test]
 fn test_provider_list_item_serialization() {
     let item = ProviderListItem {
-            provider_type: AiProviderType::OpenAi,
-            display_name: "OpenAI".into(),
-            supports_streaming: true,
-            supports_tools: true,
-            default_endpoint: "https://api.openai.com/v1".into(),
-            default_protocol: "open_ai_compatible".into(),
+        provider_type: AiProviderType::OpenAi,
+        display_name: "OpenAI".into(),
+        supports_streaming: true,
+        supports_tools: true,
+        default_endpoint: "https://api.openai.com/v1".into(),
+        default_protocol: "open_ai_compatible".into(),
     };
 
     let json = serde_json::to_string(&item).unwrap();
@@ -63,8 +63,8 @@ fn test_extract_json_boundary_array_with_trailing() {
 fn test_extract_json_boundary_nested() {
     let input = r#"{"a":{"b":"c"},"d":[1,2]}trailing"#;
     assert_eq!(
-            extract_json_boundary(input),
-            Some(r#"{"a":{"b":"c"},"d":[1,2]}"#)
+        extract_json_boundary(input),
+        Some(r#"{"a":{"b":"c"},"d":[1,2]}"#)
     );
 }
 
@@ -72,8 +72,8 @@ fn test_extract_json_boundary_nested() {
 fn test_extract_json_boundary_with_escaped_quotes() {
     let input = r#"{"msg":"say \"hello\""}extra"#;
     assert_eq!(
-            extract_json_boundary(input),
-            Some(r#"{"msg":"say \"hello\""}"#)
+        extract_json_boundary(input),
+        Some(r#"{"msg":"say \"hello\""}"#)
     );
 }
 
@@ -92,7 +92,7 @@ fn test_extract_json_boundary_clean() {
 fn test_parse_ai_json_with_trailing_reasoning() {
     #[derive(serde::Deserialize)]
     struct Simple {
-            key: String,
+        key: String,
     }
     let raw = r#"{"key":"val"}The user wants me to analyze..."#;
     let result: Result<Simple, _> = parse_ai_json(raw, None, "test");
@@ -118,8 +118,8 @@ fn test_connection_diagnosis_deserialization() {
     assert_eq!(result.category, "auth");
     assert!(result.solutions[0].command.is_none());
     assert_eq!(
-            result.solutions[1].command.as_deref(),
-            Some("CREATE USER test")
+        result.solutions[1].command.as_deref(),
+        Some("CREATE USER test")
     );
 }
 
@@ -157,22 +157,22 @@ fn test_is_db_tool() {
 fn test_classify_tool() {
     assert_eq!(classify_tool("ask_questions"), ToolKind::AskQuestions);
     assert_eq!(
-            classify_tool("list_connections"),
-            ToolKind::Db("list_connections".into())
+        classify_tool("list_connections"),
+        ToolKind::Db("list_connections".into())
     );
     assert_eq!(
-            classify_tool("mcp/files/read_file"),
-            ToolKind::Mcp {
-                server_id: "files".into(),
-                tool_name: "read_file".into(),
-            }
+        classify_tool("mcp/files/read_file"),
+        ToolKind::Mcp {
+            server_id: "files".into(),
+            tool_name: "read_file".into(),
+        }
     );
     assert_eq!(
-            classify_tool("mcp/my-server/my_tool_name"),
-            ToolKind::Mcp {
-                server_id: "my-server".into(),
-                tool_name: "my_tool_name".into(),
-            }
+        classify_tool("mcp/my-server/my_tool_name"),
+        ToolKind::Mcp {
+            server_id: "my-server".into(),
+            tool_name: "my_tool_name".into(),
+        }
     );
     assert_eq!(classify_tool("mcp/bad"), ToolKind::Unknown);
     assert_eq!(classify_tool("mcp//tool"), ToolKind::Unknown);
@@ -213,11 +213,11 @@ fn test_db_tool_definitions_count() {
 #[test]
 fn test_db_tool_definitions_have_valid_schemas() {
     for tool in db_tool_definitions() {
-            assert!(!tool.name.is_empty());
-            assert!(!tool.description.is_empty());
-            assert!(tool.parameters.is_object());
-            let obj = tool.parameters.as_object().unwrap();
-            assert_eq!(obj.get("type").and_then(|v| v.as_str()), Some("object"));
+        assert!(!tool.name.is_empty());
+        assert!(!tool.description.is_empty());
+        assert!(tool.parameters.is_object());
+        let obj = tool.parameters.as_object().unwrap();
+        assert_eq!(obj.get("type").and_then(|v| v.as_str()), Some("object"));
     }
 }
 
@@ -234,20 +234,20 @@ fn test_language_hint_known_locales() {
 #[test]
 fn test_inject_language_hint_appends_to_system() {
     let mut messages = vec![
-            ChatMessage {
-                role: MessageRole::System,
-                content: "Base prompt".into(),
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-            ChatMessage {
-                role: MessageRole::User,
-                content: "Hi".into(),
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
+        ChatMessage {
+            role: MessageRole::System,
+            content: "Base prompt".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        },
+        ChatMessage {
+            role: MessageRole::User,
+            content: "Hi".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        },
     ];
     inject_language_hint(&mut messages, "zh-CN");
     assert!(messages[0].content.contains("Base prompt"));
@@ -258,20 +258,20 @@ fn test_inject_language_hint_appends_to_system() {
 #[test]
 fn test_provider_defaults_all_types() {
     assert_eq!(
-            provider_defaults(AiProviderType::OpenAi),
-            ("https://api.openai.com/v1", "open_ai_compatible")
+        provider_defaults(AiProviderType::OpenAi),
+        ("https://api.openai.com/v1", "open_ai_compatible")
     );
     assert_eq!(
-            provider_defaults(AiProviderType::Anthropic),
-            ("https://api.anthropic.com", "anthropic_compatible")
+        provider_defaults(AiProviderType::Anthropic),
+        ("https://api.anthropic.com", "anthropic_compatible")
     );
     assert_eq!(
-            provider_defaults(AiProviderType::DeepSeek),
-            ("https://api.deepseek.com", "open_ai_responses")
+        provider_defaults(AiProviderType::DeepSeek),
+        ("https://api.deepseek.com", "open_ai_responses")
     );
     assert_eq!(
-            provider_defaults(AiProviderType::Custom),
-            ("", "open_ai_compatible")
+        provider_defaults(AiProviderType::Custom),
+        ("", "open_ai_compatible")
     );
 }
 
@@ -286,7 +286,7 @@ fn test_parse_ai_json_empty_response() {
     #[derive(Debug, serde::Deserialize)]
     #[allow(dead_code)]
     struct Simple {
-            key: String,
+        key: String,
     }
     let err = parse_ai_json::<Simple>("   ", None, "test").unwrap_err();
     assert!(err.to_string().contains("empty"));
@@ -297,7 +297,7 @@ fn test_parse_ai_json_truncated_finish_reason() {
     #[derive(Debug, serde::Deserialize)]
     #[allow(dead_code)]
     struct Simple {
-            items: Vec<String>,
+        items: Vec<String>,
     }
     let raw = r#"{"items": ["unclosed"#;
     let err = parse_ai_json::<Simple>(raw, Some("length"), "test").unwrap_err();
@@ -309,7 +309,7 @@ fn test_parse_ai_json_invalid_with_reason() {
     #[derive(Debug, serde::Deserialize)]
     #[allow(dead_code)]
     struct NeedsField {
-            required_field: String,
+        required_field: String,
     }
     let raw = r#"{"wrong": "field"}"#;
     let err = parse_ai_json::<NeedsField>(raw, Some("stop"), "test").unwrap_err();
@@ -327,44 +327,44 @@ fn test_emit_stream_chunk_builds_payload_via_callback() {
 
     #[derive(Default)]
     struct Captured {
-            events: Vec<(String, serde_json::Value)>,
+        events: Vec<(String, serde_json::Value)>,
     }
 
     let captured = Arc::new(Mutex::new(Captured::default()));
     let cap = captured.clone();
     let cb: StreamCallback = Arc::new(move |request_id, result| match result {
-            Ok(chunk) => {
-                let mut payload = serde_json::json!({
-                    "requestId": request_id,
-                    "content": chunk.content,
-                    "done": chunk.done,
-                });
-                if let Some(reasoning) = &chunk.reasoning {
-                    payload["reasoning"] = serde_json::Value::String(reasoning.clone());
-                }
-                cap.lock()
-                    .unwrap()
-                    .events
-                    .push(("ai:stream-chunk".into(), payload));
+        Ok(chunk) => {
+            let mut payload = serde_json::json!({
+                "requestId": request_id,
+                "content": chunk.content,
+                "done": chunk.done,
+            });
+            if let Some(reasoning) = &chunk.reasoning {
+                payload["reasoning"] = serde_json::Value::String(reasoning.clone());
             }
-            Err(e) => {
-                cap.lock().unwrap().events.push((
-                    "ai:stream-error".into(),
-                    serde_json::json!({ "requestId": request_id, "error": e.to_string() }),
-                ));
-            }
+            cap.lock()
+                .unwrap()
+                .events
+                .push(("ai:stream-chunk".into(), payload));
+        }
+        Err(e) => {
+            cap.lock().unwrap().events.push((
+                "ai:stream-error".into(),
+                serde_json::json!({ "requestId": request_id, "error": e.to_string() }),
+            ));
+        }
     });
 
     cb(
-            "req-1",
-            Ok(StreamChunk {
-                content: "hello".into(),
-                reasoning: Some("think".into()),
-                done: false,
-                usage: None,
-                tool_calls: None,
-                response_id: None,
-            }),
+        "req-1",
+        Ok(StreamChunk {
+            content: "hello".into(),
+            reasoning: Some("think".into()),
+            done: false,
+            usage: None,
+            tool_calls: None,
+            response_id: None,
+        }),
     );
     cb("req-2", Err(AiError::RequestFailed("bad".into())));
 
@@ -393,17 +393,17 @@ async fn ai_providers_config_prompt_workflow_impl() {
 
     let workflows = workflow_list_impl(&test.state).await.unwrap();
     assert!(
-            workflows.iter().any(|w| w.id.starts_with("builtin-")),
-            "empty workflow dir should be seeded with builtin workflows, got: {workflows:?}"
+        workflows.iter().any(|w| w.id.starts_with("builtin-")),
+        "empty workflow dir should be seeded with builtin workflows, got: {workflows:?}"
     );
 
     let cfg = AiProviderConfig {
-            provider_type: AiProviderType::OpenAi,
-            api_key: Some("test-key".into()),
-            model: "gpt-4".into(),
-            endpoint: None,
-            max_tokens: 4096,
-            extra: serde_json::json!({}),
+        provider_type: AiProviderType::OpenAi,
+        api_key: Some("test-key".into()),
+        model: "gpt-4".into(),
+        endpoint: None,
+        max_tokens: 4096,
+        extra: serde_json::json!({}),
     };
     test.state.store.save_ai_config(&cfg).await.unwrap();
     assert!(ai_get_config_impl(&test.state).await.unwrap().is_some());
@@ -414,9 +414,9 @@ async fn ai_providers_config_prompt_workflow_impl() {
 #[tokio::test]
 async fn ai_fetch_remote_models_rejects_unknown_protocol() {
     let err = ai_fetch_remote_models(
-            "unknown_proto".into(),
-            "https://example.com".into(),
-            "key".into(),
+        "unknown_proto".into(),
+        "https://example.com".into(),
+        "key".into(),
     )
     .await
     .unwrap_err();
@@ -431,12 +431,12 @@ async fn ai_validate_config_rejects_missing_api_key() {
 
     let test = TestAppState::new().await;
     let cfg = AiProviderConfig {
-            provider_type: AiProviderType::OpenAi,
-            api_key: None,
-            model: "gpt-4".into(),
-            endpoint: None,
-            max_tokens: 4096,
-            extra: serde_json::json!({}),
+        provider_type: AiProviderType::OpenAi,
+        api_key: None,
+        model: "gpt-4".into(),
+        endpoint: None,
+        max_tokens: 4096,
+        extra: serde_json::json!({}),
     };
     assert!(ai_validate_config_impl(&test.state, cfg).await.is_err());
 }
@@ -461,25 +461,25 @@ async fn mcp_tool_definitions_respects_enabled_for_ai() {
     let schema = serde_json::json!({"type": "object"});
     let tool = Tool::new("ping", "Ping", schema.as_object().unwrap().clone());
     test.state
-            .mcp_client_manager
-            .register_test_server(
-                "hidden_srv",
-                "Hidden",
-                vec![tool],
-                Arc::new(|_, _| Ok(CallToolResult::success(vec![ContentBlock::text("pong")]))),
-            )
-            .await;
+        .mcp_client_manager
+        .register_test_server(
+            "hidden_srv",
+            "Hidden",
+            vec![tool],
+            Arc::new(|_, _| Ok(CallToolResult::success(vec![ContentBlock::text("pong")]))),
+        )
+        .await;
 
     let mut settings = test.state.store.get_settings().await;
     settings.mcp_client_servers = vec![McpServerConfig {
-            id: "hidden_srv".into(),
-            name: "Hidden".into(),
-            transport: "stdio".into(),
-            command: None,
-            args: vec![],
-            env: HashMap::new(),
-            enabled: true,
-            enabled_for_ai: false,
+        id: "hidden_srv".into(),
+        name: "Hidden".into(),
+        transport: "stdio".into(),
+        command: None,
+        args: vec![],
+        env: HashMap::new(),
+        enabled: true,
+        enabled_for_ai: false,
     }];
     test.state.store.save_settings(settings).await.unwrap();
 
@@ -499,20 +499,20 @@ async fn mcp_connect_rejects_invalid_server_id() {
 
     let test = TestAppState::new().await;
     let config = McpServerConfig {
-            id: "bad id".into(),
-            name: "Bad".into(),
-            transport: "stdio".into(),
-            command: Some("/bin/echo".into()),
-            args: vec![],
-            env: HashMap::new(),
-            enabled: true,
-            enabled_for_ai: true,
+        id: "bad id".into(),
+        name: "Bad".into(),
+        transport: "stdio".into(),
+        command: Some("/bin/echo".into()),
+        args: vec![],
+        env: HashMap::new(),
+        enabled: true,
+        enabled_for_ai: true,
     };
     let err = test
-            .state
-            .mcp_client_manager
-            .connect(&config)
-            .await
-            .unwrap_err();
+        .state
+        .mcp_client_manager
+        .connect(&config)
+        .await
+        .unwrap_err();
     assert!(err.contains("Invalid MCP server id"));
 }
