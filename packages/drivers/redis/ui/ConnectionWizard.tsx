@@ -326,7 +326,10 @@ export function RedisTlsFields({ form }: { form: ConnectionFormState }) {
         <input
           type="checkbox"
           checked={redisOptions.tls?.enabled === true}
-          onChange={(e) => updateOptions({ tls: { enabled: e.target.checked } })}
+          onChange={(e) => {
+            updateOptions({ tls: { enabled: e.target.checked } });
+            form.setSslMode(e.target.checked ? 'require' : 'disable');
+          }}
         />
         <span>{t('redis.wizard.tlsEnabled')}</span>
       </label>

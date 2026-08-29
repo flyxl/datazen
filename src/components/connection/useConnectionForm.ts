@@ -14,6 +14,16 @@ export interface UseConnectionFormOptions {
   onAfterSave?: () => void;
 }
 
+function hasEnabledTlsOption(options: Record<string, unknown>): boolean {
+  const tls = options.tls;
+  return Boolean(
+    tls &&
+      typeof tls === 'object' &&
+      !Array.isArray(tls) &&
+      (tls as { enabled?: unknown }).enabled === true,
+  );
+}
+
 export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   const { editId, existingConnections, onAfterSave } = options;
   const { t } = useI18n();
@@ -122,6 +132,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     setHost(meta.defaultHost || '127.0.0.1');
     setPort(meta.defaultPort ? String(meta.defaultPort) : '');
     setUsername(meta.defaultUser || '');
+    setSslMode(meta.defaultSslMode ?? 'prefer');
 
     if (!meta.supportsSSH) setSshEnabled(false);
 
@@ -197,18 +208,22 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   }, [connectionOptions, database, formVariant, host, isPluginForm, meta?.connectionMode, password, port, schema, t, username]);
 
   const draft = useMemo((): ConnectionConfig => {
+    const draftMeta = DB_REGISTRY[databaseType];
+    const effectiveSslMode =
+      draftMeta?.defaultSslMode === 'disable' && !hasEnabledTlsOption(connectionOptions)
+        ? 'disable'
+        : sslMode;
     const base: ConnectionConfig = {
       id: editId ?? newId(),
       name: name || t('newConn.unnamed'),
       databaseType,
-      sslMode,
+      sslMode: effectiveSslMode,
       group: group || undefined,
       colorTag: colorTag || undefined,
       sshTunnel,
       readOnly: readOnly || undefined,
     };
 
-    const draftMeta = DB_REGISTRY[databaseType];
     if (!draftMeta || draftMeta.connectionMode === 'file') {
       return { ...base, database };
     }
