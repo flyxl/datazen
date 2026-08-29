@@ -64,8 +64,8 @@ vi.mock('../../../stores/workspaceTabsStore', () => ({
 vi.mock('../../../commands/extensions', () => ({
   EXTENSIONS_CHANGED_EVENT: 'plugins:changed',
   extensionCommands: {
-    inspectExtensionPackage: (...args: unknown[]) => inspectPackageMock(...args),
-    installExtensionFromPath: (...args: unknown[]) => installFromPathMock(...args),
+    inspectExtensionPackageWithDialog: (...args: unknown[]) => inspectPackageMock(...args),
+    installExtension: (...args: unknown[]) => installFromPathMock(...args),
     readExtensionFile: (...args: unknown[]) => readExtensionFileMock(...args),
   },
 }));
