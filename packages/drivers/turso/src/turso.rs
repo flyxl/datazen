@@ -384,6 +384,7 @@ impl DatabaseDriver for TursoDriver {
             execute_command_definition(),
             query_stream_command_definition(),
         ];
+        cmds.extend(schema_catalog_command_definitions());
         cmds.extend(schema_object_command_definitions());
         cmds
     }
@@ -394,6 +395,11 @@ impl DatabaseDriver for TursoDriver {
         command: &str,
         input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
+        if let Some(result) =
+            try_execute_schema_catalog_command(self, handle, command, input.clone()).await?
+        {
+            return Ok(result);
+        }
         if is_schema_object_command(command) {
             return execute_schema_object_command(
                 self,

@@ -257,6 +257,7 @@ pub fn pg_admin_command_definitions() -> Vec<DriverCommandDefinition> {
         metadata: DriverCommandMetadata::new(CommandCategory::Admin, CommandAccessLevel::HighRisk),
     });
 
+    cmds.extend(schema_catalog_command_definitions());
     cmds.extend(schema_object_command_definitions());
 
     cmds

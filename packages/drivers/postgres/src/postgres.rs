@@ -1525,6 +1525,11 @@ impl DatabaseDriver for PostgresDriver {
             Err(DriverError::Unsupported(_)) => {}
             other => return other,
         }
+        if let Some(result) =
+            try_execute_schema_catalog_command(self, handle, command, input.clone()).await?
+        {
+            return Ok(result);
+        }
         if is_schema_object_command(command) {
             return execute_schema_object_command(
                 self,
