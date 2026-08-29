@@ -13,15 +13,22 @@ export interface SshTunnelFieldsProps {
   innerPanelClassName?: string;
 }
 
-export function SshTunnelFields({ form, innerPanelClassName = 'bg-surface' }: SshTunnelFieldsProps) {
+export function SshTunnelFields({
+  form,
+  innerPanelClassName = 'bg-surface',
+}: SshTunnelFieldsProps) {
   const { t } = useI18n();
   if (!form.meta.supportsSSH) return null;
 
   return (
     <div>
-      <label className="flex items-center gap-2 text-sm text-fg-secondary">
+      <label
+        data-testid="new-conn-ssh-tunnel"
+        className="flex items-center gap-2 text-sm text-fg-secondary"
+      >
         <input
           type="checkbox"
+          data-testid="new-conn-ssh-tunnel-checkbox"
           checked={form.sshEnabled}
           onChange={(e) => form.setSshEnabled(e.target.checked)}
           className="h-4 w-4 rounded border-edge bg-surface text-blue-500 focus:ring-blue-500/25"
@@ -30,7 +37,12 @@ export function SshTunnelFields({ form, innerPanelClassName = 'bg-surface' }: Ss
       </label>
 
       {form.sshEnabled && (
-        <div className={cn('mt-3 grid grid-cols-1 gap-3 rounded-md border border-edge p-3 md:grid-cols-2', innerPanelClassName)}>
+        <div
+          className={cn(
+            'mt-3 grid grid-cols-1 gap-3 rounded-md border border-edge p-3 md:grid-cols-2',
+            innerPanelClassName,
+          )}
+        >
           <div>
             <Label required>{t('newConn.sshHost')}</Label>
             <Input
@@ -60,11 +72,15 @@ export function SshTunnelFields({ form, innerPanelClassName = 'bg-surface' }: Ss
           <div className="md:col-span-2">
             <Label required>{t('newConn.authMethod')}</Label>
             <div className="flex gap-2">
-              {([
-                { id: 'password' as SshAuthMethod, icon: KeyRound, label: t('newConn.authPassword') },
+              {[
+                {
+                  id: 'password' as SshAuthMethod,
+                  icon: KeyRound,
+                  label: t('newConn.authPassword'),
+                },
                 { id: 'private_key' as SshAuthMethod, icon: FileKey2, label: t('newConn.authKey') },
                 { id: 'agent' as SshAuthMethod, icon: Shield, label: t('newConn.authAgent') },
-              ]).map((opt) => (
+              ].map((opt) => (
                 <button
                   key={opt.id}
                   type="button"
@@ -159,11 +175,11 @@ export function SshTunnelFields({ form, innerPanelClassName = 'bg-surface' }: Ss
               </div>
               <div className="md:col-span-2">
                 <div className="flex gap-2">
-                  {([
+                  {[
                     { id: 'password' as SshAuthMethod, label: t('newConn.authPassword') },
                     { id: 'private_key' as SshAuthMethod, label: t('newConn.authKey') },
                     { id: 'agent' as SshAuthMethod, label: t('newConn.authAgent') },
-                  ]).map((opt) => (
+                  ].map((opt) => (
                     <button
                       key={opt.id}
                       type="button"

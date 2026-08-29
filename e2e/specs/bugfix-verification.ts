@@ -28,7 +28,9 @@ describe('Bug Fix Verification', () => {
       await browser.pause(500);
 
       const hasThemeToggle = await browser.execute(() => {
-        const buttons = document.querySelectorAll('button');
+        const workflow = document.querySelector('[data-testid="workflow-workspace"]');
+        if (!workflow) return false;
+        const buttons = workflow.querySelectorAll('button');
         for (const btn of buttons) {
           const svg = btn.querySelector('svg');
           if (svg) {

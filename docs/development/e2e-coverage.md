@@ -104,7 +104,7 @@
 | 连接 Pin 置顶 | `ops-pin.ts` | Covered |
 | 连接边界：快速新建/删除、并发 tab、生命周期 | `connection-edge-cases.ts` (TC-EDGE-009~013) | Covered |
 | 设置持久化：主题/语言/字体/确认删除开关 | `settings-persistence.ts` (TC-SET-007~010) | Covered |
-| 10 种 UI locale 下拉 / 切换 / 回退 | `i18n-10-locales.ts` (I18N10-001~003, I18N10-005) | Covered |
+| 内置 UI locale 下拉 / 切换 / 回退 | `i18n-10-locales.ts` (I18N10-001~003, I18N10-005) | Covered |
 | 窗口操作：单窗口模式、tab 状态 | `window-operations.ts` (TC-WIN-001~005) | Covered |
 | SQL 多 Tab：独立查询结果 | `sql-multi-tab.ts` (TC-QUERY-009~012) | Covered |
 | Schema 树完整性：加载/右键/DDL 后刷新 | `schema-tree-completeness.ts` (TC-TREE-001~006) | Covered |

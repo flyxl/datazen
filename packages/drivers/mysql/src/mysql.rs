@@ -608,6 +608,10 @@ impl MysqlDriver {
     }
 }
 
+fn non_empty_secret(value: Option<&str>) -> Option<&str> {
+    value.filter(|s| !s.trim().is_empty())
+}
+
 fn build_mysql_options(config: &ConnectionConfig) -> Result<MySqlConnectOptions, DriverError> {
     let host = config.host.as_deref().unwrap_or("localhost");
     let port = config.port.unwrap_or(3306);
@@ -615,7 +619,7 @@ fn build_mysql_options(config: &ConnectionConfig) -> Result<MySqlConnectOptions,
         .host(host)
         .port(port)
         .username(config.username.as_deref().unwrap_or("root"));
-    if let Some(password) = config.password.as_deref() {
+    if let Some(password) = non_empty_secret(config.password.as_deref()) {
         opts = opts.password(password);
     }
     if let Some(database) = config
@@ -2046,6 +2050,35 @@ mod tests {
         // at least constructed options (host/port present) without building a DSN string.
         assert!(debug.contains("db.example") || debug.contains("3307") || !debug.is_empty());
         let _ = opts;
+    }
+
+    #[test]
+    fn build_mysql_options_drops_empty_password() {
+        let mut config = ConnectionConfig {
+            id: "c".into(),
+            name: "mysql".into(),
+            database_type: "mysql".into(),
+            host: Some("127.0.0.1".into()),
+            port: Some(3306),
+            database: Some("app".into()),
+            schema: None,
+            username: Some("root".into()),
+            password: Some(String::new()),
+            ssl_mode: Default::default(),
+            connection_timeout: 5,
+            max_pool_size: 5,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+            read_only: false,
+            pinned: false,
+        };
+        assert!(build_mysql_options(&config).is_ok());
+        config.password = Some("   ".into());
+        assert!(build_mysql_options(&config).is_ok());
     }
 
     #[tokio::test]
