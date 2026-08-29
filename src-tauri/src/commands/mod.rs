@@ -24,6 +24,7 @@ mod schema_diff;
 mod structure;
 mod sync;
 mod theme;
+mod workflow;
 pub(crate) mod window;
 
 pub use ai::*;
@@ -51,6 +52,7 @@ pub use schema_diff::*;
 pub use structure::*;
 pub use sync::*;
 pub use theme::*;
+pub use workflow::*;
 pub use window::*;
 
 use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
