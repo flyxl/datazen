@@ -723,6 +723,10 @@ pub fn run_mcp_stdio() {
 
     rt.block_on(async {
         let data_dir = Store::default_app_data_dir().expect("Cannot determine data dir");
+        if let Err(e) = mcp::auth::verify_stdio_token(&data_dir) {
+            tracing::error!("{e}");
+            std::process::exit(1);
+        }
         let store = Arc::new(
             Store::init_with_path(&data_dir)
                 .await
