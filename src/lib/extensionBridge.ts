@@ -217,11 +217,15 @@ async function handleCommandInvoke(pluginId: string, payload: unknown) {
   // the webview console is not the only durable record.
   console.info(`[extension:${pluginId}] command.invoke ${command} via ${connectionId}`);
   extensionCommands.auditLog(pluginId, 'command.invoke', `${command} via ${connectionId}`);
-  // Resolve the live db session for the persistent connection id; when the
-  // host has not tracked that connection, fall through with the raw id — the
-  // backend's resolve_session accepts both shapes (dual-mode).
+  // Resolve the live db session for the persistent connection id.
   const entry = useActiveConnectionStore.getState().connections[connectionId];
-  const dbSessionId = asString(entry?.dbSessionId) ?? connectionId;
+  const dbSessionId = asString(entry?.dbSessionId);
+  if (!dbSessionId || entry?.status !== 'connected') {
+    throw new BridgeApiError(
+      BRIDGE_ERROR.NOT_FOUND,
+      `No active DB session for connection '${connectionId}' (connect in the host first)`,
+    );
+  }
   try {
     const result = await driverCommands.execute({
       dbSessionId,
