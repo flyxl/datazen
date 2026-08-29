@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, waitFor, screen, fireEvent } from '@testing-library/react';
 import { ConnectionPage } from '../ConnectionPage';
+import { tauriWindowTestState } from '../../../test/mocks/tauriWindow';
 
 const {
   connectMock,
@@ -12,9 +13,6 @@ const {
   emitCrossWindowMock,
   listenCrossWindowMock,
   getActiveConnectionState,
-  closeMock,
-  minimizeMock,
-  closeRequestedHandler,
   webviewGetAllMock,
   hasOpenChildWindowsMock,
   fetchConnectionsMock,
@@ -44,11 +42,6 @@ const {
   getActiveConnectionState: vi.fn(() => ({
     connections: {} as Record<string, { status: string; connectionId?: string }>,
   })),
-  closeMock: vi.fn().mockResolvedValue(undefined),
-  minimizeMock: vi.fn().mockResolvedValue(undefined),
-  closeRequestedHandler: {
-    current: null as null | ((event: { preventDefault: () => void }) => Promise<void>),
-  },
   webviewGetAllMock: vi.fn().mockResolvedValue([{ label: 'main' }]),
   hasOpenChildWindowsMock: vi.fn().mockResolvedValue(false),
   fetchConnectionsMock: vi.fn().mockResolvedValue(undefined),
@@ -266,17 +259,6 @@ vi.mock('../../../lib/databaseTypes', async () => {
   };
 });
 
-vi.mock('@tauri-apps/api/window', () => ({
-  getCurrentWindow: () => ({
-    close: closeMock,
-    minimize: minimizeMock,
-    onCloseRequested: vi.fn((handler: (event: { preventDefault: () => void }) => Promise<void>) => {
-      closeRequestedHandler.current = handler;
-      return Promise.resolve(() => {});
-    }),
-  }),
-}));
-
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
   WebviewWindow: {
     getAll: (...args: unknown[]) => webviewGetAllMock(...args),
@@ -290,7 +272,10 @@ function setPendingConnection(data: Record<string, string>) {
 beforeEach(() => {
   vi.clearAllMocks();
   menuOpenSettingsHandler.current = null;
-  closeRequestedHandler.current = null;
+  tauriWindowTestState.closeRequestedHandler.current = null;
+  tauriWindowTestState.closeHandlerRegistrationCount.current = 0;
+  tauriWindowTestState.closeMock.mockReset().mockResolvedValue(undefined);
+  tauriWindowTestState.minimizeMock.mockReset().mockResolvedValue(undefined);
   hasOpenChildWindowsMock.mockResolvedValue(false);
   webviewGetAllMock.mockResolvedValue([{ label: 'main' }]);
   localStorage.clear();
@@ -523,15 +508,15 @@ describe('ConnectionPage', () => {
 
     render(<ConnectionPage />);
     await waitFor(() => expect(connectMock).toHaveBeenCalledWith('cfg-1'));
-    await waitFor(() => expect(closeRequestedHandler.current).not.toBeNull());
+    await waitFor(() => expect(tauriWindowTestState.closeRequestedHandler.current).not.toBeNull());
 
     const preventDefault = vi.fn();
-    await closeRequestedHandler.current?.({ preventDefault });
+    await tauriWindowTestState.closeRequestedHandler.current?.({ preventDefault });
 
     expect(preventDefault).toHaveBeenCalled();
-    expect(minimizeMock).toHaveBeenCalled();
+    expect(tauriWindowTestState.minimizeMock).toHaveBeenCalled();
     expect(releaseConnectionMock).not.toHaveBeenCalled();
-    expect(closeMock).not.toHaveBeenCalled();
+    expect(tauriWindowTestState.closeMock).not.toHaveBeenCalled();
   });
 
   it('TC-window: releases connections and closes when no sub-windows remain', async () => {
@@ -544,14 +529,23 @@ describe('ConnectionPage', () => {
 
     render(<ConnectionPage />);
     await waitFor(() => expect(connectMock).toHaveBeenCalledWith('cfg-1'));
-    await waitFor(() => expect(closeRequestedHandler.current).not.toBeNull());
+    await waitFor(() =>
+      expect(emitCrossWindowMock).toHaveBeenCalledWith(
+        'datazen:connection-ready',
+        expect.objectContaining({ dbSessionId: 'conn-live-1' }),
+      ),
+    );
+    await waitFor(() =>
+      expect(tauriWindowTestState.closeHandlerRegistrationCount.current).toBeGreaterThanOrEqual(2),
+    );
+    await waitFor(() => expect(tauriWindowTestState.closeRequestedHandler.current).not.toBeNull());
 
     const preventDefault = vi.fn();
-    await closeRequestedHandler.current?.({ preventDefault });
+    await tauriWindowTestState.closeRequestedHandler.current?.({ preventDefault });
 
+    await waitFor(() => expect(releaseConnectionMock).toHaveBeenCalledWith('conn-live-1'));
     expect(preventDefault).toHaveBeenCalled();
-    expect(minimizeMock).not.toHaveBeenCalled();
-    expect(releaseConnectionMock).toHaveBeenCalledWith('conn-live-1');
-    expect(closeMock).toHaveBeenCalled();
+    expect(tauriWindowTestState.minimizeMock).not.toHaveBeenCalled();
+    expect(tauriWindowTestState.closeMock).toHaveBeenCalled();
   });
 });

@@ -103,13 +103,17 @@ beforeEach(() => {
   removeMock.mockReset().mockResolvedValue(undefined);
   fetchMock.mockReset().mockResolvedValue(undefined);
   inspectPackageMock.mockReset().mockResolvedValue({
-    id: 'acme.new',
-    name: 'New Plugin',
-    version: '1.0.0',
-    apiVersion: 2,
-    author: 'Acme',
-    contributes: { pages: [], themes: [] },
-    permissions: ['storage:local'],
+    pickToken: 'pick-acme-new',
+    packageLabel: 'acme-new.zip',
+    manifest: {
+      id: 'acme.new',
+      name: 'New Plugin',
+      version: '1.0.0',
+      apiVersion: 2,
+      author: 'Acme',
+      contributes: { pages: [], themes: [] },
+      permissions: ['storage:local'],
+    },
   });
   installFromPathMock.mockReset();
   readExtensionFileMock.mockReset().mockResolvedValue(new Uint8Array([137, 80, 78, 71]));
@@ -352,18 +356,16 @@ describe('ExtensionManagementPage', () => {
 
     expect(screen.getByText('plugins.install.title')).toBeInTheDocument();
 
-    // Step 1 → 2: inspection only, no write yet.
-    fireEvent.change(await screen.findByPlaceholderText('plugins.install.pathPlaceholder'), {
-      target: { value: '/tmp/acme-new.zip' },
-    });
-    fireEvent.click(screen.getByTestId('plugin-install-next'));
+    // Step 1 → 2: native browse + inspect only, no write yet.
+    fireEvent.click(await screen.findByTestId('plugin-install-browse-zip'));
     const review = await screen.findByTestId('plugin-install-review');
     expect(review).toHaveTextContent('New Plugin');
+    expect(inspectPackageMock).toHaveBeenCalledWith('zip');
     expect(installFromPathMock).not.toHaveBeenCalled();
 
     // Step 2: explicit confirmation performs the install.
     fireEvent.click(screen.getByTestId('plugin-install-confirm'));
-    await waitFor(() => expect(installFromPathMock).toHaveBeenCalledWith('/tmp/acme-new.zip'));
+    await waitFor(() => expect(installFromPathMock).toHaveBeenCalledWith('pick-acme-new'));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await waitFor(() =>
       expect(screen.queryByText('plugins.install.title')).not.toBeInTheDocument(),
@@ -375,10 +377,7 @@ describe('ExtensionManagementPage', () => {
 
     render(<ExtensionManagementPage />);
     fireEvent.click(screen.getByTestId('plugin-install-button'));
-    fireEvent.change(await screen.findByPlaceholderText('plugins.install.pathPlaceholder'), {
-      target: { value: '/tmp/broken.zip' },
-    });
-    fireEvent.click(screen.getByTestId('plugin-install-next'));
+    fireEvent.click(await screen.findByTestId('plugin-install-browse-zip'));
 
     await waitFor(() =>
       expect(screen.getByTestId('plugin-install-error')).toHaveTextContent('manifest invalid'),

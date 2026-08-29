@@ -12,9 +12,13 @@ vi.mock('../../../hooks/useResizable', () => ({
   useResizable: () => ({ size: 280, handleRef: { current: null } }),
 }));
 
-vi.mock('../../../hooks/useCompactToolbar', () => ({
-  useCompactToolbar: () => ({ ref: { current: null }, compact: false }),
-}));
+vi.mock('../../../hooks/useCompactToolbar', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../hooks/useCompactToolbar')>();
+  return {
+    ...actual,
+    useCompactToolbar: () => ({ ref: { current: null }, compact: false }),
+  };
+});
 
 vi.mock('../../../stores/settingsStore', () => ({
   useSettingsStore: (
