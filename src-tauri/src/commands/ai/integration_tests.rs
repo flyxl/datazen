@@ -5,7 +5,10 @@ use std::sync::{Arc, Mutex};
 use datazen_ai_api::{ChatMessage, MessageRole, ToolCall};
 use datazen_driver_api::PromptScenario;
 
+use super::chat::execute_db_tool;
 use super::*;
+use crate::ai::prompt_resolver::PromptOverrideEntry;
+use crate::commands::{workflow_execute_impl, workflow_list_impl};
 use crate::testing::ai_wiremock::WiremockAi;
 use crate::testing::app_state::TestAppState;
 
