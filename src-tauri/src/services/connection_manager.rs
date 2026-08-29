@@ -791,7 +791,8 @@ mod tests {
 
         // Input is the connection_id of a config whose session already lives:
         // it must resolve to that existing db_session_id.
-        let (db_session_id, _driver, returned) = mgr.resolve_session_for_mcp("cfg-2").await.unwrap();
+        let (db_session_id, _driver, returned) =
+            mgr.resolve_session_for_mcp("cfg-2").await.unwrap();
         assert_eq!(db_session_id, "rt-2");
         assert_eq!(returned.id, "rt-2");
     }
