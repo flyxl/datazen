@@ -10,6 +10,7 @@ import { driverCommands } from '../../commands/driver';
 import { databaseCommands } from '../../commands/database';
 import { useConnectionCommand } from '../../hooks/useConnectionCommand';
 import { hasSchemaField } from '../../lib/commandSchema';
+import { toErrorMessage } from '../../lib/errors';
 import { useI18n } from '../../hooks/useI18n';
 
 interface CreateUserDialogProps {
@@ -91,7 +92,7 @@ export function CreateUserDialog({ open, onClose, dbSessionId, onCreated }: Crea
       setCreatedUsername(username.trim());
       setStep('grant');
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toErrorMessage(err));
     } finally {
       setRunning(false);
     }
@@ -116,7 +117,7 @@ export function CreateUserDialog({ open, onClose, dbSessionId, onCreated }: Crea
       onCreated?.(createdUsername);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toErrorMessage(err));
     } finally {
       setRunning(false);
     }
