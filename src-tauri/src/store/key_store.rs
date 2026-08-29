@@ -139,7 +139,18 @@ fn write_key_file(data_dir: &Path, key: &[u8; 32]) -> Result<(), StoreError> {
     let path = key_file_path(data_dir);
     let key_b64 = BASE64.encode(key);
     std::fs::write(&path, key_b64.as_bytes())
-        .map_err(|e| StoreError::EncryptionError(e.to_string()))
+        .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
+    restrict_key_file_permissions(&path);
+    Ok(())
+}
+
+/// Owner read/write only — same policy as MCP token file (`mcp/auth.rs`).
+fn restrict_key_file_permissions(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
 }
 
 fn remove_key_file(data_dir: &Path) {
@@ -362,6 +373,22 @@ mod tests {
         let key = [99u8; 32];
         write_key_file(dir.path(), &key).unwrap();
         assert_eq!(read_key_file(dir.path()).unwrap().unwrap(), key);
+    }
+
+    #[test]
+    fn write_key_file_restricts_permissions_on_unix() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = tempdir().unwrap();
+            write_key_file(dir.path(), &[1u8; 32]).unwrap();
+            let mode = std::fs::metadata(key_file_path(dir.path()))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600);
+        }
     }
 
     #[test]
