@@ -3,7 +3,7 @@
 use super::chat::{db_tool_definitions, run_streaming_tool_loop};
 use super::util::{
     inject_language_hint, parse_ai_json, resolve_ai, strip_markdown_fences, truncate_str,
-    StreamCallback, window_stream_callback,
+    window_stream_callback, StreamCallback,
 };
 use crate::ai::budget;
 use crate::ai::prompt_resolver;
