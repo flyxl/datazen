@@ -1,5 +1,5 @@
 import { expect, browser, $ } from '@wdio/globals';
-import { closeExtraWindows, switchToNewWindow } from '../helpers.js';
+import { closeExtraWindows, openWorkflowWorkspace } from '../helpers.js';
 
 /**
  * E2E test for AskQuestion interaction in AI Chat.
@@ -34,7 +34,12 @@ async function seedAskQuestionWorkflow() {
     name: 'E2E Ask Question Test',
     description: 'Tests the AskQuestion interaction in AI workflow steps',
     variables: [
-      { name: 'db_choice', type: 'string', description: 'Database choice from AI question', required: false },
+      {
+        name: 'db_choice',
+        type: 'string',
+        description: 'Database choice from AI question',
+        required: false,
+      },
     ],
     steps: [
       {
@@ -54,28 +59,11 @@ I can help you set up a database query workflow. Let me ask a few questions firs
 }
 
 async function cleanupTestWorkflow() {
-  try { await invokeBackend('workflow_delete', { workflowId: TEST_WORKFLOW_ID }); } catch { /* ok */ }
-}
-
-async function findAndClickButton(textFragments: string[]) {
-  return browser.execute((frags: string[]) => {
-    const buttons = document.querySelectorAll('button');
-    for (const btn of buttons) {
-      if (btn.hasAttribute('disabled')) continue;
-      const text = btn.textContent || '';
-      if (frags.some((f) => text.includes(f))) { btn.click(); return true; }
-    }
-    return false;
-  }, textFragments);
-}
-
-async function openWorkflowFromMain(mainHandle: string) {
-  await browser.switchToWindow(mainHandle);
-  await browser.pause(500);
-  await findAndClickButton(['工作流', 'Workflow']);
-  const wfWindow = await switchToNewWindow(mainHandle);
-  await browser.pause(2000);
-  return wfWindow;
+  try {
+    await invokeBackend('workflow_delete', { workflowId: TEST_WORKFLOW_ID });
+  } catch {
+    /* ok */
+  }
 }
 
 async function openWorkflowAiChat() {
@@ -212,20 +200,23 @@ describe('AI AskQuestion Interaction (E2E)', () => {
   });
 
   it('测试 workflow 应包含 AI 提问步骤', async () => {
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await browser.pause(1000);
 
-    await browser.waitUntil(async () => {
-      const text = await $('body').getText();
-      return text.includes('E2E Ask Question Test');
-    }, { timeout: 8000 });
+    await browser.waitUntil(
+      async () => {
+        const text = await $('body').getText();
+        return text.includes('E2E Ask Question Test');
+      },
+      { timeout: 8000 },
+    );
 
     const item = await $('div*=E2E Ask Question Test');
     await expect(item).toBeDisplayed();
   });
 
   it('问题 UI 应渲染选项按钮和自定义输入框', async () => {
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await openWorkflowAiChat();
     await browser.pause(500);
 
@@ -243,7 +234,7 @@ describe('AI AskQuestion Interaction (E2E)', () => {
   });
 
   it('选择选项后应高亮', async () => {
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await browser.pause(500);
     await injectAskQuestionMessage();
     await browser.pause(1000);
@@ -278,7 +269,7 @@ describe('AI AskQuestion Interaction (E2E)', () => {
   });
 
   it('提交按钮应存在且可点击', async () => {
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await browser.pause(500);
     await injectAskQuestionMessage();
     await browser.pause(1000);
@@ -298,7 +289,7 @@ describe('AI AskQuestion Interaction (E2E)', () => {
   });
 
   it('（Tool Call）问题 UI 应渲染选项按钮', async () => {
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await browser.pause(1000);
 
     const injected = await injectToolCallAskQuestionMessage();
@@ -311,7 +302,7 @@ describe('AI AskQuestion Interaction (E2E)', () => {
   });
 
   it('（Tool Call）选择选项后应高亮', async () => {
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await browser.pause(500);
     await injectToolCallAskQuestionMessage();
     await browser.pause(1000);
@@ -343,7 +334,7 @@ describe('AI AskQuestion Interaction (E2E)', () => {
   });
 
   it('（Tool Call）提交后应生成 tool 角色消息', async () => {
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await browser.pause(500);
     await injectToolCallAskQuestionMessage();
     await browser.pause(1000);
@@ -352,7 +343,10 @@ describe('AI AskQuestion Interaction (E2E)', () => {
     await browser.execute(() => {
       const buttons = document.querySelectorAll('button');
       for (const btn of buttons) {
-        if (btn.textContent?.includes('PostgreSQL')) { btn.click(); break; }
+        if (btn.textContent?.includes('PostgreSQL')) {
+          btn.click();
+          break;
+        }
       }
     });
     await browser.pause(200);
@@ -362,7 +356,8 @@ describe('AI AskQuestion Interaction (E2E)', () => {
       const buttons = document.querySelectorAll('button');
       for (const btn of buttons) {
         if (btn.textContent?.includes('Read queries') || btn.textContent?.includes('SELECT')) {
-          btn.click(); break;
+          btn.click();
+          break;
         }
       }
     });
@@ -383,7 +378,7 @@ describe('AI AskQuestion Interaction (E2E)', () => {
   });
 
   it('（Tool Call）消息中应包含 toolCalls 字段', async () => {
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await browser.pause(500);
     await injectToolCallAskQuestionMessage();
     await browser.pause(500);
@@ -393,7 +388,9 @@ describe('AI AskQuestion Interaction (E2E)', () => {
       const state = store?.getState?.();
       const session = state?.workflowChat ?? state?.chatSession;
       const msgs = session?.messages ?? [];
-      const lastAssistant = [...msgs].reverse().find((m: { role?: string; toolCalls?: unknown[] }) => m.role === 'assistant');
+      const lastAssistant = [...msgs]
+        .reverse()
+        .find((m: { role?: string; toolCalls?: unknown[] }) => m.role === 'assistant');
       return !!(lastAssistant && lastAssistant.toolCalls && lastAssistant.toolCalls.length > 0);
     });
     expect(hasToolCalls).toBe(true);

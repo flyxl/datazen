@@ -77,7 +77,7 @@ describe('数据看板 Workflow 添加 (UJ-04, UJ-10)', () => {
   });
 
   it('UJ-04: 从 Workflow 创建组件并显示磁贴', async () => {
-    await openDashboardFromMain(mainWindow);
+    await openDashboardFromMain(mainWindow, DASHBOARD_ID);
 
     await browser.waitUntil(async () => (await $$('[data-testid="dashboard-tile"]')).length >= 1, {
       timeout: 10000,
