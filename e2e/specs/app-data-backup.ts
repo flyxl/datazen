@@ -127,8 +127,8 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
       path.resolve(import.meta.dirname, '../../src/locales/zh-CN.ts'),
       'utf8',
     );
-    expect(zh).toContain("'menu.exportConfig': '导出应用数据'");
-    expect(zh).toContain("'menu.importConfig': '导入应用数据'");
+    expect(zh).toContain("'common.exportAppData': '导出应用数据'");
+    expect(zh).toContain("'common.importAppData': '导入应用数据'");
   });
 
   it('ADB-002: export_app_data should write a zip file', async () => {
@@ -216,9 +216,9 @@ sys.exit(1 if bad else 0)
       'utf8',
     );
     if (settings.language === 'zh-CN') {
-      expect(src).toContain("'menu.exportConfig': '导出应用数据'");
+      expect(src).toContain("'common.exportAppData': '导出应用数据'");
     } else {
-      expect(src).toMatch(/'menu\.exportConfig': 'Export App Data'/);
+      expect(src).toMatch(/'common\.exportAppData': 'Export App Data/);
     }
   });
 });

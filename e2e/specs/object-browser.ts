@@ -1,6 +1,10 @@
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
-import { closeExtraWindows, openSeededPgConnectionWindow } from '../helpers.js';
+import {
+  closeExtraWindows,
+  openSeededPgConnectionWindow,
+  waitForNewConnectionButton,
+} from '../helpers.js';
 
 /**
  * Objects browser + Privileges panel Host UI paths (OBJ / PRV).
@@ -11,7 +15,7 @@ describe('对象浏览器与权限 (OBJ/PRV)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
+    await waitForNewConnectionButton(10000);
     await openSeededPgConnectionWindow(mainWindow);
   });
 

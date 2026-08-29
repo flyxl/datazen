@@ -195,7 +195,7 @@ Web 版以浏览器和服务端语义重新设计交互，不通过弹出窗口�
 
 ### J1：部署与首次初始化
 
-1. 管理员准备持久化 volume 和 DATAZEN_MASTER_KEY。
+1. 管理员准备 MySQL、持久化 volume、DATAZEN_DATABASE_URL 和 DATAZEN_MASTER_KEY。
 2. 运行官方 Docker Compose。
 3. 访问 Web 地址，使用一次性 bootstrap token 创建首个实例管理员。
 4. 系统立即使 bootstrap token 失效。
@@ -205,7 +205,7 @@ Web 版以浏览器和服务端语义重新设计交互，不通过弹出窗口�
 
 - 未配置 master key 时，生产模式拒绝启动。
 - 初始化只能成功执行一次，并写入安全审计日志。
-- 健康检查能区分 process alive、ready 和 migration failed。
+- 健康检查能区分 process alive、MySQL unavailable、ready 和 migration failed。
 
 ### J2：登录与工作区切换
 
@@ -284,12 +284,14 @@ Web 版以浏览器和服务端语义重新设计交互，不通过弹出窗口�
 | WEB-DEP-005 | P0 | migration 失败时 fail closed，不接收业务请求。 |
 | WEB-DEP-006 | P0 | 支持反向代理下的 HTTPS、Base URL 和可信代理配置。 |
 | WEB-DEP-007 | P1 | 提供 systemd 原生部署包。 |
+| WEB-DEP-008 | P0 | Core 持久化只依赖统一抽象接口；Desktop 使用 SQLite 实现，Web 使用 MySQL 实现。 |
 
 建议环境变量：
 
 - DATAZEN_BIND_ADDR：默认 0.0.0.0:8080
 - DATAZEN_PUBLIC_URL：外部访问地址
 - DATAZEN_DATA_DIR：持久化目录
+- DATAZEN_DATABASE_URL：Web 元数据库 MySQL 连接串，生产环境必须通过 Secret 注入
 - DATAZEN_MASTER_KEY：安全编码值或 secret-file 引用
 - DATAZEN_BOOTSTRAP_TOKEN：首次初始化一次性 token
 - DATAZEN_TRUST_PROXY：可信反向代理配置
@@ -345,6 +347,7 @@ Web 版以浏览器和服务端语义重新设计交互，不通过弹出窗口�
 | WEB-QUERY-006 | P0 | 刷新页面不恢复 result rows，只恢复草稿和历史摘要。 |
 | WEB-QUERY-007 | P1 | 浏览器下载 CSV/JSON/XLSX；大结果服务端 streaming export。 |
 | WEB-QUERY-008 | P1 | ER、EXPLAIN、Privilege View 完整 parity。 |
+| WEB-QUERY-009 | P0 | SQL 执行采用 prepare → audit → execute_prepared；审计同时记录用户提交 SQL、Driver 最终执行 SQL、改写链和最终状态。 |
 
 ### 9.6 Workflow、AI 与 Dashboard
 
@@ -477,12 +480,16 @@ v0.2.0 优先 REST + SSE，不为双向通信引入 WebSocket。
       domain / services / runtime / ports
 
     packages/server/               # crate/bin: datazen-server
-      http / auth / middleware / sse / workers / server-store
+      http / auth / middleware / sse / workers / mysql-adapter
+
+    packages/persistence-api/      # Core 依赖的 Repository/Unit-of-Work 契约
+    packages/persistence-sqlite/   # Desktop 实现
+    packages/persistence-mysql/    # Web 实现
 
     src-tauri/                     # Desktop adapter
       Tauri commands / native UI / tray / updater / keychain
 
-datazen-core 禁止依赖 tauri、HTTP framework、Cookie、桌面插件和窗口类型。
+datazen-core 禁止依赖 tauri、HTTP framework、Cookie、桌面插件和窗口类型。Core 不负责认证，只接收由 Adapter 建立的执行上下文；Web 注入已认证用户，Desktop 注入固定 LocalDesktop context，不引入登录、Session 或 RBAC。
 
 迁移不是一次性移动全部代码：先完成 Connection + Query 纵切，再迁移 Workflow、Dashboard、AI。每个纵切必须证明 Tauri 和 HTTP 调用同一个 service。
 
@@ -490,7 +497,8 @@ datazen-core 禁止依赖 tauri、HTTP framework、Cookie、桌面插件和窗�
 
 核心至少抽象：
 
-- IdentityContext / Authorization
+- ExecutionContext / 可选 Authorization（Web 用户需要，Desktop 使用 LocalDesktop）
+- PersistenceProvider / UnitOfWork
 - WorkspaceRepository
 - ConnectionRepository / SecretStore
 - SettingsRepository
@@ -507,7 +515,7 @@ Desktop adapter 使用本地默认 identity/workspace；Server adapter 使用真
 
 - CoreState：Driver、ConnectionManager、SchemaCache、Workflow、AI、Monitor/Audit。
 - DesktopState：Tauri handle、窗口、dialog、tray、updater、keychain。
-- ServerState：Auth、Session、Workspace Store、HTTP Event Hub、Worker。
+- ServerState：Auth、Session、MySQL Persistence、HTTP Event Hub、Worker。
 
 ## 13. 前端架构要求
 
@@ -569,16 +577,17 @@ UI 按 capability 呈现能力，不散落 isTauri 分支。
 
 所有业务表包含 workspace_id；用户操作记录 actor_user_id。外键和唯一约束必须包含工作区边界，避免仅靠应用代码隔离。
 
-### 14.2 SQLite 策略
+### 14.2 双持久化策略
 
-v0.2.0 Server 默认使用 SQLite WAL，限定单节点：
+v0.2.0 的业务持久化层必须提供统一抽象接口，Core 和领域服务不得直接依赖 rusqlite、sqlx、SQLite 或 MySQL 方言。至少提供两套实现：
 
-- 同一实例只允许一个 Server 进程持有数据目录。
-- migration 前自动创建可恢复备份。
-- 写操作使用短事务，不在事务中等待外部 DB/LLM/Webhook。
-- Monitor/Workflow 并发写入需有队列或明确 busy timeout。
+- Desktop：SQLite，保持本地离线、单用户和现有数据目录升级能力；启用 WAL、busy timeout、短事务和 migration 前一致性备份。
+- Web：MySQL 8.0+，使用 InnoDB、utf8mb4、UTC 时间和独立连接池；连接信息通过 DATAZEN_DATABASE_URL/Secret 注入。
+- 两套实现共享同一组 Repository/Unit-of-Work 契约测试，保证 workspace 隔离、事务边界、唯一约束、分页和审计写入语义一致。
+- migration 使用相同逻辑版本号，但允许 SQLite/MySQL 各自维护方言 SQL；禁止运行时把一套 migration SQL 自动翻译为另一种方言。
+- Core 的跨表原子操作通过 Unit-of-Work 接口表达，不向领域层暴露具体数据库 transaction 类型。
 
-外部 PostgreSQL 作为 Server 元数据库不进入 v0.2.0。
+PostgreSQL 元数据库实现不进入 v0.2.0；后续可在不修改 Core 服务的前提下新增适配器。
 
 ### 14.3 Desktop 兼容
 
@@ -674,6 +683,7 @@ v0.2.0 Server 默认使用 SQLite WAL，限定单节点：
 ### 18.1 测试层级
 
 - datazen-core 单元测试：无 Tauri/HTTP，使用 in-memory repository 和 mock identity。
+- Persistence contract：同一组契约分别运行 SQLite 与 MySQL adapter，覆盖事务、约束、分页、迁移和审计。
 - Server integration：HTTP、Cookie/CSRF、RBAC、workspace isolation、SSE、migration。
 - Frontend unit：Store 分别使用 fake TauriTransport 和 HttpTransport contract。
 - Web E2E：沿用 WebdriverIO，新增 browser runner。
@@ -715,7 +725,7 @@ v0.2.0 Server 默认使用 SQLite WAL，限定单节点：
 ### Phase 1：内部 Alpha（第 3–7 周）
 
 - Bootstrap、登录、工作区、连接、Schema、Query、SSE。
-- Docker 开发部署、SQLite migration、Server master key。
+- Docker 开发部署、SQLite/MySQL 双 migration、Repository 契约测试、Server master key。
 - Desktop 迁移 Connection + Query 到 PlatformClient。
 
 退出条件：内部用户可只通过浏览器完成连接和查询；无 P0 隔离漏洞。
@@ -756,7 +766,9 @@ v0.2.0 Server 默认使用 SQLite WAL，限定单节点：
 ### 数据
 
 - Desktop v0.1 → v0.2 升级不丢连接、历史、Workflow 和 Dashboard。
-- Server migration 可在失败后从自动备份恢复。
+- Desktop SQLite migration 失败后可从自动备份恢复；Web MySQL migration 要求升级前存在可验证的恢复点，并提供对应 runbook。
+- Desktop 使用 SQLite；Web 使用 MySQL；两套 adapter 的逻辑 migration 版本一致。
+- SQL 审计保留 submitted/effective SQL 的 hash、改写链和最终 outcome；全文按策略加密保存。
 - master key 错误时 fail closed。
 
 ### 可靠性
@@ -789,7 +801,7 @@ v0.2.0 发布后四周观察：
 | Web 范围膨胀为 SaaS | 很高 | 锁定单节点自托管；SSO、计费、HA 排除。 |
 | Tauri 耦合迁移被低估 | 高 | 先做 Query vertical slice；完成后删除直连 IPC。 |
 | 多用户模型污染桌面 | 高 | Core 使用 repository/identity port；Desktop 使用隐式 local workspace。 |
-| SQLite 写竞争 | 中高 | WAL、短事务、busy timeout、Worker 写队列、压测。 |
+| SQLite/MySQL 实现语义漂移 | 高 | 统一 Persistence API、相同逻辑 migration 版本、双适配器契约测试与升级 fixture。 |
 | 浏览器暴露高风险操作 | 很高 | Server RBAC + SQL Audit + Secret write-only。 |
 | Extension/文件系统攻击面 | 很高 | Web v0.2.0 禁用 runtime extension 和任意 server path。 |
 | SSE 断线状态错乱 | 中 | Job 可查询、Last-Event-ID、幂等 request、terminal state。 |

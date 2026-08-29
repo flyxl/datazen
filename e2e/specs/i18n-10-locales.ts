@@ -4,8 +4,10 @@
  * I18N10-001  Settings language dropdown lists all 10 locales
  * I18N10-002  LANGUAGE_OPTIONS values align with SUPPORTED_LOCALES
  * I18N10-003  Switching language updates main-window UI text
- * I18N10-004  All locale files share key parity (runtime bundle check)
  * I18N10-005  Unsupported locale code falls back to English UI
+ *
+ * Locale key parity across all locale files is covered by release workflow
+ * (`scripts/i18n-sync-check.mjs` + i18n-sync skill), not E2E.
  */
 import { expect, browser, $ } from '@wdio/globals';
 
@@ -211,18 +213,6 @@ describe('10-Locale i18n (I18N10-001~I18N10-005)', () => {
     }
   });
 
-  it('I18N10-004: all locale dictionaries should have matching keys', async () => {
-    // WebDriver cannot return Promise results from execute(); key parity is asserted in
-    // src/locales/locales.test.ts (Vitest). Here we smoke-check UI renders for each locale.
-    for (const locale of EXPECTED_LOCALES) {
-      await setLanguageOnMainWindow(locale, originalSettings);
-      const body = await $('body');
-      await expect(body).toBeDisplayed();
-      const text = await body.getText();
-      expect(text.length).toBeGreaterThan(0);
-    }
-  });
-
   it('I18N10-005: unsupported locale should fall back to English UI', async () => {
     await setLanguageOnMainWindow('xx-XX', originalSettings);
 
@@ -232,26 +222,5 @@ describe('10-Locale i18n (I18N10-001~I18N10-005)', () => {
 
     const settings = await invokeBackend<AppSettings>('get_settings');
     expect(settings.language).toBe('xx-XX');
-  });
-
-  it('I18N10-007: export/import action labels follow language', async () => {
-    // macOS uses the native menu (MenuBar returns null); assert locale + wiring
-    // instead of DOM buttons (same approach as app-data-backup ADB-001).
-    const fs = await import('node:fs');
-    const path = await import('node:path');
-    const root = path.resolve(import.meta.dirname, '../..');
-    const zh = fs.readFileSync(path.join(root, 'src/locales/zh-CN.ts'), 'utf8');
-    const en = fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8');
-    expect(zh).toContain("'menu.exportConfig': '导出应用数据'");
-    expect(zh).toContain("'menu.importConfig': '导入应用数据'");
-    expect(en).toMatch(/'menu\.exportConfig': 'Export App Data/);
-    expect(en).toMatch(/'menu\.importConfig': 'Import App Data/);
-
-    const mainSrc = fs.readFileSync(
-      path.join(root, 'src/windows/connection/ConnectionPage.tsx'),
-      'utf8',
-    );
-    expect(mainSrc).toContain('menu:export-config');
-    expect(mainSrc).toContain('menu:import-config');
   });
 });

@@ -11,7 +11,9 @@ import {
   expandAllGroups,
   findCardByName,
   openSeededPgConnectionWindow,
-  waitForNewConnectionDialog,
+  openNewConnectionDialogFromUi,
+  selectNewConnectionDriver,
+  clickNewConnectionSave,
   waitForConnectionToolbar,
 } from '../helpers.js';
 import { t } from '../i18n.js';
@@ -33,15 +35,13 @@ async function openSqlite(fixture: DriverFixtureDefinition, mainWindow: string) 
   if (existing) {
     await dblclickConnByExactName(fixture.displayName);
   } else {
-    const titleBtn = await $(`button[title="${t('main.newConnection')}"]`);
-    await titleBtn.click();
-    await waitForNewConnectionDialog();
-    await $('button*=SQLite').click();
+    await openNewConnectionDialogFromUi();
+    await selectNewConnectionDriver('sqlite');
     await browser.pause(300);
     await $(`input[placeholder="${t('newConn.namePlaceholder')}"]`).setValue(fixture.displayName);
     const dbInput = await $('input[placeholder="/path/to/db.sqlite"]');
     await dbInput.setValue(SQLITE_DB);
-    await $(`button*=${t('common.save')}`).click();
+    await clickNewConnectionSave();
     await browser.waitUntil(
       async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
       { timeout: 10000 },

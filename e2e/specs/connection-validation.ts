@@ -2,7 +2,13 @@
  * Connection validation / reverse-path E2E (TC-CONN-005/006/007, TC-EDGE-007).
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
-import { waitForNewConnectionDialog, closeExtraWindows } from '../helpers.js';
+import {
+  waitForNewConnectionDialog,
+  closeExtraWindows,
+  openNewConnectionDialogFromUi,
+  selectNewConnectionDriver,
+  clickNewConnectionTest,
+} from '../helpers.js';
 import { t } from '../i18n.js';
 
 const PG_HOST = process.env.E2E_PG_HOST || '127.0.0.1';
@@ -13,10 +19,8 @@ const MYSQL_USER = process.env.E2E_MYSQL_USER || 'root';
 const MYSQL_DB = process.env.E2E_MYSQL_DB || 'datazen_test';
 
 async function openNewConnectionForm(_mainWindow: string) {
-  const btn = await $(`button*=${t('action.newConnection')}`);
-  await btn.click();
-  await waitForNewConnectionDialog();
-  await $(`button*=${t('newConn.testConnection')}`).waitForDisplayed({ timeout: 10000 });
+  await openNewConnectionDialogFromUi();
+  await $(`[data-testid="new-conn-test-connection"]`).waitForDisplayed({ timeout: 10000 });
 }
 
 async function setInputByPlaceholder(placeholder: string, value: string) {
@@ -47,8 +51,7 @@ async function setPassword(value: string) {
 }
 
 async function clickTestConnection() {
-  const btn = await $(`button*=${t('newConn.testConnection')}`);
-  await btn.click();
+  await clickNewConnectionTest();
 }
 
 describe('连接校验反向用例 (TC-CONN-005/006/007, TC-EDGE-007)', () => {
@@ -76,7 +79,7 @@ describe('连接校验反向用例 (TC-CONN-005/006/007, TC-EDGE-007)', () => {
       body.includes('Host') ||
       body.includes('失败');
     expect(failed).toBe(true);
-    await expect(await $(`button*=${t('newConn.testConnection')}`)).toBeDisplayed();
+    await expect(await $('[data-testid="new-conn-test-connection"]')).toBeDisplayed();
   });
 
   it('TC-CONN-006: 无效 Host 测试连接应失败并显示错误', async () => {
@@ -106,8 +109,7 @@ describe('连接校验反向用例 (TC-CONN-005/006/007, TC-EDGE-007)', () => {
 
   it('TC-CONN-007: MySQL 错误密码应认证失败且错误信息不含明文密码', async () => {
     await openNewConnectionForm(mainWindow);
-    const mysqlBtn = await $('button*=MySQL');
-    await mysqlBtn.click();
+    await selectNewConnectionDriver('mysql');
     await browser.pause(300);
 
     await setInputByPlaceholder('例如：主数据库', 'E2E-错误密码');
@@ -176,6 +178,6 @@ describe('连接校验反向用例 (TC-CONN-005/006/007, TC-EDGE-007)', () => {
       { timeout: 30000, timeoutMsg: '等待空密码测试结果超时' },
     );
 
-    await expect(await $(`button*=${t('newConn.testConnection')}`)).toBeDisplayed();
+    await expect(await $('[data-testid="new-conn-test-connection"]')).toBeDisplayed();
   });
 });

@@ -7,6 +7,8 @@ import {
   openQueryTab,
   clickFirstTable,
   waitForNewConnectionDialog,
+  waitForNewQueryButton,
+  openNewConnectionDialogFromUi,
 } from '../helpers.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -200,7 +202,7 @@ describe('Client parity P0–P2', () => {
     });
     const handles = await browser.getWindowHandles();
     await browser.switchToWindow(handles.find((h) => h !== mainWindow)!);
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+    await waitForNewQueryButton(20000);
     await openQueryTab();
 
     await expect(await $(`button*=${t('query.format')}`)).toBeDisplayed();
@@ -254,9 +256,7 @@ describe('Client parity P0–P2', () => {
 
   it('new connection form shows SSH agent and jump host', async () => {
     await closeExtraWindows(mainWindow);
-    const btn = await $(`button*=${t('action.newConnection')}`);
-    await btn.click();
-    await waitForNewConnectionDialog();
+    await openNewConnectionDialogFromUi();
     const ssh = await $(`label*=${t('newConn.sshTunnel')}`);
     await ssh.waitForDisplayed({ timeout: 10000 });
     await ssh.click();

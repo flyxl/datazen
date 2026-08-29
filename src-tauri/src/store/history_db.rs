@@ -592,6 +592,7 @@ fn open_connection(db_path: &Path) -> Result<Connection, HistoryDbError> {
     match Connection::open(db_path) {
         Ok(conn) => {
             let _: i32 = conn.query_row("SELECT 1", [], |row| row.get(0))?;
+            let _: String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))?;
             Ok(conn)
         }
         Err(e) => {

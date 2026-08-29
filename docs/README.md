@@ -32,7 +32,7 @@
 
 ## 2. 系统架构文档（docs/architecture/）
 
-总览入口：[architecture/README.md](architecture/README.md)（分层架构、Driver Command 架构、Workflow 架构）。
+总览入口：[architecture/README.md](architecture/README.md)（分层架构、Driver Command 架构、Workflow 架构）。Web 平台化实施方案见 [web-platform-implementation](architecture/rfc/web-platform-implementation.zh-CN.md)。
 
 ### 后端（architecture/backend/）
 

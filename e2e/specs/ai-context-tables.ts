@@ -8,6 +8,11 @@ import {
   closeExtraWindows,
   captureJourneyStep,
   waitForNewConnectionDialog,
+  waitForNewQueryButton,
+  openNewConnectionDialogFromUi,
+  selectNewConnectionDriver,
+  clickNewConnectionSave,
+  clickNewConnectionTest,
   findCardByName,
   expandAllGroups,
   waitForSchemaTreeLoaded,
@@ -57,17 +62,14 @@ async function createAndConnectSQLite() {
     const handles = await browser.getWindowHandles();
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+    await waitForNewQueryButton(20000);
     await browser.pause(2000);
     return { mainWindow, connWindow };
   }
 
-  const newConnBtn = await $(`button*=${t('action.newConnection')}`);
-  await newConnBtn.click();
-  await waitForNewConnectionDialog();
+  await openNewConnectionDialogFromUi();
 
-  const sqliteBtn = await $('button*=SQLite');
-  await sqliteBtn.click();
+  await selectNewConnectionDriver('sqlite');
   await browser.pause(300);
 
   const nameInput = await $(`input[placeholder="${t('newConn.namePlaceholder')}"]`);
@@ -76,8 +78,7 @@ async function createAndConnectSQLite() {
   const dbInput = await $('input[placeholder="/path/to/db.sqlite"]');
   await dbInput.setValue(DB_PATH);
 
-  const testBtn = await $(`button*=${t('newConn.testConnection')}`);
-  await testBtn.click();
+  await clickNewConnectionTest();
   await browser.waitUntil(
     async () => {
       const body = await $('body').getText();
@@ -86,8 +87,7 @@ async function createAndConnectSQLite() {
     { timeout: 15000 },
   );
 
-  const saveBtn = await $(`button*=${t('common.save')}`);
-  await saveBtn.click();
+  await clickNewConnectionSave();
   await browser.waitUntil(
     async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
     { timeout: 10000 },
@@ -114,7 +114,7 @@ async function createAndConnectSQLite() {
   const handles = await browser.getWindowHandles();
   const connWindow = handles.find((h) => h !== mainWindow)!;
   await browser.switchToWindow(connWindow);
-  await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+  await waitForNewQueryButton(20000);
   await browser.pause(2000);
   return { mainWindow, connWindow };
 }

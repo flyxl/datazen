@@ -98,7 +98,7 @@ describe('主页 TablePlus 风格 (HOME)', () => {
   });
 
   it('HOME-004: 搜索栏旁应有"+"新建连接按钮', async () => {
-    const plusBtn = await $(`button[title="${t('main.newConnection')}"]`);
+    const plusBtn = await $('[data-testid="new-connection-button"]');
     await expect(plusBtn).toBeDisplayed();
   });
 
@@ -271,7 +271,7 @@ describe('主页 TablePlus 风格 (HOME)', () => {
   // ── Action panel buttons ─────────────────────────────────────────
 
   it('HOME-060: 点击"新建连接"应打开新建连接弹窗', async () => {
-    const plusBtn = await $(`button[title="${t('main.newConnection')}"]`);
+    const plusBtn = await $('[data-testid="new-connection-button"]');
     await plusBtn.click();
     await expect(await $('[data-testid="new-connection-dialog"]')).toBeDisplayed();
   });
