@@ -654,7 +654,7 @@ async fn effective_connection_name(
     let id = command_runtime::resolve_connection_id(step, workflow_connection)?;
     let (runtime_id, _, _) = app_state
         .connection_manager
-        .resolve_session_for_mcp(id)
+        .resolve_session_for_connection(id)
         .await
         .map_err(|e| e.to_string())?;
     app_state

@@ -1,15 +1,18 @@
 # cr-p1-mcp-connection-only — 进度
 
-**轨 ID：** cr-p1-mcp-connection-only | **分支：** feature/cr-p1-mcp-connection-only | **状态：** 编码中
+**轨 ID：** cr-p1-mcp-connection-only | **分支：** feature/cr-p1-mcp-connection-only | **状态：** 已完成
 
 ## 范围
 
-MCP / Workflow / db_tools 入参明确为 **仅 connectionId**；内部转换为 dbSessionId；复用已有 session 由 ConnectionManager 内部按 connectionId 查 owner 映射，不再「先当 dbSessionId 试」。
+MCP / Workflow / db_tools 入参 **仅 connectionId**；内部经 `get_or_connect_session` 转 dbSessionId 并复用已有 session。
 
 ## 验收
 
-- [ ] `resolve_session_for_mcp` 重命名为 `resolve_session_for_connection(connection_id: &str)`
-- [ ] 移除「id 可能是 dbSessionId」的 get_session 第一步；复用改为 connectionId → find existing session
-- [ ] db_tools / workflow / mcp 调用方与文档更新
-- [ ] 单测：同 connectionId 复用 session；误传 dbSessionId 明确报错
-- [ ] `cargo test -p datazen --lib` 全绿
+- [x] `resolve_session_for_connection(connection_id)` 替代双模 API
+- [x] 误传 dbSessionId → `ConnectionConfigNotFound`
+- [x] `get_or_connect_session` 复用已有 session
+- [x] cargo 1175/1175
+
+## Commit
+
+编码+测试：`cc0cd05f`

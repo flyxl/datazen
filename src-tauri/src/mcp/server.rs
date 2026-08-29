@@ -1221,12 +1221,13 @@ mod tests {
         use std::sync::Arc;
 
         let test = TestAppState::with_tables().await;
-        let (_, conn_id) = test.save_and_connect("mcp-prompt").await;
+        let (config, _db_session_id) = test.save_and_connect("mcp-prompt").await;
+        let connection_id = config.id.clone();
         let server = DataZenMcpServer::new(Arc::new(test.state));
 
         let nl2sql = server
             .nl2sql_prompt(rmcp::handler::server::wrapper::Parameters(Nl2SqlArgs {
-                connection_id: conn_id.clone(),
+                connection_id: connection_id.clone(),
                 question: "count users".into(),
                 database: Some("app".into()),
             }))
@@ -1248,7 +1249,7 @@ mod tests {
         let diag = server
             .diagnose_error_prompt(rmcp::handler::server::wrapper::Parameters(
                 DiagnoseErrorArgs {
-                    connection_id: conn_id.clone(),
+                    connection_id: connection_id.clone(),
                     sql: "SELECT bad".into(),
                     error: "column missing".into(),
                 },
@@ -1265,7 +1266,7 @@ mod tests {
         let plan = server
             .explain_plan_prompt(rmcp::handler::server::wrapper::Parameters(
                 ExplainPlanArgs {
-                    connection_id: conn_id,
+                    connection_id,
                     sql: "SELECT 1".into(),
                 },
             ))
@@ -1293,7 +1294,7 @@ mod tests {
 
         let test = TestAppState::with_tables().await;
         test.save_connection("res-inner").await;
-        let (_, conn_id) = test.save_and_connect("res-inner").await;
+        let (_config, _db_session_id) = test.save_and_connect("res-inner").await;
         let server = DataZenMcpServer::new(Arc::new(test.state));
 
         let conns = server
@@ -1345,7 +1346,7 @@ mod tests {
             _ => panic!("expected text resource"),
         }
 
-        let schema_uri = format!("datazen://schema/{conn_id}/app");
+        let schema_uri = "datazen://schema/res-inner/app";
         let schema = server.read_resource_inner(&schema_uri).await.unwrap();
         match &schema.contents[0] {
             ResourceContents::TextResourceContents { text, .. } => {

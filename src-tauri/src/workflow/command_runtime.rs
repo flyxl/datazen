@@ -30,7 +30,7 @@ pub async fn execute_command_with_mode(
     let connection_id = resolve_connection_id(step, workflow_connection)?;
     let (_runtime_id, driver, handle) = app_state
         .connection_manager
-        .resolve_session_for_mcp(connection_id)
+        .resolve_session_for_connection(connection_id)
         .await
         .map_err(|e| format!("Failed to connect '{connection_id}': {e}"))?;
 

@@ -9,7 +9,7 @@
 | **`connection_id`** | 持久化连接配置 ID（`ConnectionConfig.id`，存于 `connections.json`） | GUI 保存的连接、`connect` IPC 入参、MCP tools / AI db tools 入参 |
 | **`db_session_id`** | 运行时数据库会话 ID（`ConnectionManager` 分配，断开即失效） | `connect` 返回值、大多数查询/Schema IPC |
 
-规则：**GUI 先 `connect(connection_id)` → 得到 `db_session_id`，后续 SQL/Schema IPC 传 `db_session_id`。** MCP tools / AI db tools 与 prompts 直接传 **`connection_id`**（`list_connections` 返回值）；内部通过 `db_tools::resolve_connection` 按需连接。`resolve_connection` 底层走 `ConnectionManager::resolve_session_for_mcp` 双模解析（先按 `db_session_id` 查找活动会话，再回退到 `connection_id` 建立新会话），但 MCP/API 调用方应只传 connection_id。GUI IPC 路径已退役双模，见 [naming.md](../naming.md) §4。
+规则：**GUI 先 `connect(connection_id)` → 得到 `db_session_id`，后续 SQL/Schema IPC 传 `db_session_id`。** MCP tools / AI db tools 与 prompts 直接传 **`connection_id`**（`list_connections` 返回值）；内部通过 `db_tools::resolve_connection` 按需连接。`resolve_connection` 底层走 `ConnectionManager::resolve_session_for_connection`（仅接受 `connection_id`，经 `get_or_connect_session` 复用或建连）。GUI IPC 路径已退役双模，见 [naming.md](../naming.md) §4。
 
 > 历史演进：早期版本中持久化配置 ID 叫 `config_id`、运行时会话句柄叫 `connection_id`；现已统一为上表术语（旧键名不做兼容别名）。
 
@@ -221,7 +221,7 @@ pub enum ConnectionError {
 ### 1.4 DbTools
 
 `src-tauri/src/services/db_tools.rs` — 共享数据库操作工具，被 AI Chat 工具调用和 MCP Server 复用：
-- `resolve_connection(connection_id)` — 从持久化配置连接 ID 解析驱动和句柄（底层 `ConnectionManager::resolve_session_for_mcp` 双模：先匹配活动 `db_session_id`，再回退按 `connection_id` 建会话）
+- `resolve_connection(connection_id)` — 从持久化配置连接 ID 解析驱动和句柄（底层 `ConnectionManager::resolve_session_for_connection`：仅接受 `connection_id`，内部复用或建连）
 - `list_connections()` — 列出所有可用连接（返回 connection_id）
 - `query(connection_id, …)` / `list_databases` / `list_tables` / `get_table_schema` — MCP 与 AI tools 入参均为 **connection_id**
 
