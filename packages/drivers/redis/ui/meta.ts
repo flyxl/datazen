@@ -12,6 +12,7 @@ export const redisMeta = {
     connectionMode: 'server',
     supportsSSH: true,
     supportsSSL: true,
+    defaultSslMode: 'disable',
     supportsBackup: false,
     supportsTables: false,
     isKeyValue: true,

@@ -10,7 +10,7 @@ use datazen_driver_api::*;
 use redis::AsyncCommands;
 use redis::FromRedisValue;
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 use crate::connect::{
@@ -86,6 +86,8 @@ macro_rules! plugin_on_db {
 pub struct RedisDriver {
     connections: RwLock<HashMap<String, RedisConn>>,
 }
+
+const TEST_CONNECTION_TLS_GRACE: Duration = Duration::from_secs(5);
 
 impl RedisDriver {
     pub fn new() -> Self {
@@ -209,6 +211,37 @@ impl RedisDriver {
     pub async fn plugin_flush_all(&self, connection_id: &str) -> Result<(), DriverError> {
         with_live_any_op!(self, connection_id, |conn| crate::ops::flush_all(conn)
             .await)
+    }
+
+    async fn test_connection_inner(
+        &self,
+        config: &ConnectionConfig,
+    ) -> Result<ServerInfo, DriverError> {
+        let plan = build_connection_plan(config)?;
+        let mut live = open_live_conn(&plan).await?;
+        if let ConnectionPlan::Standalone(p) = &plan {
+            Self::select_db(&mut live, p.db_index)
+                .await
+                .map_err(DriverError::QueryFailed)?;
+        } else if let ConnectionPlan::Sentinel(p) = &plan {
+            Self::select_db(&mut live, p.db_index)
+                .await
+                .map_err(DriverError::QueryFailed)?;
+        }
+
+        let info: String = with_redis_conn!(&mut live, |conn| info_server_on(conn).await)
+            .map_err(DriverError::QueryFailed)?;
+
+        let version = info
+            .lines()
+            .find(|l| l.starts_with("redis_version:"))
+            .map(|l| l.trim_start_matches("redis_version:").trim().to_string())
+            .unwrap_or_else(|| "unknown".into());
+
+        Ok(ServerInfo {
+            server_version: version,
+            server_type: "Redis".into(),
+        })
     }
 
     pub async fn plugin_info(
@@ -1120,31 +1153,15 @@ impl DatabaseDriver for RedisDriver {
     }
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
-        let plan = build_connection_plan(config)?;
-        let mut live = open_live_conn(&plan).await?;
-        if let ConnectionPlan::Standalone(p) = &plan {
-            Self::select_db(&mut live, p.db_index)
-                .await
-                .map_err(DriverError::QueryFailed)?;
-        } else if let ConnectionPlan::Sentinel(p) = &plan {
-            Self::select_db(&mut live, p.db_index)
-                .await
-                .map_err(DriverError::QueryFailed)?;
-        }
-
-        let info: String = with_redis_conn!(&mut live, |conn| info_server_on(conn).await)
-            .map_err(DriverError::QueryFailed)?;
-
-        let version = info
-            .lines()
-            .find(|l| l.starts_with("redis_version:"))
-            .map(|l| l.trim_start_matches("redis_version:").trim().to_string())
-            .unwrap_or_else(|| "unknown".into());
-
-        Ok(ServerInfo {
-            server_version: version,
-            server_type: "Redis".into(),
-        })
+        let timeout = Duration::from_secs(config.connection_timeout.max(1) as u64)
+            .saturating_add(TEST_CONNECTION_TLS_GRACE);
+        tokio::time::timeout(timeout, self.test_connection_inner(config))
+            .await
+            .map_err(|_| {
+                DriverError::ConnectionFailed(format!(
+                    "Redis test connection timed out after {timeout:?}"
+                ))
+            })?
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
@@ -1687,4 +1704,60 @@ fn looks_like_hash(items: &[redis::Value]) -> bool {
             redis::Value::BulkString(_) | redis::Value::SimpleString(_)
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    fn config_for(port: u16) -> ConnectionConfig {
+        ConnectionConfig {
+            id: "redis-test".into(),
+            name: "redis-test".into(),
+            database_type: "redis".into(),
+            host: Some("127.0.0.1".into()),
+            port: Some(port),
+            database: Some("0".into()),
+            schema: None,
+            username: None,
+            password: None,
+            ssl_mode: SslMode::Disable,
+            connection_timeout: 1,
+            max_pool_size: 10,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            read_only: false,
+            pinned: false,
+            options: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_connection_times_out_when_server_stops_responding() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = [0; 1024];
+            let _ = socket.read(&mut buf).await;
+            let _ = socket.write_all(b"+OK\r\n").await;
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        });
+
+        let started = Instant::now();
+        let err = RedisDriver::new()
+            .test_connection(&config_for(port))
+            .await
+            .unwrap_err();
+
+        assert!(started.elapsed() < Duration::from_secs(8));
+        assert!(err.to_string().contains("timed out"));
+    }
 }
