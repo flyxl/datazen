@@ -8,6 +8,7 @@ import { AdminSchemaFields } from './AdminSchemaFields';
 import { driverCommands } from '../../commands/driver';
 import { useConnectionCommand } from '../../hooks/useConnectionCommand';
 import { useI18n } from '../../hooks/useI18n';
+import type { I18nKey } from '../../locales';
 import { toErrorMessage } from '../../lib/errors';
 
 export interface AdminCreateDialogProps {
@@ -16,9 +17,9 @@ export interface AdminCreateDialogProps {
   dbSessionId: string;
   command: string;
   /** Dialog title and primary button label (same i18n key) */
-  titleKey: string;
+  titleKey: I18nKey;
   /** i18n key for the name field label */
-  nameLabelKey: string;
+  nameLabelKey: I18nKey;
   namePlaceholder: string;
   /** Optional field labels passed to AdminSchemaFields */
   fieldLabels?: Record<string, string>;

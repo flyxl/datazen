@@ -10,6 +10,7 @@ import {
 } from '../../../lib/objectFilter';
 import { PINNED_GROUP_KEY } from '../../../stores/connectionStore';
 import type { ConnectionEntry } from '../../../stores/activeConnectionStore';
+import type { I18nKey } from '../../../locales';
 import type { ConnectionConfig, DatabaseObject, TableInfo } from '../../../types';
 import type { ObjectFilterPrefs } from '../../../lib/objectFilter';
 import type { ConnectionSchemaState } from '../../../stores/schemaStore';
@@ -32,7 +33,7 @@ export interface BuildNavigatorFlatRowsParams {
   dbObjectsMap: Record<string, DatabaseObject[]>;
   loadingDbs: Set<string>;
   query: string;
-  t: (key: string, params?: Record<string, string | number>) => string;
+  t: (key: I18nKey, params?: Record<string, string | number>) => string;
 }
 
 export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): UnifiedRow[] {

@@ -8,9 +8,10 @@ import {
   Search,
   Upload,
 } from 'lucide-react';
+import type { I18nKey } from '../../../locales';
 
 export interface NavigatorToolbarProps {
-  t: (key: string) => string;
+  t: (key: I18nKey) => string;
   searchQuery: string;
   setSearchQuery: (value: string) => void;
   onNewConnection: () => void;
