@@ -1078,10 +1078,9 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
-                    let child_labels = commands::window::non_main_window_labels(
+                    if commands::window::main_close_blocked_by_child_windows(
                         window.app_handle().webview_windows().keys().cloned(),
-                    );
-                    if !child_labels.is_empty() {
+                    ) {
                         api.prevent_close();
                         let _ = window.minimize();
                         return;
