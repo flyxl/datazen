@@ -68,4 +68,4 @@ npx vitest run src/components/ai/__tests__/WorkflowChatPanel.test.tsx
 
 ## Commit
 
-编码：`390d4efc` | 测试：`ca2d523d`
+编码：`390d4efc` | 测试：`1a10bcfb`
