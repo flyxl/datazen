@@ -323,7 +323,11 @@ log('Running E2E tests...');
 const wdio = spawn(
   'npx',
   ['wdio', 'run', 'e2e/wdio.conf.ts', ...wdioArgs],
-  { stdio: 'inherit', cwd: ROOT },
+  {
+    stdio: 'inherit',
+    cwd: ROOT,
+    env: { ...process.env, DATAZEN_DATA_DIR: isolatedDataDir },
+  },
 );
 
 const exitCode = await new Promise((resolve) => {
