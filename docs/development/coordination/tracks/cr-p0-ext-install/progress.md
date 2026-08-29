@@ -3,7 +3,7 @@
 **轨 ID：** cr-p0-ext-install  
 **分支：** feature/cr-p0-ext-install  
 **状态：** 编码完成（待 R 回归 E2E）  
-**Commit：** `ac3cb10e`
+**Commit：** `003230d0`
 
 ## 范围
 
