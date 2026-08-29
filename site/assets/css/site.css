@@ -290,13 +290,17 @@ img {
   .nav-inner {
     gap: 8px;
   }
-  .nav-cta {
+  .btn.nav-cta {
     order: 1;
     margin-left: auto;
-    padding: 7px 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 30px;
+    padding: 0 10px;
     border-radius: 8px;
     font-size: 12px;
-    line-height: 1.2;
+    line-height: 1;
     box-shadow: none;
   }
   .nav-cta-full {
