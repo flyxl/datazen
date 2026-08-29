@@ -248,6 +248,30 @@ img {
   border-color: var(--accent);
   text-decoration: none;
 }
+.nav-star {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+.nav-star:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.nav-star svg {
+  flex-shrink: 0;
+}
 .nav-tools {
   display: flex;
   align-items: center;
