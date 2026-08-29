@@ -17,6 +17,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@datazen/plugin-sdk': resolve(__dirname, 'src/plugin-sdk'),
+      '@tauri-apps/api/window': resolve(__dirname, 'src/test/mocks/tauriWindow.ts'),
     },
   },
   test: {
