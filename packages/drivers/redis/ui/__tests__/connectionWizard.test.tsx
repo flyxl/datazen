@@ -273,6 +273,7 @@ describe('RedisTlsFields', () => {
     fireEvent.click(checkboxes[0]);
     fireEvent.click(checkboxes[1]);
     expect(form.setOptions).toHaveBeenCalled();
+    expect(form.setSslMode).toHaveBeenCalledWith('disable');
     fireEvent.change(screen.getByPlaceholderText('/path/to/ca.pem'), {
       target: { value: '/tmp/ca.pem' },
     });
