@@ -30,7 +30,9 @@ import { invokeBackend } from '../helpers/data-dashboard.js';
 import {
   backFromSettingsInMainWindow,
   captureJourneyStep,
+  injectDialogPath,
   openSettingsInMainWindow,
+  resetDialogQueue,
 } from '../helpers.js';
 
 const PLUGIN_ID = 'datazen.sample';
@@ -213,12 +215,12 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
     const dialog = await $('[role="dialog"]');
     await dialog.waitForDisplayed({ timeout: 10000 });
 
-    const pathInput = await $('input[placeholder="/path/to/plugin.zip"]');
-    await pathInput.waitForDisplayed({ timeout: 5000 });
-    await pathInput.setValue(FIXTURE_DIR);
+    // J1-001-R: native folder picker — inject fixture path (dialog branch, no typed path).
+    await resetDialogQueue();
+    await injectDialogPath(FIXTURE_DIR);
+    await $('[data-testid="plugin-install-browse-folder"]').click();
 
     // Step 1 → 2: validate-only inspect; review shows name/version/permissions.
-    await $('[data-testid="plugin-install-next"]').click();
     await $('[data-testid="plugin-install-review"]').waitForDisplayed({ timeout: 15000 });
     const review = await $('[data-testid="plugin-install-review"]').getText();
     expect(review).toContain('Sample Hello');

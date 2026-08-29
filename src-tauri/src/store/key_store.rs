@@ -144,13 +144,22 @@ fn write_key_file(data_dir: &Path, key: &[u8; 32]) -> Result<(), StoreError> {
     Ok(())
 }
 
-/// Owner read/write only — same policy as MCP token file (`mcp/auth.rs`).
+/// Restrict `{appData}/.key` to the owning user — same intent as `mcp.token`
+/// in [`crate::mcp::auth`].
+///
+/// - **Unix:** `chmod 600` (owner read/write only).
+/// - **Windows:** not implemented yet — no shared ACL helper in the repo and
+///   `mcp/auth.rs` applies the same Unix-only `chmod` for `mcp.token`. The file
+///   inherits default user-profile ACLs; explicit DACL hardening is tracked as
+///   a follow-up (see coordination hub R-stage leftovers).
 fn restrict_key_file_permissions(path: &Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
     }
+    #[cfg(windows)]
+    let _ = path; // ACL hardening deferred — see doc comment above
 }
 
 fn remove_key_file(data_dir: &Path) {

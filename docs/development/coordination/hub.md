@@ -21,7 +21,7 @@
 | cr-p2-schema-cmd | P2 | Schema Driver Command 收敛 | 已完成 | f67e9121 | |
 | cr-p2-navigator-split | P2 | Navigator 拆分 | 已完成 | 9127fee2 | 2888→660 行 |
 | cr-p3-dedup-dialogs | P3 | 对话框/toErrorMessage 去重 | 已完成 | c8f25a6a | |
-| cr-p3-secrets-hardening | P3 | 密钥文件 + 日志脱敏 | 已完成* | c1ffc385 | *history 明文风险待文档化 |
+| cr-p3-secrets-hardening | P3 | 密钥文件 + 日志脱敏 | 已完成 | c1ffc385 | history 明文风险已文档化 |
 
 ---
 
@@ -33,7 +33,7 @@
 | W2 P1 | 已完成 | |
 | W3 P2 | 已完成 | |
 | W4 P3 | 已完成 | |
-| R 全量回归 | 进行中 | |
+| R 全量回归 | 进行中 | follow-up 修复代理 2026-08-29 |
 
 ---
 
@@ -42,11 +42,10 @@
 - [ ] `cargo test -p datazen --lib`
 - [ ] `npx vitest run`
 - [ ] `pnpm exec tsc --noEmit`
-- [ ] E2E：MCP stdio 手工、plugins J1-001-R
+- [x] E2E：MCP stdio 手工
+- [x] E2E：plugins J1-001-R（dialog injection + browse folder）
 
 ## 遗留（非阻塞）
 
-- Windows `.key` / `mcp.token` ACL
-- Query history 明文 SQL 文档化
-- plugins E2E J1-001 迁移
+- Windows `.key` / `mcp.token` ACL（Unix `chmod 600` 已实现；Windows DACL 待跟进）
 - 非 en i18n key sync
