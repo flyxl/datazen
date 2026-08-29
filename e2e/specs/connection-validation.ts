@@ -8,6 +8,7 @@ import {
   openNewConnectionDialogFromUi,
   selectNewConnectionDriver,
   clickNewConnectionTest,
+  selectDzOption,
 } from '../helpers.js';
 import { t } from '../i18n.js';
 
@@ -52,6 +53,18 @@ async function setPassword(value: string) {
 
 async function clickTestConnection() {
   await clickNewConnectionTest();
+}
+
+async function expandAdvancedSettings() {
+  const advBtn = await $('button*=高级设置');
+  await advBtn.waitForDisplayed({ timeout: 5000 });
+  await advBtn.click();
+  await browser.pause(300);
+}
+
+async function setSslModeDisable() {
+  await expandAdvancedSettings();
+  await selectDzOption(t('newConn.sslMode'), 'Disable');
 }
 
 describe('连接校验反向用例 (TC-CONN-005/006/007, TC-EDGE-007)', () => {
@@ -163,6 +176,7 @@ describe('连接校验反向用例 (TC-CONN-005/006/007, TC-EDGE-007)', () => {
     await setInputByPlaceholder('myapp_production', PG_DB);
     await setInputByPlaceholder('postgres', PG_USER);
     await setPassword('');
+    await setSslModeDisable();
     await clickTestConnection();
 
     await browser.waitUntil(

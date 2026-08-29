@@ -278,6 +278,7 @@ export async function expandConnectedConnectionInNavigator(nameFragment = E2E_PG
 
 /** Double-click seeded PG connection and wait for toolbar in the unified main window. */
 export async function connectSeededPgInWorkspace() {
+  await openConnectionsWorkspace();
   await expandAllGroups();
   await browser.waitUntil(async () => (await $$('[data-conn-item]')).length > 0, {
     timeout: 15000,
@@ -415,6 +416,52 @@ export async function createAndConnectMySQL(
   if (!card) throw new Error(`未找到 MySQL 连接 "${name}"`);
   await dblclickConnByExactName(name);
 
+  return finishConnectInWorkspace(mainWindow);
+}
+
+/**
+ * Create a SQLite connection via the new-connection UI and connect in the unified workspace.
+ * Returns `{ mainWindow, connWindow }` where both handles refer to the same OS window.
+ */
+export async function createAndConnectSQLiteInWorkspace(connName: string, dbPath: string) {
+  const mainWindow = await browser.getWindowHandle();
+  await openConnectionsWorkspace(mainWindow);
+  await expandAllGroups();
+
+  const existingItem = await findCardByName(connName);
+  if (!existingItem) {
+    await openNewConnectionDialogFromUi();
+    await selectNewConnectionDriver('sqlite');
+    await browser.pause(300);
+
+    const nameInput = await $(`input[placeholder="${t('newConn.namePlaceholder')}"]`);
+    await nameInput.setValue(connName);
+
+    const dbInput = await $('input[placeholder="/path/to/db.sqlite"]');
+    await dbInput.setValue(dbPath);
+
+    await clickNewConnectionTest();
+    await browser.waitUntil(
+      async () => {
+        const body = await $('body').getText();
+        return body.includes(t('newConn.testSuccess')) || body.includes('text-red-400');
+      },
+      { timeout: 15000 },
+    );
+
+    await clickNewConnectionSave();
+    await browser.waitUntil(
+      async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
+      { timeout: 10000, timeoutMsg: '保存 SQLite 连接后弹窗未关闭' },
+    );
+    await browser.switchToWindow(mainWindow);
+    await browser.pause(1000);
+  }
+
+  const card = await findCardByName(connName);
+  if (!card) throw new Error(`未找到 SQLite 连接 "${connName}"`);
+
+  await dblclickConnByExactName(connName);
   return finishConnectInWorkspace(mainWindow);
 }
 
@@ -1302,6 +1349,20 @@ export async function switchWorkspaceNav(
   await nav.click();
   const target = await $(`[data-testid="${waitTestId}"]`);
   await target.waitForDisplayed({ timeout: 15000 });
+}
+
+/** Return to the connections workspace (shows navigator + connection list). */
+export async function openConnectionsWorkspace(mainHandle?: string) {
+  if (mainHandle) {
+    await browser.switchToWindow(mainHandle);
+  }
+  await browser.pause(200);
+  const nav = await $('[data-testid="workspace-nav-connections"]');
+  if (await nav.isExisting()) {
+    await nav.waitForDisplayed({ timeout: 15000 });
+    await nav.click();
+    await browser.pause(400);
+  }
 }
 
 /** Open embedded Workflow workspace inside the main window (no OS sub-window). */
