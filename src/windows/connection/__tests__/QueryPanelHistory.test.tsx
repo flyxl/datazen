@@ -13,13 +13,17 @@ vi.mock('../../../hooks/useResizable', () => ({
   useResizable: () => ({ size: 280, handleRef: { current: null } }),
 }));
 
-vi.mock('../../../hooks/useCompactToolbar', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../hooks/useCompactToolbar')>();
-  return {
-    ...actual,
-    useCompactToolbar: () => ({ ref: { current: null }, compact: false }),
-  };
-});
+vi.mock('../../../hooks/useCompactToolbar', () => ({
+  estimateExpandedToolbarWidth: ({
+    expandedButtonCount,
+    fixedExtraWidth = 0,
+  }: {
+    expandedButtonCount: number;
+    fixedExtraWidth?: number;
+  }) => 32 + expandedButtonCount * 96 + Math.max(0, expandedButtonCount - 1) * 8 + fixedExtraWidth,
+  TOOLBAR_GAP: 8,
+  useCompactToolbar: () => ({ ref: { current: null }, compact: false }),
+}));
 
 vi.mock('../../../stores/settingsStore', () => ({
   useSettingsStore: (
