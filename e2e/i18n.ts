@@ -11,12 +11,15 @@ type TranslationKey = keyof typeof zhCN;
 /** Legacy E2E keys that were renamed in locale files. */
 const KEY_ALIASES: Record<string, TranslationKey> = {
   'action.newConnection': 'common.newConnection',
+  'action.restore': 'common.restoreDatabase',
   'action.backup': 'common.backupDatabase',
   'action.dataSync': 'common.dataSync',
   'backup.title': 'common.backupDatabase',
   'connWin.newQuery': 'common.newQuery',
   'connWin.copyDDL': 'common.copyDdl',
   'connWin.newTable': 'common.newTable',
+  'main.newConnection': 'common.newConnection',
+  'sync.title': 'common.dataSyncTitle',
   'sync.windowTitle': 'common.dataSyncTitle',
   'sync.sqlPreviewTab': 'common.sqlPreviewLower',
   'transfer.title': 'common.dataTransfer',
