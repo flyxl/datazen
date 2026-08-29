@@ -1300,6 +1300,35 @@ export async function switchWorkspaceNav(
   await target.waitForDisplayed({ timeout: 15000 });
 }
 
+/** Open embedded Workflow workspace inside the main window (no OS sub-window). */
+export async function openWorkflowWorkspace(mainHandle?: string) {
+  if (mainHandle) {
+    await browser.switchToWindow(mainHandle);
+  }
+  await browser.pause(300);
+  await switchWorkspaceNav(
+    'workspace-nav-workflow',
+    'workflow-workspace',
+    'workflow-workspace-open',
+  );
+}
+
+/** Open embedded Dashboard panel inside the main window (no OS sub-window). */
+export async function openDashboardPanel(mainHandle?: string, dashboardId?: string) {
+  if (mainHandle) {
+    await browser.switchToWindow(mainHandle);
+  }
+  await browser.pause(300);
+  await switchWorkspaceNav('workspace-nav-dashboard', 'dashboard-panel', 'workspace-dashboard');
+  if (dashboardId) {
+    const tab = await $(`[data-testid="dashboard-tab"][data-dashboard-id="${dashboardId}"]`);
+    if (await tab.isExisting()) {
+      await tab.click();
+      await browser.pause(400);
+    }
+  }
+}
+
 /** Open ER diagram from home quick action or connection toolbar. */
 export async function openErDiagramFromUi() {
   const homeQuick = await $('[data-testid="home-quick-er-diagram"]');

@@ -1,5 +1,11 @@
 import { expect, browser, $ } from '@wdio/globals';
-import { openConnectionWindow, closeExtraWindows, executeSQL, openQueryTab, switchToNewWindow } from '../helpers.js';
+import {
+  openConnectionWindow,
+  closeExtraWindows,
+  executeSQL,
+  openQueryTab,
+  openWorkflowWorkspace,
+} from '../helpers.js';
 import { t } from '../i18n.js';
 
 describe('Bug Fix Verification', () => {
@@ -16,23 +22,10 @@ describe('Bug Fix Verification', () => {
     await browser.pause(500);
   });
 
-  describe('FIX-001: Workflow 窗口不应包含主题切换按钮', () => {
-    it('Workflow 窗口中不应存在 ThemeToggle 按钮', async () => {
-      const found = await browser.execute((label: string) => {
-        const buttons = document.querySelectorAll('button');
-        for (const btn of buttons) {
-          if (btn.textContent?.includes(label)) {
-            btn.click();
-            return true;
-          }
-        }
-        return false;
-      }, t('action.workflow'));
-
-      if (!found) throw new Error('Workflow button not found');
-
-      await switchToNewWindow(mainWindow);
-      await browser.pause(2000);
+  describe('FIX-001: Workflow 工作区不应包含主题切换按钮', () => {
+    it('Workflow 工作区中不应存在 ThemeToggle 按钮', async () => {
+      await openWorkflowWorkspace(mainWindow);
+      await browser.pause(500);
 
       const hasThemeToggle = await browser.execute(() => {
         const buttons = document.querySelectorAll('button');
@@ -52,23 +45,10 @@ describe('Bug Fix Verification', () => {
     });
   });
 
-  describe('FIX-002: Workflow 窗口打开文件夹按钮应有效', () => {
+  describe('FIX-002: Workflow 工作区打开文件夹按钮应有效', () => {
     it('打开文件夹按钮应存在', async () => {
-      const found = await browser.execute((label: string) => {
-        const buttons = document.querySelectorAll('button');
-        for (const btn of buttons) {
-          if (btn.textContent?.includes(label)) {
-            btn.click();
-            return true;
-          }
-        }
-        return false;
-      }, t('action.workflow'));
-
-      if (!found) throw new Error('Workflow button not found');
-
-      await switchToNewWindow(mainWindow);
-      await browser.pause(2000);
+      await openWorkflowWorkspace(mainWindow);
+      await browser.pause(500);
 
       const openDirBtn = await $(`button[title="${t('workflows.openDir')}"]`);
       const exists = await openDirBtn.isExisting();
@@ -83,7 +63,9 @@ describe('Bug Fix Verification', () => {
       await openQueryTab();
       await browser.pause(1000);
 
-      await executeSQL('SELECT status, COUNT(*) as count FROM product GROUP BY status ORDER BY count DESC LIMIT 10');
+      await executeSQL(
+        'SELECT status, COUNT(*) as count FROM product GROUP BY status ORDER BY count DESC LIMIT 10',
+      );
       await browser.pause(1000);
 
       const chartBtn = await $(`button*=${t('chart.viewChart')}`);

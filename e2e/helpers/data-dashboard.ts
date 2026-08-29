@@ -2,7 +2,7 @@
  * Shared helpers for data-dashboard E2E specs (UJ-01 … UJ-13).
  */
 import { browser, $ } from '@wdio/globals';
-import { switchToNewWindow } from '../helpers.js';
+import { openDashboardPanel } from '../helpers.js';
 
 export const E2E_DASHBOARD_PREFIX = 'e2e-data-dashboard';
 
@@ -120,25 +120,13 @@ export async function setDashboardPaused(id: string, paused: boolean) {
   await invokeBackend('set_dashboard_refresh_paused', { id, paused });
 }
 
-/** Click main-window dashboard action → new dashboard window (no dialog). */
-export async function openDashboardFromMain(mainHandle: string): Promise<string> {
-  await browser.switchToWindow(mainHandle);
-  await browser.pause(500);
-  const btn = await $('[data-testid="action.dashboard"]');
-  await btn.waitForDisplayed({ timeout: 10000 });
-  await btn.click();
-
-  const dialog = await $('[data-testid="dashboard-dialog"]');
-  const hasDialog = await dialog.isExisting().catch(() => false);
-  if (hasDialog && (await dialog.isDisplayed().catch(() => false))) {
-    throw new Error('dashboard-dialog should not appear; expected direct window open');
-  }
-
-  const dashWindow = await switchToNewWindow(mainHandle);
-  await browser.pause(1500);
-  const root = await $('[data-testid="dashboard-window"]');
-  await root.waitForDisplayed({ timeout: 15000 });
-  return dashWindow;
+/** Navigate to embedded dashboard panel in the main window (no OS sub-window). */
+export async function openDashboardFromMain(
+  mainHandle: string,
+  dashboardId?: string,
+): Promise<string> {
+  await openDashboardPanel(mainHandle, dashboardId);
+  return mainHandle;
 }
 
 export async function openSettingsWindow() {
