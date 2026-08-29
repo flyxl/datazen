@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use datazen_driver_api::*;
 use rust_decimal::prelude::ToPrimitive;
 use sqlx::mysql::MySqlRow;
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlSslMode};
 use sqlx::pool::PoolConnection;
 use sqlx::{Column, MySql, MySqlPool, Row};
 use std::collections::HashMap;
@@ -626,6 +626,16 @@ fn build_mysql_options(config: &ConnectionConfig) -> Result<MySqlConnectOptions,
     {
         opts = opts.database(database);
     }
+
+    let mysql_ssl = match config.ssl_mode {
+        SslMode::Disable => MySqlSslMode::Disabled,
+        SslMode::Prefer => MySqlSslMode::Preferred,
+        SslMode::Require => MySqlSslMode::Required,
+        SslMode::VerifyCa => MySqlSslMode::VerifyCa,
+        SslMode::VerifyFull => MySqlSslMode::VerifyIdentity,
+    };
+    opts = opts.ssl_mode(mysql_ssl);
+
     Ok(opts)
 }
 
