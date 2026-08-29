@@ -24,6 +24,10 @@ const KEY_ALIASES: Record<string, TranslationKey> = {
   'sync.sqlPreviewTab': 'common.sqlPreviewLower',
   'transfer.title': 'common.dataTransfer',
   'transfer.pickConnection': 'common.selectConnection',
+  'export.title': 'common.exportData',
+  'menu.exportConfig': 'common.exportAppData',
+  'menu.importConfig': 'common.importAppData',
+  'welcome.feature.ai.title': 'common.aiAssistant',
 };
 
 /**

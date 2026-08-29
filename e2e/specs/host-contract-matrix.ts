@@ -4,7 +4,7 @@
  */
 import { browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
-import { closeExtraWindows } from '../helpers.js';
+import { closeExtraWindows, waitForNewConnectionButton } from '../helpers.js';
 import { DEFAULT_MATRIX_DRIVERS, getFixture, type DriverFixtureId } from '../contract/fixtures';
 import { openFixtureConnection, type ContractConnCtx } from '../contract/open-fixture';
 import { describeMatrixTitle, planJourneys } from '../contract/journeys/plan';
@@ -26,7 +26,7 @@ describe('Host Connection Contract matrix (F3)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 15000 });
+    await waitForNewConnectionButton(15000);
   });
 
   after(async () => {

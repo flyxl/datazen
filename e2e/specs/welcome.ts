@@ -10,6 +10,7 @@ import {
   closeExtraWindows,
   waitForNewConnectionDialog,
   closeNewConnectionDialogFromUi,
+  clickNewConnectionSave,
 } from '../helpers.js';
 import { t } from '../i18n.js';
 
@@ -122,7 +123,7 @@ describe('首次安装欢迎页 (F5-E2E-001 ~ F5-E2E-005)', () => {
     await cta.click();
     await waitForNewConnectionDialog();
     await expect(await $('[data-testid="new-connection-dialog"]')).toBeDisplayed();
-    await expect(await $('button*=保存')).toBeDisplayed();
+    await expect(await $('[data-testid="new-conn-save"]')).toBeDisplayed();
     await closeNewConnectionDialogFromUi();
   });
 
@@ -133,7 +134,7 @@ describe('首次安装欢迎页 (F5-E2E-001 ~ F5-E2E-005)', () => {
 
     const nameInput = await $('input[placeholder="例如：主数据库"]');
     await nameInput.setValue(welcomeConnName);
-    await $('button*=保存').click();
+    await clickNewConnectionSave();
 
     await browser.waitUntil(
       async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),

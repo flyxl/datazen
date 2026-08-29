@@ -10,6 +10,8 @@ import {
   openSettingsInMainWindow,
   setEditorContent,
   waitForNewConnectionDialog,
+  waitForNewConnectionButton,
+  waitForNewQueryButton,
 } from '../helpers.js';
 import { t } from '../i18n.js';
 
@@ -18,7 +20,7 @@ describe('快捷键 (TC-HOTKEY-001~005)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
+    await waitForNewConnectionButton(10000);
   });
 
   afterEach(async () => {
@@ -36,11 +38,11 @@ describe('快捷键 (TC-HOTKEY-001~005)', () => {
     await browser.keys(['Meta', 'n']);
     await browser.pause(800);
     if (!(await $('[data-testid="new-connection-dialog"]').isExisting())) {
-      const btn = await $(`button[title="${t('main.newConnection')}"]`);
+      const btn = await $('[data-testid="new-connection-button"]');
       await btn.click();
     }
     await waitForNewConnectionDialog();
-    await expect(await $(`button*=${t('newConn.testConnection')}`)).toBeDisplayed();
+    await expect(await $('[data-testid="new-conn-test-connection"]')).toBeDisplayed();
   });
 
   it('TC-HOTKEY-002: Cmd+, 或主窗 SettingsPage 应打开设置', async () => {
@@ -65,7 +67,7 @@ describe('快捷键 (TC-HOTKEY-001~005)', () => {
 
   it('TC-HOTKEY-003: 已连接工作区中 Cmd+Enter 应能执行查询', async () => {
     await connectSeededPgInWorkspace();
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+    await waitForNewQueryButton(20000);
     await openQueryTab();
     await setEditorContent('SELECT 42 AS hotkey_col');
     await browser.keys(['Meta', 'Enter']);
@@ -84,7 +86,7 @@ describe('快捷键 (TC-HOTKEY-001~005)', () => {
 
   it('TC-HOTKEY-004: Cmd+W 关闭 panel 后应用仍可用', async () => {
     await connectSeededPgInWorkspace();
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+    await waitForNewQueryButton(20000);
     await browser.keys(['Meta', 'w']);
     await browser.pause(1500);
     // Either window closed or still usable — no crash
@@ -94,7 +96,7 @@ describe('快捷键 (TC-HOTKEY-001~005)', () => {
 
   it('TC-HOTKEY-005: Cmd+B 应切换侧边栏', async () => {
     await connectSeededPgInWorkspace();
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+    await waitForNewQueryButton(20000);
 
     const before = await browser.execute(() => document.body.innerText.length);
     await browser.keys(['Meta', 'b']);
@@ -105,6 +107,6 @@ describe('快捷键 (TC-HOTKEY-001~005)', () => {
     // Toggle twice should restore usable UI
     expect(after).toBeGreaterThan(0);
     expect(before).toBeGreaterThan(0);
-    await expect(await $(`button*=${t('connWin.newQuery')}`)).toBeDisplayed();
+    await expect(await waitForNewQueryButton()).toBeDisplayed();
   });
 });

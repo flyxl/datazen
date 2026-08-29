@@ -43,4 +43,4 @@ MCP stdio 本地认证；Resource 读取应用 permission mode + connection allo
 
 ## Commit
 
-编码：`808ee458` | 测试：`1e672b81`
+编码：`808ee458` | 测试：`c521818e`

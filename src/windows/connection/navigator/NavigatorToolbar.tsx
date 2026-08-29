@@ -65,6 +65,7 @@ export function NavigatorToolbar({
             className="flex h-6 w-6 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
             onClick={onNewConnection}
             title={t('common.newConnection')}
+            data-testid="new-connection-button"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>

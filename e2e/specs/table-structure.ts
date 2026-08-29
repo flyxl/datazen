@@ -7,6 +7,7 @@ import {
   openQueryTab,
   clickTableInSidebar,
   switchSubTab,
+  waitForNewQueryButton,
 } from '../helpers.js';
 
 /**
@@ -22,7 +23,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+    await waitForNewQueryButton(20000);
     await browser.pause(1500);
 
     // Clean up any leftover test table

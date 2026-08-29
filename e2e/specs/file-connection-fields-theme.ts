@@ -1,7 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, browser, $ } from '@wdio/globals';
-import { waitForNewConnectionDialog, closeExtraWindows } from '../helpers.js';
+import {
+  waitForNewConnectionDialog,
+  closeExtraWindows,
+  openNewConnectionDialogFromUi,
+  selectNewConnectionDriver,
+} from '../helpers.js';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const FILE_CONNECTION_FIELDS = path.join(
@@ -66,12 +71,9 @@ async function setTheme(theme: 'light' | 'dark') {
 }
 
 async function openSqliteConnectionForm() {
-  const btn = await $('button*=新建连接');
-  await btn.click();
-  await waitForNewConnectionDialog();
+  await openNewConnectionDialogFromUi();
 
-  const sqliteBtn = await $('button*=SQLite');
-  await sqliteBtn.click();
+  await selectNewConnectionDriver('sqlite');
   await browser.pause(300);
 
   const fileInput = await $('input[placeholder="/path/to/db.sqlite"]');

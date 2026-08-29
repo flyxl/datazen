@@ -217,7 +217,7 @@ e2e/wdio.conf.ts
 | 连接 | `new-connection.ts`, `edit-delete-connection.ts`, `connection-window.ts` |
 | SQL / 表 | `sql-query.ts`, `table-data.ts`, `table-filter.ts`, `table-indexes.ts`, `table-edit.ts`, `export-import.ts`, `object-browser.ts` |
 | 路径 IPC / 备份 | `path-ipc-hardening.ts`, `app-data-backup.ts`, `backup-database.ts`, `backup-window.ts`, `schema-diff-window.ts` |
-| i18n | `i18n-10-locales.ts`, `system-locale.ts` |
+| i18n | `i18n-10-locales.ts`, `system-locale.ts`, `i18n-menu.ts` |
 | AI / Workflow | `ai-features.ts`, `ai-context.ts`, `workflow.ts`, `workflow-window.ts`, `driver-commands.ts` |
 | 驱动（Host） | `sqlite.ts`, `mysql.ts`（及其他 SQL Host specs） |
 | Redis E2E（插件包，非默认） | `packages/drivers/redis/e2e/redis.ts`, `redis-topology.ts` — `pnpm e2e:redis` |

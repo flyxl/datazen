@@ -196,13 +196,18 @@ export function NewConnectionDialog({
                 variant="secondary"
                 onClick={() => void form.onTest()}
                 disabled={form.testing}
+                data-testid="new-conn-test-connection"
               >
                 {form.testing ? t('newConn.testing') : t('newConn.testConnection')}
               </Button>
-              <Button variant="secondary" onClick={handleClose}>
+              <Button variant="secondary" onClick={handleClose} data-testid="new-conn-cancel">
                 {t('common.cancel')}
               </Button>
-              <Button variant="primary" onClick={() => void form.onSave()}>
+              <Button
+                variant="primary"
+                onClick={() => void form.onSave()}
+                data-testid="new-conn-save"
+              >
                 {t('common.save')}
               </Button>
             </footer>

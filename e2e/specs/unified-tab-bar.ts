@@ -6,6 +6,7 @@ import {
   openQueryTab,
   clickFirstTable,
   waitForSchemaTreeLoaded,
+  waitForNewQueryButton,
 } from '../helpers.js';
 
 /**
@@ -22,7 +23,7 @@ describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
   });
 
   it('工具栏应显示新建查询按钮 (UTB-001)', async () => {
-    const newQueryBtn = await $(`button*=${t('connWin.newQuery')}`);
+    const newQueryBtn = await waitForNewQueryButton();
     await expect(newQueryBtn).toBeDisplayed();
   });
 

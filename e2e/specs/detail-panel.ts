@@ -7,6 +7,7 @@ import {
   openQueryTab,
   clickTableInSidebar,
   switchSubTab,
+  waitForNewQueryButton,
 } from '../helpers.js';
 
 /**
@@ -26,7 +27,7 @@ describe('详情面板 (DP-001~DP-004)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+    await waitForNewQueryButton(20000);
     await browser.pause(1500);
 
     await openQueryTab();

@@ -5,6 +5,8 @@ import {
   closeExtraWindows,
   captureJourneyStep,
   expandAllGroups,
+  selectNewConnectionDriver,
+  clickNewConnectionSave,
 } from '../helpers.js';
 
 describe('新建连接 (CM-002, CM-005)', () => {
@@ -56,9 +58,9 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await expect(await $('div*=选择数据库类型')).toBeDisplayed();
     await expect(await $('div*=连接配置')).toBeDisplayed();
     await expect(await $('input[placeholder="例如：主数据库"]')).toBeDisplayed();
-    await expect(await $('button*=测试连接')).toBeDisplayed();
-    await expect(await $('button*=取消')).toBeDisplayed();
-    await expect(await $('button*=保存')).toBeDisplayed();
+    await expect(await $('[data-testid="new-conn-test-connection"]')).toBeDisplayed();
+    await expect(await $('[data-testid="new-conn-cancel"]')).toBeDisplayed();
+    await expect(await $('[data-testid="new-conn-save"]')).toBeDisplayed();
   });
 
   it('应默认选中 PostgreSQL 并显示对应字段 (CM-002)', async () => {
@@ -82,8 +84,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
 
   it('切换数据库类型为 SQLite 应显示文件路径输入框 (CM-002)', async () => {
     await openNewConnectionDialogFromUi();
-    const sqliteBtn = await $('button*=SQLite');
-    await sqliteBtn.click();
+    await selectNewConnectionDriver('sqlite');
     const fileInput = await $('input[placeholder="/path/to/db.sqlite"]');
     await expect(fileInput).toBeDisplayed();
     const hostInput = await $('input[placeholder="prod-db.example.com"]');
@@ -93,8 +94,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
 
   it('切换数据库类型为 MySQL 应更新默认端口 (CM-002)', async () => {
     await openNewConnectionDialogFromUi();
-    const mysqlBtn = await $('button*=MySQL');
-    await mysqlBtn.click();
+    await selectNewConnectionDriver('mysql');
     await browser.pause(200);
     const allInputs = await $$('input');
     let port3306Found = false;
@@ -110,7 +110,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
 
   it('切换数据库类型为 MariaDB 应更新默认端口 (CM-002)', async () => {
     await openNewConnectionDialogFromUi();
-    const mariaBtn = await $('button*=MariaDB');
+    const mariaBtn = await $('[data-testid="new-conn-driver-mariadb"]');
     if (await mariaBtn.isExisting()) {
       await mariaBtn.click();
       await browser.pause(200);
@@ -163,8 +163,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await openNewConnectionDialogFromUi();
     const nameInput = await $('input[placeholder="例如：主数据库"]');
     await nameInput.setValue('E2E-自动测试');
-    const saveBtn = await $('button*=保存');
-    await saveBtn.click();
+    await clickNewConnectionSave();
     await browser.waitUntil(
       async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
       { timeout: 10000 },

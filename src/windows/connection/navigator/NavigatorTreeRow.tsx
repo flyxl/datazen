@@ -468,6 +468,7 @@ export function NavigatorTreeRow({
             type="button"
             className="mt-3 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] text-fg-muted hover:bg-surface-raised hover:text-fg"
             onClick={onNewConnection}
+            data-testid="new-connection-button"
           >
             <Plus className="h-4 w-4" />
             {t('main.createFirst')}

@@ -151,7 +151,7 @@ WebdriverIO E2E spec（Host：`e2e/specs/`）：
 | **Host 契约 × 驱动** | `host-contract-matrix.ts`（`e2e/contract/`；`pnpm e2e:contract:matrix`） |
 | **数据库驱动（Host）** | `sqlite.ts`, `mysql.ts`（方言/类型烟雾；UI 路径优先契约矩阵） |
 | **AI / Workflow** | `ai-features.ts`, `ai-ask-question.ts`, `ai-context.ts`, `workflow.ts`, `workflow-window.ts` |
-| **路径 IPC / 备份·i18n** | `path-ipc-hardening.ts`, `app-data-backup.ts`, `i18n-10-locales.ts`, `system-locale.ts` |
+| **路径 IPC / 备份·i18n** | `path-ipc-hardening.ts`, `app-data-backup.ts`, `i18n-10-locales.ts`, `system-locale.ts`, `i18n-menu.ts` |
 | **运维** | `backup-database.ts`, `backup-window.ts`, `schema-diff-window.ts`, `data-sync-window.ts`, `data-sync-real.ts`, `bugfix-verification.ts` |
 
 **插件 / 驱动自有（不进 Host 默认 `pnpm e2e` / `pnpm test:unit`）：**

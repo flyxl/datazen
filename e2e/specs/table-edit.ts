@@ -9,6 +9,7 @@ import {
   switchSubTab,
   doubleClickCellByText,
   waitForEditInput,
+  waitForNewQueryButton,
 } from '../helpers.js';
 
 /**
@@ -32,7 +33,7 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+    await waitForNewQueryButton(20000);
     await browser.pause(1500);
 
     await openQueryTab();

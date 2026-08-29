@@ -78,7 +78,7 @@ describe('数据看板组件 UX (UJ-05, UJ-06, UJ-09)', () => {
     );
     await exportBtn.waitForDisplayed({ timeout: 5000 });
     await exportBtn.click();
-    const exportDialog = await $(`=${t('export.title')}`);
+    const exportDialog = await $('[data-testid="data-export-dialog"]');
     await exportDialog.waitForDisplayed({ timeout: 5000 });
     await browser.keys('Escape');
     await browser.pause(300);

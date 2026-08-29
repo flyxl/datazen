@@ -42,7 +42,7 @@
 - [ ] `cargo test -p datazen --lib`
 - [ ] `npx vitest run`
 - [ ] `pnpm exec tsc --noEmit`
-- [x] E2E：MCP stdio 手工
+- [x] E2E：MCP stdio token（`cargo test -p datazen --test mcp_stdio_auth`）
 - [x] E2E：plugins J1-001-R（dialog injection + browse folder）
 
 ## 遗留（非阻塞）

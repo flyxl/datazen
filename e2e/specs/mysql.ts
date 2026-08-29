@@ -16,6 +16,7 @@ import {
   switchSubTab,
   clickFirstTable,
   asideHasSchemaSections,
+  waitForNewQueryButton,
 } from '../helpers.js';
 
 const TABLE_BASIC = '_e2e_mysql_basic';
@@ -138,7 +139,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   // ── Connection & Sidebar ──
 
   it('MySQL 连接窗口应显示工具栏和侧边栏 (MY-001)', async () => {
-    const toolbar = await $(`button*=${t('connWin.newQuery')}`);
+    const toolbar = await waitForNewQueryButton();
     await expect(toolbar).toBeDisplayed();
 
     const aside = await $('aside');
@@ -160,7 +161,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   });
 
   it('新建查询不应弹出对象加载补全框 (MY-AC-001)', async () => {
-    await $(`button*=${t('connWin.newQuery')}`).click();
+    await (await waitForNewQueryButton()).click();
     let loadingHint = false;
     const deadline = Date.now() + 1500;
     while (Date.now() < deadline) {

@@ -977,7 +977,7 @@ describe('ConnectionNavigatorTree toolbar and empty states', () => {
 
     // New-connection toolbar button still dispatches.
     newConnectionSpy.mockClear();
-    fireEvent.click(container.querySelector('button[title="common.newConnection"]')!);
+    fireEvent.click(screen.getByTestId('new-connection-button'));
     expect(newConnectionSpy).toHaveBeenCalledTimes(1);
   });
 
