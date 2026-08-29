@@ -74,18 +74,54 @@
 5. 主检出**未跟踪**的规格文档在 worktree 不存在 → bootstrap 脚本负责拷贝；同时这些文件**禁止 git add**（避免最终合并 main 时与用户工作区副本冲突）。
 6. E2E 的 webdriver 构建成本高：功能级测试轮只登记用例，真实构建回归统一到 R 阶段。
 
-## 6. 进度管理文件 schema
+## 6. 进度与 Bug 管理 schema
 
-单一进度文件（如 `docs/development/ipc-refactor-progress.md`），四段式：
+### 6.1 三层文件布局（禁止单一巨型进度+bug 文件）
 
-1. **功能总览表**：编号 / 功能 / 来源决策 / 状态 / 编码 commit / 测试 commit；
-2. **Bug 台账**：Bug ID / 所属功能 / 描述（含量级）/ 状态 / 记录时间 / 验证记录；
-3. **测试约定**（覆盖率口径、R 阶段范围）;
-4. **每功能小节**：范围 → E2E 用例表 → 测试结果 → 覆盖率表 → 设计决策/遗留注意。
+```text
+docs/development/coordination/
+├── hub.md                              # 公共总览（协调者维护；worktree 软链到主检出）
+├── <initiative>-plan.md                # 本次 initiative 实施计划
+└── tracks/<track-id>/
+    ├── progress.md                     # 该轨功能进度（编码/测试代理写本轨）
+    └── bugs.md                         # 该轨独立 bug 清单（仅本轨读写）
+```
+
+| 文件 | 写入者 | 内容 |
+|------|--------|------|
+| **hub.md** | 协调者（融合各轨 milestone） | 功能总览表、波次/合并记录、跨轨风险、R 阶段清单 |
+| **tracks/\<id\>/progress.md** | 该轨编码/测试代理 | 范围、E2E 登记、测试结果、覆盖率、设计决策 |
+| **tracks/\<id\>/bugs.md** | 该轨测试/修复代理 | Bug ID / 描述 / 状态 / 重现步骤 / 验证记录 |
+
+**硬性规则：**
+- **每个 feature/track 必须有自己的 `bugs.md`**，禁止把所有 bug 堆进 hub 或单一 `*-progress.md`。
+- Bug ID 格式：`<track-id>-BUG-nnn`（如 `cr-p0-mcp-BUG-001`）。
+- 代理**只读写本轨** `tracks/<track-id>/` 下文件；hub 总览表由协调者更新。
+
+### 6.2 Hub 跨 worktree 可见性
+
+`scripts/new-feature-worktree.sh` bootstrap 时建立软链：
+
+```text
+<worktree>/docs/development/coordination/hub.md → <main-checkout>/docs/development/coordination/hub.md
+```
+
+协调者在主检出编辑 hub，各轨代理即时可见。`tracks/<id>/` 随各轨分支 git commit；合并 milestone 时协调者将 hub 摘要与 track progress 一并合入集成分支。
+
+### 6.3 progress.md 四段式（每轨）
+
+1. **功能摘要**：编号 / 范围 / 状态 / 编码 commit / 测试 commit；
+2. **E2E 用例表**（【本机可执行】vs【留待 R 回归】）；
+3. **测试结果与覆盖率**；
+4. **设计决策 / 遗留注意**。
+
+### 6.4 bugs.md 字段（每轨）
+
+Bug ID / 描述（含量级）/ 状态 / 记录时间 / 重现步骤 / 验证记录。
 
 状态机：功能 `未开始→编码中→编码完成→测试中→已完成`；bug `待验证(新发现)/验证不通过 → 待验证(修复后) → 已修复`。
 
-**状态实时性纪律**：总览表状态必须与实际派发同步——编码代理启动即「编码中」，测试轮启动即「测试中」（修复轮标「测试中·修复轮」），闭环才可「已完成」；**功能已派发却显示「未开始」视为台账错误**。轨道分支上的进度副本是各功能的权威版本，协调者在集成分支上以「（N 轨，详见 xx 分支进度副本）」形式先行标注，合并时由分支副本覆盖。协调者每次派发/流转后立即更新对应行，不攒批。
+**状态实时性纪律**：hub 总览表状态必须与实际派发同步——编码代理启动即「编码中」，测试轮启动即「测试中」（修复轮标「测试中·修复轮」），闭环才可「已完成」；**功能已派发却显示「未开始」视为台账错误**。协调者每次派发/流转后立即更新 hub 对应行，不攒批。
 
 ---
 
@@ -95,7 +131,7 @@
 你是 <项目> <功能号> 的编码代理（全新实例）。工作目录：<worktree 绝对路径>（分支 <branch>）。禁止修改其他目录。
 
 ## 必读（按序）
-1. AGENTS.md；2. <计划文档对应章节>；3. 进度文件相关小节
+1. AGENTS.md；2. <计划文档对应章节>；3. coordination/hub.md + tracks/<track-id>/progress.md
 
 ## 任务
 <目标形态 + 迁移/实现步骤>
@@ -130,7 +166,7 @@ commit hash；改动清单；各套件数字；遗留注意。遇阻如实报告
 3. 独立重跑三件套（不信编码轮数字）：cargo lib / vitest / tsc
 4. 覆盖率：改动 TS 文件 ≥80% 实测（全量套件 --coverage 后摘取）；Rust 以单测清单佐证
 5. E2E 用例设计：登记进度文件（编号/前置/步骤/断言），标注【本机可执行】vs【留待 R 回归】及理由
-6. 判定与登记：通过→功能「已完成」；问题→Bug 台账 F<n>-BUG-nnn（待验证+重现步骤），不修
+6. 判定与登记：通过→功能「已完成」；问题→本轨 tracks/<track-id>/bugs.md（<track-id>-BUG-nnn，待验证+重现步骤），不修
 7. commit 仅进度文件：test(ipc): f<n> verification
 
 ## 返回格式
