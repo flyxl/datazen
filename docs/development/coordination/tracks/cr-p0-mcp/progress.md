@@ -37,4 +37,4 @@ MCP stdio 本地认证；Resource 读取应用 permission mode + connection allo
 
 ## Commit
 
-（提交后填写 hash）
+`808ee45858e0beffd21dceea85a60f091e6347be`
