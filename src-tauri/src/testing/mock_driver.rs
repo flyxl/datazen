@@ -67,6 +67,8 @@ impl Default for MockDriverOptions {
 pub struct MockDriver {
     db_type: DatabaseType,
     opts: MockDriverOptions,
+    /// Monotonic counter so each `connect` returns a distinct session handle id.
+    session_seq: AtomicU32,
     get_columns_calls: AtomicU32,
     get_schema_calls: AtomicU32,
     query_calls: AtomicU32,
@@ -81,6 +83,7 @@ impl MockDriver {
         Arc::new(Self {
             db_type: db_type.into(),
             opts,
+            session_seq: AtomicU32::new(0),
             get_columns_calls: AtomicU32::new(0),
             get_schema_calls: AtomicU32::new(0),
             query_calls: AtomicU32::new(0),
@@ -175,8 +178,9 @@ impl DatabaseDriver for MockDriver {
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
+        let seq = self.session_seq.fetch_add(1, Ordering::Relaxed) + 1;
         Ok(ConnectionHandle {
-            id: format!("mock-{}", config.id),
+            id: format!("mock-{}-{}", config.id, seq),
             pool_id: format!("pool-{}", config.id),
         })
     }

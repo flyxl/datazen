@@ -12,9 +12,9 @@ pub(crate) async fn get_databases_impl(
     let start = Instant::now();
     tracing::info!(%db_session_id, "get_databases");
 
-    let (_runtime_id, driver, handle) = state
+    let (driver, handle) = state
         .connection_manager
-        .resolve_session(&db_session_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("get_databases")?;
 
@@ -470,13 +470,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_databases_via_connection_id_fallback() {
+    async fn get_databases_rejects_connection_id_without_live_session() {
         let test = TestAppState::with_tables().await;
         test.save_connection("cfg-fallback").await;
-        let dbs = get_databases_impl(&test.state, "cfg-fallback".into())
+        let err = get_databases_impl(&test.state, "cfg-fallback".into())
             .await
-            .unwrap();
-        assert_eq!(dbs, vec!["app"]);
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("DB session"),
+            "expected dbSessionId error, got: {err}"
+        );
     }
 
     #[tokio::test]

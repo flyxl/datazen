@@ -217,13 +217,10 @@ async fn resolve_command_driver(
     db_session_id: Option<&String>,
     driver_type: Option<&String>,
 ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle, bool), CommandError> {
-    // resolve_session is dual-mode: it accepts a runtime db_session_id and
-    // falls back to the owning persisted connection_id (legacy callers, e.g.
-    // the extension bridge until W3 adds an explicit target parameter).
     if let Some(id) = nonempty(db_session_id) {
-        let (_runtime_id, driver, handle) = state
+        let (driver, handle) = state
             .connection_manager
-            .resolve_session(id)
+            .get_session(id)
             .await
             .cmd_err("execute_driver_command")?;
         return Ok((driver, handle, true));
@@ -240,11 +237,11 @@ async fn resolve_command_driver(
 
 pub(crate) async fn get_connection_commands_impl(
     state: &AppState,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<Vec<DriverCommandDefinition>, CommandError> {
-    let (_runtime_id, driver, _) = state
+    let (driver, _) = state
         .connection_manager
-        .resolve_session(&connection_id)
+        .get_session(&db_session_id)
         .await
         .cmd_err("get_connection_commands")?;
     Ok(driver.command_definitions())
@@ -718,13 +715,13 @@ pub async fn get_driver_commands(
     get_driver_type_commands_impl(&state, driver_type).await
 }
 
-/// Discover commands from a concrete Connection.
+/// Discover commands from a concrete live DB session.
 #[tauri::command]
 pub async fn get_connection_commands(
     state: State<'_, AppState>,
-    connection_id: String,
+    db_session_id: String,
 ) -> Result<Vec<DriverCommandDefinition>, CommandError> {
-    get_connection_commands_impl(&state, connection_id).await
+    get_connection_commands_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
@@ -1235,13 +1232,49 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn discovers_commands_from_connection_id() {
+    async fn rejects_connection_id_on_execute_without_live_session() {
         let test = crate::testing::app_state::TestAppState::new().await;
-        test.save_connection("cfg-discover").await;
-        let definitions = get_connection_commands_impl(&test.state, "cfg-discover".into())
+        test.save_connection("cfg-only").await;
+        let err = execute_driver_command_impl(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                db_session_id: Some("cfg-only".into()),
+                driver_type: None,
+                command: "query".into(),
+                input: serde_json::json!({ "sql": "SELECT 1" }),
+                database: None,
+                schema: None,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("DB session"),
+            "expected dbSessionId error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn discovers_commands_from_live_session() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let (_, db_session_id) = test.save_and_connect("cfg-discover").await;
+        let definitions = get_connection_commands_impl(&test.state, db_session_id)
             .await
             .unwrap();
         assert!(definitions.iter().any(|d| d.id == "query"));
+    }
+
+    #[tokio::test]
+    async fn rejects_connection_id_on_get_connection_commands_without_live_session() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        test.save_connection("cfg-discover").await;
+        let err = get_connection_commands_impl(&test.state, "cfg-discover".into())
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("DB session"),
+            "expected dbSessionId error, got: {err}"
+        );
     }
 
     #[tokio::test]

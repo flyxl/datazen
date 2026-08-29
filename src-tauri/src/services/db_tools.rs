@@ -12,7 +12,7 @@ use std::sync::Arc;
 /// Resolve a live DB session from an id that may be either kind: a
 /// **connectionId** (persisted connection configuration id, as returned by
 /// `list_connections`) or a **dbSessionId** (runtime session handle id).
-/// Uses [`ConnectionManager::resolve_session`] (db_session_id first,
+/// Uses [`ConnectionManager::resolve_session_for_mcp`] (db_session_id first,
 /// connection_id fallback).
 pub async fn resolve_connection(
     connection_manager: &ConnectionManager,
@@ -30,7 +30,7 @@ pub async fn resolve_connection_with_id(
     id: &str,
 ) -> Result<(String, Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
     connection_manager
-        .resolve_session(id)
+        .resolve_session_for_mcp(id)
         .await
         .map_err(|e| format!("Cannot resolve connection '{id}': {e}"))
 }
