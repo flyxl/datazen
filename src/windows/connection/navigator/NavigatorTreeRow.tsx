@@ -14,6 +14,7 @@ import {
 import { DbTypeBadge } from '../../../components/DbTypeBadge';
 import { cn } from '../../../lib/cn';
 import { useSchemaStore } from '../../../stores/schemaStore';
+import type { I18nKey } from '../../../locales';
 import type { ConnectionConfig } from '../../../types';
 import type { ConnectionEntry } from '../../../stores/activeConnectionStore';
 import { LEAF_KIND_ICON } from '../schema-tree/schemaTreeCategories';
@@ -22,7 +23,7 @@ import { depthPadding } from './utils';
 
 export interface NavigatorTreeRowProps {
   row: UnifiedRow;
-  t: (key: string, params?: Record<string, string | number>) => string;
+  t: (key: I18nKey, params?: Record<string, string | number>) => string;
   connections: ConnectionConfig[];
   activeConnections: Record<string, ConnectionEntry | undefined>;
   dropTarget: { id: string; position: 'before' | 'after' } | null;
@@ -260,15 +261,10 @@ export function NavigatorTreeRow({
           style={{ paddingLeft: depthPadding(row.depth) }}
           onClick={() => {
             const conn = connections.find((c) => c.id === catConnectionId);
-            const dbSessionId =
-              conn && activeConnections[conn.id]?.dbSessionId
-                ? activeConnections[conn.id].dbSessionId!
-                : '';
+            const dbSessionId = conn ? (activeConnections[conn.id]?.dbSessionId ?? '') : '';
             void toggleCategory(row.key, row.cat.id, dbSessionId);
           }}
-          onContextMenu={(e) =>
-            handleCategoryContextMenu(e, row.key, row.cat.id, catConnectionId)
-          }
+          onContextMenu={(e) => handleCategoryContextMenu(e, row.key, row.cat.id, catConnectionId)}
         >
           {row.expanded ? (
             <ChevronDown className="h-3 w-3 shrink-0" />
@@ -276,9 +272,7 @@ export function NavigatorTreeRow({
             <ChevronRight className="h-3 w-3 shrink-0" />
           )}
           <row.cat.icon className={`h-3.5 w-3.5 shrink-0 ${row.cat.color}`} />
-          <span className="min-w-0 truncate">
-            {t(row.cat.labelKey as Parameters<typeof t>[0])}
-          </span>
+          <span className="min-w-0 truncate">{t(row.cat.labelKey as Parameters<typeof t>[0])}</span>
           <span className="ml-auto shrink-0 text-[10px] text-fg-muted">{row.count}</span>
         </button>
       );
@@ -464,9 +458,7 @@ export function NavigatorTreeRow({
     }
 
     case 'empty-group':
-      return (
-        <div className="px-4 py-1.5 text-[11px] text-fg-muted">{t('main.noConnections')}</div>
-      );
+      return <div className="px-4 py-1.5 text-[11px] text-fg-muted">{t('main.noConnections')}</div>;
 
     case 'no-connections':
       return (

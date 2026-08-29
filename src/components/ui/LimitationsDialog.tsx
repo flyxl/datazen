@@ -2,16 +2,17 @@ import { useState } from 'react';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
 import { useI18n } from '../../hooks/useI18n';
+import type { I18nKey } from '../../locales';
 
 export interface LimitationsDialogProps {
   open: boolean;
   onClose: () => void;
   /** i18n key for dialog title */
-  titleKey: string;
+  titleKey: I18nKey;
   /** i18n key for "don't show again" checkbox label */
-  dontShowAgainKey: string;
+  dontShowAgainKey: I18nKey;
   /** i18n keys for limitation bullet items */
-  limitationKeys: readonly string[];
+  limitationKeys: readonly I18nKey[];
   /** Prefix for data-testid attributes (e.g. "schema-diff" → "schema-diff-limitations-dialog") */
   testIdPrefix: string;
   /** Called when user checks "don't show again" and closes */
@@ -54,10 +55,7 @@ export function LimitationsDialog({
         </Button>
       }
     >
-      <div
-        data-testid={`${testIdPrefix}-limitations`}
-        className="space-y-3 text-sm text-fg-muted"
-      >
+      <div data-testid={`${testIdPrefix}-limitations`} className="space-y-3 text-sm text-fg-muted">
         <ul className="list-disc space-y-1 pl-4">
           {limitationKeys.map((key) => (
             <li key={key}>{t(key)}</li>

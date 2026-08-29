@@ -11,7 +11,10 @@ import { buildSchemaTreeContextMenuItems } from '../../../lib/schemaTreeContextM
 import { isProductFeatureEnabled } from '../../../lib/productFeatures';
 import { buildConnectionUrl } from '../../../lib/buildConnectionUrl';
 import { hasCommand } from '../../../lib/commandSchema';
-import { SERVER_STATUS_SNAPSHOT_COMMAND, LIST_PROCESSES_COMMAND } from '../../../lib/driverCommandIds';
+import {
+  SERVER_STATUS_SNAPSHOT_COMMAND,
+  LIST_PROCESSES_COMMAND,
+} from '../../../lib/driverCommandIds';
 import {
   openDataSyncWindow,
   openDataTransferWindow,
@@ -25,13 +28,10 @@ import { databaseCommands } from '../../../commands/database';
 import { driverCommands } from '../../../commands/driver';
 import { queryCommands } from '../../../commands/query';
 import { shouldUseMultiDatabaseTree } from '../schema-tree/SchemaTree';
+import type { I18nKey } from '../../../locales';
 import type { ConnectionConfig, TableInfo } from '../../../types';
 import type { ConnectionEntry } from '../../../stores/activeConnectionStore';
-import {
-  extractErrorMessage,
-  quoteRelationName,
-  resolveDropDatabaseFallback,
-} from './utils';
+import { extractErrorMessage, quoteRelationName, resolveDropDatabaseFallback } from './utils';
 import type { ConnectionNavigatorTreeProps } from './types';
 
 type ConfirmFn = (opts: {
@@ -42,7 +42,7 @@ type ConfirmFn = (opts: {
 }) => Promise<boolean>;
 
 export interface NavigatorContextMenuDeps {
-  t: (key: string, params?: Record<string, string | number>) => string;
+  t: (key: I18nKey, params?: Record<string, string | number>) => string;
   safeMode: boolean;
   groups: string[];
   connections: ConnectionConfig[];
@@ -78,9 +78,11 @@ export interface NavigatorContextMenuDeps {
   clearDbLocalCache: (connectionId: string, dbSessionId: string, dbName: string) => void;
   removeRelation: (name: string, dbSessionId: string) => void;
   setDbTablesMap: React.Dispatch<React.SetStateAction<Record<string, TableInfo[]>>>;
-  buildOpenTarget: (
-    conn: { id: string; name: string; databaseType: string },
-  ) => ConnectionOpenTarget | null;
+  buildOpenTarget: (conn: {
+    id: string;
+    name: string;
+    databaseType: string;
+  }) => ConnectionOpenTarget | null;
   confirmDeleteGroup: ConfirmFn;
   confirmDropDatabase: ConfirmFn;
   confirmDropSchema: ConfirmFn;

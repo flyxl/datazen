@@ -59,7 +59,6 @@ export function useNavigatorDbState(
   const clearDbLocalCache = useCallback(
     (connectionId: string, _dbSessionId: string, dbName: string) => {
       const tableKey = `${_dbSessionId}::${dbName}`;
-      const dbKey = `${connectionId}::${dbName}`;
       setDbTablesMap((prev) => {
         if (!(tableKey in prev)) return prev;
         const next = { ...prev };
@@ -244,7 +243,7 @@ export function useNavigatorDbState(
   );
 
   const toggleDb = useCallback(
-    async (connectionId: string, dbSessionId: string, dbName: string) => {
+    async (_connectionId: string, dbSessionId: string, dbName: string) => {
       const tableKey = `${dbSessionId}::${dbName}`;
       if (dbTablesMap[tableKey]) return;
       if (loadingDbs.has(tableKey)) return;

@@ -2,10 +2,11 @@ import { Button } from '../../../components/ui/Button';
 import { Dialog } from '../../../components/ui/Dialog';
 import { Input } from '../../../components/ui/Input';
 import { ObjectFilterDialog } from '../../../components/connection/ObjectFilterDialog';
+import type { I18nKey } from '../../../locales';
 import type { ConnectionConfig } from '../../../types';
 
 export interface NavigatorDialogsProps {
-  t: (key: string) => string;
+  t: (key: I18nKey) => string;
   newGroupDialogOpen: boolean;
   setNewGroupDialogOpen: (open: boolean) => void;
   newGroupName: string;
