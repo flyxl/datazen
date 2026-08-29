@@ -46,7 +46,8 @@ vi.mock('../../../stores/extensionStore', () => ({
       fetch: fetchMock,
       setEnabled: setEnabledMock,
       remove: removeMock,
-      byId: (id: string) => (pluginState.extensions as Array<{ id: string }>).find((p) => p.id === id),
+      byId: (id: string) =>
+        (pluginState.extensions as Array<{ id: string }>).find((p) => p.id === id),
     }),
   }),
 }));
@@ -64,8 +65,8 @@ vi.mock('../../../stores/workspaceTabsStore', () => ({
 vi.mock('../../../commands/extensions', () => ({
   EXTENSIONS_CHANGED_EVENT: 'plugins:changed',
   extensionCommands: {
-    inspectExtensionPackage: (...args: unknown[]) => inspectPackageMock(...args),
-    installExtensionFromPath: (...args: unknown[]) => installFromPathMock(...args),
+    inspectExtensionPackageWithDialog: (...args: unknown[]) => inspectPackageMock(...args),
+    installExtension: (...args: unknown[]) => installFromPathMock(...args),
     readExtensionFile: (...args: unknown[]) => readExtensionFileMock(...args),
   },
 }));

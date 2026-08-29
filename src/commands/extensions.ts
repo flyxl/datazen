@@ -4,17 +4,36 @@ import type { ExtensionManifest, ExtensionSummary } from '../types/extension';
 /** Mirrors `EXTENSIONS_CHANGED_EVENT` in `src-tauri/src/commands/extensions.rs`. */
 export const EXTENSIONS_CHANGED_EVENT = 'plugins:changed';
 
+export type ExtensionPackageKind = 'zip' | 'folder';
+
+/** Preview returned after a native pick + validate-only inspect (no install). */
+export interface ExtensionPackagePreview {
+  pickToken: string;
+  packageLabel: string;
+  manifest: ExtensionManifest;
+}
+
 export const extensionCommands = {
   listExtensions: () => invoke<ExtensionSummary[]>('list_extensions'),
 
   getExtensionManifest: (id: string) => invoke<ExtensionManifest>('get_extension_manifest', { id }),
 
-  /** Validates a package without installing; returns its manifest for review. */
-  inspectExtensionPackage: (path: string) =>
-    invoke<ExtensionManifest>('inspect_extension_package', { path }),
+  /**
+   * Native picker + validate-only inspect. Returns `null` when cancelled.
+   * The wire-level `overridePath` escape hatch is webdriver/E2E-only.
+   */
+  inspectExtensionPackageWithDialog: (packageKind: ExtensionPackageKind, overridePath?: string) =>
+    invoke<ExtensionPackagePreview | null>('inspect_extension_package_with_dialog', {
+      packageKind,
+      overridePath,
+    }),
 
-  installExtensionFromPath: (path: string) =>
-    invoke<ExtensionSummary>('install_extension_from_path', { path }),
+  /**
+   * Install a package picked via {@link inspectExtensionPackageWithDialog}.
+   * The wire-level `overridePath` escape hatch is webdriver/E2E-only.
+   */
+  installExtension: (pickToken: string, overridePath?: string) =>
+    invoke<ExtensionSummary>('install_extension', { pickToken, overridePath }),
 
   removeExtension: (id: string) => invoke<void>('remove_extension', { id }),
 

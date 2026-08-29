@@ -187,10 +187,11 @@ const en: Record<TranslationKey, string> = {
   'plugins.page.emptyHint':
     'Install a plugin package (.zip) to extend DataZen with new workspace pages or themes.',
   'plugins.install.title': 'Install Plugin',
-  'plugins.install.description': 'Select a local plugin package (.zip) to install.',
-  'plugins.install.pathLabel': 'Plugin package (.zip)',
-  'plugins.install.pathPlaceholder': '/path/to/plugin.zip',
-  'plugins.install.next': 'Continue',
+  'plugins.install.description':
+    'Select a local plugin package (.zip) or unpacked folder to install.',
+  'plugins.install.pickPrompt': 'Choose how to locate the plugin package on this computer.',
+  'plugins.install.browseZip': 'Select ZIP file…',
+  'plugins.install.browseFolder': 'Select folder…',
   'plugins.install.back': 'Back',
   'plugins.install.inspecting': 'Checking…',
   'plugins.install.permissions': 'Requested permissions',
