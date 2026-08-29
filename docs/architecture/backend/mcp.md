@@ -9,8 +9,9 @@ DataZen 作为 MCP Server 暴露数据库操作能力给外部 LLM 应用（Clau
 ```
 src-tauri/src/mcp/
 ├── mod.rs          # MCP 启动/停止, 状态管理
+├── auth.rs         # stdio 本地 token 认证（`mcp.token` + `DATAZEN_MCP_TOKEN`）
 ├── allowlist.rs    # 连接白名单（空 = 全部暴露）
-├── permission.rs   # 三档权限 + SQL/工具门控
+├── permission.rs   # 三档权限 + SQL/工具/资源门控
 ├── server.rs       # MCP Server 实现（含 workflow tools 适配）
 └── client.rs       # MCP Client 管理
 ```
@@ -26,6 +27,33 @@ Workflow 引擎本身在 [`workflow` 模块](./workflow.md)（若尚未拆文档
 | `mcpAllowedConnectionIds` | 连接白名单；**空数组 = 暴露全部已保存连接** |
 
 修改权限/白名单/工具后，嵌入式 MCP Server 会自动热重载；独立 `datazen --mcp` 进程需重启后生效。
+
+**stdio 本地认证（`--mcp` / `--mcp-stdio`）：**
+
+| 机制 | 说明 |
+|------|------|
+| `{appData}/mcp.token` | 首次 headless 启动时创建（`0600`）；持久化随机 token |
+| `DATAZEN_MCP_TOKEN` | MCP 客户端 env 必须与此文件内容一致，否则进程拒绝启动 |
+| 嵌入式 GUI | Settings 内嵌 duplex transport **不**走 token（同进程信任边界） |
+
+Headless 首次 bootstrap 示例：
+
+```bash
+# 1) 首次运行会创建 mcp.token 并以 exit 1 提示配置 env
+datazen --mcp-stdio
+
+# 2) 将 token 写入 MCP 客户端配置（Claude Desktop / Cursor 等）
+export DATAZEN_MCP_TOKEN="$(tr -d '\n' < "$APP_DATA/mcp.token")"
+datazen --mcp-stdio
+```
+
+**Resource 与 Tool 策略对齐：**
+
+| 控制 | Tools | Resources |
+|------|-------|-----------|
+| `mcpAllowedConnectionIds` | 带 `connection_id` 的工具 | `connections`、`query-history`（按条目 `connectionId` 过滤）、`schema/{connectionId}/…` |
+| `read_only` | 屏蔽 `query` / `run_workflow` | `query-history` 从列表隐藏且读取返回 `[]`（不泄露 SQL） |
+| `safe_write` / `high_risk_write` | SQL 分类门控 | 全量 resources（仍受 allowlist 约束） |
 
 **Server Tools:**
 - `list_connections` / `list_databases` / `list_tables` / `search_tables` / `query` / `get_schema`

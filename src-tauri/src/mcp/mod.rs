@@ -1,6 +1,7 @@
 //! MCP Server module — exposes DataZen's database capabilities via MCP protocol.
 
 pub mod allowlist;
+pub mod auth;
 pub mod client;
 pub mod permission;
 mod server;
@@ -18,6 +19,8 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::sync::CancellationToken;
 
 /// Run MCP over real process stdio (`datazen --mcp`).
+///
+/// Caller must invoke [`auth::verify_stdio_token`] before this function (headless entry only).
 pub async fn start_mcp_stdio(app_state: Arc<AppState>, cancel: CancellationToken) {
     use tokio::io::{stdin, stdout};
     start_mcp_transport(app_state, cancel, stdin(), stdout()).await;

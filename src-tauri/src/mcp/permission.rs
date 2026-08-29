@@ -21,6 +21,9 @@ impl Default for McpPermissionMode {
 /// Tools blocked entirely in read-only mode.
 const READ_ONLY_BLOCKED_TOOLS: &[&str] = &["query", "run_workflow"];
 
+/// Resources that expose executed SQL; omitted from `list_resources` in read-only mode.
+const READ_ONLY_SENSITIVE_RESOURCES: &[&str] = &["datazen://query-history"];
+
 /// First-keyword verbs treated as the main statement after an optional `WITH` clause.
 const MAIN_VERBS: &[&str] = &[
     "SELECT",
@@ -207,6 +210,19 @@ pub fn check_tool_call(
     }
 
     Ok(())
+}
+
+/// Whether a resource URI should appear in MCP `list_resources` for the given mode.
+pub fn is_resource_listed(uri: &str, mode: McpPermissionMode) -> bool {
+    match mode {
+        McpPermissionMode::ReadOnly => !READ_ONLY_SENSITIVE_RESOURCES.contains(&uri),
+        McpPermissionMode::SafeWrite | McpPermissionMode::HighRiskWrite => true,
+    }
+}
+
+/// Whether `datazen://query-history` may return non-empty SQL history.
+pub fn query_history_content_allowed(mode: McpPermissionMode) -> bool {
+    !matches!(mode, McpPermissionMode::ReadOnly)
 }
 
 /// Whether a tool should appear in MCP `list_tools` for the given mode + denylist.
@@ -617,5 +633,19 @@ mod tests {
             &disabled
         ));
         assert!(is_tool_listed("query", McpPermissionMode::SafeWrite, &none));
+    }
+
+    #[test]
+    fn read_only_hides_query_history_resource() {
+        assert!(!is_resource_listed(
+            "datazen://query-history",
+            McpPermissionMode::ReadOnly
+        ));
+        assert!(is_resource_listed(
+            "datazen://connections",
+            McpPermissionMode::ReadOnly
+        ));
+        assert!(!query_history_content_allowed(McpPermissionMode::ReadOnly));
+        assert!(query_history_content_allowed(McpPermissionMode::SafeWrite));
     }
 }

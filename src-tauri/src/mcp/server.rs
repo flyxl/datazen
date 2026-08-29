@@ -615,12 +615,26 @@ impl DataZenMcpServer {
         }
 
         if uri == "datazen://query-history" {
+            if !permission::query_history_content_allowed(self.permission_mode) {
+                return Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    "[]", uri,
+                )]));
+            }
             let history = self
                 .app_state
                 .store
                 .get_query_history(50, None, None, None)
                 .await;
-            let json = serde_json::to_string_pretty(&history)
+            let filtered: Vec<_> = history
+                .into_iter()
+                .filter(|entry| {
+                    allowlist::is_connection_allowed(
+                        &entry.connection_id,
+                        &self.allowed_connection_ids,
+                    )
+                })
+                .collect();
+            let json = serde_json::to_string_pretty(&filtered)
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?;
             return Ok(ReadResourceResult::new(vec![ResourceContents::text(
                 json, uri,
@@ -772,11 +786,15 @@ impl DataZenMcpServer {
     }
 
     pub(crate) fn list_resources_inner(&self) -> Vec<Resource> {
-        vec![
-            Resource::new("datazen://connections", "Database Connections"),
-            Resource::new("datazen://query-history", "Query History"),
-            Resource::new("datazen://workflows", "Available Workflows"),
+        [
+            ("datazen://connections", "Database Connections"),
+            ("datazen://query-history", "Query History"),
+            ("datazen://workflows", "Available Workflows"),
         ]
+        .into_iter()
+        .filter(|(uri, _)| permission::is_resource_listed(uri, self.permission_mode))
+        .map(|(uri, name)| Resource::new(uri, name))
+        .collect()
     }
 }
 
@@ -1541,5 +1559,148 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn mcp_query_history_read_only_returns_empty() {
+        use crate::mcp::permission::McpPermissionMode;
+        use crate::store::QueryHistoryEntry;
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::with_tables().await;
+        test.save_connection("hist-ro").await;
+        test.store
+            .add_query_history(QueryHistoryEntry {
+                id: "hist-ro-1".into(),
+                connection_id: "hist-ro".into(),
+                database: "app".into(),
+                schema: None,
+                sql: "SELECT secret FROM users".into(),
+                executed_at: chrono::Utc::now(),
+                execution_time_ms: 1,
+                rows_affected: None,
+                success: true,
+                error_message: None,
+            })
+            .await
+            .expect("add_query_history");
+
+        let server = DataZenMcpServer::new(Arc::new(test.state))
+            .with_permission_mode(McpPermissionMode::ReadOnly);
+
+        assert_eq!(server.list_resources_inner().len(), 2);
+        assert!(
+            !server
+                .list_resources_inner()
+                .iter()
+                .any(|r| r.uri.as_str() == "datazen://query-history")
+        );
+
+        let hist = server
+            .read_resource_inner("datazen://query-history")
+            .await
+            .unwrap();
+        match &hist.contents[0] {
+            ResourceContents::TextResourceContents { text, .. } => {
+                assert_eq!(text.trim(), "[]");
+                assert!(!text.contains("secret"));
+            }
+            _ => panic!("expected text resource"),
+        }
+    }
+
+    #[tokio::test]
+    async fn mcp_query_history_respects_connection_allowlist() {
+        use crate::store::QueryHistoryEntry;
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::with_tables().await;
+        test.save_connection("hist-allowed").await;
+        test.save_connection("hist-blocked").await;
+        for (id, sql) in [
+            ("hist-a", "SELECT 1"),
+            ("hist-b", "SELECT 2"),
+        ] {
+            test.store
+                .add_query_history(QueryHistoryEntry {
+                    id: id.into(),
+                    connection_id: if id == "hist-a" {
+                        "hist-allowed".into()
+                    } else {
+                        "hist-blocked".into()
+                    },
+                    database: "app".into(),
+                    schema: None,
+                    sql: sql.into(),
+                    executed_at: chrono::Utc::now(),
+                    execution_time_ms: 1,
+                    rows_affected: None,
+                    success: true,
+                    error_message: None,
+                })
+                .await
+                .expect("add_query_history");
+        }
+
+        let server = DataZenMcpServer::new(Arc::new(test.state))
+            .with_allowed_connections(&["hist-allowed".into()]);
+
+        let hist = server
+            .read_resource_inner("datazen://query-history")
+            .await
+            .unwrap();
+        match &hist.contents[0] {
+            ResourceContents::TextResourceContents { text, .. } => {
+                assert!(text.contains("hist-allowed") || text.contains("\"connectionId\""));
+                assert!(text.contains("SELECT 1"));
+                assert!(!text.contains("hist-blocked"));
+                assert!(!text.contains("SELECT 2"));
+            }
+            _ => panic!("expected text resource"),
+        }
+    }
+
+    #[tokio::test]
+    async fn mcp_connections_resource_respects_allowlist() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::with_tables().await;
+        test.save_connection("conn-visible").await;
+        test.save_connection("conn-hidden").await;
+
+        let server = DataZenMcpServer::new(Arc::new(test.state))
+            .with_allowed_connections(&["conn-visible".into()]);
+
+        let conns = server
+            .read_resource_inner("datazen://connections")
+            .await
+            .unwrap();
+        match &conns.contents[0] {
+            ResourceContents::TextResourceContents { text, .. } => {
+                assert!(text.contains("conn-visible"));
+                assert!(!text.contains("conn-hidden"));
+            }
+            _ => panic!("expected text resource"),
+        }
+    }
+
+    #[tokio::test]
+    async fn mcp_schema_resource_rejects_disallowed_connection() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::with_tables().await;
+        test.save_connection("schema-blocked").await;
+        let server = DataZenMcpServer::new(Arc::new(test.state))
+            .with_allowed_connections(&["other-only".into()]);
+
+        let err = server
+            .read_resource_inner("datazen://schema/schema-blocked/app")
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("allowlist"));
     }
 }
