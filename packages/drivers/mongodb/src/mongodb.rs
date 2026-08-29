@@ -15,12 +15,14 @@ use datazen_driver_api::*;
 use futures_util::TryStreamExt;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 pub struct MongodbDriver {
     clients: RwLock<HashMap<String, (Client, Option<String>)>>,
 }
+
+const TEST_CONNECTION_TIMEOUT_GRACE: Duration = Duration::from_secs(5);
 
 impl MongodbDriver {
     pub fn new() -> Self {
@@ -201,6 +203,21 @@ impl MongodbDriver {
         on_event(QueryStreamEvent::Done { total_time_ms: ms });
         Ok(())
     }
+
+    async fn test_connection_inner(
+        &self,
+        config: &ConnectionConfig,
+    ) -> Result<ServerInfo, DriverError> {
+        let client = Self::client(config).await?;
+        let _ = client
+            .list_database_names()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(format!("MongoDB ping failed: {e}")))?;
+        Ok(ServerInfo {
+            server_version: String::new(),
+            server_type: "mongodb".to_string(),
+        })
+    }
 }
 
 #[async_trait]
@@ -214,15 +231,15 @@ impl DatabaseDriver for MongodbDriver {
     }
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
-        let client = Self::client(config).await?;
-        let _ = client
-            .list_database_names()
+        let timeout = Duration::from_secs(config.connection_timeout.max(1) as u64)
+            .saturating_add(TEST_CONNECTION_TIMEOUT_GRACE);
+        tokio::time::timeout(timeout, self.test_connection_inner(config))
             .await
-            .map_err(|e| DriverError::ConnectionFailed(format!("MongoDB ping failed: {e}")))?;
-        Ok(ServerInfo {
-            server_version: String::new(),
-            server_type: "mongodb".to_string(),
-        })
+            .map_err(|_| {
+                DriverError::ConnectionFailed(format!(
+                    "MongoDB test connection timed out after {timeout:?}"
+                ))
+            })?
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {

@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use datazen_driver_api::*;
 use rust_decimal::prelude::ToPrimitive;
 use sqlx::pool::PoolConnection;
-use sqlx::postgres::PgPoolOptions;
+use sqlx::postgres::{PgPoolOptions, PgSslMode};
 use sqlx::{Column, Executor, PgPool, Postgres, Row};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -475,6 +475,15 @@ fn build_pg_options(
     if let Some(password) = &config.password {
         opts = opts.password(password);
     }
+
+    let pg_ssl = match config.ssl_mode {
+        SslMode::Disable => PgSslMode::Disable,
+        SslMode::Prefer => PgSslMode::Prefer,
+        SslMode::Require => PgSslMode::Require,
+        SslMode::VerifyCa => PgSslMode::VerifyCa,
+        SslMode::VerifyFull => PgSslMode::VerifyFull,
+    };
+    opts = opts.ssl_mode(pg_ssl);
 
     opts = opts.log_statements(tracing::log::LevelFilter::Trace);
     Ok(opts)
