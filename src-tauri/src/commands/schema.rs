@@ -12,16 +12,9 @@ pub(crate) async fn get_databases_impl(
     let start = Instant::now();
     tracing::info!(%db_session_id, "get_databases");
 
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("get_databases")?;
-
-    let dbs = driver
-        .get_databases(&handle)
-        .await
-        .cmd_err("get_databases")?;
+    let data = run_schema_catalog_command(state, &db_session_id, "list_databases", serde_json::json!({}))
+        .await?;
+    let dbs = parse_databases_from_command(&data);
     tracing::info!(%db_session_id, count = dbs.len(), ms = start.elapsed().as_millis() as u64, "get_databases OK");
     Ok(dbs)
 }
@@ -33,16 +26,14 @@ pub(crate) async fn get_tables_impl(
 ) -> Result<Vec<TableInfo>, CommandError> {
     let start = Instant::now();
     tracing::info!(%db_session_id, %database, "get_tables");
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("get_tables")?;
-
-    let tables = driver
-        .get_tables(&handle, &database)
-        .await
-        .cmd_err("get_tables")?;
+    let data = run_schema_catalog_command(
+        state,
+        &db_session_id,
+        "list_tables",
+        serde_json::json!({ "database": database }),
+    )
+    .await?;
+    let tables = parse_tables_from_command(&data);
     tracing::info!(%db_session_id, %database, count = tables.len(), ms = start.elapsed().as_millis() as u64, "get_tables OK");
     Ok(tables)
 }
@@ -76,11 +67,6 @@ pub(crate) async fn get_table_schema_impl(
 ) -> Result<TableSchema, CommandError> {
     let start = Instant::now();
     tracing::info!(%db_session_id, %table, "get_table_schema");
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("get_table_schema")?;
 
     let config = state
         .connection_manager
@@ -89,11 +75,29 @@ pub(crate) async fn get_table_schema_impl(
         .cmd_err("get_table_schema")?;
     let database = config.database.as_deref().unwrap_or("default");
 
-    let schema = state
+    if let Some(schema) = state
         .schema_cache
-        .get_table_schema(&db_session_id, database, &table, &driver, &handle)
+        .try_get_cached_schema(&db_session_id, database, &table)
         .await
-        .cmd_err("get_table_schema")?;
+    {
+        tracing::info!(%db_session_id, %table, cols = schema.columns.len(), indexes = schema.indexes.len(), fks = schema.foreign_keys.len(), ms = start.elapsed().as_millis() as u64, "get_table_schema OK (cache)");
+        return Ok(schema);
+    }
+
+    let data = run_schema_catalog_command(
+        state,
+        &db_session_id,
+        "get_table_schema",
+        serde_json::json!({ "table": table }),
+    )
+    .await?;
+    let schema = parse_table_schema_from_command(&data).ok_or_else(|| {
+        CommandError::Internal("get_table_schema: missing schema in command result".into())
+    })?;
+    state
+        .schema_cache
+        .store_table_schema(&db_session_id, database, &table, schema.clone())
+        .await;
     tracing::info!(%db_session_id, %table, cols = schema.columns.len(), indexes = schema.indexes.len(), fks = schema.foreign_keys.len(), ms = start.elapsed().as_millis() as u64, "get_table_schema OK");
     Ok(schema)
 }
@@ -221,6 +225,39 @@ fn parse_grants_from_command(
     data.get("grants")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default()
+}
+
+async fn run_schema_catalog_command(
+    state: &AppState,
+    db_session_id: &str,
+    command: &str,
+    input: serde_json::Value,
+) -> Result<serde_json::Value, CommandError> {
+    let result = super::driver_command::execute_driver_command_impl(
+        state,
+        super::driver_command::ExecuteDriverCommandRequest {
+            db_session_id: Some(db_session_id.to_string()),
+            driver_type: None,
+            command: command.to_string(),
+            input,
+            database: None,
+            schema: None,
+        },
+    )
+    .await?;
+    Ok(result.data)
+}
+
+fn parse_databases_from_command(data: &serde_json::Value) -> Vec<String> {
+    datazen_driver_api::parse_databases_from_command(data)
+}
+
+fn parse_tables_from_command(data: &serde_json::Value) -> Vec<TableInfo> {
+    datazen_driver_api::parse_tables_from_command(data)
+}
+
+fn parse_table_schema_from_command(data: &serde_json::Value) -> Option<TableSchema> {
+    datazen_driver_api::parse_table_schema_from_command(data)
 }
 
 async fn run_schema_object_command(

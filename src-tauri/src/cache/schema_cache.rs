@@ -125,6 +125,57 @@ impl SchemaCache {
         Ok(entry)
     }
 
+    /// Returns a cached full schema when fresh; otherwise `None`.
+    pub async fn try_get_cached_schema(
+        &self,
+        connection_id: &str,
+        database: &str,
+        table: &str,
+    ) -> Option<TableSchema> {
+        let caches = self.caches.read().await;
+        let db_caches = caches.get(connection_id)?;
+        let db_cache = db_caches.get(database)?;
+        let cached = db_cache.tables.get(table)?;
+        if cached.cached_at.elapsed() < self.cache_ttl {
+            tracing::debug!("Schema cache hit: {}.{}", database, table);
+            Some(cached.schema.clone())
+        } else {
+            None
+        }
+    }
+
+    /// Store a full schema in both the schema and columns cache tiers.
+    pub async fn store_table_schema(
+        &self,
+        connection_id: &str,
+        database: &str,
+        table: &str,
+        schema: TableSchema,
+    ) {
+        let mut caches = self.caches.write().await;
+        let db_cache = Self::get_db_cache_mut(&mut caches, connection_id, database);
+
+        Self::evict_if_needed(&mut db_cache.tables, self.max_tables);
+        db_cache.tables.insert(
+            table.to_string(),
+            CachedSchema {
+                schema: schema.clone(),
+                cached_at: Instant::now(),
+                version: 0,
+            },
+        );
+
+        db_cache.columns.insert(
+            table.to_string(),
+            CachedColumns {
+                columns: schema.columns.clone(),
+                primary_keys: schema.primary_keys.clone(),
+                table_name: schema.table_name.clone(),
+                cached_at: Instant::now(),
+            },
+        );
+    }
+
     /// Full schema (columns + indexes + foreign keys).
     pub async fn get_table_schema(
         &self,
@@ -134,48 +185,14 @@ impl SchemaCache {
         driver: &Arc<dyn DatabaseDriver>,
         handle: &ConnectionHandle,
     ) -> Result<TableSchema, DriverError> {
-        {
-            let caches = self.caches.read().await;
-            if let Some(db_caches) = caches.get(connection_id) {
-                if let Some(db_cache) = db_caches.get(database) {
-                    if let Some(cached) = db_cache.tables.get(table) {
-                        if cached.cached_at.elapsed() < self.cache_ttl {
-                            tracing::debug!("Schema cache hit: {}.{}", database, table);
-                            return Ok(cached.schema.clone());
-                        }
-                    }
-                }
-            }
+        if let Some(schema) = self.try_get_cached_schema(connection_id, database, table).await {
+            return Ok(schema);
         }
 
         tracing::debug!("Schema cache miss: {}.{}", database, table);
         let schema = driver.get_table_schema(handle, table).await?;
-
-        {
-            let mut caches = self.caches.write().await;
-            let db_cache = Self::get_db_cache_mut(&mut caches, connection_id, database);
-
-            Self::evict_if_needed(&mut db_cache.tables, self.max_tables);
-            db_cache.tables.insert(
-                table.to_string(),
-                CachedSchema {
-                    schema: schema.clone(),
-                    cached_at: Instant::now(),
-                    version: 0,
-                },
-            );
-
-            db_cache.columns.insert(
-                table.to_string(),
-                CachedColumns {
-                    columns: schema.columns.clone(),
-                    primary_keys: schema.primary_keys.clone(),
-                    table_name: schema.table_name.clone(),
-                    cached_at: Instant::now(),
-                },
-            );
-        }
-
+        self.store_table_schema(connection_id, database, table, schema.clone())
+            .await;
         Ok(schema)
     }
 

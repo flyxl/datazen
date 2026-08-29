@@ -15,7 +15,8 @@ use crate::db::{
 use datazen_driver_api::{
     execute_command_definition, execute_schema_object_command, execute_standard_sql_command,
     is_schema_object_command, query_command_definition, query_stream_command_definition,
-    schema_object_command_definitions, CommandResult, DriverCommandDefinition,
+    schema_catalog_command_definitions, schema_object_command_definitions,
+    try_execute_schema_catalog_command, CommandResult, DriverCommandDefinition,
 };
 
 #[derive(Clone)]
@@ -416,6 +417,7 @@ impl DatabaseDriver for MockDriver {
             query_stream_command_definition(),
             execute_command_definition(),
         ];
+        definitions.extend(schema_catalog_command_definitions());
         definitions.extend(schema_object_command_definitions());
         definitions.extend(self.opts.extra_commands.clone());
         definitions
@@ -437,6 +439,11 @@ impl DatabaseDriver for MockDriver {
                 "command": command,
                 "input": input,
             })));
+        }
+        if let Some(result) =
+            try_execute_schema_catalog_command(self, handle, command, input.clone()).await?
+        {
+            return Ok(result);
         }
         if is_schema_object_command(command) {
             return execute_schema_object_command(self, &self.db_type, handle, command, input)
