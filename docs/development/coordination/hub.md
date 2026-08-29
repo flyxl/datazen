@@ -15,7 +15,7 @@
 |-------|--------|------|------|-------------|-------------|------|
 | cr-p0-mcp | P0 | MCP 认证 + Resource 策略 | 已完成 | 808ee458 | 1e672b81 | 已合并 |
 | cr-p0-ext-install | P0 | 扩展安装路径门闸 | 已完成 | 41c3cf34 | 89c551e7 | 已合并 |
-| cr-p1-session-id | P1 | 退役 resolve_session 双模 | 测试中·修复轮 | 390d4efc | 1a10bcfb | fix 594e908b 待复验 |
+| cr-p1-session-id | P1 | 退役 resolve_session 双模 | 已完成 | 594e908b | 1a10bcfb | 已合并（含 fix） |
 | cr-p1-workflow-ui | P1 | Workflow UI 统一 | 已完成 | 5791d527 | — | 已合并 |
 | cr-p1-split-ai | P1 | 拆分 ai.rs | 已完成 | f06c0c9f | — | 已合并 |
 | cr-p2-sync-pairing | P2 | sync pairing 单一来源 | 未开始 | — | — | W3 待启动 |
@@ -31,7 +31,7 @@
 | 波次 | 轨道 | 状态 | 合并到集成分支 |
 |------|------|------|----------------|
 | W1 | cr-p0-mcp, cr-p0-ext-install | 已完成 | c67ea693 |
-| W2 | cr-p1-* (×3) | 进行中 | workflow-ui + split-ai 已合并；session-id 待 fix 复验 |
+| W2 | cr-p1-* (×3) | 已完成 | 5b026734+ |
 | W3 | cr-p2-* (×3) | 未开始 | — |
 | W4 | cr-p3-* (×2) | 未开始 | — |
 | R | 全量回归 | 待 W4 | — |
@@ -42,8 +42,7 @@
 
 | 日期 | 源分支 | 目标 | 备注 |
 |------|--------|------|------|
-| 2026-08-29 | feature/cr-p0-mcp, cr-p0-ext-install | feature/code-review-remediation | W1 |
-| 2026-08-29 | feature/cr-p1-workflow-ui, cr-p1-split-ai | feature/code-review-remediation | W2 部分 |
+| 2026-08-29 | W1 + W2 全部 | feature/code-review-remediation | P0+P1 完成 |
 
 ---
 

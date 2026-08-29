@@ -557,9 +557,9 @@ async fn write_data_file(
         request.database_type.as_deref(),
     );
 
-    let (_runtime_id, driver, handle) = state
+    let (driver, handle) = state
         .connection_manager
-        .resolve_session(&request.db_session_id)
+        .get_session(&request.db_session_id)
         .await
         .cmd_err("export")?;
 

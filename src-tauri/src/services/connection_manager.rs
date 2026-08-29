@@ -362,8 +362,9 @@ impl ConnectionManager {
         self.reconnect(db_session_id).await
     }
 
-    /// Resolve a session from an id that may be either kind, trying
-    /// **`db_session_id` first**, then falling back to `connection_id`.
+    /// **MCP / Workflow / db_tools only.** Resolve a session from an id that may
+    /// be either kind, trying **`db_session_id` first**, then falling back to
+    /// `connection_id`.
     ///
     /// - If `id` matches a live runtime session (or one rebuildable via
     ///   `session_owner_map`), it is treated as a `db_session_id` and returned
@@ -371,7 +372,10 @@ impl ConnectionManager {
     /// - Otherwise `id` is treated as a persisted `connection_id`:
     ///   `get_or_connect_session` ensures a session exists for it and that
     ///   (possibly newly created) `db_session_id` is returned.
-    pub async fn resolve_session(
+    ///
+    /// GUI IPC paths must call [`get_session`](Self::get_session) directly and
+    /// pass a real `db_session_id`; they must not use this dual-mode helper.
+    pub async fn resolve_session_for_mcp(
         &self,
         id: &str,
     ) -> Result<(String, Arc<dyn DatabaseDriver>, ConnectionHandle), ConnectionError> {
@@ -417,7 +421,10 @@ impl ConnectionManager {
                 effective_config.database_type.clone(),
             ))?;
 
-        let handle = driver.connect(&effective_config).await?;
+        let mut handle = driver.connect(&effective_config).await?;
+        // Preserve the runtime session id across eviction/reconnect; the driver
+        // may assign a fresh pool handle id on each connect.
+        handle.id = db_session_id.to_string();
 
         let mut connections = self.connections.write().await;
         connections.insert(
@@ -769,7 +776,7 @@ mod tests {
         mgr.insert_test_session("rt-1", "cfg-1", test_config("cfg-1"), handle.clone())
             .await;
 
-        let (db_session_id, driver, returned) = mgr.resolve_session("rt-1").await.unwrap();
+        let (db_session_id, driver, returned) = mgr.resolve_session_for_mcp("rt-1").await.unwrap();
         assert_eq!(db_session_id, "rt-1");
         assert_eq!(returned.id, "rt-1");
         assert_eq!(driver.driver_type(), "postgresql");
@@ -787,7 +794,8 @@ mod tests {
 
         // Input is the connection_id of a config whose session already lives:
         // it must resolve to that existing db_session_id.
-        let (db_session_id, _driver, returned) = mgr.resolve_session("cfg-2").await.unwrap();
+        let (db_session_id, _driver, returned) =
+            mgr.resolve_session_for_mcp("cfg-2").await.unwrap();
         assert_eq!(db_session_id, "rt-2");
         assert_eq!(returned.id, "rt-2");
     }
@@ -957,7 +965,7 @@ mod tests {
         );
     }
 
-    /// Invariant: `resolve_session` tries the id as a **db_session_id first**
+    /// Invariant: `resolve_session_for_mcp` tries the id as a **db_session_id first**
     /// and only falls back to treating it as a connection_id. When one string
     /// is both a live db_session_id and a persisted connection_id, the runtime
     /// session wins and no new session is created.
@@ -979,7 +987,7 @@ mod tests {
         .await;
 
         let before = mgr.session_owner_map_len().await;
-        let (db_session_id, _driver, handle) = mgr.resolve_session("dual").await.unwrap();
+        let (db_session_id, _driver, handle) = mgr.resolve_session_for_mcp("dual").await.unwrap();
 
         // Resolved as the existing db_session_id, NOT as connection_id "dual"
         // (which would have created a fresh "mock-dual…" session).
@@ -1003,7 +1011,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (db_session_id, driver, handle) = mgr.resolve_session("cfg-fb").await.unwrap();
+        let (db_session_id, driver, handle) = mgr.resolve_session_for_mcp("cfg-fb").await.unwrap();
         assert_ne!(db_session_id, "cfg-fb");
         assert!(db_session_id.starts_with("mock-cfg-fb"));
         assert_eq!(handle.id, db_session_id);

@@ -5,6 +5,7 @@ import { Select } from '../../components/ui/Select';
 import { SqlEditor, type SqlEditorHandle } from '../../components/SqlEditor';
 import { useI18n } from '../../hooks/useI18n';
 import { driverCommands } from '../../commands/driver';
+import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { aiCommands } from '../../commands/ai';
 import { rememberWorkflowDraft } from './draftBridge';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
@@ -294,6 +295,7 @@ export function WorkflowForm({
   >({});
   const [loadingCommands, setLoadingCommands] = useState<Record<string, boolean>>({});
   const hydrated = useRef<string | null>(null);
+  const activeConnections = useActiveConnectionStore((s) => s.connections);
 
   useEffect(() => {
     if (!editingId || !draft.id || hydrated.current === draft.id) return;
@@ -351,8 +353,16 @@ export function WorkflowForm({
     for (const connectionId of commandConnections) {
       if (commandsByConnection[connectionId]) continue;
       setLoadingCommands((prev) => ({ ...prev, [connectionId]: true }));
-      void driverCommands
-        .getConnectionCommands(connectionId)
+      const entry = activeConnections[connectionId];
+      const dbSessionId =
+        entry?.status === 'connected' && entry.dbSessionId ? entry.dbSessionId : null;
+      const driverType = connections.find((c) => c.id === connectionId)?.databaseType;
+      const loader = dbSessionId
+        ? driverCommands.getConnectionCommands(dbSessionId)
+        : driverType
+          ? driverCommands.getDriverCommands(driverType)
+          : Promise.resolve([] as DriverCommandDefinition[]);
+      void loader
         .then((definitions) => {
           if (!cancelled)
             setCommandsByConnection((prev) => ({ ...prev, [connectionId]: definitions }));
@@ -367,7 +377,7 @@ export function WorkflowForm({
     return () => {
       cancelled = true;
     };
-  }, [commandConnections.join('|')]);
+  }, [commandConnections.join('|'), activeConnections, connections]);
 
   const getDefinitions = (step: WorkflowStepDraft) =>
     (commandsByConnection[effectiveConnection(step)] ?? []).filter(
@@ -437,47 +447,50 @@ export function WorkflowForm({
         <>
           <div>
             <label className="text-xs text-fg-muted block mb-1">Workflow Connection</label>
-        <Select
-          value={draft.connection ?? ''}
-          options={[
-            { value: '', label: 'No default connection' },
-            ...connections.map((c) => ({ value: c.id, label: c.name })),
-          ]}
-          onChange={(value) => onDraftChange({ ...draft, connection: value || undefined })}
-          className="!h-8 !text-xs w-full"
-        />
-        <div className="text-[11px] text-fg-muted mt-1">
-          Data-operation steps inherit this connection unless they override it.
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-edge p-3 space-y-2">
-        <label className="flex items-center gap-2 text-xs text-fg">
-          <input
-            type="checkbox"
-            checked={Boolean(draft.scheduleEnabled)}
-            onChange={(e) => onDraftChange({ ...draft, scheduleEnabled: e.target.checked })}
-          />
-          {t('workflows.schedule.enabled')}
-        </label>
-        {draft.scheduleEnabled && (
-          <div>
-            <label className="text-xs text-fg-muted block mb-1">
-              {t('workflows.schedule.interval')}
-            </label>
-            <input
-              className={inputClass}
-              type="number"
-              min={30}
-              value={draft.scheduleIntervalSecs ?? 3600}
-              onChange={(e) =>
-                onDraftChange({ ...draft, scheduleIntervalSecs: Number(e.target.value) || 3600 })
-              }
+            <Select
+              value={draft.connection ?? ''}
+              options={[
+                { value: '', label: 'No default connection' },
+                ...connections.map((c) => ({ value: c.id, label: c.name })),
+              ]}
+              onChange={(value) => onDraftChange({ ...draft, connection: value || undefined })}
+              className="!h-8 !text-xs w-full"
             />
-            <div className="text-[11px] text-fg-muted mt-1">{t('workflows.schedule.hint')}</div>
+            <div className="text-[11px] text-fg-muted mt-1">
+              Data-operation steps inherit this connection unless they override it.
+            </div>
           </div>
-        )}
-      </div>
+
+          <div className="rounded-lg border border-edge p-3 space-y-2">
+            <label className="flex items-center gap-2 text-xs text-fg">
+              <input
+                type="checkbox"
+                checked={Boolean(draft.scheduleEnabled)}
+                onChange={(e) => onDraftChange({ ...draft, scheduleEnabled: e.target.checked })}
+              />
+              {t('workflows.schedule.enabled')}
+            </label>
+            {draft.scheduleEnabled && (
+              <div>
+                <label className="text-xs text-fg-muted block mb-1">
+                  {t('workflows.schedule.interval')}
+                </label>
+                <input
+                  className={inputClass}
+                  type="number"
+                  min={30}
+                  value={draft.scheduleIntervalSecs ?? 3600}
+                  onChange={(e) =>
+                    onDraftChange({
+                      ...draft,
+                      scheduleIntervalSecs: Number(e.target.value) || 3600,
+                    })
+                  }
+                />
+                <div className="text-[11px] text-fg-muted mt-1">{t('workflows.schedule.hint')}</div>
+              </div>
+            )}
+          </div>
         </>
       )}
 
