@@ -99,10 +99,11 @@ describe('useConnectionForm', () => {
     expect(result.current.database).toBe('');
     expect(result.current.username).toBe('');
 
-    // Switch to Redis: database should be '0'
+    // Switch to Redis: database should be '0' and TLS should stay off for plaintext Redis.
     if (DB_REGISTRY.redis) {
       act(() => result.current.handleDatabaseTypeChange('redis'));
       expect(result.current.database).toBe('0');
+      expect(result.current.sslMode).toBe('disable');
     }
 
     // Switch back to PostgreSQL: database should be 'postgres', username 'postgres'
@@ -110,6 +111,31 @@ describe('useConnectionForm', () => {
     expect(result.current.database).toBe('postgres');
     expect(result.current.username).toBe('postgres');
     expect(result.current.port).toBe('5432');
+  });
+
+  it('normalizes legacy redis prefer SSL to disabled when TLS is unchecked', () => {
+    if (!DB_REGISTRY.redis) return;
+
+    const { result } = renderHook(() =>
+      useConnectionForm({
+        editId: 'redis-old',
+        existingConnections: [
+          {
+            id: 'redis-old',
+            name: 'redis-old',
+            databaseType: 'redis',
+            host: '127.0.0.1',
+            port: 6379,
+            database: '0',
+            sslMode: 'prefer',
+            options: { topology: 'standalone' },
+          },
+        ],
+      }),
+    );
+
+    expect(result.current.sslMode).toBe('prefer');
+    expect(result.current.draft.sslMode).toBe('disable');
   });
 
   it('includes username in kiwi draft', () => {
