@@ -56,7 +56,11 @@ pub(crate) async fn execute_query_impl(
     database: Option<String>,
 ) -> Result<MultiQueryResult, CommandError> {
     tracing::info!(%db_session_id, sql_len = sql.len(), "execute_query");
-    tracing::debug!(%db_session_id, sql_preview = %sql.chars().take(500).collect::<String>(), "execute_query sql");
+    tracing::debug!(
+        %db_session_id,
+        sql_preview = %crate::log_redact::sql_preview_for_log(&sql),
+        "execute_query sql"
+    );
     ensure_session_database(state, &db_session_id, database.as_deref(), "execute_query").await?;
     let result = super::driver_command::execute_driver_command_impl(
         state,
@@ -463,6 +467,10 @@ mod log_hygiene_tests {
             chunk.contains("sql_len") || chunk.contains("tracing::debug!"),
             "expected sql_len and/or debug preview"
         );
+        assert!(
+            chunk.contains("sql_preview_for_log"),
+            "execute_query debug preview must use log_redact"
+        );
     }
 
     #[test]
@@ -471,10 +479,18 @@ mod log_hygiene_tests {
         let start = src
             .find("pub(crate) async fn execute_driver_command_stream_impl")
             .expect("fn");
-        let chunk = &src[start..start + 900];
+        let end = src[start..]
+            .find("let read_only = state")
+            .map(|i| start + i)
+            .unwrap_or(start + 8000);
+        let chunk = &src[start..end];
         assert!(
             !chunk.contains("tracing::info!(") || !chunk.contains("%sql_preview"),
             "execute_driver_command_stream must not info!-log sql_preview"
+        );
+        assert!(
+            chunk.contains("sql_preview_for_log"),
+            "execute_driver_command_stream debug preview must use log_redact"
         );
     }
 }
