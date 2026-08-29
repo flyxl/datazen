@@ -634,6 +634,11 @@ impl DatabaseDriver for SqlServerDriver {
             Err(DriverError::Unsupported(_)) => {}
             other => return other,
         }
+        if let Some(result) =
+            try_execute_schema_catalog_command(self, handle, command, input.clone()).await?
+        {
+            return Ok(result);
+        }
         let sql = crate::admin_commands::build_admin_sql(command, &input)?;
         let mut map = self.clients.write().await;
         let client = map

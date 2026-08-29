@@ -6,7 +6,8 @@ use std::collections::HashMap;
 use crate::query_stream::{emit_multi_query_as_stream, QueryStreamCallback};
 use crate::types::*;
 use crate::{
-    execute_command_definition, query_command_definition, CommandResult, DriverCommandDefinition,
+    execute_command_definition, query_command_definition, schema_catalog_command_definitions,
+    try_execute_schema_catalog_command, CommandResult, DriverCommandDefinition,
 };
 
 #[async_trait]
@@ -193,7 +194,9 @@ pub trait DatabaseDriver: Send + Sync {
     /// A driver with additional capabilities can override this method and append
     /// its own command definitions.
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
-        vec![query_command_definition(), execute_command_definition()]
+        let mut defs = vec![query_command_definition(), execute_command_definition()];
+        defs.extend(schema_catalog_command_definitions());
+        defs
     }
 
     /// Execute a driver command.
@@ -208,7 +211,19 @@ pub trait DatabaseDriver: Send + Sync {
         command: &str,
         input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
-        execute_standard_sql_command(self, handle, command, input).await
+        match execute_standard_sql_command(self, handle, command, input.clone()).await {
+            Ok(result) => return Ok(result),
+            Err(DriverError::Unsupported(_)) => {}
+            Err(err) => return Err(err),
+        }
+        if let Some(result) =
+            try_execute_schema_catalog_command(self, handle, command, input).await?
+        {
+            return Ok(result);
+        }
+        Err(DriverError::Unsupported(format!(
+            "unsupported driver command: {command}"
+        )))
     }
 
     async fn begin_transaction(

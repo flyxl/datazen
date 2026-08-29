@@ -1033,3 +1033,38 @@ SQL 编辑器走 `execute_query_stream`（Tauri `Channel`），按批发送行�
 `ReuseDriver` 必须转发 `query_stream`，以便 Doris / MariaDB 等复用驱动拿到内层的真正流式实现。
 
 默认实现（先 `query_multi` 再 `emit_multi_query_as_stream`）只留给未覆盖的 Git 驱动或第三方插件。
+
+## Schema 目录 Driver Command 与 Trait 快路径
+
+GUI Schema IPC（`get_databases` / `get_tables` / `get_table_schema`）与 MCP/AI 工具（`list_databases` / `list_tables` / `get_table_schema`）在宿主侧收敛为同一组 **Schema 目录 Driver Command**（`packages/driver-api/src/schema_catalog_commands.rs`）：
+
+| Command ID | 输入 | 输出 | 默认实现 |
+|---|---|---|---|
+| `list_databases` | `{}` | `{ databases: string[] }` | `DatabaseDriver::get_databases` |
+| `list_tables` | `{ database }` | `{ tables: TableInfo[] }` | `DatabaseDriver::get_tables` |
+| `get_table_schema` | `{ table }` | `{ schema: TableSchema }` | `DatabaseDriver::get_table_schema` |
+
+`commands/schema.rs` 的薄 IPC 封装经 `execute_driver_command` 调用上述命令；`get_table_schema` 仍由宿主 `SchemaCache` 做 TTL 缓存（cache hit 不重复 dispatch）。
+
+### Trait 快路径（内部）
+
+以下路径仍可直接调用 trait 方法，避免多余 JSON 序列化或重复 cache 层：
+
+- `SchemaCache::get_table_schema` / `get_columns` — cache miss 时调用 trait
+- `services/db_tools.rs` — MCP/AI 工具（后续可迁至 driver command）
+- `get_er_data` — 批量拉取 ER 图（仍 trait + cache）
+- 备份 / 同步 / data transfer 等后端管线
+
+新代码应优先走 Driver Command；trait 直调仅限上述内部快路径或有明确性能理由的批量场景。
+
+### 驱动检查清单
+
+实现或审查驱动时确认：
+
+1. **Trait 三件套**：`get_databases` / `get_tables` / `get_table_schema` 对连接态返回正确结果（Navigator、DataTable、ER 图依赖）
+2. **`execute_command` 分发**：在 `execute_standard_sql_command` 之后调用 `try_execute_schema_catalog_command`（或使用 `DatabaseDriver` 默认实现）
+3. **`command_definitions`**：合并 `schema_catalog_command_definitions()`（Postgres/MySQL 经 admin 定义；SQLite 族 extend；Redis extend；默认 trait 已含）
+4. **非 SQL 驱动**（Redis、MongoDB 等）：catalog 命令仍通过 trait 映射到驱动语义（如 Redis DB index 列表）
+5. **无需**为 catalog 单独写 SQL — 与 `list_objects` 不同，catalog 命令不经过 `schema_objects` SQL 助手
+6. **`ReuseDriver`**：trait 与 `execute_command` 转发已由包装器处理；Git 插件复用内层驱动即可
+7. **测试**：驱动 crate 内 colocated 单测覆盖 trait；Host `schema.rs` 测试经 mock driver command 路径
