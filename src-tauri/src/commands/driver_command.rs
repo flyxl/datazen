@@ -375,7 +375,7 @@ pub(crate) async fn execute_driver_command_stream_impl(
     );
     tracing::debug!(
         db_session_id,
-        sql_preview = %sql.chars().take(500).collect::<String>(),
+        sql_preview = %crate::log_redact::sql_preview_for_log(&sql),
         "execute_driver_command_stream sql"
     );
 
@@ -562,9 +562,8 @@ pub(crate) async fn execute_driver_command_with_mode(
         "execute_driver_command"
     );
     if let Some(sql) = sql.as_ref() {
-        let preview: String = sql.chars().take(500).collect();
         tracing::debug!(
-            sql_preview = %crate::log_redact::redact_secrets_for_log(&preview),
+            sql_preview = %crate::log_redact::sql_preview_for_log(sql),
             "execute_driver_command sql"
         );
     }
@@ -846,8 +845,7 @@ mod tests {
     #[test]
     fn debug_sql_preview_redacts_secrets() {
         let sql = "SELECT * FROM t WHERE url = 'mysql://root:hunter2@127.0.0.1/app'";
-        let preview: String = sql.chars().take(500).collect();
-        let redacted = crate::log_redact::redact_secrets_for_log(&preview);
+        let redacted = crate::log_redact::sql_preview_for_log(sql);
         assert!(!redacted.contains("hunter2"), "{redacted}");
         assert!(redacted.contains("mysql://***@"), "{redacted}");
     }
