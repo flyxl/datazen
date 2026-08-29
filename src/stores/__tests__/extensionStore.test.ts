@@ -4,7 +4,7 @@ import type { ExtensionSummary } from '../../types/extension';
 const mockExtensionCommands = {
   listExtensions: vi.fn(),
   getExtensionManifest: vi.fn(),
-  installExtensionFromPath: vi.fn(),
+  installExtension: vi.fn(),
   removeExtension: vi.fn(),
   setExtensionEnabled: vi.fn(),
   extensionStorageGet: vi.fn(),
@@ -123,7 +123,9 @@ describe('extensionStore', () => {
   });
 
   it('remove calls backend and refreshes the list', async () => {
-    mockExtensionCommands.listExtensions.mockResolvedValueOnce([makePlugin()]).mockResolvedValueOnce([]);
+    mockExtensionCommands.listExtensions
+      .mockResolvedValueOnce([makePlugin()])
+      .mockResolvedValueOnce([]);
 
     await importStore();
     await useExtensionStore.getState().fetch();

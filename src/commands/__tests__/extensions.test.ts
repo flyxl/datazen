@@ -28,10 +28,19 @@ describe('extensionCommands', () => {
     });
   });
 
-  it('installExtensionFromPath passes path', async () => {
-    await extensionCommands.installExtensionFromPath('/tmp/acme.demo');
-    expect(invokeMock).toHaveBeenCalledWith('install_extension_from_path', {
-      path: '/tmp/acme.demo',
+  it('inspectExtensionPackageWithDialog passes packageKind and omits overridePath in production', async () => {
+    await extensionCommands.inspectExtensionPackageWithDialog('folder');
+    expect(invokeMock).toHaveBeenCalledWith('inspect_extension_package_with_dialog', {
+      packageKind: 'folder',
+      overridePath: undefined,
+    });
+  });
+
+  it('installExtension passes pickToken and omits overridePath in production', async () => {
+    await extensionCommands.installExtension('pick-token-1');
+    expect(invokeMock).toHaveBeenCalledWith('install_extension', {
+      pickToken: 'pick-token-1',
+      overridePath: undefined,
     });
   });
 
@@ -85,8 +94,6 @@ describe('extensionCommands', () => {
     expect(EXTENSION_API_VERSION).toBe(2);
   });
 
-  // --- F3 supplementary (test agent): payload passthrough ---
-
   it('passes install and manifest payloads through untouched', async () => {
     const summary = {
       id: 'acme.demo',
@@ -99,8 +106,11 @@ describe('extensionCommands', () => {
       themes: [],
     };
     invokeMock.mockResolvedValueOnce(summary);
-    await expect(extensionCommands.installExtensionFromPath('/tmp/acme')).resolves.toBe(summary);
-    expect(invokeMock).toHaveBeenLastCalledWith('install_extension_from_path', { path: '/tmp/acme' });
+    await expect(extensionCommands.installExtension('token-abc')).resolves.toBe(summary);
+    expect(invokeMock).toHaveBeenLastCalledWith('install_extension', {
+      pickToken: 'token-abc',
+      overridePath: undefined,
+    });
 
     const manifest = { id: 'acme.demo', apiVersion: 2, permissions: [] };
     invokeMock.mockResolvedValueOnce(manifest);
