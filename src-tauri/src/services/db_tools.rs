@@ -9,11 +9,9 @@ use crate::store::Store;
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
 use std::sync::Arc;
 
-/// Resolve a live DB session from an id that may be either kind: a
-/// **connectionId** (persisted connection configuration id, as returned by
-/// `list_connections`) or a **dbSessionId** (runtime session handle id).
-/// Uses [`ConnectionManager::resolve_session_for_mcp`] (db_session_id first,
-/// connection_id fallback).
+/// Resolve a live DB session from a persisted **connectionId** (as returned by
+/// `list_connections`). Uses [`ConnectionManager::resolve_session_for_connection`]
+/// to reuse or establish a session internally.
 pub async fn resolve_connection(
     connection_manager: &ConnectionManager,
     connection_id: &str,
@@ -24,15 +22,15 @@ pub async fn resolve_connection(
 }
 
 /// Like [`resolve_connection`], but also returns the resolved **dbSessionId**
-/// (which may differ from the input when a connectionId was supplied).
+/// (which differs from the input connectionId).
 pub async fn resolve_connection_with_id(
     connection_manager: &ConnectionManager,
-    id: &str,
+    connection_id: &str,
 ) -> Result<(String, Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
     connection_manager
-        .resolve_session_for_mcp(id)
+        .resolve_session_for_connection(connection_id)
         .await
-        .map_err(|e| format!("Cannot resolve connection '{id}': {e}"))
+        .map_err(|e| format!("Cannot resolve connection '{connection_id}': {e}"))
 }
 
 /// List all configured connections as a JSON string.
@@ -53,7 +51,7 @@ pub async fn list_connections(store: &Store) -> Result<String, String> {
     serde_json::to_string_pretty(&result).map_err(|e| format!("Error: {e}"))
 }
 
-/// List all databases for the connection identified by a connectionId or dbSessionId.
+/// List all databases for the connection identified by a connectionId.
 pub async fn list_databases(
     connection_manager: &ConnectionManager,
     connection_id: &str,
@@ -66,7 +64,7 @@ pub async fn list_databases(
     serde_json::to_string_pretty(&dbs).map_err(|e| format!("Error: {e}"))
 }
 
-/// List all tables in a database for the connection identified by a connectionId or dbSessionId.
+/// List all tables in a database for the connection identified by a connectionId.
 pub async fn list_tables(
     connection_manager: &ConnectionManager,
     connection_id: &str,
@@ -116,7 +114,7 @@ pub async fn search_tables(
     serde_json::to_string_pretty(&result).map_err(|e| format!("Error: {e}"))
 }
 
-/// Get detailed schema for one or more tables for the connection identified by a connectionId or dbSessionId.
+/// Get detailed schema for one or more tables for the connection identified by a connectionId.
 pub async fn get_table_schema(
     connection_manager: &ConnectionManager,
     connection_id: &str,
@@ -133,7 +131,7 @@ pub async fn get_table_schema(
     serde_json::to_string_pretty(&results).map_err(|e| format!("Error: {e}"))
 }
 
-/// Get a single table's schema for the connection identified by a connectionId or dbSessionId.
+/// Get a single table's schema for the connection identified by a connectionId.
 pub async fn get_single_table_schema(
     connection_manager: &ConnectionManager,
     connection_id: &str,
@@ -152,7 +150,7 @@ pub fn resolve_query_limit(limit: Option<u32>) -> Option<u32> {
     Some(resolved.min(MCP_QUERY_MAX_LIMIT))
 }
 
-/// Execute a SQL query for the connection identified by a connectionId or dbSessionId.
+/// Execute a SQL query for the connection identified by a connectionId.
 /// When `permission_mode` is `Some`, SQL is checked against MCP permission rules.
 pub async fn query(
     connection_manager: &ConnectionManager,
@@ -173,7 +171,7 @@ pub async fn query(
     serde_json::to_string_pretty(&result).map_err(|e| format!("Error: {e}"))
 }
 
-/// Run EXPLAIN on a SQL query for the connection identified by a connectionId or dbSessionId.
+/// Run EXPLAIN on a SQL query for the connection identified by a connectionId.
 pub async fn explain_query(
     connection_manager: &ConnectionManager,
     connection_id: &str,
