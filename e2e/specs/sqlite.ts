@@ -1,18 +1,9 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { t } from '../i18n.js';
 import {
   closeExtraWindows,
-  waitForNewConnectionDialog,
-  waitForNewQueryButton,
-  openNewConnectionDialogFromUi,
-  selectNewConnectionDriver,
-  clickNewConnectionSave,
-  clickNewConnectionTest,
-  findCardByName,
-  dblclickConnByExactName,
-  expandAllGroups,
+  createAndConnectSQLiteInWorkspace,
   openQueryTab,
   executeSQL,
   clickTableInSidebar,
@@ -24,76 +15,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONN_NAME = 'E2E-SQLite';
 const DB_PATH = path.resolve(__dirname, '../fixtures/test.db');
 
-// Helper to create and connect to SQLite
-async function createAndConnectSQLite() {
-  const mainWindow = await browser.getWindowHandle();
-  await expandAllGroups();
-
-  // Check if already exists
-  const existingItem = await findCardByName(CONN_NAME);
-  if (existingItem) {
-    await dblclickConnByExactName(CONN_NAME);
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 30000,
-    });
-    const handles = await browser.getWindowHandles();
-    const connWindow = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(connWindow);
-    await waitForNewQueryButton(20000);
-    await browser.pause(2000);
-    return { mainWindow, connWindow };
-  }
-
-  // Create new connection
-  await openNewConnectionDialogFromUi();
-
-  await selectNewConnectionDriver('sqlite');
-  await browser.pause(300);
-
-  // Fill name
-  const nameInput = await $(`input[placeholder="${t('newConn.namePlaceholder')}"]`);
-  await nameInput.setValue(CONN_NAME);
-
-  // Fill database file path
-  const dbInput = await $('input[placeholder="/path/to/db.sqlite"]');
-  await dbInput.setValue(DB_PATH);
-
-  // Test connection
-  await clickNewConnectionTest();
-  await browser.waitUntil(
-    async () => {
-      const body = await $('body').getText();
-      return body.includes(t('newConn.testSuccess')) || body.includes('text-red-400');
-    },
-    { timeout: 15000 },
-  );
-  await browser.pause(500);
-
-  // Save
-  await clickNewConnectionSave();
-  await browser.waitUntil(
-    async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
-    { timeout: 10000 },
-  );
-  await browser.switchToWindow(mainWindow);
-  await browser.pause(1000);
-
-  // Connect
-  const card = await findCardByName(CONN_NAME);
-  if (!card) throw new Error(`SQLite connection "${CONN_NAME}" not found`);
-  await dblclickConnByExactName(CONN_NAME);
-
-  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-    timeout: 30000,
-  });
-  const handles = await browser.getWindowHandles();
-  const connWindow = handles.find((h) => h !== mainWindow)!;
-  await browser.switchToWindow(connWindow);
-  await waitForNewQueryButton(20000);
-  await browser.pause(2000);
-  return { mainWindow, connWindow };
-}
-
 describe('SQLite', () => {
   let mainWindow: string;
   let connWindow: string;
@@ -101,7 +22,7 @@ describe('SQLite', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await closeExtraWindows(mainWindow);
-    const result = await createAndConnectSQLite();
+    const result = await createAndConnectSQLiteInWorkspace(CONN_NAME, DB_PATH);
     mainWindow = result.mainWindow;
     connWindow = result.connWindow;
   });
