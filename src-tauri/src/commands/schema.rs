@@ -12,8 +12,13 @@ pub(crate) async fn get_databases_impl(
     let start = Instant::now();
     tracing::info!(%db_session_id, "get_databases");
 
-    let data = run_schema_catalog_command(state, &db_session_id, "list_databases", serde_json::json!({}))
-        .await?;
+    let data = run_schema_catalog_command(
+        state,
+        &db_session_id,
+        "list_databases",
+        serde_json::json!({}),
+    )
+    .await?;
     let dbs = parse_databases_from_command(&data);
     tracing::info!(%db_session_id, count = dbs.len(), ms = start.elapsed().as_millis() as u64, "get_databases OK");
     Ok(dbs)

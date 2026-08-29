@@ -5,8 +5,8 @@
 
 use datazen_driver_api::{
     execute_command_definition, execute_standard_sql_command, query_command_definition,
-    schema_catalog_command_definitions, try_execute_schema_catalog_command,
-    query_stream_command_definition, CommandCategory, CommandResult, ConnectionHandle,
+    query_stream_command_definition, schema_catalog_command_definitions,
+    try_execute_schema_catalog_command, CommandCategory, CommandResult, ConnectionHandle,
     DriverCommandDefinition, DriverCommandMetadata, DriverError,
 };
 use serde_json::Value as JsonValue;
