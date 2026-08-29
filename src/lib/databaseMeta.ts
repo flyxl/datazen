@@ -3,7 +3,7 @@
  * Extracted to avoid circular deps between types/index.ts ↔ plugins/generated.ts.
  */
 
-import type { DatabaseObjectKind } from '../types';
+import type { DatabaseObjectKind, SslMode } from '../types';
 import type { StructureEditorUiConfig } from './structureEditor/types';
 
 export type ConnectionMode = 'server' | 'file' | 'url';
@@ -35,6 +35,8 @@ export interface DatabaseTypeMeta {
   supportsSSH: boolean;
   /** Whether SSL/TLS configuration is supported */
   supportsSSL: boolean;
+  /** Default SSL/TLS mode when switching to this database type */
+  defaultSslMode?: SslMode;
   /** Whether database backup is supported */
   supportsBackup: boolean;
   /** Whether this type supports schemas (tables, queries, etc.) */
