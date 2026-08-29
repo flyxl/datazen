@@ -20,6 +20,7 @@
         { href: 'https://github.com/flyxl/datazen', label: 'GitHub', external: true },
       ],
       downloadCta: 'Download Free',
+      downloadCtaShort: 'Download',
       menuAria: 'Menu',
       productMenuAria: 'Toggle product menu',
       footerAbout:
@@ -59,6 +60,7 @@
         { href: 'https://github.com/flyxl/datazen', label: 'GitHub', external: true },
       ],
       downloadCta: '免费下载',
+      downloadCtaShort: '下载',
       menuAria: '菜单',
       productMenuAria: '展开产品菜单',
       footerAbout:
@@ -186,8 +188,11 @@
       t.langSwitchLabel +
       '</a>' +
       '</div>' +
-      '<a class="btn btn-primary nav-cta" href="download.html">' +
+      '<a class="btn btn-primary nav-cta" href="download.html"><span class="nav-cta-full">' +
       t.downloadCta +
+      '</span><span class="nav-cta-short">' +
+      t.downloadCtaShort +
+      '</span>' +
       '</a>' +
       '</div></nav>';
 

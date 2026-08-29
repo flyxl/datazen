@@ -222,6 +222,11 @@ img {
 }
 .nav-cta {
   margin-left: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.nav-cta-short {
+  display: none;
 }
 .nav-lang {
   display: inline-flex;
@@ -283,7 +288,22 @@ img {
 }
 @media (max-width: 860px) {
   .nav-inner {
-    gap: 12px;
+    gap: 8px;
+  }
+  .nav-cta {
+    order: 1;
+    margin-left: auto;
+    padding: 7px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.2;
+    box-shadow: none;
+  }
+  .nav-cta-full {
+    display: none;
+  }
+  .nav-cta-short {
+    display: inline;
   }
   .nav-toggle {
     display: block;
@@ -308,7 +328,7 @@ img {
   }
   .nav-tools {
     order: 2;
-    margin-left: auto;
+    margin-left: 0;
   }
 }
 
