@@ -91,33 +91,32 @@ DataZen 中有两类容易混淆的标识符。本文是它们的唯一权威定
 
 一句话经验法则：**先问"哪个连接"还是"哪条会话"。** 描述"哪个连接"→ `connectionId`；操作"哪条已建立的会话"→ `dbSessionId`。拿不准时记住：**`dbSessionId` 永不落盘**——任何需要持久化、跨窗口长引用或进入日志审计的场景都只能用 `connectionId`。
 
-## 4. 双模适配点（MCP / Workflow 专用，GUI IPC 已退役）
+## 4. MCP / Workflow 入参（仅 connectionId）
 
-`ConnectionManager::resolve_session_for_mcp(id)` 是**唯一**保留的"两种 id 都收"入口（原 `resolve_session`，P1 已改名以明确边界）：
+`ConnectionManager::resolve_session_for_connection(connection_id)` 是 MCP / Workflow / db_tools 专用的会话解析入口：
 
-1. 先把 `id` 当 `db_session_id` 解析（命中活动池，或经归属映射驱逐复活）；
-2. 未命中再把 `id` 当 `connection_id`，走 `get_or_connect_session` 建连并返回（可能新建的）`db_session_id`。
+1. 入参**只能是**持久化 `connection_id`（`list_connections` 返回值、Workflow YAML 的 `connection` 字段）；
+2. 内部经 `get_or_connect_session` 按 `session_owner_map` 复用已有会话，或按需建连；
+3. 返回运行时 `db_session_id` 及 driver / handle。
 
 **GUI IPC 路径（schema / query / export / execute_driver_command / get_connection_commands 等）一律调用 `get_session(db_session_id)`，传入 `connectionId` 将明确报错**（`DbSessionNotFound`，提示可能误传了 connectionId）。
 
-当前**仍使用双模**的兼容场景：
-
 | 场景 | 位置 | 说明 |
 |------|------|------|
-| Workflow runtime | `src-tauri/src/workflow/command_runtime.rs` / `executor.rs` | Step / Workflow 的 `connection` 字段存的是配置 id；执行时经 `resolve_session_for_mcp` 按需建连 |
-| MCP DB tools / AI db tools | `src-tauri/src/services/db_tools.rs` `resolve_connection` | 外部契约传 `connection_id`（`list_connections` 返回值）；内部经 `resolve_session_for_mcp` 兜底建连 |
-| 插件桥透传 | `src/lib/extensionBridge.ts` `handleCommandInvoke` | 插件契约传 `connectionId`；宿主从 `activeConnectionStore` 解析 live `dbSessionId`，**无活动会话则拒绝**（不再回退双模） |
+| Workflow runtime | `src-tauri/src/workflow/command_runtime.rs` / `executor.rs` | Step / Workflow 的 `connection` 字段存配置 id；执行时经 `resolve_session_for_connection` 按需建连或复用 |
+| MCP DB tools / AI db tools | `src-tauri/src/services/db_tools.rs` `resolve_connection` | 外部契约传 `connection_id`；内部经 `resolve_session_for_connection` 转换 |
+| 插件桥透传 | `src/lib/extensionBridge.ts` `handleCommandInvoke` | 插件契约传 `connectionId`；宿主从 `activeConnectionStore` 解析 live `dbSessionId`，**无活动会话则拒绝** |
 
-### P1 迁移摘要（cr-p1-session-id）
+### P1 迁移摘要（cr-p1-session-id / cr-p1-mcp-connection-only）
 
 | 变更前 | 变更后 |
 |--------|--------|
 | GUI IPC 经 `resolve_session` 静默把 `connectionId` 当会话 id 并自动建连 | GUI IPC 仅接受 `dbSessionId`；误传 `connectionId` → `DbSessionNotFound` |
-| `ConnectionManager::resolve_session` | 重命名为 `resolve_session_for_mcp`，仅供 MCP / Workflow / db_tools |
+| `ConnectionManager::resolve_session` / `resolve_session_for_mcp` 双模（先 dbSessionId 再 connectionId） | 重命名为 `resolve_session_for_connection`，**仅接受 connectionId** |
 | `WorkflowChatPanel` 把 `connections[].id`（配置 id）塞入 `dbSessionId` | 从 `activeConnectionStore` 解析已连接会话的 `dbSessionId` |
 | `get_connection_commands` IPC 参数 `connectionId` | 改为 `dbSessionId`；未连接时 Workflow 编辑器回退 `get_driver_commands(driverType)` |
 
-规则：以上仅为存量兼容面。**新 GUI 代码必须按第 3 节决策表显式传入正确类型的 id**；新增双模调用点需要在 PR 中说明理由并更新本表。
+规则：**新 GUI 代码必须按第 3 节决策表显式传入正确类型的 id**；MCP / Workflow / db_tools 入参一律为 `connectionId`，不得传 `dbSessionId`。
 
 ## 5. 历史改名映射
 
