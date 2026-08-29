@@ -2,8 +2,8 @@
 
 **轨 ID：** cr-p0-ext-install  
 **分支：** feature/cr-p0-ext-install  
-**状态：** 编码完成（待 R 回归 E2E）  
-**Commit：** `003230d0`
+**状态：** 测试代理复验通过（待 R 回归 E2E）  
+**Commit：** `41c3cf34`（编码）
 
 ## 范围
 
@@ -29,8 +29,32 @@
 
 | 套件 | 结果 | 备注 |
 |------|------|------|
-| `cargo test -p datazen extensions::tests --lib` | 11 passed | |
-| `vitest extensions.test.ts + InstallExtensionDialog.test.tsx` | 19 passed | |
+| `cargo test -p datazen extensions::tests --lib` | 11 passed | 测试代理 2026-08-29 复验 |
+| `vitest extensions.test.ts + InstallExtensionDialog.test.tsx` | 19 passed | 2 files；测试代理 2026-08-29 复验 |
+
+## 复验记录（测试代理）
+
+**时间：** 2026-08-29  
+**编码 commit：** `41c3cf34`
+
+### 验收标准
+
+| # | 标准 | 结果 | 证据 |
+|---|------|------|------|
+| 1 | webview 不可传任意 path（旧 IPC 移除） | ✅ | `lib.rs` 仅注册 `inspect_extension_package_with_dialog` / `install_extension`；`merged_extension_commands_gate_override_path_in_production` 断言旧命令未注册 |
+| 2 | 路径来自原生对话框 + opaque pick token | ✅ | `pick_extension_package_with_dialog` → `dialog::open_file` / `pick_folder`；inspect 返回 `pickToken`/`packageLabel`，install 消费 `take_pick_session` |
+| 3 | 前端移除直接 path 入口 | ✅ | `extensions.ts` 无 path 参数 API；`InstallExtensionDialog` 仅 browse ZIP/folder + `pickToken` 安装 |
+| 4 | Host 单测 + E2E 登记 | ✅ | 11+19 单测通过；E2E J1-001-R / J1-001-R-alt 已登记（R 阶段执行） |
+
+### 逻辑抽查
+
+- **webview 门闸：** 生产路径仅 `packageKind` + `pickToken`；路径驻留 host `EXTENSION_PICK_SESSIONS`，一次性消费。
+- **webdriver override：** `resolve_extension_package_path` 与 `install_extension` 均经 `resolve_override_path`（源码 3 处，单测断言）；E2E 可选 `overridePath` 保留。
+- **E2E 现状：** `e2e/specs/plugins.spec.ts` J1-001 仍 typed path + `plugin-install-next`（与 UI 不符），已登记 R 回归，**非本轨编码缺陷**。
+
+### Bug
+
+无（`bugs.md` 空表）。
 
 ## 遗留
 
