@@ -102,7 +102,7 @@ execute_statements（begin → query_with_params → commit；失败/Cancel 则 
 | `execute_data_sync` | 执行已生成的 `SqlStatement[]` |
 | `cancel_data_sync` | 取消进行中的 compare/execute job |
 
-Legacy：`sync_table` / `sync_tables` / `compare_databases` / `classify_sync_pair` 已移除（pairing 提示由前端 `src/lib/syncPairing.ts` 镜像 `data_sync/pairing.rs` 实现）。
+Legacy：`sync_table` / `sync_tables` / `compare_databases` / `classify_sync_pair` 已移除。Pairing 由 `classify_data_sync_pair` IPC（`data_sync/pairing.rs`）单一来源；前端 `src/lib/syncPairing.ts` 薄封装调用 IPC。
 
 ## 6. 前端 Diff Workspace
 
@@ -113,7 +113,7 @@ Legacy：`sync_table` / `sync_tables` / `compare_databases` / `classify_sync_pai
 - Compare 后：`data-sync-summary`、行 Diff `data-sync-row-diff`、Preview `data-sync-preview`
 - Execute 底栏：`data-sync-execute`（容器）/ `data-sync-start`（按钮）/ `data-sync-start-disabled`
 - 比较/执行中 Cancel：`data-sync-cancel` → `cancel_data_sync(jobId)`
-- Pairing：`src/lib/syncPairing.ts`（与 Rust `pairing.rs` 对齐）
+- Pairing：`classify_data_sync_pair` IPC + `src/lib/syncPairing.ts`（IPC 薄封装）
 - IPC 封装：`src/commands/sync.ts`
 
 ## 7. 测试落点
