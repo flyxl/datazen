@@ -147,6 +147,10 @@ fn inject_sql_target_fields(
     }
 }
 
+/// Persist a query/execute outcome to `{appData}/history.sqlite`.
+///
+/// The full SQL string is written **in plaintext** (see `history_db` module
+/// docs). Logging paths use `log_redact`; history storage does not yet.
 async fn record_sql_command_outcome(
     state: &AppState,
     db_session_id: Option<&str>,
