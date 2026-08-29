@@ -21,6 +21,7 @@
 | [data-transfer-guide](features/data-transfer-guide.zh-CN.md) | 中 | 异构数据迁移（6 步向导、IR 类型映射） |
 | [data-transfer-prd](features/data-transfer-prd.zh-CN.md) | 中 | Data Transfer 产品定义（PRD） |
 | [data-transfer-ui-redesign](features/data-transfer-ui-redesign.zh-CN.md) | 中 | Data Transfer UI 设计存档（6 步向导 · 已实施） |
+| [web-platform-prd](features/web-platform-prd.zh-CN.md) | 中 | v0.2.0 Web 平台化 PRD：自托管、工作区 RBAC、API/SSE、安全与发布门槛 |
 | [schema-diff-ui-redesign](features/schema-diff-ui-redesign.zh-CN.md) | 中 | Schema Diff UI 设计存档（双栏方案 B · 已实施） |
 | [schema-diff-guide](features/schema-diff-guide.zh-CN.md) / [en](features/schema-diff-guide.en.md) | 中 / 英 | 结构对比与 DDL 部署（5 步向导） |
 | [schema-diff-deploy](features/schema-diff-deploy.md) | 英 | Schema Diff Deploy 速览（安全默认值矩阵） |
