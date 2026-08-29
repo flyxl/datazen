@@ -147,7 +147,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await sslEl.waitForDisplayed({ timeout: 3000 });
     await expect(await $('div*=颜色标签')).toBeDisplayed();
     await expect(await $('div*=分组')).toBeDisplayed();
-    await expect(await $('label*=通过 SSH 隧道连接')).toBeDisplayed();
+    await expect(await $('[data-testid="new-conn-ssh-tunnel"]')).toBeDisplayed();
     await captureJourneyStep('advanced-settings-expanded', 0, true);
   });
 

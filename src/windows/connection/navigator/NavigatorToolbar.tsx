@@ -113,6 +113,7 @@ export function NavigatorToolbar({
           <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted" />
           <input
             type="text"
+            data-testid="connection-search-input"
             className="h-7 w-full rounded-md bg-surface pl-7 pr-2 text-xs text-fg placeholder:text-fg-muted focus:outline-none focus:ring-1 focus:ring-accent"
             placeholder={t('main.searchPlaceholder')}
             value={searchQuery}

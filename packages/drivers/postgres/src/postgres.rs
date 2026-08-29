@@ -472,7 +472,7 @@ fn build_pg_options(
     if let Some(username) = &config.username {
         opts = opts.username(username);
     }
-    if let Some(password) = &config.password {
+    if let Some(password) = config.password.as_deref().filter(|p| !p.trim().is_empty()) {
         opts = opts.password(password);
     }
 
