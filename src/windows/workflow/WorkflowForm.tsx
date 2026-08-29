@@ -104,6 +104,8 @@ interface WorkflowFormProps {
   onDraftChange: (d: WorkflowDraft) => void;
   onSave: () => void;
   onCancel: () => void;
+  /** `compact` fits AI panel sidebar; `page` is the full workflow window editor. */
+  variant?: 'page' | 'compact';
 }
 
 function commandOptionLabel(definition: DriverCommandDefinition) {
@@ -280,6 +282,7 @@ export function WorkflowForm({
   onDraftChange,
   onSave,
   onCancel,
+  variant = 'page',
 }: WorkflowFormProps) {
   const { t } = useI18n();
   const inputClass =
@@ -378,38 +381,62 @@ export function WorkflowForm({
     onDraftChange({ ...draft, steps });
   };
 
+  const compact = variant === 'compact';
+
   return (
-    <div className="w-full max-w-3xl mx-auto p-6 space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="text-xs text-fg-muted block mb-1">ID</label>
+    <div
+      className={
+        compact
+          ? 'space-y-2 border border-edge rounded-md p-3 bg-surface w-full'
+          : 'w-full max-w-3xl mx-auto p-6 space-y-4'
+      }
+    >
+      {compact && (
+        <h4 className="text-xs font-medium text-fg">
+          {editingId ? t('workflows.edit') : t('workflows.create')}
+        </h4>
+      )}
+      <div className={compact ? 'space-y-2' : 'grid grid-cols-2 gap-4'}>
+        <div className={compact ? undefined : undefined}>
+          <label className="text-xs text-fg-muted block mb-1">
+            {compact ? t('workflows.form.id') : 'ID'}
+          </label>
           <input
             className={inputClass}
             value={draft.id}
             onChange={(e) => onDraftChange({ ...draft, id: e.target.value })}
             disabled={!!editingId}
+            placeholder={compact ? t('workflows.form.idPlaceholder') : undefined}
           />
         </div>
         <div>
-          <label className="text-xs text-fg-muted block mb-1">{t('workflows.name')}</label>
+          <label className="text-xs text-fg-muted block mb-1">
+            {compact ? t('workflows.form.name') : t('workflows.name')}
+          </label>
           <input
             className={inputClass}
             value={draft.name}
             onChange={(e) => onDraftChange({ ...draft, name: e.target.value })}
+            placeholder={compact ? t('workflows.form.namePlaceholder') : undefined}
           />
         </div>
       </div>
       <div>
-        <label className="text-xs text-fg-muted block mb-1">{t('workflows.description')}</label>
+        <label className="text-xs text-fg-muted block mb-1">
+          {compact ? t('workflows.form.description') : t('workflows.description')}
+        </label>
         <input
           className={inputClass}
           value={draft.description}
           onChange={(e) => onDraftChange({ ...draft, description: e.target.value })}
+          placeholder={compact ? t('workflows.form.descriptionPlaceholder') : undefined}
         />
       </div>
 
-      <div>
-        <label className="text-xs text-fg-muted block mb-1">Workflow Connection</label>
+      {!compact && (
+        <>
+          <div>
+            <label className="text-xs text-fg-muted block mb-1">Workflow Connection</label>
         <Select
           value={draft.connection ?? ''}
           options={[
@@ -451,6 +478,8 @@ export function WorkflowForm({
           </div>
         )}
       </div>
+        </>
+      )}
 
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -686,13 +715,37 @@ export function WorkflowForm({
         })}
       </div>
 
-      <div className="flex gap-3 pt-2">
-        <Button onClick={onSave} className="px-6">
-          {t('common.save')}
-        </Button>
-        <Button variant="secondary" onClick={onCancel} className="px-6">
-          {t('common.cancel')}
-        </Button>
+      <div className={compact ? 'flex gap-2 pt-1' : 'flex gap-3 pt-2'}>
+        {compact ? (
+          <>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              className="px-3 py-1 text-xs bg-accent text-white rounded hover:bg-accent/90 transition-colors disabled:opacity-50"
+              onClick={onSave}
+              disabled={!draft.id.trim() || !draft.name.trim() || draft.steps.length === 0}
+            >
+              {t('common.save')}
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              className="px-3 py-1 text-xs text-fg-secondary border border-edge rounded hover:bg-surface-raised transition-colors"
+              onClick={onCancel}
+            >
+              {t('common.cancel')}
+            </button>
+          </>
+        ) : (
+          <>
+            <Button onClick={onSave} className="px-6">
+              {t('common.save')}
+            </Button>
+            <Button variant="secondary" onClick={onCancel} className="px-6">
+              {t('common.cancel')}
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );

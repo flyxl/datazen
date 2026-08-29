@@ -21,7 +21,6 @@ const {
   workflowGetMock,
   workflowHistoryClearMock,
   getConnectionsMock,
-  getDatabasesMock,
   openDocsWindowMock,
 } = vi.hoisted(() => {
   const aiStoreState = {
@@ -62,7 +61,6 @@ const {
       { id: 'c1', name: 'PG', databaseType: 'postgresql', database: 'postgres' },
       { id: 'c2', name: 'My', databaseType: 'mysql' },
     ]),
-    getDatabasesMock: vi.fn().mockResolvedValue(['db1', 'db2']),
     openDocsWindowMock: vi.fn(),
   };
 });
@@ -94,20 +92,62 @@ vi.mock('../../../commands/connection', () => ({
   },
 }));
 
-vi.mock('../../../commands/database', () => ({
-  databaseCommands: {
-    getDatabases: (...a: unknown[]) => getDatabasesMock(...a),
-  },
-}));
-
-vi.mock('../../../lib/databaseTypes', () => ({
-  DB_REGISTRY: {
-    mysql: { hasMultiDatabase: true },
-  },
-}));
-
 vi.mock('../../../lib/windowManager', () => ({
   openDocsWindow: (...a: unknown[]) => openDocsWindowMock(...a),
+}));
+
+vi.mock('../../../components/SqlEditor', () => ({
+  SqlEditor: ({
+    value,
+    onChange,
+    placeholder,
+  }: {
+    value: string;
+    onChange: (v: string) => void;
+    placeholder?: string;
+  }) => (
+    <textarea
+      data-testid="sql-editor"
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  ),
+}));
+
+vi.mock('../../../commands/driver', () => ({
+  driverCommands: {
+    getConnectionCommands: vi.fn().mockResolvedValue([]),
+  },
+}));
+
+vi.mock('../../../components/ui/Select', () => ({
+  Select: ({
+    value,
+    options,
+    onChange,
+    className,
+    disabled,
+  }: {
+    value: string;
+    options: { value: string; label: string }[];
+    onChange: (v: string) => void;
+    className?: string;
+    disabled?: boolean;
+  }) => (
+    <select
+      className={className}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  ),
 }));
 
 vi.mock('../../chart/ChartView', () => ({
@@ -226,17 +266,17 @@ describe('WorkflowPanel', () => {
     expect(screen.getByText('workflows.saved')).toBeInTheDocument();
   });
 
-  it('adds variable and step types in form', async () => {
+  it('adds variable and switches default step to ai in shared form', async () => {
     render(<WorkflowPanel />);
     await waitFor(() => screen.getByText('workflows.create'));
     fireEvent.click(screen.getByTitle('workflows.create'));
-    fireEvent.click(screen.getByText('workflows.form.addVariable'));
-    fireEvent.click(screen.getByText(/workflows.form.addAiStep/));
-    fireEvent.click(screen.getByText(/workflows.form.addConditionStep/));
-    fireEvent.click(screen.getByText(/workflows.form.addForeachStep/));
-    expect(screen.getByPlaceholderText('workflows.form.prompt')).toBeInTheDocument();
-    expect(screen.getByText(/workflows.form.conditionHint/)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('item')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('+ workflows.form.addVariable'));
+    const stepTypeSelect = screen
+      .getAllByRole('combobox')
+      .find((el) => (el as HTMLSelectElement).value === 'query');
+    expect(stepTypeSelect).toBeTruthy();
+    fireEvent.change(stepTypeSelect!, { target: { value: 'ai' } });
+    expect(screen.getByPlaceholderText('AI prompt...')).toBeInTheDocument();
   });
 
   it('shows save error feedback', async () => {
@@ -262,50 +302,19 @@ describe('WorkflowPanel', () => {
     expect(screen.getByText('workflows.running')).toBeInTheDocument();
   });
 
-  it('loads database picker for multi-db connection in query step form', async () => {
-    render(<WorkflowPanel />);
-    await waitFor(() => screen.getByTitle('workflows.create'));
-    fireEvent.click(screen.getByTitle('workflows.create'));
-    fireEvent.click(screen.getByRole('button', { name: 'workflows.form.defaultConnection' }));
-    fireEvent.mouseDown(await screen.findByText('My'));
-    await waitFor(() => expect(getDatabasesMock).toHaveBeenCalledWith('c2'));
-    fireEvent.click(screen.getByRole('button', { name: 'common.selectDatabase' }));
-    expect(await screen.findByText('db1')).toBeInTheDocument();
-  });
-
-  it('edits workflow with nested step types', async () => {
+  it('edits workflow via shared form', async () => {
     workflowGetMock.mockResolvedValue({
       id: 'wf1',
       name: 'Workflow One',
       description: 'First',
       variables: [],
-      steps: [
-        {
-          type: 'condition',
-          id: 'c1',
-          if: 'true',
-          thenSteps: [{ type: 'query', id: 'q1', sql: 'SELECT 1' }],
-          elseSteps: [],
-        },
-        {
-          type: 'foreach',
-          id: 'f1',
-          items: 'steps.q1.rows',
-          asVar: 'row',
-          steps: [{ type: 'ai', id: 'a1', prompt: 'hi' }],
-          maxIterations: 50,
-        },
-      ],
+      steps: [{ type: 'query', id: 's1', sql: 'SELECT 1' }],
     });
     render(<WorkflowPanel />);
     await waitFor(() => screen.getByText('Workflow One'));
     fireEvent.click(screen.getAllByTitle('workflows.edit')[0]);
     await waitFor(() => expect(workflowGetMock).toHaveBeenCalledWith('wf1'));
-    await waitFor(() =>
-      expect(screen.getByText(/workflows.form.conditionHint/)).toBeInTheDocument(),
-    );
-    expect(screen.getByDisplayValue('row')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('50')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('SELECT 1')).toBeInTheDocument();
   });
 
   it('skips delete when confirm cancelled', async () => {
@@ -427,8 +436,7 @@ describe('WorkflowPanel', () => {
     render(<WorkflowPanel dbSessionId="c1" />);
     await waitFor(() => screen.getByText('With Vars'));
     fireEvent.click(screen.getByText('With Vars'));
-    fireEvent.click(screen.getByRole('button', { name: 'common.selectConnection' }));
-    fireEvent.mouseDown(await screen.findByText('PG'));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'c1' } });
     fireEvent.click(screen.getByText('workflows.run'));
     await waitFor(() =>
       expect(executeWorkflowMock).toHaveBeenCalledWith({
