@@ -15,7 +15,7 @@
 |-------|--------|------|------|-------------|-------------|------|
 | cr-p0-mcp | P0 | MCP 认证 + Resource 策略 | 编码完成 | 808ee458 | — | 待测试代理 |
 | cr-p0-ext-install | P0 | 扩展安装路径门闸 | 编码完成 | 41c3cf34 | — | 待测试代理 |
-| cr-p1-session-id | P1 | 退役 resolve_session 双模 | 测试中·修复轮 | 390d4efc | ca2d523d | 2 bugs；Plan 4/4 ✅，cargo 1173/1174 |
+| cr-p1-session-id | P1 | 退役 resolve_session 双模 | 测试中·修复轮 | 390d4efc | 1a10bcfb | 2 bugs；Plan 4/4 ✅，cargo 1173/1174 |
 | cr-p1-workflow-ui | P1 | Workflow UI 统一 | 未开始 | — | — | W2 |
 | cr-p1-split-ai | P1 | 拆分 ai.rs | 未开始 | — | — | W2 |
 | cr-p2-sync-pairing | P2 | sync pairing 单一来源 | 未开始 | — | — | W3 |
