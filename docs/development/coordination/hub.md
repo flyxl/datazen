@@ -7,7 +7,7 @@
 | 轨道 | 范围 | 状态 | 编码 commit | 测试 commit |
 |---|---|---|---|---|
 | `v01x-query-cancel` | 精确 query execution handle、Driver cancel protocol、QueryExecutionViewModel | 协议重构中 | ecfa2bcf | 5d23c50d |
-| `v01x-pending-changes` | staged row changes、Preview plan、Commit/Rollback | 修复中 | 2a6ff456 | 32bbdd7e |
+| `v01x-pending-changes` | staged row changes、Preview plan、Commit/Rollback | 测试中 | 583cfc13 | 32bbdd7e |
 
 ## 合并规则
 
