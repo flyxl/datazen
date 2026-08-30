@@ -8,7 +8,7 @@ use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::db::{ExplainResult, MultiQueryResult};
 use crate::store::QueryHistoryEntry;
-use datazen_driver_api::{QueryStreamCallback, QueryStreamEvent};
+use datazen_driver_api::{QueryExecutionId, QueryStreamCallback, QueryStreamEvent};
 use tauri::ipc::Channel;
 use tauri::State;
 
@@ -149,8 +149,19 @@ pub(crate) async fn get_explain_impl(
 pub(crate) async fn cancel_query_impl(
     state: &AppState,
     db_session_id: String,
+    execution_id: String,
 ) -> Result<(), CommandError> {
-    tracing::info!(%db_session_id, "cancel_query");
+    let execution_id = QueryExecutionId::new(execution_id);
+    tracing::info!(
+        %db_session_id,
+        execution_id = %execution_id.as_str(),
+        "cancel_query"
+    );
+    state
+        .query_executions
+        .validate_owner(&execution_id, &db_session_id)
+        .await
+        .map_err(CommandError::Validation)?;
     let config = state
         .connection_manager
         .get_session_config(&db_session_id)
@@ -161,7 +172,9 @@ pub(crate) async fn cancel_query_impl(
         .get_capabilities(&config.database_type)
         .await
     {
-        Some(capabilities) if capabilities.supports_cancel_query => {}
+        Some(capabilities)
+            if capabilities.supports_cancel_query
+                && capabilities.supports_query_execution_cancel => {}
         Some(_) => {
             return Err(CommandError::Validation(
                 "UNSUPPORTED_OPERATION:cancel_query:query cancellation is not supported by this driver"
@@ -181,7 +194,10 @@ pub(crate) async fn cancel_query_impl(
         .await
         .cmd_err("cancel_query")?;
 
-    driver.cancel_query(&handle).await.cmd_err("cancel_query")
+    driver
+        .cancel_query_with_execution(&handle, &execution_id)
+        .await
+        .cmd_err("cancel_query")
 }
 
 pub(crate) async fn get_query_history_impl(
@@ -304,8 +320,9 @@ pub async fn get_explain(
 pub async fn cancel_query(
     state: State<'_, AppState>,
     db_session_id: String,
+    execution_id: String,
 ) -> Result<(), CommandError> {
-    cancel_query_impl(&state, db_session_id).await
+    cancel_query_impl(&state, db_session_id, execution_id).await
 }
 
 #[tauri::command]
@@ -558,7 +575,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_explain_and_cancel_query() {
+    async fn get_explain_query() {
         let opts = MockDriverOptions {
             explain_plan: ExplainResult {
                 plan_text: "Seq Scan".into(),
@@ -576,6 +593,7 @@ mod tests {
                 test.mock.clone(),
                 DriverCapabilities {
                     supports_cancel_query: true,
+                    supports_query_execution_cancel: true,
                     supports_explain: true,
                     supports_streaming_results: true,
                 },
@@ -587,9 +605,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(plan.plan_text, "Seq Scan");
-
-        cancel_query_impl(&test.state, conn_id).await.unwrap();
-        assert_eq!(test.mock.cancel_query_calls(), 1);
     }
 
     #[tokio::test]
@@ -600,13 +615,21 @@ mod tests {
         })
         .await;
         let (_, conn_id) = test.save_and_connect("cancel-unknown").await;
+        let execution_id = QueryExecutionId::new("exec-unknown");
+        test.state
+            .query_executions
+            .register(execution_id.clone(), conn_id.clone())
+            .await
+            .unwrap();
 
         assert!(test
             .registry
             .get_capabilities(&"postgres".to_string())
             .await
             .is_none());
-        let error = cancel_query_impl(&test.state, conn_id).await.unwrap_err();
+        let error = cancel_query_impl(&test.state, conn_id, execution_id.as_str().to_string())
+            .await
+            .unwrap_err();
         assert!(matches!(
             error,
             super::super::error::CommandError::Validation(message)
@@ -620,19 +643,28 @@ mod tests {
     async fn cancel_query_rejects_when_driver_capability_is_disabled() {
         let test = TestAppState::new().await;
         let (_, conn_id) = test.save_and_connect("cancel-unsupported").await;
+        let execution_id = QueryExecutionId::new("exec-unsupported");
+        test.state
+            .query_executions
+            .register(execution_id.clone(), conn_id.clone())
+            .await
+            .unwrap();
         test.registry
             .register_test_driver_with_capabilities(
                 "postgres",
                 test.mock.clone(),
                 DriverCapabilities {
                     supports_cancel_query: false,
+                    supports_query_execution_cancel: false,
                     supports_explain: true,
                     supports_streaming_results: true,
                 },
             )
             .await;
 
-        let error = cancel_query_impl(&test.state, conn_id).await.unwrap_err();
+        let error = cancel_query_impl(&test.state, conn_id, execution_id.as_str().to_string())
+            .await
+            .unwrap_err();
         assert!(matches!(
             error,
             super::super::error::CommandError::Validation(message)
@@ -649,25 +681,35 @@ mod tests {
         })
         .await;
         let (_, conn_id) = test.save_and_connect("cancel-driver-unsupported").await;
+        let execution_id = QueryExecutionId::new("exec-driver-unsupported");
+        test.state
+            .query_executions
+            .register(execution_id.clone(), conn_id.clone())
+            .await
+            .unwrap();
         test.registry
             .register_test_driver_with_capabilities(
                 "postgres",
                 test.mock.clone(),
                 DriverCapabilities {
                     supports_cancel_query: true,
+                    supports_query_execution_cancel: true,
                     supports_explain: true,
                     supports_streaming_results: true,
                 },
             )
             .await;
 
-        let error = cancel_query_impl(&test.state, conn_id).await.unwrap_err();
+        let error = cancel_query_impl(&test.state, conn_id, execution_id.as_str().to_string())
+            .await
+            .unwrap_err();
         assert!(matches!(
             error,
             super::super::error::CommandError::Driver(DriverError::Unsupported(message))
                 if message == "backend cancellation is unavailable"
         ));
-        assert_eq!(test.mock.cancel_query_calls(), 1);
+        assert_eq!(test.mock.cancel_query_calls(), 0);
+        assert_eq!(test.mock.precise_cancel_query_calls(), 1);
     }
 
     #[tokio::test]

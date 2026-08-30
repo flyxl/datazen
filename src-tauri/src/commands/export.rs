@@ -602,6 +602,7 @@ async fn write_data_file(
     let cb_table = table.table_name.clone();
 
     let callback: QueryStreamCallback = Arc::new(move |event: QueryStreamEvent| match event {
+        QueryStreamEvent::ExecutionStarted { .. } => {}
         QueryStreamEvent::StatementStart { columns: cols, .. } => {
             let derived: Vec<String> = cols.iter().map(|c| c.name.clone()).collect();
             {

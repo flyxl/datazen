@@ -236,6 +236,26 @@ pub struct ConnectionHandle {
     pub pool_id: String,
 }
 
+/// Opaque identity for one query execution.
+///
+/// Drivers may associate this token with private backend state (for example a
+/// PostgreSQL backend PID or a MySQL thread id), but that state must never be
+/// put in the token or exposed to the host/UI. The host creates one fresh id
+/// for every streamed execution.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct QueryExecutionId(String);
+
+impl QueryExecutionId {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(Debug)]
 pub struct TransactionHandle {
     pub id: String,
@@ -536,6 +556,15 @@ pub enum DriverError {
 
     #[error("Unsupported: {0}")]
     Unsupported(String),
+
+    #[error("Query execution not found: {0}")]
+    QueryExecutionNotFound(String),
+
+    #[error("Query execution belongs to a different session")]
+    QueryExecutionSessionMismatch,
+
+    #[error("Query cancelled")]
+    QueryCancelled,
 }
 
 /// Table structure editor capability flags returned by drivers.

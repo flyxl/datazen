@@ -363,6 +363,7 @@ mod tests {
                 test.mock.clone(),
                 crate::db::DriverCapabilities {
                     supports_cancel_query: true,
+                    supports_query_execution_cancel: true,
                     supports_explain: true,
                     supports_streaming_results: false,
                 },

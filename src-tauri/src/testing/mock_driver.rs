@@ -34,7 +34,9 @@ pub struct MockDriverOptions {
     pub server_version: String,
     pub extra_commands: Vec<DriverCommandDefinition>,
     pub query_error: Option<String>,
-    /// When set, cancellation returns a driver-level error for command tests.
+    /// When set, precise execution-handle cancellation returns a driver-level
+    /// error for command tests. The legacy session-wide method remains a
+    /// separate counter and is never used by the Host cancel path.
     pub cancel_error: Option<String>,
     /// F7: when true, `qualify_sql_target` rewrites SQL by appending a
     /// marker comment recording the requested target (capability simulation).
@@ -77,6 +79,7 @@ pub struct MockDriver {
     get_schema_calls: AtomicU32,
     query_calls: AtomicU32,
     cancel_query_calls: AtomicU32,
+    precise_cancel_query_calls: AtomicU32,
     last_query_limit: Mutex<Option<Option<u32>>>,
     open_txs: Mutex<HashSet<String>>,
     use_database_calls: Mutex<Vec<String>>,
@@ -93,6 +96,7 @@ impl MockDriver {
             get_schema_calls: AtomicU32::new(0),
             query_calls: AtomicU32::new(0),
             cancel_query_calls: AtomicU32::new(0),
+            precise_cancel_query_calls: AtomicU32::new(0),
             last_query_limit: Mutex::new(None),
             open_txs: Mutex::new(HashSet::new()),
             use_database_calls: Mutex::new(Vec::new()),
@@ -137,6 +141,10 @@ impl MockDriver {
 
     pub fn cancel_query_calls(&self) -> u32 {
         self.cancel_query_calls.load(Ordering::Relaxed)
+    }
+
+    pub fn precise_cancel_query_calls(&self) -> u32 {
+        self.precise_cancel_query_calls.load(Ordering::Relaxed)
     }
 
     pub fn reset_columns_calls(&self) {
@@ -333,6 +341,23 @@ impl DatabaseDriver for MockDriver {
             return Err(DriverError::Unsupported(message.clone()));
         }
         Ok(())
+    }
+
+    async fn cancel_query_with_execution(
+        &self,
+        _handle: &ConnectionHandle,
+        _execution_id: &datazen_driver_api::QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        self.precise_cancel_query_calls
+            .fetch_add(1, Ordering::Relaxed);
+        if let Some(message) = &self.opts.cancel_error {
+            return Err(DriverError::Unsupported(message.clone()));
+        }
+        Ok(())
+    }
+
+    fn supports_query_execution_cancel(&self) -> bool {
+        true
     }
 
     async fn use_database(
