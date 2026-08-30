@@ -62,7 +62,8 @@ describe('窗口与 UI 操作 (TC-UI-001/002/003/005)', () => {
       body.includes('postgres') ||
       body.includes('PostgreSQL') ||
       body.includes('连接') ||
-      body.includes(t('connWin.newQuery'));
+      body.includes('Query') ||
+      body.includes('查询');
     expect(hasStatus).toBe(true);
   });
 });

@@ -122,6 +122,7 @@ export function ContentToolbar({
           compact={compact}
           variant="secondary"
           className="h-8"
+          data-testid="content-toolbar-new-table"
           label={t('common.newTable')}
           icon={<TableProperties className="h-4 w-4" />}
           onClick={onCreateTable}

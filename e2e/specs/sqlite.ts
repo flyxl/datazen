@@ -9,7 +9,10 @@ import {
   clickTableInSidebar,
   switchSubTab,
   asideHasSchemaSections,
+  connectionNavigatorAside,
+  expandSchemaCategory,
 } from '../helpers.js';
+import { t } from '../i18n.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONN_NAME = 'E2E-SQLite';
@@ -32,7 +35,7 @@ describe('SQLite', () => {
   });
 
   it('should show tables in sidebar', async () => {
-    const aside = await $('aside');
+    const aside = await connectionNavigatorAside();
     const text = await aside.getText();
     expect(asideHasSchemaSections(text)).toBe(true);
     expect(text).toContain('users');
@@ -41,9 +44,10 @@ describe('SQLite', () => {
   });
 
   it('should show views in sidebar', async () => {
-    const aside = await $('aside');
+    await expandSchemaCategory('views');
+    const aside = await connectionNavigatorAside();
     const text = await aside.getText();
-    expect(text).toContain('Views');
+    expect(text).toContain(t('schemaTree.views'));
     expect(text).toContain('published_posts');
   });
 
@@ -58,7 +62,7 @@ describe('SQLite', () => {
   it('should show table structure', async () => {
     await clickTableInSidebar('users');
     await browser.pause(500);
-    await switchSubTab(t('connWin.structure'));
+    await switchSubTab('structure');
     await browser.pause(1000);
     const body = await $('body').getText();
     expect(body).toContain('id');
@@ -93,7 +97,7 @@ describe('SQLite', () => {
   it('should show indexes', async () => {
     await clickTableInSidebar('users');
     await browser.pause(500);
-    await switchSubTab(t('connWin.indexes'));
+    await switchSubTab('indexes');
     await browser.pause(1000);
     // SQLite creates autoindex for UNIQUE constraints
     const body = await $('body').getText();
@@ -101,15 +105,7 @@ describe('SQLite', () => {
   });
 
   it('should display view data', async () => {
-    // Click the published_posts view
-    const asideButtons = await $$('aside button');
-    for (const btn of asideButtons) {
-      const text = (await btn.getText()).trim();
-      if (text === 'published_posts') {
-        await btn.click();
-        break;
-      }
-    }
+    await clickTableInSidebar('published_posts');
     await browser.pause(1000);
     const body = await $('body').getText();
     expect(body).toContain('author');

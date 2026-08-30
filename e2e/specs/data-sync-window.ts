@@ -34,10 +34,8 @@ describe('数据同步窗口 (DSW-001~DSW-008)', () => {
 
   it('DSW-001: 应能通过 URL 打开数据同步窗口', async () => {
     await openDataSyncWindow();
-    const body = await $('body').getText();
-    expect(body).toContain(t('sync.windowTitle'));
-    expect(body).toContain(t('sync.source'));
-    expect(body).toContain(t('sync.target'));
+    await expect($("[data-testid='data-sync-window']")).toExist();
+    await expect($("[data-testid='data-sync-compare']")).toExist();
     await captureJourneyStep('data-sync-window-open');
   });
 
@@ -56,7 +54,7 @@ describe('数据同步窗口 (DSW-001~DSW-008)', () => {
     await expect(await $('[data-testid="data-sync-target-database"]')).toBeDisplayed();
     const body = await $('body').getText();
     expect(body).toContain(t('sync.selectPrompt'));
-    await expect(await $('[data-testid="data-sync-start-disabled"]')).not.toBeDisplayed();
+    await expect($('[data-testid="data-sync-start-disabled"]')).not.toBeExisting();
     await captureJourneyStep('data-sync-options-toggled');
   });
 
@@ -87,8 +85,9 @@ describe('数据同步窗口 (DSW-001~DSW-008)', () => {
     await closeExtraWindows(mainWindow);
     await browser.switchToWindow(mainWindow);
     await browser.pause(300);
-    const hiddenSyncEntry = await $(`button*=${t('action.dataSync')}`);
-    await expect(hiddenSyncEntry).not.toBeDisplayed();
+    // Data sync should not appear as a quick-action button on the home page
+    const quickSync = await $("[data-testid='home-quick-data-sync']");
+    await expect(quickSync).not.toBeExisting();
     await captureJourneyStep('data-sync-hidden-on-home');
 
     await openDataSyncWindow();
@@ -118,9 +117,11 @@ describe('数据同步窗口 (DSW-001~DSW-008)', () => {
   });
 
   it('DSW-008: Compare 前不应出现 Execute 底栏', async () => {
-    await expect(await $('[data-testid="data-sync-start"]')).not.toBeDisplayed();
-    await expect(await $('[data-testid="data-sync-start-disabled"]')).not.toBeDisplayed();
-    await expect(await $('[data-testid="data-sync-summary"]')).not.toBeDisplayed();
+    // ExecuteBar and CompareSummary are inside {compared && ...} — verify they
+    // are absent from the DOM (not merely hidden) before a compare has run.
+    await expect($('[data-testid="data-sync-summary"]')).not.toBeExisting();
+    await expect($('[data-testid="data-sync-start"]')).not.toBeExisting();
+    await expect($('[data-testid="data-sync-start-disabled"]')).not.toBeExisting();
     await captureJourneyStep('data-sync-no-execute-before-compare');
   });
 });
@@ -234,7 +235,7 @@ describe('数据同步 Diff Workspace (DSW-MAP / DSW-WS)', () => {
     await expect(await $('[data-testid="data-sync-summary"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-sync-option-insert"]')).toBeDisplayed();
 
-    const previewTab = await $(`button*=${t('sync.sqlPreviewTab')}`);
+    const previewTab = await $("[data-testid='data-sync-tab-preview']");
     await previewTab.click();
     await browser.pause(600);
     await expect(await $('[data-testid="data-sync-preview"]')).toBeDisplayed();

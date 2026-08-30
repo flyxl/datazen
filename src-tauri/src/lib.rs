@@ -574,7 +574,11 @@ fn setup_menu(
 
 pub(crate) fn resolve_log_settings() -> (String, PathBuf) {
     let data_dir = store::Store::default_app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+    resolve_log_settings_in(&data_dir)
+}
 
+/// Core logic extracted so tests can inject a temporary `data_dir`.
+fn resolve_log_settings_in(data_dir: &std::path::Path) -> (String, PathBuf) {
     let settings_path = data_dir.join("settings.json");
 
     let (level, custom_path) = std::fs::read_to_string(&settings_path)
@@ -583,7 +587,7 @@ pub(crate) fn resolve_log_settings() -> (String, PathBuf) {
         .map(|v| parse_log_settings_fields(&v))
         .unwrap_or_else(|| ("info".to_string(), String::new()));
 
-    let log_dir = resolve_log_dir(&data_dir, &custom_path);
+    let log_dir = resolve_log_dir(data_dir, &custom_path);
 
     (level, log_dir)
 }
@@ -1204,48 +1208,30 @@ mod tests {
 
     #[test]
     fn resolve_log_settings_defaults_without_settings_file() {
-        let _guard = SETTINGS_FILE_LOCK.lock().unwrap();
-        let data_dir = Store::default_app_data_dir().unwrap();
-        let settings_path = data_dir.join("settings.json");
-        let backup = settings_path
-            .exists()
-            .then(|| std::fs::read(&settings_path).unwrap());
-        let _ = std::fs::remove_file(&settings_path);
-
-        let (level, log_dir) = resolve_log_settings();
+        let tmp = tempfile::tempdir().unwrap();
+        let data_dir = tmp.path();
+        // No settings.json → should fall back to "info" and default logs dir.
+        let (level, log_dir) = resolve_log_settings_in(data_dir);
         assert_eq!(level, "info");
         assert_eq!(log_dir, data_dir.join("logs"));
-
-        if let Some(bytes) = backup {
-            std::fs::write(settings_path, bytes).unwrap();
-        }
     }
 
     #[test]
     fn resolve_log_settings_reads_custom_level_and_path() {
-        let _guard = SETTINGS_FILE_LOCK.lock().unwrap();
-        let data_dir = Store::default_app_data_dir().unwrap();
-        std::fs::create_dir_all(&data_dir).unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let data_dir = tmp.path();
+        std::fs::create_dir_all(data_dir).unwrap();
         let settings_path = data_dir.join("settings.json");
-        let backup = settings_path
-            .exists()
-            .then(|| std::fs::read(&settings_path).unwrap());
-        let custom_log = tempfile::tempdir().unwrap().path().join("custom-logs");
+        let custom_log = data_dir.join("custom-logs");
         let settings = serde_json::json!({
             "logLevel": "debug",
             "logPath": custom_log.to_string_lossy(),
         });
         std::fs::write(&settings_path, settings.to_string()).unwrap();
 
-        let (level, log_dir) = resolve_log_settings();
+        let (level, log_dir) = resolve_log_settings_in(data_dir);
         assert_eq!(level, "debug");
         assert_eq!(log_dir, custom_log);
-
-        if let Some(bytes) = backup {
-            std::fs::write(settings_path, bytes).unwrap();
-        } else {
-            let _ = std::fs::remove_file(settings_path);
-        }
     }
 
     #[test]

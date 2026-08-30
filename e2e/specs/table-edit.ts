@@ -155,7 +155,7 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
   it('Escape 取消编辑不应修改数据 (DE-005)', async () => {
     await clickTableInSidebar(TEST_TABLE);
     await browser.pause(1500);
-    await switchSubTab(t('connWin.data'));
+    await switchSubTab('data');
 
     await browser.waitUntil(async () => (await $('body').getText()).includes('Charlie'), {
       timeout: 10000,

@@ -433,6 +433,7 @@ export function TableStructureEditor({
           <Button
             variant="ghost"
             className="h-8 gap-1 px-2 text-xs"
+            data-testid="struct-editor-back"
             onClick={onCancel}
             title={t('common.back')}
           >
@@ -440,7 +441,7 @@ export function TableStructureEditor({
             {t('common.back')}
           </Button>
         )}
-        <span className="text-base font-semibold text-fg">
+        <span className="text-base font-semibold text-fg" data-testid="struct-editor-title">
           {mode === 'create'
             ? t('common.newTable')
             : `${t('common.editTableStructure')} · ${initialTableName}`}
@@ -481,6 +482,7 @@ export function TableStructureEditor({
         <Button
           variant="primary"
           className="h-8 text-xs"
+          data-testid="struct-editor-execute"
           disabled={!isValid || executing}
           onClick={() => void handleExecute()}
         >
@@ -527,6 +529,7 @@ export function TableStructureEditor({
           <Button
             variant="secondary"
             className="h-8 gap-1 text-xs"
+            data-testid="struct-editor-add-column"
             onClick={addColumn}
             disabled={!canAddColumn}
             title={!canAddColumn ? t('structEditor.capDisabled') : undefined}

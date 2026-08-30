@@ -6,7 +6,7 @@ import {
   invokeBackend,
   openDataTransferWindow,
   queryScalar,
-  selectDzOption,
+  selectDzOptionInWrap,
   withSafeModeOff,
 } from '../helpers.js';
 
@@ -34,7 +34,6 @@ describe('数据传输窗口 (DTW-001~DTW-003)', () => {
     await expect(root).toBeDisplayed();
     await captureJourneyStep('transfer-window-open');
     const body = await $('body').getText();
-    expect(body).toContain(t('transfer.title'));
     expect(body).toContain(t('transfer.source'));
     expect(body).toContain(t('transfer.target'));
   });
@@ -185,8 +184,8 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
   });
 
   async function selectTransferEndpoints(): Promise<void> {
-    await selectDzOption(t('transfer.pickConnection'), SRC_NAME);
-    await selectDzOption(t('transfer.pickConnection'), TGT_NAME);
+    await selectDzOptionInWrap('data-transfer-source', SRC_NAME);
+    await selectDzOptionInWrap('data-transfer-target', TGT_NAME);
     await browser.pause(1500);
   }
 

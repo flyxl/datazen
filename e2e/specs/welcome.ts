@@ -114,7 +114,7 @@ describe('首次安装欢迎页 (F5-E2E-001 ~ F5-E2E-005)', () => {
     expect(body).toContain(t('welcome.feature.connections.title'));
     expect(body).toContain(t('welcome.feature.dashboard.title'));
     expect(body).toContain(t('welcome.feature.workflow.title'));
-    expect(body).toContain(t('welcome.feature.ai.title'));
+    expect(body).toContain(t('common.aiAssistant'));
   });
 
   it('F5-E2E-003: 欢迎页 CTA 打开新建连接弹窗', async () => {

@@ -5,10 +5,12 @@ import { expect, browser, $, $$ } from '@wdio/globals';
 import {
   waitForNewConnectionDialog,
   closeExtraWindows,
+  closeNewConnectionDialogFromUi,
+  expandNewConnectionAdvanced,
   openNewConnectionDialogFromUi,
   selectNewConnectionDriver,
   clickNewConnectionTest,
-  selectDzOption,
+  selectDzOptionInWrap,
 } from '../helpers.js';
 import { t } from '../i18n.js';
 
@@ -56,15 +58,12 @@ async function clickTestConnection() {
 }
 
 async function expandAdvancedSettings() {
-  const advBtn = await $('button*=高级设置');
-  await advBtn.waitForDisplayed({ timeout: 5000 });
-  await advBtn.click();
-  await browser.pause(300);
+  await expandNewConnectionAdvanced();
 }
 
 async function setSslModeDisable() {
   await expandAdvancedSettings();
-  await selectDzOption(t('newConn.sslMode'), 'Disable');
+  await selectDzOptionInWrap('new-conn-ssl-mode', 'Disable');
 }
 
 describe('连接校验反向用例 (TC-CONN-005/006/007, TC-EDGE-007)', () => {
@@ -75,6 +74,7 @@ describe('连接校验反向用例 (TC-CONN-005/006/007, TC-EDGE-007)', () => {
   });
 
   afterEach(async () => {
+    await closeNewConnectionDialogFromUi();
     await closeExtraWindows(mainWindow);
   });
 

@@ -41,7 +41,7 @@ describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
     await browser.pause(500);
 
     const body = await $('body').getText();
-    const hasQueryTab = body.includes(t('connWin.newQuery')) || body.includes('Query');
+    const hasQueryTab = body.includes('Query') || body.includes('查询');
     expect(hasQueryTab).toBe(true);
     await captureJourneyStep('tab-bar-query-tab');
   });
@@ -110,7 +110,7 @@ describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
       }
     }
     const bodyQuery = await $('body').getText();
-    expect(bodyQuery.includes(t('connWin.newQuery')) || bodyQuery.includes('Query')).toBe(true);
+    expect(bodyQuery.includes('Query') || bodyQuery.includes('查询')).toBe(true);
     await captureJourneyStep('tab-bar-switch-to-query');
   });
 });

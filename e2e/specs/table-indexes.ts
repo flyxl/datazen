@@ -40,7 +40,7 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
 
     await clickTableInSidebar(TEST_TABLE);
     await browser.pause(1000);
-    await switchSubTab(t('connWin.indexes'));
+    await switchSubTab('indexes');
     await browser.pause(1000);
   });
 
@@ -56,7 +56,7 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
   });
 
   it('新建索引对话框应预填可编辑名称 (IDX-001/002)', async () => {
-    const newBtn = await $(`button*=${t('indexes.newIndex')}`);
+    const newBtn = await $("[data-testid='idx-new-index']");
     await newBtn.waitForDisplayed({ timeout: 10000 });
     await newBtn.click();
     await browser.pause(500);
@@ -81,8 +81,7 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
       if (cb && !cb.checked) cb.click();
     });
     await browser.pause(300);
-    const body = await $('body').getText();
-    expect(body).toContain(t('indexes.sqlPreview'));
+    await expect($("[data-testid='idx-sql-preview']")).toExist();
     expect(body.toUpperCase()).toContain('CREATE');
     expect(body).toContain(INDEX_NAME);
   });
@@ -99,9 +98,9 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
 
   it('删除索引应弹出确认并移除 (IDX-005)', async () => {
     await withSafeModeOff(async () => {
-      await switchSubTab(t('connWin.indexes'));
+      await switchSubTab('indexes');
       await browser.pause(800);
-      const deleteBtn = await $(`button[title="${t('indexes.deleteIndex')}"]`);
+      const deleteBtn = await $("[data-testid='idx-delete-index']");
       await deleteBtn.waitForDisplayed({ timeout: 8000 });
       await deleteBtn.click();
       await browser.pause(400);
@@ -121,9 +120,9 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
 
   it('在表结构中编辑应切到结构子标签 (IDX-006)', async () => {
     // Recreate a disposable index so structure navigation still has a target list
-    await switchSubTab(t('connWin.indexes'));
+    await switchSubTab('indexes');
     await browser.pause(600);
-    const newBtn = await $(`button*=${t('indexes.newIndex')}`);
+    const newBtn = await $("[data-testid='idx-new-index']");
     await newBtn.click();
     await browser.pause(400);
     const nameInput = await $('#idx-name');
@@ -141,14 +140,11 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
       { timeout: 15000 },
     );
 
-    const editBtn = await $(`button*=${t('indexes.editInStructure')}`);
+    const editBtn = await $("[data-testid='idx-edit-in-structure']");
     await editBtn.waitForDisplayed({ timeout: 8000 });
     await editBtn.click();
     await browser.pause(800);
-    const body = await $('body').getText();
-    expect(body).toContain(t('structView.editStructure'));
-    const structureTabActive =
-      body.includes(t('connWin.structure')) || body.includes(t('structView.fields').split('{')[0]);
-    expect(structureTabActive || body.includes('id')).toBe(true);
+    await expect($("[data-testid='struct-edit-structure']")).toExist();
+    await expect($("[data-testid='sub-tab-structure']")).toExist();
   });
 });

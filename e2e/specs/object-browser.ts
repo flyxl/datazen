@@ -47,7 +47,7 @@ describe('对象浏览器与权限 (OBJ/PRV)', () => {
     await menu.waitForDisplayed({ timeout: 5000 });
     const text = await menu.getText();
     expect(text).toContain(t('objects.open'));
-    expect(text).toContain(t('objects.copyName'));
+    expect(await $("[data-testid='web-context-item-copy-name']").isExisting()).toBe(true);
     await browser.keys('Escape');
   });
 

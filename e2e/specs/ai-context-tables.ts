@@ -33,17 +33,17 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
 }
 
 async function openAiChatPanel() {
-  const clicked = await browser.execute(() => {
-    for (const btn of document.querySelectorAll('button')) {
-      if (btn.querySelector('.lucide-message-square')) {
-        btn.click();
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const toggle = document.querySelector<HTMLElement>('[data-testid="conn-toolbar-ai"]');
+        if (!toggle) return false;
+        toggle.click();
         return true;
-      }
-    }
-    return false;
-  });
-  expect(clicked).toBe(true);
-  await browser.pause(800);
+      }),
+    { timeout: 10000, timeoutMsg: 'AI toolbar toggle did not appear' },
+  );
+  await $('[data-testid="ai-chat-panel"]').waitForDisplayed({ timeout: 10000 });
 }
 
 async function aiChatTextarea() {
