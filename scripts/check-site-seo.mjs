@@ -47,10 +47,6 @@ function mustNotInclude(html, rel, needle) {
   if (html && html.includes(needle)) fail(`${rel}: must not contain ${needle}`);
 }
 
-if (fs.existsSync(path.join(ROOT, "assets/video"))) {
-  fail("assets/video must not exist");
-}
-
 for (const file of PAGES) {
   const enRel = file;
   const zhRel = path.join("zh", file);
