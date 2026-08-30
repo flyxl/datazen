@@ -11,6 +11,7 @@ import {
 
 const supported: DriverCapabilities = {
   supportsCancelQuery: true,
+  supportsQueryExecutionCancel: true,
   supportsExplain: true,
   supportsStreamingResults: true,
 };
@@ -32,7 +33,7 @@ describe('queryExecutionViewModel', () => {
   });
 
   it('shows a running query as cancellable only when the driver supports it', () => {
-    const running = exec({ running: true });
+    const running = exec({ running: true, executionId: 'exec-1' });
 
     expect(toQueryExecutionViewModel(running, supported)).toMatchObject({
       phase: 'running',
@@ -53,7 +54,10 @@ describe('queryExecutionViewModel', () => {
 
   it('keeps a query in cancel_requested until execution reaches a terminal state', () => {
     expect(
-      toQueryExecutionViewModel(exec({ running: true, cancelState: 'requested' }), supported),
+      toQueryExecutionViewModel(
+        exec({ running: true, executionId: 'exec-1', cancelState: 'requested' }),
+        supported,
+      ),
     ).toMatchObject({
       phase: 'cancel_requested',
       cancelState: 'requested',
@@ -63,7 +67,12 @@ describe('queryExecutionViewModel', () => {
   it('reports cancel command failure without stopping the query', () => {
     expect(
       toQueryExecutionViewModel(
-        exec({ running: true, cancelState: 'failed', cancelError: 'cancel failed' }),
+        exec({
+          running: true,
+          executionId: 'exec-1',
+          cancelState: 'failed',
+          cancelError: 'cancel failed',
+        }),
         supported,
       ),
     ).toMatchObject({
@@ -91,7 +100,7 @@ describe('queryExecutionViewModel', () => {
 
   it('derives the cancel action state from phase and capability', () => {
     const requested = toQueryExecutionViewModel(
-      exec({ running: true, cancelState: 'requested' }),
+      exec({ running: true, executionId: 'exec-1', cancelState: 'requested' }),
       supported,
     );
     expect(getCancelActionState(requested)).toBe('requested');
@@ -126,5 +135,14 @@ describe('queryExecutionViewModel', () => {
       cancelState: 'idle',
       terminalState: 'cancelled',
     });
+  });
+
+  it('does not expose legacy or pre-start cancellation as available', () => {
+    expect(getCancelCapability({ ...supported, supportsQueryExecutionCancel: false })).toBe(
+      'unknown',
+    );
+    expect(
+      getCancelActionState(toQueryExecutionViewModel(exec({ running: true }), supported)),
+    ).toBe('unavailable');
   });
 });

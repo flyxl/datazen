@@ -43,6 +43,7 @@ describe('activeConnectionStore', () => {
     mockConnectionCommands.getConnectionInfo.mockResolvedValueOnce({
       capabilities: {
         supportsCancelQuery: true,
+        supportsQueryExecutionCancel: true,
         supportsExplain: true,
         supportsStreamingResults: true,
       },
@@ -73,6 +74,7 @@ describe('activeConnectionStore', () => {
     mockConnectionCommands.getConnectionInfo.mockResolvedValueOnce({
       capabilities: {
         supportsCancelQuery: false,
+        supportsQueryExecutionCancel: false,
         supportsExplain: true,
         supportsStreamingResults: false,
       },

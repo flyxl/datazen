@@ -162,8 +162,12 @@ function cancelAndCleanupExec(
       const exec = nextExec.get(panel.id);
       const capabilities =
         useActiveConnectionStore.getState().connections[panel.connectionId]?.capabilities;
-      if (exec?.running && getCancelCapability(capabilities) === 'supported') {
-        queryCommands.cancelQuery(panel.dbSessionId).catch(() => {});
+      if (
+        exec?.running &&
+        exec.executionId &&
+        getCancelCapability(capabilities) === 'supported'
+      ) {
+        queryCommands.cancelQuery(panel.dbSessionId, exec.executionId).catch(() => {});
       }
       nextExec.delete(panel.id);
     }
@@ -443,7 +447,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     if (!panel) return;
 
     const exec = queryExec.get(panelId);
-    if (!exec?.running || exec.cancelState === 'requested') return;
+    if (!exec?.running || exec.cancelState === 'requested' || !exec.executionId) return;
 
     const capabilities =
       useActiveConnectionStore.getState().connections[panel.connectionId]?.capabilities;
@@ -462,7 +466,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     });
 
     try {
-      await queryCommands.cancelQuery(panel.dbSessionId);
+      await queryCommands.cancelQuery(panel.dbSessionId, exec.executionId);
     } catch {
       set((s) => {
         const current = s.queryExec.get(panelId);

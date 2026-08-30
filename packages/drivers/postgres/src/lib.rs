@@ -25,9 +25,10 @@ impl DatabaseDriverFactory for PostgresFactory {
         true
     }
     fn supports_cancel_query(&self) -> bool {
-        // cancel_query targets every active backend in the current database,
-        // not the query belonging to the current DataZen session.
-        false
+        true
+    }
+    fn supports_query_execution_cancel(&self) -> bool {
+        true
     }
 }
 datazen_driver_api::register_driver!(&PostgresFactory);
@@ -74,16 +75,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn postgres_family_does_not_advertise_broad_cancellation_as_supported() {
+    fn postgres_factory_advertises_precise_cancellation_only_for_native_postgres() {
         let factories: [&dyn DatabaseDriverFactory; 3] =
             [&PostgresFactory, &QuestDbFactory, &CloudberryFactory];
 
-        for factory in factories {
-            assert!(
-                !factory.supports_cancel_query(),
-                "{} must not advertise imprecise query cancellation",
-                factory.driver_id()
-            );
+        assert!(factories[0].supports_cancel_query());
+        assert!(factories[0].supports_query_execution_cancel());
+        for factory in &factories[1..] {
+            assert!(!factory.supports_cancel_query());
+            assert!(!factory.supports_query_execution_cancel());
         }
     }
 }

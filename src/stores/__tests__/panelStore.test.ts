@@ -14,6 +14,7 @@ const mockCancelQuery = vi.fn().mockResolvedValue(undefined);
 const activeConnectionState: {
   connections: Record<string, { capabilities?: {
     supportsCancelQuery: boolean;
+    supportsQueryExecutionCancel: boolean;
     supportsExplain: boolean;
     supportsStreamingResults: boolean;
   } }>;
@@ -22,6 +23,7 @@ const activeConnectionState: {
     'cfg-1': {
       capabilities: {
         supportsCancelQuery: true,
+        supportsQueryExecutionCancel: true,
         supportsExplain: true,
         supportsStreamingResults: true,
       },
@@ -76,6 +78,7 @@ describe('panelStore', () => {
     vi.clearAllMocks();
     activeConnectionState.connections['cfg-1'].capabilities = {
       supportsCancelQuery: true,
+      supportsQueryExecutionCancel: true,
       supportsExplain: true,
       supportsStreamingResults: true,
     };
@@ -648,12 +651,13 @@ describe('panelStore', () => {
       queryExec: new Map(s.queryExec).set(panel.id, {
         ...s.queryExec.get(panel.id)!,
         running: true,
+        executionId: 'exec-test',
       }),
     }));
 
     await usePanelStore.getState().cancelQuery(panel.id);
 
-    expect(mockCancelQuery).toHaveBeenCalledWith('sess-1');
+    expect(mockCancelQuery).toHaveBeenCalledWith('sess-1', 'exec-test');
     const exec = usePanelStore.getState().queryExec.get(panel.id)!;
     expect(exec.running).toBe(true);
     expect(exec.cancelState).toBe('requested');
@@ -668,6 +672,7 @@ describe('panelStore', () => {
       queryExec: new Map(s.queryExec).set(panel.id, {
         ...s.queryExec.get(panel.id)!,
         running: true,
+        executionId: 'exec-test',
       }),
     }));
 
@@ -685,12 +690,13 @@ describe('panelStore', () => {
       queryExec: new Map(s.queryExec).set(panel.id, {
         ...s.queryExec.get(panel.id)!,
         running: true,
+        executionId: 'exec-test',
       }),
     }));
 
     await usePanelStore.getState().cancelQuery(panel.id);
 
-    expect(mockCancelQuery).toHaveBeenCalledWith('sess-1');
+    expect(mockCancelQuery).toHaveBeenCalledWith('sess-1', 'exec-test');
     expect(usePanelStore.getState().queryExec.get(panel.id)).toMatchObject({
       running: true,
       cancelState: 'failed',
@@ -706,12 +712,13 @@ describe('panelStore', () => {
       queryExec: new Map(s.queryExec).set(panel.id, {
         ...s.queryExec.get(panel.id)!,
         running: true,
+        executionId: 'exec-test',
       }),
     }));
 
     usePanelStore.getState().removePanel(panel.id);
 
-    expect(mockCancelQuery).toHaveBeenCalledWith('sess-1');
+    expect(mockCancelQuery).toHaveBeenCalledWith('sess-1', 'exec-test');
     expect(usePanelStore.getState().queryExec.has(panel.id)).toBe(false);
   });
 
@@ -723,6 +730,7 @@ describe('panelStore', () => {
       queryExec: new Map(s.queryExec).set(panel.id, {
         ...s.queryExec.get(panel.id)!,
         running: true,
+        executionId: 'exec-test',
       }),
     }));
 

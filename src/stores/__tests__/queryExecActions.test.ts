@@ -20,12 +20,17 @@ describe('queryExecActions schema refresh', () => {
   beforeEach(() => {
     mockExecuteQuery.mockReset();
     mockExecuteQueryStream.mockReset();
+    mockExecuteQueryStream.mockImplementation(
+      async (...args: unknown[]) => (args[2] as (event: unknown) => void)({
+        type: 'done',
+        totalTimeMs: 5,
+      }),
+    );
     mockEmitCrossWindow.mockReset();
     mockEmitCrossWindow.mockResolvedValue(undefined);
   });
 
   it('emits refresh-connection after successful bound DDL query', async () => {
-    mockExecuteQuery.mockResolvedValueOnce({ results: [], totalTimeMs: 5 });
     let exec = new Map([['panel-1', emptyQueryExecState()]]);
     const getExec = () => exec;
     const setExec = (next: Map<string, ReturnType<typeof emptyQueryExecState>>) => {
@@ -41,7 +46,7 @@ describe('queryExecActions schema refresh', () => {
   });
 
   it('does not emit refresh after failed bound query', async () => {
-    mockExecuteQuery.mockRejectedValueOnce(new Error('permission denied'));
+    mockExecuteQueryStream.mockRejectedValueOnce(new Error('permission denied'));
     let exec = new Map([['panel-1', emptyQueryExecState()]]);
     const getExec = () => exec;
     const setExec = (next: Map<string, ReturnType<typeof emptyQueryExecState>>) => {
@@ -55,7 +60,6 @@ describe('queryExecActions schema refresh', () => {
   });
 
   it('does not emit refresh for non-DDL success', async () => {
-    mockExecuteQuery.mockResolvedValueOnce({ results: [], totalTimeMs: 5 });
     let exec = new Map([['panel-1', emptyQueryExecState()]]);
     const getExec = () => exec;
     const setExec = (next: Map<string, ReturnType<typeof emptyQueryExecState>>) => {
@@ -120,31 +124,39 @@ describe('queryExecActions carries the panel database (F1 BUG-001)', () => {
     };
   }
 
-  it('runBoundQuery forwards database to executeQuery', async () => {
-    mockExecuteQuery.mockResolvedValueOnce({ results: [], totalTimeMs: 5 });
+  it('runBoundQuery forwards params and database to executeQueryStream', async () => {
     const { getExec, setExec } = makeExecContext();
 
     await runBoundQuery(
       'panel-1',
       'conn-1',
       'SELECT * FROM users',
-      {},
+      { id: 7 },
       getExec,
       setExec,
       'db_b',
       'sales',
     );
 
-    expect(mockExecuteQuery).toHaveBeenCalledWith('conn-1', 'SELECT * FROM users', {}, 'db_b', 'sales');
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'conn-1',
+      'SELECT * FROM users',
+      expect.any(Function),
+      { database: 'db_b', schema: 'sales', params: { id: 7 } },
+    );
   });
 
   it('runBoundQuery normalizes a missing database to null', async () => {
-    mockExecuteQuery.mockResolvedValueOnce({ results: [], totalTimeMs: 5 });
     const { getExec, setExec } = makeExecContext();
 
     await runBoundQuery('panel-1', 'conn-1', 'SELECT 1', {}, getExec, setExec);
 
-    expect(mockExecuteQuery).toHaveBeenCalledWith('conn-1', 'SELECT 1', {}, null, null);
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'conn-1',
+      'SELECT 1',
+      expect.any(Function),
+      { database: null, schema: null },
+    );
   });
 
   it('runStreamingQuery forwards database via stream options', async () => {
@@ -274,6 +286,32 @@ describe('queryExecActions cancellation terminal semantics', () => {
     });
   });
 
+  it('stores executionId only for the active stream and clears it on completion', async () => {
+    const gate = deferred();
+    mockExecuteQueryStream.mockImplementationOnce(
+      async (...args: unknown[]) => {
+        const onEvent = args[2] as (event: unknown) => void;
+        onEvent({ type: 'executionStarted', executionId: 'exec-1' });
+        await gate.promise;
+        onEvent({ type: 'done', totalTimeMs: 5 });
+      },
+    );
+    const context = makeExecContext();
+    const run = runStreamingQuery(
+      'panel-1',
+      'conn-1',
+      'SELECT 1',
+      context.getExec,
+      context.setExec,
+    );
+
+    await Promise.resolve();
+    expect(context.getExec().get('panel-1')?.executionId).toBe('exec-1');
+    gate.resolve();
+    await run;
+    expect(context.getExec().get('panel-1')?.executionId).toBeNull();
+  });
+
   it('reports success when a requested cancellation does not terminate the query', async () => {
     const gate = deferred();
     mockExecuteQueryStream.mockImplementationOnce(async () => gate.promise);
@@ -300,7 +338,7 @@ describe('queryExecActions cancellation terminal semantics', () => {
 
   it('does not call a failed cancel request a confirmed cancellation', async () => {
     const gate = deferred();
-    mockExecuteQuery.mockImplementationOnce(async () => gate.promise);
+    mockExecuteQueryStream.mockImplementationOnce(async () => gate.promise);
     const context = makeExecContext();
     const run = runBoundQuery(
       'panel-1',

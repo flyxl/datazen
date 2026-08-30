@@ -24,9 +24,10 @@ impl DatabaseDriverFactory for MysqlFactory {
         true
     }
     fn supports_cancel_query(&self) -> bool {
-        // cancel_query scans the instance process list and cannot identify the
-        // query belonging to the current DataZen session.
-        false
+        true
+    }
+    fn supports_query_execution_cancel(&self) -> bool {
+        true
     }
 }
 datazen_driver_api::register_driver!(&MysqlFactory);
@@ -130,7 +131,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mysql_family_does_not_advertise_broad_cancellation_as_supported() {
+    fn mysql_factory_advertises_precise_cancellation_only_for_native_mysql() {
         let factories: [&dyn DatabaseDriverFactory; 6] = [
             &MysqlFactory,
             &MariadbFactory,
@@ -140,12 +141,11 @@ mod tests {
             &ObOracleFactory,
         ];
 
-        for factory in factories {
-            assert!(
-                !factory.supports_cancel_query(),
-                "{} must not advertise imprecise query cancellation",
-                factory.driver_id()
-            );
+        assert!(factories[0].supports_cancel_query());
+        assert!(factories[0].supports_query_execution_cancel());
+        for factory in &factories[1..] {
+            assert!(!factory.supports_cancel_query());
+            assert!(!factory.supports_query_execution_cancel());
         }
     }
 }

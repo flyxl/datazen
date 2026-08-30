@@ -25,6 +25,7 @@ export interface QueryExecutionViewModel {
   rowCount: number | null;
   affectedRows: number | null;
   error: string | null;
+  executionId: string | null;
 }
 
 /**
@@ -55,6 +56,7 @@ export function reduceQueryExecutionState(
         cancelState: 'idle',
         cancelError: null,
         terminalState: null,
+        executionId: null,
       };
     case 'cancel_requested':
       return exec.running
@@ -72,6 +74,7 @@ export function reduceQueryExecutionState(
         cancelState: 'idle',
         cancelError: null,
         terminalState: 'succeeded',
+        executionId: null,
       };
     case 'failed':
       return {
@@ -81,6 +84,7 @@ export function reduceQueryExecutionState(
         cancelState: 'idle',
         cancelError: null,
         terminalState: 'failed',
+        executionId: null,
       };
     case 'cancelled':
       return {
@@ -90,6 +94,7 @@ export function reduceQueryExecutionState(
         cancelState: 'idle',
         cancelError: null,
         terminalState: 'cancelled',
+        executionId: null,
       };
     case 'outcome_unknown':
       return {
@@ -98,6 +103,7 @@ export function reduceQueryExecutionState(
         error: transition.error ?? exec.error,
         cancelState: 'idle',
         terminalState: 'unknown',
+        executionId: null,
       };
   }
 }
@@ -106,7 +112,8 @@ export function getCancelCapability(
   capabilities: DriverCapabilities | null | undefined,
 ): CancelCapability {
   if (!capabilities) return 'unknown';
-  return capabilities.supportsCancelQuery ? 'supported' : 'unsupported';
+  if (!capabilities.supportsCancelQuery) return 'unsupported';
+  return capabilities.supportsQueryExecutionCancel === true ? 'supported' : 'unknown';
 }
 
 export function isCancellationError(message: string | null | undefined): boolean {
@@ -130,8 +137,13 @@ function cancelActionStateFor(
   phase: QueryPhase,
   cancelCapability: CancelCapability,
   cancelState: QueryCancelState,
+  executionId: string | null,
 ): CancelActionState {
-  if (cancelCapability !== 'supported' || !['running', 'cancel_requested'].includes(phase)) {
+  if (
+    cancelCapability !== 'supported' ||
+    !executionId ||
+    !['running', 'cancel_requested'].includes(phase)
+  ) {
     return 'unavailable';
   }
   if (phase === 'cancel_requested' || cancelState === 'requested') return 'requested';
@@ -143,6 +155,7 @@ function cancelActionStateFor(
 export function getCancelActionState(viewModel: QueryExecutionViewModel): CancelActionState {
   if (
     viewModel.cancelCapability !== 'supported' ||
+    !viewModel.executionId ||
     !['running', 'cancel_requested'].includes(viewModel.phase)
   ) {
     return 'unavailable';
@@ -168,7 +181,12 @@ export function toQueryExecutionViewModel(
     phase = 'idle';
   }
 
-  const cancelState = cancelActionStateFor(phase, cancelCapability, exec.cancelState);
+  const cancelState = cancelActionStateFor(
+    phase,
+    cancelCapability,
+    exec.cancelState,
+    exec.executionId,
+  );
 
   const activeResult = exec.results[exec.activeResultIdx];
   const rowCount = activeResult?.rows.length ?? null;
@@ -182,5 +200,6 @@ export function toQueryExecutionViewModel(
     rowCount,
     affectedRows,
     error,
+    executionId: exec.executionId,
   };
 }
