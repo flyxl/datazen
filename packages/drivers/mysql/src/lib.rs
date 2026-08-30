@@ -26,6 +26,9 @@ impl DatabaseDriverFactory for MysqlFactory {
     fn supports_cancel_query(&self) -> bool {
         true
     }
+    fn supports_query_execution_cancel(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&MysqlFactory);
 
@@ -41,7 +44,7 @@ impl DatabaseDriverFactory for MariadbFactory {
         true
     }
     fn supports_cancel_query(&self) -> bool {
-        true
+        false
     }
 }
 datazen_driver_api::register_driver!(&MariadbFactory);
@@ -58,7 +61,7 @@ impl DatabaseDriverFactory for DorisFactory {
         true
     }
     fn supports_cancel_query(&self) -> bool {
-        true
+        false
     }
 }
 datazen_driver_api::register_driver!(&DorisFactory);
@@ -78,7 +81,7 @@ impl DatabaseDriverFactory for StarrocksFactory {
         true
     }
     fn supports_cancel_query(&self) -> bool {
-        true
+        false
     }
 }
 datazen_driver_api::register_driver!(&StarrocksFactory);
@@ -98,7 +101,7 @@ impl DatabaseDriverFactory for ManticoreFactory {
         true
     }
     fn supports_cancel_query(&self) -> bool {
-        true
+        false
     }
 }
 datazen_driver_api::register_driver!(&ManticoreFactory);
@@ -118,7 +121,31 @@ impl DatabaseDriverFactory for ObOracleFactory {
         true
     }
     fn supports_cancel_query(&self) -> bool {
-        true
+        false
     }
 }
 datazen_driver_api::register_driver!(&ObOracleFactory);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mysql_factory_advertises_precise_cancellation_only_for_native_mysql() {
+        let factories: [&dyn DatabaseDriverFactory; 6] = [
+            &MysqlFactory,
+            &MariadbFactory,
+            &DorisFactory,
+            &StarrocksFactory,
+            &ManticoreFactory,
+            &ObOracleFactory,
+        ];
+
+        assert!(factories[0].supports_cancel_query());
+        assert!(factories[0].supports_query_execution_cancel());
+        for factory in &factories[1..] {
+            assert!(!factory.supports_cancel_query());
+            assert!(!factory.supports_query_execution_cancel());
+        }
+    }
+}

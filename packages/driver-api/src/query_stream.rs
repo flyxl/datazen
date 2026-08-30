@@ -19,6 +19,8 @@ pub type QueryStreamCallback = Arc<dyn Fn(QueryStreamEvent) + Send + Sync>;
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum QueryStreamEvent {
     #[serde(rename_all = "camelCase")]
+    ExecutionStarted { execution_id: String },
+    #[serde(rename_all = "camelCase")]
     StatementStart {
         index: usize,
         sql: String,
@@ -273,6 +275,14 @@ mod tests {
         assert_eq!(value["type"], "done");
         assert_eq!(value["totalTimeMs"], 12);
         assert!(value.get("total_time_ms").is_none());
+
+        let started = QueryStreamEvent::ExecutionStarted {
+            execution_id: "opaque-execution-1".into(),
+        };
+        let value = serde_json::to_value(&started).unwrap();
+        assert_eq!(value["type"], "executionStarted");
+        assert_eq!(value["executionId"], "opaque-execution-1");
+        assert!(value.get("execution_id").is_none());
 
         let start = QueryStreamEvent::StatementStart {
             index: 0,

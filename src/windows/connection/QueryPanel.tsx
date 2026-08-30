@@ -83,7 +83,10 @@ import { parseSqlParams, paramsToPayload } from '../../lib/sqlBindParams';
 import { BindParamPanel } from '../../components/query/BindParamPanel';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { ExplainResult, StatementResult } from '../../types';
-import { toQueryExecutionViewModel } from '../../lib/queryExecutionViewModel';
+import {
+  getCancelActionState,
+  toQueryExecutionViewModel,
+} from '../../lib/queryExecutionViewModel';
 import { Dialog } from '../../components/ui/Dialog';
 import { analyzeTransactionSql, isAbortedTransactionError } from '../../lib/sqlTransactionGuard';
 import { formatLastConnected } from '../../lib/formatters';
@@ -111,6 +114,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
     () => toQueryExecutionViewModel(exec, driverCapabilities),
     [exec, driverCapabilities],
   );
+  const cancelActionState = getCancelActionState(executionViewModel);
   const historyVisible = usePanelStore((s) => s.historyVisible);
   const history = usePanelStore((s) => s.queryHistory);
   const updateSql = usePanelStore((s) => s.updateSql);
@@ -729,15 +733,14 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
               icon={<Square className="h-3.5 w-3.5" />}
               onClick={handleCancel}
               disabled={
-                executionViewModel.cancelCapability !== 'supported' ||
-                executionViewModel.cancelState === 'requested'
+                cancelActionState === 'unavailable' || cancelActionState === 'requested'
               }
               title={
                 executionViewModel.cancelCapability === 'unsupported'
                   ? t('query.cancelUnavailable')
                   : executionViewModel.cancelCapability === 'unknown'
                     ? t('query.cancelUnknown')
-                    : executionViewModel.cancelState === 'failed'
+                    : cancelActionState === 'failed'
                       ? t('query.cancelFailed')
                       : undefined
               }
