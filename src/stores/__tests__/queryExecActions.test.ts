@@ -209,3 +209,120 @@ describe('queryExecActions carries the panel database (F1 BUG-001)', () => {
     );
   });
 });
+
+describe('queryExecActions cancellation terminal semantics', () => {
+  beforeEach(() => {
+    mockExecuteQuery.mockReset();
+    mockExecuteQueryStream.mockReset();
+    mockEmitCrossWindow.mockReset();
+    mockEmitCrossWindow.mockResolvedValue(undefined);
+  });
+
+  function deferred(): {
+    promise: Promise<void>;
+    resolve: () => void;
+    reject: (error: unknown) => void;
+  } {
+    let resolve!: () => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<void>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  function makeExecContext() {
+    let exec = new Map([['panel-1', emptyQueryExecState()]]);
+    return {
+      getExec: () => exec,
+      setExec: (next: Map<string, ReturnType<typeof emptyQueryExecState>>) => {
+        exec = next;
+      },
+      markCancelRequested: () => {
+        const current = exec.get('panel-1')!;
+        exec = new Map([
+          ['panel-1', { ...current, cancelState: 'requested' as const }],
+        ]);
+      },
+    };
+  }
+
+  it('waits for a streaming promise before reporting cancellation', async () => {
+    const gate = deferred();
+    mockExecuteQueryStream.mockImplementationOnce(async () => gate.promise);
+    const context = makeExecContext();
+    const run = runStreamingQuery(
+      'panel-1',
+      'conn-1',
+      'SELECT pg_sleep(10)',
+      context.getExec,
+      context.setExec,
+    );
+
+    await Promise.resolve();
+    expect(context.getExec().get('panel-1')?.running).toBe(true);
+    context.markCancelRequested();
+    expect(context.getExec().get('panel-1')?.terminalState).toBeNull();
+
+    gate.reject(new Error('canceling statement due to user request'));
+    await run;
+
+    expect(context.getExec().get('panel-1')).toMatchObject({
+      running: false,
+      terminalState: 'cancelled',
+    });
+  });
+
+  it('reports success when a requested cancellation does not terminate the query', async () => {
+    const gate = deferred();
+    mockExecuteQueryStream.mockImplementationOnce(async () => gate.promise);
+    const context = makeExecContext();
+    const run = runStreamingQuery(
+      'panel-1',
+      'conn-1',
+      'SELECT 1',
+      context.getExec,
+      context.setExec,
+    );
+
+    await Promise.resolve();
+    context.markCancelRequested();
+    expect(context.getExec().get('panel-1')?.running).toBe(true);
+    gate.resolve();
+    await run;
+
+    expect(context.getExec().get('panel-1')).toMatchObject({
+      running: false,
+      terminalState: 'succeeded',
+    });
+  });
+
+  it('does not call a failed cancel request a confirmed cancellation', async () => {
+    const gate = deferred();
+    mockExecuteQuery.mockImplementationOnce(async () => gate.promise);
+    const context = makeExecContext();
+    const run = runBoundQuery(
+      'panel-1',
+      'conn-1',
+      'SELECT 1',
+      {},
+      context.getExec,
+      context.setExec,
+    );
+
+    await Promise.resolve();
+    const current = context.getExec().get('panel-1')!;
+    context.setExec(
+      new Map([['panel-1', { ...current, cancelState: 'failed', cancelError: 'cancel failed' }]]),
+    );
+    gate.reject(new Error('canceling statement due to user request'));
+    await run;
+
+    expect(context.getExec().get('panel-1')).toMatchObject({
+      running: false,
+      terminalState: 'unknown',
+      error: 'canceling statement due to user request',
+    });
+  });
+});

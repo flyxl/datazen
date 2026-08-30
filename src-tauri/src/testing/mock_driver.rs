@@ -34,6 +34,8 @@ pub struct MockDriverOptions {
     pub server_version: String,
     pub extra_commands: Vec<DriverCommandDefinition>,
     pub query_error: Option<String>,
+    /// When set, cancellation returns a driver-level error for command tests.
+    pub cancel_error: Option<String>,
     /// F7: when true, `qualify_sql_target` rewrites SQL by appending a
     /// marker comment recording the requested target (capability simulation).
     pub rewrite_sql_target: bool,
@@ -60,6 +62,7 @@ impl Default for MockDriverOptions {
             server_version: String::new(),
             extra_commands: Vec::new(),
             query_error: None,
+            cancel_error: None,
             rewrite_sql_target: false,
         }
     }
@@ -319,6 +322,9 @@ impl DatabaseDriver for MockDriver {
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+        if let Some(message) = &self.opts.cancel_error {
+            return Err(DriverError::Unsupported(message.clone()));
+        }
         Ok(())
     }
 

@@ -75,7 +75,8 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
       // optional field, in which case the UI treats cancellation as unknown.
       let capabilities: DriverCapabilities | undefined;
       try {
-        capabilities = (await connectionCommands.getConnectionInfo(dbSessionId)).capabilities;
+        capabilities =
+          (await connectionCommands.getConnectionInfo(dbSessionId)).capabilities ?? undefined;
       } catch (e) {
         console.warn('[connect] capability discovery failed', e);
       }
@@ -156,10 +157,37 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
           dbSessionId,
           connectionId,
           status: 'connected',
+          // A direct ConnectionPage connect reaches this action without the
+          // store's `connect` flow. Start capability discovery here too, but
+          // keep the value unknown until the session-info IPC resolves.
+          capabilities: undefined,
           error: null,
         },
       },
     }));
+
+    void Promise.resolve(connectionCommands.getConnectionInfo(dbSessionId))
+      .then((info) => {
+        if (!info) return;
+        set((s) => {
+          const entry = s.connections[connectionId];
+          if (!entry || entry.dbSessionId !== dbSessionId) return s;
+          return {
+            connections: {
+              ...s.connections,
+              [connectionId]: {
+                ...entry,
+                capabilities: info.capabilities ?? undefined,
+              },
+            },
+          };
+        });
+      })
+      .catch((error: unknown) => {
+        // Capability discovery is advisory. A legacy/headless backend must
+        // leave cancellation in the safe `unknown` state.
+        console.warn('[connect] capability discovery failed', error);
+      });
   },
 
   markError: (connectionId, error) => {

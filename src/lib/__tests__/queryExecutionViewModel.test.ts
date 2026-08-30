@@ -3,7 +3,9 @@ import type { DriverCapabilities } from '../../types';
 import { EMPTY_QUERY_EXEC, type QueryExecState } from '../../stores/queryExecActions';
 import {
   getCancelCapability,
+  getCancelActionState,
   isCancellationError,
+  reduceQueryExecutionState,
   toQueryExecutionViewModel,
 } from '../queryExecutionViewModel';
 
@@ -81,6 +83,48 @@ describe('queryExecutionViewModel', () => {
         exec({ error: 'canceling statement due to user request' }),
         supported,
       ).phase,
-    ).toBe('cancelled');
+    ).toBe('failed');
+    expect(toQueryExecutionViewModel(exec({ terminalState: 'unknown' }), supported).phase).toBe(
+      'outcome_unknown',
+    );
+  });
+
+  it('derives the cancel action state from phase and capability', () => {
+    const requested = toQueryExecutionViewModel(
+      exec({ running: true, cancelState: 'requested' }),
+      supported,
+    );
+    expect(getCancelActionState(requested)).toBe('requested');
+    expect(
+      getCancelActionState(
+        toQueryExecutionViewModel(exec({ running: true }), unsupported),
+      ),
+    ).toBe('unavailable');
+  });
+
+  it('uses one reducer for request, failure, and terminal transitions', () => {
+    const running = reduceQueryExecutionState(exec(), { type: 'start' });
+    expect(running.running).toBe(true);
+
+    const requested = reduceQueryExecutionState(running, { type: 'cancel_requested' });
+    expect(requested).toMatchObject({ running: true, cancelState: 'requested' });
+
+    const failed = reduceQueryExecutionState(requested, {
+      type: 'cancel_failed',
+      error: 'cancel failed',
+    });
+    expect(failed).toMatchObject({
+      running: true,
+      cancelState: 'failed',
+      cancelError: 'cancel failed',
+      terminalState: null,
+    });
+
+    const cancelled = reduceQueryExecutionState(requested, { type: 'cancelled' });
+    expect(cancelled).toMatchObject({
+      running: false,
+      cancelState: 'idle',
+      terminalState: 'cancelled',
+    });
   });
 });

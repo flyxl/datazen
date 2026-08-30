@@ -36,7 +36,8 @@ export const connectionCommands = {
       database?: string;
       schema?: string;
       serverVersion?: string;
-      capabilities?: DriverCapabilities;
+      /** Null/absent means the backend or legacy driver did not advertise it. */
+      capabilities?: DriverCapabilities | null;
     }>('get_connection_info', { dbSessionId }),
 
   getAvailableDrivers: () => invoke<string[]>('get_available_drivers'),
