@@ -6,7 +6,11 @@ import { sqlContainsSchemaChangingDdl } from '../lib/schemaChangingSql';
 import { t } from '../locales/t';
 import type { QueryStreamEvent, StatementResult } from '../types';
 import type { ChartConfig } from '../types/chart';
-import { isCancellationError } from '../lib/queryExecutionViewModel';
+import {
+  isCancellationError,
+  reduceQueryExecutionState,
+  type QueryExecutionTransition,
+} from '../lib/queryExecutionViewModel';
 
 export type BindParams = Record<string, string | number | boolean | null>;
 
@@ -25,6 +29,7 @@ export interface QueryExecState {
   terminalState: QueryTerminalState | null;
   chartConfig?: ChartConfig;
   resultViewMode?: 'table' | 'chart';
+  executionId: string | null;
   streamRunId?: number;
   resultDetailRowIndex: number | null;
 }
@@ -39,6 +44,7 @@ export const EMPTY_QUERY_EXEC: QueryExecState = Object.freeze({
   cancelState: 'idle',
   cancelError: null,
   terminalState: null,
+  executionId: null,
   resultDetailRowIndex: null,
 });
 
@@ -70,6 +76,31 @@ export function patchExec(
   return next;
 }
 
+function transitionExec(
+  current: Map<string, QueryExecState>,
+  panelId: string,
+  transition: QueryExecutionTransition,
+): Map<string, QueryExecState> {
+  const exec = current.get(panelId);
+  if (!exec) return current;
+  return patchExec(current, panelId, reduceQueryExecutionState(exec, transition));
+}
+
+function queryErrorTransition(
+  exec: QueryExecState,
+  message: string,
+): QueryExecutionTransition {
+  if (exec.cancelState === 'requested' && isCancellationError(message)) {
+    return { type: 'cancelled' };
+  }
+  // A failed cancel request makes a later cancellation-looking stream error
+  // ambiguous: the database outcome cannot be safely called Cancelled.
+  if (exec.cancelState === 'failed' && isCancellationError(message)) {
+    return { type: 'outcome_unknown', error: message };
+  }
+  return { type: 'failed', error: message };
+}
+
 export async function runStreamingQuery(
   panelId: string,
   dbSessionId: string,
@@ -80,20 +111,22 @@ export async function runStreamingQuery(
   database?: string | null,
   /** F7: panel's PG-family schema target — drivers inline it when supported. */
   schema?: string | null,
+  /** Bound values use this same execution-handle stream. */
+  params?: BindParams,
 ): Promise<void> {
   const runId = ++streamRunCounter;
   setExec(
-    patchExec(getExec(), panelId, {
-      running: true,
-      error: null,
-      results: [],
-      activeResultIdx: 0,
-      streamRunId: runId,
-      executionTimeMs: null,
-      cancelState: 'idle',
-      cancelError: null,
-      terminalState: null,
-    }),
+    transitionExec(
+      patchExec(getExec(), panelId, {
+        results: [],
+        activeResultIdx: 0,
+        streamRunId: runId,
+        executionTimeMs: null,
+        executionId: null,
+      }),
+      panelId,
+      { type: 'start' },
+    ),
   );
 
   const onEvent = (event: QueryStreamEvent) => {
@@ -104,22 +137,17 @@ export async function runStreamingQuery(
   };
 
   try {
-    await queryCommands.executeQueryStream(dbSessionId, sql, onEvent, {
+    const streamOptions = {
       database: database ?? null,
       schema: schema ?? null,
-    });
+      ...(params && Object.keys(params).length > 0 ? { params } : {}),
+    };
+    await queryCommands.executeQueryStream(dbSessionId, sql, onEvent, streamOptions);
     const exec = getExec().get(panelId);
     if (exec && exec.streamRunId === runId) {
       const viewMode = resolvePostQueryViewMode(exec.results[0]);
-      setExec(
-        patchExec(getExec(), panelId, {
-          resultViewMode: viewMode,
-          running: false,
-          cancelState: 'idle',
-          cancelError: null,
-          terminalState: 'succeeded',
-        }),
-      );
+      const withViewMode = patchExec(getExec(), panelId, { resultViewMode: viewMode });
+      setExec(transitionExec(withViewMode, panelId, { type: 'succeeded' }));
       if (!exec.error) {
         await notifySchemaChangedIfNeeded(dbSessionId, sql);
       }
@@ -128,16 +156,7 @@ export async function runStreamingQuery(
     const exec = getExec().get(panelId);
     if (exec && exec.streamRunId === runId) {
       const message = extractError(e);
-      const cancelled = exec.cancelState === 'requested' && isCancellationError(message);
-      setExec(
-        patchExec(getExec(), panelId, {
-          running: false,
-          error: cancelled ? null : message,
-          cancelState: 'idle',
-          cancelError: null,
-          terminalState: cancelled ? 'cancelled' : 'failed',
-        }),
-      );
+      setExec(transitionExec(getExec(), panelId, queryErrorTransition(exec, message)));
     }
   }
 }
@@ -154,53 +173,14 @@ export async function runBoundQuery(
   /** F7: panel's PG-family schema target — drivers inline it when supported. */
   schema?: string | null,
 ): Promise<void> {
-  setExec(
-    patchExec(getExec(), panelId, {
-      running: true,
-      error: null,
-      cancelState: 'idle',
-      cancelError: null,
-      terminalState: null,
-    }),
+  await runStreamingQuery(
+    panelId,
+    dbSessionId,
+    sql,
+    getExec,
+    setExec,
+    database,
+    schema,
+    params,
   );
-
-  try {
-    const multi = await queryCommands.executeQuery(
-      dbSessionId,
-      sql,
-      params,
-      database ?? null,
-      schema ?? null,
-    );
-    const viewMode = resolvePostQueryViewMode(multi.results[0]);
-    setExec(
-      patchExec(getExec(), panelId, {
-        running: false,
-        results: multi.results,
-        activeResultIdx: 0,
-        error: null,
-        executionTimeMs: multi.totalTimeMs ?? null,
-        resultViewMode: viewMode,
-        cancelState: 'idle',
-        cancelError: null,
-        terminalState: 'succeeded',
-      }),
-    );
-    await notifySchemaChangedIfNeeded(dbSessionId, sql);
-  } catch (e) {
-    const exec = getExec().get(panelId);
-    const message = extractError(e);
-    const cancelled = exec?.cancelState === 'requested' && isCancellationError(message);
-    setExec(
-      patchExec(getExec(), panelId, {
-        running: false,
-        error: cancelled ? null : message,
-        results: [],
-        activeResultIdx: 0,
-        cancelState: 'idle',
-        cancelError: null,
-        terminalState: cancelled ? 'cancelled' : 'failed',
-      }),
-    );
-  }
 }

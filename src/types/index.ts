@@ -55,6 +55,8 @@ export interface ServerInfo {
 /** Capabilities reported by the concrete driver for a live database session. */
 export interface DriverCapabilities {
   supportsCancelQuery: boolean;
+  /** True only when the driver implements opaque execution-handle cancel. */
+  supportsQueryExecutionCancel: boolean;
   supportsExplain: boolean;
   supportsStreamingResults: boolean;
 }
@@ -149,6 +151,7 @@ export interface MultiQueryResult {
 
 /** IPC events for `execute_query_stream`. Independent of SQL LIMIT. */
 export type QueryStreamEvent =
+  | { type: 'executionStarted'; executionId: string }
   | { type: 'statementStart'; index: number; sql: string; columns: ColumnInfo[] }
   | { type: 'rows'; index: number; rows: (Value | null)[][] }
   | {

@@ -703,6 +703,7 @@ pub(crate) fn finish_app_state(
         workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(history_db)),
         mcp_client_manager: Arc::new(mcp::McpClientManager::new()),
         session_transactions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+        query_executions: Arc::new(commands::QueryExecutionRegistry::new()),
         workflow_scheduler: workflow::scheduler::WorkflowScheduler::new(),
         extensions: extension_manager,
     };

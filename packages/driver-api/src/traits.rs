@@ -179,6 +179,35 @@ pub trait DatabaseDriver: Send + Sync {
         Ok(())
     }
 
+    /// Register an opaque execution before the backend target is known.
+    ///
+    /// The default is a no-op so legacy drivers retain their query behavior;
+    /// it does not make them cancellable. Drivers advertising precise cancel
+    /// must retain a pending entry here and make a later cancel request win
+    /// the race with target acquisition.
+    async fn prepare_query_execution(
+        &self,
+        _handle: &ConnectionHandle,
+        _execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        Ok(())
+    }
+
+    /// Stream one execution using its opaque identity.
+    ///
+    /// The compatibility default deliberately delegates only the *stream*
+    /// operation to the old API. It never provides a cancellation fallback.
+    async fn query_stream_with_execution(
+        &self,
+        handle: &ConnectionHandle,
+        _execution_id: &QueryExecutionId,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        self.query_stream(handle, sql, limit, on_event).await
+    }
+
     async fn query_with_params(
         &self,
         handle: &ConnectionHandle,
@@ -258,6 +287,35 @@ pub trait DatabaseDriver: Send + Sync {
     }
 
     async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError>;
+
+    /// Cancel exactly the registered execution identified by `execution_id`.
+    /// The default intentionally does not call legacy `cancel_query`.
+    async fn cancel_query_with_execution(
+        &self,
+        _handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        Err(DriverError::Unsupported(format!(
+            "precise query cancellation is not supported for execution {}",
+            execution_id.as_str()
+        )))
+    }
+
+    /// Remove a prepared execution from the driver's registry. Drivers should
+    /// make this idempotent so Host cleanup remains safe on every terminal path.
+    async fn cleanup_query_execution(
+        &self,
+        _handle: &ConnectionHandle,
+        _execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        Ok(())
+    }
+
+    /// True only when this concrete driver overrides the exact execution-handle
+    /// protocol. Factory metadata must also advertise the capability.
+    fn supports_query_execution_cancel(&self) -> bool {
+        false
+    }
 
     /// Fetch server version info using an existing connection handle.
     /// Unlike `test_connection` which creates a temporary pool, this reuses the live connection.

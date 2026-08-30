@@ -14,18 +14,21 @@ use tokio::sync::RwLock;
 /// These flags describe whether the driver has a meaningful implementation;
 /// they are not inferred from the presence of a trait method because the
 /// trait intentionally has a default unsupported/no-op implementation.
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DriverCapabilities {
     pub supports_cancel_query: bool,
+    pub supports_query_execution_cancel: bool,
     pub supports_explain: bool,
     pub supports_streaming_results: bool,
 }
 
 impl DriverCapabilities {
-    fn from_factory(factory: &dyn DatabaseDriverFactory) -> Self {
+    fn from_factory(factory: &dyn DatabaseDriverFactory, driver: &dyn DatabaseDriver) -> Self {
         Self {
             supports_cancel_query: factory.supports_cancel_query(),
+            supports_query_execution_cancel: factory.supports_query_execution_cancel()
+                && driver.supports_query_execution_cancel(),
             supports_explain: factory.supports_explain(),
             supports_streaming_results: factory.supports_streaming_results(),
         }
@@ -135,7 +138,7 @@ impl DriverRegistry {
 
             let driver = factory.create();
             let actual = driver.driver_type();
-            let capabilities = DriverCapabilities::from_factory(*factory);
+            let capabilities = DriverCapabilities::from_factory(*factory, driver.as_ref());
             {
                 let mut capability_map = self.capabilities.write().await;
                 capability_map.insert(db_type.to_string(), capabilities);
@@ -171,6 +174,14 @@ impl DriverRegistry {
     /// does not expose capability metadata yet; callers must treat that as
     /// unknown rather than supported.
     pub async fn get_capabilities(&self, db_type: &DatabaseType) -> Option<DriverCapabilities> {
+        // Keep capability lookup aligned with driver lookup: a connection-info
+        // request must not depend on a separate, eagerly populated registry.
+        // `ensure_type` is a no-op for legacy/test registrations, so those
+        // drivers deliberately remain `None` (unknown).
+        if let Err(error) = self.ensure_type(db_type).await {
+            tracing::debug!(db_type = %db_type, %error, "Driver capability lookup failed");
+            return None;
+        }
         let capabilities = self.capabilities.read().await;
         capabilities.get(db_type).copied()
     }
@@ -203,7 +214,11 @@ impl DriverRegistry {
         db_type: impl Into<DatabaseType>,
         driver: Arc<dyn DatabaseDriver>,
     ) {
-        self.drivers.write().await.insert(db_type.into(), driver);
+        let db_type = db_type.into();
+        self.drivers.write().await.insert(db_type.clone(), driver);
+        // Replacing a previously factory-registered driver with a legacy test
+        // driver must not leave stale capability metadata behind.
+        self.capabilities.write().await.remove(&db_type);
     }
 
     /// Register a test driver together with explicit capability metadata.
@@ -242,4 +257,87 @@ impl Default for DriverRegistry {
 /// Create an empty registry. Drivers load via [`DriverRegistry::ensure_type`].
 pub fn init_drivers() -> DriverRegistry {
     DriverRegistry::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+
+    fn capabilities(supports_cancel_query: bool) -> DriverCapabilities {
+        DriverCapabilities {
+            supports_cancel_query,
+            supports_query_execution_cancel: supports_cancel_query,
+            supports_explain: true,
+            supports_streaming_results: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn get_capabilities_returns_registered_metadata_by_type() {
+        let registry = DriverRegistry::new();
+        registry
+            .register_test_driver_with_capabilities(
+                "test-driver",
+                MockDriver::new("test-driver", MockDriverOptions::default()),
+                capabilities(true),
+            )
+            .await;
+
+        assert_eq!(
+            registry.get_capabilities(&"test-driver".to_string()).await,
+            Some(capabilities(true))
+        );
+    }
+
+    #[tokio::test]
+    async fn legacy_test_driver_capability_is_unknown() {
+        let registry = DriverRegistry::new();
+        registry
+            .register_test_driver(
+                "legacy-driver",
+                MockDriver::new("legacy-driver", MockDriverOptions::default()),
+            )
+            .await;
+
+        assert_eq!(
+            registry
+                .get_capabilities(&"legacy-driver".to_string())
+                .await,
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn replacing_registered_metadata_with_legacy_driver_clears_capability() {
+        let registry = DriverRegistry::new();
+        registry
+            .register_test_driver_with_capabilities(
+                "test-driver",
+                MockDriver::new("test-driver", MockDriverOptions::default()),
+                capabilities(true),
+            )
+            .await;
+        registry
+            .register_test_driver(
+                "test-driver",
+                MockDriver::new("test-driver", MockDriverOptions::default()),
+            )
+            .await;
+
+        assert!(registry
+            .get_capabilities(&"test-driver".to_string())
+            .await
+            .is_none());
+    }
+
+    #[test]
+    fn capabilities_serialize_using_frontend_camel_case() {
+        let value = serde_json::to_value(capabilities(true)).expect("serialize capabilities");
+        assert_eq!(value["supportsCancelQuery"], true);
+        assert_eq!(value["supportsQueryExecutionCancel"], true);
+        assert_eq!(value["supportsExplain"], true);
+        assert_eq!(value["supportsStreamingResults"], true);
+        assert!(value.get("supports_cancel_query").is_none());
+    }
 }

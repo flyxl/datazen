@@ -24,6 +24,20 @@ vi.mock('../../../hooks/useCompactToolbar', () => ({
   useCompactToolbar: () => ({ ref: { current: null }, compact: false }),
 }));
 
+const panelConnectionState = vi.hoisted(() => ({
+  capabilities: {
+    supportsCancelQuery: true,
+    supportsQueryExecutionCancel: true,
+    supportsExplain: true,
+    supportsStreamingResults: true,
+  } as {
+    supportsCancelQuery: boolean;
+    supportsQueryExecutionCancel: boolean;
+    supportsExplain: boolean;
+    supportsStreamingResults: boolean;
+  } | undefined,
+}));
+
 vi.mock('../../../stores/settingsStore', () => ({
   useSettingsStore: (
     sel: (s: { settings: { safeMode: boolean; autoCommit: boolean } }) => unknown,
@@ -35,25 +49,18 @@ vi.mock('../../../stores/activeConnectionStore', () => ({
     selector: (state: {
       connections: Record<
         string,
-        {
-          capabilities: {
-            supportsCancelQuery: boolean;
-            supportsExplain: boolean;
-            supportsStreamingResults: boolean;
-          };
-        }
+        { capabilities?: {
+          supportsCancelQuery: boolean;
+          supportsQueryExecutionCancel: boolean;
+          supportsExplain: boolean;
+          supportsStreamingResults: boolean;
+        } }
       >;
     }) => unknown,
   ) =>
     selector({
       connections: {
-        'cfg-1': {
-          capabilities: {
-            supportsCancelQuery: true,
-            supportsExplain: true,
-            supportsStreamingResults: true,
-          },
-        },
+        'cfg-1': panelConnectionState,
       },
     }),
 }));
@@ -130,6 +137,12 @@ describe('QueryPanel execute/cancel button', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    panelConnectionState.capabilities = {
+      supportsCancelQuery: true,
+      supportsQueryExecutionCancel: true,
+      supportsExplain: true,
+      supportsStreamingResults: true,
+    };
     usePanelStore.setState({
       queryExec: new Map([
         [
@@ -159,7 +172,11 @@ describe('QueryPanel execute/cancel button', () => {
     usePanelStore.setState((s) => {
       const exec = s.queryExec.get(PANEL_ID)!;
       return {
-        queryExec: new Map(s.queryExec).set(PANEL_ID, { ...exec, running }),
+        queryExec: new Map(s.queryExec).set(PANEL_ID, {
+          ...exec,
+          running,
+          executionId: running ? 'exec-test' : null,
+        }),
       };
     });
   }
@@ -204,6 +221,52 @@ describe('QueryPanel execute/cancel button', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'query.stop' }));
     expect(cancelQuery).toHaveBeenCalledWith(PANEL_ID);
+  });
+
+  it('does not offer cancellation before the execution id arrives', () => {
+    setRunning(true);
+    usePanelStore.setState((s) => {
+      const exec = s.queryExec.get(PANEL_ID)!;
+      return { queryExec: new Map(s.queryExec).set(PANEL_ID, { ...exec, executionId: null }) };
+    });
+    renderPanel();
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(screen.getByRole('button', { name: 'query.stop' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'query.stop' }));
+    expect(cancelQuery).not.toHaveBeenCalled();
+  });
+
+  it('disables Cancel and explains unsupported capability', () => {
+    panelConnectionState.capabilities = {
+      supportsCancelQuery: false,
+      supportsQueryExecutionCancel: false,
+      supportsExplain: true,
+      supportsStreamingResults: true,
+    };
+    setRunning(true);
+    renderPanel();
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    expect(screen.getByRole('button', { name: 'query.stop' })).toBeDisabled();
+    expect(screen.getAllByText('query.cancelUnavailable').length).toBeGreaterThan(0);
+    expect(cancelQuery).not.toHaveBeenCalled();
+  });
+
+  it('disables Cancel and explains unknown capability', () => {
+    panelConnectionState.capabilities = undefined;
+    setRunning(true);
+    renderPanel();
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    expect(screen.getByRole('button', { name: 'query.stop' })).toBeDisabled();
+    expect(screen.getAllByText('query.cancelUnknown').length).toBeGreaterThan(0);
+    expect(cancelQuery).not.toHaveBeenCalled();
   });
 
   it('resets to Execute when running stops before 300ms', () => {
