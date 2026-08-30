@@ -5,7 +5,7 @@
 - 编号：v01x-query-cancel
 - 范围：精确 QueryExecutionId 协议、Host ownership、PostgreSQL/MySQL target cancel、QueryExecutionViewModel、取消状态和 QueryPanel 取消入口
 - 状态：协议重构实现与验证完成（BUG-001/BUG-002 已关闭）
-- 编码 commit：`1c531d84`（driver-api/Host 最小闭环）、`5f00b563`（PG/MySQL + frontend）、`19dcaaf9`（target/control pool 生命周期竞态修正）
+- 编码 commit：`1c531d84`（driver-api/Host 最小闭环）、`5f00b563`（PG/MySQL + frontend）、`19dcaaf9`（target/control pool 生命周期竞态修正）、`0a23b82b`（duplicate owner 保持不变）
 - 历史修复 commit：`6bbbf2e8`、`e20ed2b5`、`5d23c50d` 保留为本轨前置记录
 
 ### 审计里程碑（checkpoint 1c10a297）
