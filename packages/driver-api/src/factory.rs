@@ -23,6 +23,13 @@ pub trait DatabaseDriverFactory: Send + Sync + 'static {
         false
     }
 
+    /// Whether this factory explicitly advertises the precise execution-handle
+    /// cancellation protocol. This is separate from the legacy capability so
+    /// old plugins cannot make the host call their session-wide cancel method.
+    fn supports_query_execution_cancel(&self) -> bool {
+        false
+    }
+
     /// Whether this driver supports EXPLAIN analysis.
     fn supports_explain(&self) -> bool {
         false

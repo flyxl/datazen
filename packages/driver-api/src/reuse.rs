@@ -138,6 +138,29 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.query_stream(handle, sql, limit, on_event).await
     }
 
+    async fn prepare_query_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        self.inner
+            .prepare_query_execution(handle, execution_id)
+            .await
+    }
+
+    async fn query_stream_with_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        self.inner
+            .query_stream_with_execution(handle, execution_id, sql, limit, on_event)
+            .await
+    }
+
     async fn query_with_params(
         &self,
         handle: &ConnectionHandle,
@@ -189,6 +212,30 @@ impl DatabaseDriver for ReuseDriver {
 
     async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
         self.inner.cancel_query(handle).await
+    }
+
+    async fn cancel_query_with_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        self.inner
+            .cancel_query_with_execution(handle, execution_id)
+            .await
+    }
+
+    async fn cleanup_query_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        self.inner
+            .cleanup_query_execution(handle, execution_id)
+            .await
+    }
+
+    fn supports_query_execution_cancel(&self) -> bool {
+        self.inner.supports_query_execution_cancel()
     }
 
     async fn get_server_info(&self, handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {

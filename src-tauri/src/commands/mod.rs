@@ -67,8 +67,74 @@ use crate::store::Store;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::workflow::scheduler::WorkflowScheduler;
 use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
+use datazen_driver_api::QueryExecutionId;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
+
+/// Host-side ownership registry for live query execution handles.
+///
+/// The driver owns the backend target registry; this map only binds an opaque
+/// execution token to its `dbSessionId` so IPC cannot cancel another session's
+/// query. Entries are removed on every stream terminal path.
+pub struct QueryExecutionRegistry {
+    owners: RwLock<HashMap<QueryExecutionId, String>>,
+}
+
+impl QueryExecutionRegistry {
+    pub fn new() -> Self {
+        Self {
+            owners: RwLock::new(HashMap::new()),
+        }
+    }
+
+    pub async fn register(
+        &self,
+        execution_id: QueryExecutionId,
+        db_session_id: impl Into<String>,
+    ) -> Result<(), String> {
+        let mut owners = self.owners.write().await;
+        if owners
+            .insert(execution_id.clone(), db_session_id.into())
+            .is_some()
+        {
+            return Err(format!(
+                "query execution id '{}' is already registered",
+                execution_id.as_str()
+            ));
+        }
+        Ok(())
+    }
+
+    pub async fn validate_owner(
+        &self,
+        execution_id: &QueryExecutionId,
+        db_session_id: &str,
+    ) -> Result<(), String> {
+        let owners = self.owners.read().await;
+        match owners.get(execution_id) {
+            Some(owner) if owner == db_session_id => Ok(()),
+            Some(_) => Err(format!(
+                "query execution '{}' belongs to a different db session",
+                execution_id.as_str()
+            )),
+            None => Err(format!(
+                "query execution '{}' is unknown or stale",
+                execution_id.as_str()
+            )),
+        }
+    }
+
+    pub async fn remove(&self, execution_id: &QueryExecutionId) {
+        self.owners.write().await.remove(execution_id);
+    }
+}
+
+impl Default for QueryExecutionRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Shared application state injected into every command handler.
 #[derive(Clone)]
@@ -87,6 +153,7 @@ pub struct AppState {
     pub workflow_history: Arc<WorkflowHistoryManager>,
     pub mcp_client_manager: Arc<McpClientManager>,
     pub session_transactions: Arc<tokio::sync::Mutex<HashMap<String, TransactionHandle>>>,
+    pub query_executions: Arc<QueryExecutionRegistry>,
     pub workflow_scheduler: Arc<WorkflowScheduler>,
     pub extensions: Arc<ExtensionManager>,
 }
@@ -98,5 +165,65 @@ impl AppState {
         self.ai_registry.ensure_registered(&self.store).await;
         let lang = self.store.get_settings().await.language;
         self.prompt_resolver.ensure_ready(&lang).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn query_execution_registry_rejects_duplicate_wrong_and_stale_handles() {
+        let registry = QueryExecutionRegistry::new();
+        let first = QueryExecutionId::new("exec-a");
+        let second = QueryExecutionId::new("exec-b");
+
+        registry.register(first.clone(), "session-a").await.unwrap();
+        registry
+            .register(second.clone(), "session-b")
+            .await
+            .unwrap();
+
+        let duplicate = registry.register(first.clone(), "session-a").await;
+        assert!(duplicate.unwrap_err().contains("already registered"));
+        assert!(registry.validate_owner(&first, "session-a").await.is_ok());
+        assert!(registry
+            .validate_owner(&first, "session-b")
+            .await
+            .unwrap_err()
+            .contains("different db session"));
+        assert!(registry
+            .validate_owner(&QueryExecutionId::new("unknown"), "session-a")
+            .await
+            .unwrap_err()
+            .contains("unknown or stale"));
+
+        registry.remove(&first).await;
+        assert!(registry
+            .validate_owner(&first, "session-a")
+            .await
+            .unwrap_err()
+            .contains("unknown or stale"));
+    }
+
+    #[tokio::test]
+    async fn concurrent_execution_ids_are_isolated_by_session() {
+        let registry = QueryExecutionRegistry::new();
+        let first = QueryExecutionId::new("exec-a");
+        let second = QueryExecutionId::new("exec-b");
+        registry.register(first.clone(), "session-a").await.unwrap();
+        registry
+            .register(second.clone(), "session-b")
+            .await
+            .unwrap();
+
+        let (first_ok, second_ok, cross_cancel) = tokio::join!(
+            registry.validate_owner(&first, "session-a"),
+            registry.validate_owner(&second, "session-b"),
+            registry.validate_owner(&first, "session-b"),
+        );
+        assert!(first_ok.is_ok());
+        assert!(second_ok.is_ok());
+        assert!(cross_cancel.is_err());
     }
 }

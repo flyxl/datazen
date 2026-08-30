@@ -18,14 +18,17 @@ use tokio::sync::RwLock;
 #[serde(rename_all = "camelCase")]
 pub struct DriverCapabilities {
     pub supports_cancel_query: bool,
+    pub supports_query_execution_cancel: bool,
     pub supports_explain: bool,
     pub supports_streaming_results: bool,
 }
 
 impl DriverCapabilities {
-    fn from_factory(factory: &dyn DatabaseDriverFactory) -> Self {
+    fn from_factory(factory: &dyn DatabaseDriverFactory, driver: &dyn DatabaseDriver) -> Self {
         Self {
             supports_cancel_query: factory.supports_cancel_query(),
+            supports_query_execution_cancel: factory.supports_query_execution_cancel()
+                && driver.supports_query_execution_cancel(),
             supports_explain: factory.supports_explain(),
             supports_streaming_results: factory.supports_streaming_results(),
         }
@@ -135,7 +138,7 @@ impl DriverRegistry {
 
             let driver = factory.create();
             let actual = driver.driver_type();
-            let capabilities = DriverCapabilities::from_factory(*factory);
+            let capabilities = DriverCapabilities::from_factory(*factory, driver.as_ref());
             {
                 let mut capability_map = self.capabilities.write().await;
                 capability_map.insert(db_type.to_string(), capabilities);
@@ -264,6 +267,7 @@ mod tests {
     fn capabilities(supports_cancel_query: bool) -> DriverCapabilities {
         DriverCapabilities {
             supports_cancel_query,
+            supports_query_execution_cancel: supports_cancel_query,
             supports_explain: true,
             supports_streaming_results: true,
         }
@@ -331,6 +335,7 @@ mod tests {
     fn capabilities_serialize_using_frontend_camel_case() {
         let value = serde_json::to_value(capabilities(true)).expect("serialize capabilities");
         assert_eq!(value["supportsCancelQuery"], true);
+        assert_eq!(value["supportsQueryExecutionCancel"], true);
         assert_eq!(value["supportsExplain"], true);
         assert_eq!(value["supportsStreamingResults"], true);
         assert!(value.get("supports_cancel_query").is_none());
