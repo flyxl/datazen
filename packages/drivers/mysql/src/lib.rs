@@ -23,6 +23,9 @@ impl DatabaseDriverFactory for MysqlFactory {
     fn supports_explain(&self) -> bool {
         true
     }
+    fn supports_cancel_query(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&MysqlFactory);
 
@@ -37,6 +40,9 @@ impl DatabaseDriverFactory for MariadbFactory {
     fn supports_explain(&self) -> bool {
         true
     }
+    fn supports_cancel_query(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&MariadbFactory);
 
@@ -49,6 +55,9 @@ impl DatabaseDriverFactory for DorisFactory {
         "doris"
     }
     fn supports_explain(&self) -> bool {
+        true
+    }
+    fn supports_cancel_query(&self) -> bool {
         true
     }
 }
@@ -68,6 +77,9 @@ impl DatabaseDriverFactory for StarrocksFactory {
     fn supports_explain(&self) -> bool {
         true
     }
+    fn supports_cancel_query(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&StarrocksFactory);
 
@@ -85,6 +97,9 @@ impl DatabaseDriverFactory for ManticoreFactory {
     fn supports_explain(&self) -> bool {
         true
     }
+    fn supports_cancel_query(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&ManticoreFactory);
 
@@ -100,6 +115,9 @@ impl DatabaseDriverFactory for ObOracleFactory {
         "ob_oracle"
     }
     fn supports_explain(&self) -> bool {
+        true
+    }
+    fn supports_cancel_query(&self) -> bool {
         true
     }
 }

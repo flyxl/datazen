@@ -6,8 +6,12 @@ import { sqlContainsSchemaChangingDdl } from '../lib/schemaChangingSql';
 import { t } from '../locales/t';
 import type { QueryStreamEvent, StatementResult } from '../types';
 import type { ChartConfig } from '../types/chart';
+import { isCancellationError } from '../lib/queryExecutionViewModel';
 
 export type BindParams = Record<string, string | number | boolean | null>;
+
+export type QueryCancelState = 'idle' | 'requested' | 'failed';
+export type QueryTerminalState = 'succeeded' | 'failed' | 'cancelled' | 'unknown';
 
 export interface QueryExecState {
   sql: string;
@@ -16,6 +20,9 @@ export interface QueryExecState {
   error: string | null;
   running: boolean;
   executionTimeMs: number | null;
+  cancelState: QueryCancelState;
+  cancelError: string | null;
+  terminalState: QueryTerminalState | null;
   chartConfig?: ChartConfig;
   resultViewMode?: 'table' | 'chart';
   streamRunId?: number;
@@ -29,6 +36,9 @@ export const EMPTY_QUERY_EXEC: QueryExecState = Object.freeze({
   error: null,
   running: false,
   executionTimeMs: null,
+  cancelState: 'idle',
+  cancelError: null,
+  terminalState: null,
   resultDetailRowIndex: null,
 });
 
@@ -80,6 +90,9 @@ export async function runStreamingQuery(
       activeResultIdx: 0,
       streamRunId: runId,
       executionTimeMs: null,
+      cancelState: 'idle',
+      cancelError: null,
+      terminalState: null,
     }),
   );
 
@@ -98,7 +111,15 @@ export async function runStreamingQuery(
     const exec = getExec().get(panelId);
     if (exec && exec.streamRunId === runId) {
       const viewMode = resolvePostQueryViewMode(exec.results[0]);
-      setExec(patchExec(getExec(), panelId, { resultViewMode: viewMode, running: false }));
+      setExec(
+        patchExec(getExec(), panelId, {
+          resultViewMode: viewMode,
+          running: false,
+          cancelState: 'idle',
+          cancelError: null,
+          terminalState: 'succeeded',
+        }),
+      );
       if (!exec.error) {
         await notifySchemaChangedIfNeeded(dbSessionId, sql);
       }
@@ -106,7 +127,17 @@ export async function runStreamingQuery(
   } catch (e) {
     const exec = getExec().get(panelId);
     if (exec && exec.streamRunId === runId) {
-      setExec(patchExec(getExec(), panelId, { running: false, error: extractError(e) }));
+      const message = extractError(e);
+      const cancelled = exec.cancelState === 'requested' && isCancellationError(message);
+      setExec(
+        patchExec(getExec(), panelId, {
+          running: false,
+          error: cancelled ? null : message,
+          cancelState: 'idle',
+          cancelError: null,
+          terminalState: cancelled ? 'cancelled' : 'failed',
+        }),
+      );
     }
   }
 }
@@ -123,7 +154,15 @@ export async function runBoundQuery(
   /** F7: panel's PG-family schema target — drivers inline it when supported. */
   schema?: string | null,
 ): Promise<void> {
-  setExec(patchExec(getExec(), panelId, { running: true, error: null }));
+  setExec(
+    patchExec(getExec(), panelId, {
+      running: true,
+      error: null,
+      cancelState: 'idle',
+      cancelError: null,
+      terminalState: null,
+    }),
+  );
 
   try {
     const multi = await queryCommands.executeQuery(
@@ -142,16 +181,25 @@ export async function runBoundQuery(
         error: null,
         executionTimeMs: multi.totalTimeMs ?? null,
         resultViewMode: viewMode,
+        cancelState: 'idle',
+        cancelError: null,
+        terminalState: 'succeeded',
       }),
     );
     await notifySchemaChangedIfNeeded(dbSessionId, sql);
   } catch (e) {
+    const exec = getExec().get(panelId);
+    const message = extractError(e);
+    const cancelled = exec?.cancelState === 'requested' && isCancellationError(message);
     setExec(
       patchExec(getExec(), panelId, {
         running: false,
-        error: extractError(e),
+        error: cancelled ? null : message,
         results: [],
         activeResultIdx: 0,
+        cancelState: 'idle',
+        cancelError: null,
+        terminalState: cancelled ? 'cancelled' : 'failed',
       }),
     );
   }

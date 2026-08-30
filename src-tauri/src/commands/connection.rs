@@ -170,6 +170,7 @@ pub(crate) async fn get_connection_info_impl(
         Some(DriverCategory::Document) => "document",
         _ => "sql",
     };
+    let capabilities = state.driver_registry.get_capabilities(db_type).await;
 
     Ok(serde_json::json!({
         "databaseType": db_type,
@@ -180,6 +181,7 @@ pub(crate) async fn get_connection_info_impl(
         "database": config.database,
         "schema": config.schema,
         "serverVersion": config.server_version,
+        "capabilities": capabilities,
     }))
 }
 

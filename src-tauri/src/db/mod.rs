@@ -9,4 +9,4 @@ pub use datazen_driver_api::*;
 
 pub mod registry;
 
-pub use registry::{init_drivers, DriverRegistry};
+pub use registry::{init_drivers, DriverCapabilities, DriverRegistry};

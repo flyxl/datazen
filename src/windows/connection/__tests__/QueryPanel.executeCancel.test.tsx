@@ -30,6 +30,34 @@ vi.mock('../../../stores/settingsStore', () => ({
   ) => sel({ settings: { safeMode: false, autoCommit: true } }),
 }));
 
+vi.mock('../../../stores/activeConnectionStore', () => ({
+  useActiveConnectionStore: (
+    selector: (state: {
+      connections: Record<
+        string,
+        {
+          capabilities: {
+            supportsCancelQuery: boolean;
+            supportsExplain: boolean;
+            supportsStreamingResults: boolean;
+          };
+        }
+      >;
+    }) => unknown,
+  ) =>
+    selector({
+      connections: {
+        'cfg-1': {
+          capabilities: {
+            supportsCancelQuery: true,
+            supportsExplain: true,
+            supportsStreamingResults: true,
+          },
+        },
+      },
+    }),
+}));
+
 vi.mock('../../../stores/schemaStore', () => ({
   useSchemaStore: (sel: (s: Record<string, unknown>) => unknown) =>
     sel({

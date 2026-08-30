@@ -1,9 +1,12 @@
 import { create } from 'zustand';
 import { queryCommands } from '../commands/query';
+import { t } from '../locales/t';
 import type { DatabaseType, FavoriteQuery, QueryHistoryEntry, Value } from '../types';
 import type { ChartConfig } from '../types/chart';
 import type { TrendSeries } from '../lib/serverStatusTrends';
+import { getCancelCapability } from '../lib/queryExecutionViewModel';
 import { useSchemaStore } from './schemaStore';
+import { useActiveConnectionStore } from './activeConnectionStore';
 import {
   type BindParams,
   type QueryExecState,
@@ -156,7 +159,9 @@ function cancelAndCleanupExec(
   for (const panel of panelsToRemove) {
     if (panel.type === 'query') {
       const exec = nextExec.get(panel.id);
-      if (exec?.running) {
+      const capabilities =
+        useActiveConnectionStore.getState().connections[panel.connectionId]?.capabilities;
+      if (exec?.running && getCancelCapability(capabilities) === 'supported') {
         queryCommands.cancelQuery(panel.dbSessionId).catch(() => {});
       }
       nextExec.delete(panel.id);
@@ -435,15 +440,29 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const { panels, queryExec } = get();
     const panel = panels.find((p) => p.id === panelId);
     if (!panel) return;
+
+    const exec = queryExec.get(panelId);
+    if (!exec?.running) return;
+
+    const capabilities =
+      useActiveConnectionStore.getState().connections[panel.connectionId]?.capabilities;
+    if (getCancelCapability(capabilities) !== 'supported') return;
+
+    set((s) => ({
+      queryExec: patchExec(s.queryExec, panelId, {
+        cancelState: 'requested',
+        cancelError: null,
+      }),
+    }));
+
     try {
       await queryCommands.cancelQuery(panel.dbSessionId);
     } catch {
-      // best-effort
-    }
-    const exec = queryExec.get(panelId);
-    if (exec) {
       set((s) => ({
-        queryExec: patchExec(s.queryExec, panelId, { running: false, error: 'Cancelled' }),
+        queryExec: patchExec(s.queryExec, panelId, {
+          cancelState: 'failed',
+          cancelError: t('query.cancelFailed'),
+        }),
       }));
     }
   },

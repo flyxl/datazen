@@ -60,6 +60,7 @@ import { Nl2SqlPanel } from '../../components/ai/Nl2SqlPanel';
 import { DiagnosisPanel } from '../../components/ai/DiagnosisPanel';
 import { ExplainPanel } from '../../components/ai/ExplainPanel';
 import { usePanelStore } from '../../stores/panelStore';
+import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useQueryExec } from '../../hooks/useQueryExec';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -82,6 +83,7 @@ import { parseSqlParams, paramsToPayload } from '../../lib/sqlBindParams';
 import { BindParamPanel } from '../../components/query/BindParamPanel';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { ExplainResult, StatementResult } from '../../types';
+import { toQueryExecutionViewModel } from '../../lib/queryExecutionViewModel';
 import { Dialog } from '../../components/ui/Dialog';
 import { analyzeTransactionSql, isAbortedTransactionError } from '../../lib/sqlTransactionGuard';
 import { formatLastConnected } from '../../lib/formatters';
@@ -102,6 +104,13 @@ function hasSuspiciousPostgresDoubleQuotedLiteral(sql: string): boolean {
 export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }: QueryPanelProps) {
   const { t } = useI18n();
   const exec = useQueryExec(panelId);
+  const driverCapabilities = useActiveConnectionStore(
+    (s) => s.connections[connectionId]?.capabilities,
+  );
+  const executionViewModel = useMemo(
+    () => toQueryExecutionViewModel(exec, driverCapabilities),
+    [exec, driverCapabilities],
+  );
   const historyVisible = usePanelStore((s) => s.historyVisible);
   const history = usePanelStore((s) => s.queryHistory);
   const updateSql = usePanelStore((s) => s.updateSql);
@@ -708,14 +717,40 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
           }}
         />
         {exec.running && showCancel ? (
-          <ToolbarButton
-            compact={compactToolbar}
-            variant="danger"
-            label={t('query.stop')}
-            icon={<Square className="h-3.5 w-3.5" />}
-            onClick={handleCancel}
-            {...tid('editor-stop-button')}
-          />
+          <>
+            <ToolbarButton
+              compact={compactToolbar}
+              variant="danger"
+              label={
+                executionViewModel.phase === 'cancel_requested'
+                  ? t('query.cancelling')
+                  : t('query.stop')
+              }
+              icon={<Square className="h-3.5 w-3.5" />}
+              onClick={handleCancel}
+              disabled={
+                executionViewModel.cancelCapability !== 'supported' ||
+                executionViewModel.cancelState === 'requested'
+              }
+              title={
+                executionViewModel.cancelCapability === 'unsupported'
+                  ? t('query.cancelUnavailable')
+                  : executionViewModel.cancelCapability === 'unknown'
+                    ? t('query.cancelUnknown')
+                    : executionViewModel.cancelState === 'failed'
+                      ? t('query.cancelFailed')
+                      : undefined
+              }
+              {...tid('editor-stop-button')}
+            />
+            {executionViewModel.cancelCapability !== 'supported' && (
+              <span className="shrink-0 text-[11px] text-fg-muted">
+                {executionViewModel.cancelCapability === 'unknown'
+                  ? t('query.cancelUnknown')
+                  : t('query.cancelUnavailable')}
+              </span>
+            )}
+          </>
         ) : (
           <ToolbarButton
             compact={compactToolbar}
