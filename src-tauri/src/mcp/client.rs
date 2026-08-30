@@ -7,7 +7,7 @@ use rmcp::transport::{ConfigureCommandExt, TokioChildProcess};
 use rmcp::{RoleClient, ServiceExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
@@ -122,6 +122,9 @@ struct McpClientEntry {
     tools: Vec<Tool>,
     service: RunningService<RoleClient, ()>,
 }
+
+#[cfg(test)]
+use std::sync::Arc;
 
 #[cfg(test)]
 type TestCallHandler =
@@ -275,6 +278,7 @@ impl McpClientManager {
 
     pub async fn all_tools(&self) -> Vec<McpToolInfo> {
         let clients = self.clients.read().await;
+        #[allow(unused_mut)]
         let mut tools: Vec<McpToolInfo> = clients
             .iter()
             .flat_map(|(server_id, info)| {
@@ -352,6 +356,7 @@ impl McpClientManager {
 
     pub async fn connected_servers(&self) -> Vec<(String, String, usize)> {
         let clients = self.clients.read().await;
+        #[allow(unused_mut)]
         let mut servers: Vec<(String, String, usize)> = clients
             .iter()
             .map(|(id, e)| (id.clone(), e.name.clone(), e.tools.len()))
