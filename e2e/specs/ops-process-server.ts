@@ -3,10 +3,12 @@
  *
  * 完整链路：连接 PG → 右键连接「Process List…」→ 面板展示进程行 → 选中可 Kill 的行 →
  * 点 Kill → 确认 → 断言该 pid 从真实 pg_stat_activity 消失（落库断言）。
- * 服务器状态：右键「服务器状态…」→ 面板展示关键指标。
+ * 服务器状态：右键「服务器状态…」→ 面板展示关键指标 + 刷新。
  *
  * 数据构造：用 IPC 额外起一条**独立的空闲 PG 连接**（可识别 pid），确保 Kill 不会打掉 E2E
  * 主会话连接；after 清理连接配置。
+ *
+ * 合并了原 ops-server-status-processes.ts 的轻量 UI 渲染断言。
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
@@ -254,6 +256,97 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
       await invokeBackend('delete_connection', { id: checkId });
     } catch {
       /* ok */
+    }
+  });
+
+  // ── Lightweight UI rendering tests (from ops-server-status-processes.ts) ──
+
+  it('OPS-SS-002: refresh keeps panel healthy', async () => {
+    // Open server status panel via context menu on main connection
+    const connItem = await browser.execute(() => {
+      const items = Array.from(document.querySelectorAll('[data-conn-item]'));
+      const main = items.find((el) => {
+        const name = el.getAttribute('data-conn-name') || '';
+        return name === E2E_PG_CONN_NAME;
+      });
+      if (!main) return false;
+      const rect = main.getBoundingClientRect();
+      main.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+        }),
+      );
+      return true;
+    });
+    if (!connItem) return;
+    await browser.pause(400);
+
+    await clickMenuItem(t('main.ctx.serverStatus'));
+    await browser.waitUntil(
+      async () => (await $('body').getText()).includes(t('serverStatus.version')),
+      { timeout: 10000, timeoutMsg: 'Server status panel did not render' },
+    );
+    const refresh = await $(`button*=${t('serverStatus.refresh')}`);
+    await refresh.click();
+    await browser.pause(800);
+    const body = await $('body').getText();
+    expect(body).toContain(t('serverStatus.version'));
+  });
+
+  it('OPS-PL-001: process list table headers render specific columns', async () => {
+    // Open process list on the main connection
+    const connItem = await browser.execute(() => {
+      const items = Array.from(document.querySelectorAll('[data-conn-item]'));
+      const main = items.find((el) => {
+        const name = el.getAttribute('data-conn-name') || '';
+        return name === E2E_PG_CONN_NAME;
+      });
+      if (!main) return false;
+      const rect = main.getBoundingClientRect();
+      main.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+        }),
+      );
+      return true;
+    });
+    if (!connItem) return;
+    await browser.pause(400);
+
+    await clickMenuItem(t('main.ctx.processList'));
+    await browser.waitUntil(
+      async () => {
+        const count = await browser.execute(
+          () => document.querySelectorAll('table th, [role="columnheader"]').length,
+        );
+        return count > 0;
+      },
+      { timeout: 10000, timeoutMsg: 'Process list table did not render' },
+    );
+    const body = await $('body').getText();
+    expect(body).toContain(t('processList.colPid'));
+    expect(body).toContain(t('processList.colUser'));
+    expect(body).toContain(t('processList.colState'));
+  });
+
+  it('OPS-PL-002: kill shows confirm then cancel (non-destructive)', async () => {
+    const killBtn = await $(`button*=${t('processList.kill')}`);
+    if (!(await killBtn.isExisting())) return;
+    await expect(killBtn).toBeDisplayed();
+    await killBtn.click();
+    await browser.pause(400);
+    const body = await $('body').getText();
+    expect(body).toContain(t('processList.killTitle'));
+    const cancel = await $('button*=取消');
+    if (await cancel.isExisting()) {
+      await cancel.click();
+      await browser.pause(300);
     }
   });
 });
