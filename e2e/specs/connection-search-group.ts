@@ -4,7 +4,9 @@ import { t } from '../i18n.js';
 
 describe('连接搜索和分组 (CM-007, CM-008)', () => {
   before(async () => {
-    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
+    await $(
+      `input[placeholder="${t('main.searchPlaceholder')}"], [data-testid="connection-search-input"]`,
+    ).waitForDisplayed({ timeout: 10000 });
     await expandAllGroups();
     await browser.pause(1000);
   });
@@ -70,9 +72,10 @@ describe('连接搜索和分组 (CM-007, CM-008)', () => {
   });
 
   it('空白区域绑定了 contextmenu 处理器 (CM-007)', async () => {
-    // Native context menus block WebDriver, so we verify the scroll container exists.
     const hasScrollArea = await browser.execute(() => {
-      return document.querySelector('.flex-1.overflow-auto') instanceof HTMLElement;
+      return (
+        document.querySelector('[data-testid="connection-navigator-aside"]') instanceof HTMLElement
+      );
     });
     expect(hasScrollArea).toBe(true);
   });

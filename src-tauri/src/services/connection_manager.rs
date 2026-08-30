@@ -362,23 +362,21 @@ impl ConnectionManager {
         self.reconnect(db_session_id).await
     }
 
-    /// Resolve a session from an id that may be either kind, trying
-    /// **`db_session_id` first**, then falling back to `connection_id`.
+    /// **MCP / Workflow / db_tools only.** Resolve a live session from a
+    /// persisted `connection_id`.
     ///
-    /// - If `id` matches a live runtime session (or one rebuildable via
-    ///   `session_owner_map`), it is treated as a `db_session_id` and returned
-    ///   as-is.
-    /// - Otherwise `id` is treated as a persisted `connection_id`:
-    ///   `get_or_connect_session` ensures a session exists for it and that
-    ///   (possibly newly created) `db_session_id` is returned.
-    pub async fn resolve_session(
+    /// Reuses an existing session when one is already owned by
+    /// `connection_id` (via `get_or_connect_session`); otherwise establishes
+    /// a new session. Returns the runtime `db_session_id` together with the
+    /// driver and handle.
+    ///
+    /// GUI IPC paths must call [`get_session`](Self::get_session) directly and
+    /// pass a real `db_session_id`; they must not use this helper.
+    pub async fn resolve_session_for_connection(
         &self,
-        id: &str,
+        connection_id: &str,
     ) -> Result<(String, Arc<dyn DatabaseDriver>, ConnectionHandle), ConnectionError> {
-        if let Ok((driver, handle)) = self.get_session(id).await {
-            return Ok((id.to_string(), driver, handle));
-        }
-        let db_session_id = self.get_or_connect_session(id).await?;
+        let db_session_id = self.get_or_connect_session(connection_id).await?;
         let (driver, handle) = self.get_session(&db_session_id).await?;
         Ok((db_session_id, driver, handle))
     }
@@ -417,7 +415,10 @@ impl ConnectionManager {
                 effective_config.database_type.clone(),
             ))?;
 
-        let handle = driver.connect(&effective_config).await?;
+        let mut handle = driver.connect(&effective_config).await?;
+        // Preserve the runtime session id across eviction/reconnect; the driver
+        // may assign a fresh pool handle id on each connect.
+        handle.id = db_session_id.to_string();
 
         let mut connections = self.connections.write().await;
         connections.insert(
@@ -759,24 +760,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolve_session_passthrough_db_session_id() {
-        let mgr = test_manager_stub().await;
-        let handle = ConnectionHandle {
-            id: "rt-1".into(),
-            pool_id: "pool-1".into(),
-        };
-        // Live db session "rt-1" owned by persisted connection config "cfg-1".
-        mgr.insert_test_session("rt-1", "cfg-1", test_config("cfg-1"), handle.clone())
-            .await;
-
-        let (db_session_id, driver, returned) = mgr.resolve_session("rt-1").await.unwrap();
-        assert_eq!(db_session_id, "rt-1");
-        assert_eq!(returned.id, "rt-1");
-        assert_eq!(driver.driver_type(), "postgresql");
-    }
-
-    #[tokio::test]
-    async fn resolve_session_connection_id_reuses_existing_runtime() {
+    async fn resolve_session_for_connection_reuses_existing_runtime() {
         let mgr = test_manager_stub().await;
         let handle = ConnectionHandle {
             id: "rt-2".into(),
@@ -787,7 +771,8 @@ mod tests {
 
         // Input is the connection_id of a config whose session already lives:
         // it must resolve to that existing db_session_id.
-        let (db_session_id, _driver, returned) = mgr.resolve_session("cfg-2").await.unwrap();
+        let (db_session_id, _driver, returned) =
+            mgr.resolve_session_for_connection("cfg-2").await.unwrap();
         assert_eq!(db_session_id, "rt-2");
         assert_eq!(returned.id, "rt-2");
     }
@@ -957,53 +942,32 @@ mod tests {
         );
     }
 
-    /// Invariant: `resolve_session` tries the id as a **db_session_id first**
-    /// and only falls back to treating it as a connection_id. When one string
-    /// is both a live db_session_id and a persisted connection_id, the runtime
-    /// session wins and no new session is created.
+    /// Invariant: `resolve_session_for_connection` accepts only a persisted
+    /// `connection_id`. Passing a runtime `db_session_id` must fail.
     #[tokio::test]
-    async fn resolve_session_prefers_db_session_id_over_connection_id() {
+    async fn resolve_session_for_connection_rejects_db_session_id() {
         let (_keyring, mgr, store, _) = test_manager().await;
-        // "dual" is BOTH a persisted connection_id ...
-        store.save_connection(sample_config("dual")).await.unwrap();
-        // ... and the db_session_id of a live session owned by "owner-a".
-        mgr.insert_test_session(
-            "dual",
-            "owner-a",
-            sample_config("dual"),
-            ConnectionHandle {
-                id: "dual".into(),
-                pool_id: "pool-dual".into(),
-            },
-        )
-        .await;
+        store.save_connection(sample_config("cfg-1")).await.unwrap();
+        let db_session_id = mgr.connect("cfg-1").await.unwrap();
 
-        let before = mgr.session_owner_map_len().await;
-        let (db_session_id, _driver, handle) = mgr.resolve_session("dual").await.unwrap();
-
-        // Resolved as the existing db_session_id, NOT as connection_id "dual"
-        // (which would have created a fresh "mock-dual…" session).
-        assert_eq!(db_session_id, "dual");
-        assert_eq!(handle.id, "dual");
-        assert_eq!(mgr.session_owner_map_len().await, before);
-        assert_eq!(
-            mgr.owner_connection_id(&db_session_id).await.as_deref(),
-            Some("owner-a")
-        );
+        match mgr.resolve_session_for_connection(&db_session_id).await {
+            Err(e) => assert!(matches!(e, ConnectionError::ConnectionConfigNotFound(_))),
+            Ok(_) => panic!("db_session_id must not be accepted as connection_id"),
+        }
     }
 
-    /// Invariant (fallback leg): an id that is no live db_session_id is treated
-    /// as a connection_id; a new session is created and its db_session_id
-    /// returned with the owner mapping recorded.
+    /// Invariant: a valid `connection_id` creates or reuses a session and
+    /// returns its `db_session_id` with the owner mapping recorded.
     #[tokio::test]
-    async fn resolve_session_falls_back_to_connection_id_and_creates_session() {
+    async fn resolve_session_for_connection_creates_session_from_connection_id() {
         let (_keyring, mgr, store, _) = test_manager().await;
         store
             .save_connection(sample_config("cfg-fb"))
             .await
             .unwrap();
 
-        let (db_session_id, driver, handle) = mgr.resolve_session("cfg-fb").await.unwrap();
+        let (db_session_id, driver, handle) =
+            mgr.resolve_session_for_connection("cfg-fb").await.unwrap();
         assert_ne!(db_session_id, "cfg-fb");
         assert!(db_session_id.starts_with("mock-cfg-fb"));
         assert_eq!(handle.id, db_session_id);

@@ -12,7 +12,7 @@ import {
   invokeBackend,
   openDataTransferWindow,
   queryScalar,
-  selectDzOption,
+  selectDzOptionInWrap,
   withSafeModeOff,
   type QueryResultPayload,
 } from '../helpers.js';
@@ -56,8 +56,8 @@ async function runWizard(
   createNew: boolean,
 ) {
   await openDataTransferWindow();
-  await selectDzOption(t('transfer.pickConnection'), srcName);
-  await selectDzOption(t('transfer.pickConnection'), tgtName);
+  await selectDzOptionInWrap('data-transfer-source', srcName);
+  await selectDzOptionInWrap('data-transfer-target', tgtName);
   await browser.pause(1500);
   await clickTransferNext();
 

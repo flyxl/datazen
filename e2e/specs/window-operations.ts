@@ -6,6 +6,7 @@
  */
 import { expect, browser, $ } from '@wdio/globals';
 import {
+  captureJourneyStep,
   clickCardConnectButton,
   closeExtraWindows,
   closeNewConnectionDialogFromUi,

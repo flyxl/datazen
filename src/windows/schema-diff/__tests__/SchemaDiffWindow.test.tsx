@@ -37,6 +37,7 @@ vi.mock('../../../lib/crossWindowBus', () => ({
 
 vi.mock('../../../lib/schemaDiffLimitationsPrefs', () => ({
   isSchemaDiffLimitationsDismissed: vi.fn().mockReturnValue(true),
+  setSchemaDiffLimitationsDismissed: vi.fn(),
 }));
 
 vi.mock('../../../lib/dedicatedDbSession', () => ({

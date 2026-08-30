@@ -79,7 +79,10 @@ Flatpak / Snap / AUR are not maintained in-repo; community packages should track
 
 ## Windows
 
-- **NSIS `.exe`** and **`.msi`** on GitHub Releases (Basic / All / Akulaku suffixes).
+- **NSIS `.exe`** installers and **portable `.zip`** archives on GitHub Releases (Basic / All / Akulaku suffixes).
+- Portable archives are installation-free and contain `DataZen.exe` plus the required prompt resources. Extract the whole archive before running. User data is still stored in the system application-data directory, not beside the executable.
+- Windows requires the Microsoft Edge WebView2 Runtime. It is normally present on supported Windows 10/11 systems; install it separately if the portable build cannot start because the runtime is missing.
+- Portable archives are not Tauri updater bundles. The Windows entry in `latest.json` continues to reference the signed Basic NSIS `.exe`.
 - **WinGet:** manifest template in [`packaging/winget/`](../../packaging/winget/); prefer WinGet over Scoop (Scoop not maintained).
 
 ---

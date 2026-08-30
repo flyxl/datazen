@@ -31,6 +31,12 @@ fn password_field_re() -> &'static Regex {
     })
 }
 
+/// First 500 chars of SQL with secrets redacted — for `tracing::debug!` previews.
+pub fn sql_preview_for_log(sql: &str) -> String {
+    let preview: String = sql.chars().take(500).collect();
+    redact_secrets_for_log(&preview)
+}
+
 /// Replace credentials / tokens in a log message with placeholders.
 pub fn redact_secrets_for_log(input: &str) -> String {
     let mut out = url_credentials_re()
@@ -90,6 +96,14 @@ mod tests {
         assert!(!out.contains("token=abc"), "{out}");
         assert!(out.contains("Bearer ***"), "{out}");
         assert!(out.contains("token=***"), "{out}");
+    }
+
+    #[test]
+    fn sql_preview_truncates_and_redacts() {
+        let sql = "SELECT * FROM t WHERE url = 'mysql://root:hunter2@127.0.0.1/app'";
+        let out = sql_preview_for_log(sql);
+        assert!(!out.contains("hunter2"), "{out}");
+        assert!(out.contains("mysql://***@"), "{out}");
     }
 
     #[test]

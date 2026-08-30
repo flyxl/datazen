@@ -9,6 +9,7 @@ import {
   expandAllGroups,
   openQueryTab,
   setEditorContent,
+  waitForNewQueryButton,
 } from '../helpers.js';
 import { t } from '../i18n.js';
 
@@ -101,14 +102,13 @@ describe('边缘用例 (TC-EDGE-001/002/004/008)', () => {
 
   it('TC-EDGE-004: 大结果集查询应返回结果或截断提示且不崩溃', async () => {
     await clickCardConnectButton();
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000 },
-    );
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 30000,
+    });
     const handles = await browser.getWindowHandles();
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+    await waitForNewQueryButton(20000);
     await openQueryTab();
     await executeSQL('SELECT generate_series(1, 5000) AS n');
     await browser.pause(2000);
@@ -127,15 +127,14 @@ describe('边缘用例 (TC-EDGE-001/002/004/008)', () => {
     await closeExtraWindows(mainWindow);
     await browser.switchToWindow(mainWindow);
     await clickCardConnectButton();
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000 },
-    );
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 30000,
+    });
     const handles = await browser.getWindowHandles();
     const connWindow = handles.find((h) => h && h !== mainWindow);
     expect(connWindow).toBeTruthy();
     await browser.switchToWindow(connWindow!);
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+    await waitForNewQueryButton(20000);
     await openQueryTab();
     await setEditorContent('SELECT 1 AS rapid');
     const execBtn = await $(`button*=${t('query.execute')}`);

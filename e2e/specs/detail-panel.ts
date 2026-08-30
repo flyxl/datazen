@@ -7,6 +7,7 @@ import {
   openQueryTab,
   clickTableInSidebar,
   switchSubTab,
+  waitForNewQueryButton,
 } from '../helpers.js';
 
 /**
@@ -26,7 +27,7 @@ describe('详情面板 (DP-001~DP-004)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+    await waitForNewQueryButton(20000);
     await browser.pause(1500);
 
     await openQueryTab();
@@ -64,7 +65,7 @@ describe('详情面板 (DP-001~DP-004)', () => {
   it('打开表数据后应看到详情面板的折叠按钮 (DP-001)', async () => {
     await clickTableInSidebar(TEST_TABLE);
     await browser.pause(2000);
-    await switchSubTab(t('connWin.data'));
+    await switchSubTab('data');
 
     await browser.waitUntil(async () => (await $('body').getText()).includes('Alice'), {
       timeout: 15000,

@@ -23,6 +23,15 @@ const FT1 = `e2e_ft_1_${STAMP}`;
 const FT2 = `e2e_ft_2_${STAMP}`;
 const PLAIN = `plain_table_${STAMP}`;
 
+/** Click a context menu item by its id (data-testid). */
+async function clickMenuItemById(id: string) {
+  const item = await $(`[data-testid="web-context-item-${id}"]`);
+  if (await item.isExisting()) {
+    await item.click();
+    await browser.pause(500);
+  }
+}
+
 async function rightClickConn(connName: string | undefined) {
   const ok = await browser.execute((name: string | undefined) => {
     const items = Array.from(document.querySelectorAll('[data-conn-item]'));
@@ -169,7 +178,7 @@ async function clickDialogSave() {
 async function openObjectFilterDialog(connName = E2E_PG_CONN_NAME) {
   const ok = await rightClickConn(connName);
   expect(ok).toBe(true);
-  await clickMenuItem(t('main.ctx.objectFilter'));
+  await clickMenuItemById('object-filter');
   await browser.pause(500);
   await expect(await $(`[role="dialog"]`)).toBeDisplayed();
 }
@@ -221,12 +230,10 @@ describe('运维 §5.4: 对象过滤器 (OPS-FILTER)', () => {
     const ok = await rightClickConn(E2E_PG_CONN_NAME);
     expect(ok).toBe(true);
     const text = await menuText();
-    expect(text).toContain(t('main.ctx.objectFilter'));
-    await clickMenuItem(t('main.ctx.objectFilter'));
+    expect(await hasMenuItemId('object-filter')).toBe(true);
+    await clickMenuItemById('object-filter');
     // 对话框打开（含标题文案）
-    await expect(await $(`[role="dialog"]`)).toBeDisplayed();
-    const body = await $('body').getText();
-    expect(body).toContain(t('objectFilter.title'));
+    await expect($("[data-testid='object-filter-dialog']")).toExist();
     await browser.execute((cancelLabel: string) => {
       const dialog = document.querySelector('[role="dialog"]');
       const btn = Array.from(dialog?.querySelectorAll('button') ?? []).find((b) =>

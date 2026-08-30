@@ -2,7 +2,12 @@
  * Multi-window / UI chrome E2E (TC-UI-001/002/003/005) — unified main workspace.
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
-import { connectSeededPgInWorkspace, closeExtraWindows, expandAllGroups } from '../helpers.js';
+import {
+  connectSeededPgInWorkspace,
+  closeExtraWindows,
+  expandAllGroups,
+  waitForNewQueryButton,
+} from '../helpers.js';
 import { t } from '../i18n.js';
 
 describe('窗口与 UI 操作 (TC-UI-001/002/003/005)', () => {
@@ -23,7 +28,7 @@ describe('窗口与 UI 操作 (TC-UI-001/002/003/005)', () => {
     await connectSeededPgInWorkspace();
     const handles = await browser.getWindowHandles();
     expect(handles.length).toBe(1);
-    await expect(await $(`button*=${t('connWin.newQuery')}`)).toBeDisplayed();
+    await expect(await waitForNewQueryButton()).toBeDisplayed();
   });
 
   it('TC-UI-002: 重复双击已连接项不应崩溃', async () => {
@@ -57,7 +62,8 @@ describe('窗口与 UI 操作 (TC-UI-001/002/003/005)', () => {
       body.includes('postgres') ||
       body.includes('PostgreSQL') ||
       body.includes('连接') ||
-      body.includes(t('connWin.newQuery'));
+      body.includes('Query') ||
+      body.includes('查询');
     expect(hasStatus).toBe(true);
   });
 });

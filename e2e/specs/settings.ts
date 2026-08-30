@@ -2,6 +2,7 @@ import { expect, browser, $ } from '@wdio/globals';
 import {
   backFromSettingsInMainWindow,
   captureJourneyStep,
+  closeExtraWindows,
   openSettingsInMainWindow,
 } from '../helpers.js';
 import { t } from '../i18n.js';
@@ -246,7 +247,8 @@ describe('Settings (SS-001~SS-006)', () => {
       },
       { label: t('settings.logging'), expectText: ['日志', 'Log', '路径'] },
       {
-        label: t('settings.ai'),
+        testId: 'settings-nav-ai',
+        label: 'AI',
         expectText: [t('settings.ai.provider'), t('settings.ai.apiKey'), 'API'],
       },
       { label: t('mcp.title'), expectText: ['MCP', t('mcp.title')] },
@@ -261,7 +263,9 @@ describe('Settings (SS-001~SS-006)', () => {
     ];
 
     for (const sec of sections) {
-      const nav = await $(`button*=${sec.label}`);
+      const nav = (sec as any).testId
+        ? await $(`[data-testid="${(sec as any).testId}"]`)
+        : await $(`button*=${sec.label}`);
       await nav.waitForDisplayed({ timeout: 8000 });
       await nav.click();
       await browser.pause(400);
@@ -299,7 +303,7 @@ describe('Settings (SS-001~SS-006)', () => {
 
     it('F1-E2E-003: menu:open-settings with section opens target nav', async () => {
       await openSettingsInMainWindow('ai');
-      const aiNav = await $(`button*=${t('settings.ai')}`);
+      const aiNav = await $("[data-testid='settings-nav-ai']");
       await aiNav.waitForDisplayed({ timeout: 8000 });
       const body = await $('body').getText();
       expect(
@@ -328,15 +332,14 @@ describe('Settings (SS-001~SS-006)', () => {
     });
 
     await openSettingsInMainWindow();
-    const mcpClientNav = await $(`button*=${t('mcpClient.title')}`);
+    const mcpClientNav = await $('[data-testid="settings-nav-mcpClient"]');
     await mcpClientNav.waitForDisplayed({ timeout: 8000 });
     await mcpClientNav.click();
     await browser.pause(400);
 
-    const savedConfigsLabel = await $(`*=${t('mcpClient.savedConfigs')}`);
-    await savedConfigsLabel.waitForDisplayed({ timeout: 5000 });
+    await $('[data-testid="mcp-saved-configs"]').waitForDisplayed({ timeout: 5000 });
 
-    const addBtn = await $(`button*=${t('mcpClient.addServer')}`);
+    const addBtn = await $('[data-testid="mcp-add-server"]');
     await addBtn.waitForDisplayed({ timeout: 5000 });
     await addBtn.click();
     await browser.pause(300);
@@ -350,21 +353,19 @@ describe('Settings (SS-001~SS-006)', () => {
     await cmdInput.waitForDisplayed({ timeout: 5000 });
     await cmdInput.setValue('/usr/bin/true');
 
-    const addEnvBtn = await $(`button*=${t('mcpClient.addEnv')}`);
+    const addEnvBtn = await $('[data-testid="mcp-add-env"]');
     await addEnvBtn.waitForDisplayed({ timeout: 5000 });
     await addEnvBtn.click();
     await browser.pause(200);
 
-    const envKeyInputs = await $$(
-      'input[placeholder*="变量名"], input[placeholder*="Variable name"]',
-    );
+    const envKeyInputs = await $$('[data-testid="mcp-env-key"]');
     expect(envKeyInputs.length).toBeGreaterThan(0);
     await envKeyInputs[0].setValue('TEST_ENV');
-    const envValueInputs = await $$('input[placeholder="值"], input[placeholder="Value"]');
+    const envValueInputs = await $$('[data-testid="mcp-env-value"]');
     expect(envValueInputs.length).toBeGreaterThan(0);
     await envValueInputs[0].setValue('e2e-value');
 
-    const saveBtn = await $(`button*=${t('mcpClient.save')}`);
+    const saveBtn = await $('[data-testid="mcp-save"]');
     await saveBtn.click();
     await browser.pause(500);
 
@@ -377,6 +378,79 @@ describe('Settings (SS-001~SS-006)', () => {
     expect(saved).toBeDefined();
     expect(saved.command).toBe('/usr/bin/true');
     expect(saved.env?.TEST_ENV).toBe('e2e-value');
+  });
+
+  // ── Persistence: language / font-size / confirm-delete (from settings-persistence.ts) ──
+
+  it('TC-SET-008: 语言切换应更新 UI 文本', async () => {
+    const settings = await invokeBackend<Record<string, unknown>>('get_settings');
+    const originalLang = settings.language;
+
+    const newLang = originalLang === 'zh-CN' ? 'en' : 'zh-CN';
+    await invokeBackend('save_settings', { settings: { ...settings, language: newLang } });
+    await browser.refresh();
+    await browser.pause(2000);
+
+    const body = await $('body').getText();
+    if (newLang === 'en') {
+      expect(
+        body.includes('Settings') ||
+          body.includes('Connection') ||
+          body.includes('New Connection') ||
+          body.includes('Query'),
+      ).toBe(true);
+    } else {
+      expect(
+        body.includes('设置') ||
+          body.includes('连接') ||
+          body.includes('新建连接') ||
+          body.includes('查询'),
+      ).toBe(true);
+    }
+
+    // Restore
+    await invokeBackend('save_settings', { settings: { ...settings, language: originalLang } });
+    await browser.refresh();
+    await browser.pause(1500);
+  });
+
+  it('TC-SET-009: 编辑器字体大小设置应持久化', async () => {
+    const settings = await invokeBackend<Record<string, unknown>>('get_settings');
+    const originalFontSize = settings.editorFontSize;
+
+    const newFontSize = originalFontSize === 14 ? 16 : 14;
+    await invokeBackend('save_settings', {
+      settings: { ...settings, editorFontSize: newFontSize },
+    });
+    await browser.refresh();
+    await browser.pause(1500);
+
+    const persisted = await invokeBackend<Record<string, unknown>>('get_settings');
+    expect(persisted.editorFontSize).toBe(newFontSize);
+
+    // Restore
+    await invokeBackend('save_settings', {
+      settings: { ...settings, editorFontSize: originalFontSize },
+    });
+  });
+
+  it('TC-SET-010: 确认删除开关应持久化', async () => {
+    const settings = await invokeBackend<Record<string, unknown>>('get_settings');
+    const originalConfirm = settings.confirmOnDelete;
+
+    await invokeBackend('save_settings', {
+      settings: { ...settings, confirmOnDelete: !originalConfirm },
+    });
+    await browser.refresh();
+    await browser.pause(1500);
+
+    const persisted = await invokeBackend<Record<string, unknown>>('get_settings');
+    expect(persisted.confirmOnDelete).toBe(!originalConfirm);
+
+    // Restore
+    await invokeBackend('save_settings', {
+      settings: { ...settings, confirmOnDelete: originalConfirm },
+    });
   });
 
   // ── Restore defaults ──

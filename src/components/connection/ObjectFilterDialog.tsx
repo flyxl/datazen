@@ -53,6 +53,7 @@ export function ObjectFilterDialog({ open, connection, onClose, onSave }: Object
       open={open}
       onClose={onClose}
       title={t('common.objectFilter')}
+      testId="object-filter-dialog"
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>

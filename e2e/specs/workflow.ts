@@ -1,5 +1,10 @@
-import { expect, browser } from '@wdio/globals';
-import { openConnectionWindow, closeExtraWindows } from '../helpers.js';
+import { expect, browser, $ } from '@wdio/globals';
+import {
+  openConnectionWindow,
+  closeExtraWindows,
+  captureJourneyStep,
+  switchWorkspaceNav,
+} from '../helpers.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
@@ -73,19 +78,29 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
     // Clean up test workflows
     try {
       await invokeBackend('workflow_delete', { workflowId: 'e2e-simple-query' });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     try {
       await invokeBackend('workflow_delete', { workflowId: 'e2e-condition-test' });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     try {
       await invokeBackend('workflow_delete', { workflowId: 'e2e-foreach-test' });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     try {
       await invokeBackend('workflow_delete', { workflowId: 'e2e-error-test' });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     try {
       await invokeBackend('workflow_history_clear', { workflowId: null });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     if (mainWindow) {
       await closeExtraWindows(mainWindow);
@@ -99,12 +114,8 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
       id: 'e2e-simple-query',
       name: 'E2E 简单查询',
       description: '测试 Workflow CRUD',
-      variables: [
-        { name: 'table_name', type: 'string', description: '表名', required: true },
-      ],
-      steps: [
-        { type: 'query', id: 'run', sql: 'SELECT 1 AS test_col' },
-      ],
+      variables: [{ name: 'table_name', type: 'string', description: '表名', required: true }],
+      steps: [{ type: 'query', id: 'run', sql: 'SELECT 1 AS test_col' }],
     };
 
     await invokeBackend('workflow_save', { workflow });
@@ -137,9 +148,7 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
       name: 'E2E 简单查询',
       description: '测试执行',
       variables: [],
-      steps: [
-        { type: 'query', id: 'step1', sql: 'SELECT 1 AS val, \'hello\' AS msg' },
-      ],
+      steps: [{ type: 'query', id: 'step1', sql: "SELECT 1 AS val, 'hello' AS msg" }],
     };
     await invokeBackend('workflow_save', { workflow });
 
@@ -205,12 +214,8 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
       id: 'e2e-simple-query',
       name: 'E2E 变量替换',
       description: '测试变量替换',
-      variables: [
-        { name: 'val', type: 'string', description: '值', required: true },
-      ],
-      steps: [
-        { type: 'query', id: 'step1', sql: "SELECT '{{val}}' AS result" },
-      ],
+      variables: [{ name: 'val', type: 'string', description: '值', required: true }],
+      steps: [{ type: 'query', id: 'step1', sql: "SELECT '{{val}}' AS result" }],
     };
     await invokeBackend('workflow_save', { workflow });
 
@@ -238,7 +243,11 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
       variables: [],
       steps: [
         { type: 'query', id: 'step1', sql: "SELECT 42 AS magic_number, 'hello' AS greeting" },
-        { type: 'query', id: 'step2', sql: "SELECT '{{steps.step1.rows[0].greeting}}' AS msg, {{steps.step1.rows[0].magic_number}} AS num" },
+        {
+          type: 'query',
+          id: 'step2',
+          sql: "SELECT '{{steps.step1.rows[0].greeting}}' AS msg, {{steps.step1.rows[0].magic_number}} AS num",
+        },
       ],
     };
     await invokeBackend('workflow_save', { workflow });
@@ -278,8 +287,8 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
       description: '测试 rows[0].field bracket 语法',
       variables: [],
       steps: [
-        { type: 'query', id: 'src', sql: "SELECT 99 AS code" },
-        { type: 'query', id: 'dst', sql: "SELECT {{steps.src.rows[0].code}} AS via_rows" },
+        { type: 'query', id: 'src', sql: 'SELECT 99 AS code' },
+        { type: 'query', id: 'dst', sql: 'SELECT {{steps.src.rows[0].code}} AS via_rows' },
       ],
     };
     await invokeBackend('workflow_save', { workflow });
@@ -372,9 +381,7 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
       name: 'E2E 错误测试',
       description: '测试错误处理',
       variables: [],
-      steps: [
-        { type: 'query', id: 'bad_query', sql: 'SELECT * FROM nonexistent_e2e_table_xyz' },
-      ],
+      steps: [{ type: 'query', id: 'bad_query', sql: 'SELECT * FROM nonexistent_e2e_table_xyz' }],
     };
     await invokeBackend('workflow_save', { workflow });
 
@@ -398,6 +405,32 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
       // Also acceptable: the command returns an error
       expect(e.message).toBeDefined();
       expect(e.message.length).toBeGreaterThan(0);
+    }
+  });
+
+  // ── TC-WF-011: GUI context menu (from workflow-lifecycle.ts) ─────
+
+  it('TC-WF-011: 工作流列表右键不应有"立即运行"菜单项', async () => {
+    await browser.switchToWindow(mainWindow);
+    await switchWorkspaceNav('workspace-nav-workflow', 'workflow-workspace', 'workflow-tab-open');
+    await browser.pause(500);
+
+    const rightClicked = await browser.execute(() => {
+      const items = document.querySelectorAll('[data-workflow-item], [class*="workflow"] li');
+      if (items.length > 0) {
+        (items[0] as HTMLElement).dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+        );
+        return true;
+      }
+      return false;
+    });
+    if (rightClicked) {
+      await browser.pause(500);
+      await captureJourneyStep('workflow-context-menu');
+      const body = await $('body').getText();
+      const hasRun = body.includes('立即运行') || body.includes('Run Now');
+      expect(hasRun).toBe(false);
     }
   });
 });

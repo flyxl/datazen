@@ -71,6 +71,7 @@ pub fn build_insert_sql(
     )
 }
 
+#[allow(dead_code)] // tested; thin wrapper over build_batch_insert_sql_ref
 pub fn build_batch_insert_sql(
     table: &str,
     columns: &[&ColumnMapping],
@@ -106,6 +107,7 @@ pub fn build_batch_insert_sql_ref(
     )
 }
 
+#[allow(dead_code)] // tested; thin wrapper over build_batch_insert_sql_ir_ref
 pub fn build_batch_insert_sql_ir(
     table: &str,
     columns: &[&ColumnMapping],
@@ -160,6 +162,7 @@ pub fn build_batch_insert_sql_ir_ref(
     )
 }
 
+#[allow(dead_code)] // tested; thin wrapper over build_truncate_sql_ref
 pub fn build_truncate_sql(table: &str, quote: char) -> String {
     build_truncate_sql_ref(&quote_ident_sql(table, quote))
 }

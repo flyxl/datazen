@@ -13,7 +13,7 @@
 set -euo pipefail
 
 TRACK=${1:?usage: new-feature-worktree.sh <track> [base-branch]}
-BASE=${2:-feature/ipc-refactor}
+BASE=${2:-main}
 
 MAIN="$(git rev-parse --show-toplevel)"
 WT="$(dirname "$MAIN")/datazen-${TRACK}"
@@ -40,14 +40,34 @@ echo "▶ 驱动 codegen（basic）"
 echo "▶ 拷贝主检出未跟踪的规格文档（保持未跟踪，禁止 git add）"
 while IFS= read -r f; do
   rel="${f#${MAIN}/}"
-  mkdir -p "$(dirname "${WT}/${rel}")"
-  cp "$f" "${WT}/${rel}"
-  echo "   + ${rel}（untracked）"
+  rel="${rel%/}"
+  src="${MAIN}/${rel}"
+  dest="${WT}/${rel}"
+  if [ -d "$src" ]; then
+    mkdir -p "$(dirname "$dest")"
+    cp -R "$src" "$(dirname "$dest")/"
+    echo "   + ${rel}/（untracked dir）"
+  elif [ -f "$src" ]; then
+    mkdir -p "$(dirname "$dest")"
+    cp "$src" "$dest"
+    echo "   + ${rel}（untracked）"
+  fi
 done < <(git -C "$MAIN" status --porcelain docs/development | awk '$1=="??"{print $2}')
 
 if [ -f "${MAIN}/e2e/.env" ]; then
   cp "${MAIN}/e2e/.env" "${WT}/e2e/.env"
   echo "▶ e2e/.env 已拷贝"
+fi
+
+echo "▶ coordination hub 软链（跨 worktree 公共进度）"
+COORD_DIR="${WT}/docs/development/coordination"
+mkdir -p "${COORD_DIR}/tracks"
+HUB_MAIN="${MAIN}/docs/development/coordination/hub.md"
+if [ -f "${HUB_MAIN}" ]; then
+  ln -sf "${HUB_MAIN}" "${COORD_DIR}/hub.md"
+  echo "   hub.md → ${HUB_MAIN}"
+else
+  echo "   ⚠ 主检出尚无 hub.md，跳过软链"
 fi
 
 cat <<EOF

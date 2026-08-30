@@ -1,99 +1,22 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { t } from '../i18n.js';
 import {
   closeExtraWindows,
-  waitForNewConnectionDialog,
-  findCardByName,
-  dblclickConnByExactName,
-  expandAllGroups,
+  createAndConnectSQLiteInWorkspace,
   openQueryTab,
   executeSQL,
   clickTableInSidebar,
   switchSubTab,
   asideHasSchemaSections,
+  connectionNavigatorAside,
+  expandSchemaCategory,
 } from '../helpers.js';
+import { t } from '../i18n.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONN_NAME = 'E2E-SQLite';
 const DB_PATH = path.resolve(__dirname, '../fixtures/test.db');
-
-// Helper to create and connect to SQLite
-async function createAndConnectSQLite() {
-  const mainWindow = await browser.getWindowHandle();
-  await expandAllGroups();
-
-  // Check if already exists
-  const existingItem = await findCardByName(CONN_NAME);
-  if (existingItem) {
-    await dblclickConnByExactName(CONN_NAME);
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 30000,
-    });
-    const handles = await browser.getWindowHandles();
-    const connWindow = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(connWindow);
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
-    await browser.pause(2000);
-    return { mainWindow, connWindow };
-  }
-
-  // Create new connection
-  const newConnBtn = await $(`button*=${t('action.newConnection')}`);
-  await newConnBtn.click();
-  await waitForNewConnectionDialog();
-
-  // Select SQLite type
-  const sqliteBtn = await $('button*=SQLite');
-  await sqliteBtn.click();
-  await browser.pause(300);
-
-  // Fill name
-  const nameInput = await $(`input[placeholder="${t('newConn.namePlaceholder')}"]`);
-  await nameInput.setValue(CONN_NAME);
-
-  // Fill database file path
-  const dbInput = await $('input[placeholder="/path/to/db.sqlite"]');
-  await dbInput.setValue(DB_PATH);
-
-  // Test connection
-  const testBtn = await $(`button*=${t('newConn.testConnection')}`);
-  await testBtn.click();
-  await browser.waitUntil(
-    async () => {
-      const body = await $('body').getText();
-      return body.includes(t('newConn.testSuccess')) || body.includes('text-red-400');
-    },
-    { timeout: 15000 },
-  );
-  await browser.pause(500);
-
-  // Save
-  const saveBtn = await $(`button*=${t('common.save')}`);
-  await saveBtn.click();
-  await browser.waitUntil(
-    async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
-    { timeout: 10000 },
-  );
-  await browser.switchToWindow(mainWindow);
-  await browser.pause(1000);
-
-  // Connect
-  const card = await findCardByName(CONN_NAME);
-  if (!card) throw new Error(`SQLite connection "${CONN_NAME}" not found`);
-  await dblclickConnByExactName(CONN_NAME);
-
-  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-    timeout: 30000,
-  });
-  const handles = await browser.getWindowHandles();
-  const connWindow = handles.find((h) => h !== mainWindow)!;
-  await browser.switchToWindow(connWindow);
-  await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
-  await browser.pause(2000);
-  return { mainWindow, connWindow };
-}
 
 describe('SQLite', () => {
   let mainWindow: string;
@@ -102,7 +25,7 @@ describe('SQLite', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await closeExtraWindows(mainWindow);
-    const result = await createAndConnectSQLite();
+    const result = await createAndConnectSQLiteInWorkspace(CONN_NAME, DB_PATH);
     mainWindow = result.mainWindow;
     connWindow = result.connWindow;
   });
@@ -112,7 +35,7 @@ describe('SQLite', () => {
   });
 
   it('should show tables in sidebar', async () => {
-    const aside = await $('aside');
+    const aside = await connectionNavigatorAside();
     const text = await aside.getText();
     expect(asideHasSchemaSections(text)).toBe(true);
     expect(text).toContain('users');
@@ -121,9 +44,10 @@ describe('SQLite', () => {
   });
 
   it('should show views in sidebar', async () => {
-    const aside = await $('aside');
+    await expandSchemaCategory('views');
+    const aside = await connectionNavigatorAside();
     const text = await aside.getText();
-    expect(text).toContain('Views');
+    expect(text).toContain(t('schemaTree.views'));
     expect(text).toContain('published_posts');
   });
 
@@ -138,7 +62,7 @@ describe('SQLite', () => {
   it('should show table structure', async () => {
     await clickTableInSidebar('users');
     await browser.pause(500);
-    await switchSubTab(t('connWin.structure'));
+    await switchSubTab('structure');
     await browser.pause(1000);
     const body = await $('body').getText();
     expect(body).toContain('id');
@@ -173,7 +97,7 @@ describe('SQLite', () => {
   it('should show indexes', async () => {
     await clickTableInSidebar('users');
     await browser.pause(500);
-    await switchSubTab(t('connWin.indexes'));
+    await switchSubTab('indexes');
     await browser.pause(1000);
     // SQLite creates autoindex for UNIQUE constraints
     const body = await $('body').getText();
@@ -181,15 +105,7 @@ describe('SQLite', () => {
   });
 
   it('should display view data', async () => {
-    // Click the published_posts view
-    const asideButtons = await $$('aside button');
-    for (const btn of asideButtons) {
-      const text = (await btn.getText()).trim();
-      if (text === 'published_posts') {
-        await btn.click();
-        break;
-      }
-    }
+    await clickTableInSidebar('published_posts');
     await browser.pause(1000);
     const body = await $('body').getText();
     expect(body).toContain('author');

@@ -10,8 +10,9 @@ import {
   closeExtraWindows,
   invokeBackend,
   openDataTransferWindow,
-  selectDzOption,
+  selectDzOptionInWrap,
   withSafeModeOff,
+  disconnectBackend,
 } from '../helpers.js';
 
 function pgConfig(id: string, name: string, database: string) {
@@ -60,6 +61,8 @@ async function getPreviewDdl(sourceTable: string): Promise<string> {
 
 describe('数据传输类型映射 Preview DDL (DT-TYPE-MAP)', () => {
   let mainWindow: string;
+  let setupSrcSession: string | undefined;
+  let setupTgtSession: string | undefined;
   const STAMP = Date.now().toString(36);
   const SRC_ID = `e2e_dt_type_src_${STAMP}`;
   const TGT_ID = `e2e_dt_type_tgt_${STAMP}`;
@@ -80,6 +83,8 @@ describe('数据传输类型映射 Preview DDL (DT-TYPE-MAP)', () => {
 
     const srcSession = await invokeBackend<string>('connect', { connectionId: SRC_ID });
     const tgtSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
+    setupSrcSession = srcSession;
+    setupTgtSession = tgtSession;
 
     await withSafeModeOff(async () => {
       await invokeBackend('execute_query', {
@@ -103,8 +108,10 @@ describe('数据传输类型映射 Preview DDL (DT-TYPE-MAP)', () => {
 
   after(async () => {
     try {
-      const srcSession = await invokeBackend<string>('connect', { connectionId: SRC_ID });
-      const tgtSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
+      const srcSession =
+        setupSrcSession ?? (await invokeBackend<string>('connect', { connectionId: SRC_ID }));
+      const tgtSession =
+        setupTgtSession ?? (await invokeBackend<string>('connect', { connectionId: TGT_ID }));
       await withSafeModeOff(async () => {
         await invokeBackend('execute_query', {
           dbSessionId: srcSession,
@@ -115,6 +122,8 @@ describe('数据传输类型映射 Preview DDL (DT-TYPE-MAP)', () => {
           sql: `DROP TABLE IF EXISTS ${TABLE}`,
         });
       });
+      if (srcSession) await disconnectBackend(srcSession);
+      if (tgtSession) await disconnectBackend(tgtSession);
     } catch {
       /* ok */
     }
@@ -134,8 +143,8 @@ describe('数据传输类型映射 Preview DDL (DT-TYPE-MAP)', () => {
 
   it('DT-TYPE-001: 映射 VARCHAR(64)/DATETIME 应出现在 Preview CREATE TABLE', async () => {
     await openDataTransferWindow();
-    await selectDzOption(t('transfer.pickConnection'), SRC_NAME);
-    await selectDzOption(t('transfer.pickConnection'), TGT_NAME);
+    await selectDzOptionInWrap('data-transfer-source', SRC_NAME);
+    await selectDzOptionInWrap('data-transfer-target', TGT_NAME);
     await browser.pause(1500);
 
     await clickNext('dt-type-endpoints');

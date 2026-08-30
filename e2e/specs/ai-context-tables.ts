@@ -3,13 +3,10 @@ import * as path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
-import { t } from '../i18n.js';
 import {
   closeExtraWindows,
   captureJourneyStep,
-  waitForNewConnectionDialog,
-  findCardByName,
-  expandAllGroups,
+  createAndConnectSQLiteInWorkspace,
   waitForSchemaTreeLoaded,
 } from '../helpers.js';
 
@@ -35,102 +32,18 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   return result as T;
 }
 
-async function createAndConnectSQLite() {
-  const mainWindow = await browser.getWindowHandle();
-  await expandAllGroups();
-
-  const existingItem = await findCardByName(CONN_NAME);
-  if (existingItem) {
-    await browser.execute((n: string) => {
-      const items = document.querySelectorAll('[data-conn-item]');
-      for (const item of items) {
-        if (item.textContent?.includes(n)) {
-          item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-          return;
-        }
-      }
-    }, CONN_NAME);
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 30000,
-      timeoutMsg: '等待 SQLite 连接窗口打开超时',
-    });
-    const handles = await browser.getWindowHandles();
-    const connWindow = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(connWindow);
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
-    await browser.pause(2000);
-    return { mainWindow, connWindow };
-  }
-
-  const newConnBtn = await $(`button*=${t('action.newConnection')}`);
-  await newConnBtn.click();
-  await waitForNewConnectionDialog();
-
-  const sqliteBtn = await $('button*=SQLite');
-  await sqliteBtn.click();
-  await browser.pause(300);
-
-  const nameInput = await $(`input[placeholder="${t('newConn.namePlaceholder')}"]`);
-  await nameInput.setValue(CONN_NAME);
-
-  const dbInput = await $('input[placeholder="/path/to/db.sqlite"]');
-  await dbInput.setValue(DB_PATH);
-
-  const testBtn = await $(`button*=${t('newConn.testConnection')}`);
-  await testBtn.click();
-  await browser.waitUntil(
-    async () => {
-      const body = await $('body').getText();
-      return body.includes(t('newConn.testSuccess')) || body.includes('text-red-400');
-    },
-    { timeout: 15000 },
-  );
-
-  const saveBtn = await $(`button*=${t('common.save')}`);
-  await saveBtn.click();
-  await browser.waitUntil(
-    async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
-    { timeout: 10000 },
-  );
-  await browser.switchToWindow(mainWindow);
-  await browser.pause(1000);
-
-  const card = await findCardByName(CONN_NAME);
-  if (!card) throw new Error(`SQLite connection "${CONN_NAME}" not found`);
-
-  await browser.execute((n: string) => {
-    const items = document.querySelectorAll('[data-conn-item]');
-    for (const item of items) {
-      if (item.textContent?.includes(n)) {
-        item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-        return;
-      }
-    }
-  }, CONN_NAME);
-
-  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-    timeout: 30000,
-  });
-  const handles = await browser.getWindowHandles();
-  const connWindow = handles.find((h) => h !== mainWindow)!;
-  await browser.switchToWindow(connWindow);
-  await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
-  await browser.pause(2000);
-  return { mainWindow, connWindow };
-}
-
 async function openAiChatPanel() {
-  const clicked = await browser.execute(() => {
-    for (const btn of document.querySelectorAll('button')) {
-      if (btn.querySelector('.lucide-message-square')) {
-        btn.click();
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const toggle = document.querySelector<HTMLElement>('[data-testid="conn-toolbar-ai"]');
+        if (!toggle) return false;
+        toggle.click();
         return true;
-      }
-    }
-    return false;
-  });
-  expect(clicked).toBe(true);
-  await browser.pause(800);
+      }),
+    { timeout: 10000, timeoutMsg: 'AI toolbar toggle did not appear' },
+  );
+  await $('[data-testid="ai-chat-panel"]').waitForDisplayed({ timeout: 10000 });
 }
 
 async function aiChatTextarea() {
@@ -219,7 +132,7 @@ describe('AI context tables (CTX-T01~T06)', () => {
       },
     });
 
-    const windows = await createAndConnectSQLite();
+    const windows = await createAndConnectSQLiteInWorkspace(CONN_NAME, DB_PATH);
     mainWindow = windows.mainWindow;
     await waitForSchemaTreeLoaded(15000);
     await openAiChatPanel();

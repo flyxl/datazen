@@ -59,6 +59,8 @@ vi.mock('../../../stores/settingsStore', () => ({
 
 vi.mock('../../../commands/sync', () => ({
   syncCommands: {
+    classifyDataSyncPair: (sourceDatabaseType: string, targetDatabaseType: string) =>
+      invokeMock('classify_data_sync_pair', { sourceDatabaseType, targetDatabaseType }),
     inspectDataSync: (...args: unknown[]) => inspectDataSyncMock(...args),
     compareDataSync: (...args: unknown[]) => compareDataSyncMock(...args),
     applyDataSync: (...args: unknown[]) => applyDataSyncMock(...args),
@@ -171,6 +173,28 @@ function insertRow(): DataSyncRowChange {
   };
 }
 
+function mockClassifyDataSyncPair(args?: {
+  sourceDatabaseType?: string;
+  targetDatabaseType?: string;
+}) {
+  const src = args?.sourceDatabaseType ?? '';
+  const tgt = args?.targetDatabaseType ?? '';
+  if (src === tgt && src === 'postgresql') {
+    return { path: 'direct', supported: true, family: 'postgresql' };
+  }
+  if ((src === 'mysql' && tgt === 'mariadb') || (src === 'mariadb' && tgt === 'mysql')) {
+    return { path: 'direct', supported: true, family: 'mysql' };
+  }
+  if (src === 'postgresql' && tgt === 'mysql') {
+    return {
+      path: 'ir',
+      supported: false,
+      reason: 'heterogeneous pair postgresql → mysql is Data Transfer, not Data Synchronization',
+    };
+  }
+  return { path: 'unsupported', supported: false };
+}
+
 async function pickSelect(testId: string, optionLabel: string) {
   const wrap = screen.getByTestId(testId);
   const trigger = within(wrap).getAllByRole('button')[0];
@@ -206,7 +230,7 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     getTablesMock.mockReset();
     getTablesMock.mockResolvedValue([{ name: 'users', tableType: 'table' }]);
     invokeMock.mockImplementation(
-      async (cmd: string, args?: { connectionId?: string; database?: string | null }) => {
+      async (cmd: string, args?: { connectionId?: string; database?: string | null; sourceDatabaseType?: string; targetDatabaseType?: string }) => {
         if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
         if (cmd === 'connect_dedicated') {
           const conn = args?.connectionId ?? 'unknown';
@@ -215,6 +239,7 @@ describe('DataSyncWindow (Diff Workspace)', () => {
         }
         if (cmd === 'release_connection') return false;
         if (cmd === 'connect') return `live-${args?.connectionId}`;
+        if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
         return null;
       },
     );
@@ -356,7 +381,7 @@ describe('DataSyncWindow (Diff Workspace)', () => {
   });
 
   it('surfaces error when database list cannot be loaded', async () => {
-    invokeMock.mockImplementation(async (cmd: string, args?: { connectionId?: string }) => {
+    invokeMock.mockImplementation(async (cmd: string, args?: { connectionId?: string; sourceDatabaseType?: string; targetDatabaseType?: string }) => {
       if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
       if (cmd === 'connect_dedicated') {
         if (args?.connectionId === 'pg-tgt') throw new Error('refused');
@@ -364,6 +389,7 @@ describe('DataSyncWindow (Diff Workspace)', () => {
       }
       if (cmd === 'release_connection') return false;
       if (cmd === 'connect') return `live-${args?.connectionId}`;
+      if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
       return null;
     });
     render(<DataSyncWindow />);
@@ -448,7 +474,7 @@ describe('DataSyncWindow (Diff Workspace)', () => {
 
   it('disables Execute and shows targetReadOnly for read-only target', async () => {
     invokeMock.mockImplementation(
-      async (cmd: string, args?: { connectionId?: string; database?: string | null }) => {
+      async (cmd: string, args?: { connectionId?: string; database?: string | null; sourceDatabaseType?: string; targetDatabaseType?: string }) => {
         if (cmd === 'get_connections') return [pgSrc, pgTgtReadOnly, mysqlTgt];
         if (cmd === 'connect_dedicated') {
           const conn = args?.connectionId ?? 'unknown';
@@ -457,6 +483,7 @@ describe('DataSyncWindow (Diff Workspace)', () => {
         }
         if (cmd === 'release_connection') return false;
         if (cmd === 'connect') return `live-${args?.connectionId}`;
+        if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
         return null;
       },
     );
@@ -487,7 +514,7 @@ describe('DataSyncWindow (Diff Workspace)', () => {
 
   it('clears mapping when source connection changes after compare', async () => {
     invokeMock.mockImplementation(
-      async (cmd: string, args?: { connectionId?: string; database?: string | null }) => {
+      async (cmd: string, args?: { connectionId?: string; database?: string | null; sourceDatabaseType?: string; targetDatabaseType?: string }) => {
         if (cmd === 'get_connections') return [pgSrc, pgSrcAlt, pgTgt, mysqlTgt];
         if (cmd === 'connect_dedicated') {
           const conn = args?.connectionId ?? 'unknown';
@@ -496,6 +523,7 @@ describe('DataSyncWindow (Diff Workspace)', () => {
         }
         if (cmd === 'release_connection') return false;
         if (cmd === 'connect') return `live-${args?.connectionId}`;
+        if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
         return null;
       },
     );

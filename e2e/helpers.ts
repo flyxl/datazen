@@ -23,44 +23,87 @@ export async function waitForNewConnectionDialog(timeout = 15000) {
   return dialog;
 }
 
+/** CSS selector for any entry point that opens the new-connection dialog. */
+export function newConnectionButtonSelector() {
+  return '[data-testid="new-connection-button"], [data-testid="welcome-create-connection"]';
+}
+
+/** Wait until a new-connection entry point is visible. */
+export async function waitForNewConnectionButton(timeout = 15000) {
+  await browser.waitUntil(
+    async () => {
+      const toolbar = await $('[data-testid="new-connection-button"]');
+      if (await toolbar.isDisplayed()) return true;
+      const welcome = await $('[data-testid="welcome-create-connection"]');
+      return welcome.isDisplayed();
+    },
+    { timeout, timeoutMsg: '等待新建连接按钮超时' },
+  );
+}
+
+/** Click a visible new-connection entry point. */
+export async function clickNewConnectionButton() {
+  await waitForNewConnectionButton();
+  const toolbar = await $('[data-testid="new-connection-button"]');
+  if (await toolbar.isDisplayed()) {
+    await toolbar.click();
+    return;
+  }
+  const welcome = await $('[data-testid="welcome-create-connection"]');
+  await welcome.click();
+}
+
+/** Select a driver type in the new-connection dialog sidebar. */
+export async function selectNewConnectionDriver(driverType: string) {
+  const btn = await $(`[data-testid="new-conn-driver-${driverType}"]`);
+  await btn.waitForDisplayed({ timeout: 5000 });
+  await btn.click();
+}
+
+/** Click the new-connection dialog "Save" button. */
+export async function clickNewConnectionSave() {
+  const saveBtn = await $('[data-testid="new-conn-save"]');
+  await saveBtn.waitForDisplayed({ timeout: 5000 });
+  await saveBtn.click();
+}
+
+/** Click the new-connection dialog "Test connection" button. */
+export async function clickNewConnectionTest() {
+  const testBtn = await $('[data-testid="new-conn-test-connection"]');
+  await testBtn.waitForDisplayed({ timeout: 5000 });
+  await testBtn.click();
+}
+
 /** Click the main-window "New Connection" entry point and wait for the dialog. */
 export async function openNewConnectionDialogFromUi() {
-  const clicked = await browser.execute(() => {
-    const textBtn = Array.from(document.querySelectorAll('button')).find(
-      (b) => b.textContent?.includes('新建连接') || b.textContent?.includes('New Connection'),
-    );
-    if (textBtn) {
-      textBtn.click();
-      return true;
-    }
-    const titleBtn = document.querySelector(
-      'button[title="新建连接"], button[title="New Connection"]',
-    ) as HTMLButtonElement | null;
-    if (titleBtn) {
-      titleBtn.click();
-      return true;
-    }
-    return false;
-  });
-  if (!clicked) throw new Error('Could not find "新建连接" button');
+  await clickNewConnectionButton();
   await waitForNewConnectionDialog();
 }
 
 /** Close the new-connection dialog via Cancel (stays on main window). */
 export async function closeNewConnectionDialogFromUi() {
-  await browser.execute(() => {
-    const dialog = document.querySelector('[data-testid="new-connection-dialog"]');
-    if (!dialog) return;
-    const buttons = Array.from(dialog.querySelectorAll('button'));
-    const cancel = buttons.find(
-      (b) => b.textContent?.includes('取消') || b.textContent?.includes('Cancel'),
-    );
-    cancel?.click();
-  });
+  const dialog = await $('[data-testid="new-connection-dialog"]');
+  if (!(await dialog.isExisting())) return;
+  const cancel = await $('[data-testid="new-conn-cancel"]');
+  if (await cancel.isExisting()) {
+    await cancel.click();
+  } else {
+    await browser.keys(['Escape']);
+  }
   await browser.waitUntil(
     async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
     { timeout: 10000, timeoutMsg: '等待新建连接弹窗关闭超时' },
   );
+}
+
+/** Expand the new-connection dialog Advanced Settings section if collapsed. */
+export async function expandNewConnectionAdvanced() {
+  const ssh = await $('[data-testid="new-conn-ssh-tunnel"]');
+  if (await ssh.isDisplayed().catch(() => false)) return;
+  const advBtn = await $('[data-testid="new-conn-advanced-toggle"]');
+  await advBtn.waitForDisplayed({ timeout: 8000 });
+  await advBtn.click();
+  await browser.pause(300);
 }
 
 export async function switchToNewWindow(originalHandle: string): Promise<string> {
@@ -197,17 +240,30 @@ export async function dblclickConnByExactName(connName: string) {
 export async function waitForConnectionToolbar(timeout = 20000) {
   await browser.waitUntil(
     async () => {
-      const body = await $('body').getText();
-      return (
-        body.includes('新建查询') ||
-        body.includes('New Query') ||
-        body.includes('新查詢') ||
-        body.includes('Neue Abfrage')
-      );
+      const toolbar = await $('[data-testid="conn-toolbar-new-query"]');
+      if (await toolbar.isDisplayed()) return true;
+      const quick = await $('[data-testid="home-quick-new-query"]');
+      return quick.isDisplayed();
     },
     { timeout, timeoutMsg: 'Timed out waiting for connection toolbar' },
   );
   await browser.pause(800);
+}
+
+/** Wait until a new-query entry point is visible in the connection workspace. */
+export async function waitForNewQueryButton(timeout = 20000) {
+  await browser.waitUntil(
+    async () => {
+      const toolbar = await $('[data-testid="conn-toolbar-new-query"]');
+      if (await toolbar.isDisplayed()) return true;
+      const quick = await $('[data-testid="home-quick-new-query"]');
+      return quick.isDisplayed();
+    },
+    { timeout, timeoutMsg: '等待新建查询按钮超时' },
+  );
+  const toolbar = await $('[data-testid="conn-toolbar-new-query"]');
+  if (await toolbar.isDisplayed()) return toolbar;
+  return $('[data-testid="home-quick-new-query"]');
 }
 
 /** Single-click expand chevron on a connected card so schema children load. */
@@ -236,6 +292,7 @@ export async function expandConnectedConnectionInNavigator(nameFragment = E2E_PG
 
 /** Double-click seeded PG connection and wait for toolbar in the unified main window. */
 export async function connectSeededPgInWorkspace() {
+  await openConnectionsWorkspace();
   await expandAllGroups();
   await browser.waitUntil(async () => (await $$('[data-conn-item]')).length > 0, {
     timeout: 15000,
@@ -315,32 +372,10 @@ export async function createAndConnectMySQL(
     return finishConnectInWorkspace(mainWindow);
   }
 
-  // Create a new MySQL connection (icon-only toolbar button OR text button in empty state)
-  const clickedNew = await browser.execute(() => {
-    // Try text button first (empty state)
-    const textBtn = Array.from(document.querySelectorAll('button')).find(
-      (b) => b.textContent?.includes('新建连接') || b.textContent?.includes('New Connection'),
-    );
-    if (textBtn) {
-      textBtn.click();
-      return true;
-    }
-    // Fallback: icon-only toolbar button by title
-    const titleBtn = document.querySelector(
-      'button[title="新建连接"], button[title="New Connection"]',
-    ) as HTMLButtonElement | null;
-    if (titleBtn) {
-      titleBtn.click();
-      return true;
-    }
-    return false;
-  });
-  if (!clickedNew) throw new Error('Could not find "新建连接" button');
+  // Create a new MySQL connection
+  await clickNewConnectionButton();
   await waitForNewConnectionDialog();
-
-  // Select MySQL type
-  const mysqlBtn = await $('button*=MySQL');
-  await mysqlBtn.click();
+  await selectNewConnectionDriver('mysql');
   await browser.pause(300);
 
   // Fill form fields
@@ -380,8 +415,7 @@ export async function createAndConnectMySQL(
   }
 
   // Save
-  const saveBtn = await $('button*=保存');
-  await saveBtn.click();
+  await clickNewConnectionSave();
   await browser.waitUntil(
     async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
     {
@@ -396,6 +430,52 @@ export async function createAndConnectMySQL(
   if (!card) throw new Error(`未找到 MySQL 连接 "${name}"`);
   await dblclickConnByExactName(name);
 
+  return finishConnectInWorkspace(mainWindow);
+}
+
+/**
+ * Create a SQLite connection via the new-connection UI and connect in the unified workspace.
+ * Returns `{ mainWindow, connWindow }` where both handles refer to the same OS window.
+ */
+export async function createAndConnectSQLiteInWorkspace(connName: string, dbPath: string) {
+  const mainWindow = await browser.getWindowHandle();
+  await openConnectionsWorkspace(mainWindow);
+  await expandAllGroups();
+
+  const existingItem = await findCardByName(connName);
+  if (!existingItem) {
+    await openNewConnectionDialogFromUi();
+    await selectNewConnectionDriver('sqlite');
+    await browser.pause(300);
+
+    const nameInput = await $(`input[placeholder="${t('newConn.namePlaceholder')}"]`);
+    await nameInput.setValue(connName);
+
+    const dbInput = await $('input[placeholder="/path/to/db.sqlite"]');
+    await dbInput.setValue(dbPath);
+
+    await clickNewConnectionTest();
+    await browser.waitUntil(
+      async () => {
+        const body = await $('body').getText();
+        return body.includes(t('newConn.testSuccess')) || body.includes('text-red-400');
+      },
+      { timeout: 15000 },
+    );
+
+    await clickNewConnectionSave();
+    await browser.waitUntil(
+      async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
+      { timeout: 10000, timeoutMsg: '保存 SQLite 连接后弹窗未关闭' },
+    );
+    await browser.switchToWindow(mainWindow);
+    await browser.pause(1000);
+  }
+
+  const card = await findCardByName(connName);
+  if (!card) throw new Error(`未找到 SQLite 连接 "${connName}"`);
+
+  await dblclickConnByExactName(connName);
   return finishConnectInWorkspace(mainWindow);
 }
 
@@ -437,8 +517,7 @@ export async function createAndConnectPostgreSQL(
   await openNewConnectionDialogFromUi();
 
   // PostgreSQL is the default type; ensure it is selected
-  const pgBtn = await $('button*=PostgreSQL');
-  await pgBtn.click();
+  await selectNewConnectionDriver('postgresql');
   await browser.pause(300);
 
   const nameInput = await $('input[placeholder="例如：主数据库"]');
@@ -472,8 +551,7 @@ export async function createAndConnectPostgreSQL(
     await pwInput.setValue(password);
   }
 
-  const saveBtn = await $('button*=保存');
-  await saveBtn.click();
+  await clickNewConnectionSave();
   await browser.waitUntil(
     async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
     {
@@ -736,6 +814,8 @@ async function executeSqlInEditor(sql: string) {
   await setEditorContent(sql);
   // Stable E2E locator (vite-gated data-testid, see src/lib/tid.ts) — survives i18n switching.
   const execBtn = await $('[data-testid="editor-execute-button"]');
+  const queryPanel = await $('[data-testid="query-panel"]');
+  const previousExecutionSeq = Number((await queryPanel.getAttribute('data-execution-seq')) ?? '0');
   const prevTotal = await browser.execute(() => {
     const spans = Array.from(document.querySelectorAll('span'));
     return spans.find((s) => s.textContent?.includes('总耗时'))?.textContent ?? '';
@@ -778,17 +858,27 @@ async function executeSqlInEditor(sql: string) {
       ) {
         return true;
       }
+      const executionSeq = Number((await queryPanel.getAttribute('data-execution-seq')) ?? '0');
+      if (executionSeq > previousExecutionSeq) return true;
       const stop = await $('[data-testid="editor-stop-button"]');
       if ((await stop.isExisting()) && (await stop.isDisplayed().catch(() => false))) {
         return false;
       }
       const curTotal = await browser.execute(() => {
         const spans = Array.from(document.querySelectorAll('span'));
-        return spans.find((s) => s.textContent?.includes('总耗时'))?.textContent ?? '';
+        return (
+          spans.find(
+            (s) =>
+              s.textContent?.includes('总耗时') ||
+              s.textContent?.includes('Total time') ||
+              s.textContent?.includes('total time'),
+          )?.textContent ?? ''
+        );
       });
       if (curTotal && curTotal !== prevTotal) return true;
       // Fast queries can keep the same "总耗时 0 ms" label; settle after click.
       if (elapsed > 900 && curTotal && !(await execBtn.getAttribute('disabled'))) return true;
+      if (elapsed > 1200 && /\d+\s*(行|rows?)\b/i.test(body)) return true;
       return false;
     },
     { timeout: 15000, timeoutMsg: `等待 SQL 执行完成超时: ${sql.slice(0, 60)}` },
@@ -809,23 +899,10 @@ async function executeSqlInEditor(sql: string) {
 export async function openQueryTab() {
   // Stable E2E locators (vite-gated data-testid, see src/lib/tid.ts).
   let newQueryBtn = await $('[data-testid="conn-toolbar-new-query"]');
-  if (!(await newQueryBtn.isExisting())) {
-    // First tab: workspace-home quick action opens the first panel.
-    const quickAction = await $('[data-testid="home-quick-new-query"]');
-    if (await quickAction.isExisting()) {
-      newQueryBtn = quickAction;
-    } else {
-      // fallback: find by text
-      const labels = ['新建查询', 'New Query', '新查詢', 'Neue Abfrage'];
-      for (const label of labels) {
-        const candidate = await $(`button*=${label}`);
-        if (await candidate.isExisting()) {
-          newQueryBtn = candidate;
-          break;
-        }
-      }
-    }
+  if (!(await newQueryBtn.isExisting()) || !(await newQueryBtn.isDisplayed())) {
+    newQueryBtn = await $('[data-testid="home-quick-new-query"]');
   }
+  await newQueryBtn.waitForDisplayed({ timeout: 15000 });
   await newQueryBtn.click();
   await browser.pause(500);
   // Wait for execute button — try testid first, then aria-label fallback.
@@ -983,6 +1060,35 @@ export async function expandSchemaTableCategory(schemaName = 'public') {
   await browser.pause(800);
 }
 
+/** Expand db → schema → a specific object category in the navigator tree. */
+export async function expandSchemaCategory(catId: string, schemaName = 'public') {
+  await browser.execute(
+    (category: string, schema: string) => {
+      const isCollapsed = (el: Element) => {
+        const cls = el.querySelector('svg')?.getAttribute('class') ?? '';
+        return cls.includes('chevron-right');
+      };
+      const expandIfCollapsed = (el: Element | null | undefined) => {
+        if (el instanceof HTMLElement && isCollapsed(el)) el.click();
+      };
+      expandIfCollapsed(document.querySelector('[data-tree-node="db"]'));
+      const schemas = Array.from(document.querySelectorAll('[data-tree-node="schema"]'));
+      const target =
+        schemas.find((el) => el.textContent?.toLowerCase().includes(schema.toLowerCase())) ??
+        schemas[0];
+      expandIfCollapsed(target);
+      for (const cat of document.querySelectorAll(
+        `[data-tree-node="category"][data-cat-id="${category}"]`,
+      )) {
+        expandIfCollapsed(cat);
+      }
+    },
+    catId,
+    schemaName,
+  );
+  await browser.pause(800);
+}
+
 async function setNavigatorSearch(query: string) {
   const aside = await connectionNavigatorAside();
   const input = await aside.$('input');
@@ -1072,6 +1178,7 @@ export async function clickTableInSidebar(tableName: string) {
         }, tableName);
         if (clicked) return true;
         await expandSchemaTableCategory();
+        await expandSchemaCategory('views');
         await scrollSchemaTree(scrollPass);
         scrollPass++;
         return false;
@@ -1185,9 +1292,9 @@ export async function clickFirstTable() {
   return name;
 }
 
-/** Switch to a sub-tab inside a table panel (数据/结构/索引/外键/DDL). */
-export async function switchSubTab(label: string) {
-  const tab = await $(`button*=${label}`);
+/** Switch to a sub-tab inside a table panel by id (data/structure/indexes/foreignKeys/ddl). */
+export async function switchSubTab(tabId: string) {
+  const tab = await $(`[data-testid="sub-tab-${tabId}"]`);
   await tab.click();
   await browser.pause(500);
 }
@@ -1300,14 +1407,58 @@ export async function switchWorkspaceNav(
   await target.waitForDisplayed({ timeout: 15000 });
 }
 
+/** Return to the connections workspace (shows navigator + connection list). */
+export async function openConnectionsWorkspace(mainHandle?: string) {
+  if (mainHandle) {
+    await browser.switchToWindow(mainHandle);
+  }
+  await browser.pause(200);
+  const nav = await $('[data-testid="workspace-nav-connections"]');
+  if (await nav.isExisting()) {
+    await nav.waitForDisplayed({ timeout: 15000 });
+    await nav.click();
+    await browser.pause(400);
+  }
+}
+
+/** Open embedded Workflow workspace inside the main window (no OS sub-window). */
+export async function openWorkflowWorkspace(mainHandle?: string) {
+  if (mainHandle) {
+    await browser.switchToWindow(mainHandle);
+  }
+  await browser.pause(300);
+  await switchWorkspaceNav(
+    'workspace-nav-workflow',
+    'workflow-workspace',
+    'workflow-workspace-open',
+  );
+}
+
+/** Open embedded Dashboard panel inside the main window (no OS sub-window). */
+export async function openDashboardPanel(mainHandle?: string, dashboardId?: string) {
+  if (mainHandle) {
+    await browser.switchToWindow(mainHandle);
+  }
+  await browser.pause(300);
+  await switchWorkspaceNav('workspace-nav-dashboard', 'dashboard-panel', 'workspace-dashboard');
+  if (dashboardId) {
+    const tab = await $(`[data-testid="dashboard-tab"][data-dashboard-id="${dashboardId}"]`);
+    if (await tab.isExisting()) {
+      await tab.click();
+      await browser.pause(400);
+    }
+  }
+}
+
 /** Open ER diagram from home quick action or connection toolbar. */
 export async function openErDiagramFromUi() {
   const homeQuick = await $('[data-testid="home-quick-er-diagram"]');
-  if (await homeQuick.isExisting()) {
+  if (await homeQuick.isDisplayed().catch(() => false)) {
     await homeQuick.click();
     return;
   }
   const toolbarWrap = await $('[data-testid="content-toolbar-er-diagram"]');
+  await toolbarWrap.waitForExist({ timeout: 15000 });
   const toolbarBtn = await toolbarWrap.$('button');
   await toolbarBtn.waitForClickable({ timeout: 10000 });
   await toolbarBtn.click();
@@ -1391,7 +1542,12 @@ export async function dismissTransferLimitationsDialogIfOpen() {
 
 /** Click Next on the data-transfer wizard when it is present and clickable. */
 export async function clickTransferNext(opts: { timeout?: number; pauseMs?: number } = {}) {
+  await dismissTransferLimitationsDialogIfOpen();
   const next = await $('[data-testid="data-transfer-next"]');
+  await browser.waitUntil(async () => next.isEnabled().catch(() => false), {
+    timeout: opts.timeout ?? 15000,
+    timeoutMsg: '等待 data-transfer-next 可点击超时',
+  });
   await next.waitForClickable({ timeout: opts.timeout ?? 10000 });
   await next.click();
   await browser.pause(opts.pauseMs ?? 1200);

@@ -17,7 +17,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, browser, $ } from '@wdio/globals';
-import { closeExtraWindows, openSettingsInMainWindow } from '../helpers.js';
+import {
+  closeExtraWindows,
+  openSettingsInMainWindow,
+  openNewConnectionDialogFromUi,
+  selectNewConnectionDriver,
+} from '../helpers.js';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const FILE_CONNECTION_FIELDS = path.join(
@@ -186,10 +191,7 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
     expect(adbSrc).toContain('savedPath');
     expect(adbSrc).not.toMatch(/invoke[<(]/);
 
-    const hostLib = fs.readFileSync(
-      path.join(ROOT, 'src-tauri/src/lib.rs'),
-      'utf8',
-    );
+    const hostLib = fs.readFileSync(path.join(ROOT, 'src-tauri/src/lib.rs'), 'utf8');
     expect(hostLib).not.toContain('adb_list_packages');
     expect(hostLib).not.toContain('adb_pull_database');
 
@@ -197,18 +199,10 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
     await browser.pause(1000);
     mainWindow = await browser.getWindowHandle();
 
-    const newBtn = await $('button*=新建连接');
-    await newBtn.click();
-    await browser.waitUntil(
-      async () => await $('[data-testid="new-connection-dialog"]').isExisting(),
-      {
-        timeout: 15000,
-        timeoutMsg: 'new-connection dialog did not open',
-      },
-    );
+    await openNewConnectionDialogFromUi();
     await browser.pause(800);
 
-    await (await $('button*=SQLite')).click();
+    await selectNewConnectionDriver('sqlite');
     await browser.pause(400);
 
     await browser.execute(() => {

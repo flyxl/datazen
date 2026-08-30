@@ -28,10 +28,21 @@ pub fn key_backend() -> KeyBackend {
         Some("file") => KeyBackend::File,
         Some("keyring") => KeyBackend::Keyring,
         _ => {
-            if should_prefer_file_backend() {
+            // Tests run as an unsigned binary but may not always set the env
+            // var (e.g. after a FileKeyringGuard Drop restores it).  Force the
+            // file backend unconditionally so `cargo test` never triggers the
+            // macOS keychain dialog.
+            #[cfg(test)]
+            {
                 KeyBackend::File
-            } else {
-                KeyBackend::Keyring
+            }
+            #[cfg(not(test))]
+            {
+                if should_prefer_file_backend() {
+                    KeyBackend::File
+                } else {
+                    KeyBackend::Keyring
+                }
             }
         }
     }
@@ -139,7 +150,27 @@ fn write_key_file(data_dir: &Path, key: &[u8; 32]) -> Result<(), StoreError> {
     let path = key_file_path(data_dir);
     let key_b64 = BASE64.encode(key);
     std::fs::write(&path, key_b64.as_bytes())
-        .map_err(|e| StoreError::EncryptionError(e.to_string()))
+        .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
+    restrict_key_file_permissions(&path);
+    Ok(())
+}
+
+/// Restrict `{appData}/.key` to the owning user — same intent as `mcp.token`
+/// in [`crate::mcp::auth`].
+///
+/// - **Unix:** `chmod 600` (owner read/write only).
+/// - **Windows:** not implemented yet — no shared ACL helper in the repo and
+///   `mcp/auth.rs` applies the same Unix-only `chmod` for `mcp.token`. The file
+///   inherits default user-profile ACLs; explicit DACL hardening is tracked as
+///   a follow-up (see coordination hub R-stage leftovers).
+fn restrict_key_file_permissions(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
+    #[cfg(windows)]
+    let _ = path; // ACL hardening deferred — see doc comment above
 }
 
 fn remove_key_file(data_dir: &Path) {
@@ -365,6 +396,22 @@ mod tests {
     }
 
     #[test]
+    fn write_key_file_restricts_permissions_on_unix() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = tempdir().unwrap();
+            write_key_file(dir.path(), &[1u8; 32]).unwrap();
+            let mode = std::fs::metadata(key_file_path(dir.path()))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+    }
+
+    #[test]
     fn decode_key_b64_accepts_valid_key_with_whitespace() {
         let key = [7u8; 32];
         let encoded = format!("  {}  ", BASE64.encode(key));
@@ -376,15 +423,9 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("DATAZEN_KEYRING");
         let backend = key_backend();
-        #[cfg(target_os = "macos")]
-        {
-            // Dev/unsigned macOS builds prefer file to avoid Keychain ACL prompts.
-            assert_eq!(backend, KeyBackend::File);
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            assert_eq!(backend, KeyBackend::Keyring);
-        }
+        // key_backend() 在测试模式下无论平台如何均返回 File
+        // (避免 cargo test 时弹出 macOS keychain 权限对话框)
+        assert_eq!(backend, KeyBackend::File);
     }
 
     #[test]

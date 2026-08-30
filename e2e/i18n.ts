@@ -11,16 +11,32 @@ type TranslationKey = keyof typeof zhCN;
 /** Legacy E2E keys that were renamed in locale files. */
 const KEY_ALIASES: Record<string, TranslationKey> = {
   'action.newConnection': 'common.newConnection',
+  'action.restore': 'common.restoreDatabase',
   'action.backup': 'common.backupDatabase',
   'action.dataSync': 'common.dataSync',
   'backup.title': 'common.backupDatabase',
   'connWin.newQuery': 'common.newQuery',
   'connWin.copyDDL': 'common.copyDdl',
   'connWin.newTable': 'common.newTable',
+  'main.newConnection': 'common.newConnection',
+  'sync.title': 'common.dataSyncTitle',
   'sync.windowTitle': 'common.dataSyncTitle',
   'sync.sqlPreviewTab': 'common.sqlPreviewLower',
   'transfer.title': 'common.dataTransfer',
   'transfer.pickConnection': 'common.selectConnection',
+  'export.title': 'common.exportData',
+  'menu.exportConfig': 'common.exportAppData',
+  'menu.importConfig': 'common.importAppData',
+  'welcome.feature.ai.title': 'common.aiAssistant',
+  'settings.ai': 'common.aiAssistant',
+  'main.ctx.processList': 'common.processList',
+  'main.ctx.serverStatus': 'common.serverStatus',
+  'main.ctx.backup': 'common.backupDatabase',
+  'main.ctx.restore': 'common.restoreDatabase',
+  'main.ctx.objectFilter': 'common.objectFilter',
+  'main.ctx.editConnection': 'common.editConnection',
+  'main.ctx.deleteConnection': 'common.deleteConnection',
+  'main.ctx.copyName': 'common.copyName',
 };
 
 /**

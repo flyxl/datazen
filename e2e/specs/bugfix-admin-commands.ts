@@ -489,8 +489,15 @@ describe('PostgreSQL admin commands (IPC)', () => {
       },
     });
 
-    // Move the live session to another catalog (simulates browsing another db in the tree).
-    await invokeBackend('get_tables', { dbSessionId: connId, database: 'postgres' });
+    // Pin the live session to another catalog (F1 database pin on a query command).
+    await invokeBackend('execute_driver_command', {
+      request: {
+        dbSessionId: connId,
+        command: 'query',
+        input: { sql: 'SELECT 1' },
+        database: 'postgres',
+      },
+    });
 
     await expect(
       invokeBackend('execute_driver_command', {

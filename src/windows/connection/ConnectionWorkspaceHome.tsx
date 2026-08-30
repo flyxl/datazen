@@ -90,7 +90,12 @@ export function ConnectionWorkspaceHome({
       >
         <div className="max-w-sm text-center">
           <p className="text-sm text-fg-muted">{t('main.noConnections')}</p>
-          <Button variant="ghost" className="mt-3" onClick={onNewConnection}>
+          <Button
+            variant="ghost"
+            className="mt-3"
+            onClick={onNewConnection}
+            data-testid="new-connection-button"
+          >
             <Plus className="h-4 w-4" />
             {t('main.createFirst')}
           </Button>

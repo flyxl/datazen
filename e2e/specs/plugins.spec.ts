@@ -30,13 +30,15 @@ import { invokeBackend } from '../helpers/data-dashboard.js';
 import {
   backFromSettingsInMainWindow,
   captureJourneyStep,
+  connectSeededPgInWorkspace,
+  injectDialogPath,
   openSettingsInMainWindow,
+  resetDialogQueue,
 } from '../helpers.js';
 
 const PLUGIN_ID = 'datazen.sample';
 const PAGE_KEY = `${PLUGIN_ID}:hello`;
 const EXPECTED_PACK_ID = `plugin:${PLUGIN_ID}:sample-light`;
-const THEME_ID = 'sample-light';
 
 const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 /** Absolute path typed into the install dialog's PathInput. */
@@ -47,19 +49,27 @@ const STORAGE_KEY = 'e2e-marker';
 const STORAGE_VALUE = 'ok';
 
 /**
- * Host data dir = Tauri `app_data_dir()` (`{identifier}` below the OS data
- * dir); plugin storage persists at `{data_dir}/plugins/{id}/.storage.json`
- * (src-tauri/src/plugins/storage.rs). No env override exists, so this mirrors
- * Store::default_app_data_dir().
+ * Host data dir = Tauri `app_data_dir()`. Under `e2e/run.mjs` this is the
+ * isolated `e2e/.app-data` tree (via `DATAZEN_DATA_DIR` on app + WDIO).
+ * Plugin storage persists at `{data_dir}/plugins/{id}/.storage.json`.
  */
-const APP_DATA_DIR =
-  process.platform === 'darwin'
+function resolveAppDataDir(): string {
+  if (process.env.DATAZEN_DATA_DIR) {
+    return process.env.DATAZEN_DATA_DIR;
+  }
+  const isolated = path.resolve(THIS_DIR, '..', '.app-data');
+  if (process.env.E2E_ISOLATED_APP_DATA === '1') {
+    return isolated;
+  }
+  return process.platform === 'darwin'
     ? path.join(os.homedir(), 'Library', 'Application Support', 'com.tbeasy.datazen')
     : path.join(
         process.env.XDG_DATA_HOME ?? path.join(os.homedir(), '.local', 'share'),
         'com.tbeasy.datazen',
       );
-const PLUGIN_STORAGE_FILE = path.join(APP_DATA_DIR, 'plugins', PLUGIN_ID, '.storage.json');
+}
+
+const PLUGIN_STORAGE_FILE = path.join(resolveAppDataDir(), 'plugins', PLUGIN_ID, '.storage.json');
 
 interface PluginStorageFile {
   [key: string]: unknown;
@@ -82,9 +92,29 @@ async function readPluginStorage(): Promise<PluginStorageFile | null> {
  * `datazen://` subframe navigation is refused, so the fixture JS never runs;
  * see docs/development/e2e-coverage.md 例外登记).
  */
+async function ensureSamplePluginInstalled() {
+  const plugins = await invokeBackend<PluginSummaryRow[]>('list_extensions');
+  if (plugins.some((p) => p.id === PLUGIN_ID)) return;
+  await invokeBackend('install_extension', { pickToken: null, overridePath: FIXTURE_DIR });
+  await browser.pause(600);
+}
+
+/** Seed activeConnectionStore with a live PG session (extensionBridge command.invoke). */
+async function ensureLivePgSession() {
+  await browser.url('tauri://localhost');
+  await browser.pause(400);
+  const body = await $('body').getText();
+  const connected =
+    body.includes('新建查询') || body.includes('New Query') || body.includes('新查詢');
+  if (!connected) {
+    await connectSeededPgInWorkspace();
+  }
+}
+
 async function openSampleTabAndAwaitBridge(): Promise<boolean> {
+  await ensureLivePgSession();
   await openWorkspaceMode();
-  // Top-document iframe existence assertion still works and is kept.
+  await openSampleTabFromNavigator();
   const iframe = await $('[data-testid="plugin-iframe"]');
   await iframe.waitForExist({ timeout: 15000 });
 
@@ -213,12 +243,12 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
     const dialog = await $('[role="dialog"]');
     await dialog.waitForDisplayed({ timeout: 10000 });
 
-    const pathInput = await $('input[placeholder="/path/to/plugin.zip"]');
-    await pathInput.waitForDisplayed({ timeout: 5000 });
-    await pathInput.setValue(FIXTURE_DIR);
+    // J1-001-R: native folder picker — inject fixture path (dialog branch, no typed path).
+    await resetDialogQueue();
+    await injectDialogPath(FIXTURE_DIR);
+    await $('[data-testid="plugin-install-browse-folder"]').click();
 
     // Step 1 → 2: validate-only inspect; review shows name/version/permissions.
-    await $('[data-testid="plugin-install-next"]').click();
     await $('[data-testid="plugin-install-review"]').waitForDisplayed({ timeout: 15000 });
     const review = await $('[data-testid="plugin-install-review"]').getText();
     expect(review).toContain('Sample Hello');
@@ -259,6 +289,7 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
   // ── J2: workspace entry + bridge round-trip inside the iframe ───────
 
   it('J2-001: workspace navigator lists the page and opens a tab', async () => {
+    await ensureSamplePluginInstalled();
     await openWorkspaceMode();
 
     const item = await $(`[data-testid="workspace-nav-item"][data-page-key="${PAGE_KEY}"]`);
@@ -374,24 +405,45 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
   // ── J5: Settings → 外观 applies the plugin theme persistently ───────
 
   it('J5-001: appearance section lists Sample Light and applying persists plugin:<id>:<theme>', async () => {
+    await ensureSamplePluginInstalled();
     await openSettingsInMainWindow('appearance');
 
     const section = await $('[data-testid="appearance-section"]');
     await section.waitForDisplayed({ timeout: 10000 });
 
-    const card = await $(`[data-testid="appearance-theme-card"][data-theme-id="${THEME_ID}"]`);
-    await card.waitForDisplayed({ timeout: 10000 });
-
-    await card.click();
-    await browser.waitUntil(async () => (await card.getAttribute('aria-pressed')) === 'true', {
-      timeout: 10000,
-      timeoutMsg: 'theme card did not become active',
-    });
-    await expect(await $('[data-testid="appearance-current-badge"]')).toBeDisplayed();
+    // AppearanceSection renders plugin themes in a portaled Select (id dz-select-listbox).
+    await browser.waitUntil(
+      async () => {
+        const status = await browser.execute((themeLabel: string) => {
+          const sectionEl = document.querySelector('[data-testid="appearance-section"]');
+          if (!sectionEl) return 'no-section';
+          const triggers = Array.from(
+            sectionEl.querySelectorAll('button[aria-haspopup="listbox"]'),
+          ) as HTMLElement[];
+          if (triggers.length < 2) return 'no-theme-select';
+          triggers[1].click();
+          const listbox = document.getElementById('dz-select-listbox');
+          if (!listbox) return 'no-listbox';
+          const option = Array.from(listbox.children).find((el) =>
+            (el.textContent ?? '').includes(themeLabel),
+          ) as HTMLElement | undefined;
+          if (!option) return 'no-option';
+          option.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          return 'ok';
+        }, 'Sample Light');
+        return status === 'ok';
+      },
+      { timeout: 15000, timeoutMsg: 'Sample Light theme option not found in appearance select' },
+    );
 
     // Durable value lives in settings (not localStorage): plugin:{pluginId}:{themeId}.
-    const settings = await invokeBackend<PersistedSettings>('get_settings');
-    expect(settings.theme.packId).toBe(EXPECTED_PACK_ID);
+    await browser.waitUntil(
+      async () => {
+        const settings = await invokeBackend<PersistedSettings>('get_settings');
+        return settings.theme.packId === EXPECTED_PACK_ID;
+      },
+      { timeout: 10000, timeoutMsg: 'plugin theme packId did not persist' },
+    );
   });
 
   // ── J4: disable → tab/nav removed; uninstall (confirm) → card gone ──

@@ -41,10 +41,10 @@
 
 | 用户路径 | Spec | 状态 |
 |----------|------|------|
-| 主页操作面板、搜索、分组 | `main-window.ts`, `homepage-features.ts`, `unified-main-window.ts` | Covered |
+| 主页操作面板、搜索、分组 | `main-window.ts`, `homepage-features.ts` | Covered |
 | 主页空白右键 Web 菜单（含边缘不截断） | `homepage-features.ts` (HOME-021) | Covered（需 webdriver 二进制；无二进制时 BLOCKED） |
-| 统一工作区导航（连接 / 工作流 / 看板） | `unified-main-window.ts` | Covered |
-| 连接工作区首页（无 panel 空状态） | `unified-main-window.ts`, `unified-tab-bar.ts` (UTB-005) | Covered |
+| 统一工作区导航（连接 / 工作流 / 看板） | `homepage-features.ts` (HOME-001), `main-window.ts` | Covered |
+| 连接工作区首页（无 panel 空状态） | `homepage-features.ts`, `unified-tab-bar.ts` (UTB-005) | Covered |
 | 新建 / 编辑 / 删除连接 | `new-connection.ts`, `edit-delete-connection.ts` | Covered |
 | 连接工具栏、表树、子标签（统一主窗口内） | `connection-window.ts`, `unified-tab-bar.ts` | Covered |
 | 侧栏删表后树立即刷新（不再需关窗） | `ConnectionNavigatorTree.test.tsx` / `schemaStore.test.ts` | Covered（原生 Drop 确认框见例外） |
@@ -74,9 +74,9 @@
 
 | 用户路径 | Spec | 状态 |
 |----------|------|------|
-| 设置：主题 / 持久化 / 分区导航（通用·浏览·编辑器·行为·日志·AI·Prompt·MCP·扩展） | `settings.ts` | Covered |
+| 设置：主题 / 持久化 / 语言切换 / 分区导航（通用·浏览·编辑器·行为·日志·AI·Prompt·MCP·扩展） | `settings.ts` (SS-001~SS-006, TC-SET-008~010) | Covered |
 | Workflow 列表 / 执行 / 历史 / 列表右键无运行 / 历史无菜单 | `workflow.ts`, `workflow-window.ts` (WF-CTX-*) | Covered |
-| 嵌入主窗口的工作流工作区（非独立 OS 窗口） | `workflow-window.ts`, `unified-main-window.ts` | Covered |
+| 嵌入主窗口的工作流工作区（非独立 OS 窗口） | `workflow-window.ts`, `homepage-features.ts` | Covered |
 | Workflow 可视化 ↔ YAML 切换与保存入口 | `workflow-window.ts` (WF-YAML-*) | Covered |
 | Workflow / 数据看板 SQL 编辑（SqlEditor 高亮 + Web 右键） | `workflow-window.ts` (WF-SQL-001 / WF-SQL-002), `data-dashboard-widget-ux.ts` (UJ-06) | Covered |
 | 恢复执行日志（virtual scroll + 复制） | `BackupWindow.test.tsx` | Covered（原生文件对话框为例外） |
@@ -103,12 +103,13 @@
 | 数据传输 PG→PG / PG→MySQL / MySQL→PG 用户旅程 | `journeys/data-transfer-*-journey.ts` | Covered |
 | 连接 Pin 置顶 | `ops-pin.ts` | Covered |
 | 连接边界：快速新建/删除、并发 tab、生命周期 | `connection-edge-cases.ts` (TC-EDGE-009~013) | Covered |
-| 设置持久化：主题/语言/字体/确认删除开关 | `settings-persistence.ts` (TC-SET-007~010) | Covered |
+| 设置持久化：语言/字体/确认删除开关 | `settings.ts` (TC-SET-008~010) | Covered |
+| 内置 UI locale 下拉 / 切换 / 回退 | `i18n-10-locales.ts` (I18N10-001~003, I18N10-005) | Covered |
 | 窗口操作：单窗口模式、tab 状态 | `window-operations.ts` (TC-WIN-001~005) | Covered |
 | SQL 多 Tab：独立查询结果 | `sql-multi-tab.ts` (TC-QUERY-009~012) | Covered |
 | Schema 树完整性：加载/右键/DDL 后刷新 | `schema-tree-completeness.ts` (TC-TREE-001~006) | Covered |
 | 表批量操作：多选/分页边界 | `table-batch-ops.ts` (TC-TABLE-009~014) | Covered |
-| 工作流完整生命周期 | `workflow-lifecycle.ts` (TC-WF-007~012) | Covered |
+| 工作流完整生命周期 | `workflow.ts` (SW-01~05, TC-WF-011) | Covered |
 | AI 无 Key 降级 UI | `ai-no-key-fallback.ts` | Covered |
 | 对象过滤器对话框与树过滤持久化 | `object-filter.ts` | Covered |
 | 进程列表 / 服务器状态面板 | `ops-process-server.ts` | Covered |
@@ -138,6 +139,7 @@
 | 插件 `ui.notify` 5s 限频 / 系统通知弹出 | 依赖系统通知中心，自动化不可观测 | `extensionBridge.test.ts` 限频用例（冷却窗口内第二次回 `E_RATE_LIMIT`） |
 | 插件 iframe 崩溃恢复条（10s watchdog → 重载按钮） | 需真实加载失败时序，WebKit 自动化不稳定 | `PluginPageShell.test.tsx` watchdog/reload 用例；E2E 断言 shell 存在与重开路径 |
 | 插件 iframe 内元素自动化（J2 桥往返的帧内 DOM 断言） | macOS WebKit 自动化下 `datazen://` 子帧导航被拒（实测截图：帧内容永不渲染、fixture JS 永不执行、`.storage.json` 探针永不落盘；同 URL 顶层窗口直载则正常渲染执行——疑为宿主 CSP `default-src 'self'` 未豁免 `datazen:` 子帧或 WebKit 自定义协议子帧策略，已登记 BUG-F9-04 待宿主验证） | 补偿：fixture 经既有桥 `storage.set` 持久化三个探针（`probe.bridge`/`probe.dark`/`probe.connCount`），E2E 从 `{appData}/plugins/datazen.sample/.storage.json` 轮询对账（内容可加载的平台即全量断言）；本环境下自动降级为真实 shell 级行为断言——watchdog 失败条出现 / 重载按钮重挂 iframe / manifest entry URL 解析正确。桥逻辑另有宿主 `extensionBridge` 64 例 + SDK 69 例单测背书。iframe 存在性断言（顶层文档）保留 |
+| 全 locale 文件 key 对齐（逐语言 bundle parity / 源文件 key 断言） | 发版流程已覆盖：`scripts/i18n-sync-check.mjs` + i18n-sync skill；E2E 易与 locale 重构脱节 | `src/locales/locales.test.ts`（Vitest）；发版前 `i18n-sync-check` CI |
 
 ## 维护约定
 

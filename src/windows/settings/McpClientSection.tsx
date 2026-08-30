@@ -173,7 +173,9 @@ export function McpClientSection() {
         </div>
       )}
 
-      <SectionTitle>{t('mcpClient.savedConfigs')}</SectionTitle>
+      <div data-testid="mcp-saved-configs">
+        <SectionTitle>{t('mcpClient.savedConfigs')}</SectionTitle>
+      </div>
 
       {savedConfigs.length === 0 && !showForm && (
         <p className="text-xs text-fg-muted">{t('mcpClient.noSavedConfigs')}</p>
@@ -317,6 +319,7 @@ export function McpClientSection() {
                 type="button"
                 onClick={() => setEnvRows((rows) => [...rows, { key: '', value: '' }])}
                 className="text-xs text-accent hover:underline"
+                data-testid="mcp-add-env"
               >
                 + {t('mcpClient.addEnv')}
               </button>
@@ -336,6 +339,7 @@ export function McpClientSection() {
                   }}
                   placeholder={t('mcpClient.envKey')}
                   className={`${inputClass} flex-1`}
+                  data-testid="mcp-env-key"
                 />
                 <input
                   type="text"
@@ -347,6 +351,7 @@ export function McpClientSection() {
                   }}
                   placeholder={t('mcpClient.envValue')}
                   className={`${inputClass} flex-1`}
+                  data-testid="mcp-env-value"
                 />
                 <button
                   type="button"
@@ -379,6 +384,7 @@ export function McpClientSection() {
                 saving || !draft.id.trim() || !draft.command?.trim() || idInvalid || idDuplicate
               }
               onClick={() => void handleSave()}
+              data-testid="mcp-save"
             >
               {saving ? t('mcpClient.saving') : t('mcpClient.save')}
             </Button>
@@ -388,7 +394,7 @@ export function McpClientSection() {
           </div>
         </div>
       ) : (
-        <Button variant="secondary" onClick={startAdd}>
+        <Button variant="secondary" onClick={startAdd} data-testid="mcp-add-server">
           {t('mcpClient.addServer')}
         </Button>
       )}

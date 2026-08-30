@@ -27,6 +27,10 @@ pub(crate) fn qualify_sql(sql: &str, database: Option<&str>, schema: Option<&str
     match target {
         // Default no-op: main / absent targets resolve naturally.
         None | Some("main") | Some("temp") => return sql.to_string(),
+        // Connection configs store the SQLite file in `database`.  That value
+        // is the backing file for the implicit `main` schema, not an ATTACH
+        // alias, so never qualify SQL with a filesystem path.
+        Some(path) if path.contains('/') || path.contains('\\') => return sql.to_string(),
         Some(alias) => {
             qualify_sql_with(
                 &SQLiteDialect {},
@@ -45,7 +49,15 @@ mod tests {
 
     #[test]
     fn default_target_is_noop() {
-        for db in [None, Some(""), Some("   "), Some("main"), Some("temp")] {
+        for db in [
+            None,
+            Some(""),
+            Some("   "),
+            Some("main"),
+            Some("temp"),
+            Some("/tmp/datazen/test.db"),
+            Some(r"C:\\datazen\\test.db"),
+        ] {
             assert_eq!(
                 qualify_sql("SELECT * FROM users", db, None),
                 "SELECT * FROM users",

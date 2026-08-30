@@ -3,10 +3,12 @@
  *
  * 完整链路：连接 PG → 右键连接「Process List…」→ 面板展示进程行 → 选中可 Kill 的行 →
  * 点 Kill → 确认 → 断言该 pid 从真实 pg_stat_activity 消失（落库断言）。
- * 服务器状态：右键「服务器状态…」→ 面板展示关键指标。
+ * 服务器状态：右键「服务器状态…」→ 面板展示关键指标 + 刷新。
  *
  * 数据构造：用 IPC 额外起一条**独立的空闲 PG 连接**（可识别 pid），确保 Kill 不会打掉 E2E
  * 主会话连接；after 清理连接配置。
+ *
+ * 合并了原 ops-server-status-processes.ts 的轻量 UI 渲染断言。
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
@@ -61,6 +63,21 @@ async function clickMenuItem(label: string) {
 async function dismissMenu() {
   await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
   await browser.pause(300);
+}
+
+/** Click a context menu item by its id (data-testid). */
+async function clickMenuItemById(id: string) {
+  const item = await $(`[data-testid="web-context-item-${id}"]`);
+  if (await item.isExisting()) {
+    await item.click();
+    await browser.pause(500);
+  }
+}
+
+/** Check if a menu item with given id exists. */
+async function hasMenuItemId(id: string): Promise<boolean> {
+  const item = await $(`[data-testid="web-context-item-${id}"]`);
+  return item.isExisting();
 }
 
 /** 面板标题/指标是否显示在当前页面。 */
@@ -145,22 +162,22 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
   it('OPS-PROC-001: 右键连接菜单含「进程列表 / 服务器状态」', async () => {
     await rightClickConn();
     const text = await menuText();
-    expect(text).toContain(t('main.ctx.processList'));
-    expect(text).toContain(t('main.ctx.serverStatus'));
+    expect(await hasMenuItemId('process-list')).toBe(true);
+    expect(await hasMenuItemId('server-status')).toBe(true);
     await dismissMenu();
   });
 
   it('OPS-PROC-002: 打开进程列表面板并出现至少一行', async () => {
     await rightClickConn();
-    await clickMenuItem(t('main.ctx.processList'));
+    await clickMenuItemById('process-list');
     await browser.pause(1500);
-    expect(await bodyContains(t('processList.title'))).toBe(true);
+    expect(await $("[data-testid='process-list-view']").isExisting()).toBe(true);
     expect(await anyTableRows()).toBe(true);
   });
 
   it('OPS-PROC-003: 服务器仪表盘子标签（仪表盘 ⇄ 状态变量 ⇄ 服务器详情）展示关键内容与连接标识', async () => {
     await rightClickConn();
-    await clickMenuItem(t('main.ctx.serverStatus'));
+    await clickMenuItemById('server-status');
     await browser.pause(1500);
     // 工具面板内显示当前连接名（Req#4）
     expect(await bodyContains(E2E_PG_CONN_NAME)).toBe(true);
@@ -199,7 +216,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
 
     // 切到进程列表面板
     await rightClickConn();
-    await clickMenuItem(t('main.ctx.processList'));
+    await clickMenuItemById('process-list');
     await browser.pause(1500);
 
     // 先确认目标 pid 出现在面板中
@@ -254,6 +271,97 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
       await invokeBackend('delete_connection', { id: checkId });
     } catch {
       /* ok */
+    }
+  });
+
+  // ── Lightweight UI rendering tests (from ops-server-status-processes.ts) ──
+
+  it('OPS-SS-002: refresh keeps panel healthy', async () => {
+    // Open server status panel via context menu on main connection
+    const connItem = await browser.execute(() => {
+      const items = Array.from(document.querySelectorAll('[data-conn-item]'));
+      const main = items.find((el) => {
+        const name = el.getAttribute('data-conn-name') || '';
+        return name === E2E_PG_CONN_NAME;
+      });
+      if (!main) return false;
+      const rect = main.getBoundingClientRect();
+      main.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+        }),
+      );
+      return true;
+    });
+    if (!connItem) return;
+    await browser.pause(400);
+
+    await clickMenuItemById('server-status');
+    await browser.waitUntil(
+      async () => (await $('body').getText()).includes(t('serverStatus.version')),
+      { timeout: 10000, timeoutMsg: 'Server status panel did not render' },
+    );
+    const refresh = await $(`button*=${t('serverStatus.refresh')}`);
+    await refresh.click();
+    await browser.pause(800);
+    const body = await $('body').getText();
+    expect(body).toContain(t('serverStatus.version'));
+  });
+
+  it('OPS-PL-001: process list table headers render specific columns', async () => {
+    // Open process list on the main connection
+    const connItem = await browser.execute(() => {
+      const items = Array.from(document.querySelectorAll('[data-conn-item]'));
+      const main = items.find((el) => {
+        const name = el.getAttribute('data-conn-name') || '';
+        return name === E2E_PG_CONN_NAME;
+      });
+      if (!main) return false;
+      const rect = main.getBoundingClientRect();
+      main.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+        }),
+      );
+      return true;
+    });
+    if (!connItem) return;
+    await browser.pause(400);
+
+    await clickMenuItemById('process-list');
+    await browser.waitUntil(
+      async () => {
+        const count = await browser.execute(
+          () => document.querySelectorAll('table th, [role="columnheader"]').length,
+        );
+        return count > 0;
+      },
+      { timeout: 10000, timeoutMsg: 'Process list table did not render' },
+    );
+    const body = await $('body').getText();
+    expect(body).toContain(t('processList.colPid'));
+    expect(body).toContain(t('processList.colUser'));
+    expect(body).toContain(t('processList.colState'));
+  });
+
+  it('OPS-PL-002: kill shows confirm then cancel (non-destructive)', async () => {
+    const killBtn = await $(`button*=${t('processList.kill')}`);
+    if (!(await killBtn.isExisting())) return;
+    await expect(killBtn).toBeDisplayed();
+    await killBtn.click();
+    await browser.pause(400);
+    const body = await $('body').getText();
+    expect(body).toContain(t('processList.killTitle'));
+    const cancel = await $('button*=取消');
+    if (await cancel.isExisting()) {
+      await cancel.click();
+      await browser.pause(300);
     }
   });
 });

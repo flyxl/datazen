@@ -1,6 +1,10 @@
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
-import { closeExtraWindows, openSeededPgConnectionWindow } from '../helpers.js';
+import {
+  closeExtraWindows,
+  openSeededPgConnectionWindow,
+  waitForNewConnectionButton,
+} from '../helpers.js';
 
 /**
  * Objects browser + Privileges panel Host UI paths (OBJ / PRV).
@@ -11,7 +15,7 @@ describe('对象浏览器与权限 (OBJ/PRV)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
+    await waitForNewConnectionButton(10000);
     await openSeededPgConnectionWindow(mainWindow);
   });
 
@@ -43,7 +47,7 @@ describe('对象浏览器与权限 (OBJ/PRV)', () => {
     await menu.waitForDisplayed({ timeout: 5000 });
     const text = await menu.getText();
     expect(text).toContain(t('objects.open'));
-    expect(text).toContain(t('objects.copyName'));
+    expect(await $("[data-testid='web-context-item-copy-name']").isExisting()).toBe(true);
     await browser.keys('Escape');
   });
 

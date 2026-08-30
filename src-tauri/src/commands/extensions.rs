@@ -1,13 +1,15 @@
 //! Runtime UI-extension IPC: list / install / remove / enable, manifest lookup,
 //! per-extension KV storage, and sandbox-constrained file reads.
 
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
 
-use super::error::{CmdExt, CommandError};
+use super::error::{resolve_override_path, CmdExt, CommandError, OVERRIDE_DISABLED_MSG};
 use super::AppState;
 use crate::extensions::{
     install::{install_from_dir, install_from_zip},
@@ -16,6 +18,85 @@ use crate::extensions::{
 
 /// Emitted after any install/remove/enable change so the frontend can refresh.
 pub const EXTENSIONS_CHANGED_EVENT: &str = "plugins:changed";
+
+const MAX_PICK_SESSIONS: usize = 8;
+
+struct ExtensionPickSession {
+    path: PathBuf,
+}
+
+static EXTENSION_PICK_SESSIONS: LazyLock<
+    tokio::sync::Mutex<HashMap<String, ExtensionPickSession>>,
+> = LazyLock::new(|| tokio::sync::Mutex::new(HashMap::new()));
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ExtensionPackageKind {
+    Zip,
+    Folder,
+}
+
+impl ExtensionPackageKind {
+    fn parse(raw: &str) -> Result<Self, CommandError> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "zip" | "file" => Ok(Self::Zip),
+            "folder" | "dir" | "directory" => Ok(Self::Folder),
+            other => Err(CommandError::Validation(format!(
+                "Invalid extension package kind: {other}"
+            ))),
+        }
+    }
+}
+
+fn package_label(path: &Path) -> String {
+    path.file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "package".into())
+}
+
+async fn insert_pick_session(path: PathBuf) -> Result<String, CommandError> {
+    let token = uuid::Uuid::new_v4().to_string();
+    let mut sessions = EXTENSION_PICK_SESSIONS.lock().await;
+    if sessions.len() >= MAX_PICK_SESSIONS {
+        return Err(CommandError::Validation(
+            "Too many pending extension picks".into(),
+        ));
+    }
+    sessions.insert(token.clone(), ExtensionPickSession { path });
+    Ok(token)
+}
+
+async fn take_pick_session(token: &str) -> Result<PathBuf, CommandError> {
+    let mut sessions = EXTENSION_PICK_SESSIONS.lock().await;
+    sessions
+        .remove(token)
+        .map(|session| session.path)
+        .ok_or_else(|| CommandError::NotFound("Extension pick session not found or expired".into()))
+}
+
+/// Native open dialog for a plugin `.zip` or unpacked directory. Path stays
+/// on the host; callers use an opaque pick token for the install step.
+pub(crate) async fn pick_extension_package_with_dialog(
+    app: &AppHandle,
+    kind: ExtensionPackageKind,
+) -> Result<Option<PathBuf>, CommandError> {
+    match kind {
+        ExtensionPackageKind::Zip => {
+            super::dialog::open_file(app, vec![("Plugin package".into(), vec!["zip".into()])]).await
+        }
+        ExtensionPackageKind::Folder => super::dialog::pick_folder(app).await,
+    }
+}
+
+async fn resolve_extension_package_path(
+    app: &AppHandle,
+    kind: ExtensionPackageKind,
+    override_path: Option<String>,
+) -> Result<Option<PathBuf>, CommandError> {
+    match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
+        Some(path) => Ok(Some(path)),
+        None => pick_extension_package_with_dialog(app, kind).await,
+    }
+}
 
 fn ensure_extension_exists(state: &AppState, id: &str) -> Result<LoadedExtension, CommandError> {
     state
@@ -353,20 +434,73 @@ pub async fn get_extension_manifest(
     get_extension_manifest_impl(&state, &id)
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionPackagePreview {
+    /// Opaque host-side handle for the picked package; required for install.
+    pub pick_token: String,
+    /// Basename of the picked zip or folder (no directory path).
+    pub package_label: String,
+    pub manifest: ExtensionManifest,
+}
+
+/// Open the native file/folder picker, validate the package, and return a
+/// preview plus an opaque pick token. The filesystem path never crosses the
+/// webview. E2E may pass `override_path` (webdriver builds only).
 #[tauri::command]
-pub async fn install_extension_from_path(
+pub async fn inspect_extension_package_with_dialog(
+    app: AppHandle,
+    package_kind: String,
+    override_path: Option<String>,
+) -> Result<Option<ExtensionPackagePreview>, CommandError> {
+    let kind = ExtensionPackageKind::parse(&package_kind)?;
+    let Some(source) = resolve_extension_package_path(&app, kind, override_path).await? else {
+        return Ok(None);
+    };
+    if !source.exists() {
+        return Err(CommandError::NotFound(format!(
+            "extension package not found: {}",
+            source.display()
+        )));
+    }
+
+    let manifest = inspect_extension_package_impl(source.to_string_lossy().into_owned()).await?;
+    let pick_token = insert_pick_session(source.clone()).await?;
+    Ok(Some(ExtensionPackagePreview {
+        pick_token,
+        package_label: package_label(&source),
+        manifest,
+    }))
+}
+
+/// Install a package previously picked via [`inspect_extension_package_with_dialog`].
+/// Production callers pass `pick_token` only; E2E may pass `override_path`
+/// (webdriver builds only) to bypass the opaque session.
+#[tauri::command]
+pub async fn install_extension(
     app: AppHandle,
     state: State<'_, AppState>,
-    path: String,
+    pick_token: Option<String>,
+    override_path: Option<String>,
 ) -> Result<ExtensionSummary, CommandError> {
+    let path = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
+        Some(path) => path.to_string_lossy().into_owned(),
+        None => {
+            let Some(token) = pick_token else {
+                return Err(CommandError::Validation(
+                    "No extension package selected".into(),
+                ));
+            };
+            take_pick_session(&token)
+                .await?
+                .to_string_lossy()
+                .into_owned()
+        }
+    };
+
     let summary = install_extension_from_path_impl(&state, path).await?;
     let _ = app.emit(EXTENSIONS_CHANGED_EVENT, ());
     Ok(summary)
-}
-
-#[tauri::command]
-pub async fn inspect_extension_package(path: String) -> Result<ExtensionManifest, CommandError> {
-    inspect_extension_package_impl(path).await
 }
 
 #[tauri::command]
@@ -836,5 +970,56 @@ mod tests {
         assert_eq!(json["themes"][0]["modes"][0], "dark");
         // description is None in the manifest → omitted from the payload.
         assert!(json.get("description").is_none());
+    }
+
+    #[test]
+    fn extension_package_kind_parses_zip_and_folder_aliases() {
+        assert_eq!(
+            ExtensionPackageKind::parse("zip").unwrap(),
+            ExtensionPackageKind::Zip
+        );
+        assert_eq!(
+            ExtensionPackageKind::parse("folder").unwrap(),
+            ExtensionPackageKind::Folder
+        );
+        assert!(ExtensionPackageKind::parse("bogus").is_err());
+    }
+
+    #[tokio::test]
+    async fn pick_session_is_consumed_once_on_install_path_resolution() {
+        let tmp = TempDir::new().unwrap();
+        let token = insert_pick_session(tmp.path().to_path_buf()).await.unwrap();
+        let resolved = take_pick_session(&token).await.unwrap();
+        assert_eq!(resolved, tmp.path());
+        assert!(take_pick_session(&token).await.is_err());
+    }
+
+    #[test]
+    fn merged_extension_commands_gate_override_path_in_production() {
+        const SOURCE: &str = include_str!("extensions.rs");
+        const LIB_RS: &str = include_str!("../lib.rs");
+
+        for gone in [
+            "commands::install_extension_from_path,",
+            "commands::inspect_extension_package,",
+        ] {
+            assert!(
+                !LIB_RS.contains(gone),
+                "`{gone}` must no longer be registered"
+            );
+        }
+        for kept in [
+            "commands::inspect_extension_package_with_dialog,",
+            "commands::install_extension,",
+        ] {
+            assert!(LIB_RS.contains(kept), "`{kept}` must stay registered");
+        }
+
+        let call = "resolve_override_path(override_path";
+        let gated = SOURCE.matches(call).count();
+        assert_eq!(
+            gated, 3,
+            "inspect resolver + inspect + install must gate override_path through the shared helper"
+        );
     }
 }

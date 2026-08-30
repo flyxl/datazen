@@ -135,6 +135,21 @@ async function clickMenuItem(label: string) {
   await browser.pause(500);
 }
 
+/** Click a specific menu item by its id (data-testid). */
+async function clickMenuItemById(id: string) {
+  const item = await $(`[data-testid="web-context-item-${id}"]`);
+  if (await item.isExisting()) {
+    await item.click();
+    await browser.pause(500);
+  }
+}
+
+/** Check if a menu item with given id exists. */
+async function hasMenuItemId(id: string): Promise<boolean> {
+  const item = await $(`[data-testid="web-context-item-${id}"]`);
+  return item.isExisting();
+}
+
 /** Check if a web context menu is displayed with at least one item. */
 async function isMenuDisplayed(): Promise<boolean> {
   const menu = await $('[data-testid="web-context-menu"]');
@@ -231,15 +246,15 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await rightClick('[data-conn-item]');
       const text = await getMenuText();
       expect(text).toContain(t('main.ctx.openConnection'));
-      expect(text).toContain(t('main.ctx.editConnection'));
-      expect(text).toContain(t('main.ctx.deleteConnection'));
-      expect(text).toContain(t('main.ctx.copyName'));
+      expect(await hasMenuItemId('edit-connection')).toBe(true);
+      expect(await hasMenuItemId('delete-connection')).toBe(true);
+      expect(await hasMenuItemId('copy-name')).toBe(true);
       await dismissMenu();
     });
 
     it('NCM-002: 复制名称应复制到剪贴板', async () => {
       await rightClick('[data-conn-item]');
-      await clickMenuItem(t('main.ctx.copyName'));
+      await clickMenuItemById('copy-name');
       await browser.pause(300);
 
       const clip = await browser.execute(() => {
@@ -281,7 +296,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await rightClick('[data-tree-node="db"]');
       const text = await getMenuText();
       expect(text).toContain(t('connWin.refresh'));
-      expect(text).toContain(t('connWin.newQuery'));
+      expect(await hasMenuItemId('new-query')).toBe(true);
       expect(text).toContain(t('schemaTree.copyDatabaseName'));
       expect(text).toContain(t('schemaTree.viewErDiagram'));
       await dismissMenu();
@@ -310,7 +325,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       });
 
       await rightClick('[data-tree-node="db"]');
-      await clickMenuItem(t('connWin.newQuery'));
+      await clickMenuItemById('new-query');
       await browser.pause(1000);
 
       const bodyText = await $('body').getText();
@@ -350,7 +365,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await rightClick('[data-tree-node="schema"]');
       const text = await getMenuText();
       expect(text).toContain(t('connWin.refresh'));
-      expect(text).toContain(t('connWin.newQuery'));
+      expect(await hasMenuItemId('new-query')).toBe(true);
       expect(text).toContain(t('schemaTree.viewErDiagram'));
       await dismissMenu();
     });
@@ -362,7 +377,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
         return;
       }
       await rightClick('[data-tree-node="schema"]');
-      await clickMenuItem(t('schemaTree.copyName'));
+      await clickMenuItemById('copy-name');
       await browser.pause(300);
 
       const clip = await browser.execute(() => {
@@ -562,7 +577,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
         return;
       }
       const text = await getMenuText();
-      expect(text).toContain(t('connWin.newTable'));
+      expect(await hasMenuItemId('new-table')).toBe(true);
       await dismissMenu();
     });
   });
@@ -591,8 +606,8 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       }
       const text = await getMenuText();
       expect(text).toContain(t('schemaTree.openTable'));
-      expect(text).toContain(t('schemaTree.copyName'));
-      expect(text).toContain(t('connWin.copyDDL'));
+      expect(await hasMenuItemId('copy-name')).toBe(true);
+      expect(await hasMenuItemId('copy-ddl')).toBe(true);
       await dismissMenu();
     });
 
@@ -602,7 +617,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       if (!menuVisible) {
         await rightClick('[data-tree-node="table"]');
       }
-      await clickMenuItem(t('schemaTree.copyName'));
+      await clickMenuItemById('copy-name');
       await browser.pause(500);
 
       const clip = await browser.execute(() => {
@@ -622,7 +637,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       if (!menuVisible) {
         await rightClick('[data-tree-node="table"]');
       }
-      await clickMenuItem(t('connWin.copyDDL'));
+      await clickMenuItemById('copy-ddl');
       await browser.pause(2000);
 
       const clip = await browser.execute(() => {
@@ -716,8 +731,8 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await rightClick('[data-tree-node="view"]');
       const text = await getMenuText();
       expect(text).toContain(t('schemaTree.open'));
-      expect(text).toContain(t('schemaTree.copyName'));
-      expect(text).toContain(t('connWin.copyDDL'));
+      expect(await hasMenuItemId('copy-name')).toBe(true);
+      expect(await hasMenuItemId('copy-ddl')).toBe(true);
       await dismissMenu();
     });
   });

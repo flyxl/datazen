@@ -402,3 +402,7 @@ unset + 其它             → Keyring（失败可回退已有 `.key`）
 - 首次启动随机生成主密钥并写入当前后端；已有 `.key` 时可迁移进钥匙串后删除文件。
 - 应用数据 ZIP **不包含** `.key`；跨机恢复密文需另行备份主密钥（设置流程可走 `save_encryption_key_with_dialog`）。
 - 实现入口：`Store::get_or_create_encryption_key` → `key_store::load_or_create_master_key`。
+
+### 1.3 查询历史（明文）
+
+`{appData}/history.sqlite`（`history_db.rs`）持久化 SQL 查询与 Workflow 执行历史。**SQL 文本、错误信息与库/schema 上下文以明文存储**，未像 `connections.json` / `ai_config.enc` 那样 AES 加密。语句中可能含字面量或片段性敏感数据；备份/同步 app data 目录时需视同敏感审计日志。日志路径已用 `log_redact` 脱敏；history 落盘加密留作后续加固项。
