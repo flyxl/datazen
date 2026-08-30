@@ -156,14 +156,21 @@ pub(crate) async fn cancel_query_impl(
         .get_session_config(&db_session_id)
         .await
         .cmd_err("cancel_query")?;
-    if let Some(capabilities) = state
+    match state
         .driver_registry
         .get_capabilities(&config.database_type)
         .await
     {
-        if !capabilities.supports_cancel_query {
+        Some(capabilities) if capabilities.supports_cancel_query => {}
+        Some(_) => {
             return Err(CommandError::Validation(
                 "UNSUPPORTED_OPERATION:cancel_query:query cancellation is not supported by this driver"
+                    .into(),
+            ));
+        }
+        None => {
+            return Err(CommandError::Validation(
+                "UNSUPPORTED_OPERATION:cancel_query:query cancellation capability is unknown"
                     .into(),
             ));
         }
@@ -563,6 +570,17 @@ mod tests {
             ..Default::default()
         };
         let test = TestAppState::with_options(opts).await;
+        test.registry
+            .register_test_driver_with_capabilities(
+                "postgres",
+                test.mock.clone(),
+                DriverCapabilities {
+                    supports_cancel_query: true,
+                    supports_explain: true,
+                    supports_streaming_results: true,
+                },
+            )
+            .await;
         let (_, conn_id) = test.save_and_connect("explain-cfg").await;
 
         let plan = get_explain_impl(&test.state, conn_id.clone(), "SELECT 1".into(), None)
@@ -571,6 +589,31 @@ mod tests {
         assert_eq!(plan.plan_text, "Seq Scan");
 
         cancel_query_impl(&test.state, conn_id).await.unwrap();
+        assert_eq!(test.mock.cancel_query_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn cancel_query_rejects_when_driver_capability_is_unknown_without_calling_driver() {
+        let test = TestAppState::with_options(MockDriverOptions {
+            cancel_error: Some("legacy driver cancellation must not be called".into()),
+            ..Default::default()
+        })
+        .await;
+        let (_, conn_id) = test.save_and_connect("cancel-unknown").await;
+
+        assert!(test
+            .registry
+            .get_capabilities(&"postgres".to_string())
+            .await
+            .is_none());
+        let error = cancel_query_impl(&test.state, conn_id).await.unwrap_err();
+        assert!(matches!(
+            error,
+            super::super::error::CommandError::Validation(message)
+                if message.starts_with("UNSUPPORTED_OPERATION:cancel_query:")
+                    && message.ends_with("capability is unknown")
+        ));
+        assert_eq!(test.mock.cancel_query_calls(), 0);
     }
 
     #[tokio::test]
@@ -595,6 +638,7 @@ mod tests {
             super::super::error::CommandError::Validation(message)
                 if message.starts_with("UNSUPPORTED_OPERATION:cancel_query:")
         ));
+        assert_eq!(test.mock.cancel_query_calls(), 0);
     }
 
     #[tokio::test]
@@ -623,6 +667,7 @@ mod tests {
             super::super::error::CommandError::Driver(DriverError::Unsupported(message))
                 if message == "backend cancellation is unavailable"
         ));
+        assert_eq!(test.mock.cancel_query_calls(), 1);
     }
 
     #[tokio::test]

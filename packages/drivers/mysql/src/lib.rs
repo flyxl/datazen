@@ -24,7 +24,9 @@ impl DatabaseDriverFactory for MysqlFactory {
         true
     }
     fn supports_cancel_query(&self) -> bool {
-        true
+        // cancel_query scans the instance process list and cannot identify the
+        // query belonging to the current DataZen session.
+        false
     }
 }
 datazen_driver_api::register_driver!(&MysqlFactory);
@@ -41,7 +43,7 @@ impl DatabaseDriverFactory for MariadbFactory {
         true
     }
     fn supports_cancel_query(&self) -> bool {
-        true
+        false
     }
 }
 datazen_driver_api::register_driver!(&MariadbFactory);
@@ -58,7 +60,7 @@ impl DatabaseDriverFactory for DorisFactory {
         true
     }
     fn supports_cancel_query(&self) -> bool {
-        true
+        false
     }
 }
 datazen_driver_api::register_driver!(&DorisFactory);
@@ -78,7 +80,7 @@ impl DatabaseDriverFactory for StarrocksFactory {
         true
     }
     fn supports_cancel_query(&self) -> bool {
-        true
+        false
     }
 }
 datazen_driver_api::register_driver!(&StarrocksFactory);
@@ -98,7 +100,7 @@ impl DatabaseDriverFactory for ManticoreFactory {
         true
     }
     fn supports_cancel_query(&self) -> bool {
-        true
+        false
     }
 }
 datazen_driver_api::register_driver!(&ManticoreFactory);
@@ -118,7 +120,32 @@ impl DatabaseDriverFactory for ObOracleFactory {
         true
     }
     fn supports_cancel_query(&self) -> bool {
-        true
+        false
     }
 }
 datazen_driver_api::register_driver!(&ObOracleFactory);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mysql_family_does_not_advertise_broad_cancellation_as_supported() {
+        let factories: [&dyn DatabaseDriverFactory; 6] = [
+            &MysqlFactory,
+            &MariadbFactory,
+            &DorisFactory,
+            &StarrocksFactory,
+            &ManticoreFactory,
+            &ObOracleFactory,
+        ];
+
+        for factory in factories {
+            assert!(
+                !factory.supports_cancel_query(),
+                "{} must not advertise imprecise query cancellation",
+                factory.driver_id()
+            );
+        }
+    }
+}
