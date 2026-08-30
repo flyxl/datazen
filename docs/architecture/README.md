@@ -167,7 +167,8 @@ Connection 变化后重新 discovery；没有 Step override 时使用 Workflow �
 | [服务层](backend/services.md) | ConnectionManager、QueryExecutor、DbTools |
 | [持久化存储](backend/store.md) | AES-256-GCM；主密钥 keychain / `.key` 双后端 |
 | [IPC 命令层](backend/commands.md) | Tauri Commands、AppState、CommandError |
-| [运行时主题包](backend/theme.md) | 本地 ZIP、`--c-*` / `--dt-*` token、与驱动独立 |
+| [运行时主题](backend/theme.md) | 扩展主题贡献、`--c-*` / `--dt-*` token、首屏背景缓存 |
+| [运行时插件系统](backend/extensions.md) | Extensions：UI 页面 + 主题贡献、沙箱 iframe 桥、安装与权限 |
 | [AI 模块](backend/ai.md) | AiProvider、Provider protocol、PromptResolver |
 | [MCP 模块](backend/mcp.md) | MCP Server、MCP Client、双运行模式 |
 | [Workflow 模块](backend/workflow.md) | YAML Workflow、Command runtime、Connection inheritance、Legacy Query、执行历史 |

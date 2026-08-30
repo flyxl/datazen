@@ -66,7 +66,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
   it('点击表名应加载数据并显示行 (TD-001)', async () => {
     await clickTableInSidebar(TEST_TABLE);
     await browser.pause(2000);
-    await switchSubTab(t('connWin.data'));
+    await switchSubTab('data');
 
     await browser.waitUntil(
       async () => {
@@ -236,7 +236,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
   it('TD-DEL-001: 选中行后应显示删除行按钮', async () => {
     await clickTableInSidebar(TEST_TABLE);
     await browser.pause(1500);
-    await switchSubTab(t('connWin.data'));
+    await switchSubTab('data');
     await browser.waitUntil(
       async () => (await $('body').getText()).includes(t('common.selectAll')),
       { timeout: 15000, timeoutMsg: 'Timed out waiting for table data' },
@@ -263,7 +263,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     await browser.pause(1500);
     await clickTableInSidebar(emptyTable);
     await browser.pause(1500);
-    await switchSubTab(t('connWin.data'));
+    await switchSubTab('data');
     await browser.pause(1000);
     const body = await $('body').getText();
     const ok =

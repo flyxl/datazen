@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import { createRef } from 'react';
 import {
   ConnectionNavigatorTree,

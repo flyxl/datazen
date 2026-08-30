@@ -65,6 +65,21 @@ async function dismissMenu() {
   await browser.pause(300);
 }
 
+/** Click a context menu item by its id (data-testid). */
+async function clickMenuItemById(id: string) {
+  const item = await $(`[data-testid="web-context-item-${id}"]`);
+  if (await item.isExisting()) {
+    await item.click();
+    await browser.pause(500);
+  }
+}
+
+/** Check if a menu item with given id exists. */
+async function hasMenuItemId(id: string): Promise<boolean> {
+  const item = await $(`[data-testid="web-context-item-${id}"]`);
+  return item.isExisting();
+}
+
 /** 面板标题/指标是否显示在当前页面。 */
 async function bodyContains(text: string): Promise<boolean> {
   return (await $('body').getText()).includes(text);
@@ -147,22 +162,22 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
   it('OPS-PROC-001: 右键连接菜单含「进程列表 / 服务器状态」', async () => {
     await rightClickConn();
     const text = await menuText();
-    expect(text).toContain(t('main.ctx.processList'));
-    expect(text).toContain(t('main.ctx.serverStatus'));
+    expect(await hasMenuItemId('process-list')).toBe(true);
+    expect(await hasMenuItemId('server-status')).toBe(true);
     await dismissMenu();
   });
 
   it('OPS-PROC-002: 打开进程列表面板并出现至少一行', async () => {
     await rightClickConn();
-    await clickMenuItem(t('main.ctx.processList'));
+    await clickMenuItemById('process-list');
     await browser.pause(1500);
-    expect(await bodyContains(t('processList.title'))).toBe(true);
+    expect(await $("[data-testid='process-list-view']").isExisting()).toBe(true);
     expect(await anyTableRows()).toBe(true);
   });
 
   it('OPS-PROC-003: 服务器仪表盘子标签（仪表盘 ⇄ 状态变量 ⇄ 服务器详情）展示关键内容与连接标识', async () => {
     await rightClickConn();
-    await clickMenuItem(t('main.ctx.serverStatus'));
+    await clickMenuItemById('server-status');
     await browser.pause(1500);
     // 工具面板内显示当前连接名（Req#4）
     expect(await bodyContains(E2E_PG_CONN_NAME)).toBe(true);
@@ -201,7 +216,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
 
     // 切到进程列表面板
     await rightClickConn();
-    await clickMenuItem(t('main.ctx.processList'));
+    await clickMenuItemById('process-list');
     await browser.pause(1500);
 
     // 先确认目标 pid 出现在面板中
@@ -284,7 +299,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
     if (!connItem) return;
     await browser.pause(400);
 
-    await clickMenuItem(t('main.ctx.serverStatus'));
+    await clickMenuItemById('server-status');
     await browser.waitUntil(
       async () => (await $('body').getText()).includes(t('serverStatus.version')),
       { timeout: 10000, timeoutMsg: 'Server status panel did not render' },
@@ -319,7 +334,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
     if (!connItem) return;
     await browser.pause(400);
 
-    await clickMenuItem(t('main.ctx.processList'));
+    await clickMenuItemById('process-list');
     await browser.waitUntil(
       async () => {
         const count = await browser.execute(

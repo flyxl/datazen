@@ -142,7 +142,7 @@ export function ProcessListView({
   const rows = (result?.rows ?? []) as Value[][];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="process-list-view">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-edge px-3">
         <span className="text-xs font-medium text-fg">{t('common.processList')}</span>
         <span className="truncate text-xs text-fg-muted" title={connectionName}>

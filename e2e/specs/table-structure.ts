@@ -45,12 +45,12 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
   // ── 新建表 ─────────────────────────────────────────────────────
 
   it('应显示新建表按钮 (TS-001)', async () => {
-    const newTableBtn = await $(`button*=${t('connWin.newTable')}`);
+    const newTableBtn = await $("[data-testid='content-toolbar-new-table']");
     await expect(newTableBtn).toBeDisplayed();
   });
 
   it('点击新建表应打开表结构编辑器 (TS-001)', async () => {
-    const newTblBtn = await $(`button*=${t('connWin.newTable')}`);
+    const newTblBtn = await $("[data-testid='content-toolbar-new-table']");
     await newTblBtn.click();
     await browser.pause(1000);
 
@@ -82,15 +82,10 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
   });
 
   it('应能添加新列 (TS-003)', async () => {
-    // Look for the add column button (has Plus icon)
-    const addBtns = await $$('button');
-    for (const btn of addBtns) {
-      const text = await btn.getText();
-      if (text.includes(t('structEditor.addColumn')) || text.includes('+')) {
-        await btn.click();
-        await browser.pause(300);
-        break;
-      }
+    const addColBtn = await $("[data-testid='struct-editor-add-column']");
+    if (await addColBtn.isDisplayed()) {
+      await addColBtn.click();
+      await browser.pause(300);
     }
 
     // Should now have more column_name inputs
@@ -107,7 +102,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
       const body = await $('body').getText();
       const hasCreateSQL = body.toUpperCase().includes('CREATE TABLE');
       expect(hasCreateSQL).toBe(true);
-      expect(body).toContain(t('structEditor.sqlPreview'));
+      expect(await $("[data-testid='struct-plan-preview']").isExisting()).toBe(true);
 
       // Close preview if there's a close button
       const closeBtn = await $(`button*=${t('common.close')}`);
@@ -119,7 +114,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
   });
 
   it('新建表编辑器应显示创建表按钮 (TS-004b)', async () => {
-    const createBtn = await $(`button*=${t('structEditor.createTable')}`);
+    const createBtn = await $("[data-testid='struct-editor-execute']");
     await expect(createBtn).toBeDisplayed();
   });
 
@@ -152,7 +147,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
   it('结构标签应显示表的列信息 (TS-006)', async () => {
     await clickTableInSidebar(TEST_TABLE);
     await browser.pause(1500);
-    await switchSubTab(t('connWin.structure'));
+    await switchSubTab('structure');
     await browser.pause(1500);
 
     const body = await $('body').getText();
@@ -165,7 +160,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
     const body = await $('body').getText();
     // Either shows "编辑表结构" button or at minimum displays column types
     const hasStructureInfo =
-      body.includes(t('connWin.editTableStructure')) ||
+      (await $("[data-testid='struct-editor-title']").isExisting()) ||
       body.includes('integer') ||
       body.includes('varchar') ||
       body.includes('NOT NULL');
@@ -173,23 +168,22 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
   });
 
   it('编辑表结构应在结构子标签内打开并显示返回 (TS-006b)', async () => {
-    const editBtn = await $(`button*=${t('structView.editStructure')}`);
+    const editBtn = await $("[data-testid='struct-edit-structure']");
     await editBtn.waitForDisplayed({
       timeout: 10000,
-      timeoutMsg: `Expected "${t('structView.editStructure')}" button on structure tab`,
+      timeoutMsg: 'Expected struct-edit-structure button on structure tab',
     });
     await editBtn.click();
     await browser.pause(1000);
-    const saveBtn = await $(`button*=${t('structEditor.saveChanges')}`);
+    const saveBtn = await $("[data-testid='struct-editor-execute']");
     await expect(saveBtn).toBeDisplayed();
     // Inline edit — no new primary tab titled "编辑结构 · …"
-    const body = await $('body').getText();
-    expect(body).toContain(t('structEditor.editTable'));
+    await expect($("[data-testid='struct-editor-title']")).toExist();
     const exportBtn = await $('[data-testid="struct-editor-export-structure"]');
     await expect(exportBtn).toBeDisplayed();
     expect(await exportBtn.getText()).toContain(t('structEditor.exportStructure'));
     // Native save dialog is not automatable — assert control only.
-    const backBtn = await $(`button*=${t('common.back')}`);
+    const backBtn = await $("[data-testid='struct-editor-back']");
     await expect(backBtn).toBeDisplayed();
     await backBtn.click();
     await browser.pause(400);
@@ -197,12 +191,12 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
   });
 
   it('结构编辑保存新增列后应反映在结构视图 (TS-009)', async () => {
-    const editBtn = await $(`button*=${t('structView.editStructure')}`);
+    const editBtn = await $("[data-testid='struct-edit-structure']");
     await editBtn.waitForDisplayed({ timeout: 10000 });
     await editBtn.click();
     await browser.pause(800);
 
-    const addCol = await $(`button*=${t('structEditor.addColumn')}`);
+    const addCol = await $("[data-testid='struct-editor-add-column']");
     await addCol.waitForDisplayed({ timeout: 8000 });
     await addCol.click();
     await browser.pause(400);
@@ -217,17 +211,17 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
     await target.setValue('e2e_extra_col');
     await browser.pause(300);
 
-    const saveBtn = await $(`button*=${t('structEditor.saveChanges')}`);
+    const saveBtn = await $("[data-testid='struct-editor-execute']");
     await saveBtn.click();
     await browser.pause(2500);
 
-    const backBtn = await $(`button*=${t('common.back')}`);
+    const backBtn = await $("[data-testid='struct-editor-back']");
     if (await backBtn.isExisting()) {
       await backBtn.click();
       await browser.pause(600);
     }
 
-    await switchSubTab(t('connWin.structure'));
+    await switchSubTab('structure');
     await browser.pause(1200);
     const body = await $('body').getText();
     expect(body).toContain('e2e_extra_col');
@@ -240,7 +234,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
   });
 
   it('DDL 标签应显示建表语句 (TS-008)', async () => {
-    await switchSubTab('DDL');
+    await switchSubTab('ddl');
     await browser.pause(1500);
     const body = (await $('body').getText()).toUpperCase();
     expect(body).toContain('CREATE');

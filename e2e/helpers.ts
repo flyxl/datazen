@@ -100,7 +100,7 @@ export async function closeNewConnectionDialogFromUi() {
 export async function expandNewConnectionAdvanced() {
   const ssh = await $('[data-testid="new-conn-ssh-tunnel"]');
   if (await ssh.isDisplayed().catch(() => false)) return;
-  const advBtn = await $(`button*=${t('newConn.advanced')}`);
+  const advBtn = await $('[data-testid="new-conn-advanced-toggle"]');
   await advBtn.waitForDisplayed({ timeout: 8000 });
   await advBtn.click();
   await browser.pause(300);
@@ -814,6 +814,8 @@ async function executeSqlInEditor(sql: string) {
   await setEditorContent(sql);
   // Stable E2E locator (vite-gated data-testid, see src/lib/tid.ts) — survives i18n switching.
   const execBtn = await $('[data-testid="editor-execute-button"]');
+  const queryPanel = await $('[data-testid="query-panel"]');
+  const previousExecutionSeq = Number((await queryPanel.getAttribute('data-execution-seq')) ?? '0');
   const prevTotal = await browser.execute(() => {
     const spans = Array.from(document.querySelectorAll('span'));
     return spans.find((s) => s.textContent?.includes('总耗时'))?.textContent ?? '';
@@ -856,6 +858,8 @@ async function executeSqlInEditor(sql: string) {
       ) {
         return true;
       }
+      const executionSeq = Number((await queryPanel.getAttribute('data-execution-seq')) ?? '0');
+      if (executionSeq > previousExecutionSeq) return true;
       const stop = await $('[data-testid="editor-stop-button"]');
       if ((await stop.isExisting()) && (await stop.isDisplayed().catch(() => false))) {
         return false;
@@ -1056,6 +1060,35 @@ export async function expandSchemaTableCategory(schemaName = 'public') {
   await browser.pause(800);
 }
 
+/** Expand db → schema → a specific object category in the navigator tree. */
+export async function expandSchemaCategory(catId: string, schemaName = 'public') {
+  await browser.execute(
+    (category: string, schema: string) => {
+      const isCollapsed = (el: Element) => {
+        const cls = el.querySelector('svg')?.getAttribute('class') ?? '';
+        return cls.includes('chevron-right');
+      };
+      const expandIfCollapsed = (el: Element | null | undefined) => {
+        if (el instanceof HTMLElement && isCollapsed(el)) el.click();
+      };
+      expandIfCollapsed(document.querySelector('[data-tree-node="db"]'));
+      const schemas = Array.from(document.querySelectorAll('[data-tree-node="schema"]'));
+      const target =
+        schemas.find((el) => el.textContent?.toLowerCase().includes(schema.toLowerCase())) ??
+        schemas[0];
+      expandIfCollapsed(target);
+      for (const cat of document.querySelectorAll(
+        `[data-tree-node="category"][data-cat-id="${category}"]`,
+      )) {
+        expandIfCollapsed(cat);
+      }
+    },
+    catId,
+    schemaName,
+  );
+  await browser.pause(800);
+}
+
 async function setNavigatorSearch(query: string) {
   const aside = await connectionNavigatorAside();
   const input = await aside.$('input');
@@ -1145,6 +1178,7 @@ export async function clickTableInSidebar(tableName: string) {
         }, tableName);
         if (clicked) return true;
         await expandSchemaTableCategory();
+        await expandSchemaCategory('views');
         await scrollSchemaTree(scrollPass);
         scrollPass++;
         return false;
@@ -1258,9 +1292,9 @@ export async function clickFirstTable() {
   return name;
 }
 
-/** Switch to a sub-tab inside a table panel (数据/结构/索引/外键/DDL). */
-export async function switchSubTab(label: string) {
-  const tab = await $(`button*=${label}`);
+/** Switch to a sub-tab inside a table panel by id (data/structure/indexes/foreignKeys/ddl). */
+export async function switchSubTab(tabId: string) {
+  const tab = await $(`[data-testid="sub-tab-${tabId}"]`);
   await tab.click();
   await browser.pause(500);
 }

@@ -1098,6 +1098,9 @@ function syncPluginCapabilities(plugins, registry) {
   for (const name of effective) {
     const tp = registry[name]?.tauriPlugin;
     if (!tp?.id) continue;
+    // Skip plugins with no commands — they don't generate an ACL permissions
+    // manifest, so referencing `<id>:default` would fail at build time.
+    if (!Array.isArray(tp.commands) || tp.commands.length === 0) continue;
     const perm = `${tp.id}:default`;
     if (!cap.permissions.includes(perm) && !added.includes(perm)) {
       added.push(perm);

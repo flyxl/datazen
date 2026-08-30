@@ -43,7 +43,7 @@ export async function runHcData(ctx: ContractConnCtx) {
   await seedSql(ctx, dataSeedSql(ctx.fixture, table, 60));
   await clickTableInSidebar(table);
   await browser.pause(1200);
-  await switchSubTab(t('connWin.data'));
+  await switchSubTab('data');
   await browser.waitUntil(async () => (await $('body').getText()).includes('user_'), {
     timeout: 15000,
     timeoutMsg: `${ctx.fixture.id} HC-DATA load`,
@@ -59,7 +59,7 @@ export async function runHcFilter(ctx: ContractConnCtx) {
   await seedSql(ctx, filterSeedSql(ctx.fixture, table));
   await clickTableInSidebar(table);
   await browser.pause(1200);
-  await switchSubTab(t('connWin.data'));
+  await switchSubTab('data');
   await browser.waitUntil(async () => (await $('body').getText()).includes('alpha'), {
     timeout: 15000,
     timeoutMsg: `${ctx.fixture.id} HC-FILTER load`,

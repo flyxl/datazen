@@ -125,6 +125,7 @@ export function NavigatorTreeRow({
       return (
         <div
           data-group-header
+          data-group-name={row.groupName}
           className="flex cursor-pointer items-center gap-1.5 px-2 py-1 hover:bg-surface-raised/50"
           onClick={() => toggleGroup(row.groupName)}
           onContextMenu={(e) => handleGroupContextMenu(e, row.groupName)}

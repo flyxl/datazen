@@ -247,7 +247,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   it('结构 tab 应显示 MySQL 列信息 (MY-012)', async () => {
     await clickTableInSidebar(TABLE_BASIC);
     await browser.pause(1500);
-    await switchSubTab(t('connWin.structure'));
+    await switchSubTab('structure');
     await browser.pause(1500);
 
     const body = await $('body').getText();
@@ -263,7 +263,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   it('索引 tab 应显示 MySQL 索引 (MY-013)', async () => {
     await clickTableInSidebar(TABLE_IDX);
     await browser.pause(1500);
-    await switchSubTab(t('connWin.indexes'));
+    await switchSubTab('indexes');
     await browser.pause(1500);
 
     const body = await $('body').getText();
@@ -284,7 +284,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   it('DDL tab 应显示 MySQL CREATE TABLE 语句 (MY-015)', async () => {
     await clickTableInSidebar(TABLE_BASIC);
     await browser.pause(1500);
-    await switchSubTab('DDL');
+    await switchSubTab('ddl');
     await browser.pause(1500);
 
     const body = await $('body').getText();
@@ -354,7 +354,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
     // Click the table to load data
     await clickTableInSidebar(TABLE_BASIC);
     await browser.pause(2000);
-    await switchSubTab(t('connWin.data'));
+    await switchSubTab('data');
     await browser.pause(1000);
 
     // Should show pagination info (more than 50 rows total)

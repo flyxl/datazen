@@ -104,6 +104,7 @@ export function StructureView({ dbSessionId, tableName, onEditStructure }: Struc
           <Button
             variant="secondary"
             className="h-7 gap-1 px-2 text-xs"
+            data-testid="struct-edit-structure"
             onClick={() => onEditStructure(tableName)}
           >
             <Pencil className="h-3.5 w-3.5" />

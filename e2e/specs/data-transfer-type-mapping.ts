@@ -10,7 +10,7 @@ import {
   closeExtraWindows,
   invokeBackend,
   openDataTransferWindow,
-  selectDzOption,
+  selectDzOptionInWrap,
   withSafeModeOff,
   disconnectBackend,
 } from '../helpers.js';
@@ -143,8 +143,8 @@ describe('数据传输类型映射 Preview DDL (DT-TYPE-MAP)', () => {
 
   it('DT-TYPE-001: 映射 VARCHAR(64)/DATETIME 应出现在 Preview CREATE TABLE', async () => {
     await openDataTransferWindow();
-    await selectDzOption(t('transfer.pickConnection'), SRC_NAME);
-    await selectDzOption(t('transfer.pickConnection'), TGT_NAME);
+    await selectDzOptionInWrap('data-transfer-source', SRC_NAME);
+    await selectDzOptionInWrap('data-transfer-target', TGT_NAME);
     await browser.pause(1500);
 
     await clickNext('dt-type-endpoints');

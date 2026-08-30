@@ -8,7 +8,7 @@ import {
   closeExtraWindows,
   invokeBackend,
   openDataTransferWindow,
-  selectDzOption,
+  selectDzOptionInWrap,
   withSafeModeOff,
 } from '../helpers.js';
 
@@ -134,8 +134,8 @@ describe('MySQL→PG 类型映射 Preview DDL (DT-TYPE-MYSQL-PG)', () => {
 
   it('DT-TYPE-MYSQL-PG-001: TINYINT/JSON/DATETIME 应映射到 PG Preview DDL', async () => {
     await openDataTransferWindow();
-    await selectDzOption(t('transfer.pickConnection'), SRC_NAME);
-    await selectDzOption(t('transfer.pickConnection'), TGT_NAME);
+    await selectDzOptionInWrap('data-transfer-source', SRC_NAME);
+    await selectDzOptionInWrap('data-transfer-target', TGT_NAME);
     await browser.pause(1500);
     await clickNext('dt-mp-type-endpoints');
 

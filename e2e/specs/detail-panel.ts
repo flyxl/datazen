@@ -65,7 +65,7 @@ describe('详情面板 (DP-001~DP-004)', () => {
   it('打开表数据后应看到详情面板的折叠按钮 (DP-001)', async () => {
     await clickTableInSidebar(TEST_TABLE);
     await browser.pause(2000);
-    await switchSubTab(t('connWin.data'));
+    await switchSubTab('data');
 
     await browser.waitUntil(async () => (await $('body').getText()).includes('Alice'), {
       timeout: 15000,

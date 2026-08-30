@@ -13,7 +13,7 @@ import {
   invokeBackend,
   openDataTransferWindow,
   queryScalar,
-  selectDzOption,
+  selectDzOptionInWrap,
   withSafeModeOff,
   type QueryResultPayload,
 } from '../../helpers.js';
@@ -146,8 +146,8 @@ describe('数据传输 PG→MySQL 跨方言旅程 (DT-PG-MYSQL-JOURNEY)', () => 
 
   it('Step 2: 选择 PG 源与 MySQL 目标', async () => {
     await openDataTransferWindow();
-    await selectDzOption(t('transfer.pickConnection'), SRC_NAME);
-    await selectDzOption(t('transfer.pickConnection'), TGT_NAME);
+    await selectDzOptionInWrap('data-transfer-source', SRC_NAME);
+    await selectDzOptionInWrap('data-transfer-target', TGT_NAME);
     await browser.pause(1500);
     await expect(await $('[data-testid="data-transfer-source-database"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-transfer-target-database"]')).toBeDisplayed();
