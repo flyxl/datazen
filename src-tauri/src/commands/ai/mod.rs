@@ -10,7 +10,7 @@ pub use chat::*;
 pub use config::*;
 pub use generate::*;
 pub use prompts::*;
-pub(crate) use util::*;
+pub use util::*;
 
 #[cfg(test)]
 mod integration_tests;

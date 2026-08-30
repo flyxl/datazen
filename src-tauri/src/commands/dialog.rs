@@ -50,6 +50,7 @@ impl DialogAnswer {
     }
 
     /// Map to the boolean shape OkCancel message dialogs return.
+    #[allow(dead_code)] // used only by confirm_message + tests
     fn into_confirmed(self) -> bool {
         matches!(self, Self::Path(_))
     }
@@ -239,6 +240,7 @@ pub(crate) async fn pick_folder(app: &AppHandle) -> Result<Option<PathBuf>, Comm
 /// Native OkCancel **message** dialog behind the injection queue (warning
 /// kind, matching its single caller). Returns `true` when confirmed, `false`
 /// when dismissed.
+#[allow(dead_code)] // reserved for future IPC surface
 pub(crate) async fn confirm_message(
     app: &AppHandle,
     title: &str,

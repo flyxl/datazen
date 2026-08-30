@@ -423,15 +423,9 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("DATAZEN_KEYRING");
         let backend = key_backend();
-        #[cfg(target_os = "macos")]
-        {
-            // Dev/unsigned macOS builds prefer file to avoid Keychain ACL prompts.
-            assert_eq!(backend, KeyBackend::File);
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            assert_eq!(backend, KeyBackend::Keyring);
-        }
+        // key_backend() 在测试模式下无论平台如何均返回 File
+        // (避免 cargo test 时弹出 macOS keychain 权限对话框)
+        assert_eq!(backend, KeyBackend::File);
     }
 
     #[test]

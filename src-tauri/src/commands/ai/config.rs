@@ -1,6 +1,5 @@
 //! AI provider configuration IPC commands.
 
-use super::util::resolve_ai;
 use crate::ai::*;
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;

@@ -30,7 +30,7 @@ static EXTENSION_PICK_SESSIONS: LazyLock<
 > = LazyLock::new(|| tokio::sync::Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ExtensionPackageKind {
+pub(crate) enum ExtensionPackageKind {
     Zip,
     Folder,
 }
