@@ -7,6 +7,7 @@
 - 状态：修复验证完成（BUG-001/BUG-002 已关闭；保留直接绕过 capability 的 driver 风险说明）
 - 编码 commit：`6bbbf2e8`（含前置 checkpoint `1c10a297`）
 - 测试 commit：`e20ed2b5`
+- 第二轮独立测试 commit：本轨最新提交（f2）
 - 修复 commit：本次修复提交（见分支最新 commit）
 
 ### 审计里程碑（checkpoint 1c10a297）
@@ -43,6 +44,18 @@
 - 本修复轮 `CARGO_TARGET_DIR=/private/tmp/datazen-repair-v01x-query-cancel-mysql cargo test -p datazen-driver-mysql --lib`：68 passed / 0 failed。
 - 本修复轮 `CARGO_TARGET_DIR=/private/tmp/datazen-repair-v01x-query-cancel-postgres cargo test -p datazen-driver-postgres --lib`：82 passed / 0 failed。
 - 本修复轮 `cargo fmt --all -- --check`：通过；`git diff --check`：通过。
+
+### 第二轮独立回归（f2，2026-08-30）
+
+- 定向 Vitest：`npx vitest run src/lib/__tests__/queryExecutionViewModel.test.ts src/lib/__tests__/queryStream.test.ts src/stores/__tests__/queryExecActions.test.ts src/stores/__tests__/panelStore.test.ts src/stores/__tests__/activeConnectionStore.test.ts src/windows/connection/__tests__/QueryPanel.executeCancel.test.tsx src/windows/connection/__tests__/QueryPanelHistory.test.tsx`：7 files / 91 passed / 0 failed；覆盖 BUG-001/002 相关 UI/Store 状态、history、stream、多语句和 QueryPanel 取消入口。
+- 全量前端：`npx vitest run`：262 files / 2120 passed / 0 failed。
+- 类型检查：`npx tsc --noEmit`：通过。
+- Rust Host：`CARGO_TARGET_DIR=/private/tmp/datazen-retest-v01x-query-cancel cargo test -p datazen --lib`：提权重跑 1183 passed / 0 failed / 2 ignored；沙箱首次运行 1137 passed / 46 failed / 2 ignored，46 项均为 wiremock 绑定本机临时端口的 `Operation not permitted`，不属于测试断言失败。
+- IPC 精确子集：`cargo test -p datazen --lib commands::query::tests::cancel_query`：3 passed / 0 failed；unknown capability 路径确认返回结构化拒绝且 MockDriver `cancel_query` 调用次数为 0，supported/unsupported 路径保持预期。
+- 受影响驱动：`CARGO_TARGET_DIR=/private/tmp/datazen-retest-v01x-query-cancel-mysql cargo test -p datazen-driver-mysql --lib`：68 passed / 0 failed；`CARGO_TARGET_DIR=/private/tmp/datazen-retest-v01x-query-cancel-postgres cargo test -p datazen-driver-postgres --lib`：82 passed / 0 failed。静态审查与驱动 capability 回归确认 MySQL/MariaDB/Doris/StarRocks/Manticore/Oracle 兼容 wrapper（6）及 PostgreSQL/QuestDB/Cloudberry wrapper（3）均不宣称 unsafe cancel supported。
+- 聚焦覆盖率（上述 7 个 Vitest 文件，include 变更相关源码）：Statements 64.56%（523/810），Branches 53.04%（270/509），Functions 61.81%（170/275），Lines 64.73%（435/672）；`queryExecutionViewModel.ts` Lines 100%、`queryStream.ts` Lines 100%、`queryExecActions.ts` Lines 98.03%、`QueryPanel.tsx` 整文件 Lines 44.20%（取消相关断言全通过）。
+- 质量检查：`cargo fmt --all -- --check`、`git diff --check ecfa2bcf^ ecfa2bcf`：均通过。
+- 本轮只更新本轨 `progress.md`/`bugs.md`；未修改业务源代码，未提交 hub、规格文档、SVG 或 codegen；真实桌面/数据库 E2E 因当前未提供 computer-use MCP 与稳定数据库 fixture，仍留待 R 回归。
 
 ## 4. 设计决策 / 遗留
 
