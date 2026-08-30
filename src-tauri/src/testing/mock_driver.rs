@@ -76,6 +76,7 @@ pub struct MockDriver {
     get_columns_calls: AtomicU32,
     get_schema_calls: AtomicU32,
     query_calls: AtomicU32,
+    cancel_query_calls: AtomicU32,
     last_query_limit: Mutex<Option<Option<u32>>>,
     open_txs: Mutex<HashSet<String>>,
     use_database_calls: Mutex<Vec<String>>,
@@ -91,6 +92,7 @@ impl MockDriver {
             get_columns_calls: AtomicU32::new(0),
             get_schema_calls: AtomicU32::new(0),
             query_calls: AtomicU32::new(0),
+            cancel_query_calls: AtomicU32::new(0),
             last_query_limit: Mutex::new(None),
             open_txs: Mutex::new(HashSet::new()),
             use_database_calls: Mutex::new(Vec::new()),
@@ -131,6 +133,10 @@ impl MockDriver {
 
     pub fn query_calls(&self) -> u32 {
         self.query_calls.load(Ordering::Relaxed)
+    }
+
+    pub fn cancel_query_calls(&self) -> u32 {
+        self.cancel_query_calls.load(Ordering::Relaxed)
     }
 
     pub fn reset_columns_calls(&self) {
@@ -322,6 +328,7 @@ impl DatabaseDriver for MockDriver {
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+        self.cancel_query_calls.fetch_add(1, Ordering::Relaxed);
         if let Some(message) = &self.opts.cancel_error {
             return Err(DriverError::Unsupported(message.clone()));
         }

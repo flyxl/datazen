@@ -4,9 +4,10 @@
 
 - 编号：v01x-query-cancel
 - 范围：Driver capability、连接信息、QueryExecutionViewModel、取消状态和 QueryPanel 取消入口
-- 状态：独立验证完成（发现 2 项 S3 遗留风险）
+- 状态：修复验证完成（BUG-001/BUG-002 已关闭；保留直接绕过 capability 的 driver 风险说明）
 - 编码 commit：`6bbbf2e8`（含前置 checkpoint `1c10a297`）
-- 测试 commit：待本验证代理提交
+- 测试 commit：`e20ed2b5`
+- 修复 commit：本次修复提交（见分支最新 commit）
 
 ### 审计里程碑（checkpoint 1c10a297）
 
@@ -36,12 +37,18 @@
 - `npx vitest run --coverage --coverage.reportsDirectory /private/tmp/datazen-v01x-query-cancel-coverage-focused --coverage.include src/lib/queryExecutionViewModel.ts --coverage.include src/stores/queryExecActions.ts --coverage.include src/stores/panelStore.ts --coverage.include src/stores/activeConnectionStore.ts --coverage.include src/windows/connection/QueryPanel.tsx src/lib/__tests__/queryExecutionViewModel.test.ts src/stores/__tests__/queryExecActions.test.ts src/stores/__tests__/panelStore.test.ts src/stores/__tests__/activeConnectionStore.test.ts src/windows/connection/__tests__/QueryPanel.executeCancel.test.tsx`：5 files / 80 passed；聚焦变更文件 Statements 62.76%、Branches 46.40%、Functions 58.30%、Lines 63.01%。文件级 Lines：`queryExecutionViewModel.ts` 100%、`activeConnectionStore.ts` 91.52%、`panelStore.ts` 82.22%、`queryExecActions.ts` 98.03%、`QueryPanel.tsx` 42.58%（后者为大型组件整体统计，取消分支已有单测）。
 - 覆盖率默认目录阈值命令因 worktree 不可写而先遇到 `coverage/` 创建 `EPERM`；改用 `/private/tmp` 报告目录后测试通过，但仅跑定向文件会触发仓库全量目录阈值，故采用上述 `--coverage.include` 的聚焦结果。
 - 未新增 Host 中的驱动专属测试；未提交 hub、规格文档、SVG 或 codegen 文件。
+- 本修复轮 `npx vitest run src/lib/__tests__/queryExecutionViewModel.test.ts src/stores/__tests__/queryExecActions.test.ts src/stores/__tests__/panelStore.test.ts src/stores/__tests__/activeConnectionStore.test.ts src/windows/connection/__tests__/QueryPanel.executeCancel.test.tsx`：5 files / 80 passed / 0 failed。
+- 本修复轮 `npx tsc --noEmit`：通过。
+- 本修复轮 `CARGO_TARGET_DIR=/private/tmp/datazen-repair-v01x-query-cancel cargo test -p datazen --lib`：1183 passed / 0 failed / 2 ignored；沙箱首次运行的 46 个 wiremock 端口 `EPERM` 在允许本机临时端口后消失。
+- 本修复轮 `CARGO_TARGET_DIR=/private/tmp/datazen-repair-v01x-query-cancel-mysql cargo test -p datazen-driver-mysql --lib`：68 passed / 0 failed。
+- 本修复轮 `CARGO_TARGET_DIR=/private/tmp/datazen-repair-v01x-query-cancel-postgres cargo test -p datazen-driver-postgres --lib`：82 passed / 0 failed。
+- 本修复轮 `cargo fmt --all -- --check`：通过；`git diff --check`：通过。
 
 ## 4. 设计决策 / 遗留
 
-- capability 未知时前端按 unknown 处理，不按 supported 处理；Rust unknown fail-open 风险见 `v01x-query-cancel-BUG-001`。
+- capability 未知时前端按 unknown 处理，不按 supported 处理；Rust `cancel_query_impl` 现对 unknown fail-closed，在调用 driver 前返回结构化拒绝，见 `v01x-query-cancel-BUG-001`。
 - capability 由 `DatabaseDriverFactory` 统一提供，Registry 按 driver type 惰性加载并以 camelCase 暴露；旧/测试 driver 的缺失字段序列化为 null，前端保持 unknown。
 - QueryExecutionViewModel 用 reducer 区分 execution phase 与 cancel capability；cancel IPC 成功只进入 `cancel_requested`，只有 query stream/promise 的实际终态才进入 succeeded/failed/cancelled/outcome_unknown。
 - QueryPanel 和 panelStore 只对 supported 发起取消；unsupported/unknown 的 Cancel 控件禁用并解释原因，关闭面板同样不调用取消 stub。
-- PostgreSQL 当前会取消同一数据库内、除取消连接自身外的所有 active backend，而非精确单 query；MySQL 更宽，会扫描实例级 `information_schema.processlist` 并对所有非 Sleep 且有 SQL 的线程执行 `KILL QUERY`，不限定数据库。兼容协议 wrapper 继承对应作用范围，详见 `v01x-query-cancel-BUG-002`，留给后续 driver 专项任务。
+- PostgreSQL 当前实现仍会取消同一数据库内、除取消连接自身外的所有 active backend；MySQL 更宽，会扫描实例级 `information_schema.processlist` 并对所有非 Sleep 且有 SQL 的线程执行 `KILL QUERY`，不限定数据库。由于现有 `dbSessionId`/Driver Command API 无法精确定位当前 query，本修复已将两组实现及其兼容 wrapper 的 `supports_cancel_query` 降为 unsupported；底层实现保留给后续 driver 专项协议工作，直接绕过 Host capability 门控的调用仍有作用域风险。
 - QC-E2E-001 至 QC-E2E-003 的 Host 契约已由本机单测覆盖；真实桌面/数据库 E2E 因当前环境没有可用的 computer-use MCP 与稳定数据库 fixture，留待 R 回归。
