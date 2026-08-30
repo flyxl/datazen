@@ -145,3 +145,4 @@ e2e/.demo-recording/
 # Local AI assistant tooling (Codex / agent metadata)
 .agents/
 .codex/
+site/assets/video/
