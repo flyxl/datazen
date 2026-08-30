@@ -28,10 +28,21 @@ pub fn key_backend() -> KeyBackend {
         Some("file") => KeyBackend::File,
         Some("keyring") => KeyBackend::Keyring,
         _ => {
-            if should_prefer_file_backend() {
+            // Tests run as an unsigned binary but may not always set the env
+            // var (e.g. after a FileKeyringGuard Drop restores it).  Force the
+            // file backend unconditionally so `cargo test` never triggers the
+            // macOS keychain dialog.
+            #[cfg(test)]
+            {
                 KeyBackend::File
-            } else {
-                KeyBackend::Keyring
+            }
+            #[cfg(not(test))]
+            {
+                if should_prefer_file_backend() {
+                    KeyBackend::File
+                } else {
+                    KeyBackend::Keyring
+                }
             }
         }
     }
