@@ -6,7 +6,7 @@
 
 | 轨道 | 范围 | 状态 | 编码 commit | 测试 commit |
 |---|---|---|---|---|
-| `v01x-query-cancel` | Driver capability、QueryExecutionViewModel、取消状态 | 编码中 | 待定 | 待定 |
+| `v01x-query-cancel` | Driver capability、QueryExecutionViewModel、取消状态 | 测试中 | 6bbbf2e8 | 待定 |
 | `v01x-pending-changes` | staged row changes、Preview plan、Commit/Rollback | 编码中 | 待定 | 待定 |
 
 ## 合并规则
