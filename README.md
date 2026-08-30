@@ -184,7 +184,7 @@ Download the latest release from **[GitHub Releases](https://github.com/flyxl/da
 |---|---|
 | macOS Apple Silicon | `.dmg` |
 | macOS Intel | `.dmg` |
-| Windows | `.exe` / `.msi` |
+| Windows | NSIS `.exe` / portable `.zip` |
 | Linux x86_64 | `.deb` / `.rpm` / `.AppImage` |
 
 DataZen is free and does not require an account.

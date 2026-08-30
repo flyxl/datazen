@@ -7,11 +7,8 @@ import {
   Eye,
   FolderClosed,
   FolderOpen,
-  Hash,
   Loader2,
-  Shapes,
   Table2,
-  Zap,
 } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useSchemaStore, useConnectionSchemaField } from '../../../stores/schemaStore';
@@ -23,49 +20,15 @@ import type { DatabaseObject, TableInfo } from '../../../types';
 import { DB_REGISTRY } from '../../../lib/databaseTypes';
 import type { SchemaTreeProps } from './SchemaTree';
 import { formatRowCount } from './formatRowCount';
+import {
+  getEffectiveCategories,
+  OBJECT_KIND_CATEGORIES,
+  type SchemaTreeCategoryDef,
+} from './schemaTreeCategories';
 
 export interface UnifiedSchemaTreeProps extends SchemaTreeProps {
   isKeyValue?: boolean;
 }
-
-interface CategoryDef {
-  id: string;
-  labelKey: string;
-  icon: React.ComponentType<{ className?: string }>;
-  color: string;
-}
-
-const BASE_CATEGORIES: CategoryDef[] = [
-  { id: 'tables', labelKey: 'schemaTree.tables', icon: Table2, color: 'text-blue-400' },
-  { id: 'views', labelKey: 'schemaTree.views', icon: Eye, color: 'text-purple-400' },
-];
-
-const OBJECT_KIND_CATEGORIES: Record<string, CategoryDef> = {
-  function: {
-    id: 'function',
-    labelKey: 'schemaTree.functions',
-    icon: Braces,
-    color: 'text-orange-400',
-  },
-  procedure: {
-    id: 'procedure',
-    labelKey: 'schemaTree.procedures',
-    icon: Braces,
-    color: 'text-emerald-400',
-  },
-  trigger: { id: 'trigger', labelKey: 'schemaTree.triggers', icon: Zap, color: 'text-amber-400' },
-  sequence: {
-    id: 'sequence',
-    labelKey: 'schemaTree.sequences',
-    icon: Hash,
-    color: 'text-cyan-400',
-  },
-  type: { id: 'type', labelKey: 'schemaTree.types', icon: Shapes, color: 'text-pink-400' },
-};
-
-const KV_CATEGORIES: CategoryDef[] = [
-  { id: 'tables', labelKey: 'schemaTree.keys', icon: Table2, color: 'text-blue-400' },
-];
 
 type FlatRow =
   | { type: 'db'; dbName: string; expanded: boolean; loading: boolean }
@@ -73,7 +36,7 @@ type FlatRow =
   | {
       type: 'category';
       key: string;
-      cat: CategoryDef;
+      cat: SchemaTreeCategoryDef;
       count: number;
       expanded: boolean;
       depth: number;
@@ -128,14 +91,10 @@ export function UnifiedSchemaTree({
   const meta = DB_REGISTRY[databaseType];
   const lockedSingleDb = Boolean(initialDatabase?.trim()) && meta?.databaseFieldType !== 'domain';
 
-  const effectiveCategories = useMemo(() => {
-    if (isKeyValue) return KV_CATEGORIES;
-    const meta = DB_REGISTRY[databaseType];
-    const objectKinds = meta?.supportedObjectKinds;
-    if (!objectKinds || objectKinds.length === 0) return BASE_CATEGORIES;
-    const objectCats = objectKinds.map((kind) => OBJECT_KIND_CATEGORIES[kind]).filter(Boolean);
-    return [...BASE_CATEGORIES, ...objectCats];
-  }, [isKeyValue, databaseType]);
+  const effectiveCategories = useMemo(
+    () => getEffectiveCategories(databaseType, isKeyValue),
+    [isKeyValue, databaseType],
+  );
 
   const [dbExpanded, setDbExpanded] = useState(true);
   const [expandedDbs, setExpandedDbs] = useState<Set<string>>(new Set());

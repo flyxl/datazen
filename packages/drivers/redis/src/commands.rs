@@ -5,7 +5,8 @@
 
 use datazen_driver_api::{
     execute_command_definition, execute_standard_sql_command, query_command_definition,
-    query_stream_command_definition, CommandCategory, CommandResult, ConnectionHandle,
+    query_stream_command_definition, schema_catalog_command_definitions,
+    try_execute_schema_catalog_command, CommandCategory, CommandResult, ConnectionHandle,
     DriverCommandDefinition, DriverCommandMetadata, DriverError,
 };
 use serde_json::Value as JsonValue;
@@ -67,7 +68,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
     let key = serde_json::json!({ "type": "string" });
     let strings = serde_json::json!({ "type": "array", "items": { "type": "string" } });
 
-    vec![
+    let mut cmds = vec![
         query_command_definition(),
         execute_command_definition(),
         query_stream_command_definition(),
@@ -496,7 +497,9 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
                 &["entries"],
             ),
         ),
-    ]
+    ];
+    cmds.extend(schema_catalog_command_definitions());
+    cmds
 }
 
 fn req_str<'a>(input: &'a JsonValue, field: &str) -> Result<&'a str, DriverError> {
@@ -585,6 +588,11 @@ pub async fn execute_redis_command(
     match execute_standard_sql_command(driver, handle, command, input.clone()).await {
         Err(DriverError::Unsupported(_)) => {}
         other => return other,
+    }
+    if let Some(result) =
+        try_execute_schema_catalog_command(driver, handle, command, input.clone()).await?
+    {
+        return Ok(result);
     }
 
     let id = handle.pool_id.as_str();

@@ -16,6 +16,7 @@ import {
   switchSubTab,
   clickFirstTable,
   asideHasSchemaSections,
+  waitForNewQueryButton,
 } from '../helpers.js';
 
 const TABLE_BASIC = '_e2e_mysql_basic';
@@ -138,7 +139,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   // ── Connection & Sidebar ──
 
   it('MySQL 连接窗口应显示工具栏和侧边栏 (MY-001)', async () => {
-    const toolbar = await $(`button*=${t('connWin.newQuery')}`);
+    const toolbar = await waitForNewQueryButton();
     await expect(toolbar).toBeDisplayed();
 
     const aside = await $('aside');
@@ -160,7 +161,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   });
 
   it('新建查询不应弹出对象加载补全框 (MY-AC-001)', async () => {
-    await $(`button*=${t('connWin.newQuery')}`).click();
+    await (await waitForNewQueryButton()).click();
     let loadingHint = false;
     const deadline = Date.now() + 1500;
     while (Date.now() < deadline) {
@@ -246,7 +247,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   it('结构 tab 应显示 MySQL 列信息 (MY-012)', async () => {
     await clickTableInSidebar(TABLE_BASIC);
     await browser.pause(1500);
-    await switchSubTab(t('connWin.structure'));
+    await switchSubTab('structure');
     await browser.pause(1500);
 
     const body = await $('body').getText();
@@ -262,7 +263,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   it('索引 tab 应显示 MySQL 索引 (MY-013)', async () => {
     await clickTableInSidebar(TABLE_IDX);
     await browser.pause(1500);
-    await switchSubTab(t('connWin.indexes'));
+    await switchSubTab('indexes');
     await browser.pause(1500);
 
     const body = await $('body').getText();
@@ -283,7 +284,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   it('DDL tab 应显示 MySQL CREATE TABLE 语句 (MY-015)', async () => {
     await clickTableInSidebar(TABLE_BASIC);
     await browser.pause(1500);
-    await switchSubTab('DDL');
+    await switchSubTab('ddl');
     await browser.pause(1500);
 
     const body = await $('body').getText();
@@ -353,7 +354,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
     // Click the table to load data
     await clickTableInSidebar(TABLE_BASIC);
     await browser.pause(2000);
-    await switchSubTab(t('connWin.data'));
+    await switchSubTab('data');
     await browser.pause(1000);
 
     // Should show pagination info (more than 50 rows total)

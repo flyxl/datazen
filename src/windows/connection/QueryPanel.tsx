@@ -199,6 +199,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
     queryToolbarExpandedMinWidth,
   );
   const [contextPath, setContextPath] = useState<string[]>([]);
+  const [executionSeq, setExecutionSeq] = useState(0);
   const editorSchema = useMemo(
     () =>
       buildEditorSchema({
@@ -406,6 +407,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
       } else {
         await refreshTxStatus();
       }
+      setExecutionSeq((seq) => seq + 1);
     },
     [
       exec.sql,
@@ -685,7 +687,12 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
   const activeResult: StatementResult | undefined = results[activeResultIdx];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div
+      className="flex min-h-0 flex-1 flex-col"
+      data-testid="query-panel"
+      data-execution-seq={executionSeq}
+      data-query-running={exec.running ? 'true' : 'false'}
+    >
       {/* Toolbar */}
       <ToolbarShell ref={toolbarRef} className="h-9 flex-nowrap overflow-x-auto px-3">
         <QueryContextSelectors

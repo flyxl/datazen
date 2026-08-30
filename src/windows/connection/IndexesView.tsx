@@ -191,7 +191,10 @@ function CreateIndexDialog({
 
         {/* SQL preview */}
         {selectedCols.length > 0 && (
-          <div className="mb-4 rounded border border-edge bg-surface-alt p-2.5">
+          <div
+            className="mb-4 rounded border border-edge bg-surface-alt p-2.5"
+            data-testid="idx-sql-preview"
+          >
             <div className="mb-1 text-[10px] font-medium uppercase text-fg-muted">
               {t('common.sqlPreview')}
             </div>
@@ -395,6 +398,7 @@ export function IndexesView({
           <Button
             variant="secondary"
             className="h-7 gap-1 px-2 text-xs"
+            data-testid="idx-edit-in-structure"
             onClick={() => onEditStructure(tableName)}
           >
             <Pencil className="h-3.5 w-3.5" />
@@ -404,6 +408,7 @@ export function IndexesView({
         <Button
           variant="secondary"
           className="h-7 gap-1 px-2 text-xs"
+          data-testid="idx-new-index"
           onClick={() => setShowCreate(true)}
         >
           <Plus className="h-3.5 w-3.5" />
@@ -419,6 +424,7 @@ export function IndexesView({
             <Button
               variant="secondary"
               className="h-8 gap-1 text-xs"
+              data-testid="idx-edit-in-structure-empty"
               onClick={() => onEditStructure(tableName)}
             >
               <Pencil className="h-3.5 w-3.5" />
@@ -497,6 +503,7 @@ export function IndexesView({
                       <button
                         className="rounded p-1 text-fg-muted opacity-0 transition hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
                         title={t('common.deleteIndex')}
+                        data-testid="idx-delete-index"
                         onClick={() => setDeleteTarget(idx.name)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />

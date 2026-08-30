@@ -179,7 +179,7 @@ Driver 集合由编译期配置决定，因此发行版不需要携带所有数�
 |---|---|
 | macOS Apple Silicon | `.dmg` |
 | macOS Intel | `.dmg` |
-| Windows | `.exe` / `.msi` |
+| Windows | NSIS `.exe` / Portable `.zip` |
 | Linux x86_64 | `.deb` / `.rpm` / `.AppImage` |
 
 DataZen 免费使用，不需要注册账号。

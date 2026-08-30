@@ -30,13 +30,13 @@ describe('数据看板入口 (UJ-01, UJ-11)', () => {
     await closeExtraWindows(mainWindow);
   });
 
-  it('UJ-01: 主窗口按钮应直接打开看板窗口（无 dashboard-dialog）', async () => {
+  it('UJ-01: 主窗口导航应打开嵌入看板面板（无 dashboard-dialog）', async () => {
     await openDashboardFromMain(mainWindow);
 
     const dialog = await $('[data-testid="dashboard-dialog"]');
     expect(await dialog.isExisting()).toBe(false);
 
-    const root = await $('[data-testid="dashboard-window"]');
+    const root = await $('[data-testid="dashboard-panel"]');
     await expect(root).toBeDisplayed();
   });
 

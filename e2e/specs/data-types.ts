@@ -27,10 +27,10 @@ const MY_TABLE = '_e2e_my_types';
 /** Wait for query result grid to contain every expected string. */
 async function expectBodyContains(expected: string[], timeout = 10000) {
   for (const str of expected) {
-    await browser.waitUntil(
-      async () => (await $('body').getText()).includes(str),
-      { timeout, timeoutMsg: `Expected value not displayed: "${str}"` },
-    );
+    await browser.waitUntil(async () => (await $('body').getText()).includes(str), {
+      timeout,
+      timeoutMsg: `Expected value not displayed: "${str}"`,
+    });
   }
 }
 
@@ -48,12 +48,15 @@ async function queryAndExpect(sql: string, expected: string[]) {
 async function browseTableAndExpect(table: string, expected: string[]) {
   await clickTableInSidebar(table);
   await browser.pause(3000);
-  await switchSubTab(t('connWin.data'));
+  await switchSubTab('data');
   // Wait for data to finish loading (spinner gone)
   await browser.waitUntil(
     async () => {
       const body = await $('body').getText();
-      return !body.includes(t('tableView.loadingData')) && (body.includes(t('common.selectAll')) || body.includes(t('pagination.perPage')));
+      return (
+        !body.includes(t('tableView.loadingData')) &&
+        (body.includes(t('common.selectAll')) || body.includes(t('pagination.perPage')))
+      );
     },
     { timeout: 20000, timeoutMsg: `Timed out waiting for table "${table}" data to load` },
   );
@@ -154,7 +157,9 @@ describe('PostgreSQL 字段类型前端展示 (PG-TYPE-001~015)', () => {
         await openQueryTab();
         await executeSQL(`DROP TABLE IF EXISTS ${PG_TABLE}`);
       }
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
     try {
       const handles = await browser.getWindowHandles();
       if (handles.length > 1) {
@@ -162,7 +167,9 @@ describe('PostgreSQL 字段类型前端展示 (PG-TYPE-001~015)', () => {
       }
       await browser.switchToWindow(mainWindow);
       await browser.pause(1000);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   });
 
   // ── Integer types ──
@@ -293,10 +300,7 @@ describe('PostgreSQL 字段类型前端展示 (PG-TYPE-001~015)', () => {
   });
 
   it('SELECT 查询应正确返回 PG BOOLEAN 类型 (PG-TYPE-Q03)', async () => {
-    await queryAndExpect(
-      `SELECT true AS t, false AS f`,
-      ['true', 'false'],
-    );
+    await queryAndExpect(`SELECT true AS t, false AS f`, ['true', 'false']);
   });
 
   it('SELECT 查询应正确返回 PG 日期时间类型 (PG-TYPE-Q04)', async () => {
@@ -307,17 +311,16 @@ describe('PostgreSQL 字段类型前端展示 (PG-TYPE-001~015)', () => {
   });
 
   it('SELECT 查询应正确返回 PG UUID (PG-TYPE-Q05)', async () => {
-    await queryAndExpect(
-      `SELECT 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid AS id`,
-      ['a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'],
-    );
+    await queryAndExpect(`SELECT 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid AS id`, [
+      'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+    ]);
   });
 
   it('SELECT 查询应正确返回 PG JSON/JSONB (PG-TYPE-Q06)', async () => {
-    await queryAndExpect(
-      `SELECT '{"a":1}'::json AS j, '{"b":2}'::jsonb AS jb`,
-      ['{"a":1}', '{"b":2}'],
-    );
+    await queryAndExpect(`SELECT '{"a":1}'::json AS j, '{"b":2}'::jsonb AS jb`, [
+      '{"a":1}',
+      '{"b":2}',
+    ]);
   });
 });
 
@@ -450,14 +453,18 @@ describe('MySQL 字段类型前端展示 (MY-TYPE-001~020)', () => {
         await openQueryTab();
         await executeSQL(`DROP TABLE IF EXISTS ${MY_TABLE}`);
       }
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
     try {
       const handles = await browser.getWindowHandles();
       if (handles.length > 1) {
         await closeExtraWindows(mainWindow);
       }
       await browser.switchToWindow(mainWindow);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   });
 
   // ── Integer types ──
@@ -619,24 +626,18 @@ describe('MySQL 字段类型前端展示 (MY-TYPE-001~020)', () => {
   });
 
   it('SELECT 查询应正确返回 MySQL DECIMAL (MY-TYPE-Q02)', async () => {
-    await queryAndExpect(
-      `SELECT CAST(99999.9999 AS DECIMAL(10,4)) AS d`,
-      ['99999.9999'],
-    );
+    await queryAndExpect(`SELECT CAST(99999.9999 AS DECIMAL(10,4)) AS d`, ['99999.9999']);
   });
 
   it('SELECT 查询应正确返回 MySQL 日期时间 (MY-TYPE-Q03)', async () => {
-    await queryAndExpect(
-      `SELECT CAST('2026-04-16' AS DATE) AS d, CAST('14:30:59' AS TIME) AS t`,
-      ['2026-04-16', '14:30:59'],
-    );
+    await queryAndExpect(`SELECT CAST('2026-04-16' AS DATE) AS d, CAST('14:30:59' AS TIME) AS t`, [
+      '2026-04-16',
+      '14:30:59',
+    ]);
   });
 
   it('SELECT 查询应正确返回 MySQL JSON (MY-TYPE-Q04)', async () => {
-    await queryAndExpect(
-      `SELECT JSON_OBJECT('a', 1, 'b', 'hello') AS j`,
-      ['hello'],
-    );
+    await queryAndExpect(`SELECT JSON_OBJECT('a', 1, 'b', 'hello') AS j`, ['hello']);
   });
 
   // ── Structure tab type labels ──
@@ -644,7 +645,7 @@ describe('MySQL 字段类型前端展示 (MY-TYPE-001~020)', () => {
   it('结构 tab 应正确显示 MySQL 列类型标签 (MY-TYPE-020)', async () => {
     await clickTableInSidebar(MY_TABLE);
     await browser.pause(1500);
-    await switchSubTab(t('connWin.structure'));
+    await switchSubTab('structure');
     await browser.waitUntil(
       async () => {
         const b = await $('body').getText();

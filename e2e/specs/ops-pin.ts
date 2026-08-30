@@ -66,6 +66,12 @@ async function dismissMenu() {
   await browser.pause(300);
 }
 
+/** Check if a menu item with given id exists. */
+async function hasMenuItemId(id: string): Promise<boolean> {
+  const item = await $(`[data-testid="web-context-item-${id}"]`);
+  return item.isExisting();
+}
+
 /** 读取某个连接项在 `data-conn-item` 列表中的位置（0 起）。 */
 async function connIndexInList(connName: string): Promise<number> {
   return browser.execute((name: string) => {
@@ -134,9 +140,9 @@ describe('运维 §5.4: 连接 Pin 置顶 (OPS-PIN)', () => {
     await rightClickConn(PIN_CONN_A);
     const text = await menuText();
     expect(text).toContain(t('main.ctx.pinConnection'));
-    expect(text).toContain(t('main.ctx.objectFilter'));
-    expect(text).toContain(t('main.ctx.processList'));
-    expect(text).toContain(t('main.ctx.serverStatus'));
+    expect(await hasMenuItemId('object-filter')).toBe(true);
+    expect(await hasMenuItemId('process-list')).toBe(true);
+    expect(await hasMenuItemId('server-status')).toBe(true);
     await dismissMenu();
   });
 

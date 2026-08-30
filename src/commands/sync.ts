@@ -71,6 +71,13 @@ export interface DataSyncExecutionResult {
   rolledBack: boolean;
 }
 
+export interface DataSyncPairingView {
+  path: string;
+  supported: boolean;
+  family?: string | null;
+  reason?: string | null;
+}
+
 export const DEFAULT_SYNC_OPTIONS: SyncOptions = {
   insert: true,
   update: true,
@@ -81,6 +88,12 @@ export const DEFAULT_SYNC_OPTIONS: SyncOptions = {
 };
 
 export const syncCommands = {
+  classifyDataSyncPair: (sourceDatabaseType: string, targetDatabaseType: string) =>
+    invoke<DataSyncPairingView>('classify_data_sync_pair', {
+      sourceDatabaseType,
+      targetDatabaseType,
+    }),
+
   getSyncTasks: () => invoke<SyncTask[]>('get_sync_tasks'),
 
   deleteSyncTask: (taskId: string) => invoke<void>('delete_sync_task', { taskId }),

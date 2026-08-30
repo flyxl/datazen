@@ -32,7 +32,7 @@
 
 ## 2. 系统架构文档（docs/architecture/）
 
-总览入口：[architecture/README.md](architecture/README.md)（分层架构、Driver Command 架构、Workflow 架构）。
+总览入口：[architecture/README.md](architecture/README.md)（分层架构、Driver Command 架构、Workflow 架构）。Web 平台化实施方案见 [web-platform-implementation](architecture/rfc/web-platform-implementation.zh-CN.md)。
 
 ### 后端（architecture/backend/）
 
@@ -49,8 +49,8 @@
 | [dashboard](architecture/backend/dashboard.md) | 运营看板：AppDb、Monitor 调度、导出 v2 |
 | [data-sync](architecture/backend/data-sync.md) | 同族数据同步：门闸 / 比较 / ChangeSet |
 | [schema-diff](architecture/backend/schema-diff.md) | 结构对比 / DDL plan / 部署 |
-| [theme](architecture/backend/theme.md) | 运行时主题包（遗留） |
-| [plugins](architecture/backend/plugins.md) | 运行时插件系统（UI 页 + 主题） |
+| [theme](architecture/backend/theme.md) | 运行时主题（扩展主题贡献、首屏背景缓存） |
+| [extensions](architecture/backend/extensions.md) | 运行时插件系统（UI 页 + 主题） |
 
 ### 前端（architecture/frontend/）
 

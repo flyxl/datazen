@@ -5,6 +5,7 @@ import { Select } from '../../components/ui/Select';
 import { SqlEditor, type SqlEditorHandle } from '../../components/SqlEditor';
 import { useI18n } from '../../hooks/useI18n';
 import { driverCommands } from '../../commands/driver';
+import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { aiCommands } from '../../commands/ai';
 import { rememberWorkflowDraft } from './draftBridge';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
@@ -104,6 +105,8 @@ interface WorkflowFormProps {
   onDraftChange: (d: WorkflowDraft) => void;
   onSave: () => void;
   onCancel: () => void;
+  /** `compact` fits AI panel sidebar; `page` is the full workflow window editor. */
+  variant?: 'page' | 'compact';
 }
 
 function commandOptionLabel(definition: DriverCommandDefinition) {
@@ -280,6 +283,7 @@ export function WorkflowForm({
   onDraftChange,
   onSave,
   onCancel,
+  variant = 'page',
 }: WorkflowFormProps) {
   const { t } = useI18n();
   const inputClass =
@@ -291,6 +295,7 @@ export function WorkflowForm({
   >({});
   const [loadingCommands, setLoadingCommands] = useState<Record<string, boolean>>({});
   const hydrated = useRef<string | null>(null);
+  const activeConnections = useActiveConnectionStore((s) => s.connections);
 
   useEffect(() => {
     if (!editingId || !draft.id || hydrated.current === draft.id) return;
@@ -348,8 +353,16 @@ export function WorkflowForm({
     for (const connectionId of commandConnections) {
       if (commandsByConnection[connectionId]) continue;
       setLoadingCommands((prev) => ({ ...prev, [connectionId]: true }));
-      void driverCommands
-        .getConnectionCommands(connectionId)
+      const entry = activeConnections[connectionId];
+      const dbSessionId =
+        entry?.status === 'connected' && entry.dbSessionId ? entry.dbSessionId : null;
+      const driverType = connections.find((c) => c.id === connectionId)?.databaseType;
+      const loader = dbSessionId
+        ? driverCommands.getConnectionCommands(dbSessionId)
+        : driverType
+          ? driverCommands.getDriverCommands(driverType)
+          : Promise.resolve([] as DriverCommandDefinition[]);
+      void loader
         .then((definitions) => {
           if (!cancelled)
             setCommandsByConnection((prev) => ({ ...prev, [connectionId]: definitions }));
@@ -364,7 +377,7 @@ export function WorkflowForm({
     return () => {
       cancelled = true;
     };
-  }, [commandConnections.join('|')]);
+  }, [commandConnections.join('|'), activeConnections, connections]);
 
   const getDefinitions = (step: WorkflowStepDraft) =>
     (commandsByConnection[effectiveConnection(step)] ?? []).filter(
@@ -378,79 +391,108 @@ export function WorkflowForm({
     onDraftChange({ ...draft, steps });
   };
 
+  const compact = variant === 'compact';
+
   return (
-    <div className="w-full max-w-3xl mx-auto p-6 space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="text-xs text-fg-muted block mb-1">ID</label>
+    <div
+      className={
+        compact
+          ? 'space-y-2 border border-edge rounded-md p-3 bg-surface w-full'
+          : 'w-full max-w-3xl mx-auto p-6 space-y-4'
+      }
+    >
+      {compact && (
+        <h4 className="text-xs font-medium text-fg">
+          {editingId ? t('workflows.edit') : t('workflows.create')}
+        </h4>
+      )}
+      <div className={compact ? 'space-y-2' : 'grid grid-cols-2 gap-4'}>
+        <div className={compact ? undefined : undefined}>
+          <label className="text-xs text-fg-muted block mb-1">
+            {compact ? t('workflows.form.id') : 'ID'}
+          </label>
           <input
             className={inputClass}
             value={draft.id}
             onChange={(e) => onDraftChange({ ...draft, id: e.target.value })}
             disabled={!!editingId}
+            placeholder={compact ? t('workflows.form.idPlaceholder') : undefined}
           />
         </div>
         <div>
-          <label className="text-xs text-fg-muted block mb-1">{t('workflows.name')}</label>
+          <label className="text-xs text-fg-muted block mb-1">
+            {compact ? t('workflows.form.name') : t('workflows.name')}
+          </label>
           <input
             className={inputClass}
             value={draft.name}
             onChange={(e) => onDraftChange({ ...draft, name: e.target.value })}
+            placeholder={compact ? t('workflows.form.namePlaceholder') : undefined}
           />
         </div>
       </div>
       <div>
-        <label className="text-xs text-fg-muted block mb-1">{t('workflows.description')}</label>
+        <label className="text-xs text-fg-muted block mb-1">
+          {compact ? t('workflows.form.description') : t('workflows.description')}
+        </label>
         <input
           className={inputClass}
           value={draft.description}
           onChange={(e) => onDraftChange({ ...draft, description: e.target.value })}
+          placeholder={compact ? t('workflows.form.descriptionPlaceholder') : undefined}
         />
       </div>
 
-      <div>
-        <label className="text-xs text-fg-muted block mb-1">Workflow Connection</label>
-        <Select
-          value={draft.connection ?? ''}
-          options={[
-            { value: '', label: 'No default connection' },
-            ...connections.map((c) => ({ value: c.id, label: c.name })),
-          ]}
-          onChange={(value) => onDraftChange({ ...draft, connection: value || undefined })}
-          className="!h-8 !text-xs w-full"
-        />
-        <div className="text-[11px] text-fg-muted mt-1">
-          Data-operation steps inherit this connection unless they override it.
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-edge p-3 space-y-2">
-        <label className="flex items-center gap-2 text-xs text-fg">
-          <input
-            type="checkbox"
-            checked={Boolean(draft.scheduleEnabled)}
-            onChange={(e) => onDraftChange({ ...draft, scheduleEnabled: e.target.checked })}
-          />
-          {t('workflows.schedule.enabled')}
-        </label>
-        {draft.scheduleEnabled && (
+      {!compact && (
+        <>
           <div>
-            <label className="text-xs text-fg-muted block mb-1">
-              {t('workflows.schedule.interval')}
-            </label>
-            <input
-              className={inputClass}
-              type="number"
-              min={30}
-              value={draft.scheduleIntervalSecs ?? 3600}
-              onChange={(e) =>
-                onDraftChange({ ...draft, scheduleIntervalSecs: Number(e.target.value) || 3600 })
-              }
+            <label className="text-xs text-fg-muted block mb-1">Workflow Connection</label>
+            <Select
+              value={draft.connection ?? ''}
+              options={[
+                { value: '', label: 'No default connection' },
+                ...connections.map((c) => ({ value: c.id, label: c.name })),
+              ]}
+              onChange={(value) => onDraftChange({ ...draft, connection: value || undefined })}
+              className="!h-8 !text-xs w-full"
             />
-            <div className="text-[11px] text-fg-muted mt-1">{t('workflows.schedule.hint')}</div>
+            <div className="text-[11px] text-fg-muted mt-1">
+              Data-operation steps inherit this connection unless they override it.
+            </div>
           </div>
-        )}
-      </div>
+
+          <div className="rounded-lg border border-edge p-3 space-y-2">
+            <label className="flex items-center gap-2 text-xs text-fg">
+              <input
+                type="checkbox"
+                checked={Boolean(draft.scheduleEnabled)}
+                onChange={(e) => onDraftChange({ ...draft, scheduleEnabled: e.target.checked })}
+              />
+              {t('workflows.schedule.enabled')}
+            </label>
+            {draft.scheduleEnabled && (
+              <div>
+                <label className="text-xs text-fg-muted block mb-1">
+                  {t('workflows.schedule.interval')}
+                </label>
+                <input
+                  className={inputClass}
+                  type="number"
+                  min={30}
+                  value={draft.scheduleIntervalSecs ?? 3600}
+                  onChange={(e) =>
+                    onDraftChange({
+                      ...draft,
+                      scheduleIntervalSecs: Number(e.target.value) || 3600,
+                    })
+                  }
+                />
+                <div className="text-[11px] text-fg-muted mt-1">{t('workflows.schedule.hint')}</div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -686,13 +728,37 @@ export function WorkflowForm({
         })}
       </div>
 
-      <div className="flex gap-3 pt-2">
-        <Button onClick={onSave} className="px-6">
-          {t('common.save')}
-        </Button>
-        <Button variant="secondary" onClick={onCancel} className="px-6">
-          {t('common.cancel')}
-        </Button>
+      <div className={compact ? 'flex gap-2 pt-1' : 'flex gap-3 pt-2'}>
+        {compact ? (
+          <>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              className="px-3 py-1 text-xs bg-accent text-white rounded hover:bg-accent/90 transition-colors disabled:opacity-50"
+              onClick={onSave}
+              disabled={!draft.id.trim() || !draft.name.trim() || draft.steps.length === 0}
+            >
+              {t('common.save')}
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              className="px-3 py-1 text-xs text-fg-secondary border border-edge rounded hover:bg-surface-raised transition-colors"
+              onClick={onCancel}
+            >
+              {t('common.cancel')}
+            </button>
+          </>
+        ) : (
+          <>
+            <Button onClick={onSave} className="px-6">
+              {t('common.save')}
+            </Button>
+            <Button variant="secondary" onClick={onCancel} className="px-6">
+              {t('common.cancel')}
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );

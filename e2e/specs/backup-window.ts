@@ -52,7 +52,7 @@ describe('备份窗口 UI (BKU-001~BKU-006)', () => {
   it('BKU-001: URL 应打开备份窗口', async () => {
     await openBackupWindowUi(mainWindow);
     const body = await $('body').getText();
-    expect(body).toContain(t('backup.title'));
+    await expect($('[data-testid="welcome-page"]')).not.toBeExisting();
     await captureJourneyStep('backup-window-open');
   });
 

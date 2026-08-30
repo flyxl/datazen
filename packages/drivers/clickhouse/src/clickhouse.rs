@@ -465,7 +465,19 @@ impl DatabaseDriver for ClickHouseDriver {
         command: &str,
         input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
-        execute_standard_sql_command(self, handle, command, input).await
+        match execute_standard_sql_command(self, handle, command, input.clone()).await {
+            Ok(result) => return Ok(result),
+            Err(DriverError::Unsupported(_)) => {}
+            Err(err) => return Err(err),
+        }
+        if let Some(result) =
+            try_execute_schema_catalog_command(self, handle, command, input).await?
+        {
+            return Ok(result);
+        }
+        Err(DriverError::Unsupported(format!(
+            "unsupported driver command: {command}"
+        )))
     }
 
     async fn structure_capabilities(

@@ -243,7 +243,7 @@ export async function runPostCompareReviewBranches(f: SyncJourneyFixture) {
   await copyBtn.click();
   await browser.pause(200);
 
-  const previewTab = await $(`button*=${t('sync.sqlPreviewTab')}`);
+  const previewTab = await $("[data-testid='data-sync-tab-preview']");
   await previewTab.click();
   await browser.pause(600);
   await expect(await $('[data-testid="data-sync-preview"]')).toBeDisplayed();

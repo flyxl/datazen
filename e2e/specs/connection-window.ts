@@ -10,6 +10,7 @@ import {
   switchSubTab,
   waitForSchemaTreeLoaded,
   connectSeededPgInWorkspace,
+  waitForNewQueryButton,
 } from '../helpers.js';
 
 const TEST_PARENT = '_e2e_idx_parent';
@@ -25,7 +26,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+    await waitForNewQueryButton(20000);
     await browser.pause(1500);
 
     await openQueryTab();
@@ -81,11 +82,11 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   it('连接窗口应显示工具栏 (DB-001)', async () => {
     await expect(await $(`button[title="${t('connWin.refresh')} (⌘R)"]`)).toBeDisplayed();
-    await expect(await $(`button*=${t('connWin.newQuery')}`)).toBeDisplayed();
+    await expect(await waitForNewQueryButton()).toBeDisplayed();
   });
 
   it('工具栏应显示新建表按钮 (DB-001)', async () => {
-    await expect(await $(`button*=${t('connWin.newTable')}`)).toBeDisplayed();
+    await expect($("[data-testid='content-toolbar-new-table']")).toExist();
   });
 
   it('应显示搜索表输入框 (DB-008)', async () => {
@@ -108,7 +109,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     expect(tableName).not.toBeNull();
 
     await browser.pause(2000);
-    const dataTab = await $(`button*=${t('connWin.data')}`);
+    const dataTab = await $("[data-testid='sub-tab-data']");
     await dataTab.waitForDisplayed({ timeout: 8000 });
     await expect(dataTab).toBeDisplayed();
   });
@@ -122,7 +123,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   // ── 结构 tab ────────────────────────────────────────────────────
 
   it('点击结构标签应显示字段信息 (DB-003)', async () => {
-    const structTab = await $(`button*=${t('connWin.structure')}`);
+    const structTab = await $("[data-testid='sub-tab-structure']");
     await structTab.click();
     await browser.pause(2000);
 
@@ -157,7 +158,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   it('索引标签应显示索引列表 (DB-004)', async () => {
     await clickTableInSidebar(TEST_CHILD);
     await browser.pause(1500);
-    await switchSubTab(t('connWin.indexes'));
+    await switchSubTab('indexes');
     await browser.pause(2000);
 
     const body = await $('body').getText();
@@ -191,25 +192,25 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   });
 
   it('索引标签应显示在表结构中编辑按钮 (DB-004)', async () => {
-    const editBtn = await $(`button*=${t('indexes.editInStructure')}`);
+    const editBtn = await $("[data-testid='idx-edit-in-structure']");
     await expect(editBtn).toBeDisplayed();
   });
 
   it('点击在表结构中编辑应切换到结构子标签 (DB-004a)', async () => {
-    const editBtn = await $(`button*=${t('indexes.editInStructure')}`);
+    const editBtn = await $("[data-testid='idx-edit-in-structure']");
     await editBtn.click();
     await browser.pause(800);
 
     const body = await $('body').getText();
     // Stays on the same table primary tab; secondary tab switches to Structure.
     expect(body).toContain(t('structView.fieldName'));
-    expect(body).not.toContain(t('structEditor.editTable'));
+    expect(await $("[data-testid='struct-editor-title']").isExisting()).toBe(false);
   });
 
   // ── 外键 tab ────────────────────────────────────────────────────
 
   it('外键标签应显示外键列表 (DB-005)', async () => {
-    await switchSubTab('外键');
+    await switchSubTab('foreignKeys');
     await browser.pause(2000);
 
     const body = await $('body').getText();
@@ -254,7 +255,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   // ── 数据 tab ────────────────────────────────────────────────────
 
   it('切回数据标签应正常显示 (DE-001)', async () => {
-    const dataTab = await $(`button*=${t('connWin.data')}`);
+    const dataTab = await $("[data-testid='sub-tab-data']");
     await dataTab.click();
 
     await browser.waitUntil(
@@ -273,7 +274,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   it('数据标签右键菜单应包含复制单元格 (CTX-001)', async () => {
     await clickTableInSidebar(TEST_CHILD);
     await browser.pause(1500);
-    await switchSubTab(t('connWin.data'));
+    await switchSubTab('data');
     await browser.pause(2000);
 
     await browser.execute(() => {
@@ -286,20 +287,19 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     });
     await browser.pause(500);
 
-    const body = await $('body').getText();
-    expect(body).toContain(t('connWin.copyCell'));
-    expect(body).toContain(t('connWin.refresh'));
-    expect(body).toContain(t('connWin.newQuery'));
-    expect(body).not.toContain(t('connWin.editStructure'));
-    expect(body).not.toContain(t('indexes.editInStructure'));
-    expect(body).not.toContain(t('connWin.copyDDL'));
+    await expect($("[data-testid='web-context-item-copy']")).toExist();
+    await expect($("[data-testid='web-context-item-refresh']")).toExist();
+    await expect($("[data-testid='web-context-item-new-query']")).toExist();
+    await expect($("[data-testid='web-context-item-open-structure']")).not.toExist();
+    await expect($("[data-testid='web-context-item-edit-in-structure']")).not.toExist();
+    await expect($("[data-testid='web-context-item-copy-ddl']")).not.toExist();
 
     await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
     await browser.pause(300);
   });
 
   it('结构标签右键菜单应包含编辑结构 (CTX-002)', async () => {
-    await switchSubTab(t('connWin.structure'));
+    await switchSubTab('structure');
     await browser.pause(2000);
 
     await browser.execute(() => {
@@ -312,20 +312,19 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     });
     await browser.pause(500);
 
-    const body = await $('body').getText();
-    expect(body).toContain(t('connWin.editStructure'));
-    expect(body).toContain(t('connWin.refresh'));
-    expect(body).toContain(t('connWin.newQuery'));
-    expect(body).not.toContain(t('connWin.copyCell'));
-    expect(body).not.toContain(t('indexes.editInStructure'));
-    expect(body).not.toContain(t('connWin.copyDDL'));
+    await expect($("[data-testid='web-context-item-open-structure']")).toExist();
+    await expect($("[data-testid='web-context-item-refresh']")).toExist();
+    await expect($("[data-testid='web-context-item-new-query']")).toExist();
+    await expect($("[data-testid='web-context-item-copy']")).not.toExist();
+    await expect($("[data-testid='web-context-item-edit-in-structure']")).not.toExist();
+    await expect($("[data-testid='web-context-item-copy-ddl']")).not.toExist();
 
     await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
     await browser.pause(300);
   });
 
   it('索引标签右键菜单应包含编辑结构 (CTX-003)', async () => {
-    await switchSubTab(t('connWin.indexes'));
+    await switchSubTab('indexes');
     await browser.pause(2000);
 
     await browser.execute(() => {
@@ -338,19 +337,18 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     });
     await browser.pause(500);
 
-    const body = await $('body').getText();
-    expect(body).toContain(t('connWin.editStructure'));
-    expect(body).toContain(t('connWin.refresh'));
-    expect(body).toContain(t('connWin.newQuery'));
-    expect(body).not.toContain(t('connWin.copyCell'));
-    expect(body).not.toContain(t('connWin.copyDDL'));
+    await expect($("[data-testid='web-context-item-open-structure']")).toExist();
+    await expect($("[data-testid='web-context-item-refresh']")).toExist();
+    await expect($("[data-testid='web-context-item-new-query']")).toExist();
+    await expect($("[data-testid='web-context-item-copy']")).not.toExist();
+    await expect($("[data-testid='web-context-item-copy-ddl']")).not.toExist();
 
     await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
     await browser.pause(300);
   });
 
   it('外键标签右键菜单不应包含非通用项 (CTX-004)', async () => {
-    await switchSubTab('外键');
+    await switchSubTab('foreignKeys');
     await browser.pause(2000);
 
     await browser.execute(() => {
@@ -363,20 +361,19 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     });
     await browser.pause(500);
 
-    const body = await $('body').getText();
-    expect(body).toContain(t('connWin.refresh'));
-    expect(body).toContain(t('connWin.newQuery'));
-    expect(body).not.toContain(t('connWin.copyCell'));
-    expect(body).not.toContain(t('connWin.editStructure'));
-    expect(body).not.toContain(t('indexes.editInStructure'));
-    expect(body).not.toContain(t('connWin.copyDDL'));
+    await expect($("[data-testid='web-context-item-refresh']")).toExist();
+    await expect($("[data-testid='web-context-item-new-query']")).toExist();
+    await expect($("[data-testid='web-context-item-copy']")).not.toExist();
+    await expect($("[data-testid='web-context-item-open-structure']")).not.toExist();
+    await expect($("[data-testid='web-context-item-edit-in-structure']")).not.toExist();
+    await expect($("[data-testid='web-context-item-copy-ddl']")).not.toExist();
 
     await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
     await browser.pause(300);
   });
 
   it('DDL 标签右键菜单应包含复制 DDL (CTX-005)', async () => {
-    await switchSubTab('DDL');
+    await switchSubTab('ddl');
     await browser.pause(2000);
 
     await browser.execute(() => {
@@ -389,20 +386,19 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     });
     await browser.pause(500);
 
-    const body = await $('body').getText();
-    expect(body).toContain(t('connWin.copyDDL'));
-    expect(body).toContain(t('connWin.refresh'));
-    expect(body).toContain(t('connWin.newQuery'));
-    expect(body).not.toContain(t('connWin.copyCell'));
-    expect(body).not.toContain(t('connWin.editStructure'));
-    expect(body).not.toContain(t('indexes.editInStructure'));
+    await expect($("[data-testid='web-context-item-copy-ddl']")).toExist();
+    await expect($("[data-testid='web-context-item-refresh']")).toExist();
+    await expect($("[data-testid='web-context-item-new-query']")).toExist();
+    await expect($("[data-testid='web-context-item-copy']")).not.toExist();
+    await expect($("[data-testid='web-context-item-open-structure']")).not.toExist();
+    await expect($("[data-testid='web-context-item-edit-in-structure']")).not.toExist();
 
     await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
     await browser.pause(300);
   });
 
   it('索引标签右键菜单编辑结构应在结构子标签内打开编辑器 (CTX-006)', async () => {
-    await switchSubTab(t('connWin.indexes'));
+    await switchSubTab('indexes');
     await browser.pause(2000);
 
     await browser.execute(() => {
@@ -415,20 +411,11 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     });
     await browser.pause(500);
 
-    await browser.execute((label: string) => {
-      const menuItems = document.querySelectorAll('.fixed.z-\\[9999\\] button');
-      for (const item of menuItems) {
-        if (item.textContent?.includes(label)) {
-          (item as HTMLElement).click();
-          break;
-        }
-      }
-    }, t('connWin.editStructure'));
+    await $("[data-testid='web-context-item-open-structure']").click();
     await browser.pause(800);
 
-    const body = await $('body').getText();
-    expect(body).toContain(t('structEditor.editTable'));
-    const backBtn = await $(`button*=${t('common.back')}`);
+    await expect($("[data-testid='struct-editor-title']")).toExist();
+    const backBtn = await $("[data-testid='struct-editor-back']");
     await expect(backBtn).toBeDisplayed();
   });
 
@@ -458,14 +445,14 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   // ── 新建查询 ───────────────────────────────────────────────────
 
   it('应能打开新建查询标签 (SQ-003)', async () => {
-    const newQueryBtn = await $(`button*=${t('connWin.newQuery')}`);
+    const newQueryBtn = await waitForNewQueryButton();
     await newQueryBtn.click();
     await browser.pause(1000);
     await expect(await $(`button*=${t('query.execute')}`)).toBeDisplayed();
   });
 
   it('新建查询不应弹出对象加载补全框 (SQ-AC-001)', async () => {
-    const newQueryBtn = await $(`button*=${t('connWin.newQuery')}`);
+    const newQueryBtn = await waitForNewQueryButton();
     await newQueryBtn.click();
     let loadingHint = false;
     const deadline = Date.now() + 1500;

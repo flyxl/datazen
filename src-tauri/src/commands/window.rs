@@ -261,6 +261,16 @@ where
         .collect()
 }
 
+/// Whether a main-window close request should be blocked and minimized instead
+/// because other webview windows are still open.
+pub fn main_close_blocked_by_child_windows<I, S>(labels: I) -> bool
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    !non_main_window_labels(labels).is_empty()
+}
+
 /// Show/focus an existing labeled window. Reloads when `url` query differs so
 /// singleton reopen with a new query (e.g. docs `section`) takes effect.
 fn focus_existing_window(app: &AppHandle, label: &str, url: &str) -> bool {
@@ -484,6 +494,24 @@ mod tests {
         let labels = non_main_window_labels(["main", "backup-singleton", "connection-1"]);
         assert_eq!(labels, vec!["backup-singleton", "connection-1"]);
         assert!(non_main_window_labels(["main"]).is_empty());
+    }
+
+    #[test]
+    fn main_close_blocked_when_child_windows_open() {
+        assert!(!main_close_blocked_by_child_windows(["main"]));
+        assert!(main_close_blocked_by_child_windows([
+            "main",
+            "backup-singleton"
+        ]));
+        assert!(main_close_blocked_by_child_windows([
+            "main",
+            "data-sync-singleton",
+        ]));
+        assert!(main_close_blocked_by_child_windows([
+            "main",
+            "schema-diff-singleton",
+            "data-transfer-singleton",
+        ]));
     }
 
     #[test]

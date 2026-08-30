@@ -1,11 +1,8 @@
 import { create } from 'zustand';
 import { listen } from '@tauri-apps/api/event';
 import { EXTENSIONS_CHANGED_EVENT, extensionCommands } from '../commands/extensions';
+import { toErrorMessage } from '../lib/errors';
 import type { ExtensionSummary } from '../types/extension';
-
-function toErrorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 interface ExtensionStore {
   extensions: ExtensionSummary[];

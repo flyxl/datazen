@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import { createRef } from 'react';
 import {
   ConnectionNavigatorTree,
@@ -977,7 +977,7 @@ describe('ConnectionNavigatorTree toolbar and empty states', () => {
 
     // New-connection toolbar button still dispatches.
     newConnectionSpy.mockClear();
-    fireEvent.click(container.querySelector('button[title="common.newConnection"]')!);
+    fireEvent.click(screen.getByTestId('new-connection-button'));
     expect(newConnectionSpy).toHaveBeenCalledTimes(1);
   });
 

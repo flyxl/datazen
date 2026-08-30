@@ -26,9 +26,19 @@ vi.mock('../AiInput', () => ({
     isLoading?: boolean;
   }) => (
     <div>
-      <textarea data-testid="wf-chat-input" value={value} onChange={(e) => onChange(e.target.value)} />
-      <button type="button" data-testid="wf-chat-send" onClick={onSubmit}>send</button>
-      {isLoading && onStop && <button type="button" data-testid="wf-chat-stop" onClick={onStop}>stop</button>}
+      <textarea
+        data-testid="wf-chat-input"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <button type="button" data-testid="wf-chat-send" onClick={onSubmit}>
+        send
+      </button>
+      {isLoading && onStop && (
+        <button type="button" data-testid="wf-chat-stop" onClick={onStop}>
+          stop
+        </button>
+      )}
     </div>
   ),
 }));
@@ -45,7 +55,9 @@ vi.mock('../../ui/Select', () => ({
   }) => (
     <select data-testid="conn-select" value={value} onChange={(e) => onChange(e.target.value)}>
       {options.map((o) => (
-        <option key={o.value} value={o.value}>{o.label}</option>
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
       ))}
     </select>
   ),
@@ -62,7 +74,12 @@ vi.mock('../../../commands/ai', () => ({
 const aiState = vi.hoisted(() => ({
   isConfigured: true,
   workflowChat: {
-    messages: [] as { role: 'user' | 'assistant'; content: string; reasoning?: string; questions?: unknown[] }[],
+    messages: [] as {
+      role: 'user' | 'assistant';
+      content: string;
+      reasoning?: string;
+      questions?: unknown[];
+    }[],
     isStreaming: false,
     streamContent: '',
     streamReasoning: '',
@@ -74,18 +91,17 @@ const aiState = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../stores/aiStore', () => ({
-  useAiStore: Object.assign(
-    (sel: (s: typeof aiState) => unknown) => sel(aiState),
-    {
-      setState: vi.fn((partial: Partial<typeof aiState> | ((s: typeof aiState) => Partial<typeof aiState>)) => {
+  useAiStore: Object.assign((sel: (s: typeof aiState) => unknown) => sel(aiState), {
+    setState: vi.fn(
+      (partial: Partial<typeof aiState> | ((s: typeof aiState) => Partial<typeof aiState>)) => {
         if (typeof partial === 'function') {
           Object.assign(aiState, partial(aiState));
         } else {
           Object.assign(aiState, partial);
         }
-      }),
-    },
-  ),
+      },
+    ),
+  }),
 }));
 
 afterEach(cleanup);
@@ -107,9 +123,25 @@ beforeEach(() => {
   });
 });
 
-const CONNECTIONS = [
-  { id: 'c1', name: 'PG', databaseType: 'postgresql', database: 'postgres' },
-];
+const CONNECTIONS = [{ id: 'c1', name: 'PG', databaseType: 'postgresql', database: 'postgres' }];
+
+const activeConnectionState = vi.hoisted(() => ({
+  connections: {
+    c1: {
+      dbSessionId: 'mock-c1-session',
+      connectionId: 'c1',
+      status: 'connected' as const,
+      serverInfo: null,
+      currentDatabase: 'postgres',
+      error: null,
+    },
+  },
+}));
+
+vi.mock('../../../stores/activeConnectionStore', () => ({
+  useActiveConnectionStore: (sel: (s: typeof activeConnectionState) => unknown) =>
+    sel(activeConnectionState),
+}));
 
 describe('WorkflowChatPanel', () => {
   it('shows not configured state', () => {
@@ -125,7 +157,7 @@ describe('WorkflowChatPanel', () => {
     fireEvent.change(getByTestId('wf-chat-input'), { target: { value: 'make workflow' } });
     fireEvent.click(getByTestId('wf-chat-send'));
     expect(aiState.sendWorkflowChatMessage).toHaveBeenCalledWith({
-      dbSessionId: 'c1',
+      dbSessionId: 'mock-c1-session',
       content: 'make workflow',
       includeSchema: true,
       contextFiles: undefined,
@@ -148,10 +180,10 @@ describe('WorkflowChatPanel', () => {
 
   it('renders yaml block actions and saves workflow', async () => {
     const yaml = 'id: wf1\nname: Test\nsteps:\n  - type: query\n    id: s1\n    sql: SELECT 1';
-    aiState.workflowChat.messages = [
-      { role: 'assistant', content: `\`\`\`yaml\n${yaml}\n\`\`\`` },
-    ];
-    const { getByText, getAllByText } = render(<WorkflowChatPanel connections={CONNECTIONS} onSaved={vi.fn()} />);
+    aiState.workflowChat.messages = [{ role: 'assistant', content: `\`\`\`yaml\n${yaml}\n\`\`\`` }];
+    const { getByText, getAllByText } = render(
+      <WorkflowChatPanel connections={CONNECTIONS} onSaved={vi.fn()} />,
+    );
     fireEvent.click(getByText('workflows.aiCreate.preview'));
     expect(getAllByText(/id: wf1/).length).toBeGreaterThan(0);
     fireEvent.click(getByText('workflows.aiCreate.save'));

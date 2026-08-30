@@ -11,7 +11,7 @@ import {
   closeExtraWindows,
   invokeBackend,
   openDataTransferWindow,
-  selectDzOption,
+  selectDzOptionInWrap,
 } from '../helpers.js';
 import {
   TRANSFER_E2E_ROW_COUNT,
@@ -37,8 +37,8 @@ async function clickNext(label: string) {
 
 async function runDataTransferWizard(sourceName: string, targetName: string, tableName: string) {
   await openDataTransferWindow();
-  await selectDzOption(t('transfer.pickConnection'), sourceName);
-  await selectDzOption(t('transfer.pickConnection'), targetName);
+  await selectDzOptionInWrap('data-transfer-source', sourceName);
+  await selectDzOptionInWrap('data-transfer-target', targetName);
   await browser.pause(1500);
   await clickNext('dt-comp-endpoints');
 

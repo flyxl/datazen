@@ -92,6 +92,7 @@ export function NlFilterInput({ dbSessionId, database, tableName }: NlFilterInpu
         onClick={() => setExpanded(true)}
         title={t('smartFilter.title')}
         aria-label={t('smartFilter.title')}
+        data-testid="smart-filter-toggle"
       >
         <Sparkles className="h-3.5 w-3.5" />
       </button>

@@ -109,6 +109,21 @@ function request(type: string, reqId?: string, payload?: unknown): PluginRequest
   return { ch: BRIDGE_CHANNEL, type, target: 'host', ...(reqId ? { reqId } : {}), payload };
 }
 
+function seedActiveSession(connectionId: string, dbSessionId = `live-${connectionId}`): void {
+  activeConnectionStoreState.current = {
+    connections: {
+      [connectionId]: {
+        connectionId,
+        dbSessionId,
+        status: 'connected',
+        serverInfo: null,
+        currentDatabase: null,
+        error: null,
+      },
+    },
+  };
+}
+
 const ALL_PERMISSIONS = [
   'context:connections',
   'command:invoke',
@@ -395,6 +410,7 @@ describe('extensionBridge envelope semantics', () => {
 
 describe('extensionBridge rate limiting & timeout', () => {
   it('rejects the 21st concurrent request with E_RATE_LIMIT and recovers afterwards', async () => {
+    seedActiveSession('c');
     let resolveFirst!: (v: unknown) => void;
     driverExecuteMock.mockImplementation(
       () =>
@@ -465,6 +481,7 @@ describe('extensionBridge rate limiting & timeout', () => {
   });
 
   it('answers E_TIMEOUT when the host-internal promise exceeds the deadline', async () => {
+    seedActiveSession('c');
     vi.useFakeTimers();
     driverExecuteMock.mockImplementation(() => new Promise(() => undefined));
     const handle = attachBridge(env.iframe, {
@@ -586,6 +603,7 @@ describe('extensionBridge context whitelist', () => {
 
 describe('extensionBridge command.invoke error mapping', () => {
   it('maps backend "not found" rejections to E_NOT_FOUND', async () => {
+    seedActiveSession('cfg-x');
     driverExecuteMock.mockRejectedValue('connection not found: cfg-x');
     const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: ['command:invoke'] });
 

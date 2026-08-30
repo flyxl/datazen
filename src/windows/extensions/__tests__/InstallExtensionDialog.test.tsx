@@ -3,9 +3,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { InstallExtensionDialog } from '../InstallExtensionDialog';
 import type { ExtensionManifest, ExtensionSummary } from '../../../types/extension';
 
-const { inspectPackageMock, installFromPathMock, fetchMock, onCloseMock } = vi.hoisted(() => ({
-  inspectPackageMock: vi.fn(),
-  installFromPathMock: vi.fn(),
+const { inspectWithDialogMock, installExtensionMock, fetchMock, onCloseMock } = vi.hoisted(() => ({
+  inspectWithDialogMock: vi.fn(),
+  installExtensionMock: vi.fn(),
   fetchMock: vi.fn(),
   onCloseMock: vi.fn(),
 }));
@@ -17,8 +17,8 @@ vi.mock('../../../hooks/useI18n', () => ({
 vi.mock('../../../commands/extensions', () => ({
   EXTENSIONS_CHANGED_EVENT: 'plugins:changed',
   extensionCommands: {
-    inspectExtensionPackage: (...args: unknown[]) => inspectPackageMock(...args),
-    installExtensionFromPath: (...args: unknown[]) => installFromPathMock(...args),
+    inspectExtensionPackageWithDialog: (...args: unknown[]) => inspectWithDialogMock(...args),
+    installExtension: (...args: unknown[]) => installExtensionMock(...args),
   },
 }));
 
@@ -40,31 +40,31 @@ const REVIEW_MANIFEST: ExtensionManifest = {
   permissions: ['context:connections', 'command:invoke'],
 };
 
+const PREVIEW = {
+  pickToken: 'pick-token-1',
+  packageLabel: 'acme.zip',
+  manifest: REVIEW_MANIFEST,
+};
+
 function renderOpen(onInstalled?: (plugin: ExtensionSummary) => void) {
   return render(<InstallExtensionDialog open onClose={onCloseMock} onInstalled={onInstalled} />);
 }
 
-/** Types a path and advances to the review step (inspection must succeed). */
-async function gotoReview(path = '/tmp/acme.zip') {
-  fireEvent.change(screen.getByPlaceholderText('plugins.install.pathPlaceholder'), {
-    target: { value: path },
-  });
-  fireEvent.click(screen.getByTestId('plugin-install-next'));
+/** Clicks folder browse and advances to the review step (inspection must succeed). */
+async function gotoReviewViaFolder() {
+  fireEvent.click(screen.getByTestId('plugin-install-browse-folder'));
   await screen.findByTestId('plugin-install-review');
 }
 
-/** Types a path and triggers an inspection that rejects. */
-async function inspectFailure(path: string) {
-  fireEvent.change(screen.getByPlaceholderText('plugins.install.pathPlaceholder'), {
-    target: { value: path },
-  });
-  fireEvent.click(screen.getByTestId('plugin-install-next'));
+/** Clicks zip browse and triggers an inspection that rejects. */
+async function inspectFailureViaZip() {
+  fireEvent.click(screen.getByTestId('plugin-install-browse-zip'));
   await screen.findByTestId('plugin-install-error');
 }
 
 beforeEach(() => {
-  inspectPackageMock.mockReset().mockResolvedValue(REVIEW_MANIFEST);
-  installFromPathMock.mockReset();
+  inspectWithDialogMock.mockReset().mockResolvedValue(PREVIEW);
+  installExtensionMock.mockReset();
   fetchMock.mockReset().mockResolvedValue(undefined);
   onCloseMock.mockReset();
 });
@@ -72,64 +72,55 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('InstallExtensionDialog', () => {
-  it('keeps continue disabled until a non-blank path is entered', () => {
+  it('shows native browse actions on the select step', () => {
     renderOpen();
 
-    const next = screen.getByTestId('plugin-install-next');
-    expect(next).toBeDisabled();
-
-    fireEvent.change(screen.getByPlaceholderText('plugins.install.pathPlaceholder'), {
-      target: { value: '   ' },
-    });
-    expect(next).toBeDisabled();
-
-    fireEvent.change(screen.getByPlaceholderText('plugins.install.pathPlaceholder'), {
-      target: { value: '/tmp/acme.zip' },
-    });
-    expect(next).toBeEnabled();
+    expect(screen.getByTestId('plugin-install-browse-zip')).toBeEnabled();
+    expect(screen.getByTestId('plugin-install-browse-folder')).toBeEnabled();
+    expect(screen.queryByTestId('plugin-install-next')).not.toBeInTheDocument();
   });
 
-  it('does not invoke the backend for a blank path', () => {
+  it('does not invoke the backend until a browse action is chosen', () => {
     renderOpen();
-    fireEvent.click(screen.getByTestId('plugin-install-next'));
-    expect(inspectPackageMock).not.toHaveBeenCalled();
-    expect(installFromPathMock).not.toHaveBeenCalled();
+    expect(inspectWithDialogMock).not.toHaveBeenCalled();
+    expect(installExtensionMock).not.toHaveBeenCalled();
   });
 
   it('walks the two-step flow: inspect → review details/permissions → install', async () => {
     const installed = { id: 'acme.new', name: 'New' } as unknown as ExtensionSummary;
     const onInstalled = vi.fn();
-    installFromPathMock.mockResolvedValue(installed);
+    installExtensionMock.mockResolvedValue(installed);
 
     renderOpen(onInstalled);
 
-    // Step 1 → 2: validation-only inspection of the trimmed path.
-    await gotoReview('  /tmp/acme.zip  ');
-    expect(inspectPackageMock).toHaveBeenCalledTimes(1);
-    expect(inspectPackageMock).toHaveBeenCalledWith('/tmp/acme.zip');
-    expect(installFromPathMock).not.toHaveBeenCalled();
+    await gotoReviewViaFolder();
+    expect(inspectWithDialogMock).toHaveBeenCalledTimes(1);
+    expect(inspectWithDialogMock).toHaveBeenCalledWith('folder');
+    expect(installExtensionMock).not.toHaveBeenCalled();
 
-    // Step 2 shows name/version/author plus the permission badge list.
     expect(screen.getByTestId('plugin-install-review')).toHaveTextContent('Demo Plugin');
     expect(screen.getByTestId('plugin-install-review')).toHaveTextContent('v1.2.3');
     expect(screen.getByTestId('plugin-install-review')).toHaveTextContent('Acme');
+    expect(screen.getByTestId('plugin-install-package-label')).toHaveTextContent('acme.zip');
     const permissions = screen.getByTestId('plugin-install-permissions');
     expect(permissions).toHaveTextContent('context:connections');
     expect(permissions).toHaveTextContent('command:invoke');
 
-    // Confirmation performs the actual install.
     fireEvent.click(screen.getByTestId('plugin-install-confirm'));
-    await waitFor(() => expect(installFromPathMock).toHaveBeenCalledWith('/tmp/acme.zip'));
+    await waitFor(() => expect(installExtensionMock).toHaveBeenCalledWith('pick-token-1'));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(onCloseMock).toHaveBeenCalledTimes(1));
     expect(onInstalled).toHaveBeenCalledWith(installed);
   });
 
   it('renders an empty permission list as "no permissions"', async () => {
-    inspectPackageMock.mockResolvedValue({ ...REVIEW_MANIFEST, permissions: [] });
+    inspectWithDialogMock.mockResolvedValue({
+      ...PREVIEW,
+      manifest: { ...REVIEW_MANIFEST, permissions: [] },
+    });
 
     renderOpen();
-    await gotoReview();
+    await gotoReviewViaFolder();
 
     expect(screen.getByTestId('plugin-install-permissions')).toHaveTextContent(
       'plugins.install.noPermissions',
@@ -138,76 +129,69 @@ describe('InstallExtensionDialog', () => {
 
   it('never installs when cancelled from the review step', async () => {
     renderOpen();
-    await gotoReview();
+    await gotoReviewViaFolder();
 
-    // Back returns to the path-entry step without touching the backend.
     fireEvent.click(screen.getByTestId('plugin-install-back'));
-    expect(await screen.findByTestId('plugin-install-next')).toBeInTheDocument();
-    expect(installFromPathMock).not.toHaveBeenCalled();
+    expect(await screen.findByTestId('plugin-install-browse-folder')).toBeInTheDocument();
+    expect(installExtensionMock).not.toHaveBeenCalled();
 
-    // Cancelling from the select step closes without installing either.
     fireEvent.click(screen.getByText('common.cancel'));
     expect(onCloseMock).toHaveBeenCalledTimes(1);
-    expect(installFromPathMock).not.toHaveBeenCalled();
+    expect(installExtensionMock).not.toHaveBeenCalled();
   });
 
   it('shows an inspection failure as a copyable error and stays on the select step', async () => {
-    inspectPackageMock.mockRejectedValue(new Error('manifest invalid'));
+    inspectWithDialogMock.mockRejectedValue(new Error('manifest invalid'));
 
     renderOpen();
-    await inspectFailure('/tmp/broken.zip');
+    await inspectFailureViaZip();
 
     const message = screen.getByTestId('plugin-install-error');
-    // Copyable contract per PRD §4.3: selectable text + explicit copy action +
-    // alert semantics.
     expect(message.className).toMatch(/selectable|copyable/);
     expect(message).toHaveAttribute('role', 'alert');
     expect(message).toHaveTextContent('manifest invalid');
     expect(screen.getByTestId('copyable-error-copy')).toBeInTheDocument();
 
-    // Still on the select step; nothing was installed.
     expect(screen.queryByTestId('plugin-install-review')).not.toBeInTheDocument();
-    expect(screen.getByTestId('plugin-install-next')).toBeEnabled();
-    expect(installFromPathMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId('plugin-install-browse-zip')).toBeEnabled();
+    expect(installExtensionMock).not.toHaveBeenCalled();
     expect(screen.getByText('plugins.install.title')).toBeInTheDocument();
   });
 
   it('copies the raw error text to the clipboard via the copy button', async () => {
-    inspectPackageMock.mockRejectedValue(new Error('boom: entry missing'));
+    inspectWithDialogMock.mockRejectedValue(new Error('boom: entry missing'));
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
 
     renderOpen();
-    await inspectFailure('/tmp/broken.zip');
+    await inspectFailureViaZip();
 
     fireEvent.click(screen.getByTestId('copyable-error-copy'));
     expect(writeText).toHaveBeenCalledWith('boom: entry missing');
   });
 
   it('returns to the select step with a copyable error when the install fails', async () => {
-    installFromPathMock.mockRejectedValue(new Error('disk full'));
+    installExtensionMock.mockRejectedValue(new Error('disk full'));
 
     renderOpen();
-    await gotoReview();
+    await gotoReviewViaFolder();
     fireEvent.click(screen.getByTestId('plugin-install-confirm'));
 
     expect(await screen.findByTestId('plugin-install-error')).toHaveTextContent('disk full');
-    // Back on the path step so the user can retry; dialog stays open.
     expect(screen.queryByTestId('plugin-install-review')).not.toBeInTheDocument();
-    expect(screen.getByTestId('plugin-install-next')).toBeEnabled();
+    expect(screen.getByTestId('plugin-install-browse-folder')).toBeEnabled();
     expect(onCloseMock).not.toHaveBeenCalled();
   });
 
-  it('clears a previous error when the path changes again', async () => {
-    inspectPackageMock.mockRejectedValue(new Error('first failure'));
+  it('ignores a cancelled native picker without surfacing an error', async () => {
+    inspectWithDialogMock.mockResolvedValue(null);
 
     renderOpen();
-    const input = screen.getByPlaceholderText('plugins.install.pathPlaceholder');
-    fireEvent.change(input, { target: { value: '/tmp/broken.zip' } });
-    fireEvent.click(screen.getByTestId('plugin-install-next'));
-    await screen.findByTestId('plugin-install-error');
+    fireEvent.click(screen.getByTestId('plugin-install-browse-zip'));
 
-    fireEvent.change(input, { target: { value: '/tmp/other.zip' } });
+    await waitFor(() => expect(inspectWithDialogMock).toHaveBeenCalledTimes(1));
     expect(screen.queryByTestId('plugin-install-error')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('plugin-install-review')).not.toBeInTheDocument();
+    expect(screen.getByTestId('plugin-install-browse-zip')).toBeEnabled();
   });
 });

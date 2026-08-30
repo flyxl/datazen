@@ -25,7 +25,7 @@ import {
   releaseDedicatedSession,
   type DedicatedSideSession,
 } from '../../lib/dedicatedDbSession';
-import { resolveSyncPairing, isSyncTargetSupported } from '../../lib/syncPairing';
+import { useSyncPairingState } from '../../lib/syncPairing';
 import type { ConnectionConfig } from '../../types';
 import type { SyncState } from './utils';
 import { pickDefaultSchema, uniqueSchemasFromTables } from './utils';
@@ -149,11 +149,19 @@ export function DataSyncWindow() {
     [connections],
   );
 
+  const { targetSupport, activePairing } = useSyncPairingState(
+    sourceConn?.databaseType,
+    connections,
+    targetId,
+  );
+
   const targetOptions = useMemo(() => {
     const hint = t('common.unsupportedPair');
     const srcType = sourceConn?.databaseType;
     return connections.map((c) => {
-      const unsupported = Boolean(srcType && !isSyncTargetSupported(srcType, c.databaseType));
+      const unsupported = Boolean(
+        srcType && Object.hasOwn(targetSupport, c.id) && !targetSupport[c.id],
+      );
       const base = `${c.name} (${c.databaseType})`;
       return {
         value: c.id,
@@ -162,14 +170,7 @@ export function DataSyncWindow() {
         title: unsupported ? hint : undefined,
       };
     });
-  }, [connections, sourceConn?.databaseType, t]);
-
-  const activePairing = useMemo(() => {
-    if (!sourceConn || !targetId) return null;
-    const tgt = connections.find((c) => c.id === targetId);
-    if (!tgt) return null;
-    return resolveSyncPairing(sourceConn.databaseType, tgt.databaseType);
-  }, [connections, sourceConn, targetId]);
+  }, [connections, sourceConn?.databaseType, targetSupport, t]);
 
   const targetReadOnly = targetConn?.readOnly === true;
 

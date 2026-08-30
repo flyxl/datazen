@@ -175,6 +175,10 @@
       links +
       '</div>' +
       '<div class="nav-tools">' +
+      '<a class="nav-star" href="https://github.com/flyxl/datazen" target="_blank" rel="noopener" aria-label="GitHub Stars">' +
+      '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>' +
+      '<span id="nav-star-count"></span>' +
+      '</a>' +
       '<button class="theme-toggle" type="button" data-theme-toggle aria-label="' +
       t.themeToggleAria +
       '" title="' +
@@ -295,15 +299,18 @@
 
   // ── GitHub star badge ──
   function initStarBadge() {
-    var el = document.getElementById('star-count');
-    if (!el) return;
+    var navEl = document.getElementById('nav-star-count');
+    var heroEl = document.getElementById('star-count');
+    if (!navEl && !heroEl) return;
     fetch('https://api.github.com/repos/flyxl/datazen')
       .then(function (r) {
         return r.json();
       })
       .then(function (d) {
         if (d && d.stargazers_count != null) {
-          el.textContent = d.stargazers_count.toLocaleString();
+          var text = d.stargazers_count.toLocaleString();
+          if (navEl) navEl.textContent = text;
+          if (heroEl) heroEl.textContent = text;
         }
       })
       .catch(function () {});

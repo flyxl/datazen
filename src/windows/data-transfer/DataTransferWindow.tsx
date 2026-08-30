@@ -22,10 +22,11 @@ import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/cn';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
-import { isTransferLimitationsDismissed } from '../../lib/transferLimitationsPrefs';
+import { isTransferLimitationsDismissed, setTransferLimitationsDismissed } from '../../lib/transferLimitationsPrefs';
 import { isTransferTargetSupported, resolveTransferPairing } from '../../lib/transferPairing';
 import type { ConnectionConfig } from '../../types';
-import { TransferLimitationsDialog } from './TransferLimitationsDialog';
+import { LimitationsDialog } from '../../components/ui/LimitationsDialog';
+import { TRANSFER_LIMITATION_KEYS } from './transferLimitationKeys';
 import { TransferExecuteConfirmDialog } from './TransferExecuteConfirmDialog';
 import { TransferMappingStep } from './TransferMappingStep';
 import {
@@ -913,7 +914,15 @@ export function DataTransferWindow() {
 
       <StatusBar />
 
-      <TransferLimitationsDialog open={limitationsOpen} onClose={() => setLimitationsOpen(false)} />
+      <LimitationsDialog
+        open={limitationsOpen}
+        onClose={() => setLimitationsOpen(false)}
+        titleKey="transfer.limitations.title"
+        dontShowAgainKey="transfer.limitations.dontShowAgain"
+        limitationKeys={TRANSFER_LIMITATION_KEYS}
+        testIdPrefix="data-transfer"
+        onDismiss={setTransferLimitationsDismissed}
+      />
 
       <TransferExecuteConfirmDialog
         open={executeConfirmOpen}

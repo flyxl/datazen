@@ -1,4 +1,14 @@
 //! Local SQLite persistence for SQL query history and workflow execution history.
+//!
+//! ## Security note — plaintext SQL
+//!
+//! `{appData}/history.sqlite` stores executed SQL, database/schema context, and
+//! error messages **in plaintext** (not encrypted like `connections.json` or
+//! `ai_config.enc`). Query text may contain literals, identifiers, or fragments
+//! that embed credentials or other sensitive data. Anyone with filesystem access
+//! to the app data directory (backups, sync folders, shared profiles) can read
+//! this file. Future hardening may add encryption or redaction; until then treat
+//! `history.sqlite` like a sensitive audit log and avoid shipping it off-device.
 
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::{params, Connection};
@@ -257,6 +267,9 @@ impl HistoryDb {
 
     // ── Query history ─────────────────────────────────────────────────────
 
+    /// Append one query outcome to `history.sqlite` (plaintext `sql` column).
+    ///
+    /// See the module-level security note: history is not encrypted at rest.
     pub fn add_query_history(&self, entry: QueryHistoryEntry) -> Result<(), HistoryDbError> {
         self.with_conn(|conn| {
             let dominated: Option<String> = match conn.query_row(
@@ -579,6 +592,7 @@ fn open_connection(db_path: &Path) -> Result<Connection, HistoryDbError> {
     match Connection::open(db_path) {
         Ok(conn) => {
             let _: i32 = conn.query_row("SELECT 1", [], |row| row.get(0))?;
+            let _: String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))?;
             Ok(conn)
         }
         Err(e) => {

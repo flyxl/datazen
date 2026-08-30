@@ -50,7 +50,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 | **AI 层** | LLM 集成 | 多 Provider、协议复用、流式输出、Prompt Resolver |
 | **MCP 层** | 工具协议 | Server / Client、Workflow 调用 |
 | **Sync 层** | 数据同步（同族 Diff Sync） | `data_sync`：门闸 / 流式比较 / ChangeSet / 参数化 DML；异构 IR 属 Transfer，V1 不实现 |
-| **Stores 层** | 本地持久化 | AES-256-GCM；主密钥在 OS 钥匙串或 `{appData}/.key` |
+| **Persistence 层** | Application Service 的持久化抽象与适配器 | Core Runtime 不依赖持久化；Desktop 使用 SQLite，Web 使用 MySQL；Secret 使用 AES-256-GCM |
 
 ## Driver Command 架构
 
@@ -161,12 +161,14 @@ Connection 变化后重新 discovery；没有 Step override 时使用 Workflow �
 
 | 文档 | 内容 |
 |------|------|
+| [Web 平台化实现方案](rfc/web-platform-implementation.zh-CN.md) | v0.2.0 共享 Core、SQLite/MySQL 双持久化、Web Server、SQL Prepare/Audit 与迁移计划 |
 | [数据库驱动层](backend/drivers.md) | DatabaseDriver trait、驱动注册表、插件扩展机制 |
 | [Schema 缓存](backend/cache.md) | 两级 TTL 缓存架构、缓存失效策略、查询执行优化 |
 | [服务层](backend/services.md) | ConnectionManager、QueryExecutor、DbTools |
 | [持久化存储](backend/store.md) | AES-256-GCM；主密钥 keychain / `.key` 双后端 |
 | [IPC 命令层](backend/commands.md) | Tauri Commands、AppState、CommandError |
-| [运行时主题包](backend/theme.md) | 本地 ZIP、`--c-*` / `--dt-*` token、与驱动独立 |
+| [运行时主题](backend/theme.md) | 扩展主题贡献、`--c-*` / `--dt-*` token、首屏背景缓存 |
+| [运行时插件系统](backend/extensions.md) | Extensions：UI 页面 + 主题贡献、沙箱 iframe 桥、安装与权限 |
 | [AI 模块](backend/ai.md) | AiProvider、Provider protocol、PromptResolver |
 | [MCP 模块](backend/mcp.md) | MCP Server、MCP Client、双运行模式 |
 | [Workflow 模块](backend/workflow.md) | YAML Workflow、Command runtime、Connection inheritance、Legacy Query、执行历史 |

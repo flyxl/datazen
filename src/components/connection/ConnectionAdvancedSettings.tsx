@@ -33,11 +33,18 @@ export function ConnectionAdvancedSettings({
           isWindow ? 'mt-5' : 'mt-4',
         )}
         onClick={() => form.setShowAdvanced((v) => !v)}
+        data-testid="new-conn-advanced-toggle"
       >
-        {form.showAdvanced ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        {form.showAdvanced ? (
+          <ChevronDown className="h-4 w-4" />
+        ) : (
+          <ChevronRight className="h-4 w-4" />
+        )}
         {t('newConn.advanced')}
         {form.sshEnabled && (
-          <span className="ml-auto rounded bg-blue-500/20 px-1.5 py-0.5 text-xs text-blue-400">SSH</span>
+          <span className="ml-auto rounded bg-blue-500/20 px-1.5 py-0.5 text-xs text-blue-400">
+            SSH
+          </span>
         )}
       </button>
 
@@ -56,7 +63,7 @@ export function ConnectionAdvancedSettings({
           {PluginAdvanced ? (
             <PluginAdvanced form={form} />
           ) : form.meta.supportsSSL ? (
-            <div>
+            <div data-testid="new-conn-ssl-mode">
               <Label>{t('newConn.sslMode')}</Label>
               <Select
                 value={form.sslMode}

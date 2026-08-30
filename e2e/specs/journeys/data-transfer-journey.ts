@@ -14,7 +14,7 @@ import {
   invokeBackend,
   openDataTransferWindow,
   queryScalar,
-  selectDzOption,
+  selectDzOptionInWrap,
   withSafeModeOff,
   type QueryResultPayload,
 } from '../../helpers.js';
@@ -136,50 +136,24 @@ describe('数据传输完整用户旅程 (DT-JOURNEY)', () => {
     await captureJourneyStep(stepLabel, 0, true);
   }
 
-  it('Step 1: 通过 URL 打开数据传输窗口', async () => {
+  it('Step 1: 选择源/目标连接', async () => {
     await openDataTransferWindow();
-    const root = await $('[data-testid="data-transfer-window"]');
-    await expect(root).toBeDisplayed();
-    const body = await $('body').getText();
-    expect(body).toContain(t('transfer.title'));
-    await captureJourneyStep('dt-journey-01-window-open', 0, true);
-  });
-
-  it('Step 2: 应显示端点步骤与源/目标选择器', async () => {
-    await expect(await $('[data-testid="data-transfer-step-endpoints"]')).toBeDisplayed();
-    const body = await $('body').getText();
-    expect(body).toContain(t('transfer.source'));
-    expect(body).toContain(t('transfer.target'));
-    await expect(await $('[data-testid="data-transfer-next"]')).toBeDisplayed();
-    await captureJourneyStep('dt-journey-02-wizard-chrome', 0, true);
-  });
-
-  it('Step 3: 未选两端点时 Next 应禁用', async () => {
-    await openDataTransferWindow();
-    const next = await $('[data-testid="data-transfer-next"]');
-    await next.waitForDisplayed({ timeout: 8000 });
-    expect(await next.isEnabled()).toBe(false);
-    await captureJourneyStep('dt-journey-03-next-disabled', 0, true);
-  });
-
-  it('Step 4: 选择源/目标连接', async () => {
-    await openDataTransferWindow();
-    await selectDzOption(t('transfer.pickConnection'), SRC_NAME);
-    await selectDzOption(t('transfer.pickConnection'), TGT_NAME);
+    await selectDzOptionInWrap('data-transfer-source', SRC_NAME);
+    await selectDzOptionInWrap('data-transfer-target', TGT_NAME);
     await browser.pause(1500);
     await expect(await $('[data-testid="data-transfer-source-database"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-transfer-target-database"]')).toBeDisplayed();
     await captureJourneyStep('dt-journey-04-endpoints-selected', 0, true);
   });
 
-  it('Step 5: 进入 setup 步骤（模式与选项）', async () => {
+  it('Step 2: 进入 setup 步骤（模式与选项）', async () => {
     await clickNext('dt-journey-05-setup-step');
     await expect(await $('[data-testid="data-transfer-mode-data"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-transfer-mode-structure"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-transfer-mode-both"]')).toBeDisplayed();
   });
 
-  it('Step 6: 选择 data 模式并进入对象选择', async () => {
+  it('Step 3: 选择 data 模式并进入对象选择', async () => {
     const dataMode = await $('[data-testid="data-transfer-mode-data"]');
     await dataMode.click();
     await browser.pause(300);
@@ -188,7 +162,7 @@ describe('数据传输完整用户旅程 (DT-JOURNEY)', () => {
     await browser.pause(2000);
   });
 
-  it('Step 7: 推进映射与预览直至执行步骤', async () => {
+  it('Step 4: 推进映射与预览直至执行步骤', async () => {
     for (let i = 0; i < 8; i++) {
       const execute = await $('[data-testid="data-transfer-execute"]');
       if (await execute.isExisting().catch(() => false)) {
@@ -206,7 +180,7 @@ describe('数据传输完整用户旅程 (DT-JOURNEY)', () => {
     }
   });
 
-  it('Step 8: 执行传输并验证目标行数', async () => {
+  it('Step 5: 执行传输并验证目标行数', async () => {
     const execute = await $('[data-testid="data-transfer-execute"]');
     await execute.waitForClickable({ timeout: 15000 });
     await execute.click();

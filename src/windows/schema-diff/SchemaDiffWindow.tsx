@@ -21,8 +21,9 @@ import { openDocsWindow } from '../../lib/windowManager';
 import { cn } from '../../lib/cn';
 import { MigrationEndpointsBar } from '../../components/migration/MigrationEndpointsBar';
 import type { TableSchemaDiff } from '../../types';
-import { isSchemaDiffLimitationsDismissed } from '../../lib/schemaDiffLimitationsPrefs';
-import { SchemaDiffLimitationsDialog } from './SchemaDiffLimitationsDialog';
+import { isSchemaDiffLimitationsDismissed, setSchemaDiffLimitationsDismissed } from '../../lib/schemaDiffLimitationsPrefs';
+import { LimitationsDialog } from '../../components/ui/LimitationsDialog';
+import { SCHEMA_DIFF_LIMITATION_KEYS } from './schemaDiffLimitationKeys';
 import { SchemaDiffTableListPanel } from './SchemaDiffTableListPanel';
 import { SchemaDiffRightPanel } from './SchemaDiffRightPanel';
 import { SchemaDiffObjectsStep } from './SchemaDiffObjectsStep';
@@ -635,9 +636,14 @@ export function SchemaDiffWindow() {
         </div>
       </div>
 
-      <SchemaDiffLimitationsDialog
+      <LimitationsDialog
         open={limitationsOpen}
         onClose={() => setLimitationsOpen(false)}
+        titleKey="schemaDiff.limitations.title"
+        dontShowAgainKey="schemaDiff.limitations.dontShowAgain"
+        limitationKeys={SCHEMA_DIFF_LIMITATION_KEYS}
+        testIdPrefix="schema-diff"
+        onDismiss={setSchemaDiffLimitationsDismissed}
       />
       <StatusBar left={<span className="truncate">{t('common.schemaDiff')}</span>} />
     </div>

@@ -4,6 +4,7 @@ import {
   captureJourneyStep,
   expandAllGroups,
   connectSeededPgInWorkspace,
+  waitForNewQueryButton,
 } from '../helpers.js';
 import { t } from '../i18n.js';
 
@@ -42,7 +43,7 @@ describe('主窗口 / 统一工作区 (CM-001)', () => {
   });
 
   it('应显示新建连接按钮（侧栏工具栏）', async () => {
-    const plusBtn = await $(`button[title="${t('main.newConnection')}"]`);
+    const plusBtn = await $('[data-testid="new-connection-button"]');
     await expect(plusBtn).toBeDisplayed();
   });
 
@@ -89,7 +90,7 @@ describe('主窗口 / 统一工作区 (CM-001)', () => {
 
   it('双击连接应在同一主窗口显示连接工具栏', async () => {
     await connectSeededPgInWorkspace();
-    const newQueryBtn = await $(`button*=${t('connWin.newQuery')}`);
+    const newQueryBtn = await waitForNewQueryButton();
     await expect(newQueryBtn).toBeDisplayed();
     const handles = await browser.getWindowHandles();
     expect(handles.length).toBe(1);

@@ -440,6 +440,7 @@ function SubTabBar({
           <button
             key={tab.id}
             type="button"
+            data-testid={`sub-tab-${tab.id}`}
             className={cn(
               'relative px-5 py-2 text-[13px] transition-colors',
               activeTab === tab.id

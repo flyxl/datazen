@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use datazen_driver_api::*;
 use rust_decimal::prelude::ToPrimitive;
 use sqlx::pool::PoolConnection;
-use sqlx::postgres::PgPoolOptions;
+use sqlx::postgres::{PgPoolOptions, PgSslMode};
 use sqlx::{Column, Executor, PgPool, Postgres, Row};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -472,9 +472,18 @@ fn build_pg_options(
     if let Some(username) = &config.username {
         opts = opts.username(username);
     }
-    if let Some(password) = &config.password {
+    if let Some(password) = config.password.as_deref().filter(|p| !p.trim().is_empty()) {
         opts = opts.password(password);
     }
+
+    let pg_ssl = match config.ssl_mode {
+        SslMode::Disable => PgSslMode::Disable,
+        SslMode::Prefer => PgSslMode::Prefer,
+        SslMode::Require => PgSslMode::Require,
+        SslMode::VerifyCa => PgSslMode::VerifyCa,
+        SslMode::VerifyFull => PgSslMode::VerifyFull,
+    };
+    opts = opts.ssl_mode(pg_ssl);
 
     opts = opts.log_statements(tracing::log::LevelFilter::Trace);
     Ok(opts)
@@ -1524,6 +1533,11 @@ impl DatabaseDriver for PostgresDriver {
         match execute_standard_sql_command(self, handle, command, input.clone()).await {
             Err(DriverError::Unsupported(_)) => {}
             other => return other,
+        }
+        if let Some(result) =
+            try_execute_schema_catalog_command(self, handle, command, input.clone()).await?
+        {
+            return Ok(result);
         }
         if is_schema_object_command(command) {
             return execute_schema_object_command(

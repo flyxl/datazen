@@ -52,19 +52,22 @@ import { AddToDashboardDialog } from '../dashboard/AddToDashboardDialog';
 import { WorkflowForm, emptyDraft } from './WorkflowForm';
 import type { WorkflowDraft } from './WorkflowForm';
 import { WorkflowYamlEditor } from './WorkflowYamlEditor';
+import { WorkflowHistoryList } from './WorkflowHistorySection';
+import {
+  StepStatusIcon,
+  extractStepColumnNames,
+  stepToStatementResult,
+} from './workflowStepResultUtils';
+import { workflowDefinitionToDraft, workflowDraftToDefinition } from './workflowDraftConvert';
 import { parseWorkflowYaml, validateWorkflowFields } from '../../lib/workflowYaml';
 import { draftToYamlObject, yamlObjectToDraft } from '../../lib/workflowDraftYaml';
 import YAML from 'yaml';
 import type {
-  ColumnInfo,
   HistoryListItem,
-  StatementResult,
   StepExecutionResult,
-  Value,
   WorkflowDefinition,
   WorkflowExecutionResult,
   WorkflowListItem,
-  WorkflowStepType,
 } from '../../types';
 import type { ChartConfig } from '../../types/chart';
 
@@ -464,28 +467,7 @@ export function WorkflowPage({
   const handleEdit = async (workflowId: string) => {
     try {
       const workflow: WorkflowDefinition = await aiCommands.workflowGet(workflowId);
-      await openEditPanel(workflowId, {
-        id: workflow.id,
-        name: workflow.name,
-        description: workflow.description,
-        variables: workflow.variables.map((v) => ({
-          name: v.name,
-          varType: v.type || 'string',
-          description: v.description,
-          required: v.required ?? false,
-        })),
-        steps: workflow.steps.map((s) => ({
-          type: s.type as WorkflowStepType,
-          id: s.id,
-          sql: s.sql,
-          prompt: s.prompt,
-          connection: s.connection,
-          database: s.database,
-        })),
-        scheduleEnabled: workflow.schedule?.enabled ?? false,
-        scheduleIntervalSecs:
-          workflow.schedule?.interval_secs ?? workflow.schedule?.intervalSecs ?? 3600,
-      });
+      await openEditPanel(workflowId, workflowDefinitionToDraft(workflow));
     } catch (e) {
       setFeedback(String(e));
     }
@@ -508,30 +490,8 @@ export function WorkflowPage({
 
   const handleSave = useCallback(
     async (panelId: string, d: WorkflowDraft) => {
-      const workflow: WorkflowDefinition = {
-        id: d.id.trim(),
-        name: d.name.trim(),
-        description: d.description.trim(),
-        variables: d.variables.map((v) => ({
-          name: v.name,
-          type: v.varType,
-          description: v.description,
-          required: v.required,
-        })),
-        steps: d.steps.map((s) => ({
-          type: s.type,
-          id: s.id,
-          sql: s.sql,
-          prompt: s.prompt,
-          connection: s.connection,
-          database: s.database,
-        })),
-        schedule: d.scheduleEnabled
-          ? { enabled: true, interval_secs: Math.max(30, d.scheduleIntervalSecs ?? 3600) }
-          : { enabled: false },
-      };
       try {
-        await aiCommands.workflowSave(workflow);
+        await aiCommands.workflowSave(workflowDraftToDefinition(d));
         closePanel(panelId);
         setFeedback(t('workflows.saved'));
         setTimeout(() => setFeedback(''), 2000);
@@ -742,7 +702,7 @@ export function WorkflowPage({
 
           <div className="flex-1 overflow-y-auto">
             {sideTab === 'history' ? (
-              <HistoryList
+              <WorkflowHistoryList
                 items={historyItems}
                 onView={(id, name) => void openHistoryPanel(id, name)}
                 onClear={() => void handleClearHistory()}
@@ -1084,66 +1044,6 @@ export function WorkflowPage({
 
 // ── Sub-components ──────────────────────────────────────────────────
 
-function StepStatusIcon({ status }: { status: string }) {
-  if (status === 'success') return <span className="text-green-500">✓</span>;
-  if (status === 'skipped') return <span className="text-yellow-500">⏭</span>;
-  if (status === 'timed_out') return <span className="text-yellow-500">⏱</span>;
-  return <span className="text-red-400">✗</span>;
-}
-
-function extractStepColumnNames(
-  stepResult: Record<string, unknown> | undefined,
-): { name: string; dataType: string }[] {
-  if (!stepResult) return [];
-  const cols = stepResult.columns as { name: string; dataType?: string }[] | undefined;
-  if (Array.isArray(cols) && cols.length > 0) {
-    return cols.map((c) => ({ name: c.name, dataType: c.dataType || 'text' }));
-  }
-  const rows = stepResult.rows as Record<string, unknown>[] | undefined;
-  if (
-    Array.isArray(rows) &&
-    rows.length > 0 &&
-    typeof rows[0] === 'object' &&
-    rows[0] !== null &&
-    !Array.isArray(rows[0])
-  ) {
-    return Object.keys(rows[0]).map((k) => ({ name: k, dataType: 'text' }));
-  }
-  return [];
-}
-
-function stepToStatementResult(step: StepExecutionResult): StatementResult | null {
-  const r = step.result;
-  if (!r?.rows) return null;
-  const cols = extractStepColumnNames(r);
-  if (cols.length === 0) return null;
-  const columnInfos: ColumnInfo[] = cols.map((c) => ({
-    name: c.name,
-    dataType: c.dataType,
-    nullable: true,
-  }));
-  const rawRows = r.rows as unknown[];
-  let rows: (Value | null)[][];
-  if (
-    rawRows.length > 0 &&
-    typeof rawRows[0] === 'object' &&
-    rawRows[0] !== null &&
-    !Array.isArray(rawRows[0])
-  ) {
-    rows = (rawRows as Record<string, unknown>[]).map((obj) =>
-      cols.map((c) => (obj[c.name] ?? null) as Value | null),
-    );
-  } else {
-    rows = rawRows as (Value | null)[][];
-  }
-  return {
-    sql: step.sqlExecuted ?? '',
-    columns: columnInfos,
-    rows,
-    executionTimeMs: (r.execution_time_ms as number) ?? step.executionTimeMs,
-  };
-}
-
 function StepDetailView({
   step,
   t,
@@ -1388,58 +1288,3 @@ function WorkflowSidebarList({
   );
 }
 
-function HistoryList({
-  items,
-  onView,
-  onClear,
-  t,
-}: {
-  items: HistoryListItem[];
-  onView: (id: string, workflowName: string) => void;
-  onClear: () => void;
-  t: ReturnType<typeof useI18n>['t'];
-}) {
-  return (
-    <div className="p-1.5">
-      {items.length > 0 && (
-        <div className="flex justify-end mb-1">
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={onClear}
-            className="text-[10px] text-fg-muted hover:text-red-400"
-          >
-            {t('workflows.history.clear')}
-          </button>
-        </div>
-      )}
-      {items.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => onView(item.id, item.workflowName)}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-surface-raised/50 transition-colors"
-        >
-          <Clock className="h-3.5 w-3.5 text-fg-muted shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="text-xs font-medium text-fg truncate">{item.workflowName}</div>
-            <div className="text-[10px] text-fg-muted">
-              {new Date(item.createdAt).toLocaleString()}
-            </div>
-          </div>
-          <span className={cn('text-[10px]', item.success ? 'text-green-500' : 'text-red-400')}>
-            {item.success ? '✓' : '✗'}
-          </span>
-        </button>
-      ))}
-      {items.length === 0 && (
-        <div className="py-6 text-center text-xs text-fg-muted">{t('workflows.history.empty')}</div>
-      )}
-    </div>
-  );
-}

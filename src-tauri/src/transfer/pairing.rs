@@ -1,6 +1,6 @@
 //! Sync pairing policy: same dialect family → Direct; cross SQL → IR; cross category → forbidden.
 //!
-//! Category/family rules mirror frontend `src/lib/syncPairing.ts` for UI gating.
+//! Category/family rules mirror frontend `src/lib/transferPairing.ts` for Transfer UI gating.
 
 /// High-level driver category for sync pairing (broader than wire protocol).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
