@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "node:child_process";
 
 const ROOT = path.resolve("site");
 const ORIGIN = "https://flyxl.github.io/datazen";
@@ -48,13 +47,8 @@ function mustNotInclude(html, rel, needle) {
   if (html && html.includes(needle)) fail(`${rel}: must not contain ${needle}`);
 }
 
-// Guard: video files must not be tracked by git (use external hosting).
-const tracked = execSync("git ls-files site/assets/video/", {
-  encoding: "utf-8",
-  cwd: path.resolve("."),
-}).trim();
-if (tracked) {
-  fail("site/assets/video/ is tracked by git — remove and add to .gitignore");
+if (fs.existsSync(path.join(ROOT, "assets/video"))) {
+  fail("assets/video must not exist");
 }
 
 for (const file of PAGES) {
