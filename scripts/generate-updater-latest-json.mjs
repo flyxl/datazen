@@ -6,7 +6,7 @@
  * updater bundles + matching `.sig` files:
  *   - darwin-aarch64: *-macos-arm64.tar.gz
  *   - darwin-x86_64:  *-macos-x64.tar.gz
- *   - windows-x86_64: *-windows-x64.exe (NSIS; prefer non-.msi)
+ *   - windows-x86_64: *-windows-x64.exe (NSIS)
  *   - linux-x86_64:   *-linux-x64.AppImage
  *
  * Usage:
@@ -73,7 +73,7 @@ const mapping = [
   },
   {
     key: 'windows-x86_64',
-    file: pick((f) => f.endsWith('-windows-x64.exe') && !f.endsWith('.msi')),
+    file: pick((f) => f.endsWith('-windows-x64.exe')),
   },
   {
     key: 'linux-x86_64',

@@ -46,7 +46,7 @@ Updater bundles:
 | OS | Artifacts |
 |----|-----------|
 | macOS | `*.app.tar.gz` + `.sig` |
-| Windows | NSIS `*.exe` + `.sig` (also MSI) |
+| Windows | NSIS `*.exe` + `.sig` |
 | Linux | AppImage + `.sig` |
 
 Upload `.sig` files and updater archives to the GitHub release. The release workflow job **`release-updater-json`** runs `scripts/generate-updater-latest-json.mjs` and uploads `latest.json` to the draft release (Basic platforms only).
