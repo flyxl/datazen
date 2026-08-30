@@ -3,12 +3,10 @@
 ## 1. 功能摘要
 
 - 编号：v01x-query-cancel
-- 范围：Driver capability、连接信息、QueryExecutionViewModel、取消状态和 QueryPanel 取消入口
-- 状态：修复验证完成（BUG-001/BUG-002 已关闭；保留直接绕过 capability 的 driver 风险说明）
-- 编码 commit：`6bbbf2e8`（含前置 checkpoint `1c10a297`）
-- 测试 commit：`e20ed2b5`
-- 第二轮独立测试 commit：本轨最新提交（f2）
-- 修复 commit：本次修复提交（见分支最新 commit）
+- 范围：精确 QueryExecutionId 协议、Host ownership、PostgreSQL/MySQL target cancel、QueryExecutionViewModel、取消状态和 QueryPanel 取消入口
+- 状态：协议重构实现与验证完成（BUG-001/BUG-002 已关闭）
+- 编码 commit：`1c531d84`（driver-api/Host 最小闭环）、`5f00b563`（PG/MySQL + frontend）、`19dcaaf9`（target/control pool 生命周期竞态修正）
+- 历史修复 commit：`6bbbf2e8`、`e20ed2b5`、`5d23c50d` 保留为本轨前置记录
 
 ### 审计里程碑（checkpoint 1c10a297）
 
@@ -57,11 +55,22 @@
 - 质量检查：`cargo fmt --all -- --check`、`git diff --check ecfa2bcf^ ecfa2bcf`：均通过。
 - 本轮只更新本轨 `progress.md`/`bugs.md`；未修改业务源代码，未提交 hub、规格文档、SVG 或 codegen；真实桌面/数据库 E2E 因当前未提供 computer-use MCP 与稳定数据库 fixture，仍留待 R 回归。
 
+### 精确 execution-handle 协议交付（2026-08-31）
+
+- 协议字段：`QueryExecutionId` 是只暴露 opaque string 的新类型；Host 每次 `query_stream` 生成 UUID，driver-api 提供 `prepare_query_execution`、`query_stream_with_execution`、`cancel_query_with_execution`、`cleanup_query_execution`，并由 factory 的 `supports_query_execution_cancel` 明确声明。`PROTOCOL_VERSION` 已从 2 提升到 3。
+- 事件/IPC：流开始先发 `QueryStreamEvent::ExecutionStarted { executionId }`；`cancel_query` 接收 `dbSessionId + executionId`。Host registry 只保存 execution 到 session 的归属，拒绝 unknown/stale/wrong-session/duplicate；旧 driver 默认只复用 stream，不会被 Host 调用旧 `cancel_query(handle)`。
+- 竞态：driver 在 `prepare` 阶段登记 pending entry；target 未就绪时 cancel 只记录 `cancel_requested`，专用连接拿到 PID/thread 后再次检查并放弃用户 SQL。精确 cancel 的控制 SQL 期间保持 entry 生命周期锁，terminal cleanup 等待控制调用完成，避免 pooled PID/thread 复用造成 late cancel。
+- PostgreSQL：普通非事务 stream 从专用 `PoolConnection` 获取 `pg_backend_pid()`，使用同一连接执行全部 statements；精确取消仅由独立 control pool 执行 `SELECT pg_cancel_backend($1)`。native PostgreSQL capability 为 true；QuestDB/Cloudberry wrapper 不宣称。事务连接明确返回 unsupported。
+- MySQL：普通非事务 stream 从专用 `PoolConnection` 获取 `SELECT CONNECTION_ID()`，使用同一连接执行全部 statements；native MySQL 精确取消仅由独立 control pool 执行 `KILL QUERY <threadId>`，不扫描 processlist。MariaDB/Doris/StarRocks/Manticore/ob_oracle wrapper 不宣称。事务连接明确返回 unsupported。
+- Frontend：stream event、`queryExecActions`、panel close/cancel 均携带并在终态清理 `executionId`；无 executionId 不调用 cancel。带 params 的 `runBoundQuery` 复用 `executeQueryStream`，保留 history/schema refresh/多语句行为，无 driver type 分支。
+- 最终验证：`pnpm typecheck` 通过；全量 Vitest `262 files / 2124 passed / 0 failed`；定向 query-cancel Vitest `6 files / 90 passed / 0 failed`；`CARGO_TARGET_DIR=/private/tmp/datazen-protocol-query-cancel cargo test -p datazen --lib` 为 `1186 passed / 0 failed / 2 ignored`；driver-api `99 passed`；MySQL `72` 个 crate 单元测试及其集成测试、PostgreSQL `86` 个 crate 单元测试及其集成测试全部通过；`cargo fmt --all -- --check` 与 `git diff --check` 通过。
+- 测试落点：精确 PID/thread、pending/stale/wrong-session、并发 execution 隔离和事务限制测试位于各自 PG/MySQL driver crate；Host 仅覆盖协议/归属/事件序列化，不编码驱动方言测试。
+
 ## 4. 设计决策 / 遗留
 
 - capability 未知时前端按 unknown 处理，不按 supported 处理；Rust `cancel_query_impl` 现对 unknown fail-closed，在调用 driver 前返回结构化拒绝，见 `v01x-query-cancel-BUG-001`。
 - capability 由 `DatabaseDriverFactory` 统一提供，Registry 按 driver type 惰性加载并以 camelCase 暴露；旧/测试 driver 的缺失字段序列化为 null，前端保持 unknown。
 - QueryExecutionViewModel 用 reducer 区分 execution phase 与 cancel capability；cancel IPC 成功只进入 `cancel_requested`，只有 query stream/promise 的实际终态才进入 succeeded/failed/cancelled/outcome_unknown。
 - QueryPanel 和 panelStore 只对 supported 发起取消；unsupported/unknown 的 Cancel 控件禁用并解释原因，关闭面板同样不调用取消 stub。
-- PostgreSQL 当前实现仍会取消同一数据库内、除取消连接自身外的所有 active backend；MySQL 更宽，会扫描实例级 `information_schema.processlist` 并对所有非 Sleep 且有 SQL 的线程执行 `KILL QUERY`，不限定数据库。由于现有 `dbSessionId`/Driver Command API 无法精确定位当前 query，本修复已将两组实现及其兼容 wrapper 的 `supports_cancel_query` 降为 unsupported；底层实现保留给后续 driver 专项协议工作，直接绕过 Host capability 门控的调用仍有作用域风险。
+- PostgreSQL/MySQL 已改为精确 execution-handle 取消，不再保留宽作用域实现作为新协议 fallback。只有 native PostgreSQL/MySQL 同时实现并由 factory advertise 新协议；兼容 wrapper 只有在无法证明同等精确语义时保持 false。事务连接不能安全并发取消，因此明确返回 unsupported，不伪装成普通 query 的可取消能力。
 - QC-E2E-001 至 QC-E2E-003 的 Host 契约已由本机单测覆盖；真实桌面/数据库 E2E 因当前环境没有可用的 computer-use MCP 与稳定数据库 fixture，留待 R 回归。
