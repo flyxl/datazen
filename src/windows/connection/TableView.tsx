@@ -9,11 +9,14 @@ import { useI18n } from '../../hooks/useI18n';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { cn } from '../../lib/cn';
 import { CopyableError } from '../../components/ui/CopyableError';
+import { tableChangeContextKey } from '../../lib/tableChanges';
 
 interface TableViewProps {
   dbSessionId: string;
   database: string;
   tableName: string;
+  connectionId?: string;
+  schema?: string | null;
   databaseType?: string;
   /** Data-export capability, threaded to the table-data export dialog. */
   dataExportCapability?: 'none' | 'loaded_only' | 'full_table';
@@ -23,6 +26,8 @@ export function TableView({
   dbSessionId,
   database,
   tableName,
+  connectionId,
+  schema = null,
   databaseType,
   dataExportCapability,
 }: TableViewProps) {
@@ -30,6 +35,7 @@ export function TableView({
   // NlFilterInput handles unconfigured state internally
   const tableStates = useTableDataStore((s) => s.tableStates);
   const activeTable = useTableDataStore((s) => s.activeTable);
+  const activeTableKey = useTableDataStore((s) => s.activeTableKey);
   const loadTableData = useTableDataStore((s) => s.loadTableData);
   const switchToTable = useTableDataStore((s) => s.switchToTable);
   const setSort = useTableDataStore((s) => s.setSort);
@@ -69,18 +75,54 @@ export function TableView({
     [confirmOnDelete, confirmDelete, deleteRows, t],
   );
 
-  const ts: TableState | undefined = tableStates.get(tableName);
+  const tableContext = {
+    connectionId: connectionId ?? null,
+    dbSessionId,
+    driverType: databaseType ?? null,
+    database: database || null,
+    schema,
+    table: tableName,
+  } as const;
+  const tableKey = tableChangeContextKey(tableContext);
+  // The fallback keeps isolated component tests and older embedders readable;
+  // the real store always keys table state by the complete context key.
+  const ts: TableState | undefined = tableStates.get(tableKey) ?? tableStates.get(tableName);
   const hasData = ts != null && ts.columns.length > 0;
 
   useEffect(() => {
-    if (hasData && activeTable !== tableName) {
-      switchToTable(tableName);
+    if (hasData && (activeTable !== tableName || activeTableKey !== tableKey)) {
+      switchToTable(tableName, {
+        connectionId: connectionId ?? null,
+        driverType: databaseType ?? null,
+        database: database || null,
+        schema,
+      });
     } else if (!hasData) {
       // F1: carry the panel's target database so cross-database tables load
       // correctly even when the session's active database differs.
-      void loadTableData({ dbSessionId, table: tableName, database });
+      void loadTableData({
+        dbSessionId,
+        table: tableName,
+        connectionId: connectionId ?? null,
+        driverType: databaseType ?? null,
+        database: database || null,
+        schema,
+      });
     }
-  }, [dbSessionId, tableName, hasData, activeTable, loadTableData, switchToTable, database]);
+  }, [
+    dbSessionId,
+    tableName,
+    hasData,
+    activeTable,
+    activeTableKey,
+    tableKey,
+    connectionId,
+    databaseType,
+    database,
+    schema,
+    loadTableData,
+    switchToTable,
+  ]);
 
   const columns = ts?.columns ?? [];
   const rows = ts?.rows ?? [];
@@ -132,7 +174,16 @@ export function TableView({
           <button
             type="button"
             className="mt-2 text-xs text-accent hover:underline"
-            onClick={() => void loadTableData({ dbSessionId, table: tableName, database })}
+            onClick={() =>
+              void loadTableData({
+                dbSessionId,
+                table: tableName,
+                connectionId: connectionId ?? null,
+                driverType: databaseType ?? null,
+                database: database || null,
+                schema,
+              })
+            }
           >
             {t('common.retry')}
           </button>
@@ -161,7 +212,16 @@ export function TableView({
           <button
             type="button"
             className="shrink-0 text-xs text-accent hover:underline"
-            onClick={() => void loadTableData({ dbSessionId, table: tableName, database })}
+            onClick={() =>
+              void loadTableData({
+                dbSessionId,
+                table: tableName,
+                connectionId: connectionId ?? null,
+                driverType: databaseType ?? null,
+                database: database || null,
+                schema,
+              })
+            }
           >
             {t('common.retry')}
           </button>

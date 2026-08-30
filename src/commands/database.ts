@@ -13,6 +13,7 @@ import type {
   CommitPendingChangesResponse,
   PendingRowChange,
   RowChangePlan,
+  TableChangeContext,
 } from '../lib/tableChanges';
 import { queryCommands } from './query';
 
@@ -31,9 +32,7 @@ export interface RowDeleteBatch {
 }
 
 export interface PreviewPendingChangesRequest {
-  dbSessionId: string;
-  table: string;
-  database?: string | null;
+  context: TableChangeContext;
   changes: PendingRowChange[];
 }
 
@@ -93,9 +92,7 @@ export const databaseCommands = {
   /** Generate a serialisable plan only; the backend does not execute SQL. */
   previewPendingChanges: (params: PreviewPendingChangesRequest) =>
     invoke<RowChangePlan>('preview_pending_changes', {
-      dbSessionId: params.dbSessionId,
-      table: params.table,
-      database: params.database ?? null,
+      context: params.context,
       changes: params.changes,
     }),
 
