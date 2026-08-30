@@ -4,9 +4,9 @@
 
 - 编号：v01x-query-cancel
 - 范围：Driver capability、连接信息、QueryExecutionViewModel、取消状态和 QueryPanel 取消入口
-- 状态：编码完成，待正式提交
-- 编码 commit：待定
-- 测试 commit：待定
+- 状态：编码完成
+- 编码 commit：本轨正式提交
+- 测试 commit：同上
 
 ### 审计里程碑（checkpoint 1c10a297）
 
@@ -28,7 +28,7 @@
 - `npx tsc --noEmit`：通过。
 - `CARGO_TARGET_DIR=/private/tmp/datazen-target-v01x-query-cancel cargo test -p datazen --lib`：1182 passed / 0 failed / 2 ignored。
 - `CARGO_TARGET_DIR=/private/tmp/datazen-target-v01x-query-cancel cargo fmt --check --manifest-path src-tauri/Cargo.toml`：通过；仅为本地验证格式化了忽略的 codegen 文件 `src-tauri/src/driver_init.rs`，未纳入提交。
-- 覆盖率：待测试代理测量。
+- 覆盖率：待测试代理测量；本轨未新增覆盖率门槛。
 
 ## 4. 设计决策 / 遗留
 
