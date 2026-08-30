@@ -50,7 +50,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 | **AI 层** | LLM 集成 | 多 Provider、协议复用、流式输出、Prompt Resolver |
 | **MCP 层** | 工具协议 | Server / Client、Workflow 调用 |
 | **Sync 层** | 数据同步（同族 Diff Sync） | `data_sync`：门闸 / 流式比较 / ChangeSet / 参数化 DML；异构 IR 属 Transfer，V1 不实现 |
-| **Persistence 层** | 控制面持久化抽象与适配器 | Core 只依赖 Repository/Unit-of-Work；Desktop 使用 SQLite，Web 使用 MySQL；Secret 使用 AES-256-GCM |
+| **Persistence 层** | Application Service 的持久化抽象与适配器 | Core Runtime 不依赖持久化；Desktop 使用 SQLite，Web 使用 MySQL；Secret 使用 AES-256-GCM |
 
 ## Driver Command 架构
 

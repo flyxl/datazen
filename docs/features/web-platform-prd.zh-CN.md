@@ -32,13 +32,13 @@ v0.2.0 同时保留两种运行形态：
 1. **Desktop Standalone**：现有 Tauri 应用，本地存储、本地数据库连接，可离线运行。
 2. **Web Self-hosted**：Docker 部署的 DataZen Server，浏览器通过 HTTPS/REST/SSE 使用，支持本地账号、工作区和团队权限。
 
-两种形态共享 React 页面、领域 DTO、Driver、Workflow、AI、Dashboard 和后续 SQL Audit 核心实现，但使用不同 transport 和持久化适配器。
+两种形态共享 React 页面、领域 DTO、Driver 和执行运行时，但使用不同 transport、Application Service 和持久化适配器。SQL Audit 属于 Web/上层应用能力；Desktop v0.2.0 不交付合规级 SQL Audit，仅保留面向用户复用的 Query History。
 
 ### 2.2 v0.2.0 必须成立的五个判断
 
 1. Web 不是把 Vite 静态页面发布出去，而是新增持续运行的 Rust Server。
 2. 浏览器不直接连接数据库，也不能读取已保存的数据库密码或 AI Key。
-3. 所有持久化对象都归属工作区，所有请求都经过身份认证和工作区授权。
+3. Web 控制面持久化对象都归属工作区，Web 请求都经过身份认证和工作区授权；Desktop 不引入这套模型。
 4. Tauri IPC 和 HTTP API 只能是适配层，不能各自实现一套业务逻辑。
 5. 浏览器关闭后，Workflow 调度和 Dashboard 监控仍由服务端继续运行。
 
@@ -69,7 +69,7 @@ v0.2.0 同时保留两种运行形态：
 - 用户无需安装桌面客户端即可使用连接、查询、AI、Workflow 和 Dashboard 核心能力。
 - 团队成员共享由工作区管理的连接、Workflow、Dashboard 和知识，同时保持权限隔离。
 - Dashboard 和定时 Workflow 在无人打开浏览器时持续运行。
-- 后续 SQL 审计、长期记忆、告警中心拥有统一的 actor、workspace 和 audit context。
+- Web Application Service 为后续 SQL 审计、长期记忆、告警中心统一提供 actor、workspace 和 audit context；Core Runtime 不持有这些字段。
 
 ### 4.2 工程目标
 
@@ -150,14 +150,14 @@ v0.2.0 权限粒度以工作区为边界，不提供单连接、单 Workflow、�
                 ▼
            datazen-core
                 ▼
-     Driver / Workflow / AI / Dashboard / Audit
+     Driver / Workflow / AI / Dashboard Runtime
 
 ### 6.2 服务端掌握信任边界
 
 - 浏览器只持有 HttpOnly 登录 Cookie 和短生命周期页面状态。
 - 数据库密码、SSH Key、AI Key、Webhook Secret 永不返回浏览器。
 - 任何 UI 隐藏都不能替代服务端授权。
-- query、execute、Workflow、Dashboard、AI tool call 均在服务端重新校验 workspace 和 role。
+- query、execute、Workflow、Dashboard、AI tool call 均在 Web Application Service 重新校验 workspace 和 role；Core Runtime 不承担该校验。
 
 ### 6.3 长任务使用 Job 模型
 
@@ -171,6 +171,48 @@ v0.2.0 权限粒度以工作区为边界，不提供单连接、单 Workflow、�
 ### 6.4 桌面与 Web 允许能力差异
 
 Web 版以浏览器和服务端语义重新设计交互，不通过弹出窗口或伪造文件路径模拟桌面能力。不可用能力必须明确隐藏并给出原因，不展示点击后失败的入口。
+
+### 6.5 术语定义：Workspace
+
+本 PRD 中的 workspace 仅指 Web 控制面中的“团队/项目资源边界”，不是数据库、schema、租户数据库，也不是 Core Runtime 的执行上下文。
+
+workspace 管理的是 DataZen 自身的资源归属和访问权限，包括：
+
+- 成员及其角色。
+- 连接配置和对应 Secret 引用。
+- Workflow、Dashboard、知识库、告警规则。
+- Query History、Job、SQL Audit 的可见范围。
+
+workspace 不代表以下含义：
+
+- 不隔离目标数据库中的表、行或数据。目标数据库最终由连接账号的原生权限决定。
+- 不要求每个 workspace 使用独立的 MySQL schema/database。v0.2.0 Web 默认在同一个控制面 MySQL 中通过 workspace_id 做逻辑隔离。
+- 不传入 Core Runtime，也不由 Core 校验。Core 只接收 Web 层已解析的连接/session handle。
+- 不适用于 Desktop。Desktop 保持单用户、本地 SQLite 模型，不创建隐式 local workspace。
+
+Web 规则：
+
+- 一个 Web connection 只归属一个 workspace；多个 workspace 若连接同一个物理数据库，需要分别创建连接配置。
+- 客户端提交的 workspaceId、owner、actor、role 不能直接决定权限；Server 从 Session 和 membership 计算有效 workspace/role。
+- 所有 Web 资源查询必须带 workspace 条件，跨 workspace 引用必须被拒绝；唯一约束和外键也要体现该边界。
+- 用户离开 workspace 后，后续 API、SSE、Job 和 dbSession 都立即失去该 workspace 的访问权。
+
+### 6.6 术语定义：Audit
+
+本 PRD 中的 audit 是“可追溯的操作证据”，由 Web 上层 Application Service 产生和存储；Core Runtime 不写 audit，也不强制任何审计策略。Desktop v0.2.0 不持久化合规级 SQL Audit，只保留面向用户复用的 Query History。
+
+需要区分四类数据：
+
+- Security Audit：登录、登出、角色变更、Secret 修改、越权尝试等安全事件。
+- SQL Audit：SQL 提交内容、Driver 最终执行表示、改写链、审计决策和执行结果。
+- Query History：给用户复用 SQL 的产品历史，可编辑、清理或只保存摘要，不是合规证据。
+- tracing/log：用于排障和性能分析，必须脱敏，不能替代 Audit。
+
+SQL Audit 的“最终执行表示”由 Core 返回给上层，包括最终 SQL 模板、实际 bind 参数、statement type 和 rewrite chain。使用原生 prepared protocol 时，不强行拼接不存在于 wire protocol 中的“完整 SQL 字符串”。
+
+Audit 记录的是事实和决策，不等于权限判断：Web Application Service 先做认证、workspace/资源校验和 AuditPolicy decision，再决定是否执行；Audit 记录 allow/warn/block 以及最终 outcome。目标数据库优化器、触发器、存储过程内部语句和代理层行为，需要目标数据库自己的 native audit 才能证明。
+
+Web SQL Audit 的最小生命周期为 `prepared → started → succeeded/failed/cancelled`；进程在 started 后异常退出且无法确认结果时，追加 `outcome_unknown`，不得伪造为 failed。SQL/参数明文默认不进入日志和普通 history，全文如有需要必须脱敏或加密保存。Desktop v0.2.0 不实现该审计生命周期；未来如有企业端点管控需求，再单独设计本地加密审计、留存和导出能力。
 
 ## 7. 信息架构
 
@@ -387,7 +429,7 @@ Web 文件交互规则：
 | AI Chat/NL2SQL | 是 | 是 | Secret 服务端保存 |
 | Workflow CRUD/Run/Schedule | 是 | 是 | Web Worker 持续运行 |
 | Dashboard/Monitor | 是 | 是 | Web 使用站内通知/Webhook |
-| SQL Audit | 是 | 是 | 同一 AuditEngine |
+| SQL Audit | 是 | 否（仅保留 Query History） | Web Application AuditService；Desktop v0.2.0 不交付合规级 SQL Audit |
 | 长期记忆/知识库 | 是 | 是 | Web 有 workspace ACL |
 | Data Sync/Data Transfer | 是 | 否 | v0.2.x 评估 |
 | Schema Diff | 是 | 否 | v0.2.x 评估 |
@@ -482,38 +524,38 @@ v0.2.0 优先 REST + SSE，不为双向通信引入 WebSocket。
     packages/server/               # crate/bin: datazen-server
       http / auth / middleware / sse / workers / mysql-adapter
 
-    packages/persistence-api/      # Core 依赖的 Repository/Unit-of-Work 契约
+    packages/persistence-api/      # Application Service 依赖的 Repository/Unit-of-Work 契约
     packages/persistence-sqlite/   # Desktop 实现
     packages/persistence-mysql/    # Web 实现
 
     src-tauri/                     # Desktop adapter
       Tauri commands / native UI / tray / updater / keychain
 
-datazen-core 禁止依赖 tauri、HTTP framework、Cookie、桌面插件和窗口类型。Core 不负责认证，只接收由 Adapter 建立的执行上下文；Web 注入已认证用户，Desktop 注入固定 LocalDesktop context，不引入登录、Session 或 RBAC。
+datazen-core 禁止依赖 tauri、HTTP framework、Cookie、桌面插件和窗口类型。Core Runtime 不负责认证、来源识别、workspace 隔离或审计，只提供 SQL prepare/execute 和结果流；Web Application Service 负责已认证用户、workspace 和审计，Desktop 不引入这些机制。
 
 迁移不是一次性移动全部代码：先完成 Connection + Query 纵切，再迁移 Workflow、Dashboard、AI。每个纵切必须证明 Tauri 和 HTTP 调用同一个 service。
 
-### 12.2 Core Ports
+### 12.2 Core 与 Application Ports
 
-核心至少抽象：
+Core Runtime 至少抽象：
 
-- ExecutionContext / 可选 Authorization（Web 用户需要，Desktop 使用 LocalDesktop）
+- SqlRuntime（prepare/execute/ExecutionReport）
+- DatabaseDriver / DbSessionHandle
+- ResultSink / CancellationSignal
+- Clock
+
+Web Application Service 另行抽象：
+
+- Web Request/Auth/Authorization
 - PersistenceProvider / UnitOfWork
-- WorkspaceRepository
-- ConnectionRepository / SecretStore
-- SettingsRepository
-- HistoryRepository
-- WorkflowRepository
-- DashboardRepository
-- AuditSink
-- EventSink
-- Clock / IdGenerator
+- WorkspaceRepository、ConnectionRepository、WorkflowRepository、DashboardRepository
+- AuditService、HistoryRepository、EventSink
 
-Desktop adapter 使用本地默认 identity/workspace；Server adapter 使用真实 user/workspace context。
+Desktop adapter 直接使用 Core Runtime 和本地 SQLite 持久化，不实现 Web Auth、workspace 或 AuditService。Server adapter 使用真实 user/workspace context，并在调用 Core 前后完成授权、审计和持久化。
 
 ### 12.3 AppState 拆分
 
-- CoreState：Driver、ConnectionManager、SchemaCache、Workflow、AI、Monitor/Audit。
+- CoreState：Driver、ConnectionManager、SchemaCache、Workflow/AI/Dashboard Runtime。
 - DesktopState：Tauri handle、窗口、dialog、tray、updater、keychain。
 - ServerState：Auth、Session、MySQL Persistence、HTTP Event Hub、Worker。
 
@@ -575,24 +617,24 @@ UI 按 capability 呈现能力，不散落 isTauri 分支。
 - audit_events
 - 后续知识库和告警状态表
 
-所有业务表包含 workspace_id；用户操作记录 actor_user_id。外键和唯一约束必须包含工作区边界，避免仅靠应用代码隔离。
+Web 控制面业务表包含 workspace_id；用户操作记录 actor_user_id。外键和唯一约束必须包含工作区边界，避免仅靠应用代码隔离。Desktop 本地表沿用现有单用户模型，不为适配 Web 而强行增加 workspace 字段。
 
 ### 14.2 双持久化策略
 
-v0.2.0 的业务持久化层必须提供统一抽象接口，Core 和领域服务不得直接依赖 rusqlite、sqlx、SQLite 或 MySQL 方言。至少提供两套实现：
+v0.2.0 的业务持久化层必须提供抽象接口。Core Runtime 不直接依赖 rusqlite、sqlx、SQLite 或 MySQL 方言；Web/Desktop Application Service 通过 Persistence API 使用具体实现。至少提供两套实现：
 
 - Desktop：SQLite，保持本地离线、单用户和现有数据目录升级能力；启用 WAL、busy timeout、短事务和 migration 前一致性备份。
 - Web：MySQL 8.0+，使用 InnoDB、utf8mb4、UTC 时间和独立连接池；连接信息通过 DATAZEN_DATABASE_URL/Secret 注入。
-- 两套实现共享同一组 Repository/Unit-of-Work 契约测试，保证 workspace 隔离、事务边界、唯一约束、分页和审计写入语义一致。
-- migration 使用相同逻辑版本号，但允许 SQLite/MySQL 各自维护方言 SQL；禁止运行时把一套 migration SQL 自动翻译为另一种方言。
-- Core 的跨表原子操作通过 Unit-of-Work 接口表达，不向领域层暴露具体数据库 transaction 类型。
+- 两套实现共享公共 ResourceRepository/Unit-of-Work 契约测试，保证事务边界、唯一约束、分页和资源写入语义一致；workspace 隔离、成员撤销和 SQL Audit 仅由 Web Control Plane 契约测试覆盖。
+- 公共资源 migration 使用对齐的逻辑版本号，Web 专属 control-plane migration 不应用到 Desktop；SQLite/MySQL 各自维护方言 SQL，禁止运行时自动翻译。
+- Application Service 的跨表原子操作通过 Unit-of-Work 接口表达，不向 Core Runtime 暴露具体数据库 transaction 类型。
 
 PostgreSQL 元数据库实现不进入 v0.2.0；后续可在不修改 Core 服务的前提下新增适配器。
 
 ### 14.3 Desktop 兼容
 
 - Desktop Standalone 保持现有数据目录和升级路径。
-- Desktop 可视为隐式 local workspace，但 UI 不显示团队管理。
+- Desktop 保持单用户本地模型，不创建隐式 local workspace，也不显示团队管理。
 - Web Server 使用独立 data directory，不读取桌面 OS 用户目录。
 - Desktop 数据导入 Web 进入 P1；P0 只保证桌面升级不丢数据。
 
@@ -682,8 +724,8 @@ PostgreSQL 元数据库实现不进入 v0.2.0；后续可在不修改 Core 服�
 
 ### 18.1 测试层级
 
-- datazen-core 单元测试：无 Tauri/HTTP，使用 in-memory repository 和 mock identity。
-- Persistence contract：同一组契约分别运行 SQLite 与 MySQL adapter，覆盖事务、约束、分页、迁移和审计。
+- datazen-core 单元测试：无 Tauri/HTTP/身份模型，使用 Core Runtime fake driver 和 execution fixture。
+- Persistence contract：公共资源契约分别运行 SQLite 与 MySQL adapter；Web Control Plane 额外覆盖 workspace、迁移和审计。
 - Server integration：HTTP、Cookie/CSRF、RBAC、workspace isolation、SSE、migration。
 - Frontend unit：Store 分别使用 fake TauriTransport 和 HttpTransport contract。
 - Web E2E：沿用 WebdriverIO，新增 browser runner。
@@ -733,7 +775,7 @@ PostgreSQL 元数据库实现不进入 v0.2.0；后续可在不修改 Core 服�
 ### Phase 2：Feature Beta（第 8–13 周）
 
 - Workflow、AI、Dashboard API 化。
-- Server Worker、SQL Audit context、通知中心。
+- Server Worker、Web SQL Audit Service、通知中心。
 - Settings 分层和 RBAC 管理 UI。
 
 退出条件：五条核心 Journey 可用，浏览器关闭后 Dashboard 继续运行。
@@ -790,7 +832,7 @@ v0.2.0 发布后四周观察：
 - 启动容器到首次成功查询的中位时间小于 15 分钟。
 - Web 核心 Journey 无崩溃完成率大于 95%。
 - 连接/查询服务端 5xx 率小于 0.5%（排除外部数据库错误）。
-- 100% DB 操作拥有 actor/workspace/audit context。
+- 100% Web DB 操作拥有 actor/workspace/audit context；Desktop 不要求伪造这些字段。
 - 0 个已确认跨工作区或 Secret 泄露问题。
 - Dashboard 后台调度准时率大于 99%（30 秒窗口，不含外部 DB 超时）。
 
@@ -800,7 +842,7 @@ v0.2.0 发布后四周观察：
 |---|---|---|
 | Web 范围膨胀为 SaaS | 很高 | 锁定单节点自托管；SSO、计费、HA 排除。 |
 | Tauri 耦合迁移被低估 | 高 | 先做 Query vertical slice；完成后删除直连 IPC。 |
-| 多用户模型污染桌面 | 高 | Core 使用 repository/identity port；Desktop 使用隐式 local workspace。 |
+| 多用户模型污染桌面 | 高 | workspace、身份和审计只放 Web Application Service；Desktop 直接使用 Core Runtime 和本地存储。 |
 | SQLite/MySQL 实现语义漂移 | 高 | 统一 Persistence API、相同逻辑 migration 版本、双适配器契约测试与升级 fixture。 |
 | 浏览器暴露高风险操作 | 很高 | Server RBAC + SQL Audit + Secret write-only。 |
 | Extension/文件系统攻击面 | 很高 | Web v0.2.0 禁用 runtime extension 和任意 server path。 |
