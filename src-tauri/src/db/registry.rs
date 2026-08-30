@@ -4,15 +4,40 @@
 //! driver crates linked into the host binary.
 
 use datazen_driver_api::*;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+/// Static capabilities advertised by a driver factory.
+///
+/// These flags describe whether the driver has a meaningful implementation;
+/// they are not inferred from the presence of a trait method because the
+/// trait intentionally has a default unsupported/no-op implementation.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriverCapabilities {
+    pub supports_cancel_query: bool,
+    pub supports_explain: bool,
+    pub supports_streaming_results: bool,
+}
+
+impl DriverCapabilities {
+    fn from_factory(factory: &dyn DatabaseDriverFactory) -> Self {
+        Self {
+            supports_cancel_query: factory.supports_cancel_query(),
+            supports_explain: factory.supports_explain(),
+            supports_streaming_results: factory.supports_streaming_results(),
+        }
+    }
+}
 
 /// Holds registered drivers. Starts empty; call [`DriverRegistry::ensure_type`]
 /// (or rely on [`DriverRegistry::get`]) to load a type on demand.
 pub struct DriverRegistry {
     drivers: Arc<RwLock<HashMap<DatabaseType, Arc<dyn DatabaseDriver>>>>,
     kv_drivers: Arc<RwLock<HashMap<DatabaseType, Arc<dyn KeyValueDriver>>>>,
+    capabilities: Arc<RwLock<HashMap<DatabaseType, DriverCapabilities>>>,
 }
 
 impl DriverRegistry {
@@ -20,6 +45,7 @@ impl DriverRegistry {
         Self {
             drivers: Arc::new(RwLock::new(HashMap::new())),
             kv_drivers: Arc::new(RwLock::new(HashMap::new())),
+            capabilities: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -109,6 +135,14 @@ impl DriverRegistry {
 
             let driver = factory.create();
             let actual = driver.driver_type();
+            let capabilities = DriverCapabilities::from_factory(*factory);
+            {
+                let mut capability_map = self.capabilities.write().await;
+                capability_map.insert(db_type.to_string(), capabilities);
+                if actual != db_type {
+                    capability_map.insert(actual.clone(), capabilities);
+                }
+            }
             if let Some(kv) = factory.create_kv() {
                 let mut kv_map = self.kv_drivers.write().await;
                 kv_map.insert(kv.driver_type(), kv);
@@ -130,6 +164,15 @@ impl DriverRegistry {
         }
         let drivers = self.drivers.read().await;
         drivers.get(db_type).cloned()
+    }
+
+    /// Return the static capabilities advertised by the registered factory.
+    /// `None` means the driver was injected by a test/legacy integration that
+    /// does not expose capability metadata yet; callers must treat that as
+    /// unknown rather than supported.
+    pub async fn get_capabilities(&self, db_type: &DatabaseType) -> Option<DriverCapabilities> {
+        let capabilities = self.capabilities.read().await;
+        capabilities.get(db_type).copied()
     }
 
     /// Types currently loaded in memory (for diagnostics). Prefer
@@ -161,6 +204,22 @@ impl DriverRegistry {
         driver: Arc<dyn DatabaseDriver>,
     ) {
         self.drivers.write().await.insert(db_type.into(), driver);
+    }
+
+    /// Register a test driver together with explicit capability metadata.
+    #[cfg(test)]
+    pub async fn register_test_driver_with_capabilities(
+        &self,
+        db_type: impl Into<DatabaseType>,
+        driver: Arc<dyn DatabaseDriver>,
+        capabilities: DriverCapabilities,
+    ) {
+        let db_type = db_type.into();
+        self.drivers.write().await.insert(db_type.clone(), driver);
+        self.capabilities
+            .write()
+            .await
+            .insert(db_type, capabilities);
     }
 
     /// Register a KV driver instance for unit tests (bypasses inventory).

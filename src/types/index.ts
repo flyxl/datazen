@@ -52,6 +52,13 @@ export interface ServerInfo {
   serverType: string;
 }
 
+/** Capabilities reported by the concrete driver for a live database session. */
+export interface DriverCapabilities {
+  supportsCancelQuery: boolean;
+  supportsExplain: boolean;
+  supportsStreamingResults: boolean;
+}
+
 export type TableType = 'table' | 'view' | 'materializedView' | 'systemTable';
 
 export type DatabaseObjectKind = 'function' | 'procedure' | 'trigger' | 'sequence' | 'type';

@@ -11,6 +11,18 @@ const mockDeleteFavoriteQuery = vi.fn().mockResolvedValue(undefined);
 const mockExecuteQueryStream = vi.fn().mockResolvedValue(undefined);
 const mockCancelQuery = vi.fn().mockResolvedValue(undefined);
 
+const activeConnectionState = {
+  connections: {
+    'cfg-1': {
+      capabilities: {
+        supportsCancelQuery: true,
+        supportsExplain: true,
+        supportsStreamingResults: true,
+      },
+    },
+  },
+};
+
 vi.mock('../../commands/query', () => ({
   queryCommands: {
     getQueryHistory: (...args: unknown[]) => mockGetQueryHistory(...args),
@@ -20,6 +32,12 @@ vi.mock('../../commands/query', () => ({
     executeQueryStream: (...args: unknown[]) => mockExecuteQueryStream(...args),
     cancelQuery: (...args: unknown[]) => mockCancelQuery(...args),
     executeQuery: vi.fn().mockResolvedValue({ results: [], totalTimeMs: 10 }),
+  },
+}));
+
+vi.mock('../../stores/activeConnectionStore', () => ({
+  useActiveConnectionStore: {
+    getState: () => activeConnectionState,
   },
 }));
 
@@ -49,6 +67,8 @@ describe('panelStore', () => {
 
   beforeEach(async () => {
     vi.resetModules();
+    vi.clearAllMocks();
+    activeConnectionState.connections['cfg-1'].capabilities.supportsCancelQuery = true;
     const mod = await import('../panelStore');
     usePanelStore = mod.usePanelStore;
     nextPanelId = mod.nextPanelId;
@@ -611,7 +631,7 @@ describe('panelStore', () => {
 
   // ── cancelQuery ────────────────────────────────────────────────
 
-  it('cancelQuery sets running=false and error=Cancelled', async () => {
+  it('requests cancellation without claiming the query already stopped', async () => {
     const panel = makeQueryPanel('Q1');
     usePanelStore.getState().addPanel(panel);
     usePanelStore.setState((s) => ({
@@ -625,8 +645,26 @@ describe('panelStore', () => {
 
     expect(mockCancelQuery).toHaveBeenCalledWith('sess-1');
     const exec = usePanelStore.getState().queryExec.get(panel.id)!;
-    expect(exec.running).toBe(false);
-    expect(exec.error).toBe('Cancelled');
+    expect(exec.running).toBe(true);
+    expect(exec.cancelState).toBe('requested');
+    expect(exec.cancelError).toBeNull();
+  });
+
+  it('does not call cancel for a driver that does not support it', async () => {
+    activeConnectionState.connections['cfg-1'].capabilities.supportsCancelQuery = false;
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.setState((s) => ({
+      queryExec: new Map(s.queryExec).set(panel.id, {
+        ...s.queryExec.get(panel.id)!,
+        running: true,
+      }),
+    }));
+
+    await usePanelStore.getState().cancelQuery(panel.id);
+
+    expect(mockCancelQuery).not.toHaveBeenCalled();
+    expect(usePanelStore.getState().queryExec.get(panel.id)!.running).toBe(true);
   });
 
   // ── setActiveResult / setResultDetailRow / setChartConfig / setResultViewMode ──

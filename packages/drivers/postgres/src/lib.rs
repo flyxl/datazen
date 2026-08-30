@@ -24,6 +24,9 @@ impl DatabaseDriverFactory for PostgresFactory {
     fn supports_explain(&self) -> bool {
         true
     }
+    fn supports_cancel_query(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&PostgresFactory);
 
@@ -36,6 +39,9 @@ impl DatabaseDriverFactory for QuestDbFactory {
         "questdb"
     }
     fn supports_explain(&self) -> bool {
+        true
+    }
+    fn supports_cancel_query(&self) -> bool {
         true
     }
 }
@@ -53,6 +59,9 @@ impl DatabaseDriverFactory for CloudberryFactory {
         "cloudberry"
     }
     fn supports_explain(&self) -> bool {
+        true
+    }
+    fn supports_cancel_query(&self) -> bool {
         true
     }
 }

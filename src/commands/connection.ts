@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { ConnectionConfig, ServerInfo } from '../types';
+import type { ConnectionConfig, DriverCapabilities, ServerInfo } from '../types';
 
 export const connectionCommands = {
   getConnections: () => invoke<ConnectionConfig[]>('get_connections'),
@@ -36,6 +36,7 @@ export const connectionCommands = {
       database?: string;
       schema?: string;
       serverVersion?: string;
+      capabilities?: DriverCapabilities;
     }>('get_connection_info', { dbSessionId }),
 
   getAvailableDrivers: () => invoke<string[]>('get_available_drivers'),

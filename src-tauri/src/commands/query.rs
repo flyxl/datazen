@@ -151,6 +151,23 @@ pub(crate) async fn cancel_query_impl(
     db_session_id: String,
 ) -> Result<(), CommandError> {
     tracing::info!(%db_session_id, "cancel_query");
+    let config = state
+        .connection_manager
+        .get_session_config(&db_session_id)
+        .await
+        .cmd_err("cancel_query")?;
+    if let Some(capabilities) = state
+        .driver_registry
+        .get_capabilities(&config.database_type)
+        .await
+    {
+        if !capabilities.supports_cancel_query {
+            return Err(CommandError::Validation(
+                "UNSUPPORTED_OPERATION:cancel_query:query cancellation is not supported by this driver"
+                    .into(),
+            ));
+        }
+    }
     let (driver, handle) = state
         .connection_manager
         .get_session(&db_session_id)
@@ -498,7 +515,7 @@ mod log_hygiene_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{ColumnSchema, ExplainResult, Value};
+    use crate::db::{ColumnSchema, DriverCapabilities, ExplainResult, Value};
     use crate::store::AppSettings;
     use crate::testing::app_state::TestAppState;
     use crate::testing::mock_driver::MockDriverOptions;
@@ -554,6 +571,30 @@ mod tests {
         assert_eq!(plan.plan_text, "Seq Scan");
 
         cancel_query_impl(&test.state, conn_id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn cancel_query_rejects_when_driver_capability_is_disabled() {
+        let test = TestAppState::new().await;
+        let (_, conn_id) = test.save_and_connect("cancel-unsupported").await;
+        test.registry
+            .register_test_driver_with_capabilities(
+                "postgres",
+                test.mock.clone(),
+                DriverCapabilities {
+                    supports_cancel_query: false,
+                    supports_explain: true,
+                    supports_streaming_results: true,
+                },
+            )
+            .await;
+
+        let error = cancel_query_impl(&test.state, conn_id).await.unwrap_err();
+        assert!(matches!(
+            error,
+            super::super::error::CommandError::Validation(message)
+                if message.starts_with("UNSUPPORTED_OPERATION:cancel_query:")
+        ));
     }
 
     #[tokio::test]
