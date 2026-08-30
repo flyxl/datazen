@@ -20,6 +20,7 @@
 | [data-sync-guide](features/data-sync-guide.zh-CN.md) | 中 | 数据同步（同族库 Compare → Review → Preview → Execute） |
 | [data-transfer-guide](features/data-transfer-guide.zh-CN.md) | 中 | 异构数据迁移（6 步向导、IR 类型映射） |
 | [data-transfer-prd](features/data-transfer-prd.zh-CN.md) | 中 | Data Transfer 产品定义（PRD） |
+| [desktop-v0.1x-prd](features/desktop-v0.1x-prd.zh-CN.md) | 中 | v0.1.x Desktop PRD：开发者优先的 SQL-first 数据库客户端稳定版 |
 | [data-transfer-ui-redesign](features/data-transfer-ui-redesign.zh-CN.md) | 中 | Data Transfer UI 设计存档（6 步向导 · 已实施） |
 | [web-platform-prd](features/web-platform-prd.zh-CN.md) | 中 | v0.2.0 Web 平台化 PRD：自托管、工作区 RBAC、API/SSE、安全与发布门槛 |
 | [schema-diff-ui-redesign](features/schema-diff-ui-redesign.zh-CN.md) | 中 | Schema Diff UI 设计存档（双栏方案 B · 已实施） |
@@ -77,6 +78,7 @@
 |------|------|
 | [e2e-testing](development/e2e-testing.md) | WebdriverIO E2E 完整流程（构建、运行、调试） |
 | [e2e-coverage](development/e2e-coverage.md) | Host UI E2E 覆盖矩阵与例外登记 |
+| [desktop-v0.1x-implementation](development/desktop-v0.1x-implementation.zh-CN.md) | v0.1.x Desktop 实施方案：并行轨道、依赖、集成热点与发布回归 |
 | [migration-tools-review](development/migration-tools-review-v0.1.0.md) | Schema Diff / Data Sync / Data Transfer 就绪度与测试命令 |
 | [migration-tools-backlog](todo/migration-tools-backlog.md) | 三项迁移工具后续增强 Backlog（P1–P3） |
 | [ci-private-plugins](development/ci-private-plugins.md) | 私有 Git 驱动的 CI Deploy Key / Environment 配置 |
