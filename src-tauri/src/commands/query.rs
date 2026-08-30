@@ -515,7 +515,7 @@ mod log_hygiene_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{ColumnSchema, DriverCapabilities, ExplainResult, Value};
+    use crate::db::{ColumnSchema, DriverCapabilities, DriverError, ExplainResult, Value};
     use crate::store::AppSettings;
     use crate::testing::app_state::TestAppState;
     use crate::testing::mock_driver::MockDriverOptions;
@@ -594,6 +594,34 @@ mod tests {
             error,
             super::super::error::CommandError::Validation(message)
                 if message.starts_with("UNSUPPORTED_OPERATION:cancel_query:")
+        ));
+    }
+
+    #[tokio::test]
+    async fn cancel_query_surfaces_driver_unsupported_without_claiming_success() {
+        let test = TestAppState::with_options(MockDriverOptions {
+            cancel_error: Some("backend cancellation is unavailable".into()),
+            ..Default::default()
+        })
+        .await;
+        let (_, conn_id) = test.save_and_connect("cancel-driver-unsupported").await;
+        test.registry
+            .register_test_driver_with_capabilities(
+                "postgres",
+                test.mock.clone(),
+                DriverCapabilities {
+                    supports_cancel_query: true,
+                    supports_explain: true,
+                    supports_streaming_results: true,
+                },
+            )
+            .await;
+
+        let error = cancel_query_impl(&test.state, conn_id).await.unwrap_err();
+        assert!(matches!(
+            error,
+            super::super::error::CommandError::Driver(DriverError::Unsupported(message))
+                if message == "backend cancellation is unavailable"
         ));
     }
 

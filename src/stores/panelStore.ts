@@ -5,6 +5,7 @@ import type { DatabaseType, FavoriteQuery, QueryHistoryEntry, Value } from '../t
 import type { ChartConfig } from '../types/chart';
 import type { TrendSeries } from '../lib/serverStatusTrends';
 import { getCancelCapability } from '../lib/queryExecutionViewModel';
+import { reduceQueryExecutionState } from '../lib/queryExecutionViewModel';
 import { useSchemaStore } from './schemaStore';
 import { useActiveConnectionStore } from './activeConnectionStore';
 import {
@@ -442,28 +443,41 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     if (!panel) return;
 
     const exec = queryExec.get(panelId);
-    if (!exec?.running) return;
+    if (!exec?.running || exec.cancelState === 'requested') return;
 
     const capabilities =
       useActiveConnectionStore.getState().connections[panel.connectionId]?.capabilities;
     if (getCancelCapability(capabilities) !== 'supported') return;
 
-    set((s) => ({
-      queryExec: patchExec(s.queryExec, panelId, {
-        cancelState: 'requested',
-        cancelError: null,
-      }),
-    }));
+    set((s) => {
+      const current = s.queryExec.get(panelId);
+      if (!current) return s;
+      return {
+        queryExec: patchExec(
+          s.queryExec,
+          panelId,
+          reduceQueryExecutionState(current, { type: 'cancel_requested' }),
+        ),
+      };
+    });
 
     try {
       await queryCommands.cancelQuery(panel.dbSessionId);
     } catch {
-      set((s) => ({
-        queryExec: patchExec(s.queryExec, panelId, {
-          cancelState: 'failed',
-          cancelError: t('query.cancelFailed'),
-        }),
-      }));
+      set((s) => {
+        const current = s.queryExec.get(panelId);
+        if (!current) return s;
+        return {
+          queryExec: patchExec(
+            s.queryExec,
+            panelId,
+            reduceQueryExecutionState(current, {
+              type: 'cancel_failed',
+              error: t('query.cancelFailed'),
+            }),
+          ),
+        };
+      });
     }
   },
 
