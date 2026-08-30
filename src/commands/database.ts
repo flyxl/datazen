@@ -9,6 +9,11 @@ import type {
   TableSchema,
   Value,
 } from '../types';
+import type {
+  CommitPendingChangesResponse,
+  PendingRowChange,
+  RowChangePlan,
+} from '../lib/tableChanges';
 import { queryCommands } from './query';
 
 export interface CellUpdate {
@@ -23,6 +28,19 @@ export interface RowUpdateBatch {
 
 export interface RowDeleteBatch {
   pkColumns: CellUpdate[];
+}
+
+export interface PreviewPendingChangesRequest {
+  dbSessionId: string;
+  table: string;
+  database?: string | null;
+  changes: PendingRowChange[];
+}
+
+export interface CommitPendingChangesRequest {
+  dbSessionId: string;
+  plan: RowChangePlan;
+  fingerprint: string;
 }
 
 export const databaseCommands = {
@@ -71,6 +89,23 @@ export const databaseCommands = {
 
   commitRowDeletes: (dbSessionId: string, table: string, deletes: RowDeleteBatch[]) =>
     invoke<void>('commit_row_deletes', { dbSessionId, table, deletes }),
+
+  /** Generate a serialisable plan only; the backend does not execute SQL. */
+  previewPendingChanges: (params: PreviewPendingChangesRequest) =>
+    invoke<RowChangePlan>('preview_pending_changes', {
+      dbSessionId: params.dbSessionId,
+      table: params.table,
+      database: params.database ?? null,
+      changes: params.changes,
+    }),
+
+  /** Commit the exact plan returned by preview, guarded by its fingerprint. */
+  commitPendingChanges: (params: CommitPendingChangesRequest) =>
+    invoke<CommitPendingChangesResponse>('commit_pending_changes', {
+      dbSessionId: params.dbSessionId,
+      plan: params.plan,
+      fingerprint: params.fingerprint,
+    }),
 
   getDatabaseObjects: (dbSessionId: string, kind: string) =>
     invoke<DatabaseObject[]>('get_database_objects', { dbSessionId, kind }),

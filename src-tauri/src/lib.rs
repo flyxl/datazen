@@ -926,6 +926,8 @@ pub fn run() {
             commands::plan_table_structure_changes,
             commands::get_er_data,
             commands::get_table_data,
+            commands::preview_pending_changes,
+            commands::commit_pending_changes,
             commands::commit_row_updates,
             commands::commit_row_deletes,
             commands::execute_query,

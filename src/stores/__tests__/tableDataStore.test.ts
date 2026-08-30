@@ -5,6 +5,8 @@ const mockDatabaseCommands = {
   getTableData: vi.fn(),
   commitRowUpdates: vi.fn(),
   commitRowDeletes: vi.fn(),
+  previewPendingChanges: vi.fn(),
+  commitPendingChanges: vi.fn(),
 };
 
 vi.mock('../../commands/database', () => ({
@@ -27,6 +29,24 @@ const sampleResponse = {
   pageSize: 50,
 };
 
+const samplePlan = {
+  planId: 'plan-1',
+  fingerprint: 'fingerprint-1',
+  table: { dbSessionId: 'conn-1', table: 'users', database: null },
+  updates: [
+    {
+      rowIdentity: { id: 1 },
+      originalValues: { name: 'Alice' },
+      currentValues: { name: 'Updated' },
+      changedColumns: ['name'],
+      sqlTemplate: 'UPDATE "users" SET "name" = \'Updated\' WHERE "id" = 1',
+      parameterSummary: ['SET name="Updated"', 'PK id=1'],
+    },
+  ],
+  deletes: [],
+  warnings: [],
+};
+
 describe('tableDataStore', () => {
   let useTableDataStore: typeof import('../tableDataStore').useTableDataStore;
 
@@ -36,6 +56,13 @@ describe('tableDataStore', () => {
     mockDatabaseCommands.getTableData.mockResolvedValue(sampleResponse);
     mockDatabaseCommands.commitRowUpdates.mockResolvedValue(undefined);
     mockDatabaseCommands.commitRowDeletes.mockResolvedValue(undefined);
+    mockDatabaseCommands.previewPendingChanges.mockResolvedValue(samplePlan);
+    mockDatabaseCommands.commitPendingChanges.mockResolvedValue({
+      planId: samplePlan.planId,
+      fingerprint: samplePlan.fingerprint,
+      statements: [{ operation: 'update', rowIdentity: { id: 1 }, affectedRows: 1 }],
+      affectedRows: 1,
+    });
     const mod = await import('../tableDataStore');
     useTableDataStore = mod.useTableDataStore;
     useTableDataStore.getState().reset();
@@ -203,14 +230,38 @@ describe('tableDataStore', () => {
     expect(useTableDataStore.getState().editingCell).toBeNull();
   });
 
-  it('updateCell commits changes', async () => {
+  it('updateCell stages changes without committing', async () => {
     await loadTable();
     useTableDataStore.getState().updateCell(0, 'name', 'Updated');
-    await vi.waitFor(() => expect(mockDatabaseCommands.commitRowUpdates).toHaveBeenCalled());
+    expect(mockDatabaseCommands.commitRowUpdates).not.toHaveBeenCalled();
+    expect(mockDatabaseCommands.previewPendingChanges).not.toHaveBeenCalled();
     expect(useTableDataStore.getState().rows[0].name).toBe('Updated');
+    expect(useTableDataStore.getState().pendingChanges.size).toBe(1);
+    expect([...useTableDataStore.getState().pendingChanges.values()][0]).toMatchObject({
+      rowIdentity: { id: 1 },
+      originalValues: { name: 'Alice' },
+      currentValues: { name: 'Updated' },
+      changedColumns: ['name'],
+      deleteMarked: false,
+    });
   });
 
-  it('commitChanges errors without primary key', async () => {
+  it('retains null originals and removes a change when reverted', async () => {
+    mockDatabaseCommands.getTableData.mockResolvedValueOnce({
+      ...sampleResponse,
+      rows: [[1, null]],
+    });
+    await loadTable();
+    useTableDataStore.getState().stageCellChange(0, 'name', 'Updated');
+    expect([...useTableDataStore.getState().pendingChanges.values()][0].originalValues).toEqual({
+      name: null,
+    });
+
+    useTableDataStore.getState().stageCellChange(0, 'name', null);
+    expect(useTableDataStore.getState().pendingChanges.size).toBe(0);
+  });
+
+  it('staging errors without primary key and never creates a write', async () => {
     mockDatabaseCommands.getTableData.mockResolvedValueOnce({
       columns: [{ name: 'name', dataType: 'text', isPrimaryKey: false, isNullable: true }],
       rows: [['x']],
@@ -220,14 +271,52 @@ describe('tableDataStore', () => {
     });
     await useTableDataStore.getState().loadTableData({ dbSessionId: 'conn-1', table: 'nopk' });
     useTableDataStore.getState().updateCell(0, 'name', 'y');
-    await vi.waitFor(() => expect(useTableDataStore.getState().error).toBeTruthy());
+    expect(useTableDataStore.getState().error).toBeTruthy();
+    expect(useTableDataStore.getState().pendingChanges.size).toBe(0);
+    expect(mockDatabaseCommands.previewPendingChanges).not.toHaveBeenCalled();
   });
 
-  it('commitChanges restores buffer on failure', async () => {
+  it('commit failure preserves pending changes', async () => {
     await loadTable();
-    mockDatabaseCommands.commitRowUpdates.mockRejectedValueOnce(new Error('commit fail'));
     useTableDataStore.getState().updateCell(0, 'name', 'Fail');
-    await vi.waitFor(() => expect(useTableDataStore.getState().error).toBe('commit fail'));
+    mockDatabaseCommands.commitPendingChanges.mockRejectedValueOnce(new Error('commit fail'));
+    const result = await useTableDataStore.getState().commitPendingChanges();
+    expect(result.status).toBe('failed');
+    expect(useTableDataStore.getState().error).toBe('commit fail');
+    expect(useTableDataStore.getState().pendingChanges.size).toBe(1);
+    expect(useTableDataStore.getState().previewPlan).toEqual(samplePlan);
+  });
+
+  it('preview and successful commit clear pending changes and request refresh', async () => {
+    await loadTable();
+    useTableDataStore.getState().stageCellChange(0, 'name', 'Updated');
+    const plan = await useTableDataStore.getState().previewPendingChanges();
+    expect(plan).toEqual(samplePlan);
+    expect(mockDatabaseCommands.previewPendingChanges).toHaveBeenCalledWith({
+      dbSessionId: 'conn-1',
+      table: 'users',
+      database: null,
+      changes: [
+        {
+          rowIdentity: { id: 1 },
+          originalValues: { name: 'Alice' },
+          currentValues: { name: 'Updated' },
+          changedColumns: ['name'],
+          deleteMarked: false,
+        },
+      ],
+    });
+    const result = await useTableDataStore.getState().commitPendingChanges();
+    expect(result.status).toBe('committed');
+    expect(result.refreshRequired).toBe(true);
+    expect(result.refreshed).toBe(true);
+    expect(useTableDataStore.getState().pendingChanges.size).toBe(0);
+    expect(mockDatabaseCommands.commitPendingChanges).toHaveBeenCalledWith({
+      dbSessionId: 'conn-1',
+      plan: samplePlan,
+      fingerprint: samplePlan.fingerprint,
+    });
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledTimes(2);
   });
 
   it('discardChanges reloads table', async () => {
@@ -262,23 +351,25 @@ describe('tableDataStore', () => {
     expect(useTableDataStore.getState().selectedRows.size).toBe(0);
   });
 
-  it('deleteSelectedRows commits PK deletes and reloads', async () => {
+  it('deleteSelectedRows stages PK deletes without executing', async () => {
     await loadTable();
     useTableDataStore.getState().selectRow(0);
     useTableDataStore.getState().selectRow(1, { multi: true });
     await useTableDataStore.getState().deleteSelectedRows();
-    expect(mockDatabaseCommands.commitRowDeletes).toHaveBeenCalledWith('conn-1', 'users', [
-      { pkColumns: [{ column: 'id', value: 1 }] },
-      { pkColumns: [{ column: 'id', value: 2 }] },
+    expect(mockDatabaseCommands.commitRowDeletes).not.toHaveBeenCalled();
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalledTimes(1);
+    expect([...useTableDataStore.getState().pendingChanges.values()]).toEqual([
+      expect.objectContaining({ rowIdentity: { id: 1 }, deleteMarked: true }),
+      expect.objectContaining({ rowIdentity: { id: 2 }, deleteMarked: true }),
     ]);
-    expect(mockDatabaseCommands.getTableData).toHaveBeenCalled();
   });
 
-  it('deleteRows selects indices then deletes', async () => {
+  it('deleteRows selects indices then stages deletes', async () => {
     await loadTable();
     await useTableDataStore.getState().deleteRows([1]);
-    expect(mockDatabaseCommands.commitRowDeletes).toHaveBeenCalledWith('conn-1', 'users', [
-      { pkColumns: [{ column: 'id', value: 2 }] },
+    expect(mockDatabaseCommands.commitRowDeletes).not.toHaveBeenCalled();
+    expect([...useTableDataStore.getState().pendingChanges.values()]).toEqual([
+      expect.objectContaining({ rowIdentity: { id: 2 }, deleteMarked: true }),
     ]);
   });
 

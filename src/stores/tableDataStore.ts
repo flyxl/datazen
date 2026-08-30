@@ -1,8 +1,18 @@
 import { create } from 'zustand';
-import { databaseCommands, type RowUpdateBatch, type RowDeleteBatch } from '../commands/database';
+import { databaseCommands } from '../commands/database';
 import { t } from '../locales/t';
 import type { ColumnSchema, DatabaseType, FilterCondition, SortCondition, Value } from '../types';
 import { DB_REGISTRY } from '../lib/databaseTypes';
+import {
+  buildRowIdentity,
+  clonePendingRowChange,
+  rowIdentityKey,
+  valuesEqual,
+  type CommitPendingChangesResult,
+  type PendingRowChange,
+  type PendingStatus,
+  type RowChangePlan,
+} from '../lib/tableChanges';
 import { useSettingsStore } from './settingsStore';
 
 function rowsToRecords(
@@ -85,6 +95,11 @@ export interface TableState {
   filterPanelOpen: boolean;
   sorts: SortCondition[];
   editBuffer: Map<string, CellEdit>;
+  /** Changes staged against this table; the map key is the stable PK identity. */
+  pendingChanges: Map<string, PendingRowChange>;
+  previewPlan: RowChangePlan | null;
+  pendingStatus: PendingStatus;
+  lastCommitResult: CommitPendingChangesResult | null;
   selectedRows: Set<number>;
   lastSelectedIndex: number | null;
   editingCell: { row: number; col: string } | null;
@@ -106,6 +121,10 @@ function emptyTableState(): TableState {
     filterPanelOpen: false,
     sorts: [],
     editBuffer: new Map(),
+    pendingChanges: new Map(),
+    previewPlan: null,
+    pendingStatus: 'idle',
+    lastCommitResult: null,
     selectedRows: new Set(),
     lastSelectedIndex: null,
     editingCell: null,
@@ -156,6 +175,10 @@ function syncFlat(active: string | null, states: Map<string, TableState>) {
     filterPanelOpen: ts.filterPanelOpen,
     sorts: ts.sorts,
     editBuffer: ts.editBuffer,
+    pendingChanges: ts.pendingChanges,
+    previewPlan: ts.previewPlan,
+    pendingStatus: ts.pendingStatus,
+    lastCommitResult: ts.lastCommitResult,
     selectedRows: ts.selectedRows,
     lastSelectedIndex: ts.lastSelectedIndex,
     editingCell: ts.editingCell,
@@ -207,6 +230,10 @@ interface TableDataStore extends ConnectionTableState {
   filterPanelOpen: boolean;
   sorts: SortCondition[];
   editBuffer: Map<string, CellEdit>;
+  pendingChanges: Map<string, PendingRowChange>;
+  previewPlan: RowChangePlan | null;
+  pendingStatus: PendingStatus;
+  lastCommitResult: CommitPendingChangesResult | null;
   selectedRows: Set<number>;
   lastSelectedIndex: number | null;
   editingCell: { row: number; col: string } | null;
@@ -238,10 +265,17 @@ interface TableDataStore extends ConnectionTableState {
   setFilterPanelOpen: (open: boolean) => void;
   setSort: (sort: SortCondition) => void;
   startEdit: (row: number, col: string) => void;
+  stageCellChange: (row: number, col: string, value: unknown) => void;
+  stageRowDelete: (rowIndices: number | number[]) => void;
+  discardPendingChanges: () => void;
+  rollbackPendingChanges: () => void;
+  previewPendingChanges: () => Promise<RowChangePlan | null>;
+  commitPendingChanges: () => Promise<CommitPendingChangesResult>;
+  /** Compatibility aliases retained until the shared UI wiring is migrated. */
   updateCell: (row: number, col: string, value: unknown) => void;
   applyColumnToRows: (col: string, value: unknown, rows: number[]) => void;
   cancelEdit: () => void;
-  commitChanges: () => Promise<void>;
+  commitChanges: () => Promise<CommitPendingChangesResult>;
   discardChanges: () => void;
   selectRow: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   toggleSelectAll: () => void;
@@ -287,6 +321,87 @@ function updateActive(
   const next = new Map(conn.tableStates);
   next.set(conn.activeTable, patched);
   commitPatch(get, set, null, { tableStates: next });
+}
+
+function findPendingForRow(
+  ts: TableState,
+  rowIndex: number,
+  row: Record<string, unknown>,
+  pkColumns: ColumnSchema[],
+  allowRowIndexFallback = true,
+): { key: string; change: PendingRowChange } | null {
+  const identity = buildRowIdentity(row, pkColumns);
+  if (!identity) return null;
+  const directKey = rowIdentityKey(identity);
+  const direct = ts.pendingChanges.get(directKey);
+  if (direct) return { key: directKey, change: direct };
+
+  for (const [key, change] of ts.pendingChanges) {
+    const currentIdentity = { ...change.rowIdentity };
+    for (const column of pkColumns) {
+      if (Object.prototype.hasOwnProperty.call(change.currentValues, column.name)) {
+        currentIdentity[column.name] = change.currentValues[column.name];
+      }
+    }
+    if (rowIdentityKey(currentIdentity) === directKey) return { key, change };
+  }
+
+  // A primary-key edit changes the identity visible in the local row. Keep
+  // associating current-page interactions with the original pending row by
+  // its page position until the shared UI starts carrying row handles.
+  if (!allowRowIndexFallback) return null;
+  for (const [key, change] of ts.pendingChanges) {
+    if (change.rowIndex === rowIndex) return { key, change };
+  }
+  return null;
+}
+
+function rebuildEditBuffer(ts: TableState): Map<string, CellEdit> {
+  const next = new Map<string, CellEdit>();
+  const pkColumns = ts.columns.filter((column) => column.isPrimaryKey);
+  if (pkColumns.length === 0) return next;
+
+  ts.rows.forEach((row, rowIndex) => {
+    const match = findPendingForRow(ts, rowIndex, row, pkColumns);
+    if (!match || match.change.deleteMarked) return;
+    for (const column of match.change.changedColumns) {
+      next.set(editKey(rowIndex, column), {
+        rowIndex,
+        columnName: column,
+        originalValue: match.change.originalValues[column],
+        newValue: match.change.currentValues[column],
+        pkSnapshot: { ...match.change.rowIdentity },
+      });
+    }
+  });
+  return next;
+}
+
+function overlayPendingRows(ts: TableState, rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  const pkColumns = ts.columns.filter((column) => column.isPrimaryKey);
+  if (pkColumns.length === 0 || ts.pendingChanges.size === 0) return rows;
+  return rows.map((row, rowIndex) => {
+    // Never use a page-local row number while applying a fetch result. A
+    // stable identity match is required so a page switch cannot overlay a
+    // pending value onto an unrelated row.
+    const match = findPendingForRow(ts, rowIndex, row, pkColumns, false);
+    return match ? { ...row, ...match.change.currentValues } : row;
+  });
+}
+
+function pendingChangesSignature(pendingChanges: Map<string, PendingRowChange>): string {
+  return JSON.stringify(
+    Array.from(pendingChanges.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, change]) => [key, clonePendingRowChange(change)]),
+  );
+}
+
+function pendingChangesForWire(pendingChanges: Map<string, PendingRowChange>): PendingRowChange[] {
+  return Array.from(pendingChanges.values()).map((change) => {
+    const { rowIndex: _rowIndex, ...wireChange } = clonePendingRowChange(change);
+    return wireChange;
+  });
 }
 
 function reloadActive(get: () => TableDataStore): void {
@@ -384,16 +499,21 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       const latestConn = get().perConnection.get(dbSessionId) ?? emptyConnectionTableState();
       const updated = new Map(latestConn.tableStates);
       const ts = updated.get(table) ?? emptyTableState();
+      const fetchedRows = rowsToRecords(res.columns, res.rows);
+      const rowsWithPending = overlayPendingRows(
+        { ...ts, columns: res.columns, rows: fetchedRows },
+        fetchedRows,
+      );
       const patched: TableState = {
         ...ts,
         columns: res.columns,
-        rows: rowsToRecords(res.columns, res.rows),
+        rows: rowsWithPending,
         totalRows: res.totalRows ?? ts.totalRows,
         page: res.page,
         pageSize: res.pageSize,
         loading: false,
         selectedRows: new Set(),
-        editBuffer: new Map(),
+        editBuffer: rebuildEditBuffer({ ...ts, columns: res.columns, rows: rowsWithPending }),
         editingCell: null,
         error: null,
       };
@@ -516,144 +636,272 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
   startEdit: (row, col) => updateActive(get, set, () => ({ editingCell: { row, col } })),
 
-  updateCell: (row, col, value) => {
+  stageCellChange: (row, col, value) => {
     const conn = getActiveConn(get);
     if (!conn.activeTable) return;
     const ts = getState(conn.tableStates, conn.activeTable);
     const rowObj = ts.rows[row];
     if (!rowObj) return;
-    const originalValue = rowObj[col];
-    const key = editKey(row, col);
-
-    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
-    const pkSnapshot: Record<string, unknown> = {};
-    for (const pk of pkCols) {
-      pkSnapshot[pk.name] = rowObj[pk.name];
-    }
-
-    const nextBuffer = new Map(ts.editBuffer);
-    nextBuffer.set(key, {
-      rowIndex: row,
-      columnName: col,
-      originalValue,
-      newValue: value,
-      pkSnapshot,
-    });
-    const nextRows = [...ts.rows];
-    nextRows[row] = { ...rowObj, [col]: value as Value };
-
-    const next = new Map(conn.tableStates);
-    next.set(conn.activeTable, {
-      ...ts,
-      rows: nextRows,
-      editBuffer: nextBuffer,
-      editingCell: null,
-    });
-    commitPatch(get, set, null, { tableStates: next });
-    void get().commitChanges();
-  },
-
-  applyColumnToRows: (col, value, rows) => {
-    const conn = getActiveConn(get);
-    if (!conn.activeTable) return;
-    const ts = getState(conn.tableStates, conn.activeTable);
-    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
-    const nextBuffer = new Map(ts.editBuffer);
-    const nextRows = [...ts.rows];
-
-    for (const row of rows) {
-      const rowObj = nextRows[row];
-      if (!rowObj) continue;
-      const pkSnapshot: Record<string, unknown> = {};
-      for (const pk of pkCols) {
-        pkSnapshot[pk.name] = rowObj[pk.name];
-      }
-      const key = editKey(row, col);
-      nextBuffer.set(key, {
-        rowIndex: row,
-        columnName: col,
-        originalValue: rowObj[col],
-        newValue: value,
-        pkSnapshot,
-      });
-      nextRows[row] = { ...rowObj, [col]: value as Value };
-    }
-
-    if (nextBuffer.size === 0) return;
-    const next = new Map(conn.tableStates);
-    next.set(conn.activeTable, {
-      ...ts,
-      rows: nextRows,
-      editBuffer: nextBuffer,
-      editingCell: null,
-    });
-    commitPatch(get, set, null, { tableStates: next });
-    void get().commitChanges();
-  },
-
-  cancelEdit: () => updateActive(get, set, () => ({ editingCell: null })),
-
-  commitChanges: async () => {
-    const conn = getActiveConn(get);
-    const { activeDbSessionId } = get();
-    if (!conn.activeTable || !activeDbSessionId) return;
-    const ts = getState(conn.tableStates, conn.activeTable);
-    if (ts.editBuffer.size === 0) return;
-
     const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
     if (pkCols.length === 0) {
       updateActive(get, set, () => ({ error: t('tableData.noPrimaryKey') }));
       return;
     }
 
-    const snapshot = new Map(ts.editBuffer);
-    updateActive(get, set, () => ({ editBuffer: new Map() }));
+    const match = findPendingForRow(ts, row, rowObj, pkCols);
+    const identity = match?.change.rowIdentity ?? buildRowIdentity(rowObj, pkCols);
+    if (!identity) {
+      updateActive(get, set, () => ({ error: t('tableData.noPrimaryKey') }));
+      return;
+    }
+    const existing = match?.change;
+    const hasOriginalValue =
+      existing !== undefined && Object.prototype.hasOwnProperty.call(existing.originalValues, col);
+    const originalValue = hasOriginalValue
+      ? existing.originalValues[col]
+      : toCellValue(rowObj[col]);
+    const currentValue = toCellValue(value);
+    const originalValues = { ...(existing?.originalValues ?? {}) };
+    const currentValues = { ...(existing?.currentValues ?? {}) };
+    let changedColumns = [...(existing?.changedColumns ?? [])];
 
-    const editsByRow = new Map<number, CellEdit[]>();
-    for (const edit of snapshot.values()) {
-      const existing = editsByRow.get(edit.rowIndex) ?? [];
-      existing.push(edit);
-      editsByRow.set(edit.rowIndex, existing);
+    if (valuesEqual(originalValue, currentValue)) {
+      delete originalValues[col];
+      delete currentValues[col];
+      changedColumns = changedColumns.filter((column) => column !== col);
+    } else {
+      originalValues[col] = originalValue;
+      currentValues[col] = currentValue;
+      if (!changedColumns.includes(col)) changedColumns.push(col);
     }
 
-    const batches: RowUpdateBatch[] = [];
-    for (const [, edits] of editsByRow) {
-      const { pkSnapshot } = edits[0];
-      batches.push({
-        setColumns: edits.map((e) => ({
-          column: e.columnName,
-          value: toCellValue(e.newValue),
-        })),
-        pkColumns: pkCols.map((pk) => ({
-          column: pk.name,
-          value: toCellValue(pkSnapshot[pk.name]),
-        })),
+    const pendingChanges = new Map(ts.pendingChanges);
+    const key = match?.key ?? rowIdentityKey(identity);
+    if (changedColumns.length === 0 && !existing?.deleteMarked) {
+      pendingChanges.delete(key);
+    } else {
+      pendingChanges.set(key, {
+        rowIndex: row,
+        rowIdentity: { ...identity },
+        originalValues,
+        currentValues,
+        changedColumns,
+        deleteMarked: existing?.deleteMarked ?? false,
       });
     }
 
-    try {
-      await databaseCommands.commitRowUpdates(activeDbSessionId, conn.activeTable, batches);
-      void get().loadTableData({ dbSessionId: activeDbSessionId, table: conn.activeTable });
-    } catch (e) {
-      const latestConn = getActiveConn(get);
-      const current = getState(latestConn.tableStates, conn.activeTable);
-      const merged = new Map(current.editBuffer);
-      for (const [key, edit] of snapshot) merged.set(key, edit);
-      updateActive(get, set, () => ({
-        editBuffer: merged,
-        error: extractErrorMessage(e, t('tableData.commitFailed')),
-      }));
-    }
+    const nextRows = [...ts.rows];
+    nextRows[row] = { ...rowObj, [col]: currentValue };
+
+    const next = new Map(conn.tableStates);
+    next.set(conn.activeTable, {
+      ...ts,
+      rows: nextRows,
+      pendingChanges,
+      previewPlan: null,
+      pendingStatus: 'idle',
+      lastCommitResult: null,
+      editBuffer: rebuildEditBuffer({ ...ts, rows: nextRows, pendingChanges }),
+      editingCell: null,
+      error: null,
+    });
+    commitPatch(get, set, null, { tableStates: next });
   },
 
-  discardChanges: () => {
+  applyColumnToRows: (col, value, rows) => {
+    for (const row of rows) get().stageCellChange(row, col, value);
+  },
+
+  cancelEdit: () => updateActive(get, set, () => ({ editingCell: null })),
+
+  stageRowDelete: (rowIndices) => {
+    const conn = getActiveConn(get);
+    if (!conn.activeTable) return;
+    const ts = getState(conn.tableStates, conn.activeTable);
+    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
+    if (pkCols.length === 0) {
+      updateActive(get, set, () => ({ error: t('tableData.noPrimaryKey') }));
+      return;
+    }
+
+    const indices = [...new Set((Array.isArray(rowIndices) ? rowIndices : [rowIndices]).filter(
+      (index) => Number.isInteger(index) && index >= 0,
+    ))].sort((left, right) => left - right);
+    if (indices.length === 0) return;
+
+    const pendingChanges = new Map(ts.pendingChanges);
+    for (const rowIndex of indices) {
+      const row = ts.rows[rowIndex];
+      if (!row) continue;
+      const match = findPendingForRow(ts, rowIndex, row, pkCols);
+      const identity = match?.change.rowIdentity ?? buildRowIdentity(row, pkCols);
+      if (!identity) continue;
+      const existing = match?.change;
+      pendingChanges.set(match?.key ?? rowIdentityKey(identity), {
+        rowIndex,
+        rowIdentity: { ...identity },
+        originalValues: { ...(existing?.originalValues ?? {}) },
+        currentValues: { ...(existing?.currentValues ?? {}) },
+        changedColumns: [...(existing?.changedColumns ?? [])],
+        deleteMarked: true,
+      });
+    }
+
+    const next = new Map(conn.tableStates);
+    next.set(conn.activeTable, {
+      ...ts,
+      pendingChanges,
+      previewPlan: null,
+      pendingStatus: 'idle',
+      lastCommitResult: null,
+      editBuffer: rebuildEditBuffer({ ...ts, pendingChanges }),
+      editingCell: null,
+      error: null,
+    });
+    commitPatch(get, set, null, { tableStates: next });
+  },
+
+  discardPendingChanges: () => {
     const conn = getActiveConn(get);
     const { activeDbSessionId } = get();
     if (!conn.activeTable) return;
-    updateActive(get, set, () => ({ editBuffer: new Map(), editingCell: null }));
+    updateActive(get, set, () => ({
+      pendingChanges: new Map(),
+      previewPlan: null,
+      pendingStatus: 'idle',
+      lastCommitResult: null,
+      editBuffer: new Map(),
+      editingCell: null,
+      error: null,
+    }));
     if (activeDbSessionId)
       void get().loadTableData({ dbSessionId: activeDbSessionId, table: conn.activeTable });
   },
+
+  rollbackPendingChanges: () => get().discardPendingChanges(),
+
+  previewPendingChanges: async () => {
+    const conn = getActiveConn(get);
+    const { activeDbSessionId } = get();
+    if (!conn.activeTable || !activeDbSessionId) return null;
+    const table = conn.activeTable;
+    const ts = getState(conn.tableStates, table);
+    if (ts.pendingChanges.size === 0) return null;
+
+    const signature = pendingChangesSignature(ts.pendingChanges);
+    const changes = pendingChangesForWire(ts.pendingChanges);
+    updateActive(get, set, () => ({ pendingStatus: 'previewing', error: null }));
+    try {
+      const plan = await databaseCommands.previewPendingChanges({
+        dbSessionId: activeDbSessionId,
+        table,
+        database: conn.activeDatabase,
+        changes,
+      });
+      const latestConn = get().perConnection.get(activeDbSessionId) ?? emptyConnectionTableState();
+      const latest = getState(latestConn.tableStates, table);
+      if (pendingChangesSignature(latest.pendingChanges) === signature) {
+        const next = new Map(latestConn.tableStates);
+        next.set(table, {
+          ...latest,
+          previewPlan: plan,
+          pendingStatus: 'idle',
+          error: null,
+        });
+        commitPatch(get, set, activeDbSessionId, { tableStates: next });
+      }
+      return plan;
+    } catch (e) {
+      updateActive(get, set, () => ({
+        pendingStatus: 'idle',
+        error: extractErrorMessage(e, t('tableData.commitFailed')),
+      }));
+      return null;
+    }
+  },
+
+  commitPendingChanges: async () => {
+    const emptyResult: CommitPendingChangesResult = {
+      status: 'noop',
+      planId: '',
+      fingerprint: '',
+      statements: [],
+      affectedRows: 0,
+      refreshed: false,
+      refreshRequired: false,
+    };
+    const initialConn = getActiveConn(get);
+    const { activeDbSessionId } = get();
+    if (!initialConn.activeTable || !activeDbSessionId) return emptyResult;
+    const table = initialConn.activeTable;
+    const initial = getState(initialConn.tableStates, table);
+    if (initial.pendingChanges.size === 0) return emptyResult;
+
+    const signature = pendingChangesSignature(initial.pendingChanges);
+    let plan = initial.previewPlan;
+    if (!plan || plan.table.dbSessionId !== activeDbSessionId || plan.table.table !== table) {
+      plan = await get().previewPendingChanges();
+    }
+    if (!plan) return emptyResult;
+
+    updateActive(get, set, () => ({ pendingStatus: 'committing', error: null }));
+    try {
+      const response = await databaseCommands.commitPendingChanges({
+        dbSessionId: activeDbSessionId,
+        plan,
+        fingerprint: plan.fingerprint,
+      });
+      const latestConn = get().perConnection.get(activeDbSessionId) ?? emptyConnectionTableState();
+      const latest = getState(latestConn.tableStates, table);
+      const unchanged = pendingChangesSignature(latest.pendingChanges) === signature;
+      if (unchanged) {
+        const next = new Map(latestConn.tableStates);
+        next.set(table, {
+          ...latest,
+          pendingChanges: new Map(),
+          previewPlan: null,
+          pendingStatus: 'idle',
+          editBuffer: new Map(),
+          editingCell: null,
+          error: null,
+        });
+        commitPatch(get, set, activeDbSessionId, { tableStates: next });
+      }
+
+      await get().loadTableData({ dbSessionId: activeDbSessionId, table });
+      const refreshedConn = get().perConnection.get(activeDbSessionId) ?? emptyConnectionTableState();
+      const refreshedState = getState(refreshedConn.tableStates, table);
+      const result: CommitPendingChangesResult = {
+        ...response,
+        status: 'committed',
+        refreshed: !refreshedState.error,
+        refreshRequired: true,
+        refreshStatus: refreshedState.error ? 'failed' : 'completed',
+      };
+      const afterRefreshConn = get().perConnection.get(activeDbSessionId) ?? emptyConnectionTableState();
+      const afterRefresh = new Map(afterRefreshConn.tableStates);
+      const afterRefreshState = getState(afterRefreshConn.tableStates, table);
+      afterRefresh.set(table, { ...afterRefreshState, pendingStatus: 'idle', lastCommitResult: result });
+      commitPatch(get, set, activeDbSessionId, { tableStates: afterRefresh });
+      return result;
+    } catch (e) {
+      const error = extractErrorMessage(e, t('tableData.commitFailed'));
+      updateActive(get, set, () => ({ pendingStatus: 'idle', error }));
+      return {
+        ...emptyResult,
+        status: 'failed',
+        planId: plan?.planId ?? '',
+        fingerprint: plan?.fingerprint ?? '',
+        error,
+      };
+    }
+  },
+
+  updateCell: (row, col, value) => get().stageCellChange(row, col, value),
+
+  commitChanges: () => get().commitPendingChanges(),
+
+  discardChanges: () => get().discardPendingChanges(),
 
   selectRow: (index, opts) => {
     updateActive(get, set, (ts) => {
@@ -685,39 +933,11 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
   deleteSelectedRows: async () => {
     const conn = getActiveConn(get);
-    const { activeDbSessionId } = get();
-    if (!conn.activeTable || !activeDbSessionId) return;
+    if (!conn.activeTable) return;
     const ts = getState(conn.tableStates, conn.activeTable);
     const indices = Array.from(ts.selectedRows).sort((a, b) => a - b);
     if (indices.length === 0) return;
-
-    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
-    if (pkCols.length === 0) {
-      updateActive(get, set, () => ({ error: t('tableData.noPrimaryKey') }));
-      return;
-    }
-
-    const deletes: RowDeleteBatch[] = [];
-    for (const index of indices) {
-      const row = ts.rows[index];
-      if (!row) continue;
-      deletes.push({
-        pkColumns: pkCols.map((pk) => ({
-          column: pk.name,
-          value: toCellValue(row[pk.name]),
-        })),
-      });
-    }
-    if (deletes.length === 0) return;
-
-    try {
-      await databaseCommands.commitRowDeletes(activeDbSessionId, conn.activeTable, deletes);
-      void get().loadTableData({ dbSessionId: activeDbSessionId, table: conn.activeTable });
-    } catch (e) {
-      updateActive(get, set, () => ({
-        error: extractErrorMessage(e, t('tableData.deleteFailed')),
-      }));
-    }
+    get().stageRowDelete(indices);
   },
 
   deleteRows: async (rowIndices: number[]) => {
