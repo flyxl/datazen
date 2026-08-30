@@ -7,6 +7,7 @@
 | 轨道 | 范围 | 状态 | 编码 commit | 测试 commit |
 |---|---|---|---|---|
 | `v01x-query-cancel` | Driver capability、QueryExecutionViewModel、取消状态 | 编码中 | 待定 | 待定 |
+| `v01x-pending-changes` | staged row changes、Preview plan、Commit/Rollback | 编码中 | 待定 | 待定 |
 
 ## 合并规则
 
@@ -19,3 +20,4 @@
 
 - 现有 PostgreSQL/MySQL `cancel_query` 实现会取消连接范围内的活动查询，后续需要单独评估是否满足“当前查询”语义。
 - SQLite、部分驱动和测试注入驱动的取消能力可能是 no-op 或未知，不能统一展示为可取消。
+- pending changes 必须以主键或稳定 row identity 为前提；无主键表不能静默执行 UPDATE/DELETE。
