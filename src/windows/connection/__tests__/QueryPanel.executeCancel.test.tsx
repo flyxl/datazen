@@ -27,10 +27,12 @@ vi.mock('../../../hooks/useCompactToolbar', () => ({
 const panelConnectionState = vi.hoisted(() => ({
   capabilities: {
     supportsCancelQuery: true,
+    supportsQueryExecutionCancel: true,
     supportsExplain: true,
     supportsStreamingResults: true,
   } as {
     supportsCancelQuery: boolean;
+    supportsQueryExecutionCancel: boolean;
     supportsExplain: boolean;
     supportsStreamingResults: boolean;
   } | undefined,
@@ -49,6 +51,7 @@ vi.mock('../../../stores/activeConnectionStore', () => ({
         string,
         { capabilities?: {
           supportsCancelQuery: boolean;
+          supportsQueryExecutionCancel: boolean;
           supportsExplain: boolean;
           supportsStreamingResults: boolean;
         } }
@@ -136,6 +139,7 @@ describe('QueryPanel execute/cancel button', () => {
     vi.useFakeTimers();
     panelConnectionState.capabilities = {
       supportsCancelQuery: true,
+      supportsQueryExecutionCancel: true,
       supportsExplain: true,
       supportsStreamingResults: true,
     };
@@ -168,7 +172,11 @@ describe('QueryPanel execute/cancel button', () => {
     usePanelStore.setState((s) => {
       const exec = s.queryExec.get(PANEL_ID)!;
       return {
-        queryExec: new Map(s.queryExec).set(PANEL_ID, { ...exec, running }),
+        queryExec: new Map(s.queryExec).set(PANEL_ID, {
+          ...exec,
+          running,
+          executionId: running ? 'exec-test' : null,
+        }),
       };
     });
   }
@@ -215,9 +223,25 @@ describe('QueryPanel execute/cancel button', () => {
     expect(cancelQuery).toHaveBeenCalledWith(PANEL_ID);
   });
 
+  it('does not offer cancellation before the execution id arrives', () => {
+    setRunning(true);
+    usePanelStore.setState((s) => {
+      const exec = s.queryExec.get(PANEL_ID)!;
+      return { queryExec: new Map(s.queryExec).set(PANEL_ID, { ...exec, executionId: null }) };
+    });
+    renderPanel();
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(screen.getByRole('button', { name: 'query.stop' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'query.stop' }));
+    expect(cancelQuery).not.toHaveBeenCalled();
+  });
+
   it('disables Cancel and explains unsupported capability', () => {
     panelConnectionState.capabilities = {
       supportsCancelQuery: false,
+      supportsQueryExecutionCancel: false,
       supportsExplain: true,
       supportsStreamingResults: true,
     };

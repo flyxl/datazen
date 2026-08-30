@@ -39,12 +39,17 @@ export const queryCommands = {
       database?: string | null;
       /** F7: PG-family schema target for the stream. */
       schema?: string | null;
+      /** Bound values are sent through the same cancellable stream path. */
+      params?: Record<string, string | number | boolean | null>;
     },
   ) => {
     await driverCommands.executeStream({
       dbSessionId,
       command: 'query_stream',
-      input: { sql },
+      input:
+        options?.params && Object.keys(options.params).length > 0
+          ? { sql, params: options.params }
+          : { sql },
       onEvent,
       applyResultLimit: options?.applyResultLimit,
       recordHistory: options?.recordHistory,
@@ -57,7 +62,8 @@ export const queryCommands = {
   getExplain: (dbSessionId: string, sql: string, database?: string | null) =>
     invoke<ExplainResult>('get_explain', { dbSessionId, sql, database: database ?? null }),
 
-  cancelQuery: (dbSessionId: string) => invoke<void>('cancel_query', { dbSessionId }),
+  cancelQuery: (dbSessionId: string, executionId: string) =>
+    invoke<void>('cancel_query', { dbSessionId, executionId }),
 
   /** connectionId = 持久化配置连接 id（历史按连接分组）。 */
   getQueryHistory: (limit: number, connectionId?: string, database?: string, schema?: string) =>

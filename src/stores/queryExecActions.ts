@@ -29,6 +29,7 @@ export interface QueryExecState {
   terminalState: QueryTerminalState | null;
   chartConfig?: ChartConfig;
   resultViewMode?: 'table' | 'chart';
+  executionId: string | null;
   streamRunId?: number;
   resultDetailRowIndex: number | null;
 }
@@ -43,6 +44,7 @@ export const EMPTY_QUERY_EXEC: QueryExecState = Object.freeze({
   cancelState: 'idle',
   cancelError: null,
   terminalState: null,
+  executionId: null,
   resultDetailRowIndex: null,
 });
 
@@ -109,6 +111,8 @@ export async function runStreamingQuery(
   database?: string | null,
   /** F7: panel's PG-family schema target — drivers inline it when supported. */
   schema?: string | null,
+  /** Bound values use this same execution-handle stream. */
+  params?: BindParams,
 ): Promise<void> {
   const runId = ++streamRunCounter;
   setExec(
@@ -118,6 +122,7 @@ export async function runStreamingQuery(
         activeResultIdx: 0,
         streamRunId: runId,
         executionTimeMs: null,
+        executionId: null,
       }),
       panelId,
       { type: 'start' },
@@ -132,10 +137,12 @@ export async function runStreamingQuery(
   };
 
   try {
-    await queryCommands.executeQueryStream(dbSessionId, sql, onEvent, {
+    const streamOptions = {
       database: database ?? null,
       schema: schema ?? null,
-    });
+      ...(params && Object.keys(params).length > 0 ? { params } : {}),
+    };
+    await queryCommands.executeQueryStream(dbSessionId, sql, onEvent, streamOptions);
     const exec = getExec().get(panelId);
     if (exec && exec.streamRunId === runId) {
       const viewMode = resolvePostQueryViewMode(exec.results[0]);
@@ -166,37 +173,14 @@ export async function runBoundQuery(
   /** F7: panel's PG-family schema target — drivers inline it when supported. */
   schema?: string | null,
 ): Promise<void> {
-  setExec(transitionExec(getExec(), panelId, { type: 'start' }));
-
-  try {
-    const multi = await queryCommands.executeQuery(
-      dbSessionId,
-      sql,
-      params,
-      database ?? null,
-      schema ?? null,
-    );
-    const viewMode = resolvePostQueryViewMode(multi.results[0]);
-    const withResult = patchExec(getExec(), panelId, {
-      results: multi.results,
-      activeResultIdx: 0,
-      executionTimeMs: multi.totalTimeMs ?? null,
-      resultViewMode: viewMode,
-    });
-    setExec(transitionExec(withResult, panelId, { type: 'succeeded' }));
-    await notifySchemaChangedIfNeeded(dbSessionId, sql);
-  } catch (e) {
-    const exec = getExec().get(panelId);
-    const message = extractError(e);
-    const transition = exec
-      ? queryErrorTransition(exec, message)
-      : ({ type: 'failed', error: message } satisfies QueryExecutionTransition);
-    setExec(
-      transitionExec(
-        patchExec(getExec(), panelId, { results: [], activeResultIdx: 0 }),
-        panelId,
-        transition,
-      ),
-    );
-  }
+  await runStreamingQuery(
+    panelId,
+    dbSessionId,
+    sql,
+    getExec,
+    setExec,
+    database,
+    schema,
+    params,
+  );
 }
