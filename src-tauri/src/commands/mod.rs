@@ -68,7 +68,7 @@ use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::workflow::scheduler::WorkflowScheduler;
 use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
 use datazen_driver_api::QueryExecutionId;
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -94,16 +94,16 @@ impl QueryExecutionRegistry {
         db_session_id: impl Into<String>,
     ) -> Result<(), String> {
         let mut owners = self.owners.write().await;
-        if owners
-            .insert(execution_id.clone(), db_session_id.into())
-            .is_some()
-        {
-            return Err(format!(
+        match owners.entry(execution_id.clone()) {
+            Entry::Vacant(entry) => {
+                entry.insert(db_session_id.into());
+                Ok(())
+            }
+            Entry::Occupied(_) => Err(format!(
                 "query execution id '{}' is already registered",
                 execution_id.as_str()
-            ));
+            )),
         }
-        Ok(())
     }
 
     pub async fn validate_owner(
@@ -184,7 +184,7 @@ mod tests {
             .await
             .unwrap();
 
-        let duplicate = registry.register(first.clone(), "session-a").await;
+        let duplicate = registry.register(first.clone(), "session-b").await;
         assert!(duplicate.unwrap_err().contains("already registered"));
         assert!(registry.validate_owner(&first, "session-a").await.is_ok());
         assert!(registry
