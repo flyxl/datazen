@@ -38,6 +38,9 @@ pub struct MockDriverOptions {
     /// error for command tests. The legacy session-wide method remains a
     /// separate counter and is never used by the Host cancel path.
     pub cancel_error: Option<String>,
+    /// Rows affected by the generic execute path (zero by default so callers
+    /// that do not model mutations retain the old mock behavior).
+    pub execute_rows_affected: u64,
     /// F7: when true, `qualify_sql_target` rewrites SQL by appending a
     /// marker comment recording the requested target (capability simulation).
     pub rewrite_sql_target: bool,
@@ -65,6 +68,7 @@ impl Default for MockDriverOptions {
             extra_commands: Vec::new(),
             query_error: None,
             cancel_error: None,
+            execute_rows_affected: 0,
             rewrite_sql_target: false,
         }
     }
@@ -324,7 +328,7 @@ impl DatabaseDriver for MockDriver {
     }
 
     async fn execute(&self, _handle: &ConnectionHandle, _sql: &str) -> Result<u64, DriverError> {
-        Ok(0)
+        Ok(self.opts.execute_rows_affected)
     }
 
     async fn explain(
