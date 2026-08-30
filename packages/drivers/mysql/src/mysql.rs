@@ -19,6 +19,8 @@ const MYSQL_CONNECTION_ID_SQL: &str = "SELECT CONNECTION_ID()";
 
 struct MysqlQueryExecution {
     session_id: String,
+    target_pool: Option<MySqlPool>,
+    control_pool: Option<MySqlPool>,
     thread_id: Option<u64>,
     cancel_requested: bool,
     transactional: bool,
@@ -135,22 +137,6 @@ impl MysqlDriver {
         Ok(execution.cancel_requested)
     }
 
-    async fn clear_cancel_request(
-        &self,
-        handle: &ConnectionHandle,
-        execution_id: &QueryExecutionId,
-    ) -> Result<(), DriverError> {
-        let mut executions = self.query_executions.lock().await;
-        let execution = executions.get_mut(execution_id).ok_or_else(|| {
-            DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
-        })?;
-        if execution.session_id != handle.id {
-            return Err(DriverError::QueryExecutionSessionMismatch);
-        }
-        execution.cancel_requested = false;
-        Ok(())
-    }
-
     async fn stream_registered_execution(
         &self,
         handle: &ConnectionHandle,
@@ -159,7 +145,7 @@ impl MysqlDriver {
         limit: Option<u32>,
         on_event: &QueryStreamCallback,
     ) -> Result<(), DriverError> {
-        let transactional = {
+        let (transactional, target_pool) = {
             let executions = self.query_executions.lock().await;
             let execution = executions.get(execution_id).ok_or_else(|| {
                 DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
@@ -167,7 +153,7 @@ impl MysqlDriver {
             if execution.session_id != handle.id {
                 return Err(DriverError::QueryExecutionSessionMismatch);
             }
-            execution.transactional
+            (execution.transactional, execution.target_pool.clone())
         };
 
         let result: Result<(), DriverError> = async {
@@ -204,10 +190,12 @@ impl MysqlDriver {
                     result
                 }
             } else {
-                let pool = {
-                    let pools = self.pools.read().await;
-                    Self::get_pool(&pools, handle)?.clone()
-                };
+                let pool = target_pool.ok_or_else(|| {
+                    DriverError::ConnectionFailed(
+                        "Connection pool was not available when query execution was registered"
+                            .into(),
+                    )
+                })?;
                 let mut conn = pool
                     .acquire()
                     .await
@@ -1448,6 +1436,13 @@ impl DatabaseDriver for MysqlDriver {
         execution_id: &QueryExecutionId,
     ) -> Result<(), DriverError> {
         let transactional = self.transactions.lock().await.contains_key(&handle.id);
+        let target_pool = self.pools.read().await.get(&handle.pool_id).cloned();
+        let control_pool = self
+            .control_pools
+            .read()
+            .await
+            .get(&handle.pool_id)
+            .cloned();
         let mut executions = self.query_executions.lock().await;
         if executions.contains_key(execution_id) {
             return Err(DriverError::QueryFailed(format!(
@@ -1459,6 +1454,8 @@ impl DatabaseDriver for MysqlDriver {
             execution_id.clone(),
             MysqlQueryExecution {
                 session_id: handle.id.clone(),
+                target_pool,
+                control_pool,
                 thread_id: None,
                 cancel_requested: false,
                 transactional,
@@ -1726,8 +1723,11 @@ impl DatabaseDriver for MysqlDriver {
             ));
         }
 
+        // Keep the registry entry locked until KILL QUERY completes. A MySQL
+        // thread id belongs to a pooled connection and can be reused; early
+        // cleanup could otherwise let a delayed cancel hit a later query.
+        let mut executions = self.query_executions.lock().await;
         let (thread_id, control_pool) = {
-            let mut executions = self.query_executions.lock().await;
             let execution = executions.get_mut(execution_id).ok_or_else(|| {
                 DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
             })?;
@@ -1745,17 +1745,13 @@ impl DatabaseDriver for MysqlDriver {
                 // dedicated connection and before executing user SQL.
                 return Ok(());
             };
-            let pool = self
-                .control_pools
-                .read()
-                .await
-                .get(&handle.pool_id)
-                .cloned();
-            (thread_id, pool)
+            (thread_id, execution.control_pool.clone())
         };
 
         let Some(control_pool) = control_pool else {
-            self.clear_cancel_request(handle, execution_id).await?;
+            if let Some(execution) = executions.get_mut(execution_id) {
+                execution.cancel_requested = false;
+            }
             return Err(DriverError::ConnectionFailed(
                 "Control pool not found".into(),
             ));
@@ -1763,7 +1759,9 @@ impl DatabaseDriver for MysqlDriver {
         let mut conn = match control_pool.acquire().await {
             Ok(conn) => conn,
             Err(error) => {
-                self.clear_cancel_request(handle, execution_id).await?;
+                if let Some(execution) = executions.get_mut(execution_id) {
+                    execution.cancel_requested = false;
+                }
                 return Err(DriverError::ConnectionFailed(error.to_string()));
             }
         };
@@ -1771,7 +1769,9 @@ impl DatabaseDriver for MysqlDriver {
         match Self::execute_text_on_conn(&mut conn, &kill_sql).await {
             Ok(_) => Ok(()),
             Err(error) => {
-                self.clear_cancel_request(handle, execution_id).await?;
+                if let Some(execution) = executions.get_mut(execution_id) {
+                    execution.cancel_requested = false;
+                }
                 Err(DriverError::QueryFailed(error.to_string()))
             }
         }
@@ -2597,6 +2597,8 @@ mod tests {
             execution_id.clone(),
             MysqlQueryExecution {
                 session_id: handle.id.clone(),
+                target_pool: None,
+                control_pool: None,
                 thread_id: None,
                 cancel_requested: false,
                 transactional: true,

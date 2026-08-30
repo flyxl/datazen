@@ -18,6 +18,8 @@ const PG_CANCEL_BACKEND_SQL: &str = "SELECT pg_cancel_backend($1)";
 
 struct PgQueryExecution {
     session_id: String,
+    target_pool: Option<PgPool>,
+    control_pool: Option<PgPool>,
     backend_pid: Option<i32>,
     cancel_requested: bool,
     transactional: bool,
@@ -151,22 +153,6 @@ impl PostgresDriver {
         Ok(execution.cancel_requested)
     }
 
-    async fn clear_cancel_request(
-        &self,
-        handle: &ConnectionHandle,
-        execution_id: &QueryExecutionId,
-    ) -> Result<(), DriverError> {
-        let mut executions = self.query_executions.lock().await;
-        let execution = executions.get_mut(execution_id).ok_or_else(|| {
-            DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
-        })?;
-        if execution.session_id != handle.id {
-            return Err(DriverError::QueryExecutionSessionMismatch);
-        }
-        execution.cancel_requested = false;
-        Ok(())
-    }
-
     async fn finish_query_execution(
         &self,
         handle: &ConnectionHandle,
@@ -190,7 +176,7 @@ impl PostgresDriver {
         limit: Option<u32>,
         on_event: &QueryStreamCallback,
     ) -> Result<(), DriverError> {
-        let transactional = {
+        let (transactional, target_pool) = {
             let executions = self.query_executions.lock().await;
             let execution = executions.get(execution_id).ok_or_else(|| {
                 DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
@@ -198,7 +184,7 @@ impl PostgresDriver {
             if execution.session_id != handle.id {
                 return Err(DriverError::QueryExecutionSessionMismatch);
             }
-            execution.transactional
+            (execution.transactional, execution.target_pool.clone())
         };
 
         let result: Result<(), DriverError> = async {
@@ -235,10 +221,12 @@ impl PostgresDriver {
                     result
                 }
             } else {
-                let pool = {
-                    let pools = self.pools.read().await;
-                    Self::get_pool(&pools, handle)?.clone()
-                };
+                let pool = target_pool.ok_or_else(|| {
+                    DriverError::ConnectionFailed(
+                        "Connection pool was not available when query execution was registered"
+                            .into(),
+                    )
+                })?;
                 let mut conn = pool
                     .acquire()
                     .await
@@ -1307,6 +1295,13 @@ impl DatabaseDriver for PostgresDriver {
         execution_id: &QueryExecutionId,
     ) -> Result<(), DriverError> {
         let transactional = self.transactions.lock().await.contains_key(&handle.id);
+        let target_pool = self.pools.read().await.get(&handle.pool_id).cloned();
+        let control_pool = self
+            .control_pools
+            .read()
+            .await
+            .get(&handle.pool_id)
+            .cloned();
         let mut executions = self.query_executions.lock().await;
         if executions.contains_key(execution_id) {
             return Err(DriverError::QueryFailed(format!(
@@ -1318,6 +1313,8 @@ impl DatabaseDriver for PostgresDriver {
             execution_id.clone(),
             PgQueryExecution {
                 session_id: handle.id.clone(),
+                target_pool,
+                control_pool,
                 backend_pid: None,
                 cancel_requested: false,
                 transactional,
@@ -1543,8 +1540,12 @@ impl DatabaseDriver for PostgresDriver {
         handle: &ConnectionHandle,
         execution_id: &QueryExecutionId,
     ) -> Result<(), DriverError> {
+        // Keep the registry entry locked until the control SQL completes. A
+        // backend PID is stable for a pooled connection and can be reused by
+        // a later query; releasing this lock early would let terminal cleanup
+        // remove the entry and make a delayed cancel hit that later query.
+        let mut executions = self.query_executions.lock().await;
         let (backend_pid, control_pool) = {
-            let mut executions = self.query_executions.lock().await;
             let execution = executions.get_mut(execution_id).ok_or_else(|| {
                 DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
             })?;
@@ -1562,17 +1563,13 @@ impl DatabaseDriver for PostgresDriver {
                 // dedicated connection, making cancel-before-target-ready win.
                 return Ok(());
             };
-            let pool = self
-                .control_pools
-                .read()
-                .await
-                .get(&handle.pool_id)
-                .cloned();
-            (backend_pid, pool)
+            (backend_pid, execution.control_pool.clone())
         };
 
         let Some(control_pool) = control_pool else {
-            self.clear_cancel_request(handle, execution_id).await?;
+            if let Some(execution) = executions.get_mut(execution_id) {
+                execution.cancel_requested = false;
+            }
             return Err(DriverError::ConnectionFailed(
                 "Control pool not found".into(),
             ));
@@ -1580,7 +1577,9 @@ impl DatabaseDriver for PostgresDriver {
         let mut conn = match control_pool.acquire().await {
             Ok(conn) => conn,
             Err(error) => {
-                self.clear_cancel_request(handle, execution_id).await?;
+                if let Some(execution) = executions.get_mut(execution_id) {
+                    execution.cancel_requested = false;
+                }
                 return Err(DriverError::ConnectionFailed(error.to_string()));
             }
         };
@@ -1589,18 +1588,28 @@ impl DatabaseDriver for PostgresDriver {
             .fetch_one(&mut *conn)
             .await
         {
-            Ok(row) => row
-                .try_get(0)
-                .map_err(|e| DriverError::QueryFailed(e.to_string()))?,
+            Ok(row) => match row.try_get(0) {
+                Ok(cancelled) => cancelled,
+                Err(error) => {
+                    if let Some(execution) = executions.get_mut(execution_id) {
+                        execution.cancel_requested = false;
+                    }
+                    return Err(DriverError::QueryFailed(error.to_string()));
+                }
+            },
             Err(error) => {
-                self.clear_cancel_request(handle, execution_id).await?;
+                if let Some(execution) = executions.get_mut(execution_id) {
+                    execution.cancel_requested = false;
+                }
                 return Err(DriverError::QueryFailed(error.to_string()));
             }
         };
         if cancelled {
             Ok(())
         } else {
-            self.clear_cancel_request(handle, execution_id).await?;
+            if let Some(execution) = executions.get_mut(execution_id) {
+                execution.cancel_requested = false;
+            }
             Err(DriverError::QueryExecutionNotFound(format!(
                 "backend target {backend_pid} is no longer active"
             )))
@@ -2600,6 +2609,8 @@ mod tests {
             execution_id.clone(),
             PgQueryExecution {
                 session_id: handle.id.clone(),
+                target_pool: None,
+                control_pool: None,
                 backend_pid: None,
                 cancel_requested: false,
                 transactional: true,
