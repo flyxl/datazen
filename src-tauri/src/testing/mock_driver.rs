@@ -34,6 +34,9 @@ pub struct MockDriverOptions {
     pub server_version: String,
     pub extra_commands: Vec<DriverCommandDefinition>,
     pub query_error: Option<String>,
+    /// Rows affected by the generic execute path (zero by default so callers
+    /// that do not model mutations retain the old mock behavior).
+    pub execute_rows_affected: u64,
     /// F7: when true, `qualify_sql_target` rewrites SQL by appending a
     /// marker comment recording the requested target (capability simulation).
     pub rewrite_sql_target: bool,
@@ -60,6 +63,7 @@ impl Default for MockDriverOptions {
             server_version: String::new(),
             extra_commands: Vec::new(),
             query_error: None,
+            execute_rows_affected: 0,
             rewrite_sql_target: false,
         }
     }
@@ -307,7 +311,7 @@ impl DatabaseDriver for MockDriver {
     }
 
     async fn execute(&self, _handle: &ConnectionHandle, _sql: &str) -> Result<u64, DriverError> {
-        Ok(0)
+        Ok(self.opts.execute_rows_affected)
     }
 
     async fn explain(

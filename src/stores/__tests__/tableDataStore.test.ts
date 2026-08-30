@@ -32,7 +32,14 @@ const sampleResponse = {
 const samplePlan = {
   planId: 'plan-1',
   fingerprint: 'fingerprint-1',
-  table: { dbSessionId: 'conn-1', table: 'users', database: null },
+  table: {
+    connectionId: 'conn-1',
+    dbSessionId: 'conn-1',
+    driverType: 'postgres',
+    database: 'app',
+    schema: null,
+    table: 'users',
+  },
   updates: [
     {
       rowIdentity: { id: 1 },
@@ -70,7 +77,14 @@ describe('tableDataStore', () => {
   });
 
   async function loadTable() {
-    await useTableDataStore.getState().loadTableData({ dbSessionId: 'conn-1', table: 'users' });
+    await useTableDataStore.getState().loadTableData({
+      dbSessionId: 'conn-1',
+      table: 'users',
+      connectionId: 'conn-1',
+      driverType: 'postgres',
+      database: 'app',
+      schema: null,
+    });
   }
 
   it('detailRowIndex defaults to null', () => {
@@ -153,10 +167,34 @@ describe('tableDataStore', () => {
     );
   });
 
-  it('sends a null database when no explicit target is given', async () => {
+  it('isolates pending changes when the database context changes', async () => {
+    await loadTable();
+    useTableDataStore.getState().stageCellChange(0, 'name', 'App change');
+
+    await useTableDataStore.getState().loadTableData({
+      dbSessionId: 'conn-1',
+      table: 'users',
+      connectionId: 'conn-1',
+      driverType: 'postgres',
+      database: 'db_b',
+      schema: null,
+    });
+    expect(useTableDataStore.getState().pendingChanges.size).toBe(0);
+
+    useTableDataStore.getState().switchToTable('users', {
+      connectionId: 'conn-1',
+      driverType: 'postgres',
+      database: 'app',
+      schema: null,
+    });
+    expect(useTableDataStore.getState().pendingChanges.size).toBe(1);
+    expect(useTableDataStore.getState().rows[0].name).toBe('App change');
+  });
+
+  it('uses the complete remembered context when no explicit target is given', async () => {
     await loadTable();
     expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
-      expect.objectContaining({ table: 'users', database: null }),
+      expect.objectContaining({ table: 'users', database: 'app' }),
     );
   });
 
@@ -261,6 +299,58 @@ describe('tableDataStore', () => {
     expect(useTableDataStore.getState().pendingChanges.size).toBe(0);
   });
 
+  it('rejects a single-column primary-key edit that collides with another row', async () => {
+    await loadTable();
+    useTableDataStore.getState().stageCellChange(0, 'id', 2);
+
+    const state = useTableDataStore.getState();
+    expect(state.pendingChanges.size).toBe(0);
+    expect(state.rows[0].id).toBe(1);
+    expect(state.error).toContain('ambiguous');
+  });
+
+  it('rejects a composite primary-key edit that collides with another row', async () => {
+    mockDatabaseCommands.getTableData.mockResolvedValueOnce({
+      ...sampleResponse,
+      columns: [
+        { name: 'tenantId', dataType: 'integer', isPrimaryKey: true, isNullable: false },
+        { name: 'id', dataType: 'integer', isPrimaryKey: true, isNullable: false },
+        { name: 'name', dataType: 'text', isPrimaryKey: false, isNullable: true },
+      ],
+      rows: [
+        [1, 9, 'Alice'],
+        [1, 10, 'Bob'],
+      ],
+    });
+    await useTableDataStore.getState().loadTableData({
+      dbSessionId: 'conn-1',
+      table: 'users',
+      connectionId: 'conn-1',
+      driverType: 'postgres',
+      database: 'app',
+      schema: null,
+    });
+    useTableDataStore.getState().stageCellChange(0, 'id', 10);
+
+    const state = useTableDataStore.getState();
+    expect(state.pendingChanges.size).toBe(0);
+    expect(state.rows[0].id).toBe(9);
+    expect(state.error).toContain('ambiguous');
+  });
+
+  it('keeps the original identity after a non-colliding primary-key edit', async () => {
+    await loadTable();
+    useTableDataStore.getState().stageCellChange(0, 'id', 3);
+    useTableDataStore.getState().stageCellChange(0, 'name', 'Updated');
+
+    const changes = [...useTableDataStore.getState().pendingChanges.values()];
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({
+      rowIdentity: { id: 1 },
+      currentValues: { id: 3, name: 'Updated' },
+    });
+  });
+
   it('staging errors without primary key and never creates a write', async () => {
     mockDatabaseCommands.getTableData.mockResolvedValueOnce({
       columns: [{ name: 'name', dataType: 'text', isPrimaryKey: false, isNullable: true }],
@@ -293,9 +383,7 @@ describe('tableDataStore', () => {
     const plan = await useTableDataStore.getState().previewPendingChanges();
     expect(plan).toEqual(samplePlan);
     expect(mockDatabaseCommands.previewPendingChanges).toHaveBeenCalledWith({
-      dbSessionId: 'conn-1',
-      table: 'users',
-      database: null,
+      context: samplePlan.table,
       changes: [
         {
           rowIdentity: { id: 1 },

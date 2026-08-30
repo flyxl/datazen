@@ -454,6 +454,10 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
                           void store.loadTableData({
                             dbSessionId: ctx.dbSessionId,
                             table: name,
+                            connectionId: ctx.connectionId,
+                            driverType: ctx.databaseType,
+                            database: currentDatabase,
+                            schema,
                           });
                         }
                       },

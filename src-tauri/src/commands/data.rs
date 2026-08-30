@@ -3,7 +3,7 @@ use super::AppState;
 use crate::db::{DriverError, Value};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use tauri::State;
 use uuid::Uuid;
 
@@ -30,9 +30,12 @@ pub struct RowDeleteBatch {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RowChangeTableContext {
+    pub connection_id: String,
     pub db_session_id: String,
-    pub table: String,
+    pub driver_type: String,
     pub database: Option<String>,
+    pub schema: Option<String>,
+    pub table: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,11 +110,7 @@ fn canonicalize_changes(
 ) -> Result<Vec<PendingRowChange>, CommandError> {
     let mut canonical = Vec::with_capacity(changes.len());
     for change in changes {
-        if change.row_identity.is_empty() {
-            return Err(CommandError::Validation(
-                "Row changes require primary-key identity".into(),
-            ));
-        }
+        let _ = identity_key(&change.row_identity)?;
         let mut normalized = change.clone();
         normalized.changed_columns.sort();
         normalized.changed_columns.dedup();
@@ -127,12 +126,96 @@ fn canonicalize_changes(
                 }
             }
         }
+        let _ = identity_key(&effective_identity(&normalized)?)?;
         canonical.push(normalized);
     }
-    canonical.sort_by_key(|change| {
-        serde_json::to_string(&change.row_identity).expect("row identity is serializable")
-    });
+    canonical.sort_by_key(|change| identity_key(&change.row_identity).expect("validated identity"));
+
+    let mut original_keys = HashSet::new();
+    let mut current_keys = HashMap::new();
+    for change in &canonical {
+        let original_key = identity_key(&change.row_identity)?;
+        if !original_keys.insert(original_key.clone()) {
+            return Err(CommandError::Validation(
+                "Row changes contain duplicate primary-key identity".into(),
+            ));
+        }
+        let current_key = identity_key(&effective_identity(change)?)?;
+        if current_keys.insert(current_key, original_key).is_some() {
+            return Err(CommandError::Validation(
+                "Row changes contain a primary-key identity collision".into(),
+            ));
+        }
+    }
     Ok(canonical)
+}
+
+fn identity_key(identity: &BTreeMap<String, Option<Value>>) -> Result<String, CommandError> {
+    if identity.is_empty() {
+        return Err(CommandError::Validation(
+            "Row changes require primary-key identity".into(),
+        ));
+    }
+    for (column, value) in identity {
+        if column.trim().is_empty() || value.is_none() || matches!(value, Some(Value::Null)) {
+            return Err(CommandError::Validation(
+                "Row identity must contain non-NULL primary-key values".into(),
+            ));
+        }
+    }
+    serde_json::to_string(identity).map_err(CommandError::Json)
+}
+
+fn effective_identity(
+    change: &PendingRowChange,
+) -> Result<BTreeMap<String, Option<Value>>, CommandError> {
+    let mut identity = change.row_identity.clone();
+    for column in change.row_identity.keys() {
+        if let Some(value) = change.current_values.get(column) {
+            identity.insert(column.clone(), value.clone());
+        }
+    }
+    Ok(identity)
+}
+
+fn validate_table_context(table: &RowChangeTableContext) -> Result<(), CommandError> {
+    if table.connection_id.trim().is_empty()
+        || table.db_session_id.trim().is_empty()
+        || table.driver_type.trim().is_empty()
+        || table
+            .database
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or("")
+            .is_empty()
+        || table.table.trim().is_empty()
+    {
+        return Err(CommandError::Validation(
+            "Row change context is incomplete; connection, session, driver, database and table are required".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_legacy_pk_columns(columns: &[CellUpdate], operation: &str) -> Result<(), CommandError> {
+    if columns.is_empty() {
+        return Err(CommandError::Validation(format!(
+            "{operation} requires primary-key columns"
+        )));
+    }
+    let mut names = HashSet::new();
+    for column in columns {
+        if column.column.trim().is_empty()
+            || column.value.is_none()
+            || matches!(column.value, Some(Value::Null))
+            || !names.insert(column.column.as_str())
+        {
+            return Err(CommandError::Validation(format!(
+                "{operation} requires unique non-NULL primary-key values"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn changes_fingerprint(
@@ -169,11 +252,7 @@ fn build_row_change_plan(
     table: RowChangeTableContext,
     changes: &[PendingRowChange],
 ) -> Result<RowChangePlan, CommandError> {
-    if table.db_session_id.is_empty() || table.table.trim().is_empty() {
-        return Err(CommandError::Validation(
-            "Row change plan requires a database session and table".into(),
-        ));
-    }
+    validate_table_context(&table)?;
     let canonical = canonicalize_changes(changes)?;
     let fingerprint = changes_fingerprint(&table, &canonical)?;
     let mut updates = Vec::new();
@@ -313,40 +392,28 @@ fn validate_immutable_plan(
 
 pub(crate) async fn preview_pending_changes_impl(
     state: &AppState,
-    db_session_id: String,
-    table: String,
-    database: Option<String>,
+    table: RowChangeTableContext,
     changes: Vec<PendingRowChange>,
 ) -> Result<RowChangePlan, CommandError> {
-    tracing::info!(%db_session_id, %table, change_count = changes.len(), "preview_pending_changes");
+    tracing::info!(db_session_id = %table.db_session_id, table = %table.table, change_count = changes.len(), "preview_pending_changes");
     let (driver, _handle) = state
         .connection_manager
-        .get_session(&db_session_id)
+        .get_session(&table.db_session_id)
         .await
         .cmd_err("preview_pending_changes")?;
     // Preview is deliberately pure with respect to the database: it obtains
     // the driver only to call the dialect SQL builders and opens no transaction
     // and executes no statement.
-    build_row_change_plan(
-        driver.as_ref(),
-        RowChangeTableContext {
-            db_session_id,
-            table,
-            database,
-        },
-        &changes,
-    )
+    build_row_change_plan(driver.as_ref(), table, &changes)
 }
 
 #[tauri::command]
 pub async fn preview_pending_changes(
     state: State<'_, AppState>,
-    db_session_id: String,
-    table: String,
-    database: Option<String>,
+    context: RowChangeTableContext,
     changes: Vec<PendingRowChange>,
 ) -> Result<RowChangePlan, CommandError> {
-    preview_pending_changes_impl(&state, db_session_id, table, database, changes).await
+    preview_pending_changes_impl(&state, context, changes).await
 }
 
 async fn execute_row_change_plan_impl(
@@ -395,6 +462,11 @@ async fn execute_row_change_plan_impl(
                 .execute(handle, &planned.sql_template)
                 .await
                 .cmd_err("commit_pending_changes")?;
+            if affected != 1 {
+                return Err(CommandError::Validation(format!(
+                    "UPDATE for one row identity affected {affected} rows; refusing ambiguous write"
+                )));
+            }
             affected_rows += affected;
             statements.push(RowCommitStatementResult {
                 operation: "update".into(),
@@ -407,6 +479,11 @@ async fn execute_row_change_plan_impl(
                 .execute(handle, &planned.sql_template)
                 .await
                 .cmd_err("commit_pending_changes")?;
+            if affected != 1 {
+                return Err(CommandError::Validation(format!(
+                    "DELETE for one row identity affected {affected} rows; refusing ambiguous write"
+                )));
+            }
             affected_rows += affected;
             statements.push(RowCommitStatementResult {
                 operation: "delete".into(),
@@ -468,18 +545,43 @@ pub(crate) async fn commit_pending_changes_impl(
         plan_id = %request.plan.plan_id,
         "commit_pending_changes"
     );
-    super::query::ensure_session_database(
-        state,
-        &request.db_session_id,
-        request.plan.table.database.as_deref(),
-        "commit_pending_changes",
-    )
-    .await?;
     let (driver, handle) = state
         .connection_manager
         .get_session(&request.db_session_id)
         .await
         .cmd_err("commit_pending_changes")?;
+    let config = state
+        .connection_manager
+        .get_session_config(&request.db_session_id)
+        .await
+        .cmd_err("commit_pending_changes")?;
+    let owner = state
+        .connection_manager
+        .owner_connection_id(&request.db_session_id)
+        .await;
+    validate_table_context(&request.plan.table)?;
+    if owner.as_deref() != Some(request.plan.table.connection_id.as_str()) {
+        return Err(CommandError::Validation(
+            "Row change plan belongs to a different connection".into(),
+        ));
+    }
+    if driver.driver_type() != request.plan.table.driver_type
+        || config.database_type != request.plan.table.driver_type
+    {
+        return Err(CommandError::Validation(
+            "Row change plan belongs to a different driver context".into(),
+        ));
+    }
+    if config.database != request.plan.table.database {
+        return Err(CommandError::Validation(
+            "Database context changed; reload and preview pending changes again".into(),
+        ));
+    }
+    if config.schema != request.plan.table.schema {
+        return Err(CommandError::Validation(
+            "Schema context changed; reload and preview pending changes again".into(),
+        ));
+    }
     let read_only = state
         .connection_manager
         .get_session_config(&request.db_session_id)
@@ -547,11 +649,7 @@ pub(crate) async fn commit_row_updates_impl(
                 "Row update requires changed columns".into(),
             ));
         }
-        if batch.pk_columns.is_empty() {
-            return Err(CommandError::Validation(
-                "Row update requires primary-key columns".into(),
-            ));
-        }
+        validate_legacy_pk_columns(&batch.pk_columns, "Row update")?;
     }
 
     let session_open = state
@@ -672,11 +770,7 @@ pub(crate) async fn commit_row_deletes_impl(
         return Ok(());
     }
     for batch in &deletes {
-        if batch.pk_columns.is_empty() {
-            return Err(CommandError::Validation(
-                "Row delete requires primary-key columns".into(),
-            ));
-        }
+        validate_legacy_pk_columns(&batch.pk_columns, "Row delete")?;
     }
 
     let session_open = state
@@ -767,6 +861,17 @@ mod tests {
     use super::*;
     use crate::testing::app_state::TestAppState;
 
+    fn table_context(connection_id: &str, db_session_id: &str) -> RowChangeTableContext {
+        RowChangeTableContext {
+            connection_id: connection_id.into(),
+            db_session_id: db_session_id.into(),
+            driver_type: "postgres".into(),
+            database: Some("app".into()),
+            schema: None,
+            table: "users".into(),
+        }
+    }
+
     fn update_change(id: i64, original: &str, current: &str) -> PendingRowChange {
         PendingRowChange {
             row_identity: BTreeMap::from([("id".into(), Some(Value::Integer(id)))]),
@@ -790,15 +895,33 @@ mod tests {
         }
     }
 
+    fn composite_update_change(tenant_id: i64, id: i64, next_id: Option<i64>) -> PendingRowChange {
+        let mut current_values =
+            BTreeMap::from([("name".into(), Some(Value::String("Updated".into())))]);
+        let mut changed_columns = vec!["name".into()];
+        if let Some(next_id) = next_id {
+            current_values.insert("id".into(), Some(Value::Integer(next_id)));
+            changed_columns.push("id".into());
+        }
+        PendingRowChange {
+            row_identity: BTreeMap::from([
+                ("tenant_id".into(), Some(Value::Integer(tenant_id))),
+                ("id".into(), Some(Value::Integer(id))),
+            ]),
+            original_values: BTreeMap::new(),
+            current_values,
+            changed_columns,
+            delete_marked: false,
+        }
+    }
+
     #[tokio::test]
     async fn preview_builds_driver_sql_without_opening_a_transaction() {
         let test = TestAppState::with_tables().await;
         let (_, conn_id) = test.save_and_connect("preview-only").await;
         let plan = preview_pending_changes_impl(
             &test.state,
-            conn_id.clone(),
-            "users".into(),
-            Some("app".into()),
+            table_context("preview-only", &conn_id),
             vec![update_change(1, "Alice", "Updated")],
         )
         .await
@@ -818,13 +941,13 @@ mod tests {
 
     #[tokio::test]
     async fn commit_reuses_plan_fingerprint_and_returns_plan_id() {
-        let test = TestAppState::with_tables().await;
+        let mut options = crate::testing::app_state::rich_mock_options();
+        options.execute_rows_affected = 1;
+        let test = TestAppState::with_options(options).await;
         let (_, conn_id) = test.save_and_connect("commit-plan").await;
         let plan = preview_pending_changes_impl(
             &test.state,
-            conn_id.clone(),
-            "users".into(),
-            Some("app".into()),
+            table_context("commit-plan", &conn_id),
             vec![update_change(1, "Alice", "Updated"), delete_change(2)],
         )
         .await
@@ -843,7 +966,7 @@ mod tests {
         assert_eq!(response.plan_id, plan.plan_id);
         assert_eq!(response.fingerprint, plan.fingerprint);
         assert_eq!(response.statements.len(), 2);
-        assert_eq!(response.affected_rows, 0);
+        assert_eq!(response.affected_rows, 2);
     }
 
     #[tokio::test]
@@ -852,9 +975,7 @@ mod tests {
         let (_, conn_id) = test.save_and_connect("stale-plan").await;
         let plan = preview_pending_changes_impl(
             &test.state,
-            conn_id.clone(),
-            "users".into(),
-            None,
+            table_context("stale-plan", &conn_id),
             vec![update_change(1, "Alice", "Updated")],
         )
         .await
@@ -884,9 +1005,7 @@ mod tests {
         let (_, conn_id) = test.save_and_connect("preview-no-pk").await;
         let error = preview_pending_changes_impl(
             &test.state,
-            conn_id,
-            "users".into(),
-            None,
+            table_context("preview-no-pk", &conn_id),
             vec![PendingRowChange {
                 row_identity: BTreeMap::new(),
                 original_values: BTreeMap::new(),
@@ -902,6 +1021,68 @@ mod tests {
         .unwrap_err();
 
         assert!(error.to_string().contains("primary-key"));
+    }
+
+    #[test]
+    fn canonicalize_rejects_null_and_duplicate_composite_identities() {
+        let null_identity = PendingRowChange {
+            row_identity: BTreeMap::from([
+                ("tenant_id".into(), Some(Value::Integer(1))),
+                ("id".into(), None),
+            ]),
+            original_values: BTreeMap::new(),
+            current_values: BTreeMap::from([(
+                "name".into(),
+                Some(Value::String("Updated".into())),
+            )]),
+            changed_columns: vec!["name".into()],
+            delete_marked: false,
+        };
+        let error = canonicalize_changes(&[null_identity]).unwrap_err();
+        assert!(error.to_string().contains("non-NULL"));
+
+        let duplicate = composite_update_change(1, 9, None);
+        let error = canonicalize_changes(&[duplicate.clone(), duplicate]).unwrap_err();
+        assert!(error.to_string().contains("duplicate"));
+    }
+
+    #[test]
+    fn canonicalize_rejects_composite_current_identity_collision() {
+        let first = composite_update_change(1, 9, Some(11));
+        let second = composite_update_change(1, 10, Some(11));
+        let error = canonicalize_changes(&[first, second]).unwrap_err();
+        assert!(error.to_string().contains("collision"));
+    }
+
+    #[tokio::test]
+    async fn commit_rejects_database_context_change_without_switching_session() {
+        let mut options = crate::testing::app_state::rich_mock_options();
+        options.execute_rows_affected = 1;
+        let test = TestAppState::with_options(options).await;
+        let (_, conn_id) = test.save_and_connect("context-database").await;
+        let plan = preview_pending_changes_impl(
+            &test.state,
+            RowChangeTableContext {
+                database: Some("other_db".into()),
+                ..table_context("context-database", &conn_id)
+            },
+            vec![update_change(1, "Alice", "Updated")],
+        )
+        .await
+        .unwrap();
+
+        let error = commit_pending_changes_impl(
+            &test.state,
+            CommitPendingChangesRequest {
+                db_session_id: conn_id,
+                fingerprint: plan.fingerprint.clone(),
+                plan,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("Database context changed"));
+        assert!(test.mock.use_database_calls().is_empty());
     }
 
     #[tokio::test]

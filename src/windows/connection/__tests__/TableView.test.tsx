@@ -151,7 +151,10 @@ describe('TableView', () => {
     expect(tableState.loadTableData).toHaveBeenCalledWith({
       dbSessionId: 'c1',
       table: 'users',
+      connectionId: null,
+      driverType: 'postgresql',
       database: 'db_b',
+      schema: null,
     });
   });
 
@@ -184,7 +187,10 @@ describe('TableView', () => {
     expect(tableState.loadTableData).toHaveBeenLastCalledWith({
       dbSessionId: 'c1',
       table: 'users',
+      connectionId: null,
+      driverType: 'postgresql',
       database: 'db_b',
+      schema: null,
     });
   });
 });

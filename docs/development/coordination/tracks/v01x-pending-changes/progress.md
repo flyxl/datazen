@@ -63,3 +63,10 @@
 - Commit 只接受绑定 session/table/database、PK identity、原值/当前值的 plan，并在服务端重建 SQL；fingerprint 过期或上下文不符时拒绝执行。
 - Store 继续保留旧 `updateCell`/`commitChanges`/`discardChanges` 名称作为兼容别名，但其写入路径已改为 staged/preview/commit/discard 语义；旧 IPC command 保留 wire 兼容性。
 - 遗留风险：Host E2E 尚未在本轨执行；Delete/Backspace 菜单/键盘接线由后续轨道负责，本轨仅提供 staged Store/domain 接口。另需在修复后复核 fingerprint 是否仅作为状态一致性校验，而非跨数据库/跨 schema 的上下文授权机制。
+
+### S1 安全边界修复（2026-08-30）
+
+- BUG-001：`buildRowIdentity` 对任一主键值为 NULL、undefined、非有限数或不可稳定序列化时返回拒绝；加载结果会记录重复 identity 并禁止 staged；Rust `canonicalize_changes`/plan builder 对空、NULL、重复 original identity 以及重复 effective identity 返回稳定 Validation 错误，因此不会把 NULL 降级为 driver 的 `IS NULL` row identity 条件。
+- BUG-002：Store 的 pending map 始终以 original identity 为 key；PK 编辑通过仅存于内存的 row-index anchor 继续指向该 original identity。PK 新值与其他物理行或其他 pending change 冲突时拒绝 staged；不再按当前 PK 扫描或按裸 rowIndex fallback 重定向 pending。
+- BUG-003：`TableChangeContext`、Rust `RowChangeTableContext`、plan fingerprint 和 table-state key 均覆盖 `connectionId`、`dbSessionId`、`driverType`、`database`、`schema`、`table`。数据库字段、连接归属、驱动类型或 schema 不完整/不一致时拒绝 preview/commit；commit 不再自动切换 session database。进行中的旧上下文 commit 若用户已切换面板，只更新旧状态，不把界面切回旧 database/schema。
+- 复合主键、NULL、重复 identity、单列/复合主键碰撞和跨 database commit 拒绝均增加了定向单测；本轮只触及 pending-changes 业务代码、既有测试辅助及本轨 progress/bugs 记录。
