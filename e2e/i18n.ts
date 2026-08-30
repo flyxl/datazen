@@ -28,6 +28,15 @@ const KEY_ALIASES: Record<string, TranslationKey> = {
   'menu.exportConfig': 'common.exportAppData',
   'menu.importConfig': 'common.importAppData',
   'welcome.feature.ai.title': 'common.aiAssistant',
+  'settings.ai': 'common.aiAssistant',
+  'main.ctx.processList': 'common.processList',
+  'main.ctx.serverStatus': 'common.serverStatus',
+  'main.ctx.backup': 'common.backupDatabase',
+  'main.ctx.restore': 'common.restoreDatabase',
+  'main.ctx.objectFilter': 'common.objectFilter',
+  'main.ctx.editConnection': 'common.editConnection',
+  'main.ctx.deleteConnection': 'common.deleteConnection',
+  'main.ctx.copyName': 'common.copyName',
 };
 
 /**

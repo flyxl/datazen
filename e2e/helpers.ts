@@ -82,14 +82,28 @@ export async function openNewConnectionDialogFromUi() {
 
 /** Close the new-connection dialog via Cancel (stays on main window). */
 export async function closeNewConnectionDialogFromUi() {
+  const dialog = await $('[data-testid="new-connection-dialog"]');
+  if (!(await dialog.isExisting())) return;
   const cancel = await $('[data-testid="new-conn-cancel"]');
   if (await cancel.isExisting()) {
     await cancel.click();
+  } else {
+    await browser.keys(['Escape']);
   }
   await browser.waitUntil(
     async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
     { timeout: 10000, timeoutMsg: '等待新建连接弹窗关闭超时' },
   );
+}
+
+/** Expand the new-connection dialog Advanced Settings section if collapsed. */
+export async function expandNewConnectionAdvanced() {
+  const ssh = await $('[data-testid="new-conn-ssh-tunnel"]');
+  if (await ssh.isDisplayed().catch(() => false)) return;
+  const advBtn = await $(`button*=${t('newConn.advanced')}`);
+  await advBtn.waitForDisplayed({ timeout: 8000 });
+  await advBtn.click();
+  await browser.pause(300);
 }
 
 export async function switchToNewWindow(originalHandle: string): Promise<string> {
@@ -848,11 +862,19 @@ async function executeSqlInEditor(sql: string) {
       }
       const curTotal = await browser.execute(() => {
         const spans = Array.from(document.querySelectorAll('span'));
-        return spans.find((s) => s.textContent?.includes('总耗时'))?.textContent ?? '';
+        return (
+          spans.find(
+            (s) =>
+              s.textContent?.includes('总耗时') ||
+              s.textContent?.includes('Total time') ||
+              s.textContent?.includes('total time'),
+          )?.textContent ?? ''
+        );
       });
       if (curTotal && curTotal !== prevTotal) return true;
       // Fast queries can keep the same "总耗时 0 ms" label; settle after click.
       if (elapsed > 900 && curTotal && !(await execBtn.getAttribute('disabled'))) return true;
+      if (elapsed > 1200 && /\d+\s*(行|rows?)\b/i.test(body)) return true;
       return false;
     },
     { timeout: 15000, timeoutMsg: `等待 SQL 执行完成超时: ${sql.slice(0, 60)}` },
@@ -1397,11 +1419,12 @@ export async function openDashboardPanel(mainHandle?: string, dashboardId?: stri
 /** Open ER diagram from home quick action or connection toolbar. */
 export async function openErDiagramFromUi() {
   const homeQuick = await $('[data-testid="home-quick-er-diagram"]');
-  if (await homeQuick.isExisting()) {
+  if (await homeQuick.isDisplayed().catch(() => false)) {
     await homeQuick.click();
     return;
   }
   const toolbarWrap = await $('[data-testid="content-toolbar-er-diagram"]');
+  await toolbarWrap.waitForExist({ timeout: 15000 });
   const toolbarBtn = await toolbarWrap.$('button');
   await toolbarBtn.waitForClickable({ timeout: 10000 });
   await toolbarBtn.click();
@@ -1485,7 +1508,12 @@ export async function dismissTransferLimitationsDialogIfOpen() {
 
 /** Click Next on the data-transfer wizard when it is present and clickable. */
 export async function clickTransferNext(opts: { timeout?: number; pauseMs?: number } = {}) {
+  await dismissTransferLimitationsDialogIfOpen();
   const next = await $('[data-testid="data-transfer-next"]');
+  await browser.waitUntil(async () => next.isEnabled().catch(() => false), {
+    timeout: opts.timeout ?? 15000,
+    timeoutMsg: '等待 data-transfer-next 可点击超时',
+  });
   await next.waitForClickable({ timeout: opts.timeout ?? 10000 });
   await next.click();
   await browser.pause(opts.pauseMs ?? 1200);
