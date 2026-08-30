@@ -74,3 +74,21 @@
 - QueryPanel 和 panelStore 只对 supported 发起取消；unsupported/unknown 的 Cancel 控件禁用并解释原因，关闭面板同样不调用取消 stub。
 - PostgreSQL/MySQL 已改为精确 execution-handle 取消，不再保留宽作用域实现作为新协议 fallback。只有 native PostgreSQL/MySQL 同时实现并由 factory advertise 新协议；兼容 wrapper 只有在无法证明同等精确语义时保持 false。事务连接不能安全并发取消，因此明确返回 unsupported，不伪装成普通 query 的可取消能力。
 - QC-E2E-001 至 QC-E2E-003 的 Host 契约已由本机单测覆盖；真实桌面/数据库 E2E 因当前环境没有可用的 computer-use MCP 与稳定数据库 fixture，留待 R 回归。
+
+### 第三轮独立验收（f3，2026-08-31）
+
+- 验收范围：`1c531d84`、`5f00b563`、`19dcaaf9`、`0a23b82b`、`3a14ced5` 及其前置提交；本轮未修改业务源代码。
+- 定向 Vitest：7 files / 95 passed / 0 failed，覆盖 executionStarted/opaque executionId、running+handle 取消门控、取消/关闭面板传参、params、stream、history、多语句。
+- 全量 Vitest：`npx vitest run`，262 files / 2124 passed / 0 failed。
+- 驱动 UI Vitest：`pnpm test:unit:drivers`，14 files / 84 passed / 0 failed。
+- 类型检查：`pnpm typecheck`（等价执行 `tsc --noEmit`）通过。
+- Rust Host：`CARGO_TARGET_DIR=/private/tmp/datazen-finaltest-query-cancel cargo test -p datazen --lib --quiet`，1186 passed / 0 failed / 2 ignored。初次沙箱运行的 46 个 wiremock `Operation not permitted` 属环境端口权限；提权重跑通过，非断言失败。
+- driver-api：`CARGO_TARGET_DIR=/private/tmp/datazen-finaltest-query-cancel-driver-api cargo test -p datazen-driver-api`，99 passed / 0 failed；文档测试 0 passed / 2 ignored。
+- MySQL：`CARGO_TARGET_DIR=/private/tmp/datazen-finaltest-query-cancel-mysql cargo test -p datazen-driver-mysql --quiet`，72 个 crate 单测 + 8 个集成测试通过（80 passed / 0 failed）。
+- PostgreSQL：`CARGO_TARGET_DIR=/private/tmp/datazen-finaltest-query-cancel-postgres cargo test -p datazen-driver-postgres --quiet`，86 个 crate 单测 + 12 个集成测试通过（98 passed / 0 failed）。
+- 格式与差异：`cargo fmt --all -- --check`、`git diff --check 6bbbf2e8^ 3a14ced5` 均通过。
+- 聚焦覆盖率（7 个协议相关 Vitest 文件及相关源码）：Statements 64.30%（517/804）、Branches 53.71%（275/512）、Functions 61.81%（170/275）、Lines 64.36%（428/665）。`queryStream.ts` Lines 100%、`queryExecActions.ts` 97.61%、`activeConnectionStore.ts` 91.52%；大型 `QueryPanel.tsx` 整文件 44.20%，取消相关断言通过。
+- 静态协议验收通过：`QueryExecutionId` 保持 opaque；prepare/register → `ExecutionStarted` → stream → cleanup 顺序成立；duplicate/stale/wrong-session/并发隔离、pending cancel、旧 driver 无宽作用域 fallback、`PROTOCOL_VERSION=3` 与 `ReuseDriver` forwarding 均有实现/测试覆盖。PG 使用同一 target connection 的 `pg_backend_pid()` + 独立 control pool 的 `pg_cancel_backend($1)`；MySQL 使用同一 target connection 的 `CONNECTION_ID()` + 独立 control pool 的 `KILL QUERY <thread_id>`；未发现 processlist/宽作用域取消路径。native capability 为 true，兼容 wrapper 与事务连接保持 unsupported。
+- 真实数据库与桌面 E2E：未执行且未伪称通过。`mysql_use_database` 输出 `Skipping ... no TEST_MYSQL_*`，`postgres_use_database` 输出 `Skipping ... no TEST_PG_*`；未发现专门的精确 query-cancel integration fixture。现有 Host E2E 仅有通用 `pg_sleep` 停止场景，未验证 executionId/跨并发 target 隔离；QC-E2E-001/002/003 继续登记为待 R 回归。
+- 新 bug：无。`bugs.md` 保持不变；唯一遗留风险是缺少真实 PG/MySQL slow-query fixture 与桌面自动化环境，因此控制 SQL 对真实后端 target 的效果尚未做 live 证明。
+- 本轮独立验收记录提交为：`test(ipc): f3 precise query cancellation regression`；只应包含本轨 `progress.md`/`bugs.md`，不得包含 hub、规格文档、SVG 或 codegen。
