@@ -14,7 +14,7 @@
 | `v01x-object-actions` | 对象搜索、表定位和生成 SQL action | 已完成 | df1c0ad9 | 61acc880 |
 | `v01x-result-workspace` | Table/Chart 统一结果承载组件 | 已完成 | ffae5e54 | cfa056fc |
 | `v01x-ai-actions` | Explain/Fix SQL/Retry 快捷动作上下文 | 已完成 | bbd7c4cc | 9b8e7bda |
-| `v01x-page-integration` | 共享页面、DataTable、QueryPanel 和 i18n 最终接线 | 测试中·修复轮 | 09c90bb2 | 9a525c73 |
+| `v01x-page-integration` | 共享页面、DataTable、QueryPanel 和 i18n 最终接线 | 测试中·复测轮 | 3950508e | 待复测 |
 
 ## 合并规则
 
