@@ -176,10 +176,29 @@ function readCurrentQueryPanelRetryValidationInput(
   const execution = panel ? panelStoreState.queryExec.get(panelId) : undefined;
   if (!panel || !execution) return null;
 
-  const activeConnection = useActiveConnectionStore.getState().connections[panel.connectionId];
+  const activeConnections = useActiveConnectionStore.getState().connections;
+  const hasMappedActiveConnection = Object.prototype.hasOwnProperty.call(
+    activeConnections,
+    panel.connectionId,
+  );
+  const activeConnection = hasMappedActiveConnection
+    ? activeConnections[panel.connectionId]
+    : undefined;
   const dbSessionId = panel.dbSessionId;
-  const activeSessionMatchesPanel =
-    !activeConnection || activeConnection.dbSessionId === panel.dbSessionId;
+  const panelHasSession =
+    typeof dbSessionId === 'string' && dbSessionId.trim().length > 0;
+  const activeConnectionHasSession =
+    typeof activeConnection?.dbSessionId === 'string' &&
+    activeConnection.dbSessionId.trim().length > 0;
+  const activeConnectionMatchesPanel =
+    activeConnection !== undefined &&
+    activeConnection.connectionId === panel.connectionId &&
+    activeConnection.status === 'connected' &&
+    panelHasSession &&
+    activeConnectionHasSession &&
+    activeConnection.dbSessionId === dbSessionId;
+  if (!activeConnectionMatchesPanel) return null;
+
   const schemaStoreState = useSchemaStore.getState();
   const schemaState = schemaStoreState.schemas.get(dbSessionId) ?? schemaStoreState;
   const latestContext = buildQueryPanelDiagnosisContext({
@@ -197,15 +216,14 @@ function readCurrentQueryPanelRetryValidationInput(
     serverVersion: activeConnection?.serverInfo?.serverVersion,
     schemaState,
   });
+  if (!latestContext.ok) return null;
+
   const params = parseSqlParams(execution.sql);
   const boundParams = params.length > 0 ? paramsToPayload(params, paramValues) : {};
 
   return {
     sql: execution.sql,
-    contextFingerprint:
-      activeSessionMatchesPanel && latestContext.ok
-        ? latestContext.context.contextFingerprint
-        : null,
+    contextFingerprint: latestContext.context.contextFingerprint,
     boundParams,
   };
 }

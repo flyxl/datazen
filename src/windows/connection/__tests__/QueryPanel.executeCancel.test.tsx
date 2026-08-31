@@ -27,7 +27,7 @@ vi.mock('../../../hooks/useCompactToolbar', () => ({
 const panelConnectionState = vi.hoisted(() => ({
   connectionId: 'cfg-1',
   dbSessionId: 'sess-conn-1',
-  status: 'connected' as const,
+  status: 'connected' as 'connected' | 'connecting' | 'idle' | 'error',
   serverInfo: { serverVersion: '16', serverType: 'PostgreSQL' },
   capabilities: {
     supportsCancelQuery: true,
@@ -583,6 +583,86 @@ describe('QueryPanel execute/cancel button', () => {
     usePanelStore.setState((state) => ({
       panels: state.panels.filter((panel) => panel.id !== PANEL_ID),
     }));
+    await act(async () => resolveConfirmation?.(true));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(executeQuery).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      label: 'the active connection is removed',
+      mutate: () => {
+        activeConnectionStoreState.connections = {};
+      },
+    },
+    {
+      label: 'the active connection is no longer connected',
+      mutate: () => {
+        activeConnectionStoreState.connections['cfg-1'] = {
+          ...panelConnectionState,
+          status: 'idle',
+        };
+      },
+    },
+    {
+      label: 'the active connection session changes',
+      mutate: () => {
+        activeConnectionStoreState.connections['cfg-1'] = {
+          ...panelConnectionState,
+          dbSessionId: 'sess-other',
+        };
+      },
+    },
+    {
+      label: 'the mapped active connection identity changes',
+      mutate: () => {
+        activeConnectionStoreState.connections['cfg-1'] = {
+          ...panelConnectionState,
+          connectionId: 'cfg-other',
+        };
+      },
+    },
+  ])('blocks confirmed Retry when $label during confirmation', async ({ mutate }) => {
+    vi.useRealTimers();
+    setFailedQuery('SELECT 1');
+    let resolveConfirmation: ((value: boolean) => void) | undefined;
+    retryConfirmation.confirm.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveConfirmation = resolve;
+        }),
+    );
+
+    renderPanel();
+    fireEvent.click(screen.getByTestId('query-retry'));
+    await waitFor(() => expect(retryConfirmation.confirm).toHaveBeenCalledTimes(1));
+    mutate();
+    await act(async () => resolveConfirmation?.(true));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(executeQuery).not.toHaveBeenCalled();
+  });
+
+  it('blocks confirmed Retry when the latest context becomes invalid', async () => {
+    vi.useRealTimers();
+    setFailedQuery('SELECT 1');
+    let resolveConfirmation: ((value: boolean) => void) | undefined;
+    retryConfirmation.confirm.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveConfirmation = resolve;
+        }),
+    );
+
+    renderPanel();
+    fireEvent.click(screen.getByTestId('query-retry'));
+    await waitFor(() => expect(retryConfirmation.confirm).toHaveBeenCalledTimes(1));
+    schemaStoreState.currentDatabase = null;
+    activeConnectionStoreState.connections['cfg-1'] = {
+      ...panelConnectionState,
+      currentDatabase: null,
+    };
     await act(async () => resolveConfirmation?.(true));
     await new Promise((resolve) => setTimeout(resolve, 0));
 

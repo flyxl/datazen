@@ -135,3 +135,11 @@ BUG-PI-005 已修复并完成定向回归，待提交 `fix(query): preserve retr
 - Host desktop E2E：`pnpm e2e:skip-build -- --suite core` 退出码 1；PostgreSQL 端口探测返回 `Operation not permitted`，且无 `target/debug/datazen` webdriver binary。按 R 记录，未声称桌面 E2E 通过。
 - 静态复核发现未修复 BUG-PI-007：Retry 确认期间 active connection 条目被移除时，当前 helper 将缺失条目视为 session 匹配，可能无法阻断 fingerprint 校验；详见 `bugs.md`。因此本轮测试通过，但页面集成最终验收不标记为无 bug。
 - 本轮只更新本轨 `progress.md`/`bugs.md`；未修改 hub、功能代码、配置或 codegen。待提交唯一测试提交：`test(ipc): f4 page integration verification`。
+
+## 2026-08-31 BUG-PI-007 修复
+
+- `QueryPanel` 的 Retry confirm 后 helper 现在严格验证 active connection：map 自有条目存在、entry `connectionId` 与 panel 一致、状态为 `connected`、panel 与 entry 均有有效 session 且 `dbSessionId` 严格一致；缺失、断开、session/mapping 不匹配均返回 invalid。
+- latest panel execution 仍从 `panelStore` 读取，schema 仍从 `schemaStore` 的目标 session snapshot 读取；最新 diagnosis context 构建失败也直接返回 invalid。有效 context 继续只经 `retryAction.invoke` 放行，保留 fingerprint、SQL、bound params 三重门禁和单次执行约束。
+- 新增异步 confirm 竞态回归：active connection removed、非 connected、session mismatch、map entry identity mismatch；另覆盖最新 context 失效。AI 脱敏 payload、Fix draft-only、取消终态以及已有 connection/database/schema/databaseType/SQL/bound params 变化阻断保持不变。
+- 验证：`node scripts/generate-builtin-locales.mjs` 通过；QueryPanel 定向 Vitest 为 1 file / 23 passed；相关 AI/Query Vitest 为 4 files / 80 passed；`pnpm typecheck` 通过（0 diagnostics）；`git diff --check` 通过。
+- 本轮仅修改 `QueryPanel.tsx`、其回归测试及本轨 `progress.md`/`bugs.md`；既有 `docs/development/coordination/hub.md` regular-file → symlink 工作区变更保留原样，未纳入提交。
