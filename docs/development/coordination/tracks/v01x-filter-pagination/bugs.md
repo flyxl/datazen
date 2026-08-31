@@ -2,7 +2,7 @@
 
 | Bug ID | 描述 | 状态 | 重现步骤 | 验证记录 |
 |---|---|---|---|---|
-| `v01x-filter-pagination-BUG-001` | **S3**：`FilterEditor` busy 时，已完成条件 chip 的删除入口仍可触发 `onRemove`，loading/busy 禁止过滤变更契约不完整 | 待验证 | 见下方详细步骤 | 2026-08-31 独立临时 RTL 探针 1/1 复现；修复后待测试代理复验 |
+| `v01x-filter-pagination-BUG-001` | **S3**：`FilterEditor` busy 时，已完成条件 chip 的删除入口仍可触发 `onRemove`，loading/busy 禁止过滤变更契约不完整 | 待验证(修复后) | 见下方详细步骤 | 2026-08-31 独立临时 RTL 探针 1/1 复现；修复轮自测通过，待测试代理复验 |
 
 ## 环境记录
 
@@ -12,7 +12,7 @@
 ## v01x-filter-pagination-BUG-001
 
 - 严重等级：S3
-- 状态：待验证
+- 状态：待验证(修复后)
 - 发现时间：2026-08-31 08:17（Asia/Shanghai）
 - 关联文件：`src/components/FilterEditor.tsx` 的 `FilterConditionChip`（约 164-196 行）
 
@@ -35,3 +35,9 @@ loading/busy 期间所有过滤条件变更入口均不可操作，`onRemove` �
 | 日期 | 验证人 | 方法 | 结果 |
 |---|---|---|---|
 | 2026-08-31 | 独立测试子代理 | 临时 Vitest + React Testing Library，`loading=true` 点击完成条件 chip 删除 | 复现；待修复代理处理后重新验证 |
+| 2026-08-31 | 修复代理 | 定向 Vitest + React Testing Library，覆盖 `loading=true` 的完成条件 chip 编辑/删除和 idle 删除 | 通过；FilterEditor/FilterBar 21/21，原始 busy chip 探针 1/1 |
+
+### 修复记录
+
+- `FilterConditionChip` 接入 `loading`，编辑和删除按钮均使用原生 `disabled` 与显式 `aria-disabled`；busy 时不会触发 `onRemove` 或进入编辑态。
+- `FilterBar` 的容器、条件删除和清除入口统一暴露 busy/disabled 语义；非 loading 删除路径保持可用。
