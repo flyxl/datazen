@@ -1,10 +1,11 @@
 # v0.1.x page-integration 遗留与例外
 
-## BUG-PI-001 — Host desktop E2E 未在本轨执行
+## BUG-PI-001 — Host desktop E2E 的数据库夹具受环境限制
 
-- 状态：待 R 轨/具备桌面环境后补测。
-- 影响：本轨无法实证真实 Tauri IPC、Webdriver 键盘路径和真实数据库交互；Host Vitest 与 typecheck 已通过，但不能替代桌面 E2E。
-- 原因：当前执行环境没有可用的 `pnpm tauri build --debug --features webdriver` + Webdriver + 数据库 fixture 组合。
+- 状态：部分验证；数据库依赖用例仍待可用 PostgreSQL/MySQL 夹具后补测。
+- 影响：数据库交互路径仍不能视为桌面 E2E 通过；Host Vitest、typecheck 和 UI-only 桌面 E2E 不能替代真实数据库交互。
+- 原因：本轮已成功完成 `pnpm tauri build --debug --features webdriver`，WebDriver 也成功启动；但 E2E setup 连接本机 PostgreSQL 时返回 `FATAL: role "postgres" does not exist`。
+- 已验证：`pnpm e2e:skip-build -- --spec e2e/specs/settings.ts` 通过，21/21；`main-window.ts` 应用启动成功，UI-only 前 7 项通过，数据库连接项因上述夹具错误超时。
 - 建议 journey：connection discovery（含 SSH 表单编辑保存）、object/column search → table action → TablePanel/QueryPanel、pending preview/confirm/rollback、filter/pagination race、query cancel/result chart/table/AI actions。
 
 ## BUG-PI-002 — 全局对象搜索只检索已加载 schema
@@ -68,7 +69,7 @@
 
 ## BUG-PI-008 — Host Data Sync/Schema Diff 硬编码 PostgreSQL driver-id 分支
 
-- 状态：待验证（修复后）。
+- 状态：已修复并验证。
 - 证据：`src/windows/data-sync/DataSyncWindow.tsx:357,391` 与 `src/windows/schema-diff/useSchemaDiffEndpoints.ts:220,254` 直接以 `databaseType !== 'postgresql'` 决定是否加载 schema。
 - 影响：Host 行为差异依赖具体 driver id；新增 PostgreSQL 兼容 driver 或可提供 schema 的其他 driver 不能仅通过 `DatabaseTypeMeta`/capability 复用该路径，违背 Host driver-agnostic 约定。
 - 复现/判定：静态扫描生产 `src/**`（排除 tests/generated）发现 4 处同类分支；本轮未修改实现，也未将该架构缺陷伪装成测试通过。
@@ -77,8 +78,8 @@
 
 ## BUG-PI-009 — AI 诊断底层仍信任并暴露 raw SQL/error
 
-- 状态：待验证（修复后）。
+- 状态：已修复并独立验证。
 - 证据：`src-tauri/src/commands/ai/generate.rs:249` 将 raw `error_message` 写入 debug 日志，`:289` 将 raw `sql`/`error_message` 拼入 provider user prompt；`src/stores/aiStore.ts:179-182` 也记录传入的 raw error。
 - 影响：QueryPanel 的正常 UI 链路会先经 `buildQueryDiagnosisContext` 脱敏并传递 `safeSql`/`safeErrorMessage`，但直接 IPC 或 store 调用可绕过这一边界；因此 AI provider 与日志层没有端到端的 raw SQL/error 防护。
 - 修复：新增 Host Rust `ai::safety::redact_for_ai` 作为 command/service 信任边界，诊断、EXPLAIN、连接诊断、NL2SQL、过滤器及查询历史在进入 provider 前统一处理；store 仅记录长度/计数/脱敏标记，Rust AI 日志不再记录 raw error、prompt 或响应内容。原始 SQL 仍仅保留在 Fix draft/Retry 本地编辑能力中，不进入 AI 或日志。
-- 验证：Rust 安全 helper 3 tests、mock provider 12 tests、Host Rust lib 1196 passed；相关 Host Vitest 4 files / 81 tests；`pnpm typecheck`、`cargo fmt --all -- --check`、`git diff --check` 通过。待 R 轨复测确认。
+- 验证：独立复测确认 protocol 33/33、commands::ai 100/100、safety 3/3、custom 10/10、log-redact 5/5；合入 main 后 Host Rust 1198 passed / 2 ignored，Host Vitest 269 files / 2240 tests，驱动 UI 14 files / 84 tests，`pnpm typecheck` 与 `git diff --check` 通过。协议元数据改为 info 级别后仍不包含 prompt、tool args、HTTP body、API key 或 URL query token 原文。
