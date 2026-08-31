@@ -53,7 +53,7 @@ import { CopyableError } from '../../components/ui/CopyableError';
 import { Nl2SqlPanel } from '../../components/ai/Nl2SqlPanel';
 import { DiagnosisPanel } from '../../components/ai/DiagnosisPanel';
 import { ExplainPanel } from '../../components/ai/ExplainPanel';
-import { usePanelStore } from '../../stores/panelStore';
+import { usePanelStore, type QueryPanel as QueryPanelState } from '../../stores/panelStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useQueryExec } from '../../hooks/useQueryExec';
 import { useSchemaStore } from '../../stores/schemaStore';
@@ -83,12 +83,15 @@ import {
   buildFixSqlAction,
   buildQueryDiagnosisContext,
   buildRetryAction,
+  type RetryValidationInput,
 } from '../../lib/aiQueryActions';
 import { ResultWorkspace } from './result-workspace';
 import { Dialog } from '../../components/ui/Dialog';
 import { analyzeTransactionSql, isAbortedTransactionError } from '../../lib/sqlTransactionGuard';
 import { formatLastConnected } from '../../lib/formatters';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import type { ConnectionSchemaState } from '../../stores/schemaStore';
+import type { QueryExecState } from '../../stores/queryExecActions';
 
 interface QueryPanelProps {
   panelId: string;
@@ -104,6 +107,125 @@ interface QueryPanelProps {
 
 function hasSuspiciousPostgresDoubleQuotedLiteral(sql: string): boolean {
   return /(?:=|<>|!=|\bLIKE\b|\bILIKE\b)\s*"[^"]+"/i.test(sql);
+}
+
+type QueryDiagnosisSchemaState = Pick<
+  ConnectionSchemaState,
+  'currentDatabase' | 'currentSchema' | 'tables' | 'views' | 'columnMap'
+>;
+
+type QueryDiagnosisExecution = Pick<QueryExecState, 'sql' | 'error'>;
+
+interface QueryPanelDiagnosisContextInput {
+  execution: QueryDiagnosisExecution;
+  connectionId: string;
+  dbSessionId: string;
+  databaseType?: string;
+  connectionName?: string;
+  database?: string;
+  schema?: string;
+  serverVersion?: string;
+  schemaState: QueryDiagnosisSchemaState;
+}
+
+/** Build the complete context shared by Explain, Fix SQL, and Retry. */
+function buildQueryPanelDiagnosisContext({
+  execution,
+  connectionId,
+  dbSessionId,
+  databaseType,
+  connectionName,
+  database,
+  schema,
+  serverVersion,
+  schemaState,
+}: QueryPanelDiagnosisContextInput) {
+  return buildQueryDiagnosisContext({
+    sql: execution.sql,
+    error: execution.error,
+    connectionId,
+    dbSessionId,
+    databaseType,
+    database: database ?? schemaState.currentDatabase,
+    schema: schema ?? schemaState.currentSchema,
+    connectionContext: {
+      connectionId,
+      dbSessionId,
+      databaseType,
+      name: connectionName,
+      serverVersion,
+    },
+    schemaContext: {
+      tables: schemaState.tables,
+      views: schemaState.views,
+      columns: schemaState.columnMap,
+    },
+  });
+}
+
+/** Read the current panel identity and context after an async Retry confirmation. */
+function readCurrentQueryPanelRetryValidationInput(
+  panelId: string,
+  paramValues: Record<string, string>,
+): RetryValidationInput | null {
+  const panelStoreState = usePanelStore.getState();
+  const panel = panelStoreState.panels.find(
+    (candidate): candidate is QueryPanelState =>
+      candidate.id === panelId && candidate.type === 'query',
+  );
+  const execution = panel ? panelStoreState.queryExec.get(panelId) : undefined;
+  if (!panel || !execution) return null;
+
+  const activeConnections = useActiveConnectionStore.getState().connections;
+  const hasMappedActiveConnection = Object.prototype.hasOwnProperty.call(
+    activeConnections,
+    panel.connectionId,
+  );
+  const activeConnection = hasMappedActiveConnection
+    ? activeConnections[panel.connectionId]
+    : undefined;
+  const dbSessionId = panel.dbSessionId;
+  const panelHasSession =
+    typeof dbSessionId === 'string' && dbSessionId.trim().length > 0;
+  const activeConnectionHasSession =
+    typeof activeConnection?.dbSessionId === 'string' &&
+    activeConnection.dbSessionId.trim().length > 0;
+  const activeConnectionMatchesPanel =
+    activeConnection !== undefined &&
+    activeConnection.connectionId === panel.connectionId &&
+    activeConnection.status === 'connected' &&
+    panelHasSession &&
+    activeConnectionHasSession &&
+    activeConnection.dbSessionId === dbSessionId;
+  if (!activeConnectionMatchesPanel) return null;
+
+  const schemaStoreState = useSchemaStore.getState();
+  const schemaState = schemaStoreState.schemas.get(dbSessionId) ?? schemaStoreState;
+  const latestContext = buildQueryPanelDiagnosisContext({
+    execution,
+    connectionId: panel.connectionId,
+    dbSessionId,
+    databaseType: panel.databaseType,
+    connectionName: panel.connectionName,
+    database:
+      panel.database ??
+      schemaState.currentDatabase ??
+      activeConnection?.currentDatabase ??
+      undefined,
+    schema: panel.schema,
+    serverVersion: activeConnection?.serverInfo?.serverVersion,
+    schemaState,
+  });
+  if (!latestContext.ok) return null;
+
+  const params = parseSqlParams(execution.sql);
+  const boundParams = params.length > 0 ? paramsToPayload(params, paramValues) : {};
+
+  return {
+    sql: execution.sql,
+    contextFingerprint: latestContext.context.contextFingerprint,
+    boundParams,
+  };
 }
 
 export function QueryPanel({
@@ -205,6 +327,10 @@ export function QueryPanel({
   const namespaceLoading = useSchemaStore((s) => s.ensuringCount > 0);
   const selectedDatabase = database ?? currentDatabase;
   const selectedSchema = schema ?? currentSchema;
+  const currentDiagnosisSchemaState = useMemo(
+    () => ({ currentDatabase, currentSchema, tables, views, columnMap }),
+    [columnMap, currentDatabase, currentSchema, tables, views],
+  );
 
   useEffect(() => {
     if (!exec.running) {
@@ -348,39 +474,36 @@ export function QueryPanel({
     [sqlParams, paramValues],
   );
 
-  const diagnosisContext = useMemo(
-    () =>
-      buildQueryDiagnosisContext({
-        sql: exec.sql,
-        error: exec.error,
+  const buildCurrentDiagnosisContext = useCallback(
+    (
+      execution: QueryDiagnosisExecution,
+      schemaState: QueryDiagnosisSchemaState = currentDiagnosisSchemaState,
+    ) =>
+      buildQueryPanelDiagnosisContext({
+        execution,
         connectionId,
         dbSessionId,
         databaseType,
-        database: selectedDatabase,
-        schema: selectedSchema,
-        connectionContext: {
-          connectionId,
-          dbSessionId,
-          databaseType,
-          name: connectionName,
-          serverVersion: activeConnectionEntry?.serverInfo?.serverVersion,
-        },
-        schemaContext: { tables, views, columns: columnMap },
+        connectionName,
+        database,
+        schema,
+        serverVersion: activeConnectionEntry?.serverInfo?.serverVersion,
+        schemaState,
       }),
     [
-      columnMap,
+      activeConnectionEntry?.serverInfo?.serverVersion,
       connectionId,
       connectionName,
+      currentDiagnosisSchemaState,
+      database,
       databaseType,
       dbSessionId,
-      exec.error,
-      exec.sql,
-      selectedDatabase,
-      selectedSchema,
-      tables,
-      views,
-      activeConnectionEntry?.serverInfo?.serverVersion,
+      schema,
     ],
+  );
+  const diagnosisContext = useMemo(
+    () => buildCurrentDiagnosisContext(exec),
+    [buildCurrentDiagnosisContext, exec],
   );
   const explainAction = useMemo(() => buildExplainAction(diagnosisContext), [diagnosisContext]);
   const retryAction = useMemo(
@@ -610,42 +733,24 @@ export function QueryPanel({
       kind: 'info',
     });
     if (!confirmed) return;
-    const latestExec = usePanelStore.getState().queryExec.get(panelId);
-    if (!latestExec) return;
-    const latestParams = parseSqlParams(latestExec.sql);
-    const latestBoundPayload =
-      latestParams.length > 0 ? paramsToPayload(latestParams, paramValuesRef.current) : undefined;
-    const latestContext = buildQueryDiagnosisContext({
-      sql: latestExec.sql,
-      error: latestExec.error,
-      connectionId,
-      dbSessionId,
-      databaseType,
-      database: database ?? useSchemaStore.getState().currentDatabase,
-      schema: schema ?? useSchemaStore.getState().currentSchema,
-    });
-    const finalValidation = retryAction.invoke(
-      {
-        sql: latestExec.sql,
-        contextFingerprint: latestContext.ok ? latestContext.context.contextFingerprint : null,
-        boundParams: latestBoundPayload ?? {},
-      },
-      () => undefined,
+    const latestValidationInput = readCurrentQueryPanelRetryValidationInput(
+      panelId,
+      paramValuesRef.current,
     );
-    if (finalValidation.ok) await runExecute('full');
+    if (!latestValidationInput) return;
+    let retryExecution: Promise<void> | undefined;
+    const finalValidation = retryAction.invoke(latestValidationInput, () => {
+      retryExecution = runExecute('full');
+    });
+    if (finalValidation.ok && retryExecution) await retryExecution;
   }, [
     boundPayload,
-    connectionId,
     confirmRetry,
-    database,
-    databaseType,
-    dbSessionId,
     diagnosisContext,
     exec.sql,
     panelId,
     retryAction,
     runExecute,
-    schema,
     t,
   ]);
 
@@ -1154,10 +1259,7 @@ export function QueryPanel({
                 </div>
                 {diagnosisVisible && selectedDatabase && (
                   <DiagnosisPanel
-                    dbSessionId={dbSessionId}
-                    database={selectedDatabase}
-                    sql={exec.sql}
-                    errorMessage={exec.error}
+                    diagnosisContext={diagnosisContext}
                     onApplySql={handleApplyFixSql}
                     onClose={() => setDiagnosisVisible(false)}
                   />
