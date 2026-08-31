@@ -416,7 +416,17 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
             onRefresh: handlers.handleRefresh,
             onNewQuery: () => {
               if (kind === 'table') {
-                handlers.handleNewQuery(`SELECT * FROM ${quoted} LIMIT 100`);
+                handlers.handleOpenTableAction(
+                  {
+                    connectionId: ctx.connectionId,
+                    dbSessionId: ctx.dbSessionId,
+                    databaseType: ctx.databaseType,
+                    database: currentDatabase ?? initialDatabase,
+                    schema,
+                    tableName: name,
+                  },
+                  'select',
+                );
               } else {
                 handlers.handleNewQuery();
               }
@@ -533,6 +543,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
         openErDiagram: handlers.handleOpenErDiagram,
         refresh: handlers.handleRefresh,
         openObject: handlers.handleOpenDbObject,
+        openTableAction: handlers.handleOpenTableAction,
         openQueryHistory: handlers.handleOpenQueryHistory,
         openServerStatus: handlers.handleOpenServerStatus,
         openProcessList: handlers.handleOpenProcessList,

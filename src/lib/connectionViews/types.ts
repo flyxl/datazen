@@ -1,5 +1,6 @@
 import type { MutableRefObject } from 'react';
 import type { DatabaseType } from '../../types';
+import type { TableContextInput, TableSqlActionKind } from '../tableSqlActions';
 
 export interface NodeContextMenuPayload {
   kind: string;
@@ -24,7 +25,8 @@ export interface ConnectionOpenTarget {
 }
 
 export interface ConnectionViewActions {
-  newQuery: (initialSql?: string) => void;
+  newQuery: (initialSql?: string, context?: Pick<TableContextInput, 'database' | 'schema'>) => void;
+  openTableAction?: (context: TableContextInput, action: TableSqlActionKind) => void;
   openSqlFile?: () => void;
   createTable?: () => void;
   openCreateDatabase?: () => void;
