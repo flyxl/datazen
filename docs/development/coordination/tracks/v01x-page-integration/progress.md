@@ -161,3 +161,10 @@ BUG-PI-005 已修复并完成定向回归，待提交 `fix(query): preserve retr
 - Host desktop E2E：`pnpm e2e:skip-build -- --suite core` 退出码 1；PostgreSQL 端口访问返回 `Operation not permitted`，且缺少 `target/debug/datazen` webdriver binary 与 `dist/index.html`。按 BUG-PI-001 记为 R，未声称桌面 E2E 通过。
 - 静态复核确认 Retry 最终门禁要求 active connection map 条目存在、映射 identity 一致、状态为 `connected`、panel/active connection 均有非空且严格一致的 `dbSessionId`；最新 panel/schema/SQL/params 均在确认后读取，执行仍只经 `retryAction.invoke` 且最多一次。AI 诊断只发送 `safeSql`/`safeErrorMessage`，Fix 只回填草稿；本轮未发现新增功能 bug。
 - 本轮只更新本轨 `progress.md`/`bugs.md`；未修改 hub、功能代码、配置或 codegen；`src/locales/builtinLocales.ts` 已清理。
+
+## 2026-08-31 BUG-PI-009 修复
+
+- 在 `src-tauri/src/ai/safety.rs` 下沉统一的 AI prompt 安全边界：对 caller 提供的 SQL、error、EXPLAIN、NL2SQL、过滤器、查询历史及 JSON/连接上下文做字段级脱敏、结果数据移除和长度限制；Fix SQL 原文仍只用于本地草稿/Retry。
+- `generate.rs`、`util.rs`、`chat.rs` 与 `aiStore.ts` 移除 raw prompt/error/response/tool args 日志，仅保留长度、计数、状态和脱敏标记；直接 command/store 调用不再依赖 UI 脱敏。
+- 新增 Rust safety/mock-provider 回归和 aiStore 直接调用日志回归；前端 `redactSensitiveText` 修复非敏感前缀导致敏感 assignment 被跳过的问题。
+- 验证：`cargo test -p datazen --lib` 为 1196 passed / 2 ignored；相关 Rust 定向 3 + 12 passed；相关 Host Vitest 4 files / 81 tests；`pnpm typecheck`、`cargo fmt --all -- --check`、`git diff --check` 通过。Host desktop E2E 仍按 BUG-PI-001 环境例外登记，待 R 轨复测。

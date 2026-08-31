@@ -66,8 +66,8 @@ async fn mock_provider_diagnose_error_parses_json() {
         &test.state,
         conn_id,
         "app".into(),
-        "SELECT bad FROM users".into(),
-        "column bad does not exist".into(),
+        "SELECT * FROM users WHERE password = 'backend-password-secret'".into(),
+        "column bad does not exist; apiToken=backend-token-secret".into(),
     )
     .await
     .unwrap();
@@ -79,6 +79,15 @@ async fn mock_provider_diagnose_error_parses_json() {
     );
     assert_eq!(mock.call_count(), 1);
     let req = mock.last_request().unwrap();
+    let prompt = req
+        .messages
+        .iter()
+        .map(|message| message.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(!prompt.contains("backend-password-secret"), "{prompt}");
+    assert!(!prompt.contains("backend-token-secret"), "{prompt}");
+    assert!(prompt.contains("[REDACTED]"), "{prompt}");
     assert!(req
         .messages
         .iter()
@@ -97,14 +106,24 @@ async fn mock_provider_analyze_explain() {
     let result = ai_analyze_explain_impl(
         &test.state,
         conn_id,
-        "Seq Scan on users".into(),
-        "SELECT * FROM users".into(),
+        "Seq Scan on users; details password=explain-plan-secret".into(),
+        "SELECT * FROM users WHERE apiKey = 'explain-sql-secret'".into(),
     )
     .await
     .unwrap();
 
     assert_eq!(result.summary, "Seq scan");
     assert_eq!(result.bottlenecks.len(), 1);
+    let prompt = mock
+        .last_request()
+        .unwrap()
+        .messages
+        .iter()
+        .map(|message| message.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(!prompt.contains("explain-plan-secret"), "{prompt}");
+    assert!(!prompt.contains("explain-sql-secret"), "{prompt}");
 }
 
 #[tokio::test]
