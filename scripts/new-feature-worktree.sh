@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # new-feature-worktree.sh — 创建并行开发轨道（子代理开发 Playbook 配套脚本）
 # 用法: scripts/new-feature-worktree.sh <track> [base-branch]
-#   <track>       轨道名，worktree 为 ../datazen-<track>，分支为 feature/<track>
+#   <track>       轨道名，worktree 为主检出下的 .worktrees/datazen-<track>，分支为 feature/<track>
 #   [base-branch] 基分支，默认 feature/ipc-refactor
 #
 # 自动完成:
@@ -16,8 +16,12 @@ TRACK=${1:?usage: new-feature-worktree.sh <track> [base-branch]}
 BASE=${2:-main}
 
 MAIN="$(git rev-parse --show-toplevel)"
-WT="$(dirname "$MAIN")/datazen-${TRACK}"
+WT="${MAIN}/.worktrees/datazen-${TRACK}"
 BRANCH="feature/${TRACK}"
+
+# 代理沙箱通常只允许写入主检出及其子目录。将并行 worktree 放在
+# .worktrees 下，避免“同级 worktree 可读但不可写”的权限差异。
+mkdir -p "${MAIN}/.worktrees"
 
 if git -C "$MAIN" worktree list --porcelain | grep -q "^worktree ${WT}$"; then
   echo "✋ worktree 已存在: ${WT}" >&2
