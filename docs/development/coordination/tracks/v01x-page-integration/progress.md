@@ -91,6 +91,18 @@ TableView quick expression → `parseFilterForApply(columns)` → `filterExpress
 - 静态复核 21646559..09c90bb2：未发现新增 driver id 或方言分支；E2E 仍因无 Tauri/Webdriver/真实 DB fixture 登记 R，未声称通过。
 - 复测发现 `QueryPanel` Retry 确认后的最新 context 漏传 `schemaContext`，导致 schema 已加载时 fingerprint 改变，重试被最终校验拦截；详见 `bugs.md` 的 BUG-PI-005。本轮仅记录，未修改功能代码。
 
-## 收尾
+## 上轮复测收尾
 
 页面接线与本轮诊断安全边界的复测证据已完成，但 Retry 存在 BUG-PI-005；本轮仅提交测试台账，不包含 `hub.md` 或功能代码。
+
+## 2026-08-31 BUG-PI-005 修复
+
+- 在 `QueryPanel.tsx` 抽取共享 diagnosis context builder，Explain/Fix/Retry 初始 context 与 Retry 确认后的 latest context 统一携带 database/schema、connectionId、dbSessionId、connectionContext 和 `{ tables, views, columns }` schemaContext。
+- Retry 确认后从 schema store 读取最新 snapshot，仍通过既有 `retryAction.invoke` fingerprint、SQL、params 三重校验；context、SQL 或参数变化继续阻止重试，未直接调用 `runExecute` 绕过校验。
+- 新增 QueryPanel 跨确认状态回归：schema context 不变确认后执行一次；schema、SQL、bound params 变化确认后均不执行。DiagnosisPanel 安全 payload、Fix draft-only、原始 SQL 仅用于编辑器的既有覆盖保持不变。
+- 验证：locale 生成通过；QueryPanel 定向 1 file / 12 passed；AI/页面相关定向 4 files / 31 passed；`pnpm typecheck` 通过（0 diagnostics）；`git diff --check` 通过。
+- 本轮仅修改 QueryPanel 共享页面功能、其回归测试及本轨 `progress.md`/`bugs.md`；工作区既有 `hub.md` 类型变更保持原样且未纳入提交。
+
+## 收尾
+
+BUG-PI-005 已修复并完成定向回归，待提交 `fix(query): preserve retry context fingerprint`；Host UI E2E 仍按 BUG-PI-001 记录，未在当前无桌面/真实数据库 fixture 环境声称通过。

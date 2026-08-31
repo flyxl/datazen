@@ -38,6 +38,28 @@ const panelConnectionState = vi.hoisted(() => ({
   } | undefined,
 }));
 
+const schemaStoreState = vi.hoisted(() => ({
+  tables: [] as Array<{ name: string; tableType: 'table' | 'view'; schema?: string }>,
+  views: [] as Array<{ name: string; tableType: 'table' | 'view'; schema?: string }>,
+  columnMap: {} as Record<string, string[]>,
+  namespaceTree: [],
+  pathAliases: {},
+  databases: [] as string[],
+  currentDatabase: 'app' as string | null,
+  currentSchema: null as string | null,
+  isMultiDatabase: false,
+  ensuringCount: 0,
+  ensureColumns: vi.fn(),
+  loadTables: vi.fn(),
+  ensureNamespacePath: vi.fn(),
+}));
+
+const retryConfirmation = vi.hoisted(() => ({
+  confirm: vi.fn(),
+}));
+
+const executeQuery = vi.hoisted(() => vi.fn());
+
 vi.mock('../../../stores/settingsStore', () => ({
   useSettingsStore: (
     sel: (s: { settings: { safeMode: boolean; autoCommit: boolean } }) => unknown,
@@ -66,21 +88,10 @@ vi.mock('../../../stores/activeConnectionStore', () => ({
 }));
 
 vi.mock('../../../stores/schemaStore', () => ({
-  useSchemaStore: (sel: (s: Record<string, unknown>) => unknown) =>
-    sel({
-      tables: [],
-      views: [],
-      columnMap: new Map(),
-      namespaceTree: [],
-      pathAliases: {},
-      databases: [],
-      currentDatabase: 'app',
-      isMultiDatabase: false,
-      ensuringCount: 0,
-      ensureColumns: vi.fn(),
-      loadTables: vi.fn(),
-      ensureNamespacePath: vi.fn(),
-    }),
+  useSchemaStore: Object.assign(
+    (sel: (s: typeof schemaStoreState) => unknown) => sel(schemaStoreState),
+    { getState: () => schemaStoreState },
+  ),
 }));
 
 vi.mock('../../../components/SqlEditor', () => ({
@@ -121,7 +132,26 @@ vi.mock('../../../components/ai/ExplainPanel', () => ({
 }));
 
 vi.mock('../../../components/query/BindParamPanel', () => ({
-  BindParamPanel: () => null,
+  BindParamPanel: ({
+    params,
+    onChange,
+  }: {
+    params: Array<{ name: string }>;
+    onChange: (name: string, value: string) => void;
+  }) => {
+    const name = params[0]?.name;
+    if (!name) return null;
+    return (
+      <>
+        <button type="button" data-testid="test-set-param-one" onClick={() => onChange(name, '1')} />
+        <button type="button" data-testid="test-set-param-two" onClick={() => onChange(name, '2')} />
+      </>
+    );
+  },
+}));
+
+vi.mock('../../../hooks/useConfirmDialog', () => ({
+  useConfirmDialog: () => [retryConfirmation.confirm, null],
 }));
 
 vi.mock('../../../components/query/QueryContextSelectors', () => ({
@@ -129,12 +159,26 @@ vi.mock('../../../components/query/QueryContextSelectors', () => ({
 }));
 
 vi.mock('../../../components/query/QueryErrorPanel', () => ({
-  QueryErrorPanel: ({ onFixSql }: { onFixSql?: () => void }) =>
-    onFixSql ? (
-      <button type="button" onClick={onFixSql}>
-        test-fix-sql
-      </button>
-    ) : null,
+  QueryErrorPanel: ({
+    onFixSql,
+    onRetry,
+  }: {
+    onFixSql?: () => void;
+    onRetry?: () => void;
+  }) => (
+    <>
+      {onFixSql && (
+        <button type="button" onClick={onFixSql}>
+          test-fix-sql
+        </button>
+      )}
+      {onRetry && (
+        <button type="button" data-testid="query-retry" onClick={onRetry}>
+          test-retry
+        </button>
+      )}
+    </>
+  ),
 }));
 
 vi.mock('../dashboard/AddToDashboardDialog', () => ({
@@ -154,6 +198,13 @@ describe('QueryPanel execute/cancel button', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    retryConfirmation.confirm.mockResolvedValue(true);
+    executeQuery.mockResolvedValue(undefined);
+    schemaStoreState.tables = [];
+    schemaStoreState.views = [];
+    schemaStoreState.columnMap = {};
+    schemaStoreState.currentDatabase = 'app';
+    schemaStoreState.currentSchema = null;
     aiState.diagnosis = null;
     aiState.isDiagnosing = false;
     aiState.diagnosisError = null;
@@ -183,6 +234,7 @@ describe('QueryPanel execute/cancel button', () => {
       loadHistory: vi.fn().mockResolvedValue(undefined),
       loadFavorites: vi.fn().mockResolvedValue(undefined),
       cancelQuery,
+      executeQuery,
     } as Partial<ReturnType<typeof usePanelStore.getState>>);
   });
 
@@ -212,6 +264,22 @@ describe('QueryPanel execute/cancel button', () => {
         databaseType="postgresql"
       />,
     );
+  }
+
+  function setFailedQuery(sql: string) {
+    usePanelStore.setState({
+      queryExec: new Map([
+        [
+          PANEL_ID,
+          {
+            ...EMPTY_QUERY_EXEC,
+            sql,
+            error: 'query failed',
+            running: false,
+          },
+        ],
+      ]),
+    });
   }
 
   it('shows Execute while running for less than 300ms', () => {
@@ -337,5 +405,94 @@ describe('QueryPanel execute/cancel button', () => {
     const payload = aiState.diagnoseError.mock.calls[0]?.[0];
     expect(payload).toMatchObject({ dbSessionId: 'sess-conn-1', database: 'app' });
     for (const secret of secrets) expect(JSON.stringify(payload)).not.toContain(secret);
+  });
+
+  it('executes Retry once after confirmation when schema context is unchanged', async () => {
+    vi.useRealTimers();
+    schemaStoreState.tables = [{ name: 'users', tableType: 'table', schema: 'public' }];
+    schemaStoreState.views = [{ name: 'active_users', tableType: 'view', schema: 'public' }];
+    schemaStoreState.columnMap = { users: ['id', 'email'] };
+    setFailedQuery('SELECT * FROM users');
+
+    renderPanel();
+    fireEvent.click(screen.getByTestId('query-retry'));
+
+    await waitFor(() => expect(retryConfirmation.confirm).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(1));
+    expect(executeQuery).toHaveBeenCalledWith(PANEL_ID, undefined);
+  });
+
+  it('blocks confirmed Retry when the schema context changes', async () => {
+    vi.useRealTimers();
+    schemaStoreState.tables = [{ name: 'users', tableType: 'table', schema: 'public' }];
+    schemaStoreState.columnMap = { users: ['id'] };
+    setFailedQuery('SELECT * FROM users');
+    let resolveConfirmation: ((value: boolean) => void) | undefined;
+    retryConfirmation.confirm.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveConfirmation = resolve;
+        }),
+    );
+
+    renderPanel();
+    fireEvent.click(screen.getByTestId('query-retry'));
+    await waitFor(() => expect(retryConfirmation.confirm).toHaveBeenCalledTimes(1));
+    schemaStoreState.tables = [{ name: 'orders', tableType: 'table', schema: 'public' }];
+    schemaStoreState.columnMap = { orders: ['id'] };
+    await act(async () => resolveConfirmation?.(true));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(executeQuery).not.toHaveBeenCalled();
+  });
+
+  it('blocks confirmed Retry when the SQL changes', async () => {
+    vi.useRealTimers();
+    setFailedQuery('SELECT 1');
+    let resolveConfirmation: ((value: boolean) => void) | undefined;
+    retryConfirmation.confirm.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveConfirmation = resolve;
+        }),
+    );
+
+    renderPanel();
+    fireEvent.click(screen.getByTestId('query-retry'));
+    await waitFor(() => expect(retryConfirmation.confirm).toHaveBeenCalledTimes(1));
+    usePanelStore.setState((state) => {
+      const exec = state.queryExec.get(PANEL_ID);
+      if (!exec) return state;
+      return {
+        queryExec: new Map(state.queryExec).set(PANEL_ID, { ...exec, sql: 'SELECT 2' }),
+      };
+    });
+    await act(async () => resolveConfirmation?.(true));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(executeQuery).not.toHaveBeenCalled();
+  });
+
+  it('blocks confirmed Retry when bound params change', async () => {
+    vi.useRealTimers();
+    setFailedQuery('SELECT :id');
+    let resolveConfirmation: ((value: boolean) => void) | undefined;
+    retryConfirmation.confirm.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveConfirmation = resolve;
+        }),
+    );
+
+    renderPanel();
+    fireEvent.click(screen.getByTestId('test-set-param-one'));
+    await waitFor(() => expect(screen.getByTestId('test-set-param-two')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('query-retry'));
+    await waitFor(() => expect(retryConfirmation.confirm).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByTestId('test-set-param-two'));
+    await act(async () => resolveConfirmation?.(true));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(executeQuery).not.toHaveBeenCalled();
   });
 });
