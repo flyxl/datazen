@@ -1186,19 +1186,22 @@ export async function clickTableInSidebar(tableName: string) {
   // exactly the race this helper must close.
   await setNavigatorSearch(tableName);
   let scrollPass = 0;
-  let clickAttempts = 0;
   try {
     await browser.waitUntil(
       async () => {
         if (await tableWorkspaceIsOpen(tableName)) return true;
         const clicked = await clickVisibleTableNode(tableName);
         if (clicked) {
-          clickAttempts++;
           // The navigator handler first activates the database and then
           // schedules TableView creation. Keep the search mounted while that
-          // async chain settles; retrying is limited to transient misses.
-          if (clickAttempts < 3) await browser.pause(300);
-          return tableWorkspaceIsOpen(tableName);
+          // async chain settles. Do not click repeatedly while that chain is
+          // in flight: a second click can restart database activation and
+          // make the virtualized row disappear from the filtered tree.
+          await browser.waitUntil(() => tableWorkspaceIsOpen(tableName), {
+            timeout: 15000,
+            timeoutMsg: `等待表 "${tableName}" 工作区打开超时`,
+          });
+          return true;
         }
         // Searching an already-expanded tree is enough for the common path.
         // Only activate/expand the connected navigator entry after the exact
