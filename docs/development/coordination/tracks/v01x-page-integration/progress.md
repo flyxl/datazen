@@ -124,3 +124,14 @@ BUG-PI-005 已修复并完成定向回归，待提交 `fix(query): preserve retr
 - 保持点击时 `retryAction` descriptor 及其 context fingerprint 作为唯一门闸；latest context、SQL、bound params 通过同一个 `retryAction.invoke` 复验，执行仅在 guarded callback 中触发且最多一次。panel 消失、context/SQL/参数变化均阻断。
 - 回归新增跨 confirm mutation 参数化覆盖 database、schema、session、connection、databaseType 五种身份变化，另覆盖 panel 删除；既有 schemaContext/SQL/bound params 变化、不变单次执行、AI 脱敏、Fix draft-only、取消终态用例继续通过。
 - 验证：`node scripts/generate-builtin-locales.mjs` 通过；`pnpm exec vitest run src/windows/connection/__tests__/QueryPanel.executeCancel.test.tsx` 为 1 file / 18 passed / 0 failed；`pnpm typecheck` 通过（0 diagnostics）。
+
+## 2026-08-31 全新独立最终复测（21646559 / 09c90bb2 / 3950508e / c2d41a77 / 197c9641）
+
+- 基线确认：当前 worktree 为 `/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/datazen-v01x-page-integration`，分支为 `feature/v01x-page-integration`；五个目标提交均为当前 HEAD `c2d41a77` 的祖先。既有 `docs/development/coordination/hub.md` regular-file → symlink 类型变化保持原样，未触碰。
+- 复测前运行 `node scripts/generate-builtin-locales.mjs` 成功；验证结束已删除 ignored `src/locales/builtinLocales.ts`，未纳入提交。
+- 定向/相关 Host Vitest：24 个文件、377/377 通过；覆盖 Retry confirm 后读取 panel、active connection、per-session schema、SQL、bound params、databaseType，database/schema/session/connection/databaseType 变化和 panel 删除阻断，以及上下文不变只执行一次；同时覆盖 DiagnosisPanel `safeSql`/`safeErrorMessage`、Fix draft-only、executionId/dbSessionId 取消终态、ResultWorkspace、Connection/Object search、TablePanel context、Filter/Pagination/DataTable。
+- 完整 Host Vitest：269 个文件、2224/2224 通过。
+- E2E contract 逻辑 Vitest：3 个文件、22/22 通过；`pnpm typecheck` 通过（退出码 0、无 diagnostics）；`git diff --check` 通过。
+- Host desktop E2E：`pnpm e2e:skip-build -- --suite core` 退出码 1；PostgreSQL 端口探测返回 `Operation not permitted`，且无 `target/debug/datazen` webdriver binary。按 R 记录，未声称桌面 E2E 通过。
+- 静态复核发现未修复 BUG-PI-007：Retry 确认期间 active connection 条目被移除时，当前 helper 将缺失条目视为 session 匹配，可能无法阻断 fingerprint 校验；详见 `bugs.md`。因此本轮测试通过，但页面集成最终验收不标记为无 bug。
+- 本轮只更新本轨 `progress.md`/`bugs.md`；未修改 hub、功能代码、配置或 codegen。待提交唯一测试提交：`test(ipc): f4 page integration verification`。
