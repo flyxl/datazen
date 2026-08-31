@@ -37,6 +37,8 @@ TableView quick expression → `parseFilterForApply(columns)` → `filterExpress
 
 `QueryErrorPanel` → `buildQueryDiagnosisContext`/`buildExplainAction`/`buildFixSqlAction`/`buildRetryAction`：Copy Error、Explain、Fix SQL、Retry 均接入；AI 上下文脱敏并受结构/结果上限保护，Fix 仅回填草稿，Retry 校验 fingerprint/SQL/参数并经过用户确认。
 
+本轮安全修复收紧了 `QueryPanel → DiagnosisPanel → useAiStore → aiCommands` 诊断边界：DiagnosisPanel 只消费 `buildQueryDiagnosisContext` 的有效结果，并以 `safeSql`/`safeErrorMessage` 组装 AI payload；缺失/无效 context 不发送诊断。原始 SQL 仍保留在 context 中，仅用于必要的错误 UI 与 Fix draft-only 编辑器回填；现有单一脱敏 helper 同时覆盖转义 JSON assignment。
+
 ## 文件边界
 
 共享页面：
@@ -46,6 +48,8 @@ TableView quick expression → `parseFilterForApply(columns)` → `filterExpress
 - `src/windows/connection/ContentView.tsx`
 - `src/windows/connection/PanelContentRenderer.tsx`
 - `src/windows/connection/QueryPanel.tsx`
+- `src/components/ai/DiagnosisPanel.tsx`
+- `src/lib/aiQueryActions.ts`
 - `src/windows/connection/TableView.tsx`
 - `src/windows/connection/usePanelHandlers.ts`
 - `src/windows/connection/navigator/GlobalObjectSearch.tsx`
@@ -60,19 +64,23 @@ TableView quick expression → `parseFilterForApply(columns)` → `filterExpress
 测试与文案：
 
 - `src/windows/connection/__tests__/PageIntegration.test.tsx`
+- `src/components/ai/__tests__/DiagnosisPanel.test.tsx`
+- `src/stores/__tests__/aiStore.test.ts`
+- `src/windows/connection/__tests__/QueryPanel.executeCancel.test.tsx`
 - `src/locales/en.ts`
 - `src/locales/zh-CN.ts`
 
 ## 验证状态
 
-- `pnpm exec vitest run`：269 个文件，2211/2211 通过。
+- `pnpm exec vitest run`：269 个文件，2214/2214 通过。
+- 诊断安全边界定向回归：4 个文件，65/65 通过（包含 DiagnosisPanel、QueryPanel、aiStore 和 aiQueryActions）。
 - 共享页面定向回归：6 个文件，99/99 通过。
 - 页面接线新增集成测试：1 个文件，2/2 通过。
-- `pnpm exec tsc --noEmit`：通过（0 diagnostics）。
+- `pnpm typecheck`：通过（0 diagnostics）。
 - `node scripts/generate-builtin-locales.mjs`：通过；生成的 ignored `src/locales/builtinLocales.ts` 未提交。
 - `git diff --check`：通过。
 - Host UI E2E：本轨未运行。需要 `pnpm tauri build --debug --features webdriver`、桌面 Webdriver 和真实数据库 fixture；当前环境没有可用的桌面自动化/fixture，因此按 R 轨要求在 `bugs.md` 登记例外，未声称通过。建议后续执行连接发现、对象搜索→表动作、pending preview/commit/rollback、filter/pagination、query cancel/result/AI 五段 journey。
 
 ## 收尾
 
-实现与 Host 单测、locale/typecheck/diff 检查已完成；已确认 staged 文件不包含 `hub.md`，提交信息为：`feat(page): wire v0.1x workflows`。
+页面接线与本轮诊断安全修复、Host 单测、locale/typecheck/diff 检查已完成；已确认提交不包含 `hub.md`，原编码提交为 `feat(page): wire v0.1x workflows`，本轮修复提交为 `fix(ai): enforce redacted diagnosis boundary`。
