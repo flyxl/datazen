@@ -3,10 +3,10 @@
 ## 1. 功能摘要
 
 - 范围：新增可复用 `ResultWorkspace`、`ResultTableView` adapter 及纯 view/capability helper；不接入 `QueryPanel` 或其他共享页面。
-- 状态：测试中（修复轮，等待独立复验）。
+- 状态：已完成（修复后独立复验通过）。
 - 编码 commit：`feb7b4d5`。
-- 测试 commit：`1badfd50`。
-- 修复 commit：本次修复提交（见最终回复）。
+- 测试 commit：本轮测试提交（见最终回复）。
+- 修复 commit：`ffae5e54`。
 
 ## 2. E2E 用例登记
 
@@ -15,20 +15,18 @@
 | F-RW-001 | 查询返回含数值列的 active statement | 在同一结果中切换 Table/Chart；断言不重新执行查询且 Chart 配置仍被传入 | 【留待 R 回归】 |
 | F-RW-002 | 查询返回空结果或无数值列 | 请求 Chart；断言 UI 降级为 Table，Chart 入口不可用 | 【留待 R 回归】 |
 | F-RW-003 | 结果存在 row detail 定位 | 在 Table/Chart 触发行详情；断言定位回调收到相同行索引 | 【留待 R 回归】 |
-| F-RW-004 | 首次 chartable 查询且 `chartConfig` 尚未生成 | 点击 Chart；断言入口可用、ChartView 生成推荐配置并通过 callback 保存 | 【修复轮回归已补；留待 R 回归】 |
-| F-RW-005 | Chart 视图存在可点击数据点 | 点击数据点；断言切回 Table 且 row detail index 保留 | 【修复轮回归已补；留待 R 回归】 |
+| F-RW-004 | 首次 chartable 查询且 `chartConfig` 尚未生成 | 点击 Chart；断言入口可用、ChartView 生成推荐配置并通过 callback 保存 | 【独立复验通过；留待 R 回归】 |
+| F-RW-005 | Chart 视图存在可点击数据点 | 点击数据点；断言切回 Table 且 row detail index 保留 | 【独立复验通过；留待 R 回归】 |
 
 本轨只新增可复用组件，未新增共享页面交互；真实桌面 E2E 由 R 在 I 接线后执行。
 
 ## 3. 测试结果与覆盖率
 
-- `pnpm exec vitest run src/windows/connection/result-workspace/__tests__`：3 个测试文件，14 个测试通过（编码轮基线）。
-- 修复轮定向 `pnpm exec vitest run src/windows/connection/result-workspace/__tests__`：3 个测试文件，15 个测试通过；新增缺省 chart config 可用性、Chart 数据点切回 Table 顺序、缺失回调安全性回归。
-- 覆盖率（`--coverage` + `coverage.include`，报告写入 `/private/tmp/datazen-f1-coverage`）：总体行 `91.42%`、语句 `91.89%`、分支 `94.11%`；`ResultTableView.tsx` 行 `84.61%`、`ResultWorkspace.tsx` 行 `90.91%`、`resultWorkspaceHelpers.ts` 行 `100%`。
-- `pnpm typecheck`：失败；worktree 基线缺失生成文件 `src/locales/builtinLocales.ts`，并连带报告既有 `src/windows/settings/SettingsContent.tsx` 隐式 any；本轨文件无报错，未修改生成文件。
+- 独立复测 `pnpm exec vitest run src/windows/connection/result-workspace/__tests__`：3 个测试文件，15 个测试通过；覆盖缺省 chart config 可用性、Chart 数据点先切 Table 后定位、缺失回调安全性，以及空/非 chartable 降级。
+- 独立覆盖率（`--coverage` + `coverage.include`）：`ResultTableView.tsx` 行 `84.61%`、`ResultWorkspace.tsx` 行 `92.85%`；两者合计行 `91.66%`。`resultWorkspaceHelpers.ts` 独立定向覆盖率行 `100%`（9/9）。覆盖率输出使用临时目录尝试，未写入工作树。
+- `pnpm typecheck`：失败；worktree 基线缺失生成文件 `src/locales/builtinLocales.ts`，并连带报告既有 `src/windows/settings/SettingsContent.tsx:66` 参数 `code` 隐式 any；本轨文件无报错，未修改生成文件，未运行 `pnpm install`。
 - 全量 `pnpm exec vitest run`：266 个测试文件中 195 通过、71 失败；1563 个测试中 1393 通过、170 失败，另有 2 个 unhandled errors。失败主体由同一缺失 `src/locales/builtinLocales.ts` 导致，未将其归因于本轨；另有既有 `ConnectionPage` 关闭窗口断言失败，待 R 环境修复后复核。
-- `git diff --check`：提交 diff 与当前工作树均通过。
-- 修复轮 `git diff --check`：通过。
+- `git diff --check d0865942..ffae5e54` 与当前工作树 `git diff --check`：均通过。
 - Rust：不需要运行；本轨仅新增 React/TypeScript 组件和测试，没有 Rust 变更。
 - 定向测试覆盖 helper 的所有降级分支及组件的 Table/Chart、配置、row detail、空/错误契约，并补齐首次缺省 chart config 的可用性与 Chart 数据点切回 Table。
 
