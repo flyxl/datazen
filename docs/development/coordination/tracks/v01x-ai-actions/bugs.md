@@ -4,8 +4,8 @@
 |---|---|---|---|---|
 | v01x-ai-actions-BUG-001 | [S2] 凭据别名 `apiToken`/`authToken`/`oauthToken` 未被脱敏 | 已验证 | 见下方 | 2026-08-31 独立测试复验通过：文本与嵌套 schema 均不含测试凭据 |
 | v01x-ai-actions-BUG-002 | [S2] `queryResult` 结果集别名未被移除，行数据进入 AI prompt context | 已验证 | 见下方 | 2026-08-31 独立测试复验通过：结果别名被移除，普通数组保留 100 项上限 |
-| v01x-ai-actions-BUG-003 | [S2] 复数结果集别名 `resultsSet`/`resultsRows`/`resultsData` 未被过滤 | 待修复 | 见下方 | 2026-08-31 独立测试复验复现，修复建议见下方 |
-| v01x-ai-actions-BUG-004 | [S2] JSON 转义引号导致敏感值尾部残留在脱敏文本中 | 待修复 | 见下方 | 2026-08-31 独立测试复验复现，修复建议见下方 |
+| v01x-ai-actions-BUG-003 | [S2] 复数结果集别名 `resultsSet`/`resultsRows`/`resultsData` 未被过滤 | 已验证 | 见下方 | 2026-08-31 修复后回归通过：大小写/分隔符变体被过滤，相近业务字段保留 |
+| v01x-ai-actions-BUG-004 | [S2] JSON 转义引号导致敏感值尾部残留在脱敏文本中 | 已验证 | 见下方 | 2026-08-31 修复后回归通过：序列化 JSON 先解析清理，转义引号/反斜杠/换行值无残留 |
 
 ## BUG-001：凭据字段别名未完全脱敏
 
@@ -34,7 +34,8 @@
 - **预期结果**：所有结果集别名都不进入 `promptContext.schemaContext`；结果行不应仅依靠数组截断来限制发送量。
 - **实际结果**：`resultsSet`、`resultsRows`、`resultsData`、`resultsset` 字段仍存在于 sanitized schema；数组被截为 100 项，但行数据仍进入 AI prompt context。
 - **影响**：业务调用方使用复数 camelCase/大小写变体时，查询结果数据可能被发送给 AI，违反结果集不绕过上限的安全要求。
-- **建议**：将 `result`/`results` 的后续 `set`、`rows`、`data` 组合按同一大小写与分隔符规则统一匹配，补充复数组合及大小写变体回归测试。
+- **修复结果**：结果键改为大小写不敏感的完整分词别名识别，覆盖 `result(s)Set`、`result(s)Rows`、`result(s)Data` 及 `queryResult(s)*` 的大小写和分隔符变体；`resultStatus`、`resultsSummary`、`businessResults` 等普通业务字段不匹配，递归数组仍保持 100 项上限。
+- **验证记录**：`npx vitest run src/lib/__tests__/aiQueryActions.test.ts` 12/12 通过；相关 AI 测试 55/55 通过；模块严格 tsc 与 `git diff --check` 通过。
 
 ## BUG-004：转义引号会造成敏感值尾部残留
 
@@ -43,4 +44,5 @@
 - **预期结果**：输出中不得出现敏感值 `A"B` 的任何部分；敏感键值对应完整移除或替换为 `[REDACTED]`。
 - **实际结果**：输出为类似 `{[REDACTED]B",[REDACTED]}`，`B` 及转义引号后的尾部仍残留。
 - **影响**：包含转义引号的 token/key/secret/password/credential 值可部分进入 AI prompt，造成凭据泄漏。
-- **建议**：对 JSON/字符串转义规则进行完整解析后再过滤，或使用能覆盖反斜杠转义字符的敏感赋值匹配；补充转义引号、反斜杠和换行值回归测试。
+- **修复结果**：`redactSensitiveText` 对完整 JSON/JSON 数组先执行解析后的递归清理，敏感字段整体移除并重新序列化；非 JSON 文本使用可识别反斜杠转义的赋值值扫描，避免在引号中途截断。
+- **验证记录**：回归覆盖 `JSON.stringify` 生成的含引号、反斜杠、换行的 token/password 值，并验证直接脱敏结果及最终 prompt 均无值片段残留；相关 AI 测试 55/55 通过，模块严格 tsc 与 `git diff --check` 通过。
