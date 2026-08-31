@@ -54,6 +54,14 @@ export function ResultWorkspace({
     [onRowDetail],
   );
 
+  const handleChartDataPointClick = useCallback(
+    (rowIndex: number) => {
+      onViewChange?.('table');
+      onRowDetail?.(rowIndex);
+    },
+    [onRowDetail, onViewChange],
+  );
+
   if (error) {
     return (
       <div
@@ -127,7 +135,7 @@ export function ResultWorkspace({
           result={result}
           savedConfig={chartConfig ?? undefined}
           onConfigChange={onChartConfigChange}
-          onDataPointClick={handleRowDetail}
+          onDataPointClick={handleChartDataPointClick}
         />
       )}
     </div>

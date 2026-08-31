@@ -99,14 +99,16 @@ describe('ResultWorkspace', () => {
     );
   });
 
-  it('forwards chart config changes and row detail from both views', () => {
+  it('switches chart data point detail back to table before forwarding the row', () => {
     const onChartConfigChange = vi.fn();
+    const onViewChange = vi.fn();
     const onRowDetail = vi.fn();
     const { rerender } = render(
       <ResultWorkspace
         result={result()}
         view="chart"
         chartConfig={DEFAULT_CHART_CONFIG}
+        onViewChange={onViewChange}
         onChartConfigChange={onChartConfigChange}
         onRowDetail={onRowDetail}
       />,
@@ -114,7 +116,11 @@ describe('ResultWorkspace', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'chart row detail' }));
     fireEvent.click(screen.getByRole('button', { name: 'chart config change' }));
+    expect(onViewChange).toHaveBeenCalledWith('table');
     expect(onRowDetail).toHaveBeenCalledWith(1);
+    expect(onViewChange.mock.invocationCallOrder[0]).toBeLessThan(
+      onRowDetail.mock.invocationCallOrder[0],
+    );
     expect(onChartConfigChange).toHaveBeenCalledWith(DEFAULT_CHART_CONFIG);
 
     rerender(
@@ -131,14 +137,49 @@ describe('ResultWorkspace', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'table row detail' }));
     expect(onRowDetail).toHaveBeenCalledWith(2);
+    expect(onViewChange).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to table and disables chart when config is missing', () => {
-    render(<ResultWorkspace result={result()} view="chart" />);
+  it('allows a chartable result to render ChartView without a saved config', () => {
+    const onViewChange = vi.fn();
+    const onChartConfigChange = vi.fn();
+    const { rerender } = render(
+      <ResultWorkspace result={result()} view="table" onViewChange={onViewChange} />,
+    );
 
     expect(screen.getByRole('grid')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'chart.viewChart' })).toBeDisabled();
-    expect(mocks.chart).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'chart.viewChart' })).not.toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'chart.viewChart' }));
+    expect(onViewChange).toHaveBeenCalledWith('chart');
+
+    rerender(
+      <ResultWorkspace
+        result={result()}
+        view="chart"
+        onChartConfigChange={onChartConfigChange}
+      />,
+    );
+    expect(screen.getByRole('img', { name: 'mock chart' })).toBeInTheDocument();
+    expect(mocks.chart).toHaveBeenCalledWith(
+      expect.objectContaining({ savedConfig: undefined }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'chart config change' }));
+    expect(onChartConfigChange).toHaveBeenCalledWith(DEFAULT_CHART_CONFIG);
+  });
+
+  it('tolerates row detail events when callbacks are omitted', () => {
+    const { rerender } = render(
+      <ResultWorkspace result={result()} view="chart" chartConfig={DEFAULT_CHART_CONFIG} />,
+    );
+
+    expect(
+      () => fireEvent.click(screen.getByRole('button', { name: 'chart row detail' })),
+    ).not.toThrow();
+
+    rerender(<ResultWorkspace result={result()} view="table" />);
+    expect(
+      () => fireEvent.click(screen.getByRole('button', { name: 'table row detail' })),
+    ).not.toThrow();
   });
 
   it('falls back to table for empty and non-chartable results', () => {

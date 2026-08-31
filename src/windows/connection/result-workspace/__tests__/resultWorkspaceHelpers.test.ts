@@ -44,12 +44,12 @@ describe('result workspace view helpers', () => {
     });
   });
 
-  it('falls back to table when chart config is missing', () => {
+  it('allows chart view when chart config is missing so ChartView can initialize it', () => {
     expect(resolveResultWorkspaceView(result(), 'chart', undefined)).toEqual({
-      view: 'table',
-      chartAvailable: false,
-      fallbackReason: 'missing-chart-config',
+      view: 'chart',
+      chartAvailable: true,
     });
+    expect(canRenderResultChart(result(), undefined)).toBe(true);
   });
 
   it('falls back to table when no numeric field can be inferred', () => {
