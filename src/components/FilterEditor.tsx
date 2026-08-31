@@ -31,7 +31,7 @@ const OPERATORS: FilterOperator[] = [
   'isNotNull',
 ];
 
-interface FilterEditorProps {
+export interface FilterEditorProps {
   columns: { name: string }[];
   /** Currently applied filters (shown in collapsed summary). */
   appliedFilters: FilterCondition[];
@@ -46,6 +46,10 @@ interface FilterEditorProps {
   onRemove: (index: number) => void;
   onApply: () => void;
   onClear: () => void;
+  /** Prevents mutations while the applied filter request is in flight. */
+  loading?: boolean;
+  /** Caller-owned parse/apply error; this editor does not execute requests. */
+  applyError?: string | null;
 }
 
 function opLabel(op: FilterOperator, t: (key: I18nKey) => string): string {
@@ -71,12 +75,14 @@ function FilterValueInput({
   onCommit,
   placeholder,
   autoFocus,
+  disabled,
   onEnterComplete,
 }: {
   value: string;
   onCommit: (value: string) => void;
   placeholder: string;
   autoFocus?: boolean;
+  disabled?: boolean;
   /** Called after Enter commits a non-empty value (collapse to chip). */
   onEnterComplete?: () => void;
 }) {
@@ -117,6 +123,7 @@ function FilterValueInput({
   return (
     <Input
       autoFocus={autoFocus}
+      disabled={disabled}
       value={draft}
       onChange={(e) => {
         const next = e.target.value;
@@ -197,6 +204,7 @@ function FilterConditionEditor({
   onRemove,
   onCollapse,
   autoFocusValue,
+  disabled,
   t,
 }: {
   filter: FilterCondition;
@@ -207,6 +215,7 @@ function FilterConditionEditor({
   onRemove: (index: number) => void;
   onCollapse: () => void;
   autoFocusValue: boolean;
+  disabled: boolean;
   t: (key: I18nKey) => string;
 }) {
   const needsValue = filter.operator !== 'isNull' && filter.operator !== 'isNotNull';
@@ -255,12 +264,14 @@ function FilterConditionEditor({
       <Select
         value={filter.column}
         options={columnOptions}
+        disabled={disabled}
         onChange={(column) => pushChange({ ...latestRef.current, column })}
         className="!h-7 w-[6.5rem] shrink-0 !px-1.5 !text-xs"
       />
       <Select
         value={filter.operator}
         options={opOptions}
+        disabled={disabled}
         onChange={(operator) => {
           const nextOp = operator as FilterOperator;
           const next = { ...latestRef.current, operator: nextOp };
@@ -277,12 +288,14 @@ function FilterConditionEditor({
           onCommit={(value) => pushChange({ ...latestRef.current, value })}
           placeholder={t('filter.value')}
           autoFocus={autoFocusValue}
+          disabled={disabled}
           onEnterComplete={onCollapse}
         />
       )}
       <button
         type="button"
         className="shrink-0 rounded p-1 text-fg-muted hover:bg-surface-raised hover:text-fg"
+        disabled={disabled}
         onClick={() => onRemove(index)}
         aria-label={t('filter.remove')}
       >
@@ -306,6 +319,8 @@ export function FilterEditor({
   onRemove,
   onApply,
   onClear,
+  loading = false,
+  applyError = null,
 }: FilterEditorProps) {
   const { t } = useI18n();
   const columnOptions = columns.map((c) => ({ value: c.name, label: c.name }));
@@ -349,7 +364,11 @@ export function FilterEditor({
   };
 
   return (
-    <div className="shrink-0 border-b border-edge bg-surface" data-testid="filter-editor">
+    <div
+      className="shrink-0 border-b border-edge bg-surface"
+      data-testid="filter-editor"
+      aria-busy={loading}
+    >
       <div className="flex h-8 items-center gap-1.5 px-2">
         <button
           type="button"
@@ -386,7 +405,7 @@ export function FilterEditor({
               onOpenChange(true);
               addEmpty();
             }}
-            disabled={columns.length === 0}
+            disabled={columns.length === 0 || loading}
           >
             <Plus className="h-3 w-3" />
             {t('filter.add')}
@@ -397,6 +416,7 @@ export function FilterEditor({
             type="button"
             className="shrink-0 px-1.5 text-xs text-fg-secondary hover:text-fg"
             onClick={onClear}
+            disabled={loading}
             data-testid="filter-clear"
           >
             {t('filter.clear')}
@@ -415,6 +435,7 @@ export function FilterEditor({
                   draftLogic === 'and' ? 'bg-accent/15 text-accent' : 'text-fg-secondary',
                 )}
                 onClick={() => onLogicChange('and')}
+                disabled={loading}
               >
                 {t('filter.and')}
               </button>
@@ -425,6 +446,7 @@ export function FilterEditor({
                   draftLogic === 'or' ? 'bg-accent/15 text-accent' : 'text-fg-secondary',
                 )}
                 onClick={() => onLogicChange('or')}
+                disabled={loading}
               >
                 {t('filter.or')}
               </button>
@@ -433,7 +455,7 @@ export function FilterEditor({
               variant="ghost"
               className="h-6 shrink-0 gap-1 px-1.5 text-xs"
               onClick={addEmpty}
-              disabled={columns.length === 0}
+              disabled={columns.length === 0 || loading}
               data-testid="filter-add"
             >
               <Plus className="h-3 w-3" />
@@ -444,13 +466,14 @@ export function FilterEditor({
                 variant="ghost"
                 className="h-6 px-2 text-xs"
                 onClick={() => onOpenChange(false)}
+                disabled={loading}
                 data-testid="filter-collapse"
               >
                 {t('filter.collapse')}
               </Button>
               <Button
                 className="h-6 px-2.5 text-xs"
-                disabled={!dirty}
+                disabled={!dirty || loading}
                 data-testid="filter-apply"
                 onClick={() => {
                   setEditingIndex(null);
@@ -468,6 +491,11 @@ export function FilterEditor({
               FILTER_LIST_MAX_HEIGHT_CLASS,
             )}
           >
+            {applyError && (
+              <div className="basis-full px-1 py-1 text-xs text-red-400" role="alert" data-testid="filter-error">
+                {applyError}
+              </div>
+            )}
             {draftFilters.length === 0 ? (
               <div className="px-1 py-1 text-xs text-fg-muted">{t('filter.noActive')}</div>
             ) : (
@@ -492,6 +520,7 @@ export function FilterEditor({
                         onRemove={onRemove}
                         onCollapse={() => setEditingIndex(null)}
                         autoFocusValue={!complete || editingIndex === idx}
+                        disabled={loading}
                         t={t}
                       />
                     ) : (

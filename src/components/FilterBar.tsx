@@ -10,13 +10,15 @@ export interface FilterBarProps {
   onRemove: (index: number) => void;
   onClear: () => void;
   className?: string;
+  /** Prevents filter mutations while the next page is loading. */
+  loading?: boolean;
 }
 
 function labelFor(f: FilterCondition) {
   return `${f.column} ${f.operator}${f.value === undefined ? '' : ` ${formatCell(f.value)}`}`;
 }
 
-export function FilterBar({ filters, onRemove, onClear, className }: FilterBarProps) {
+export function FilterBar({ filters, onRemove, onClear, className, loading = false }: FilterBarProps) {
   const { t } = useI18n();
   if (filters.length === 0) return null;
 
@@ -26,6 +28,7 @@ export function FilterBar({ filters, onRemove, onClear, className }: FilterBarPr
         'flex flex-wrap items-center gap-2 border-b border-edge bg-surface px-3 py-2',
         className,
       )}
+      aria-busy={loading}
     >
       <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">{t('filter.filter')}</div>
       <div className="flex min-w-0 flex-1 flex-wrap gap-2">
@@ -37,6 +40,7 @@ export function FilterBar({ filters, onRemove, onClear, className }: FilterBarPr
             <button
               type="button"
               className="rounded-sm p-0.5 text-blue-300 hover:bg-blue-500/10"
+              disabled={loading}
               onClick={() => onRemove(idx)}
               aria-label={t('filter.remove')}
             >
@@ -45,7 +49,12 @@ export function FilterBar({ filters, onRemove, onClear, className }: FilterBarPr
           </Badge>
         ))}
       </div>
-      <button type="button" className="text-xs text-fg-secondary hover:text-fg" onClick={onClear}>
+      <button
+        type="button"
+        className="text-xs text-fg-secondary hover:text-fg"
+        disabled={loading}
+        onClick={onClear}
+      >
         {t('filter.clear')}
       </button>
     </div>

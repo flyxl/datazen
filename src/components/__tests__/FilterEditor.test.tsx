@@ -338,4 +338,19 @@ describe('FilterEditor', () => {
     fireEvent.change(selects[1], { target: { value: 'isNull' } });
     expect(screen.queryByPlaceholderText('filter.value')).not.toBeInTheDocument();
   });
+
+  it('exposes loading and apply-error state without executing the query itself', () => {
+    const filter = { column: 'name', operator: 'eq' as const, value: 'alice' };
+    const props = renderEditor({
+      appliedFilters: [],
+      draftFilters: [filter],
+      loading: true,
+      applyError: 'invalid filter',
+    });
+
+    expect(screen.getByTestId('filter-editor')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByTestId('filter-error')).toHaveTextContent('invalid filter');
+    expect(screen.getByTestId('filter-apply')).toBeDisabled();
+    expect(props.onApply).not.toHaveBeenCalled();
+  });
 });
