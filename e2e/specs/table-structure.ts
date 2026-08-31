@@ -8,6 +8,7 @@ import {
   clickTableInSidebar,
   switchSubTab,
   waitForNewQueryButton,
+  waitForTableInSidebar,
 } from '../helpers.js';
 
 /**
@@ -133,13 +134,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
     // Refresh sidebar
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
-    await browser.pause(2000);
-
-    // Verify table appears
-    await browser.waitUntil(async () => (await $('aside').getText()).includes(TEST_TABLE), {
-      timeout: 10000,
-      timeoutMsg: 'Timed out waiting for new table in sidebar',
-    });
+    await waitForTableInSidebar(TEST_TABLE);
   });
 
   // ── 编辑表结构 ─────────────────────────────────────────────────

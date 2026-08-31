@@ -962,12 +962,12 @@ async function navigatorHasTableButtons(): Promise<boolean> {
         a.querySelector('[data-conn-item]'),
       );
     if (!nav) return false;
-    return Array.from(nav.querySelectorAll('button')).some((b) => {
-      const label = (b.textContent ?? '').trim();
-      if (!label || label.startsWith('表') || label.startsWith('Tables')) return false;
-      if (label.includes('PostgreSQL') || label.includes('本地')) return false;
-      return /^[\w.-]+$/.test(label);
-    });
+    // Do not infer table readiness from button text. Connection names and
+    // database names are also buttons, so that heuristic can return true
+    // before the async schema load has mounted any table rows.
+    return nav.querySelector(
+      '[data-tree-node="table"][data-item-name], [data-tree-node="view"][data-item-name]',
+    ) != null;
   });
 }
 
@@ -1003,28 +1003,14 @@ export async function closeDataExportDialogIfOpen() {
 
 /** Wait until the connection navigator lists at least one table entry. */
 export async function waitForSchemaTreeLoaded(timeout = 20000) {
+  // The connection click and schema loading are separate async operations.
+  // Expand once before polling for the actual table row; repeatedly clicking
+  // the connection card can only re-select it and makes the race worse.
+  await expandConnectedConnectionInNavigator();
   await browser.waitUntil(
     async () => {
       if (await navigatorHasTableButtons()) return true;
-      await expandConnectedConnectionInNavigator();
-      await browser.execute(() => {
-        const nav =
-          document.querySelector('[data-testid="connection-navigator-aside"]') ??
-          Array.from(document.querySelectorAll('aside')).find((a) =>
-            a.querySelector('[data-conn-item]'),
-          );
-        if (!nav) return;
-        const dbBtn = Array.from(nav.querySelectorAll('button')).find((b) => {
-          const label = (b.textContent ?? '').trim();
-          return label.length > 0 && !label.startsWith('表') && !label.includes('PostgreSQL');
-        });
-        dbBtn?.click();
-        const tablesBtn = Array.from(nav.querySelectorAll('button')).find((b) => {
-          const label = (b.textContent ?? '').trim();
-          return label.startsWith('表') || label.startsWith('Tables');
-        });
-        tablesBtn?.click();
-      });
+      await expandSchemaTableCategory();
       await browser.pause(500);
       return false;
     },
@@ -1151,32 +1137,64 @@ async function tableNodeExistsInNavigator(tableName: string): Promise<boolean> {
   }, tableName);
 }
 
+/** True when the requested table is the active TableView workspace panel. */
+async function tableWorkspaceIsOpen(tableName: string): Promise<boolean> {
+  return browser.execute((name: string) => {
+    const activePanelTab = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid="panel-tab"]'),
+    ).find((tab) => tab.classList.contains('bg-surface'));
+    if (!activePanelTab || !(activePanelTab.textContent ?? '').includes(name)) return false;
+
+    const dataTab = document.querySelector<HTMLElement>('[data-testid="sub-tab-data"]');
+    return !!dataTab && dataTab.offsetParent !== null;
+  }, tableName);
+}
+
+/** Click the currently mounted exact table node, if any. */
+async function clickVisibleTableNode(tableName: string): Promise<boolean> {
+  return browser.execute((name: string) => {
+    const nav =
+      document.querySelector('[data-testid="connection-navigator-aside"]') ??
+      Array.from(document.querySelectorAll('aside')).find((a) =>
+        a.querySelector('[data-conn-item]'),
+      );
+    if (!nav) return false;
+    const matchName = (label: string) =>
+      label === name || label.endsWith(`.${name}`) || label.endsWith(`/${name}`);
+    const node = Array.from(
+      nav.querySelectorAll<HTMLElement>('[data-tree-node="table"], [data-tree-node="view"]'),
+    ).find((candidate) => matchName(candidate.getAttribute('data-item-name') ?? ''));
+    if (!node) return false;
+    node.scrollIntoView({ block: 'center' });
+    // HTMLElement.click() reaches the same React handler as a user click and
+    // avoids racing a stale WebdriverIO element in the virtualized tree.
+    node.click();
+    return true;
+  }, tableName);
+}
+
 /** Click a table by exact name in the sidebar (virtualized tree safe). */
 export async function clickTableInSidebar(tableName: string) {
-  await waitForSchemaTreeLoaded();
+  // Do not use the generic "some table exists" gate here. A newly-created
+  // table can be absent while an older table is already mounted, which is
+  // exactly the race this helper must close.
+  await expandConnectedConnectionInNavigator();
   await setNavigatorSearch(tableName);
   let scrollPass = 0;
+  let clickAttempts = 0;
   try {
     await browser.waitUntil(
       async () => {
-        const clicked = await browser.execute((name: string) => {
-          const nav =
-            document.querySelector('[data-testid="connection-navigator-aside"]') ??
-            Array.from(document.querySelectorAll('aside')).find((a) =>
-              a.querySelector('[data-conn-item]'),
-            );
-          if (!nav) return false;
-          const matchName = (label: string) =>
-            label === name || label.endsWith(`.${name}`) || label.endsWith(`/${name}`);
-          const node = Array.from(
-            nav.querySelectorAll<HTMLElement>('[data-tree-node="table"], [data-tree-node="view"]'),
-          ).find((n) => matchName(n.getAttribute('data-item-name') ?? ''));
-          if (!node) return false;
-          node.scrollIntoView({ block: 'center' });
-          node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-          return true;
-        }, tableName);
-        if (clicked) return true;
+        if (await tableWorkspaceIsOpen(tableName)) return true;
+        const clicked = await clickVisibleTableNode(tableName);
+        if (clicked) {
+          clickAttempts++;
+          // The navigator handler first activates the database and then
+          // schedules TableView creation. Keep the search mounted while that
+          // async chain settles; retrying is limited to transient misses.
+          if (clickAttempts < 3) await browser.pause(300);
+          return tableWorkspaceIsOpen(tableName);
+        }
         await expandSchemaTableCategory();
         await expandSchemaCategory('views');
         await scrollSchemaTree(scrollPass);
@@ -1202,7 +1220,10 @@ export async function openTableFromSidebar(tableName: string) {
       }
     }
   }, t('schemaTree.openTable'));
-  await browser.pause(2000);
+  await browser.waitUntil(
+    () => tableWorkspaceIsOpen(tableName),
+    { timeout: 15000, timeoutMsg: `等待表 "${tableName}" 工作区打开超时` },
+  );
 }
 
 /** Switch the active table/view panel to the data sub-tab. */
@@ -1269,23 +1290,37 @@ export async function rightClickTableInSidebar(tableName: string) {
 /** Click the first table/view entry in the sidebar and return its name. */
 export async function clickFirstTable() {
   await waitForSchemaTreeLoaded();
-  const name = await browser.execute(() => {
-    const nav =
-      document.querySelector('[data-testid="connection-navigator-aside"]') ??
-      Array.from(document.querySelectorAll('aside')).find((a) =>
-        a.querySelector('[data-conn-item]'),
-      );
-    if (!nav) return null;
-    for (const btn of Array.from(nav.querySelectorAll('button'))) {
-      const label = (btn.textContent ?? '').trim();
-      if (!label || label.startsWith('表') || label.startsWith('Tables')) continue;
-      if (label.includes('PostgreSQL') || label.includes('本地')) continue;
-      if (!/^[\w.-]+$/.test(label)) continue;
-      btn.click();
-      return label;
-    }
-    return null;
-  });
+  let name: string | null = null;
+  let scrollPass = 0;
+  await browser.waitUntil(
+    async () => {
+      if (name && (await tableWorkspaceIsOpen(name))) return true;
+      const result = await browser.execute(() => {
+        const nav =
+          document.querySelector('[data-testid="connection-navigator-aside"]') ??
+          Array.from(document.querySelectorAll('aside')).find((a) =>
+            a.querySelector('[data-conn-item]'),
+          );
+        const node = nav?.querySelector<HTMLElement>(
+          '[data-tree-node="table"][data-item-name], [data-tree-node="view"][data-item-name]',
+        );
+        if (!node) return null;
+        const value = node.getAttribute('data-item-name');
+        if (!value) return null;
+        node.scrollIntoView({ block: 'center' });
+        node.click();
+        return value;
+      });
+      if (result) name = result;
+      if (name && (await tableWorkspaceIsOpen(name))) return true;
+      await expandSchemaTableCategory();
+      await expandSchemaCategory('views');
+      await scrollSchemaTree(scrollPass);
+      scrollPass++;
+      return false;
+    },
+    { timeout: 20000, timeoutMsg: '等待第一个表工作区打开超时' },
+  );
   if (!name) {
     throw new Error('未找到可点击的表节点');
   }
@@ -1295,8 +1330,15 @@ export async function clickFirstTable() {
 /** Switch to a sub-tab inside a table panel by id (data/structure/indexes/foreignKeys/ddl). */
 export async function switchSubTab(tabId: string) {
   const tab = await $(`[data-testid="sub-tab-${tabId}"]`);
+  await tab.waitForDisplayed({ timeout: 10000 });
   await tab.click();
-  await browser.pause(500);
+  await browser.waitUntil(
+    async () => {
+      const classes = (await tab.getAttribute('class')) ?? '';
+      return classes.split(/\s+/).includes('bg-surface');
+    },
+    { timeout: 5000, timeoutMsg: `等待表子标签 ${tabId} 激活超时` },
+  );
 }
 
 // ── DataTable cell interaction ──────────────────────────────────────

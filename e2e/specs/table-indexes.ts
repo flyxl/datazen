@@ -8,6 +8,7 @@ import {
   switchSubTab,
   openSeededPgConnectionWindow,
   withSafeModeOff,
+  waitForTableInSidebar,
 } from '../helpers.js';
 
 /**
@@ -36,7 +37,7 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
 
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
-    await browser.pause(1500);
+    await waitForTableInSidebar(TEST_TABLE);
 
     await clickTableInSidebar(TEST_TABLE);
     await browser.pause(1000);
@@ -82,6 +83,7 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
     });
     await browser.pause(300);
     await expect($("[data-testid='idx-sql-preview']")).toExist();
+    const body = await $('body').getText();
     expect(body.toUpperCase()).toContain('CREATE');
     expect(body).toContain(INDEX_NAME);
   });
