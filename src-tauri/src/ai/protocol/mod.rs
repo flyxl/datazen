@@ -61,7 +61,7 @@ pub(crate) fn log_request_metadata<T: Serialize>(
     streaming: bool,
 ) {
     let request_bytes = serde_json::to_vec(body).map_or(0, |payload| payload.len());
-    tracing::debug!(
+    tracing::info!(
         protocol,
         request_id = %request.request_id,
         message_count = request.messages.len(),
@@ -79,7 +79,7 @@ pub(crate) fn log_response_metadata(
     status: reqwest::StatusCode,
     response_bytes: usize,
 ) {
-    tracing::debug!(
+    tracing::info!(
         protocol,
         request_id,
         %status,
@@ -178,22 +178,6 @@ mod tests {
             fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
                 let _ = write!(self.0, "{}={value:?};", field.name());
             }
-
-            fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-                let _ = write!(self.0, "{}={value};", field.name());
-            }
-
-            fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
-                let _ = write!(self.0, "{}={value};", field.name());
-            }
-
-            fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-                let _ = write!(self.0, "{}={value};", field.name());
-            }
-
-            fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
-                let _ = write!(self.0, "{}={value};", field.name());
-            }
         }
 
         impl<S> Layer<S> for Capture
@@ -208,19 +192,23 @@ mod tests {
         }
 
         let events = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::registry().with(Capture(events.clone()));
-        let secret = "wiremock-secret-prompt-and-tool-args";
+        let subscriber = tracing_subscriber::registry()
+            .with(tracing_subscriber::filter::LevelFilter::INFO)
+            .with(Capture(events.clone()));
+        let prompt_secret = "wiremock-secret-prompt";
+        let tool_args_secret = "wiremock-secret-tool-args";
+        let http_body_secret = "wiremock-secret-http-body";
         let request = CompletionRequest {
             request_id: "request-1".into(),
             model: "test-model".into(),
             messages: vec![datazen_ai_api::ChatMessage {
                 role: datazen_ai_api::MessageRole::User,
-                content: secret.into(),
+                content: prompt_secret.into(),
                 reasoning: None,
                 tool_calls: Some(vec![datazen_ai_api::ToolCall {
                     id: "call-1".into(),
                     name: "lookup".into(),
-                    arguments: secret.into(),
+                    arguments: tool_args_secret.into(),
                 }]),
                 tool_call_id: None,
             }],
@@ -230,8 +218,8 @@ mod tests {
             previous_response_id: None,
         };
         let body = serde_json::json!({
-            "messages": [{"content": secret}],
-            "tools": [{"function": {"arguments": secret}}]
+            "messages": [{"content": http_body_secret}],
+            "tools": [{"function": {"arguments": http_body_secret}}]
         });
 
         tracing::subscriber::with_default(subscriber, || {
@@ -240,20 +228,28 @@ mod tests {
                 "test",
                 &request.request_id,
                 reqwest::StatusCode::OK,
-                secret.len(),
+                http_body_secret.len(),
             );
             log_http_error(
                 "test",
                 &request.request_id,
                 reqwest::StatusCode::BAD_REQUEST,
-                secret,
+                http_body_secret,
             );
         });
 
         let output = events.lock().unwrap().join("\n");
-        assert!(!output.contains(secret));
-        assert!(output.contains("request_bytes"));
-        assert!(output.contains("response_bytes"));
+        assert!(!output.contains(prompt_secret));
+        assert!(!output.contains(tool_args_secret));
+        assert!(!output.contains(http_body_secret));
+        assert!(
+            output.contains("request_bytes"),
+            "request metadata was not captured: {output}"
+        );
+        assert!(
+            output.contains("response_bytes"),
+            "response metadata was not captured: {output}"
+        );
         assert!(output.contains("body omitted"));
     }
 }
