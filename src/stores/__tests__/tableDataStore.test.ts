@@ -29,6 +29,14 @@ const sampleResponse = {
   pageSize: 50,
 };
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 const samplePlan = {
   planId: 'plan-1',
   fingerprint: 'fingerprint-1',
@@ -148,6 +156,41 @@ describe('tableDataStore', () => {
     expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
       expect.objectContaining({ page: 1, skipCount: true }),
     );
+  });
+
+  it('ignores an old page response after a newer filter request starts', async () => {
+    await loadTable();
+    mockDatabaseCommands.getTableData.mockClear();
+
+    const oldPage = deferred<typeof sampleResponse>();
+    const newFilterPage = deferred<typeof sampleResponse>();
+    const filter: FilterCondition = { column: 'id', operator: 'eq', value: 99 };
+    mockDatabaseCommands.getTableData.mockImplementation(
+      (params: { page?: number; filters?: FilterCondition[] }) =>
+        params.page === 2 ? oldPage.promise : newFilterPage.promise,
+    );
+
+    useTableDataStore.getState().setPage(2);
+    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalledTimes(1));
+    useTableDataStore.getState().addFilter(filter);
+    useTableDataStore.getState().applyFilters();
+
+    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalledTimes(2));
+    expect(mockDatabaseCommands.getTableData).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ page: 0, filters: [filter] }),
+    );
+
+    oldPage.resolve({ ...sampleResponse, page: 2, rows: [[200, 'Old page']] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(useTableDataStore.getState().rows[0]).toEqual({ id: 1, name: 'Alice' });
+    expect(useTableDataStore.getState().page).toBe(0);
+
+    newFilterPage.resolve({ ...sampleResponse, page: 0, rows: [[99, 'Filtered']] });
+    await vi.waitFor(() => expect(useTableDataStore.getState().loading).toBe(false));
+    expect(useTableDataStore.getState().rows[0]).toEqual({ id: 99, name: 'Filtered' });
+    expect(useTableDataStore.getState().filters).toEqual([filter]);
+    expect(useTableDataStore.getState().page).toBe(0);
   });
 
   it('forwards the explicit database and remembers it for refreshes (F1 BUG-002)', async () => {
