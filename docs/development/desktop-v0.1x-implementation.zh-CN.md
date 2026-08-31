@@ -248,7 +248,7 @@ struct DriverCapabilities {
    `execution_id` 是 Host 生成的 opaque `QueryExecutionId`，不能由前端伪造成 session id。旧 `cancel_query(handle)` 保留给兼容实现，但 Host 的新取消路径不得回退到它。
 2. Host 在启动流式查询前先 prepare 并登记 `execution_id → dbSessionId`，然后发送 `ExecutionStarted` 事件；取消 IPC 必须同时携带 `dbSessionId` 和 `executionId`，校验归属、能力和执行生命周期，结束时无论成功/失败/取消都 cleanup。
 3. PostgreSQL 使用目标查询连接的 `pg_backend_pid()`，通过独立控制连接执行 `pg_cancel_backend(pid)`；MySQL 使用目标查询连接的 `CONNECTION_ID()`，通过独立控制连接执行 `KILL QUERY thread_id`。目标连接、控制连接和执行注册表必须在同一 execution 生命周期内保持有效，防止连接复用造成误取消。
-4. 仅原生 PostgreSQL 和 MySQL 宣称支持精确取消；SQLite、MariaDB、兼容驱动、旧插件和事务连接返回不支持/未知，不能统一展示为可取消。
+4. 原生 PostgreSQL、MySQL 和 MariaDB 宣称支持精确取消；MariaDB 复用 MySQL 的 `CONNECTION_ID()` + 独立控制连接 `KILL QUERY` 路径。所有兼容驱动只有在实际委托父驱动的同一目标绑定/控制逻辑时，才继承父驱动的 capability。SQLite 仍需独立的 `sqlite3_interrupt` 协议；旧插件或未声明 capability 的驱动保持不支持/未知。事务连接同样支持取消当前语句，但取消后的事务状态遵循数据库语义：PostgreSQL 语句取消后事务可能进入 aborted 状态，必须回滚后才能继续。
 5. `DriverRegistry` 在加载 factory 和 concrete driver 时登记 capability；不修改每个 driver 的 UI 分支。`get_connection_info` 或等价 session info IPC 返回 `capabilities`。前端 `ConnectionEntry` 保存它，未获取到时为 `unknown`，不能默认当作支持。
 6. `src/lib/queryExecutionViewModel.ts` 把现有 `QueryExecState` 映射成以下状态：
 
@@ -546,7 +546,7 @@ S0 完成后，A/B/C/D/E/F/G/Q 可以并行。I 是串行集成阶段；R 必须
 3. 将当前 Query/Panel execution 状态映射为稳定的展示模型：`idle / running / cancel_requested / succeeded / failed / cancelled / outcome_unknown`，取消能力单独使用 `supported / unsupported / unknown`。
 4. `cancelQuery` 点击处理必须先写入 `cancel_requested`，调用 command 后等待查询 promise/stream 的实际终态；禁止无论 command 是否成功都直接写入 `running: false, error: 'Cancelled'`。
 5. `cancel_query_impl` 校验 `dbSessionId + executionId` 的归属和生命周期；在精确 capability 为 `false/unknown` 时返回结构化 `Unsupported`，不调用旧 session-wide driver stub；driver 返回错误时由前端展示取消失败或结果未知。
-6. PostgreSQL/MySQL driver 为每次执行保存目标 PID/thread ID，并使用独立控制连接执行取消；执行结束、错误和取消都清理注册表，事务连接和非原生兼容 driver 明确返回不支持。
+6. PostgreSQL/MySQL driver 为每次执行保存目标 PID/thread ID，并使用独立控制连接执行取消；执行结束、错误和取消都清理注册表。事务连接走同一精确目标绑定路径；MariaDB 复用 MySQL 实现，兼容 driver 通过 `ReuseDriver` 转发并继承父驱动 capability，不能声明比父驱动更强的能力。
 7. 关闭 QueryPanel 时仅对 `supported + running + executionId` 的查询发起 cancel；`unsupported/unknown` 只清理 UI 或提示查询可能仍在数据库侧运行，不伪造 Cancelled。
 7. Execute 附近显示 Running、Cancel、耗时、rows、affected rows、statement index 和 Error 摘要；Cancel 在 unsupported 时显示禁用态和原因。
 8. QueryExecutionStatus 不重复发起查询，也不直接调用 command；所有副作用由 `panelStore/queryExecActions` 发起。
