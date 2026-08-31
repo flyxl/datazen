@@ -161,3 +161,10 @@ BUG-PI-005 已修复并完成定向回归，待提交 `fix(query): preserve retr
 - Host desktop E2E：`pnpm e2e:skip-build -- --suite core` 退出码 1；PostgreSQL 端口访问返回 `Operation not permitted`，且缺少 `target/debug/datazen` webdriver binary 与 `dist/index.html`。按 BUG-PI-001 记为 R，未声称桌面 E2E 通过。
 - 静态复核确认 Retry 最终门禁要求 active connection map 条目存在、映射 identity 一致、状态为 `connected`、panel/active connection 均有非空且严格一致的 `dbSessionId`；最新 panel/schema/SQL/params 均在确认后读取，执行仍只经 `retryAction.invoke` 且最多一次。AI 诊断只发送 `safeSql`/`safeErrorMessage`，Fix 只回填草稿；本轮未发现新增功能 bug。
 - 本轮只更新本轨 `progress.md`/`bugs.md`；未修改 hub、功能代码、配置或 codegen；`src/locales/builtinLocales.ts` 已清理。
+
+## 2026-08-31 BUG-PI-008 修复轮
+
+- Data Sync `DataSyncWindow` 与 Schema Diff `useSchemaDiffEndpoints` 移除 PostgreSQL driver-id schema 加载门槛，改为读取 `DB_REGISTRY` 的 `supportsTables`/`supportsSQL` metadata；满足能力的 driver 统一调用已有 `databaseCommands.getTables`，由返回的 `TableInfo.schema` 决定是否展示 schema picker。
+- 新增 Host 单测覆盖非 PostgreSQL SQL driver 返回 schema metadata 时，Data Sync 与 Schema Diff 均发现并保留 `public` 默认 schema；现有 PostgreSQL picker 行为保持覆盖。
+- 验证：`npx vitest run src/windows/data-sync/__tests__/DataSyncWindow.test.tsx src/windows/schema-diff/__tests__/useSchemaDiffEndpoints.test.tsx` 为 2 files / 20 tests 通过；`npx vitest run src/windows/data-sync src/windows/schema-diff` 为 7 files / 31 tests 通过；`pnpm typecheck` 通过；生产目标文件静态扫描无 PostgreSQL 字面量 schema 分支；`git diff --check` 通过。
+- 真实桌面 E2E 未执行，沿用 BUG-PI-001 的 webdriver/fixture 环境例外；本轮未修改公共 `hub.md`、R 总账或 ignored codegen 文件。

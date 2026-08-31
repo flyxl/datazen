@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { ConnectionConfig } from '../../../types';
 import { useSchemaDiffEndpoints } from '../useSchemaDiffEndpoints';
 import { ensureDedicatedSession, listDatabasesDedicated } from '../../../lib/dedicatedDbSession';
+import { databaseCommands } from '../../../commands/database';
 
 const { stableT } = vi.hoisted(() => ({
   stableT: (key: string) => key,
@@ -204,5 +205,28 @@ describe('useSchemaDiffEndpoints', () => {
     expect(sessionId).toBe('session-pg-src');
     const { connectionCommands } = await import('../../../commands/connection');
     expect(connectionCommands.pingConnection).toHaveBeenCalledWith('session-pg-src');
+  });
+
+  it('discovers schemas through table metadata for non-PostgreSQL SQL drivers', async () => {
+    vi.mocked(databaseCommands.getTables).mockResolvedValue([
+      { name: 'users', schema: 'public', tableType: 'table' },
+      { name: 'users', schema: 'app', tableType: 'table' },
+    ]);
+    const { result } = renderHook(() => useSchemaDiffEndpoints());
+
+    await waitFor(() => expect(result.current.connections).toHaveLength(3));
+
+    act(() => {
+      result.current.setSourceId('mysql-tgt');
+      result.current.setSourceDatabase('datazen_sync_mysql_tgt');
+    });
+
+    await waitFor(() => {
+      expect(result.current.sourceSchemas).toEqual(['app', 'public']);
+    });
+    expect(databaseCommands.getTables).toHaveBeenCalledWith(
+      'session-mysql-tgt',
+      'datazen_sync_src',
+    );
   });
 });

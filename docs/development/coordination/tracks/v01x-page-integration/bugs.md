@@ -68,10 +68,12 @@
 
 ## BUG-PI-008 — Host Data Sync/Schema Diff 硬编码 PostgreSQL driver-id 分支
 
-- 状态：待修复；本轮仅记录。
+- 状态：待验证（修复后）。
 - 证据：`src/windows/data-sync/DataSyncWindow.tsx:357,391` 与 `src/windows/schema-diff/useSchemaDiffEndpoints.ts:220,254` 直接以 `databaseType !== 'postgresql'` 决定是否加载 schema。
 - 影响：Host 行为差异依赖具体 driver id；新增 PostgreSQL 兼容 driver 或可提供 schema 的其他 driver 不能仅通过 `DatabaseTypeMeta`/capability 复用该路径，违背 Host driver-agnostic 约定。
 - 复现/判定：静态扫描生产 `src/**`（排除 tests/generated）发现 4 处同类分支；本轮未修改实现，也未将该架构缺陷伪装成测试通过。
+- 修复：Data Sync 与 Schema Diff 均使用 `DB_REGISTRY[connection.databaseType]` 的 `supportsTables` + `supportsSQL` metadata 决定是否调用既有 `databaseCommands.getTables` schema-catalog/driver-command 入口；schema picker 仍只在 driver 返回非空 `TableInfo.schema` 时显示。未新增具体 database type 分支或 metadata 字段。
+- 验证：新增非 PostgreSQL SQL driver 的 schema discovery Host 用例；Data Sync/Schema Diff 定向回归 2 files / 20 tests 通过，相关目录回归 7 files / 31 tests 通过，`pnpm typecheck` 与 `git diff --check` 通过。真实桌面 E2E 仍按 BUG-PI-001 受环境限制未执行。
 
 ## BUG-PI-009 — AI 诊断底层仍信任并暴露 raw SQL/error
 
