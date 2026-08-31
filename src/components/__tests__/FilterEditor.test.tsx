@@ -353,4 +353,30 @@ describe('FilterEditor', () => {
     expect(screen.getByTestId('filter-apply')).toBeDisabled();
     expect(props.onApply).not.toHaveBeenCalled();
   });
+
+  it('disables complete condition chip mutations while loading and keeps idle removal enabled', () => {
+    const filter = { column: 'name', operator: 'eq' as const, value: 'alice' };
+    const onRemove = vi.fn();
+    renderEditor({ draftFilters: [filter], loading: true, onRemove });
+
+    const editButton = screen.getByTitle('filter.editCondition');
+    const removeButton = screen.getByLabelText('filter.remove');
+    expect(screen.getByTestId('filter-editor')).toHaveAttribute('aria-disabled', 'true');
+    expect(editButton).toBeDisabled();
+    expect(editButton).toHaveAttribute('aria-disabled', 'true');
+    expect(removeButton).toBeDisabled();
+    expect(removeButton).toHaveAttribute('aria-disabled', 'true');
+
+    fireEvent.click(editButton);
+    fireEvent.click(removeButton);
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0);
+    expect(onRemove).not.toHaveBeenCalled();
+
+    cleanup();
+    const idleProps = renderEditor({ draftFilters: [filter], onRemove });
+    const idleRemoveButton = screen.getByLabelText('filter.remove');
+    expect(idleRemoveButton).not.toBeDisabled();
+    fireEvent.click(idleRemoveButton);
+    expect(idleProps.onRemove).toHaveBeenCalledWith(0);
+  });
 });

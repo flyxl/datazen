@@ -29,6 +29,7 @@ export function FilterBar({ filters, onRemove, onClear, className, loading = fal
         className,
       )}
       aria-busy={loading}
+      aria-disabled={loading || undefined}
     >
       <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">{t('filter.filter')}</div>
       <div className="flex min-w-0 flex-1 flex-wrap gap-2">
@@ -41,6 +42,7 @@ export function FilterBar({ filters, onRemove, onClear, className, loading = fal
               type="button"
               className="rounded-sm p-0.5 text-blue-300 hover:bg-blue-500/10"
               disabled={loading}
+              aria-disabled={loading || undefined}
               onClick={() => onRemove(idx)}
               aria-label={t('filter.remove')}
             >
@@ -53,6 +55,7 @@ export function FilterBar({ filters, onRemove, onClear, className, loading = fal
         type="button"
         className="text-xs text-fg-secondary hover:text-fg"
         disabled={loading}
+        aria-disabled={loading || undefined}
         onClick={onClear}
       >
         {t('filter.clear')}
