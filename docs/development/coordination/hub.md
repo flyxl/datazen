@@ -13,7 +13,7 @@
 | `v01x-filter-pagination` | 快速过滤表达式、分页重置、请求竞态和菜单分层组件 | 测试中·修复轮 | 31929367 | 3f7e01f7 |
 | `v01x-object-actions` | 对象搜索、表定位和生成 SQL action | 已完成 | df1c0ad9 | 61acc880 |
 | `v01x-result-workspace` | Table/Chart 统一结果承载组件 | 已完成 | ffae5e54 | cfa056fc |
-| `v01x-ai-actions` | Explain/Fix SQL/Retry 快捷动作上下文 | 测试中·修复轮 | 49058f8b | c97f08d0 |
+| `v01x-ai-actions` | Explain/Fix SQL/Retry 快捷动作上下文 | 测试中·复测轮 | bbd7c4cc | 待复测 |
 | `v01x-page-integration` | 共享页面、DataTable、QueryPanel 和 i18n 最终接线 | 待开始 | 待编码 | 待测试 |
 
 ## 合并规则
