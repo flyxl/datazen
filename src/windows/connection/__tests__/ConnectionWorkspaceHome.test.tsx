@@ -1,7 +1,9 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionWorkspaceHome } from '../ConnectionWorkspaceHome';
 import type { ConnectionContext, Panel } from '../../../stores/panelStore';
+
+afterEach(cleanup);
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -67,6 +69,32 @@ describe('ConnectionWorkspaceHome', () => {
       />,
     );
     expect(screen.getByText('connWin.home.selectConnection')).toBeInTheDocument();
+  });
+
+  it('shows loading spinner when connecting and does not show select prompt', () => {
+    render(
+      <ConnectionWorkspaceHome
+        hasConnections
+        connectionContext={null}
+        recentPanels={[]}
+        showNewQuery={false}
+        showNewTable={false}
+        showErDiagram={false}
+        showObjects={false}
+        isConnecting
+        connectingName="Local PG"
+        connectingDbType="postgresql"
+        onNewConnection={vi.fn()}
+        onNewQuery={vi.fn()}
+        onCreateTable={vi.fn()}
+        onOpenErDiagram={vi.fn()}
+        onOpenObjects={vi.fn()}
+        onOpenPanel={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText('connWin.home.selectConnection')).not.toBeInTheDocument();
+    expect(screen.getByText('Local PG')).toBeInTheDocument();
+    expect(screen.getByTestId('connection-workspace-home')).toBeInTheDocument();
   });
 
   it('renders quick actions for an active connection', () => {

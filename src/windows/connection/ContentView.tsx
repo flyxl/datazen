@@ -139,6 +139,26 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
   const showObjectsToolbar =
     !isRedisPanel && !isKvSidebar && toolbarDbMeta?.readOnly !== true && !!toolbarDbType;
 
+  // Detect a connection that is still being established (no dbSessionId yet).
+  // When no panel is active, ConnectionWorkspaceHome needs to show a spinner
+  // instead of the "select a connection" prompt.
+  const connectingEntry = useMemo(() => {
+    if (activePanel) return null;
+    const entries = Object.values(activeConnections);
+    return entries.find((e) => e.status === 'connecting') ?? null;
+  }, [activePanel, activeConnections]);
+
+  const connectingName = useMemo(() => {
+    if (!connectingEntry) return undefined;
+    return savedConnections.find((c) => c.id === connectingEntry.connectionId)?.name;
+  }, [connectingEntry, savedConnections]);
+
+  const connectingDbType = useMemo(() => {
+    if (!connectingEntry) return undefined;
+    return savedConnections.find((c) => c.id === connectingEntry.connectionId)
+      ?.databaseType as DatabaseType | undefined;
+  }, [connectingEntry, savedConnections]);
+
   const recentPanels = useMemo(() => {
     if (!sidebarConnCtx) return [];
     return allPanels
@@ -674,6 +694,9 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
               showNewTable={showNewTable}
               showErDiagram={showErDiagramToolbar}
               showObjects={showObjectsToolbar}
+              isConnecting={!!connectingEntry}
+              connectingName={connectingName}
+              connectingDbType={connectingDbType}
               onNewConnection={() => openNewConnectionDialog()}
               onNewQuery={() => handlers.handleNewQuery()}
               onCreateTable={handlers.handleCreateTable}
