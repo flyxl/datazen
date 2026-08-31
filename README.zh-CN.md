@@ -147,8 +147,8 @@ Driver API 本身维护在 DataZen monorepo 的 `packages/driver-api` 中，并�
 
 详细文档：
 
-- **[独立插件开发指南 — 中文](docs/development/independent-plugin-development.zh-CN.md)**
-- **[Independent Plugin Development — English](docs/development/independent-plugin-development.en.md)**
+- **[独立驱动开发指南 — 中文](docs/development/independent-driver-development.zh-CN.md)**
+- **[Independent Driver Development — English](docs/development/independent-driver-development.en.md)**
 - **[Driver API crate README](packages/driver-api/README.md)**
 - **[Driver API 依赖边界](docs/development/driver-api-dependency-boundary.md)**
 - **[datazen-driver-api on crates.io](https://crates.io/crates/datazen-driver-api)**
@@ -226,8 +226,8 @@ DataZen 按照本地数据库访问场景设计：
 
 - [项目官网](https://flyxl.github.io/datazen/zh/) · [使用手册](https://flyxl.github.io/datazen/zh/manual.html) · [User Manual (EN)](https://flyxl.github.io/datazen/manual.html)
 - [功能文档](docs/features/) · [架构文档](docs/architecture/README.md) · [开发/发布文档](docs/development/)
-- [独立插件开发指南](docs/development/independent-plugin-development.zh-CN.md)
-- [English Plugin Development Guide](docs/development/independent-plugin-development.en.md)
+- [独立驱动开发指南](docs/development/independent-driver-development.zh-CN.md)
+- [English Driver Development Guide](docs/development/independent-driver-development.en.md)
 - [Driver API crate](packages/driver-api/README.md)
 - [Driver API 依赖边界](docs/development/driver-api-dependency-boundary.md)
 - [datazen-driver-api on crates.io](https://crates.io/crates/datazen-driver-api)
