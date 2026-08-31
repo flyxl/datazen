@@ -54,16 +54,26 @@ describe('数据看板面板 (UJ-02, UJ-08)', () => {
     const deletePanel = await $('[data-testid="dashboard-delete-panel"]');
     await deletePanel.waitForDisplayed({ timeout: 5000 });
     await deletePanel.click();
-    await browser.pause(300);
 
-    await browser.execute(() => {
-      const btn = Array.from(document.querySelectorAll('button')).find(
-        (b) => b.textContent?.includes('确定') || b.textContent?.includes('OK'),
-      );
-      btn?.click();
-    });
-    await browser.pause(800);
+    // The confirmation is rendered in a portal. Use its E2E locator instead
+    // of searching all buttons by translated text; the latter can hit a
+    // hidden/stale button and leave the dashboard untouched.
+    const confirmDelete = await $('[data-testid="dashboard-delete-confirm"]');
+    await confirmDelete.waitForDisplayed({ timeout: 5000 });
+    await confirmDelete.waitForClickable({ timeout: 5000 });
+    await confirmDelete.click();
 
+    await browser.waitUntil(
+      async () => {
+        const current = await invokeBackend<{ id: string }[]>('list_dashboards');
+        return current.length === list.length - 1;
+      },
+      {
+        timeout: 10000,
+        interval: 200,
+        timeoutMsg: 'dashboard deletion did not complete in the backend',
+      },
+    );
     const listAfter = await invokeBackend<{ id: string }[]>('list_dashboards');
     expect(listAfter.length).toBe(list.length - 1);
   });
@@ -75,13 +85,64 @@ describe('数据看板面板 (UJ-02, UJ-08)', () => {
     const pauseBtn = await $('[data-testid="dashboard-pause-toggle"]');
     await pauseBtn.waitForDisplayed({ timeout: 5000 });
 
+    // `DashboardPanel` initializes monitorPaused asynchronously from
+    // loadDashboard. Wait for both sources of truth before the first click;
+    // otherwise the button can briefly represent "pause" while the backend
+    // is already paused, making the first click a no-op.
+    await browser.waitUntil(
+      async () => {
+        const dash = await invokeBackend<{ refreshPaused?: boolean }>('get_dashboard', {
+          id: BOARD_A,
+        });
+        return (
+          dash.refreshPaused === true &&
+          (await pauseBtn.getAttribute('title')) === '恢复本看板定时'
+        );
+      },
+      {
+        timeout: 10000,
+        interval: 200,
+        timeoutMsg: 'dashboard pause state did not load into the UI',
+      },
+    );
+
     await pauseBtn.click();
-    await browser.pause(500);
+    await browser.waitUntil(
+      async () => {
+        const dash = await invokeBackend<{ refreshPaused?: boolean }>('get_dashboard', {
+          id: BOARD_A,
+        });
+        return (
+          dash.refreshPaused === false &&
+          (await pauseBtn.getAttribute('title')) === '暂停本看板定时'
+        );
+      },
+      {
+        timeout: 10000,
+        interval: 200,
+        timeoutMsg: 'dashboard resume state did not propagate to the UI',
+      },
+    );
     const dash = await invokeBackend<{ refreshPaused?: boolean }>('get_dashboard', { id: BOARD_A });
     expect(dash.refreshPaused).toBe(false);
 
     await pauseBtn.click();
-    await browser.pause(500);
+    await browser.waitUntil(
+      async () => {
+        const dashAgain = await invokeBackend<{ refreshPaused?: boolean }>('get_dashboard', {
+          id: BOARD_A,
+        });
+        return (
+          dashAgain.refreshPaused === true &&
+          (await pauseBtn.getAttribute('title')) === '恢复本看板定时'
+        );
+      },
+      {
+        timeout: 10000,
+        interval: 200,
+        timeoutMsg: 'dashboard pause state did not propagate to the UI',
+      },
+    );
     const dashAgain = await invokeBackend<{ refreshPaused?: boolean }>('get_dashboard', {
       id: BOARD_A,
     });
