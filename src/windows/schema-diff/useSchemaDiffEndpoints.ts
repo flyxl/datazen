@@ -10,6 +10,7 @@ import {
   type DedicatedSideSession,
 } from '../../lib/dedicatedDbSession';
 import { pickDefaultSchema, uniqueSchemasFromTables } from '../data-sync/utils';
+import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { ConnectionConfig } from '../../types';
 
 export interface SchemaDiffEndpointSessions {
@@ -217,7 +218,13 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
   }, [targetId, targetDatabase]);
 
   useEffect(() => {
-    if (!sourceId || !sourceDatabase || sourceConn?.databaseType !== 'postgresql') {
+    const sourceMeta = sourceConn ? DB_REGISTRY[sourceConn.databaseType] : undefined;
+    if (
+      !sourceId ||
+      !sourceDatabase ||
+      sourceMeta?.supportsTables !== true ||
+      sourceMeta.supportsSQL !== true
+    ) {
       setSourceSchemas([]);
       setSourceSchema('');
       return;
@@ -251,7 +258,13 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
   }, [sourceId, sourceDatabase, sourceConn?.databaseType, sourceSession]);
 
   useEffect(() => {
-    if (!targetId || !targetDatabase || targetConn?.databaseType !== 'postgresql') {
+    const targetMeta = targetConn ? DB_REGISTRY[targetConn.databaseType] : undefined;
+    if (
+      !targetId ||
+      !targetDatabase ||
+      targetMeta?.supportsTables !== true ||
+      targetMeta.supportsSQL !== true
+    ) {
       setTargetSchemas([]);
       setTargetSchema('');
       return;
