@@ -750,6 +750,7 @@ const zhCN = {
   'dataTable.sort': '排序',
   'dataTable.selectRow': '选择行',
   'dataTable.copyRow': '复制行',
+  'dataTable.moreActions': '更多操作',
   'dataTable.copyAsJson': '复制为 JSON',
   'dataTable.copyAsSqlInsert': '复制为 SQL INSERT',
   'dataTable.copyAsUpdate': '复制为 UPDATE',

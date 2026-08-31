@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { render, fireEvent, cleanup } from '@testing-library/react';
-import { Pagination } from '../Pagination';
+import { Pagination, paginationReducer, resetPageOnFilterChange } from '../Pagination';
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -11,12 +11,14 @@ vi.mock('../../ui/Select', () => ({
     value,
     options,
     onChange,
+    disabled,
   }: {
     value: string | number;
     options: { value: string; label: string }[];
     onChange: (v: string) => void;
+    disabled?: boolean;
   }) => (
-    <select value={String(value)} onChange={(e) => onChange(e.target.value)}>
+    <select disabled={disabled} value={String(value)} onChange={(e) => onChange(e.target.value)}>
       {options.map((o) => (
         <option key={o.value} value={o.value}>{o.label}</option>
       ))}
@@ -27,6 +29,69 @@ vi.mock('../../ui/Select', () => ({
 afterEach(cleanup);
 
 describe('Pagination', () => {
+  it('resets only page for a filter change in the pure reducer', () => {
+    const state = { page: 4, pageSize: 50, totalRows: 275 };
+    expect(resetPageOnFilterChange(state)).toEqual({ page: 0, pageSize: 50, totalRows: 275 });
+    expect(paginationReducer(state, { type: 'filterChanged' })).toEqual({
+      page: 0,
+      pageSize: 50,
+      totalRows: 275,
+    });
+  });
+
+  it('rejects invalid page transitions in the pure reducer', () => {
+    const state = { page: 2, pageSize: 50, totalRows: 275 };
+    expect(paginationReducer(state, { type: 'pageChanged', page: Number.NaN })).toEqual(state);
+    expect(paginationReducer(state, { type: 'pageSizeChanged', pageSize: 0.5 })).toEqual(state);
+  });
+
+  it('resets page through caller callbacks when filter revision changes', () => {
+    const onPageChange = vi.fn();
+    const onPageReset = vi.fn();
+    const { rerender } = render(
+      <Pagination
+        page={3}
+        pageSize={25}
+        totalRows={100}
+        filterRevision={1}
+        onPageChange={onPageChange}
+        onPageSizeChange={vi.fn()}
+        onPageReset={onPageReset}
+      />,
+    );
+
+    rerender(
+      <Pagination
+        page={3}
+        pageSize={25}
+        totalRows={100}
+        filterRevision={2}
+        onPageChange={onPageChange}
+        onPageSizeChange={vi.fn()}
+        onPageReset={onPageReset}
+      />,
+    );
+    expect(onPageReset).toHaveBeenCalledTimes(1);
+    expect(onPageChange).toHaveBeenCalledWith(0);
+  });
+
+  it('exposes loading state and disables paging controls', () => {
+    const { container, getByLabelText } = render(
+      <Pagination
+        page={1}
+        pageSize={25}
+        totalRows={100}
+        loading
+        onPageChange={vi.fn()}
+        onPageSizeChange={vi.fn()}
+      />,
+    );
+    expect(container.firstElementChild).toHaveAttribute('aria-busy', 'true');
+    expect(getByLabelText('pagination.prev')).toBeDisabled();
+    expect(getByLabelText('pagination.next')).toBeDisabled();
+    expect(container.querySelector('select')).toBeDisabled();
+  });
+
   it('shows row range and page label', () => {
     const { getByText } = render(
       <Pagination

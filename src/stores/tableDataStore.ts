@@ -111,6 +111,10 @@ export interface TableState {
   lastSelectedIndex: number | null;
   editingCell: { row: number; col: string } | null;
   loading: boolean;
+  /** Monotonic revision of the latest requested page/filter/sort state. */
+  requestRevision: number;
+  /** Revision currently represented by the in-flight request, if any. */
+  loadingRevision: number | null;
   error: string | null;
 }
 
@@ -138,6 +142,8 @@ function emptyTableState(context: TableChangeContext | null = null): TableState 
     lastSelectedIndex: null,
     editingCell: null,
     loading: false,
+    requestRevision: 0,
+    loadingRevision: null,
     error: null,
   };
 }
@@ -372,6 +378,18 @@ function updateActive(
   const next = new Map(conn.tableStates);
   next.set(conn.activeTableKey, patched);
   commitPatch(get, set, null, { tableStates: next });
+}
+
+/** Mark a page/filter/sort transition so an older response can never commit. */
+function updateActiveForReload(
+  get: () => TableDataStore,
+  set: (partial: Partial<TableDataStore>) => void,
+  updater: (ts: TableState) => Partial<TableState>,
+): void {
+  updateActive(get, set, (ts) => ({
+    ...updater(ts),
+    requestRevision: ts.requestRevision + 1,
+  }));
 }
 
 const AMBIGUOUS_ROW_IDENTITY_ERROR =
@@ -619,7 +637,8 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     const tableKey = tableChangeContextKey(context);
     const existing = connState.tableStates.get(tableKey) ?? emptyTableState(context);
 
-    if (existing.loading) return;
+    const requestRevision = existing.requestRevision;
+    if (existing.loading && existing.loadingRevision === requestRevision) return;
 
     // F1: explicit pin wins; otherwise reuse the remembered target database so
     // store-driven refreshes stay on the panel's database.
@@ -645,7 +664,13 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         });
       }
     }
-    nextStates.set(tableKey, { ...existing, context, loading: true, error: null });
+    nextStates.set(tableKey, {
+      ...existing,
+      context,
+      loading: true,
+      loadingRevision: requestRevision,
+      error: null,
+    });
     commitPatch(get, set, dbSessionId, {
       activeTable: table,
       activeTableKey: tableKey,
@@ -671,6 +696,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       const latestConn = get().perConnection.get(dbSessionId) ?? emptyConnectionTableState();
       const updated = new Map(latestConn.tableStates);
       const ts = updated.get(tableKey) ?? emptyTableState(context);
+      if (ts.requestRevision !== requestRevision || ts.loadingRevision !== requestRevision) return;
       const fetchedRows = rowsToRecords(res.columns, res.rows);
       const pkColumns = res.columns.filter((column) => column.isPrimaryKey);
       const duplicateIdentityKeys = duplicateRowIdentityKeys(fetchedRows, pkColumns);
@@ -694,6 +720,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         context,
         rowIdentityAnchors: anchors,
         loading: false,
+        loadingRevision: null,
         selectedRows: new Set(),
         editBuffer: rebuildEditBuffer({
           ...ts,
@@ -710,9 +737,11 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       const latestConn = get().perConnection.get(dbSessionId) ?? emptyConnectionTableState();
       const updated = new Map(latestConn.tableStates);
       const ts = updated.get(tableKey) ?? emptyTableState(context);
+      if (ts.requestRevision !== requestRevision || ts.loadingRevision !== requestRevision) return;
       updated.set(tableKey, {
         ...ts,
         loading: false,
+        loadingRevision: null,
         error: extractErrorMessage(e, t('tableData.loadFailed')),
       });
       commitPatch(get, set, dbSessionId, { tableStates: updated });
@@ -720,7 +749,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   setPage: (page) => {
-    updateActive(get, set, () => ({ page }));
+    updateActiveForReload(get, set, () => ({ page }));
     const conn = getActiveConn(get);
     const { activeDbSessionId } = get();
     if (activeDbSessionId && conn.activeTable)
@@ -736,7 +765,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   setPageSize: (size) => {
-    updateActive(get, set, () => ({ pageSize: size, page: 0 }));
+    updateActiveForReload(get, set, () => ({ pageSize: size, page: 0 }));
     const conn = getActiveConn(get);
     const { activeDbSessionId } = get();
     if (activeDbSessionId && conn.activeTable)
@@ -760,7 +789,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
   setFilters: (filters) => {
     const next = cloneFilters(filters);
-    updateActive(get, set, () => ({
+    updateActiveForReload(get, set, () => ({
       filters: next,
       draftFilters: cloneFilters(next),
       page: 0,
@@ -786,7 +815,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   clearFilters: () => {
-    updateActive(get, set, () => ({
+    updateActiveForReload(get, set, () => ({
       filters: [],
       draftFilters: [],
       filterLogic: 'and',
@@ -805,7 +834,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     ) {
       return;
     }
-    updateActive(get, set, (cur) => ({
+    updateActiveForReload(get, set, (cur) => ({
       filters: cloneFilters(cur.draftFilters),
       filterLogic: cur.draftFilterLogic,
       page: 0,
@@ -818,7 +847,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   setSort: (sort) => {
-    updateActive(get, set, () => ({ sorts: [sort], page: 0 }));
+    updateActiveForReload(get, set, () => ({ sorts: [sort], page: 0 }));
     const conn = getActiveConn(get);
     const { activeDbSessionId } = get();
     if (activeDbSessionId && conn.activeTable)

@@ -4,6 +4,7 @@ import type { NativeMenuItemDef } from './nativeContextMenu';
 export type DataTableContextMenuLabels = {
   copy: string;
   copyRow: string;
+  moreActions: string;
   copyAsJson: string;
   copyAsSqlInsert: string;
   copyAsUpdate: string;
@@ -59,6 +60,14 @@ function item(
 
 function push(...defs: Array<NativeMenuItemDef | null>): NativeMenuItemDef[] {
   return defs.filter((d): d is NativeMenuItemDef => d != null);
+}
+
+function submenu(
+  id: string,
+  label: string,
+  items: NativeMenuItemDef[],
+): NativeMenuItemDef | null {
+  return items.length > 0 ? { kind: 'submenu', id, label, items } : null;
 }
 
 function escapeCsvCell(value: unknown): string {
@@ -202,8 +211,9 @@ export function resolveDataTableCellFromEvent(
 
 /**
  * TablePlus-style DataTable context menu.
- * With cell context: always a multi-item menu (copy / copy row / copy as… / set null / filter / delete / export).
- * Never emit a lonely single “Export” item when cell context exists.
+ * With cell context, keep the frequent actions at the root and group the
+ * lower-frequency copy/NULL actions under a submenu. Never emit a lonely
+ * “Export” item when cell context exists.
  */
 export function buildDataTableContextMenuItems(
   args: BuildDataTableContextMenuArgs,
@@ -220,15 +230,9 @@ export function buildDataTableContextMenuItems(
   } = args;
 
   if (hasCellContext) {
-    const cellBlock = push(
+    const frequent = push(
       item('copy', labels.copy, handlers.onCopy),
       item('copy-row', labels.copyRow, handlers.onCopyRow),
-      item('copy-as-json', labels.copyAsJson, handlers.onCopyAsJson),
-      item('copy-as-sql-insert', labels.copyAsSqlInsert, handlers.onCopyAsSqlInsert),
-      item('copy-as-update', labels.copyAsUpdate, handlers.onCopyAsUpdate),
-      item('copy-as-csv', labels.copyAsCsv, handlers.onCopyAsCsv),
-      item('copy-column-name', labels.copyColumnName, handlers.onCopyColumnName),
-      canSetNull ? item('set-null', labels.setNull, handlers.onSetNull) : null,
       canFilterByValue
         ? item('filter-by-value', labels.filterByValue, handlers.onFilterByValue)
         : null,
@@ -238,32 +242,50 @@ export function buildDataTableContextMenuItems(
       ? push(item('delete-row', labels.deleteRow, handlers.onDeleteRow))
       : [];
 
-    const tail = push(
+    const moreActions = push(
+      item('copy-as-json', labels.copyAsJson, handlers.onCopyAsJson),
+      item('copy-as-sql-insert', labels.copyAsSqlInsert, handlers.onCopyAsSqlInsert),
+      item('copy-as-update', labels.copyAsUpdate, handlers.onCopyAsUpdate),
+      item('copy-as-csv', labels.copyAsCsv, handlers.onCopyAsCsv),
+      item('copy-column-name', labels.copyColumnName, handlers.onCopyColumnName),
+      canSetNull ? item('set-null', labels.setNull, handlers.onSetNull) : null,
       hasSelectedRows
         ? item('copy-selected-rows', labels.copySelectedRows, handlers.onCopySelectedRows)
         : null,
-      exportEnabled ? item('export', labels.export, handlers.onExport) : null,
     );
 
-    let out = cellBlock;
+    let out = frequent;
     if (danger.length > 0) {
       out = out.length > 0 ? [...out, { kind: 'separator' }, ...danger] : danger;
     }
-    if (tail.length > 0) {
-      out = out.length > 0 ? [...out, { kind: 'separator' }, ...tail] : tail;
+    if (exportEnabled) {
+      const exportItem = item('export', labels.export, handlers.onExport);
+      if (exportItem) {
+        out = out.length > 0 ? [...out, { kind: 'separator' }, exportItem] : [exportItem];
+      }
+    }
+    const more = submenu('more-actions', labels.moreActions, moreActions);
+    if (more) {
+      out = out.length > 0 ? [...out, { kind: 'separator' }, more] : [more];
     }
     return out;
   }
 
-  // No cell hit — still avoid a single lonely export when possible.
-  return push(
+  const moreActions = push(
     hasSelectedRows
       ? item('copy-selected-rows', labels.copySelectedRows, handlers.onCopySelectedRows)
       : null,
     hasSelectedRows ? item('copy-as-csv', labels.copyAsCsv, handlers.onCopyAsCsv) : null,
+  );
+
+  // No cell hit: keep Export at the root and group selection copy actions.
+  const frequent = push(
     canDelete && hasSelectedRows
       ? item('delete-row', labels.deleteRow, handlers.onDeleteRow)
       : null,
     exportEnabled ? item('export', labels.export, handlers.onExport) : null,
   );
+  const more = submenu('more-actions', labels.moreActions, moreActions);
+  if (!more) return frequent;
+  return frequent.length > 0 ? [...frequent, { kind: 'separator' }, more] : [more];
 }
