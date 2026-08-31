@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 import { connectionCommands } from '../commands/connection';
 import { emitCrossWindow } from '../lib/crossWindowBus';
+import {
+  groupConnectionsWithRecentSections,
+  rankConnections,
+} from '../lib/connectionLocator';
 import { t } from '../locales/t';
 import type { ConnectionConfig, ServerInfo } from '../types';
 
@@ -11,57 +15,28 @@ export function filterConnections(
   selectedGroup: string | null,
   searchQuery: string,
 ): ConnectionConfig[] {
-  const q = searchQuery.trim().toLowerCase();
-  return connections.filter((c) => {
-    if (selectedGroup && c.group !== selectedGroup) return false;
-    if (!q) return true;
-    const hay = `${c.name} ${c.host ?? ''} ${c.database ?? ''} ${c.databaseType}`.toLowerCase();
-    return hay.includes(q);
-  });
+  const selected = selectedGroup
+    ? connections.filter((connection) => connection.group === selectedGroup)
+    : connections;
+  return rankConnections(selected, searchQuery).map(({ connection }) => connection);
 }
 
 /** Synthetic group key for navigator pinned section (not persisted). */
-export const PINNED_GROUP_KEY = '__pinned__';
+export { PINNED_GROUP_KEY, RECENT_GROUP_KEY } from '../lib/connectionLocator';
 
-/** Pinned connections first, then by name within a group. */
+/** Pinned connections first, then recent connections, then stable name/id order. */
 export function sortConnectionsInGroup(connections: ConnectionConfig[]): ConnectionConfig[] {
-  return [...connections].sort((a, b) => {
-    const aPinned = a.pinned === true ? 1 : 0;
-    const bPinned = b.pinned === true ? 1 : 0;
-    if (aPinned !== bPinned) return bPinned - aPinned;
-    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-  });
+  return rankConnections(connections, '').map(({ connection }) => connection);
 }
 
-/** Hoist pinned connections into a dedicated first section (when not searching). */
+/** Hoist pinned and recent connections into dedicated sections (when not searching). */
 export function groupConnectionsWithPinnedSection(
   connections: ConnectionConfig[],
   groups: string[],
   searchQuery: string,
 ): { group: string; connections: ConnectionConfig[] }[] {
-  const grouped = groupConnections(connections, groups, searchQuery);
-  if (searchQuery.trim()) return grouped;
-
-  const pinned: ConnectionConfig[] = [];
-  const pinnedIds = new Set<string>();
-  for (const { connections: groupConns } of grouped) {
-    for (const conn of groupConns) {
-      if (conn.pinned === true && !pinnedIds.has(conn.id)) {
-        pinnedIds.add(conn.id);
-        pinned.push(conn);
-      }
-    }
-  }
-  if (pinned.length === 0) return grouped;
-
-  const rest = grouped
-    .map(({ group, connections: groupConns }) => ({
-      group,
-      connections: groupConns.filter((c) => !pinnedIds.has(c.id)),
-    }))
-    .filter(({ connections: groupConns }) => groupConns.length > 0);
-
-  return [{ group: PINNED_GROUP_KEY, connections: sortConnectionsInGroup(pinned) }, ...rest];
+  if (searchQuery.trim()) return groupConnections(connections, groups, searchQuery);
+  return groupConnectionsWithRecentSections(connections, groups);
 }
 
 /** Group connections by their `group` field; ungrouped come last. */
@@ -70,12 +45,9 @@ export function groupConnections(
   groups: string[],
   searchQuery: string,
 ): { group: string; connections: ConnectionConfig[] }[] {
-  const q = searchQuery.trim().toLowerCase();
-  const filtered = connections.filter((c) => {
-    if (!q) return true;
-    const hay = `${c.name} ${c.host ?? ''} ${c.database ?? ''} ${c.databaseType}`.toLowerCase();
-    return hay.includes(q);
-  });
+  const ranked = rankConnections(connections, searchQuery);
+  const filtered = ranked.map(({ connection }) => connection);
+  const isSearching = searchQuery.trim().length > 0;
 
   const map = new Map<string, ConnectionConfig[]>();
   for (const g of groups) map.set(g, []);
@@ -85,7 +57,7 @@ export function groupConnections(
     map.get(key)!.push(c);
   }
   for (const [key, conns] of map) {
-    map.set(key, sortConnectionsInGroup(conns));
+    map.set(key, isSearching ? conns : sortConnectionsInGroup(conns));
   }
   const result: { group: string; connections: ConnectionConfig[] }[] = [];
   const seen = new Set<string>();

@@ -8,7 +8,12 @@ import {
   shouldShowDatabase,
   shouldShowSchema,
 } from '../../../lib/objectFilter';
-import { PINNED_GROUP_KEY } from '../../../stores/connectionStore';
+import {
+  rankConnections,
+  PINNED_GROUP_KEY,
+  RECENT_GROUP_KEY,
+  type ConnectionLocatorUsageState,
+} from '../../../lib/connectionLocator';
 import type { ConnectionEntry } from '../../../stores/activeConnectionStore';
 import type { I18nKey } from '../../../locales';
 import type { ConnectionConfig, DatabaseObject, TableInfo } from '../../../types';
@@ -17,7 +22,7 @@ import type { ConnectionSchemaState } from '../../../stores/schemaStore';
 import { shouldUseMultiDatabaseTree } from '../schema-tree/SchemaTree';
 import { getCategoriesForDriver } from '../schema-tree/schemaTreeCategories';
 import type { UnifiedRow } from './types';
-import { flattenNamespaceTree, groupBySchema, namespaceTreeContains } from './utils';
+import { flattenNamespaceTree, groupBySchema } from './utils';
 
 export interface BuildNavigatorFlatRowsParams {
   grouped: { group: string; connections: ConnectionConfig[] }[];
@@ -34,6 +39,7 @@ export interface BuildNavigatorFlatRowsParams {
   loadingDbs: Set<string>;
   query: string;
   t: (key: I18nKey, params?: Record<string, string | number>) => string;
+  usageState?: ConnectionLocatorUsageState;
 }
 
 export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): UnifiedRow[] {
@@ -136,47 +142,51 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
     }
   };
 
-  if (grouped.length === 0) {
+  const uniqueConnections = new Map<string, ConnectionConfig>();
+  for (const section of grouped) {
+    for (const connection of section.connections) {
+      if (!uniqueConnections.has(connection.id)) uniqueConnections.set(connection.id, connection);
+    }
+  }
+  const usageState = params.usageState ?? {
+    activeConnections,
+    schemas,
+    dbTablesMap,
+    dbObjectsMap,
+  };
+  const locatorResults = rankConnections([...uniqueConnections.values()], query, usageState);
+  const matchesById = new Map(locatorResults.map((result) => [result.connection.id, result]));
+  const sections = query
+    ? [{ group: '', connections: locatorResults.map((result) => result.connection) }]
+    : grouped;
+
+  if (sections.length === 0) {
     rows.push({ type: 'no-connections' });
     return rows;
   }
-
-  const connectionMatchesQuery = (conn: ConnectionConfig): boolean => {
-    if (!query) return true;
-    const hay =
-      `${conn.name} ${conn.host ?? ''} ${conn.database ?? ''} ${conn.databaseType}`.toLowerCase();
-    if (hay.includes(query)) return true;
-
-    const cEntry = activeConnections[conn.id];
-    if (cEntry?.status !== 'connected' || !cEntry.dbSessionId) return false;
-    const sd = schemas.get(cEntry.dbSessionId);
-    if (!sd) return false;
-
-    if (sd.databases.some((d) => d.toLowerCase().includes(query))) return true;
-    if (sd.tables.some((tbl) => tbl.name.toLowerCase().includes(query))) return true;
-    if (sd.views.some((v) => v.name.toLowerCase().includes(query))) return true;
-    if ([...sd.tables, ...sd.views].some((i) => i.schema?.toLowerCase().includes(query)))
-      return true;
-    for (const [key, items] of Object.entries(dbTablesMap)) {
-      if (!key.startsWith(cEntry.dbSessionId + '::')) continue;
-      if (items.some((i) => i.name.toLowerCase().includes(query))) return true;
-    }
-    if (!isLeaf(sd.namespaceTree) && namespaceTreeContains(sd.namespaceTree, query)) return true;
-    for (const items of Object.values(sd.pathItems)) {
-      if (items.some((i) => i.name.toLowerCase().includes(query))) return true;
-    }
-    return false;
-  };
-
-  for (const { group: groupName, connections: groupConns } of grouped) {
-    const filteredConns = query ? groupConns.filter(connectionMatchesQuery) : groupConns;
+  for (const { group: groupName, connections: groupConns } of sections) {
+    const filteredConns = groupConns;
     if (query && filteredConns.length === 0) continue;
 
     const isPinnedSection = groupName === PINNED_GROUP_KEY;
-    const expanded = isPinnedSection || expandedGroups.has(groupName) || !!query;
-    const displayName = groupName ? formatGroupLabel(groupName, t) : t('main.ungrouped');
+    const isRecentSection = groupName === RECENT_GROUP_KEY;
+    const expanded = isPinnedSection || isRecentSection || expandedGroups.has(groupName) || !!query;
+    const displayName = isPinnedSection
+      ? t('main.ctx.pinConnection')
+      : isRecentSection
+        ? t('context.recent')
+        : groupName
+          ? formatGroupLabel(groupName, t)
+          : t('main.ungrouped');
 
-    if (!isPinnedSection) {
+    if (isPinnedSection || isRecentSection) {
+      rows.push({
+        type: 'section',
+        section: isPinnedSection ? 'pinned' : 'recent',
+        displayName,
+        count: filteredConns.length,
+      });
+    } else if (!query) {
       rows.push({
         type: 'group',
         groupName,
@@ -206,7 +216,8 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
         isSelected: activeConnectionId === conn.id,
         status,
         expanded: (isExpanded && isConnected) || !!query,
-        depth: 1,
+        depth: query ? 0 : 1,
+        match: matchesById.get(conn.id)?.match ?? undefined,
       });
 
       if (!isConnected || (!isExpanded && !query)) continue;
