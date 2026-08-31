@@ -4,9 +4,9 @@
 
 - 编号：v01x-ai-actions
 - 范围：QueryDiagnosisContext 脱敏、Explain/Fix SQL/Retry 纯 action descriptor 与单元测试
-- 状态：修复完成·已提交；BUG-001/002/003/004 已完成修复与回归验证
-- 编码 commit：`63d8e6dfe49d299205899b88c7b0561330dd0b5b`
-- 测试验收：独立测试轮发现 `v01x-ai-actions-BUG-001/002`，后续复验发现 `BUG-003/004`；本修复轮已补齐结果别名与 JSON 转义回归测试并通过，Explain/Fix SQL/Retry 主路径与无副作用边界保持通过，I 轨接线和 E2E 留待后续
+- 状态：独立复测通过·待测试提交；BUG-001/002/003/004 修复均通过回归
+- 编码 commit：`63d8e6dfe49d299205899b88c7b0561330dd0b5b`、`49058f8b1da2bdf39ab0540e20d594f72f2ebe90`、`bbd7c4cc70b7d43000b85372f28eb92b67568818`
+- 测试验收：全新复测代理对三个编码提交的累计结果执行定向/相关 Vitest、模块严格 tsc、静态 adversarial review 与 `git diff --check`；BUG-003/004 未发现新的明确业务 bug，Explain/Fix SQL/Retry 主路径与无副作用边界通过，I 轨接线和 E2E 留待后续
 
 ## 2. E2E 用例登记
 
@@ -20,14 +20,16 @@
 
 - 定向 Vitest：`npx vitest run src/lib/__tests__/aiQueryActions.test.ts`，1 个文件、12 个测试通过。
 - 相关 AI Vitest：`npx vitest run src/lib/__tests__/aiQueryActions.test.ts src/components/ai/__tests__/DiagnosisPanel.test.tsx src/stores/__tests__/aiStore.test.ts`，3 个文件、55 个测试通过。
+- 独立 adversarial review：运行时断言覆盖 `resultsSet`/`resultsRows`/`resultsData` 的大小写、camelCase、`_`/`-`/`.`/重复分隔符变体；`resultStatus`、`resultsSummary`、`businessResults`、`dataPoints`、`resultCount`、`resultType` 等普通业务字段保留；嵌套 JSON 结果别名移除；含转义引号、反斜杠、换行的 token/password 无片段残留；结果数组与普通数组均严格截取 100 项；通过。
+- Descriptor review：Explain 构建不回调、invoke 只传既有 `ai_diagnose_error` 脱敏参数；Fix 构建不写 editor，`applyToEditor` 只回调 draft 且保留 original SQL/diff；Retry 仅在 context fingerprint、SQL、bound params 全部匹配后回调，context/SQL/params 任一变化均拒绝；模块无 IPC/数据库命令导入；通过。
 - 聚焦覆盖率：`npx vitest run --coverage --coverage.include=src/lib/aiQueryActions.ts --coverage.reportsDirectory=/private/tmp/datazen-v01x-ai-actions-coverage-fix-20260831 src/lib/__tests__/aiQueryActions.test.ts`，`aiQueryActions.ts` lines 95.18%、statements 87.50%、branches 75.47%、functions 97.43%，命令通过；默认全局 coverage 阈值会将未执行的其他目录计为 0，未作为本轨判定依据。
 - 本轨模块严格类型检查：`npx tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --skipLibCheck --allowImportingTsExtensions src/lib/aiQueryActions.ts src/lib/__tests__/aiQueryActions.test.ts`，通过。
-- `npx tsc --noEmit`：被基线缺失的 gitignored 生成文件 `src/locales/builtinLocales.ts` 阻塞，并连带报 `src/windows/settings/SettingsContent.tsx:66` 隐式 any；本轨未生成或修改 codegen，未运行 `pnpm install`。
+- `npx tsc --noEmit`：按复测前置要求运行 `node scripts/generate-builtin-locales.mjs` 生成 ignored 的 `src/locales/builtinLocales.ts` 后通过；生成物未纳入提交。
 - Rust host 回归：`CARGO_TARGET_DIR=/private/tmp/datazen-v01x-ai-actions-target cargo test -p datazen --lib`，1193 通过、0 失败、2 ignored；本 commit 无 Rust 改动。
-- `git diff --check`：修复目标文件及本轨记录文件通过。
+- `git diff --check`：记录更新后通过。
 - 静态/动态边界核对：模块无 IPC/数据库命令导入，无 AskQuestion→Workflow 实现；Fix build/apply 仅生成/回调 editor draft，Retry 在 callback 前校验 context fingerprint、SQL 和 bound params；本轮仅收紧脱敏/结果集过滤，descriptor 语义未变。
 - 修复边界：结果键按大小写不敏感的完整分词别名匹配，覆盖 `result(s)Set/Rows/Data`、`queryResult(s)*` 及既有别名，并保留 `resultStatus`、`resultsSummary`、`businessResults` 等非完整别名字段；JSON 文本先解析并递归移除敏感/结果字段，再由转义感知扫描处理非 JSON 文本。
-- 未修改 `QueryErrorPanel.tsx`、`QueryPanel.tsx`、`panelStore.ts`、locales、hub、规格文档或 codegen 文件；`hub.md` 的既有工作区变更原样保留且不纳入本提交。
+- 未修改 `QueryErrorPanel.tsx`、`QueryPanel.tsx`、`panelStore.ts`、locales、hub、规格文档或 tracked codegen 文件；按要求生成的 `src/locales/builtinLocales.ts` 保持 ignored 且不纳入本提交；`hub.md` 的既有工作区变更原样保留且不纳入本提交。
 
 ## 4. 设计决策 / 遗留
 
