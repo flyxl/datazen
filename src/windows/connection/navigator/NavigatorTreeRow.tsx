@@ -121,6 +121,19 @@ export function NavigatorTreeRow({
   viewActions,
 }: NavigatorTreeRowProps) {
   switch (row.type) {
+    case 'section':
+      return (
+        <div
+          data-section-header
+          data-section={row.section}
+          className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-fg-muted"
+        >
+          <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+          <span>{row.displayName}</span>
+          <span className="text-[10px] font-normal">({row.count})</span>
+        </div>
+      );
+
     case 'group':
       return (
         <div
@@ -148,6 +161,7 @@ export function NavigatorTreeRow({
     case 'connection': {
       const showDropBefore = dropTarget?.id === row.conn.id && dropTarget.position === 'before';
       const showDropAfter = dropTarget?.id === row.conn.id && dropTarget.position === 'after';
+      const matchTitle = row.match ? `${row.match.reason}: ${row.match.context}` : undefined;
 
       return (
         <div>
@@ -161,6 +175,9 @@ export function NavigatorTreeRow({
             onDragLeave={handleDragLeave}
             onDragEnd={handleDragEnd}
             onDrop={handleDrop}
+            title={matchTitle}
+            data-search-match-reason={row.match?.reason}
+            data-search-match-context={row.match?.context}
             className={cn(
               'group relative flex cursor-default items-center gap-1.5 py-1 pr-2 text-[13px] transition-colors',
               row.isSelected
