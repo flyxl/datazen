@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { aiCommands, onAiStreamChunk, onAiStreamError, onAiConfigChanged } from '../commands/ai';
+import { redactSensitiveText } from '../lib/aiQueryActions';
 import { extractSqlFromResponse } from '../lib/extractSql';
 import { normalizeAiProviders } from '../lib/aiProviders';
 import { extractQuestions, parseToolCallQuestions } from '../lib/extractQuestions';
@@ -66,8 +67,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
     try {
       const providers = normalizeAiProviders(await aiCommands.getProviders());
       set({ providers });
-    } catch (e) {
-      console.error('Failed to load AI providers:', e);
+    } catch {
+      console.error('Failed to load AI providers');
     }
   },
 
@@ -145,7 +146,16 @@ export const useAiStore = create<AiStore>((set, get) => ({
     if (!nl2sql.input.trim()) return;
 
     const requestId = crypto.randomUUID();
-    console.debug('[AI] generateSql:', { ...params, input: nl2sql.input, requestId });
+    console.debug('[AI] generateSql:', {
+      dbSessionId: params.dbSessionId,
+      database: params.database,
+      currentTable: params.currentTable,
+      recentQueriesCount: params.recentQueries?.length ?? 0,
+      contextFilesCount: params.contextFiles?.length ?? 0,
+      contextTablesCount: params.contextTables?.length ?? 0,
+      inputLen: nl2sql.input.length,
+      requestId,
+    });
     set({
       nl2sql: {
         ...nl2sql,
@@ -163,7 +173,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         requestId,
       });
     } catch (e) {
-      console.error('[AI] generateSql error:', e);
+      console.error('[AI] generateSql failed');
       set((s) => ({
         nl2sql: { ...s.nl2sql, isGenerating: false },
         nl2sqlError: e instanceof Error ? e.message : String(e),
@@ -176,13 +186,24 @@ export const useAiStore = create<AiStore>((set, get) => ({
   // ── Diagnosis ──
 
   diagnoseError: async (params) => {
+    const safeParams = {
+      ...params,
+      sql: redactSensitiveText(params.sql),
+      errorMessage: redactSensitiveText(params.errorMessage),
+    };
     console.debug('[AI] diagnoseError:', {
-      sql_len: params.sql?.length,
-      error: params.errorMessage,
+      dbSessionId: params.dbSessionId,
+      database: params.database,
+      sqlLen: params.sql.length,
+      safeSqlLen: safeParams.sql.length,
+      sqlRedacted: safeParams.sql !== params.sql,
+      errorLen: params.errorMessage.length,
+      safeErrorLen: safeParams.errorMessage.length,
+      errorRedacted: safeParams.errorMessage !== params.errorMessage,
     });
     set({ isDiagnosing: true, diagnosisError: null, diagnosis: null });
     try {
-      const result = await aiCommands.diagnoseError(params);
+      const result = await aiCommands.diagnoseError(safeParams);
       console.debug('[AI] diagnoseError result:', { changes: result?.changes?.length });
       set({ diagnosis: result, isDiagnosing: false });
     } catch (e) {
@@ -211,7 +232,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
       });
       set({ explainAnalysis: result, isAnalyzingExplain: false });
     } catch (e) {
-      console.error('[AI] analyzeExplain error:', e);
+      console.error('[AI] analyzeExplain failed');
       set({
         isAnalyzingExplain: false,
         explainError: e instanceof Error ? e.message : String(e),
@@ -230,7 +251,12 @@ export const useAiStore = create<AiStore>((set, get) => ({
     const { nlFilterInput } = get();
     if (!nlFilterInput.trim()) return null;
 
-    console.debug('[AI] parseFilter:', { dbSessionId, database, table, input: nlFilterInput });
+    console.debug('[AI] parseFilter:', {
+      dbSessionId,
+      database,
+      table,
+      inputLen: nlFilterInput.length,
+    });
     set({ isParsingFilter: true, nlFilterError: null, parsedFilters: null });
 
     try {
@@ -244,7 +270,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
       set({ parsedFilters: filters, isParsingFilter: false });
       return filters;
     } catch (e) {
-      console.error('[AI] parseFilter error:', e);
+      console.error('[AI] parseFilter failed');
       set({
         isParsingFilter: false,
         nlFilterError: e instanceof Error ? e.message : String(e),
@@ -799,8 +825,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
     try {
       const servers = await aiCommands.mcpClientList();
       set({ mcpServers: servers });
-    } catch (e) {
-      console.error('Failed to load MCP servers:', e);
+    } catch {
+      console.error('Failed to load MCP servers');
     }
   },
 
@@ -808,8 +834,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
     try {
       const tools = await aiCommands.mcpClientTools();
       set({ mcpTools: tools });
-    } catch (e) {
-      console.error('Failed to load MCP tools:', e);
+    } catch {
+      console.error('Failed to load MCP tools');
     }
   },
 

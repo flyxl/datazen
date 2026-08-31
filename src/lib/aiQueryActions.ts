@@ -203,7 +203,7 @@ function isResultKey(key: string): boolean {
 }
 
 const SENSITIVE_ASSIGNMENT_PATTERN =
-  /(^|[^\w])(?:(?:\\)?["'])?([A-Za-z][\w.-]*)(?:(?:\\)?["'])?\s*(?:\\?:|=)\s*/gi;
+  /(?<![\w])(?:(?:\\)?["'])?([A-Za-z][\w.-]*)(?:(?:\\)?["'])?\s*(?:\\?:|=)\s*/gi;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
@@ -279,15 +279,13 @@ function redactSensitiveAssignments(value: string): string {
   let cursor = 0;
   for (const match of value.matchAll(SENSITIVE_ASSIGNMENT_PATTERN)) {
     const matchIndex = match.index ?? 0;
-    const prefix = match[1] ?? '';
-    const key = match[2] ?? match[3] ?? match[4] ?? '';
+    const key = match[1] ?? '';
     if (!isSensitiveKey(key)) continue;
 
-    const keyStart = matchIndex + prefix.length;
-    if (keyStart < cursor) continue;
+    if (matchIndex < cursor) continue;
     const valueStart = matchIndex + match[0].length;
     const valueEnd = consumeAssignedValue(value, valueStart);
-    result += value.slice(cursor, keyStart) + '[REDACTED]';
+    result += value.slice(cursor, matchIndex) + '[REDACTED]';
     cursor = valueEnd;
   }
   return result + value.slice(cursor);

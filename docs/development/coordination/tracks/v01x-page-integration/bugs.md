@@ -75,7 +75,8 @@
 
 ## BUG-PI-009 — AI 诊断底层仍信任并暴露 raw SQL/error
 
-- 状态：待修复；本轮仅记录。
+- 状态：待验证（修复后）。
 - 证据：`src-tauri/src/commands/ai/generate.rs:249` 将 raw `error_message` 写入 debug 日志，`:289` 将 raw `sql`/`error_message` 拼入 provider user prompt；`src/stores/aiStore.ts:179-182` 也记录传入的 raw error。
 - 影响：QueryPanel 的正常 UI 链路会先经 `buildQueryDiagnosisContext` 脱敏并传递 `safeSql`/`safeErrorMessage`，但直接 IPC 或 store 调用可绕过这一边界；因此 AI provider 与日志层没有端到端的 raw SQL/error 防护。
-- 判定：本轮 UI safe-payload 静态检查通过，纯前端安全子集 `3 files / 22 tests` 通过；底层信任/日志静态检查不通过。本轮不修复业务代码。
+- 修复：新增 Host Rust `ai::safety::redact_for_ai` 作为 command/service 信任边界，诊断、EXPLAIN、连接诊断、NL2SQL、过滤器及查询历史在进入 provider 前统一处理；store 仅记录长度/计数/脱敏标记，Rust AI 日志不再记录 raw error、prompt 或响应内容。原始 SQL 仍仅保留在 Fix draft/Retry 本地编辑能力中，不进入 AI 或日志。
+- 验证：Rust 安全 helper 3 tests、mock provider 12 tests、Host Rust lib 1196 passed；相关 Host Vitest 4 files / 81 tests；`pnpm typecheck`、`cargo fmt --all -- --check`、`git diff --check` 通过。待 R 轨复测确认。
