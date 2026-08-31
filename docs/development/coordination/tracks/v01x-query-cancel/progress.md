@@ -92,3 +92,12 @@
 - 真实数据库与桌面 E2E：未执行且未伪称通过。`mysql_use_database` 输出 `Skipping ... no TEST_MYSQL_*`，`postgres_use_database` 输出 `Skipping ... no TEST_PG_*`；未发现专门的精确 query-cancel integration fixture。现有 Host E2E 仅有通用 `pg_sleep` 停止场景，未验证 executionId/跨并发 target 隔离；QC-E2E-001/002/003 继续登记为待 R 回归。
 - 新 bug：无。`bugs.md` 保持不变；唯一遗留风险是缺少真实 PG/MySQL slow-query fixture 与桌面自动化环境，因此控制 SQL 对真实后端 target 的效果尚未做 live 证明。
 - 本轮独立验收记录提交为：`test(ipc): f3 precise query cancellation regression`；只应包含本轨 `progress.md`/`bugs.md`，不得包含 hub、规格文档、SVG 或 codegen。
+
+### 精确取消增量（feature/v01x-query-cancel-plus，2026-08-31）
+
+- 事务连接：PostgreSQL/MySQL 在事务持有的目标连接上分别执行 `pg_backend_pid()` / `CONNECTION_ID()` 后再绑定 `QueryExecutionId`；pending cancel、执行期取消错误、wrong-session/stale 和终态 cleanup 复用非事务路径。取消始终通过独立 control pool 的 `pg_cancel_backend(pid)` / `KILL QUERY thread_id`，不回退 legacy session-wide cancel。
+- MariaDB：与 MySQL 共用精确 target/control 逻辑；concrete driver 与 factory 均明确 advertise precise capability，移除 `is_mariadb` 的拒绝分支。Host cancel IPC 只检查 `supports_query_execution_cancel`，legacy capability 独立保留。
+- ReuseDriver：增加显式 precise capability 闸门；Cloudberry（PostgreSQL 衍生）启用并由 factory/concrete 一致转发，QuestDB、Doris、StarRocks、Manticore、OceanBase Oracle-mode 保持关闭且运行时 exact cancel 返回 `Unsupported`。
+- 本轮测试：driver-api 101 passed；PostgreSQL 86 passed；MySQL 72 passed；Host `CARGO_TARGET_DIR=/private/tmp/datazen-v01x-query-cancel-plus cargo test -p datazen --lib` 提权重跑 1193 passed / 0 failed / 2 ignored；定向 rustfmt 与 `git diff --check` 通过。
+- `npx tsc --noEmit` 受 worktree 缺少既有生成模块 `src/locales/builtinLocales` 阻塞，并连带报告 `SettingsContent.tsx` 隐式 any；本轮未修改 TS 或生成物。`cargo fmt --all -- --check` 仅额外报告任务开始时已存在的 codegen `src-tauri/src/driver_init.rs` 排版差异，本轮未修改该文件。
+- 真实数据库/桌面 E2E 仍留待 R：当前没有 `TEST_PG_*` / `TEST_MYSQL_*` fixture，也没有专门的 transaction precise-cancel fixture；QC-E2E-001/002/003 继续标记为留待 R 回归。无新增 bugs。

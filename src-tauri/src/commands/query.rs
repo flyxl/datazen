@@ -172,9 +172,7 @@ pub(crate) async fn cancel_query_impl(
         .get_capabilities(&config.database_type)
         .await
     {
-        Some(capabilities)
-            if capabilities.supports_cancel_query
-                && capabilities.supports_query_execution_cancel => {}
+        Some(capabilities) if capabilities.supports_query_execution_cancel => {}
         Some(_) => {
             return Err(CommandError::Validation(
                 "UNSUPPORTED_OPERATION:cancel_query:query cancellation is not supported by this driver"
@@ -692,7 +690,10 @@ mod tests {
                 "postgres",
                 test.mock.clone(),
                 DriverCapabilities {
-                    supports_cancel_query: true,
+                    // The legacy session-wide capability is deliberately
+                    // independent; precise cancellation must not be gated by
+                    // or fall back to that old API.
+                    supports_cancel_query: false,
                     supports_query_execution_cancel: true,
                     supports_explain: true,
                     supports_streaming_results: true,
