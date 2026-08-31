@@ -212,7 +212,7 @@ export function resolveDataTableCellFromEvent(
 /**
  * TablePlus-style DataTable context menu.
  * With cell context, keep the frequent actions at the root and group the
- * formatting/bulk copy actions under a submenu. Never emit a lonely single
+ * lower-frequency copy/NULL actions under a submenu. Never emit a lonely
  * “Export” item when cell context exists.
  */
 export function buildDataTableContextMenuItems(
@@ -236,7 +236,6 @@ export function buildDataTableContextMenuItems(
       canFilterByValue
         ? item('filter-by-value', labels.filterByValue, handlers.onFilterByValue)
         : null,
-      canSetNull ? item('set-null', labels.setNull, handlers.onSetNull) : null,
     );
 
     const danger = canDelete
@@ -249,6 +248,7 @@ export function buildDataTableContextMenuItems(
       item('copy-as-update', labels.copyAsUpdate, handlers.onCopyAsUpdate),
       item('copy-as-csv', labels.copyAsCsv, handlers.onCopyAsCsv),
       item('copy-column-name', labels.copyColumnName, handlers.onCopyColumnName),
+      canSetNull ? item('set-null', labels.setNull, handlers.onSetNull) : null,
       hasSelectedRows
         ? item('copy-selected-rows', labels.copySelectedRows, handlers.onCopySelectedRows)
         : null,

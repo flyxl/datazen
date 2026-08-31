@@ -6,7 +6,7 @@
 | `v01x-filter-pagination-BUG-002` | **S3**：`DataTable` 收到 `loading=true` 后未向 `FilterEditor`、`FilterBar`、`Pagination` 传递 loading，实际表格路径仍可在请求中修改过滤条件或分页 | 已验证 | 见下方详细步骤 | 2026-08-31 本修复轮 DataTable 回归：FilterEditor/FilterBar/Pagination 均收到 `loading=true`，loading 控件不可变更 |
 | `v01x-filter-pagination-BUG-003` | **S3**：同一表的旧分页请求完成后无取消/代数校验，会覆盖新 Apply 的过滤状态；新过滤请求被 `existing.loading` 直接跳过 | 已验证 | 见下方详细步骤 | 2026-08-31 本修复轮 Store 回归：新 page 0 + filters 请求正常发起，旧 page 2 响应晚到被忽略 |
 | `v01x-filter-pagination-BUG-004` | **S3**：DataTable 右键菜单未按 v0.1x 验收要求分层，低频复制格式、NULL 和批量操作仍全部平铺在一级菜单，没有二级 submenu | 已验证 | 见下方详细步骤 | 2026-08-31 修复：高频动作留在一级，格式化/批量复制归入 `more-actions` submenu；定向与相关 Vitest 通过 |
-| `v01x-filter-pagination-BUG-005` | **S3**：`Set NULL` 仍在 DataTable 右键菜单一级，未完全满足 PRD 对低频 NULL 操作进入二级 submenu 的要求 | 待修复 | 见下方详细步骤 | 2026-08-31 最终独立复测：`76910e10` 已增加 submenu，但 `set-null` 仍由 builder 放在根菜单 |
+| `v01x-filter-pagination-BUG-005` | **S3**：`Set NULL` 仍在 DataTable 右键菜单一级，未完全满足 PRD 对低频 NULL 操作进入二级 submenu 的要求 | 已验证 | 见下方详细步骤 | 2026-08-31 修复：`Set NULL` 已移入 `more-actions` submenu；root/submenu 断言、DataTable 接线与相关回归通过 |
 
 ## 环境记录
 
@@ -172,3 +172,11 @@ Apply 应使当前页回到 0；旧请求应被取消，或其返回结果因 re
 | 日期 | 验证人 | 方法 | 结果 |
 |---|---|---|---|
 | 2026-08-31 | 独立最终复测代理 | 源码审查、`dataTableContextMenu`/`DataTable` 定向 Vitest、完整 Host Vitest | 发现：`set-null` 仍在根菜单；其余 submenu、keyboard focus、Escape、disabled item、loading filter 保护均通过 |
+| 2026-08-31 | 修复代理 | 生成 builtin locale 后运行 DataTable 菜单定向与相关 Vitest、`pnpm typecheck`、`git diff --check` | 通过：定向 2 files / 27 tests，相关菜单回归 6 files / 51 tests，类型检查 exit 0，diff check 通过 |
+
+### 修复与验证
+
+- `Set NULL` 从 cell-context 的 root `frequent` actions 移入 `more-actions` submenu；root 仅保留 Copy、Copy Row、Filter、Delete、Export 等高频入口。
+- 保留 `onSetNull` handler 及 `canSetNull` 可用性判断；不改变 loading 下过滤保护、submenu 键盘 focus/Escape 语义和删除危险操作确认链路。
+- builder 与 DataTable 测试均断言 root 不含 `set-null`、submenu 含 `set-null`，并验证 handler 仍以 `(rowIndex, columnName, null)` 调用。
+- 生成并随后清理 ignored builtin locale 后，DataTable 菜单定向 2 files / 27 tests、相关菜单回归 6 files / 51 tests、`pnpm typecheck`、`git diff --check` 均通过。
