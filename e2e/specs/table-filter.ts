@@ -255,6 +255,9 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
   });
 
   it('点击 chip 可再编辑并 Apply (TF-007)', async () => {
+    // Chips are rendered in the expanded filter editor; the previous test
+    // intentionally leaves the summary collapsed after applying.
+    await openFilterPanel();
     const chip = await $(`button[title="${t('filter.editCondition')}"]`);
     await chip.waitForDisplayed({ timeout: 5000 });
     await chip.click();
