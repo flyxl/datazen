@@ -80,41 +80,24 @@ async function openQueryTabIfNeeded() {
   if (hasEditor) return;
 
   const clicked = await browser.execute(() => {
-    const btn = Array.from(document.querySelectorAll('button')).find((b) => {
-      const text = b.textContent || '';
-      return text.includes('新建查询') || text.includes('New Query') || text.includes('New query');
-    });
-    if (btn) {
-      btn.click();
-      return true;
-    }
-    return false;
+    const btn =
+      document.querySelector<HTMLElement>('[data-testid="conn-toolbar-new-query"]') ??
+      document.querySelector<HTMLElement>('[data-testid="home-quick-new-query"]');
+    btn?.click();
+    return !!btn;
   });
   expect(clicked).toBe(true);
-  await browser.pause(500);
+  await browser.waitUntil(
+    async () => await browser.execute(() => !!document.querySelector('.cm-editor')),
+    { timeout: 10000, timeoutMsg: 'query editor did not appear after opening a query panel' },
+  );
 }
 
 async function openAiChatPanel() {
-  const clicked = await browser.execute(() => {
-    for (const btn of document.querySelectorAll('button')) {
-      if (btn.querySelector('[class*="message-square"]')) {
-        btn.click();
-        return true;
-      }
-    }
-    const toolbar = document.querySelector('[class*="bg-surface-alt"][class*="border-b"]');
-    if (toolbar) {
-      const btns = Array.from(toolbar.querySelectorAll('button'));
-      const aiBtn = btns.length >= 2 ? btns[btns.length - 2] : btns[btns.length - 1];
-      if (aiBtn) {
-        aiBtn.click();
-        return true;
-      }
-    }
-    return false;
-  });
-  expect(clicked).toBe(true);
-  await browser.pause(800);
+  const aiToggle = await $('[data-testid="conn-toolbar-ai"]');
+  await aiToggle.waitForClickable({ timeout: 10000 });
+  await aiToggle.click();
+  await $('[data-testid="ai-chat-panel"]').waitForDisplayed({ timeout: 10000 });
 }
 
 async function injectAssistantMessage(content: string) {

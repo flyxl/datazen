@@ -7,6 +7,7 @@ import {
   closeExtraWindows,
   captureJourneyStep,
   createAndConnectSQLiteInWorkspace,
+  openQueryTab,
   waitForSchemaTreeLoaded,
 } from '../helpers.js';
 
@@ -135,6 +136,10 @@ describe('AI context tables (CTX-T01~T06)', () => {
     const windows = await createAndConnectSQLiteInWorkspace(CONN_NAME, DB_PATH);
     mainWindow = windows.mainWindow;
     await waitForSchemaTreeLoaded(15000);
+    // ContentToolbar (including the AI toggle) is rendered only when a panel
+    // is active. A newly connected workspace starts on the home view, so open
+    // a query panel before locating the toolbar AI action.
+    await openQueryTab();
     await openAiChatPanel();
     await installInvokeSpy();
   });
