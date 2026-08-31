@@ -167,27 +167,51 @@ impl MysqlDriver {
                 if self.is_cancel_requested(handle, execution_id).await? {
                     Err(DriverError::QueryCancelled)
                 } else {
-                    let total_start = Instant::now();
-                    let mut result = Ok(());
-                    for (index, stmt) in statements.iter().enumerate() {
-                        if self.is_cancel_requested(handle, execution_id).await? {
-                            result = Err(DriverError::QueryCancelled);
-                            break;
+                    let id_row = sqlx::query(MYSQL_CONNECTION_ID_SQL)
+                        .fetch_one(&mut **conn)
+                        .await
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                    let thread_id = id_row
+                        .try_get::<u64, _>(0)
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                    if self.bind_thread_id(handle, execution_id, thread_id).await? {
+                        Err(DriverError::QueryCancelled)
+                    } else {
+                        let total_start = Instant::now();
+                        let mut result = Ok(());
+                        for (index, stmt) in statements.iter().enumerate() {
+                            if self.is_cancel_requested(handle, execution_id).await? {
+                                result = Err(DriverError::QueryCancelled);
+                                break;
+                            }
+                            if let Err(error) = Self::stream_one_statement(
+                                &mut **conn,
+                                stmt,
+                                limit,
+                                index,
+                                on_event,
+                            )
+                            .await
+                            {
+                                result = if self
+                                    .is_cancel_requested(handle, execution_id)
+                                    .await
+                                    .unwrap_or(false)
+                                {
+                                    Err(DriverError::QueryCancelled)
+                                } else {
+                                    Err(error)
+                                };
+                                break;
+                            }
                         }
-                        if let Err(error) =
-                            Self::stream_one_statement(&mut **conn, stmt, limit, index, on_event)
-                                .await
-                        {
-                            result = Err(error);
-                            break;
+                        if result.is_ok() {
+                            on_event(QueryStreamEvent::Done {
+                                total_time_ms: total_start.elapsed().as_millis() as u64,
+                            });
                         }
+                        result
                     }
-                    if result.is_ok() {
-                        on_event(QueryStreamEvent::Done {
-                            total_time_ms: total_start.elapsed().as_millis() as u64,
-                        });
-                    }
-                    result
                 }
             } else {
                 let pool = target_pool.ok_or_else(|| {
@@ -1716,13 +1740,6 @@ impl DatabaseDriver for MysqlDriver {
         handle: &ConnectionHandle,
         execution_id: &QueryExecutionId,
     ) -> Result<(), DriverError> {
-        if self.is_mariadb {
-            return Err(DriverError::Unsupported(
-                "precise query cancellation is not advertised for MariaDB compatibility mode"
-                    .into(),
-            ));
-        }
-
         // Keep the registry entry locked until KILL QUERY completes. A MySQL
         // thread id belongs to a pooled connection and can be reused; early
         // cleanup could otherwise let a delayed cancel hit a later query.
@@ -1733,11 +1750,6 @@ impl DatabaseDriver for MysqlDriver {
             })?;
             if execution.session_id != handle.id {
                 return Err(DriverError::QueryExecutionSessionMismatch);
-            }
-            if execution.transactional {
-                return Err(DriverError::Unsupported(
-                    "query cancellation is unsupported while a transaction is open".into(),
-                ));
             }
             execution.cancel_requested = true;
             let Some(thread_id) = execution.thread_id else {
@@ -1786,7 +1798,7 @@ impl DatabaseDriver for MysqlDriver {
     }
 
     fn supports_query_execution_cancel(&self) -> bool {
-        !self.is_mariadb
+        true
     }
 
     // Switch active schema for unqualified names (session + pool-safe USE).
@@ -2586,8 +2598,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn transaction_execution_cancel_is_explicitly_unsupported() {
-        let driver = MysqlDriver::new(false);
+    async fn mariadb_transaction_execution_cancel_is_pending_until_target_is_bound() {
+        let driver = MysqlDriver::new(true);
         let handle = ConnectionHandle {
             id: "session-tx".into(),
             pool_id: "pool-tx".into(),
@@ -2604,13 +2616,58 @@ mod tests {
                 transactional: true,
             },
         );
-        let error = driver
+        driver
+            .cancel_query_with_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver
+                .query_executions
+                .lock()
+                .await
+                .get(&execution_id)
+                .map(|entry| (entry.thread_id, entry.cancel_requested)),
+            Some((None, true))
+        );
+
+        let wrong_session = driver
+            .cancel_query_with_execution(
+                &ConnectionHandle {
+                    id: "session-other".into(),
+                    pool_id: "pool-tx".into(),
+                },
+                &execution_id,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            wrong_session,
+            DriverError::QueryExecutionSessionMismatch
+        ));
+
+        assert!(driver
+            .bind_thread_id(&handle, &execution_id, 42)
+            .await
+            .unwrap());
+        assert_eq!(
+            driver
+                .query_executions
+                .lock()
+                .await
+                .get(&execution_id)
+                .map(|entry| (entry.thread_id, entry.cancel_requested)),
+            Some((Some(42), true))
+        );
+
+        driver
+            .cleanup_query_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        let stale = driver
             .cancel_query_with_execution(&handle, &execution_id)
             .await
             .unwrap_err();
-        assert!(
-            matches!(error, DriverError::Unsupported(message) if message.contains("transaction"))
-        );
+        assert!(matches!(stale, DriverError::QueryExecutionNotFound(_)));
     }
 
     #[test]

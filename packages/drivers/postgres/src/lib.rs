@@ -36,7 +36,11 @@ datazen_driver_api::register_driver!(&PostgresFactory);
 struct QuestDbFactory;
 impl DatabaseDriverFactory for QuestDbFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
-        Arc::new(ReuseDriver::new(Arc::new(PostgresDriver::new()), "questdb"))
+        Arc::new(ReuseDriver::new_with_precise_cancel(
+            Arc::new(PostgresDriver::new()),
+            "questdb",
+            false,
+        ))
     }
     fn driver_id(&self) -> &'static str {
         "questdb"
@@ -47,15 +51,21 @@ impl DatabaseDriverFactory for QuestDbFactory {
     fn supports_cancel_query(&self) -> bool {
         false
     }
+    fn supports_query_execution_cancel(&self) -> bool {
+        false
+    }
 }
 datazen_driver_api::register_driver!(&QuestDbFactory);
 
 struct CloudberryFactory;
 impl DatabaseDriverFactory for CloudberryFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
-        Arc::new(ReuseDriver::new(
+        // Cloudberry is a PostgreSQL derivative and uses the same backend PID
+        // and pg_cancel_backend control protocol as native PostgreSQL.
+        Arc::new(ReuseDriver::new_with_precise_cancel(
             Arc::new(PostgresDriver::new()),
             "cloudberry",
+            true,
         ))
     }
     fn driver_id(&self) -> &'static str {
@@ -67,6 +77,9 @@ impl DatabaseDriverFactory for CloudberryFactory {
     fn supports_cancel_query(&self) -> bool {
         false
     }
+    fn supports_query_execution_cancel(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&CloudberryFactory);
 
@@ -75,15 +88,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn postgres_factory_advertises_precise_cancellation_only_for_native_postgres() {
+    fn postgres_factory_advertises_precise_cancellation_by_backend_compatibility() {
         let factories: [&dyn DatabaseDriverFactory; 3] =
             [&PostgresFactory, &QuestDbFactory, &CloudberryFactory];
 
         assert!(factories[0].supports_cancel_query());
         assert!(factories[0].supports_query_execution_cancel());
-        for factory in &factories[1..] {
-            assert!(!factory.supports_cancel_query());
-            assert!(!factory.supports_query_execution_cancel());
-        }
+        assert!(!factories[1].supports_cancel_query());
+        assert!(!factories[1].supports_query_execution_cancel());
+        assert!(!factories[2].supports_cancel_query());
+        assert!(factories[2].supports_query_execution_cancel());
+
+        assert!(!QuestDbFactory.create().supports_query_execution_cancel());
+        assert!(CloudberryFactory.create().supports_query_execution_cancel());
     }
 }
