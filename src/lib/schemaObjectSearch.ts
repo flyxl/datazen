@@ -25,6 +25,7 @@ export interface SchemaObjectIndexEntry {
   dbSessionId: string;
   databaseType: DatabaseType;
   connectionName?: string;
+  host?: string | null;
   database?: string | null;
   schema?: string | null;
   /** `TableInfo.tableType` decides whether each relation is a table or view. */
@@ -67,6 +68,7 @@ export interface ObjectSearchResult {
   dbSessionId: string;
   databaseType: DatabaseType;
   connectionName?: string;
+  host?: string;
   database?: string;
   schema?: string;
   objectType: ObjectSearchObjectType;
@@ -77,9 +79,24 @@ export interface ObjectSearchResult {
   tableName?: string;
   /** Original driver/schema kind when it is more specific than objectType. */
   sourceKind?: DatabaseObjectKind | TableType;
+  /** Every field that caused this result to match the non-empty query. */
+  matchedFields: readonly ObjectSearchMatchField[];
+  /** The first matching field in the stable display/search order. */
+  matchReason?: ObjectSearchMatchField;
   /** Stable action ids; construction of executable UI actions stays separate. */
   actions: readonly TableSqlActionKind[];
 }
+
+/** Searchable context/object fields retained on each matching result. */
+export type ObjectSearchMatchField =
+  | 'name'
+  | 'host'
+  | 'database'
+  | 'type'
+  | 'schema'
+  | 'object'
+  | 'table'
+  | 'column';
 
 export interface ObjectSearchResultGroup {
   key: string;
@@ -212,16 +229,38 @@ function matchesFilter(result: ObjectSearchResult, filters: ObjectSearchFilters)
   return typeMatches(result, types.length > 0 ? types : undefined);
 }
 
-function resultMatchesQuery(result: ObjectSearchResult, query: string): boolean {
-  if (!query) return true;
+function matchingFieldsForQuery(
+  result: ObjectSearchResult,
+  query: string,
+): ObjectSearchMatchField[] {
+  if (!query) return [];
   const q = lower(query);
-  return [
-    result.connectionName,
-    result.database,
-    result.schema,
-    result.name,
-    result.tableName,
-  ].some((value) => lower(value).includes(q));
+  const fields: Array<readonly [ObjectSearchMatchField, string | undefined]> = [
+    ['name', result.connectionName],
+    ['host', result.host],
+    ['database', result.database],
+    ['type', result.databaseType],
+    ['schema', result.schema],
+    ['object', result.objectType === 'column' ? undefined : result.objectName],
+    ['table', result.tableName],
+    ['column', result.objectType === 'column' ? result.name : undefined],
+  ];
+  return fields
+    .filter(([, value]) => lower(value).includes(q))
+    .map(([field]) => field);
+}
+
+function addMatchMetadata(
+  result: ObjectSearchResult,
+  query: string,
+): ObjectSearchResult | undefined {
+  const matchedFields = matchingFieldsForQuery(result, query);
+  if (query && matchedFields.length === 0) return undefined;
+  return {
+    ...result,
+    matchedFields,
+    ...(matchedFields[0] ? { matchReason: matchedFields[0] } : {}),
+  };
 }
 
 function compareResults(a: ObjectSearchResult, b: ObjectSearchResult): number {
@@ -284,17 +323,20 @@ export function searchSchemaObjects(
         dbSessionId: entry.dbSessionId,
         databaseType: entry.databaseType,
         connectionName: normalizeText(entry.connectionName),
+        host: normalizeText(entry.host),
         database,
         schema,
         objectType,
         name: tableName,
         objectName: tableName,
         sourceKind: table.tableType,
+        matchedFields: [],
         actions: TABLE_OBJECT_ACTIONS,
       };
       relationResult.id = resultId(relationResult);
-      if (matchesFilter(relationResult, filters) && resultMatchesQuery(relationResult, query.trim())) {
-        results.push(relationResult);
+      const matchedRelation = addMatchMetadata(relationResult, query.trim());
+      if (matchedRelation && matchesFilter(matchedRelation, filters)) {
+        results.push(matchedRelation);
       }
 
       for (const columnName of columnNamesFor(entry, table, database, schema)) {
@@ -304,17 +346,20 @@ export function searchSchemaObjects(
           dbSessionId: entry.dbSessionId,
           databaseType: entry.databaseType,
           connectionName: normalizeText(entry.connectionName),
+          host: normalizeText(entry.host),
           database,
           schema,
           objectType: 'column',
           name: columnName,
           objectName: columnName,
           tableName,
+          matchedFields: [],
           actions: TABLE_OBJECT_ACTIONS,
         };
         columnResult.id = resultId(columnResult);
-        if (matchesFilter(columnResult, filters) && resultMatchesQuery(columnResult, query.trim())) {
-          results.push(columnResult);
+        const matchedColumn = addMatchMetadata(columnResult, query.trim());
+        if (matchedColumn && matchesFilter(matchedColumn, filters)) {
+          results.push(matchedColumn);
         }
       }
     }
@@ -330,17 +375,20 @@ export function searchSchemaObjects(
         dbSessionId: entry.dbSessionId,
         databaseType: entry.databaseType,
         connectionName: normalizeText(entry.connectionName),
+        host: normalizeText(entry.host),
         database,
         schema,
         objectType,
         name: objectName,
         objectName,
         sourceKind: object.kind,
+        matchedFields: [],
         actions: ROUTINE_ACTIONS,
       };
       objectResult.id = resultId(objectResult);
-      if (matchesFilter(objectResult, filters) && resultMatchesQuery(objectResult, query.trim())) {
-        results.push(objectResult);
+      const matchedObject = addMatchMetadata(objectResult, query.trim());
+      if (matchedObject && matchesFilter(matchedObject, filters)) {
+        results.push(matchedObject);
       }
     }
   }
