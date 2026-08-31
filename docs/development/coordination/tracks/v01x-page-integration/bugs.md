@@ -47,11 +47,12 @@
 
 ## BUG-PI-007 — Retry 确认期间 active connection 缺失未被门禁阻断
 
-- 状态：发现，未修复（本轮仅记录）。
+- 状态：已修复。
 - 影响：Retry 确认弹窗等待期间，如果对应 active connection 条目被移除而 query panel 仍存在，最终校验可能继续使用 panel/schema 中未变化的 context fingerprint，随后进入 `runExecute('full')`；安全门禁未能证明当前连接仍是可用且归属匹配的 active connection。
-- 证据：`src/windows/connection/QueryPanel.tsx` 的 `readCurrentQueryPanelRetryValidationInput` 读取 `connections[panel.connectionId]` 后，将 `!activeConnection || activeConnection.dbSessionId === panel.dbSessionId` 作为 `activeSessionMatchesPanel`。条目缺失时该表达式为 true，且 fingerprint 只使用 panel 的 connection/session/databaseType、database/schema 和 schemaContext；因此 panel 与 schema 未变时 latest fingerprint 可与确认前相同。
-- 复现思路：打开失败 QueryPanel → 点击 Retry 并挂起确认 → 从 `useActiveConnectionStore` 移除该 connection/session 条目但暂不移除 panel → 确认；当前最终校验没有因 active connection 缺失而返回 null/changed。现有参数化回归覆盖了 panel 的 database/schema/session/connection/databaseType 变化和 panel 删除，但未覆盖 active connection 条目移除。
-- 建议修复方向：active connection 缺失、状态非 connected、map entry 的 `connectionId` 不匹配或 session 不匹配时，均应让 latest validation input 无效并阻断 Retry；补充该异步确认竞态回归。由后续修复代理处理，本轮未改功能代码。
+- 修复：`readCurrentQueryPanelRetryValidationInput` 现在要求 active connection map 自有条目存在，entry `connectionId` 与 panel 一致，entry 状态为 `connected`，panel/entry 的非空 `dbSessionId` 且严格一致；panel 不存在、连接无效或最新 diagnosis context 构建失败均直接返回 invalid。有效连接仍构造最新 fingerprint，并继续交给 `retryAction.invoke` 同时校验 context、SQL 和 bound params，执行最多一次。
+- 回归：新增异步 confirm 期间 active connection 被移除、状态变为非 connected、session 不匹配、map entry identity 不匹配四种阻断用例，并覆盖 latest context 失效；既有上下文不变单次执行及 database/schema/session/connection/databaseType/SQL/bound params 变化门禁保持通过。
+- 安全边界：未引入 identity/workspace 模型，未直接调用 `runExecute` 绕过 `retryAction.invoke`；AI 脱敏 payload、Fix draft-only 和取消终态保持不变。
+- 验证：locale 生成通过；QueryPanel 定向回归为 1 file / 23 passed / 0 failed；相关 AI/Query Vitest 为 4 files / 80 passed / 0 failed；`pnpm typecheck` 通过（0 diagnostics）。
 
 ### 2026-08-31 独立最终复测证据
 
