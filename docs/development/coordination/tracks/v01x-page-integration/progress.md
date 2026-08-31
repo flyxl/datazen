@@ -81,6 +81,16 @@ TableView quick expression → `parseFilterForApply(columns)` → `filterExpress
 - `git diff --check`：通过。
 - Host UI E2E：本轨未运行。需要 `pnpm tauri build --debug --features webdriver`、桌面 Webdriver 和真实数据库 fixture；当前环境没有可用的桌面自动化/fixture，因此按 R 轨要求在 `bugs.md` 登记例外，未声称通过。建议后续执行连接发现、对象搜索→表动作、pending preview/commit/rollback、filter/pagination、query cancel/result/AI 五段 journey。
 
+## 2026-08-31 独立复测（编码 21646559 / 修复 09c90bb2）
+
+- 复测前运行 `node scripts/generate-builtin-locales.mjs` 成功；`src/locales/builtinLocales.ts` 为 ignored 生成物，未产生待提交变更。
+- 诊断安全边界及页面相关定向回归：31 个文件，342/342 通过；覆盖 DiagnosisPanel → aiStore → aiCommands、QueryPanel 错误动作、executionId/dbSessionId 取消终态、ResultWorkspace、Connection/Object search、TablePanel context、Filter/Pagination/DataTable wiring。
+- 完整 Host Vitest：269 个文件，2214/2214 通过。
+- `pnpm typecheck`：通过（0 diagnostics）。
+- `git diff --check`：通过。
+- 静态复核 21646559..09c90bb2：未发现新增 driver id 或方言分支；E2E 仍因无 Tauri/Webdriver/真实 DB fixture 登记 R，未声称通过。
+- 复测发现 `QueryPanel` Retry 确认后的最新 context 漏传 `schemaContext`，导致 schema 已加载时 fingerprint 改变，重试被最终校验拦截；详见 `bugs.md` 的 BUG-PI-005。本轮仅记录，未修改功能代码。
+
 ## 收尾
 
-页面接线与本轮诊断安全修复、Host 单测、locale/typecheck/diff 检查已完成；已确认提交不包含 `hub.md`，原编码提交为 `feat(page): wire v0.1x workflows`，本轮修复提交为 `fix(ai): enforce redacted diagnosis boundary`。
+页面接线与本轮诊断安全边界的复测证据已完成，但 Retry 存在 BUG-PI-005；本轮仅提交测试台账，不包含 `hub.md` 或功能代码。
