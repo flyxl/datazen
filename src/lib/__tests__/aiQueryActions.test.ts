@@ -4,6 +4,7 @@ import {
   buildFixSqlAction,
   buildQueryDiagnosisContext,
   buildRetryAction,
+  redactSensitiveText,
   type QueryActionInput,
 } from '../aiQueryActions';
 
@@ -64,6 +65,84 @@ describe('aiQueryActions', () => {
       tables: [{ name: 'users', columns: ['id', 'password'] }],
     });
     expect(result.context.contextFingerprint).toMatch(/^qctx-[0-9a-f]{8}$/);
+  });
+
+  it('redacts camelCase credential aliases from text and nested schema context', () => {
+    const credentials = {
+      apiToken: 'API_TOKEN',
+      authToken: 'AUTH_TOKEN',
+      oauthToken: 'OAUTH_TOKEN',
+      token: 'TOKEN',
+      apiKey: 'API_KEY',
+      secret: 'SECRET',
+      password: 'PASSWORD',
+      credential: 'CREDENTIAL',
+    };
+    const redactedText = redactSensitiveText(
+      'apiToken=API_TOKEN authToken: AUTH_TOKEN oauthToken: OAUTH_TOKEN ' +
+        '"token": "TOKEN" secret=SECRET password=PASSWORD credential=CREDENTIAL',
+    );
+
+    for (const value of Object.keys(credentials).concat(Object.values(credentials))) {
+      expect(redactedText.toLowerCase()).not.toContain(value.toLowerCase());
+    }
+
+    const result = buildQueryDiagnosisContext(
+      completeInput({
+        schemaContext: {
+          ...credentials,
+          nested: { oauth_token: 'NESTED_OAUTH_TOKEN' },
+        },
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const serializedPrompt = JSON.stringify(result.context.promptContext);
+    for (const value of Object.values(credentials).concat('NESTED_OAUTH_TOKEN')) {
+      expect(serializedPrompt).not.toContain(value);
+    }
+    expect(result.context.schemaContext).toEqual({ nested: {} });
+  });
+
+  it('filters result aliases and caps a 1000-row array at the existing bound', () => {
+    const rows = Array.from({ length: 1_000 }, (_, id) => ({
+      id,
+      email: 'user-' + id + '@example.test',
+    }));
+    const catalogEntries = Array.from({ length: 1_000 }, (_, id) => ({
+      name: 'table-' + id,
+    }));
+    const result = buildQueryDiagnosisContext(
+      completeInput({
+        schemaContext: {
+          queryResult: rows,
+          queryResults: rows,
+          result: rows,
+          results: rows,
+          resultSet: rows,
+          catalogEntries,
+        },
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const schemaContext = result.context.promptContext.schemaContext;
+    if (typeof schemaContext !== 'object' || schemaContext === null || Array.isArray(schemaContext)) {
+      throw new Error('schema context should be a sanitized object');
+    }
+
+    for (const key of ['queryResult', 'queryResults', 'result', 'results', 'resultSet']) {
+      expect(schemaContext).not.toHaveProperty(key);
+    }
+    const boundedEntries = schemaContext.catalogEntries;
+    if (!Array.isArray(boundedEntries)) throw new Error('catalog entries should remain an array');
+    expect(boundedEntries).toHaveLength(100);
+    expect(JSON.stringify(schemaContext)).not.toContain('user-0@example.test');
+    expect(JSON.stringify(schemaContext)).not.toContain('user-999@example.test');
+    expect(JSON.stringify(schemaContext)).toContain('table-0');
+    expect(JSON.stringify(schemaContext)).not.toContain('table-100');
   });
 
   it('returns explicit failures for empty and incomplete contexts', () => {
