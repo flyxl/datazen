@@ -1154,10 +1154,7 @@ export function QueryPanel({
                 </div>
                 {diagnosisVisible && selectedDatabase && (
                   <DiagnosisPanel
-                    dbSessionId={dbSessionId}
-                    database={selectedDatabase}
-                    sql={exec.sql}
-                    errorMessage={exec.error}
+                    diagnosisContext={diagnosisContext}
                     onApplySql={handleApplyFixSql}
                     onClose={() => setDiagnosisVisible(false)}
                   />

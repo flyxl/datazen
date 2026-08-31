@@ -79,6 +79,8 @@ export interface QueryDiagnosisContext {
   /** Redacted SQL that is safe to pass to an AI command. */
   safeSql: string;
   /** Redacted error text that is safe to pass to an AI command. */
+  safeErrorMessage: string;
+  /** @deprecated Use safeErrorMessage for AI-bound error text. */
   errorMessage: string;
   databaseType: string;
   database: string;
@@ -201,7 +203,7 @@ function isResultKey(key: string): boolean {
 }
 
 const SENSITIVE_ASSIGNMENT_PATTERN =
-  /(^|[^\w])(?:"([A-Za-z][\w.-]*)"|'([A-Za-z][\w.-]*)'|([A-Za-z][\w.-]*))\s*(?:=|:)\s*/gi;
+  /(^|[^\w])(?:(?:\\)?["'])?([A-Za-z][\w.-]*)(?:(?:\\)?["'])?\s*(?:\\?:|=)\s*/gi;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
@@ -249,9 +251,14 @@ function readRecordBoolean(
 function consumeAssignedValue(value: string, start: number): number {
   let index = start;
   while (index < value.length && /\s/.test(value[index] ?? '')) index += 1;
-  const quote = value[index];
-  if (quote === '"' || quote === "'" || quote === '`') {
+  let quote = value[index];
+  if (quote === '\\' && (value[index + 1] === '"' || value[index + 1] === "'")) {
+    quote = value[index + 1];
+    index += 2;
+  } else if (quote === '"' || quote === "'" || quote === '`') {
     index += 1;
+  }
+  if (quote === '"' || quote === "'" || quote === '`') {
     while (index < value.length) {
       if (value[index] === '\\') {
         index += 2;
@@ -554,6 +561,7 @@ export function buildQueryDiagnosisContext(
     context: {
       sql,
       safeSql,
+      safeErrorMessage,
       errorMessage: safeErrorMessage,
       databaseType,
       database,

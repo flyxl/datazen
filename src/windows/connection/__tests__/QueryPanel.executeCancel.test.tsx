@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
-import { render, fireEvent, cleanup, screen, act } from '@testing-library/react';
+import { render, fireEvent, cleanup, screen, act, waitFor } from '@testing-library/react';
 import { QueryPanel } from '../QueryPanel';
 import { usePanelStore } from '../../../stores/panelStore';
 import { EMPTY_QUERY_EXEC } from '../../../stores/queryExecActions';
@@ -99,9 +99,22 @@ vi.mock('../../../components/ai/Nl2SqlPanel', () => ({
   Nl2SqlPanel: () => null,
 }));
 
-vi.mock('../../../components/ai/DiagnosisPanel', () => ({
-  DiagnosisPanel: () => null,
+const aiState = vi.hoisted(() => ({
+  diagnosis: null,
+  isDiagnosing: false,
+  diagnosisError: null,
+  isConfigured: true,
+  diagnoseError: vi.fn().mockResolvedValue(undefined),
+  clearDiagnosis: vi.fn(),
 }));
+
+vi.mock('../../../stores/aiStore', () => ({
+  useAiStore: (sel: (s: typeof aiState) => unknown) => sel(aiState),
+}));
+
+vi.mock('../../../components/ai/DiagnosisPanel', async () => {
+  return vi.importActual('../../../components/ai/DiagnosisPanel');
+});
 
 vi.mock('../../../components/ai/ExplainPanel', () => ({
   ExplainPanel: () => null,
@@ -116,7 +129,12 @@ vi.mock('../../../components/query/QueryContextSelectors', () => ({
 }));
 
 vi.mock('../../../components/query/QueryErrorPanel', () => ({
-  QueryErrorPanel: () => null,
+  QueryErrorPanel: ({ onFixSql }: { onFixSql?: () => void }) =>
+    onFixSql ? (
+      <button type="button" onClick={onFixSql}>
+        test-fix-sql
+      </button>
+    ) : null,
 }));
 
 vi.mock('../dashboard/AddToDashboardDialog', () => ({
@@ -136,6 +154,10 @@ describe('QueryPanel execute/cancel button', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    aiState.diagnosis = null;
+    aiState.isDiagnosing = false;
+    aiState.diagnosisError = null;
+    aiState.isConfigured = true;
     vi.useFakeTimers();
     panelConnectionState.capabilities = {
       supportsCancelQuery: true,
@@ -289,5 +311,31 @@ describe('QueryPanel execute/cancel button', () => {
     });
     expect(screen.getByRole('button', { name: 'query.execute' })).not.toBeDisabled();
     expect(screen.queryByRole('button', { name: 'query.stop' })).toBeNull();
+  });
+
+  it('sends only the redacted diagnosis payload through QueryPanel', async () => {
+    const secrets = ['query-json-secret', 'query-password-secret', 'error-json-secret'];
+    vi.useRealTimers();
+    usePanelStore.setState({
+      queryExec: new Map([
+        [
+          PANEL_ID,
+          {
+            ...EMPTY_QUERY_EXEC,
+            sql: `SELECT '{\\"token\\":\\"query-json-secret\\"}', password = 'query-password-secret'`,
+            error: `query failed: {\\"token\\":\\"error-json-secret\\"}`,
+            running: false,
+          },
+        ],
+      ]),
+    } as Partial<ReturnType<typeof usePanelStore.getState>>);
+
+    renderPanel();
+    fireEvent.click(screen.getByRole('button', { name: 'test-fix-sql' }));
+
+    await waitFor(() => expect(aiState.diagnoseError).toHaveBeenCalledTimes(1));
+    const payload = aiState.diagnoseError.mock.calls[0]?.[0];
+    expect(payload).toMatchObject({ dbSessionId: 'sess-conn-1', database: 'app' });
+    for (const secret of secrets) expect(JSON.stringify(payload)).not.toContain(secret);
   });
 });
