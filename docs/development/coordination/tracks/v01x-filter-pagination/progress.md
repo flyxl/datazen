@@ -4,10 +4,10 @@
 
 - 编号：`v01x-filter-pagination`（D 轨道）
 - 范围：受控 FilterExpression parser、结构化条件适配、FilterEditor/FilterBar loading/error 契约、Pagination filter-reset reducer/callback
-- 状态：BUG-001/002/003/004 已验证；最终复测发现 BUG-005（待修复），桌面 E2E 留待 R
+- 状态：BUG-001/002/003/004/005 已验证，桌面 E2E 留待 R
 - 编码 commit：`d8e9c59b983ec3d7dc56163e0fa304d2f6b66b20`
 - 测试 commit：`db18a4b4`
-- 修复 commit：本次提交（最终 hash 见提交记录）
+- 修复 commit：本次提交（`fix(filter): move null action into submenu`，最终 hash 见提交记录）
 - 边界：本轨补充 Filter/DataTable loading 接线与过滤入口保护、`tableDataStore.ts` 请求 revision，以及 DataTable context menu 分层与测试；仅新增 en/zh-CN 菜单文案，未修改 `ContentView.tsx`、`PanelContentRenderer.tsx`、`QueryPanel.tsx`、`panelStore.ts`、codegen 文件或 hub
 
 ## 2. E2E 用例
@@ -32,6 +32,8 @@
 - `git diff --check`：通过；未改动 parser allow-list、Apply payload 或 page reset=0；菜单层级按既有 Web Context Menu submenu API 实现。
 - 2026-08-31 最终独立复测：先生成 ignored `src/locales/builtinLocales.ts`；相关定向 Vitest 10 files / 135 tests passed，完整 Host Vitest 265 files / 2178 tests passed；`pnpm typecheck` exit 0；当前 worktree 与 `d8e9c59b^..76910e10` 的 `git diff --check` 均通过。
 - 最终复测结论：发现 `v01x-filter-pagination-BUG-005`（`Set NULL` 仍在 DataTable context menu 一级，未完全满足 PRD 的二级分层要求）；仅记录，未修改功能代码。
+- BUG-005 修复轮：`Set NULL` 已移入 `more-actions` submenu；builder 与 DataTable 断言 root 不含 `set-null`、submenu 含 `set-null`，并验证原 handler 仍可调用。
+- BUG-005 修复轮验证：生成并随后清理 ignored builtin locale 后，定向 Vitest 2 files / 27 tests、相关菜单回归 6 files / 51 tests、`pnpm typecheck`、`git diff --check` 均通过；未改动 `hub.md`。
 - 覆盖重点：parser 覆盖合法 literal/operator/precedence/escaping、allow-list、函数/子查询/注释/分号/未知列/非法语法拒绝；Pagination 覆盖纯 reducer、revision reset、loading；FilterEditor/Bar 覆盖 error/busy 契约。
 - Rust：本轨无 Rust 改动，不需要设置 `CARGO_TARGET_DIR=/private/tmp/datazen-v01x-filter-pagination` 或运行 Cargo。
 
@@ -41,5 +43,5 @@
 - AST 不携带可执行 SQL 文本；`filterExpressionToConditions` 仅适配现有 `FilterCondition[]`，混合 AND/OR 的完整语义由调用方保留 AST，不可将 raw input 拼接为 SQL。
 - `FilterEditor` 保留既有高级 Column/Operator/Value 入口；新增 loading/error 是 caller-owned 契约，组件不直接调用 Store/IPC。
 - `Pagination` 通过 `paginationReducer`、`resetPageOnFilterChange` 和 `filterRevision/onPageReset` 提供 page=0 契约；`tableDataStore` 以 per-table request/loading revision 丢弃过期响应和错误。
-- Context Menu 根菜单保留 Copy、Copy Row、Filter、Set NULL、Delete、Export 等高频入口；JSON/INSERT/UPDATE/CSV、列名和选中行复制归入 `more-actions` submenu。仅在 loading 时隐藏按值过滤动作，避免上下文菜单绕过 busy 保护；页面既有 `TableView → DataTable` loading 接线保留，并由本轨补齐三类子组件接线。
+- Context Menu 根菜单保留 Copy、Copy Row、Filter、Delete、Export 等高频入口；Set NULL、JSON/INSERT/UPDATE/CSV、列名和选中行复制归入 `more-actions` submenu。仅在 loading 时隐藏按值过滤动作，避免上下文菜单绕过 busy 保护；页面既有 `TableView → DataTable` loading 接线保留，并由本轨补齐三类子组件接线。
 - Bug 修复轮：`FilterConditionChip` 在 `loading` 时禁用编辑/删除入口，`FilterBar` 与 `FilterEditor` 容器和条件变更入口统一暴露 `aria-busy`/`aria-disabled`；`DataTable` 透传真实 loading，回归测试通过。

@@ -147,7 +147,6 @@ describe('buildDataTableContextMenuItems', () => {
       'copy',
       'copy-row',
       'filter-by-value',
-      'set-null',
       'separator',
       'delete-row',
       'separator',
@@ -159,10 +158,10 @@ describe('buildDataTableContextMenuItems', () => {
       'copy',
       'copy-row',
       'filter-by-value',
-      'set-null',
       'delete-row',
       'export',
     ]);
+    expect(rootItemIds(items)).not.toContain('set-null');
 
     const more = findSubmenu(items, 'more-actions');
     expect(more).toBeDefined();
@@ -172,6 +171,7 @@ describe('buildDataTableContextMenuItems', () => {
       'copy-as-update',
       'copy-as-csv',
       'copy-column-name',
+      'set-null',
       'copy-selected-rows',
     ]);
 
@@ -219,6 +219,9 @@ describe('buildDataTableContextMenuItems', () => {
     ]);
     expect(rootItemIds(items)).not.toContain('export');
     expect(rootItemIds(items)).not.toContain('set-null');
+    expect(findSubmenu(items, 'more-actions')?.items.map((i) => i.kind === 'item' && i.id)).not.toContain(
+      'set-null',
+    );
   });
 
   it('omits filter when canFilterByValue is false', () => {

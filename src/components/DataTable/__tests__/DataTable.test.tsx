@@ -196,6 +196,7 @@ describe('DataTable', () => {
 
   it('opens native context menu with TablePlus-style items when a cell is hit', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
+    const onCellEdit = vi.fn();
     Object.assign(navigator, { clipboard: { writeText } });
 
     const { container, getByText, getAllByText } = render(
@@ -212,6 +213,8 @@ describe('DataTable', () => {
         onFilterLogicChange={vi.fn()}
         onApplyFilters={vi.fn()}
         onFilterPanelOpenChange={vi.fn()}
+        onCellEdit={onCellEdit}
+        enableSetNull
         exportTableName="users"
       />,
     );
@@ -228,6 +231,7 @@ describe('DataTable', () => {
       'filter-by-value',
       'export',
     ]);
+    expect(itemIds).not.toContain('set-null');
     const more = menuItems.find((i) => i.kind === 'submenu');
     expect(more?.id).toBe('more-actions');
     expect(more?.items?.filter((i) => i.kind === 'item').map((i) => i.id)).toEqual([
@@ -236,8 +240,11 @@ describe('DataTable', () => {
       'copy-as-update',
       'copy-as-csv',
       'copy-column-name',
+      'set-null',
       'copy-selected-rows',
     ]);
+    more?.items?.find((i) => i.id === 'set-null')!.action?.();
+    expect(onCellEdit).toHaveBeenCalledWith(0, 'name', null);
 
     menuItems.find((i) => i.id === 'copy')!.action?.();
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('Alice'));
