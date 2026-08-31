@@ -29,5 +29,5 @@
 - MariaDB 与 MySQL 使用同一精确取消实现；兼容驱动必须继承父驱动的精确取消能力，但只有实际委托同一目标绑定和控制逻辑时才可声明支持。
 - SQLite 仍需独立的 `sqlite3_interrupt`/连接句柄协议；在该协议完成前不能把 SQLite 宣称为精确可取消。
 - 事务取消后的数据库状态必须明确反馈：PostgreSQL 事务可能进入 aborted 状态，需要回滚；MySQL 需验证语句取消后的事务和锁语义。
-- 真实 PostgreSQL/MySQL 取消和桌面 E2E 尚未在本轮执行，需具备 `TEST_MYSQL_*` / `TEST_PG_*` 夹具及桌面自动化环境后补测。
+- 真实 PostgreSQL/MySQL 取消和数据库依赖的桌面 E2E 尚未在本轮通过，需具备 `TEST_MYSQL_*` / `TEST_PG_*` 夹具后补测；WDIO + Tauri WebDriver 的 Settings UI E2E 已通过 21/21，`main-window` 被本机 PostgreSQL `role "postgres" does not exist` 阻塞。
 - pending changes 必须以主键或稳定 row identity 为前提；无主键表不能静默执行 UPDATE/DELETE。
