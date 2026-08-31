@@ -26,4 +26,11 @@
 - 修复：DiagnosisPanel 改为只接收 `buildQueryDiagnosisContext` 结果；有效 context 仅使用 `safeSql`/`safeErrorMessage` 组装诊断参数，无效或缺失 context 直接禁止请求。保留 context 中的原文供 QueryPanel 的 Fix draft-only 比较和编辑器回填，不将脱敏文本用于回填。
 - 验证：DiagnosisPanel、QueryPanel 集成测试及 aiStore→AI command 测试均断言 secret/token 和 JSON escape 不出现在诊断 payload；全量 Vitest 269 文件、2214 测试通过。
 
-除上述 E2E 环境例外和既有 API 边界外，本轨未发现需要修改已闭环驱动/领域轨的缺陷。
+## BUG-PI-005 — QueryPanel Retry 确认后因 schemaContext 漏传而被拦截
+
+- 状态：本次独立复测发现，待修复。
+- 影响：QueryPanel 错误快捷动作点击 Retry 并确认后，在已有 schema context 的正常页面中不会再次执行查询；用户没有额外错误提示，表现为 Retry 无效。
+- 证据：首次 `diagnosisContext` 在 `QueryPanel.tsx:596-601` 关联的 `buildQueryDiagnosisContext` 输入包含 `schemaContext`；确认后 `QueryPanel.tsx:618-626` 重建 `latestContext` 时未传 `schemaContext`，而 `aiQueryActions.ts:550-557` 将其纳入 `contextFingerprint`，导致 `QueryPanel.tsx:627-635` 的最终 `retryAction` 校验返回 `context-changed`，`runExecute('full')` 不会调用。
+- 复测范围：相关 Retry/执行取消/页面集成回归均通过，但现有用例未覆盖“确认后带已加载 schemaContext 的 Retry”这一跨状态路径；未修改代码。
+
+除上述 E2E 环境例外、既有 API 边界和 BUG-PI-005 外，本轨未发现需要修改已闭环驱动/领域轨的缺陷。
