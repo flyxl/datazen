@@ -58,3 +58,10 @@
 
 - 定向/相关 Host Vitest 24 files / 377 tests、完整 Host Vitest 269 files / 2224 tests、contract 3 files / 22 tests、`pnpm typecheck` 均通过；这些结果不能覆盖 active connection 条目缺失的未测静态分支。
 - Host E2E 按 R 登记：数据库端口访问受环境限制，且缺少 webdriver binary；未声称真实桌面 IPC 通过。
+
+### 2026-08-31 全新独立最终复测证据（21646559 / 09c90bb2 / 3950508e / c2d41a77 / 739a9453）
+
+- 定向/相关 Host Vitest 31 files / 466 tests、完整 Host Vitest 269 files / 2229 tests、contract 3 files / 22 tests、`pnpm typecheck`、`git diff --check` 全部通过。
+- Retry confirm 竞态覆盖 active connection 条目移除、非 `connected`、session mismatch、map entry identity mismatch；同时覆盖 panel 删除、database/schema/session/connection/databaseType/SQL/bound params/schema context 变化阻断，以及有效不变上下文仅执行一次。
+- DiagnosisPanel → aiStore → ai command 仅验证 `safeSql`/`safeErrorMessage` 进入诊断 payload；Fix 保持 draft-only；取消终态继续要求精确 `executionId` + `dbSessionId`，未发现新增功能 bug。
+- Host E2E 按 R 登记：`pnpm e2e:skip-build -- --suite core` 因 PostgreSQL 端口 `Operation not permitted`、缺少 `target/debug/datazen` webdriver binary 和 `dist/index.html` 退出 1；未声称真实桌面 IPC 通过。`src/locales/builtinLocales.ts` 生成后已清理。
