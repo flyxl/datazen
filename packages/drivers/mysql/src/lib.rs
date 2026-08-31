@@ -58,7 +58,7 @@ impl DatabaseDriverFactory for DorisFactory {
         Arc::new(ReuseDriver::new_with_precise_cancel(
             Arc::new(MysqlDriver::new(false)),
             "doris",
-            false,
+            true,
         ))
     }
     fn driver_id(&self) -> &'static str {
@@ -71,7 +71,7 @@ impl DatabaseDriverFactory for DorisFactory {
         false
     }
     fn supports_query_execution_cancel(&self) -> bool {
-        false
+        true
     }
 }
 datazen_driver_api::register_driver!(&DorisFactory);
@@ -82,7 +82,7 @@ impl DatabaseDriverFactory for StarrocksFactory {
         Arc::new(ReuseDriver::new_with_precise_cancel(
             Arc::new(MysqlDriver::new(false)),
             "starrocks",
-            false,
+            true,
         ))
     }
     fn driver_id(&self) -> &'static str {
@@ -95,7 +95,7 @@ impl DatabaseDriverFactory for StarrocksFactory {
         false
     }
     fn supports_query_execution_cancel(&self) -> bool {
-        false
+        true
     }
 }
 datazen_driver_api::register_driver!(&StarrocksFactory);
@@ -106,7 +106,7 @@ impl DatabaseDriverFactory for ManticoreFactory {
         Arc::new(ReuseDriver::new_with_precise_cancel(
             Arc::new(MysqlDriver::new(false)),
             "manticore",
-            false,
+            true,
         ))
     }
     fn driver_id(&self) -> &'static str {
@@ -119,7 +119,7 @@ impl DatabaseDriverFactory for ManticoreFactory {
         false
     }
     fn supports_query_execution_cancel(&self) -> bool {
-        false
+        true
     }
 }
 datazen_driver_api::register_driver!(&ManticoreFactory);
@@ -130,7 +130,7 @@ impl DatabaseDriverFactory for ObOracleFactory {
         Arc::new(ReuseDriver::new_with_precise_cancel(
             Arc::new(MysqlDriver::new(false)),
             "ob_oracle",
-            false,
+            true,
         ))
     }
     fn driver_id(&self) -> &'static str {
@@ -143,7 +143,7 @@ impl DatabaseDriverFactory for ObOracleFactory {
         false
     }
     fn supports_query_execution_cancel(&self) -> bool {
-        false
+        true
     }
 }
 datazen_driver_api::register_driver!(&ObOracleFactory);
@@ -168,19 +168,19 @@ mod tests {
         assert!(!factories[1].supports_cancel_query());
         assert!(factories[1].supports_query_execution_cancel());
         assert!(!factories[2].supports_cancel_query());
-        assert!(!factories[2].supports_query_execution_cancel());
+        assert!(factories[2].supports_query_execution_cancel());
         assert!(!factories[3].supports_cancel_query());
-        assert!(!factories[3].supports_query_execution_cancel());
+        assert!(factories[3].supports_query_execution_cancel());
         assert!(!factories[4].supports_cancel_query());
-        assert!(!factories[4].supports_query_execution_cancel());
+        assert!(factories[4].supports_query_execution_cancel());
         assert!(!factories[5].supports_cancel_query());
-        assert!(!factories[5].supports_query_execution_cancel());
+        assert!(factories[5].supports_query_execution_cancel());
 
         assert!(MysqlDriver::new(false).supports_query_execution_cancel());
         assert!(MysqlDriver::new(true).supports_query_execution_cancel());
-        assert!(!DorisFactory.create().supports_query_execution_cancel());
-        assert!(!StarrocksFactory.create().supports_query_execution_cancel());
-        assert!(!ManticoreFactory.create().supports_query_execution_cancel());
-        assert!(!ObOracleFactory.create().supports_query_execution_cancel());
+        assert!(DorisFactory.create().supports_query_execution_cancel());
+        assert!(StarrocksFactory.create().supports_query_execution_cancel());
+        assert!(ManticoreFactory.create().supports_query_execution_cancel());
+        assert!(ObOracleFactory.create().supports_query_execution_cancel());
     }
 }

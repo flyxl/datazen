@@ -39,7 +39,7 @@ impl DatabaseDriverFactory for QuestDbFactory {
         Arc::new(ReuseDriver::new_with_precise_cancel(
             Arc::new(PostgresDriver::new()),
             "questdb",
-            false,
+            true,
         ))
     }
     fn driver_id(&self) -> &'static str {
@@ -52,7 +52,7 @@ impl DatabaseDriverFactory for QuestDbFactory {
         false
     }
     fn supports_query_execution_cancel(&self) -> bool {
-        false
+        true
     }
 }
 datazen_driver_api::register_driver!(&QuestDbFactory);
@@ -95,11 +95,11 @@ mod tests {
         assert!(factories[0].supports_cancel_query());
         assert!(factories[0].supports_query_execution_cancel());
         assert!(!factories[1].supports_cancel_query());
-        assert!(!factories[1].supports_query_execution_cancel());
+        assert!(factories[1].supports_query_execution_cancel());
         assert!(!factories[2].supports_cancel_query());
         assert!(factories[2].supports_query_execution_cancel());
 
-        assert!(!QuestDbFactory.create().supports_query_execution_cancel());
+        assert!(QuestDbFactory.create().supports_query_execution_cancel());
         assert!(CloudberryFactory.create().supports_query_execution_cancel());
     }
 }
