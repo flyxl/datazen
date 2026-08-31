@@ -16,6 +16,7 @@ pub mod openai;
 pub mod prompt_resolver;
 pub mod protocol;
 pub mod registry;
+pub mod safety;
 pub mod schema_pipeline;
 
 pub use context::{prompt_db_type, SchemaContextBuilder};
