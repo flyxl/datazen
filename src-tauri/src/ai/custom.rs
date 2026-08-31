@@ -12,6 +12,10 @@ use tokio::sync::{mpsc, RwLock};
 
 use super::protocol::{self, ProtocolConfig, CONNECT_TIMEOUT};
 
+fn remote_models_log_endpoint(endpoint: &str) -> String {
+    crate::log_redact::redact_url_for_log(endpoint)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CustomProtocol {
@@ -68,7 +72,12 @@ pub async fn fetch_remote_models(
     endpoint: &str,
     api_key: &str,
 ) -> Result<Vec<ModelInfo>, AiError> {
-    tracing::info!(protocol = ?protocol, %endpoint, "fetch_remote_models: start");
+    let safe_endpoint = remote_models_log_endpoint(endpoint);
+    tracing::info!(
+        protocol = ?protocol,
+        endpoint = %safe_endpoint,
+        "fetch_remote_models: start"
+    );
 
     let http = HttpClient::builder()
         .connect_timeout(Duration::from_secs(10))
@@ -234,6 +243,33 @@ impl AiProvider for CustomProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const SOURCE: &str = include_str!("custom.rs");
+
+    #[test]
+    fn remote_models_log_endpoint_redacts_query_secrets() {
+        let endpoint = "https://llm.example/v1?token=query-token&api_key=query-api-key";
+        let safe_endpoint = remote_models_log_endpoint(endpoint);
+
+        assert_eq!(safe_endpoint, "https://llm.example/v1?[redacted]");
+        assert!(!safe_endpoint.contains("query-token"));
+        assert!(!safe_endpoint.contains("query-api-key"));
+    }
+
+    #[test]
+    fn remote_models_log_does_not_record_api_key() {
+        let log_start = SOURCE
+            .find("let safe_endpoint = remote_models_log_endpoint(endpoint);")
+            .expect("fetch_remote_models must redact its endpoint before logging");
+        let log_end = SOURCE[log_start..]
+            .find("let http =")
+            .map(|offset| log_start + offset)
+            .expect("fetch_remote_models log setup must precede HTTP client creation");
+        let log_setup = &SOURCE[log_start..log_end];
+
+        assert!(log_setup.contains("endpoint = %safe_endpoint"));
+        assert!(!log_setup.contains("api_key"));
+    }
 
     #[test]
     fn test_custom_provider_metadata() {
