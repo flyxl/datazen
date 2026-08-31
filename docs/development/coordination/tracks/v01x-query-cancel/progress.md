@@ -97,7 +97,7 @@
 
 - 事务连接：PostgreSQL/MySQL 在事务持有的目标连接上分别执行 `pg_backend_pid()` / `CONNECTION_ID()` 后再绑定 `QueryExecutionId`；pending cancel、执行期取消错误、wrong-session/stale 和终态 cleanup 复用非事务路径。取消始终通过独立 control pool 的 `pg_cancel_backend(pid)` / `KILL QUERY thread_id`，不回退 legacy session-wide cancel。
 - MariaDB：与 MySQL 共用精确 target/control 逻辑；concrete driver 与 factory 均明确 advertise precise capability，移除 `is_mariadb` 的拒绝分支。Host cancel IPC 只检查 `supports_query_execution_cancel`，legacy capability 独立保留。
-- ReuseDriver：增加显式 precise capability 闸门；Cloudberry（PostgreSQL 衍生）启用并由 factory/concrete 一致转发，QuestDB、Doris、StarRocks、Manticore、OceanBase Oracle-mode 保持关闭且运行时 exact cancel 返回 `Unsupported`。
+- ReuseDriver：增加显式 precise capability 闸门；QuestDB、Cloudberry、Doris、StarRocks、Manticore、OceanBase Oracle-mode 均由 factory/concrete 按父驱动一致转发 precise execution-handle 能力，legacy capability 仍独立保留。
 - 本轮测试：driver-api 101 passed；PostgreSQL 86 passed；MySQL 72 passed；Host `CARGO_TARGET_DIR=/private/tmp/datazen-v01x-query-cancel-plus cargo test -p datazen --lib` 提权重跑 1193 passed / 0 failed / 2 ignored；定向 rustfmt 与 `git diff --check` 通过。
 - `npx tsc --noEmit` 受 worktree 缺少既有生成模块 `src/locales/builtinLocales` 阻塞，并连带报告 `SettingsContent.tsx` 隐式 any；本轮未修改 TS 或生成物。`cargo fmt --all -- --check` 仅额外报告任务开始时已存在的 codegen `src-tauri/src/driver_init.rs` 排版差异，本轮未修改该文件。
 - 真实数据库/桌面 E2E 仍留待 R：当前没有 `TEST_PG_*` / `TEST_MYSQL_*` fixture，也没有专门的 transaction precise-cancel fixture；QC-E2E-001/002/003 继续标记为留待 R 回归。无新增 bugs。
