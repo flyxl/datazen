@@ -55,6 +55,22 @@ describe('filterConnections / groupConnections', () => {
     ]);
     expect(sorted.map((c) => c.id)).toEqual(['2', '1', '3']);
   });
+
+  it('groupConnections preserves the persisted order for unpinned connections', async () => {
+    const { groupConnections } = await import('../connectionStore');
+    const grouped = groupConnections(
+      [
+        makeConn({ id: '2', name: 'Alpha', group: 'work' }),
+        makeConn({ id: '1', name: 'Zulu', group: 'work' }),
+      ],
+      ['work'],
+      '',
+    );
+    expect(grouped.find((group) => group.group === 'work')?.connections.map((c) => c.id)).toEqual([
+      '2',
+      '1',
+    ]);
+  });
 });
 
 describe('connectionStore actions', () => {

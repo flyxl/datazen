@@ -3,6 +3,7 @@ import { connectionCommands } from '../commands/connection';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import {
   groupConnectionsWithRecentSections,
+  orderConnectionsForDisplay,
   rankConnections,
 } from '../lib/connectionLocator';
 import { t } from '../locales/t';
@@ -24,9 +25,9 @@ export function filterConnections(
 /** Synthetic group key for navigator pinned section (not persisted). */
 export { PINNED_GROUP_KEY, RECENT_GROUP_KEY } from '../lib/connectionLocator';
 
-/** Pinned connections first, then recent connections, then stable name/id order. */
+/** Pinned connections first, then the persisted navigator order. */
 export function sortConnectionsInGroup(connections: ConnectionConfig[]): ConnectionConfig[] {
-  return rankConnections(connections, '').map(({ connection }) => connection);
+  return orderConnectionsForDisplay(connections);
 }
 
 /** Hoist pinned and recent connections into dedicated sections (when not searching). */
@@ -45,9 +46,9 @@ export function groupConnections(
   groups: string[],
   searchQuery: string,
 ): { group: string; connections: ConnectionConfig[] }[] {
-  const ranked = rankConnections(connections, searchQuery);
-  const filtered = ranked.map(({ connection }) => connection);
   const isSearching = searchQuery.trim().length > 0;
+  const ranked = rankConnections(connections, searchQuery);
+  const filtered = isSearching ? ranked.map(({ connection }) => connection) : connections;
 
   const map = new Map<string, ConnectionConfig[]>();
   for (const g of groups) map.set(g, []);

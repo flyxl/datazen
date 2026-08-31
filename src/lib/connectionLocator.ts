@@ -247,6 +247,13 @@ export function rankConnections(
   return results.filter((result) => !normalizedQuery || result.match !== null).sort(compareResults);
 }
 
+/** Preserve the persisted navigator order while keeping pinned items first. */
+export function orderConnectionsForDisplay(connections: ConnectionConfig[]): ConnectionConfig[] {
+  const pinned = connections.filter((connection) => connection.pinned === true);
+  if (pinned.length === 0) return connections;
+  return [...pinned, ...connections.filter((connection) => connection.pinned !== true)];
+}
+
 /** Group connections while keeping the navigator's non-search hierarchy. */
 export function groupConnectionsWithRecentSections(
   connections: ConnectionConfig[],
@@ -280,7 +287,7 @@ export function groupConnectionsWithRecentSections(
   if (!hasPromotedSections) {
     return [...grouped].map(([group, section]) => ({
       group,
-      connections: rankConnections(section, '').map(({ connection }) => connection),
+      connections: orderConnectionsForDisplay(section),
     }));
   }
 
@@ -288,7 +295,7 @@ export function groupConnectionsWithRecentSections(
   if (pinned.length > 0) {
     sections.push({
       group: PINNED_GROUP_KEY,
-      connections: rankConnections(pinned, '').map(({ connection }) => connection),
+      connections: orderConnectionsForDisplay(pinned),
     });
   }
   if (recent.length > 0) sections.push({ group: RECENT_GROUP_KEY, connections: recent });
@@ -301,7 +308,7 @@ export function groupConnectionsWithRecentSections(
     if (visible.length > 0) {
       sections.push({
         group,
-        connections: rankConnections(visible, '').map(({ connection }) => connection),
+        connections: orderConnectionsForDisplay(visible),
       });
     }
   }
@@ -314,7 +321,7 @@ export function groupConnectionsWithRecentSections(
     if (visible.length > 0) {
       sections.push({
         group,
-        connections: rankConnections(visible, '').map(({ connection }) => connection),
+        connections: orderConnectionsForDisplay(visible),
       });
     }
   }
