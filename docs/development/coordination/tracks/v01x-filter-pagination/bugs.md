@@ -6,6 +6,7 @@
 | `v01x-filter-pagination-BUG-002` | **S3**：`DataTable` 收到 `loading=true` 后未向 `FilterEditor`、`FilterBar`、`Pagination` 传递 loading，实际表格路径仍可在请求中修改过滤条件或分页 | 已验证 | 见下方详细步骤 | 2026-08-31 本修复轮 DataTable 回归：FilterEditor/FilterBar/Pagination 均收到 `loading=true`，loading 控件不可变更 |
 | `v01x-filter-pagination-BUG-003` | **S3**：同一表的旧分页请求完成后无取消/代数校验，会覆盖新 Apply 的过滤状态；新过滤请求被 `existing.loading` 直接跳过 | 已验证 | 见下方详细步骤 | 2026-08-31 本修复轮 Store 回归：新 page 0 + filters 请求正常发起，旧 page 2 响应晚到被忽略 |
 | `v01x-filter-pagination-BUG-004` | **S3**：DataTable 右键菜单未按 v0.1x 验收要求分层，低频复制格式、NULL 和批量操作仍全部平铺在一级菜单，没有二级 submenu | 已验证 | 见下方详细步骤 | 2026-08-31 修复：高频动作留在一级，格式化/批量复制归入 `more-actions` submenu；定向与相关 Vitest 通过 |
+| `v01x-filter-pagination-BUG-005` | **S3**：`Set NULL` 仍在 DataTable 右键菜单一级，未完全满足 PRD 对低频 NULL 操作进入二级 submenu 的要求 | 待修复 | 见下方详细步骤 | 2026-08-31 最终独立复测：`76910e10` 已增加 submenu，但 `set-null` 仍由 builder 放在根菜单 |
 
 ## 环境记录
 
@@ -18,6 +19,7 @@
 - `git diff --check` 与 `d8e9c59b..31929367` 提交范围的 diff check 均通过。
 - 2026-08-31 独立复测：生成 builtin locales 后，定向 Vitest 7 files / 116 tests、DataTable + tableDataStore 13 files / 122 tests、TableView/NlFilterInput 2 files / 8 tests 均通过；`pnpm typecheck` 与 `git diff --check d8e9c59b^..fe6fb7fe` 均通过。发现 BUG-004；未修改功能代码，生成物 `src/locales/builtinLocales.ts` 保持 ignored。
 - 2026-08-31 BUG-004 修复复验：生成 builtin locales 后，定向菜单/DataTable/WebContextMenu/native menu 5 files / 43 tests、相关前端回归 115 files / 900 tests、`pnpm typecheck` 均通过；`git diff --check` 通过。Prettier 未安装，无法运行 `pnpm exec prettier --check`。
+- 2026-08-31 最终独立复测：生成 builtin locales 后，相关定向 Vitest 10 files / 135 tests、完整 Host Vitest 265 files / 2178 tests 均通过；`pnpm typecheck` 与当前/提交范围 `git diff --check` 均通过。未修改功能代码；仅发现并登记 BUG-005。
 
 ## v01x-filter-pagination-BUG-001
 
@@ -143,3 +145,30 @@ Apply 应使当前页回到 0；旧请求应被取消，或其返回结果因 re
 - 无 cell 命中时仍保留选中行 Delete/Export 的根入口，选中行复制与 CSV 进入同一 submenu；没有可用低频 action 时不生成空 submenu。
 - 保留既有 action/handler 可用性与 loading 语义：`loading` 时 DataTable 不生成 Filter by This Value；WebContextMenu 禁用 item 仍保持 inert，submenu 可通过鼠标 hover 或键盘 focus 打开，Escape 关闭。
 - 新增 builder 结构/动作测试、DataTable 真实右键结构/loading 测试，以及 WebContextMenu 禁用态/键盘 focus 测试；未增加任何驱动分支。
+
+## v01x-filter-pagination-BUG-005
+
+- 严重等级：S3
+- 状态：待修复
+- 发现时间：2026-08-31（Asia/Shanghai）
+- 关联文件：`src/lib/dataTableContextMenu.ts`（`buildDataTableContextMenuItems` 约 232-270 行）；调用路径为 `src/components/DataTable/DataTable.tsx` 的 `handleContextMenu`
+
+### 重现步骤
+
+1. 打开可编辑 DataTable，在任意数据单元格上打开右键菜单。
+2. 查看根菜单的高频动作与 `more-actions` 二级 submenu。
+3. 对照 v0.1x PRD/实施验收的 context menu 分层要求。
+
+### 预期结果
+
+一级菜单保留 Copy、Edit、Filter、Export、Delete Mark 等高频入口；`Set NULL` 与 JSON、INSERT、UPDATE、CSV 及批量操作一起进入二级 submenu。
+
+### 实际结果
+
+`buildDataTableContextMenuItems` 在 `frequent` 数组中直接生成 `item('set-null', ...)`，因此 `Set NULL` 出现在根菜单；`more-actions` 仅包含复制格式、列名和选中行复制等项目。现有 builder/DataTable 测试也把 `set-null` 作为一级 item 断言，所以相关测试全绿但未覆盖该 PRD 分层要求。
+
+### 验证记录
+
+| 日期 | 验证人 | 方法 | 结果 |
+|---|---|---|---|
+| 2026-08-31 | 独立最终复测代理 | 源码审查、`dataTableContextMenu`/`DataTable` 定向 Vitest、完整 Host Vitest | 发现：`set-null` 仍在根菜单；其余 submenu、keyboard focus、Escape、disabled item、loading filter 保护均通过 |

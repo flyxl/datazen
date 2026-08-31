@@ -4,7 +4,7 @@
 
 - 编号：`v01x-filter-pagination`（D 轨道）
 - 范围：受控 FilterExpression parser、结构化条件适配、FilterEditor/FilterBar loading/error 契约、Pagination filter-reset reducer/callback
-- 状态：BUG-001/002/003/004 修复完成并通过本轨回归，桌面 E2E 留待 R
+- 状态：BUG-001/002/003/004 已验证；最终复测发现 BUG-005（待修复），桌面 E2E 留待 R
 - 编码 commit：`d8e9c59b983ec3d7dc56163e0fa304d2f6b66b20`
 - 测试 commit：`db18a4b4`
 - 修复 commit：本次提交（最终 hash 见提交记录）
@@ -30,6 +30,8 @@
 - 本修复轮先执行 `node scripts/generate-builtin-locales.mjs` 再运行默认配置定向 Vitest：6 files、103 tests passed、0 failed（新增 DataTable 接线 2、tableDataStore 竞态 1）；生成物随后删除。
 - `node scripts/generate-builtin-locales.mjs` 后 `pnpm typecheck` exit 0；生成的 gitignored `src/locales/builtinLocales.ts` 已删除，未纳入提交。
 - `git diff --check`：通过；未改动 parser allow-list、Apply payload 或 page reset=0；菜单层级按既有 Web Context Menu submenu API 实现。
+- 2026-08-31 最终独立复测：先生成 ignored `src/locales/builtinLocales.ts`；相关定向 Vitest 10 files / 135 tests passed，完整 Host Vitest 265 files / 2178 tests passed；`pnpm typecheck` exit 0；当前 worktree 与 `d8e9c59b^..76910e10` 的 `git diff --check` 均通过。
+- 最终复测结论：发现 `v01x-filter-pagination-BUG-005`（`Set NULL` 仍在 DataTable context menu 一级，未完全满足 PRD 的二级分层要求）；仅记录，未修改功能代码。
 - 覆盖重点：parser 覆盖合法 literal/operator/precedence/escaping、allow-list、函数/子查询/注释/分号/未知列/非法语法拒绝；Pagination 覆盖纯 reducer、revision reset、loading；FilterEditor/Bar 覆盖 error/busy 契约。
 - Rust：本轨无 Rust 改动，不需要设置 `CARGO_TARGET_DIR=/private/tmp/datazen-v01x-filter-pagination` 或运行 Cargo。
 
