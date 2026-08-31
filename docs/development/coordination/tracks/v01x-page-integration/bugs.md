@@ -37,10 +37,10 @@
 
 ## BUG-PI-006 — Retry 确认后的 latest context 仍可能使用旧 panel props
 
-- 状态：本次全新独立复测发现，待修复。
-- 影响：点击 Retry 后在确认弹窗保持等待期间，如果 QueryPanel 的 `database`/`schema`，或承载它的 `connectionId`/`dbSessionId` 发生变化，确认后的最终校验可能仍按点击时的旧 props 构造 context；由于 fingerprint 没有看到真实变化，可能错误放行一次 Retry。
-- 证据：`QueryPanel.tsx:411-436` 的 `buildCurrentDiagnosisContext` 闭包捕获 `connectionId`、`dbSessionId`、`database`、`schema`、`databaseType`；`QueryPanel.tsx:653-684` 在 `await confirmRetry` 之后仅从 `usePanelStore` 读取 latest SQL、从 `useSchemaStore.getState()` 读取 schema snapshot，却继续调用点击时闭包的 builder。`aiQueryActions.ts:550-557` 的 fingerprint 确实包含 connection/session/database/schema，因此问题在确认后的 latest 输入未完整取回。
-- 覆盖缺口：现有交叉状态用例已覆盖 schema tables/views/columns 变化、SQL 变化、bound params 变化及不变时只执行一次；`aiQueryActions` 纯测试已覆盖 database/schema fingerprint 变化，但尚无“确认挂起期间 mutation panel props/session 后再确认”的 QueryPanel 用例。
-- 本轮未修改功能代码；应由后续修复补齐 latest panel identity/context 读取及对应跨确认回归。
+- 状态：已修复。
+- 修复：新增 `readCurrentQueryPanelRetryValidationInput` 最小 helper；确认返回后从 `panelStore` 读取仍存在的 query panel 与 latest SQL，从 active connection 读取当前 session/server 信息，从 panel 对应 session 的 schema store 读取最新 `tables`/`views`/`columnMap`，再构造最新 context fingerprint。最终执行作为 `retryAction.invoke` 的 guarded callback，仅在点击前 context fingerprint、SQL、bound params 全部保持一致时发生。
+- 安全边界：panel 不存在或 latest context 无效直接终止；未改变 AI 脱敏 builder、Fix draft-only 行为，未直接绕过 `retryAction.invoke`，也未把旧闭包身份用于最终校验。
+- 回归：QueryPanel 新增确认挂起期间 database、schema、session、connection、databaseType 各一条参数化阻断用例及 panel 删除阻断用例；schemaContext、SQL、bound params 变化、不变时单次执行、AI 脱敏、Fix draft-only、取消终态既有用例保留。
+- 验证：`node scripts/generate-builtin-locales.mjs` 通过；QueryPanel 定向回归为 1 file / 18 passed / 0 failed；`pnpm typecheck` 通过（0 diagnostics）。
 
 除上述 E2E 环境例外、既有 API 边界和 BUG-PI-005/006 外，本轨未发现需要修改已闭环驱动/领域轨的其他缺陷。

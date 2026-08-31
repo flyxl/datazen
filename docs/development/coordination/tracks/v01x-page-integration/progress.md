@@ -117,3 +117,10 @@ BUG-PI-005 已修复并完成定向回归，待提交 `fix(query): preserve retr
 - 静态复核确认共享 builder 在初始 Explain/Fix/Retry 及 Retry 确认后的 schema snapshot 中统一保留 `{ tables, views, columns }`，诊断只把 `safeSql`/`safeErrorMessage` 送入 AI，原始 SQL 仅用于 Fix 草稿/Retry 校验；同时发现确认等待期间 panel 的 database/schema/session/connection props 可能被旧闭包复用，详见新增 BUG-PI-006。本轮只记录，不修复。
 - E2E R：`pnpm e2e:skip-build -- --suite core` 退出码 1；无 `dist/index.html`、无 Tauri webdriver debug binary，4445/5432/3306 均不可用，因此未声称 Host E2E 通过。
 - 本轮仅更新本轨 `progress.md`/`bugs.md` 作为测试台账；未修改 hub、功能代码、配置或 codegen。
+
+## 2026-08-31 BUG-PI-006 修复
+
+- 在 `QueryPanel` 中抽取 `readCurrentQueryPanelRetryValidationInput`，确认弹窗返回后重新读取 panelStore 的 panel/SQL、active connection 的 session/server 信息，以及目标 session 的 schema store snapshot；不再调用捕获旧 `connectionId`、`dbSessionId`、`database`、`schema`、`databaseType` 的 builder。
+- 保持点击时 `retryAction` descriptor 及其 context fingerprint 作为唯一门闸；latest context、SQL、bound params 通过同一个 `retryAction.invoke` 复验，执行仅在 guarded callback 中触发且最多一次。panel 消失、context/SQL/参数变化均阻断。
+- 回归新增跨 confirm mutation 参数化覆盖 database、schema、session、connection、databaseType 五种身份变化，另覆盖 panel 删除；既有 schemaContext/SQL/bound params 变化、不变单次执行、AI 脱敏、Fix draft-only、取消终态用例继续通过。
+- 验证：`node scripts/generate-builtin-locales.mjs` 通过；`pnpm exec vitest run src/windows/connection/__tests__/QueryPanel.executeCancel.test.tsx` 为 1 file / 18 passed / 0 failed；`pnpm typecheck` 通过（0 diagnostics）。
