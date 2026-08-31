@@ -53,7 +53,7 @@ import { CopyableError } from '../../components/ui/CopyableError';
 import { Nl2SqlPanel } from '../../components/ai/Nl2SqlPanel';
 import { DiagnosisPanel } from '../../components/ai/DiagnosisPanel';
 import { ExplainPanel } from '../../components/ai/ExplainPanel';
-import { usePanelStore } from '../../stores/panelStore';
+import { usePanelStore, type QueryPanel as QueryPanelState } from '../../stores/panelStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useQueryExec } from '../../hooks/useQueryExec';
 import { useSchemaStore } from '../../stores/schemaStore';
@@ -83,6 +83,7 @@ import {
   buildFixSqlAction,
   buildQueryDiagnosisContext,
   buildRetryAction,
+  type RetryValidationInput,
 } from '../../lib/aiQueryActions';
 import { ResultWorkspace } from './result-workspace';
 import { Dialog } from '../../components/ui/Dialog';
@@ -160,6 +161,53 @@ function buildQueryPanelDiagnosisContext({
       columns: schemaState.columnMap,
     },
   });
+}
+
+/** Read the current panel identity and context after an async Retry confirmation. */
+function readCurrentQueryPanelRetryValidationInput(
+  panelId: string,
+  paramValues: Record<string, string>,
+): RetryValidationInput | null {
+  const panelStoreState = usePanelStore.getState();
+  const panel = panelStoreState.panels.find(
+    (candidate): candidate is QueryPanelState =>
+      candidate.id === panelId && candidate.type === 'query',
+  );
+  const execution = panel ? panelStoreState.queryExec.get(panelId) : undefined;
+  if (!panel || !execution) return null;
+
+  const activeConnection = useActiveConnectionStore.getState().connections[panel.connectionId];
+  const dbSessionId = panel.dbSessionId;
+  const activeSessionMatchesPanel =
+    !activeConnection || activeConnection.dbSessionId === panel.dbSessionId;
+  const schemaStoreState = useSchemaStore.getState();
+  const schemaState = schemaStoreState.schemas.get(dbSessionId) ?? schemaStoreState;
+  const latestContext = buildQueryPanelDiagnosisContext({
+    execution,
+    connectionId: panel.connectionId,
+    dbSessionId,
+    databaseType: panel.databaseType,
+    connectionName: panel.connectionName,
+    database:
+      panel.database ??
+      schemaState.currentDatabase ??
+      activeConnection?.currentDatabase ??
+      undefined,
+    schema: panel.schema,
+    serverVersion: activeConnection?.serverInfo?.serverVersion,
+    schemaState,
+  });
+  const params = parseSqlParams(execution.sql);
+  const boundParams = params.length > 0 ? paramsToPayload(params, paramValues) : {};
+
+  return {
+    sql: execution.sql,
+    contextFingerprint:
+      activeSessionMatchesPanel && latestContext.ok
+        ? latestContext.context.contextFingerprint
+        : null,
+    boundParams,
+  };
 }
 
 export function QueryPanel({
@@ -667,35 +715,24 @@ export function QueryPanel({
       kind: 'info',
     });
     if (!confirmed) return;
-    const latestExec = usePanelStore.getState().queryExec.get(panelId);
-    if (!latestExec) return;
-    const latestParams = parseSqlParams(latestExec.sql);
-    const latestBoundPayload =
-      latestParams.length > 0 ? paramsToPayload(latestParams, paramValuesRef.current) : undefined;
-    const latestContext = buildCurrentDiagnosisContext(latestExec, useSchemaStore.getState());
-    const finalValidation = retryAction.invoke(
-      {
-        sql: latestExec.sql,
-        contextFingerprint: latestContext.ok ? latestContext.context.contextFingerprint : null,
-        boundParams: latestBoundPayload ?? {},
-      },
-      () => undefined,
+    const latestValidationInput = readCurrentQueryPanelRetryValidationInput(
+      panelId,
+      paramValuesRef.current,
     );
-    if (finalValidation.ok) await runExecute('full');
+    if (!latestValidationInput) return;
+    let retryExecution: Promise<void> | undefined;
+    const finalValidation = retryAction.invoke(latestValidationInput, () => {
+      retryExecution = runExecute('full');
+    });
+    if (finalValidation.ok && retryExecution) await retryExecution;
   }, [
     boundPayload,
-    connectionId,
-    buildCurrentDiagnosisContext,
     confirmRetry,
-    database,
-    databaseType,
-    dbSessionId,
     diagnosisContext,
     exec.sql,
     panelId,
     retryAction,
     runExecute,
-    schema,
     t,
   ]);
 
