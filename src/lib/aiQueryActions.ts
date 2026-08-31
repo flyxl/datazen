@@ -143,8 +143,42 @@ const SECRET_KEY_WORDS = new Set([
 ]);
 const SECRET_KEY_PATTERN =
   /^(?:api|auth|oauth|access|refresh|client|private|encryption|signing)?(?:token|key|secret|password|passwd|pwd|credential|credentials|authorization|bearer|passphrase)$/i;
-const RESULT_KEY_PATTERN =
-  /^(?:data|rows?|records?|results?|result(?:[_-]?(?:set|rows?|data))?|query[_-]?results?(?:[_-]?(?:set|rows?|data))?|sample[_-]?rows?|raw[_-]?output|execution[_-]?output|payload)$/i;
+const RESULT_KEY_NAMES = new Set([
+  'data',
+  'row',
+  'rows',
+  'record',
+  'records',
+  'result',
+  'results',
+  'resultset',
+  'resultsets',
+  'resultsset',
+  'resultssets',
+  'resultrow',
+  'resultrows',
+  'resultsrow',
+  'resultsrows',
+  'resultdata',
+  'resultsdata',
+  'queryresult',
+  'queryresults',
+  'queryresultset',
+  'queryresultsets',
+  'queryresultsset',
+  'queryresultssets',
+  'queryresultrow',
+  'queryresultrows',
+  'queryresultsrow',
+  'queryresultsrows',
+  'queryresultdata',
+  'queryresultsdata',
+  'samplerow',
+  'samplerows',
+  'rawoutput',
+  'executionoutput',
+  'payload',
+]);
 
 function keyWords(key: string): string[] {
   return key
@@ -163,11 +197,11 @@ function isSensitiveKey(key: string): boolean {
 }
 
 function isResultKey(key: string): boolean {
-  return RESULT_KEY_PATTERN.test(key);
+  return RESULT_KEY_NAMES.has(keyWords(key).join(''));
 }
 
 const SENSITIVE_ASSIGNMENT_PATTERN =
-  /(^|[^\w])(?:"([A-Za-z][\w.-]*)"|'([A-Za-z][\w.-]*)'|([A-Za-z][\w.-]*))\s*(?:=|:)\s*(?:"[^"]*"|'[^']*'|`[^`]*`|[^\s,;,)]+)/gi;
+  /(^|[^\w])(?:"([A-Za-z][\w.-]*)"|'([A-Za-z][\w.-]*)'|([A-Za-z][\w.-]*))\s*(?:=|:)\s*/gi;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
@@ -212,9 +246,50 @@ function readRecordBoolean(
   return null;
 }
 
-/** Remove obvious URI credentials and key/value secrets from text sent to AI. */
-export function redactSensitiveText(value: string): string {
-  return value
+function consumeAssignedValue(value: string, start: number): number {
+  let index = start;
+  while (index < value.length && /\s/.test(value[index] ?? '')) index += 1;
+  const quote = value[index];
+  if (quote === '"' || quote === "'" || quote === '`') {
+    index += 1;
+    while (index < value.length) {
+      if (value[index] === '\\') {
+        index += 2;
+      } else if (value[index] === quote) {
+        return index + 1;
+      } else {
+        index += 1;
+      }
+    }
+    return index;
+  }
+  while (index < value.length && !/[\s,;,)\]}]/.test(value[index] ?? '')) index += 1;
+  return index;
+}
+
+function redactSensitiveAssignments(value: string): string {
+  let result = '';
+  let cursor = 0;
+  for (const match of value.matchAll(SENSITIVE_ASSIGNMENT_PATTERN)) {
+    const matchIndex = match.index ?? 0;
+    const prefix = match[1] ?? '';
+    const key = match[2] ?? match[3] ?? match[4] ?? '';
+    if (!isSensitiveKey(key)) continue;
+
+    const keyStart = matchIndex + prefix.length;
+    if (keyStart < cursor) continue;
+    const valueStart = matchIndex + match[0].length;
+    const valueEnd = consumeAssignedValue(value, valueStart);
+    result += value.slice(cursor, keyStart) + '[REDACTED]';
+    cursor = valueEnd;
+  }
+  return result + value.slice(cursor);
+}
+
+/** Remove obvious URI credentials and key/value secrets from non-JSON text. */
+function redactSensitivePlainText(value: string): string {
+  return redactSensitiveAssignments(
+    value
     .replace(
       /([a-z][\w+.-]*:\/\/)(?:[^/\s:@]+)(?::[^@\s/]*)?@/gi,
       '$1[REDACTED]@',
@@ -222,20 +297,61 @@ export function redactSensitiveText(value: string): string {
     .replace(
       /(?:\bBearer\s+)[^\s,;)]+/gi,
       'Bearer [REDACTED]',
+    ),
+  );
+}
+
+function sanitizeSerializedJsonValue(value: unknown, depth = 0): SanitizedJson | null {
+  if (value === null) return null;
+  if (typeof value === 'string') return redactSensitivePlainText(value);
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'object') return null;
+  if (depth >= MAX_SCHEMA_DEPTH) return '[truncated]';
+
+  if (Array.isArray(value)) {
+    return value
+      .slice(0, MAX_SCHEMA_ARRAY_ITEMS)
+      .map((item) => sanitizeSerializedJsonValue(item, depth + 1));
+  }
+
+  const result: { [key: string]: SanitizedJson } = {};
+  for (const key of Object.keys(value as Record<string, unknown>).slice(0, MAX_SCHEMA_OBJECT_KEYS)) {
+    if (isSensitiveKey(key) || isResultKey(key)) continue;
+    result[key] = sanitizeSerializedJsonValue(
+      (value as Record<string, unknown>)[key],
+      depth + 1,
+    );
+  }
+  return result;
+}
+
+function redactSerializedJson(value: string): string | null {
+  const trimmed = value.trim();
+  if (
+    !(
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+      (trimmed.startsWith('"') && trimmed.endsWith('"'))
     )
-    .replace(
-      SENSITIVE_ASSIGNMENT_PATTERN,
-      (
-        match: string,
-        prefix: string,
-        doubleQuotedKey: string | undefined,
-        singleQuotedKey: string | undefined,
-        plainKey: string | undefined,
-      ) => (isSensitiveKey(doubleQuotedKey ?? singleQuotedKey ?? plainKey ?? '')
-        ? prefix + '[REDACTED]'
-        : match),
-    )
-    .slice(0, MAX_SAFE_TEXT_LENGTH);
+  ) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return JSON.stringify(sanitizeSerializedJsonValue(parsed));
+  } catch {
+    return null;
+  }
+}
+
+/** Remove secrets at the structured-JSON boundary before text reaches an AI prompt. */
+export function redactSensitiveText(value: string): string {
+  return (redactSerializedJson(value) ?? redactSensitivePlainText(value)).slice(
+    0,
+    MAX_SAFE_TEXT_LENGTH,
+  );
 }
 
 function sanitizeSchemaValue(

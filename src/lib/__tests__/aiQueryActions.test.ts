@@ -145,6 +145,104 @@ describe('aiQueryActions', () => {
     expect(JSON.stringify(schemaContext)).not.toContain('table-100');
   });
 
+  it('filters plural result aliases case-insensitively without matching business fields', () => {
+    const resultRows = Array.from({ length: 1_000 }, (_, id) => ({
+      id,
+      email: `result-${id}@example.test`,
+    }));
+    const businessResults = Array.from({ length: 1_000 }, (_, id) => ({
+      code: `business-${id}`,
+    }));
+    const result = buildQueryDiagnosisContext(
+      completeInput({
+        schemaContext: {
+          resultsSet: resultRows,
+          resultsRows: resultRows,
+          resultsData: resultRows,
+          RESULTSSET: resultRows,
+          results_set: resultRows,
+          ResultsRows: resultRows,
+          queryResultsData: resultRows,
+          resultStatus: 'complete',
+          resultsSummary: 'keep this business metadata',
+          dataPoints: ['keep-this-field'],
+          businessResults,
+        },
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const schemaContext = result.context.promptContext.schemaContext;
+    if (typeof schemaContext !== 'object' || schemaContext === null || Array.isArray(schemaContext)) {
+      throw new Error('schema context should be a sanitized object');
+    }
+
+    for (const key of [
+      'resultsSet',
+      'resultsRows',
+      'resultsData',
+      'RESULTSSET',
+      'results_set',
+      'ResultsRows',
+      'queryResultsData',
+    ]) {
+      expect(schemaContext).not.toHaveProperty(key);
+    }
+    expect(schemaContext).toMatchObject({
+      resultStatus: 'complete',
+      resultsSummary: 'keep this business metadata',
+      dataPoints: ['keep-this-field'],
+    });
+    expect(schemaContext.businessResults).toHaveLength(100);
+    expect(JSON.stringify(schemaContext)).not.toContain('result-0@example.test');
+    expect(JSON.stringify(schemaContext)).toContain('business-0');
+    expect(JSON.stringify(schemaContext)).not.toContain('business-100');
+  });
+
+  it('redacts serialized JSON values at the parsing boundary without escaped-value tails', () => {
+    const tokenValue = 'token-head"token-tail\\token-end\nline';
+    const passwordValue = 'password-head"password-tail\\password-end';
+    const serialized = JSON.stringify({
+      apiToken: tokenValue,
+      nested: {
+        password: passwordValue,
+        safe: 'keep-this-value',
+      },
+    });
+
+    const redacted = redactSensitiveText(serialized);
+    expect(JSON.parse(redacted)).toEqual({ nested: { safe: 'keep-this-value' } });
+    for (const leakedPart of [
+      'token-head',
+      'token-tail',
+      'token-end',
+      'password-head',
+      'password-tail',
+      'password-end',
+    ]) {
+      expect(redacted).not.toContain(leakedPart);
+    }
+
+    const result = buildQueryDiagnosisContext(
+      completeInput({ schemaContext: { serializedMetadata: serialized } }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const prompt = JSON.stringify(result.context.promptContext);
+    for (const leakedPart of [
+      'token-head',
+      'token-tail',
+      'token-end',
+      'password-head',
+      'password-tail',
+      'password-end',
+    ]) {
+      expect(prompt).not.toContain(leakedPart);
+    }
+    expect(prompt).toContain('keep-this-value');
+  });
+
   it('returns explicit failures for empty and incomplete contexts', () => {
     expect(buildQueryDiagnosisContext(undefined)).toEqual({
       ok: false,
