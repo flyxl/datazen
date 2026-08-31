@@ -23,6 +23,10 @@ use tokio_util::sync::CancellationToken;
 /// Caller must invoke [`auth::verify_stdio_token`] before this function (headless entry only).
 pub async fn start_mcp_stdio(app_state: Arc<AppState>, cancel: CancellationToken) {
     use tokio::io::{stdin, stdout};
+    // Keep the headless startup contract observable even when RUST_LOG filters
+    // out the tracing info event below. This is stderr-only and does not touch
+    // the MCP protocol stream on stdout.
+    eprintln!("[mcp] stdio authentication accepted; starting MCP Server");
     start_mcp_transport(app_state, cancel, stdin(), stdout()).await;
 }
 
