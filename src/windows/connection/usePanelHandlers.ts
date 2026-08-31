@@ -19,6 +19,7 @@ import {
 } from '../../stores/panelStore';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { buildConnectionTabContextMenuItems } from '../../lib/connectionTabContextMenu';
+import { buildQueryOpenContext, type TableContextInput, type TableSqlActionKind } from '../../lib/tableSqlActions';
 
 export interface PanelHandlers {
   handleSelectTable: (table: string, schema?: string, database?: string) => void;
@@ -36,7 +37,11 @@ export interface PanelHandlers {
   handleOpenPrivileges: () => void;
   handleOpenServerStatus: (ctx?: ConnectionOpenTarget) => void;
   handleOpenProcessList: (ctx?: ConnectionOpenTarget) => void;
-  handleNewQuery: (initialSql?: string) => void;
+  handleNewQuery: (
+    initialSql?: string,
+    context?: Pick<TableContextInput, 'database' | 'schema'>,
+  ) => void;
+  handleOpenTableAction: (context: TableContextInput, action: TableSqlActionKind) => void;
   handleOpenQueryHistory: () => void;
   handleClosePanel: (panelId: string) => void;
   handleCloseOtherPanels: (keepPanelId: string) => void;
@@ -363,20 +368,35 @@ export function usePanelHandlers({
   );
 
   const handleNewQuery = useCallback(
-    (initialSql?: string) => {
+    (initialSql?: string, target?: Pick<TableContextInput, 'database' | 'schema'>) => {
       if (!sidebarConnCtx) return;
       const panelId = nextPanelId('qry');
-      const db = currentDatabase ?? initialDatabase ?? '';
+      const db = target?.database ?? currentDatabase ?? initialDatabase ?? '';
       const panel: QueryPanel = {
         ...sidebarConnCtx,
         type: 'query',
         id: panelId,
         title: db ? `${sidebarConnCtx.connectionName}@${db}` : sidebarConnCtx.connectionName,
+        database: target?.database?.trim() || undefined,
+        schema: target?.schema?.trim() || undefined,
       };
       addPanel(panel);
       if (initialSql) updateSql(panelId, initialSql);
     },
     [sidebarConnCtx, currentDatabase, initialDatabase, addPanel, updateSql],
+  );
+
+  const handleOpenTableAction = useCallback(
+    (input: TableContextInput, action: TableSqlActionKind) => {
+      if (!sidebarConnCtx || input.connectionId !== sidebarConnCtx.connectionId) return;
+      const context = buildQueryOpenContext(input, { kind: action, source: 'table-action' });
+      if (action === 'openData') {
+        handleSelectTable(context.tableName, context.schema, context.database);
+        return;
+      }
+      handleNewQuery(context.initialSql, context);
+    },
+    [handleNewQuery, handleSelectTable, sidebarConnCtx],
   );
 
   const handleOpenQueryHistory = useCallback(() => {
@@ -492,6 +512,7 @@ export function usePanelHandlers({
     handleOpenServerStatus,
     handleOpenProcessList,
     handleNewQuery,
+    handleOpenTableAction,
     handleOpenQueryHistory,
     handleClosePanel,
     handleCloseOtherPanels,

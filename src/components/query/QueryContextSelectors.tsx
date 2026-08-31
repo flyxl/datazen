@@ -12,6 +12,7 @@ export interface QueryContextSelectorsProps {
   namespaceTree: SqlNamespace;
   pathAliases: Record<string, string>;
   contextPath: readonly string[];
+  contextSchema?: string | null;
   onSelectLevel: (index: number, value: string) => void;
 }
 
@@ -36,6 +37,7 @@ export function QueryContextSelectors({
   namespaceTree,
   pathAliases,
   contextPath,
+  contextSchema,
   onSelectLevel,
 }: QueryContextSelectorsProps) {
   const { t } = useI18n();
@@ -70,18 +72,29 @@ export function QueryContextSelectors({
     );
   }
 
-  if (!isMultiDb || databases.length === 0) return null;
+  if ((!isMultiDb || databases.length === 0) && !contextSchema) return null;
 
   return (
     <div className="flex shrink-0 items-center gap-1.5" data-testid="query-context-selectors">
       <Database className="h-3.5 w-3.5 text-fg-muted" />
-      <Select
-        value={currentDatabase ?? ''}
-        options={databases.map((db) => ({ value: db, label: db }))}
-        onChange={(db) => onSelectLevel(0, db)}
-        className="!h-6 !text-[11px] max-w-[180px]"
-        title={t('query.database')}
-      />
+      {isMultiDb && databases.length > 0 && (
+        <Select
+          value={currentDatabase ?? ''}
+          options={databases.map((db) => ({ value: db, label: db }))}
+          onChange={(db) => onSelectLevel(0, db)}
+          className="!h-6 !text-[11px] max-w-[180px]"
+          title={t('query.database')}
+        />
+      )}
+      {contextSchema && (
+        <span
+          className="max-w-[140px] truncate text-[11px] text-fg-muted"
+          title={contextSchema}
+          data-testid="query-context-schema"
+        >
+          / {contextSchema}
+        </span>
+      )}
     </div>
   );
 }

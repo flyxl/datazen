@@ -1,0 +1,78 @@
+# v0.1.x page-integration 进度
+
+## 范围与边界
+
+- 工作目录：`/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/datazen-v01x-page-integration`
+- 分支：`feature/v01x-page-integration`
+- 本轨只修改共享页面接线、允许的共享 locale/测试，以及本目录的 `progress.md`、`bugs.md`；未修改 `hub.md`。工作区已有的 `hub.md` regular-file → symlink 类型变化来自 bootstrap，未纳入提交。
+- 未新增 database type/plugin id 分支、identity/workspace/audit 业务模型或新的 TableWorkspace store；表工作区仍是既有 `TablePanel + SubTabId + PanelContentRenderer`。
+
+## 实现调用链
+
+### A. Connection discovery
+
+`NavigatorToolbar` 的全局对象搜索入口 → `GlobalObjectSearch` → `searchSchemaObjects`；连接导航原有的 `buildNavigatorFlatRows` → `rankConnections` 排序和去重保持不变，结果继续由 `ConnectionNavigatorTree` 展示 name/host/database/type/schema/object/path 命中 reason/context。对象命中后经 `ConnectionNavigatorTree` 选择连接/表，最终进入现有 `ConnectionPage`/`ContentView`。
+
+`ConnectionPage`、`connectionViews/types`、`navigator/types`、`usePanelHandlers` 传递 database/schema context；新建/编辑表单的 Basic/Advanced/SSH 分层仍由组件轨负责。本轨验证现有新建默认 Basic、编辑 SSH 自动展开及保存字段不丢失的相关页面回归未回退。
+
+### B. Object search / table actions / TablePanel
+
+`GlobalObjectSearch` 使用已加载的 `schemaObjectSearch` 索引，列命中保留 owning `tableName` 和 matched field；table/view 结果使用 `buildTableSqlAction` 生成 action 描述，使用 `buildQueryOpenContext` 携带 `connectionId`、`dbSessionId`、database/schema/table context。
+
+`ConnectionNavigatorTree`/`useNavigatorContextMenus`/`ContentView` → `ConnectionPage.viewActions` → `usePanelHandlers.handleOpenTableAction` → `handleSelectTable` 或 `handleNewQuery` → `panelStore`/`PanelContentRenderer`/现有 `TablePanel`、`QueryPanel`。页面不拼接方言 SQL；既有非本轨管理危险操作路径保持原状。
+
+### C. Pending changes
+
+`TableView` → `tableDataStore.stageCellChange` / `stageRowDelete` → pending count bar → immutable preview plan/fingerprint/SQL/参数摘要 → commit confirmation → `commitPendingChanges`，Rollback 调用 `rollbackPendingChanges`。DataTable 的 Delete/Backspace 仍只进入 staged 集合；store 对无主键或不稳定 row identity 拒绝静默 UPDATE/DELETE，右键危险 action 的确认保持不变。
+
+### D. Filter / pagination
+
+TableView quick expression → `parseFilterForApply(columns)` → `filterExpressionToConditions`/结构化 conditions → `tableDataStore.setFilters(filters, logic)`；非法语法、未知列及不支持的混合逻辑在发请求前被拒绝，filter 变化重置 page=0。既有 `FilterEditor`/`FilterBar`/`Pagination`/context-menu root/二级层次继续走 DataTable/TableView；tableDataStore 的 request revision 和 loading guard 防止旧响应覆盖新结果及 busy 状态变更。原始 filter 文本没有进入 SQL 拼接。
+
+### E. Query execution / result / error / AI
+
+`QueryPanel` → `toQueryExecutionViewModel` → `QueryExecutionStatus`：显示 Running/Cancelling/terminal、耗时、rows/affected rows、error 状态和精确 cancel capability。取消请求仍只带 executionId + dbSessionId；只有 stream/promise 终态转移后才显示 Cancelled，SQLite/unknown capability 不被伪称支持。
+
+查询结果 → 本轨接入的 `result-workspace/ResultWorkspace`：Table/Chart 共享同一 StatementResult，chart 不可用时回落 Table，图表数据点返回 Table row detail。`QueryContextSelectors` 压缩为保留 database/schema 的 breadcrumb/context selector。
+
+`QueryErrorPanel` → `buildQueryDiagnosisContext`/`buildExplainAction`/`buildFixSqlAction`/`buildRetryAction`：Copy Error、Explain、Fix SQL、Retry 均接入；AI 上下文脱敏并受结构/结果上限保护，Fix 仅回填草稿，Retry 校验 fingerprint/SQL/参数并经过用户确认。
+
+## 文件边界
+
+共享页面：
+
+- `src/windows/connection/ConnectionNavigatorTree.tsx`
+- `src/windows/connection/ConnectionPage.tsx`
+- `src/windows/connection/ContentView.tsx`
+- `src/windows/connection/PanelContentRenderer.tsx`
+- `src/windows/connection/QueryPanel.tsx`
+- `src/windows/connection/TableView.tsx`
+- `src/windows/connection/usePanelHandlers.ts`
+- `src/windows/connection/navigator/GlobalObjectSearch.tsx`
+- `src/windows/connection/navigator/NavigatorToolbar.tsx`
+- `src/windows/connection/navigator/types.ts`
+- `src/windows/connection/navigator/useNavigatorContextMenus.ts`
+- `src/windows/connection/result-workspace/{ResultWorkspace,ResultTableView,resultWorkspaceHelpers,index}.tsx/ts`
+- `src/components/query/{QueryContextSelectors,QueryErrorPanel,QueryExecutionStatus}.tsx`
+- `src/lib/connectionViews/types.ts`
+- `src/stores/{panelStore,tableDataStore}.ts`
+
+测试与文案：
+
+- `src/windows/connection/__tests__/PageIntegration.test.tsx`
+- `src/locales/en.ts`
+- `src/locales/zh-CN.ts`
+
+## 验证状态
+
+- `pnpm exec vitest run`：269 个文件，2211/2211 通过。
+- 共享页面定向回归：6 个文件，99/99 通过。
+- 页面接线新增集成测试：1 个文件，2/2 通过。
+- `pnpm exec tsc --noEmit`：通过（0 diagnostics）。
+- `node scripts/generate-builtin-locales.mjs`：通过；生成的 ignored `src/locales/builtinLocales.ts` 未提交。
+- `git diff --check`：通过。
+- Host UI E2E：本轨未运行。需要 `pnpm tauri build --debug --features webdriver`、桌面 Webdriver 和真实数据库 fixture；当前环境没有可用的桌面自动化/fixture，因此按 R 轨要求在 `bugs.md` 登记例外，未声称通过。建议后续执行连接发现、对象搜索→表动作、pending preview/commit/rollback、filter/pagination、query cancel/result/AI 五段 journey。
+
+## 收尾
+
+实现与 Host 单测、locale/typecheck/diff 检查已完成；已确认 staged 文件不包含 `hub.md`，提交信息为：`feat(page): wire v0.1x workflows`。

@@ -58,6 +58,9 @@ export interface ViewPanel extends PanelBase {
 export interface QueryPanel extends PanelBase {
   type: 'query';
   title: string;
+  /** Target namespace captured when a table action opens this query. */
+  database?: string;
+  schema?: string;
 }
 
 export interface CreateTablePanel extends PanelBase {
@@ -244,8 +247,9 @@ interface PanelActions {
  * selected database explicitly — the backend pins the session to it before
  * running unqualified SQL (BUG-001 fix).
  */
-function panelTargetDatabase(dbSessionId: string): string | null {
-  return useSchemaStore.getState().schemas.get(dbSessionId)?.currentDatabase ?? null;
+function panelTargetDatabase(panel: QueryPanel): string | null {
+  if (panel.database?.trim()) return panel.database;
+  return useSchemaStore.getState().schemas.get(panel.dbSessionId)?.currentDatabase ?? null;
 }
 
 /**
@@ -254,8 +258,9 @@ function panelTargetDatabase(dbSessionId: string): string | null {
  * carry it explicitly as the envelope `schema` field — rewrite-capable
  * drivers inline it (`"schema"."t"`); others ignore it.
  */
-function panelTargetSchema(dbSessionId: string): string | null {
-  return useSchemaStore.getState().schemas.get(dbSessionId)?.currentSchema ?? null;
+function panelTargetSchema(panel: QueryPanel): string | null {
+  if (panel.schema?.trim()) return panel.schema;
+  return useSchemaStore.getState().schemas.get(panel.dbSessionId)?.currentSchema ?? null;
 }
 
 export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
@@ -391,8 +396,8 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         params,
         getExec,
         setExec,
-        panelTargetDatabase(panel.dbSessionId),
-        panelTargetSchema(panel.dbSessionId),
+        panelTargetDatabase(panel),
+        panelTargetSchema(panel),
       );
     } else {
       await runStreamingQuery(
@@ -401,8 +406,8 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         sql,
         getExec,
         setExec,
-        panelTargetDatabase(panel.dbSessionId),
-        panelTargetSchema(panel.dbSessionId),
+        panelTargetDatabase(panel),
+        panelTargetSchema(panel),
       );
     }
     await get().loadHistory(panel.connectionId);
@@ -424,8 +429,8 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         params,
         getExec,
         setExec,
-        panelTargetDatabase(panel.dbSessionId),
-        panelTargetSchema(panel.dbSessionId),
+        panelTargetDatabase(panel),
+        panelTargetSchema(panel),
       );
     } else {
       await runStreamingQuery(
@@ -434,8 +439,8 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         sql,
         getExec,
         setExec,
-        panelTargetDatabase(panel.dbSessionId),
-        panelTargetSchema(panel.dbSessionId),
+        panelTargetDatabase(panel),
+        panelTargetSchema(panel),
       );
     }
     await get().loadHistory(panel.connectionId);
