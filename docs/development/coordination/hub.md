@@ -10,7 +10,7 @@
 | `v01x-pending-changes` | staged row changes、Preview plan、Commit/Rollback | 已完成 | 583cfc13 | a848caec |
 | `v01x-query-cancel-plus` | 事务连接取消、MariaDB 取消、兼容驱动继承父驱动取消能力 | 已完成 | 79838de7 | 6adb526d |
 | `v01x-connection-discovery` | 连接搜索排序、Pinned/Recent 优先级和连接表单分层 | 已完成 | 25630125 | fdf584de |
-| `v01x-filter-pagination` | 快速过滤表达式、分页重置、请求竞态和菜单分层组件 | 测试中·复测轮 | fe6fb7fe | 待复测 |
+| `v01x-filter-pagination` | 快速过滤表达式、分页重置、请求竞态和菜单分层组件 | 测试中·修复轮 | fe6fb7fe | 8dfc8b0b |
 | `v01x-object-actions` | 对象搜索、表定位和生成 SQL action | 已完成 | df1c0ad9 | 61acc880 |
 | `v01x-result-workspace` | Table/Chart 统一结果承载组件 | 已完成 | ffae5e54 | cfa056fc |
 | `v01x-ai-actions` | Explain/Fix SQL/Retry 快捷动作上下文 | 已完成 | bbd7c4cc | 9b8e7bda |
