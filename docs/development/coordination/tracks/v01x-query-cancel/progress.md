@@ -112,3 +112,10 @@
 - 质量检查：`git diff --check` 和提交范围 `git diff --check 92f86c58^ 79838de7` 通过；`cargo fmt --all -- --check` 仅报告任务开始前已存在的 codegen `src-tauri/src/driver_init.rs` 排版差异，未修改该文件。`npx tsc --noEmit` 仍被既有缺失生成模块 `src/locales/builtinLocales` 阻塞，并连带报告 `SettingsContent.tsx` 隐式 any；未执行 `pnpm install`，未修改生成物。
 - E2E 登记（【留待 R 回归】）：QC-PLUS-E2E-001（真实 PG：已开启事务的慢查询，验证 target PID 仅取消本次 execution、事务连接/cleanup 可继续按协议收尾）；QC-PLUS-E2E-002（真实 MySQL 与 MariaDB：同上，验证 thread id、`KILL QUERY` 与事务状态）；QC-PLUS-E2E-003（真实 QuestDB/Cloudberry/Doris/StarRocks/Manticore/OceanBase wrapper：逐项验证 capability 与父 driver 一致，并验证目标隔离）。当前无 `TEST_PG_*` / `TEST_MYSQL_*` 稳定 fixture、无专门 transaction precise-cancel integration fixture、无桌面自动化环境，以上均未执行且未伪称通过。
 - 本轮静态/单测未发现新增业务 bug；`bugs.md` 保持无新增条目。工作树原有 `docs/development/coordination/hub.md` 类型变更未触碰、未纳入提交，其他业务源码、规格文档和 codegen 均未修改。
+
+### 2026-08-31 R 阶段独立回归
+
+- `datazen-driver-api`：`101 passed / 0 failed`（2 doc-tests ignored）；MySQL/MariaDB：`80 passed / 0 failed`；PostgreSQL：`99 passed / 0 failed`；SQLite：`43 passed / 0 failed`，均使用独立 `CARGO_TARGET_DIR=/private/tmp/datazen-r-regression`。
+- Host `cargo test -p datazen --lib` 与 `cargo fmt --all -- --check` 被缺少 ignored `driver_init.rs`、`default` capability 阻断；未生成 codegen，未伪称 Host 通过。
+- 静态确认 Host cancel IPC 只调用 precise execution-handle protocol，PG/MySQL legacy session-wide 方法返回 Unsupported；事务、MariaDB、pending/wrong-session/stale/并发隔离及 ReuseDriver 闸门由 driver crate/API 测试通过。
+- 真实桌面/数据库 E2E 未执行：无 webdriver binary/dist，5432 端口受环境限制，无 `TEST_PG_*`/`TEST_MYSQL_*`/`TEST_MARIADB_*` fixture；继续保留 QC-PLUS-E2E-001/002/003 为 R 未执行项。

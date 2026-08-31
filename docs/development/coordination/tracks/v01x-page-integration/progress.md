@@ -107,6 +107,13 @@ TableView quick expression → `parseFilterForApply(columns)` → `filterExpress
 
 BUG-PI-005 已修复并完成定向回归，待提交 `fix(query): preserve retry context fingerprint`；Host UI E2E 仍按 BUG-PI-001 记录，未在当前无桌面/真实数据库 fixture 环境声称通过。
 
+## 2026-08-31 R 阶段独立回归
+
+- 完整结果、环境阻塞和静态结论见 [`docs/development/coordination/r-regression.md`](../../r-regression.md)。本轮未修改业务代码、配置、codegen 或 hub。
+- UI safe-payload 子集通过；但底层 AI command/store 的 raw SQL/error 信任与日志路径新增 BUG-PI-009，待修复。
+- 生产 Host 静态扫描发现 Data Sync/Schema Diff 的 PostgreSQL 字面量分支，新增 BUG-PI-008，待按 metadata/capability 重构。
+- QueryPanel Retry active connection/context guard 静态复核通过；真实桌面/数据库 E2E 因 webdriver binary、dist、端口和 fixture 缺失未执行。
+
 ## 2026-08-31 全新独立复测（21646559 / 09c90bb2 / 3950508e / 9a525c73）
 
 - 基线确认：`feature/v01x-page-integration` HEAD 为 `3950508e`；四个目标提交均在当前分支祖先链中。既有 `docs/development/coordination/hub.md` 工作区改动保持原样，未触碰。

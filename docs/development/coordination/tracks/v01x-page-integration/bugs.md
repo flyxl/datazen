@@ -65,3 +65,17 @@
 - Retry confirm 竞态覆盖 active connection 条目移除、非 `connected`、session mismatch、map entry identity mismatch；同时覆盖 panel 删除、database/schema/session/connection/databaseType/SQL/bound params/schema context 变化阻断，以及有效不变上下文仅执行一次。
 - DiagnosisPanel → aiStore → ai command 仅验证 `safeSql`/`safeErrorMessage` 进入诊断 payload；Fix 保持 draft-only；取消终态继续要求精确 `executionId` + `dbSessionId`，未发现新增功能 bug。
 - Host E2E 按 R 登记：`pnpm e2e:skip-build -- --suite core` 因 PostgreSQL 端口 `Operation not permitted`、缺少 `target/debug/datazen` webdriver binary 和 `dist/index.html` 退出 1；未声称真实桌面 IPC 通过。`src/locales/builtinLocales.ts` 生成后已清理。
+
+## BUG-PI-008 — Host Data Sync/Schema Diff 硬编码 PostgreSQL driver-id 分支
+
+- 状态：待修复；本轮仅记录。
+- 证据：`src/windows/data-sync/DataSyncWindow.tsx:357,391` 与 `src/windows/schema-diff/useSchemaDiffEndpoints.ts:220,254` 直接以 `databaseType !== 'postgresql'` 决定是否加载 schema。
+- 影响：Host 行为差异依赖具体 driver id；新增 PostgreSQL 兼容 driver 或可提供 schema 的其他 driver 不能仅通过 `DatabaseTypeMeta`/capability 复用该路径，违背 Host driver-agnostic 约定。
+- 复现/判定：静态扫描生产 `src/**`（排除 tests/generated）发现 4 处同类分支；本轮未修改实现，也未将该架构缺陷伪装成测试通过。
+
+## BUG-PI-009 — AI 诊断底层仍信任并暴露 raw SQL/error
+
+- 状态：待修复；本轮仅记录。
+- 证据：`src-tauri/src/commands/ai/generate.rs:249` 将 raw `error_message` 写入 debug 日志，`:289` 将 raw `sql`/`error_message` 拼入 provider user prompt；`src/stores/aiStore.ts:179-182` 也记录传入的 raw error。
+- 影响：QueryPanel 的正常 UI 链路会先经 `buildQueryDiagnosisContext` 脱敏并传递 `safeSql`/`safeErrorMessage`，但直接 IPC 或 store 调用可绕过这一边界；因此 AI provider 与日志层没有端到端的 raw SQL/error 防护。
+- 判定：本轮 UI safe-payload 静态检查通过，纯前端安全子集 `3 files / 22 tests` 通过；底层信任/日志静态检查不通过。本轮不修复业务代码。
