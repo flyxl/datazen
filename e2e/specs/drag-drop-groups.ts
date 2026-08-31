@@ -1,94 +1,190 @@
 /**
- * E2E tests for pointer-based drag-and-drop connections between groups.
+ * E2E tests for the navigator's native HTML5 drag-and-drop connection ordering.
  *
- * Creates two test groups and one test connection, verifies
- * moving the connection between groups via drag, and cleans up afterwards.
+ * The navigator uses `draggable` plus dragstart/dragover/drop/dragend handlers;
+ * these tests dispatch that same event lifecycle instead of PointerEvents.
  */
-import { expect, browser, $, $$ } from '@wdio/globals';
+import { expect, browser, $ } from '@wdio/globals';
 import { expandAllGroups } from '../helpers.js';
 import { t } from '../i18n.js';
 
 const GROUP_A = 'DragTestGroupA';
 const GROUP_B = 'DragTestGroupB';
-const CONN_NAME = 'DragTestConn';
-const CONN_ID = 'drag_test_conn_e2e';
+const CONN_A_NAME = 'DragTestConnA';
+const CONN_B_NAME = 'DragTestConnB';
+const CONN_A_ID = 'drag_test_conn_a_e2e';
+const CONN_B_ID = 'drag_test_conn_b_e2e';
+
+type ConnectionSnapshot = { id: string; name: string; group?: string };
+
+type Html5DragStartResult = {
+  status: 'ok' | 'no-source' | 'unsupported' | 'failed';
+  draggable: boolean;
+  payload: string;
+  types: string[];
+};
+
+type DndWindow = Window & { __datazenDndTransfer?: DataTransfer };
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   return browser.executeAsync(
-    (c: string, a: string, done: (result: any) => void) => {
-      (window as any).__TAURI_INTERNALS__
-        .invoke(c, JSON.parse(a))
-        .then((r: any) => done(r))
-        .catch((e: any) => done({ __error: String(e) }));
+    (c: string, a: string, done: (result: unknown) => void) => {
+      (window as Window & {
+        __TAURI_INTERNALS__: { invoke: (command: string, args: unknown) => Promise<unknown> };
+      })
+        .__TAURI_INTERNALS__.invoke(c, JSON.parse(a))
+        .then((result) => done(result))
+        .catch((error: unknown) => done({ __error: String(error) }));
     },
     cmd,
     JSON.stringify(args),
   ) as Promise<T>;
 }
 
-async function getGroupForConn(connId: string): Promise<string | undefined> {
-  const conns = await invokeBackend<Array<{ id: string; group?: string }>>('get_connections');
-  return conns.find((c) => c.id === connId)?.group;
+async function getConnections(): Promise<ConnectionSnapshot[]> {
+  return invokeBackend<ConnectionSnapshot[]>('get_connections');
 }
 
-/** Simulate a full pointer drag from a source element to a target element */
-async function pointerDrag(
-  srcSelector: string,
-  srcText: string,
-  targetGroupName: string,
-) {
-  return browser.execute(
-    (sel: string, text: string, tgName: string) => {
-      const items = document.querySelectorAll(sel);
-      let src: HTMLElement | null = null;
-      for (const item of items) {
-        if (item.textContent?.includes(text)) {
-          src = item as HTMLElement;
-          break;
-        }
-      }
-      if (!src) return 'no-source';
+async function getConnectionOrder(): Promise<string[]> {
+  return (await getConnections()).map((connection) => connection.id);
+}
 
-      const targetEl = document.querySelector(`[data-group-name="${tgName}"]`) as HTMLElement;
-      if (!targetEl) return 'no-target';
-
-      const srcRect = src.getBoundingClientRect();
-      const targetRect = targetEl.getBoundingClientRect();
-
-      const startX = srcRect.left + srcRect.width / 2;
-      const startY = srcRect.top + srcRect.height / 2;
-      const endX = targetRect.left + targetRect.width / 2;
-      const endY = targetRect.top + targetRect.height / 2;
-
-      // pointerdown on source
-      src.dispatchEvent(new PointerEvent('pointerdown', {
-        bubbles: true, cancelable: true, clientX: startX, clientY: startY, button: 0,
-      }));
-
-      // pointermove with enough distance to trigger drag
-      const steps = 5;
-      for (let i = 1; i <= steps; i++) {
-        const x = startX + (endX - startX) * (i / steps);
-        const y = startY + (endY - startY) * (i / steps);
-        window.dispatchEvent(new PointerEvent('pointermove', {
-          bubbles: true, cancelable: true, clientX: x, clientY: y,
-        }));
-      }
-
-      // pointerup on final position
-      window.dispatchEvent(new PointerEvent('pointerup', {
-        bubbles: true, cancelable: true, clientX: endX, clientY: endY, button: 0,
-      }));
-
-      return 'ok';
+async function waitForRelativeOrder(firstId: string, secondId: string): Promise<void> {
+  await browser.waitUntil(
+    async () => {
+      const order = await getConnectionOrder();
+      return order.indexOf(firstId) < order.indexOf(secondId);
     },
-    srcSelector,
-    srcText,
-    targetGroupName,
+    { timeout: 10000, interval: 200 },
   );
 }
 
-describe('拖拽连接到不同分组 - Pointer 事件 (DND)', () => {
+async function getVisibleTestConnectionOrder(): Promise<string[]> {
+  return browser.execute((names: string[]) => {
+    const visibleNames = Array.from(document.querySelectorAll<HTMLElement>('[data-conn-item]')).map(
+      (item) => item.dataset.connName,
+    );
+    return visibleNames.filter((name): name is string => name !== undefined && names.includes(name));
+  }, [CONN_A_NAME, CONN_B_NAME]) as Promise<string[]>;
+}
+
+async function getRenderedGroupBounds(): Promise<{
+  groupAIndex: number;
+  groupBIndex: number;
+  connectionIndices: number[];
+}> {
+  return browser.execute((groupA: string, groupB: string, names: string[]) => {
+    const rows = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-group-header], [data-conn-item]'),
+    );
+    const groupAIndex = rows.findIndex(
+      (row) => row.matches('[data-group-header]') && row.dataset.groupName === groupA,
+    );
+    const groupBIndex = rows.findIndex(
+      (row) => row.matches('[data-group-header]') && row.dataset.groupName === groupB,
+    );
+    const connectionIndices = rows.flatMap((row, index) =>
+      row.matches('[data-conn-item]') && names.includes(row.dataset.connName ?? '') ? [index] : [],
+    );
+    return { groupAIndex, groupBIndex, connectionIndices };
+  }, GROUP_A, GROUP_B, [CONN_A_NAME, CONN_B_NAME]) as Promise<{
+    groupAIndex: number;
+    groupBIndex: number;
+    connectionIndices: number[];
+  }>;
+}
+
+/** Dispatch the product's actual dragstart event and retain its DataTransfer. */
+async function startHtml5Drag(connectionName: string): Promise<Html5DragStartResult> {
+  return browser.execute((name: string) => {
+    const source = Array.from(document.querySelectorAll<HTMLElement>('[data-conn-item]')).find(
+      (item) => item.dataset.connName === name,
+    );
+    if (!source) {
+      return { status: 'no-source' as const, draggable: false, payload: '', types: [] };
+    }
+    if (typeof DataTransfer === 'undefined' || typeof DragEvent === 'undefined') {
+      return { status: 'unsupported' as const, draggable: source.draggable, payload: '', types: [] };
+    }
+
+    try {
+      const dataTransfer = new DataTransfer();
+      (window as DndWindow).__datazenDndTransfer = dataTransfer;
+      source.dispatchEvent(
+        new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer }),
+      );
+      return {
+        status: 'ok' as const,
+        draggable: source.draggable,
+        payload: dataTransfer.getData('text/plain'),
+        types: Array.from(dataTransfer.types),
+      };
+    } catch {
+      return { status: 'failed' as const, draggable: source.draggable, payload: '', types: [] };
+    }
+  }, connectionName) as Promise<Html5DragStartResult>;
+}
+
+/** Dispatch dragover with a coordinate on the requested side of the target row. */
+async function dragOverHtml5(connectionName: string, position: 'before' | 'after'): Promise<boolean> {
+  return browser.execute((name: string, dropPosition: 'before' | 'after') => {
+    const target = Array.from(document.querySelectorAll<HTMLElement>('[data-conn-item]')).find(
+      (item) => item.dataset.connName === name,
+    );
+    const dataTransfer = (window as DndWindow).__datazenDndTransfer;
+    if (!target || !dataTransfer) return false;
+
+    const rect = target.getBoundingClientRect();
+    const clientY = dropPosition === 'before' ? rect.top + 1 : rect.bottom - 1;
+    const event = new DragEvent('dragover', {
+      bubbles: true,
+      cancelable: true,
+      clientY,
+      dataTransfer,
+    });
+    target.dispatchEvent(event);
+    return event.defaultPrevented;
+  }, connectionName, position) as Promise<boolean>;
+}
+
+async function dropHtml5(connectionName: string): Promise<boolean> {
+  return browser.execute((name: string) => {
+    const target = Array.from(document.querySelectorAll<HTMLElement>('[data-conn-item]')).find(
+      (item) => item.dataset.connName === name,
+    );
+    const dataTransfer = (window as DndWindow).__datazenDndTransfer;
+    if (!target || !dataTransfer) return false;
+
+    const dropEvent = new DragEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer,
+    });
+    target.dispatchEvent(dropEvent);
+
+    // Complete the native lifecycle. The React drop handler also clears its
+    // internal state, but the browser sends dragend after drop as well.
+    const source = document.querySelector<HTMLElement>(
+      `[data-conn-item][data-conn-name="${dataTransfer.getData('text/plain')}"]`,
+    );
+    source?.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer }));
+    delete (window as DndWindow).__datazenDndTransfer;
+    return dropEvent.defaultPrevented;
+  }, connectionName) as Promise<boolean>;
+}
+
+async function endHtml5Drag(connectionName: string): Promise<void> {
+  await browser.execute((name: string) => {
+    const source = Array.from(document.querySelectorAll<HTMLElement>('[data-conn-item]')).find(
+      (item) => item.dataset.connName === name,
+    );
+    const dataTransfer = (window as DndWindow).__datazenDndTransfer;
+    source?.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer }));
+    delete (window as DndWindow).__datazenDndTransfer;
+  }, connectionName);
+}
+
+describe('连接分组中的 HTML5 拖拽排序 (DND)', () => {
   before(async () => {
     await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
     await expandAllGroups();
@@ -98,23 +194,27 @@ describe('拖拽连接到不同分组 - Pointer 事件 (DND)', () => {
     const newGroups = [...existingGroups.filter((g) => g !== GROUP_A && g !== GROUP_B), GROUP_A, GROUP_B];
     await invokeBackend('save_groups', { groups: newGroups });
 
-    const existingConns = await invokeBackend<Array<{ id: string }>>('get_connections');
-    if (existingConns.find((c) => c.id === CONN_ID)) {
-      await invokeBackend('delete_connection', { id: CONN_ID });
+    const existingConns = await getConnections();
+    for (const id of [CONN_A_ID, CONN_B_ID]) {
+      if (existingConns.some((connection) => connection.id === id)) {
+        await invokeBackend('delete_connection', { id });
+      }
     }
 
+    const connectionBase = {
+      databaseType: 'postgresql',
+      host: 'localhost',
+      port: 5432,
+      database: 'test_dnd',
+      username: 'test',
+      sslMode: 'disable',
+      group: GROUP_A,
+    };
     await invokeBackend('save_connection', {
-      config: {
-        id: CONN_ID,
-        name: CONN_NAME,
-        databaseType: 'postgresql',
-        host: 'localhost',
-        port: 5432,
-        database: 'test_dnd',
-        username: 'test',
-        sslMode: 'disable',
-        group: GROUP_A,
-      },
+      config: { ...connectionBase, id: CONN_A_ID, name: CONN_A_NAME },
+    });
+    await invokeBackend('save_connection', {
+      config: { ...connectionBase, id: CONN_B_ID, name: CONN_B_NAME },
     });
 
     await browser.execute(() => location.reload());
@@ -124,11 +224,14 @@ describe('拖拽连接到不同分组 - Pointer 事件 (DND)', () => {
   });
 
   after(async () => {
-    try { await invokeBackend('delete_connection', { id: CONN_ID }); } catch { /* ok */ }
+    try {
+      await invokeBackend('delete_connection', { id: CONN_A_ID });
+      await invokeBackend('delete_connection', { id: CONN_B_ID });
+    } catch { /* best-effort cleanup */ }
     try {
       const groups = await invokeBackend<string[]>('get_groups');
       await invokeBackend('save_groups', { groups: groups.filter((g) => g !== GROUP_A && g !== GROUP_B) });
-    } catch { /* ok */ }
+    } catch { /* best-effort cleanup */ }
     await browser.execute(() => location.reload());
     await browser.pause(1000);
   });
@@ -137,99 +240,76 @@ describe('拖拽连接到不同分组 - Pointer 事件 (DND)', () => {
     const body = await $('body').getText();
     expect(body).toContain(GROUP_A);
     expect(body).toContain(GROUP_B);
-    expect(body).toContain(CONN_NAME);
+    expect(body).toContain(CONN_A_NAME);
+    expect(body).toContain(CONN_B_NAME);
   });
 
-  it('DND-002: 连接初始在 GroupA 中', async () => {
-    expect(await getGroupForConn(CONN_ID)).toBe(GROUP_A);
+  it('DND-002: 测试连接初始都在 GroupA 且 A 排在 B 前', async () => {
+    const connections = await getConnections();
+    expect(connections.find((connection) => connection.id === CONN_A_ID)?.group).toBe(GROUP_A);
+    expect(connections.find((connection) => connection.id === CONN_B_ID)?.group).toBe(GROUP_A);
+    await waitForRelativeOrder(CONN_A_ID, CONN_B_ID);
   });
 
   it('DND-003: data-group-name 属性存在', async () => {
-    const names = await browser.execute(() => {
-      const els = document.querySelectorAll('[data-group-name]');
-      return Array.from(els).map((el) => (el as HTMLElement).dataset.groupName);
-    });
+    const names = await browser.execute(() =>
+      Array.from(document.querySelectorAll<HTMLElement>('[data-group-name]')).map(
+        (element) => element.dataset.groupName,
+      ),
+    ) as Promise<Array<string | undefined>>;
     expect(names).toContain(GROUP_A);
     expect(names).toContain(GROUP_B);
   });
 
-  it('DND-004: 通过 pointer 拖拽将连接从 A 移到 B', async () => {
-    const result = await pointerDrag('[data-conn-item]', CONN_NAME, GROUP_B);
-    expect(result).toBe('ok');
-    await browser.pause(2000);
-    expect(await getGroupForConn(CONN_ID)).toBe(GROUP_B);
+  it('DND-004: 通过 HTML5 拖拽将连接 A 移到连接 B 后方', async () => {
+    const start = await startHtml5Drag(CONN_A_NAME);
+    expect(start.status).toBe('ok');
+    expect(start.draggable).toBe(true);
+    expect(start.payload).toBe(CONN_A_ID);
+
+    expect(await dragOverHtml5(CONN_B_NAME, 'after')).toBe(true);
+    await browser.pause(100);
+    expect(await dropHtml5(CONN_B_NAME)).toBe(true);
+    await waitForRelativeOrder(CONN_B_ID, CONN_A_ID);
   });
 
-  it('DND-005: 拖拽后 UI 显示连接在 GroupB 中', async () => {
-    const inGroupB = await browser.execute((gName: string, cName: string) => {
-      const headers = document.querySelectorAll('[data-group-header]');
-      for (const h of headers) {
-        if (!h.textContent?.includes(gName)) continue;
-        const container = h.parentElement;
-        if (!container) continue;
-        const items = container.querySelectorAll('[data-conn-item]');
-        for (const item of items) {
-          if (item.textContent?.includes(cName)) return true;
-        }
-      }
-      return false;
-    }, GROUP_B, CONN_NAME);
-    expect(inGroupB).toBe(true);
+  it('DND-005: 拖拽后 UI 在 GroupA 中显示 B、A 的顺序', async () => {
+    expect(await getVisibleTestConnectionOrder()).toEqual([CONN_B_NAME, CONN_A_NAME]);
+    const bounds = await getRenderedGroupBounds();
+    expect(bounds.groupAIndex).toBeGreaterThanOrEqual(0);
+    expect(bounds.groupBIndex).toBeGreaterThan(bounds.groupAIndex);
+    expect(Math.min(...bounds.connectionIndices)).toBeGreaterThan(bounds.groupAIndex);
+    expect(Math.max(...bounds.connectionIndices)).toBeLessThan(bounds.groupBIndex);
   });
 
-  it('DND-006: 通过 pointer 拖拽将连接从 B 移回 A', async () => {
-    const result = await pointerDrag('[data-conn-item]', CONN_NAME, GROUP_A);
-    expect(result).toBe('ok');
-    await browser.pause(2000);
-    expect(await getGroupForConn(CONN_ID)).toBe(GROUP_A);
+  it('DND-006: 通过 HTML5 拖拽将连接 A 移回 B 前方', async () => {
+    const start = await startHtml5Drag(CONN_A_NAME);
+    expect(start.status).toBe('ok');
+    expect(await dragOverHtml5(CONN_B_NAME, 'before')).toBe(true);
+    await browser.pause(100);
+    expect(await dropHtml5(CONN_B_NAME)).toBe(true);
+    await waitForRelativeOrder(CONN_A_ID, CONN_B_ID);
+    expect(await getVisibleTestConnectionOrder()).toEqual([CONN_A_NAME, CONN_B_NAME]);
   });
 
-  it('DND-007: 拖拽到当前所在分组不应触发移动', async () => {
-    // Already in GROUP_A, drag to GROUP_A
-    const result = await pointerDrag('[data-conn-item]', CONN_NAME, GROUP_A);
-    expect(result).toBe('ok');
-    await browser.pause(1000);
-    // Should still be in GROUP_A (no unnecessary save)
-    expect(await getGroupForConn(CONN_ID)).toBe(GROUP_A);
-  });
-
-  it('DND-008: 拖拽时应显示拖拽幽灵元素', async () => {
-    // Start drag: pointerdown + pointermove
-    await browser.execute((connName: string) => {
-      const items = document.querySelectorAll('[data-conn-item]');
-      let src: HTMLElement | null = null;
-      for (const item of items) {
-        if (item.textContent?.includes(connName)) { src = item as HTMLElement; break; }
-      }
-      if (!src) return;
-      const rect = src.getBoundingClientRect();
-      const startX = rect.left + rect.width / 2;
-      const startY = rect.top + rect.height / 2;
-
-      src.dispatchEvent(new PointerEvent('pointerdown', {
-        bubbles: true, cancelable: true, clientX: startX, clientY: startY, button: 0,
-      }));
-      window.dispatchEvent(new PointerEvent('pointermove', {
-        bubbles: true, cancelable: true, clientX: startX + 30, clientY: startY + 30,
-      }));
-    }, CONN_NAME);
-
-    // Wait for React to render the ghost
+  it('DND-007: 拖拽到当前所在连接不应改变顺序', async () => {
+    const before = await getConnectionOrder();
+    const start = await startHtml5Drag(CONN_A_NAME);
+    expect(start.status).toBe('ok');
+    expect(await dragOverHtml5(CONN_A_NAME, 'after')).toBe(false);
+    await browser.pause(100);
+    expect(await dropHtml5(CONN_A_NAME)).toBe(true);
     await browser.pause(300);
+    expect(await getConnectionOrder()).toEqual(before);
+    expect(await getVisibleTestConnectionOrder()).toEqual([CONN_A_NAME, CONN_B_NAME]);
+  });
 
-    const ghostText = await browser.execute(() => {
-      const ghost = document.querySelector('.pointer-events-none.fixed');
-      return ghost?.textContent ?? null;
-    });
-
-    // Clean up: pointerup
-    await browser.execute(() => {
-      window.dispatchEvent(new PointerEvent('pointerup', {
-        bubbles: true, cancelable: true, clientX: 0, clientY: 0, button: 0,
-      }));
-    });
-
-    expect(ghostText).toContain(CONN_NAME);
-    await browser.pause(500);
+  it('DND-008: dragstart 应使用原生 DataTransfer 传递连接 ID', async () => {
+    const start = await startHtml5Drag(CONN_A_NAME);
+    expect(start.status).toBe('ok');
+    expect(start.draggable).toBe(true);
+    expect(start.payload).toBe(CONN_A_ID);
+    expect(start.types).toContain('text/plain');
+    await endHtml5Drag(CONN_A_NAME);
   });
 });
