@@ -767,21 +767,36 @@ export function sqlBlockedBySafeMode(sql: string): boolean {
 /** Temporarily disable Safe Mode for fixture DDL (DROP/TRUNCATE). Restores previous flag. */
 export async function withSafeModeOff<T>(fn: () => Promise<T>): Promise<T> {
   const settings = await invokeSettings<SettingsLike>('get_settings');
-  if (!settings.safeMode) return fn();
-  await invokeSettings('save_settings', { settings: { ...settings, safeMode: false } });
+  const wasSafeMode = settings.safeMode !== false;
+  const disabled = { ...settings, safeMode: false };
+  if (wasSafeMode) {
+    await invokeSettings('save_settings', { settings: disabled });
+  }
+  // The mounted ConnectionPage reads Safe Mode from Zustand. Persisting the
+  // fixture setting alone is insufficient for actions whose buttons are
+  // conditionally rendered, so notify the current window as well.
+  await emitCrossWindowEvent('datazen:settings-changed', disabled);
   try {
     return await fn();
   } finally {
     const current = await invokeSettings<SettingsLike>('get_settings');
-    await invokeSettings('save_settings', { settings: { ...current, safeMode: true } });
+    const restored = { ...current, safeMode: wasSafeMode };
+    await invokeSettings('save_settings', { settings: restored });
+    await emitCrossWindowEvent('datazen:settings-changed', restored);
   }
 }
 
 /** Persist Safe Mode on/off (e.g. keep off for a whole describe block). */
 export async function setSafeMode(enabled: boolean): Promise<void> {
   const settings = await invokeSettings<SettingsLike>('get_settings');
-  if (settings.safeMode === enabled) return;
-  await invokeSettings('save_settings', { settings: { ...settings, safeMode: enabled } });
+  const next = { ...settings, safeMode: enabled };
+  if (settings.safeMode !== enabled) {
+    await invokeSettings('save_settings', { settings: next });
+  }
+  // Keep the mounted frontend store in sync with the fixture setting. Merely
+  // writing the backend JSON leaves destructive UI actions hidden until the
+  // next settings hydration.
+  await emitCrossWindowEvent('datazen:settings-changed', next);
   await browser.pause(300);
 }
 
@@ -1392,7 +1407,8 @@ export async function waitForEditInput() {
 export async function selectDzOption(triggerLabel: string, optionLabel: string) {
   await browser.execute((trigger: string) => {
     const buttons = Array.from(document.querySelectorAll('button[aria-haspopup="listbox"]'));
-    const btn = buttons.find((b) => (b.textContent || '').includes(trigger));
+    const needle = trigger.toLowerCase();
+    const btn = buttons.find((b) => (b.textContent || '').toLowerCase().includes(needle));
     if (!btn) throw new Error(`Select trigger not found: ${trigger}`);
     (btn as HTMLElement).click();
   }, triggerLabel);
@@ -1522,14 +1538,27 @@ export async function openErDiagramFromUi() {
 
 /** Emit a cross-window menu event on the main Tauri window. */
 export async function emitCrossWindowEvent(event: string, payload?: Record<string, unknown>) {
-  await browser.execute(
-    (evt: string, pl: Record<string, unknown> | null) => {
-      (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
-        ?.invoke?.('plugin:event|emit', {
-          event: evt,
-          payload: pl ?? {},
-        })
-        .catch(() => {});
+  await browser.executeAsync(
+    (
+      evt: string,
+      pl: Record<string, unknown> | null,
+      done: (result: boolean) => void,
+    ) => {
+      const internals = (
+        window as unknown as {
+          __TAURI_INTERNALS__?: {
+            invoke?: (command: string, args: unknown) => Promise<unknown>;
+          };
+        }
+      ).__TAURI_INTERNALS__;
+      const invoke = internals?.invoke?.bind(internals);
+      if (!invoke) {
+        done(false);
+        return;
+      }
+      invoke('plugin:event|emit', { event: evt, payload: pl ?? {} })
+        .then(() => done(true))
+        .catch(() => done(false));
     },
     event,
     payload ?? null,

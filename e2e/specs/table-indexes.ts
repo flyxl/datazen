@@ -7,6 +7,7 @@ import {
   clickTableInSidebar,
   switchSubTab,
   connectSeededPgInWorkspace,
+  setSafeMode,
   withSafeModeOff,
   waitForTableInSidebar,
 } from '../helpers.js';
@@ -34,6 +35,9 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
         score INT NOT NULL
       )
     `);
+    // Let the query panel finish its result-state update before refreshing the
+    // navigator; the schema refresh is independent of SQL completion.
+    await browser.pause(1200);
 
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
@@ -53,6 +57,7 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
     } catch {
       /* cleanup */
     }
+    await setSafeMode(true);
     await closeExtraWindows(mainWindow);
   });
 
@@ -102,9 +107,21 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
     await withSafeModeOff(async () => {
       await switchSubTab('indexes');
       await browser.pause(800);
-      const deleteBtn = await $("[data-testid='idx-delete-index']");
-      await deleteBtn.waitForDisplayed({ timeout: 8000 });
-      await deleteBtn.click();
+      const indexRow = await $(`[data-index-name="${INDEX_NAME}"]`);
+      await indexRow.moveTo();
+      const deleteBtn = await $(
+        `[data-index-name="${INDEX_NAME}"] [data-testid='idx-delete-index']`,
+      );
+      // The action is intentionally opacity-0 until the row is hovered. WebKit
+      // can keep the CSS hover state stale for virtualized table rows, so wait
+      // for the real button and invoke the same React handler from the DOM.
+      await deleteBtn.waitForExist({ timeout: 8000 });
+      await browser.execute((name: string) => {
+        const button = document.querySelector<HTMLButtonElement>(
+          `[data-index-name="${name}"] [data-testid='idx-delete-index']`,
+        );
+        button?.click();
+      }, INDEX_NAME);
       await browser.pause(400);
       await expect(await $(`div*=${t('indexes.confirmDeleteTitle')}`)).toBeDisplayed();
       await browser.execute(() => {

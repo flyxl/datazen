@@ -41,6 +41,16 @@ async function openFilterPanel() {
       await browser.pause(300);
     }
   }
+  // clearFilters removes the draft rows but intentionally keeps the panel
+  // open. Recreate one condition when a preceding test left an empty editor.
+  const value = await $('[data-testid="filter-value"]');
+  if (!(await value.isDisplayed().catch(() => false))) {
+    const add = await $('[data-testid="filter-add"]');
+    if (await add.isDisplayed().catch(() => false)) {
+      await add.click();
+      await browser.pause(300);
+    }
+  }
 }
 
 async function applyFilter() {
@@ -77,6 +87,10 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
         ('beta', 20),
         ('gamma', 30)
     `);
+    // Let the query panel finish its result-state update before refreshing
+    // the virtualized schema tree; otherwise the just-created table can be
+    // absent from the navigator on a cold Tauri run.
+    await browser.pause(1200);
 
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
@@ -110,8 +124,34 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
     await expect(await $('[data-testid="filter-apply"]')).toBeDisplayed();
   });
 
+  it('快速筛选表达式应直接过滤并支持清空 (TF-011)', async () => {
+    const quickFilter = await $('[data-testid="table-quick-filter"]');
+    await quickFilter.waitForDisplayed({ timeout: 5000 });
+    await quickFilter.setValue("name = 'alpha'");
+    await browser.keys('Enter');
+    await browser.waitUntil(
+      async () => {
+        const body = await $('body').getText();
+        return body.includes('alpha') && !body.includes('beta') && !body.includes('gamma');
+      },
+      { timeout: 8000, timeoutMsg: '等待快速筛选结果' },
+    );
+    expect(await quickFilter.getAttribute('aria-invalid')).toBeNull();
+
+    await quickFilter.clearValue();
+    await browser.keys('Enter');
+    await browser.waitUntil(
+      async () => {
+        const body = await $('body').getText();
+        return body.includes('alpha') && body.includes('beta') && body.includes('gamma');
+      },
+      { timeout: 8000, timeoutMsg: '等待清空快速筛选后的结果' },
+    );
+  });
+
   it('空值 Apply 不得报加载失败且表仍可见 (TF-008)', async () => {
     // Default first column is often id (integer). Empty eq must not break the grid.
+    await openFilterPanel();
     const valueInput = await $('[data-testid="filter-value"]');
     await valueInput.waitForDisplayed({ timeout: 5000 });
     await valueInput.clearValue();

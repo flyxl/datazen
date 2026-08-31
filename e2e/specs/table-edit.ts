@@ -9,6 +9,7 @@ import {
   switchSubTab,
   doubleClickCellByText,
   waitForEditInput,
+  confirmWebDialog,
   waitForNewQueryButton,
   waitForTableInSidebar,
 } from '../helpers.js';
@@ -27,6 +28,18 @@ import {
  */
 
 const TEST_TABLE = '_e2e_edit_test';
+
+async function commitInlineValue(value: string) {
+  const input = await waitForEditInput();
+  await input.clearValue();
+  await input.setValue(value);
+  await browser.pause(300);
+  expect(await input.getValue()).toBe(value);
+  await browser.execute(() => {
+    const editor = document.querySelector('input.font-mono') as HTMLInputElement | null;
+    editor?.blur();
+  });
+}
 
 describe('表数据编辑 (DE-002~DE-005)', () => {
   let mainWindow: string;
@@ -52,6 +65,9 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
         ('Bob', 200),
         ('Charlie', 300)`,
     );
+    // Let the query result/state update settle before refreshing the
+    // virtualized schema tree on a cold WebKit run.
+    await browser.pause(1200);
 
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
@@ -122,6 +138,53 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
 
     const inputGone = await browser.execute(() => !document.querySelector('input.font-mono'));
     expect(inputGone).toBe(true);
+  });
+
+  it('编辑应暂存、可预览 SQL，并支持回滚与提交 (DE-006~DE-008)', async () => {
+    await doubleClickCellByText('Alice');
+    await commitInlineValue('AliceStaged');
+
+    const pendingBar = await $('[data-testid="pending-changes-bar"]');
+    await pendingBar.waitForDisplayed({ timeout: 8000 });
+    await expect(await $('[data-testid="pending-preview"]')).toBeDisplayed();
+    await expect(await $('[data-testid="pending-commit"]')).toBeDisplayed();
+    await expect(await $('[data-testid="pending-rollback"]')).toBeDisplayed();
+
+    await $('[data-testid="pending-preview"]').click();
+    const preview = await $('[data-testid="pending-plan-dialog"]');
+    await preview.waitForDisplayed({ timeout: 8000 });
+    expect((await preview.getText()).toUpperCase()).toContain('UPDATE');
+    expect(await preview.getText()).toContain('AliceStaged');
+    const previewButtons = await preview.$$('button');
+    await previewButtons[previewButtons.length - 1].click();
+    await preview.waitForDisplayed({ reverse: true, timeout: 5000 });
+
+    await $('[data-testid="pending-rollback"]').click();
+    await $('[data-testid="pending-changes-bar"]').waitForDisplayed({ reverse: true, timeout: 8000 });
+    // Rollback reloads the table asynchronously. Wait for the restored row
+    // state before starting the next edit, otherwise the reload can replace
+    // the newly staged change.
+    await browser.waitUntil(
+      async () => await $('[data-testid="table-filter-toggle"]').isEnabled().catch(() => false),
+      { timeout: 15000, timeoutMsg: '等待回滚后的表数据重新加载' },
+    );
+
+    // Stage a second value and commit it through the confirmation dialog.
+    await doubleClickCellByText('Alice');
+    await commitInlineValue('AliceCommitted');
+    const commitPendingBar = await $('[data-testid="pending-changes-bar"]');
+    await commitPendingBar.waitForDisplayed({ timeout: 8000 });
+    await browser.waitUntil(
+      async () => (await commitPendingBar.getAttribute('aria-busy')) !== 'true',
+      { timeout: 8000, timeoutMsg: '等待暂存修改进入可提交状态' },
+    );
+    await $('[data-testid="pending-commit"]').click();
+    await confirmWebDialog();
+    await $('[data-testid="pending-changes-bar"]').waitForDisplayed({ reverse: true, timeout: 10000 });
+
+    await openQueryTab();
+    await executeSQL(`SELECT name FROM ${TEST_TABLE} WHERE id = 1`);
+    expect(await $('body').getText()).toContain('AliceCommitted');
   });
 
   it('通过 SQL 更新后刷新应在 UI 中显示新值 (DE-003)', async () => {

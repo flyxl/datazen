@@ -577,10 +577,16 @@ pub(crate) async fn commit_pending_changes_impl(
             "Database context changed; reload and preview pending changes again".into(),
         ));
     }
-    if config.schema != request.plan.table.schema {
-        return Err(CommandError::Validation(
-            "Schema context changed; reload and preview pending changes again".into(),
-        ));
+    // A connection-level schema is optional. When it is omitted, the table
+    // context may still contain the concrete schema returned by the
+    // navigator (for example PostgreSQL's `public`). Only an explicitly
+    // configured schema is a binding context that must match the preview.
+    if let Some(config_schema) = config.schema.as_deref() {
+        if request.plan.table.schema.as_deref() != Some(config_schema) {
+            return Err(CommandError::Validation(
+                "Schema context changed; reload and preview pending changes again".into(),
+            ));
+        }
     }
     let read_only = state
         .connection_manager
@@ -1083,6 +1089,69 @@ mod tests {
         .unwrap_err();
         assert!(error.to_string().contains("Database context changed"));
         assert!(test.mock.use_database_calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn commit_allows_concrete_table_schema_when_connection_schema_is_unspecified() {
+        let mut options = crate::testing::app_state::rich_mock_options();
+        options.execute_rows_affected = 1;
+        let test = TestAppState::with_options(options).await;
+        let (_, conn_id) = test.save_and_connect("context-schema-default").await;
+        let plan = preview_pending_changes_impl(
+            &test.state,
+            RowChangeTableContext {
+                schema: Some("public".into()),
+                ..table_context("context-schema-default", &conn_id)
+            },
+            vec![update_change(1, "Alice", "Updated")],
+        )
+        .await
+        .unwrap();
+
+        commit_pending_changes_impl(
+            &test.state,
+            CommitPendingChangesRequest {
+                db_session_id: conn_id,
+                fingerprint: plan.fingerprint.clone(),
+                plan,
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn commit_rejects_explicit_schema_context_change() {
+        let mut options = crate::testing::app_state::rich_mock_options();
+        options.execute_rows_affected = 1;
+        let test = TestAppState::with_options(options).await;
+        let mut config =
+            crate::testing::app_state::sample_postgres_config("context-schema-explicit");
+        config.schema = Some("private".into());
+        test.store.save_connection(config).await.unwrap();
+        let conn_id = test.connect_config("context-schema-explicit").await;
+        let plan = preview_pending_changes_impl(
+            &test.state,
+            RowChangeTableContext {
+                schema: Some("public".into()),
+                ..table_context("context-schema-explicit", &conn_id)
+            },
+            vec![update_change(1, "Alice", "Updated")],
+        )
+        .await
+        .unwrap();
+
+        let error = commit_pending_changes_impl(
+            &test.state,
+            CommitPendingChangesRequest {
+                db_session_id: conn_id,
+                fingerprint: plan.fingerprint.clone(),
+                plan,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("Schema context changed"));
     }
 
     #[tokio::test]
