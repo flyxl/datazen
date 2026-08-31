@@ -143,3 +143,14 @@ BUG-PI-005 已修复并完成定向回归，待提交 `fix(query): preserve retr
 - 新增异步 confirm 竞态回归：active connection removed、非 connected、session mismatch、map entry identity mismatch；另覆盖最新 context 失效。AI 脱敏 payload、Fix draft-only、取消终态以及已有 connection/database/schema/databaseType/SQL/bound params 变化阻断保持不变。
 - 验证：`node scripts/generate-builtin-locales.mjs` 通过；QueryPanel 定向 Vitest 为 1 file / 23 passed；相关 AI/Query Vitest 为 4 files / 80 passed；`pnpm typecheck` 通过（0 diagnostics）；`git diff --check` 通过。
 - 本轮仅修改 `QueryPanel.tsx`、其回归测试及本轨 `progress.md`/`bugs.md`；既有 `docs/development/coordination/hub.md` regular-file → symlink 工作区变更保留原样，未纳入提交。
+
+## 2026-08-31 全新独立最终复测（21646559 / 09c90bb2 / 3950508e / c2d41a77 / 739a9453）
+
+- 基线确认：当前 worktree 为 `/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/datazen-v01x-page-integration`，分支为 `feature/v01x-page-integration`；五个目标提交均在当前 HEAD 祖先链，HEAD 为 `739a9453`。既有 `docs/development/coordination/hub.md` regular-file → symlink 类型变化保持原样，未触碰。
+- 复测前运行 `node scripts/generate-builtin-locales.mjs` 成功并确认生成 `src/locales/builtinLocales.ts`；测试用临时生成物在收尾已删除，ignored codegen 未纳入提交。
+- 相关 Host Vitest：31 个文件、466/466 通过；覆盖 Retry confirm 后重读 panel、active connection、per-session schema、SQL、bound params、databaseType，active connection 缺失/非 connected/connectionId 映射不匹配/session mismatch、panel 删除，以及 database/schema/session/connection/databaseType/SQL/params/schema context 变化阻断；上下文有效且不变时仅执行一次。并覆盖 DiagnosisPanel → aiStore → ai command 的 `safeSql`/`safeErrorMessage` 边界、Fix draft-only、executionId/dbSessionId 取消终态、Connection/Object search、TablePanel/ResultWorkspace、Filter/Pagination/DataTable、context selector。
+- 完整 Host Vitest：269 个文件、2229/2229 通过。
+- E2E contract 逻辑 Vitest：3 个文件、22/22 通过；`pnpm typecheck` 退出码 0 且无 diagnostics；`git diff --check` 通过。
+- Host desktop E2E：`pnpm e2e:skip-build -- --suite core` 退出码 1；PostgreSQL 端口访问返回 `Operation not permitted`，且缺少 `target/debug/datazen` webdriver binary 与 `dist/index.html`。按 BUG-PI-001 记为 R，未声称桌面 E2E 通过。
+- 静态复核确认 Retry 最终门禁要求 active connection map 条目存在、映射 identity 一致、状态为 `connected`、panel/active connection 均有非空且严格一致的 `dbSessionId`；最新 panel/schema/SQL/params 均在确认后读取，执行仍只经 `retryAction.invoke` 且最多一次。AI 诊断只发送 `safeSql`/`safeErrorMessage`，Fix 只回填草稿；本轮未发现新增功能 bug。
+- 本轮只更新本轨 `progress.md`/`bugs.md`；未修改 hub、功能代码、配置或 codegen；`src/locales/builtinLocales.ts` 已清理。
