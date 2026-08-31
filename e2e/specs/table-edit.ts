@@ -10,6 +10,7 @@ import {
   doubleClickCellByText,
   waitForEditInput,
   waitForNewQueryButton,
+  waitForTableInSidebar,
 } from '../helpers.js';
 
 /**
@@ -54,7 +55,7 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
 
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
-    await browser.pause(2000);
+    await waitForTableInSidebar(TEST_TABLE);
   });
 
   after(async () => {

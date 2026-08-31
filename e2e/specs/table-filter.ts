@@ -8,6 +8,7 @@ import {
   switchSubTab,
   selectDzOption,
   openSeededPgConnectionWindow,
+  waitForTableInSidebar,
 } from '../helpers.js';
 
 /**
@@ -79,7 +80,7 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
 
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
-    await browser.pause(1500);
+    await waitForTableInSidebar(TEST_TABLE);
 
     await clickTableInSidebar(TEST_TABLE);
     await browser.pause(1500);
