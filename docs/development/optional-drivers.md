@@ -2,7 +2,7 @@
 
 DataZen ships a **Basic** SKU with four core drivers (`postgres`, `mysql`, `sqlite`, `redis`). Additional database engines live as **path drivers** under `packages/drivers/` and are listed in [`drivers-registry.json`](../../drivers-registry.json) at the repo root.
 
-This document covers the four optional engines called out in the P2 roadmap: **MongoDB**, **ClickHouse**, **DuckDB**, and **SQL Server**. Git-based drivers (Kiwi, OLAP, Superset) are documented in [`plugin-development.md`](independent-plugin-development.en.md).
+This document covers the four optional engines called out in the P2 roadmap: **MongoDB**, **ClickHouse**, **DuckDB**, and **SQL Server**. Git-based drivers (Kiwi, OLAP, Superset) are documented in [`driver-development.md`](independent-driver-development.en.md).
 
 ## Inventory (2026-08-21)
 
@@ -116,10 +116,10 @@ Host E2E contract journeys intentionally target Basic SQL drivers (PostgreSQL / 
 
 ## Local driver development
 
-See [plugin-development.md](independent-plugin-development.en.md) — path drivers use the same `DatabaseDriver` trait and `.drivers-dev.json` symlink workflow as git plugins, but the source stays in `packages/drivers/<id>/`.
+See [driver-development.md](independent-driver-development.en.md) — path drivers use the same `DatabaseDriver` trait and `.drivers-dev.json` symlink workflow as git plugins, but the source stays in `packages/drivers/<id>/`.
 
 ## Related docs
 
 - [AGENTS.md](../../AGENTS.md) — driver selection, codegen, capabilities
-- [plugin-development.md](independent-plugin-development.en.md) — git plugins and trait reference
+- [driver-development.md](independent-driver-development.en.md) — git plugins and trait reference
 - [packaging.md](packaging.md) — release SKUs and install channels

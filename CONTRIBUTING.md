@@ -65,7 +65,7 @@ Frontend IPC args use `snake_case` keys to match the Rust commands. Do not edit 
 ## Plugins
 
 External drivers use the compile-time plugin system (`drivers-registry.json`,
-`register_driver!`). See [`docs/development/independent-plugin-development.en.md`](docs/development/independent-plugin-development.en.md)
+`register_driver!`). See [`docs/development/independent-driver-development.en.md`](docs/development/independent-driver-development.en.md)
 or `AGENTS.md` for an overview.
 
 ## License
