@@ -2,11 +2,12 @@
 
 use super::chat::{db_tool_definitions, run_streaming_tool_loop};
 use super::util::{
-    inject_language_hint, parse_ai_json, resolve_ai, strip_markdown_fences, truncate_str,
-    window_stream_callback, StreamCallback,
+    inject_language_hint, parse_ai_json, resolve_ai, strip_markdown_fences, window_stream_callback,
+    StreamCallback,
 };
 use crate::ai::budget;
 use crate::ai::prompt_resolver;
+use crate::ai::safety::redact_for_ai;
 use crate::ai::*;
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
@@ -42,7 +43,6 @@ pub(crate) async fn ai_generate_sql_impl(
         recent_queries_count = recent_queries.len(),
         "ai_generate_sql: start"
     );
-    tracing::debug!(%request_id, input = %natural_language, "ai_generate_sql: input");
 
     let mut ctx_yaml_tables: Vec<String> = Vec::new();
 
@@ -62,6 +62,10 @@ pub(crate) async fn ai_generate_sql_impl(
             }
         }
     }
+
+    // Context files and natural language are caller-provided prompt content;
+    // sanitize the complete assembled value at the command boundary.
+    let natural_language = redact_for_ai(&natural_language);
 
     let (provider, ai_config) = resolve_ai(&state).await?;
 
@@ -119,7 +123,7 @@ pub(crate) async fn ai_generate_sql_impl(
             "\n\n{label}:\n{}",
             recent_queries
                 .iter()
-                .map(|q| format!("- {q}"))
+                .map(|q| format!("- {}", redact_for_ai(q)))
                 .collect::<Vec<_>>()
                 .join("\n")
         )
@@ -239,14 +243,19 @@ pub(crate) async fn ai_diagnose_error_impl(
     sql: String,
     error_message: String,
 ) -> Result<DiagnosisResult, CommandError> {
+    let safe_sql = redact_for_ai(&sql);
+    let safe_error_message = redact_for_ai(&error_message);
     tracing::info!(
         %db_session_id,
         %database,
         sql_len = sql.len(),
+        safe_sql_len = safe_sql.len(),
+        sql_redacted = safe_sql != sql,
         error_len = error_message.len(),
+        safe_error_len = safe_error_message.len(),
+        error_redacted = safe_error_message != error_message,
         "ai_diagnose_error: start"
     );
-    tracing::debug!(%db_session_id, error = %error_message, "ai_diagnose_error: error");
 
     let (provider, ai_config) = resolve_ai(&state).await?;
 
@@ -264,9 +273,10 @@ pub(crate) async fn ai_diagnose_error_impl(
         .await
         .cmd_err("ai_diagnose_error")?;
 
+    let safe_schema_ddl = redact_for_ai(&context.schema_ddl);
     let mut vars = HashMap::new();
     vars.insert("db_type", context.database_type.as_str());
-    vars.insert("schema", context.schema_ddl.as_str());
+    vars.insert("schema", safe_schema_ddl.as_str());
     let tpl = state
         .prompt_resolver
         .resolve(PromptScenario::Diagnose, Some(driver_ref.as_ref()), &lang)
@@ -286,7 +296,7 @@ pub(crate) async fn ai_diagnose_error_impl(
             },
             ChatMessage {
                 role: MessageRole::User,
-                content: format!("SQL:\n```\n{sql}\n```\n\nError:\n{error_message}"),
+                content: format!("SQL:\n```\n{safe_sql}\n```\n\nError:\n{safe_error_message}"),
                 reasoning: None,
                 tool_calls: None,
                 tool_call_id: None,
@@ -343,10 +353,16 @@ pub(crate) async fn ai_analyze_explain_impl(
     explain_output: String,
     original_sql: String,
 ) -> Result<ExplainAnalysis, CommandError> {
+    let safe_original_sql = redact_for_ai(&original_sql);
+    let safe_explain_output = redact_for_ai(&explain_output);
     tracing::info!(
         %db_session_id,
         sql_len = original_sql.len(),
+        safe_sql_len = safe_original_sql.len(),
+        sql_redacted = safe_original_sql != original_sql,
         explain_len = explain_output.len(),
+        safe_explain_len = safe_explain_output.len(),
+        explain_redacted = safe_explain_output != explain_output,
         "ai_analyze_explain: start"
     );
     let (provider, ai_config) = resolve_ai(&state).await?;
@@ -386,7 +402,7 @@ pub(crate) async fn ai_analyze_explain_impl(
             ChatMessage {
                 role: MessageRole::User,
                 content: format!(
-                    "SQL:\n```\n{original_sql}\n```\n\nEXPLAIN output:\n```\n{explain_output}\n```"
+                    "SQL:\n```\n{safe_original_sql}\n```\n\nEXPLAIN output:\n```\n{safe_explain_output}\n```"
                 ),
                 reasoning: None,
                 tool_calls: None,
@@ -401,16 +417,6 @@ pub(crate) async fn ai_analyze_explain_impl(
     };
     inject_language_hint(&mut request.messages, &lang);
 
-    for (i, msg) in request.messages.iter().enumerate() {
-        tracing::debug!(
-            idx = i,
-            role = ?msg.role,
-            content_len = msg.content.len(),
-            content_preview = %truncate_str(&msg.content, 300),
-            "ai_analyze_explain: message[{}]", i
-        );
-    }
-
     let response = provider
         .complete(&request)
         .await
@@ -423,13 +429,6 @@ pub(crate) async fn ai_analyze_explain_impl(
         completion_tokens = response.usage.completion_tokens,
         "ai_analyze_explain: response received"
     );
-    if !response.content.is_empty() {
-        tracing::debug!(
-            response_content = %truncate_str(&response.content, 500),
-            "ai_analyze_explain: response content"
-        );
-    }
-
     parse_ai_json::<ExplainAnalysis>(
         &response.content,
         response.finish_reason.as_deref(),
@@ -463,7 +462,7 @@ pub(crate) async fn ai_parse_filter_impl(
         input_len = natural_language.len(),
         "ai_parse_filter: start"
     );
-    tracing::debug!(%db_session_id, input = %natural_language, "ai_parse_filter: input");
+    let natural_language = redact_for_ai(&natural_language);
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     let (driver, handle) = state
@@ -766,8 +765,14 @@ pub(crate) async fn ai_diagnose_connection_impl(
     connection_id: String,
     error_message: String,
 ) -> Result<ConnectionDiagnosis, CommandError> {
+    let safe_error_message = redact_for_ai(&error_message);
     tracing::info!(%connection_id, error_len = error_message.len(), "ai_diagnose_connection: start");
-    tracing::debug!(%connection_id, error = %error_message, "ai_diagnose_connection: error");
+    tracing::debug!(
+        %connection_id,
+        safe_error_len = safe_error_message.len(),
+        error_redacted = safe_error_message != error_message,
+        "ai_diagnose_connection: safe error prepared"
+    );
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     let conn_info = state
@@ -782,7 +787,7 @@ pub(crate) async fn ai_diagnose_connection_impl(
     } else {
         "disabled"
     };
-    let conn_summary = format!(
+    let conn_summary = redact_for_ai(&format!(
         "Connection type: {:?}\nHost: {}\nPort: {}\nDatabase: {}\nUsername: {}\nSSL: {}\nSSH Tunnel: {}\nTimeout: {}s",
         conn_info.database_type,
         conn_info.host.as_deref().unwrap_or("N/A"),
@@ -792,7 +797,7 @@ pub(crate) async fn ai_diagnose_connection_impl(
         ssl_str,
         ssh_str,
         conn_info.connection_timeout,
-    );
+    ));
 
     let lang = state.store.get_settings().await.language;
     let conn_diag_prompt = state
@@ -813,7 +818,9 @@ pub(crate) async fn ai_diagnose_connection_impl(
             },
             ChatMessage {
                 role: MessageRole::User,
-                content: format!("Connection details:\n{conn_summary}\n\nError:\n{error_message}"),
+                content: format!(
+                    "Connection details:\n{conn_summary}\n\nError:\n{safe_error_message}"
+                ),
                 reasoning: None,
                 tool_calls: None,
                 tool_call_id: None,
@@ -888,7 +895,7 @@ pub(crate) async fn ai_analyze_queries_impl(
     let queries_text = filtered
         .iter()
         .take(100)
-        .map(|h| h.sql.as_str())
+        .map(|h| redact_for_ai(&h.sql))
         .collect::<Vec<_>>()
         .join("\n---\n");
 

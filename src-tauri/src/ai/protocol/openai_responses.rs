@@ -7,7 +7,10 @@ use futures_util::StreamExt;
 use serde::Deserialize;
 use tokio::sync::mpsc;
 
-use super::{map_http_error, normalize_base_url, ProtocolConfig, STREAM_CHUNK_TIMEOUT};
+use super::{
+    log_http_error, log_request_metadata, log_response_metadata, map_http_error,
+    normalize_base_url, ProtocolConfig, STREAM_CHUNK_TIMEOUT,
+};
 
 // ─── Wire types ───
 
@@ -275,10 +278,7 @@ pub async fn complete(
     let url = responses_url(&cfg.api_base);
     let body = build_request_body(cfg, request, false);
 
-    tracing::debug!(
-        "openai_responses: request\n{}",
-        serde_json::to_string(&body).unwrap_or_default()
-    );
+    log_request_metadata("openai_responses", request, &body, false);
 
     let resp = cfg
         .http_client
@@ -292,7 +292,7 @@ pub async fn complete(
 
     let status = resp.status();
     let raw = resp.text().await.unwrap_or_default();
-    tracing::debug!(%status, "openai_responses: response\n{}", raw);
+    log_response_metadata("openai_responses", &request.request_id, status, raw.len());
 
     if !status.is_success() {
         return Err(map_http_error(status, &raw));
@@ -363,10 +363,7 @@ pub async fn stream_complete(
     let url = responses_url(&cfg.api_base);
     let body = build_request_body(cfg, request, true);
 
-    tracing::debug!(
-        "openai_responses: stream request\n{}",
-        serde_json::to_string(&body).unwrap_or_default()
-    );
+    log_request_metadata("openai_responses", request, &body, true);
 
     let resp = cfg
         .http_client
@@ -377,15 +374,22 @@ pub async fn stream_complete(
         .send()
         .await
         .map_err(|e| {
-            tracing::error!("openai_responses: stream init error: {}", e);
+            tracing::error!(
+                request_id = %request.request_id,
+                "openai_responses: stream request failed"
+            );
             AiError::RequestFailed(e.to_string())
         })?;
 
     let status = resp.status();
-    tracing::info!(%status, "openai_responses: stream started");
+    tracing::info!(
+        request_id = %request.request_id,
+        %status,
+        "openai_responses: stream started"
+    );
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
-        tracing::error!(%status, "openai_responses: stream HTTP error\n{}", text);
+        log_http_error("openai_responses", &request.request_id, status, &text);
         return Err(map_http_error(status, &text));
     }
 
@@ -421,7 +425,10 @@ pub async fn stream_complete(
         let chunk_bytes = match chunk_result {
             Ok(b) => b,
             Err(e) => {
-                tracing::error!("openai_responses: stream read error: {}", e);
+                tracing::error!(
+                    request_id = %request.request_id,
+                    "openai_responses: stream read failed"
+                );
                 let _ = sender
                     .send(Err(AiError::RequestFailed(e.to_string())))
                     .await;
@@ -601,7 +608,7 @@ pub async fn stream_complete(
 /// Lightweight connectivity probe with minimal token cost.
 pub async fn probe(cfg: &ProtocolConfig, model: &str) -> Result<(), AiError> {
     let url = responses_url(&cfg.api_base);
-    tracing::info!(endpoint = %cfg.api_base, %model, "openai_responses: probe");
+    tracing::info!(%model, "openai_responses: probe");
 
     let body = serde_json::json!({
         "model": model,

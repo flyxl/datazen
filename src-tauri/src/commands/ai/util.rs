@@ -1,5 +1,6 @@
 //! Shared helpers for AI command handlers.
 
+use crate::ai::safety::redact_for_ai;
 use crate::ai::*;
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
@@ -46,10 +47,14 @@ pub(crate) async fn resolve_ai(
         .await
         .ok_or_else(|| CommandError::NotConfigured("AI_NOT_CONFIGURED".into()))?;
 
+    let safe_endpoint = config
+        .endpoint
+        .as_deref()
+        .map(crate::log_redact::redact_url_for_log);
     tracing::debug!(
         provider = %config.provider_type,
         model = %config.model,
-        endpoint = ?config.endpoint,
+        endpoint = ?safe_endpoint,
         "resolve_ai: provider config"
     );
 
@@ -123,7 +128,8 @@ pub(crate) fn parse_ai_json<T: serde::de::DeserializeOwned>(
     };
     tracing::error!(
         cmd,
-        raw_content = %truncate_str(&content, 500),
+        content_len = content.len(),
+        content_redacted = redact_for_ai(&content) != content,
         ?finish_reason,
         "JSON parse failed: {err}"
     );

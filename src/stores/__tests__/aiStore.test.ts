@@ -202,6 +202,34 @@ describe('aiStore', () => {
       for (const secret of secrets) expect(JSON.stringify(payload)).not.toContain(secret);
     });
 
+    it('redacts direct store diagnosis calls and keeps logs to safe summaries', async () => {
+      const rawSql = "SELECT * FROM users WHERE password = 'store-direct-password'";
+      const rawError = 'query failed: apiToken=store-direct-token';
+      const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
+      mockAiCommands.diagnoseError.mockResolvedValueOnce({ changes: [] });
+
+      try {
+        await useAiStore.getState().diagnoseError({
+          dbSessionId: 'session',
+          database: 'app',
+          sql: rawSql,
+          errorMessage: rawError,
+        });
+      } finally {
+        debugSpy.mockRestore();
+      }
+
+      expect(mockAiCommands.diagnoseError).toHaveBeenCalledWith({
+        dbSessionId: 'session',
+        database: 'app',
+        sql: expect.not.stringContaining('store-direct-password'),
+        errorMessage: expect.not.stringContaining('store-direct-token'),
+      });
+      expect(debugSpy.mock.calls.map((call) => JSON.stringify(call)).join('\n')).not.toContain(
+        rawError,
+      );
+    });
+
     it('diagnoseError success and error', async () => {
       mockAiCommands.diagnoseError.mockResolvedValueOnce({ changes: [{ sql: 'fix' }] });
       await useAiStore.getState().diagnoseError({
