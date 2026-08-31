@@ -218,6 +218,7 @@ export function DataTable({
           labels: {
             copy: t('common.copy'),
             copyRow: t('dataTable.copyRow'),
+            moreActions: t('dataTable.moreActions'),
             copyAsJson: t('dataTable.copyAsJson'),
             copyAsSqlInsert: t('dataTable.copyAsSqlInsert'),
             copyAsUpdate: t('dataTable.copyAsUpdate'),

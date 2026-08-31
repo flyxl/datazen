@@ -27,9 +27,31 @@ describe('WebContextMenuHost', () => {
     );
     const menu = await screen.findByTestId('web-context-menu');
     expect(menu).toBeTruthy();
+    expect(screen.getByTestId('web-context-item-off')).toBeDisabled();
     fireEvent.click(screen.getByTestId('web-context-item-run'));
     expect(action).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('web-context-menu')).toBeNull();
+  });
+
+  it('opens a submenu when its trigger receives keyboard focus', async () => {
+    const nested = vi.fn();
+    render(<WebContextMenuHost />);
+    showWebContextMenu(
+      [
+        {
+          kind: 'submenu',
+          id: 'more',
+          label: 'More',
+          items: [{ kind: 'item', id: 'nested', label: 'Nested', action: nested }],
+        },
+      ],
+      { x: 20, y: 30 },
+    );
+    await screen.findByTestId('web-context-menu');
+    fireEvent.focus(screen.getByTestId('web-context-submenu-trigger-more'));
+    expect(await screen.findByTestId('web-context-submenu')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('web-context-item-nested'));
+    expect(nested).toHaveBeenCalledOnce();
   });
 
   it('opens a submenu on hover and does not clip near the right edge', async () => {

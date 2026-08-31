@@ -35,6 +35,13 @@ const { showNativeContextMenu } = vi.hoisted(() => ({
   showNativeContextMenu: vi.fn().mockResolvedValue(undefined),
 }));
 
+type ContextMenuTestItem = {
+  kind: string;
+  id?: string;
+  action?: () => void;
+  items?: ContextMenuTestItem[];
+};
+
 vi.mock('../../../lib/nativeContextMenu', () => ({
   showNativeContextMenu: (...args: unknown[]) => showNativeContextMenu(...args),
 }));
@@ -213,23 +220,23 @@ describe('DataTable', () => {
     fireEvent.contextMenu(cell!, { clientX: 10, clientY: 10 });
 
     await waitFor(() => expect(showNativeContextMenu).toHaveBeenCalled());
-    const menuItems = showNativeContextMenu.mock.calls[0]![0] as Array<{
-      kind: string;
-      id?: string;
-      action?: () => void;
-    }>;
+    const menuItems = showNativeContextMenu.mock.calls[0]![0] as ContextMenuTestItem[];
     const itemIds = menuItems.filter((i) => i.kind === 'item').map((i) => i.id);
     expect(itemIds).toEqual([
       'copy',
       'copy-row',
+      'filter-by-value',
+      'export',
+    ]);
+    const more = menuItems.find((i) => i.kind === 'submenu');
+    expect(more?.id).toBe('more-actions');
+    expect(more?.items?.filter((i) => i.kind === 'item').map((i) => i.id)).toEqual([
       'copy-as-json',
       'copy-as-sql-insert',
       'copy-as-update',
       'copy-as-csv',
       'copy-column-name',
-      'filter-by-value',
       'copy-selected-rows',
-      'export',
     ]);
 
     menuItems.find((i) => i.id === 'copy')!.action?.();
@@ -259,18 +266,44 @@ describe('DataTable', () => {
     fireEvent.contextMenu(container.querySelector('.overflow-auto')!);
 
     await waitFor(() => expect(showNativeContextMenu).toHaveBeenCalled());
-    const menuItems = showNativeContextMenu.mock.calls[0]![0] as Array<{
-      kind: string;
-      id?: string;
-      action?: () => void;
-    }>;
-    expect(menuItems.filter((i) => i.kind === 'item').map((i) => i.id)).toEqual([
+    const menuItems = showNativeContextMenu.mock.calls[0]![0] as ContextMenuTestItem[];
+    const more = menuItems.find((i) => i.kind === 'submenu');
+    expect(menuItems.filter((i) => i.kind === 'item').map((i) => i.id)).toEqual(['export']);
+    expect(more?.id).toBe('more-actions');
+    expect(more?.items?.filter((i) => i.kind === 'item').map((i) => i.id)).toEqual([
       'copy-selected-rows',
       'copy-as-csv',
-      'export',
     ]);
-    menuItems.find((i) => i.id === 'copy-selected-rows')!.action?.();
+    more?.items?.find((i) => i.id === 'copy-selected-rows')!.action?.();
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('1\tAlice'));
+  });
+
+  it('keeps filter unavailable in the context menu while loading', async () => {
+    const onAddFilter = vi.fn();
+    const { container } = render(
+      <DataTable
+        columns={COLS}
+        rows={rows}
+        onAddFilter={onAddFilter}
+        loading
+      />,
+    );
+    fireEvent.contextMenu(container.querySelector('[data-dt-row="0"][data-dt-col="name"]')!, {
+      clientX: 10,
+      clientY: 10,
+    });
+
+    await waitFor(() => expect(showNativeContextMenu).toHaveBeenCalled());
+    const menuItems = showNativeContextMenu.mock.calls[0]![0] as ContextMenuTestItem[];
+    expect(menuItems.some((i) => i.id === 'filter-by-value')).toBe(false);
+    expect(menuItems.find((i) => i.kind === 'submenu')?.items?.map((i) => i.id)).toEqual([
+      'copy-as-json',
+      'copy-as-sql-insert',
+      'copy-as-update',
+      'copy-as-csv',
+      'copy-column-name',
+    ]);
+    expect(onAddFilter).not.toHaveBeenCalled();
   });
 
   it('calls row click handlers', () => {
