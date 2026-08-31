@@ -2,10 +2,13 @@ import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
   captureJourneyStep,
-  connectSeededPgInWorkspace,
+  clickCardConnectButton,
   closeExtraWindows,
   setEditorContent,
   openQueryTab,
+  openConnectionsWorkspace,
+  expandConnectedConnectionInNavigator,
+  waitForConnectionToolbar,
   executeSQL,
   emitCrossWindowEvent,
   invokeBackend,
@@ -20,16 +23,19 @@ import {
  */
 describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   let mainWindow: string;
+  const queryConnectionId = 'e2e_pg_sql_query';
+  const queryConnectionName = 'E2E-PostgreSQL-查询';
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     // A configured database intentionally suppresses the database context
-    // selector. Use the seeded PG account without a default database so this
-    // spec exercises the real multi-database selector path.
+    // selector. Use a disposable PG connection without a default database so
+    // this spec exercises the real multi-database selector path without
+    // mutating the shared conn_e2e_pg fixture used by later specs.
     await invokeBackend('save_connection', {
       config: {
-        id: 'conn_e2e_pg',
-        name: '本地 PostgreSQL',
+        id: queryConnectionId,
+        name: queryConnectionName,
         databaseType: 'postgresql',
         host: process.env.E2E_PG_HOST || '127.0.0.1',
         port: Number(process.env.E2E_PG_PORT) || 5432,
@@ -44,7 +50,10 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     });
     await browser.refresh();
     await browser.pause(1500);
-    await connectSeededPgInWorkspace();
+    await openConnectionsWorkspace();
+    await clickCardConnectButton(queryConnectionName);
+    await waitForConnectionToolbar();
+    await expandConnectedConnectionInNavigator(queryConnectionName);
     // Note: do NOT wait for `conn-toolbar-new-query` here — after connecting,
     // the workspace shows ConnectionWorkspaceHome and the ContentToolbar
     // button only mounts once a content panel exists. openQueryTab() opens
@@ -55,7 +64,14 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   });
 
   after(async () => {
-    await closeExtraWindows(mainWindow);
+    try {
+      await closeExtraWindows(mainWindow);
+      // Remove the disposable config so a shared-process `e2e:db` run cannot
+      // leave this test's connection in the next spec's connection list.
+      await invokeBackend('delete_connection', { id: queryConnectionId });
+    } catch {
+      /* cleanup best-effort */
+    }
   });
 
   // ── 基础 UI ────────────────────────────────────────────────────
@@ -228,6 +244,13 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
       },
       { timeout: 20000, timeoutMsg: 'Timed out waiting for error message' },
     );
+    await expect(await $('[data-testid="query-error-message"]')).toBeDisplayed();
+    await expect(await $('[data-testid="query-copy-error"]')).toBeDisplayed();
+    await expect(await $('[data-testid="query-explain-error"]')).toBeDisplayed();
+    await expect(await $('[data-testid="query-fix-sql"]')).toBeDisplayed();
+    await expect(await $('[data-testid="query-retry"]')).toBeDisplayed();
+    await $('[data-testid="query-copy-error"]').click();
+    await expect(await $(`button*=${t('common.copied')}`)).toBeDisplayed();
     await captureJourneyStep('sql-error-shown');
   });
 

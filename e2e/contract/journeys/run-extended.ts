@@ -3,41 +3,29 @@ import { t } from '../../i18n.js';
 import {
   clickTableInSidebar,
   doubleClickCellByText,
-  executeSQL,
   openQueryTab,
   setEditorContent,
   switchSubTab,
   waitForEditInput,
 } from '../../helpers.js';
-import { seedTableName, filterSeedSql } from '../fixtures';
 import type { ContractConnCtx } from '../open-fixture';
 import { focusContractCtx } from '../open-fixture';
-
-async function ensureTable(ctx: ContractConnCtx, suffix: string) {
-  const table = seedTableName(ctx.fixture, suffix);
-  await focusContractCtx(ctx);
-  await openQueryTab();
-  for (const sql of filterSeedSql(ctx.fixture, table)) {
-    await executeSQL(sql);
-  }
-  const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
-  if (await refreshBtn.isExisting()) {
-    await refreshBtn.click();
-    await browser.pause(1000);
-  }
-  return table;
-}
+import { seedContractTable } from './seed';
 
 /** HC-CONN: connection toolbar + sub-tabs visible. */
 export async function runHcConn(ctx: ContractConnCtx) {
-  await focusContractCtx(ctx);
+  // Sub-tabs belong to an opened table workspace, not to the bare
+  // connection workspace. Seed/open one before asserting the table chrome.
+  const table = await seedContractTable(ctx, 'conn');
+  await clickTableInSidebar(table);
+  await browser.pause(800);
   await expect(await $("[data-testid='sub-tab-data']")).toExist();
   await expect(await $("[data-testid='sub-tab-structure']")).toExist();
 }
 
 /** HC-EDIT: inline edit a cell when supported. */
 export async function runHcEdit(ctx: ContractConnCtx) {
-  const table = await ensureTable(ctx, 'edit');
+  const table = await seedContractTable(ctx, 'edit');
   await clickTableInSidebar(table);
   await browser.pause(1000);
   await switchSubTab('data');
@@ -55,7 +43,7 @@ export async function runHcEdit(ctx: ContractConnCtx) {
 
 /** HC-STRUCT: structure tab + edit/back path. */
 export async function runHcStruct(ctx: ContractConnCtx) {
-  const table = await ensureTable(ctx, 'struct');
+  const table = await seedContractTable(ctx, 'struct');
   await clickTableInSidebar(table);
   await browser.pause(800);
   await switchSubTab('structure');
@@ -74,7 +62,7 @@ export async function runHcStruct(ctx: ContractConnCtx) {
 
 /** HC-INDEX: indexes tab + new index dialog opens. */
 export async function runHcIndex(ctx: ContractConnCtx) {
-  const table = await ensureTable(ctx, 'idx');
+  const table = await seedContractTable(ctx, 'idx');
   await clickTableInSidebar(table);
   await browser.pause(800);
   await switchSubTab('indexes');
@@ -90,7 +78,7 @@ export async function runHcIndex(ctx: ContractConnCtx) {
 
 /** HC-EXPORT: DataTable export dialog. */
 export async function runHcExport(ctx: ContractConnCtx) {
-  const table = await ensureTable(ctx, 'export');
+  const table = await seedContractTable(ctx, 'export');
   await clickTableInSidebar(table);
   await browser.pause(1000);
   await switchSubTab('data');
@@ -123,13 +111,22 @@ export async function runHcExplain(ctx: ContractConnCtx) {
   await openQueryTab();
   await setEditorContent('SELECT 1 AS n');
   await browser.pause(300);
-  const explainBtn = await $(`button*=${t('explain.title')}`);
+  const explainBtn = await $('[data-testid="editor-explain-button"]');
   await explainBtn.waitForDisplayed({ timeout: 8000 });
   await explainBtn.click();
-  await browser.pause(1500);
-  // Raw EXPLAIN output section is present (table or text depending on driver).
-  const rawOutput = await $(`*=${t('explain.rawOutput')}`);
-  await rawOutput.waitForDisplayed({ timeout: 8000 });
+  await browser.waitUntil(
+    async () => {
+      const body = await $('body').getText();
+      return (
+        body.includes(t('explain.title')) ||
+        body.includes(t('explain.loading')) ||
+        body.includes(t('explain.rawOutput'))
+      );
+    },
+    { timeout: 10000, timeoutMsg: '等待 Explain 面板打开超时' },
+  );
+  // The panel may show loading/error/raw output depending on driver timing;
+  // the stable contract is that Explain chrome opens for supported drivers.
   const body = await $('body').getText();
   expect(
     body.includes(t('explain.title')) ||

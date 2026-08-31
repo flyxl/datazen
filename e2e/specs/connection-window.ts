@@ -3,7 +3,6 @@ import { t } from '../i18n.js';
 import {
   clickCardConnectButton,
   closeExtraWindows,
-  clickFirstTable,
   openQueryTab,
   executeSQL,
   clickTableInSidebar,
@@ -160,8 +159,10 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   });
 
   it('点击表名应打开数据标签页 (DB-002, DB-007)', async () => {
-    const tableName = await clickFirstTable();
-    expect(tableName).not.toBeNull();
+    // The fixture creates two tables; target the child table explicitly so
+    // this journey does not depend on virtualized navigator ordering.
+    const tableName = TEST_CHILD;
+    await clickTableInSidebar(tableName);
 
     await browser.pause(2000);
     const dataTab = await $("[data-testid='sub-tab-data']");
@@ -346,13 +347,13 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await closeWebContextMenu();
   });
 
-  it('结构标签对应的表节点右键菜单应包含结构入口 (CTX-002)', async () => {
+  it('结构标签对应的表节点右键菜单应包含打开和 SQL 入口 (CTX-002)', async () => {
     await switchSubTab('structure');
     await browser.pause(2000);
 
     await rightClickTableInSidebar(TEST_CHILD);
 
-    await expect($("[data-testid='web-context-item-open-structure']")).toExist();
+    await expect($("[data-testid='web-context-item-open']")).toExist();
     await expect($("[data-testid='web-context-item-new-query']")).toExist();
     await expect($("[data-testid='web-context-item-copy']")).not.toExist();
     await expect($("[data-testid='web-context-item-copy-name']")).toExist();
@@ -362,13 +363,13 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await closeWebContextMenu();
   });
 
-  it('索引标签对应的表节点右键菜单应包含 SQL 操作 (CTX-003)', async () => {
+  it('索引标签对应的表节点右键菜单应包含打开和 SQL 入口 (CTX-003)', async () => {
     await switchSubTab('indexes');
     await browser.pause(2000);
 
     await rightClickTableInSidebar(TEST_CHILD);
 
-    await expect($("[data-testid='web-context-item-open-structure']")).toExist();
+    await expect($("[data-testid='web-context-item-open']")).toExist();
     await expect($("[data-testid='web-context-item-new-query']")).toExist();
     await expect($("[data-testid='web-context-item-copy']")).not.toExist();
     await expect($("[data-testid='web-context-item-copy-name']")).toExist();
@@ -408,18 +409,19 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await closeWebContextMenu();
   });
 
-  it('索引标签右键菜单编辑结构应在结构子标签内打开编辑器 (CTX-006)', async () => {
+  it('索引标签右键菜单打开表应回到数据子标签 (CTX-006)', async () => {
     await switchSubTab('indexes');
     await browser.pause(2000);
 
     await rightClickTableInSidebar(TEST_CHILD);
 
-    await $("[data-testid='web-context-item-open-structure']").click();
-    await browser.pause(800);
+    await $("[data-testid='web-context-item-open']").click();
+    await browser.waitUntil(
+      async () => await $("[data-testid='sub-tab-data']").isDisplayed().catch(() => false),
+      { timeout: 10000, timeoutMsg: '等待右键打开表的数据子标签' },
+    );
 
-    await expect($("[data-testid='struct-editor-title']")).toExist();
-    const backBtn = await $("[data-testid='struct-editor-back']");
-    await expect(backBtn).toBeDisplayed();
+    await expect($("[data-testid='sub-tab-data']")).toBeDisplayed();
   });
 
   // ── 搜索表 ─────────────────────────────────────────────────────
@@ -434,6 +436,29 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     );
     expect(await $('body').getText()).toContain(TEST_CHILD);
     await closeGlobalObjectSearch();
+  });
+
+  it('全局对象搜索结果应提供生成 SQL 的快捷动作 (DB-008)', async () => {
+    await $(`[data-testid='global-object-search-toggle']`).click();
+    const search = await $(`[data-testid='global-object-search-input']`);
+    await search.setValue(TEST_CHILD);
+    const result = await $(`[data-testid='global-object-search-result']`);
+    await result.waitForDisplayed({ timeout: 5000 });
+    const selectAction = await result.$(`[data-testid='object-search-action-select']`);
+    await selectAction.waitForDisplayed({ timeout: 5000 });
+    await selectAction.click();
+
+    await browser.waitUntil(
+      async () => !(await $(`[data-testid='global-object-search']`).isExisting()),
+      { timeout: 5000, timeoutMsg: '等待全局对象搜索关闭' },
+    );
+    await browser.waitUntil(
+      async () =>
+        await browser.execute(() =>
+          (document.querySelector('.cm-editor .cm-content')?.textContent ?? '').toUpperCase().includes('SELECT'),
+        ),
+      { timeout: 8000, timeoutMsg: '等待对象搜索生成 SELECT SQL' },
+    );
   });
 
   it('全局对象搜索清空后应恢复结果列表 (DB-008)', async () => {

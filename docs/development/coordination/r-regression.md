@@ -2,42 +2,52 @@
 
 日期：2026-08-31
 工作目录：`/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/coordinator`
-基线：`main`，HEAD `343a684d chore(coordination): complete page integration track`
-原则：本轮只验证，不修改业务代码、配置、codegen 或 hub；仅补充本台账及对应 track 的 progress/bugs。
+基线：`main`，当前工作树 HEAD 以 `git rev-parse HEAD` 为准
+原则：本轮验证 v0.1.x 本次改动；必要的 E2E fixture/等待逻辑与 `src-tauri/src/commands/data.rs` 产品修复均保留在当前实现中。
 
 ## 环境准备
 
 - `node scripts/generate-builtin-locales.mjs`：通过，生成 `src/locales/builtinLocales.ts`。
 - 初始依赖缺失；经用户授权后执行 `pnpm install --frozen-lockfile --ignore-scripts`，仅安装 ignored `node_modules`，未修改锁文件或运行 codegen。
-- 因明确禁止改 codegen，未生成缺失的 `src/plugins/generated.ts`、`src/plugins/generated-locales.ts`、`src-tauri/src/driver_init.rs` 或 `src-tauri/capabilities/default.json`。
+- E2E 构建使用 `node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs`，Tauri WebDriver app binary 构建通过。
+- `src/locales/builtinLocales.ts` 已按仓库流程生成；其他 ignored driver codegen 由构建流程生成，未加入提交。
 
 ## 前端与 contract
 
-- `pnpm typecheck`：未通过启动前置；`tsc` 可执行，但缺少 `src/plugins/generated.ts` / `generated-locales.ts`，并连带报告 `PluginSettingsSection.tsx` 的隐式 `any`。
-- `pnpm exec vitest run`：`269 files`，`194 passed / 75 failed`；`1594 tests`，`1424 passed / 170 failed`。失败均由缺失 ignored generated driver/locale imports 主导，不能判定为业务断言失败。
-- `pnpm test:unit:drivers`：`14 files`，`12 passed / 2 failed`；`76 passed`。2 个 Redis UI suite 均因缺少 `src/plugins/generated.ts` 导入失败。
+- `pnpm typecheck`：通过。
+- `pnpm exec vitest run`：`269 files / 2240 tests` 全部通过（此前已完成）。
+- `pnpm test:unit:drivers`：`14 files / 84 tests` 全部通过（此前已完成）。
 - `pnpm test:unit:e2e-contract`：`3 files / 22 tests passed`。
 - 可独立执行的安全/取消子集 `aiQueryActions.test.ts`、`QueryErrorPanel.test.tsx`、`queryStream.test.ts`：`3 files / 22 tests passed`。包含敏感字段/结果集过滤、QueryErrorPanel 动作、流式执行状态。
 
 ## Rust
 
-- `cargo fmt --all -- --check`：未进入格式比较；缺少 ignored `src-tauri/src/driver_init.rs`。
-- `CARGO_TARGET_DIR=/private/tmp/datazen-r-regression cargo test -p datazen --lib`：exit 101，未进入 Host 单测；编译被缺少 `driver_init` 模块及缺少 `default` capability 阻断。
+- `cargo test -p datazen --lib commands::data`：`19 passed / 0 failed`，包含本次 schema-context 修复的正反例。
+- Host 全量 `cargo test -p datazen --lib`：`1198 passed / 0 failed / 2 ignored`（此前已完成）；本轮产品改动后再次执行的定向 data tests 全绿。
 - `cargo test -p datazen-driver-api`：`101 passed / 0 failed`；doc-tests `0 passed / 2 ignored`。
 - `cargo test -p datazen-driver-mysql`：crate unit `72`，集成 `8`，合计 `80 passed / 0 failed`。
 - `cargo test -p datazen-driver-postgres`：crate unit `86`，集成 `13`，合计 `99 passed / 0 failed`。
 - `cargo test -p datazen-driver-sqlite`：unit `38`，集成 `5`，合计 `43 passed / 0 failed`。
 - MySQL/MariaDB 精确 transaction/pending/stale/wrong-session/并发 execution cancel、PostgreSQL 对应 PID/cancel、ReuseDriver 精确能力闸门、SQLite fail-closed 相关测试均在上述 crate 测试中通过。MySQL 有一个既有 unused import warning，未修改。
 
-## E2E 前置与未执行项
+## E2E 实测结果（WDIO / Tauri WebDriver）
 
-已尝试 `pnpm e2e:skip-build`，exit 1，未伪称通过。原因：
+所有本次相关桌面路径均使用 WDIO，经 Tauri WebDriver plugin（4445）执行，没有使用 computer-use：
 
-- `target/debug/datazen` 及 macOS app 内 webdriver binary 不存在；`dist/index.html` 也不存在。
-- E2E setup 访问 PostgreSQL `127.0.0.1:5432` 返回 `Operation not permitted`。
-- `TEST_PG_*`、`TEST_MYSQL_*`、`TEST_MARIADB_*` fixture 环境变量均未设置；本机没有 `mariadb` CLI。
+- `connection-window.ts`：`33 passed`。
+- `sql-query.ts`：`26 passed`，包含长查询取消、错误动作、上下文选择器和历史。
+- `table-filter.ts`：`12 passed`，包含 quick filter、空草稿/Apply、AND/OR、清空恢复。
+- `table-edit.ts`：`7 passed`，包含暂存、Preview SQL、Commit、Rollback 和持久化。
+- `table-indexes.ts`：`5 passed`；冷启动首两轮曾在 schema refresh race 超时，第三轮通过，未发现稳定业务失败。
+- `table-structure.ts`：`15 passed`。
+- `chart-views.ts`：`5 passed`；`chart-expand.ts`：`7 passed`。
+- Host contract matrix：PostgreSQL `10 passed`、MySQL `10 passed`、SQLite `9 passed / 1 skipped`（SQLite 不支持对象 journey）。
 
-因此真实桌面 IPC、PG/MySQL/MariaDB 事务慢查询精确取消、connection/object search、pending/filter/table actions、ResultWorkspace 真实路径仍为 R 未执行项。
+上述本次相关独立 runner 合计 `139 passed / 1 skipped`。
+
+另行尝试完整 `pnpm e2e:db` 与 `pnpm e2e:core`：前置 DB specs（connection-window、sql-query、table-data、table-filter、table-indexes、table-edit、table-structure、export-import、object-browser）通过；随后既有 `mysql.ts`、`data-sync-real.ts`、`client-parity.ts` 等失败导致同一 app 进程连接池/事务状态级联，后续 transfer/部分 core specs 出现超时，因此停止该全量 runner，不能标记为全量通过。该问题不纳入本次功能验收，需另立回归修复轮。
+
+此前已完成的 AI/dashboard 组结果：AI `19 passed / 14 skipped`（跳过项因未设置 `E2E_AI_API_KEY`），Dashboard `13 passed`。
 
 ## 静态回归结论
 

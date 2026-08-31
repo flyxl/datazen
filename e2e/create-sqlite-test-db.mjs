@@ -43,6 +43,51 @@ db.exec(`
     tag_id INTEGER REFERENCES tags(id),
     PRIMARY KEY (post_id, tag_id)
   );
+
+  -- Stable tables used by the Host contract journeys. They are deliberately
+  -- independent of users/posts so repeated seeds do not hit FK constraints.
+  CREATE TABLE e2e_contract_conn (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT,
+    age INTEGER
+  );
+  CREATE TABLE e2e_contract_data (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT,
+    age INTEGER
+  );
+  CREATE TABLE e2e_contract_filter (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT,
+    age INTEGER
+  );
+  CREATE TABLE e2e_contract_edit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT,
+    age INTEGER
+  );
+  CREATE TABLE e2e_contract_struct (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT,
+    age INTEGER
+  );
+  CREATE TABLE e2e_contract_index (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT,
+    age INTEGER
+  );
+  CREATE TABLE e2e_contract_export (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT,
+    age INTEGER
+  );
 `);
 
 const insertUser = db.prepare(
@@ -109,6 +154,7 @@ db.exec(`
   FROM posts p
   JOIN users u ON p.user_id = u.id
   WHERE p.published = 1
+
 `);
 
 db.close();

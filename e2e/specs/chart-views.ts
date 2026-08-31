@@ -15,11 +15,14 @@ describe('图表视图 (TC-CHART-002~008/012)', () => {
     connWindow = res.connWindow;
     await openQueryTab();
     await browser.pause(500);
+    // Execute setup statements independently. The query editor executes one
+    // statement per tab; sending a semicolon-separated batch can report only
+    // the first result and leave the fixture partially initialized.
+    await executeSQL('CREATE TABLE IF NOT EXISTS e2e_chart_views (category TEXT, amount INTEGER)');
+    await executeSQL('DELETE FROM e2e_chart_views');
     await executeSQL(`
-      CREATE TABLE IF NOT EXISTS e2e_chart_views (category TEXT, amount INTEGER);
-      DELETE FROM e2e_chart_views;
       INSERT INTO e2e_chart_views (category, amount) VALUES
-        ('Alpha', 100), ('Beta', 200), ('Gamma', 150), ('Delta', 300);
+        ('Alpha', 100), ('Beta', 200), ('Gamma', 150), ('Delta', 300)
     `);
     await openQueryTab();
   });
@@ -43,6 +46,10 @@ describe('图表视图 (TC-CHART-002~008/012)', () => {
     await chartBtn.waitForDisplayed({ timeout: 8000 });
     await chartBtn.click();
     await browser.pause(800);
+    await expect(await $('[data-testid="result-workspace-view-chart"]')).toBeDisplayed();
+    expect(await $('[data-testid="result-workspace-view-chart"]').getAttribute('aria-pressed')).toBe(
+      'true',
+    );
     await $('[class*="recharts-wrapper"]').waitForExist({ timeout: 8000 });
   }
 
@@ -76,7 +83,7 @@ describe('图表视图 (TC-CHART-002~008/012)', () => {
   });
 
   it('TC-CHART-008: 切回表格再切图表应保持可用', async () => {
-    const tableBtn = await $(`button*=${t('chart.viewTable')}`);
+    const tableBtn = await $('[data-testid="result-workspace-view-table"]');
     if (await tableBtn.isExisting()) {
       await tableBtn.click();
       await browser.pause(400);
@@ -85,6 +92,7 @@ describe('图表视图 (TC-CHART-002~008/012)', () => {
       await fallback.click();
       await browser.pause(400);
     }
+    expect(await tableBtn.getAttribute('aria-pressed')).toBe('true');
     const chartBtn = await $(`button*=${t('chart.viewChart')}`);
     await chartBtn.click();
     await browser.pause(800);

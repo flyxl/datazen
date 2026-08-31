@@ -6,24 +6,12 @@ import {
   openQueryTab,
   setEditorContent,
   switchSubTab,
+  selectDzOption,
 } from '../../helpers.js';
-import { dataSeedSql, filterSeedSql, seedTableName } from '../fixtures';
 import type { ContractConnCtx } from '../open-fixture';
 import { focusContractCtx } from '../open-fixture';
 import { bodyContainsAll, bodyContainsNone, paginationRangeVisible } from './plan';
-
-async function seedSql(ctx: ContractConnCtx, statements: string[]) {
-  await focusContractCtx(ctx);
-  await openQueryTab();
-  for (const sql of statements) {
-    await executeSQL(sql);
-  }
-  const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
-  if (await refreshBtn.isExisting()) {
-    await refreshBtn.click();
-    await browser.pause(1200);
-  }
-}
+import { seedContractTable } from './seed';
 
 /** HC-QUERY: execute SQL and see result chrome. */
 export async function runHcQuery(ctx: ContractConnCtx) {
@@ -39,8 +27,7 @@ export async function runHcQuery(ctx: ContractConnCtx) {
 
 /** HC-DATA: open seeded table, see rows + pagination. */
 export async function runHcData(ctx: ContractConnCtx) {
-  const table = seedTableName(ctx.fixture, 'data');
-  await seedSql(ctx, dataSeedSql(ctx.fixture, table, 60));
+  const table = await seedContractTable(ctx, 'data');
   await clickTableInSidebar(table);
   await browser.pause(1200);
   await switchSubTab('data');
@@ -55,8 +42,7 @@ export async function runHcData(ctx: ContractConnCtx) {
 
 /** HC-FILTER: apply name=alpha; empty apply must not show loadFailed. */
 export async function runHcFilter(ctx: ContractConnCtx) {
-  const table = seedTableName(ctx.fixture, 'filter');
-  await seedSql(ctx, filterSeedSql(ctx.fixture, table));
+  const table = await seedContractTable(ctx, 'filter');
   await clickTableInSidebar(table);
   await browser.pause(1200);
   await switchSubTab('data');
@@ -72,6 +58,16 @@ export async function runHcFilter(ctx: ContractConnCtx) {
     await browser.pause(400);
   }
   await $('[data-testid="filter-editor"]').waitForDisplayed({ timeout: 5000 });
+  // The editor is intentionally empty after opening a fresh table. Add the
+  // first condition before selecting a column; otherwise the only listbox is
+  // the page-size selector and the column trigger cannot be found.
+  const filterValue = await $('[data-testid="filter-value"]');
+  if (!(await filterValue.isExisting())) {
+    const addFilter = await $('[data-testid="filter-add"]');
+    await addFilter.waitForDisplayed({ timeout: 5000 });
+    await addFilter.click();
+    await browser.pause(300);
+  }
 
   // Empty apply regression
   const applyBtn = await $('[data-testid="filter-apply"]');
@@ -83,21 +79,8 @@ export async function runHcFilter(ctx: ContractConnCtx) {
   expect(body).not.toContain(t('tableData.loadFailed'));
   expect(body).toContain('alpha');
 
-  // Set column to name and filter alpha
-  await browser.execute(() => {
-    const editor = document.querySelector('[data-testid="filter-editor"]');
-    const triggers = Array.from(
-      editor?.querySelectorAll('button[aria-haspopup="listbox"]') ?? [],
-    ) as HTMLElement[];
-    const col = triggers[0];
-    col?.click();
-    const list = document.getElementById('dz-select-listbox');
-    const nameOpt = Array.from(list?.children ?? []).find((el) =>
-      (el.textContent || '').includes('name'),
-    );
-    nameOpt?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-  });
-  await browser.pause(200);
+  // Set column to name and filter alpha through the shared Host Select helper.
+  await selectDzOption('id', 'name');
   const valueInput = await $('[data-testid="filter-value"]');
   await valueInput.clearValue();
   await valueInput.setValue('alpha');

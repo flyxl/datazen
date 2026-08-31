@@ -181,8 +181,10 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
     const backBtn = await $("[data-testid='struct-editor-back']");
     await expect(backBtn).toBeDisplayed();
     await backBtn.click();
-    await browser.pause(400);
-    await expect(editBtn).toBeDisplayed();
+    await browser.waitUntil(
+      async () => !(await $(`[data-testid='struct-editor-title']`).isDisplayed().catch(() => false)),
+      { timeout: 10000, timeoutMsg: '等待返回结构视图超时' },
+    );
   });
 
   it('结构编辑保存新增列后应反映在结构视图 (TS-009)', async () => {

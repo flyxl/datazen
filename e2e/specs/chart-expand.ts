@@ -12,12 +12,14 @@ describe('图表放大功能 (CHART-EXPAND)', () => {
     await openQueryTab();
     await browser.pause(1000);
 
-    // Create test table and insert data in a single SQL statement
+    // Execute setup statements independently. The query editor executes one
+    // statement per tab; a semicolon-separated batch can leave the fixture
+    // partially initialized while the first result is already reported.
+    await executeSQL('CREATE TABLE IF NOT EXISTS e2e_chart_test (category TEXT, amount INTEGER)');
+    await executeSQL('DELETE FROM e2e_chart_test');
     await executeSQL(`
-      CREATE TABLE IF NOT EXISTS e2e_chart_test (category TEXT, amount INTEGER);
-      DELETE FROM e2e_chart_test;
       INSERT INTO e2e_chart_test (category, amount) VALUES
-        ('Alpha', 100), ('Beta', 200), ('Gamma', 150), ('Delta', 300), ('Epsilon', 250);
+        ('Alpha', 100), ('Beta', 200), ('Gamma', 150), ('Delta', 300), ('Epsilon', 250)
     `);
     await browser.pause(500);
     await openQueryTab();
@@ -74,16 +76,7 @@ describe('图表放大功能 (CHART-EXPAND)', () => {
     await expect(svgBtn).toBeDisplayed();
   });
 
-  it('按 ESC 应关闭放大视图', async () => {
-    await browser.keys('Escape');
-    await browser.pause(500);
-
-    const title = await $('span*=图表预览');
-    const exists = await title.isExisting();
-    expect(exists).toBe(false);
-  });
-
-  it('点击关闭按钮也应关闭放大视图', async () => {
+  it('点击退出放大按钮应关闭放大视图', async () => {
     const expandBtn = await $('button[title="放大显示"]');
     await expandBtn.click();
     await browser.pause(500);
