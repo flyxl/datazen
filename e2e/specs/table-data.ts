@@ -97,7 +97,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     const prevBtn = await $(`button[aria-label="${t('pagination.prev')}"]`);
     await prevBtn.waitForDisplayed({ timeout: 5000 });
     const btnSel = await browser.execute(
-      (el) => getComputedStyle(el as HTMLElement).userSelect,
+      (el) => getComputedStyle(el as HTMLElement).getPropertyValue('user-select'),
       prevBtn,
     );
     expect(btnSel).toBe('none');
