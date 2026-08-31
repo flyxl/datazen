@@ -152,8 +152,8 @@ The Driver API itself is maintained in `packages/driver-api` and published as th
 
 See the complete guides:
 
-- **[Independent Plugin Development — English](docs/development/independent-plugin-development.en.md)**
-- **[独立插件开发指南 — 中文](docs/development/independent-plugin-development.zh-CN.md)**
+- **[Independent Driver Development — English](docs/development/independent-driver-development.en.md)**
+- **[独立驱动开发指南 — 中文](docs/development/independent-driver-development.zh-CN.md)**
 - **[Driver API crate README](packages/driver-api/README.md)**
 - **[Driver API dependency boundary](docs/development/driver-api-dependency-boundary.md)**
 - **[datazen-driver-api on crates.io](https://crates.io/crates/datazen-driver-api)**
@@ -235,8 +235,8 @@ Always review the privacy and security policies of the AI provider and endpoint 
 
 - [Project website](https://flyxl.github.io/datazen/) · [User Manual (EN)](https://flyxl.github.io/datazen/manual.html) · [使用手册 (ZH)](https://flyxl.github.io/datazen/zh/manual.html)
 - [Feature guides](docs/features/) · [Architecture docs](docs/architecture/README.md) · [Development & release docs](docs/development/)
-- [Independent Plugin Development](docs/development/independent-plugin-development.en.md)
-- [Chinese Plugin Development Guide](docs/development/independent-plugin-development.zh-CN.md)
+- [Independent Driver Development](docs/development/independent-driver-development.en.md)
+- [Chinese Driver Development Guide](docs/development/independent-driver-development.zh-CN.md)
 - [Driver API crate](packages/driver-api/README.md)
 - [Driver API dependency boundary](docs/development/driver-api-dependency-boundary.md)
 - [datazen-driver-api on crates.io](https://crates.io/crates/datazen-driver-api)

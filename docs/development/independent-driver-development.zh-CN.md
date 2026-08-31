@@ -1,6 +1,6 @@
-# 独立插件开发指南
+# 独立驱动开发指南
 
-本文介绍如何在独立 Git 仓库中开发 Datazen Plugin，并使用本地 Datazen 源码作为完整的编译、运行和调试宿主。
+本文介绍如何在独立 Git 仓库中开发 Datazen **数据库驱动插件（Driver Plugin）**，并使用本地 Datazen 源码作为完整的编译、运行和调试宿主。
 
 最重要的一点是：**Datazen Plugin 在编译期被编译并链接进 Datazen**。插件不是通过运行时加载 `.so`、`.dylib` 或 `.dll` 的方式工作。因此，推荐使用两个同级 Git 仓库：
 
