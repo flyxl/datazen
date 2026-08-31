@@ -2,7 +2,7 @@
 
 | Bug ID | 描述 | 状态 | 重现步骤 | 验证记录 |
 |---|---|---|---|---|
-| v01x-object-actions-BUG-001 | S3：对象搜索结果只返回匹配布尔值，不保留命中原因/字段；按 connection/database/schema/所属 table 命中时无法直接解释结果 | 待验证(新发现) | 2026-08-31；见下方 | 2026-08-31 独立 f1：静态审查确认 `resultMatchesQuery` 只返回 boolean，`ObjectSearchResult` 无 `matchReason`/`matchedFields`；未修复 |
+| v01x-object-actions-BUG-001 | S3：对象搜索结果只返回匹配布尔值，不保留命中原因/字段；按 connection/database/schema/所属 table 命中时无法直接解释结果 | 待验证(修复后) | 2026-08-31；见下方 | 2026-08-31 独立 f1 发现；修复轮已为 `ObjectSearchResult` 增加 `matchedFields`/`matchReason`，覆盖 name/host/database/type/schema/object/table/column 命中及 column 所属 table 命中；定向回归 16 项通过，待独立测试代理复验 |
 
 ### v01x-object-actions-BUG-001 复现
 
@@ -12,7 +12,9 @@
 
 预期：结果包含可供 UI 展示的命中字段/原因（例如 `database` 命中、所属 `table` 命中），从而能解释对象为何出现在结果中。
 
-实际：`resultMatchesQuery` 仅返回 `boolean`；结果没有 `matchReason`、`matchedFields` 或等价字段。结果虽保留 connection/database/schema/table 上下文，但调用方无法区分具体命中来源。
+实际（修复前）：`resultMatchesQuery` 仅返回 `boolean`；结果没有 `matchReason`、`matchedFields` 或等价字段。结果虽保留 connection/database/schema/table 上下文，但调用方无法区分具体命中来源。
+
+修复后：非空查询的 `ObjectSearchResult` 保留所有命中字段和首要命中原因；column 结果可区分列名命中与所属 table 命中，空搜索保持空命中元数据。
 
 影响量级：按 database、schema、connectionName 或 column 所属 table 搜索时，搜索结果无法直接解释命中原因；只能由调用方重复实现匹配逻辑。
 

@@ -15,6 +15,7 @@ const index: SchemaObjectIndexEntry[] = [
     dbSessionId: 'session-1',
     databaseType: 'postgresql' as DatabaseType,
     connectionName: 'Primary PG',
+    host: 'app-db.internal',
     database: 'app',
     tables: [
       { name: 'users', schema: 'public', tableType: 'table' },
@@ -82,6 +83,47 @@ describe('schemaObjectSearch', () => {
     });
   });
 
+  it('retains all context fields that caused a result to match', () => {
+    const result = searchSchemaObjects(index, 'app').find(
+      (candidate) => candidate.objectType === 'table' && candidate.name === 'users',
+    );
+
+    expect(result).toMatchObject({
+      connectionName: 'Primary PG',
+      host: 'app-db.internal',
+      database: 'app',
+      matchedFields: ['host', 'database'],
+      matchReason: 'host',
+    });
+  });
+
+  it('distinguishes column-name hits from owning-table hits', () => {
+    const columnNameHit = searchSchemaObjects(index, 'email').find(
+      (result) => result.objectType === 'column' && result.name === 'EmailAddress',
+    );
+    expect(columnNameHit).toMatchObject({
+      tableName: 'users',
+      matchedFields: ['column'],
+      matchReason: 'column',
+    });
+
+    const owningTableHit = searchSchemaObjects(index, 'users').find(
+      (result) => result.objectType === 'column' && result.tableName === 'users',
+    );
+    expect(owningTableHit).toMatchObject({
+      matchedFields: ['table'],
+      matchReason: 'table',
+    });
+  });
+
+  it('retains database type as a searchable match field', () => {
+    const results = searchSchemaObjects(index, 'postgresql');
+
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((result) => result.matchedFields.includes('type'))).toBe(true);
+    expect(results.every((result) => result.matchReason === 'type')).toBe(true);
+  });
+
   it('returns all loaded object types for an empty query and preserves object context', () => {
     const results = searchSchemaObjects(index, '   ');
 
@@ -90,6 +132,8 @@ describe('schemaObjectSearch', () => {
     expect(results.some((result) => result.objectType === 'column')).toBe(true);
     expect(results.some((result) => result.objectType === 'function')).toBe(true);
     expect(results.some((result) => result.objectType === 'routine')).toBe(true);
+    expect(results.every((result) => result.matchedFields.length === 0)).toBe(true);
+    expect(results.every((result) => result.matchReason === undefined)).toBe(true);
 
     const eventColumn = results.find(
       (result) => result.objectType === 'column' && result.name === 'event_id',
