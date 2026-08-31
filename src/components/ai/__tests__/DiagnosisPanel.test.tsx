@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { DiagnosisPanel } from '../DiagnosisPanel';
+import { buildQueryDiagnosisContext, type QueryActionInput } from '../../../lib/aiQueryActions';
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -38,26 +39,56 @@ beforeEach(() => {
   aiState.isConfigured = true;
 });
 
+function createDiagnosisContext(overrides: Partial<QueryActionInput> = {}) {
+  return buildQueryDiagnosisContext({
+    sql: 'SELECT bad',
+    errorMessage: 'syntax error',
+    connectionId: 'c1',
+    dbSessionId: 'c1-session',
+    databaseType: 'postgresql',
+    database: 'db',
+    ...overrides,
+  });
+}
+
 describe('DiagnosisPanel', () => {
-  it('auto-diagnoses on mount when configured', async () => {
+  it('auto-diagnoses with only redacted SQL and error payloads', async () => {
+    const secrets = ['sql-json-secret', 'sql-password-secret', 'error-json-secret'];
+    const diagnosisContext = createDiagnosisContext({
+      sql: `SELECT '{\\"token\\":\\"sql-json-secret\\"}', password = 'sql-password-secret'`,
+      errorMessage: `query failed: {\\"token\\":\\"error-json-secret\\"}`,
+    });
     render(
       <DiagnosisPanel
-        dbSessionId="c1"
-        database="db"
-        sql="SELECT bad"
-        errorMessage="syntax error"
+        diagnosisContext={diagnosisContext}
         onApplySql={vi.fn()}
         onClose={vi.fn()}
       />,
     );
     await waitFor(() => {
       expect(aiState.diagnoseError).toHaveBeenCalledWith({
-        dbSessionId: 'c1',
+        dbSessionId: 'c1-session',
         database: 'db',
-        sql: 'SELECT bad',
-        errorMessage: 'syntax error',
+        sql: expect.not.stringContaining('sql-json-secret'),
+        errorMessage: expect.not.stringContaining('error-json-secret'),
       });
     });
+    const payload = aiState.diagnoseError.mock.calls[0]?.[0];
+    expect(JSON.stringify(payload)).not.toContain('sql-password-secret');
+    for (const secret of secrets) expect(JSON.stringify(payload)).not.toContain(secret);
+  });
+
+  it('does not diagnose when the context is missing or invalid', () => {
+    const onClose = vi.fn();
+    render(
+      <DiagnosisPanel
+        diagnosisContext={buildQueryDiagnosisContext({ sql: 'SELECT 1' })}
+        onApplySql={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+    fireEvent.click(document.querySelector('button')!);
+    expect(aiState.diagnoseError).not.toHaveBeenCalled();
   });
 
   it('shows not configured state with close', () => {
@@ -65,10 +96,7 @@ describe('DiagnosisPanel', () => {
     const onClose = vi.fn();
     const { container } = render(
       <DiagnosisPanel
-        dbSessionId="c1"
-        database="db"
-        sql=""
-        errorMessage=""
+        diagnosisContext={createDiagnosisContext()}
         onApplySql={vi.fn()}
         onClose={onClose}
       />,
@@ -90,10 +118,10 @@ describe('DiagnosisPanel', () => {
     };
     const { getByText } = render(
       <DiagnosisPanel
-        dbSessionId="c1"
-        database="db"
-        sql="SELECT x"
-        errorMessage="column x does not exist"
+        diagnosisContext={createDiagnosisContext({
+          sql: 'SELECT x',
+          errorMessage: 'column x does not exist',
+        })}
         onApplySql={onApplySql}
         onClose={onClose}
       />,
@@ -109,10 +137,7 @@ describe('DiagnosisPanel', () => {
     aiState.isDiagnosing = true;
     const { getByText, rerender } = render(
       <DiagnosisPanel
-        dbSessionId="c1"
-        database="db"
-        sql=""
-        errorMessage=""
+        diagnosisContext={createDiagnosisContext()}
         onApplySql={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -123,10 +148,7 @@ describe('DiagnosisPanel', () => {
     aiState.diagnosisError = 'timeout';
     rerender(
       <DiagnosisPanel
-        dbSessionId="c1"
-        database="db"
-        sql=""
-        errorMessage=""
+        diagnosisContext={createDiagnosisContext()}
         onApplySql={vi.fn()}
         onClose={vi.fn()}
       />,
