@@ -5,7 +5,7 @@
 - 编号：v01x-connection-discovery
 - 范围：连接搜索/排序、Pinned/Recent/Group 导航层级、可解释匹配上下文、连接表单 Basic/Advanced/SSH 折叠
 - 状态：编码完成；定向回归通过；Host E2E 留待 R 回归
-- 编码 commit：`4bddb8be7e59f180584531290213e9a4b8cdbf3a`
+- 编码 commit：`256301257e63871b66fa5c25126efa237142ec8b`
 - 冻结边界：未修改 `ConnectionPage.tsx`、`ContentView.tsx`、`panelStore.ts`、共享 types、共享 locales、hub、未跟踪规格文档或 codegen 文件
 
 ## 2. 实现记录
