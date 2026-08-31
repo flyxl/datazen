@@ -291,8 +291,6 @@ export async function expandConnectedConnectionInNavigator(nameFragment?: string
     const chevron = item?.querySelector('button[aria-expanded]') as HTMLElement | null;
     if (chevron && chevron.getAttribute('aria-expanded') !== 'true') {
       chevron.click();
-    } else {
-      item?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     }
   }, nameFragment);
   await browser.pause(800);
@@ -1186,7 +1184,6 @@ export async function clickTableInSidebar(tableName: string) {
   // Do not use the generic "some table exists" gate here. A newly-created
   // table can be absent while an older table is already mounted, which is
   // exactly the race this helper must close.
-  await expandConnectedConnectionInNavigator();
   await setNavigatorSearch(tableName);
   let scrollPass = 0;
   let clickAttempts = 0;
@@ -1203,6 +1200,11 @@ export async function clickTableInSidebar(tableName: string) {
           if (clickAttempts < 3) await browser.pause(300);
           return tableWorkspaceIsOpen(tableName);
         }
+        // Searching an already-expanded tree is enough for the common path.
+        // Only activate/expand the connected navigator entry after the exact
+        // node is absent; clicking that entry while it is already expanded
+        // can re-render the virtualized tree and lose the filtered row.
+        await expandConnectedConnectionInNavigator();
         await expandSchemaTableCategory();
         await expandSchemaCategory('views');
         await scrollSchemaTree(scrollPass);
