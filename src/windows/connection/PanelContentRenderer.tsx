@@ -265,7 +265,10 @@ function SqlPanelContent({
         panelId={panel.id}
         dbSessionId={panel.dbSessionId}
         connectionId={panel.connectionId}
+        connectionName={panel.connectionName}
         databaseType={panel.databaseType}
+        database={panel.database}
+        schema={panel.schema}
       />
     );
   }

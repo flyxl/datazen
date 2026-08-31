@@ -1,11 +1,15 @@
 import { useCallback, useState } from 'react';
-import { Check, Copy, Stethoscope } from 'lucide-react';
+import { Check, Copy, Lightbulb, RotateCcw, Stethoscope, Wand2 } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 
 interface QueryErrorPanelProps {
   message: string;
   /** When provided, renders a "diagnose" action that invokes this callback. */
   onDiagnose?: () => void;
+  onExplain?: () => void;
+  onFixSql?: () => void;
+  onRetry?: () => void;
+  onCopy?: () => void;
 }
 
 /**
@@ -13,15 +17,25 @@ interface QueryErrorPanelProps {
  * copy-to-clipboard action. Used instead of the results table when an
  * execution fails so the full message stays readable.
  */
-export function QueryErrorPanel({ message, onDiagnose }: Readonly<QueryErrorPanelProps>) {
+export function QueryErrorPanel({
+  message,
+  onDiagnose,
+  onExplain,
+  onFixSql,
+  onRetry,
+  onCopy,
+}: Readonly<QueryErrorPanelProps>) {
   const { t } = useI18n();
   const [errorCopied, setErrorCopied] = useState(false);
 
   const handleCopyError = useCallback(() => {
     void navigator.clipboard.writeText(message);
+    onCopy?.();
     setErrorCopied(true);
     window.setTimeout(() => setErrorCopied(false), 1500);
-  }, [message]);
+  }, [message, onCopy]);
+
+  const explain = onExplain ?? onDiagnose;
 
   return (
     <div className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3">
@@ -55,15 +69,42 @@ export function QueryErrorPanel({ message, onDiagnose }: Readonly<QueryErrorPane
       >
         {message}
       </pre>
-      {onDiagnose && (
-        <button
-          type="button"
-          className="mt-3 inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-blue-400 hover:bg-blue-500/10"
-          onClick={onDiagnose}
-        >
-          <Stethoscope className="h-3 w-3" />
-          {t('diagnosis.diagnose')}
-        </button>
+      {(explain || onFixSql || onRetry) && (
+        <div className="mt-3 flex flex-wrap items-center gap-1">
+          {explain && (
+            <button
+              type="button"
+              data-testid="query-explain-error"
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-blue-400 hover:bg-blue-500/10"
+              onClick={explain}
+            >
+              {onExplain ? <Lightbulb className="h-3 w-3" /> : <Stethoscope className="h-3 w-3" />}
+              {onExplain ? t('query.explainError') : t('diagnosis.diagnose')}
+            </button>
+          )}
+          {onFixSql && (
+            <button
+              type="button"
+              data-testid="query-fix-sql"
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-blue-400 hover:bg-blue-500/10"
+              onClick={onFixSql}
+            >
+              <Wand2 className="h-3 w-3" />
+              {t('query.fixSql')}
+            </button>
+          )}
+          {onRetry && (
+            <button
+              type="button"
+              data-testid="query-retry"
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-blue-400 hover:bg-blue-500/10"
+              onClick={onRetry}
+            >
+              <RotateCcw className="h-3 w-3" />
+              {t('common.retry')}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
