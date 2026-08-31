@@ -82,7 +82,7 @@
 | [migration-tools-review](development/migration-tools-review-v0.1.0.md) | Schema Diff / Data Sync / Data Transfer 就绪度与测试命令 |
 | [migration-tools-backlog](todo/migration-tools-backlog.md) | 三项迁移工具后续增强 Backlog（P1–P3） |
 | [ci-private-plugins](development/ci-private-plugins.md) | 私有 Git 驱动的 CI Deploy Key / Environment 配置 |
-| [independent-plugin-development](development/independent-plugin-development.en.md) / [中文](development/independent-plugin-development.zh-CN.md) | 独立仓库驱动插件开发指南 |
+| [independent-driver-development](development/independent-driver-development.en.md) / [中文](development/independent-driver-development.zh-CN.md) | 独立仓库驱动插件开发指南 |
 | [driver-api-dependency-boundary](development/driver-api-dependency-boundary.md) | datazen-driver-api 公共 API 依赖边界 |
 | [optional-drivers](development/optional-drivers.md) | 可选驱动选型（MongoDB / ClickHouse / DuckDB / SQL Server…） |
 | [packaging](development/packaging.md) | 打包与发布渠道（Gatekeeper、公证、Linux 包） |

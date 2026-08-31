@@ -1,6 +1,6 @@
-# Independent Plugin Development
+# Independent Driver Development
 
-This guide describes how to develop a Datazen plugin in its own Git repository while using a local Datazen checkout as the build and debugging host.
+This guide describes how to develop a Datazen **driver plugin** in its own Git repository while using a local Datazen checkout as the build and debugging host.
 
 The important point is that Datazen plugins are **compiled into Datazen at build time**. A plugin is not loaded from a `.so`, `.dylib`, or `.dll` at runtime. The recommended development setup is therefore two sibling repositories:
 

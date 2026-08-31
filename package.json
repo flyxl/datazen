@@ -32,6 +32,7 @@
     "e2e:contract:pg": "node e2e/run.mjs --skip-build -- --suite contract --mochaOpts.grep 'Host contract @ postgres'",
     "e2e:db": "node e2e/run.mjs --skip-build -- --suite db",
     "e2e:kiwi": "node -e \"console.error('Kiwi E2E: cd datazen-driver-kiwi && pnpm e2e:kiwi'); process.exit(1)\"",
+    "e2e:superset": "node -e \"console.error('Superset E2E: cd datazen-driver-superset && pnpm e2e:superset'); process.exit(1)\"",
     "e2e:redis": "node e2e/run.mjs --skip-build -- --suite redis",
     "e2e:ai": "node e2e/run.mjs --skip-build -- --suite ai",
     "e2e:i18n-backup": "node e2e/run.mjs --skip-build -- --suite i18n-backup",
