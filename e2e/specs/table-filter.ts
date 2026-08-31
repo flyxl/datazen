@@ -7,7 +7,7 @@ import {
   clickTableInSidebar,
   switchSubTab,
   selectDzOption,
-  openSeededPgConnectionWindow,
+  connectSeededPgInWorkspace,
   waitForTableInSidebar,
 } from '../helpers.js';
 
@@ -60,7 +60,7 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await openSeededPgConnectionWindow(mainWindow);
+    await connectSeededPgInWorkspace();
 
     await openQueryTab();
     await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);

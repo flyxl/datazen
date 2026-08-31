@@ -6,7 +6,7 @@ import {
   openQueryTab,
   clickTableInSidebar,
   switchSubTab,
-  openSeededPgConnectionWindow,
+  connectSeededPgInWorkspace,
   withSafeModeOff,
   waitForTableInSidebar,
 } from '../helpers.js';
@@ -23,7 +23,7 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await openSeededPgConnectionWindow(mainWindow);
+    await connectSeededPgInWorkspace();
 
     await openQueryTab();
     await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
