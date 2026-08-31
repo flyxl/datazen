@@ -379,22 +379,42 @@ describe('数据同步 UI 执行闭环 (DSW-EXEC)', () => {
     // 比较
     const compare = await $('[data-testid="data-sync-compare"]');
     await compare.click();
-    await browser.pause(2500);
 
     // 映射行出现
-    const rows = await $$('[data-testid="data-sync-mapping-row"]');
-    let seen = false;
-    for (const r of rows) {
-      if (((await r.getText()) || '').includes(TABLE)) {
-        seen = true;
-        break;
-      }
-    }
-    expect(seen).toBe(true);
+    await browser.waitUntil(
+      async () => {
+        const rows = await $$('[data-testid="data-sync-mapping-row"]');
+        for (const row of rows) {
+          if (((await row.getText()) || '').includes(TABLE)) return true;
+        }
+        return false;
+      },
+      { timeout: 20000, timeoutMsg: `mapping row for ${TABLE} did not appear` },
+    );
     await captureJourneyStep('data-sync-mapping-ready', 0, true);
 
-    // 执行
+    // The mapping is published before compareDataSync finishes.  Waiting only
+    // for a row can therefore race the ExecuteBar: its locator is present
+    // while the window is still `comparing`, or an async connection error has
+    // opened a modal over the workspace.  Wait for the actual executable state
+    // and surface that error instead of timing out in waitForClickable.
+    const syncWindow = await $('[data-testid="data-sync-window"]');
+    await browser.waitUntil(
+      async () => (await syncWindow.getAttribute('data-sync-state')) === 'compared',
+      { timeout: 20000, timeoutMsg: 'data-sync compare did not reach compared state' },
+    );
+    const error = await $('[data-testid="data-sync-error"]');
+    if (await error.isDisplayed().catch(() => false)) {
+      throw new Error(`data-sync compare error: ${await error.getText()}`);
+    }
+
+    // ExecuteBar is below the split workspace on smaller webdriver viewports;
+    // center it before checking clickability so WebDriver does not hit an
+    // off-screen/covered point while the UI is otherwise ready.
     const start = await $('[data-testid="data-sync-start"]');
+    await start.waitForDisplayed({ timeout: 10000 });
+    await start.scrollIntoView({ block: 'center', inline: 'nearest' });
+    await expect(start).toBeEnabled();
     await start.waitForClickable({ timeout: 15000 });
     await start.click();
     await browser.pause(3000);
