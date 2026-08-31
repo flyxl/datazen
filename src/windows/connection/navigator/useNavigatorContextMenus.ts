@@ -23,6 +23,7 @@ import {
 } from '../../../lib/windowManager';
 import { showWebContextMenu } from '../../../stores/contextMenuStore';
 import { useSchemaStore } from '../../../stores/schemaStore';
+import { buildQueryOpenContext } from '../../../lib/tableSqlActions';
 import type { ConnectionOpenTarget } from '../../../lib/connectionViews/types';
 import { databaseCommands } from '../../../commands/database';
 import { driverCommands } from '../../../commands/driver';
@@ -729,7 +730,18 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
               onSelectConnection(connectionId);
               useSchemaStore.setState({ currentDatabase: dbName });
               if (kind === 'table') {
-                viewActions?.newQuery?.(`SELECT * FROM ${quoted} LIMIT 100`);
+                const query = buildQueryOpenContext(
+                  {
+                    connectionId,
+                    dbSessionId,
+                    databaseType: conn?.databaseType ?? 'postgresql',
+                    database: dbName,
+                    schema,
+                    tableName: name,
+                  },
+                  { kind: 'select', source: 'table-action' },
+                );
+                viewActions?.newQuery?.(query.initialSql, query);
               } else {
                 viewActions?.newQuery?.();
               }

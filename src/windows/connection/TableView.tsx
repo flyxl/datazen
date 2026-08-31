@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Filter, Loader2 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
@@ -10,6 +10,14 @@ import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { cn } from '../../lib/cn';
 import { CopyableError } from '../../components/ui/CopyableError';
 import { tableChangeContextKey } from '../../lib/tableChanges';
+import type { RowChangePlan } from '../../lib/tableChanges';
+import {
+  filterExpressionToConditions,
+  parseFilterForApply,
+  type FilterExpression,
+} from '../../lib/filterExpression';
+import { Button } from '../../components/ui/Button';
+import { Dialog } from '../../components/ui/Dialog';
 
 interface TableViewProps {
   dbSessionId: string;
@@ -54,10 +62,17 @@ export function TableView({
   const selectRow = useTableDataStore((s) => s.selectRow);
   const toggleSelectAll = useTableDataStore((s) => s.toggleSelectAll);
   const deleteRows = useTableDataStore((s) => s.deleteRows);
+  const previewPendingChanges = useTableDataStore((s) => s.previewPendingChanges);
+  const commitPendingChanges = useTableDataStore((s) => s.commitPendingChanges);
+  const rollbackPendingChanges = useTableDataStore((s) => s.rollbackPendingChanges);
   const setDetailRow = useTableDataStore((s) => s.setDetailRow);
   const detailRowIndex = useTableDataStore((s) => s.detailRowIndex);
   const confirmOnDelete = useSettingsStore((s) => s.settings.confirmOnDelete);
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
+  const [confirmCommit, confirmCommitDialog] = useConfirmDialog();
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [quickFilter, setQuickFilter] = useState('');
+  const [quickFilterError, setQuickFilterError] = useState<string | null>(null);
 
   const handleDeleteRows = useCallback(
     async (rowIndices: number[]) => {
@@ -139,6 +154,77 @@ export function TableView({
   const selectedRows = ts?.selectedRows ?? new Set<number>();
   const loading = ts?.loading ?? false;
   const error = ts?.error ?? null;
+  const pendingChanges = ts?.pendingChanges ?? new Map();
+  const previewPlan = ts?.previewPlan ?? null;
+  const pendingStatus = ts?.pendingStatus ?? 'idle';
+  const pendingUpdateCount = [...pendingChanges.values()].filter(
+    (change) => !change.deleteMarked && change.changedColumns.length > 0,
+  ).length;
+  const pendingDeleteCount = [...pendingChanges.values()].filter((change) => change.deleteMarked).length;
+  const pendingBusy = loading || pendingStatus !== 'idle';
+
+  const handlePreviewPendingChanges = useCallback(async () => {
+    if (pendingBusy || pendingChanges.size === 0) return;
+    const plan = await previewPendingChanges();
+    if (plan) setPreviewOpen(true);
+  }, [pendingBusy, pendingChanges.size, previewPendingChanges]);
+
+  const handleCommitPendingChanges = useCallback(async () => {
+    if (pendingBusy || pendingChanges.size === 0) return;
+    const confirmed = await confirmCommit({
+      title: t('tableData.commit'),
+      message: t('tableData.confirmCommit', {
+        updates: pendingUpdateCount,
+        deletes: pendingDeleteCount,
+      }),
+      confirmLabel: t('tableData.commit'),
+      kind: 'warning',
+    });
+    if (confirmed) await commitPendingChanges();
+  }, [commitPendingChanges, confirmCommit, pendingBusy, pendingChanges.size, pendingDeleteCount, pendingUpdateCount, t]);
+
+  const handleTableKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        if (pendingChanges.size === 0 || pendingBusy) return;
+        event.preventDefault();
+        void handleCommitPendingChanges();
+      }
+    },
+    [handleCommitPendingChanges, pendingBusy, pendingChanges.size],
+  );
+
+  const handleQuickFilter = useCallback(() => {
+    const input = quickFilter.trim();
+    if (!input) {
+      setQuickFilterError(null);
+      clearFilters();
+      return;
+    }
+    const parsed = parseFilterForApply(input, columns);
+    if (!parsed.ok) {
+      setQuickFilterError(t('filter.invalidExpression', { error: parsed.error }));
+      return;
+    }
+    const logic = new Set<'and' | 'or'>();
+    const collectLogic = (expression: FilterExpression) => {
+      if (expression.type === 'logical') {
+        logic.add(expression.operator);
+        collectLogic(expression.left);
+        collectLogic(expression.right);
+      }
+    };
+    collectLogic(parsed.value.expression);
+    if (logic.size > 1) {
+      setQuickFilterError(t('filter.mixedLogic'));
+      return;
+    }
+    setQuickFilterError(null);
+    useTableDataStore.getState().setFilters(
+      filterExpressionToConditions(parsed.value.expression),
+      [...logic][0] ?? 'and',
+    );
+  }, [clearFilters, columns, quickFilter, t]);
 
   const openManualFilter = () => {
     if (filterPanelOpen) {
@@ -205,7 +291,7 @@ export function TableView({
   const filterActive = filterPanelOpen || filters.length > 0 || draftFilters.length > 0;
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden" onKeyDown={handleTableKeyDown}>
       {error && (
         <div className="flex items-start gap-3 border-b border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
           <CopyableError message={error} copyButton className="min-w-0 flex-1" />
@@ -245,7 +331,86 @@ export function TableView({
           <Filter className="h-3.5 w-3.5" />
         </button>
         <NlFilterInput dbSessionId={dbSessionId} database={database} tableName={tableName} />
+        <div className="ml-1 flex min-w-0 flex-1 items-center">
+          <input
+            type="text"
+            value={quickFilter}
+            onChange={(event) => {
+              setQuickFilter(event.target.value);
+              if (quickFilterError) setQuickFilterError(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                handleQuickFilter();
+              }
+            }}
+            onBlur={() => {
+              if (quickFilter.trim()) handleQuickFilter();
+            }}
+            disabled={loading || pendingBusy}
+            placeholder={t('filter.quickPlaceholder')}
+            className="h-7 min-w-0 flex-1 rounded border border-edge bg-surface px-2 text-xs text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none"
+            aria-invalid={quickFilterError ? 'true' : undefined}
+            data-testid="table-quick-filter"
+          />
+        </div>
       </div>
+      {quickFilterError && (
+        <div className="border-b border-red-500/30 bg-red-500/10 px-3 py-1 text-xs text-red-400" role="alert">
+          {quickFilterError}
+        </div>
+      )}
+      {pendingChanges.size > 0 && (
+        <div
+          className="flex shrink-0 items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs"
+          aria-busy={pendingBusy}
+          data-testid="pending-changes-bar"
+        >
+          <span className="font-medium text-amber-300">
+            {t('tableData.pendingChanges', { count: pendingChanges.size })}
+          </span>
+          {pendingUpdateCount > 0 && (
+            <span className="text-fg-muted">
+              {t('tableData.pendingUpdates', { count: pendingUpdateCount })}
+            </span>
+          )}
+          {pendingDeleteCount > 0 && (
+            <span className="text-fg-muted">
+              {t('tableData.pendingDeletes', { count: pendingDeleteCount })}
+            </span>
+          )}
+          <div className="ml-auto flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={pendingBusy}
+              onClick={() => void handlePreviewPendingChanges()}
+              data-testid="pending-preview"
+            >
+              {t('tableData.preview')}
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={pendingBusy}
+              onClick={() => void handleCommitPendingChanges()}
+              data-testid="pending-commit"
+            >
+              {t('tableData.commit')}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={pendingBusy}
+              onClick={() => rollbackPendingChanges()}
+              data-testid="pending-rollback"
+            >
+              {t('tableData.rollback')}
+            </Button>
+          </div>
+        </div>
+      )}
       <DataTable
         columns={columnDefs}
         rows={rowArrays}
@@ -286,6 +451,80 @@ export function TableView({
         onDeleteRows={handleDeleteRows}
       />
       {confirmDeleteDialog}
+      {confirmCommitDialog}
+      <PendingPlanDialog
+        plan={previewPlan}
+        open={previewOpen && previewPlan != null}
+        onClose={() => setPreviewOpen(false)}
+      />
     </div>
+  );
+}
+
+function PendingPlanDialog({
+  plan,
+  open,
+  onClose,
+}: {
+  plan: RowChangePlan | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  if (!plan) return null;
+  const statements = [...plan.updates, ...plan.deletes];
+  return (
+    <Dialog
+      open={open}
+      title={t('tableData.previewTitle')}
+      description={`${plan.table.table} · ${plan.updates.length} ${t('tableData.pendingUpdates', { count: plan.updates.length })} · ${plan.deletes.length} ${t('tableData.pendingDeletes', { count: plan.deletes.length })}`}
+      onClose={onClose}
+      testId="pending-plan-dialog"
+      footer={
+        <Button size="sm" variant="secondary" onClick={onClose}>
+          {t('common.close')}
+        </Button>
+      }
+    >
+      <div className="space-y-3 text-xs">
+        <div>
+          <div className="font-medium text-fg">{t('tableData.previewFingerprint')}</div>
+          <code className="mt-1 block break-all rounded bg-surface px-2 py-1 font-mono text-fg-muted">
+            {plan.fingerprint}
+          </code>
+        </div>
+        <div>
+          <div className="font-medium text-fg">{t('tableData.previewSql')}</div>
+          <div className="mt-1 space-y-2">
+            {statements.length === 0 ? (
+              <div className="text-fg-muted">{t('tableData.noPendingChanges')}</div>
+            ) : (
+              statements.map((statement, index) => (
+                <div key={`${statement.sqlTemplate}-${index}`} className="rounded border border-edge bg-surface p-2">
+                  <code className="block whitespace-pre-wrap break-words font-mono text-fg-secondary">
+                    {statement.sqlTemplate}
+                  </code>
+                  {statement.parameterSummary.length > 0 && (
+                    <div className="mt-1 text-fg-muted">
+                      {t('tableData.previewParameters')}: {statement.parameterSummary.join(', ')}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+        {plan.warnings.length > 0 && (
+          <div className="rounded border border-amber-500/30 bg-amber-500/10 p-2 text-amber-200">
+            <div className="font-medium">{t('tableData.previewWarnings')}</div>
+            <ul className="mt-1 list-disc pl-4">
+              {plan.warnings.map((warning) => (
+                <li key={`${warning.code}-${warning.message}`}>{warning.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Dialog>
   );
 }
