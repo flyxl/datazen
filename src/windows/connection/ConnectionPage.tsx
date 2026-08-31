@@ -820,6 +820,8 @@ export function ConnectionPage() {
                 onShowMessage={showMessageDialog}
                 viewActions={{
                   newQuery: (...args) => actionsRef.current?.newQuery(...args),
+                  openTableAction: (context, action) =>
+                    actionsRef.current?.openTableAction?.(context, action),
                   openSqlFile: () => actionsRef.current?.openSqlFile?.(),
                   createTable: () => actionsRef.current?.createTable?.(),
                   openCreateDatabase: () => actionsRef.current?.openCreateDatabase?.(),

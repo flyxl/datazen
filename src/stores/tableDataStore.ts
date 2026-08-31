@@ -313,7 +313,7 @@ interface TableDataStore extends ConnectionTableState {
   setPage: (page: number) => void;
   setPageSize: (size: number) => void;
   addFilter: (filter: FilterCondition) => void;
-  setFilters: (filters: FilterCondition[]) => void;
+  setFilters: (filters: FilterCondition[], logic?: 'and' | 'or') => void;
   updateFilter: (index: number, filter: FilterCondition) => void;
   setFilterLogic: (logic: 'and' | 'or') => void;
   removeFilter: (index: number) => void;
@@ -787,11 +787,13 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     }));
   },
 
-  setFilters: (filters) => {
+  setFilters: (filters, logic = 'and') => {
     const next = cloneFilters(filters);
     updateActiveForReload(get, set, () => ({
       filters: next,
       draftFilters: cloneFilters(next),
+      filterLogic: logic,
+      draftFilterLogic: logic,
       page: 0,
       filterPanelOpen: true,
     }));

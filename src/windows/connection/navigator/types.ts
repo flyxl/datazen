@@ -2,6 +2,7 @@ import type { ConnectionConfig, DatabaseObject, TableInfo } from '../../../types
 import type { ConnectionMatch } from '../../../lib/connectionLocator';
 import type { ConnectionOpenTarget } from '../../../lib/connectionViews/types';
 import type { SchemaTreeCategoryDef } from '../schema-tree/schemaTreeCategories';
+import type { TableContextInput, TableSqlActionKind } from '../../../lib/tableSqlActions';
 
 export type UnifiedRow =
   | {
@@ -114,7 +115,8 @@ export interface ConnectionNavigatorTreeProps {
     schema?: string;
   }) => void;
   viewActions?: {
-    newQuery?: (initialSql?: string) => void;
+    newQuery?: (initialSql?: string, context?: Pick<TableContextInput, 'database' | 'schema'>) => void;
+    openTableAction?: (context: TableContextInput, action: TableSqlActionKind) => void;
     openSqlFile?: () => void;
     createTable?: () => void;
     openCreateDatabase?: () => void;

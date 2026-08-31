@@ -33,6 +33,9 @@ import {
 } from './navigator/types';
 import { useNavigatorContextMenus } from './navigator/useNavigatorContextMenus';
 import { useNavigatorDbState } from './navigator/useNavigatorDbState';
+import { GlobalObjectSearch } from './navigator/GlobalObjectSearch';
+import { buildQueryOpenContext, type TableSqlActionKind } from '../../lib/tableSqlActions';
+import type { ObjectSearchResult, SchemaObjectIndexEntry } from '../../lib/schemaObjectSearch';
 
 export type { ConnectionNavigatorTreeHandle, ConnectionNavigatorTreeProps };
 
@@ -98,6 +101,7 @@ export const ConnectionNavigatorTree = forwardRef<
   const [confirmTruncateTable, confirmTruncateTableDialog] = useConfirmDialog();
   const removeRelation = useSchemaStore((s) => s.removeRelation);
   const [objectFilterConn, setObjectFilterConn] = useState<ConnectionConfig | null>(null);
+  const [objectSearchOpen, setObjectSearchOpen] = useState(false);
   const schemas = useSchemaStore((s) => s.schemas);
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
   const ensureNamespacePath = useSchemaStore((s) => s.ensureNamespacePath);
@@ -532,6 +536,133 @@ export const ConnectionNavigatorTree = forwardRef<
     ],
   );
 
+  const objectSearchIndex = useMemo<SchemaObjectIndexEntry[]>(() => {
+    const entries: SchemaObjectIndexEntry[] = [];
+    const seen = new Set<string>();
+    const add = (entry: SchemaObjectIndexEntry) => {
+      const key = JSON.stringify([
+        entry.connectionId,
+        entry.dbSessionId,
+        entry.database ?? null,
+        entry.schema ?? null,
+        entry.tables?.map((table) => [table.name, table.schema, table.tableType]),
+        entry.views?.map((table) => [table.name, table.schema, table.tableType]),
+        entry.objects?.map((object) => [object.kind, object.schema, object.name]),
+      ]);
+      if (seen.has(key)) return;
+      seen.add(key);
+      entries.push(entry);
+    };
+
+    for (const conn of connections) {
+      const live = activeConnections[conn.id];
+      if (!live?.dbSessionId || live.status !== 'connected') continue;
+      const schema = schemas.get(live.dbSessionId);
+      if (schema) {
+        add({
+          connectionId: conn.id,
+          dbSessionId: live.dbSessionId,
+          databaseType: conn.databaseType,
+          connectionName: conn.name,
+          host: conn.host,
+          database: schema.currentDatabase,
+          schema: schema.currentSchema,
+          tables: schema.tables,
+          views: schema.views,
+          columnMap: schema.columnMap,
+        });
+      }
+    }
+
+    for (const [key, tables] of Object.entries(dbState.dbTablesMap)) {
+      const [dbSessionId, ...databaseParts] = key.split('::');
+      const database = databaseParts.join('::');
+      const conn = connections.find((candidate) => activeConnections[candidate.id]?.dbSessionId === dbSessionId);
+      if (!conn || !database) continue;
+      add({
+        connectionId: conn.id,
+        dbSessionId,
+        databaseType: conn.databaseType,
+        connectionName: conn.name,
+        host: conn.host,
+        database,
+        tables,
+      });
+    }
+
+    for (const [key, objects] of Object.entries(dbState.dbObjectsMap)) {
+      const parts = key.split('::');
+      if (parts.length < 3) continue;
+      const [connectionId, database, ...rest] = parts;
+      const catId = rest.at(-1);
+      const schema = rest.length > 1 ? rest.slice(0, -1).join('::') : undefined;
+      const conn = connections.find((candidate) => candidate.id === connectionId);
+      const dbSessionId = conn ? activeConnections[connectionId]?.dbSessionId : undefined;
+      if (!conn || !dbSessionId || !database || !catId) continue;
+      add({
+        connectionId,
+        dbSessionId,
+        databaseType: conn.databaseType,
+        connectionName: conn.name,
+        host: conn.host,
+        database,
+        schema,
+        objects,
+      });
+    }
+    return entries;
+  }, [activeConnections, connections, dbState.dbObjectsMap, dbState.dbTablesMap, schemas]);
+
+  const openObjectSearchResult = useCallback(
+    (result: ObjectSearchResult) => {
+      setObjectSearchOpen(false);
+      onSelectConnection(result.connectionId);
+      window.setTimeout(() => {
+        if (result.objectType === 'table' || result.objectType === 'view' || result.objectType === 'column') {
+          onSelectTable(result.tableName ?? result.name, result.schema, result.database);
+          return;
+        }
+        const kind = result.sourceKind === 'procedure' ? 'procedure' : result.objectType;
+        if (
+          kind === 'function' ||
+          kind === 'procedure' ||
+          kind === 'trigger' ||
+          kind === 'sequence' ||
+          kind === 'type'
+        ) {
+          viewActions?.openObject?.(kind, result.name, result.schema);
+        }
+      }, 0);
+    },
+    [onSelectConnection, onSelectTable, viewActions],
+  );
+
+  const openObjectSearchTableAction = useCallback(
+    (result: ObjectSearchResult, action: TableSqlActionKind) => {
+      setObjectSearchOpen(false);
+      onSelectConnection(result.connectionId);
+      const query = buildQueryOpenContext(
+        {
+          connectionId: result.connectionId,
+          dbSessionId: result.dbSessionId,
+          databaseType: result.databaseType,
+          database: result.database,
+          schema: result.schema,
+          tableName: result.tableName ?? result.name,
+        },
+        { kind: action, source: 'object-search' },
+      );
+      window.setTimeout(() => {
+        if (action === 'openData') {
+          onSelectTable(query.tableName, query.schema, query.database);
+          return;
+        }
+        viewActions?.newQuery?.(query.initialSql, query);
+      }, 0);
+    },
+    [onSelectConnection, onSelectTable, viewActions],
+  );
+
   const virtualizer = useVirtualizer({
     count: flatRows.length,
     getScrollElement: () => scrollRef.current,
@@ -576,6 +707,7 @@ export const ConnectionNavigatorTree = forwardRef<
           setNewGroupDialogOpen(true);
         }}
         onCollapseAll={collapseAll}
+        onOpenObjectSearch={() => setObjectSearchOpen(true)}
       />
 
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto py-1">
@@ -632,6 +764,14 @@ export const ConnectionNavigatorTree = forwardRef<
           ))}
         </div>
       </div>
+
+      <GlobalObjectSearch
+        open={objectSearchOpen}
+        index={objectSearchIndex}
+        onClose={() => setObjectSearchOpen(false)}
+        onOpenResult={openObjectSearchResult}
+        onOpenTableAction={openObjectSearchTableAction}
+      />
 
       <NavigatorDialogs
         t={t}
