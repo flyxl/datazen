@@ -15,8 +15,8 @@ vi.mock('../../../hooks/useColumnResize', () => ({
 }));
 
 vi.mock('../../FilterBar', () => ({
-  FilterBar: ({ onClear }: { onClear: () => void }) => (
-    <div data-testid="filter-bar">
+  FilterBar: ({ onClear, loading }: { onClear: () => void; loading?: boolean }) => (
+    <div data-testid="filter-bar" data-loading={String(Boolean(loading))}>
       <button type="button" onClick={onClear}>
         clear-filters
       </button>
@@ -34,6 +34,13 @@ vi.mock('../../../hooks/useVirtualTable', () => ({
 const { showNativeContextMenu } = vi.hoisted(() => ({
   showNativeContextMenu: vi.fn().mockResolvedValue(undefined),
 }));
+
+type ContextMenuTestItem = {
+  kind: string;
+  id?: string;
+  action?: () => void;
+  items?: ContextMenuTestItem[];
+};
 
 vi.mock('../../../lib/nativeContextMenu', () => ({
   showNativeContextMenu: (...args: unknown[]) => showNativeContextMenu(...args),
@@ -94,6 +101,50 @@ describe('DataTable', () => {
     expect(getByText('1-25 / 100')).toBeInTheDocument();
   });
 
+  it('threads loading to the filter bar and pagination', () => {
+    const { getByTestId, container } = render(
+      <DataTable
+        columns={COLS}
+        rows={rows}
+        filters={[{ column: 'name', operator: 'eq', value: 'Alice' }]}
+        onRemoveFilter={vi.fn()}
+        onClearFilters={vi.fn()}
+        page={0}
+        pageSize={25}
+        totalRows={100}
+        onPageChange={vi.fn()}
+        onPageSizeChange={vi.fn()}
+        loading
+      />,
+    );
+
+    expect(getByTestId('filter-bar')).toHaveAttribute('data-loading', 'true');
+    expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument();
+  });
+
+  it('threads loading to the expanded filter editor', () => {
+    const filter = { column: 'name', operator: 'eq' as const, value: 'Alice' };
+    const { getByTestId } = render(
+      <DataTable
+        columns={COLS}
+        rows={rows}
+        filters={[filter]}
+        draftFilters={[filter]}
+        filterPanelOpen
+        onFilterPanelOpenChange={vi.fn()}
+        onAddFilter={vi.fn()}
+        onUpdateFilter={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onClearFilters={vi.fn()}
+        onFilterLogicChange={vi.fn()}
+        onApplyFilters={vi.fn()}
+        loading
+      />,
+    );
+
+    expect(getByTestId('filter-editor')).toHaveAttribute('aria-busy', 'true');
+  });
+
   it('shows selection bar and select-all checkbox', () => {
     const onSelectAll = vi.fn();
     const onRowSelect = vi.fn();
@@ -145,6 +196,7 @@ describe('DataTable', () => {
 
   it('opens native context menu with TablePlus-style items when a cell is hit', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
+    const onCellEdit = vi.fn();
     Object.assign(navigator, { clipboard: { writeText } });
 
     const { container, getByText, getAllByText } = render(
@@ -161,6 +213,8 @@ describe('DataTable', () => {
         onFilterLogicChange={vi.fn()}
         onApplyFilters={vi.fn()}
         onFilterPanelOpenChange={vi.fn()}
+        onCellEdit={onCellEdit}
+        enableSetNull
         exportTableName="users"
       />,
     );
@@ -169,24 +223,28 @@ describe('DataTable', () => {
     fireEvent.contextMenu(cell!, { clientX: 10, clientY: 10 });
 
     await waitFor(() => expect(showNativeContextMenu).toHaveBeenCalled());
-    const menuItems = showNativeContextMenu.mock.calls[0]![0] as Array<{
-      kind: string;
-      id?: string;
-      action?: () => void;
-    }>;
+    const menuItems = showNativeContextMenu.mock.calls[0]![0] as ContextMenuTestItem[];
     const itemIds = menuItems.filter((i) => i.kind === 'item').map((i) => i.id);
     expect(itemIds).toEqual([
       'copy',
       'copy-row',
+      'filter-by-value',
+      'export',
+    ]);
+    expect(itemIds).not.toContain('set-null');
+    const more = menuItems.find((i) => i.kind === 'submenu');
+    expect(more?.id).toBe('more-actions');
+    expect(more?.items?.filter((i) => i.kind === 'item').map((i) => i.id)).toEqual([
       'copy-as-json',
       'copy-as-sql-insert',
       'copy-as-update',
       'copy-as-csv',
       'copy-column-name',
-      'filter-by-value',
+      'set-null',
       'copy-selected-rows',
-      'export',
     ]);
+    more?.items?.find((i) => i.id === 'set-null')!.action?.();
+    expect(onCellEdit).toHaveBeenCalledWith(0, 'name', null);
 
     menuItems.find((i) => i.id === 'copy')!.action?.();
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('Alice'));
@@ -215,18 +273,44 @@ describe('DataTable', () => {
     fireEvent.contextMenu(container.querySelector('.overflow-auto')!);
 
     await waitFor(() => expect(showNativeContextMenu).toHaveBeenCalled());
-    const menuItems = showNativeContextMenu.mock.calls[0]![0] as Array<{
-      kind: string;
-      id?: string;
-      action?: () => void;
-    }>;
-    expect(menuItems.filter((i) => i.kind === 'item').map((i) => i.id)).toEqual([
+    const menuItems = showNativeContextMenu.mock.calls[0]![0] as ContextMenuTestItem[];
+    const more = menuItems.find((i) => i.kind === 'submenu');
+    expect(menuItems.filter((i) => i.kind === 'item').map((i) => i.id)).toEqual(['export']);
+    expect(more?.id).toBe('more-actions');
+    expect(more?.items?.filter((i) => i.kind === 'item').map((i) => i.id)).toEqual([
       'copy-selected-rows',
       'copy-as-csv',
-      'export',
     ]);
-    menuItems.find((i) => i.id === 'copy-selected-rows')!.action?.();
+    more?.items?.find((i) => i.id === 'copy-selected-rows')!.action?.();
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('1\tAlice'));
+  });
+
+  it('keeps filter unavailable in the context menu while loading', async () => {
+    const onAddFilter = vi.fn();
+    const { container } = render(
+      <DataTable
+        columns={COLS}
+        rows={rows}
+        onAddFilter={onAddFilter}
+        loading
+      />,
+    );
+    fireEvent.contextMenu(container.querySelector('[data-dt-row="0"][data-dt-col="name"]')!, {
+      clientX: 10,
+      clientY: 10,
+    });
+
+    await waitFor(() => expect(showNativeContextMenu).toHaveBeenCalled());
+    const menuItems = showNativeContextMenu.mock.calls[0]![0] as ContextMenuTestItem[];
+    expect(menuItems.some((i) => i.id === 'filter-by-value')).toBe(false);
+    expect(menuItems.find((i) => i.kind === 'submenu')?.items?.map((i) => i.id)).toEqual([
+      'copy-as-json',
+      'copy-as-sql-insert',
+      'copy-as-update',
+      'copy-as-csv',
+      'copy-column-name',
+    ]);
+    expect(onAddFilter).not.toHaveBeenCalled();
   });
 
   it('calls row click handlers', () => {

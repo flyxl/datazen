@@ -773,6 +773,7 @@ const en: Record<TranslationKey, string> = {
   'dataTable.sort': 'Sort',
   'dataTable.selectRow': 'Select Row',
   'dataTable.copyRow': 'Copy Row',
+  'dataTable.moreActions': 'More actions',
   'dataTable.copyAsJson': 'Copy as JSON',
   'dataTable.copyAsSqlInsert': 'Copy as SQL INSERT',
   'dataTable.copyAsUpdate': 'Copy as UPDATE',

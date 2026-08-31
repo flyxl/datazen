@@ -194,7 +194,7 @@ export function DataTable({
         .filter((r): r is unknown[] => Array.isArray(r));
       const hasSelectedRows = selectedDataRows.length > 0;
       const hasCellContext = hit != null && Array.isArray(hitRow);
-      const canFilterByValue = hasCellContext && !!onAddFilter && !!hit;
+      const canFilterByValue = !loading && hasCellContext && !!onAddFilter && !!hit;
       const setNullAllowed = enableSetNull ?? !!onCellEdit;
       const canSetNull = hasCellContext && setNullAllowed && !!onCellEdit && !!hit;
       const deleteIndices = hasSelectedRows ? selectedIndices : hit != null ? [hit.rowIndex] : [];
@@ -218,6 +218,7 @@ export function DataTable({
           labels: {
             copy: t('common.copy'),
             copyRow: t('dataTable.copyRow'),
+            moreActions: t('dataTable.moreActions'),
             copyAsJson: t('dataTable.copyAsJson'),
             copyAsSqlInsert: t('dataTable.copyAsSqlInsert'),
             copyAsUpdate: t('dataTable.copyAsUpdate'),
@@ -338,6 +339,7 @@ export function DataTable({
       rows,
       selectedRows,
       t,
+      loading,
     ],
   );
 
@@ -386,9 +388,15 @@ export function DataTable({
           onRemove={onRemoveFilter}
           onApply={onApplyFilters}
           onClear={onClearFilters}
+          loading={loading}
         />
       ) : hasFilters ? (
-        <FilterBar filters={filters} onRemove={onRemoveFilter} onClear={onClearFilters} />
+        <FilterBar
+          filters={filters}
+          onRemove={onRemoveFilter}
+          onClear={onClearFilters}
+          loading={loading}
+        />
       ) : null}
 
       {hasSelection && (
@@ -481,6 +489,7 @@ export function DataTable({
           totalRows={totalRows}
           onPageChange={onPageChange}
           onPageSizeChange={onPageSizeChange}
+          loading={loading}
         />
       )}
 
