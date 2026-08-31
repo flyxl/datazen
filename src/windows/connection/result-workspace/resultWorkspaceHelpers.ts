@@ -6,7 +6,6 @@ export type ResultWorkspaceView = 'table' | 'chart';
 
 export type ResultWorkspaceFallbackReason =
   | 'empty-result'
-  | 'missing-chart-config'
   | 'not-chartable';
 
 export interface ResultWorkspaceViewResolution {
@@ -16,15 +15,15 @@ export interface ResultWorkspaceViewResolution {
 }
 
 /**
- * Chart rendering is opt-in for a result workspace. The caller owns the
- * config, so a missing config must not cause ChartView to invent state while a
- * result is being switched between views.
+ * A result is chart-capable when ChartView can infer at least one numeric
+ * field. ChartView owns deriving its initial config when the caller has not
+ * persisted one yet.
  */
 export function canRenderResultChart(
   result: StatementResult | null | undefined,
-  chartConfig: ChartConfig | null | undefined,
+  _chartConfig: ChartConfig | null | undefined,
 ): boolean {
-  return result != null && chartConfig != null && isChartableResult(result);
+  return result != null && isChartableResult(result);
 }
 
 /**
@@ -45,10 +44,6 @@ export function resolveResultWorkspaceView(
 
   if (result == null || result.rows.length === 0 || result.columns.length === 0) {
     return { view: 'table', chartAvailable, fallbackReason: 'empty-result' };
-  }
-
-  if (chartConfig == null) {
-    return { view: 'table', chartAvailable, fallbackReason: 'missing-chart-config' };
   }
 
   if (!isChartableResult(result)) {
