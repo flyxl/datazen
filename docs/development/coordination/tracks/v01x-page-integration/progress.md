@@ -106,3 +106,14 @@ TableView quick expression → `parseFilterForApply(columns)` → `filterExpress
 ## 收尾
 
 BUG-PI-005 已修复并完成定向回归，待提交 `fix(query): preserve retry context fingerprint`；Host UI E2E 仍按 BUG-PI-001 记录，未在当前无桌面/真实数据库 fixture 环境声称通过。
+
+## 2026-08-31 全新独立复测（21646559 / 09c90bb2 / 3950508e / 9a525c73）
+
+- 基线确认：`feature/v01x-page-integration` HEAD 为 `3950508e`；四个目标提交均在当前分支祖先链中。既有 `docs/development/coordination/hub.md` 工作区改动保持原样，未触碰。
+- `node scripts/generate-builtin-locales.mjs`：通过；`src/locales/builtinLocales.ts` 为 ignored 生成物，验证结束清理，不纳入提交。
+- 定向 Host Vitest：31 个文件，432/432 通过；覆盖 QueryPanel diagnosis context、Explain/Fix/Retry、schemaContext tables/views/columns、确认后单次执行、schema/SQL/bound params 变化阻断、AI 脱敏 payload、Fix draft-only、取消/终态、Connection/Object search、TablePanel/ResultWorkspace 接线、Filter/Pagination/DataTable 与 context selector。
+- 完整 Host Vitest：269 个文件，2218/2218 通过。
+- `pnpm typecheck`：通过（退出码 0，0 diagnostics）；E2E contract 纯逻辑 Vitest：3 个文件，22/22 通过；`git diff --check`：通过。
+- 静态复核确认共享 builder 在初始 Explain/Fix/Retry 及 Retry 确认后的 schema snapshot 中统一保留 `{ tables, views, columns }`，诊断只把 `safeSql`/`safeErrorMessage` 送入 AI，原始 SQL 仅用于 Fix 草稿/Retry 校验；同时发现确认等待期间 panel 的 database/schema/session/connection props 可能被旧闭包复用，详见新增 BUG-PI-006。本轮只记录，不修复。
+- E2E R：`pnpm e2e:skip-build -- --suite core` 退出码 1；无 `dist/index.html`、无 Tauri webdriver debug binary，4445/5432/3306 均不可用，因此未声称 Host E2E 通过。
+- 本轮仅更新本轨 `progress.md`/`bugs.md` 作为测试台账；未修改 hub、功能代码、配置或 codegen。
