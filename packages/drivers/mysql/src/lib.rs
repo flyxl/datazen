@@ -46,13 +46,20 @@ impl DatabaseDriverFactory for MariadbFactory {
     fn supports_cancel_query(&self) -> bool {
         false
     }
+    fn supports_query_execution_cancel(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&MariadbFactory);
 
 struct DorisFactory;
 impl DatabaseDriverFactory for DorisFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
-        Arc::new(ReuseDriver::new(Arc::new(MysqlDriver::new(false)), "doris"))
+        Arc::new(ReuseDriver::new_with_precise_cancel(
+            Arc::new(MysqlDriver::new(false)),
+            "doris",
+            true,
+        ))
     }
     fn driver_id(&self) -> &'static str {
         "doris"
@@ -63,15 +70,19 @@ impl DatabaseDriverFactory for DorisFactory {
     fn supports_cancel_query(&self) -> bool {
         false
     }
+    fn supports_query_execution_cancel(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&DorisFactory);
 
 struct StarrocksFactory;
 impl DatabaseDriverFactory for StarrocksFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
-        Arc::new(ReuseDriver::new(
+        Arc::new(ReuseDriver::new_with_precise_cancel(
             Arc::new(MysqlDriver::new(false)),
             "starrocks",
+            true,
         ))
     }
     fn driver_id(&self) -> &'static str {
@@ -83,15 +94,19 @@ impl DatabaseDriverFactory for StarrocksFactory {
     fn supports_cancel_query(&self) -> bool {
         false
     }
+    fn supports_query_execution_cancel(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&StarrocksFactory);
 
 struct ManticoreFactory;
 impl DatabaseDriverFactory for ManticoreFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
-        Arc::new(ReuseDriver::new(
+        Arc::new(ReuseDriver::new_with_precise_cancel(
             Arc::new(MysqlDriver::new(false)),
             "manticore",
+            true,
         ))
     }
     fn driver_id(&self) -> &'static str {
@@ -103,15 +118,19 @@ impl DatabaseDriverFactory for ManticoreFactory {
     fn supports_cancel_query(&self) -> bool {
         false
     }
+    fn supports_query_execution_cancel(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&ManticoreFactory);
 
 struct ObOracleFactory;
 impl DatabaseDriverFactory for ObOracleFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
-        Arc::new(ReuseDriver::new(
+        Arc::new(ReuseDriver::new_with_precise_cancel(
             Arc::new(MysqlDriver::new(false)),
             "ob_oracle",
+            true,
         ))
     }
     fn driver_id(&self) -> &'static str {
@@ -123,6 +142,9 @@ impl DatabaseDriverFactory for ObOracleFactory {
     fn supports_cancel_query(&self) -> bool {
         false
     }
+    fn supports_query_execution_cancel(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&ObOracleFactory);
 
@@ -131,7 +153,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mysql_factory_advertises_precise_cancellation_only_for_native_mysql() {
+    fn mysql_factory_advertises_precise_cancellation_for_mysql_family_servers() {
         let factories: [&dyn DatabaseDriverFactory; 6] = [
             &MysqlFactory,
             &MariadbFactory,
@@ -143,9 +165,22 @@ mod tests {
 
         assert!(factories[0].supports_cancel_query());
         assert!(factories[0].supports_query_execution_cancel());
-        for factory in &factories[1..] {
-            assert!(!factory.supports_cancel_query());
-            assert!(!factory.supports_query_execution_cancel());
-        }
+        assert!(!factories[1].supports_cancel_query());
+        assert!(factories[1].supports_query_execution_cancel());
+        assert!(!factories[2].supports_cancel_query());
+        assert!(factories[2].supports_query_execution_cancel());
+        assert!(!factories[3].supports_cancel_query());
+        assert!(factories[3].supports_query_execution_cancel());
+        assert!(!factories[4].supports_cancel_query());
+        assert!(factories[4].supports_query_execution_cancel());
+        assert!(!factories[5].supports_cancel_query());
+        assert!(factories[5].supports_query_execution_cancel());
+
+        assert!(MysqlDriver::new(false).supports_query_execution_cancel());
+        assert!(MysqlDriver::new(true).supports_query_execution_cancel());
+        assert!(DorisFactory.create().supports_query_execution_cancel());
+        assert!(StarrocksFactory.create().supports_query_execution_cancel());
+        assert!(ManticoreFactory.create().supports_query_execution_cancel());
+        assert!(ObOracleFactory.create().supports_query_execution_cancel());
     }
 }
