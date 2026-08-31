@@ -70,9 +70,19 @@ for db in datazen_sync_src datazen_sync_tgt; do
   psql_as "$PG_SUPER" -d "$db" <<SQL
 GRANT CONNECT ON DATABASE ${db} TO ${PG_USER};
 GRANT USAGE, CREATE ON SCHEMA public TO ${PG_USER};
+DO \$\$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT tablename FROM pg_tables
+    WHERE schemaname = 'public' AND tablename <> 'product'
+  LOOP
+    EXECUTE format('DROP TABLE IF EXISTS %I CASCADE', r.tablename);
+  END LOOP;
+END \$\$;
 SQL
 done
-echo "  Granted writable access for E2E user $PG_USER on both sync databases"
+echo "  Reset writable E2E fixture tables and granted schema access on both sync databases"
 
 psql_as "$PG_SUPER" -d datazen_sync_tgt <<SQL
 GRANT CONNECT ON DATABASE datazen_sync_tgt TO ${PG_READONLY};
