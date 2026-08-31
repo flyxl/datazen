@@ -28,9 +28,11 @@
 
 ## BUG-PI-005 — QueryPanel Retry 确认后因 schemaContext 漏传而被拦截
 
-- 状态：本次独立复测发现，待修复。
+- 状态：已修复并验证。
 - 影响：QueryPanel 错误快捷动作点击 Retry 并确认后，在已有 schema context 的正常页面中不会再次执行查询；用户没有额外错误提示，表现为 Retry 无效。
 - 证据：首次 `diagnosisContext` 在 `QueryPanel.tsx:596-601` 关联的 `buildQueryDiagnosisContext` 输入包含 `schemaContext`；确认后 `QueryPanel.tsx:618-626` 重建 `latestContext` 时未传 `schemaContext`，而 `aiQueryActions.ts:550-557` 将其纳入 `contextFingerprint`，导致 `QueryPanel.tsx:627-635` 的最终 `retryAction` 校验返回 `context-changed`，`runExecute('full')` 不会调用。
-- 复测范围：相关 Retry/执行取消/页面集成回归均通过，但现有用例未覆盖“确认后带已加载 schemaContext 的 Retry”这一跨状态路径；未修改代码。
+- 修复：`QueryPanel` 抽取共享的当前 diagnosis context builder，统一构造 database/schema、connectionId、dbSessionId、connectionContext 及 `{ tables, views, columns }` schemaContext；Retry 确认后从 `useSchemaStore.getState()` 读取最新 schema snapshot，再继续调用原有 fingerprint/SQL/params 校验。未绕过 fingerprint，未直接执行 `runExecute`。
+- 回归：新增 QueryPanel 用例覆盖 schemaContext 不变时确认后仅执行一次，以及 schema、SQL、绑定参数变化时确认后阻止执行；DiagnosisPanel 安全 payload、Fix draft-only 和原始 SQL 编辑器边界用例保持通过。
+- 验证：`pnpm exec vitest run src/windows/connection/__tests__/QueryPanel.executeCancel.test.tsx` 为 1 file / 12 passed / 0 failed；相关 AI/页面定向 Vitest 为 4 files / 31 passed / 0 failed；`pnpm typecheck` 通过（0 diagnostics）；locale 生成和 `git diff --check` 通过。
 
 除上述 E2E 环境例外、既有 API 边界和 BUG-PI-005 外，本轨未发现需要修改已闭环驱动/领域轨的缺陷。
