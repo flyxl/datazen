@@ -322,10 +322,11 @@ export async function openConnectionWindow() {
 /** @deprecated Use {@link openConnectionWindow}; kept for contract matrix imports. */
 export async function openSeededPgConnectionWindow(mainWindow: string) {
   await browser.switchToWindow(mainWindow);
-  const body = await $('body').getText();
-  const connected =
-    body.includes('新建查询') || body.includes('New Query') || body.includes('新查詢');
-  if (!connected) {
+  // The home page also exposes a "New Query" quick action. Use the
+  // connection toolbar test id instead of body text so an unconnected home
+  // view is not mistaken for an active database workspace.
+  const toolbar = await $('[data-testid="conn-toolbar-new-query"]');
+  if (!(await toolbar.isDisplayed().catch(() => false))) {
     await connectSeededPgInWorkspace();
   } else {
     await waitForConnectionToolbar();
