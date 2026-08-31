@@ -44,3 +44,16 @@
 - 验证：`node scripts/generate-builtin-locales.mjs` 通过；QueryPanel 定向回归为 1 file / 18 passed / 0 failed；`pnpm typecheck` 通过（0 diagnostics）。
 
 除上述 E2E 环境例外、既有 API 边界和 BUG-PI-005/006 外，本轨未发现需要修改已闭环驱动/领域轨的其他缺陷。
+
+## BUG-PI-007 — Retry 确认期间 active connection 缺失未被门禁阻断
+
+- 状态：发现，未修复（本轮仅记录）。
+- 影响：Retry 确认弹窗等待期间，如果对应 active connection 条目被移除而 query panel 仍存在，最终校验可能继续使用 panel/schema 中未变化的 context fingerprint，随后进入 `runExecute('full')`；安全门禁未能证明当前连接仍是可用且归属匹配的 active connection。
+- 证据：`src/windows/connection/QueryPanel.tsx` 的 `readCurrentQueryPanelRetryValidationInput` 读取 `connections[panel.connectionId]` 后，将 `!activeConnection || activeConnection.dbSessionId === panel.dbSessionId` 作为 `activeSessionMatchesPanel`。条目缺失时该表达式为 true，且 fingerprint 只使用 panel 的 connection/session/databaseType、database/schema 和 schemaContext；因此 panel 与 schema 未变时 latest fingerprint 可与确认前相同。
+- 复现思路：打开失败 QueryPanel → 点击 Retry 并挂起确认 → 从 `useActiveConnectionStore` 移除该 connection/session 条目但暂不移除 panel → 确认；当前最终校验没有因 active connection 缺失而返回 null/changed。现有参数化回归覆盖了 panel 的 database/schema/session/connection/databaseType 变化和 panel 删除，但未覆盖 active connection 条目移除。
+- 建议修复方向：active connection 缺失、状态非 connected、map entry 的 `connectionId` 不匹配或 session 不匹配时，均应让 latest validation input 无效并阻断 Retry；补充该异步确认竞态回归。由后续修复代理处理，本轮未改功能代码。
+
+### 2026-08-31 独立最终复测证据
+
+- 定向/相关 Host Vitest 24 files / 377 tests、完整 Host Vitest 269 files / 2224 tests、contract 3 files / 22 tests、`pnpm typecheck` 均通过；这些结果不能覆盖 active connection 条目缺失的未测静态分支。
+- Host E2E 按 R 登记：数据库端口访问受环境限制，且缺少 webdriver binary；未声称真实桌面 IPC 通过。
