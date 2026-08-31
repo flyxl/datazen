@@ -15,8 +15,8 @@ vi.mock('../../../hooks/useColumnResize', () => ({
 }));
 
 vi.mock('../../FilterBar', () => ({
-  FilterBar: ({ onClear }: { onClear: () => void }) => (
-    <div data-testid="filter-bar">
+  FilterBar: ({ onClear, loading }: { onClear: () => void; loading?: boolean }) => (
+    <div data-testid="filter-bar" data-loading={String(Boolean(loading))}>
       <button type="button" onClick={onClear}>
         clear-filters
       </button>
@@ -92,6 +92,50 @@ describe('DataTable', () => {
     fireEvent.click(getByText('clear-filters'));
     expect(onClearFilters).toHaveBeenCalled();
     expect(getByText('1-25 / 100')).toBeInTheDocument();
+  });
+
+  it('threads loading to the filter bar and pagination', () => {
+    const { getByTestId, container } = render(
+      <DataTable
+        columns={COLS}
+        rows={rows}
+        filters={[{ column: 'name', operator: 'eq', value: 'Alice' }]}
+        onRemoveFilter={vi.fn()}
+        onClearFilters={vi.fn()}
+        page={0}
+        pageSize={25}
+        totalRows={100}
+        onPageChange={vi.fn()}
+        onPageSizeChange={vi.fn()}
+        loading
+      />,
+    );
+
+    expect(getByTestId('filter-bar')).toHaveAttribute('data-loading', 'true');
+    expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument();
+  });
+
+  it('threads loading to the expanded filter editor', () => {
+    const filter = { column: 'name', operator: 'eq' as const, value: 'Alice' };
+    const { getByTestId } = render(
+      <DataTable
+        columns={COLS}
+        rows={rows}
+        filters={[filter]}
+        draftFilters={[filter]}
+        filterPanelOpen
+        onFilterPanelOpenChange={vi.fn()}
+        onAddFilter={vi.fn()}
+        onUpdateFilter={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onClearFilters={vi.fn()}
+        onFilterLogicChange={vi.fn()}
+        onApplyFilters={vi.fn()}
+        loading
+      />,
+    );
+
+    expect(getByTestId('filter-editor')).toHaveAttribute('aria-busy', 'true');
   });
 
   it('shows selection bar and select-all checkbox', () => {

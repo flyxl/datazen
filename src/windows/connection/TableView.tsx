@@ -236,6 +236,7 @@ export function TableView({
             filterActive ? 'text-accent' : 'text-fg-muted hover:text-fg',
           )}
           onClick={openManualFilter}
+          disabled={loading}
           title={t('filter.filter')}
           aria-label={t('filter.filter')}
           aria-pressed={filterPanelOpen}

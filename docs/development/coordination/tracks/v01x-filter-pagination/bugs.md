@@ -3,8 +3,8 @@
 | Bug ID | 描述 | 状态 | 重现步骤 | 验证记录 |
 |---|---|---|---|---|
 | `v01x-filter-pagination-BUG-001` | **S3**：`FilterEditor` busy 时，已完成条件 chip 的删除入口仍可触发 `onRemove`，loading/busy 禁止过滤变更契约不完整 | 已验证 | 见下方详细步骤 | 2026-08-31 独立复验：loading 下 chip 编辑/删除均不可用，idle 删除可用 |
-| `v01x-filter-pagination-BUG-002` | **S3**：`DataTable` 收到 `loading=true` 后未向 `FilterEditor`、`FilterBar`、`Pagination` 传递 loading，实际表格路径仍可在请求中修改过滤条件或分页 | 待修复 | 见下方详细步骤 | 2026-08-31 独立接线探针失败：三个子组件均收到 `loading=false` |
-| `v01x-filter-pagination-BUG-003` | **S3**：同一表的旧分页请求完成后无取消/代数校验，会覆盖新 Apply 的过滤状态；新过滤请求被 `existing.loading` 直接跳过 | 待修复 | 见下方详细步骤 | 2026-08-31 独立 Store 竞态探针失败：旧请求完成后调用次数仍为 2，未产生 page 0 + 新 filters 请求 |
+| `v01x-filter-pagination-BUG-002` | **S3**：`DataTable` 收到 `loading=true` 后未向 `FilterEditor`、`FilterBar`、`Pagination` 传递 loading，实际表格路径仍可在请求中修改过滤条件或分页 | 已验证 | 见下方详细步骤 | 2026-08-31 本修复轮 DataTable 回归：FilterEditor/FilterBar/Pagination 均收到 `loading=true`，loading 控件不可变更 |
+| `v01x-filter-pagination-BUG-003` | **S3**：同一表的旧分页请求完成后无取消/代数校验，会覆盖新 Apply 的过滤状态；新过滤请求被 `existing.loading` 直接跳过 | 已验证 | 见下方详细步骤 | 2026-08-31 本修复轮 Store 回归：新 page 0 + filters 请求正常发起，旧 page 2 响应晚到被忽略 |
 
 ## 环境记录
 
@@ -13,6 +13,7 @@
 - 独立复验日期：2026-08-31（Asia/Shanghai）。默认配置定向 Vitest 受上述缺失生成文件阻塞；使用 `/private/tmp` 临时 resolver 后，parser、FilterBar、FilterEditor、Pagination、tableDataStore 共 5 文件 90/90 通过；菜单层级相关 5 文件 34/34 通过。
 - 独立 `/private/tmp` 探针确认 BUG-002、BUG-003；探针文件与 resolver 均未写入本 worktree。
 - `pnpm typecheck` exit 2：仅有缺失 `src/locales/builtinLocales.ts`，以及既有 `src/windows/settings/SettingsContent.tsx(66,31)` 的隐式 `any` 基线错误；未报告本轨修改文件错误。
+- 本修复轮先执行 `node scripts/generate-builtin-locales.mjs`，再运行默认配置定向 Vitest 6 files / 103 tests 和 `pnpm typecheck`，均通过；生成的 ignored 文件已删除，未提交。
 - `git diff --check` 与 `d8e9c59b..31929367` 提交范围的 diff check 均通过。
 
 ## v01x-filter-pagination-BUG-001
@@ -52,7 +53,7 @@ loading/busy 期间所有过滤条件变更入口均不可操作，`onRemove` �
 ## v01x-filter-pagination-BUG-002
 
 - 严重等级：S3
-- 状态：待修复
+- 状态：已验证
 - 发现时间：2026-08-31（Asia/Shanghai）
 - 关联文件：`src/components/DataTable/DataTable.tsx`（`FilterEditor` 约 375-389 行、`FilterBar` 约 390-392 行、`Pagination` 约 478-484 行）；`src/windows/connection/TableView.tsx` 已在约 267 行把 loading 传给 `DataTable`
 
@@ -71,10 +72,16 @@ loading/busy 期间所有过滤条件变更入口均不可操作，`onRemove` �
 
 `TableView` 虽将 `loading` 传给 `DataTable`，但 `DataTable` 渲染三个子组件时均未传 `loading`。独立 React 探针将 `DataTable loading=true` 渲染为：`FilterEditor=false`、`Pagination=false`、折叠 `FilterBar=false`。因此组件内部默认 `loading=false`，请求期间这些入口仍可操作。
 
+### 修复与验证
+
+- `DataTable` 将实际 `loading` 透传给 `FilterEditor`、`FilterBar`、`Pagination`；`TableView` 顶部手动过滤入口也在 loading 时禁用。
+- loading 时按值过滤菜单动作不再可用，避免上下文菜单绕过 busy 保护；idle 菜单分层与动作顺序不变。
+- 定向 RTL 回归通过：`DataTable.test.tsx` 覆盖三类子组件收到 busy 状态；本修复轮 6 files / 103 tests 全部通过。
+
 ## v01x-filter-pagination-BUG-003
 
 - 严重等级：S3
-- 状态：待修复
+- 状态：已验证
 - 发现时间：2026-08-31（Asia/Shanghai）
 - 关联文件：`src/stores/tableDataStore.ts`（约 622 行 `existing.loading` 短路、约 671-718 行无 request generation 校验）；`applyFilters` 约 799-814 行
 
@@ -92,3 +99,9 @@ Apply 应使当前页回到 0；旧请求应被取消，或其返回结果因 re
 ### 实际结果
 
 `applyFilters` 虽先把 page 设为 0 并更新 filters，但 `reloadActive` 调用 `loadTableData` 时命中 `existing.loading` 直接返回，未发起新请求。旧请求返回后仍按其捕获的 page 2/旧 filters 结果写回状态。独立 Store 探针实测 `getTableData` 调用次数为 2（预期 3），未出现 page 0 + `[{ column: 'id', operator: 'eq', value: 99 }]` 的新请求，最终页码被旧响应写回 2。
+
+### 修复与验证
+
+- 每个 `TableState` 维护单调递增的 `requestRevision` 和当前请求的 `loadingRevision`；页面、页大小、过滤条件和排序变更都会推进 revision。
+- 相同 revision 的并发加载仍去重；revision 变化时允许新请求替换旧请求，响应和错误只有在 revision 仍匹配时才写回。
+- 定向 Store 回归通过：旧 page 2 请求晚于新过滤 page 0 请求返回时，旧 rows/page 不会覆盖新状态；新过滤结果最终正确落盘。
