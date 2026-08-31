@@ -267,19 +267,27 @@ export async function waitForNewQueryButton(timeout = 20000) {
 }
 
 /** Single-click expand chevron on a connected card so schema children load. */
-export async function expandConnectedConnectionInNavigator(nameFragment = E2E_PG_CONN_NAME) {
+export async function expandConnectedConnectionInNavigator(nameFragment?: string) {
   await browser.waitUntil(
     async () =>
       browser.execute((frag: string) => {
         const items = Array.from(document.querySelectorAll('[data-conn-item]'));
-        const item = items.find((el) => (el.textContent || '').includes(frag));
+        const matching = frag
+          ? items.find((el) => (el.textContent || '').includes(frag))
+          : undefined;
+        const connected = items.find((el) => !!el.querySelector('button[aria-expanded]'));
+        const item = matching?.querySelector('button[aria-expanded]') ? matching : connected;
         return !!item?.querySelector('button[aria-expanded]');
       }, nameFragment),
     { timeout: 15000, timeoutMsg: '等待连接就绪以展开 schema 树' },
   );
   await browser.execute((frag: string) => {
     const items = Array.from(document.querySelectorAll('[data-conn-item]'));
-    const item = items.find((el) => (el.textContent || '').includes(frag));
+    const matching = frag
+      ? items.find((el) => (el.textContent || '').includes(frag))
+      : undefined;
+    const connected = items.find((el) => !!el.querySelector('button[aria-expanded]'));
+    const item = matching?.querySelector('button[aria-expanded]') ? matching : connected;
     const chevron = item?.querySelector('button[aria-expanded]') as HTMLElement | null;
     if (chevron && chevron.getAttribute('aria-expanded') !== 'true') {
       chevron.click();
