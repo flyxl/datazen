@@ -14,6 +14,7 @@ use tokio::sync::{Mutex, RwLock};
 
 const JS_MAX_SAFE_INT: i64 = 9_007_199_254_740_991;
 const JS_MIN_SAFE_INT: i64 = -9_007_199_254_740_991;
+const PG_BACKEND_PID_SQL: &str = "SELECT pg_backend_pid()";
 const PG_CANCEL_BACKEND_SQL: &str = "SELECT pg_cancel_backend($1)";
 
 struct PgQueryExecution {
@@ -198,27 +199,54 @@ impl PostgresDriver {
                 if self.is_cancel_requested(handle, execution_id).await? {
                     Err(DriverError::QueryCancelled)
                 } else {
-                    let total_start = Instant::now();
-                    let mut result = Ok(());
-                    for (index, stmt) in statements.iter().enumerate() {
-                        if self.is_cancel_requested(handle, execution_id).await? {
-                            result = Err(DriverError::QueryCancelled);
-                            break;
+                    let pid_row = sqlx::query(PG_BACKEND_PID_SQL)
+                        .fetch_one(&mut **conn)
+                        .await
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                    let backend_pid = pid_row
+                        .try_get::<i32, _>(0)
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                    if self
+                        .bind_backend_pid(handle, execution_id, backend_pid)
+                        .await?
+                    {
+                        Err(DriverError::QueryCancelled)
+                    } else {
+                        let total_start = Instant::now();
+                        let mut result = Ok(());
+                        for (index, stmt) in statements.iter().enumerate() {
+                            if self.is_cancel_requested(handle, execution_id).await? {
+                                result = Err(DriverError::QueryCancelled);
+                                break;
+                            }
+                            if let Err(error) = Self::stream_one_statement(
+                                &mut **conn,
+                                stmt,
+                                limit,
+                                index,
+                                on_event,
+                            )
+                            .await
+                            {
+                                result = if self
+                                    .is_cancel_requested(handle, execution_id)
+                                    .await
+                                    .unwrap_or(false)
+                                {
+                                    Err(DriverError::QueryCancelled)
+                                } else {
+                                    Err(error)
+                                };
+                                break;
+                            }
                         }
-                        if let Err(error) =
-                            Self::stream_one_statement(&mut **conn, stmt, limit, index, on_event)
-                                .await
-                        {
-                            result = Err(error);
-                            break;
+                        if result.is_ok() {
+                            on_event(QueryStreamEvent::Done {
+                                total_time_ms: total_start.elapsed().as_millis() as u64,
+                            });
                         }
+                        result
                     }
-                    if result.is_ok() {
-                        on_event(QueryStreamEvent::Done {
-                            total_time_ms: total_start.elapsed().as_millis() as u64,
-                        });
-                    }
-                    result
                 }
             } else {
                 let pool = target_pool.ok_or_else(|| {
@@ -235,7 +263,7 @@ impl PostgresDriver {
                 if self.is_cancel_requested(handle, execution_id).await? {
                     Err(DriverError::QueryCancelled)
                 } else {
-                    let pid_row = sqlx::query("SELECT pg_backend_pid()")
+                    let pid_row = sqlx::query(PG_BACKEND_PID_SQL)
                         .fetch_one(&mut *conn)
                         .await
                         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
@@ -1552,11 +1580,6 @@ impl DatabaseDriver for PostgresDriver {
             if execution.session_id != handle.id {
                 return Err(DriverError::QueryExecutionSessionMismatch);
             }
-            if execution.transactional {
-                return Err(DriverError::Unsupported(
-                    "query cancellation is unsupported while a transaction is open".into(),
-                ));
-            }
             execution.cancel_requested = true;
             let Some(backend_pid) = execution.backend_pid else {
                 // The stream will observe this flag after it acquires the
@@ -2511,6 +2534,7 @@ mod tests {
 
     #[test]
     fn cancel_sql_targets_one_backend_without_process_scan() {
+        assert_eq!(PG_BACKEND_PID_SQL, "SELECT pg_backend_pid()");
         assert_eq!(PG_CANCEL_BACKEND_SQL, "SELECT pg_cancel_backend($1)");
         assert!(!PG_CANCEL_BACKEND_SQL.contains("pg_stat_activity"));
     }
@@ -2598,7 +2622,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn transaction_execution_cancel_is_explicitly_unsupported() {
+    async fn transaction_execution_cancel_is_pending_until_target_is_bound() {
         let driver = PostgresDriver::new();
         let handle = ConnectionHandle {
             id: "session-tx".into(),
@@ -2616,13 +2640,58 @@ mod tests {
                 transactional: true,
             },
         );
-        let error = driver
+        driver
+            .cancel_query_with_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver
+                .query_executions
+                .lock()
+                .await
+                .get(&execution_id)
+                .map(|entry| (entry.backend_pid, entry.cancel_requested)),
+            Some((None, true))
+        );
+
+        let wrong_session = driver
+            .cancel_query_with_execution(
+                &ConnectionHandle {
+                    id: "session-other".into(),
+                    pool_id: "pool-tx".into(),
+                },
+                &execution_id,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            wrong_session,
+            DriverError::QueryExecutionSessionMismatch
+        ));
+
+        assert!(driver
+            .bind_backend_pid(&handle, &execution_id, 42)
+            .await
+            .unwrap());
+        assert_eq!(
+            driver
+                .query_executions
+                .lock()
+                .await
+                .get(&execution_id)
+                .map(|entry| (entry.backend_pid, entry.cancel_requested)),
+            Some((Some(42), true))
+        );
+
+        driver
+            .cleanup_query_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        let stale = driver
             .cancel_query_with_execution(&handle, &execution_id)
             .await
             .unwrap_err();
-        assert!(
-            matches!(error, DriverError::Unsupported(message) if message.contains("transaction"))
-        );
+        assert!(matches!(stale, DriverError::QueryExecutionNotFound(_)));
     }
 
     #[test]
