@@ -4,10 +4,11 @@
 
 - 编号：`v01x-filter-pagination`（D 轨道）
 - 范围：受控 FilterExpression parser、结构化条件适配、FilterEditor/FilterBar loading/error 契约、Pagination filter-reset reducer/callback
-- 状态：BUG-001/002/003/004/005 已验证，桌面 E2E 留待 R
+- 状态：本轨通过（BUG-001/002/003/004/005 均已验证，桌面 E2E 留待 R）
 - 编码 commit：`d8e9c59b983ec3d7dc56163e0fa304d2f6b66b20`
-- 测试 commit：`db18a4b4`
-- 修复 commit：本次提交（`fix(filter): move null action into submenu`，最终 hash 见提交记录）
+- 后续修复 commit：`31929367`、`fe6fb7fe`、`76910e10`、`a9d887e8`
+- 既有测试 commit：`db18a4b4`、`3f7e01f7`、`8dfc8b0b`、`04f78060`
+- 最终复测 commit：本次提交（`test(ipc): f5 filter pagination verification`）
 - 边界：本轨补充 Filter/DataTable loading 接线与过滤入口保护、`tableDataStore.ts` 请求 revision，以及 DataTable context menu 分层与测试；仅新增 en/zh-CN 菜单文案，未修改 `ContentView.tsx`、`PanelContentRenderer.tsx`、`QueryPanel.tsx`、`panelStore.ts`、codegen 文件或 hub
 
 ## 2. E2E 用例
@@ -34,6 +35,8 @@
 - 最终复测结论：发现 `v01x-filter-pagination-BUG-005`（`Set NULL` 仍在 DataTable context menu 一级，未完全满足 PRD 的二级分层要求）；仅记录，未修改功能代码。
 - BUG-005 修复轮：`Set NULL` 已移入 `more-actions` submenu；builder 与 DataTable 断言 root 不含 `set-null`、submenu 含 `set-null`，并验证原 handler 仍可调用。
 - BUG-005 修复轮验证：生成并随后清理 ignored builtin locale 后，定向 Vitest 2 files / 27 tests、相关菜单回归 6 files / 51 tests、`pnpm typecheck`、`git diff --check` 均通过；未改动 `hub.md`。
+- 2026-08-31 本次最终独立复测覆盖完整提交链 `d8e9c59b`、`31929367`、`fe6fb7fe`、`76910e10`、`a9d887e8` 与 `04f78060`：先成功生成并在测试后清理 ignored `src/locales/builtinLocales.ts`；定向/相关 Vitest 12 files、146 tests 全部通过，完整 Host Vitest 265 files、2178 tests 全部通过，`pnpm typecheck` exit 0，当前与提交范围 `git diff --check` 均通过。
+- 本次审查确认 loading 透传、request revision 防旧响应、parser/Apply 结构化 payload、page reset、chip busy，以及 DataTable 菜单 root/submenu、键盘 focus/Escape 和 handler 均符合验收；未发现新的业务 bug，BUG-001~005 均已验证，本轨通过。除既有 `hub.md` 外未产生其他工作区修改。
 - 覆盖重点：parser 覆盖合法 literal/operator/precedence/escaping、allow-list、函数/子查询/注释/分号/未知列/非法语法拒绝；Pagination 覆盖纯 reducer、revision reset、loading；FilterEditor/Bar 覆盖 error/busy 契约。
 - Rust：本轨无 Rust 改动，不需要设置 `CARGO_TARGET_DIR=/private/tmp/datazen-v01x-filter-pagination` 或运行 Cargo。
 

@@ -1,5 +1,7 @@
 # v01x-filter-pagination Bug 清单
 
+结论：本轨通过；本次最终复测未发现新的业务 bug。
+
 | Bug ID | 描述 | 状态 | 重现步骤 | 验证记录 |
 |---|---|---|---|---|
 | `v01x-filter-pagination-BUG-001` | **S3**：`FilterEditor` busy 时，已完成条件 chip 的删除入口仍可触发 `onRemove`，loading/busy 禁止过滤变更契约不完整 | 已验证 | 见下方详细步骤 | 2026-08-31 独立复验：loading 下 chip 编辑/删除均不可用，idle 删除可用 |
@@ -20,6 +22,7 @@
 - 2026-08-31 独立复测：生成 builtin locales 后，定向 Vitest 7 files / 116 tests、DataTable + tableDataStore 13 files / 122 tests、TableView/NlFilterInput 2 files / 8 tests 均通过；`pnpm typecheck` 与 `git diff --check d8e9c59b^..fe6fb7fe` 均通过。发现 BUG-004；未修改功能代码，生成物 `src/locales/builtinLocales.ts` 保持 ignored。
 - 2026-08-31 BUG-004 修复复验：生成 builtin locales 后，定向菜单/DataTable/WebContextMenu/native menu 5 files / 43 tests、相关前端回归 115 files / 900 tests、`pnpm typecheck` 均通过；`git diff --check` 通过。Prettier 未安装，无法运行 `pnpm exec prettier --check`。
 - 2026-08-31 最终独立复测：生成 builtin locales 后，相关定向 Vitest 10 files / 135 tests、完整 Host Vitest 265 files / 2178 tests 均通过；`pnpm typecheck` 与当前/提交范围 `git diff --check` 均通过。未修改功能代码；仅发现并登记 BUG-005。
+- 2026-08-31 本次最终独立复测：完整提交链相关定向/相关 Vitest 12 files / 146 tests、完整 Host Vitest 265 files / 2178 tests 均通过；`pnpm typecheck` exit 0，当前与提交范围 `git diff --check` 均通过。ignored `src/locales/builtinLocales.ts` 已生成并清理；未修改功能代码，未发现新的业务 bug，本轨通过。
 
 ## v01x-filter-pagination-BUG-001
 
@@ -149,7 +152,7 @@ Apply 应使当前页回到 0；旧请求应被取消，或其返回结果因 re
 ## v01x-filter-pagination-BUG-005
 
 - 严重等级：S3
-- 状态：待修复
+- 状态：已验证
 - 发现时间：2026-08-31（Asia/Shanghai）
 - 关联文件：`src/lib/dataTableContextMenu.ts`（`buildDataTableContextMenuItems` 约 232-270 行）；调用路径为 `src/components/DataTable/DataTable.tsx` 的 `handleContextMenu`
 
@@ -173,6 +176,7 @@ Apply 应使当前页回到 0；旧请求应被取消，或其返回结果因 re
 |---|---|---|---|
 | 2026-08-31 | 独立最终复测代理 | 源码审查、`dataTableContextMenu`/`DataTable` 定向 Vitest、完整 Host Vitest | 发现：`set-null` 仍在根菜单；其余 submenu、keyboard focus、Escape、disabled item、loading filter 保护均通过 |
 | 2026-08-31 | 修复代理 | 生成 builtin locale 后运行 DataTable 菜单定向与相关 Vitest、`pnpm typecheck`、`git diff --check` | 通过：定向 2 files / 27 tests，相关菜单回归 6 files / 51 tests，类型检查 exit 0，diff check 通过 |
+| 2026-08-31 | 独立最终复测代理（本轮） | 源码审查、定向/相关 Vitest、完整 Host Vitest、`pnpm typecheck`、`git diff --check` | 通过：root 仅保留 Copy/Copy Row/Filter/Delete/Export 等高频动作；Set NULL、JSON、INSERT、UPDATE、CSV、列名、选中行复制均在 `more-actions`，submenu focus/Escape 与 handler 均正常 |
 
 ### 修复与验证
 
