@@ -41,6 +41,9 @@ ln -s "${MAIN}/node_modules" "${WT}/node_modules"
 echo "▶ 驱动 codegen（basic）"
 ( cd "$WT" && node scripts/resolve-drivers.mjs --codegen-only --drivers=basic )
 
+echo "▶ 内置 locale codegen"
+( cd "$WT" && node scripts/generate-builtin-locales.mjs )
+
 echo "▶ 拷贝主检出未跟踪的规格文档（保持未跟踪，禁止 git add）"
 while IFS= read -r f; do
   rel="${f#${MAIN}/}"

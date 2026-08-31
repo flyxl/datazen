@@ -73,6 +73,7 @@
 4. worktree 的 codegen `capabilities/default.json` 可能含 `redis:default` 而默认构建不编 redis 插件导致裸 cargo 失败 → 从主检出复制对齐（gitignore 文件不入库）。
 5. 主检出**未跟踪**的规格文档在 worktree 不存在 → bootstrap 脚本负责拷贝；同时这些文件**禁止 git add**（避免最终合并 main 时与用户工作区副本冲突）。
 6. E2E 的 webdriver 构建成本高：功能级测试轮只登记用例，真实构建回归统一到 R 阶段。
+7. `src/locales/builtinLocales.ts` 是被忽略的生成文件；bootstrap 会生成它。直接运行 `npx vitest`/`npx tsc` 不会触发 pnpm 的 `pretest` hook，若 worktree 是旧的或手工创建的，先执行 `node scripts/generate-builtin-locales.mjs`，不要把生成物加入 commit。
 
 ## 6. 进度与 Bug 管理 schema
 
@@ -163,7 +164,7 @@ commit hash；改动清单；各套件数字；遗留注意。遇阻如实报告
 ## 复验清单
 1. 范围完整性审查（对照计划章节逐步核对，列遗漏）
 2. 逻辑正确性审查（读 diff，重点<该功能的关键语义>)
-3. 独立重跑三件套（不信编码轮数字）：cargo lib / vitest / tsc
+3. 独立重跑三件套（不信编码轮数字）：cargo lib / vitest / tsc；直接调用测试工具前先执行 `node scripts/generate-builtin-locales.mjs`，确保 ignored codegen 已存在
 4. 覆盖率：改动 TS 文件 ≥80% 实测（全量套件 --coverage 后摘取）；Rust 以单测清单佐证
 5. E2E 用例设计：登记进度文件（编号/前置/步骤/断言），标注【本机可执行】vs【留待 R 回归】及理由
 6. 判定与登记：通过→功能「已完成」；问题→本轨 tracks/<track-id>/bugs.md（<track-id>-BUG-nnn，待验证+重现步骤），不修
