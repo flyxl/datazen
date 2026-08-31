@@ -12,8 +12,8 @@
 | `v01x-connection-discovery` | 连接搜索排序、Pinned/Recent 优先级和连接表单分层 | 编码中 | 待编码 | 待测试 |
 | `v01x-filter-pagination` | 快速过滤表达式、分页重置、请求竞态和菜单分层组件 | 待开始 | 待编码 | 待测试 |
 | `v01x-object-actions` | 对象搜索、表定位和生成 SQL action | 待开始 | 待编码 | 待测试 |
-| `v01x-result-workspace` | Table/Chart 统一结果承载组件 | 待开始 | 待编码 | 待测试 |
-| `v01x-ai-actions` | Explain/Fix SQL/Retry 快捷动作上下文 | 待开始 | 待编码 | 待测试 |
+| `v01x-result-workspace` | Table/Chart 统一结果承载组件 | 测试中 | feb7b4d5 | 待测试 |
+| `v01x-ai-actions` | Explain/Fix SQL/Retry 快捷动作上下文 | 测试中 | 63d8e6df | 待测试 |
 | `v01x-page-integration` | 共享页面、DataTable、QueryPanel 和 i18n 最终接线 | 待开始 | 待编码 | 待测试 |
 
 ## 合并规则
