@@ -5,6 +5,7 @@
 | `v01x-filter-pagination-BUG-001` | **S3**：`FilterEditor` busy 时，已完成条件 chip 的删除入口仍可触发 `onRemove`，loading/busy 禁止过滤变更契约不完整 | 已验证 | 见下方详细步骤 | 2026-08-31 独立复验：loading 下 chip 编辑/删除均不可用，idle 删除可用 |
 | `v01x-filter-pagination-BUG-002` | **S3**：`DataTable` 收到 `loading=true` 后未向 `FilterEditor`、`FilterBar`、`Pagination` 传递 loading，实际表格路径仍可在请求中修改过滤条件或分页 | 已验证 | 见下方详细步骤 | 2026-08-31 本修复轮 DataTable 回归：FilterEditor/FilterBar/Pagination 均收到 `loading=true`，loading 控件不可变更 |
 | `v01x-filter-pagination-BUG-003` | **S3**：同一表的旧分页请求完成后无取消/代数校验，会覆盖新 Apply 的过滤状态；新过滤请求被 `existing.loading` 直接跳过 | 已验证 | 见下方详细步骤 | 2026-08-31 本修复轮 Store 回归：新 page 0 + filters 请求正常发起，旧 page 2 响应晚到被忽略 |
+| `v01x-filter-pagination-BUG-004` | **S3**：DataTable 右键菜单未按 v0.1x 验收要求分层，低频复制格式、NULL 和批量操作仍全部平铺在一级菜单，没有二级 submenu | 待修复 | 见下方详细步骤 | 2026-08-31 独立复验：builder 输出仅含 item/separator，无 `submenu`；实现与 PRD/实施验收不符 |
 
 ## 环境记录
 
@@ -15,6 +16,7 @@
 - `pnpm typecheck` exit 2：仅有缺失 `src/locales/builtinLocales.ts`，以及既有 `src/windows/settings/SettingsContent.tsx(66,31)` 的隐式 `any` 基线错误；未报告本轨修改文件错误。
 - 本修复轮先执行 `node scripts/generate-builtin-locales.mjs`，再运行默认配置定向 Vitest 6 files / 103 tests 和 `pnpm typecheck`，均通过；生成的 ignored 文件已删除，未提交。
 - `git diff --check` 与 `d8e9c59b..31929367` 提交范围的 diff check 均通过。
+- 2026-08-31 独立复测：生成 builtin locales 后，定向 Vitest 7 files / 116 tests、DataTable + tableDataStore 13 files / 122 tests、TableView/NlFilterInput 2 files / 8 tests 均通过；`pnpm typecheck` 与 `git diff --check d8e9c59b^..fe6fb7fe` 均通过。发现 BUG-004；未修改功能代码，生成物 `src/locales/builtinLocales.ts` 保持 ignored。
 
 ## v01x-filter-pagination-BUG-001
 
@@ -105,3 +107,30 @@ Apply 应使当前页回到 0；旧请求应被取消，或其返回结果因 re
 - 每个 `TableState` 维护单调递增的 `requestRevision` 和当前请求的 `loadingRevision`；页面、页大小、过滤条件和排序变更都会推进 revision。
 - 相同 revision 的并发加载仍去重；revision 变化时允许新请求替换旧请求，响应和错误只有在 revision 仍匹配时才写回。
 - 定向 Store 回归通过：旧 page 2 请求晚于新过滤 page 0 请求返回时，旧 rows/page 不会覆盖新状态；新过滤结果最终正确落盘。
+
+## v01x-filter-pagination-BUG-004
+
+- 严重等级：S3
+- 状态：待修复
+- 发现时间：2026-08-31（Asia/Shanghai）
+- 关联文件：`src/lib/dataTableContextMenu.ts`（`buildDataTableContextMenuItems` 约 222-268 行）；调用路径为 `src/components/DataTable/DataTable.tsx` 的 `handleContextMenu`
+
+### 重现步骤
+
+1. 打开带数据的 DataTable，在任意单元格上打开右键菜单。
+2. 观察菜单项及其层级。
+3. 用 `buildDataTableContextMenuItems` 的 cell-context 入参构建菜单，或直接在 DataTable 测试中检查 `showNativeContextMenu` 的第一参数。
+
+### 预期结果
+
+按照 v0.1x PRD/实施验收，一级菜单应收敛到 Copy、Edit、Filter、Export、Delete Mark 等高频入口；Copy as JSON、SQL INSERT、SQL UPDATE、CSV、Set NULL、Copy Selected Rows 等低频/批量操作应放入二级 submenu。
+
+### 实际结果
+
+`buildDataTableContextMenuItems` 仅返回 `kind: 'item'` 和 `kind: 'separator'`，没有任何 `kind: 'submenu'`。JSON、INSERT、UPDATE、CSV、NULL、Copy Selected Rows 等操作均直接平铺在一级菜单；现有测试也把该平铺结构作为预期（`src/lib/__tests__/dataTableContextMenu.test.ts` 约 130-142 行、`src/components/DataTable/__tests__/DataTable.test.tsx` 约 221-233 行）。分隔线只能分组，不能满足“二级菜单”验收。
+
+### 验证记录
+
+| 日期 | 验证人 | 方法 | 结果 |
+|---|---|---|---|
+| 2026-08-31 | 独立复测代理 | 源码审查 + `dataTableContextMenu`/`DataTable` 定向 Vitest | 发现：菜单无 submenu；相关测试均通过但验证的是错误的平铺契约 |
