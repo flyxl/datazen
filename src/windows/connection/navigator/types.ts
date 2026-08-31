@@ -1,8 +1,15 @@
 import type { ConnectionConfig, DatabaseObject, TableInfo } from '../../../types';
+import type { ConnectionMatch } from '../../../lib/connectionLocator';
 import type { ConnectionOpenTarget } from '../../../lib/connectionViews/types';
 import type { SchemaTreeCategoryDef } from '../schema-tree/schemaTreeCategories';
 
 export type UnifiedRow =
+  | {
+      type: 'section';
+      section: 'pinned' | 'recent';
+      displayName: string;
+      count: number;
+    }
   | { type: 'group'; groupName: string; displayName: string; count: number; expanded: boolean }
   | {
       type: 'connection';
@@ -11,6 +18,7 @@ export type UnifiedRow =
       status: string;
       expanded: boolean;
       depth: number;
+      match?: ConnectionMatch;
     }
   | {
       type: 'db';

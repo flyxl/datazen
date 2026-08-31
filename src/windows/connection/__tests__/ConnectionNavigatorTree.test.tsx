@@ -1133,6 +1133,31 @@ describe('ConnectionNavigatorTree search filtering', () => {
     });
   });
 
+  it('orders search results globally and exposes the match context', async () => {
+    connectionsState.connections = [
+      makeConn({ id: 'cfg-exact', name: 'prod' }),
+      makeConn({ id: 'cfg-prefix', name: 'prod reporting', pinned: true }),
+      makeConn({ id: 'cfg-host', name: 'Other', host: 'prod.example.com' }),
+    ];
+    const { container } = render(<ConnectionNavigatorTree {...baseProps} />);
+    await waitFor(() => connRow(container, 'Other'));
+
+    fireEvent.change(searchInput(container), { target: { value: 'prod' } });
+    await waitFor(() => {
+      const names = [...container.querySelectorAll<HTMLElement>('[data-conn-name]')].map(
+        (row) => row.dataset.connName,
+      );
+      expect(names).toEqual(['prod', 'prod reporting', 'Other']);
+      expect(connRow(container, 'prod').dataset.searchMatchReason).toBe('name');
+    });
+
+    const exact = connRow(container, 'prod');
+    expect(exact.dataset.searchMatchReason).toBe('name');
+    expect(exact.dataset.searchMatchContext).toBe('prod');
+    expect(connRow(container, 'Other').dataset.searchMatchReason).toBe('host');
+    expect(connRow(container, 'Other').dataset.searchMatchContext).toBe('prod.example.com');
+  });
+
   it('matches cached per-database tables deep in local state', async () => {
     const { container, findByText, queryAllByText, queryByText } = render(
       <ConnectionNavigatorTree {...baseProps} />,
