@@ -158,7 +158,7 @@ fn mcp_stdio_accepts_valid_token_and_starts_server() {
 
     let logs = reader.join().unwrap_or_default();
     assert!(
-        logs.contains("starting MCP Server") || logs.contains("[mcp]"),
+        logs.contains("[mcp] stdio authentication accepted; starting MCP Server"),
         "expected MCP server startup log, got:\n{logs}"
     );
 }
