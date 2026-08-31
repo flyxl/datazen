@@ -66,6 +66,14 @@ fi
 psql_as "$PG_SUPER" -d "$PG_DB" -c "ALTER USER $PG_READONLY WITH PASSWORD '$PG_READONLY_PW';"
 echo "  Reset password for $PG_READONLY"
 
+for db in datazen_sync_src datazen_sync_tgt; do
+  psql_as "$PG_SUPER" -d "$db" <<SQL
+GRANT CONNECT ON DATABASE ${db} TO ${PG_USER};
+GRANT USAGE, CREATE ON SCHEMA public TO ${PG_USER};
+SQL
+done
+echo "  Granted writable access for E2E user $PG_USER on both sync databases"
+
 psql_as "$PG_SUPER" -d datazen_sync_tgt <<SQL
 GRANT CONNECT ON DATABASE datazen_sync_tgt TO ${PG_READONLY};
 GRANT USAGE ON SCHEMA public TO ${PG_READONLY};
