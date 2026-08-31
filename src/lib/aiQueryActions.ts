@@ -128,10 +128,46 @@ const MAX_SCHEMA_DEPTH = 4;
 const MAX_SCHEMA_ARRAY_ITEMS = 100;
 const MAX_SCHEMA_OBJECT_KEYS = 100;
 
+const SECRET_KEY_WORDS = new Set([
+  'password',
+  'passwd',
+  'pwd',
+  'secret',
+  'token',
+  'authorization',
+  'bearer',
+  'credential',
+  'credentials',
+  'passphrase',
+  'key',
+]);
 const SECRET_KEY_PATTERN =
-  /(?:password|passwd|pwd|secret|api[_. -]?key|access[_. -]?token|refresh[_. -]?token|authorization|bearer|credential|private[_. -]?key|passphrase)/i;
+  /^(?:api|auth|oauth|access|refresh|client|private|encryption|signing)?(?:token|key|secret|password|passwd|pwd|credential|credentials|authorization|bearer|passphrase)$/i;
 const RESULT_KEY_PATTERN =
-  /^(?:data|rows?|results?|resultSet|records?|sampleRows?|rawOutput|executionOutput|payload)$/i;
+  /^(?:data|rows?|records?|results?|result(?:[_-]?(?:set|rows?|data))?|query[_-]?results?(?:[_-]?(?:set|rows?|data))?|sample[_-]?rows?|raw[_-]?output|execution[_-]?output|payload)$/i;
+
+function keyWords(key: string): string[] {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map((word) => word.toLowerCase());
+}
+
+function isSensitiveKey(key: string): boolean {
+  const words = keyWords(key);
+  return (
+    words.some((word) => SECRET_KEY_WORDS.has(word)) ||
+    SECRET_KEY_PATTERN.test(words.join(''))
+  );
+}
+
+function isResultKey(key: string): boolean {
+  return RESULT_KEY_PATTERN.test(key);
+}
+
+const SENSITIVE_ASSIGNMENT_PATTERN =
+  /(^|[^\w])(?:"([A-Za-z][\w.-]*)"|'([A-Za-z][\w.-]*)'|([A-Za-z][\w.-]*))\s*(?:=|:)\s*(?:"[^"]*"|'[^']*'|`[^`]*`|[^\s,;,)]+)/gi;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
@@ -184,10 +220,21 @@ export function redactSensitiveText(value: string): string {
       '$1[REDACTED]@',
     )
     .replace(
-      /(\b(?:password|passwd|pwd|secret|api[_. -]?key|access[_. -]?token|refresh[_. -]?token|authorization|credential|private[_. -]?key|passphrase)\b\s*(?:=|:)\s*)(?:"[^"]*"|'[^']*'|[^\s,;,)]+)/gi,
-      '$1[REDACTED]',
+      /(?:\bBearer\s+)[^\s,;)]+/gi,
+      'Bearer [REDACTED]',
     )
-    .replace(/(\bBearer\s+)[^\s,;)]+/gi, '$1[REDACTED]')
+    .replace(
+      SENSITIVE_ASSIGNMENT_PATTERN,
+      (
+        match: string,
+        prefix: string,
+        doubleQuotedKey: string | undefined,
+        singleQuotedKey: string | undefined,
+        plainKey: string | undefined,
+      ) => (isSensitiveKey(doubleQuotedKey ?? singleQuotedKey ?? plainKey ?? '')
+        ? prefix + '[REDACTED]'
+        : match),
+    )
     .slice(0, MAX_SAFE_TEXT_LENGTH);
 }
 
@@ -216,7 +263,7 @@ function sanitizeSchemaValue(
   const record = value as Record<string, unknown>;
   const result: { [key: string]: SanitizedJson } = {};
   for (const key of Object.keys(record).slice(0, MAX_SCHEMA_OBJECT_KEYS)) {
-    if (SECRET_KEY_PATTERN.test(key) || RESULT_KEY_PATTERN.test(key)) continue;
+    if (isSensitiveKey(key) || isResultKey(key)) continue;
     const sanitized = sanitizeSchemaValue(record[key], depth + 1, seen);
     if (sanitized !== null || record[key] === null) result[key] = sanitized;
   }
