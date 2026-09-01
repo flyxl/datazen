@@ -20,8 +20,8 @@
 
 | 轨道 | 范围 | 状态 | 编码 commit | 测试 commit |
 |---|---|---|---|---|
-| `v012-i18n-contract` | 新增 UI polish 文案 key 契约 | 编码中 | — | — |
-| `v012-dialog-errorboundary` | Dialog 无障碍与 ErrorBoundary i18n | 编码中 | — | — |
+| `v012-i18n-contract` | 新增 UI polish 文案 key 契约 | 已完成 | c5c9f0e22 + 382f91ddf | 主线定向复验 |
+| `v012-dialog-errorboundary` | Dialog 无障碍与 ErrorBoundary i18n | 已完成 | 55934d2e7 | 主线定向复验 |
 | `v012-settings-dirty` | Settings dirty/save/离开保护 | 编码中 | — | — |
 | `v012-navigation-controls` | PanelTabBar、Select、MenuBar、WindowControls 无障碍 | 编码中 | — | — |
 | `v012-datatable-workflow` | DataTable 空/加载状态与 Workflow alert/i18n | 编码中 | — | — |
