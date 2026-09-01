@@ -140,8 +140,8 @@ export function useNavigatorDbState(
 
       const meta = DB_REGISTRY[conn.databaseType];
       const isCustomTree = meta?.schemaTreeMode === 'custom';
-      const isPathHierarchyOnly = meta?.namespaceEnsure === 'path-hierarchy' && !isCustomTree;
-      const isPluginManaged = isCustomTree || isPathHierarchyOnly;
+      const isPathHierarchy = meta?.namespaceEnsure === 'path-hierarchy';
+      const isPluginManaged = isCustomTree || isPathHierarchy;
       const isMultiDb = shouldUseMultiDatabaseTree(meta, conn.database);
 
       await loadForConnection(entry.dbSessionId, {
@@ -150,7 +150,7 @@ export function useNavigatorDbState(
         databaseType: conn.databaseType,
       });
 
-      if (isPathHierarchyOnly) {
+      if (isPathHierarchy) {
         await ensureNamespacePath([], entry.dbSessionId);
       }
 

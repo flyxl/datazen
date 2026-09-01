@@ -732,3 +732,32 @@ describe('schemaStore keyed multi-connection', () => {
     });
   });
 });
+
+describe('parsePathHierarchyDatabaseEntry / plugin namespace bootstrap', () => {
+  it('parses Superset-style database list entries', async () => {
+    const { parsePathHierarchyDatabaseEntry } = await import('../schemaStore');
+    expect(parsePathHierarchyDatabaseEntry('558:presto_afi_data (presto)')).toEqual({
+      id: '558',
+      name: 'presto_afi_data',
+    });
+    expect(parsePathHierarchyDatabaseEntry('plain')).toEqual({ id: 'plain', name: 'plain' });
+  });
+
+  it('loadForConnection registers path aliases for namespaceOwnedByPlugin drivers', async () => {
+    const { databaseCommands } = await import('../../commands/database');
+    const { useSchemaStore } = await import('../schemaStore');
+    vi.mocked(databaseCommands.getDatabases).mockResolvedValueOnce([
+      '558:presto_afi_data (presto)',
+    ]);
+
+    await useSchemaStore.getState().loadForConnection('conn-superset', {
+      databaseType: 'superset',
+      skipLoadTables: true,
+    });
+
+    const schema = useSchemaStore.getState().getConnectionSchema('conn-superset');
+    expect(schema?.pathAliases).toEqual({ presto_afi_data: '558' });
+    expect(schema?.namespaceTree).toEqual({ presto_afi_data: {} });
+    expect(schema?.namespaceOwnedByPlugin).toBe(true);
+  });
+});

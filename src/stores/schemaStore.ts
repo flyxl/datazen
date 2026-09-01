@@ -62,6 +62,19 @@ export function resolveVisibleDatabases(
   };
 }
 
+/** Parse plugin database list entries (`id:name (backend)`) for path-hierarchy trees. */
+export function parsePathHierarchyDatabaseEntry(entry: string): { id: string; name: string } {
+  const colonIdx = entry.indexOf(':');
+  if (colonIdx < 0) return { id: entry, name: entry };
+  const id = entry.slice(0, colonIdx);
+  const rest = entry.slice(colonIdx + 1);
+  const backendMatch = rest.match(/^(.*?)\s*\(([^)]+)\)$/);
+  if (backendMatch) {
+    return { id, name: backendMatch[1].trim() };
+  }
+  return { id, name: rest };
+}
+
 const EMPTY_NAMESPACE: SqlNamespace = {};
 
 /** Fallback key when mutating schema without an active DB session (singleton compat). */
@@ -398,7 +411,14 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
         );
         const isPathHierarchy =
           meta?.schemaTreeMode === 'custom' || meta?.namespaceEnsure === 'path-hierarchy';
-        if (isMultiDatabase && !isPathHierarchy) {
+        if (
+          isPathHierarchy &&
+          (meta?.namespaceOwnedByPlugin || meta?.schemaTreeMode === 'custom') &&
+          allDatabases.length > 0
+        ) {
+          const aliasEntries = allDatabases.map(parsePathHierarchyDatabaseEntry);
+          get().registerPathAliases(aliasEntries, dbSessionId);
+        } else if (isMultiDatabase && !isPathHierarchy) {
           get().mergeNamespace([], 'branch', databases, dbSessionId);
         }
         if (options?.skipLoadTables) return;

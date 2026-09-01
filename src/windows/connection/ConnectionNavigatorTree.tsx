@@ -217,8 +217,8 @@ export const ConnectionNavigatorTree = forwardRef<
 
       const meta = DB_REGISTRY[conn.databaseType];
       const isCustomTree = meta?.schemaTreeMode === 'custom';
-      const isPathHierarchyOnly = meta?.namespaceEnsure === 'path-hierarchy' && !isCustomTree;
-      const isPluginManaged = isCustomTree || isPathHierarchyOnly;
+      const isPathHierarchy = meta?.namespaceEnsure === 'path-hierarchy';
+      const isPluginManaged = isCustomTree || isPathHierarchy;
       const isMultiDb = shouldUseMultiDatabaseTree(meta, conn.database);
 
       void loadForConnection(entry.dbSessionId, {
@@ -226,7 +226,7 @@ export const ConnectionNavigatorTree = forwardRef<
         skipLoadTables: isMultiDb || isPluginManaged,
         databaseType: conn.databaseType,
       }).then(() => {
-        if (isPathHierarchyOnly) {
+        if (isPathHierarchy) {
           void ensureNamespacePath([], entry.dbSessionId);
         }
 
@@ -577,7 +577,9 @@ export const ConnectionNavigatorTree = forwardRef<
     for (const [key, tables] of Object.entries(dbState.dbTablesMap)) {
       const [dbSessionId, ...databaseParts] = key.split('::');
       const database = databaseParts.join('::');
-      const conn = connections.find((candidate) => activeConnections[candidate.id]?.dbSessionId === dbSessionId);
+      const conn = connections.find(
+        (candidate) => activeConnections[candidate.id]?.dbSessionId === dbSessionId,
+      );
       if (!conn || !database) continue;
       add({
         connectionId: conn.id,
@@ -618,7 +620,11 @@ export const ConnectionNavigatorTree = forwardRef<
       setObjectSearchOpen(false);
       onSelectConnection(result.connectionId);
       window.setTimeout(() => {
-        if (result.objectType === 'table' || result.objectType === 'view' || result.objectType === 'column') {
+        if (
+          result.objectType === 'table' ||
+          result.objectType === 'view' ||
+          result.objectType === 'column'
+        ) {
           onSelectTable(result.tableName ?? result.name, result.schema, result.database);
           return;
         }

@@ -846,7 +846,7 @@ export function ConnectionPage() {
       )}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {activeTab?.status === 'error' && !activePanel && (
+        {activeTab?.status === 'error' && !activePanel ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4">
             <div className="copyable text-sm text-red-400">{activeTab.error}</div>
             <div className="flex gap-2">
@@ -874,20 +874,13 @@ export function ConnectionPage() {
               </button>
             </div>
           </div>
+        ) : (
+          <ContentView
+            selectTableRef={selectTableRef}
+            nodeContextMenuRef={nodeContextMenuRef}
+            actionsRef={actionsRef}
+          />
         )}
-
-        {activeTab?.status === 'connecting' && !activePanel && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-            <div className="text-sm text-fg-muted">{t('conn.connecting')}</div>
-          </div>
-        )}
-
-        <ContentView
-          selectTableRef={selectTableRef}
-          nodeContextMenuRef={nodeContextMenuRef}
-          actionsRef={actionsRef}
-        />
       </div>
     </div>
   );

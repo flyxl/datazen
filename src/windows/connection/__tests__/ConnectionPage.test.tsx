@@ -402,9 +402,10 @@ describe('ConnectionPage', () => {
     });
 
     render(<ConnectionPage />);
-    await waitFor(() => expect(screen.getByText('conn.connecting')).toBeInTheDocument(), {
+    await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument(), {
       timeout: 2000,
     });
+    expect(screen.queryByText('conn.connecting')).not.toBeInTheDocument();
     resolveConnect('conn-slow');
     await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
   });
