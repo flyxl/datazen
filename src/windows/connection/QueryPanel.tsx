@@ -977,7 +977,7 @@ export function QueryPanel({
           isMultiDb={isMultiDb}
           isPathHierarchy={isPathHierarchy}
           databases={databases}
-          currentDatabase={selectedDatabase}
+          currentDatabase={selectedDatabase ?? null}
           contextSchema={selectedSchema}
           namespaceTree={namespaceTree}
           pathAliases={pathAliases}

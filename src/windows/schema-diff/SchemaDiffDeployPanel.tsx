@@ -5,6 +5,7 @@ import {
   planHasDestructive,
 } from '../../commands/schemaDiff';
 import { useI18n } from '../../hooks/useI18n';
+import { Button } from '../../components/ui/Button';
 import { canRunDeploy } from '../../lib/schemaDiffConfirm';
 
 export function SchemaDiffDeployPanel({
@@ -100,15 +101,15 @@ export function SchemaDiffDeployPanel({
         </label>
       )}
 
-      <button
-        type="button"
-        className="rounded-md bg-accent px-3 py-2 text-sm text-accent-fg disabled:opacity-50"
+      <Button
+        variant="run"
+        size="md"
         disabled={!canRun || deploying}
         onClick={onDeploy}
         data-testid="schema-diff-deploy"
       >
         {deploying ? t('schemaDiff.deploying') : t('schemaDiff.deploy')}
-      </button>
+      </Button>
 
       {result && (
         <div className="rounded border border-edge bg-surface-alt p-3 text-xs">

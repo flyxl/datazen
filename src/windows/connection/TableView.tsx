@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Filter, Loader2 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Filter, Loader2, ShieldAlert } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { NlFilterInput } from '../../components/ai/NlFilterInput';
@@ -68,11 +68,52 @@ export function TableView({
   const setDetailRow = useTableDataStore((s) => s.setDetailRow);
   const detailRowIndex = useTableDataStore((s) => s.detailRowIndex);
   const confirmOnDelete = useSettingsStore((s) => s.settings.confirmOnDelete);
+  const safeMode = useSettingsStore((s) => s.settings.safeMode);
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [confirmCommit, confirmCommitDialog] = useConfirmDialog();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [quickFilter, setQuickFilter] = useState('');
   const [quickFilterError, setQuickFilterError] = useState<string | null>(null);
+  const [safeModeTipVisible, setSafeModeTipVisible] = useState(false);
+  const safeModeTipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (safeModeTipTimer.current !== null) clearTimeout(safeModeTipTimer.current);
+    };
+  }, []);
+
+  const showSafeModeTip = useCallback(() => {
+    setSafeModeTipVisible(true);
+    if (safeModeTipTimer.current !== null) clearTimeout(safeModeTipTimer.current);
+    safeModeTipTimer.current = setTimeout(() => {
+      setSafeModeTipVisible(false);
+      safeModeTipTimer.current = null;
+    }, 3000);
+  }, []);
+
+  const handleCellDoubleClick = useCallback(
+    (row: number, col: string) => {
+      if (safeMode) {
+        showSafeModeTip();
+        return;
+      }
+      startEdit(row, col);
+    },
+    [safeMode, showSafeModeTip, startEdit],
+  );
+
+  const handleCellEdit = useCallback(
+    (row: number, col: string, value: unknown) => {
+      if (safeMode) {
+        showSafeModeTip();
+        cancelEdit();
+        return;
+      }
+      updateCell(row, col, value);
+    },
+    [cancelEdit, safeMode, showSafeModeTip, updateCell],
+  );
 
   const handleDeleteRows = useCallback(
     async (rowIndices: number[]) => {
@@ -160,8 +201,14 @@ export function TableView({
   const pendingUpdateCount = [...pendingChanges.values()].filter(
     (change) => !change.deleteMarked && change.changedColumns.length > 0,
   ).length;
-  const pendingDeleteCount = [...pendingChanges.values()].filter((change) => change.deleteMarked).length;
+  const pendingDeleteCount = [...pendingChanges.values()].filter(
+    (change) => change.deleteMarked,
+  ).length;
   const pendingBusy = loading || pendingStatus !== 'idle';
+
+  useEffect(() => {
+    if (safeMode && editingCell) cancelEdit();
+  }, [cancelEdit, editingCell, safeMode]);
 
   const handlePreviewPendingChanges = useCallback(async () => {
     if (pendingBusy || pendingChanges.size === 0) return;
@@ -181,7 +228,15 @@ export function TableView({
       kind: 'warning',
     });
     if (confirmed) await commitPendingChanges();
-  }, [commitPendingChanges, confirmCommit, pendingBusy, pendingChanges.size, pendingDeleteCount, pendingUpdateCount, t]);
+  }, [
+    commitPendingChanges,
+    confirmCommit,
+    pendingBusy,
+    pendingChanges.size,
+    pendingDeleteCount,
+    pendingUpdateCount,
+    t,
+  ]);
 
   const handleTableKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -220,10 +275,9 @@ export function TableView({
       return;
     }
     setQuickFilterError(null);
-    useTableDataStore.getState().setFilters(
-      filterExpressionToConditions(parsed.value.expression),
-      [...logic][0] ?? 'and',
-    );
+    useTableDataStore
+      .getState()
+      .setFilters(filterExpressionToConditions(parsed.value.expression), [...logic][0] ?? 'and');
   }, [clearFilters, columns, quickFilter, t]);
 
   const openManualFilter = () => {
@@ -357,8 +411,22 @@ export function TableView({
         </div>
       </div>
       {quickFilterError && (
-        <div className="border-b border-red-500/30 bg-red-500/10 px-3 py-1 text-xs text-red-400" role="alert">
+        <div
+          className="border-b border-red-500/30 bg-red-500/10 px-3 py-1 text-xs text-red-400"
+          role="alert"
+        >
           {quickFilterError}
+        </div>
+      )}
+      {safeModeTipVisible && (
+        <div
+          className="flex shrink-0 items-center gap-1.5 border-b border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-warning"
+          role="status"
+          aria-live="polite"
+          data-testid="table-safe-mode-tip"
+        >
+          <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+          {t('tableData.safeModeEditDisabled')}
         </div>
       )}
       {pendingChanges.size > 0 && (
@@ -392,7 +460,7 @@ export function TableView({
             </Button>
             <Button
               size="sm"
-              variant="primary"
+              variant="run"
               disabled={pendingBusy}
               onClick={() => void handleCommitPendingChanges()}
               data-testid="pending-commit"
@@ -428,7 +496,7 @@ export function TableView({
         onUpdateFilter={updateFilter}
         onFilterLogicChange={setFilterLogic}
         onApplyFilters={applyFilters}
-        editingCell={editingCell}
+        editingCell={safeMode ? null : editingCell}
         selectedRows={selectedRows}
         loading={loading}
         onSort={setSort}
@@ -436,8 +504,8 @@ export function TableView({
         onClearFilters={clearFilters}
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
-        onCellDoubleClick={startEdit}
-        onCellEdit={updateCell}
+        onCellDoubleClick={handleCellDoubleClick}
+        onCellEdit={handleCellEdit}
         onCellEditCancel={cancelEdit}
         onRowSelect={selectRow}
         onSelectAll={toggleSelectAll}
@@ -500,7 +568,10 @@ function PendingPlanDialog({
               <div className="text-fg-muted">{t('tableData.noPendingChanges')}</div>
             ) : (
               statements.map((statement, index) => (
-                <div key={`${statement.sqlTemplate}-${index}`} className="rounded border border-edge bg-surface p-2">
+                <div
+                  key={`${statement.sqlTemplate}-${index}`}
+                  className="rounded border border-edge bg-surface p-2"
+                >
                   <code className="block whitespace-pre-wrap break-words font-mono text-fg-secondary">
                     {statement.sqlTemplate}
                   </code>

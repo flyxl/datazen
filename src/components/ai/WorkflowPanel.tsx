@@ -20,7 +20,10 @@ import { openDocsWindow } from '../../lib/windowManager';
 import { Select } from '../ui/Select';
 import { WorkflowForm, emptyDraft } from '../../windows/workflow/WorkflowForm';
 import type { WorkflowDraft } from '../../windows/workflow/WorkflowForm';
-import { workflowDefinitionToDraft, workflowDraftToDefinition } from '../../windows/workflow/workflowDraftConvert';
+import {
+  workflowDefinitionToDraft,
+  workflowDraftToDefinition,
+} from '../../windows/workflow/workflowDraftConvert';
 import { WorkflowExecutionResultPanel } from '../../windows/workflow/WorkflowExecutionResultPanel';
 import { WorkflowHistoryTab } from '../../windows/workflow/WorkflowHistorySection';
 import type { HistoryListItem, WorkflowExecutionResult, WorkflowListItem } from '../../types';
@@ -380,7 +383,7 @@ export function WorkflowPanel({ dbSessionId }: WorkflowPanelProps) {
               <button
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded hover:bg-accent/90 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 rounded bg-query-run px-3 py-1.5 text-xs text-white transition-colors hover:bg-query-run/90 disabled:opacity-50"
                 onClick={() => void handleExecute()}
                 disabled={isExecuting}
               >

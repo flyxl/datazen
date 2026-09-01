@@ -533,7 +533,7 @@ export function BackupWindow() {
           {/* Start backup button */}
           <div className="flex justify-end">
             <Button
-              variant="primary"
+              variant="run"
               disabled={!dbSessionId || !selectedDb || backing}
               onClick={() => void (isRestore ? handleRestore() : handleBackup())}
               data-testid={isRestore ? 'backup-start-restore' : 'backup-start-backup'}

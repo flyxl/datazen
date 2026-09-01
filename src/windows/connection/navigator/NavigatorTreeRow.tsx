@@ -9,9 +9,9 @@ import {
   Loader2,
   Plus,
   Table2,
-  Zap,
 } from 'lucide-react';
 import { DbTypeBadge } from '../../../components/DbTypeBadge';
+import { ThemedIcon } from '../../../components/ThemedIcon';
 import { cn } from '../../../lib/cn';
 import { useSchemaStore } from '../../../stores/schemaStore';
 import type { I18nKey } from '../../../locales';
@@ -132,7 +132,11 @@ export function NavigatorTreeRow({
           data-section={row.section}
           className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-fg-muted"
         >
-          <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+          <ThemedIcon
+            id="schema.schema"
+            className="h-3.5 w-3.5 shrink-0 text-amber-400"
+            fallback={FolderOpen}
+          />
           <span>{row.displayName}</span>
           <span className="text-[10px] font-normal">({row.count})</span>
         </div>
@@ -152,11 +156,11 @@ export function NavigatorTreeRow({
           ) : (
             <ChevronRight className="h-3 w-3 shrink-0 text-fg-muted" />
           )}
-          {row.expanded ? (
-            <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-          ) : (
-            <FolderClosed className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-          )}
+          <ThemedIcon
+            id="schema.schema"
+            className="h-3.5 w-3.5 shrink-0 text-amber-400"
+            fallback={row.expanded ? FolderOpen : FolderClosed}
+          />
           <span className="text-[13px] font-semibold text-fg">{row.displayName}</span>
           <span className="text-[11px] text-fg-muted">({row.count})</span>
         </div>
@@ -239,7 +243,11 @@ export function NavigatorTreeRow({
           ) : (
             <ChevronRight className="h-3 w-3 shrink-0" />
           )}
-          <Database className="h-3.5 w-3.5 shrink-0 text-teal-400" />
+          <ThemedIcon
+            id="schema.database"
+            className="h-3.5 w-3.5 shrink-0 text-teal-400"
+            fallback={Database}
+          />
           <span className="selectable min-w-0 truncate">{row.dbName}</span>
           {row.loading && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-fg-muted" />}
         </button>
@@ -263,11 +271,11 @@ export function NavigatorTreeRow({
           ) : (
             <ChevronRight className="h-3 w-3 shrink-0" />
           )}
-          {row.expanded ? (
-            <FolderOpen className="h-3.5 w-3.5 shrink-0 text-teal-400" />
-          ) : (
-            <FolderClosed className="h-3.5 w-3.5 shrink-0 text-teal-400" />
-          )}
+          <ThemedIcon
+            id="schema.schema"
+            className="h-3.5 w-3.5 shrink-0 text-teal-400"
+            fallback={row.expanded ? FolderOpen : FolderClosed}
+          />
           <span className="min-w-0 truncate">{row.schemaName || t('common.default')}</span>
         </button>
       );
@@ -293,7 +301,11 @@ export function NavigatorTreeRow({
           ) : (
             <ChevronRight className="h-3 w-3 shrink-0" />
           )}
-          <row.cat.icon className={`h-3.5 w-3.5 shrink-0 ${row.cat.color}`} />
+          <ThemedIcon
+            id={row.cat.iconId}
+            className={`h-3.5 w-3.5 shrink-0 ${row.cat.color}`}
+            fallback={row.cat.icon}
+          />
           <span className="min-w-0 truncate">{t(row.cat.labelKey as Parameters<typeof t>[0])}</span>
           <span className="ml-auto shrink-0 text-[10px] text-fg-muted">{row.count}</span>
         </button>
@@ -301,8 +313,10 @@ export function NavigatorTreeRow({
     }
 
     case 'table': {
-      const iconColor = row.catId === 'views' ? 'text-purple-400' : 'text-blue-400';
-      const Icon = row.catId === 'views' ? Eye : Table2;
+      const isView = row.catId === 'views';
+      const iconColor = isView ? 'text-purple-400' : 'text-blue-400';
+      const iconId = isView ? 'schema.view' : 'schema.table';
+      const Icon = isView ? Eye : Table2;
       return (
         <button
           type="button"
@@ -331,20 +345,18 @@ export function NavigatorTreeRow({
             });
           }}
         >
-          <Icon className={`h-3.5 w-3.5 shrink-0 ${iconColor}`} />
+          <ThemedIcon id={iconId} className={`h-3.5 w-3.5 shrink-0 ${iconColor}`} fallback={Icon} />
           <span className="selectable min-w-0 truncate">{row.item.name}</span>
         </button>
       );
     }
 
     case 'object': {
-      const objColor =
-        row.catId === 'procedure'
-          ? 'text-emerald-400'
-          : row.catId === 'trigger'
-            ? 'text-amber-400'
-            : 'text-orange-400';
-      const ObjIcon = row.catId === 'trigger' ? Zap : Braces;
+      const objectIcon = LEAF_KIND_ICON[row.catId] ?? {
+        icon: Braces,
+        iconId: 'schema.function' as const,
+        color: 'text-orange-400',
+      };
       return (
         <button
           type="button"
@@ -360,7 +372,11 @@ export function NavigatorTreeRow({
           }}
           onContextMenu={(e) => handleObjectContextMenu(e, row.obj.name)}
         >
-          <ObjIcon className={`h-3.5 w-3.5 shrink-0 ${objColor}`} />
+          <ThemedIcon
+            id={objectIcon.iconId}
+            className={`h-3.5 w-3.5 shrink-0 ${objectIcon.color}`}
+            fallback={objectIcon.icon}
+          />
           <span className="min-w-0 truncate">{row.obj.name}</span>
         </button>
       );
@@ -383,7 +399,11 @@ export function NavigatorTreeRow({
             }
           }}
         >
-          <Database className="h-3.5 w-3.5 shrink-0 text-teal-400" />
+          <ThemedIcon
+            id="schema.redisDatabase"
+            className="h-3.5 w-3.5 shrink-0 text-teal-400"
+            fallback={Database}
+          />
           <span className="selectable min-w-0 truncate">{row.dbName}</span>
         </button>
       );
@@ -402,7 +422,6 @@ export function NavigatorTreeRow({
     case 'namespace-node': {
       if (row.isLeaf) {
         const leafIcon = LEAF_KIND_ICON[row.leafKind ?? 'table'];
-        const LeafIcon = leafIcon.icon;
         const menuKind =
           row.leafKind === 'view' || row.leafKind === 'materializedView'
             ? 'view'
@@ -469,7 +488,11 @@ export function NavigatorTreeRow({
               });
             }}
           >
-            <LeafIcon className={`h-3.5 w-3.5 shrink-0 ${leafIcon.color}`} />
+            <ThemedIcon
+              id={leafIcon.iconId}
+              className={`h-3.5 w-3.5 shrink-0 ${leafIcon.color}`}
+              fallback={leafIcon.icon}
+            />
             <span className="selectable min-w-0 truncate">{row.name}</span>
           </button>
         );
@@ -498,7 +521,11 @@ export function NavigatorTreeRow({
           ) : (
             <ChevronRight className="h-3 w-3 shrink-0" />
           )}
-          <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+          <ThemedIcon
+            id="schema.schema"
+            className="h-3.5 w-3.5 shrink-0 text-amber-400"
+            fallback={FolderOpen}
+          />
           <span className="min-w-0 truncate">{row.name}</span>
         </button>
       );
@@ -517,7 +544,7 @@ export function NavigatorTreeRow({
             onClick={onNewConnection}
             data-testid="new-connection-button"
           >
-            <Plus className="h-4 w-4" />
+            <ThemedIcon id="common.newConnection" className="h-4 w-4" fallback={Plus} />
             {t('main.createFirst')}
           </button>
         </div>

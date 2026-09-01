@@ -89,7 +89,7 @@ export function DatabaseObjectView({
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
         <Button
-          variant="primary"
+          variant="run"
           className="h-7 gap-1 px-2 text-xs"
           disabled={running || !ddl.trim() || loading}
           onClick={() => void handleExecute()}

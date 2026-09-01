@@ -10,9 +10,11 @@ vi.mock('../../../hooks/useConfirmDialog', () => ({
   useConfirmDialog: () => [vi.fn().mockResolvedValue(false), null],
 }));
 
+const settingsState = vi.hoisted(() => ({ confirmOnDelete: false, safeMode: false }));
+
 vi.mock('../../../stores/settingsStore', () => ({
-  useSettingsStore: (sel: (s: { settings: { confirmOnDelete: boolean } }) => unknown) =>
-    sel({ settings: { confirmOnDelete: false } }),
+  useSettingsStore: (sel: (s: { settings: typeof settingsState }) => unknown) =>
+    sel({ settings: settingsState }),
 }));
 
 vi.mock('../../../commands/database', () => ({
@@ -22,7 +24,15 @@ vi.mock('../../../commands/database', () => ({
 }));
 
 vi.mock('../../../components/DataTable/DataTable', () => ({
-  DataTable: () => <div data-testid="mock-data-table" />,
+  DataTable: (props: { onCellDoubleClick?: (row: number, col: string) => void }) => (
+    <div data-testid="mock-data-table">
+      <button
+        type="button"
+        data-testid="mock-cell-double-click"
+        onClick={() => props.onCellDoubleClick?.(0, 'id')}
+      />
+    </div>
+  ),
 }));
 
 vi.mock('../../../components/ai/NlFilterInput', () => ({
@@ -62,6 +72,8 @@ afterEach(cleanup);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  settingsState.confirmOnDelete = false;
+  settingsState.safeMode = false;
   tableState.tableStates = new Map();
   tableState.activeTable = 'users';
   tableState.detailRowIndex = null;
@@ -192,5 +204,20 @@ describe('TableView', () => {
       database: 'db_b',
       schema: null,
     });
+  });
+
+  it('blocks cell editing in safe mode and shows a tip', () => {
+    settingsState.safeMode = true;
+
+    render(
+      <TableView dbSessionId="c1" database="app" tableName="users" databaseType="postgresql" />,
+    );
+
+    fireEvent.click(screen.getByTestId('mock-cell-double-click'));
+
+    expect(tableState.startEdit).not.toHaveBeenCalled();
+    expect(screen.getByTestId('table-safe-mode-tip')).toHaveTextContent(
+      'tableData.safeModeEditDisabled',
+    );
   });
 });

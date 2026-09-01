@@ -14,6 +14,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { createElement } from 'react';
+import { ThemedIcon } from '../../components/ThemedIcon';
 import {
   type Panel,
   type TablePanel,
@@ -34,37 +35,97 @@ const iconClass = 'h-3.5 w-3.5 shrink-0';
 export function getPanelIcon(panel: Panel): ReactNode {
   switch (panel.type) {
     case 'table':
-      return createElement(Table2, { className: `${iconClass} text-blue-400` });
+      return createElement(ThemedIcon, {
+        id: 'schema.table',
+        className: `${iconClass} text-blue-400`,
+        fallback: Table2,
+      });
     case 'view':
-      return createElement(Eye, { className: `${iconClass} text-purple-400` });
+      return createElement(ThemedIcon, {
+        id: 'schema.view',
+        className: `${iconClass} text-purple-400`,
+        fallback: Eye,
+      });
     case 'query':
-      return createElement(Code2, { className: iconClass });
+      return createElement(ThemedIcon, {
+        id: 'common.newQuery',
+        className: iconClass,
+        fallback: Code2,
+      });
     case 'create-table':
-      return createElement(TableProperties, { className: iconClass });
+      return createElement(ThemedIcon, {
+        id: 'common.newTable',
+        className: iconClass,
+        fallback: TableProperties,
+      });
     case 'er-diagram':
-      return createElement(GitFork, { className: iconClass });
+      return createElement(ThemedIcon, {
+        id: 'common.erDiagram',
+        className: iconClass,
+        fallback: GitFork,
+      });
     case 'objects':
-      return createElement(Code2, { className: iconClass });
+      return createElement(ThemedIcon, {
+        id: 'common.objects',
+        className: iconClass,
+        fallback: Code2,
+      });
     case 'privileges':
-      return createElement(KeyRound, { className: iconClass });
+      return createElement(ThemedIcon, {
+        id: 'action.privileges',
+        className: iconClass,
+        fallback: KeyRound,
+      });
     case 'server-status':
-      return createElement(Activity, { className: `${iconClass} text-emerald-400` });
+      return createElement(ThemedIcon, {
+        id: 'action.serverStatus',
+        className: `${iconClass} text-emerald-400`,
+        fallback: Activity,
+      });
     case 'processes':
-      return createElement(Database, { className: `${iconClass} text-rose-400` });
+      return createElement(ThemedIcon, {
+        id: 'action.processes',
+        className: `${iconClass} text-rose-400`,
+        fallback: Database,
+      });
     case 'db-object': {
       const kind = (panel as DatabaseObjectPanel).objectKind;
       if (kind === 'trigger')
-        return createElement(Zap, { className: `${iconClass} text-amber-400` });
+        return createElement(ThemedIcon, {
+          id: 'schema.trigger',
+          className: `${iconClass} text-amber-400`,
+          fallback: Zap,
+        });
       if (kind === 'procedure')
-        return createElement(Braces, { className: `${iconClass} text-emerald-400` });
+        return createElement(ThemedIcon, {
+          id: 'schema.procedure',
+          className: `${iconClass} text-emerald-400`,
+          fallback: Braces,
+        });
       if (kind === 'sequence')
-        return createElement(Hash, { className: `${iconClass} text-cyan-400` });
+        return createElement(ThemedIcon, {
+          id: 'schema.sequence',
+          className: `${iconClass} text-cyan-400`,
+          fallback: Hash,
+        });
       if (kind === 'type')
-        return createElement(Shapes, { className: `${iconClass} text-pink-400` });
-      return createElement(Braces, { className: `${iconClass} text-orange-400` });
+        return createElement(ThemedIcon, {
+          id: 'schema.type',
+          className: `${iconClass} text-pink-400`,
+          fallback: Shapes,
+        });
+      return createElement(ThemedIcon, {
+        id: 'schema.function',
+        className: `${iconClass} text-orange-400`,
+        fallback: Braces,
+      });
     }
     case 'redis-db':
-      return createElement(Database, { className: `${iconClass} text-teal-400` });
+      return createElement(ThemedIcon, {
+        id: 'schema.redisDatabase',
+        className: `${iconClass} text-teal-400`,
+        fallback: Database,
+      });
     default:
       return null;
   }

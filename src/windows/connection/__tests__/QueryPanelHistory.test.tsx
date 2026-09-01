@@ -22,6 +22,7 @@ vi.mock('../../../hooks/useCompactToolbar', () => ({
     fixedExtraWidth?: number;
   }) => 32 + expandedButtonCount * 96 + Math.max(0, expandedButtonCount - 1) * 8 + fixedExtraWidth,
   TOOLBAR_GAP: 8,
+  TOOLBAR_HORIZONTAL_PADDING: 32,
   useCompactToolbar: () => ({ ref: { current: null }, compact: false }),
 }));
 

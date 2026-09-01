@@ -770,6 +770,7 @@ const en: Record<TranslationKey, string> = {
   'tableData.pendingChanges': '{count} unsaved changes',
   'tableData.pendingUpdates': '{count} updates',
   'tableData.pendingDeletes': '{count} deletes',
+  'tableData.safeModeEditDisabled': 'Safe Mode prevents editing table cells.',
   'tableData.preview': 'Preview',
   'tableData.commit': 'Commit',
   'tableData.rollback': 'Rollback',

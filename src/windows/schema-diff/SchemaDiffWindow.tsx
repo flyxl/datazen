@@ -21,7 +21,10 @@ import { openDocsWindow } from '../../lib/windowManager';
 import { cn } from '../../lib/cn';
 import { MigrationEndpointsBar } from '../../components/migration/MigrationEndpointsBar';
 import type { TableSchemaDiff } from '../../types';
-import { isSchemaDiffLimitationsDismissed, setSchemaDiffLimitationsDismissed } from '../../lib/schemaDiffLimitationsPrefs';
+import {
+  isSchemaDiffLimitationsDismissed,
+  setSchemaDiffLimitationsDismissed,
+} from '../../lib/schemaDiffLimitationsPrefs';
 import { LimitationsDialog } from '../../components/ui/LimitationsDialog';
 import { SCHEMA_DIFF_LIMITATION_KEYS } from './schemaDiffLimitationKeys';
 import { SchemaDiffTableListPanel } from './SchemaDiffTableListPanel';
@@ -616,7 +619,7 @@ export function SchemaDiffWindow() {
         <div className="flex items-center gap-2">
           {step === 'deploy' ? (
             <Button
-              variant="primary"
+              variant="run"
               data-testid="schema-diff-deploy"
               disabled={!plan || loading}
               onClick={() => void handleDeploy()}

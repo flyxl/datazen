@@ -1144,7 +1144,7 @@ export function DataSyncWindow() {
               {t('common.cancel')}
             </Button>
             <Button
-              variant="danger"
+              variant="run"
               onClick={() => {
                 setExecuteConfirmOpen(false);
                 void runExecute();

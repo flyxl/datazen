@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { SETTINGS_SECTIONS } from '../../windows/settings/settingsSections';
 import { buildHostLucideById, settingsSectionIconId } from '../hostLucideMap';
+import { UI_ICON_IDS } from '../iconIds';
 import { createIconResolver, getActiveIconResolver, setActiveIconResolver } from '../iconResolver';
 import { ThemedIcon } from '../../components/ThemedIcon';
 
@@ -19,6 +20,13 @@ function installDefaultResolver(): void {
 }
 
 describe('settings section icon chain (F7)', () => {
+  it('maps every registered host icon id to a Lucide fallback', () => {
+    const lucideById = buildHostLucideById();
+    for (const id of UI_ICON_IDS) {
+      expect(lucideById[id], `missing fallback for ${id}`).toBeTruthy();
+    }
+  });
+
   it('maps settings.appearance to the Palette lucide name', () => {
     const lucideById = buildHostLucideById();
     expect(lucideById['settings.appearance']).toBe('Palette');

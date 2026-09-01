@@ -822,7 +822,7 @@ function DocumentQueryPanelInner({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-edge bg-surface-alt px-3">
         <Button
-          variant="primary"
+          variant="run"
           className="h-7 gap-1 px-2 text-xs"
           onClick={handleExecute}
           disabled={exec.running}
