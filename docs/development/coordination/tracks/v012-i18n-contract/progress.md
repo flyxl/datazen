@@ -2,7 +2,7 @@
 
 ## 功能摘要
 
-- 状态：编码完成，待独立测试代理复验
+- 状态：编码完成，主线全量复验通过
 - 范围：为 UI polish 轨道冻结英文/中文新增 key；不修改业务组件。
 
 ### 编码结果
@@ -21,7 +21,9 @@
 - locale 定向测试：1 个文件，18/18 通过（含 UI polish key contract）。
 - `git diff --check`：通过。
 - typecheck：通过。
-- 覆盖率：待独立测试代理按 playbook 复验。
+- Host 全量 `pnpm exec vitest run`：285 files / 2351 tests，通过。
+- 本轮未形成独立测试代理 commit；主线全量回归已覆盖 locale contract。
+- 覆盖率：未单独采集。
 
 ## 设计决策 / 遗留
 

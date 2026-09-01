@@ -2,7 +2,7 @@
 
 ## 功能摘要
 
-- 状态：编码完成，待主线独立复验
+- 状态：编码完成，主线全量复验通过
 - 范围：生产 UI 的 accent token sweep、permission labels 和残留 UI 文案。
 
 ## E2E 登记
@@ -14,6 +14,8 @@
 - 定向 Host Vitest：4 个文件，26/26 通过（Input/Select、DataTable、QueryErrorPanel、MenuBar）。
 - `tsc --noEmit`：通过。
 - `git diff --check`：通过。
+- Host 全量 `pnpm exec vitest run`：285 files / 2351 tests，通过。
+- Driver UI Vitest：14 files / 84 tests，通过。
 - E2E 留待 R 阶段验证主题切换后的真实视觉反馈。
 
 ## 设计决策 / 遗留

@@ -34,6 +34,14 @@
 - 共享页面、locale、panelStore 接线由协调者在轨道闭环后处理。
 - 轨道测试闭环后，协调者合并并运行 `tsc --noEmit`、定向 Vitest 和 Rust 单测。
 
+## v0.1.2 UI Polish R 回归记录（2026-09-02）
+
+- Host Vitest：285 个文件，2351/2351 通过。
+- Driver UI Vitest：14 个文件，84/84 通过。
+- `tsc --noEmit`：通过。
+- 真实桌面 WebDriver E2E：留待具备 Tauri webdriver 与完整数据库 fixture 的环境执行；本轮不声称通过。
+- Navigation 轨道曾在多文件并行 Vitest 组合运行中出现 Select portal 偶发未取得；四个目标文件分别复跑 11/11 通过，随后主线全量单进程 2351/2351 通过，未复现。
+
 ## 当前风险
 
 - PostgreSQL/MySQL 已改为精确 execution-handle 协议：普通连接和事务连接都必须使用目标 backend PID/thread ID，并通过独立控制连接取消，避免误取消同一会话中的其他查询。
