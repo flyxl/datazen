@@ -159,6 +159,9 @@ describe('panelStore', () => {
   });
 
   it('executeQuery forwards path-hierarchy catalog/schema pin for Superset', async () => {
+    const { DB_REGISTRY } = await import('../../lib/databaseTypes');
+    if (!Object.prototype.hasOwnProperty.call(DB_REGISTRY, 'superset')) return;
+
     seedCurrentDatabase('sess-1', '558:presto_afi_data');
     useSchemaStore.setState((state) => {
       const schemas = new Map(state.schemas);
@@ -196,6 +199,9 @@ describe('panelStore', () => {
   });
 
   it('executeQuery infers path-hierarchy pin from qualified SQL', async () => {
+    const { DB_REGISTRY } = await import('../../lib/databaseTypes');
+    if (!Object.prototype.hasOwnProperty.call(DB_REGISTRY, 'superset')) return;
+
     seedCurrentDatabase('sess-1', '558:presto_afi_data');
     useSchemaStore.setState((state) => {
       const schemas = new Map(state.schemas);

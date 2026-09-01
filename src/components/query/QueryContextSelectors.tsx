@@ -1,10 +1,7 @@
 import { Fragment } from 'react';
 import { Database } from 'lucide-react';
 import { Select } from '../ui/Select';
-import {
-  buildPathHierarchySelectorSegments,
-  pathHierarchySelectorSegmentsForUi,
-} from '../../lib/queryContextPath';
+import { pathHierarchySelectorSegmentsForUi } from '../../lib/queryContextPath';
 import { useI18n } from '../../hooks/useI18n';
 
 export interface QueryContextSelectorsProps {

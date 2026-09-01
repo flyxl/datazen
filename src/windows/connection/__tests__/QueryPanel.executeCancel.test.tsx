@@ -21,6 +21,7 @@ vi.mock('../../../hooks/useCompactToolbar', () => ({
     fixedExtraWidth?: number;
   }) => 32 + expandedButtonCount * 96 + Math.max(0, expandedButtonCount - 1) * 8 + fixedExtraWidth,
   TOOLBAR_GAP: 8,
+  TOOLBAR_HORIZONTAL_PADDING: 32,
   useCompactToolbar: () => ({ ref: { current: null }, compact: false }),
 }));
 
@@ -34,12 +35,14 @@ const panelConnectionState = vi.hoisted(() => ({
     supportsQueryExecutionCancel: true,
     supportsExplain: true,
     supportsStreamingResults: true,
-  } as {
-    supportsCancelQuery: boolean;
-    supportsQueryExecutionCancel: boolean;
-    supportsExplain: boolean;
-    supportsStreamingResults: boolean;
-  } | undefined,
+  } as
+    | {
+        supportsCancelQuery: boolean;
+        supportsQueryExecutionCancel: boolean;
+        supportsExplain: boolean;
+        supportsStreamingResults: boolean;
+      }
+    | undefined,
   currentDatabase: 'app' as string | null,
   error: null as string | null,
 }));
@@ -141,8 +144,16 @@ vi.mock('../../../components/query/BindParamPanel', () => ({
     if (!name) return null;
     return (
       <>
-        <button type="button" data-testid="test-set-param-one" onClick={() => onChange(name, '1')} />
-        <button type="button" data-testid="test-set-param-two" onClick={() => onChange(name, '2')} />
+        <button
+          type="button"
+          data-testid="test-set-param-one"
+          onClick={() => onChange(name, '1')}
+        />
+        <button
+          type="button"
+          data-testid="test-set-param-two"
+          onClick={() => onChange(name, '2')}
+        />
       </>
     );
   },
@@ -157,13 +168,7 @@ vi.mock('../../../components/query/QueryContextSelectors', () => ({
 }));
 
 vi.mock('../../../components/query/QueryErrorPanel', () => ({
-  QueryErrorPanel: ({
-    onFixSql,
-    onRetry,
-  }: {
-    onFixSql?: () => void;
-    onRetry?: () => void;
-  }) => (
+  QueryErrorPanel: ({ onFixSql, onRetry }: { onFixSql?: () => void; onRetry?: () => void }) => (
     <>
       {onFixSql && (
         <button type="button" onClick={onFixSql}>

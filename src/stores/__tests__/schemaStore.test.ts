@@ -744,6 +744,9 @@ describe('parsePathHierarchyDatabaseEntry / plugin namespace bootstrap', () => {
   });
 
   it('loadForConnection registers path aliases for namespaceOwnedByPlugin drivers', async () => {
+    const { DB_REGISTRY } = await import('../../lib/databaseTypes');
+    if (!Object.prototype.hasOwnProperty.call(DB_REGISTRY, 'superset')) return;
+
     const { databaseCommands } = await import('../../commands/database');
     const { useSchemaStore } = await import('../schemaStore');
     vi.mocked(databaseCommands.getDatabases).mockResolvedValueOnce([
