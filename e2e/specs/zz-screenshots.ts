@@ -93,6 +93,21 @@ async function setWindowSize(w = 2400, h = 1600) {
 }
 
 async function setEditorContent(text: string) {
+  const editor = $('.cm-editor .cm-content');
+  await editor.waitForDisplayed({ timeout: 10000 });
+  // A browser.execute().focus() is not equivalent to a user click here: the
+  // database selector is portaled, so only the real outside click reliably
+  // dismisses it before injecting the editor text.
+  await editor.click();
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        () =>
+          document.activeElement?.closest('.cm-editor .cm-content') != null &&
+          document.getElementById('dz-select-listbox') == null,
+      ),
+    { timeout: 2000, timeoutMsg: 'editor focus/selector cleanup did not settle' },
+  );
   await browser.execute((t: string) => {
     const el = document.querySelector('.cm-editor .cm-content') as HTMLElement | null;
     if (!el) return;

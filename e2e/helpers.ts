@@ -806,8 +806,25 @@ export async function confirmWebDialog(timeout = 5000): Promise<void> {
   await browser.pause(800);
 }
 
-/** Replace CodeMirror editor content using execCommand. */
+/**
+ * Replace CodeMirror editor content using a real editor click before the DOM
+ * update. The click is important: selector-driven tests may leave a portaled
+ * Host Select open, and browser.execute().focus() does not reproduce the
+ * pointer/focus transition that closes it during a real user edit.
+ */
 export async function setEditorContent(sql: string) {
+  const editor = await $('.cm-editor .cm-content');
+  await editor.waitForDisplayed({ timeout: 10000 });
+  await editor.click();
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        () =>
+          document.activeElement?.closest('.cm-editor .cm-content') != null &&
+          document.getElementById('dz-select-listbox') == null,
+      ),
+    { timeout: 2000, timeoutMsg: 'editor did not receive focus or a selector stayed open' },
+  );
   await browser.execute((text: string) => {
     const el = document.querySelector('.cm-editor .cm-content') as HTMLElement;
     if (!el) return;

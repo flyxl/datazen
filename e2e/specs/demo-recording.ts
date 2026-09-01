@@ -72,6 +72,20 @@ async function setWindowSize(w = 1600, h = 1000) {
 }
 
 async function setEditorContent(text: string) {
+  const editor = $('.cm-editor .cm-content');
+  await editor.waitForDisplayed({ timeout: 10000 });
+  // Drive the same pointer/focus transition as a user. A JS-only focus does
+  // not close the portaled database selector used by the query toolbar.
+  await editor.click();
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        () =>
+          document.activeElement?.closest('.cm-editor .cm-content') != null &&
+          document.getElementById('dz-select-listbox') == null,
+      ),
+    { timeout: 2000, timeoutMsg: 'editor focus/selector cleanup did not settle' },
+  );
   await browser.execute((t: string) => {
     const el = document.querySelector('.cm-editor .cm-content') as HTMLElement | null;
     if (!el) return;
@@ -232,11 +246,11 @@ LIMIT 20;`;
     await hold(3000);
 
     // ── 6. Chart view ──
-    await clickTestId('result-view-chart');
+    await clickTestId('result-workspace-view-chart');
     await hold(3000);
 
     // ── 7. Aggregate query → bar chart ──
-    await clickTestId('result-view-table');
+    await clickTestId('result-workspace-view-table');
     await hold(500);
 
     const aggSql = `SELECT category, SUM(amount) AS total_amount
@@ -250,7 +264,7 @@ ORDER BY total_amount DESC;`;
     await waitForResults();
     await hold(1500);
 
-    await clickTestId('result-view-chart');
+    await clickTestId('result-workspace-view-chart');
     await hold(1000);
     await clickTestId('chart-type-bar');
     await hold(3000);
