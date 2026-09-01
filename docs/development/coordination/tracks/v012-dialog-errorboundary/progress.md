@@ -2,8 +2,14 @@
 
 ## 功能摘要
 
-- 状态：未开始
+- 状态：编码完成，待独立测试代理复验
 - 范围：Dialog 可访问性与 ErrorBoundary 本地化。
+
+### 编码结果
+
+- Dialog 增加初始焦点、Tab 环回、Escape 关闭、关闭后恢复 opener 焦点，以及 `aria-labelledby`/`aria-describedby` 和关闭按钮标签。
+- ErrorBoundary 改为通过现有 i18n key 渲染错误状态，保留关闭/重试操作；日志只记录错误名、消息长度和组件栈，不输出错误正文。
+- 编码 commit：待本轮提交后填写。
 
 ## E2E 登记
 
@@ -11,7 +17,10 @@
 
 ## 测试结果与覆盖率
 
-- 待编码代理填写。
+- 定向 Vitest：2 个文件，8/8 通过。
+- `pnpm typecheck`：通过。
+- `git diff --check`：通过。
+- 覆盖率：待独立测试代理按 playbook 复验。
 
 ## 设计决策 / 遗留
 
