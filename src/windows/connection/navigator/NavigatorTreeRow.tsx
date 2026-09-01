@@ -72,7 +72,7 @@ export interface NavigatorTreeRowProps {
   ) => void;
   handleObjectContextMenu: (e: React.MouseEvent, name: string) => void;
   handleConnectionClick: (conn: ConnectionConfig, sectionGroup: string) => void;
-  handleConnectionDoubleClick: (conn: ConnectionConfig) => void;
+  handleConnectionDoubleClick: (conn: ConnectionConfig, sectionGroup: string) => void;
   handleDragStart: (e: React.DragEvent, connId: string) => void;
   handleDragOver: (e: React.DragEvent, targetId: string) => void;
   handleDragLeave: () => void;
@@ -195,7 +195,7 @@ export function NavigatorTreeRow({
             )}
             style={{ paddingLeft: depthPadding(row.depth) }}
             onClick={() => handleConnectionClick(row.conn, row.sectionGroup)}
-            onDoubleClick={() => handleConnectionDoubleClick(row.conn)}
+            onDoubleClick={() => handleConnectionDoubleClick(row.conn, row.sectionGroup)}
             onContextMenu={(e) => handleConnectionContextMenu(e, row.conn, row.sectionGroup)}
           >
             {row.isSelected && <span className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
@@ -207,7 +207,7 @@ export function NavigatorTreeRow({
                 if (row.status === 'connected') {
                   toggleConnection(row.conn.id, row.sectionGroup);
                 } else {
-                  handleConnectionDoubleClick(row.conn);
+                  handleConnectionDoubleClick(row.conn, row.sectionGroup);
                 }
               }}
               onDoubleClick={(e) => e.stopPropagation()}

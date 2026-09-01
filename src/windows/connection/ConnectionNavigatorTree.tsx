@@ -119,6 +119,10 @@ export const ConnectionNavigatorTree = forwardRef<
   const [expandedDbs, setExpandedDbs] = useState<Set<string>>(new Set());
   const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set());
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
+  const pendingConnectionExpansionRef = useRef<{
+    connectionId: string;
+    sectionGroup: string;
+  } | null>(null);
 
   const dbState = useNavigatorDbState(
     activeConnections,
@@ -191,6 +195,67 @@ export const ConnectionNavigatorTree = forwardRef<
             section.connections.some((connection) => connection.id === connectionId),
         );
       });
+
+      const keepValidExpansion = () => {
+        if (validKeys.length > 0) {
+          const keep = validKeys[0];
+          return validKeys.length === 1 && prev.size === 1 && prev.has(keep)
+            ? prev
+            : new Set([keep]);
+        }
+        return prev.size > 0 ? new Set<string>() : prev;
+      };
+
+      let pending = pendingConnectionExpansionRef.current;
+      const activeEntry = activeConnectionId ? activeConnections[activeConnectionId] : undefined;
+
+      // Connections can also be opened outside the navigator. Track an active
+      // connecting tab so a slow connection never causes an unrelated already
+      // connected row (usually the first item in Recent) to be auto-expanded.
+      if (!pending && activeConnectionId && activeEntry?.status === 'connecting') {
+        const section = grouped.find((candidate) =>
+          candidate.connections.some((connection) => connection.id === activeConnectionId),
+        );
+        if (section) {
+          pending = { connectionId: activeConnectionId, sectionGroup: section.group };
+          pendingConnectionExpansionRef.current = pending;
+        } else {
+          return keepValidExpansion();
+        }
+      }
+
+      if (pending) {
+        const entry = activeConnections[pending.connectionId];
+        const connectionStillExists = connections.some(
+          (connection) => connection.id === pending.connectionId,
+        );
+
+        if (!connectionStillExists || entry?.status === 'error') {
+          pendingConnectionExpansionRef.current = null;
+          return keepValidExpansion();
+        }
+
+        if (entry?.status === 'connected') {
+          const section =
+            grouped.find(
+              (candidate) =>
+                candidate.group === pending.sectionGroup &&
+                candidate.connections.some((connection) => connection.id === pending.connectionId),
+            ) ??
+            grouped.find((candidate) =>
+              candidate.connections.some((connection) => connection.id === pending.connectionId),
+            );
+          pendingConnectionExpansionRef.current = null;
+          if (section) {
+            return new Set([connectionExpandKey(section.group, pending.connectionId)]);
+          }
+        } else {
+          // The click has selected a real target, but its IPC has not resolved
+          // yet. Keep an existing valid expansion, if any, and never synthesize
+          // a different connection while waiting.
+          return keepValidExpansion();
+        }
+      }
 
       if (validKeys.length > 0) {
         const keep = validKeys[0];
@@ -290,6 +355,7 @@ export const ConnectionNavigatorTree = forwardRef<
   ]);
 
   const collapseAll = useCallback(() => {
+    pendingConnectionExpansionRef.current = null;
     setExpandedGroups(new Set());
     setExpandedConnections(new Set());
     setExpandedDbs(new Set());
@@ -309,6 +375,7 @@ export const ConnectionNavigatorTree = forwardRef<
   const toggleConnection = useCallback(
     (connectionId: string, sectionGroup: string) => {
       const key = connectionExpandKey(sectionGroup, connectionId);
+      pendingConnectionExpansionRef.current = null;
       setExpandedConnections((prev) => {
         if (prev.has(key)) return new Set();
         onSelectConnection(connectionId);
@@ -487,23 +554,41 @@ export const ConnectionNavigatorTree = forwardRef<
 
   const handleConnectionClick = useCallback(
     (conn: ConnectionConfig, sectionGroup: string) => {
-      onSelectConnection(conn.id);
       const entry = activeConnections[conn.id];
       if (entry?.status === 'connected') {
+        pendingConnectionExpansionRef.current = null;
         const key = connectionExpandKey(sectionGroup, conn.id);
         setExpandedConnections((prev) =>
           prev.size === 1 && prev.has(key) ? prev : new Set([key]),
         );
+      } else {
+        pendingConnectionExpansionRef.current = {
+          connectionId: conn.id,
+          sectionGroup,
+        };
       }
+      onSelectConnection(conn.id);
     },
     [onSelectConnection, activeConnections],
   );
 
   const handleConnectionDoubleClick = useCallback(
-    (conn: ConnectionConfig) => {
-      onSelectConnection(conn.id);
+    (conn: ConnectionConfig, sectionGroup: string) => {
       const status = activeConnections[conn.id]?.status ?? 'idle';
-      if (status === 'connected') return;
+      if (status === 'connected') {
+        pendingConnectionExpansionRef.current = null;
+        const key = connectionExpandKey(sectionGroup, conn.id);
+        setExpandedConnections((prev) =>
+          prev.size === 1 && prev.has(key) ? prev : new Set([key]),
+        );
+        onSelectConnection(conn.id);
+        return;
+      }
+      pendingConnectionExpansionRef.current = {
+        connectionId: conn.id,
+        sectionGroup,
+      };
+      onSelectConnection(conn.id);
       if (status !== 'connecting') {
         void connect(conn);
       }

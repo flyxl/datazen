@@ -2,13 +2,14 @@
 
 > 面向 AI 编程助手与开发者的项目文档入口。产品官网与在线使用手册见 <https://flyxl.github.io/datazen/>（仓库内源文件位于 [site/](../site/)）。
 
-文档分三类：
+文档分四类：
 
 | 目录 | 定位 | 读者 |
 |------|------|------|
 | [features/](features/) | **系统功能介绍** — 各功能的用户向使用文档 | 所有用户 |
 | [architecture/](architecture/) | **系统架构文档** — 总览与各模块详细设计 | 贡献者 / AI 助手 |
 | [development/](development/) | **其他必要文档** — 开发、测试、发布、插件开发流程 | 贡献者 |
+| [blogs/](blogs/) | **架构文章系列** — 面向公开发布的 DataZen 架构解析 | 开发者 / 用户 |
 
 ---
 
@@ -88,6 +89,10 @@
 | [packaging](development/packaging.md) | 打包与发布渠道（Gatekeeper、公证、Linux 包） |
 | [updater](development/updater.md) | 自动更新机制 |
 | [github-pages](development/github-pages.md) | 官网 / 使用手册的 GitHub Pages 部署与验证 |
+
+## 4. 架构文章系列（docs/blogs/）
+
+系列大纲与文章索引见 [blogs/README.md](blogs/README.md)。第一篇：[DataZen 架构设计（一）：一个现代桌面数据库工具是如何构建的](blogs/01-datazen-architecture-overview.zh-CN.md)。
 
 ---
 

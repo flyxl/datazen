@@ -1,6 +1,18 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { ConnectionConfig, DriverCapabilities, ServerInfo } from '../types';
 
+async function waitForE2EConnectDelay(connectionId: string): Promise<void> {
+  if (!import.meta.env.VITE_E2E || typeof window === 'undefined') return;
+  const delays = (
+    window as Window & {
+      __DATAZEN_E2E_CONNECT_DELAY_MS__?: Record<string, number>;
+    }
+  ).__DATAZEN_E2E_CONNECT_DELAY_MS__;
+  const delayMs = delays?.[connectionId] ?? 0;
+  if (!Number.isFinite(delayMs) || delayMs <= 0) return;
+  await new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
+}
+
 export const connectionCommands = {
   getConnections: () => invoke<ConnectionConfig[]>('get_connections'),
 
@@ -13,7 +25,10 @@ export const connectionCommands = {
   testConnection: (config: ConnectionConfig) => invoke<ServerInfo>('test_connection', { config }),
 
   /** connectionId = 持久化配置连接 id；返回值为运行时 dbSessionId。 */
-  connect: (connectionId: string) => invoke<string>('connect', { connectionId }),
+  connect: async (connectionId: string) => {
+    await waitForE2EConnectDelay(connectionId);
+    return invoke<string>('connect', { connectionId });
+  },
 
   /** Sub-window only: always opens a new db session, optionally pinned to `database`. */
   connectDedicated: (connectionId: string, database?: string) =>

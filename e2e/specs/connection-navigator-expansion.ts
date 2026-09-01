@@ -137,6 +137,33 @@ async function waitForConnected(group: string, name: string): Promise<void> {
   );
 }
 
+async function waitForConnectingWithoutExpandedConnection(
+  group: string,
+  name: string,
+): Promise<void> {
+  const connectingTitle = t('conn.connecting');
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (sectionGroup: string, connName: string, title: string) => {
+          const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-conn-item]'));
+          const row = rows.find(
+            (item) => item.dataset.connGroup === sectionGroup && item.dataset.connName === connName,
+          );
+          const isConnecting = row?.querySelector(`[title="${title}"]`) != null;
+          const hasExpandedConnection = rows.some(
+            (item) => item.querySelector('button')?.getAttribute('aria-expanded') === 'true',
+          );
+          return isConnecting && !hasExpandedConnection;
+        },
+        group,
+        name,
+        connectingTitle,
+      ),
+    { timeout: 10000, timeoutMsg: `连接 ${name} 未进入连接中状态` },
+  );
+}
+
 describe('连接导航树单连接展开 (NAV-EXPAND)', () => {
   let mainWindow: string;
 
@@ -221,12 +248,37 @@ describe('连接导航树单连接展开 (NAV-EXPAND)', () => {
     });
     expect(await getExpanded('__recent__', RECENT_NAME)).toBe('false');
 
-    expect(await dispatchRowAction(GROUP_B, OTHER_NAME, 'doubleClick')).toBe(true);
-    await waitForConnected(GROUP_B, OTHER_NAME);
-    expect(await dispatchRowAction(GROUP_B, OTHER_NAME, 'click')).toBe(true);
+    // Reproduce the slow-connect race from a fully collapsed tree. While the
+    // target is connecting, no unrelated shortcut may be expanded.
+    expect(await dispatchRowAction(GROUP_A, RECENT_NAME, 'click')).toBe(true);
+    await browser.waitUntil(async () => (await getExpanded(GROUP_A, RECENT_NAME)) === 'false', {
+      timeout: 10000,
+      timeoutMsg: '连接未收起，无法验证慢连接时序',
+    });
+
+    await browser.execute((connectionId: string) => {
+      (
+        window as Window & {
+          __DATAZEN_E2E_CONNECT_DELAY_MS__?: Record<string, number>;
+        }
+      ).__DATAZEN_E2E_CONNECT_DELAY_MS__ = { [connectionId]: 1200 };
+    }, OTHER_ID);
+    try {
+      expect(await dispatchRowAction(GROUP_B, OTHER_NAME, 'doubleClick')).toBe(true);
+      await waitForConnectingWithoutExpandedConnection(GROUP_B, OTHER_NAME);
+      await waitForConnected(GROUP_B, OTHER_NAME);
+    } finally {
+      await browser.execute(() => {
+        delete (
+          window as Window & {
+            __DATAZEN_E2E_CONNECT_DELAY_MS__?: Record<string, number>;
+          }
+        ).__DATAZEN_E2E_CONNECT_DELAY_MS__;
+      });
+    }
     await browser.waitUntil(async () => (await getExpanded(GROUP_B, OTHER_NAME)) === 'true', {
       timeout: 30000,
-      timeoutMsg: '其他分组连接未展开',
+      timeoutMsg: '其他分组连接成功后未自动展开',
     });
 
     expect(await getExpanded('__recent__', RECENT_NAME)).toBe('false');
