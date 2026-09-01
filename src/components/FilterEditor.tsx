@@ -17,6 +17,7 @@ export const FILTER_VALUE_DEBOUNCE_MS = 350;
 
 /** Max height for the wrapping filter chip list (~2 rows) before scrolling. */
 const FILTER_LIST_MAX_HEIGHT_CLASS = 'max-h-[4.75rem]';
+const SELECT_LISTBOX_SELECTOR = '[id^="dz-select-listbox-"]';
 
 const OPERATORS: FilterOperator[] = [
   'eq',
@@ -242,9 +243,9 @@ function FilterConditionEditor({
     globalThis.setTimeout(() => {
       const active = document.activeElement;
       if (rootRef.current?.contains(active)) return;
-      if (active?.closest?.('#dz-select-listbox')) return;
+      if (active?.closest?.(SELECT_LISTBOX_SELECTOR)) return;
       // Listbox still open (picking an option) — stay expanded.
-      if (document.getElementById('dz-select-listbox')) return;
+      if (document.querySelector(SELECT_LISTBOX_SELECTOR)) return;
       if (isCompleteFilter(latestRef.current)) onCollapse();
     }, 10);
   };
@@ -261,7 +262,7 @@ function FilterConditionEditor({
         // check; jsdom often leaves activeElement on the blurred input).
         if (related && !rootRef.current?.contains(related)) {
           globalThis.setTimeout(() => {
-            if (document.getElementById('dz-select-listbox')) return;
+            if (document.querySelector(SELECT_LISTBOX_SELECTOR)) return;
             if (isCompleteFilter(latestRef.current)) onCollapse();
           }, 10);
           return;
@@ -502,7 +503,11 @@ export function FilterEditor({
             )}
           >
             {applyError && (
-              <div className="basis-full px-1 py-1 text-xs text-red-400" role="alert" data-testid="filter-error">
+              <div
+                className="basis-full px-1 py-1 text-xs text-red-400"
+                role="alert"
+                data-testid="filter-error"
+              >
                 {applyError}
               </div>
             )}
