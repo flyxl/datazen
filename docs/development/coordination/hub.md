@@ -16,6 +16,17 @@
 | `v01x-ai-actions` | Explain/Fix SQL/Retry 快捷动作上下文 | 已完成 | bbd7c4cc | 9b8e7bda |
 | `v01x-page-integration` | 共享页面、DataTable、QueryPanel 和 i18n 最终接线 | 已完成 | 739a9453 | cc20c6ac |
 
+## v0.1.2 UI Polish 波次
+
+| 轨道 | 范围 | 状态 | 编码 commit | 测试 commit |
+|---|---|---|---|---|
+| `v012-i18n-contract` | 新增 UI polish 文案 key 契约 | 未开始 | — | — |
+| `v012-dialog-errorboundary` | Dialog 无障碍与 ErrorBoundary i18n | 未开始 | — | — |
+| `v012-settings-dirty` | Settings dirty/save/离开保护 | 未开始 | — | — |
+| `v012-navigation-controls` | PanelTabBar、Select、MenuBar、WindowControls 无障碍 | 未开始 | — | — |
+| `v012-datatable-workflow` | DataTable 空/加载状态与 Workflow alert/i18n | 未开始 | — | — |
+| `v012-accent-sweep` | accent token、permission labels、残留 UI 文案清理 | 未开始 | — | — |
+
 ## 合并规则
 
 - 编码代理和测试代理必须是不同的全新实例。
