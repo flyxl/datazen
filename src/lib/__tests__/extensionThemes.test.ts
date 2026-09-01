@@ -63,6 +63,7 @@ const REQUIRED_FONT_TOKENS = ['--font-sans', '--font-mono', '--font-editor'] as 
 interface ExtensionManifest {
   id: string;
   apiVersion: number;
+  icon?: string;
   entry?: string;
   contributes?: {
     pages?: Array<{ id: string; title: string; icon?: string; showIn?: string }>;
@@ -71,6 +72,7 @@ interface ExtensionManifest {
       name: string;
       tokensCss: string;
       modes: string[];
+      previewImage?: string;
       editorJson?: string;
       chartsJson?: string;
       iconsDir?: string;
@@ -96,7 +98,9 @@ describe('repo extension packages', () => {
   const dirNames = listExtensionDirs();
 
   it('includes the converted community theme and the sample extension', () => {
-    expect(dirNames.sort()).toEqual(['community.slate-blue', 'datazen.playground'].sort());
+    expect(dirNames.sort()).toEqual(
+      ['community.slate-blue', 'community.table-workspace', 'datazen.playground'].sort(),
+    );
   });
 
   it.each(dirNames)('%s keeps manifest id == directory name and apiVersion 2', (dirName) => {
@@ -112,12 +116,13 @@ describe('repo extension packages', () => {
       const manifest = loadManifest(dirName);
       const allowed = /\.(html|js|mjs|css|json|svg|png|webp|woff2|woff)$/i;
       const declared: string[] = [];
+      if (manifest.icon) declared.push(manifest.icon);
       if (manifest.entry) declared.push(manifest.entry);
       for (const page of manifest.contributes?.pages ?? []) {
         if (page.icon) declared.push(page.icon);
       }
       for (const theme of manifest.contributes?.themes ?? []) {
-        declared.push(theme.tokensCss, theme.editorJson, theme.chartsJson);
+        declared.push(theme.tokensCss, theme.previewImage, theme.editorJson, theme.chartsJson);
         // iconsDir is a directory — check existence separately below.
         if (theme.iconsDir) {
           const iconsPath = join(EXTENSIONS_ROOT, dirName, theme.iconsDir);
@@ -182,6 +187,53 @@ describe('community.slate-blue theme contract (converted extension)', () => {
     const charts = JSON.parse(
       readFileSync(join(packDir, theme?.chartsJson ?? ''), 'utf8'),
     ) as Record<string, unknown>;
+    expect(Object.keys(charts).length).toBeGreaterThan(0);
+    expect(readdirSync(join(packDir, theme?.iconsDir ?? '')).some((f) => f.endsWith('.svg'))).toBe(
+      true,
+    );
+  });
+});
+
+describe('community.table-workspace theme contract', () => {
+  const packDir = join(EXTENSIONS_ROOT, 'community.table-workspace');
+  const manifest = loadManifest('community.table-workspace');
+  const theme = manifest.contributes?.themes?.[0];
+  const tokensCss = readFileSync(join(packDir, theme?.tokensCss ?? ''), 'utf8');
+
+  it('declares a light+dark pure-theme contribution without pages/permissions', () => {
+    expect(theme?.id).toBe('table-workspace');
+    expect(theme?.modes).toEqual(['light', 'dark']);
+    expect(manifest.entry).toBeUndefined();
+    expect(manifest.permissions ?? []).toEqual([]);
+    expect(manifest.contributes?.pages ?? []).toEqual([]);
+  });
+
+  it('defines the complete surface, editor, DataTable, and font token contracts', () => {
+    for (const token of [
+      ...REQUIRED_SURFACE_TOKENS,
+      ...REQUIRED_FONT_TOKENS,
+      ...REQUIRED_CM_TOKENS,
+      ...RECOMMENDED_DT_TOKENS,
+    ]) {
+      expect(tokensCss, `missing ${token}`).toContain(`${token}:`);
+    }
+    expect(tokensCss).toMatch(/:root\s*\{/);
+    expect(tokensCss).toMatch(/\.dark\s*\{/);
+  });
+
+  it('ships preview, editor, chart, and semantic icon assets', () => {
+    expect(theme?.previewImage).toBe('themes/table-workspace/preview.svg');
+    expect(theme?.editorJson).toBe('themes/table-workspace/editor.json');
+    expect(theme?.chartsJson).toBe('themes/table-workspace/charts.json');
+    expect(theme?.iconsDir).toBe('themes/table-workspace/icons');
+
+    const editor = JSON.parse(
+      readFileSync(join(packDir, theme?.editorJson ?? ''), 'utf8'),
+    ) as Record<string, unknown>;
+    const charts = JSON.parse(
+      readFileSync(join(packDir, theme?.chartsJson ?? ''), 'utf8'),
+    ) as Record<string, unknown>;
+    expect(Object.keys(editor).length).toBeGreaterThan(0);
     expect(Object.keys(charts).length).toBeGreaterThan(0);
     expect(readdirSync(join(packDir, theme?.iconsDir ?? '')).some((f) => f.endsWith('.svg'))).toBe(
       true,

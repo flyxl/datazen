@@ -41,6 +41,7 @@ packages/extensions/<publisher>.<name>/
 | Id | 类型 | 内容 |
 |----|------|------|
 | `community.slate-blue` | 纯主题 | Slate & sky-blue 主题（light + dark），由旧 ThemePack 迁移 |
+| `community.table-workspace` | 纯主题 | 参考 `table-workspace-v01.svg` 的分层 navy 工作区主题（light + dark），含编辑器、图表、预览与语义图标 |
 | `datazen.playground` | 页面 + 主题 | 全功能示例：桥接握手、context.getConnections/getActiveConnection、command.invoke（query）、storage KV 计数器、ui.notify、实时主题快照，附 Playground Night 暗色主题 |
 
 ## 安装测试
@@ -55,7 +56,13 @@ packages/extensions/<publisher>.<name>/
 
 4. 预览确认（名称/版本/权限清单）→ Install → 卡片出现即成功
 5. 测试页面：左侧边栏 → **Workspace** → 点击 *Extension Playground* 打开 Tab
-6. 测试主题：设置 → **外观** → 选择 *Playground Night* 或 *Slate Blue*
+6. 测试主题：设置 → **外观** → 选择 *Playground Night*、*Slate Blue* 或 *Table Workspace*
+
+### Table Workspace 主题安装
+
+- 直接安装目录：`packages/extensions/community.table-workspace`
+- 或在主题目录内执行 `zip -rqX ../dist/community.table-workspace.zip . -x '.DS_Store'`，再从插件管理页安装生成的 zip
+- 安装后在 **设置 → 外观** 选择 *Table Workspace*；切换 light / dark，确认面板层级、SQL 编辑器、图表系列色与语义图标同步更新
 
 > 注意：安装是**拷贝语义**——修改源码后需重新安装才能生效（同 id 重装会覆盖并备份旧包为 `{id}.old.bak`）。停用/卸载在插件管理页操作。
 

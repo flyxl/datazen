@@ -115,9 +115,12 @@ export function ProcessListView({
     const pid = typeof pidValue === 'number' ? pidValue : Number(pidValue);
     if (!Number.isFinite(pid)) return;
 
+    const targetContext = [connectionName, `${t('processList.colPid')}: ${pid}`]
+      .filter(Boolean)
+      .join(' · ');
     const ok = await confirmKill({
       title: t('processList.killTitle'),
-      message: t('processList.killConfirm', { pid: String(pid) }),
+      message: `${t('processList.killConfirm', { pid: String(pid) })}\n${targetContext}`,
       confirmLabel: t('processList.kill'),
       kind: 'warning',
     });

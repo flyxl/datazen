@@ -1,0 +1,23 @@
+{
+  "id": "community.table-workspace",
+  "name": "Table Workspace",
+  "version": "1.0.0",
+  "apiVersion": 2,
+  "author": "DataZen Community",
+  "description": "A focused navy workspace theme based on the Table Workspace concept, with layered panels, crisp blue actions, and clear pending-change states",
+  "icon": "assets/icon.svg",
+  "contributes": {
+    "themes": [
+      {
+        "id": "table-workspace",
+        "name": "Table Workspace",
+        "tokensCss": "themes/table-workspace/tokens.css",
+        "modes": ["light", "dark"],
+        "previewImage": "themes/table-workspace/preview.svg",
+        "editorJson": "themes/table-workspace/editor.json",
+        "chartsJson": "themes/table-workspace/charts.json",
+        "iconsDir": "themes/table-workspace/icons"
+      }
+    ]
+  }
+}

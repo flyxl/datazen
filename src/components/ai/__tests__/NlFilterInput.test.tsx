@@ -33,6 +33,7 @@ const aiState = vi.hoisted(() => ({
 
 const tableState = vi.hoisted(() => ({
   activeTable: 'users',
+  columns: [{ name: 'name' }],
   setFilters: vi.fn(),
   clearFilters: vi.fn(),
 }));
@@ -62,6 +63,7 @@ beforeEach(() => {
   aiState.isParsingFilter = false;
   aiState.nlFilterError = null;
   tableState.activeTable = 'users';
+  tableState.columns = [{ name: 'name' }];
 });
 
 describe('NlFilterInput', () => {
@@ -116,6 +118,24 @@ describe('NlFilterInput', () => {
     aiState.parsedFilters = [{ column: 'a' }, { column: 'b' }];
     rerender(<NlFilterInput dbSessionId="c1" database="db" tableName="users" />);
     expect(getByText('smartFilter.parsed')).toBeInTheDocument();
+  });
+
+  it('does not apply filters that reference unknown columns', async () => {
+    aiState.parseFilter.mockResolvedValueOnce([
+      { column: 'category', operator: 'eq', value: 'shipped' },
+    ]);
+    const { container, getByText, rerender } = render(
+      <NlFilterInput dbSessionId="c1" database="db" tableName="users" />,
+    );
+    fireEvent.click(container.querySelector('button')!);
+    fireEvent.change(container.querySelector('input')!, { target: { value: 'shipped' } });
+    rerender(<NlFilterInput dbSessionId="c1" database="db" tableName="users" />);
+    fireEvent.click(getByText('smartFilter.parse'));
+
+    await waitFor(() => {
+      expect(getByText('smartFilter.invalidColumns')).toBeInTheDocument();
+    });
+    expect(tableState.setFilters).not.toHaveBeenCalled();
   });
 
   it('clears and collapses on X click', () => {

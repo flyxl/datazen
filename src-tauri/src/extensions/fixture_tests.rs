@@ -129,9 +129,51 @@ fn repo_extension_packages_pass_manifest_validation() {
         "converted theme extension missing, saw {seen:?}"
     );
     assert!(
+        seen.contains("community.table-workspace"),
+        "table workspace theme extension missing, saw {seen:?}"
+    );
+    assert!(
         seen.contains("datazen.playground"),
         "sample extension missing, saw {seen:?}"
     );
+}
+
+#[test]
+fn community_table_workspace_extension_declares_full_theme_contribution() {
+    let dir = extensions_root().join("community.table-workspace");
+    let manifest = validate_extension_dir(&dir)
+        .unwrap_or_else(|e| panic!("community.table-workspace extension invalid: {e}"));
+    assert!(
+        manifest.entry.is_none(),
+        "pure-theme extension needs no entry"
+    );
+    assert!(
+        manifest.permissions.is_empty(),
+        "pure-theme extension needs no permissions"
+    );
+
+    let theme = manifest
+        .contributes
+        .themes
+        .first()
+        .expect("table workspace theme contribution missing");
+    assert_eq!(theme.id, "table-workspace");
+    assert_eq!(theme.modes, vec!["light".to_string(), "dark".to_string()]);
+
+    for asset in [
+        Some(theme.tokens_css.as_str()),
+        theme.preview_image.as_deref(),
+        theme.editor_json.as_deref(),
+        theme.charts_json.as_deref(),
+    ] {
+        let asset = asset.expect("table workspace theme asset must be declared");
+        assert!(dir.join(asset).is_file(), "theme asset missing: {asset}");
+    }
+    let icons = theme
+        .icons_dir
+        .as_deref()
+        .expect("table workspace theme must declare iconsDir");
+    assert!(dir.join(icons).is_dir(), "icons dir missing: {icons}");
 }
 
 /// The converted community theme extension must declare its theme

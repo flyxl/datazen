@@ -91,4 +91,16 @@ describe('WebContextMenuHost', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByTestId('web-context-menu')).toBeNull();
   });
+
+  it.each(['blur', 'resize'] as const)('closes on window %s', async (eventName) => {
+    render(<WebContextMenuHost />);
+    showWebContextMenu([{ kind: 'item', id: 'a', label: 'A', action: () => undefined }], {
+      x: 10,
+      y: 10,
+    });
+    await screen.findByTestId('web-context-menu');
+
+    fireEvent(window, new Event(eventName));
+    expect(screen.queryByTestId('web-context-menu')).toBeNull();
+  });
 });

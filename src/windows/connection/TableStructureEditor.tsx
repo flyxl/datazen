@@ -448,6 +448,15 @@ export function TableStructureEditor({
             ? t('common.newTable')
             : `${t('common.editTableStructure')} · ${initialTableName}`}
         </span>
+        {database && (
+          <span
+            className="max-w-[30%] truncate text-xs text-fg-muted"
+            data-testid="struct-editor-target"
+            title={database}
+          >
+            {database}
+          </span>
+        )}
         <div className="flex-1" />
         {mode === 'alter' && initialTableName && structureExportSupported && (
           <Button

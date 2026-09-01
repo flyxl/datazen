@@ -24,6 +24,12 @@ export type NativeMenuItemDef =
 
 export type ContextMenuPosition = { x: number; y: number };
 
+// The store is loaded lazily to avoid a module cycle. Keep a request revision
+// here as well so a menu opened just before navigation cannot mount after the
+// target page has already changed.
+let latestMenuRequest = 0;
+let pendingPointerCleanup: (() => void) | undefined;
+
 /** Drop empty submenus and leading/trailing/duplicate separators. Disabled items are kept. */
 export function normalizeNativeMenuItems(items: NativeMenuItemDef[]): NativeMenuItemDef[] {
   const filtered = items
@@ -65,12 +71,38 @@ export function normalizeNativeMenuItems(items: NativeMenuItemDef[]): NativeMenu
  * Call after `e.preventDefault()` on a `contextmenu` event.
  * Dynamic import avoids a cycle with `contextMenuStore` (which imports normalize).
  */
-export function showNativeContextMenu(
-  items: NativeMenuItemDef[],
-  pos: ContextMenuPosition,
-): void {
+export function showNativeContextMenu(items: NativeMenuItemDef[], pos: ContextMenuPosition): void {
+  const request = ++latestMenuRequest;
+  pendingPointerCleanup?.();
+
+  let cleanup: (() => void) | undefined;
+  if (typeof window !== 'undefined') {
+    const cancelBeforeMount = () => {
+      if (request !== latestMenuRequest) return;
+      latestMenuRequest += 1;
+      cleanup?.();
+    };
+    cleanup = () => {
+      window.removeEventListener('pointerdown', cancelBeforeMount, true);
+      if (pendingPointerCleanup === cleanup) pendingPointerCleanup = undefined;
+    };
+    pendingPointerCleanup = cleanup;
+    window.addEventListener('pointerdown', cancelBeforeMount, true);
+  }
+
   void import('../stores/contextMenuStore').then(({ showWebContextMenu }) => {
+    cleanup?.();
+    if (request !== latestMenuRequest) return;
     showWebContextMenu(items, pos);
+  });
+}
+
+/** Hide the menu and invalidate any menu request still waiting on the lazy import. */
+export function hideNativeContextMenu(): void {
+  latestMenuRequest += 1;
+  pendingPointerCleanup?.();
+  void import('../stores/contextMenuStore').then(({ useContextMenuStore }) => {
+    useContextMenuStore.getState().hide();
   });
 }
 

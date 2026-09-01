@@ -1,0 +1,101 @@
+/* Table Workspace — palette derived from table-workspace-v01.svg. */
+
+/* Light companion: the same cool hierarchy and blue interaction language. */
+:root {
+  --c-surface: #f8fafc;
+  --c-surface-alt: #f1f5f9;
+  --c-surface-raised: #e2e8f0;
+  --c-surface-inset: #ffffff;
+  --c-edge: #cbd5e1;
+
+  --c-fg: #111827;
+  --c-fg-secondary: #475569;
+  --c-fg-muted: #64748b;
+
+  --c-accent: #2563eb;
+  --c-success: #059669;
+  --c-warning: #d97706;
+  --c-danger: #dc2626;
+  --c-query-run: #2563eb;
+
+  --c-titlebar: #e2e8f0;
+  --c-titlebar-fg: #111827;
+  --c-titlebar-fg-muted: #475569;
+  --c-titlebar-hover: rgba(37, 99, 235, 0.1);
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  --font-editor: var(--font-mono);
+
+  --cm-keyword: #1d4ed8;
+  --cm-string: #047857;
+  --cm-number: #b45309;
+  --cm-comment: #64748b;
+  --cm-operator: #0e7490;
+  --cm-punctuation: #475569;
+  --cm-foreground: #111827;
+  --cm-background: #ffffff;
+  --cm-selection: rgba(37, 99, 235, 0.18);
+  --cm-cursor: #111827;
+
+  --dt-null: #64748b;
+  --dt-bool: #2563eb;
+  --dt-number: #b45309;
+  --dt-datetime: #0f766e;
+  --dt-json: #0369a1;
+  --dt-text: #111827;
+  --dt-binary: #dc2626;
+}
+
+.dark {
+  /* Layered navy surfaces: canvas → navigation/grid → toolbar → raised context. */
+  --c-surface: #0b1220;
+  --c-surface-alt: #111827;
+  --c-surface-raised: #202b3a;
+  --c-surface-inset: #182231;
+  --c-edge: #374151;
+
+  --c-fg: #f3f4f6;
+  --c-fg-secondary: #d1d5db;
+  --c-fg-muted: #9ca3af;
+
+  --c-accent: #60a5fa;
+  --c-success: #34d399;
+  --c-warning: #fbbf24;
+  --c-danger: #f87171;
+  --c-query-run: #2563eb;
+
+  --c-titlebar: #111827;
+  --c-titlebar-fg: #f3f4f6;
+  --c-titlebar-fg-muted: #9ca3af;
+  --c-titlebar-hover: rgba(96, 165, 250, 0.16);
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  --font-editor: var(--font-mono);
+
+  /* CodeMirror: restrained syntax accents on the same workspace canvas. */
+  --cm-keyword: #93c5fd;
+  --cm-string: #6ee7b7;
+  --cm-number: #fbbf24;
+  --cm-comment: #9ca3af;
+  --cm-operator: #67e8f9;
+  --cm-punctuation: #d1d5db;
+  --cm-foreground: #f3f4f6;
+  --cm-background: #0b1220;
+  --cm-selection: rgba(59, 130, 246, 0.32);
+  --cm-cursor: #f3f4f6;
+
+  /* DataTable values preserve type scanning without overwhelming row content. */
+  --dt-null: #9ca3af;
+  --dt-bool: #93c5fd;
+  --dt-number: #fbbf24;
+  --dt-datetime: #5eead4;
+  --dt-json: #67e8f9;
+  --dt-text: #d1d5db;
+  --dt-binary: #f87171;
+}

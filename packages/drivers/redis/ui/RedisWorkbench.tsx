@@ -45,6 +45,7 @@ export interface RedisWorkbenchProps {
   initialDatabase?: string;
   hideSidebar?: boolean;
   onDbIndexChange?: (dbIndex: number) => void;
+  onDatabaseChange?: (database: string) => void;
   onKeysChange?: (keys: string[]) => void;
 }
 
@@ -71,7 +72,7 @@ function formatSize(size: number): string {
 
 export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchProps>(
   function RedisWorkbench(
-    { dbSessionId, initialDatabase, hideSidebar, onDbIndexChange, onKeysChange },
+    { dbSessionId, initialDatabase, hideSidebar, onDbIndexChange, onDatabaseChange, onKeysChange },
     ref,
   ) {
     const { t } = useI18n();
@@ -171,6 +172,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
         setSelectedDb(db);
         setDbIndex(idx);
         onDbIndexChange?.(idx);
+        onDatabaseChange?.(db);
         setKeys([]);
         setCursor(0);
         setDbSize(0);
@@ -180,7 +182,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
         setSearchPattern('*');
         void loadKeys(idx, '*', 0, true);
       },
-      [loadKeys, onDbIndexChange],
+      [loadKeys, onDatabaseChange, onDbIndexChange],
     );
 
     useEffect(() => {
@@ -498,6 +500,8 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                     ? 'bg-accent/10 text-accent font-medium'
                     : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
                 )}
+                aria-current={selectedDb === db ? 'page' : undefined}
+                data-testid={`redis-db-${db}`}
                 onClick={() => handleSelectDb(db)}
               >
                 <Database className="h-4 w-4 shrink-0" />

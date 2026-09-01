@@ -1302,6 +1302,7 @@ const zhCN = {
   'smartFilter.clear': '清除',
   'smartFilter.noFilters': '未解析到筛选条件',
   'smartFilter.parsed': '已解析 {count} 个筛选条件',
+  'smartFilter.invalidColumns': '筛选字段需要确认：{columns}',
 
   // ── MCP Server ──
   'mcp.title': 'MCP Server',

@@ -155,8 +155,9 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
 
   const connectingDbType = useMemo(() => {
     if (!connectingEntry) return undefined;
-    return savedConnections.find((c) => c.id === connectingEntry.connectionId)
-      ?.databaseType as DatabaseType | undefined;
+    return savedConnections.find((c) => c.id === connectingEntry.connectionId)?.databaseType as
+      | DatabaseType
+      | undefined;
   }, [connectingEntry, savedConnections]);
 
   const recentPanels = useMemo(() => {
@@ -618,6 +619,11 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
       ? (activeQueryExec.results[activeQueryExec.activeResultIdx] ?? null)
       : null;
 
+  // Redis panels own their logical database context. The schema store tracks
+  // the outer SQL navigator and may still point at db0 after a Redis panel was
+  // opened on db5, so the status bar must use the panel's immutable target.
+  const statusDatabase = activePanel?.type === 'redis-db' ? activePanel.dbName : currentDatabase;
+
   const detailColumnDefs: ColumnDef[] = useMemo(() => {
     if (activePanel?.type === 'table') {
       return tableColumns.map((c) => ({ id: c.name, name: c.name, type: c.dataType }));
@@ -780,7 +786,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
         <ContentStatusBar
           databaseType={databaseType}
           connectionName={connectionName}
-          currentDatabase={currentDatabase}
+          currentDatabase={statusDatabase}
           tableName={tableName ?? ''}
           columnCount={tableColumns.length}
           totalRows={totalRows}

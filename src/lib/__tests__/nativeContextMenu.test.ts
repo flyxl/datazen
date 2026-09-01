@@ -74,10 +74,9 @@ describe('showNativeContextMenu', () => {
   });
 
   it('no-ops when only separators remain after normalize', async () => {
-    useContextMenuStore.getState().show(
-      [{ kind: 'item', id: 'keep', label: 'Keep', action: () => undefined }],
-      { x: 1, y: 1 },
-    );
+    useContextMenuStore
+      .getState()
+      .show([{ kind: 'item', id: 'keep', label: 'Keep', action: () => undefined }], { x: 1, y: 1 });
     expect(useContextMenuStore.getState().open).toBe(true);
     showNativeContextMenu([{ kind: 'separator' }, { kind: 'predefined', item: 'Separator' }], {
       x: 8,
@@ -122,6 +121,18 @@ describe('showNativeContextMenu', () => {
       const item = useContextMenuStore.getState().items[0];
       expect(item).toMatchObject({ kind: 'item', id: 'x', enabled: false });
     });
+  });
+
+  it('cancels a lazy menu when navigation starts before it mounts', async () => {
+    showNativeContextMenu(
+      [{ kind: 'item', id: 'stale', label: 'Stale', action: () => undefined }],
+      { x: 12, y: 16 },
+    );
+    window.dispatchEvent(new Event('pointerdown'));
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useContextMenuStore.getState().open).toBe(false);
   });
 });
 

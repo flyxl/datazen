@@ -15,6 +15,7 @@ interface NlFilterInputProps {
 export function NlFilterInput({ dbSessionId, database, tableName }: NlFilterInputProps) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const abortRef = useRef(false);
 
   const isConfigured = useAiStore((s) => s.isConfigured);
@@ -28,9 +29,11 @@ export function NlFilterInput({ dbSessionId, database, tableName }: NlFilterInpu
 
   const setFilters = useTableDataStore((s) => s.setFilters);
   const clearFilters = useTableDataStore((s) => s.clearFilters);
+  const columns = useTableDataStore((s) => s.columns);
 
   useEffect(() => {
     clearNlFilter();
+    setValidationError(null);
     setExpanded(false);
   }, [tableName, clearNlFilter]);
 
@@ -52,6 +55,26 @@ export function NlFilterInput({ dbSessionId, database, tableName }: NlFilterInpu
     if (currentActive !== targetTable) return;
 
     if (filters && filters.length > 0) {
+      // Metadata may still be loading when the user parses a filter. Only
+      // reject fields once the table has reported a non-empty column list;
+      // an empty list must not turn a valid filter into a false warning.
+      if (columns.length > 0) {
+        const knownColumns = new Set(columns.map((column) => column.name.toLowerCase()));
+        const unknownColumns = [
+          ...new Set(
+            filters
+              .map((filter) => filter.column.trim())
+              .filter((column) => column && !knownColumns.has(column.toLowerCase())),
+          ),
+        ];
+        if (unknownColumns.length > 0) {
+          setValidationError(
+            t('smartFilter.invalidColumns').replace('{columns}', unknownColumns.join(', ')),
+          );
+          return;
+        }
+      }
+      setValidationError(null);
       setFilters(filters);
     }
   };
@@ -61,6 +84,7 @@ export function NlFilterInput({ dbSessionId, database, tableName }: NlFilterInpu
   const handleClear = () => {
     clearNlFilter();
     clearFilters();
+    setValidationError(null);
   };
 
   const iconBtnClass =
@@ -143,14 +167,24 @@ export function NlFilterInput({ dbSessionId, database, tableName }: NlFilterInpu
         </button>
       </div>
 
-      {nlFilterError && <div className="pl-9 text-xs text-red-400">{nlFilterError}</div>}
+      {nlFilterError && (
+        <div className="pl-9 text-xs text-danger" role="alert">
+          {nlFilterError}
+        </div>
+      )}
+
+      {validationError && (
+        <div className="pl-9 text-xs text-warning" role="alert">
+          {validationError}
+        </div>
+      )}
 
       {parsedFilters && parsedFilters.length === 0 && (
         <div className="pl-9 text-xs text-fg-muted">{t('smartFilter.noFilters')}</div>
       )}
 
-      {parsedFilters && parsedFilters.length > 0 && (
-        <div className="pl-9 text-xs text-green-400">
+      {parsedFilters && parsedFilters.length > 0 && !validationError && (
+        <div className="pl-9 text-xs text-success" role="status">
           {t('smartFilter.parsed').replace('{count}', String(parsedFilters.length))}
         </div>
       )}

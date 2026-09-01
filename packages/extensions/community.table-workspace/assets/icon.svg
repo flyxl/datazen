@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Table Workspace theme</title>
+  <defs>
+    <linearGradient id="surface" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#202b3a"/>
+      <stop offset="1" stop-color="#0b1220"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#surface)" stroke="#374151" stroke-width="2"/>
+  <rect x="12" y="14" width="40" height="36" rx="5" fill="#111827" stroke="#60a5fa" stroke-width="2"/>
+  <path d="M12 25h40M25 25v25M39 25v25M12 37h40" fill="none" stroke="#374151" stroke-width="2"/>
+  <rect x="27" y="28" width="10" height="7" rx="2" fill="#1d4ed8" fill-opacity=".7"/>
+  <circle cx="47" cy="19.5" r="2.5" fill="#34d399"/>
+</svg>

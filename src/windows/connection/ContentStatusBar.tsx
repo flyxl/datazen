@@ -22,9 +22,12 @@ export function ContentStatusBar({
   const { t } = useI18n();
 
   return (
-    <footer className="flex h-10 min-h-[40px] shrink-0 items-center justify-between border-t border-edge bg-surface-alt px-4 text-xs text-fg-secondary">
+    <footer
+      role="status"
+      className="flex h-10 min-h-[40px] shrink-0 items-center justify-between border-t border-edge bg-surface-alt px-4 text-xs text-fg-secondary"
+    >
       <div className="flex items-center gap-2">
-        <span className="inline-flex h-2 w-2 rounded-full bg-green-500" />
+        <span className="inline-flex h-2 w-2 rounded-full bg-success" aria-hidden="true" />
         <span>{t('connWin.connected')}</span>
       </div>
       <div className="truncate text-fg-muted">

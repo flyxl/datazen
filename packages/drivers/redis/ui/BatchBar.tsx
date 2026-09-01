@@ -178,9 +178,7 @@ export function BatchBar({
       const errCount = result.errors.length;
       showSummary([
         t('redis.deleted').replace('{count}', String(result.deleted)),
-        errCount > 0
-          ? t('redis.errorsCount').replace('{count}', String(errCount))
-          : '',
+        errCount > 0 ? t('redis.errorsCount').replace('{count}', String(errCount)) : '',
       ]);
       closeDialog();
       await onRefresh();
@@ -199,18 +197,11 @@ export function BatchBar({
       if (!persistMode && (Number.isNaN(ttl!) || ttl! < 0)) {
         throw new Error(t('redis.ttlSeconds'));
       }
-      const result = await invokeBatchSetTtl(
-        dbSessionId,
-        dbIndex,
-        selectedKeys,
-        ttl!,
-      );
+      const result = await invokeBatchSetTtl(dbSessionId, dbIndex, selectedKeys, ttl!);
       const errCount = result.errors.length;
       showSummary([
         t('redis.updated').replace('{count}', String(result.updated)),
-        errCount > 0
-          ? t('redis.errorsCount').replace('{count}', String(errCount))
-          : '',
+        errCount > 0 ? t('redis.errorsCount').replace('{count}', String(errCount)) : '',
       ]);
       onClearSelection();
       closeDialog();
@@ -226,10 +217,7 @@ export function BatchBar({
     setBusy(true);
     setError(null);
     try {
-      const keysArg =
-        selectedKeys.length > 0
-          ? selectedKeys
-          : undefined;
+      const keysArg = selectedKeys.length > 0 ? selectedKeys : undefined;
       const result = await invokeBatchRenamePrefix(
         dbSessionId,
         dbIndex,
@@ -240,9 +228,7 @@ export function BatchBar({
       const errCount = result.errors.length;
       showSummary([
         t('redis.renamed').replace('{count}', String(result.renamed)),
-        errCount > 0
-          ? t('redis.errorsCount').replace('{count}', String(errCount))
-          : '',
+        errCount > 0 ? t('redis.errorsCount').replace('{count}', String(errCount)) : '',
       ]);
       onClearSelection();
       closeDialog();
@@ -264,6 +250,13 @@ export function BatchBar({
             ? t('redis.selectedCount').replace('{count}', String(selectedKeys.length))
             : t('redis.batchHint')}
         </span>
+        <span
+          className="rounded border border-edge bg-surface px-1.5 py-0.5 font-mono text-[11px] text-fg-secondary"
+          data-testid="redis-batch-context"
+          title={`Redis db${dbIndex}`}
+        >
+          db{dbIndex}
+        </span>
         <div className="flex-1" />
         <Button
           variant="secondary"
@@ -274,11 +267,7 @@ export function BatchBar({
           <Trash2 className="h-3.5 w-3.5" />
           {t('redis.batchDelete')}
         </Button>
-        <Button
-          variant="secondary"
-          className="h-7 gap-1 px-2 text-xs"
-          onClick={openPatternDialog}
-        >
+        <Button variant="secondary" className="h-7 gap-1 px-2 text-xs" onClick={openPatternDialog}>
           <Trash2 className="h-3.5 w-3.5" />
           {t('redis.deletePattern')}
         </Button>
@@ -312,10 +301,10 @@ export function BatchBar({
       <Dialog
         open={dialog === 'delete'}
         title={t('redis.confirmDeleteKeys')}
-        description={t('redis.selectedCount').replace(
-          '{count}',
-          String(selectedKeys.length),
-        )}
+        description={
+          t('redis.selectedCount').replace('{count}', String(selectedKeys.length)) +
+          ` · db${dbIndex}`
+        }
         onClose={closeDialog}
         footer={
           <>
@@ -339,6 +328,7 @@ export function BatchBar({
       <Dialog
         open={dialog === 'pattern'}
         title={t('redis.confirmDeletePattern')}
+        description={`db${dbIndex} · ${patternInput.trim() || '*'}`}
         onClose={closeDialog}
         footer={
           <>
@@ -379,6 +369,10 @@ export function BatchBar({
       <Dialog
         open={dialog === 'ttl'}
         title={t('redis.confirmBatchTtl')}
+        description={`db${dbIndex} · ${t('redis.selectedCount').replace(
+          '{count}',
+          String(selectedKeys.length),
+        )}`}
         onClose={closeDialog}
         footer={
           <>
@@ -420,6 +414,7 @@ export function BatchBar({
       <Dialog
         open={dialog === 'rename'}
         title={t('redis.confirmBatchRename')}
+        description={`db${dbIndex}`}
         onClose={closeDialog}
         footer={
           <>

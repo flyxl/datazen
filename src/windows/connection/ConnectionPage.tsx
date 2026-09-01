@@ -27,6 +27,7 @@ import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
 import { getDbLabel } from '../../lib/databaseTypes';
 import { openConnectionShareDialog } from '../../lib/connectionShare';
 import { openNewConnectionDialog, PENDING_CONNECTION_KEY } from '../../lib/windowManager';
+import { hideNativeContextMenu } from '../../lib/nativeContextMenu';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { usePanelStore, nextPanelId, type RedisDbPanel } from '../../stores/panelStore';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
@@ -217,6 +218,13 @@ export function ConnectionPage() {
   const allPanels = usePanelStore((s) => s.panels);
   const activePanelId = usePanelStore((s) => s.activePanelId);
   const activePanel = allPanels.find((p) => p.id === activePanelId) ?? null;
+
+  // A context menu is scoped to the page/object that opened it. Close it when
+  // navigation or the active panel changes so async menu requests cannot
+  // appear over a different workspace or retain stale database actions.
+  useEffect(() => {
+    hideNativeContextMenu();
+  }, [workspaceMode, mainView, activePanelId]);
 
   // ── Load connections + settings — fire-and-forget, once ──
 
@@ -846,12 +854,12 @@ export function ConnectionPage() {
       )}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {activeTab?.status === 'error' && !activePanel ? (
+        {activeTab?.status === 'error' && !activePanel && (
           <div className="flex flex-1 flex-col items-center justify-center gap-4">
-            <div className="copyable text-sm text-red-400">{activeTab.error}</div>
+            <div className="copyable text-sm text-danger">{activeTab.error}</div>
             <div className="flex gap-2">
               <button
-                className="rounded-md bg-blue-500 px-4 py-1.5 text-sm text-white hover:bg-blue-600"
+                className="rounded-md bg-accent px-4 py-1.5 text-sm text-white hover:bg-accent/90"
                 type="button"
                 onClick={() => {
                   setTabs((prev) =>
@@ -874,13 +882,20 @@ export function ConnectionPage() {
               </button>
             </div>
           </div>
-        ) : (
-          <ContentView
-            selectTableRef={selectTableRef}
-            nodeContextMenuRef={nodeContextMenuRef}
-            actionsRef={actionsRef}
-          />
         )}
+
+        {activeTab?.status === 'connecting' && !activePanel && (
+          <div className="flex flex-1 flex-col items-center justify-center gap-4">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+            <div className="text-sm text-fg-muted">{t('conn.connecting')}</div>
+          </div>
+        )}
+
+        <ContentView
+          selectTableRef={selectTableRef}
+          nodeContextMenuRef={nodeContextMenuRef}
+          actionsRef={actionsRef}
+        />
       </div>
     </div>
   );

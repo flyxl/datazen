@@ -172,11 +172,21 @@ export function WebContextMenuHost() {
       if (rootRef.current?.contains(t) || subRef.current?.contains(t)) return;
       hide();
     };
+    const onBlur = () => hide();
+    const onViewportChange = () => hide();
     window.addEventListener('keydown', onKey);
     window.addEventListener('mousedown', onDown);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('resize', onViewportChange);
+    window.addEventListener('scroll', onViewportChange, true);
+    document.addEventListener('visibilitychange', onViewportChange);
     return () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('resize', onViewportChange);
+      window.removeEventListener('scroll', onViewportChange, true);
+      document.removeEventListener('visibilitychange', onViewportChange);
     };
   }, [open, hide]);
 

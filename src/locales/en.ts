@@ -512,7 +512,8 @@ const en: Record<TranslationKey, string> = {
   'common.newTable': 'New Table',
   'connWin.searchTables': 'Search tables, views, columns…',
   'objectSearch.title': 'Search database objects',
-  'objectSearch.description': 'Search loaded tables, views, columns, and routines across connections.',
+  'objectSearch.description':
+    'Search loaded tables, views, columns, and routines across connections.',
   'objectSearch.placeholder': 'Find table, column, view, function…',
   'objectSearch.noLoadedSchema': 'No loaded schema objects yet',
   'objectSearch.noResults': 'No matching objects',
@@ -868,7 +869,7 @@ const en: Record<TranslationKey, string> = {
   'filter.in': 'in',
   'filter.isNull': 'is null',
   'filter.isNotNull': 'is not null',
-  'filter.quickPlaceholder': 'Quick filter: status = \'open\'',
+  'filter.quickPlaceholder': "Quick filter: status = 'open'",
   'filter.invalidExpression': 'Filter not applied: {error}',
   'filter.mixedLogic': 'Filter not applied: use one logical operator or the Filter editor.',
 
@@ -1332,6 +1333,7 @@ const en: Record<TranslationKey, string> = {
   'smartFilter.clear': 'Clear',
   'smartFilter.noFilters': 'No filter conditions parsed',
   'smartFilter.parsed': '{count} filter condition(s) parsed',
+  'smartFilter.invalidColumns': 'Review these fields before filtering: {columns}',
 
   // ── MCP Server ──
   'mcp.title': 'MCP Server',

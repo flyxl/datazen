@@ -23,6 +23,16 @@ const TAB_LABEL_KEYS: Record<
   pubsub: 'redis.pubsub',
 };
 
+function parseRedisDbIndex(database?: string): number {
+  const value = database?.trim().toLowerCase() ?? '';
+  const match = /^(?:db)?(\d+)$/.exec(value);
+  return match ? Number(match[1]) : 0;
+}
+
+function formatRedisDbName(database?: string): string {
+  return `db${parseRedisDbIndex(database)}`;
+}
+
 export function RedisConnectionView({
   // W3 host contract: `dbSessionId` = live runtime session id.
   dbSessionId,
@@ -34,7 +44,8 @@ export function RedisConnectionView({
 }: ConnectionViewProps) {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<ActiveTab>('items');
-  const [dbIndex, setDbIndex] = useState(0);
+  const [dbIndex, setDbIndex] = useState(() => parseRedisDbIndex(initialDatabase));
+  const [selectedDb, setSelectedDb] = useState(() => formatRedisDbName(initialDatabase));
   const [keySuggestions, setKeySuggestions] = useState<string[]>([]);
   const [pinnedNodeAddr, setPinnedNodeAddr] = useState(() => readPinnedNodeAddr(dbSessionId));
   // Panels stay mounted once visited so tab switches never lose their state
@@ -43,13 +54,18 @@ export function RedisConnectionView({
   const workbenchRef = useRef<RedisWorkbenchHandle>(null);
 
   useEffect(() => {
-    setDbIndex(0);
+    setDbIndex(parseRedisDbIndex(initialDatabase));
+    setSelectedDb(formatRedisDbName(initialDatabase));
     setKeySuggestions([]);
     setPinnedNodeAddr(readPinnedNodeAddr(dbSessionId));
-  }, [dbSessionId]);
+  }, [dbSessionId, initialDatabase]);
 
   const handleSelectDatabase = useCallback((dbName: string) => {
     workbenchRef.current?.selectDatabase(dbName);
+  }, []);
+
+  const handleDatabaseChange = useCallback((dbName: string) => {
+    setSelectedDb(dbName);
   }, []);
 
   useLayoutEffect(() => {
@@ -87,7 +103,13 @@ export function RedisConnectionView({
           </button>
         ))}
         <div className="flex-1" />
-        <span className="text-xs text-fg-muted">{connectionName}</span>
+        <span
+          className="max-w-[40%] truncate text-xs text-fg-muted"
+          title={`${connectionName} · ${selectedDb}`}
+          data-testid="redis-context"
+        >
+          {connectionName} · {selectedDb}
+        </span>
       </div>
 
       {visitedTabs.includes('items') && (
@@ -98,6 +120,7 @@ export function RedisConnectionView({
             initialDatabase={initialDatabase}
             hideSidebar={hideSidebar}
             onDbIndexChange={setDbIndex}
+            onDatabaseChange={handleDatabaseChange}
             onKeysChange={setKeySuggestions}
           />
         </div>
