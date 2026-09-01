@@ -200,9 +200,7 @@ async function pickSelect(testId: string, optionLabel: string) {
   const trigger = within(wrap).getAllByRole('button')[0];
   fireEvent.click(trigger);
   const list = await waitFor(() => {
-    const el = document.getElementById('dz-select-listbox');
-    if (!el) throw new Error('dz-select-listbox not open');
-    return el;
+    return screen.getByRole('listbox');
   });
   const option = Array.from(list.children).find((el) =>
     (el.textContent || '').includes(optionLabel),
@@ -230,7 +228,15 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     getTablesMock.mockReset();
     getTablesMock.mockResolvedValue([{ name: 'users', tableType: 'table' }]);
     invokeMock.mockImplementation(
-      async (cmd: string, args?: { connectionId?: string; database?: string | null; sourceDatabaseType?: string; targetDatabaseType?: string }) => {
+      async (
+        cmd: string,
+        args?: {
+          connectionId?: string;
+          database?: string | null;
+          sourceDatabaseType?: string;
+          targetDatabaseType?: string;
+        },
+      ) => {
         if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
         if (cmd === 'connect_dedicated') {
           const conn = args?.connectionId ?? 'unknown';
@@ -385,26 +391,29 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     const wrap = screen.getByTestId('data-sync-target');
     fireEvent.click(within(wrap).getAllByRole('button')[0]);
     const list = await waitFor(() => {
-      const el = document.getElementById('dz-select-listbox');
-      if (!el) throw new Error('dz-select-listbox not open');
-      return el;
+      return screen.getByRole('listbox');
     });
     const mysql = Array.from(list.children).find((el) => (el.textContent || '').includes('My Tgt'));
     expect(mysql?.textContent).toContain('common.unsupportedPair');
   });
 
   it('surfaces error when database list cannot be loaded', async () => {
-    invokeMock.mockImplementation(async (cmd: string, args?: { connectionId?: string; sourceDatabaseType?: string; targetDatabaseType?: string }) => {
-      if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
-      if (cmd === 'connect_dedicated') {
-        if (args?.connectionId === 'pg-tgt') throw new Error('refused');
-        return `dedicated-${args?.connectionId}-db`;
-      }
-      if (cmd === 'release_connection') return false;
-      if (cmd === 'connect') return `live-${args?.connectionId}`;
-      if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
-      return null;
-    });
+    invokeMock.mockImplementation(
+      async (
+        cmd: string,
+        args?: { connectionId?: string; sourceDatabaseType?: string; targetDatabaseType?: string },
+      ) => {
+        if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
+        if (cmd === 'connect_dedicated') {
+          if (args?.connectionId === 'pg-tgt') throw new Error('refused');
+          return `dedicated-${args?.connectionId}-db`;
+        }
+        if (cmd === 'release_connection') return false;
+        if (cmd === 'connect') return `live-${args?.connectionId}`;
+        if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
+        return null;
+      },
+    );
     render(<DataSyncWindow />);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
     await pickSelect('data-sync-source', 'PG Src');
@@ -487,7 +496,15 @@ describe('DataSyncWindow (Diff Workspace)', () => {
 
   it('disables Execute and shows targetReadOnly for read-only target', async () => {
     invokeMock.mockImplementation(
-      async (cmd: string, args?: { connectionId?: string; database?: string | null; sourceDatabaseType?: string; targetDatabaseType?: string }) => {
+      async (
+        cmd: string,
+        args?: {
+          connectionId?: string;
+          database?: string | null;
+          sourceDatabaseType?: string;
+          targetDatabaseType?: string;
+        },
+      ) => {
         if (cmd === 'get_connections') return [pgSrc, pgTgtReadOnly, mysqlTgt];
         if (cmd === 'connect_dedicated') {
           const conn = args?.connectionId ?? 'unknown';
@@ -527,7 +544,15 @@ describe('DataSyncWindow (Diff Workspace)', () => {
 
   it('clears mapping when source connection changes after compare', async () => {
     invokeMock.mockImplementation(
-      async (cmd: string, args?: { connectionId?: string; database?: string | null; sourceDatabaseType?: string; targetDatabaseType?: string }) => {
+      async (
+        cmd: string,
+        args?: {
+          connectionId?: string;
+          database?: string | null;
+          sourceDatabaseType?: string;
+          targetDatabaseType?: string;
+        },
+      ) => {
         if (cmd === 'get_connections') return [pgSrc, pgSrcAlt, pgTgt, mysqlTgt];
         if (cmd === 'connect_dedicated') {
           const conn = args?.connectionId ?? 'unknown';
