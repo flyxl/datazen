@@ -345,6 +345,7 @@ export function QueryPanel({
   const hasContextSelectors =
     (isPathHierarchy && namespaceRootsFrom(namespaceTree, pathAliases, databases).length > 0) ||
     (isMultiDb && databases.length > 0);
+  const [contextPath, setContextPath] = useState<string[]>([]);
   const queryToolbarExpandedMinWidthValue = useMemo(
     () =>
       queryToolbarExpandedMinWidth({
@@ -373,7 +374,6 @@ export function QueryPanel({
   const { ref: toolbarRef, compact: compactToolbar } = useCompactToolbar(
     queryToolbarExpandedMinWidthValue,
   );
-  const [contextPath, setContextPath] = useState<string[]>([]);
   const [executionSeq, setExecutionSeq] = useState(0);
   const editorSchema = useMemo(
     () =>
