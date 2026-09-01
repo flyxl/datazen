@@ -12,6 +12,7 @@ import {
   rankConnections,
   PINNED_GROUP_KEY,
   RECENT_GROUP_KEY,
+  connectionExpandKey,
   type ConnectionLocatorUsageState,
 } from '../../../lib/connectionLocator';
 import type { ConnectionEntry } from '../../../stores/activeConnectionStore';
@@ -208,11 +209,13 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
       const entry = activeConnections[conn.id];
       const status = entry?.status ?? 'idle';
       const isConnected = status === 'connected';
-      const isExpanded = expandedConnections.has(conn.id) || !!query;
+      const isExpanded =
+        expandedConnections.has(connectionExpandKey(groupName, conn.id)) || !!query;
 
       rows.push({
         type: 'connection',
         conn,
+        sectionGroup: groupName,
         isSelected: activeConnectionId === conn.id,
         status,
         expanded: (isExpanded && isConnected) || !!query,

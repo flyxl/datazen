@@ -17,27 +17,27 @@ describe('queryToolbarExpandedMinWidth', () => {
     expect(width).toBe(32 + 9 * 84 + 8 * 8 + 8);
   });
 
-  it('adds path-hierarchy selector width by level count', () => {
-    const withOneLevel = queryToolbarExpandedMinWidth({
+  it('reserves path-hierarchy selector width before namespace loads', () => {
+    const withoutTree = queryToolbarExpandedMinWidth({
       supportsExplain: false,
       hasContextSelectors: true,
       isPathHierarchy: true,
       isMultiDb: false,
-      namespaceTree: { hive: {} },
-      pathAliases: { hive: '558' },
+      namespaceTree: {},
+      pathAliases: {},
       databases: [],
       contextPath: [],
     });
-    const withTwoLevels = queryToolbarExpandedMinWidth({
+    const withoutSelectors = queryToolbarExpandedMinWidth({
       supportsExplain: false,
-      hasContextSelectors: true,
-      isPathHierarchy: true,
+      hasContextSelectors: false,
+      isPathHierarchy: false,
       isMultiDb: false,
-      namespaceTree: { hive: { snap: {} } },
-      pathAliases: { hive: '558' },
+      namespaceTree: {},
+      pathAliases: {},
       databases: [],
-      contextPath: ['hive'],
+      contextPath: [],
     });
-    expect(withTwoLevels).toBeGreaterThan(withOneLevel);
+    expect(withoutTree).toBeGreaterThan(withoutSelectors);
   });
 });

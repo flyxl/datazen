@@ -269,6 +269,7 @@ function SqlPanelContent({
         databaseType={panel.databaseType}
         database={panel.database}
         schema={panel.schema}
+        namespacePath={panel.namespacePath}
       />
     );
   }

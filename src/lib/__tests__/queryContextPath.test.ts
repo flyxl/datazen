@@ -3,7 +3,14 @@ import {
   inferSqlRelationPath,
   namespaceRootsFrom,
   resolveQueryContextPath,
+  buildPathHierarchyDatabasePin,
+  splitPathHierarchyDatabasePin,
+  autoCompletePathHierarchyPath,
+  buildPathHierarchySelectorSegments,
+  pathHierarchySelectorSegmentsForUi,
+  PATH_HIERARCHY_PLACEHOLDER_SELECTOR_SEGMENTS,
 } from '../queryContextPath';
+import type { SqlNamespace } from '../sqlNamespace';
 
 describe('inferSqlRelationPath', () => {
   it('reads a MySQL-qualified table', () => {
@@ -80,6 +87,15 @@ describe('resolveQueryContextPath', () => {
     ).toEqual(['trading_dev']);
   });
 
+  it('resolves long Superset table names', () => {
+    expect(
+      resolveQueryContextPath('SELECT * FROM hive.snap.afi_id_loan_t_afi_installment_order', {
+        databases: ['558:presto_afi_data'],
+        namespaceRoots: ['hive'],
+      }),
+    ).toEqual(['hive', 'snap']);
+  });
+
   it('switches path-hierarchy as soon as catalog. or catalog.schema.', () => {
     expect(
       resolveQueryContextPath('SELECT * FROM hive.', {
@@ -103,5 +119,101 @@ describe('namespaceRootsFrom', () => {
       'hive',
       'pg',
     ]);
+  });
+});
+
+describe('buildPathHierarchyDatabasePin', () => {
+  it('joins connection root with catalog/schema segments', () => {
+    expect(buildPathHierarchyDatabasePin('558:presto_afi_data', ['hive', 'snap'])).toBe(
+      '558:presto_afi_data/hive/snap',
+    );
+  });
+
+  it('returns root when namespace path is empty', () => {
+    expect(buildPathHierarchyDatabasePin('558', [])).toBe('558');
+  });
+});
+
+describe('splitPathHierarchyDatabasePin', () => {
+  it('splits fetch paths from table-open context', () => {
+    expect(splitPathHierarchyDatabasePin('558/hive/snap')).toEqual({
+      root: '558',
+      namespacePath: ['hive', 'snap'],
+    });
+  });
+});
+
+const supersetTree: SqlNamespace = {
+  hive: { snap: {}, default: {} },
+  pg: { public: {} },
+};
+
+describe('autoCompletePathHierarchyPath', () => {
+  it('auto-picks a single root and single schema', () => {
+    expect(autoCompletePathHierarchyPath({ hive: { snap: {} } }, {}, ['558:presto'], [])).toEqual([
+      'hive',
+      'snap',
+    ]);
+  });
+
+  it('extends through single-option children after user picks catalog', () => {
+    expect(autoCompletePathHierarchyPath({ hive: { snap: {} } }, {}, [], ['hive'])).toEqual([
+      'hive',
+      'snap',
+    ]);
+  });
+
+  it('returns null when multiple roots and path is empty', () => {
+    expect(autoCompletePathHierarchyPath(supersetTree, {}, [], [])).toBeNull();
+  });
+
+  it('returns null when path already complete', () => {
+    expect(
+      autoCompletePathHierarchyPath({ hive: { snap: {} } }, {}, [], ['hive', 'snap']),
+    ).toBeNull();
+  });
+});
+
+describe('buildPathHierarchySelectorSegments', () => {
+  it('renders labels for single-option levels', () => {
+    expect(
+      buildPathHierarchySelectorSegments({ hive: { snap: {} } }, {}, [], ['hive', 'snap']),
+    ).toEqual([
+      { kind: 'label', name: 'hive' },
+      { kind: 'label', name: 'snap' },
+    ]);
+  });
+
+  it('shows select when multiple schemas exist', () => {
+    expect(
+      buildPathHierarchySelectorSegments({ hive: { snap: {}, default: {} } }, {}, [], ['hive']),
+    ).toEqual([
+      { kind: 'label', name: 'hive' },
+      {
+        kind: 'select',
+        levelIndex: 1,
+        options: ['snap', 'default'],
+        value: '',
+      },
+    ]);
+  });
+
+  it('shows root select when multiple catalogs exist', () => {
+    expect(buildPathHierarchySelectorSegments(supersetTree, {}, [], [])).toEqual([
+      {
+        kind: 'select',
+        levelIndex: 0,
+        options: ['hive', 'pg'],
+        value: '',
+      },
+    ]);
+  });
+});
+
+describe('pathHierarchySelectorSegmentsForUi', () => {
+  it('falls back to catalog/schema placeholders when tree is empty', () => {
+    expect(pathHierarchySelectorSegmentsForUi({}, {}, [], [])).toEqual(
+      PATH_HIERARCHY_PLACEHOLDER_SELECTOR_SEGMENTS,
+    );
   });
 });

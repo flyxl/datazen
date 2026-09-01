@@ -33,7 +33,7 @@ export interface NavigatorTreeRowProps {
   onSelectTable: (tableName: string, schema?: string, database?: string) => void;
   onSelectKvDb?: (connectionId: string, dbName: string) => void;
   toggleGroup: (group: string) => void;
-  toggleConnection: (connectionId: string) => void;
+  toggleConnection: (connectionId: string, sectionGroup: string) => void;
   toggleDb: (connectionId: string, dbSessionId: string, dbName: string) => void;
   toggleSchema: (schemaKey: string) => void;
   toggleCategory: (catKey: string, catId: string, dbSessionId: string) => void;
@@ -41,7 +41,11 @@ export interface NavigatorTreeRowProps {
   ensureNamespacePath: (segments: string[], dbSessionId: string) => Promise<void>;
   setExpandedDbs: React.Dispatch<React.SetStateAction<Set<string>>>;
   handleGroupContextMenu: (e: React.MouseEvent, groupName: string) => void;
-  handleConnectionContextMenu: (e: React.MouseEvent, conn: ConnectionConfig) => void;
+  handleConnectionContextMenu: (
+    e: React.MouseEvent,
+    conn: ConnectionConfig,
+    sectionGroup: string,
+  ) => void;
   handleDatabaseContextMenu: (e: React.MouseEvent, dbName: string, connectionId: string) => void;
   handleSchemaContextMenu: (
     e: React.MouseEvent,
@@ -67,7 +71,7 @@ export interface NavigatorTreeRowProps {
     connectionId: string,
   ) => void;
   handleObjectContextMenu: (e: React.MouseEvent, name: string) => void;
-  handleConnectionClick: (conn: ConnectionConfig) => void;
+  handleConnectionClick: (conn: ConnectionConfig, sectionGroup: string) => void;
   handleConnectionDoubleClick: (conn: ConnectionConfig) => void;
   handleDragStart: (e: React.DragEvent, connId: string) => void;
   handleDragOver: (e: React.DragEvent, targetId: string) => void;
@@ -185,9 +189,9 @@ export function NavigatorTreeRow({
                 : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
             )}
             style={{ paddingLeft: depthPadding(row.depth) }}
-            onClick={() => handleConnectionClick(row.conn)}
+            onClick={() => handleConnectionClick(row.conn, row.sectionGroup)}
             onDoubleClick={() => handleConnectionDoubleClick(row.conn)}
-            onContextMenu={(e) => handleConnectionContextMenu(e, row.conn)}
+            onContextMenu={(e) => handleConnectionContextMenu(e, row.conn, row.sectionGroup)}
           >
             {row.isSelected && <span className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
             <button
@@ -196,7 +200,7 @@ export function NavigatorTreeRow({
               onClick={(e) => {
                 e.stopPropagation();
                 if (row.status === 'connected') {
-                  toggleConnection(row.conn.id);
+                  toggleConnection(row.conn.id, row.sectionGroup);
                 } else {
                   handleConnectionDoubleClick(row.conn);
                 }

@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { queryCommands } from '../commands/query';
 import { t } from '../locales/t';
+import { DB_REGISTRY } from '../lib/databaseTypes';
+import {
+  buildPathHierarchyDatabasePin,
+  inferSqlRelationPath,
+  namespaceRootsFrom,
+  resolveQueryContextPath,
+} from '../lib/queryContextPath';
 import type { DatabaseType, FavoriteQuery, QueryHistoryEntry, Value } from '../types';
 import type { ChartConfig } from '../types/chart';
 import type { TrendSeries } from '../lib/serverStatusTrends';
@@ -58,9 +65,11 @@ export interface ViewPanel extends PanelBase {
 export interface QueryPanel extends PanelBase {
   type: 'query';
   title: string;
-  /** Target namespace captured when a table action opens this query. */
+  /** Superset / path-hierarchy connection database (not catalog name). */
   database?: string;
   schema?: string;
+  /** Catalog/schema segments for path-hierarchy query context selectors. */
+  namespacePath?: string[];
 }
 
 export interface CreateTablePanel extends PanelBase {
@@ -165,11 +174,7 @@ function cancelAndCleanupExec(
       const exec = nextExec.get(panel.id);
       const capabilities =
         useActiveConnectionStore.getState().connections[panel.connectionId]?.capabilities;
-      if (
-        exec?.running &&
-        exec.executionId &&
-        getCancelCapability(capabilities) === 'supported'
-      ) {
+      if (exec?.running && exec.executionId && getCancelCapability(capabilities) === 'supported') {
         queryCommands.cancelQuery(panel.dbSessionId, exec.executionId).catch(() => {});
       }
       nextExec.delete(panel.id);
@@ -247,9 +252,38 @@ interface PanelActions {
  * selected database explicitly — the backend pins the session to it before
  * running unqualified SQL (BUG-001 fix).
  */
-function panelTargetDatabase(panel: QueryPanel): string | null {
+function panelTargetDatabase(panel: QueryPanel, sql?: string): string | null {
+  const schemaState = useSchemaStore.getState().schemas.get(panel.dbSessionId);
+  const meta = DB_REGISTRY[panel.databaseType];
+  if (meta?.namespaceEnsure === 'path-hierarchy') {
+    const databases = schemaState?.databases ?? [];
+    const pathAliases = schemaState?.pathAliases ?? {};
+    const namespaceTree = schemaState?.namespaceTree ?? {};
+    const roots = namespaceRootsFrom(namespaceTree, pathAliases, databases);
+    const rootSet = new Set(roots);
+    let fromSql = sql?.trim()
+      ? resolveQueryContextPath(sql, { databases, namespaceRoots: roots })
+      : null;
+    if (sql?.trim()) {
+      const relation = inferSqlRelationPath(sql);
+      if (relation.length >= 3) {
+        const inferred = relation.slice(0, -1);
+        if (!fromSql || inferred.length > fromSql.length) fromSql = inferred;
+      } else if (relation.length >= 2) {
+        const inferred = relation.slice(0, -1);
+        if (inferred[0] && rootSet.has(inferred[0])) {
+          if (!fromSql || inferred.length > fromSql.length) fromSql = inferred;
+        }
+      }
+    }
+    const namespacePath = fromSql ?? panel.namespacePath ?? [];
+    const root = (panel.database?.trim() || schemaState?.currentDatabase) ?? null;
+    if (!root && namespacePath.length === 0) return null;
+    if (!root) return namespacePath.join('/');
+    return buildPathHierarchyDatabasePin(root, namespacePath);
+  }
   if (panel.database?.trim()) return panel.database;
-  return useSchemaStore.getState().schemas.get(panel.dbSessionId)?.currentDatabase ?? null;
+  return schemaState?.currentDatabase ?? null;
 }
 
 /**
@@ -396,7 +430,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         params,
         getExec,
         setExec,
-        panelTargetDatabase(panel),
+        panelTargetDatabase(panel, sql),
         panelTargetSchema(panel),
       );
     } else {
@@ -406,7 +440,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         sql,
         getExec,
         setExec,
-        panelTargetDatabase(panel),
+        panelTargetDatabase(panel, sql),
         panelTargetSchema(panel),
       );
     }
@@ -429,7 +463,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         params,
         getExec,
         setExec,
-        panelTargetDatabase(panel),
+        panelTargetDatabase(panel, sql),
         panelTargetSchema(panel),
       );
     } else {
@@ -439,7 +473,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         sql,
         getExec,
         setExec,
-        panelTargetDatabase(panel),
+        panelTargetDatabase(panel, sql),
         panelTargetSchema(panel),
       );
     }

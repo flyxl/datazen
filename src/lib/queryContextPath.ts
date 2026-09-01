@@ -85,3 +85,122 @@ export function namespaceRootsFrom(
 export function pathsEqual(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((seg, i) => seg === b[i]);
 }
+
+/** Driver `use_database` pin for path-hierarchy namespaces (e.g. Superset `558/hive/snap`). */
+export function buildPathHierarchyDatabasePin(
+  rootDatabase: string,
+  namespacePath: readonly string[],
+): string {
+  const root = rootDatabase.trim();
+  if (!root) return namespacePath.join('/');
+  if (namespacePath.length === 0) return root;
+  return [root, ...namespacePath].join('/');
+}
+
+/** Inverse of {@link buildPathHierarchyDatabasePin} for table-open / panel bootstrap. */
+export function splitPathHierarchyDatabasePin(pin: string): {
+  root: string;
+  namespacePath: string[];
+} {
+  const trimmed = pin.trim();
+  if (!trimmed) return { root: '', namespacePath: [] };
+  const slash = trimmed.indexOf('/');
+  if (slash < 0) return { root: trimmed, namespacePath: [] };
+  return {
+    root: trimmed.slice(0, slash),
+    namespacePath: trimmed
+      .slice(slash + 1)
+      .split('/')
+      .filter(Boolean),
+  };
+}
+
+export type PathHierarchySelectorSegment =
+  | { kind: 'label'; name: string }
+  | { kind: 'select'; levelIndex: number; options: string[]; value: string };
+
+/**
+ * Extend `contextPath` through single-option namespace levels (auto-pick).
+ * Returns `null` when no change is needed.
+ */
+export function autoCompletePathHierarchyPath(
+  namespaceTree: SqlNamespace,
+  pathAliases: Record<string, string>,
+  databases: readonly string[],
+  contextPath: readonly string[],
+): string[] | null {
+  const roots = namespaceRootsFrom(namespaceTree, pathAliases, databases);
+  if (roots.length === 0) return null;
+
+  let extended = [...contextPath];
+  if (extended.length === 0 && roots.length === 1) {
+    extended = [roots[0]!];
+  }
+
+  while (true) {
+    const children = namespaceBranchChildNames(namespaceTree, extended);
+    if (children.length !== 1) break;
+    extended = [...extended, children[0]!];
+  }
+
+  if (extended.length === contextPath.length && pathsEqual(extended, contextPath)) {
+    return null;
+  }
+  return extended;
+}
+
+/** UI segments: single-option levels become labels; multi-option levels stay as selects. */
+export function buildPathHierarchySelectorSegments(
+  namespaceTree: SqlNamespace,
+  pathAliases: Record<string, string>,
+  databases: readonly string[],
+  contextPath: readonly string[],
+): PathHierarchySelectorSegment[] {
+  const roots = namespaceRootsFrom(namespaceTree, pathAliases, databases);
+  if (roots.length === 0) return [];
+
+  const segments: PathHierarchySelectorSegment[] = [];
+  const path: string[] = [];
+  let options = roots;
+
+  while (options.length > 0) {
+    const depth = path.length;
+    if (options.length === 1) {
+      const only = options[0]!;
+      segments.push({ kind: 'label', name: only });
+      path.push(only);
+    } else {
+      const value = contextPath[depth] ?? '';
+      segments.push({ kind: 'select', levelIndex: depth, options: [...options], value });
+      if (!value) break;
+      path.push(value);
+    }
+
+    const children = namespaceBranchChildNames(namespaceTree, path);
+    if (children.length === 0) break;
+    options = children;
+  }
+
+  return segments;
+}
+
+/** Placeholder UI while namespace tree is loading or has no roots yet. */
+export const PATH_HIERARCHY_PLACEHOLDER_SELECTOR_SEGMENTS: PathHierarchySelectorSegment[] = [
+  { kind: 'select', levelIndex: 0, options: [], value: '' },
+  { kind: 'select', levelIndex: 1, options: [], value: '' },
+];
+
+export function pathHierarchySelectorSegmentsForUi(
+  namespaceTree: SqlNamespace,
+  pathAliases: Record<string, string>,
+  databases: readonly string[],
+  contextPath: readonly string[],
+): PathHierarchySelectorSegment[] {
+  const segments = buildPathHierarchySelectorSegments(
+    namespaceTree,
+    pathAliases,
+    databases,
+    contextPath,
+  );
+  return segments.length > 0 ? segments : PATH_HIERARCHY_PLACEHOLDER_SELECTOR_SEGMENTS;
+}
