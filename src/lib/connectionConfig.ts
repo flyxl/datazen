@@ -1,9 +1,5 @@
 import type { ConnectionConfig, SshTunnelConfig } from '../types';
-import {
-  assertPlainConnectionConfig,
-  buildConnectionConfig,
-  clonePlainJson,
-} from './connectionFormModel';
+import { assertPlainConnectionConfig, clonePlainJson } from './connectionFormModel';
 
 export type { BuildConnectionConfigInput, ConnectionFormSnapshot } from './connectionFormModel';
 export {

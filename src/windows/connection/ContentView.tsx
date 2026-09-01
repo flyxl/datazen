@@ -714,7 +714,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
               isConnecting={!!connectingEntry}
               connectingName={connectingName}
               connectingDbType={connectingDbType}
-              onNewConnection={(defaultGroup) => openNewConnectionDialog(undefined, defaultGroup)}
+              onNewConnection={() => openNewConnectionDialog()}
               onNewQuery={() => handlers.handleNewQuery()}
               onCreateTable={handlers.handleCreateTable}
               onOpenErDiagram={() => handlers.handleOpenErDiagram()}
