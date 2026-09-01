@@ -74,6 +74,14 @@ async function clickMenuItemById(id: string) {
   }
 }
 
+async function hoverServerSubmenu() {
+  const trigger = await $('[data-testid="web-context-submenu-trigger-server-submenu"]');
+  if (await trigger.isExisting()) {
+    await trigger.moveTo();
+    await browser.pause(400);
+  }
+}
+
 /** Check if a menu item with given id exists. */
 async function hasMenuItemId(id: string): Promise<boolean> {
   const item = await $(`[data-testid="web-context-item-${id}"]`);
@@ -161,7 +169,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
 
   it('OPS-PROC-001: 右键连接菜单含「进程列表 / 服务器状态」', async () => {
     await rightClickConn();
-    const text = await menuText();
+    await hoverServerSubmenu();
     expect(await hasMenuItemId('process-list')).toBe(true);
     expect(await hasMenuItemId('server-status')).toBe(true);
     await dismissMenu();
@@ -169,6 +177,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
 
   it('OPS-PROC-002: 打开进程列表面板并出现至少一行', async () => {
     await rightClickConn();
+    await hoverServerSubmenu();
     await clickMenuItemById('process-list');
     await browser.pause(1500);
     expect(await $("[data-testid='process-list-view']").isExisting()).toBe(true);
@@ -177,6 +186,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
 
   it('OPS-PROC-003: 服务器仪表盘子标签（仪表盘 ⇄ 状态变量 ⇄ 服务器详情）展示关键内容与连接标识', async () => {
     await rightClickConn();
+    await hoverServerSubmenu();
     await clickMenuItemById('server-status');
     await browser.pause(1500);
     // 工具面板内显示当前连接名（Req#4）
@@ -216,6 +226,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
 
     // 切到进程列表面板
     await rightClickConn();
+    await hoverServerSubmenu();
     await clickMenuItemById('process-list');
     await browser.pause(1500);
 
@@ -299,6 +310,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
     if (!connItem) return;
     await browser.pause(400);
 
+    await hoverServerSubmenu();
     await clickMenuItemById('server-status');
     await browser.waitUntil(
       async () => (await $('body').getText()).includes(t('serverStatus.version')),
@@ -334,6 +346,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
     if (!connItem) return;
     await browser.pause(400);
 
+    await hoverServerSubmenu();
     await clickMenuItemById('process-list');
     await browser.waitUntil(
       async () => {

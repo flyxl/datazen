@@ -22,6 +22,7 @@ import {
   openBackupWindow,
 } from '../../../lib/windowManager';
 import { showWebContextMenu } from '../../../stores/contextMenuStore';
+import { usePanelStore } from '../../../stores/panelStore';
 import { useSchemaStore } from '../../../stores/schemaStore';
 import { buildQueryOpenContext } from '../../../lib/tableSqlActions';
 import type { ConnectionOpenTarget } from '../../../lib/connectionViews/types';
@@ -94,6 +95,7 @@ export interface NavigatorContextMenuDeps {
   setRenamingGroup: (name: string | null) => void;
   setRenameValue: (value: string) => void;
   setObjectFilterConn: (conn: ConnectionConfig | null) => void;
+  onNewConnection: (defaultGroup?: string) => void;
 }
 
 export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
@@ -138,6 +140,7 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
     setRenamingGroup,
     setRenameValue,
     setObjectFilterConn,
+    onNewConnection,
   } = deps;
 
   const contextLabels = useMemo(
@@ -169,6 +172,12 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
       serverStatus: t('common.serverStatus'),
       backup: t('common.backupDatabase'),
       restore: t('common.restoreDatabase'),
+      connection: t('main.ctx.connection'),
+      server: t('main.ctx.server'),
+      organize: t('main.ctx.organize'),
+      createNew: t('main.ctx.createNew'),
+      database: t('common.database'),
+      user: t('common.user'),
     }),
     [t],
   );
@@ -218,6 +227,7 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
             setNewGroupName('');
             setNewGroupDialogOpen(true);
           },
+          onNewConnection: () => onNewConnection(groupName || undefined),
           onRenameGroup: () => {
             setRenamingGroup(groupName);
             setRenameValue(formatGroupLabel(groupName, t));
@@ -246,6 +256,7 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
       setRenamingGroup,
       setRenameValue,
       t,
+      onNewConnection,
     ],
   );
 
@@ -299,9 +310,15 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
             },
             onQueryHistory: () => {
               onSelectConnection(conn.id);
-              viewActions?.openQueryHistory?.();
+              if (isConnected) {
+                viewActions?.openQueryHistory?.();
+              } else {
+                // Connection not open yet — ContentView hasn't mounted, so
+                // actionsRef.current is null. Store a pending intent; usePanelHandlers
+                // will consume it once the connection context becomes available.
+                usePanelStore.getState().setPendingQueryHistory(conn.id);
+              }
             },
-            onExecuteSqlFile: undefined,
             onCreateDatabase:
               dbMeta?.supportsCreateDatabase && isMultiDb
                 ? () => {

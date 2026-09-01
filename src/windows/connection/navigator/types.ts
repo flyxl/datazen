@@ -99,7 +99,7 @@ export interface ConnectionNavigatorTreeProps {
   onSelectTable: (tableName: string, schema?: string, database?: string) => void;
   onSelectKvDb?: (connectionId: string, dbName: string) => void;
   activeConnectionId: string | null;
-  onNewConnection: () => void;
+  onNewConnection: (defaultGroup?: string) => void;
   onRefresh?: () => void;
   onEditConnection: (connectionId: string) => void;
   onDeleteConnection: (connectionId: string) => void;

@@ -79,6 +79,14 @@ async function clickMenuItemById(id: string) {
   }
 }
 
+async function hoverServerSubmenu() {
+  const trigger = await $('[data-testid="web-context-submenu-trigger-server-submenu"]');
+  if (await trigger.isExisting()) {
+    await trigger.moveTo();
+    await browser.pause(400);
+  }
+}
+
 /** Check if a menu item with given id exists. */
 async function hasMenuItemId(id: string): Promise<boolean> {
   const item = await $(`[data-testid="web-context-item-${id}"]`);
@@ -116,7 +124,7 @@ describe('运维 §5.4: 备份/还原 预填 (OPS-DDL-BACKUP)', () => {
 
   it('OPS-DDL-001: 连接菜单含「备份 / 还原 / 服务器状态 / 进程列表」', async () => {
     await rightClick('[data-conn-item]');
-    const text = await menuText();
+    await hoverServerSubmenu();
     expect(await hasMenuItemId('backup')).toBe(true);
     expect(await hasMenuItemId('restore')).toBe(true);
     expect(await hasMenuItemId('process-list')).toBe(true);
@@ -144,7 +152,7 @@ describe('运维 §5.4: 备份/还原 预填 (OPS-DDL-BACKUP)', () => {
 
   it('OPS-DDL-003: 点击「备份」应打开备份子窗口', async () => {
     await rightClick('[data-conn-item]');
-    const text = await menuText();
+    await hoverServerSubmenu();
     if (!(await hasMenuItemId('backup'))) {
       console.log('No backup menu item on connection node, skipping OPS-DDL-003');
       await dismissMenu();

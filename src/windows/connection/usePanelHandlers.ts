@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type MouseEvent } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 import type { ConnectionOpenTarget } from '../../lib/connectionViews/types';
 import { useSchemaStore } from '../../stores/schemaStore';
@@ -424,6 +424,15 @@ export function usePanelHandlers({
     }
     void usePanelStore.getState().openQueryHistory(sidebarConnCtx.connectionId);
   }, [sidebarConnCtx, connPanels, setActivePanel, handleNewQuery]);
+
+  // Consume pending query-history intent set by the navigator context menu
+  // when the connection was not yet open at click time.
+  useEffect(() => {
+    const pendingId = usePanelStore.getState().pendingQueryHistoryConnectionId;
+    if (!pendingId || !sidebarConnCtx || sidebarConnCtx.connectionId !== pendingId) return;
+    usePanelStore.getState().setPendingQueryHistory(null);
+    handleOpenQueryHistory();
+  }, [sidebarConnCtx, handleOpenQueryHistory]);
 
   const handleClosePanel = useCallback(
     (panelId: string) => {

@@ -816,7 +816,7 @@ export function ConnectionPage() {
                 onSelectConnection={handleSelectConnection}
                 onSelectTable={handleSelectTable}
                 onSelectKvDb={handleSelectKvDb}
-                onNewConnection={() => openNewConnectionDialog()}
+                onNewConnection={(defaultGroup) => openNewConnectionDialog(undefined, defaultGroup)}
                 onRefresh={handleRefresh}
                 onExportConnections={() => openConnectionShareDialog('export')}
                 onImportConnections={() => openConnectionShareDialog('import')}

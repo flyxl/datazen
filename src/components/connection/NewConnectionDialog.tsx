@@ -31,6 +31,7 @@ const ALL_DB_TYPES: { value: DatabaseType; label: string }[] = sortDbTypesByPopu
 export interface NewConnectionDialogProps {
   open: boolean;
   editId?: string | null;
+  defaultGroup?: string | null;
   onClose?: () => void;
   onSaved?: () => void;
 }
@@ -38,6 +39,7 @@ export interface NewConnectionDialogProps {
 export function NewConnectionDialog({
   open,
   editId = null,
+  defaultGroup = null,
   onClose,
   onSaved,
 }: NewConnectionDialogProps) {
@@ -75,6 +77,7 @@ export function NewConnectionDialog({
 
   const form = useConnectionForm({
     editId,
+    defaultGroup,
     existingConnections: connections,
     onAfterSave: () => {
       onSaved?.();
@@ -223,12 +226,14 @@ export function NewConnectionDialog({
 export function ConnectionEditorDialogHost() {
   const open = useConnectionEditorStore((s) => s.open);
   const editId = useConnectionEditorStore((s) => s.editId);
+  const defaultGroup = useConnectionEditorStore((s) => s.defaultGroup);
   const openSeq = useConnectionEditorStore((s) => s.openSeq);
   return (
     <NewConnectionDialog
       key={open ? `${editId ?? 'create'}-${openSeq}` : 'closed'}
       open={open}
       editId={editId}
+      defaultGroup={defaultGroup}
     />
   );
 }

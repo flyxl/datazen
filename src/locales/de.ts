@@ -1221,6 +1221,12 @@ const translations = {
   'common.objectFilter': 'Objektfilter',
   'common.processList': 'Prozessliste',
   'common.serverStatus': 'Serverstatus',
+  'common.database': 'Datenbank',
+  'common.user': 'Benutzer',
+  'main.ctx.connection': 'Verbindung',
+  'main.ctx.organize': 'Verbindung verwalten',
+  'main.ctx.createNew': 'Neu',
+  'main.ctx.server': 'Server',
   'main.confirmDeleteGroup':
     'Möchten Sie die Gruppe „{name}“ wirklich löschen? Verbindungen in dieser Gruppe werden in „Nicht gruppiert“ verschoben.',
   'nav.plugins': 'Plugins',

@@ -40,4 +40,30 @@ describe('queryToolbarExpandedMinWidth', () => {
     });
     expect(withoutTree).toBeGreaterThan(withoutSelectors);
   });
+
+  it('reserves compact multi-db selector width', () => {
+    const withMultiDb = queryToolbarExpandedMinWidth({
+      supportsExplain: false,
+      hasContextSelectors: true,
+      isPathHierarchy: false,
+      isMultiDb: true,
+      namespaceTree: {},
+      pathAliases: {},
+      databases: ['postgres'],
+      contextPath: [],
+      currentDatabase: 'postgres',
+    });
+    const withoutSelectors = queryToolbarExpandedMinWidth({
+      supportsExplain: false,
+      hasContextSelectors: false,
+      isPathHierarchy: false,
+      isMultiDb: false,
+      namespaceTree: {},
+      pathAliases: {},
+      databases: [],
+      contextPath: [],
+    });
+    expect(withMultiDb).toBeGreaterThan(withoutSelectors);
+    expect(withMultiDb - withoutSelectors).toBeLessThan(140);
+  });
 });

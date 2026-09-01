@@ -125,6 +125,12 @@ const zhCN = {
   'common.serverStatus': '服务器状态',
   'common.backupDatabase': '备份数据库',
   'common.restoreDatabase': '恢复数据库',
+  'common.database': '数据库',
+  'common.user': '用户',
+  'main.ctx.connection': '连接',
+  'main.ctx.server': '服务器',
+  'main.ctx.organize': '管理连接',
+  'main.ctx.createNew': '新建',
   'main.ctx.confirmDeleteConnection': '确定要删除连接「{name}」吗？此操作不可撤消。',
 
   // ── Main / Group Dialog ──

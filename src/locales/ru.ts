@@ -1215,6 +1215,12 @@ const translations = {
   'common.objectFilter': 'Фильтр объектов',
   'common.processList': 'Список процессов',
   'common.serverStatus': 'Статус сервера',
+  'common.database': 'База данных',
+  'common.user': 'Пользователь',
+  'main.ctx.connection': 'Подключение',
+  'main.ctx.organize': 'Управление подключением',
+  'main.ctx.createNew': 'Новое',
+  'main.ctx.server': 'Сервер',
   'main.confirmDeleteGroup':
     'Вы уверены, что хотите удалить группу «{name}»? Соединения из этой группы будут перемещены в разгруппированные.',
   'nav.plugins': 'Плагины',

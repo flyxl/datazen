@@ -180,8 +180,48 @@ describe('groupConnectionsWithRecentSections', () => {
     expect(sections.flatMap((section) => section.connections).map((item) => item.id)).toEqual([
       'pinned',
       'recent',
+      'pinned',
       'recent',
       'grouped',
+    ]);
+  });
+
+  it('keeps pinned connections in their original group as well as the pinned section', () => {
+    const conns = [
+      connection({ id: 'pinned-a', name: 'Pinned A', pinned: true, group: 'prod' }),
+      connection({ id: 'pinned-b', name: 'Pinned B', pinned: true, group: 'prod' }),
+    ];
+
+    const sections = groupConnectionsWithRecentSections(conns, ['prod']);
+
+    expect(sections.map((section) => section.group)).toEqual([PINNED_GROUP_KEY, 'prod']);
+    expect(
+      sections.find((section) => section.group === 'prod')?.connections.map((item) => item.id),
+    ).toEqual(['pinned-a', 'pinned-b']);
+  });
+
+  it('keeps pinned recent connections in the recent section as well', () => {
+    const conns = [
+      connection({
+        id: 'pinned-recent',
+        name: 'Pinned Recent',
+        pinned: true,
+        group: 'prod',
+        lastConnectedAt: '2026-08-30T10:00:00Z',
+      }),
+    ];
+
+    const sections = groupConnectionsWithRecentSections(conns, ['prod']);
+
+    expect(sections.map((section) => section.group)).toEqual([
+      PINNED_GROUP_KEY,
+      RECENT_GROUP_KEY,
+      'prod',
+    ]);
+    expect(sections.flatMap((section) => section.connections).map((item) => item.id)).toEqual([
+      'pinned-recent',
+      'pinned-recent',
+      'pinned-recent',
     ]);
   });
 

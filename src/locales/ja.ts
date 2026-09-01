@@ -1209,6 +1209,12 @@ const translations = {
   'common.objectFilter': 'オブジェクトフィルター',
   'common.processList': 'プロセスリスト',
   'common.serverStatus': 'サーバーステータス',
+  'common.database': 'データベース',
+  'common.user': 'ユーザー',
+  'main.ctx.connection': '接続',
+  'main.ctx.organize': '接続を管理',
+  'main.ctx.createNew': '新規作成',
+  'main.ctx.server': 'サーバー',
   'main.confirmDeleteGroup':
     'グループ「{name}」を削除してもよろしいですか？このグループ内の接続は未グループに移動されます。',
   'nav.plugins': 'プラグイン',

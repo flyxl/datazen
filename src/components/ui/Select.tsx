@@ -22,6 +22,8 @@ export interface SelectProps {
   readonly searchable?: boolean;
   /** Shrink trigger width to the current label/query; pair with `max-w-*` on `className`. */
   readonly fitContent?: boolean;
+  /** Keep the option list readable when a compact trigger is used. */
+  readonly listMinWidth?: number;
 }
 
 const LIST_ID = 'dz-select-listbox';
@@ -102,6 +104,7 @@ export function Select({
   title,
   searchable = false,
   fitContent = false,
+  listMinWidth,
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const [highlightIdx, setHighlightIdx] = useState(-1);
@@ -130,12 +133,18 @@ export function Select({
     const spaceAbove = rect.top;
     const listHeight = Math.min(filteredOptions.length * 34 + 8, 240);
     const goUp = spaceBelow < listHeight && spaceAbove > spaceBelow;
+    const preferredWidth = Math.max(rect.width, listMinWidth ?? 0);
+    const availableRight = globalThis.innerWidth - rect.left - 8;
+    const width =
+      availableRight > 0
+        ? Math.min(preferredWidth, Math.max(rect.width, availableRight))
+        : preferredWidth;
     setPos({
       top: goUp ? rect.top - listHeight - 4 : rect.bottom + 4,
       left: rect.left,
-      width: rect.width,
+      width,
     });
-  }, [filteredOptions.length]);
+  }, [filteredOptions.length, listMinWidth]);
 
   const pickHighlightIndex = useCallback(
     (list: readonly SelectOption[]) => {

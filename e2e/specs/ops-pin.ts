@@ -46,10 +46,12 @@ async function menuText(): Promise<string> {
   return menu.getText();
 }
 
-/** 点击菜单项（按文本包含匹配）。 */
+/** 点击菜单或子菜单项（按文本包含匹配）。 */
 async function clickMenuItem(label: string) {
   await browser.execute((lbl: string) => {
-    const menuItems = document.querySelectorAll('[data-testid="web-context-menu"] button');
+    const menuItems = document.querySelectorAll(
+      '[data-testid="web-context-menu"] button, [data-testid="web-context-submenu"] button',
+    );
     for (const item of menuItems) {
       if (item.textContent?.includes(lbl)) {
         (item as HTMLElement).click();
@@ -58,6 +60,15 @@ async function clickMenuItem(label: string) {
     }
   }, label);
   await browser.pause(500);
+}
+
+/** Hover a submenu trigger to open its submenu. */
+async function hoverOrganizeSubmenu() {
+  const trigger = await $('[data-testid="web-context-submenu-trigger-organize-submenu"]');
+  if (await trigger.isExisting()) {
+    await trigger.moveTo();
+    await browser.pause(400);
+  }
 }
 
 /** 关闭菜单。 */
@@ -138,9 +149,33 @@ describe('运维 §5.4: 连接 Pin 置顶 (OPS-PIN)', () => {
 
   it('OPS-PIN-001: 右键连接菜单包含 Pin / 对象过滤 / 进程列表', async () => {
     await rightClickConn(PIN_CONN_A);
-    const text = await menuText();
-    expect(text).toContain(t('main.ctx.pinConnection'));
+    expect(
+      await $('[data-testid="web-context-submenu-trigger-organize-submenu"]').isExisting(),
+    ).toBe(true);
+    expect(
+      await $('[data-testid="web-context-submenu-trigger-connection-submenu"]').isExisting(),
+    ).toBe(true);
+    expect(await $('[data-testid="web-context-submenu-trigger-server-submenu"]').isExisting()).toBe(
+      true,
+    );
+
+    await hoverOrganizeSubmenu();
+    const organizeText = await browser.execute(() => {
+      const sub = document.querySelector('[data-testid="web-context-submenu"]');
+      return sub?.textContent ?? '';
+    });
+    expect(organizeText).toContain(t('main.ctx.pinConnection'));
+
+    const connectionTrigger = await $(
+      '[data-testid="web-context-submenu-trigger-connection-submenu"]',
+    );
+    await connectionTrigger.moveTo();
+    await browser.pause(400);
     expect(await hasMenuItemId('object-filter')).toBe(true);
+
+    const serverTrigger = await $('[data-testid="web-context-submenu-trigger-server-submenu"]');
+    await serverTrigger.moveTo();
+    await browser.pause(400);
     expect(await hasMenuItemId('process-list')).toBe(true);
     expect(await hasMenuItemId('server-status')).toBe(true);
     await dismissMenu();
@@ -151,8 +186,7 @@ describe('运维 §5.4: 连接 Pin 置顶 (OPS-PIN)', () => {
     expect(beforeA).toBeGreaterThanOrEqual(0);
 
     await rightClickConn(PIN_CONN_A);
-    const text = await menuText();
-    expect(text).toContain(t('main.ctx.pinConnection'));
+    await hoverOrganizeSubmenu();
     await clickMenuItem(t('main.ctx.pinConnection'));
     await browser.pause(800);
 
@@ -163,14 +197,19 @@ describe('运维 §5.4: 连接 Pin 置顶 (OPS-PIN)', () => {
 
   it('OPS-PIN-003: Pin 后菜单项变更为 Unpin', async () => {
     await rightClickConn(PIN_CONN_A);
-    const text = await menuText();
-    expect(text).toContain(t('main.ctx.unpinConnection'));
-    expect(text).not.toContain(t('main.ctx.pinConnection'));
+    await hoverOrganizeSubmenu();
+    const submenuText = await browser.execute(() => {
+      const sub = document.querySelector('[data-testid="web-context-submenu"]');
+      return sub?.textContent ?? '';
+    });
+    expect(submenuText).toContain(t('main.ctx.unpinConnection'));
+    expect(submenuText).not.toContain(t('main.ctx.pinConnection'));
     await dismissMenu();
   });
 
   it('OPS-PIN-004: Unpin 后恢复原顺序', async () => {
     await rightClickConn(PIN_CONN_A);
+    await hoverOrganizeSubmenu();
     await clickMenuItem(t('main.ctx.unpinConnection'));
     await browser.pause(800);
 

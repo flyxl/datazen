@@ -364,6 +364,7 @@ export function QueryPanel({
         pathAliases,
         databases,
         contextPath,
+        currentDatabase: selectedDatabase,
       }),
     [
       supportsExplain,
@@ -375,6 +376,7 @@ export function QueryPanel({
       pathAliases,
       databases,
       contextPath,
+      selectedDatabase,
     ],
   );
   const { ref: toolbarRef, compact: compactToolbar } = useCompactToolbar(

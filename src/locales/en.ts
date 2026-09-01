@@ -131,6 +131,12 @@ const en: Record<TranslationKey, string> = {
   'common.serverStatus': 'Server Status',
   'common.backupDatabase': 'Backup Database',
   'common.restoreDatabase': 'Restore Database',
+  'common.database': 'Database',
+  'common.user': 'User',
+  'main.ctx.connection': 'Connection',
+  'main.ctx.server': 'Server',
+  'main.ctx.organize': 'Manage Connection',
+  'main.ctx.createNew': 'Create New',
   'main.ctx.confirmDeleteConnection':
     'Are you sure you want to delete connection "{name}"? This cannot be undone.',
 

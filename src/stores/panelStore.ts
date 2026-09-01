@@ -206,6 +206,8 @@ interface PanelState {
   queryFavorites: FavoriteQuery[];
   historyVisible: boolean;
   favoritesVisible: boolean;
+  /** Connection id waiting for query-history to open once ContentView mounts. */
+  pendingQueryHistoryConnectionId: string | null;
 }
 
 interface PanelActions {
@@ -237,6 +239,7 @@ interface PanelActions {
 
   loadHistory: (connectionId?: string) => Promise<void>;
   openQueryHistory: (connectionId?: string) => Promise<void>;
+  setPendingQueryHistory: (connectionId: string | null) => void;
   toggleHistory: () => void;
   loadFavorites: (connectionId?: string) => Promise<void>;
   addFavorite: (title: string, sql: string, connectionId: string) => Promise<void>;
@@ -305,6 +308,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
   queryFavorites: [],
   historyVisible: false,
   favoritesVisible: false,
+  pendingQueryHistoryConnectionId: null,
 
   // ── Panel CRUD ──────────────────────────────────────────────
 
@@ -570,6 +574,10 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     await get().loadHistory(connectionId);
   },
 
+  setPendingQueryHistory: (connectionId) => {
+    set({ pendingQueryHistoryConnectionId: connectionId });
+  },
+
   toggleHistory: () => set((s) => ({ historyVisible: !s.historyVisible })),
 
   loadFavorites: async (connectionId) => {
@@ -602,6 +610,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
       queryFavorites: [],
       historyVisible: false,
       favoritesVisible: false,
+      pendingQueryHistoryConnectionId: null,
     });
   },
 }));

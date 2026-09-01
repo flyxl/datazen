@@ -32,6 +32,19 @@ async function clickMenuItemById(id: string) {
   }
 }
 
+async function hoverConnectionSubmenu() {
+  const trigger = await $('[data-testid="web-context-submenu-trigger-connection-submenu"]');
+  if (await trigger.isExisting()) {
+    await trigger.moveTo();
+    await browser.pause(400);
+  }
+}
+
+async function hasMenuItemId(id: string): Promise<boolean> {
+  const item = await $(`[data-testid="web-context-item-${id}"]`);
+  return item.isExisting();
+}
+
 async function rightClickConn(connName: string | undefined) {
   const ok = await browser.execute((name: string | undefined) => {
     const items = Array.from(document.querySelectorAll('[data-conn-item]'));
@@ -178,6 +191,7 @@ async function clickDialogSave() {
 async function openObjectFilterDialog(connName = E2E_PG_CONN_NAME) {
   const ok = await rightClickConn(connName);
   expect(ok).toBe(true);
+  await hoverConnectionSubmenu();
   await clickMenuItemById('object-filter');
   await browser.pause(500);
   await expect(await $(`[role="dialog"]`)).toBeDisplayed();
@@ -229,7 +243,7 @@ describe('运维 §5.4: 对象过滤器 (OPS-FILTER)', () => {
   it('OPS-FILTER-001: 右键连接菜单含「对象过滤」并打开对话框', async () => {
     const ok = await rightClickConn(E2E_PG_CONN_NAME);
     expect(ok).toBe(true);
-    const text = await menuText();
+    await hoverConnectionSubmenu();
     expect(await hasMenuItemId('object-filter')).toBe(true);
     await clickMenuItemById('object-filter');
     // 对话框打开（含标题文案）

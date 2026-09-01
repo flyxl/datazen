@@ -161,8 +161,8 @@ function openSingletonWindow(label: string, options: OpenWindowOptions) {
 // ── In-app dialogs (main window) ────────────────────────────────────
 
 /** Open the new/edit connection dialog in the main window. */
-export function openNewConnectionDialog(editId?: string) {
-  void focusMainWindow().then(() => openConnectionEditorDialog(editId));
+export function openNewConnectionDialog(editId?: string, defaultGroup?: string) {
+  void focusMainWindow().then(() => openConnectionEditorDialog(editId, defaultGroup));
 }
 
 // ── Singleton windows ───────────────────────────────────────────────

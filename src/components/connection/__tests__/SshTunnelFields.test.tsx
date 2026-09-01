@@ -38,7 +38,7 @@ function Harness({ supportsSSH = true }: { supportsSSH?: boolean }) {
   const [sshJumpKeyPath, setSshJumpKeyPath] = reactUseState('');
   const [sshJumpPassphrase, setSshJumpPassphrase] = reactUseState('');
   const form = {
-    meta: { supportsSSH },
+    supportsSSH,
     sshEnabled,
     setSshEnabled,
     sshHost: '',

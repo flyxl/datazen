@@ -92,6 +92,21 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await captureJourneyStep('sqlite-fields', 0, true);
   });
 
+  it('切换数据库类型后切回应保留各类型的连接名 (CM-002)', async () => {
+    await openNewConnectionDialogFromUi();
+    const nameInput = await $('input[placeholder="例如：主数据库"]');
+    await nameInput.setValue('E2E-PG-快照');
+    await selectNewConnectionDriver('mysql');
+    await browser.pause(200);
+    await nameInput.setValue('E2E-MySQL-快照');
+    await selectNewConnectionDriver('postgresql');
+    await browser.pause(200);
+    expect(await nameInput.getValue()).toBe('E2E-PG-快照');
+    await selectNewConnectionDriver('mysql');
+    await browser.pause(200);
+    expect(await nameInput.getValue()).toBe('E2E-MySQL-快照');
+  });
+
   it('切换数据库类型为 MySQL 应更新默认端口 (CM-002)', async () => {
     await openNewConnectionDialogFromUi();
     await selectNewConnectionDriver('mysql');

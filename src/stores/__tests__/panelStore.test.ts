@@ -864,5 +864,24 @@ describe('panelStore', () => {
     expect(state.queryFavorites).toHaveLength(0);
     expect(state.historyVisible).toBe(false);
     expect(state.favoritesVisible).toBe(false);
+    expect(state.pendingQueryHistoryConnectionId).toBeNull();
+  });
+
+  // ── pendingQueryHistoryConnectionId ────────────────────────────
+
+  it('setPendingQueryHistory stores and clears connection id', () => {
+    expect(usePanelStore.getState().pendingQueryHistoryConnectionId).toBeNull();
+
+    usePanelStore.getState().setPendingQueryHistory('cfg-pg');
+    expect(usePanelStore.getState().pendingQueryHistoryConnectionId).toBe('cfg-pg');
+
+    usePanelStore.getState().setPendingQueryHistory(null);
+    expect(usePanelStore.getState().pendingQueryHistoryConnectionId).toBeNull();
+  });
+
+  it('reset clears pendingQueryHistoryConnectionId', () => {
+    usePanelStore.getState().setPendingQueryHistory('cfg-pg');
+    usePanelStore.getState().reset();
+    expect(usePanelStore.getState().pendingQueryHistoryConnectionId).toBeNull();
   });
 });

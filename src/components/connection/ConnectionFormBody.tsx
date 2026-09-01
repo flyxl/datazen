@@ -67,7 +67,7 @@ export function ConnectionFormBody({
                     label: t(i18nKey),
                   })),
                 ]}
-                onChange={form.setGroup}
+                onChange={(value) => form.setGroup(value)}
               />
             </div>
           </>

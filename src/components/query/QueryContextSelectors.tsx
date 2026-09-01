@@ -29,9 +29,54 @@ function levelLabelKey(
   return 'query.schema';
 }
 
-const PATH_HIERARCHY_SELECT_CLASS =
-  '!h-6 !text-[11px] shrink-0 !w-auto !min-w-[4rem] !max-w-[5.5rem]';
-const PATH_HIERARCHY_SELECTORS_MIN_WIDTH = 'min-w-[9rem]';
+const QUERY_CONTEXT_COMPACT_SELECT_CLASS =
+  '!h-6 !text-[11px] shrink-0 !w-auto !min-w-[4rem] !max-w-[7rem]';
+const QUERY_CONTEXT_SELECTORS_MIN_WIDTH = 'min-w-0';
+const QUERY_CONTEXT_OPTIONS_MIN_WIDTH = 176;
+
+function QueryContextSelectorsShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className={`flex shrink-0 items-center gap-0.5 ${QUERY_CONTEXT_SELECTORS_MIN_WIDTH}`}
+      data-testid="query-context-selectors"
+    >
+      <Database className="h-3.5 w-3.5 shrink-0 text-fg-muted" />
+      {children}
+    </div>
+  );
+}
+
+function QueryContextCompactSelect({
+  value,
+  options,
+  placeholderKey,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  options: readonly string[];
+  placeholderKey: 'query.database' | 'query.catalog' | 'query.schema';
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const { t } = useI18n();
+  const placeholder = t(placeholderKey);
+
+  return (
+    <Select
+      value={value}
+      options={options.map((name) => ({ value: name, label: name }))}
+      onChange={onChange}
+      placeholder={placeholder}
+      className={QUERY_CONTEXT_COMPACT_SELECT_CLASS}
+      title={placeholder}
+      searchable
+      fitContent
+      listMinWidth={QUERY_CONTEXT_OPTIONS_MIN_WIDTH}
+      disabled={disabled}
+    />
+  );
+}
 
 export function QueryContextSelectors({
   isMultiDb,
@@ -44,8 +89,6 @@ export function QueryContextSelectors({
   contextSchema,
   onSelectLevel,
 }: QueryContextSelectorsProps) {
-  const { t } = useI18n();
-
   if (isPathHierarchy) {
     const segments = pathHierarchySelectorSegmentsForUi(
       namespaceTree,
@@ -55,11 +98,7 @@ export function QueryContextSelectors({
     );
 
     return (
-      <div
-        className={`flex shrink-0 items-center gap-0.5 ${PATH_HIERARCHY_SELECTORS_MIN_WIDTH}`}
-        data-testid="query-context-selectors"
-      >
-        <Database className="h-3.5 w-3.5 shrink-0 text-fg-muted" />
+      <QueryContextSelectorsShell>
         {segments.map((segment, index) => (
           <Fragment
             key={
@@ -82,37 +121,30 @@ export function QueryContextSelectors({
                 {segment.name}
               </span>
             ) : (
-              <Select
+              <QueryContextCompactSelect
                 value={segment.value}
-                options={segment.options.map((name) => ({ value: name, label: name }))}
-                onChange={(value) => onSelectLevel(segment.levelIndex, value)}
-                placeholder={t(levelLabelKey(segment.levelIndex, true))}
-                className={PATH_HIERARCHY_SELECT_CLASS}
-                title={t(levelLabelKey(segment.levelIndex, true))}
-                searchable
-                fitContent
+                options={segment.options}
+                placeholderKey={levelLabelKey(segment.levelIndex, true)}
                 disabled={segment.options.length === 0}
+                onChange={(value) => onSelectLevel(segment.levelIndex, value)}
               />
             )}
           </Fragment>
         ))}
-      </div>
+      </QueryContextSelectorsShell>
     );
   }
 
   if ((!isMultiDb || databases.length === 0) && !contextSchema) return null;
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5" data-testid="query-context-selectors">
-      <Database className="h-3.5 w-3.5 text-fg-muted" />
+    <QueryContextSelectorsShell>
       {isMultiDb && databases.length > 0 && (
-        <Select
+        <QueryContextCompactSelect
           value={currentDatabase ?? ''}
-          options={databases.map((db) => ({ value: db, label: db }))}
+          options={databases}
+          placeholderKey="query.database"
           onChange={(db) => onSelectLevel(0, db)}
-          className="!h-6 !text-[11px] max-w-[180px]"
-          title={t('query.database')}
-          searchable
         />
       )}
       {contextSchema && (
@@ -124,6 +156,6 @@ export function QueryContextSelectors({
           / {contextSchema}
         </span>
       )}
-    </div>
+    </QueryContextSelectorsShell>
   );
 }

@@ -289,6 +289,25 @@ vi.mock('../../../stores/activeConnectionStore', () => ({
   ),
 }));
 
+const panelStoreState = {
+  pendingQueryHistoryConnectionId: null as string | null,
+};
+const mockSetPendingQueryHistory = vi.fn((id: string | null) => {
+  panelStoreState.pendingQueryHistoryConnectionId = id;
+});
+vi.mock('../../../stores/panelStore', () => ({
+  usePanelStore: Object.assign(
+    (sel: (s: typeof panelStoreState) => unknown) => sel(panelStoreState),
+    {
+      getState: () => ({
+        pendingQueryHistoryConnectionId: panelStoreState.pendingQueryHistoryConnectionId,
+        setPendingQueryHistory: mockSetPendingQueryHistory,
+      }),
+    },
+  ),
+  nextPanelId: (prefix: string) => `panel-${prefix}-test`,
+}));
+
 async function ensureDbTableVisible(
   findByText: (text: string) => Promise<HTMLElement>,
   queryAllByText: (text: string) => HTMLElement[],
@@ -506,6 +525,8 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  panelStoreState.pendingQueryHistoryConnectionId = null;
+  mockSetPendingQueryHistory.mockClear();
   Object.defineProperty(window.navigator, 'clipboard', {
     value: { writeText: mockWriteText },
     configurable: true,
@@ -910,14 +931,24 @@ function lastMenuItems(): MenuLeaf[] {
   return (call ?? []) as unknown as MenuLeaf[];
 }
 
+/** Recursively find a menu item by id, searching through submenus. */
+function findMenuItem(items: MenuLeaf[], id: string): MenuLeaf | undefined {
+  for (const item of items) {
+    if (item.id === id) return item;
+    if (item.items) {
+      const found = findMenuItem(item.items, id);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
 async function openMenuAndPick(element: HTMLElement, actionId: string): Promise<void> {
   fireEvent.contextMenu(element);
   await waitFor(() => {
-    expect(lastMenuItems().some((i) => i.id === actionId)).toBe(true);
+    expect(findMenuItem(lastMenuItems(), actionId)).toBeDefined();
   });
-  lastMenuItems()
-    .find((i) => i.id === actionId)
-    ?.action?.();
+  findMenuItem(lastMenuItems(), actionId)?.action?.();
 }
 
 function searchInput(container: HTMLElement): HTMLInputElement {
@@ -2474,9 +2505,9 @@ describe('ConnectionNavigatorTree connection context menu actions', () => {
     // Submenu: move to another group.
     fireEvent.contextMenu(row);
     await waitFor(() => {
-      expect(lastMenuItems().some((i) => i.id === 'move-to-group')).toBe(true);
+      expect(lastMenuItems().some((i) => i.id === 'organize-submenu')).toBe(true);
     });
-    const submenu = lastMenuItems().find((i) => i.id === 'move-to-group')!;
+    const submenu = lastMenuItems().find((i) => i.id === 'organize-submenu')!;
     submenu.items!.find((i) => i.id === 'move-group-work')!.action!();
     expect(connectionsState.moveConnectionToGroup).toHaveBeenCalledWith('cfg-mysql', 'work');
   });
@@ -2490,9 +2521,9 @@ describe('ConnectionNavigatorTree connection context menu actions', () => {
 
     fireEvent.contextMenu(row);
     await waitFor(() => {
-      expect(lastMenuItems().some((i) => i.id === 'move-to-group')).toBe(true);
+      expect(lastMenuItems().some((i) => i.id === 'organize-submenu')).toBe(true);
     });
-    const submenu = lastMenuItems().find((i) => i.id === 'move-to-group')!;
+    const submenu = lastMenuItems().find((i) => i.id === 'organize-submenu')!;
     submenu.items!.find((i) => i.id === 'remove-from-group')!.action!();
     expect(connectionsState.moveConnectionToGroup).toHaveBeenCalledWith('cfg-w', undefined);
   });
@@ -2727,6 +2758,24 @@ describe('ConnectionNavigatorTree imperative refresh guards', () => {
     await waitFor(() => {
       expect(mockGetDatabases).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('query-history on a disconnected connection sets pendingQueryHistory instead of calling viewActions directly', async () => {
+    connectionsState.connections = [makeConn({ id: 'cfg-idle', name: 'Idle Conn' })];
+    activeConnectionsState.connections = {};
+    panelStoreState.pendingQueryHistoryConnectionId = null;
+    mockSetPendingQueryHistory.mockClear();
+
+    const { container } = render(<ConnectionNavigatorTree {...baseProps} />);
+    await waitFor(() => connRow(container, 'Idle Conn'));
+
+    await openMenuAndPick(connRow(container, 'Idle Conn'), 'query-history');
+
+    // Should open the connection
+    expect(baseProps.onSelectConnection).toHaveBeenCalledWith('cfg-idle');
+    // Should NOT call viewActions.openQueryHistory (actionsRef is null)
+    // Instead should store pending intent in panelStore
+    expect(mockSetPendingQueryHistory).toHaveBeenCalledWith('cfg-idle');
   });
 
   it('reloads expanded databases when the schema fingerprint changes', async () => {

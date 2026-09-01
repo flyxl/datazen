@@ -16,7 +16,6 @@ export type MainWindowContextMenuLabels = {
   copyConnectionUrl: string;
   newQuery: string;
   queryHistory: string;
-  executeSqlFile: string;
   createDatabase: string;
   createSchema: string;
   createUser: string;
@@ -28,6 +27,15 @@ export type MainWindowContextMenuLabels = {
   serverStatus: string;
   backup: string;
   restore: string;
+  /** Submenu header labels */
+  connection: string;
+  server: string;
+  organize: string;
+  createNew: string;
+  /** Short label for create-database inside the create-new submenu */
+  database: string;
+  /** Short label for create-user inside the create-new submenu */
+  user: string;
 };
 
 export function buildMainBlankContextMenuItems(args: {
@@ -50,11 +58,18 @@ export function buildMainGroupContextMenuItems(args: {
   labels: MainWindowContextMenuLabels;
   isUngrouped: boolean;
   onNewGroup: () => void;
+  onNewConnection: () => void;
   onRenameGroup: () => void;
   onDeleteGroup: () => void;
 }): NativeMenuItemDef[] {
   const items: NativeMenuItemDef[] = [
     { kind: 'item', id: 'new-group', label: args.labels.newGroup, action: args.onNewGroup },
+    {
+      kind: 'item',
+      id: 'new-connection',
+      label: args.labels.newConnection,
+      action: args.onNewConnection,
+    },
   ];
   if (!args.isUngrouped) {
     items.push(
@@ -87,7 +102,6 @@ export function buildMainConnectionContextMenuItems(args: {
   onCopyUrl: () => void;
   onNewQuery: () => void;
   onQueryHistory?: () => void;
-  onExecuteSqlFile?: () => void;
   onCreateDatabase?: () => void;
   onCreateSchema?: () => void;
   onCreateUser?: () => void;
@@ -104,24 +118,25 @@ export function buildMainConnectionContextMenuItems(args: {
   onRemoveFromGroup: () => void;
   onDelete: () => void | Promise<void>;
 }): NativeMenuItemDef[] {
-  const items: NativeMenuItemDef[] = [
-    { kind: 'item', id: 'refresh', label: args.labels.refresh, action: args.onRefresh },
-    { kind: 'separator' },
-    {
-      kind: 'item',
-      id: args.isConnected ? 'disconnect' : 'open-connection',
-      label: args.isConnected ? args.labels.disconnect : args.labels.openConnection,
-      action: args.onOpenOrDisconnect,
-    },
-    { kind: 'item', id: 'copy-name', label: args.labels.copyName, action: args.onCopyName },
-    {
-      kind: 'item',
-      id: 'copy-connection-url',
-      label: args.labels.copyConnectionUrl,
-      action: args.onCopyUrl,
-    },
-    { kind: 'item', id: 'new-query', label: args.labels.newQuery, action: args.onNewQuery },
-  ];
+  const items: NativeMenuItemDef[] = [];
+
+  // ── Primary actions ────────────────────────────────────────
+  items.push({
+    kind: 'item',
+    id: args.isConnected ? 'disconnect' : 'open-connection',
+    label: args.isConnected ? args.labels.disconnect : args.labels.openConnection,
+    action: args.onOpenOrDisconnect,
+  });
+
+  items.push({ kind: 'separator' });
+
+  // ── Query actions ──────────────────────────────────────────
+  items.push({
+    kind: 'item',
+    id: 'new-query',
+    label: args.labels.newQuery,
+    action: args.onNewQuery,
+  });
 
   if (args.onQueryHistory) {
     items.push({
@@ -132,103 +147,10 @@ export function buildMainConnectionContextMenuItems(args: {
     });
   }
 
-  if (args.onExecuteSqlFile) {
-    items.push({
-      kind: 'item',
-      id: 'execute-sql-file',
-      label: args.labels.executeSqlFile,
-      action: args.onExecuteSqlFile,
-    });
-  }
+  items.push({ kind: 'separator' });
 
-  if (args.onCreateDatabase || args.onCreateSchema || args.onCreateUser) {
-    items.push({ kind: 'separator' });
-    if (args.onCreateDatabase) {
-      items.push({
-        kind: 'item',
-        id: 'create-database',
-        label: args.labels.createDatabase,
-        action: args.onCreateDatabase,
-      });
-    }
-    if (args.onCreateSchema) {
-      items.push({
-        kind: 'item',
-        id: 'create-schema',
-        label: args.labels.createSchema,
-        action: args.onCreateSchema,
-      });
-    }
-    if (args.onCreateUser) {
-      items.push({
-        kind: 'item',
-        id: 'create-user',
-        label: args.labels.createUser,
-        action: args.onCreateUser,
-      });
-    }
-  }
-
-  if (
-    args.onPin ||
-    args.onObjectFilter ||
-    args.onProcessList ||
-    args.onServerStatus ||
-    args.onBackup ||
-    args.onRestore
-  ) {
-    items.push({ kind: 'separator' });
-    if (args.onPin) {
-      items.push({
-        kind: 'item',
-        id: args.pinned ? 'unpin-connection' : 'pin-connection',
-        label: args.pinned ? args.labels.unpinConnection : args.labels.pinConnection,
-        action: args.onPin,
-      });
-    }
-    if (args.onObjectFilter) {
-      items.push({
-        kind: 'item',
-        id: 'object-filter',
-        label: args.labels.objectFilter,
-        action: args.onObjectFilter,
-      });
-    }
-    if (args.onProcessList) {
-      items.push({
-        kind: 'item',
-        id: 'process-list',
-        label: args.labels.processList,
-        action: args.onProcessList,
-      });
-    }
-    if (args.onServerStatus) {
-      items.push({
-        kind: 'item',
-        id: 'server-status',
-        label: args.labels.serverStatus,
-        action: args.onServerStatus,
-      });
-    }
-    if (args.onBackup) {
-      items.push({
-        kind: 'item',
-        id: 'backup',
-        label: args.labels.backup,
-        action: args.onBackup,
-      });
-    }
-    if (args.onRestore) {
-      items.push({
-        kind: 'item',
-        id: 'restore',
-        label: args.labels.restore,
-        action: args.onRestore,
-      });
-    }
-  }
-
-  items.push(
+  // ── Connection submenu (edit / duplicate / copy / filter) ──
+  const connectionItems: NativeMenuItemDef[] = [
     { kind: 'item', id: 'edit-connection', label: args.labels.editConnection, action: args.onEdit },
     {
       kind: 'item',
@@ -236,33 +158,154 @@ export function buildMainConnectionContextMenuItems(args: {
       label: args.labels.duplicateConnection,
       action: args.onDuplicate,
     },
-    { kind: 'separator' },
-  );
+    {
+      kind: 'item',
+      id: 'copy-connection-url',
+      label: args.labels.copyConnectionUrl,
+      action: args.onCopyUrl,
+    },
+    { kind: 'item', id: 'copy-name', label: args.labels.copyName, action: args.onCopyName },
+  ];
+  if (args.onObjectFilter) {
+    connectionItems.push({
+      kind: 'item',
+      id: 'object-filter',
+      label: args.labels.objectFilter,
+      action: args.onObjectFilter,
+    });
+  }
+  items.push({
+    kind: 'submenu',
+    id: 'connection-submenu',
+    label: args.labels.connection,
+    items: connectionItems,
+  });
 
-  if (args.moveTargets.length > 0 || args.grouped) {
-    const sub: NativeMenuItemDef[] = args.moveTargets.map((g) => ({
-      kind: 'item' as const,
-      id: `move-group-${g.id}`,
-      label: g.label,
-      action: () => args.onMoveToGroup(g.id),
-    }));
-    if (args.grouped) {
-      sub.push({
+  // ── Server submenu (monitoring + backup/restore) ───────────
+  const monitorItems: NativeMenuItemDef[] = [];
+  const opsItems: NativeMenuItemDef[] = [];
+  if (args.onProcessList) {
+    monitorItems.push({
+      kind: 'item',
+      id: 'process-list',
+      label: args.labels.processList,
+      action: args.onProcessList,
+    });
+  }
+  if (args.onServerStatus) {
+    monitorItems.push({
+      kind: 'item',
+      id: 'server-status',
+      label: args.labels.serverStatus,
+      action: args.onServerStatus,
+    });
+  }
+  if (args.onBackup) {
+    opsItems.push({
+      kind: 'item',
+      id: 'backup',
+      label: args.labels.backup,
+      action: args.onBackup,
+    });
+  }
+  if (args.onRestore) {
+    opsItems.push({
+      kind: 'item',
+      id: 'restore',
+      label: args.labels.restore,
+      action: args.onRestore,
+    });
+  }
+  const serverItems: NativeMenuItemDef[] = [...monitorItems];
+  if (monitorItems.length > 0 && opsItems.length > 0) {
+    serverItems.push({ kind: 'separator' });
+  }
+  serverItems.push(...opsItems);
+  if (serverItems.length > 0) {
+    items.push({
+      kind: 'submenu',
+      id: 'server-submenu',
+      label: args.labels.server,
+      items: serverItems,
+    });
+  }
+
+  // ── Create submenu (database / schema / user) ──────────────
+  if (args.onCreateDatabase || args.onCreateSchema || args.onCreateUser) {
+    const createItems: NativeMenuItemDef[] = [];
+    if (args.onCreateDatabase) {
+      createItems.push({
         kind: 'item',
-        id: 'remove-from-group',
-        label: args.labels.removeFromGroup,
-        action: args.onRemoveFromGroup,
+        id: 'create-database',
+        label: args.labels.database,
+        action: args.onCreateDatabase,
+      });
+    }
+    if (args.onCreateSchema) {
+      createItems.push({
+        kind: 'item',
+        id: 'create-schema',
+        label: args.labels.createSchema,
+        action: args.onCreateSchema,
+      });
+    }
+    if (args.onCreateUser) {
+      createItems.push({
+        kind: 'item',
+        id: 'create-user',
+        label: args.labels.user,
+        action: args.onCreateUser,
       });
     }
     items.push({
       kind: 'submenu',
-      id: 'move-to-group',
-      label: args.labels.moveToGroup,
-      items: sub,
+      id: 'create-new-submenu',
+      label: args.labels.createNew,
+      items: createItems,
     });
-    items.push({ kind: 'separator' });
   }
 
+  // ── Bottom section: refresh / organize / delete ────────────
+  items.push({ kind: 'separator' });
+  items.push({ kind: 'item', id: 'refresh', label: args.labels.refresh, action: args.onRefresh });
+
+  const organizeItems: NativeMenuItemDef[] = [];
+  if (args.onPin) {
+    organizeItems.push({
+      kind: 'item',
+      id: args.pinned ? 'unpin-connection' : 'pin-connection',
+      label: args.pinned ? args.labels.unpinConnection : args.labels.pinConnection,
+      action: args.onPin,
+    });
+  }
+  const moveItems: NativeMenuItemDef[] = args.moveTargets.map((g) => ({
+    kind: 'item' as const,
+    id: `move-group-${g.id}`,
+    label: g.label,
+    action: () => args.onMoveToGroup(g.id),
+  }));
+  if (args.grouped) {
+    moveItems.push({
+      kind: 'item',
+      id: 'remove-from-group',
+      label: args.labels.removeFromGroup,
+      action: args.onRemoveFromGroup,
+    });
+  }
+  if (moveItems.length > 0) {
+    if (organizeItems.length > 0) organizeItems.push({ kind: 'separator' });
+    organizeItems.push(...moveItems);
+  }
+  if (organizeItems.length > 0) {
+    items.push({
+      kind: 'submenu',
+      id: 'organize-submenu',
+      label: args.labels.organize,
+      items: organizeItems,
+    });
+  }
+
+  items.push({ kind: 'separator' });
   items.push({
     kind: 'item',
     id: 'delete-connection',

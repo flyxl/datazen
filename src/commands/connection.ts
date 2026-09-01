@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { toIpcConnectionConfig } from '../lib/connectionConfig';
 import type { ConnectionConfig, DriverCapabilities, ServerInfo } from '../types';
 
 async function waitForE2EConnectDelay(connectionId: string): Promise<void> {
@@ -16,13 +17,15 @@ async function waitForE2EConnectDelay(connectionId: string): Promise<void> {
 export const connectionCommands = {
   getConnections: () => invoke<ConnectionConfig[]>('get_connections'),
 
-  saveConnection: (config: ConnectionConfig) => invoke<void>('save_connection', { config }),
+  saveConnection: (config: ConnectionConfig) =>
+    invoke<void>('save_connection', { config: toIpcConnectionConfig(config) }),
 
   deleteConnection: (id: string) => invoke<void>('delete_connection', { id }),
 
   reorderConnections: (orderedIds: string[]) => invoke<void>('reorder_connections', { orderedIds }),
 
-  testConnection: (config: ConnectionConfig) => invoke<ServerInfo>('test_connection', { config }),
+  testConnection: (config: ConnectionConfig) =>
+    invoke<ServerInfo>('test_connection', { config: toIpcConnectionConfig(config) }),
 
   /** connectionId = 持久化配置连接 id；返回值为运行时 dbSessionId。 */
   connect: async (connectionId: string) => {

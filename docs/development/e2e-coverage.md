@@ -49,6 +49,8 @@
 | 连接工具栏、表树、子标签（统一主窗口内） | `connection-window.ts`, `unified-tab-bar.ts` | Covered |
 | 侧栏删表后树立即刷新（不再需关窗） | `ConnectionNavigatorTree.test.tsx` / `schemaStore.test.ts` | Covered（原生 Drop 确认框见例外） |
 | 连接导航树右键菜单（连接/库/Schema/表·视图） | `navigator-context-menu.ts` (NCM-*) | Covered（含 Web ConfirmDialog 删除表/Schema：NCM-023/046） |
+| 连接右键子菜单分组（Connection/Server/Manage/Create New）& 未连接历史查询 pending | `conn-ctx-menu-submenus.ts` (CM-SUB-001~008, CM-SUB-010) | Covered |
+| 新建连接：切换类型保留各类表单快照 / 分组后测试连接无 cyclic 错误 | `new-connection.ts` (CM-002), `connection-validation.ts` (TC-CONN-008) | Covered |
 | 查询执行 / 历史 / 收藏 | `sql-query.ts` | Covered |
 | 绑定参数面板填值并执行 | `sql-query.ts` (SQ-BIND-*) | Covered |
 | EXPLAIN 面板 | `sql-query.ts` (SQ-EXPLAIN-*) | Covered |

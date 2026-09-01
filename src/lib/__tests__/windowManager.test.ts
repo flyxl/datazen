@@ -87,7 +87,7 @@ describe('windowManager — browser', () => {
     const { openNewConnectionDialog } = await import('../windowManager');
     openNewConnectionDialog('cfg-1');
     await vi.waitFor(() =>
-      expect(connectionEditor.openNewConnectionDialog).toHaveBeenCalledWith('cfg-1'),
+      expect(connectionEditor.openNewConnectionDialog).toHaveBeenCalledWith('cfg-1', undefined),
     );
     expect(window.open).not.toHaveBeenCalled();
   });

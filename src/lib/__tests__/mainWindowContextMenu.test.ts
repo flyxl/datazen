@@ -21,7 +21,6 @@ const labels = {
   copyConnectionUrl: 'Copy URL',
   newQuery: 'New Query',
   queryHistory: 'Query History',
-  executeSqlFile: 'Execute SQL File',
   createDatabase: 'Create Database',
   createSchema: 'Create Schema',
   createUser: 'Create User',
@@ -33,7 +32,28 @@ const labels = {
   serverStatus: 'Server Status',
   backup: 'Backup',
   restore: 'Restore',
+  connection: 'Connection',
+  server: 'Server',
+  organize: 'Manage Connection',
+  createNew: 'Create New',
+  database: 'Database',
+  user: 'User',
 };
+
+/** Recursively find a menu item by id, searching through submenus. */
+function findMenuItem(
+  items: Array<{ kind: string; id?: string; items?: unknown[] }>,
+  id: string,
+): { kind: string; id?: string } | undefined {
+  for (const item of items) {
+    if (item.id === id) return item;
+    if (item.items) {
+      const found = findMenuItem(item.items as typeof items, id);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
 
 describe('mainWindowContextMenu', () => {
   it('builds blank-area items', () => {
@@ -48,26 +68,40 @@ describe('mainWindowContextMenu', () => {
     ]);
   });
 
+  it('includes new connection on grouped headers', () => {
+    const grouped = buildMainGroupContextMenuItems({
+      labels,
+      isUngrouped: false,
+      onNewGroup: () => undefined,
+      onNewConnection: () => undefined,
+      onRenameGroup: () => undefined,
+      onDeleteGroup: () => undefined,
+    });
+    expect(grouped.map((i) => (i.kind === 'item' ? i.id : i.kind))).toEqual([
+      'new-group',
+      'new-connection',
+      'separator',
+      'rename-group',
+      'delete-group',
+    ]);
+  });
+
   it('omits rename/delete for the ungrouped header', () => {
     const ungrouped = buildMainGroupContextMenuItems({
       labels,
       isUngrouped: true,
       onNewGroup: () => undefined,
+      onNewConnection: () => undefined,
       onRenameGroup: () => undefined,
       onDeleteGroup: () => undefined,
     });
-    expect(ungrouped).toHaveLength(1);
-    const grouped = buildMainGroupContextMenuItems({
-      labels,
-      isUngrouped: false,
-      onNewGroup: () => undefined,
-      onRenameGroup: () => undefined,
-      onDeleteGroup: () => undefined,
-    });
-    expect(grouped.some((i) => i.kind === 'item' && i.id === 'rename-group')).toBe(true);
+    expect(ungrouped.map((i) => (i.kind === 'item' ? i.id : i.kind))).toEqual([
+      'new-group',
+      'new-connection',
+    ]);
   });
 
-  it('puts refresh first on connection menu', () => {
+  it('puts open-connection/disconnect as the first item', () => {
     const items = buildMainConnectionContextMenuItems({
       labels,
       isConnected: true,
@@ -84,12 +118,65 @@ describe('mainWindowContextMenu', () => {
       onRemoveFromGroup: () => undefined,
       onDelete: () => undefined,
     });
-    expect(items[0]).toMatchObject({ kind: 'item', id: 'refresh' });
+    expect(items[0]).toMatchObject({ kind: 'item', id: 'disconnect' });
     expect(items[1]).toMatchObject({ kind: 'separator' });
-    expect(items[2]).toMatchObject({ kind: 'item', id: 'disconnect' });
   });
 
-  it('puts move targets in a submenu so they can flip at the window edge', () => {
+  it('puts copy actions inside the connection submenu', () => {
+    const items = buildMainConnectionContextMenuItems({
+      labels,
+      isConnected: true,
+      grouped: false,
+      moveTargets: [],
+      onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onCopyUrl: () => undefined,
+      onNewQuery: () => undefined,
+      onRefresh: () => undefined,
+      onEdit: () => undefined,
+      onDuplicate: () => undefined,
+      onMoveToGroup: () => undefined,
+      onRemoveFromGroup: () => undefined,
+      onDelete: () => undefined,
+    });
+    expect(items.find((i) => i.kind === 'item' && i.id === 'copy-name')).toBeUndefined();
+    expect(items.find((i) => i.kind === 'item' && i.id === 'copy-connection-url')).toBeUndefined();
+    const connectionSub = items.find((i) => i.kind === 'submenu' && i.id === 'connection-submenu');
+    expect((connectionSub as { items: Array<{ id?: string }> }).items.map((i) => i.id)).toEqual([
+      'edit-connection',
+      'duplicate-connection',
+      'copy-connection-url',
+      'copy-name',
+    ]);
+  });
+
+  it('invokes onCopyUrl from the connection submenu action', () => {
+    const onCopyUrl = vi.fn();
+    const items = buildMainConnectionContextMenuItems({
+      labels,
+      isConnected: false,
+      grouped: false,
+      moveTargets: [],
+      onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onCopyUrl,
+      onNewQuery: () => undefined,
+      onRefresh: () => undefined,
+      onEdit: () => undefined,
+      onDuplicate: () => undefined,
+      onMoveToGroup: () => undefined,
+      onRemoveFromGroup: () => undefined,
+      onDelete: () => undefined,
+    });
+    const connectionSub = items.find((i) => i.kind === 'submenu' && i.id === 'connection-submenu');
+    const copyUrlItem = (
+      connectionSub as { items: Array<{ id?: string; action?: () => void }> }
+    ).items.find((i) => i.id === 'copy-connection-url');
+    copyUrlItem?.action?.();
+    expect(onCopyUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it('puts move targets in the organize submenu', () => {
     const move = vi.fn();
     const items = buildMainConnectionContextMenuItems({
       labels,
@@ -103,79 +190,47 @@ describe('mainWindowContextMenu', () => {
       onRefresh: () => undefined,
       onEdit: () => undefined,
       onDuplicate: () => undefined,
+      onPin: () => undefined,
       onMoveToGroup: move,
       onRemoveFromGroup: () => undefined,
       onDelete: () => undefined,
     });
-    const sub = items.find((i) => i.kind === 'submenu');
+    const sub = items.find((i) => i.kind === 'submenu' && i.id === 'organize-submenu');
     expect(sub?.kind).toBe('submenu');
-    if (sub?.kind !== 'submenu') return;
-    expect(sub.id).toBe('move-to-group');
-    expect(sub.items.some((i) => i.kind === 'item' && i.id === 'move-group-Prod')).toBe(true);
-    expect(sub.items.some((i) => i.kind === 'item' && i.id === 'remove-from-group')).toBe(true);
-    const prod = sub.items.find((i) => i.kind === 'item' && i.id === 'move-group-Prod');
-    if (prod?.kind === 'item') prod.action();
+    const prod = (sub as { items: Array<{ id?: string; action?: () => void }> })?.items?.find(
+      (i) => i.id === 'move-group-Prod',
+    );
+    prod?.action?.();
     expect(move).toHaveBeenCalledWith('Prod');
   });
 
-  it('includes execute-sql-file when handler provided and omits when not', () => {
-    const baseArgs = {
-      labels,
-      isConnected: true,
-      grouped: false,
-      moveTargets: [],
-      onOpenOrDisconnect: () => undefined,
-      onCopyName: () => undefined,
-      onCopyUrl: () => undefined,
-      onNewQuery: () => undefined,
-      onRefresh: () => undefined,
-      onEdit: () => undefined,
-      onDuplicate: () => undefined,
-      onMoveToGroup: () => undefined,
-      onRemoveFromGroup: () => undefined,
-      onDelete: () => undefined,
-    };
-
-    const withSql = buildMainConnectionContextMenuItems({
-      ...baseArgs,
-      onExecuteSqlFile: vi.fn(),
-    });
-    expect(withSql.some((i) => i.kind === 'item' && i.id === 'execute-sql-file')).toBe(true);
-
-    const withoutSql = buildMainConnectionContextMenuItems(baseArgs);
-    expect(withoutSql.some((i) => i.kind === 'item' && i.id === 'execute-sql-file')).toBe(false);
-  });
-
-  it('includes query-history when handler provided', () => {
-    const onQueryHistory = vi.fn();
+  it('puts pin and remove-from-group in the organize submenu', () => {
     const items = buildMainConnectionContextMenuItems({
       labels,
-      isConnected: true,
-      grouped: false,
+      isConnected: false,
+      grouped: true,
       moveTargets: [],
+      pinned: false,
       onOpenOrDisconnect: () => undefined,
       onCopyName: () => undefined,
       onCopyUrl: () => undefined,
       onNewQuery: () => undefined,
-      onQueryHistory,
       onRefresh: () => undefined,
       onEdit: () => undefined,
       onDuplicate: () => undefined,
+      onPin: () => undefined,
       onMoveToGroup: () => undefined,
       onRemoveFromGroup: () => undefined,
       onDelete: () => undefined,
     });
-    expect(items.some((i) => i.kind === 'item' && i.id === 'query-history')).toBe(true);
-    const item = items.find((i) => i.kind === 'item' && i.id === 'query-history');
-    if (item?.kind === 'item') item.action();
-    expect(onQueryHistory).toHaveBeenCalledOnce();
+    const sub = items.find((i) => i.kind === 'submenu' && i.id === 'organize-submenu');
+    const ids = (sub as { items: Array<{ id?: string }> }).items.map((i) => i.id);
+    expect(ids).toContain('pin-connection');
+    expect(ids).toContain('remove-from-group');
   });
 
-  it('includes create-database/schema/user when handlers provided', () => {
-    const onCreateDb = vi.fn();
-    const onCreateSchema = vi.fn();
-    const onCreateUser = vi.fn();
-    const items = buildMainConnectionContextMenuItems({
+  it('toggles disconnect/open-connection label based on isConnected', () => {
+    const connected = buildMainConnectionContextMenuItems({
       labels,
       isConnected: true,
       grouped: false,
@@ -190,28 +245,29 @@ describe('mainWindowContextMenu', () => {
       onMoveToGroup: () => undefined,
       onRemoveFromGroup: () => undefined,
       onDelete: () => undefined,
-      onCreateDatabase: onCreateDb,
-      onCreateSchema: onCreateSchema,
-      onCreateUser: onCreateUser,
     });
-    const dbItem = items.find((i) => i.kind === 'item' && i.id === 'create-database');
-    expect(dbItem).toBeDefined();
-    if (dbItem?.kind === 'item') dbItem.action();
-    expect(onCreateDb).toHaveBeenCalledOnce();
+    expect(connected[0]).toMatchObject({ id: 'disconnect', label: 'Disconnect' });
 
-    const schemaItem = items.find((i) => i.kind === 'item' && i.id === 'create-schema');
-    expect(schemaItem).toBeDefined();
-    if (schemaItem?.kind === 'item') schemaItem.action();
-    expect(onCreateSchema).toHaveBeenCalledOnce();
-
-    const userItem = items.find((i) => i.kind === 'item' && i.id === 'create-user');
-    expect(userItem).toBeDefined();
-    if (userItem?.kind === 'item') userItem.action();
-    expect(onCreateUser).toHaveBeenCalledOnce();
+    const disconnected = buildMainConnectionContextMenuItems({
+      labels,
+      isConnected: false,
+      grouped: false,
+      moveTargets: [],
+      onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onCopyUrl: () => undefined,
+      onNewQuery: () => undefined,
+      onRefresh: () => undefined,
+      onEdit: () => undefined,
+      onDuplicate: () => undefined,
+      onMoveToGroup: () => undefined,
+      onRemoveFromGroup: () => undefined,
+      onDelete: () => undefined,
+    });
+    expect(disconnected[0]).toMatchObject({ id: 'open-connection', label: 'Open' });
   });
 
-  it('includes server-status when handler provided', () => {
-    const onServerStatus = vi.fn();
+  it('puts create actions inside the create-new submenu', () => {
     const items = buildMainConnectionContextMenuItems({
       labels,
       isConnected: true,
@@ -227,15 +283,22 @@ describe('mainWindowContextMenu', () => {
       onMoveToGroup: () => undefined,
       onRemoveFromGroup: () => undefined,
       onDelete: () => undefined,
-      onServerStatus,
+      onCreateDatabase: () => undefined,
+      onCreateSchema: () => undefined,
+      onCreateUser: () => undefined,
     });
-    expect(items.some((i) => i.kind === 'item' && i.id === 'server-status')).toBe(true);
-    const item = items.find((i) => i.kind === 'item' && i.id === 'server-status');
-    if (item?.kind === 'item') item.action();
-    expect(onServerStatus).toHaveBeenCalledOnce();
+    const createSub = items.find((i) => i.kind === 'submenu' && i.id === 'create-new-submenu');
+    expect(createSub).toBeDefined();
+    expect((createSub as { items: Array<{ id?: string; label?: string }> }).items).toEqual(
+      [
+        { id: 'create-database', label: 'Database' },
+        { id: 'create-schema', label: 'Create Schema' },
+        { id: 'create-user', label: 'User' },
+      ].map((entry) => expect.objectContaining(entry)),
+    );
   });
 
-  it('omits admin items when none of the admin handlers are provided', () => {
+  it('hides create-new submenu when no create action is provided', () => {
     const items = buildMainConnectionContextMenuItems({
       labels,
       isConnected: true,
@@ -252,41 +315,12 @@ describe('mainWindowContextMenu', () => {
       onRemoveFromGroup: () => undefined,
       onDelete: () => undefined,
     });
-    expect(items.some((i) => i.kind === 'item' && i.id === 'create-database')).toBe(false);
-    expect(items.some((i) => i.kind === 'item' && i.id === 'create-schema')).toBe(false);
-    expect(items.some((i) => i.kind === 'item' && i.id === 'create-user')).toBe(false);
+    expect(
+      items.find((i) => i.kind === 'submenu' && i.id === 'create-new-submenu'),
+    ).toBeUndefined();
   });
 
-  it('includes pin/unpin and process list when handlers provided', () => {
-    const onPin = vi.fn();
-    const onProcessList = vi.fn();
-    const pinned = buildMainConnectionContextMenuItems({
-      labels,
-      isConnected: true,
-      grouped: false,
-      pinned: true,
-      moveTargets: [],
-      onOpenOrDisconnect: () => undefined,
-      onCopyName: () => undefined,
-      onCopyUrl: () => undefined,
-      onNewQuery: () => undefined,
-      onRefresh: () => undefined,
-      onEdit: () => undefined,
-      onDuplicate: () => undefined,
-      onMoveToGroup: () => undefined,
-      onRemoveFromGroup: () => undefined,
-      onDelete: () => undefined,
-      onPin,
-      onProcessList,
-    });
-    expect(pinned.some((i) => i.kind === 'item' && i.id === 'unpin-connection')).toBe(true);
-    expect(pinned.some((i) => i.kind === 'item' && i.id === 'process-list')).toBe(true);
-    const proc = pinned.find((i) => i.kind === 'item' && i.id === 'process-list');
-    if (proc?.kind === 'item') proc.action();
-    expect(onProcessList).toHaveBeenCalledOnce();
-  });
-
-  it('includes backup and restore when handlers provided', () => {
+  it('includes backup and restore in the server submenu when handlers provided', () => {
     const onBackup = vi.fn();
     const onRestore = vi.fn();
     const items = buildMainConnectionContextMenuItems({
@@ -307,7 +341,117 @@ describe('mainWindowContextMenu', () => {
       onBackup,
       onRestore,
     });
-    expect(items.some((i) => i.kind === 'item' && i.id === 'backup')).toBe(true);
-    expect(items.some((i) => i.kind === 'item' && i.id === 'restore')).toBe(true);
+    const serverSub = items.find((i) => i.kind === 'submenu' && i.id === 'server-submenu');
+    expect(serverSub).toBeDefined();
+    const serverIds = (serverSub as { items: Array<{ id?: string }> }).items.map((i) => i.id);
+    expect(serverIds).toContain('backup');
+    expect(serverIds).toContain('restore');
+  });
+
+  it('groups connection management items in the connection submenu', () => {
+    const onPin = vi.fn();
+    const onObjectFilter = vi.fn();
+    const items = buildMainConnectionContextMenuItems({
+      labels,
+      isConnected: true,
+      grouped: false,
+      moveTargets: [],
+      pinned: false,
+      onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onCopyUrl: () => undefined,
+      onNewQuery: () => undefined,
+      onRefresh: () => undefined,
+      onEdit: () => undefined,
+      onDuplicate: () => undefined,
+      onPin,
+      onObjectFilter,
+      onMoveToGroup: () => undefined,
+      onRemoveFromGroup: () => undefined,
+      onDelete: () => undefined,
+    });
+    const connectionSub = items.find((i) => i.kind === 'submenu' && i.id === 'connection-submenu');
+    expect(connectionSub).toBeDefined();
+    const connectionIds = (connectionSub as { items: Array<{ id?: string }> }).items.map(
+      (i) => i.id,
+    );
+    expect(connectionIds).toEqual([
+      'edit-connection',
+      'duplicate-connection',
+      'copy-connection-url',
+      'copy-name',
+      'object-filter',
+    ]);
+    expect(findMenuItem(items, 'pin-connection')).toBeDefined();
+    expect(findMenuItem(items, 'pin-connection')?.id).toBe('pin-connection');
+  });
+
+  it('groups server items in the server submenu', () => {
+    const items = buildMainConnectionContextMenuItems({
+      labels,
+      isConnected: true,
+      grouped: false,
+      moveTargets: [],
+      onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onCopyUrl: () => undefined,
+      onNewQuery: () => undefined,
+      onRefresh: () => undefined,
+      onEdit: () => undefined,
+      onDuplicate: () => undefined,
+      onMoveToGroup: () => undefined,
+      onRemoveFromGroup: () => undefined,
+      onDelete: () => undefined,
+      onProcessList: () => undefined,
+      onServerStatus: () => undefined,
+      onBackup: () => undefined,
+      onRestore: () => undefined,
+    });
+    const serverSub = items.find((i) => i.kind === 'submenu' && i.id === 'server-submenu');
+    expect(serverSub).toBeDefined();
+    const serverIds = (serverSub as { items: Array<{ id?: string; kind?: string }> }).items.map(
+      (i) => i.id ?? i.kind,
+    );
+    expect(serverIds).toEqual(['process-list', 'server-status', 'separator', 'backup', 'restore']);
+  });
+
+  it('top-level items are limited to primary actions, query, copy, refresh, and delete', () => {
+    const items = buildMainConnectionContextMenuItems({
+      labels,
+      isConnected: true,
+      grouped: true,
+      moveTargets: [{ id: 'Prod', label: 'Prod' }],
+      onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onCopyUrl: () => undefined,
+      onNewQuery: () => undefined,
+      onQueryHistory: () => undefined,
+      onRefresh: () => undefined,
+      onEdit: () => undefined,
+      onDuplicate: () => undefined,
+      onPin: () => undefined,
+      onMoveToGroup: () => undefined,
+      onRemoveFromGroup: () => undefined,
+      onDelete: () => undefined,
+      onCreateDatabase: () => undefined,
+      onProcessList: () => undefined,
+    });
+    const topLevelIds = items.filter((i) => i.kind === 'item').map((i) => (i as { id: string }).id);
+    expect(topLevelIds).toEqual([
+      'disconnect',
+      'new-query',
+      'query-history',
+      'refresh',
+      'delete-connection',
+    ]);
+    const submenuIds = items
+      .filter((i) => i.kind === 'submenu')
+      .map((i) => (i as { id: string }).id);
+    expect(submenuIds).toEqual([
+      'connection-submenu',
+      'server-submenu',
+      'create-new-submenu',
+      'organize-submenu',
+    ]);
   });
 });

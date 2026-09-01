@@ -481,6 +481,7 @@ export const ConnectionNavigatorTree = forwardRef<
     setRenamingGroup,
     setRenameValue,
     setObjectFilterConn,
+    onNewConnection: (defaultGroup) => onNewConnection(defaultGroup),
   });
 
   const dragConnId = useRef<string | null>(null);

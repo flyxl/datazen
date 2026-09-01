@@ -114,8 +114,9 @@ describe('remaining connection wrappers keep their wire contract', () => {
     expect(invokeMock).toHaveBeenLastCalledWith('get_connections');
 
     const config = { id: 'c1' } as never;
+    const plain = { id: 'c1' };
     await connectionCommands.saveConnection(config);
-    expect(invokeMock).toHaveBeenLastCalledWith('save_connection', { config });
+    expect(invokeMock).toHaveBeenLastCalledWith('save_connection', { config: plain });
 
     await connectionCommands.deleteConnection('c1');
     expect(invokeMock).toHaveBeenLastCalledWith('delete_connection', { id: 'c1' });
@@ -124,7 +125,7 @@ describe('remaining connection wrappers keep their wire contract', () => {
     expect(invokeMock).toHaveBeenLastCalledWith('reorder_connections', { orderedIds: ['b', 'a'] });
 
     await connectionCommands.testConnection(config);
-    expect(invokeMock).toHaveBeenLastCalledWith('test_connection', { config });
+    expect(invokeMock).toHaveBeenLastCalledWith('test_connection', { config: plain });
 
     await connectionCommands.connect('c1');
     expect(invokeMock).toHaveBeenLastCalledWith('connect', { connectionId: 'c1' });

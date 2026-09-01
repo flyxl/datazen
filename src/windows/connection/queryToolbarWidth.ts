@@ -12,7 +12,7 @@ const PATH_HIERARCHY_SELECT_CHROME = 28;
 const PATH_HIERARCHY_SEGMENT_GAP = 8;
 const PATH_HIERARCHY_PLACEHOLDER_CHARS = 6;
 
-function pathHierarchySelectWidth(value: string): number {
+function queryContextSelectWidth(value: string): number {
   const len = value.length > 0 ? value.length : PATH_HIERARCHY_PLACEHOLDER_CHARS;
   return Math.min(
     PATH_HIERARCHY_SELECT_MAX,
@@ -40,6 +40,7 @@ export function queryToolbarExpandedMinWidth(options: {
   pathAliases: Record<string, string>;
   databases: readonly string[];
   contextPath: readonly string[];
+  currentDatabase?: string | null;
 }): number {
   const buttonCount = 8 + (options.supportsExplain ? 1 : 0);
 
@@ -56,14 +57,17 @@ export function queryToolbarExpandedMinWidth(options: {
         if (segment.kind === 'label') {
           return sum + pathHierarchyLabelWidth(segment.name);
         }
-        return sum + pathHierarchySelectWidth(segment.value);
+        return sum + queryContextSelectWidth(segment.value);
       }, 0);
       contextWidth =
         20 +
         Math.max(segmentWidth, PATH_HIERARCHY_SELECT_MIN * 2) +
         Math.max(0, segments.length - 1) * PATH_HIERARCHY_SEGMENT_GAP;
     } else if (options.isMultiDb) {
-      contextWidth = 196;
+      const selectWidth = queryContextSelectWidth(
+        options.currentDatabase ?? options.databases[0] ?? '',
+      );
+      contextWidth = 20 + Math.max(selectWidth, PATH_HIERARCHY_SELECT_MIN * 2);
     } else if (options.contextSchema) {
       contextWidth = 96;
     }

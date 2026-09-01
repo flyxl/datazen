@@ -7,7 +7,12 @@ import {
 
 describe('connectionEditor', () => {
   beforeEach(() => {
-    useConnectionEditorStore.setState({ open: false, editId: null, openSeq: 0 });
+    useConnectionEditorStore.setState({
+      open: false,
+      editId: null,
+      defaultGroup: null,
+      openSeq: 0,
+    });
   });
 
   it('openNewConnectionDialog opens with optional editId', () => {
@@ -33,10 +38,22 @@ describe('connectionEditor', () => {
     expect(useConnectionEditorStore.getState().openSeq).toBe(3);
   });
 
+  it('openNewConnectionDialog stores defaultGroup for create flows', () => {
+    openNewConnectionDialog(undefined, 'prod');
+    expect(useConnectionEditorStore.getState().defaultGroup).toBe('prod');
+  });
+
+  it('openNewConnectionDialog ignores defaultGroup when editing', () => {
+    openNewConnectionDialog('cfg-1', 'prod');
+    expect(useConnectionEditorStore.getState().editId).toBe('cfg-1');
+    expect(useConnectionEditorStore.getState().defaultGroup).toBeNull();
+  });
+
   it('closeNewConnectionDialog resets state', () => {
-    useConnectionEditorStore.setState({ open: true, editId: 'cfg-1' });
+    useConnectionEditorStore.setState({ open: true, editId: 'cfg-1', defaultGroup: 'prod' });
     closeNewConnectionDialog();
     expect(useConnectionEditorStore.getState().open).toBe(false);
     expect(useConnectionEditorStore.getState().editId).toBeNull();
+    expect(useConnectionEditorStore.getState().defaultGroup).toBeNull();
   });
 });

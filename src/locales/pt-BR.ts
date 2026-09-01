@@ -1222,6 +1222,12 @@ const translations = {
   'common.objectFilter': 'Filtro de objetos',
   'common.processList': 'Lista de processos',
   'common.serverStatus': 'Status do servidor',
+  'common.database': 'Banco de dados',
+  'common.user': 'Usuário',
+  'main.ctx.connection': 'Conexão',
+  'main.ctx.organize': 'Gerenciar conexão',
+  'main.ctx.createNew': 'Novo',
+  'main.ctx.server': 'Servidor',
   'main.confirmDeleteGroup':
     'Tem certeza de que deseja excluir o grupo "{name}"? As conexões neste grupo serão movidas para desagrupadas.',
   'nav.plugins': 'Plugins',

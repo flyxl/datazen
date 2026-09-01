@@ -150,6 +150,39 @@ async function hasMenuItemId(id: string): Promise<boolean> {
   return item.isExisting();
 }
 
+async function hoverSubmenuTrigger(triggerTestId: string) {
+  const trigger = await $(`[data-testid="${triggerTestId}"]`);
+  if (await trigger.isExisting()) {
+    await trigger.moveTo();
+    await browser.pause(400);
+  }
+}
+
+async function hasSubmenuItem(itemId: string): Promise<boolean> {
+  return browser.execute((id: string) => {
+    const items = document.querySelectorAll('[data-testid="web-context-submenu"] button');
+    for (const item of items) {
+      const tid = item.getAttribute('data-testid');
+      if (tid && tid.includes(id)) return true;
+    }
+    return false;
+  }, itemId);
+}
+
+async function clickSubmenuItem(itemId: string) {
+  await browser.execute((id: string) => {
+    const items = document.querySelectorAll('[data-testid="web-context-submenu"] button');
+    for (const item of items) {
+      const tid = item.getAttribute('data-testid');
+      if (tid && tid.includes(id)) {
+        (item as HTMLElement).click();
+        return;
+      }
+    }
+  }, itemId);
+  await browser.pause(500);
+}
+
 /** Check if a web context menu is displayed with at least one item. */
 async function isMenuDisplayed(): Promise<boolean> {
   const menu = await $('[data-testid="web-context-menu"]');
@@ -246,15 +279,20 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await rightClick('[data-conn-item]');
       const text = await getMenuText();
       expect(text).toContain(t('main.ctx.openConnection'));
-      expect(await hasMenuItemId('edit-connection')).toBe(true);
+      expect(
+        await $('[data-testid="web-context-submenu-trigger-connection-submenu"]').isExisting(),
+      ).toBe(true);
       expect(await hasMenuItemId('delete-connection')).toBe(true);
-      expect(await hasMenuItemId('copy-name')).toBe(true);
+      expect(await hasMenuItemId('copy-name')).toBe(false);
+      await hoverSubmenuTrigger('web-context-submenu-trigger-connection-submenu');
+      expect(await hasSubmenuItem('copy-name')).toBe(true);
       await dismissMenu();
     });
 
     it('NCM-002: 复制名称应复制到剪贴板', async () => {
       await rightClick('[data-conn-item]');
-      await clickMenuItemById('copy-name');
+      await hoverSubmenuTrigger('web-context-submenu-trigger-connection-submenu');
+      await clickSubmenuItem('copy-name');
       await browser.pause(300);
 
       const clip = await browser.execute(() => {

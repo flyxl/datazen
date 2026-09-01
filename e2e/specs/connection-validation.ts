@@ -194,4 +194,35 @@ describe('连接校验反向用例 (TC-CONN-005/006/007, TC-EDGE-007)', () => {
 
     await expect(await $('[data-testid="new-conn-test-connection"]')).toBeDisplayed();
   });
+
+  it('TC-CONN-008: 高级设置切换分组后测试连接应成功且不出现 cyclic JSON 错误', async () => {
+    await openNewConnectionForm(mainWindow);
+    await setInputByPlaceholder('例如：主数据库', 'E2E-分组测试');
+    await setInputByPlaceholder('prod-db.example.com', PG_HOST);
+    await setInputByPlaceholder('myapp_production', PG_DB);
+    await setInputByPlaceholder('postgres', PG_USER);
+    await setPassword('');
+    await setSslModeDisable();
+    await selectDzOptionInWrap('new-conn-group', t('newConn.noGroup'));
+    await clickTestConnection();
+
+    await browser.waitUntil(
+      async () => {
+        const body = await $('body').getText();
+        return (
+          body.includes(t('newConn.testSuccess')) ||
+          body.includes('连接成功') ||
+          body.includes(t('newConn.testFailed')) ||
+          body.includes('失败')
+        );
+      },
+      { timeout: 30000, timeoutMsg: '等待分组切换后测试连接结果超时' },
+    );
+
+    const body = await $('body').getText();
+    expect(body.toLowerCase()).not.toContain('cycle');
+    expect(body).not.toContain('JSON.stringify');
+    expect(body).not.toContain('cyclic');
+    await expect(await $('[data-testid="new-conn-test-connection"]')).toBeDisplayed();
+  });
 });

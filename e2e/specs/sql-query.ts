@@ -80,6 +80,53 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     await expect(await $('[data-testid="editor-execute-button"]')).toBeDisplayed();
   });
 
+  it('SQ-CTX-002: 数据库选择器下拉项可读且不在工具栏留下空白', async () => {
+    const selectorHost = await $('[data-testid="query-context-selectors"]');
+    const trigger = await selectorHost.$('input[aria-haspopup="listbox"]');
+    await trigger.click();
+
+    const list = await $('#dz-select-listbox');
+    await list.waitForDisplayed({ timeout: 5000 });
+    const metrics = await browser.execute(() => {
+      const host = document.querySelector('[data-testid="query-context-selectors"]');
+      const trigger = host?.querySelector('input[aria-haspopup="listbox"]')?.parentElement;
+      const schema = host?.querySelector('[data-testid="query-context-schema"]');
+      const list = document.getElementById('dz-select-listbox');
+      if (!host || !trigger || !list) return null;
+
+      const hostRect = host.getBoundingClientRect();
+      const triggerRect = trigger.getBoundingClientRect();
+      const toggleRect = trigger
+        .querySelector('button[aria-label="Toggle options"]')
+        ?.getBoundingClientRect();
+      const executeRect = document
+        .querySelector('[data-testid="editor-execute-button"]')
+        ?.getBoundingClientRect();
+      const schemaRect = schema?.getBoundingClientRect();
+      if (!toggleRect || !executeRect) return null;
+      return {
+        triggerWidth: triggerRect.width,
+        listWidth: list.getBoundingClientRect().width,
+        trailingGap: schemaRect ? 0 : hostRect.right - triggerRect.right,
+        toggleOverflow: toggleRect.right - triggerRect.right,
+        executeOverlap: toggleRect.right - executeRect.left,
+        overflowingOptions: Array.from(list.children).some((option) => {
+          const label = option.querySelector('span');
+          return label ? label.scrollWidth > label.clientWidth : false;
+        }),
+      };
+    });
+
+    expect(metrics).not.toBeNull();
+    expect(metrics!.listWidth).toBeGreaterThanOrEqual(176);
+    expect(metrics!.listWidth).toBeGreaterThan(metrics!.triggerWidth);
+    expect(metrics!.trailingGap).toBeLessThan(24);
+    expect(metrics!.toggleOverflow).toBeLessThanOrEqual(1);
+    expect(metrics!.executeOverlap).toBeLessThanOrEqual(0);
+    expect(metrics!.overflowingOptions).toBe(false);
+    await browser.keys('Escape');
+  });
+
   it('SQ-CTX-001: SQL 带完整库路径时应同步执行栏选择框', async () => {
     const bar = await $('[data-testid="query-context-selectors"]');
     const dbName = process.env.E2E_PG_DB || 'postgres';
@@ -196,7 +243,9 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
         "INSERT INTO _e2e_sql_test (val) VALUES ('hello')",
     );
     const queryPanel = await $('[data-testid="query-panel"]');
-    const previousExecutionSeq = Number((await queryPanel.getAttribute('data-execution-seq')) ?? '0');
+    const previousExecutionSeq = Number(
+      (await queryPanel.getAttribute('data-execution-seq')) ?? '0',
+    );
     const execBtn = await $('[data-testid="editor-execute-button"]');
     await execBtn.click();
 

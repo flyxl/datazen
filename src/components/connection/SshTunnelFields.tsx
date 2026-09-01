@@ -18,7 +18,7 @@ export function SshTunnelFields({
   innerPanelClassName = 'bg-surface',
 }: SshTunnelFieldsProps) {
   const { t } = useI18n();
-  if (!form.meta.supportsSSH) return null;
+  if (!form.supportsSSH) return null;
 
   return (
     <div>

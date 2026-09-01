@@ -1196,6 +1196,12 @@ const translations = {
   'common.objectFilter': '객체 필터',
   'common.processList': '프로세스 목록',
   'common.serverStatus': '서버 상태',
+  'common.database': '데이터베이스',
+  'common.user': '사용자',
+  'main.ctx.connection': '연결',
+  'main.ctx.organize': '연결 관리',
+  'main.ctx.createNew': '새로 만들기',
+  'main.ctx.server': '서버',
   'main.confirmDeleteGroup':
     '그룹 "{name}"을(를) 삭제하시겠습니까? 이 그룹의 연결은 그룹 없음으로 이동합니다.',
   'nav.plugins': '플러그인',

@@ -58,7 +58,7 @@ export function ConnectionAdvancedSettings({
         >
           {PluginAdvanced ? (
             <PluginAdvanced form={form} />
-          ) : form.meta.supportsSSL ? (
+          ) : form.supportsSSL ? (
             <div data-testid="new-conn-ssl-mode">
               <Label>{t('newConn.sslMode')}</Label>
               <Select
@@ -106,9 +106,13 @@ export function ConnectionAdvancedSettings({
                   ))}
                 </div>
               </div>
-              <div>
+              <div data-testid="new-conn-group">
                 <Label>{t('newConn.group')}</Label>
-                <Select value={form.group} options={groupOptions} onChange={form.setGroup} />
+                <Select
+                  value={form.group}
+                  options={groupOptions}
+                  onChange={(value) => form.setGroup(value)}
+                />
               </div>
             </div>
           ) : (
@@ -134,7 +138,7 @@ export function ConnectionAdvancedSettings({
         </div>
       )}
 
-      {form.meta.supportsSSH && (
+      {form.supportsSSH && (
         <>
           <button
             type="button"
