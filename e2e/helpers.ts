@@ -4,7 +4,7 @@
  * Centralises common patterns so individual spec files stay focused on
  * feature-specific assertions.
  */
-import { browser, $, $$ } from '@wdio/globals';
+import { browser, $, $$, expect } from '@wdio/globals';
 import { t } from './i18n.js';
 import { isScreenshotTraceEnabled, saveJourneyScreenshot } from './lib/screenshotTrace.js';
 
@@ -283,9 +283,7 @@ export async function expandConnectedConnectionInNavigator(nameFragment?: string
   );
   await browser.execute((frag: string) => {
     const items = Array.from(document.querySelectorAll('[data-conn-item]'));
-    const matching = frag
-      ? items.find((el) => (el.textContent || '').includes(frag))
-      : undefined;
+    const matching = frag ? items.find((el) => (el.textContent || '').includes(frag)) : undefined;
     const connected = items.find((el) => !!el.querySelector('button[aria-expanded]'));
     const item = matching?.querySelector('button[aria-expanded]') ? matching : connected;
     const chevron = item?.querySelector('button[aria-expanded]') as HTMLElement | null;
@@ -987,9 +985,11 @@ async function navigatorHasTableButtons(): Promise<boolean> {
     // Do not infer table readiness from button text. Connection names and
     // database names are also buttons, so that heuristic can return true
     // before the async schema load has mounted any table rows.
-    return nav.querySelector(
-      '[data-tree-node="table"][data-item-name], [data-tree-node="view"][data-item-name]',
-    ) != null;
+    return (
+      nav.querySelector(
+        '[data-tree-node="table"][data-item-name], [data-tree-node="view"][data-item-name]',
+      ) != null
+    );
   });
 }
 
@@ -1249,10 +1249,10 @@ export async function openTableFromSidebar(tableName: string) {
       }
     }
   }, t('schemaTree.openTable'));
-  await browser.waitUntil(
-    () => tableWorkspaceIsOpen(tableName),
-    { timeout: 15000, timeoutMsg: `等待表 "${tableName}" 工作区打开超时` },
-  );
+  await browser.waitUntil(() => tableWorkspaceIsOpen(tableName), {
+    timeout: 15000,
+    timeoutMsg: `等待表 "${tableName}" 工作区打开超时`,
+  });
 }
 
 /** Switch the active table/view panel to the data sub-tab. */
@@ -1539,11 +1539,7 @@ export async function openErDiagramFromUi() {
 /** Emit a cross-window menu event on the main Tauri window. */
 export async function emitCrossWindowEvent(event: string, payload?: Record<string, unknown>) {
   await browser.executeAsync(
-    (
-      evt: string,
-      pl: Record<string, unknown> | null,
-      done: (result: boolean) => void,
-    ) => {
+    (evt: string, pl: Record<string, unknown> | null, done: (result: boolean) => void) => {
       const internals = (
         window as unknown as {
           __TAURI_INTERNALS__?: {
@@ -1858,4 +1854,37 @@ export async function deploySchemaDiffPlan() {
       timeoutMsg: 'schema diff deploy did not finish',
     },
   );
+}
+
+// ── Export UI (drivers with exportScope: none) ─────────────────────
+
+/** Assert a `data-testid` export control is not rendered. */
+export async function assertExportTestIdAbsent(testId: string) {
+  const el = await $(`[data-testid="${testId}"]`);
+  expect(await el.isExisting()).toBe(false);
+}
+
+export async function assertDataTableExportAbsent() {
+  await assertExportTestIdAbsent('data-table-export');
+}
+
+export async function assertConnToolbarBatchExportAbsent() {
+  await assertExportTestIdAbsent('conn-toolbar-export');
+}
+
+export async function assertStructEditorExportAbsent() {
+  await assertExportTestIdAbsent('struct-editor-export-structure');
+}
+
+/** Open inline structure editor when the driver exposes edit-structure. */
+export async function openTableStructureEditorIfSupported(): Promise<boolean> {
+  await switchSubTab('structure');
+  await browser.pause(800);
+  const editBtn = await $('[data-testid="struct-edit-structure"]');
+  if (!(await editBtn.isExisting())) return false;
+  await editBtn.waitForDisplayed({ timeout: 8000 });
+  await editBtn.click();
+  await browser.pause(800);
+  await $('[data-testid="struct-editor-title"]').waitForDisplayed({ timeout: 10000 });
+  return true;
 }
