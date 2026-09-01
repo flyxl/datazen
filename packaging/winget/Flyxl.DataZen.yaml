@@ -5,7 +5,7 @@
 # Installer URL must match Basic release artifact (no -all / -akulaku suffix).
 
 PackageIdentifier: Flyxl.DataZen
-PackageVersion: VERSION
+PackageVersion: 0.1.1
 PackageLocale: en-US
 Publisher: Flyxl
 PublisherUrl: https://github.com/flyxl
@@ -26,8 +26,8 @@ Tags:
 Installers:
   - Architecture: x64
     InstallerType: nullsoft
-    InstallerUrl: https://github.com/flyxl/datazen/releases/download/vVERSION/DataZen_VERSION_x64-setup-windows-x64.exe
-    InstallerSha256: SHA256
+    InstallerUrl: https://github.com/flyxl/datazen/releases/download/v0.1.1/DataZen_0.1.1_x64-setup-windows-x64.exe
+    InstallerSha256: 2C2371D9C710829DE9AAF06B81811647DB8ABD46290A7C7A6939ABA02B91AA9C
     Scope: user
     UpgradeBehavior: install
 ManifestType: singleton

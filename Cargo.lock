@@ -1628,7 +1628,7 @@ checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
 
 [[package]]
 name = "datazen"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aes 0.8.4",
  "aes-gcm 0.10.3",
@@ -1642,7 +1642,6 @@ dependencies = [
  "datazen-driver-api",
  "datazen-driver-mysql",
  "datazen-driver-postgres",
- "datazen-driver-redis",
  "datazen-driver-sqlite",
  "dirs",
  "flate2",

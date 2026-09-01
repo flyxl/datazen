@@ -16,6 +16,12 @@ import {
   groupConnectionsWithPinnedSection,
   useConnectionStore,
 } from '../../stores/connectionStore';
+import {
+  connectionExpandKey,
+  parseConnectionExpandKey,
+  PINNED_GROUP_KEY,
+  RECENT_GROUP_KEY,
+} from '../../lib/connectionLocator';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -181,14 +187,18 @@ export const ConnectionNavigatorTree = forwardRef<
       let changed = false;
       const next = new Set(prev);
       for (const [connectionId, entry] of Object.entries(activeConnections)) {
-        if (entry?.status === 'connected' && !next.has(connectionId)) {
-          next.add(connectionId);
+        if (entry?.status !== 'connected') continue;
+        const conn = connections.find((c) => c.id === connectionId);
+        const sectionKey = conn?.pinned ? PINNED_GROUP_KEY : RECENT_GROUP_KEY;
+        const key = connectionExpandKey(sectionKey, connectionId);
+        if (!next.has(key)) {
+          next.add(key);
           changed = true;
         }
       }
       return changed ? next : prev;
     });
-  }, [activeConnections]);
+  }, [activeConnections, connections]);
 
   const loadedConnectionsRef = useRef<Set<string>>(new Set());
   const prevConnectionIdsRef = useRef<Set<string>>(new Set());
@@ -206,7 +216,8 @@ export const ConnectionNavigatorTree = forwardRef<
   }, [activeConnections]);
 
   useEffect(() => {
-    for (const connectionId of expandedConnections) {
+    for (const key of expandedConnections) {
+      const { connectionId } = parseConnectionExpandKey(key);
       const entry = activeConnections[connectionId];
       if (entry?.status !== 'connected' || !entry.dbSessionId) continue;
       if (loadedConnectionsRef.current.has(connectionId)) continue;
@@ -279,13 +290,14 @@ export const ConnectionNavigatorTree = forwardRef<
   }, []);
 
   const toggleConnection = useCallback(
-    (connectionId: string) => {
+    (connectionId: string, sectionGroup: string) => {
+      const key = connectionExpandKey(sectionGroup, connectionId);
       setExpandedConnections((prev) => {
         const next = new Set(prev);
-        if (next.has(connectionId)) {
-          next.delete(connectionId);
+        if (next.has(key)) {
+          next.delete(key);
         } else {
-          next.add(connectionId);
+          next.add(key);
           onSelectConnection(connectionId);
         }
         return next;
@@ -462,13 +474,14 @@ export const ConnectionNavigatorTree = forwardRef<
   );
 
   const handleConnectionClick = useCallback(
-    (conn: ConnectionConfig) => {
+    (conn: ConnectionConfig, sectionGroup: string) => {
       onSelectConnection(conn.id);
       const entry = activeConnections[conn.id];
       if (entry?.status === 'connected') {
+        const key = connectionExpandKey(sectionGroup, conn.id);
         setExpandedConnections((prev) => {
-          if (prev.has(conn.id)) return prev;
-          return new Set(prev).add(conn.id);
+          if (prev.has(key)) return prev;
+          return new Set(prev).add(key);
         });
       }
     },

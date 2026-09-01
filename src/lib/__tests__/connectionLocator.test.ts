@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { ConnectionSchemaState } from '../../stores/schemaStore';
 import type { ConnectionConfig } from '../../types';
 import {
+  connectionExpandKey,
   groupConnectionsWithRecentSections,
+  parseConnectionExpandKey,
   PINNED_GROUP_KEY,
   rankConnections,
   RECENT_GROUP_KEY,
@@ -74,31 +76,27 @@ describe('rankConnections', () => {
   });
 
   it('preserves cached schema, table, path, and database-object matching', () => {
-    const result = rankConnections(
-      [connection({ id: 'cached' })],
-      'function_name',
-      {
-        activeConnections: {
-          cached: { status: 'connected', dbSessionId: 'session-1' },
-        },
-        schemas: new Map([
-          [
-            'session-1',
-            schemaState({
-              schemaNames: ['public'],
-              namespaceTree: { public: { users: [] } },
-              pathItems: { catalog: [{ name: 'path_table', tableType: 'table' }] },
-            }),
-          ],
-        ]),
-        dbTablesMap: {
-          'session-1::app': [{ name: 'cached_table', tableType: 'table', schema: 'public' }],
-        },
-        dbObjectsMap: {
-          'cached::app::functions': [{ kind: 'function', name: 'function_name', schema: 'public' }],
-        },
+    const result = rankConnections([connection({ id: 'cached' })], 'function_name', {
+      activeConnections: {
+        cached: { status: 'connected', dbSessionId: 'session-1' },
       },
-    );
+      schemas: new Map([
+        [
+          'session-1',
+          schemaState({
+            schemaNames: ['public'],
+            namespaceTree: { public: { users: [] } },
+            pathItems: { catalog: [{ name: 'path_table', tableType: 'table' }] },
+          }),
+        ],
+      ]),
+      dbTablesMap: {
+        'session-1::app': [{ name: 'cached_table', tableType: 'table', schema: 'public' }],
+      },
+      dbObjectsMap: {
+        'cached::app::functions': [{ kind: 'function', name: 'function_name', schema: 'public' }],
+      },
+    });
 
     expect(result).toHaveLength(1);
     expect(result[0]?.match).toEqual({
@@ -109,25 +107,31 @@ describe('rankConnections', () => {
   });
 
   it('uses match strength, pinned, recency, group, name, and id as stable keys', () => {
-    const result = rankConnections([
-      connection({ id: 'name-prefix', name: 'Prod app', pinned: true }),
-      connection({ id: 'name-exact', name: 'prod' }),
-      connection({
-        id: 'recent',
-        name: 'Recent app',
-        lastConnectedAt: '2026-08-30T10:00:00Z',
-      }),
-      connection({ id: 'old', name: 'Old app', lastConnectedAt: '2026-08-29T10:00:00Z' }),
-    ], 'prod');
+    const result = rankConnections(
+      [
+        connection({ id: 'name-prefix', name: 'Prod app', pinned: true }),
+        connection({ id: 'name-exact', name: 'prod' }),
+        connection({
+          id: 'recent',
+          name: 'Recent app',
+          lastConnectedAt: '2026-08-30T10:00:00Z',
+        }),
+        connection({ id: 'old', name: 'Old app', lastConnectedAt: '2026-08-29T10:00:00Z' }),
+      ],
+      'prod',
+    );
 
     expect(result.map(({ connection: item }) => item.id)).toEqual(['name-exact', 'name-prefix']);
 
-    const noSearch = rankConnections([
-      connection({ id: 'recent', name: 'Zed', lastConnectedAt: '2026-08-30T10:00:00Z' }),
-      connection({ id: 'pinned', name: 'Zulu', pinned: true }),
-      connection({ id: 'name', name: 'Alpha', group: 'dev' }),
-      connection({ id: 'older', name: 'Beta', lastConnectedAt: '2026-08-29T10:00:00Z' }),
-    ], '');
+    const noSearch = rankConnections(
+      [
+        connection({ id: 'recent', name: 'Zed', lastConnectedAt: '2026-08-30T10:00:00Z' }),
+        connection({ id: 'pinned', name: 'Zulu', pinned: true }),
+        connection({ id: 'name', name: 'Alpha', group: 'dev' }),
+        connection({ id: 'older', name: 'Beta', lastConnectedAt: '2026-08-29T10:00:00Z' }),
+      ],
+      '',
+    );
     expect(noSearch.map(({ connection: item }) => item.id)).toEqual([
       'pinned',
       'recent',
@@ -139,6 +143,17 @@ describe('rankConnections', () => {
   it('deduplicates connection ids in ranked search results', () => {
     const duplicate = connection({ id: 'same', name: 'Same' });
     expect(rankConnections([duplicate, { ...duplicate }], 'same')).toHaveLength(1);
+  });
+});
+
+describe('connectionExpandKey', () => {
+  it('scopes expand state per navigator section', () => {
+    expect(connectionExpandKey('__recent__', 'cfg-1')).toBe('__recent__::cfg-1');
+    expect(connectionExpandKey('prod', 'cfg-1')).toBe('prod::cfg-1');
+    expect(parseConnectionExpandKey('prod::cfg-1')).toEqual({
+      sectionGroup: 'prod',
+      connectionId: 'cfg-1',
+    });
   });
 });
 

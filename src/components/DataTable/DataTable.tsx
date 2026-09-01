@@ -134,7 +134,7 @@ export function DataTable({
   onRowClick,
   highlightedRow,
   statusBar,
-  rowHeight = 40,
+  rowHeight = 28,
   exportTableName,
   databaseType,
   dbSessionId,

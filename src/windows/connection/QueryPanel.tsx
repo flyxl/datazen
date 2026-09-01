@@ -45,6 +45,7 @@ import {
   namespaceRootsFrom,
   pathsEqual,
   resolveQueryContextPath,
+  autoCompletePathHierarchyPath,
 } from '../../lib/queryContextPath';
 import { QueryContextSelectors } from '../../components/query/QueryContextSelectors';
 import { QueryErrorPanel } from '../../components/query/QueryErrorPanel';
@@ -60,11 +61,8 @@ import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
-import {
-  estimateExpandedToolbarWidth,
-  TOOLBAR_GAP,
-  useCompactToolbar,
-} from '../../hooks/useCompactToolbar';
+import { useCompactToolbar } from '../../hooks/useCompactToolbar';
+import { queryToolbarExpandedMinWidth } from './queryToolbarWidth';
 import { cn } from '../../lib/cn';
 import { queryCommands } from '../../commands/query';
 import { dashboardCommands } from '../../commands/dashboard';
@@ -104,6 +102,7 @@ interface QueryPanelProps {
   connectionName?: string;
   database?: string;
   schema?: string;
+  namespacePath?: string[];
 }
 
 function hasSuspiciousPostgresDoubleQuotedLiteral(sql: string): boolean {
@@ -236,6 +235,7 @@ export function QueryPanel({
   connectionName,
   database,
   schema,
+  namespacePath: panelNamespacePath,
 }: QueryPanelProps) {
   const { t } = useI18n();
   const [confirmRetry, confirmRetryDialog] = useConfirmDialog();
@@ -328,7 +328,11 @@ export function QueryPanel({
   const switchDatabase = useSchemaStore((s) => s.switchDatabase);
   const ensureNamespacePath = useSchemaStore((s) => s.ensureNamespacePath);
   const namespaceLoading = useSchemaStore((s) => s.ensuringCount > 0);
-  const selectedDatabase = database ?? currentDatabase;
+  const dbMeta = databaseType ? DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY] : undefined;
+  const isPathHierarchyDriver = dbMeta?.namespaceEnsure === 'path-hierarchy';
+  const selectedDatabase = isPathHierarchyDriver
+    ? (currentDatabase ?? database)
+    : (database ?? currentDatabase);
   const selectedSchema = schema ?? currentSchema;
   const currentDiagnosisSchemaState = useMemo(
     () => ({ currentDatabase, currentSchema, tables, views, columnMap }),
@@ -344,20 +348,38 @@ export function QueryPanel({
     return () => window.clearTimeout(timer);
   }, [exec.running]);
 
-  const dbMeta = databaseType ? DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY] : undefined;
   const supportsExplain = dbMeta?.supportsExplain === true;
-  const isPathHierarchy = dbMeta?.namespaceEnsure === 'path-hierarchy';
-  const hasContextSelectors =
-    (isPathHierarchy && namespaceRootsFrom(namespaceTree, pathAliases, databases).length > 0) ||
-    (isMultiDb && databases.length > 0);
-  const queryToolbarExpandedMinWidth = estimateExpandedToolbarWidth({
-    expandedButtonCount: 1 + (supportsExplain ? 1 : 0) + 1 + 3 + 3,
-    fixedExtraWidth: (hasContextSelectors ? 160 : 0) + TOOLBAR_GAP + 8,
-  });
-  const { ref: toolbarRef, compact: compactToolbar } = useCompactToolbar(
-    queryToolbarExpandedMinWidth,
+  const isPathHierarchy = isPathHierarchyDriver;
+  const hasContextSelectors = isPathHierarchy || (isMultiDb && databases.length > 0);
+  const [contextPath, setContextPath] = useState<string[]>(() => panelNamespacePath ?? []);
+  const queryToolbarExpandedMinWidthValue = useMemo(
+    () =>
+      queryToolbarExpandedMinWidth({
+        supportsExplain,
+        hasContextSelectors,
+        isPathHierarchy,
+        isMultiDb,
+        contextSchema: selectedSchema,
+        namespaceTree,
+        pathAliases,
+        databases,
+        contextPath,
+      }),
+    [
+      supportsExplain,
+      hasContextSelectors,
+      isPathHierarchy,
+      isMultiDb,
+      selectedSchema,
+      namespaceTree,
+      pathAliases,
+      databases,
+      contextPath,
+    ],
   );
-  const [contextPath, setContextPath] = useState<string[]>([]);
+  const { ref: toolbarRef, compact: compactToolbar } = useCompactToolbar(
+    queryToolbarExpandedMinWidthValue,
+  );
   const [executionSeq, setExecutionSeq] = useState(0);
   const editorSchema = useMemo(
     () =>
@@ -396,6 +418,7 @@ export function QueryPanel({
     async (next: string[]) => {
       setContextPath(next);
       if (isPathHierarchy) {
+        updatePanel(panelId, { namespacePath: next.length > 0 ? next : undefined });
         if (next.length > 0) await ensureNamespacePath(next);
         return;
       }
@@ -410,14 +433,24 @@ export function QueryPanel({
         await switchDatabase(db);
       }
     },
-    [currentDatabase, ensureNamespacePath, isPathHierarchy, switchDatabase],
+    [currentDatabase, ensureNamespacePath, isPathHierarchy, panelId, switchDatabase, updatePanel],
   );
+
+  useEffect(() => {
+    if (!isPathHierarchy) return;
+    const next = autoCompletePathHierarchyPath(namespaceTree, pathAliases, databases, contextPath);
+    if (next) {
+      void applyContextPath(next);
+    }
+  }, [isPathHierarchy, namespaceTree, pathAliases, databases, contextPath, applyContextPath]);
 
   const handleSelectContextLevel = useCallback(
     (index: number, value: string) => {
       if (!value) return;
-      if (index === 0) updatePanel(panelId, { database: value });
-      if (index === 1) updatePanel(panelId, { schema: value });
+      if (!isPathHierarchy) {
+        if (index === 0) updatePanel(panelId, { database: value });
+        if (index === 1) updatePanel(panelId, { schema: value });
+      }
       void applyContextPath([...contextPath.slice(0, index), value]);
     },
     [applyContextPath, contextPath, panelId, updatePanel],

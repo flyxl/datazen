@@ -15,6 +15,7 @@ export type UnifiedRow =
   | {
       type: 'connection';
       conn: ConnectionConfig;
+      sectionGroup: string;
       isSelected: boolean;
       status: string;
       expanded: boolean;
@@ -115,7 +116,10 @@ export interface ConnectionNavigatorTreeProps {
     schema?: string;
   }) => void;
   viewActions?: {
-    newQuery?: (initialSql?: string, context?: Pick<TableContextInput, 'database' | 'schema'>) => void;
+    newQuery?: (
+      initialSql?: string,
+      context?: Pick<TableContextInput, 'database' | 'schema'>,
+    ) => void;
     openTableAction?: (context: TableContextInput, action: TableSqlActionKind) => void;
     openSqlFile?: () => void;
     createTable?: () => void;
