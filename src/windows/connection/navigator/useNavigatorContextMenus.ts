@@ -61,7 +61,7 @@ export interface NavigatorContextMenuDeps {
   deleteGroup: (name: string) => Promise<void>;
   moveConnectionToGroup: (id: string, group?: string) => Promise<void>;
   toggleConnectionPinned: (id: string) => Promise<void>;
-  toggleConnection: (connectionId: string) => void;
+  toggleConnection: (connectionId: string, sectionGroup: string) => void;
   refreshConnection: (connectionId: string) => Promise<void>;
   refreshDatabase: (connectionId: string, dbName: string) => Promise<void>;
   refreshSchema: (connectionId: string, dbName: string, schemaName: string) => Promise<void>;
@@ -250,7 +250,7 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
   );
 
   const handleConnectionContextMenu = useCallback(
-    (e: React.MouseEvent, conn: ConnectionConfig) => {
+    (e: React.MouseEvent, conn: ConnectionConfig, sectionGroup: string) => {
       e.preventDefault();
       e.stopPropagation();
 
@@ -282,7 +282,7 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
                 onDisconnect(conn.id);
               } else {
                 onSelectConnection(conn.id);
-                toggleConnection(conn.id);
+                toggleConnection(conn.id, sectionGroup);
                 void connect(conn);
               }
             },

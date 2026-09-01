@@ -1,7 +1,10 @@
+import { Fragment } from 'react';
 import { Database } from 'lucide-react';
 import { Select } from '../ui/Select';
-import { namespaceBranchChildNames, type SqlNamespace } from '../../lib/sqlNamespace';
-import { namespaceRootsFrom } from '../../lib/queryContextPath';
+import {
+  buildPathHierarchySelectorSegments,
+  pathHierarchySelectorSegmentsForUi,
+} from '../../lib/queryContextPath';
 import { useI18n } from '../../hooks/useI18n';
 
 export interface QueryContextSelectorsProps {
@@ -9,7 +12,7 @@ export interface QueryContextSelectorsProps {
   isPathHierarchy: boolean;
   databases: readonly string[];
   currentDatabase: string | null;
-  namespaceTree: SqlNamespace;
+  namespaceTree: import('../../lib/sqlNamespace').SqlNamespace;
   pathAliases: Record<string, string>;
   contextPath: readonly string[];
   contextSchema?: string | null;
@@ -29,6 +32,10 @@ function levelLabelKey(
   return 'query.schema';
 }
 
+const PATH_HIERARCHY_SELECT_CLASS =
+  '!h-6 !text-[11px] shrink-0 !w-auto !min-w-[4rem] !max-w-[5.5rem]';
+const PATH_HIERARCHY_SELECTORS_MIN_WIDTH = 'min-w-[9rem]';
+
 export function QueryContextSelectors({
   isMultiDb,
   isPathHierarchy,
@@ -43,30 +50,54 @@ export function QueryContextSelectors({
   const { t } = useI18n();
 
   if (isPathHierarchy) {
-    const roots = namespaceRootsFrom(namespaceTree, pathAliases, databases);
-    if (roots.length === 0) return null;
-
-    const levels: Array<{ options: string[]; value: string }> = [];
-    levels.push({ options: roots, value: contextPath[0] ?? '' });
-    for (let i = 0; i < contextPath.length; i++) {
-      const children = namespaceBranchChildNames(namespaceTree, [...contextPath.slice(0, i + 1)]);
-      if (children.length === 0) break;
-      levels.push({ options: children, value: contextPath[i + 1] ?? '' });
-    }
+    const segments = pathHierarchySelectorSegmentsForUi(
+      namespaceTree,
+      pathAliases,
+      databases,
+      contextPath,
+    );
 
     return (
-      <div className="flex shrink-0 items-center gap-1.5" data-testid="query-context-selectors">
-        <Database className="h-3.5 w-3.5 text-fg-muted" />
-        {levels.map((level, index) => (
-          <Select
-            key={`${index}-${level.value}`}
-            value={level.value}
-            options={level.options.map((name) => ({ value: name, label: name }))}
-            onChange={(value) => onSelectLevel(index, value)}
-            placeholder={t(levelLabelKey(index, true))}
-            className="!h-6 !text-[11px] max-w-[180px]"
-            title={t(levelLabelKey(index, true))}
-          />
+      <div
+        className={`flex shrink-0 items-center gap-0.5 ${PATH_HIERARCHY_SELECTORS_MIN_WIDTH}`}
+        data-testid="query-context-selectors"
+      >
+        <Database className="h-3.5 w-3.5 shrink-0 text-fg-muted" />
+        {segments.map((segment, index) => (
+          <Fragment
+            key={
+              segment.kind === 'label'
+                ? `label-${index}-${segment.name}`
+                : `select-${segment.levelIndex}`
+            }
+          >
+            {index > 0 && (
+              <span className="px-0.5 text-[10px] text-fg-muted/70" aria-hidden="true">
+                /
+              </span>
+            )}
+            {segment.kind === 'label' ? (
+              <span
+                className="max-w-[4.5rem] truncate text-[11px] text-fg-muted"
+                title={segment.name}
+                data-testid="query-context-path-label"
+              >
+                {segment.name}
+              </span>
+            ) : (
+              <Select
+                value={segment.value}
+                options={segment.options.map((name) => ({ value: name, label: name }))}
+                onChange={(value) => onSelectLevel(segment.levelIndex, value)}
+                placeholder={t(levelLabelKey(segment.levelIndex, true))}
+                className={PATH_HIERARCHY_SELECT_CLASS}
+                title={t(levelLabelKey(segment.levelIndex, true))}
+                searchable
+                fitContent
+                disabled={segment.options.length === 0}
+              />
+            )}
+          </Fragment>
         ))}
       </div>
     );
@@ -84,6 +115,7 @@ export function QueryContextSelectors({
           onChange={(db) => onSelectLevel(0, db)}
           className="!h-6 !text-[11px] max-w-[180px]"
           title={t('query.database')}
+          searchable
         />
       )}
       {contextSchema && (

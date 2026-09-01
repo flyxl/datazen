@@ -41,6 +41,20 @@ export const RECENT_CONNECTION_LIMIT = 5;
 export const RECENT_GROUP_KEY = '__recent__';
 export const PINNED_GROUP_KEY = '__pinned__';
 
+/** Scoped expand key so the same connection can be expanded independently per navigator section. */
+export function connectionExpandKey(sectionGroup: string, connectionId: string): string {
+  return `${sectionGroup}::${connectionId}`;
+}
+
+export function parseConnectionExpandKey(key: string): {
+  sectionGroup: string;
+  connectionId: string;
+} {
+  const sep = key.indexOf('::');
+  if (sep < 0) return { sectionGroup: '', connectionId: key };
+  return { sectionGroup: key.slice(0, sep), connectionId: key.slice(sep + 2) };
+}
+
 type Candidate = Omit<ConnectionMatch, 'rank'> & { rank: number };
 
 function normalize(value: string | undefined | null): string {

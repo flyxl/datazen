@@ -19,7 +19,13 @@ import {
 } from '../../stores/panelStore';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { buildConnectionTabContextMenuItems } from '../../lib/connectionTabContextMenu';
-import { buildQueryOpenContext, type TableContextInput, type TableSqlActionKind } from '../../lib/tableSqlActions';
+import {
+  buildQueryOpenContext,
+  type TableContextInput,
+  type TableSqlActionKind,
+} from '../../lib/tableSqlActions';
+import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { splitPathHierarchyDatabasePin } from '../../lib/queryContextPath';
 
 export interface PanelHandlers {
   handleSelectTable: (table: string, schema?: string, database?: string) => void;
@@ -371,14 +377,23 @@ export function usePanelHandlers({
     (initialSql?: string, target?: Pick<TableContextInput, 'database' | 'schema'>) => {
       if (!sidebarConnCtx) return;
       const panelId = nextPanelId('qry');
-      const db = target?.database ?? currentDatabase ?? initialDatabase ?? '';
+      let panelDatabase = target?.database?.trim() || undefined;
+      let namespacePath: string[] | undefined;
+      const meta = DB_REGISTRY[sidebarConnCtx.databaseType];
+      if (meta?.namespaceEnsure === 'path-hierarchy' && panelDatabase?.includes('/')) {
+        const split = splitPathHierarchyDatabasePin(panelDatabase);
+        panelDatabase = split.root || undefined;
+        namespacePath = split.namespacePath.length > 0 ? split.namespacePath : undefined;
+      }
+      const db = panelDatabase ?? currentDatabase ?? initialDatabase ?? '';
       const panel: QueryPanel = {
         ...sidebarConnCtx,
         type: 'query',
         id: panelId,
         title: db ? `${sidebarConnCtx.connectionName}@${db}` : sidebarConnCtx.connectionName,
-        database: target?.database?.trim() || undefined,
+        database: panelDatabase || undefined,
         schema: target?.schema?.trim() || undefined,
+        namespacePath,
       };
       addPanel(panel);
       if (initialSql) updateSql(panelId, initialSql);
