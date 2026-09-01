@@ -41,6 +41,7 @@ export interface SettingsContentProps {
   showCloseButton?: boolean;
   onClose?: () => void;
   onBack?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export function SettingsContent({
@@ -48,6 +49,7 @@ export function SettingsContent({
   showCloseButton = false,
   onClose,
   onBack,
+  onDirtyChange,
 }: Readonly<SettingsContentProps>) {
   useSettings();
   const { t } = useI18n();
@@ -118,6 +120,10 @@ export function SettingsContent({
   }, [draft, updateSettings]);
 
   const isDirty = JSON.stringify(draft) !== JSON.stringify(settings);
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   return (
     <>
