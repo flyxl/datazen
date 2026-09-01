@@ -104,6 +104,7 @@ export function Dialog({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-label={title}
         aria-labelledby={titleId}
         {...(description ? { 'aria-describedby': descriptionId } : {})}
         tabIndex={-1}
