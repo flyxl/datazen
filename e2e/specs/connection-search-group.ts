@@ -2,7 +2,7 @@ import { expect, browser, $, $$ } from '@wdio/globals';
 import { expandAllGroups } from '../helpers.js';
 import { t } from '../i18n.js';
 
-describe('连接搜索和分组 (CM-007, CM-008)', () => {
+describe('连接搜索和分组 (CM-007, CM-008, CM-009)', () => {
   before(async () => {
     await $(
       `input[placeholder="${t('main.searchPlaceholder')}"], [data-testid="connection-search-input"]`,
@@ -62,6 +62,10 @@ describe('连接搜索和分组 (CM-007, CM-008)', () => {
     await input.clearValue();
     const clearedValue = await input.getValue();
     expect(clearedValue).toBe('');
+  });
+
+  it('暂时隐藏数据库对象搜索入口 (CM-009)', async () => {
+    expect(await $('[data-testid="global-object-search-toggle"]').isExisting()).toBe(false);
   });
 
   // ── 分组功能 (CM-007) ─────────────────────────────────────────
