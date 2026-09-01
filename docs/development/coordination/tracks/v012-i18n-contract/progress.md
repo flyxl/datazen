@@ -9,6 +9,7 @@
 
 - 为 Dialog/ErrorBoundary、Settings dirty/save、DataTable 空/加载、Workflow 错误、Select/Panel 可访问性和权限说明预留英文/简体中文 key。
 - 只修改 `src/locales/en.ts` 与 `src/locales/zh-CN.ts`，保持 host locale key parity。
+- 新增 locale contract 测试，覆盖本轮 key 的双语解析和带参数文案插值。
 - 编码 commit：待本轮提交后填写。
 
 ## E2E 登记
@@ -17,8 +18,10 @@
 
 ## 测试结果与覆盖率
 
-- `git diff --check`：待提交前执行。
-- locale parity：待独立测试代理复验。
+- locale 定向测试：1 个文件，18/18 通过（含 UI polish key contract）。
+- `git diff --check`：通过。
+- typecheck：通过。
+- 覆盖率：待独立测试代理按 playbook 复验。
 
 ## 设计决策 / 遗留
 
