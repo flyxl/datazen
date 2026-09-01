@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DataZen Driver 运行时架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/flyxl/datazen",
+      "revision": "f437bb8b37faa5ac96018e6ca6835680af2de51d"
+    },
+    "viewBox": [1300, 760],
+    "views": [
+      {
+        "id": "command_execution",
+        "label": "Command 执行路径",
+        "focus": ["command_callers", "driver_command_ipc", "driver_resolver", "command_gate", "command_executor", "database_driver", "target_database"],
+        "note": "上层只依赖 Command Definition 和 JSON 输入输出。"
+      },
+      {
+        "id": "driver_resolution",
+        "label": "Driver 解析路径",
+        "focus": ["connection_manager", "driver_registry", "driver_factories", "driver_resolver", "database_driver"],
+        "note": "会话与类型两条路径在 Resolver 中汇合。"
+      },
+      {
+        "id": "driver_contract",
+        "label": "Driver API 契约",
+        "focus": ["command_gate", "command_executor", "database_driver", "default_commands", "reuse_driver"],
+        "note": "默认 Command 与 ReuseDriver 保持宿主能力一致。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "command_callers",
+      "type": "frontend",
+      "label": "Command Callers",
+      "sublabel": "UI · Workflow · MCP",
+      "tag": "Extension",
+      "pos": [20, 300],
+      "size": [145, 72]
+    },
+    {
+      "id": "driver_command_ipc",
+      "type": "backend",
+      "label": "Driver Command IPC",
+      "sublabel": "execute_driver_command",
+      "pos": [200, 300],
+      "size": [145, 72],
+      "sources": [
+        { "path": "src-tauri/src/commands/driver_command.rs", "label": "统一 IPC" }
+      ]
+    },
+    {
+      "id": "driver_resolver",
+      "type": "backend",
+      "label": "Driver Resolver",
+      "sublabel": "session 或 driverType",
+      "pos": [385, 300],
+      "size": [140, 72],
+      "sources": [
+        { "path": "src-tauri/src/commands/driver_command.rs", "label": "resolve_command_driver" }
+      ]
+    },
+    {
+      "id": "command_gate",
+      "type": "security",
+      "label": "Command Gate",
+      "sublabel": "发现 · 权限 · Schema 校验",
+      "tag": "fail closed",
+      "pos": [565, 300],
+      "size": [150, 72],
+      "sources": [
+        { "path": "packages/driver-api/src/command.rs", "label": "Definition + validation" }
+      ]
+    },
+    {
+      "id": "command_executor",
+      "type": "backend",
+      "label": "Command Executor",
+      "sublabel": "database / schema / input",
+      "pos": [755, 300],
+      "size": [145, 72],
+      "sources": [
+        { "path": "src-tauri/src/commands/driver_command.rs", "label": "执行运行时" }
+      ]
+    },
+    {
+      "id": "database_driver",
+      "type": "backend",
+      "label": "DatabaseDriver",
+      "sublabel": "execute_command · query_stream",
+      "tag": "Driver API v3",
+      "pos": [940, 300],
+      "size": [160, 72],
+      "sources": [
+        { "path": "packages/driver-api/src/traits.rs", "label": "核心 Trait" },
+        { "path": "packages/driver-api/src/types.rs", "label": "共享类型" }
+      ]
+    },
+    {
+      "id": "target_database",
+      "type": "database",
+      "label": "目标数据库",
+      "sublabel": "SQL / NoSQL / KV",
+      "pos": [1150, 300],
+      "size": [120, 72]
+    },
+    {
+      "id": "connection_manager",
+      "type": "backend",
+      "label": "ConnectionManager",
+      "sublabel": "dbSessionId → handle",
+      "pos": [385, 60],
+      "size": [150, 72],
+      "sources": [
+        { "path": "src-tauri/src/services/connection_manager.rs", "label": "会话管理" }
+      ]
+    },
+    {
+      "id": "driver_registry",
+      "type": "backend",
+      "label": "DriverRegistry",
+      "sublabel": "按需实例化与能力元数据",
+      "pos": [385, 540],
+      "size": [150, 72],
+      "sources": [
+        { "path": "src-tauri/src/db/registry.rs", "label": "注册表" }
+      ]
+    },
+    {
+      "id": "driver_factories",
+      "type": "messagebus",
+      "label": "inventory Factories",
+      "sublabel": "链接时发现",
+      "pos": [185, 540],
+      "size": [155, 72],
+      "sources": [
+        { "path": "packages/driver-api/src/factory.rs", "label": "Driver Factory" }
+      ]
+    },
+    {
+      "id": "default_commands",
+      "type": "backend",
+      "label": "默认 Commands",
+      "sublabel": "query · execute · query_stream",
+      "pos": [940, 60],
+      "size": [160, 72],
+      "sources": [
+        { "path": "packages/driver-api/src/command.rs", "label": "默认定义" }
+      ]
+    },
+    {
+      "id": "reuse_driver",
+      "type": "backend",
+      "label": "ReuseDriver",
+      "sublabel": "转发发现与执行",
+      "pos": [940, 540],
+      "size": [160, 72],
+      "sources": [
+        { "path": "packages/driver-api/src/reuse.rs", "label": "复用适配" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "DataZen Host Runtime",
+      "wraps": ["driver_command_ipc", "driver_resolver", "command_gate", "command_executor", "connection_manager", "driver_registry"],
+      "pad": 28
+    },
+    {
+      "kind": "region",
+      "label": "datazen-driver-api + Driver 实现",
+      "wraps": ["database_driver", "default_commands", "reuse_driver", "driver_factories"],
+      "pad": 26
+    }
+  ],
+  "connections": [
+    { "id": "caller_to_ipc", "from": "command_callers", "to": "driver_command_ipc", "label": "Command + JSON input", "variant": "emphasis", "labelDy": -30 },
+    { "id": "ipc_to_resolver", "from": "driver_command_ipc", "to": "driver_resolver", "label": "解析执行目标", "labelDy": 60 },
+    { "id": "resolver_to_gate", "from": "driver_resolver", "to": "command_gate", "label": "Driver + handle", "labelDy": -30 },
+    { "id": "gate_to_executor", "from": "command_gate", "to": "command_executor", "label": "已验证请求", "variant": "security", "labelDy": 60 },
+    { "id": "executor_to_driver", "from": "command_executor", "to": "database_driver", "label": "execute_command", "variant": "emphasis", "labelDy": -30 },
+    { "id": "driver_to_database", "from": "database_driver", "to": "target_database", "label": "原生协议", "variant": "emphasis", "labelDy": 60 },
+    { "id": "manager_to_resolver", "from": "connection_manager", "to": "driver_resolver", "label": "dbSessionId 路径", "fromSide": "bottom", "toSide": "top" },
+    { "id": "registry_to_resolver", "from": "driver_registry", "to": "driver_resolver", "label": "driverType 路径", "fromSide": "top", "toSide": "bottom" },
+    { "id": "factories_to_registry", "from": "driver_factories", "to": "driver_registry", "label": "inventory 注册", "labelDy": 60 },
+    { "id": "defaults_to_driver", "from": "default_commands", "to": "database_driver", "label": "默认实现", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
+    { "id": "reuse_to_driver", "from": "reuse_driver", "to": "database_driver", "label": "委托底层 Driver", "variant": "dashed", "fromSide": "top", "toSide": "bottom" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "宿主无方言",
+      "items": ["调用方只认识 Command Definition", "JSON Schema 负责输入契约", "数据库类型判断收敛到 Registry 与 Driver"]
+    },
+    {
+      "dot": "emerald",
+      "title": "两种解析方式",
+      "items": ["会话命令通过 dbSessionId 解析", "无连接命令可通过 driverType 解析", "两条路径共享同一权限与执行门闸"]
+    },
+    {
+      "dot": "violet",
+      "title": "兼容与复用",
+      "items": ["标准 Query Commands 提供默认实现", "ReuseDriver 必须转发发现与执行", "协议版本控制 Driver 与 Host 兼容性"]
+    }
+  ]
+}

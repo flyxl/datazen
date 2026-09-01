@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DataZen 系统架构全景",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/flyxl/datazen",
+      "revision": "f437bb8b37faa5ac96018e6ca6835680af2de51d"
+    },
+    "viewBox": [1340, 760],
+    "views": [
+      {
+        "id": "query_path",
+        "label": "SQL 查询主链路",
+        "focus": ["developer", "react_workspace", "tauri_ipc", "rust_commands", "core_services", "driver_runtime", "database_drivers", "external_databases"],
+        "note": "从 SQL 编辑器出发，沿统一 Driver Command Runtime 到达目标数据库。"
+      },
+      {
+        "id": "automation_path",
+        "label": "AI、Workflow 与 MCP",
+        "focus": ["automation_runtime", "core_services", "driver_runtime", "external_intelligence"],
+        "note": "不同入口复用连接、缓存、Command 与执行服务。"
+      },
+      {
+        "id": "extension_path",
+        "label": "运行时 Extension",
+        "focus": ["runtime_extensions", "react_workspace", "rust_commands"],
+        "note": "沙箱页面通过受控桥接调用宿主能力。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "developer",
+      "type": "external",
+      "label": "开发者",
+      "sublabel": "桌面 GUI",
+      "pos": [20, 300],
+      "size": [100, 64]
+    },
+    {
+      "id": "react_workspace",
+      "type": "frontend",
+      "label": "React 工作区",
+      "sublabel": "Query · DataTable · Chart",
+      "tag": "React 18 + Zustand",
+      "pos": [150, 300],
+      "size": [140, 72],
+      "sources": [
+        { "path": "src/windows/workspace/WorkspaceView.tsx", "label": "工作区壳" },
+        { "path": "src/windows/connection/QueryPanel.tsx", "label": "查询面板" }
+      ]
+    },
+    {
+      "id": "tauri_ipc",
+      "type": "messagebus",
+      "label": "Tauri IPC",
+      "sublabel": "invoke + Channel",
+      "pos": [330, 300],
+      "size": [110, 64],
+      "sources": [
+        { "path": "src/commands/driver.ts", "label": "IPC 封装" }
+      ]
+    },
+    {
+      "id": "rust_commands",
+      "type": "backend",
+      "label": "Commands 层",
+      "sublabel": "校验 · 错误 · 日志",
+      "pos": [480, 300],
+      "size": [130, 72],
+      "sources": [
+        { "path": "src-tauri/src/commands/mod.rs", "label": "AppState" },
+        { "path": "src-tauri/src/commands/error.rs", "label": "CommandError" }
+      ]
+    },
+    {
+      "id": "core_services",
+      "type": "backend",
+      "label": "核心服务",
+      "sublabel": "Connection · Query",
+      "tag": "DbTools",
+      "pos": [650, 300],
+      "size": [145, 72],
+      "sources": [
+        { "path": "src-tauri/src/services/connection_manager.rs", "label": "连接管理" },
+        { "path": "src-tauri/src/services/db_tools.rs", "label": "数据库工具" }
+      ]
+    },
+    {
+      "id": "driver_runtime",
+      "type": "backend",
+      "label": "Driver Command Runtime",
+      "sublabel": "发现 · 校验 · 执行",
+      "tag": "统一能力入口",
+      "pos": [840, 300],
+      "size": [155, 72],
+      "sources": [
+        { "path": "src-tauri/src/commands/driver_command.rs", "label": "Command Runtime" }
+      ]
+    },
+    {
+      "id": "database_drivers",
+      "type": "backend",
+      "label": "Database Drivers",
+      "sublabel": "PG · MySQL · Redis",
+      "tag": "SQLite + optional",
+      "pos": [1030, 300],
+      "size": [145, 72],
+      "sources": [
+        { "path": "packages/driver-api/src/lib.rs", "label": "Driver API" },
+        { "path": "drivers-registry.json", "label": "Driver Catalog" }
+      ]
+    },
+    {
+      "id": "external_databases",
+      "type": "database",
+      "label": "外部数据库",
+      "sublabel": "SQL · NoSQL · KV",
+      "pos": [1210, 300],
+      "size": [110, 72]
+    },
+    {
+      "id": "local_state",
+      "type": "database",
+      "label": "Store + SchemaCache",
+      "sublabel": "配置 · 历史 · 元数据",
+      "tag": "本地优先",
+      "pos": [650, 70],
+      "size": [145, 72],
+      "sources": [
+        { "path": "src-tauri/src/store/mod.rs", "label": "持久化" },
+        { "path": "src-tauri/src/cache/mod.rs", "label": "Schema 缓存" }
+      ]
+    },
+    {
+      "id": "automation_runtime",
+      "type": "backend",
+      "label": "Workflow · AI · MCP",
+      "sublabel": "组合与协议入口",
+      "pos": [650, 520],
+      "size": [145, 72],
+      "sources": [
+        { "path": "src-tauri/src/workflow/mod.rs", "label": "Workflow" },
+        { "path": "src-tauri/src/ai/mod.rs", "label": "AI" },
+        { "path": "src-tauri/src/mcp/mod.rs", "label": "MCP" }
+      ]
+    },
+    {
+      "id": "external_intelligence",
+      "type": "external",
+      "label": "LLM 与 MCP 生态",
+      "sublabel": "Providers · Agents · Tools",
+      "pos": [860, 520],
+      "size": [155, 72]
+    },
+    {
+      "id": "runtime_extensions",
+      "type": "security",
+      "label": "运行时 Extensions",
+      "sublabel": "沙箱页面 · 主题",
+      "tag": "deny-by-default",
+      "pos": [330, 520],
+      "size": [155, 72],
+      "sources": [
+        { "path": "src-tauri/src/extensions/mod.rs", "label": "扩展管理" },
+        { "path": "src/lib/extensionBridge.ts", "label": "受控桥接" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Tauri Application · GUI / headless MCP stdio",
+      "wraps": ["react_workspace", "tauri_ipc", "rust_commands", "core_services", "driver_runtime", "database_drivers", "local_state", "automation_runtime", "runtime_extensions"],
+      "pad": 30
+    }
+  ],
+  "connections": [
+    { "id": "developer_to_ui", "from": "developer", "to": "react_workspace", "label": "交互", "variant": "emphasis", "labelDy": -30 },
+    { "id": "ui_to_ipc", "from": "react_workspace", "to": "tauri_ipc", "label": "结构化命令", "labelDy": 60 },
+    { "id": "ipc_to_commands", "from": "tauri_ipc", "to": "rust_commands", "label": "invoke / stream", "labelDy": -30 },
+    { "id": "commands_to_services", "from": "rust_commands", "to": "core_services", "label": "调用应用服务", "labelDy": 60 },
+    { "id": "services_to_runtime", "from": "core_services", "to": "driver_runtime", "label": "Command 请求", "variant": "emphasis", "labelDy": -30 },
+    { "id": "runtime_to_drivers", "from": "driver_runtime", "to": "database_drivers", "label": "execute_command", "variant": "emphasis", "labelDy": 60 },
+    { "id": "drivers_to_databases", "from": "database_drivers", "to": "external_databases", "label": "数据库协议", "variant": "emphasis", "labelDy": -30 },
+    { "id": "services_to_state", "from": "core_services", "to": "local_state", "label": "读写与缓存", "fromSide": "top", "toSide": "bottom" },
+    { "id": "automation_to_services", "from": "automation_runtime", "to": "core_services", "label": "复用核心能力", "fromSide": "top", "toSide": "bottom" },
+    { "id": "automation_to_external", "from": "automation_runtime", "to": "external_intelligence", "label": "API / MCP" },
+    { "id": "extensions_to_ui", "from": "runtime_extensions", "to": "react_workspace", "label": "贡献页面与主题", "variant": "dashed", "fromSide": "top", "toSide": "bottom" },
+    { "id": "extensions_to_commands", "from": "runtime_extensions", "to": "rust_commands", "label": "权限化桥接", "variant": "security", "fromSide": "top", "toSide": "bottom" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "统一主链路",
+      "items": ["GUI 只发送结构化命令", "查询结果通过 Tauri Channel 流式返回", "数据库差异收敛在 Driver 内"]
+    },
+    {
+      "dot": "emerald",
+      "title": "能力复用",
+      "items": ["Workflow、AI、MCP 共用 AppState", "ConnectionManager 与 SchemaCache 共享", "入口变化不复制数据库逻辑"]
+    },
+    {
+      "dot": "violet",
+      "title": "扩展边界",
+      "items": ["Driver 在编译期链接", "Extension 在运行时沙箱中加载", "敏感资源始终留在 Rust 后端"]
+    }
+  ]
+}

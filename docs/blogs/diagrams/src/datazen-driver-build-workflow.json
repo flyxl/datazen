@@ -1,0 +1,181 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "DataZen Driver 选择与编译流程",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "selection_to_bundle",
+        "label": "从选型到应用包",
+        "focus": ["driver_selection", "driver_registry_file", "resolve_script", "driver_codegen", "rust_generated", "cargo_injection", "rust_link", "tauri_bundle"],
+        "note": "主路径展示从 Driver 选型到静态链接的完整过程。"
+      },
+      {
+        "id": "git_driver_path",
+        "label": "Git Driver 路径",
+        "focus": ["driver_registry_file", "resolve_script", "driver_codegen"],
+        "note": "Resolver 对 Path Driver 直接复用源码，对 Git Driver 执行 clone 或 checkout ref。"
+      },
+      {
+        "id": "generated_outputs",
+        "label": "前后端生成物",
+        "focus": ["driver_codegen", "frontend_generated", "rust_generated", "cargo_injection", "frontend_build", "rust_link"],
+        "note": "一次选型同时驱动前端目录、Rust 注册和 Cargo feature。"
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "selection_lane", "label": "Driver 选型" },
+    { "id": "source_lane", "label": "源码解析" },
+    { "id": "codegen_lane", "label": "代码生成" },
+    { "id": "rust_codegen_lane", "label": "Rust 生成输入" },
+    { "id": "build_lane", "label": "前后端构建" },
+    { "id": "rust_build_lane", "label": "Rust 编译与链接" },
+    { "id": "artifact_lane", "label": "应用产物" }
+  ],
+  "phases": [
+    { "id": "choose_phase", "label": "选择", "fromCol": 0, "toCol": 1 },
+    { "id": "resolve_phase", "label": "解析与生成", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "compile_phase", "label": "注入与编译", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "generated_files", "label": "gitignored 生成物", "lane": "codegen_lane", "fromCol": 3, "toCol": 4, "variant": "dashed" },
+    { "id": "parallel_build", "label": "并行构建输入", "lane": "build_lane", "fromCol": 4, "toCol": 5, "variant": "emphasis" }
+  ],
+  "mainPath": ["driver_selection", "driver_registry_file", "resolve_script", "driver_codegen", "rust_generated", "cargo_injection", "rust_link", "tauri_bundle"],
+  "semanticChecks": {
+    "allowedRoots": ["driver_selection"],
+    "allowedTerminals": ["tauri_bundle"],
+    "requiredPaths": [
+      { "from": "driver_selection", "to": "tauri_bundle" },
+      { "from": "resolve_script", "to": "tauri_bundle" },
+      { "from": "frontend_generated", "to": "tauri_bundle" }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "driver_selection",
+      "lane": "selection_lane",
+      "col": 0,
+      "type": "frontend",
+      "label": "选择 Driver 集合",
+      "sublabel": "--drivers / DATAZEN_DRIVERS",
+      "tag": "默认 basic",
+      "width": 145
+    },
+    {
+      "id": "driver_registry_file",
+      "lane": "selection_lane",
+      "col": 1,
+      "type": "database",
+      "label": "drivers-registry.json",
+      "sublabel": "source · path/git · feature",
+      "width": 152
+    },
+    {
+      "id": "resolve_script",
+      "lane": "source_lane",
+      "col": 2,
+      "type": "backend",
+      "label": "resolve-drivers.mjs",
+      "sublabel": "Path 复用 / Git clone + ref",
+      "tag": "解析源码与依赖",
+      "width": 145
+    },
+    {
+      "id": "driver_codegen",
+      "lane": "codegen_lane",
+      "col": 3,
+      "type": "backend",
+      "label": "Driver Codegen",
+      "sublabel": "合并前端、Rust 与权限输入",
+      "width": 140
+    },
+    {
+      "id": "frontend_generated",
+      "lane": "codegen_lane",
+      "col": 4,
+      "type": "frontend",
+      "label": "前端目录生成",
+      "sublabel": "generated.ts",
+      "tag": "locales"
+    },
+    {
+      "id": "rust_generated",
+      "lane": "rust_codegen_lane",
+      "col": 4,
+      "type": "backend",
+      "label": "Rust 注册与权限生成",
+      "sublabel": "driver_init.rs · capabilities",
+      "width": 152
+    },
+    {
+      "id": "cargo_injection",
+      "lane": "build_lane",
+      "col": 4,
+      "type": "security",
+      "label": "Cargo 临时注入",
+      "sublabel": "optional deps · features",
+      "tag": "build 后 restore",
+      "width": 130
+    },
+    {
+      "id": "frontend_build",
+      "lane": "build_lane",
+      "col": 5,
+      "type": "frontend",
+      "label": "TypeScript + Vite",
+      "sublabel": "编译选中 Driver UI",
+      "width": 140
+    },
+    {
+      "id": "rust_link",
+      "lane": "rust_build_lane",
+      "col": 5,
+      "type": "backend",
+      "label": "Cargo 编译与链接",
+      "sublabel": "inventory factories",
+      "tag": "静态集成",
+      "width": 140
+    },
+    {
+      "id": "tauri_bundle",
+      "lane": "artifact_lane",
+      "col": 5,
+      "type": "external",
+      "label": "DataZen 应用包",
+      "sublabel": "仅包含所选 Drivers"
+    }
+  ],
+  "edges": [
+    { "id": "selection_to_registry", "from": "driver_selection", "to": "driver_registry_file", "label": "筛选 ID", "role": "main", "variant": "emphasis" },
+    { "id": "registry_to_resolver", "from": "driver_registry_file", "to": "resolve_script", "label": "读取 source 与 feature", "role": "main" },
+    { "id": "resolver_to_codegen", "from": "resolve_script", "to": "driver_codegen", "label": "读取 Driver manifest", "role": "main" },
+    { "id": "codegen_to_frontend", "from": "driver_codegen", "to": "frontend_generated", "label": "DB_REGISTRY 输入", "role": "branch" },
+    { "id": "codegen_to_rust", "from": "driver_codegen", "to": "rust_generated", "label": "注册与 capability", "role": "main", "variant": "emphasis" },
+    { "id": "rust_to_cargo", "from": "rust_generated", "to": "cargo_injection", "label": "选中 feature", "role": "main" },
+    { "id": "frontend_to_build", "from": "frontend_generated", "to": "frontend_build", "label": "tsc + vite", "role": "branch" },
+    { "id": "cargo_to_rust", "from": "cargo_injection", "to": "rust_link", "label": "cargo feature", "role": "main", "variant": "emphasis" },
+    { "id": "frontend_to_bundle", "from": "frontend_build", "to": "tauri_bundle", "label": "Web assets", "role": "branch" },
+    { "id": "rust_to_bundle", "from": "rust_link", "to": "tauri_bundle", "label": "Host binary", "role": "main", "variant": "emphasis" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "统一选型入口",
+      "items": ["命令行与环境变量决定 Driver 集合", "drivers-registry.json 描述来源与 feature", "默认 basic 保持发行包精简"]
+    },
+    {
+      "dot": "emerald",
+      "title": "一次解析，多端生成",
+      "items": ["前端生成 DB_REGISTRY 与 locales", "Rust 生成 driver_init 与 capabilities", "Cargo 依赖和 feature 只在构建期注入"]
+    },
+    {
+      "dot": "violet",
+      "title": "静态链接结果",
+      "items": ["Path 与 Git Driver 进入相同流程", "inventory 负责链接时发现", "最终应用只包含本次选中的 Driver"]
+    }
+  ]
+}
