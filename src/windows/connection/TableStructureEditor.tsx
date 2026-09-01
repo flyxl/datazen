@@ -7,6 +7,7 @@ import { queryCommands } from '../../commands/query';
 import { structureCommands } from '../../commands/structure';
 import { driverCommands } from '../../commands/driver';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { resolveExportScope, supportsAnyExport } from '../../lib/exportCapability';
 import { exportTableStructureToFile } from '../../lib/exportTableStructure';
 import { buildStructureChangeRequest } from '../../lib/structureEditor/buildStructureChangeRequest';
 import { capEnabled } from '../../lib/structureEditor/controlHints';
@@ -138,6 +139,7 @@ export function TableStructureEditor({
   const { t } = useI18n();
   const [confirmApply, confirmApplyDialog] = useConfirmDialog();
   const uiConfig = useMemo(() => resolveUiConfig(databaseType), [databaseType]);
+  const structureExportSupported = supportsAnyExport(resolveExportScope(DB_REGISTRY[databaseType]));
 
   const [tableName, setTableName] = useState(initialTableName ?? '');
   const [columns, setColumns] = useState<StructureColumnDraft[]>([]);
@@ -447,7 +449,7 @@ export function TableStructureEditor({
             : `${t('common.editTableStructure')} · ${initialTableName}`}
         </span>
         <div className="flex-1" />
-        {mode === 'alter' && initialTableName && (
+        {mode === 'alter' && initialTableName && structureExportSupported && (
           <Button
             variant="secondary"
             className="h-8 gap-1 text-xs"

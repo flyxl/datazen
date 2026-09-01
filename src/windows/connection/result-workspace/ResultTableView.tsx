@@ -5,12 +5,14 @@ import type { ColumnDef } from '../../../components/DataTable/TableHeader';
 import { useI18n } from '../../../hooks/useI18n';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import type { StatementResult } from '../../../types';
+import type { DataExportCapability } from '../../../lib/exportCapability';
 import { tid } from '../../../lib/tid';
 
 export interface ResultTableViewProps {
   result: StatementResult;
   rowDetailIndex?: number | null;
   onRowDetail?: (rowIndex: number) => void;
+  dataExportCapability?: DataExportCapability;
 }
 
 /** Read-only DataTable adapter for query results.
@@ -23,6 +25,7 @@ export function ResultTableView({
   result,
   rowDetailIndex = null,
   onRowDetail,
+  dataExportCapability,
 }: ResultTableViewProps) {
   const { t } = useI18n();
   const queryResultLimit = useSettingsStore((s) => s.settings.queryResultLimit);
@@ -90,6 +93,7 @@ export function ResultTableView({
         onRowClick={onRowDetail}
         highlightedRow={rowDetailIndex}
         exportTableName="query_result"
+        dataExportCapability={dataExportCapability}
       />
       {result.rows.length === 0 && (
         <div className="flex shrink-0 items-center justify-center border-t border-edge px-3 py-3 text-sm text-fg-muted">

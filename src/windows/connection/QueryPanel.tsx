@@ -76,6 +76,7 @@ import { formatSql } from '../../lib/sqlFormat';
 import { parseSqlParams, paramsToPayload } from '../../lib/sqlBindParams';
 import { BindParamPanel } from '../../components/query/BindParamPanel';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { resolveExportScope } from '../../lib/exportCapability';
 import type { ExplainResult, StatementResult } from '../../types';
 import { toQueryExecutionViewModel } from '../../lib/queryExecutionViewModel';
 import {
@@ -185,8 +186,7 @@ function readCurrentQueryPanelRetryValidationInput(
     ? activeConnections[panel.connectionId]
     : undefined;
   const dbSessionId = panel.dbSessionId;
-  const panelHasSession =
-    typeof dbSessionId === 'string' && dbSessionId.trim().length > 0;
+  const panelHasSession = typeof dbSessionId === 'string' && dbSessionId.trim().length > 0;
   const activeConnectionHasSession =
     typeof activeConnection?.dbSessionId === 'string' &&
     activeConnection.dbSessionId.trim().length > 0;
@@ -303,6 +303,7 @@ export function QueryPanel({
     },
     [panelId, setResultViewModeStore],
   );
+  const queryResultExportCapability = resolveExportScope(DB_REGISTRY[databaseType]);
 
   const { size: editorHeight, handleRef: editorResizeRef } = useResizable({
     direction: 'vertical',
@@ -720,7 +721,9 @@ export function QueryPanel({
     const validation = retryAction.invoke(
       {
         sql: exec.sql,
-        contextFingerprint: diagnosisContext.ok ? diagnosisContext.context.contextFingerprint : null,
+        contextFingerprint: diagnosisContext.ok
+          ? diagnosisContext.context.contextFingerprint
+          : null,
         boundParams: boundPayload ?? {},
       },
       () => undefined,
@@ -743,16 +746,7 @@ export function QueryPanel({
       retryExecution = runExecute('full');
     });
     if (finalValidation.ok && retryExecution) await retryExecution;
-  }, [
-    boundPayload,
-    confirmRetry,
-    diagnosisContext,
-    exec.sql,
-    panelId,
-    retryAction,
-    runExecute,
-    t,
-  ]);
+  }, [boundPayload, confirmRetry, diagnosisContext, exec.sql, panelId, retryAction, runExecute, t]);
 
   const handleExplain = useCallback(async () => {
     if (!exec.sql.trim()) return;
@@ -1250,9 +1244,13 @@ export function QueryPanel({
                 <div className="p-4">
                   <QueryErrorPanel
                     message={exec.error}
-                    onExplain={explainAction.enabled ? () => {
-                      explainAction.invoke(() => setDiagnosisVisible(true));
-                    } : undefined}
+                    onExplain={
+                      explainAction.enabled
+                        ? () => {
+                            explainAction.invoke(() => setDiagnosisVisible(true));
+                          }
+                        : undefined
+                    }
                     onFixSql={diagnosisContext.ok ? () => setDiagnosisVisible(true) : undefined}
                     onRetry={retryAction.enabled ? () => void handleRetry() : undefined}
                   />
@@ -1335,6 +1333,7 @@ export function QueryPanel({
                       view={exec.running ? 'table' : resultViewMode}
                       chartConfig={exec.chartConfig}
                       rowDetailIndex={exec.resultDetailRowIndex}
+                      dataExportCapability={queryResultExportCapability}
                       onViewChange={setResultViewMode}
                       onChartConfigChange={(cfg) => setChartConfig(panelId, cfg)}
                       onRowDetail={(rowIndex) => setResultDetailRow(panelId, rowIndex)}

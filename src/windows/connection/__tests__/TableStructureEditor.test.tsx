@@ -75,6 +75,17 @@ vi.mock('../../../lib/databaseTypes', () => ({
         fields: {},
       },
     },
+    kiwi: {
+      supportsSQL: true,
+      exportScope: 'none',
+      structureEditor: {
+        enabled: true,
+        defaultColumnType: 'text',
+        indexMethods: ['btree'],
+        columnTypes: [{ value: 'text', label: 'text' }],
+        fields: {},
+      },
+    },
     // supportsSQL but no structure editor config → unsupported branch.
     sqlite: {
       supportsSQL: true,
@@ -502,6 +513,15 @@ describe('TableStructureEditor branches', () => {
       expect(mockExportTableStructureToFile).toHaveBeenCalledTimes(1);
     });
     expect(screen.queryByText('structEditor.exportUnsupported')).not.toBeInTheDocument();
+  });
+
+  it('hides export structure when driver exportScope is none', async () => {
+    mockGetTableSchema.mockResolvedValueOnce(ALTER_SCHEMA);
+    render(<TableStructureEditor {...baseProps('alter', { databaseType: 'kiwi' })} />);
+    await waitFor(() => {
+      expect(screen.getByTestId('column-table')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('struct-editor-export-structure')).not.toBeInTheDocument();
   });
 
   it('shows the back button when requested', async () => {

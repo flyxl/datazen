@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { StatementResult } from '../../../../types';
+import type { StatementResult } from '../../../types';
+import type { DataExportCapability } from '../../../lib/exportCapability';
 import { ResultTableView } from '../ResultTableView';
 
 const dataTableMock = vi.hoisted(() => ({
@@ -21,6 +22,8 @@ vi.mock('../../../../stores/settingsStore', () => ({
 vi.mock('../../../../components/DataTable/DataTable', () => ({
   DataTable: (props: {
     rows: unknown[][];
+    exportTableName?: string;
+    dataExportCapability?: DataExportCapability;
     onRowClick?: (rowIndex: number) => void;
     onCellDoubleClick?: (rowIndex: number, column: string) => void;
     highlightedRow?: number | null;
@@ -83,5 +86,12 @@ describe('ResultTableView', () => {
     expect(screen.getByRole('grid')).toBeInTheDocument();
     expect(screen.getByText('sqlFile.noResults')).toBeInTheDocument();
     expect(dataTableMock.render).toHaveBeenCalledWith(expect.objectContaining({ rows: [] }));
+  });
+
+  it('passes dataExportCapability to DataTable for query result export gating', () => {
+    render(<ResultTableView result={result([[1]])} dataExportCapability="none" />);
+    expect(dataTableMock.render).toHaveBeenCalledWith(
+      expect.objectContaining({ exportTableName: 'query_result', dataExportCapability: 'none' }),
+    );
   });
 });

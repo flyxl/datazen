@@ -5,6 +5,7 @@ import { useI18n } from '../../../hooks/useI18n';
 import { tid } from '../../../lib/tid';
 import type { StatementResult } from '../../../types';
 import type { ChartConfig } from '../../../types/chart';
+import type { DataExportCapability } from '../../../lib/exportCapability';
 import { cn } from '../../../lib/cn';
 import { ResultTableView } from './ResultTableView';
 import { resolveResultWorkspaceView, type ResultWorkspaceView } from './resultWorkspaceHelpers';
@@ -19,6 +20,8 @@ export interface ResultWorkspaceProps {
   onViewChange?: (view: ResultWorkspaceView) => void;
   onChartConfigChange?: (config: ChartConfig) => void;
   onRowDetail?: (rowIndex: number) => void;
+  /** Driver export capability; query results hide export when `none`. */
+  dataExportCapability?: DataExportCapability;
   className?: string;
 }
 
@@ -39,6 +42,7 @@ export function ResultWorkspace({
   onViewChange,
   onChartConfigChange,
   onRowDetail,
+  dataExportCapability,
   className,
 }: ResultWorkspaceProps) {
   const { t } = useI18n();
@@ -132,6 +136,7 @@ export function ResultWorkspace({
           result={result}
           rowDetailIndex={rowDetailIndex}
           onRowDetail={handleRowDetail}
+          dataExportCapability={dataExportCapability}
         />
       ) : (
         <ChartView
