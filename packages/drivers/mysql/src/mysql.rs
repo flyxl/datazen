@@ -15,6 +15,16 @@ use tokio::sync::{Mutex, RwLock};
 
 const JS_MAX_SAFE_INT: i64 = 9_007_199_254_740_991;
 const JS_MIN_SAFE_INT: i64 = -9_007_199_254_740_991;
+const MYSQL_CONNECTION_ID_SQL: &str = "SELECT CONNECTION_ID()";
+
+struct MysqlQueryExecution {
+    session_id: String,
+    target_pool: Option<MySqlPool>,
+    control_pool: Option<MySqlPool>,
+    thread_id: Option<u64>,
+    cancel_requested: bool,
+    transactional: bool,
+}
 
 /// Decode a MySQL text column that sqlx 0.8+ may report as BINARY
 /// (information_schema ENUM, SHOW metadata, utf8mb4_*_bin collations, etc.).
@@ -51,6 +61,11 @@ pub struct MysqlDriver {
     active_databases: RwLock<HashMap<String, String>>,
     /// Open transactions: connection held for the lifetime of BEGIN…COMMIT/ROLLBACK, keyed by handle.id.
     transactions: Mutex<HashMap<String, PoolConnection<MySql>>>,
+    /// Exact execution target registry. The MySQL thread id never leaves the
+    /// driver; the host/UI only sees QueryExecutionId.
+    query_executions: Mutex<HashMap<QueryExecutionId, MysqlQueryExecution>>,
+    /// Independent control connections used only for KILL QUERY.
+    control_pools: RwLock<HashMap<String, MySqlPool>>,
     is_mariadb: bool,
 }
 
@@ -60,6 +75,8 @@ impl MysqlDriver {
             pools: RwLock::new(HashMap::new()),
             active_databases: RwLock::new(HashMap::new()),
             transactions: Mutex::new(HashMap::new()),
+            query_executions: Mutex::new(HashMap::new()),
+            control_pools: RwLock::new(HashMap::new()),
             is_mariadb,
         }
     }
@@ -71,6 +88,194 @@ impl MysqlDriver {
         pools
             .get(&handle.pool_id)
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))
+    }
+
+    async fn finish_query_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        let mut executions = self.query_executions.lock().await;
+        if let Some(execution) = executions.get(execution_id) {
+            if execution.session_id != handle.id {
+                return Err(DriverError::QueryExecutionSessionMismatch);
+            }
+        }
+        executions.remove(execution_id);
+        Ok(())
+    }
+
+    async fn is_cancel_requested(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<bool, DriverError> {
+        let executions = self.query_executions.lock().await;
+        let execution = executions.get(execution_id).ok_or_else(|| {
+            DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
+        })?;
+        if execution.session_id != handle.id {
+            return Err(DriverError::QueryExecutionSessionMismatch);
+        }
+        Ok(execution.cancel_requested)
+    }
+
+    async fn bind_thread_id(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+        thread_id: u64,
+    ) -> Result<bool, DriverError> {
+        let mut executions = self.query_executions.lock().await;
+        let execution = executions.get_mut(execution_id).ok_or_else(|| {
+            DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
+        })?;
+        if execution.session_id != handle.id {
+            return Err(DriverError::QueryExecutionSessionMismatch);
+        }
+        execution.thread_id = Some(thread_id);
+        Ok(execution.cancel_requested)
+    }
+
+    async fn stream_registered_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+        statements: &[String],
+        limit: Option<u32>,
+        on_event: &QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let (transactional, target_pool) = {
+            let executions = self.query_executions.lock().await;
+            let execution = executions.get(execution_id).ok_or_else(|| {
+                DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
+            })?;
+            if execution.session_id != handle.id {
+                return Err(DriverError::QueryExecutionSessionMismatch);
+            }
+            (execution.transactional, execution.target_pool.clone())
+        };
+
+        let result: Result<(), DriverError> = async {
+            if transactional {
+                let mut txs = self.transactions.lock().await;
+                let conn = txs.get_mut(&handle.id).ok_or_else(|| {
+                    DriverError::Unsupported(
+                        "transaction execution connection is no longer available".into(),
+                    )
+                })?;
+                if self.is_cancel_requested(handle, execution_id).await? {
+                    Err(DriverError::QueryCancelled)
+                } else {
+                    let id_row = sqlx::query(MYSQL_CONNECTION_ID_SQL)
+                        .fetch_one(&mut **conn)
+                        .await
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                    let thread_id = id_row
+                        .try_get::<u64, _>(0)
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                    if self.bind_thread_id(handle, execution_id, thread_id).await? {
+                        Err(DriverError::QueryCancelled)
+                    } else {
+                        let total_start = Instant::now();
+                        let mut result = Ok(());
+                        for (index, stmt) in statements.iter().enumerate() {
+                            if self.is_cancel_requested(handle, execution_id).await? {
+                                result = Err(DriverError::QueryCancelled);
+                                break;
+                            }
+                            if let Err(error) = Self::stream_one_statement(
+                                &mut **conn,
+                                stmt,
+                                limit,
+                                index,
+                                on_event,
+                            )
+                            .await
+                            {
+                                result = if self
+                                    .is_cancel_requested(handle, execution_id)
+                                    .await
+                                    .unwrap_or(false)
+                                {
+                                    Err(DriverError::QueryCancelled)
+                                } else {
+                                    Err(error)
+                                };
+                                break;
+                            }
+                        }
+                        if result.is_ok() {
+                            on_event(QueryStreamEvent::Done {
+                                total_time_ms: total_start.elapsed().as_millis() as u64,
+                            });
+                        }
+                        result
+                    }
+                }
+            } else {
+                let pool = target_pool.ok_or_else(|| {
+                    DriverError::ConnectionFailed(
+                        "Connection pool was not available when query execution was registered"
+                            .into(),
+                    )
+                })?;
+                let mut conn = pool
+                    .acquire()
+                    .await
+                    .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+                self.apply_active_database(handle, &mut conn).await?;
+
+                if self.is_cancel_requested(handle, execution_id).await? {
+                    Err(DriverError::QueryCancelled)
+                } else {
+                    let id_row = sqlx::query(MYSQL_CONNECTION_ID_SQL)
+                        .fetch_one(&mut *conn)
+                        .await
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                    let thread_id = id_row
+                        .try_get::<u64, _>(0)
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                    if self.bind_thread_id(handle, execution_id, thread_id).await? {
+                        Err(DriverError::QueryCancelled)
+                    } else {
+                        let total_start = Instant::now();
+                        let mut result = Ok(());
+                        for (index, stmt) in statements.iter().enumerate() {
+                            if self.is_cancel_requested(handle, execution_id).await? {
+                                result = Err(DriverError::QueryCancelled);
+                                break;
+                            }
+                            if let Err(error) =
+                                Self::stream_one_statement(&mut *conn, stmt, limit, index, on_event)
+                                    .await
+                            {
+                                result = if self
+                                    .is_cancel_requested(handle, execution_id)
+                                    .await
+                                    .unwrap_or(false)
+                                {
+                                    Err(DriverError::QueryCancelled)
+                                } else {
+                                    Err(error)
+                                };
+                                break;
+                            }
+                        }
+                        if result.is_ok() {
+                            on_event(QueryStreamEvent::Done {
+                                total_time_ms: total_start.elapsed().as_millis() as u64,
+                            });
+                        }
+                        result
+                    }
+                }
+            }
+        }
+        .await;
+
+        let cleanup = self.finish_query_execution(handle, execution_id).await;
+        result.and(cleanup)
     }
 
     /// Build `USE \`db\`` with identifier quoting. Rejects empty / whitespace-only names.
@@ -144,6 +349,24 @@ impl MysqlDriver {
             ))
         })?;
         Ok(())
+    }
+
+    async fn open_pool(
+        opts: MySqlConnectOptions,
+        timeout: Duration,
+        max_connections: u32,
+        min_connections: u32,
+    ) -> Result<MySqlPool, DriverError> {
+        let mut builder = MySqlPoolOptions::new()
+            .max_connections(max_connections)
+            .acquire_timeout(timeout);
+        if min_connections > 0 {
+            builder = builder.min_connections(min_connections);
+        }
+        builder
+            .connect_with(opts)
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
     }
 
     /// Run `USE` for the handle's active database on a concrete connection.
@@ -612,6 +835,10 @@ fn non_empty_secret(value: Option<&str>) -> Option<&str> {
     value.filter(|s| !s.trim().is_empty())
 }
 
+fn build_kill_query_sql(thread_id: u64) -> String {
+    format!("KILL QUERY {thread_id}")
+}
+
 fn build_mysql_options(config: &ConnectionConfig) -> Result<MySqlConnectOptions, DriverError> {
     let host = config.host.as_deref().unwrap_or("localhost");
     let port = config.port.unwrap_or(3306);
@@ -728,16 +955,7 @@ impl DatabaseDriver for MysqlDriver {
 
         let max = config.effective_max_pool_size();
         let min = 2u32.min(max);
-        let mut builder = MySqlPoolOptions::new()
-            .max_connections(max)
-            .acquire_timeout(timeout);
-        if min > 0 {
-            builder = builder.min_connections(min);
-        }
-        let pool = builder
-            .connect_with(opts)
-            .await
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        let pool = Self::open_pool(opts, timeout, max, min).await?;
 
         {
             let _c1 = pool
@@ -754,6 +972,7 @@ impl DatabaseDriver for MysqlDriver {
 
         let pool_id = uuid::Uuid::new_v4().to_string();
         let connection_id = uuid::Uuid::new_v4().to_string();
+        let control_pool = Self::open_pool(build_mysql_options(config)?, timeout, 1, 0).await?;
 
         if let Some(db) = config
             .database
@@ -768,6 +987,10 @@ impl DatabaseDriver for MysqlDriver {
         }
 
         self.pools.write().await.insert(pool_id.clone(), pool);
+        self.control_pools
+            .write()
+            .await
+            .insert(pool_id.clone(), control_pool);
 
         Ok(ConnectionHandle {
             id: connection_id,
@@ -780,7 +1003,14 @@ impl DatabaseDriver for MysqlDriver {
             let _ = Self::execute_text_on_conn(&mut conn, "ROLLBACK").await;
         }
         self.active_databases.write().await.remove(&handle.pool_id);
+        self.query_executions
+            .lock()
+            .await
+            .retain(|_, execution| execution.session_id != handle.id);
         if let Some(pool) = self.pools.write().await.remove(&handle.pool_id) {
+            pool.close().await;
+        }
+        if let Some(pool) = self.control_pools.write().await.remove(&handle.pool_id) {
             pool.close().await;
         }
         Ok(())
@@ -1224,6 +1454,58 @@ impl DatabaseDriver for MysqlDriver {
         Ok(())
     }
 
+    async fn prepare_query_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        let transactional = self.transactions.lock().await.contains_key(&handle.id);
+        let target_pool = self.pools.read().await.get(&handle.pool_id).cloned();
+        let control_pool = self
+            .control_pools
+            .read()
+            .await
+            .get(&handle.pool_id)
+            .cloned();
+        let mut executions = self.query_executions.lock().await;
+        if executions.contains_key(execution_id) {
+            return Err(DriverError::QueryFailed(format!(
+                "query execution '{}' is already registered",
+                execution_id.as_str()
+            )));
+        }
+        executions.insert(
+            execution_id.clone(),
+            MysqlQueryExecution {
+                session_id: handle.id.clone(),
+                target_pool,
+                control_pool,
+                thread_id: None,
+                cancel_requested: false,
+                transactional,
+            },
+        );
+        Ok(())
+    }
+
+    async fn query_stream_with_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let statements = split_mysql_statements(sql);
+        if statements.is_empty() {
+            self.finish_query_execution(handle, execution_id).await?;
+            on_event(QueryStreamEvent::Done { total_time_ms: 0 });
+            return Ok(());
+        }
+        self.stream_registered_execution(handle, execution_id, &statements, limit, &on_event)
+            .await
+    }
+
     async fn query_with_params(
         &self,
         handle: &ConnectionHandle,
@@ -1447,33 +1729,76 @@ impl DatabaseDriver for MysqlDriver {
         })
     }
 
-    async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
+    async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+        Err(DriverError::Unsupported(
+            "legacy session-wide query cancellation is disabled; use an execution handle".into(),
+        ))
+    }
 
-        let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(
-            "SELECT id FROM information_schema.processlist \
-             WHERE id != CONNECTION_ID() \
-               AND command != 'Sleep' \
-               AND info IS NOT NULL",
-        )
-        .fetch_all(pool)
-        .await
-        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+    async fn cancel_query_with_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        // Keep the registry entry locked until KILL QUERY completes. A MySQL
+        // thread id belongs to a pooled connection and can be reused; early
+        // cleanup could otherwise let a delayed cancel hit a later query.
+        let mut executions = self.query_executions.lock().await;
+        let (thread_id, control_pool) = {
+            let execution = executions.get_mut(execution_id).ok_or_else(|| {
+                DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
+            })?;
+            if execution.session_id != handle.id {
+                return Err(DriverError::QueryExecutionSessionMismatch);
+            }
+            execution.cancel_requested = true;
+            let Some(thread_id) = execution.thread_id else {
+                // The stream observes this pending request after acquiring its
+                // dedicated connection and before executing user SQL.
+                return Ok(());
+            };
+            (thread_id, execution.control_pool.clone())
+        };
 
-        let mut cancelled = 0u32;
-        for row in &rows {
-            let thread_id: u64 = row.try_get::<u64, _>(0).unwrap_or(0);
-            if thread_id > 0 {
-                let kill_sql = format!("KILL QUERY {}", thread_id);
-                if sqlx::query(&kill_sql).execute(pool).await.is_ok() {
-                    cancelled += 1;
+        let Some(control_pool) = control_pool else {
+            if let Some(execution) = executions.get_mut(execution_id) {
+                execution.cancel_requested = false;
+            }
+            return Err(DriverError::ConnectionFailed(
+                "Control pool not found".into(),
+            ));
+        };
+        let mut conn = match control_pool.acquire().await {
+            Ok(conn) => conn,
+            Err(error) => {
+                if let Some(execution) = executions.get_mut(execution_id) {
+                    execution.cancel_requested = false;
                 }
+                return Err(DriverError::ConnectionFailed(error.to_string()));
+            }
+        };
+        let kill_sql = build_kill_query_sql(thread_id);
+        match Self::execute_text_on_conn(&mut conn, &kill_sql).await {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                if let Some(execution) = executions.get_mut(execution_id) {
+                    execution.cancel_requested = false;
+                }
+                Err(DriverError::QueryFailed(error.to_string()))
             }
         }
+    }
 
-        tracing::info!(cancelled, "mysql: cancelled active queries");
-        Ok(())
+    async fn cleanup_query_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        self.finish_query_execution(handle, execution_id).await
+    }
+
+    fn supports_query_execution_cancel(&self) -> bool {
+        true
     }
 
     // Switch active schema for unqualified names (session + pool-safe USE).
@@ -2183,6 +2508,166 @@ mod tests {
         let sql = "SELECT ?, ?, ?";
         assert_eq!(sql.matches('?').count(), 3);
         assert!(!sql.contains('$'));
+    }
+
+    #[test]
+    fn cancel_sql_targets_one_thread_without_process_scan() {
+        assert_eq!(MYSQL_CONNECTION_ID_SQL, "SELECT CONNECTION_ID()");
+        assert_eq!(build_kill_query_sql(42), "KILL QUERY 42");
+        assert!(!build_kill_query_sql(42).contains("processlist"));
+    }
+
+    #[tokio::test]
+    async fn execution_cancel_handles_pending_and_stale_ids() {
+        let driver = MysqlDriver::new(false);
+        let handle = ConnectionHandle {
+            id: "session-a".into(),
+            pool_id: "pool-a".into(),
+        };
+        let other = ConnectionHandle {
+            id: "session-b".into(),
+            pool_id: "pool-b".into(),
+        };
+        let execution_id = QueryExecutionId::new("exec-a");
+
+        driver
+            .prepare_query_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        driver
+            .cancel_query_with_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        let execution = driver
+            .query_executions
+            .lock()
+            .await
+            .get(&execution_id)
+            .map(|entry| (entry.thread_id, entry.cancel_requested));
+        assert_eq!(execution, Some((None, true)));
+
+        let wrong_session = driver
+            .cancel_query_with_execution(&other, &execution_id)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            wrong_session,
+            DriverError::QueryExecutionSessionMismatch
+        ));
+
+        driver
+            .cleanup_query_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        let stale = driver
+            .cancel_query_with_execution(&handle, &execution_id)
+            .await
+            .unwrap_err();
+        assert!(matches!(stale, DriverError::QueryExecutionNotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn concurrent_execution_ids_keep_cancel_requests_isolated() {
+        let driver = MysqlDriver::new(false);
+        let first = ConnectionHandle {
+            id: "session-a".into(),
+            pool_id: "pool-a".into(),
+        };
+        let second = ConnectionHandle {
+            id: "session-b".into(),
+            pool_id: "pool-b".into(),
+        };
+        let first_id = QueryExecutionId::new("exec-a");
+        let second_id = QueryExecutionId::new("exec-b");
+        driver
+            .prepare_query_execution(&first, &first_id)
+            .await
+            .unwrap();
+        driver
+            .prepare_query_execution(&second, &second_id)
+            .await
+            .unwrap();
+        driver
+            .cancel_query_with_execution(&first, &first_id)
+            .await
+            .unwrap();
+
+        let executions = driver.query_executions.lock().await;
+        assert!(executions[&first_id].cancel_requested);
+        assert!(!executions[&second_id].cancel_requested);
+    }
+
+    #[tokio::test]
+    async fn mariadb_transaction_execution_cancel_is_pending_until_target_is_bound() {
+        let driver = MysqlDriver::new(true);
+        let handle = ConnectionHandle {
+            id: "session-tx".into(),
+            pool_id: "pool-tx".into(),
+        };
+        let execution_id = QueryExecutionId::new("exec-tx");
+        driver.query_executions.lock().await.insert(
+            execution_id.clone(),
+            MysqlQueryExecution {
+                session_id: handle.id.clone(),
+                target_pool: None,
+                control_pool: None,
+                thread_id: None,
+                cancel_requested: false,
+                transactional: true,
+            },
+        );
+        driver
+            .cancel_query_with_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver
+                .query_executions
+                .lock()
+                .await
+                .get(&execution_id)
+                .map(|entry| (entry.thread_id, entry.cancel_requested)),
+            Some((None, true))
+        );
+
+        let wrong_session = driver
+            .cancel_query_with_execution(
+                &ConnectionHandle {
+                    id: "session-other".into(),
+                    pool_id: "pool-tx".into(),
+                },
+                &execution_id,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            wrong_session,
+            DriverError::QueryExecutionSessionMismatch
+        ));
+
+        assert!(driver
+            .bind_thread_id(&handle, &execution_id, 42)
+            .await
+            .unwrap());
+        assert_eq!(
+            driver
+                .query_executions
+                .lock()
+                .await
+                .get(&execution_id)
+                .map(|entry| (entry.thread_id, entry.cancel_requested)),
+            Some((Some(42), true))
+        );
+
+        driver
+            .cleanup_query_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        let stale = driver
+            .cancel_query_with_execution(&handle, &execution_id)
+            .await
+            .unwrap_err();
+        assert!(matches!(stale, DriverError::QueryExecutionNotFound(_)));
     }
 
     #[test]

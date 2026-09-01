@@ -5,6 +5,7 @@ export interface StreamableQueryTab {
   running: boolean;
   error: string | null;
   executionTimeMs: number | null;
+  executionId: string | null;
 }
 
 function emptyStatement(sql: string): StatementResult {
@@ -23,6 +24,8 @@ export function applyQueryStreamEvent<T extends StreamableQueryTab>(
   event: QueryStreamEvent,
 ): T {
   switch (event.type) {
+    case 'executionStarted':
+      return { ...tab, executionId: event.executionId };
     case 'statementStart': {
       const results = tab.results.slice();
       while (results.length <= event.index) {
@@ -64,6 +67,7 @@ export function applyQueryStreamEvent<T extends StreamableQueryTab>(
         running: false,
         executionTimeMs: event.totalTimeMs,
         error: null,
+        executionId: null,
       };
     default:
       return tab;

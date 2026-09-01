@@ -365,6 +365,19 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     expect(screen.getByTestId('data-sync-source-schema')).toHaveTextContent('public');
   });
 
+  it('discovers schemas for any SQL driver that supports table metadata', async () => {
+    getTablesMock.mockResolvedValue([
+      { name: 'users', schema: 'public', tableType: 'table' },
+      { name: 'users', schema: 'app', tableType: 'table' },
+    ]);
+    render(<DataSyncWindow />);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
+    await pickSelect('data-sync-source', 'My Tgt');
+    await waitFor(() => expect(screen.getByTestId('data-sync-source-schema')).toBeTruthy());
+    expect(screen.getByTestId('data-sync-source-schema')).toHaveTextContent('public');
+    expect(getTablesMock).toHaveBeenCalledWith('dedicated-my-tgt-src', 'src');
+  });
+
   it('marks heterogeneous targets as unsupported in the picker', async () => {
     render(<DataSyncWindow />);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));

@@ -147,7 +147,10 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await sslEl.waitForDisplayed({ timeout: 3000 });
     await expect(await $('div*=颜色标签')).toBeDisplayed();
     await expect(await $('div*=分组')).toBeDisplayed();
-    await expect(await $('[data-testid="new-conn-ssh-tunnel"]')).toBeDisplayed();
+    const sshToggle = await $('[data-testid="new-conn-ssh-toggle"]');
+    await sshToggle.waitForDisplayed({ timeout: 3000 });
+    await sshToggle.click();
+    await expect(await $('[data-testid="new-conn-ssh-tunnel-checkbox"]')).toBeDisplayed();
     await captureJourneyStep('advanced-settings-expanded', 0, true);
   });
 

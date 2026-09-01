@@ -4,21 +4,19 @@ import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { openSettingsWindow } from '../../lib/windowManager';
+import type {
+  QueryActionBuildResult,
+  QueryDiagnosisContext,
+} from '../../lib/aiQueryActions';
 
 interface DiagnosisPanelProps {
-  dbSessionId: string;
-  database: string;
-  sql: string;
-  errorMessage: string;
+  diagnosisContext: QueryActionBuildResult<QueryDiagnosisContext>;
   onApplySql: (sql: string) => void;
   onClose: () => void;
 }
 
 export function DiagnosisPanel({
-  dbSessionId,
-  database,
-  sql,
-  errorMessage,
+  diagnosisContext,
   onApplySql,
   onClose,
 }: DiagnosisPanelProps) {
@@ -31,8 +29,14 @@ export function DiagnosisPanel({
   const clearDiagnosis = useAiStore((s) => s.clearDiagnosis);
 
   const handleDiagnose = useCallback(() => {
-    void diagnoseError({ dbSessionId, database, sql, errorMessage });
-  }, [diagnoseError, dbSessionId, database, sql, errorMessage]);
+    if (!diagnosisContext.ok) return;
+    const { diagnosisParams, safeSql, safeErrorMessage } = diagnosisContext.context;
+    void diagnoseError({
+      ...diagnosisParams,
+      sql: safeSql,
+      errorMessage: safeErrorMessage,
+    });
+  }, [diagnoseError, diagnosisContext]);
 
   useEffect(() => {
     if (!diagnosis && !isDiagnosing && !diagnosisError) {

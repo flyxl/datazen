@@ -14,6 +14,17 @@ use tokio::sync::{Mutex, RwLock};
 
 const JS_MAX_SAFE_INT: i64 = 9_007_199_254_740_991;
 const JS_MIN_SAFE_INT: i64 = -9_007_199_254_740_991;
+const PG_BACKEND_PID_SQL: &str = "SELECT pg_backend_pid()";
+const PG_CANCEL_BACKEND_SQL: &str = "SELECT pg_cancel_backend($1)";
+
+struct PgQueryExecution {
+    session_id: String,
+    target_pool: Option<PgPool>,
+    control_pool: Option<PgPool>,
+    backend_pid: Option<i32>,
+    cancel_requested: bool,
+    transactional: bool,
+}
 
 /// Split `schema.table` into `(Some(schema), table)`. Unqualified names use `None`.
 fn parse_pg_table_ref(table: &str) -> (Option<&str>, &str) {
@@ -39,6 +50,11 @@ pub struct PostgresDriver {
     active_databases: RwLock<HashMap<String, String>>,
     /// Open transactions: connection held for the lifetime of BEGIN…COMMIT/ROLLBACK, keyed by handle.id.
     transactions: Mutex<HashMap<String, PoolConnection<Postgres>>>,
+    /// Exact execution target registry. The backend PID is private driver state;
+    /// only the opaque QueryExecutionId crosses the driver boundary.
+    query_executions: Mutex<HashMap<QueryExecutionId, PgQueryExecution>>,
+    /// Separate control connections are never used to execute user SQL.
+    control_pools: RwLock<HashMap<String, PgPool>>,
 }
 
 impl PostgresDriver {
@@ -48,6 +64,8 @@ impl PostgresDriver {
             connect_configs: RwLock::new(HashMap::new()),
             active_databases: RwLock::new(HashMap::new()),
             transactions: Mutex::new(HashMap::new()),
+            query_executions: Mutex::new(HashMap::new()),
+            control_pools: RwLock::new(HashMap::new()),
         }
     }
 
@@ -102,6 +120,199 @@ impl PostgresDriver {
             .connect_with(opts)
             .await
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
+    }
+
+    async fn is_cancel_requested(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<bool, DriverError> {
+        let executions = self.query_executions.lock().await;
+        let execution = executions.get(execution_id).ok_or_else(|| {
+            DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
+        })?;
+        if execution.session_id != handle.id {
+            return Err(DriverError::QueryExecutionSessionMismatch);
+        }
+        Ok(execution.cancel_requested)
+    }
+
+    async fn bind_backend_pid(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+        backend_pid: i32,
+    ) -> Result<bool, DriverError> {
+        let mut executions = self.query_executions.lock().await;
+        let execution = executions.get_mut(execution_id).ok_or_else(|| {
+            DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
+        })?;
+        if execution.session_id != handle.id {
+            return Err(DriverError::QueryExecutionSessionMismatch);
+        }
+        execution.backend_pid = Some(backend_pid);
+        Ok(execution.cancel_requested)
+    }
+
+    async fn finish_query_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        let mut executions = self.query_executions.lock().await;
+        if let Some(execution) = executions.get(execution_id) {
+            if execution.session_id != handle.id {
+                return Err(DriverError::QueryExecutionSessionMismatch);
+            }
+        }
+        executions.remove(execution_id);
+        Ok(())
+    }
+
+    async fn stream_registered_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+        statements: &[String],
+        limit: Option<u32>,
+        on_event: &QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let (transactional, target_pool) = {
+            let executions = self.query_executions.lock().await;
+            let execution = executions.get(execution_id).ok_or_else(|| {
+                DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
+            })?;
+            if execution.session_id != handle.id {
+                return Err(DriverError::QueryExecutionSessionMismatch);
+            }
+            (execution.transactional, execution.target_pool.clone())
+        };
+
+        let result: Result<(), DriverError> = async {
+            if transactional {
+                let mut txs = self.transactions.lock().await;
+                let conn = txs.get_mut(&handle.id).ok_or_else(|| {
+                    DriverError::Unsupported(
+                        "transaction execution connection is no longer available".into(),
+                    )
+                })?;
+                if self.is_cancel_requested(handle, execution_id).await? {
+                    Err(DriverError::QueryCancelled)
+                } else {
+                    let pid_row = sqlx::query(PG_BACKEND_PID_SQL)
+                        .fetch_one(&mut **conn)
+                        .await
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                    let backend_pid = pid_row
+                        .try_get::<i32, _>(0)
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                    if self
+                        .bind_backend_pid(handle, execution_id, backend_pid)
+                        .await?
+                    {
+                        Err(DriverError::QueryCancelled)
+                    } else {
+                        let total_start = Instant::now();
+                        let mut result = Ok(());
+                        for (index, stmt) in statements.iter().enumerate() {
+                            if self.is_cancel_requested(handle, execution_id).await? {
+                                result = Err(DriverError::QueryCancelled);
+                                break;
+                            }
+                            if let Err(error) = Self::stream_one_statement(
+                                &mut **conn,
+                                stmt,
+                                limit,
+                                index,
+                                on_event,
+                            )
+                            .await
+                            {
+                                result = if self
+                                    .is_cancel_requested(handle, execution_id)
+                                    .await
+                                    .unwrap_or(false)
+                                {
+                                    Err(DriverError::QueryCancelled)
+                                } else {
+                                    Err(error)
+                                };
+                                break;
+                            }
+                        }
+                        if result.is_ok() {
+                            on_event(QueryStreamEvent::Done {
+                                total_time_ms: total_start.elapsed().as_millis() as u64,
+                            });
+                        }
+                        result
+                    }
+                }
+            } else {
+                let pool = target_pool.ok_or_else(|| {
+                    DriverError::ConnectionFailed(
+                        "Connection pool was not available when query execution was registered"
+                            .into(),
+                    )
+                })?;
+                let mut conn = pool
+                    .acquire()
+                    .await
+                    .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+
+                if self.is_cancel_requested(handle, execution_id).await? {
+                    Err(DriverError::QueryCancelled)
+                } else {
+                    let pid_row = sqlx::query(PG_BACKEND_PID_SQL)
+                        .fetch_one(&mut *conn)
+                        .await
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                    let backend_pid = pid_row
+                        .try_get::<i32, _>(0)
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                    if self
+                        .bind_backend_pid(handle, execution_id, backend_pid)
+                        .await?
+                    {
+                        Err(DriverError::QueryCancelled)
+                    } else {
+                        let total_start = Instant::now();
+                        let mut result = Ok(());
+                        for (index, stmt) in statements.iter().enumerate() {
+                            if self.is_cancel_requested(handle, execution_id).await? {
+                                result = Err(DriverError::QueryCancelled);
+                                break;
+                            }
+                            if let Err(error) =
+                                Self::stream_one_statement(&mut *conn, stmt, limit, index, on_event)
+                                    .await
+                            {
+                                result = if self
+                                    .is_cancel_requested(handle, execution_id)
+                                    .await
+                                    .unwrap_or(false)
+                                {
+                                    Err(DriverError::QueryCancelled)
+                                } else {
+                                    Err(error)
+                                };
+                                break;
+                            }
+                        }
+                        if result.is_ok() {
+                            on_event(QueryStreamEvent::Done {
+                                total_time_ms: total_start.elapsed().as_millis() as u64,
+                            });
+                        }
+                        result
+                    }
+                }
+            }
+        }
+        .await;
+
+        let cleanup = self.finish_query_execution(handle, execution_id).await;
+        result.and(cleanup)
     }
 
     async fn fetch_tables_from_pool(pool: &PgPool) -> Result<Vec<TableInfo>, DriverError> {
@@ -566,7 +777,13 @@ impl DatabaseDriver for PostgresDriver {
             .write()
             .await
             .insert(pool_id.clone(), resolved_db);
+        let control_opts = build_pg_options(config)?;
+        let control_pool = Self::open_pool(control_opts, timeout, 1, 0).await?;
         self.pools.write().await.insert(pool_id.clone(), pool);
+        self.control_pools
+            .write()
+            .await
+            .insert(pool_id.clone(), control_pool);
 
         Ok(ConnectionHandle {
             id: connection_id,
@@ -580,7 +797,14 @@ impl DatabaseDriver for PostgresDriver {
         }
         self.active_databases.write().await.remove(&handle.pool_id);
         self.connect_configs.write().await.remove(&handle.pool_id);
+        self.query_executions
+            .lock()
+            .await
+            .retain(|_, execution| execution.session_id != handle.id);
         if let Some(pool) = self.pools.write().await.remove(&handle.pool_id) {
+            pool.close().await;
+        }
+        if let Some(pool) = self.control_pools.write().await.remove(&handle.pool_id) {
             pool.close().await;
         }
         Ok(())
@@ -1076,15 +1300,73 @@ impl DatabaseDriver for PostgresDriver {
             }
         }
 
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
+        let pool = {
+            let pools = self.pools.read().await;
+            Self::get_pool(&pools, handle)?.clone()
+        };
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
         for (index, stmt) in statements.iter().enumerate() {
-            Self::stream_one_statement(pool, stmt, limit, index, &on_event).await?;
+            Self::stream_one_statement(&mut *conn, stmt, limit, index, &on_event).await?;
         }
         on_event(QueryStreamEvent::Done {
             total_time_ms: total_start.elapsed().as_millis() as u64,
         });
         Ok(())
+    }
+
+    async fn prepare_query_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        let transactional = self.transactions.lock().await.contains_key(&handle.id);
+        let target_pool = self.pools.read().await.get(&handle.pool_id).cloned();
+        let control_pool = self
+            .control_pools
+            .read()
+            .await
+            .get(&handle.pool_id)
+            .cloned();
+        let mut executions = self.query_executions.lock().await;
+        if executions.contains_key(execution_id) {
+            return Err(DriverError::QueryFailed(format!(
+                "query execution '{}' is already registered",
+                execution_id.as_str()
+            )));
+        }
+        executions.insert(
+            execution_id.clone(),
+            PgQueryExecution {
+                session_id: handle.id.clone(),
+                target_pool,
+                control_pool,
+                backend_pid: None,
+                cancel_requested: false,
+                transactional,
+            },
+        );
+        Ok(())
+    }
+
+    async fn query_stream_with_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let statements = sql_dump::split_sql_statements(sql);
+        if statements.is_empty() {
+            self.finish_query_execution(handle, execution_id).await?;
+            on_event(QueryStreamEvent::Done { total_time_ms: 0 });
+            return Ok(());
+        }
+        self.stream_registered_execution(handle, execution_id, &statements, limit, &on_event)
+            .await
     }
 
     async fn query_with_params(
@@ -1275,23 +1557,98 @@ impl DatabaseDriver for PostgresDriver {
         })
     }
 
-    async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
+    async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+        Err(DriverError::Unsupported(
+            "legacy session-wide query cancellation is disabled; use an execution handle".into(),
+        ))
+    }
 
-        let rows = sqlx::query(
-            "SELECT pg_cancel_backend(pid) \
-             FROM pg_stat_activity \
-             WHERE pid != pg_backend_pid() \
-               AND state = 'active' \
-               AND datname = current_database()",
-        )
-        .fetch_all(pool)
-        .await
-        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+    async fn cancel_query_with_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        // Keep the registry entry locked until the control SQL completes. A
+        // backend PID is stable for a pooled connection and can be reused by
+        // a later query; releasing this lock early would let terminal cleanup
+        // remove the entry and make a delayed cancel hit that later query.
+        let mut executions = self.query_executions.lock().await;
+        let (backend_pid, control_pool) = {
+            let execution = executions.get_mut(execution_id).ok_or_else(|| {
+                DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
+            })?;
+            if execution.session_id != handle.id {
+                return Err(DriverError::QueryExecutionSessionMismatch);
+            }
+            execution.cancel_requested = true;
+            let Some(backend_pid) = execution.backend_pid else {
+                // The stream will observe this flag after it acquires the
+                // dedicated connection, making cancel-before-target-ready win.
+                return Ok(());
+            };
+            (backend_pid, execution.control_pool.clone())
+        };
 
-        tracing::info!(cancelled = rows.len(), "pg: cancelled active queries");
-        Ok(())
+        let Some(control_pool) = control_pool else {
+            if let Some(execution) = executions.get_mut(execution_id) {
+                execution.cancel_requested = false;
+            }
+            return Err(DriverError::ConnectionFailed(
+                "Control pool not found".into(),
+            ));
+        };
+        let mut conn = match control_pool.acquire().await {
+            Ok(conn) => conn,
+            Err(error) => {
+                if let Some(execution) = executions.get_mut(execution_id) {
+                    execution.cancel_requested = false;
+                }
+                return Err(DriverError::ConnectionFailed(error.to_string()));
+            }
+        };
+        let cancelled: bool = match sqlx::query(PG_CANCEL_BACKEND_SQL)
+            .bind(backend_pid)
+            .fetch_one(&mut *conn)
+            .await
+        {
+            Ok(row) => match row.try_get(0) {
+                Ok(cancelled) => cancelled,
+                Err(error) => {
+                    if let Some(execution) = executions.get_mut(execution_id) {
+                        execution.cancel_requested = false;
+                    }
+                    return Err(DriverError::QueryFailed(error.to_string()));
+                }
+            },
+            Err(error) => {
+                if let Some(execution) = executions.get_mut(execution_id) {
+                    execution.cancel_requested = false;
+                }
+                return Err(DriverError::QueryFailed(error.to_string()));
+            }
+        };
+        if cancelled {
+            Ok(())
+        } else {
+            if let Some(execution) = executions.get_mut(execution_id) {
+                execution.cancel_requested = false;
+            }
+            Err(DriverError::QueryExecutionNotFound(format!(
+                "backend target {backend_pid} is no longer active"
+            )))
+        }
+    }
+
+    async fn cleanup_query_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        self.finish_query_execution(handle, execution_id).await
+    }
+
+    fn supports_query_execution_cancel(&self) -> bool {
+        true
     }
 
     async fn use_database(
@@ -1327,10 +1684,21 @@ impl DatabaseDriver for PostgresDriver {
         let new_pool = self
             .pool_for_named_database(handle, &trimmed, max, min)
             .await?;
+        let new_control_pool = match self.pool_for_named_database(handle, &trimmed, 1, 0).await {
+            Ok(pool) => pool,
+            Err(error) => {
+                new_pool.close().await;
+                return Err(error);
+            }
+        };
 
         let old = {
             let mut pools = self.pools.write().await;
             pools.insert(handle.pool_id.clone(), new_pool)
+        };
+        let old_control = {
+            let mut pools = self.control_pools.write().await;
+            pools.insert(handle.pool_id.clone(), new_control_pool)
         };
         self.active_databases
             .write()
@@ -1339,6 +1707,9 @@ impl DatabaseDriver for PostgresDriver {
 
         if let Some(old) = old {
             old.close().await;
+        }
+        if let Some(old_control) = old_control {
+            old_control.close().await;
         }
         Ok(())
     }
@@ -2159,6 +2530,168 @@ mod tests {
             (1..=3).map(|i| format!("${i}")).collect::<Vec<_>>(),
             vec!["$1", "$2", "$3"]
         );
+    }
+
+    #[test]
+    fn cancel_sql_targets_one_backend_without_process_scan() {
+        assert_eq!(PG_BACKEND_PID_SQL, "SELECT pg_backend_pid()");
+        assert_eq!(PG_CANCEL_BACKEND_SQL, "SELECT pg_cancel_backend($1)");
+        assert!(!PG_CANCEL_BACKEND_SQL.contains("pg_stat_activity"));
+    }
+
+    #[tokio::test]
+    async fn execution_cancel_handles_pending_and_stale_ids() {
+        let driver = PostgresDriver::new();
+        let handle = ConnectionHandle {
+            id: "session-a".into(),
+            pool_id: "pool-a".into(),
+        };
+        let other = ConnectionHandle {
+            id: "session-b".into(),
+            pool_id: "pool-b".into(),
+        };
+        let execution_id = QueryExecutionId::new("exec-a");
+
+        driver
+            .prepare_query_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        // Cancel can arrive after the Host publishes ExecutionStarted but
+        // before this driver has acquired a connection/PID.
+        driver
+            .cancel_query_with_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        let execution = driver
+            .query_executions
+            .lock()
+            .await
+            .get(&execution_id)
+            .map(|entry| (entry.backend_pid, entry.cancel_requested));
+        assert_eq!(execution, Some((None, true)));
+
+        let wrong_session = driver
+            .cancel_query_with_execution(&other, &execution_id)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            wrong_session,
+            DriverError::QueryExecutionSessionMismatch
+        ));
+
+        driver
+            .cleanup_query_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        let stale = driver
+            .cancel_query_with_execution(&handle, &execution_id)
+            .await
+            .unwrap_err();
+        assert!(matches!(stale, DriverError::QueryExecutionNotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn concurrent_execution_ids_keep_cancel_requests_isolated() {
+        let driver = PostgresDriver::new();
+        let first = ConnectionHandle {
+            id: "session-a".into(),
+            pool_id: "pool-a".into(),
+        };
+        let second = ConnectionHandle {
+            id: "session-b".into(),
+            pool_id: "pool-b".into(),
+        };
+        let first_id = QueryExecutionId::new("exec-a");
+        let second_id = QueryExecutionId::new("exec-b");
+        driver
+            .prepare_query_execution(&first, &first_id)
+            .await
+            .unwrap();
+        driver
+            .prepare_query_execution(&second, &second_id)
+            .await
+            .unwrap();
+        driver
+            .cancel_query_with_execution(&first, &first_id)
+            .await
+            .unwrap();
+
+        let executions = driver.query_executions.lock().await;
+        assert!(executions[&first_id].cancel_requested);
+        assert!(!executions[&second_id].cancel_requested);
+    }
+
+    #[tokio::test]
+    async fn transaction_execution_cancel_is_pending_until_target_is_bound() {
+        let driver = PostgresDriver::new();
+        let handle = ConnectionHandle {
+            id: "session-tx".into(),
+            pool_id: "pool-tx".into(),
+        };
+        let execution_id = QueryExecutionId::new("exec-tx");
+        driver.query_executions.lock().await.insert(
+            execution_id.clone(),
+            PgQueryExecution {
+                session_id: handle.id.clone(),
+                target_pool: None,
+                control_pool: None,
+                backend_pid: None,
+                cancel_requested: false,
+                transactional: true,
+            },
+        );
+        driver
+            .cancel_query_with_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver
+                .query_executions
+                .lock()
+                .await
+                .get(&execution_id)
+                .map(|entry| (entry.backend_pid, entry.cancel_requested)),
+            Some((None, true))
+        );
+
+        let wrong_session = driver
+            .cancel_query_with_execution(
+                &ConnectionHandle {
+                    id: "session-other".into(),
+                    pool_id: "pool-tx".into(),
+                },
+                &execution_id,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            wrong_session,
+            DriverError::QueryExecutionSessionMismatch
+        ));
+
+        assert!(driver
+            .bind_backend_pid(&handle, &execution_id, 42)
+            .await
+            .unwrap());
+        assert_eq!(
+            driver
+                .query_executions
+                .lock()
+                .await
+                .get(&execution_id)
+                .map(|entry| (entry.backend_pid, entry.cancel_requested)),
+            Some((Some(42), true))
+        );
+
+        driver
+            .cleanup_query_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        let stale = driver
+            .cancel_query_with_execution(&handle, &execution_id)
+            .await
+            .unwrap_err();
+        assert!(matches!(stale, DriverError::QueryExecutionNotFound(_)));
     }
 
     #[test]

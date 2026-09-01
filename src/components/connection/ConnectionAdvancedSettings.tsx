@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { TranslationKey } from '../../locales';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Select } from '../ui/Select';
@@ -23,6 +24,11 @@ export function ConnectionAdvancedSettings({
   const { t } = useI18n();
   const isWindow = variant === 'window';
   const PluginAdvanced = getPluginConnectionAdvanced(form.formVariant);
+  const [showSsh, setShowSsh] = useState(form.sshEnabled);
+
+  useEffect(() => {
+    if (form.sshEnabled) setShowSsh(true);
+  }, [form.sshEnabled]);
 
   return (
     <>
@@ -41,11 +47,6 @@ export function ConnectionAdvancedSettings({
           <ChevronRight className="h-4 w-4" />
         )}
         {t('newConn.advanced')}
-        {form.sshEnabled && (
-          <span className="ml-auto rounded bg-blue-500/20 px-1.5 py-0.5 text-xs text-blue-400">
-            SSH
-          </span>
-        )}
       </button>
 
       {form.showAdvanced && (
@@ -55,11 +56,6 @@ export function ConnectionAdvancedSettings({
             isWindow ? 'bg-surface' : 'bg-surface-alt',
           )}
         >
-          <SshTunnelFields
-            form={form}
-            innerPanelClassName={isWindow ? 'bg-surface-alt' : 'bg-surface'}
-          />
-
           {PluginAdvanced ? (
             <PluginAdvanced form={form} />
           ) : form.meta.supportsSSL ? (
@@ -136,6 +132,40 @@ export function ConnectionAdvancedSettings({
             </div>
           )}
         </div>
+      )}
+
+      {form.meta.supportsSSH && (
+        <>
+          <button
+            type="button"
+            className="mt-3 flex w-full items-center gap-2 rounded-md border border-edge bg-surface px-3 py-2.5 text-sm text-fg-secondary hover:text-fg"
+            onClick={() => setShowSsh((value) => !value)}
+            data-testid="new-conn-ssh-toggle"
+            aria-expanded={showSsh}
+          >
+            {showSsh ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            {t('newConn.sshTunnel')}
+            {form.sshEnabled && (
+              <span className="ml-auto rounded bg-blue-500/20 px-1.5 py-0.5 text-xs text-blue-400">
+                SSH
+              </span>
+            )}
+          </button>
+
+          {showSsh && (
+            <div
+              className={cn(
+                'mt-3 rounded-md border border-edge p-4',
+                isWindow ? 'bg-surface' : 'bg-surface-alt',
+              )}
+            >
+              <SshTunnelFields
+                form={form}
+                innerPanelClassName={isWindow ? 'bg-surface-alt' : 'bg-surface'}
+              />
+            </div>
+          )}
+        </>
       )}
     </>
   );

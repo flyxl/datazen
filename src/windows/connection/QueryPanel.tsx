@@ -8,8 +8,6 @@ import {
 } from 'react';
 import {
   CirclePlay,
-  AlertTriangle,
-  BarChart3,
   Bookmark,
   Check,
   Clock,
@@ -18,8 +16,6 @@ import {
   Loader2,
   Play,
   Sparkles,
-  Square,
-  TableProperties,
   Trash2,
   Undo2,
   Wand2,
@@ -52,14 +48,13 @@ import {
 } from '../../lib/queryContextPath';
 import { QueryContextSelectors } from '../../components/query/QueryContextSelectors';
 import { QueryErrorPanel } from '../../components/query/QueryErrorPanel';
+import { QueryExecutionStatus } from '../../components/query/QueryExecutionStatus';
 import { CopyableError } from '../../components/ui/CopyableError';
-import { DataTable } from '../../components/DataTable/DataTable';
-import type { ColumnDef } from '../../components/DataTable/TableHeader';
-import { ChartView } from '../../components/chart/ChartView';
 import { Nl2SqlPanel } from '../../components/ai/Nl2SqlPanel';
 import { DiagnosisPanel } from '../../components/ai/DiagnosisPanel';
 import { ExplainPanel } from '../../components/ai/ExplainPanel';
-import { usePanelStore } from '../../stores/panelStore';
+import { usePanelStore, type QueryPanel as QueryPanelState } from '../../stores/panelStore';
+import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useQueryExec } from '../../hooks/useQueryExec';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -82,9 +77,21 @@ import { parseSqlParams, paramsToPayload } from '../../lib/sqlBindParams';
 import { BindParamPanel } from '../../components/query/BindParamPanel';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { ExplainResult, StatementResult } from '../../types';
+import { toQueryExecutionViewModel } from '../../lib/queryExecutionViewModel';
+import {
+  buildExplainAction,
+  buildFixSqlAction,
+  buildQueryDiagnosisContext,
+  buildRetryAction,
+  type RetryValidationInput,
+} from '../../lib/aiQueryActions';
+import { ResultWorkspace } from './result-workspace';
 import { Dialog } from '../../components/ui/Dialog';
 import { analyzeTransactionSql, isAbortedTransactionError } from '../../lib/sqlTransactionGuard';
 import { formatLastConnected } from '../../lib/formatters';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import type { ConnectionSchemaState } from '../../stores/schemaStore';
+import type { QueryExecState } from '../../stores/queryExecActions';
 
 interface QueryPanelProps {
   panelId: string;
@@ -93,15 +100,154 @@ interface QueryPanelProps {
   /** Persistent saved-connection ID (stable across restarts). */
   connectionId: string;
   databaseType?: string;
+  connectionName?: string;
+  database?: string;
+  schema?: string;
 }
 
 function hasSuspiciousPostgresDoubleQuotedLiteral(sql: string): boolean {
   return /(?:=|<>|!=|\bLIKE\b|\bILIKE\b)\s*"[^"]+"/i.test(sql);
 }
 
-export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }: QueryPanelProps) {
+type QueryDiagnosisSchemaState = Pick<
+  ConnectionSchemaState,
+  'currentDatabase' | 'currentSchema' | 'tables' | 'views' | 'columnMap'
+>;
+
+type QueryDiagnosisExecution = Pick<QueryExecState, 'sql' | 'error'>;
+
+interface QueryPanelDiagnosisContextInput {
+  execution: QueryDiagnosisExecution;
+  connectionId: string;
+  dbSessionId: string;
+  databaseType?: string;
+  connectionName?: string;
+  database?: string;
+  schema?: string;
+  serverVersion?: string;
+  schemaState: QueryDiagnosisSchemaState;
+}
+
+/** Build the complete context shared by Explain, Fix SQL, and Retry. */
+function buildQueryPanelDiagnosisContext({
+  execution,
+  connectionId,
+  dbSessionId,
+  databaseType,
+  connectionName,
+  database,
+  schema,
+  serverVersion,
+  schemaState,
+}: QueryPanelDiagnosisContextInput) {
+  return buildQueryDiagnosisContext({
+    sql: execution.sql,
+    error: execution.error,
+    connectionId,
+    dbSessionId,
+    databaseType,
+    database: database ?? schemaState.currentDatabase,
+    schema: schema ?? schemaState.currentSchema,
+    connectionContext: {
+      connectionId,
+      dbSessionId,
+      databaseType,
+      name: connectionName,
+      serverVersion,
+    },
+    schemaContext: {
+      tables: schemaState.tables,
+      views: schemaState.views,
+      columns: schemaState.columnMap,
+    },
+  });
+}
+
+/** Read the current panel identity and context after an async Retry confirmation. */
+function readCurrentQueryPanelRetryValidationInput(
+  panelId: string,
+  paramValues: Record<string, string>,
+): RetryValidationInput | null {
+  const panelStoreState = usePanelStore.getState();
+  const panel = panelStoreState.panels.find(
+    (candidate): candidate is QueryPanelState =>
+      candidate.id === panelId && candidate.type === 'query',
+  );
+  const execution = panel ? panelStoreState.queryExec.get(panelId) : undefined;
+  if (!panel || !execution) return null;
+
+  const activeConnections = useActiveConnectionStore.getState().connections;
+  const hasMappedActiveConnection = Object.prototype.hasOwnProperty.call(
+    activeConnections,
+    panel.connectionId,
+  );
+  const activeConnection = hasMappedActiveConnection
+    ? activeConnections[panel.connectionId]
+    : undefined;
+  const dbSessionId = panel.dbSessionId;
+  const panelHasSession =
+    typeof dbSessionId === 'string' && dbSessionId.trim().length > 0;
+  const activeConnectionHasSession =
+    typeof activeConnection?.dbSessionId === 'string' &&
+    activeConnection.dbSessionId.trim().length > 0;
+  const activeConnectionMatchesPanel =
+    activeConnection !== undefined &&
+    activeConnection.connectionId === panel.connectionId &&
+    activeConnection.status === 'connected' &&
+    panelHasSession &&
+    activeConnectionHasSession &&
+    activeConnection.dbSessionId === dbSessionId;
+  if (!activeConnectionMatchesPanel) return null;
+
+  const schemaStoreState = useSchemaStore.getState();
+  const schemaState = schemaStoreState.schemas.get(dbSessionId) ?? schemaStoreState;
+  const latestContext = buildQueryPanelDiagnosisContext({
+    execution,
+    connectionId: panel.connectionId,
+    dbSessionId,
+    databaseType: panel.databaseType,
+    connectionName: panel.connectionName,
+    database:
+      panel.database ??
+      schemaState.currentDatabase ??
+      activeConnection?.currentDatabase ??
+      undefined,
+    schema: panel.schema,
+    serverVersion: activeConnection?.serverInfo?.serverVersion,
+    schemaState,
+  });
+  if (!latestContext.ok) return null;
+
+  const params = parseSqlParams(execution.sql);
+  const boundParams = params.length > 0 ? paramsToPayload(params, paramValues) : {};
+
+  return {
+    sql: execution.sql,
+    contextFingerprint: latestContext.context.contextFingerprint,
+    boundParams,
+  };
+}
+
+export function QueryPanel({
+  panelId,
+  dbSessionId,
+  connectionId,
+  databaseType,
+  connectionName,
+  database,
+  schema,
+}: QueryPanelProps) {
   const { t } = useI18n();
+  const [confirmRetry, confirmRetryDialog] = useConfirmDialog();
   const exec = useQueryExec(panelId);
+  const driverCapabilities = useActiveConnectionStore(
+    (s) => s.connections[connectionId]?.capabilities,
+  );
+  const activeConnectionEntry = useActiveConnectionStore((s) => s.connections[connectionId]);
+  const executionViewModel = useMemo(
+    () => toQueryExecutionViewModel(exec, driverCapabilities),
+    [exec, driverCapabilities],
+  );
   const historyVisible = usePanelStore((s) => s.historyVisible);
   const history = usePanelStore((s) => s.queryHistory);
   const updateSql = usePanelStore((s) => s.updateSql);
@@ -119,6 +265,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
   const toggleFavorites = usePanelStore((s) => s.toggleFavorites);
   const setResultDetailRow = usePanelStore((s) => s.setResultDetailRow);
   const setChartConfig = usePanelStore((s) => s.setChartConfig);
+  const updatePanel = usePanelStore((s) => s.updatePanel);
 
   // AI entry points are always visible; panels handle unconfigured state internally
 
@@ -129,12 +276,14 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
   const [favoriteDialogSql, setFavoriteDialogSql] = useState('');
   const [nl2sqlVisible, setNl2sqlVisible] = useState(false);
   const [diagnosisVisible, setDiagnosisVisible] = useState(false);
-  const [explainResult, setExplainResult] = useState<ExplainResult | null>(null);
   const [showCancel, setShowCancel] = useState(false);
+  const [explainResult, setExplainResult] = useState<ExplainResult | null>(null);
   const [explainLoading, setExplainLoading] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
   const [showExplain, setShowExplain] = useState(false);
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
+  const paramValuesRef = useRef(paramValues);
+  paramValuesRef.current = paramValues;
   const [historySearch, setHistorySearch] = useState('');
   const [historyScopeMode, setHistoryScopeMode] = useState<'current' | 'all'>('current');
   const [inTransaction, setInTransaction] = useState(false);
@@ -163,6 +312,26 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
     storageKey: 'query-editor-height',
   });
 
+  const tables = useSchemaStore((s) => s.tables);
+  const views = useSchemaStore((s) => s.views);
+  const columnMap = useSchemaStore((s) => s.columnMap);
+  const namespaceTree = useSchemaStore((s) => s.namespaceTree);
+  const pathAliases = useSchemaStore((s) => s.pathAliases);
+  const databases = useSchemaStore((s) => s.databases);
+  const currentDatabase = useSchemaStore((s) => s.currentDatabase);
+  const currentSchema = useSchemaStore((s) => s.currentSchema);
+  const isMultiDb = useSchemaStore((s) => s.isMultiDatabase);
+  const ensureColumns = useSchemaStore((s) => s.ensureColumns);
+  const switchDatabase = useSchemaStore((s) => s.switchDatabase);
+  const ensureNamespacePath = useSchemaStore((s) => s.ensureNamespacePath);
+  const namespaceLoading = useSchemaStore((s) => s.ensuringCount > 0);
+  const selectedDatabase = database ?? currentDatabase;
+  const selectedSchema = schema ?? currentSchema;
+  const currentDiagnosisSchemaState = useMemo(
+    () => ({ currentDatabase, currentSchema, tables, views, columnMap }),
+    [columnMap, currentDatabase, currentSchema, tables, views],
+  );
+
   useEffect(() => {
     if (!exec.running) {
       setShowCancel(false);
@@ -171,19 +340,6 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
     const timer = window.setTimeout(() => setShowCancel(true), 300);
     return () => window.clearTimeout(timer);
   }, [exec.running]);
-
-  const tables = useSchemaStore((s) => s.tables);
-  const views = useSchemaStore((s) => s.views);
-  const columnMap = useSchemaStore((s) => s.columnMap);
-  const namespaceTree = useSchemaStore((s) => s.namespaceTree);
-  const pathAliases = useSchemaStore((s) => s.pathAliases);
-  const databases = useSchemaStore((s) => s.databases);
-  const currentDatabase = useSchemaStore((s) => s.currentDatabase);
-  const isMultiDb = useSchemaStore((s) => s.isMultiDatabase);
-  const ensureColumns = useSchemaStore((s) => s.ensureColumns);
-  const switchDatabase = useSchemaStore((s) => s.switchDatabase);
-  const ensureNamespacePath = useSchemaStore((s) => s.ensureNamespacePath);
-  const namespaceLoading = useSchemaStore((s) => s.ensuringCount > 0);
 
   const dbMeta = databaseType ? DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY] : undefined;
   const supportsExplain = dbMeta?.supportsExplain === true;
@@ -207,10 +363,10 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
         tables,
         views,
         columnMap,
-        currentDatabase,
+        currentDatabase: selectedDatabase,
         hoistPath: contextPath,
       }),
-    [namespaceTree, tables, views, columnMap, currentDatabase, contextPath],
+    [namespaceTree, tables, views, columnMap, selectedDatabase, contextPath],
   );
   const editorDefaultSchema = useMemo(() => inferDefaultSchema(tables, views), [tables, views]);
   const editorDefaultTable = useMemo(() => inferDefaultTable(exec.sql), [exec.sql]);
@@ -226,12 +382,12 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
 
   useEffect(() => {
     void ensureNamespacePath([]);
-  }, [dbSessionId, currentDatabase, ensureNamespacePath]);
+  }, [dbSessionId, selectedDatabase, ensureNamespacePath]);
 
   useEffect(() => {
     if (isPathHierarchy) return;
-    setContextPath(currentDatabase ? [currentDatabase] : []);
-  }, [currentDatabase, isPathHierarchy]);
+    setContextPath(selectedDatabase ? [selectedDatabase] : []);
+  }, [selectedDatabase, isPathHierarchy]);
 
   const applyContextPath = useCallback(
     async (next: string[]) => {
@@ -252,6 +408,16 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
       }
     },
     [currentDatabase, ensureNamespacePath, isPathHierarchy, switchDatabase],
+  );
+
+  const handleSelectContextLevel = useCallback(
+    (index: number, value: string) => {
+      if (!value) return;
+      if (index === 0) updatePanel(panelId, { database: value });
+      if (index === 1) updatePanel(panelId, { schema: value });
+      void applyContextPath([...contextPath.slice(0, index), value]);
+    },
+    [applyContextPath, contextPath, panelId, updatePanel],
   );
 
   const handleQualifiedPath = useCallback(
@@ -306,6 +472,43 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
   const boundPayload = useMemo(
     () => (sqlParams.length > 0 ? paramsToPayload(sqlParams, paramValues) : undefined),
     [sqlParams, paramValues],
+  );
+
+  const buildCurrentDiagnosisContext = useCallback(
+    (
+      execution: QueryDiagnosisExecution,
+      schemaState: QueryDiagnosisSchemaState = currentDiagnosisSchemaState,
+    ) =>
+      buildQueryPanelDiagnosisContext({
+        execution,
+        connectionId,
+        dbSessionId,
+        databaseType,
+        connectionName,
+        database,
+        schema,
+        serverVersion: activeConnectionEntry?.serverInfo?.serverVersion,
+        schemaState,
+      }),
+    [
+      activeConnectionEntry?.serverInfo?.serverVersion,
+      connectionId,
+      connectionName,
+      currentDiagnosisSchemaState,
+      database,
+      databaseType,
+      dbSessionId,
+      schema,
+    ],
+  );
+  const diagnosisContext = useMemo(
+    () => buildCurrentDiagnosisContext(exec),
+    [buildCurrentDiagnosisContext, exec],
+  );
+  const explainAction = useMemo(() => buildExplainAction(diagnosisContext), [diagnosisContext]);
+  const retryAction = useMemo(
+    () => buildRetryAction(diagnosisContext, boundPayload ?? {}),
+    [boundPayload, diagnosisContext],
   );
 
   const refreshTxStatus = useCallback(async () => {
@@ -505,13 +708,59 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
     [panelId, updateSql],
   );
 
+  const handleApplyFixSql = useCallback(
+    (sql: string) => {
+      const fix = buildFixSqlAction(diagnosisContext, sql);
+      fix.applyToEditor((draft) => updateSql(panelId, draft.draftSql));
+    },
+    [diagnosisContext, panelId, updateSql],
+  );
+
+  const handleRetry = useCallback(async () => {
+    const validation = retryAction.invoke(
+      {
+        sql: exec.sql,
+        contextFingerprint: diagnosisContext.ok ? diagnosisContext.context.contextFingerprint : null,
+        boundParams: boundPayload ?? {},
+      },
+      () => undefined,
+    );
+    if (!validation.ok) return;
+    const confirmed = await confirmRetry({
+      title: t('query.retry'),
+      message: t('query.retryConfirm'),
+      confirmLabel: t('query.retry'),
+      kind: 'info',
+    });
+    if (!confirmed) return;
+    const latestValidationInput = readCurrentQueryPanelRetryValidationInput(
+      panelId,
+      paramValuesRef.current,
+    );
+    if (!latestValidationInput) return;
+    let retryExecution: Promise<void> | undefined;
+    const finalValidation = retryAction.invoke(latestValidationInput, () => {
+      retryExecution = runExecute('full');
+    });
+    if (finalValidation.ok && retryExecution) await retryExecution;
+  }, [
+    boundPayload,
+    confirmRetry,
+    diagnosisContext,
+    exec.sql,
+    panelId,
+    retryAction,
+    runExecute,
+    t,
+  ]);
+
   const handleExplain = useCallback(async () => {
     if (!exec.sql.trim()) return;
     setExplainLoading(true);
     setExplainError(null);
     setShowExplain(true);
     try {
-      const result = await queryCommands.getExplain(dbSessionId, exec.sql, currentDatabase);
+      const result = await queryCommands.getExplain(dbSessionId, exec.sql, selectedDatabase);
       setExplainResult(result);
     } catch (e) {
       setExplainResult(null);
@@ -519,7 +768,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
     } finally {
       setExplainLoading(false);
     }
-  }, [dbSessionId, exec.sql, currentDatabase]);
+  }, [dbSessionId, exec.sql, selectedDatabase]);
 
   const openAddFavoriteDialog = useCallback((sql: string) => {
     const trimmed = sql.trim();
@@ -641,8 +890,8 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
     [history, t],
   );
   const currentDbGroup = useMemo(
-    () => findGroupForDatabase(historyGroups, currentDatabase),
-    [historyGroups, currentDatabase],
+    () => findGroupForDatabase(historyGroups, selectedDatabase),
+    [historyGroups, selectedDatabase],
   );
   // 'current' with no matching group falls back to all groups (single-db
   // drivers, or no history recorded for this database yet) — surface that.
@@ -699,23 +948,29 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
           isMultiDb={isMultiDb}
           isPathHierarchy={isPathHierarchy}
           databases={databases}
-          currentDatabase={currentDatabase}
+          currentDatabase={selectedDatabase}
+          contextSchema={selectedSchema}
           namespaceTree={namespaceTree}
           pathAliases={pathAliases}
           contextPath={contextPath}
           onSelectLevel={(index, value) => {
-            void applyContextPath([...contextPath.slice(0, index), value]);
+            handleSelectContextLevel(index, value);
           }}
         />
-        {exec.running && showCancel ? (
-          <ToolbarButton
-            compact={compactToolbar}
-            variant="danger"
-            label={t('query.stop')}
-            icon={<Square className="h-3.5 w-3.5" />}
-            onClick={handleCancel}
-            {...tid('editor-stop-button')}
-          />
+        {exec.running ? (
+          showCancel ? (
+            <QueryExecutionStatus viewModel={executionViewModel} onCancel={handleCancel} />
+          ) : (
+            <ToolbarButton
+              compact={compactToolbar}
+              variant="run"
+              label={t('query.execute')}
+              icon={<Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              onClick={handleExecute}
+              disabled
+              {...tid('editor-execute-button')}
+            />
+          )
         ) : (
           <ToolbarButton
             compact={compactToolbar}
@@ -844,7 +1099,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
           {nl2sqlVisible && (
             <Nl2SqlPanel
               dbSessionId={dbSessionId}
-              database={currentDatabase ?? ''}
+              database={selectedDatabase ?? ''}
               onSqlChange={handleApplyAiSql}
             />
           )}
@@ -995,16 +1250,17 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
                 <div className="p-4">
                   <QueryErrorPanel
                     message={exec.error}
-                    onDiagnose={currentDatabase ? () => setDiagnosisVisible(true) : undefined}
+                    onExplain={explainAction.enabled ? () => {
+                      explainAction.invoke(() => setDiagnosisVisible(true));
+                    } : undefined}
+                    onFixSql={diagnosisContext.ok ? () => setDiagnosisVisible(true) : undefined}
+                    onRetry={retryAction.enabled ? () => void handleRetry() : undefined}
                   />
                 </div>
-                {diagnosisVisible && currentDatabase && (
+                {diagnosisVisible && selectedDatabase && (
                   <DiagnosisPanel
-                    dbSessionId={dbSessionId}
-                    database={currentDatabase}
-                    sql={exec.sql}
-                    errorMessage={exec.error}
-                    onApplySql={handleApplyAiSql}
+                    diagnosisContext={diagnosisContext}
+                    onApplySql={handleApplyFixSql}
                     onClose={() => setDiagnosisVisible(false)}
                   />
                 )}
@@ -1063,42 +1319,6 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
                       </div>
                     )}
                     <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt px-2">
-                      <div className="flex items-center gap-0.5 rounded-md bg-surface p-0.5 my-1">
-                        <button
-                          type="button"
-                          {...tid('result-view-table')}
-                          className={cn(
-                            'flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors',
-                            resultViewMode === 'table'
-                              ? 'bg-accent/20 text-accent font-medium'
-                              : 'text-fg-muted hover:text-fg-secondary',
-                          )}
-                          onClick={() => setResultViewMode('table')}
-                        >
-                          <TableProperties className="h-3 w-3" />
-                          {t('chart.viewTable')}
-                        </button>
-                        <button
-                          type="button"
-                          {...tid('result-view-chart')}
-                          className={cn(
-                            'flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors',
-                            resultViewMode === 'chart'
-                              ? 'bg-accent/20 text-accent font-medium'
-                              : 'text-fg-muted hover:text-fg-secondary',
-                          )}
-                          onClick={() => setResultViewMode('chart')}
-                        >
-                          <BarChart3 className="h-3 w-3" />
-                          {t('chart.viewChart')}
-                        </button>
-                      </div>
-                      {resultViewMode === 'chart' && activeResult.rows.length > 1000 && (
-                        <span className="ml-2 flex items-center gap-1 text-[11px] text-yellow-400">
-                          <AlertTriangle className="h-3 w-3" />
-                          {t('chart.sampledWarning', { limit: '1000' })}
-                        </span>
-                      )}
                       <Button
                         variant="ghost"
                         className="ml-auto h-7 gap-1 px-2 text-xs"
@@ -1110,20 +1330,15 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
                         {t('dashboard.addToDashboard')}
                       </Button>
                     </div>
-                    {exec.running || resultViewMode === 'table' ? (
-                      <ResultTable result={activeResult} panelId={panelId} />
-                    ) : (
-                      <ChartView
-                        key={panelId}
-                        result={activeResult}
-                        savedConfig={exec.chartConfig}
-                        onConfigChange={(cfg) => setChartConfig(panelId, cfg)}
-                        onDataPointClick={(rowIndex) => {
-                          setResultViewMode('table');
-                          setResultDetailRow(panelId, rowIndex);
-                        }}
-                      />
-                    )}
+                    <ResultWorkspace
+                      result={activeResult}
+                      view={exec.running ? 'table' : resultViewMode}
+                      chartConfig={exec.chartConfig}
+                      rowDetailIndex={exec.resultDetailRowIndex}
+                      onViewChange={setResultViewMode}
+                      onChartConfigChange={(cfg) => setChartConfig(panelId, cfg)}
+                      onRowDetail={(rowIndex) => setResultDetailRow(panelId, rowIndex)}
+                    />
                   </>
                 )}
               </>
@@ -1371,81 +1586,7 @@ export function QueryPanel({ panelId, dbSessionId, connectionId, databaseType }:
           })();
         }}
       />
+      {confirmRetryDialog}
     </div>
-  );
-}
-
-function ResultTable({ result, panelId }: { result: StatementResult; panelId: string }) {
-  const { t } = useI18n();
-  const queryResultLimit = useSettingsStore((s) => s.settings.queryResultLimit);
-  const setResultDetailRow = usePanelStore((s) => s.setResultDetailRow);
-  const resultDetailRowIndex = usePanelStore(
-    (s) => s.queryExec.get(panelId)?.resultDetailRowIndex ?? null,
-  );
-
-  const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
-
-  const columnDefs: ColumnDef[] = useMemo(
-    () => result.columns.map((c) => ({ id: c.name, name: c.name, type: c.dataType })),
-    [result.columns],
-  );
-
-  const statusBar = useMemo(
-    () => (
-      <div className="flex items-center gap-3 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-secondary">
-        <span>
-          {result.rows.length} {t('common.rows')}
-        </span>
-        <span className="text-edge">|</span>
-        <span>
-          {result.columns.length} {t('common.columns')}
-        </span>
-        <span className="text-edge">|</span>
-        <span>{result.executionTimeMs} ms</span>
-        {result.sql && (
-          <>
-            <span className="text-edge">|</span>
-            <span className="max-w-[400px] truncate font-mono text-fg-muted" title={result.sql}>
-              {result.sql}
-            </span>
-          </>
-        )}
-        {result.truncated && (
-          <>
-            <span className="text-edge">|</span>
-            <span className="flex items-center gap-1 text-yellow-400">
-              <AlertTriangle className="h-3 w-3" />
-              {t('query.resultTruncated', { limit: queryResultLimit })}
-            </span>
-          </>
-        )}
-      </div>
-    ),
-    [result, queryResultLimit, t],
-  );
-
-  const handleCellDoubleClick = useCallback(
-    (row: number, col: string) => {
-      setResultDetailRow(panelId, row);
-      setEditingCell({ row, col });
-    },
-    [panelId, setResultDetailRow],
-  );
-
-  return (
-    <DataTable
-      columns={columnDefs}
-      rows={result.rows}
-      statusBar={statusBar}
-      rowHeight={32}
-      editingCell={editingCell}
-      onCellDoubleClick={handleCellDoubleClick}
-      onCellEdit={(_row, _col, _value) => setEditingCell(null)}
-      onCellEditCancel={() => setEditingCell(null)}
-      enableSetNull={false}
-      onRowClick={(idx) => setResultDetailRow(panelId, idx)}
-      highlightedRow={resultDetailRowIndex}
-      exportTableName="query_result"
-    />
   );
 }

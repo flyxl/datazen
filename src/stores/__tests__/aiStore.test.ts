@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { buildQueryDiagnosisContext } from '../../lib/aiQueryActions';
 
 const mockAiCommands = {
   getConfig: vi.fn(),
@@ -181,6 +182,54 @@ describe('aiStore', () => {
   });
 
   describe('diagnosis and explain', () => {
+    it('passes the helper redacted diagnosis payload to the AI command', async () => {
+      const secrets = ['store-json-secret', 'store-password-secret', 'store-error-secret'];
+      const context = buildQueryDiagnosisContext({
+        sql: `SELECT '{\\"token\\":\\"store-json-secret\\"}', password = 'store-password-secret'`,
+        errorMessage: `query failed: {\\"token\\":\\"store-error-secret\\"}`,
+        connectionId: 'c',
+        dbSessionId: 'session',
+        databaseType: 'postgresql',
+        database: 'db',
+      });
+      expect(context.ok).toBe(true);
+      if (!context.ok) return;
+
+      mockAiCommands.diagnoseError.mockResolvedValueOnce({ changes: [] });
+      await useAiStore.getState().diagnoseError(context.context.diagnosisParams);
+
+      const payload = mockAiCommands.diagnoseError.mock.calls[0]?.[0];
+      for (const secret of secrets) expect(JSON.stringify(payload)).not.toContain(secret);
+    });
+
+    it('redacts direct store diagnosis calls and keeps logs to safe summaries', async () => {
+      const rawSql = "SELECT * FROM users WHERE password = 'store-direct-password'";
+      const rawError = 'query failed: apiToken=store-direct-token';
+      const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
+      mockAiCommands.diagnoseError.mockResolvedValueOnce({ changes: [] });
+
+      try {
+        await useAiStore.getState().diagnoseError({
+          dbSessionId: 'session',
+          database: 'app',
+          sql: rawSql,
+          errorMessage: rawError,
+        });
+      } finally {
+        debugSpy.mockRestore();
+      }
+
+      expect(mockAiCommands.diagnoseError).toHaveBeenCalledWith({
+        dbSessionId: 'session',
+        database: 'app',
+        sql: expect.not.stringContaining('store-direct-password'),
+        errorMessage: expect.not.stringContaining('store-direct-token'),
+      });
+      expect(debugSpy.mock.calls.map((call) => JSON.stringify(call)).join('\n')).not.toContain(
+        rawError,
+      );
+    });
+
     it('diagnoseError success and error', async () => {
       mockAiCommands.diagnoseError.mockResolvedValueOnce({ changes: [{ sql: 'fix' }] });
       await useAiStore.getState().diagnoseError({

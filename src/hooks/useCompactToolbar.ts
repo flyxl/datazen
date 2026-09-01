@@ -38,8 +38,14 @@ export function useCompactToolbar(threshold = 920) {
           // Hysteresis: require a little extra room before expanding again.
           return width < threshold + 16;
         }
-        const overflows = el.scrollWidth > width + 1;
-        return overflows || width < threshold;
+        // The threshold is the authoritative estimate for whether the container
+        // can fit expanded buttons.  scrollWidth can be slightly larger than
+        // clientWidth when the toolbar contains unaccounted elements
+        // (separators, badges, keyboard hints) that aren't counted in the
+        // button-based threshold estimate.  Forcing compact based on that
+        // minor overflow causes the toolbar to get stuck in icon-only mode
+        // because hysteresis then requires threshold+16 to recover.
+        return width < threshold;
       });
     };
 

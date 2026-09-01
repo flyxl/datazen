@@ -13,13 +13,27 @@ use std::sync::Arc;
 pub struct ReuseDriver {
     inner: Arc<dyn DatabaseDriver>,
     db_type: DatabaseType,
+    precise_query_execution_cancel: bool,
 }
 
 impl ReuseDriver {
     pub fn new(inner: Arc<dyn DatabaseDriver>, db_type: &str) -> Self {
+        Self::new_with_precise_cancel(inner, db_type, true)
+    }
+
+    /// Build a compatibility wrapper with an explicit precise-cancel
+    /// capability. The capability can only be enabled when the wrapped driver
+    /// actually implements the execution-handle protocol.
+    pub fn new_with_precise_cancel(
+        inner: Arc<dyn DatabaseDriver>,
+        db_type: &str,
+        enabled: bool,
+    ) -> Self {
+        let precise_query_execution_cancel = enabled && inner.supports_query_execution_cancel();
         Self {
             inner,
             db_type: db_type.to_string(),
+            precise_query_execution_cancel,
         }
     }
 }
@@ -138,6 +152,39 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.query_stream(handle, sql, limit, on_event).await
     }
 
+    async fn prepare_query_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        if !self.precise_query_execution_cancel {
+            return Err(DriverError::Unsupported(
+                "precise query cancellation is not supported for this compatibility driver".into(),
+            ));
+        }
+        self.inner
+            .prepare_query_execution(handle, execution_id)
+            .await
+    }
+
+    async fn query_stream_with_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        if !self.precise_query_execution_cancel {
+            return Err(DriverError::Unsupported(
+                "precise query cancellation is not supported for this compatibility driver".into(),
+            ));
+        }
+        self.inner
+            .query_stream_with_execution(handle, execution_id, sql, limit, on_event)
+            .await
+    }
+
     async fn query_with_params(
         &self,
         handle: &ConnectionHandle,
@@ -189,6 +236,38 @@ impl DatabaseDriver for ReuseDriver {
 
     async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
         self.inner.cancel_query(handle).await
+    }
+
+    async fn cancel_query_with_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        if !self.precise_query_execution_cancel {
+            return Err(DriverError::Unsupported(
+                "precise query cancellation is not supported for this compatibility driver".into(),
+            ));
+        }
+        self.inner
+            .cancel_query_with_execution(handle, execution_id)
+            .await
+    }
+
+    async fn cleanup_query_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        if !self.precise_query_execution_cancel {
+            return Ok(());
+        }
+        self.inner
+            .cleanup_query_execution(handle, execution_id)
+            .await
+    }
+
+    fn supports_query_execution_cancel(&self) -> bool {
+        self.precise_query_execution_cancel
     }
 
     async fn get_server_info(&self, handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
@@ -336,6 +415,7 @@ mod tests {
         streamed: Mutex<bool>,
         override_stream: bool,
         rows: usize,
+        precise_cancel: bool,
     }
 
     impl FakeDriver {
@@ -344,6 +424,16 @@ mod tests {
                 streamed: Mutex::new(false),
                 override_stream,
                 rows,
+                precise_cancel: false,
+            })
+        }
+
+        fn new_precise(rows: usize) -> Arc<Self> {
+            Arc::new(Self {
+                streamed: Mutex::new(false),
+                override_stream: true,
+                rows,
+                precise_cancel: true,
             })
         }
 
@@ -466,6 +556,25 @@ mod tests {
             Ok(())
         }
 
+        async fn prepare_query_execution(
+            &self,
+            _handle: &ConnectionHandle,
+            _execution_id: &QueryExecutionId,
+        ) -> Result<(), DriverError> {
+            Ok(())
+        }
+
+        async fn query_stream_with_execution(
+            &self,
+            handle: &ConnectionHandle,
+            _execution_id: &QueryExecutionId,
+            sql: &str,
+            limit: Option<u32>,
+            on_event: QueryStreamCallback,
+        ) -> Result<(), DriverError> {
+            self.query_stream(handle, sql, limit, on_event).await
+        }
+
         async fn query_with_params(
             &self,
             handle: &ConnectionHandle,
@@ -485,6 +594,26 @@ mod tests {
 
         async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
             Ok(())
+        }
+
+        async fn cancel_query_with_execution(
+            &self,
+            _handle: &ConnectionHandle,
+            _execution_id: &QueryExecutionId,
+        ) -> Result<(), DriverError> {
+            Ok(())
+        }
+
+        async fn cleanup_query_execution(
+            &self,
+            _handle: &ConnectionHandle,
+            _execution_id: &QueryExecutionId,
+        ) -> Result<(), DriverError> {
+            Ok(())
+        }
+
+        fn supports_query_execution_cancel(&self) -> bool {
+            self.precise_cancel
         }
     }
 
@@ -585,6 +714,7 @@ mod tests {
                 streamed: Mutex::new(false),
                 override_stream: false,
                 rows: QUERY_STREAM_BATCH_SIZE + 2,
+                precise_cancel: false,
             },
         };
         let handle = ConnectionHandle {
@@ -624,5 +754,49 @@ mod tests {
             .iter()
             .any(|e| matches!(e, QueryStreamEvent::StatementStart { .. })));
         assert!(matches!(events.last(), Some(QueryStreamEvent::Done { .. })));
+    }
+
+    #[tokio::test]
+    async fn reuse_driver_forwards_precise_execution_protocol_and_capability() {
+        let inner = FakeDriver::new_precise(1);
+        let reuse = ReuseDriver::new(inner, "cloudberry");
+        let handle = ConnectionHandle {
+            id: "h".into(),
+            pool_id: "p".into(),
+        };
+        let execution_id = QueryExecutionId::new("exec-1");
+
+        assert!(reuse.supports_query_execution_cancel());
+        reuse
+            .prepare_query_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        reuse
+            .cancel_query_with_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+        reuse
+            .cleanup_query_execution(&handle, &execution_id)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn disabled_reuse_precise_protocol_does_not_call_inner_cancel() {
+        let inner = FakeDriver::new_precise(1);
+        let reuse = ReuseDriver::new_with_precise_cancel(inner, "questdb", false);
+        let handle = ConnectionHandle {
+            id: "h".into(),
+            pool_id: "p".into(),
+        };
+        let error = reuse
+            .cancel_query_with_execution(&handle, &QueryExecutionId::new("exec-1"))
+            .await
+            .unwrap_err();
+
+        assert!(!reuse.supports_query_execution_cancel());
+        assert!(
+            matches!(error, DriverError::Unsupported(message) if message.contains("compatibility driver"))
+        );
     }
 }

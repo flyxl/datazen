@@ -4,6 +4,7 @@ import type { ConnectionConfig } from '../../types';
 const mockConnectionCommands = {
   connect: vi.fn(),
   testConnection: vi.fn(),
+  getConnectionInfo: vi.fn(),
   disconnect: vi.fn(),
 };
 
@@ -39,6 +40,14 @@ describe('activeConnectionStore', () => {
   it('connect succeeds and marks connected', async () => {
     mockConnectionCommands.connect.mockResolvedValueOnce('pool-abc');
     mockConnectionCommands.testConnection.mockResolvedValueOnce({ version: '16' });
+    mockConnectionCommands.getConnectionInfo.mockResolvedValueOnce({
+      capabilities: {
+        supportsCancelQuery: true,
+        supportsQueryExecutionCancel: true,
+        supportsExplain: true,
+        supportsStreamingResults: true,
+      },
+    });
 
     await useActiveConnectionStore.getState().connect(makeConfig());
 
@@ -47,6 +56,7 @@ describe('activeConnectionStore', () => {
     expect(entry.connectionId).toBe('cfg-1');
     expect(entry.dbSessionId).toBe('pool-abc');
     expect(entry.serverInfo).toEqual({ version: '16' });
+    expect(entry.capabilities?.supportsCancelQuery).toBe(true);
     expect(entry.currentDatabase).toBe('mydb');
   });
 
@@ -60,14 +70,27 @@ describe('activeConnectionStore', () => {
     expect(entry.error).toBe('connection refused');
   });
 
-  it('markConnecting / markConnected / markError', () => {
+  it('markConnecting / markConnected / markError', async () => {
+    mockConnectionCommands.getConnectionInfo.mockResolvedValueOnce({
+      capabilities: {
+        supportsCancelQuery: false,
+        supportsQueryExecutionCancel: false,
+        supportsExplain: true,
+        supportsStreamingResults: false,
+      },
+    });
     useActiveConnectionStore.getState().markConnecting('cfg-2', 'db2');
     expect(useActiveConnectionStore.getState().connections['cfg-2'].status).toBe('connecting');
 
     useActiveConnectionStore.getState().markConnected('cfg-2', 'pool-xyz');
+    await Promise.resolve();
     expect(useActiveConnectionStore.getState().connections['cfg-2'].status).toBe('connected');
     expect(useActiveConnectionStore.getState().connections['cfg-2'].dbSessionId).toBe('pool-xyz');
     expect(useActiveConnectionStore.getState().connections['cfg-2'].connectionId).toBe('cfg-2');
+    expect(
+      useActiveConnectionStore.getState().connections['cfg-2'].capabilities
+        ?.supportsCancelQuery,
+    ).toBe(false);
 
     useActiveConnectionStore.getState().markError('cfg-2', 'timeout');
     expect(useActiveConnectionStore.getState().connections['cfg-2'].status).toBe('error');
@@ -112,8 +135,22 @@ describe('activeConnectionStore', () => {
   it('removeByDbSessionId removes matching entries', () => {
     useActiveConnectionStore.setState({
       connections: {
-        a: { dbSessionId: 'pool-a', connectionId: 'a', status: 'connected', serverInfo: null, currentDatabase: null, error: null },
-        b: { dbSessionId: 'pool-b', connectionId: 'b', status: 'connected', serverInfo: null, currentDatabase: null, error: null },
+        a: {
+          dbSessionId: 'pool-a',
+          connectionId: 'a',
+          status: 'connected',
+          serverInfo: null,
+          currentDatabase: null,
+          error: null,
+        },
+        b: {
+          dbSessionId: 'pool-b',
+          connectionId: 'b',
+          status: 'connected',
+          serverInfo: null,
+          currentDatabase: null,
+          error: null,
+        },
       },
     });
     useActiveConnectionStore.getState().removeByDbSessionId('pool-a');

@@ -8,7 +8,7 @@ use crate::mcp::permission::McpPermissionMode;
 use datazen_driver_api::{
     check_command_access, validate_command_input, CommandAccessLevel, CommandResult,
     ConnectionHandle, DatabaseDriver, DriverCommandDefinition, DriverSaveDialogSpec,
-    QueryStreamCallback, QueryStreamEvent,
+    QueryExecutionId, QueryStreamCallback, QueryStreamEvent,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
@@ -392,6 +392,28 @@ pub(crate) async fn execute_driver_command_stream_impl(
     let safe_mode = state.store.get_settings().await.safe_mode;
     crate::sql_guard::check_sql(&sql, read_only, safe_mode).map_err(CommandError::Validation)?;
 
+    // Every stream gets a fresh opaque execution identity. The driver's
+    // prepare hook registers a pending entry before the started event is
+    // published, so cancel can safely win the race before a backend target is
+    // acquired. Legacy drivers use the API's no-op/stream compatibility
+    // defaults, but never their old session-wide cancel method.
+    let execution_id = QueryExecutionId::new(uuid::Uuid::new_v4().to_string());
+    if let Err(error) = driver.prepare_query_execution(&handle, &execution_id).await {
+        let _ = driver.cleanup_query_execution(&handle, &execution_id).await;
+        return Err(error).cmd_err("execute_driver_command_stream");
+    }
+    if let Err(error) = state
+        .query_executions
+        .register(execution_id.clone(), handle.id.clone())
+        .await
+    {
+        let _ = driver.cleanup_query_execution(&handle, &execution_id).await;
+        return Err(CommandError::Validation(error));
+    }
+    on_event(QueryStreamEvent::ExecutionStarted {
+        execution_id: execution_id.as_str().to_string(),
+    });
+
     let limit = if opts.apply_result_limit {
         query_result_limit_from_settings(state).await
     } else {
@@ -418,7 +440,20 @@ pub(crate) async fn execute_driver_command_stream_impl(
         user_cb(event);
     });
 
-    match driver.query_stream(&handle, &sql, limit, wrapped).await {
+    let stream_result = driver
+        .query_stream_with_execution(&handle, &execution_id, &sql, limit, wrapped)
+        .await;
+    if let Err(error) = driver.cleanup_query_execution(&handle, &execution_id).await {
+        tracing::warn!(
+            db_session_id,
+            execution_id = %execution_id.as_str(),
+            error = %error,
+            "query execution driver cleanup failed"
+        );
+    }
+    state.query_executions.remove(&execution_id).await;
+
+    match stream_result {
         Ok(()) => {
             if opts.record_history {
                 record_sql_command_outcome(
@@ -1098,6 +1133,49 @@ mod tests {
             started_sql.contains("/* target: db=analytics schema=sales */"),
             "{started_sql}"
         );
+    }
+
+    #[tokio::test]
+    async fn stream_emits_execution_started_and_cleans_host_handle() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let (_, conn_id) = test.save_and_connect("stream-lifecycle").await;
+        let execution_ids: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let recorder = Arc::clone(&execution_ids);
+        let callback: QueryStreamCallback = Arc::new(move |event| {
+            if let QueryStreamEvent::ExecutionStarted { execution_id } = event {
+                recorder.lock().unwrap().push(execution_id);
+            }
+        });
+
+        execute_driver_command_stream_impl(
+            &test.state,
+            ExecuteDriverCommandStreamRequest {
+                db_session_id: Some(conn_id.clone()),
+                command: "query_stream".into(),
+                input: serde_json::json!({ "sql": "SELECT 1" }),
+                database: None,
+                schema: None,
+                apply_result_limit: Some(false),
+                record_history: Some(false),
+            },
+            callback,
+            ExecuteDriverCommandStreamOpts {
+                apply_result_limit: false,
+                record_history: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        let execution_id = execution_ids.lock().unwrap().first().cloned().unwrap();
+        assert!(!execution_id.is_empty());
+        assert!(test
+            .state
+            .query_executions
+            .validate_owner(&QueryExecutionId::new(execution_id), &conn_id)
+            .await
+            .unwrap_err()
+            .contains("unknown or stale"));
     }
 
     #[tokio::test]

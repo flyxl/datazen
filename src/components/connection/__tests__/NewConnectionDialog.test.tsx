@@ -112,6 +112,15 @@ describe('NewConnectionDialog', () => {
     expect(screen.getByPlaceholderText('newConn.namePlaceholder')).toHaveValue('');
     expect(screen.getByDisplayValue('127.0.0.1')).toBeInTheDocument();
     expect(screen.getByDisplayValue('5432')).toBeInTheDocument();
+    expect(screen.queryByTestId('new-conn-ssl-mode')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('new-conn-ssh-tunnel-checkbox')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('new-conn-advanced-toggle'));
+    expect(screen.getByTestId('new-conn-ssl-mode')).toBeInTheDocument();
+    expect(screen.queryByTestId('new-conn-ssh-tunnel-checkbox')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('new-conn-ssh-toggle'));
+    expect(screen.getByTestId('new-conn-ssh-tunnel-checkbox')).toBeInTheDocument();
   });
 
   it('loads existing connection in edit mode', async () => {

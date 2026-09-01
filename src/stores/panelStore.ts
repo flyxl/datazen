@@ -1,9 +1,13 @@
 import { create } from 'zustand';
 import { queryCommands } from '../commands/query';
+import { t } from '../locales/t';
 import type { DatabaseType, FavoriteQuery, QueryHistoryEntry, Value } from '../types';
 import type { ChartConfig } from '../types/chart';
 import type { TrendSeries } from '../lib/serverStatusTrends';
+import { getCancelCapability } from '../lib/queryExecutionViewModel';
+import { reduceQueryExecutionState } from '../lib/queryExecutionViewModel';
 import { useSchemaStore } from './schemaStore';
+import { useActiveConnectionStore } from './activeConnectionStore';
 import {
   type BindParams,
   type QueryExecState,
@@ -54,6 +58,9 @@ export interface ViewPanel extends PanelBase {
 export interface QueryPanel extends PanelBase {
   type: 'query';
   title: string;
+  /** Target namespace captured when a table action opens this query. */
+  database?: string;
+  schema?: string;
 }
 
 export interface CreateTablePanel extends PanelBase {
@@ -156,8 +163,14 @@ function cancelAndCleanupExec(
   for (const panel of panelsToRemove) {
     if (panel.type === 'query') {
       const exec = nextExec.get(panel.id);
-      if (exec?.running) {
-        queryCommands.cancelQuery(panel.dbSessionId).catch(() => {});
+      const capabilities =
+        useActiveConnectionStore.getState().connections[panel.connectionId]?.capabilities;
+      if (
+        exec?.running &&
+        exec.executionId &&
+        getCancelCapability(capabilities) === 'supported'
+      ) {
+        queryCommands.cancelQuery(panel.dbSessionId, exec.executionId).catch(() => {});
       }
       nextExec.delete(panel.id);
     }
@@ -234,8 +247,9 @@ interface PanelActions {
  * selected database explicitly — the backend pins the session to it before
  * running unqualified SQL (BUG-001 fix).
  */
-function panelTargetDatabase(dbSessionId: string): string | null {
-  return useSchemaStore.getState().schemas.get(dbSessionId)?.currentDatabase ?? null;
+function panelTargetDatabase(panel: QueryPanel): string | null {
+  if (panel.database?.trim()) return panel.database;
+  return useSchemaStore.getState().schemas.get(panel.dbSessionId)?.currentDatabase ?? null;
 }
 
 /**
@@ -244,8 +258,9 @@ function panelTargetDatabase(dbSessionId: string): string | null {
  * carry it explicitly as the envelope `schema` field — rewrite-capable
  * drivers inline it (`"schema"."t"`); others ignore it.
  */
-function panelTargetSchema(dbSessionId: string): string | null {
-  return useSchemaStore.getState().schemas.get(dbSessionId)?.currentSchema ?? null;
+function panelTargetSchema(panel: QueryPanel): string | null {
+  if (panel.schema?.trim()) return panel.schema;
+  return useSchemaStore.getState().schemas.get(panel.dbSessionId)?.currentSchema ?? null;
 }
 
 export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
@@ -381,8 +396,8 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         params,
         getExec,
         setExec,
-        panelTargetDatabase(panel.dbSessionId),
-        panelTargetSchema(panel.dbSessionId),
+        panelTargetDatabase(panel),
+        panelTargetSchema(panel),
       );
     } else {
       await runStreamingQuery(
@@ -391,8 +406,8 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         sql,
         getExec,
         setExec,
-        panelTargetDatabase(panel.dbSessionId),
-        panelTargetSchema(panel.dbSessionId),
+        panelTargetDatabase(panel),
+        panelTargetSchema(panel),
       );
     }
     await get().loadHistory(panel.connectionId);
@@ -414,8 +429,8 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         params,
         getExec,
         setExec,
-        panelTargetDatabase(panel.dbSessionId),
-        panelTargetSchema(panel.dbSessionId),
+        panelTargetDatabase(panel),
+        panelTargetSchema(panel),
       );
     } else {
       await runStreamingQuery(
@@ -424,8 +439,8 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         sql,
         getExec,
         setExec,
-        panelTargetDatabase(panel.dbSessionId),
-        panelTargetSchema(panel.dbSessionId),
+        panelTargetDatabase(panel),
+        panelTargetSchema(panel),
       );
     }
     await get().loadHistory(panel.connectionId);
@@ -435,16 +450,43 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const { panels, queryExec } = get();
     const panel = panels.find((p) => p.id === panelId);
     if (!panel) return;
-    try {
-      await queryCommands.cancelQuery(panel.dbSessionId);
-    } catch {
-      // best-effort
-    }
+
     const exec = queryExec.get(panelId);
-    if (exec) {
-      set((s) => ({
-        queryExec: patchExec(s.queryExec, panelId, { running: false, error: 'Cancelled' }),
-      }));
+    if (!exec?.running || exec.cancelState === 'requested' || !exec.executionId) return;
+
+    const capabilities =
+      useActiveConnectionStore.getState().connections[panel.connectionId]?.capabilities;
+    if (getCancelCapability(capabilities) !== 'supported') return;
+
+    set((s) => {
+      const current = s.queryExec.get(panelId);
+      if (!current) return s;
+      return {
+        queryExec: patchExec(
+          s.queryExec,
+          panelId,
+          reduceQueryExecutionState(current, { type: 'cancel_requested' }),
+        ),
+      };
+    });
+
+    try {
+      await queryCommands.cancelQuery(panel.dbSessionId, exec.executionId);
+    } catch {
+      set((s) => {
+        const current = s.queryExec.get(panelId);
+        if (!current) return s;
+        return {
+          queryExec: patchExec(
+            s.queryExec,
+            panelId,
+            reduceQueryExecutionState(current, {
+              type: 'cancel_failed',
+              error: t('query.cancelFailed'),
+            }),
+          ),
+        };
+      });
     }
   },
 

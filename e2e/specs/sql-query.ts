@@ -2,11 +2,16 @@ import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
   captureJourneyStep,
-  connectSeededPgInWorkspace,
+  clickCardConnectButton,
   closeExtraWindows,
   setEditorContent,
   openQueryTab,
+  openConnectionsWorkspace,
+  expandConnectedConnectionInNavigator,
+  waitForConnectionToolbar,
   executeSQL,
+  emitCrossWindowEvent,
+  invokeBackend,
 } from '../helpers.js';
 
 /**
@@ -18,10 +23,37 @@ import {
  */
 describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   let mainWindow: string;
+  const queryConnectionId = 'e2e_pg_sql_query';
+  const queryConnectionName = 'E2E-PostgreSQL-查询';
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await connectSeededPgInWorkspace();
+    // A configured database intentionally suppresses the database context
+    // selector. Use a disposable PG connection without a default database so
+    // this spec exercises the real multi-database selector path without
+    // mutating the shared conn_e2e_pg fixture used by later specs.
+    await invokeBackend('save_connection', {
+      config: {
+        id: queryConnectionId,
+        name: queryConnectionName,
+        databaseType: 'postgresql',
+        host: process.env.E2E_PG_HOST || '127.0.0.1',
+        port: Number(process.env.E2E_PG_PORT) || 5432,
+        username: process.env.E2E_PG_USER || 'postgres',
+        password: process.env.E2E_PG_PASSWORD || '',
+        database: '',
+        group: 'E2E 测试',
+        colorTag: 'blue',
+        sslMode: 'disable',
+        options: {},
+      },
+    });
+    await browser.refresh();
+    await browser.pause(1500);
+    await openConnectionsWorkspace();
+    await clickCardConnectButton(queryConnectionName);
+    await waitForConnectionToolbar();
+    await expandConnectedConnectionInNavigator(queryConnectionName);
     // Note: do NOT wait for `conn-toolbar-new-query` here — after connecting,
     // the workspace shows ConnectionWorkspaceHome and the ContentToolbar
     // button only mounts once a content panel exists. openQueryTab() opens
@@ -32,7 +64,14 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   });
 
   after(async () => {
-    await closeExtraWindows(mainWindow);
+    try {
+      await closeExtraWindows(mainWindow);
+      // Remove the disposable config so a shared-process `e2e:db` run cannot
+      // leave this test's connection in the next spec's connection list.
+      await invokeBackend('delete_connection', { id: queryConnectionId });
+    } catch {
+      /* cleanup best-effort */
+    }
   });
 
   // ── 基础 UI ────────────────────────────────────────────────────
@@ -43,16 +82,23 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
 
   it('SQ-CTX-001: SQL 带完整库路径时应同步执行栏选择框', async () => {
     const bar = await $('[data-testid="query-context-selectors"]');
-    if (!(await bar.isExisting())) return;
     const dbName = process.env.E2E_PG_DB || 'postgres';
-    await setEditorContent(`SELECT * FROM ${dbName}.pg_catalog.pg_tables LIMIT 1`);
-    await browser.pause(800);
+    // Context is synchronized by QueryPanel's execution path, not by merely
+    // replacing CodeMirror text. Execute the qualified statement so the test
+    // observes the same state transition as a user action.
+    await executeSQL(`SELECT * FROM ${dbName}.pg_catalog.pg_tables LIMIT 1`);
+    await bar.waitForDisplayed({ timeout: 10000 });
     const text = await bar.getText();
     expect(text).toContain(dbName);
   });
 
   it('应显示执行快捷键提示 (SQ-001)', async () => {
-    await expect(await $('span*=⌘+Enter')).toBeDisplayed();
+    // The empty-results hint is a div. The toolbar hint is hidden when the
+    // responsive toolbar is compact, so a span-only locator was stale.
+    // The previous context test executes a query, so start from a fresh empty
+    // panel instead of relying on results from another test.
+    await openQueryTab();
+    await expect(await $(`div*=${t('query.shortcutHint')}`)).toBeDisplayed();
   });
 
   it('执行查询期间应显示停止按钮 (SQ-001)', async () => {
@@ -96,7 +142,17 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   });
 
   it('执行后应显示总耗时 (SQ-002)', async () => {
-    await expect(await $(`span*=${t('query.totalTime')}`)).toBeDisplayed();
+    // Compact toolbars render the duration as "N ms" without the localized
+    // "总耗时" prefix; the result workspace always exposes the duration.
+    await browser.waitUntil(
+      async () =>
+        await browser.execute(() =>
+          Array.from(document.querySelectorAll('[data-testid="result-workspace-table"] span')).some(
+            (node) => /\d+\s*ms/.test(node.textContent ?? ''),
+          ),
+        ),
+      { timeout: 5000, timeoutMsg: 'Timed out waiting for result execution duration' },
+    );
   });
 
   // ── 多语句 ─────────────────────────────────────────────────────
@@ -139,13 +195,28 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
       'CREATE TABLE IF NOT EXISTS _e2e_sql_test (id SERIAL PRIMARY KEY, val TEXT); ' +
         "INSERT INTO _e2e_sql_test (val) VALUES ('hello')",
     );
+    const queryPanel = await $('[data-testid="query-panel"]');
+    const previousExecutionSeq = Number((await queryPanel.getAttribute('data-execution-seq')) ?? '0');
     const execBtn = await $('[data-testid="editor-execute-button"]');
     await execBtn.click();
 
-    await browser.waitUntil(async () => (await $('body').getText()).includes('总耗时'), {
-      timeout: 15000,
-      timeoutMsg: 'Timed out waiting for DML execution',
-    });
+    await browser.waitUntil(
+      async () =>
+        Number((await queryPanel.getAttribute('data-execution-seq')) ?? '0') > previousExecutionSeq,
+      {
+        timeout: 15000,
+        timeoutMsg: 'Timed out waiting for DML execution',
+      },
+    );
+    await browser.waitUntil(
+      async () =>
+        await browser.execute(() =>
+          Array.from(document.querySelectorAll('[data-testid="result-workspace-table"] span')).some(
+            (node) => /\d+\s*ms/.test(node.textContent ?? ''),
+          ),
+        ),
+      { timeout: 5000, timeoutMsg: 'Timed out waiting for DML execution duration' },
+    );
 
     // Clean up (executeSQL temporarily disables Safe Mode for DROP)
     await executeSQL('DROP TABLE IF EXISTS _e2e_sql_test');
@@ -173,6 +244,13 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
       },
       { timeout: 20000, timeoutMsg: 'Timed out waiting for error message' },
     );
+    await expect(await $('[data-testid="query-error-message"]')).toBeDisplayed();
+    await expect(await $('[data-testid="query-copy-error"]')).toBeDisplayed();
+    await expect(await $('[data-testid="query-explain-error"]')).toBeDisplayed();
+    await expect(await $('[data-testid="query-fix-sql"]')).toBeDisplayed();
+    await expect(await $('[data-testid="query-retry"]')).toBeDisplayed();
+    await $('[data-testid="query-copy-error"]').click();
+    await expect(await $(`button*=${t('common.copied')}`)).toBeDisplayed();
     await captureJourneyStep('sql-error-shown');
   });
 
@@ -207,14 +285,13 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
       }
     }
 
-    if (clickedHistory) {
-      await browser.pause(500);
-      const editorContent = await browser.execute(() => {
-        const el = document.querySelector('.cm-editor .cm-content') as HTMLElement;
-        return el?.textContent || '';
-      });
-      expect(editorContent).toContain('SELECT');
-    }
+    expect(clickedHistory).toBe(true);
+    await browser.pause(500);
+    const editorContent = await browser.execute(() => {
+      const el = document.querySelector('.cm-editor .cm-content') as HTMLElement;
+      return el?.textContent || '';
+    });
+    expect(editorContent).toContain('SELECT');
   });
 
   it('关闭历史面板 (SQ-005, TC-QUERY-008)', async () => {
@@ -232,24 +309,20 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     await browser.pause(1500);
 
     const stopBtn = await $('[data-testid="editor-stop-button"]');
-    if ((await stopBtn.isExisting()) && (await stopBtn.isDisplayed())) {
-      await stopBtn.click();
-      await browser.pause(3000);
+    await stopBtn.waitForDisplayed({ timeout: 5000 });
+    await stopBtn.click();
+    await browser.pause(3000);
 
-      const body = await $('body').getText();
-      const wasCancelled =
-        body.includes('cancel') ||
-        body.includes(t('common.cancel')) ||
-        body.includes(t('query.totalTime')) ||
-        body.includes(t('common.error')) ||
-        body.includes(t('common.failed')) ||
-        body.includes('interrupted') ||
-        body.includes('pg_sleep');
-      expect(wasCancelled).toBe(true);
-    } else {
-      const body = await $('body').getText();
-      expect(body.length).toBeGreaterThan(0);
-    }
+    const body = await $('body').getText();
+    const wasCancelled =
+      body.includes('cancel') ||
+      body.includes(t('common.cancel')) ||
+      body.includes(t('query.totalTime')) ||
+      body.includes(t('common.error')) ||
+      body.includes(t('common.failed')) ||
+      body.includes('interrupted') ||
+      body.includes('pg_sleep');
+    expect(wasCancelled).toBe(true);
     await captureJourneyStep('query-cancelled');
   });
 
@@ -321,26 +394,20 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     await setEditorContent('SELECT 999 AS fav_test');
     await browser.pause(300);
 
-    await browser.execute(() => {
-      const event = new CustomEvent('tauri://menu', { detail: { id: 'menu:add-favorite' } });
-      window.dispatchEvent(event);
-      const { emit } = (window as any).__TAURI_INTERNALS__;
-      if (emit) emit('menu:add-favorite', {});
-    });
+    // Tauri listen() subscribers receive plugin:event IPC, not a DOM
+    // CustomEvent. Use the same bridge as the menu-event E2E coverage.
+    await emitCrossWindowEvent('menu:add-favorite');
     await browser.pause(1000);
 
     const input = await $('input[placeholder*=收藏标题]');
-    const isShown = await input.isExisting();
-    if (isShown) {
-      await expect(input).toBeDisplayed();
+    await input.waitForDisplayed({ timeout: 5000 });
 
-      await input.setValue('我的测试收藏');
-      await browser.pause(200);
+    await input.setValue('我的测试收藏');
+    await browser.pause(200);
 
-      const saveBtn = await $(`button*=${t('common.save')}`);
-      await saveBtn.click();
-      await browser.pause(500);
-    }
+    const saveBtn = await $(`button*=${t('common.save')}`);
+    await saveBtn.click();
+    await browser.pause(500);
   });
 
   it('收藏面板应能打开 (SQ-017)', async () => {

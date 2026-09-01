@@ -34,6 +34,13 @@ pub struct MockDriverOptions {
     pub server_version: String,
     pub extra_commands: Vec<DriverCommandDefinition>,
     pub query_error: Option<String>,
+    /// When set, precise execution-handle cancellation returns a driver-level
+    /// error for command tests. The legacy session-wide method remains a
+    /// separate counter and is never used by the Host cancel path.
+    pub cancel_error: Option<String>,
+    /// Rows affected by the generic execute path (zero by default so callers
+    /// that do not model mutations retain the old mock behavior).
+    pub execute_rows_affected: u64,
     /// F7: when true, `qualify_sql_target` rewrites SQL by appending a
     /// marker comment recording the requested target (capability simulation).
     pub rewrite_sql_target: bool,
@@ -60,6 +67,8 @@ impl Default for MockDriverOptions {
             server_version: String::new(),
             extra_commands: Vec::new(),
             query_error: None,
+            cancel_error: None,
+            execute_rows_affected: 0,
             rewrite_sql_target: false,
         }
     }
@@ -73,6 +82,8 @@ pub struct MockDriver {
     get_columns_calls: AtomicU32,
     get_schema_calls: AtomicU32,
     query_calls: AtomicU32,
+    cancel_query_calls: AtomicU32,
+    precise_cancel_query_calls: AtomicU32,
     last_query_limit: Mutex<Option<Option<u32>>>,
     open_txs: Mutex<HashSet<String>>,
     use_database_calls: Mutex<Vec<String>>,
@@ -88,6 +99,8 @@ impl MockDriver {
             get_columns_calls: AtomicU32::new(0),
             get_schema_calls: AtomicU32::new(0),
             query_calls: AtomicU32::new(0),
+            cancel_query_calls: AtomicU32::new(0),
+            precise_cancel_query_calls: AtomicU32::new(0),
             last_query_limit: Mutex::new(None),
             open_txs: Mutex::new(HashSet::new()),
             use_database_calls: Mutex::new(Vec::new()),
@@ -128,6 +141,14 @@ impl MockDriver {
 
     pub fn query_calls(&self) -> u32 {
         self.query_calls.load(Ordering::Relaxed)
+    }
+
+    pub fn cancel_query_calls(&self) -> u32 {
+        self.cancel_query_calls.load(Ordering::Relaxed)
+    }
+
+    pub fn precise_cancel_query_calls(&self) -> u32 {
+        self.precise_cancel_query_calls.load(Ordering::Relaxed)
     }
 
     pub fn reset_columns_calls(&self) {
@@ -307,7 +328,7 @@ impl DatabaseDriver for MockDriver {
     }
 
     async fn execute(&self, _handle: &ConnectionHandle, _sql: &str) -> Result<u64, DriverError> {
-        Ok(0)
+        Ok(self.opts.execute_rows_affected)
     }
 
     async fn explain(
@@ -319,7 +340,28 @@ impl DatabaseDriver for MockDriver {
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+        self.cancel_query_calls.fetch_add(1, Ordering::Relaxed);
+        if let Some(message) = &self.opts.cancel_error {
+            return Err(DriverError::Unsupported(message.clone()));
+        }
         Ok(())
+    }
+
+    async fn cancel_query_with_execution(
+        &self,
+        _handle: &ConnectionHandle,
+        _execution_id: &datazen_driver_api::QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        self.precise_cancel_query_calls
+            .fetch_add(1, Ordering::Relaxed);
+        if let Some(message) = &self.opts.cancel_error {
+            return Err(DriverError::Unsupported(message.clone()));
+        }
+        Ok(())
+    }
+
+    fn supports_query_execution_cancel(&self) -> bool {
+        true
     }
 
     async fn use_database(

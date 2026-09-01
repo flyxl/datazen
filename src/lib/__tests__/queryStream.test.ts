@@ -8,10 +8,21 @@ function tab(results: StatementResult[] = []) {
     running: true,
     error: null as string | null,
     executionTimeMs: null as number | null,
+    executionId: null as string | null,
   };
 }
 
 describe('applyQueryStreamEvent', () => {
+  it('stores the opaque execution id and clears it at stream end', () => {
+    let state = applyQueryStreamEvent(tab(), {
+      type: 'executionStarted',
+      executionId: 'exec-1',
+    });
+    expect(state.executionId).toBe('exec-1');
+    state = applyQueryStreamEvent(state, { type: 'done', totalTimeMs: 1 });
+    expect(state.executionId).toBeNull();
+  });
+
   it('appends row chunks without treating batch size as a SQL limit', () => {
     let state = applyQueryStreamEvent(tab(), {
       type: 'statementStart',

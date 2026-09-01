@@ -157,6 +157,8 @@ function SqlPanelContent({
             <TableView
               dbSessionId={panel.dbSessionId}
               database={panel.database ?? currentDatabase ?? ''}
+              connectionId={panel.connectionId}
+              schema={panel.tableSchema ?? null}
               tableName={panel.tableName}
               databaseType={panel.databaseType}
               dataExportCapability={panelExportScope}
@@ -230,7 +232,9 @@ function SqlPanelContent({
           {(panel as ViewPanel).subTab === 'data' && (
             <TableView
               dbSessionId={panel.dbSessionId}
+              connectionId={panel.connectionId}
               database={(panel as ViewPanel).database ?? currentDatabase ?? ''}
+              schema={(panel as ViewPanel).viewSchema ?? null}
               tableName={(panel as ViewPanel).viewName}
               databaseType={panel.databaseType}
               dataExportCapability={panelExportScope}
@@ -261,7 +265,10 @@ function SqlPanelContent({
         panelId={panel.id}
         dbSessionId={panel.dbSessionId}
         connectionId={panel.connectionId}
+        connectionName={panel.connectionName}
         databaseType={panel.databaseType}
+        database={panel.database}
+        schema={panel.schema}
       />
     );
   }

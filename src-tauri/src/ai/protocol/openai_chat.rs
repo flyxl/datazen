@@ -9,7 +9,10 @@ use futures_util::StreamExt;
 use serde::Deserialize;
 use tokio::sync::mpsc;
 
-use super::{map_http_error, normalize_base_url, ProtocolConfig, STREAM_CHUNK_TIMEOUT};
+use super::{
+    log_http_error, log_request_metadata, log_response_metadata, map_http_error,
+    normalize_base_url, ProtocolConfig, STREAM_CHUNK_TIMEOUT,
+};
 
 // ─── Wire types ───
 
@@ -294,10 +297,7 @@ pub async fn complete(
     let url = chat_completions_url(&cfg.api_base);
     let body = build_request_body(cfg, request, false);
 
-    tracing::debug!(
-        "openai_chat: request\n{}",
-        serde_json::to_string(&body).unwrap_or_default()
-    );
+    log_request_metadata("openai_chat", request, &body, false);
 
     let resp = cfg
         .http_client
@@ -311,7 +311,7 @@ pub async fn complete(
 
     let status = resp.status();
     let raw = resp.text().await.unwrap_or_default();
-    tracing::debug!(%status, "openai_chat: response\n{}", raw);
+    log_response_metadata("openai_chat", &request.request_id, status, raw.len());
 
     if !status.is_success() {
         return Err(map_http_error(status, &raw));
@@ -365,10 +365,7 @@ pub async fn stream_complete(
     let url = chat_completions_url(&cfg.api_base);
     let body = build_request_body(cfg, request, true);
 
-    tracing::debug!(
-        "openai_chat: stream request\n{}",
-        serde_json::to_string(&body).unwrap_or_default()
-    );
+    log_request_metadata("openai_chat", request, &body, true);
 
     let resp = cfg
         .http_client
@@ -379,15 +376,22 @@ pub async fn stream_complete(
         .send()
         .await
         .map_err(|e| {
-            tracing::error!("openai_chat: stream init error: {}", e);
+            tracing::error!(
+                request_id = %request.request_id,
+                "openai_chat: stream request failed"
+            );
             AiError::RequestFailed(e.to_string())
         })?;
 
     let status = resp.status();
-    tracing::info!(%status, "openai_chat: stream started");
+    tracing::info!(
+        request_id = %request.request_id,
+        %status,
+        "openai_chat: stream started"
+    );
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
-        tracing::error!(%status, "openai_chat: stream HTTP error\n{}", text);
+        log_http_error("openai_chat", &request.request_id, status, &text);
         return Err(map_http_error(status, &text));
     }
 
@@ -421,7 +425,10 @@ pub async fn stream_complete(
         let chunk_bytes = match chunk_result {
             Ok(b) => b,
             Err(e) => {
-                tracing::error!("openai_chat: stream read error: {}", e);
+                tracing::error!(
+                    request_id = %request.request_id,
+                    "openai_chat: stream read failed"
+                );
                 let _ = sender
                     .send(Err(AiError::RequestFailed(e.to_string())))
                     .await;
@@ -462,8 +469,13 @@ pub async fn stream_complete(
 
             let chunk: StreamChunkResp = match serde_json::from_str(data) {
                 Ok(c) => c,
-                Err(e) => {
-                    tracing::warn!("openai_chat: failed to parse SSE chunk: {e}\n{data}");
+                Err(_e) => {
+                    tracing::warn!(
+                        request_id = %request.request_id,
+                        chunk_count,
+                        chunk_bytes = data.len(),
+                        "openai_chat: failed to parse SSE chunk"
+                    );
                     continue;
                 }
             };
@@ -540,7 +552,7 @@ pub async fn stream_complete(
 pub async fn fetch_models(cfg: &ProtocolConfig) -> Result<Vec<ModelInfo>, AiError> {
     let base = normalize_base_url(&cfg.api_base);
     let url = format!("{}/models", base.trim_end_matches('/'));
-    tracing::info!(%url, "openai_chat: fetch_models");
+    tracing::info!("openai_chat: fetch_models");
 
     let resp = cfg
         .http_client
@@ -586,7 +598,7 @@ pub async fn fetch_models(cfg: &ProtocolConfig) -> Result<Vec<ModelInfo>, AiErro
 /// Lightweight connectivity probe with minimal token cost.
 pub async fn probe(cfg: &ProtocolConfig, model: &str) -> Result<(), AiError> {
     let url = chat_completions_url(&cfg.api_base);
-    tracing::info!(endpoint = %cfg.api_base, %model, "openai_chat: probe");
+    tracing::info!(%model, "openai_chat: probe");
 
     let body = serde_json::json!({
         "model": model,

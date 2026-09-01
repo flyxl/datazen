@@ -267,24 +267,30 @@ export async function waitForNewQueryButton(timeout = 20000) {
 }
 
 /** Single-click expand chevron on a connected card so schema children load. */
-export async function expandConnectedConnectionInNavigator(nameFragment = E2E_PG_CONN_NAME) {
+export async function expandConnectedConnectionInNavigator(nameFragment?: string) {
   await browser.waitUntil(
     async () =>
       browser.execute((frag: string) => {
         const items = Array.from(document.querySelectorAll('[data-conn-item]'));
-        const item = items.find((el) => (el.textContent || '').includes(frag));
+        const matching = frag
+          ? items.find((el) => (el.textContent || '').includes(frag))
+          : undefined;
+        const connected = items.find((el) => !!el.querySelector('button[aria-expanded]'));
+        const item = matching?.querySelector('button[aria-expanded]') ? matching : connected;
         return !!item?.querySelector('button[aria-expanded]');
       }, nameFragment),
     { timeout: 15000, timeoutMsg: '等待连接就绪以展开 schema 树' },
   );
   await browser.execute((frag: string) => {
     const items = Array.from(document.querySelectorAll('[data-conn-item]'));
-    const item = items.find((el) => (el.textContent || '').includes(frag));
+    const matching = frag
+      ? items.find((el) => (el.textContent || '').includes(frag))
+      : undefined;
+    const connected = items.find((el) => !!el.querySelector('button[aria-expanded]'));
+    const item = matching?.querySelector('button[aria-expanded]') ? matching : connected;
     const chevron = item?.querySelector('button[aria-expanded]') as HTMLElement | null;
     if (chevron && chevron.getAttribute('aria-expanded') !== 'true') {
       chevron.click();
-    } else {
-      item?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     }
   }, nameFragment);
   await browser.pause(800);
@@ -316,10 +322,11 @@ export async function openConnectionWindow() {
 /** @deprecated Use {@link openConnectionWindow}; kept for contract matrix imports. */
 export async function openSeededPgConnectionWindow(mainWindow: string) {
   await browser.switchToWindow(mainWindow);
-  const body = await $('body').getText();
-  const connected =
-    body.includes('新建查询') || body.includes('New Query') || body.includes('新查詢');
-  if (!connected) {
+  // The home page also exposes a "New Query" quick action. Use the
+  // connection toolbar test id instead of body text so an unconnected home
+  // view is not mistaken for an active database workspace.
+  const toolbar = await $('[data-testid="conn-toolbar-new-query"]');
+  if (!(await toolbar.isDisplayed().catch(() => false))) {
     await connectSeededPgInWorkspace();
   } else {
     await waitForConnectionToolbar();
@@ -760,21 +767,36 @@ export function sqlBlockedBySafeMode(sql: string): boolean {
 /** Temporarily disable Safe Mode for fixture DDL (DROP/TRUNCATE). Restores previous flag. */
 export async function withSafeModeOff<T>(fn: () => Promise<T>): Promise<T> {
   const settings = await invokeSettings<SettingsLike>('get_settings');
-  if (!settings.safeMode) return fn();
-  await invokeSettings('save_settings', { settings: { ...settings, safeMode: false } });
+  const wasSafeMode = settings.safeMode !== false;
+  const disabled = { ...settings, safeMode: false };
+  if (wasSafeMode) {
+    await invokeSettings('save_settings', { settings: disabled });
+  }
+  // The mounted ConnectionPage reads Safe Mode from Zustand. Persisting the
+  // fixture setting alone is insufficient for actions whose buttons are
+  // conditionally rendered, so notify the current window as well.
+  await emitCrossWindowEvent('datazen:settings-changed', disabled);
   try {
     return await fn();
   } finally {
     const current = await invokeSettings<SettingsLike>('get_settings');
-    await invokeSettings('save_settings', { settings: { ...current, safeMode: true } });
+    const restored = { ...current, safeMode: wasSafeMode };
+    await invokeSettings('save_settings', { settings: restored });
+    await emitCrossWindowEvent('datazen:settings-changed', restored);
   }
 }
 
 /** Persist Safe Mode on/off (e.g. keep off for a whole describe block). */
 export async function setSafeMode(enabled: boolean): Promise<void> {
   const settings = await invokeSettings<SettingsLike>('get_settings');
-  if (settings.safeMode === enabled) return;
-  await invokeSettings('save_settings', { settings: { ...settings, safeMode: enabled } });
+  const next = { ...settings, safeMode: enabled };
+  if (settings.safeMode !== enabled) {
+    await invokeSettings('save_settings', { settings: next });
+  }
+  // Keep the mounted frontend store in sync with the fixture setting. Merely
+  // writing the backend JSON leaves destructive UI actions hidden until the
+  // next settings hydration.
+  await emitCrossWindowEvent('datazen:settings-changed', next);
   await browser.pause(300);
 }
 
@@ -962,12 +984,12 @@ async function navigatorHasTableButtons(): Promise<boolean> {
         a.querySelector('[data-conn-item]'),
       );
     if (!nav) return false;
-    return Array.from(nav.querySelectorAll('button')).some((b) => {
-      const label = (b.textContent ?? '').trim();
-      if (!label || label.startsWith('表') || label.startsWith('Tables')) return false;
-      if (label.includes('PostgreSQL') || label.includes('本地')) return false;
-      return /^[\w.-]+$/.test(label);
-    });
+    // Do not infer table readiness from button text. Connection names and
+    // database names are also buttons, so that heuristic can return true
+    // before the async schema load has mounted any table rows.
+    return nav.querySelector(
+      '[data-tree-node="table"][data-item-name], [data-tree-node="view"][data-item-name]',
+    ) != null;
   });
 }
 
@@ -1003,28 +1025,14 @@ export async function closeDataExportDialogIfOpen() {
 
 /** Wait until the connection navigator lists at least one table entry. */
 export async function waitForSchemaTreeLoaded(timeout = 20000) {
+  // The connection click and schema loading are separate async operations.
+  // Expand once before polling for the actual table row; repeatedly clicking
+  // the connection card can only re-select it and makes the race worse.
+  await expandConnectedConnectionInNavigator();
   await browser.waitUntil(
     async () => {
       if (await navigatorHasTableButtons()) return true;
-      await expandConnectedConnectionInNavigator();
-      await browser.execute(() => {
-        const nav =
-          document.querySelector('[data-testid="connection-navigator-aside"]') ??
-          Array.from(document.querySelectorAll('aside')).find((a) =>
-            a.querySelector('[data-conn-item]'),
-          );
-        if (!nav) return;
-        const dbBtn = Array.from(nav.querySelectorAll('button')).find((b) => {
-          const label = (b.textContent ?? '').trim();
-          return label.length > 0 && !label.startsWith('表') && !label.includes('PostgreSQL');
-        });
-        dbBtn?.click();
-        const tablesBtn = Array.from(nav.querySelectorAll('button')).find((b) => {
-          const label = (b.textContent ?? '').trim();
-          return label.startsWith('表') || label.startsWith('Tables');
-        });
-        tablesBtn?.click();
-      });
+      await expandSchemaTableCategory();
       await browser.pause(500);
       return false;
     },
@@ -1151,32 +1159,71 @@ async function tableNodeExistsInNavigator(tableName: string): Promise<boolean> {
   }, tableName);
 }
 
+/** True when the requested table is the active TableView workspace panel. */
+async function tableWorkspaceIsOpen(tableName: string): Promise<boolean> {
+  return browser.execute((name: string) => {
+    const activePanelTab = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid="panel-tab"]'),
+    ).find((tab) => tab.classList.contains('bg-surface'));
+    if (!activePanelTab || !(activePanelTab.textContent ?? '').includes(name)) return false;
+
+    const dataTab = document.querySelector<HTMLElement>('[data-testid="sub-tab-data"]');
+    return !!dataTab && dataTab.offsetParent !== null;
+  }, tableName);
+}
+
+/** Click the currently mounted exact table node, if any. */
+async function clickVisibleTableNode(tableName: string): Promise<boolean> {
+  return browser.execute((name: string) => {
+    const nav =
+      document.querySelector('[data-testid="connection-navigator-aside"]') ??
+      Array.from(document.querySelectorAll('aside')).find((a) =>
+        a.querySelector('[data-conn-item]'),
+      );
+    if (!nav) return false;
+    const matchName = (label: string) =>
+      label === name || label.endsWith(`.${name}`) || label.endsWith(`/${name}`);
+    const node = Array.from(
+      nav.querySelectorAll<HTMLElement>('[data-tree-node="table"], [data-tree-node="view"]'),
+    ).find((candidate) => matchName(candidate.getAttribute('data-item-name') ?? ''));
+    if (!node) return false;
+    node.scrollIntoView({ block: 'center' });
+    // HTMLElement.click() reaches the same React handler as a user click and
+    // avoids racing a stale WebdriverIO element in the virtualized tree.
+    node.click();
+    return true;
+  }, tableName);
+}
+
 /** Click a table by exact name in the sidebar (virtualized tree safe). */
 export async function clickTableInSidebar(tableName: string) {
-  await waitForSchemaTreeLoaded();
+  // Do not use the generic "some table exists" gate here. A newly-created
+  // table can be absent while an older table is already mounted, which is
+  // exactly the race this helper must close.
   await setNavigatorSearch(tableName);
   let scrollPass = 0;
   try {
     await browser.waitUntil(
       async () => {
-        const clicked = await browser.execute((name: string) => {
-          const nav =
-            document.querySelector('[data-testid="connection-navigator-aside"]') ??
-            Array.from(document.querySelectorAll('aside')).find((a) =>
-              a.querySelector('[data-conn-item]'),
-            );
-          if (!nav) return false;
-          const matchName = (label: string) =>
-            label === name || label.endsWith(`.${name}`) || label.endsWith(`/${name}`);
-          const node = Array.from(
-            nav.querySelectorAll<HTMLElement>('[data-tree-node="table"], [data-tree-node="view"]'),
-          ).find((n) => matchName(n.getAttribute('data-item-name') ?? ''));
-          if (!node) return false;
-          node.scrollIntoView({ block: 'center' });
-          node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        if (await tableWorkspaceIsOpen(tableName)) return true;
+        const clicked = await clickVisibleTableNode(tableName);
+        if (clicked) {
+          // The navigator handler first activates the database and then
+          // schedules TableView creation. Keep the search mounted while that
+          // async chain settles. Do not click repeatedly while that chain is
+          // in flight: a second click can restart database activation and
+          // make the virtualized row disappear from the filtered tree.
+          await browser.waitUntil(() => tableWorkspaceIsOpen(tableName), {
+            timeout: 15000,
+            timeoutMsg: `等待表 "${tableName}" 工作区打开超时`,
+          });
           return true;
-        }, tableName);
-        if (clicked) return true;
+        }
+        // Searching an already-expanded tree is enough for the common path.
+        // Only activate/expand the connected navigator entry after the exact
+        // node is absent; clicking that entry while it is already expanded
+        // can re-render the virtualized tree and lose the filtered row.
+        await expandConnectedConnectionInNavigator();
         await expandSchemaTableCategory();
         await expandSchemaCategory('views');
         await scrollSchemaTree(scrollPass);
@@ -1202,7 +1249,10 @@ export async function openTableFromSidebar(tableName: string) {
       }
     }
   }, t('schemaTree.openTable'));
-  await browser.pause(2000);
+  await browser.waitUntil(
+    () => tableWorkspaceIsOpen(tableName),
+    { timeout: 15000, timeoutMsg: `等待表 "${tableName}" 工作区打开超时` },
+  );
 }
 
 /** Switch the active table/view panel to the data sub-tab. */
@@ -1269,23 +1319,37 @@ export async function rightClickTableInSidebar(tableName: string) {
 /** Click the first table/view entry in the sidebar and return its name. */
 export async function clickFirstTable() {
   await waitForSchemaTreeLoaded();
-  const name = await browser.execute(() => {
-    const nav =
-      document.querySelector('[data-testid="connection-navigator-aside"]') ??
-      Array.from(document.querySelectorAll('aside')).find((a) =>
-        a.querySelector('[data-conn-item]'),
-      );
-    if (!nav) return null;
-    for (const btn of Array.from(nav.querySelectorAll('button'))) {
-      const label = (btn.textContent ?? '').trim();
-      if (!label || label.startsWith('表') || label.startsWith('Tables')) continue;
-      if (label.includes('PostgreSQL') || label.includes('本地')) continue;
-      if (!/^[\w.-]+$/.test(label)) continue;
-      btn.click();
-      return label;
-    }
-    return null;
-  });
+  let name: string | null = null;
+  let scrollPass = 0;
+  await browser.waitUntil(
+    async () => {
+      if (name && (await tableWorkspaceIsOpen(name))) return true;
+      const result = await browser.execute(() => {
+        const nav =
+          document.querySelector('[data-testid="connection-navigator-aside"]') ??
+          Array.from(document.querySelectorAll('aside')).find((a) =>
+            a.querySelector('[data-conn-item]'),
+          );
+        const node = nav?.querySelector<HTMLElement>(
+          '[data-tree-node="table"][data-item-name], [data-tree-node="view"][data-item-name]',
+        );
+        if (!node) return null;
+        const value = node.getAttribute('data-item-name');
+        if (!value) return null;
+        node.scrollIntoView({ block: 'center' });
+        node.click();
+        return value;
+      });
+      if (result) name = result;
+      if (name && (await tableWorkspaceIsOpen(name))) return true;
+      await expandSchemaTableCategory();
+      await expandSchemaCategory('views');
+      await scrollSchemaTree(scrollPass);
+      scrollPass++;
+      return false;
+    },
+    { timeout: 20000, timeoutMsg: '等待第一个表工作区打开超时' },
+  );
   if (!name) {
     throw new Error('未找到可点击的表节点');
   }
@@ -1295,8 +1359,15 @@ export async function clickFirstTable() {
 /** Switch to a sub-tab inside a table panel by id (data/structure/indexes/foreignKeys/ddl). */
 export async function switchSubTab(tabId: string) {
   const tab = await $(`[data-testid="sub-tab-${tabId}"]`);
+  await tab.waitForDisplayed({ timeout: 10000 });
   await tab.click();
-  await browser.pause(500);
+  await browser.waitUntil(
+    async () => {
+      const classes = (await tab.getAttribute('class')) ?? '';
+      return classes.split(/\s+/).includes('bg-surface');
+    },
+    { timeout: 5000, timeoutMsg: `等待表子标签 ${tabId} 激活超时` },
+  );
 }
 
 // ── DataTable cell interaction ──────────────────────────────────────
@@ -1336,7 +1407,8 @@ export async function waitForEditInput() {
 export async function selectDzOption(triggerLabel: string, optionLabel: string) {
   await browser.execute((trigger: string) => {
     const buttons = Array.from(document.querySelectorAll('button[aria-haspopup="listbox"]'));
-    const btn = buttons.find((b) => (b.textContent || '').includes(trigger));
+    const needle = trigger.toLowerCase();
+    const btn = buttons.find((b) => (b.textContent || '').toLowerCase().includes(needle));
     if (!btn) throw new Error(`Select trigger not found: ${trigger}`);
     (btn as HTMLElement).click();
   }, triggerLabel);
@@ -1466,14 +1538,27 @@ export async function openErDiagramFromUi() {
 
 /** Emit a cross-window menu event on the main Tauri window. */
 export async function emitCrossWindowEvent(event: string, payload?: Record<string, unknown>) {
-  await browser.execute(
-    (evt: string, pl: Record<string, unknown> | null) => {
-      (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
-        ?.invoke?.('plugin:event|emit', {
-          event: evt,
-          payload: pl ?? {},
-        })
-        .catch(() => {});
+  await browser.executeAsync(
+    (
+      evt: string,
+      pl: Record<string, unknown> | null,
+      done: (result: boolean) => void,
+    ) => {
+      const internals = (
+        window as unknown as {
+          __TAURI_INTERNALS__?: {
+            invoke?: (command: string, args: unknown) => Promise<unknown>;
+          };
+        }
+      ).__TAURI_INTERNALS__;
+      const invoke = internals?.invoke?.bind(internals);
+      if (!invoke) {
+        done(false);
+        return;
+      }
+      invoke('plugin:event|emit', { event: evt, payload: pl ?? {} })
+        .then(() => done(true))
+        .catch(() => done(false));
     },
     event,
     payload ?? null,

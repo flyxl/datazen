@@ -14,6 +14,7 @@ import {
 const labels: DataTableContextMenuLabels = {
   copy: 'Copy',
   copyRow: 'Copy Row',
+  moreActions: 'More actions',
   copyAsJson: 'Copy as JSON',
   copyAsSqlInsert: 'Copy as SQL INSERT',
   copyAsUpdate: 'Copy as UPDATE',
@@ -29,6 +30,19 @@ const labels: DataTableContextMenuLabels = {
 function ids(items: ReturnType<typeof buildDataTableContextMenuItems>): string[] {
   return items.map((i) =>
     i.kind === 'item' ? i.id : i.kind === 'separator' ? 'separator' : i.kind,
+  );
+}
+
+function rootItemIds(items: ReturnType<typeof buildDataTableContextMenuItems>): string[] {
+  return items.filter((i) => i.kind === 'item').map((i) => i.id);
+}
+
+function findSubmenu(
+  items: ReturnType<typeof buildDataTableContextMenuItems>,
+  id: string,
+): Extract<(typeof items)[number], { kind: 'submenu' }> | undefined {
+  return items.find((i): i is Extract<(typeof items)[number], { kind: 'submenu' }> =>
+    i.kind === 'submenu' && i.id === id,
   );
 }
 
@@ -104,7 +118,7 @@ describe('resolveDataTableCellFromEvent', () => {
 });
 
 describe('buildDataTableContextMenuItems', () => {
-  it('builds a TablePlus-style multi-item menu with cell context', () => {
+  it('keeps frequent cell actions at root and groups the rest in More actions', () => {
     const handlers = {
       onCopy: vi.fn(),
       onCopyRow: vi.fn(),
@@ -116,6 +130,7 @@ describe('buildDataTableContextMenuItems', () => {
       onSetNull: vi.fn(),
       onFilterByValue: vi.fn(),
       onCopySelectedRows: vi.fn(),
+      onDeleteRow: vi.fn(),
       onExport: vi.fn(),
     };
     const items = buildDataTableContextMenuItems({
@@ -126,27 +141,58 @@ describe('buildDataTableContextMenuItems', () => {
       exportEnabled: true,
       canFilterByValue: true,
       canSetNull: true,
+      canDelete: true,
     });
     expect(ids(items)).toEqual([
       'copy',
       'copy-row',
+      'filter-by-value',
+      'separator',
+      'delete-row',
+      'separator',
+      'export',
+      'separator',
+      'submenu',
+    ]);
+    expect(rootItemIds(items)).toEqual([
+      'copy',
+      'copy-row',
+      'filter-by-value',
+      'delete-row',
+      'export',
+    ]);
+    expect(rootItemIds(items)).not.toContain('set-null');
+
+    const more = findSubmenu(items, 'more-actions');
+    expect(more).toBeDefined();
+    expect(more?.items.filter((i) => i.kind === 'item').map((i) => i.id)).toEqual([
       'copy-as-json',
       'copy-as-sql-insert',
       'copy-as-update',
       'copy-as-csv',
       'copy-column-name',
       'set-null',
-      'filter-by-value',
-      'separator',
       'copy-selected-rows',
-      'export',
     ]);
+
     for (const it of items) {
       if (it.kind === 'item') it.action();
     }
+    for (const it of more?.items ?? []) {
+      if (it.kind === 'item') it.action();
+    }
     expect(handlers.onCopy).toHaveBeenCalledOnce();
+    expect(handlers.onCopyRow).toHaveBeenCalledOnce();
+    expect(handlers.onFilterByValue).toHaveBeenCalledOnce();
     expect(handlers.onSetNull).toHaveBeenCalledOnce();
+    expect(handlers.onDeleteRow).toHaveBeenCalledOnce();
     expect(handlers.onExport).toHaveBeenCalledOnce();
+    expect(handlers.onCopyAsJson).toHaveBeenCalledOnce();
+    expect(handlers.onCopyAsSqlInsert).toHaveBeenCalledOnce();
+    expect(handlers.onCopyAsUpdate).toHaveBeenCalledOnce();
+    expect(handlers.onCopyAsCsv).toHaveBeenCalledOnce();
+    expect(handlers.onCopyColumnName).toHaveBeenCalledOnce();
+    expect(handlers.onCopySelectedRows).toHaveBeenCalledOnce();
   });
 
   it('keeps multiple copy actions even without export or selection', () => {
@@ -163,9 +209,19 @@ describe('buildDataTableContextMenuItems', () => {
       },
       hasCellContext: true,
     });
-    expect(ids(items).length).toBeGreaterThanOrEqual(5);
-    expect(ids(items)).not.toContain('export');
-    expect(ids(items)).not.toContain('set-null');
+    expect(rootItemIds(items)).toEqual(['copy', 'copy-row']);
+    expect(findSubmenu(items, 'more-actions')?.items.map((i) => i.kind)).toEqual([
+      'item',
+      'item',
+      'item',
+      'item',
+      'item',
+    ]);
+    expect(rootItemIds(items)).not.toContain('export');
+    expect(rootItemIds(items)).not.toContain('set-null');
+    expect(findSubmenu(items, 'more-actions')?.items.map((i) => i.kind === 'item' && i.id)).not.toContain(
+      'set-null',
+    );
   });
 
   it('omits filter when canFilterByValue is false', () => {
@@ -184,24 +240,27 @@ describe('buildDataTableContextMenuItems', () => {
       exportEnabled: true,
       canFilterByValue: false,
     });
-    expect(ids(items)).not.toContain('filter-by-value');
+    expect(rootItemIds(items)).not.toContain('filter-by-value');
   });
 
-  it('without cell context only offers selection copy / csv and/or export', () => {
-    expect(
-      ids(
-        buildDataTableContextMenuItems({
-          labels,
-          handlers: {
-            onCopySelectedRows: vi.fn(),
-            onCopyAsCsv: vi.fn(),
-            onExport: vi.fn(),
-          },
-          hasSelectedRows: true,
-          exportEnabled: true,
-        }),
-      ),
-    ).toEqual(['copy-selected-rows', 'copy-as-csv', 'export']);
+  it('without cell context keeps delete/export at root and selection copies in submenu', () => {
+    const items = buildDataTableContextMenuItems({
+      labels,
+      handlers: {
+        onCopySelectedRows: vi.fn(),
+        onCopyAsCsv: vi.fn(),
+        onDeleteRow: vi.fn(),
+        onExport: vi.fn(),
+      },
+      hasSelectedRows: true,
+      canDelete: true,
+      exportEnabled: true,
+    });
+    expect(rootItemIds(items)).toEqual(['delete-row', 'export']);
+    expect(findSubmenu(items, 'more-actions')?.items.map((i) => i.kind === 'item' && i.id)).toEqual([
+      'copy-selected-rows',
+      'copy-as-csv',
+    ]);
 
     expect(
       ids(
@@ -237,5 +296,19 @@ describe('buildDataTableContextMenuItems', () => {
         }),
       ),
     ).toContain('delete-row');
+  });
+
+  it('does not expose Filter by This Value while loading', () => {
+    const items = buildDataTableContextMenuItems({
+      labels,
+      handlers: {
+        onCopy: vi.fn(),
+        onFilterByValue: vi.fn(),
+      },
+      hasCellContext: true,
+      canFilterByValue: false,
+    });
+    expect(rootItemIds(items)).toEqual(['copy']);
+    expect(rootItemIds(items)).not.toContain('filter-by-value');
   });
 });

@@ -27,7 +27,7 @@
 ## 2. 并行波次编排
 
 1. **分轨依据是文件冲突面，不是功能编号相邻**。逐对检查触碰面：仅 lib.rs 注册块不同行 → 可并行；共享前端文件或存在模式复用软依赖 → 必须串行。
-2. **每轨独立 worktree + 分支**：`scripts/new-feature-worktree.sh <track> [base]`（自动完成 node_modules 软链、驱动 codegen、未跟踪规格文档拷贝、e2e/.env 拷贝）。
+2. **每轨独立 worktree + 分支**：`scripts/new-feature-worktree.sh <track> [base]`（自动完成 node_modules 软链、驱动 codegen、未跟踪规格文档拷贝、e2e/.env 拷贝）。脚本将 worktree 放在主检出下的 `.worktrees/`，以确保代理沙箱对目标路径可写；不要手工创建同级 `../datazen-*` worktree。
 3. **已知合并冲突点与策略**：
    - `lib.rs` invoke_handler 注册块：各轨删改不同行，合并基本自动；
    - 进度管理文件：**各代理只允许写自己功能的小节**，总览表/台账冲突由协调者融合双方记录；
@@ -56,7 +56,7 @@
 
 每份简报必备七件（完整模板见附录）：
 
-1. **工作目录与禁区**（worktree 绝对路径；明确禁止触碰主检出/其他轨道）；
+1. **工作目录与禁区**（worktree 绝对路径；明确禁止触碰主检出/其他轨道）。工作目录必须由 bootstrap 脚本创建在主检出 `.worktrees/` 下；如果代理报告 `Operation not permitted`，先检查它是否仍使用同级 sibling 路径，再迁移/重建 worktree，不要反复重试写入。
 2. **必读清单**（项目约定 + 计划文档对应章节 + 进度文件相关小节，按序）；
 3. **任务与验收标准**（可逐条判定的完成标准，不接受模糊表述）；
 4. **已侦察落点**（协调者预先 grep 好文件与行号——这是代理效率差异的最大变量；声明"落点需自行核实"防盲从）；
@@ -73,6 +73,7 @@
 4. worktree 的 codegen `capabilities/default.json` 可能含 `redis:default` 而默认构建不编 redis 插件导致裸 cargo 失败 → 从主检出复制对齐（gitignore 文件不入库）。
 5. 主检出**未跟踪**的规格文档在 worktree 不存在 → bootstrap 脚本负责拷贝；同时这些文件**禁止 git add**（避免最终合并 main 时与用户工作区副本冲突）。
 6. E2E 的 webdriver 构建成本高：功能级测试轮只登记用例，真实构建回归统一到 R 阶段。
+7. `src/locales/builtinLocales.ts` 是被忽略的生成文件；bootstrap 会生成它。直接运行 `npx vitest`/`npx tsc` 不会触发 pnpm 的 `pretest` hook，若 worktree 是旧的或手工创建的，先执行 `node scripts/generate-builtin-locales.mjs`，不要把生成物加入 commit。
 
 ## 6. 进度与 Bug 管理 schema
 
@@ -163,7 +164,7 @@ commit hash；改动清单；各套件数字；遗留注意。遇阻如实报告
 ## 复验清单
 1. 范围完整性审查（对照计划章节逐步核对，列遗漏）
 2. 逻辑正确性审查（读 diff，重点<该功能的关键语义>)
-3. 独立重跑三件套（不信编码轮数字）：cargo lib / vitest / tsc
+3. 独立重跑三件套（不信编码轮数字）：cargo lib / vitest / tsc；直接调用测试工具前先执行 `node scripts/generate-builtin-locales.mjs`，确保 ignored codegen 已存在
 4. 覆盖率：改动 TS 文件 ≥80% 实测（全量套件 --coverage 后摘取）；Rust 以单测清单佐证
 5. E2E 用例设计：登记进度文件（编号/前置/步骤/断言），标注【本机可执行】vs【留待 R 回归】及理由
 6. 判定与登记：通过→功能「已完成」；问题→本轨 tracks/<track-id>/bugs.md（<track-id>-BUG-nnn，待验证+重现步骤），不修

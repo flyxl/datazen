@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
-import { Code2, GitFork, Plus, TableProperties } from 'lucide-react';
+import { Code2, GitFork, Loader2, Plus, TableProperties } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { getDbIcon, getDbLabel } from '../../lib/databaseTypes';
 import type { ConnectionContext, Panel } from '../../stores/panelStore';
+import type { DatabaseType } from '../../types';
 import { getPanelIcon, getPanelLabel } from './contentViewHelpers';
 
 export interface ConnectionWorkspaceHomeProps {
@@ -15,6 +16,12 @@ export interface ConnectionWorkspaceHomeProps {
   showNewTable: boolean;
   showErDiagram: boolean;
   showObjects: boolean;
+  /** True when a connection is being established (no dbSessionId yet). */
+  isConnecting?: boolean;
+  /** Name of the connection being established (shown during loading). */
+  connectingName?: string;
+  /** Database type of the connection being established. */
+  connectingDbType?: DatabaseType;
   onNewConnection: () => void;
   onNewQuery: () => void;
   onCreateTable: () => void;
@@ -73,6 +80,9 @@ export function ConnectionWorkspaceHome({
   showNewTable,
   showErDiagram,
   showObjects,
+  isConnecting = false,
+  connectingName,
+  connectingDbType,
   onNewConnection,
   onNewQuery,
   onCreateTable,
@@ -99,6 +109,33 @@ export function ConnectionWorkspaceHome({
             <Plus className="h-4 w-4" />
             {t('main.createFirst')}
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!connectionContext && isConnecting) {
+    const dbIcon = connectingDbType ? getDbIcon(connectingDbType) : null;
+    return (
+      <div
+        className="flex flex-1 items-center justify-center px-6"
+        data-testid="connection-workspace-home"
+      >
+        <div className="flex flex-col items-center gap-3">
+          {dbIcon && (
+            <div
+              className={cn(
+                'flex h-12 w-12 items-center justify-center rounded-xl text-sm font-semibold text-white',
+                dbIcon.bg,
+              )}
+            >
+              {dbIcon.label}
+            </div>
+          )}
+          <Loader2 className="h-5 w-5 animate-spin text-fg-muted" />
+          {connectingName && (
+            <p className="text-sm text-fg-muted">{connectingName}</p>
+          )}
         </div>
       </div>
     );

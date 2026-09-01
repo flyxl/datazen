@@ -612,6 +612,7 @@ mod tests {
             session_transactions: Arc::new(tokio::sync::Mutex::new(
                 std::collections::HashMap::new(),
             )),
+            query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             extensions: Arc::new(crate::extensions::ExtensionManager::new(
                 data_dir.join("plugins"),
@@ -678,6 +679,7 @@ mod tests {
             session_transactions: Arc::new(tokio::sync::Mutex::new(
                 std::collections::HashMap::new(),
             )),
+            query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             extensions: Arc::new(crate::extensions::ExtensionManager::new(
                 data_dir.join("plugins"),

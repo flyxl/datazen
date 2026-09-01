@@ -170,6 +170,7 @@ pub(crate) async fn get_connection_info_impl(
         Some(DriverCategory::Document) => "document",
         _ => "sql",
     };
+    let capabilities = state.driver_registry.get_capabilities(db_type).await;
 
     Ok(serde_json::json!({
         "databaseType": db_type,
@@ -180,6 +181,7 @@ pub(crate) async fn get_connection_info_impl(
         "database": config.database,
         "schema": config.schema,
         "serverVersion": config.server_version,
+        "capabilities": capabilities,
     }))
 }
 
@@ -346,12 +348,33 @@ mod tests {
     #[tokio::test]
     async fn get_connection_info_and_available_drivers() {
         let test = TestAppState::with_tables().await;
-        let (_, conn_id) = test.save_and_connect("cfg-2").await;
-        let info = get_connection_info_impl(&test.state, conn_id)
+        let (_, db_session_id) = test.save_and_connect("cfg-2").await;
+        let info = get_connection_info_impl(&test.state, db_session_id.clone())
             .await
             .unwrap();
         assert_eq!(info["databaseType"], "postgres");
         assert_eq!(info["driverCategory"], "sql");
+        assert!(info["capabilities"].is_null());
+
+        test.state
+            .driver_registry
+            .register_test_driver_with_capabilities(
+                "postgres",
+                test.mock.clone(),
+                crate::db::DriverCapabilities {
+                    supports_cancel_query: true,
+                    supports_query_execution_cancel: true,
+                    supports_explain: true,
+                    supports_streaming_results: false,
+                },
+            )
+            .await;
+        let info = get_connection_info_impl(&test.state, db_session_id)
+            .await
+            .unwrap();
+        assert_eq!(info["capabilities"]["supportsCancelQuery"], true);
+        assert_eq!(info["capabilities"]["supportsExplain"], true);
+        assert_eq!(info["capabilities"]["supportsStreamingResults"], false);
 
         let drivers = get_available_drivers_impl(&test.state).await.unwrap();
         // Test drivers are registered via register_test_driver, not inventory catalog.

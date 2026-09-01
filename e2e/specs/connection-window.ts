@@ -3,7 +3,6 @@ import { t } from '../i18n.js';
 import {
   clickCardConnectButton,
   closeExtraWindows,
-  clickFirstTable,
   openQueryTab,
   executeSQL,
   clickTableInSidebar,
@@ -11,10 +10,63 @@ import {
   waitForSchemaTreeLoaded,
   connectSeededPgInWorkspace,
   waitForNewQueryButton,
+  rightClickTableInSidebar,
 } from '../helpers.js';
 
 const TEST_PARENT = '_e2e_idx_parent';
 const TEST_CHILD = '_e2e_idx_child';
+
+async function waitForWebContextMenu() {
+  await browser.waitUntil(
+    async () => await $(`[data-testid='web-context-menu']`).isExisting(),
+    { timeout: 3000, timeoutMsg: 'Timed out waiting for web context menu' },
+  );
+}
+
+async function openDataCellContextMenu() {
+  await browser.execute(() => {
+    const cell = document.querySelector<HTMLElement>('[data-dt-row="0"][data-dt-col]');
+    if (!cell) throw new Error('No DataTable cell is available for context-menu testing');
+    cell.dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 500,
+        clientY: 400,
+      }),
+    );
+  });
+  await waitForWebContextMenu();
+}
+
+async function openDdlContextMenu() {
+  await browser.execute(() => {
+    const editor = document.querySelector('.cm-editor');
+    const content = editor?.closest<HTMLElement>('div.flex.min-h-0.flex-1.flex-col');
+    if (!content) throw new Error('No DDL content container is available for context-menu testing');
+    content.dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 500,
+        clientY: 400,
+      }),
+    );
+  });
+  await waitForWebContextMenu();
+}
+
+async function closeWebContextMenu() {
+  await browser.execute(() => {
+    document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  });
+  await browser.pause(300);
+}
+
+async function closeGlobalObjectSearch() {
+  await $(`[data-testid='global-object-search'] button`).click();
+  await browser.pause(300);
+}
 
 /**
  * Database browsing & data viewing tests.
@@ -89,8 +141,10 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await expect($("[data-testid='content-toolbar-new-table']")).toExist();
   });
 
-  it('应显示搜索表输入框 (DB-008)', async () => {
-    await expect(await $(`input[placeholder="${t('connWin.searchTables')}"]`)).toBeDisplayed();
+  it('应显示全局对象搜索入口和输入框 (DB-008)', async () => {
+    await $(`[data-testid='global-object-search-toggle']`).click();
+    await expect(await $(`[data-testid='global-object-search-input']`)).toBeDisplayed();
+    await closeGlobalObjectSearch();
   });
 
   it('连接窗口状态栏应显示已连接和 PostgreSQL (DB-001)', async () => {
@@ -105,8 +159,10 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   });
 
   it('点击表名应打开数据标签页 (DB-002, DB-007)', async () => {
-    const tableName = await clickFirstTable();
-    expect(tableName).not.toBeNull();
+    // The fixture creates two tables; target the child table explicitly so
+    // this journey does not depend on virtualized navigator ordering.
+    const tableName = TEST_CHILD;
+    await clickTableInSidebar(tableName);
 
     await browser.pause(2000);
     const dataTab = await $("[data-testid='sub-tab-data']");
@@ -277,169 +333,149 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await switchSubTab('data');
     await browser.pause(2000);
 
-    await browser.execute(() => {
-      const content = document.querySelector('.flex.min-h-0.min-w-0.flex-1.flex-col');
-      if (content) {
-        content.dispatchEvent(
-          new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }),
-        );
-      }
-    });
-    await browser.pause(500);
+    await openDataCellContextMenu();
 
     await expect($("[data-testid='web-context-item-copy']")).toExist();
-    await expect($("[data-testid='web-context-item-refresh']")).toExist();
-    await expect($("[data-testid='web-context-item-new-query']")).toExist();
+    await expect($("[data-testid='web-context-item-copy-row']")).toExist();
+    await expect($("[data-testid='web-context-item-filter-by-value']")).toExist();
+    await expect($("[data-testid='web-context-submenu-trigger-more-actions']")).toExist();
     await expect($("[data-testid='web-context-item-open-structure']")).not.toExist();
-    await expect($("[data-testid='web-context-item-edit-in-structure']")).not.toExist();
+    await expect($("[data-testid='web-context-item-refresh']")).not.toExist();
+    await expect($("[data-testid='web-context-item-new-query']")).not.toExist();
     await expect($("[data-testid='web-context-item-copy-ddl']")).not.toExist();
 
-    await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
-    await browser.pause(300);
+    await closeWebContextMenu();
   });
 
-  it('结构标签右键菜单应包含编辑结构 (CTX-002)', async () => {
+  it('结构标签对应的表节点右键菜单应包含打开和 SQL 入口 (CTX-002)', async () => {
     await switchSubTab('structure');
     await browser.pause(2000);
 
-    await browser.execute(() => {
-      const content = document.querySelector('.flex.min-h-0.min-w-0.flex-1.flex-col');
-      if (content) {
-        content.dispatchEvent(
-          new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }),
-        );
-      }
-    });
-    await browser.pause(500);
+    await rightClickTableInSidebar(TEST_CHILD);
 
-    await expect($("[data-testid='web-context-item-open-structure']")).toExist();
-    await expect($("[data-testid='web-context-item-refresh']")).toExist();
+    await expect($("[data-testid='web-context-item-open']")).toExist();
     await expect($("[data-testid='web-context-item-new-query']")).toExist();
     await expect($("[data-testid='web-context-item-copy']")).not.toExist();
-    await expect($("[data-testid='web-context-item-edit-in-structure']")).not.toExist();
-    await expect($("[data-testid='web-context-item-copy-ddl']")).not.toExist();
+    await expect($("[data-testid='web-context-item-copy-name']")).toExist();
+    await expect($("[data-testid='web-context-item-copy-ddl']")).toExist();
+    await expect($("[data-testid='web-context-item-refresh']")).not.toExist();
 
-    await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
-    await browser.pause(300);
+    await closeWebContextMenu();
   });
 
-  it('索引标签右键菜单应包含编辑结构 (CTX-003)', async () => {
+  it('索引标签对应的表节点右键菜单应包含打开和 SQL 入口 (CTX-003)', async () => {
     await switchSubTab('indexes');
     await browser.pause(2000);
 
-    await browser.execute(() => {
-      const content = document.querySelector('.flex.min-h-0.min-w-0.flex-1.flex-col');
-      if (content) {
-        content.dispatchEvent(
-          new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }),
-        );
-      }
-    });
-    await browser.pause(500);
+    await rightClickTableInSidebar(TEST_CHILD);
 
-    await expect($("[data-testid='web-context-item-open-structure']")).toExist();
-    await expect($("[data-testid='web-context-item-refresh']")).toExist();
+    await expect($("[data-testid='web-context-item-open']")).toExist();
     await expect($("[data-testid='web-context-item-new-query']")).toExist();
     await expect($("[data-testid='web-context-item-copy']")).not.toExist();
-    await expect($("[data-testid='web-context-item-copy-ddl']")).not.toExist();
+    await expect($("[data-testid='web-context-item-copy-name']")).toExist();
+    await expect($("[data-testid='web-context-item-copy-ddl']")).toExist();
+    await expect($("[data-testid='web-context-item-refresh']")).not.toExist();
 
-    await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
-    await browser.pause(300);
+    await closeWebContextMenu();
   });
 
-  it('外键标签右键菜单不应包含非通用项 (CTX-004)', async () => {
+  it('外键标签对应的表节点右键菜单不应包含数据专属项 (CTX-004)', async () => {
     await switchSubTab('foreignKeys');
     await browser.pause(2000);
 
-    await browser.execute(() => {
-      const content = document.querySelector('.flex.min-h-0.min-w-0.flex-1.flex-col');
-      if (content) {
-        content.dispatchEvent(
-          new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }),
-        );
-      }
-    });
-    await browser.pause(500);
+    await rightClickTableInSidebar(TEST_CHILD);
 
-    await expect($("[data-testid='web-context-item-refresh']")).toExist();
     await expect($("[data-testid='web-context-item-new-query']")).toExist();
     await expect($("[data-testid='web-context-item-copy']")).not.toExist();
-    await expect($("[data-testid='web-context-item-open-structure']")).not.toExist();
-    await expect($("[data-testid='web-context-item-edit-in-structure']")).not.toExist();
-    await expect($("[data-testid='web-context-item-copy-ddl']")).not.toExist();
+    await expect($("[data-testid='web-context-item-filter-by-value']")).not.toExist();
+    await expect($("[data-testid='web-context-item-refresh']")).not.toExist();
+    await expect($("[data-testid='web-context-item-copy-ddl']")).toExist();
 
-    await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
-    await browser.pause(300);
+    await closeWebContextMenu();
   });
 
   it('DDL 标签右键菜单应包含复制 DDL (CTX-005)', async () => {
     await switchSubTab('ddl');
     await browser.pause(2000);
 
-    await browser.execute(() => {
-      const content = document.querySelector('.flex.min-h-0.min-w-0.flex-1.flex-col');
-      if (content) {
-        content.dispatchEvent(
-          new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }),
-        );
-      }
-    });
-    await browser.pause(500);
+    await openDdlContextMenu();
 
     await expect($("[data-testid='web-context-item-copy-ddl']")).toExist();
-    await expect($("[data-testid='web-context-item-refresh']")).toExist();
-    await expect($("[data-testid='web-context-item-new-query']")).toExist();
     await expect($("[data-testid='web-context-item-copy']")).not.toExist();
     await expect($("[data-testid='web-context-item-open-structure']")).not.toExist();
-    await expect($("[data-testid='web-context-item-edit-in-structure']")).not.toExist();
+    await expect($("[data-testid='web-context-item-refresh']")).not.toExist();
+    await expect($("[data-testid='web-context-item-new-query']")).not.toExist();
 
-    await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
-    await browser.pause(300);
+    await closeWebContextMenu();
   });
 
-  it('索引标签右键菜单编辑结构应在结构子标签内打开编辑器 (CTX-006)', async () => {
+  it('索引标签右键菜单打开表应回到数据子标签 (CTX-006)', async () => {
     await switchSubTab('indexes');
     await browser.pause(2000);
 
-    await browser.execute(() => {
-      const content = document.querySelector('.flex.min-h-0.min-w-0.flex-1.flex-col');
-      if (content) {
-        content.dispatchEvent(
-          new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }),
-        );
-      }
-    });
-    await browser.pause(500);
+    await rightClickTableInSidebar(TEST_CHILD);
 
-    await $("[data-testid='web-context-item-open-structure']").click();
-    await browser.pause(800);
+    await $("[data-testid='web-context-item-open']").click();
+    await browser.waitUntil(
+      async () => await $("[data-testid='sub-tab-data']").isDisplayed().catch(() => false),
+      { timeout: 10000, timeoutMsg: '等待右键打开表的数据子标签' },
+    );
 
-    await expect($("[data-testid='struct-editor-title']")).toExist();
-    const backBtn = await $("[data-testid='struct-editor-back']");
-    await expect(backBtn).toBeDisplayed();
+    await expect($("[data-testid='sub-tab-data']")).toBeDisplayed();
   });
 
   // ── 搜索表 ─────────────────────────────────────────────────────
 
-  it('搜索表应能输入文字并过滤 (DB-008)', async () => {
-    const search = await $(`input[placeholder="${t('connWin.searchTables')}"]`);
-    await search.setValue('nonexistent_xyz_table_12345');
-    await browser.pause(800);
-
-    // Table list should be empty or filtered
-    const asideText = await $('aside').getText();
-    expect(asideText).not.toContain('nonexistent_xyz_table_12345');
-
-    await search.clearValue();
-    await browser.pause(500);
+  it('全局对象搜索应能输入文字并定位测试表 (DB-008)', async () => {
+    await $(`[data-testid='global-object-search-toggle']`).click();
+    const search = await $(`[data-testid='global-object-search-input']`);
+    await search.setValue(TEST_CHILD);
+    await browser.waitUntil(
+      async () => (await $$(`[data-testid='global-object-search-result']`)).length > 0,
+      { timeout: 5000, timeoutMsg: `未找到全局搜索结果 ${TEST_CHILD}` },
+    );
+    expect(await $('body').getText()).toContain(TEST_CHILD);
+    await closeGlobalObjectSearch();
   });
 
-  it('清空搜索后应恢复表列表 (DB-008)', async () => {
-    const search = await $(`input[placeholder="${t('connWin.searchTables')}"]`);
-    await search.clearValue();
-    await browser.pause(500);
+  it('全局对象搜索结果应提供生成 SQL 的快捷动作 (DB-008)', async () => {
+    await $(`[data-testid='global-object-search-toggle']`).click();
+    const search = await $(`[data-testid='global-object-search-input']`);
+    await search.setValue(TEST_CHILD);
+    const result = await $(`[data-testid='global-object-search-result']`);
+    await result.waitForDisplayed({ timeout: 5000 });
+    const selectAction = await result.$(`[data-testid='object-search-action-select']`);
+    await selectAction.waitForDisplayed({ timeout: 5000 });
+    await selectAction.click();
 
-    await waitForSchemaTreeLoaded(5000);
+    await browser.waitUntil(
+      async () => !(await $(`[data-testid='global-object-search']`).isExisting()),
+      { timeout: 5000, timeoutMsg: '等待全局对象搜索关闭' },
+    );
+    await browser.waitUntil(
+      async () =>
+        await browser.execute(() =>
+          (document.querySelector('.cm-editor .cm-content')?.textContent ?? '').toUpperCase().includes('SELECT'),
+        ),
+      { timeout: 8000, timeoutMsg: '等待对象搜索生成 SELECT SQL' },
+    );
+  });
+
+  it('全局对象搜索清空后应恢复结果列表 (DB-008)', async () => {
+    await $(`[data-testid='global-object-search-toggle']`).click();
+    const search = await $(`[data-testid='global-object-search-input']`);
+    await search.setValue('nonexistent_xyz_table_12345');
+    await browser.waitUntil(
+      async () => (await $$(`[data-testid='global-object-search-result']`)).length === 0,
+      { timeout: 5000, timeoutMsg: '全局搜索无结果状态未出现' },
+    );
+    await search.clearValue();
+    await browser.waitUntil(
+      async () => (await $$(`[data-testid='global-object-search-result']`)).length > 0,
+      { timeout: 5000, timeoutMsg: '清空全局搜索后未恢复结果' },
+    );
+    expect(await $('body').getText()).toContain(TEST_CHILD);
+    await closeGlobalObjectSearch();
   });
 
   // ── 新建查询 ───────────────────────────────────────────────────

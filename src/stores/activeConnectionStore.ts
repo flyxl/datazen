@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { connectionCommands } from '../commands/connection';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import { t } from '../locales/t';
-import type { ConnectionConfig, ServerInfo } from '../types';
+import type { ConnectionConfig, DriverCapabilities, ServerInfo } from '../types';
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
@@ -19,6 +19,8 @@ export interface ConnectionEntry {
   connectionId: string;
   status: ConnectionStatus;
   serverInfo: ServerInfo | null;
+  /** Runtime driver capabilities; undefined while the session info is unknown. */
+  capabilities?: DriverCapabilities;
   currentDatabase: string | null;
   error: string | null;
 }
@@ -54,6 +56,7 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
           connectionId,
           status: 'connecting',
           serverInfo: null,
+          capabilities: undefined,
           currentDatabase: config.database ?? null,
           error: null,
         },
@@ -67,6 +70,17 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
       const serverInfo = await connectionCommands.testConnection(config);
       console.log('[connect] server info', serverInfo);
 
+      // Capability discovery must not turn a successful database connection
+      // into a failed connection. Older/headless backends may not return the
+      // optional field, in which case the UI treats cancellation as unknown.
+      let capabilities: DriverCapabilities | undefined;
+      try {
+        capabilities =
+          (await connectionCommands.getConnectionInfo(dbSessionId)).capabilities ?? undefined;
+      } catch (e) {
+        console.warn('[connect] capability discovery failed', e);
+      }
+
       set((s) => ({
         connections: {
           ...s.connections,
@@ -75,6 +89,7 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
             connectionId,
             status: 'connected',
             serverInfo,
+            capabilities,
             currentDatabase: config.database ?? null,
             error: null,
           },
@@ -110,6 +125,7 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
           connectionId,
           status: 'connecting',
           serverInfo: null,
+          capabilities: undefined,
           currentDatabase: database,
           error: null,
         },
@@ -141,10 +157,37 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
           dbSessionId,
           connectionId,
           status: 'connected',
+          // A direct ConnectionPage connect reaches this action without the
+          // store's `connect` flow. Start capability discovery here too, but
+          // keep the value unknown until the session-info IPC resolves.
+          capabilities: undefined,
           error: null,
         },
       },
     }));
+
+    void Promise.resolve(connectionCommands.getConnectionInfo(dbSessionId))
+      .then((info) => {
+        if (!info) return;
+        set((s) => {
+          const entry = s.connections[connectionId];
+          if (!entry || entry.dbSessionId !== dbSessionId) return s;
+          return {
+            connections: {
+              ...s.connections,
+              [connectionId]: {
+                ...entry,
+                capabilities: info.capabilities ?? undefined,
+              },
+            },
+          };
+        });
+      })
+      .catch((error: unknown) => {
+        // Capability discovery is advisory. A legacy/headless backend must
+        // leave cancellation in the safe `unknown` state.
+        console.warn('[connect] capability discovery failed', error);
+      });
   },
 
   markError: (connectionId, error) => {

@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { ConnectionConfig, ServerInfo } from '../types';
+import type { ConnectionConfig, DriverCapabilities, ServerInfo } from '../types';
 
 export const connectionCommands = {
   getConnections: () => invoke<ConnectionConfig[]>('get_connections'),
@@ -36,6 +36,8 @@ export const connectionCommands = {
       database?: string;
       schema?: string;
       serverVersion?: string;
+      /** Null/absent means the backend or legacy driver did not advertise it. */
+      capabilities?: DriverCapabilities | null;
     }>('get_connection_info', { dbSessionId }),
 
   getAvailableDrivers: () => invoke<string[]>('get_available_drivers'),

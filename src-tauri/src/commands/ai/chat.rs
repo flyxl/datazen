@@ -1,8 +1,8 @@
 //! AI chat IPC and tool-loop execution.
 
 use super::util::{
-    build_connections_context, inject_language_hint, resolve_ai, truncate_str,
-    window_stream_callback, StreamCallback,
+    build_connections_context, inject_language_hint, resolve_ai, window_stream_callback,
+    StreamCallback,
 };
 use crate::ai::budget;
 use crate::ai::*;
@@ -177,7 +177,6 @@ pub(crate) async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> S
     let args: serde_json::Value = serde_json::from_str(&tool_call.arguments).unwrap_or_default();
     let args_str = args.to_string();
     tracing::info!(tool = %tool_call.name, args_len = args_str.len(), "execute_db_tool");
-    tracing::debug!(tool = %tool_call.name, args = %args, "execute_db_tool args");
 
     let cm = &state.connection_manager;
     let result = match tool_call.name.as_str() {
@@ -379,8 +378,8 @@ pub(crate) async fn run_streaming_tool_loop(
         tracing::debug!(
             %request_id,
             round,
-            tools = ?classified.iter().map(|(t, _)| format!("{}({})", t.name, t.arguments)).collect::<Vec<_>>(),
-            "{cmd_label}: tool arguments"
+            tool_count = classified.len(),
+            "{cmd_label}: tools selected"
         );
 
         request.messages.push(ChatMessage {
@@ -501,13 +500,6 @@ pub(crate) async fn ai_chat_impl(
         last_user_msg_len = messages.last().map(|m| m.content.len()).unwrap_or(0),
         "ai_chat: start"
     );
-    if let Some(last) = messages.last() {
-        tracing::debug!(
-            %request_id,
-            last_user_msg = %truncate_str(&last.content, 100),
-            "ai_chat: last user message"
-        );
-    }
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     let lang = state.store.get_settings().await.language;
@@ -575,7 +567,7 @@ pub(crate) async fn ai_chat_impl(
                             %request_id,
                             db_session_id = %conn_id,
                             database = %db,
-                            error = %e,
+                            error_len = e.to_string().len(),
                             "ai_chat: schema context pipeline resolve failed; disabling DB tools"
                         );
                         attach_db_tools = false;

@@ -63,7 +63,7 @@ pub use types::*;
 ///
 /// Bump this when making breaking changes to `DatabaseDriver`, `KeyValueDriver`,
 /// or `DatabaseDriverFactory` traits.
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// Minimum protocol version the host still supports.
 ///

@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">DataZen Table Panel / Workspace UX v0.1.x prototype</title>
+  <desc id="desc">A database table panel with one table context, Data and Structure navigation, an SQL action that reuses QueryPanel, and staged changes.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="1" stop-color="#0b1220"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f2937"/>
+      <stop offset="1" stop-color="#182231"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity=".28"/>
+    </filter>
+    <style>
+      .font { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .title { fill: #f3f4f6; font-size: 20px; font-weight: 700; }
+      .heading { fill: #f3f4f6; font-size: 16px; font-weight: 650; }
+      .body { fill: #d1d5db; font-size: 13px; }
+      .muted { fill: #9ca3af; font-size: 12px; }
+      .tiny { fill: #9ca3af; font-size: 11px; }
+      .line { stroke: #374151; stroke-width: 1; }
+      .accent { fill: #60a5fa; }
+      .accent-bg { fill: #1d4ed8; fill-opacity: .28; }
+      .danger { fill: #f87171; }
+      .success { fill: #34d399; }
+      .warning { fill: #fbbf24; }
+    </style>
+  </defs>
+
+  <rect width="1440" height="900" fill="url(#bg)"/>
+
+  <!-- title -->
+  <text x="42" y="42" class="font title">Table Workspace：围绕一个 Table 连续完成工作</text>
+  <text x="42" y="68" class="font muted">解决 Data / Structure / SQL 入口割裂、上下文丢失和数据修改不可控的问题</text>
+
+  <!-- left navigation -->
+  <rect x="32" y="96" width="260" height="758" rx="12" fill="#111827" stroke="#374151" filter="url(#shadow)"/>
+  <text x="54" y="130" class="font heading">Connections</text>
+  <rect x="52" y="148" width="220" height="32" rx="7" fill="#0b1220" stroke="#4b5563"/>
+  <text x="70" y="169" class="font tiny">⌕  Search connections / objects</text>
+  <text x="54" y="210" class="font tiny">PINNED</text>
+  <rect x="48" y="222" width="228" height="40" rx="7" class="accent-bg"/>
+  <circle cx="69" cy="242" r="7" fill="#34d399"/>
+  <text x="88" y="239" class="font body">local-postgres</text>
+  <text x="88" y="254" class="font tiny">app · PostgreSQL</text>
+  <text x="54" y="294" class="font tiny">OBJECT SEARCH RESULT</text>
+  <rect x="48" y="306" width="228" height="62" rx="7" fill="#182231" stroke="#374151"/>
+  <text x="64" y="328" class="font body">▦ orders</text>
+  <text x="64" y="348" class="font tiny">public · table · column: status</text>
+  <text x="64" y="364" class="font tiny">Open Data  ·  Structure  ·  SQL</text>
+  <line x1="48" y1="396" x2="276" y2="396" class="line"/>
+  <text x="54" y="425" class="font tiny">CURRENT CONNECTION</text>
+  <text x="62" y="452" class="font body">▾ public</text>
+  <text x="80" y="481" class="font body">▾ tables</text>
+  <rect x="72" y="496" width="196" height="34" rx="6" class="accent-bg"/>
+  <text x="88" y="518" class="font body">▦ orders</text>
+  <text x="62" y="565" class="font muted">树仍然存在，但不再是</text>
+  <text x="62" y="584" class="font muted">定位对象的唯一入口。</text>
+
+  <!-- workspace -->
+  <rect x="316" y="96" width="1092" height="758" rx="12" fill="url(#panel)" stroke="#374151" filter="url(#shadow)"/>
+  <!-- breadcrumb / context -->
+  <rect x="316" y="96" width="1092" height="58" rx="12" fill="#202b3a"/>
+  <text x="346" y="126" class="font muted">local-postgres</text>
+  <text x="447" y="126" class="font muted">›</text>
+  <text x="470" y="126" class="font muted">app</text>
+  <text x="510" y="126" class="font muted">›</text>
+  <text x="533" y="126" class="font heading">public.orders</text>
+  <rect x="1223" y="111" width="150" height="28" rx="6" fill="#111827" stroke="#4b5563"/>
+  <text x="1240" y="130" class="font tiny">⌘ K  Object actions</text>
+
+  <!-- table tabs -->
+  <rect x="336" y="174" width="1052" height="52" rx="8" fill="#111827"/>
+  <rect x="350" y="183" width="102" height="34" rx="6" class="accent-bg"/>
+  <text x="378" y="205" class="font body" fill="#93c5fd">Data</text>
+  <text x="496" y="205" class="font body">Structure</text>
+  <text x="635" y="205" class="font body">SQL</text>
+  <text x="760" y="205" class="font tiny">同一 table context；SQL 入口复用关联 QueryPanel</text>
+
+  <!-- data toolbar -->
+  <rect x="336" y="244" width="1052" height="54" fill="#182231"/>
+  <text x="356" y="276" class="font body">orders</text>
+  <rect x="440" y="256" width="260" height="30" rx="6" fill="#0b1220" stroke="#4b5563"/>
+  <text x="456" y="276" class="font tiny">Filter: status = 'paid' AND amount &gt; 100</text>
+  <rect x="720" y="256" width="95" height="30" rx="6" fill="#111827" stroke="#4b5563"/>
+  <text x="742" y="276" class="font tiny">Refresh</text>
+  <rect x="1246" y="256" width="120" height="30" rx="6" fill="#111827" stroke="#4b5563"/>
+  <text x="1265" y="276" class="font tiny">+ New row</text>
+
+  <!-- grid -->
+  <rect x="336" y="298" width="1052" height="390" fill="#111827" stroke="#374151"/>
+  <rect x="336" y="298" width="1052" height="38" fill="#202b3a"/>
+  <text x="362" y="322" class="font tiny">☑</text>
+  <text x="412" y="322" class="font tiny">id · bigint</text>
+  <text x="584" y="322" class="font tiny">status · text</text>
+  <text x="764" y="322" class="font tiny">amount · numeric</text>
+  <text x="970" y="322" class="font tiny">created_at · timestamp</text>
+  <line x1="336" y1="336" x2="1388" y2="336" class="line"/>
+  <g class="font body">
+    <text x="362" y="370">☐</text><text x="412" y="370">1001</text><text x="584" y="370">paid</text><text x="764" y="370">129.00</text><text x="970" y="370">2026-08-30 10:31</text>
+    <text x="362" y="416">☐</text><text x="412" y="416">1002</text><text x="584" y="416">pending</text><text x="764" y="416">87.50</text><text x="970" y="416">2026-08-30 10:35</text>
+    <text x="362" y="462">☐</text><text x="412" y="462">1003</text><text x="584" y="462">paid</text><text x="764" y="462">240.00</text><text x="970" y="462">2026-08-30 10:42</text>
+  </g>
+  <rect x="568" y="435" width="146" height="34" rx="5" fill="#3b2f10" stroke="#f59e0b"/>
+  <text x="584" y="457" class="font tiny warning">pending edit: paid</text>
+  <rect x="950" y="482" width="240" height="34" rx="5" fill="#3b1d25" stroke="#ef4444"/>
+  <text x="966" y="504" class="font tiny danger">pending delete: row 1003</text>
+  <line x1="336" y1="520" x2="1388" y2="520" class="line"/>
+  <text x="362" y="570" class="font muted">点击单元格只修改本地 pending state，不立即发送 UPDATE。</text>
+  <text x="362" y="596" class="font muted">Delete / Backspace 只增加删除标记，不立即发送 DELETE。</text>
+
+  <!-- pending changes bar -->
+  <rect x="336" y="704" width="1052" height="76" rx="8" fill="#30240e" stroke="#b7791f"/>
+  <circle cx="365" cy="742" r="10" fill="#f59e0b"/>
+  <text x="388" y="735" class="font heading">2 pending changes</text>
+  <text x="388" y="756" class="font tiny">1 update · 1 delete · Preview SQL 后再提交</text>
+  <rect x="1050" y="724" width="110" height="34" rx="6" fill="#111827" stroke="#6b7280"/>
+  <text x="1070" y="746" class="font tiny">Rollback</text>
+  <rect x="1172" y="724" width="112" height="34" rx="6" fill="#111827" stroke="#60a5fa"/>
+  <text x="1192" y="746" class="font tiny" fill="#93c5fd">Preview SQL</text>
+  <rect x="1296" y="724" width="70" height="34" rx="6" fill="#2563eb"/>
+  <text x="1311" y="746" class="font tiny" fill="#fff">Commit</text>
+
+  <!-- explanatory callouts -->
+  <path d="M 305 190 C 310 190, 310 190, 336 190" fill="none" stroke="#60a5fa" stroke-width="2" stroke-dasharray="5 5"/>
+  <text x="300" y="180" text-anchor="end" class="font tiny accent">入口：搜索对象</text>
+  <path d="M 1040 232 C 1040 238, 1040 238, 1040 244" fill="none" stroke="#60a5fa" stroke-width="2" stroke-dasharray="5 5"/>
+  <text x="1040" y="222" text-anchor="middle" class="font tiny accent">入口：同一 Table 上下文</text>
+  <path d="M 1396 742 C 1407 742, 1411 742, 1418 742" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="5 5"/>
+  <text x="1414" y="730" text-anchor="end" class="font tiny warning">入口：安全提交</text>
+
+  <!-- footer -->
+  <text x="42" y="884" class="font tiny">v0.1.x prototype · Table Workspace 是体验概念：复用现有 TablePanel；SQL 入口关联现有 QueryPanel，不新增第二套执行链。</text>
+</svg>
