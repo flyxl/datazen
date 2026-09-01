@@ -17,7 +17,7 @@
         },
         { href: 'index.html#why', label: 'Why DataZen' },
         { href: 'manual.html', label: 'Docs' },
-        { href: 'blog-architecture.html', label: 'Architecture' },
+        { href: 'blog-architecture.html', label: 'Blog' },
         { href: 'https://github.com/flyxl/datazen', label: 'GitHub', external: true },
       ],
       downloadCta: 'Download Free',
