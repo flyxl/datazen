@@ -16,12 +16,7 @@ import {
   groupConnectionsWithPinnedSection,
   useConnectionStore,
 } from '../../stores/connectionStore';
-import {
-  connectionExpandKey,
-  parseConnectionExpandKey,
-  PINNED_GROUP_KEY,
-  RECENT_GROUP_KEY,
-} from '../../lib/connectionLocator';
+import { connectionExpandKey, parseConnectionExpandKey } from '../../lib/connectionLocator';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -189,16 +184,19 @@ export const ConnectionNavigatorTree = forwardRef<
       for (const [connectionId, entry] of Object.entries(activeConnections)) {
         if (entry?.status !== 'connected') continue;
         const conn = connections.find((c) => c.id === connectionId);
-        const sectionKey = conn?.pinned ? PINNED_GROUP_KEY : RECENT_GROUP_KEY;
-        const key = connectionExpandKey(sectionKey, connectionId);
-        if (!next.has(key)) {
-          next.add(key);
-          changed = true;
+        if (!conn) continue;
+        for (const section of grouped) {
+          if (!section.connections.some((candidate) => candidate.id === connectionId)) continue;
+          const key = connectionExpandKey(section.group, connectionId);
+          if (!next.has(key)) {
+            next.add(key);
+            changed = true;
+          }
         }
       }
       return changed ? next : prev;
     });
-  }, [activeConnections, connections]);
+  }, [activeConnections, connections, grouped]);
 
   const loadedConnectionsRef = useRef<Set<string>>(new Set());
   const prevConnectionIdsRef = useRef<Set<string>>(new Set());
