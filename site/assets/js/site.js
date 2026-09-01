@@ -58,7 +58,7 @@
         },
         { href: 'index.html#why', label: '为什么是 DataZen' },
         { href: 'manual.html', label: '使用手册' },
-        { href: 'blog-architecture.html', label: '架构文章' },
+        { href: 'blog-architecture.html', label: '博客' },
         { href: 'https://github.com/flyxl/datazen', label: 'GitHub', external: true },
       ],
       downloadCta: '免费下载',
