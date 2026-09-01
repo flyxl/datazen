@@ -179,24 +179,43 @@ export const ConnectionNavigatorTree = forwardRef<
 
   useEffect(() => {
     setExpandedConnections((prev) => {
-      let changed = false;
-      const next = new Set(prev);
-      for (const [connectionId, entry] of Object.entries(activeConnections)) {
-        if (entry?.status !== 'connected') continue;
-        const conn = connections.find((c) => c.id === connectionId);
-        if (!conn) continue;
-        for (const section of grouped) {
-          if (!section.connections.some((candidate) => candidate.id === connectionId)) continue;
-          const key = connectionExpandKey(section.group, connectionId);
-          if (!next.has(key)) {
-            next.add(key);
-            changed = true;
-          }
-        }
+      // A connection can be rendered in more than one section (for example
+      // in both "Recent" and its persisted group). Keep only one scoped key,
+      // otherwise expanding one occurrence also expands every shortcut row.
+      const validKeys = [...prev].filter((key) => {
+        const { sectionGroup, connectionId } = parseConnectionExpandKey(key);
+        if (activeConnections[connectionId]?.status !== 'connected') return false;
+        return grouped.some(
+          (section) =>
+            section.group === sectionGroup &&
+            section.connections.some((connection) => connection.id === connectionId),
+        );
+      });
+
+      if (validKeys.length > 0) {
+        const keep = validKeys[0];
+        return validKeys.length === 1 && prev.size === 1 && prev.has(keep) ? prev : new Set([keep]);
       }
-      return changed ? next : prev;
+
+      // Preserve an intentional collapsed state. The first connected session
+      // is expanded only when there is no prior expansion to retain.
+      if (prev.size > 0) return new Set();
+
+      const initialConnectionId =
+        activeConnectionId && activeConnections[activeConnectionId]?.status === 'connected'
+          ? activeConnectionId
+          : Object.entries(activeConnections).find(
+              ([, entry]) => entry?.status === 'connected',
+            )?.[0];
+      if (!initialConnectionId) return prev;
+
+      const initialSection = grouped.find((section) =>
+        section.connections.some((connection) => connection.id === initialConnectionId),
+      );
+      if (!initialSection) return prev;
+      return new Set([connectionExpandKey(initialSection.group, initialConnectionId)]);
     });
-  }, [activeConnections, connections, grouped]);
+  }, [activeConnectionId, activeConnections, connections, grouped]);
 
   const loadedConnectionsRef = useRef<Set<string>>(new Set());
   const prevConnectionIdsRef = useRef<Set<string>>(new Set());
@@ -291,14 +310,9 @@ export const ConnectionNavigatorTree = forwardRef<
     (connectionId: string, sectionGroup: string) => {
       const key = connectionExpandKey(sectionGroup, connectionId);
       setExpandedConnections((prev) => {
-        const next = new Set(prev);
-        if (next.has(key)) {
-          next.delete(key);
-        } else {
-          next.add(key);
-          onSelectConnection(connectionId);
-        }
-        return next;
+        if (prev.has(key)) return new Set();
+        onSelectConnection(connectionId);
+        return new Set([key]);
       });
     },
     [onSelectConnection],
@@ -477,10 +491,9 @@ export const ConnectionNavigatorTree = forwardRef<
       const entry = activeConnections[conn.id];
       if (entry?.status === 'connected') {
         const key = connectionExpandKey(sectionGroup, conn.id);
-        setExpandedConnections((prev) => {
-          if (prev.has(key)) return prev;
-          return new Set(prev).add(key);
-        });
+        setExpandedConnections((prev) =>
+          prev.size === 1 && prev.has(key) ? prev : new Set([key]),
+        );
       }
     },
     [onSelectConnection, activeConnections],

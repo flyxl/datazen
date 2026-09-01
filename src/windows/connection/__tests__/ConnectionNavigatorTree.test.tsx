@@ -258,6 +258,10 @@ vi.mock('../../../stores/connectionStore', () => {
         group: g,
         connections: connections.filter((c) => (c.group ?? '') === g),
       }));
+      const recent = connections.filter((connection) => connection.lastConnectedAt);
+      if (recent.length > 0) {
+        sections.unshift({ group: '__recent__', connections: recent });
+      }
       const known = new Set(groups);
       for (const c of connections) {
         const g = c.group ?? '';
@@ -1055,6 +1059,63 @@ describe('ConnectionNavigatorTree connection row interactions', () => {
     const idleChevron = connRow(view.container, 'Idle Conn').querySelector('button')!;
     fireEvent.click(idleChevron);
     expect(mockConnect).toHaveBeenCalledWith(expect.objectContaining({ id: 'cfg-idle' }));
+  });
+
+  it('scopes expansion to the clicked section and keeps only one connection expanded', async () => {
+    const recent = makeConn({
+      id: 'cfg-recent',
+      name: 'Recent Conn',
+      group: 'Group A',
+      lastConnectedAt: '2026-08-31T10:00:00Z',
+    });
+    const other = makeConn({ id: 'cfg-other', name: 'Other Conn', group: 'Group B' });
+    connectionsState.connections = [recent, other];
+    connectionsState.groups = ['Group A', 'Group B'];
+    activeConnectionsState.connections = {
+      'cfg-recent': {
+        status: 'connected',
+        dbSessionId: 'session-recent',
+        connectionId: 'cfg-recent',
+      },
+      'cfg-other': {
+        status: 'connected',
+        dbSessionId: 'session-other',
+        connectionId: 'cfg-other',
+      },
+    };
+
+    const { container } = render(
+      <ConnectionNavigatorTree {...baseProps} activeConnectionId={null} />,
+    );
+    await waitFor(() => {
+      expect(container.querySelector('[data-conn-group="__recent__"]')).not.toBeNull();
+      expect(container.querySelector('[data-conn-group="Group A"]')).not.toBeNull();
+    });
+
+    const expansion = (group: string, name: string) =>
+      container.querySelector<HTMLButtonElement>(
+        `[data-conn-group="${group}"][data-conn-name="${name}"] button`,
+      );
+    const recentShortcut = expansion('__recent__', 'Recent Conn')!;
+    const groupedRecent = expansion('Group A', 'Recent Conn')!;
+    const groupedOther = expansion('Group B', 'Other Conn')!;
+
+    expect(recentShortcut.getAttribute('aria-expanded')).toBe('true');
+    expect(groupedRecent.getAttribute('aria-expanded')).toBe('false');
+    expect(groupedOther.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(expansion('Group A', 'Recent Conn')!);
+    await waitFor(() => {
+      expect(expansion('Group A', 'Recent Conn')?.getAttribute('aria-expanded')).toBe('true');
+      expect(expansion('__recent__', 'Recent Conn')?.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    fireEvent.click(expansion('Group B', 'Other Conn')!);
+    await waitFor(() => {
+      expect(expansion('Group B', 'Other Conn')?.getAttribute('aria-expanded')).toBe('true');
+      expect(expansion('Group A', 'Recent Conn')?.getAttribute('aria-expanded')).toBe('false');
+      expect(expansion('__recent__', 'Recent Conn')?.getAttribute('aria-expanded')).toBe('false');
+    });
   });
 });
 
