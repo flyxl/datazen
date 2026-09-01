@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react';
 import { Code2, GitFork, Loader2, Plus, TableProperties } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { DbTypeBadge } from '../../components/DbTypeBadge';
+import { ThemedIcon } from '../../components/ThemedIcon';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
-import { getDbIcon, getDbLabel } from '../../lib/databaseTypes';
+import { getDbLabel } from '../../lib/databaseTypes';
 import type { ConnectionContext, Panel } from '../../stores/panelStore';
 import type { DatabaseType } from '../../types';
 import { getPanelIcon, getPanelLabel } from './contentViewHelpers';
@@ -106,7 +108,7 @@ export function ConnectionWorkspaceHome({
             onClick={onNewConnection}
             data-testid="new-connection-button"
           >
-            <Plus className="h-4 w-4" />
+            <ThemedIcon id="common.newConnection" className="h-4 w-4" fallback={Plus} />
             {t('main.createFirst')}
           </Button>
         </div>
@@ -115,27 +117,15 @@ export function ConnectionWorkspaceHome({
   }
 
   if (!connectionContext && isConnecting) {
-    const dbIcon = connectingDbType ? getDbIcon(connectingDbType) : null;
     return (
       <div
         className="flex flex-1 items-center justify-center px-6"
         data-testid="connection-workspace-home"
       >
         <div className="flex flex-col items-center gap-3">
-          {dbIcon && (
-            <div
-              className={cn(
-                'flex h-12 w-12 items-center justify-center rounded-xl text-sm font-semibold text-white',
-                dbIcon.bg,
-              )}
-            >
-              {dbIcon.label}
-            </div>
-          )}
+          {connectingDbType && <DbTypeBadge databaseType={connectingDbType} size={48} />}
           <Loader2 className="h-5 w-5 animate-spin text-fg-muted" />
-          {connectingName && (
-            <p className="text-sm text-fg-muted">{connectingName}</p>
-          )}
+          {connectingName && <p className="text-sm text-fg-muted">{connectingName}</p>}
         </div>
       </div>
     );
@@ -154,13 +144,12 @@ export function ConnectionWorkspaceHome({
     );
   }
 
-  const dbIcon = getDbIcon(connectionContext.databaseType);
   const quickActions = [
     showNewQuery
       ? {
           key: 'new-query',
           label: t('common.newQuery'),
-          icon: <Code2 className="h-4 w-4" />,
+          icon: <ThemedIcon id="common.newQuery" className="h-4 w-4" fallback={Code2} />,
           onClick: onNewQuery,
           primary: true,
         }
@@ -169,7 +158,7 @@ export function ConnectionWorkspaceHome({
       ? {
           key: 'new-table',
           label: t('common.newTable'),
-          icon: <TableProperties className="h-4 w-4" />,
+          icon: <ThemedIcon id="common.newTable" className="h-4 w-4" fallback={TableProperties} />,
           onClick: onCreateTable,
         }
       : null,
@@ -177,7 +166,7 @@ export function ConnectionWorkspaceHome({
       ? {
           key: 'er-diagram',
           label: t('common.erDiagram'),
-          icon: <GitFork className="h-4 w-4" />,
+          icon: <ThemedIcon id="common.erDiagram" className="h-4 w-4" fallback={GitFork} />,
           onClick: onOpenErDiagram,
         }
       : null,
@@ -185,7 +174,7 @@ export function ConnectionWorkspaceHome({
       ? {
           key: 'objects',
           label: t('objects.title'),
-          icon: <Code2 className="h-4 w-4" />,
+          icon: <ThemedIcon id="common.objects" className="h-4 w-4" fallback={Code2} />,
           onClick: onOpenObjects,
         }
       : null,
@@ -198,14 +187,7 @@ export function ConnectionWorkspaceHome({
     >
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
         <div className="flex items-start gap-4">
-          <div
-            className={cn(
-              'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-sm font-semibold text-white',
-              dbIcon.bg,
-            )}
-          >
-            {dbIcon.label}
-          </div>
+          <DbTypeBadge databaseType={connectionContext.databaseType} size={48} />
           <div className="min-w-0">
             <h2 className="truncate text-lg font-semibold text-fg">
               {connectionContext.connectionName}

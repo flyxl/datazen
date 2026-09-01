@@ -14,6 +14,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useSchemaStore, useConnectionSchemaField } from '../../../stores/schemaStore';
 import { useI18n } from '../../../hooks/useI18n';
 import { CopyableError } from '../../../components/ui/CopyableError';
+import { ThemedIcon } from '../../../components/ThemedIcon';
 import { cn } from '../../../lib/cn';
 import { matchingColumns, tableMatchesObjectSearch } from '../../../lib/schemaObjectSearch';
 import type { DatabaseObject, TableInfo } from '../../../types';
@@ -610,7 +611,11 @@ export function UnifiedSchemaTree({
                     ) : (
                       <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                     )}
-                    <Database className="h-3.5 w-3.5 shrink-0 text-teal-400" />
+                    <ThemedIcon
+                      id="schema.database"
+                      className="h-3.5 w-3.5 shrink-0 text-teal-400"
+                      fallback={Database}
+                    />
                     <span className="selectable min-w-0 truncate">{row.dbName}</span>
                     {row.loading && (
                       <Loader2 className="h-3 w-3 shrink-0 animate-spin text-fg-muted" />
@@ -630,11 +635,11 @@ export function UnifiedSchemaTree({
                     ) : (
                       <ChevronRight className="h-3 w-3 shrink-0" />
                     )}
-                    {row.expanded ? (
-                      <FolderOpen className="h-3.5 w-3.5 shrink-0 text-teal-400" />
-                    ) : (
-                      <FolderClosed className="h-3.5 w-3.5 shrink-0 text-teal-400" />
-                    )}
+                    <ThemedIcon
+                      id="schema.schema"
+                      className="h-3.5 w-3.5 shrink-0 text-teal-400"
+                      fallback={row.expanded ? FolderOpen : FolderClosed}
+                    />
                     <span className="min-w-0 truncate">
                       {row.schemaName || t('common.default')}
                     </span>
@@ -653,7 +658,11 @@ export function UnifiedSchemaTree({
                     ) : (
                       <ChevronRight className="h-3 w-3 shrink-0" />
                     )}
-                    <row.cat.icon className={`h-3.5 w-3.5 shrink-0 ${row.cat.color}`} />
+                    <ThemedIcon
+                      id={row.cat.iconId}
+                      className={`h-3.5 w-3.5 shrink-0 ${row.cat.color}`}
+                      fallback={row.cat.icon}
+                    />
                     <span className="min-w-0 truncate">
                       {t(row.cat.labelKey as Parameters<typeof t>[0])}
                     </span>
@@ -697,11 +706,23 @@ export function UnifiedSchemaTree({
                     }}
                     title={row.colHits.length > 0 ? row.colHits.slice(0, 8).join(', ') : undefined}
                   >
-                    {row.item.tableType === 'view' || row.item.tableType === 'materializedView' ? (
-                      <Eye className="h-3.5 w-3.5 shrink-0 text-purple-400" />
-                    ) : (
-                      <Table2 className="h-3.5 w-3.5 shrink-0 text-blue-400" />
-                    )}
+                    <ThemedIcon
+                      id={
+                        row.item.tableType === 'view' || row.item.tableType === 'materializedView'
+                          ? 'schema.view'
+                          : 'schema.table'
+                      }
+                      className={`h-3.5 w-3.5 shrink-0 ${
+                        row.item.tableType === 'view' || row.item.tableType === 'materializedView'
+                          ? 'text-purple-400'
+                          : 'text-blue-400'
+                      }`}
+                      fallback={
+                        row.item.tableType === 'view' || row.item.tableType === 'materializedView'
+                          ? Eye
+                          : Table2
+                      }
+                    />
                     <span className="selectable min-w-0 truncate">{row.item.name}</span>
                     {row.colHits.length > 0 && (
                       <span className="shrink-0 text-[10px] text-accent">
@@ -720,6 +741,7 @@ export function UnifiedSchemaTree({
                   (() => {
                     const catDef = OBJECT_KIND_CATEGORIES[row.obj.kind];
                     const ObjIcon = catDef?.icon ?? Braces;
+                    const iconId = catDef?.iconId ?? 'schema.function';
                     const objColor = catDef?.color ?? 'text-orange-400';
                     return (
                       <button
@@ -738,7 +760,11 @@ export function UnifiedSchemaTree({
                           });
                         }}
                       >
-                        <ObjIcon className={`h-3.5 w-3.5 shrink-0 ${objColor}`} />
+                        <ThemedIcon
+                          id={iconId}
+                          className={`h-3.5 w-3.5 shrink-0 ${objColor}`}
+                          fallback={ObjIcon}
+                        />
                         <span className="selectable min-w-0 truncate">{row.obj.name}</span>
                       </button>
                     );

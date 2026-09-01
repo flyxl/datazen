@@ -865,7 +865,7 @@ export function WorkflowPage({
                 </div>
               )}
               <Button
-                variant="primary"
+                variant="run"
                 className="h-8 text-xs"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => void handleExecute()}
@@ -1287,4 +1287,3 @@ function WorkflowSidebarList({
     </div>
   );
 }
-

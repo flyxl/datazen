@@ -22,7 +22,10 @@ import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/cn';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
-import { isTransferLimitationsDismissed, setTransferLimitationsDismissed } from '../../lib/transferLimitationsPrefs';
+import {
+  isTransferLimitationsDismissed,
+  setTransferLimitationsDismissed,
+} from '../../lib/transferLimitationsPrefs';
 import { isTransferTargetSupported, resolveTransferPairing } from '../../lib/transferPairing';
 import type { ConnectionConfig } from '../../types';
 import { LimitationsDialog } from '../../components/ui/LimitationsDialog';
@@ -892,7 +895,7 @@ export function DataTransferWindow() {
           )}
           {step === 'preview' ? (
             <Button
-              variant="primary"
+              variant="run"
               data-testid="data-transfer-execute"
               disabled={!canExecute || executing}
               onClick={handleExecuteClick}

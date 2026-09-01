@@ -747,6 +747,7 @@ const zhCN = {
   'tableData.pendingChanges': '{count} 项未保存更改',
   'tableData.pendingUpdates': '{count} 项更新',
   'tableData.pendingDeletes': '{count} 项删除',
+  'tableData.safeModeEditDisabled': '安全模式下不能编辑表格单元格。',
   'tableData.preview': '预览',
   'tableData.commit': '提交',
   'tableData.rollback': '回滚',

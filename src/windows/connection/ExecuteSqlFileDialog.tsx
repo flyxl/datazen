@@ -108,7 +108,7 @@ export function ExecuteSqlFileDialog({
               {t('common.close')}
             </Button>
             <Button
-              variant="primary"
+              variant="run"
               disabled={running || !database}
               onClick={() => void handleExecute()}
               data-testid="sql-file-execute"

@@ -373,7 +373,7 @@ function GrantDialog({
               {t('common.cancel')}
             </Button>
             <Button
-              variant="primary"
+              variant="run"
               className="h-7 px-3 text-xs"
               disabled={submitting || !username.trim() || selected.size === 0}
               onClick={() => void handleGrant()}
@@ -905,7 +905,7 @@ export function PrivilegeView({ dbSessionId, database = null }: PrivilegeViewPro
         />
         <div className="mt-2 flex items-center gap-2">
           <Button
-            variant="primary"
+            variant="run"
             className="h-7 gap-1 px-2 text-xs"
             disabled={running || !sql.trim()}
             onClick={() => void handleExecute()}

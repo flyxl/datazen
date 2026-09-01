@@ -1,24 +1,36 @@
-import {
-  Braces,
-  Eye,
-  Hash,
-  Shapes,
-  Table2,
-  Zap,
-  type LucideIcon,
-} from 'lucide-react';
+import { Braces, Eye, Hash, Shapes, Table2, Zap, type LucideIcon } from 'lucide-react';
 import { DB_REGISTRY } from '../../../lib/databaseTypes';
+import type { UiIconId } from '../../../lib/iconIds';
 
 export interface SchemaTreeCategoryDef {
   id: string;
   labelKey: string;
   icon: LucideIcon;
+  iconId: UiIconId;
+  color: string;
+}
+
+export interface SchemaTreeIconDef {
+  icon: LucideIcon;
+  iconId: UiIconId;
   color: string;
 }
 
 export const BASE_CATEGORIES: SchemaTreeCategoryDef[] = [
-  { id: 'tables', labelKey: 'schemaTree.tables', icon: Table2, color: 'text-blue-400' },
-  { id: 'views', labelKey: 'schemaTree.views', icon: Eye, color: 'text-purple-400' },
+  {
+    id: 'tables',
+    labelKey: 'schemaTree.tables',
+    icon: Table2,
+    iconId: 'schema.table',
+    color: 'text-blue-400',
+  },
+  {
+    id: 'views',
+    labelKey: 'schemaTree.views',
+    icon: Eye,
+    iconId: 'schema.view',
+    color: 'text-purple-400',
+  },
 ];
 
 export const OBJECT_KIND_CATEGORIES: Record<string, SchemaTreeCategoryDef> = {
@@ -26,41 +38,59 @@ export const OBJECT_KIND_CATEGORIES: Record<string, SchemaTreeCategoryDef> = {
     id: 'function',
     labelKey: 'schemaTree.functions',
     icon: Braces,
+    iconId: 'schema.function',
     color: 'text-orange-400',
   },
   procedure: {
     id: 'procedure',
     labelKey: 'schemaTree.procedures',
     icon: Braces,
+    iconId: 'schema.procedure',
     color: 'text-emerald-400',
   },
-  trigger: { id: 'trigger', labelKey: 'schemaTree.triggers', icon: Zap, color: 'text-amber-400' },
+  trigger: {
+    id: 'trigger',
+    labelKey: 'schemaTree.triggers',
+    icon: Zap,
+    iconId: 'schema.trigger',
+    color: 'text-amber-400',
+  },
   sequence: {
     id: 'sequence',
     labelKey: 'schemaTree.sequences',
     icon: Hash,
+    iconId: 'schema.sequence',
     color: 'text-cyan-400',
   },
-  type: { id: 'type', labelKey: 'schemaTree.types', icon: Shapes, color: 'text-pink-400' },
+  type: {
+    id: 'type',
+    labelKey: 'schemaTree.types',
+    icon: Shapes,
+    iconId: 'schema.type',
+    color: 'text-pink-400',
+  },
 };
 
 export const KV_CATEGORIES: SchemaTreeCategoryDef[] = [
-  { id: 'tables', labelKey: 'schemaTree.keys', icon: Table2, color: 'text-blue-400' },
+  {
+    id: 'tables',
+    labelKey: 'schemaTree.keys',
+    icon: Table2,
+    iconId: 'schema.table',
+    color: 'text-blue-400',
+  },
 ];
 
-export const LEAF_KIND_ICON: Record<
-  string,
-  { icon: LucideIcon; color: string }
-> = {
-  table: { icon: Table2, color: 'text-blue-400' },
-  view: { icon: Eye, color: 'text-purple-400' },
-  materializedView: { icon: Eye, color: 'text-purple-400' },
-  systemTable: { icon: Table2, color: 'text-gray-400' },
-  function: { icon: Braces, color: 'text-orange-400' },
-  procedure: { icon: Braces, color: 'text-emerald-400' },
-  trigger: { icon: Zap, color: 'text-amber-400' },
-  sequence: { icon: Hash, color: 'text-cyan-400' },
-  type: { icon: Shapes, color: 'text-pink-400' },
+export const LEAF_KIND_ICON: Record<string, SchemaTreeIconDef> = {
+  table: { icon: Table2, iconId: 'schema.table', color: 'text-blue-400' },
+  view: { icon: Eye, iconId: 'schema.view', color: 'text-purple-400' },
+  materializedView: { icon: Eye, iconId: 'schema.view', color: 'text-purple-400' },
+  systemTable: { icon: Table2, iconId: 'schema.systemTable', color: 'text-gray-400' },
+  function: { icon: Braces, iconId: 'schema.function', color: 'text-orange-400' },
+  procedure: { icon: Braces, iconId: 'schema.procedure', color: 'text-emerald-400' },
+  trigger: { icon: Zap, iconId: 'schema.trigger', color: 'text-amber-400' },
+  sequence: { icon: Hash, iconId: 'schema.sequence', color: 'text-cyan-400' },
+  type: { icon: Shapes, iconId: 'schema.type', color: 'text-pink-400' },
 };
 
 /** Categories for a driver type (tables/views + supported object kinds). */

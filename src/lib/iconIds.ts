@@ -1,3 +1,4 @@
+/** Semantic host icons that a contributed theme may replace through iconsDir. */
 export const UI_ICON_IDS = [
   'nav.settings',
   'nav.connections',
@@ -7,14 +8,33 @@ export const UI_ICON_IDS = [
   'query.stop',
   'ai.chat',
   'common.backupDatabase',
+  'common.newQuery',
+  'common.newTable',
+  'common.erDiagram',
+  'common.objects',
   'action.sync',
   'action.refresh',
   'common.newConnection',
   'action.workflow',
   'action.dashboard',
+  'action.serverStatus',
+  'action.processes',
+  'action.privileges',
   'theme.light',
   'theme.dark',
   'theme.system',
+  // Connection navigator / schema object semantics.
+  'schema.database',
+  'schema.schema',
+  'schema.table',
+  'schema.view',
+  'schema.systemTable',
+  'schema.function',
+  'schema.procedure',
+  'schema.trigger',
+  'schema.sequence',
+  'schema.type',
+  'schema.redisDatabase',
 ] as const;
 
 export type UiIconId = (typeof UI_ICON_IDS)[number];

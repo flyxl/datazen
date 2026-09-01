@@ -491,7 +491,7 @@ export function TableStructureEditor({
           </Button>
         )}
         <Button
-          variant="primary"
+          variant="run"
           className="h-8 text-xs"
           data-testid="struct-editor-execute"
           disabled={!isValid || executing}

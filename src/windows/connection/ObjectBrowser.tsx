@@ -242,7 +242,7 @@ export function ObjectBrowser({ dbSessionId, databaseType, database = null }: Ob
           </span>
           <div className="flex-1" />
           <Button
-            variant="primary"
+            variant="run"
             className="h-7 gap-1 px-2 text-xs"
             disabled={running || !ddl.trim()}
             onClick={() => void handleExecute()}

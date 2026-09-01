@@ -48,7 +48,7 @@ export function ExecuteBar({
         </Button>
       )}
       <Button
-        variant="primary"
+        variant="run"
         onClick={onExecute}
         disabled={!enabled || executing}
         title={

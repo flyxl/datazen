@@ -1,17 +1,13 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '../../../../src/components/ui/Button';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { useSettingsStore } from '../../../../src/stores/settingsStore';
 import { cn } from '../../../../src/lib/cn';
-import { resolveEditorFontFamily, HOST_DEFAULT_EDITOR_FONT } from '../../../../src/lib/resolveEditorFontFamily';
+import {
+  resolveEditorFontFamily,
+  HOST_DEFAULT_EDITOR_FONT,
+} from '../../../../src/lib/resolveEditorFontFamily';
 import { redisCommandInvoke } from './redisInvoke';
 import {
   loadConsoleHistory,
@@ -19,11 +15,7 @@ import {
   pushConsoleHistory,
   type HistoryNavigationState,
 } from './consoleHistory';
-import {
-  filterCompletions,
-  getCompletionPrefix,
-  REDIS_COMMANDS,
-} from './redisCommands';
+import { filterCompletions, getCompletionPrefix, REDIS_COMMANDS } from './redisCommands';
 import { ClusterNodePicker } from './ClusterNodePicker';
 import { readClusterRouting, resolvePinnedNodeAddr } from './settingsHelpers';
 
@@ -100,10 +92,7 @@ export function RedisConsole({
     setHistoryState({ index: null, draft: '' });
   }, [dbSessionId]);
 
-  const completionPrefix = useMemo(
-    () => getCompletionPrefix(commands, cursor),
-    [commands, cursor],
-  );
+  const completionPrefix = useMemo(() => getCompletionPrefix(commands, cursor), [commands, cursor]);
 
   const completions = useMemo(
     () => filterCompletions(completionPrefix, REDIS_COMMANDS, keySuggestions),
@@ -206,15 +195,7 @@ export function RedisConsole({
         setCompletionIdx((idx) => (idx - 1 + completions.length) % completions.length);
       }
     },
-    [
-      commands,
-      completionIdx,
-      completions,
-      cursor,
-      handleExecute,
-      history,
-      historyState,
-    ],
+    [commands, completionIdx, completions, cursor, handleExecute, history, historyState],
   );
 
   const activeResult = results[activeResultIdx];
@@ -223,7 +204,7 @@ export function RedisConsole({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-edge bg-surface-alt px-3">
         <Button
-          variant="primary"
+          variant="run"
           className="h-7 gap-1 px-2 text-xs"
           onClick={() => void handleExecute()}
           disabled={running || !commands.trim()}

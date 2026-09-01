@@ -12,6 +12,7 @@ vi.mock('../../../hooks/useI18n', () => ({
 vi.mock('../../../lib/databaseTypes', () => ({
   getDbIcon: () => ({ label: 'Pg', bg: 'bg-blue-500' }),
   getDbLabel: () => 'PostgreSQL',
+  getDriverIconParents: () => ({}),
 }));
 
 vi.mock('../contentViewHelpers', () => ({
