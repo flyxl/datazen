@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type KeyboardEvent } from 'react';
 import { tid } from '../../lib/tid';
-import { Download, Trash2 } from 'lucide-react';
+import { Download, Loader2, Trash2 } from 'lucide-react';
 import type { FilterCondition, SortCondition } from '../../types';
 import type { CellEdit } from '../../stores/tableDataStore';
 import { useI18n } from '../../hooks/useI18n';
@@ -453,6 +453,8 @@ export function DataTable({
       <div
         ref={setScrollEl}
         className="min-h-0 flex-1 overflow-auto"
+        aria-busy={loading}
+        aria-label={t('dataTable.tableLabel')}
         onContextMenu={handleContextMenu}
       >
         <TableHeader
@@ -480,6 +482,25 @@ export function DataTable({
           onCellEditCancel={onCellEditCancel ?? NOOP}
           onRowSelect={handleRowClick}
         />
+        {loading ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex min-h-28 items-center justify-center gap-2 text-xs text-fg-muted"
+          >
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            {t('dataTable.loading')}
+          </div>
+        ) : rows.length === 0 ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex min-h-28 flex-col items-center justify-center gap-1 px-4 text-center text-xs text-fg-muted"
+          >
+            <span>{t('dataTable.empty')}</span>
+            <span className="text-fg-muted/80">{t('dataTable.emptyHint')}</span>
+          </div>
+        ) : null}
       </div>
 
       {hasPagination && (
