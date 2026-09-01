@@ -6,7 +6,6 @@ import {
   Plus,
   RefreshCw,
   Search,
-  ScanSearch,
   Upload,
 } from 'lucide-react';
 import type { I18nKey } from '../../../locales';
@@ -22,7 +21,6 @@ export interface NavigatorToolbarProps {
   onCollapseSidebar?: () => void;
   onNewGroup: () => void;
   onCollapseAll: () => void;
-  onOpenObjectSearch?: () => void;
 }
 
 export function NavigatorToolbar({
@@ -36,7 +34,6 @@ export function NavigatorToolbar({
   onCollapseSidebar,
   onNewGroup,
   onCollapseAll,
-  onOpenObjectSearch,
 }: NavigatorToolbarProps) {
   return (
     <>
@@ -123,18 +120,6 @@ export function NavigatorToolbar({
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        {onOpenObjectSearch && (
-          <button
-            type="button"
-            className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
-            onClick={onOpenObjectSearch}
-            title={t('objectSearch.title')}
-            aria-label={t('objectSearch.title')}
-            data-testid="global-object-search-toggle"
-          >
-            <ScanSearch className="h-3.5 w-3.5" />
-          </button>
-        )}
       </div>
     </>
   );
