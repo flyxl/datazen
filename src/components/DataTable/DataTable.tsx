@@ -404,7 +404,7 @@ export function DataTable({
           <label className="flex cursor-pointer items-center gap-1.5 text-xs text-fg-secondary hover:text-fg">
             <input
               type="checkbox"
-              className="accent-blue-500"
+              className="accent-accent"
               checked={rows.length > 0 && selectedRows.size === rows.length}
               ref={(el) => {
                 if (el) el.indeterminate = selectedRows.size > 0 && selectedRows.size < rows.length;

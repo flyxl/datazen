@@ -54,7 +54,7 @@ export function ThemeToggle() {
               className={cn(
                 'flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors',
                 theme.mode === opt.value
-                  ? 'bg-blue-500/10 text-blue-500'
+                  ? 'bg-accent/10 text-accent'
                   : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
               )}
             >

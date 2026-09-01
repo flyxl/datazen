@@ -455,7 +455,7 @@ function MenuEntry({ item, onClose }: { item: MenuItem; onClose: () => void }) {
     >
       <span className="flex items-center gap-2">
         {item.checked !== undefined && (
-          <span className="w-4 text-center text-blue-500">{item.checked ? '✓' : ''}</span>
+          <span className="w-4 text-center text-accent">{item.checked ? '✓' : ''}</span>
         )}
         {item.label}
       </span>

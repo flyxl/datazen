@@ -36,7 +36,7 @@ function filterOptions(options: readonly SelectOption[], query: string): SelectO
 }
 
 const triggerShellClass =
-  'flex items-center rounded-md border border-edge bg-surface text-left text-sm text-fg outline-none focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/25 disabled:cursor-not-allowed disabled:opacity-50';
+  'flex items-center rounded-md border border-edge bg-surface text-left text-sm text-fg outline-none focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-50';
 
 function fitContentCharCount(text: string, min = 2, max = 12): number {
   return Math.max(min, Math.min(text.length, max));
@@ -244,7 +244,10 @@ export function Select({
         return indexes;
       }, []);
       if (enabledIndexes.length === 0) return;
-      let next = highlightIdx < 0 ? enabledIndexes[direction === 1 ? 0 : enabledIndexes.length - 1] : highlightIdx;
+      let next =
+        highlightIdx < 0
+          ? enabledIndexes[direction === 1 ? 0 : enabledIndexes.length - 1]
+          : highlightIdx;
       for (let i = 0; i < filteredOptions.length; i += 1) {
         next = (next + direction + filteredOptions.length) % filteredOptions.length;
         if (!filteredOptions[next]?.disabled) break;
@@ -300,7 +303,15 @@ export function Select({
           break;
       }
     },
-    [open, highlightIdx, filteredOptions, handleSelect, handleClose, closeFromKeyboard, moveHighlight],
+    [
+      open,
+      highlightIdx,
+      filteredOptions,
+      handleSelect,
+      handleClose,
+      closeFromKeyboard,
+      moveHighlight,
+    ],
   );
 
   const listPortal =
@@ -422,7 +433,6 @@ export function Select({
       <button
         ref={triggerRef as React.RefObject<HTMLButtonElement>}
         type="button"
-        role="combobox"
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-controls={open ? listId : undefined}

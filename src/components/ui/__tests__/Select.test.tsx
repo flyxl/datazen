@@ -71,7 +71,7 @@ describe('Select filter', () => {
       </>,
     );
 
-    const triggers = screen.getAllByRole('combobox');
+    const triggers = screen.getAllByRole('button');
     fireEvent.click(triggers[0]);
     const list = screen.getByRole('listbox');
     const option = screen.getByRole('option', { name: /hive/ });
@@ -85,7 +85,7 @@ describe('Select filter', () => {
     const onChange = vi.fn();
     render(<Select value="hive" options={options} onChange={onChange} />);
 
-    const trigger = screen.getByRole('combobox');
+    const trigger = screen.getByRole('button');
     fireEvent.click(trigger);
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
     const activeId = trigger.getAttribute('aria-activedescendant');
