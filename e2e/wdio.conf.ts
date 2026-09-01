@@ -41,6 +41,7 @@ export const config: WebdriverIO.Config = {
     // Real-DB Host specs incl. the host contract matrix (was `pnpm e2e:db`)
     db: [
       './specs/connection-window.ts',
+      './specs/connection-navigator-expansion.ts',
       './specs/sql-query.ts',
       './specs/table-data.ts',
       './specs/table-filter.ts',
