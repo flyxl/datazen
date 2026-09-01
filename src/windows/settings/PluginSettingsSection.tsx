@@ -3,34 +3,48 @@ import { useI18n } from '../../hooks/useI18n';
 import { mergePluginSettings } from '../../plugin-sdk/settings';
 import { PLUGIN_SETTINGS_ENTRIES } from '../../plugins/generated';
 import { useSettingsStore } from '../../stores/settingsStore';
+import type { AppSettings } from '../../types';
 import { JsonSchemaSettingsForm } from './JsonSchemaSettingsForm';
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[13px] font-semibold uppercase tracking-wider text-fg-muted">{children}</h2>;
+  return (
+    <h2 className="text-[13px] font-semibold uppercase tracking-wider text-fg-muted">{children}</h2>
+  );
 }
 
 function PluginBlockTitle({ children }: { children: React.ReactNode }) {
   return <h3 className="text-sm font-medium text-fg">{children}</h3>;
 }
 
-export function PluginSettingsSection() {
+export interface PluginSettingsSectionProps {
+  settings?: AppSettings;
+  onSettingsChange?: (partial: Partial<AppSettings>) => void;
+}
+
+export function PluginSettingsSection({
+  settings: draftSettings,
+  onSettingsChange,
+}: PluginSettingsSectionProps = {}) {
   const { t } = useI18n();
-  const settings = useSettingsStore((s) => s.settings);
+  const storedSettings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
+  const settings = draftSettings ?? storedSettings;
   const [saved, setSaved] = useState(false);
 
   const entries = PLUGIN_SETTINGS_ENTRIES;
 
   const handlePluginChange = useCallback(
     async (pluginId: string, next: unknown) => {
-      const latest = useSettingsStore.getState().settings.pluginSettings;
-      await updateSettings({
+      const latest = settings.pluginSettings;
+      const partial = {
         pluginSettings: mergePluginSettings(latest, pluginId, next),
-      });
+      };
+      if (onSettingsChange) onSettingsChange(partial);
+      else await updateSettings(partial);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     },
-    [updateSettings],
+    [onSettingsChange, settings, updateSettings],
   );
 
   const readPluginValue = (pluginId: string): unknown => {
@@ -64,7 +78,7 @@ export function PluginSettingsSection() {
             );
           })}
 
-          {saved && (
+          {!onSettingsChange && saved && (
             <div className="flex items-center gap-3">
               <span className="text-xs text-green-500">{t('settings.saved')}</span>
             </div>

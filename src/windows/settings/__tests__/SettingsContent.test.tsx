@@ -439,6 +439,59 @@ describe('SettingsContent', () => {
     await waitFor(() => expect(screen.getByText('settings.saved')).toBeInTheDocument());
   });
 
+  it('guards navigation when the draft has unsaved changes', async () => {
+    const onBack = vi.fn();
+    render(<SettingsContent onBack={onBack} />);
+    await waitForSettingsLoad();
+
+    fireEvent.click(within(screen.getByTestId('update-section')).getByRole('checkbox'));
+    fireEvent.click(screen.getByTestId('settings-back'));
+
+    expect(
+      screen.getByRole('dialog', { name: 'settings.unsavedChangesTitle' }),
+    ).toBeInTheDocument();
+    expect(onBack).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('settings-leave-cancel'));
+    expect(onBack).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('dialog', { name: 'settings.unsavedChangesTitle' }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('settings-back'));
+    fireEvent.click(screen.getByTestId('settings-leave-discard'));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves before leaving when the user chooses save', async () => {
+    const onBack = vi.fn();
+    render(<SettingsContent onBack={onBack} />);
+    await waitForSettingsLoad();
+
+    fireEvent.click(within(screen.getByTestId('update-section')).getByRole('checkbox'));
+    fireEvent.click(screen.getByTestId('settings-back'));
+    fireEvent.click(screen.getByTestId('settings-leave-save'));
+
+    await waitFor(() => expect(updateSettingsMock).toHaveBeenCalled());
+    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole('dialog', { name: 'settings.unsavedChangesTitle' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the draft and reports a save failure', async () => {
+    updateSettingsMock.mockRejectedValueOnce(new Error('disk full'));
+    render(<SettingsContent />);
+    await waitForSettingsLoad();
+
+    fireEvent.click(within(screen.getByTestId('update-section')).getByRole('checkbox'));
+    fireEvent.click(getSaveButton());
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('disk full'));
+    expect(getSaveButton()).not.toBeDisabled();
+    expect(screen.queryByText('settings.saved')).not.toBeInTheDocument();
+  });
+
   it('calls onClose when close button is shown', async () => {
     render(<SettingsContent showCloseButton onClose={onCloseMock} />);
     await waitForSettingsLoad();
@@ -483,7 +536,7 @@ describe('SettingsContent', () => {
     await waitFor(() => expect(updateSettingsMock).toHaveBeenCalled());
     const saved = updateSettingsMock.mock.calls.at(-1)?.[0] as AppSettings;
     expect(saved.defaultPageSize).toBe(100);
-    expect(saved.limitSelectResults).toBe(true);
+    expect(saved.limitSelectResults).toBeUndefined();
   });
 
   it('covers editor and behavior sections', async () => {
@@ -498,6 +551,8 @@ describe('SettingsContent', () => {
     fireEvent.change(fontInput, { target: { value: 'JetBrains Mono' } });
 
     goToSection('settings.behavior');
+    fireEvent.click(screen.getByTestId('settings-leave-save'));
+    await waitFor(() => expect(updateSettingsMock).toHaveBeenCalled());
     const switches = screen.getAllByRole('switch');
     fireEvent.click(switches[0]);
     fireEvent.click(switches[1]);
@@ -505,8 +560,8 @@ describe('SettingsContent', () => {
     fireEvent.click(getSaveButton());
     await waitFor(() => expect(updateSettingsMock).toHaveBeenCalled());
     const saved = updateSettingsMock.mock.calls.at(-1)?.[0] as AppSettings;
-    expect(saved.editorFontSize).toBe(16);
-    expect(saved.editorFontFamily).toBe('JetBrains Mono');
+    expect(saved.confirmOnDelete).toBe(false);
+    expect(saved.autoCommit).toBe(false);
   });
 
   it('covers logging section actions', async () => {
@@ -646,12 +701,13 @@ describe('SettingsContent', () => {
     await waitFor(() => expect(mcpStartStdioMock).toHaveBeenCalled());
 
     fireEvent.click(document.querySelector('input[value="safe_write"]') as HTMLInputElement);
+    await waitFor(() => expect(mcpReloadMock).toHaveBeenCalled());
+    fireEvent.click(screen.getByText('common.save'));
     await waitFor(() =>
       expect(updateSettingsMock).toHaveBeenCalledWith(
         expect.objectContaining({ mcpPermissionMode: 'safe_write' }),
       ),
     );
-    await waitFor(() => expect(mcpReloadMock).toHaveBeenCalled());
 
     fireEvent.click(screen.getByText('mcp.tools.disableAll'));
     fireEvent.click(screen.getByText('common.save'));
@@ -662,7 +718,7 @@ describe('SettingsContent', () => {
         }),
       ),
     );
-    await waitFor(() => expect(mcpReloadMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(updateSettingsMock).toHaveBeenCalledTimes(2));
 
     fireEvent.click(screen.getByText('mcp.tools.enableAll'));
     fireEvent.click(enabledSwitch);

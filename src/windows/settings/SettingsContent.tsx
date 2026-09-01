@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { ThemedIcon } from '../../components/ThemedIcon';
 import { Button } from '../../components/ui/Button';
+import { Dialog } from '../../components/ui/Dialog';
 import { PathInput } from '../../components/ui/PathInput';
 import { Select } from '../../components/ui/Select';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -60,8 +61,11 @@ export function SettingsContent({
 
   const [draft, setDraft] = useState<AppSettings>(settings);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [defaultLogPath, setDefaultLogPath] = useState('');
   const settingsHydrated = useRef(false);
+  const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
 
   const languageOptions = useMemo(
     () => [
@@ -110,20 +114,72 @@ export function SettingsContent({
   const updateField = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
     setSaved(false);
+    setSaveError(null);
   };
 
-  const handleSave = useCallback(async () => {
-    await updateSettings(draft);
-    setDraft(useSettingsStore.getState().settings);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  }, [draft, updateSettings]);
+  const updateDraft = (partial: Partial<AppSettings>) => {
+    setDraft((prev) => ({ ...prev, ...partial }));
+    setSaved(false);
+    setSaveError(null);
+  };
 
   const isDirty = JSON.stringify(draft) !== JSON.stringify(settings);
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
+
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    if (!isDirty || saving) return true;
+
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const changed = Object.fromEntries(
+        (Object.keys(draft) as Array<keyof AppSettings>)
+          .filter((key) => JSON.stringify(draft[key]) !== JSON.stringify(settings[key]))
+          .map((key) => [key, draft[key]]),
+      ) as Partial<AppSettings>;
+      await updateSettings(changed);
+      setDraft(useSettingsStore.getState().settings);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2000);
+      return true;
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [draft, isDirty, saving, settings, updateSettings]);
+
+  const requestLeave = useCallback(
+    (action: () => void) => {
+      if (isDirty) {
+        setPendingLeave(() => action);
+      } else {
+        action();
+      }
+    },
+    [isDirty],
+  );
+
+  const discardAndLeave = () => {
+    const action = pendingLeave;
+    setDraft(settings);
+    setSaved(false);
+    setSaveError(null);
+    setPendingLeave(null);
+    action?.();
+  };
+
+  const saveAndLeave = async () => {
+    const action = pendingLeave;
+    if (await handleSave()) {
+      setPendingLeave(null);
+      action?.();
+    }
+  };
 
   return (
     <>
@@ -136,7 +192,7 @@ export function SettingsContent({
             <Button
               variant="ghost"
               className="mb-1 h-8 w-full justify-start gap-1.5 px-2 text-xs"
-              onClick={onBack}
+              onClick={() => requestLeave(onBack)}
               data-testid="settings-back"
               title={t('common.back')}
             >
@@ -151,7 +207,7 @@ export function SettingsContent({
                 key={sec.id}
                 type="button"
                 data-testid={`settings-nav-${sec.id}`}
-                onClick={() => setActiveSection(sec.id)}
+                onClick={() => requestLeave(() => setActiveSection(sec.id))}
                 className={cn(
                   'flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] transition-colors',
                   isActive
@@ -339,29 +395,97 @@ export function SettingsContent({
               </>
             )}
 
-            {activeSection === 'appearance' && <AppearanceSection />}
+            {activeSection === 'appearance' && (
+              <AppearanceSection
+                settings={draft}
+                onThemeChange={(theme) => updateField('theme', theme)}
+              />
+            )}
             {activeSection === 'ai' && <AiSettingsSection />}
             {activeSection === 'prompts' && <PromptSettingsSection />}
-            {activeSection === 'mcpServer' && <McpSettingsSection />}
+            {activeSection === 'mcpServer' && (
+              <McpSettingsSection settings={draft} onSettingsChange={updateDraft} />
+            )}
             {activeSection === 'mcpClient' && <McpClientSection />}
-            {activeSection === 'extensions' && <PluginSettingsSection />}
+            {activeSection === 'extensions' && (
+              <PluginSettingsSection settings={draft} onSettingsChange={updateDraft} />
+            )}
           </div>
         </div>
       </div>
 
-      {['general', 'dataBrowsing', 'editor', 'behavior', 'logging'].includes(activeSection) && (
+      {[
+        'general',
+        'dataBrowsing',
+        'editor',
+        'behavior',
+        'logging',
+        'appearance',
+        'mcpServer',
+        'extensions',
+      ].includes(activeSection) && (
         <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-edge px-8 py-3">
-          {saved && <span className="text-xs text-green-500">{t('settings.saved')}</span>}
+          {saved && (
+            <span className="text-xs text-green-500" aria-live="polite">
+              {t('settings.saved')}
+            </span>
+          )}
+          {saveError && (
+            <span className="text-xs text-red-500" role="alert">
+              {t('common.operationFailed')}: {saveError}
+            </span>
+          )}
           {showCloseButton && onClose && (
-            <Button variant="secondary" onClick={() => void onClose()}>
+            <Button variant="secondary" onClick={() => requestLeave(onClose)} disabled={saving}>
               {t('common.close')}
             </Button>
           )}
-          <Button variant="primary" disabled={!isDirty} onClick={() => void handleSave()}>
+          <Button
+            variant="primary"
+            disabled={!isDirty || saving}
+            aria-busy={saving}
+            onClick={() => void handleSave()}
+          >
             {t('common.save')}
           </Button>
         </footer>
       )}
+
+      <Dialog
+        open={pendingLeave !== null}
+        title={t('settings.unsavedChangesTitle')}
+        onClose={() => setPendingLeave(null)}
+        className="max-w-sm"
+        testId="settings-unsaved-dialog"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => setPendingLeave(null)}
+              data-testid="settings-leave-cancel"
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={discardAndLeave}
+              data-testid="settings-leave-discard"
+            >
+              {t('settings.discardChanges')}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void saveAndLeave()}
+              disabled={saving}
+              data-testid="settings-leave-save"
+            >
+              {t('settings.saveChanges')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-fg-secondary">{t('settings.unsavedChangesMessage')}</p>
+      </Dialog>
     </>
   );
 }

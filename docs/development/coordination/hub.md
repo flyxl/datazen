@@ -25,7 +25,7 @@
 | `v012-settings-dirty` | Settings dirty/save/离开保护 | 已完成（主线复验） | c11ab2e73 | 主线定向复验 |
 | `v012-navigation-controls` | PanelTabBar、Select、MenuBar、WindowControls 无障碍 | 已完成（主线定向复验） | 70d798790 | 主线定向复验 |
 | `v012-datatable-workflow` | DataTable 空/加载状态与 Workflow alert/i18n | 已完成（主线复验） | b05d6fb00 | 51608b1e5 |
-| `v012-accent-sweep` | accent token、permission labels、残留 UI 文案清理 | 编码中（前置依赖） | — | — |
+| `v012-accent-sweep` | accent token、permission labels、残留 UI 文案清理 | 已完成（主线定向复验） | bbfe73f55 | 主线定向复验 |
 
 ## 合并规则
 
