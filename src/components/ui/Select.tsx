@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { useI18n } from '../../hooks/useI18n';
 
 export interface SelectOption {
   readonly value: string;
@@ -26,8 +27,6 @@ export interface SelectProps {
   readonly listMinWidth?: number;
 }
 
-const LIST_ID = 'dz-select-listbox';
-
 function filterOptions(options: readonly SelectOption[], query: string): SelectOption[] {
   const q = query.trim().toLowerCase();
   if (!q) return [...options];
@@ -49,15 +48,19 @@ function OptionList({
   highlightIdx,
   setHighlightIdx,
   handleSelect,
+  optionId,
+  noMatchesLabel,
 }: {
   filteredOptions: SelectOption[];
   strValue: string;
   highlightIdx: number;
   setHighlightIdx: (idx: number) => void;
   handleSelect: (opt: SelectOption) => void;
+  optionId: (value: string, index: number) => string;
+  noMatchesLabel: string;
 }) {
   if (filteredOptions.length === 0) {
-    return <div className="px-2.5 py-2 text-sm text-fg-muted">No matches</div>;
+    return <div className="px-2.5 py-2 text-sm text-fg-muted">{noMatchesLabel}</div>;
   }
   return (
     <>
@@ -67,9 +70,12 @@ function OptionList({
         return (
           <div
             key={opt.value}
+            id={optionId(opt.value, idx)}
+            role="option"
             data-option-idx={idx}
             tabIndex={opt.disabled ? undefined : -1}
             aria-selected={isSelected}
+            aria-disabled={opt.disabled || undefined}
             title={opt.title}
             className={cn(
               'flex cursor-pointer items-center px-2.5 py-1.5 text-sm transition-colors',
@@ -106,9 +112,13 @@ export function Select({
   fitContent = false,
   listMinWidth,
 }: SelectProps) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [highlightIdx, setHighlightIdx] = useState(-1);
   const [filterQuery, setFilterQuery] = useState('');
+  const selectId = useId().replace(/:/g, '');
+  const listId = `dz-select-listbox-${selectId}`;
+  const accessibleLabel = title ?? placeholder ?? t('select.placeholder');
   const triggerRef = useRef<HTMLDivElement | HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -120,11 +130,19 @@ export function Select({
 
   const strValue = String(value);
   const selectedOption = options.find((o) => o.value === strValue);
-
   const filteredOptions = useMemo(
     () => (searchable ? filterOptions(options, filterQuery) : [...options]),
     [options, filterQuery, searchable],
   );
+  const optionId = useCallback(
+    (optionValue: string, index: number) =>
+      `${listId}-option-${index}-${optionValue.replace(/[^a-zA-Z0-9_-]/g, '-')}`,
+    [listId],
+  );
+  const activeDescendant =
+    highlightIdx >= 0 && filteredOptions[highlightIdx]
+      ? optionId(filteredOptions[highlightIdx].value, highlightIdx)
+      : undefined;
 
   const updatePosition = useCallback(() => {
     if (!triggerRef.current) return;
@@ -221,8 +239,12 @@ export function Select({
   const moveHighlight = useCallback(
     (direction: 1 | -1) => {
       if (filteredOptions.length === 0) return;
-      let next =
-        highlightIdx < 0 ? (direction === 1 ? 0 : filteredOptions.length - 1) : highlightIdx;
+      const enabledIndexes = filteredOptions.reduce<number[]>((indexes, option, index) => {
+        if (!option.disabled) indexes.push(index);
+        return indexes;
+      }, []);
+      if (enabledIndexes.length === 0) return;
+      let next = highlightIdx < 0 ? enabledIndexes[direction === 1 ? 0 : enabledIndexes.length - 1] : highlightIdx;
       for (let i = 0; i < filteredOptions.length; i += 1) {
         next = (next + direction + filteredOptions.length) % filteredOptions.length;
         if (!filteredOptions[next]?.disabled) break;
@@ -231,6 +253,11 @@ export function Select({
     },
     [filteredOptions, highlightIdx],
   );
+
+  const closeFromKeyboard = useCallback(() => {
+    handleClose();
+    (triggerRef.current as HTMLElement | null)?.focus();
+  }, [handleClose]);
 
   const handleListKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -246,6 +273,18 @@ export function Select({
           moveHighlight(-1);
           break;
         }
+        case 'Home': {
+          e.preventDefault();
+          setHighlightIdx(filteredOptions.findIndex((option) => !option.disabled));
+          break;
+        }
+        case 'End': {
+          e.preventDefault();
+          setHighlightIdx(
+            filteredOptions.reduce((last, option, index) => (option.disabled ? last : index), -1),
+          );
+          break;
+        }
         case 'Enter': {
           e.preventDefault();
           const opt = filteredOptions[highlightIdx];
@@ -253,12 +292,15 @@ export function Select({
           break;
         }
         case 'Escape':
+          e.preventDefault();
+          closeFromKeyboard();
+          break;
         case 'Tab':
           handleClose();
           break;
       }
     },
-    [open, highlightIdx, filteredOptions, handleSelect, handleClose, moveHighlight],
+    [open, highlightIdx, filteredOptions, handleSelect, handleClose, closeFromKeyboard, moveHighlight],
   );
 
   const listPortal =
@@ -266,7 +308,9 @@ export function Select({
     createPortal(
       <div
         ref={listRef}
-        id={LIST_ID}
+        id={listId}
+        role="listbox"
+        aria-label={accessibleLabel}
         className="fixed z-[9999] overflow-y-auto rounded-lg border border-edge bg-surface-alt py-1 shadow-xl"
         style={{ top: pos.top, left: pos.left, width: pos.width, maxHeight: 240 }}
         onKeyDown={handleListKeyDown}
@@ -277,6 +321,8 @@ export function Select({
           highlightIdx={highlightIdx}
           setHighlightIdx={setHighlightIdx}
           handleSelect={handleSelect}
+          optionId={optionId}
+          noMatchesLabel={t('select.noMatches')}
         />
       </div>,
       document.body,
@@ -305,11 +351,14 @@ export function Select({
           <input
             ref={inputRef}
             type="text"
+            role="combobox"
             disabled={disabled}
             aria-expanded={open}
             aria-haspopup="listbox"
-            aria-controls={open ? LIST_ID : undefined}
+            aria-controls={open ? listId : undefined}
+            aria-activedescendant={open ? activeDescendant : undefined}
             aria-autocomplete="list"
+            aria-label={accessibleLabel}
             className={cn(
               'bg-transparent outline-none',
               fitContent ? 'shrink-0 pl-2.5 pr-0' : 'min-w-0 flex-1 px-2.5',
@@ -341,7 +390,7 @@ export function Select({
           <button
             type="button"
             disabled={disabled}
-            aria-label="Toggle options"
+            aria-label={t('select.toggleOptions')}
             className="flex shrink-0 items-center justify-center self-stretch px-1 text-fg-muted hover:text-fg disabled:pointer-events-none"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => (open ? handleClose() : handleOpen())}
@@ -373,9 +422,12 @@ export function Select({
       <button
         ref={triggerRef as React.RefObject<HTMLButtonElement>}
         type="button"
+        role="combobox"
         aria-expanded={open}
         aria-haspopup="listbox"
-        aria-controls={open ? LIST_ID : undefined}
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={open ? activeDescendant : undefined}
+        aria-label={accessibleLabel}
         disabled={disabled}
         title={title}
         className={cn(
