@@ -300,7 +300,9 @@ export function QueryPanel({
     },
     [panelId, setResultViewModeStore],
   );
-  const queryResultExportCapability = resolveExportScope(DB_REGISTRY[databaseType]);
+  const queryResultExportCapability = resolveExportScope(
+    databaseType ? DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY] : undefined,
+  );
 
   const { size: editorHeight, handleRef: editorResizeRef } = useResizable({
     direction: 'vertical',
