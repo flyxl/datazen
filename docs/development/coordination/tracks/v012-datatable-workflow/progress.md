@@ -17,7 +17,7 @@
 
 ## 测试结果与覆盖率
 
-- 定向 Vitest：4 个文件，51/51 通过。
+- 定向 Vitest：4 个文件，51/51 通过；DataTable 空/加载态新增断言后 15/15 通过。
 - `pnpm typecheck`：通过。
 - `git diff --check`：通过。
 - 覆盖率：待独立测试代理按 playbook 复验。
