@@ -1,11 +1,13 @@
 import { useCallback } from 'react';
 import { Minus, Square, X } from 'lucide-react';
+import { useI18n } from '../hooks/useI18n';
 
 /**
  * Web-based window controls for Windows/Linux frameless windows.
  * Renders minimize, maximize/restore, and close buttons.
  */
 export function WindowControls() {
+  const { t } = useI18n();
   const handleMinimize = useCallback(async () => {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     await getCurrentWindow().minimize();
@@ -32,7 +34,7 @@ export function WindowControls() {
         type="button"
         onClick={handleMinimize}
         className="flex w-[46px] items-center justify-center text-titlebar-fg-muted transition-colors hover:bg-titlebar-hover hover:text-titlebar-fg"
-        aria-label="Minimize"
+        aria-label={t('menu.minimize')}
       >
         <Minus className="h-4 w-4" />
       </button>
@@ -40,7 +42,7 @@ export function WindowControls() {
         type="button"
         onClick={handleMaximize}
         className="flex w-[46px] items-center justify-center text-titlebar-fg-muted transition-colors hover:bg-titlebar-hover hover:text-titlebar-fg"
-        aria-label="Maximize"
+        aria-label={t('menu.zoom')}
       >
         <Square className="h-3 w-3" />
       </button>
@@ -48,7 +50,7 @@ export function WindowControls() {
         type="button"
         onClick={handleClose}
         className="flex w-[46px] items-center justify-center text-titlebar-fg-muted transition-colors hover:bg-red-500/80 hover:text-white"
-        aria-label="Close"
+        aria-label={t('menu.closeWindow')}
       >
         <X className="h-4 w-4" />
       </button>

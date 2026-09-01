@@ -42,7 +42,7 @@ describe('Select filter', () => {
       />,
     );
 
-    const trigger = screen.getByRole('textbox').parentElement;
+    const trigger = screen.getByRole('combobox').parentElement;
     expect(trigger).not.toBeNull();
     vi.spyOn(trigger!, 'getBoundingClientRect').mockReturnValue({
       top: 20,
@@ -56,10 +56,49 @@ describe('Select filter', () => {
       toJSON: () => ({}),
     });
 
-    fireEvent.focus(screen.getByRole('textbox'));
+    fireEvent.focus(screen.getByRole('combobox'));
 
-    const list = document.getElementById('dz-select-listbox');
+    const list = document.querySelector('[role="listbox"]');
     expect(list).toBeInTheDocument();
     expect(list).toHaveStyle({ width: '176px' });
+  });
+
+  it('exposes listbox and option semantics with a unique controlled popup', () => {
+    render(
+      <>
+        <Select value="hive" options={options} onChange={vi.fn()} />
+        <Select value="snap" options={options} onChange={vi.fn()} />
+      </>,
+    );
+
+    const triggers = screen.getAllByRole('combobox');
+    fireEvent.click(triggers[0]);
+    const list = screen.getByRole('listbox');
+    const option = screen.getByRole('option', { name: /hive/ });
+    expect(list.id).not.toBe('dz-select-listbox');
+    expect(triggers[0]).toHaveAttribute('aria-controls', list.id);
+    expect(option).toHaveAttribute('aria-selected', 'true');
+    expect(option.id).toBeTruthy();
+  });
+
+  it('supports arrow navigation, selection, and Escape focus restoration', () => {
+    const onChange = vi.fn();
+    render(<Select value="hive" options={options} onChange={onChange} />);
+
+    const trigger = screen.getByRole('combobox');
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    const activeId = trigger.getAttribute('aria-activedescendant');
+    expect(activeId).toBeTruthy();
+    expect(document.getElementById(activeId!)).toHaveTextContent('snap');
+
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith('snap');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(trigger);
   });
 });
