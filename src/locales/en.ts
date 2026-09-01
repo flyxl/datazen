@@ -22,6 +22,9 @@ const en: Record<TranslationKey, string> = {
   'common.error': 'Error',
   'common.success': 'Success',
   'common.failed': 'Failed',
+  'common.dismiss': 'Dismiss',
+  'common.discard': 'Discard',
+  'common.operationFailed': 'Operation failed',
   'common.hint': 'Hint',
   'common.rows': 'rows',
   'common.columns': 'columns',
@@ -159,6 +162,7 @@ const en: Record<TranslationKey, string> = {
   'nav.settings': 'Settings',
   'nav.workflow': 'Workflows',
   'nav.workspacePages': 'Workspace',
+  'nav.modeRail': 'Workspace modes',
 
   // ── Workspace (plugin pages) ──
   'workspace.defaultTitle': 'Workspace',
@@ -467,6 +471,11 @@ const en: Record<TranslationKey, string> = {
   'settings.dataCleanup.noScope': 'Select at least one scope',
   'settings.logging': 'Logging',
   'settings.logLevel': 'Log Level',
+  'settings.logLevel.trace': 'Trace',
+  'settings.logLevel.debug': 'Debug',
+  'settings.logLevel.info': 'Info',
+  'settings.logLevel.warn': 'Warn',
+  'settings.logLevel.error': 'Error',
   'settings.logPath': 'Log Path',
   'settings.logPathPlaceholder': 'Leave empty for default path',
   'common.viewLogs': 'View Logs',
@@ -475,6 +484,10 @@ const en: Record<TranslationKey, string> = {
   'settings.confirmDelete': 'Confirm on Delete',
   'settings.autoCommit': 'Auto Commit',
   'settings.saved': 'Saved',
+  'settings.unsavedChangesTitle': 'Unsaved changes',
+  'settings.unsavedChangesMessage': 'You have unsaved changes. Save them before leaving?',
+  'settings.saveChanges': 'Save changes',
+  'settings.discardChanges': 'Discard changes',
   'settings.limitSelectHint':
     'Automatically add a row limit to SELECT statements without LIMIT. Large results are always streamed; turning this off does not disable streaming.',
   'settings.confirmDeleteHint': 'Show a confirmation dialog when deleting rows',
@@ -830,6 +843,10 @@ const en: Record<TranslationKey, string> = {
   'dataTable.filterByValue': 'Filter by This Value',
   'dataTable.deleteRow': 'Delete Row',
   'dataTable.confirmDeleteRows': 'Delete {count} selected row(s)? This cannot be undone.',
+  'dataTable.loading': 'Loading rows…',
+  'dataTable.empty': 'No rows to display',
+  'dataTable.emptyHint': 'This query returned no rows.',
+  'dataTable.tableLabel': 'Data table',
 
   // ── Detail Panel ──
   'detail.title': 'Details',
@@ -1463,6 +1480,9 @@ const en: Record<TranslationKey, string> = {
   'workflows.editor.visual': 'Visual',
   'workflows.editor.yaml': 'YAML',
   'workflows.yaml.missingField': 'Missing field: {field}',
+  'workflows.editor.invalidYaml': 'Invalid YAML',
+  'workflows.editor.parseError': 'Unable to parse YAML: {error}',
+  'workflows.operationFailed': 'Workflow operation failed: {error}',
   'workflows.reload': 'Reload',
   'workflows.finalOutput': 'Final output',
   'workflows.form.varTypeConnection': 'Connection',
@@ -1567,6 +1587,23 @@ const en: Record<TranslationKey, string> = {
 
   // ── Select ──
   'select.placeholder': 'Select…',
+  'select.noMatches': 'No matches',
+  'select.toggleOptions': 'Toggle options',
+
+  // ── Shared UI accessibility ──
+  'errorBoundary.title': 'Something went wrong',
+  'errorBoundary.message': 'DataZen encountered an unexpected error.',
+  'errorBoundary.dismiss': 'Dismiss',
+  'errorBoundary.reload': 'Reload',
+  'panel.tabListLabel': 'Open panels',
+  'panel.closeTab': 'Close {title}',
+
+  // ── Extension permissions ──
+  'permissions.contextConnections':
+    'Read the connection list (names and types only, never credentials)',
+  'permissions.commandInvoke': 'Run database commands through the host Driver Command API',
+  'permissions.storageLocal': 'Keep a small private key-value store on this machine',
+  'permissions.uiNotify': 'Show notifications via the host (rate limited)',
 
   // ── Backend errors ──
   'backend.partialFail': 'Partial failure ({success}/{total}):\n{errors}',

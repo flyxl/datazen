@@ -2,8 +2,14 @@
 
 ## 功能摘要
 
-- 状态：未开始
+- 状态：编码完成，待独立测试代理复验
 - 范围：为 UI polish 轨道冻结英文/中文新增 key；不修改业务组件。
+
+### 编码结果
+
+- 为 Dialog/ErrorBoundary、Settings dirty/save、DataTable 空/加载、Workflow 错误、Select/Panel 可访问性和权限说明预留英文/简体中文 key。
+- 只修改 `src/locales/en.ts` 与 `src/locales/zh-CN.ts`，保持 host locale key parity。
+- 编码 commit：待本轮提交后填写。
 
 ## E2E 登记
 
@@ -11,7 +17,8 @@
 
 ## 测试结果与覆盖率
 
-- 待编码代理填写。
+- `git diff --check`：待提交前执行。
+- locale parity：待独立测试代理复验。
 
 ## 设计决策 / 遗留
 

@@ -20,6 +20,9 @@ const zhCN = {
   'common.error': '错误',
   'common.success': '成功',
   'common.failed': '失败',
+  'common.dismiss': '关闭提示',
+  'common.discard': '放弃更改',
+  'common.operationFailed': '操作失败',
   'common.hint': '提示',
   'common.rows': '行',
   'common.columns': '列',
@@ -151,6 +154,7 @@ const zhCN = {
   'nav.settings': '设置',
   'nav.workflow': '工作流',
   'nav.workspacePages': 'Workspace',
+  'nav.modeRail': '工作区模式',
 
   // ── Workspace（插件页面）──
   'workspace.defaultTitle': 'Workspace',
@@ -448,6 +452,11 @@ const zhCN = {
   'settings.dataCleanup.noScope': '请至少选择一个范围',
   'settings.logging': '日志',
   'settings.logLevel': '日志级别',
+  'settings.logLevel.trace': '跟踪',
+  'settings.logLevel.debug': '调试',
+  'settings.logLevel.info': '信息',
+  'settings.logLevel.warn': '警告',
+  'settings.logLevel.error': '错误',
   'settings.logPath': '日志路径',
   'settings.logPathPlaceholder': '留空使用默认路径',
   'common.viewLogs': '查看日志',
@@ -456,6 +465,10 @@ const zhCN = {
   'settings.confirmDelete': '删除确认',
   'settings.autoCommit': '自动提交',
   'settings.saved': '已保存',
+  'settings.unsavedChangesTitle': '有未保存的更改',
+  'settings.unsavedChangesMessage': '当前有未保存的更改，离开前要保存吗？',
+  'settings.saveChanges': '保存更改',
+  'settings.discardChanges': '放弃更改',
   'settings.limitSelectHint':
     '自动为无 LIMIT 的 SELECT 添加行数限制。与大数据量流式传输相互独立：关闭此开关仍会流式返回全部结果。',
   'settings.confirmDeleteHint': '删除行时弹出确认对话框',
@@ -806,6 +819,10 @@ const zhCN = {
   'dataTable.filterByValue': '按此值筛选',
   'dataTable.deleteRow': '删除行',
   'dataTable.confirmDeleteRows': '确定删除选中的 {count} 行吗？此操作不可撤销。',
+  'dataTable.loading': '正在加载行…',
+  'dataTable.empty': '暂无可显示的行',
+  'dataTable.emptyHint': '此查询没有返回任何行。',
+  'dataTable.tableLabel': '数据表',
 
   // ── Detail Panel ──
   'detail.title': '详情',
@@ -1425,6 +1442,9 @@ const zhCN = {
   'workflows.editor.visual': '可视化',
   'workflows.editor.yaml': 'YAML',
   'workflows.yaml.missingField': '缺少字段：{field}',
+  'workflows.editor.invalidYaml': 'YAML 无效',
+  'workflows.editor.parseError': '无法解析 YAML：{error}',
+  'workflows.operationFailed': '工作流操作失败：{error}',
   'workflows.reload': '刷新',
   'workflows.finalOutput': '最终输出',
   'workflows.form.varTypeConnection': '连接',
@@ -1528,6 +1548,22 @@ const zhCN = {
 
   // ── Select ──
   'select.placeholder': '请选择',
+  'select.noMatches': '没有匹配项',
+  'select.toggleOptions': '切换选项',
+
+  // ── Shared UI accessibility ──
+  'errorBoundary.title': '发生错误',
+  'errorBoundary.message': 'DataZen 遇到了意外错误。',
+  'errorBoundary.dismiss': '关闭提示',
+  'errorBoundary.reload': '重新加载',
+  'panel.tabListLabel': '已打开的面板',
+  'panel.closeTab': '关闭 {title}',
+
+  // ── Extension permissions ──
+  'permissions.contextConnections': '读取连接列表（仅名称和类型，绝不读取凭据）',
+  'permissions.commandInvoke': '通过宿主 Driver Command API 执行数据库命令',
+  'permissions.storageLocal': '在此设备上保存少量私有键值数据',
+  'permissions.uiNotify': '通过宿主显示通知（受频率限制）',
 
   // ── Backend errors ──
   'backend.partialFail': '部分语句执行失败 ({success}/{total}):\n{errors}',
