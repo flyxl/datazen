@@ -60,11 +60,8 @@ import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
-import {
-  estimateExpandedToolbarWidth,
-  TOOLBAR_GAP,
-  useCompactToolbar,
-} from '../../hooks/useCompactToolbar';
+import { useCompactToolbar } from '../../hooks/useCompactToolbar';
+import { queryToolbarExpandedMinWidth } from './queryToolbarWidth';
 import { cn } from '../../lib/cn';
 import { queryCommands } from '../../commands/query';
 import { dashboardCommands } from '../../commands/dashboard';
@@ -348,12 +345,33 @@ export function QueryPanel({
   const hasContextSelectors =
     (isPathHierarchy && namespaceRootsFrom(namespaceTree, pathAliases, databases).length > 0) ||
     (isMultiDb && databases.length > 0);
-  const queryToolbarExpandedMinWidth = estimateExpandedToolbarWidth({
-    expandedButtonCount: 1 + (supportsExplain ? 1 : 0) + 1 + 3 + 3,
-    fixedExtraWidth: (hasContextSelectors ? 160 : 0) + TOOLBAR_GAP + 8,
-  });
+  const queryToolbarExpandedMinWidthValue = useMemo(
+    () =>
+      queryToolbarExpandedMinWidth({
+        supportsExplain,
+        hasContextSelectors,
+        isPathHierarchy,
+        isMultiDb,
+        contextSchema: selectedSchema,
+        namespaceTree,
+        pathAliases,
+        databases,
+        contextPath,
+      }),
+    [
+      supportsExplain,
+      hasContextSelectors,
+      isPathHierarchy,
+      isMultiDb,
+      selectedSchema,
+      namespaceTree,
+      pathAliases,
+      databases,
+      contextPath,
+    ],
+  );
   const { ref: toolbarRef, compact: compactToolbar } = useCompactToolbar(
-    queryToolbarExpandedMinWidth,
+    queryToolbarExpandedMinWidthValue,
   );
   const [contextPath, setContextPath] = useState<string[]>([]);
   const [executionSeq, setExecutionSeq] = useState(0);
