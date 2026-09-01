@@ -756,6 +756,8 @@ describe('parsePathHierarchyDatabaseEntry / plugin namespace bootstrap', () => {
     });
 
     const schema = useSchemaStore.getState().getConnectionSchema('conn-superset');
+    expect(schema?.databases).toEqual(['presto_afi_data']);
+    expect(schema?.currentDatabase).toBe('presto_afi_data');
     expect(schema?.pathAliases).toEqual({ presto_afi_data: '558' });
     expect(schema?.namespaceTree).toEqual({ presto_afi_data: {} });
     expect(schema?.namespaceOwnedByPlugin).toBe(true);

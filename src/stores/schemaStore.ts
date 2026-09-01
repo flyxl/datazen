@@ -398,10 +398,38 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
         const meta = options?.databaseType
           ? DB_REGISTRY[options.databaseType as DatabaseType]
           : undefined;
-        const { databases, preferred, lockedToConfigured } = resolveVisibleDatabases(
-          allDatabases,
-          options?.preferredDatabase,
-        );
+        const isPathHierarchy =
+          meta?.schemaTreeMode === 'custom' || meta?.namespaceEnsure === 'path-hierarchy';
+        const usesPluginDbList =
+          isPathHierarchy &&
+          (meta?.namespaceOwnedByPlugin || meta?.schemaTreeMode === 'custom') &&
+          allDatabases.length > 0;
+
+        let databases: string[];
+        let preferred: string | null;
+        let lockedToConfigured: boolean;
+
+        if (usesPluginDbList) {
+          const configured = options?.preferredDatabase?.trim();
+          const displayNames = allDatabases.map(
+            (entry) => parsePathHierarchyDatabaseEntry(entry).name,
+          );
+          if (configured && allDatabases.includes(configured)) {
+            databases = [parsePathHierarchyDatabaseEntry(configured).name];
+            preferred = parsePathHierarchyDatabaseEntry(configured).name;
+            lockedToConfigured = true;
+          } else {
+            databases = displayNames;
+            preferred = resolvePreferredDatabase(displayNames, configured || undefined);
+            lockedToConfigured = false;
+          }
+        } else {
+          const resolved = resolveVisibleDatabases(allDatabases, options?.preferredDatabase);
+          databases = resolved.databases;
+          preferred = resolved.preferred;
+          lockedToConfigured = resolved.lockedToConfigured;
+        }
+
         const isMultiDatabase =
           !lockedToConfigured && computeIsMultiDatabase(meta?.hasMultiDatabase, databases.length);
         commitConnectionPatch(
@@ -409,13 +437,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
           { databases, isMultiDatabase, loading: false, currentDatabase: preferred },
           { activate: true },
         );
-        const isPathHierarchy =
-          meta?.schemaTreeMode === 'custom' || meta?.namespaceEnsure === 'path-hierarchy';
-        if (
-          isPathHierarchy &&
-          (meta?.namespaceOwnedByPlugin || meta?.schemaTreeMode === 'custom') &&
-          allDatabases.length > 0
-        ) {
+        if (usesPluginDbList) {
           const aliasEntries = allDatabases.map(parsePathHierarchyDatabaseEntry);
           get().registerPathAliases(aliasEntries, dbSessionId);
         } else if (isMultiDatabase && !isPathHierarchy) {
