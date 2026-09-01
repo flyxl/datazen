@@ -10,7 +10,7 @@
 - 为 Dialog/ErrorBoundary、Settings dirty/save、DataTable 空/加载、Workflow 错误、Select/Panel 可访问性和权限说明预留英文/简体中文 key。
 - 只修改 `src/locales/en.ts` 与 `src/locales/zh-CN.ts`，保持 host locale key parity。
 - 新增 locale contract 测试，覆盖本轮 key 的双语解析和带参数文案插值。
-- 编码 commit：待本轮提交后填写。
+- 编码 commit：`c5c9f0e22` + `382f91ddf`。
 
 ## E2E 登记
 
