@@ -9,7 +9,7 @@
 
 - Dialog 增加初始焦点、Tab 环回、Escape 关闭、关闭后恢复 opener 焦点，以及 `aria-labelledby`/`aria-describedby` 和关闭按钮标签。
 - ErrorBoundary 改为通过现有 i18n key 渲染错误状态，保留关闭/重试操作；日志只记录错误名、消息长度和组件栈，不输出错误正文。
-- 编码 commit：待本轮提交后填写。
+- 编码 commit：`55934d2e7`。
 
 ## E2E 登记
 
