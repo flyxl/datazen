@@ -177,6 +177,7 @@ export function NavigatorTreeRow({
           <div
             data-conn-item
             data-conn-name={row.conn.name}
+            data-conn-group={row.sectionGroup}
             draggable
             onDragStart={(e) => handleDragStart(e, row.conn.id)}
             onDragOver={(e) => handleDragOver(e, row.conn.id)}
