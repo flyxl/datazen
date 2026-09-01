@@ -143,7 +143,7 @@ describe('rankConnections', () => {
 });
 
 describe('groupConnectionsWithRecentSections', () => {
-  it('keeps pinned, recent, and group sections without duplicate connections', () => {
+  it('keeps recent connections in their original group as well as the recent section', () => {
     const conns = [
       connection({ id: 'pinned', name: 'Pinned', pinned: true, group: 'prod' }),
       connection({
@@ -159,12 +159,38 @@ describe('groupConnectionsWithRecentSections', () => {
     expect(sections.map((section) => section.group)).toEqual([
       PINNED_GROUP_KEY,
       RECENT_GROUP_KEY,
+      'prod',
       'dev',
     ]);
     expect(sections.flatMap((section) => section.connections).map((item) => item.id)).toEqual([
       'pinned',
       'recent',
+      'recent',
       'grouped',
     ]);
+  });
+
+  it('keeps a persisted group visible when all of its connections are recent', () => {
+    const conns = [
+      connection({
+        id: 'prod-a',
+        name: 'Production A',
+        group: 'prod',
+        lastConnectedAt: '2026-08-30T10:00:00Z',
+      }),
+      connection({
+        id: 'prod-b',
+        name: 'Production B',
+        group: 'prod',
+        lastConnectedAt: '2026-08-29T10:00:00Z',
+      }),
+    ];
+
+    const sections = groupConnectionsWithRecentSections(conns, ['prod']);
+
+    expect(sections.map((section) => section.group)).toEqual([RECENT_GROUP_KEY, 'prod']);
+    expect(
+      sections.find((section) => section.group === 'prod')?.connections.map((item) => item.id),
+    ).toEqual(['prod-a', 'prod-b']);
   });
 });

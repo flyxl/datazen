@@ -254,7 +254,12 @@ export function orderConnectionsForDisplay(connections: ConnectionConfig[]): Con
   return [...pinned, ...connections.filter((connection) => connection.pinned !== true)];
 }
 
-/** Group connections while keeping the navigator's non-search hierarchy. */
+/**
+ * Group connections while keeping the navigator's non-search hierarchy.
+ *
+ * Recent connections are shortcuts, so they stay in their persisted group as
+ * well. Pinned connections remain promoted to the dedicated pinned section.
+ */
 export function groupConnectionsWithRecentSections(
   connections: ConnectionConfig[],
   groups: string[],
@@ -281,8 +286,6 @@ export function groupConnectionsWithRecentSections(
       return compareStrings(a.name, b.name) || a.id.localeCompare(b.id);
     })
     .slice(0, RECENT_CONNECTION_LIMIT);
-  const recentIds = new Set(recent.map((connection) => connection.id));
-
   const hasPromotedSections = pinned.length > 0 || recent.length > 0;
   if (!hasPromotedSections) {
     return [...grouped].map(([group, section]) => ({
@@ -302,9 +305,7 @@ export function groupConnectionsWithRecentSections(
 
   for (const group of groups) {
     const section = grouped.get(group) ?? [];
-    const visible = section.filter(
-      (connection) => !pinnedIds.has(connection.id) && !recentIds.has(connection.id),
-    );
+    const visible = section.filter((connection) => !pinnedIds.has(connection.id));
     if (visible.length > 0) {
       sections.push({
         group,
@@ -315,9 +316,7 @@ export function groupConnectionsWithRecentSections(
 
   for (const [group, section] of grouped) {
     if (groups.includes(group)) continue;
-    const visible = section.filter(
-      (connection) => !pinnedIds.has(connection.id) && !recentIds.has(connection.id),
-    );
+    const visible = section.filter((connection) => !pinnedIds.has(connection.id));
     if (visible.length > 0) {
       sections.push({
         group,
