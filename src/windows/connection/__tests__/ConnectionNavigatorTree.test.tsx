@@ -1117,6 +1117,93 @@ describe('ConnectionNavigatorTree connection row interactions', () => {
       expect(expansion('__recent__', 'Recent Conn')?.getAttribute('aria-expanded')).toBe('false');
     });
   });
+
+  it('keeps a slow selected connection pending and expands that exact row after success', async () => {
+    const recent = makeConn({
+      id: 'cfg-recent',
+      name: 'Recent Conn',
+      group: 'Group A',
+      lastConnectedAt: '2026-08-31T10:00:00Z',
+    });
+    const slow = makeConn({ id: 'cfg-slow', name: 'Slow Conn', group: 'Group B' });
+    connectionsState.connections = [recent, slow];
+    connectionsState.groups = ['Group A', 'Group B'];
+    activeConnectionsState.connections = {
+      'cfg-recent': {
+        status: 'connected',
+        dbSessionId: 'session-recent',
+        connectionId: 'cfg-recent',
+      },
+    };
+
+    const onSelectConnection = vi.fn();
+    const view = render(
+      <ConnectionNavigatorTree
+        {...baseProps}
+        activeConnectionId={null}
+        onSelectConnection={onSelectConnection}
+      />,
+    );
+    const expansion = (group: string, name: string) =>
+      view.container.querySelector<HTMLButtonElement>(
+        `[data-conn-group="${group}"][data-conn-name="${name}"] button`,
+      );
+    const row = (group: string, name: string) =>
+      view.container.querySelector<HTMLElement>(
+        `[data-conn-group="${group}"][data-conn-name="${name}"]`,
+      );
+
+    await waitFor(() => expect(expansion('__recent__', 'Recent Conn')).not.toBeNull());
+    await waitFor(() =>
+      expect(expansion('__recent__', 'Recent Conn')?.getAttribute('aria-expanded')).toBe('true'),
+    );
+
+    fireEvent.click(expansion('__recent__', 'Recent Conn')!);
+    await waitFor(() =>
+      expect(expansion('__recent__', 'Recent Conn')?.getAttribute('aria-expanded')).toBe('false'),
+    );
+
+    fireEvent.click(row('Group B', 'Slow Conn')!);
+    expect(onSelectConnection).toHaveBeenCalledWith('cfg-slow');
+
+    activeConnectionsState.connections = {
+      ...activeConnectionsState.connections,
+      'cfg-slow': { status: 'connecting', connectionId: 'cfg-slow' },
+    };
+    view.rerender(
+      <ConnectionNavigatorTree
+        {...baseProps}
+        activeConnectionId="cfg-slow"
+        onSelectConnection={onSelectConnection}
+      />,
+    );
+    await waitFor(() => {
+      expect(expansion('__recent__', 'Recent Conn')?.getAttribute('aria-expanded')).toBe('false');
+      expect(expansion('Group A', 'Recent Conn')?.getAttribute('aria-expanded')).toBe('false');
+      expect(expansion('Group B', 'Slow Conn')?.getAttribute('aria-expanded')).toBeNull();
+    });
+
+    activeConnectionsState.connections = {
+      ...activeConnectionsState.connections,
+      'cfg-slow': {
+        status: 'connected',
+        dbSessionId: 'session-slow',
+        connectionId: 'cfg-slow',
+      },
+    };
+    view.rerender(
+      <ConnectionNavigatorTree
+        {...baseProps}
+        activeConnectionId="cfg-slow"
+        onSelectConnection={onSelectConnection}
+      />,
+    );
+    await waitFor(() => {
+      expect(expansion('Group B', 'Slow Conn')?.getAttribute('aria-expanded')).toBe('true');
+      expect(expansion('__recent__', 'Recent Conn')?.getAttribute('aria-expanded')).toBe('false');
+      expect(expansion('Group A', 'Recent Conn')?.getAttribute('aria-expanded')).toBe('false');
+    });
+  });
 });
 
 describe('ConnectionNavigatorTree drag & drop reordering', () => {
