@@ -66,6 +66,22 @@ export function namespaceTreeContains(tree: SqlNamespace, query: string): boolea
   return false;
 }
 
+/** Map namespace leaf segments to driver fetch path + SQL schema for table panels. */
+export function namespaceLeafContext(
+  segments: string[],
+  pathAliases: Record<string, string>,
+): { tableName: string; schema?: string; database?: string } {
+  if (segments.length === 0) return { tableName: '' };
+  const tableName = segments[segments.length - 1]!;
+  const parentSegments = segments.slice(0, -1);
+  if (parentSegments.length === 0) return { tableName };
+  const rootId = pathAliases[parentSegments[0]!] ?? parentSegments[0]!;
+  const fetchPath =
+    parentSegments.length === 1 ? rootId : [rootId, ...parentSegments.slice(1)].join('/');
+  const schema = parentSegments.length >= 2 ? parentSegments[parentSegments.length - 1] : undefined;
+  return { tableName, schema, database: fetchPath };
+}
+
 /**
  * Flatten a SqlNamespace tree into UnifiedRow entries for path-hierarchy drivers.
  * Branches become expandable namespace-node rows; leaves get their kind from tables metadata.

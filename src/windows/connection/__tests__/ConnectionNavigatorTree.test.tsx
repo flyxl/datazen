@@ -2456,7 +2456,9 @@ describe('ConnectionNavigatorTree path-hierarchy namespace trees', () => {
     // Leaf click selects; leaf context menu dispatches the mapped kind.
     // Re-query mv1: the virtual list recreates row nodes on every render.
     fireEvent.click(container.querySelector('[data-item-name="users"]')!);
-    expect(onSelectTable).toHaveBeenCalledWith('users');
+    await waitFor(() => {
+      expect(onSelectTable).toHaveBeenCalledWith('users', undefined, 'public');
+    });
 
     const mvButton = container.querySelector('[data-item-name="mv1"]')!.closest('button')!;
     fireEvent.contextMenu(mvButton);

@@ -19,7 +19,7 @@ import type { ConnectionConfig } from '../../../types';
 import type { ConnectionEntry } from '../../../stores/activeConnectionStore';
 import { LEAF_KIND_ICON } from '../schema-tree/schemaTreeCategories';
 import type { UnifiedRow } from './types';
-import { depthPadding } from './utils';
+import { depthPadding, namespaceLeafContext } from './utils';
 
 export interface NavigatorTreeRowProps {
   row: UnifiedRow;
@@ -414,7 +414,25 @@ export function NavigatorTreeRow({
             data-item-name={row.name}
             className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
             style={{ paddingLeft: depthPadding(row.depth) }}
-            onClick={() => onSelectTable(row.name)}
+            onClick={() => {
+              void (async () => {
+                onSelectConnection(row.connectionId);
+                const schemaState = useSchemaStore.getState().schemas.get(row.dbSessionId);
+                const pathAliases = schemaState?.pathAliases ?? {};
+                const { tableName, schema, database } = namespaceLeafContext(
+                  row.segments,
+                  pathAliases,
+                );
+                const parentSegments = row.segments.length > 1 ? row.segments.slice(0, -1) : [];
+                if (parentSegments.length > 0) {
+                  await ensureNamespacePath(parentSegments, row.dbSessionId);
+                }
+                if (database) {
+                  await activateDatabase(row.dbSessionId, database);
+                }
+                onSelectTable(tableName, schema, database);
+              })();
+            }}
             onContextMenu={(e) => {
               if (
                 row.leafKind === 'function' ||
@@ -424,16 +442,23 @@ export function NavigatorTreeRow({
                 handleObjectContextMenu(e, row.name);
                 return;
               }
-              const conn = connections.find((c) => c.id === row.connectionId);
+              const schemaState = useSchemaStore.getState().schemas.get(row.dbSessionId);
+              const pathAliases = schemaState?.pathAliases ?? {};
+              const { tableName, schema, database } = namespaceLeafContext(
+                row.segments,
+                pathAliases,
+              );
               const dbName =
-                conn?.database ??
-                useSchemaStore.getState().schemas.get(row.dbSessionId)?.currentDatabase ??
+                database ??
+                connections.find((c) => c.id === row.connectionId)?.database ??
+                schemaState?.currentDatabase ??
                 '';
               const relationKind =
                 row.leafKind === 'view' || row.leafKind === 'materializedView' ? 'view' : 'table';
               handleTableContextMenu(e, {
                 kind: relationKind,
-                name: row.name,
+                name: tableName,
+                schema,
                 dbName,
                 connectionId: row.connectionId,
                 dbSessionId: row.dbSessionId,
