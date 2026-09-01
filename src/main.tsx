@@ -17,23 +17,37 @@ mark('App module loaded');
 import './styles/globals.css';
 mark('CSS loaded');
 
-import { hideSplash } from './lib/splash';
+import { hideSplash, waitForStartupTask } from './lib/splash';
+import { installTauriEventUnlistenRaceWorkaround } from './lib/tauriEventCompat';
 import { bootstrapDefaultIconResolver } from './lib/bootstrapIconResolver';
 import { maybeCheckOnStartup } from './lib/updater';
 import { getWindowKind } from './lib/windowKind';
 
 bootstrapDefaultIconResolver();
+installTauriEventUnlistenRaceWorkaround();
+
+const SETTINGS_PRELOAD_TIMEOUT_MS = 3_000;
 
 async function bootstrap() {
   try {
     if ('__TAURI_INTERNALS__' in globalThis) {
       try {
-        const { useSettingsStore } = await import('./stores/settingsStore');
-        await useSettingsStore.getState().loadSettings();
-        mark('settings loaded before first paint');
-        if (getWindowKind() === 'main') {
-          const { checkForUpdatesOnStartup } = useSettingsStore.getState().settings;
-          void maybeCheckOnStartup(checkForUpdatesOnStartup);
+        const settingsPreload = import('./stores/settingsStore').then(
+          async ({ useSettingsStore }) => {
+            await useSettingsStore.getState().loadSettings();
+            mark('settings loaded before first paint');
+            if (getWindowKind() === 'main') {
+              const { checkForUpdatesOnStartup } = useSettingsStore.getState().settings;
+              void maybeCheckOnStartup(checkForUpdatesOnStartup);
+            }
+          },
+        );
+        const preloadResult = await waitForStartupTask(
+          settingsPreload,
+          SETTINGS_PRELOAD_TIMEOUT_MS,
+        );
+        if (preloadResult === 'timed-out') {
+          mark('settings preload timed out; continuing first paint');
         }
       } catch {
         mark('settings preload skipped (load failed)');

@@ -37,6 +37,48 @@ describe('主窗口 / 统一工作区 (CM-001)', () => {
     await expect(await $('[data-testid="workspace-nav-dashboard"]')).toBeDisplayed();
   });
 
+  it('启动完成后应移除 splash，并安全处理快速事件注销', async () => {
+    await browser.waitUntil(
+      async () => browser.execute(() => document.getElementById('splash') === null),
+      { timeout: 5000, timeoutMsg: 'splash was not removed after startup' },
+    );
+
+    const unlistenSucceeded = await browser.executeAsync(async (done: (ok: boolean) => void) => {
+      const tauri = window as typeof window & {
+        __TAURI_INTERNALS__?: {
+          invoke: (command: string, args: unknown) => Promise<unknown>;
+          transformCallback: (callback: (payload: unknown) => void) => number;
+        };
+        __TAURI_EVENT_PLUGIN_INTERNALS__?: {
+          unregisterListener: (event: string, eventId: number) => void;
+        };
+      };
+      const core = tauri.__TAURI_INTERNALS__;
+      const events = tauri.__TAURI_EVENT_PLUGIN_INTERNALS__;
+      if (!core || !events) {
+        done(false);
+        return;
+      }
+
+      const event = 'datazen:startup-unlisten-race';
+      try {
+        const handler = core.transformCallback(() => {});
+        const eventId = (await core.invoke('plugin:event|listen', {
+          event,
+          target: { kind: 'Any' },
+          handler,
+        })) as number;
+        events.unregisterListener(event, eventId);
+        await core.invoke('plugin:event|unlisten', { event, eventId });
+        done(true);
+      } catch {
+        done(false);
+      }
+    });
+
+    expect(unlistenSucceeded).toBe(true);
+  });
+
   it('应显示连接搜索框', async () => {
     const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await expect(input).toBeDisplayed();
