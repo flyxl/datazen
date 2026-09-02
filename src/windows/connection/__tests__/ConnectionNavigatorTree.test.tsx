@@ -1211,7 +1211,8 @@ describe('ConnectionNavigatorTree connection row interactions', () => {
     await waitFor(() => {
       expect(expansion('__recent__', 'Recent Conn')?.getAttribute('aria-expanded')).toBe('false');
       expect(expansion('Group A', 'Recent Conn')?.getAttribute('aria-expanded')).toBe('false');
-      expect(expansion('Group B', 'Slow Conn')?.getAttribute('aria-expanded')).toBeNull();
+      expect(expansion('Group B', 'Slow Conn')?.getAttribute('aria-expanded')).toBe('true');
+      expect(view.container.textContent).toContain('common.loading');
     });
 
     activeConnectionsState.connections = {

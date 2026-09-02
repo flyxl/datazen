@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import { Database } from 'lucide-react';
 import { Select } from '../ui/Select';
 import { pathHierarchySelectorSegmentsForUi } from '../../lib/queryContextPath';
@@ -51,12 +51,14 @@ function QueryContextCompactSelect({
   options,
   placeholderKey,
   disabled,
+  levelIndex,
   onChange,
 }: {
   value: string;
   options: readonly string[];
   placeholderKey: 'query.database' | 'query.catalog' | 'query.schema';
   disabled?: boolean;
+  levelIndex?: number;
   onChange: (value: string) => void;
 }) {
   const { t } = useI18n();
@@ -72,9 +74,90 @@ function QueryContextCompactSelect({
       title={placeholder}
       searchable
       fitContent
+      blurOnSelect
       listMinWidth={QUERY_CONTEXT_OPTIONS_MIN_WIDTH}
       disabled={disabled}
+      triggerDataAttrs={
+        levelIndex === undefined ? undefined : { 'data-query-context-level': String(levelIndex) }
+      }
     />
+  );
+}
+
+function PathHierarchyQueryContextSelectors({
+  namespaceTree,
+  pathAliases,
+  databases,
+  contextPath,
+  onSelectLevel,
+}: {
+  namespaceTree: import('../../lib/sqlNamespace').SqlNamespace;
+  pathAliases: Record<string, string>;
+  databases: readonly string[];
+  contextPath: readonly string[];
+  onSelectLevel: (index: number, value: string) => void;
+}) {
+  const pendingFocusLevelRef = useRef<number | null>(null);
+  const segments = pathHierarchySelectorSegmentsForUi(
+    namespaceTree,
+    pathAliases,
+    databases,
+    contextPath,
+  );
+
+  useEffect(() => {
+    const level = pendingFocusLevelRef.current;
+    if (level === null) return;
+    pendingFocusLevelRef.current = null;
+    requestAnimationFrame(() => {
+      const input = document.querySelector(
+        `[data-query-context-level="${level}"] input`,
+      ) as HTMLInputElement | null;
+      input?.focus();
+    });
+  }, [contextPath, segments]);
+
+  const handlePathLevelSelect = (index: number, value: string) => {
+    pendingFocusLevelRef.current = index + 1;
+    onSelectLevel(index, value);
+  };
+
+  return (
+    <QueryContextSelectorsShell>
+      {segments.map((segment, index) => (
+        <Fragment
+          key={
+            segment.kind === 'label'
+              ? `label-${index}-${segment.name}`
+              : `select-${segment.levelIndex}`
+          }
+        >
+          {index > 0 && (
+            <span className="px-0.5 text-[10px] text-fg-muted/70" aria-hidden="true">
+              /
+            </span>
+          )}
+          {segment.kind === 'label' ? (
+            <span
+              className="max-w-[4.5rem] truncate text-[11px] text-fg-muted"
+              title={segment.name}
+              data-testid="query-context-path-label"
+            >
+              {segment.name}
+            </span>
+          ) : (
+            <QueryContextCompactSelect
+              value={segment.value}
+              options={segment.options}
+              placeholderKey={levelLabelKey(segment.levelIndex, true)}
+              disabled={segment.options.length === 0}
+              levelIndex={segment.levelIndex}
+              onChange={(value) => handlePathLevelSelect(segment.levelIndex, value)}
+            />
+          )}
+        </Fragment>
+      ))}
+    </QueryContextSelectorsShell>
   );
 }
 
@@ -90,48 +173,14 @@ export function QueryContextSelectors({
   onSelectLevel,
 }: QueryContextSelectorsProps) {
   if (isPathHierarchy) {
-    const segments = pathHierarchySelectorSegmentsForUi(
-      namespaceTree,
-      pathAliases,
-      databases,
-      contextPath,
-    );
-
     return (
-      <QueryContextSelectorsShell>
-        {segments.map((segment, index) => (
-          <Fragment
-            key={
-              segment.kind === 'label'
-                ? `label-${index}-${segment.name}`
-                : `select-${segment.levelIndex}`
-            }
-          >
-            {index > 0 && (
-              <span className="px-0.5 text-[10px] text-fg-muted/70" aria-hidden="true">
-                /
-              </span>
-            )}
-            {segment.kind === 'label' ? (
-              <span
-                className="max-w-[4.5rem] truncate text-[11px] text-fg-muted"
-                title={segment.name}
-                data-testid="query-context-path-label"
-              >
-                {segment.name}
-              </span>
-            ) : (
-              <QueryContextCompactSelect
-                value={segment.value}
-                options={segment.options}
-                placeholderKey={levelLabelKey(segment.levelIndex, true)}
-                disabled={segment.options.length === 0}
-                onChange={(value) => onSelectLevel(segment.levelIndex, value)}
-              />
-            )}
-          </Fragment>
-        ))}
-      </QueryContextSelectorsShell>
+      <PathHierarchyQueryContextSelectors
+        namespaceTree={namespaceTree}
+        pathAliases={pathAliases}
+        databases={databases}
+        contextPath={contextPath}
+        onSelectLevel={onSelectLevel}
+      />
     );
   }
 

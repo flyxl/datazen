@@ -211,9 +211,11 @@ export function NavigatorTreeRow({
                 }
               }}
               onDoubleClick={(e) => e.stopPropagation()}
-              aria-expanded={row.status === 'connected' ? row.expanded : undefined}
+              aria-expanded={
+                row.status === 'connected' || row.status === 'connecting' ? row.expanded : undefined
+              }
             >
-              {row.status === 'connected' && row.expanded ? (
+              {(row.status === 'connected' || row.status === 'connecting') && row.expanded ? (
                 <ChevronDown className="h-3 w-3" />
               ) : (
                 <ChevronRight className="h-3 w-3" />

@@ -115,6 +115,27 @@ export function splitPathHierarchyDatabasePin(pin: string): {
   };
 }
 
+/**
+ * Connection-level database for path-hierarchy pin building.
+ * Ignores `currentDatabase` when it is a catalog/schema segment (not in `databases`).
+ */
+export function pathHierarchyConnectionRoot(
+  databases: readonly string[],
+  panelDatabase: string | undefined | null,
+  currentDatabase: string | null,
+): string | null {
+  const panelDb = panelDatabase?.trim();
+  if (panelDb && databases.includes(panelDb)) return panelDb;
+  if (currentDatabase && databases.includes(currentDatabase)) return currentDatabase;
+  if (panelDb) {
+    const { root } = splitPathHierarchyDatabasePin(panelDb);
+    if (root && (databases.length === 0 || databases.includes(root))) return root;
+  }
+  // Superset connection databases use `id:name` — never treat bare catalog names as roots.
+  if (currentDatabase?.includes(':')) return currentDatabase;
+  return databases[0] ?? null;
+}
+
 export type PathHierarchySelectorSegment =
   | { kind: 'label'; name: string }
   | { kind: 'select'; levelIndex: number; options: string[]; value: string };
@@ -177,7 +198,23 @@ export function buildPathHierarchySelectorSegments(
     }
 
     const children = namespaceBranchChildNames(namespaceTree, path);
-    if (children.length === 0) break;
+    if (children.length === 0) {
+      const nextIndex = path.length;
+      const alreadyHasNext = segments.some(
+        (segment) => segment.kind === 'select' && segment.levelIndex === nextIndex,
+      );
+      const showLoadingPlaceholder =
+        !alreadyHasNext && path.length > 0 && path.length < 2 && nextIndex <= contextPath.length;
+      if (showLoadingPlaceholder) {
+        segments.push({
+          kind: 'select',
+          levelIndex: nextIndex,
+          options: [],
+          value: contextPath[nextIndex] ?? '',
+        });
+      }
+      break;
+    }
     options = children;
   }
 

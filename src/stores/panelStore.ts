@@ -6,6 +6,7 @@ import {
   buildPathHierarchyDatabasePin,
   inferSqlRelationPath,
   namespaceRootsFrom,
+  pathHierarchyConnectionRoot,
   resolveQueryContextPath,
 } from '../lib/queryContextPath';
 import type { DatabaseType, FavoriteQuery, QueryHistoryEntry, Value } from '../types';
@@ -280,7 +281,11 @@ function panelTargetDatabase(panel: QueryPanel, sql?: string): string | null {
       }
     }
     const namespacePath = fromSql ?? panel.namespacePath ?? [];
-    const root = (panel.database?.trim() || schemaState?.currentDatabase) ?? null;
+    const root = pathHierarchyConnectionRoot(
+      databases,
+      panel.database,
+      schemaState?.currentDatabase ?? null,
+    );
     if (!root && namespacePath.length === 0) return null;
     if (!root) return namespacePath.join('/');
     return buildPathHierarchyDatabasePin(root, namespacePath);

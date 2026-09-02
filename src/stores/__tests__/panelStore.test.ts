@@ -173,7 +173,7 @@ describe('panelStore', () => {
         pathAliases: { hive: '558' },
         databases: ['558:presto_afi_data'],
       });
-      return { ...state, schemas };
+      return { schemas };
     });
     const panel: Panel = {
       ...base,
@@ -213,7 +213,7 @@ describe('panelStore', () => {
         pathAliases: { hive: '558' },
         databases: ['558:presto_afi_data'],
       });
-      return { ...state, schemas };
+      return { schemas };
     });
     const panel: Panel = {
       ...base,
@@ -233,6 +233,46 @@ describe('panelStore', () => {
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
       'sess-1',
       'SELECT * FROM hive.snap.afi_id_loan_t_afi_installment_order',
+      expect.any(Function),
+      { database: '558:presto_afi_data/hive/snap', schema: null },
+    );
+  });
+
+  it('executeQuery avoids duplicating catalog in path-hierarchy pin when currentDatabase is catalog', async () => {
+    const { DB_REGISTRY } = await import('../../lib/databaseTypes');
+    if (!Object.prototype.hasOwnProperty.call(DB_REGISTRY, 'superset')) return;
+
+    seedCurrentDatabase('sess-1', 'hive');
+    useSchemaStore.setState((state) => {
+      const schemas = new Map(state.schemas);
+      const entry = schemas.get('sess-1');
+      if (!entry) return state;
+      schemas.set('sess-1', {
+        ...entry,
+        namespaceTree: { hive: { snap: { orders: 'table' } } },
+        pathAliases: { hive: '558' },
+        databases: ['558:presto_afi_data'],
+      });
+      return { schemas };
+    });
+    const panel: Panel = {
+      ...base,
+      databaseType: 'superset',
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      namespacePath: ['hive', 'snap'],
+    };
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore
+      .getState()
+      .updateSql(panel.id, 'SELECT * FROM afi_id_loan_t_afi_installment_order');
+
+    await usePanelStore.getState().executeQuery(panel.id);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'sess-1',
+      'SELECT * FROM afi_id_loan_t_afi_installment_order',
       expect.any(Function),
       { database: '558:presto_afi_data/hive/snap', schema: null },
     );

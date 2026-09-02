@@ -25,6 +25,9 @@ export interface SelectProps {
   readonly fitContent?: boolean;
   /** Keep the option list readable when a compact trigger is used. */
   readonly listMinWidth?: number;
+  /** After picking an option, blur the trigger instead of refocusing (combobox). */
+  readonly blurOnSelect?: boolean;
+  readonly triggerDataAttrs?: Record<string, string>;
 }
 
 function filterOptions(options: readonly SelectOption[], query: string): SelectOption[] {
@@ -111,6 +114,8 @@ export function Select({
   searchable = false,
   fitContent = false,
   listMinWidth,
+  blurOnSelect = false,
+  triggerDataAttrs,
 }: SelectProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -193,12 +198,16 @@ export function Select({
       onChange(opt.value);
       handleClose();
       if (searchable) {
-        inputRef.current?.focus();
+        if (blurOnSelect) {
+          inputRef.current?.blur();
+        } else {
+          inputRef.current?.focus();
+        }
       } else {
         (triggerRef.current as HTMLButtonElement | null)?.focus();
       }
     },
-    [onChange, handleClose, searchable],
+    [onChange, handleClose, searchable, blurOnSelect],
   );
 
   useEffect(() => {
@@ -352,6 +361,7 @@ export function Select({
         <div
           ref={triggerRef as React.RefObject<HTMLDivElement>}
           title={title}
+          {...triggerDataAttrs}
           className={cn(
             triggerShellClass,
             fitContent ? 'inline-flex w-auto' : 'w-full',

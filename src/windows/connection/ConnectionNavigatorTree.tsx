@@ -186,14 +186,20 @@ export const ConnectionNavigatorTree = forwardRef<
       // A connection can be rendered in more than one section (for example
       // in both "Recent" and its persisted group). Keep only one scoped key,
       // otherwise expanding one occurrence also expands every shortcut row.
+      let pending = pendingConnectionExpansionRef.current;
+
       const validKeys = [...prev].filter((key) => {
         const { sectionGroup, connectionId } = parseConnectionExpandKey(key);
-        if (activeConnections[connectionId]?.status !== 'connected') return false;
-        return grouped.some(
+        const status = activeConnections[connectionId]?.status ?? 'idle';
+        const visibleInTree = grouped.some(
           (section) =>
             section.group === sectionGroup &&
             section.connections.some((connection) => connection.id === connectionId),
         );
+        if (!visibleInTree) return false;
+        if (status === 'connected') return true;
+        if (status === 'connecting' && pending?.connectionId === connectionId) return true;
+        return false;
       });
 
       const keepValidExpansion = () => {
@@ -206,7 +212,6 @@ export const ConnectionNavigatorTree = forwardRef<
         return prev.size > 0 ? new Set<string>() : prev;
       };
 
-      let pending = pendingConnectionExpansionRef.current;
       const activeEntry = activeConnectionId ? activeConnections[activeConnectionId] : undefined;
 
       // Connections can also be opened outside the navigator. Track an active
@@ -249,12 +254,22 @@ export const ConnectionNavigatorTree = forwardRef<
           if (section) {
             return new Set([connectionExpandKey(section.group, pending.connectionId)]);
           }
-        } else {
-          // The click has selected a real target, but its IPC has not resolved
-          // yet. Keep an existing valid expansion, if any, and never synthesize
-          // a different connection while waiting.
-          return keepValidExpansion();
+        } else if (entry?.status === 'connecting') {
+          const section =
+            grouped.find(
+              (candidate) =>
+                candidate.group === pending.sectionGroup &&
+                candidate.connections.some((connection) => connection.id === pending.connectionId),
+            ) ??
+            grouped.find((candidate) =>
+              candidate.connections.some((connection) => connection.id === pending.connectionId),
+            );
+          if (section) {
+            return new Set([connectionExpandKey(section.group, pending.connectionId)]);
+          }
         }
+
+        return keepValidExpansion();
       }
 
       if (validKeys.length > 0) {
@@ -556,9 +571,9 @@ export const ConnectionNavigatorTree = forwardRef<
   const handleConnectionClick = useCallback(
     (conn: ConnectionConfig, sectionGroup: string) => {
       const entry = activeConnections[conn.id];
+      const key = connectionExpandKey(sectionGroup, conn.id);
       if (entry?.status === 'connected') {
         pendingConnectionExpansionRef.current = null;
-        const key = connectionExpandKey(sectionGroup, conn.id);
         setExpandedConnections((prev) =>
           prev.size === 1 && prev.has(key) ? prev : new Set([key]),
         );
@@ -567,6 +582,7 @@ export const ConnectionNavigatorTree = forwardRef<
           connectionId: conn.id,
           sectionGroup,
         };
+        setExpandedConnections(new Set([key]));
       }
       onSelectConnection(conn.id);
     },
@@ -589,6 +605,7 @@ export const ConnectionNavigatorTree = forwardRef<
         connectionId: conn.id,
         sectionGroup,
       };
+      setExpandedConnections(new Set([connectionExpandKey(sectionGroup, conn.id)]));
       onSelectConnection(conn.id);
       if (status !== 'connecting') {
         void connect(conn);

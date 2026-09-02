@@ -209,6 +209,7 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
       const entry = activeConnections[conn.id];
       const status = entry?.status ?? 'idle';
       const isConnected = status === 'connected';
+      const isConnecting = status === 'connecting';
       const isExpanded =
         expandedConnections.has(connectionExpandKey(groupName, conn.id)) || !!query;
 
@@ -218,12 +219,17 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
         sectionGroup: groupName,
         isSelected: activeConnectionId === conn.id,
         status,
-        expanded: (isExpanded && isConnected) || !!query,
+        expanded: (isExpanded && (isConnected || isConnecting)) || !!query,
         depth: query ? 0 : 1,
         match: matchesById.get(conn.id)?.match ?? undefined,
       });
 
-      if (!isConnected || (!isExpanded && !query)) continue;
+      if ((!isConnected && !isConnecting) || (!isExpanded && !query)) continue;
+
+      if (isConnecting) {
+        rows.push({ type: 'db-loading', depth: 2 });
+        continue;
+      }
 
       const dbSessionId = entry!.dbSessionId!;
       const schemaData = schemas.get(dbSessionId);
