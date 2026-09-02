@@ -9,6 +9,81 @@ import { cleanupAppDataViaIpc, seedDefaultPgConnection } from './lib/testDataLif
 import { ensureMainWindowForIpc, invokeBackend } from './helpers.js';
 import { browser } from '@wdio/globals';
 
+const instanceCount = parseInt(process.env.E2E_INSTANCES || '1', 10);
+const multiInstance = instanceCount > 1;
+const ports = multiInstance
+  ? (process.env.E2E_WD_PORTS || '4445').split(',').map((p) => parseInt(p.trim(), 10))
+  : [parseInt(process.env.E2E_WD_PORT || '4445', 10)];
+const dataDirs = multiInstance
+  ? (process.env.E2E_DATA_DIRS || '').split(',').map((d) => d.trim())
+  : [process.env.DATAZEN_DATA_DIR || ''];
+
+/**
+ * One capability entry per app instance so WDIO assigns specs across workers.
+ * Connection options (hostname/port) live at the capability top level — WDIO v9
+ * merges them into each worker config (see multiremote / per-capability port docs).
+ */
+const capabilities: WebdriverIO.Capabilities[] = multiInstance
+  ? ports.map((port) => ({
+      hostname: '127.0.0.1',
+      port,
+      path: '/',
+      'wdio:maxInstances': 1,
+    }))
+  : [{}];
+
+async function runSessionBootstrap() {
+  await browser.url('tauri://localhost');
+  await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+
+  // Force language to zh-CN so all Chinese selectors work
+  await browser.executeAsync((done: (r: unknown) => void) => {
+    const inv = (window as any).__TAURI_INTERNALS__.invoke.bind(
+      (window as any).__TAURI_INTERNALS__,
+    );
+    inv('get_settings')
+      .then((settings: Record<string, unknown>) =>
+        inv('save_settings', {
+          settings: {
+            ...settings,
+            language: 'zh-CN',
+            theme:
+              settings.theme && typeof settings.theme === 'object'
+                ? { ...(settings.theme as object), mode: 'dark' }
+                : { mode: 'dark', packId: null },
+            limitSelectResults: true,
+            queryResultLimit: 1000,
+            editorFontSize: 14,
+            editorFontFamily: 'monospace',
+            confirmOnDelete: true,
+            autoCommit: true,
+            safeMode: true,
+            defaultPageSize: 50,
+          },
+        }),
+      )
+      .then(() => done(null))
+      .catch((e: unknown) => done(String(e)));
+  });
+
+  await seedDefaultPgConnection(browser);
+
+  // Reload page so the new language and seeded connections take effect
+  await browser.execute(() => location.reload());
+  await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+
+  // Expand all connection groups so items are visible
+  await browser.execute(() => {
+    document.querySelectorAll('[data-group-header]').forEach((el) => {
+      const parent = el.closest('[data-group-name]');
+      if (parent && !parent.querySelector('[data-conn-item]')) {
+        (el as HTMLElement).click();
+      }
+    });
+  });
+  await browser.pause(500);
+}
+
 export const config: WebdriverIO.Config = {
   runner: 'local',
   specs: ['./specs/**/*.ts'],
@@ -181,12 +256,16 @@ export const config: WebdriverIO.Config = {
       './specs/data-sync-real.ts',
     ],
   },
-  maxInstances: 1,
+  maxInstances: multiInstance ? instanceCount : 1,
   specFileRetries: 1,
-  capabilities: [{}],
-  hostname: '127.0.0.1',
-  port: parseInt(process.env.E2E_WD_PORT || '4445', 10),
-  path: '/',
+  capabilities,
+  ...(multiInstance
+    ? {}
+    : {
+        hostname: '127.0.0.1',
+        port: ports[0],
+        path: '/',
+      }),
   logLevel: 'warn',
   waitforTimeout: 10000,
   connectionRetryTimeout: 30000,
@@ -197,56 +276,32 @@ export const config: WebdriverIO.Config = {
     ui: 'bdd',
     timeout: 120000,
   },
+  onWorkerStart(cid, _caps, _specs, args) {
+    if (!multiInstance) return;
+    const idx = parseInt(cid.split('-')[0], 10);
+    const port = ports[idx] ?? ports[0];
+    const dataDir = dataDirs[idx] ?? dataDirs[0];
+    args.hostname = '127.0.0.1';
+    args.port = port;
+    args.path = '/';
+    if (dataDir) {
+      process.env.DATAZEN_DATA_DIR = dataDir;
+    }
+  },
+  beforeSession(_config, caps) {
+    if (!multiInstance) return;
+    const capPort =
+      typeof caps === 'object' && caps !== null && 'port' in caps
+        ? Number((caps as { port?: number }).port)
+        : NaN;
+    const idx = Number.isFinite(capPort) ? ports.indexOf(capPort) : -1;
+    const dataDir = idx >= 0 ? dataDirs[idx] : dataDirs[0];
+    if (dataDir) {
+      process.env.DATAZEN_DATA_DIR = dataDir;
+    }
+  },
   before: async function () {
-    await browser.url('tauri://localhost');
-    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
-
-    // Force language to zh-CN so all Chinese selectors work
-    await browser.executeAsync((done: (r: unknown) => void) => {
-      const inv = (window as any).__TAURI_INTERNALS__.invoke.bind(
-        (window as any).__TAURI_INTERNALS__,
-      );
-      inv('get_settings')
-        .then((settings: Record<string, unknown>) =>
-          inv('save_settings', {
-            settings: {
-              ...settings,
-              language: 'zh-CN',
-              theme:
-                settings.theme && typeof settings.theme === 'object'
-                  ? { ...(settings.theme as object), mode: 'dark' }
-                  : { mode: 'dark', packId: null },
-              limitSelectResults: true,
-              queryResultLimit: 1000,
-              editorFontSize: 14,
-              editorFontFamily: 'monospace',
-              confirmOnDelete: true,
-              autoCommit: true,
-              safeMode: true,
-              defaultPageSize: 50,
-            },
-          }),
-        )
-        .then(() => done(null))
-        .catch((e: unknown) => done(String(e)));
-    });
-
-    await seedDefaultPgConnection(browser);
-
-    // Reload page so the new language and seeded connections take effect
-    await browser.execute(() => location.reload());
-    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
-
-    // Expand all connection groups so items are visible
-    await browser.execute(() => {
-      document.querySelectorAll('[data-group-header]').forEach((el) => {
-        const parent = el.closest('[data-group-name]');
-        if (parent && !parent.querySelector('[data-conn-item]')) {
-          (el as HTMLElement).click();
-        }
-      });
-    });
-    await browser.pause(500);
+    await runSessionBootstrap();
   },
   beforeSuite: async function (suite) {
     beginJourneySuite(suite.file);

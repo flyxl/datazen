@@ -107,6 +107,32 @@ E2E_WD_PORT=4447 pnpm e2e:ci:features
 
 注意：需要为每个 job 构建独立的 webdriver binary，或共享同一个 debug build。
 
+### 单机多实例并行（同一机器）
+
+在同一台机器上启动多个 DataZen 实例，WDIO 通过多 capability 并行分配 spec：
+
+```bash
+# 3 个 app 实例（端口 4445–4447），跳过构建
+pnpm e2e:parallel
+
+# 含完整构建
+pnpm e2e:parallel:build
+
+# 自定义实例数 / 起始端口 / suite
+node e2e/run.mjs --skip-build --instances 3 --port 4445 -- --suite smoke
+```
+
+`--instances N`（默认 1，向后兼容）行为：
+
+| N | app 进程 | app-data 目录 | WebDriver 端口 |
+|---|----------|---------------|----------------|
+| 1 | 1 | `e2e/.app-data` | `E2E_WD_PORT` 或 4445 |
+| N>1 | N | `e2e/.app-data-0` … `e2e/.app-data-(N-1)` | `port`, `port+1`, … |
+
+runner 向 WDIO 注入 `E2E_INSTANCES`、`E2E_WD_PORTS`、`E2E_DATA_DIRS`；`e2e/wdio.conf.ts` 为每个端口创建 capability，各 worker 在 `before` 中独立 seed 连接与语言设置。
+
+**限制**：多实例共享同一 PostgreSQL/MySQL 测试库，DB 写入类 spec 可能偶发冲突；优先用于 core/smoke 等读多写少 suite。全量并行前建议先跑 `pnpm e2e:parallel -- --suite core` 验证稳定性。
+
 ## 插件自有测试（Host 默认不拉）
 
 **驱动相关 E2E / 单测写在对应驱动 crate，不要往 `e2e/specs/` 加驱动方言或专属 Command 用例。** 见 [AGENTS.md](../../AGENTS.md)「驱动测试落点」。

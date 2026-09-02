@@ -7,6 +7,11 @@
  *   3. Run WDIO tests (forwards extra args like --spec)
  *   4. Kill the app on exit
  *
+ * Multi-instance mode (`--instances N`, N > 1):
+ *   - Starts N app processes on consecutive ports (WD_PORT, WD_PORT+1, …)
+ *   - Isolates app data in e2e/.app-data-0 … e2e/.app-data-(N-1)
+ *   - Passes E2E_INSTANCES / E2E_WD_PORTS / E2E_DATA_DIRS to WDIO for parallel workers
+ *
  * NEVER use bare `cargo build --features webdriver` for E2E — it often produces
  * a binary that fails at runtime with: asset not found: index.html
  * because the Tauri CLI (beforeBuildCommand + asset embedding) was skipped.
@@ -89,9 +94,11 @@ const skipBuild = args.includes('--skip-build');
 const screenshotTrace = args.includes('--screenshot');
 const keepAppData = args.includes('--keep-app-data');
 const portArg = args.find((a, i) => args[i - 1] === '--port');
+const instancesArg = args.find((a, i) => args[i - 1] === '--instances');
 const WD_PORT = portArg
   ? parseInt(portArg, 10)
   : parseInt(process.env.E2E_WD_PORT || '4445', 10);
+const INSTANCE_COUNT = instancesArg ? parseInt(instancesArg, 10) : 1;
 const minimalDrivers =
   process.env.DATAZEN_DRIVERS === 'basic' || args.includes('--minimal-drivers');
 if (screenshotTrace) {
@@ -112,7 +119,9 @@ const wdioArgs = [];
       a !== '--screenshot' &&
       a !== '--keep-app-data' &&
       a !== '--port' &&
-      (args[i - 1] !== '--port') &&
+      args[i - 1] !== '--port' &&
+      a !== '--instances' &&
+      args[i - 1] !== '--instances' &&
       a !== '--',
   );
   for (let i = 0; i < filtered.length; i++) {
@@ -209,6 +218,38 @@ function assertBinaryReady(binaryPath) {
   }
 }
 
+function resolveDataDirs(count) {
+  if (count <= 1) {
+    return [path.join(ROOT, 'e2e', '.app-data')];
+  }
+  return Array.from({ length: count }, (_, i) =>
+    path.join(ROOT, 'e2e', `.app-data-${i}`),
+  );
+}
+
+function resolvePorts(basePort, count) {
+  return Array.from({ length: count }, (_, i) => basePort + i);
+}
+
+function startAppInstance({ binaryPath, dataDir, port, onOutput }) {
+  log(`Starting app instance on port ${port}: ${binaryPath}`);
+  log(`App data isolation: DATAZEN_DATA_DIR=${dataDir}`);
+  const proc = spawn(binaryPath, [], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: false,
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      DATAZEN_DATA_DIR: dataDir,
+      TAURI_WEBDRIVER_PORT: String(port),
+      E2E_WD_PORT: String(port),
+    },
+  });
+  proc.stdout.on('data', (d) => process.stdout.write(d));
+  proc.stderr.on('data', onOutput);
+  return proc;
+}
+
 // Step 1: Build
 if (!skipBuild) {
   log(`Building app with webdriver feature via Tauri CLI...`);
@@ -228,34 +269,33 @@ if (!skipBuild) {
   log('Skipping build (--skip-build). Binary MUST come from a prior Tauri webdriver build.');
 }
 
+if (!Number.isFinite(INSTANCE_COUNT) || INSTANCE_COUNT < 1) {
+  die('--instances must be a positive integer');
+}
+
 runEnvSetup();
 
 const appBinary = getAppBinaryPath();
 assertBinaryReady(appBinary);
 
-// Step 2: Start the Tauri app (webdriver plugin; port via TAURI_WEBDRIVER_PORT)
-// Isolate app data: the webdriver binary would otherwise read/write the real
-// production directory (~/Library/Application Support/com.tbeasy.datazen) and
-// connection-wiping specs would destroy real user data. Requires a binary built
-// with DATAZEN_DATA_DIR support in Store::default_app_data_dir / Store::init.
-const isolatedDataDir = path.join(ROOT, 'e2e', '.app-data');
-resetAppDataDir(isolatedDataDir, keepAppData);
-log(`Starting app: ${appBinary}`);
-log(`WebDriver port: ${WD_PORT} (TAURI_WEBDRIVER_PORT / E2E_WD_PORT)`);
-log(`App data isolation: DATAZEN_DATA_DIR=${isolatedDataDir}`);
-let sawAssetMissing = false;
-const app = spawn(appBinary, [], {
-  stdio: ['ignore', 'pipe', 'pipe'],
-  detached: false,
-  cwd: ROOT,
-  env: {
-    ...process.env,
-    DATAZEN_DATA_DIR: isolatedDataDir,
-    TAURI_WEBDRIVER_PORT: String(WD_PORT),
-    E2E_WD_PORT: String(WD_PORT),
-  },
-});
+const dataDirs = resolveDataDirs(INSTANCE_COUNT);
+const wdPorts = resolvePorts(WD_PORT, INSTANCE_COUNT);
 
+for (const dir of dataDirs) {
+  resetAppDataDir(dir, keepAppData);
+}
+
+if (INSTANCE_COUNT > 1) {
+  log(
+    `Multi-instance mode: ${INSTANCE_COUNT} app processes on ports ${wdPorts.join(', ')}`,
+  );
+} else {
+  log(`Starting app: ${appBinary}`);
+  log(`WebDriver port: ${WD_PORT} (TAURI_WEBDRIVER_PORT / E2E_WD_PORT)`);
+  log(`App data isolation: DATAZEN_DATA_DIR=${dataDirs[0]}`);
+}
+
+let sawAssetMissing = false;
 function onAppOutput(chunk) {
   const text = chunk.toString();
   process.stderr.write(chunk);
@@ -264,17 +304,28 @@ function onAppOutput(chunk) {
   }
 }
 
-app.stdout.on('data', (d) => process.stdout.write(d));
-app.stderr.on('data', onAppOutput);
+/** @type {import('node:child_process').ChildProcess[]} */
+const appProcesses = wdPorts.map((port, i) =>
+  startAppInstance({
+    binaryPath: appBinary,
+    dataDir: dataDirs[i],
+    port,
+    onOutput: onAppOutput,
+  }),
+);
 
 function cleanup() {
-  if (!app.killed) {
-    log('Stopping app...');
-    try {
-      app.kill('SIGTERM');
-    } catch {
-      /* ignore */
+  for (const proc of appProcesses) {
+    if (!proc.killed) {
+      try {
+        proc.kill('SIGTERM');
+      } catch {
+        /* ignore */
+      }
     }
+  }
+  if (appProcesses.some((p) => !p.killed)) {
+    log('Stopping app process(es)...');
   }
 }
 process.on('exit', cleanup);
@@ -288,8 +339,12 @@ process.on('SIGTERM', () => {
 });
 
 try {
-  await waitForPort(WD_PORT);
-  log(`WebDriver plugin is ready on port ${WD_PORT}.`);
+  await Promise.all(wdPorts.map((port) => waitForPort(port)));
+  if (INSTANCE_COUNT > 1) {
+    log(`All ${INSTANCE_COUNT} WebDriver plugin(s) ready on ports ${wdPorts.join(', ')}.`);
+  } else {
+    log(`WebDriver plugin is ready on port ${WD_PORT}.`);
+  }
 } catch (err) {
   console.error(err.message);
   if (sawAssetMissing) {
@@ -305,11 +360,11 @@ try {
   }
   die(
     [
-      `WebDriver port ${WD_PORT} did not open.`,
+      `WebDriver port(s) did not open: ${wdPorts.join(', ')}`,
       'Common causes:',
       '  1. Binary built WITHOUT --features webdriver',
       '  2. Used cargo build instead of `pnpm tauri build --debug --features webdriver`',
-      `  3. Another process already holds ${WD_PORT}`,
+      `  3. Another process already holds one of ${wdPorts.join(', ')}`,
       'See docs/development/e2e-testing.md',
     ].join('\n'),
   );
@@ -332,17 +387,25 @@ if (screenshotTrace) {
   log('Screenshot trace enabled (E2E_SCREENSHOT=1) → e2e/screenshots/<spec>/');
 }
 log('Running E2E tests...');
+
+const wdioEnv = {
+  ...process.env,
+  DATAZEN_DATA_DIR: dataDirs[0],
+  E2E_WD_PORT: String(WD_PORT),
+};
+if (INSTANCE_COUNT > 1) {
+  wdioEnv.E2E_INSTANCES = String(INSTANCE_COUNT);
+  wdioEnv.E2E_WD_PORTS = wdPorts.join(',');
+  wdioEnv.E2E_DATA_DIRS = dataDirs.join(',');
+}
+
 const wdio = spawn(
   'npx',
   ['wdio', 'run', 'e2e/wdio.conf.ts', ...wdioArgs],
   {
     stdio: 'inherit',
     cwd: ROOT,
-    env: {
-      ...process.env,
-      DATAZEN_DATA_DIR: isolatedDataDir,
-      E2E_WD_PORT: String(WD_PORT),
-    },
+    env: wdioEnv,
   },
 );
 
@@ -350,7 +413,7 @@ const exitCode = await new Promise((resolve) => {
   wdio.on('close', (code) => resolve(code ?? 1));
 });
 
-// Step 4: Cleanup (IPC teardown runs in wdio onComplete while app is still alive)
+// Step 4: Cleanup (IPC teardown runs in wdio after hook while app is still alive)
 cleanup();
 runEnvTeardown();
 log(exitCode === 0 ? 'All tests passed!' : `Tests failed (exit code ${exitCode})`);
