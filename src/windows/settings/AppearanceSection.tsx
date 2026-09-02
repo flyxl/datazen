@@ -4,6 +4,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { encodePluginThemePackId, parsePluginThemePackId } from '../../lib/themePackApply';
 import { useExtensionStore } from '../../stores/extensionStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import type { AppSettings } from '../../types';
 import type { ThemeMode } from '../../types/theme';
 import type { ExtensionSummary } from '../../types/extension';
 import { SectionTitle, SettingRow } from './settingsUi';
@@ -36,12 +37,21 @@ function collectThemeOptions(extensions: ExtensionSummary[]): ThemeOption[] {
     );
 }
 
-export function AppearanceSection() {
+export interface AppearanceSectionProps {
+  settings?: AppSettings;
+  onThemeChange?: (theme: AppSettings['theme']) => void;
+}
+
+export function AppearanceSection({
+  settings: draftSettings,
+  onThemeChange,
+}: AppearanceSectionProps = {}) {
   const { t } = useI18n();
   const extensions = useExtensionStore((s) => s.extensions);
   const loaded = useExtensionStore((s) => s.loaded);
-  const settings = useSettingsStore((s) => s.settings);
+  const storedSettings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
+  const settings = draftSettings ?? storedSettings;
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -57,17 +67,25 @@ export function AppearanceSection() {
     !themeOptions.some((o) => o.packId === activePackId);
 
   const handleModeChange = (mode: string) => {
-    const theme = useSettingsStore.getState().settings.theme;
-    void updateSettings({ theme: { ...theme, mode: mode as ThemeMode } }).catch((e) => {
+    const theme = { ...settings.theme, mode: mode as ThemeMode };
+    if (onThemeChange) {
+      onThemeChange(theme);
+      return;
+    }
+    void updateSettings({ theme }).catch((e) => {
       setError(e instanceof Error ? e.message : String(e));
     });
   };
 
   const handleThemeChange = async (value: string) => {
-    const theme = useSettingsStore.getState().settings.theme;
+    const theme = settings.theme;
     const packId = value === BUILTIN_PACK_VALUE ? null : value;
     if (packId === theme.packId) return;
     setError(null);
+    if (onThemeChange) {
+      onThemeChange({ ...theme, packId });
+      return;
+    }
     try {
       await updateSettings({ theme: { ...theme, packId } });
     } catch (e) {

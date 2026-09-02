@@ -129,9 +129,7 @@ async function pickSelect(testId: string, optionLabel: string) {
   const trigger = within(wrap).getAllByRole('button')[0];
   fireEvent.click(trigger);
   const list = await waitFor(() => {
-    const el = document.getElementById('dz-select-listbox');
-    if (!el) throw new Error('dz-select-listbox not open');
-    return el;
+    return screen.getByRole('listbox');
   });
   const option = Array.from(list.children).find((el) =>
     (el.textContent || '').includes(optionLabel),
@@ -296,7 +294,7 @@ describe('DataTransferWindow', () => {
     const selectWrap = within(emailRow!).getByTestId('data-transfer-target-select-extra');
     const trigger = within(selectWrap).getAllByRole('button')[0];
     fireEvent.click(trigger);
-    const list = await waitFor(() => document.getElementById('dz-select-listbox')!);
+    const list = await waitFor(() => screen.getByRole('listbox'));
     const emailOption = Array.from(list.children).find((el) =>
       (el.textContent || '').includes('email'),
     );

@@ -49,14 +49,59 @@ describe('Dialog', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it('does not close on Escape', () => {
+  it('closes on Escape', () => {
     const onClose = vi.fn();
     render(
       <Dialog open title="Escape test" onClose={onClose}>
         <p>Content</p>
       </Dialog>,
     );
-    fireEvent.keyDown(window, { key: 'Escape' });
-    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('focuses the dialog on open and restores the opener on close', () => {
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <>
+        <button type="button">Open</button>
+        <Dialog open={false} title="Focus test" onClose={onClose}>
+          <input aria-label="Dialog input" />
+        </Dialog>
+      </>,
+    );
+    const opener = screen.getByRole('button', { name: 'Open' });
+    opener.focus();
+    rerender(
+      <>
+        <button type="button">Open</button>
+        <Dialog open title="Focus test" onClose={onClose}>
+          <input aria-label="Dialog input" />
+        </Dialog>
+      </>,
+    );
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus();
+    rerender(
+      <>
+        <button type="button">Open</button>
+        <Dialog open={false} title="Focus test" onClose={onClose}>
+          <input aria-label="Dialog input" />
+        </Dialog>
+      </>,
+    );
+    expect(screen.getByRole('button', { name: 'Open' })).toHaveFocus();
+  });
+
+  it('wraps Tab focus within the dialog', () => {
+    render(
+      <Dialog open title="Tab test" onClose={() => {}} footer={<button type="button">Last</button>}>
+        <p>Content</p>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole('dialog');
+    const closeButton = screen.getByRole('button', { name: 'Close' });
+    screen.getByRole('button', { name: 'Last' }).focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(closeButton).toHaveFocus();
   });
 });

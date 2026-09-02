@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
-import { useSettingsStore } from '../../stores/settingsStore';
 import {
   checkForUpdates,
   downloadAndInstallUpdate,
@@ -9,7 +8,11 @@ import {
   type UpdateProgress,
 } from '../../lib/updater';
 
-function ToggleRow({ label, checked, onChange }: {
+function ToggleRow({
+  label,
+  checked,
+  onChange,
+}: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
@@ -36,7 +39,10 @@ function ToggleRow({ label, checked, onChange }: {
   );
 }
 
-function progressLabel(progress: UpdateProgress, t: (key: import('../../locales').TranslationKey) => string): string {
+function progressLabel(
+  progress: UpdateProgress,
+  t: (key: import('../../locales').TranslationKey) => string,
+): string {
   switch (progress.phase) {
     case 'checking':
       return t('settings.updater.checking');
@@ -63,8 +69,6 @@ export function UpdateSection({
   onCheckOnStartupChange: (v: boolean) => void;
 }) {
   const { t } = useI18n();
-  const updateSettings = useSettingsStore((s) => s.updateSettings);
-  const settings = useSettingsStore((s) => s.settings);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -115,9 +119,8 @@ export function UpdateSection({
     setBusy(false);
   }, [t]);
 
-  const handleStartupToggle = async (enabled: boolean) => {
+  const handleStartupToggle = (enabled: boolean) => {
     onCheckOnStartupChange(enabled);
-    await updateSettings({ ...settings, checkForUpdatesOnStartup: enabled });
   };
 
   if (!isUpdaterSupported()) {

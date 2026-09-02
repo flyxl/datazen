@@ -144,6 +144,7 @@ export function WorkflowPage({
   const [panels, setPanels] = useState<Panel[]>([]);
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
   const [activeStepIndex, setActiveStepIndex] = useState<number | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
 
   const [workflowsDir, setWorkflowsDir] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -315,7 +316,7 @@ export function WorkflowPage({
             const parsed = parseWorkflowYaml(p.yamlText);
             const missing = validateWorkflowFields(parsed);
             if (missing) {
-              window.alert(t('workflows.editor.invalidYamlField', { field: missing }));
+              setOperationError(t('workflows.editor.invalidYamlField', { field: missing }));
               return p;
             }
             return {
@@ -324,7 +325,7 @@ export function WorkflowPage({
               draft: yamlObjectToDraft(parsed),
             };
           } catch (e) {
-            window.alert(String(e));
+            setOperationError(t('workflows.editor.parseError', { error: String(e) }));
             return p;
           }
         }),
@@ -402,7 +403,7 @@ export function WorkflowPage({
       setPanels((prev) => prev.filter((p) => !(p.type === 'run' && p.workflowId === workflowId)));
       void loadWorkflows();
     } catch (e) {
-      window.alert(String(e));
+      setOperationError(t('workflows.operationFailed', { error: String(e) }));
     }
   };
 
@@ -577,7 +578,7 @@ export function WorkflowPage({
           openDashboardWindow(created.dashboard.id, created.dashboard.name);
         }
       } catch (e) {
-        window.alert(String(e));
+        setOperationError(t('workflows.operationFailed', { error: String(e) }));
       }
     },
     [activePanel, embedded, onOpenDashboardInShell, t],
@@ -698,6 +699,23 @@ export function WorkflowPage({
             >
               {feedback}
             </p>
+          )}
+          {operationError && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 border-b border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300"
+            >
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 flex-1 break-words">{operationError}</span>
+              <button
+                type="button"
+                className="shrink-0 rounded px-1 text-red-200 hover:bg-red-500/20"
+                aria-label={t('common.close')}
+                onClick={() => setOperationError(null)}
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </div>
           )}
 
           <div className="flex-1 overflow-y-auto">

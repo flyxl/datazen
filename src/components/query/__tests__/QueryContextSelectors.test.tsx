@@ -26,6 +26,6 @@ describe('QueryContextSelectors', () => {
     const host = screen.getByTestId('query-context-selectors');
     expect(host).toHaveClass('min-w-0');
     expect(host).not.toHaveClass('min-w-[9rem]');
-    expect(screen.getByRole('textbox').parentElement).toHaveClass('!max-w-[7rem]');
+    expect(screen.getByRole('combobox').parentElement).toHaveClass('!max-w-[7rem]');
   });
 });

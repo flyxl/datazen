@@ -27,6 +27,41 @@ const CRITICAL_KEYS: TranslationKey[] = [
   'main.searchPlaceholder',
 ];
 
+const UI_POLISH_KEYS: TranslationKey[] = [
+  'common.dismiss',
+  'common.discard',
+  'common.operationFailed',
+  'nav.modeRail',
+  'settings.logLevel.trace',
+  'settings.logLevel.debug',
+  'settings.logLevel.info',
+  'settings.logLevel.warn',
+  'settings.logLevel.error',
+  'settings.unsavedChangesTitle',
+  'settings.unsavedChangesMessage',
+  'settings.saveChanges',
+  'settings.discardChanges',
+  'dataTable.loading',
+  'dataTable.empty',
+  'dataTable.emptyHint',
+  'dataTable.tableLabel',
+  'workflows.editor.invalidYaml',
+  'workflows.editor.parseError',
+  'workflows.operationFailed',
+  'select.noMatches',
+  'select.toggleOptions',
+  'errorBoundary.title',
+  'errorBoundary.message',
+  'errorBoundary.dismiss',
+  'errorBoundary.reload',
+  'panel.tabListLabel',
+  'panel.closeTab',
+  'permissions.contextConnections',
+  'permissions.commandInvoke',
+  'permissions.storageLocal',
+  'permissions.uiNotify',
+];
+
 describe('locales', () => {
   it('always exposes en as a built-in locale (fallback invariant)', () => {
     // en is the unconditional fallback dictionary; no generated/build issue
@@ -126,6 +161,24 @@ describe('locales', () => {
         expect(text).not.toBe(key);
       }
     }
+  });
+
+  it('resolves the v0.1.2 UI polish contract for the shipping locales', () => {
+    for (const locale of ['en', 'zh-CN'] as const) {
+      for (const key of UI_POLISH_KEYS) {
+        const text = getTranslation(locale, key);
+        expect(text.length, `${locale}:${key}`).toBeGreaterThan(0);
+        expect(text, `${locale}:${key}`).not.toBe(key);
+      }
+    }
+  });
+
+  it('interpolates UI polish labels that include context', () => {
+    expect(getTranslation('en', 'panel.closeTab', { title: 'Query' })).toBe('Close Query');
+    expect(getTranslation('zh-CN', 'panel.closeTab', { title: '查询' })).toBe('关闭 查询');
+    expect(
+      getTranslation('en', 'workflows.editor.parseError', { error: 'unexpected token' }),
+    ).toContain('unexpected token');
   });
 
   it('zh-CN and en differ on at least some user-facing strings', () => {

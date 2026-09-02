@@ -16,12 +16,31 @@
 | `v01x-ai-actions` | Explain/Fix SQL/Retry 快捷动作上下文 | 已完成 | bbd7c4cc | 9b8e7bda |
 | `v01x-page-integration` | 共享页面、DataTable、QueryPanel 和 i18n 最终接线 | 已完成 | 739a9453 | cc20c6ac |
 
+## v0.1.2 UI Polish 波次
+
+| 轨道 | 范围 | 状态 | 编码 commit | 测试 commit |
+|---|---|---|---|---|
+| `v012-i18n-contract` | 新增 UI polish 文案 key 契约 | 已完成 | c5c9f0e22 + 382f91ddf | 主线定向复验 |
+| `v012-dialog-errorboundary` | Dialog 无障碍与 ErrorBoundary i18n | 已完成 | 55934d2e7 + a554c243a | 主线定向复验 |
+| `v012-settings-dirty` | Settings dirty/save/离开保护 | 已完成（主线复验） | c11ab2e73 + 17981b0c6 | 主线定向复验 |
+| `v012-navigation-controls` | PanelTabBar、Select、MenuBar、WindowControls 无障碍 | 已完成（主线定向复验） | 70d798790 + 9491aab2e | 720d8f764 + 主线 R |
+| `v012-datatable-workflow` | DataTable 空/加载状态与 Workflow alert/i18n | 已完成（主线复验） | b05d6fb00 | 51608b1e5 |
+| `v012-accent-sweep` | accent token、permission labels、残留 UI 文案清理 | 已完成（主线定向复验） | bbfe73f55 | 主线定向复验 |
+
 ## 合并规则
 
 - 编码代理和测试代理必须是不同的全新实例。
 - 编码代理只在自己的 worktree 修改功能代码和本轨进度；测试代理只验证和写本轨 bugs/progress。
 - 共享页面、locale、panelStore 接线由协调者在轨道闭环后处理。
 - 轨道测试闭环后，协调者合并并运行 `tsc --noEmit`、定向 Vitest 和 Rust 单测。
+
+## v0.1.2 UI Polish R 回归记录（2026-09-02）
+
+- Host Vitest：285 个文件，2351/2351 通过。
+- Driver UI Vitest：14 个文件，84/84 通过。
+- `tsc --noEmit`：通过。
+- 真实桌面 WebDriver E2E：留待具备 Tauri webdriver 与完整数据库 fixture 的环境执行；本轮不声称通过。
+- Navigation 轨道曾在多文件并行 Vitest 组合运行中出现 Select portal 偶发未取得；四个目标文件分别复跑 11/11 通过，随后主线全量单进程 2351/2351 通过，未复现。
 
 ## 当前风险
 

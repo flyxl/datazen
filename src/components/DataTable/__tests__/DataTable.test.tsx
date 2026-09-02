@@ -122,6 +122,20 @@ describe('DataTable', () => {
     expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument();
   });
 
+  it('shows an accessible loading state in the table viewport', () => {
+    const { getByRole } = render(<DataTable columns={COLS} rows={[]} loading />);
+
+    expect(getByRole('status')).toHaveTextContent('dataTable.loading');
+  });
+
+  it('shows an accessible empty state when there are no rows', () => {
+    const { getByRole, getByText } = render(<DataTable columns={COLS} rows={[]} />);
+
+    expect(getByRole('status')).toBeInTheDocument();
+    expect(getByText('dataTable.empty')).toBeInTheDocument();
+    expect(getByText('dataTable.emptyHint')).toBeInTheDocument();
+  });
+
   it('threads loading to the expanded filter editor', () => {
     const filter = { column: 'name', operator: 'eq' as const, value: 'Alice' };
     const { getByTestId } = render(
@@ -225,12 +239,7 @@ describe('DataTable', () => {
     await waitFor(() => expect(showNativeContextMenu).toHaveBeenCalled());
     const menuItems = showNativeContextMenu.mock.calls[0]![0] as ContextMenuTestItem[];
     const itemIds = menuItems.filter((i) => i.kind === 'item').map((i) => i.id);
-    expect(itemIds).toEqual([
-      'copy',
-      'copy-row',
-      'filter-by-value',
-      'export',
-    ]);
+    expect(itemIds).toEqual(['copy', 'copy-row', 'filter-by-value', 'export']);
     expect(itemIds).not.toContain('set-null');
     const more = menuItems.find((i) => i.kind === 'submenu');
     expect(more?.id).toBe('more-actions');
@@ -288,12 +297,7 @@ describe('DataTable', () => {
   it('keeps filter unavailable in the context menu while loading', async () => {
     const onAddFilter = vi.fn();
     const { container } = render(
-      <DataTable
-        columns={COLS}
-        rows={rows}
-        onAddFilter={onAddFilter}
-        loading
-      />,
+      <DataTable columns={COLS} rows={rows} onAddFilter={onAddFilter} loading />,
     );
     fireEvent.contextMenu(container.querySelector('[data-dt-row="0"][data-dt-col="name"]')!, {
       clientX: 10,

@@ -183,6 +183,7 @@ async function handleMenuAction(id: string) {
  * (Settings lives under File because there is no app menu on Windows).
  */
 export function MenuBar() {
+  const { t } = useI18n();
   const platform = usePlatform();
   const isMac = platform === 'macos';
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -192,12 +193,29 @@ export function MenuBar() {
   // Don't render on macOS (native menu bar is used)
   if (isMac) return null;
 
+  const navigateMenu = (menuId: string, direction: 1 | -1) => {
+    const index = menus.findIndex((menu) => menu.id === menuId);
+    if (index < 0) return;
+    const nextIndex = (index + direction + menus.length) % menus.length;
+    setOpenMenu(menus[nextIndex].id);
+    barRef.current
+      ?.querySelectorAll<HTMLButtonElement>('[data-menu-button]')
+      .item(nextIndex)
+      ?.focus();
+  };
+
   return (
-    <div ref={barRef} className="flex items-center gap-0.5">
-      {menus.map((menu) => (
+    <div
+      ref={barRef}
+      role="menubar"
+      aria-label={t('menu.appName')}
+      className="flex items-center gap-0.5"
+    >
+      {menus.map((menu, index) => (
         <MenuButton
           key={menu.id}
           menu={menu}
+          menuIndex={index}
           isOpen={openMenu === menu.id}
           onOpen={() => setOpenMenu(menu.id)}
           onClose={() => setOpenMenu(null)}
@@ -205,6 +223,7 @@ export function MenuBar() {
             if (openMenu) setOpenMenu(menu.id);
           }}
           barRef={barRef}
+          onNavigate={navigateMenu}
         />
       ))}
     </div>
@@ -213,14 +232,24 @@ export function MenuBar() {
 
 interface MenuButtonProps {
   menu: Menu;
+  menuIndex: number;
   isOpen: boolean;
   onOpen: () => void;
   onClose: () => void;
   onHover: () => void;
   barRef: React.RefObject<HTMLDivElement | null>;
+  onNavigate: (menuId: string, direction: 1 | -1) => void;
 }
 
-function MenuButton({ menu, isOpen, onOpen, onClose, onHover }: MenuButtonProps) {
+function MenuButton({
+  menu,
+  menuIndex,
+  isOpen,
+  onOpen,
+  onClose,
+  onHover,
+  onNavigate,
+}: MenuButtonProps) {
   const btnRef = useRef<HTMLButtonElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
@@ -254,16 +283,74 @@ function MenuButton({ menu, isOpen, onOpen, onClose, onHover }: MenuButtonProps)
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, handleClickOutside]);
 
+  useEffect(() => {
+    if (!isOpen || !dropRef.current) return;
+    const firstItem = dropRef.current.querySelector<HTMLButtonElement>('[role^="menuitem"]');
+    firstItem?.focus();
+  }, [isOpen, pos]);
+
+  const handleButtonKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      onNavigate(menu.id, event.key === 'ArrowRight' ? 1 : -1);
+      return;
+    }
+    if (event.key === 'Escape' && isOpen) {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      if (isOpen) {
+        dropRef.current?.querySelector<HTMLButtonElement>('[role^="menuitem"]')?.focus();
+      } else {
+        onOpen();
+      }
+    }
+  };
+
+  const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      onClose();
+      btnRef.current?.focus();
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const currentMenu = event.currentTarget;
+    const items = Array.from(currentMenu.querySelectorAll<HTMLButtonElement>('button')).filter(
+      (button) => button.closest('[role="menu"]') === currentMenu,
+    );
+    const currentIndex = items.indexOf(event.target as HTMLButtonElement);
+    if (items.length === 0 || currentIndex < 0) return;
+    event.preventDefault();
+    const nextIndex =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? items.length - 1
+          : (currentIndex + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[nextIndex]?.focus();
+  };
+
   return (
     <>
       <button
         ref={btnRef}
         type="button"
+        role="menuitem"
+        data-menu-button
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        aria-controls={`menu-${menu.id}-popup`}
+        tabIndex={menuIndex === 0 ? 0 : -1}
         onClick={() => {
           if (isOpen) onClose();
           else onOpen();
         }}
         onMouseEnter={onHover}
+        onKeyDown={handleButtonKeyDown}
         className={cn(
           'rounded px-2 py-0.5 text-xs transition-colors',
           isOpen
@@ -278,6 +365,11 @@ function MenuButton({ menu, isOpen, onOpen, onClose, onHover }: MenuButtonProps)
         createPortal(
           <div
             ref={dropRef}
+            id={`menu-${menu.id}-popup`}
+            role="menu"
+            aria-label={menu.label}
+            tabIndex={-1}
+            onKeyDown={handleMenuKeyDown}
             className="fixed z-[9999] min-w-[200px] rounded-lg border border-edge bg-surface-alt py-1 shadow-xl"
             style={{ left: pos.x, top: pos.y }}
           >
@@ -294,9 +386,17 @@ function MenuButton({ menu, isOpen, onOpen, onClose, onHover }: MenuButtonProps)
 function MenuEntry({ item, onClose }: { item: MenuItem; onClose: () => void }) {
   const [open, setOpen] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
+  const submenuRef = useRef<HTMLDivElement>(null);
+  const openByKeyboard = useRef(false);
+
+  useEffect(() => {
+    if (!open || !openByKeyboard.current) return;
+    submenuRef.current?.querySelector<HTMLButtonElement>('[role^="menuitem"]')?.focus();
+    openByKeyboard.current = false;
+  }, [open]);
 
   if (item.separator) {
-    return <div className="my-1 h-px bg-edge" />;
+    return <div role="separator" className="my-1 h-px bg-edge" />;
   }
 
   if (item.children?.length) {
@@ -309,6 +409,21 @@ function MenuEntry({ item, onClose }: { item: MenuItem; onClose: () => void }) {
       >
         <button
           type="button"
+          role="menuitem"
+          aria-label={item.label}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowRight' || event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              openByKeyboard.current = true;
+              setOpen(true);
+            }
+            if (event.key === 'ArrowLeft') {
+              event.preventDefault();
+              setOpen(false);
+            }
+          }}
           className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[13px] text-fg-secondary transition-colors hover:bg-surface-raised hover:text-fg"
         >
           <span>{item.label}</span>
@@ -316,9 +431,11 @@ function MenuEntry({ item, onClose }: { item: MenuItem; onClose: () => void }) {
         </button>
         {open && (
           <div className="absolute top-0 left-full z-[10000] min-w-[200px] rounded-lg border border-edge bg-surface-alt py-1 shadow-xl">
-            {item.children.map((child) => (
-              <MenuEntry key={child.id} item={child} onClose={onClose} />
-            ))}
+            <div ref={submenuRef} role="menu" aria-label={item.label}>
+              {item.children.map((child) => (
+                <MenuEntry key={child.id} item={child} onClose={onClose} />
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -328,6 +445,8 @@ function MenuEntry({ item, onClose }: { item: MenuItem; onClose: () => void }) {
   return (
     <button
       type="button"
+      role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
+      aria-checked={item.checked}
       className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[13px] text-fg-secondary transition-colors hover:bg-surface-raised hover:text-fg"
       onClick={() => {
         void handleMenuAction(item.id);
@@ -336,7 +455,7 @@ function MenuEntry({ item, onClose }: { item: MenuItem; onClose: () => void }) {
     >
       <span className="flex items-center gap-2">
         {item.checked !== undefined && (
-          <span className="w-4 text-center text-blue-500">{item.checked ? '✓' : ''}</span>
+          <span className="w-4 text-center text-accent">{item.checked ? '✓' : ''}</span>
         )}
         {item.label}
       </span>

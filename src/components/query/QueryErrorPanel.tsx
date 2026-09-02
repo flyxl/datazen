@@ -75,7 +75,7 @@ export function QueryErrorPanel({
             <button
               type="button"
               data-testid="query-explain-error"
-              className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-blue-400 hover:bg-blue-500/10"
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-accent hover:bg-accent/10"
               onClick={explain}
             >
               {onExplain ? <Lightbulb className="h-3 w-3" /> : <Stethoscope className="h-3 w-3" />}
@@ -86,7 +86,7 @@ export function QueryErrorPanel({
             <button
               type="button"
               data-testid="query-fix-sql"
-              className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-blue-400 hover:bg-blue-500/10"
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-accent hover:bg-accent/10"
               onClick={onFixSql}
             >
               <Wand2 className="h-3 w-3" />
@@ -97,7 +97,7 @@ export function QueryErrorPanel({
             <button
               type="button"
               data-testid="query-retry"
-              className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-blue-400 hover:bg-blue-500/10"
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-accent hover:bg-accent/10"
               onClick={onRetry}
             >
               <RotateCcw className="h-3 w-3" />
