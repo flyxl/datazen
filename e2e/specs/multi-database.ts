@@ -251,10 +251,11 @@ for (const drv of drivers) {
       await openQueryTab();
       await browser.pause(1000);
 
-      const selector = await $('button[aria-haspopup="listbox"]');
+      const selectorHost = await $('[data-testid="query-context-selectors"]');
+      const selector = await selectorHost.$('input[aria-haspopup="listbox"]');
       await expect(selector).toBeDisplayed();
 
-      const selectorText = (await selector.getText()).trim();
+      const selectorText = (await selector.getValue()).trim();
       expect(selectorText.length).toBeGreaterThan(0);
       expect(dbNames.some((n) => selectorText.includes(n))).toBe(true);
     });

@@ -168,7 +168,7 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
 
     await openSettingsInMainWindow('ai');
 
-    const openCtx = await $('button*=打开上下文目录');
+    const openCtx = await $('button[aria-label="打开上下文目录"]');
     await openCtx.waitForDisplayed({ timeout: 10000 });
     await openCtx.click();
     await browser.pause(500);

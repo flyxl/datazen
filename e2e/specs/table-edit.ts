@@ -12,6 +12,7 @@ import {
   confirmWebDialog,
   waitForNewQueryButton,
   waitForTableInSidebar,
+  setSafeMode,
 } from '../helpers.js';
 
 /**
@@ -46,6 +47,7 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
+    await setSafeMode(false);
     await connectSeededPgInWorkspace();
     await waitForNewQueryButton(20000);
     await browser.pause(1500);
@@ -82,6 +84,7 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
     } catch {
       // best-effort cleanup
     }
+    await setSafeMode(true);
     await closeExtraWindows(mainWindow);
   });
 

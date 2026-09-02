@@ -325,7 +325,7 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
 
     const detail = await invokeBackend<any>('workflow_get', { workflowId: 'e2e-simple-query' });
     expect(detail.steps[0].database).toBe('mydb');
-    expect(detail.steps[1].database).toBeUndefined();
+    expect(detail.steps[1].database).toBeNull();
   });
 
   // ── SW-05: Condition Step Execution ─────────────────────────────
