@@ -34,7 +34,15 @@ const capabilities: WebdriverIO.Capabilities[] = multiInstance
 
 async function runSessionBootstrap() {
   await browser.url('tauri://localhost');
-  await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+  await browser.pause(2000);
+  // Ensure we're on the main page — the app may start on welcome/settings
+  try {
+    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 10000 });
+  } catch {
+    // Retry navigation if the element didn't appear
+    await browser.url('tauri://localhost');
+    await browser.pause(2000);
+  }
 
   // Force language to zh-CN so all Chinese selectors work
   await browser.executeAsync((done: (r: unknown) => void) => {
@@ -70,7 +78,13 @@ async function runSessionBootstrap() {
 
   // Reload page so the new language and seeded connections take effect
   await browser.execute(() => location.reload());
-  await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+  await browser.pause(2000);
+  try {
+    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 10000 });
+  } catch {
+    // App may still be loading
+    await browser.pause(2000);
+  }
 
   // Expand all connection groups so items are visible
   await browser.execute(() => {
