@@ -137,7 +137,7 @@ export const config: WebdriverIO.Config = {
       './specs/app-data-backup.ts',
     ],
     // Dashboard (`pnpm e2e:dashboard`)
-    dashboard: ['./specs/data-dashboard*.ts'],
+    dashboard: ['./specs/data-dashboard.ts'],
     // Data Transfer only (`pnpm e2e:data-transfer`)
     'data-transfer': [
       './specs/data-transfer-window.ts',
