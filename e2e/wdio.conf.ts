@@ -274,27 +274,26 @@ export const config: WebdriverIO.Config = {
   },
   beforeSuite: async function (suite) {
     beginJourneySuite(suite.file);
+    // Same Tauri process is reused across spec files; close leftover sub-windows
+    // so Host specs do not attach to a previous MultiDb / SQLite session.
     try {
+      await browser.url('tauri://localhost');
+      await browser.pause(400);
       const handles = await browser.getWindowHandles();
-      if (handles.length > 1) {
-        // Only close sub-windows when there are leftover ones
-        await browser.url('tauri://localhost');
-        await browser.pause(200);
-        const main = handles[0];
-        for (const h of handles) {
-          if (h === main) continue;
-          try {
-            await browser.switchToWindow(h);
-            await browser.closeWindow();
-          } catch {
-            /* ignore */
-          }
+      const main = handles[0];
+      for (const h of handles) {
+        if (h === main) continue;
+        try {
+          await browser.switchToWindow(h);
+          await browser.closeWindow();
+        } catch {
+          /* ignore */
         }
-        if (main) await browser.switchToWindow(main);
       }
+      if (main) await browser.switchToWindow(main);
       await ensureMainWindowForIpc();
       await invokeBackend('get_settings');
-      await browser.pause(300);
+      await browser.pause(600);
     } catch {
       /* ignore */
     }
