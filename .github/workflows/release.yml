@@ -272,7 +272,10 @@ jobs:
           $version = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
           $label = "${{ matrix.os_label }}${{ matrix.variant_suffix }}"
           New-Item -ItemType Directory -Path "artifacts" -Force | Out-Null
-          $archive = Join-Path "artifacts" "DataZen_${version}-portable-${label}.zip"
+          # Put the OS immediately after the product name so GitHub's
+          # lexicographic asset sorting keeps every OS together. Keep the
+          # detailed label at the end for compatibility with existing links.
+          $archive = Join-Path "artifacts" "DataZen-windows-${version}-portable-${label}.zip"
           Compress-Archive -Path (Join-Path $stageDir "*") -DestinationPath $archive -CompressionLevel Optimal -Force
           Write-Host "Created portable archive: $archive"
 
@@ -281,6 +284,8 @@ jobs:
         run: |
           BUNDLE_DIR="target/${{ matrix.target }}/release/bundle"
           LABEL="${{ matrix.os_label }}${{ matrix.variant_suffix }}"
+          OS_GROUP="${{ matrix.os_label }}"
+          OS_GROUP="${OS_GROUP%%-*}"
           mkdir -p artifacts
 
           shopt -s nullglob
@@ -323,6 +328,10 @@ jobs:
               ext="${base##*.}"
               newname="${stem}-${LABEL}.${ext}"
             fi
+            # GitHub sorts release assets by name. Prefixing the OS group
+            # keeps Linux, macOS and Windows assets together regardless of
+            # architecture or release variant.
+            newname="${OS_GROUP}-${newname}"
             cp "$file" "artifacts/$newname"
           done
           ls -la artifacts/ || true
@@ -360,7 +369,7 @@ jobs:
 
             ### Windows
             - **NSIS 安装包**：运行 `.exe` 并按提示安装。
-            - **Portable**：解压 `*-portable-windows-x64*.zip`，直接运行 `DataZen.exe`，无需安装。
+            - **Portable**：解压 `*-windows-*-portable-windows-x64*.zip`，直接运行 `DataZen.exe`，无需安装。
 
             ### Linux (x86_64)
             - **AppImage**：`chmod +x *.AppImage` 后直接运行（部分发行版需安装 `libfuse2`）
@@ -446,7 +455,7 @@ jobs:
               *.sig|latest.json) continue ;;
             esac
             case "$base" in
-              *-macos-arm64.dmg|*-macos-x64.dmg|*-windows-x64.exe|*-portable-windows-x64.zip|*-linux-x64.deb|*-linux-x64.rpm|*-linux-x64.AppImage)
+              *-macos-arm64.dmg|*-macos-x64.dmg|*-windows-x64.exe|*-windows-*-portable-windows-x64.zip|*-linux-x64.deb|*-linux-x64.rpm|*-linux-x64.AppImage)
                 sha=$(sha256sum "$f" | awk '{print $1}')
                 echo "| \`$base\` | \`$sha\` |" >> checksums.md
                 found=$((found + 1))
