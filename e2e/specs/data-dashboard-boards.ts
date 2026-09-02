@@ -17,7 +17,7 @@ describe('数据看板面板 (UJ-02, UJ-08)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await browser.pause(1000);
+    await browser.pause(300);
     await cleanupDashboard(BOARD_A);
     await cleanupDashboard(BOARD_B);
     await createEmptyDashboard(BOARD_A, 'E2E Board A');

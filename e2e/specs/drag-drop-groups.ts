@@ -220,7 +220,7 @@ describe('连接分组中的 HTML5 拖拽排序 (DND)', () => {
     await browser.execute(() => location.reload());
     await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
     await expandAllGroups();
-    await browser.pause(1500);
+    await browser.pause(300);
   });
 
   after(async () => {
@@ -233,7 +233,6 @@ describe('连接分组中的 HTML5 拖拽排序 (DND)', () => {
       await invokeBackend('save_groups', { groups: groups.filter((g) => g !== GROUP_A && g !== GROUP_B) });
     } catch { /* best-effort cleanup */ }
     await browser.execute(() => location.reload());
-    await browser.pause(1000);
   });
 
   it('DND-001: 测试分组和连接已创建', async () => {

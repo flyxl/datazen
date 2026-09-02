@@ -35,7 +35,7 @@ describe('Internationalization (I18N-001~I18N-010)', () => {
   let originalSettings: AppSettings;
 
   before(async () => {
-    await browser.pause(2000);
+    await browser.pause(300);
     originalSettings = await invokeBackend<AppSettings>('get_settings');
   });
 
@@ -57,7 +57,7 @@ describe('Internationalization (I18N-001~I18N-010)', () => {
     });
     await browser.pause(500);
     await browser.refresh();
-    await browser.pause(2000);
+    await browser.pause(300);
 
     const body = await $('body');
     const text = await body.getText();
@@ -72,7 +72,7 @@ describe('Internationalization (I18N-001~I18N-010)', () => {
     });
     await browser.pause(500);
     await browser.refresh();
-    await browser.pause(2000);
+    await browser.pause(300);
 
     const body = await $('body');
     const text = await body.getText();
@@ -113,7 +113,7 @@ describe('Internationalization (I18N-001~I18N-010)', () => {
     });
     await browser.pause(500);
     await browser.refresh();
-    await browser.pause(2000);
+    await browser.pause(300);
 
     const searchInput = await $('input[type="text"]');
     if (await searchInput.isExisting()) {
@@ -207,7 +207,7 @@ describe('System Menu (MENU-001~MENU-005)', () => {
     });
     await browser.pause(500);
     await browser.refresh();
-    await browser.pause(2000);
+    await browser.pause(300);
   });
 
   it('MENU-001: menu events should be accessible via Tauri internals', async () => {
@@ -250,7 +250,7 @@ describe('System Menu (MENU-001~MENU-005)', () => {
         })
         .catch(() => {});
     });
-    await browser.pause(1000);
+    await browser.pause(300);
     await expect(await $('[data-testid="new-connection-dialog"]')).toBeDisplayed();
   });
 });

@@ -200,7 +200,10 @@ async function expandConnection(connName: string) {
       }
     }
   }, connName);
-  await browser.pause(2000);
+  await browser.waitUntil(async () => (await $$('[data-tree-node="db"]')).length > 0, {
+    timeout: 10000,
+    timeoutMsg: '等待数据库节点展开超时',
+  });
 }
 
 /** Expand a database node in the navigator tree. */
@@ -214,7 +217,10 @@ async function expandDb(dbName: string) {
       }
     }
   }, dbName);
-  await browser.pause(1500);
+  await browser.waitUntil(async () => (await $$('[data-tree-node="schema"]')).length > 0, {
+    timeout: 10000,
+    timeoutMsg: '等待 schema 节点展开超时',
+  });
 }
 
 /** Expand a schema node. */
@@ -228,7 +234,10 @@ async function expandSchema(schemaName: string) {
       }
     }
   }, schemaName);
-  await browser.pause(1000);
+  await browser.waitUntil(async () => (await $$('[data-tree-node="category"]')).length > 0, {
+    timeout: 10000,
+    timeoutMsg: '等待分类节点展开超时',
+  });
 }
 
 /** Expand a category node (tables, views, etc). */
@@ -242,7 +251,12 @@ async function expandCategory(catId: string) {
       }
     }
   }, catId);
-  await browser.pause(1000);
+  await browser.waitUntil(
+    async () =>
+      (await $$('[data-tree-node="table"]')).length > 0 ||
+      (await $$('[data-tree-node="view"]')).length > 0,
+    { timeout: 10000, timeoutMsg: '等待表/视图节点展开超时' },
+  );
 }
 
 describe('导航树上下文菜单 (Navigator Context Menu)', () => {
@@ -252,14 +266,16 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
-    await browser.pause(1500);
     pgDbSessionId = await invokeBackend<string>('connect', { connectionId: SEEDED_CONN_ID });
 
     await openQueryTab();
     await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
     await executeSQL(`CREATE TABLE ${TEST_TABLE} (id SERIAL PRIMARY KEY, name TEXT NOT NULL)`);
     await executeSQL(`INSERT INTO ${TEST_TABLE}(name) VALUES ('test_ctx_row')`);
-    await browser.pause(1000);
+    await browser.waitUntil(async () => pgTableExists(pgDbSessionId, TEST_TABLE), {
+      timeout: 10000,
+      timeoutMsg: '等待测试表创建完成',
+    });
     expect(await pgTableExists(pgDbSessionId, TEST_TABLE)).toBe(true);
   });
 
@@ -326,7 +342,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       const dbNodes = await $$('[data-tree-node="db"]');
       if (dbNodes.length === 0) {
         await expandConnection('PostgreSQL');
-        await browser.pause(2000);
+        await browser.waitUntil(async () => (await $$('[data-tree-node="db"]')).length > 0, {
+          timeout: 10000,
+          timeoutMsg: '等待数据库节点出现',
+        });
       }
     });
 
@@ -364,7 +383,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
 
       await rightClick('[data-tree-node="db"]');
       await clickMenuItemById('new-query');
-      await browser.pause(1000);
+      await browser.waitUntil(async () => (await $('body').getText()).includes('SELECT'), {
+        timeout: 10000,
+        timeoutMsg: '等待新建查询标签页打开',
+      });
 
       const bodyText = await $('body').getText();
       expect(bodyText).toContain('SELECT');
@@ -373,7 +395,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
     it('NCM-013: 刷新应不报错', async () => {
       await rightClick('[data-tree-node="db"]');
       await clickMenuItem(t('connWin.refresh'));
-      await browser.pause(2000);
+      await browser.waitUntil(async () => (await $$('[data-tree-node="db"]')).length > 0, {
+        timeout: 10000,
+        timeoutMsg: '刷新后数据库节点未出现',
+      });
 
       const dbNodes = await $$('[data-tree-node="db"]');
       expect(dbNodes.length).toBeGreaterThan(0);
@@ -390,7 +415,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
         if (dbNodes.length > 0) {
           await expandDb('');
         }
-        await browser.pause(2000);
+        await browser.waitUntil(async () => (await $$('[data-tree-node="schema"]')).length > 0, {
+          timeout: 10000,
+          timeoutMsg: '等待 schema 节点出现',
+        });
       }
     });
 
@@ -447,7 +475,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       expect(await pgSchemaExists(pgDbSessionId, DROP_SCHEMA)).toBe(true);
       await rightClick('[data-tree-node="db"]');
       await clickMenuItem(t('connWin.refresh'));
-      await browser.pause(2000);
+      await browser.waitUntil(async () => (await $$('[data-tree-node="db"]')).length > 0, {
+        timeout: 10000,
+        timeoutMsg: '刷新后数据库节点未出现',
+      });
 
       await expandSchema(DROP_SCHEMA);
       await browser.pause(500);
@@ -466,7 +497,15 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await rightClick('[data-tree-node="schema"]', DROP_SCHEMA);
       await clickMenuItem(t('schemaTree.dropSchema'));
       await confirmWebDialog();
-      await browser.pause(1500);
+      await browser.waitUntil(
+        async () =>
+          !(await browser.execute((name: string) => {
+            return Array.from(document.querySelectorAll('[data-tree-node="schema"]')).some((n) =>
+              n.textContent?.includes(name),
+            );
+          }, DROP_SCHEMA)),
+        { timeout: 10000, timeoutMsg: '等待 schema 从导航树消失' },
+      );
 
       const stillThere = await browser.execute((name: string) => {
         return Array.from(document.querySelectorAll('[data-tree-node="schema"]')).some((n) =>
@@ -501,11 +540,13 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
 
       await rightClick('[data-conn-item]');
       await clickMenuItem(t('connWin.refresh'));
-      await browser.pause(2000);
+      await browser.waitUntil(async () => (await $$('[data-tree-node="db"]')).length > 0, {
+        timeout: 10000,
+        timeoutMsg: '刷新后数据库节点未出现',
+      });
 
       // F1: browse another catalog so the live session is not on CROSS_DB.
       await expandDb('postgres');
-      await browser.pause(1000);
 
       await expandDb(CROSS_DB);
       await expandSchema(CROSS_SCHEMA);
@@ -514,7 +555,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await rightClick('[data-tree-node="schema"]', CROSS_SCHEMA);
       await clickMenuItem(t('schemaTree.dropSchema'));
       await confirmWebDialog();
-      await browser.pause(2000);
+      await browser.waitUntil(async () => !(await pgSchemaExistsInDatabase(pgDbSessionId, CROSS_SCHEMA, CROSS_DB)), {
+        timeout: 10000,
+        timeoutMsg: '等待 cross-db schema 删除完成',
+      });
 
       expect(await pgSchemaExistsInDatabase(pgDbSessionId, CROSS_SCHEMA, CROSS_DB)).toBe(false);
 
@@ -544,10 +588,12 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
 
       await rightClick('[data-conn-item]');
       await clickMenuItem(t('connWin.refresh'));
-      await browser.pause(2000);
+      await browser.waitUntil(async () => (await $$('[data-tree-node="db"]')).length > 0, {
+        timeout: 10000,
+        timeoutMsg: '刷新后数据库节点未出现',
+      });
 
       await expandDb('postgres');
-      await browser.pause(1000);
 
       const crossDbVisible = await browser.execute((name: string) => {
         return Array.from(document.querySelectorAll('[data-tree-node="db"]')).some((n) =>
@@ -569,7 +615,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await rightClick('[data-tree-node="db"]', CROSS_DB);
       await clickMenuItem(t('schemaTree.dropDatabase'));
       await confirmWebDialog();
-      await browser.pause(2000);
+      await browser.waitUntil(async () => !(await pgDatabaseExists(pgDbSessionId, CROSS_DB)), {
+        timeout: 10000,
+        timeoutMsg: '等待 database 删除完成',
+      });
 
       expect(await pgDatabaseExists(pgDbSessionId, CROSS_DB)).toBe(false);
     });
@@ -588,10 +637,16 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
           const dbNodes = await $$('[data-tree-node="db"]');
           if (dbNodes.length > 0) {
             await dbNodes[0].click();
-            await browser.pause(2000);
+            await browser.waitUntil(async () => (await $$('[data-tree-node="schema"]')).length > 0, {
+              timeout: 10000,
+              timeoutMsg: '等待 schema 节点出现',
+            });
           }
         }
-        await browser.pause(2000);
+        await browser.waitUntil(async () => (await $$('[data-tree-node="category"]')).length > 0, {
+          timeout: 10000,
+          timeoutMsg: '等待分类节点出现',
+        });
       }
     });
 
@@ -628,7 +683,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       const tableNodes = await $$('[data-tree-node="table"]');
       if (tableNodes.length === 0) {
         await expandCategory('tables');
-        await browser.pause(2000);
+        await browser.waitUntil(async () => (await $$('[data-tree-node="table"]')).length > 0, {
+          timeout: 10000,
+          timeoutMsg: '等待表节点出现',
+        });
       }
     });
 
@@ -676,7 +734,20 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
         await rightClick('[data-tree-node="table"]');
       }
       await clickMenuItemById('copy-ddl');
-      await browser.pause(2000);
+      await browser.waitUntil(
+        async () => {
+          const clip = await browser.execute(() => {
+            return new Promise<string>((resolve) => {
+              navigator.clipboard
+                .readText()
+                .then(resolve)
+                .catch(() => resolve(''));
+            });
+          });
+          return clip.includes('CREATE TABLE');
+        },
+        { timeout: 15000, timeoutMsg: '等待 DDL 复制到剪贴板' },
+      );
 
       const clip = await browser.execute(() => {
         return new Promise<string>((resolve) => {
@@ -696,7 +767,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
         await rightClick('[data-tree-node="table"]');
       }
       await clickMenuItem(t('schemaTree.openTable'));
-      await browser.pause(2000);
+      await browser.waitUntil(async () => (await $('body').getText()).includes('test_ctx_row'), {
+        timeout: 10000,
+        timeoutMsg: '等待表数据加载',
+      });
 
       const bodyText = await $('body').getText();
       expect(bodyText).toContain('test_ctx_row');
@@ -727,7 +801,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
         return;
       }
       await clickMenuItem(t('erDiagram.focusTable'));
-      await browser.pause(2000);
+      await browser.waitUntil(async () => (await $('body').getText()).toLowerCase().includes('er'), {
+        timeout: 10000,
+        timeoutMsg: '等待 ER 图视图打开',
+      });
 
       const bodyText = await $('body').getText();
       expect(bodyText.toLowerCase()).toContain('er');
@@ -743,8 +820,6 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       }
       await clickMenuItem(t('schemaTree.drop'));
       await confirmWebDialog();
-      await browser.pause(1500);
-
       await browser.waitUntil(
         async () => {
           return browser.execute((name: string) => {

@@ -77,7 +77,7 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
   let evilPath = '';
 
   before(async () => {
-    await browser.pause(1000);
+    await browser.pause(300);
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'datazen-e2e-backup-'));
     backupPath = path.join(tmp, 'datazen-backup.zip');
     evilPath = path.join(tmp, 'evil.zip');
@@ -98,7 +98,7 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
 
   it('ADB-001: homepage should expose export/import app data (menu wiring)', async () => {
     await browser.url('tauri://localhost');
-    await browser.pause(1500);
+    await browser.pause(300);
 
     // macOS uses native menu (MenuBar returns null); assert product wiring instead of DOM buttons.
     // App-data config wiring (backupCommands calls + menu:export/import-config

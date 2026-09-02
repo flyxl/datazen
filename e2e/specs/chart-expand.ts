@@ -10,7 +10,7 @@ describe('图表放大功能 (CHART-EXPAND)', () => {
     mainWindow = res.mainWindow;
     connWindow = res.connWindow;
     await openQueryTab();
-    await browser.pause(1000);
+    await browser.pause(300);
 
     // Execute setup statements independently. The query editor executes one
     // statement per tab; a semicolon-separated batch can leave the fixture
@@ -37,12 +37,10 @@ describe('图表放大功能 (CHART-EXPAND)', () => {
 
   it('应能切换到图表视图', async () => {
     await executeSQL('SELECT category, amount FROM e2e_chart_test ORDER BY category');
-    await browser.pause(1000);
 
     const chartBtn = await $('button*=图表');
     await chartBtn.waitForDisplayed({ timeout: 5000 });
     await chartBtn.click();
-    await browser.pause(1000);
 
     const chartCanvas = await $('[class*="recharts-wrapper"]');
     await chartCanvas.waitForExist({ timeout: 5000 });

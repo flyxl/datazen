@@ -103,7 +103,7 @@ describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
 
   afterEach(async () => {
     // Small delay between tests to avoid rate limiting
-    await browser.pause(3000);
+    await browser.pause(300);
   });
 
   after(async () => {
@@ -337,7 +337,7 @@ describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
     this.timeout(120000);
 
     // Wait for rate limit cool-down
-    await browser.pause(5000);
+    await browser.pause(300);
 
     const requestId = `e2e-stream-${Date.now()}`;
 

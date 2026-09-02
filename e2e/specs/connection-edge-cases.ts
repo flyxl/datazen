@@ -93,7 +93,7 @@ describe('连接管理边界用例 (TC-EDGE-009~013)', () => {
     await saveConn(editId, 'E2E-编辑前');
     await saveConn(editId, 'E2E-编辑后');
     await browser.refresh();
-    await browser.pause(1500);
+    await browser.pause(300);
     await expandAllGroups();
     const body = await $('body').getText();
     expect(body).toContain('E2E-编辑后');
@@ -123,7 +123,7 @@ describe('连接管理边界用例 (TC-EDGE-009~013)', () => {
       });
       if (btn) (btn as HTMLElement).click();
     });
-    await browser.pause(5000);
+    await browser.pause(300);
     const dialogStillOpen = await $('[data-testid="new-connection-dialog"]').isExisting();
     expect(dialogStillOpen).toBe(true);
     await captureJourneyStep('test-connection-failed');
@@ -154,14 +154,14 @@ describe('连接管理边界用例 (TC-EDGE-009~013)', () => {
     const grpId = 'e2e-edge-group-test';
     await saveConn(grpId, 'E2E-分组测试', 'E2E-临时分组');
     await browser.refresh();
-    await browser.pause(1500);
+    await browser.pause(300);
     await expandAllGroups();
     let body = await $('body').getText();
     expect(body).toContain('E2E-临时分组');
 
     await saveConn(grpId, 'E2E-分组测试', 'E2E-已重命名分组');
     await browser.refresh();
-    await browser.pause(1500);
+    await browser.pause(300);
     await expandAllGroups();
     body = await $('body').getText();
     expect(body).toContain('E2E-已重命名分组');

@@ -156,7 +156,7 @@ for (const drv of drivers) {
       mainWindow = handles.find((h) => h === 'main') ?? handles[0];
       await browser.switchToWindow(mainWindow);
       await closeExtraWindows(mainWindow);
-      await browser.pause(1000);
+      await browser.pause(300);
 
       try {
         await drv.connect({
@@ -212,7 +212,6 @@ for (const drv of drivers) {
       });
 
       await clickSidebarDb(drv.expectedDb);
-      await browser.pause(2000);
 
       await browser.waitUntil(
         async () => {
@@ -249,7 +248,7 @@ for (const drv of drivers) {
       }
 
       await openQueryTab();
-      await browser.pause(1000);
+      await browser.pause(300);
 
       const selector = await $('button[aria-haspopup="listbox"]');
       await expect(selector).toBeDisplayed();

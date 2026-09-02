@@ -57,7 +57,10 @@ async function applyFilter() {
   const applyBtn = await $('[data-testid="filter-apply"]');
   await applyBtn.waitForEnabled({ timeout: 5000 });
   await applyBtn.click();
-  await browser.pause(1200);
+  await browser.waitUntil(
+    async () => !(await $('[data-testid="table-loading"]').isExisting().catch(() => false)),
+    { timeout: 10000, timeoutMsg: '等待筛选结果加载' },
+  ).catch(() => browser.pause(300));
 }
 
 async function setFilterColumn(from: string, to: string) {
@@ -87,17 +90,19 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
         ('beta', 20),
         ('gamma', 30)
     `);
-    // Let the query panel finish its result-state update before refreshing
-    // the virtualized schema tree; otherwise the just-created table can be
-    // absent from the navigator on a cold Tauri run.
-    await browser.pause(1200);
+    await browser.waitUntil(
+      async () => {
+        const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
+        return refreshBtn.isDisplayed().catch(() => false);
+      },
+      { timeout: 10000, timeoutMsg: '等待查询完成后再刷新 schema 树' },
+    );
 
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
     await waitForTableInSidebar(TEST_TABLE);
 
     await clickTableInSidebar(TEST_TABLE);
-    await browser.pause(1500);
     await switchSubTab('data');
     await browser.waitUntil(async () => (await $('body').getText()).includes('alpha'), {
       timeout: 15000,
@@ -160,7 +165,10 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
     // Draft may already be dirty from addFilter; Apply if enabled.
     if (await applyBtn.isEnabled()) {
       await applyBtn.click();
-      await browser.pause(1000);
+      await browser.waitUntil(async () => !(await $('body').getText()).includes(t('tableData.loadFailed')), {
+        timeout: 10000,
+        timeoutMsg: '等待空值筛选完成',
+      });
     }
     const body = await $('body').getText();
     expect(body).not.toContain(t('tableData.loadFailed'));
@@ -202,7 +210,13 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
     const clearBtn = await $('[data-testid="filter-clear"]');
     await clearBtn.waitForDisplayed({ timeout: 5000 });
     await clearBtn.click();
-    await browser.pause(1200);
+    await browser.waitUntil(
+      async () => {
+        const body = await $('body').getText();
+        return body.includes('alpha') && body.includes('beta') && body.includes('gamma');
+      },
+      { timeout: 10000, timeoutMsg: '等待清空筛选后恢复全部行' },
+    );
     const body = await $('body').getText();
     expect(body).toContain('alpha');
     expect(body).toContain('beta');

@@ -159,7 +159,7 @@ describe('AI AskQuestion Interaction (E2E)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await browser.pause(2000);
+    await browser.pause(300);
     await seedAskQuestionWorkflow();
     await browser.pause(500);
   });
@@ -201,7 +201,6 @@ describe('AI AskQuestion Interaction (E2E)', () => {
 
   it('测试 workflow 应包含 AI 提问步骤', async () => {
     await openWorkflowWorkspace(mainWindow);
-    await browser.pause(1000);
 
     await browser.waitUntil(
       async () => {
@@ -224,7 +223,7 @@ describe('AI AskQuestion Interaction (E2E)', () => {
     const injected = await injectAskQuestionMessage();
 
     if (injected) {
-      await browser.pause(1000);
+      await browser.pause(300);
 
       // Check that question prompts are rendered
       const body = await $('body').getText();
@@ -237,7 +236,7 @@ describe('AI AskQuestion Interaction (E2E)', () => {
     await openWorkflowWorkspace(mainWindow);
     await browser.pause(500);
     await injectAskQuestionMessage();
-    await browser.pause(1000);
+    await browser.pause(300);
 
     // Click an option button
     const clicked = await browser.execute(() => {
@@ -272,7 +271,7 @@ describe('AI AskQuestion Interaction (E2E)', () => {
     await openWorkflowWorkspace(mainWindow);
     await browser.pause(500);
     await injectAskQuestionMessage();
-    await browser.pause(1000);
+    await browser.pause(300);
 
     const hasSubmitBtn = await browser.execute(() => {
       const buttons = document.querySelectorAll('button');
@@ -290,11 +289,11 @@ describe('AI AskQuestion Interaction (E2E)', () => {
 
   it('（Tool Call）问题 UI 应渲染选项按钮', async () => {
     await openWorkflowWorkspace(mainWindow);
-    await browser.pause(1000);
+    await browser.pause(300);
 
     const injected = await injectToolCallAskQuestionMessage();
     if (injected) {
-      await browser.pause(1000);
+      await browser.pause(300);
       const body = await $('body').getText();
       const hasQuestion = body.includes('database engine') || body.includes('数据库');
       expect(hasQuestion).toBe(true);
@@ -305,7 +304,7 @@ describe('AI AskQuestion Interaction (E2E)', () => {
     await openWorkflowWorkspace(mainWindow);
     await browser.pause(500);
     await injectToolCallAskQuestionMessage();
-    await browser.pause(1000);
+    await browser.pause(300);
 
     const clicked = await browser.execute(() => {
       const buttons = document.querySelectorAll('button');
@@ -337,7 +336,7 @@ describe('AI AskQuestion Interaction (E2E)', () => {
     await openWorkflowWorkspace(mainWindow);
     await browser.pause(500);
     await injectToolCallAskQuestionMessage();
-    await browser.pause(1000);
+    await browser.pause(300);
 
     // Select an option
     await browser.execute(() => {

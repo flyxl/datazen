@@ -20,7 +20,7 @@ describe('数据看板 SQL 添加 (UJ-03, UJ-13)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await browser.pause(1000);
+    await browser.pause(300);
     connectionId = await getSeededConnectionId();
     await cleanupDashboard(DASHBOARD_ID);
     await createEmptyDashboard(DASHBOARD_ID, 'E2E SQL Board');

@@ -73,7 +73,6 @@ async function setAppLanguage(mainWin: string, language: 'en' | 'zh-CN') {
   await invoke('save_settings', { settings: { ...settings, language } });
   await browser.switchToWindow(mainWin);
   await browser.execute(() => location.reload());
-  await browser.pause(2000);
   await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
 }
 
@@ -992,7 +991,6 @@ describe('site screenshots', () => {
     await browser.pause(800);
 
     await browser.url('tauri://localhost');
-    await browser.pause(2500);
     await browser.waitUntil(
       async () =>
         browser.execute(
@@ -1022,7 +1020,7 @@ describe('site screenshots', () => {
         }
       }
       await browser.url('tauri://localhost');
-      await browser.pause(1500);
+      await browser.pause(300);
       console.log(`[restore] ${backedUpConnections.length} connection(s) restored`);
     } catch (e) {
       console.error('[restore] failed to restore user connections:', e);
@@ -1159,7 +1157,7 @@ describe('site screenshots', () => {
       },
       { timeout: 20000, timeoutMsg: 'ER 节点未渲染' },
     );
-    await browser.pause(1500);
+    await browser.pause(300);
     await shot('16-er.png');
     // Back to first query tab.
     const clicked = await browser.execute(() => {
@@ -1369,7 +1367,7 @@ describe('site screenshots', () => {
       throw new Error('demo_sales not found in sidebar');
     }
     // Give the DataTable time to fully render the loaded rows.
-    await browser.pause(2500);
+    await browser.pause(300);
 
     // The NL filter starts collapsed (Sparkles icon). Two variants exist:
     // configured → title=智能筛选; unconfigured → title=请先在设置中配置AI服务.
@@ -1502,7 +1500,7 @@ describe('site screenshots', () => {
       return true;
     });
     if (!sel) throw new Error('workflow item not found');
-    await browser.pause(1000);
+    await browser.pause(300);
 
     // 12: editor view showing the cross-db steps before running.
     await softShot('12-workflow-crossdb.png', 600);
@@ -1521,7 +1519,7 @@ describe('site screenshots', () => {
       },
       { timeout: 30000, timeoutMsg: 'workflow 结果未出现' },
     );
-    await shot('04-workflow.png', 1000);
+    await shot('04-workflow.png', 800);
 
     // 13: run history side-tab — the execution above guarantees one entry.
     try {
@@ -1543,7 +1541,7 @@ describe('site screenshots', () => {
           .filter((el) => el.getClientRects().length > 0);
         (items[0] as HTMLElement | undefined)?.click();
       });
-      await browser.pause(1200);
+      await browser.pause(300);
       await shot('13-workflow-run.png', 500);
       // Back to the workflows list for subsequent cases.
       await browser.execute(() => {
@@ -1586,7 +1584,7 @@ describe('site screenshots', () => {
       if (!rendered) await browser.pause(500);
     }
     if (!rendered) console.log('[warn] dashboard widgets did not render in time; capturing anyway');
-    await shot('21-dashboard.png', 1000);
+    await shot('21-dashboard.png', 800);
     await goToConnections();
   });
 
@@ -1647,7 +1645,7 @@ describe('site screenshots', () => {
     });
     const handles = await browser.getWindowHandles();
     await browser.switchToWindow(handles.find((h) => h !== mainWindow)!);
-    await browser.pause(1200);
+    await browser.pause(300);
     await browser.execute(() => {
       const input = Array.from(document.querySelectorAll('input')) as HTMLInputElement[];
       const nameInput = input.find((i) => (i.value || '') === 'untitled');
@@ -1691,7 +1689,7 @@ describe('site screenshots', () => {
         handles = await browser.getWindowHandles();
         await browser.switchToWindow(handles.find((h) => h !== mainWindow)!);
         await setWindowSize(1100, 720);
-        await browser.pause(1200);
+        await browser.pause(300);
         await shot('26-data-sync-en.png');
         await browser.closeWindow();
         await browser.switchToWindow(mainWindow);
@@ -1733,7 +1731,7 @@ describe('site screenshots', () => {
         await setSchemaDiffTables('test_orders');
         await clickSchemaDiffCompare();
         await $('[data-testid="schema-diff-detail-panel"]').waitForDisplayed({ timeout: 30000 });
-        await browser.pause(1200);
+        await browser.pause(300);
         await shot('27-schema-diff-en.png');
         await browser.closeWindow();
         await browser.switchToWindow(mainWindow);
@@ -1766,7 +1764,7 @@ describe('site screenshots', () => {
         await browser.pause(800);
         await clickTransferNext();
         await $('[data-testid="data-transfer-mode-data"]').waitForDisplayed({ timeout: 15000 });
-        await browser.pause(1000);
+        await browser.pause(300);
         await shot('28-data-transfer-en.png');
         await browser.closeWindow();
         await browser.switchToWindow(mainWindow);
@@ -1813,7 +1811,7 @@ describe('site screenshots', () => {
         return true;
       }, itemText);
       if (!hit) throw new Error(`connection menu item ${itemText} not found`);
-      await browser.pause(1500);
+      await browser.pause(300);
     };
 
     try {
@@ -2063,7 +2061,7 @@ describe('site screenshots', () => {
       const item = items.find((el) => (el.textContent || '').trim() === 'AI 助手');
       (item as HTMLElement | undefined)?.click();
     });
-    await browser.pause(1000);
+    await browser.pause(300);
     await shot('09-ai-more.png');
   });
 });

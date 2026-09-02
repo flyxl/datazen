@@ -33,7 +33,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
 
     // Close any existing connection windows
     await closeExtraWindows(mainWindow);
-    await browser.pause(1000);
+    await browser.pause(300);
 
     // Create and connect to MySQL
     const { connWindow } = await createAndConnectMySQL();
@@ -111,7 +111,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     if (await refreshBtn.isExisting()) {
       await refreshBtn.click();
-      await browser.pause(2000);
+      await browser.pause(300);
     }
   });
 
@@ -182,7 +182,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
 
   it('点击表名应显示数据 tab 页 (MY-004)', async () => {
     await clickTableInSidebar(TABLE_BASIC);
-    await browser.pause(2000);
+    await browser.pause(300);
 
     const body = await $('body').getText();
     // Virtual table may not expose cell text via getText(), check row count instead
@@ -192,7 +192,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
 
   it('表数据应正确显示 BIGINT AUTO_INCREMENT 主键 (MY-005)', async () => {
     await clickTableInSidebar(TABLE_BASIC);
-    await browser.pause(2000);
+    await browser.pause(300);
 
     const body = await $('body').getText();
     // Auto-increment IDs should be visible as numbers, not NULL
@@ -246,9 +246,9 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
 
   it('结构 tab 应显示 MySQL 列信息 (MY-012)', async () => {
     await clickTableInSidebar(TABLE_BASIC);
-    await browser.pause(1500);
+    await browser.pause(300);
     await switchSubTab('structure');
-    await browser.pause(1500);
+    await browser.pause(300);
 
     const body = await $('body').getText();
     expect(body).toContain('id');
@@ -262,9 +262,9 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
 
   it('索引 tab 应显示 MySQL 索引 (MY-013)', async () => {
     await clickTableInSidebar(TABLE_IDX);
-    await browser.pause(1500);
+    await browser.pause(300);
     await switchSubTab('indexes');
-    await browser.pause(1500);
+    await browser.pause(300);
 
     const body = await $('body').getText();
     expect(body).toContain('PRIMARY');
@@ -283,9 +283,9 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
 
   it('DDL tab 应显示 MySQL CREATE TABLE 语句 (MY-015)', async () => {
     await clickTableInSidebar(TABLE_BASIC);
-    await browser.pause(1500);
+    await browser.pause(300);
     await switchSubTab('ddl');
-    await browser.pause(1500);
+    await browser.pause(300);
 
     const body = await $('body').getText();
     expect(body).toContain('CREATE TABLE');
@@ -353,9 +353,9 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
 
     // Click the table to load data
     await clickTableInSidebar(TABLE_BASIC);
-    await browser.pause(2000);
+    await browser.pause(300);
     await switchSubTab('data');
-    await browser.pause(1000);
+    await browser.pause(300);
 
     // Should show pagination info (more than 50 rows total)
     const body = await $('body').getText();

@@ -48,7 +48,7 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
     await waitForNewQueryButton(20000);
-    await browser.pause(1500);
+    await browser.pause(300);
 
     await openQueryTab();
     await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
@@ -67,7 +67,6 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
     );
     // Let the query result/state update settle before refreshing the
     // virtualized schema tree on a cold WebKit run.
-    await browser.pause(1200);
 
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
@@ -87,7 +86,6 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
 
   it('应能在侧边栏看到测试表并打开数据标签', async () => {
     await clickTableInSidebar(TEST_TABLE);
-    await browser.pause(2000);
 
     await $(`button*=${t('connWin.data')}`).waitForDisplayed({ timeout: 8000 });
 
@@ -194,7 +192,6 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
 
     // Verify the update persisted via SELECT query
     await executeSQL(`SELECT name FROM ${TEST_TABLE} WHERE id = 1`);
-    await browser.pause(1000);
 
     const body = await $('body').getText();
     expect(body).toContain('AliceUpdated');
@@ -218,7 +215,6 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
 
   it('Escape 取消编辑不应修改数据 (DE-005)', async () => {
     await clickTableInSidebar(TEST_TABLE);
-    await browser.pause(1500);
     await switchSubTab('data');
 
     await browser.waitUntil(async () => (await $('body').getText()).includes('Charlie'), {

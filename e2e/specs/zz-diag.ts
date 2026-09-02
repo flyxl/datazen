@@ -8,7 +8,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 
 describe('diag startup state', () => {
   it('dumps state', async () => {
-    await browser.pause(2000);
+    await browser.pause(300);
     const invoke = (cmd: string, args: Record<string, unknown> = {}) =>
       browser.executeAsync(
         (c: string, a: string, done: (r: unknown) => void) => {
@@ -32,7 +32,7 @@ describe('diag startup state', () => {
         .querySelector('[data-testid="workspace-nav-connections"]')
         ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
-    await browser.pause(1500);
+    await browser.pause(300);
     await browser.saveScreenshot('/tmp/diag-conn.png');
 
     const info = await browser.execute(() => ({

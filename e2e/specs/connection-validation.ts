@@ -82,7 +82,7 @@ describe('连接校验反向用例 (TC-CONN-005/006/007, TC-EDGE-007)', () => {
     await openNewConnectionForm(mainWindow);
     await setInputByPlaceholder('prod-db.example.com', '');
     await clickTestConnection();
-    await browser.pause(2000);
+    await browser.pause(300);
 
     const body = await $('body').getText();
     const failed =

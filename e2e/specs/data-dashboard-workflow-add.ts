@@ -22,7 +22,7 @@ describe('数据看板 Workflow 添加 (UJ-04, UJ-10)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await browser.pause(1000);
+    await browser.pause(300);
     connectionId = await getSeededConnectionId();
 
     try {

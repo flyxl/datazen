@@ -31,7 +31,7 @@ async function clickNext(label: string) {
   const next = await $('[data-testid="data-transfer-next"]');
   await next.waitForClickable({ timeout: 10000 });
   await next.click();
-  await browser.pause(1200);
+  await browser.pause(300);
   await captureJourneyStep(label, 0, true);
 }
 
@@ -39,14 +39,13 @@ async function runDataTransferWizard(sourceName: string, targetName: string, tab
   await openDataTransferWindow();
   await selectDzOptionInWrap('data-transfer-source', sourceName);
   await selectDzOptionInWrap('data-transfer-target', targetName);
-  await browser.pause(1500);
+  await browser.pause(300);
   await clickNext('dt-comp-endpoints');
 
   await (await $('[data-testid="data-transfer-mode-data"]')).click();
   await browser.pause(300);
   await clickNext('dt-comp-setup');
 
-  await browser.pause(2000);
   const tableRow = await $(`[data-testid="data-transfer-table-row"]*=${tableName}`);
   await tableRow.waitForDisplayed({ timeout: 20000 });
   const checkbox = await tableRow.$('input[type="checkbox"]');
@@ -57,7 +56,6 @@ async function runDataTransferWizard(sourceName: string, targetName: string, tab
     const execute = await $('[data-testid="data-transfer-execute"]');
     if (await execute.isExisting().catch(() => false)) break;
     const next = await $('[data-testid="data-transfer-next"]');
-    if (!(await next.isEnabled())) await browser.pause(1000);
     await clickNext(`dt-comp-advance-${i}`);
   }
 
