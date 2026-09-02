@@ -32,8 +32,8 @@ describe('Windows release packaging', () => {
 
   it('publishes an installer-free portable archive with runtime resources', () => {
     expect(releaseWorkflow).toContain('Package Windows portable archive');
-    expect(releaseWorkflow).toContain('DataZen_${version}-portable-${label}.zip');
+    expect(releaseWorkflow).toContain('DataZen-windows-${version}-portable-${label}.zip');
     expect(releaseWorkflow).toContain('Copy-Item -LiteralPath $prompts');
-    expect(releaseWorkflow).toContain('*-portable-windows-x64.zip');
+    expect(releaseWorkflow).toContain('*-windows-*-portable-windows-x64.zip');
   });
 });
