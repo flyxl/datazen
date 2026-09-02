@@ -21,6 +21,9 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   return result as T;
 }
 
+// NOTE: These IPC tests have Rust equivalents in src-tauri/tests/driver_command_ipc.rs
+// Consider removing this E2E spec once the Rust tests prove stable.
+
 describe('Driver Command IPC', () => {
   it('discovers commands from a connection and executes query', async () => {
     const conns = await invokeBackend<{ id: string }[]>('get_connections');

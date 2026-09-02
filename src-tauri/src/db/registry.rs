@@ -208,7 +208,7 @@ impl DriverRegistry {
     }
 
     /// Register a driver instance for unit tests (bypasses inventory).
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-harness"))]
     pub async fn register_test_driver(
         &self,
         db_type: impl Into<DatabaseType>,
@@ -222,7 +222,7 @@ impl DriverRegistry {
     }
 
     /// Register a test driver together with explicit capability metadata.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-harness"))]
     pub async fn register_test_driver_with_capabilities(
         &self,
         db_type: impl Into<DatabaseType>,

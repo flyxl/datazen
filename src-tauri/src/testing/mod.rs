@@ -1,6 +1,6 @@
 pub mod mock_driver;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-harness"))]
 pub mod app_state;
 
 #[cfg(test)]

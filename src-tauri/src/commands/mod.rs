@@ -227,3 +227,48 @@ mod tests {
         assert!(cross_cancel.is_err());
     }
 }
+
+/// Host IPC test helpers for `src-tauri/tests/` pure-IPC E2E migrations.
+#[cfg(feature = "test-harness")]
+pub mod test_harness {
+    use super::{
+        connect_impl, execute_driver_command_impl, get_connection_commands_impl,
+        get_connections_impl, AppState,
+    };
+    use datazen_driver_api::{CommandResult, DriverCommandDefinition};
+
+    pub use crate::testing::app_state::TestAppState;
+    pub use super::ExecuteDriverCommandRequest;
+
+    pub async fn get_connections(
+        state: &AppState,
+    ) -> Result<Vec<crate::db::ConnectionConfig>, String> {
+        get_connections_impl(state)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn connect(state: &AppState, connection_id: String) -> Result<String, String> {
+        connect_impl(state, connection_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn get_connection_commands(
+        state: &AppState,
+        db_session_id: String,
+    ) -> Result<Vec<DriverCommandDefinition>, String> {
+        get_connection_commands_impl(state, db_session_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn execute_driver_command(
+        state: &AppState,
+        request: ExecuteDriverCommandRequest,
+    ) -> Result<CommandResult, String> {
+        execute_driver_command_impl(state, request)
+            .await
+            .map_err(|e| e.to_string())
+    }
+}

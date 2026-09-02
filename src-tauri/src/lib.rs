@@ -29,8 +29,11 @@ pub mod workflow;
 
 pub use store::{AppDb, HistoryDb};
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-harness"))]
 pub(crate) mod testing;
+
+#[cfg(feature = "test-harness")]
+pub use commands::test_harness;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
