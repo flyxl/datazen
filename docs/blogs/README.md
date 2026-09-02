@@ -40,6 +40,8 @@
 - 查询结果流式传输与普通 IPC 的区别
 - 为什么不让前端直接接触数据库
 
+已完成：[Tauri 桌面应用的前后端边界](02-tauri-frontend-backend-boundary.zh-CN.md)
+
 ### 第 3 篇：连接配置与数据库会话的生命周期
 
 **核心问题：为什么同时存在 `connectionId` 和 `dbSessionId`？**
