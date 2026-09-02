@@ -230,6 +230,14 @@ export async function findCardByName(connName: string) {
   return (await $$('[data-conn-item]'))[idx];
 }
 
+/** Wait until a connection card with the exact name appears in the navigator. */
+export async function waitForCardByName(connName: string, timeout = 10000) {
+  await browser.waitUntil(async () => !!(await findCardByName(connName)), {
+    timeout,
+    timeoutMsg: `等待连接 "${connName}" 出现在列表`,
+  });
+}
+
 export async function dblclickConnByExactName(connName: string) {
   const ok = await browser.execute((n: string) => {
     const items = Array.from(document.querySelectorAll('[data-conn-item]'));
@@ -439,7 +447,7 @@ export async function createAndConnectMySQL(
       timeoutMsg: '保存连接后弹窗未关闭',
     },
   );
-  await browser.pause(1000);
+  await waitForCardByName(name);
 
   // Now connect by double-clicking the item
   const card = await findCardByName(name);
@@ -485,7 +493,7 @@ export async function createAndConnectSQLiteInWorkspace(connName: string, dbPath
       { timeout: 10000, timeoutMsg: '保存 SQLite 连接后弹窗未关闭' },
     );
     await browser.switchToWindow(mainWindow);
-    await browser.pause(1000);
+    await waitForCardByName(connName);
   }
 
   const card = await findCardByName(connName);
@@ -575,7 +583,7 @@ export async function createAndConnectPostgreSQL(
       timeoutMsg: '保存连接后弹窗未关闭',
     },
   );
-  await browser.pause(1000);
+  await waitForCardByName(name);
 
   const card = await findCardByName(name);
   if (!card) throw new Error(`未找到 PostgreSQL 连接 "${name}"`);
@@ -655,7 +663,7 @@ async function invokeSettings<T>(cmd: string, args: Record<string, unknown> = {}
       lastError = err;
       if (!isRetryableIpcError(err) || attempt >= IPC_MAX_ATTEMPTS) throw err;
       await ensureMainWindowForIpc();
-      await browser.pause(1500 * attempt);
+      await browser.pause(500 * attempt);
     }
   }
   throw lastError;
@@ -1745,7 +1753,7 @@ export async function clickTransferNext(opts: { timeout?: number; pauseMs?: numb
   });
   await next.waitForClickable({ timeout: opts.timeout ?? 10000 });
   await next.click();
-  await browser.pause(opts.pauseMs ?? 1200);
+  await browser.pause(opts.pauseMs ?? 300);
 }
 
 /** Advance with Next until Preview is shown (Preview footer uses Execute, not Next). */
@@ -1761,8 +1769,13 @@ export async function advanceTransferWizardToPreview(maxSteps = 8) {
       break;
     }
     if (!(await next.isEnabled().catch(() => false))) {
-      await browser.pause(1000);
-      continue;
+      await browser.waitUntil(
+        async () => {
+          const n = await $('[data-testid="data-transfer-next"]');
+          return n.isEnabled().catch(() => false);
+        },
+        { timeout: 10000, timeoutMsg: '等待 data-transfer-next 可点击超时' },
+      );
     }
     await clickTransferNext();
   }
@@ -1778,7 +1791,6 @@ export async function openDataTransferWindow(
     await clearTransferLimitationsDismissPref();
   }
   await browser.url('tauri://localhost/window.html?window=data-transfer');
-  await browser.pause(1500);
   await $('[data-testid="data-transfer-window"]').waitForDisplayed({ timeout: 10000 });
   if (dismissLimitations) {
     await dismissTransferLimitationsDialogIfOpen();
@@ -1822,7 +1834,6 @@ export async function openSchemaDiffWindow(
     await clearSchemaDiffLimitationsDismissPref();
   }
   await browser.url('tauri://localhost/window.html?window=schema-diff');
-  await browser.pause(2000);
   await browser.waitUntil(
     async () => {
       const el = await $('[data-testid="schema-diff-window"]');
@@ -1873,7 +1884,7 @@ export async function clickSchemaDiffNext(
   }
   const next = await $('[data-testid="schema-diff-next"]');
   await next.click();
-  await browser.pause(opts.pauseMs ?? 1500);
+  await browser.pause(opts.pauseMs ?? 300);
 }
 
 export async function setSchemaDiffTables(tableList: string) {
@@ -1922,7 +1933,6 @@ export async function clickSchemaDiffCompare() {
   if (!(await objectsPanel.isDisplayed().catch(() => false))) {
     await clickSchemaDiffNext();
     await objectsPanel.waitForDisplayed({ timeout: 15000 });
-    await browser.pause(1000);
   }
 
   await clickSchemaDiffNext();
@@ -1937,7 +1947,7 @@ export async function clickSchemaDiffGeneratePlan() {
   }
   await btn.waitForClickable({ timeout: 15000 });
   await btn.click();
-  await browser.pause(2500);
+  await $('[data-testid="schema-diff-plan-panel"]').waitForDisplayed({ timeout: 15000 });
 }
 
 /** Advance from plan step to deploy step in the wizard. */

@@ -162,7 +162,7 @@ export const config: WebdriverIO.Config = {
   },
   before: async function () {
     await browser.url('tauri://localhost');
-    await browser.pause(2000);
+    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
 
     // Force language to zh-CN so all Chinese selectors work
     await browser.executeAsync((done: (r: unknown) => void) => {
@@ -198,7 +198,7 @@ export const config: WebdriverIO.Config = {
 
     // Reload page so the new language and seeded connections take effect
     await browser.execute(() => location.reload());
-    await browser.pause(2000);
+    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
 
     // Expand all connection groups so items are visible
     await browser.execute(() => {
