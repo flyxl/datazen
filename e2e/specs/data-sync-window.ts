@@ -5,6 +5,7 @@ import {
   captureJourneyStep,
   queryScalar,
   selectDzOption,
+  switchToNewWindow,
   withSafeModeOff,
   type QueryResultPayload,
 } from '../helpers.js';
@@ -14,14 +15,18 @@ import {
  * Full Execute against live DBs is covered in data-sync-real.ts (IPC); UI smoke here.
  */
 
-async function openDataSyncWindow() {
+async function openDataSyncWindow(mainWindow: string) {
   await browser.url('tauri://localhost/window.html?window=data-sync');
   await browser.pause(1500);
-  await $('[data-testid="data-sync-window"]').waitForDisplayed({ timeout: 10000 });
+  const handles = await browser.getWindowHandles();
+  if (handles.length > 1) {
+    await switchToNewWindow(mainWindow);
+  }
+  await $('[data-testid="data-sync-window"]').waitForDisplayed({ timeout: 20000 });
   await browser.waitUntil(
     async () =>
       (await $('[data-testid="data-sync-window"]').getAttribute('data-sync-step')) === 'endpoints',
-    { timeout: 10000, timeoutMsg: 'data-sync wizard did not open on endpoints step' },
+    { timeout: 20000, timeoutMsg: 'data-sync wizard did not open on endpoints step' },
   );
 }
 
@@ -74,7 +79,7 @@ describe('数据同步窗口 (DSW-001~DSW-008)', () => {
   });
 
   it('DSW-001: 应能通过 URL 打开数据同步窗口', async () => {
-    await openDataSyncWindow();
+    await openDataSyncWindow(mainWindow);
     await expect($("[data-testid='data-sync-window']")).toExist();
     await expect($('[data-testid="data-sync-step-endpoints"]')).toExist();
     await captureJourneyStep('data-sync-window-open');
@@ -113,7 +118,7 @@ describe('数据同步窗口 (DSW-001~DSW-008)', () => {
     await expect(quickSync).not.toBeExisting();
     await captureJourneyStep('data-sync-hidden-on-home');
 
-    await openDataSyncWindow();
+    await openDataSyncWindow(mainWindow);
     await expect(await $('[data-testid="data-sync-next"]')).toBeDisplayed();
   });
 
@@ -142,7 +147,7 @@ describe('数据同步 Diff Workspace (DSW-MAP / DSW-WS)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await openDataSyncWindow();
+    await openDataSyncWindow(mainWindow);
   });
 
   after(async () => {

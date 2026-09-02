@@ -26,6 +26,7 @@ import path from 'node:path';
 import { readFile, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { browser, $, $$, expect } from '@wdio/globals';
+import { t } from '../i18n.js';
 import { invokeBackend } from '../helpers/data-dashboard.js';
 import {
   backFromSettingsInMainWindow,
@@ -435,6 +436,11 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
       },
       { timeout: 15000, timeoutMsg: 'Sample Light theme option not found in appearance select' },
     );
+
+    // AppearanceSection updates draft only when embedded in SettingsContent; persist via Save.
+    const saveBtn = await $(`button*=${t('common.save')}`);
+    await saveBtn.waitForEnabled({ timeout: 5000 });
+    await saveBtn.click();
 
     // Durable value lives in settings (not localStorage): plugin:{pluginId}:{themeId}.
     await browser.waitUntil(
