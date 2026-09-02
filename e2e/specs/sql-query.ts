@@ -140,7 +140,9 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     // observes the same state transition as a user action.
     await executeSQL(`SELECT * FROM ${dbName}.pg_catalog.pg_tables LIMIT 1`);
     await bar.waitForDisplayed({ timeout: 10000 });
-    const text = await bar.getText();
+    // Searchable combobox shows selected value in the input's value attribute
+    const dbInput = await bar.$('input[aria-haspopup="listbox"]');
+    const text = (await dbInput.getValue()) || (await bar.getText());
     expect(text).toContain(dbName);
   });
 
