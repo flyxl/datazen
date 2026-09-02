@@ -12,11 +12,7 @@ import { browser } from '@wdio/globals';
 export const config: WebdriverIO.Config = {
   runner: 'local',
   specs: ['./specs/**/*.ts'],
-  exclude: [
-    './specs/zz-screenshots.ts',
-    './specs/demo-recording.ts',
-    './specs/zz-diag.ts',
-  ],
+  exclude: ['./specs/zz-screenshots.ts', './specs/demo-recording.ts', './specs/zz-diag.ts'],
   /**
    * Named groups run via `pnpm e2e:<group>` (package.json) → `--suite <group>`.
    * Single source of truth for group membership; paths are relative to this
@@ -189,7 +185,7 @@ export const config: WebdriverIO.Config = {
   specFileRetries: 1,
   capabilities: [{}],
   hostname: '127.0.0.1',
-  port: 4445,
+  port: parseInt(process.env.E2E_WD_PORT || '4445', 10),
   path: '/',
   logLevel: 'warn',
   waitforTimeout: 10000,

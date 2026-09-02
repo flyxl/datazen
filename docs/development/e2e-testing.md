@@ -80,6 +80,33 @@ pnpm test:unit:e2e-contract:coverage  # 契约纯逻辑单测 ≥80%
 > [`scripts/run-regression.sh`](../../scripts/run-regression.sh)（全量回归门禁）与
 > [`scripts/run-e2e-minimal.sh`](../../scripts/run-e2e-minimal.sh)（minimal 集 + `E2E_ENV_FILE`/主检出 `.env` 回退解析）。
 
+## 2.1 CI 并行策略
+
+为缩短 CI 墙钟时间，可将 E2E 拆为 3 个独立 job 并行运行：
+
+| Job | Suite | 预计耗时 | 依赖 |
+|-----|-------|----------|------|
+| core | `--suite core` | ~10 min | 无外部 DB |
+| db | `--suite db` | ~25 min | PostgreSQL + MySQL |
+| features | `--suite ai --suite i18n-backup --suite path-ipc --suite dashboard --suite journeys` | ~20 min | 按需 |
+
+每个 job 使用独立端口和隔离的 app-data 目录：
+
+```bash
+# Job 1: Core (无 DB)
+E2E_WD_PORT=4445 pnpm e2e:ci:core
+
+# Job 2: DB specs
+E2E_WD_PORT=4446 pnpm e2e:ci:db
+
+# Job 3: Feature specs
+E2E_WD_PORT=4447 pnpm e2e:ci:features
+```
+
+`e2e/run.mjs` 会将 `E2E_WD_PORT`（或 `--port <number>`）同步到 Tauri WebDriver 插件（`TAURI_WEBDRIVER_PORT`）与 WDIO（`e2e/wdio.conf.ts`）。默认端口仍为 4445，不影响 `pnpm e2e` 现有行为。
+
+注意：需要为每个 job 构建独立的 webdriver binary，或共享同一个 debug build。
+
 ## 插件自有测试（Host 默认不拉）
 
 **驱动相关 E2E / 单测写在对应驱动 crate，不要往 `e2e/specs/` 加驱动方言或专属 Command 用例。** 见 [AGENTS.md](../../AGENTS.md)「驱动测试落点」。

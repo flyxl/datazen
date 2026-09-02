@@ -88,6 +88,10 @@ const args = process.argv.slice(2);
 const skipBuild = args.includes('--skip-build');
 const screenshotTrace = args.includes('--screenshot');
 const keepAppData = args.includes('--keep-app-data');
+const portArg = args.find((a, i) => args[i - 1] === '--port');
+const WD_PORT = portArg
+  ? parseInt(portArg, 10)
+  : parseInt(process.env.E2E_WD_PORT || '4445', 10);
 const minimalDrivers =
   process.env.DATAZEN_DRIVERS === 'basic' || args.includes('--minimal-drivers');
 if (screenshotTrace) {
@@ -101,12 +105,14 @@ const BUILD_CMD = minimalDrivers
 const wdioArgs = [];
 {
   const filtered = args.filter(
-    (a) =>
+    (a, i) =>
       a !== '--skip-build' &&
       a !== '--minimal-drivers' &&
       a !== '--minimal-plugins' &&
       a !== '--screenshot' &&
       a !== '--keep-app-data' &&
+      a !== '--port' &&
+      (args[i - 1] !== '--port') &&
       a !== '--',
   );
   for (let i = 0; i < filtered.length; i++) {
@@ -227,7 +233,7 @@ runEnvSetup();
 const appBinary = getAppBinaryPath();
 assertBinaryReady(appBinary);
 
-// Step 2: Start the Tauri app (webdriver plugin on port 4445)
+// Step 2: Start the Tauri app (webdriver plugin; port via TAURI_WEBDRIVER_PORT)
 // Isolate app data: the webdriver binary would otherwise read/write the real
 // production directory (~/Library/Application Support/com.tbeasy.datazen) and
 // connection-wiping specs would destroy real user data. Requires a binary built
@@ -235,13 +241,19 @@ assertBinaryReady(appBinary);
 const isolatedDataDir = path.join(ROOT, 'e2e', '.app-data');
 resetAppDataDir(isolatedDataDir, keepAppData);
 log(`Starting app: ${appBinary}`);
+log(`WebDriver port: ${WD_PORT} (TAURI_WEBDRIVER_PORT / E2E_WD_PORT)`);
 log(`App data isolation: DATAZEN_DATA_DIR=${isolatedDataDir}`);
 let sawAssetMissing = false;
 const app = spawn(appBinary, [], {
   stdio: ['ignore', 'pipe', 'pipe'],
   detached: false,
   cwd: ROOT,
-  env: { ...process.env, DATAZEN_DATA_DIR: isolatedDataDir },
+  env: {
+    ...process.env,
+    DATAZEN_DATA_DIR: isolatedDataDir,
+    TAURI_WEBDRIVER_PORT: String(WD_PORT),
+    E2E_WD_PORT: String(WD_PORT),
+  },
 });
 
 function onAppOutput(chunk) {
@@ -276,8 +288,8 @@ process.on('SIGTERM', () => {
 });
 
 try {
-  await waitForPort(4445);
-  log('WebDriver plugin is ready on port 4445.');
+  await waitForPort(WD_PORT);
+  log(`WebDriver plugin is ready on port ${WD_PORT}.`);
 } catch (err) {
   console.error(err.message);
   if (sawAssetMissing) {
@@ -293,11 +305,11 @@ try {
   }
   die(
     [
-      'WebDriver port 4445 did not open.',
+      `WebDriver port ${WD_PORT} did not open.`,
       'Common causes:',
       '  1. Binary built WITHOUT --features webdriver',
       '  2. Used cargo build instead of `pnpm tauri build --debug --features webdriver`',
-      '  3. Another process already holds 4445',
+      `  3. Another process already holds ${WD_PORT}`,
       'See docs/development/e2e-testing.md',
     ].join('\n'),
   );
@@ -326,7 +338,11 @@ const wdio = spawn(
   {
     stdio: 'inherit',
     cwd: ROOT,
-    env: { ...process.env, DATAZEN_DATA_DIR: isolatedDataDir },
+    env: {
+      ...process.env,
+      DATAZEN_DATA_DIR: isolatedDataDir,
+      E2E_WD_PORT: String(WD_PORT),
+    },
   },
 );
 
