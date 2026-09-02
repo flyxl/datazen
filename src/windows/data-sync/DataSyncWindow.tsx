@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
@@ -18,6 +18,7 @@ import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useAiStore } from '../../stores/aiStore';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
+import { cn } from '../../lib/cn';
 import { openDataTransferWindow, openSchemaDiffWindow } from '../../lib/windowManager';
 import {
   ensureDedicatedSession,
@@ -53,7 +54,11 @@ import {
 } from './mappingView';
 import { buildCompareReportText } from './compareReport';
 
-type RightPanel = 'detail' | 'preview';
+type WizardStep = 'endpoints' | 'setup' | 'objects' | 'compare' | 'preview' | 'result';
+
+const STEPS: WizardStep[] = ['endpoints', 'setup', 'objects', 'compare', 'preview', 'result'];
+
+const NARROW_STEPS: WizardStep[] = ['endpoints', 'setup', 'result'];
 
 export function DataSyncWindow() {
   useSettings();
@@ -78,11 +83,12 @@ export function DataSyncWindow() {
   const [syncOptions, setSyncOptions] = useState<SyncOptions>(DEFAULT_SYNC_OPTIONS);
   const [mappingResults, setMappingResults] = useState<DataSyncTableResult[]>([]);
   const [disabledTables, setDisabledTables] = useState<Set<string>>(new Set());
+  const [step, setStep] = useState<WizardStep>('endpoints');
+  const [inspectionComplete, setInspectionComplete] = useState(false);
   const [syncState, setSyncState] = useState<SyncState>('idle');
   const [selectedTableKey, setSelectedTableKey] = useState<string | null>(null);
   const [tableFilter, setTableFilter] = useState<TableDiffFilter>('all');
   const [tableSearch, setTableSearch] = useState('');
-  const [rightPanel, setRightPanel] = useState<RightPanel>('detail');
   const [errorMsg, setErrorMsg] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
@@ -214,8 +220,10 @@ export function DataSyncWindow() {
   const resetCompareState = useCallback(() => {
     setMappingResults([]);
     setDisabledTables(new Set());
+    setInspectionComplete(false);
     setSelectedTableKey(null);
     setSyncState('idle');
+    setStep('endpoints');
   }, []);
 
   useEffect(() => {
@@ -543,24 +551,23 @@ export function DataSyncWindow() {
     return true;
   }, [sourceId, targetId, isSameEndpoint, sourceDatabase, targetDatabase, activePairing, t]);
 
-  const handleCompare = useCallback(async () => {
-    if (!validateEndpoints()) return;
+  const handleInspect = useCallback(async (): Promise<boolean> => {
+    if (!validateEndpoints()) return false;
 
     const generation = ++compareGenerationRef.current;
     setSyncState('inspecting');
     setSelectedTableKey(null);
     setStatusMsg('');
-    const jobId = crypto.randomUUID();
-    jobIdRef.current = jobId;
+    setInspectionComplete(false);
 
     try {
       const { source, target } = await refreshEndpointSessions();
-      if (generation !== compareGenerationRef.current) return;
+      if (generation !== compareGenerationRef.current) return false;
       const srcConnId = source?.dbSessionId;
       const tgtConnId = target?.dbSessionId;
       if (!srcConnId || !tgtConnId) {
         setSyncState('idle');
-        return;
+        return false;
       }
 
       const inspected = await syncCommands.inspectDataSync(
@@ -571,13 +578,56 @@ export function DataSyncWindow() {
         sourceSchema || undefined,
         targetSchema || undefined,
       );
-      if (generation !== compareGenerationRef.current) return;
+      if (generation !== compareGenerationRef.current) return false;
       const withDisabled = markDisabledTables(inspected, disabledTables);
       setMappingResults(withDisabled);
+      setInspectionComplete(true);
+      setSyncState('idle');
+      return true;
+    } catch (e) {
+      if (generation !== compareGenerationRef.current) return false;
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setErrorOpen(true);
+      setSyncState('idle');
+      return false;
+    }
+  }, [
+    validateEndpoints,
+    refreshEndpointSessions,
+    sourceId,
+    targetId,
+    sourceDatabase,
+    targetDatabase,
+    sourceSchema,
+    targetSchema,
+    disabledTables,
+  ]);
 
-      const toCompare = tablesForCompare(withDisabled);
-      setSyncState('comparing');
+  const handleCompare = useCallback(async (): Promise<boolean> => {
+    if (!validateEndpoints()) return false;
+    if (!inspectionComplete) {
+      const inspected = await handleInspect();
+      if (!inspected) return false;
+    }
 
+    const generation = ++compareGenerationRef.current;
+    setSyncState('comparing');
+    setSelectedTableKey(null);
+    setStatusMsg('');
+    const jobId = crypto.randomUUID();
+    jobIdRef.current = jobId;
+
+    try {
+      const { source, target } = await refreshEndpointSessions();
+      if (generation !== compareGenerationRef.current) return false;
+      const srcConnId = source?.dbSessionId;
+      const tgtConnId = target?.dbSessionId;
+      if (!srcConnId || !tgtConnId) {
+        setSyncState('idle');
+        return false;
+      }
+
+      const toCompare = tablesForCompare(mappingResults);
       const compared = await syncCommands.compareDataSync(
         srcConnId,
         tgtConnId,
@@ -590,8 +640,8 @@ export function DataSyncWindow() {
         syncOptions,
       );
 
-      if (generation !== compareGenerationRef.current) return;
-      const merged = mergeCompareIntoMappings(withDisabled, compared).map((row) => {
+      if (generation !== compareGenerationRef.current) return false;
+      const merged = mergeCompareIntoMappings(mappingResults, compared).map((row) => {
         if (row.status !== 'MATCHED' || !row.rows) return row;
         return {
           ...row,
@@ -602,22 +652,24 @@ export function DataSyncWindow() {
       const firstDiff = merged.find((r) => r.status === 'MATCHED' && tableHasRowDiffs(r));
       if (firstDiff) setSelectedTableKey(tableKey(firstDiff));
       setSyncState('compared');
+      return true;
     } catch (e) {
-      if (generation !== compareGenerationRef.current) return;
+      if (generation !== compareGenerationRef.current) return false;
       setErrorMsg(e instanceof Error ? e.message : String(e));
       setErrorOpen(true);
       setSyncState('idle');
+      return false;
     }
   }, [
     validateEndpoints,
+    inspectionComplete,
+    handleInspect,
     refreshEndpointSessions,
-    sourceId,
-    targetId,
+    mappingResults,
     sourceDatabase,
     targetDatabase,
     sourceSchema,
     targetSchema,
-    disabledTables,
     syncOptions,
   ]);
 
@@ -633,6 +685,7 @@ export function DataSyncWindow() {
   }, [mappingResults.length, t]);
 
   const toggleDisabledTable = useCallback((sourceTable: string) => {
+    setSyncState('idle');
     setDisabledTables((prev) => {
       const next = new Set(prev);
       if (next.has(sourceTable)) next.delete(sourceTable);
@@ -783,6 +836,7 @@ export function DataSyncWindow() {
         });
       });
       setSyncState('done');
+      setStep('result');
       if (usedApplyFallback) {
         setStatusMsg(t('sync.applyFallbackUsed'));
       } else {
@@ -822,6 +876,65 @@ export function DataSyncWindow() {
   const compared = syncState === 'compared' || syncState === 'executing' || syncState === 'done';
   const busy = syncState === 'inspecting' || syncState === 'comparing' || syncState === 'executing';
   const compareDisabled = Boolean(sourceSessionError || targetSessionError);
+  const stepIndex = STEPS.indexOf(step);
+  const canNext = useMemo(() => {
+    switch (step) {
+      case 'endpoints':
+        return Boolean(
+          sourceId &&
+            targetId &&
+            sourceDatabase &&
+            targetDatabase &&
+            activePairing?.supported &&
+            !compareDisabled,
+        );
+      case 'setup':
+        return !busy;
+      case 'objects':
+        return inspectionComplete && tablesForCompare(mappingResults).length > 0 && !busy;
+      case 'compare':
+        return compared && !busy;
+      default:
+        return false;
+    }
+  }, [
+    step,
+    sourceId,
+    targetId,
+    sourceDatabase,
+    targetDatabase,
+    activePairing,
+    compareDisabled,
+    busy,
+    inspectionComplete,
+    mappingResults,
+    compared,
+  ]);
+
+  const goNext = useCallback(async () => {
+    const next = STEPS[stepIndex + 1];
+    if (!next) return;
+
+    if (step === 'setup' && next === 'objects') {
+      setStep(next);
+      const ok = await handleInspect();
+      if (!ok) setStep(step);
+      return;
+    }
+    if (step === 'objects' && next === 'compare') {
+      setStep(next);
+      const ok = await handleCompare();
+      if (!ok) setStep(step);
+      return;
+    }
+    setStep(next);
+  }, [step, stepIndex, handleInspect, handleCompare]);
+
+  const goBack = useCallback(() => {
+    if (busy) return;
+    const previous = STEPS[stepIndex - 1];
+    if (previous) setStep(previous);
+  }, [busy, stepIndex]);
   const compareStats = useMemo(() => summarizeCompare(mappingResults), [mappingResults]);
 
   const handleCopyCompareReport = useCallback(() => {
@@ -873,193 +986,245 @@ export function DataSyncWindow() {
     t,
   ]);
 
+  const handleReCompare = useCallback(() => {
+    setStep('compare');
+    void handleCompare();
+  }, [handleCompare]);
+
   return (
     <div
       data-testid="data-sync-window"
       data-sync-state={syncState}
+      data-sync-step={step}
       className="flex h-screen min-h-0 flex-col bg-surface text-fg"
     >
       <TitleBar title={t('common.dataSyncTitle')} />
 
-      <EndpointsBar
-        sourceId={sourceId}
-        targetId={targetId}
-        sourceDatabase={sourceDatabase}
-        targetDatabase={targetDatabase}
-        sourceSchema={sourceSchema}
-        targetSchema={targetSchema}
-        sourceDatabases={sourceDatabases}
-        targetDatabases={targetDatabases}
-        sourceSchemas={sourceSchemas}
-        targetSchemas={targetSchemas}
-        connOptions={connOptions}
-        targetOptions={targetOptions}
-        activePairing={activePairing}
-        busy={busy}
-        compareDisabled={compareDisabled}
-        sourceSessionError={sourceSessionError}
-        targetSessionError={targetSessionError}
-        targetReadOnly={targetReadOnly}
-        onSourceChange={handleSourceChange}
-        onTargetChange={handleTargetChange}
-        onSourceDatabaseChange={handleSourceDatabaseChange}
-        onTargetDatabaseChange={handleTargetDatabaseChange}
-        onSourceSchemaChange={handleSourceSchemaChange}
-        onTargetSchemaChange={handleTargetSchemaChange}
-        onSwap={handleSwap}
-        onCompare={() => void handleCompare()}
-      />
-
-      <OptionsBar
-        options={syncOptions}
-        onChange={handleOptionsChange}
-        onEnableDelete={handleEnableDelete}
-      />
-
-      <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
-        {syncState === 'idle' && mappingResults.length === 0 && (
-          <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
-            {t('sync.selectPrompt')}
-          </div>
-        )}
-
-        {(syncState === 'inspecting' || syncState === 'comparing') && (
-          <div className="flex flex-1 items-center justify-center gap-2 text-sm text-fg-muted">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {syncState === 'inspecting' ? t('sync.inspecting') : t('sync.comparing')}
-            <Button
-              variant="ghost"
-              size="sm"
-              data-testid="data-sync-cancel"
-              onClick={() => void handleCancel()}
-            >
-              {t('common.cancel')}
-            </Button>
-          </div>
-        )}
-
-        {mappingResults.length > 0 && syncState !== 'inspecting' && syncState !== 'comparing' && (
-          <>
-            <MappingPanel
-              rows={mappingResults}
-              disabledTables={disabledTables}
-              compared={compared}
-              onToggleDisabled={toggleDisabledTable}
-              onOpenSchemaDiff={openSchemaDiffWindow}
-              onOpenDataTransfer={openDataTransferWindow}
-            />
-
-            {compared && (
-              <>
-                {syncState === 'done' && (
-                  <div
-                    data-testid="data-sync-execute-done"
-                    className="flex shrink-0 items-center gap-3 border-b border-edge bg-green-500/10 px-6 py-2 text-sm text-green-700 dark:text-green-400"
-                  >
-                    <span>{t('sync.executeDone')}</span>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      data-testid="data-sync-re-compare"
-                      onClick={() => void handleCompare()}
-                    >
-                      {t('sync.reCompare')}
-                    </Button>
-                  </div>
+      <div className="border-b border-edge px-6 py-3">
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-1">
+          {STEPS.map((s, i) => (
+            <div key={s} className="flex items-center gap-1">
+              {i > 0 && <ChevronRight className="h-3 w-3 shrink-0 text-fg-muted" aria-hidden />}
+              <span
+                data-testid={`data-sync-step-${s}`}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs',
+                  i === stepIndex
+                    ? 'font-semibold text-accent'
+                    : i < stepIndex
+                      ? 'text-accent/80'
+                      : 'text-fg-muted',
                 )}
-                <CompareSummary
-                  stats={compareStats}
-                  onCopyReport={handleCopyCompareReport}
-                  onExplainDiff={handleExplainDiff}
-                  explainLoading={explainLoading}
-                />
-              </>
-            )}
-
-            {compared && (
-              <div className="flex min-h-0 flex-1">
-                <TableListPanel
-                  rows={mappingResults}
-                  filter={tableFilter}
-                  search={tableSearch}
-                  selectedTableKey={selectedTableKey}
-                  onFilterChange={setTableFilter}
-                  onSearchChange={setTableSearch}
-                  onSelectTable={(key) => {
-                    setSelectedTableKey(key);
-                    setRightPanel('detail');
-                  }}
-                />
-
-                <div className="flex min-h-0 min-w-0 flex-[1.4] flex-col">
-                  <div role="tablist" className="flex shrink-0 border-b border-edge">
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={rightPanel === 'detail'}
-                      data-testid="data-sync-tab-detail"
-                      className={`px-4 py-2 text-xs font-medium ${rightPanel === 'detail' ? 'border-b-2 border-accent text-fg' : 'text-fg-muted'}`}
-                      onClick={() => setRightPanel('detail')}
-                    >
-                      {t('sync.rowDiffTab')}
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={rightPanel === 'preview'}
-                      data-testid="data-sync-tab-preview"
-                      className={`px-4 py-2 text-xs font-medium ${rightPanel === 'preview' ? 'border-b-2 border-accent text-fg' : 'text-fg-muted'}`}
-                      onClick={() => setRightPanel('preview')}
-                    >
-                      {t('common.sqlPreviewLower')}
-                    </button>
-                  </div>
-
-                  <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
-                    {rightPanel === 'detail' && selectedTable && (
-                      <DiffDetail
-                        table={selectedTable}
-                        options={syncOptions}
-                        onUpdateRows={(rows) => updateTableRows(tableKey(selectedTable), rows)}
-                      />
-                    )}
-                    {rightPanel === 'detail' && !selectedTable && (
-                      <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
-                        {t('sync.selectTableForDetail')}
-                      </div>
-                    )}
-                    {rightPanel === 'preview' &&
-                      (!sourceSession?.dbSessionId || !targetSession?.dbSessionId) && (
-                        <div
-                          data-testid="data-sync-preview-session-required"
-                          className="flex flex-1 items-center justify-center text-sm text-fg-muted"
-                        >
-                          {t('sync.sessionRequired')}
-                        </div>
-                      )}
-                    {rightPanel === 'preview' &&
-                      sourceSession?.dbSessionId &&
-                      targetSession?.dbSessionId && (
-                        <SqlPreview
-                          sourceConnId={sourceSession.dbSessionId}
-                          targetConnId={targetSession.dbSessionId}
-                          sourceDatabase={sourceDatabase}
-                          targetDatabase={targetDatabase}
-                          sourceSchema={sourceSchema}
-                          targetSchema={targetSchema}
-                          tables={mappingResults}
-                          options={syncOptions}
-                        />
-                      )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
-        )}
+              >
+                <span
+                  className={cn(
+                    'flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold',
+                    i === stepIndex
+                      ? 'bg-accent text-white'
+                      : i < stepIndex
+                        ? 'bg-accent/20 text-accent'
+                        : 'bg-surface-raised text-fg-muted',
+                  )}
+                >
+                  {i + 1}
+                </span>
+                {t(`sync.step.${s}`)}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {compared && (
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+        <div
+          className={cn(
+            'mx-auto flex min-h-0 w-full flex-1 flex-col px-6 py-6',
+            NARROW_STEPS.includes(step) ? 'max-w-2xl' : 'max-w-6xl',
+          )}
+        >
+          {step === 'endpoints' && (
+            <EndpointsBar
+              layout="grid"
+              showSwap={false}
+              showCompare={false}
+              sourceId={sourceId}
+              targetId={targetId}
+              sourceDatabase={sourceDatabase}
+              targetDatabase={targetDatabase}
+              sourceSchema={sourceSchema}
+              targetSchema={targetSchema}
+              sourceDatabases={sourceDatabases}
+              targetDatabases={targetDatabases}
+              sourceSchemas={sourceSchemas}
+              targetSchemas={targetSchemas}
+              connOptions={connOptions}
+              targetOptions={targetOptions}
+              activePairing={activePairing}
+              busy={busy}
+              compareDisabled={compareDisabled}
+              sourceSessionError={sourceSessionError}
+              targetSessionError={targetSessionError}
+              targetReadOnly={targetReadOnly}
+              onSourceChange={handleSourceChange}
+              onTargetChange={handleTargetChange}
+              onSourceDatabaseChange={handleSourceDatabaseChange}
+              onTargetDatabaseChange={handleTargetDatabaseChange}
+              onSourceSchemaChange={handleSourceSchemaChange}
+              onTargetSchemaChange={handleTargetSchemaChange}
+              onSwap={handleSwap}
+              onCompare={() => void handleCompare()}
+            />
+          )}
+
+          {step === 'setup' && (
+            <div className="space-y-4 rounded-lg border border-edge bg-surface-alt p-4">
+              <div>
+                <p className="text-sm font-medium text-fg">{t('sync.optionsTitle')}</p>
+                <p className="mt-1 text-xs text-fg-muted">{t('sync.optionsHint')}</p>
+              </div>
+              <OptionsBar
+                options={syncOptions}
+                onChange={handleOptionsChange}
+                onEnableDelete={handleEnableDelete}
+              />
+            </div>
+          )}
+
+          {step === 'objects' && (
+            <div data-testid="data-sync-objects-step" className="space-y-3">
+              {syncState === 'inspecting' ? (
+                <div className="flex justify-center py-12 text-sm text-fg-muted">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin text-accent" />
+                  {t('sync.inspecting')}
+                </div>
+              ) : mappingResults.length > 0 ? (
+                <MappingPanel
+                  rows={mappingResults}
+                  disabledTables={disabledTables}
+                  compared={false}
+                  onToggleDisabled={toggleDisabledTable}
+                  onOpenSchemaDiff={openSchemaDiffWindow}
+                  onOpenDataTransfer={openDataTransferWindow}
+                />
+              ) : (
+                <div className="rounded-lg border border-edge bg-surface-alt px-4 py-8 text-center text-sm text-fg-muted">
+                  {t('sync.noTablesFound')}
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 'compare' && (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              {syncState === 'comparing' ? (
+                <div className="flex flex-1 items-center justify-center gap-2 text-sm text-fg-muted">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {t('sync.comparing')}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid="data-sync-cancel"
+                    onClick={() => void handleCancel()}
+                  >
+                    {t('common.cancel')}
+                  </Button>
+                </div>
+              ) : compared ? (
+                <>
+                  <CompareSummary
+                    stats={compareStats}
+                    onCopyReport={handleCopyCompareReport}
+                    onExplainDiff={handleExplainDiff}
+                    explainLoading={explainLoading}
+                  />
+                  <div className="flex min-h-0 flex-1 rounded-lg border border-edge">
+                    <TableListPanel
+                      rows={mappingResults}
+                      filter={tableFilter}
+                      search={tableSearch}
+                      selectedTableKey={selectedTableKey}
+                      onFilterChange={setTableFilter}
+                      onSearchChange={setTableSearch}
+                      onSelectTable={setSelectedTableKey}
+                    />
+                    <div className="flex min-h-0 min-w-0 flex-[1.4] flex-col">
+                      {selectedTable ? (
+                        <DiffDetail
+                          table={selectedTable}
+                          options={syncOptions}
+                          onUpdateRows={(rows) => updateTableRows(tableKey(selectedTable), rows)}
+                        />
+                      ) : (
+                        <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
+                          {t('sync.selectTableForDetail')}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
+                  {t('sync.comparePrompt')}
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 'preview' && (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-edge">
+              {sourceSession?.dbSessionId && targetSession?.dbSessionId ? (
+                <SqlPreview
+                  sourceConnId={sourceSession.dbSessionId}
+                  targetConnId={targetSession.dbSessionId}
+                  sourceDatabase={sourceDatabase}
+                  targetDatabase={targetDatabase}
+                  sourceSchema={sourceSchema}
+                  targetSchema={targetSchema}
+                  tables={mappingResults}
+                  options={syncOptions}
+                />
+              ) : (
+                <div
+                  data-testid="data-sync-preview-session-required"
+                  className="flex flex-1 items-center justify-center text-sm text-fg-muted"
+                >
+                  {t('sync.sessionRequired')}
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 'result' && (
+            <div
+              data-testid="data-sync-result"
+              className="space-y-4 rounded-lg border border-edge bg-surface-alt p-6"
+            >
+              <div
+                data-testid="data-sync-execute-done"
+                className="flex flex-wrap items-center gap-3 text-sm text-green-700 dark:text-green-400"
+              >
+                <span>{t('sync.executeDone')}</span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  data-testid="data-sync-re-compare"
+                  onClick={handleReCompare}
+                >
+                  {t('sync.reCompare')}
+                </Button>
+              </div>
+              <CompareSummary
+                stats={compareStats}
+                onCopyReport={handleCopyCompareReport}
+                onExplainDiff={handleExplainDiff}
+                explainLoading={explainLoading}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {step === 'preview' && (
         <ExecuteBar
           selectedRows={totalSelectedRows}
           hasDeletes={hasSelectedDeletes}
@@ -1070,6 +1235,28 @@ export function DataSyncWindow() {
           onCancel={() => void handleCancel()}
         />
       )}
+
+      <div className="flex shrink-0 items-center justify-between border-t border-edge px-6 py-3">
+        <Button
+          variant="ghost"
+          data-testid="data-sync-back"
+          disabled={stepIndex === 0 || busy}
+          onClick={goBack}
+        >
+          <ChevronLeft className="h-4 w-4" /> {t('transfer.back')}
+        </Button>
+        {step !== 'preview' && step !== 'result' ? (
+          <Button
+            data-testid="data-sync-next"
+            disabled={!canNext || busy}
+            onClick={() => void goNext()}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {t('transfer.next')}
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        ) : null}
+      </div>
 
       <StatusBar left={<span className="truncate">{statusMsg || t('common.dataSync')}</span>} />
 

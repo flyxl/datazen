@@ -104,13 +104,13 @@ execute_statements（begin → query_with_params → commit；失败/Cancel 则 
 
 Legacy：`sync_table` / `sync_tables` / `compare_databases` / `classify_sync_pair` 已移除。Pairing 由 `classify_data_sync_pair` IPC（`data_sync/pairing.rs`）单一来源；前端 `src/lib/syncPairing.ts` 薄封装调用 IPC。
 
-## 6. 前端 Diff Workspace
+## 6. 前端 Data Sync 向导
 
-- 窗口：`src/windows/data-sync/DataSyncWindow.tsx`（单例 `data-sync`）
+- 窗口：`src/windows/data-sync/DataSyncWindow.tsx`（单例 `data-sync`，6 步向导：Endpoints / Setup / Objects / Compare / Preview / Result）
 - 子组件：`EndpointsBar` / `OptionsBar` / `MappingPanel` / `CompareSummary` / `TableListPanel` / `DiffDetail` / `SqlPreview` / `ExecuteBar`
-- 连接 + **database** 下拉：`data-sync-source-database` / `data-sync-target-database`；交换：`data-sync-swap`
+- Endpoints 步连接 + **database** 下拉：`data-sync-source-database` / `data-sync-target-database`；向导导航：`data-sync-back` / `data-sync-next`
 - Options：`data-sync-option-insert|update|delete`
-- Compare 后：`data-sync-summary`、行 Diff `data-sync-row-diff`、Preview `data-sync-preview`
+- Compare 后：`data-sync-summary`、行 Diff `data-sync-row-diff`；Preview 步：`data-sync-preview`
 - Execute 底栏：`data-sync-execute`（容器）/ `data-sync-start`（按钮）/ `data-sync-start-disabled`
 - 比较/执行中 Cancel：`data-sync-cancel` → `cancel_data_sync(jobId)`
 - Pairing：`classify_data_sync_pair` IPC + `src/lib/syncPairing.ts`（IPC 薄封装）
@@ -125,4 +125,3 @@ Legacy：`sync_table` / `sync_tables` / `compare_databases` / `classify_sync_pai
 | Host E2E UI | `e2e/specs/data-sync-window.ts`（Diff Workspace chrome） |
 | Host E2E IPC | `e2e/specs/data-sync-real.ts`（inspect/compare/apply/generate/revalidate；需 PG/MySQL 夹具） |
 | 驱动方言深度 | **不要**放进 Host；写在 `packages/drivers/<id>/` |
-

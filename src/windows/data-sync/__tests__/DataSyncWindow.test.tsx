@@ -209,7 +209,38 @@ async function pickSelect(testId: string, optionLabel: string) {
   fireEvent.mouseDown(option!);
 }
 
-describe('DataSyncWindow (Diff Workspace)', () => {
+async function selectEndpoints(targetLabel = 'PG Tgt') {
+  await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
+  await pickSelect('data-sync-source', 'PG Src');
+  await pickSelect('data-sync-target', targetLabel);
+  await waitFor(() =>
+    expect(screen.getByTestId('data-sync-source-database')).toHaveTextContent('src'),
+  );
+  await waitFor(() => expect(screen.getByTestId('data-sync-next')).not.toBeDisabled());
+}
+
+async function advanceToObjects(targetLabel = 'PG Tgt') {
+  await selectEndpoints(targetLabel);
+  fireEvent.click(screen.getByTestId('data-sync-next'));
+  await waitFor(() => expect(screen.getByTestId('data-sync-step-setup')).toBeTruthy());
+  fireEvent.click(screen.getByTestId('data-sync-next'));
+  await waitFor(() => expect(screen.getByTestId('data-sync-objects-step')).toBeTruthy());
+}
+
+async function advanceToCompare(targetLabel = 'PG Tgt') {
+  await advanceToObjects(targetLabel);
+  await waitFor(() => expect(screen.getByTestId('data-sync-next')).not.toBeDisabled());
+  fireEvent.click(screen.getByTestId('data-sync-next'));
+  await waitFor(() => expect(screen.getByTestId('data-sync-summary')).toBeTruthy());
+}
+
+async function advanceToPreview(targetLabel = 'PG Tgt') {
+  await advanceToCompare(targetLabel);
+  fireEvent.click(screen.getByTestId('data-sync-next'));
+  await waitFor(() => expect(screen.getByTestId('data-sync-preview')).toBeTruthy());
+}
+
+describe('DataSyncWindow wizard', () => {
   beforeEach(() => {
     aiConfiguredRef.value = false;
     invokeMock.mockReset();
@@ -255,22 +286,25 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     cleanup();
   });
 
-  it('shows idle prompt and primary controls', async () => {
+  it('shows the migration-style wizard shell and endpoint controls', async () => {
     render(<DataSyncWindow />);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
-    expect(screen.queryByTestId('data-sync-overwrite-retired')).toBeNull();
-    expect(screen.getByText('sync.selectPrompt')).toBeTruthy();
-    expect(screen.getByTestId('data-sync-compare')).toBeTruthy();
-    expect(screen.getByTestId('data-sync-swap')).toBeTruthy();
-    expect(screen.getByTestId('data-sync-option-insert')).toBeTruthy();
+    expect(screen.getByTestId('data-sync-step-endpoints')).toBeTruthy();
+    expect(screen.getByTestId('data-sync-step-setup')).toBeTruthy();
+    expect(screen.getByTestId('data-sync-step-objects')).toBeTruthy();
+    expect(screen.getByTestId('data-sync-step-compare')).toBeTruthy();
+    expect(screen.getByTestId('data-sync-step-preview')).toBeTruthy();
+    expect(screen.getByTestId('data-sync-step-result')).toBeTruthy();
+    expect(screen.getByTestId('data-sync-next')).toBeTruthy();
+    expect(screen.getByTestId('data-sync-source')).toBeTruthy();
+    expect(screen.getByTestId('data-sync-target')).toBeTruthy();
     expect(screen.queryByTestId('data-sync-start-disabled')).toBeNull();
   });
 
-  it('prompts to select both endpoints when Compare is clicked empty', async () => {
+  it('keeps Next disabled until both endpoints are selected', async () => {
     render(<DataSyncWindow />);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
-    fireEvent.click(screen.getByTestId('data-sync-compare'));
-    expect(await screen.findByTestId('data-sync-error')).toHaveTextContent('sync.selectBoth');
+    expect(screen.getByTestId('data-sync-next')).toBeDisabled();
     expect(inspectDataSyncMock).not.toHaveBeenCalled();
     expect(compareDataSyncMock).not.toHaveBeenCalled();
   });
@@ -290,13 +324,7 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     ]);
     applyDataSyncMock.mockResolvedValue({ applied: 1, rolledBack: false });
     render(<DataSyncWindow />);
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
-    await pickSelect('data-sync-source', 'PG Src');
-    await pickSelect('data-sync-target', 'PG Tgt');
-    await waitFor(() =>
-      expect(screen.getByTestId('data-sync-source-database')).toHaveTextContent('src'),
-    );
-    fireEvent.click(screen.getByTestId('data-sync-compare'));
+    await advanceToCompare();
     await waitFor(() =>
       expect(inspectDataSyncMock).toHaveBeenCalledWith(
         'dedicated-pg-src-src',
@@ -320,12 +348,17 @@ describe('DataSyncWindow (Diff Workspace)', () => {
         expect.objectContaining({ insert: true, update: true, delete: false }),
       ),
     );
-    const rows = await screen.findAllByTestId('data-sync-mapping-row');
-    expect(rows).toHaveLength(2);
     expect(screen.getByTestId('data-sync-summary')).toBeTruthy();
     expect(screen.getByTestId('data-sync-row-diff')).toBeTruthy();
     expect(screen.getAllByText(/sync.rowDiffs/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByTestId('data-sync-back'));
+    await waitFor(() => expect(screen.getByTestId('data-sync-objects-step')).toBeTruthy());
+    expect(await screen.findAllByTestId('data-sync-mapping-row')).toHaveLength(2);
     expect(screen.getByText('sync.mappingUnmappedSource')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('data-sync-next'));
+    await waitFor(() => expect(screen.getByTestId('data-sync-summary')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('data-sync-next'));
+    await waitFor(() => expect(screen.getByTestId('data-sync-preview')).toBeTruthy());
     const execute = screen.getByTestId('data-sync-start');
     expect(execute).not.toBeDisabled();
     fireEvent.click(execute);
@@ -424,16 +457,13 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     expect(inspectDataSyncMock).not.toHaveBeenCalled();
   });
 
-  it('surfaces data-sync comparison errors', async () => {
+  it('surfaces data-sync inspection errors', async () => {
     render(<DataSyncWindow />);
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
-    await pickSelect('data-sync-source', 'PG Src');
-    await pickSelect('data-sync-target', 'PG Tgt');
-    await waitFor(() =>
-      expect(screen.getByTestId('data-sync-source-database')).toHaveTextContent('src'),
-    );
+    await selectEndpoints();
+    fireEvent.click(screen.getByTestId('data-sync-next'));
+    await waitFor(() => expect(screen.getByTestId('data-sync-step-setup')).toBeTruthy());
     inspectDataSyncMock.mockRejectedValue(new Error('gate failed'));
-    fireEvent.click(screen.getByTestId('data-sync-compare'));
+    fireEvent.click(screen.getByTestId('data-sync-next'));
     expect(await screen.findByTestId('data-sync-error')).toHaveTextContent('gate failed');
   });
 
@@ -451,15 +481,13 @@ describe('DataSyncWindow (Diff Workspace)', () => {
       { sourceTable: 'users', targetTable: 'users', status: 'MATCHED', rows: [] },
     ]);
     render(<DataSyncWindow />);
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
-    await pickSelect('data-sync-source', 'PG Src');
-    await pickSelect('data-sync-target', 'PG Tgt');
-    await waitFor(() =>
-      expect(screen.getByTestId('data-sync-source-database')).toHaveTextContent('src'),
-    );
-    fireEvent.click(screen.getByTestId('data-sync-compare'));
-    await screen.findAllByTestId('data-sync-mapping-row');
+    await selectEndpoints();
     expect(screen.getByTestId('data-sync-path')).toHaveTextContent('sync.pathDirect');
+    fireEvent.click(screen.getByTestId('data-sync-next'));
+    await waitFor(() => expect(screen.getByTestId('data-sync-step-setup')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('data-sync-next'));
+    await waitFor(() => expect(screen.getByTestId('data-sync-objects-step')).toBeTruthy());
+    await screen.findAllByTestId('data-sync-mapping-row');
     expect(screen.getByText('pk mismatch')).toBeTruthy();
 
     const matchedRow = screen.getAllByTestId('data-sync-mapping-row')[0];
@@ -468,30 +496,28 @@ describe('DataSyncWindow (Diff Workspace)', () => {
   });
 
   it('cancel during compare resets sync state and re-enables Compare', async () => {
-    let resolveInspect: ((value: unknown) => void) | undefined;
-    inspectDataSyncMock.mockImplementation(
+    inspectDataSyncMock.mockResolvedValue([
+      { sourceTable: 'users', targetTable: 'users', status: 'MATCHED' },
+    ]);
+    let resolveCompare: ((value: unknown) => void) | undefined;
+    compareDataSyncMock.mockImplementation(
       () =>
         new Promise((resolve) => {
-          resolveInspect = resolve;
+          resolveCompare = resolve;
         }),
     );
     render(<DataSyncWindow />);
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
-    await pickSelect('data-sync-source', 'PG Src');
-    await pickSelect('data-sync-target', 'PG Tgt');
-    await waitFor(() =>
-      expect(screen.getByTestId('data-sync-source-database')).toHaveTextContent('src'),
-    );
-    fireEvent.click(screen.getByTestId('data-sync-compare'));
+    await advanceToObjects();
+    fireEvent.click(screen.getByTestId('data-sync-next'));
     await waitFor(() => expect(screen.getByTestId('data-sync-cancel')).toBeTruthy());
-    expect(screen.getByTestId('data-sync-window')).toHaveAttribute('data-sync-state', 'inspecting');
+    expect(screen.getByTestId('data-sync-window')).toHaveAttribute('data-sync-state', 'comparing');
     fireEvent.click(screen.getByTestId('data-sync-cancel'));
     await waitFor(() =>
-      expect(screen.getByTestId('data-sync-window')).toHaveAttribute('data-sync-state', 'idle'),
+      expect(screen.getByTestId('data-sync-window')).toHaveAttribute('data-sync-state', 'compared'),
     );
     expect(cancelDataSyncMock).toHaveBeenCalled();
-    expect(screen.getByTestId('data-sync-compare')).not.toBeDisabled();
-    resolveInspect?.([{ sourceTable: 'users', targetTable: 'users', status: 'MATCHED' }]);
+    expect(screen.getByTestId('data-sync-next')).not.toBeDisabled();
+    resolveCompare?.([]);
   });
 
   it('disables Execute and shows targetReadOnly for read-only target', async () => {
@@ -529,14 +555,7 @@ describe('DataSyncWindow (Diff Workspace)', () => {
       },
     ]);
     render(<DataSyncWindow />);
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
-    await pickSelect('data-sync-source', 'PG Src');
-    await pickSelect('data-sync-target', 'PG Tgt RO');
-    await waitFor(() =>
-      expect(screen.getByTestId('data-sync-source-database')).toHaveTextContent('src'),
-    );
-    fireEvent.click(screen.getByTestId('data-sync-compare'));
-    await screen.findByTestId('data-sync-summary');
+    await advanceToPreview('PG Tgt RO');
     expect(screen.getByTestId('data-sync-start-disabled')).toBeTruthy();
     expect(screen.getByText('sync.targetReadOnly')).toBeTruthy();
     expect(applyDataSyncMock).not.toHaveBeenCalled();
@@ -578,15 +597,18 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     await waitFor(() =>
       expect(screen.getByTestId('data-sync-source-database')).toHaveTextContent('src'),
     );
-    fireEvent.click(screen.getByTestId('data-sync-compare'));
-    await screen.findAllByTestId('data-sync-mapping-row');
+    await advanceToCompare();
     expect(screen.getByTestId('data-sync-window')).toHaveAttribute('data-sync-state', 'compared');
+    fireEvent.click(screen.getByTestId('data-sync-back'));
+    fireEvent.click(screen.getByTestId('data-sync-back'));
+    fireEvent.click(screen.getByTestId('data-sync-back'));
+    await waitFor(() => expect(screen.getByTestId('data-sync-source')).toBeTruthy());
     await pickSelect('data-sync-source', 'PG Src Alt');
     await waitFor(() =>
       expect(screen.getByTestId('data-sync-window')).toHaveAttribute('data-sync-state', 'idle'),
     );
     expect(screen.queryAllByTestId('data-sync-mapping-row')).toHaveLength(0);
-    expect(screen.getByText('sync.selectPrompt')).toBeTruthy();
+    expect(screen.getByTestId('data-sync-step-endpoints')).toBeTruthy();
   });
 
   it('shows AI explain diff result when configured', async () => {
@@ -609,8 +631,7 @@ describe('DataSyncWindow (Diff Workspace)', () => {
     await waitFor(() =>
       expect(screen.getByTestId('data-sync-source-database')).toHaveTextContent('src'),
     );
-    fireEvent.click(screen.getByTestId('data-sync-compare'));
-    await screen.findByTestId('data-sync-summary');
+    await advanceToCompare();
     fireEvent.click(screen.getByTestId('data-sync-explain-diff'));
     await waitFor(() => expect(aiChatMock).toHaveBeenCalled());
     expect(await screen.findByTestId('data-sync-explain-result')).toHaveTextContent(

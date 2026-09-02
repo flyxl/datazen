@@ -16,12 +16,23 @@ import {
   selectDzOptionInWrap,
   withSafeModeOff,
 } from '../helpers.js';
+import {
+  advanceDataSyncToPreview,
+  advanceDataSyncToSetup,
+  compareDataSyncObjects,
+  inspectDataSyncObjects,
+  moveDataSyncBackTo,
+} from './journeys/dataSyncJourneyHelpers.js';
 
 async function openDataSyncWindow() {
   await browser.url('tauri://localhost/window.html?window=data-sync');
   await browser.pause(1500);
   await $('[data-testid="data-sync-window"]').waitForDisplayed({ timeout: 10000 });
-  await $('[data-testid="data-sync-compare"]').waitForDisplayed({ timeout: 10000 });
+  await browser.waitUntil(
+    async () =>
+      (await $('[data-testid="data-sync-window"]').getAttribute('data-sync-step')) === 'endpoints',
+    { timeout: 10000, timeoutMsg: 'data-sync wizard did not open on endpoints step' },
+  );
 }
 
 async function captureStep(label: string) {
@@ -78,15 +89,11 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     await browser.switchToWindow(mainWindow);
   });
 
-  it('DS-EDGE-001: 未选端点比较应提示 selectBoth', async () => {
+  it('DS-EDGE-001: 未选端点时下一步应禁用', async () => {
     await openDataSyncWindow();
-    await $('[data-testid="data-sync-compare"]').click();
-    await browser.pause(500);
-    const err = await $('[data-testid="data-sync-error"]');
-    await expect(err).toBeDisplayed();
-    expect(await err.getText()).toContain(t('sync.selectBoth'));
+    await expect(await $('[data-testid="data-sync-next"]')).toBeDisabled();
+    await expect(await $('[data-testid="data-sync-error"]')).not.toBeExisting();
     await captureStep('ds-edge-01-select-both');
-    await dismissOkDialog();
   });
 
   it('DS-EDGE-002: 同源同库比较应提示 cannotSameDb', async () => {
@@ -101,7 +108,8 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     await selectDzOption(t('sync.selectSource'), NAME);
     await selectDzOption(t('sync.selectTarget'), NAME);
     await browser.pause(800);
-    await $('[data-testid="data-sync-compare"]').click();
+    await advanceDataSyncToSetup();
+    await $('[data-testid="data-sync-next"]').click();
     await browser.pause(500);
     const err = await $('[data-testid="data-sync-error"]');
     await expect(err).toBeDisplayed();
@@ -116,7 +124,7 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     }
   });
 
-  it('DS-EDGE-003: 比较按钮在仅选源端点时仍提示 selectBoth', async () => {
+  it('DS-EDGE-003: 仅选源端点时下一步应禁用', async () => {
     const STAMP = Date.now().toString(36);
     const ID = `e2e_ds_src_only_${STAMP}`;
     await invokeBackend('save_connection', {
@@ -126,13 +134,9 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     await openDataSyncWindow();
     await selectDzOption(t('sync.selectSource'), `DS-SrcOnly-${STAMP}`);
     await browser.pause(500);
-    await $('[data-testid="data-sync-compare"]').click();
-    await browser.pause(500);
-    const err = await $('[data-testid="data-sync-error"]');
-    await expect(err).toBeDisplayed();
-    expect(await err.getText()).toContain(t('sync.selectBoth'));
+    await expect(await $('[data-testid="data-sync-next"]')).toBeDisabled();
+    await expect(await $('[data-testid="data-sync-error"]')).not.toBeExisting();
     await captureStep('ds-edge-03-source-only');
-    await dismissOkDialog();
 
     try {
       await invokeBackend('delete_connection', { id: ID });
@@ -192,30 +196,16 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     }
   });
 
-  it('DS-EDGE-005: 勾选 Delete 应弹出确认对话框', async () => {
+  it('DS-EDGE-005: 端点页应把 Delete 选项放到后续 setup 步骤', async () => {
     await openDataSyncWindow();
-    const deleteOpt = await $('[data-testid="data-sync-option-delete"]');
-    await deleteOpt.click();
-    await browser.pause(400);
-    const body = await $('body').getText();
-    expect(body).toContain(t('sync.deleteConfirmTitle'));
-    expect(body).toContain(t('sync.deleteConfirmBody'));
-    await captureStep('ds-edge-05-delete-confirm');
-    const cancel = await $(`button*=${t('common.cancel')}`);
-    if (await cancel.isDisplayed()) {
-      await cancel.click();
-      await browser.pause(200);
-    }
-    expect(await deleteOpt.isSelected()).toBe(false);
+    await expect(await $('[data-testid="data-sync-option-delete"]')).not.toBeExisting();
+    await captureStep('ds-edge-05-delete-gated');
   });
 
-  it('DS-EDGE-006: Swap 端点不应触发错误对话框', async () => {
+  it('DS-EDGE-006: 向导端点页不显示 Swap 操作', async () => {
     await openDataSyncWindow();
-    await $('[data-testid="data-sync-swap"]').click();
-    await browser.pause(400);
-    const err = await $('[data-testid="data-sync-error"]');
-    expect(await err.isDisplayed().catch(() => false)).toBe(false);
-    await captureStep('ds-edge-06-swap');
+    await expect(await $('[data-testid="data-sync-swap"]')).not.toBeExisting();
+    await captureStep('ds-edge-06-no-swap');
   });
 
   it('DS-EDGE-012: 比较过程中 Cancel 应中止并提示 compare cancelled', async () => {
@@ -233,7 +223,14 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     await selectDzOption(t('sync.selectSource'), `DS-Cancel-Src-${STAMP}`);
     await selectDzOption(t('sync.selectTarget'), `DS-Cancel-Tgt-${STAMP}`);
     await browser.pause(1500);
-    await $('[data-testid="data-sync-compare"]').click();
+    await advanceDataSyncToSetup();
+    await inspectDataSyncObjects();
+    await $('[data-testid="data-sync-next"]').click();
+    await browser.waitUntil(
+      async () =>
+        (await $('[data-testid="data-sync-window"]').getAttribute('data-sync-step')) === 'compare',
+      { timeout: 10000, timeoutMsg: 'data-sync compare step did not open' },
+    );
     const cancel = await $('[data-testid="data-sync-cancel"]');
     const sawCancel = await cancel
       .waitForDisplayed({ timeout: 8000 })
@@ -245,14 +242,9 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     const state = await getSyncState();
     expect(state).not.toBe('inspecting');
     expect(state).not.toBe('comparing');
-    const compareBtn = await $('[data-testid="data-sync-compare"]');
-    await expect(compareBtn).toBeDisplayed();
-    expect(await compareBtn.getAttribute('disabled')).toBe(null);
-    const err = await $('[data-testid="data-sync-error"]');
-    if (await err.isDisplayed().catch(() => false)) {
-      expect(await err.getText()).toContain('cancel');
-      await dismissOkDialog();
-    }
+    await expect(await $('[data-testid="data-sync-next"]')).toBeDisplayed();
+    expect(await $('[data-testid="data-sync-next"]').getAttribute('disabled')).toBe(null);
+    expect(await $('body').getText()).toContain(t('sync.compareCancelled'));
     await captureStep('ds-edge-12-compare-cancelled');
 
     for (const id of [SRC_ID, TGT_ID]) {
@@ -307,15 +299,11 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     await selectDzOption(t('sync.selectSource'), `DS-RO-Src-${STAMP}`);
     await selectDzOption(t('sync.selectTarget'), `DS-RO-Tgt-${STAMP}`);
     await browser.pause(1500);
-    await $('[data-testid="data-sync-compare"]').click();
-    await browser.waitUntil(
-      async () => {
-        const cancel = await $('[data-testid="data-sync-cancel"]');
-        return !(await cancel.isDisplayed().catch(() => false));
-      },
-      { timeout: 120000, timeoutMsg: 'read-only compare did not finish' },
-    );
+    await advanceDataSyncToSetup();
+    await inspectDataSyncObjects();
+    await compareDataSyncObjects();
     await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 20000 });
+    await advanceDataSyncToPreview();
 
     await expect(await $('[data-testid="data-sync-start-disabled"]')).toBeDisplayed();
     const body = await $('body').getText();
@@ -376,20 +364,16 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     await selectDzOption(t('sync.selectSource'), `DS-Chg-Src-${STAMP}`);
     await selectDzOption(t('sync.selectTarget'), `DS-Chg-Tgt-${STAMP}`);
     await browser.pause(1500);
-    await $('[data-testid="data-sync-compare"]').click();
-    await browser.waitUntil(
-      async () => {
-        const cancel = await $('[data-testid="data-sync-cancel"]');
-        return !(await cancel.isDisplayed().catch(() => false));
-      },
-      { timeout: 120000, timeoutMsg: 'endpoint-change compare did not finish' },
-    );
+    await advanceDataSyncToSetup();
+    await inspectDataSyncObjects();
+    await compareDataSyncObjects();
     await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 20000 });
     const rowCountBefore = await browser.execute(
       () => document.querySelectorAll('[data-testid="data-sync-mapping-row"]').length,
     );
     expect(rowCountBefore).toBeGreaterThan(0);
 
+    await moveDataSyncBackTo('endpoints');
     await selectDzOptionInWrap('data-sync-source', `DS-Chg-Alt-${STAMP}`);
     await browser.pause(800);
     expect(await getSyncState()).toBe('idle');
@@ -397,7 +381,7 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
       () => document.querySelectorAll('[data-testid="data-sync-mapping-row"]').length,
     );
     expect(rowCountAfter).toBe(0);
-    expect(await $('body').getText()).toContain(t('sync.selectPrompt'));
+    await expect(await $('[data-testid="data-sync-step-endpoints"]')).toBeDisplayed();
     await captureStep('ds-edge-15-source-change-clears-mapping');
 
     try {
@@ -463,9 +447,9 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
     await selectDzOption(t('sync.selectSource'), SRC_NAME);
     await selectDzOption(t('sync.selectTarget'), TGT_NAME);
     await browser.pause(1500);
-    await $('[data-testid="data-sync-compare"]').click();
-    await browser.pause(2500);
-    await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 20000 });
+    await advanceDataSyncToSetup();
+    await inspectDataSyncObjects();
+    await compareDataSyncObjects();
     await captureStep('ds-edge-post-00-compared');
   });
 
@@ -492,18 +476,25 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
   });
 
   it('DS-EDGE-007: 关闭 Insert 后 Execute 应禁用（仅 INSERT diff）', async () => {
+    await moveDataSyncBackTo('setup');
     const insertOpt = await $('[data-testid="data-sync-option-insert"]');
     if (await insertOpt.isSelected()) {
       await insertOpt.click();
       await browser.pause(300);
     }
+    await inspectDataSyncObjects();
+    await compareDataSyncObjects();
+    await advanceDataSyncToPreview();
     await expect(await $('[data-testid="data-sync-start-disabled"]')).toBeDisplayed();
     expect(await $('[data-testid="data-sync-start-disabled"]').getAttribute('title')).toContain(
       t('sync.executeUnavailable'),
     );
     await captureStep('ds-edge-post-01-insert-off-execute-disabled');
-    await insertOpt.click();
+    await moveDataSyncBackTo('setup');
+    await $('[data-testid="data-sync-option-insert"]').click();
     await browser.pause(300);
+    await inspectDataSyncObjects();
+    await compareDataSyncObjects();
   });
 
   it('DS-EDGE-008: 表搜索应过滤左侧列表', async () => {
@@ -535,26 +526,9 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
     }, TABLE);
     expect(unchecked).toBeGreaterThan(0);
     await browser.pause(400);
-    const stillEnabled = await $('[data-testid="data-sync-start"]')
-      .isDisplayed()
-      .catch(() => false);
-    const disabled = await $('[data-testid="data-sync-start-disabled"]')
-      .isDisplayed()
-      .catch(() => false);
-    expect(stillEnabled || disabled).toBe(true);
-    if (!stillEnabled) {
-      await expect(await $('[data-testid="data-sync-start-disabled"]')).toBeDisplayed();
-    } else {
-      // Other tables may still have diffs — disable every included matched table.
-      await browser.execute(() => {
-        document
-          .querySelectorAll('[data-testid="data-sync-mapping-row"] input[type="checkbox"]:checked')
-          .forEach((cb) => (cb as HTMLInputElement).click());
-      });
-      await browser.pause(400);
-      await expect(await $('[data-testid="data-sync-start-disabled"]')).toBeDisplayed();
-    }
+    await expect(await $('[data-testid="data-sync-next"]')).toBeDisabled();
     await captureStep('ds-edge-post-03-mapping-unchecked');
+    await moveDataSyncBackTo('objects');
     await browser.execute(() => {
       document
         .querySelectorAll('[data-testid="data-sync-mapping-row"] input[type="checkbox"]')
@@ -564,15 +538,7 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
         });
     });
     await browser.pause(300);
-    await $('[data-testid="data-sync-compare"]').click();
-    await browser.waitUntil(
-      async () => {
-        const cancel = await $('[data-testid="data-sync-cancel"]');
-        return !(await cancel.isDisplayed().catch(() => false));
-      },
-      { timeout: 120000, timeoutMsg: 're-compare after mapping toggle did not finish' },
-    );
-    await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 20000 });
+    await compareDataSyncObjects();
   });
 
   it('DS-EDGE-010: Copy report 按钮应可点击', async () => {
@@ -596,11 +562,7 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
   });
 
   it('DS-EDGE-014: 执行后应显示 executeDone 成功 banner', async () => {
-    const insertOpt = await $('[data-testid="data-sync-option-insert"]');
-    if (!(await insertOpt.isSelected())) {
-      await insertOpt.click();
-      await browser.pause(200);
-    }
+    await advanceDataSyncToPreview();
     const start = await $('[data-testid="data-sync-start"]');
     await start.waitForClickable({ timeout: 20000 });
     await start.click();
