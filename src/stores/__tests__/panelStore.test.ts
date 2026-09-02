@@ -278,6 +278,88 @@ describe('panelStore', () => {
     );
   });
 
+  it('executeQuery resolves a catalog-shaped Superset database entry through its alias', async () => {
+    const { DB_REGISTRY } = await import('../../lib/databaseTypes');
+    if (!Object.prototype.hasOwnProperty.call(DB_REGISTRY, 'superset')) return;
+
+    seedCurrentDatabase('sess-1', 'hive');
+    useSchemaStore.setState((state) => {
+      const schemas = new Map(state.schemas);
+      const entry = schemas.get('sess-1');
+      if (!entry) return state;
+      schemas.set('sess-1', {
+        ...entry,
+        namespaceTree: { hive: { hive: { snap: { orders: 'table' } } } },
+        pathAliases: { hive: '558' },
+        databases: ['hive'],
+      });
+      return { schemas };
+    });
+    const panel: Panel = {
+      ...base,
+      databaseType: 'superset',
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      namespacePath: ['hive', 'hive', 'snap'],
+    };
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore
+      .getState()
+      .updateSql(panel.id, 'SELECT * FROM hive.snap.afi_id_loan_t_afi_installment_order');
+
+    await usePanelStore.getState().executeQuery(panel.id);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'sess-1',
+      'SELECT * FROM hive.snap.afi_id_loan_t_afi_installment_order',
+      expect.any(Function),
+      { database: '558/hive/snap', schema: null },
+    );
+  });
+
+  it('executeQuery removes the Superset database display name from the namespace pin', async () => {
+    const { DB_REGISTRY } = await import('../../lib/databaseTypes');
+    if (!Object.prototype.hasOwnProperty.call(DB_REGISTRY, 'superset')) return;
+
+    seedCurrentDatabase('sess-1', 'presto_afi_data');
+    useSchemaStore.setState((state) => {
+      const schemas = new Map(state.schemas);
+      const entry = schemas.get('sess-1');
+      if (!entry) return state;
+      schemas.set('sess-1', {
+        ...entry,
+        namespaceTree: {
+          presto_afi_data: { hive: { snap: { orders: 'table' } } },
+        },
+        pathAliases: { presto_afi_data: '558' },
+        databases: ['presto_afi_data'],
+      });
+      return { schemas };
+    });
+    const panel: Panel = {
+      ...base,
+      databaseType: 'superset',
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      namespacePath: ['presto_afi_data', 'hive', 'snap'],
+    };
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore
+      .getState()
+      .updateSql(panel.id, 'SELECT * FROM afi_id_loan_t_afi_installment_order');
+
+    await usePanelStore.getState().executeQuery(panel.id);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'sess-1',
+      'SELECT * FROM afi_id_loan_t_afi_installment_order',
+      expect.any(Function),
+      { database: '558/hive/snap', schema: null },
+    );
+  });
+
   // ── addPanel ─────────────────────────────────────────────────
 
   it('addPanel appends panel and activates it by default', () => {

@@ -9,6 +9,7 @@ import {
   buildPathHierarchySelectorSegments,
   pathHierarchySelectorSegmentsForUi,
   pathHierarchyConnectionRoot,
+  pathHierarchyRelativeNamespacePath,
   PATH_HIERARCHY_PLACEHOLDER_SELECTOR_SEGMENTS,
 } from '../queryContextPath';
 import type { SqlNamespace } from '../sqlNamespace';
@@ -135,6 +136,37 @@ describe('buildPathHierarchyDatabasePin', () => {
   });
 });
 
+describe('pathHierarchyRelativeNamespacePath', () => {
+  it('removes a database display root from a full selector path', () => {
+    expect(
+      pathHierarchyRelativeNamespacePath(
+        ['presto_afi_data'],
+        { presto_afi_data: { hive: { snap: {} } } },
+        ['presto_afi_data', 'hive', 'snap'],
+      ),
+    ).toEqual(['hive', 'snap']);
+  });
+
+  it('keeps a relative catalog path when database and catalog names collide', () => {
+    expect(
+      pathHierarchyRelativeNamespacePath(['hive'], { hive: { hive: { snap: {} } } }, [
+        'hive',
+        'snap',
+      ]),
+    ).toEqual(['hive', 'snap']);
+  });
+
+  it('removes only the database root when database and catalog names collide', () => {
+    expect(
+      pathHierarchyRelativeNamespacePath(['hive'], { hive: { hive: { snap: {} } } }, [
+        'hive',
+        'hive',
+        'snap',
+      ]),
+    ).toEqual(['hive', 'snap']);
+  });
+});
+
 describe('splitPathHierarchyDatabasePin', () => {
   it('splits fetch paths from table-open context', () => {
     expect(splitPathHierarchyDatabasePin('558/hive/snap')).toEqual({
@@ -235,6 +267,20 @@ describe('pathHierarchyConnectionRoot', () => {
     expect(pathHierarchyConnectionRoot([], undefined, '558:presto_afi_data')).toBe(
       '558:presto_afi_data',
     );
+  });
+
+  it('resolves a catalog-shaped database entry through its backend alias', () => {
+    expect(
+      pathHierarchyConnectionRoot(['hive'], undefined, 'hive', { hive: '558' }, ['hive']),
+    ).toBe('558');
+  });
+
+  it('uses only the root when currentDatabase is already a fetch path', () => {
+    expect(
+      pathHierarchyConnectionRoot(['558:presto_afi_data'], undefined, '558/hive/snap', {}, [
+        'hive',
+      ]),
+    ).toBe('558:presto_afi_data');
   });
 });
 

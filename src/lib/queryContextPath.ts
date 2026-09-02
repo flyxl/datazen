@@ -1,5 +1,5 @@
 import { extractQualifiedToken } from './sqlPathPrefix';
-import { namespaceBranchChildNames, type SqlNamespace } from './sqlNamespace';
+import { namespaceBranchChildNames, namespaceHasChild, type SqlNamespace } from './sqlNamespace';
 
 const RELATION =
   /\b(?:from|join|update|into)\s+(?:only\s+)?((?:"[^"]+"|`[^`]+`|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|[A-Za-z_][\w$]*))*)/gi;
@@ -97,6 +97,27 @@ export function buildPathHierarchyDatabasePin(
   return [root, ...namespacePath].join('/');
 }
 
+/**
+ * Convert a selector path rooted at the displayed connection database into
+ * the catalog/schema path expected after the driver database id.
+ *
+ * Tree validation disambiguates the case where a database and its catalog
+ * share the same name: `['hive', 'snap']` remains a catalog/schema path, while
+ * `['hive', 'hive', 'snap']` loses only the first (database) segment.
+ */
+export function pathHierarchyRelativeNamespacePath(
+  databases: readonly string[],
+  namespaceTree: SqlNamespace,
+  namespacePath: readonly string[],
+): string[] {
+  const first = namespacePath[0];
+  if (!first || !databases.includes(first)) return [...namespacePath];
+
+  const isRootedTreePath = namespaceHasChild(namespaceTree, [...namespacePath]);
+  const repeatsDatabaseAsCatalog = namespacePath[1] === first;
+  return isRootedTreePath || repeatsDatabaseAsCatalog ? namespacePath.slice(1) : [...namespacePath];
+}
+
 /** Inverse of {@link buildPathHierarchyDatabasePin} for table-open / panel bootstrap. */
 export function splitPathHierarchyDatabasePin(pin: string): {
   root: string;
@@ -117,23 +138,62 @@ export function splitPathHierarchyDatabasePin(pin: string): {
 
 /**
  * Connection-level database for path-hierarchy pin building.
- * Ignores `currentDatabase` when it is a catalog/schema segment (not in `databases`).
+ * Resolves namespace display names through path aliases instead of treating
+ * them as connection-level databases (for example `hive` → `558`).
  */
 export function pathHierarchyConnectionRoot(
   databases: readonly string[],
   panelDatabase: string | undefined | null,
   currentDatabase: string | null,
+  pathAliases: Readonly<Record<string, string>> = {},
+  namespaceRoots: readonly string[] = [],
 ): string | null {
-  const panelDb = panelDatabase?.trim();
-  if (panelDb && databases.includes(panelDb)) return panelDb;
-  if (currentDatabase && databases.includes(currentDatabase)) return currentDatabase;
-  if (panelDb) {
-    const { root } = splitPathHierarchyDatabasePin(panelDb);
-    if (root && (databases.length === 0 || databases.includes(root))) return root;
+  const namespaceRootSet = new Set(namespaceRoots);
+  const hasAlias = (value: string): boolean =>
+    Object.prototype.hasOwnProperty.call(pathAliases, value);
+
+  const knownDatabaseFor = (root: string): string | null => {
+    const trimmed = root.trim();
+    if (!trimmed) return null;
+    return (
+      databases.find((database) => database === trimmed || database.split(':', 1)[0] === trimmed) ??
+      null
+    );
+  };
+
+  const resolveCandidate = (value: string | undefined | null): string | null => {
+    const trimmed = value?.trim();
+    if (!trimmed) return null;
+
+    // currentDatabase may already be a complete fetch path. Only its first
+    // component is the connection root; the remaining components are the
+    // namespace path and must not be prepended again.
+    const { root } = splitPathHierarchyDatabasePin(trimmed);
+    const alias = pathAliases[root]?.trim();
+    if (namespaceRootSet.has(root) || hasAlias(root)) {
+      if (alias) return knownDatabaseFor(alias) ?? alias;
+      return knownDatabaseFor(root);
+    }
+
+    const known = knownDatabaseFor(root);
+    if (known) return known;
+    if (/^\d+$/.test(root)) return root;
+    // An id:name root is valid while the database list is still loading.
+    if (databases.length === 0 && root.includes(':')) return root;
+    return null;
+  };
+
+  const panelRoot = resolveCandidate(panelDatabase);
+  if (panelRoot) return panelRoot;
+
+  const currentRoot = resolveCandidate(currentDatabase);
+  if (currentRoot) return currentRoot;
+
+  for (const database of databases) {
+    const root = resolveCandidate(database);
+    if (root) return root;
   }
-  // Superset connection databases use `id:name` — never treat bare catalog names as roots.
-  if (currentDatabase?.includes(':')) return currentDatabase;
-  return databases[0] ?? null;
+  return null;
 }
 
 export type PathHierarchySelectorSegment =
