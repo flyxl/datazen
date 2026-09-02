@@ -392,20 +392,46 @@ if (INSTANCE_COUNT > 1) {
   // Multi-instance: launch N independent WDIO processes, each with its own port/dataDir
   // and a round-robin slice of the spec files. This avoids WDIO's capability duplication.
   // Resolve spec files to split across workers.
-  // If --suite is given, we can't easily parse wdio.conf.ts suites here,
-  // so we fall back to passing --suite to a single WDIO process (no split).
-  const hasSuiteArg = wdioArgs.includes('--suite');
   let allSpecs = [];
-  let useSpecSplit = true;
 
-  if (hasSuiteArg) {
-    // Suite mode: can't split specs, run single WDIO with all instances sharing work
-    // is impossible — warn and fall back to single instance behavior
-    log(
-      'Warning: --suite with --instances is not supported (cannot split suite specs). ' +
-        'Running with instance 0 only. Use explicit --spec list for true parallelism.',
+  /**
+   * Parse suite definitions from wdio.conf.ts by reading the file and extracting
+   * the named suite's file list via regex. Returns absolute spec paths.
+   */
+  function parseSuiteFromConfig(suiteName) {
+    const confPath = path.join(ROOT, 'e2e', 'wdio.conf.ts');
+    const confText = fs.readFileSync(confPath, 'utf8');
+    // Match: suiteName: [\n  './specs/...', ...]
+    const re = new RegExp(
+      `['"]?${suiteName}['"]?\\s*:\\s*\\[([^\\]]+)\\]`,
+      's',
     );
-    useSpecSplit = false;
+    const m = confText.match(re);
+    if (!m) {
+      die(`Suite "${suiteName}" not found in wdio.conf.ts`);
+    }
+    const files = [];
+    for (const line of m[1].split('\n')) {
+      const fm = line.match(/'([^']+\.ts)'/);
+      if (fm) files.push(fm[1].replace(/^\.\//, 'e2e/'));
+    }
+    return files;
+  }
+
+  // Collect suite args (--suite may appear multiple times)
+  const suiteNames = [];
+  for (let i = 0; i < wdioArgs.length; i++) {
+    if (wdioArgs[i] === '--suite' && wdioArgs[i + 1]) {
+      suiteNames.push(wdioArgs[i + 1]);
+      i++;
+    }
+  }
+
+  if (suiteNames.length > 0) {
+    for (const name of suiteNames) {
+      allSpecs.push(...parseSuiteFromConfig(name));
+    }
+    log(`Resolved ${suiteNames.join('+')} suite(s): ${allSpecs.length} specs`);
   } else {
     const specIdx = wdioArgs.indexOf('--spec');
     if (specIdx >= 0 && wdioArgs[specIdx + 1]) {
@@ -437,16 +463,13 @@ if (INSTANCE_COUNT > 1) {
     }
   }
 
-  const effectiveInstances = useSpecSplit ? INSTANCE_COUNT : 1;
-  const chunks = Array.from({ length: effectiveInstances }, () => []);
-  allSpecs.forEach((spec, i) => chunks[i % effectiveInstances].push(spec));
+  const chunks = Array.from({ length: INSTANCE_COUNT }, () => []);
+  allSpecs.forEach((spec, i) => chunks[i % INSTANCE_COUNT].push(spec));
 
-  if (useSpecSplit) {
-    log(
-      `Splitting ${allSpecs.length} specs across ${effectiveInstances} processes: ` +
-        `${chunks.map((c) => c.length).join(' / ')}`,
-    );
-  }
+  log(
+    `Splitting ${allSpecs.length} specs across ${INSTANCE_COUNT} processes: ` +
+      `${chunks.map((c) => c.length).join(' / ')}`,
+  );
 
   const wdioProcesses = chunks.map((specChunk, i) => {
     if (specChunk.length === 0) return null;
@@ -456,18 +479,17 @@ if (INSTANCE_COUNT > 1) {
       E2E_WD_PORT: String(wdPorts[i]),
     };
     const specArgs = [];
-    if (useSpecSplit) {
-      for (const s of specChunk) {
-        specArgs.push('--spec', s);
-      }
-      // Remove --spec from original wdioArgs since we're providing our own
-      var filteredWdioArgs = wdioArgs.filter(
-        (a, idx) => a !== '--spec' && wdioArgs[idx - 1] !== '--spec',
-      );
-    } else {
-      // Pass original args as-is (suite mode)
-      var filteredWdioArgs = [...wdioArgs];
+    for (const s of specChunk) {
+      specArgs.push('--spec', s);
     }
+    // Remove --spec and --suite from original wdioArgs since we're providing explicit spec list
+    const filteredWdioArgs = wdioArgs.filter(
+      (a, idx) =>
+        a !== '--spec' &&
+        wdioArgs[idx - 1] !== '--spec' &&
+        a !== '--suite' &&
+        wdioArgs[idx - 1] !== '--suite',
+    );
     const proc = spawn(
       'npx',
       ['wdio', 'run', 'e2e/wdio.conf.ts', ...filteredWdioArgs, ...specArgs],
