@@ -54,33 +54,7 @@ Tauri IPC 是这两个世界之间的边界。前端不会持有数据库连接�
 
 从系统层次看，DataZen 可以简化成下面这张图：
 
-```text
-┌──────────────────────────────────────────────────────────────────────┐
-│                         DataZen Application                          │
-│                                                                      │
-│  ┌────────────────────────────────────────────────────────────────┐  │
-│  │                   React + TypeScript                           │  │
-│  │                                                                │  │
-│  │  Workspace / Connection / Query / DataTable / Chart / AI      │  │
-│  │  Workflow / Dashboard / Settings / Extensions                 │  │
-│  └──────────────────────────────┬─────────────────────────────────┘  │
-│                                 │ Tauri IPC / Channel                │
-│                                 ▼                                    │
-│  ┌────────────────────────────────────────────────────────────────┐  │
-│  │                         Rust Backend                           │  │
-│  │                                                                │  │
-│  │  Commands ── Services ── Driver Command Runtime               │  │
-│  │      │           │                 │                           │  │
-│  │      ├── Store / Cache               ├── Database Drivers      │  │
-│  │      ├── Workflow                    ├── PostgreSQL / MySQL     │  │
-│  │      ├── AI Providers                ├── SQLite / Redis         │  │
-│  │      ├── MCP Server / Client         └── Optional Drivers      │  │
-│  │      └── Extensions                                            │  │
-│  └──────────────────────────────┬─────────────────────────────────┘  │
-└─────────────────────────────────┼────────────────────────────────────┘
-                                  ▼
-                    Databases / LLMs / MCP Servers
-```
+![DataZen 系统架构图](diagrams/datazen-system-architecture.svg)
 
 这张图里最值得注意的并不是技术栈，而是位于中心位置的 Driver Command Runtime。
 
@@ -225,13 +199,7 @@ DataZen 有两种启动方式。
 
 使用 `--mcp-stdio` 启动时，它不会创建窗口，而是建立 Tokio Runtime，以无头 MCP Server 的形式运行。外部 Agent 可以通过 stdio 调用 DataZen 暴露的数据库工具和 Workflow。
 
-```text
-                    ┌── GUI / Tauri IPC
-                    │
-Shared AppState ────┤
-                    │
-                    └── Headless MCP stdio
-```
+![DataZen 两种运行模式](diagrams/datazen-runtime-modes.svg)
 
 两种模式都会构建同一套核心 `AppState`，其中包含 Driver Registry、Connection Manager、Store、Schema Cache、Workflow、AI、MCP Client 和 Extension Manager 等共享服务。
 

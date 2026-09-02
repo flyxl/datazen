@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 620" role="img" aria-labelledby="title desc">
+  <title id="title">DataZen system architecture</title>
+  <desc id="desc">React and TypeScript frontend communicates through Tauri IPC with the Rust backend, which connects to databases, LLM providers and MCP servers.</desc>
+  <defs>
+    <linearGradient id="shell" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#172033"/><stop offset="1" stop-color="#0d1422"/></linearGradient>
+    <linearGradient id="front" x1="0" x2="1"><stop stop-color="#1e3a5f"/><stop offset="1" stop-color="#254d73"/></linearGradient>
+    <linearGradient id="rust" x1="0" x2="1"><stop stop-color="#57352e"/><stop offset="1" stop-color="#733f32"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity=".28"/></filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8eb8e8"/></marker>
+    <style>text{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;fill:#edf4ff} .label{font-size:20px;font-weight:700}.small{font-size:15px;fill:#bdd0e8}.tiny{font-size:13px;fill:#a8bdd6}.box{stroke:#6d8eaf;stroke-width:1.5}.chip{fill:#29435f;stroke:#5e83a8;stroke-width:1}</style>
+  </defs>
+  <rect width="960" height="620" rx="28" fill="#090f1b"/>
+  <rect x="28" y="24" width="904" height="484" rx="24" fill="url(#shell)" stroke="#334963" stroke-width="2" filter="url(#shadow)"/>
+  <text x="58" y="62" class="label">DataZen Application</text>
+  <text x="58" y="88" class="small">One command path shared by GUI, Workflow, AI and MCP</text>
+  <rect x="58" y="116" width="844" height="154" rx="18" fill="url(#front)" class="box"/>
+  <text x="84" y="151" class="label">React + TypeScript</text>
+  <text x="84" y="177" class="small">Workspace · Query · DataTable · Chart · AI · Workflow · Extensions</text>
+  <g transform="translate(84 201)"><rect width="176" height="36" rx="18" class="chip"/><text x="88" y="24" text-anchor="middle" class="tiny">Zustand + IPC clients</text></g>
+  <g transform="translate(278 201)"><rect width="176" height="36" rx="18" class="chip"/><text x="88" y="24" text-anchor="middle" class="tiny">CodeMirror + Virtual UI</text></g>
+  <g transform="translate(472 201)"><rect width="176" height="36" rx="18" class="chip"/><text x="88" y="24" text-anchor="middle" class="tiny">Charts + dashboards</text></g>
+  <g transform="translate(666 201)"><rect width="176" height="36" rx="18" class="chip"/><text x="88" y="24" text-anchor="middle" class="tiny">Sandbox extensions</text></g>
+  <line x1="480" y1="270" x2="480" y2="310" stroke="#8eb8e8" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="496" y="294" class="tiny">Tauri IPC / Channel</text>
+  <rect x="58" y="318" width="844" height="156" rx="18" fill="url(#rust)" class="box"/>
+  <text x="84" y="353" class="label">Rust Backend</text>
+  <text x="84" y="379" class="small">Commands · Services · Driver Command Runtime · Store · Cache</text>
+  <g transform="translate(84 404)"><rect width="184" height="42" rx="10" class="chip"/><text x="92" y="27" text-anchor="middle" class="tiny">Connection + Query</text></g>
+  <g transform="translate(286 404)"><rect width="184" height="42" rx="10" class="chip"/><text x="92" y="27" text-anchor="middle" class="tiny">Workflow + AI + MCP</text></g>
+  <g transform="translate(488 404)"><rect width="184" height="42" rx="10" class="chip"/><text x="92" y="27" text-anchor="middle" class="tiny">Driver Registry</text></g>
+  <g transform="translate(690 404)"><rect width="184" height="42" rx="10" class="chip"/><text x="92" y="27" text-anchor="middle" class="tiny">Encrypted Store</text></g>
+  <line x1="480" y1="474" x2="480" y2="535" stroke="#8eb8e8" stroke-width="3" marker-end="url(#arrow)"/>
+  <g transform="translate(94 550)"><rect width="236" height="46" rx="12" fill="#17384a" class="box"/><text x="118" y="29" text-anchor="middle" class="small">Databases</text></g>
+  <g transform="translate(362 550)"><rect width="236" height="46" rx="12" fill="#3d2b4f" class="box"/><text x="118" y="29" text-anchor="middle" class="small">LLM Providers</text></g>
+  <g transform="translate(630 550)"><rect width="236" height="46" rx="12" fill="#3c4430" class="box"/><text x="118" y="29" text-anchor="middle" class="small">MCP Servers</text></g>
+</svg>

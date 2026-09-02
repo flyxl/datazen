@@ -1085,6 +1085,12 @@ pre code {
   color: var(--text);
   font-size: 15px;
 }
+.docs-prose img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 20px auto;
+}
 .docs-prose h3 {
   margin: 24px 0 10px;
   font-size: 1.1rem;

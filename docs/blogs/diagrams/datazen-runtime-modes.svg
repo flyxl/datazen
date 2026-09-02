@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" role="img" aria-labelledby="title desc">
+  <title id="title">DataZen runtime modes</title>
+  <desc id="desc">GUI and headless MCP stdio modes share the same AppState and core services.</desc>
+  <defs><linearGradient id="core" x1="0" x2="1"><stop stop-color="#21436b"/><stop offset="1" stop-color="#315d87"/></linearGradient><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8eb8e8"/></marker><style>text{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;fill:#edf4ff}.h{font-size:22px;font-weight:700}.s{font-size:16px;fill:#c2d4e9}</style></defs>
+  <rect width="900" height="360" rx="26" fill="#090f1b"/>
+  <text x="450" y="48" text-anchor="middle" class="h">Two runtime modes, one shared core</text>
+  <rect x="64" y="92" width="280" height="76" rx="16" fill="#254d73" stroke="#6d8eaf"/><text x="204" y="125" text-anchor="middle" class="h">GUI / Tauri IPC</text><text x="204" y="150" text-anchor="middle" class="s">Desktop window + WebView</text>
+  <rect x="556" y="92" width="280" height="76" rx="16" fill="#57352e" stroke="#8f6b5a"/><text x="696" y="125" text-anchor="middle" class="h">Headless MCP stdio</text><text x="696" y="150" text-anchor="middle" class="s">Tokio runtime + Agent tools</text>
+  <line x1="344" y1="130" x2="425" y2="190" stroke="#8eb8e8" stroke-width="3" marker-end="url(#arrow)"/><line x1="556" y1="130" x2="475" y2="190" stroke="#8eb8e8" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="180" y="200" width="540" height="102" rx="18" fill="url(#core)" stroke="#8eb8e8" stroke-width="2"/><text x="450" y="236" text-anchor="middle" class="h">Shared AppState</text><text x="450" y="264" text-anchor="middle" class="s">Driver Registry · Connection Manager · Store · Cache</text><text x="450" y="287" text-anchor="middle" class="s">Workflow · AI · MCP Client · Extension Manager</text>
+</svg>
