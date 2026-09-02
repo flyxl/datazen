@@ -26,6 +26,7 @@ import {
 
 async function openDataSyncWindow() {
   await browser.url('tauri://localhost/window.html?window=data-sync');
+  await browser.pause(1500);
   await $('[data-testid="data-sync-window"]').waitForDisplayed({ timeout: 10000 });
   await browser.waitUntil(
     async () =>
@@ -442,7 +443,7 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
     await openDataSyncWindow();
     await selectDzOption(t('sync.selectSource'), SRC_NAME);
     await selectDzOption(t('sync.selectTarget'), TGT_NAME);
-    await browser.pause(300);
+    await browser.pause(1500);
     await advanceDataSyncToSetup();
     await inspectDataSyncObjects();
     await compareDataSyncObjects();

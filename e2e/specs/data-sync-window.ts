@@ -16,6 +16,7 @@ import {
 
 async function openDataSyncWindow() {
   await browser.url('tauri://localhost/window.html?window=data-sync');
+  await browser.pause(1500);
   await $('[data-testid="data-sync-window"]').waitForDisplayed({ timeout: 10000 });
   await browser.waitUntil(
     async () =>
@@ -371,14 +372,14 @@ describe('数据同步 UI 执行闭环 (DSW-EXEC)', () => {
 
   it('DSW-EXEC-001: 选端点、比较并执行同步，回查目标行数=源', async () => {
     await browser.url('tauri://localhost/window.html?window=data-sync');
-    await browser.pause(300);
+    await browser.pause(1500);
     await expect(await $('[data-testid="data-sync-next"]')).toBeDisplayed();
 
     // 源端点（config.database 自动预填 datazen_sync_src）
     await selectDzOption(t('sync.selectSource'), SRC_NAME);
     // 目标端点（config.database 自动预填 datazen_sync_tgt）
     await selectDzOption(t('sync.selectTarget'), TGT_NAME);
-    await browser.pause(300);
+    await browser.pause(1500);
 
     // 数据库与 schema 选择器应出现
     await expect(await $('[data-testid="data-sync-source-database"]')).toBeDisplayed();
@@ -432,7 +433,7 @@ describe('数据同步 UI 执行闭环 (DSW-EXEC)', () => {
     await expect(start).toBeEnabled();
     await start.waitForClickable({ timeout: 15000 });
     await start.click();
-    await browser.pause(300);
+    await browser.pause(3000);
 
     await expect(await $('[data-testid="data-sync-summary"]')).toBeDisplayed();
     await captureJourneyStep('data-sync-execute-complete', 0, true);
