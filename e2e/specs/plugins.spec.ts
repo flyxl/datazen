@@ -441,6 +441,7 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
     const saveBtn = await $(`button*=${t('common.save')}`);
     await saveBtn.waitForEnabled({ timeout: 5000 });
     await saveBtn.click();
+    await browser.pause(1000);
 
     // Durable value lives in settings (not localStorage): plugin:{pluginId}:{themeId}.
     await browser.waitUntil(
@@ -450,16 +451,17 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
       },
       { timeout: 10000, timeoutMsg: 'plugin theme packId did not persist' },
     );
+
+    // Leave settings so J4 starts from workspace view
+    await backFromSettingsInMainWindow();
   });
 
   // ── J4: disable → tab/nav removed; uninstall (confirm) → card gone ──
 
   it('J4-001: disabling the plugin closes its tab and removes the navigator entry', async () => {
-    // BUG-F9-03: J5 leaves the main view on SettingsPage, which unmounts the
-    // whole sidebar; return to the workspace shell first (tolerant in case a
-    // previous journey already navigated back).
-    const backBtn = await $('[data-testid="settings-back"]');
-    if (await backBtn.isExisting()) {
+    // J5-001 now exits settings; if somehow still on settings, go back.
+    const settingsPage = await $('[data-testid="settings-page"]');
+    if (await settingsPage.isExisting().catch(() => false)) {
       await backFromSettingsInMainWindow();
     }
 

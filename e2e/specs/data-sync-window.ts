@@ -376,8 +376,7 @@ describe('数据同步 UI 执行闭环 (DSW-EXEC)', () => {
   }
 
   it('DSW-EXEC-001: 选端点、比较并执行同步，回查目标行数=源', async () => {
-    await browser.url('tauri://localhost/window.html?window=data-sync');
-    await browser.pause(1500);
+    await openDataSyncWindow(mainWindow);
     await expect(await $('[data-testid="data-sync-next"]')).toBeDisplayed();
 
     // 源端点（config.database 自动预填 datazen_sync_src）
