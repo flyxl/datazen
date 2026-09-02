@@ -86,6 +86,7 @@ export function createFixture(driver: SyncDriverKind, stamp: string): SyncJourne
 
 export async function openDataSyncWindow() {
   await browser.url('tauri://localhost/window.html?window=data-sync');
+  await browser.pause(1500);
   await $('[data-testid="data-sync-window"]').waitForDisplayed({ timeout: 10000 });
   await waitForDataSyncStep('endpoints');
 }
@@ -256,7 +257,7 @@ export async function cleanupFixture(f: SyncJourneyFixture | undefined) {
 export async function selectFixtureEndpoints(f: SyncJourneyFixture) {
   await selectDzOptionInWrap('data-sync-source', f.srcName);
   await selectDzOptionInWrap('data-sync-target', f.tgtName);
-  await browser.pause(300);
+  await browser.pause(1500);
   await expect(await $('[data-testid="data-sync-source-database"]')).toBeDisplayed();
   await expect(await $('[data-testid="data-sync-target-database"]')).toBeDisplayed();
 }

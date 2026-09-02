@@ -105,14 +105,14 @@ describe('AI 上下文引用 E2E 测试 (CTX-001~CTX-006)', () => {
     const chatToggle = await $('[data-testid="conn-toolbar-ai"]');
     await chatToggle.waitForClickable({ timeout: 10000 });
     await chatToggle.click();
-    await browser.pause(300);
+    await browser.pause(1000);
     await captureJourneyStep('ai-panel-open', 0, true);
 
     const textarea = await $('aside textarea');
     if (await textarea.isExisting()) {
       await textarea.click();
       await textarea.setValue('@');
-      await browser.pause(300);
+      await browser.pause(1000);
       const val = await textarea.getValue();
       expect(val).toContain('@');
       await captureJourneyStep('ai-context-at-picker', 0, true);

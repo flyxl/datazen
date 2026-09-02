@@ -132,7 +132,7 @@ describe('数据传输完整用户旅程 (DT-JOURNEY)', () => {
     const next = await $('[data-testid="data-transfer-next"]');
     await next.waitForClickable({ timeout: 8000 });
     await next.click();
-    await browser.pause(300);
+    await browser.pause(1200);
     await captureJourneyStep(stepLabel, 0, true);
   }
 
@@ -140,7 +140,7 @@ describe('数据传输完整用户旅程 (DT-JOURNEY)', () => {
     await openDataTransferWindow();
     await selectDzOptionInWrap('data-transfer-source', SRC_NAME);
     await selectDzOptionInWrap('data-transfer-target', TGT_NAME);
-    await browser.pause(300);
+    await browser.pause(1500);
     await expect(await $('[data-testid="data-transfer-source-database"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-transfer-target-database"]')).toBeDisplayed();
     await captureJourneyStep('dt-journey-04-endpoints-selected', 0, true);
@@ -159,7 +159,7 @@ describe('数据传输完整用户旅程 (DT-JOURNEY)', () => {
     await browser.pause(300);
     await captureJourneyStep('dt-journey-06-data-mode-selected', 0, true);
     await clickNext('dt-journey-07-objects-step');
-    await browser.pause(300);
+    await browser.pause(2000);
   });
 
   it('Step 4: 推进映射与预览直至执行步骤', async () => {
@@ -175,7 +175,7 @@ describe('数据传输完整用户旅程 (DT-JOURNEY)', () => {
       }
       const next = await $('[data-testid="data-transfer-next"]');
       const disabled = (await next.getAttribute('disabled')) === 'true';
-      if (disabled) await browser.pause(300);
+      if (disabled) await browser.pause(1000);
       await clickNext(`dt-journey-09-wizard-advance-${i}`);
     }
   });
@@ -184,6 +184,7 @@ describe('数据传输完整用户旅程 (DT-JOURNEY)', () => {
     const execute = await $('[data-testid="data-transfer-execute"]');
     await execute.waitForClickable({ timeout: 15000 });
     await execute.click();
+    await browser.pause(1500);
     await captureJourneyStep('dt-journey-10-executed', 0, true);
 
     const result = await $('[data-testid="data-transfer-result"]');

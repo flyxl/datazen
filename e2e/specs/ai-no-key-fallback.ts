@@ -47,6 +47,7 @@ describe('AI 面板无 Key 降级 (TC-AI-007~009)', () => {
     const aiBtn = await $('[data-testid="conn-toolbar-ai"]');
     await aiBtn.waitForClickable({ timeout: 10000 });
     await aiBtn.click();
+    await browser.pause(1000);
 
     const notConfigured = await $('[data-testid="ai-not-configured"]');
     await notConfigured.waitForDisplayed({ timeout: 10000 });
@@ -66,7 +67,7 @@ describe('AI 面板无 Key 降级 (TC-AI-007~009)', () => {
   it('TC-AI-009: AI 设置分区应列出 Provider 选项', async () => {
     await browser.switchToWindow(mainWindow);
     await openSettingsInMainWindow('ai');
-    await browser.pause(300);
+    await browser.pause(1500);
     const body = await $('body').getText();
     expect(
       body.includes('OpenAI') ||

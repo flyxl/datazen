@@ -49,6 +49,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
       },
     });
     await browser.refresh();
+    await browser.pause(1500);
     await openConnectionsWorkspace();
     await clickCardConnectButton(queryConnectionName);
     await waitForConnectionToolbar();
@@ -57,7 +58,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     // the workspace shows ConnectionWorkspaceHome and the ContentToolbar
     // button only mounts once a content panel exists. openQueryTab() opens
     // the first panel via the workspace-home quick action.
-    await browser.pause(300);
+    await browser.pause(1000);
 
     await openQueryTab();
   });
@@ -160,7 +161,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
 
     // Cancel to not block other tests
     await stopBtn.click();
-    await browser.pause(300);
+    await browser.pause(2000);
   });
 
   // ── 执行查询 ───────────────────────────────────────────────────
@@ -354,11 +355,12 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     await setEditorContent('SELECT pg_sleep(10)');
     const execBtn = await $('[data-testid="editor-execute-button"]');
     await execBtn.click();
+    await browser.pause(1500);
 
     const stopBtn = await $('[data-testid="editor-stop-button"]');
     await stopBtn.waitForDisplayed({ timeout: 5000 });
     await stopBtn.click();
-    await browser.pause(300);
+    await browser.pause(3000);
 
     const body = await $('body').getText();
     const wasCancelled =
@@ -444,6 +446,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     // Tauri listen() subscribers receive plugin:event IPC, not a DOM
     // CustomEvent. Use the same bridge as the menu-event E2E coverage.
     await emitCrossWindowEvent('menu:add-favorite');
+    await browser.pause(1000);
 
     const input = await $('input[placeholder*=收藏标题]');
     await input.waitForDisplayed({ timeout: 5000 });
@@ -514,6 +517,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     await paramInput.setValue('e2e-bind');
     await browser.pause(200);
     await executeSQL('SELECT :uid AS uid');
+    await browser.pause(1000);
     const body = await $('body').getText();
     expect(body.includes('e2e-bind') || body.includes('uid')).toBe(true);
   });
@@ -524,7 +528,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     const explainBtn = await $('[data-testid="editor-explain-button"]');
     await explainBtn.waitForDisplayed({ timeout: 8000 });
     await explainBtn.click();
-    await browser.pause(300);
+    await browser.pause(1500);
     const body = await $('body').getText();
     expect(
       body.includes(t('explain.title')) ||

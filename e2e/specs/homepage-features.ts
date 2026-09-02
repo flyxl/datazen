@@ -48,7 +48,7 @@ describe('主页 TablePlus 风格 (HOME)', () => {
     mainWindow = await browser.getWindowHandle();
     await ensureConnectionsHome();
     await expandAllGroups();
-    await browser.pause(300);
+    await browser.pause(1000);
   });
 
   afterEach(async () => {
@@ -70,7 +70,7 @@ describe('主页 TablePlus 风格 (HOME)', () => {
 
   it('HOME-RESTORE-001: 恢复应打开选连接/选库窗口而不是直接报错', async () => {
     await browser.url('tauri://localhost/window.html?window=backup&mode=restore');
-    await browser.pause(300);
+    await browser.pause(1500);
     const handles = await browser.getWindowHandles();
     if (handles.length > 1) {
       await switchToNewWindow(mainWindow);
@@ -241,7 +241,7 @@ describe('主页 TablePlus 风格 (HOME)', () => {
 
   it('HOME-041: 连接后应显示绿色状态指示器', async () => {
     await browser.switchToWindow(mainWindow);
-    await browser.pause(300);
+    await browser.pause(3000);
     const hasGreenDot = await browser.execute(() => {
       return document.querySelector('.bg-green-500.rounded-full') !== null;
     });

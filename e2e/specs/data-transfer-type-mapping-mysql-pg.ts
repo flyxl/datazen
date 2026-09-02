@@ -44,7 +44,7 @@ async function clickNext(label: string) {
   const next = await $('[data-testid="data-transfer-next"]');
   await next.waitForClickable({ timeout: 8000 });
   await next.click();
-  await browser.pause(300);
+  await browser.pause(1200);
   await captureJourneyStep(label, 0, true);
 }
 
@@ -136,7 +136,7 @@ describe('MySQL→PG 类型映射 Preview DDL (DT-TYPE-MYSQL-PG)', () => {
     await openDataTransferWindow();
     await selectDzOptionInWrap('data-transfer-source', SRC_NAME);
     await selectDzOptionInWrap('data-transfer-target', TGT_NAME);
-    await browser.pause(300);
+    await browser.pause(1500);
     await clickNext('dt-mp-type-endpoints');
 
     const structureMode = await $('[data-testid="data-transfer-mode-structure"]');
@@ -144,6 +144,7 @@ describe('MySQL→PG 类型映射 Preview DDL (DT-TYPE-MYSQL-PG)', () => {
     await browser.pause(300);
     await clickNext('dt-mp-type-mode');
 
+    await browser.pause(2000);
     const tableRow = await $(`[data-testid="data-transfer-table-row"]*=${TABLE}`);
     await tableRow.waitForDisplayed({ timeout: 10000 });
     const checkbox = await tableRow.$('input[type="checkbox"]');
@@ -163,6 +164,7 @@ describe('MySQL→PG 类型映射 Preview DDL (DT-TYPE-MYSQL-PG)', () => {
     const targetTableInput = await $('[data-testid="data-transfer-target-table-input"]');
     await targetTableInput.click();
     await browser.keys(['Tab']);
+    await browser.pause(2000);
 
     const activeTypeInput = await $('[data-testid="data-transfer-target-type-active"]');
     await activeTypeInput.waitForDisplayed({ timeout: 15000 });

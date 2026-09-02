@@ -72,7 +72,7 @@ describe('结构对比选项矩阵 (SD-OPT-MATRIX)', function () {
     await browser.pause(300);
     let regen = await $(`button*=${t('schemaDiff.regeneratePlan')}`);
     await regen.click();
-    await browser.pause(300);
+    await browser.pause(2500);
     let body = await $('body').getText();
     expect(body.toLowerCase()).toMatch(/drop|destructive/);
     await captureJourneyStep('sd-opt-destructive', 0, true);
@@ -82,7 +82,7 @@ describe('结构对比选项矩阵 (SD-OPT-MATRIX)', function () {
     await browser.pause(300);
     regen = await $(`button*=${t('schemaDiff.regeneratePlan')}`);
     await regen.click();
-    await browser.pause(300);
+    await browser.pause(1500);
     body = await $('body').getText();
     expect(body).toContain(t('schemaDiff.stepPlan'));
     await captureJourneyStep('sd-opt-indexes', 0, true);

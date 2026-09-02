@@ -55,7 +55,7 @@ async function ensureSQLiteConnection() {
       },
     });
     await browser.refresh();
-    await browser.pause(300);
+    await browser.pause(1500);
   }
 }
 

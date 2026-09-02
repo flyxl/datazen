@@ -45,6 +45,7 @@ async function ensureErDiagramVisible() {
     await focusErPanelTab();
   } catch {
     await openErDiagramFromUi();
+    await browser.pause(1500);
   }
   await erView.waitForDisplayed({ timeout: 15000 });
 }
@@ -96,6 +97,7 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
   it('ER-003: 点击 ER 入口应打开 ER 面板', async () => {
     await browser.switchToWindow(mainWindow);
     await openErDiagramFromUi();
+    await browser.pause(2000);
 
     const erView = await $('[data-testid="er-diagram-view"]');
     await erView.waitForDisplayed({ timeout: 15000 });

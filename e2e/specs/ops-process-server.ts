@@ -155,7 +155,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
 
     // 回到主窗口连接 seeded PG 展示面板
     await connectSeededPgInWorkspace();
-    await browser.pause(300);
+    await browser.pause(1500);
   });
 
   after(async () => {
@@ -179,7 +179,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
     await rightClickConn();
     await hoverServerSubmenu();
     await clickMenuItemById('process-list');
-    await browser.pause(300);
+    await browser.pause(1500);
     expect(await $("[data-testid='process-list-view']").isExisting()).toBe(true);
     expect(await anyTableRows()).toBe(true);
   });
@@ -188,7 +188,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
     await rightClickConn();
     await hoverServerSubmenu();
     await clickMenuItemById('server-status');
-    await browser.pause(300);
+    await browser.pause(1500);
     // 工具面板内显示当前连接名（Req#4）
     expect(await bodyContains(E2E_PG_CONN_NAME)).toBe(true);
 
@@ -228,7 +228,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
     await rightClickConn();
     await hoverServerSubmenu();
     await clickMenuItemById('process-list');
-    await browser.pause(300);
+    await browser.pause(1500);
 
     // 先确认目标 pid 出现在面板中
     const seenBefore = await browser.execute((pidText: string) => {
@@ -255,7 +255,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
     const okBtn = await $('[data-testid="confirm-dialog-ok"]');
     await expect(okBtn).toBeDisplayed();
     await okBtn.click();
-    await browser.pause(300);
+    await browser.pause(1200);
 
     // 落库断言：从另一条存活连接查询目标 pid 已不存在
     const checkId = `e2e_proc_check_${STAMP}`;

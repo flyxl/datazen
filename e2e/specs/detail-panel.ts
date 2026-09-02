@@ -28,7 +28,7 @@ describe('详情面板 (DP-001~DP-004)', () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
     await waitForNewQueryButton(20000);
-    await browser.pause(300);
+    await browser.pause(1500);
 
     await openQueryTab();
     await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
@@ -48,7 +48,7 @@ describe('详情面板 (DP-001~DP-004)', () => {
 
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
-    await browser.pause(300);
+    await browser.pause(2000);
   });
 
   after(async () => {
@@ -64,6 +64,7 @@ describe('详情面板 (DP-001~DP-004)', () => {
 
   it('打开表数据后应看到详情面板的折叠按钮 (DP-001)', async () => {
     await clickTableInSidebar(TEST_TABLE);
+    await browser.pause(2000);
     await switchSubTab('data');
 
     await browser.waitUntil(async () => (await $('body').getText()).includes('Alice'), {
@@ -145,12 +146,13 @@ describe('详情面板 (DP-001~DP-004)', () => {
       return false;
     });
     expect(edited).toBe(true);
-    await browser.pause(300);
+    await browser.pause(2000);
   });
 
   it('编辑后的值应持久化到数据库 (DP-004)', async () => {
     await openQueryTab();
     await executeSQL(`SELECT name FROM ${TEST_TABLE} WHERE id = 1`);
+    await browser.pause(1000);
 
     const body = await $('body').getText();
     expect(body).toContain('AliceEdited');

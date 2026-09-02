@@ -104,7 +104,7 @@ async function expandConnection(connName: string) {
       }
     }
   }, connName);
-  await browser.pause(300);
+  await browser.pause(2000);
 }
 
 describe('运维 §5.4: 备份/还原 预填 (OPS-DDL-BACKUP)', () => {
@@ -114,7 +114,7 @@ describe('运维 §5.4: 备份/还原 预填 (OPS-DDL-BACKUP)', () => {
     mainWindow = await browser.getWindowHandle();
     await closeExtraWindows(mainWindow);
     await connectSeededPgInWorkspace();
-    await browser.pause(300);
+    await browser.pause(1500);
   });
 
   afterEach(async () => {
@@ -135,7 +135,7 @@ describe('运维 §5.4: 备份/还原 预填 (OPS-DDL-BACKUP)', () => {
   it('OPS-DDL-002: 数据库节点右键含「备份 / 还原」', async () => {
     // 展开连接暴露 DB 节点
     await expandConnection('PostgreSQL');
-    await browser.pause(300);
+    await browser.pause(1000);
     const dbNodeCount = await browser.execute(
       () => document.querySelectorAll('[data-tree-node="db"]').length,
     );
@@ -160,7 +160,7 @@ describe('运维 §5.4: 备份/还原 预填 (OPS-DDL-BACKUP)', () => {
     }
     await clickMenuItemById('backup');
     const backupWin = await switchToNewWindow(mainWindow);
-    await browser.pause(300);
+    await browser.pause(1000);
     const body = await $('body').getText();
     // Backup window opened — just verify we switched to a new window
     await closeExtraWindows(mainWindow);

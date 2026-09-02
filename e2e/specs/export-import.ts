@@ -36,7 +36,7 @@ async function openTestTableDataView() {
     } catch {
       await openTableFromSidebar(TEST_TABLE);
     }
-    await browser.pause(300);
+    await browser.pause(1500);
   };
   await openPanel();
   let dataTab = await $(`button*=${t('connWin.data')}`);
@@ -97,7 +97,7 @@ describe('导出和导入 (EI-001~EI-006)', () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
     await openQueryTab();
-    await browser.pause(300);
+    await browser.pause(1500);
     await openTestTableDataView();
   });
 
@@ -222,7 +222,7 @@ describe('导出和导入 (EI-001~EI-006)', () => {
       t('common.cancel'),
       t('common.close'),
     );
-    await browser.pause(300);
+    await browser.pause(1000);
 
     const body = await $('body').getText();
     expect(body).not.toContain(t('export.format'));
@@ -234,7 +234,7 @@ describe('导出和导入 (EI-001~EI-006)', () => {
     const batchBtn = await $('[data-testid="conn-toolbar-export"]');
     await batchBtn.waitForDisplayed({ timeout: 10000 });
     await batchBtn.click();
-    await browser.pause(300);
+    await browser.pause(1000);
 
     const body = await $('body').getText();
     expect(body).toContain(t('batchExport.title'));

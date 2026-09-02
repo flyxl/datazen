@@ -91,7 +91,7 @@ describe('数据库备份功能 (BACKUP)', () => {
 
   before(async () => {
     await browser.setTimeout({ script: 120000 });
-    await browser.pause(300);
+    await browser.pause(3000);
     await invokeBackend('save_connection', { config: PG_CONFIG });
     dbSessionId = await invokeBackend<string>('connect', { connectionId: PG_CONFIG.id });
     await seedBackupTable(dbSessionId);

@@ -37,7 +37,7 @@ describe('窗口操作 (TC-WIN-001~005)', () => {
     const handlesBefore = await browser.getWindowHandles();
     await clickCardConnectButton();
     await waitForConnectionToolbar();
-    await browser.pause(300);
+    await browser.pause(1000);
     const handlesAfter = await browser.getWindowHandles();
     // Should still be 1 window (unified workspace)
     expect(handlesAfter.length).toBe(handlesBefore.length);
@@ -75,7 +75,7 @@ describe('窗口操作 (TC-WIN-001~005)', () => {
     await browser.switchToWindow(mainWindow);
     // Close all connection tabs by closing extra windows
     await closeExtraWindows(mainWindow);
-    await browser.pause(300);
+    await browser.pause(1000);
 
     // After closing, we should see either the welcome page or connection list
     const body = await $('body').getText();

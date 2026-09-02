@@ -18,7 +18,7 @@ describe('数据看板组件 UX (UJ-05, UJ-06, UJ-09)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await browser.pause(300);
+    await browser.pause(1000);
     const connectionId = await getSeededConnectionId();
     await cleanupDashboard(DASHBOARD_ID);
     await createEmptyDashboard(DASHBOARD_ID, 'E2E UX Board');

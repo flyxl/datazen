@@ -185,6 +185,7 @@ describe('demo recording', () => {
     await setupDemoConnection();
     // Reload so the sidebar lists the new connection
     await browser.url('tauri://localhost');
+    await browser.pause(2000);
     await browser.waitUntil(
       async () => browser.execute(() => document.querySelectorAll('[data-conn-item]').length > 0),
       { timeout: 15000, timeoutMsg: 'connections not visible after reload' },

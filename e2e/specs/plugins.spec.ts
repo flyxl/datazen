@@ -221,7 +221,7 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
   before(async () => {
     // Clean slate: drop any leftover install and theme selection.
     await browser.url('tauri://localhost');
-    await browser.pause(300);
+    await browser.pause(1500);
     await removeSamplePluginViaIpc();
     // remove_plugin deletes {plugins_dir}/{id} (incl. .storage.json); unlink
     // defensively so J2 probe assertions can only pass from this run's writes.

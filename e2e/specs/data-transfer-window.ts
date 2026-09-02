@@ -186,13 +186,14 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
   async function selectTransferEndpoints(): Promise<void> {
     await selectDzOptionInWrap('data-transfer-source', SRC_NAME);
     await selectDzOptionInWrap('data-transfer-target', TGT_NAME);
+    await browser.pause(1500);
   }
 
   async function clickNext(label = 'transfer-wizard-next'): Promise<void> {
     const next = await $('[data-testid="data-transfer-next"]');
     await next.waitForClickable({ timeout: 8000 });
     await next.click();
-    await browser.pause(300);
+    await browser.pause(1200);
     await captureJourneyStep(label);
   }
 
@@ -214,11 +215,11 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     // 默认 mode = data，直接 Next 经过 setup
     await clickNext('transfer-step-setup'); // setup → objects
     // Objects 步：Next 触发 inspect
-    await browser.pause(300);
+    await browser.pause(2000);
     await clickNext('transfer-step-objects'); // 触发 inspect → mapping
 
     // 断言某一步到达 preview 后看到源表/DLL 或行计划
-    await browser.pause(300);
+    await browser.pause(1500);
     const body = await $('body').getText();
     expect(body.toLowerCase()).toContain('qty');
   });
@@ -233,6 +234,7 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
       if (await stepExecute.isExisting().catch(() => false)) break;
       const next = await $('[data-testid="data-transfer-next"]');
       const disabled = (await next.getAttribute('disabled')) === 'true';
+      if (disabled) await browser.pause(1000);
       await clickNext();
     }
 
@@ -240,6 +242,7 @@ describe('数据传输真实迁移 (DTW-CL)', () => {
     await execute.waitForClickable({ timeout: 15000 });
     await execute.click();
     await captureJourneyStep('transfer-executed');
+    await browser.pause(1500);
 
     // 断言结果面板出现
     const result = await $('[data-testid="data-transfer-result"]');

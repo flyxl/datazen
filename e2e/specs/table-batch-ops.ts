@@ -51,7 +51,7 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
-    await browser.pause(300);
+    await browser.pause(1000);
     await openQueryTab();
 
     await withSafeModeOff(async () => {
@@ -85,6 +85,7 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
       await openQueryTab();
       await executeSQL(`SELECT * FROM ${BATCH_TABLE} LIMIT 1`);
     }
+    await browser.pause(1000);
     const hasData = await browser.execute(() => {
       return document.querySelectorAll('table tbody tr, [role="row"]').length > 0;
     });
@@ -134,7 +135,7 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
     });
 
     if (clickedNext) {
-      await browser.pause(300);
+      await browser.pause(1000);
       const newFirstCell = await browser.execute(() => {
         const cells = document.querySelectorAll('td span[title], td span');
         for (const c of cells) {

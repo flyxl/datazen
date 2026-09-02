@@ -61,7 +61,7 @@ describe('数据传输 MySQL→PG 跨方言旅程 (DT-MYSQL-PG-JOURNEY)', () => 
     const next = await $('[data-testid="data-transfer-next"]');
     await next.waitForClickable({ timeout: 8000 });
     await next.click();
-    await browser.pause(300);
+    await browser.pause(1200);
     await captureJourneyStep(stepLabel, 0, true);
   }
 
@@ -148,7 +148,7 @@ describe('数据传输 MySQL→PG 跨方言旅程 (DT-MYSQL-PG-JOURNEY)', () => 
     await openDataTransferWindow();
     await selectDzOptionInWrap('data-transfer-source', SRC_NAME);
     await selectDzOptionInWrap('data-transfer-target', TGT_NAME);
-    await browser.pause(300);
+    await browser.pause(1500);
     await expect(await $('[data-testid="data-transfer-source-database"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-transfer-target-database"]')).toBeDisplayed();
     await captureJourneyStep('dt-mysql-pg-02-endpoints', 0, true);
@@ -165,7 +165,7 @@ describe('数据传输 MySQL→PG 跨方言旅程 (DT-MYSQL-PG-JOURNEY)', () => 
 
   it('Step 4: 进入对象选择并触发 inspect', async () => {
     await clickNext('dt-mysql-pg-05-objects-step');
-    await browser.pause(300);
+    await browser.pause(2000);
     const body = await $('body').getText();
     expect(body).toContain(TABLE);
     await captureJourneyStep('dt-mysql-pg-06-objects-inspected', 0, true);
@@ -187,7 +187,7 @@ describe('数据传输 MySQL→PG 跨方言旅程 (DT-MYSQL-PG-JOURNEY)', () => 
         await captureJourneyStep(`dt-mysql-pg-07-mapping-${i}`, 0, true);
       }
       const next = await $('[data-testid="data-transfer-next"]');
-      if (!(await next.isEnabled())) await browser.pause(300);
+      if (!(await next.isEnabled())) await browser.pause(1000);
       await clickNext(`dt-mysql-pg-08-advance-${i}`);
     }
   });
@@ -196,6 +196,7 @@ describe('数据传输 MySQL→PG 跨方言旅程 (DT-MYSQL-PG-JOURNEY)', () => 
     const execute = await $('[data-testid="data-transfer-execute"]');
     await execute.waitForClickable({ timeout: 15000 });
     await execute.click();
+    await browser.pause(2000);
     await captureJourneyStep('dt-mysql-pg-09-executed', 0, true);
 
     const result = await $('[data-testid="data-transfer-result"]');

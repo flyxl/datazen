@@ -47,6 +47,7 @@ async function queryAndExpect(sql: string, expected: string[]) {
  */
 async function browseTableAndExpect(table: string, expected: string[]) {
   await clickTableInSidebar(table);
+  await browser.pause(3000);
   await switchSubTab('data');
   // Wait for data to finish loading (spinner gone)
   await browser.waitUntil(
@@ -75,7 +76,7 @@ describe('PostgreSQL 字段类型前端展示 (PG-TYPE-001~015)', () => {
     mainWindow = handles[0];
     await browser.switchToWindow(mainWindow);
     await closeExtraWindows(mainWindow);
-    await browser.pause(300);
+    await browser.pause(1000);
 
     const { connWindow } = await openConnectionWindow();
     await openQueryTab();
@@ -143,7 +144,7 @@ describe('PostgreSQL 字段类型前端展示 (PG-TYPE-001~015)', () => {
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     if (await refreshBtn.isExisting()) {
       await refreshBtn.click();
-      await browser.pause(300);
+      await browser.pause(2000);
     }
   });
 
@@ -165,7 +166,7 @@ describe('PostgreSQL 字段类型前端展示 (PG-TYPE-001~015)', () => {
         await closeExtraWindows(mainWindow);
       }
       await browser.switchToWindow(mainWindow);
-      await browser.pause(300);
+      await browser.pause(1000);
     } catch {
       /* ignore */
     }
@@ -335,7 +336,7 @@ describe('MySQL 字段类型前端展示 (MY-TYPE-001~020)', () => {
     mainWindow = handles[0];
     await browser.switchToWindow(mainWindow);
     await closeExtraWindows(mainWindow);
-    await browser.pause(300);
+    await browser.pause(1000);
 
     await createAndConnectMySQL({
       name: 'E2E-MySQL-Types',
@@ -439,7 +440,7 @@ describe('MySQL 字段类型前端展示 (MY-TYPE-001~020)', () => {
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     if (await refreshBtn.isExisting()) {
       await refreshBtn.click();
-      await browser.pause(300);
+      await browser.pause(2000);
     }
   });
 
@@ -643,6 +644,7 @@ describe('MySQL 字段类型前端展示 (MY-TYPE-001~020)', () => {
 
   it('结构 tab 应正确显示 MySQL 列类型标签 (MY-TYPE-020)', async () => {
     await clickTableInSidebar(MY_TABLE);
+    await browser.pause(1500);
     await switchSubTab('structure');
     await browser.waitUntil(
       async () => {

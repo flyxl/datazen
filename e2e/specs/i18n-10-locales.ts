@@ -121,7 +121,7 @@ async function setLanguageOnMainWindow(language: string, baseSettings: AppSettin
     },
     { timeout: 20000, timeoutMsg: 'Main window not ready after language change' },
   );
-  await browser.pause(300);
+  await browser.pause(2000);
 }
 
 async function getMainSearchPlaceholder(): Promise<string | null> {
@@ -143,7 +143,7 @@ describe('Built-in locale i18n (I18N10-001~I18N10-005)', () => {
   let originalSettings: AppSettings;
 
   before(async () => {
-    await browser.pause(300);
+    await browser.pause(1000);
     originalSettings = await invokeBackend<AppSettings>('get_settings');
   });
 
@@ -154,7 +154,7 @@ describe('Built-in locale i18n (I18N10-001~I18N10-005)', () => {
       await openMainWindow();
     } catch {
       await browser.url('tauri://localhost');
-      await browser.pause(300);
+      await browser.pause(2000);
     }
   });
 

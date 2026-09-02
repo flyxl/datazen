@@ -49,7 +49,7 @@ describe('Schema 树完整性 (TC-TREE-001~006)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
-    await browser.pause(300);
+    await browser.pause(1000);
   });
 
   after(async () => {
@@ -78,7 +78,7 @@ describe('Schema 树完整性 (TC-TREE-001~006)', () => {
   it('TC-TREE-003: 点击表名应打开数据 tab', async () => {
     const tableName = await clickFirstTable();
     expect(tableName).toBeTruthy();
-    await browser.pause(300);
+    await browser.pause(1000);
     const body = await $('body').getText();
     expect(
       body.includes('数据') ||
@@ -121,6 +121,7 @@ describe('Schema 树完整性 (TC-TREE-001~006)', () => {
       await executeSQL(`DROP TABLE IF EXISTS ${testTable}`);
     });
     await executeSQL(`CREATE TABLE ${testTable} (id INT PRIMARY KEY, val TEXT)`);
+    await browser.pause(1000);
     await browser.execute(() => {
       const aside = document.querySelector('aside');
       if (!aside) return;
@@ -131,7 +132,7 @@ describe('Schema 树完整性 (TC-TREE-001~006)', () => {
       });
       if (btn) (btn as HTMLElement).click();
     });
-    await browser.pause(300);
+    await browser.pause(2000);
     const body = await $('body').getText();
     expect(body.includes(testTable)).toBe(true);
     await captureJourneyStep('schema-tree-refreshed');

@@ -58,7 +58,7 @@ async function runWizard(
   await openDataTransferWindow();
   await selectDzOptionInWrap('data-transfer-source', srcName);
   await selectDzOptionInWrap('data-transfer-target', tgtName);
-  await browser.pause(300);
+  await browser.pause(1500);
   await clickTransferNext();
 
   const modeTestId =
@@ -71,6 +71,7 @@ async function runWizard(
   await browser.pause(300);
   await clickTransferNext();
 
+  await browser.pause(2000);
   const tableRow = await $(`[data-testid="data-transfer-table-row"]*=${table}`);
   await tableRow.waitForDisplayed({ timeout: 15000 });
   const checkbox = await tableRow.$('input[type="checkbox"]');
@@ -85,7 +86,7 @@ async function runWizard(
       const targetTableInput = await $('[data-testid="data-transfer-target-table-input"]');
       await targetTableInput.click();
       await browser.keys(['Tab']);
-      await browser.pause(300);
+      await browser.pause(1500);
     }
   }
 
@@ -250,6 +251,7 @@ describe('数据传输模式路径矩阵 (DT-MODE-MATRIX)', () => {
     const execute = await $('[data-testid="data-transfer-execute"]');
     await execute.waitForClickable({ timeout: 10000 });
     await execute.click();
+    await browser.pause(2000);
     await $('[data-testid="data-transfer-result"]').waitForDisplayed({ timeout: 15000 });
 
     const tgtSession = await invokeBackend<string>('connect', { connectionId: p.tgtId });

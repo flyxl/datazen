@@ -47,7 +47,7 @@ async function clickNext(label: string) {
   const next = await $('[data-testid="data-transfer-next"]');
   await next.waitForClickable({ timeout: 8000 });
   await next.click();
-  await browser.pause(300);
+  await browser.pause(1200);
   await captureJourneyStep(label, 0, true);
 }
 
@@ -145,7 +145,7 @@ describe('数据传输类型映射 Preview DDL (DT-TYPE-MAP)', () => {
     await openDataTransferWindow();
     await selectDzOptionInWrap('data-transfer-source', SRC_NAME);
     await selectDzOptionInWrap('data-transfer-target', TGT_NAME);
-    await browser.pause(300);
+    await browser.pause(1500);
 
     await clickNext('dt-type-endpoints');
 
@@ -154,6 +154,7 @@ describe('数据传输类型映射 Preview DDL (DT-TYPE-MAP)', () => {
     await browser.pause(300);
     await clickNext('dt-type-mode');
 
+    await browser.pause(2000);
     const tableRow = await $(`[data-testid="data-transfer-table-row"]*=${TABLE}`);
     await tableRow.waitForDisplayed({ timeout: 10000 });
     const checkbox = await tableRow.$('input[type="checkbox"]');
@@ -173,6 +174,7 @@ describe('数据传输类型映射 Preview DDL (DT-TYPE-MAP)', () => {
     const targetTableInput = await $('[data-testid="data-transfer-target-table-input"]');
     await targetTableInput.click();
     await browser.keys(['Tab']);
+    await browser.pause(2000);
 
     const createdTypeInput = await $('[data-testid="data-transfer-target-type-created_at"]');
     await createdTypeInput.waitForDisplayed({ timeout: 15000 });

@@ -78,7 +78,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
     await waitForNewQueryButton(20000);
-    await browser.pause(300);
+    await browser.pause(1500);
 
     await openQueryTab();
     await executeSQL(`DROP TABLE IF EXISTS ${TEST_CHILD}`);
@@ -112,7 +112,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
-    await browser.pause(300);
+    await browser.pause(2000);
   });
 
   after(async () => {
@@ -161,6 +161,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     const tableName = TEST_CHILD;
     await clickTableInSidebar(tableName);
 
+    await browser.pause(2000);
     const dataTab = await $("[data-testid='sub-tab-data']");
     await dataTab.waitForDisplayed({ timeout: 8000 });
     await expect(dataTab).toBeDisplayed();
@@ -177,7 +178,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   it('点击结构标签应显示字段信息 (DB-003)', async () => {
     const structTab = await $("[data-testid='sub-tab-structure']");
     await structTab.click();
-    await browser.pause(300);
+    await browser.pause(2000);
 
     const body = await $('body').getText();
     const hasStructure =
@@ -209,9 +210,9 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   it('索引标签应显示索引列表 (DB-004)', async () => {
     await clickTableInSidebar(TEST_CHILD);
-    await browser.pause(300);
+    await browser.pause(1500);
     await switchSubTab('indexes');
-    await browser.pause(300);
+    await browser.pause(2000);
 
     const body = await $('body').getText();
     expect(body).toContain(t('indexes.colName'));
@@ -263,7 +264,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   it('外键标签应显示外键列表 (DB-005)', async () => {
     await switchSubTab('foreignKeys');
-    await browser.pause(300);
+    await browser.pause(2000);
 
     const body = await $('body').getText();
     expect(body).toContain(t('fk.constraintName'));
@@ -283,7 +284,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   it('点击 DDL 标签应显示建表语句 (DB-010)', async () => {
     const ddlTab = await $('button*=DDL');
     await ddlTab.click();
-    await browser.pause(300);
+    await browser.pause(2000);
     const body = (await $('body').getText()).toUpperCase();
     expect(body).toContain('CREATE');
   });
@@ -325,9 +326,9 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   it('数据标签右键菜单应包含复制单元格 (CTX-001)', async () => {
     await clickTableInSidebar(TEST_CHILD);
-    await browser.pause(300);
+    await browser.pause(1500);
     await switchSubTab('data');
-    await browser.pause(300);
+    await browser.pause(2000);
 
     await openDataCellContextMenu();
 
@@ -346,6 +347,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   it('结构标签对应的表节点右键菜单应包含打开和 SQL 入口 (CTX-002)', async () => {
     await clickTableInSidebar(TEST_CHILD);
     await switchSubTab('structure');
+    await browser.pause(1000);
 
     await rightClickTableInSidebar(TEST_CHILD);
     await waitForWebContextMenuItems();
@@ -367,6 +369,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   it('索引标签对应的表节点右键菜单应包含打开和 SQL 入口 (CTX-003)', async () => {
     await clickTableInSidebar(TEST_CHILD);
     await switchSubTab('indexes');
+    await browser.pause(1000);
 
     await rightClickTableInSidebar(TEST_CHILD);
     await waitForWebContextMenuItems();
@@ -388,6 +391,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   it('外键标签对应的表节点右键菜单不应包含数据专属项 (CTX-004)', async () => {
     await clickTableInSidebar(TEST_CHILD);
     await switchSubTab('foreignKeys');
+    await browser.pause(1000);
 
     await rightClickTableInSidebar(TEST_CHILD);
     await waitForWebContextMenuItems();
@@ -403,7 +407,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   it('DDL 标签右键菜单应包含复制 DDL (CTX-005)', async () => {
     await switchSubTab('ddl');
-    await browser.pause(300);
+    await browser.pause(2000);
 
     await openDdlContextMenu();
 
@@ -419,6 +423,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   it('索引标签右键菜单打开表应回到数据子标签 (CTX-006)', async () => {
     await clickTableInSidebar(TEST_CHILD);
     await switchSubTab('indexes');
+    await browser.pause(1000);
 
     await rightClickTableInSidebar(TEST_CHILD);
     await waitForWebContextMenuItems();
@@ -502,7 +507,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   it('应能打开新建查询标签 (SQ-003)', async () => {
     const newQueryBtn = await waitForNewQueryButton();
     await newQueryBtn.click();
-    await browser.pause(300);
+    await browser.pause(1000);
     await expect(await $(`button*=${t('query.execute')}`)).toBeDisplayed();
   });
 

@@ -1,8 +1,5 @@
 import { expect, browser, $ } from '@wdio/globals';
-import {
-  openConnectionWindow,
-  closeExtraWindows,
-} from '../helpers.js';
+import { openConnectionWindow, closeExtraWindows } from '../helpers.js';
 
 /**
  * Invoke a Tauri IPC command from the browser context.
@@ -103,7 +100,7 @@ describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
 
   afterEach(async () => {
     // Small delay between tests to avoid rate limiting
-    await browser.pause(300);
+    await browser.pause(3000);
   });
 
   after(async () => {
@@ -198,8 +195,7 @@ describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
 
     const result = await invokeWithRetry<any>('ai_analyze_explain', {
       dbSessionId,
-      explainOutput:
-        'Seq Scan on pg_class  (cost=0.00..14.12 rows=412 width=265)',
+      explainOutput: 'Seq Scan on pg_class  (cost=0.00..14.12 rows=412 width=265)',
       originalSql: 'SELECT * FROM pg_class',
     });
 
@@ -337,7 +333,7 @@ describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
     this.timeout(120000);
 
     // Wait for rate limit cool-down
-    await browser.pause(300);
+    await browser.pause(5000);
 
     const requestId = `e2e-stream-${Date.now()}`;
 

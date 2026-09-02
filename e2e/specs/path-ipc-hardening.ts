@@ -196,7 +196,7 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
     expect(hostLib).not.toContain('adb_pull_database');
 
     await browser.url('tauri://localhost');
-    await browser.pause(300);
+    await browser.pause(1000);
     mainWindow = await browser.getWindowHandle();
 
     await openNewConnectionDialogFromUi();

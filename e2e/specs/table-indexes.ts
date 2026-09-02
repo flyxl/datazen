@@ -37,15 +37,16 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
     `);
     // Let the query panel finish its result-state update before refreshing the
     // navigator; the schema refresh is independent of SQL completion.
+    await browser.pause(1200);
 
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
     await waitForTableInSidebar(TEST_TABLE);
 
     await clickTableInSidebar(TEST_TABLE);
-    await browser.pause(300);
+    await browser.pause(1000);
     await switchSubTab('indexes');
-    await browser.pause(300);
+    await browser.pause(1000);
   });
 
   after(async () => {

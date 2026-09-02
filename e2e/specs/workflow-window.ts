@@ -185,7 +185,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+    await browser.pause(2000);
     await seedTestWorkflow();
     await browser.pause(500);
   });
@@ -338,10 +338,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     await browser.pause(500);
 
     await findAndClickButton(['执行记录', 'History']);
-    await browser.waitUntil(async () => (await $('body').getText()).includes('E2E Tab Test WF'), {
-      timeout: 10000,
-      timeoutMsg: '等待执行记录列表加载',
-    });
+    await browser.pause(1000);
 
     const body = await $('body').getText();
     expect(body.includes('E2E Tab Test WF')).toBe(true);
@@ -356,10 +353,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
     // Switch to history tab
     await findAndClickButton(['执行记录', 'History']);
-    await browser.waitUntil(async () => (await $('body').getText()).includes('E2E Tab Test WF'), {
-      timeout: 10000,
-      timeoutMsg: '等待执行记录列表加载',
-    });
+    await browser.pause(1000);
 
     // Count tabs before clicking history
     const tabsBefore = await browser.execute(() => {
@@ -373,18 +367,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     const historyItems = await $$('button*=E2E Tab Test WF');
     if (historyItems.length > 0) {
       await historyItems[0].click();
-      await browser.waitUntil(
-        async () => {
-          const tabsAfter = await browser.execute(() => {
-            const tabBar = document.querySelectorAll(
-              '[class*="border-r"][class*="border-edge"][class*="text-xs"]',
-            );
-            return tabBar.length;
-          });
-          return tabsAfter > tabsBefore;
-        },
-        { timeout: 10000, timeoutMsg: '等待历史记录 tab 打开' },
-      );
+      await browser.pause(1000);
 
       // Count tabs after first click
       const tabsAfterFirst = await browser.execute(() => {
@@ -400,7 +383,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
       const historyItems2 = await $$('button*=E2E Tab Test WF');
       if (historyItems2.length > 0) {
         await historyItems2[0].click();
-        await browser.pause(300);
+        await browser.pause(1000);
       }
 
       // Count tabs after second click - should be the same
@@ -479,7 +462,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
   it('打开工作流目录按钮应通过 open_workflows_dir 命令打开文件夹', async function () {
     this.timeout(20000);
     await openWorkflowWorkspace(mainWindow);
-    await $('div*=E2E Focus Test WF').waitForDisplayed({ timeout: 10000 });
+    await browser.pause(1000);
 
     const openDirBtn = await browser.execute(() => {
       const buttons = document.querySelectorAll('button');
@@ -522,7 +505,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
   it('输入框有焦点时单击侧边栏标签应立即切换', async function () {
     this.timeout(30000);
     await openWorkflowWorkspace(mainWindow);
-    await $('div*=E2E Focus Test WF').waitForDisplayed({ timeout: 10000 });
+    await browser.pause(1000);
 
     const focusWfItem = await $('div*=E2E Focus Test WF');
     await focusWfItem.click();

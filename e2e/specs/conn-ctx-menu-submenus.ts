@@ -172,7 +172,7 @@ describe('连接右键菜单子菜单结构 (CM-SUB)', () => {
     await rightClickFirstConn();
     await hoverSubmenuTrigger('web-context-submenu-trigger-connection-submenu');
     await clickSubmenuItem('edit-connection');
-    await browser.pause(300);
+    await browser.pause(1000);
 
     const dialog = await $('[role="dialog"]');
     const exists = await dialog.isExisting();
@@ -249,10 +249,10 @@ describe('连接右键菜单 Server 子菜单含服务器操作 (CM-SUB-MAN)', (
       },
     });
     await browser.refresh();
-    await browser.pause(300);
+    await browser.pause(1500);
     await openConnectionsWorkspace(mainWindow);
     await clickCardConnectButton(CM_SUB_008_CONN);
-    await browser.pause(300);
+    await browser.pause(1000);
 
     await browser.execute((name: string) => {
       const items = document.querySelectorAll('[data-conn-item]');
@@ -313,7 +313,7 @@ describe('未打开连接历史查询 pending 机制 (CM-SUB-QH)', () => {
       const disconnect = await $('[data-testid="web-context-item-disconnect"]');
       if (await disconnect.isExisting()) {
         await disconnect.click();
-        await browser.pause(300);
+        await browser.pause(1500);
       }
       await dismissMenu();
     }

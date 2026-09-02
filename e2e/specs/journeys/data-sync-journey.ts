@@ -107,7 +107,7 @@ function defineDriverJourney(label: string, driver: 'postgresql' | 'mysql') {
       await runDeleteEnableAcceptBranch(f);
 
       await selectFixtureEndpoints(f);
-      await browser.pause(300);
+      await browser.pause(1000);
       if (driver === 'postgresql') {
         const schema = await $('[data-testid="data-sync-source-schema"]');
         if (await schema.isDisplayed().catch(() => false)) {

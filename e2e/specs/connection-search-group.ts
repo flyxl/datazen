@@ -8,7 +8,7 @@ describe('连接搜索和分组 (CM-007, CM-008, CM-009)', () => {
       `input[placeholder="${t('main.searchPlaceholder')}"], [data-testid="connection-search-input"]`,
     ).waitForDisplayed({ timeout: 10000 });
     await expandAllGroups();
-    await browser.pause(300);
+    await browser.pause(1000);
   });
 
   // ── 搜索功能 (CM-008) ─────────────────────────────────────────

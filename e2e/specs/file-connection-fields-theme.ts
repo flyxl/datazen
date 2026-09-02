@@ -67,7 +67,7 @@ async function setTheme(theme: 'light' | 'dark') {
     },
   });
   await browser.refresh();
-  await browser.pause(300);
+  await browser.pause(1500);
 }
 
 async function openSqliteConnectionForm() {

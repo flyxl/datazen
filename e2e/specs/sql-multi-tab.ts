@@ -19,7 +19,7 @@ describe('SQL 多 Tab 并发 (TC-QUERY-009~012)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
-    await browser.pause(300);
+    await browser.pause(1000);
     await openQueryTab();
   });
 
@@ -45,7 +45,7 @@ describe('SQL 多 Tab 并发 (TC-QUERY-009~012)', () => {
 
   it('TC-QUERY-011: 新建 tab 后编辑器应为空', async () => {
     await openQueryTab();
-    await browser.pause(300);
+    await browser.pause(1000);
     const editorText = await browser.execute(() => {
       const el = document.querySelector('.cm-editor .cm-content') as HTMLElement;
       return el?.textContent?.trim() ?? '';

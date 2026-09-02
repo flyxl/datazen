@@ -13,7 +13,7 @@ describe('Bug Fix Verification', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await browser.pause(300);
+    await browser.pause(2000);
   });
 
   afterEach(async () => {
@@ -63,9 +63,11 @@ describe('Bug Fix Verification', () => {
       const res = await openConnectionWindow();
       mainWindow = res.mainWindow;
       await openQueryTab();
-      await browser.pause(300);
+      await browser.pause(1000);
 
-      await executeSQL('CREATE TABLE IF NOT EXISTS e2e_fix003_chart (category TEXT, amount INTEGER)');
+      await executeSQL(
+        'CREATE TABLE IF NOT EXISTS e2e_fix003_chart (category TEXT, amount INTEGER)',
+      );
       await executeSQL('DELETE FROM e2e_fix003_chart');
       await executeSQL(`
         INSERT INTO e2e_fix003_chart (category, amount) VALUES
@@ -73,10 +75,12 @@ describe('Bug Fix Verification', () => {
       `);
       await openQueryTab();
       await executeSQL('SELECT category, amount FROM e2e_fix003_chart ORDER BY category');
+      await browser.pause(1000);
 
       const chartBtn = await $(`button*=${t('chart.viewChart')}`);
       await chartBtn.waitForDisplayed({ timeout: 5000 });
       await chartBtn.click();
+      await browser.pause(1000);
 
       await $('[class*="recharts-wrapper"]').waitForExist({ timeout: 8000 });
 

@@ -15,7 +15,7 @@ describe('数据看板入口 (UJ-01, UJ-11)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await browser.pause(300);
+    await browser.pause(1000);
     await cleanupDashboard(DASHBOARD_ID);
     await createEmptyDashboard(DASHBOARD_ID, 'E2E Entry Board');
   });

@@ -41,7 +41,7 @@ describe('窗口与 UI 操作 (TC-UI-001/002/003/005)', () => {
         item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
       }
     });
-    await browser.pause(300);
+    await browser.pause(1500);
     const handles = await browser.getWindowHandles();
     expect(handles.length).toBe(1);
     await expect(await $('[data-testid="workspace-nav-connections"]')).toBeDisplayed();

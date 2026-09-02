@@ -25,7 +25,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
     await waitForNewQueryButton(20000);
-    await browser.pause(300);
+    await browser.pause(1500);
 
     // Clean up any leftover test table
     await openQueryTab();
@@ -53,6 +53,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
   it('点击新建表应打开表结构编辑器 (TS-001)', async () => {
     const newTblBtn = await $("[data-testid='content-toolbar-new-table']");
     await newTblBtn.click();
+    await browser.pause(1000);
 
     // Should show the table name input and column grid
     const tableNameInput = await $('input[placeholder="new_table"]');
@@ -140,9 +141,9 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
 
   it('结构标签应显示表的列信息 (TS-006)', async () => {
     await clickTableInSidebar(TEST_TABLE);
-    await browser.pause(300);
+    await browser.pause(1500);
     await switchSubTab('structure');
-    await browser.pause(300);
+    await browser.pause(1500);
 
     const body = await $('body').getText();
     // Should show our table columns
@@ -168,7 +169,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
       timeoutMsg: 'Expected struct-edit-structure button on structure tab',
     });
     await editBtn.click();
-    await browser.pause(300);
+    await browser.pause(1000);
     const saveBtn = await $("[data-testid='struct-editor-execute']");
     await expect(saveBtn).toBeDisplayed();
     // Inline edit — no new primary tab titled "编辑结构 · …"
@@ -181,7 +182,10 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
     await expect(backBtn).toBeDisplayed();
     await backBtn.click();
     await browser.waitUntil(
-      async () => !(await $(`[data-testid='struct-editor-title']`).isDisplayed().catch(() => false)),
+      async () =>
+        !(await $(`[data-testid='struct-editor-title']`)
+          .isDisplayed()
+          .catch(() => false)),
       { timeout: 10000, timeoutMsg: '等待返回结构视图超时' },
     );
   });
@@ -209,7 +213,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
 
     const saveBtn = await $("[data-testid='struct-editor-execute']");
     await saveBtn.click();
-    await browser.pause(300);
+    await browser.pause(2500);
 
     const backBtn = await $("[data-testid='struct-editor-back']");
     if (await backBtn.isExisting()) {
@@ -218,7 +222,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
     }
 
     await switchSubTab('structure');
-    await browser.pause(300);
+    await browser.pause(1200);
     const body = await $('body').getText();
     expect(body).toContain('e2e_extra_col');
   });
@@ -231,7 +235,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
 
   it('DDL 标签应显示建表语句 (TS-008)', async () => {
     await switchSubTab('ddl');
-    await browser.pause(300);
+    await browser.pause(1500);
     const body = (await $('body').getText()).toUpperCase();
     expect(body).toContain('CREATE');
   });

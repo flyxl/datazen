@@ -29,10 +29,12 @@ type DndWindow = Window & { __datazenDndTransfer?: DataTransfer };
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   return browser.executeAsync(
     (c: string, a: string, done: (result: unknown) => void) => {
-      (window as Window & {
-        __TAURI_INTERNALS__: { invoke: (command: string, args: unknown) => Promise<unknown> };
-      })
-        .__TAURI_INTERNALS__.invoke(c, JSON.parse(a))
+      (
+        window as Window & {
+          __TAURI_INTERNALS__: { invoke: (command: string, args: unknown) => Promise<unknown> };
+        }
+      ).__TAURI_INTERNALS__
+        .invoke(c, JSON.parse(a))
         .then((result) => done(result))
         .catch((error: unknown) => done({ __error: String(error) }));
     },
@@ -60,12 +62,17 @@ async function waitForRelativeOrder(firstId: string, secondId: string): Promise<
 }
 
 async function getVisibleTestConnectionOrder(): Promise<string[]> {
-  return browser.execute((names: string[]) => {
-    const visibleNames = Array.from(document.querySelectorAll<HTMLElement>('[data-conn-item]')).map(
-      (item) => item.dataset.connName,
-    );
-    return visibleNames.filter((name): name is string => name !== undefined && names.includes(name));
-  }, [CONN_A_NAME, CONN_B_NAME]) as Promise<string[]>;
+  return browser.execute(
+    (names: string[]) => {
+      const visibleNames = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-conn-item]'),
+      ).map((item) => item.dataset.connName);
+      return visibleNames.filter(
+        (name): name is string => name !== undefined && names.includes(name),
+      );
+    },
+    [CONN_A_NAME, CONN_B_NAME],
+  ) as Promise<string[]>;
 }
 
 async function getRenderedGroupBounds(): Promise<{
@@ -73,21 +80,28 @@ async function getRenderedGroupBounds(): Promise<{
   groupBIndex: number;
   connectionIndices: number[];
 }> {
-  return browser.execute((groupA: string, groupB: string, names: string[]) => {
-    const rows = Array.from(
-      document.querySelectorAll<HTMLElement>('[data-group-header], [data-conn-item]'),
-    );
-    const groupAIndex = rows.findIndex(
-      (row) => row.matches('[data-group-header]') && row.dataset.groupName === groupA,
-    );
-    const groupBIndex = rows.findIndex(
-      (row) => row.matches('[data-group-header]') && row.dataset.groupName === groupB,
-    );
-    const connectionIndices = rows.flatMap((row, index) =>
-      row.matches('[data-conn-item]') && names.includes(row.dataset.connName ?? '') ? [index] : [],
-    );
-    return { groupAIndex, groupBIndex, connectionIndices };
-  }, GROUP_A, GROUP_B, [CONN_A_NAME, CONN_B_NAME]) as Promise<{
+  return browser.execute(
+    (groupA: string, groupB: string, names: string[]) => {
+      const rows = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-group-header], [data-conn-item]'),
+      );
+      const groupAIndex = rows.findIndex(
+        (row) => row.matches('[data-group-header]') && row.dataset.groupName === groupA,
+      );
+      const groupBIndex = rows.findIndex(
+        (row) => row.matches('[data-group-header]') && row.dataset.groupName === groupB,
+      );
+      const connectionIndices = rows.flatMap((row, index) =>
+        row.matches('[data-conn-item]') && names.includes(row.dataset.connName ?? '')
+          ? [index]
+          : [],
+      );
+      return { groupAIndex, groupBIndex, connectionIndices };
+    },
+    GROUP_A,
+    GROUP_B,
+    [CONN_A_NAME, CONN_B_NAME],
+  ) as Promise<{
     groupAIndex: number;
     groupBIndex: number;
     connectionIndices: number[];
@@ -104,7 +118,12 @@ async function startHtml5Drag(connectionName: string): Promise<Html5DragStartRes
       return { status: 'no-source' as const, draggable: false, payload: '', types: [] };
     }
     if (typeof DataTransfer === 'undefined' || typeof DragEvent === 'undefined') {
-      return { status: 'unsupported' as const, draggable: source.draggable, payload: '', types: [] };
+      return {
+        status: 'unsupported' as const,
+        draggable: source.draggable,
+        payload: '',
+        types: [],
+      };
     }
 
     try {
@@ -126,25 +145,32 @@ async function startHtml5Drag(connectionName: string): Promise<Html5DragStartRes
 }
 
 /** Dispatch dragover with a coordinate on the requested side of the target row. */
-async function dragOverHtml5(connectionName: string, position: 'before' | 'after'): Promise<boolean> {
-  return browser.execute((name: string, dropPosition: 'before' | 'after') => {
-    const target = Array.from(document.querySelectorAll<HTMLElement>('[data-conn-item]')).find(
-      (item) => item.dataset.connName === name,
-    );
-    const dataTransfer = (window as DndWindow).__datazenDndTransfer;
-    if (!target || !dataTransfer) return false;
+async function dragOverHtml5(
+  connectionName: string,
+  position: 'before' | 'after',
+): Promise<boolean> {
+  return browser.execute(
+    (name: string, dropPosition: 'before' | 'after') => {
+      const target = Array.from(document.querySelectorAll<HTMLElement>('[data-conn-item]')).find(
+        (item) => item.dataset.connName === name,
+      );
+      const dataTransfer = (window as DndWindow).__datazenDndTransfer;
+      if (!target || !dataTransfer) return false;
 
-    const rect = target.getBoundingClientRect();
-    const clientY = dropPosition === 'before' ? rect.top + 1 : rect.bottom - 1;
-    const event = new DragEvent('dragover', {
-      bubbles: true,
-      cancelable: true,
-      clientY,
-      dataTransfer,
-    });
-    target.dispatchEvent(event);
-    return event.defaultPrevented;
-  }, connectionName, position) as Promise<boolean>;
+      const rect = target.getBoundingClientRect();
+      const clientY = dropPosition === 'before' ? rect.top + 1 : rect.bottom - 1;
+      const event = new DragEvent('dragover', {
+        bubbles: true,
+        cancelable: true,
+        clientY,
+        dataTransfer,
+      });
+      target.dispatchEvent(event);
+      return event.defaultPrevented;
+    },
+    connectionName,
+    position,
+  ) as Promise<boolean>;
 }
 
 async function dropHtml5(connectionName: string): Promise<boolean> {
@@ -186,12 +212,18 @@ async function endHtml5Drag(connectionName: string): Promise<void> {
 
 describe('连接分组中的 HTML5 拖拽排序 (DND)', () => {
   before(async () => {
-    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
+      timeout: 10000,
+    });
     await expandAllGroups();
     await browser.pause(500);
 
     const existingGroups = await invokeBackend<string[]>('get_groups');
-    const newGroups = [...existingGroups.filter((g) => g !== GROUP_A && g !== GROUP_B), GROUP_A, GROUP_B];
+    const newGroups = [
+      ...existingGroups.filter((g) => g !== GROUP_A && g !== GROUP_B),
+      GROUP_A,
+      GROUP_B,
+    ];
     await invokeBackend('save_groups', { groups: newGroups });
 
     const existingConns = await getConnections();
@@ -218,21 +250,30 @@ describe('连接分组中的 HTML5 拖拽排序 (DND)', () => {
     });
 
     await browser.execute(() => location.reload());
-    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
+      timeout: 10000,
+    });
     await expandAllGroups();
-    await browser.pause(300);
+    await browser.pause(1500);
   });
 
   after(async () => {
     try {
       await invokeBackend('delete_connection', { id: CONN_A_ID });
       await invokeBackend('delete_connection', { id: CONN_B_ID });
-    } catch { /* best-effort cleanup */ }
+    } catch {
+      /* best-effort cleanup */
+    }
     try {
       const groups = await invokeBackend<string[]>('get_groups');
-      await invokeBackend('save_groups', { groups: groups.filter((g) => g !== GROUP_A && g !== GROUP_B) });
-    } catch { /* best-effort cleanup */ }
+      await invokeBackend('save_groups', {
+        groups: groups.filter((g) => g !== GROUP_A && g !== GROUP_B),
+      });
+    } catch {
+      /* best-effort cleanup */
+    }
     await browser.execute(() => location.reload());
+    await browser.pause(1000);
   });
 
   it('DND-001: 测试分组和连接已创建', async () => {
@@ -251,11 +292,11 @@ describe('连接分组中的 HTML5 拖拽排序 (DND)', () => {
   });
 
   it('DND-003: data-group-name 属性存在', async () => {
-    const names = await browser.execute(() =>
+    const names = (await browser.execute(() =>
       Array.from(document.querySelectorAll<HTMLElement>('[data-group-name]')).map(
         (element) => element.dataset.groupName,
       ),
-    ) as Promise<Array<string | undefined>>;
+    )) as Promise<Array<string | undefined>>;
     expect(names).toContain(GROUP_A);
     expect(names).toContain(GROUP_B);
   });
