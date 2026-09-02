@@ -164,7 +164,7 @@ async function expandSchemaTables(schemaFilter = 'public', connName = E2E_PG_CON
     const svg = tables.querySelector('svg');
     if (svg?.getAttribute('class')?.includes('chevron-right')) (tables as HTMLElement).click();
   });
-  await browser.pause(1200);
+  await browser.pause(300);
 }
 
 /** 读取 ObjectFilter 对话框中某输入框（按 placeholder）当前值，供回填断言。 */
@@ -285,10 +285,10 @@ describe('运维 §5.4: 对象过滤器 (OPS-FILTER)', () => {
     // 重新连接以应用过滤（或刷新树）
     await closeExtraWindows(mainWindow);
     await connectSeededPgInWorkspace();
-    await browser.pause(1500);
+    await browser.pause(300);
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
-    await browser.pause(1500);
+    await browser.pause(300);
     await expandSchemaTables();
     const names = await visibleTableNames();
     expect(names).toContain(FT1);
@@ -323,10 +323,10 @@ describe('运维 §5.4: 对象过滤器 (OPS-FILTER)', () => {
     );
     await closeExtraWindows(mainWindow);
     await connectSeededPgInWorkspace();
-    await browser.pause(1500);
+    await browser.pause(300);
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
-    await browser.pause(1500);
+    await browser.pause(300);
     await expandSchemaTables();
     const names = await visibleTableNames();
     expect(names).toContain(PLAIN);

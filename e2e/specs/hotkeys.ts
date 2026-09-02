@@ -88,7 +88,7 @@ describe('快捷键 (TC-HOTKEY-001~005)', () => {
     await connectSeededPgInWorkspace();
     await waitForNewQueryButton(20000);
     await browser.keys(['Meta', 'w']);
-    await browser.pause(1500);
+    await browser.pause(300);
     // Either window closed or still usable — no crash
     const after = await browser.getWindowHandles();
     expect(after.length).toBeGreaterThanOrEqual(1);

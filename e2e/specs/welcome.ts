@@ -79,7 +79,7 @@ describe('首次安装欢迎页 (F5-E2E-001 ~ F5-E2E-005)', () => {
     mainWindow = await browser.getWindowHandle();
     await deleteAllConnections();
     await browser.execute(() => location.reload());
-    await browser.pause(1500);
+    await browser.pause(300);
   });
 
   afterEach(async () => {
@@ -97,7 +97,6 @@ describe('首次安装欢迎页 (F5-E2E-001 ~ F5-E2E-005)', () => {
     }
     await reseedE2ePgConnection();
     await browser.execute(() => location.reload());
-    await browser.pause(1500);
   });
 
   it('F5-E2E-001: 无连接时主窗显示欢迎页而非工作区侧栏', async () => {
@@ -161,7 +160,6 @@ describe('首次安装欢迎页 (F5-E2E-001 ~ F5-E2E-005)', () => {
     }
 
     await browser.execute(() => location.reload());
-    await browser.pause(1500);
 
     const welcome = await $('[data-testid="welcome-page"]');
     await welcome.waitForDisplayed({ timeout: 15000 });

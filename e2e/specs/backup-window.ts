@@ -19,7 +19,6 @@ import {
 
 async function openBackupWindowUi(mainWindow: string) {
   await browser.url('tauri://localhost/window.html?window=backup');
-  await browser.pause(1500);
   const handles = await browser.getWindowHandles();
   if (handles.length > 1) {
     await switchToNewWindow(mainWindow);
@@ -107,7 +106,7 @@ describe('备份窗口 UI (BKU-001~BKU-006)', () => {
     const connRow = await $('[data-testid="backup-connection-row"]');
     await connRow.waitForDisplayed({ timeout: 10000 });
     await connRow.click();
-    await browser.pause(1500);
+    await browser.pause(300);
 
     await browser.execute((dbName: string) => {
       const nodes = Array.from(document.querySelectorAll('div'));

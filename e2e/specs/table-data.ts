@@ -25,7 +25,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
     await waitForNewQueryButton(20000);
-    await browser.pause(1500);
+    await browser.pause(300);
 
     // Create test table with enough rows for pagination
     await openQueryTab();
@@ -66,7 +66,6 @@ describe('表数据视图 (TD-001~TD-008)', () => {
 
   it('点击表名应加载数据并显示行 (TD-001)', async () => {
     await clickTableInSidebar(TEST_TABLE);
-    await browser.pause(2000);
     await switchSubTab('data');
 
     await browser.waitUntil(
@@ -127,7 +126,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
   it('点击下一页应加载下一页数据 (TD-002)', async () => {
     const nextBtn = await $(`button[aria-label="${t('pagination.next')}"]`);
     await nextBtn.click();
-    await browser.pause(2000);
+    await browser.pause(300);
 
     const body = await $('body').getText();
     // Should now show page 2 data (e.g. "第 2 / N 页" or range like "26-50")
@@ -138,7 +137,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
   it('点击上一页应回到第一页 (TD-002)', async () => {
     const prevBtn = await $(`button[aria-label="${t('pagination.prev')}"]`);
     await prevBtn.click();
-    await browser.pause(2000);
+    await browser.pause(300);
 
     const body = await $('body').getText();
     const hasPage1 = body.includes('第 1') || body.includes('1-');
@@ -152,7 +151,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     const count = await headerBtns.length;
     if (count > 0) {
       await headerBtns[0].click();
-      await browser.pause(1500);
+      await browser.pause(300);
 
       const body = await $('body').getText();
       expect(body).toContain('user_');
@@ -164,7 +163,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     const count = await headerBtns.length;
     if (count > 0) {
       await headerBtns[0].click();
-      await browser.pause(1500);
+      await browser.pause(300);
 
       const body = await $('body').getText();
       expect(body).toContain('user_');
@@ -176,7 +175,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     const count = await headerBtns.length;
     if (count > 0) {
       await headerBtns[0].click();
-      await browser.pause(1500);
+      await browser.pause(300);
 
       const body = await $('body').getText();
       expect(body).toContain('user_');
@@ -243,7 +242,6 @@ describe('表数据视图 (TD-001~TD-008)', () => {
 
   it('TD-DEL-001: 选中行后应显示删除行按钮', async () => {
     await clickTableInSidebar(TEST_TABLE);
-    await browser.pause(1500);
     await switchSubTab('data');
     await browser.waitUntil(
       async () => (await $('body').getText()).includes(t('common.selectAll')),
@@ -268,11 +266,10 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     await executeSQL(`CREATE TABLE ${emptyTable} (id SERIAL PRIMARY KEY, name TEXT)`);
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
-    await browser.pause(1500);
     await clickTableInSidebar(emptyTable);
-    await browser.pause(1500);
+    await browser.pause(300);
     await switchSubTab('data');
-    await browser.pause(1000);
+    await browser.pause(300);
     const body = await $('body').getText();
     const ok =
       body.includes('0') ||

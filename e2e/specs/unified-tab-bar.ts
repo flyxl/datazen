@@ -29,7 +29,7 @@ describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
 
   it('点击表后应在 tab bar 中显示 tab (UTB-002)', async () => {
     const tableName = await clickFirstTable();
-    await browser.pause(1000);
+    await browser.pause(300);
 
     const body = await $('body').getText();
     expect(body).toContain(tableName);

@@ -134,7 +134,7 @@ describe('Online Help Docs (DOCS-001~DOCS-007)', () => {
     this.timeout(20000);
 
     await browser.url('tauri://localhost/window.html?window=docs&section=workflows');
-    await browser.pause(1500);
+    await browser.pause(300);
 
     const handles = await browser.getWindowHandles();
     expect(handles.length).toBe(1);
@@ -155,7 +155,7 @@ describe('Online Help Docs (DOCS-001~DOCS-007)', () => {
     expect(hasMainWorkspace).toBe(true);
 
     await browser.url('tauri://localhost');
-    await browser.pause(1000);
+    await browser.pause(300);
     mainWindow = await browser.getWindowHandle();
   });
 });

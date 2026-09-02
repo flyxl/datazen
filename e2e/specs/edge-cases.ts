@@ -74,7 +74,7 @@ describe('边缘用例 (TC-EDGE-001/002/004/008)', () => {
       },
     });
     await browser.refresh();
-    await browser.pause(1500);
+    await browser.pause(300);
     await expandAllGroups();
     const body = await $('body').getText();
     expect(body.includes('E2E-超长名称') || body.includes('名'.repeat(10))).toBe(true);
@@ -111,7 +111,6 @@ describe('边缘用例 (TC-EDGE-001/002/004/008)', () => {
     await waitForNewQueryButton(20000);
     await openQueryTab();
     await executeSQL('SELECT generate_series(1, 5000) AS n');
-    await browser.pause(2000);
     const body = await $('body').getText();
     const ok =
       body.includes(t('common.rows')) ||
@@ -142,7 +141,7 @@ describe('边缘用例 (TC-EDGE-001/002/004/008)', () => {
       await execBtn.click();
       await browser.pause(80);
     }
-    await browser.pause(3000);
+    await browser.pause(300);
     await expect(await $(`button*=${t('query.execute')}`)).toBeDisplayed();
     await closeExtraWindows(mainWindow);
   });

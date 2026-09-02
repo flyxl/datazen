@@ -64,7 +64,7 @@ describe('对象浏览器与权限 (OBJ/PRV)', () => {
     const privBtn = await $(`button*=${t('privileges.title')}`);
     await privBtn.waitForDisplayed({ timeout: 10000 });
     await privBtn.click();
-    await browser.pause(1000);
+    await browser.pause(300);
     const body = await $('body').getText();
     expect(body).toContain(t('privileges.title'));
     expect(

@@ -53,7 +53,7 @@ describe('SQLite', () => {
 
   it('should display table data', async () => {
     await clickTableInSidebar('users');
-    await browser.pause(1000);
+    await browser.pause(300);
     const body = await $('body').getText();
     expect(body).toContain('name');
     expect(body).toContain('email');
@@ -63,7 +63,7 @@ describe('SQLite', () => {
     await clickTableInSidebar('users');
     await browser.pause(500);
     await switchSubTab('structure');
-    await browser.pause(1000);
+    await browser.pause(300);
     const body = await $('body').getText();
     expect(body).toContain('id');
     expect(body).toContain('INTEGER');
@@ -98,7 +98,7 @@ describe('SQLite', () => {
     await clickTableInSidebar('users');
     await browser.pause(500);
     await switchSubTab('indexes');
-    await browser.pause(1000);
+    await browser.pause(300);
     // SQLite creates autoindex for UNIQUE constraints
     const body = await $('body').getText();
     expect(body).toContain('email');
@@ -106,7 +106,7 @@ describe('SQLite', () => {
 
   it('should display view data', async () => {
     await clickTableInSidebar('published_posts');
-    await browser.pause(1000);
+    await browser.pause(300);
     const body = await $('body').getText();
     expect(body).toContain('author');
   });

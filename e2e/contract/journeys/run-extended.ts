@@ -27,7 +27,6 @@ export async function runHcConn(ctx: ContractConnCtx) {
 export async function runHcEdit(ctx: ContractConnCtx) {
   const table = await seedContractTable(ctx, 'edit');
   await clickTableInSidebar(table);
-  await browser.pause(1000);
   await switchSubTab('data');
   await browser.waitUntil(async () => (await $('body').getText()).includes('alpha'), {
     timeout: 15000,
@@ -36,7 +35,7 @@ export async function runHcEdit(ctx: ContractConnCtx) {
   const input = await waitForEditInput();
   await input.setValue('alpha2');
   await browser.keys('Enter');
-  await browser.pause(1000);
+  await browser.pause(300);
   const body = await $('body').getText();
   expect(body.includes('alpha2') || body.includes('alpha')).toBe(true);
 }
@@ -80,7 +79,6 @@ export async function runHcIndex(ctx: ContractConnCtx) {
 export async function runHcExport(ctx: ContractConnCtx) {
   const table = await seedContractTable(ctx, 'export');
   await clickTableInSidebar(table);
-  await browser.pause(1000);
   await switchSubTab('data');
   await browser.pause(800);
   const exportBtn = await $(`button[title="${t('export.export')}"]`);
