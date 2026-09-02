@@ -9,28 +9,9 @@ import { cleanupAppDataViaIpc, seedDefaultPgConnection } from './lib/testDataLif
 import { ensureMainWindowForIpc, invokeBackend } from './helpers.js';
 import { browser } from '@wdio/globals';
 
-const instanceCount = parseInt(process.env.E2E_INSTANCES || '1', 10);
-const multiInstance = instanceCount > 1;
-const ports = multiInstance
-  ? (process.env.E2E_WD_PORTS || '4445').split(',').map((p) => parseInt(p.trim(), 10))
-  : [parseInt(process.env.E2E_WD_PORT || '4445', 10)];
-const dataDirs = multiInstance
-  ? (process.env.E2E_DATA_DIRS || '').split(',').map((d) => d.trim())
-  : [process.env.DATAZEN_DATA_DIR || ''];
+const WD_PORT = parseInt(process.env.E2E_WD_PORT || '4445', 10);
 
-/**
- * One capability entry per app instance so WDIO assigns specs across workers.
- * Connection options (hostname/port) live at the capability top level — WDIO v9
- * merges them into each worker config (see multiremote / per-capability port docs).
- */
-const capabilities: WebdriverIO.Capabilities[] = multiInstance
-  ? ports.map((port) => ({
-      hostname: '127.0.0.1',
-      port,
-      path: '/',
-      'wdio:maxInstances': 1,
-    }))
-  : [{}];
+const capabilities: WebdriverIO.Capabilities[] = [{}];
 
 async function runSessionBootstrap() {
   await browser.url('tauri://localhost');
@@ -270,16 +251,12 @@ export const config: WebdriverIO.Config = {
       './specs/data-sync-real.ts',
     ],
   },
-  maxInstances: multiInstance ? instanceCount : 1,
+  maxInstances: 1,
   // specFileRetries: 1, // disabled — retries double the time for genuine failures
   capabilities,
-  ...(multiInstance
-    ? {}
-    : {
-        hostname: '127.0.0.1',
-        port: ports[0],
-        path: '/',
-      }),
+  hostname: '127.0.0.1',
+  port: WD_PORT,
+  path: '/',
   logLevel: 'warn',
   waitforTimeout: 10000,
   connectionRetryTimeout: 30000,
@@ -290,30 +267,8 @@ export const config: WebdriverIO.Config = {
     ui: 'bdd',
     timeout: 120000,
   },
-  onWorkerStart(cid, _caps, _specs, args) {
-    if (!multiInstance) return;
-    const idx = parseInt(cid.split('-')[0], 10);
-    const port = ports[idx] ?? ports[0];
-    const dataDir = dataDirs[idx] ?? dataDirs[0];
-    args.hostname = '127.0.0.1';
-    args.port = port;
-    args.path = '/';
-    if (dataDir) {
-      process.env.DATAZEN_DATA_DIR = dataDir;
-    }
-  },
-  beforeSession(_config, caps) {
-    if (!multiInstance) return;
-    const capPort =
-      typeof caps === 'object' && caps !== null && 'port' in caps
-        ? Number((caps as { port?: number }).port)
-        : NaN;
-    const idx = Number.isFinite(capPort) ? ports.indexOf(capPort) : -1;
-    const dataDir = idx >= 0 ? dataDirs[idx] : dataDirs[0];
-    if (dataDir) {
-      process.env.DATAZEN_DATA_DIR = dataDir;
-    }
-  },
+  // Multi-instance parallelism is handled by run.mjs launching separate WDIO processes,
+  // not by WDIO capabilities (which duplicate specs across all capabilities).
   before: async function () {
     await runSessionBootstrap();
   },

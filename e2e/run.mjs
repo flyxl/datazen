@@ -388,33 +388,120 @@ if (screenshotTrace) {
 }
 log('Running E2E tests...');
 
-const wdioEnv = {
-  ...process.env,
-  DATAZEN_DATA_DIR: dataDirs[0],
-  E2E_WD_PORT: String(WD_PORT),
-};
 if (INSTANCE_COUNT > 1) {
-  wdioEnv.E2E_INSTANCES = String(INSTANCE_COUNT);
-  wdioEnv.E2E_WD_PORTS = wdPorts.join(',');
-  wdioEnv.E2E_DATA_DIRS = dataDirs.join(',');
+  // Multi-instance: launch N independent WDIO processes, each with its own port/dataDir
+  // and a round-robin slice of the spec files. This avoids WDIO's capability duplication.
+  const { globSync } = await import('glob');
+  const resolveSpecs = () => {
+    // If user passed --suite, extract it; otherwise use default glob
+    const suiteIdx = wdioArgs.indexOf('--suite');
+    if (suiteIdx >= 0 && wdioArgs[suiteIdx + 1]) {
+      // Read suite from wdio.conf.ts is complex; just collect all spec files
+      // that the suite would resolve to. For simplicity, use glob.
+    }
+    const specIdx = wdioArgs.indexOf('--spec');
+    if (specIdx >= 0 && wdioArgs[specIdx + 1]) {
+      return wdioArgs[specIdx + 1].split(',').map((s) => s.trim());
+    }
+    return globSync('e2e/specs/**/*.ts', { cwd: ROOT })
+      .filter(
+        (f) =>
+          !f.includes('zz-screenshots') &&
+          !f.includes('demo-recording') &&
+          !f.includes('zz-diag'),
+      )
+      .sort();
+  };
+
+  const allSpecs = resolveSpecs();
+  const chunks = Array.from({ length: INSTANCE_COUNT }, () => []);
+  allSpecs.forEach((spec, i) => chunks[i % INSTANCE_COUNT].push(spec));
+
+  log(
+    `Splitting ${allSpecs.length} specs across ${INSTANCE_COUNT} processes: ${chunks.map((c) => c.length).join(' / ')}`,
+  );
+
+  const wdioProcesses = chunks.map((specChunk, i) => {
+    if (specChunk.length === 0) return null;
+    const env = {
+      ...process.env,
+      DATAZEN_DATA_DIR: dataDirs[i],
+      E2E_WD_PORT: String(wdPorts[i]),
+    };
+    const specArgs = [];
+    for (const s of specChunk) {
+      specArgs.push('--spec', s);
+    }
+    // Remove --suite and --spec from original wdioArgs for the per-process invocation
+    const filteredWdioArgs = wdioArgs.filter(
+      (a, idx) =>
+        a !== '--suite' &&
+        wdioArgs[idx - 1] !== '--suite' &&
+        a !== '--spec' &&
+        wdioArgs[idx - 1] !== '--spec',
+    );
+    const proc = spawn(
+      'npx',
+      ['wdio', 'run', 'e2e/wdio.conf.ts', ...filteredWdioArgs, ...specArgs],
+      {
+        stdio: ['inherit', 'pipe', 'pipe'],
+        cwd: ROOT,
+        env,
+      },
+    );
+    const prefix = `\x1b[3${2 + i}m[worker-${i}]\x1b[0m `;
+    proc.stdout.on('data', (chunk) => {
+      for (const line of chunk.toString().split('\n')) {
+        if (line) process.stdout.write(prefix + line + '\n');
+      }
+    });
+    proc.stderr.on('data', (chunk) => {
+      for (const line of chunk.toString().split('\n')) {
+        if (line) process.stderr.write(prefix + line + '\n');
+      }
+    });
+    return proc;
+  });
+
+  const exitCodes = await Promise.all(
+    wdioProcesses
+      .filter(Boolean)
+      .map((proc) => new Promise((resolve) => proc.on('close', (code) => resolve(code ?? 1)))),
+  );
+
+  cleanup();
+  runEnvTeardown();
+  const maxCode = Math.max(...exitCodes);
+  const passed = exitCodes.filter((c) => c === 0).length;
+  log(
+    `${passed}/${exitCodes.length} workers passed. ` +
+      (maxCode === 0 ? 'All tests passed!' : `Some workers failed (codes: ${exitCodes.join(', ')})`),
+  );
+  process.exit(maxCode);
+} else {
+  // Single-instance: standard WDIO run
+  const wdioEnv = {
+    ...process.env,
+    DATAZEN_DATA_DIR: dataDirs[0],
+    E2E_WD_PORT: String(WD_PORT),
+  };
+
+  const wdio = spawn(
+    'npx',
+    ['wdio', 'run', 'e2e/wdio.conf.ts', ...wdioArgs],
+    {
+      stdio: 'inherit',
+      cwd: ROOT,
+      env: wdioEnv,
+    },
+  );
+
+  const exitCode = await new Promise((resolve) => {
+    wdio.on('close', (code) => resolve(code ?? 1));
+  });
+
+  cleanup();
+  runEnvTeardown();
+  log(exitCode === 0 ? 'All tests passed!' : `Tests failed (exit code ${exitCode})`);
+  process.exit(exitCode);
 }
-
-const wdio = spawn(
-  'npx',
-  ['wdio', 'run', 'e2e/wdio.conf.ts', ...wdioArgs],
-  {
-    stdio: 'inherit',
-    cwd: ROOT,
-    env: wdioEnv,
-  },
-);
-
-const exitCode = await new Promise((resolve) => {
-  wdio.on('close', (code) => resolve(code ?? 1));
-});
-
-// Step 4: Cleanup (IPC teardown runs in wdio after hook while app is still alive)
-cleanup();
-runEnvTeardown();
-log(exitCode === 0 ? 'All tests passed!' : `Tests failed (exit code ${exitCode})`);
-process.exit(exitCode);
