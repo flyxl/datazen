@@ -29,6 +29,7 @@ export async function runHcQuery(ctx: ContractConnCtx) {
 export async function runHcData(ctx: ContractConnCtx) {
   const table = await seedContractTable(ctx, 'data');
   await clickTableInSidebar(table);
+  await browser.pause(1200);
   await switchSubTab('data');
   await browser.waitUntil(async () => (await $('body').getText()).includes('user_'), {
     timeout: 15000,
@@ -43,6 +44,7 @@ export async function runHcData(ctx: ContractConnCtx) {
 export async function runHcFilter(ctx: ContractConnCtx) {
   const table = await seedContractTable(ctx, 'filter');
   await clickTableInSidebar(table);
+  await browser.pause(1200);
   await switchSubTab('data');
   await browser.waitUntil(async () => (await $('body').getText()).includes('alpha'), {
     timeout: 15000,
@@ -84,7 +86,7 @@ export async function runHcFilter(ctx: ContractConnCtx) {
   await valueInput.setValue('alpha');
   await browser.pause(450);
   await $('[data-testid="filter-apply"]').click();
-  await browser.pause(300);
+  await browser.pause(1200);
 
   body = await $('body').getText();
   expect(bodyContainsAll(body, ['alpha'])).toBe(true);
@@ -94,6 +96,6 @@ export async function runHcFilter(ctx: ContractConnCtx) {
   const clearBtn = await $('[data-testid="filter-clear"]');
   if (await clearBtn.isDisplayed().catch(() => false)) {
     await clearBtn.click();
-    await browser.pause(300);
+    await browser.pause(1000);
   }
 }
