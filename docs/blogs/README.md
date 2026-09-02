@@ -54,6 +54,8 @@
 - 历史双模 ID 带来的复杂性
 - 用生命周期建模避免资源泄漏
 
+已完成：[连接配置与数据库会话的生命周期](03-connection-session-lifecycle.zh-CN.md)
+
 ## 第二部分：核心扩展架构
 
 ### 第 4 篇：可插拔数据库驱动架构
@@ -70,6 +72,8 @@
 - 新增数据库驱动需要实现哪些能力
 - 为什么驱动测试必须留在驱动 crate 内
 
+已完成：[可插拔数据库驱动架构](04-pluggable-database-drivers.zh-CN.md)
+
 ### 第 5 篇：从 Driver Trait 到 Driver Command API
 
 **核心问题：如何避免宿主到处判断数据库类型？**
@@ -84,6 +88,8 @@
 - Workflow、IPC、插件如何复用同一个 Command Runtime
 - Redis 深度能力为何仍能保持宿主无感知
 
+已完成：[从 Driver Trait 到 Driver Command API](05-driver-command-api.zh-CN.md)
+
 ### 第 6 篇：编译时 Driver 与运行时 Extension 为什么并存
 
 **核心问题：DataZen 为什么有两种插件机制？**
@@ -97,6 +103,8 @@
 - 权限声明与 deny-by-default
 - 插件安装、校验、备份和卸载
 - 为什么运行时 Extension 暂不承载数据库 Driver
+
+已完成：[编译时 Driver 与运行时 Extension 为什么并存](06-driver-and-runtime-extension.zh-CN.md)
 
 ## 第三部分：前端工作区设计
 
@@ -113,6 +121,8 @@
 - ErrorBoundary 与窗口级故障隔离
 - macOS、Windows WebView 差异
 
+已完成：[从多窗口到统一工作区](07-workspace-window-architecture.zh-CN.md)
+
 ### 第 8 篇：Zustand 状态管理与事件流
 
 **核心问题：复杂工作区状态如何拆分而不失控？**
@@ -124,6 +134,8 @@
 - 跨窗口状态同步
 - 快捷键、单元格编辑、筛选排序的事件流
 - 如何避免组件直接编排业务流程
+
+已完成：[Zustand 状态管理与事件流](08-zustand-event-stream.zh-CN.md)
 
 ### 第 9 篇：大数据量结果集的前端性能设计
 
@@ -137,6 +149,8 @@
 - 筛选、排序、编辑的性能权衡
 - Schema 缓存与前端体验的关系
 - 性能指标与测试方法
+
+已完成：[大数据量结果集的前端性能设计](09-large-result-performance.zh-CN.md)
 
 ## 第四部分：通用执行与智能能力
 
@@ -154,6 +168,8 @@
 - 执行历史、失败处理与可观测性
 - Schema-driven Workflow 编辑器
 
+已完成：[YAML Workflow 执行引擎](10-workflow-engine.zh-CN.md)
+
 ### 第 11 篇：多 Provider AI 架构与 NL2SQL
 
 **核心问题：如何让 AI 能力独立于具体模型厂商？**
@@ -169,6 +185,8 @@
 - Driver Prompt Override
 - API Key 的安全存储与日志隔离
 
+已完成：[多 Provider AI 架构与 NL2SQL](11-ai-provider-nl2sql.zh-CN.md)
+
 ### 第 12 篇：让数据库能力进入 AI 生态——MCP 架构
 
 **核心问题：DataZen 如何同时成为 MCP Server 和 MCP Client？**
@@ -181,6 +199,8 @@
 - AI Chat 如何调用 MCP
 - Token、权限与敏感数据边界
 - 为什么协议入口不应该复制一套业务逻辑
+
+已完成：[让数据库能力进入 AI 生态——MCP 架构](12-mcp-architecture.zh-CN.md)
 
 ## 第五部分：数据库高级能力
 
@@ -198,6 +218,8 @@
 - 异构数据迁移为什么需要独立 IR
 - 如何防止产品概念混乱渗透到代码架构
 
+已完成：[Schema Diff、Data Sync 与 Transfer 的边界](13-schema-diff-data-sync-transfer.zh-CN.md)
+
 ### 第 14 篇：缓存、持久化与数据安全
 
 **核心问题：桌面数据库工具如何安全保存状态并控制资源消耗？**
@@ -211,6 +233,8 @@
 - Extension 资源访问隔离
 - 日志脱敏
 - AI Key 和数据库密码的安全边界
+
+已完成：[缓存、持久化与数据安全](14-cache-persistence-security.zh-CN.md)
 
 ## 第六部分：工程质量与未来演进
 
@@ -228,6 +252,8 @@
 - 手工黑盒测试
 - PR 合并前的质量门槛
 
+已完成：[可插拔系统的测试策略](15-testing-strategy.zh-CN.md)
+
 ### 第 16 篇：从桌面应用走向共享 Core 与 Web 平台
 
 **核心问题：现有架构如何支撑未来的平台化？**
@@ -242,6 +268,8 @@
 - 当前架构中已经为平台化准备好的抽象
 
 这一篇应明确标注为“演进方向或 RFC”，避免把规划误认为当前实现。
+
+已完成：[从桌面应用走向共享 Core 与 Web 平台](16-shared-core-web-evolution.zh-CN.md)
 
 ## 单篇文章结构约定
 
