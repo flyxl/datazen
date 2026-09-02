@@ -8,6 +8,7 @@ import {
   autoCompletePathHierarchyPath,
   buildPathHierarchySelectorSegments,
   pathHierarchySelectorSegmentsForUi,
+  pathHierarchyConnectionRoot,
   PATH_HIERARCHY_PLACEHOLDER_SELECTOR_SEGMENTS,
 } from '../queryContextPath';
 import type { SqlNamespace } from '../sqlNamespace';
@@ -207,6 +208,33 @@ describe('buildPathHierarchySelectorSegments', () => {
         value: '',
       },
     ]);
+  });
+
+  it('shows next-level placeholder select while children are still loading', () => {
+    expect(buildPathHierarchySelectorSegments({ hive: {} }, {}, [], ['hive'])).toEqual([
+      { kind: 'label', name: 'hive' },
+      { kind: 'select', levelIndex: 1, options: [], value: '' },
+    ]);
+  });
+});
+
+describe('pathHierarchyConnectionRoot', () => {
+  it('prefers connection database over catalog currentDatabase', () => {
+    expect(pathHierarchyConnectionRoot(['558:presto_afi_data'], undefined, 'hive')).toBe(
+      '558:presto_afi_data',
+    );
+  });
+
+  it('uses panel database when it is a known connection db', () => {
+    expect(
+      pathHierarchyConnectionRoot(['558:presto_afi_data'], '558:presto_afi_data', 'hive'),
+    ).toBe('558:presto_afi_data');
+  });
+
+  it('falls back to id:name currentDatabase when databases list is not loaded yet', () => {
+    expect(pathHierarchyConnectionRoot([], undefined, '558:presto_afi_data')).toBe(
+      '558:presto_afi_data',
+    );
   });
 });
 
