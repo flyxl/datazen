@@ -237,15 +237,13 @@ pub mod test_harness {
     };
     use datazen_driver_api::{CommandResult, DriverCommandDefinition};
 
-    pub use crate::testing::app_state::TestAppState;
     pub use super::ExecuteDriverCommandRequest;
+    pub use crate::testing::app_state::TestAppState;
 
     pub async fn get_connections(
         state: &AppState,
     ) -> Result<Vec<crate::db::ConnectionConfig>, String> {
-        get_connections_impl(state)
-            .await
-            .map_err(|e| e.to_string())
+        get_connections_impl(state).await.map_err(|e| e.to_string())
     }
 
     pub async fn connect(state: &AppState, connection_id: String) -> Result<String, String> {
