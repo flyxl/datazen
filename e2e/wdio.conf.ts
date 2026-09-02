@@ -271,7 +271,7 @@ export const config: WebdriverIO.Config = {
     ],
   },
   maxInstances: multiInstance ? instanceCount : 1,
-  specFileRetries: 1,
+  // specFileRetries: 1, // disabled — retries double the time for genuine failures
   capabilities,
   ...(multiInstance
     ? {}
