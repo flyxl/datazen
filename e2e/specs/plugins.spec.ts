@@ -452,6 +452,9 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
       { timeout: 10000, timeoutMsg: 'plugin theme packId did not persist' },
     );
 
+    // Theme change triggers a global re-render; wait for the UI to settle
+    // before attempting to navigate back from settings.
+    await browser.pause(2000);
     // Leave settings so J4 starts from workspace view
     await backFromSettingsInMainWindow();
   });
