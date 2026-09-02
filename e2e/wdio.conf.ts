@@ -12,6 +12,11 @@ import { browser } from '@wdio/globals';
 export const config: WebdriverIO.Config = {
   runner: 'local',
   specs: ['./specs/**/*.ts'],
+  exclude: [
+    './specs/zz-screenshots.ts',
+    './specs/demo-recording.ts',
+    './specs/zz-diag.ts',
+  ],
   /**
    * Named groups run via `pnpm e2e:<group>` (package.json) → `--suite <group>`.
    * Single source of truth for group membership; paths are relative to this
@@ -19,6 +24,41 @@ export const config: WebdriverIO.Config = {
    * docs/development/e2e-testing.md §2.
    */
   suites: {
+    // Fast regression subset (~30 specs, target <10 min) — `pnpm e2e:smoke`
+    smoke: [
+      './specs/main-window.ts',
+      './specs/new-connection.ts',
+      './specs/settings.ts',
+      './specs/homepage-features.ts',
+      './specs/connection-window.ts',
+      './specs/sql-query.ts',
+      './specs/table-data.ts',
+      './specs/table-filter.ts',
+      './specs/table-edit.ts',
+      './specs/export-import.ts',
+      './specs/connection-search-group.ts',
+      './specs/edit-delete-connection.ts',
+      './specs/i18n-menu.ts',
+      './specs/connection-edge-cases.ts',
+      './specs/client-parity.ts',
+      './specs/conn-ctx-menu-submenus.ts',
+      './specs/object-browser.ts',
+      './specs/plugins.spec.ts',
+      './specs/workflow.ts',
+      './specs/er-diagram.ts',
+      './specs/multi-database.ts',
+      './specs/data-sync-window.ts',
+      './specs/backup-window.ts',
+      './specs/schema-diff-window.ts',
+      './specs/ai-features.ts',
+      './specs/app-data-backup.ts',
+      './specs/path-ipc-hardening.ts',
+      './specs/driver-commands.ts',
+      './specs/drag-drop-groups.ts',
+      './specs/unified-tab-bar.ts',
+    ],
+    // Manual screenshot / demo capture — `pnpm e2e -- --suite screenshots`
+    screenshots: ['./specs/zz-screenshots.ts', './specs/demo-recording.ts'],
     // Core UI, no real DB required (was `pnpm e2e:core`)
     core: [
       './specs/main-window.ts',
@@ -146,6 +186,7 @@ export const config: WebdriverIO.Config = {
     ],
   },
   maxInstances: 1,
+  specFileRetries: 1,
   capabilities: [{}],
   hostname: '127.0.0.1',
   port: 4445,
@@ -213,26 +254,27 @@ export const config: WebdriverIO.Config = {
   },
   beforeSuite: async function (suite) {
     beginJourneySuite(suite.file);
-    // Same Tauri process is reused across spec files; close leftover sub-windows
-    // so Host specs do not attach to a previous MultiDb / SQLite session.
     try {
-      await browser.url('tauri://localhost');
-      await browser.pause(400);
       const handles = await browser.getWindowHandles();
-      const main = handles[0];
-      for (const h of handles) {
-        if (h === main) continue;
-        try {
-          await browser.switchToWindow(h);
-          await browser.closeWindow();
-        } catch {
-          /* ignore */
+      if (handles.length > 1) {
+        // Only close sub-windows when there are leftover ones
+        await browser.url('tauri://localhost');
+        await browser.pause(200);
+        const main = handles[0];
+        for (const h of handles) {
+          if (h === main) continue;
+          try {
+            await browser.switchToWindow(h);
+            await browser.closeWindow();
+          } catch {
+            /* ignore */
+          }
         }
+        if (main) await browser.switchToWindow(main);
       }
-      if (main) await browser.switchToWindow(main);
       await ensureMainWindowForIpc();
       await invokeBackend('get_settings');
-      await browser.pause(600);
+      await browser.pause(300);
     } catch {
       /* ignore */
     }

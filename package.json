@@ -28,6 +28,7 @@
     "e2e:skip-build": "node e2e/run.mjs --skip-build",
     "e2e:screenshot": "node e2e/run.mjs --skip-build --screenshot",
     "e2e:core": "node e2e/run.mjs --skip-build -- --suite core",
+    "e2e:smoke": "node e2e/run.mjs --skip-build -- --suite smoke",
     "e2e:contract:matrix": "node e2e/run.mjs --skip-build -- --suite contract",
     "e2e:contract:pg": "node e2e/run.mjs --skip-build -- --suite contract --mochaOpts.grep 'Host contract @ postgres'",
     "e2e:db": "node e2e/run.mjs --skip-build -- --suite db",
