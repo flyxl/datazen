@@ -95,7 +95,7 @@
 
 ## 与 Data Sync 的 UI 差异
 
-Data Sync 为**单页工作台**；Data Transfer 为 **6 步向导**（视觉 token 已与 Sync 对齐），映射能力更强。仍缺：端点 swap、schema 下拉、Objects 搜索、执行进度面板、右键预填 Source 等（见 [Backlog](../todo/migration-tools-backlog.md#data-transfer)）。
+Data Sync 与 Data Transfer 现在都采用 **6 步向导**，共享 Endpoints / Setup / Objects / Preview 的导航体验；Data Sync 的 Compare 步专注行级 Diff，Data Transfer 额外提供 Mapping 步处理表级与列级映射。Data Sync 仍不提供端点 Swap、Objects 搜索和独立执行进度面板（见 [Backlog](../todo/migration-tools-backlog.md#data-transfer)）。
 
 ## 常见问题
 

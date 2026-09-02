@@ -6,17 +6,58 @@ import {
   queryScalar,
   selectDzOption,
   withSafeModeOff,
+  type QueryResultPayload,
 } from '../helpers.js';
 
 /**
- * Data Sync Diff Workspace Host journeys (DSW-001~DSW-008).
+ * Data Sync wizard Host journeys (DSW-001~DSW-008).
  * Full Execute against live DBs is covered in data-sync-real.ts (IPC); UI smoke here.
  */
 
 async function openDataSyncWindow() {
   await browser.url('tauri://localhost/window.html?window=data-sync');
   await browser.pause(1500);
-  await $('[data-testid="data-sync-compare"]').waitForDisplayed({ timeout: 10000 });
+  await $('[data-testid="data-sync-window"]').waitForDisplayed({ timeout: 10000 });
+  await browser.waitUntil(
+    async () =>
+      (await $('[data-testid="data-sync-window"]').getAttribute('data-sync-step')) === 'endpoints',
+    { timeout: 10000, timeoutMsg: 'data-sync wizard did not open on endpoints step' },
+  );
+}
+
+async function waitForStep(step: string) {
+  await browser.waitUntil(
+    async () =>
+      (await $('[data-testid="data-sync-window"]').getAttribute('data-sync-step')) === step,
+    { timeout: 15000, timeoutMsg: `data-sync wizard did not reach ${step} step` },
+  );
+}
+
+async function nextStep() {
+  const next = await $('[data-testid="data-sync-next"]');
+  await next.waitForEnabled({ timeout: 15000 });
+  await next.click();
+}
+
+async function advanceToCompare() {
+  await nextStep();
+  await waitForStep('setup');
+  await nextStep();
+  await waitForStep('objects');
+  await browser.waitUntil(
+    async () => {
+      const state = await $('[data-testid="data-sync-window"]').getAttribute('data-sync-state');
+      return state !== 'inspecting' && state !== 'comparing' && state !== 'executing';
+    },
+    { timeout: 120000, timeoutMsg: 'data-sync inspection did not finish' },
+  );
+  await nextStep();
+  await waitForStep('compare');
+  await browser.waitUntil(
+    async () =>
+      (await $('[data-testid="data-sync-window"]').getAttribute('data-sync-state')) === 'compared',
+    { timeout: 120000, timeoutMsg: 'data-sync compare did not finish' },
+  );
 }
 
 describe('数据同步窗口 (DSW-001~DSW-008)', () => {
@@ -35,50 +76,32 @@ describe('数据同步窗口 (DSW-001~DSW-008)', () => {
   it('DSW-001: 应能通过 URL 打开数据同步窗口', async () => {
     await openDataSyncWindow();
     await expect($("[data-testid='data-sync-window']")).toExist();
-    await expect($("[data-testid='data-sync-compare']")).toExist();
+    await expect($('[data-testid="data-sync-step-endpoints"]')).toExist();
     await captureJourneyStep('data-sync-window-open');
   });
 
-  it('DSW-002: 应显示比较按钮、Options 与 Swap', async () => {
-    const compare = await $('[data-testid="data-sync-compare"]');
-    await expect(compare).toBeDisplayed();
-    expect(await compare.getText()).toContain(t('sync.compare'));
-    await expect(await $('[data-testid="data-sync-swap"]')).toBeDisplayed();
-    const updateOpt = await $('[data-testid="data-sync-option-update"]');
-    await expect(await $('[data-testid="data-sync-option-insert"]')).toBeDisplayed();
-    await expect(updateOpt).toBeDisplayed();
-    await expect(await $('[data-testid="data-sync-option-delete"]')).toBeDisplayed();
-    await updateOpt.click();
-    await browser.pause(300);
-    await expect(await $('[data-testid="data-sync-source-database"]')).toBeDisplayed();
-    await expect(await $('[data-testid="data-sync-target-database"]')).toBeDisplayed();
-    const body = await $('body').getText();
-    expect(body).toContain(t('sync.selectPrompt'));
+  it('DSW-002: 应按向导分离端点与配置，且端点页不显示 Swap', async () => {
+    await expect(await $('[data-testid="data-sync-next"]')).toBeDisabled();
+    await expect(await $('[data-testid="data-sync-swap"]')).not.toBeExisting();
+    await expect(await $('[data-testid="data-sync-option-update"]')).not.toBeExisting();
     await expect($('[data-testid="data-sync-start-disabled"]')).not.toBeExisting();
-    await captureJourneyStep('data-sync-options-toggled');
+    await captureJourneyStep('data-sync-wizard-endpoints');
   });
 
-  it('DSW-003: 未选两端点点比较应提示 selectBoth', async () => {
-    const compare = await $('[data-testid="data-sync-compare"]');
-    await compare.click();
-    await browser.pause(500);
-    const err = await $('[data-testid="data-sync-error"]');
-    await expect(err).toBeDisplayed();
-    expect(await err.getText()).toContain(t('sync.selectBoth'));
-    await captureJourneyStep('data-sync-select-both-error');
-    const ok = await $(`button*=${t('common.ok')}`);
-    if (await ok.isDisplayed()) {
-      await ok.click();
-      await browser.pause(200);
-    }
+  it('DSW-003: 未选两端点时下一步应保持禁用', async () => {
+    await expect(await $('[data-testid="data-sync-next"]')).toBeDisabled();
+    await expect(await $('[data-testid="data-sync-error"]')).not.toBeExisting();
+    await captureJourneyStep('data-sync-select-both-gated');
   });
 
-  it('DSW-004: 比较按钮在 idle 可点且不走旧 sync_tables', async () => {
-    const compare = await $('[data-testid="data-sync-compare"]');
-    await expect(compare).toBeEnabled();
+  it('DSW-004: 首屏处于端点步骤且不走旧 sync_tables', async () => {
+    await expect(await $('[data-testid="data-sync-window"]')).toHaveAttribute(
+      'data-sync-step',
+      'endpoints',
+    );
     const body = await $('body').getText();
     expect(body).not.toContain('DROP TABLE');
-    await captureJourneyStep('data-sync-idle-compare');
+    await captureJourneyStep('data-sync-idle-endpoints');
   });
 
   it('DSW-005: 主页不再暴露数据同步入口，窗口改为 URL 直达', async () => {
@@ -91,29 +114,17 @@ describe('数据同步窗口 (DSW-001~DSW-008)', () => {
     await captureJourneyStep('data-sync-hidden-on-home');
 
     await openDataSyncWindow();
-    await expect(await $('[data-testid="data-sync-compare"]')).toBeDisplayed();
+    await expect(await $('[data-testid="data-sync-next"]')).toBeDisplayed();
   });
 
-  it('DSW-006: Delete 选项默认未勾选', async () => {
-    const deleteOpt = await $('[data-testid="data-sync-option-delete"]');
-    await expect(deleteOpt).toBeDisplayed();
-    expect(await deleteOpt.isSelected()).toBe(false);
-    const insertOpt = await $('[data-testid="data-sync-option-insert"]');
-    if (await insertOpt.isSelected()) {
-      await insertOpt.click();
-      await browser.pause(300);
-    }
-    await captureJourneyStep('data-sync-insert-off');
+  it('DSW-006: 配置选项位于独立 setup 步骤', async () => {
+    await expect(await $('[data-testid="data-sync-option-delete"]')).not.toBeExisting();
+    await captureJourneyStep('data-sync-setup-gated');
   });
 
-  it('DSW-007: Swap 按钮可见且可点击', async () => {
-    const swap = await $('[data-testid="data-sync-swap"]');
-    await expect(swap).toBeDisplayed();
-    await swap.click();
-    await browser.pause(400);
-    const err = await $('[data-testid="data-sync-error"]');
-    expect(await err.isDisplayed().catch(() => false)).toBe(false);
-    await captureJourneyStep('data-sync-swapped');
+  it('DSW-007: 向导端点页隐藏 Swap 操作', async () => {
+    await expect(await $('[data-testid="data-sync-swap"]')).not.toBeExisting();
+    await captureJourneyStep('data-sync-no-swap');
   });
 
   it('DSW-008: Compare 前不应出现 Execute 底栏', async () => {
@@ -178,6 +189,7 @@ describe('数据同步 Diff Workspace (DSW-MAP / DSW-WS)', () => {
     }
 
     await browser.pause(800);
+    await advanceToCompare();
     return true;
   }
 
@@ -190,12 +202,12 @@ describe('数据同步 Diff Workspace (DSW-MAP / DSW-WS)', () => {
       return { srcHasSelect: !!src, tgtHasSelect: !!tgt };
     });
 
-    const compare = await $('[data-testid="data-sync-compare"]');
-    await compare.click();
-    await browser.pause(2500);
-
-    const gated = await $('[data-testid="data-sync-error"]');
-    if (await gated.isDisplayed().catch(() => false)) return;
+    await browser.waitUntil(
+      async () =>
+        (await $('[data-testid="data-sync-window"]').getAttribute('data-sync-state')) ===
+        'compared',
+      { timeout: 120000, timeoutMsg: 'data-sync compare did not finish' },
+    );
 
     const rows = await $$('[data-testid="data-sync-mapping-row"]');
     const rowCount = await browser.execute(
@@ -204,6 +216,8 @@ describe('数据同步 Diff Workspace (DSW-MAP / DSW-WS)', () => {
     if (rowCount === 0) return;
 
     expect(rowCount).toBeGreaterThan(0);
+    await nextStep();
+    await waitForStep('preview');
     const executeDisabled = await $('[data-testid="data-sync-start-disabled"]');
     await expect(executeDisabled).toBeDisplayed();
     await expect(executeDisabled).toBeDisabled();
@@ -212,6 +226,12 @@ describe('数据同步 Diff Workspace (DSW-MAP / DSW-WS)', () => {
   });
 
   it('DSW-MAP-002: 选连接后应出现数据库选择器', async () => {
+    const back = await $('[data-testid="data-sync-back"]');
+    for (let i = 0; i < 4; i++) {
+      await back.click();
+      await browser.pause(150);
+    }
+    await waitForStep('endpoints');
     await expect(await $('[data-testid="data-sync-source-database"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-sync-target-database"]')).toBeDisplayed();
   });
@@ -219,12 +239,12 @@ describe('数据同步 Diff Workspace (DSW-MAP / DSW-WS)', () => {
   it('DSW-WS-001: Compare 完成后应出现 summary 与 preview / execute chrome', async () => {
     if (!(await trySelectPgEndpoints())) return;
 
-    const compare = await $('[data-testid="data-sync-compare"]');
-    await compare.click();
-    await browser.pause(2500);
-
-    const gated = await $('[data-testid="data-sync-error"]');
-    if (await gated.isDisplayed().catch(() => false)) return;
+    await browser.waitUntil(
+      async () =>
+        (await $('[data-testid="data-sync-window"]').getAttribute('data-sync-state')) ===
+        'compared',
+      { timeout: 120000, timeoutMsg: 'data-sync compare did not finish' },
+    );
 
     const rows = await $$('[data-testid="data-sync-mapping-row"]');
     const rowCount = await browser.execute(
@@ -233,21 +253,10 @@ describe('数据同步 Diff Workspace (DSW-MAP / DSW-WS)', () => {
     if (rowCount === 0) return;
 
     await expect(await $('[data-testid="data-sync-summary"]')).toBeDisplayed();
-    await expect(await $('[data-testid="data-sync-option-insert"]')).toBeDisplayed();
-
-    const previewTab = await $("[data-testid='data-sync-tab-preview']");
-    await previewTab.click();
-    await browser.pause(600);
+    await nextStep();
+    await waitForStep('preview');
     await expect(await $('[data-testid="data-sync-preview"]')).toBeDisplayed();
-    await captureJourneyStep('data-sync-preview-tab');
-
-    const rowDiffTab = await $(`button*=${t('sync.rowDiffTab')}`);
-    await rowDiffTab.click();
-    await browser.pause(300);
-    const rowDiff = await $('[data-testid="data-sync-row-diff"]');
-    if (await rowDiff.isDisplayed().catch(() => false)) {
-      await expect(rowDiff).toBeDisplayed();
-    }
+    await captureJourneyStep('data-sync-preview-step');
 
     const executeDisabled = await $('[data-testid="data-sync-start-disabled"]');
     const executeEnabled = await $('[data-testid="data-sync-start"]');
@@ -364,7 +373,7 @@ describe('数据同步 UI 执行闭环 (DSW-EXEC)', () => {
   it('DSW-EXEC-001: 选端点、比较并执行同步，回查目标行数=源', async () => {
     await browser.url('tauri://localhost/window.html?window=data-sync');
     await browser.pause(1500);
-    await expect(await $('[data-testid="data-sync-compare"]')).toBeDisplayed();
+    await expect(await $('[data-testid="data-sync-next"]')).toBeDisplayed();
 
     // 源端点（config.database 自动预填 datazen_sync_src）
     await selectDzOption(t('sync.selectSource'), SRC_NAME);
@@ -376,9 +385,11 @@ describe('数据同步 UI 执行闭环 (DSW-EXEC)', () => {
     await expect(await $('[data-testid="data-sync-source-database"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-sync-target-database"]')).toBeDisplayed();
 
-    // 比较
-    const compare = await $('[data-testid="data-sync-compare"]');
-    await compare.click();
+    // 端点 → 配置 → 对象 → 对比
+    await nextStep();
+    await waitForStep('setup');
+    await nextStep();
+    await waitForStep('objects');
 
     // 映射行出现
     await browser.waitUntil(
@@ -392,6 +403,8 @@ describe('数据同步 UI 执行闭环 (DSW-EXEC)', () => {
       { timeout: 20000, timeoutMsg: `mapping row for ${TABLE} did not appear` },
     );
     await captureJourneyStep('data-sync-mapping-ready', 0, true);
+    await nextStep();
+    await waitForStep('compare');
 
     // The mapping is published before compareDataSync finishes.  Waiting only
     // for a row can therefore race the ExecuteBar: its locator is present
@@ -407,6 +420,9 @@ describe('数据同步 UI 执行闭环 (DSW-EXEC)', () => {
     if (await error.isDisplayed().catch(() => false)) {
       throw new Error(`data-sync compare error: ${await error.getText()}`);
     }
+
+    await nextStep();
+    await waitForStep('preview');
 
     // ExecuteBar is below the split workspace on smaller webdriver viewports;
     // center it before checking clickability so WebDriver does not hit an
@@ -424,7 +440,7 @@ describe('数据同步 UI 执行闭环 (DSW-EXEC)', () => {
 
     // 落库校验：目标行数 = 5
     const tgt = await dSyncConnect(TGT_ID);
-    const rows2 = await invokeSync('execute_query', {
+    const rows2 = await invokeSync<QueryResultPayload>('execute_query', {
       dbSessionId: tgt,
       sql: `SELECT count(*)::int AS c FROM ${TABLE}`,
     });

@@ -2,25 +2,26 @@
 
 > 审查范围：`src/windows/data-sync/` 全部组件；相关 hooks（`useMigrationWindowMenuActions`）；`src/locales/en.ts` 中 `sync.*` 键；与 `DataTransferWindow` 的模式对比；E2E 旅程 `e2e/specs/journeys/data-sync-journey.ts` 及关联 spec。  
 > 审查日期：2026-08-28
+> 实施更新：2026-09-02，Data Sync 已切换为与 Data Transfer 对齐的 6 步向导；下文涉及“单页工作台”的历史判断以本更新为准。
 
 ---
 
 ## 概述
 
-Data Sync 当前实现为 **Diff Workspace（差异工作区）** 模式：用户在 `EndpointsBar` 选择源/目标连接与库（PostgreSQL 还支持 schema），通过 `Compare` 触发 inspect → compare，在 `MappingPanel` / `TableListPanel` / `DiffDetail` / `SqlPreview` 中审阅差异，最后由 `ExecuteBar` 执行变更集。
+Data Sync 当前实现为 **6 步向导**：用户依次在 Endpoints / Setup / Objects / Compare / Preview / Result 中选择源目标、配置选项、确认表映射、审阅行差异、预览 SQL 并执行变更集。Compare 步仍由 `inspect_data_sync` → `compare_data_sync` 驱动，审阅组件为 `MappingPanel` / `TableListPanel` / `DiffDetail`，Preview 步使用 `SqlPreview`。
 
 **Dedicated Session 改造**（`DataSyncWindow.tsx` + `lib/dedicatedDbSession.ts`）已落地：端点使用 `ensureDedicatedSession` / `listDatabasesDedicated` / `releaseDedicatedSession`，与 Data Transfer 一致；并额外监听 `datazen:connection-closed` 与 `datazen:connections-changed`，优于 Transfer 窗口。
 
 **架构特点**：无独立 Zustand store，全部状态集中在 `DataSyncWindow.tsx`（约 1033 行）；`SavedTasksBanner`、`SyncProgressPanel`、`ResumeSyncDialog` / `ConflictSyncDialog` 等组件 **已实现但未接入** 主窗口，i18n 中仍保留大量旧版 bulk-sync 文案，表明从旧流程迁移尚未完全收尾。
 
-整体 UX 流程（setup → compare → review → execute）主路径完整，E2E 覆盖 PG/MySQL 双驱动的主旅程与较多边界分支；但在 **取消/成功反馈、端点变更一致性、无障碍、只读目标提示、死代码清理** 等方面仍有明显改进空间。
+整体 UX 流程（endpoints → setup → objects → compare → preview → result）主路径完整，E2E 覆盖 PG/MySQL 双驱动的主旅程与较多边界分支；但在 **取消/成功反馈、无障碍、只读目标提示、死代码清理** 等方面仍有改进空间。
 
 ---
 
 ## 优点
 
 1. **流程清晰、信息密度合理**  
-   比较后主区域分为映射摘要（`MappingPanel`）、统计条（`CompareSummary`）、表列表 + 行级差异/SQL 预览（`TableListPanel` + 右侧 Tab），符合「先总览、再下钻」的审阅习惯。
+   向导将端点、配置、对象映射、行级比较、SQL 预览和执行结果分步呈现；Compare 步分为统计条（`CompareSummary`）与表列表 + 行级差异（`TableListPanel` + `DiffDetail`），符合「先总览、再下钻」的审阅习惯。
 
 2. **Dedicated Session 与会话生命周期**  
    `DataSyncWindow.tsx:172–184, 281–311` 与 `dedicatedDbSession.ts` 正确管理独立会话；`connection-closed` 跨窗口监听（`:99–110`）可在主连接关闭时清理端点状态，避免脏 session。
@@ -88,7 +89,7 @@ Data Sync 当前实现为 **Diff Workspace（差异工作区）** 模式：用�
 
 | 维度 | Data Transfer (`DataTransferWindow.tsx`) | Data Sync | 建议 |
 |------|------------------------------------------|-----------|------|
-| 导航模式 | 六步 Wizard + 步骤指示器（`:561–593`） | 单页 + Compare 驱动 | 可接受（Sync 更偏工具型）；可选增加轻量步骤 hint（1.选端点 2.比较 3.执行） |
+| 导航模式 | 六步 Wizard + 步骤指示器（`:561–593`） | 六步 Wizard + 步骤指示器 | 已对齐；Sync 的 Compare 步专注行级 Diff |
 | 首次打开教育 | `TransferLimitationsDialog`（`:81–85`） | 无 | 考虑 `sync.overwriteRetiredBanner` 或能力说明一次性 Dialog |
 | 只读目标 | endpoints 步骤内 **banner**（`:643–647` `transfer.readOnlyHint`） | 仅 ExecuteBar 文案（`:36–39`） | 在 `EndpointsBar` 目标区增加同等显眼 banner |
 | 根 testid | `data-transfer-window` | 无 | 对齐添加 `data-sync-window` |
@@ -105,7 +106,7 @@ Data Sync 当前实现为 **Diff Workspace（差异工作区）** 模式：用�
 
 ### 已有覆盖（简要）
 
-- **`data-sync-journey.ts`**：PG/MySQL 完整旅程——校验分支、swap、delete 启用确认、compare、review（filter/search/copy/preview/tab/mapping toggle）、execute、delete execute 确认、PG schema picker。
+- **`data-sync-journey.ts`**：PG/MySQL 完整旅程——校验分支、Delete 启用确认、六步导航、compare、review（filter/search/copy/mapping toggle）、preview、execute、delete execute 确认、PG schema picker。
 - **`data-sync-edge-cases.ts`**：selectBoth、cannotSameDb、unsupportedPair、delete 确认、swap、compare cancel。
 - **`DataSyncWindow.test.tsx`**：核心 IPC 与 UI 状态（Vitest）。
 
@@ -125,7 +126,7 @@ Data Sync 当前实现为 **Diff Workspace（差异工作区）** 模式：用�
 ### 可测试性改进
 
 1. 为 `TableListPanel` filter 按钮增加 `data-testid={`data-sync-filter-${f}`}`。
-2. 右侧 Tab 增加 `data-testid="data-sync-tab-detail"` / `data-sync-tab-preview`（减少 i18n 文本选择器依赖）。
+2. 向导步骤使用 `data-sync-step`，底部导航使用 `data-sync-back` / `data-sync-next`；Compare 与 Preview 分离，不再依赖右侧 Tab。
 3. 将 `DataSyncWindow` 状态机（idle/inspecting/compared/done）暴露为 `data-sync-state` 属性供 E2E 断言。
 
 ---
@@ -153,8 +154,8 @@ Data Sync 当前实现为 **Diff Workspace（差异工作区）** 模式：用�
 
 | 文件 | 职责 |
 |------|------|
-| `DataSyncWindow.tsx` | 主容器、状态机、IPC 编排、对话框 |
-| `EndpointsBar.tsx` | 源/目标/库/schema、Compare、Swap |
+| `DataSyncWindow.tsx` | 主容器、6 步状态机、IPC 编排、对话框 |
+| `EndpointsBar.tsx` | Endpoints 步源/目标/库/schema |
 | `OptionsBar.tsx` | Insert/Update/Delete 选项 |
 | `MappingPanel.tsx` | 表映射摘要与 include 勾选 |
 | `CompareSummary.tsx` | 差异统计、Copy report、Explain |

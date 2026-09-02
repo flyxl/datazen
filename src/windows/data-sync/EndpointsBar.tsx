@@ -16,6 +16,9 @@ interface EndpointsBarProps {
   targetSchemas: string[];
   connOptions: { value: string; label: string }[];
   targetOptions: { value: string; label: string; disabled?: boolean; title?: string }[];
+  layout?: 'bar' | 'grid';
+  showSwap?: boolean;
+  showCompare?: boolean;
   activePairing: SyncPairingResult | null;
   busy: boolean;
   compareDisabled?: boolean;
@@ -34,7 +37,7 @@ interface EndpointsBarProps {
 
 export function EndpointsBar(props: EndpointsBarProps) {
   const { t } = useI18n();
-  const { activePairing, ...rest } = props;
+  const { activePairing, layout = 'bar', ...rest } = props;
 
   const actionNote =
     activePairing != null ? (
@@ -56,6 +59,7 @@ export function EndpointsBar(props: EndpointsBarProps) {
   return (
     <MigrationEndpointsBar
       testIdPrefix="data-sync"
+      layout={layout}
       compareLabel={t('sync.compare')}
       actionNote={actionNote}
       {...rest}

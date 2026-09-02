@@ -98,7 +98,14 @@ export function SchemaDiffPlanPanel({
           </li>
         ))}
         {plan.statements.length === 0 && (
-          <li className="text-sm text-fg-muted">{t('schemaDiff.emptyPlan')}</li>
+          <li
+            data-testid="schema-diff-empty-plan"
+            className="rounded border border-edge bg-surface-alt px-3 py-2 text-sm text-fg-muted"
+          >
+            {plan.warnings.length > 0
+              ? t('schemaDiff.emptyPlanSkipped')
+              : t('schemaDiff.emptyPlanNoDiff')}
+          </li>
         )}
       </ul>
     </div>

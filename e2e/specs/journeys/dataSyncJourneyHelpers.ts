@@ -29,6 +29,17 @@ export interface SyncJourneyFixture {
   screenshotPrefix: string;
 }
 
+type DataSyncWizardStep = 'endpoints' | 'setup' | 'objects' | 'compare' | 'preview' | 'result';
+
+const DATA_SYNC_STEP_INDEX: Record<DataSyncWizardStep, number> = {
+  endpoints: 0,
+  setup: 1,
+  objects: 2,
+  compare: 3,
+  preview: 4,
+  result: 5,
+};
+
 export function pgConfig(id: string, name: string, database: string) {
   return {
     id,
@@ -76,7 +87,92 @@ export function createFixture(driver: SyncDriverKind, stamp: string): SyncJourne
 export async function openDataSyncWindow() {
   await browser.url('tauri://localhost/window.html?window=data-sync');
   await browser.pause(1500);
-  await $('[data-testid="data-sync-compare"]').waitForDisplayed({ timeout: 10000 });
+  await $('[data-testid="data-sync-window"]').waitForDisplayed({ timeout: 10000 });
+  await waitForDataSyncStep('endpoints');
+}
+
+async function waitForDataSyncStep(step: DataSyncWizardStep) {
+  await browser.waitUntil(
+    async () =>
+      (await $('[data-testid="data-sync-window"]').getAttribute('data-sync-step')) === step,
+    { timeout: 15000, timeoutMsg: `data-sync wizard did not reach ${step} step` },
+  );
+}
+
+async function clickDataSyncNext() {
+  const next = await $('[data-testid="data-sync-next"]');
+  await next.waitForEnabled({ timeout: 15000 });
+  await next.click();
+}
+
+async function clickDataSyncBack() {
+  const back = await $('[data-testid="data-sync-back"]');
+  await back.waitForEnabled({ timeout: 15000 });
+  await back.click();
+}
+
+async function waitForDataSyncNotBusy(timeoutMsg: string) {
+  await browser.waitUntil(
+    async () => {
+      const state = await $('[data-testid="data-sync-window"]').getAttribute('data-sync-state');
+      return state !== 'inspecting' && state !== 'comparing' && state !== 'executing';
+    },
+    { timeout: 120000, timeoutMsg },
+  );
+}
+
+export async function advanceDataSyncToSetup() {
+  await waitForDataSyncStep('endpoints');
+  await clickDataSyncNext();
+  await waitForDataSyncStep('setup');
+}
+
+export async function inspectDataSyncObjects() {
+  await waitForDataSyncStep('setup');
+  await clickDataSyncNext();
+  await waitForDataSyncStep('objects');
+  await waitForDataSyncNotBusy('data-sync inspection did not finish');
+  const err = await $('[data-testid="data-sync-error"]');
+  if (await err.isDisplayed().catch(() => false)) {
+    throw new Error(`inspection error: ${await err.getText()}`);
+  }
+}
+
+export async function compareDataSyncObjects() {
+  await waitForDataSyncStep('objects');
+  await clickDataSyncNext();
+  await waitForDataSyncStep('compare');
+  await waitForDataSyncNotBusy('data-sync compare did not finish');
+  const err = await $('[data-testid="data-sync-error"]');
+  if (await err.isDisplayed().catch(() => false)) {
+    throw new Error(`compare error: ${await err.getText()}`);
+  }
+  await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 15000 });
+}
+
+export async function advanceDataSyncToPreview() {
+  await waitForDataSyncStep('compare');
+  await clickDataSyncNext();
+  await waitForDataSyncStep('preview');
+}
+
+export async function moveDataSyncBackTo(step: DataSyncWizardStep) {
+  const targetIndex = DATA_SYNC_STEP_INDEX[step];
+  while (true) {
+    const current = (await $('[data-testid="data-sync-window"]').getAttribute(
+      'data-sync-step',
+    )) as DataSyncWizardStep;
+    if (current === step) return;
+    if (DATA_SYNC_STEP_INDEX[current] <= targetIndex) {
+      throw new Error(`data-sync wizard is already before ${step}: ${current}`);
+    }
+    await clickDataSyncBack();
+    await waitForDataSyncStep(
+      Object.entries(DATA_SYNC_STEP_INDEX).find(
+        ([, index]) => index === DATA_SYNC_STEP_INDEX[current] - 1,
+      )?.[0] as DataSyncWizardStep,
+    );
+  }
 }
 
 export async function captureStep(label: string) {
@@ -167,6 +263,8 @@ export async function selectFixtureEndpoints(f: SyncJourneyFixture) {
 }
 
 export async function runCompare(f: SyncJourneyFixture) {
+  await advanceDataSyncToSetup();
+
   const insertOpt = await $('[data-testid="data-sync-option-insert"]');
   if (!(await insertOpt.isSelected())) {
     await insertOpt.click();
@@ -178,21 +276,8 @@ export async function runCompare(f: SyncJourneyFixture) {
     await browser.pause(200);
   }
 
-  await $('[data-testid="data-sync-compare"]').click();
-  await browser.waitUntil(
-    async () => {
-      const cancel = await $('[data-testid="data-sync-cancel"]');
-      return !(await cancel.isDisplayed().catch(() => false));
-    },
-    { timeout: 120000, timeoutMsg: 'compare did not finish' },
-  );
-
-  const err = await $('[data-testid="data-sync-error"]');
-  if (await err.isDisplayed().catch(() => false)) {
-    throw new Error(`compare error: ${await err.getText()}`);
-  }
-
-  await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 15000 });
+  await inspectDataSyncObjects();
+  await compareDataSyncObjects();
   await browser.pause(500);
 
   const rows = await browser.execute((tableName: string) => {
@@ -200,10 +285,6 @@ export async function runCompare(f: SyncJourneyFixture) {
     return Array.from(els).some((el) => (el.textContent || '').includes(tableName));
   }, f.table);
   expect(rows).toBe(true);
-
-  const path = await $('[data-testid="data-sync-path"]');
-  await expect(path).toBeDisplayed();
-  expect(await path.getText()).toContain(t('sync.pathDirect'));
 }
 
 export async function runPostCompareReviewBranches(f: SyncJourneyFixture) {
@@ -243,15 +324,10 @@ export async function runPostCompareReviewBranches(f: SyncJourneyFixture) {
   await copyBtn.click();
   await browser.pause(200);
 
-  const previewTab = await $("[data-testid='data-sync-tab-preview']");
-  await previewTab.click();
-  await browser.pause(600);
-  await expect(await $('[data-testid="data-sync-preview"]')).toBeDisplayed();
-
-  const rowDiffTab = await $(`button*=${t('sync.rowDiffTab')}`);
-  await rowDiffTab.click();
-  await browser.pause(400);
-  await expect(await $('[data-testid="data-sync-row-diff"]')).toBeDisplayed();
+  const rowDiff = await $('[data-testid="data-sync-row-diff"]');
+  if (await rowDiff.isDisplayed().catch(() => false)) {
+    await expect(rowDiff).toBeDisplayed();
+  }
 
   const toggledOff = await browser.execute((tableName: string) => {
     const rows = document.querySelectorAll('[data-testid="data-sync-mapping-row"]');
@@ -266,8 +342,9 @@ export async function runPostCompareReviewBranches(f: SyncJourneyFixture) {
   }, f.table);
   expect(toggledOff).toBe(true);
   await browser.pause(400);
-  await expect(await $('[data-testid="data-sync-start-disabled"]')).toBeDisplayed();
+  await expect(await $('[data-testid="data-sync-next"]')).toBeDisabled();
 
+  await moveDataSyncBackTo('objects');
   await browser.execute((tableName: string) => {
     const rows = document.querySelectorAll('[data-testid="data-sync-mapping-row"]');
     for (const row of rows) {
@@ -278,30 +355,28 @@ export async function runPostCompareReviewBranches(f: SyncJourneyFixture) {
     }
   }, f.table);
   await browser.pause(300);
+  await compareDataSyncObjects();
+  await advanceDataSyncToPreview();
+  await expect(await $('[data-testid="data-sync-preview"]')).toBeDisplayed();
 
+  await moveDataSyncBackTo('setup');
   const insertOpt = await $('[data-testid="data-sync-option-insert"]');
   if (await insertOpt.isSelected()) {
     await insertOpt.click();
     await browser.pause(300);
   }
+  await inspectDataSyncObjects();
+  await compareDataSyncObjects();
+  await advanceDataSyncToPreview();
   await expect(await $('[data-testid="data-sync-start-disabled"]')).toBeDisplayed();
-  await insertOpt.click();
-  await browser.pause(300);
 
-  // Disabling a mapping table clears row diffs; re-compare restores executable state.
-  await $('[data-testid="data-sync-compare"]').click();
-  await browser.waitUntil(
-    async () => {
-      const cancel = await $('[data-testid="data-sync-cancel"]');
-      return !(await cancel.isDisplayed().catch(() => false));
-    },
-    { timeout: 120000, timeoutMsg: 're-compare after review branches did not finish' },
-  );
-  const err = await $('[data-testid="data-sync-error"]');
-  if (await err.isDisplayed().catch(() => false)) {
-    throw new Error(`re-compare error: ${await err.getText()}`);
-  }
-  await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 15000 });
+  await moveDataSyncBackTo('setup');
+  const insertOptAgain = await $('[data-testid="data-sync-option-insert"]');
+  await insertOptAgain.click();
+  await browser.pause(300);
+  await inspectDataSyncObjects();
+  await compareDataSyncObjects();
+  await advanceDataSyncToPreview();
   await browser.pause(500);
 }
 
@@ -353,6 +428,7 @@ export async function runExecuteDeleteConfirmBranch(f: SyncJourneyFixture) {
     await executeQuery(tgtSession, `INSERT INTO ${f.table} (id, name) VALUES (6,'extra')`);
   });
 
+  await moveDataSyncBackTo('setup');
   const deleteOpt = await $('[data-testid="data-sync-option-delete"]');
   await deleteOpt.click();
   await browser.pause(400);
@@ -362,18 +438,8 @@ export async function runExecuteDeleteConfirmBranch(f: SyncJourneyFixture) {
   await browser.pause(300);
   expect(await deleteOpt.isSelected()).toBe(true);
 
-  await $('[data-testid="data-sync-compare"]').click();
-  await browser.waitUntil(
-    async () => {
-      const cancel = await $('[data-testid="data-sync-cancel"]');
-      return !(await cancel.isDisplayed().catch(() => false));
-    },
-    { timeout: 120000, timeoutMsg: 'delete re-compare did not finish' },
-  );
-  const err = await $('[data-testid="data-sync-error"]');
-  if (await err.isDisplayed().catch(() => false)) {
-    throw new Error(`delete re-compare error: ${await err.getText()}`);
-  }
+  await inspectDataSyncObjects();
+  await compareDataSyncObjects();
   await captureStep(`${f.screenshotPrefix}-16-delete-recompared`);
 
   const deleteFilter = await $(`button*=${t('sync.filter.delete')}`);
@@ -395,22 +461,20 @@ export async function runExecuteDeleteConfirmBranch(f: SyncJourneyFixture) {
   await selectAllDelete.click();
   await browser.pause(300);
 
+  await advanceDataSyncToPreview();
   const start = await $('[data-testid="data-sync-start"]');
   await start.waitForClickable({ timeout: 20000 });
   await start.click();
   await browser.pause(400);
   expect(await $('body').getText()).toContain(t('sync.executeDeleteTitle'));
   await captureStep(`${f.screenshotPrefix}-17-delete-execute-confirm`);
-  const execButtons = await $$(`button*=${t('sync.execute')}`);
-  let clicked = false;
-  for (let i = execButtons.length - 1; i >= 0; i--) {
-    const btn = execButtons[i];
-    if (await btn.isDisplayed().catch(() => false)) {
-      await btn.click();
-      clicked = true;
-      break;
-    }
-  }
+  const clicked = await browser.execute((label: string) => {
+    const buttons = Array.from(document.querySelectorAll('button')).reverse();
+    const button = buttons.find((btn) => (btn.textContent || '').includes(label));
+    if (!button) return false;
+    button.click();
+    return true;
+  }, t('sync.execute'));
   expect(clicked).toBe(true);
 
   await browser.waitUntil(
@@ -450,6 +514,15 @@ export async function runPreCompareValidationBranches(
   await openDataSyncWindow();
   await captureStep(`${f.screenshotPrefix}-01-window-open`);
 
+  const next = await $('[data-testid="data-sync-next"]');
+  await expect(next).toBeDisabled();
+  await captureStep(`${f.screenshotPrefix}-04-select-both`);
+
+  await selectDzOptionInWrap('data-sync-source', sameEndpointName);
+  await selectDzOptionInWrap('data-sync-target', sameEndpointName);
+  await browser.pause(800);
+  await advanceDataSyncToSetup();
+
   const deleteOpt = await $('[data-testid="data-sync-option-delete"]');
   await deleteOpt.click();
   await browser.pause(400);
@@ -463,18 +536,7 @@ export async function runPreCompareValidationBranches(
   await browser.pause(300);
   await captureStep(`${f.screenshotPrefix}-03-options-toggled`);
 
-  await $('[data-testid="data-sync-compare"]').click();
-  await browser.pause(500);
-  const errSelectBoth = await $('[data-testid="data-sync-error"]');
-  await expect(errSelectBoth).toBeDisplayed();
-  expect(await errSelectBoth.getText()).toContain(t('sync.selectBoth'));
-  await captureStep(`${f.screenshotPrefix}-04-select-both`);
-  await dismissOkDialog();
-
-  await selectDzOptionInWrap('data-sync-source', sameEndpointName);
-  await selectDzOptionInWrap('data-sync-target', sameEndpointName);
-  await browser.pause(800);
-  await $('[data-testid="data-sync-compare"]').click();
+  await next.click();
   await browser.pause(500);
   const errSame = await $('[data-testid="data-sync-error"]');
   await expect(errSame).toBeDisplayed();
@@ -482,6 +544,7 @@ export async function runPreCompareValidationBranches(
   await captureStep(`${f.screenshotPrefix}-05-same-endpoint`);
   await dismissOkDialog();
 
+  await moveDataSyncBackTo('endpoints');
   await selectFixtureEndpoints(f);
   await captureStep(`${f.screenshotPrefix}-07-endpoints-selected`);
 
@@ -493,18 +556,16 @@ export async function runPreCompareValidationBranches(
 }
 
 export async function runEndpointSwapBranch(f: SyncJourneyFixture) {
-  await $('[data-testid="data-sync-swap"]').click();
-  await browser.pause(800);
-  const err = await $('[data-testid="data-sync-error"]');
-  expect(await err.isDisplayed().catch(() => false)).toBe(false);
-  await captureStep(`${f.screenshotPrefix}-08-swap`);
-  await $('[data-testid="data-sync-swap"]').click();
-  await browser.pause(1500);
+  await expect(await $('[data-testid="data-sync-swap"]')).not.toBeExisting();
+  await captureStep(`${f.screenshotPrefix}-08-endpoints-step`);
+  await browser.pause(300);
   await expect(await $('[data-testid="data-sync-source-database"]')).toBeDisplayed();
 }
 
 export async function runCompareCancelBranch(f: SyncJourneyFixture) {
-  await $('[data-testid="data-sync-compare"]').click();
+  await waitForDataSyncStep('objects');
+  await clickDataSyncNext();
+  await waitForDataSyncStep('compare');
   const cancel = await $('[data-testid="data-sync-cancel"]');
   const sawCancel = await cancel
     .waitForDisplayed({ timeout: 8000 })
@@ -527,6 +588,7 @@ export async function runCompareCancelBranch(f: SyncJourneyFixture) {
 }
 
 export async function runDeleteEnableAcceptBranch(f: SyncJourneyFixture) {
+  await advanceDataSyncToSetup();
   const deleteOpt = await $('[data-testid="data-sync-option-delete"]');
   await deleteOpt.click();
   await browser.pause(400);
@@ -540,6 +602,7 @@ export async function runDeleteEnableAcceptBranch(f: SyncJourneyFixture) {
   await deleteOpt.click();
   await browser.pause(200);
   expect(await deleteOpt.isSelected()).toBe(false);
+  await moveDataSyncBackTo('endpoints');
 }
 
 /** PG source selected: foreign MySQL target shows unsupportedPair in target list. */

@@ -108,13 +108,6 @@ function defineDriverJourney(label: string, driver: 'postgresql' | 'mysql') {
 
       await selectFixtureEndpoints(f);
       await browser.pause(1000);
-
-      await runCompare(f);
-      await captureStep(`${f.screenshotPrefix}-12-mapping-rows`);
-
-      await runPostCompareReviewBranches(f);
-      await captureStep(`${f.screenshotPrefix}-13-review-branches`);
-
       if (driver === 'postgresql') {
         const schema = await $('[data-testid="data-sync-source-schema"]');
         if (await schema.isDisplayed().catch(() => false)) {
@@ -122,6 +115,12 @@ function defineDriverJourney(label: string, driver: 'postgresql' | 'mysql') {
           await captureStep(`${f.screenshotPrefix}-14-pg-schema-picker`);
         }
       }
+
+      await runCompare(f);
+      await captureStep(`${f.screenshotPrefix}-12-mapping-rows`);
+
+      await runPostCompareReviewBranches(f);
+      await captureStep(`${f.screenshotPrefix}-13-review-branches`);
 
       await runExecuteAndVerify(f);
       await captureStep(`${f.screenshotPrefix}-15-execute-verified`);

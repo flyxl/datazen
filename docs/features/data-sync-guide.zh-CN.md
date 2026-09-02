@@ -15,20 +15,22 @@
 
 ---
 
-## 2. 工作流：Compare → Review → Preview → Execute
+## 2. 工作流：6 步向导
 
 | 步骤 | 界面 | 说明 |
 |------|------|------|
-| **Compare** | 源/目标连接 + **database** 下拉 → **Compare** | 先做表映射门闸（`inspect_data_sync`），再对 MATCHED 表做行比较（`compare_data_sync`） |
-| **Review** | 映射列表、Compare 摘要、表筛选、**Row diff** 面板 | 按表 / 操作类型查看 INSERT / UPDATE / DELETE；可取消勾选单行或整表 |
-| **Preview** | **SQL preview** 标签 | 只读预览参数化 DML（`generate_data_sync_sql`）；可复制，**V1 不支持改文本再执行** |
-| **Execute** | 底栏 **Execute** | 执行前可 **revalidate** 结构门闸；含 DELETE 时需二次确认；目标 `read_only` 时禁用 |
+| **Endpoints** | 源/目标连接 + **database** 下拉 | 选择端点、数据库和 schema；同族配对路径会显示在本步 |
+| **Setup** | **Options** | 配置 Insert / Update / Delete；启用 Delete 前需确认 |
+| **Objects** | 表映射列表 | 先做表映射门闸（`inspect_data_sync`），可取消勾选整表 |
+| **Compare** | 摘要、表筛选、**Row diff** | 对 MATCHED 表执行行比较（`compare_data_sync`），按表 / 操作类型审阅差异 |
+| **Preview** | **SQL preview** | 只读预览参数化 DML（`generate_data_sync_sql`）；可复制，**V1 不支持改文本再执行** |
+| **Result** | 执行结果 | 执行完成后显示成功状态与再次比较入口；目标 `read_only` 时 Execute 禁用 |
 
 ```text
-选 Source / Target（含 database）→ Options → Compare
-    → Review 行差异 + 勾选范围
-    → Preview SQL（可选）
-    → Execute → 期望再 Compare 行差异为 0
+Endpoints → Setup Options → Objects 映射
+    → Compare 行差异 + 勾选范围
+    → Preview SQL → Execute
+    → Result → 期望再次 Compare 行差异为 0
 ```
 
 比较或执行进行中可用 **Cancel**（`cancel_data_sync`）。
@@ -90,11 +92,11 @@ ChangeSet 只包含**已勾选**且 options 允许的变更。DELETE 默认不�
 
 | 现象 | 可能原因 |
 |------|----------|
-| Compare 灰掉 / 报错 selectBoth | 未选源或目标连接 / database |
+| Next 灰掉 | 未选源或目标连接 / database，或配对不受支持 |
 | 提示 useTransferHint | 异构或非 Sync 支持的方言对 |
 | 表 INCOMPATIBLE | 结构或 PK 不一致 → Schema Diff 或 Transfer |
 | Execute 不可用 | 无勾选行差异、目标 read_only、或仍在 comparing |
-| Preview 为空 | 无选中变更，或 options 过滤掉了所有操作 |
+| Preview 为空 | 无选中变更，或 Options 过滤掉了所有操作 |
 | 大表 Compare 慢 | V1 对 MATCHED 表使用全表 `SELECT` 后在 Host 内存合并；超大表请缩小范围或分批 |
 
 ---

@@ -109,7 +109,7 @@ export function SchemaDiffRightPanel({
               />
             ) : (
               <div className="flex h-full min-h-[8rem] items-center justify-center text-sm text-fg-muted">
-                {t('schemaDiff.emptyPlan')}
+                {t('schemaDiff.generatePlan')}
               </div>
             )}
           </div>

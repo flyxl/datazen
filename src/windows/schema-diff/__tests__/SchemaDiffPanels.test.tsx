@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { SchemaDiffPlan } from '../../../commands/schemaDiff';
 import { SchemaDiffRightPanel } from '../SchemaDiffRightPanel';
+import { SchemaDiffPlanPanel } from '../SchemaDiffPlanPanel';
 import { SchemaDiffTableListPanel } from '../SchemaDiffTableListPanel';
 
 vi.mock('../../../hooks/useI18n', () => ({
@@ -82,5 +83,65 @@ describe('SchemaDiffRightPanel', () => {
 
     fireEvent.click(screen.getByTestId('schema-diff-deploy-tab'));
     expect(onTabChange).toHaveBeenCalledWith('deploy');
+  });
+
+  it('asks the user to generate a plan before a plan exists', () => {
+    render(
+      <SchemaDiffRightPanel
+        activeTab="plan"
+        onTabChange={vi.fn()}
+        plan={null}
+        allowDestructive={false}
+        includeIndexes
+        onAllowDestructiveChange={vi.fn()}
+        onIncludeIndexesChange={vi.fn()}
+        onRegenerate={vi.fn()}
+        targetLabel="local (postgres)"
+        useTransaction
+        onUseTransactionChange={vi.fn()}
+        requireRollback={false}
+        onRequireRollbackChange={vi.fn()}
+        confirmText=""
+        onConfirmTextChange={vi.fn()}
+        deploying={false}
+        onDeploy={vi.fn()}
+        deployResult={null}
+      />,
+    );
+
+    const panels = screen.getAllByTestId('schema-diff-plan-panel');
+    expect(panels[panels.length - 1]).toHaveTextContent('schemaDiff.generatePlan');
+  });
+});
+
+describe('SchemaDiffPlanPanel empty plans', () => {
+  it('distinguishes a clean plan from a warning-only plan', () => {
+    const baseProps = {
+      allowDestructive: false,
+      includeIndexes: true,
+      onAllowDestructiveChange: vi.fn(),
+      onIncludeIndexesChange: vi.fn(),
+      onRegenerate: vi.fn(),
+      regenerating: false,
+    };
+    const cleanPlan: SchemaDiffPlan = {
+      ...samplePlan,
+      statements: [],
+      warnings: [],
+    };
+    const { unmount } = render(<SchemaDiffPlanPanel plan={cleanPlan} {...baseProps} />);
+    expect(screen.getByTestId('schema-diff-empty-plan')).toHaveTextContent(
+      'schemaDiff.emptyPlanNoDiff',
+    );
+
+    unmount();
+    const skippedPlan: SchemaDiffPlan = {
+      ...cleanPlan,
+      warnings: ['Skipped DROP COLUMN old_col because destructive changes are disabled'],
+    };
+    render(<SchemaDiffPlanPanel plan={skippedPlan} {...baseProps} />);
+    expect(screen.getByTestId('schema-diff-empty-plan')).toHaveTextContent(
+      'schemaDiff.emptyPlanSkipped',
+    );
   });
 });
