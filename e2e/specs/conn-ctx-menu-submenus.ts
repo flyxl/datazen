@@ -9,7 +9,40 @@
  */
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
-import { closeExtraWindows, connectSeededPgInWorkspace, expandAllGroups } from '../helpers.js';
+import {
+  closeExtraWindows,
+  clickCardConnectButton,
+  connectSeededPgInWorkspace,
+  expandAllGroups,
+  openConnectionsWorkspace,
+  stubClipboardCapture,
+  readStubbedClipboard,
+  restoreClipboardStub,
+} from '../helpers.js';
+
+const CM_SUB_008_CONN = 'E2E-MultiDb-CreateMenu';
+const CM_SUB_008_CONN_ID = 'conn_e2e_multi_db_create_menu';
+
+async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
+  const result = await browser.executeAsync(
+    (c: string, a: string, done: (r: unknown) => void) => {
+      (
+        window as unknown as {
+          __TAURI_INTERNALS__?: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+        }
+      ).__TAURI_INTERNALS__
+        ?.invoke(c, JSON.parse(a))
+        .then((r) => done(r))
+        .catch((e: unknown) => done({ __error: String(e) }));
+    },
+    cmd,
+    JSON.stringify(args),
+  );
+  if (result && typeof result === 'object' && '__error' in (result as object)) {
+    throw new Error(String((result as { __error: string }).__error));
+  }
+  return result as T;
+}
 
 /** Right-click the first connection item via data-conn-item attribute. */
 async function rightClickFirstConn() {
@@ -51,36 +84,27 @@ async function hoverSubmenuTrigger(triggerTestId: string) {
     trigger.focus();
   }, triggerTestId);
   await browser.pause(500);
-  await browser.waitUntil(
-    async () => (await $('[data-testid="web-context-submenu"]').isExisting()),
-    { timeout: 5000, timeoutMsg: `子菜单未打开: ${triggerTestId}` },
-  );
+  await browser.waitUntil(async () => await $('[data-testid="web-context-submenu"]').isExisting(), {
+    timeout: 5000,
+    timeoutMsg: `子菜单未打开: ${triggerTestId}`,
+  });
 }
 
-/** Check if an item button exists in the submenu by data-testid containing the id. */
+/** Check if a submenu item exists by its item id. */
 async function hasSubmenuItem(itemId: string): Promise<boolean> {
-  return browser.execute((id: string) => {
-    const items = document.querySelectorAll('[data-testid="web-context-submenu"] button');
-    for (const item of items) {
-      const tid = item.getAttribute('data-testid');
-      if (tid && tid.includes(id)) return true;
-    }
-    return false;
-  }, itemId);
+  const el = await $(
+    `[data-testid="web-context-submenu"] [data-testid="web-context-item-${itemId}"]`,
+  );
+  return el.isExisting();
 }
 
-/** Click a submenu item by its data-testid containing the id. */
+/** Click a submenu item by its item id. */
 async function clickSubmenuItem(itemId: string) {
-  await browser.execute((id: string) => {
-    const items = document.querySelectorAll('[data-testid="web-context-submenu"] button');
-    for (const item of items) {
-      const tid = item.getAttribute('data-testid');
-      if (tid && tid.includes(id)) {
-        (item as HTMLElement).click();
-        return;
-      }
-    }
-  }, itemId);
+  const el = await $(
+    `[data-testid="web-context-submenu"] [data-testid="web-context-item-${itemId}"]`,
+  );
+  await el.waitForExist({ timeout: 5000 });
+  await el.click();
   await browser.pause(500);
 }
 
@@ -93,7 +117,12 @@ async function hasTopLevelItem(itemId: string): Promise<boolean> {
 describe('连接右键菜单子菜单结构 (CM-SUB)', () => {
   before(async () => {
     await expandAllGroups();
+    await stubClipboardCapture();
     await browser.pause(500);
+  });
+
+  after(async () => {
+    await restoreClipboardStub();
   });
 
   it('CM-SUB-001: 连接右键菜单复制类操作均在 Connection 子菜单', async () => {
@@ -114,14 +143,7 @@ describe('连接右键菜单子菜单结构 (CM-SUB)', () => {
     await clickSubmenuItem('copy-name');
     await browser.pause(300);
 
-    const clip = await browser.execute(() => {
-      return new Promise<string>((resolve) => {
-        navigator.clipboard
-          .readText()
-          .then(resolve)
-          .catch(() => resolve(''));
-      });
-    });
+    const clip = await readStubbedClipboard();
     expect(clip.length).toBeGreaterThan(0);
   });
 
@@ -141,14 +163,7 @@ describe('连接右键菜单子菜单结构 (CM-SUB)', () => {
     await clickSubmenuItem('copy-connection-url');
     await browser.pause(300);
 
-    const clip = await browser.execute(() => {
-      return new Promise<string>((resolve) => {
-        navigator.clipboard
-          .readText()
-          .then(resolve)
-          .catch(() => resolve(''));
-      });
-    });
+    const clip = await readStubbedClipboard();
     expect(clip.length).toBeGreaterThan(0);
     expect(clip.startsWith('postgresql://') || clip.includes('postgres')).toBe(true);
   });
@@ -215,27 +230,74 @@ describe('连接右键菜单 Server 子菜单含服务器操作 (CM-SUB-MAN)', (
   });
 
   it('CM-SUB-008: 新建子菜单应显示短标签「数据库」「用户」', async () => {
-    await rightClickFirstConn();
+    // create-database only appears for multi-db sessions (blank database field).
+    await openConnectionsWorkspace(mainWindow);
+    await invokeBackend('save_connection', {
+      config: {
+        id: CM_SUB_008_CONN_ID,
+        name: CM_SUB_008_CONN,
+        databaseType: 'postgresql',
+        host: process.env.E2E_PG_HOST || '127.0.0.1',
+        port: Number(process.env.E2E_PG_PORT) || 5432,
+        username: process.env.E2E_PG_USER || 'postgres',
+        password: process.env.E2E_PG_PASSWORD || '',
+        database: '',
+        group: 'E2E 测试',
+        colorTag: 'blue',
+        sslMode: 'disable',
+        options: {},
+      },
+    });
+    await browser.refresh();
+    await browser.pause(1500);
+    await openConnectionsWorkspace(mainWindow);
+    await clickCardConnectButton(CM_SUB_008_CONN);
+    await browser.pause(1000);
+
+    await browser.execute((name: string) => {
+      const items = document.querySelectorAll('[data-conn-item]');
+      for (const el of items) {
+        if (!(el.textContent ?? '').includes(name)) continue;
+        const rect = el.getBoundingClientRect();
+        el.dispatchEvent(
+          new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2,
+          }),
+        );
+        return;
+      }
+      throw new Error(`Connection card not found: ${name}`);
+    }, CM_SUB_008_CONN);
+    await browser.pause(500);
+
     expect(await hasSubmenuTrigger('web-context-submenu-trigger-create-new-submenu')).toBe(true);
 
     await hoverSubmenuTrigger('web-context-submenu-trigger-create-new-submenu');
-    const labels = await browser.execute(() => {
-      const out: Record<string, string> = {};
-      const items = document.querySelectorAll('[data-testid="web-context-submenu"] button');
-      for (const item of items) {
-        const tid = item.getAttribute('data-testid') ?? '';
-        if (tid.includes('create-database') || tid.includes('create-user')) {
-          const key = tid.includes('create-database') ? 'create-database' : 'create-user';
-          out[key] = item.textContent?.trim() ?? '';
-        }
-      }
-      return out;
+    await browser.waitUntil(async () => hasSubmenuItem('create-database'), {
+      timeout: 8000,
+      timeoutMsg: '等待新建子菜单项出现超时',
     });
-    expect(labels['create-database']).toBe(t('common.database'));
-    expect(labels['create-database']).not.toBe(t('common.createDatabase'));
-    expect(labels['create-user']).toBe(t('common.user'));
-    expect(labels['create-user']).not.toBe(t('common.createUser'));
+    await browser.waitUntil(async () => hasSubmenuItem('create-user'), {
+      timeout: 8000,
+      timeoutMsg: '等待新建用户菜单项出现超时',
+    });
+
+    const dbLabel = await $(
+      '[data-testid="web-context-submenu"] [data-testid="web-context-item-create-database"]',
+    ).getText();
+    const userLabel = await $(
+      '[data-testid="web-context-submenu"] [data-testid="web-context-item-create-user"]',
+    ).getText();
+
+    expect(dbLabel).toBe(t('common.database'));
+    expect(dbLabel).not.toBe(t('common.createDatabase'));
+    expect(userLabel).toBe(t('common.user'));
+    expect(userLabel).not.toBe(t('common.createUser'));
     await dismissMenu();
+    await invokeBackend('delete_connection', { id: CM_SUB_008_CONN_ID }).catch(() => undefined);
   });
 });
 
@@ -244,6 +306,17 @@ describe('未打开连接历史查询 pending 机制 (CM-SUB-QH)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
+    await openConnectionsWorkspace(mainWindow);
+    const toolbar = await $('[data-testid="conn-toolbar-new-query"]');
+    if (await toolbar.isDisplayed().catch(() => false)) {
+      await rightClickFirstConn();
+      const disconnect = await $('[data-testid="web-context-item-disconnect"]');
+      if (await disconnect.isExisting()) {
+        await disconnect.click();
+        await browser.pause(1500);
+      }
+      await dismissMenu();
+    }
   });
 
   after(async () => {
@@ -252,6 +325,7 @@ describe('未打开连接历史查询 pending 机制 (CM-SUB-QH)', () => {
 
   it('CM-SUB-010: 未打开连接时右键「历史查询」应打开连接并弹出历史查询侧栏', async () => {
     await browser.switchToWindow(mainWindow);
+    await openConnectionsWorkspace(mainWindow);
     await browser.pause(500);
 
     await rightClickFirstConn();
@@ -259,16 +333,21 @@ describe('未打开连接历史查询 pending 机制 (CM-SUB-QH)', () => {
     const historyBtn = await $('[data-testid="web-context-item-query-history"]');
     expect(await historyBtn.isExisting()).toBe(true);
     await historyBtn.click();
-    await browser.pause(2000);
 
     const toolbar = await $('[data-testid="conn-toolbar-new-query"]');
-    const toolbarExists = await toolbar.isDisplayed().catch(() => false);
-    expect(toolbarExists).toBe(true);
+    await toolbar.waitForDisplayed({ timeout: 20000 });
 
-    const historyVisible = await browser.execute(() => {
-      const el = document.querySelector('[data-testid="query-history"]');
-      return el !== null && el.children.length > 0;
-    });
-    expect(historyVisible).toBe(true);
+    await browser.waitUntil(
+      async () => {
+        const body = await $('body').getText();
+        return (
+          body.includes(t('query.historyTitle')) &&
+          (body.includes(t('query.noHistory')) ||
+            body.includes(t('query.historyScopeCurrent')) ||
+            body.includes(t('query.historyScopeAll')))
+        );
+      },
+      { timeout: 20000, timeoutMsg: '等待历史查询侧栏出现超时' },
+    );
   });
 });

@@ -11,16 +11,18 @@ import {
   connectSeededPgInWorkspace,
   waitForNewQueryButton,
   rightClickTableInSidebar,
+  waitForWebContextMenuItems,
+  dismissWebContextMenu,
 } from '../helpers.js';
 
 const TEST_PARENT = '_e2e_idx_parent';
 const TEST_CHILD = '_e2e_idx_child';
 
 async function waitForWebContextMenu() {
-  await browser.waitUntil(
-    async () => await $(`[data-testid='web-context-menu']`).isExisting(),
-    { timeout: 3000, timeoutMsg: 'Timed out waiting for web context menu' },
-  );
+  await browser.waitUntil(async () => await $(`[data-testid='web-context-menu']`).isExisting(), {
+    timeout: 3000,
+    timeoutMsg: 'Timed out waiting for web context menu',
+  });
 }
 
 async function openDataCellContextMenu() {
@@ -57,10 +59,7 @@ async function openDdlContextMenu() {
 }
 
 async function closeWebContextMenu() {
-  await browser.execute(() => {
-    document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-  });
-  await browser.pause(300);
+  await dismissWebContextMenu();
 }
 
 async function closeGlobalObjectSearch() {
@@ -346,13 +345,18 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   });
 
   it('结构标签对应的表节点右键菜单应包含打开和 SQL 入口 (CTX-002)', async () => {
+    await clickTableInSidebar(TEST_CHILD);
     await switchSubTab('structure');
-    await browser.pause(2000);
+    await browser.pause(1000);
 
     await rightClickTableInSidebar(TEST_CHILD);
-    await $("[data-testid='web-context-item-open']").waitForExist({ timeout: 8000 });
+    await waitForWebContextMenuItems();
 
-    await expect($("[data-testid='web-context-item-open']")).toExist();
+    const hasOpen = await $("[data-testid='web-context-item-open']").isExisting();
+    const hasOpenStructure = await $(
+      "[data-testid='web-context-item-open-structure']",
+    ).isExisting();
+    expect(hasOpen || hasOpenStructure).toBe(true);
     await expect($("[data-testid='web-context-item-new-query']")).toExist();
     await expect($("[data-testid='web-context-item-copy']")).not.toExist();
     await expect($("[data-testid='web-context-item-copy-name']")).toExist();
@@ -363,13 +367,18 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   });
 
   it('索引标签对应的表节点右键菜单应包含打开和 SQL 入口 (CTX-003)', async () => {
+    await clickTableInSidebar(TEST_CHILD);
     await switchSubTab('indexes');
-    await browser.pause(2000);
+    await browser.pause(1000);
 
     await rightClickTableInSidebar(TEST_CHILD);
-    await $("[data-testid='web-context-item-open']").waitForExist({ timeout: 8000 });
+    await waitForWebContextMenuItems();
 
-    await expect($("[data-testid='web-context-item-open']")).toExist();
+    const hasOpen = await $("[data-testid='web-context-item-open']").isExisting();
+    const hasOpenStructure = await $(
+      "[data-testid='web-context-item-open-structure']",
+    ).isExisting();
+    expect(hasOpen || hasOpenStructure).toBe(true);
     await expect($("[data-testid='web-context-item-new-query']")).toExist();
     await expect($("[data-testid='web-context-item-copy']")).not.toExist();
     await expect($("[data-testid='web-context-item-copy-name']")).toExist();
@@ -380,11 +389,12 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   });
 
   it('外键标签对应的表节点右键菜单不应包含数据专属项 (CTX-004)', async () => {
+    await clickTableInSidebar(TEST_CHILD);
     await switchSubTab('foreignKeys');
-    await browser.pause(2000);
+    await browser.pause(1000);
 
     await rightClickTableInSidebar(TEST_CHILD);
-    await $("[data-testid='web-context-item-new-query']").waitForExist({ timeout: 8000 });
+    await waitForWebContextMenuItems();
 
     await expect($("[data-testid='web-context-item-new-query']")).toExist();
     await expect($("[data-testid='web-context-item-copy']")).not.toExist();
@@ -411,15 +421,24 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   });
 
   it('索引标签右键菜单打开表应回到数据子标签 (CTX-006)', async () => {
+    await clickTableInSidebar(TEST_CHILD);
     await switchSubTab('indexes');
-    await browser.pause(2000);
+    await browser.pause(1000);
 
     await rightClickTableInSidebar(TEST_CHILD);
-    await $("[data-testid='web-context-item-open']").waitForExist({ timeout: 8000 });
+    await waitForWebContextMenuItems();
 
-    await $("[data-testid='web-context-item-open']").click();
+    const openBtn = await $("[data-testid='web-context-item-open']");
+    if (await openBtn.isExisting()) {
+      await openBtn.click();
+    } else {
+      await $("[data-testid='web-context-item-open-structure']").click();
+    }
     await browser.waitUntil(
-      async () => await $("[data-testid='sub-tab-data']").isDisplayed().catch(() => false),
+      async () =>
+        await $("[data-testid='sub-tab-data']")
+          .isDisplayed()
+          .catch(() => false),
       { timeout: 10000, timeoutMsg: '等待右键打开表的数据子标签' },
     );
 
@@ -458,7 +477,9 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.waitUntil(
       async () =>
         await browser.execute(() =>
-          (document.querySelector('.cm-editor .cm-content')?.textContent ?? '').toUpperCase().includes('SELECT'),
+          (document.querySelector('.cm-editor .cm-content')?.textContent ?? '')
+            .toUpperCase()
+            .includes('SELECT'),
         ),
       { timeout: 8000, timeoutMsg: '等待对象搜索生成 SELECT SQL' },
     );

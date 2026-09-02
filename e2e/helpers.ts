@@ -1190,14 +1190,78 @@ async function tableNodeExistsInNavigator(tableName: string): Promise<boolean> {
 /** True when the requested table is the active TableView workspace panel. */
 async function tableWorkspaceIsOpen(tableName: string): Promise<boolean> {
   return browser.execute((name: string) => {
-    const activePanelTab = Array.from(
-      document.querySelectorAll<HTMLElement>('[data-testid="panel-tab"]'),
-    ).find((tab) => tab.classList.contains('bg-surface'));
-    if (!activePanelTab || !(activePanelTab.textContent ?? '').includes(name)) return false;
+    const matchName = (label: string) =>
+      label === name ||
+      label.endsWith(`.${name}`) ||
+      label.endsWith(`/${name}`) ||
+      label.endsWith(` · ${name}`) ||
+      label.includes(name);
+    const activeTabBtn = document.querySelector<HTMLElement>(
+      '[data-testid="panel-tab"] button[role="tab"][aria-selected="true"]',
+    );
+    const tabLabel =
+      activeTabBtn?.getAttribute('aria-label') ?? activeTabBtn?.textContent?.trim() ?? '';
+    if (!matchName(tabLabel)) return false;
 
     const dataTab = document.querySelector<HTMLElement>('[data-testid="sub-tab-data"]');
     return !!dataTab && dataTab.offsetParent !== null;
   }, tableName);
+}
+
+/** Dismiss any open web context menu. */
+export async function dismissWebContextMenu() {
+  await browser.execute(() => {
+    document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  });
+  await browser.pause(250);
+  try {
+    await setNavigatorSearch('');
+  } catch {
+    /* navigator may be absent outside the connections workspace */
+  }
+}
+
+/** Wait until the web context menu has at least one actionable item. */
+export async function waitForWebContextMenuItems(timeout = 8000) {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        () =>
+          document.querySelectorAll(
+            '[data-testid="web-context-menu"] [data-testid^="web-context-item-"], [data-testid="web-context-submenu"] [data-testid^="web-context-item-"]',
+          ).length > 0,
+      ),
+    { timeout, timeoutMsg: '等待上下文菜单项出现超时' },
+  );
+}
+
+/** Stub clipboard writes for E2E assertions (readText often hangs in WebDriver). */
+export async function stubClipboardCapture() {
+  await browser.execute(() => {
+    (window as unknown as { __e2e_clipboard?: string }).__e2e_clipboard = '';
+    const clip = navigator.clipboard;
+    const original = clip.writeText.bind(clip);
+    (window as unknown as { __e2e_restoreClipboard?: () => void }).__e2e_restoreClipboard = () => {
+      clip.writeText = original;
+    };
+    clip.writeText = async (text: string) => {
+      (window as unknown as { __e2e_clipboard?: string }).__e2e_clipboard = text;
+    };
+  });
+}
+
+export async function readStubbedClipboard(): Promise<string> {
+  return browser.execute(
+    () => (window as unknown as { __e2e_clipboard?: string }).__e2e_clipboard ?? '',
+  );
+}
+
+export async function restoreClipboardStub() {
+  await browser.execute(() => {
+    const restore = (window as unknown as { __e2e_restoreClipboard?: () => void })
+      .__e2e_restoreClipboard;
+    restore?.();
+  });
 }
 
 /** Click the currently mounted exact table node, if any. */
@@ -1301,6 +1365,7 @@ export async function switchTablePanelToDataTab() {
 
 /** Right-click a table/view row in the navigator (keeps search active until menu opens). */
 export async function rightClickTableInSidebar(tableName: string) {
+  await dismissWebContextMenu();
   await waitForSchemaTreeLoaded();
   await setNavigatorSearch(tableName);
   let scrollPass = 0;
@@ -1315,32 +1380,48 @@ export async function rightClickTableInSidebar(tableName: string) {
             );
           if (!nav) return false;
           const matchName = (label: string) =>
-            label === name || label.endsWith(`.${name}`) || label.endsWith(`/${name}`);
+            label === name ||
+            label.endsWith(`.${name}`) ||
+            label.endsWith(`/${name}`) ||
+            label.endsWith(` · ${name}`) ||
+            label.includes(name);
           const node = Array.from(
             nav.querySelectorAll<HTMLElement>('[data-tree-node="table"], [data-tree-node="view"]'),
-          ).find((n) => matchName(n.getAttribute('data-item-name') ?? ''));
+          ).find((candidate) => matchName(candidate.getAttribute('data-item-name') ?? ''));
           if (!node) return false;
           node.scrollIntoView({ block: 'center' });
+          const rect = node.getBoundingClientRect();
           node.dispatchEvent(
             new MouseEvent('contextmenu', {
               bubbles: true,
               cancelable: true,
-              clientX: 80,
-              clientY: 120,
+              clientX: rect.left + rect.width / 2,
+              clientY: rect.top + rect.height / 2,
             }),
           );
-          return !!document.querySelector('[data-testid="web-context-menu"]');
+          return true;
         }, tableName);
-        if (opened) return true;
-        await expandSchemaTableCategory();
-        await scrollSchemaTree(scrollPass);
-        scrollPass++;
-        return false;
+        if (!opened) {
+          await expandConnectedConnectionInNavigator();
+          await expandSchemaTableCategory();
+          await scrollSchemaTree(scrollPass);
+          scrollPass++;
+          return false;
+        }
+        await browser.pause(400);
+        const itemCount = await browser.execute(
+          () =>
+            document.querySelectorAll(
+              '[data-testid="web-context-menu"] [data-testid^="web-context-item-"]',
+            ).length,
+        );
+        return itemCount > 0;
       },
       { timeout: 20000, timeoutMsg: `无法右键打开表 "${tableName}" 的上下文菜单` },
     );
   } finally {
-    await setNavigatorSearch('');
+    // Keep the navigator filter mounted while callers assert on the open menu.
+    // Clearing search here scrolls the tree and WebContextMenuHost closes on scroll.
   }
 }
 

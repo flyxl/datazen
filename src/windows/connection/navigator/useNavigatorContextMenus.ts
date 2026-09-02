@@ -317,6 +317,8 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
                 // actionsRef.current is null. Store a pending intent; usePanelHandlers
                 // will consume it once the connection context becomes available.
                 usePanelStore.getState().setPendingQueryHistory(conn.id);
+                toggleConnection(conn.id, sectionGroup);
+                void connect(conn);
               }
             },
             onCreateDatabase:

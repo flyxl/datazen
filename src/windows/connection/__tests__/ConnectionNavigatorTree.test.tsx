@@ -2766,6 +2766,7 @@ describe('ConnectionNavigatorTree imperative refresh guards', () => {
     activeConnectionsState.connections = {};
     panelStoreState.pendingQueryHistoryConnectionId = null;
     mockSetPendingQueryHistory.mockClear();
+    mockConnect.mockClear();
 
     const { container } = render(<ConnectionNavigatorTree {...baseProps} />);
     await waitFor(() => connRow(container, 'Idle Conn'));
@@ -2774,6 +2775,7 @@ describe('ConnectionNavigatorTree imperative refresh guards', () => {
 
     // Should open the connection
     expect(baseProps.onSelectConnection).toHaveBeenCalledWith('cfg-idle');
+    expect(mockConnect).toHaveBeenCalledWith(expect.objectContaining({ id: 'cfg-idle' }));
     // Should NOT call viewActions.openQueryHistory (actionsRef is null)
     // Instead should store pending intent in panelStore
     expect(mockSetPendingQueryHistory).toHaveBeenCalledWith('cfg-idle');

@@ -10,6 +10,7 @@ import {
   waitForNewQueryButton,
   openNewConnectionDialogFromUi,
   expandNewConnectionSshSection,
+  connectSeededPgInWorkspace,
 } from '../helpers.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -197,13 +198,7 @@ describe('Client parity P0–P2', () => {
   });
 
   it('query toolbar shows format, bind params, and transaction controls', async () => {
-    await clickCardConnectButton();
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 20000,
-    });
-    const handles = await browser.getWindowHandles();
-    await browser.switchToWindow(handles.find((h) => h !== mainWindow)!);
-    await waitForNewQueryButton(20000);
+    await connectSeededPgInWorkspace();
     await openQueryTab();
 
     await expect(await $(`button*=${t('query.format')}`)).toBeDisplayed();
@@ -231,7 +226,11 @@ describe('Client parity P0–P2', () => {
     await expect(await $(`button*=${t('objects.function')}`)).toBeDisplayed();
     const bodyAfterObjects = await $('body').getText();
     expect(bodyAfterObjects).not.toContain('Object list query missing name column');
-    expect(bodyAfterObjects).toMatch(/objects\.(empty|function)/);
+    expect(
+      bodyAfterObjects.includes(t('objects.empty')) ||
+        bodyAfterObjects.includes(t('objects.function')) ||
+        bodyAfterObjects.includes(t('objects.procedure')),
+    ).toBe(true);
   });
 
   it('table filter editor opens AND/OR controls', async () => {
