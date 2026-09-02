@@ -391,35 +391,62 @@ log('Running E2E tests...');
 if (INSTANCE_COUNT > 1) {
   // Multi-instance: launch N independent WDIO processes, each with its own port/dataDir
   // and a round-robin slice of the spec files. This avoids WDIO's capability duplication.
-  const { globSync } = await import('glob');
-  const resolveSpecs = () => {
-    // If user passed --suite, extract it; otherwise use default glob
-    const suiteIdx = wdioArgs.indexOf('--suite');
-    if (suiteIdx >= 0 && wdioArgs[suiteIdx + 1]) {
-      // Read suite from wdio.conf.ts is complex; just collect all spec files
-      // that the suite would resolve to. For simplicity, use glob.
-    }
+  // Resolve spec files to split across workers.
+  // If --suite is given, we can't easily parse wdio.conf.ts suites here,
+  // so we fall back to passing --suite to a single WDIO process (no split).
+  const hasSuiteArg = wdioArgs.includes('--suite');
+  let allSpecs = [];
+  let useSpecSplit = true;
+
+  if (hasSuiteArg) {
+    // Suite mode: can't split specs, run single WDIO with all instances sharing work
+    // is impossible — warn and fall back to single instance behavior
+    log(
+      'Warning: --suite with --instances is not supported (cannot split suite specs). ' +
+        'Running with instance 0 only. Use explicit --spec list for true parallelism.',
+    );
+    useSpecSplit = false;
+  } else {
     const specIdx = wdioArgs.indexOf('--spec');
     if (specIdx >= 0 && wdioArgs[specIdx + 1]) {
-      return wdioArgs[specIdx + 1].split(',').map((s) => s.trim());
+      allSpecs = wdioArgs[specIdx + 1].split(',').map((s) => s.trim());
+    } else {
+      // Recursively find all .ts spec files
+      const specsDir = path.join(ROOT, 'e2e', 'specs');
+      const walk = (dir) => {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        const files = [];
+        for (const entry of entries) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            files.push(...walk(full));
+          } else if (entry.name.endsWith('.ts')) {
+            files.push(path.relative(ROOT, full));
+          }
+        }
+        return files;
+      };
+      allSpecs = walk(specsDir)
+        .filter(
+          (f) =>
+            !f.includes('zz-screenshots') &&
+            !f.includes('demo-recording') &&
+            !f.includes('zz-diag'),
+        )
+        .sort();
     }
-    return globSync('e2e/specs/**/*.ts', { cwd: ROOT })
-      .filter(
-        (f) =>
-          !f.includes('zz-screenshots') &&
-          !f.includes('demo-recording') &&
-          !f.includes('zz-diag'),
-      )
-      .sort();
-  };
+  }
 
-  const allSpecs = resolveSpecs();
-  const chunks = Array.from({ length: INSTANCE_COUNT }, () => []);
-  allSpecs.forEach((spec, i) => chunks[i % INSTANCE_COUNT].push(spec));
+  const effectiveInstances = useSpecSplit ? INSTANCE_COUNT : 1;
+  const chunks = Array.from({ length: effectiveInstances }, () => []);
+  allSpecs.forEach((spec, i) => chunks[i % effectiveInstances].push(spec));
 
-  log(
-    `Splitting ${allSpecs.length} specs across ${INSTANCE_COUNT} processes: ${chunks.map((c) => c.length).join(' / ')}`,
-  );
+  if (useSpecSplit) {
+    log(
+      `Splitting ${allSpecs.length} specs across ${effectiveInstances} processes: ` +
+        `${chunks.map((c) => c.length).join(' / ')}`,
+    );
+  }
 
   const wdioProcesses = chunks.map((specChunk, i) => {
     if (specChunk.length === 0) return null;
@@ -429,17 +456,18 @@ if (INSTANCE_COUNT > 1) {
       E2E_WD_PORT: String(wdPorts[i]),
     };
     const specArgs = [];
-    for (const s of specChunk) {
-      specArgs.push('--spec', s);
+    if (useSpecSplit) {
+      for (const s of specChunk) {
+        specArgs.push('--spec', s);
+      }
+      // Remove --spec from original wdioArgs since we're providing our own
+      var filteredWdioArgs = wdioArgs.filter(
+        (a, idx) => a !== '--spec' && wdioArgs[idx - 1] !== '--spec',
+      );
+    } else {
+      // Pass original args as-is (suite mode)
+      var filteredWdioArgs = [...wdioArgs];
     }
-    // Remove --suite and --spec from original wdioArgs for the per-process invocation
-    const filteredWdioArgs = wdioArgs.filter(
-      (a, idx) =>
-        a !== '--suite' &&
-        wdioArgs[idx - 1] !== '--suite' &&
-        a !== '--spec' &&
-        wdioArgs[idx - 1] !== '--spec',
-    );
     const proc = spawn(
       'npx',
       ['wdio', 'run', 'e2e/wdio.conf.ts', ...filteredWdioArgs, ...specArgs],
