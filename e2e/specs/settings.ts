@@ -42,7 +42,7 @@ describe('Settings (SS-001~SS-006)', () => {
     });
     await browser.pause(500);
     await browser.refresh();
-    await browser.pause(2000);
+    await browser.pause(300);
   });
 
   // ── Theme toggle (SS-001) ──
@@ -389,7 +389,6 @@ describe('Settings (SS-001~SS-006)', () => {
     const newLang = originalLang === 'zh-CN' ? 'en' : 'zh-CN';
     await invokeBackend('save_settings', { settings: { ...settings, language: newLang } });
     await browser.refresh();
-    await browser.pause(2000);
 
     const body = await $('body').getText();
     if (newLang === 'en') {
@@ -411,7 +410,6 @@ describe('Settings (SS-001~SS-006)', () => {
     // Restore
     await invokeBackend('save_settings', { settings: { ...settings, language: originalLang } });
     await browser.refresh();
-    await browser.pause(1500);
   });
 
   it('TC-SET-009: 编辑器字体大小设置应持久化', async () => {
@@ -423,7 +421,7 @@ describe('Settings (SS-001~SS-006)', () => {
       settings: { ...settings, editorFontSize: newFontSize },
     });
     await browser.refresh();
-    await browser.pause(1500);
+    await browser.pause(300);
 
     const persisted = await invokeBackend<Record<string, unknown>>('get_settings');
     expect(persisted.editorFontSize).toBe(newFontSize);
@@ -442,7 +440,7 @@ describe('Settings (SS-001~SS-006)', () => {
       settings: { ...settings, confirmOnDelete: !originalConfirm },
     });
     await browser.refresh();
-    await browser.pause(1500);
+    await browser.pause(300);
 
     const persisted = await invokeBackend<Record<string, unknown>>('get_settings');
     expect(persisted.confirmOnDelete).toBe(!originalConfirm);
@@ -472,6 +470,6 @@ describe('Settings (SS-001~SS-006)', () => {
     });
     await browser.pause(300);
     await browser.url('tauri://localhost');
-    await browser.pause(1000);
+    await browser.pause(300);
   });
 });

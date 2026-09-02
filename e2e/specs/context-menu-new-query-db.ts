@@ -95,7 +95,7 @@ async function expandConnection() {
       }
     }
   }, CONN_NAME);
-  await browser.pause(2000);
+  await browser.pause(300);
 }
 
 /** Expand a database node by clicking it. */
@@ -109,7 +109,7 @@ async function expandDb(dbName: string) {
       }
     }
   }, dbName);
-  await browser.pause(1500);
+  await browser.pause(300);
 }
 
 /** Get the tab title text of the currently active query panel. */
@@ -162,7 +162,7 @@ describe('Context menu New Query opens correct database', () => {
       name: CONN_NAME,
       database: '',
     });
-    await browser.pause(1500);
+    await browser.pause(300);
   });
 
   after(async () => {
@@ -178,7 +178,7 @@ describe('Context menu New Query opens correct database', () => {
     if (shouldSkip) return;
 
     await expandConnection();
-    await browser.pause(1000);
+    await browser.pause(300);
 
     // Verify both databases are visible
     const dbNames = await browser.execute(() => {
@@ -190,7 +190,7 @@ describe('Context menu New Query opens correct database', () => {
 
     // Left-click PRIMARY_DB to set it as currentDatabase
     await expandDb(PRIMARY_DB);
-    await browser.pause(1000);
+    await browser.pause(300);
 
     // Right-click SECONDARY_DB → New Query
     await rightClickDb(SECONDARY_DB);
@@ -217,7 +217,7 @@ describe('Context menu New Query opens correct database', () => {
 
     // Ensure SECONDARY_DB is expanded to show schemas
     await expandDb(SECONDARY_DB);
-    await browser.pause(1500);
+    await browser.pause(300);
 
     // Find a schema node under SECONDARY_DB
     const schemaName = await browser.execute((dbName: string) => {
@@ -241,7 +241,7 @@ describe('Context menu New Query opens correct database', () => {
 
     // Switch to a different database first to make the test meaningful
     await expandDb(PRIMARY_DB);
-    await browser.pause(1000);
+    await browser.pause(300);
 
     // Right-click the schema node → New Query
     await browser.execute((sName: string) => {
