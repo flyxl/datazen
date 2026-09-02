@@ -87,44 +87,47 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
 
     const list = await $('[id^="dz-select-listbox-"]');
     await list.waitForDisplayed({ timeout: 5000 });
-    const metrics = await browser.execute(() => {
-      const host = document.querySelector('[data-testid="query-context-selectors"]');
-      const trigger = host?.querySelector('input[aria-haspopup="listbox"]')?.parentElement;
-      const schema = host?.querySelector('[data-testid="query-context-schema"]');
-      const list = document.querySelector('[id^="dz-select-listbox-"]');
-      if (!host || !trigger || !list) return null;
+    try {
+      const metrics = await browser.execute(() => {
+        const host = document.querySelector('[data-testid="query-context-selectors"]');
+        const trigger = host?.querySelector('input[aria-haspopup="listbox"]')?.parentElement;
+        const schema = host?.querySelector('[data-testid="query-context-schema"]');
+        const list = document.querySelector('[id^="dz-select-listbox-"]');
+        if (!host || !trigger || !list) return null;
 
-      const hostRect = host.getBoundingClientRect();
-      const triggerRect = trigger.getBoundingClientRect();
-      const toggleRect = trigger
-        .querySelector('button[aria-label="Toggle options"]')
-        ?.getBoundingClientRect();
-      const executeRect = document
-        .querySelector('[data-testid="editor-execute-button"]')
-        ?.getBoundingClientRect();
-      const schemaRect = schema?.getBoundingClientRect();
-      if (!toggleRect || !executeRect) return null;
-      return {
-        triggerWidth: triggerRect.width,
-        listWidth: list.getBoundingClientRect().width,
-        trailingGap: schemaRect ? 0 : hostRect.right - triggerRect.right,
-        toggleOverflow: toggleRect.right - triggerRect.right,
-        executeOverlap: toggleRect.right - executeRect.left,
-        overflowingOptions: Array.from(list.children).some((option) => {
-          const label = option.querySelector('span');
-          return label ? label.scrollWidth > label.clientWidth : false;
-        }),
-      };
-    });
+        const hostRect = host.getBoundingClientRect();
+        const triggerRect = trigger.getBoundingClientRect();
+        const toggleRect = trigger
+          .querySelector('input[aria-haspopup="listbox"] + button')
+          ?.getBoundingClientRect();
+        const executeRect = document
+          .querySelector('[data-testid="editor-execute-button"]')
+          ?.getBoundingClientRect();
+        const schemaRect = schema?.getBoundingClientRect();
+        if (!toggleRect || !executeRect) return null;
+        return {
+          triggerWidth: triggerRect.width,
+          listWidth: list.getBoundingClientRect().width,
+          trailingGap: schemaRect ? 0 : hostRect.right - triggerRect.right,
+          toggleOverflow: toggleRect.right - triggerRect.right,
+          executeOverlap: toggleRect.right - executeRect.left,
+          overflowingOptions: Array.from(list.children).some((option) => {
+            const label = option.querySelector('span');
+            return label ? label.scrollWidth > label.clientWidth : false;
+          }),
+        };
+      });
 
-    expect(metrics).not.toBeNull();
-    expect(metrics!.listWidth).toBeGreaterThanOrEqual(176);
-    expect(metrics!.listWidth).toBeGreaterThan(metrics!.triggerWidth);
-    expect(metrics!.trailingGap).toBeLessThan(24);
-    expect(metrics!.toggleOverflow).toBeLessThanOrEqual(1);
-    expect(metrics!.executeOverlap).toBeLessThanOrEqual(0);
-    expect(metrics!.overflowingOptions).toBe(false);
-    await browser.keys('Escape');
+      expect(metrics).not.toBeNull();
+      expect(metrics!.listWidth).toBeGreaterThanOrEqual(176);
+      expect(metrics!.listWidth).toBeGreaterThan(metrics!.triggerWidth);
+      expect(metrics!.trailingGap).toBeLessThan(24);
+      expect(metrics!.toggleOverflow).toBeLessThanOrEqual(1);
+      expect(metrics!.executeOverlap).toBeLessThanOrEqual(0);
+      expect(metrics!.overflowingOptions).toBe(false);
+    } finally {
+      await browser.keys('Escape');
+    }
   });
 
   it('SQ-CTX-001: SQL 带完整库路径时应同步执行栏选择框', async () => {
