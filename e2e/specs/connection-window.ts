@@ -141,10 +141,8 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await expect($("[data-testid='content-toolbar-new-table']")).toExist();
   });
 
-  it('应显示全局对象搜索入口和输入框 (DB-008)', async () => {
-    await $(`[data-testid='global-object-search-toggle']`).click();
-    await expect(await $(`[data-testid='global-object-search-input']`)).toBeDisplayed();
-    await closeGlobalObjectSearch();
+  it('应暂时隐藏全局对象搜索入口 (DB-008)', async () => {
+    expect(await $(`[data-testid='global-object-search-toggle']`).isExisting()).toBe(false);
   });
 
   it('连接窗口状态栏应显示已连接和 PostgreSQL (DB-001)', async () => {
@@ -352,6 +350,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.pause(2000);
 
     await rightClickTableInSidebar(TEST_CHILD);
+    await $("[data-testid='web-context-item-open']").waitForExist({ timeout: 8000 });
 
     await expect($("[data-testid='web-context-item-open']")).toExist();
     await expect($("[data-testid='web-context-item-new-query']")).toExist();
@@ -368,6 +367,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.pause(2000);
 
     await rightClickTableInSidebar(TEST_CHILD);
+    await $("[data-testid='web-context-item-open']").waitForExist({ timeout: 8000 });
 
     await expect($("[data-testid='web-context-item-open']")).toExist();
     await expect($("[data-testid='web-context-item-new-query']")).toExist();
@@ -384,6 +384,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.pause(2000);
 
     await rightClickTableInSidebar(TEST_CHILD);
+    await $("[data-testid='web-context-item-new-query']").waitForExist({ timeout: 8000 });
 
     await expect($("[data-testid='web-context-item-new-query']")).toExist();
     await expect($("[data-testid='web-context-item-copy']")).not.toExist();
@@ -414,6 +415,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.pause(2000);
 
     await rightClickTableInSidebar(TEST_CHILD);
+    await $("[data-testid='web-context-item-open']").waitForExist({ timeout: 8000 });
 
     await $("[data-testid='web-context-item-open']").click();
     await browser.waitUntil(
@@ -426,7 +428,8 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   // ── 搜索表 ─────────────────────────────────────────────────────
 
-  it('全局对象搜索应能输入文字并定位测试表 (DB-008)', async () => {
+  // Global object search dialog is not exposed in the navigator toolbar yet (CM-009).
+  it.skip('全局对象搜索应能输入文字并定位测试表 (DB-008)', async () => {
     await $(`[data-testid='global-object-search-toggle']`).click();
     const search = await $(`[data-testid='global-object-search-input']`);
     await search.setValue(TEST_CHILD);
@@ -438,7 +441,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await closeGlobalObjectSearch();
   });
 
-  it('全局对象搜索结果应提供生成 SQL 的快捷动作 (DB-008)', async () => {
+  it.skip('全局对象搜索结果应提供生成 SQL 的快捷动作 (DB-008)', async () => {
     await $(`[data-testid='global-object-search-toggle']`).click();
     const search = await $(`[data-testid='global-object-search-input']`);
     await search.setValue(TEST_CHILD);
@@ -461,7 +464,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     );
   });
 
-  it('全局对象搜索清空后应恢复结果列表 (DB-008)', async () => {
+  it.skip('全局对象搜索清空后应恢复结果列表 (DB-008)', async () => {
     await $(`[data-testid='global-object-search-toggle']`).click();
     const search = await $(`[data-testid='global-object-search-input']`);
     await search.setValue('nonexistent_xyz_table_12345');

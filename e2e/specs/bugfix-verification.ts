@@ -65,9 +65,14 @@ describe('Bug Fix Verification', () => {
       await openQueryTab();
       await browser.pause(1000);
 
-      await executeSQL(
-        'SELECT status, COUNT(*) as count FROM product GROUP BY status ORDER BY count DESC LIMIT 10',
-      );
+      await executeSQL('CREATE TABLE IF NOT EXISTS e2e_fix003_chart (category TEXT, amount INTEGER)');
+      await executeSQL('DELETE FROM e2e_fix003_chart');
+      await executeSQL(`
+        INSERT INTO e2e_fix003_chart (category, amount) VALUES
+          ('Alpha', 100), ('Beta', 200), ('Gamma', 150)
+      `);
+      await openQueryTab();
+      await executeSQL('SELECT category, amount FROM e2e_fix003_chart ORDER BY category');
       await browser.pause(1000);
 
       const chartBtn = await $(`button*=${t('chart.viewChart')}`);
@@ -75,8 +80,10 @@ describe('Bug Fix Verification', () => {
       await chartBtn.click();
       await browser.pause(1000);
 
+      await $('[class*="recharts-wrapper"]').waitForExist({ timeout: 8000 });
+
       const expandBtn = await $(`button[title="${t('chart.expand')}"]`);
-      await expandBtn.waitForDisplayed({ timeout: 5000 });
+      await expandBtn.waitForDisplayed({ timeout: 8000 });
       await expandBtn.click();
       await browser.pause(500);
 

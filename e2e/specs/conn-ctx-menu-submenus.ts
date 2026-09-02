@@ -44,11 +44,17 @@ async function hasSubmenuTrigger(triggerTestId: string): Promise<boolean> {
 
 /** Hover a submenu trigger to open its submenu. */
 async function hoverSubmenuTrigger(triggerTestId: string) {
-  const trigger = await $(`[data-testid="${triggerTestId}"]`);
-  if (await trigger.isExisting()) {
-    await trigger.moveTo();
-    await browser.pause(400);
-  }
+  await browser.execute((testId: string) => {
+    const trigger = document.querySelector(`[data-testid="${testId}"]`) as HTMLElement | null;
+    if (!trigger) throw new Error(`Submenu trigger not found: ${testId}`);
+    trigger.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    trigger.focus();
+  }, triggerTestId);
+  await browser.pause(500);
+  await browser.waitUntil(
+    async () => (await $('[data-testid="web-context-submenu"]').isExisting()),
+    { timeout: 5000, timeoutMsg: `子菜单未打开: ${triggerTestId}` },
+  );
 }
 
 /** Check if an item button exists in the submenu by data-testid containing the id. */

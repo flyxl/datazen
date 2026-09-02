@@ -94,7 +94,7 @@ async function getLanguageDropdownOptions(): Promise<string[]> {
   await trigger.click();
   await browser.pause(300);
 
-  const listbox = await $('#dz-select-listbox');
+  const listbox = await $('[id^="dz-select-listbox-"]');
   await listbox.waitForDisplayed({ timeout: 5000 });
   const items = await listbox.$$('div[aria-selected]');
   const labels: string[] = [];

@@ -104,7 +104,7 @@ async function setEditorContent(text: string) {
       browser.execute(
         () =>
           document.activeElement?.closest('.cm-editor .cm-content') != null &&
-          document.getElementById('dz-select-listbox') == null,
+          document.querySelector('[id^="dz-select-listbox-"]') == null,
       ),
     { timeout: 2000, timeoutMsg: 'editor focus/selector cleanup did not settle' },
   );
@@ -393,7 +393,7 @@ async function selectQueryPanelDatabase(dbName: string) {
   await browser.waitUntil(
     async () => {
       const opened = await browser.execute(() => {
-        if (document.getElementById('dz-select-listbox')) return true;
+        if (document.querySelector('[id^="dz-select-listbox-"]')) return true;
         const host = document.querySelector('[data-testid="query-context-selectors"]');
         const btn = host?.querySelector('button[aria-haspopup="listbox"]') as HTMLElement | null;
         if (!btn) return false;
@@ -412,7 +412,7 @@ async function selectQueryPanelDatabase(dbName: string) {
   const dl = Date.now();
   while (Date.now() - dl < 8000 && !picked && !alreadySelected) {
     const probe = await browser.execute((target: string) => {
-      const list = document.getElementById('dz-select-listbox');
+      const list = document.querySelector('[id^="dz-select-listbox-"]');
       if (!list) return { state: 'closed' as const };
       for (const el of Array.from(list.children)) {
         const raw = (el.textContent || '').replace(/✓/g, '').trim();
@@ -428,7 +428,7 @@ async function selectQueryPanelDatabase(dbName: string) {
     else {
       await browser.pause(300);
       await browser.execute(() => {
-        if (document.getElementById('dz-select-listbox')) return;
+        if (document.querySelector('[id^="dz-select-listbox-"]')) return;
         const host = document.querySelector('[data-testid="query-context-selectors"]');
         const btn = host?.querySelector('button[aria-haspopup="listbox"]') as HTMLElement | null;
         btn?.click();
@@ -439,7 +439,7 @@ async function selectQueryPanelDatabase(dbName: string) {
   if (!picked && !alreadySelected) {
     // Diagnostic dump: what's actually inside the listbox?
     const diag = await browser.execute(() => {
-      const list = document.getElementById('dz-select-listbox');
+      const list = document.querySelector('[id^="dz-select-listbox-"]');
       const host = document.querySelector('[data-testid="query-context-selectors"]');
       return {
         listExists: !!list,

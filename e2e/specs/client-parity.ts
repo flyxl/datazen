@@ -9,6 +9,7 @@ import {
   waitForNewConnectionDialog,
   waitForNewQueryButton,
   openNewConnectionDialogFromUi,
+  expandNewConnectionSshSection,
 } from '../helpers.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -257,9 +258,10 @@ describe('Client parity P0–P2', () => {
   it('new connection form shows SSH agent and jump host', async () => {
     await closeExtraWindows(mainWindow);
     await openNewConnectionDialogFromUi();
-    const ssh = await $('[data-testid="new-conn-ssh-tunnel"]');
-    await ssh.waitForDisplayed({ timeout: 10000 });
-    await ssh.click();
+    await expandNewConnectionSshSection();
+    const sshCheckbox = await $('[data-testid="new-conn-ssh-tunnel-checkbox"]');
+    await sshCheckbox.waitForDisplayed({ timeout: 10000 });
+    await sshCheckbox.click();
     await expect(await $(`button*=${t('newConn.authAgent')}`)).toBeDisplayed();
     await $(`button*=${t('newConn.authAgent')}`).click();
     await expect(await $(`div*=${t('newConn.authAgentHint')}`)).toBeDisplayed();

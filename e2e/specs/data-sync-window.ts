@@ -164,7 +164,7 @@ describe('数据同步 Diff Workspace (DSW-MAP / DSW-WS)', () => {
         const wrap = document.querySelector('[data-testid="data-sync-source"]');
         const btn = wrap?.querySelector('button[aria-haspopup="listbox"]') as HTMLElement | null;
         btn?.click();
-        const list = document.getElementById('dz-select-listbox');
+        const list = document.querySelector('[id^="dz-select-listbox-"]');
         return list ? list.textContent || '' : '';
       });
       if (

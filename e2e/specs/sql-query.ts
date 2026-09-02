@@ -85,13 +85,13 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     const trigger = await selectorHost.$('input[aria-haspopup="listbox"]');
     await trigger.click();
 
-    const list = await $('#dz-select-listbox');
+    const list = await $('[id^="dz-select-listbox-"]');
     await list.waitForDisplayed({ timeout: 5000 });
     const metrics = await browser.execute(() => {
       const host = document.querySelector('[data-testid="query-context-selectors"]');
       const trigger = host?.querySelector('input[aria-haspopup="listbox"]')?.parentElement;
       const schema = host?.querySelector('[data-testid="query-context-schema"]');
-      const list = document.getElementById('dz-select-listbox');
+      const list = document.querySelector('[id^="dz-select-listbox-"]');
       if (!host || !trigger || !list) return null;
 
       const hostRect = host.getBoundingClientRect();

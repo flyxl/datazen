@@ -150,7 +150,7 @@ describe('导出和导入 (EI-001~EI-006)', () => {
     await browser.pause(300);
 
     await browser.execute(() => {
-      const listbox = document.getElementById('dz-select-listbox');
+      const listbox = document.querySelector('[id^="dz-select-listbox-"]');
       if (!listbox) return;
       const opts = listbox.querySelectorAll('div[tabindex]');
       for (const opt of opts) {
@@ -177,7 +177,7 @@ describe('导出和导入 (EI-001~EI-006)', () => {
     await browser.pause(300);
 
     await browser.execute(() => {
-      const listbox = document.getElementById('dz-select-listbox');
+      const listbox = document.querySelector('[id^="dz-select-listbox-"]');
       if (!listbox) return;
       const opts = listbox.querySelectorAll('div[tabindex]');
       for (const opt of opts) {

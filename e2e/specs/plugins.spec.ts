@@ -422,7 +422,7 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
           ) as HTMLElement[];
           if (triggers.length < 2) return 'no-theme-select';
           triggers[1].click();
-          const listbox = document.getElementById('dz-select-listbox');
+          const listbox = document.querySelector('[id^="dz-select-listbox-"]');
           if (!listbox) return 'no-listbox';
           const option = Array.from(listbox.children).find((el) =>
             (el.textContent ?? '').includes(themeLabel),

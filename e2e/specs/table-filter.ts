@@ -237,7 +237,7 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
       const lastCol = colTriggers[colTriggers.length - 1] as HTMLElement | undefined;
       if (!lastCol) throw new Error('column trigger missing');
       lastCol.click();
-      const list = document.getElementById('dz-select-listbox');
+      const list = document.querySelector('[id^="dz-select-listbox-"]');
       const score = Array.from(list?.children ?? []).find((el) =>
         (el.textContent || '').includes('score'),
       );

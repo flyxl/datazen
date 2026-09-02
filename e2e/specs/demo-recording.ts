@@ -82,7 +82,7 @@ async function setEditorContent(text: string) {
       browser.execute(
         () =>
           document.activeElement?.closest('.cm-editor .cm-content') != null &&
-          document.getElementById('dz-select-listbox') == null,
+          document.querySelector('[id^="dz-select-listbox-"]') == null,
       ),
     { timeout: 2000, timeoutMsg: 'editor focus/selector cleanup did not settle' },
   );

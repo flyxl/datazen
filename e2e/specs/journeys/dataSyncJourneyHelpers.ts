@@ -618,12 +618,12 @@ export async function runUnsupportedPairHintBranch(
   });
   await browser.waitUntil(
     async () => {
-      const list = await $('#dz-select-listbox');
+      const list = await $('[id^="dz-select-listbox-"]');
       return list.isDisplayed().catch(() => false);
     },
     { timeout: 5000, timeoutMsg: 'target listbox did not open' },
   );
-  const listText = await $('#dz-select-listbox').getText();
+  const listText = await $('[id^="dz-select-listbox-"]').getText();
   expect(listText).toContain(foreignTargetName);
   expect(listText).toContain(t('common.unsupportedPair'));
   await captureStep(`${f.screenshotPrefix}-11-unsupported-pair-hint`);

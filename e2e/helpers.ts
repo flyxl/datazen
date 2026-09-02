@@ -98,11 +98,22 @@ export async function closeNewConnectionDialogFromUi() {
 
 /** Expand the new-connection dialog Advanced Settings section if collapsed. */
 export async function expandNewConnectionAdvanced() {
-  const ssh = await $('[data-testid="new-conn-ssh-tunnel"]');
-  if (await ssh.isDisplayed().catch(() => false)) return;
   const advBtn = await $('[data-testid="new-conn-advanced-toggle"]');
+  const expanded = await advBtn.getAttribute('aria-expanded').catch(() => null);
+  if (expanded === 'true') return;
   await advBtn.waitForDisplayed({ timeout: 8000 });
   await advBtn.click();
+  await browser.pause(300);
+}
+
+/** Expand the SSH tunnel section inside Advanced Settings (PostgreSQL/MySQL etc.). */
+export async function expandNewConnectionSshSection() {
+  await expandNewConnectionAdvanced();
+  const sshToggle = await $('[data-testid="new-conn-ssh-toggle"]');
+  const expanded = await sshToggle.getAttribute('aria-expanded').catch(() => null);
+  if (expanded === 'true') return;
+  await sshToggle.waitForDisplayed({ timeout: 8000 });
+  await sshToggle.click();
   await browser.pause(300);
 }
 
@@ -821,7 +832,7 @@ export async function setEditorContent(sql: string) {
       browser.execute(
         () =>
           document.activeElement?.closest('.cm-editor .cm-content') != null &&
-          document.getElementById('dz-select-listbox') == null,
+          document.querySelector('[id^="dz-select-listbox-"]') == null,
       ),
     { timeout: 2000, timeoutMsg: 'editor did not receive focus or a selector stayed open' },
   );
@@ -1418,7 +1429,10 @@ export async function waitForEditInput() {
   return $('input.font-mono');
 }
 
-// ── Host Select (dz-select-listbox) ──────────────────────────────────
+// ── Host Select (dz-select-listbox-<id>) ─────────────────────────────
+
+/** CSS selector for an open Host Select listbox (React useId suffix). */
+export const SELECT_LISTBOX_SELECTOR = '[id^="dz-select-listbox-"]';
 
 /** Open a Host Select by matching the trigger's visible label, then pick an option. */
 export async function selectDzOption(triggerLabel: string, optionLabel: string) {
@@ -1431,12 +1445,13 @@ export async function selectDzOption(triggerLabel: string, optionLabel: string) 
   }, triggerLabel);
 
   await browser.waitUntil(
-    async () => browser.execute(() => Boolean(document.getElementById('dz-select-listbox'))),
+    async () =>
+      browser.execute(() => Boolean(document.querySelector('[id^="dz-select-listbox-"]'))),
     { timeout: 5000, timeoutMsg: `Select listbox did not open for trigger: ${triggerLabel}` },
   );
 
   await browser.execute((option: string) => {
-    const list = document.getElementById('dz-select-listbox');
+    const list = document.querySelector('[id^="dz-select-listbox-"]');
     if (!list) throw new Error('dz-select-listbox not open');
     const item = Array.from(list.children).find((el) => (el.textContent || '').includes(option));
     if (!item) throw new Error(`Select option not found: ${option}`);
@@ -1458,12 +1473,13 @@ export async function selectDzOptionInWrap(wrapTestId: string, optionLabel: stri
       }, wrapTestId);
 
       await browser.waitUntil(
-        async () => browser.execute(() => Boolean(document.getElementById('dz-select-listbox'))),
+        async () =>
+          browser.execute(() => Boolean(document.querySelector('[id^="dz-select-listbox-"]'))),
         { timeout: 5000, timeoutMsg: `Select listbox did not open in ${wrapTestId}` },
       );
 
       await browser.execute((option: string) => {
-        const list = document.getElementById('dz-select-listbox');
+        const list = document.querySelector('[id^="dz-select-listbox-"]');
         if (!list) throw new Error('dz-select-listbox not open');
         const item = Array.from(list.children).find((el) =>
           (el.textContent || '').includes(option),

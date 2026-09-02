@@ -27,16 +27,15 @@ describe('Driver Command IPC', () => {
     if (conns.length === 0) {
       return;
     }
-    // Persisted connection id → get_connection_commands contract slot.
     const connectionId = conns[0].id;
+    const dbSessionId = await invokeBackend<string>('connect', { connectionId });
     const definitions = await invokeBackend<{ id: string }[]>('get_connection_commands', {
-      connectionId,
+      dbSessionId,
     });
     expect(definitions.some((d) => d.id === 'query')).toBe(true);
 
     // Runtime db session id → execute_driver_command contract slot
     // (do not rely on the backend resolve_session dual-mode fallback).
-    const dbSessionId = await invokeBackend<string>('connect', { connectionId });
     const result = await invokeBackend<{ data: unknown }>('execute_driver_command', {
       request: {
         dbSessionId,
