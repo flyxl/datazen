@@ -254,7 +254,7 @@ fn redact_plain_text(value: &str) -> String {
     redact_sensitive_assignments(&query_redacted)
 }
 
-fn sanitize_json(value: Value, depth: usize) -> Value {
+fn sanitize_json(value: Value, depth: usize, strict_egress: bool) -> Value {
     if depth >= MAX_JSON_DEPTH && value.is_object() {
         return Value::String("[truncated]".into());
     }
@@ -265,16 +265,16 @@ fn sanitize_json(value: Value, depth: usize) -> Value {
             values
                 .into_iter()
                 .take(MAX_JSON_ARRAY_ITEMS)
-                .map(|value| sanitize_json(value, depth + 1))
+                .map(|value| sanitize_json(value, depth + 1, strict_egress))
                 .collect(),
         ),
         Value::Object(values) => {
             let mut sanitized = Map::new();
             for (key, value) in values.into_iter().take(MAX_JSON_OBJECT_KEYS) {
-                if is_sensitive_key(&key) || is_result_key(&key) {
+                if is_sensitive_key(&key) || (strict_egress && is_result_key(&key)) {
                     continue;
                 }
-                sanitized.insert(key, sanitize_json(value, depth + 1));
+                sanitized.insert(key, sanitize_json(value, depth + 1, strict_egress));
             }
             Value::Object(sanitized)
         }
@@ -282,7 +282,7 @@ fn sanitize_json(value: Value, depth: usize) -> Value {
     }
 }
 
-fn redact_json_text(value: &str) -> Option<String> {
+fn redact_json_text(value: &str, strict_egress: bool) -> Option<String> {
     let trimmed = value.trim();
     if !((trimmed.starts_with('{') && trimmed.ends_with('}'))
         || (trimmed.starts_with('[') && trimmed.ends_with(']'))
@@ -293,7 +293,9 @@ fn redact_json_text(value: &str) -> Option<String> {
 
     serde_json::from_str::<Value>(trimmed)
         .ok()
-        .and_then(|parsed| serde_json::to_string(&sanitize_json(parsed, 0)).ok())
+        .and_then(|parsed| {
+            serde_json::to_string(&sanitize_json(parsed, 0, strict_egress)).ok()
+        })
 }
 
 fn truncate_to_bytes(value: String) -> String {
@@ -307,14 +309,62 @@ fn truncate_to_bytes(value: String) -> String {
     value[..end].to_string()
 }
 
-/// Return bounded prompt text with obvious secret-bearing fields removed.
+/// Return bounded prompt text with credentials removed and, by default, result rows stripped.
 pub(crate) fn redact_for_ai(value: &str) -> String {
-    truncate_to_bytes(redact_json_text(value).unwrap_or_else(|| redact_plain_text(value)))
+    redact_for_egress(value, true)
+}
+
+/// Sanitize caller-provided text before it becomes AI prompt content.
+///
+/// Credentials are always redacted. When `strict_egress` is true (the default), structured
+/// query result / payload fields are removed as well.
+pub(crate) fn redact_for_egress(value: &str, strict_egress: bool) -> String {
+    truncate_to_bytes(
+        redact_json_text(value, strict_egress).unwrap_or_else(|| redact_plain_text(value)),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn redacts_sensitive_key_assignments() {
+        for (input, secret) in [
+            ("password=db-secret", "db-secret"),
+            ("apiKey=sk-live-123", "sk-live-123"),
+            ("Authorization: Bearer bearer-secret", "bearer-secret"),
+        ] {
+            let output = redact_for_ai(input);
+            assert!(!output.contains(secret), "{output}");
+            assert!(output.contains("[REDACTED]"), "{output}");
+        }
+
+        let json_output = redact_for_ai("{\"clientSecret\":\"top-secret\"}");
+        assert!(!json_output.contains("top-secret"), "{json_output}");
+        assert_eq!(json_output, "{}");
+    }
+
+    #[test]
+    fn redacts_uri_credentials_and_query_secrets() {
+        let input = "url=mysql://user:uri-secret@db.example/app?token=query-secret&api_key=key-secret";
+        let output = redact_for_ai(input);
+        for secret in ["uri-secret", "query-secret", "key-secret"] {
+            assert!(!output.contains(secret), "{output}");
+        }
+        assert!(output.contains("mysql://[REDACTED]@db.example/app"), "{output}");
+    }
+
+    #[test]
+    fn redacts_bearer_tokens_case_insensitively() {
+        let output = redact_for_ai("Authorization: bearer abc.def.ghi");
+        assert!(!output.contains("abc.def.ghi"), "{output}");
+        assert!(output.contains("[REDACTED]"), "{output}");
+
+        let standalone = redact_for_ai("prefix bearer abc.def.ghi");
+        assert!(!standalone.contains("abc.def.ghi"), "{standalone}");
+        assert!(standalone.contains("bearer [REDACTED]"), "{standalone}");
+    }
 
     #[test]
     fn redacts_sensitive_assignments_and_connection_credentials() {
@@ -336,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn removes_nested_json_secrets_and_result_rows() {
+    fn removes_nested_json_secrets_and_result_rows_in_strict_mode() {
         let input = serde_json::json!({
             "apiToken": "API_TOKEN_HEAD\"TAIL\\END",
             "nested": {"password": "PASSWORD_SECRET", "safe": "keep"},
@@ -356,6 +406,23 @@ mod tests {
         ] {
             assert!(!output.contains(secret), "{output}");
         }
+    }
+
+    #[test]
+    fn relaxed_egress_keeps_result_rows_but_still_redacts_secrets() {
+        let input = serde_json::json!({
+            "password": "PASSWORD_SECRET",
+            "rows": [{"email": "user@example.test"}],
+        })
+        .to_string();
+        let output = redact_for_egress(&input, false);
+        let parsed: Value = serde_json::from_str(&output).expect("safe JSON");
+
+        assert_eq!(
+            parsed,
+            serde_json::json!({"rows": [{"email": "user@example.test"}]})
+        );
+        assert!(!output.contains("PASSWORD_SECRET"), "{output}");
     }
 
     #[test]

@@ -9,7 +9,8 @@ import { useI18n } from '../../hooks/useI18n';
 import { settingsCommands } from '../../commands/settings';
 import { isKnownProviderType } from '../../lib/aiProviders';
 import type { AiProviderConfig, AiProviderType } from '../../types';
-import { SectionTitle, SettingRow } from './settingsUi';
+import { SectionTitle, SettingRow, ToggleRow } from './settingsUi';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
 function ContextDirSetting() {
   const { t } = useI18n();
@@ -65,6 +66,9 @@ function ContextDirSetting() {
 
 export function AiSettingsSection() {
   const { t } = useI18n();
+  const settings = useSettingsStore((s) => s.settings);
+  const updateSettings = useSettingsStore((s) => s.updateSettings);
+  const [confirmRelaxedEgress, confirmRelaxedEgressDialog] = useConfirmDialog();
   const {
     config,
     isConfigured,
@@ -330,6 +334,25 @@ export function AiSettingsSection() {
 
       {configError && <p className="text-xs text-red-500">{configError}</p>}
 
+      <ToggleRow
+        label={t('settings.ai.strictEgress')}
+        hint={t('settings.ai.strictEgressHint')}
+        checked={settings.aiStrictEgress !== false}
+        onChange={(enabled) => {
+          void (async () => {
+            if (!enabled && settings.aiStrictEgress) {
+              const ok = await confirmRelaxedEgress({
+                title: t('settings.ai.strictEgressDisableTitle'),
+                message: t('settings.ai.strictEgressDisableMessage'),
+                kind: 'warning',
+              });
+              if (!ok) return;
+            }
+            await updateSettings({ ...settings, aiStrictEgress: enabled });
+          })();
+        }}
+      />
+
       <div className="flex items-center gap-3">
         <Button variant="secondary" onClick={() => void handleValidate()} disabled={validating}>
           {validating
@@ -360,6 +383,7 @@ export function AiSettingsSection() {
         <ContextDirSetting />
       </SettingRow>
       <p className="text-xs text-fg-muted">{t('context.dirSettingDesc')}</p>
+      {confirmRelaxedEgressDialog}
     </>
   );
 }

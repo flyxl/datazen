@@ -14,6 +14,12 @@ const pack = {
   'chat.reasoning': 'Thinking',
   'chat.questions.customAnswer': 'Type a custom answer…',
   'chat.questions.submit': 'Submit Answers',
+  'chat.egressNotice':
+    'Content you send may leave this device and be processed by your configured AI provider.',
+  'chat.egressNoticeRelaxed':
+    'Strict egress is off — query results, attached files, and tool outputs may be sent to your AI provider.',
+  'chat.egressNoticeContext':
+    'Attached @ context will be included in the request sent to your AI provider.',
   'context.title': 'AI Context',
   'context.tables': 'Tables',
   'context.files': 'Files',

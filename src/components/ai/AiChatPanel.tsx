@@ -20,6 +20,7 @@ import { cn } from '../../lib/cn';
 import { openDocsWindow, openSettingsWindow } from '../../lib/windowManager';
 import { WorkflowPanel } from './WorkflowPanel';
 import { splitContextItems } from '../../lib/contextItems';
+import { AiEgressNotice } from './AiEgressNotice';
 import type { AiChatMessage, AiQuestion, ContextItem } from '../../types';
 
 interface AiChatPanelProps {
@@ -216,6 +217,9 @@ export function AiChatPanel({ dbSessionId, database, sqlDialect, onInsertSql }: 
 
           {/* Input */}
           <div className="shrink-0 border-t border-edge p-2">
+            <div className="mb-2">
+              <AiEgressNotice contextItems={contextItems} />
+            </div>
             <AiInput
               value={input}
               onChange={setInput}
