@@ -11,9 +11,9 @@
 
 ## 状态
 
-- Phase: READY_FOR_TEST
+- Phase: PASSED
 - 编码 commit: 6fc0c65ca
-- 测试 commit: —
+- 测试 commit: 936243d13
 
 ## 设计决策
 
@@ -25,7 +25,11 @@
 
 | 套件 | 结果 | 备注 |
 |------|------|------|
-| cargo test -p datazen --lib | 1243 passed; 0 failed; 2 ignored | CARGO_TARGET_DIR=target/cargo-wt |
+| lib.rs 行数 | 56 行 | app_menu.rs 629 / bootstrap.rs 850 |
+| cargo test -p datazen --lib | 1243 passed; 0 failed; 2 ignored | 独立复验 2026-09-03 |
+| cargo test app_menu | 11 passed; 0 failed | 菜单映射/标签/单次注册 |
+| cargo test bootstrap | 16 passed; 0 failed | 启动/MCP/AppState/IPC 契约 |
+| npx vitest run pathIpcWiring | 8 passed; 0 failed | 859ms |
 
 ## E2E 用例登记
 
