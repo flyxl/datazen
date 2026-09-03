@@ -63,6 +63,7 @@ import { useQueryExec } from '../../hooks/useQueryExec';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
+import { usePlatform } from '../../hooks/usePlatform';
 import { useResizable } from '../../hooks/useResizable';
 import { useCompactToolbar } from '../../hooks/useCompactToolbar';
 import { queryToolbarExpandedMinWidth } from './queryToolbarWidth';
@@ -242,6 +243,9 @@ export function QueryPanel({
   namespacePath: panelNamespacePath,
 }: QueryPanelProps) {
   const { t } = useI18n();
+  const platform = usePlatform();
+  const isMac = platform === 'macos';
+  const executeShortcutLabel = isMac ? '⌘ Enter' : 'Ctrl+Enter';
   const [confirmRetry, confirmRetryDialog] = useConfirmDialog();
   const [confirmDangerous, confirmDangerousDialog] = useConfirmDialog();
   const exec = useQueryExec(panelId);
@@ -1082,6 +1086,7 @@ export function QueryPanel({
               compact={compactToolbar}
               variant="run"
               label={t('query.execute')}
+              title={`${t('query.execute')} (${executeShortcutLabel})`}
               icon={<Loader2 className="h-3.5 w-3.5 animate-spin" />}
               onClick={handleExecute}
               disabled
@@ -1093,6 +1098,7 @@ export function QueryPanel({
             compact={compactToolbar}
             variant="run"
             label={t('query.execute')}
+            title={`${t('query.execute')} (${executeShortcutLabel})`}
             icon={
               exec.running ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1229,6 +1235,8 @@ export function QueryPanel({
               onChange={(v) => updateSql(panelId, v)}
               onExecute={handleExecute}
               onExecuteSelection={handleExecuteSelection}
+              onExecuteAll={handleExecute}
+              onSaveQuery={() => openAddFavoriteDialog(exec.sql)}
               onContextMenu={handleEditorContextMenu}
               onQualifiedPath={handleQualifiedPath}
               placeholder={t('query.placeholder')}

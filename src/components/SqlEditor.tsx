@@ -27,6 +27,7 @@ import { t } from '../locales/t';
 import type { SqlNamespace } from '../lib/sqlNamespace';
 import type { DatabaseType } from '../types';
 import { toggleSqlLineComments } from '../lib/sqlEditorContextMenu';
+import { getStatementAtCursor } from '../lib/sqlStatementRange';
 
 interface ThemeConfig {
   dark: boolean;
@@ -176,6 +177,10 @@ interface SqlEditorProps {
   onChange: (value: string) => void;
   onExecute?: () => void;
   onExecuteSelection?: (sql: string) => void;
+  /** Execute all statements in the query (Cmd/Ctrl + Shift + Enter). */
+  onExecuteAll?: () => void;
+  /** Save query (Cmd/Ctrl + S). */
+  onSaveQuery?: () => void;
   onContextMenu?: (e: MouseEvent, selectedSql: string) => void;
   onQualifiedPath?: (parents: string[]) => void;
   placeholder?: string;
@@ -202,6 +207,8 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     onChange,
     onExecute,
     onExecuteSelection,
+    onExecuteAll,
+    onSaveQuery,
     onContextMenu: onCtxMenu,
     onQualifiedPath,
     placeholder,
@@ -222,6 +229,8 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   const onChangeRef = useRef(onChange);
   const onExecuteRef = useRef(onExecute);
   const onExecuteSelectionRef = useRef(onExecuteSelection);
+  const onExecuteAllRef = useRef(onExecuteAll);
+  const onSaveQueryRef = useRef(onSaveQuery);
   const onCtxMenuRef = useRef(onCtxMenu);
   const onQualifiedPathRef = useRef(onQualifiedPath);
   const onDropTableRef = useRef(onDropTable);
@@ -233,6 +242,8 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   onChangeRef.current = onChange;
   onExecuteRef.current = onExecute;
   onExecuteSelectionRef.current = onExecuteSelection;
+  onExecuteAllRef.current = onExecuteAll;
+  onSaveQueryRef.current = onSaveQuery;
   onCtxMenuRef.current = onCtxMenu;
   onQualifiedPathRef.current = onQualifiedPath;
   onDropTableRef.current = onDropTable;
@@ -321,8 +332,32 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
               if (sel.trim()) {
                 onExecuteSelectionRef.current?.(sel);
               } else {
+                const docText = view.state.doc.toString();
+                const stmt = getStatementAtCursor(docText, view.state.selection.main.head);
+                if (stmt) {
+                  onExecuteSelectionRef.current?.(stmt);
+                } else {
+                  onExecuteRef.current?.();
+                }
+              }
+              return true;
+            },
+          },
+          {
+            key: 'Mod-Shift-Enter',
+            run: () => {
+              if (onExecuteAllRef.current) {
+                onExecuteAllRef.current();
+              } else {
                 onExecuteRef.current?.();
               }
+              return true;
+            },
+          },
+          {
+            key: 'Mod-s',
+            run: () => {
+              onSaveQueryRef.current?.();
               return true;
             },
           },
