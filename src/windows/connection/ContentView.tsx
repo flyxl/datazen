@@ -55,6 +55,7 @@ import { CreateUserDialog } from './CreateUserDialog';
 import { ExecuteSqlFileDialog } from './ExecuteSqlFileDialog';
 import { ConnectionWorkspaceHome } from './ConnectionWorkspaceHome';
 import { openNewConnectionDialog } from '../../lib/windowManager';
+import { openConnectionShareDialog } from '../../lib/connectionShare';
 
 export interface ContentViewProps {
   selectTableRef?: MutableRefObject<
@@ -715,6 +716,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
               connectingName={connectingName}
               connectingDbType={connectingDbType}
               onNewConnection={() => openNewConnectionDialog()}
+              onImportConnections={() => openConnectionShareDialog('import')}
               onNewQuery={() => handlers.handleNewQuery()}
               onCreateTable={handlers.handleCreateTable}
               onOpenErDiagram={() => handlers.handleOpenErDiagram()}
