@@ -598,21 +598,21 @@ mod tests {
             .iter()
             .any(|r| matches!(r, super::super::types::PlanRequirement::Unsupported { .. })));
     }
-}
 
-#[test]
-fn unsupported_driver_operation_becomes_requirement() {
-    let src = schema(vec![col("id", "int")]);
-    let mut target = src.clone();
-    target.columns[0].data_type = "json".into();
-    let plan = build_schema_diff_plan(
-        &[("users".into(), src, target)],
-        "postgresql",
-        "postgresql",
-        PlanOptions::default(),
-    );
-    assert!(plan
-        .requirements
-        .iter()
-        .any(|r| matches!(r, super::super::types::PlanRequirement::Unsupported { .. })));
+    #[test]
+    fn unsupported_driver_operation_becomes_requirement() {
+        let src = schema(vec![col("id", "int")]);
+        let mut target = src.clone();
+        target.columns[0].data_type = "json".into();
+        let plan = build_schema_diff_plan(
+            &[("users".into(), src, target)],
+            "postgresql",
+            "postgresql",
+            PlanOptions::default(),
+        );
+        assert!(plan
+            .requirements
+            .iter()
+            .any(|r| matches!(r, super::super::types::PlanRequirement::Unsupported { .. })));
+    }
 }
