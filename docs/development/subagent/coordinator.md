@@ -42,6 +42,23 @@ scripts/new-feature-worktree.sh <track-id> <base-branch>
 - **某个 Coder 返回 `READY_FOR_TEST` 后，协调者必须立即为该轨启动 Tester**，无需等待同 Wave 其他 Coder 完成。若多个 Coder 同时返回，对应 Tester 也必须在同一条消息中并行派发。
 - Tester 与仍在运行的 Coder 可以共存——各自在独立 worktree 中工作，互不干扰。
 
+### 3.2 Bug 修复循环
+
+当 Tester 返回 `TEST_FAILED` 并在 `bugs.md` 登记了 Bug 时，协调者必须立即启动修复循环：
+
+```text
+Tester 发现 Bug → bugs.md 登记 → 协调者立即派发 Coder 修复
+→ Coder 修复并提交 → 协调者立即派发全新 Tester 复测
+→ 通过 → 闭环 / 不通过 → 回到循环起点
+```
+
+**规则**：
+1. **即时响应**：Tester 报告 Bug 后，协调者**立即**派发修复 Coder（不等其他轨道）。
+2. **全新实例**：每轮修复和复测都使用全新子代理实例（不复用前轮）。
+3. **最大 5 轮**：同一 Bug 超过 5 轮修复-复测循环仍未修复，标记 `ESCALATED` 上报用户。
+4. **Bug 状态流转**：`待修复` → `修复中` → `待复测` → `已修复` 或回到 `待修复`。
+5. **修复 Coder 简报**：必须包含 Bug ID、详细描述、重现步骤、实测日志，以及"仅修复该 Bug"的纪律约束。
+
 ## 4. 活性监控与死亡恢复
 
 ### 4.1 活性判定依据（用墙钟时间，看真实证据）

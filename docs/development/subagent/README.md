@@ -17,9 +17,9 @@
 ```text
 [功能循环]
 编码(+单测) → commit → 测试(审查+复验+新增测试) ─┬→ 通过 → 功能「已完成」→ commit (TEST_DONE)
-                                                └→ 不通过 → bug 登记「待验证」→ 协调者置「验证不通过」+commit
-                                                          → 修复代理修复 → 「待验证」+commit
-                                                          → 全新测试代理复验 → 通过：「已修复」+功能「已完成」+commit
+                                                └→ Bug → 立即派发修复 Coder → 修复提交
+                                                       → 立即派发全新 Tester 复测 ─┬→ 通过 → 闭环
+                                                                                   └→ 不通过 → 循环（最多5轮，超限 ESCALATED 上报用户）
 
 [阶段状态机]
 DISPATCHED → BOOTSTRAP → CODING → READY_FOR_TEST ─┬→ TESTING → PASSED → READY_TO_MERGE → MERGED → CLEANUP → CLOSED

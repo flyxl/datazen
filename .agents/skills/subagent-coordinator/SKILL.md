@@ -53,6 +53,23 @@ scripts/new-feature-worktree.sh <track-id> <base-branch>
   3. **设计 E2E 测试用例**——在 progress.md 登记或直接编写可执行的 E2E 测试。
 - 测试代理只测不修。若出现缺陷，只在 `tracks/<track-id>/bugs.md` 登记；全部通过后才置 `TEST_DONE`。
 
+### 4.1 Bug 修复循环（Tester 发现 Bug 后的闭环流程）
+当 Tester 返回 `TEST_FAILED` 并在 `bugs.md` 登记了 Bug 时，协调者必须立即启动**修复循环**：
+
+```text
+[Bug 修复循环]
+Tester 发现 Bug → 登记 bugs.md → 协调者立即派发 Coder 修复
+→ Coder 修复并提交 → 协调者立即派发全新 Tester 复测
+→ 通过 → 闭环 / 不通过 → 回到循环起点
+```
+
+**硬性规则**：
+1. **即时响应**：Tester 报告 Bug 后，协调者必须**立即**派发修复 Coder（不等其他轨道）。
+2. **全新实例**：每轮修复和复测都使用**全新子代理实例**（Coder 和 Tester 均不复用前轮实例）。
+3. **最大循环次数**：同一个 Bug 最多允许 **5 轮修复-复测循环**。超过 5 轮仍未修复，协调者须将该 Bug 标记为 `ESCALATED` 并向用户汇报，由用户决定下一步。
+4. **Bug 状态流转**：`待修复` → `修复中`（Coder 接手）→ `待复测`（Coder 提交）→ `已修复`（Tester 通过）或回到 `待修复`（Tester 不通过）。
+5. **修复 Coder 简报**：必须包含 Bug ID、bugs.md 中的详细描述、重现步骤和实测日志，以及"仅修复该 Bug，不做范围外改动"的纪律约束。
+
 ### 5. 活性监控与断点恢复
 - 编码代理给予 20 分钟纯探索宽限期。
 - 依据 `git -C <worktree> status --short`、系统进程和构建产物 mtime 判定活性。
