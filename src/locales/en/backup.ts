@@ -1,0 +1,28 @@
+/** Auto-split domain: backup (en) */
+const pack = {
+  'backup.startRestore': 'Start Restore',
+  'backup.restoring': 'Restoring…',
+  'backup.restoreSuccess': 'Restore completed',
+  'backup.fileName': 'File name',
+  'backup.fileNameHint': 'Click to change the file name pattern',
+  'backup.searchConnection': 'Search for connection…',
+  'backup.searchDatabase': 'Search for database…',
+  'backup.selectConnectionFirst': 'Select a connection first',
+  'backup.addOption': 'Add option',
+  'backup.compressGzip': 'Compress file using Gzip',
+  'backup.startBackup': 'Start backup',
+  'backup.inProgress': 'Backing up…',
+  'backup.success': 'Backup completed',
+  'backup.unsupportedType': 'This connection type does not support database backup',
+  'backup.progressPreparing': 'Preparing backup…',
+  'backup.progressObject': 'Dumping {name} ({current}/{total})',
+  'backup.progressWriting': 'Writing backup file…',
+  'backup.restoreOverwriteConfirm': 'Target database “{database}” already has {count} objects. Continuing will drop existing tables/views and then apply the backup. Overwrite?',
+  'backup.restorePreparing': 'Reading backup file…',
+  'backup.restoreProgress': 'Restoring {name} ({current}/{total})',
+  'backup.progressLog': 'Execution log',
+  'backup.copyLog': 'Copy log',
+  'backup.logCopied': 'Copied',
+  'backup.logOmitted': '… {count} lines omitted …',
+} as const;
+export default pack;

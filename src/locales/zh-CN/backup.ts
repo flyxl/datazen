@@ -1,0 +1,28 @@
+/** Auto-split domain: backup (zh-CN) */
+const pack = {
+  'backup.startRestore': '开始恢复',
+  'backup.restoring': '恢复中…',
+  'backup.restoreSuccess': '恢复成功',
+  'backup.fileName': '文件名',
+  'backup.fileNameHint': '点击可修改文件名模式',
+  'backup.searchConnection': '搜索连接…',
+  'backup.searchDatabase': '搜索数据库…',
+  'backup.selectConnectionFirst': '请先选择连接',
+  'backup.addOption': '添加选项',
+  'backup.compressGzip': '使用 Gzip 压缩',
+  'backup.startBackup': '开始备份',
+  'backup.inProgress': '备份中…',
+  'backup.success': '备份成功',
+  'backup.unsupportedType': '该连接类型不支持数据库备份',
+  'backup.progressPreparing': '正在准备备份…',
+  'backup.progressObject': '正在导出 {name}（{current}/{total}）',
+  'backup.progressWriting': '正在写入备份文件…',
+  'backup.restoreOverwriteConfirm': '目标数据库「{database}」已有 {count} 个对象。继续将先删除现有表/视图，再写入备份内容。是否覆盖？',
+  'backup.restorePreparing': '正在读取备份文件…',
+  'backup.restoreProgress': '正在恢复 {name}（{current}/{total}）',
+  'backup.progressLog': '执行日志',
+  'backup.copyLog': '复制日志',
+  'backup.logCopied': '已复制',
+  'backup.logOmitted': '… 已省略 {count} 行 …',
+} as const;
+export default pack;
