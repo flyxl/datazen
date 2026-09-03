@@ -96,6 +96,7 @@ const pack = {
   'newConn.advanced': 'Advanced Settings',
   'newConn.readOnly': 'Read-only connection',
   'newConn.readOnlyHint': 'Reject inserts, updates, deletes, and DDL on this connection',
+  'newConn.driverReadOnlyLocked': 'Locked: this database driver is read-only',
   'newConn.sshTunnel': 'Connect via SSH Tunnel',
   'newConn.authMethod': 'Auth Method',
   'newConn.authPassword': 'Password',

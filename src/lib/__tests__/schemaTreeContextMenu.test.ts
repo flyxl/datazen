@@ -84,6 +84,53 @@ describe('buildSchemaTreeContextMenuItems', () => {
     expect(onOpen).toHaveBeenCalledOnce();
   });
 
+  it('builds table menu with generate-sql submenu when handlers are provided', () => {
+    const onGenerateSelect = vi.fn();
+    const onGenerateInsert = vi.fn();
+    const onGenerateUpdate = vi.fn();
+    const onGenerateDelete = vi.fn();
+    const onGenerateDdl = vi.fn();
+
+    const items = buildSchemaTreeContextMenuItems({
+      kind: 'table',
+      labels: {
+        ...labels,
+        generateSql: 'Generate SQL',
+        generateSelect: 'SELECT',
+        generateInsert: 'INSERT',
+        generateUpdate: 'UPDATE',
+        generateDelete: 'DELETE',
+        generateDdl: 'DDL',
+      },
+      handlers: {
+        onOpen: vi.fn(),
+        onGenerateSelect,
+        onGenerateInsert,
+        onGenerateUpdate,
+        onGenerateDelete,
+        onGenerateDdl,
+      },
+    });
+
+    const submenu = items.find((i) => i.kind === 'submenu' && i.id === 'generate-sql');
+    expect(submenu).toBeDefined();
+    if (submenu && submenu.kind === 'submenu') {
+      expect(submenu.label).toBe('Generate SQL');
+      expect(submenu.items.map((sub) => (sub.kind === 'item' ? sub.id : ''))).toEqual([
+        'generate-select',
+        'generate-insert',
+        'generate-update',
+        'generate-delete',
+        'generate-ddl',
+      ]);
+      const selectItem = submenu.items[0];
+      if (selectItem && selectItem.kind === 'item') {
+        selectItem.action();
+        expect(onGenerateSelect).toHaveBeenCalledOnce();
+      }
+    }
+  });
+
   it('hides import / truncate / drop on table when readOnly', () => {
     const items = buildSchemaTreeContextMenuItems({
       kind: 'table',

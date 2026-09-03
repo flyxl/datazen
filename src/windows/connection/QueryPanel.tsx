@@ -25,7 +25,10 @@ import { Button } from '../../components/ui/Button';
 import { ToolbarShell } from '../../components/ui/ToolbarShell';
 import { ToolbarButton } from '../../components/ui/ToolbarButton';
 import { SqlEditor } from '../../components/SqlEditor';
-import type { SqlEditorHandle } from '../../components/SqlEditor';
+import type { SqlEditorHandle, DroppedTablePayload } from '../../components/SqlEditor';
+import { databaseCommands } from '../../commands/database';
+import { generateTableSql, formatTableIdentifier } from '../../lib/sqlGenerator';
+import type { TableSchema } from '../../types';
 import { buildEditorSchema } from '../../lib/buildEditorSchema';
 import { tid } from '../../lib/tid';
 import { findGroupForDatabase, groupQueryHistory } from '../../lib/historyGroups';
@@ -60,6 +63,7 @@ import { useQueryExec } from '../../hooks/useQueryExec';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
+import { usePlatform } from '../../hooks/usePlatform';
 import { useResizable } from '../../hooks/useResizable';
 import { useCompactToolbar } from '../../hooks/useCompactToolbar';
 import { queryToolbarExpandedMinWidth } from './queryToolbarWidth';
@@ -239,6 +243,9 @@ export function QueryPanel({
   namespacePath: panelNamespacePath,
 }: QueryPanelProps) {
   const { t } = useI18n();
+  const platform = usePlatform();
+  const isMac = platform === 'macos';
+  const executeShortcutLabel = isMac ? '⌘ Enter' : 'Ctrl+Enter';
   const [confirmRetry, confirmRetryDialog] = useConfirmDialog();
   const [confirmDangerous, confirmDangerousDialog] = useConfirmDialog();
   const exec = useQueryExec(panelId);
@@ -872,6 +879,58 @@ export function QueryPanel({
     [openAddFavoriteDialog, t, handleExecute, handleExecuteSelection, handleFormat],
   );
 
+  const handleDropTable = useCallback(
+    async (payload: DroppedTablePayload, pos: number | null) => {
+      const dbType = databaseType || 'sqlite';
+      const targetSessionId = dbSessionId || connectionId;
+      const generatedSqls: string[] = [];
+
+      for (const t of payload.tables) {
+        try {
+          const tableRef = t.schema ? `${t.schema}.${t.tableName}` : t.tableName;
+          const schema = await databaseCommands.getTableSchema(targetSessionId, tableRef);
+          const sql = generateTableSql(schema, 'select', dbType, { schemaPrefix: t.schema });
+          generatedSqls.push(sql);
+        } catch {
+          try {
+            const tableRef = t.schema ? `${t.schema}.${t.tableName}` : t.tableName;
+            const colNames = await databaseCommands.getColumns(targetSessionId, tableRef);
+            if (colNames && colNames.length > 0) {
+              const pseudoSchema: TableSchema = {
+                tableName: t.tableName,
+                columns: colNames.map((c) => ({
+                  name: c,
+                  dataType: '',
+                  nullable: true,
+                })),
+                primaryKeys: [],
+                indexes: [],
+                foreignKeys: [],
+              };
+              generatedSqls.push(
+                generateTableSql(pseudoSchema, 'select', dbType, { schemaPrefix: t.schema }),
+              );
+            } else {
+              generatedSqls.push(
+                `SELECT *\nFROM ${formatTableIdentifier(t.tableName, dbType, t.schema)};`,
+              );
+            }
+          } catch {
+            generatedSqls.push(
+              `SELECT *\nFROM ${formatTableIdentifier(t.tableName, dbType, t.schema)};`,
+            );
+          }
+        }
+      }
+
+      const combinedGenerated = generatedSqls.join('\n\n');
+      if (!combinedGenerated) return;
+
+      editorRef.current?.insertAt(combinedGenerated, pos);
+    },
+    [connectionId, databaseType, dbSessionId],
+  );
+
   const copySqlToClipboard = useCallback((sql: string) => {
     void navigator.clipboard.writeText(sql);
   }, []);
@@ -1027,6 +1086,7 @@ export function QueryPanel({
               compact={compactToolbar}
               variant="run"
               label={t('query.execute')}
+              title={`${t('query.execute')} (${executeShortcutLabel})`}
               icon={<Loader2 className="h-3.5 w-3.5 animate-spin" />}
               onClick={handleExecute}
               disabled
@@ -1038,6 +1098,7 @@ export function QueryPanel({
             compact={compactToolbar}
             variant="run"
             label={t('query.execute')}
+            title={`${t('query.execute')} (${executeShortcutLabel})`}
             icon={
               exec.running ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1174,6 +1235,8 @@ export function QueryPanel({
               onChange={(v) => updateSql(panelId, v)}
               onExecute={handleExecute}
               onExecuteSelection={handleExecuteSelection}
+              onExecuteAll={handleExecute}
+              onSaveQuery={() => openAddFavoriteDialog(exec.sql)}
               onContextMenu={handleEditorContextMenu}
               onQualifiedPath={handleQualifiedPath}
               placeholder={t('query.placeholder')}
@@ -1182,6 +1245,7 @@ export function QueryPanel({
               namespaceLoading={namespaceLoading}
               defaultSchema={editorDefaultSchema}
               defaultTable={editorDefaultTable}
+              onDropTable={handleDropTable}
             />
           </div>
           <div

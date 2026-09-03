@@ -44,6 +44,12 @@ export type SchemaTreeContextMenuLabels = {
   compareData: string;
   backup: string;
   restore: string;
+  generateSql?: string;
+  generateSelect?: string;
+  generateInsert?: string;
+  generateUpdate?: string;
+  generateDelete?: string;
+  generateDdl?: string;
 };
 
 export type SchemaTreeContextMenuHandlers = {
@@ -56,6 +62,11 @@ export type SchemaTreeContextMenuHandlers = {
   onImport?: () => void;
   onRefresh?: () => void;
   onNewQuery?: () => void;
+  onGenerateSelect?: () => void;
+  onGenerateInsert?: () => void;
+  onGenerateUpdate?: () => void;
+  onGenerateDelete?: () => void;
+  onGenerateDdl?: () => void;
   onCopyDatabaseName?: () => void;
   onNewTable?: () => void;
   /** Open BatchExportDialog (database / blank / optional table). */
@@ -137,6 +148,34 @@ function migrationToolItems(
   );
 }
 
+function generateSqlSubmenu(
+  labels: SchemaTreeContextMenuLabels,
+  handlers: SchemaTreeContextMenuHandlers,
+): NativeMenuItemDef | null {
+  const hasAny =
+    handlers.onGenerateSelect ||
+    handlers.onGenerateInsert ||
+    handlers.onGenerateUpdate ||
+    handlers.onGenerateDelete ||
+    handlers.onGenerateDdl;
+  if (!hasAny) return null;
+
+  const subItems = push(
+    item('generate-select', labels.generateSelect ?? 'SELECT', handlers.onGenerateSelect),
+    item('generate-insert', labels.generateInsert ?? 'INSERT', handlers.onGenerateInsert),
+    item('generate-update', labels.generateUpdate ?? 'UPDATE', handlers.onGenerateUpdate),
+    item('generate-delete', labels.generateDelete ?? 'DELETE', handlers.onGenerateDelete),
+    item('generate-ddl', labels.generateDdl ?? 'DDL', handlers.onGenerateDdl),
+  );
+  if (subItems.length === 0) return null;
+  return {
+    kind: 'submenu',
+    id: 'generate-sql',
+    label: labels.generateSql ?? 'Generate SQL',
+    items: subItems,
+  };
+}
+
 /**
  * Build native context-menu items for Schema tree nodes (table / view / database / blank).
  * Table order aligns with TablePlus: Open → Structure → New Query → Copy… → Export… → Truncate/Drop.
@@ -177,6 +216,7 @@ export function buildSchemaTreeContextMenuItems(
           ? item('open-structure', labels.openStructure, handlers.onOpenStructure)
           : null,
         showErFocus ? item('focus-er', labels.focusEr, handlers.onFocusEr) : null,
+        generateSqlSubmenu(labels, handlers),
         item('new-query', labels.newQuery, handlers.onNewQuery),
         item('copy-name', labels.copyName, handlers.onCopyName),
         item('copy-ddl', labels.copyDdl, handlers.onCopyDdl),

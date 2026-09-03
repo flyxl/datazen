@@ -85,6 +85,7 @@ const pack = {
   'tableData.pendingUpdates': '{count} 项更新',
   'tableData.pendingDeletes': '{count} 项删除',
   'tableData.safeModeEditDisabled': '安全模式下不能编辑表格单元格。',
+  'tableData.readOnlyEditDisabled': '只读连接或驱动不支持编辑表格数据。',
   'tableData.preview': '预览',
   'tableData.commit': '提交',
   'tableData.rollback': '回滚',
