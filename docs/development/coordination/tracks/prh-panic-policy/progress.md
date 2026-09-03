@@ -11,9 +11,9 @@
 
 ## 状态
 
-- Phase: READY_FOR_TEST
+- Phase: PASSED
 - 编码 commit: 6ef2aee16
-- 测试 commit: —
+- 测试 commit: de430c740
 
 ## 设计决策
 
@@ -29,7 +29,7 @@
 
 | 套件 | 结果 | 备注 |
 |------|------|------|
-| cargo test -p datazen --lib | pass | 1243 passed; 2 ignored |
+| cargo test -p datazen --lib | pass | 1243 passed; 0 failed; 2 ignored (tester 复验) |
 
 ## E2E 用例登记
 
