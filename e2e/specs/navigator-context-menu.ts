@@ -654,6 +654,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       expect(text).toContain(t('schemaTree.openTable'));
       expect(await hasMenuItemId('copy-name')).toBe(true);
       expect(await hasMenuItemId('copy-ddl')).toBe(true);
+      expect(await hasMenuItemId('generate-sql')).toBe(true);
       await dismissMenu();
     });
 
