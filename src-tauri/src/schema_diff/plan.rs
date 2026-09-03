@@ -148,13 +148,6 @@ fn plan_single_table(
     });
 
     let operations = super::dependencies::resolve_dependencies(operations);
-    let Some(renderer) = datazen_driver_api::create_driver(target_dialect) else {
-        requirements.push(super::types::PlanRequirement::Unsupported {
-            operation: table.to_string(),
-            reason: format!("No registered driver for target database: {target_dialect}"),
-        });
-        return;
-    };
     let Some(renderer) = driver.migration_renderer() else {
         requirements.push(super::types::PlanRequirement::Unsupported {
             operation: table.to_string(),
