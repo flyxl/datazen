@@ -2,7 +2,8 @@
 /**
  * Generate src-tauri/resources/menu-labels.json from frontend locale files.
  *
- * Single source of truth: src/locales/*.ts
+ * Single source of truth: src/locales/<locale>/*.ts (or src/locales/<locale>.ts
+ * for locales that have not been split into domain packs).
  * Rust native menus (and popup context menus) consume the generated JSON
  * via include_str! — they cannot import TypeScript at runtime.
  *
@@ -12,7 +13,7 @@
  * Wired into `pnpm build`, `pnpm build:with-drivers`, `pnpm tauri:build`, and `pnpm tauri:dev`.
  */
 
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -96,20 +97,42 @@ function builtinLocales() {
   return entries.map(({ code }) => code).filter((code) => typeof code === 'string' && code);
 }
 
-const LOCALES = builtinLocales().map((code) => ({
-  code,
-  file: `src/locales/${code}.ts`,
-}));
+const LOCALES = builtinLocales().map((code) => ({ code }));
 
 function parseLocaleTs(source) {
   const map = new Map();
-  // Matches: 'key': 'value'  (value may contain …, {param}, escaped \')
-  const re = /'((?:\\'|[^'])*)':\s*'((?:\\'|[^'])*)'/g;
+  // Matches: 'key': 'value' or 'key': "value" with escaped characters.
+  const re = /'((?:\\.|[^'\\])*)':\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')/g;
   let m;
   while ((m = re.exec(source)) !== null) {
-    const key = m[1].replace(/\\'/g, "'");
-    const value = m[2].replace(/\\'/g, "'");
+    const unescape = (value) => value.replace(/\\(['"\\])/g, '$1').replace(/\\n/g, '\n');
+    const key = unescape(m[1]);
+    const value = unescape(m[2] ?? m[3]);
     map.set(key, value);
+  }
+  return map;
+}
+
+function localeSourceFiles(code) {
+  const dir = resolve(ROOT, 'src/locales', code);
+  const domainFiles = existsSync(dir)
+    ? readdirSync(dir, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
+        .map((entry) => resolve(dir, entry.name))
+        .sort()
+    : [];
+
+  return domainFiles.length > 0
+    ? domainFiles
+    : [resolve(ROOT, 'src/locales', `${code}.ts`)];
+}
+
+function parseLocaleFiles(files) {
+  const map = new Map();
+  for (const file of files) {
+    for (const [key, value] of parseLocaleTs(readFileSync(file, 'utf-8'))) {
+      map.set(key, value);
+    }
   }
   return map;
 }
@@ -133,14 +156,11 @@ function buildLang(localeMap, code, fallbackMap) {
   return out;
 }
 
-const enPath = resolve(ROOT, 'src/locales/en.ts');
-const enFallback = parseLocaleTs(readFileSync(enPath, 'utf-8'));
+const enFallback = parseLocaleFiles(localeSourceFiles('en'));
 
 const result = {};
-for (const { code, file } of LOCALES) {
-  const path = resolve(ROOT, file);
-  const source = readFileSync(path, 'utf-8');
-  const localeMap = parseLocaleTs(source);
+for (const { code } of LOCALES) {
+  const localeMap = parseLocaleFiles(localeSourceFiles(code));
   result[code] = buildLang(localeMap, code, enFallback);
 }
 
