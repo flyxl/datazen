@@ -145,6 +145,12 @@ const pack = {
   'settings.ai.endpointHintOpenAiChat': '例如 https://api.openai.com/v1',
   'settings.ai.endpointHintOpenAiResponses': '例如 https://api.openai.com/v1',
   'settings.ai.endpointHintAnthropic': '例如 https://api.anthropic.com',
+  'settings.ai.strictEgress': '严格 AI 出域（推荐）',
+  'settings.ai.strictEgressHint':
+    '开启后，发往 AI 提供商的内容会移除查询结果行与 payload；凭据始终会被脱敏。',
+  'settings.ai.strictEgressDisableTitle': '允许更多数据离开本机？',
+  'settings.ai.strictEgressDisableMessage':
+    '关闭严格出域后，查询结果行、上下文文件与工具输出可能会发送到你配置的 AI 提供商。仅在您接受数据可能离开本机时再关闭。',
   'settings.prompts': 'Prompt 管理',
   'settings.prompts.description':
     '查看和自定义 AI 功能使用的系统 Prompt。每个驱动和场景都可以单独配置。',

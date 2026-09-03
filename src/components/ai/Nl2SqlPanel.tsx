@@ -5,6 +5,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { openSettingsWindow } from '../../lib/windowManager';
 import { AiInput } from './AiInput';
+import { AiEgressNotice } from './AiEgressNotice';
 import { splitContextItems } from '../../lib/contextItems';
 import type { ContextItem } from '../../types';
 
@@ -83,6 +84,9 @@ export function Nl2SqlPanel({
 
   return (
     <div className="flex shrink-0 flex-col border-b border-edge bg-surface-alt">
+      <div className="px-2 pt-2">
+        <AiEgressNotice contextItems={contextItems} />
+      </div>
       <div className="flex shrink-0 items-center gap-2 p-2">
         <AiInput
           className="min-w-0 flex-1 [&_>div]:rounded [&_>div]:border"

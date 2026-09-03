@@ -7,7 +7,7 @@ use super::util::{
 };
 use crate::ai::budget;
 use crate::ai::prompt_resolver;
-use crate::ai::safety::redact_for_ai;
+use crate::ai::safety::redact_for_egress;
 use crate::ai::*;
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
@@ -34,6 +34,8 @@ pub(crate) async fn ai_generate_sql_impl(
 ) -> Result<String, CommandError> {
     let recent_queries = recent_queries.unwrap_or_default();
     let mut natural_language = natural_language;
+    let app_settings = state.store.get_settings().await;
+    let strict_egress = app_settings.ai_strict_egress;
     tracing::info!(
         %request_id,
         %db_session_id,
@@ -65,11 +67,11 @@ pub(crate) async fn ai_generate_sql_impl(
 
     // Context files and natural language are caller-provided prompt content;
     // sanitize the complete assembled value at the command boundary.
-    let natural_language = redact_for_ai(&natural_language);
+    let natural_language = redact_for_egress(&natural_language, strict_egress);
 
     let (provider, ai_config) = resolve_ai(&state).await?;
 
-    let lang = state.store.get_settings().await.language;
+    let lang = app_settings.language;
 
     let (driver_ref, _) = state
         .connection_manager
@@ -123,7 +125,7 @@ pub(crate) async fn ai_generate_sql_impl(
             "\n\n{label}:\n{}",
             recent_queries
                 .iter()
-                .map(|q| format!("- {}", redact_for_ai(q)))
+                .map(|q| format!("- {}", redact_for_egress(q, strict_egress)))
                 .collect::<Vec<_>>()
                 .join("\n")
         )
@@ -184,6 +186,7 @@ pub(crate) async fn ai_generate_sql_impl(
             request,
             10,
             "ai_generate_sql",
+            strict_egress,
         )
         .await;
     }
@@ -243,8 +246,9 @@ pub(crate) async fn ai_diagnose_error_impl(
     sql: String,
     error_message: String,
 ) -> Result<DiagnosisResult, CommandError> {
-    let safe_sql = redact_for_ai(&sql);
-    let safe_error_message = redact_for_ai(&error_message);
+    let strict_egress = state.store.get_settings().await.ai_strict_egress;
+    let safe_sql = redact_for_egress(&sql, strict_egress);
+    let safe_error_message = redact_for_egress(&error_message, strict_egress);
     tracing::info!(
         %db_session_id,
         %database,
@@ -273,7 +277,7 @@ pub(crate) async fn ai_diagnose_error_impl(
         .await
         .cmd_err("ai_diagnose_error")?;
 
-    let safe_schema_ddl = redact_for_ai(&context.schema_ddl);
+    let safe_schema_ddl = redact_for_egress(&context.schema_ddl, strict_egress);
     let mut vars = HashMap::new();
     vars.insert("db_type", context.database_type.as_str());
     vars.insert("schema", safe_schema_ddl.as_str());
@@ -353,8 +357,9 @@ pub(crate) async fn ai_analyze_explain_impl(
     explain_output: String,
     original_sql: String,
 ) -> Result<ExplainAnalysis, CommandError> {
-    let safe_original_sql = redact_for_ai(&original_sql);
-    let safe_explain_output = redact_for_ai(&explain_output);
+    let strict_egress = state.store.get_settings().await.ai_strict_egress;
+    let safe_original_sql = redact_for_egress(&original_sql, strict_egress);
+    let safe_explain_output = redact_for_egress(&explain_output, strict_egress);
     tracing::info!(
         %db_session_id,
         sql_len = original_sql.len(),
@@ -462,7 +467,10 @@ pub(crate) async fn ai_parse_filter_impl(
         input_len = natural_language.len(),
         "ai_parse_filter: start"
     );
-    let natural_language = redact_for_ai(&natural_language);
+    let natural_language = redact_for_egress(
+        &natural_language,
+        state.store.get_settings().await.ai_strict_egress,
+    );
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     let (driver, handle) = state
@@ -765,7 +773,8 @@ pub(crate) async fn ai_diagnose_connection_impl(
     connection_id: String,
     error_message: String,
 ) -> Result<ConnectionDiagnosis, CommandError> {
-    let safe_error_message = redact_for_ai(&error_message);
+    let strict_egress = state.store.get_settings().await.ai_strict_egress;
+    let safe_error_message = redact_for_egress(&error_message, strict_egress);
     tracing::info!(%connection_id, error_len = error_message.len(), "ai_diagnose_connection: start");
     tracing::debug!(
         %connection_id,
@@ -787,17 +796,20 @@ pub(crate) async fn ai_diagnose_connection_impl(
     } else {
         "disabled"
     };
-    let conn_summary = redact_for_ai(&format!(
-        "Connection type: {:?}\nHost: {}\nPort: {}\nDatabase: {}\nUsername: {}\nSSL: {}\nSSH Tunnel: {}\nTimeout: {}s",
-        conn_info.database_type,
-        conn_info.host.as_deref().unwrap_or("N/A"),
-        conn_info.port.map(|p| p.to_string()).unwrap_or_else(|| "N/A".into()),
-        conn_info.database.as_deref().unwrap_or("N/A"),
-        conn_info.username.as_deref().unwrap_or("N/A"),
-        ssl_str,
-        ssh_str,
-        conn_info.connection_timeout,
-    ));
+    let conn_summary = redact_for_egress(
+        &format!(
+            "Connection type: {:?}\nHost: {}\nPort: {}\nDatabase: {}\nUsername: {}\nSSL: {}\nSSH Tunnel: {}\nTimeout: {}s",
+            conn_info.database_type,
+            conn_info.host.as_deref().unwrap_or("N/A"),
+            conn_info.port.map(|p| p.to_string()).unwrap_or_else(|| "N/A".into()),
+            conn_info.database.as_deref().unwrap_or("N/A"),
+            conn_info.username.as_deref().unwrap_or("N/A"),
+            ssl_str,
+            ssh_str,
+            conn_info.connection_timeout,
+        ),
+        strict_egress,
+    );
 
     let lang = state.store.get_settings().await.language;
     let conn_diag_prompt = state
@@ -871,6 +883,8 @@ pub(crate) async fn ai_analyze_queries_impl(
     db_session_id: Option<String>,
 ) -> Result<QueryAnalysis, CommandError> {
     tracing::info!(db_session_id = ?db_session_id, "ai_analyze_queries: start");
+    let app_settings = state.store.get_settings().await;
+    let strict_egress = app_settings.ai_strict_egress;
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     // The IPC parameter is the runtime dbSessionId; resolve the persisted
@@ -895,11 +909,11 @@ pub(crate) async fn ai_analyze_queries_impl(
     let queries_text = filtered
         .iter()
         .take(100)
-        .map(|h| redact_for_ai(&h.sql))
+        .map(|h| redact_for_egress(&h.sql, strict_egress))
         .collect::<Vec<_>>()
         .join("\n---\n");
 
-    let lang = state.store.get_settings().await.language;
+    let lang = app_settings.language;
     let query_summary_prompt = state
         .prompt_resolver
         .resolve(PromptScenario::QuerySummary, None, &lang)

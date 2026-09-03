@@ -11,25 +11,30 @@
 
 ## 状态
 
-- Phase: 未开始
-- 编码 commit: —
+- Phase: READY_FOR_TEST
+- 编码 commit: (pending commit)
 - 测试 commit: —
 
 ## 设计决策
 
-（编码代理填写）
+- 新增 `AppSettings.ai_strict_egress`（默认 `true`）：严格模式下 JSON 结果行/payload 键被剥离；凭据始终脱敏。
+- Rust 侧统一 `redact_for_egress(value, strict_egress)`，在 `ai_chat` / `ai_generate_sql` 等 command 边界及 tool loop 结果回注时应用。
+- 前端设置页提供 Strict AI egress 开关；关闭前弹出「数据离开本机」确认。
+- 聊天 / NL2SQL / Workflow AI 面板在 relaxed 模式或附加 @ 文件上下文时展示 egress 提示条（`AiEgressNotice`）。
 
 ## 自验结果
 
 | 套件 | 结果 | 备注 |
 |------|------|------|
-| cargo test -p datazen --lib | — | — |
+| cargo test -p datazen --lib | 1237 passed / 0 failed | 含 ai::safety 7 项 + commands::ai 215 项 |
+| npx tsc --noEmit | pass | — |
 
 ## E2E 用例登记
 
 | 编号 | 前置 | 步骤摘要 | 断言 | 执行时机 |
 |------|------|----------|------|----------|
-| — | — | — | — | — |
+| E1 | AI 已配置 | 设置 → AI → 关闭 Strict egress | 确认对话框文案可见；开关关闭 | 【留待 R 回归】 |
+| E2 | strict egress off | 打开 AI Chat，附加 @ 文件 | egress 提示条可见 | 【留待 R 回归】 |
 
 ## 遗留
 
