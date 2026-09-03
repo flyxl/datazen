@@ -41,3 +41,25 @@ impl MigrationCapabilities for MysqlMigrationCapabilities {
         matches!(operation, MigrationOperation::SetAutoIncrement { .. } | MigrationOperation::AlterColumnType { .. } | MigrationOperation::SetNullable { .. } | MigrationOperation::SetComment { .. })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn col(name:&str, ty:&str) -> MigrationColumn { MigrationColumn { name:name.into(), data_type:ty.into(), nullable:true, default_value:None, comment:None, is_auto_increment:false } }
+
+    #[test] fn renderer_quotes_identifiers() {
+        let s = MysqlMigrationRenderer.render(&MigrationOperation::AddColumn { table:"user`s".into(), column:col("na`me","VARCHAR(32)") }).unwrap();
+        assert!(s.sql.contains("`user``s`"));
+        assert!(s.sql.contains("`na``me`"));
+    }
+
+    #[test] fn renderer_rejects_unsafe_nullable_change() {
+        assert!(MysqlMigrationRenderer.render(&MigrationOperation::SetNullable { table:"users".into(), column:"name".into(), nullable:false }).is_err());
+    }
+
+    #[test] fn capabilities_mark_type_change_as_rewrite() {
+        let op=MigrationOperation::AlterColumnType { table:"users".into(), column:"id".into(), from:"INT".into(), to:"BIGINT".into() };
+        assert!(MysqlMigrationCapabilities.supports(&op));
+        assert!(MysqlMigrationCapabilities.requires_table_rebuild(&op));
+    }
+}
