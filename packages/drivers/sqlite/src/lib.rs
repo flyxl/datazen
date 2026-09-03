@@ -7,9 +7,11 @@ use datazen_driver_api::*;
 mod adb;
 mod sql_target;
 mod sqlite;
+mod migration;
 mod structure;
 mod sync_adapter;
 pub use sqlite::*;
+pub use migration::SqliteMigrationRenderer;
 pub use sync_adapter::SqliteSyncAdapter;
 
 struct SqliteFactory;
