@@ -476,4 +476,57 @@ mod tests {
         assert!(check_sql("DROP TABLE t", true, true).is_err());
         assert!(check_sql("UPDATE t SET x = 1", true, true).is_err());
     }
+
+    // --- [tester] edge-case / bypass probes ---
+
+    #[test]
+    fn test_tester_inline_block_comment_inside_drop_is_heuristic_gap() {
+        // Tokenizer strips inline comments; verb becomes TABLE — known bypass.
+        assert!(check_sql("DROP/**/TABLE t", false, true).is_ok());
+        assert!(check_sql("TRUNCATE/**/TABLE t", false, true).is_ok());
+    }
+
+    #[test]
+    fn test_tester_nested_block_comment_with_drop_still_blocked() {
+        assert!(check_sql("/* outer /* inner */ DROP TABLE t */", false, true).is_err());
+    }
+
+    #[test]
+    fn test_tester_drop_only_in_leading_comment_is_allowed() {
+        assert!(check_sql("/* DROP TABLE t */ SELECT 1", false, true).is_ok());
+        assert!(check_sql("-- DROP TABLE t\nSELECT 1", false, true).is_ok());
+    }
+
+    #[test]
+    fn test_tester_read_only_inline_comment_drop_is_heuristic_gap() {
+        assert!(check_sql("DROP/**/TABLE t", true, false).is_ok());
+    }
+
+    #[test]
+    fn test_tester_unicode_fullwidth_drop_bypasses_safe_mode() {
+        // Fullwidth Latin letters are not recognized as DROP — documented heuristic gap.
+        assert!(check_sql("ＤＲＯＰ TABLE t", false, true).is_ok());
+    }
+
+    #[test]
+    fn test_tester_null_byte_splits_drop_keyword_is_heuristic_gap() {
+        assert!(check_sql("DROP\u{0000}TABLE t", false, true).is_ok());
+    }
+
+    #[test]
+    fn test_tester_control_chars_in_select_do_not_crash() {
+        assert!(check_sql("SELECT\u{0001}1", true, true).is_ok());
+    }
+
+    #[test]
+    fn test_tester_mixed_case_and_extra_whitespace_drop_blocked() {
+        assert!(check_sql("  \n  DrOp  \t  TaBlE t", false, true).is_err());
+        assert!(check_sql("  truncate   table   t  ", false, true).is_err());
+    }
+
+    #[test]
+    fn test_tester_drop_keyword_split_across_comment_is_heuristic_gap() {
+        // Verb becomes TABLE after comment strip — known bypass, not a formal guarantee.
+        assert!(check_sql("/* DROP */ TABLE t", false, true).is_ok());
+    }
 }
