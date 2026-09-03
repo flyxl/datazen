@@ -116,8 +116,39 @@ fn plan_single_table(
         ));
     }
 
-    let operations = super::dependencies::resolve_dependencies(operations);
     let Some(driver) = datazen_driver_api::create_driver(target_dialect) else {
+        requirements.push(super::types::PlanRequirement::Unsupported {
+            operation: table.to_string(),
+            reason: format!("No registered driver for target database: {target_dialect}"),
+        });
+        return;
+    };
+    let Some(capabilities) = driver.migration_capabilities() else {
+        requirements.push(super::types::PlanRequirement::Unsupported {
+            operation: table.to_string(),
+            reason: format!("Driver {} does not expose schema migration capabilities", target_dialect),
+        });
+        return;
+    };
+
+    operations.retain(|op| {
+        let driver_op = op.to_driver_api();
+        if !capabilities.supports(&driver_op) {
+            requirements.push(super::types::PlanRequirement::Unsupported {
+                operation: op.key(),
+                reason: format!("Operation is not supported by {}", target_dialect),
+            });
+            false
+        } else {
+            if capabilities.requires_table_rebuild(&driver_op) {
+                warnings.push(format!("{} may require a table rewrite on {}", op.key(), target_dialect));
+            }
+            true
+        }
+    });
+
+    let operations = super::dependencies::resolve_dependencies(operations);
+    let Some(renderer) = datazen_driver_api::create_driver(target_dialect) else {
         requirements.push(super::types::PlanRequirement::Unsupported {
             operation: table.to_string(),
             reason: format!("No registered driver for target database: {target_dialect}"),
