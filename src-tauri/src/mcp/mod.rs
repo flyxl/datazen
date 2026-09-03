@@ -3,8 +3,13 @@
 pub mod allowlist;
 pub mod auth;
 pub mod client;
+mod handler;
+mod prompts;
 pub mod permission;
+mod resources;
 mod server;
+mod tools;
+mod types;
 pub mod tool_help;
 
 pub use client::{
