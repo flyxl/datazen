@@ -7,7 +7,7 @@ import { useSettingsStore } from '../stores/settingsStore';
  * Call from feature windows (Data Sync, Transfer, Schema Diff, Workflows, Dashboard, MCP settings).
  */
 export function useLocaleDomains(domains: readonly LazyDomain[]) {
-  const language = useSettingsStore((s) => s.settings.language) ?? 'en';
+  const language = useSettingsStore((s) => s.settings?.language) ?? 'en';
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
