@@ -3,19 +3,6 @@
 use super::{compare::diff_indexes, operations::MigrationOperation, types::ColumnChange};
 use crate::db::TableSchema;
 
-/// Table-level PK columns: prefer `primary_keys`, fall back to column flags.
-fn effective_primary_keys(schema: &TableSchema) -> Vec<String> {
-    if !schema.primary_keys.is_empty() {
-        return schema.primary_keys.clone();
-    }
-    schema
-        .columns
-        .iter()
-        .filter(|c| c.is_primary_key)
-        .map(|c| c.name.clone())
-        .collect()
-}
-
 pub fn diff_to_operations(
     table: &str,
     source: &TableSchema,
@@ -87,8 +74,8 @@ pub fn diff_to_operations(
         }
     }
 
-    let source_pks = effective_primary_keys(source);
-    let target_pks = effective_primary_keys(target);
+    let source_pks = source.effective_primary_keys();
+    let target_pks = target.effective_primary_keys();
     if source_pks != target_pks {
         if !target_pks.is_empty() {
             ops.push(MigrationOperation::DropPrimaryKey {
