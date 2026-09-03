@@ -188,20 +188,26 @@ mod tests {
 
     #[test]
     fn capabilities_only_support_renderer_ops() {
-        assert!(SqliteMigrationCapabilities.supports(&MigrationOperation::CreateTable {
-            table: "users".into(),
-            columns: vec![],
-            primary_keys: vec![],
-        }));
-        assert!(!SqliteMigrationCapabilities.supports(&MigrationOperation::AlterColumnType {
-            table: "users".into(),
-            column: "id".into(),
-            from: "INTEGER".into(),
-            to: "BIGINT".into(),
-        }));
-        assert!(!SqliteMigrationCapabilities.supports(&MigrationOperation::DropColumn {
-            table: "users".into(),
-            column: col("name", "TEXT"),
-        }));
+        assert!(
+            SqliteMigrationCapabilities.supports(&MigrationOperation::CreateTable {
+                table: "users".into(),
+                columns: vec![],
+                primary_keys: vec![],
+            })
+        );
+        assert!(
+            !SqliteMigrationCapabilities.supports(&MigrationOperation::AlterColumnType {
+                table: "users".into(),
+                column: "id".into(),
+                from: "INTEGER".into(),
+                to: "BIGINT".into(),
+            })
+        );
+        assert!(
+            !SqliteMigrationCapabilities.supports(&MigrationOperation::DropColumn {
+                table: "users".into(),
+                column: col("name", "TEXT"),
+            })
+        );
     }
 }

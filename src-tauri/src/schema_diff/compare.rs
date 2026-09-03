@@ -87,30 +87,40 @@ pub struct IndexDiff {
     pub extra_on_target: Vec<IndexInfo>,
 }
 
+fn index_definition_equal(a: &IndexInfo, b: &IndexInfo) -> bool {
+    a.columns == b.columns && a.is_unique == b.is_unique
+}
+
 pub fn diff_indexes(src: &TableSchema, tgt: &TableSchema) -> IndexDiff {
-    let key = |idx: &IndexInfo| {
-        format!(
-            "{}|{}|{}|{}",
-            idx.name,
-            idx.columns.join(","),
-            idx.is_unique,
-            idx.is_primary
-        )
-    };
-    let src_keys: HashMap<String, &IndexInfo> = src.indexes.iter().map(|i| (key(i), i)).collect();
-    let tgt_keys: HashMap<String, &IndexInfo> = tgt.indexes.iter().map(|i| (key(i), i)).collect();
+    let src_by_name: HashMap<&str, &IndexInfo> =
+        src.indexes.iter().map(|i| (i.name.as_str(), i)).collect();
+    let tgt_by_name: HashMap<&str, &IndexInfo> =
+        tgt.indexes.iter().map(|i| (i.name.as_str(), i)).collect();
 
     let mut missing_on_target = Vec::new();
     let mut extra_on_target = Vec::new();
 
-    for (k, idx) in &src_keys {
-        if !tgt_keys.contains_key(k) && !idx.is_primary {
-            missing_on_target.push((*idx).clone());
+    for (name, src_idx) in &src_by_name {
+        if src_idx.is_primary {
+            continue;
+        }
+        match tgt_by_name.get(name) {
+            None => missing_on_target.push((*src_idx).clone()),
+            Some(tgt_idx) if tgt_idx.is_primary => {}
+            Some(tgt_idx) if !index_definition_equal(src_idx, tgt_idx) => {
+                extra_on_target.push((*tgt_idx).clone());
+                missing_on_target.push((*src_idx).clone());
+            }
+            Some(_) => {}
         }
     }
-    for (k, idx) in &tgt_keys {
-        if !src_keys.contains_key(k) && !idx.is_primary {
-            extra_on_target.push((*idx).clone());
+
+    for (name, tgt_idx) in &tgt_by_name {
+        if tgt_idx.is_primary {
+            continue;
+        }
+        if !src_by_name.contains_key(name) {
+            extra_on_target.push((*tgt_idx).clone());
         }
     }
 
@@ -185,5 +195,42 @@ mod tests {
         assert_eq!(diff.extra_on_target.len(), 1);
         assert_eq!(diff.extra_on_target[0].name, "legacy");
         assert_eq!(diff.removed.len(), 1);
+    }
+
+    fn index(name: &str, columns: &[&str], unique: bool) -> IndexInfo {
+        IndexInfo {
+            name: name.into(),
+            columns: columns.iter().map(|c| (*c).into()).collect(),
+            is_unique: unique,
+            is_primary: false,
+            index_type: "btree".into(),
+        }
+    }
+
+    #[test]
+    fn index_column_change_is_drop_and_create() {
+        let mut src = schema(vec![col("id", "int"), col("email", "varchar")]);
+        src.indexes.push(index("idx_email", &["email"], false));
+        let mut tgt = schema(vec![col("id", "int"), col("email", "varchar")]);
+        tgt.indexes
+            .push(index("idx_email", &["id", "email"], false));
+        let diff = diff_indexes(&src, &tgt);
+        assert_eq!(diff.extra_on_target.len(), 1);
+        assert_eq!(diff.extra_on_target[0].columns, vec!["id", "email"]);
+        assert_eq!(diff.missing_on_target.len(), 1);
+        assert_eq!(diff.missing_on_target[0].columns, vec!["email"]);
+    }
+
+    #[test]
+    fn index_unique_change_is_drop_and_create() {
+        let mut src = schema(vec![col("id", "int")]);
+        src.indexes.push(index("idx_id", &["id"], true));
+        let mut tgt = schema(vec![col("id", "int")]);
+        tgt.indexes.push(index("idx_id", &["id"], false));
+        let diff = diff_indexes(&src, &tgt);
+        assert_eq!(diff.extra_on_target.len(), 1);
+        assert!(!diff.extra_on_target[0].is_unique);
+        assert_eq!(diff.missing_on_target.len(), 1);
+        assert!(diff.missing_on_target[0].is_unique);
     }
 }

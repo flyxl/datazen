@@ -13,7 +13,12 @@ fn format_pg_column_def(c: &MigrationColumn, qi: &impl Fn(&str) -> String) -> St
     def
 }
 
-fn pg_comment_on_column(table: &str, column: &str, comment: &str, qi: &impl Fn(&str) -> String) -> String {
+fn pg_comment_on_column(
+    table: &str,
+    column: &str,
+    comment: &str,
+    qi: &impl Fn(&str) -> String,
+) -> String {
     format!(
         "COMMENT ON COLUMN {}.{} IS '{}'",
         qi(table),
@@ -196,11 +201,7 @@ impl MigrationRenderer for PostgresMigrationRenderer {
             MigrationOperation::DropPrimaryKey { table, .. } => {
                 let pk_name = pg_pk_constraint_name(table);
                 Ok(MigrationStatement {
-                    sql: format!(
-                        "ALTER TABLE {} DROP CONSTRAINT {}",
-                        qi(table),
-                        qi(&pk_name)
-                    ),
+                    sql: format!("ALTER TABLE {} DROP CONSTRAINT {}", qi(table), qi(&pk_name)),
                     risk: MigrationRisk::Destructive,
                     rollback_sql: None,
                     summary: format!("DROP PRIMARY KEY {}", table),
@@ -373,7 +374,9 @@ mod tests {
         };
         let stmt = PostgresMigrationRenderer.render(&op).unwrap();
         assert!(stmt.sql.contains("DEFAULT 'active'"));
-        assert!(stmt.sql.contains("COMMENT ON COLUMN \"users\".\"status\" IS 'user status'"));
+        assert!(stmt
+            .sql
+            .contains("COMMENT ON COLUMN \"users\".\"status\" IS 'user status'"));
     }
 
     #[test]
@@ -390,10 +393,12 @@ mod tests {
             },
         };
         let stmt = PostgresMigrationRenderer.render(&op).unwrap();
-        assert!(stmt.sql.starts_with(
-            "ALTER TABLE \"users\" ADD COLUMN \"score\" integer NOT NULL DEFAULT 0"
-        ));
-        assert!(stmt.sql.contains("COMMENT ON COLUMN \"users\".\"score\" IS 'score'"));
+        assert!(stmt
+            .sql
+            .starts_with("ALTER TABLE \"users\" ADD COLUMN \"score\" integer NOT NULL DEFAULT 0"));
+        assert!(stmt
+            .sql
+            .contains("COMMENT ON COLUMN \"users\".\"score\" IS 'score'"));
         assert_eq!(
             stmt.rollback_sql.as_deref(),
             Some("ALTER TABLE \"users\" DROP COLUMN \"score\"")

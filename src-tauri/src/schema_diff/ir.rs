@@ -3,6 +3,19 @@
 use super::{compare::diff_indexes, operations::MigrationOperation, types::ColumnChange};
 use crate::db::TableSchema;
 
+/// Table-level PK columns: prefer `primary_keys`, fall back to column flags.
+fn effective_primary_keys(schema: &TableSchema) -> Vec<String> {
+    if !schema.primary_keys.is_empty() {
+        return schema.primary_keys.clone();
+    }
+    schema
+        .columns
+        .iter()
+        .filter(|c| c.is_primary_key)
+        .map(|c| c.name.clone())
+        .collect()
+}
+
 pub fn diff_to_operations(
     table: &str,
     source: &TableSchema,
@@ -66,6 +79,7 @@ pub fn diff_to_operations(
                         from: c.target.is_auto_increment,
                         to: c.source.is_auto_increment,
                     },
+                    // Column-level PK flag; table-level ops come from effective_primary_keys diff below.
                     ColumnChange::PrimaryKey => continue,
                 };
                 ops.push(op);
@@ -73,17 +87,19 @@ pub fn diff_to_operations(
         }
     }
 
-    if source.primary_keys != target.primary_keys {
-        if !target.primary_keys.is_empty() {
+    let source_pks = effective_primary_keys(source);
+    let target_pks = effective_primary_keys(target);
+    if source_pks != target_pks {
+        if !target_pks.is_empty() {
             ops.push(MigrationOperation::DropPrimaryKey {
                 table: table.into(),
-                columns: target.primary_keys.clone(),
+                columns: target_pks,
             });
         }
-        if !source.primary_keys.is_empty() {
+        if !source_pks.is_empty() {
             ops.push(MigrationOperation::AddPrimaryKey {
                 table: table.into(),
-                columns: source.primary_keys.clone(),
+                columns: source_pks,
             });
         }
     }
@@ -132,9 +148,60 @@ mod tests {
 
     #[test]
     fn produces_neutral_operations() {
-        let mut s = schema(vec![col("id"), col("name")]);
+        let s = schema(vec![col("id"), col("name")]);
         let t = schema(vec![col("id")]);
         let ops = diff_to_operations("t", &s, &t);
         assert!(matches!(&ops[0], MigrationOperation::AddColumn { .. }));
+    }
+
+    #[test]
+    fn primary_key_change_generates_drop_and_add() {
+        let mut s = schema(vec![col("id"), col("user_id")]);
+        s.primary_keys = vec!["user_id".into()];
+        let mut t = schema(vec![col("id"), col("user_id")]);
+        t.primary_keys = vec!["id".into()];
+        let ops = diff_to_operations("t", &s, &t);
+        assert!(ops.iter().any(|op| matches!(op, MigrationOperation::DropPrimaryKey { columns, .. } if columns == &["id"])));
+        assert!(ops.iter().any(|op| matches!(op, MigrationOperation::AddPrimaryKey { columns, .. } if columns == &["user_id"])));
+    }
+
+    #[test]
+    fn primary_key_change_from_column_flags_when_vectors_empty() {
+        let mut id = col("id");
+        id.is_primary_key = false;
+        let mut user_id = col("user_id");
+        user_id.is_primary_key = true;
+        let s = schema(vec![id, user_id]);
+        let mut tgt_id = col("id");
+        tgt_id.is_primary_key = true;
+        let tgt_user = col("user_id");
+        let t = schema(vec![tgt_id, tgt_user]);
+        let ops = diff_to_operations("t", &s, &t);
+        assert!(ops.iter().any(|op| matches!(op, MigrationOperation::DropPrimaryKey { columns, .. } if columns == &["id"])));
+        assert!(ops.iter().any(|op| matches!(op, MigrationOperation::AddPrimaryKey { columns, .. } if columns == &["user_id"])));
+    }
+
+    #[test]
+    fn index_definition_change_generates_drop_and_create_ops() {
+        use crate::db::IndexInfo;
+        let mut s = schema(vec![col("id"), col("email")]);
+        s.indexes.push(IndexInfo {
+            name: "idx_email".into(),
+            columns: vec!["email".into()],
+            is_unique: false,
+            is_primary: false,
+            index_type: "btree".into(),
+        });
+        let mut t = schema(vec![col("id"), col("email")]);
+        t.indexes.push(IndexInfo {
+            name: "idx_email".into(),
+            columns: vec!["id".into(), "email".into()],
+            is_unique: false,
+            is_primary: false,
+            index_type: "btree".into(),
+        });
+        let ops = diff_to_operations("t", &s, &t);
+        assert!(ops.iter().any(|op| matches!(op, MigrationOperation::DropIndex { index, .. } if index.columns == vec!["id", "email"])));
+        assert!(ops.iter().any(|op| matches!(op, MigrationOperation::CreateIndex { index, .. } if index.columns == vec!["email"])));
     }
 }

@@ -1,8 +1,8 @@
 //! Build SchemaDiffPlan from table schema pairs.
 
 use super::types::{
-    normalize_dialect, resolve_table_for_dialect, ColumnSnapshot, PlanStatement,
-    PlanRequirement, RollbackCompleteness, SchemaDiffPlan, StatementRisk,
+    normalize_dialect, resolve_table_for_dialect, ColumnSnapshot, PlanRequirement, PlanStatement,
+    RollbackCompleteness, SchemaDiffPlan, StatementRisk,
 };
 use crate::db::TableSchema;
 use std::collections::HashSet;
@@ -183,7 +183,9 @@ fn plan_single_table(
 
     // Safety policy is domain-level: destructive operations require explicit approval.
     operations.retain(|op| {
-        if !opts.allow_destructive && effective_risk(op, &destructive_narrowing) == StatementRisk::Destructive {
+        if !opts.allow_destructive
+            && effective_risk(op, &destructive_narrowing) == StatementRisk::Destructive
+        {
             warnings.push(format!("Skipped destructive operation {}", op.key()));
             false
         } else {
@@ -502,7 +504,10 @@ mod tests {
             },
         );
         assert!(plan.statements.is_empty());
-        assert!(plan.warnings.iter().any(|w| w.contains("Skipped destructive")));
+        assert!(plan
+            .warnings
+            .iter()
+            .any(|w| w.contains("Skipped destructive")));
     }
 
     #[test]
@@ -752,7 +757,10 @@ mod tests {
                 type_mapper: Some(&mapper),
             },
         );
-        assert!(!plan.statements.iter().any(|s| s.sql.contains("CREATE TABLE")));
+        assert!(!plan
+            .statements
+            .iter()
+            .any(|s| s.sql.contains("CREATE TABLE")));
         assert!(plan.requirements.iter().any(|r| {
             matches!(
                 r,
@@ -836,8 +844,14 @@ mod tests {
             is_primary_key: false,
             is_auto_increment: false,
         };
-        assert!(is_type_narrowing(&snap("varchar(100)"), &snap("varchar(255)")));
-        assert!(!is_type_narrowing(&snap("varchar(255)"), &snap("varchar(100)")));
+        assert!(is_type_narrowing(
+            &snap("varchar(100)"),
+            &snap("varchar(255)")
+        ));
+        assert!(!is_type_narrowing(
+            &snap("varchar(255)"),
+            &snap("varchar(100)")
+        ));
         assert!(is_type_narrowing(&snap("smallint"), &snap("int")));
         assert!(!is_type_narrowing(&snap("int"), &snap("smallint")));
         assert!(!is_type_narrowing(&snap("json"), &snap("text")));
@@ -854,6 +868,23 @@ mod tests {
         let tgt = schema(vec![col("id", "int")]);
         let plan = build_schema_diff_plan(
             &[("users".into(), src, tgt)],
+            "postgresql",
+            "postgresql",
+            PlanOptions::default(),
+        );
+        assert!(plan
+            .requirements
+            .iter()
+            .any(|r| matches!(r, super::super::types::PlanRequirement::Unsupported { .. })));
+    }
+
+    #[test]
+    fn unsupported_driver_operation_becomes_requirement() {
+        let src = schema(vec![col("id", "int")]);
+        let mut target = src.clone();
+        target.columns[0].data_type = "json".into();
+        let plan = build_schema_diff_plan(
+            &[("users".into(), src, target)],
             "postgresql",
             "postgresql",
             PlanOptions::default(),
