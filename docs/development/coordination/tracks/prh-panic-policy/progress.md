@@ -13,7 +13,7 @@
 
 - Phase: PASSED
 - 编码 commit: 6ef2aee16
-- 测试 commit: de430c740
+- 测试 commit: b0819beef
 
 ## 设计决策
 
@@ -29,13 +29,38 @@
 
 | 套件 | 结果 | 备注 |
 |------|------|------|
-| cargo test -p datazen --lib | pass | 1243 passed; 0 failed; 2 ignored (tester 复验) |
+| cargo test -p datazen --lib | pass | 1250 passed; 0 failed; 3 ignored (tester 独立复验) |
 
 ## E2E 用例登记
 
 | 编号 | 前置 | 步骤摘要 | 断言 | 执行时机 |
 |------|------|----------|------|----------|
 | — | — | — | — | — |
+
+## Tester 强化测试
+
+| 测试 | 模块 | 覆盖路径 |
+|------|------|----------|
+| `test_tester_connect_lock_poison_returns_internal` | connection_manager | 毒化 `connect_locks` → `ConnectionError::Internal` |
+| `test_tester_lock_export_poison_returns_internal` | export | 非 callback `lock_export` 毒化 → `CommandError::Internal` |
+| `test_tester_lock_export_stream_recovers_from_poison` | export | callback `lock_export_stream` 毒化 → `into_inner` 恢复 |
+| `test_tester_lock_export_concurrent_access_succeeds` | export | 8 线程 × 100 次并发 lock 无错误 |
+| `test_tester_canonicalize_sorts_by_identity_key` | data | `sort_by` 回归：按 identity key 排序不 panic |
+
+## 残留 unwrap 审计（生产路径，启发式扫描）
+
+约 **119** 处 `.unwrap()` / `.expect()` 仍在非测试 Rust 源码中。本轮已治理的 4 处关键路径（connect_locks、export mutex、sort_by、save dialog）均已通过新增测试覆盖或既有单测（`save_dialog_commands_rejected_without_interactive_handle`）验证。
+
+**未处理高危点（建议后续轨跟进）**：
+
+| 位置 | 数量 | 风险 |
+|------|------|------|
+| `extensions/mod.rs` | 9 | RwLock 毒化 → panic（extension registry） |
+| `commands/dialog.rs` | 3 | Mutex 毒化 → panic（dialog injection queue） |
+| `workflow/scheduler.rs` | 2 | OnceCell 缺失 → panic（启动后应不变量） |
+| `bootstrap.rs` | 4 | 启动 fail-fast（可接受，需注释标注） |
+
+**有意保留**：`export.rs` 中 `lock_export_stream` 的 `unwrap_or_else(|poisoned| poisoned.into_inner())` 符合 panic-policy §4（Fn callback 无法返回 Result）。
 
 ## 遗留
 

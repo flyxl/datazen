@@ -1065,6 +1065,25 @@ mod tests {
         assert!(error.to_string().contains("collision"));
     }
 
+    /// [tester] Regression: sort-by-identity uses validated keys without panicking.
+    #[test]
+    fn test_tester_canonicalize_sorts_by_identity_key() {
+        let changes = vec![
+            update_change(3, "c", "c"),
+            update_change(1, "a", "a"),
+            update_change(2, "b", "b"),
+        ];
+        let canonical = canonicalize_changes(&changes).unwrap();
+        let ids: Vec<i64> = canonical
+            .iter()
+            .map(|change| match change.row_identity.get("id") {
+                Some(Some(Value::Integer(id))) => *id,
+                other => panic!("expected integer id, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(ids, vec![1, 2, 3]);
+    }
+
     #[tokio::test]
     async fn commit_rejects_database_context_change_without_switching_session() {
         let mut options = crate::testing::app_state::rich_mock_options();
