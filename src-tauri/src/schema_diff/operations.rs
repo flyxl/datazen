@@ -82,7 +82,7 @@ impl MigrationOperation {
             Self::DropPrimaryKey{table,columns} => O::DropPrimaryKey{table:table.clone(),columns:columns.clone()},
             Self::CreateIndex{table,index} => O::CreateIndex{table:table.clone(),index:index.clone()},
             Self::DropIndex{table,index} => O::DropIndex{table:table.clone(),index:index.clone()},
-            Self::CreateTable{..} => panic!("CreateTable is rendered by schema planner until driver API includes table options"),
+            Self::CreateTable{table,columns,primary_keys} => O::CreateTable{table:table.clone(),columns:columns.iter().map(col).collect(),primary_keys:primary_keys.clone()},
         }
     }
 }
