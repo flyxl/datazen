@@ -11,9 +11,9 @@
 
 ## 状态
 
-- Phase: READY_FOR_TEST
+- Phase: PASSED
 - 编码 commit: e882fec2f
-- 测试 commit: —
+- 测试 commit: 2b8f5d915
 
 ## 设计决策
 
@@ -25,7 +25,18 @@
 
 | 套件 | 结果 | 备注 |
 |------|------|------|
-| cargo test -p datazen --lib | 1233 passed; 0 failed; 2 ignored | CARGO_TARGET_DIR=target/cargo-wt |
+| cargo test -p datazen --lib（编码自验） | 1233 passed; 0 failed; 2 ignored | CARGO_TARGET_DIR=target/cargo-wt |
+
+## 测试代理复验（2026-09-03）
+
+| 验收项 | 结果 |
+|--------|------|
+| driver_command 降为模块编排入口 | ✅ `mod.rs` 79 行，仅 IPC + 委派 |
+| 子模块职责划分 | ✅ types / access / discovery / resolve / execute / streaming / helpers / tests |
+| IPC 签名不变 | ✅ 4 个 `#[tauri::command]` 与基线 `feat/post-review-hardening` 一致 |
+| commands/mod.rs 导出 | ✅ `mod driver_command` + `pub use driver_command::*` 未变 |
+| 无新增 driver_type 硬编码 | ✅ driver_command 子树无 `== "postgres"` 等分支 |
+| cargo test -p datazen --lib | ✅ **1233 passed; 0 failed; 2 ignored**（独立重跑，~106s） |
 
 ## E2E 用例登记
 
