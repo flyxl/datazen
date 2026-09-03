@@ -212,6 +212,7 @@ PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`。改了驱动�
 ## 代码风格
 
 - Rust：`rustfmt` + `thiserror` + `tracing` + `CommandError`
+- **生产路径禁止裸 `unwrap()` / `expect()`**（`#[cfg(test)]` 除外；确需 panic 须注释说明）。详见 [docs/development/panic-policy.md](docs/development/panic-policy.md)
 - TypeScript：严格模式，无 `any`（除 generated 文件），absolute imports
 - CSS：Tailwind utility classes，暗色主题默认
 - 安全：CSP、AES-256-GCM、路径遍历防护、文件扩展名白名单

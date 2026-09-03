@@ -92,6 +92,9 @@ pub enum ConnectionError {
 
     #[error("Driver error: {0}")]
     DriverError(#[from] DriverError),
+
+    #[error("Internal error: {0}")]
+    Internal(String),
 }
 
 impl ConnectionManager {
@@ -248,7 +251,9 @@ impl ConnectionManager {
         connection_id: &str,
     ) -> Result<String, ConnectionError> {
         let lock = {
-            let mut locks = self.connect_locks.lock().unwrap();
+            let mut locks = self.connect_locks.lock().map_err(|e| {
+                ConnectionError::Internal(format!("connect lock poisoned: {e}"))
+            })?;
             locks
                 .entry(connection_id.to_string())
                 .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
