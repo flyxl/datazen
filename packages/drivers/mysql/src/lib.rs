@@ -6,10 +6,12 @@ use datazen_driver_api::*;
 
 mod admin_commands;
 mod mysql;
+mod migration;
 mod sql_target;
 mod structure;
 mod sync_adapter;
 pub use mysql::*;
+pub use migration::MysqlMigrationRenderer;
 pub use sync_adapter::MysqlSyncAdapter;
 
 struct MysqlFactory;
