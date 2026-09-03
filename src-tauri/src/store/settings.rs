@@ -91,6 +91,9 @@ pub struct AppSettings {
     /// Saved external MCP Client server configs (stdio). Runtime connections are separate.
     #[serde(default)]
     pub mcp_client_servers: Vec<McpServerConfig>,
+    /// When true (default), strip query result rows and payloads before AI requests leave the device.
+    #[serde(default = "default_true")]
+    pub ai_strict_egress: bool,
 }
 
 fn default_limit_select() -> bool {
@@ -149,6 +152,7 @@ impl Default for AppSettings {
             monitor: MonitorSettings::default(),
             plugin_settings: serde_json::Map::new(),
             mcp_client_servers: Vec::new(),
+            ai_strict_egress: true,
         }
     }
 }

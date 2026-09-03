@@ -25,6 +25,7 @@ import { showWebContextMenu } from '../../../stores/contextMenuStore';
 import { usePanelStore } from '../../../stores/panelStore';
 import { useSchemaStore } from '../../../stores/schemaStore';
 import { buildQueryOpenContext } from '../../../lib/tableSqlActions';
+import { generateTableSql, type GeneratedSqlType } from '../../../lib/sqlGenerator';
 import type { ConnectionOpenTarget } from '../../../lib/connectionViews/types';
 import { databaseCommands } from '../../../commands/database';
 import { driverCommands } from '../../../commands/driver';
@@ -211,6 +212,12 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
       compareData: t('schemaTree.compareData'),
       backup: t('common.backupDatabase'),
       restore: t('common.restoreDatabase'),
+      generateSql: t('schemaTree.generateSql'),
+      generateSelect: t('schemaTree.generateSelect'),
+      generateInsert: t('schemaTree.generateInsert'),
+      generateUpdate: t('schemaTree.generateUpdate'),
+      generateDelete: t('schemaTree.generateDelete'),
+      generateDdl: t('schemaTree.generateDdl'),
     }),
     [t],
   );
@@ -713,6 +720,47 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
         void reloadDbTables(dbSessionId, dbName);
       };
 
+      const handleGenerateTableSql = async (type: GeneratedSqlType) => {
+        onSelectConnection(connectionId);
+        useSchemaStore.setState({ currentDatabase: dbName });
+        const dbType = conn?.databaseType ?? 'postgresql';
+        const tableRef = schema ? `${schema}.${name}` : name;
+        try {
+          const tableSchema = await databaseCommands.getTableSchema(dbSessionId, tableRef);
+          const sql = generateTableSql(tableSchema, type, dbType, { schemaPrefix: schema });
+          viewActions?.newQuery?.(sql, { database: dbName, schema });
+        } catch (err) {
+          console.warn(`Failed to generate ${type} sql:`, err);
+          const fallbackSql = `/* Failed to load schema for ${tableRef} */\nSELECT * FROM ${name};`;
+          viewActions?.newQuery?.(fallbackSql, { database: dbName, schema });
+        }
+      };
+
+      const handleGenerateDdl = async () => {
+        onSelectConnection(connectionId);
+        useSchemaStore.setState({ currentDatabase: dbName });
+        try {
+          let ddl = '';
+          try {
+            ddl = await databaseCommands.getObjectDdl(dbSessionId, 'table', name, schema);
+          } catch {
+            const dialect = getSqlDialect(conn?.databaseType ?? 'postgresql');
+            if (dialect) {
+              const { sql, extractColumnIndex } = dialect.ddl.getTableDdlQuery(name);
+              ddl = await getCachedDDL(dbSessionId, name, sql, (rows) => {
+                const row = rows[0];
+                const val = row?.[extractColumnIndex];
+                return typeof val === 'string' ? val : val != null ? String(val) : '';
+              });
+            }
+          }
+          viewActions?.newQuery?.(ddl || `/* No DDL found for ${name} */`, { database: dbName, schema });
+        } catch (err) {
+          console.warn('Failed to generate DDL:', err);
+          viewActions?.newQuery?.(`/* Failed to get DDL for ${name} */`, { database: dbName, schema });
+        }
+      };
+
       showWebContextMenu(
         buildSchemaTreeContextMenuItems({
           kind,
@@ -723,6 +771,11 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
               void activateDatabase(dbSessionId, dbName);
               onSelectTable(name, schema, dbName);
             },
+            onGenerateSelect: kind === 'table' ? () => void handleGenerateTableSql('select') : undefined,
+            onGenerateInsert: kind === 'table' ? () => void handleGenerateTableSql('insert') : undefined,
+            onGenerateUpdate: kind === 'table' ? () => void handleGenerateTableSql('update') : undefined,
+            onGenerateDelete: kind === 'table' ? () => void handleGenerateTableSql('delete') : undefined,
+            onGenerateDdl: kind === 'table' ? () => void handleGenerateDdl() : undefined,
             onCopyName: () => {
               void navigator.clipboard.writeText(name);
             },

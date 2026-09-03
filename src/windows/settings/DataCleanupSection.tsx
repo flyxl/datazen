@@ -155,7 +155,7 @@ export function DataCleanupSection() {
 
       <div className="flex items-center gap-3 pt-1">
         <Button
-          variant="run"
+          variant="primary"
           disabled={busy}
           onClick={() => void handleRun()}
           data-testid="data-cleanup-run"

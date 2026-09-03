@@ -1205,7 +1205,7 @@ mod ipc_contract_guards {
     //! a webdriver-gated `override_path`. These guards pin the wire surface in
     //! both directions.
     const SOURCE: &str = include_str!("config.rs");
-    const LIB_RS: &str = include_str!("../lib.rs");
+    const BOOTSTRAP_RS: &str = include_str!("../bootstrap.rs");
 
     /// Extracts the parameter list of a `pub async fn <command>(...)`.
     fn command_params(command: &str) -> String {
@@ -1259,7 +1259,7 @@ mod ipc_contract_guards {
     }
 
     #[test]
-    fn lib_rs_registers_merged_commands_only() {
+    fn bootstrap_rs_registers_merged_commands_only() {
         for kept in [
             "commands::export_connections,",
             "commands::import_connections_preview,",
@@ -1273,7 +1273,7 @@ mod ipc_contract_guards {
             "commands::import_connections_from_app,",
             "commands::save_encryption_key_with_dialog,",
         ] {
-            assert!(LIB_RS.contains(kept), "`{kept}` must stay registered");
+            assert!(BOOTSTRAP_RS.contains(kept), "`{kept}` must stay registered");
         }
         for gone in [
             "commands::export_connections_with_dialog,",
@@ -1281,8 +1281,8 @@ mod ipc_contract_guards {
             "commands::import_app_data_with_dialog,",
         ] {
             assert!(
-                !LIB_RS.contains(gone),
-                "`{gone}` must no longer be registered in lib.rs"
+                !BOOTSTRAP_RS.contains(gone),
+                "`{gone}` must no longer be registered in bootstrap.rs"
             );
         }
     }

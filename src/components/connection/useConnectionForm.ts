@@ -50,7 +50,21 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     setGroupState(coerceConnectionGroup(value));
   }, []);
   const [colorTag, setColorTag] = useState<string>('#3b82f6');
-  const [readOnly, setReadOnly] = useState(false);
+  const [readOnly, setReadOnlyState] = useState<boolean>(
+    () => DB_REGISTRY['postgresql']?.readOnly === true,
+  );
+  const driverReadOnly = DB_REGISTRY[databaseType]?.readOnly === true;
+
+  const setReadOnly = useCallback(
+    (value: boolean) => {
+      if (DB_REGISTRY[databaseType]?.readOnly === true) {
+        setReadOnlyState(true);
+        return;
+      }
+      setReadOnlyState(value);
+    },
+    [databaseType],
+  );
 
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -107,7 +121,8 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     setSslMode(existing.sslMode);
     setGroup(existing.group);
     setColorTag(existing.colorTag ?? '#3b82f6');
-    setReadOnly(existing.readOnly === true);
+    const isExistingDriverRo = DB_REGISTRY[existing.databaseType]?.readOnly === true;
+    setReadOnlyState(isExistingDriverRo || existing.readOnly === true);
     setConnectionOptions(sanitizeConnectionOptions(existing.options ?? {}));
     if (existing.sshTunnel?.enabled) {
       setSshEnabled(true);
@@ -219,7 +234,8 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     setSslMode(snapshot.sslMode);
     setGroup(snapshot.group);
     setColorTag(snapshot.colorTag);
-    setReadOnly(snapshot.readOnly);
+    const isTargetDriverRo = DB_REGISTRY[databaseType]?.readOnly === true;
+    setReadOnlyState(isTargetDriverRo || snapshot.readOnly);
     setConnectionOptions(sanitizeConnectionOptions(snapshot.connectionOptions));
     setShowAdvanced(snapshot.showAdvanced);
     setSshEnabled(snapshot.sshEnabled);
@@ -278,6 +294,10 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
       setSchema('default');
     }
 
+    if (meta.readOnly === true) {
+      setReadOnlyState(true);
+    }
+
     setConnectionOptions(sanitizeConnectionOptions({ ...(meta.defaultOptions ?? {}) }));
   }, []);
 
@@ -318,6 +338,10 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
 
         if (meta.connectionIncludesSchema) {
           setSchema('default');
+        }
+
+        if (meta.readOnly === true) {
+          setReadOnlyState(true);
         }
 
         setConnectionOptions(sanitizeConnectionOptions({ ...(meta.defaultOptions ?? {}) }));
@@ -514,7 +538,8 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     setGroup,
     colorTag,
     setColorTag,
-    readOnly,
+    readOnly: driverReadOnly || readOnly,
+    driverReadOnly,
     setReadOnly,
     sshEnabled,
     setSshEnabled,

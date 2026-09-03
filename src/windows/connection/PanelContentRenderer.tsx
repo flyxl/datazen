@@ -20,6 +20,7 @@ import {
   type ProcessesPanel,
   type ProcessListCacheData,
 } from '../../stores/panelStore';
+import { useConnectionStore } from '../../stores/connectionStore';
 import { getSubTabs, getViewSubTabs } from './contentViewHelpers';
 import { StructureView } from './StructureView';
 import { TableView } from './TableView';
@@ -134,8 +135,11 @@ function SqlPanelContent({
   onUpdatePanelData,
 }: SqlPanelContentProps) {
   const { t } = useI18n();
+  const savedConnection = useConnectionStore((s) =>
+    panel.connectionId ? s.connections.find((c) => c.id === panel.connectionId) : undefined,
+  );
   const panelDbMeta = DB_REGISTRY[panel.databaseType];
-  const panelIsReadOnly = panelDbMeta?.readOnly === true;
+  const panelIsReadOnly = panelDbMeta?.readOnly === true || savedConnection?.readOnly === true;
   const panelShowStructureEditor = canOpenStructureEditor(panelDbMeta) && !panelIsReadOnly;
   const panelExportScope = resolveExportScope(panelDbMeta);
 
@@ -161,6 +165,7 @@ function SqlPanelContent({
               schema={panel.tableSchema ?? null}
               tableName={panel.tableName}
               databaseType={panel.databaseType}
+              readOnly={panelIsReadOnly}
               dataExportCapability={panelExportScope}
             />
           )}
@@ -237,6 +242,7 @@ function SqlPanelContent({
               schema={(panel as ViewPanel).viewSchema ?? null}
               tableName={(panel as ViewPanel).viewName}
               databaseType={panel.databaseType}
+              readOnly={true}
               dataExportCapability={panelExportScope}
             />
           )}

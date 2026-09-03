@@ -5,6 +5,7 @@ use super::util::{
     StreamCallback,
 };
 use crate::ai::budget;
+use crate::ai::safety::redact_for_egress;
 use crate::ai::*;
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
@@ -232,6 +233,7 @@ pub(crate) async fn run_streaming_tool_loop(
     mut request: CompletionRequest,
     max_rounds: usize,
     cmd_label: &str,
+    strict_egress: bool,
 ) -> Result<String, CommandError> {
     for round in 0..max_rounds {
         let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
@@ -425,7 +427,7 @@ pub(crate) async fn run_streaming_tool_loop(
             };
             request.messages.push(ChatMessage {
                 role: MessageRole::Tool,
-                content: tool_result,
+                content: redact_for_egress(&tool_result, strict_egress),
                 reasoning: None,
                 tool_calls: None,
                 tool_call_id: Some(tc.id.clone()),
@@ -502,7 +504,9 @@ pub(crate) async fn ai_chat_impl(
     );
     let (provider, ai_config) = resolve_ai(&state).await?;
 
-    let lang = state.store.get_settings().await.language;
+    let app_settings = state.store.get_settings().await;
+    let strict_egress = app_settings.ai_strict_egress;
+    let lang = app_settings.language;
     let mut full_messages: Vec<ChatMessage> = Vec::new();
     let mut attach_db_tools = true;
 
@@ -611,7 +615,10 @@ pub(crate) async fn ai_chat_impl(
         }
     }
 
-    full_messages.extend(messages);
+    full_messages.extend(messages.into_iter().map(|mut message| {
+        message.content = redact_for_egress(&message.content, strict_egress);
+        message
+    }));
 
     // Inject context files into last user message
     if let Some(ref ctx_files) = context_files {
@@ -624,7 +631,12 @@ pub(crate) async fn ai_chat_impl(
                     .rev()
                     .find(|m| m.role == MessageRole::User)
                 {
-                    let context_block = crate::commands::context::format_context_block(&entries);
+                    let sanitized_entries: Vec<(String, String)> = entries
+                        .into_iter()
+                        .map(|(path, content)| (path, redact_for_egress(&content, strict_egress)))
+                        .collect();
+                    let context_block =
+                        crate::commands::context::format_context_block(&sanitized_entries);
                     last_user.content = format!("{context_block}\n\n{}", last_user.content);
                 }
             }
@@ -693,6 +705,7 @@ pub(crate) async fn ai_chat_impl(
         request,
         10,
         "ai_chat",
+        strict_egress,
     )
     .await
 }

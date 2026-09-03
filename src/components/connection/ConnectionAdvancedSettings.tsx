@@ -69,16 +69,30 @@ export function ConnectionAdvancedSettings({
             </div>
           ) : null}
 
-          <label className="flex items-start gap-2 text-sm text-fg-secondary">
+          <label
+            className={cn(
+              'flex items-start gap-2 text-sm text-fg-secondary',
+              form.driverReadOnly && 'cursor-not-allowed opacity-80',
+            )}
+          >
             <input
               type="checkbox"
               className="mt-0.5 accent-accent"
-              checked={form.readOnly}
-              onChange={(e) => form.setReadOnly(e.target.checked)}
+              checked={form.driverReadOnly || form.readOnly}
+              disabled={form.driverReadOnly}
+              onChange={(e) => {
+                if (!form.driverReadOnly) {
+                  form.setReadOnly(e.target.checked);
+                }
+              }}
             />
             <span>
               <span className="block">{t('newConn.readOnly')}</span>
-              <span className="block text-[11px] text-fg-muted">{t('newConn.readOnlyHint')}</span>
+              <span className="block text-[11px] text-fg-muted">
+                {form.driverReadOnly
+                  ? t('newConn.driverReadOnlyLocked')
+                  : t('newConn.readOnlyHint')}
+              </span>
             </span>
           </label>
 

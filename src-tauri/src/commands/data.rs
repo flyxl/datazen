@@ -129,7 +129,12 @@ fn canonicalize_changes(
         let _ = identity_key(&effective_identity(&normalized)?)?;
         canonical.push(normalized);
     }
-    canonical.sort_by_key(|change| identity_key(&change.row_identity).expect("validated identity"));
+    canonical.sort_by(|a, b| {
+        match (identity_key(&a.row_identity), identity_key(&b.row_identity)) {
+            (Ok(ka), Ok(kb)) => ka.cmp(&kb),
+            _ => std::cmp::Ordering::Equal,
+        }
+    });
 
     let mut original_keys = HashSet::new();
     let mut current_keys = HashMap::new();
@@ -1058,6 +1063,25 @@ mod tests {
         let second = composite_update_change(1, 10, Some(11));
         let error = canonicalize_changes(&[first, second]).unwrap_err();
         assert!(error.to_string().contains("collision"));
+    }
+
+    /// [tester] Regression: sort-by-identity uses validated keys without panicking.
+    #[test]
+    fn test_tester_canonicalize_sorts_by_identity_key() {
+        let changes = vec![
+            update_change(3, "c", "c"),
+            update_change(1, "a", "a"),
+            update_change(2, "b", "b"),
+        ];
+        let canonical = canonicalize_changes(&changes).unwrap();
+        let ids: Vec<i64> = canonical
+            .iter()
+            .map(|change| match change.row_identity.get("id") {
+                Some(Some(Value::Integer(id))) => *id,
+                other => panic!("expected integer id, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(ids, vec![1, 2, 3]);
     }
 
     #[tokio::test]

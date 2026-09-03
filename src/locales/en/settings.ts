@@ -99,7 +99,8 @@ const pack = {
   'settings.confirmDeleteHint': 'Show a confirmation dialog when deleting rows',
   'settings.autoCommitHint': 'Automatically commit edits to data',
   'settings.safeMode': 'Safe Mode',
-  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE/DROP',
+  'settings.safeModeHint':
+    'Best-effort guard: blocks UPDATE/DELETE without WHERE, and TRUNCATE/DROP. Not a formal security guarantee.',
   'settings.monitor': 'Monitor',
   'settings.monitor.description':
     'Background dashboard refresh, system tray, alerts, and run history retention.',
@@ -153,6 +154,12 @@ const pack = {
   'settings.ai.endpointHintOpenAiChat': 'e.g. https://api.openai.com/v1',
   'settings.ai.endpointHintOpenAiResponses': 'e.g. https://api.openai.com/v1',
   'settings.ai.endpointHintAnthropic': 'e.g. https://api.anthropic.com',
+  'settings.ai.strictEgress': 'Strict AI egress (recommended)',
+  'settings.ai.strictEgressHint':
+    'When enabled, query result rows and payloads are removed before content is sent to the AI provider. Credentials are always redacted.',
+  'settings.ai.strictEgressDisableTitle': 'Allow more data to leave this device?',
+  'settings.ai.strictEgressDisableMessage':
+    'Disabling strict egress may send query result rows, file contents, and tool outputs to your configured AI provider. Only turn this off if you accept that data may leave your machine.',
   'settings.prompts': 'Prompt Management',
   'settings.prompts.description':
     'View and customize system prompts used by AI features. Each driver and scenario can be configured individually.',

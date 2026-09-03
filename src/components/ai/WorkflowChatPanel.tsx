@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { AiInput } from './AiInput';
+import { AiEgressNotice } from './AiEgressNotice';
 import { Select } from '../ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
@@ -261,6 +262,9 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
 
       {/* Input */}
       <div className="shrink-0 border-t border-edge p-2">
+        <div className="mb-2">
+          <AiEgressNotice contextItems={contextItems} />
+        </div>
         <AiInput
           value={input}
           onChange={setInput}

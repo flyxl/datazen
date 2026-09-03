@@ -116,7 +116,7 @@ push_to_remote() {
   fi
   # Delete remote tag if it exists (ignore errors)
   git push "$remote" ":refs/tags/$TAG" 2>/dev/null || true
-  git push "$remote" main --tags 2>/dev/null
+  git push "$remote" main "$TAG" 2>/dev/null
   echo "  ✓ Pushed to $remote"
 }
 

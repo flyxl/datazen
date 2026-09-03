@@ -167,7 +167,7 @@ cargo test -p datazen                  # Host Rust 单元测试（不含驱动 c
 cargo test -p datazen-driver-postgres  # 示例：某个 path 驱动的 Rust 测试
 ```
 
-多功能需求由主代理协调编码/测试子代理并行开发：三角色模型、bug 流转状态机、worktree 轨道编排与子代理恢复协议见 [docs/development/subagent-dev-playbook.md](docs/development/subagent-dev-playbook.md)（轨道 bootstrap 用 `scripts/new-feature-worktree.sh <track>`）。
+多功能需求由主代理协调编码/测试子代理并行开发：三角色模型、bug 流转状态机、worktree 轨道编排与子代理恢复协议见 [docs/development/subagent/](docs/development/subagent/README.md)（各角色专享手册及简报模板位于该目录；轨道 bootstrap 用 `scripts/new-feature-worktree.sh <track>`；总览聚合用 `node scripts/aggregate-hub.mjs`）。
 
 ### E2E
 
@@ -212,6 +212,7 @@ PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`。改了驱动�
 ## 代码风格
 
 - Rust：`rustfmt` + `thiserror` + `tracing` + `CommandError`
+- **生产路径禁止裸 `unwrap()` / `expect()`**（`#[cfg(test)]` 除外；确需 panic 须注释说明）。详见 [docs/development/panic-policy.md](docs/development/panic-policy.md)
 - TypeScript：严格模式，无 `any`（除 generated 文件），absolute imports
 - CSS：Tailwind utility classes，暗色主题默认
 - 安全：CSP、AES-256-GCM、路径遍历防护、文件扩展名白名单

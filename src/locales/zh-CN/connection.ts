@@ -91,6 +91,7 @@ const pack = {
   'newConn.advanced': '高级设置',
   'newConn.readOnly': '只读连接',
   'newConn.readOnlyHint': '禁止在此连接上执行写入、删除和 DDL',
+  'newConn.driverReadOnlyLocked': '已锁定：该数据库驱动为只读驱动',
   'newConn.sshTunnel': '通过 SSH 隧道连接',
   'newConn.authMethod': '认证方式',
   'newConn.authPassword': '密码',

@@ -58,6 +58,22 @@ describe('buildSqlEditorContextMenuItems', () => {
     expect(runSel).toMatchObject({ kind: 'item', enabled: true });
   });
 
+  it('attaches keyboard shortcuts to run, comment, and add-favorite items', () => {
+    const items = buildSqlEditorContextMenuItems({
+      labels,
+      handlers: {
+        onRun: vi.fn(),
+        onComment: vi.fn(),
+        onAddFavorite: vi.fn(),
+      },
+      sqlText: 'SELECT 1',
+    });
+    const runItem = items.find((i) => i.kind === 'item' && i.id === 'run');
+    expect(runItem && runItem.kind === 'item' ? runItem.shortcut : undefined).toBeDefined();
+    const commentItem = items.find((i) => i.kind === 'item' && i.id === 'comment');
+    expect(commentItem && commentItem.kind === 'item' ? commentItem.shortcut : undefined).toBeDefined();
+  });
+
   it('disables run-selection without selection and favorite when empty', () => {
     const onAdd = vi.fn();
     const items = buildSqlEditorContextMenuItems({

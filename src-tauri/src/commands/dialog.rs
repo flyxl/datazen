@@ -12,7 +12,7 @@
 //! Webdriver/E2E builds pre-inject dialog results through
 //! [`test_inject_dialog_result`] and clear them between cases with
 //! [`test_reset_dialog_queue`]. Both IPCs are compiled out of production
-//! builds (cfg gates here + registration gates in `lib.rs`); there the queue
+//! builds (cfg gates here + registration gates in `bootstrap.rs`); there the queue
 //! can never receive an answer and every request reaches the native UI.
 //!
 //! There must be no second judgement path: command code never calls
@@ -301,7 +301,7 @@ mod tests {
     use super::*;
 
     const SOURCE: &str = include_str!("dialog.rs");
-    const LIB_RS: &str = include_str!("../lib.rs");
+    const BOOTSTRAP_RS: &str = include_str!("../bootstrap.rs");
 
     /// `(verb, tail)` pairs assembling `test_<verb>_dialog_<tail>` needles at
     /// runtime so this test's own source never contains them verbatim
@@ -445,17 +445,17 @@ mod tests {
     }
 
     #[test]
-    fn injection_registration_is_cfg_gated_in_lib_rs() {
+    fn injection_registration_is_cfg_gated_in_bootstrap_rs() {
         for (verb, tail) in injection_commands() {
             let reg_needle = format!("commands::test_{verb}_dialog_{tail},");
-            let count = LIB_RS.match_indices(&reg_needle).count();
+            let count = BOOTSTRAP_RS.match_indices(&reg_needle).count();
             assert_eq!(count, 1, "`{reg_needle}` must register exactly once");
-            let pos = LIB_RS.find(&reg_needle).unwrap();
-            let gate = LIB_RS[..pos]
+            let pos = BOOTSTRAP_RS.find(&reg_needle).unwrap();
+            let gate = BOOTSTRAP_RS[..pos]
                 .rfind("#[cfg(feature")
                 .expect("registration must carry its own cfg gate");
             assert!(
-                LIB_RS[gate..pos].contains("feature = \"webdriver\""),
+                BOOTSTRAP_RS[gate..pos].contains("feature = \"webdriver\""),
                 "`{reg_needle}` must sit directly behind the webdriver cfg gate"
             );
         }
@@ -464,14 +464,14 @@ mod tests {
     #[test]
     fn injection_queue_state_is_managed_only_behind_webdriver_gate() {
         let needle = "commands::DialogInjectionQueue";
-        let count = LIB_RS.match_indices(needle).count();
+        let count = BOOTSTRAP_RS.match_indices(needle).count();
         assert_eq!(count, 1, "the managed queue line must appear exactly once");
-        let pos = LIB_RS.find(needle).unwrap();
-        let gate = LIB_RS[..pos]
+        let pos = BOOTSTRAP_RS.find(needle).unwrap();
+        let gate = BOOTSTRAP_RS[..pos]
             .rfind("#[cfg(feature")
             .expect("managed queue must carry its own cfg gate");
         assert!(
-            LIB_RS[gate..pos].contains("feature = \"webdriver\""),
+            BOOTSTRAP_RS[gate..pos].contains("feature = \"webdriver\""),
             "the managed queue must sit behind the webdriver cfg gate"
         );
     }

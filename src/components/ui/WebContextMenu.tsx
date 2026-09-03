@@ -94,7 +94,7 @@ function MenuPanel({
               item.kind === 'item' ? `web-context-item-${item.id}` : `web-context-pre-${item.item}`
             }
             className={cn(
-              'flex w-full items-center px-3 py-1.5 text-left text-sm',
+              'flex w-full items-center justify-between gap-4 px-3 py-1.5 text-left text-sm',
               enabled
                 ? 'text-fg hover:bg-surface-raised'
                 : 'cursor-not-allowed text-fg-muted opacity-50',
@@ -107,7 +107,10 @@ function MenuPanel({
               else runPredefinedEdit(item.item);
             }}
           >
-            {label}
+            <span className="min-w-0 truncate">{label}</span>
+            {item.kind === 'item' && item.shortcut && (
+              <span className="shrink-0 text-xs text-fg-muted">{item.shortcut}</span>
+            )}
           </button>
         );
       })}

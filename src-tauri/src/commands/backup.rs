@@ -708,7 +708,7 @@ mod ipc_contract_guards {
     /// the contract in both directions, plus the decision 3+6 merge surface.
 
     const SOURCE: &str = include_str!("backup.rs");
-    const LIB_RS: &str = include_str!("../lib.rs");
+    const BOOTSTRAP_RS: &str = include_str!("../bootstrap.rs");
 
     /// Extracts the parameter list of a `pub async fn <command>(...)`.
     fn command_params(command: &str) -> String {
@@ -794,13 +794,13 @@ mod ipc_contract_guards {
     }
 
     #[test]
-    fn lib_rs_registers_merged_commands_only() {
+    fn bootstrap_rs_registers_merged_commands_only() {
         assert!(
-            LIB_RS.contains("commands::backup_database,"),
+            BOOTSTRAP_RS.contains("commands::backup_database,"),
             "merged `backup_database` must stay registered"
         );
         assert!(
-            LIB_RS.contains("commands::restore_sql_file,"),
+            BOOTSTRAP_RS.contains("commands::restore_sql_file,"),
             "`restore_sql_file` must be registered"
         );
         for gone in [
@@ -811,8 +811,8 @@ mod ipc_contract_guards {
             "commands::execute_sql_file_with_dialog,",
         ] {
             assert!(
-                !LIB_RS.contains(gone),
-                "`{gone}` must no longer be registered in lib.rs"
+                !BOOTSTRAP_RS.contains(gone),
+                "`{gone}` must no longer be registered in bootstrap.rs"
             );
         }
     }

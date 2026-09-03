@@ -66,6 +66,9 @@ const pack = {
     '当前事务因语句失败已中止。后续语句在回滚前都无法执行。请选择全部回滚，或跳过并稍后自行处理。',
   'query.txAbortedRollback': '全部回滚',
   'query.txAbortedSkip': '跳过',
+  'query.dangerousSqlTitle': '破坏性 SQL',
+  'query.dangerousSqlConfirm':
+    '脚本包含 DROP 或 TRUNCATE。Safe Mode 已关闭，语句将直接作用于当前数据库。是否继续执行？',
   'sqlFile.clickRun': '点击"运行"执行 SQL 文件',
   'sqlFile.noResults': '没有结果行',
   'sqlFile.selectAndRun': '选择 SQL 文件',
@@ -82,6 +85,7 @@ const pack = {
   'tableData.pendingUpdates': '{count} 项更新',
   'tableData.pendingDeletes': '{count} 项删除',
   'tableData.safeModeEditDisabled': '安全模式下不能编辑表格单元格。',
+  'tableData.readOnlyEditDisabled': '只读连接或驱动不支持编辑表格数据。',
   'tableData.preview': '预览',
   'tableData.commit': '提交',
   'tableData.rollback': '回滚',

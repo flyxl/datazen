@@ -66,16 +66,9 @@ if [ -f "${MAIN}/e2e/.env" ]; then
   echo "▶ e2e/.env 已拷贝"
 fi
 
-echo "▶ coordination hub 软链（跨 worktree 公共进度）"
+echo "▶ coordination tracks 目录准备（方案 B：各轨独立维护 tracks/<track>/，禁止修改或软链 hub.md）"
 COORD_DIR="${WT}/docs/development/coordination"
-mkdir -p "${COORD_DIR}/tracks"
-HUB_MAIN="${MAIN}/docs/development/coordination/hub.md"
-if [ -f "${HUB_MAIN}" ]; then
-  ln -sf "${HUB_MAIN}" "${COORD_DIR}/hub.md"
-  echo "   hub.md → ${HUB_MAIN}"
-else
-  echo "   ⚠ 主检出尚无 hub.md，跳过软链"
-fi
+mkdir -p "${COORD_DIR}/tracks/${TRACK}"
 
 cat <<EOF
 
@@ -83,5 +76,6 @@ cat <<EOF
 后续提醒:
   - 代理简报必须写明: 该工作目录 + 禁止修改其他检出
   - 简报环境注意三件套: Grep 工具搜索(禁 bash 全仓 grep) / CARGO_TARGET_DIR 策略 / 禁 add 未跟踪文档
-  - 活性与死亡恢复协议见 docs/development/subagent-dev-playbook.md §3
+  - 进度管理: 各轨独立维护 tracks/${TRACK}/progress.md，禁止修改或提交 hub.md
+  - 活性与死亡恢复协议见 docs/development/subagent/README.md
 EOF

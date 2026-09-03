@@ -1,4 +1,66 @@
+import type { TableSchema } from '../../types';
 import type { SqlDialectStrategy } from './types';
+import { BaseTableSqlGenerator } from './baseTableSql';
+
+class ClickHouseTableSqlGenerator extends BaseTableSqlGenerator {
+  constructor() {
+    super('`');
+  }
+
+  override generateUpdate(tableRef: string, schema: TableSchema): string {
+    const nonPkCols = schema.columns.filter(
+      (c) => !schema.primaryKeys.includes(c.name) && !c.isPrimaryKey,
+    );
+    const targetCols = nonPkCols.length > 0 ? nonPkCols : schema.columns;
+    const setClauses = targetCols.map((c) => `  ${this.quote(c.name)} = ''`).join(',\n');
+
+    const pks =
+      schema.primaryKeys.length > 0
+        ? schema.primaryKeys
+        : schema.columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
+
+    let whereClause: string;
+    if (pks.length > 0) {
+      whereClause = pks.map((pk) => `${this.quote(pk)} = `).join(' AND ');
+    } else {
+      whereClause = '/* WARNING: Primary Key not found. Specify condition */';
+    }
+    return `ALTER TABLE ${tableRef}\nUPDATE\n${setClauses}\nWHERE ${whereClause};`;
+  }
+
+  override generateDelete(tableRef: string, schema: TableSchema): string {
+    const pks =
+      schema.primaryKeys.length > 0
+        ? schema.primaryKeys
+        : schema.columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
+
+    let whereClause: string;
+    if (pks.length > 0) {
+      whereClause = pks.map((pk) => `${this.quote(pk)} = `).join(' AND ');
+    } else {
+      whereClause = '/* WARNING: Primary Key not found. Specify condition */';
+    }
+    return `ALTER TABLE ${tableRef}\nDELETE WHERE ${whereClause};`;
+  }
+}
+
+class ElasticsearchTableSqlGenerator extends BaseTableSqlGenerator {
+  constructor() {
+    super('"');
+  }
+
+  override generateInsert(): string {
+    throw new Error('Elasticsearch SQL does not support INSERT statements');
+  }
+
+  override generateUpdate(): string {
+    throw new Error('Elasticsearch SQL does not support UPDATE statements');
+  }
+
+  override generateDelete(): string {
+    throw new Error('Elasticsearch SQL does not support DELETE statements');
+  }
+}
 
 function standardIndex(dropPattern: 'table' | 'bare'): SqlDialectStrategy['index'] {
   return {
@@ -44,6 +106,7 @@ export const sqlserverDialect: SqlDialectStrategy = {
     { id: 'no-owner', label: '--no-owner' },
     { id: 'single-transaction', label: '--single-transaction' },
   ],
+  tableSql: new BaseTableSqlGenerator('"'),
 };
 
 export const clickhouseDialect: SqlDialectStrategy = {
@@ -63,6 +126,7 @@ export const clickhouseDialect: SqlDialectStrategy = {
     { id: 'clean', label: '--clean' },
     { id: 'no-owner', label: '--no-owner' },
   ],
+  tableSql: new ClickHouseTableSqlGenerator(),
 };
 
 export const duckdbDialect: SqlDialectStrategy = {
@@ -89,6 +153,7 @@ export const duckdbDialect: SqlDialectStrategy = {
     { id: 'no-owner', label: '--no-owner' },
     { id: 'single-transaction', label: '--single-transaction' },
   ],
+  tableSql: new BaseTableSqlGenerator('"'),
 };
 
 export const elasticsearchDialect: SqlDialectStrategy = {
@@ -96,6 +161,7 @@ export const elasticsearchDialect: SqlDialectStrategy = {
   ddl: noDdl,
   index: standardIndex('bare'),
   backupOptions: [],
+  tableSql: new ElasticsearchTableSqlGenerator(),
 };
 
 export const mongodbDialect: SqlDialectStrategy = {
@@ -110,4 +176,5 @@ export const genericDialect: SqlDialectStrategy = {
   ddl: noDdl,
   index: standardIndex('bare'),
   backupOptions: [],
+  tableSql: new BaseTableSqlGenerator('"'),
 };
