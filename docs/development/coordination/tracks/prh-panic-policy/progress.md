@@ -12,7 +12,7 @@
 ## 状态
 
 - Phase: READY_FOR_TEST
-- 编码 commit: 3d18bf6a2
+- 编码 commit: 6ef2aee16
 - 测试 commit: —
 
 ## 设计决策
