@@ -66,7 +66,8 @@
     "test:ids": "node scripts/check-id-terminology.mjs",
     "test:scripts": "vitest run scripts/__tests__",
     "test:rust:backup-i18n": "cargo test -p datazen --lib app_data_archive && cargo test -p datazen --lib i18n_locale && cargo test -p datazen --lib store::tests",
-    "prepare": "husky && node scripts/ensure-generated-drivers.mjs && node scripts/generate-builtin-locales.mjs"
+    "prepare": "husky && node scripts/ensure-generated-drivers.mjs && node scripts/generate-builtin-locales.mjs",
+    "ci:local": "bash scripts/ci-local.sh"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",

@@ -15,6 +15,7 @@ import {
 } from '../../commands/sync';
 import { databaseCommands } from '../../commands/database';
 import { useI18n } from '../../hooks/useI18n';
+import { useLocaleDomains } from '../../hooks/useLocaleDomains';
 import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useAiStore } from '../../stores/aiStore';
@@ -62,6 +63,7 @@ const STEPS: WizardStep[] = ['endpoints', 'setup', 'objects', 'compare', 'previe
 const NARROW_STEPS: WizardStep[] = ['endpoints', 'setup', 'result'];
 
 export function DataSyncWindow() {
+  useLocaleDomains(['sync']);
   useSettings();
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);

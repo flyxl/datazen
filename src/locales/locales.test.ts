@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll } from 'vitest';
 import zhCN from './zh-CN';
 import en from './en';
 import {
@@ -10,6 +10,7 @@ import {
   unregisterLocale,
   getAvailableLocales,
   getExtensionLocales,
+  ensureAllLazyDomains,
   type TranslationKey,
 } from './index';
 
@@ -63,6 +64,12 @@ const UI_POLISH_KEYS: TranslationKey[] = [
 ];
 
 describe('locales', () => {
+  // Lazy domain packs (sync/transfer/workflows/…) are not in the eager main chunk.
+  // Preload them so getTranslation can resolve those keys in tests.
+  beforeAll(async () => {
+    await Promise.all(BUILTIN_LOCALES.map((locale) => ensureAllLazyDomains(locale)));
+  });
+
   it('always exposes en as a built-in locale (fallback invariant)', () => {
     // en is the unconditional fallback dictionary; no generated/build issue
     // should ever drop it from BUILTIN_LOCALES.

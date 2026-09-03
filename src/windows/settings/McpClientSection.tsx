@@ -5,6 +5,7 @@ import { PathInput } from '../../components/ui/PathInput';
 import { useAiStore } from '../../stores/aiStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
+import { useLocaleDomains } from '../../hooks/useLocaleDomains';
 import type { McpServerConfig } from '../../types';
 import { isValidMcpServerId } from '../../types';
 import { SectionTitle, SettingRow, ToggleRow } from './settingsUi';
@@ -36,6 +37,7 @@ function rowsToEnv(rows: EnvRow[]): Record<string, string> {
 }
 
 export function McpClientSection() {
+  useLocaleDomains(['mcp']);
   const { t } = useI18n();
   const savedConfigs = useSettingsStore((s) => s.settings.mcpClientServers ?? []);
   const {
