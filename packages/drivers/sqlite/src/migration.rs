@@ -17,7 +17,16 @@ pub struct SqliteMigrationRenderer;
 
 impl MigrationRenderer for SqliteMigrationRenderer {
     fn render(&self, op: &MigrationOperation) -> Result<MigrationStatement, String> {
-        let qi = |s: &str| format!("\"{}\"", s.replace('\"', "\"\""));
+        let qi = |s: &str| {
+            if s.contains('.') {
+                s.split('.')
+                    .map(|part| format!("\"{}\"", part.replace('\"', "\"\"")))
+                    .collect::<Vec<_>>()
+                    .join(".")
+            } else {
+                format!("\"{}\"", s.replace('\"', "\"\""))
+            }
+        };
         match op {
             MigrationOperation::CreateTable {
                 table,

@@ -35,6 +35,11 @@ describe('Schema Diff 安全性 (SD-SAFETY)', function () {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
+    // Close any leftover sub-windows from prior specs to release pool connections.
+    await closeExtraWindows(mainWindow);
+    await browser.switchToWindow(mainWindow);
+    // Allow previous test sessions to fully release pool connections.
+    await browser.pause(5000);
     await invokeBackend('save_connection', {
       config: pgConnectionConfig(srcId, srcName, PG_SYNC_DB),
     });

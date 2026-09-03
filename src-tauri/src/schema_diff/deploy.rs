@@ -126,6 +126,7 @@ pub async fn run_deploy_with_executor(
     for (index, stmt) in plan.statements.iter().enumerate() {
         match executor.exec(&stmt.sql).await {
             Ok(()) => {
+                tracing::info!(index, sql = %stmt.sql, "deploy statement OK");
                 ok_count += 1;
                 results.push(StatementExecResult {
                     index,
@@ -136,6 +137,7 @@ pub async fn run_deploy_with_executor(
             }
             Err(e) => {
                 failed = true;
+                tracing::warn!(index, sql = %stmt.sql, error = %e, "deploy statement failed");
                 errors.push(format!("[{index}] {}: {e}", stmt.summary));
                 results.push(StatementExecResult {
                     index,

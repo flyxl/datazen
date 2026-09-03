@@ -64,6 +64,21 @@ function normalizePlan(plan: SchemaDiffPlanIpc): SchemaDiffPlan {
   };
 }
 
+function denormalizeRequirement(req: PlanRequirement): PlanRequirementIpc {
+  if (req.kind === 'Backfill') {
+    return { backfill: { table: req.table, column: req.column, reason: req.reason } };
+  }
+  const operation = req.column ? `${req.table}.${req.column}` : req.table;
+  return { unsupported: { operation, reason: req.reason } };
+}
+
+function denormalizePlan(plan: SchemaDiffPlan): SchemaDiffPlanIpc {
+  return {
+    ...plan,
+    requirements: (plan.requirements ?? []).map(denormalizeRequirement),
+  };
+}
+
 export function rollbackCompletenessCounts(plan: SchemaDiffPlan): RollbackCompletenessCounts {
   const total = plan.statements.length;
   const missing = plan.rollbackCompleteness.missing.length;
@@ -131,11 +146,7 @@ export function exportPlanSql(plan: SchemaDiffPlan): string {
 }
 
 export const schemaDiffCommands = {
-  compareTableSchemas: (
-    sourceDbSessionId: string,
-    targetDbSessionId: string,
-    tableName: string,
-  ) =>
+  compareTableSchemas: (sourceDbSessionId: string, targetDbSessionId: string, tableName: string) =>
     invoke<TableSchemaDiff>('compare_table_schemas', {
       sourceDbSessionId,
       targetDbSessionId,
@@ -165,7 +176,7 @@ export const schemaDiffCommands = {
   }) =>
     invoke<SchemaDiffDeployResult>('execute_schema_diff_deploy', {
       targetDbSessionId: params.targetDbSessionId,
-      plan: params.plan,
+      plan: denormalizePlan(params.plan),
       useTransaction: params.useTransaction,
       confirmDestructive: params.confirmDestructive,
     }),

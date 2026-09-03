@@ -1946,13 +1946,21 @@ export async function clickSchemaDiffCompare() {
 }
 
 export async function clickSchemaDiffGeneratePlan() {
-  const btn = await $('[data-testid="schema-diff-generate-plan"]');
-  if (!(await btn.isDisplayed().catch(() => false))) {
+  const planPanel = await $('[data-testid="schema-diff-plan-panel"]');
+  const alreadyOnPlan = await planPanel.isDisplayed().catch(() => false);
+  if (!alreadyOnPlan) {
     await clickSchemaDiffNext();
   }
-  await btn.waitForClickable({ timeout: 15000 });
-  await btn.click();
-  await browser.pause(2500);
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const panel = document.querySelector('[data-testid="schema-diff-plan-panel"]');
+        return Boolean(panel?.querySelector('[data-testid="schema-diff-allow-destructive"]'));
+      }),
+    { timeout: 30000, timeoutMsg: '等待结构对比计划自动生成超时' },
+  );
+  await planPanel.waitForDisplayed({ timeout: 8000 });
+  await browser.pause(500);
 }
 
 /** Advance from plan step to deploy step in the wizard. */
@@ -1998,9 +2006,16 @@ export async function deploySchemaDiffPlan() {
   await browser.waitUntil(
     async () => {
       const text = await deployPanel.getText();
-      return (
-        text.includes(t('schemaDiff.deployStatus')) && !text.includes(t('schemaDiff.deploying'))
-      );
+      const hasStatus =
+        text.includes(t('schemaDiff.deployStatus')) && !text.includes(t('schemaDiff.deploying'));
+      if (hasStatus) return true;
+      // Also detect errors shown in the page (deploy failure or IPC error).
+      const errorEl = await $('.error-message').catch(() => null);
+      if (errorEl && (await errorEl.isDisplayed().catch(() => false))) {
+        const errText = await errorEl.getText();
+        throw new Error(`schema diff deploy error: ${errText}`);
+      }
+      return false;
     },
     {
       timeout: 90000,
