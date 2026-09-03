@@ -12,9 +12,9 @@ use crate::db::init_drivers;
 use crate::monitor::MonitorEngine;
 use crate::services::ConnectionManager;
 use crate::store::Store;
+use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use tauri::Emitter;
 use tauri::Manager;
-use crate::transfer::adapter_registry::SyncAdapterRegistry;
 
 use crate::app_menu::setup_menu;
 use crate::driver_init;
@@ -105,7 +105,8 @@ pub(crate) fn should_auto_start_embedded_mcp(mcp_server_enabled: bool) -> bool {
 }
 
 pub(crate) fn resolve_log_settings() -> (String, PathBuf) {
-    let data_dir = crate::store::Store::default_app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let data_dir =
+        crate::store::Store::default_app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
     resolve_log_settings_in(&data_dir)
 }
 
@@ -366,9 +367,9 @@ pub fn run() {
                 let enabled =
                     tauri::async_runtime::block_on(state.store.get_settings()).mcp_server_enabled;
                 if should_auto_start_embedded_mcp(enabled) {
-                    if let Err(e) =
-                        tauri::async_runtime::block_on(crate::commands::start_embedded_mcp(state.inner()))
-                    {
+                    if let Err(e) = tauri::async_runtime::block_on(
+                        crate::commands::start_embedded_mcp(state.inner()),
+                    ) {
                         tracing::warn!(error = %e, "Failed to auto-start embedded MCP Server");
                     }
                 }
@@ -382,7 +383,8 @@ pub fn run() {
                     let app_state = state.inner().clone();
                     tauri::async_runtime::spawn(async move {
                         if let Err(e) =
-                            crate::commands::mcp_client_connect_impl(&app_state, config.clone()).await
+                            crate::commands::mcp_client_connect_impl(&app_state, config.clone())
+                                .await
                         {
                             tracing::warn!(
                                 error = %e,

@@ -1,0 +1,115 @@
+{
+  "contractVersion": 1,
+  "naming": {
+    "resourceJsonFields": "camelCase",
+    "toolInputKeys": "snake_case"
+  },
+  "removedToolInputFields": [
+    "config_id"
+  ],
+  "resourceUriTemplates": [
+    "datazen://schema/{connectionId}/{database}"
+  ],
+  "resourceUris": [
+    "datazen://connections",
+    "datazen://query-history",
+    "datazen://workflows"
+  ],
+  "serverName": "datazen",
+  "tools": [
+    {
+      "inputProperties": [
+        "connection_id",
+        "table"
+      ],
+      "name": "describe_table",
+      "requiredInputProperties": [
+        "connection_id",
+        "table"
+      ]
+    },
+    {
+      "inputProperties": [
+        "connection_id",
+        "sql"
+      ],
+      "name": "explain_query",
+      "requiredInputProperties": [
+        "connection_id",
+        "sql"
+      ]
+    },
+    {
+      "inputProperties": [
+        "connection_id",
+        "table"
+      ],
+      "name": "get_schema",
+      "requiredInputProperties": [
+        "connection_id",
+        "table"
+      ]
+    },
+    {
+      "name": "list_connections"
+    },
+    {
+      "inputProperties": [
+        "connection_id"
+      ],
+      "name": "list_databases",
+      "requiredInputProperties": [
+        "connection_id"
+      ]
+    },
+    {
+      "inputProperties": [
+        "connection_id",
+        "database"
+      ],
+      "name": "list_tables",
+      "requiredInputProperties": [
+        "connection_id"
+      ]
+    },
+    {
+      "name": "list_workflows"
+    },
+    {
+      "inputProperties": [
+        "connection_id",
+        "limit",
+        "sql"
+      ],
+      "name": "query",
+      "requiredInputProperties": [
+        "connection_id",
+        "sql"
+      ]
+    },
+    {
+      "inputProperties": [
+        "connection_id",
+        "variables",
+        "workflow_id"
+      ],
+      "name": "run_workflow",
+      "requiredInputProperties": [
+        "workflow_id"
+      ]
+    },
+    {
+      "inputProperties": [
+        "connection_id",
+        "database",
+        "limit",
+        "pattern"
+      ],
+      "name": "search_tables",
+      "requiredInputProperties": [
+        "connection_id",
+        "pattern"
+      ]
+    }
+  ]
+}

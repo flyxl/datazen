@@ -88,8 +88,12 @@ pub(crate) fn menu_action_for_id(id: &str) -> MenuAction {
     match id {
         "open-settings" => MenuAction::Emit("menu:open-settings"),
         "new-connection" => MenuAction::Emit("menu:new-connection"),
-        "schema-diff" => MenuAction::OpenMigrationWindow(crate::commands::MigrationSubWindow::SchemaDiff),
-        "data-sync" => MenuAction::OpenMigrationWindow(crate::commands::MigrationSubWindow::DataSync),
+        "schema-diff" => {
+            MenuAction::OpenMigrationWindow(crate::commands::MigrationSubWindow::SchemaDiff)
+        }
+        "data-sync" => {
+            MenuAction::OpenMigrationWindow(crate::commands::MigrationSubWindow::DataSync)
+        }
         "data-transfer" => {
             MenuAction::OpenMigrationWindow(crate::commands::MigrationSubWindow::DataTransfer)
         }

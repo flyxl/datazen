@@ -172,9 +172,7 @@ pub(crate) async fn execute_driver_command_with_mode(
             // driver-type branching — any driver opting in gets the same flow.
             if let Some(spec) = definition.metadata.save_dialog.as_ref() {
                 let app = dialog.ok_or_else(|| {
-                    CommandError::Internal(
-                        "save dialog AppHandle missing after preflight".into(),
-                    )
+                    CommandError::Internal("save dialog AppHandle missing after preflight".into())
                 })?;
                 return finish_save_dialog(app, spec, result).await;
             }

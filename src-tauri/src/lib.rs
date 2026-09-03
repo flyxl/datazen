@@ -43,8 +43,8 @@ use commands::AppState;
 // Re-exports for crate-internal callers (tray, commands, testing).
 #[allow(unused_imports)]
 pub(crate) use app_menu::{
-    menu_action_for_id, menu_emit_needs_main_focus, menu_label, menu_labels, MenuAction,
-    take_once_slot, theme_menu_item_checked,
+    menu_action_for_id, menu_emit_needs_main_focus, menu_label, menu_labels, take_once_slot,
+    theme_menu_item_checked, MenuAction,
 };
 #[allow(unused_imports)]
 pub(crate) use bootstrap::{
