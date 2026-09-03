@@ -11,19 +11,21 @@
 
 ## 状态
 
-- Phase: 未开始（Wave 2）
-- 编码 commit: —
+- Phase: READY_FOR_TEST
+- 编码 commit: d99307859
 - 测试 commit: —
 
 ## 设计决策
 
-（编码代理填写）
+- 外部契约策略文档：`docs/development/external-contract-policy.md`（v0.x vs 近 1.0 deprecation、MCP tool/参数/资源 URI 规则、Driver/AI protocol 引用）
+- MCP golden 测试：`src-tauri/src/mcp/contract.rs` + `fixtures/mcp_external_contract.json`，由 `cargo test -p datazen --lib` 覆盖（CI 已有该步骤）
+- 破坏性契约检查项：PR 模板 checklist + CONTRIBUTING 外部契约小节
 
 ## 自验结果
 
 | 套件 | 结果 | 备注 |
 |------|------|------|
-| cargo test -p datazen --lib | — | — |
+| cargo test -p datazen --lib | pass | 1245 passed; 3 ignored |
 
 ## E2E 用例登记
 

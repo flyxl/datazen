@@ -3,6 +3,7 @@
 pub mod allowlist;
 pub mod auth;
 pub mod client;
+mod contract;
 mod handler;
 pub mod permission;
 mod prompts;
