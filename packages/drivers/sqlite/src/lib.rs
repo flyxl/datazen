@@ -11,7 +11,7 @@ mod migration;
 mod structure;
 mod sync_adapter;
 pub use sqlite::*;
-pub use migration::SqliteMigrationRenderer;
+pub use migration::{SqliteMigrationCapabilities, SqliteMigrationRenderer};
 pub use sync_adapter::SqliteSyncAdapter;
 
 struct SqliteFactory;
