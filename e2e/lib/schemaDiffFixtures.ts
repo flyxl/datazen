@@ -176,6 +176,35 @@ export async function setupMultiTableSchemaDiff(
   return tables;
 }
 
+export async function setupNotNullNoDefaultDiffFixture(
+  srcConnectionId: string,
+  tgtConnectionId: string,
+  table: string,
+): Promise<void> {
+  const srcSession = await invokeBackend<string>('connect', { connectionId: srcConnectionId });
+  const tgtSession = await invokeBackend<string>('connect', { connectionId: tgtConnectionId });
+  await withSafeModeOff(async () => {
+    await dropTableIfExists(srcSession, table);
+    await dropTableIfExists(tgtSession, table);
+    await invokeBackend('execute_query', {
+      dbSessionId: srcSession,
+      sql: `CREATE TABLE ${table} (id int PRIMARY KEY, status int NOT NULL)`,
+    });
+    await invokeBackend('execute_query', {
+      dbSessionId: srcSession,
+      sql: `INSERT INTO ${table} (id, status) VALUES (1, 1)`,
+    });
+    await invokeBackend('execute_query', {
+      dbSessionId: tgtSession,
+      sql: `CREATE TABLE ${table} (id int PRIMARY KEY)`,
+    });
+    await invokeBackend('execute_query', {
+      dbSessionId: tgtSession,
+      sql: `INSERT INTO ${table} (id) VALUES (1)`,
+    });
+  });
+}
+
 export async function setupDestructiveDiffFixture(
   srcConnectionId: string,
   tgtConnectionId: string,
@@ -244,6 +273,20 @@ export async function columnExists(
           WHERE table_schema = DATABASE() AND table_name = '${table}' AND column_name = '${column}'`,
   });
   return Number(queryScalar(result, 'c')) === 1;
+}
+
+export async function columnNullable(
+  connectionId: string,
+  table: string,
+  column: string,
+): Promise<boolean> {
+  const session = await invokeBackend<string>('connect', { connectionId });
+  const result = await invokeBackend<QueryResultPayload>('execute_query', {
+    dbSessionId: session,
+    sql: `SELECT is_nullable FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = '${table}' AND column_name = '${column}'`,
+  });
+  return String(queryScalar(result, 'is_nullable')).toUpperCase() === 'YES';
 }
 
 export async function teardownSchemaDiffFixture(

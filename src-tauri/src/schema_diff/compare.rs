@@ -9,7 +9,10 @@ pub fn column_snapshot(col: &ColumnSchema) -> ColumnSnapshot {
         name: col.name.clone(),
         data_type: col.data_type.clone(),
         nullable: col.nullable,
+        default_value: col.default_value.clone(),
+        comment: col.comment.clone(),
         is_primary_key: col.is_primary_key,
+        is_auto_increment: col.is_auto_increment,
     }
 }
 
@@ -40,13 +43,22 @@ pub fn diff_table_schemas(table: &str, src: &TableSchema, tgt: &TableSchema) -> 
         if let Some(tgt_col) = tgt_map.get(col.name.as_str()) {
             let mut changes = Vec::new();
             if col.data_type != tgt_col.data_type {
-                changes.push("dataType".into());
+                changes.push(super::types::ColumnChange::DataType);
             }
             if col.nullable != tgt_col.nullable {
-                changes.push("nullable".into());
+                changes.push(super::types::ColumnChange::Nullable);
             }
             if col.is_primary_key != tgt_col.is_primary_key {
-                changes.push("isPrimaryKey".into());
+                changes.push(super::types::ColumnChange::PrimaryKey);
+            }
+            if col.default_value != tgt_col.default_value {
+                changes.push(super::types::ColumnChange::Default);
+            }
+            if col.comment != tgt_col.comment {
+                changes.push(super::types::ColumnChange::Comment);
+            }
+            if col.is_auto_increment != tgt_col.is_auto_increment {
+                changes.push(super::types::ColumnChange::AutoIncrement);
             }
             if !changes.is_empty() {
                 changed.push(ChangedColumnDiff {
@@ -144,6 +156,21 @@ mod tests {
         assert_eq!(diff.missing_on_target[0].name, "email");
         assert_eq!(diff.added.len(), 1);
         assert!(diff.extra_on_target.is_empty());
+    }
+
+    #[test]
+    fn column_default_and_auto_increment_changes_are_detected() {
+        let mut src_col = col("id", "int");
+        src_col.default_value = Some("0".into());
+        src_col.is_auto_increment = true;
+        let mut tgt_col = col("id", "int");
+        tgt_col.default_value = Some("1".into());
+        let src = schema(vec![src_col]);
+        let tgt = schema(vec![tgt_col]);
+        let diff = diff_table_schemas("users", &src, &tgt);
+        assert_eq!(diff.changed.len(), 1);
+        assert!(diff.changed[0].changes.contains(&super::super::types::ColumnChange::Default));
+        assert!(diff.changed[0].changes.contains(&super::super::types::ColumnChange::AutoIncrement));
     }
 
     #[test]

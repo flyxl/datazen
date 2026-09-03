@@ -8,7 +8,43 @@ pub struct ColumnSnapshot {
     pub name: String,
     pub data_type: String,
     pub nullable: bool,
+    pub default_value: Option<String>,
+    pub comment: Option<String>,
     pub is_primary_key: bool,
+    pub is_auto_increment: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ColumnChange {
+    DataType,
+    Nullable,
+    Default,
+    Comment,
+    AutoIncrement,
+    PrimaryKey,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanWarning {
+    pub code: String,
+    pub message: String,
+    pub destructive: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum PlanRequirement {
+    Backfill {
+        table: String,
+        column: String,
+        reason: String,
+    },
+    Unsupported {
+        operation: String,
+        reason: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -17,7 +53,7 @@ pub struct ChangedColumnDiff {
     pub name: String,
     pub source: ColumnSnapshot,
     pub target: ColumnSnapshot,
-    pub changes: Vec<String>,
+    pub changes: Vec<ColumnChange>,
 }
 
 /// Column-level diff with **source = desired**.
@@ -63,6 +99,7 @@ pub struct SchemaDiffPlan {
     pub same_dialect: bool,
     pub statements: Vec<PlanStatement>,
     pub warnings: Vec<String>,
+    pub requirements: Vec<PlanRequirement>,
     pub rollback_completeness: RollbackCompleteness,
 }
 

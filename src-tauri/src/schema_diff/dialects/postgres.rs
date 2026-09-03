@@ -3,6 +3,18 @@
 use super::{add_column_stmt, drop_column_stmt, quote_column, quote_ident};
 use crate::schema_diff::types::{ChangedColumnDiff, ColumnSnapshot, PlanStatement, StatementRisk};
 
+pub fn add_column_with_default(table: &str, col: &ColumnSnapshot, type_sql: &str, default_value: &str) -> PlanStatement {
+    let q_table = quote_ident("postgresql", table);
+    let q_col = quote_column("postgresql", &col.name);
+    let sql = format!("ALTER TABLE {q_table} ADD COLUMN {q_col} {type_sql}{} DEFAULT {default_value}", super::nullability_sql(col.nullable));
+    PlanStatement {
+        sql,
+        risk: StatementRisk::Additive,
+        rollback_sql: Some(format!("ALTER TABLE {q_table} DROP COLUMN {q_col}")),
+        summary: format!("ADD COLUMN {}.{}", table, col.name),
+    }
+}
+
 pub fn add_column(table: &str, col: &ColumnSnapshot, type_sql: &str) -> PlanStatement {
     add_column_stmt("postgresql", table, col, type_sql)
 }
@@ -85,3 +97,25 @@ pub fn drop_index(name: &str) -> PlanStatement {
         summary: format!("DROP INDEX {name}"),
     }
 }
+
+pub fn drop_primary_key(table: &str) -> PlanStatement {
+    let q_table = quote_ident("postgresql", table);
+    PlanStatement {
+        sql: format!("ALTER TABLE {q_table} DROP CONSTRAINT IF EXISTS \"{}_pkey\"", table),
+        risk: StatementRisk::Destructive,
+        rollback_sql: None,
+        summary: format!("DROP PRIMARY KEY {table}"),
+    }
+}
+
+pub fn add_primary_key(table: &str, columns: &[String]) -> PlanStatement {
+    let q_table = quote_ident("postgresql", table);
+    let cols: Vec<String> = columns.iter().map(|c| quote_column("postgresql", c)).collect();
+    PlanStatement {
+        sql: format!("ALTER TABLE {q_table} ADD PRIMARY KEY ({})", cols.join(", ")),
+        risk: StatementRisk::Additive,
+        rollback_sql: Some(format!("ALTER TABLE {q_table} DROP CONSTRAINT IF EXISTS \"{}_pkey\"", table)),
+        summary: format!("ADD PRIMARY KEY {table}"),
+    }
+}
+

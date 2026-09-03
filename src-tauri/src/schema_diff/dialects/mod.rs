@@ -31,6 +31,66 @@ pub(crate) fn quote_column(dialect: &str, name: &str) -> String {
     }
 }
 
+pub(crate) fn default_sql(default_value: Option<&str>) -> String {
+    default_value
+        .map(|v| format!(" DEFAULT {v}"))
+        .unwrap_or_default()
+}
+
+pub(crate) fn set_default_stmt(dialect: &str, table: &str, column: &str, default_value: &str) -> PlanStatement {
+    let q_table = quote_ident(dialect, table);
+    let q_col = quote_column(dialect, column);
+    let sql = format!("ALTER TABLE {q_table} ALTER COLUMN {q_col} SET DEFAULT {default_value}");
+    let rollback = drop_default_stmt(dialect, table, column).sql;
+    PlanStatement {
+        sql,
+        risk: StatementRisk::Additive,
+        rollback_sql: Some(rollback),
+        summary: format!("SET DEFAULT {table}.{column}"),
+    }
+}
+
+pub(crate) fn set_default_with_rollback(
+    dialect: &str,
+    table: &str,
+    column: &str,
+    new_default: Option<&str>,
+    old_default: Option<&str>,
+) -> PlanStatement {
+    let q_table = quote_ident(dialect, table);
+    let q_col = quote_column(dialect, column);
+    let sql = match new_default {
+        Some(v) => format!("ALTER TABLE {q_table} ALTER COLUMN {q_col} SET DEFAULT {v}"),
+        None => drop_default_stmt(dialect, table, column).sql,
+    };
+    let rollback_sql = match old_default {
+        Some(v) => Some(format!("ALTER TABLE {q_table} ALTER COLUMN {q_col} SET DEFAULT {v}")),
+        None => Some(drop_default_stmt(dialect, table, column).sql),
+    };
+    PlanStatement {
+        sql,
+        risk: StatementRisk::Additive,
+        rollback_sql,
+        summary: format!("ALTER DEFAULT {table}.{column}"),
+    }
+}
+
+pub(crate) fn drop_default_stmt(dialect: &str, table: &str, column: &str) -> PlanStatement {
+    let q_table = quote_ident(dialect, table);
+    let q_col = quote_column(dialect, column);
+    let sql = match normalize_dialect(dialect).as_str() {
+        "postgresql" | "mysql" => format!("ALTER TABLE {q_table} ALTER COLUMN {q_col} DROP DEFAULT"),
+        "sqlite" => format!("-- SQLite does not support DROP DEFAULT for an existing column"),
+        _ => format!("-- Unsupported DROP DEFAULT for {q_table}.{q_col}"),
+    };
+    PlanStatement {
+        sql,
+        risk: StatementRisk::Additive,
+        rollback_sql: None,
+        summary: format!("DROP DEFAULT {table}.{column}"),
+    }
+}
+
 pub(crate) fn nullability_sql(nullable: bool) -> &'static str {
     if nullable {
         ""
@@ -55,7 +115,12 @@ pub(crate) fn create_table_stmt(
             .find(|c| c.name == *col_name)
             .map(|c| c.nullable)
             .unwrap_or(true);
-        let def = format!("{q_col} {type_sql}{}", nullability_sql(nullable));
+        let src_col = src.columns.iter().find(|c| c.name == *col_name);
+        let def = format!(
+            "{q_col} {type_sql}{}{}",
+            nullability_sql(nullable),
+            default_sql(src_col.and_then(|c| c.default_value.as_deref()))
+        );
         col_defs.push(def);
     }
     if !src.primary_keys.is_empty() {
