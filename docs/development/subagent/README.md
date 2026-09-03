@@ -16,10 +16,12 @@
 
 ```text
 [功能循环]
-编码(+单测) → commit → 测试(审查+复验+新增测试) ─┬→ 通过 → 功能「已完成」→ commit (TEST_DONE)
-                                                └→ Bug → 立即派发修复 Coder → 修复提交
-                                                       → 立即派发全新 Tester 复测 ─┬→ 通过 → 闭环
-                                                                                   └→ 不通过 → 循环（最多5轮，超限 ESCALATED 上报用户）
+编码(+单测) → commit → 测试(审查+复验+新增测试，完整跑完4阶段)
+  ├→ 通过 → 功能「已完成」→ commit (TEST_DONE)
+  └→ Bug → Tester 一并上报 Bug 清单 + TEST_FAILED
+         → 协调者 resume 原 Coder 修复全部 Bug → 修复提交
+         → 协调者派发全新 Tester 完整复测 ─┬→ 通过 → 闭环
+                                          └→ 不通过 → 循环（最多5轮，超限 ESCALATED 上报用户）
 
 [阶段状态机]
 DISPATCHED → BOOTSTRAP → CODING → READY_FOR_TEST ─┬→ TESTING → PASSED → READY_TO_MERGE → MERGED → CLEANUP → CLOSED

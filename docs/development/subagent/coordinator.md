@@ -44,20 +44,22 @@ scripts/new-feature-worktree.sh <track-id> <base-branch>
 
 ### 3.2 Bug 修复循环
 
-当 Tester 返回 `TEST_FAILED` 并在 `bugs.md` 登记了 Bug 时，协调者必须立即启动修复循环：
+Tester 完成完整测试后统一上报 Bug 清单。协调者收到 `TEST_FAILED` 后启动修复循环：
 
 ```text
-Tester 发现 Bug → bugs.md 登记 → 协调者立即派发 Coder 修复
-→ Coder 修复并提交 → 协调者立即派发全新 Tester 复测
+Tester 完成完整测试 → 一并上报 Bug 清单 + TEST_FAILED
+→ 协调者 resume 原 Coder agent 修复全部 Bug
+→ Coder 修复并提交 → 协调者派发全新 Tester 完整复测
 → 通过 → 闭环 / 不通过 → 回到循环起点
 ```
 
 **规则**：
-1. **即时响应**：Tester 报告 Bug 后，协调者**立即**派发修复 Coder（不等其他轨道）。
-2. **全新实例**：每轮修复和复测都使用全新子代理实例（不复用前轮）。
-3. **最大 5 轮**：同一 Bug 超过 5 轮修复-复测循环仍未修复，标记 `ESCALATED` 上报用户。
-4. **Bug 状态流转**：`待修复` → `修复中` → `待复测` → `已修复` 或回到 `待修复`。
-5. **修复 Coder 简报**：必须包含 Bug ID、详细描述、重现步骤、实测日志，以及"仅修复该 Bug"的纪律约束。
+1. **完整上报**：Tester 跑完全部测试阶段后统一上报，不逐个中断。
+2. **复用原 Coder**：优先 `Task(resume=<coder-agent-id>)` 恢复原编码 Coder，利用已有上下文。仅不可恢复时用 Rescuer。
+3. **全新 Tester**：每轮复测使用全新 Tester 实例。
+4. **最大 5 轮**：同一轨道超过 5 轮仍有 Bug，标记 `ESCALATED` 上报用户。
+5. **Bug 状态流转**：`待修复` → `修复中` → `待复测` → `已修复` 或回到 `待修复`。
+6. **修复简报**：包含完整 Bug 清单 + "仅修复这些 Bug" 纪律约束。
 
 ## 4. 活性监控与死亡恢复
 

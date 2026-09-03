@@ -53,22 +53,24 @@ scripts/new-feature-worktree.sh <track-id> <base-branch>
   3. **设计 E2E 测试用例**——在 progress.md 登记或直接编写可执行的 E2E 测试。
 - 测试代理只测不修。若出现缺陷，只在 `tracks/<track-id>/bugs.md` 登记；全部通过后才置 `TEST_DONE`。
 
-### 4.1 Bug 修复循环（Tester 发现 Bug 后的闭环流程）
-当 Tester 返回 `TEST_FAILED` 并在 `bugs.md` 登记了 Bug 时，协调者必须立即启动**修复循环**：
+### 4.1 Bug 修复循环（Tester 完整上报后的闭环流程）
+Tester 必须先完成一轮**完整测试**（4 阶段 A/B/C/D 全部跑完），最终将所有发现的 Bug 一并在 `bugs.md` 登记，并以 `TEST_FAILED` 状态统一上报。协调者收到上报后启动修复循环：
 
 ```text
 [Bug 修复循环]
-Tester 发现 Bug → 登记 bugs.md → 协调者立即派发 Coder 修复
-→ Coder 修复并提交 → 协调者立即派发全新 Tester 复测
+Tester 完成完整测试 → 一并上报 Bug 清单 + TEST_FAILED
+→ 协调者指派原 Coder agent（resume）修复全部 Bug
+→ Coder 修复并提交 → 协调者派发全新 Tester 完整复测
 → 通过 → 闭环 / 不通过 → 回到循环起点
 ```
 
 **硬性规则**：
-1. **即时响应**：Tester 报告 Bug 后，协调者必须**立即**派发修复 Coder（不等其他轨道）。
-2. **全新实例**：每轮修复和复测都使用**全新子代理实例**（Coder 和 Tester 均不复用前轮实例）。
-3. **最大循环次数**：同一个 Bug 最多允许 **5 轮修复-复测循环**。超过 5 轮仍未修复，协调者须将该 Bug 标记为 `ESCALATED` 并向用户汇报，由用户决定下一步。
-4. **Bug 状态流转**：`待修复` → `修复中`（Coder 接手）→ `待复测`（Coder 提交）→ `已修复`（Tester 通过）或回到 `待修复`（Tester 不通过）。
-5. **修复 Coder 简报**：必须包含 Bug ID、bugs.md 中的详细描述、重现步骤和实测日志，以及"仅修复该 Bug，不做范围外改动"的纪律约束。
+1. **完整上报**：Tester 不逐个上报 Bug，而是在完成全部测试阶段后统一上报 Bug 清单和 `TEST_FAILED` 状态。
+2. **复用原 Coder**：修复阶段优先使用 `Task` 工具的 `resume` 参数恢复**原编码 Coder agent**，利用其已有上下文高效修复。仅当原 Coder 不可恢复时才启动全新 Rescuer。
+3. **全新 Tester**：每轮复测必须使用**全新 Tester 实例**（不复用前轮 Tester）。
+4. **最大循环次数**：同一轨道最多允许 **5 轮完整修复-复测循环**。超过 5 轮仍有未修复 Bug，协调者须将其标记为 `ESCALATED` 并向用户汇报，由用户决定下一步。
+5. **Bug 状态流转**：`待修复` → `修复中`（Coder 接手）→ `待复测`（Coder 提交）→ `已修复`（Tester 通过）或回到 `待修复`（Tester 不通过）。
+6. **修复 Coder 简报**：必须包含完整 Bug 清单（ID + 描述 + 重现步骤 + 日志），以及"仅修复这些 Bug，不做范围外改动"的纪律约束。
 
 ### 5. 活性监控与断点恢复
 - 编码代理给予 20 分钟纯探索宽限期。

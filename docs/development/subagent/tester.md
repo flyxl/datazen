@@ -73,13 +73,14 @@
 - **Bug ID**：`<track-id>-BUG-nnn`（如 `prh-sql-guard-BUG-001`）
 - **字段要求**：描述（含量级）、状态（`待修复`）、重现步骤、实测错误日志与影响范围。
 - 将 `tracks/<track-id>/progress.md` 的 Phase 更新为 `FAILED`。
-- **登记后的流程**：协调者会立即派发修复 Coder → 修复后派发全新 Tester 复测 → 闭环或继续循环（最多 5 轮）。
+- **上报时机**：Tester 必须完成全部 4 个测试阶段（A/B/C/D）后，将所有 Bug **一并**上报，不逐个中断测试流程。
+- **后续流程**：协调者收到上报后，resume 原 Coder agent 修复全部 Bug → 修复后派发全新 Tester 完整复测 → 闭环或继续循环（最多 5 轮）。
 
 ### Bug 状态流转
 
 ```text
-待修复 → 修复中（Coder 接手）→ 待复测（Coder 提交）→ 已修复（Tester 通过）
-                                                     ↘ 待修复（Tester 不通过，回到循环起点）
+待修复 → 修复中（原 Coder resume 接手）→ 待复测（Coder 提交）→ 已修复（全新 Tester 通过）
+                                                              ↘ 待修复（Tester 不通过，回到循环起点）
 ```
 
 **复测 Tester 注意事项**：
