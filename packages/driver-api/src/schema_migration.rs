@@ -12,7 +12,7 @@ pub struct MigrationColumn {
     pub is_auto_increment: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum MigrationOperation {
     CreateTable { table: String, columns: Vec<MigrationColumn>, primary_keys: Vec<String> },
     AddColumn { table: String, column: MigrationColumn },
@@ -51,7 +51,7 @@ pub trait MigrationRenderer: Send + Sync {
 
 pub trait MigrationCapabilities: Send + Sync {
     fn supports(&self, operation: &MigrationOperation) -> bool;
-    fn requires_table_rebuild(&self, operation: &MigrationOperation) -> bool { false }
+    fn requires_table_rebuild(&self, _operation: &MigrationOperation) -> bool { false }
     fn transactional_ddl(&self) -> bool { true }
 }
 
