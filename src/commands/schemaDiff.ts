@@ -17,6 +17,59 @@ export interface RollbackCompleteness {
   missing: string[];
 }
 
+/** Normalized plan requirement (from IPC tagged enum). */
+export interface PlanRequirement {
+  kind: 'Backfill' | 'Unsupported';
+  table: string;
+  column: string;
+  reason: string;
+}
+
+/** Rollback counts derived from {@link RollbackCompleteness} and statement list. */
+export interface RollbackCompletenessCounts {
+  complete: number;
+  missing: number;
+}
+
+type PlanRequirementIpc =
+  | { backfill: { table: string; column: string; reason: string } }
+  | { unsupported: { operation: string; reason: string } };
+
+type SchemaDiffPlanIpc = Omit<SchemaDiffPlan, 'requirements'> & {
+  requirements?: PlanRequirementIpc[];
+};
+
+function normalizeRequirement(raw: PlanRequirementIpc): PlanRequirement {
+  if ('backfill' in raw) {
+    const { table, column, reason } = raw.backfill;
+    return { kind: 'Backfill', table, column, reason };
+  }
+  const { operation, reason } = raw.unsupported;
+  const dot = operation.indexOf('.');
+  if (dot > 0) {
+    return {
+      kind: 'Unsupported',
+      table: operation.slice(0, dot),
+      column: operation.slice(dot + 1),
+      reason,
+    };
+  }
+  return { kind: 'Unsupported', table: operation, column: '', reason };
+}
+
+function normalizePlan(plan: SchemaDiffPlanIpc): SchemaDiffPlan {
+  return {
+    ...plan,
+    requirements: (plan.requirements ?? []).map(normalizeRequirement),
+  };
+}
+
+export function rollbackCompletenessCounts(plan: SchemaDiffPlan): RollbackCompletenessCounts {
+  const total = plan.statements.length;
+  const missing = plan.rollbackCompleteness.missing.length;
+  return { complete: total - missing, missing };
+}
+
 export interface SchemaDiffPlan {
   table: string;
   tables: string[];
@@ -25,6 +78,7 @@ export interface SchemaDiffPlan {
   sameDialect: boolean;
   statements: PlanStatement[];
   warnings: string[];
+  requirements?: PlanRequirement[];
   rollbackCompleteness: RollbackCompleteness;
 }
 
@@ -95,13 +149,13 @@ export const schemaDiffCommands = {
     allowDestructive: boolean;
     includeIndexes?: boolean;
   }) =>
-    invoke<SchemaDiffPlan>('prepare_schema_diff_plan', {
+    invoke<SchemaDiffPlanIpc>('prepare_schema_diff_plan', {
       sourceDbSessionId: params.sourceDbSessionId,
       targetDbSessionId: params.targetDbSessionId,
       tableNames: params.tableNames,
       allowDestructive: params.allowDestructive,
       includeIndexes: params.includeIndexes,
-    }),
+    }).then(normalizePlan),
 
   executeDeploy: (params: {
     targetDbSessionId: string;

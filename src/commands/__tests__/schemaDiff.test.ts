@@ -10,6 +10,7 @@ import {
   dialectSupportsTransactionalDdl,
   exportPlanSql,
   planHasDestructive,
+  rollbackCompletenessCounts,
   schemaDiffCommands,
   type SchemaDiffPlan,
 } from '../schemaDiff';
@@ -24,6 +25,7 @@ function samplePlan(overrides: Partial<SchemaDiffPlan> = {}): SchemaDiffPlan {
     sameDialect: false,
     statements: [],
     warnings: [],
+    requirements: [],
     rollbackCompleteness: { complete: true, missing: [] },
     ...overrides,
   };
@@ -65,6 +67,17 @@ describe('schema diff pure helpers', () => {
     expect(dialectSupportsTransactionalDdl('mariadb')).toBe(false);
   });
 
+  it('rollbackCompletenessCounts derives complete and missing counts', () => {
+    const plan = samplePlan({
+      statements: [
+        { sql: 'A', risk: 'additive', rollbackSql: 'RA', summary: 'a' },
+        { sql: 'B', risk: 'destructive', rollbackSql: null, summary: 'b' },
+      ],
+      rollbackCompleteness: { complete: false, missing: ['b'] },
+    });
+    expect(rollbackCompletenessCounts(plan)).toEqual({ complete: 1, missing: 1 });
+  });
+
   it('exportPlanSql renders header and semicolon-terminated statements', () => {
     const plan = samplePlan({
       tables: ['users', 'orders'],
@@ -101,6 +114,50 @@ describe('schemaDiffCommands wrappers', () => {
       sourceDbSessionId: 'src-1',
       targetDbSessionId: 'tgt-1',
       tableName: 'users',
+    });
+  });
+
+  it('preparePlan normalizes IPC requirement tags into plan requirements', async () => {
+    invokeMock.mockResolvedValueOnce({
+      ...samplePlan(),
+      requirements: [
+        {
+          backfill: {
+            table: 'users',
+            column: 'status',
+            reason: 'Populate existing rows before enforcing NOT NULL.',
+          },
+        },
+        {
+          unsupported: {
+            operation: 'users.meta',
+            reason: 'Operation is not supported',
+          },
+        },
+      ],
+    });
+    await expect(
+      schemaDiffCommands.preparePlan({
+        sourceDbSessionId: 'src-2',
+        targetDbSessionId: 'tgt-2',
+        tableNames: ['a'],
+        allowDestructive: false,
+      }),
+    ).resolves.toMatchObject({
+      requirements: [
+        {
+          kind: 'Backfill',
+          table: 'users',
+          column: 'status',
+          reason: 'Populate existing rows before enforcing NOT NULL.',
+        },
+        {
+          kind: 'Unsupported',
+          table: 'users',
+          column: 'meta',
+          reason: 'Operation is not supported',
+        },
+      ],
     });
   });
 

@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import type { SchemaDiffPlan } from '../../../commands/schemaDiff';
 import { SchemaDiffRightPanel } from '../SchemaDiffRightPanel';
 import { SchemaDiffPlanPanel } from '../SchemaDiffPlanPanel';
@@ -27,6 +27,7 @@ const samplePlan: SchemaDiffPlan = {
     },
   ],
   warnings: [],
+  requirements: [],
   rollbackCompleteness: { complete: true, missing: [] },
 };
 
@@ -115,6 +116,10 @@ describe('SchemaDiffRightPanel', () => {
 });
 
 describe('SchemaDiffPlanPanel empty plans', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it('distinguishes a clean plan from a warning-only plan', () => {
     const baseProps = {
       allowDestructive: false,
@@ -142,6 +147,90 @@ describe('SchemaDiffPlanPanel empty plans', () => {
     render(<SchemaDiffPlanPanel plan={skippedPlan} {...baseProps} />);
     expect(screen.getByTestId('schema-diff-empty-plan')).toHaveTextContent(
       'schemaDiff.emptyPlanSkipped',
+    );
+  });
+
+  it('renders backfill and unsupported requirements above statements', () => {
+    const planWithRequirements: SchemaDiffPlan = {
+      ...samplePlan,
+      requirements: [
+        {
+          kind: 'Backfill',
+          table: 'users',
+          column: 'status',
+          reason: 'Populate existing rows before enforcing NOT NULL.',
+        },
+        {
+          kind: 'Unsupported',
+          table: 'users',
+          column: 'meta',
+          reason: 'Operation is not supported by mysql',
+        },
+      ],
+    };
+    render(
+      <SchemaDiffPlanPanel
+        plan={planWithRequirements}
+        allowDestructive={false}
+        includeIndexes
+        onAllowDestructiveChange={vi.fn()}
+        onIncludeIndexesChange={vi.fn()}
+        onRegenerate={vi.fn()}
+      />,
+    );
+
+    const panel = screen.getByTestId('schema-diff-plan-requirements');
+    expect(panel).toHaveTextContent('schemaDiff.requirement.backfillTitle');
+    expect(panel).toHaveTextContent('users.status');
+    expect(panel).toHaveTextContent('schemaDiff.requirement.backfillHint');
+    expect(panel).toHaveTextContent('schemaDiff.requirement.unsupportedTitle');
+    expect(panel).toHaveTextContent('users.meta: Operation is not supported by mysql');
+  });
+
+  it('shows rollback completeness status at the bottom', () => {
+    const partialPlan: SchemaDiffPlan = {
+      ...samplePlan,
+      statements: [
+        ...samplePlan.statements,
+        {
+          sql: 'DROP INDEX idx_users_email;',
+          risk: 'destructive',
+          rollbackSql: null,
+          summary: 'DROP INDEX idx_users_email',
+        },
+      ],
+      rollbackCompleteness: {
+        complete: false,
+        missing: ['DROP INDEX idx_users_email'],
+      },
+    };
+    const { container, unmount } = render(
+      <SchemaDiffPlanPanel
+        plan={partialPlan}
+        allowDestructive={false}
+        includeIndexes
+        onAllowDestructiveChange={vi.fn()}
+        onIncludeIndexesChange={vi.fn()}
+        onRegenerate={vi.fn()}
+      />,
+    );
+    expect(within(container).getByTestId('schema-diff-rollback-status')).toHaveTextContent(
+      'schemaDiff.rollback.partial',
+    );
+
+    unmount();
+    const { container: availableContainer } = render(
+      <SchemaDiffPlanPanel
+        plan={samplePlan}
+        allowDestructive={false}
+        includeIndexes
+        onAllowDestructiveChange={vi.fn()}
+        onIncludeIndexesChange={vi.fn()}
+        onRegenerate={vi.fn()}
+      />,
+    );
+    expect(within(availableContainer).getByTestId('schema-diff-rollback-status')).toHaveTextContent(
+      'schemaDiff.rollback.available',
     );
   });
 });
