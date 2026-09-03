@@ -44,9 +44,12 @@ describe('path IPC frontend wiring', () => {
     expect(src).not.toContain('@tauri-apps/api/core');
     expect(src).not.toMatch(/invoke[<(]/);
 
-    const hostLib = fs.readFileSync(path.join(ROOT, '../src-tauri/src/lib.rs'), 'utf8');
-    expect(hostLib).not.toContain('adb_list_packages');
-    expect(hostLib).not.toContain('adb_pull_database');
+    const hostBootstrap = fs.readFileSync(
+      path.join(ROOT, '../src-tauri/src/bootstrap.rs'),
+      'utf8',
+    );
+    expect(hostBootstrap).not.toContain('adb_list_packages');
+    expect(hostBootstrap).not.toContain('adb_pull_database');
 
     const hostMod = fs.readFileSync(path.join(ROOT, '../src-tauri/src/commands/mod.rs'), 'utf8');
     expect(hostMod).not.toContain('mod adb');
@@ -89,13 +92,16 @@ describe('path IPC frontend wiring', () => {
     }
 
     // Host registration surface matches the merge.
-    const hostLib = fs.readFileSync(path.join(ROOT, '../src-tauri/src/lib.rs'), 'utf8');
-    expect(hostLib).toContain('commands::backup_database,');
-    expect(hostLib).toContain('commands::restore_sql_file,');
-    expect(hostLib).toContain('commands::save_encryption_key_with_dialog');
-    expect(hostLib).not.toContain('commands::backup_database_with_dialog');
-    expect(hostLib).not.toContain('commands::restore_database,');
-    expect(hostLib).not.toContain('commands::execute_sql_file');
+    const hostBootstrap = fs.readFileSync(
+      path.join(ROOT, '../src-tauri/src/bootstrap.rs'),
+      'utf8',
+    );
+    expect(hostBootstrap).toContain('commands::backup_database,');
+    expect(hostBootstrap).toContain('commands::restore_sql_file,');
+    expect(hostBootstrap).toContain('commands::save_encryption_key_with_dialog');
+    expect(hostBootstrap).not.toContain('commands::backup_database_with_dialog');
+    expect(hostBootstrap).not.toContain('commands::restore_database,');
+    expect(hostBootstrap).not.toContain('commands::execute_sql_file');
 
     // The raw-path parameters stay out of the frontend; override_path is an
     // E2E-only concern and must not appear in any production caller.
@@ -153,7 +159,10 @@ describe('path IPC frontend wiring', () => {
     }
 
     // Host registration surface matches the merge.
-    const hostLib = fs.readFileSync(path.join(ROOT, '../src-tauri/src/lib.rs'), 'utf8');
+    const hostBootstrap = fs.readFileSync(
+      path.join(ROOT, '../src-tauri/src/bootstrap.rs'),
+      'utf8',
+    );
     for (const kept of [
       'commands::export_connections,',
       'commands::import_connections_preview,',
@@ -162,10 +171,10 @@ describe('path IPC frontend wiring', () => {
       'commands::pick_app_data_import_file,',
       'commands::import_app_data,',
     ]) {
-      expect(hostLib).toContain(kept);
+      expect(hostBootstrap).toContain(kept);
     }
     for (const gone of GONE_IPCS) {
-      expect(hostLib).not.toContain(`commands::${gone},`);
+      expect(hostBootstrap).not.toContain(`commands::${gone},`);
     }
   });
 
@@ -246,7 +255,7 @@ describe('path IPC frontend wiring', () => {
     const docsUrls = readSrc('lib/docsUrls.ts');
     expect(docsUrls).toContain('flyxl.github.io/datazen/manual.html');
 
-    const rustMenu = fs.readFileSync(path.join(ROOT, '../src-tauri/src/lib.rs'), 'utf8');
+    const rustMenu = fs.readFileSync(path.join(ROOT, '../src-tauri/src/app_menu.rs'), 'utf8');
     expect(rustMenu).toContain('register_handler_once');
     expect(rustMenu).toContain('take_once_slot');
   });
