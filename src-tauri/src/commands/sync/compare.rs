@@ -6,33 +6,6 @@ use std::collections::HashMap;
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-/// Run adapter-provided full-type SQL (if any) and map `(name, full_type)` rows.
-pub(crate) async fn fetch_full_column_types(
-    adapter: &dyn crate::transfer::adapter::SyncSourceAdapter,
-    driver: &dyn crate::db::DatabaseDriver,
-    handle: &crate::db::ConnectionHandle,
-    table: &str,
-) -> Result<std::collections::HashMap<String, String>, CommandError> {
-    let Some(sql) = adapter.full_column_types_query(table) else {
-        return Ok(std::collections::HashMap::new());
-    };
-    let result = driver
-        .query(handle, &sql)
-        .await
-        .cmd_err("fetch_full_column_types")?;
-    let mut map = std::collections::HashMap::new();
-    for row in &result.rows {
-        if let (
-            Some(Some(crate::db::Value::String(name))),
-            Some(Some(crate::db::Value::String(ft))),
-        ) = (row.get(0), row.get(1))
-        {
-            map.insert(name.clone(), ft.clone());
-        }
-    }
-    Ok(map)
-}
-
 /// Count rows in a table on a given connection.
 pub(super) fn value_as_u64(value: &crate::db::Value) -> Option<u64> {
     match value {

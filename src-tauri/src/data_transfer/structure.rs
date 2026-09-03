@@ -8,6 +8,7 @@ use datazen_driver_api::TableSchema;
 
 use crate::db::{ConnectionHandle, DatabaseDriver};
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
+use crate::transfer::full_types::fetch_full_column_types;
 use crate::transfer::ir::{IRTable, IRType};
 
 use super::error::TransferError;
@@ -29,32 +30,6 @@ pub fn source_schema_to_target_ir(
     let mut ir = src_adapter.table_to_ir(schema, full_types);
     ir.name = target_table.to_string();
     ir
-}
-
-pub async fn fetch_full_column_types(
-    adapter: &dyn SyncSourceAdapter,
-    driver: &dyn DatabaseDriver,
-    handle: &ConnectionHandle,
-    table: &str,
-) -> Result<HashMap<String, String>, TransferError> {
-    let Some(sql) = adapter.full_column_types_query(table) else {
-        return Ok(HashMap::new());
-    };
-    let result = driver
-        .query(handle, &sql)
-        .await
-        .map_err(|e| TransferError::validation(e.to_string()))?;
-    let mut map = HashMap::new();
-    for row in &result.rows {
-        if let (
-            Some(Some(crate::db::Value::String(name))),
-            Some(Some(crate::db::Value::String(ft))),
-        ) = (row.get(0), row.get(1))
-        {
-            map.insert(name.clone(), ft.clone());
-        }
-    }
-    Ok(map)
 }
 
 pub fn column_ir_types_by_source(ir: &IRTable) -> HashMap<String, IRType> {

@@ -1,7 +1,8 @@
 //! Schema Diff Deploy IPC commands.
 
 use super::error::{CmdExt, CommandError};
-use super::sync::compare::{diff_table_schemas_ir, fetch_full_column_types};
+use super::sync::compare::diff_table_schemas_ir;
+use crate::transfer::full_types::fetch_full_column_types;
 use super::AppState;
 use crate::schema_diff::deploy::{
     execute_schema_diff_deploy as run_schema_diff_deploy, plan_has_destructive, DeployOptions,
