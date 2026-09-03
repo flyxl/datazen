@@ -11,9 +11,9 @@
 
 ## 状态
 
-- Phase: READY_FOR_TEST
+- Phase: PASSED
 - 编码 commit: d44fff88c
-- 测试 commit: —
+- 测试 commit: aa967c108
 
 ## 设计决策
 
@@ -28,6 +28,25 @@
 |------|------|------|
 | cargo test -p datazen --lib | 1237 passed / 0 failed | 含 ai::safety 7 项 + commands::ai 215 项 |
 | npx tsc --noEmit | pass | — |
+
+## 测试代理复验（2026-09-03）
+
+| 套件 | 结果 | 备注 |
+|------|------|------|
+| cargo test -p datazen --lib | 1237 passed / 0 failed / 2 ignored | 沙箱内 2 项 hidden-file 测试 PermissionDenied；无沙箱重跑全绿 |
+| cargo test -p datazen --lib ai:: | 215 passed / 0 failed | 含 ai::safety 7 项 |
+| npx tsc --noEmit | pass | — |
+| i18n en + zh-CN | pass | 7 个新键 en/zh-CN 齐全；其它语言留待发布前 i18n-sync |
+| 验收标准审查 | pass | 见下方 checklist |
+
+### 验收 checklist
+
+- [x] 默认不自动附带查询结果行（`ai_strict_egress` 默认 `true`；`redact_for_ai` → strict）
+- [x] 开启高敏感上下文时有明确「数据离开本机」提示（设置关闭确认 + `AiEgressNotice`）
+- [x] `ai/safety` 单测覆盖常见密钥键、URI 用户信息、Bearer（7 项）
+- [x] 既有 AI 单测不回归（215/215）
+- [x] `cargo test -p datazen --lib` 全量通过
+- [x] `npx tsc --noEmit` 通过
 
 ## E2E 用例登记
 
