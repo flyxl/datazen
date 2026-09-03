@@ -1,4 +1,5 @@
 import type { SqlDialectStrategy } from './types';
+import { BaseTableSqlGenerator } from './baseTableSql';
 
 const MYSQL_OPTIONS = [
   { id: 'no-data', label: '--no-data' },
@@ -40,4 +41,5 @@ export const mysqlDialect: SqlDialectStrategy = {
     },
   },
   backupOptions: MYSQL_OPTIONS,
+  tableSql: new BaseTableSqlGenerator('`'),
 };

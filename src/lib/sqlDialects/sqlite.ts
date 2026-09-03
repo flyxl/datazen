@@ -1,4 +1,5 @@
 import type { SqlDialectStrategy } from './types';
+import { BaseTableSqlGenerator } from './baseTableSql';
 
 export const sqliteDialect: SqlDialectStrategy = {
   family: 'sqlite',
@@ -37,4 +38,5 @@ export const sqliteDialect: SqlDialectStrategy = {
     { id: 'single-transaction', label: '--single-transaction' },
   ],
   getTruncateTableSql: (quotedName) => `DELETE FROM ${quotedName}`,
+  tableSql: new BaseTableSqlGenerator('"'),
 };

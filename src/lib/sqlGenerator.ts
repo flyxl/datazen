@@ -1,7 +1,9 @@
 import type { DatabaseType, TableSchema } from '../types';
-import { escapeIdent } from './databaseTypes';
+import { DB_REGISTRY, escapeIdent } from './databaseTypes';
+import { getSqlDialect, BaseTableSqlGenerator } from './sqlDialects';
+import type { GeneratedSqlType } from './sqlDialects/types';
 
-export type GeneratedSqlType = 'select' | 'insert' | 'update' | 'delete';
+export type { GeneratedSqlType };
 
 export interface SqlGeneratorOptions {
   schemaPrefix?: string;
@@ -13,6 +15,10 @@ export function formatTableIdentifier(
   schemaPrefix?: string,
 ): string {
   const dbType = databaseType as DatabaseType;
+  const dialect = getSqlDialect(dbType);
+  if (dialect?.tableSql) {
+    return dialect.tableSql.formatTableRef(tableName, schemaPrefix);
+  }
   if (schemaPrefix && schemaPrefix.trim()) {
     return `${escapeIdent(schemaPrefix.trim(), dbType)}.${escapeIdent(tableName, dbType)}`;
   }
@@ -26,60 +32,10 @@ export function generateTableSql(
   options?: SqlGeneratorOptions,
 ): string {
   const dbType = databaseType as DatabaseType;
-  const tableRef = formatTableIdentifier(schema.tableName, databaseType, options?.schemaPrefix);
-
-  switch (type) {
-    case 'select': {
-      const cols = schema.columns.map((c) => escapeIdent(c.name, dbType)).join(', ');
-      return `SELECT ${cols}\nFROM ${tableRef};`;
-    }
-    case 'insert': {
-      const insertableCols = schema.columns.filter((c) => !c.isAutoIncrement);
-      const colList = insertableCols.map((c) => `  ${escapeIdent(c.name, dbType)}`).join(',\n');
-      const valList = insertableCols
-        .map((c) => {
-          if (c.defaultValue) return `  ${c.defaultValue}`;
-          if (c.dataType.toLowerCase().includes('int') || c.dataType.toLowerCase().includes('numeric')) {
-            return '  0';
-          }
-          return "  ''";
-        })
-        .join(',\n');
-      return `INSERT INTO ${tableRef} (\n${colList}\n) VALUES (\n${valList}\n);`;
-    }
-    case 'update': {
-      const nonPkCols = schema.columns.filter(
-        (c) => !schema.primaryKeys.includes(c.name) && !c.isPrimaryKey,
-      );
-      const targetCols = nonPkCols.length > 0 ? nonPkCols : schema.columns;
-      const setClauses = targetCols.map((c) => `  ${escapeIdent(c.name, dbType)} = ''`).join(',\n');
-
-      const pks =
-        schema.primaryKeys.length > 0
-          ? schema.primaryKeys
-          : schema.columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
-
-      let whereClause: string;
-      if (pks.length > 0) {
-        whereClause = pks.map((pk) => `${escapeIdent(pk, dbType)} = `).join(' AND ');
-      } else {
-        whereClause = '/* WARNING: Primary Key not found. Specify condition */';
-      }
-      return `UPDATE ${tableRef}\nSET\n${setClauses}\nWHERE ${whereClause};`;
-    }
-    case 'delete': {
-      const pks =
-        schema.primaryKeys.length > 0
-          ? schema.primaryKeys
-          : schema.columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
-
-      let whereClause: string;
-      if (pks.length > 0) {
-        whereClause = pks.map((pk) => `${escapeIdent(pk, dbType)} = `).join(' AND ');
-      } else {
-        whereClause = '/* WARNING: Primary Key not found. Specify condition */';
-      }
-      return `DELETE FROM ${tableRef}\nWHERE ${whereClause};`;
-    }
-  }
+  const dialect = getSqlDialect(dbType);
+  const generator =
+    dialect?.tableSql ??
+    new BaseTableSqlGenerator(DB_REGISTRY[dbType]?.quoteChar ?? '"');
+  const tableRef = generator.formatTableRef(schema.tableName, options?.schemaPrefix);
+  return generator.generateSql(type, tableRef, schema);
 }

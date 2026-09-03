@@ -1,4 +1,17 @@
+import type { TableSchema } from '../../types';
+
 export type SqlDialectFamily = string;
+
+export type GeneratedSqlType = 'select' | 'insert' | 'update' | 'delete';
+
+export interface TableSqlDialect {
+  formatTableRef(tableName: string, schemaPrefix?: string): string;
+  generateSelect(tableRef: string, schema: TableSchema): string;
+  generateInsert(tableRef: string, schema: TableSchema): string;
+  generateUpdate(tableRef: string, schema: TableSchema): string;
+  generateDelete(tableRef: string, schema: TableSchema): string;
+  generateSql(type: GeneratedSqlType, tableRef: string, schema: TableSchema): string;
+}
 
 export interface DdlDialect {
   /** SQL to fetch DDL for a table; returns how to extract DDL string from first result row */
@@ -32,4 +45,6 @@ export interface SqlDialectStrategy {
   backupOptions: BackupOption[];
   /** SQL to empty a table; defaults to `TRUNCATE TABLE <quoted>`. */
   getTruncateTableSql?: (quotedName: string) => string;
+  /** Table template SQL generator for this dialect (SELECT, INSERT, UPDATE, DELETE). */
+  tableSql?: TableSqlDialect;
 }

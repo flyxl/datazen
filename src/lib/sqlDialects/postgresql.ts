@@ -1,4 +1,5 @@
 import type { SqlDialectStrategy } from './types';
+import { BaseTableSqlGenerator } from './baseTableSql';
 
 const PG_OPTIONS = [
   { id: 'data-only', label: '--data-only' },
@@ -60,4 +61,5 @@ export const postgresqlDialect: SqlDialectStrategy = {
     },
   },
   backupOptions: PG_OPTIONS,
+  tableSql: new BaseTableSqlGenerator('"'),
 };

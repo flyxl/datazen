@@ -36,7 +36,13 @@ export type {
   ConnectionClipboardParser,
 } from '../lib/connectionClipboardTypes';
 export type { ConnectionFormState } from '../components/connection/useConnectionForm';
-export type { SqlDialectStrategy, SqlDialectFamily } from '../lib/sqlDialects/types';
+export type {
+  SqlDialectStrategy,
+  SqlDialectFamily,
+  TableSqlDialect,
+  GeneratedSqlType,
+} from '../lib/sqlDialects/types';
+export { BaseTableSqlGenerator } from '../lib/sqlDialects/baseTableSql';
 export type { TableInfo, TableType } from '../types';
 
 /**

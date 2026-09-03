@@ -64,6 +64,13 @@ describe('sqlGenerator', () => {
       expect(sql).toContain('WHERE "id" = ;');
     });
 
+    it('generates clickhouse specific ALTER TABLE UPDATE statement', () => {
+      const sql = generateTableSql(sampleSchema, 'update', 'clickhouse');
+      expect(sql).toContain('ALTER TABLE `users`\nUPDATE');
+      expect(sql).toContain('`name` = \'\'');
+      expect(sql).toContain('WHERE `id` = ;');
+    });
+
     it('generates placeholder warning in WHERE clause if no primary key exists', () => {
       const noPkSchema: TableSchema = {
         ...sampleSchema,
@@ -81,6 +88,11 @@ describe('sqlGenerator', () => {
       expect(sql).toBe('DELETE FROM "users"\nWHERE "id" = ;');
     });
 
+    it('generates clickhouse specific ALTER TABLE DELETE statement', () => {
+      const sql = generateTableSql(sampleSchema, 'delete', 'clickhouse');
+      expect(sql).toBe('ALTER TABLE `users`\nDELETE WHERE `id` = ;');
+    });
+
     it('generates placeholder warning in WHERE clause if no primary key exists', () => {
       const noPkSchema: TableSchema = {
         ...sampleSchema,
@@ -89,6 +101,28 @@ describe('sqlGenerator', () => {
       };
       const sql = generateTableSql(noPkSchema, 'delete', 'postgresql');
       expect(sql).toBe('DELETE FROM "users"\nWHERE /* WARNING: Primary Key not found. Specify condition */;');
+    });
+  });
+
+  describe('Dialect strategy extensibility and constraints', () => {
+    it('supports SELECT but throws on INSERT/UPDATE/DELETE for Elasticsearch SQL', () => {
+      const selectSql = generateTableSql(sampleSchema, 'select', 'elasticsearch');
+      expect(selectSql).toContain('SELECT "id", "name", "email", "created_at"\nFROM "users";');
+
+      expect(() => generateTableSql(sampleSchema, 'insert', 'elasticsearch')).toThrowError(
+        'Elasticsearch SQL does not support INSERT statements',
+      );
+      expect(() => generateTableSql(sampleSchema, 'update', 'elasticsearch')).toThrowError(
+        'Elasticsearch SQL does not support UPDATE statements',
+      );
+      expect(() => generateTableSql(sampleSchema, 'delete', 'elasticsearch')).toThrowError(
+        'Elasticsearch SQL does not support DELETE statements',
+      );
+    });
+
+    it('falls back gracefully to standard ANSI generator for unknown or generic dialects', () => {
+      const sql = generateTableSql(sampleSchema, 'select', 'custom_db');
+      expect(sql).toContain('SELECT "id", "name", "email", "created_at"\nFROM "users";');
     });
   });
 });
