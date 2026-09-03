@@ -1264,8 +1264,9 @@ export async function restoreClipboardStub() {
   });
 }
 
-/** Click the currently mounted exact table node, if any. */
-async function clickVisibleTableNode(tableName: string): Promise<boolean> {
+/** Scroll the currently mounted exact table node into view (if any).
+ *  Returns true when the node exists and was scrolled; does NOT click. */
+async function scrollVisibleTableNode(tableName: string): Promise<boolean> {
   return browser.execute((name: string) => {
     const nav =
       document.querySelector('[data-testid="connection-navigator-aside"]') ??
@@ -1280,9 +1281,6 @@ async function clickVisibleTableNode(tableName: string): Promise<boolean> {
     ).find((candidate) => matchName(candidate.getAttribute('data-item-name') ?? ''));
     if (!node) return false;
     node.scrollIntoView({ block: 'center' });
-    // HTMLElement.click() reaches the same React handler as a user click and
-    // avoids racing a stale WebdriverIO element in the virtualized tree.
-    node.click();
     return true;
   }, tableName);
 }
@@ -1298,8 +1296,15 @@ export async function clickTableInSidebar(tableName: string) {
     await browser.waitUntil(
       async () => {
         if (await tableWorkspaceIsOpen(tableName)) return true;
-        const clicked = await clickVisibleTableNode(tableName);
-        if (clicked) {
+        const found = await scrollVisibleTableNode(tableName);
+        if (found) {
+          // Use WebDriver-level click instead of in-page DOM click, which
+          // can miss React synthetic event handlers on virtualised tree nodes.
+          const nodeEl = await $(`[data-item-name="${tableName}"]`);
+          if (await nodeEl.isDisplayed().catch(() => false)) {
+            await nodeEl.click();
+            await browser.pause(500);
+          }
           // The navigator handler first activates the database and then
           // schedules TableView creation. Keep the search mounted while that
           // async chain settles. Do not click repeatedly while that chain is
@@ -1433,6 +1438,7 @@ export async function clickFirstTable() {
   await browser.waitUntil(
     async () => {
       if (name && (await tableWorkspaceIsOpen(name))) return true;
+      // Locate the first table/view node and read its name.
       const result = await browser.execute(() => {
         const nav =
           document.querySelector('[data-testid="connection-navigator-aside"]') ??
@@ -1446,10 +1452,19 @@ export async function clickFirstTable() {
         const value = node.getAttribute('data-item-name');
         if (!value) return null;
         node.scrollIntoView({ block: 'center' });
-        node.click();
         return value;
       });
-      if (result) name = result;
+      if (result) {
+        name = result;
+        // Use WebDriver-level click (proper user simulation) instead of
+        // in-page DOM click, which can miss React synthetic event handlers
+        // on virtualised tree nodes.
+        const nodeEl = await $(`[data-item-name="${name}"]`);
+        if (await nodeEl.isDisplayed().catch(() => false)) {
+          await nodeEl.click();
+          await browser.pause(500);
+        }
+      }
       if (name && (await tableWorkspaceIsOpen(name))) return true;
       await expandSchemaTableCategory();
       await expandSchemaCategory('views');

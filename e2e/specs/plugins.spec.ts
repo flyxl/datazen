@@ -437,10 +437,8 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
       { timeout: 15000, timeoutMsg: 'Sample Light theme option not found in appearance select' },
     );
 
-    // AppearanceSection updates draft only when embedded in SettingsContent; persist via Save.
-    const saveBtn = await $(`button*=${t('common.save')}`);
-    await saveBtn.waitForEnabled({ timeout: 5000 });
-    await saveBtn.click();
+    // SettingsContent now auto-saves via updateField → updateSettings;
+    // no explicit Save button required.
     await browser.pause(1000);
 
     // Durable value lives in settings (not localStorage): plugin:{pluginId}:{themeId}.

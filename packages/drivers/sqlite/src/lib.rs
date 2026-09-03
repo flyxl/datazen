@@ -10,7 +10,7 @@ mod sql_target;
 mod sqlite;
 mod structure;
 mod sync_adapter;
-pub use migration::SqliteMigrationRenderer;
+pub use migration::{SqliteMigrationCapabilities, SqliteMigrationRenderer};
 pub use sqlite::*;
 pub use sync_adapter::SqliteSyncAdapter;
 

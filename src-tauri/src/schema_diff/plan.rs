@@ -2,7 +2,8 @@
 
 use super::compare::diff_table_schemas;
 use super::types::{
-    ColumnSnapshot, PlanStatement, RollbackCompleteness, SchemaDiffPlan, StatementRisk,
+    normalize_dialect, resolve_table_for_dialect, ColumnSnapshot, PlanStatement,
+    RollbackCompleteness, SchemaDiffPlan, StatementRisk,
 };
 use crate::db::TableSchema;
 

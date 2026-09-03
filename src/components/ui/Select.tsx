@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useI18n } from '../../hooks/useI18n';
 
@@ -17,6 +17,8 @@ export interface SelectProps {
   readonly onChange: (value: string) => void;
   readonly placeholder?: string;
   readonly disabled?: boolean;
+  /** Show an in-flight loading state and prevent interaction. */
+  readonly loading?: boolean;
   readonly className?: string;
   readonly title?: string;
   /** Combobox: type in the trigger field to filter options by label or value. */
@@ -109,6 +111,7 @@ export function Select({
   onChange,
   placeholder,
   disabled,
+  loading = false,
   className,
   title,
   searchable = false,
@@ -148,6 +151,7 @@ export function Select({
     highlightIdx >= 0 && filteredOptions[highlightIdx]
       ? optionId(filteredOptions[highlightIdx].value, highlightIdx)
       : undefined;
+  const isDisabled = disabled || loading;
 
   const updatePosition = useCallback(() => {
     if (!triggerRef.current) return;
@@ -180,12 +184,12 @@ export function Select({
   );
 
   const handleOpen = useCallback(() => {
-    if (disabled) return;
+    if (isDisabled) return;
     updatePosition();
     setFilterQuery('');
     setOpen(true);
     setHighlightIdx(pickHighlightIndex(filterOptions(options, '')));
-  }, [disabled, updatePosition, options, pickHighlightIndex]);
+  }, [isDisabled, updatePosition, options, pickHighlightIndex]);
 
   const handleClose = useCallback(() => {
     setOpen(false);
@@ -361,6 +365,7 @@ export function Select({
         <div
           ref={triggerRef as React.RefObject<HTMLDivElement>}
           title={title}
+          aria-busy={loading || undefined}
           {...triggerDataAttrs}
           className={cn(
             triggerShellClass,
@@ -373,7 +378,8 @@ export function Select({
             ref={inputRef}
             type="text"
             role="combobox"
-            disabled={disabled}
+            disabled={isDisabled}
+            aria-busy={loading || undefined}
             aria-expanded={open}
             aria-haspopup="listbox"
             aria-controls={open ? listId : undefined}
@@ -410,13 +416,19 @@ export function Select({
           />
           <button
             type="button"
-            disabled={disabled}
+            disabled={isDisabled}
             aria-label={t('select.toggleOptions')}
             className="flex shrink-0 items-center justify-center self-stretch px-1 text-fg-muted hover:text-fg disabled:pointer-events-none"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => (open ? handleClose() : handleOpen())}
           >
-            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
+            {loading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-fg-muted" />
+            ) : (
+              <ChevronDown
+                className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')}
+              />
+            )}
           </button>
         </div>
         {listPortal}
@@ -448,7 +460,8 @@ export function Select({
         aria-controls={open ? listId : undefined}
         aria-activedescendant={open ? activeDescendant : undefined}
         aria-label={accessibleLabel}
-        disabled={disabled}
+        disabled={isDisabled}
+        aria-busy={loading || undefined}
         title={title}
         className={cn(
           triggerShellClass,
@@ -472,12 +485,16 @@ export function Select({
         >
           {selectedOption?.label ?? placeholder ?? ''}
         </span>
-        <ChevronDown
-          className={cn(
-            'h-3.5 w-3.5 shrink-0 text-fg-muted transition-transform',
-            open && 'rotate-180',
-          )}
-        />
+        {loading ? (
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-fg-muted" />
+        ) : (
+          <ChevronDown
+            className={cn(
+              'h-3.5 w-3.5 shrink-0 text-fg-muted transition-transform',
+              open && 'rotate-180',
+            )}
+          />
+        )}
       </button>
       {listPortal}
     </>

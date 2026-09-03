@@ -10,7 +10,7 @@ mod postgres;
 mod sql_target;
 mod structure;
 mod sync_adapter;
-pub use migration::PostgresMigrationRenderer;
+pub use migration::{PostgresMigrationCapabilities, PostgresMigrationRenderer};
 pub use postgres::*;
 pub use structure::{caps_for_version, plan_structure_changes_with_caps};
 pub use sync_adapter::PgSyncAdapter;

@@ -309,7 +309,7 @@ pub struct ColumnSchema {
     pub is_auto_increment: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexInfo {
     pub name: String,

@@ -10,7 +10,7 @@ mod mysql;
 mod sql_target;
 mod structure;
 mod sync_adapter;
-pub use migration::MysqlMigrationRenderer;
+pub use migration::{MysqlMigrationCapabilities, MysqlMigrationRenderer};
 pub use mysql::*;
 pub use sync_adapter::MysqlSyncAdapter;
 

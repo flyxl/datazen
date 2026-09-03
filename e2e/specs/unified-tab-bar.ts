@@ -4,7 +4,7 @@ import {
   captureJourneyStep,
   connectSeededPgInWorkspace,
   openQueryTab,
-  clickFirstTable,
+  clickTableInSidebar,
   waitForSchemaTreeLoaded,
   waitForNewQueryButton,
 } from '../helpers.js';
@@ -19,7 +19,7 @@ import {
 describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
   before(async () => {
     await connectSeededPgInWorkspace();
-    await browser.pause(500);
+    await browser.pause(1500);
   });
 
   it('工具栏应显示新建查询按钮 (UTB-001)', async () => {
@@ -28,7 +28,8 @@ describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
   });
 
   it('点击表后应在 tab bar 中显示 tab (UTB-002)', async () => {
-    const tableName = await clickFirstTable();
+    const tableName = 'product';
+    await clickTableInSidebar(tableName);
     await browser.pause(1000);
 
     const body = await $('body').getText();
@@ -82,7 +83,8 @@ describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
   it('多个 tab 可以来回切换 (UTB-006)', async () => {
     await connectSeededPgInWorkspace();
     await openQueryTab();
-    const tableName = await clickFirstTable();
+    const tableName = 'product';
+    await clickTableInSidebar(tableName);
     await browser.pause(500);
     expect(await $('body').getText()).toContain(tableName);
 

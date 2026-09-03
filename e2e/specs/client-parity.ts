@@ -234,9 +234,8 @@ describe('Client parity P0–P2', () => {
   });
 
   it('table filter editor opens AND/OR controls', async () => {
-    const handles = await browser.getWindowHandles();
-    const conn = handles.find((h) => h !== mainWindow);
-    if (conn) await browser.switchToWindow(conn);
+    await connectSeededPgInWorkspace();
+    await waitForNewQueryButton(15000);
     const table = await clickFirstTable();
     if (!table) return;
     await browser.pause(800);
