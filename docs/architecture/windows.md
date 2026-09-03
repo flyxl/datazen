@@ -105,3 +105,57 @@ const LEGACY_MAIN_ALIASES = new Set([
 ## 5. ErrorBoundary
 
 全局 `ErrorBoundary` 包裹应用，防止未处理 React 错误导致白屏（Dismiss / Reload）。
+
+## 6. 窗口边界与 Store 职责
+
+主工作区（`main`）与子窗口（`*Window`）**各自独立 React 树**，但共享同一 Tauri 后端与持久化 Store。理解边界可避免「在子窗口改状态却期望主窗自动同步」类问题。
+
+### 6.1 窗口 ↔ UI 归属
+
+| 窗口 | 典型 Store / 状态 | 说明 |
+|------|-------------------|------|
+| **main** | `connectionStore`、`activeConnectionStore`、`panelStore`、`schemaStore`、`tableDataStore`、`settingsStore`、`aiStore`、`dashboardStore`、`workspaceTabsStore` | 连接配置、运行时会话、SQL 面板、表数据、设置、AI、Dashboard 均在此窗口 |
+| **backup** | 局部 UI state + IPC | 读写备份任务；通过 `crossWindowBus` 通知主窗刷新 |
+| **data-sync** | 局部 endpoint state + IPC | 双端点比较/执行；监听 `datazen:connection-ready` 更新可选连接列表 |
+| **schema-diff** | `useSchemaDiffEndpoints` 局部 state | 结构对比双栏；同样监听连接就绪事件 |
+| **data-transfer** | 向导步骤局部 state + IPC | 异构 Transfer 六步；不持有主工作区 panel 状态 |
+
+**Settings / Workflow / Dashboard / Docs** 不是子窗口：Settings 与 Workflow/Dashboard 仅在 `main` 内路由切换；Docs 打开系统浏览器。
+
+### 6.2 Store 边界规则
+
+1. **持久化配置 vs 运行时会话**（详见 [naming.md](naming.md)）  
+   - `connectionStore`：持久化 `connectionId` 与连接配置列表（Rust `Store` 落盘）。  
+   - `activeConnectionStore`：内存态 `dbSessionId` 与连接状态；**永不落盘**。
+
+2. **按连接分区的前端状态**  
+   - `schemaStore`、`tableDataStore`：以 `connectionId` 为 key 分区；切换连接 Tab 时切换分区，不跨连接泄漏。  
+   - `panelStore`：面板元数据 + 查询执行（`queryExec`）；面板绑定 `{ connectionId, dbSessionId }`；执行 IPC 用 `dbSessionId`，历史/收藏过滤用 `connectionId`。
+
+3. **全局 UI**  
+   - `settingsStore`：主题、语言、编辑器偏好；变更经 `emitCrossWindow` 同步到其他窗口。  
+   - `uiStore`：侧栏宽度、对话框等纯 UI 壳状态；通常仅 main 使用。
+
+4. **子窗口不拥有主工作区 Panel**  
+   Sync / Diff / Transfer / Backup 窗口**不**读写 `panelStore.panels`；需要连接列表时从 `connectionStore` + `activeConnectionStore` 读取，或监听 `datazen:connection-ready`。
+
+### 6.3 跨窗口通信
+
+`src/lib/crossWindowBus.ts`：Tauri 下 `emit`/`listen` 广播到所有 Webview；浏览器 dev 降级为 `BroadcastChannel`。
+
+常用事件（非完整列表）：
+
+| 事件 | 方向 | 用途 |
+|------|------|------|
+| `datazen:connection-ready` | main → 全体 | `{ connectionId, dbSessionId }`；子窗口更新已连接列表 |
+| `datazen:connections-changed` | 任意 → 全体 | 连接配置 CRUD 后刷新列表 |
+| `datazen:settings-changed` | settings → 全体 | 主题/语言等即时生效 |
+| `menu:open-settings` / `menu:workflow` 等 | Rust 菜单 → main | 主窗内导航，非新 OS 窗口 |
+
+新增跨窗口状态时：优先 **事件 + 最小 payload**，避免在子窗口复制整份 `panelStore`；持久化数据一律经 Rust `Store` IPC，不在窗口间手动 sync 大对象。
+
+### 6.4 相关文档
+
+- [前端状态管理](frontend/state.md) — Store 拆分与 selector 约定  
+- [ID 术语规范](naming.md) — `connectionId` vs `dbSessionId`  
+- [持久化存储](backend/store.md) — 后端落盘边界

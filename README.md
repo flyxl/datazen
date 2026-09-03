@@ -197,10 +197,14 @@ Optional drivers (MongoDB, ClickHouse, DuckDB, SQL Server, …) are compile-time
 
 ### Prerequisites
 
-- Node.js >= 20
-- pnpm >= 9
-- Rust >= 1.77
-- Tauri v2 system dependencies
+Recommended toolchain (matches [CI](docs/development/ci-test-matrix.md) and `.github/workflows/ci.yml`):
+
+| Tool | Version |
+|------|---------|
+| Node.js | **24** (minimum 20) |
+| pnpm | **11** (minimum 9) |
+| Rust | **stable** (minimum 1.77) |
+| Tauri | v2 system dependencies — https://v2.tauri.app/start/prerequisites/ |
 
 ```bash
 pnpm install
@@ -235,6 +239,7 @@ Always review the privacy and security policies of the AI provider and endpoint 
 
 - [Project website](https://flyxl.github.io/datazen/) · [User Manual (EN)](https://flyxl.github.io/datazen/manual.html) · [使用手册 (ZH)](https://flyxl.github.io/datazen/zh/manual.html)
 - [Feature guides](docs/features/) · [Architecture docs](docs/architecture/README.md) · [Development & release docs](docs/development/)
+- [CI & test matrix](docs/development/ci-test-matrix.md) · [Window & store boundaries](docs/architecture/windows.md#6-窗口边界与-store-职责)
 - [Independent Driver Development](docs/development/independent-driver-development.en.md)
 - [Chinese Driver Development Guide](docs/development/independent-driver-development.zh-CN.md)
 - [Driver API crate](packages/driver-api/README.md)
