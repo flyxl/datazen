@@ -1,4 +1,10 @@
-import type { PlanStatement, SchemaDiffPlan, StatementRisk } from '../../commands/schemaDiff';
+import type {
+  PlanRequirement,
+  PlanStatement,
+  SchemaDiffPlan,
+  StatementRisk,
+} from '../../commands/schemaDiff';
+import { rollbackCompletenessCounts } from '../../commands/schemaDiff';
 import { useI18n } from '../../hooks/useI18n';
 
 function riskClass(risk: StatementRisk): string {
@@ -10,6 +16,94 @@ function riskClass(risk: StatementRisk): string {
     case 'rewrite':
       return 'text-warning';
   }
+}
+
+function requirementTarget(req: PlanRequirement): string {
+  return req.column ? `${req.table}.${req.column}` : req.table;
+}
+
+function PlanRequirements({ requirements }: { requirements: PlanRequirement[] }) {
+  const { t } = useI18n();
+
+  if (requirements.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className="space-y-2"
+      data-testid="schema-diff-plan-requirements"
+    >
+      {requirements.map((req) => {
+        const target = requirementTarget(req);
+        if (req.kind === 'Backfill') {
+          return (
+            <div
+              key={`backfill-${target}-${req.reason}`}
+              className="rounded border border-yellow-500/30 bg-yellow-500/10 p-2 text-sm text-yellow-400"
+            >
+              <div className="font-medium">⚠ {t('schemaDiff.requirement.backfillTitle')}</div>
+              <div className="font-mono text-xs">{target}</div>
+              <div className="mt-1 text-xs">{t('schemaDiff.requirement.backfillHint')}</div>
+            </div>
+          );
+        }
+        return (
+          <div
+            key={`unsupported-${target}-${req.reason}`}
+            className="rounded border border-red-500/30 bg-red-500/10 p-2 text-sm text-red-400"
+          >
+            <div className="font-medium">❌ {t('schemaDiff.requirement.unsupportedTitle')}</div>
+            <div className="text-xs">
+              {target}: {req.reason}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PlanRollbackStatus({ plan }: { plan: SchemaDiffPlan }) {
+  const { t } = useI18n();
+  const total = plan.statements.length;
+
+  if (total === 0) {
+    return null;
+  }
+
+  const { complete, missing } = rollbackCompletenessCounts(plan);
+
+  if (missing === 0) {
+    return (
+      <p
+        className="text-sm text-emerald-400"
+        data-testid="schema-diff-rollback-status"
+      >
+        ✅ {t('schemaDiff.rollback.available')}
+      </p>
+    );
+  }
+
+  if (complete === 0) {
+    return (
+      <p
+        className="text-sm text-red-400"
+        data-testid="schema-diff-rollback-status"
+      >
+        ❌ {t('schemaDiff.rollback.none')}
+      </p>
+    );
+  }
+
+  return (
+    <p
+      className="text-sm text-yellow-400"
+      data-testid="schema-diff-rollback-status"
+    >
+      ⚠ {t('schemaDiff.rollback.partial', { count: missing })}
+    </p>
+  );
 }
 
 export function SchemaDiffPlanPanel({
@@ -30,6 +124,7 @@ export function SchemaDiffPlanPanel({
   regenerating?: boolean;
 }) {
   const { t } = useI18n();
+  const requirements = plan.requirements ?? [];
 
   return (
     <div className="space-y-3">
@@ -82,6 +177,8 @@ export function SchemaDiffPlanPanel({
         {t('schemaDiff.statements')}
       </div>
 
+      <PlanRequirements requirements={requirements} />
+
       <ul className="max-h-64 space-y-2 overflow-auto">
         {plan.statements.map((stmt: PlanStatement, i) => (
           <li
@@ -108,6 +205,8 @@ export function SchemaDiffPlanPanel({
           </li>
         )}
       </ul>
+
+      <PlanRollbackStatus plan={plan} />
     </div>
   );
 }
