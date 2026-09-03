@@ -848,10 +848,7 @@ fn test_tester_ipc_stream_request_wire_format_matches_baseline() {
 
 #[test]
 fn test_tester_access_level_for_mode_maps_mcp_permission_modes() {
-    assert_eq!(
-        access_level_for_mode(None),
-        CommandAccessLevel::HighRisk
-    );
+    assert_eq!(access_level_for_mode(None), CommandAccessLevel::HighRisk);
     assert_eq!(
         access_level_for_mode(Some(McpPermissionMode::ReadOnly)),
         CommandAccessLevel::Read
@@ -870,13 +867,10 @@ fn test_tester_access_level_for_mode_maps_mcp_permission_modes() {
 async fn test_tester_resolve_command_driver_prefers_live_session_over_driver_type() {
     let test = crate::testing::app_state::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("tester-resolve-prefer").await;
-    let (driver, handle, bound) = resolve_command_driver(
-        &test.state,
-        Some(&conn_id),
-        Some(&"postgres".into()),
-    )
-    .await
-    .unwrap();
+    let (driver, handle, bound) =
+        resolve_command_driver(&test.state, Some(&conn_id), Some(&"postgres".into()))
+            .await
+            .unwrap();
     assert!(bound);
     assert_eq!(handle.id, conn_id);
     assert!(!driver.command_definitions().is_empty());
@@ -888,7 +882,8 @@ async fn test_tester_resolve_command_driver_requires_session_or_driver_type() {
     let result = resolve_command_driver(&test.state, None, None).await;
     match result {
         Err(err) => assert!(
-            err.to_string().contains("dbSessionId or driverType is required"),
+            err.to_string()
+                .contains("dbSessionId or driverType is required"),
             "unexpected: {err}"
         ),
         Ok(_) => panic!("expected validation error when neither session nor driver type"),
@@ -937,7 +932,8 @@ async fn test_tester_rejects_whitespace_only_db_session_id_without_driver_type()
     .await
     .unwrap_err();
     assert!(
-        err.to_string().contains("dbSessionId or driverType is required"),
+        err.to_string()
+            .contains("dbSessionId or driverType is required"),
         "whitespace session must fall through nonempty and fail validation: {err}"
     );
 }
@@ -1008,6 +1004,9 @@ async fn test_tester_concurrent_stream_requests_get_distinct_execution_ids() {
 
     let id_a = ids_a.lock().unwrap().first().cloned().unwrap();
     let id_b = ids_b.lock().unwrap().first().cloned().unwrap();
-    assert_ne!(id_a, id_b, "concurrent streams must not share execution ids");
+    assert_ne!(
+        id_a, id_b,
+        "concurrent streams must not share execution ids"
+    );
     assert!(!id_a.is_empty() && !id_b.is_empty());
 }

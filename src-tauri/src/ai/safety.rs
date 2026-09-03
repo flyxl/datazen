@@ -460,7 +460,12 @@ mod tests {
             parsed,
             serde_json::json!({"level1": {"level2": {"level3": {"safe": "keep-me"}}}})
         );
-        for secret in ["root-secret", "level1-secret", "level2-secret", "level3-secret"] {
+        for secret in [
+            "root-secret",
+            "level1-secret",
+            "level2-secret",
+            "level3-secret",
+        ] {
             assert!(!output.contains(secret), "{output}");
         }
     }
@@ -595,10 +600,7 @@ mod tests {
         let relaxed_parsed: Value = serde_json::from_str(&relaxed).expect("relaxed JSON");
 
         assert_eq!(strict_parsed, serde_json::json!({}));
-        assert_eq!(
-            relaxed_parsed,
-            serde_json::json!({"rows": [{"id": 99}]})
-        );
+        assert_eq!(relaxed_parsed, serde_json::json!({"rows": [{"id": 99}]}));
         assert!(!strict.contains("toggle-secret"), "{strict}");
         assert!(!relaxed.contains("toggle-secret"), "{relaxed}");
         assert_ne!(strict, relaxed);
@@ -625,7 +627,10 @@ mod tests {
                 "safeNote": "reference only",
             })
         );
-        assert_eq!(strict_parsed, serde_json::json!({"safeNote": "reference only"}));
+        assert_eq!(
+            strict_parsed,
+            serde_json::json!({"safeNote": "reference only"})
+        );
         assert_ne!(relaxed, strict);
     }
 }

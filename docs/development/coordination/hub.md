@@ -12,22 +12,22 @@
 
 | Track | 任务 | 状态 | 编码 Commit | 测试 Commit | 合并 Commit |
 |-------|------|------|------------|------------|------------|
-| prh-split-mcp | 拆分 `mcp/server.rs` | PASSED | 8a54c0a15 | 4c73ae306 | — |
-| prh-split-dcmd | 拆分 `commands/driver_command.rs` | PASSED | e882fec2f | 2b8f5d915 | — |
-| prh-sql-guard | Safe Mode 文档/单测/高危确认入口 | PASSED | ce551214ec | 6d18142bc | — |
-| prh-ai-egress | AI 默认出域策略 + safety 单测 + 设置提示 | PASSED | d44fff88c | aa967c108 | — |
-| prh-split-lib | 拆分 `lib.rs` 编排层 | PASSED | 6fc0c65ca | 936243d13 | — |
-| prh-panic-policy | 生产路径 unwrap 约定 + 关键路径治理 | PASSED | 6ef2aee16 | de430c740 | — |
-| prh-contract | 外部契约策略文档 + MCP golden 测试 | PASSED | 56b1d37e5 | b66e283eb1b95a33cb00da3128f763feef5529de | — |
-| prh-ci-docs | CI 矩阵文档、窗口/store 边界文档、onboarding | **PASSED** | `7a6e4da0f` | `be9270e4e` | — |
+| prh-split-mcp | 拆分 `mcp/server.rs` | PASSED | 8a54c0a15 | 08d66bec3 | — |
+| prh-split-dcmd | 拆分 `commands/driver_command.rs` | PASSED | e882fec2f | 0166bee3e | — |
+| prh-sql-guard | Safe Mode 文档/单测/高危确认入口 | PASSED | ce551214ec | b0ad5c210 | — |
+| prh-ai-egress | AI 默认出域策略 + safety 单测 + 设置提示 | PASSED | d44fff88c | c4a2e4280 | — |
+| prh-split-lib | 拆分 `lib.rs` 编排层 | PASSED | 6fc0c65ca | 29138aa8d | — |
+| prh-panic-policy | 生产路径 unwrap 约定 + 关键路径治理 | PASSED | 6ef2aee16 | b0819beef | — |
+| prh-contract | 外部契约策略文档 + MCP golden 测试 | PASSED | 56b1d37e5 | fb7a55bbc | — |
+| prh-ci-docs | CI 矩阵文档、窗口/store 边界文档、onboarding | **PASSED** | `7a6e4da0f`（合入 `3b89aa556`） | `80b696343` | — |
 
 ## 写锁台账
 
 | Track | 写锁代理 | Worktree | Branch | Phase | 最后心跳 |
 |-------|----------|----------|--------|-------|----------|
-| prh-split-mcp | tester-prh-split-mcp（独立实例） | .worktrees/datazen-prh-split-mcp | feature/prh-split-mcp | PASSED | — |
+| prh-split-mcp | tester-prh-split-mcp（独立实例 #2） | `.worktrees/datazen-test-prh-split-mcp` | feature/prh-split-mcp | PASSED | — |
 | prh-split-dcmd | — | — | feature/prh-split-dcmd | PASSED | — |
-| prh-sql-guard | tester-prh-sql-guard | .worktrees/datazen-prh-sql-guard | feature/prh-sql-guard | PASSED | — |
+| prh-sql-guard | tester-prh-sql-guard | `.worktrees/datazen-test-prh-sql-guard`（分支 `feature/test-prh-sql-guard`） | feature/prh-sql-guard | PASSED | — |
 | prh-ai-egress | — | — | feature/prh-ai-egress | PASSED | — |
 | prh-split-lib | — | — | feature/prh-split-lib | PASSED | — |
 | prh-panic-policy | — | — | feature/prh-panic-policy | PASSED | — |
