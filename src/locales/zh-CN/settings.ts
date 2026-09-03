@@ -95,7 +95,8 @@ const pack = {
   'settings.confirmDeleteHint': '删除行时弹出确认对话框',
   'settings.autoCommitHint': '编辑数据后自动提交更改',
   'settings.safeMode': 'Safe Mode',
-  'settings.safeModeHint': '禁止无 WHERE 的 UPDATE/DELETE，以及 TRUNCATE/DROP',
+  'settings.safeModeHint':
+    '尽力防护：禁止无 WHERE 的 UPDATE/DELETE，以及 TRUNCATE/DROP；非形式化安全保证。',
   'settings.monitor': '监控',
   'settings.monitor.description': '看板后台刷新、系统托盘、告警与运行历史保留策略。',
   'settings.monitor.trayEnabled': '显示系统托盘图标',

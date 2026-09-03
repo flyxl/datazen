@@ -66,6 +66,9 @@ const pack = {
     'The current transaction was aborted after a statement failed. Further statements cannot run until you roll back. Roll back the whole transaction, or skip and handle it yourself later.',
   'query.txAbortedRollback': 'Roll back all',
   'query.txAbortedSkip': 'Skip',
+  'query.dangerousSqlTitle': 'Destructive SQL',
+  'query.dangerousSqlConfirm':
+    'This script contains DROP or TRUNCATE. Safe Mode is off, so the statement will run against the connected database. Continue?',
   'sqlFile.clickRun': 'Click Run to execute the SQL file',
   'sqlFile.noResults': 'No result rows',
   'sqlFile.selectAndRun': 'Select SQL File',

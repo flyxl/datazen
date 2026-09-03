@@ -421,4 +421,59 @@ mod tests {
     fn split_respects_semicolons_inside_strings() {
         assert!(check_sql("SELECT 'a; UPDATE t'; SELECT 1", true, true).is_ok());
     }
+
+    #[test]
+    fn read_only_blocks_insert_and_delete() {
+        assert!(check_sql("INSERT INTO t VALUES (1)", true, false).is_err());
+        assert!(check_sql("DELETE FROM t WHERE id = 1", true, false).is_err());
+    }
+
+    #[test]
+    fn mixed_statements_read_only_blocks_any_write() {
+        let err = check_sql("SELECT 1; UPDATE t SET x = 1 WHERE id = 1", true, false).unwrap_err();
+        assert!(err.contains("read-only"));
+        let err = check_sql("SELECT 1; INSERT INTO t VALUES (1)", true, false).unwrap_err();
+        assert!(err.contains("read-only"));
+    }
+
+    #[test]
+    fn mixed_statements_safe_mode_blocks_drop_and_truncate() {
+        for sql in [
+            "SELECT 1; DROP TABLE t",
+            "SELECT 1; TRUNCATE TABLE t",
+            "DROP TABLE t; SELECT 1",
+        ] {
+            let err = check_sql(sql, false, true).unwrap_err();
+            assert!(
+                err.contains("DROP") || err.contains("TRUNCATE"),
+                "expected block for {sql}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn mixed_statements_safe_mode_blocks_update_without_where() {
+        let err = check_sql("SELECT 1; UPDATE t SET x = 1", false, true).unwrap_err();
+        assert!(err.contains("WHERE"));
+        let err = check_sql("DELETE FROM t; SELECT 1", false, true).unwrap_err();
+        assert!(err.contains("WHERE"));
+    }
+
+    #[test]
+    fn mixed_statements_safe_mode_allows_safe_writes() {
+        assert!(check_sql("SELECT 1; SELECT 2", false, true).is_ok());
+        assert!(check_sql(
+            "SELECT 1; UPDATE t SET x = 1 WHERE id = 1; DELETE FROM t WHERE id = 2",
+            false,
+            true
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn read_only_and_safe_mode_both_apply() {
+        assert!(check_sql("INSERT INTO t VALUES (1)", true, true).is_err());
+        assert!(check_sql("DROP TABLE t", true, true).is_err());
+        assert!(check_sql("UPDATE t SET x = 1", true, true).is_err());
+    }
 }

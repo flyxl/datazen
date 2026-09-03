@@ -99,7 +99,8 @@ const pack = {
   'settings.confirmDeleteHint': 'Show a confirmation dialog when deleting rows',
   'settings.autoCommitHint': 'Automatically commit edits to data',
   'settings.safeMode': 'Safe Mode',
-  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE/DROP',
+  'settings.safeModeHint':
+    'Best-effort guard: blocks UPDATE/DELETE without WHERE, and TRUNCATE/DROP. Not a formal security guarantee.',
   'settings.monitor': 'Monitor',
   'settings.monitor.description':
     'Background dashboard refresh, system tray, alerts, and run history retention.',
