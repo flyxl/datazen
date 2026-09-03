@@ -43,3 +43,22 @@ impl MigrationCapabilities for PostgresMigrationCapabilities {
         matches!(operation, MigrationOperation::SetAutoIncrement { .. } | MigrationOperation::AlterColumnType { .. } | MigrationOperation::SetNullable { .. } | MigrationOperation::SetComment { .. })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn col(name:&str, ty:&str) -> MigrationColumn { MigrationColumn { name:name.into(), data_type:ty.into(), nullable:true, default_value:None, comment:None, is_auto_increment:false } }
+    #[test] fn renders_nullable_change() {
+        let op=MigrationOperation::SetNullable { table:"users".into(), column:"name".into(), nullable:true };
+        assert_eq!(PostgresMigrationRenderer.render(&op).unwrap().sql, "ALTER TABLE \"users\" ALTER COLUMN \"name\" DROP NOT NULL");
+    }
+    #[test] fn escapes_comment_quotes() {
+        let op=MigrationOperation::SetComment { table:"users".into(), column:"name".into(), from:None, to:Some("Bob's name".into()) };
+        assert!(PostgresMigrationRenderer.render(&op).unwrap().sql.contains("Bob''s name"));
+    }
+    #[test] fn capabilities_mark_type_change_as_rewrite() {
+        let op=MigrationOperation::AlterColumnType { table:"users".into(), column:"id".into(), from:"integer".into(), to:"bigint".into() };
+        assert!(PostgresMigrationCapabilities.supports(&op));
+        assert!(PostgresMigrationCapabilities.requires_table_rebuild(&op));
+    }
+}
