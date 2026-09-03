@@ -16,10 +16,10 @@
 | prh-split-dcmd | 拆分 `commands/driver_command.rs` | PASSED | e882fec2f | 2b8f5d915 | — |
 | prh-sql-guard | Safe Mode 文档/单测/高危确认入口 | PASSED | ce551214ec | 6d18142bc | — |
 | prh-ai-egress | AI 默认出域策略 + safety 单测 + 设置提示 | PASSED | d44fff88c | aa967c108 | — |
-| prh-split-lib | 拆分 `lib.rs` 编排层 | 未开始（Wave 2） | — | — | — |
-| prh-panic-policy | 生产路径 unwrap 约定 + 关键路径治理 | 未开始（Wave 2） | — | — | — |
-| prh-contract | 外部契约策略文档 + MCP golden 测试 | 未开始（Wave 2） | — | — | — |
-| prh-ci-docs | CI 矩阵文档、窗口/store 边界文档、onboarding | 未开始（Wave 2） | — | — | — |
+| prh-split-lib | 拆分 `lib.rs` 编排层 | PASSED | 6fc0c65ca | 936243d13 | — |
+| prh-panic-policy | 生产路径 unwrap 约定 + 关键路径治理 | PASSED | 6ef2aee16 | de430c740 | — |
+| prh-contract | 外部契约策略文档 + MCP golden 测试 | PASSED | 56b1d37e5 | b66e283eb1b95a33cb00da3128f763feef5529de | — |
+| prh-ci-docs | CI 矩阵文档、窗口/store 边界文档、onboarding | **PASSED** | `7a6e4da0f` | `be9270e4e` | — |
 
 ## 写锁台账
 
@@ -29,10 +29,10 @@
 | prh-split-dcmd | — | — | feature/prh-split-dcmd | PASSED | — |
 | prh-sql-guard | tester-prh-sql-guard | .worktrees/datazen-prh-sql-guard | feature/prh-sql-guard | PASSED | — |
 | prh-ai-egress | — | — | feature/prh-ai-egress | PASSED | — |
-| prh-split-lib | — | — | feature/prh-split-lib | 未开始（Wave 2） | — |
-| prh-panic-policy | — | — | feature/prh-panic-policy | 未开始（Wave 2） | — |
-| prh-contract | — | — | feature/prh-contract | 未开始（Wave 2） | — |
-| prh-ci-docs | — | — | feature/prh-ci-docs | 未开始（Wave 2） | — |
+| prh-split-lib | — | — | feature/prh-split-lib | PASSED | — |
+| prh-panic-policy | — | — | feature/prh-panic-policy | PASSED | — |
+| prh-contract | — | — | feature/prh-contract | PASSED | — |
+| prh-ci-docs | — | — | feature/prh-ci-docs | **PASSED** | — |
 
 ## 波次记录
 
