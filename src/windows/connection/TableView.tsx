@@ -460,7 +460,7 @@ export function TableView({
             </Button>
             <Button
               size="sm"
-              variant="run"
+              variant="primary"
               disabled={pendingBusy}
               onClick={() => void handleCommitPendingChanges()}
               data-testid="pending-commit"

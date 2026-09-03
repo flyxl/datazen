@@ -41,7 +41,7 @@ export function TransferExecuteConfirmDialog({
             {t('common.cancel')}
           </Button>
           <Button
-            variant="run"
+            variant="primary"
             data-testid="data-transfer-execute-confirm-proceed"
             onClick={onConfirm}
           >
