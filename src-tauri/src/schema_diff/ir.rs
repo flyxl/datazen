@@ -2,13 +2,15 @@
 
 use super::{compare::diff_indexes, operations::MigrationOperation, types::ColumnChange};
 use crate::db::TableSchema;
+use datazen_driver_api::TypeNormalizer;
 
 pub fn diff_to_operations(
     table: &str,
     source: &TableSchema,
     target: &TableSchema,
+    normalizer: Option<&dyn TypeNormalizer>,
 ) -> Vec<MigrationOperation> {
-    let diff = super::compare::diff_table_schemas(table, source, target);
+    let diff = super::compare::diff_table_schemas(table, source, target, normalizer);
     let mut ops = Vec::new();
 
     if target.columns.is_empty() && !source.columns.is_empty() {
@@ -137,7 +139,7 @@ mod tests {
     fn produces_neutral_operations() {
         let s = schema(vec![col("id"), col("name")]);
         let t = schema(vec![col("id")]);
-        let ops = diff_to_operations("t", &s, &t);
+        let ops = diff_to_operations("t", &s, &t, None);
         assert!(matches!(&ops[0], MigrationOperation::AddColumn { .. }));
     }
 
@@ -147,7 +149,7 @@ mod tests {
         s.primary_keys = vec!["user_id".into()];
         let mut t = schema(vec![col("id"), col("user_id")]);
         t.primary_keys = vec!["id".into()];
-        let ops = diff_to_operations("t", &s, &t);
+        let ops = diff_to_operations("t", &s, &t, None);
         assert!(ops.iter().any(|op| matches!(op, MigrationOperation::DropPrimaryKey { columns, .. } if columns == &["id"])));
         assert!(ops.iter().any(|op| matches!(op, MigrationOperation::AddPrimaryKey { columns, .. } if columns == &["user_id"])));
     }
@@ -163,9 +165,26 @@ mod tests {
         tgt_id.is_primary_key = true;
         let tgt_user = col("user_id");
         let t = schema(vec![tgt_id, tgt_user]);
-        let ops = diff_to_operations("t", &s, &t);
+        let ops = diff_to_operations("t", &s, &t, None);
         assert!(ops.iter().any(|op| matches!(op, MigrationOperation::DropPrimaryKey { columns, .. } if columns == &["id"])));
         assert!(ops.iter().any(|op| matches!(op, MigrationOperation::AddPrimaryKey { columns, .. } if columns == &["user_id"])));
+    }
+
+    #[test]
+    fn postgres_type_alias_does_not_emit_alter_column_type() {
+        use datazen_driver_postgres::PostgresTypeNormalizer;
+        let normalizer = PostgresTypeNormalizer;
+        let mut src_col = col("id");
+        src_col.data_type = "int4".into();
+        let mut tgt_col = col("id");
+        tgt_col.data_type = "integer".into();
+        let s = schema(vec![src_col]);
+        let t = schema(vec![tgt_col]);
+        let ops = diff_to_operations("t", &s, &t, Some(&normalizer));
+        assert!(!ops.iter().any(|op| matches!(
+            op,
+            MigrationOperation::AlterColumnType { .. }
+        )));
     }
 
     #[test]
@@ -187,7 +206,7 @@ mod tests {
             is_primary: false,
             index_type: "btree".into(),
         });
-        let ops = diff_to_operations("t", &s, &t);
+        let ops = diff_to_operations("t", &s, &t, None);
         assert!(ops.iter().any(|op| matches!(op, MigrationOperation::DropIndex { index, .. } if index.columns == vec!["id", "email"])));
         assert!(ops.iter().any(|op| matches!(op, MigrationOperation::CreateIndex { index, .. } if index.columns == vec!["email"])));
     }

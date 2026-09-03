@@ -10,8 +10,10 @@ mod sql_target;
 mod sqlite;
 mod structure;
 mod sync_adapter;
+mod type_normalizer;
 pub use migration::{SqliteMigrationCapabilities, SqliteMigrationRenderer};
 pub use sqlite::*;
+pub use type_normalizer::SqliteTypeNormalizer;
 pub use sync_adapter::SqliteSyncAdapter;
 
 struct SqliteFactory;

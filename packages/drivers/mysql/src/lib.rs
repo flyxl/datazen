@@ -10,8 +10,10 @@ mod mysql;
 mod sql_target;
 mod structure;
 mod sync_adapter;
+mod type_normalizer;
 pub use migration::{MysqlMigrationCapabilities, MysqlMigrationRenderer};
 pub use mysql::*;
+pub use type_normalizer::MysqlTypeNormalizer;
 pub use sync_adapter::MysqlSyncAdapter;
 
 struct MysqlFactory;

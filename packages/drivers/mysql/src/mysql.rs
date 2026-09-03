@@ -883,6 +883,10 @@ impl DatabaseDriver for MysqlDriver {
     ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {
         Some(std::sync::Arc::new(super::MysqlMigrationCapabilities))
     }
+
+    fn type_normalizer(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::TypeNormalizer>> {
+        Some(std::sync::Arc::new(super::MysqlTypeNormalizer))
+    }
     fn driver_type(&self) -> DatabaseType {
         if self.is_mariadb {
             "mariadb".to_string()

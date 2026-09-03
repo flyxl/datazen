@@ -160,7 +160,21 @@ fn plan_single_table(
     warnings: &mut Vec<String>,
     requirements: &mut Vec<super::types::PlanRequirement>,
 ) {
-    let mut operations = super::ir::diff_to_operations(table, src, tgt);
+    let Some(driver) = datazen_driver_api::create_driver(target_dialect) else {
+        requirements.push(super::types::PlanRequirement::Unsupported {
+            operation: table.to_string(),
+            reason: format!("No registered driver for target database: {target_dialect}"),
+        });
+        return;
+    };
+
+    let normalizer = if opts.cross_dialect {
+        None
+    } else {
+        driver.type_normalizer()
+    };
+    let normalizer_ref = normalizer.as_deref();
+    let mut operations = super::ir::diff_to_operations(table, src, tgt, normalizer_ref);
 
     // Type mapping belongs at the boundary between source snapshot and target driver.
     // The IR remains dialect-neutral; only replace types before rendering.
@@ -260,13 +274,6 @@ fn plan_single_table(
         });
     }
 
-    let Some(driver) = datazen_driver_api::create_driver(target_dialect) else {
-        requirements.push(super::types::PlanRequirement::Unsupported {
-            operation: table.to_string(),
-            reason: format!("No registered driver for target database: {target_dialect}"),
-        });
-        return;
-    };
     let Some(capabilities) = driver.migration_capabilities() else {
         requirements.push(super::types::PlanRequirement::Unsupported {
             operation: table.to_string(),

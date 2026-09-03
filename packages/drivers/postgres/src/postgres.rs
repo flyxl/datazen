@@ -713,6 +713,10 @@ impl DatabaseDriver for PostgresDriver {
     ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {
         Some(std::sync::Arc::new(super::PostgresMigrationCapabilities))
     }
+
+    fn type_normalizer(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::TypeNormalizer>> {
+        Some(std::sync::Arc::new(super::PostgresTypeNormalizer))
+    }
     fn driver_type(&self) -> DatabaseType {
         "postgresql".to_string()
     }

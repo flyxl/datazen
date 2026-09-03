@@ -197,7 +197,7 @@ fn raw_diff_still_flags_native_string_mismatch() {
         foreign_keys: vec![],
     };
 
-    let diff = diff_table_schemas("t", &src, &tgt);
+    let diff = diff_table_schemas("t", &src, &tgt, None);
     assert_eq!(diff.changed.len(), 1);
     assert!(diff.changed[0].changes.contains(&"dataType".into()));
 }
@@ -224,7 +224,7 @@ fn diff_table_schemas_detects_added_removed_changed() {
     );
 
     // Source = desired state: columns on src missing from tgt are "added" (to target).
-    let diff = diff_table_schemas("users", &src, &tgt);
+    let diff = diff_table_schemas("users", &src, &tgt, None);
     assert_eq!(diff.added.len(), 1);
     assert_eq!(diff.added[0].name, "legacy");
     assert_eq!(diff.removed.len(), 1);

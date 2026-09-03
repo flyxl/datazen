@@ -126,3 +126,93 @@ pub fn migration_column(column: &ColumnSchema) -> MigrationColumn {
         is_auto_increment: column.is_auto_increment,
     }
 }
+
+/// Normalize a column type string for comparison purposes.
+pub trait TypeNormalizer: Send + Sync {
+    fn normalize_type(&self, data_type: &str) -> String;
+}
+
+/// Parse a type string into (base, args, suffix) components.
+/// Example: `"VARCHAR(255) UNSIGNED"` → `("VARCHAR", Some("255"), "UNSIGNED")`
+pub fn parse_type_parts(raw: &str) -> (String, Option<String>, String) {
+    let trimmed = collapse_ws(raw);
+    let (core, suffix) = peel_suffixes(&trimmed);
+    match (core.find('('), core.rfind(')')) {
+        (Some(open), Some(close)) if close > open => (
+            core[..open].trim().to_string(),
+            Some(core[open + 1..close].trim().to_string()),
+            suffix,
+        ),
+        _ => (core, None, suffix),
+    }
+}
+
+pub fn format_type(base: &str, args: Option<&str>, suffix: &str) -> String {
+    let mut out = base.to_string();
+    if let Some(a) = args {
+        if !a.is_empty() {
+            out.push('(');
+            out.push_str(a);
+            out.push(')');
+        }
+    }
+    if !suffix.is_empty() {
+        out.push(' ');
+        out.push_str(suffix);
+    }
+    out
+}
+
+fn peel_suffixes(raw: &str) -> (String, String) {
+    let mut parts: Vec<&str> = raw.split_whitespace().collect();
+    let mut suffix = Vec::new();
+    while let Some(last) = parts.last().copied() {
+        if matches!(last, "UNSIGNED" | "ZEROFILL" | "BINARY") {
+            suffix.push(parts.pop().expect("last token"));
+        } else {
+            break;
+        }
+    }
+    suffix.reverse();
+    (parts.join(" "), suffix.join(" "))
+}
+
+fn collapse_ws(raw: &str) -> String {
+    raw.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_uppercase()
+}
+
+#[cfg(test)]
+mod type_parts_tests {
+    use super::*;
+
+    #[test]
+    fn parse_varchar_with_unsigned_suffix() {
+        let (base, args, suffix) = parse_type_parts("VARCHAR(255) UNSIGNED");
+        assert_eq!(base, "VARCHAR");
+        assert_eq!(args.as_deref(), Some("255"));
+        assert_eq!(suffix, "UNSIGNED");
+        assert_eq!(
+            format_type(&base, args.as_deref(), &suffix),
+            "VARCHAR(255) UNSIGNED"
+        );
+    }
+
+    #[test]
+    fn parse_multi_word_base() {
+        let (base, args, suffix) = parse_type_parts("double precision");
+        assert_eq!(base, "DOUBLE PRECISION");
+        assert!(args.is_none());
+        assert!(suffix.is_empty());
+    }
+
+    #[test]
+    fn empty_input_yields_empty_base() {
+        let (base, args, suffix) = parse_type_parts("  ");
+        assert!(base.is_empty());
+        assert!(args.is_none());
+        assert!(suffix.is_empty());
+    }
+}

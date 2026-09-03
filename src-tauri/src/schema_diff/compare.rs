@@ -2,6 +2,7 @@
 
 use super::types::{ChangedColumnDiff, ColumnSnapshot, TableColumnDiff};
 use crate::db::{ColumnSchema, IndexInfo, TableSchema};
+use datazen_driver_api::TypeNormalizer;
 use std::collections::HashMap;
 
 pub fn column_snapshot(col: &ColumnSchema) -> ColumnSnapshot {
@@ -17,7 +18,12 @@ pub fn column_snapshot(col: &ColumnSchema) -> ColumnSnapshot {
 }
 
 /// Diff table schemas. **Source is the desired state.**
-pub fn diff_table_schemas(table: &str, src: &TableSchema, tgt: &TableSchema) -> TableColumnDiff {
+pub fn diff_table_schemas(
+    table: &str,
+    src: &TableSchema,
+    tgt: &TableSchema,
+    normalizer: Option<&dyn TypeNormalizer>,
+) -> TableColumnDiff {
     let src_map: HashMap<&str, &ColumnSchema> =
         src.columns.iter().map(|c| (c.name.as_str(), c)).collect();
     let tgt_map: HashMap<&str, &ColumnSchema> =
@@ -42,7 +48,13 @@ pub fn diff_table_schemas(table: &str, src: &TableSchema, tgt: &TableSchema) -> 
     for col in &src.columns {
         if let Some(tgt_col) = tgt_map.get(col.name.as_str()) {
             let mut changes = Vec::new();
-            if col.data_type != tgt_col.data_type {
+            let types_equal = match normalizer {
+                Some(n) => {
+                    n.normalize_type(&col.data_type) == n.normalize_type(&tgt_col.data_type)
+                }
+                None => col.data_type == tgt_col.data_type,
+            };
+            if !types_equal {
                 changes.push(super::types::ColumnChange::DataType);
             }
             if col.nullable != tgt_col.nullable {
@@ -161,7 +173,7 @@ mod tests {
     fn source_column_missing_on_target_is_add() {
         let src = schema(vec![col("id", "int"), col("email", "varchar")]);
         let tgt = schema(vec![col("id", "int")]);
-        let diff = diff_table_schemas("users", &src, &tgt);
+        let diff = diff_table_schemas("users", &src, &tgt, None);
         assert_eq!(diff.missing_on_target.len(), 1);
         assert_eq!(diff.missing_on_target[0].name, "email");
         assert_eq!(diff.added.len(), 1);
@@ -177,7 +189,7 @@ mod tests {
         tgt_col.default_value = Some("1".into());
         let src = schema(vec![src_col]);
         let tgt = schema(vec![tgt_col]);
-        let diff = diff_table_schemas("users", &src, &tgt);
+        let diff = diff_table_schemas("users", &src, &tgt, None);
         assert_eq!(diff.changed.len(), 1);
         assert!(diff.changed[0]
             .changes
@@ -191,10 +203,30 @@ mod tests {
     fn target_only_column_is_drop() {
         let src = schema(vec![col("id", "int")]);
         let tgt = schema(vec![col("id", "int"), col("legacy", "text")]);
-        let diff = diff_table_schemas("users", &src, &tgt);
+        let diff = diff_table_schemas("users", &src, &tgt, None);
         assert_eq!(diff.extra_on_target.len(), 1);
         assert_eq!(diff.extra_on_target[0].name, "legacy");
         assert_eq!(diff.removed.len(), 1);
+    }
+
+    #[test]
+    fn postgres_int4_integer_not_reported_as_changed() {
+        use datazen_driver_postgres::PostgresTypeNormalizer;
+        let normalizer = PostgresTypeNormalizer;
+        let src = schema(vec![col("id", "int4")]);
+        let tgt = schema(vec![col("id", "integer")]);
+        let diff = diff_table_schemas("users", &src, &tgt, Some(&normalizer));
+        assert!(diff.changed.is_empty(), "int4 vs integer should match");
+    }
+
+    #[test]
+    fn mysql_int_display_width_not_reported_as_changed() {
+        use datazen_driver_mysql::MysqlTypeNormalizer;
+        let normalizer = MysqlTypeNormalizer;
+        let src = schema(vec![col("id", "int(11)")]);
+        let tgt = schema(vec![col("id", "int")]);
+        let diff = diff_table_schemas("users", &src, &tgt, Some(&normalizer));
+        assert!(diff.changed.is_empty(), "int(11) vs int should match");
     }
 
     fn index(name: &str, columns: &[&str], unique: bool) -> IndexInfo {

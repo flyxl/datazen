@@ -48,6 +48,10 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.driver_category()
     }
 
+    fn type_normalizer(&self) -> Option<Arc<dyn TypeNormalizer>> {
+        self.inner.type_normalizer()
+    }
+
     fn quote_char(&self) -> char {
         self.inner.quote_char()
     }

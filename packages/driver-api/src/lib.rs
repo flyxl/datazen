@@ -44,8 +44,8 @@ pub use schema_catalog_commands::{
     try_execute_schema_catalog_command,
 };
 pub use schema_migration::{
-    MigrationCapabilities, MigrationColumn, MigrationOperation, MigrationRenderer,
-    MigrationRequirement, MigrationRisk, MigrationStatement,
+    format_type, parse_type_parts, MigrationCapabilities, MigrationColumn, MigrationOperation,
+    MigrationRenderer, MigrationRequirement, MigrationRisk, MigrationStatement, TypeNormalizer,
 };
 pub use schema_object_commands::{
     execute_schema_object_command, is_schema_object_command, schema_object_command_definitions,

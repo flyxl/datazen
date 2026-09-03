@@ -289,7 +289,18 @@ pub(crate) async fn compare_table_schemas_impl(
         }
     }
 
-    let diff = ir_diff.unwrap_or_else(|| diff_table_schemas(&table_name, &src_schema, &tgt_schema));
+    let src_d = normalize_dialect(&src_config.database_type);
+    let tgt_d = normalize_dialect(&tgt_config.database_type);
+    let normalizer_holder = if src_d == tgt_d {
+        datazen_driver_api::create_driver(&tgt_d).and_then(|d| d.type_normalizer())
+    } else {
+        None
+    };
+    let normalizer = normalizer_holder.as_deref();
+
+    let diff = ir_diff.unwrap_or_else(|| {
+        diff_table_schemas(&table_name, &src_schema, &tgt_schema, normalizer)
+    });
 
     let mut result = serde_json::json!({
         "table": table_name,

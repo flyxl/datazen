@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::query_stream::{emit_multi_query_as_stream, QueryStreamCallback};
-use crate::schema_migration::{MigrationCapabilities, MigrationRenderer};
+use crate::schema_migration::{MigrationCapabilities, MigrationRenderer, TypeNormalizer};
 use crate::types::*;
 use crate::{
     execute_command_definition, query_command_definition, schema_catalog_command_definitions,
@@ -27,6 +27,10 @@ pub trait DatabaseDriver: Send + Sync {
     }
 
     fn migration_capabilities(&self) -> Option<Arc<dyn MigrationCapabilities>> {
+        None
+    }
+
+    fn type_normalizer(&self) -> Option<Arc<dyn TypeNormalizer>> {
         None
     }
 

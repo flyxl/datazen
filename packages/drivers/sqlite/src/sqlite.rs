@@ -126,6 +126,10 @@ impl DatabaseDriver for SqliteDriver {
     ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {
         Some(std::sync::Arc::new(super::SqliteMigrationCapabilities))
     }
+
+    fn type_normalizer(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::TypeNormalizer>> {
+        Some(std::sync::Arc::new(super::SqliteTypeNormalizer))
+    }
     fn driver_type(&self) -> DatabaseType {
         "sqlite".to_string()
     }
