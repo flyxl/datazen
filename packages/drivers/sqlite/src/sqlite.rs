@@ -115,6 +115,10 @@ fn db_path(config: &ConnectionConfig) -> Result<String, DriverError> {
 
 #[async_trait]
 impl DatabaseDriver for SqliteDriver {
+    fn migration_renderer(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
+        Some(std::sync::Arc::new(super::SqliteMigrationRenderer ))
+    }
+
     fn driver_type(&self) -> DatabaseType {
         "sqlite".to_string()
     }
