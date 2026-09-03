@@ -6,6 +6,7 @@ import { t } from '../../i18n.js';
 import {
   captureJourneyStep,
   connectConfig,
+  disconnectBackend,
   executeQuery,
   invokeBackend,
   parseQueryRows,
@@ -211,26 +212,31 @@ export async function saveFixtureConnections(f: SyncJourneyFixture) {
 export async function seedFixtureTable(f: SyncJourneyFixture) {
   const srcSession = await connectConfig(f.srcId);
   const tgtSession = await connectConfig(f.tgtId);
-  const ddl =
-    f.driver === 'postgresql'
-      ? `CREATE TABLE ${f.table} (id int PRIMARY KEY, name text NOT NULL)`
-      : `CREATE TABLE ${f.table} (id int PRIMARY KEY, name varchar(64) NOT NULL)`;
+  try {
+    const ddl =
+      f.driver === 'postgresql'
+        ? `CREATE TABLE ${f.table} (id int PRIMARY KEY, name text NOT NULL)`
+        : `CREATE TABLE ${f.table} (id int PRIMARY KEY, name varchar(64) NOT NULL)`;
 
-  await withSafeModeOff(async () => {
-    await executeQuery(srcSession, `DROP TABLE IF EXISTS ${f.table}`);
-    await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${f.table}`);
-    await executeQuery(srcSession, ddl);
-    await executeQuery(tgtSession, ddl);
-    // src: 5 rows; row 2 differs (UPDATE); rows 4–5 missing on tgt (INSERT)
-    await executeQuery(
-      srcSession,
-      `INSERT INTO ${f.table} (id, name) VALUES (1,'a'),(2,'B-new'),(3,'c'),(4,'d'),(5,'e')`,
-    );
-    await executeQuery(
-      tgtSession,
-      `INSERT INTO ${f.table} (id, name) VALUES (1,'a'),(2,'b'),(3,'c')`,
-    );
-  });
+    await withSafeModeOff(async () => {
+      await executeQuery(srcSession, `DROP TABLE IF EXISTS ${f.table}`);
+      await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${f.table}`);
+      await executeQuery(srcSession, ddl);
+      await executeQuery(tgtSession, ddl);
+      // src: 5 rows; row 2 differs (UPDATE); rows 4–5 missing on tgt (INSERT)
+      await executeQuery(
+        srcSession,
+        `INSERT INTO ${f.table} (id, name) VALUES (1,'a'),(2,'B-new'),(3,'c'),(4,'d'),(5,'e')`,
+      );
+      await executeQuery(
+        tgtSession,
+        `INSERT INTO ${f.table} (id, name) VALUES (1,'a'),(2,'b'),(3,'c')`,
+      );
+    });
+  } finally {
+    await disconnectBackend(srcSession);
+    await disconnectBackend(tgtSession);
+  }
 }
 
 export async function cleanupFixture(f: SyncJourneyFixture | undefined) {
@@ -238,10 +244,15 @@ export async function cleanupFixture(f: SyncJourneyFixture | undefined) {
   try {
     const srcSession = await connectConfig(f.srcId);
     const tgtSession = await connectConfig(f.tgtId);
-    await withSafeModeOff(async () => {
-      await executeQuery(srcSession, `DROP TABLE IF EXISTS ${f.table}`);
-      await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${f.table}`);
-    });
+    try {
+      await withSafeModeOff(async () => {
+        await executeQuery(srcSession, `DROP TABLE IF EXISTS ${f.table}`);
+        await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${f.table}`);
+      });
+    } finally {
+      await disconnectBackend(srcSession);
+      await disconnectBackend(tgtSession);
+    }
   } catch {
     /* ok */
   }
@@ -403,106 +414,114 @@ export async function runExecuteAndVerify(f: SyncJourneyFixture) {
   await expect(await $('[data-testid="data-sync-summary"]')).toBeDisplayed();
 
   const tgtSession = await connectConfig(f.tgtId);
-  await browser.waitUntil(
-    async () => {
-      const countRows = await executeQuery(
-        tgtSession,
-        f.driver === 'postgresql'
-          ? `SELECT count(*)::int AS c FROM ${f.table}`
-          : `SELECT count(*) AS c FROM ${f.table}`,
-      );
-      return queryScalar(countRows, 'c') === 5;
-    },
-    { timeout: 30000, interval: 1000, timeoutMsg: `target ${f.table} row count did not reach 5` },
-  );
+  try {
+    await browser.waitUntil(
+      async () => {
+        const countRows = await executeQuery(
+          tgtSession,
+          f.driver === 'postgresql'
+            ? `SELECT count(*)::int AS c FROM ${f.table}`
+            : `SELECT count(*) AS c FROM ${f.table}`,
+        );
+        return queryScalar(countRows, 'c') === 5;
+      },
+      { timeout: 30000, interval: 1000, timeoutMsg: `target ${f.table} row count did not reach 5` },
+    );
 
-  const nameRows = await executeQuery(tgtSession, `SELECT name FROM ${f.table} WHERE id = 2`);
-  const names = parseQueryRows(nameRows);
-  expect(String(names[0]?.[0])).toContain('B-new');
+    const nameRows = await executeQuery(tgtSession, `SELECT name FROM ${f.table} WHERE id = 2`);
+    const names = parseQueryRows(nameRows);
+    expect(String(names[0]?.[0])).toContain('B-new');
+  } finally {
+    await disconnectBackend(tgtSession);
+  }
 }
 
 /** After initial sync: add tgt-only row, re-compare, enable delete, confirm execute. */
 export async function runExecuteDeleteConfirmBranch(f: SyncJourneyFixture) {
   const tgtSession = await connectConfig(f.tgtId);
-  await withSafeModeOff(async () => {
-    await executeQuery(tgtSession, `INSERT INTO ${f.table} (id, name) VALUES (6,'extra')`);
-  });
+  try {
+    await withSafeModeOff(async () => {
+      await executeQuery(tgtSession, `INSERT INTO ${f.table} (id, name) VALUES (6,'extra')`);
+    });
 
-  await moveDataSyncBackTo('setup');
-  const deleteOpt = await $('[data-testid="data-sync-option-delete"]');
-  await deleteOpt.click();
-  await browser.pause(400);
-  const enableBtn = await $(`button*=${t('sync.enableDelete')}`);
-  await enableBtn.waitForDisplayed({ timeout: 5000 });
-  await enableBtn.click();
-  await browser.pause(300);
-  expect(await deleteOpt.isSelected()).toBe(true);
+    await moveDataSyncBackTo('setup');
+    const deleteOpt = await $('[data-testid="data-sync-option-delete"]');
+    await deleteOpt.click();
+    await browser.pause(400);
+    const enableBtn = await $(`button*=${t('sync.enableDelete')}`);
+    await enableBtn.waitForDisplayed({ timeout: 5000 });
+    await enableBtn.click();
+    await browser.pause(300);
+    expect(await deleteOpt.isSelected()).toBe(true);
 
-  await inspectDataSyncObjects();
-  await compareDataSyncObjects();
-  await captureStep(`${f.screenshotPrefix}-16-delete-recompared`);
+    await inspectDataSyncObjects();
+    await compareDataSyncObjects();
+    await captureStep(`${f.screenshotPrefix}-16-delete-recompared`);
 
-  const deleteFilter = await $(`button*=${t('sync.filter.delete')}`);
-  await deleteFilter.click();
-  await browser.pause(300);
+    const deleteFilter = await $(`button*=${t('sync.filter.delete')}`);
+    await deleteFilter.click();
+    await browser.pause(300);
 
-  await browser.execute((tableName: string) => {
-    const rows = document.querySelectorAll('[data-testid="data-sync-mapping-row"]');
-    for (const row of rows) {
-      if ((row.textContent || '').includes(tableName)) {
-        (row as HTMLElement).click();
+    await browser.execute((tableName: string) => {
+      const rows = document.querySelectorAll('[data-testid="data-sync-mapping-row"]');
+      for (const row of rows) {
+        if ((row.textContent || '').includes(tableName)) {
+          (row as HTMLElement).click();
+        }
       }
-    }
-  }, f.table);
-  await browser.pause(400);
+    }, f.table);
+    await browser.pause(400);
 
-  const selectAllDelete = await $(`button*=${t('sync.selectAllDelete')}`);
-  await selectAllDelete.waitForDisplayed({ timeout: 10000 });
-  await selectAllDelete.click();
-  await browser.pause(300);
+    const selectAllDelete = await $(`button*=${t('sync.selectAllDelete')}`);
+    await selectAllDelete.waitForDisplayed({ timeout: 10000 });
+    await selectAllDelete.click();
+    await browser.pause(300);
 
-  await advanceDataSyncToPreview();
-  const start = await $('[data-testid="data-sync-start"]');
-  await start.waitForClickable({ timeout: 20000 });
-  await start.click();
-  await browser.pause(400);
-  expect(await $('body').getText()).toContain(t('sync.executeDeleteTitle'));
-  await captureStep(`${f.screenshotPrefix}-17-delete-execute-confirm`);
-  const clicked = await browser.execute((label: string) => {
-    const buttons = Array.from(document.querySelectorAll('button')).reverse();
-    const button = buttons.find((btn) => (btn.textContent || '').includes(label));
-    if (!button) return false;
-    button.click();
-    return true;
-  }, t('sync.execute'));
-  expect(clicked).toBe(true);
+    await advanceDataSyncToPreview();
+    const start = await $('[data-testid="data-sync-start"]');
+    await start.waitForClickable({ timeout: 20000 });
+    await start.click();
+    await browser.pause(400);
+    expect(await $('body').getText()).toContain(t('sync.executeDeleteTitle'));
+    await captureStep(`${f.screenshotPrefix}-17-delete-execute-confirm`);
+    const clicked = await browser.execute((label: string) => {
+      const buttons = Array.from(document.querySelectorAll('button')).reverse();
+      const button = buttons.find((btn) => (btn.textContent || '').includes(label));
+      if (!button) return false;
+      button.click();
+      return true;
+    }, t('sync.execute'));
+    expect(clicked).toBe(true);
 
-  await browser.waitUntil(
-    async () => {
-      const cancel = await $('[data-testid="data-sync-cancel"]');
-      return !(await cancel.isDisplayed().catch(() => false));
-    },
-    { timeout: 120000, timeoutMsg: 'delete execute did not finish' },
-  );
+    await browser.waitUntil(
+      async () => {
+        const cancel = await $('[data-testid="data-sync-cancel"]');
+        return !(await cancel.isDisplayed().catch(() => false));
+      },
+      { timeout: 120000, timeoutMsg: 'delete execute did not finish' },
+    );
 
-  await browser.waitUntil(
-    async () => {
-      const rows = await executeQuery(
-        tgtSession,
-        f.driver === 'postgresql'
-          ? `SELECT count(*)::int AS c FROM ${f.table}`
-          : `SELECT count(*) AS c FROM ${f.table}`,
-      );
-      return queryScalar(rows, 'c') === 5;
-    },
-    { timeout: 30000, interval: 1000, timeoutMsg: 'row count after delete execute not 5' },
-  );
+    await browser.waitUntil(
+      async () => {
+        const rows = await executeQuery(
+          tgtSession,
+          f.driver === 'postgresql'
+            ? `SELECT count(*)::int AS c FROM ${f.table}`
+            : `SELECT count(*) AS c FROM ${f.table}`,
+        );
+        return queryScalar(rows, 'c') === 5;
+      },
+      { timeout: 30000, interval: 1000, timeoutMsg: 'row count after delete execute not 5' },
+    );
 
-  const orphan = await executeQuery(
-    tgtSession,
-    `SELECT count(*) AS c FROM ${f.table} WHERE id = 6`,
-  );
-  expect(queryScalar(orphan, 'c')).toBe(0);
+    const orphan = await executeQuery(
+      tgtSession,
+      `SELECT count(*) AS c FROM ${f.table} WHERE id = 6`,
+    );
+    expect(queryScalar(orphan, 'c')).toBe(0);
+  } finally {
+    await disconnectBackend(tgtSession);
+  }
 }
 
 /** Validation branches reachable before a successful compare (driver-agnostic UI). */

@@ -12,6 +12,7 @@ import {
   closeExtraWindows,
   captureJourneyStep,
   connectSeededPgInWorkspace,
+  disconnectBackend,
   injectDialogPath,
   invokeBackend,
   openErDiagramFromUi,
@@ -70,14 +71,18 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
 
   it('ER-001: get_er_data IPC 应返回 schema 数组', async () => {
     const dbSessionId = await invokeBackend<string>('connect', { connectionId: SEEDED_CONN_ID });
-    const databases = await invokeBackend<string[]>('get_databases', { dbSessionId });
-    expect(databases.length).toBeGreaterThan(0);
+    try {
+      const databases = await invokeBackend<string[]>('get_databases', { dbSessionId });
+      expect(databases.length).toBeGreaterThan(0);
 
-    const schemas = await invokeBackend<unknown[]>('get_er_data', {
-      dbSessionId,
-      database: databases[0],
-    });
-    expect(Array.isArray(schemas)).toBe(true);
+      const schemas = await invokeBackend<unknown[]>('get_er_data', {
+        dbSessionId,
+        database: databases[0],
+      });
+      expect(Array.isArray(schemas)).toBe(true);
+    } finally {
+      await disconnectBackend(dbSessionId);
+    }
   });
 
   it('ER-002: 连接后 ER 入口应可见（首页快捷操作或工具栏）', async () => {

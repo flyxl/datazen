@@ -1,4 +1,5 @@
 import { expect, browser } from '@wdio/globals';
+import { disconnectBackend } from '../helpers.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
@@ -29,21 +30,25 @@ describe('Driver Command IPC', () => {
     }
     const connectionId = conns[0].id;
     const dbSessionId = await invokeBackend<string>('connect', { connectionId });
-    const definitions = await invokeBackend<{ id: string }[]>('get_connection_commands', {
-      dbSessionId,
-    });
-    expect(definitions.some((d) => d.id === 'query')).toBe(true);
-
-    // Runtime db session id → execute_driver_command contract slot
-    // (do not rely on the backend resolve_session dual-mode fallback).
-    const result = await invokeBackend<{ data: unknown }>('execute_driver_command', {
-      request: {
+    try {
+      const definitions = await invokeBackend<{ id: string }[]>('get_connection_commands', {
         dbSessionId,
-        command: 'query',
-        input: { sql: 'SELECT 1 AS n' },
-      },
-    });
-    expect(result.data).toBeDefined();
+      });
+      expect(definitions.some((d) => d.id === 'query')).toBe(true);
+
+      // Runtime db session id → execute_driver_command contract slot
+      // (do not rely on the backend resolve_session dual-mode fallback).
+      const result = await invokeBackend<{ data: unknown }>('execute_driver_command', {
+        request: {
+          dbSessionId,
+          command: 'query',
+          input: { sql: 'SELECT 1 AS n' },
+        },
+      });
+      expect(result.data).toBeDefined();
+    } finally {
+      await disconnectBackend(dbSessionId);
+    }
   });
 
   it('rejects an unsupported driver command', async () => {
@@ -54,14 +59,18 @@ describe('Driver Command IPC', () => {
     const dbSessionId = await invokeBackend<string>('connect', {
       connectionId: conns[0].id,
     });
-    await expect(
-      invokeBackend('execute_driver_command', {
-        request: {
-          dbSessionId,
-          command: 'not-a-real-command',
-          input: {},
-        },
-      }),
-    ).rejects.toThrow(/Unsupported driver command/);
+    try {
+      await expect(
+        invokeBackend('execute_driver_command', {
+          request: {
+            dbSessionId,
+            command: 'not-a-real-command',
+            input: {},
+          },
+        }),
+      ).rejects.toThrow(/Unsupported driver command/);
+    } finally {
+      await disconnectBackend(dbSessionId);
+    }
   });
 });

@@ -9,6 +9,7 @@ import { t } from '../../i18n.js';
 import {
   captureJourneyStep,
   closeExtraWindows,
+  disconnectBackend,
   invokeBackend,
   openSchemaDiffWindow,
   queryScalar,
@@ -48,31 +49,36 @@ describe('结构对比完整用户旅程 (SD-JOURNEY)', () => {
     const srcSession = await invokeBackend<string>('connect', { connectionId: SRC_ID });
     const tgtSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
 
-    await withSafeModeOff(async () => {
-      await invokeBackend('execute_query', {
-        dbSessionId: srcSession,
-        sql: `DROP TABLE IF EXISTS ${TABLE}`,
-      });
-      await invokeBackend('execute_query', {
-        dbSessionId: tgtSession,
-        sql: `DROP TABLE IF EXISTS ${TABLE}`,
-      });
-      await invokeBackend('execute_query', {
-        dbSessionId: srcSession,
-        sql: `CREATE TABLE ${TABLE} (
+    try {
+      await withSafeModeOff(async () => {
+        await invokeBackend('execute_query', {
+          dbSessionId: srcSession,
+          sql: `DROP TABLE IF EXISTS ${TABLE}`,
+        });
+        await invokeBackend('execute_query', {
+          dbSessionId: tgtSession,
+          sql: `DROP TABLE IF EXISTS ${TABLE}`,
+        });
+        await invokeBackend('execute_query', {
+          dbSessionId: srcSession,
+          sql: `CREATE TABLE ${TABLE} (
           id int PRIMARY KEY,
           name text NOT NULL,
           extra_col text
         )`,
-      });
-      await invokeBackend('execute_query', {
-        dbSessionId: tgtSession,
-        sql: `CREATE TABLE ${TABLE} (
+        });
+        await invokeBackend('execute_query', {
+          dbSessionId: tgtSession,
+          sql: `CREATE TABLE ${TABLE} (
           id int PRIMARY KEY,
           name text NOT NULL
         )`,
+        });
       });
-    });
+    } finally {
+      await disconnectBackend(srcSession);
+      await disconnectBackend(tgtSession);
+    }
   });
 
   after(async () => {
@@ -116,12 +122,16 @@ describe('结构对比完整用户旅程 (SD-JOURNEY)', () => {
     await captureJourneyStep('sd-journey-08-deploy-complete', 0, true);
 
     const tgtSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
-    const colCheck = await invokeBackend<QueryResultPayload>('execute_query', {
-      dbSessionId: tgtSession,
-      sql: `SELECT count(*)::int AS c FROM information_schema.columns
+    try {
+      const colCheck = await invokeBackend<QueryResultPayload>('execute_query', {
+        dbSessionId: tgtSession,
+        sql: `SELECT count(*)::int AS c FROM information_schema.columns
             WHERE table_name = '${TABLE}' AND column_name = 'extra_col'`,
-    });
-    expect(queryScalar(colCheck, 'c')).toBe(1);
-    await captureJourneyStep('sd-journey-09-column-verified', 0, true);
+      });
+      expect(queryScalar(colCheck, 'c')).toBe(1);
+      await captureJourneyStep('sd-journey-09-column-verified', 0, true);
+    } finally {
+      await disconnectBackend(tgtSession);
+    }
   });
 });

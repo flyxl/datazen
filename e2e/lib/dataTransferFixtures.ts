@@ -5,6 +5,7 @@
  */
 import { expect } from '@wdio/globals';
 import {
+  disconnectBackend,
   invokeBackend,
   queryScalar,
   withSafeModeOff,
@@ -163,17 +164,21 @@ export async function setupPgSourceWideTable(
   rowCount: number,
 ): Promise<void> {
   const session = await invokeBackend<string>('connect', { connectionId });
-  await withSafeModeOff(async () => {
-    await dropTableIfExists(session, table);
-    await invokeBackend('execute_query', {
-      dbSessionId: session,
-      sql: pgWideTypesCreateSql(table),
+  try {
+    await withSafeModeOff(async () => {
+      await dropTableIfExists(session, table);
+      await invokeBackend('execute_query', {
+        dbSessionId: session,
+        sql: pgWideTypesCreateSql(table),
+      });
+      await invokeBackend('execute_query', {
+        dbSessionId: session,
+        sql: pgWideTypesBulkInsertSql(table, rowCount),
+      });
     });
-    await invokeBackend('execute_query', {
-      dbSessionId: session,
-      sql: pgWideTypesBulkInsertSql(table, rowCount),
-    });
-  });
+  } finally {
+    await disconnectBackend(session);
+  }
 }
 
 export async function setupMysqlSourceWideTable(
@@ -182,14 +187,18 @@ export async function setupMysqlSourceWideTable(
   rowCount: number,
 ): Promise<void> {
   const session = await invokeBackend<string>('connect', { connectionId });
-  await withSafeModeOff(async () => {
-    await dropTableIfExists(session, table);
-    await invokeBackend('execute_query', {
-      dbSessionId: session,
-      sql: mysqlWideTypesCreateSql(table),
+  try {
+    await withSafeModeOff(async () => {
+      await dropTableIfExists(session, table);
+      await invokeBackend('execute_query', {
+        dbSessionId: session,
+        sql: mysqlWideTypesCreateSql(table),
+      });
+      await seedMysqlWideTypes(session, table, rowCount);
     });
-    await seedMysqlWideTypes(session, table, rowCount);
-  });
+  } finally {
+    await disconnectBackend(session);
+  }
 }
 
 export async function setupEmptyTargetTable(
@@ -198,13 +207,18 @@ export async function setupEmptyTargetTable(
   dialect: 'postgresql' | 'mysql',
 ): Promise<void> {
   const session = await invokeBackend<string>('connect', { connectionId });
-  await withSafeModeOff(async () => {
-    await dropTableIfExists(session, table);
-    await invokeBackend('execute_query', {
-      dbSessionId: session,
-      sql: dialect === 'postgresql' ? pgWideTypesCreateSql(table) : mysqlWideTypesCreateSql(table),
+  try {
+    await withSafeModeOff(async () => {
+      await dropTableIfExists(session, table);
+      await invokeBackend('execute_query', {
+        dbSessionId: session,
+        sql:
+          dialect === 'postgresql' ? pgWideTypesCreateSql(table) : mysqlWideTypesCreateSql(table),
+      });
     });
-  });
+  } finally {
+    await disconnectBackend(session);
+  }
 }
 
 export async function teardownTransferFixture(
@@ -214,9 +228,13 @@ export async function teardownTransferFixture(
   for (const connectionId of connectionIds) {
     try {
       const session = await invokeBackend<string>('connect', { connectionId });
-      await withSafeModeOff(async () => {
-        await dropTableIfExists(session, table);
-      });
+      try {
+        await withSafeModeOff(async () => {
+          await dropTableIfExists(session, table);
+        });
+      } finally {
+        await disconnectBackend(session);
+      }
     } catch {
       /* ok */
     }
@@ -245,43 +263,47 @@ export async function assertWideTableRowCount(
   expected: number,
 ): Promise<void> {
   const session = await invokeBackend<string>('connect', { connectionId });
-  const countSql =
-    dialect === 'postgresql'
-      ? `SELECT count(*)::int AS c FROM ${table}`
-      : `SELECT COUNT(*) AS c FROM ${table}`;
-  const rows = await invokeBackend<QueryResultPayload>('execute_query', {
-    dbSessionId: session,
-    sql: countSql,
-  });
-  expect(Number(queryScalar(rows, 'c'))).toBe(expected);
+  try {
+    const countSql =
+      dialect === 'postgresql'
+        ? `SELECT count(*)::int AS c FROM ${table}`
+        : `SELECT COUNT(*) AS c FROM ${table}`;
+    const rows = await invokeBackend<QueryResultPayload>('execute_query', {
+      dbSessionId: session,
+      sql: countSql,
+    });
+    expect(Number(queryScalar(rows, 'c'))).toBe(expected);
 
-  const sumSql =
-    dialect === 'postgresql'
-      ? `SELECT sum(qty)::bigint AS s FROM ${table}`
-      : `SELECT SUM(qty) AS s FROM ${table}`;
-  const sumRows = await invokeBackend<QueryResultPayload>('execute_query', {
-    dbSessionId: session,
-    sql: sumSql,
-  });
-  expect(Number(queryScalar(sumRows, 's'))).toBe(expectedQtySum(expected));
+    const sumSql =
+      dialect === 'postgresql'
+        ? `SELECT sum(qty)::bigint AS s FROM ${table}`
+        : `SELECT SUM(qty) AS s FROM ${table}`;
+    const sumRows = await invokeBackend<QueryResultPayload>('execute_query', {
+      dbSessionId: session,
+      sql: sumSql,
+    });
+    expect(Number(queryScalar(sumRows, 's'))).toBe(expectedQtySum(expected));
 
-  const metaSql =
-    dialect === 'postgresql'
-      ? `SELECT count(*)::int AS c FROM ${table} WHERE meta IS NOT NULL`
-      : `SELECT COUNT(*) AS c FROM ${table} WHERE meta IS NOT NULL`;
-  const metaRows = await invokeBackend<QueryResultPayload>('execute_query', {
-    dbSessionId: session,
-    sql: metaSql,
-  });
-  expect(Number(queryScalar(metaRows, 'c'))).toBe(expected);
+    const metaSql =
+      dialect === 'postgresql'
+        ? `SELECT count(*)::int AS c FROM ${table} WHERE meta IS NOT NULL`
+        : `SELECT COUNT(*) AS c FROM ${table} WHERE meta IS NOT NULL`;
+    const metaRows = await invokeBackend<QueryResultPayload>('execute_query', {
+      dbSessionId: session,
+      sql: metaSql,
+    });
+    expect(Number(queryScalar(metaRows, 'c'))).toBe(expected);
 
-  const amountSql =
-    dialect === 'postgresql'
-      ? `SELECT amount::float AS a FROM ${table} WHERE id = 100`
-      : `SELECT CAST(amount AS DECIMAL(18,6)) AS a FROM ${table} WHERE id = 100`;
-  const amountRows = await invokeBackend<QueryResultPayload>('execute_query', {
-    dbSessionId: session,
-    sql: amountSql,
-  });
-  expect(Number(queryScalar(amountRows, 'a'))).toBeCloseTo(100 * 1.234567, 3);
+    const amountSql =
+      dialect === 'postgresql'
+        ? `SELECT amount::float AS a FROM ${table} WHERE id = 100`
+        : `SELECT CAST(amount AS DECIMAL(18,6)) AS a FROM ${table} WHERE id = 100`;
+    const amountRows = await invokeBackend<QueryResultPayload>('execute_query', {
+      dbSessionId: session,
+      sql: amountSql,
+    });
+    expect(Number(queryScalar(amountRows, 'a'))).toBeCloseTo(100 * 1.234567, 3);
+  } finally {
+    await disconnectBackend(session);
+  }
 }

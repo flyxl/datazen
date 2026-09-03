@@ -3,6 +3,7 @@ import { t } from '../i18n.js';
 import {
   clickCardConnectButton,
   closeExtraWindows,
+  disconnectBackend,
   setEditorContent,
   openQueryTab,
   clickFirstTable,
@@ -76,6 +77,13 @@ describe('Client parity P0–P2', () => {
     try {
       if (readOnlySessionId) {
         await invokeBackend('disconnect', { dbSessionId: readOnlySessionId });
+      }
+    } catch {
+      /* ok */
+    }
+    try {
+      if (pgSessionId) {
+        await disconnectBackend(pgSessionId);
       }
     } catch {
       /* ok */

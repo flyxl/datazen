@@ -15,6 +15,7 @@ import { t } from '../i18n.js';
 import {
   connectSeededPgInWorkspace,
   closeExtraWindows,
+  disconnectBackend,
   E2E_PG_CONN_NAME,
   invokeBackend,
   queryScalar,
@@ -160,6 +161,13 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
 
   after(async () => {
     try {
+      if (procDbSessionId) {
+        await disconnectBackend(procDbSessionId);
+      }
+    } catch {
+      /* best effort */
+    }
+    try {
       await invokeBackend('delete_connection', { id: PROC_CONN_ID });
     } catch {
       /* best effort */
@@ -273,11 +281,15 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
       },
     });
     const checkDbSessionId = await invokeBackend<string>('connect', { connectionId: checkId });
-    const cnt = await invokeBackend('execute_query', {
-      dbSessionId: checkDbSessionId,
-      sql: `SELECT count(*)::int AS c FROM pg_stat_activity WHERE pid = ${targetPid}`,
-    });
-    expect(queryScalar(cnt, 'c')).toBe(0);
+    try {
+      const cnt = await invokeBackend('execute_query', {
+        dbSessionId: checkDbSessionId,
+        sql: `SELECT count(*)::int AS c FROM pg_stat_activity WHERE pid = ${targetPid}`,
+      });
+      expect(queryScalar(cnt, 'c')).toBe(0);
+    } finally {
+      await disconnectBackend(checkDbSessionId);
+    }
     try {
       await invokeBackend('delete_connection', { id: checkId });
     } catch {

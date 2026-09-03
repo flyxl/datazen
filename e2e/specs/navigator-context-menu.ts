@@ -9,6 +9,7 @@ import { t } from '../i18n.js';
 import {
   connectSeededPgInWorkspace,
   closeExtraWindows,
+  disconnectBackend,
   openQueryTab,
   executeSQL,
   waitForSchemaTreeLoaded,
@@ -267,6 +268,13 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
     try {
       await openQueryTab();
       await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
+    } catch {
+      /* best effort */
+    }
+    try {
+      if (pgDbSessionId) {
+        await disconnectBackend(pgDbSessionId);
+      }
     } catch {
       /* best effort */
     }

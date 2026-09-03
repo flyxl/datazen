@@ -192,11 +192,15 @@ describe('数据传输完整用户旅程 (DT-JOURNEY)', () => {
     await captureJourneyStep('dt-journey-11-result-visible', 0, true);
 
     const tgtSession = await connectBackend(TGT_ID);
-    const rows = await invokeBackend<QueryResultPayload>('execute_query', {
-      dbSessionId: tgtSession,
-      sql: `SELECT count(*)::int AS c FROM ${TABLE}`,
-    });
-    expect(queryScalar(rows, 'c')).toBe(3);
-    await captureJourneyStep('dt-journey-12-rows-verified', 0, true);
+    try {
+      const rows = await invokeBackend<QueryResultPayload>('execute_query', {
+        dbSessionId: tgtSession,
+        sql: `SELECT count(*)::int AS c FROM ${TABLE}`,
+      });
+      expect(queryScalar(rows, 'c')).toBe(3);
+      await captureJourneyStep('dt-journey-12-rows-verified', 0, true);
+    } finally {
+      await disconnectBackend(tgtSession);
+    }
   });
 });

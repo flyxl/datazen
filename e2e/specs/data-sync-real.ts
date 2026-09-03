@@ -12,7 +12,7 @@
  */
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
-import { sqlBlockedBySafeMode, withSafeModeOff } from '../helpers.js';
+import { sqlBlockedBySafeMode, disconnectBackend, withSafeModeOff } from '../helpers.js';
 
 // ── Connection configs (credentials from environment variables) ─────
 
@@ -209,6 +209,16 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
       } catch {
         /* ok */
       }
+    }
+    try {
+      if (srcSessionId) await disconnectBackend(srcSessionId);
+    } catch {
+      /* ok */
+    }
+    try {
+      if (tgtSessionId) await disconnectBackend(tgtSessionId);
+    } catch {
+      /* ok */
     }
   });
 
@@ -553,6 +563,19 @@ describe('数据同步: 权限错误 (SYNC-PERM)', () => {
     myRoSessionId = await saveAndConnect(MY_RO);
   });
 
+  after(async () => {
+    try {
+      if (roSessionId) await disconnectBackend(roSessionId);
+    } catch {
+      /* ok */
+    }
+    try {
+      if (myRoSessionId) await disconnectBackend(myRoSessionId);
+    } catch {
+      /* ok */
+    }
+  });
+
   it('SYNC-REAL-010: legacy sync_table IPC is removed for PG read-only target', async () => {
     await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
@@ -628,6 +651,11 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
         DROP TABLE IF EXISTS sync_pg_arrays;
       `,
       );
+    } catch {
+      /* ok */
+    }
+    try {
+      if (myTgtSessionId) await disconnectBackend(myTgtSessionId);
     } catch {
       /* ok */
     }
@@ -805,6 +833,16 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
     } catch {
       /* ok */
     }
+    try {
+      if (batchSrcId) await disconnectBackend(batchSrcId);
+    } catch {
+      /* ok */
+    }
+    try {
+      if (batchTgtId) await disconnectBackend(batchTgtId);
+    } catch {
+      /* ok */
+    }
   });
 
   it('SYNC-INSPECT-001: inspect_data_sync maps same-family tables', async () => {
@@ -941,6 +979,16 @@ describe('数据同步: 断点续传与冲突检测 (SYNC-RESUME)', () => {
           await invokeBackend('delete_sync_task', { taskId: t.id });
         }
       }
+    } catch {
+      /* ok */
+    }
+    try {
+      if (resumeSrcId) await disconnectBackend(resumeSrcId);
+    } catch {
+      /* ok */
+    }
+    try {
+      if (resumeTgtId) await disconnectBackend(resumeTgtId);
     } catch {
       /* ok */
     }
