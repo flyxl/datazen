@@ -39,3 +39,25 @@ impl MigrationOperation {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::IndexInfo;
+
+    fn index(name: &str) -> IndexInfo {
+        IndexInfo { name: name.into(), columns: vec!["id".into()], is_unique: false, is_primary: false, index_type: "btree".into() }
+    }
+
+    #[test]
+    fn destructive_operations_are_marked_destructive() {
+        assert_eq!(MigrationOperation::DropColumn { table: "t".into(), column: crate::schema_diff::types::ColumnSnapshot { name:"x".into(), data_type:"int".into(), nullable:true, default_value:None, comment:None, is_primary_key:false, is_auto_increment:false } }.risk(), StatementRisk::Destructive);
+        assert_eq!(MigrationOperation::DropIndex { table:"t".into(), index:index("old") }.risk(), StatementRisk::Destructive);
+    }
+
+    #[test]
+    fn operation_key_is_stable() {
+        let op = MigrationOperation::SetDefault { table:"t".into(), column:"status".into(), from:Some("1".into()), to:Some("0".into()) };
+        assert_eq!(op.key(), "column:t.status");
+    }
+}
