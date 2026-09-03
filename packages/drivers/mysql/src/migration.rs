@@ -25,3 +25,19 @@ impl MigrationRenderer for MysqlMigrationRenderer {
         }
     }
 }
+
+pub struct MysqlMigrationCapabilities;
+impl MigrationCapabilities for MysqlMigrationCapabilities {
+    fn supports(&self, operation: &MigrationOperation) -> bool {
+        matches!(operation,
+            MigrationOperation::CreateTable { .. } | MigrationOperation::AddColumn { .. } |
+            MigrationOperation::DropColumn { .. } | MigrationOperation::AlterColumnType { .. } |
+            MigrationOperation::SetNullable { .. } | MigrationOperation::SetDefault { .. } |
+            MigrationOperation::SetComment { .. } | MigrationOperation::SetAutoIncrement { .. } |
+            MigrationOperation::AddPrimaryKey { .. } | MigrationOperation::DropPrimaryKey { .. } |
+            MigrationOperation::CreateIndex { .. } | MigrationOperation::DropIndex { .. })
+    }
+    fn requires_table_rebuild(&self, operation: &MigrationOperation) -> bool {
+        matches!(operation, MigrationOperation::SetAutoIncrement { .. } | MigrationOperation::AlterColumnType { .. } | MigrationOperation::SetNullable { .. } | MigrationOperation::SetComment { .. })
+    }
+}
