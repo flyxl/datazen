@@ -1,201 +1,162 @@
-# DataZen 系统架构文档
+# DataZen 系统架构
 
-> 本文档为 DataZen 系统架构的总览入口，各模块详细设计请参阅对应子文档。
+> 本文档描述 **main 分支当前实现**，不是未来版本规划。具体实现以 `src-tauri/`、`packages/driver-api/` 和 `src/` 为准。
 
-## 项目概述
+## 1. 总体结构
 
-DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Rust 后端 + React 前端）构建，集成 AI 辅助功能。支持 GUI 桌面应用和无头 MCP stdio 服务器两种运行模式。
-
-## 架构全景
+DataZen 当前是一个基于 Tauri v2 的桌面数据库客户端，同时支持 GUI 模式和 headless MCP stdio 模式。
 
 ```text
-┌───────────────────────────────────────────────────────────────────────┐
-│                          Tauri Application                            │
-│                  (GUI mode / headless MCP stdio mode)                 │
-├───────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  ┌─────────────────────────────────────────────────────────────────┐ │
-│  │                     Frontend (React + TS)                        │ │
-│  │  Connection / Query / AI / Settings / Workflow / Dashboard       │ │
-│  │  Command discovery + schema-driven Workflow Command editor      │ │
-│  └──────────────────────────────┬──────────────────────────────────┘ │
-│                                 │ Tauri IPC                           │
-│                                 ▼                                     │
-│  ┌─────────────────────────────────────────────────────────────────┐ │
-│  │                      Backend (Rust)                              │ │
-│  │  Commands / Services / AI / MCP / Workflow / Dashboard / Store  │ │
-│  │                                 │                                │ │
-│  │                                 ▼                                │ │
-│  │                    Driver Command Runtime                         │ │
-│  │              connection → definition → validation                │ │
-│  │                         → execute_command                         │ │
-│  │                                 │                                │ │
-│  │                    Database Drivers Layer                          │ │
-│  │             PG / MySQL / SQLite / Redis / Plugins                │ │
-│  └─────────────────────────────────────────────────────────────────┘ │
-│                    │                         │                        │
-└────────────────────┼─────────────────────────┼────────────────────────┘
-                     ▼                         ▼
-             External Databases          LLM Providers
-```
-
-## 分层架构
-
-| 层级 | 职责 | 关键特性 |
-|------|------|----------|
-| **Commands 层** | 处理前端 IPC 调用 | 参数验证、结构化错误、日志记录、Driver Command IPC、查询结果流式 Channel |
-| **Services 层** | 业务逻辑处理 | ConnectionManager、QueryExecutor、DbTools |
-| **Workflow 层** | YAML 工作流编排 | Command runtime、Connection inheritance、Legacy Query compatibility |
-| **Drivers 层** | 数据库驱动抽象 | `DatabaseDriver`、Command Definition、`execute_command`、inventory 插件扩展 |
-| **AI 层** | LLM 集成 | 多 Provider、协议复用、流式输出、Prompt Resolver |
-| **MCP 层** | 工具协议 | Server / Client、Workflow 调用 |
-| **Sync 层** | 数据同步（同族 Diff Sync） | `data_sync`：门闸 / 流式比较 / ChangeSet / 参数化 DML；异构 IR 属 Transfer，V1 不实现 |
-| **Persistence 层** | Application Service 的持久化抽象与适配器 | Core Runtime 不依赖持久化；Desktop 使用 SQLite，Web 使用 MySQL；Secret 使用 AES-256-GCM |
-
-## Driver Command 架构
-
-Driver 的能力通过 Command 暴露，而不是让 Workflow / UI 根据 Driver 类型写大量特殊分支。
-
-```text
-                         DatabaseDriver
-                              │
-                 ┌────────────┴────────────┐
-                 ▼                         ▼
-       command_definitions()       execute_command()
-                 │                         │
-                 ▼                         ▼
-      DriverCommandDefinition          CommandResult
-       ├── name                       ├── rows / data
-       ├── description                ├── affected rows
-       └── input_schema               └── metadata
-                 │
-                 ├───────────────┐
-                 ▼               ▼
-             Workflow           IPC / UI
-                 │               │
-                 └───────┬───────┘
-                         ▼
-                 Command Runtime
-```
-
-标准 `query` / `execute` Command 提供默认实现，以兼容现有 Driver。Driver 可以增加任意 Driver-specific Command，例如 NoSQL、KV、搜索或管理类操作。上层只依赖 Command Definition 和 JSON input/output，不需要知道具体 Driver 类型。
-
-## Workflow 架构
-
-Workflow 模块位于 `src-tauri/src/workflow/`，GUI、Tauri IPC、MCP 共用同一个执行引擎。
-
-```text
-WorkflowDefinition
+React / TypeScript
+  │
+  │ Tauri IPC
+  ▼
+src-tauri
+  ├─ commands/       IPC 边界与参数/错误处理
+  ├─ services/       连接、查询、事务、Job 等运行时服务
+  ├─ db/             Driver Registry + Driver API re-export
+  ├─ schema_diff/    Schema Diff 领域逻辑
+  ├─ data_sync/      同族数据库 Data Sync
+  ├─ data_transfer/  异构 Data Transfer
+  ├─ transfer/       IR / DDL / adapter 能力
+  ├─ workflow/       Workflow runtime
+  ├─ ai/             AI provider / schema context
+  ├─ mcp/            MCP Server / Client
+  ├─ dashboard/      Dashboard runtime
+  ├─ store/          Desktop 持久化
+  └─ cache/          Schema cache
        │
        ▼
-WorkflowExecutor
+packages/driver-api
+  │
+  ├─ DatabaseDriver / Factory
+  ├─ Driver Command
+  ├─ Query streaming
+  ├─ Schema objects
+  ├─ Schema migration renderer/capabilities
+  └─ Sync IR adapters
        │
-       ├── Condition / ForEach / Ai
-       │
-       └── Command
-              │
-              ▼
-       command_runtime
-              │
-              ├── effective connection
-              ├── command discovery
-              ├── template resolution
-              ├── input schema validation
-              └── Driver::execute_command()
+       ▼
+packages/drivers/*
 ```
 
-### Connection inheritance
+当前代码没有独立的 Web Server / Domain Service 层；桌面应用直接通过 Tauri IPC 进入 Rust backend。Web 平台化属于未来架构，不应在当前架构文档中描述为已实现能力。
 
-Workflow 可以设置默认 connection：
+## 2. Driver 架构
 
-```yaml
-connection: mysql-prod
-steps:
-  - type: command
-    command: query
-    input:
-      sql: SELECT * FROM users
-  - type: command
-    connection: postgres-prod
-    command: query
-    input:
-      sql: SELECT * FROM orders
-```
+`packages/driver-api` 是 Host 与独立 Driver 的稳定编译期契约。Driver 通过 `inventory` 注册到 Host，**不是**运行时加载动态 Rust library。
 
-Step 未指定 connection 时继承 Workflow 默认值；Step 显式指定时覆盖默认值。这样常见的多 Step 单 Connection 场景不需要重复配置连接。
+核心接口包括：
 
-### Legacy Query
+- `DatabaseDriver)：连接、Schema、Query、事务、Command、EXPLAIN、查询流等。
+- `DatabaseDriverFactory)：创建 Driver 实例并声明协议版本。
+- `DriverCommandDefinition)：向 Workflow / UI 暴露 Driver Command。
+- `MigrationRenderer` / `MigrationCapabilities` / `TypeNormalizer)：Schema Diff 的方言渲染与类型归一化。
+- `SyncSourceAdapter` / `SyncTargetAdapter)：Data Transfer 的异构类型与值转换。
 
-旧版：
+Driver API 当前 `PROTOCOL_VERSION = 3`，最低兼容版本为 1。具体公共依赖边界见 [Driver API Dependency Boundary](backend/drivers.md)。
 
-```yaml
-type: query
-connection: mysql-prod
-database: reporting
-sql: SELECT * FROM users
-```
+## 3. 连接与 Session
 
-仍然支持。执行前转换为内部 `Command("query")`，`database` 等旧字段保持兼容。旧 Query 和新 Command 进入相同 runtime。
-
-### Command Discovery
-
-前端编辑 Command Step 时通过当前有效 Connection 获取 Driver Command Definition，并根据 `input_schema` 生成输入编辑器：
+持久化连接配置使用 `connectionId`；实际数据库运行时会话使用 `dbSessionId`。
 
 ```text
-Effective Connection
-       ↓
-get_connection_commands()
-       ↓
-Driver::command_definitions()
-       ↓
-Command selector
-       ↓
-input_schema
-       ↓
-Schema-driven form
+connectionId
+   │
+   ▼
+Store → ConnectionManager → Driver.connect()
+                         │
+                         ▼
+                    dbSessionId
 ```
 
-Connection 变化后重新 discovery；没有 Step override 时使用 Workflow 默认 connection。
+`ConnectionManager` 负责 Driver 选择、SSH Tunnel、session 生命周期、引用计数和 idle eviction。Schema Diff / Data Sync / Data Transfer 使用 dedicated session，避免与主工作区共享 database selection、事务等状态。
 
-## 后端文档
+## 4. 查询执行
 
-| 文档 | 内容 |
-|------|------|
-| [Web 平台化实现方案](rfc/web-platform-implementation.zh-CN.md) | v0.2.0 共享 Core、SQLite/MySQL 双持久化、Web Server、SQL Prepare/Audit 与迁移计划 |
-| [数据库驱动层](backend/drivers.md) | DatabaseDriver trait、驱动注册表、插件扩展机制 |
-| [Schema 缓存](backend/cache.md) | 两级 TTL 缓存架构、缓存失效策略、查询执行优化 |
-| [服务层](backend/services.md) | ConnectionManager、QueryExecutor、DbTools |
-| [持久化存储](backend/store.md) | AES-256-GCM；主密钥 keychain / `.key` 双后端 |
-| [IPC 命令层](backend/commands.md) | Tauri Commands、AppState、CommandError |
-| [运行时主题](backend/theme.md) | 扩展主题贡献、`--c-*` / `--dt-*` token、首屏背景缓存 |
-| [运行时插件系统](backend/extensions.md) | Extensions：UI 页面 + 主题贡献、沙箱 iframe 桥、安装与权限 |
-| [AI 模块](backend/ai.md) | AiProvider、Provider protocol、PromptResolver |
-| [MCP 模块](backend/mcp.md) | MCP Server、MCP Client、双运行模式 |
-| [Workflow 模块](backend/workflow.md) | YAML Workflow、Command runtime、Connection inheritance、Legacy Query、执行历史 |
-| [数据看板](backend/dashboard.md) | AppDb 统一存储、Widget→finalOutput、Monitor 调度、导出 v2 |
-| [Schema Diff Deploy](backend/schema-diff.md) | Schema diff / DDL plan / deploy |
-| [数据同步](backend/data-sync.md) | 同族 Diff Sync、硬门闸、`inspect_data_sync` / `execute_data_sync`、覆盖拷贝已拆除 |
+常规 SQL 从前端 `commands/` 进入 Rust command/service，再进入 Driver。查询支持多 statement、参数查询和 streaming；Driver capability 决定 EXPLAIN、OFFSET、取消等能力。
 
-## 前端文档
+取消查询使用 opaque `QueryExecutionId`。支持精确取消的 Driver 在 execution lifecycle 中登记并处理该 ID；Host 不再把 session-wide cancel 当作新取消路径的 fallback。
 
-| 文档 | 内容 |
-|------|------|
-| [状态管理](frontend/state.md) | Zustand stores、事件处理、跨窗口通信 |
-| [组件与布局](frontend/components.md) | DataTable（`--dt-*`）、Context Menu、ER 图、统一工作区、主题系统 |
-| [AI 功能](frontend/ai.md) | AI 组件、@ 上下文引用、SQL 编辑器方言 |
-| [扩展性](frontend/extensibility.md) | DB 类型扩展、DatabaseTypeMeta、插件系统、plugin-sdk |
+## 5. Schema Diff
 
-## 横切关注点
+Schema Diff 的核心链路是：
 
-| 文档 | 内容 |
-|------|------|
-| [ID 术语规范](naming.md) | `connectionId` / `dbSessionId` 定义、生命周期、流转图、双模适配点与守护规则 |
-| [安全措施](security.md) | AES-256-GCM + key_store、CSP、路径遍历防护、文件扩展名白名单、AI Key 安全 |
-| [窗口管理](windows.md) | 主工作区 Page（Welcome / Connection / Settings 等）、子窗口、`windowKind` 路由、Docs 官网跳转 |
-| [测试策略](testing.md) | Rust / Vitest / E2E 概览；Host UI 路径覆盖见 [e2e-coverage.md](../development/e2e-coverage.md) |
+```text
+Schema Snapshot
+    ↓
+Schema Compare
+    ↓
+MigrationOperation (dialect-neutral)
+    ↓
+Dependency / Plan
+    ↓
+Driver MigrationRenderer
+    ↓
+MigrationStatement / Plan
+    ↓
+Review
+    ↓
+Deploy on target
+```
 
-## 相关文档索引
+Schema Diff 领域代码位于 `src-tauri/src/schema_diff/`：
 
-- 功能使用文档（用户向）：[docs/features/](../features/)
-- 开发 / 发布 / 测试流程文档：[docs/development/](../development/)
-- 文档总索引：[docs/README.md](../README.md)
+- `compare.rs)：列、PK、索引差异。
+- `ir.rs)：Snapshot → dialect-neutral `MigrationOperation`。
+- `operations.rs)：中间操作及风险级别。
+- `dependencies.rs)：操作依赖排序。
+- `plan.rs)：渲染 MigrationStatement、能力检查和计划结果。
+- `deploy.rs)：目标库部署。
+- `types.rs)：Snapshot、Diff、Plan DTO。
+
+**方言 SQL 属于 Driver API / Driver 层。** Host 不按 PostgreSQL/MySQL 等数据库类型复制 SQL。Driver 提供 `MigrationRenderer`、`MigrationCapabilities` 和 `TypeNormalizer`。
+
+Source 是 desired state，Target 是 apply site。例如 source 为 `VARCHAR(255))、target 为 `VARCHAR(100)` 时，计划方向是把 target 修改为 `VARCHAR(255)`。
+
+## 6. Data Sync 与 Data Transfer
+
+三者职责明确：
+
+| 能力 | 目的 | 当前实现 |
+|---|---|---|
+| Schema Diff | 修改目标结构 | `schema_diff/` |
+| Data Sync | 同族数据库按行比较并同步 | `data_sync/` |
+| Data Transfer | 异构数据库/映射/结构+数据迁移 | `data_transfer/` + `transfer/` |
+
+Data Sync 使用 Compare → Review → Preview → Execute，生产 compare 路径支持 keyset pagination 和 job cancellation，执行阶段使用参数化 SQL、事务和失败/取消 rollback。
+
+Data Transfer 使用 Endpoints → Setup → Objects → Mapping → Preview → Result，跨方言通过 IR adapter 完成类型和值转换；DDL 由 target adapter 渲染。
+
+## 7. Workflow / AI / MCP / Dashboard
+
+- **Workflow**：`src-tauri/src/workflow/` 提供 YAML executor、Command runtime、Condition、ForEach、AI、history 和 scheduler。
+- **AI**：`src-tauri/src/ai/` 提供 OpenAI、Anthropic、DeepSeek、Ollama、Custom 等 provider/protocol 适配以及 schema context。
+- **MCP**：`src-tauri/src/mcp/` 同时提供 MCP Server 和 Client，并支持 headless stdio。
+- **Dashboard**：`src-tauri/src/dashboard/` 负责 Widget、执行、历史、告警和导出；Monitor 位于 `src-tauri/src/monitor/`。
+
+## 8. 持久化与安全
+
+Desktop 持久化由 `src-tauri/src/store/` 管理，包含连接配置、设置、AI 配置、同步任务和历史等。敏感配置使用 AES-256-GCM，主密钥由 `key_store` 管理，可使用 OS keychain 或开发/CI 文件后端。
+
+查询历史目前位于 `history.sqlite`，SQL 文本和错误信息并非整体加密；因此应用数据目录应按敏感数据处理。
+
+## 9. 前端状态
+
+React 前端使用 Zustand。主要 Store 位于 `src/stores/`：
+
+- `connectionStore)：持久化连接配置。
+- `activeConnectionStore)：运行时连接/session 状态。
+- `schemaStore)：Schema 元数据。
+- `tableDataStore)：表数据、筛选、分页和编辑状态。
+- `panelStore)：统一工作区 Panel 与查询结果。
+- `workspaceTabsStore)：工作区 Tab。
+- `aiStore)、`dashboardStore)、`extensionStore)、`settingsStore)、`uiStore)：对应领域状态。
+
+跨窗口不共享 React/Zustand 内存状态，通过 Tauri Event 进行同步。
+
+## 10. 测试
+
+测试分布在 Driver、Host Rust、Frontend Vitest 和 E2E 四层。Driver-specific 行为放在 `packages/drivers/<id>/`；Host 不复制 Driver 方言测试。E2E 主要覆盖真实窗口流程和 IPC contract。
+
+详细测试策略见 [testing.md](testing.md)。
