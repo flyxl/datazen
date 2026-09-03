@@ -1,5 +1,26 @@
 use datazen_driver_api::*;
 
+fn format_mysql_column_def(c: &MigrationColumn, qi: &impl Fn(&str) -> String) -> String {
+    let mut def = format!(
+        "{} {}{}",
+        qi(&c.name),
+        c.data_type,
+        if c.nullable { "" } else { " NOT NULL" }
+    );
+    if let Some(default) = &c.default_value {
+        def.push_str(&format!(" DEFAULT {default}"));
+    }
+    if c.is_auto_increment {
+        def.push_str(" AUTO_INCREMENT");
+    }
+    if let Some(comment) = &c.comment {
+        if !comment.is_empty() {
+            def.push_str(&format!(" COMMENT '{}'", comment.replace('\'', "''")));
+        }
+    }
+    def
+}
+
 pub struct MysqlMigrationRenderer;
 
 impl MigrationRenderer for MysqlMigrationRenderer {
@@ -13,14 +34,7 @@ impl MigrationRenderer for MysqlMigrationRenderer {
             } => {
                 let cols = columns
                     .iter()
-                    .map(|c| {
-                        format!(
-                            "{} {}{}",
-                            qi(&c.name),
-                            c.data_type,
-                            if c.nullable { "" } else { " NOT NULL" }
-                        )
-                    })
+                    .map(|c| format_mysql_column_def(c, &qi))
                     .collect::<Vec<_>>();
                 let pk = if primary_keys.is_empty() {
                     String::new()
@@ -44,11 +58,9 @@ impl MigrationRenderer for MysqlMigrationRenderer {
 
             MigrationOperation::AddColumn { table, column } => Ok(MigrationStatement {
                 sql: format!(
-                    "ALTER TABLE {} ADD COLUMN {} {}{}",
+                    "ALTER TABLE {} ADD COLUMN {}",
                     qi(table),
-                    qi(&column.name),
-                    column.data_type,
-                    if column.nullable { "" } else { " NOT NULL" }
+                    format_mysql_column_def(column, &qi)
                 ),
                 risk: MigrationRisk::Additive,
                 rollback_sql: Some(format!(
@@ -175,6 +187,22 @@ impl MigrationRenderer for MysqlMigrationRenderer {
                 rollback_sql: None,
                 summary: format!("ALTER AUTO_INCREMENT {}.{}", table, column),
             }),
+            MigrationOperation::AddPrimaryKey { table, columns } => Ok(MigrationStatement {
+                sql: format!(
+                    "ALTER TABLE {} ADD PRIMARY KEY ({})",
+                    qi(table),
+                    columns.iter().map(|c| qi(c)).collect::<Vec<_>>().join(", ")
+                ),
+                risk: MigrationRisk::Additive,
+                rollback_sql: Some(format!("ALTER TABLE {} DROP PRIMARY KEY", qi(table))),
+                summary: format!("ADD PRIMARY KEY {}", table),
+            }),
+            MigrationOperation::DropPrimaryKey { table, .. } => Ok(MigrationStatement {
+                sql: format!("ALTER TABLE {} DROP PRIMARY KEY", qi(table)),
+                risk: MigrationRisk::Destructive,
+                rollback_sql: None,
+                summary: format!("DROP PRIMARY KEY {}", table),
+            }),
             _ => Err(format!("MySQL renderer does not yet support {:?}", op)),
         }
     }
@@ -183,28 +211,27 @@ impl MigrationRenderer for MysqlMigrationRenderer {
 pub struct MysqlMigrationCapabilities;
 impl MigrationCapabilities for MysqlMigrationCapabilities {
     fn supports(&self, operation: &MigrationOperation) -> bool {
-        matches!(
-            operation,
+        match operation {
+            MigrationOperation::SetNullable { .. } => false,
+            MigrationOperation::SetAutoIncrement { to, .. } if !*to => false,
             MigrationOperation::CreateTable { .. }
-                | MigrationOperation::AddColumn { .. }
-                | MigrationOperation::DropColumn { .. }
-                | MigrationOperation::AlterColumnType { .. }
-                | MigrationOperation::SetNullable { .. }
-                | MigrationOperation::SetDefault { .. }
-                | MigrationOperation::SetComment { .. }
-                | MigrationOperation::SetAutoIncrement { .. }
-                | MigrationOperation::AddPrimaryKey { .. }
-                | MigrationOperation::DropPrimaryKey { .. }
-                | MigrationOperation::CreateIndex { .. }
-                | MigrationOperation::DropIndex { .. }
-        )
+            | MigrationOperation::AddColumn { .. }
+            | MigrationOperation::DropColumn { .. }
+            | MigrationOperation::AlterColumnType { .. }
+            | MigrationOperation::SetDefault { .. }
+            | MigrationOperation::SetComment { .. }
+            | MigrationOperation::SetAutoIncrement { .. }
+            | MigrationOperation::AddPrimaryKey { .. }
+            | MigrationOperation::DropPrimaryKey { .. }
+            | MigrationOperation::CreateIndex { .. }
+            | MigrationOperation::DropIndex { .. } => true,
+        }
     }
     fn requires_table_rebuild(&self, operation: &MigrationOperation) -> bool {
         matches!(
             operation,
             MigrationOperation::SetAutoIncrement { .. }
                 | MigrationOperation::AlterColumnType { .. }
-                | MigrationOperation::SetNullable { .. }
                 | MigrationOperation::SetComment { .. }
         )
     }
@@ -238,13 +265,74 @@ mod tests {
 
     #[test]
     fn renderer_rejects_unsafe_nullable_change() {
-        assert!(MysqlMigrationRenderer
-            .render(&MigrationOperation::SetNullable {
-                table: "users".into(),
-                column: "name".into(),
-                nullable: false
-            })
-            .is_err());
+        let op = MigrationOperation::SetNullable {
+            table: "users".into(),
+            column: "name".into(),
+            nullable: false,
+        };
+        assert!(!MysqlMigrationCapabilities.supports(&op));
+        assert!(MysqlMigrationRenderer.render(&op).is_err());
+    }
+
+    #[test]
+    fn create_table_renders_default_comment_and_auto_increment() {
+        let op = MigrationOperation::CreateTable {
+            table: "users".into(),
+            columns: vec![MigrationColumn {
+                name: "id".into(),
+                data_type: "INT".into(),
+                nullable: false,
+                default_value: None,
+                comment: Some("primary id".into()),
+                is_auto_increment: true,
+            }],
+            primary_keys: vec!["id".into()],
+        };
+        let stmt = MysqlMigrationRenderer.render(&op).unwrap();
+        assert!(stmt.sql.contains("AUTO_INCREMENT"));
+        assert!(stmt.sql.contains("COMMENT 'primary id'"));
+    }
+
+    #[test]
+    fn add_column_renders_metadata() {
+        let op = MigrationOperation::AddColumn {
+            table: "users".into(),
+            column: MigrationColumn {
+                name: "score".into(),
+                data_type: "INT".into(),
+                nullable: false,
+                default_value: Some("0".into()),
+                comment: Some("score".into()),
+                is_auto_increment: false,
+            },
+        };
+        let stmt = MysqlMigrationRenderer.render(&op).unwrap();
+        assert!(stmt.sql.contains("DEFAULT 0"));
+        assert!(stmt.sql.contains("COMMENT 'score'"));
+    }
+
+    #[test]
+    fn add_primary_key_provides_rollback() {
+        let op = MigrationOperation::AddPrimaryKey {
+            table: "users".into(),
+            columns: vec!["id".into()],
+        };
+        let stmt = MysqlMigrationRenderer.render(&op).unwrap();
+        assert_eq!(
+            stmt.rollback_sql.as_deref(),
+            Some("ALTER TABLE `users` DROP PRIMARY KEY")
+        );
+    }
+
+    #[test]
+    fn drop_primary_key_renders() {
+        let op = MigrationOperation::DropPrimaryKey {
+            table: "users".into(),
+            columns: vec!["id".into()],
+        };
+        let stmt = MysqlMigrationRenderer.render(&op).unwrap();
+        assert_eq!(stmt.sql, "ALTER TABLE `users` DROP PRIMARY KEY");
+        assert!(MysqlMigrationCapabilities.supports(&op));
     }
 
     #[test]

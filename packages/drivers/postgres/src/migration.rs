@@ -1,5 +1,48 @@
 use datazen_driver_api::*;
 
+fn format_pg_column_def(c: &MigrationColumn, qi: &impl Fn(&str) -> String) -> String {
+    let mut def = format!(
+        "{} {}{}",
+        qi(&c.name),
+        c.data_type,
+        if c.nullable { "" } else { " NOT NULL" }
+    );
+    if let Some(default) = &c.default_value {
+        def.push_str(&format!(" DEFAULT {default}"));
+    }
+    def
+}
+
+fn pg_comment_on_column(table: &str, column: &str, comment: &str, qi: &impl Fn(&str) -> String) -> String {
+    format!(
+        "COMMENT ON COLUMN {}.{} IS '{}'",
+        qi(table),
+        qi(column),
+        comment.replace('\'', "''")
+    )
+}
+
+fn append_pg_column_comments(
+    mut sql: String,
+    table: &str,
+    columns: &[MigrationColumn],
+    qi: &impl Fn(&str) -> String,
+) -> String {
+    for column in columns {
+        if let Some(comment) = &column.comment {
+            if !comment.is_empty() {
+                sql.push_str("; ");
+                sql.push_str(&pg_comment_on_column(table, &column.name, comment, qi));
+            }
+        }
+    }
+    sql
+}
+
+fn pg_pk_constraint_name(table: &str) -> String {
+    format!("{table}_pkey")
+}
+
 pub struct PostgresMigrationRenderer;
 
 impl MigrationRenderer for PostgresMigrationRenderer {
@@ -13,14 +56,7 @@ impl MigrationRenderer for PostgresMigrationRenderer {
             } => {
                 let cols = columns
                     .iter()
-                    .map(|c| {
-                        format!(
-                            "{} {}{}",
-                            qi(&c.name),
-                            c.data_type,
-                            if c.nullable { "" } else { " NOT NULL" }
-                        )
-                    })
+                    .map(|c| format_pg_column_def(c, &qi))
                     .collect::<Vec<_>>();
                 let pk = if primary_keys.is_empty() {
                     String::new()
@@ -34,30 +70,43 @@ impl MigrationRenderer for PostgresMigrationRenderer {
                             .join(", ")
                     )
                 };
+                let sql = append_pg_column_comments(
+                    format!("CREATE TABLE {} ({}{})", qi(table), cols.join(", "), pk),
+                    table,
+                    columns,
+                    &qi,
+                );
                 Ok(MigrationStatement {
-                    sql: format!("CREATE TABLE {} ({}{})", qi(table), cols.join(", "), pk),
+                    sql,
                     risk: MigrationRisk::Additive,
                     rollback_sql: Some(format!("DROP TABLE {}", qi(table))),
                     summary: format!("CREATE TABLE {}", table),
                 })
             }
 
-            MigrationOperation::AddColumn { table, column } => Ok(MigrationStatement {
-                sql: format!(
-                    "ALTER TABLE {} ADD COLUMN {} {}{}",
+            MigrationOperation::AddColumn { table, column } => {
+                let mut sql = format!(
+                    "ALTER TABLE {} ADD COLUMN {}",
                     qi(table),
-                    qi(&column.name),
-                    column.data_type,
-                    if column.nullable { "" } else { " NOT NULL" }
-                ),
-                risk: MigrationRisk::Additive,
-                rollback_sql: Some(format!(
-                    "ALTER TABLE {} DROP COLUMN {}",
-                    qi(table),
-                    qi(&column.name)
-                )),
-                summary: format!("ADD COLUMN {}.{}", table, column.name),
-            }),
+                    format_pg_column_def(column, &qi)
+                );
+                if let Some(comment) = &column.comment {
+                    if !comment.is_empty() {
+                        sql.push_str("; ");
+                        sql.push_str(&pg_comment_on_column(table, &column.name, comment, &qi));
+                    }
+                }
+                Ok(MigrationStatement {
+                    sql,
+                    risk: MigrationRisk::Additive,
+                    rollback_sql: Some(format!(
+                        "ALTER TABLE {} DROP COLUMN {}",
+                        qi(table),
+                        qi(&column.name)
+                    )),
+                    summary: format!("ADD COLUMN {}.{}", table, column.name),
+                })
+            }
             MigrationOperation::DropColumn { table, column } => Ok(MigrationStatement {
                 sql: format!("ALTER TABLE {} DROP COLUMN {}", qi(table), qi(&column.name)),
                 risk: MigrationRisk::Destructive,
@@ -126,20 +175,37 @@ impl MigrationRenderer for PostgresMigrationRenderer {
                 rollback_sql: None,
                 summary: format!("DROP INDEX {}", index.name),
             }),
-            MigrationOperation::AddPrimaryKey { table, columns } => Ok(MigrationStatement {
-                sql: format!(
-                    "ALTER TABLE {} ADD PRIMARY KEY ({})",
-                    qi(table),
-                    columns.iter().map(|c| qi(c)).collect::<Vec<_>>().join(", ")
-                ),
-                risk: MigrationRisk::Additive,
-                rollback_sql: None,
-                summary: format!("ADD PRIMARY KEY {}", table),
-            }),
-            MigrationOperation::DropPrimaryKey { .. } => Err(
-                "PostgreSQL PK constraint name must be resolved from snapshot before rendering"
-                    .into(),
-            ),
+            MigrationOperation::AddPrimaryKey { table, columns } => {
+                let pk_name = pg_pk_constraint_name(table);
+                Ok(MigrationStatement {
+                    sql: format!(
+                        "ALTER TABLE {} ADD CONSTRAINT {} PRIMARY KEY ({})",
+                        qi(table),
+                        qi(&pk_name),
+                        columns.iter().map(|c| qi(c)).collect::<Vec<_>>().join(", ")
+                    ),
+                    risk: MigrationRisk::Additive,
+                    rollback_sql: Some(format!(
+                        "ALTER TABLE {} DROP CONSTRAINT {}",
+                        qi(table),
+                        qi(&pk_name)
+                    )),
+                    summary: format!("ADD PRIMARY KEY {}", table),
+                })
+            }
+            MigrationOperation::DropPrimaryKey { table, .. } => {
+                let pk_name = pg_pk_constraint_name(table);
+                Ok(MigrationStatement {
+                    sql: format!(
+                        "ALTER TABLE {} DROP CONSTRAINT {}",
+                        qi(table),
+                        qi(&pk_name)
+                    ),
+                    risk: MigrationRisk::Destructive,
+                    rollback_sql: None,
+                    summary: format!("DROP PRIMARY KEY {}", table),
+                })
+            }
             MigrationOperation::AlterColumnType {
                 table, column, to, ..
             } => Ok(MigrationStatement {
@@ -205,27 +271,25 @@ impl MigrationRenderer for PostgresMigrationRenderer {
 pub struct PostgresMigrationCapabilities;
 impl MigrationCapabilities for PostgresMigrationCapabilities {
     fn supports(&self, operation: &MigrationOperation) -> bool {
-        matches!(
-            operation,
+        match operation {
+            MigrationOperation::SetAutoIncrement { .. } => false,
             MigrationOperation::CreateTable { .. }
-                | MigrationOperation::AddColumn { .. }
-                | MigrationOperation::DropColumn { .. }
-                | MigrationOperation::AlterColumnType { .. }
-                | MigrationOperation::SetNullable { .. }
-                | MigrationOperation::SetDefault { .. }
-                | MigrationOperation::SetComment { .. }
-                | MigrationOperation::SetAutoIncrement { .. }
-                | MigrationOperation::AddPrimaryKey { .. }
-                | MigrationOperation::DropPrimaryKey { .. }
-                | MigrationOperation::CreateIndex { .. }
-                | MigrationOperation::DropIndex { .. }
-        )
+            | MigrationOperation::AddColumn { .. }
+            | MigrationOperation::DropColumn { .. }
+            | MigrationOperation::AlterColumnType { .. }
+            | MigrationOperation::SetNullable { .. }
+            | MigrationOperation::SetDefault { .. }
+            | MigrationOperation::SetComment { .. }
+            | MigrationOperation::AddPrimaryKey { .. }
+            | MigrationOperation::DropPrimaryKey { .. }
+            | MigrationOperation::CreateIndex { .. }
+            | MigrationOperation::DropIndex { .. } => true,
+        }
     }
     fn requires_table_rebuild(&self, operation: &MigrationOperation) -> bool {
         matches!(
             operation,
-            MigrationOperation::SetAutoIncrement { .. }
-                | MigrationOperation::AlterColumnType { .. }
+            MigrationOperation::AlterColumnType { .. }
                 | MigrationOperation::SetNullable { .. }
                 | MigrationOperation::SetComment { .. }
         )
@@ -281,5 +345,97 @@ mod tests {
         };
         assert!(PostgresMigrationCapabilities.supports(&op));
         assert!(PostgresMigrationCapabilities.requires_table_rebuild(&op));
+    }
+
+    #[test]
+    fn create_table_renders_default_and_comment() {
+        let op = MigrationOperation::CreateTable {
+            table: "users".into(),
+            columns: vec![
+                MigrationColumn {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    nullable: false,
+                    default_value: None,
+                    comment: None,
+                    is_auto_increment: false,
+                },
+                MigrationColumn {
+                    name: "status".into(),
+                    data_type: "text".into(),
+                    nullable: true,
+                    default_value: Some("'active'".into()),
+                    comment: Some("user status".into()),
+                    is_auto_increment: false,
+                },
+            ],
+            primary_keys: vec!["id".into()],
+        };
+        let stmt = PostgresMigrationRenderer.render(&op).unwrap();
+        assert!(stmt.sql.contains("DEFAULT 'active'"));
+        assert!(stmt.sql.contains("COMMENT ON COLUMN \"users\".\"status\" IS 'user status'"));
+    }
+
+    #[test]
+    fn add_column_renders_default_and_comment() {
+        let op = MigrationOperation::AddColumn {
+            table: "users".into(),
+            column: MigrationColumn {
+                name: "score".into(),
+                data_type: "integer".into(),
+                nullable: false,
+                default_value: Some("0".into()),
+                comment: Some("score".into()),
+                is_auto_increment: false,
+            },
+        };
+        let stmt = PostgresMigrationRenderer.render(&op).unwrap();
+        assert!(stmt.sql.starts_with(
+            "ALTER TABLE \"users\" ADD COLUMN \"score\" integer NOT NULL DEFAULT 0"
+        ));
+        assert!(stmt.sql.contains("COMMENT ON COLUMN \"users\".\"score\" IS 'score'"));
+        assert_eq!(
+            stmt.rollback_sql.as_deref(),
+            Some("ALTER TABLE \"users\" DROP COLUMN \"score\"")
+        );
+    }
+
+    #[test]
+    fn drop_primary_key_uses_table_pkey_convention() {
+        let op = MigrationOperation::DropPrimaryKey {
+            table: "users".into(),
+            columns: vec!["id".into()],
+        };
+        let stmt = PostgresMigrationRenderer.render(&op).unwrap();
+        assert_eq!(
+            stmt.sql,
+            "ALTER TABLE \"users\" DROP CONSTRAINT \"users_pkey\""
+        );
+        assert!(PostgresMigrationCapabilities.supports(&op));
+    }
+
+    #[test]
+    fn add_primary_key_provides_rollback() {
+        let op = MigrationOperation::AddPrimaryKey {
+            table: "users".into(),
+            columns: vec!["id".into()],
+        };
+        let stmt = PostgresMigrationRenderer.render(&op).unwrap();
+        assert_eq!(
+            stmt.rollback_sql.as_deref(),
+            Some("ALTER TABLE \"users\" DROP CONSTRAINT \"users_pkey\"")
+        );
+    }
+
+    #[test]
+    fn capabilities_reject_set_auto_increment() {
+        let op = MigrationOperation::SetAutoIncrement {
+            table: "users".into(),
+            column: "id".into(),
+            from: false,
+            to: true,
+        };
+        assert!(!PostgresMigrationCapabilities.supports(&op));
+        assert!(PostgresMigrationRenderer.render(&op).is_err());
     }
 }
