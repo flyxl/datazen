@@ -78,9 +78,8 @@ git worktree remove .worktrees/datazen-<track-id>
 git branch -d feature/<track-id>
 ```
 
-### 7. 波次回归 (R 阶段)
-**每个 Wave 的全部轨道合并完毕后，立即执行一次 R 阶段回归**，不等后续 Wave：
+### 7. 全量回归 (R 阶段)
+**所有 Wave 的全部轨道合并完毕后，统一执行一次 R 阶段全量回归**（中间各 Wave 合入时仅做合并健全性校验，不做完整回归）：
 1. 跑通全套构建与测试：`pnpm build`（或 `npx tsc --noEmit`）、`cargo test -p datazen --lib`、前端单测。
-2. 逐项回归该 Wave 各轨在 `progress.md` 登记的【留待 R 回归】E2E 用例。
-3. 确保该 Wave 所有 Bug 均已关闭。
-4. R 阶段通过后方可启动下一 Wave 的 Bootstrap。
+2. 逐项回归**所有 Wave 所有轨道**在 `progress.md` 登记的【留待 R 回归】E2E 用例。
+3. 确保所有 Bug 均已关闭。
