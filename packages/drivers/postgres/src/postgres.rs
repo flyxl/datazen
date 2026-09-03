@@ -702,6 +702,10 @@ fn build_pg_options(
 
 #[async_trait]
 impl DatabaseDriver for PostgresDriver {
+    fn migration_renderer(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
+        Some(std::sync::Arc::new(super::PostgresMigrationRenderer ))
+    }
+
     fn driver_type(&self) -> DatabaseType {
         "postgresql".to_string()
     }
