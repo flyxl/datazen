@@ -15,6 +15,9 @@ pub struct PlanOptions<'a> {
     pub include_indexes: bool,
     /// When set, used instead of raw `column.data_type` (cross-dialect / IR).
     pub type_mapper: Option<&'a TypeMapper<'a>>,
+    /// Set automatically by build_schema_diff_plan when source ≠ target dialect.
+    #[doc(hidden)]
+    pub cross_dialect: bool,
 }
 
 impl Default for PlanOptions<'_> {
@@ -23,7 +26,39 @@ impl Default for PlanOptions<'_> {
             allow_destructive: false,
             include_indexes: true,
             type_mapper: None,
+            cross_dialect: false,
         }
+    }
+}
+
+/// Strips source-dialect-specific default expressions that would be invalid
+/// in the target dialect (e.g. PostgreSQL `nextval()` in MySQL).
+fn strip_dialect_specific_defaults(
+    op: &mut super::operations::MigrationOperation,
+    warnings: &mut Vec<String>,
+) {
+    let pg_patterns = ["nextval(", "::regclass", "::"];
+    let strip = |col: &mut super::types::ColumnSnapshot, table: &str, w: &mut Vec<String>| {
+        if let Some(ref d) = col.default_value {
+            if pg_patterns.iter().any(|p| d.contains(p)) {
+                w.push(format!(
+                    "Stripped dialect-specific default for {}.{}: {}",
+                    table, col.name, d
+                ));
+                col.default_value = None;
+            }
+        }
+    };
+    match op {
+        super::operations::MigrationOperation::AddColumn { table, column } => {
+            strip(column, table, warnings)
+        }
+        super::operations::MigrationOperation::CreateTable { table, columns, .. } => {
+            for c in columns {
+                strip(c, table, warnings);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -131,6 +166,13 @@ fn plan_single_table(
     // The IR remains dialect-neutral; only replace types before rendering.
     if opts.type_mapper.is_some() {
         operations.retain_mut(|op| apply_type_mapping(op, opts, requirements));
+    }
+
+    // Cross-dialect: strip source-dialect-specific defaults before rendering.
+    if opts.cross_dialect {
+        for op in &mut operations {
+            strip_dialect_specific_defaults(op, warnings);
+        }
     }
 
     let mut destructive_narrowing = HashSet::new();
@@ -352,6 +394,11 @@ pub fn build_schema_diff_plan(
         );
     }
 
+    let opts = PlanOptions {
+        cross_dialect: !same_dialect,
+        ..opts
+    };
+
     let mut tables = Vec::new();
     for (table, src, tgt) in pairs {
         tables.push(table.clone());
@@ -399,6 +446,7 @@ pub fn build_column_plan(
             allow_destructive: true,
             include_indexes: false,
             type_mapper: None,
+            cross_dialect: false,
         },
     ))
 }
@@ -442,6 +490,7 @@ mod tests {
                 allow_destructive: false,
                 include_indexes: false,
                 type_mapper: None,
+                cross_dialect: false,
             },
         );
         let add = plan
@@ -501,6 +550,7 @@ mod tests {
                 allow_destructive: false,
                 include_indexes: false,
                 type_mapper: None,
+                cross_dialect: false,
             },
         );
         assert!(plan.statements.is_empty());
@@ -545,6 +595,7 @@ mod tests {
                 allow_destructive: false,
                 include_indexes: true,
                 type_mapper: None,
+                cross_dialect: false,
             },
         );
         assert!(plan
@@ -574,6 +625,7 @@ mod tests {
                 allow_destructive: false,
                 include_indexes: false,
                 type_mapper: Some(&mapper),
+                cross_dialect: false,
             },
         );
         assert!(!plan.same_dialect);
@@ -608,19 +660,20 @@ mod tests {
     }
 
     #[test]
-    fn mysql_primary_key_change_surfaces_unsupported_until_renderer() {
+    fn mysql_primary_key_change_generates_drop_and_add() {
         let mut src = schema(vec![col("id", "int"), col("user_id", "int")]);
         src.primary_keys = vec!["user_id".into()];
         let mut tgt = schema(vec![col("id", "int"), col("user_id", "int")]);
         tgt.primary_keys = vec!["id".into()];
         let plan = build_column_plan("users", &src, &tgt, "mysql").unwrap();
-        assert!(plan.requirements.iter().any(|r| {
-            matches!(
-                r,
-                super::super::types::PlanRequirement::Unsupported { operation, .. }
-                if operation.starts_with("table:")
-            )
-        }));
+        assert!(plan
+            .statements
+            .iter()
+            .any(|s| s.sql.contains("DROP PRIMARY KEY")));
+        assert!(plan
+            .statements
+            .iter()
+            .any(|s| s.sql.contains("ADD PRIMARY KEY")));
     }
 
     #[test]
@@ -642,6 +695,7 @@ mod tests {
                 allow_destructive: true,
                 include_indexes: true,
                 type_mapper: None,
+                cross_dialect: false,
             },
         );
         assert!(!plan.rollback_completeness.complete);
@@ -724,6 +778,7 @@ mod tests {
                 allow_destructive: true,
                 include_indexes: false,
                 type_mapper: Some(&mapper),
+                cross_dialect: false,
             },
         );
         assert!(plan.statements.is_empty());
@@ -755,6 +810,7 @@ mod tests {
                 allow_destructive: true,
                 include_indexes: false,
                 type_mapper: Some(&mapper),
+                cross_dialect: false,
             },
         );
         assert!(!plan
@@ -827,6 +883,7 @@ mod tests {
                 allow_destructive: false,
                 include_indexes: false,
                 type_mapper: None,
+                cross_dialect: false,
             },
         );
         assert!(plan.statements.is_empty());
@@ -879,14 +936,14 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_driver_operation_becomes_requirement() {
+    fn sqlite_alter_type_becomes_unsupported() {
         let src = schema(vec![col("id", "int")]);
         let mut target = src.clone();
-        target.columns[0].data_type = "json".into();
+        target.columns[0].data_type = "text".into();
         let plan = build_schema_diff_plan(
             &[("users".into(), src, target)],
-            "postgresql",
-            "postgresql",
+            "sqlite",
+            "sqlite",
             PlanOptions::default(),
         );
         assert!(plan

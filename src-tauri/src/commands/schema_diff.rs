@@ -128,6 +128,7 @@ pub async fn prepare_schema_diff_plan(
                 allow_destructive,
                 include_indexes,
                 type_mapper: Some(&mapper),
+                cross_dialect: false,
             },
         )
     } else {
@@ -139,6 +140,7 @@ pub async fn prepare_schema_diff_plan(
                 allow_destructive,
                 include_indexes,
                 type_mapper: None,
+                cross_dialect: false,
             },
         )
     };
