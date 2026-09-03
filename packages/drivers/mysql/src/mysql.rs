@@ -872,6 +872,10 @@ fn build_mysql_options(config: &ConnectionConfig) -> Result<MySqlConnectOptions,
 
 #[async_trait]
 impl DatabaseDriver for MysqlDriver {
+    fn migration_renderer(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
+        Some(std::sync::Arc::new(super::MysqlMigrationRenderer ))
+    }
+
     fn driver_type(&self) -> DatabaseType {
         if self.is_mariadb {
             "mariadb".to_string()
