@@ -37,6 +37,10 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: stableT }),
 }));
 
+vi.mock('../../../hooks/useLocaleDomains', () => ({
+  useLocaleDomains: () => true,
+}));
+
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
     getDatabases: (...args: unknown[]) => getDatabasesMock(...args),

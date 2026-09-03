@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/ui/Button';
+import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useI18n } from '../../hooks/useI18n';
@@ -42,7 +43,7 @@ export function McpSettingsSection({
   settings: draftSettings,
   onSettingsChange,
 }: McpSettingsSectionProps = {}) {
-  useLocaleDomains(['mcp']);
+  const localesReady = useLocaleDomains(['mcp']);
   const { t } = useI18n();
   const storedSettings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
@@ -187,6 +188,12 @@ export function McpSettingsSection({
       /* ignore */
     }
   };
+
+  // All hooks above. Gate the section on the `mcp` locale pack so the UI never
+  // renders raw/un-translated `t('mcp.*')` keys before it is imported.
+  if (!localesReady) {
+    return <LocaleDomainLoading variant="section" testId="mcp-settings-locale-loading" />;
+  }
 
   return (
     <>

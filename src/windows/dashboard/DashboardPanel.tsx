@@ -15,6 +15,7 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Input } from '../../components/ui/Input';
+import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
 import { cn } from '../../lib/cn';
 import { useI18n } from '../../hooks/useI18n';
 import { useLocaleDomains } from '../../hooks/useLocaleDomains';
@@ -60,7 +61,7 @@ export function DashboardPanel({
   onDashboardChange,
   onOpenWorkflowEditor,
 }: DashboardPanelProps) {
-  useLocaleDomains(['dashboard']);
+  const localesReady = useLocaleDomains(['dashboard']);
   const { t } = useI18n();
   const [activeDashboardId, setActiveDashboardId] = useState(initialDashboardId ?? '');
   const dashboardId = activeDashboardId;
@@ -401,6 +402,18 @@ export function DashboardPanel({
   );
 
   const tabItems = list;
+
+  // All hooks above. Gate the body on the `dashboard` locale pack so the UI
+  // never renders raw/un-translated `t('dashboard.*')` keys before it loads.
+  if (!localesReady) {
+    return (
+      <LocaleDomainLoading
+        variant="section"
+        testId="dashboard-locale-loading"
+        className="h-full"
+      />
+    );
+  }
 
   if (bootstrapping || (listLoading && !dashboardId && list.length === 0)) {
     return (

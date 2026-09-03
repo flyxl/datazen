@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
+import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { CopyableError } from '../../components/ui/CopyableError';
@@ -63,7 +64,7 @@ const STEPS: WizardStep[] = ['endpoints', 'setup', 'objects', 'compare', 'previe
 const NARROW_STEPS: WizardStep[] = ['endpoints', 'setup', 'result'];
 
 export function DataSyncWindow() {
-  useLocaleDomains(['sync']);
+  const localesReady = useLocaleDomains(['sync']);
   useSettings();
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
@@ -1000,6 +1001,12 @@ export function DataSyncWindow() {
     setStep('compare');
     void handleCompare();
   }, [handleCompare]);
+
+  // All hooks above. Gate the body on the `sync` locale pack so the UI never
+  // renders raw/un-translated `t('sync.*')` keys before it is imported.
+  if (!localesReady) {
+    return <LocaleDomainLoading testId="data-sync-locale-loading" />;
+  }
 
   return (
     <div

@@ -32,6 +32,7 @@ import { WorkflowChatPanel } from '../../components/ai/WorkflowChatPanel';
 import { isChartableResult } from '../../lib/chart/fieldInference';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
+import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
 import { useResizable } from '../../hooks/useResizable';
 import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
@@ -128,7 +129,7 @@ export function WorkflowPage({
   embedded = false,
   onOpenDashboardInShell,
 }: Readonly<WorkflowPageProps>) {
-  useLocaleDomains(['workflows']);
+  const localesReady = useLocaleDomains(['workflows']);
   useSettings();
   const { t } = useI18n();
   const [confirmWf, confirmWfDialog] = useConfirmDialog();
@@ -636,6 +637,12 @@ export function WorkflowPage({
       </Button>
     </div>
   );
+
+  // All hooks above. Gate the body on the `workflows` locale pack so the UI
+  // never renders raw/un-translated `t('workflows.*')` keys before it loads.
+  if (!localesReady) {
+    return <LocaleDomainLoading testId="workflow-locale-loading" />;
+  }
 
   return (
     <div

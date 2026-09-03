@@ -156,6 +156,10 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
+vi.mock('../../../hooks/useLocaleDomains', () => ({
+  useLocaleDomains: () => true,
+}));
+
 vi.mock('../../../hooks/useSettings', () => ({
   useSettings: () => {},
 }));
