@@ -43,7 +43,8 @@
 | Site（条件） | `check-site-seo.mjs` | 仅当 diff 含 `site/` |
 | 驱动解析 | `resolve-drivers.mjs --drivers=basic` | 写入 `.driver-features.json`、codegen |
 | Rust | 见下表 | Rust **stable** |
-| 清理 | `driver-file-stash.mjs restore` | 恢复被 inject 的 tracked 文件 |
+| 清理 | `driver-file-stash.mjs restore` | 恢复被 inject 的 tracked 文件（`if: always()`） |
+| ai-api | `cargo test -p datazen-ai-api --lib` | 在 restore **之后**执行（不依赖 inject 产物） |
 
 Rust 测试顺序（与 `ci.yml` 一致）：
 
@@ -52,6 +53,7 @@ cargo test -p datazen-driver-api --lib
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
 cargo test -p datazen --lib --features "$FEATURES"
 cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --lib
+node scripts/driver-file-stash.mjs restore
 cargo test -p datazen-ai-api --lib
 ```
 
@@ -79,8 +81,8 @@ cargo test -p datazen-driver-api --lib
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
 cargo test -p datazen --lib --features "$FEATURES"
 cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --lib
-cargo test -p datazen-ai-api --lib
 node scripts/driver-file-stash.mjs restore
+cargo test -p datazen-ai-api --lib
 ```
 
 若改动 `site/`：`node scripts/check-site-seo.mjs`。

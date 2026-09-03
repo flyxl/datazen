@@ -24,8 +24,8 @@
 | main | `main`；legacy `connection` / `workflow` / `dashboard` / `settings` / `docs` / `new-connection` 别名 → `main` |
 | backup | `backup-singleton` / `backup` |
 | data-sync | `data-sync-singleton` / `data-sync` |
-| schema-diff | `schema-diff` |
-| data-transfer | `data-transfer` |
+| schema-diff | `schema-diff-singleton` / `schema-diff` |
+| data-transfer | `data-transfer-singleton` / `data-transfer` |
 
 **Settings** 与 **Docs** 均不是子窗口：
 
@@ -92,7 +92,7 @@ function openWindow(label: string, options: OpenWindowOptions) {
 `src/lib/windowKind.ts` 用 URL 参数 `window` 区分：
 
 ```typescript
-export type WindowKind = 'main' | 'data-sync' | 'schema-diff' | 'backup';
+export type WindowKind = 'main' | 'data-sync' | 'data-transfer' | 'schema-diff' | 'backup';
 
 /** Legacy sub-window kinds that now route to the unified main shell. */
 const LEGACY_MAIN_ALIASES = new Set([
@@ -116,8 +116,8 @@ const LEGACY_MAIN_ALIASES = new Set([
 |------|-------------------|------|
 | **main** | `connectionStore`、`activeConnectionStore`、`panelStore`、`schemaStore`、`tableDataStore`、`settingsStore`、`aiStore`、`dashboardStore`、`workspaceTabsStore` | 连接配置、运行时会话、SQL 面板、表数据、设置、AI、Dashboard 均在此窗口 |
 | **backup** | 局部 UI state + IPC | 读写备份任务；通过 `crossWindowBus` 通知主窗刷新 |
-| **data-sync** | 局部 endpoint state + IPC | 双端点比较/执行；监听 `datazen:connection-ready` 更新可选连接列表 |
-| **schema-diff** | `useSchemaDiffEndpoints` 局部 state | 结构对比双栏；同样监听连接就绪事件 |
+| **data-sync** | 局部 endpoint state + IPC | 双端点比较/执行；监听 `datazen:connections-changed` / `datazen:connection-closed` 更新可选连接列表 |
+| **schema-diff** | `useSchemaDiffEndpoints` 局部 state | 结构对比双栏；同样监听 `connections-changed` / `connection-closed` |
 | **data-transfer** | 向导步骤局部 state + IPC | 异构 Transfer 六步；不持有主工作区 panel 状态 |
 
 **Settings / Workflow / Dashboard / Docs** 不是子窗口：Settings 与 Workflow/Dashboard 仅在 `main` 内路由切换；Docs 打开系统浏览器。
@@ -137,7 +137,7 @@ const LEGACY_MAIN_ALIASES = new Set([
    - `uiStore`：侧栏宽度、对话框等纯 UI 壳状态；通常仅 main 使用。
 
 4. **子窗口不拥有主工作区 Panel**  
-   Sync / Diff / Transfer / Backup 窗口**不**读写 `panelStore.panels`；需要连接列表时从 `connectionStore` + `activeConnectionStore` 读取，或监听 `datazen:connection-ready`。
+   Sync / Diff / Transfer / Backup 窗口**不**读写 `panelStore.panels`；需要连接列表时从 `connectionStore` + `activeConnectionStore` 读取，或监听 `datazen:connections-changed` / `datazen:connection-closed`。
 
 ### 6.3 跨窗口通信
 
@@ -147,8 +147,9 @@ const LEGACY_MAIN_ALIASES = new Set([
 
 | 事件 | 方向 | 用途 |
 |------|------|------|
-| `datazen:connection-ready` | main → 全体 | `{ connectionId, dbSessionId }`；子窗口更新已连接列表 |
-| `datazen:connections-changed` | 任意 → 全体 | 连接配置 CRUD 后刷新列表 |
+| `datazen:connection-ready` | main → 全体 | `{ connectionId, dbSessionId }`；主工作区 Tab 绑定会话（子窗口不监听此事件） |
+| `datazen:connections-changed` | 任意 → 全体 | 连接配置 CRUD 后刷新列表；Sync / Diff / Transfer 子窗口监听 |
+| `datazen:connection-closed` | main → 全体 | `{ dbSessionId }`；子窗口从端点列表移除已断开会话 |
 | `datazen:settings-changed` | settings → 全体 | 主题/语言等即时生效 |
 | `menu:open-settings` / `menu:workflow` 等 | Rust 菜单 → main | 主窗内导航，非新 OS 窗口 |
 
