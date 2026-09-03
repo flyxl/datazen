@@ -1,9 +1,8 @@
 //! Build SchemaDiffPlan from table schema pairs.
 
-use super::compare::{diff_indexes, diff_table_schemas};
-use super::dialects::{mysql, postgres, sqlite};
+use super::compare::diff_table_schemas;
 use super::types::{
-    normalize_dialect, resolve_table_for_dialect, ColumnSnapshot, PlanStatement,
+    ColumnSnapshot, PlanStatement,
     RollbackCompleteness, SchemaDiffPlan, StatementRisk,
 };
 use crate::db::TableSchema;
