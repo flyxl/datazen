@@ -49,7 +49,7 @@ scripts/new-feature-worktree.sh <track-id> <base-branch>
 - 模板参考：`docs/development/subagent/templates/tester-brief.md`，必读 `docs/development/subagent/tester.md`。
 - Tester 职责不仅是重跑编码代理的自测，还必须：
   1. **Review 编码代理的实现逻辑**——审查代码变更是否正确、是否有边界遗漏。
-  2. **编写新的集成测试用例**——覆盖编码代理未测到的交互路径。
+  2. **覆盖率驱动的测试补齐**——确保改动代码测试覆盖率 ≥ 80%，精准补齐未覆盖的分支和路径，不追求数量。
   3. **设计 E2E 测试用例**——在 progress.md 登记或直接编写可执行的 E2E 测试。
 - 测试代理只测不修。若出现缺陷，只在 `tracks/<track-id>/bugs.md` 登记；全部通过后才置 `TEST_DONE`。
 
