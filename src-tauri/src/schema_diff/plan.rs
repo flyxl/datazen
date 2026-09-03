@@ -126,6 +126,26 @@ fn plan_single_table(
         return;
     }
 
+    let operations = super::dependencies::resolve_dependencies(
+        super::ir::diff_to_operations(table, src, tgt),
+    );
+    let mut rendered = Vec::new();
+    for op in &operations {
+        match super::renderer::render_operation(&dialect, op) {
+            Ok(stmt) => rendered.push(stmt),
+            Err(e) => requirements.push(super::types::PlanRequirement::Unsupported {
+                operation: op.key(),
+                reason: e,
+            }),
+        }
+    }
+    // The IR/renderer path is authoritative for the new architecture. Keep the
+    // legacy planner below temporarily for compatibility until all dialect alter
+    // renderers are migrated.
+    if !rendered.is_empty() {
+        statements.extend(rendered);
+        return;
+    }
     let diff = diff_table_schemas(table, src, tgt);
 
     for col in &diff.missing_on_target {
