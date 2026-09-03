@@ -5,6 +5,9 @@ import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { NlFilterInput } from '../../components/ai/NlFilterInput';
 import { useTableDataStore, type TableState } from '../../stores/tableDataStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useConnectionStore } from '../../stores/connectionStore';
+import { DB_REGISTRY } from '../../lib/databaseTypes';
+import type { DatabaseType } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { cn } from '../../lib/cn';
@@ -26,6 +29,8 @@ interface TableViewProps {
   connectionId?: string;
   schema?: string | null;
   databaseType?: string;
+  /** Explicit read-only override; if omitted, checked via connection and driver metadata. */
+  readOnly?: boolean;
   /** Data-export capability, threaded to the table-data export dialog. */
   dataExportCapability?: 'none' | 'loaded_only' | 'full_table';
 }
@@ -37,9 +42,18 @@ export function TableView({
   connectionId,
   schema = null,
   databaseType,
+  readOnly: readOnlyProp,
   dataExportCapability,
 }: TableViewProps) {
   const { t } = useI18n();
+  const savedConnection = useConnectionStore((s) =>
+    connectionId ? s.connections.find((c) => c.id === connectionId) : undefined,
+  );
+  const dbMeta = databaseType ? DB_REGISTRY[databaseType as DatabaseType] : undefined;
+  const isDriverUnsupported = Boolean(!dbMeta || dbMeta.readOnly === true || dbMeta.supportsSQL === false);
+  const isConnectionReadOnly = Boolean(readOnlyProp ?? savedConnection?.readOnly);
+  const isEditable = !isConnectionReadOnly && !isDriverUnsupported;
+
   // NlFilterInput handles unconfigured state internally
   const tableStates = useTableDataStore((s) => s.tableStates);
   const activeTable = useTableDataStore((s) => s.activeTable);
@@ -68,56 +82,55 @@ export function TableView({
   const setDetailRow = useTableDataStore((s) => s.setDetailRow);
   const detailRowIndex = useTableDataStore((s) => s.detailRowIndex);
   const confirmOnDelete = useSettingsStore((s) => s.settings.confirmOnDelete);
-  const safeMode = useSettingsStore((s) => s.settings.safeMode);
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [confirmCommit, confirmCommitDialog] = useConfirmDialog();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [quickFilter, setQuickFilter] = useState('');
   const [quickFilterError, setQuickFilterError] = useState<string | null>(null);
-  const [safeModeTipVisible, setSafeModeTipVisible] = useState(false);
-  const safeModeTipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [readOnlyTipVisible, setReadOnlyTipVisible] = useState(false);
+  const readOnlyTipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
-      if (safeModeTipTimer.current !== null) clearTimeout(safeModeTipTimer.current);
+      if (readOnlyTipTimer.current !== null) clearTimeout(readOnlyTipTimer.current);
     };
   }, []);
 
-  const showSafeModeTip = useCallback(() => {
-    setSafeModeTipVisible(true);
-    if (safeModeTipTimer.current !== null) clearTimeout(safeModeTipTimer.current);
-    safeModeTipTimer.current = setTimeout(() => {
-      setSafeModeTipVisible(false);
-      safeModeTipTimer.current = null;
+  const showReadOnlyTip = useCallback(() => {
+    setReadOnlyTipVisible(true);
+    if (readOnlyTipTimer.current !== null) clearTimeout(readOnlyTipTimer.current);
+    readOnlyTipTimer.current = setTimeout(() => {
+      setReadOnlyTipVisible(false);
+      readOnlyTipTimer.current = null;
     }, 3000);
   }, []);
 
   const handleCellDoubleClick = useCallback(
     (row: number, col: string) => {
-      if (safeMode) {
-        showSafeModeTip();
+      if (!isEditable) {
+        showReadOnlyTip();
         return;
       }
       startEdit(row, col);
     },
-    [safeMode, showSafeModeTip, startEdit],
+    [isEditable, showReadOnlyTip, startEdit],
   );
 
   const handleCellEdit = useCallback(
     (row: number, col: string, value: unknown) => {
-      if (safeMode) {
-        showSafeModeTip();
+      if (!isEditable) {
+        showReadOnlyTip();
         cancelEdit();
         return;
       }
       updateCell(row, col, value);
     },
-    [cancelEdit, safeMode, showSafeModeTip, updateCell],
+    [cancelEdit, isEditable, showReadOnlyTip, updateCell],
   );
 
   const handleDeleteRows = useCallback(
     async (rowIndices: number[]) => {
-      if (rowIndices.length === 0) return;
+      if (rowIndices.length === 0 || !isEditable) return;
       if (confirmOnDelete) {
         const confirmed = await confirmDelete({
           title: t('dataTable.deleteRow'),
@@ -128,7 +141,7 @@ export function TableView({
       }
       await deleteRows(rowIndices);
     },
-    [confirmOnDelete, confirmDelete, deleteRows, t],
+    [confirmOnDelete, confirmDelete, deleteRows, isEditable, t],
   );
 
   const tableContext = {
@@ -207,8 +220,8 @@ export function TableView({
   const pendingBusy = loading || pendingStatus !== 'idle';
 
   useEffect(() => {
-    if (safeMode && editingCell) cancelEdit();
-  }, [cancelEdit, editingCell, safeMode]);
+    if (!isEditable && editingCell) cancelEdit();
+  }, [cancelEdit, editingCell, isEditable]);
 
   const handlePreviewPendingChanges = useCallback(async () => {
     if (pendingBusy || pendingChanges.size === 0) return;
@@ -418,15 +431,15 @@ export function TableView({
           {quickFilterError}
         </div>
       )}
-      {safeModeTipVisible && (
+      {readOnlyTipVisible && (
         <div
           className="flex shrink-0 items-center gap-1.5 border-b border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-warning"
           role="status"
           aria-live="polite"
-          data-testid="table-safe-mode-tip"
+          data-testid="table-read-only-tip"
         >
           <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
-          {t('tableData.safeModeEditDisabled')}
+          {t('tableData.readOnlyEditDisabled')}
         </div>
       )}
       {pendingChanges.size > 0 && (
@@ -496,7 +509,7 @@ export function TableView({
         onUpdateFilter={updateFilter}
         onFilterLogicChange={setFilterLogic}
         onApplyFilters={applyFilters}
-        editingCell={safeMode ? null : editingCell}
+        editingCell={!isEditable ? null : editingCell}
         selectedRows={selectedRows}
         loading={loading}
         onSort={setSort}
@@ -505,8 +518,9 @@ export function TableView({
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
         onCellDoubleClick={handleCellDoubleClick}
-        onCellEdit={handleCellEdit}
+        onCellEdit={isEditable ? handleCellEdit : undefined}
         onCellEditCancel={cancelEdit}
+        enableSetNull={isEditable}
         onRowSelect={selectRow}
         onSelectAll={toggleSelectAll}
         onRowClick={setDetailRow}
@@ -516,7 +530,7 @@ export function TableView({
         dbSessionId={dbSessionId}
         dataExportCapability={dataExportCapability}
         primaryKeyColumns={columns.filter((c) => c.isPrimaryKey).map((c) => c.name)}
-        onDeleteRows={handleDeleteRows}
+        onDeleteRows={isEditable ? handleDeleteRows : undefined}
       />
       {confirmDeleteDialog}
       {confirmCommitDialog}

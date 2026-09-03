@@ -11,11 +11,30 @@ vi.mock('../../../hooks/useConfirmDialog', () => ({
 }));
 
 const settingsState = vi.hoisted(() => ({ confirmOnDelete: false, safeMode: false }));
+const connectionsState = vi.hoisted(() => ({
+  connections: [] as { id: string; name: string; readOnly?: boolean }[],
+}));
 
 vi.mock('../../../stores/settingsStore', () => ({
   useSettingsStore: (sel: (s: { settings: typeof settingsState }) => unknown) =>
     sel({ settings: settingsState }),
 }));
+
+vi.mock('../../../stores/connectionStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../stores/connectionStore')>();
+  return {
+    ...actual,
+    useConnectionStore: Object.assign(
+      (selector?: (s: typeof connectionsState) => unknown) =>
+        selector ? selector(connectionsState) : connectionsState,
+      {
+        getState: () => connectionsState,
+        setState: (partial: Partial<typeof connectionsState>) =>
+          Object.assign(connectionsState, partial),
+      },
+    ),
+  };
+});
 
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
@@ -206,7 +225,7 @@ describe('TableView', () => {
     });
   });
 
-  it('blocks cell editing in safe mode and shows a tip', () => {
+  it('allows cell editing when safe mode is true', () => {
     settingsState.safeMode = true;
 
     render(
@@ -215,9 +234,72 @@ describe('TableView', () => {
 
     fireEvent.click(screen.getByTestId('mock-cell-double-click'));
 
+    expect(tableState.startEdit).toHaveBeenCalledWith(0, 'id');
+    expect(screen.queryByTestId('table-read-only-tip')).toBeNull();
+  });
+
+  it('blocks cell editing when readOnly prop is true and shows a read-only tip', () => {
+    settingsState.safeMode = false;
+
+    render(
+      <TableView
+        dbSessionId="c1"
+        database="app"
+        tableName="users"
+        databaseType="postgresql"
+        readOnly={true}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('mock-cell-double-click'));
+
     expect(tableState.startEdit).not.toHaveBeenCalled();
-    expect(screen.getByTestId('table-safe-mode-tip')).toHaveTextContent(
-      'tableData.safeModeEditDisabled',
+    expect(screen.getByTestId('table-read-only-tip')).toHaveTextContent(
+      'tableData.readOnlyEditDisabled',
+    );
+  });
+
+  it('blocks cell editing when saved connection in store is read-only', () => {
+    settingsState.safeMode = false;
+    connectionsState.connections = [
+      { id: 'conn-ro', name: 'ReadOnlyConn', readOnly: true },
+    ];
+
+    render(
+      <TableView
+        dbSessionId="c1"
+        connectionId="conn-ro"
+        database="app"
+        tableName="users"
+        databaseType="postgresql"
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('mock-cell-double-click'));
+
+    expect(tableState.startEdit).not.toHaveBeenCalled();
+    expect(screen.getByTestId('table-read-only-tip')).toHaveTextContent(
+      'tableData.readOnlyEditDisabled',
+    );
+  });
+
+  it('blocks cell editing when driver does not support SQL or is read-only', () => {
+    settingsState.safeMode = false;
+
+    render(
+      <TableView
+        dbSessionId="c1"
+        database="app"
+        tableName="users"
+        databaseType="redis"
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('mock-cell-double-click'));
+
+    expect(tableState.startEdit).not.toHaveBeenCalled();
+    expect(screen.getByTestId('table-read-only-tip')).toHaveTextContent(
+      'tableData.readOnlyEditDisabled',
     );
   });
 });
