@@ -37,6 +37,12 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      # builtinLocales.ts is git-ignored codegen. Ensure it exists before
+      # typecheck (the prepare hook also generates it, but this makes the
+      # dependency explicit and covers CI caches that skip prepare).
+      - name: Generate built-in locale codegen
+        run: node scripts/generate-builtin-locales.mjs
+
       - name: TypeScript typecheck
         run: pnpm typecheck
 

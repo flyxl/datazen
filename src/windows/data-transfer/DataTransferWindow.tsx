@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
+import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { CopyableError } from '../../components/ui/CopyableError';
@@ -54,7 +55,7 @@ const STEPS: WizardStep[] = ['endpoints', 'setup', 'objects', 'mapping', 'previe
 const NARROW_STEPS: WizardStep[] = ['endpoints', 'setup', 'result'];
 
 export function DataTransferWindow() {
-  useLocaleDomains(['transfer']);
+  const localesReady = useLocaleDomains(['transfer']);
   useSettings();
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
@@ -590,6 +591,12 @@ export function DataTransferWindow() {
       testId: 'data-transfer-mode-both',
     },
   ];
+
+  // All hooks above. Gate the body on the `transfer` locale pack so the UI
+  // never renders raw/un-translated `t('transfer.*')` keys before it is loaded.
+  if (!localesReady) {
+    return <LocaleDomainLoading testId="data-transfer-locale-loading" />;
+  }
 
   return (
     <div data-testid="data-transfer-window" className="flex h-screen flex-col bg-surface text-fg">

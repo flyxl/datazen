@@ -52,6 +52,10 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: stableT, language: 'en' }),
 }));
 
+vi.mock('../../../hooks/useLocaleDomains', () => ({
+  useLocaleDomains: () => true,
+}));
+
 vi.mock('../../../stores/settingsStore', () => ({
   useSettingsStore: (sel: (s: { loadSettings: () => Promise<void> }) => unknown) =>
     sel({ loadSettings: vi.fn().mockResolvedValue(undefined) }),
