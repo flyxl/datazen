@@ -174,20 +174,7 @@ pub struct StatementExecResult {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DdlAtomicity {
-    Transactional,
-    AutoCommitPerStatement,
-    Unknown,
-}
-
-pub fn ddl_atomicity(dialect: &str) -> DdlAtomicity {
-    match dialect.to_ascii_lowercase().as_str() {
-        "postgresql" | "postgres" | "sqlite" => DdlAtomicity::Transactional,
-        "mysql" | "mariadb" | "tidb" | "oceanbase" => DdlAtomicity::AutoCommitPerStatement,
-        _ => DdlAtomicity::Unknown,
-    }
-}
+pub use crate::services::transaction::{ddl_atomicity, DdlAtomicity};
 
 pub fn normalize_dialect(raw: &str) -> String {
     match raw.to_ascii_lowercase().as_str() {
