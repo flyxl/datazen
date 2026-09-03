@@ -706,6 +706,9 @@ impl DatabaseDriver for PostgresDriver {
         Some(std::sync::Arc::new(super::PostgresMigrationRenderer ))
     }
 
+    fn migration_capabilities(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {
+        Some(std::sync::Arc::new(super::PostgresMigrationCapabilities))
+    }
     fn driver_type(&self) -> DatabaseType {
         "postgresql".to_string()
     }
