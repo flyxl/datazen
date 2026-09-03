@@ -16,6 +16,7 @@ use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use tauri::Emitter;
 use tauri::Manager;
 
+#[cfg(target_os = "macos")]
 use crate::app_menu::setup_menu;
 use crate::driver_init;
 use crate::extensions;
