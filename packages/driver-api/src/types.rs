@@ -297,6 +297,21 @@ pub struct TableSchema {
     pub foreign_keys: Vec<ForeignKeyInfo>,
 }
 
+impl TableSchema {
+    /// Effective primary key columns. Prefers `primary_keys` field;
+    /// falls back to columns marked `is_primary_key`.
+    pub fn effective_primary_keys(&self) -> Vec<String> {
+        if !self.primary_keys.is_empty() {
+            return self.primary_keys.clone();
+        }
+        self.columns
+            .iter()
+            .filter(|c| c.is_primary_key)
+            .map(|c| c.name.clone())
+            .collect()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ColumnSchema {
@@ -689,8 +704,57 @@ pub struct StructureChangePlan {
 }
 
 #[cfg(test)]
-mod backup_dump_options_tests {
+mod tests {
     use super::*;
+
+    fn col(name: &str, pk: bool) -> ColumnSchema {
+        ColumnSchema {
+            name: name.into(),
+            data_type: "INT".into(),
+            nullable: false,
+            default_value: None,
+            comment: None,
+            is_primary_key: pk,
+            is_auto_increment: false,
+        }
+    }
+
+    fn table_schema(columns: Vec<ColumnSchema>, primary_keys: Vec<&str>) -> TableSchema {
+        TableSchema {
+            table_name: "t".into(),
+            columns,
+            primary_keys: primary_keys.into_iter().map(str::to_string).collect(),
+            indexes: vec![],
+            foreign_keys: vec![],
+        }
+    }
+
+    #[test]
+    fn effective_primary_keys_prefers_primary_keys_field() {
+        let schema = table_schema(vec![col("id", false), col("other", false)], vec!["id"]);
+        assert_eq!(schema.effective_primary_keys(), vec!["id"]);
+    }
+
+    #[test]
+    fn effective_primary_keys_falls_back_to_column_flags() {
+        let schema = table_schema(vec![col("id", true), col("other", false)], vec![]);
+        assert_eq!(schema.effective_primary_keys(), vec!["id"]);
+    }
+
+    #[test]
+    fn effective_primary_keys_composite_from_field() {
+        let schema = table_schema(
+            vec![col("a", false), col("b", false)],
+            vec!["a", "b"],
+        );
+        assert_eq!(schema.effective_primary_keys(), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn effective_primary_keys_empty_when_none_marked() {
+        let schema = table_schema(vec![col("id", false)], vec![]);
+        assert!(schema.effective_primary_keys().is_empty());
+    }
 
     #[test]
     fn backup_dump_options_default_is_all_false() {
