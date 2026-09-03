@@ -293,9 +293,7 @@ fn redact_json_text(value: &str, strict_egress: bool) -> Option<String> {
 
     serde_json::from_str::<Value>(trimmed)
         .ok()
-        .and_then(|parsed| {
-            serde_json::to_string(&sanitize_json(parsed, 0, strict_egress)).ok()
-        })
+        .and_then(|parsed| serde_json::to_string(&sanitize_json(parsed, 0, strict_egress)).ok())
 }
 
 fn truncate_to_bytes(value: String) -> String {
@@ -347,12 +345,16 @@ mod tests {
 
     #[test]
     fn redacts_uri_credentials_and_query_secrets() {
-        let input = "url=mysql://user:uri-secret@db.example/app?token=query-secret&api_key=key-secret";
+        let input =
+            "url=mysql://user:uri-secret@db.example/app?token=query-secret&api_key=key-secret";
         let output = redact_for_ai(input);
         for secret in ["uri-secret", "query-secret", "key-secret"] {
             assert!(!output.contains(secret), "{output}");
         }
-        assert!(output.contains("mysql://[REDACTED]@db.example/app"), "{output}");
+        assert!(
+            output.contains("mysql://[REDACTED]@db.example/app"),
+            "{output}"
+        );
     }
 
     #[test]

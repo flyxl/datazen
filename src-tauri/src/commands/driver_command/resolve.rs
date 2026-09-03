@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use super::helpers::{nonempty, unbound_handle};
 use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
+use super::helpers::{nonempty, unbound_handle};
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
 
 pub(crate) async fn resolve_command_driver(

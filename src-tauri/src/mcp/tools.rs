@@ -138,7 +138,10 @@ impl DataZenMcpServer {
     #[tool(
         description = "Execute a SQL query on a connected database. Returns results as JSON. Use list_connections first to get valid connection IDs. Default row limit is 100 (max 50000)."
     )]
-    pub(crate) async fn query(&self, Parameters(input): Parameters<QueryInput>) -> Result<String, McpError> {
+    pub(crate) async fn query(
+        &self,
+        Parameters(input): Parameters<QueryInput>,
+    ) -> Result<String, McpError> {
         self.ensure_allowed("query", &input.connection_id)?;
         permission::check_sql_allowed(&input.sql, self.permission_mode)
             .map_err(|e| tool_help::tool_error("query", &e))?;

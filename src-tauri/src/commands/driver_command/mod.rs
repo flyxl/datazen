@@ -23,7 +23,9 @@ use std::sync::Arc;
 
 use super::error::CommandError;
 use super::AppState;
-use datazen_driver_api::{CommandResult, DriverCommandDefinition, QueryStreamCallback, QueryStreamEvent};
+use datazen_driver_api::{
+    CommandResult, DriverCommandDefinition, QueryStreamCallback, QueryStreamEvent,
+};
 use tauri::ipc::Channel;
 use tauri::State;
 

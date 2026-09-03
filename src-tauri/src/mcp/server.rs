@@ -61,7 +61,11 @@ impl DataZenMcpServer {
         McpError::internal_error(e, None)
     }
 
-    pub(crate) fn ensure_allowed(&self, tool_name: &str, connection_id: &str) -> Result<(), McpError> {
+    pub(crate) fn ensure_allowed(
+        &self,
+        tool_name: &str,
+        connection_id: &str,
+    ) -> Result<(), McpError> {
         allowlist::ensure_connection_allowed(connection_id, &self.allowed_connection_ids)
             .map_err(|e| tool_help::tool_error(tool_name, &e))
     }

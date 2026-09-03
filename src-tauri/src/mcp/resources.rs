@@ -8,7 +8,7 @@ use crate::mcp::permission;
 use crate::mcp::tool_help;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
-use rmcp::{ErrorData as McpError, tool_router};
+use rmcp::{tool_router, ErrorData as McpError};
 
 impl DataZenMcpServer {
     pub(crate) async fn read_resource_inner(

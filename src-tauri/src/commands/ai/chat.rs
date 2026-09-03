@@ -633,9 +633,7 @@ pub(crate) async fn ai_chat_impl(
                 {
                     let sanitized_entries: Vec<(String, String)> = entries
                         .into_iter()
-                        .map(|(path, content)| {
-                            (path, redact_for_egress(&content, strict_egress))
-                        })
+                        .map(|(path, content)| (path, redact_for_egress(&content, strict_egress)))
                         .collect();
                     let context_block =
                         crate::commands::context::format_context_block(&sanitized_entries);

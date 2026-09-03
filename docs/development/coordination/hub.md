@@ -12,10 +12,10 @@
 
 | Track | 任务 | 状态 | 编码 Commit | 测试 Commit | 合并 Commit |
 |-------|------|------|------------|------------|------------|
-| prh-split-mcp | 拆分 `mcp/server.rs` | 未开始 | — | — | — |
-| prh-split-dcmd | 拆分 `commands/driver_command.rs` | 未开始 | — | — | — |
-| prh-sql-guard | Safe Mode 文档/单测/高危确认入口 | 未开始 | — | — | — |
-| prh-ai-egress | AI 默认出域策略 + safety 单测 + 设置提示 | 未开始 | — | — | — |
+| prh-split-mcp | 拆分 `mcp/server.rs` | PASSED | 8a54c0a15 | 4c73ae306 | — |
+| prh-split-dcmd | 拆分 `commands/driver_command.rs` | PASSED | e882fec2f | 2b8f5d915 | — |
+| prh-sql-guard | Safe Mode 文档/单测/高危确认入口 | PASSED | ce551214ec | 6d18142bc | — |
+| prh-ai-egress | AI 默认出域策略 + safety 单测 + 设置提示 | PASSED | d44fff88c | aa967c108 | — |
 | prh-split-lib | 拆分 `lib.rs` 编排层 | 未开始（Wave 2） | — | — | — |
 | prh-panic-policy | 生产路径 unwrap 约定 + 关键路径治理 | 未开始（Wave 2） | — | — | — |
 | prh-contract | 外部契约策略文档 + MCP golden 测试 | 未开始（Wave 2） | — | — | — |
@@ -25,10 +25,10 @@
 
 | Track | 写锁代理 | Worktree | Branch | Phase | 最后心跳 |
 |-------|----------|----------|--------|-------|----------|
-| prh-split-mcp | — | — | feature/prh-split-mcp | 未开始 | — |
-| prh-split-dcmd | — | — | feature/prh-split-dcmd | 未开始 | — |
-| prh-sql-guard | — | — | feature/prh-sql-guard | 未开始 | — |
-| prh-ai-egress | — | — | feature/prh-ai-egress | 未开始 | — |
+| prh-split-mcp | tester-prh-split-mcp（独立实例） | .worktrees/datazen-prh-split-mcp | feature/prh-split-mcp | PASSED | — |
+| prh-split-dcmd | — | — | feature/prh-split-dcmd | PASSED | — |
+| prh-sql-guard | tester-prh-sql-guard | .worktrees/datazen-prh-sql-guard | feature/prh-sql-guard | PASSED | — |
+| prh-ai-egress | — | — | feature/prh-ai-egress | PASSED | — |
 | prh-split-lib | — | — | feature/prh-split-lib | 未开始（Wave 2） | — |
 | prh-panic-policy | — | — | feature/prh-panic-policy | 未开始（Wave 2） | — |
 | prh-contract | — | — | feature/prh-contract | 未开始（Wave 2） | — |
