@@ -105,10 +105,19 @@ function themeExtensions(config: ThemeConfig) {
 /** Nested schema for CodeMirror SQL autocompletion */
 export type SqlSchema = SqlNamespace;
 
+export interface DroppedTablePayload {
+  tables: Array<{ tableName: string; schema?: string }>;
+  connectionId?: string;
+  dbSessionId?: string;
+  databaseType?: string;
+}
+
 export interface SqlEditorHandle {
   getSelection: () => string;
   /** Toggle `-- ` comments on selected lines (or the line containing the cursor). */
   toggleLineComment: () => void;
+  /** Insert SQL text at the given position (or append at the end if pos is null/undefined). */
+  insertAt: (text: string, pos?: number | null) => void;
 }
 
 const CM_DIALECT_MAP: Record<string, SQLDialect> = {
@@ -179,6 +188,8 @@ interface SqlEditorProps {
   /** CodeMirror: columns of this table complete at the top level (WHERE / SELECT). */
   defaultTable?: string;
   className?: string;
+  /** Callback when tables are dropped into the editor from SchemaTree. */
+  onDropTable?: (payload: DroppedTablePayload, pos: number | null) => void;
 }
 
 function parentsEqual(a: readonly string[], b: readonly string[]): boolean {
@@ -200,6 +211,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     defaultSchema,
     defaultTable,
     className,
+    onDropTable,
   },
   ref,
 ) {
@@ -212,6 +224,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   const onExecuteSelectionRef = useRef(onExecuteSelection);
   const onCtxMenuRef = useRef(onCtxMenu);
   const onQualifiedPathRef = useRef(onQualifiedPath);
+  const onDropTableRef = useRef(onDropTable);
   const lastParentsRef = useRef<string[]>([]);
 
   const editorFontSize = useSettingsStore((s) => s.settings.editorFontSize);
@@ -222,6 +235,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   onExecuteSelectionRef.current = onExecuteSelection;
   onCtxMenuRef.current = onCtxMenu;
   onQualifiedPathRef.current = onQualifiedPath;
+  onDropTableRef.current = onDropTable;
 
   useImperativeHandle(ref, () => ({
     getSelection: () => {
@@ -247,6 +261,31 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
           anchor: from,
           head: from + next.length,
         },
+      });
+    },
+    insertAt: (text: string, pos?: number | null) => {
+      const view = viewRef.current;
+      if (!view) return;
+      const docLen = view.state.doc.length;
+      const docStr = view.state.doc.toString();
+      if (docStr.trim().length === 0) {
+        view.dispatch({
+          changes: { from: 0, to: docLen, insert: text },
+          selection: { anchor: text.length },
+        });
+        return;
+      }
+      const targetPos = pos != null ? Math.max(0, Math.min(pos, docLen)) : docLen;
+      const before = docStr.slice(0, targetPos);
+      const after = docStr.slice(targetPos);
+      const needLeadingNewline = before.length > 0 && !before.endsWith('\n\n');
+      const prefix = needLeadingNewline ? (before.endsWith('\n') ? '\n' : '\n\n') : '';
+      const needTrailingNewline = after.length > 0 && !after.startsWith('\n\n');
+      const suffix = needTrailingNewline ? (after.startsWith('\n') ? '\n' : '\n\n') : '';
+      const insertText = `${prefix}${text}${suffix}`;
+      view.dispatch({
+        changes: { from: targetPos, insert: insertText },
+        selection: { anchor: targetPos + insertText.length },
       });
     },
   }));
@@ -316,6 +355,34 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
             e.stopPropagation();
             handler(e, sqlText);
             return true;
+          },
+          dragover: (e) => {
+            if (e.dataTransfer?.types.includes('application/datazen-table')) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+              return true;
+            }
+            return false;
+          },
+          drop: (e, view) => {
+            const rawData = e.dataTransfer?.getData('application/datazen-table');
+            if (!rawData) return false;
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+              const parsed = JSON.parse(rawData);
+              const payload: DroppedTablePayload = parsed.tables
+                ? parsed
+                : { tables: [parsed] };
+              const pos =
+                e.clientX != null && e.clientY != null
+                  ? (view.posAtCoords({ x: e.clientX, y: e.clientY }) ?? view.state.selection.main.head)
+                  : view.state.selection.main.head;
+              onDropTableRef.current?.(payload, pos);
+              return true;
+            } catch {
+              return false;
+            }
           },
         }),
         EditorView.updateListener.of((update) => {

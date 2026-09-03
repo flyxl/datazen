@@ -25,7 +25,10 @@ import { Button } from '../../components/ui/Button';
 import { ToolbarShell } from '../../components/ui/ToolbarShell';
 import { ToolbarButton } from '../../components/ui/ToolbarButton';
 import { SqlEditor } from '../../components/SqlEditor';
-import type { SqlEditorHandle } from '../../components/SqlEditor';
+import type { SqlEditorHandle, DroppedTablePayload } from '../../components/SqlEditor';
+import { databaseCommands } from '../../commands/database';
+import { generateTableSql, formatTableIdentifier } from '../../lib/sqlGenerator';
+import type { TableSchema } from '../../types';
 import { buildEditorSchema } from '../../lib/buildEditorSchema';
 import { tid } from '../../lib/tid';
 import { findGroupForDatabase, groupQueryHistory } from '../../lib/historyGroups';
@@ -872,6 +875,58 @@ export function QueryPanel({
     [openAddFavoriteDialog, t, handleExecute, handleExecuteSelection, handleFormat],
   );
 
+  const handleDropTable = useCallback(
+    async (payload: DroppedTablePayload, pos: number | null) => {
+      const dbType = databaseType || 'sqlite';
+      const targetSessionId = dbSessionId || connectionId;
+      const generatedSqls: string[] = [];
+
+      for (const t of payload.tables) {
+        try {
+          const tableRef = t.schema ? `${t.schema}.${t.tableName}` : t.tableName;
+          const schema = await databaseCommands.getTableSchema(targetSessionId, tableRef);
+          const sql = generateTableSql(schema, 'select', dbType, { schemaPrefix: t.schema });
+          generatedSqls.push(sql);
+        } catch {
+          try {
+            const tableRef = t.schema ? `${t.schema}.${t.tableName}` : t.tableName;
+            const colNames = await databaseCommands.getColumns(targetSessionId, tableRef);
+            if (colNames && colNames.length > 0) {
+              const pseudoSchema: TableSchema = {
+                tableName: t.tableName,
+                columns: colNames.map((c) => ({
+                  name: c,
+                  dataType: '',
+                  nullable: true,
+                })),
+                primaryKeys: [],
+                indexes: [],
+                foreignKeys: [],
+              };
+              generatedSqls.push(
+                generateTableSql(pseudoSchema, 'select', dbType, { schemaPrefix: t.schema }),
+              );
+            } else {
+              generatedSqls.push(
+                `SELECT *\nFROM ${formatTableIdentifier(t.tableName, dbType, t.schema)};`,
+              );
+            }
+          } catch {
+            generatedSqls.push(
+              `SELECT *\nFROM ${formatTableIdentifier(t.tableName, dbType, t.schema)};`,
+            );
+          }
+        }
+      }
+
+      const combinedGenerated = generatedSqls.join('\n\n');
+      if (!combinedGenerated) return;
+
+      editorRef.current?.insertAt(combinedGenerated, pos);
+    },
+    [connectionId, databaseType, dbSessionId],
+  );
+
   const copySqlToClipboard = useCallback((sql: string) => {
     void navigator.clipboard.writeText(sql);
   }, []);
@@ -1182,6 +1237,7 @@ export function QueryPanel({
               namespaceLoading={namespaceLoading}
               defaultSchema={editorDefaultSchema}
               defaultTable={editorDefaultTable}
+              onDropTable={handleDropTable}
             />
           </div>
           <div
