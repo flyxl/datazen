@@ -6,6 +6,8 @@ impl MigrationRenderer for MysqlMigrationRenderer {
     fn render(&self, op: &MigrationOperation) -> Result<MigrationStatement, String> {
         let qi = |s: &str| format!("`{}`", s.replace('`', "``"));
         match op {
+            MigrationOperation::CreateTable { table, columns, primary_keys } => { let cols = columns.iter().map(|c| format!("{} {}{}", qi(&c.name), c.data_type, if c.nullable { "" } else { " NOT NULL" })).collect::<Vec<_>>(); let pk = if primary_keys.is_empty() { String::new() } else { format!(", PRIMARY KEY ({})", primary_keys.iter().map(|c| qi(c)).collect::<Vec<_>>().join(", ")) }; Ok(MigrationStatement { sql: format!("CREATE TABLE {} ({}{})", qi(table), cols.join(", "), pk), risk: MigrationRisk::Additive, rollback_sql: Some(format!("DROP TABLE {}", qi(table))), summary: format!("CREATE TABLE {}", table) }) },
+
             MigrationOperation::AddColumn { table, column } => Ok(MigrationStatement { sql: format!("ALTER TABLE {} ADD COLUMN {} {}{}", qi(table), qi(&column.name), column.data_type, if column.nullable { "" } else { " NOT NULL" }), risk: MigrationRisk::Additive, rollback_sql: Some(format!("ALTER TABLE {} DROP COLUMN {}", qi(table), qi(&column.name))), summary: format!("ADD COLUMN {}.{}", table, column.name) }),
             MigrationOperation::DropColumn { table, column } => Ok(MigrationStatement { sql: format!("ALTER TABLE {} DROP COLUMN {}", qi(table), qi(&column.name)), risk: MigrationRisk::Destructive, rollback_sql: None, summary: format!("DROP COLUMN {}.{}", table, column.name) }),
             MigrationOperation::SetDefault { table, column, from, to } => {
