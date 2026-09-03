@@ -2,6 +2,9 @@
 
 pub mod compare;
 pub mod deploy;
+pub mod dependencies;
+pub mod ir;
+pub mod operations;
 pub mod dialects;
 pub mod plan;
 pub mod types;
