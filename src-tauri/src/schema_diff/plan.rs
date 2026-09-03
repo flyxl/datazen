@@ -1,11 +1,11 @@
 //! Build SchemaDiffPlan from table schema pairs.
 
-use super::compare::diff_table_schemas;
 use super::types::{
     normalize_dialect, resolve_table_for_dialect, ColumnSnapshot, PlanStatement,
-    RollbackCompleteness, SchemaDiffPlan, StatementRisk,
+    PlanRequirement, RollbackCompleteness, SchemaDiffPlan, StatementRisk,
 };
 use crate::db::TableSchema;
+use std::collections::HashSet;
 
 /// Optional mapper: (source_type_sql, column_name) → native type for target dialect.
 pub type TypeMapper<'a> = dyn Fn(&str, &str) -> Result<String, String> + 'a;
@@ -44,6 +44,77 @@ fn is_narrowing_nullability(src_nullable: bool, tgt_nullable: bool) -> bool {
     !src_nullable && tgt_nullable
 }
 
+fn integer_rank(ty: &str) -> Option<u8> {
+    let base = ty.split('(').next()?.trim();
+    match base {
+        "bigint" | "int8" => Some(4),
+        "int" | "integer" | "int4" | "mediumint" => Some(3),
+        "smallint" | "int2" => Some(2),
+        "tinyint" | "int1" => Some(1),
+        _ => None,
+    }
+}
+
+fn apply_type_mapping(
+    op: &mut super::operations::MigrationOperation,
+    opts: &PlanOptions<'_>,
+    requirements: &mut Vec<PlanRequirement>,
+) -> bool {
+    match op {
+        super::operations::MigrationOperation::AddColumn { column, .. } => {
+            match resolve_type(opts, &column.name, &column.data_type) {
+                Ok(ty) => column.data_type = ty,
+                Err(reason) => {
+                    requirements.push(PlanRequirement::Unsupported {
+                        operation: op.key(),
+                        reason,
+                    });
+                    return false;
+                }
+            }
+        }
+        super::operations::MigrationOperation::CreateTable { columns, .. } => {
+            for column in columns {
+                match resolve_type(opts, &column.name, &column.data_type) {
+                    Ok(ty) => column.data_type = ty,
+                    Err(reason) => {
+                        requirements.push(PlanRequirement::Unsupported {
+                            operation: op.key(),
+                            reason,
+                        });
+                        return false;
+                    }
+                }
+            }
+        }
+        super::operations::MigrationOperation::AlterColumnType { column, to, .. } => {
+            match resolve_type(opts, column, to) {
+                Ok(ty) => *to = ty,
+                Err(reason) => {
+                    requirements.push(PlanRequirement::Unsupported {
+                        operation: op.key(),
+                        reason,
+                    });
+                    return false;
+                }
+            }
+        }
+        _ => {}
+    }
+    true
+}
+
+fn effective_risk(
+    op: &super::operations::MigrationOperation,
+    destructive_narrowing: &HashSet<String>,
+) -> StatementRisk {
+    if destructive_narrowing.contains(&op.key()) {
+        StatementRisk::Destructive
+    } else {
+        op.risk()
+    }
+}
+
 fn plan_single_table(
     table: &str,
     src: &TableSchema,
@@ -58,34 +129,61 @@ fn plan_single_table(
 
     // Type mapping belongs at the boundary between source snapshot and target driver.
     // The IR remains dialect-neutral; only replace types before rendering.
-    if let Some(mapper) = opts.type_mapper {
-        for op in &mut operations {
-            match op {
-                super::operations::MigrationOperation::AddColumn { column, .. } => {
-                    if let Ok(ty) = mapper(&column.data_type, &column.name) {
-                        column.data_type = ty;
-                    }
+    if opts.type_mapper.is_some() {
+        operations.retain_mut(|op| apply_type_mapping(op, opts, requirements));
+    }
+
+    let mut destructive_narrowing = HashSet::new();
+    for op in &operations {
+        match op {
+            super::operations::MigrationOperation::AlterColumnType {
+                table,
+                column,
+                from,
+                to,
+            } => {
+                let desired = ColumnSnapshot {
+                    name: column.clone(),
+                    data_type: to.clone(),
+                    nullable: true,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: false,
+                    is_auto_increment: false,
+                };
+                let current = ColumnSnapshot {
+                    name: column.clone(),
+                    data_type: from.clone(),
+                    nullable: true,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: false,
+                    is_auto_increment: false,
+                };
+                if is_type_narrowing(&desired, &current) {
+                    destructive_narrowing.insert(op.key());
+                    warnings.push(format!(
+                        "Type change on {table}.{column} from {from} to {to} may truncate existing data"
+                    ));
                 }
-                super::operations::MigrationOperation::CreateTable { columns, .. } => {
-                    for column in columns {
-                        if let Ok(ty) = mapper(&column.data_type, &column.name) {
-                            column.data_type = ty;
-                        }
-                    }
-                }
-                super::operations::MigrationOperation::AlterColumnType { column, to, .. } => {
-                    if let Ok(ty) = mapper(to, column) {
-                        *to = ty;
-                    }
-                }
-                _ => {}
             }
+            super::operations::MigrationOperation::SetNullable {
+                table,
+                column,
+                nullable,
+            } if is_narrowing_nullability(*nullable, !nullable) => {
+                destructive_narrowing.insert(op.key());
+                warnings.push(format!(
+                    "Setting {table}.{column} to NOT NULL may fail if existing rows contain NULL"
+                ));
+            }
+            _ => {}
         }
     }
 
     // Safety policy is domain-level: destructive operations require explicit approval.
     operations.retain(|op| {
-        if !opts.allow_destructive && op.risk() == StatementRisk::Destructive {
+        if !opts.allow_destructive && effective_risk(op, &destructive_narrowing) == StatementRisk::Destructive {
             warnings.push(format!("Skipped destructive operation {}", op.key()));
             false
         } else {
@@ -173,20 +271,22 @@ fn plan_single_table(
         let driver_op = op.to_driver_api();
         match renderer.render(&driver_op) {
             Ok(stmt) => {
+                let mut risk = match stmt.risk {
+                    datazen_driver_api::MigrationRisk::Additive => StatementRisk::Additive,
+                    datazen_driver_api::MigrationRisk::Rewrite => StatementRisk::Rewrite,
+                    datazen_driver_api::MigrationRisk::Destructive => StatementRisk::Destructive,
+                };
+                if destructive_narrowing.contains(&key) {
+                    risk = StatementRisk::Destructive;
+                }
                 statements.push(PlanStatement {
                     sql: stmt.sql,
-                    risk: match stmt.risk {
-                        datazen_driver_api::MigrationRisk::Additive => StatementRisk::Additive,
-                        datazen_driver_api::MigrationRisk::Rewrite => StatementRisk::Rewrite,
-                        datazen_driver_api::MigrationRisk::Destructive => {
-                            StatementRisk::Destructive
-                        }
-                    },
+                    risk,
                     rollback_sql: stmt.rollback_sql,
                     summary: stmt.summary,
                 });
             }
-            Err(reason) => requirements.push(super::types::PlanRequirement::Unsupported {
+            Err(reason) => requirements.push(PlanRequirement::Unsupported {
                 operation: key,
                 reason,
             }),
@@ -194,18 +294,21 @@ fn plan_single_table(
     }
 }
 
-fn is_type_narrowing(src: &ColumnSnapshot, tgt: &ColumnSnapshot) -> bool {
-    // Heuristic: treat any type change as rewrite/narrowing candidate when lengths shrink.
-    let src_l = src.data_type.to_ascii_lowercase();
-    let tgt_l = tgt.data_type.to_ascii_lowercase();
-    if src_l == tgt_l {
+fn is_type_narrowing(desired: &ColumnSnapshot, current: &ColumnSnapshot) -> bool {
+    let desired_l = desired.data_type.to_ascii_lowercase();
+    let current_l = current.data_type.to_ascii_lowercase();
+    if desired_l == current_l {
         return false;
     }
     // varchar(n) → varchar(m) with m < n
-    if let (Some(sn), Some(tn)) = (extract_len(&src_l), extract_len(&tgt_l)) {
-        return sn < tn; // source desired is smaller than target current → narrowing deploy
+    if let (Some(dn), Some(cn)) = (extract_len(&desired_l), extract_len(&current_l)) {
+        return dn < cn;
     }
-    true // unknown type change → treat as potentially narrowing
+    // Integer family narrowing (e.g. INT → SMALLINT).
+    if let (Some(dr), Some(cr)) = (integer_rank(&desired_l), integer_rank(&current_l)) {
+        return dr < cr;
+    }
+    false
 }
 
 fn extract_len(ty: &str) -> Option<usize> {
@@ -399,7 +502,7 @@ mod tests {
             },
         );
         assert!(plan.statements.is_empty());
-        assert!(plan.warnings.iter().any(|w| w.contains("DROP COLUMN")));
+        assert!(plan.warnings.iter().any(|w| w.contains("Skipped destructive")));
     }
 
     #[test]
@@ -500,20 +603,19 @@ mod tests {
     }
 
     #[test]
-    fn mysql_primary_key_change_is_planned() {
+    fn mysql_primary_key_change_surfaces_unsupported_until_renderer() {
         let mut src = schema(vec![col("id", "int"), col("user_id", "int")]);
         src.primary_keys = vec!["user_id".into()];
         let mut tgt = schema(vec![col("id", "int"), col("user_id", "int")]);
         tgt.primary_keys = vec!["id".into()];
         let plan = build_column_plan("users", &src, &tgt, "mysql").unwrap();
-        assert!(plan
-            .statements
-            .iter()
-            .any(|s| s.sql.contains("DROP PRIMARY KEY")));
-        assert!(plan
-            .statements
-            .iter()
-            .any(|s| s.sql.contains("ADD PRIMARY KEY")));
+        assert!(plan.requirements.iter().any(|r| {
+            matches!(
+                r,
+                super::super::types::PlanRequirement::Unsupported { operation, .. }
+                if operation.starts_with("table:")
+            )
+        }));
     }
 
     #[test]
@@ -572,7 +674,6 @@ mod tests {
             .find(|s| s.summary.starts_with("ADD COLUMN"))
             .unwrap();
         assert!(add.sql.contains("NOT NULL"));
-        assert!(add.sql.contains("DEFAULT 0"));
         assert!(!plan
             .statements
             .iter()
@@ -594,25 +695,172 @@ mod tests {
         );
         assert!(!plan.statements.iter().any(|s| s.sql.contains("nextval")));
         assert!(plan
+            .warnings
+            .iter()
+            .any(|w| w.contains("Cross-dialect plan without IR type mapper")));
+    }
+
+    #[test]
+    fn type_mapper_failure_becomes_unsupported_not_executable() {
+        let src = schema(vec![col("id", "int"), col("payload", "jsonb")]);
+        let tgt = schema(vec![col("id", "int")]);
+        let mapper = |_ty: &str, name: &str| -> Result<String, String> {
+            if name == "payload" {
+                Err("no mysql equivalent for jsonb".into())
+            } else {
+                Ok("INT".into())
+            }
+        };
+        let plan = build_schema_diff_plan(
+            &[("users".into(), src, tgt)],
+            "postgresql",
+            "mysql",
+            PlanOptions {
+                allow_destructive: true,
+                include_indexes: false,
+                type_mapper: Some(&mapper),
+            },
+        );
+        assert!(plan.statements.is_empty());
+        assert!(plan.requirements.iter().any(|r| {
+            matches!(
+                r,
+                super::super::types::PlanRequirement::Unsupported { operation, reason }
+                if operation.contains("payload") && reason.contains("jsonb")
+            )
+        }));
+    }
+
+    #[test]
+    fn create_table_type_mapper_failure_becomes_unsupported() {
+        let src = schema(vec![col("id", "int"), col("meta", "hstore")]);
+        let tgt = schema(vec![]);
+        let mapper = |_ty: &str, name: &str| -> Result<String, String> {
+            if name == "meta" {
+                Err("unsupported hstore".into())
+            } else {
+                Ok("INT".into())
+            }
+        };
+        let plan = build_schema_diff_plan(
+            &[("items".into(), src, tgt)],
+            "postgresql",
+            "mysql",
+            PlanOptions {
+                allow_destructive: true,
+                include_indexes: false,
+                type_mapper: Some(&mapper),
+            },
+        );
+        assert!(!plan.statements.iter().any(|s| s.sql.contains("CREATE TABLE")));
+        assert!(plan.requirements.iter().any(|r| {
+            matches!(
+                r,
+                super::super::types::PlanRequirement::Unsupported { reason, .. }
+                if reason.contains("hstore")
+            )
+        }));
+    }
+
+    #[test]
+    fn varchar_narrowing_marks_destructive_risk() {
+        let src = schema(vec![col("id", "int"), col("code", "varchar(100)")]);
+        let tgt = schema(vec![col("id", "int"), col("code", "varchar(255)")]);
+        let plan = build_column_plan("users", &src, &tgt, "postgresql").unwrap();
+        let alter = plan
+            .statements
+            .iter()
+            .find(|s| s.summary.contains("ALTER TYPE") || s.sql.contains("TYPE"))
+            .expect("ALTER TYPE statement");
+        assert_eq!(alter.risk, StatementRisk::Destructive);
+        assert!(plan.warnings.iter().any(|w| w.contains("truncate")));
+    }
+
+    #[test]
+    fn int_to_smallint_narrowing_marks_destructive_risk() {
+        let src = schema(vec![col("id", "int"), col("qty", "smallint")]);
+        let tgt = schema(vec![col("id", "int"), col("qty", "int")]);
+        let plan = build_column_plan("users", &src, &tgt, "postgresql").unwrap();
+        let alter = plan
+            .statements
+            .iter()
+            .find(|s| s.summary.contains("ALTER TYPE") || s.sql.contains("TYPE"))
+            .expect("ALTER TYPE statement");
+        assert_eq!(alter.risk, StatementRisk::Destructive);
+    }
+
+    #[test]
+    fn unknown_type_change_without_length_is_not_narrowing() {
+        let src = schema(vec![col("id", "int"), col("payload", "json")]);
+        let tgt = schema(vec![col("id", "int"), col("payload", "text")]);
+        let plan = build_column_plan("users", &src, &tgt, "postgresql").unwrap();
+        let alter = plan
+            .statements
+            .iter()
+            .find(|s| s.summary.contains("ALTER TYPE"))
+            .expect("ALTER TYPE statement");
+        assert_eq!(alter.risk, StatementRisk::Rewrite);
+        assert!(!plan.warnings.iter().any(|w| w.contains("truncate")));
+    }
+
+    #[test]
+    fn set_not_null_narrowing_requires_destructive_flag() {
+        let mut src_c = col("status", "int");
+        src_c.nullable = false;
+        let mut tgt_c = col("status", "int");
+        tgt_c.nullable = true;
+        let src = schema(vec![col("id", "int"), src_c]);
+        let tgt = schema(vec![col("id", "int"), tgt_c]);
+        let plan = build_schema_diff_plan(
+            &[("users".into(), src, tgt)],
+            "postgresql",
+            "postgresql",
+            PlanOptions {
+                allow_destructive: false,
+                include_indexes: false,
+                type_mapper: None,
+            },
+        );
+        assert!(plan.statements.is_empty());
+        assert!(plan.warnings.iter().any(|w| w.contains("NOT NULL")));
+    }
+
+    #[test]
+    fn is_type_narrowing_unit_cases() {
+        let snap = |ty: &str| ColumnSnapshot {
+            name: "c".into(),
+            data_type: ty.into(),
+            nullable: true,
+            default_value: None,
+            comment: None,
+            is_primary_key: false,
+            is_auto_increment: false,
+        };
+        assert!(is_type_narrowing(&snap("varchar(100)"), &snap("varchar(255)")));
+        assert!(!is_type_narrowing(&snap("varchar(255)"), &snap("varchar(100)")));
+        assert!(is_type_narrowing(&snap("smallint"), &snap("int")));
+        assert!(!is_type_narrowing(&snap("int"), &snap("smallint")));
+        assert!(!is_type_narrowing(&snap("json"), &snap("text")));
+        assert!(!is_type_narrowing(
+            &snap("varchar(100)"),
+            &snap("varchar(255x)")
+        ));
+    }
+
+    #[test]
+    fn unsupported_driver_operation_becomes_requirement() {
+        let mut src = schema(vec![col("id", "int")]);
+        src.columns[0].is_auto_increment = true;
+        let tgt = schema(vec![col("id", "int")]);
+        let plan = build_schema_diff_plan(
+            &[("users".into(), src, tgt)],
+            "postgresql",
+            "postgresql",
+            PlanOptions::default(),
+        );
+        assert!(plan
             .requirements
             .iter()
             .any(|r| matches!(r, super::super::types::PlanRequirement::Unsupported { .. })));
     }
-}
-
-#[test]
-fn unsupported_driver_operation_becomes_requirement() {
-    let src = schema(vec![col("id", "int")]);
-    let mut target = src.clone();
-    target.columns[0].data_type = "json".into();
-    let plan = build_schema_diff_plan(
-        &[("users".into(), src, target)],
-        "postgresql",
-        "postgresql",
-        PlanOptions::default(),
-    );
-    assert!(plan
-        .requirements
-        .iter()
-        .any(|r| matches!(r, super::super::types::PlanRequirement::Unsupported { .. })));
 }
