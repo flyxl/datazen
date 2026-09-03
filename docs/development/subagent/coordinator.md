@@ -36,6 +36,12 @@ scripts/new-feature-worktree.sh <track-id> <base-branch>
 4. **验收标准**：可量化核验的完成条件。
 5. **执行纪律**：禁碰 `hub.md`、禁 `pnpm install`、Grep 工具搜索、CARGO_TARGET_DIR。
 
+### 3.1 并发派发硬性规则
+
+- **同一 Wave 的全部 Coder 必须在同一条消息中通过多个 `Task` 调用并行派发**，严禁串行逐个启动。
+- **某个 Coder 返回 `READY_FOR_TEST` 后，协调者必须立即为该轨启动 Tester**，无需等待同 Wave 其他 Coder 完成。若多个 Coder 同时返回，对应 Tester 也必须在同一条消息中并行派发。
+- Tester 与仍在运行的 Coder 可以共存——各自在独立 worktree 中工作，互不干扰。
+
 ## 4. 活性监控与死亡恢复
 
 ### 4.1 活性判定依据（用墙钟时间，看真实证据）
@@ -81,9 +87,10 @@ git branch -d feature/<track-id>
 node scripts/aggregate-hub.mjs
 ```
 
-## 7. R 阶段（全量回归）
+## 7. 波次回归 (R 阶段)
 
-所有波次全部轨道 MERGED 并清理完成后，进入 R 阶段统一执行：
-1. 完整的编译与类型检查：`pnpm build`、`cargo check`。
-2. 运行各轨在 progress.md 中登记的【留待 R 回归】E2E 用例。
-3. 检查所有 Bug 已处于 `已修复` 状态。
+**每个 Wave 的全部轨道合并完毕后，立即执行一次 R 阶段回归**，不等后续 Wave：
+1. 完整的编译与类型检查：`pnpm build`（或 `npx tsc --noEmit`）、`cargo test -p datazen --lib`、前端单测。
+2. 逐项回归该 Wave 各轨在 `progress.md` 登记的【留待 R 回归】E2E 用例。
+3. 确保该 Wave 所有 Bug 均已关闭。
+4. R 阶段通过后方可启动下一 Wave 的 Bootstrap。
