@@ -50,6 +50,14 @@ const pack = {
   'schemaDiff.txUnsupported': 'this dialect usually auto-commits DDL',
   'schemaDiff.requireRollback': 'Require complete rollback SQL',
   'schemaDiff.rollbackIncomplete': 'Missing rollback SQL for',
+  'schemaDiff.requirement.backfillTitle': 'Backfill required',
+  'schemaDiff.requirement.backfillHint':
+    'Existing rows must be populated before enforcing NOT NULL.',
+  'schemaDiff.requirement.unsupportedTitle': 'Unsupported',
+  'schemaDiff.rollback.available': 'Rollback: Available',
+  'schemaDiff.rollback.partial':
+    'Rollback: Partial — {count} statements cannot be automatically rolled back.',
+  'schemaDiff.rollback.none': 'No automatic rollback available',
   'schemaDiff.confirmDeploy': 'Type {token} to confirm destructive deploy',
   'schemaDiff.deploy': 'Deploy to target',
   'schemaDiff.deploying': 'Deploying…',
