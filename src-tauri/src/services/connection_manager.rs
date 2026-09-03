@@ -1002,4 +1002,35 @@ mod tests {
         mgr.shutdown().await;
         assert_eq!(mgr.session_owner_map_len().await, 0);
     }
+
+    /// [tester] Poisoned `connect_locks` must surface `ConnectionError::Internal`, not panic.
+    #[tokio::test]
+    async fn test_tester_connect_lock_poison_returns_internal() {
+        let (_keyring, mgr, store, _) = test_manager().await;
+        store
+            .save_connection(sample_config("cfg-poison"))
+            .await
+            .unwrap();
+
+        let mgr_for_poison = Arc::clone(&mgr);
+        let poison_thread = std::thread::spawn(move || {
+            let _guard = mgr_for_poison.connect_locks.lock().unwrap();
+            panic!("tester: intentional connect_locks poison");
+        });
+        assert!(
+            poison_thread.join().is_err(),
+            "poison thread must panic to leave the mutex poisoned"
+        );
+
+        let err = mgr.get_or_connect_session("cfg-poison").await.unwrap_err();
+        match err {
+            ConnectionError::Internal(msg) => {
+                assert!(
+                    msg.contains("connect lock poisoned"),
+                    "unexpected internal message: {msg}"
+                );
+            }
+            other => panic!("expected ConnectionError::Internal, got {other:?}"),
+        }
+    }
 }

@@ -1116,4 +1116,64 @@ mod tests {
         };
         assert_eq!(ci.name, "a");
     }
+
+    fn poison_mutex<T>(mutex: &Mutex<T>) {
+        let target = mutex as *const Mutex<T> as usize;
+        let handle = std::thread::spawn(move || {
+            let m = unsafe { &*(target as *const Mutex<T>) };
+            let _guard = m.lock().unwrap();
+            panic!("tester: intentional mutex poison");
+        });
+        assert!(handle.join().is_err());
+    }
+
+    /// [tester] Non-callback export locks propagate poison as `CommandError::Internal`.
+    #[test]
+    fn test_tester_lock_export_poison_returns_internal() {
+        let mutex = Mutex::new(0_i32);
+        poison_mutex(&mutex);
+        let err = lock_export(&mutex).unwrap_err();
+        match err {
+            CommandError::Internal(msg) => {
+                assert!(
+                    msg.contains("export lock poisoned"),
+                    "unexpected internal message: {msg}"
+                );
+            }
+            other => panic!("expected CommandError::Internal, got {other:?}"),
+        }
+    }
+
+    /// [tester] Stream callback locks recover from poison via `into_inner`.
+    #[test]
+    fn test_tester_lock_export_stream_recovers_from_poison() {
+        let mutex = Mutex::new(vec!["col".to_string()]);
+        poison_mutex(&mutex);
+        let cols = lock_export_stream(&mutex);
+        assert_eq!(*cols, vec!["col".to_string()]);
+    }
+
+    /// [tester] Concurrent `lock_export` calls serialize without error on a healthy mutex.
+    #[test]
+    fn test_tester_lock_export_concurrent_access_succeeds() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let mutex = Arc::new(Mutex::new(0_i32));
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let m = Arc::clone(&mutex);
+                thread::spawn(move || {
+                    for _ in 0..100 {
+                        let mut guard = lock_export(&m).expect("lock should succeed");
+                        *guard += 1;
+                    }
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        assert_eq!(*lock_export(&mutex).unwrap(), 800);
+    }
 }
