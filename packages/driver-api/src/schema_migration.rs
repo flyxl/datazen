@@ -51,7 +51,8 @@ pub trait MigrationRenderer: Send + Sync {
 
 pub trait MigrationCapabilities: Send + Sync {
     fn supports(&self, operation: &MigrationOperation) -> bool;
-    fn requires_table_rebuild(&self, operation: &MigrationOperation) -> bool { !self.supports(operation) }
+    fn requires_table_rebuild(&self, operation: &MigrationOperation) -> bool { false }
+    fn transactional_ddl(&self) -> bool { true }
 }
 
 pub fn migration_column(column: &ColumnSchema) -> MigrationColumn {
