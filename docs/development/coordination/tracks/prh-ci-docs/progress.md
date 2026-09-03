@@ -12,7 +12,7 @@
 ## 状态
 
 - Phase: **READY_FOR_TEST**
-- 编码 commit: `125c92b08`
+- 编码 commit: `7a6e4da0f`
 - 测试 commit: —
 
 ## 设计决策
