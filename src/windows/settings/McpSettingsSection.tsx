@@ -234,7 +234,8 @@ export function McpSettingsSection({
                   name="mcp-permission-mode"
                   value={value}
                   checked={selected}
-                  onChange={() => void handlePermissionChange(n                  className="mt-0.5 accent-accent"
+                  onChange={() => void handlePermissionChange(value)}
+                  className="mt-0.5 accent-accent"
                 />
                 <span className="min-w-0">
                   <span className="block text-sm text-fg">{t(labelKey)}</span>
