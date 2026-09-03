@@ -8,7 +8,84 @@ pub struct ColumnSnapshot {
     pub name: String,
     pub data_type: String,
     pub nullable: bool,
+    pub default_value: Option<String>,
+    pub comment: Option<String>,
     pub is_primary_key: bool,
+    pub is_auto_increment: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ColumnChange {
+    DataType,
+    Nullable,
+    Default,
+    Comment,
+    AutoIncrement,
+    PrimaryKey,
+}
+
+impl ColumnChange {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::DataType => "dataType",
+            Self::Nullable => "nullable",
+            Self::Default => "default",
+            Self::Comment => "comment",
+            Self::AutoIncrement => "autoIncrement",
+            Self::PrimaryKey => "isPrimaryKey",
+        }
+    }
+}
+impl PartialEq<String> for ColumnChange {
+    fn eq(&self, other: &String) -> bool {
+        self.as_str() == other
+    }
+}
+impl PartialEq<ColumnChange> for String {
+    fn eq(&self, other: &ColumnChange) -> bool {
+        self == other.as_str()
+    }
+}
+impl From<&str> for ColumnChange {
+    fn from(value: &str) -> Self {
+        match value {
+            "dataType" => Self::DataType,
+            "nullable" => Self::Nullable,
+            "default" => Self::Default,
+            "comment" => Self::Comment,
+            "autoIncrement" => Self::AutoIncrement,
+            "isPrimaryKey" => Self::PrimaryKey,
+            _ => panic!("unknown column change: {value}"),
+        }
+    }
+}
+impl From<String> for ColumnChange {
+    fn from(value: String) -> Self {
+        Self::from(value.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanWarning {
+    pub code: String,
+    pub message: String,
+    pub destructive: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum PlanRequirement {
+    Backfill {
+        table: String,
+        column: String,
+        reason: String,
+    },
+    Unsupported {
+        operation: String,
+        reason: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -17,22 +94,17 @@ pub struct ChangedColumnDiff {
     pub name: String,
     pub source: ColumnSnapshot,
     pub target: ColumnSnapshot,
-    pub changes: Vec<String>,
+    pub changes: Vec<ColumnChange>,
 }
 
-/// Column-level diff with **source = desired**.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TableColumnDiff {
     pub table: String,
-    /// Present on source, missing on target → ADD on deploy.
     pub missing_on_target: Vec<ColumnSnapshot>,
-    /// Present on target only → DROP on deploy (destructive).
     pub extra_on_target: Vec<ColumnSnapshot>,
     pub changed: Vec<ChangedColumnDiff>,
-    /// Legacy alias of `missing_on_target` (source-desired ADD).
     pub added: Vec<ColumnSnapshot>,
-    /// Legacy alias of `extra_on_target` (source-desired DROP).
     pub removed: Vec<ColumnSnapshot>,
 }
 
@@ -63,6 +135,7 @@ pub struct SchemaDiffPlan {
     pub same_dialect: bool,
     pub statements: Vec<PlanStatement>,
     pub warnings: Vec<String>,
+    pub requirements: Vec<PlanRequirement>,
     pub rollback_completeness: RollbackCompleteness,
 }
 
@@ -80,6 +153,7 @@ pub enum DeployStatus {
     RolledBack,
     Mixed,
     Failed,
+    Cancelled,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -101,20 +175,7 @@ pub struct StatementExecResult {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DdlAtomicity {
-    Transactional,
-    AutoCommitPerStatement,
-    Unknown,
-}
-
-pub fn ddl_atomicity(dialect: &str) -> DdlAtomicity {
-    match dialect.to_ascii_lowercase().as_str() {
-        "postgresql" | "postgres" | "sqlite" => DdlAtomicity::Transactional,
-        "mysql" | "mariadb" | "tidb" | "oceanbase" => DdlAtomicity::AutoCommitPerStatement,
-        _ => DdlAtomicity::Unknown,
-    }
-}
+pub use crate::services::transaction::{ddl_atomicity, DdlAtomicity};
 
 pub fn normalize_dialect(raw: &str) -> String {
     match raw.to_ascii_lowercase().as_str() {
@@ -125,10 +186,6 @@ pub fn normalize_dialect(raw: &str) -> String {
     }
 }
 
-/// Map a source-side table pick to the identifier expected by a driver's `get_table_schema`.
-///
-/// UI picks from PostgreSQL are often schema-qualified (`public.users`). MySQL/SQLite
-/// sessions use the active database and expect an unqualified table name.
 pub fn resolve_table_for_dialect(dialect: &str, table: &str) -> String {
     let trimmed = table.trim();
     match normalize_dialect(dialect).as_str() {
@@ -143,7 +200,6 @@ pub fn resolve_table_for_dialect(dialect: &str, table: &str) -> String {
 #[cfg(test)]
 mod resolve_tests {
     use super::resolve_table_for_dialect;
-
     #[test]
     fn mysql_strips_pg_schema_prefix() {
         assert_eq!(
@@ -151,7 +207,6 @@ mod resolve_tests {
             "sd_cross_pg_mysql_abc"
         );
     }
-
     #[test]
     fn postgres_keeps_schema_qualified_name() {
         assert_eq!(
@@ -159,7 +214,6 @@ mod resolve_tests {
             "public.users"
         );
     }
-
     #[test]
     fn bare_name_unchanged_for_all_dialects() {
         assert_eq!(resolve_table_for_dialect("mysql", "users"), "users");

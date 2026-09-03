@@ -5,12 +5,16 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod adb;
+mod migration;
 mod sql_target;
 mod sqlite;
 mod structure;
 mod sync_adapter;
+mod type_normalizer;
+pub use migration::{SqliteMigrationCapabilities, SqliteMigrationRenderer};
 pub use sqlite::*;
 pub use sync_adapter::SqliteSyncAdapter;
+pub use type_normalizer::SqliteTypeNormalizer;
 
 struct SqliteFactory;
 impl DatabaseDriverFactory for SqliteFactory {

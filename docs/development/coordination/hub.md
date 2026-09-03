@@ -1,52 +1,37 @@
-# DataZen v0.1.x 并行开发总览
+# Schema 基础设施整合 — 协调总览
 
-> 协调者维护。各轨只写自己的 `tracks/<track-id>/progress.md` 和 `bugs.md`。
+> PRD: `docs/todo/schema-infra-consolidation-prd.md`  
+> 计划: `docs/development/coordination/schema-infra-plan.md`  
+> 集成分支: `feat/schema-diff-hardening`
 
-## 当前波次
+## 功能总览表
 
-| 轨道 | 范围 | 状态 | 编码 commit | 测试 commit |
-|---|---|---|---|---|
-| `v01x-query-cancel` | 精确 query execution handle、Driver cancel protocol、QueryExecutionViewModel | 已完成 | 3a14ced5 | 6baa1f17 |
-| `v01x-pending-changes` | staged row changes、Preview plan、Commit/Rollback | 已完成 | 583cfc13 | a848caec |
-| `v01x-query-cancel-plus` | 事务连接取消、MariaDB 取消、兼容驱动继承父驱动取消能力 | 已完成 | 79838de7 | 6adb526d |
-| `v01x-connection-discovery` | 连接搜索排序、Pinned/Recent 优先级和连接表单分层 | 已完成 | 25630125 | fdf584de |
-| `v01x-filter-pagination` | 快速过滤表达式、分页重置、请求竞态和菜单分层组件 | 已完成 | a9d887e8 | aff29c16 |
-| `v01x-object-actions` | 对象搜索、表定位和生成 SQL action | 已完成 | df1c0ad9 | 61acc880 |
-| `v01x-result-workspace` | Table/Chart 统一结果承载组件 | 已完成 | ffae5e54 | cfa056fc |
-| `v01x-ai-actions` | Explain/Fix SQL/Retry 快捷动作上下文 | 已完成 | bbd7c4cc | 9b8e7bda |
-| `v01x-page-integration` | 共享页面、DataTable、QueryPanel 和 i18n 最终接线 | 已完成 | 739a9453 | cc20c6ac |
+| Track | 任务 | 状态 | 编码 Commit | 测试 Commit | 合并 Commit |
+|-------|------|------|------------|------------|------------|
+| infra-a | fetch_full_column_types 去重 | ✅ 已合并 | 8ca1e2b0 | — | 已 fast-forward |
+| infra-b | effective_primary_key 去重 | ✅ 已合并 | 4f837bcb | — | merge commit |
+| infra-c | TypeNormalizer | ✅ 已合并 | 74bbc9b5 | — | merge commit |
+| infra-d | TransactionScope | ✅ 已合并 | f79d5e07 | — | merge commit |
+| infra-e | Job Cancel 推广 | ✅ 已合并 | 419c753b | — | 6835971f (冲突解决) |
 
-## v0.1.2 UI Polish 波次
+## 波次记录
 
-| 轨道 | 范围 | 状态 | 编码 commit | 测试 commit |
-|---|---|---|---|---|
-| `v012-i18n-contract` | 新增 UI polish 文案 key 契约 | 已完成 | c5c9f0e22 + 382f91ddf | 主线定向复验 |
-| `v012-dialog-errorboundary` | Dialog 无障碍与 ErrorBoundary i18n | 已完成 | 55934d2e7 + a554c243a | 主线定向复验 |
-| `v012-settings-dirty` | Settings dirty/save/离开保护 | 已完成（主线复验） | c11ab2e73 + 17981b0c6 | 主线定向复验 |
-| `v012-navigation-controls` | PanelTabBar、Select、MenuBar、WindowControls 无障碍 | 已完成（主线定向复验） | 70d798790 + 9491aab2e | 720d8f764 + 主线 R |
-| `v012-datatable-workflow` | DataTable 空/加载状态与 Workflow alert/i18n | 已完成（主线复验） | b05d6fb00 | 51608b1e5 |
-| `v012-accent-sweep` | accent token、permission labels、残留 UI 文案清理 | 已完成（主线定向复验） | bbfe73f55 | 主线定向复验 |
+### Wave 1（A + B 并行）
+- 开始时间: 2026-09-03
+- 合并时间: 2026-09-03（全量 CI 通过：15 驱动编译 + 1228 Rust 测试）
 
-## 合并规则
+### Wave 2（C + D + E 并行）
+- 开始时间: 2026-09-03
+- 合并时间: 2026-09-03（全量 CI 通过：15 驱动编译 + 1233 Rust 测试 + driver-api 108 + PG 98 + MySQL 83 + SQLite 44）
 
-- 编码代理和测试代理必须是不同的全新实例。
-- 编码代理只在自己的 worktree 修改功能代码和本轨进度；测试代理只验证和写本轨 bugs/progress。
-- 共享页面、locale、panelStore 接线由协调者在轨道闭环后处理。
-- 轨道测试闭环后，协调者合并并运行 `tsc --noEmit`、定向 Vitest 和 Rust 单测。
+## 跨轨风险
+- Track C (`schema_diff/ir.rs`) 与 Track B 有文件冲突 → C 必须在 B 合并后开始
 
-## v0.1.2 UI Polish R 回归记录（2026-09-02）
-
-- Host Vitest：285 个文件，2351/2351 通过。
-- Driver UI Vitest：14 个文件，84/84 通过。
-- `tsc --noEmit`：通过。
-- 真实桌面 WebDriver E2E：留待具备 Tauri webdriver 与完整数据库 fixture 的环境执行；本轮不声称通过。
-- Navigation 轨道曾在多文件并行 Vitest 组合运行中出现 Select portal 偶发未取得；四个目标文件分别复跑 11/11 通过，随后主线全量单进程 2351/2351 通过，未复现。
-
-## 当前风险
-
-- PostgreSQL/MySQL 已改为精确 execution-handle 协议：普通连接和事务连接都必须使用目标 backend PID/thread ID，并通过独立控制连接取消，避免误取消同一会话中的其他查询。
-- MariaDB 与 MySQL 使用同一精确取消实现；兼容驱动必须继承父驱动的精确取消能力，但只有实际委托同一目标绑定和控制逻辑时才可声明支持。
-- SQLite 仍需独立的 `sqlite3_interrupt`/连接句柄协议；在该协议完成前不能把 SQLite 宣称为精确可取消。
-- 事务取消后的数据库状态必须明确反馈：PostgreSQL 事务可能进入 aborted 状态，需要回滚；MySQL 需验证语句取消后的事务和锁语义。
-- 真实 PostgreSQL/MySQL 取消和数据库依赖的桌面 E2E 尚未在本轮通过，需具备 `TEST_MYSQL_*` / `TEST_PG_*` 夹具后补测；WDIO + Tauri WebDriver 的 Settings UI E2E 已通过 21/21，`main-window` 被本机 PostgreSQL `role "postgres" does not exist` 阻塞。
-- pending changes 必须以主键或稳定 row identity 为前提；无主键表不能静默执行 UPDATE/DELETE。
+## R 阶段清单
+- [ ] `cargo test -p datazen-driver-api`
+- [ ] `cargo test -p datazen`
+- [ ] `cargo test -p datazen-driver-postgres`
+- [ ] `cargo test -p datazen-driver-mysql`
+- [ ] `cargo test -p datazen-driver-sqlite`
+- [ ] `npx vitest run`
+- [ ] `pnpm e2e --suite schema-diff`

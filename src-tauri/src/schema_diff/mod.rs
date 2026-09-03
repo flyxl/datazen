@@ -1,8 +1,10 @@
 //! Schema diff planning and deploy (source = desired state → target).
 
 pub mod compare;
+pub mod dependencies;
 pub mod deploy;
-pub mod dialects;
+pub mod ir;
+pub mod operations;
 pub mod plan;
 pub mod types;
 

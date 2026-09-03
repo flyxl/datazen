@@ -19,8 +19,10 @@ const pack = {
   'transfer.writeMode.dropCreate': 'Drop + create + insert (destructive)',
   'transfer.destructiveConfirm': 'I understand this may destroy target data',
   'transfer.executeConfirm.title': 'Confirm destructive transfer',
-  'transfer.executeConfirm.introTruncate': 'The following target tables will be truncated before rows are inserted:',
-  'transfer.executeConfirm.introDrop': 'The following target tables will be dropped and recreated before rows are inserted:',
+  'transfer.executeConfirm.introTruncate':
+    'The following target tables will be truncated before rows are inserted:',
+  'transfer.executeConfirm.introDrop':
+    'The following target tables will be dropped and recreated before rows are inserted:',
   'transfer.batchSize': 'Batch size',
   'transfer.stopOnError': 'Stop on first error',
   'transfer.estimatedRows': 'Estimated rows',
@@ -56,12 +58,16 @@ const pack = {
   'transfer.mapping.sourceType': 'Source type',
   'transfer.mapping.targetType': 'Target type',
   'transfer.limitations.title': 'Current limitations',
-  'transfer.limitations.noViews': 'Views, functions, triggers, and stored procedures are not migrated',
-  'transfer.limitations.noFkIndexes': 'Foreign keys and secondary indexes are not migrated (PRIMARY KEY only)',
-  'transfer.limitations.crossDialect': 'Cross-dialect transfers may drop timezone info or adjust column defaults',
+  'transfer.limitations.noViews':
+    'Views, functions, triggers, and stored procedures are not migrated',
+  'transfer.limitations.noFkIndexes':
+    'Foreign keys and secondary indexes are not migrated (PRIMARY KEY only)',
+  'transfer.limitations.crossDialect':
+    'Cross-dialect transfers may drop timezone info or adjust column defaults',
   'transfer.limitations.baseTables': 'Base tables only (not views or materialized views)',
   'transfer.limitations.noResume': 'No per-table resume; cancel stops the current job only',
   'transfer.limitations.dontShowAgain': 'Do not show this again',
-  'transfer.ddlOverrideHint': 'Edit the CREATE statement above; execute will run your modified SQL.',
+  'transfer.ddlOverrideHint':
+    'Edit the CREATE statement above; execute will run your modified SQL.',
 } as const;
 export default pack;

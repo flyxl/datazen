@@ -702,6 +702,21 @@ fn build_pg_options(
 
 #[async_trait]
 impl DatabaseDriver for PostgresDriver {
+    fn migration_renderer(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
+        Some(std::sync::Arc::new(super::PostgresMigrationRenderer))
+    }
+
+    fn migration_capabilities(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {
+        Some(std::sync::Arc::new(super::PostgresMigrationCapabilities))
+    }
+
+    fn type_normalizer(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::TypeNormalizer>> {
+        Some(std::sync::Arc::new(super::PostgresTypeNormalizer))
+    }
     fn driver_type(&self) -> DatabaseType {
         "postgresql".to_string()
     }
@@ -730,13 +745,15 @@ impl DatabaseDriver for PostgresDriver {
             .await
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
 
-        let row = sqlx::query("SELECT version()")
+        let result = sqlx::query("SELECT version()")
             .fetch_one(&pool)
             .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            .map_err(|e| DriverError::QueryFailed(e.to_string()));
 
-        let version: String = row.try_get(0).unwrap_or_default();
         pool.close().await;
+
+        let row = result?;
+        let version: String = row.try_get(0).unwrap_or_default();
 
         Ok(ServerInfo {
             server_version: version,
@@ -753,7 +770,7 @@ impl DatabaseDriver for PostgresDriver {
         let min = 2u32.min(max);
         let pool = Self::open_pool(opts, timeout, max, min).await?;
 
-        {
+        let acquire_result: Result<(), DriverError> = async {
             let _c1 = pool
                 .acquire()
                 .await
@@ -764,6 +781,13 @@ impl DatabaseDriver for PostgresDriver {
                     .await
                     .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
             }
+            Ok(())
+        }
+        .await;
+
+        if let Err(e) = acquire_result {
+            pool.close().await;
+            return Err(e);
         }
 
         let pool_id = uuid::Uuid::new_v4().to_string();
@@ -778,7 +802,13 @@ impl DatabaseDriver for PostgresDriver {
             .await
             .insert(pool_id.clone(), resolved_db);
         let control_opts = build_pg_options(config)?;
-        let control_pool = Self::open_pool(control_opts, timeout, 1, 0).await?;
+        let control_pool = match Self::open_pool(control_opts, timeout, 1, 0).await {
+            Ok(p) => p,
+            Err(e) => {
+                pool.close().await;
+                return Err(e);
+            }
+        };
         self.pools.write().await.insert(pool_id.clone(), pool);
         self.control_pools
             .write()

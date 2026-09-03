@@ -16,7 +16,6 @@ mod export;
 mod extensions;
 mod file;
 mod history;
-pub(crate) mod job_registry;
 pub mod mcp;
 mod query;
 mod schema;

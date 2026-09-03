@@ -9,6 +9,7 @@ import {
   advanceTransferWizardToPreview,
   clickTransferNext,
   closeExtraWindows,
+  disconnectBackend,
   invokeBackend,
   openDataTransferWindow,
   queryScalar,
@@ -170,42 +171,7 @@ describe('数据传输模式路径矩阵 (DT-MODE-MATRIX)', () => {
       const srcSession = await invokeBackend<string>('connect', { connectionId: p.srcId });
       const tgtSession = await invokeBackend<string>('connect', { connectionId: p.tgtId });
 
-      await withSafeModeOff(async () => {
-        await invokeBackend('execute_query', {
-          dbSessionId: srcSession,
-          sql: `DROP TABLE IF EXISTS ${p.table}`,
-        });
-        await invokeBackend('execute_query', {
-          dbSessionId: tgtSession,
-          sql: `DROP TABLE IF EXISTS ${p.table}`,
-        });
-        const pgCreate = `CREATE TABLE ${p.table} (id INT PRIMARY KEY, name TEXT NOT NULL)`;
-        const mysqlCreate = `CREATE TABLE ${p.table} (id INT PRIMARY KEY, name VARCHAR(255) NOT NULL)`;
-        const pgInsert = `INSERT INTO ${p.table} (id, name) VALUES (1,'one'),(2,'two')`;
-        const mysqlInsert = pgInsert;
-
-        if (p.pair === 'pg-pg' || p.pair === 'pg-mysql') {
-          await invokeBackend('execute_query', { dbSessionId: srcSession, sql: pgCreate });
-          await invokeBackend('execute_query', { dbSessionId: srcSession, sql: pgInsert });
-        } else {
-          await invokeBackend('execute_query', { dbSessionId: srcSession, sql: mysqlCreate });
-          await invokeBackend('execute_query', { dbSessionId: srcSession, sql: mysqlInsert });
-        }
-
-        if (p.pair === 'pg-mysql') {
-          await invokeBackend('execute_query', { dbSessionId: tgtSession, sql: mysqlCreate });
-        } else if (p.pair === 'mysql-pg' || p.pair === 'pg-pg') {
-          await invokeBackend('execute_query', { dbSessionId: tgtSession, sql: pgCreate });
-        }
-      });
-    }
-  });
-
-  after(async () => {
-    for (const p of pairs) {
       try {
-        const srcSession = await invokeBackend<string>('connect', { connectionId: p.srcId });
-        const tgtSession = await invokeBackend<string>('connect', { connectionId: p.tgtId });
         await withSafeModeOff(async () => {
           await invokeBackend('execute_query', {
             dbSessionId: srcSession,
@@ -215,7 +181,52 @@ describe('数据传输模式路径矩阵 (DT-MODE-MATRIX)', () => {
             dbSessionId: tgtSession,
             sql: `DROP TABLE IF EXISTS ${p.table}`,
           });
+          const pgCreate = `CREATE TABLE ${p.table} (id INT PRIMARY KEY, name TEXT NOT NULL)`;
+          const mysqlCreate = `CREATE TABLE ${p.table} (id INT PRIMARY KEY, name VARCHAR(255) NOT NULL)`;
+          const pgInsert = `INSERT INTO ${p.table} (id, name) VALUES (1,'one'),(2,'two')`;
+          const mysqlInsert = pgInsert;
+
+          if (p.pair === 'pg-pg' || p.pair === 'pg-mysql') {
+            await invokeBackend('execute_query', { dbSessionId: srcSession, sql: pgCreate });
+            await invokeBackend('execute_query', { dbSessionId: srcSession, sql: pgInsert });
+          } else {
+            await invokeBackend('execute_query', { dbSessionId: srcSession, sql: mysqlCreate });
+            await invokeBackend('execute_query', { dbSessionId: srcSession, sql: mysqlInsert });
+          }
+
+          if (p.pair === 'pg-mysql') {
+            await invokeBackend('execute_query', { dbSessionId: tgtSession, sql: mysqlCreate });
+          } else if (p.pair === 'mysql-pg' || p.pair === 'pg-pg') {
+            await invokeBackend('execute_query', { dbSessionId: tgtSession, sql: pgCreate });
+          }
         });
+      } finally {
+        await disconnectBackend(srcSession);
+        await disconnectBackend(tgtSession);
+      }
+    }
+  });
+
+  after(async () => {
+    for (const p of pairs) {
+      try {
+        const srcSession = await invokeBackend<string>('connect', { connectionId: p.srcId });
+        const tgtSession = await invokeBackend<string>('connect', { connectionId: p.tgtId });
+        try {
+          await withSafeModeOff(async () => {
+            await invokeBackend('execute_query', {
+              dbSessionId: srcSession,
+              sql: `DROP TABLE IF EXISTS ${p.table}`,
+            });
+            await invokeBackend('execute_query', {
+              dbSessionId: tgtSession,
+              sql: `DROP TABLE IF EXISTS ${p.table}`,
+            });
+          });
+        } finally {
+          await disconnectBackend(srcSession);
+          await disconnectBackend(tgtSession);
+        }
       } catch {
         /* ok */
       }
@@ -255,10 +266,14 @@ describe('数据传输模式路径矩阵 (DT-MODE-MATRIX)', () => {
     await $('[data-testid="data-transfer-result"]').waitForDisplayed({ timeout: 15000 });
 
     const tgtSession = await invokeBackend<string>('connect', { connectionId: p.tgtId });
-    const rows = await invokeBackend<QueryResultPayload>('execute_query', {
-      dbSessionId: tgtSession,
-      sql: `SELECT count(*)::int AS c FROM ${p.table}`,
-    });
-    expect(queryScalar(rows, 'c')).toBe(2);
+    try {
+      const rows = await invokeBackend<QueryResultPayload>('execute_query', {
+        dbSessionId: tgtSession,
+        sql: `SELECT count(*)::int AS c FROM ${p.table}`,
+      });
+      expect(queryScalar(rows, 'c')).toBe(2);
+    } finally {
+      await disconnectBackend(tgtSession);
+    }
   });
 });

@@ -157,9 +157,14 @@ vi.mock('../../../components/ui/Dialog', () => ({
   Dialog: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock('../ConnectionNavigatorTree', () => ({
-  ConnectionNavigatorTree: () => <div data-testid="navigator-tree">tree</div>,
-}));
+vi.mock('../ConnectionNavigatorTree', async () => {
+  const { forwardRef } = await import('react');
+  return {
+    ConnectionNavigatorTree: forwardRef((_props: unknown, _ref: unknown) => (
+      <div data-testid="navigator-tree">tree</div>
+    )),
+  };
+});
 
 vi.mock('../../dashboard/DashboardPanel', () => ({
   DashboardPanel: () => <div data-testid="dashboard-panel">dashboard</div>,

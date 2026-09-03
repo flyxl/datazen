@@ -14,14 +14,18 @@ const pack = {
   'settings.theme.import': 'Import pack',
   'settings.theme.remove': 'Remove pack',
   'settings.appearance': 'Appearance',
-  'settings.appearance.subtitle': 'Themes come from installed plugins. Click a card to apply it; manage installation on the Plugins page.',
+  'settings.appearance.subtitle':
+    'Themes come from installed plugins. Click a card to apply it; manage installation on the Plugins page.',
   'settings.appearance.current': 'Current theme',
   'settings.appearance.emptyTitle': 'No themes installed',
-  'settings.appearance.emptyHint': 'Install a theme plugin from the Plugins page and its themes will show up here.',
+  'settings.appearance.emptyHint':
+    'Install a theme plugin from the Plugins page and its themes will show up here.',
   'settings.appearance.applyError': 'Failed to apply theme: {error}',
-  'settings.appearance.missingHint': 'The active theme is no longer provided by an enabled plugin. Pick another theme or restart DataZen to reset.',
+  'settings.appearance.missingHint':
+    'The active theme is no longer provided by an enabled plugin. Pick another theme or restart DataZen to reset.',
   'settings.appearance.more': 'Other appearance settings',
-  'settings.appearance.morePlaceholder': 'Reserved for future options such as density, font size, and more.',
+  'settings.appearance.morePlaceholder':
+    'Reserved for future options such as density, font size, and more.',
   'settings.updater.title': 'Updates',
   'settings.updater.description': 'Check GitHub Releases for signed Basic build updates.',
   'settings.updater.check': 'Check for updates',
@@ -44,14 +48,16 @@ const pack = {
   'settings.connectionPoolSizeHint': 'Maximum connections kept per database connection.',
   'settings.limitSelect': 'Limit SELECT Results',
   'settings.autoChartOnQuery': 'Auto-switch to chart',
-  'settings.autoChartOnQueryHint': 'After a query, open the Chart tab when the result looks chartable.',
+  'settings.autoChartOnQueryHint':
+    'After a query, open the Chart tab when the result looks chartable.',
   'settings.maxRows': 'Max Returned Rows',
   'settings.editor': 'Editor',
   'settings.fontSize': 'Font Size',
   'settings.fontFamily': 'Font Family',
   'settings.behavior': 'Behavior',
   'settings.dataCleanup.title': 'History cleanup',
-  'settings.dataCleanup.description': 'Remove old SQL query history and workflow execution records stored locally on this device.',
+  'settings.dataCleanup.description':
+    'Remove old SQL query history and workflow execution records stored locally on this device.',
   'settings.dataCleanup.scope': 'Scope',
   'settings.dataCleanup.scopeQuery': 'SQL query history',
   'settings.dataCleanup.scopeWorkflow': 'Workflow history',
@@ -64,8 +70,10 @@ const pack = {
   'settings.dataCleanup.clearAll': 'Clear all in scope',
   'settings.dataCleanup.run': 'Clean up now',
   'settings.dataCleanup.confirmTitle': 'Clean up history?',
-  'settings.dataCleanup.confirmMessage': 'Delete history records older than {days} days in the selected scope? This cannot be undone.',
-  'settings.dataCleanup.confirmClearAll': 'Delete all history records in the selected scope? This cannot be undone.',
+  'settings.dataCleanup.confirmMessage':
+    'Delete history records older than {days} days in the selected scope? This cannot be undone.',
+  'settings.dataCleanup.confirmClearAll':
+    'Delete all history records in the selected scope? This cannot be undone.',
   'settings.dataCleanup.success': 'Removed {count} record(s)',
   'settings.dataCleanup.error': 'Failed to clean up history',
   'settings.dataCleanup.noScope': 'Select at least one scope',
@@ -86,23 +94,28 @@ const pack = {
   'settings.unsavedChangesMessage': 'You have unsaved changes. Save them before leaving?',
   'settings.saveChanges': 'Save changes',
   'settings.discardChanges': 'Discard changes',
-  'settings.limitSelectHint': 'Automatically add a row limit to SELECT statements without LIMIT. Large results are always streamed; turning this off does not disable streaming.',
+  'settings.limitSelectHint':
+    'Automatically add a row limit to SELECT statements without LIMIT. Large results are always streamed; turning this off does not disable streaming.',
   'settings.confirmDeleteHint': 'Show a confirmation dialog when deleting rows',
   'settings.autoCommitHint': 'Automatically commit edits to data',
   'settings.safeMode': 'Safe Mode',
   'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE/DROP',
   'settings.monitor': 'Monitor',
-  'settings.monitor.description': 'Background dashboard refresh, system tray, alerts, and run history retention.',
+  'settings.monitor.description':
+    'Background dashboard refresh, system tray, alerts, and run history retention.',
   'settings.monitor.trayEnabled': 'Show system tray icon',
-  'settings.monitor.trayEnabledHint': 'Tray appears when at least one dashboard widget is actively monitored.',
+  'settings.monitor.trayEnabledHint':
+    'Tray appears when at least one dashboard widget is actively monitored.',
   'settings.monitor.closeToTray': 'Close to tray',
-  'settings.monitor.closeToTrayHint': 'When monitoring is active, closing the window hides the app instead of quitting.',
+  'settings.monitor.closeToTrayHint':
+    'When monitoring is active, closing the window hides the app instead of quitting.',
   'settings.monitor.defaultWebhookUrl': 'Default webhook URL',
   'settings.monitor.maxConcurrentQueries': 'Max concurrent monitor queries',
   'settings.monitor.runRetentionCount': 'Run history count (per widget)',
   'settings.monitor.runRetentionDays': 'Run history days (per widget)',
   'settings.monitor.exportIncludeDashboardRuns': 'Include run history in app data export',
-  'settings.monitor.exportIncludeDashboardRunsHint': 'When off, app data ZIP export skips dashboard-runs/.',
+  'settings.monitor.exportIncludeDashboardRunsHint':
+    'When off, app data ZIP export skips dashboard-runs/.',
   'settings.monitor.email': 'Email alerts (SMTP)',
   'settings.monitor.comingSoon': 'Coming soon',
   'settings.monitor.emailHint': 'SMTP email alerts will be available in a future release.',
@@ -126,7 +139,8 @@ const pack = {
   'settings.ai.delete': 'Clear Config',
   'settings.ai.notConfigured': 'Not configured',
   'settings.ai.configured': 'Configured',
-  'settings.ai.description': 'Configure an AI provider to enable NL-to-SQL, error diagnosis, and other smart features',
+  'settings.ai.description':
+    'Configure an AI provider to enable NL-to-SQL, error diagnosis, and other smart features',
   'settings.ai.goToConfigure': 'Go to Settings',
   'settings.ai.protocol': 'Protocol',
   'settings.ai.protocolOpenAiChat': 'OpenAI Chat Completions',
@@ -140,7 +154,8 @@ const pack = {
   'settings.ai.endpointHintOpenAiResponses': 'e.g. https://api.openai.com/v1',
   'settings.ai.endpointHintAnthropic': 'e.g. https://api.anthropic.com',
   'settings.prompts': 'Prompt Management',
-  'settings.prompts.description': 'View and customize system prompts used by AI features. Each driver and scenario can be configured individually.',
+  'settings.prompts.description':
+    'View and customize system prompts used by AI features. Each driver and scenario can be configured individually.',
   'settings.prompts.driver': 'Database Driver',
   'settings.prompts.allDrivers': 'All Drivers (Global)',
   'settings.prompts.source.default': 'Default',

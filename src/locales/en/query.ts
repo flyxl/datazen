@@ -39,7 +39,8 @@ const pack = {
   'query.fixSql': 'Fix SQL',
   'query.retry': 'Retry',
   'query.retryConfirm': 'Retry this query with the same SQL, parameters, and database context?',
-  'query.postgresDoubleQuoteHint': "PostgreSQL treats double quotes as identifier quotes, not string quotes. Use single quotes for values, e.g. `backend = 'quark'`.",
+  'query.postgresDoubleQuoteHint':
+    "PostgreSQL treats double quotes as identifier quotes, not string quotes. Use single quotes for values, e.g. `backend = 'quark'`.",
   'query.favorites': 'Favorites',
   'query.favoritesTitle': 'SQL Favorites',
   'query.noFavorites': 'No favorites yet',
@@ -56,11 +57,13 @@ const pack = {
   'query.rollbackTx': 'Rollback',
   'query.inTransaction': 'In transaction',
   'query.txUnclosedTitle': 'Unclosed transaction detected',
-  'query.txUnclosedBody': 'This script contains BEGIN / START TRANSACTION without a matching COMMIT or ROLLBACK. The connection will stay in a transaction after execution. Continue?',
+  'query.txUnclosedBody':
+    'This script contains BEGIN / START TRANSACTION without a matching COMMIT or ROLLBACK. The connection will stay in a transaction after execution. Continue?',
   'query.txUnclosedConfirm': 'Continue',
   'query.txUnclosedCancel': 'Cancel',
   'query.txAbortedTitle': 'Transaction aborted',
-  'query.txAbortedBody': 'The current transaction was aborted after a statement failed. Further statements cannot run until you roll back. Roll back the whole transaction, or skip and handle it yourself later.',
+  'query.txAbortedBody':
+    'The current transaction was aborted after a statement failed. Further statements cannot run until you roll back. Roll back the whole transaction, or skip and handle it yourself later.',
   'query.txAbortedRollback': 'Roll back all',
   'query.txAbortedSkip': 'Skip',
   'sqlFile.clickRun': 'Click Run to execute the SQL file',
@@ -68,7 +71,8 @@ const pack = {
   'sqlFile.selectAndRun': 'Select SQL File',
   'sqlFile.targetDatabase': 'Target database: {database}',
   'sqlFile.noDatabase': 'No database selected',
-  'sqlFile.executeConfirm': 'The SQL file may contain statements that delete tables or rows (e.g. DROP, DELETE, TRUNCATE). Continue executing against the selected database?',
+  'sqlFile.executeConfirm':
+    'The SQL file may contain statements that delete tables or rows (e.g. DROP, DELETE, TRUNCATE). Continue executing against the selected database?',
   'sqlFile.executeSuccess': 'SQL file executed successfully',
   'tableData.loadFailed': 'Failed to load table data',
   'tableData.noPrimaryKey': 'Cannot commit: table has no primary key',
@@ -156,7 +160,8 @@ const pack = {
   'import.parsing': 'Parsing file…',
   'import.rowsNotShown': '{count} more rows not shown',
   'import.largeDataWarning': 'About to import large dataset',
-  'import.largeImportRows': 'About to import a large dataset ({count} rows). This may take a while.',
+  'import.largeImportRows':
+    'About to import a large dataset ({count} rows). This may take a while.',
   'import.importing': 'Importing…',
   'import.import': 'Import',
   'import.noData': 'No data to import',

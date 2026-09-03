@@ -17,7 +17,8 @@ const pack = {
   'backup.progressPreparing': '正在准备备份…',
   'backup.progressObject': '正在导出 {name}（{current}/{total}）',
   'backup.progressWriting': '正在写入备份文件…',
-  'backup.restoreOverwriteConfirm': '目标数据库「{database}」已有 {count} 个对象。继续将先删除现有表/视图，再写入备份内容。是否覆盖？',
+  'backup.restoreOverwriteConfirm':
+    '目标数据库「{database}」已有 {count} 个对象。继续将先删除现有表/视图，再写入备份内容。是否覆盖？',
   'backup.restorePreparing': '正在读取备份文件…',
   'backup.restoreProgress': '正在恢复 {name}（{current}/{total}）',
   'backup.progressLog': '执行日志',

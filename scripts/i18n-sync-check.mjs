@@ -12,7 +12,7 @@
  */
 
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,7 +20,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const localesDir = resolve(root, 'src/locales');
 
-const LOCALE_FILES = ['zh-CN'];
+const LOCALE_FILES = ['de', 'es', 'fr', 'ja', 'ko', 'pt-BR', 'ru', 'zh-TW'];
 
 function extractKeys(filePath) {
   const src = readFileSync(filePath, 'utf-8');
@@ -30,6 +30,19 @@ function extractKeys(filePath) {
   while ((m = re.exec(src)) !== null) {
     keys[m[1]] = m[2] ?? m[3] ?? '';
   }
+  return keys;
+}
+
+function extractLocaleKeys(locale) {
+  const localeDir = resolve(localesDir, locale);
+  const files = existsSync(localeDir)
+    ? readdirSync(localeDir)
+        .filter((name) => name.endsWith('.ts'))
+        .sort()
+        .map((name) => resolve(localeDir, name))
+    : [resolve(localesDir, `${locale}.ts`)];
+  const keys = {};
+  for (const file of files) Object.assign(keys, extractKeys(file));
   return keys;
 }
 
@@ -68,7 +81,7 @@ const verbose = args.includes('--verbose');
 const fromIdx = args.indexOf('--from');
 const fromRef = fromIdx >= 0 ? args[fromIdx + 1] : getLatestTag();
 
-const enKeys = extractKeys(resolve(localesDir, 'en.ts'));
+const enKeys = extractLocaleKeys('en');
 const enKeySet = new Set(Object.keys(enKeys));
 
 let changedEnKeys = new Set();
@@ -99,12 +112,11 @@ let totalMissing = 0;
 let totalStale = 0;
 
 for (const locale of LOCALE_FILES) {
-  const filePath = resolve(localesDir, `${locale}.ts`);
   let localeKeys;
   try {
-    localeKeys = extractKeys(filePath);
+    localeKeys = extractLocaleKeys(locale);
   } catch {
-    console.log(`[${locale}] file not found: ${filePath}`);
+    console.log(`[${locale}] locale files not found`);
     continue;
   }
 

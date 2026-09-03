@@ -1264,8 +1264,9 @@ export async function restoreClipboardStub() {
   });
 }
 
-/** Click the currently mounted exact table node, if any. */
-async function clickVisibleTableNode(tableName: string): Promise<boolean> {
+/** Scroll the currently mounted exact table node into view (if any).
+ *  Returns true when the node exists and was scrolled; does NOT click. */
+async function scrollVisibleTableNode(tableName: string): Promise<boolean> {
   return browser.execute((name: string) => {
     const nav =
       document.querySelector('[data-testid="connection-navigator-aside"]') ??
@@ -1280,9 +1281,6 @@ async function clickVisibleTableNode(tableName: string): Promise<boolean> {
     ).find((candidate) => matchName(candidate.getAttribute('data-item-name') ?? ''));
     if (!node) return false;
     node.scrollIntoView({ block: 'center' });
-    // HTMLElement.click() reaches the same React handler as a user click and
-    // avoids racing a stale WebdriverIO element in the virtualized tree.
-    node.click();
     return true;
   }, tableName);
 }
@@ -1298,8 +1296,15 @@ export async function clickTableInSidebar(tableName: string) {
     await browser.waitUntil(
       async () => {
         if (await tableWorkspaceIsOpen(tableName)) return true;
-        const clicked = await clickVisibleTableNode(tableName);
-        if (clicked) {
+        const found = await scrollVisibleTableNode(tableName);
+        if (found) {
+          // Use WebDriver-level click instead of in-page DOM click, which
+          // can miss React synthetic event handlers on virtualised tree nodes.
+          const nodeEl = await $(`[data-item-name="${tableName}"]`);
+          if (await nodeEl.isDisplayed().catch(() => false)) {
+            await nodeEl.click();
+            await browser.pause(500);
+          }
           // The navigator handler first activates the database and then
           // schedules TableView creation. Keep the search mounted while that
           // async chain settles. Do not click repeatedly while that chain is
@@ -1433,6 +1438,7 @@ export async function clickFirstTable() {
   await browser.waitUntil(
     async () => {
       if (name && (await tableWorkspaceIsOpen(name))) return true;
+      // Locate the first table/view node and read its name.
       const result = await browser.execute(() => {
         const nav =
           document.querySelector('[data-testid="connection-navigator-aside"]') ??
@@ -1446,10 +1452,19 @@ export async function clickFirstTable() {
         const value = node.getAttribute('data-item-name');
         if (!value) return null;
         node.scrollIntoView({ block: 'center' });
-        node.click();
         return value;
       });
-      if (result) name = result;
+      if (result) {
+        name = result;
+        // Use WebDriver-level click (proper user simulation) instead of
+        // in-page DOM click, which can miss React synthetic event handlers
+        // on virtualised tree nodes.
+        const nodeEl = await $(`[data-item-name="${name}"]`);
+        if (await nodeEl.isDisplayed().catch(() => false)) {
+          await nodeEl.click();
+          await browser.pause(500);
+        }
+      }
       if (name && (await tableWorkspaceIsOpen(name))) return true;
       await expandSchemaTableCategory();
       await expandSchemaCategory('views');
@@ -1931,13 +1946,21 @@ export async function clickSchemaDiffCompare() {
 }
 
 export async function clickSchemaDiffGeneratePlan() {
-  const btn = await $('[data-testid="schema-diff-generate-plan"]');
-  if (!(await btn.isDisplayed().catch(() => false))) {
+  const planPanel = await $('[data-testid="schema-diff-plan-panel"]');
+  const alreadyOnPlan = await planPanel.isDisplayed().catch(() => false);
+  if (!alreadyOnPlan) {
     await clickSchemaDiffNext();
   }
-  await btn.waitForClickable({ timeout: 15000 });
-  await btn.click();
-  await browser.pause(2500);
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const panel = document.querySelector('[data-testid="schema-diff-plan-panel"]');
+        return Boolean(panel?.querySelector('[data-testid="schema-diff-allow-destructive"]'));
+      }),
+    { timeout: 30000, timeoutMsg: '等待结构对比计划自动生成超时' },
+  );
+  await planPanel.waitForDisplayed({ timeout: 8000 });
+  await browser.pause(500);
 }
 
 /** Advance from plan step to deploy step in the wizard. */
@@ -1983,9 +2006,16 @@ export async function deploySchemaDiffPlan() {
   await browser.waitUntil(
     async () => {
       const text = await deployPanel.getText();
-      return (
-        text.includes(t('schemaDiff.deployStatus')) && !text.includes(t('schemaDiff.deploying'))
-      );
+      const hasStatus =
+        text.includes(t('schemaDiff.deployStatus')) && !text.includes(t('schemaDiff.deploying'));
+      if (hasStatus) return true;
+      // Also detect errors shown in the page (deploy failure or IPC error).
+      const errorEl = await $('.error-message').catch(() => null);
+      if (errorEl && (await errorEl.isDisplayed().catch(() => false))) {
+        const errText = await errorEl.getText();
+        throw new Error(`schema diff deploy error: ${errText}`);
+      }
+      return false;
     },
     {
       timeout: 90000,

@@ -3,7 +3,7 @@ import type { TableSchemaDiff } from '../types';
 
 export type StatementRisk = 'additive' | 'destructive' | 'rewrite';
 
-export type DeployStatus = 'committed' | 'rolled_back' | 'mixed' | 'failed';
+export type DeployStatus = 'committed' | 'rolled_back' | 'mixed' | 'failed' | 'cancelled';
 
 export interface PlanStatement {
   sql: string;
@@ -17,6 +17,74 @@ export interface RollbackCompleteness {
   missing: string[];
 }
 
+/** Normalized plan requirement (from IPC tagged enum). */
+export interface PlanRequirement {
+  kind: 'Backfill' | 'Unsupported';
+  table: string;
+  column: string;
+  reason: string;
+}
+
+/** Rollback counts derived from {@link RollbackCompleteness} and statement list. */
+export interface RollbackCompletenessCounts {
+  complete: number;
+  missing: number;
+}
+
+type PlanRequirementIpc =
+  | { backfill: { table: string; column: string; reason: string } }
+  | { unsupported: { operation: string; reason: string } };
+
+type SchemaDiffPlanIpc = Omit<SchemaDiffPlan, 'requirements'> & {
+  requirements?: PlanRequirementIpc[];
+};
+
+function normalizeRequirement(raw: PlanRequirementIpc): PlanRequirement {
+  if ('backfill' in raw) {
+    const { table, column, reason } = raw.backfill;
+    return { kind: 'Backfill', table, column, reason };
+  }
+  const { operation, reason } = raw.unsupported;
+  const dot = operation.indexOf('.');
+  if (dot > 0) {
+    return {
+      kind: 'Unsupported',
+      table: operation.slice(0, dot),
+      column: operation.slice(dot + 1),
+      reason,
+    };
+  }
+  return { kind: 'Unsupported', table: operation, column: '', reason };
+}
+
+function normalizePlan(plan: SchemaDiffPlanIpc): SchemaDiffPlan {
+  return {
+    ...plan,
+    requirements: (plan.requirements ?? []).map(normalizeRequirement),
+  };
+}
+
+function denormalizeRequirement(req: PlanRequirement): PlanRequirementIpc {
+  if (req.kind === 'Backfill') {
+    return { backfill: { table: req.table, column: req.column, reason: req.reason } };
+  }
+  const operation = req.column ? `${req.table}.${req.column}` : req.table;
+  return { unsupported: { operation, reason: req.reason } };
+}
+
+function denormalizePlan(plan: SchemaDiffPlan): SchemaDiffPlanIpc {
+  return {
+    ...plan,
+    requirements: (plan.requirements ?? []).map(denormalizeRequirement),
+  };
+}
+
+export function rollbackCompletenessCounts(plan: SchemaDiffPlan): RollbackCompletenessCounts {
+  const total = plan.statements.length;
+  const missing = plan.rollbackCompleteness.missing.length;
+  return { complete: total - missing, missing };
+}
+
 export interface SchemaDiffPlan {
   table: string;
   tables: string[];
@@ -25,6 +93,7 @@ export interface SchemaDiffPlan {
   sameDialect: boolean;
   statements: PlanStatement[];
   warnings: string[];
+  requirements?: PlanRequirement[];
   rollbackCompleteness: RollbackCompleteness;
 }
 
@@ -57,6 +126,10 @@ export interface SchemaDiffConfigJson {
 
 export const DESTRUCTIVE_CONFIRM_TOKEN = 'DEPLOY';
 
+export async function cancelSchemaDiffDeploy(jobId: string): Promise<boolean> {
+  return invoke('cancel_schema_diff_deploy', { jobId });
+}
+
 export function planHasDestructive(plan: SchemaDiffPlan): boolean {
   return plan.statements.some((s) => s.risk === 'destructive' || s.risk === 'rewrite');
 }
@@ -77,11 +150,7 @@ export function exportPlanSql(plan: SchemaDiffPlan): string {
 }
 
 export const schemaDiffCommands = {
-  compareTableSchemas: (
-    sourceDbSessionId: string,
-    targetDbSessionId: string,
-    tableName: string,
-  ) =>
+  compareTableSchemas: (sourceDbSessionId: string, targetDbSessionId: string, tableName: string) =>
     invoke<TableSchemaDiff>('compare_table_schemas', {
       sourceDbSessionId,
       targetDbSessionId,
@@ -95,24 +164,28 @@ export const schemaDiffCommands = {
     allowDestructive: boolean;
     includeIndexes?: boolean;
   }) =>
-    invoke<SchemaDiffPlan>('prepare_schema_diff_plan', {
+    invoke<SchemaDiffPlanIpc>('prepare_schema_diff_plan', {
       sourceDbSessionId: params.sourceDbSessionId,
       targetDbSessionId: params.targetDbSessionId,
       tableNames: params.tableNames,
       allowDestructive: params.allowDestructive,
       includeIndexes: params.includeIndexes,
-    }),
+    }).then(normalizePlan),
 
   executeDeploy: (params: {
     targetDbSessionId: string;
     plan: SchemaDiffPlan;
     useTransaction?: boolean;
     confirmDestructive?: string;
+    jobId?: string;
   }) =>
     invoke<SchemaDiffDeployResult>('execute_schema_diff_deploy', {
       targetDbSessionId: params.targetDbSessionId,
-      plan: params.plan,
+      plan: denormalizePlan(params.plan),
       useTransaction: params.useTransaction,
       confirmDestructive: params.confirmDestructive,
+      jobId: params.jobId,
     }),
+
+  cancelDeploy: (jobId: string) => cancelSchemaDiffDeploy(jobId),
 };

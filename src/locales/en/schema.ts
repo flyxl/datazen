@@ -1,7 +1,8 @@
 /** Auto-split domain: schema (en) */
 const pack = {
   'objectSearch.title': 'Search database objects',
-  'objectSearch.description': 'Search loaded tables, views, columns, and routines across connections.',
+  'objectSearch.description':
+    'Search loaded tables, views, columns, and routines across connections.',
   'objectSearch.placeholder': 'Find table, column, view, function…',
   'objectSearch.noLoadedSchema': 'No loaded schema objects yet',
   'objectSearch.noResults': 'No matching objects',
@@ -49,9 +50,11 @@ const pack = {
   'schemaTree.compareData': 'Compare Data',
   'schemaTree.confirmDropView': 'Drop view "{name}"? This cannot be undone.',
   'schemaTree.dropDatabase': 'Drop Database',
-  'schemaTree.confirmDropDatabase': 'Drop database "{name}"? All data will be permanently lost. This cannot be undone.',
+  'schemaTree.confirmDropDatabase':
+    'Drop database "{name}"? All data will be permanently lost. This cannot be undone.',
   'schemaTree.dropSchema': 'Drop Schema',
-  'schemaTree.confirmDropSchema': 'Drop schema "{name}"? All objects in this schema will be permanently lost. This cannot be undone.',
+  'schemaTree.confirmDropSchema':
+    'Drop schema "{name}"? All objects in this schema will be permanently lost. This cannot be undone.',
   'schemaTree.dropDatabaseFailed': 'Failed to drop database.',
   'schemaTree.dropSchemaFailed': 'Failed to drop schema.',
   'schemaTree.dropRelationFailed': 'Failed to drop table or view.',
@@ -108,7 +111,8 @@ const pack = {
   'privileges.executeOk': 'Privilege statement executed',
   'privileges.users': 'Users',
   'privileges.dropUser': 'Drop User',
-  'privileges.confirmDropUser': 'Drop user "{name}"? This will remove the user and all their privileges. This cannot be undone.',
+  'privileges.confirmDropUser':
+    'Drop user "{name}"? This will remove the user and all their privileges. This cannot be undone.',
   'privileges.revokePrivilege': 'Revoke Privilege',
   'privileges.confirmRevoke': 'Revoke {privilege} on {object} from {user}?',
   'privileges.byUser': 'By User',
@@ -131,7 +135,8 @@ const pack = {
   'objectFilter.exclude': 'Table name exclude',
   'objectFilter.includePlaceholder': 'e.g. app_* or users',
   'objectFilter.excludePlaceholder': 'e.g. *_tmp or pg_*',
-  'objectFilter.hint': 'Patterns use * as a wildcard; otherwise a case-insensitive substring match is used.',
+  'objectFilter.hint':
+    'Patterns use * as a wildcard; otherwise a case-insensitive substring match is used.',
   'processList.refresh': 'Refresh',
   'processList.kill': 'Kill',
   'processList.killTitle': 'Kill Process',
@@ -175,11 +180,15 @@ const pack = {
   'structEditor.exportStructure': 'Export Structure',
   'structEditor.exportingStructure': 'Exporting…',
   'structEditor.exportFailed': 'Failed to export table structure',
-  'structEditor.exportUnsupported': 'Exporting table structure is not supported for this connection type',
+  'structEditor.exportUnsupported':
+    'Exporting table structure is not supported for this connection type',
   'structEditor.ddlWarn.title': 'Confirm structure change',
-  'structEditor.ddlWarn.risky': 'This plan includes {risks} statements that may lock or rewrite the table.',
-  'structEditor.ddlWarn.largeTable': 'Estimated row count is about {rows}. Online DDL on large tables can take a long time and block writes.',
-  'structEditor.ddlWarn.footer': 'Review the generated SQL carefully before continuing. Consider a maintenance window for production.',
+  'structEditor.ddlWarn.risky':
+    'This plan includes {risks} statements that may lock or rewrite the table.',
+  'structEditor.ddlWarn.largeTable':
+    'Estimated row count is about {rows}. Online DDL on large tables can take a long time and block writes.',
+  'structEditor.ddlWarn.footer':
+    'Review the generated SQL carefully before continuing. Consider a maintenance window for production.',
   'structEditor.ddlWarn.confirm': 'Apply changes',
   'serverStatus.refresh': 'Refresh',
   'serverStatus.loading': 'Loading server status…',

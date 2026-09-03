@@ -6,19 +6,27 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../components/SqlEditor', () => ({
-  SqlEditor: ({
-    value,
-    onChange,
-    placeholder,
-  }: {
-    value: string;
-    onChange: (v: string) => void;
-    placeholder?: string;
-  }) => (
-    <textarea placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
-  ),
-}));
+vi.mock('../../../components/SqlEditor', async () => {
+  const { forwardRef } = await import('react');
+  return {
+    SqlEditor: forwardRef(
+      (
+        {
+          value,
+          onChange,
+          placeholder,
+        }: { value: string; onChange: (v: string) => void; placeholder?: string },
+        _ref: unknown,
+      ) => (
+        <textarea
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ),
+    ),
+  };
+});
 
 const showNativeContextMenu = vi.fn();
 const getDatabaseObjects = vi.fn();

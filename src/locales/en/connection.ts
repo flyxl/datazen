@@ -3,8 +3,10 @@ const pack = {
   'connShare.importFromAppTitle': 'Import from {app}',
   'connShare.dataPath': 'Data directory or install path',
   'connShare.dataPathPlaceholder': 'Install path, data directory, or exported file',
-  'connShare.dataPathFoundHint': 'Located the default data file. If the app is installed elsewhere, enter its install path, data directory, or an exported file.',
-  'connShare.dataPathMissingHint': 'Default data directory not found. Enter the app install path, data directory, or choose an exported file.',
+  'connShare.dataPathFoundHint':
+    'Located the default data file. If the app is installed elsewhere, enter its install path, data directory, or an exported file.',
+  'connShare.dataPathMissingHint':
+    'Default data directory not found. Enter the app install path, data directory, or choose an exported file.',
   'connShare.browseFolder': 'Browse folder',
   'connShare.browseFile': 'Browse file',
   'connShare.pathRequired': 'Enter a data directory, install path, or exported file',
@@ -14,24 +16,32 @@ const pack = {
   'connShare.passwordMismatch': 'Passwords do not match',
   'connShare.passwordOptional': 'optional for DataGrip / Navicat / DBeaver / DBX plain',
   'connShare.passwordImportPlaceholder': 'Required for DataZen / DBX encrypted / TablePlus',
-  'connShare.importFormatsHint': 'Supports DataZen (.datazenconnection), DBX, DataGrip (dataSources.xml), Navicat (.ncx), DBeaver (data-sources.json), and TablePlus (.tableplusconnection). Place credentials-config.json beside data-sources.json to import DBeaver passwords when possible.',
+  'connShare.importFormatsHint':
+    'Supports DataZen (.datazenconnection), DBX, DataGrip (dataSources.xml), Navicat (.ncx), DBeaver (data-sources.json), and TablePlus (.tableplusconnection). Place credentials-config.json beside data-sources.json to import DBeaver passwords when possible.',
   'connShare.exportAction': 'Export',
-  'connShare.exportHint': 'Save all connections as an encrypted .datazenconnection file. Use the same password when importing.',
+  'connShare.exportHint':
+    'Save all connections as an encrypted .datazenconnection file. Use the same password when importing.',
   'connShare.importAction': 'Import',
   'connShare.chooseImportFile': 'Choose file…',
   'connShare.selectedImportFile': 'Selected file',
   'connShare.changeImportFile': 'Change file',
-  'connShare.encryptedImportPasswordRequired': 'Password is required for encrypted connection files',
+  'connShare.encryptedImportPasswordRequired':
+    'Password is required for encrypted connection files',
   'connShare.exportSuccess': 'Exported {count} connection(s)',
-  'connShare.importSuccess': 'Imported {imported} new, updated {overwritten}, added {groupsAdded} group(s)',
-  'connShare.importSuccessWithSkipped': 'Imported {imported} new, updated {overwritten}, added {groupsAdded} group(s), skipped {skipped} unsupported',
+  'connShare.importSuccess':
+    'Imported {imported} new, updated {overwritten}, added {groupsAdded} group(s)',
+  'connShare.importSuccessWithSkipped':
+    'Imported {imported} new, updated {overwritten}, added {groupsAdded} group(s), skipped {skipped} unsupported',
   'connShare.error.passwordRequired': 'Password is required',
-  'connShare.error.encryptedImportPasswordRequired': 'Password is required for encrypted connection import',
+  'connShare.error.encryptedImportPasswordRequired':
+    'Password is required for encrypted connection import',
   'connShare.error.dbxEncryptedPasswordRequired': 'Password is required for DBX encrypted import',
-  'connShare.error.datazenEncryptedPasswordRequired': 'Password is required for DataZen encrypted import',
+  'connShare.error.datazenEncryptedPasswordRequired':
+    'Password is required for DataZen encrypted import',
   'connShare.error.datazenPasswordRequired': 'Password is required for DataZen import',
   'connShare.error.formatPasswordRequired': 'Password is required for {format} import',
-  'connShare.error.invalidUtf8': 'Import file is not valid UTF-8 text (for DataZen use .datazenconnection)',
+  'connShare.error.invalidUtf8':
+    'Import file is not valid UTF-8 text (for DataZen use .datazenconnection)',
   'connShare.error.unrecognizedFormat': 'Unrecognized connection import format',
   'connShare.error.noFiles': 'No connection files to import',
   'connShare.error.readFailed': 'Failed to read the import file',
@@ -42,10 +52,13 @@ const pack = {
   'connShare.error.dbxWrongPassphrase': 'DBX decryption failed: wrong passphrase',
   'connShare.error.dbxMissingConnections': 'DBX import: missing connections array',
   'connShare.error.invalidFileTooShort': 'Invalid {format} file: too short',
-  'connShare.error.invalidFileRncryptorVersion': 'Invalid {format} file: unsupported RNCryptor version (if this is a legacy DataZen .json export, import the .json file instead)',
-  'connShare.error.invalidFileEncryptionType': 'Invalid {format} file: expected password-based encryption',
+  'connShare.error.invalidFileRncryptorVersion':
+    'Invalid {format} file: unsupported RNCryptor version (if this is a legacy DataZen .json export, import the .json file instead)',
+  'connShare.error.invalidFileEncryptionType':
+    'Invalid {format} file: expected password-based encryption',
   'connShare.error.decryptionFailed': '{format} decryption failed: wrong password or corrupt file',
-  'connShare.error.decryptionFailedLegacyHint': '{format} decryption failed: wrong password or corrupt file. Use the same password as export. Legacy DataZen exports used password-protected .json (not .datazenconnection).',
+  'connShare.error.decryptionFailedLegacyHint':
+    '{format} decryption failed: wrong password or corrupt file. Use the same password as export. Legacy DataZen exports used password-protected .json (not .datazenconnection).',
   'connShare.error.invalidJsonAfterDecrypt': 'Invalid {format} JSON after decrypt',
   'connShare.error.payloadNotUtf8': '{format} payload is not UTF-8',
   'conn.connected': 'Connected',
@@ -169,9 +182,12 @@ const pack = {
   'connWin.tooltipTable': 'Table',
   'connWin.home.selectConnection': 'Select a connection from the left sidebar',
   'connWin.home.selectConnectionTitle': 'Select a connection',
-  'connWin.home.selectConnectionHint': 'Choose a connection from the left sidebar to browse objects, run queries, or manage schema.',
-  'connWin.home.selectConnectionTip': 'Tip: Double-click a connection to open it quickly. Right-click for edit, duplicate, or delete.',
-  'connWin.home.emptyNoConnectionsHint': 'Create your first database connection, or import existing ones from other tools.',
+  'connWin.home.selectConnectionHint':
+    'Choose a connection from the left sidebar to browse objects, run queries, or manage schema.',
+  'connWin.home.selectConnectionTip':
+    'Tip: Double-click a connection to open it quickly. Right-click for edit, duplicate, or delete.',
+  'connWin.home.emptyNoConnectionsHint':
+    'Create your first database connection, or import existing ones from other tools.',
   'connWin.home.subtitle': 'Pick a quick action or reopen a recent panel',
   'connWin.home.quickActions': 'Quick Actions',
   'connWin.home.recentPanels': 'Recent Panels',

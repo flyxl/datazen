@@ -109,11 +109,7 @@ export function ConnectionWorkspaceHome({
           <p className="text-sm font-medium text-fg">{t('main.noConnections')}</p>
           <p className="mt-1.5 text-xs text-fg-muted">{t('connWin.home.emptyNoConnectionsHint')}</p>
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-            <Button
-              className="mt-0"
-              onClick={onNewConnection}
-              data-testid="new-connection-button"
-            >
+            <Button className="mt-0" onClick={onNewConnection} data-testid="new-connection-button">
               <ThemedIcon id="common.newConnection" className="h-4 w-4" fallback={Plus} />
               {t('main.createFirst')}
             </Button>
@@ -158,7 +154,9 @@ export function ConnectionWorkspaceHome({
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-raised text-fg-muted">
             <Database className="h-6 w-6" />
           </div>
-          <h2 className="text-base font-semibold text-fg">{t('connWin.home.selectConnectionTitle')}</h2>
+          <h2 className="text-base font-semibold text-fg">
+            {t('connWin.home.selectConnectionTitle')}
+          </h2>
           <p className="mt-2 text-sm leading-relaxed text-fg-muted">
             {t('connWin.home.selectConnectionHint')}
           </p>

@@ -5,12 +5,16 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod admin_commands;
+mod migration;
 mod mysql;
 mod sql_target;
 mod structure;
 mod sync_adapter;
+mod type_normalizer;
+pub use migration::{MysqlMigrationCapabilities, MysqlMigrationRenderer};
 pub use mysql::*;
 pub use sync_adapter::MysqlSyncAdapter;
+pub use type_normalizer::MysqlTypeNormalizer;
 
 struct MysqlFactory;
 impl DatabaseDriverFactory for MysqlFactory {

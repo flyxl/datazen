@@ -54,10 +54,7 @@ function isBuiltinLocale(locale: string): locale is BuiltinLocale {
 }
 
 function hostLookup(locale: BuiltinLocale, key: string): string | undefined {
-  return (
-    builtinEagerLocales[locale][key] ??
-    lookupLazyTranslation(locale, key)
-  );
+  return builtinEagerLocales[locale][key] ?? lookupLazyTranslation(locale, key);
 }
 
 export function getTranslation(

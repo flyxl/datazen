@@ -58,7 +58,8 @@ const pack = {
   'sync.explainDiffTitle': 'Compare explanation',
   'sync.explainDiffFailed': 'Failed to generate AI explanation',
   'sync.explainDiffNoAi': 'Configure an AI provider in Settings first',
-  'sync.explainDiffPrompt': 'Summarize this data synchronization compare result in plain language. Mention insert/update/delete counts, unchanged tables, and incompatible tables with reasons. Suggest whether Schema Diff or Data Transfer may be needed.\n\n{report}',
+  'sync.explainDiffPrompt':
+    'Summarize this data synchronization compare result in plain language. Mention insert/update/delete counts, unchanged tables, and incompatible tables with reasons. Suggest whether Schema Diff or Data Transfer may be needed.\n\n{report}',
   'sync.filter.all': 'All',
   'sync.filter.insert': 'Insert',
   'sync.filter.update': 'Update',
@@ -92,10 +93,12 @@ const pack = {
   'sync.targetReadOnly': 'Target connection is read-only — compare only',
   'sync.deleteWillApply': 'Selected deletes will be applied',
   'sync.deleteConfirmTitle': 'Enable delete operations?',
-  'sync.deleteConfirmBody': 'Delete operations remove rows from the target. Enable only if you intend to propagate deletions.',
+  'sync.deleteConfirmBody':
+    'Delete operations remove rows from the target. Enable only if you intend to propagate deletions.',
   'sync.enableDelete': 'Enable deletes',
   'sync.executeDeleteTitle': 'Confirm deletes',
-  'sync.executeDeleteBody': 'The change set includes DELETE statements. This cannot be undone. Continue?',
+  'sync.executeDeleteBody':
+    'The change set includes DELETE statements. This cannot be undone. Continue?',
   'sync.selectPrompt': 'Select source and target databases, then click "Compare"',
   'sync.connectFailed': 'Connection failed: ',
   'sync.identical': 'Identical',

@@ -5,13 +5,17 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod admin_commands;
+mod migration;
 mod postgres;
 mod sql_target;
 mod structure;
 mod sync_adapter;
+mod type_normalizer;
+pub use migration::{PostgresMigrationCapabilities, PostgresMigrationRenderer};
 pub use postgres::*;
 pub use structure::{caps_for_version, plan_structure_changes_with_caps};
 pub use sync_adapter::PgSyncAdapter;
+pub use type_normalizer::PostgresTypeNormalizer;
 
 struct PostgresFactory;
 impl DatabaseDriverFactory for PostgresFactory {

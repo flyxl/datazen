@@ -14,16 +14,19 @@ const pack = {
   'settings.theme.import': '导入主题包',
   'settings.theme.remove': '移除主题包',
   'settings.appearance': '外观',
-  'settings.appearance.subtitle': '主题来自已安装的插件，点击卡片即可应用；安装管理请前往插件页面。',
+  'settings.appearance.subtitle':
+    '主题来自已安装的插件，点击卡片即可应用；安装管理请前往插件页面。',
   'settings.appearance.current': '当前主题',
   'settings.appearance.emptyTitle': '尚未安装主题',
   'settings.appearance.emptyHint': '在插件页面安装主题插件后，其主题会显示在这里。',
   'settings.appearance.applyError': '应用主题失败：{error}',
-  'settings.appearance.missingHint': '当前主题已不再由启用的插件提供，请选择其他主题，或重启 DataZen 以恢复默认。',
+  'settings.appearance.missingHint':
+    '当前主题已不再由启用的插件提供，请选择其他主题，或重启 DataZen 以恢复默认。',
   'settings.appearance.more': '其他外观设置',
   'settings.appearance.morePlaceholder': '预留：密度、字号等选项将在后续版本中提供。',
   'settings.updater.title': '更新',
-  'settings.updater.description': '从 GitHub Releases 检查并安装 Basic 版本更新（需已签名的发布包）。',
+  'settings.updater.description':
+    '从 GitHub Releases 检查并安装 Basic 版本更新（需已签名的发布包）。',
   'settings.updater.check': '检查更新',
   'settings.updater.downloadInstall': '下载并安装',
   'settings.updater.checkOnStartup': '启动时检查更新',
@@ -64,7 +67,8 @@ const pack = {
   'settings.dataCleanup.clearAll': '清空所选范围',
   'settings.dataCleanup.run': '立即清理',
   'settings.dataCleanup.confirmTitle': '确认清理历史？',
-  'settings.dataCleanup.confirmMessage': '将永久删除所选范围内超过 {days} 天的历史记录，此操作不可撤销。',
+  'settings.dataCleanup.confirmMessage':
+    '将永久删除所选范围内超过 {days} 天的历史记录，此操作不可撤销。',
   'settings.dataCleanup.confirmClearAll': '将永久删除所选范围内的全部历史记录，此操作不可撤销。',
   'settings.dataCleanup.success': '已删除 {count} 条记录',
   'settings.dataCleanup.error': '清理历史失败',
@@ -86,7 +90,8 @@ const pack = {
   'settings.unsavedChangesMessage': '当前有未保存的更改，离开前要保存吗？',
   'settings.saveChanges': '保存更改',
   'settings.discardChanges': '放弃更改',
-  'settings.limitSelectHint': '自动为无 LIMIT 的 SELECT 添加行数限制。与大数据量流式传输相互独立：关闭此开关仍会流式返回全部结果。',
+  'settings.limitSelectHint':
+    '自动为无 LIMIT 的 SELECT 添加行数限制。与大数据量流式传输相互独立：关闭此开关仍会流式返回全部结果。',
   'settings.confirmDeleteHint': '删除行时弹出确认对话框',
   'settings.autoCommitHint': '编辑数据后自动提交更改',
   'settings.safeMode': 'Safe Mode',
@@ -102,7 +107,8 @@ const pack = {
   'settings.monitor.runRetentionCount': '运行历史条数（每组件）',
   'settings.monitor.runRetentionDays': '运行历史天数（每组件）',
   'settings.monitor.exportIncludeDashboardRuns': '应用数据导出包含运行历史',
-  'settings.monitor.exportIncludeDashboardRunsHint': '关闭时，应用数据 ZIP 导出将跳过 dashboard-runs/。',
+  'settings.monitor.exportIncludeDashboardRunsHint':
+    '关闭时，应用数据 ZIP 导出将跳过 dashboard-runs/。',
   'settings.monitor.email': '邮件告警（SMTP）',
   'settings.monitor.comingSoon': '二期',
   'settings.monitor.emailHint': 'SMTP 邮件告警将在后续版本提供。',
@@ -140,7 +146,8 @@ const pack = {
   'settings.ai.endpointHintOpenAiResponses': '例如 https://api.openai.com/v1',
   'settings.ai.endpointHintAnthropic': '例如 https://api.anthropic.com',
   'settings.prompts': 'Prompt 管理',
-  'settings.prompts.description': '查看和自定义 AI 功能使用的系统 Prompt。每个驱动和场景都可以单独配置。',
+  'settings.prompts.description':
+    '查看和自定义 AI 功能使用的系统 Prompt。每个驱动和场景都可以单独配置。',
   'settings.prompts.driver': '数据库驱动',
   'settings.prompts.allDrivers': '通用（所有驱动）',
   'settings.prompts.source.default': '默认',

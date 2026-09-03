@@ -101,4 +101,12 @@ describe('Select filter', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
     expect(document.activeElement).toBe(trigger);
   });
+
+  it('renders a loading trigger that cannot be opened', () => {
+    render(<Select value="" options={[]} onChange={vi.fn()} placeholder="Schema" loading />);
+
+    const trigger = screen.getByRole('button', { name: 'Schema' });
+    expect(trigger).toBeDisabled();
+    expect(trigger).toHaveAttribute('aria-busy', 'true');
+  });
 });

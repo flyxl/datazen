@@ -3,6 +3,11 @@
 //! Host must not invent cross-family conversions (that is Transfer).
 
 pub fn types_equivalent(family: &str, left: &str, right: &str) -> bool {
+    if let Some(driver) = datazen_driver_api::create_driver(family) {
+        if let Some(normalizer) = driver.type_normalizer() {
+            return normalizer.normalize_type(left) == normalizer.normalize_type(right);
+        }
+    }
     canonical_type(family, left) == canonical_type(family, right)
 }
 
@@ -180,6 +185,12 @@ mod tests {
         ));
         assert!(types_equivalent("postgresql", "int2", "smallint"));
         assert!(types_equivalent("postgresql", "character(2)", "CHAR(2)"));
+    }
+
+    #[test]
+    fn delegates_to_driver_normalizer_when_available() {
+        assert!(types_equivalent("postgresql", "int4", "integer"));
+        assert!(types_equivalent("mysql", "int(11)", "INT"));
     }
 
     #[test]

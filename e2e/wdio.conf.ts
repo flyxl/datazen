@@ -1,3 +1,21 @@
+/**
+ * WebdriverIO config for DataZen Host E2E (Tauri embedded WebDriver plugin).
+ *
+ * ## Parallel execution (Tauri constraint)
+ *
+ * Native WDIO `maxInstances > 1` is intentionally NOT used:
+ * - Each worker needs its own DataZen process, WebDriver port, and app-data dir.
+ * - WDIO capabilities duplicate every spec across all capabilities (cross-browser
+ *   model), which does not distribute load across Tauri instances.
+ *
+ * Parallelism is handled by `e2e/run.mjs --instances N` (N > 1):
+ * 1. Starts N app binaries on consecutive ports (E2E_WD_PORT … E2E_WD_PORT+N-1).
+ * 2. Isolates DATAZEN_DATA_DIR per worker (`e2e/.app-data-0` …).
+ * 3. Round-robin splits specs into N independent WDIO processes (each maxInstances: 1).
+ *
+ * Scripts: `pnpm e2e:parallel`, `pnpm e2e:parallel:smoke`, `pnpm e2e:parallel:core`.
+ * DB-heavy suites may conflict on shared test databases — prefer core/smoke for parallel runs.
+ */
 import {
   beginJourneySuite,
   beginJourneyTest,
@@ -253,6 +271,7 @@ export const config: WebdriverIO.Config = {
       './specs/data-sync-real.ts',
     ],
   },
+  // Always 1 per WDIO process; multi-process parallelism via run.mjs --instances N.
   maxInstances: 1,
   // specFileRetries: 1, // disabled — retries double the time for genuine failures
   capabilities,
@@ -269,8 +288,6 @@ export const config: WebdriverIO.Config = {
     ui: 'bdd',
     timeout: 120000,
   },
-  // Multi-instance parallelism is handled by run.mjs launching separate WDIO processes,
-  // not by WDIO capabilities (which duplicate specs across all capabilities).
   before: async function () {
     await runSessionBootstrap();
   },

@@ -52,9 +52,14 @@ vi.mock('../../../stores/schemaStore', () => ({
   useSchemaStore: (sel: (s: typeof schemaSnapshot) => unknown) => sel(schemaSnapshot),
 }));
 
-vi.mock('../../../components/SqlEditor', () => ({
-  SqlEditor: () => <div data-testid="mock-sql-editor" />,
-}));
+vi.mock('../../../components/SqlEditor', async () => {
+  const { forwardRef } = await import('react');
+  return {
+    SqlEditor: forwardRef((_props: unknown, _ref: unknown) => (
+      <div data-testid="mock-sql-editor" />
+    )),
+  };
+});
 
 vi.mock('../../../components/DataTable/DataTable', () => ({
   DataTable: () => null,

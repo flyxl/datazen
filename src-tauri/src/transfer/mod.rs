@@ -3,6 +3,7 @@
 pub mod adapter_registry;
 pub mod adapters;
 pub mod ddl;
+pub mod full_types;
 pub mod pairing;
 
 pub use datazen_driver_api::sync::{

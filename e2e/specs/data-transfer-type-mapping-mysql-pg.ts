@@ -6,6 +6,7 @@ import { t } from '../i18n.js';
 import {
   captureJourneyStep,
   closeExtraWindows,
+  disconnectBackend,
   invokeBackend,
   openDataTransferWindow,
   selectDzOptionInWrap,
@@ -79,32 +80,7 @@ describe('MySQL→PG 类型映射 Preview DDL (DT-TYPE-MYSQL-PG)', () => {
     const srcSession = await invokeBackend<string>('connect', { connectionId: SRC_ID });
     const tgtSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
 
-    await withSafeModeOff(async () => {
-      await invokeBackend('execute_query', {
-        dbSessionId: srcSession,
-        sql: `DROP TABLE IF EXISTS ${TABLE}`,
-      });
-      await invokeBackend('execute_query', {
-        dbSessionId: tgtSession,
-        sql: `DROP TABLE IF EXISTS ${TABLE}`,
-      });
-      await invokeBackend('execute_query', {
-        dbSessionId: srcSession,
-        sql: `CREATE TABLE ${TABLE} (
-          id BIGINT PRIMARY KEY,
-          label VARCHAR(64) NOT NULL DEFAULT 'x',
-          active TINYINT(1) NOT NULL DEFAULT 1,
-          meta JSON,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )`,
-      });
-    });
-  });
-
-  after(async () => {
     try {
-      const srcSession = await invokeBackend<string>('connect', { connectionId: SRC_ID });
-      const tgtSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
       await withSafeModeOff(async () => {
         await invokeBackend('execute_query', {
           dbSessionId: srcSession,
@@ -114,7 +90,42 @@ describe('MySQL→PG 类型映射 Preview DDL (DT-TYPE-MYSQL-PG)', () => {
           dbSessionId: tgtSession,
           sql: `DROP TABLE IF EXISTS ${TABLE}`,
         });
+        await invokeBackend('execute_query', {
+          dbSessionId: srcSession,
+          sql: `CREATE TABLE ${TABLE} (
+          id BIGINT PRIMARY KEY,
+          label VARCHAR(64) NOT NULL DEFAULT 'x',
+          active TINYINT(1) NOT NULL DEFAULT 1,
+          meta JSON,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )`,
+        });
       });
+    } finally {
+      await disconnectBackend(srcSession);
+      await disconnectBackend(tgtSession);
+    }
+  });
+
+  after(async () => {
+    try {
+      const srcSession = await invokeBackend<string>('connect', { connectionId: SRC_ID });
+      const tgtSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
+      try {
+        await withSafeModeOff(async () => {
+          await invokeBackend('execute_query', {
+            dbSessionId: srcSession,
+            sql: `DROP TABLE IF EXISTS ${TABLE}`,
+          });
+          await invokeBackend('execute_query', {
+            dbSessionId: tgtSession,
+            sql: `DROP TABLE IF EXISTS ${TABLE}`,
+          });
+        });
+      } finally {
+        await disconnectBackend(srcSession);
+        await disconnectBackend(tgtSession);
+      }
     } catch {
       /* ok */
     }

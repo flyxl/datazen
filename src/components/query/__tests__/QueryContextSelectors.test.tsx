@@ -28,4 +28,24 @@ describe('QueryContextSelectors', () => {
     expect(host).not.toHaveClass('min-w-[9rem]');
     expect(screen.getByRole('combobox').parentElement).toHaveClass('!max-w-[7rem]');
   });
+
+  it('shows the next path level immediately while Superset namespaces load', () => {
+    render(
+      <QueryContextSelectors
+        isMultiDb={false}
+        isPathHierarchy
+        databases={[]}
+        currentDatabase={null}
+        namespaceTree={{ hive: {} }}
+        pathAliases={{}}
+        contextPath={['hive']}
+        namespaceLoading
+        onSelectLevel={vi.fn()}
+      />,
+    );
+
+    const nextLevel = screen.getByRole('combobox', { name: 'query.schema' });
+    expect(nextLevel).toBeDisabled();
+    expect(nextLevel).toHaveAttribute('aria-busy', 'true');
+  });
 });

@@ -3,8 +3,10 @@ const pack = {
   'connShare.importFromAppTitle': '从 {app} 导入',
   'connShare.dataPath': '数据目录或安装路径',
   'connShare.dataPathPlaceholder': '可填写安装路径、数据目录或导出文件',
-  'connShare.dataPathFoundHint': '已定位到默认数据文件。若软件不在默认位置，请改为填写安装路径、数据目录或导出文件。',
-  'connShare.dataPathMissingHint': '未找到默认数据目录。请填写该软件的安装路径、数据目录，或选择导出文件。',
+  'connShare.dataPathFoundHint':
+    '已定位到默认数据文件。若软件不在默认位置，请改为填写安装路径、数据目录或导出文件。',
+  'connShare.dataPathMissingHint':
+    '未找到默认数据目录。请填写该软件的安装路径、数据目录，或选择导出文件。',
   'connShare.browseFolder': '浏览目录',
   'connShare.browseFile': '浏览文件',
   'connShare.pathRequired': '请填写数据目录、安装路径或导出文件',
@@ -14,7 +16,8 @@ const pack = {
   'connShare.passwordMismatch': '两次输入的密码不一致',
   'connShare.passwordOptional': 'DataGrip / Navicat / DBeaver / DBX 明文可留空',
   'connShare.passwordImportPlaceholder': 'DataZen / DBX 加密 / TablePlus 需要密码',
-  'connShare.importFormatsHint': '支持 DataZen（.datazenconnection）、DBX、DataGrip（dataSources.xml）、Navicat（.ncx）、DBeaver（data-sources.json）与 TablePlus（.tableplusconnection）。将 credentials-config.json 与 data-sources.json 放在同一目录时可尝试导入 DBeaver 密码。',
+  'connShare.importFormatsHint':
+    '支持 DataZen（.datazenconnection）、DBX、DataGrip（dataSources.xml）、Navicat（.ncx）、DBeaver（data-sources.json）与 TablePlus（.tableplusconnection）。将 credentials-config.json 与 data-sources.json 放在同一目录时可尝试导入 DBeaver 密码。',
   'connShare.exportAction': '导出',
   'connShare.exportHint': '将所有连接导出为加密的 .datazenconnection 文件。导入时需使用相同密码。',
   'connShare.importAction': '导入',
@@ -23,15 +26,18 @@ const pack = {
   'connShare.changeImportFile': '更换文件',
   'connShare.encryptedImportPasswordRequired': '加密连接文件需要输入密码',
   'connShare.exportSuccess': '已导出 {count} 个连接',
-  'connShare.importSuccess': '导入 {imported} 个新连接，更新 {overwritten} 个，新增 {groupsAdded} 个分组',
-  'connShare.importSuccessWithSkipped': '导入 {imported} 个新连接，更新 {overwritten} 个，新增 {groupsAdded} 个分组，跳过 {skipped} 个不支持的类型',
+  'connShare.importSuccess':
+    '导入 {imported} 个新连接，更新 {overwritten} 个，新增 {groupsAdded} 个分组',
+  'connShare.importSuccessWithSkipped':
+    '导入 {imported} 个新连接，更新 {overwritten} 个，新增 {groupsAdded} 个分组，跳过 {skipped} 个不支持的类型',
   'connShare.error.passwordRequired': '请输入密码',
   'connShare.error.encryptedImportPasswordRequired': '加密连接文件需要输入密码',
   'connShare.error.dbxEncryptedPasswordRequired': 'DBX 加密导入需要输入密码',
   'connShare.error.datazenEncryptedPasswordRequired': 'DataZen 加密导入需要输入密码',
   'connShare.error.datazenPasswordRequired': 'DataZen 导入需要输入密码',
   'connShare.error.formatPasswordRequired': '{format} 导入需要输入密码',
-  'connShare.error.invalidUtf8': '导入文件不是有效的 UTF-8 文本（DataZen 请使用 .datazenconnection）',
+  'connShare.error.invalidUtf8':
+    '导入文件不是有效的 UTF-8 文本（DataZen 请使用 .datazenconnection）',
   'connShare.error.unrecognizedFormat': '无法识别的连接导入格式',
   'connShare.error.noFiles': '没有可导入的连接文件',
   'connShare.error.readFailed': '读取导入文件失败',
@@ -42,10 +48,12 @@ const pack = {
   'connShare.error.dbxWrongPassphrase': 'DBX 解密失败：口令错误',
   'connShare.error.dbxMissingConnections': 'DBX 导入：缺少 connections 数组',
   'connShare.error.invalidFileTooShort': '{format} 文件无效：内容过短',
-  'connShare.error.invalidFileRncryptorVersion': '{format} 文件无效：不支持的 RNCryptor 版本（若为旧版 DataZen .json 导出，请导入 .json 文件）',
+  'connShare.error.invalidFileRncryptorVersion':
+    '{format} 文件无效：不支持的 RNCryptor 版本（若为旧版 DataZen .json 导出，请导入 .json 文件）',
   'connShare.error.invalidFileEncryptionType': '{format} 文件无效：需要基于密码的加密格式',
   'connShare.error.decryptionFailed': '{format} 解密失败：密码错误或文件已损坏',
-  'connShare.error.decryptionFailedLegacyHint': '{format} 解密失败：密码错误或文件已损坏。请使用与导出时相同的密码。旧版 DataZen 导出为加密的 .json（非 .datazenconnection）。',
+  'connShare.error.decryptionFailedLegacyHint':
+    '{format} 解密失败：密码错误或文件已损坏。请使用与导出时相同的密码。旧版 DataZen 导出为加密的 .json（非 .datazenconnection）。',
   'connShare.error.invalidJsonAfterDecrypt': '{format} 解密后的 JSON 无效',
   'connShare.error.payloadNotUtf8': '{format} 内容不是 UTF-8 文本',
   'conn.connected': '已连接',
@@ -169,7 +177,8 @@ const pack = {
   'connWin.tooltipTable': '表',
   'connWin.home.selectConnection': '请在左侧选择一个连接',
   'connWin.home.selectConnectionTitle': '选择一个连接',
-  'connWin.home.selectConnectionHint': '在左侧连接列表中选择一个连接，即可开始浏览数据库对象、执行查询或管理结构。',
+  'connWin.home.selectConnectionHint':
+    '在左侧连接列表中选择一个连接，即可开始浏览数据库对象、执行查询或管理结构。',
   'connWin.home.selectConnectionTip': '提示：双击连接可快速打开，右键可编辑、复制或删除。',
   'connWin.home.emptyNoConnectionsHint': '创建你的第一个数据库连接，或从其他工具导入已有连接。',
   'connWin.home.subtitle': '选择快捷操作，或重新打开最近的 Panel',

@@ -206,11 +206,15 @@ describe('数据传输 MySQL→PG 跨方言旅程 (DT-MYSQL-PG-JOURNEY)', () => 
     await captureJourneyStep('dt-mysql-pg-10-result', 0, true);
 
     const tgtSession = await connectBackend(TGT_ID);
-    const rows = await invokeBackend<QueryResultPayload>('execute_query', {
-      dbSessionId: tgtSession,
-      sql: `SELECT count(*)::int AS c FROM ${TABLE}`,
-    });
-    expect(queryScalar(rows, 'c')).toBe(3);
-    await captureJourneyStep('dt-mysql-pg-11-pg-rows-verified', 0, true);
+    try {
+      const rows = await invokeBackend<QueryResultPayload>('execute_query', {
+        dbSessionId: tgtSession,
+        sql: `SELECT count(*)::int AS c FROM ${TABLE}`,
+      });
+      expect(queryScalar(rows, 'c')).toBe(3);
+      await captureJourneyStep('dt-mysql-pg-11-pg-rows-verified', 0, true);
+    } finally {
+      await disconnectBackend(tgtSession);
+    }
   });
 });

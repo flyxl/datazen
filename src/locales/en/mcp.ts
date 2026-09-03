@@ -1,16 +1,19 @@
 /** Auto-split domain: mcp (en) */
 const pack = {
   'mcp.title': 'MCP Server',
-  'mcp.description': 'Run DataZen as an MCP Server so external AI tools (Claude Desktop, Cursor, etc.) can access your databases',
+  'mcp.description':
+    'Run DataZen as an MCP Server so external AI tools (Claude Desktop, Cursor, etc.) can access your databases',
   'mcp.enabled': 'Enable MCP Server',
-  'mcp.enabledHint': 'Off by default. Prefer launching a dedicated process with --mcp for Claude Desktop / Cursor',
+  'mcp.enabledHint':
+    'Off by default. Prefer launching a dedicated process with --mcp for Claude Desktop / Cursor',
   'mcp.status': 'Status',
   'mcp.running': 'Running',
   'mcp.stopped': 'Stopped',
   'mcp.start': 'Start MCP Server',
   'mcp.stop': 'Stop',
   'mcp.transport': 'Transport',
-  'mcp.usage': 'To use DataZen as an MCP server with Claude Desktop or Cursor, add the following config:',
+  'mcp.usage':
+    'To use DataZen as an MCP server with Claude Desktop or Cursor, add the following config:',
   'mcp.tools': 'Exposed Tools',
   'mcp.tools.description': 'Choose which tools to expose via MCP Server to external AI clients',
   'mcp.tools.enableAll': 'Enable All',
@@ -22,22 +25,29 @@ const pack = {
   'mcp.permission.readOnly': 'Read-only',
   'mcp.permission.readOnlyHint': 'Schema introspection only; blocks query and run_workflow',
   'mcp.permission.safeWrite': 'Safe write (default)',
-  'mcp.permission.safeWriteHint': 'Allows DML; blocks DROP, TRUNCATE, ALTER, CREATE USER, and similar',
+  'mcp.permission.safeWriteHint':
+    'Allows DML; blocks DROP, TRUNCATE, ALTER, CREATE USER, and similar',
   'mcp.permission.highRiskWrite': 'High-risk write',
   'mcp.permission.highRiskWriteHint': 'No SQL restrictions; only the tool denylist applies',
-  'mcp.permission.restartHint': 'Applies immediately when MCP Server is running (embedded mode reloads automatically)',
-  'mcp.permission.applyHint': 'Applies immediately when MCP Server is running (embedded mode reloads automatically)',
+  'mcp.permission.restartHint':
+    'Applies immediately when MCP Server is running (embedded mode reloads automatically)',
+  'mcp.permission.applyHint':
+    'Applies immediately when MCP Server is running (embedded mode reloads automatically)',
   'mcp.allowlist.title': 'Connection allowlist',
-  'mcp.allowlist.description': 'Only selected connections are visible to MCP clients. Leave all unchecked to expose every saved connection.',
+  'mcp.allowlist.description':
+    'Only selected connections are visible to MCP clients. Leave all unchecked to expose every saved connection.',
   'mcp.allowlist.empty': 'No saved connections yet.',
-  'mcp.allowlist.restartHint': 'Save to apply allowlist changes immediately when MCP Server is running',
-  'mcp.allowlist.applyHint': 'Save to apply allowlist changes immediately when MCP Server is running',
+  'mcp.allowlist.restartHint':
+    'Save to apply allowlist changes immediately when MCP Server is running',
+  'mcp.allowlist.applyHint':
+    'Save to apply allowlist changes immediately when MCP Server is running',
   'mcp.config.cursor': 'Cursor',
   'mcp.config.claude': 'Claude Desktop',
   'mcp.config.copy': 'Copy',
   'mcp.config.copied': 'Copied',
   'mcp.config.pathHint': 'Typical location: {path}',
-  'mcp.config.commandHint': 'Uses `datazen` on PATH. For packaged apps, replace command with the absolute binary path.',
+  'mcp.config.commandHint':
+    'Uses `datazen` on PATH. For packaged apps, replace command with the absolute binary path.',
   'mcpClient.title': 'External MCP Servers',
   'mcpClient.description': 'Connect to external MCP Servers to extend AI assistant capabilities.',
   'mcpClient.savedConfigs': 'Saved Servers',

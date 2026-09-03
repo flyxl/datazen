@@ -1,37 +1,10 @@
 use crate::commands::error::{CmdExt, CommandError};
 use crate::data_sync::sql::qualify_relation_sql;
-use crate::schema_diff::types::{ChangedColumnDiff, ColumnSnapshot, TableColumnDiff};
+use crate::schema_diff::types::{ChangedColumnDiff, ColumnChange, ColumnSnapshot, TableColumnDiff};
 use crate::transfer::ir::{IRColumn, IRTable, IRType};
 use std::collections::HashMap;
 
 // ── Helpers ─────────────────────────────────────────────────────────
-
-/// Run adapter-provided full-type SQL (if any) and map `(name, full_type)` rows.
-pub(crate) async fn fetch_full_column_types(
-    adapter: &dyn crate::transfer::adapter::SyncSourceAdapter,
-    driver: &dyn crate::db::DatabaseDriver,
-    handle: &crate::db::ConnectionHandle,
-    table: &str,
-) -> Result<std::collections::HashMap<String, String>, CommandError> {
-    let Some(sql) = adapter.full_column_types_query(table) else {
-        return Ok(std::collections::HashMap::new());
-    };
-    let result = driver
-        .query(handle, &sql)
-        .await
-        .cmd_err("fetch_full_column_types")?;
-    let mut map = std::collections::HashMap::new();
-    for row in &result.rows {
-        if let (
-            Some(Some(crate::db::Value::String(name))),
-            Some(Some(crate::db::Value::String(ft))),
-        ) = (row.get(0), row.get(1))
-        {
-            map.insert(name.clone(), ft.clone());
-        }
-    }
-    Ok(map)
-}
 
 /// Count rows in a table on a given connection.
 pub(super) fn value_as_u64(value: &crate::db::Value) -> Option<u64> {
@@ -96,16 +69,14 @@ fn ir_column_snapshot(col: &IRColumn) -> ColumnSnapshot {
         name: col.name.clone(),
         data_type: format_ir_type(&col.ir_type),
         nullable: col.nullable,
+        default_value: None,
+        comment: None,
         is_primary_key: col.is_primary_key,
+        is_auto_increment: false,
     }
 }
 
-/// Compare schemas using IR types so dialect aliases (e.g. `character varying` vs `varchar`)
-/// that map to the same [`IRType`] are not reported as dataType changes.
-///
-/// Same contract as [`crate::schema_diff::diff_table_schemas`]: source is the desired
-/// state, so `missing_on_target`/`added` are columns to ADD to the target and
-/// `extra_on_target`/`removed` are columns to DROP from the target.
+/// Compare schemas using IR types so dialect aliases that map to the same [`IRType`] are not reported as dataType changes.
 pub(crate) fn diff_table_schemas_ir(
     table: &str,
     src_ir: &IRTable,
@@ -121,34 +92,30 @@ pub(crate) fn diff_table_schemas_ir(
         .iter()
         .map(|c| (c.name.as_str(), c))
         .collect();
-
     let mut missing_on_target = Vec::new();
     let mut extra_on_target = Vec::new();
     let mut changed = Vec::new();
-
     for col in &src_ir.columns {
         if !tgt_map.contains_key(col.name.as_str()) {
             missing_on_target.push(ir_column_snapshot(col));
         }
     }
-
     for col in &tgt_ir.columns {
         if !src_map.contains_key(col.name.as_str()) {
             extra_on_target.push(ir_column_snapshot(col));
         }
     }
-
     for col in &src_ir.columns {
         if let Some(tgt_col) = tgt_map.get(col.name.as_str()) {
             let mut changes = Vec::new();
             if col.ir_type != tgt_col.ir_type {
-                changes.push("dataType".into());
+                changes.push(ColumnChange::DataType);
             }
             if col.nullable != tgt_col.nullable {
-                changes.push("nullable".into());
+                changes.push(ColumnChange::Nullable);
             }
             if col.is_primary_key != tgt_col.is_primary_key {
-                changes.push("isPrimaryKey".into());
+                changes.push(ColumnChange::PrimaryKey);
             }
             if !changes.is_empty() {
                 changed.push(ChangedColumnDiff {
@@ -160,7 +127,6 @@ pub(crate) fn diff_table_schemas_ir(
             }
         }
     }
-
     TableColumnDiff {
         table: table.to_string(),
         added: missing_on_target.clone(),

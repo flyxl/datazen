@@ -74,23 +74,11 @@ pub fn check_base_table(table_type: &TableType, side: &str, name: &str) -> Optio
     }
 }
 
-pub fn effective_primary_key(schema: &TableSchema) -> Vec<String> {
-    if !schema.primary_keys.is_empty() {
-        return schema.primary_keys.clone();
-    }
-    schema
-        .columns
-        .iter()
-        .filter(|c| c.is_primary_key)
-        .map(|c| c.name.clone())
-        .collect()
-}
-
 pub fn check_table_gate(family: &str, source: &TableSchema, target: &TableSchema) -> GateVerdict {
     let mut issues = Vec::new();
 
-    let src_pk = effective_primary_key(source);
-    let tgt_pk = effective_primary_key(target);
+    let src_pk = source.effective_primary_keys();
+    let tgt_pk = target.effective_primary_keys();
 
     if src_pk.is_empty() || tgt_pk.is_empty() {
         issues.push(CompatIssue {

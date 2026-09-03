@@ -7,7 +7,8 @@ const pack = {
   'chat.thinking': 'Thinking…',
   'chat.callingMcpTool': 'Calling MCP tool {name}…',
   'common.aiNotConfigured': 'Please configure an AI provider in Settings first',
-  'chat.welcome': "Hello! I'm your database assistant. Ask me about SQL queries, database concepts, or data analysis.",
+  'chat.welcome':
+    "Hello! I'm your database assistant. Ask me about SQL queries, database concepts, or data analysis.",
   'chat.insertSql': 'Insert to Editor',
   'chat.copyCode': 'Copy code',
   'chat.reasoning': 'Thinking',

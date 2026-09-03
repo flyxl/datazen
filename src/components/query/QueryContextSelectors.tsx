@@ -12,6 +12,8 @@ export interface QueryContextSelectorsProps {
   namespaceTree: import('../../lib/sqlNamespace').SqlNamespace;
   pathAliases: Record<string, string>;
   contextPath: readonly string[];
+  /** True while a path-hierarchy child request is in flight. */
+  namespaceLoading?: boolean;
   contextSchema?: string | null;
   onSelectLevel: (index: number, value: string) => void;
 }
@@ -51,6 +53,7 @@ function QueryContextCompactSelect({
   options,
   placeholderKey,
   disabled,
+  loading,
   levelIndex,
   onChange,
 }: {
@@ -58,6 +61,7 @@ function QueryContextCompactSelect({
   options: readonly string[];
   placeholderKey: 'query.database' | 'query.catalog' | 'query.schema';
   disabled?: boolean;
+  loading?: boolean;
   levelIndex?: number;
   onChange: (value: string) => void;
 }) {
@@ -77,6 +81,7 @@ function QueryContextCompactSelect({
       blurOnSelect
       listMinWidth={QUERY_CONTEXT_OPTIONS_MIN_WIDTH}
       disabled={disabled}
+      loading={loading}
       triggerDataAttrs={
         levelIndex === undefined ? undefined : { 'data-query-context-level': String(levelIndex) }
       }
@@ -89,12 +94,14 @@ function PathHierarchyQueryContextSelectors({
   pathAliases,
   databases,
   contextPath,
+  namespaceLoading = false,
   onSelectLevel,
 }: {
   namespaceTree: import('../../lib/sqlNamespace').SqlNamespace;
   pathAliases: Record<string, string>;
   databases: readonly string[];
   contextPath: readonly string[];
+  namespaceLoading: boolean;
   onSelectLevel: (index: number, value: string) => void;
 }) {
   const pendingFocusLevelRef = useRef<number | null>(null);
@@ -151,6 +158,7 @@ function PathHierarchyQueryContextSelectors({
               options={segment.options}
               placeholderKey={levelLabelKey(segment.levelIndex, true)}
               disabled={segment.options.length === 0}
+              loading={namespaceLoading && segment.options.length === 0}
               levelIndex={segment.levelIndex}
               onChange={(value) => handlePathLevelSelect(segment.levelIndex, value)}
             />
@@ -169,6 +177,7 @@ export function QueryContextSelectors({
   namespaceTree,
   pathAliases,
   contextPath,
+  namespaceLoading,
   contextSchema,
   onSelectLevel,
 }: QueryContextSelectorsProps) {
@@ -179,6 +188,7 @@ export function QueryContextSelectors({
         pathAliases={pathAliases}
         databases={databases}
         contextPath={contextPath}
+        namespaceLoading={namespaceLoading ?? false}
         onSelectLevel={onSelectLevel}
       />
     );

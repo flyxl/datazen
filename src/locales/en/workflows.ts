@@ -72,7 +72,8 @@ const pack = {
   'workflows.aiCreate': 'AI Create',
   'workflows.aiCreate.title': 'AI Create Workflow',
   'workflows.aiCreate.placeholder': 'Describe the workflow you want to create…',
-  'workflows.aiCreate.welcome': 'Describe the workflow you want to create, and AI will help you generate a YAML configuration through conversation.',
+  'workflows.aiCreate.welcome':
+    'Describe the workflow you want to create, and AI will help you generate a YAML configuration through conversation.',
   'workflows.aiCreate.connection': 'Connection',
   'workflows.aiCreate.connectionHint': 'Select a connection to provide schema context',
   'workflows.aiCreate.noConnection': 'No connection',

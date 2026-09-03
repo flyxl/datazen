@@ -17,7 +17,8 @@ const pack = {
   'backup.progressPreparing': 'Preparing backup…',
   'backup.progressObject': 'Dumping {name} ({current}/{total})',
   'backup.progressWriting': 'Writing backup file…',
-  'backup.restoreOverwriteConfirm': 'Target database “{database}” already has {count} objects. Continuing will drop existing tables/views and then apply the backup. Overwrite?',
+  'backup.restoreOverwriteConfirm':
+    'Target database “{database}” already has {count} objects. Continuing will drop existing tables/views and then apply the backup. Overwrite?',
   'backup.restorePreparing': 'Reading backup file…',
   'backup.restoreProgress': 'Restoring {name} ({current}/{total})',
   'backup.progressLog': 'Execution log',

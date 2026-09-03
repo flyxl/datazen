@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { PathInput } from '../../components/ui/PathInput';
+import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
 import { useAiStore } from '../../stores/aiStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
@@ -37,7 +38,7 @@ function rowsToEnv(rows: EnvRow[]): Record<string, string> {
 }
 
 export function McpClientSection() {
-  useLocaleDomains(['mcp']);
+  const localesReady = useLocaleDomains(['mcp']);
   const { t } = useI18n();
   const savedConfigs = useSettingsStore((s) => s.settings.mcpClientServers ?? []);
   const {
@@ -160,6 +161,12 @@ export function McpClientSection() {
 
   const inputClass =
     'h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500';
+
+  // All hooks above. Gate the section on the `mcp` locale pack so the UI never
+  // renders raw/un-translated `t('mcpClient.*')` keys before it is imported.
+  if (!localesReady) {
+    return <LocaleDomainLoading variant="section" testId="mcp-client-locale-loading" />;
+  }
 
   return (
     <>

@@ -49,9 +49,11 @@ const pack = {
   'schemaTree.compareData': '比较数据',
   'schemaTree.confirmDropView': '确定要删除视图「{name}」吗？此操作不可撤销。',
   'schemaTree.dropDatabase': '删除数据库',
-  'schemaTree.confirmDropDatabase': '确定要删除数据库「{name}」吗？所有数据将永久丢失，此操作不可撤销。',
+  'schemaTree.confirmDropDatabase':
+    '确定要删除数据库「{name}」吗？所有数据将永久丢失，此操作不可撤销。',
   'schemaTree.dropSchema': '删除 Schema',
-  'schemaTree.confirmDropSchema': '确定要删除 Schema「{name}」吗？该 Schema 下的所有对象将永久丢失，此操作不可撤销。',
+  'schemaTree.confirmDropSchema':
+    '确定要删除 Schema「{name}」吗？该 Schema 下的所有对象将永久丢失，此操作不可撤销。',
   'schemaTree.dropDatabaseFailed': '删除数据库失败。',
   'schemaTree.dropSchemaFailed': '删除 Schema 失败。',
   'schemaTree.dropRelationFailed': '删除表或视图失败。',
@@ -108,7 +110,8 @@ const pack = {
   'privileges.executeOk': '权限语句已执行',
   'privileges.users': '用户',
   'privileges.dropUser': '删除用户',
-  'privileges.confirmDropUser': '确定要删除用户「{name}」吗？该用户及其所有权限将被移除，此操作不可撤销。',
+  'privileges.confirmDropUser':
+    '确定要删除用户「{name}」吗？该用户及其所有权限将被移除，此操作不可撤销。',
   'privileges.revokePrivilege': '撤销权限',
   'privileges.confirmRevoke': '确定要撤销 {user} 对 {object} 的 {privilege} 权限吗？',
   'privileges.byUser': '按用户',
@@ -178,7 +181,8 @@ const pack = {
   'structEditor.exportUnsupported': '当前连接类型不支持导出表结构',
   'structEditor.ddlWarn.title': '确认结构变更',
   'structEditor.ddlWarn.risky': '此计划包含 {risks} 语句，可能会锁定或重写表。',
-  'structEditor.ddlWarn.largeTable': '估计行数约 {rows}。对大表执行在线 DDL 可能耗时较长并阻塞写入。',
+  'structEditor.ddlWarn.largeTable':
+    '估计行数约 {rows}。对大表执行在线 DDL 可能耗时较长并阻塞写入。',
   'structEditor.ddlWarn.footer': '继续前请仔细审阅生成的 SQL。生产环境建议安排维护窗口。',
   'structEditor.ddlWarn.confirm': '应用变更',
   'serverStatus.refresh': '刷新',

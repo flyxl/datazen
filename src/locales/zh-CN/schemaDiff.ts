@@ -1,6 +1,7 @@
 /** Auto-split domain: schemaDiff (zh-CN) */
 const pack = {
-  'schemaDiff.description': '以源库为目标态，对比并生成 DDL，审阅后部署到目标连接。默认仅加法变更。',
+  'schemaDiff.description':
+    '以源库为目标态，对比并生成 DDL，审阅后部署到目标连接。默认仅加法变更。',
   'schemaDiff.table': '表名',
   'schemaDiff.tablePlaceholder': '例如 public.users 或 users',
   'schemaDiff.tables': '表名（多表）',
@@ -18,7 +19,8 @@ const pack = {
   'schemaDiff.statements': '语句',
   'schemaDiff.emptyPlan': '未生成可执行的计划语句',
   'schemaDiff.emptyPlanNoDiff': '未生成可执行语句：按当前计划选项，所选结构已经一致。',
-  'schemaDiff.emptyPlanSkipped': '未生成可执行语句。请查看上方警告；部分差异可能因属于破坏性操作或不支持而被跳过。',
+  'schemaDiff.emptyPlanSkipped':
+    '未生成可执行语句。请查看上方警告；部分差异可能因属于破坏性操作或不支持而被跳过。',
   'schemaDiff.exportConfig': '导出配置 JSON',
   'schemaDiff.importConfig': '导入配置',
   'schemaDiff.importConfigTitle': '导入结构对比配置',
@@ -46,6 +48,12 @@ const pack = {
   'schemaDiff.txUnsupported': '此方言 DDL 通常自动提交',
   'schemaDiff.requireRollback': '要求完整回滚脚本',
   'schemaDiff.rollbackIncomplete': '以下语句缺少回滚 SQL',
+  'schemaDiff.requirement.backfillTitle': '需要回填',
+  'schemaDiff.requirement.backfillHint': '在强制 NOT NULL 之前必须先填充已有行。',
+  'schemaDiff.requirement.unsupportedTitle': '不支持',
+  'schemaDiff.rollback.available': '回滚：可用',
+  'schemaDiff.rollback.partial': '回滚：部分可用 — {count} 条语句无法自动回滚。',
+  'schemaDiff.rollback.none': '无自动回滚',
   'schemaDiff.confirmDeploy': '破坏性计划请输入 {token} 确认',
   'schemaDiff.deploy': '部署到目标',
   'schemaDiff.deploying': '正在部署…',
@@ -55,7 +63,8 @@ const pack = {
   'schemaDiff.extraOnTarget': '目标多余（将 DROP）',
   'schemaDiff.limitations.title': '当前版本限制',
   'schemaDiff.limitations.noViews': '不同步视图、函数、触发器与存储过程',
-  'schemaDiff.limitations.noOnlineAlter': '不提供在线改表工具（pt-osc / gh-ost）；DDL 直接在目标库执行',
+  'schemaDiff.limitations.noOnlineAlter':
+    '不提供在线改表工具（pt-osc / gh-ost）；DDL 直接在目标库执行',
   'schemaDiff.limitations.noRenameGuess': '不按相似度猜测列或表重命名',
   'schemaDiff.limitations.crossDialect': '跨方言部署可能调整类型、默认值或时区语义',
   'schemaDiff.limitations.noAutoBackup': '部署前不自动备份',

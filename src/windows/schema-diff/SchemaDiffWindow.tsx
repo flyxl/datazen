@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, ChevronLeft, ChevronRight, Copy, Loader2 } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
+import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { CopyableError } from '../../components/ui/CopyableError';
@@ -57,7 +58,7 @@ function tableDiffHasChanges(diff: TableSchemaDiff): boolean {
 }
 
 export function SchemaDiffWindow() {
-  useLocaleDomains(['schemaDiff']);
+  const localesReady = useLocaleDomains(['schemaDiff']);
   useSettings();
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
@@ -428,6 +429,12 @@ export function SchemaDiffWindow() {
       {t('schemaDiff.crossDialectNote')}
     </span>
   ) : undefined;
+
+  // All hooks above. Gate the body on the `schemaDiff` locale pack so the UI
+  // never renders raw/un-translated `t('schemaDiff.*')` keys before it loads.
+  if (!localesReady) {
+    return <LocaleDomainLoading testId="schema-diff-locale-loading" />;
+  }
 
   return (
     <div

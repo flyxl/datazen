@@ -1,6 +1,7 @@
 /** Auto-split domain: schemaDiff (en) */
 const pack = {
-  'schemaDiff.description': 'Treat source as desired state: compare, generate DDL, review, then deploy to target. Additive-only by default.',
+  'schemaDiff.description':
+    'Treat source as desired state: compare, generate DDL, review, then deploy to target. Additive-only by default.',
   'schemaDiff.table': 'Table name',
   'schemaDiff.tablePlaceholder': 'e.g. public.users or users',
   'schemaDiff.tables': 'Tables',
@@ -13,12 +14,15 @@ const pack = {
   'schemaDiff.allowDestructive': 'Allow destructive changes (DROP / narrowing)',
   'schemaDiff.includeIndexes': 'Include indexes',
   'schemaDiff.regeneratePlan': 'Regenerate',
-  'schemaDiff.crossDialectNote': 'Cross-dialect plans map types via sync IR; unsupported types are skipped with warnings.',
+  'schemaDiff.crossDialectNote':
+    'Cross-dialect plans map types via sync IR; unsupported types are skipped with warnings.',
   'schemaDiff.warnings': 'Warnings',
   'schemaDiff.statements': 'statements',
   'schemaDiff.emptyPlan': 'No executable plan statements were generated',
-  'schemaDiff.emptyPlanNoDiff': 'No executable statements: the selected schemas are already aligned for the enabled plan options.',
-  'schemaDiff.emptyPlanSkipped': 'No executable statements were generated. Review the warnings above; some differences may have been skipped because they are destructive or unsupported.',
+  'schemaDiff.emptyPlanNoDiff':
+    'No executable statements: the selected schemas are already aligned for the enabled plan options.',
+  'schemaDiff.emptyPlanSkipped':
+    'No executable statements were generated. Review the warnings above; some differences may have been skipped because they are destructive or unsupported.',
   'schemaDiff.exportConfig': 'Export config JSON',
   'schemaDiff.importConfig': 'Import config',
   'schemaDiff.importConfigTitle': 'Import Schema Diff config',
@@ -46,6 +50,14 @@ const pack = {
   'schemaDiff.txUnsupported': 'this dialect usually auto-commits DDL',
   'schemaDiff.requireRollback': 'Require complete rollback SQL',
   'schemaDiff.rollbackIncomplete': 'Missing rollback SQL for',
+  'schemaDiff.requirement.backfillTitle': 'Backfill required',
+  'schemaDiff.requirement.backfillHint':
+    'Existing rows must be populated before enforcing NOT NULL.',
+  'schemaDiff.requirement.unsupportedTitle': 'Unsupported',
+  'schemaDiff.rollback.available': 'Rollback: Available',
+  'schemaDiff.rollback.partial':
+    'Rollback: Partial — {count} statements cannot be automatically rolled back.',
+  'schemaDiff.rollback.none': 'No automatic rollback available',
   'schemaDiff.confirmDeploy': 'Type {token} to confirm destructive deploy',
   'schemaDiff.deploy': 'Deploy to target',
   'schemaDiff.deploying': 'Deploying…',
@@ -54,12 +66,16 @@ const pack = {
   'schemaDiff.missingOnTarget': 'Missing on target (ADD)',
   'schemaDiff.extraOnTarget': 'Extra on target (DROP)',
   'schemaDiff.limitations.title': 'Current limitations',
-  'schemaDiff.limitations.noViews': 'Does not sync views, functions, triggers, or stored procedures',
-  'schemaDiff.limitations.noOnlineAlter': 'No online schema change tools (pt-osc / gh-ost); DDL runs directly on the target',
+  'schemaDiff.limitations.noViews':
+    'Does not sync views, functions, triggers, or stored procedures',
+  'schemaDiff.limitations.noOnlineAlter':
+    'No online schema change tools (pt-osc / gh-ost); DDL runs directly on the target',
   'schemaDiff.limitations.noRenameGuess': 'No similarity-based column or table rename guessing',
-  'schemaDiff.limitations.crossDialect': 'Cross-dialect deploy may adjust types, defaults, or timezone semantics',
+  'schemaDiff.limitations.crossDialect':
+    'Cross-dialect deploy may adjust types, defaults, or timezone semantics',
   'schemaDiff.limitations.noAutoBackup': 'No automatic backup before deploy',
-  'schemaDiff.limitations.noMcpDeploy': 'No one-click deploy via MCP (may come later as high-risk tool)',
+  'schemaDiff.limitations.noMcpDeploy':
+    'No one-click deploy via MCP (may come later as high-risk tool)',
   'schemaDiff.limitations.dontShowAgain': 'Do not show this again',
 } as const;
 export default pack;

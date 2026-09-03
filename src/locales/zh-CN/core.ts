@@ -90,7 +90,8 @@ const pack = {
   'welcome.feature.workflow.description': '通过 YAML 驱动的工作流自动化重复任务。',
   'welcome.feature.ai.description': '生成 SQL、解释查询，并支持多种 AI 提供商。',
   'welcome.createConnection': '创建第一个连接',
-  'welcome.importConnectionHint': '支持从 TablePlus、Navicat、DataGrip、DBeaver、DBX 或 DataZen 导出文件导入。',
+  'welcome.importConnectionHint':
+    '支持从 TablePlus、Navicat、DataGrip、DBeaver、DBX 或 DataZen 导出文件导入。',
   'common.newGroup': '新建分组',
   'main.ctx.renameGroup': '重命名分组',
   'main.ctx.deleteGroup': '删除分组',
@@ -155,7 +156,8 @@ const pack = {
   'plugins.page.toggle': '启用插件',
   'plugins.page.uninstall': '卸载插件',
   'plugins.page.uninstallTitle': '卸载插件',
-  'plugins.page.uninstallMessage': '确定从 DataZen 移除「{name}」吗？其工作区标签页将一并关闭，且插件本地保存的全部数据（storage）将被永久删除。',
+  'plugins.page.uninstallMessage':
+    '确定从 DataZen 移除「{name}」吗？其工作区标签页将一并关闭，且插件本地保存的全部数据（storage）将被永久删除。',
   'plugins.page.themeBadge': '主题',
   'plugins.page.themeHint': '主题请在 设置 → 外观 中切换。',
   'plugins.page.apiMismatch': 'API 版本不兼容',
@@ -180,12 +182,15 @@ const pack = {
   'action.dashboard': '数据看板',
   'common.exportAppData': '导出应用数据',
   'common.importAppData': '导入应用数据',
-  'appData.exportSuccess': '应用数据已导出。ZIP 不包含加密密钥——若需在其他机器解密已保存的密码，请单独备份密钥。',
+  'appData.exportSuccess':
+    '应用数据已导出。ZIP 不包含加密密钥——若需在其他机器解密已保存的密码，请单独备份密钥。',
   'common.exportFailed': '导出失败',
-  'appData.importConfirmMessage': '此操作将覆盖所有应用数据（现有日志文件会保留）。备份不含加密密钥——仅在本机（或拥有相同密钥的机器）上恢复时，已保存的密码仍可用。是否继续？',
+  'appData.importConfirmMessage':
+    '此操作将覆盖所有应用数据（现有日志文件会保留）。备份不含加密密钥——仅在本机（或拥有相同密钥的机器）上恢复时，已保存的密码仍可用。是否继续？',
   'common.importFailed': '导入失败',
   'appData.backupKeyTitle': '备份加密密钥',
-  'appData.backupKeyMessage': '是否现在另存加密密钥？请妥善保管；在其他机器恢复应用数据后，需要此密钥才能解密已保存的密码。',
+  'appData.backupKeyMessage':
+    '是否现在另存加密密钥？请妥善保管；在其他机器恢复应用数据后，需要此密钥才能解密已保存的密码。',
   'appData.backupKeySaved': '加密密钥已保存。',
   'appData.backupKeyFailed': '加密密钥保存失败。',
   'common.exportConnections': '导出连接',

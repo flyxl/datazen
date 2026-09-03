@@ -83,16 +83,19 @@ const pack = {
   'welcome.title': 'Welcome to DataZen',
   'welcome.subtitle': 'A cross-platform database manager with AI-assisted workflows.',
   'welcome.feature.connections.title': 'Database Management',
-  'welcome.feature.connections.description': 'Connect to PostgreSQL, MySQL, SQLite, Redis, and more.',
+  'welcome.feature.connections.description':
+    'Connect to PostgreSQL, MySQL, SQLite, Redis, and more.',
   'welcome.feature.dashboard.title': 'Data Dashboards',
   'welcome.feature.dashboard.description': 'Build visual dashboards from your query results.',
   'welcome.feature.workflow.title': 'Workflows',
   'welcome.feature.workflow.description': 'Automate repetitive tasks with YAML-driven workflows.',
   'common.aiAssistant': 'AI Assistant',
-  'welcome.feature.ai.description': 'Generate SQL, explain queries, and get help from multiple AI providers.',
+  'welcome.feature.ai.description':
+    'Generate SQL, explain queries, and get help from multiple AI providers.',
   'welcome.createConnection': 'Create Your First Connection',
   'common.importConnections': 'Import Connections',
-  'welcome.importConnectionHint': 'Import from TablePlus, Navicat, DataGrip, DBeaver, DBX, or a DataZen export file.',
+  'welcome.importConnectionHint':
+    'Import from TablePlus, Navicat, DataGrip, DBeaver, DBX, or a DataZen export file.',
   'common.newGroup': 'New Group',
   'main.ctx.renameGroup': 'Rename Group',
   'main.ctx.deleteGroup': 'Delete Group',
@@ -123,9 +126,11 @@ const pack = {
   'main.ctx.server': 'Server',
   'main.ctx.organize': 'Manage Connection',
   'main.ctx.createNew': 'Create New',
-  'main.ctx.confirmDeleteConnection': 'Are you sure you want to delete connection "{name}"? This cannot be undone.',
+  'main.ctx.confirmDeleteConnection':
+    'Are you sure you want to delete connection "{name}"? This cannot be undone.',
   'main.groupNamePlaceholder': 'Enter group name',
-  'main.confirmDeleteGroup': 'Are you sure you want to delete group "{name}"? Connections in this group will be moved to ungrouped.',
+  'main.confirmDeleteGroup':
+    'Are you sure you want to delete group "{name}"? Connections in this group will be moved to ungrouped.',
   'main.backupSuccess': 'Database backed up successfully',
   'main.backupFailed': 'Backup failed',
   'main.restoreSuccess': 'Database restored successfully',
@@ -139,7 +144,8 @@ const pack = {
   'nav.workspacePages': 'Workspace',
   'nav.modeRail': 'Workspace modes',
   'workspace.defaultTitle': 'Workspace',
-  'workspace.defaultHint': 'Click an item in the left navigator or a card below to open a plugin page.',
+  'workspace.defaultHint':
+    'Click an item in the left navigator or a card below to open a plugin page.',
   'workspace.emptyTitle': 'No workspace plugins yet',
   'workspace.emptyHint': 'Install a plugin from the Plugins page and it will show up here.',
   'workspace.openPlugins': 'Open Plugins',
@@ -157,15 +163,18 @@ const pack = {
   'plugins.page.toggle': 'Enable plugin',
   'plugins.page.uninstall': 'Uninstall plugin',
   'plugins.page.uninstallTitle': 'Uninstall Plugin',
-  'plugins.page.uninstallMessage': 'Remove "{name}" from DataZen? Its workspace tabs will be closed, and ALL data the plugin saved locally (its storage) will be permanently deleted.',
+  'plugins.page.uninstallMessage':
+    'Remove "{name}" from DataZen? Its workspace tabs will be closed, and ALL data the plugin saved locally (its storage) will be permanently deleted.',
   'plugins.page.themeBadge': 'Theme',
   'plugins.page.themeHint': 'Switch themes in Settings → Appearance.',
   'plugins.page.apiMismatch': 'API version not supported',
   'plugins.page.apiMismatchHint': 'Plugin API v{plugin} does not match host API v{host}.',
   'plugins.page.emptyTitle': 'No plugins found',
-  'plugins.page.emptyHint': 'Install a plugin package (.zip) to extend DataZen with new workspace pages or themes.',
+  'plugins.page.emptyHint':
+    'Install a plugin package (.zip) to extend DataZen with new workspace pages or themes.',
   'plugins.install.title': 'Install Plugin',
-  'plugins.install.description': 'Select a local plugin package (.zip) or unpacked folder to install.',
+  'plugins.install.description':
+    'Select a local plugin package (.zip) or unpacked folder to install.',
   'plugins.install.pickPrompt': 'Choose how to locate the plugin package on this computer.',
   'plugins.install.browseZip': 'Select ZIP file…',
   'plugins.install.browseFolder': 'Select folder…',
@@ -182,12 +191,15 @@ const pack = {
   'action.dashboard': 'Dashboards',
   'common.exportAppData': 'Export App Data',
   'common.importAppData': 'Import App Data',
-  'appData.exportSuccess': 'App data exported successfully. The encryption key is not included in the ZIP — back it up separately if you need to decrypt saved passwords on another machine.',
+  'appData.exportSuccess':
+    'App data exported successfully. The encryption key is not included in the ZIP — back it up separately if you need to decrypt saved passwords on another machine.',
   'common.exportFailed': 'Export failed',
-  'appData.importConfirmMessage': 'This will overwrite all application data. Existing log files will be preserved. Backups do not include the encryption key — passwords remain usable only when restoring on this machine (or one with the same key). Continue?',
+  'appData.importConfirmMessage':
+    'This will overwrite all application data. Existing log files will be preserved. Backups do not include the encryption key — passwords remain usable only when restoring on this machine (or one with the same key). Continue?',
   'common.importFailed': 'Import failed',
   'appData.backupKeyTitle': 'Back Up Encryption Key',
-  'appData.backupKeyMessage': 'Save a copy of your encryption key now? Store it securely; you will need it to decrypt saved passwords after restoring on another machine.',
+  'appData.backupKeyMessage':
+    'Save a copy of your encryption key now? Store it securely; you will need it to decrypt saved passwords after restoring on another machine.',
   'appData.backupKeySaved': 'Encryption key saved.',
   'appData.backupKeyFailed': 'Failed to save encryption key.',
   'common.exportConnections': 'Export Connections',
@@ -238,7 +250,8 @@ const pack = {
   'errorBoundary.reload': 'Reload',
   'panel.tabListLabel': 'Open panels',
   'panel.closeTab': 'Close {title}',
-  'permissions.contextConnections': 'Read the connection list (names and types only, never credentials)',
+  'permissions.contextConnections':
+    'Read the connection list (names and types only, never credentials)',
   'permissions.commandInvoke': 'Run database commands through the host Driver Command API',
   'permissions.storageLocal': 'Keep a small private key-value store on this machine',
   'permissions.uiNotify': 'Show notifications via the host (rate limited)',

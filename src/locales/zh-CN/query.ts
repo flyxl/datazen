@@ -39,7 +39,8 @@ const pack = {
   'query.fixSql': '修复 SQL',
   'query.retry': '重试',
   'query.retryConfirm': '使用相同的 SQL、参数和数据库上下文重试此查询？',
-  'query.postgresDoubleQuoteHint': "PostgreSQL 中双引号用于标识符，不用于字符串。请把值改成单引号，例如 `backend = 'quark'`。",
+  'query.postgresDoubleQuoteHint':
+    "PostgreSQL 中双引号用于标识符，不用于字符串。请把值改成单引号，例如 `backend = 'quark'`。",
   'query.favorites': '收藏',
   'query.favoritesTitle': 'SQL 收藏',
   'query.noFavorites': '暂无收藏',
@@ -56,11 +57,13 @@ const pack = {
   'query.rollbackTx': '回滚',
   'query.inTransaction': '事务中',
   'query.txUnclosedTitle': '检测到未结束的事务',
-  'query.txUnclosedBody': '脚本中包含 BEGIN / START TRANSACTION，但没有配对的 COMMIT 或 ROLLBACK。执行后连接将保持「事务中」状态；确认后继续执行？',
+  'query.txUnclosedBody':
+    '脚本中包含 BEGIN / START TRANSACTION，但没有配对的 COMMIT 或 ROLLBACK。执行后连接将保持「事务中」状态；确认后继续执行？',
   'query.txUnclosedConfirm': '继续执行',
   'query.txUnclosedCancel': '取消',
   'query.txAbortedTitle': '事务已中止',
-  'query.txAbortedBody': '当前事务因语句失败已中止。后续语句在回滚前都无法执行。请选择全部回滚，或跳过并稍后自行处理。',
+  'query.txAbortedBody':
+    '当前事务因语句失败已中止。后续语句在回滚前都无法执行。请选择全部回滚，或跳过并稍后自行处理。',
   'query.txAbortedRollback': '全部回滚',
   'query.txAbortedSkip': '跳过',
   'sqlFile.clickRun': '点击"运行"执行 SQL 文件',
@@ -68,7 +71,8 @@ const pack = {
   'sqlFile.selectAndRun': '选择 SQL 文件',
   'sqlFile.targetDatabase': '目标数据库：{database}',
   'sqlFile.noDatabase': '未选择数据库',
-  'sqlFile.executeConfirm': 'SQL 文件可能包含删除表或记录的语句（如 DROP、DELETE、TRUNCATE）。是否继续在当前数据库上执行？',
+  'sqlFile.executeConfirm':
+    'SQL 文件可能包含删除表或记录的语句（如 DROP、DELETE、TRUNCATE）。是否继续在当前数据库上执行？',
   'sqlFile.executeSuccess': 'SQL 文件执行成功',
   'tableData.loadFailed': '加载表数据失败',
   'tableData.noPrimaryKey': '无法提交更改：表没有主键',

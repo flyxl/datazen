@@ -1,9 +1,11 @@
 /** Auto-split domain: mcp (zh-CN) */
 const pack = {
   'mcp.title': 'MCP Server',
-  'mcp.description': '将 DataZen 作为 MCP Server 运行，让外部 AI 工具（如 Claude Desktop、Cursor）可以访问你的数据库',
+  'mcp.description':
+    '将 DataZen 作为 MCP Server 运行，让外部 AI 工具（如 Claude Desktop、Cursor）可以访问你的数据库',
   'mcp.enabled': '启用 MCP Server',
-  'mcp.enabledHint': '默认关闭。给 Claude Desktop / Cursor 使用时，推荐用命令行 datazen --mcp 单独启动',
+  'mcp.enabledHint':
+    '默认关闭。给 Claude Desktop / Cursor 使用时，推荐用命令行 datazen --mcp 单独启动',
   'mcp.status': '状态',
   'mcp.running': '运行中',
   'mcp.stopped': '已停止',
@@ -28,7 +30,8 @@ const pack = {
   'mcp.permission.restartHint': 'MCP Server 运行中时修改权限模式会立即生效',
   'mcp.permission.applyHint': 'MCP Server 运行中时修改权限模式会立即生效',
   'mcp.allowlist.title': '连接白名单',
-  'mcp.allowlist.description': '仅勾选的连接会对 MCP 客户端可见。全部不勾选表示暴露所有已保存连接。',
+  'mcp.allowlist.description':
+    '仅勾选的连接会对 MCP 客户端可见。全部不勾选表示暴露所有已保存连接。',
   'mcp.allowlist.empty': '暂无已保存的连接。',
   'mcp.allowlist.restartHint': '保存后若 MCP Server 正在运行，白名单变更将立即生效',
   'mcp.allowlist.applyHint': '保存后若 MCP Server 正在运行，白名单变更将立即生效',

@@ -984,6 +984,7 @@ export function QueryPanel({
           namespaceTree={namespaceTree}
           pathAliases={pathAliases}
           contextPath={contextPath}
+          namespaceLoading={namespaceLoading}
           onSelectLevel={(index, value) => {
             handleSelectContextLevel(index, value);
           }}

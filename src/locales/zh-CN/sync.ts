@@ -58,7 +58,8 @@ const pack = {
   'sync.explainDiffTitle': '比较结果说明',
   'sync.explainDiffFailed': 'AI 解释生成失败',
   'sync.explainDiffNoAi': '请先在设置中配置 AI 提供商',
-  'sync.explainDiffPrompt': '请用自然语言总结以下数据同步比较结果。说明插入/更新/删除数量、未变更表，以及不兼容表及原因。如有需要，建议是否应先做 Schema Diff 或改用 Data Transfer。\n\n{report}',
+  'sync.explainDiffPrompt':
+    '请用自然语言总结以下数据同步比较结果。说明插入/更新/删除数量、未变更表，以及不兼容表及原因。如有需要，建议是否应先做 Schema Diff 或改用 Data Transfer。\n\n{report}',
   'sync.filter.all': '全部',
   'sync.filter.insert': '插入',
   'sync.filter.update': '更新',

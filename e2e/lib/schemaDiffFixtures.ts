@@ -3,7 +3,9 @@
  */
 import { expect } from '@wdio/globals';
 import {
+  disconnectBackend,
   invokeBackend,
+  parseQueryRows,
   queryScalar,
   withSafeModeOff,
   type QueryResultPayload,
@@ -71,18 +73,23 @@ export async function setupPgManyColumnsSourceMinimalTarget(
 ): Promise<void> {
   const srcSession = await invokeBackend<string>('connect', { connectionId: srcConnectionId });
   const tgtSession = await invokeBackend<string>('connect', { connectionId: tgtConnectionId });
-  await withSafeModeOff(async () => {
-    await dropTableIfExists(srcSession, table);
-    await dropTableIfExists(tgtSession, table);
-    await invokeBackend('execute_query', {
-      dbSessionId: srcSession,
-      sql: pgManyColumnsSourceSql(table),
+  try {
+    await withSafeModeOff(async () => {
+      await dropTableIfExists(srcSession, table);
+      await dropTableIfExists(tgtSession, table);
+      await invokeBackend('execute_query', {
+        dbSessionId: srcSession,
+        sql: pgManyColumnsSourceSql(table),
+      });
+      await invokeBackend('execute_query', {
+        dbSessionId: tgtSession,
+        sql: pgMinimalTargetCreateSql(table),
+      });
     });
-    await invokeBackend('execute_query', {
-      dbSessionId: tgtSession,
-      sql: pgMinimalTargetCreateSql(table),
-    });
-  });
+  } finally {
+    await disconnectBackend(srcSession);
+    await disconnectBackend(tgtSession);
+  }
 }
 
 export async function setupPgWideSourceMinimalTarget(
@@ -92,18 +99,23 @@ export async function setupPgWideSourceMinimalTarget(
 ): Promise<void> {
   const srcSession = await invokeBackend<string>('connect', { connectionId: srcConnectionId });
   const tgtSession = await invokeBackend<string>('connect', { connectionId: tgtConnectionId });
-  await withSafeModeOff(async () => {
-    await dropTableIfExists(srcSession, table);
-    await dropTableIfExists(tgtSession, table);
-    await invokeBackend('execute_query', {
-      dbSessionId: srcSession,
-      sql: pgWideTypesCreateSql(table),
+  try {
+    await withSafeModeOff(async () => {
+      await dropTableIfExists(srcSession, table);
+      await dropTableIfExists(tgtSession, table);
+      await invokeBackend('execute_query', {
+        dbSessionId: srcSession,
+        sql: pgWideTypesCreateSql(table),
+      });
+      await invokeBackend('execute_query', {
+        dbSessionId: tgtSession,
+        sql: pgMinimalTargetCreateSql(table),
+      });
     });
-    await invokeBackend('execute_query', {
-      dbSessionId: tgtSession,
-      sql: pgMinimalTargetCreateSql(table),
-    });
-  });
+  } finally {
+    await disconnectBackend(srcSession);
+    await disconnectBackend(tgtSession);
+  }
 }
 
 export async function setupPgWideSourceMinimalMysqlTarget(
@@ -113,18 +125,23 @@ export async function setupPgWideSourceMinimalMysqlTarget(
 ): Promise<void> {
   const srcSession = await invokeBackend<string>('connect', { connectionId: srcConnectionId });
   const tgtSession = await invokeBackend<string>('connect', { connectionId: tgtConnectionId });
-  await withSafeModeOff(async () => {
-    await dropTableIfExists(srcSession, table);
-    await dropTableIfExists(tgtSession, table);
-    await invokeBackend('execute_query', {
-      dbSessionId: srcSession,
-      sql: pgWideTypesCreateSql(table),
+  try {
+    await withSafeModeOff(async () => {
+      await dropTableIfExists(srcSession, table);
+      await dropTableIfExists(tgtSession, table);
+      await invokeBackend('execute_query', {
+        dbSessionId: srcSession,
+        sql: pgWideTypesCreateSql(table),
+      });
+      await invokeBackend('execute_query', {
+        dbSessionId: tgtSession,
+        sql: mysqlMinimalTargetCreateSql(table),
+      });
     });
-    await invokeBackend('execute_query', {
-      dbSessionId: tgtSession,
-      sql: mysqlMinimalTargetCreateSql(table),
-    });
-  });
+  } finally {
+    await disconnectBackend(srcSession);
+    await disconnectBackend(tgtSession);
+  }
 }
 
 export async function setupMysqlWideSourceMinimalPgTarget(
@@ -134,18 +151,23 @@ export async function setupMysqlWideSourceMinimalPgTarget(
 ): Promise<void> {
   const srcSession = await invokeBackend<string>('connect', { connectionId: srcConnectionId });
   const tgtSession = await invokeBackend<string>('connect', { connectionId: tgtConnectionId });
-  await withSafeModeOff(async () => {
-    await dropTableIfExists(srcSession, table);
-    await dropTableIfExists(tgtSession, table);
-    await invokeBackend('execute_query', {
-      dbSessionId: srcSession,
-      sql: mysqlWideTypesCreateSql(table),
+  try {
+    await withSafeModeOff(async () => {
+      await dropTableIfExists(srcSession, table);
+      await dropTableIfExists(tgtSession, table);
+      await invokeBackend('execute_query', {
+        dbSessionId: srcSession,
+        sql: mysqlWideTypesCreateSql(table),
+      });
+      await invokeBackend('execute_query', {
+        dbSessionId: tgtSession,
+        sql: pgMinimalTargetCreateSql(table),
+      });
     });
-    await invokeBackend('execute_query', {
-      dbSessionId: tgtSession,
-      sql: pgMinimalTargetCreateSql(table),
-    });
-  });
+  } finally {
+    await disconnectBackend(srcSession);
+    await disconnectBackend(tgtSession);
+  }
 }
 
 export async function setupMultiTableSchemaDiff(
@@ -157,23 +179,62 @@ export async function setupMultiTableSchemaDiff(
   const tables = Array.from({ length: count }, (_, i) => `${tablePrefix}_${i}`);
   const srcSession = await invokeBackend<string>('connect', { connectionId: srcConnectionId });
   const tgtSession = await invokeBackend<string>('connect', { connectionId: tgtConnectionId });
-  await withSafeModeOff(async () => {
-    for (let i = 0; i < count; i++) {
-      const table = tables[i];
-      const extraCol = `extra_col_${i}`;
+  try {
+    await withSafeModeOff(async () => {
+      for (let i = 0; i < count; i++) {
+        const table = tables[i];
+        const extraCol = `extra_col_${i}`;
+        await dropTableIfExists(srcSession, table);
+        await dropTableIfExists(tgtSession, table);
+        await invokeBackend('execute_query', {
+          dbSessionId: srcSession,
+          sql: pgSimpleDiffCreateSql(table, extraCol),
+        });
+        await invokeBackend('execute_query', {
+          dbSessionId: tgtSession,
+          sql: pgSimpleTargetCreateSql(table),
+        });
+      }
+    });
+    return tables;
+  } finally {
+    await disconnectBackend(srcSession);
+    await disconnectBackend(tgtSession);
+  }
+}
+
+export async function setupNotNullNoDefaultDiffFixture(
+  srcConnectionId: string,
+  tgtConnectionId: string,
+  table: string,
+): Promise<void> {
+  const srcSession = await invokeBackend<string>('connect', { connectionId: srcConnectionId });
+  const tgtSession = await invokeBackend<string>('connect', { connectionId: tgtConnectionId });
+  try {
+    await withSafeModeOff(async () => {
       await dropTableIfExists(srcSession, table);
       await dropTableIfExists(tgtSession, table);
       await invokeBackend('execute_query', {
         dbSessionId: srcSession,
-        sql: pgSimpleDiffCreateSql(table, extraCol),
+        sql: `CREATE TABLE ${table} (id int PRIMARY KEY, status int NOT NULL)`,
+      });
+      await invokeBackend('execute_query', {
+        dbSessionId: srcSession,
+        sql: `INSERT INTO ${table} (id, status) VALUES (1, 1)`,
       });
       await invokeBackend('execute_query', {
         dbSessionId: tgtSession,
-        sql: pgSimpleTargetCreateSql(table),
+        sql: `CREATE TABLE ${table} (id int PRIMARY KEY)`,
       });
-    }
-  });
-  return tables;
+      await invokeBackend('execute_query', {
+        dbSessionId: tgtSession,
+        sql: `INSERT INTO ${table} (id) VALUES (1)`,
+      });
+    });
+  } finally {
+    await disconnectBackend(srcSession);
+    await disconnectBackend(tgtSession);
+  }
 }
 
 export async function setupDestructiveDiffFixture(
@@ -183,22 +244,27 @@ export async function setupDestructiveDiffFixture(
 ): Promise<void> {
   const srcSession = await invokeBackend<string>('connect', { connectionId: srcConnectionId });
   const tgtSession = await invokeBackend<string>('connect', { connectionId: tgtConnectionId });
-  await withSafeModeOff(async () => {
-    await dropTableIfExists(srcSession, table);
-    await dropTableIfExists(tgtSession, table);
-    await invokeBackend('execute_query', {
-      dbSessionId: srcSession,
-      sql: pgSimpleTargetCreateSql(table),
+  try {
+    await withSafeModeOff(async () => {
+      await dropTableIfExists(srcSession, table);
+      await dropTableIfExists(tgtSession, table);
+      await invokeBackend('execute_query', {
+        dbSessionId: srcSession,
+        sql: pgSimpleTargetCreateSql(table),
+      });
+      await invokeBackend('execute_query', {
+        dbSessionId: tgtSession,
+        sql: `CREATE TABLE ${table} (
+          id int PRIMARY KEY,
+          name text NOT NULL,
+          orphan_col text
+        )`,
+      });
     });
-    await invokeBackend('execute_query', {
-      dbSessionId: tgtSession,
-      sql: `CREATE TABLE ${table} (
-        id int PRIMARY KEY,
-        name text NOT NULL,
-        orphan_col text
-      )`,
-    });
-  });
+  } finally {
+    await disconnectBackend(srcSession);
+    await disconnectBackend(tgtSession);
+  }
 }
 
 export async function countTableColumns(
@@ -207,20 +273,24 @@ export async function countTableColumns(
   dialect: 'postgresql' | 'mysql',
 ): Promise<number> {
   const session = await invokeBackend<string>('connect', { connectionId });
-  if (dialect === 'postgresql') {
+  try {
+    if (dialect === 'postgresql') {
+      const result = await invokeBackend<QueryResultPayload>('execute_query', {
+        dbSessionId: session,
+        sql: `SELECT count(*)::int AS c FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = '${table}'`,
+      });
+      return Number(queryScalar(result, 'c'));
+    }
     const result = await invokeBackend<QueryResultPayload>('execute_query', {
       dbSessionId: session,
-      sql: `SELECT count(*)::int AS c FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = '${table}'`,
+      sql: `SELECT count(*) AS c FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = '${table}'`,
     });
     return Number(queryScalar(result, 'c'));
+  } finally {
+    await disconnectBackend(session);
   }
-  const result = await invokeBackend<QueryResultPayload>('execute_query', {
-    dbSessionId: session,
-    sql: `SELECT count(*) AS c FROM information_schema.columns
-          WHERE table_schema = DATABASE() AND table_name = '${table}'`,
-  });
-  return Number(queryScalar(result, 'c'));
 }
 
 export async function columnExists(
@@ -230,20 +300,43 @@ export async function columnExists(
   dialect: 'postgresql' | 'mysql',
 ): Promise<boolean> {
   const session = await invokeBackend<string>('connect', { connectionId });
-  if (dialect === 'postgresql') {
+  try {
+    if (dialect === 'postgresql') {
+      const result = await invokeBackend<QueryResultPayload>('execute_query', {
+        dbSessionId: session,
+        sql: `SELECT count(*)::int AS c FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = '${table}' AND column_name = '${column}'`,
+      });
+      return Number(queryScalar(result, 'c')) === 1;
+    }
     const result = await invokeBackend<QueryResultPayload>('execute_query', {
       dbSessionId: session,
-      sql: `SELECT count(*)::int AS c FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = '${table}' AND column_name = '${column}'`,
+      sql: `SELECT count(*) AS c FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = '${table}' AND column_name = '${column}'`,
     });
     return Number(queryScalar(result, 'c')) === 1;
+  } finally {
+    await disconnectBackend(session);
   }
-  const result = await invokeBackend<QueryResultPayload>('execute_query', {
-    dbSessionId: session,
-    sql: `SELECT count(*) AS c FROM information_schema.columns
-          WHERE table_schema = DATABASE() AND table_name = '${table}' AND column_name = '${column}'`,
-  });
-  return Number(queryScalar(result, 'c')) === 1;
+}
+
+export async function columnNullable(
+  connectionId: string,
+  table: string,
+  column: string,
+): Promise<boolean> {
+  const session = await invokeBackend<string>('connect', { connectionId });
+  try {
+    const result = await invokeBackend<QueryResultPayload>('execute_query', {
+      dbSessionId: session,
+      sql: `SELECT is_nullable FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = '${table}' AND column_name = '${column}'`,
+    });
+    const rows = parseQueryRows(result);
+    return String(rows[0]?.[0]).toUpperCase() === 'YES';
+  } finally {
+    await disconnectBackend(session);
+  }
 }
 
 export async function teardownSchemaDiffFixture(
@@ -259,6 +352,8 @@ export async function teardownSchemaDiffFixture(
           await dropTableIfExists(session, table);
         }
       });
+      // Release the session to free pool connections.
+      await disconnectBackend(session);
     } catch {
       /* ok */
     }

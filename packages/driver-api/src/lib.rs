@@ -13,6 +13,7 @@ mod factory;
 mod query_stream;
 mod reuse;
 pub mod schema_catalog_commands;
+pub mod schema_migration;
 pub mod schema_object_commands;
 pub mod schema_objects;
 pub mod sql_dump;
@@ -41,6 +42,10 @@ pub use schema_catalog_commands::{
     execute_schema_catalog_command, is_schema_catalog_command, parse_databases_from_command,
     parse_table_schema_from_command, parse_tables_from_command, schema_catalog_command_definitions,
     try_execute_schema_catalog_command,
+};
+pub use schema_migration::{
+    format_type, parse_type_parts, MigrationCapabilities, MigrationColumn, MigrationOperation,
+    MigrationRenderer, MigrationRequirement, MigrationRisk, MigrationStatement, TypeNormalizer,
 };
 pub use schema_object_commands::{
     execute_schema_object_command, is_schema_object_command, schema_object_command_definitions,

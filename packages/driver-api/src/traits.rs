@@ -2,8 +2,10 @@
 
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::query_stream::{emit_multi_query_as_stream, QueryStreamCallback};
+use crate::schema_migration::{MigrationCapabilities, MigrationRenderer, TypeNormalizer};
 use crate::types::*;
 use crate::{
     execute_command_definition, query_command_definition, schema_catalog_command_definitions,
@@ -16,6 +18,20 @@ pub trait DatabaseDriver: Send + Sync {
 
     fn driver_category(&self) -> DriverCategory {
         DriverCategory::Sql
+    }
+
+    /// Dialect-specific schema migration renderer. The schema-diff domain
+    /// produces database-neutral operations; the driver owns SQL syntax.
+    fn migration_renderer(&self) -> Option<Arc<dyn MigrationRenderer>> {
+        None
+    }
+
+    fn migration_capabilities(&self) -> Option<Arc<dyn MigrationCapabilities>> {
+        None
+    }
+
+    fn type_normalizer(&self) -> Option<Arc<dyn TypeNormalizer>> {
+        None
     }
 
     fn quote_char(&self) -> char {

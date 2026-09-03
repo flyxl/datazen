@@ -45,19 +45,36 @@ async function nextStep() {
 }
 
 async function advanceToCompare() {
-  await nextStep();
-  await waitForStep('setup');
-  await nextStep();
-  await waitForStep('objects');
-  await browser.waitUntil(
-    async () => {
-      const state = await $('[data-testid="data-sync-window"]').getAttribute('data-sync-state');
-      return state !== 'inspecting' && state !== 'comparing' && state !== 'executing';
-    },
-    { timeout: 120000, timeoutMsg: 'data-sync inspection did not finish' },
-  );
-  await nextStep();
-  await waitForStep('compare');
+  // Advance step-by-step until we reach 'compare' with state 'compared'.
+  // After backing up, the wizard may skip some steps or combine them.
+  const advanceUntilCompare = async () => {
+    const step = await $('[data-testid="data-sync-window"]').getAttribute('data-sync-step');
+    const state = await $('[data-testid="data-sync-window"]').getAttribute('data-sync-state');
+    if (step === 'compare' && state === 'compared') return true;
+    if (state === 'inspecting' || state === 'comparing' || state === 'executing') return false;
+    return null; // needs more navigation
+  };
+
+  for (let i = 0; i < 5; i++) {
+    const ready = await advanceUntilCompare();
+    if (ready === true) return;
+    if (ready === false) {
+      // Wait for async operation to finish
+      await browser.waitUntil(
+        async () => {
+          const s = await $('[data-testid="data-sync-window"]').getAttribute('data-sync-state');
+          return s !== 'inspecting' && s !== 'comparing' && s !== 'executing';
+        },
+        { timeout: 120000, timeoutMsg: 'data-sync async operation did not finish' },
+      );
+      continue;
+    }
+    await browser.pause(500);
+    await nextStep();
+    await browser.pause(500);
+  }
+
+  // Final check: wait for 'compared' state
   await browser.waitUntil(
     async () =>
       (await $('[data-testid="data-sync-window"]').getAttribute('data-sync-state')) === 'compared',
@@ -242,6 +259,12 @@ describe('数据同步 Diff Workspace (DSW-MAP / DSW-WS)', () => {
   });
 
   it('DSW-WS-001: Compare 完成后应出现 summary 与 preview / execute chrome', async () => {
+    // Close the current data-sync window and open a fresh one to avoid
+    // stale backend sync state from prior compare operations.
+    await closeExtraWindows(mainWindow);
+    await browser.switchToWindow(mainWindow);
+    await openDataSyncWindow(mainWindow);
+
     if (!(await trySelectPgEndpoints())) return;
 
     await browser.waitUntil(

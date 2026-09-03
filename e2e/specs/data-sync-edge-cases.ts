@@ -10,6 +10,7 @@ import {
   captureJourneyStep,
   closeExtraWindows,
   connectConfig,
+  disconnectBackend,
   executeQuery,
   invokeBackend,
   selectDzOption,
@@ -277,46 +278,51 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
 
     const srcSession = await connectConfig(SRC_ID);
     const setupTgtSession = await connectConfig(SETUP_TGT_ID);
-    await withSafeModeOff(async () => {
-      await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
-      await executeQuery(setupTgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
-      await executeQuery(
-        srcSession,
-        `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
-      );
-      await executeQuery(
-        setupTgtSession,
-        `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
-      );
-      await executeQuery(
-        srcSession,
-        `INSERT INTO ${TABLE} (id, name) VALUES (1,'a'),(2,'b'),(3,'c')`,
-      );
-      await executeQuery(setupTgtSession, `INSERT INTO ${TABLE} (id, name) VALUES (1,'a')`);
-    });
-
-    await openDataSyncWindow();
-    await selectDzOption(t('sync.selectSource'), `DS-RO-Src-${STAMP}`);
-    await selectDzOption(t('sync.selectTarget'), `DS-RO-Tgt-${STAMP}`);
-    await browser.pause(1500);
-    await advanceDataSyncToSetup();
-    await inspectDataSyncObjects();
-    await compareDataSyncObjects();
-    await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 20000 });
-    await advanceDataSyncToPreview();
-
-    await expect(await $('[data-testid="data-sync-start-disabled"]')).toBeDisplayed();
-    const body = await $('body').getText();
-    expect(body).toContain(t('sync.targetReadOnly'));
-    await captureStep('ds-edge-13-readonly-target');
-
     try {
       await withSafeModeOff(async () => {
         await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
         await executeQuery(setupTgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
+        await executeQuery(
+          srcSession,
+          `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
+        );
+        await executeQuery(
+          setupTgtSession,
+          `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
+        );
+        await executeQuery(
+          srcSession,
+          `INSERT INTO ${TABLE} (id, name) VALUES (1,'a'),(2,'b'),(3,'c')`,
+        );
+        await executeQuery(setupTgtSession, `INSERT INTO ${TABLE} (id, name) VALUES (1,'a')`);
       });
-    } catch {
-      /* ok */
+
+      await openDataSyncWindow();
+      await selectDzOption(t('sync.selectSource'), `DS-RO-Src-${STAMP}`);
+      await selectDzOption(t('sync.selectTarget'), `DS-RO-Tgt-${STAMP}`);
+      await browser.pause(1500);
+      await advanceDataSyncToSetup();
+      await inspectDataSyncObjects();
+      await compareDataSyncObjects();
+      await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 20000 });
+      await advanceDataSyncToPreview();
+
+      await expect(await $('[data-testid="data-sync-start-disabled"]')).toBeDisplayed();
+      const body = await $('body').getText();
+      expect(body).toContain(t('sync.targetReadOnly'));
+      await captureStep('ds-edge-13-readonly-target');
+
+      try {
+        await withSafeModeOff(async () => {
+          await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
+          await executeQuery(setupTgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
+        });
+      } catch {
+        /* ok */
+      }
+    } finally {
+      await disconnectBackend(srcSession);
+      await disconnectBackend(setupTgtSession);
     }
     for (const id of [SRC_ID, TGT_ID, SETUP_TGT_ID]) {
       try {
@@ -345,52 +351,57 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
 
     const srcSession = await connectConfig(SRC_ID);
     const tgtSession = await connectConfig(TGT_ID);
-    await withSafeModeOff(async () => {
-      await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
-      await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
-      await executeQuery(
-        srcSession,
-        `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
-      );
-      await executeQuery(
-        tgtSession,
-        `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
-      );
-      await executeQuery(srcSession, `INSERT INTO ${TABLE} (id, name) VALUES (1,'a'),(2,'b')`);
-      await executeQuery(tgtSession, `INSERT INTO ${TABLE} (id, name) VALUES (1,'a')`);
-    });
-
-    await openDataSyncWindow();
-    await selectDzOption(t('sync.selectSource'), `DS-Chg-Src-${STAMP}`);
-    await selectDzOption(t('sync.selectTarget'), `DS-Chg-Tgt-${STAMP}`);
-    await browser.pause(1500);
-    await advanceDataSyncToSetup();
-    await inspectDataSyncObjects();
-    await compareDataSyncObjects();
-    await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 20000 });
-    const rowCountBefore = await browser.execute(
-      () => document.querySelectorAll('[data-testid="data-sync-mapping-row"]').length,
-    );
-    expect(rowCountBefore).toBeGreaterThan(0);
-
-    await moveDataSyncBackTo('endpoints');
-    await selectDzOptionInWrap('data-sync-source', `DS-Chg-Alt-${STAMP}`);
-    await browser.pause(800);
-    expect(await getSyncState()).toBe('idle');
-    const rowCountAfter = await browser.execute(
-      () => document.querySelectorAll('[data-testid="data-sync-mapping-row"]').length,
-    );
-    expect(rowCountAfter).toBe(0);
-    await expect(await $('[data-testid="data-sync-step-endpoints"]')).toBeDisplayed();
-    await captureStep('ds-edge-15-source-change-clears-mapping');
-
     try {
       await withSafeModeOff(async () => {
         await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
         await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
+        await executeQuery(
+          srcSession,
+          `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
+        );
+        await executeQuery(
+          tgtSession,
+          `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
+        );
+        await executeQuery(srcSession, `INSERT INTO ${TABLE} (id, name) VALUES (1,'a'),(2,'b')`);
+        await executeQuery(tgtSession, `INSERT INTO ${TABLE} (id, name) VALUES (1,'a')`);
       });
-    } catch {
-      /* ok */
+
+      await openDataSyncWindow();
+      await selectDzOption(t('sync.selectSource'), `DS-Chg-Src-${STAMP}`);
+      await selectDzOption(t('sync.selectTarget'), `DS-Chg-Tgt-${STAMP}`);
+      await browser.pause(1500);
+      await advanceDataSyncToSetup();
+      await inspectDataSyncObjects();
+      await compareDataSyncObjects();
+      await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 20000 });
+      const rowCountBefore = await browser.execute(
+        () => document.querySelectorAll('[data-testid="data-sync-mapping-row"]').length,
+      );
+      expect(rowCountBefore).toBeGreaterThan(0);
+
+      await moveDataSyncBackTo('endpoints');
+      await selectDzOptionInWrap('data-sync-source', `DS-Chg-Alt-${STAMP}`);
+      await browser.pause(800);
+      expect(await getSyncState()).toBe('idle');
+      const rowCountAfter = await browser.execute(
+        () => document.querySelectorAll('[data-testid="data-sync-mapping-row"]').length,
+      );
+      expect(rowCountAfter).toBe(0);
+      await expect(await $('[data-testid="data-sync-step-endpoints"]')).toBeDisplayed();
+      await captureStep('ds-edge-15-source-change-clears-mapping');
+
+      try {
+        await withSafeModeOff(async () => {
+          await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
+          await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
+        });
+      } catch {
+        /* ok */
+      }
+    } finally {
+      await disconnectBackend(srcSession);
+      await disconnectBackend(tgtSession);
     }
     for (const id of [SRC_ID, ALT_SRC_ID, TGT_ID]) {
       try {
@@ -422,26 +433,31 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
 
     const srcSession = await connectConfig(SRC_ID);
     const tgtSession = await connectConfig(TGT_ID);
-    await withSafeModeOff(async () => {
-      await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
-      await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
-      await executeQuery(
-        srcSession,
-        `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
-      );
-      await executeQuery(
-        tgtSession,
-        `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
-      );
-      await executeQuery(
-        srcSession,
-        `INSERT INTO ${TABLE} (id, name) VALUES (1,'a'),(2,'b'),(3,'c'),(4,'d'),(5,'e')`,
-      );
-      await executeQuery(
-        tgtSession,
-        `INSERT INTO ${TABLE} (id, name) VALUES (1,'a'),(2,'b'),(3,'c')`,
-      );
-    });
+    try {
+      await withSafeModeOff(async () => {
+        await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
+        await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
+        await executeQuery(
+          srcSession,
+          `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
+        );
+        await executeQuery(
+          tgtSession,
+          `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
+        );
+        await executeQuery(
+          srcSession,
+          `INSERT INTO ${TABLE} (id, name) VALUES (1,'a'),(2,'b'),(3,'c'),(4,'d'),(5,'e')`,
+        );
+        await executeQuery(
+          tgtSession,
+          `INSERT INTO ${TABLE} (id, name) VALUES (1,'a'),(2,'b'),(3,'c')`,
+        );
+      });
+    } finally {
+      await disconnectBackend(srcSession);
+      await disconnectBackend(tgtSession);
+    }
 
     await openDataSyncWindow();
     await selectDzOption(t('sync.selectSource'), SRC_NAME);
@@ -457,10 +473,15 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
     try {
       const srcSession = await connectConfig(SRC_ID);
       const tgtSession = await connectConfig(TGT_ID);
-      await withSafeModeOff(async () => {
-        await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
-        await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
-      });
+      try {
+        await withSafeModeOff(async () => {
+          await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
+          await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
+        });
+      } finally {
+        await disconnectBackend(srcSession);
+        await disconnectBackend(tgtSession);
+      }
     } catch {
       /* ok */
     }
