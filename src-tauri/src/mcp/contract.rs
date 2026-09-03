@@ -117,4 +117,130 @@ mod tests {
             "golden fixture tool names must stay aligned with MCP_ALL_TOOLS"
         );
     }
+
+    /// [tester] Every MCP tool and its input property keys must appear in the golden fixture.
+    #[test]
+    fn test_tester_golden_fixture_covers_all_tools_and_input_keys() {
+        assert_eq!(
+            MCP_ALL_TOOLS.len(),
+            10,
+            "contract tests assume exactly 10 MCP tools"
+        );
+
+        let snapshot = build_mcp_contract_snapshot();
+        let golden: Value = serde_json::from_str(GOLDEN).unwrap();
+        let golden_tools = golden["tools"]
+            .as_array()
+            .expect("golden must have tools array");
+
+        assert_eq!(
+            golden_tools.len(),
+            MCP_ALL_TOOLS.len(),
+            "golden fixture must list every MCP tool"
+        );
+
+        for name in MCP_ALL_TOOLS {
+            let snapshot_tool = snapshot["tools"]
+                .as_array()
+                .expect("snapshot tools")
+                .iter()
+                .find(|t| t["name"].as_str() == Some(name))
+                .unwrap_or_else(|| panic!("snapshot missing tool {name}"));
+            let golden_tool = golden_tools
+                .iter()
+                .find(|t| t["name"].as_str() == Some(name))
+                .unwrap_or_else(|| panic!("golden fixture missing tool {name}"));
+
+            assert_eq!(
+                golden_tool.get("inputProperties"),
+                snapshot_tool.get("inputProperties"),
+                "golden inputProperties drift for {name}"
+            );
+            assert_eq!(
+                golden_tool.get("requiredInputProperties"),
+                snapshot_tool.get("requiredInputProperties"),
+                "golden requiredInputProperties drift for {name}"
+            );
+        }
+    }
+
+    /// [tester] Renaming a tool in the golden fixture must fail the contract comparison.
+    #[test]
+    fn test_tester_contract_break_detection_tool_rename() {
+        let snapshot = build_mcp_contract_snapshot();
+        let mut golden: Value = serde_json::from_str(GOLDEN).unwrap();
+        golden["tools"]
+            .as_array_mut()
+            .expect("tools array")
+            .iter_mut()
+            .find(|t| t["name"] == "query")
+            .expect("query tool in golden")["name"] = json!("execute_sql");
+
+        assert_ne!(
+            snapshot, golden,
+            "golden test must detect accidental MCP tool renames"
+        );
+    }
+
+    /// [tester] Removing a required input key from the golden fixture must fail comparison.
+    #[test]
+    fn test_tester_contract_break_detection_input_key_removal() {
+        let snapshot = build_mcp_contract_snapshot();
+        let mut golden: Value = serde_json::from_str(GOLDEN).unwrap();
+        let query = golden["tools"]
+            .as_array_mut()
+            .expect("tools array")
+            .iter_mut()
+            .find(|t| t["name"] == "query")
+            .expect("query tool in golden");
+        query["requiredInputProperties"] = json!(["connection_id"]);
+
+        assert_ne!(
+            snapshot, golden,
+            "golden test must detect removal of required MCP input keys"
+        );
+    }
+
+    /// [tester] Resource URI surfaces are stable and covered by the golden snapshot.
+    #[test]
+    fn test_tester_resource_uri_contract_snapshot() {
+        const FIXED_URIS: &[&str] = &[
+            "datazen://connections",
+            "datazen://query-history",
+            "datazen://workflows",
+        ];
+        const URI_TEMPLATE: &str = "datazen://schema/{connectionId}/{database}";
+
+        let snapshot = build_mcp_contract_snapshot();
+        let golden: Value = serde_json::from_str(GOLDEN).unwrap();
+
+        let snapshot_uris: Vec<&str> = snapshot["resourceUris"]
+            .as_array()
+            .expect("snapshot resourceUris")
+            .iter()
+            .map(|v| v.as_str().expect("resource URI string"))
+            .collect();
+        let golden_uris: Vec<&str> = golden["resourceUris"]
+            .as_array()
+            .expect("golden resourceUris")
+            .iter()
+            .map(|v| v.as_str().expect("resource URI string"))
+            .collect();
+
+        assert_eq!(snapshot_uris, FIXED_URIS);
+        assert_eq!(golden_uris, FIXED_URIS);
+        assert_eq!(
+            snapshot["resourceUriTemplates"][0].as_str(),
+            Some(URI_TEMPLATE)
+        );
+        assert_eq!(
+            golden["resourceUriTemplates"][0].as_str(),
+            Some(URI_TEMPLATE)
+        );
+        assert_eq!(snapshot["resourceUris"], golden["resourceUris"]);
+        assert_eq!(
+            snapshot["resourceUriTemplates"],
+            golden["resourceUriTemplates"]
+        );
+    }
 }
