@@ -13,7 +13,7 @@
 
 - Phase: PASSED
 - 编码 commit: 56b1d37e5
-- 测试 commit: b66e283eb1b95a33cb00da3128f763feef5529de
+- 测试 commit: fb7a55bbc
 
 ## 设计决策
 
@@ -23,12 +23,21 @@
 
 ## 自验结果
 
-| 套件 | 结果 | 备注 |
-|------|------|------|
-| cargo test -p datazen --lib mcp::contract | pass | 2 passed; 1 ignored |
-| cargo test -p datazen --lib | pass | 1245 passed; 0 failed; 3 ignored |
-| external-contract-policy.md | pass | 含 Deprecation (v0.x/≥0.9/v1.0) + MCP 规则 |
-| CONTRIBUTING + PR 模板 | pass | External contracts 检查项 |
+| 套件 | 编码代理自报 | 测试代理独立实测 | 备注 |
+|------|-------------|-----------------|------|
+| cargo test -p datazen --lib mcp::contract | 2 passed; 1 ignored | 6 passed; 1 ignored | +4 tester 强化用例 |
+| cargo test -p datazen --lib | 1245 passed; 3 ignored | 1249 passed; 3 ignored | +4 新增测试 |
+| external-contract-policy.md | pass | pass | 含 Deprecation (v0.x/≥0.9/v1.0) + MCP 规则 |
+| CONTRIBUTING + PR 模板 | pass | pass | External contracts 检查项 |
+
+## Tester 强化测试（Phase C）
+
+| 测试函数 | 覆盖点 |
+|----------|--------|
+| `test_tester_golden_fixture_covers_all_tools_and_input_keys` | 10 个 MCP 工具名称 + 各工具 inputProperties/requiredInputProperties 与 live snapshot 一致 |
+| `test_tester_contract_break_detection_tool_rename` | 模拟工具重命名后 golden 比较应失败 |
+| `test_tester_contract_break_detection_input_key_removal` | 模拟删除 required 输入键后 golden 比较应失败 |
+| `test_tester_resource_uri_contract_snapshot` | 固定 resourceUris + URI template 与 golden 双向一致 |
 
 ## E2E 用例登记
 
