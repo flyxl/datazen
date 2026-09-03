@@ -1642,6 +1642,7 @@ dependencies = [
  "datazen-driver-api",
  "datazen-driver-mysql",
  "datazen-driver-postgres",
+ "datazen-driver-redis",
  "datazen-driver-sqlite",
  "dirs",
  "flate2",

@@ -6,6 +6,7 @@ import {
 } from '../../commands/schemaDiff';
 import { useI18n } from '../../hooks/useI18n';
 import { Button } from '../../components/ui/Button';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { canRunDeploy } from '../../lib/schemaDiffConfirm';
 
 export function SchemaDiffDeployPanel({
@@ -18,6 +19,7 @@ export function SchemaDiffDeployPanel({
   confirmText,
   onConfirmTextChange,
   deploying,
+  hideDeployButton = false,
   onDeploy,
   result,
 }: {
@@ -30,6 +32,7 @@ export function SchemaDiffDeployPanel({
   confirmText: string;
   onConfirmTextChange: (v: string) => void;
   deploying: boolean;
+  hideDeployButton?: boolean;
   onDeploy: () => void;
   result: SchemaDiffDeployResult | null;
 }) {
@@ -101,15 +104,17 @@ export function SchemaDiffDeployPanel({
         </label>
       )}
 
-      <Button
-        variant="run"
-        size="md"
-        disabled={!canRun || deploying}
-        onClick={onDeploy}
-        data-testid="schema-diff-deploy"
-      >
-        {deploying ? t('schemaDiff.deploying') : t('schemaDiff.deploy')}
-      </Button>
+      {!hideDeployButton && (
+        <Button
+          variant="run"
+          size="md"
+          disabled={!canRun || deploying}
+          onClick={onDeploy}
+          data-testid="schema-diff-deploy"
+        >
+          {deploying ? t('schemaDiff.deploying') : t('schemaDiff.deploy')}
+        </Button>
+      )}
 
       {result && (
         <div className="rounded border border-edge bg-surface-alt p-3 text-xs">
@@ -120,9 +125,11 @@ export function SchemaDiffDeployPanel({
             {result.executedCount}/{result.statementCount} {t('schemaDiff.executed')}
           </div>
           {result.errors.length > 0 && (
-            <ul className="mt-2 list-inside list-disc text-danger">
+            <ul className="mt-2 list-inside list-disc">
               {result.errors.map((e) => (
-                <li key={e}>{e}</li>
+                <li key={e}>
+                  <CopyableError message={e} className="error-message text-xs" />
+                </li>
               ))}
             </ul>
           )}

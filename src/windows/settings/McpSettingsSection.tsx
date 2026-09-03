@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Button } from '../../components/ui/Button';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useI18n } from '../../hooks/useI18n';
@@ -34,13 +33,9 @@ const MCP_PERMISSION_MODES: {
 
 export interface McpSettingsSectionProps {
   settings?: AppSettings;
-  onSettingsChange?: (partial: Partial<AppSettings>) => void;
 }
 
-export function McpSettingsSection({
-  settings: draftSettings,
-  onSettingsChange,
-}: McpSettingsSectionProps = {}) {
+export function McpSettingsSection({ settings: draftSettings }: McpSettingsSectionProps = {}) {
   const { t } = useI18n();
   const storedSettings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
@@ -50,19 +45,14 @@ export function McpSettingsSection({
   const [allTools, setAllTools] = useState<string[]>([]);
   const [disabledTools, setDisabledTools] = useState<string[]>([]);
   const [allowedIds, setAllowedIds] = useState<string[]>([]);
-  const [saved, setSaved] = useState(false);
   const [running, setRunning] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [agentTarget, setAgentTarget] = useState<McpAgentTarget>('cursor');
   const [copied, setCopied] = useState(false);
 
-  const updateAppSettings = (partial: Partial<AppSettings>) => {
-    if (onSettingsChange) {
-      onSettingsChange(partial);
-    } else {
-      void updateSettings(partial);
-    }
+  const saveSettings = (partial: Partial<AppSettings>) => {
+    void updateSettings(partial);
   };
 
   useEffect(() => {
@@ -106,7 +96,7 @@ export function McpSettingsSection({
     setToggling(true);
     setToggleError(null);
     try {
-      updateAppSettings({ mcpServerEnabled: enabled });
+      saveSettings({ mcpServerEnabled: enabled });
       if (enabled) {
         await aiCommands.mcpStartStdio();
       } else {
@@ -116,7 +106,7 @@ export function McpSettingsSection({
     } catch (e) {
       setToggleError(e instanceof Error ? e.message : t('mcp.toggleError'));
       if (enabled) {
-        updateAppSettings({ mcpServerEnabled: false });
+        saveSettings({ mcpServerEnabled: false });
       }
     } finally {
       setToggling(false);
@@ -124,7 +114,7 @@ export function McpSettingsSection({
   };
 
   const handlePermissionChange = async (mode: McpPermissionMode) => {
-    updateAppSettings({ mcpPermissionMode: mode });
+    saveSettings({ mcpPermissionMode: mode });
     try {
       await reloadMcpIfRunning();
     } catch (e) {
@@ -137,43 +127,23 @@ export function McpSettingsSection({
       ? disabledTools.filter((n) => n !== toolName)
       : [...disabledTools, toolName];
     setDisabledTools(next);
-    updateAppSettings({ mcpDisabledTools: next });
+    saveSettings({ mcpDisabledTools: next });
   };
 
   const toggleAllowed = (id: string) => {
     const next = allowedIds.includes(id) ? allowedIds.filter((x) => x !== id) : [...allowedIds, id];
     setAllowedIds(next);
-    updateAppSettings({ mcpAllowedConnectionIds: next });
-  };
-
-  const handleSaveTools = async () => {
-    updateAppSettings({
-      mcpDisabledTools: disabledTools,
-      mcpAllowedConnectionIds: allowedIds,
-    });
-    try {
-      await reloadMcpIfRunning();
-    } catch (e) {
-      setToggleError(e instanceof Error ? e.message : t('mcp.toggleError'));
-    }
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    saveSettings({ mcpAllowedConnectionIds: next });
   };
 
   const handleEnableAll = () => {
     setDisabledTools([]);
-    updateAppSettings({ mcpDisabledTools: [] });
+    saveSettings({ mcpDisabledTools: [] });
   };
   const handleDisableAll = () => {
     setDisabledTools([...allTools]);
-    updateAppSettings({ mcpDisabledTools: [...allTools] });
+    saveSettings({ mcpDisabledTools: [...allTools] });
   };
-
-  const toolsDirty =
-    JSON.stringify([...disabledTools].sort()) !==
-      JSON.stringify([...(settings.mcpDisabledTools ?? [])].sort()) ||
-    JSON.stringify([...allowedIds].sort()) !==
-      JSON.stringify([...(settings.mcpAllowedConnectionIds ?? [])].sort());
 
   const snippet = buildMcpAgentSnippet(agentTarget);
   const handleCopySnippet = async () => {
@@ -365,35 +335,7 @@ export function McpSettingsSection({
           </div>
 
           <p className="text-xs text-fg-muted">{t('mcp.tools.applyHint')}</p>
-
-          <div className="flex items-center gap-3">
-            {!onSettingsChange && saved && (
-              <span className="text-xs text-green-500">{t('settings.saved')}</span>
-            )}
-            {!onSettingsChange && (
-              <Button
-                variant="primary"
-                disabled={!toolsDirty}
-                onClick={() => void handleSaveTools()}
-              >
-                {t('common.save')}
-              </Button>
-            )}
-          </div>
         </>
-      )}
-
-      {allTools.length === 0 && toolsDirty && (
-        <div className="flex items-center gap-3">
-          {!onSettingsChange && saved && (
-            <span className="text-xs text-green-500">{t('settings.saved')}</span>
-          )}
-          {!onSettingsChange && (
-            <Button variant="primary" onClick={() => void handleSaveTools()}>
-              {t('common.save')}
-            </Button>
-          )}
-        </div>
       )}
     </>
   );

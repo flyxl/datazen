@@ -1835,7 +1835,7 @@ export async function openSchemaDiffWindow(
   }
 }
 
-async function waitForSchemaDiffNextEnabled(timeout = 20000) {
+export async function waitForSchemaDiffNextEnabled(timeout = 20000) {
   await browser.waitUntil(
     async () => {
       const next = await $('[data-testid="schema-diff-next"]');
@@ -1938,6 +1938,31 @@ export async function clickSchemaDiffGeneratePlan() {
   await btn.waitForClickable({ timeout: 15000 });
   await btn.click();
   await browser.pause(2500);
+}
+
+/** Advance from plan step to deploy step in the wizard. */
+export async function advanceSchemaDiffToPlan() {
+  const planPanel = await $('[data-testid="schema-diff-plan-panel"]');
+  const hasPlan = await browser.execute(() => {
+    const panel = document.querySelector('[data-testid="schema-diff-plan-panel"]');
+    return Boolean(panel?.querySelector('[data-testid="schema-diff-allow-destructive"]'));
+  });
+  if (hasPlan) return;
+
+  const comparePanel = await $('[data-testid="schema-diff-detail-panel"]');
+  if (!(await comparePanel.isDisplayed().catch(() => false))) {
+    await clickSchemaDiffCompare();
+  }
+  await clickSchemaDiffNext();
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const panel = document.querySelector('[data-testid="schema-diff-plan-panel"]');
+        return Boolean(panel?.querySelector('[data-testid="schema-diff-allow-destructive"]'));
+      }),
+    { timeout: 30000, timeoutMsg: '等待结构对比计划自动生成超时' },
+  );
+  await planPanel.waitForDisplayed({ timeout: 8000 });
 }
 
 /** Advance from plan step to deploy step in the wizard. */

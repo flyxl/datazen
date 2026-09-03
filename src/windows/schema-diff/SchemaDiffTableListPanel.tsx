@@ -8,6 +8,7 @@ export interface SchemaDiffTableListPanelProps {
   /** Optional map of table name → whether the table has schema differences */
   tableHasDiff?: Record<string, boolean>;
   className?: string;
+  style?: React.CSSProperties;
 }
 
 export function SchemaDiffTableListPanel({
@@ -16,12 +17,14 @@ export function SchemaDiffTableListPanel({
   onSelect,
   tableHasDiff,
   className,
+  style,
 }: SchemaDiffTableListPanelProps) {
   const { t } = useI18n();
 
   return (
     <div
-      className={cn('flex min-h-0 min-w-0 flex-1 flex-col border-r border-edge bg-surface', className)}
+      className={cn('flex min-h-0 min-w-0 flex-col border-r border-edge bg-surface', className)}
+      style={style}
       data-testid="schema-diff-table-list"
     >
       <div className="shrink-0 border-b border-edge px-3 py-2">
@@ -32,7 +35,9 @@ export function SchemaDiffTableListPanel({
 
       <div className="min-h-0 flex-1 overflow-auto">
         {tables.length === 0 ? (
-          <div className="p-4 text-center text-xs text-fg-muted">{t('schemaDiff.tableRequired')}</div>
+          <div className="p-4 text-center text-xs text-fg-muted">
+            {t('schemaDiff.tableRequired')}
+          </div>
         ) : (
           tables.map((name) => {
             const active = selectedTable === name;

@@ -67,17 +67,12 @@ vi.mock('../SettingsContent', () => ({
   SettingsContent: ({
     initialSection,
     onBack,
-    onDirtyChange,
   }: {
     initialSection?: string;
     onBack?: () => void;
-    onDirtyChange?: (dirty: boolean) => void;
   }) => (
     <div data-testid="settings-content-mock">
       section={initialSection ?? 'general'}
-      <button type="button" data-testid="settings-mark-dirty" onClick={() => onDirtyChange?.(true)}>
-        mark dirty
-      </button>
       {onBack && (
         <button type="button" data-testid="settings-back" onClick={onBack}>
           common.back
@@ -114,19 +109,6 @@ describe('SettingsPage', () => {
 
     fireEvent.click(screen.getByTestId('settings-back'));
     expect(onBackMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('confirms before leaving with unsaved changes', async () => {
-    render(<SettingsPage onBack={onBackMock} />);
-
-    fireEvent.click(screen.getByTestId('settings-mark-dirty'));
-    fireEvent.click(screen.getByTestId('settings-back'));
-
-    expect(screen.getByText('settings.unsavedChangesTitle')).toBeInTheDocument();
-    expect(onBackMock).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByTestId('confirm-dialog-ok'));
-    await waitFor(() => expect(onBackMock).toHaveBeenCalledTimes(1));
   });
 
   it('defaults initialSection to general when omitted', () => {

@@ -21,18 +21,15 @@ export const TableNode = memo(function TableNode({ data }: NodeProps) {
     <div
       className={cn(
         'min-w-[180px] max-w-[280px] rounded-lg border shadow-md',
-        highlighted
-          ? 'border-accent bg-accent/5'
-          : 'border-edge bg-surface',
+        highlighted ? 'border-accent bg-accent/5' : 'border-edge bg-surface',
         dimmed && 'opacity-30',
       )}
+      style={{ WebkitFontSmoothing: 'antialiased', MozOsxFontSmoothing: 'grayscale' }}
     >
       <div
         className={cn(
           'flex items-center gap-1 rounded-t-lg px-3 py-2 text-xs font-semibold',
-          highlighted
-            ? 'bg-accent/15 text-accent'
-            : 'bg-surface-alt text-fg',
+          highlighted ? 'bg-accent/15 text-accent' : 'bg-surface-alt text-fg',
         )}
       >
         <button

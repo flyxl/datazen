@@ -5,6 +5,7 @@ import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { aiCommands } from '../../commands/ai';
 import {
   DEFAULT_SYNC_OPTIONS,
@@ -92,6 +93,7 @@ export function DataSyncWindow() {
   const [errorMsg, setErrorMsg] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
+  const [executeProgress, setExecuteProgress] = useState('');
   const [sourceSessionError, setSourceSessionError] = useState('');
   const [targetSessionError, setTargetSessionError] = useState('');
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -746,6 +748,7 @@ export function DataSyncWindow() {
   const runExecute = useCallback(async () => {
     if (!sourceId || !targetId) return;
     setSyncState('executing');
+    setExecuteProgress(t('sync.executing'));
     const jobId = crypto.randomUUID();
     jobIdRef.current = jobId;
 
@@ -777,6 +780,7 @@ export function DataSyncWindow() {
         );
         const selected = stmts.filter((s) => operationAllowed(s.operation, syncOptions));
         if (selected.length > 0) {
+          setExecuteProgress(t('sync.executingSql', { count: selected.length }));
           const result = await syncCommands.executeDataSync(
             tgtConnId,
             selected,
@@ -798,6 +802,7 @@ export function DataSyncWindow() {
       if (!executed) {
         usedApplyFallback = true;
         const tableNames = tablesWithSelection.map((r) => r.sourceTable);
+        setExecuteProgress(t('sync.executingTables', { count: tableNames.length }));
         const result = await syncCommands.applyDataSync(
           srcConnId,
           tgtConnId,
@@ -817,6 +822,7 @@ export function DataSyncWindow() {
         }
       }
 
+      setExecuteProgress(t('sync.recomparing'));
       const recompared = await syncCommands.compareDataSync(
         srcConnId,
         tgtConnId,
@@ -837,6 +843,7 @@ export function DataSyncWindow() {
       });
       setSyncState('done');
       setStep('result');
+      setExecuteProgress('');
       if (usedApplyFallback) {
         setStatusMsg(t('sync.applyFallbackUsed'));
       } else {
@@ -846,6 +853,7 @@ export function DataSyncWindow() {
       setErrorMsg(e instanceof Error ? e.message : String(e));
       setErrorOpen(true);
       setSyncState('compared');
+      setExecuteProgress('');
     }
   }, [
     sourceId,
@@ -1171,7 +1179,16 @@ export function DataSyncWindow() {
           )}
 
           {step === 'preview' && (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-edge">
+            <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-edge">
+              {syncState === 'executing' && (
+                <div
+                  data-testid="data-sync-executing-overlay"
+                  className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-surface/90 text-sm text-fg-muted"
+                >
+                  <Loader2 className="h-6 w-6 animate-spin text-accent" />
+                  <span>{executeProgress || t('sync.executing')}</span>
+                </div>
+              )}
               {sourceSession?.dbSessionId && targetSession?.dbSessionId ? (
                 <SqlPreview
                   sourceConnId={sourceSession.dbSessionId}
@@ -1270,12 +1287,11 @@ export function DataSyncWindow() {
           </Button>
         }
       >
-        <p
+        <CopyableError
+          message={errorMsg}
+          className="error-message text-sm"
           data-testid="data-sync-error"
-          className="whitespace-pre-wrap break-all text-sm text-fg-secondary"
-        >
-          {errorMsg}
-        </p>
+        />
       </Dialog>
 
       <Dialog

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ReactFlow,
   Controls,
+  MiniMap,
   Background,
   useNodesState,
   useEdgesState,
@@ -9,6 +10,7 @@ import {
   type Node,
   type Edge,
   type NodeTypes,
+  type Viewport,
   BackgroundVariant,
   Panel,
 } from '@xyflow/react';
@@ -63,6 +65,25 @@ function ErDiagramInner({
   const [activeFocus, setActiveFocus] = useState<string | undefined>(focusTable);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
+  // Controlled viewport — round x/y to eliminate sub-pixel blur (ReactFlow #3282)
+  const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
+
+  const onViewportChange = useCallback((vp: Viewport) => {
+    setViewport({
+      x: Math.round(vp.x),
+      y: Math.round(vp.y),
+      zoom: vp.zoom,
+    });
+  }, []);
+
+  const onMoveEnd = useCallback((_: unknown, vp: Viewport) => {
+    setViewport({
+      x: Math.round(vp.x),
+      y: Math.round(vp.y),
+      zoom: vp.zoom,
+    });
+  }, []);
 
   useEffect(() => {
     setActiveFocus(focusTable);
@@ -268,17 +289,30 @@ function ErDiagramInner({
         onNodeClick={handleNodeClick}
         onNodeContextMenu={handleNodeContextMenu}
         nodeTypes={nodeTypes}
+        viewport={viewport}
+        onViewportChange={onViewportChange}
+        onMoveEnd={onMoveEnd}
         fitView
         minZoom={0.1}
-        maxZoom={2}
+        maxZoom={10}
         proOptions={{ hideAttribution: true }}
-        className="bg-surface"
+        className="er-diagram-flow bg-surface"
       >
         <Controls
           showInteractive={false}
           className="!bg-surface !border-edge !shadow-lg [&>button]:!bg-surface [&>button]:!border-edge [&>button]:!text-fg-muted [&>button:hover]:!bg-surface-alt [&>button:hover]:!text-fg"
         />
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} className="!bg-surface" />
+        <MiniMap
+          pannable
+          zoomable
+          nodeColor={(node) => {
+            if (node.data?.highlighted) return 'var(--color-accent, #3b82f6)';
+            return 'var(--color-surface-alt, #1e293b)';
+          }}
+          maskColor="rgba(0,0,0,0.5)"
+          className="!bg-surface-alt !border-edge !shadow-lg"
+        />
         <Panel
           position="top-left"
           className="flex items-center gap-2 rounded-lg bg-surface/80 px-2 py-1 backdrop-blur"

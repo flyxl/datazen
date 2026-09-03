@@ -121,8 +121,14 @@ describe('useSchemaDiffEndpoints', () => {
       result.current.setTargetDatabase('datazen_sync_tgt');
     });
 
+    expect(result.current.validateEndpoints()).toBe(true);
+
+    act(() => {
+      result.current.setTargetDatabase('datazen_sync_src');
+    });
+
     expect(result.current.validateEndpoints()).toBe(false);
-    expect(onError).toHaveBeenCalledWith('sync.cannotSame');
+    expect(onError).toHaveBeenCalledWith('sync.cannotSameDb');
 
     act(() => {
       result.current.setTargetId('pg-tgt');
