@@ -514,7 +514,7 @@ mod log_hygiene_tests {
 
     #[test]
     fn execute_query_stream_source_does_not_info_log_sql_preview() {
-        let src = include_str!("driver_command.rs");
+        let src = include_str!("driver_command/streaming.rs");
         let start = src
             .find("pub(crate) async fn execute_driver_command_stream_impl")
             .expect("fn");
