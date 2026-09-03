@@ -5,6 +5,7 @@ import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { Select } from '../../components/ui/Select';
 import {
   DEFAULT_TRANSFER_OPTIONS,
@@ -78,6 +79,7 @@ export function DataTransferWindow() {
   const [confirmedDestructive, setConfirmedDestructive] = useState(false);
   const [loading, setLoading] = useState(false);
   const [executing, setExecuting] = useState(false);
+  const [executeProgress, setExecuteProgress] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
   const [limitationsOpen, setLimitationsOpen] = useState(false);
@@ -417,6 +419,8 @@ export function DataTransferWindow() {
     const jobId = crypto.randomUUID();
     jobIdRef.current = jobId;
     setExecuting(true);
+    const tableCount = job.tables.filter((tbl) => tbl.enabled).length;
+    setExecuteProgress(t('transfer.executingProgress', { count: tableCount }));
     try {
       const execResult = await transferCommands.execute(job, jobId);
       setResult(execResult);
@@ -426,6 +430,7 @@ export function DataTransferWindow() {
       setErrorOpen(true);
     } finally {
       setExecuting(false);
+      setExecuteProgress('');
       jobIdRef.current = null;
     }
   }, [refreshEndpointSessions, buildJob, targetReadOnly, t]);
@@ -783,7 +788,16 @@ export function DataTransferWindow() {
           )}
 
           {step === 'preview' && preview && (
-            <div data-testid="data-transfer-preview" className="space-y-3 text-sm">
+            <div data-testid="data-transfer-preview" className="relative space-y-3 text-sm">
+              {executing && (
+                <div
+                  data-testid="data-transfer-executing-overlay"
+                  className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-lg bg-surface/90 text-sm text-fg-muted"
+                >
+                  <Loader2 className="h-6 w-6 animate-spin text-accent" />
+                  <span>{executeProgress || t('transfer.executing')}</span>
+                </div>
+              )}
               {preview.blockReason && (
                 <p className="rounded border border-warning/30 bg-warning/10 px-3 py-2 select-text text-warning">
                   {preview.blockReason}
@@ -861,18 +875,11 @@ export function DataTransferWindow() {
                     {tbl.sourceTable}: {tbl.success ? t('transfer.success') : t('transfer.error')}
                   </div>
                   {!tbl.success && tbl.error ? (
-                    <div className="mt-2 flex items-start justify-between gap-2">
-                      <pre className="min-w-0 flex-1 select-text whitespace-pre-wrap break-all text-xs text-danger">
-                        {tbl.error}
-                      </pre>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => void navigator.clipboard.writeText(tbl.error ?? '')}
-                      >
-                        {t('common.copy')}
-                      </Button>
-                    </div>
+                    <CopyableError
+                      message={tbl.error}
+                      className="error-message mt-2 text-xs"
+                      copyButton
+                    />
                   ) : null}
                 </div>
               ))}
@@ -895,6 +902,11 @@ export function DataTransferWindow() {
               {t('transfer.cancel')}
             </Button>
           )}
+          {step === 'preview' && executing && (
+            <span className="text-sm text-fg-muted">
+              {executeProgress || t('transfer.executing')}
+            </span>
+          )}
           {step === 'preview' ? (
             <Button
               variant="run"
@@ -902,7 +914,8 @@ export function DataTransferWindow() {
               disabled={!canExecute || executing}
               onClick={handleExecuteClick}
             >
-              {executing ? <Loader2 className="h-4 w-4 animate-spin" /> : t('transfer.execute')}
+              {executing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {executing ? t('transfer.executing') : t('transfer.execute')}
             </Button>
           ) : step !== 'result' ? (
             <Button
@@ -942,21 +955,17 @@ export function DataTransferWindow() {
         onClose={() => setErrorOpen(false)}
         title={t('transfer.error')}
         footer={
-          <Button
-            variant="ghost"
-            data-testid="data-transfer-copy-error"
-            onClick={() => void navigator.clipboard.writeText(errorMsg)}
-          >
-            {t('common.copy')}
+          <Button variant="primary" onClick={() => setErrorOpen(false)}>
+            {t('common.ok')}
           </Button>
         }
       >
-        <pre
+        <CopyableError
+          message={errorMsg}
+          className="error-message text-sm"
+          copyButton
           data-testid="data-transfer-error"
-          className="max-h-64 select-text overflow-auto whitespace-pre-wrap break-all text-sm"
-        >
-          {errorMsg}
-        </pre>
+        />
       </Dialog>
     </div>
   );

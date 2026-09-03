@@ -60,8 +60,17 @@ export function ExecuteBar({
         }
         data-testid={enabled ? 'data-sync-start' : 'data-sync-start-disabled'}
       >
-        {executing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-        {t('sync.execute')}
+        {executing ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {t('sync.executing')}
+          </>
+        ) : (
+          <>
+            <Play className="h-4 w-4" />
+            {t('sync.execute')}
+          </>
+        )}
       </Button>
     </div>
   );

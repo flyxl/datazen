@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, ChevronLeft, ChevronRight, Copy, Loader2 } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
+import { Dialog } from '../../components/ui/Dialog';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { SchemaDiffPanel, formatSchemaDiffText } from '../../components/schema/SchemaDiffPanel';
 import {
   dialectSupportsTransactionalDdl,
@@ -14,9 +16,11 @@ import {
   type SchemaDiffPlan,
 } from '../../commands/schemaDiff';
 import { databaseCommands } from '../../commands/database';
+import { fileCommands } from '../../commands/file';
 import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { useLocaleDomains } from '../../hooks/useLocaleDomains';
+import { useResizable } from '../../hooks/useResizable';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { openDocsWindow } from '../../lib/windowManager';
 import { cn } from '../../lib/cn';
@@ -40,6 +44,8 @@ import {
 } from './schemaDiffTableNames';
 
 type WizardStep = 'endpoints' | 'objects' | 'compare' | 'plan' | 'deploy';
+
+type ClipboardFeedback = 'summary' | 'sql' | 'config' | null;
 
 const STEPS: WizardStep[] = ['endpoints', 'objects', 'compare', 'plan', 'deploy'];
 const NARROW_STEPS: WizardStep[] = ['endpoints', 'objects', 'deploy'];
@@ -70,8 +76,20 @@ export function SchemaDiffWindow() {
   const [deployResult, setDeployResult] = useState<SchemaDiffDeployResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [clipboardFeedback, setClipboardFeedback] = useState<ClipboardFeedback>(null);
+  const [importConfigOpen, setImportConfigOpen] = useState(false);
+  const [importConfigText, setImportConfigText] = useState('');
+  const [importConfigError, setImportConfigError] = useState('');
   const [limitationsOpen, setLimitationsOpen] = useState(false);
+  const planAutoRequestedRef = useRef(false);
+
+  const { size: tableListWidth, handleRef: tableListResizeRef } = useResizable({
+    direction: 'horizontal',
+    initialSize: 200,
+    minSize: 120,
+    maxSize: 400,
+    storageKey: 'schema-diff.table-list',
+  });
 
   const endpoints = useSchemaDiffEndpoints({ onError: setError });
 
@@ -105,6 +123,11 @@ export function SchemaDiffWindow() {
     endpoints.sourceSchema,
     endpoints.targetSchema,
   ]);
+
+  const showClipboardFeedback = useCallback((kind: ClipboardFeedback) => {
+    setClipboardFeedback(kind);
+    window.setTimeout(() => setClipboardFeedback(null), 2000);
+  }, []);
 
   useEffect(() => {
     if (selectedTables.length === 0) {
@@ -224,6 +247,16 @@ export function SchemaDiffWindow() {
     }
   }, [allowDestructive, endpoints, includeIndexes, tablePicks, t]);
 
+  useEffect(() => {
+    if (step !== 'plan') {
+      planAutoRequestedRef.current = false;
+      return;
+    }
+    if (plan || loading || planAutoRequestedRef.current) return;
+    planAutoRequestedRef.current = true;
+    void buildPlan();
+  }, [step, plan, loading, buildPlan]);
+
   const handleDeploy = useCallback(async () => {
     if (!plan) return;
     setError('');
@@ -251,7 +284,6 @@ export function SchemaDiffWindow() {
         return Boolean(
           endpoints.sourceId &&
             endpoints.targetId &&
-            endpoints.sourceId !== endpoints.targetId &&
             endpoints.sourceDatabase &&
             endpoints.targetDatabase &&
             !endpoints.isSameEndpoint(),
@@ -311,10 +343,9 @@ export function SchemaDiffWindow() {
     if (diffs.length === 0) return;
     try {
       await navigator.clipboard.writeText(diffs.map(formatSchemaDiffText).join('\n\n'));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      showClipboardFeedback('summary');
     } catch {
-      /* ignore */
+      setError(t('schemaDiff.clipboardFailed'));
     }
   };
 
@@ -322,10 +353,9 @@ export function SchemaDiffWindow() {
     if (!plan) return;
     try {
       await navigator.clipboard.writeText(exportPlanSql(plan));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      showClipboardFeedback('sql');
     } catch {
-      /* ignore */
+      setError(t('schemaDiff.clipboardFailed'));
     }
   };
 
@@ -340,35 +370,54 @@ export function SchemaDiffWindow() {
       requireRollback,
     };
     try {
-      await navigator.clipboard.writeText(JSON.stringify(cfg, null, 2));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      const saved = await fileCommands.saveTextWithDialog(
+        JSON.stringify(cfg, null, 2),
+        'schema-diff-config.json',
+        'JSON',
+        ['json'],
+      );
+      if (saved) {
+        showClipboardFeedback('config');
+      }
     } catch {
-      /* ignore */
+      setError(t('schemaDiff.exportConfigFailed'));
     }
   };
 
-  const handleImportConfig = async () => {
-    setError('');
-    try {
-      const text = await navigator.clipboard.readText();
-      const cfg = JSON.parse(text) as SchemaDiffConfigJson;
-      if (cfg.version !== 2 || !cfg.sourceConnectionId || !cfg.targetConnectionId) {
-        throw new Error(t('schemaDiff.invalidConfig'));
+  const applyImportedConfig = useCallback(
+    (text: string) => {
+      setImportConfigError('');
+      try {
+        const cfg = JSON.parse(text) as SchemaDiffConfigJson;
+        if (cfg.version !== 2 || !cfg.sourceConnectionId || !cfg.targetConnectionId) {
+          throw new Error(t('schemaDiff.invalidConfig'));
+        }
+        endpoints.setSourceId(cfg.sourceConnectionId);
+        endpoints.setTargetId(cfg.targetConnectionId);
+        setTablePicks((cfg.tables ?? []).map((name) => ({ name, enabled: true })));
+        setAllowDestructive(Boolean(cfg.allowDestructive));
+        setIncludeIndexes(cfg.includeIndexes ?? true);
+        setRequireRollback(Boolean(cfg.requireRollback));
+        setPlan(null);
+        setDiffs([]);
+        setDeployResult(null);
+        planAutoRequestedRef.current = false;
+        setStep('objects');
+        setImportConfigOpen(false);
+        setImportConfigText('');
+        setImportConfigError('');
+      } catch (e) {
+        setImportConfigError(e instanceof Error ? e.message : String(e));
       }
-      endpoints.setSourceId(cfg.sourceConnectionId);
-      endpoints.setTargetId(cfg.targetConnectionId);
-      setTablePicks((cfg.tables ?? []).map((name) => ({ name, enabled: true })));
-      setAllowDestructive(Boolean(cfg.allowDestructive));
-      setIncludeIndexes(cfg.includeIndexes ?? true);
-      setRequireRollback(Boolean(cfg.requireRollback));
-      setPlan(null);
-      setDiffs([]);
-      setDeployResult(null);
-      setStep('objects');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    },
+    [endpoints, t],
+  );
+
+  const handleOpenImportConfig = () => {
+    setError('');
+    setImportConfigText('');
+    setImportConfigError('');
+    setImportConfigOpen(true);
   };
 
   const endpointsCrossDialectNote = endpoints.isCrossDialect ? (
@@ -493,11 +542,16 @@ export function SchemaDiffWindow() {
               ) : (
                 <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-edge">
                   <SchemaDiffTableListPanel
-                    className="w-48 max-w-[40%] flex-none"
+                    className="flex-none"
+                    style={{ width: tableListWidth }}
                     tables={selectedTables}
                     selectedTable={selectedTable}
                     onSelect={setSelectedTable}
                     tableHasDiff={diffs.length > 0 ? tableHasDiff : undefined}
+                  />
+                  <div
+                    ref={tableListResizeRef}
+                    className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-blue-500/30"
                   />
                   <div
                     className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto bg-surface-alt/30"
@@ -516,7 +570,9 @@ export function SchemaDiffWindow() {
                               onClick={() => void handleCopySummary()}
                             >
                               <Copy className="h-4 w-4" />
-                              {copied ? t('common.copied') : t('schemaDiff.copySummary')}
+                              {clipboardFeedback === 'summary'
+                                ? t('common.copied')
+                                : t('schemaDiff.copySummary')}
                             </Button>
                           )}
                         </div>
@@ -535,26 +591,37 @@ export function SchemaDiffWindow() {
 
           {step === 'plan' && (
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+              {loading && !plan && (
+                <div className="flex items-center gap-2 text-sm text-fg-muted">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {t('schemaDiff.generating')}
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="secondary"
-                  disabled={loading || selectedTables.length === 0}
-                  onClick={() => void buildPlan()}
-                  data-testid="schema-diff-generate-plan"
-                >
-                  {loading && !plan ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  {t('schemaDiff.generatePlan')}
-                </Button>
                 {plan && (
-                  <Button variant="secondary" onClick={() => void handleCopySql()}>
+                  <Button
+                    variant="secondary"
+                    data-testid="schema-diff-copy-sql"
+                    onClick={() => void handleCopySql()}
+                  >
                     <Copy className="h-4 w-4" />
-                    {t('common.copySql')}
+                    {clipboardFeedback === 'sql' ? t('common.copied') : t('common.copySql')}
                   </Button>
                 )}
-                <Button variant="ghost" onClick={() => void handleExportConfig()}>
-                  {t('schemaDiff.exportConfig')}
+                <Button
+                  variant="ghost"
+                  data-testid="schema-diff-export-config"
+                  onClick={() => void handleExportConfig()}
+                >
+                  {clipboardFeedback === 'config'
+                    ? t('schemaDiff.configExported')
+                    : t('schemaDiff.exportConfig')}
                 </Button>
-                <Button variant="ghost" onClick={() => void handleImportConfig()}>
+                <Button
+                  variant="ghost"
+                  data-testid="schema-diff-import-config"
+                  onClick={handleOpenImportConfig}
+                >
                   {t('schemaDiff.importConfig')}
                 </Button>
               </div>
@@ -607,10 +674,11 @@ export function SchemaDiffWindow() {
               onDeploy={() => void handleDeploy()}
               deployResult={deployResult}
               hideTabs
+              hideDeployButton
             />
           )}
 
-          {error && <p className="mt-3 text-sm text-danger">{error}</p>}
+          {error && <CopyableError message={error} className="error-message mt-3" />}
         </div>
       </div>
 
@@ -650,6 +718,56 @@ export function SchemaDiffWindow() {
         testIdPrefix="schema-diff"
         onDismiss={setSchemaDiffLimitationsDismissed}
       />
+      <Dialog
+        open={importConfigOpen}
+        title={t('schemaDiff.importConfigTitle')}
+        description={t('schemaDiff.importConfigHint')}
+        testId="schema-diff-import-config-dialog"
+        onClose={() => {
+          setImportConfigOpen(false);
+          setImportConfigText('');
+          setImportConfigError('');
+        }}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setImportConfigOpen(false);
+                setImportConfigText('');
+                setImportConfigError('');
+              }}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              data-testid="schema-diff-import-config-confirm"
+              disabled={!importConfigText.trim()}
+              onClick={() => applyImportedConfig(importConfigText)}
+            >
+              {t('schemaDiff.importConfigConfirm')}
+            </Button>
+          </>
+        }
+      >
+        <textarea
+          data-testid="schema-diff-import-config-text"
+          className="h-48 w-full resize-y rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg"
+          value={importConfigText}
+          placeholder={t('schemaDiff.importConfigPlaceholder')}
+          onChange={(e) => {
+            setImportConfigText(e.target.value);
+            if (importConfigError) setImportConfigError('');
+          }}
+        />
+        {importConfigError && (
+          <CopyableError
+            message={importConfigError}
+            className="error-message mt-2"
+            data-testid="schema-diff-import-config-error"
+          />
+        )}
+      </Dialog>
       <StatusBar left={<span className="truncate">{t('common.schemaDiff')}</span>} />
     </div>
   );

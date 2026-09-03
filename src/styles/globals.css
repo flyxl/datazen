@@ -91,6 +91,14 @@ progress {
   user-select: none;
 }
 
+/* User-facing error text: danger color + selectable for copy. */
+.error-message {
+  color: var(--c-danger, #ef4444);
+  -webkit-user-select: text;
+  user-select: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 /* Content opt-in, per concrete layout element. */
 .selectable,
 .select-text,
@@ -138,4 +146,11 @@ code,
   display: none;
   width: 0;
   height: 0;
+}
+
+/* ── ReactFlow viewport: remove will-change to avoid sub-pixel blur ── */
+.react-flow__viewport {
+  will-change: auto !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }

@@ -39,6 +39,43 @@ pub(crate) fn nullability_sql(nullable: bool) -> &'static str {
     }
 }
 
+pub(crate) fn create_table_stmt(
+    dialect: &str,
+    table: &str,
+    src: &crate::db::TableSchema,
+    column_types: &[(String, String)],
+) -> PlanStatement {
+    let q_table = quote_ident(dialect, table);
+    let mut col_defs = Vec::new();
+    for (col_name, type_sql) in column_types {
+        let q_col = quote_column(dialect, col_name);
+        let nullable = src
+            .columns
+            .iter()
+            .find(|c| c.name == *col_name)
+            .map(|c| c.nullable)
+            .unwrap_or(true);
+        let def = format!("{q_col} {type_sql}{}", nullability_sql(nullable));
+        col_defs.push(def);
+    }
+    if !src.primary_keys.is_empty() {
+        let pk_cols: Vec<String> = src
+            .primary_keys
+            .iter()
+            .map(|c| quote_column(dialect, c))
+            .collect();
+        col_defs.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
+    }
+    let sql = format!("CREATE TABLE {q_table} (\n  {}\n)", col_defs.join(",\n  "));
+    let rollback = format!("DROP TABLE {q_table}");
+    PlanStatement {
+        sql,
+        risk: StatementRisk::Additive,
+        rollback_sql: Some(rollback),
+        summary: format!("CREATE TABLE {table}"),
+    }
+}
+
 pub(crate) fn add_column_stmt(
     dialect: &str,
     table: &str,

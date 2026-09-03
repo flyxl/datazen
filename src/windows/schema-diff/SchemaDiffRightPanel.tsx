@@ -29,6 +29,7 @@ export interface SchemaDiffRightPanelProps {
   className?: string;
   /** Hide Plan / Deploy tab strip (wizard mode shows one step at a time). */
   hideTabs?: boolean;
+  hideDeployButton?: boolean;
 }
 
 export function SchemaDiffRightPanel({
@@ -53,6 +54,7 @@ export function SchemaDiffRightPanel({
   deployResult,
   className,
   hideTabs = false,
+  hideDeployButton = false,
 }: SchemaDiffRightPanelProps) {
   const { t } = useI18n();
 
@@ -128,6 +130,7 @@ export function SchemaDiffRightPanel({
                 confirmText={confirmText}
                 onConfirmTextChange={onConfirmTextChange}
                 deploying={deploying}
+                hideDeployButton={hideDeployButton}
                 onDeploy={onDeploy}
                 result={deployResult}
               />

@@ -393,16 +393,21 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
         return null;
       }
     },
-    [sourceId, targetId, sourceDatabase, targetDatabase, sourceSession, targetSession, reportError, t],
+    [
+      sourceId,
+      targetId,
+      sourceDatabase,
+      targetDatabase,
+      sourceSession,
+      targetSession,
+      reportError,
+      t,
+    ],
   );
 
   const validateEndpoints = useCallback((): boolean => {
     if (!sourceId || !targetId) {
       reportError(t('sync.selectBoth'));
-      return false;
-    }
-    if (sourceId === targetId) {
-      reportError(t('sync.cannotSame'));
       return false;
     }
     if (isSameEndpoint()) {

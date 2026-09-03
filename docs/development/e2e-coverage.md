@@ -87,7 +87,7 @@
 | 恢复：覆盖确认 + 分步进度 | `backup-database.ts` (BACKUP-012) + `BackupWindow.test.tsx` | Covered（Web ConfirmDialog；打开文件见例外） |
 | 新建查询不弹出对象加载补全框 | `connection-window.ts` (SQ-AC-001), `mysql.ts` (MY-AC-001) | Covered |
 | SQL 补全只拉取语句中已加载完整表名的列（禁止前缀 get_columns） | `schemaStore.test.ts` / `sqlEditorDefaults.test.ts` / `buildEditorSchema.test.ts` | Covered |
-| Schema Diff 窗口 + 限制说明 | `schema-diff-window.ts` (SD-001~004, SD-LIM) | Covered |
+| Schema Diff 窗口 + 限制说明 + 同源异库 / 自动计划 / 复制·导入·导出配置 | `schema-diff-window.ts` (SD-001~009, SD-LIM) | Covered |
 | 结构对比宽类型 **19 列** + 多表 **10 张** | `schema-diff-diverse-types.ts` (SD-COMP) | Covered |
 | 结构对比 PG↔MySQL 跨方言 deploy | `schema-diff-cross-dialect.ts` (SD-CROSS) | Covered |
 | 结构对比 allowDestructive / includeIndexes 矩阵 | `schema-diff-options-matrix.ts` (SD-OPT) | Covered |
