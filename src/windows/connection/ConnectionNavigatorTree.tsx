@@ -506,6 +506,7 @@ export const ConnectionNavigatorTree = forwardRef<
   } | null>(null);
   const dropTargetRef = useRef(dropTarget);
   dropTargetRef.current = dropTarget;
+  const [groupDropTarget, setGroupDropTarget] = useState<string | null>(null);
 
   const handleDragStart = useCallback((e: React.DragEvent, connId: string) => {
     dragConnId.current = connId;
@@ -532,6 +533,44 @@ export const ConnectionNavigatorTree = forwardRef<
   const handleDragEnd = useCallback(() => {
     dragConnId.current = null;
     setDropTarget(null);
+    setGroupDropTarget(null);
+  }, []);
+
+  const handleGroupDragOver = useCallback((e: React.DragEvent, groupName: string) => {
+    if (!dragConnId.current) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setGroupDropTarget(groupName);
+  }, []);
+
+  const handleGroupDragLeave = useCallback(() => {
+    setGroupDropTarget(null);
+  }, []);
+
+  const handleGroupDrop = useCallback((e: React.DragEvent, groupName: string) => {
+    e.preventDefault();
+    const connId = dragConnId.current || e.dataTransfer.getData('text/plain');
+    if (!connId) return;
+    void (async () => {
+      await useConnectionStore.getState().moveConnectionToGroup(connId, groupName);
+      await useConnectionStore.getState().fetchConnections?.();
+    })();
+    dragConnId.current = null;
+    setDropTarget(null);
+    setGroupDropTarget(null);
+  }, []);
+
+  const handleSectionDragOver = useCallback((e: React.DragEvent, section: string) => {
+    if (section === 'recent' || section === 'pinned') {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'none';
+    }
+  }, []);
+
+  const handleSectionDrop = useCallback((e: React.DragEvent, _section: string) => {
+    e.preventDefault();
+    setDropTarget(null);
+    setGroupDropTarget(null);
   }, []);
 
   const handleDrop = useCallback(
@@ -889,6 +928,12 @@ export const ConnectionNavigatorTree = forwardRef<
                 handleDragLeave={handleDragLeave}
                 handleDragEnd={handleDragEnd}
                 handleDrop={handleDrop}
+                groupDropTarget={groupDropTarget}
+                handleGroupDragOver={handleGroupDragOver}
+                handleGroupDragLeave={handleGroupDragLeave}
+                handleGroupDrop={handleGroupDrop}
+                handleSectionDragOver={handleSectionDragOver}
+                handleSectionDrop={handleSectionDrop}
                 renderStatusDot={renderStatusDot}
                 viewActions={viewActions}
               />
