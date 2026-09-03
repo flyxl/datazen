@@ -51,315 +51,108 @@ fn plan_single_table(
     tgt: &TableSchema,
     target_dialect: &str,
     opts: &PlanOptions<'_>,
-    statements: &mut Vec<super::types::PlanStatement>,
+    statements: &mut Vec<PlanStatement>,
     warnings: &mut Vec<String>,
     requirements: &mut Vec<super::types::PlanRequirement>,
 ) {
-    let dialect = normalize_dialect(target_dialect);
+    let mut operations = super::ir::diff_to_operations(table, src, tgt);
 
-    if tgt.columns.is_empty() {
-        if src.columns.is_empty() {
-            warnings.push(format!(
-                "Table {table} is missing on target and source has no columns; skipped"
-            ));
-            return;
-        }
-        let mut resolved = Vec::new();
-        for col in &src.columns {
-            match resolve_type(opts, &col.name, &col.data_type) {
-                Ok(ty) => resolved.push((col.name.clone(), ty)),
-                Err(e) => {
-                    warnings.push(format!("Skip CREATE TABLE {table}: {e}"));
-                    return;
-                }
-            }
-        }
-        statements.push(super::dialects::create_table_stmt(
-            &dialect, table, src, &resolved,
-        ));
-        // Defaults are rendered as part of CREATE TABLE. Dialect-specific sequence
-        // handling is intentionally deferred until sequence metadata is available from
-        // introspection; never infer object names by parsing a SQL expression here.
-        // Primary key is a table-level object; do not model it as a column-only warning.
-    if src.primary_keys != tgt.primary_keys {
-        if !tgt.primary_keys.is_empty() {
-            if !opts.allow_destructive {
-                warnings.push(format!("Skipped DROP PRIMARY KEY on {table} (enable allowDestructive)"));
-            } else {
-                match dialect.as_str() {
-                    "postgresql" => {
-                        requirements.push(super::types::PlanRequirement::Unsupported {
-                            operation: format!("DROP PRIMARY KEY {table}"),
-                            reason: "PostgreSQL primary-key constraint names are not exposed by the current schema snapshot; refusing to guess the constraint name.".into(),
-                        });
-                    },
-                    "mysql" => statements.push(mysql::drop_primary_key(table)),
-                    "sqlite" => warnings.push(format!("SQLite primary-key changes require table rebuild: {table}")),
-                    _ => warnings.push(format!("Unsupported dialect for DROP PRIMARY KEY: {dialect}")),
-                }
-            }
-        }
-        if !src.primary_keys.is_empty() && (tgt.primary_keys.is_empty() || dialect == "mysql") {
-            match dialect.as_str() {
-                "postgresql" => statements.push(postgres::add_primary_key(table, &src.primary_keys)),
-                "mysql" => statements.push(mysql::add_primary_key(table, &src.primary_keys)),
-                "sqlite" => warnings.push(format!("SQLite primary-key changes require table rebuild: {table}")),
-                _ => warnings.push(format!("Unsupported dialect for ADD PRIMARY KEY: {dialect}")),
-            }
-        }
-    }
-
-    if opts.include_indexes {
-            for i in &src.indexes {
-                if i.is_primary {
-                    continue;
-                }
-                let stmt = match dialect.as_str() {
-                    "postgresql" => postgres::create_index(table, &i.name, &i.columns, i.is_unique),
-                    "mysql" => mysql::create_index(table, &i.name, &i.columns, i.is_unique),
-                    "sqlite" => sqlite::create_index(table, &i.name, &i.columns, i.is_unique),
-                    _ => continue,
-                };
-                statements.push(stmt);
-            }
-        }
-        return;
-    }
-
-    let operations = super::dependencies::resolve_dependencies(
-        super::ir::diff_to_operations(table, src, tgt),
-    );
-    let mut rendered = Vec::new();
-    for op in &operations {
-        match super::renderer::render_operation(&dialect, op) {
-            Ok(stmt) => rendered.push(stmt),
-            Err(e) => requirements.push(super::types::PlanRequirement::Unsupported {
-                operation: op.key(),
-                reason: e,
-            }),
-        }
-    }
-    // The IR/renderer path is authoritative for the new architecture. Keep the
-    // legacy planner below temporarily for compatibility until all dialect alter
-    // renderers are migrated.
-    if !rendered.is_empty() {
-        statements.extend(rendered);
-        return;
-    }
-    let diff = diff_table_schemas(table, src, tgt);
-
-    for col in &diff.missing_on_target {
-        match resolve_type(opts, &col.name, &col.data_type) {
-            Ok(ty) => {
-                let src_col = src.columns.iter().find(|c| c.name == col.name);
-                let src_default = src_col.and_then(|c| c.default_value.as_deref());
-
-                // Never invent values for existing target rows. A NOT NULL column
-                // without a source default is added nullable and requires backfill.
-                let unsafe_sequence_default = src_default
-                    .map(|d| d.to_ascii_lowercase().contains("nextval("))
-                    .unwrap_or(false);
-
-                if !col.nullable && src_default.is_none() {
-                    let nullable_col = ColumnSnapshot { nullable: true, ..col.clone() };
-                    let add_stmt = match dialect.as_str() {
-                        "postgresql" => postgres::add_column(table, &nullable_col, &ty),
-                        "mysql" => mysql::add_column(table, &nullable_col, &ty),
-                        "sqlite" => sqlite::add_column(table, &nullable_col, &ty),
-                        other => {
-                            warnings.push(format!("Unsupported dialect for ADD COLUMN: {other}"));
-                            continue;
-                        }
-                    };
-                    statements.push(add_stmt);
-                    warnings.push(format!(
-                        "ADD COLUMN {}.{} requires backfill before SET NOT NULL; no default was provided by source",
-                        table, col.name
-                    ));
-                    requirements.push(super::types::PlanRequirement::Backfill {
-                        table: table.to_string(),
-                        column: col.name.clone(),
-                        reason: "Source column is NOT NULL but has no default; populate existing target rows before enforcing NOT NULL.".into(),
-                    });
-                    continue;
-                }
-
-                if unsafe_sequence_default && dialect != "postgresql" {
-                    let nullable_col = ColumnSnapshot { nullable: true, ..col.clone() };
-                    let add_stmt = match dialect.as_str() {
-                        "mysql" => mysql::add_column(table, &nullable_col, &ty),
-                        "sqlite" => sqlite::add_column(table, &nullable_col, &ty),
-                        _ => continue,
-                    };
-                    statements.push(add_stmt);
-                    warnings.push(format!(
-                        "Skipped PostgreSQL nextval default for {}.{} on {}; explicit identity/auto-increment mapping is required",
-                        table, col.name, dialect
-                    ));
-                    requirements.push(super::types::PlanRequirement::Unsupported {
-                        operation: format!("ADD COLUMN {}.{}", table, col.name),
-                        reason: "PostgreSQL sequence defaults cannot be translated safely without sequence metadata.".into(),
-                    });
-                    continue;
-                }
-
-                if let Some(def) = src_default {
-                    let stmt = match dialect.as_str() {
-                        "postgresql" => postgres::add_column_with_default(table, col, &ty, def),
-                        "mysql" => mysql::add_column_with_default(table, col, &ty, def),
-                        _ => {
-                            warnings.push(format!(
-                                "Default expression for {}.{} is not supported on {}",
-                                table, col.name, dialect
-                            ));
-                            requirements.push(super::types::PlanRequirement::Unsupported {
-                                operation: format!("ADD COLUMN {}.{}", table, col.name),
-                                reason: "Target dialect cannot render this default expression.".into(),
-                            });
-                            continue;
-                        }
-                    };
-                    statements.push(stmt);
-                } else {
-                    let stmt = match dialect.as_str() {
-                        "postgresql" => postgres::add_column(table, col, &ty),
-                        "mysql" => mysql::add_column(table, col, &ty),
-                        "sqlite" => sqlite::add_column(table, col, &ty),
-                        other => {
-                            warnings.push(format!("Unsupported dialect for ADD COLUMN: {other}"));
-                            continue;
-                        }
-                    };
-                    statements.push(stmt);
-                }
-            }
-            Err(e) => warnings.push(format!("Skip ADD {}.{}: {e}", table, col.name)),
-        }
-    }
-
-    for col in &diff.extra_on_target {
-        if !opts.allow_destructive {
-            warnings.push(format!(
-                "Skipped DROP COLUMN {}.{} (enable allowDestructive)",
-                table, col.name
-            ));
-            continue;
-        }
-        match dialect.as_str() {
-            "postgresql" => statements.push(postgres::drop_column(table, col)),
-            "mysql" => statements.push(mysql::drop_column(table, col)),
-            "sqlite" => warnings.push(sqlite::unsupported_drop(table, &col.name)),
-            other => warnings.push(format!("Unsupported dialect for DROP COLUMN: {other}")),
-        }
-    }
-
-    for change in &diff.changed {
-        let wants_type = change.changes.contains(&super::types::ColumnChange::DataType);
-        let wants_null = change.changes.contains(&super::types::ColumnChange::Nullable);
-
-        if dialect == "sqlite" && (wants_type || wants_null) {
-            warnings.push(sqlite::unsupported_modify(table, &change.name));
-            continue;
-        }
-
-        if wants_type {
-            let narrowing = is_type_narrowing(&change.source, &change.target);
-            if narrowing && !opts.allow_destructive {
-                warnings.push(format!(
-                    "Skipped type ALTER {}.{} (possible narrowing; enable allowDestructive)",
-                    table, change.name
-                ));
-            } else {
-                match resolve_type(opts, &change.name, &change.source.data_type) {
-                    Ok(ty) => {
-                        let stmt = match dialect.as_str() {
-                            "postgresql" => postgres::alter_type(table, change, &ty),
-                            "mysql" => mysql::modify_column(table, change, &ty),
-                            _ => continue,
-                        };
-                        if stmt.risk == StatementRisk::Rewrite && !opts.allow_destructive {
-                            warnings.push(format!(
-                                "Skipped rewrite ALTER {}.{} (enable allowDestructive)",
-                                table, change.name
-                            ));
-                        } else {
-                            statements.push(stmt);
-                        }
-                    }
-                    Err(e) => {
-                        warnings.push(format!("Skip ALTER type {}.{}: {e}", table, change.name))
+    // Type mapping belongs at the boundary between source snapshot and target driver.
+    // The IR remains dialect-neutral; only replace types before rendering.
+    if let Some(mapper) = opts.type_mapper {
+        for op in &mut operations {
+            match op {
+                super::operations::MigrationOperation::AddColumn { column, .. } => {
+                    if let Ok(ty) = mapper(&column.data_type, &column.name) {
+                        column.data_type = ty;
                     }
                 }
-            }
-        } else if wants_null {
-            let narrowing =
-                is_narrowing_nullability(change.source.nullable, change.target.nullable);
-            if narrowing && !opts.allow_destructive {
-                warnings.push(format!(
-                    "Skipped SET NOT NULL {}.{} (enable allowDestructive)",
-                    table, change.name
-                ));
-                continue;
-            }
-            match dialect.as_str() {
-                "postgresql" => statements.push(postgres::set_nullability(table, change)),
-                "mysql" => match resolve_type(opts, &change.name, &change.source.data_type) {
-                    Ok(ty) => statements.push(mysql::modify_column(table, change, &ty)),
-                    Err(e) => {
-                        warnings.push(format!("Skip nullability {}.{}: {e}", table, change.name))
+                super::operations::MigrationOperation::CreateTable { columns, .. } => {
+                    for column in columns {
+                        if let Ok(ty) = mapper(&column.data_type, &column.name) {
+                            column.data_type = ty;
+                        }
                     }
-                },
+                }
+                super::operations::MigrationOperation::AlterColumnType { column, to, .. } => {
+                    if let Ok(ty) = mapper(to, column) {
+                        *to = ty;
+                    }
+                }
                 _ => {}
             }
         }
+    }
 
-        if change.changes.contains(&super::types::ColumnChange::Default) {
-            let stmt = super::dialects::set_default_with_rollback(
-                &dialect,
-                table,
-                &change.name,
-                change.source.default_value.as_deref(),
-                change.target.default_value.as_deref(),
-            );
-            statements.push(stmt);
+    // Safety policy is domain-level: destructive operations require explicit approval.
+    operations.retain(|op| {
+        if !opts.allow_destructive && op.risk() == StatementRisk::Destructive {
+            warnings.push(format!("Skipped destructive operation {}", op.key()));
+            false
+        } else {
+            true
         }
+    });
 
-        if change.changes.contains(&super::types::ColumnChange::Comment)
-            || change.changes.contains(&super::types::ColumnChange::AutoIncrement)
-        {
-            requirements.push(super::types::PlanRequirement::Unsupported {
-                operation: format!("ALTER COLUMN {}.{}", table, change.name),
-                reason: "Column comment/auto-increment changes are detected but require dialect-specific migration support.".into(),
-            });
+    // Adding a NOT NULL column without a source default would fail for existing rows.
+    // Do not invent a business value. Add it nullable and require explicit backfill.
+    for op in &mut operations {
+        if let super::operations::MigrationOperation::AddColumn { table, column } = op {
+            if !column.nullable && column.default_value.is_none() {
+                column.nullable = true;
+                requirements.push(super::types::PlanRequirement::Backfill {
+                    table: table.clone(),
+                    column: column.name.clone(),
+                    reason: "Populate existing rows before enforcing NOT NULL.".into(),
+                });
+            }
         }
     }
 
-    if opts.include_indexes {
-        let idx = diff_indexes(src, tgt);
-        for i in &idx.missing_on_target {
-            let stmt = match dialect.as_str() {
-                "postgresql" => postgres::create_index(table, &i.name, &i.columns, i.is_unique),
-                "mysql" => mysql::create_index(table, &i.name, &i.columns, i.is_unique),
-                "sqlite" => sqlite::create_index(table, &i.name, &i.columns, i.is_unique),
-                _ => continue,
-            };
-            statements.push(stmt);
-        }
-        for i in &idx.extra_on_target {
-            if !opts.allow_destructive {
-                warnings.push(format!(
-                    "Skipped DROP INDEX {} (enable allowDestructive)",
-                    i.name
-                ));
-                continue;
+    if !opts.include_indexes {
+        operations.retain(|op| !matches!(
+            op,
+            super::operations::MigrationOperation::CreateIndex { .. } |
+            super::operations::MigrationOperation::DropIndex { .. }
+        ));
+    }
+
+    let operations = super::dependencies::resolve_dependencies(operations);
+    let Some(driver) = datazen_driver_api::create_driver(target_dialect) else {
+        requirements.push(super::types::PlanRequirement::Unsupported {
+            operation: table.to_string(),
+            reason: format!("No registered driver for target database: {target_dialect}"),
+        });
+        return;
+    };
+    let Some(renderer) = driver.migration_renderer() else {
+        requirements.push(super::types::PlanRequirement::Unsupported {
+            operation: table.to_string(),
+            reason: format!("Driver {} does not expose schema migration rendering", target_dialect),
+        });
+        return;
+    };
+
+    for op in operations {
+        let key = op.key();
+        let driver_op = op.to_driver_api();
+        match renderer.render(&driver_op) {
+            Ok(stmt) => {
+                statements.push(PlanStatement {
+                    sql: stmt.sql,
+                    risk: match stmt.risk {
+                        datazen_driver_api::MigrationRisk::Additive => StatementRisk::Additive,
+                        datazen_driver_api::MigrationRisk::Rewrite => StatementRisk::Rewrite,
+                        datazen_driver_api::MigrationRisk::Destructive => StatementRisk::Destructive,
+                    },
+                    rollback_sql: stmt.rollback_sql,
+                    summary: stmt.summary,
+                });
             }
-            let stmt = match dialect.as_str() {
-                "postgresql" => postgres::drop_index(&i.name),
-                "mysql" => mysql::drop_index(table, &i.name),
-                "sqlite" => sqlite::drop_index(&i.name),
-                _ => continue,
-            };
-            statements.push(stmt);
+            Err(reason) => requirements.push(super::types::PlanRequirement::Unsupported {
+                operation: key,
+                reason,
+            }),
         }
     }
 }
