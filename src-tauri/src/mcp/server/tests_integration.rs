@@ -614,3 +614,145 @@
             .unwrap_err();
         assert!(err.to_string().contains("allowlist"));
     }
+
+    /// [tester] handler gate (tool_is_registered) stays aligned with tools.rs tool_router.
+    #[tokio::test]
+    async fn test_tester_tool_is_registered_cross_module_consistency() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::new().await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+
+        for name in MCP_ALL_TOOLS {
+            assert!(
+                server.tool_is_registered(name),
+                "handler gate must see tool_router route for {name}"
+            );
+            assert!(
+                DataZenMcpServer::tool_router().get(name).is_some(),
+                "tools module must register {name}"
+            );
+        }
+        assert!(
+            !server.tool_is_registered(""),
+            "empty tool name must not pass handler registration gate"
+        );
+        assert!(!server.tool_is_registered("not_a_real_tool"));
+    }
+
+    /// [tester] list_resources_inner URIs are readable via read_resource_inner (resources module).
+    #[tokio::test]
+    async fn test_tester_listed_resources_readable_via_read_resource_inner() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::with_tables().await;
+        test.save_connection("res-list").await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+
+        for resource in server.list_resources_inner() {
+            let uri = resource.uri.as_str();
+            let result = server.read_resource_inner(uri).await;
+            assert!(
+                result.is_ok(),
+                "listed resource {uri} must be readable, got {:?}",
+                result.err()
+            );
+        }
+    }
+
+    /// [tester] empty tool name rejected before tool_router dispatch (call_tool_inner path).
+    #[tokio::test]
+    async fn test_tester_call_tool_inner_rejects_empty_tool_name() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::new().await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+
+        let err = server.call_tool_inner("", None).await.unwrap_err();
+        let msg = err.message.to_string();
+        assert!(
+            msg.contains("Unknown or disabled tool"),
+            "expected unknown-tool error for empty name, got: {msg}"
+        );
+    }
+
+    /// [tester] blank resource URI returns resource_not_found (resources module boundary).
+    #[tokio::test]
+    async fn test_tester_read_resource_blank_uri_returns_not_found() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::new().await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+
+        let err = server.read_resource_inner("").await.unwrap_err();
+        assert!(
+            err.to_string().contains("Unknown resource"),
+            "blank URI must not panic or succeed, got: {err}"
+        );
+    }
+
+    /// [tester] concurrent list_connections + read_resource without cross-request corruption.
+    #[tokio::test]
+    async fn test_tester_concurrent_mcp_operations() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::with_tables().await;
+        test.save_connection("conc-a").await;
+        test.save_connection("conc-b").await;
+        let server = Arc::new(DataZenMcpServer::new(Arc::new(test.state)));
+
+        let (conns, workflows, inner_conns) = tokio::join!(
+            server.read_resource_inner("datazen://connections"),
+            server.read_resource_inner("datazen://workflows"),
+            server.list_connections(),
+        );
+
+        let conns_text = match &conns.unwrap().contents[0] {
+            ResourceContents::TextResourceContents { text, .. } => text.clone(),
+            _ => panic!("expected text resource"),
+        };
+        let wf_text = match &workflows.unwrap().contents[0] {
+            ResourceContents::TextResourceContents { text, .. } => text.clone(),
+            _ => panic!("expected text resource"),
+        };
+        let inner = inner_conns.unwrap();
+
+        assert!(conns_text.contains("conc-a"));
+        assert!(conns_text.contains("conc-b"));
+        assert!(inner.contains("conc-a"));
+        assert!(inner.contains("conc-b"));
+        assert!(
+            wf_text.contains("workflow") || wf_text.trim() == "[]",
+            "workflows resource must be valid JSON list"
+        );
+    }
+
+    /// [tester] post-split regression: list_tools_inner names stay aligned with MCP_ALL_TOOLS.
+    #[tokio::test]
+    async fn test_tester_list_tools_inner_snapshot_matches_mcp_all_tools() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::new().await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+
+        let mut actual: Vec<String> = server
+            .list_tools_inner()
+            .iter()
+            .map(|t| t.name.to_string())
+            .collect();
+        actual.sort_unstable();
+
+        let mut expected: Vec<String> = MCP_ALL_TOOLS.iter().map(|s| (*s).to_string()).collect();
+        expected.sort_unstable();
+
+        assert_eq!(
+            actual, expected,
+            "list_tools_inner must expose exactly MCP_ALL_TOOLS after module split"
+        );
+    }
