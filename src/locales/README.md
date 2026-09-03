@@ -8,13 +8,21 @@ Shipping pair (`en` / `zh-CN`) is split by **domain** so PRs stay small and low-
 locales/
   domains.ts           # EAGER_DOMAINS / LAZY_DOMAINS
   lazyPacks.ts         # dynamic import registry + ensureLocaleDomains()
-  builtinLocales.ts    # eager runtime dictionaries
+  builtinLocales.ts    # GENERATED (gitignored) — eager runtime dictionaries
   fullLocales.ts       # full dict (tests / tooling only)
   zh-CN/  en/          # per-domain packs + index (full merge) + eager.ts
   zh-CN.ts  en.ts      # re-exports of full merge (back-compat)
   index.ts             # getTranslation / public API
   de.ts fr.ts …        # optional extra locales (monolith, unchanged)
 ```
+
+## Codegen: `builtinLocales.ts`
+
+`src/locales/builtinLocales.ts` is **generated** by `scripts/generate-builtin-locales.mjs` and listed in `.gitignore`.
+
+- Do **not** commit it.
+- It is written on `pnpm install` (prepare), `pnpm locales:generate`, pretest, and `pnpm ci:local` step 0.
+- Clean checkouts always regenerate before typecheck.
 
 ## Lazy domains
 
@@ -29,9 +37,11 @@ locales/
 
 ```ts
 import { useLocaleDomains } from '../hooks/useLocaleDomains';
+import { LocaleDomainLoading } from '../components/LocaleDomainLoading';
 
 // inside feature window:
-useLocaleDomains(['sync']);
+const localesReady = useLocaleDomains(['sync']);
+if (!localesReady) return <LocaleDomainLoading />;
 ```
 
 ## Adding a key
@@ -39,5 +49,3 @@ useLocaleDomains(['sync']);
 1. Put it in the correct domain file under `zh-CN/<domain>.ts` and `en/<domain>.ts`.
 2. Keep key prefixes stable (`sync.*`, `connWin.*`, …).
 3. Run unit tests (`locales.test.ts` checks en/zh-CN parity on the full dict).
-
-<!-- ci-trigger: 2026-09-03 -->

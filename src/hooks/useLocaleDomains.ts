@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ensureLocaleDomains, type LazyDomain } from '../locales';
 import { useSettingsStore } from '../stores/settingsStore';
 
@@ -11,14 +11,14 @@ import { useSettingsStore } from '../stores/settingsStore';
  * on every render.
  *
  * @returns `ready` — false until the requested packs are in the registry.
- * Prefer gating lazy-copy UI with {@link LocaleDomainLoading} while false.
+ * Prefer gating lazy-copy UI with `LocaleDomainLoading` while false.
  */
 export function useLocaleDomains(domains: readonly LazyDomain[]): boolean {
   const language = useSettingsStore((s) => s.settings?.language) ?? 'en';
   const [ready, setReady] = useState(false);
 
-  // Stable key so `useLocaleDomains(['sync'])` does not re-fire every render.
-  const domainsKey = useMemo(() => [...domains].sort().join('\0'), [domains]);
+  // Stable string key: inline `['sync']` gets a new array each render, but the key does not.
+  const domainsKey = [...domains].sort().join('\0');
 
   useEffect(() => {
     let cancelled = false;
@@ -30,7 +30,6 @@ export function useLocaleDomains(domains: readonly LazyDomain[]): boolean {
     return () => {
       cancelled = true;
     };
-    // domainsKey captures the domain set; do not depend on `domains` identity.
   }, [language, domainsKey]);
 
   return ready;
