@@ -849,4 +849,110 @@ mod tests {
             .starts_with(temp.path()));
         assert_eq!(state.store.data_dir(), temp.path());
     }
+
+    /// [tester] `lib.rs` preserves public crate entry points after the split.
+    #[test]
+    fn test_tester_lib_reexports_public_entry_points() {
+        let lib = include_str!("lib.rs");
+        assert!(lib.contains("pub use bootstrap::{run, run_mcp_stdio}"));
+        assert!(lib.contains("mod app_menu"));
+        assert!(lib.contains("mod bootstrap"));
+    }
+
+    /// [tester] `finish_app_state` wires extension manager and driver registry shells.
+    #[tokio::test]
+    async fn test_tester_finish_app_state_initializes_extensions_and_registry() {
+        use crate::db::registry::DriverRegistry;
+        use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+        use crate::transfer::adapter_registry::SyncAdapterRegistry;
+
+        let temp = tempfile::tempdir().unwrap();
+        let store = Arc::new(
+            Store::init_with_path(temp.path())
+                .await
+                .expect("store init"),
+        );
+        let registry = Arc::new(DriverRegistry::new());
+        let db_type = "postgres".to_string();
+        registry
+            .register_test_driver(
+                &db_type,
+                MockDriver::new("postgres", MockDriverOptions::default()),
+            )
+            .await;
+
+        let state = finish_app_state(
+            store.clone(),
+            registry.clone(),
+            Arc::new(SyncAdapterRegistry::new()),
+            None,
+        );
+
+        assert_eq!(
+            state.extensions.extensions_dir(),
+            temp.path().join("plugins")
+        );
+        assert!(Arc::ptr_eq(&state.driver_registry, &registry));
+        assert!(registry.get(&db_type).await.is_some());
+        assert!(state.extensions.list().is_empty());
+    }
+
+    fn invoke_handler_registration_block() -> &'static str {
+        let src = include_str!("bootstrap.rs");
+        let start = src
+            .find(".invoke_handler(tauri::generate_handler![")
+            .expect("invoke_handler block");
+        let rest = &src[start..];
+        let end = rest.find("])").expect("invoke_handler closing");
+        &rest[..end]
+    }
+
+    /// [tester] Critical IPC commands remain registered after bootstrap extraction.
+    #[test]
+    fn test_tester_invoke_handler_registers_critical_commands() {
+        let block = invoke_handler_registration_block();
+        for needle in [
+            "commands::get_connections,",
+            "commands::execute_driver_command,",
+            "commands::connect,",
+            "commands::mcp_start_stdio,",
+            "commands::list_extensions,",
+            "app_menu::rebuild_menu,",
+        ] {
+            assert!(
+                block.contains(needle),
+                "invoke_handler missing registration: {needle}"
+            );
+        }
+        let registered = block.matches("commands::").count() + block.matches("app_menu::").count();
+        assert!(
+            registered >= 150,
+            "expected a large IPC surface, got {registered} command registrations"
+        );
+    }
+
+    /// [tester] MCP stdio headless entry remains wired from `main` through `bootstrap`.
+    #[test]
+    fn test_tester_run_mcp_stdio_entry_chain_wiring() {
+        let bootstrap = include_str!("bootstrap.rs");
+        assert!(bootstrap.contains("pub fn run_mcp_stdio()"));
+        assert!(bootstrap.contains("mcp::auth::verify_stdio_token"));
+        assert!(bootstrap.contains("build_app_state"));
+        assert!(bootstrap.contains("mcp::start_mcp_stdio"));
+
+        let main_rs = include_str!("main.rs");
+        assert!(main_rs.contains("datazen::is_mcp_stdio_mode"));
+        assert!(main_rs.contains("datazen::run_mcp_stdio()"));
+        assert!(main_rs.contains("datazen::run()"));
+    }
+
+    /// [tester] GUI bootstrap registers driver plugins and the datazen URI scheme.
+    #[test]
+    fn test_tester_run_registers_plugins_and_uri_scheme() {
+        let src = include_str!("bootstrap.rs");
+        assert!(src.contains("driver_init::register_drivers"));
+        assert!(src.contains("register_uri_scheme_protocol(\"datazen\""));
+        assert!(src.contains("build_gui_app_state"));
+        assert!(src.contains("setup_menu"));
+    }
 }

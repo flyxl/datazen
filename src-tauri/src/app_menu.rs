@@ -630,4 +630,102 @@ mod tests {
         );
         assert_eq!(menu_action_for_id("view-logs"), MenuAction::OpenLogDir);
     }
+
+    /// [tester] Every custom menu item id used in `setup_menu` must map to a concrete action.
+    #[test]
+    fn test_tester_setup_menu_ids_map_to_concrete_actions() {
+        const SETUP_MENU_IDS: &[&str] = &[
+            "theme-light",
+            "theme-dark",
+            "theme-system",
+            "open-settings",
+            "new-connection",
+            "export-config",
+            "import-config",
+            "export-connections",
+            "import-connections-file",
+            "import-connections-dbx",
+            "import-connections-navicat",
+            "import-connections-datagrip",
+            "import-connections-dbeaver",
+            "import-connections-tableplus",
+            "schema-diff",
+            "data-sync",
+            "data-transfer",
+            "workflow",
+            "dashboard",
+            "backup",
+            "restore",
+            "view-logs",
+            "help-docs",
+            "help-report",
+        ];
+        for id in SETUP_MENU_IDS {
+            let action = menu_action_for_id(id);
+            assert_ne!(
+                action,
+                MenuAction::Ignore,
+                "setup_menu id {id:?} must not map to Ignore"
+            );
+        }
+    }
+
+    /// [tester] Each `MenuAction` variant (except `Ignore`) must be reachable via `menu_action_for_id`.
+    #[test]
+    fn test_tester_menu_action_variants_all_reachable() {
+        use crate::commands::MigrationSubWindow;
+
+        assert!(matches!(
+            menu_action_for_id("theme-light"),
+            MenuAction::ThemeChange(_)
+        ));
+        assert!(matches!(
+            menu_action_for_id("open-settings"),
+            MenuAction::Emit(_)
+        ));
+        assert_eq!(menu_action_for_id("help-docs"), MenuAction::OpenDocs);
+        assert_eq!(
+            menu_action_for_id("help-report"),
+            MenuAction::OpenReportIssue
+        );
+        assert_eq!(
+            menu_action_for_id("ctx-add-favorite"),
+            MenuAction::AddFavorite
+        );
+        assert_eq!(
+            menu_action_for_id("backup"),
+            MenuAction::OpenMigrationWindow(MigrationSubWindow::Backup)
+        );
+        assert_eq!(menu_action_for_id("view-logs"), MenuAction::OpenLogDir);
+        assert_eq!(menu_action_for_id("__unknown__"), MenuAction::Ignore);
+    }
+
+    /// [tester] Native menu event handler must match on every `MenuAction` variant.
+    #[test]
+    fn test_tester_native_menu_handler_covers_all_menu_action_variants() {
+        let src = include_str!("app_menu.rs");
+        let handler = src
+            .split("handle.on_menu_event")
+            .nth(1)
+            .expect("on_menu_event handler");
+        let match_block = handler
+            .split("match menu_action_for_id")
+            .nth(1)
+            .expect("menu_action_for_id match");
+        for variant in [
+            "MenuAction::ThemeChange",
+            "MenuAction::Emit",
+            "MenuAction::OpenDocs",
+            "MenuAction::OpenReportIssue",
+            "MenuAction::AddFavorite",
+            "MenuAction::OpenMigrationWindow",
+            "MenuAction::OpenLogDir",
+            "MenuAction::Ignore",
+        ] {
+            assert!(
+                match_block.contains(variant),
+                "native menu handler missing arm for {variant}"
+            );
+        }
+    }
 }
