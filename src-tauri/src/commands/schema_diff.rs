@@ -14,6 +14,7 @@ use crate::schema_diff::types::TableColumnDiff;
 use crate::schema_diff::types::{
     normalize_dialect, resolve_table_for_dialect, SchemaDiffDeployResult, SchemaDiffPlan,
 };
+use crate::services::job_registry::{cancel_job, ensure_job, remove_job};
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::transfer::ddl::build_create_table_ddl;
 use std::sync::Arc;
@@ -162,10 +163,12 @@ pub async fn execute_schema_diff_deploy(
     plan: SchemaDiffPlan,
     use_transaction: Option<bool>,
     confirm_destructive: Option<String>,
+    job_id: Option<String>,
 ) -> Result<SchemaDiffDeployResult, CommandError> {
     tracing::info!(
         %target_db_session_id,
         statements = plan.statements.len(),
+        ?job_id,
         "execute_schema_diff_deploy"
     );
 
@@ -178,6 +181,11 @@ pub async fn execute_schema_diff_deploy(
         }
     }
 
+    let cancelled = match job_id.as_deref() {
+        Some(id) => Some(ensure_job(id).await),
+        None => None,
+    };
+
     let (driver, handle) = state
         .connection_manager
         .get_session(&target_db_session_id)
@@ -189,13 +197,31 @@ pub async fn execute_schema_diff_deploy(
         stop_on_error: true,
     };
 
-    let result = run_schema_diff_deploy(driver.as_ref(), &handle, &plan, opts).await;
+    let result = run_schema_diff_deploy(
+        driver.as_ref(),
+        &handle,
+        &plan,
+        opts,
+        cancelled,
+    )
+    .await;
+
+    if let Some(id) = job_id.as_deref() {
+        remove_job(id).await;
+    }
+
     tracing::info!(
         ?result.status,
         executed = result.executed_count,
         "execute_schema_diff_deploy OK"
     );
     Ok(result)
+}
+
+/// Cancel an in-progress schema diff deploy job.
+#[tauri::command]
+pub async fn cancel_schema_diff_deploy(job_id: String) -> Result<bool, CommandError> {
+    Ok(cancel_job(&job_id).await)
 }
 
 /// Compare column-level schema differences for a single table.

@@ -989,6 +989,7 @@ pub fn run() {
             commands::restore_sql_file,
             commands::prepare_schema_diff_plan,
             commands::execute_schema_diff_deploy,
+            commands::cancel_schema_diff_deploy,
             commands::compare_table_schemas,
             commands::execute_data_sync,
             commands::cancel_data_sync,

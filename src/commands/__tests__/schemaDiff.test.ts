@@ -198,6 +198,7 @@ describe('schemaDiffCommands wrappers', () => {
       plan,
       useTransaction: true,
       confirmDestructive: 'DEPLOY',
+      jobId: undefined,
     });
   });
 
@@ -209,6 +210,7 @@ describe('schemaDiffCommands wrappers', () => {
       plan,
       useTransaction: undefined,
       confirmDestructive: undefined,
+      jobId: undefined,
     });
   });
 });
