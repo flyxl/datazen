@@ -161,13 +161,15 @@ impl DatabaseDriver for SqliteDriver {
             .await
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
 
-        let row = sqlx::query("SELECT sqlite_version()")
+        let result = sqlx::query("SELECT sqlite_version()")
             .fetch_one(&pool)
             .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            .map_err(|e| DriverError::QueryFailed(e.to_string()));
 
-        let version: String = row.try_get(0).unwrap_or_default();
         pool.close().await;
+
+        let row = result?;
+        let version: String = row.try_get(0).unwrap_or_default();
         Ok(ServerInfo {
             server_version: version,
             server_type: "SQLite".into(),

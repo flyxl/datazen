@@ -944,13 +944,15 @@ impl DatabaseDriver for MysqlDriver {
             .await
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
 
-        let row = sqlx::query("SELECT version()")
+        let result = sqlx::query("SELECT version()")
             .fetch_one(&pool)
             .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            .map_err(|e| DriverError::QueryFailed(e.to_string()));
 
-        let version: String = row.try_get(0).unwrap_or_default();
         pool.close().await;
+
+        let row = result?;
+        let version: String = row.try_get(0).unwrap_or_default();
 
         let server_type = if version.to_lowercase().contains("mariadb") {
             "MariaDB"
@@ -972,7 +974,7 @@ impl DatabaseDriver for MysqlDriver {
         let min = 2u32.min(max);
         let pool = Self::open_pool(opts, timeout, max, min).await?;
 
-        {
+        let acquire_result: Result<(), DriverError> = async {
             let _c1 = pool
                 .acquire()
                 .await
@@ -983,11 +985,25 @@ impl DatabaseDriver for MysqlDriver {
                     .await
                     .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
             }
+            Ok(())
+        }
+        .await;
+
+        if let Err(e) = acquire_result {
+            pool.close().await;
+            return Err(e);
         }
 
         let pool_id = uuid::Uuid::new_v4().to_string();
         let connection_id = uuid::Uuid::new_v4().to_string();
-        let control_pool = Self::open_pool(build_mysql_options(config)?, timeout, 1, 0).await?;
+        let control_pool = match Self::open_pool(build_mysql_options(config)?, timeout, 1, 0).await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                pool.close().await;
+                return Err(e);
+            }
+        };
 
         if let Some(db) = config
             .database
