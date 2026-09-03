@@ -19,6 +19,7 @@ import { databaseCommands } from '../../commands/database';
 import { fileCommands } from '../../commands/file';
 import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
+import { useLocaleDomains } from '../../hooks/useLocaleDomains';
 import { useResizable } from '../../hooks/useResizable';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { openDocsWindow } from '../../lib/windowManager';
@@ -56,6 +57,7 @@ function tableDiffHasChanges(diff: TableSchemaDiff): boolean {
 }
 
 export function SchemaDiffWindow() {
+  useLocaleDomains(['schemaDiff']);
   useSettings();
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);

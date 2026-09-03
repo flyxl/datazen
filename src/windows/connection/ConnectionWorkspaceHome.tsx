@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Code2, GitFork, Loader2, Plus, TableProperties } from 'lucide-react';
+import { Code2, Database, Download, GitFork, Loader2, Plus, TableProperties } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { DbTypeBadge } from '../../components/DbTypeBadge';
 import { ThemedIcon } from '../../components/ThemedIcon';
@@ -25,6 +25,7 @@ export interface ConnectionWorkspaceHomeProps {
   /** Database type of the connection being established. */
   connectingDbType?: DatabaseType;
   onNewConnection: () => void;
+  onImportConnections?: () => void;
   onNewQuery: () => void;
   onCreateTable: () => void;
   onOpenErDiagram: () => void;
@@ -86,6 +87,7 @@ export function ConnectionWorkspaceHome({
   connectingName,
   connectingDbType,
   onNewConnection,
+  onImportConnections,
   onNewQuery,
   onCreateTable,
   onOpenErDiagram,
@@ -101,16 +103,31 @@ export function ConnectionWorkspaceHome({
         data-testid="connection-workspace-home"
       >
         <div className="max-w-sm text-center">
-          <p className="text-sm text-fg-muted">{t('main.noConnections')}</p>
-          <Button
-            variant="ghost"
-            className="mt-3"
-            onClick={onNewConnection}
-            data-testid="new-connection-button"
-          >
-            <ThemedIcon id="common.newConnection" className="h-4 w-4" fallback={Plus} />
-            {t('main.createFirst')}
-          </Button>
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent">
+            <Database className="h-6 w-6" />
+          </div>
+          <p className="text-sm font-medium text-fg">{t('main.noConnections')}</p>
+          <p className="mt-1.5 text-xs text-fg-muted">{t('connWin.home.emptyNoConnectionsHint')}</p>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <Button
+              className="mt-0"
+              onClick={onNewConnection}
+              data-testid="new-connection-button"
+            >
+              <ThemedIcon id="common.newConnection" className="h-4 w-4" fallback={Plus} />
+              {t('main.createFirst')}
+            </Button>
+            {onImportConnections && (
+              <Button
+                variant="ghost"
+                onClick={onImportConnections}
+                data-testid="import-connections-button"
+              >
+                <Download className="h-4 w-4" />
+                {t('common.importConnections')}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -137,9 +154,32 @@ export function ConnectionWorkspaceHome({
         className="flex flex-1 items-center justify-center px-6"
         data-testid="connection-workspace-home"
       >
-        <p className="max-w-md text-center text-sm text-fg-muted">
-          {t('connWin.home.selectConnection')}
-        </p>
+        <div className="mx-auto flex w-full max-w-md flex-col items-center text-center">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-raised text-fg-muted">
+            <Database className="h-6 w-6" />
+          </div>
+          <h2 className="text-base font-semibold text-fg">{t('connWin.home.selectConnectionTitle')}</h2>
+          <p className="mt-2 text-sm leading-relaxed text-fg-muted">
+            {t('connWin.home.selectConnectionHint')}
+          </p>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+            <Button onClick={onNewConnection} data-testid="empty-new-connection-button">
+              <ThemedIcon id="common.newConnection" className="h-4 w-4" fallback={Plus} />
+              {t('common.newConnection')}
+            </Button>
+            {onImportConnections && (
+              <Button
+                variant="ghost"
+                onClick={onImportConnections}
+                data-testid="empty-import-connections-button"
+              >
+                <Download className="h-4 w-4" />
+                {t('common.importConnections')}
+              </Button>
+            )}
+          </div>
+          <p className="mt-4 text-xs text-fg-muted">{t('connWin.home.selectConnectionTip')}</p>
+        </div>
       </div>
     );
   }

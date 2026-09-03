@@ -49,6 +49,7 @@ describe('ConnectionWorkspaceHome', () => {
     expect(screen.getByTestId('connection-workspace-home')).toBeInTheDocument();
     expect(screen.getByText('main.noConnections')).toBeInTheDocument();
     expect(screen.getByText('main.createFirst')).toBeInTheDocument();
+    expect(screen.getByText('connWin.home.emptyNoConnectionsHint')).toBeInTheDocument();
   });
 
   it('prompts to select a connection when none is active', () => {
@@ -69,7 +70,7 @@ describe('ConnectionWorkspaceHome', () => {
         onOpenPanel={vi.fn()}
       />,
     );
-    expect(screen.getByText('connWin.home.selectConnection')).toBeInTheDocument();
+    expect(screen.getByText('connWin.home.selectConnectionTitle')).toBeInTheDocument();
   });
 
   it('shows loading spinner when connecting and does not show select prompt', () => {
@@ -93,7 +94,7 @@ describe('ConnectionWorkspaceHome', () => {
         onOpenPanel={vi.fn()}
       />,
     );
-    expect(screen.queryByText('connWin.home.selectConnection')).not.toBeInTheDocument();
+    expect(screen.queryByText('connWin.home.selectConnectionTitle')).not.toBeInTheDocument();
     expect(screen.getByText('Local PG')).toBeInTheDocument();
     expect(screen.getByTestId('connection-workspace-home')).toBeInTheDocument();
   });
