@@ -61,3 +61,28 @@ mod tests {
         assert_eq!(op.key(), "column:t.status");
     }
 }
+
+impl MigrationOperation {
+    pub fn to_driver_api(&self) -> datazen_driver_api::MigrationOperation {
+        use datazen_driver_api::{MigrationColumn, MigrationOperation as O};
+        let col = |c: &ColumnSnapshot| MigrationColumn {
+            name:c.name.clone(), data_type:c.data_type.clone(), nullable:c.nullable,
+            default_value:c.default_value.clone(), comment:c.comment.clone(),
+            is_auto_increment:c.is_auto_increment,
+        };
+        match self {
+            Self::AddColumn{table,column} => O::AddColumn{table:table.clone(),column:col(column)},
+            Self::DropColumn{table,column} => O::DropColumn{table:table.clone(),column:col(column)},
+            Self::AlterColumnType{table,column,from,to} => O::AlterColumnType{table:table.clone(),column:column.clone(),from:from.clone(),to:to.clone()},
+            Self::SetNullable{table,column,nullable} => O::SetNullable{table:table.clone(),column:column.clone(),nullable:*nullable},
+            Self::SetDefault{table,column,from,to} => O::SetDefault{table:table.clone(),column:column.clone(),from:from.clone(),to:to.clone()},
+            Self::SetComment{table,column,from,to} => O::SetComment{table:table.clone(),column:column.clone(),from:from.clone(),to:to.clone()},
+            Self::SetAutoIncrement{table,column,from,to} => O::SetAutoIncrement{table:table.clone(),column:column.clone(),from:*from,to:*to},
+            Self::AddPrimaryKey{table,columns} => O::AddPrimaryKey{table:table.clone(),columns:columns.clone()},
+            Self::DropPrimaryKey{table,columns} => O::DropPrimaryKey{table:table.clone(),columns:columns.clone()},
+            Self::CreateIndex{table,index} => O::CreateIndex{table:table.clone(),index:index.clone()},
+            Self::DropIndex{table,index} => O::DropIndex{table:table.clone(),index:index.clone()},
+            Self::CreateTable{..} => panic!("CreateTable is rendered by schema planner until driver API includes table options"),
+        }
+    }
+}
