@@ -433,4 +433,199 @@ mod tests {
         assert!(output.len() <= MAX_AI_TEXT_BYTES);
         assert!(output.is_char_boundary(output.len()));
     }
+
+    // ── tester: sanitization boundaries ──
+
+    #[test]
+    fn test_tester_nested_json_sensitive_keys_at_all_depths() {
+        let input = serde_json::json!({
+            "password": "root-secret",
+            "level1": {
+                "apiToken": "level1-secret",
+                "level2": {
+                    "clientSecret": "level2-secret",
+                    "level3": {
+                        "refreshToken": "level3-secret",
+                        "safe": "keep-me"
+                    }
+                }
+            }
+        })
+        .to_string();
+
+        let output = redact_for_ai(&input);
+        let parsed: Value = serde_json::from_str(&output).expect("valid JSON");
+
+        assert_eq!(
+            parsed,
+            serde_json::json!({"level1": {"level2": {"level3": {"safe": "keep-me"}}}})
+        );
+        for secret in ["root-secret", "level1-secret", "level2-secret", "level3-secret"] {
+            assert!(!output.contains(secret), "{output}");
+        }
+    }
+
+    #[test]
+    fn test_tester_deep_json_truncates_objects_at_max_depth() {
+        let input = serde_json::json!({
+            "a": {"b": {"c": {"d": {"e": "too-deep", "safe": "visible"}}}}
+        })
+        .to_string();
+
+        let output = redact_for_egress(&input, false);
+        let parsed: Value = serde_json::from_str(&output).expect("valid JSON");
+
+        assert_eq!(
+            parsed,
+            serde_json::json!({"a": {"b": {"c": {"d": "[truncated]"}}}})
+        );
+        assert!(!output.contains("too-deep"), "{output}");
+    }
+
+    #[test]
+    fn test_tester_oversized_ascii_payload_truncates_at_byte_boundary() {
+        let input = "x".repeat(MAX_AI_TEXT_BYTES + 500);
+        let output = redact_for_egress(&input, true);
+
+        assert_eq!(output.len(), MAX_AI_TEXT_BYTES);
+        assert!(output.is_char_boundary(output.len()));
+        assert!(input.starts_with(&output));
+    }
+
+    #[test]
+    fn test_tester_oversized_multibyte_payload_respects_char_boundaries() {
+        // 3-byte CJK chars: ensure truncation never splits a codepoint.
+        let unit = "表";
+        let repeat = MAX_AI_TEXT_BYTES / unit.len() + 10;
+        let input = unit.repeat(repeat);
+        let output = redact_for_egress(&input, true);
+
+        assert!(output.len() <= MAX_AI_TEXT_BYTES);
+        assert!(output.is_char_boundary(output.len()));
+        assert!(input.starts_with(&output));
+        assert!(std::str::from_utf8(output.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn test_tester_invalid_json_fallback_still_redacts_plain_secrets() {
+        let input = r#"{"broken": true, password=leaked-secret"#;
+        let output = redact_for_egress(input, true);
+
+        assert!(!output.contains("leaked-secret"), "{output}");
+        assert!(output.contains("[REDACTED]"), "{output}");
+    }
+
+    // ── tester: egress policy (chat / generate path simulation) ──
+
+    #[test]
+    fn test_tester_strict_egress_strips_result_rows_like_chat_user_message() {
+        let chat_payload = serde_json::json!({
+            "question": "summarize",
+            "queryResults": [{"id": 1, "email": "alice@corp.test"}],
+            "password": "chat-secret"
+        })
+        .to_string();
+
+        let strict = redact_for_egress(&chat_payload, true);
+        let parsed: Value = serde_json::from_str(&strict).expect("valid JSON");
+
+        assert_eq!(parsed, serde_json::json!({"question": "summarize"}));
+        assert!(!strict.contains("alice@corp.test"), "{strict}");
+        assert!(!strict.contains("chat-secret"), "{strict}");
+    }
+
+    #[test]
+    fn test_tester_strict_egress_strips_tool_result_payload_like_chat_loop() {
+        let tool_result = serde_json::json!({
+            "rows": [{"name": "Bob"}],
+            "meta": {"count": 1}
+        })
+        .to_string();
+
+        let strict = redact_for_egress(&tool_result, true);
+        let parsed: Value = serde_json::from_str(&strict).expect("valid JSON");
+
+        assert_eq!(parsed, serde_json::json!({"meta": {"count": 1}}));
+        assert!(!strict.contains("Bob"), "{strict}");
+    }
+
+    #[test]
+    fn test_tester_relaxed_egress_keeps_rows_for_generate_natural_language() {
+        let nl2sql_context = serde_json::json!({
+            "password": "nl-secret",
+            "resultRows": [{"city": "Shanghai"}],
+        })
+        .to_string();
+
+        let relaxed = redact_for_egress(&nl2sql_context, false);
+        let parsed: Value = serde_json::from_str(&relaxed).expect("valid JSON");
+
+        assert_eq!(
+            parsed,
+            serde_json::json!({"resultRows": [{"city": "Shanghai"}]})
+        );
+        assert!(!relaxed.contains("nl-secret"), "{relaxed}");
+    }
+
+    #[test]
+    fn test_tester_redact_for_ai_matches_strict_egress_default() {
+        let sample = serde_json::json!({
+            "api_key": "secret-value",
+            "data": [{"value": 42}],
+        })
+        .to_string();
+
+        assert_eq!(redact_for_ai(&sample), redact_for_egress(&sample, true));
+    }
+
+    // ── tester: strict ↔ relaxed toggle immediate effect ──
+
+    #[test]
+    fn test_tester_egress_toggle_strict_to_relaxed_preserves_rows_immediately() {
+        let payload = serde_json::json!({
+            "rows": [{"id": 99}],
+            "token": "toggle-secret",
+        })
+        .to_string();
+
+        let strict = redact_for_egress(&payload, true);
+        let relaxed = redact_for_egress(&payload, false);
+
+        let strict_parsed: Value = serde_json::from_str(&strict).expect("strict JSON");
+        let relaxed_parsed: Value = serde_json::from_str(&relaxed).expect("relaxed JSON");
+
+        assert_eq!(strict_parsed, serde_json::json!({}));
+        assert_eq!(
+            relaxed_parsed,
+            serde_json::json!({"rows": [{"id": 99}]})
+        );
+        assert!(!strict.contains("toggle-secret"), "{strict}");
+        assert!(!relaxed.contains("toggle-secret"), "{relaxed}");
+        assert_ne!(strict, relaxed);
+    }
+
+    #[test]
+    fn test_tester_egress_toggle_relaxed_to_strict_strips_rows_immediately() {
+        let payload = serde_json::json!({
+            "queryResultData": [{"score": 10}],
+            "safeNote": "reference only",
+        })
+        .to_string();
+
+        let relaxed = redact_for_egress(&payload, false);
+        let strict = redact_for_egress(&payload, true);
+
+        let relaxed_parsed: Value = serde_json::from_str(&relaxed).expect("relaxed JSON");
+        let strict_parsed: Value = serde_json::from_str(&strict).expect("strict JSON");
+
+        assert_eq!(
+            relaxed_parsed,
+            serde_json::json!({
+                "queryResultData": [{"score": 10}],
+                "safeNote": "reference only",
+            })
+        );
+        assert_eq!(strict_parsed, serde_json::json!({"safeNote": "reference only"}));
+        assert_ne!(relaxed, strict);
+    }
 }
