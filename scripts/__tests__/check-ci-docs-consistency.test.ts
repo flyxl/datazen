@@ -26,18 +26,23 @@ describe('[tester] check-ci-docs-consistency', () => {
       'basic (postgres, mysql, sqlite, redis); Akulaku: postgres,mysql,sqlite,redis,mongodb,kiwi,superset; optional mongodb、clickhouse',
     );
     expect(ids).toEqual(
-      expect.arrayContaining(['postgres', 'mysql', 'sqlite', 'redis', 'mongodb', 'kiwi', 'superset', 'clickhouse']),
+      expect.arrayContaining([
+        'postgres',
+        'mysql',
+        'sqlite',
+        'redis',
+        'mongodb',
+        'kiwi',
+        'superset',
+        'clickhouse',
+      ]),
     );
   });
 
   it('test_tester_sub_window_kinds_match_code', () => {
     const result = checkWindowBoundaries({ root: ROOT });
-    // Known doc drift: windows.md §4 WindowKind snippet omits data-transfer.
-    // Code (windowKind.ts + windowManager.ts) is authoritative; flag doc-only gaps separately.
-    const docOnly = result.errors.filter((e) => e.includes('windows.md §4 WindowKind'));
-    const codeErrors = result.errors.filter((e) => !e.includes('windows.md §4 WindowKind'));
-    expect(codeErrors, codeErrors.join('\n')).toEqual([]);
-    expect(docOnly.length).toBeGreaterThan(0);
+    expect(result.ok, result.errors.join('\n')).toBe(true);
+    expect(result.errors).toEqual([]);
   });
 
   it('test_tester_toolchain_versions_match_ci', () => {
@@ -49,7 +54,6 @@ describe('[tester] check-ci-docs-consistency', () => {
 
   it('test_tester_full_consistency_script', () => {
     const code = checkCiDocsConsistency({ root: ROOT, log: () => {}, error: () => {} });
-    // Fails until windows.md §4 snippet is updated (doc drift, not code bug).
-    expect(code).toBe(1);
+    expect(code).toBe(0);
   });
 });
