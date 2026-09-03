@@ -107,6 +107,24 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
     );
   });
 
+  it('Safe Mode 下双击单元格不应进入编辑模式 (DE-002b)', async () => {
+    await setSafeMode(true);
+    await clickTableInSidebar(TEST_TABLE);
+    await switchSubTab('data');
+    await browser.pause(500);
+
+    await doubleClickCellByText('Alice');
+    await browser.pause(500);
+
+    // No edit input should appear while Safe Mode blocks in-place editing.
+    const inputPresent = await browser.execute(
+      () => !!document.querySelector('input.font-mono'),
+    );
+    expect(inputPresent).toBe(false);
+
+    await setSafeMode(false);
+  });
+
   it('双击单元格应进入编辑模式并显示当前值 (DE-002)', async () => {
     // Virtual rows render spans with title attribute for text cells.
     // Use DOM query to find and double-click the cell.

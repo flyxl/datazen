@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Input } from '../ui/Input';
+import { cn } from '../../lib/cn';
 
 export interface EditableCellProps {
   value: unknown;
@@ -83,11 +83,25 @@ export function EditableCell({ value, type, onCommit, onCancel }: EditableCellPr
   }
 
   return (
-    <Input
+    <input
       autoFocus
       value={local}
       onChange={(e) => setLocal(e.target.value)}
-      className="h-8 font-mono text-xs"
+      aria-label="Edit cell value"
+      spellCheck={false}
+      autoCapitalize="off"
+      autoCorrect="off"
+      className={cn(
+        // Grid-cell editor: fill the cell edge-to-edge with a compact height
+        // and minimal inset so it reads as part of the table, not a heavy
+        // form input. Text alignment matches the surrounding cell content.
+        'w-full min-w-0 h-7 bg-surface align-middle font-mono text-xs text-fg',
+        'outline-none',
+        'placeholder:text-fg-muted',
+        'selection:bg-accent/30',
+        'rounded-sm border border-accent shadow-none',
+        'px-1.5',
+      )}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
           e.preventDefault();

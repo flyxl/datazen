@@ -18,6 +18,8 @@ import {
 } from '../../lib/filterExpression';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
+import { DB_REGISTRY } from '../../lib/databaseTypes';
+import type { DatabaseType } from '../../types';
 
 interface TableViewProps {
   dbSessionId: string;
@@ -69,6 +71,14 @@ export function TableView({
   const detailRowIndex = useTableDataStore((s) => s.detailRowIndex);
   const confirmOnDelete = useSettingsStore((s) => s.settings.confirmOnDelete);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
+  /**
+   * Drivers that declare `readOnly` in `DB_REGISTRY` (e.g. Kiwi / Superset)
+   * never support in-place cell editing — regardless of Safe Mode. Gate here
+   * so a read-only driver can never enter edit mode.
+   */
+  const driverReadOnly = databaseType
+    ? DB_REGISTRY[databaseType as DatabaseType]?.readOnly === true
+    : false;
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [confirmCommit, confirmCommitDialog] = useConfirmDialog();
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -94,17 +104,23 @@ export function TableView({
 
   const handleCellDoubleClick = useCallback(
     (row: number, col: string) => {
+      // Read-only drivers never edit, regardless of Safe Mode.
+      if (driverReadOnly) return;
       if (safeMode) {
         showSafeModeTip();
         return;
       }
       startEdit(row, col);
     },
-    [safeMode, showSafeModeTip, startEdit],
+    [driverReadOnly, safeMode, showSafeModeTip, startEdit],
   );
 
   const handleCellEdit = useCallback(
     (row: number, col: string, value: unknown) => {
+      if (driverReadOnly) {
+        cancelEdit();
+        return;
+      }
       if (safeMode) {
         showSafeModeTip();
         cancelEdit();
@@ -112,12 +128,13 @@ export function TableView({
       }
       updateCell(row, col, value);
     },
-    [cancelEdit, safeMode, showSafeModeTip, updateCell],
+    [cancelEdit, driverReadOnly, safeMode, showSafeModeTip, updateCell],
   );
 
   const handleDeleteRows = useCallback(
     async (rowIndices: number[]) => {
       if (rowIndices.length === 0) return;
+      if (driverReadOnly) return;
       if (confirmOnDelete) {
         const confirmed = await confirmDelete({
           title: t('dataTable.deleteRow'),
@@ -128,7 +145,7 @@ export function TableView({
       }
       await deleteRows(rowIndices);
     },
-    [confirmOnDelete, confirmDelete, deleteRows, t],
+    [confirmOnDelete, confirmDelete, deleteRows, driverReadOnly, t],
   );
 
   const tableContext = {
@@ -207,17 +224,17 @@ export function TableView({
   const pendingBusy = loading || pendingStatus !== 'idle';
 
   useEffect(() => {
-    if (safeMode && editingCell) cancelEdit();
-  }, [cancelEdit, editingCell, safeMode]);
+    if ((safeMode || driverReadOnly) && editingCell) cancelEdit();
+  }, [cancelEdit, driverReadOnly, editingCell, safeMode]);
 
   const handlePreviewPendingChanges = useCallback(async () => {
-    if (pendingBusy || pendingChanges.size === 0) return;
+    if (driverReadOnly || pendingBusy || pendingChanges.size === 0) return;
     const plan = await previewPendingChanges();
     if (plan) setPreviewOpen(true);
-  }, [pendingBusy, pendingChanges.size, previewPendingChanges]);
+  }, [driverReadOnly, pendingBusy, pendingChanges.size, previewPendingChanges]);
 
   const handleCommitPendingChanges = useCallback(async () => {
-    if (pendingBusy || pendingChanges.size === 0) return;
+    if (driverReadOnly || pendingBusy || pendingChanges.size === 0) return;
     const confirmed = await confirmCommit({
       title: t('tableData.commit'),
       message: t('tableData.confirmCommit', {
@@ -231,6 +248,7 @@ export function TableView({
   }, [
     commitPendingChanges,
     confirmCommit,
+    driverReadOnly,
     pendingBusy,
     pendingChanges.size,
     pendingDeleteCount,
@@ -496,7 +514,7 @@ export function TableView({
         onUpdateFilter={updateFilter}
         onFilterLogicChange={setFilterLogic}
         onApplyFilters={applyFilters}
-        editingCell={safeMode ? null : editingCell}
+        editingCell={safeMode || driverReadOnly ? null : editingCell}
         selectedRows={selectedRows}
         loading={loading}
         onSort={setSort}
@@ -516,7 +534,7 @@ export function TableView({
         dbSessionId={dbSessionId}
         dataExportCapability={dataExportCapability}
         primaryKeyColumns={columns.filter((c) => c.isPrimaryKey).map((c) => c.name)}
-        onDeleteRows={handleDeleteRows}
+        onDeleteRows={driverReadOnly ? undefined : handleDeleteRows}
       />
       {confirmDeleteDialog}
       {confirmCommitDialog}
