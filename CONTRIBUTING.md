@@ -60,6 +60,11 @@ E2E requires a webdriver debug build — see [`docs/development/e2e-testing.md`]
 4. Fill out the PR template (summary, test plan, checklist).
 5. Link related issues when applicable.
 
+### Host Rust safety checklist
+
+- [ ] Production paths in `src-tauri/src/**` do not add bare `unwrap()` / `expect()` without a documented reason ([panic policy](docs/development/panic-policy.md)).
+- [ ] New fallible operations return `Result` via `CommandError` or the domain error type.
+
 Frontend IPC args use `snake_case` keys to match the Rust commands. Do not edit generated files (`src/plugins/generated.ts`, `src/plugins/generated-locales.ts`, `src-tauri/src/driver_init.rs`); they are gitignored and written by `pnpm install` / `resolve-drivers`.
 
 ## Plugins

@@ -129,7 +129,13 @@ fn canonicalize_changes(
         let _ = identity_key(&effective_identity(&normalized)?)?;
         canonical.push(normalized);
     }
-    canonical.sort_by_key(|change| identity_key(&change.row_identity).expect("validated identity"));
+    canonical.sort_by(|a, b| match (
+        identity_key(&a.row_identity),
+        identity_key(&b.row_identity),
+    ) {
+        (Ok(ka), Ok(kb)) => ka.cmp(&kb),
+        _ => std::cmp::Ordering::Equal,
+    });
 
     let mut original_keys = HashSet::new();
     let mut current_keys = HashMap::new();

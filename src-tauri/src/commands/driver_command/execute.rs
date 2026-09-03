@@ -171,12 +171,12 @@ pub(crate) async fn execute_driver_command_with_mode(
             // Generic host thin shell for metadata-declared save dialogs: no
             // driver-type branching — any driver opting in gets the same flow.
             if let Some(spec) = definition.metadata.save_dialog.as_ref() {
-                return finish_save_dialog(
-                    dialog.expect("save dialog checked above"),
-                    spec,
-                    result,
-                )
-                .await;
+                let app = dialog.ok_or_else(|| {
+                    CommandError::Internal(
+                        "save dialog AppHandle missing after preflight".into(),
+                    )
+                })?;
+                return finish_save_dialog(app, spec, result).await;
             }
             Ok(result)
         }
