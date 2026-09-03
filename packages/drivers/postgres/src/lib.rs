@@ -13,9 +13,9 @@ mod sync_adapter;
 mod type_normalizer;
 pub use migration::{PostgresMigrationCapabilities, PostgresMigrationRenderer};
 pub use postgres::*;
-pub use type_normalizer::PostgresTypeNormalizer;
 pub use structure::{caps_for_version, plan_structure_changes_with_caps};
 pub use sync_adapter::PgSyncAdapter;
+pub use type_normalizer::PostgresTypeNormalizer;
 
 struct PostgresFactory;
 impl DatabaseDriverFactory for PostgresFactory {

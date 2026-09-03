@@ -6,6 +6,7 @@ use super::types::{
 };
 use crate::db::{ConnectionHandle, DatabaseDriver};
 use crate::services::transaction::TransactionScope;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Debug, Clone)]
 pub struct DeployOptions {
@@ -32,6 +33,7 @@ pub async fn run_deploy_with_executor(
     executor: &dyn StatementExecutor,
     plan: &SchemaDiffPlan,
     opts: &DeployOptions,
+    cancelled: Option<&AtomicBool>,
 ) -> SchemaDiffDeployResult {
     let atomicity = ddl_atomicity(&plan.target_dialect);
     let can_tx = matches!(atomicity, DdlAtomicity::Transactional) && opts.use_transaction;
@@ -65,6 +67,21 @@ pub async fn run_deploy_with_executor(
     let mut failed = false;
 
     for (index, stmt) in plan.statements.iter().enumerate() {
+        if let Some(flag) = cancelled {
+            if flag.load(Ordering::SeqCst) {
+                tracing::info!(index, "schema diff deploy cancelled");
+                if can_tx {
+                    let _ = executor.exec("ROLLBACK").await;
+                }
+                return SchemaDiffDeployResult {
+                    status: DeployStatus::Cancelled,
+                    executed_count: ok_count,
+                    statement_count: n,
+                    errors: vec!["Deploy cancelled by user".into()],
+                    statement_results: results,
+                };
+            }
+        }
         match executor.exec(&stmt.sql).await {
             Ok(()) => {
                 tracing::info!(index, sql = %stmt.sql, "deploy statement OK");
@@ -147,6 +164,7 @@ pub async fn execute_schema_diff_deploy(
     handle: &ConnectionHandle,
     plan: &SchemaDiffPlan,
     opts: DeployOptions,
+    cancelled: Option<std::sync::Arc<AtomicBool>>,
 ) -> SchemaDiffDeployResult {
     let atomicity = ddl_atomicity(&plan.target_dialect);
     let can_tx = matches!(atomicity, DdlAtomicity::Transactional) && opts.use_transaction;
@@ -185,6 +203,22 @@ pub async fn execute_schema_diff_deploy(
     let mut failed = false;
 
     for (index, stmt) in plan.statements.iter().enumerate() {
+        if let Some(ref flag) = cancelled {
+            if flag.load(Ordering::SeqCst) {
+                tracing::info!(index, "schema diff deploy cancelled");
+                if let Some(scope) = tx_scope {
+                    let _ = scope.rollback().await;
+                }
+                return SchemaDiffDeployResult {
+                    status: DeployStatus::Cancelled,
+                    executed_count: ok_count,
+                    statement_count: n,
+                    errors: vec!["Deploy cancelled by user".into()],
+                    statement_results: results,
+                };
+            }
+        }
+
         let exec_result = if let Some(ref scope) = tx_scope {
             scope.execute(&stmt.sql).await.map(|_| ())
         } else {
@@ -350,6 +384,7 @@ mod tests {
                 use_transaction: true,
                 stop_on_error: true,
             },
+            None,
         )
         .await;
         assert_eq!(result.status, DeployStatus::Committed);
@@ -367,6 +402,7 @@ mod tests {
                 use_transaction: true, // ignored for mysql
                 stop_on_error: true,
             },
+            None,
         )
         .await;
         assert_eq!(result.status, DeployStatus::Mixed);
@@ -384,10 +420,25 @@ mod tests {
                 use_transaction: true,
                 stop_on_error: true,
             },
+            None,
         )
         .await;
         assert_eq!(result.status, DeployStatus::RolledBack);
         assert_eq!(result.executed_count, 0);
+        let log = exec.log.lock().unwrap();
+        assert!(log.iter().any(|s| s == "ROLLBACK"));
+    }
+
+    #[tokio::test]
+    async fn cancel_during_deploy_rolls_back_pg() {
+        let plan = plan_with("postgresql", 5);
+        let exec = ScriptedExecutor::new(vec![Ok(()), Ok(()), Ok(()), Ok(()), Ok(())]);
+        let flag = AtomicBool::new(false);
+        flag.store(true, Ordering::SeqCst);
+
+        let result =
+            run_deploy_with_executor(&exec, &plan, &DeployOptions::default(), Some(&flag)).await;
+        assert_eq!(result.status, DeployStatus::Cancelled);
         let log = exec.log.lock().unwrap();
         assert!(log.iter().any(|s| s == "ROLLBACK"));
     }

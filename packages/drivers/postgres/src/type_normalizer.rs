@@ -45,18 +45,9 @@ mod tests {
     #[test]
     fn varchar_and_timestamp_aliases() {
         let n = PostgresTypeNormalizer;
-        assert_eq!(
-            n.normalize_type("character varying(20)"),
-            "VARCHAR(20)"
-        );
-        assert_eq!(
-            n.normalize_type("timestamptz"),
-            "TIMESTAMP WITH TIME ZONE"
-        );
-        assert_eq!(
-            n.normalize_type("timestamp without time zone"),
-            "TIMESTAMP"
-        );
+        assert_eq!(n.normalize_type("character varying(20)"), "VARCHAR(20)");
+        assert_eq!(n.normalize_type("timestamptz"), "TIMESTAMP WITH TIME ZONE");
+        assert_eq!(n.normalize_type("timestamp without time zone"), "TIMESTAMP");
         assert_eq!(n.normalize_type("float8"), "DOUBLE PRECISION");
         assert_eq!(n.normalize_type("float4"), "REAL");
         assert_eq!(n.normalize_type("int2"), "SMALLINT");
@@ -74,6 +65,9 @@ mod tests {
     fn distinct_types_remain_distinct() {
         let n = PostgresTypeNormalizer;
         assert_ne!(n.normalize_type("INTEGER"), n.normalize_type("BIGINT"));
-        assert_ne!(n.normalize_type("VARCHAR(20)"), n.normalize_type("VARCHAR(21)"));
+        assert_ne!(
+            n.normalize_type("VARCHAR(20)"),
+            n.normalize_type("VARCHAR(21)")
+        );
     }
 }

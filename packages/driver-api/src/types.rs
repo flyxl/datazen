@@ -743,10 +743,7 @@ mod tests {
 
     #[test]
     fn effective_primary_keys_composite_from_field() {
-        let schema = table_schema(
-            vec![col("a", false), col("b", false)],
-            vec!["a", "b"],
-        );
+        let schema = table_schema(vec![col("a", false), col("b", false)], vec!["a", "b"]);
         assert_eq!(schema.effective_primary_keys(), vec!["a", "b"]);
     }
 

@@ -3,7 +3,7 @@ import type { TableSchemaDiff } from '../types';
 
 export type StatementRisk = 'additive' | 'destructive' | 'rewrite';
 
-export type DeployStatus = 'committed' | 'rolled_back' | 'mixed' | 'failed';
+export type DeployStatus = 'committed' | 'rolled_back' | 'mixed' | 'failed' | 'cancelled';
 
 export interface PlanStatement {
   sql: string;
@@ -126,6 +126,10 @@ export interface SchemaDiffConfigJson {
 
 export const DESTRUCTIVE_CONFIRM_TOKEN = 'DEPLOY';
 
+export async function cancelSchemaDiffDeploy(jobId: string): Promise<boolean> {
+  return invoke('cancel_schema_diff_deploy', { jobId });
+}
+
 export function planHasDestructive(plan: SchemaDiffPlan): boolean {
   return plan.statements.some((s) => s.risk === 'destructive' || s.risk === 'rewrite');
 }
@@ -173,11 +177,15 @@ export const schemaDiffCommands = {
     plan: SchemaDiffPlan;
     useTransaction?: boolean;
     confirmDestructive?: string;
+    jobId?: string;
   }) =>
     invoke<SchemaDiffDeployResult>('execute_schema_diff_deploy', {
       targetDbSessionId: params.targetDbSessionId,
       plan: denormalizePlan(params.plan),
       useTransaction: params.useTransaction,
       confirmDestructive: params.confirmDestructive,
+      jobId: params.jobId,
     }),
+
+  cancelDeploy: (jobId: string) => cancelSchemaDiffDeploy(jobId),
 };

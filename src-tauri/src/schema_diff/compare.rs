@@ -49,9 +49,7 @@ pub fn diff_table_schemas(
         if let Some(tgt_col) = tgt_map.get(col.name.as_str()) {
             let mut changes = Vec::new();
             let types_equal = match normalizer {
-                Some(n) => {
-                    n.normalize_type(&col.data_type) == n.normalize_type(&tgt_col.data_type)
-                }
+                Some(n) => n.normalize_type(&col.data_type) == n.normalize_type(&tgt_col.data_type),
                 None => col.data_type == tgt_col.data_type,
             };
             if !types_equal {

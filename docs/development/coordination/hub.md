@@ -8,20 +8,20 @@
 
 | Track | 任务 | 状态 | 编码 Commit | 测试 Commit | 合并 Commit |
 |-------|------|------|------------|------------|------------|
-| infra-a | fetch_full_column_types 去重 | 未开始 | — | — | — |
-| infra-b | effective_primary_key 去重 | 未开始 | — | — | — |
-| infra-c | TypeNormalizer | 未开始 | — | — | — |
-| infra-d | TransactionScope | 未开始 | — | — | — |
-| infra-e | Job Cancel 推广 | 未开始 | — | — | — |
+| infra-a | fetch_full_column_types 去重 | ✅ 已合并 | 8ca1e2b0 | — | 已 fast-forward |
+| infra-b | effective_primary_key 去重 | ✅ 已合并 | 4f837bcb | — | merge commit |
+| infra-c | TypeNormalizer | 🔨 编码中 | — | — | — |
+| infra-d | TransactionScope | 🔨 编码中 | — | — | — |
+| infra-e | Job Cancel 推广 | 🔨 编码中 | — | — | — |
 
 ## 波次记录
 
 ### Wave 1（A + B 并行）
-- 开始时间: —
-- 合并时间: —
+- 开始时间: 2026-09-03
+- 合并时间: 2026-09-03（全量 CI 通过：15 驱动编译 + 1228 Rust 测试）
 
 ### Wave 2（C + D + E 并行）
-- 开始时间: —
+- 开始时间: 2026-09-03
 - 合并时间: —
 
 ## 跨轨风险

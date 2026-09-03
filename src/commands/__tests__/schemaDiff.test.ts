@@ -37,7 +37,9 @@ describe('schema diff pure helpers', () => {
     expect(
       planHasDestructive(
         samplePlan({
-          statements: [{ sql: 'CREATE TABLE t()', risk: 'additive', rollbackSql: null, summary: '' }],
+          statements: [
+            { sql: 'CREATE TABLE t()', risk: 'additive', rollbackSql: null, summary: '' },
+          ],
         }),
       ),
     ).toBe(false);
@@ -84,7 +86,12 @@ describe('schema diff pure helpers', () => {
       sourceDialect: 'PostgreSQL',
       targetDialect: 'MySQL',
       statements: [
-        { sql: 'ALTER TABLE users ADD COLUMN c int', risk: 'additive', rollbackSql: null, summary: '' },
+        {
+          sql: 'ALTER TABLE users ADD COLUMN c int',
+          risk: 'additive',
+          rollbackSql: null,
+          summary: '',
+        },
         { sql: 'DROP INDEX idx', risk: 'destructive', rollbackSql: null, summary: '' },
       ],
     });
@@ -107,9 +114,9 @@ describe('schemaDiffCommands wrappers', () => {
   it('compareTableSchemas forwards session ids and table name', async () => {
     const diff = { table: 'users' } as unknown as TableSchemaDiff;
     invokeMock.mockResolvedValueOnce(diff);
-    await expect(
-      schemaDiffCommands.compareTableSchemas('src-1', 'tgt-1', 'users'),
-    ).resolves.toBe(diff);
+    await expect(schemaDiffCommands.compareTableSchemas('src-1', 'tgt-1', 'users')).resolves.toBe(
+      diff,
+    );
     expect(invokeMock).toHaveBeenCalledWith('compare_table_schemas', {
       sourceDbSessionId: 'src-1',
       targetDbSessionId: 'tgt-1',
@@ -198,6 +205,7 @@ describe('schemaDiffCommands wrappers', () => {
       plan,
       useTransaction: true,
       confirmDestructive: 'DEPLOY',
+      jobId: undefined,
     });
   });
 
@@ -209,6 +217,7 @@ describe('schemaDiffCommands wrappers', () => {
       plan,
       useTransaction: undefined,
       confirmDestructive: undefined,
+      jobId: undefined,
     });
   });
 });

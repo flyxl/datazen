@@ -13,8 +13,8 @@ mod sync_adapter;
 mod type_normalizer;
 pub use migration::{MysqlMigrationCapabilities, MysqlMigrationRenderer};
 pub use mysql::*;
-pub use type_normalizer::MysqlTypeNormalizer;
 pub use sync_adapter::MysqlSyncAdapter;
+pub use type_normalizer::MysqlTypeNormalizer;
 
 struct MysqlFactory;
 impl DatabaseDriverFactory for MysqlFactory {

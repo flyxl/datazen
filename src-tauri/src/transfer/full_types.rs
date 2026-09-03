@@ -21,10 +21,8 @@ pub async fn fetch_full_column_types(
         .map_err(|e| e.to_string())?;
     let mut map = HashMap::new();
     for row in &result.rows {
-        if let (
-            Some(Some(Value::String(name))),
-            Some(Some(Value::String(ft))),
-        ) = (row.get(0), row.get(1))
+        if let (Some(Some(Value::String(name))), Some(Some(Value::String(ft)))) =
+            (row.get(0), row.get(1))
         {
             map.insert(name.clone(), ft.clone());
         }

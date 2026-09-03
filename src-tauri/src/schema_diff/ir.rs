@@ -181,10 +181,9 @@ mod tests {
         let s = schema(vec![src_col]);
         let t = schema(vec![tgt_col]);
         let ops = diff_to_operations("t", &s, &t, Some(&normalizer));
-        assert!(!ops.iter().any(|op| matches!(
-            op,
-            MigrationOperation::AlterColumnType { .. }
-        )));
+        assert!(!ops
+            .iter()
+            .any(|op| matches!(op, MigrationOperation::AlterColumnType { .. })));
     }
 
     #[test]

@@ -153,6 +153,7 @@ pub enum DeployStatus {
     RolledBack,
     Mixed,
     Failed,
+    Cancelled,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
