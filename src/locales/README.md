@@ -39,3 +39,5 @@ useLocaleDomains(['sync']);
 1. Put it in the correct domain file under `zh-CN/<domain>.ts` and `en/<domain>.ts`.
 2. Keep key prefixes stable (`sync.*`, `connWin.*`, …).
 3. Run unit tests (`locales.test.ts` checks en/zh-CN parity on the full dict).
+
+<!-- ci-trigger: 2026-09-03 -->
