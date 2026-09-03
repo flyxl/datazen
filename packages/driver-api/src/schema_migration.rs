@@ -12,29 +12,86 @@ pub struct MigrationColumn {
     pub is_auto_increment: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MigrationOperation {
-    CreateTable { table: String, columns: Vec<MigrationColumn>, primary_keys: Vec<String> },
-    AddColumn { table: String, column: MigrationColumn },
-    DropColumn { table: String, column: MigrationColumn },
-    AlterColumnType { table: String, column: String, from: String, to: String },
-    SetNullable { table: String, column: String, nullable: bool },
-    SetDefault { table: String, column: String, from: Option<String>, to: Option<String> },
-    SetComment { table: String, column: String, from: Option<String>, to: Option<String> },
-    SetAutoIncrement { table: String, column: String, from: bool, to: bool },
-    AddPrimaryKey { table: String, columns: Vec<String> },
-    DropPrimaryKey { table: String, columns: Vec<String> },
-    CreateIndex { table: String, index: IndexInfo },
-    DropIndex { table: String, index: IndexInfo },
+    CreateTable {
+        table: String,
+        columns: Vec<MigrationColumn>,
+        primary_keys: Vec<String>,
+    },
+    AddColumn {
+        table: String,
+        column: MigrationColumn,
+    },
+    DropColumn {
+        table: String,
+        column: MigrationColumn,
+    },
+    AlterColumnType {
+        table: String,
+        column: String,
+        from: String,
+        to: String,
+    },
+    SetNullable {
+        table: String,
+        column: String,
+        nullable: bool,
+    },
+    SetDefault {
+        table: String,
+        column: String,
+        from: Option<String>,
+        to: Option<String>,
+    },
+    SetComment {
+        table: String,
+        column: String,
+        from: Option<String>,
+        to: Option<String>,
+    },
+    SetAutoIncrement {
+        table: String,
+        column: String,
+        from: bool,
+        to: bool,
+    },
+    AddPrimaryKey {
+        table: String,
+        columns: Vec<String>,
+    },
+    DropPrimaryKey {
+        table: String,
+        columns: Vec<String>,
+    },
+    CreateIndex {
+        table: String,
+        index: IndexInfo,
+    },
+    DropIndex {
+        table: String,
+        index: IndexInfo,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MigrationRisk { Additive, Rewrite, Destructive }
+pub enum MigrationRisk {
+    Additive,
+    Rewrite,
+    Destructive,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MigrationRequirement {
-    Backfill { table: String, column: String, reason: String },
-    Unsupported { operation: String, reason: String },
+    Backfill {
+        table: String,
+        column: String,
+        reason: String,
+    },
+    Unsupported {
+        operation: String,
+        reason: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,8 +108,12 @@ pub trait MigrationRenderer: Send + Sync {
 
 pub trait MigrationCapabilities: Send + Sync {
     fn supports(&self, operation: &MigrationOperation) -> bool;
-    fn requires_table_rebuild(&self, _operation: &MigrationOperation) -> bool { false }
-    fn transactional_ddl(&self) -> bool { true }
+    fn requires_table_rebuild(&self, operation: &MigrationOperation) -> bool {
+        false
+    }
+    fn transactional_ddl(&self) -> bool {
+        true
+    }
 }
 
 pub fn migration_column(column: &ColumnSchema) -> MigrationColumn {

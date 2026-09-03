@@ -872,11 +872,15 @@ fn build_mysql_options(config: &ConnectionConfig) -> Result<MySqlConnectOptions,
 
 #[async_trait]
 impl DatabaseDriver for MysqlDriver {
-    fn migration_renderer(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
-        Some(std::sync::Arc::new(super::MysqlMigrationRenderer ))
+    fn migration_renderer(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
+        Some(std::sync::Arc::new(super::MysqlMigrationRenderer))
     }
 
-    fn migration_capabilities(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {
+    fn migration_capabilities(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {
         Some(std::sync::Arc::new(super::MysqlMigrationCapabilities))
     }
     fn driver_type(&self) -> DatabaseType {

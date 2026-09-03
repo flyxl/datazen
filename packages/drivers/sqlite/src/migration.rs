@@ -6,15 +6,84 @@ impl MigrationRenderer for SqliteMigrationRenderer {
     fn render(&self, op: &MigrationOperation) -> Result<MigrationStatement, String> {
         let qi = |s: &str| format!("\"{}\"", s.replace('\"', "\"\""));
         match op {
-            MigrationOperation::CreateTable { table, columns, primary_keys } => {
-                let cols = columns.iter().map(|c| format!("{} {}{}", qi(&c.name), c.data_type, if c.nullable { "" } else { " NOT NULL" })).collect::<Vec<_>>();
-                let pk = if primary_keys.is_empty() { String::new() } else { format!(", PRIMARY KEY ({})", primary_keys.iter().map(|c| qi(c)).collect::<Vec<_>>().join(", ")) };
-                Ok(MigrationStatement { sql: format!("CREATE TABLE {} ({}{})", qi(table), cols.join(", "), pk), risk: MigrationRisk::Additive, rollback_sql: Some(format!("DROP TABLE {}", qi(table))), summary: format!("CREATE TABLE {}", table) })
+            MigrationOperation::CreateTable {
+                table,
+                columns,
+                primary_keys,
+            } => {
+                let cols = columns
+                    .iter()
+                    .map(|c| {
+                        format!(
+                            "{} {}{}",
+                            qi(&c.name),
+                            c.data_type,
+                            if c.nullable { "" } else { " NOT NULL" }
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let pk = if primary_keys.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        ", PRIMARY KEY ({})",
+                        primary_keys
+                            .iter()
+                            .map(|c| qi(c))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                };
+                Ok(MigrationStatement {
+                    sql: format!("CREATE TABLE {} ({}{})", qi(table), cols.join(", "), pk),
+                    risk: MigrationRisk::Additive,
+                    rollback_sql: Some(format!("DROP TABLE {}", qi(table))),
+                    summary: format!("CREATE TABLE {}", table),
+                })
             }
-            MigrationOperation::AddColumn { table, column } => Ok(MigrationStatement { sql: format!("ALTER TABLE {} ADD COLUMN {} {}{}", qi(table), qi(&column.name), column.data_type, if column.nullable { "" } else { " NOT NULL" }), risk: MigrationRisk::Additive, rollback_sql: None, summary: format!("ADD COLUMN {}.{}", table, column.name) }),
-            MigrationOperation::CreateIndex { table, index } => Ok(MigrationStatement { sql: format!("CREATE {}INDEX {} ON {} ({})", if index.is_unique { "UNIQUE " } else { "" }, qi(&index.name), qi(table), index.columns.iter().map(|c| qi(c)).collect::<Vec<_>>().join(", ")), risk: MigrationRisk::Additive, rollback_sql: Some(format!("DROP INDEX {}", qi(&index.name))), summary: format!("CREATE INDEX {}.{}", table, index.name) }),
-            MigrationOperation::DropIndex { index, .. } => Ok(MigrationStatement { sql: format!("DROP INDEX {}", qi(&index.name)), risk: MigrationRisk::Destructive, rollback_sql: None, summary: format!("DROP INDEX {}", index.name) }),
-            _ => Err(format!("SQLite renderer does not yet support {:?}; table rebuild may be required", op)),
+
+            MigrationOperation::AddColumn { table, column } => Ok(MigrationStatement {
+                sql: format!(
+                    "ALTER TABLE {} ADD COLUMN {} {}{}",
+                    qi(table),
+                    qi(&column.name),
+                    column.data_type,
+                    if column.nullable { "" } else { " NOT NULL" }
+                ),
+                risk: MigrationRisk::Additive,
+                rollback_sql: None,
+                summary: format!("ADD COLUMN {}.{}", table, column.name),
+            }),
+            MigrationOperation::CreateIndex { table, index } => Ok(MigrationStatement {
+                sql: format!(
+                    "CREATE {}INDEX {} ON {} ({})",
+                    if index.is_unique { "UNIQUE " } else { "" },
+                    qi(&index.name),
+                    qi(table),
+                    index
+                        .columns
+                        .iter()
+                        .map(|c| qi(c))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                risk: MigrationRisk::Additive,
+                rollback_sql: Some(format!("DROP INDEX {}", qi(&index.name))),
+                summary: format!("CREATE INDEX {}.{}", table, index.name),
+            }),
+            MigrationOperation::DropIndex { index, .. } => Ok(MigrationStatement {
+                sql: format!("DROP INDEX {}", qi(&index.name)),
+                risk: MigrationRisk::Destructive,
+                rollback_sql: None,
+                summary: format!("DROP INDEX {}", index.name),
+            }),
+            MigrationOperation::DropColumn { .. } => {
+                Err("SQLite DROP COLUMN requires version/capability validation".into())
+            }
+            _ => Err(format!(
+                "SQLite renderer does not yet support {:?}; table rebuild may be required",
+                op
+            )),
         }
     }
 }
@@ -22,33 +91,74 @@ impl MigrationRenderer for SqliteMigrationRenderer {
 pub struct SqliteMigrationCapabilities;
 impl MigrationCapabilities for SqliteMigrationCapabilities {
     fn supports(&self, operation: &MigrationOperation) -> bool {
-        matches!(operation,
-            MigrationOperation::CreateTable { .. } |
-            MigrationOperation::AddColumn { .. } |
-            MigrationOperation::CreateIndex { .. } |
-            MigrationOperation::DropIndex { .. })
+        matches!(
+            operation,
+            MigrationOperation::CreateTable { .. }
+                | MigrationOperation::AddColumn { .. }
+                | MigrationOperation::DropColumn { .. }
+                | MigrationOperation::AlterColumnType { .. }
+                | MigrationOperation::SetNullable { .. }
+                | MigrationOperation::SetDefault { .. }
+                | MigrationOperation::SetComment { .. }
+                | MigrationOperation::SetAutoIncrement { .. }
+                | MigrationOperation::AddPrimaryKey { .. }
+                | MigrationOperation::DropPrimaryKey { .. }
+                | MigrationOperation::CreateIndex { .. }
+                | MigrationOperation::DropIndex { .. }
+        )
     }
     fn requires_table_rebuild(&self, operation: &MigrationOperation) -> bool {
-        matches!(operation, MigrationOperation::AlterColumnType { .. } | MigrationOperation::SetNullable { .. } | MigrationOperation::SetComment { .. } | MigrationOperation::SetAutoIncrement { .. })
+        matches!(
+            operation,
+            MigrationOperation::SetAutoIncrement { .. }
+                | MigrationOperation::AlterColumnType { .. }
+                | MigrationOperation::SetNullable { .. }
+                | MigrationOperation::SetComment { .. }
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn col(name:&str, ty:&str) -> MigrationColumn { MigrationColumn { name:name.into(), data_type:ty.into(), nullable:true, default_value:None, comment:None, is_auto_increment:false } }
-    #[test] fn renders_add_column() {
-        let op=MigrationOperation::AddColumn { table:"users".into(), column:col("name","TEXT") };
-        assert_eq!(SqliteMigrationRenderer.render(&op).unwrap().sql, "ALTER TABLE \"users\" ADD COLUMN \"name\" TEXT");
+    fn col(name: &str, ty: &str) -> MigrationColumn {
+        MigrationColumn {
+            name: name.into(),
+            data_type: ty.into(),
+            nullable: true,
+            default_value: None,
+            comment: None,
+            is_auto_increment: false,
+        }
     }
-    #[test] fn rejects_drop_column() {
-        let op=MigrationOperation::DropColumn { table:"users".into(), column:col("name","TEXT") };
-        assert!(!SqliteMigrationCapabilities.supports(&op));
+    #[test]
+    fn renders_add_column() {
+        let op = MigrationOperation::AddColumn {
+            table: "users".into(),
+            column: col("name", "TEXT"),
+        };
+        assert_eq!(
+            SqliteMigrationRenderer.render(&op).unwrap().sql,
+            "ALTER TABLE \"users\" ADD COLUMN \"name\" TEXT"
+        );
+    }
+    #[test]
+    fn rejects_drop_column_without_capability_validation() {
+        let op = MigrationOperation::DropColumn {
+            table: "users".into(),
+            column: col("name", "TEXT"),
+        };
         assert!(SqliteMigrationRenderer.render(&op).is_err());
     }
-    #[test] fn capabilities_mark_type_change_as_rebuild() {
-        let op=MigrationOperation::AlterColumnType { table:"users".into(), column:"id".into(), from:"INTEGER".into(), to:"BIGINT".into() };
-        assert!(!SqliteMigrationCapabilities.supports(&op));
+    #[test]
+    fn capabilities_mark_rewrite() {
+        let op = MigrationOperation::AlterColumnType {
+            table: "users".into(),
+            column: "id".into(),
+            from: "INTEGER".into(),
+            to: "BIGINT".into(),
+        };
+        assert!(SqliteMigrationCapabilities.supports(&op));
         assert!(SqliteMigrationCapabilities.requires_table_rebuild(&op));
     }
 }

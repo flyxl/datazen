@@ -13,6 +13,7 @@ mod factory;
 mod query_stream;
 mod reuse;
 pub mod schema_catalog_commands;
+pub mod schema_migration;
 pub mod schema_object_commands;
 pub mod schema_objects;
 pub mod sql_dump;
@@ -20,7 +21,6 @@ pub mod sql_split;
 pub mod sql_target;
 pub mod sqlite_structure;
 pub mod sync;
-pub mod schema_migration;
 mod traits;
 mod types;
 
@@ -43,6 +43,10 @@ pub use schema_catalog_commands::{
     parse_table_schema_from_command, parse_tables_from_command, schema_catalog_command_definitions,
     try_execute_schema_catalog_command,
 };
+pub use schema_migration::{
+    MigrationCapabilities, MigrationColumn, MigrationOperation, MigrationRenderer,
+    MigrationRequirement, MigrationRisk, MigrationStatement,
+};
 pub use schema_object_commands::{
     execute_schema_object_command, is_schema_object_command, schema_object_command_definitions,
 };
@@ -53,7 +57,6 @@ pub use schema_objects::{
 pub use sql_dump::{RestoreSession, RestoreStatementGuard};
 pub use sql_split::{SqlStatementScanner, Utf8ChunkDecoder};
 pub use sql_target::{qualify_sql_with, QualifiedSql, QualifierQuote, SqlTarget};
-pub use schema_migration::{MigrationCapabilities, MigrationColumn, MigrationOperation, MigrationRenderer, MigrationRequirement, MigrationRisk, MigrationStatement};
 pub use sync::{
     BoxedSyncAdapter, IRColumn, IRDefault, IRTable, IRType, SyncAdapterFactory, SyncSourceAdapter,
     SyncTargetAdapter,

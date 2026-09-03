@@ -169,8 +169,12 @@ mod tests {
         let tgt = schema(vec![tgt_col]);
         let diff = diff_table_schemas("users", &src, &tgt);
         assert_eq!(diff.changed.len(), 1);
-        assert!(diff.changed[0].changes.contains(&super::super::types::ColumnChange::Default));
-        assert!(diff.changed[0].changes.contains(&super::super::types::ColumnChange::AutoIncrement));
+        assert!(diff.changed[0]
+            .changes
+            .contains(&super::super::types::ColumnChange::Default));
+        assert!(diff.changed[0]
+            .changes
+            .contains(&super::super::types::ColumnChange::AutoIncrement));
     }
 
     #[test]

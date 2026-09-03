@@ -702,11 +702,15 @@ fn build_pg_options(
 
 #[async_trait]
 impl DatabaseDriver for PostgresDriver {
-    fn migration_renderer(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
-        Some(std::sync::Arc::new(super::PostgresMigrationRenderer ))
+    fn migration_renderer(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
+        Some(std::sync::Arc::new(super::PostgresMigrationRenderer))
     }
 
-    fn migration_capabilities(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {
+    fn migration_capabilities(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {
         Some(std::sync::Arc::new(super::PostgresMigrationCapabilities))
     }
     fn driver_type(&self) -> DatabaseType {

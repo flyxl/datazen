@@ -1,8 +1,8 @@
 //! Schema diff planning and deploy (source = desired state → target).
 
 pub mod compare;
-pub mod deploy;
 pub mod dependencies;
+pub mod deploy;
 pub mod ir;
 pub mod operations;
 pub mod plan;

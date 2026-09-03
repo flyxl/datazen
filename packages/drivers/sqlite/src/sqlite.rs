@@ -115,11 +115,15 @@ fn db_path(config: &ConnectionConfig) -> Result<String, DriverError> {
 
 #[async_trait]
 impl DatabaseDriver for SqliteDriver {
-    fn migration_renderer(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
-        Some(std::sync::Arc::new(super::SqliteMigrationRenderer ))
+    fn migration_renderer(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
+        Some(std::sync::Arc::new(super::SqliteMigrationRenderer))
     }
 
-    fn migration_capabilities(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {
+    fn migration_capabilities(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {
         Some(std::sync::Arc::new(super::SqliteMigrationCapabilities))
     }
     fn driver_type(&self) -> DatabaseType {
