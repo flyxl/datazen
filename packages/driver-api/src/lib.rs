@@ -20,6 +20,7 @@ pub mod sql_split;
 pub mod sql_target;
 pub mod sqlite_structure;
 pub mod sync;
+pub mod schema_migration;
 mod traits;
 mod types;
 
@@ -52,6 +53,7 @@ pub use schema_objects::{
 pub use sql_dump::{RestoreSession, RestoreStatementGuard};
 pub use sql_split::{SqlStatementScanner, Utf8ChunkDecoder};
 pub use sql_target::{qualify_sql_with, QualifiedSql, QualifierQuote, SqlTarget};
+pub use schema_migration::{MigrationCapabilities, MigrationColumn, MigrationOperation, MigrationRenderer, MigrationRequirement, MigrationRisk, MigrationStatement};
 pub use sync::{
     BoxedSyncAdapter, IRColumn, IRDefault, IRTable, IRType, SyncAdapterFactory, SyncSourceAdapter,
     SyncTargetAdapter,
