@@ -14,6 +14,7 @@ pub struct MigrationColumn {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MigrationOperation {
+    CreateTable { table: String, columns: Vec<MigrationColumn>, primary_keys: Vec<String> },
     AddColumn { table: String, column: MigrationColumn },
     DropColumn { table: String, column: MigrationColumn },
     AlterColumnType { table: String, column: String, from: String, to: String },
