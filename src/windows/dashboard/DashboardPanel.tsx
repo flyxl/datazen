@@ -17,6 +17,7 @@ import { Dialog } from '../../components/ui/Dialog';
 import { Input } from '../../components/ui/Input';
 import { cn } from '../../lib/cn';
 import { useI18n } from '../../hooks/useI18n';
+import { useLocaleDomains } from '../../hooks/useLocaleDomains';
 import { openDocsWindow, openWorkflowWindow } from '../../lib/windowManager';
 import { dashboardCommands } from '../../commands/dashboard';
 import { aiCommands } from '../../commands/ai';
@@ -59,6 +60,7 @@ export function DashboardPanel({
   onDashboardChange,
   onOpenWorkflowEditor,
 }: DashboardPanelProps) {
+  useLocaleDomains(['dashboard']);
   const { t } = useI18n();
   const [activeDashboardId, setActiveDashboardId] = useState(initialDashboardId ?? '');
   const dashboardId = activeDashboardId;

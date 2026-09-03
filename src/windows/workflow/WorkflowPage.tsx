@@ -35,6 +35,7 @@ import { Select } from '../../components/ui/Select';
 import { useResizable } from '../../hooks/useResizable';
 import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
+import { useLocaleDomains } from '../../hooks/useLocaleDomains';
 import { useAiStore } from '../../stores/aiStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { aiCommands } from '../../commands/ai';
@@ -127,6 +128,7 @@ export function WorkflowPage({
   embedded = false,
   onOpenDashboardInShell,
 }: Readonly<WorkflowPageProps>) {
+  useLocaleDomains(['workflows']);
   useSettings();
   const { t } = useI18n();
   const [confirmWf, confirmWfDialog] = useConfirmDialog();

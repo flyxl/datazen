@@ -18,6 +18,7 @@ import {
   type WriteMode,
 } from '../../commands/transfer';
 import { useI18n } from '../../hooks/useI18n';
+import { useLocaleDomains } from '../../hooks/useLocaleDomains';
 import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/cn';
@@ -52,6 +53,7 @@ const STEPS: WizardStep[] = ['endpoints', 'setup', 'objects', 'mapping', 'previe
 const NARROW_STEPS: WizardStep[] = ['endpoints', 'setup', 'result'];
 
 export function DataTransferWindow() {
+  useLocaleDomains(['transfer']);
   useSettings();
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
