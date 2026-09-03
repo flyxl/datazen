@@ -283,23 +283,25 @@ describe('TableView', () => {
     );
   });
 
-  it('blocks cell editing when driver does not support SQL or is read-only', () => {
+  it('blocks cell editing when connection is read-only, and allows when connection is not read-only', () => {
     settingsState.safeMode = false;
+    connectionsState.connections = [
+      { id: 'conn-rw', name: 'WritableConn', readOnly: false },
+    ];
 
     render(
       <TableView
         dbSessionId="c1"
+        connectionId="conn-rw"
         database="app"
         tableName="users"
-        databaseType="redis"
+        databaseType="postgresql"
       />,
     );
 
     fireEvent.click(screen.getByTestId('mock-cell-double-click'));
 
-    expect(tableState.startEdit).not.toHaveBeenCalled();
-    expect(screen.getByTestId('table-read-only-tip')).toHaveTextContent(
-      'tableData.readOnlyEditDisabled',
-    );
+    expect(tableState.startEdit).toHaveBeenCalledWith(0, 'id');
+    expect(screen.queryByTestId('table-read-only-tip')).toBeNull();
   });
 });

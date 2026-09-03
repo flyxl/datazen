@@ -6,8 +6,6 @@ import { NlFilterInput } from '../../components/ai/NlFilterInput';
 import { useTableDataStore, type TableState } from '../../stores/tableDataStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useConnectionStore } from '../../stores/connectionStore';
-import { DB_REGISTRY } from '../../lib/databaseTypes';
-import type { DatabaseType } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { cn } from '../../lib/cn';
@@ -49,10 +47,8 @@ export function TableView({
   const savedConnection = useConnectionStore((s) =>
     connectionId ? s.connections.find((c) => c.id === connectionId) : undefined,
   );
-  const dbMeta = databaseType ? DB_REGISTRY[databaseType as DatabaseType] : undefined;
-  const isDriverUnsupported = Boolean(!dbMeta || dbMeta.readOnly === true || dbMeta.supportsSQL === false);
   const isConnectionReadOnly = Boolean(readOnlyProp ?? savedConnection?.readOnly);
-  const isEditable = !isConnectionReadOnly && !isDriverUnsupported;
+  const isEditable = !isConnectionReadOnly;
 
   // NlFilterInput handles unconfigured state internally
   const tableStates = useTableDataStore((s) => s.tableStates);
