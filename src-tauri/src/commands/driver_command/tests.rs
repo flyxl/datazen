@@ -1,8 +1,12 @@
+use std::any::type_name;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use super::helpers::inject_sql_target_fields;
+use super::access::access_level_for_mode;
+use super::helpers::{inject_sql_target_fields, nonempty};
+use super::resolve::resolve_command_driver;
 use super::*;
+use crate::mcp::permission::McpPermissionMode;
 use datazen_driver_api::{
     CommandAccessLevel, QueryExecutionId, QueryStreamCallback, QueryStreamEvent,
 };
@@ -771,4 +775,239 @@ async fn disabling_safe_mode_allows_update_without_where() {
     .await
     .unwrap();
     assert!(result.data.is_object());
+}
+
+// ---------------------------------------------------------------------------
+// [tester] prh-split-dcmd enhanced verification — IPC regression, cross-module
+// collaboration, and edge paths introduced by the submodule split.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_tester_ipc_commands_registered_in_bootstrap() {
+    let bootstrap = include_str!("../../bootstrap.rs");
+    for cmd in [
+        "get_driver_commands",
+        "get_connection_commands",
+        "execute_driver_command",
+        "execute_driver_command_stream",
+    ] {
+        assert!(
+            bootstrap.contains(&format!("crate::commands::{cmd}")),
+            "bootstrap invoke handler must register `{cmd}`"
+        );
+    }
+}
+
+#[test]
+fn test_tester_ipc_handler_type_names_unchanged_after_split() {
+    // If a #[tauri::command] handler is renamed or its signature wrapper changes,
+    // the monomorphized type name drifts — caught here without frontend changes.
+    fn handler_type_name<T>(_handler: T) -> &'static str {
+        type_name::<T>()
+    }
+    assert!(
+        handler_type_name(get_driver_commands).contains("get_driver_commands"),
+        "{}",
+        handler_type_name(get_driver_commands)
+    );
+    assert!(
+        handler_type_name(get_connection_commands).contains("get_connection_commands"),
+        "{}",
+        handler_type_name(get_connection_commands)
+    );
+    assert!(
+        handler_type_name(execute_driver_command).contains("execute_driver_command"),
+        "{}",
+        handler_type_name(execute_driver_command)
+    );
+    assert!(
+        handler_type_name(execute_driver_command_stream).contains("execute_driver_command_stream"),
+        "{}",
+        handler_type_name(execute_driver_command_stream)
+    );
+}
+
+#[test]
+fn test_tester_ipc_stream_request_wire_format_matches_baseline() {
+    let request = ExecuteDriverCommandStreamRequest {
+        db_session_id: Some("sess-1".into()),
+        command: "query_stream".into(),
+        input: serde_json::json!({ "sql": "SELECT 1" }),
+        database: Some("db_a".into()),
+        schema: Some("public".into()),
+        apply_result_limit: Some(false),
+        record_history: Some(true),
+    };
+    let encoded = serde_json::to_value(request).unwrap();
+    assert_eq!(encoded["dbSessionId"], "sess-1");
+    assert_eq!(encoded["command"], "query_stream");
+    assert_eq!(encoded["applyResultLimit"], false);
+    assert_eq!(encoded["recordHistory"], true);
+    assert!(encoded.get("db_session_id").is_none());
+}
+
+#[test]
+fn test_tester_access_level_for_mode_maps_mcp_permission_modes() {
+    assert_eq!(
+        access_level_for_mode(None),
+        CommandAccessLevel::HighRisk
+    );
+    assert_eq!(
+        access_level_for_mode(Some(McpPermissionMode::ReadOnly)),
+        CommandAccessLevel::Read
+    );
+    assert_eq!(
+        access_level_for_mode(Some(McpPermissionMode::SafeWrite)),
+        CommandAccessLevel::Write
+    );
+    assert_eq!(
+        access_level_for_mode(Some(McpPermissionMode::HighRiskWrite)),
+        CommandAccessLevel::HighRisk
+    );
+}
+
+#[tokio::test]
+async fn test_tester_resolve_command_driver_prefers_live_session_over_driver_type() {
+    let test = crate::testing::app_state::TestAppState::new().await;
+    let (_, conn_id) = test.save_and_connect("tester-resolve-prefer").await;
+    let (driver, handle, bound) = resolve_command_driver(
+        &test.state,
+        Some(&conn_id),
+        Some(&"postgres".into()),
+    )
+    .await
+    .unwrap();
+    assert!(bound);
+    assert_eq!(handle.id, conn_id);
+    assert!(!driver.command_definitions().is_empty());
+}
+
+#[tokio::test]
+async fn test_tester_resolve_command_driver_requires_session_or_driver_type() {
+    let test = crate::testing::app_state::TestAppState::new().await;
+    let result = resolve_command_driver(&test.state, None, None).await;
+    match result {
+        Err(err) => assert!(
+            err.to_string().contains("dbSessionId or driverType is required"),
+            "unexpected: {err}"
+        ),
+        Ok(_) => panic!("expected validation error when neither session nor driver type"),
+    }
+}
+
+#[tokio::test]
+async fn test_tester_execute_applies_access_via_resolve_and_helpers_pipeline() {
+    // Cross-module path: resolve → access_level_for_mode → check_command_access.
+    let test = crate::testing::app_state::TestAppState::new().await;
+    let (_, conn_id) = test.save_and_connect("tester-access-pipeline").await;
+    let err = execute_driver_command_with_mode(
+        &test.state,
+        ExecuteDriverCommandRequest {
+            db_session_id: Some(conn_id),
+            driver_type: None,
+            command: "execute".into(),
+            input: serde_json::json!({ "sql": "DELETE FROM t WHERE id = 1" }),
+            database: None,
+            schema: None,
+        },
+        Some(McpPermissionMode::ReadOnly),
+        None,
+    )
+    .await
+    .unwrap_err();
+    assert!(err.to_string().contains("not allowed"));
+}
+
+#[tokio::test]
+async fn test_tester_rejects_whitespace_only_db_session_id_without_driver_type() {
+    let test = crate::testing::app_state::TestAppState::new().await;
+    let blank = "   ".to_string();
+    assert!(nonempty(Some(&blank)).is_none());
+    let err = execute_driver_command_impl(
+        &test.state,
+        ExecuteDriverCommandRequest {
+            db_session_id: Some(blank),
+            driver_type: None,
+            command: "query".into(),
+            input: serde_json::json!({ "sql": "SELECT 1" }),
+            database: None,
+            schema: None,
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("dbSessionId or driverType is required"),
+        "whitespace session must fall through nonempty and fail validation: {err}"
+    );
+}
+
+#[tokio::test]
+async fn test_tester_rejects_empty_command_name() {
+    let test = crate::testing::app_state::TestAppState::new().await;
+    let (_, conn_id) = test.save_and_connect("tester-empty-cmd").await;
+    let err = execute_driver_command_impl(
+        &test.state,
+        ExecuteDriverCommandRequest {
+            db_session_id: Some(conn_id),
+            driver_type: None,
+            command: String::new(),
+            input: serde_json::json!({ "sql": "SELECT 1" }),
+            database: None,
+            schema: None,
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("Unsupported driver command"),
+        "empty command id must not match any definition: {err}"
+    );
+}
+
+#[tokio::test]
+async fn test_tester_concurrent_stream_requests_get_distinct_execution_ids() {
+    let test = crate::testing::app_state::TestAppState::new().await;
+    let (_, conn_id) = test.save_and_connect("tester-concurrent-stream").await;
+    let ids_a: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let ids_b: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let rec_a = Arc::clone(&ids_a);
+    let rec_b = Arc::clone(&ids_b);
+    let cb_a: QueryStreamCallback = Arc::new(move |event| {
+        if let QueryStreamEvent::ExecutionStarted { execution_id } = event {
+            rec_a.lock().unwrap().push(execution_id);
+        }
+    });
+    let cb_b: QueryStreamCallback = Arc::new(move |event| {
+        if let QueryStreamEvent::ExecutionStarted { execution_id } = event {
+            rec_b.lock().unwrap().push(execution_id);
+        }
+    });
+
+    let state = &test.state;
+    let req = || ExecuteDriverCommandStreamRequest {
+        db_session_id: Some(conn_id.clone()),
+        command: "query_stream".into(),
+        input: serde_json::json!({ "sql": "SELECT 1" }),
+        database: None,
+        schema: None,
+        apply_result_limit: Some(false),
+        record_history: Some(false),
+    };
+    let opts = ExecuteDriverCommandStreamOpts {
+        apply_result_limit: false,
+        record_history: false,
+    };
+
+    let (r1, r2) = tokio::join!(
+        execute_driver_command_stream_impl(state, req(), cb_a, opts),
+        execute_driver_command_stream_impl(state, req(), cb_b, opts),
+    );
+    r1.unwrap();
+    r2.unwrap();
+
+    let id_a = ids_a.lock().unwrap().first().cloned().unwrap();
+    let id_b = ids_b.lock().unwrap().first().cloned().unwrap();
+    assert_ne!(id_a, id_b, "concurrent streams must not share execution ids");
+    assert!(!id_a.is_empty() && !id_b.is_empty());
 }
