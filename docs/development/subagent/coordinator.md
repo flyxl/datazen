@@ -56,7 +56,8 @@ Tester 完成完整测试 → 一并上报 Bug 清单 + TEST_FAILED
 **规则**：
 1. **完整上报**：Tester 跑完全部测试阶段后统一上报，不逐个中断。
 2. **复用原 Coder**：优先 `Task(resume=<coder-agent-id>)` 恢复原编码 Coder，利用已有上下文。仅不可恢复时用 Rescuer。
-3. **全新 Tester**：每轮复测使用全新 Tester 实例。
+3. **修复后必须复测**：Coder 修复并返回 `READY_FOR_TEST` 后，协调者**必须**派发全新 Tester 完整复测。Coder 的自验不能替代 Tester，禁止跳过复测直接合入。
+4. **全新 Tester**：每轮复测使用全新 Tester 实例。
 4. **最大 5 轮**：同一轨道超过 5 轮仍有 Bug，标记 `ESCALATED` 上报用户。
 5. **Bug 状态流转**：`待修复` → `修复中` → `待复测` → `已修复` 或回到 `待修复`。
 6. **修复简报**：包含完整 Bug 清单 + "仅修复这些 Bug" 纪律约束。
@@ -87,7 +88,9 @@ node scripts/aggregate-hub.mjs
 ## 6. 合流验证与清理
 
 ### 6.1 逐轨合并
-当测试代理返回 `TEST_DONE` 且无阻断 Bug 时，协调者在集成分支合入该轨：
+**合入前提条件**：只有 Tester 返回 `TEST_DONE`（PASSED）且 `bugs.md` 无未关闭 Bug 时，才能合入。Coder 的 `READY_FOR_TEST` 不满足合入条件——必须经过 Tester 复测。
+
+协调者在集成分支合入该轨：
 ```bash
 git merge --no-ff feature/<track-id> -m "feat(coordination): merge track <track-id>"
 ```

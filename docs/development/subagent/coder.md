@@ -40,3 +40,4 @@
 4. **收尾汇报**：
    - 执行 `git status --short --branch` 确认工作区 clean。
    - 返回状态 `READY_FOR_TEST` 或 `BLOCKED`，附 commit hash、改动文件清单与套件结果。
+   - **重要**：Coder 的自验通过不等于功能完成。必须由独立 Tester 复测后才能标记 PASSED。Coder 完成后的唯一正确状态是 `READY_FOR_TEST`，不得自行标记 `PASSED` 或 `TEST_DONE`。

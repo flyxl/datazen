@@ -67,7 +67,8 @@ Tester 完成完整测试 → 一并上报 Bug 清单 + TEST_FAILED
 **硬性规则**：
 1. **完整上报**：Tester 不逐个上报 Bug，而是在完成全部测试阶段后统一上报 Bug 清单和 `TEST_FAILED` 状态。
 2. **复用原 Coder**：修复阶段优先使用 `Task` 工具的 `resume` 参数恢复**原编码 Coder agent**，利用其已有上下文高效修复。仅当原 Coder 不可恢复时才启动全新 Rescuer。
-3. **全新 Tester**：每轮复测必须使用**全新 Tester 实例**（不复用前轮 Tester）。
+3. **修复后必须复测**：Coder 修复 Bug 后返回 `READY_FOR_TEST`，协调者**必须**派发全新 Tester 完整复测。Coder 的自验不能替代 Tester 复测，禁止跳过复测直接合入。
+4. **全新 Tester**：每轮复测必须使用**全新 Tester 实例**（不复用前轮 Tester）。
 4. **最大循环次数**：同一轨道最多允许 **5 轮完整修复-复测循环**。超过 5 轮仍有未修复 Bug，协调者须将其标记为 `ESCALATED` 并向用户汇报，由用户决定下一步。
 5. **Bug 状态流转**：`待修复` → `修复中`（Coder 接手）→ `待复测`（Coder 提交）→ `已修复`（Tester 通过）或回到 `待修复`（Tester 不通过）。
 6. **修复 Coder 简报**：必须包含完整 Bug 清单（ID + 描述 + 重现步骤 + 日志），以及"仅修复这些 Bug，不做范围外改动"的纪律约束。
