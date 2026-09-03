@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::schema_migration::MigrationRenderer;
+use crate::schema_migration::{MigrationCapabilities, MigrationRenderer};
 use crate::query_stream::{emit_multi_query_as_stream, QueryStreamCallback};
 use crate::types::*;
 use crate::{
@@ -22,9 +22,9 @@ pub trait DatabaseDriver: Send + Sync {
 
     /// Dialect-specific schema migration renderer. The schema-diff domain
     /// produces database-neutral operations; the driver owns SQL syntax.
-    fn migration_renderer(&self) -> Option<Arc<dyn MigrationRenderer>> {
-        None
-    }
+    fn migration_renderer(&self) -> Option<Arc<dyn MigrationRenderer>> { None }
+
+    fn migration_capabilities(&self) -> Option<Arc<dyn MigrationCapabilities>> { None }
 
     fn quote_char(&self) -> char {
         '"'
