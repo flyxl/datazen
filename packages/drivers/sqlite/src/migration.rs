@@ -32,3 +32,22 @@ impl MigrationCapabilities for SqliteMigrationCapabilities {
         matches!(operation, MigrationOperation::SetAutoIncrement { .. } | MigrationOperation::AlterColumnType { .. } | MigrationOperation::SetNullable { .. } | MigrationOperation::SetComment { .. })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn col(name:&str, ty:&str) -> MigrationColumn { MigrationColumn { name:name.into(), data_type:ty.into(), nullable:true, default_value:None, comment:None, is_auto_increment:false } }
+    #[test] fn renders_add_column() {
+        let op=MigrationOperation::AddColumn { table:"users".into(), column:col("name","TEXT") };
+        assert_eq!(SqliteMigrationRenderer.render(&op).unwrap().sql, "ALTER TABLE \"users\" ADD COLUMN \"name\" TEXT");
+    }
+    #[test] fn rejects_drop_column_without_capability_validation() {
+        let op=MigrationOperation::DropColumn { table:"users".into(), column:col("name","TEXT") };
+        assert!(SqliteMigrationRenderer.render(&op).is_err());
+    }
+    #[test] fn capabilities_mark_rewrite() {
+        let op=MigrationOperation::AlterColumnType { table:"users".into(), column:"id".into(), from:"INTEGER".into(), to:"BIGINT".into() };
+        assert!(SqliteMigrationCapabilities.supports(&op));
+        assert!(SqliteMigrationCapabilities.requires_table_rebuild(&op));
+    }
+}
