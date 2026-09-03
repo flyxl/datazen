@@ -69,10 +69,10 @@ pub fn iter_driver_factories() -> inventory::iter<&'static dyn DatabaseDriverFac
     inventory::iter::<&'static dyn DatabaseDriverFactory>
 }
 
-
 /// Create a registered driver by its stable driver id.
 pub fn create_driver(driver_id: &str) -> Option<Arc<dyn DatabaseDriver>> {
     iter_driver_factories()
+        .into_iter()
         .find(|factory| factory.driver_id() == driver_id)
         .map(|factory| factory.create())
 }
