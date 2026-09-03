@@ -273,6 +273,7 @@ mod tests {
                 complete: true,
                 missing: vec![],
             },
+            requirements: vec![],
         }
     }
 
