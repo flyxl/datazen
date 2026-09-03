@@ -87,6 +87,7 @@ import {
 import { ResultWorkspace } from './result-workspace';
 import { Dialog } from '../../components/ui/Dialog';
 import { analyzeTransactionSql, isAbortedTransactionError } from '../../lib/sqlTransactionGuard';
+import { sqlContainsDangerousWrite } from '../../lib/dangerousSql';
 import { formatLastConnected } from '../../lib/formatters';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import type { ConnectionSchemaState } from '../../stores/schemaStore';
@@ -239,6 +240,7 @@ export function QueryPanel({
 }: QueryPanelProps) {
   const { t } = useI18n();
   const [confirmRetry, confirmRetryDialog] = useConfirmDialog();
+  const [confirmDangerous, confirmDangerousDialog] = useConfirmDialog();
   const exec = useQueryExec(panelId);
   const driverCapabilities = useActiveConnectionStore(
     (s) => s.connections[connectionId]?.capabilities,
@@ -668,7 +670,7 @@ export function QueryPanel({
   );
 
   const requestExecute = useCallback(
-    (kind: 'full' | 'selection', selectionSql?: string) => {
+    async (kind: 'full' | 'selection', selectionSql?: string) => {
       const sqlForCheck =
         kind === 'selection' && selectionSql != null
           ? selectionSql
@@ -678,9 +680,21 @@ export function QueryPanel({
         setTxUnclosedOpen(true);
         return;
       }
+      if (
+        !safeMode &&
+        sqlContainsDangerousWrite(sqlForCheck) &&
+        !(await confirmDangerous({
+          title: t('query.dangerousSqlTitle'),
+          message: t('query.dangerousSqlConfirm'),
+          confirmLabel: t('query.execute'),
+          kind: 'warning',
+        }))
+      ) {
+        return;
+      }
       void runExecute(kind, selectionSql);
     },
-    [exec.sql, runExecute],
+    [confirmDangerous, exec.sql, runExecute, safeMode, t],
   );
 
   const handleExecute = useCallback(() => {
@@ -694,13 +708,29 @@ export function QueryPanel({
     [requestExecute],
   );
 
-  const handleConfirmUnclosedTx = useCallback(() => {
+  const handleConfirmUnclosedTx = useCallback(async () => {
     const pending = pendingExecuteRef.current;
     pendingExecuteRef.current = null;
     setTxUnclosedOpen(false);
     if (!pending) return;
+    const sqlForCheck =
+      pending.kind === 'selection' && pending.sql != null
+        ? pending.sql
+        : editorRef.current?.getSelection()?.trim() || exec.sql;
+    if (
+      !safeMode &&
+      sqlContainsDangerousWrite(sqlForCheck) &&
+      !(await confirmDangerous({
+        title: t('query.dangerousSqlTitle'),
+        message: t('query.dangerousSqlConfirm'),
+        confirmLabel: t('query.execute'),
+        kind: 'warning',
+      }))
+    ) {
+      return;
+    }
     void runExecute(pending.kind, pending.sql);
-  }, [runExecute]);
+  }, [confirmDangerous, exec.sql, runExecute, safeMode, t]);
 
   const handleCancelUnclosedTx = useCallback(() => {
     pendingExecuteRef.current = null;
@@ -1624,6 +1654,7 @@ export function QueryPanel({
         }}
       />
       {confirmRetryDialog}
+      {confirmDangerousDialog}
     </div>
   );
 }

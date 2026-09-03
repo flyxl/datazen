@@ -16,6 +16,7 @@
 | **SQL 注入防护** | 参数化查询 | `query_with_params` |
 | **CSP** | Content Security Policy | `tauri.conf.json` |
 | **路径遍历防护** | 路径校验 | `commands/file.rs` |
+| **SQL 安全（Safe Mode / 只读）** | 启发式语句分类 + 连接级拦截 | `sql_guard.rs` |
 
 ## 2. 加密存储
 
@@ -197,3 +198,39 @@ Provider 配置、AI Key 和自定义 endpoint 的日志只记录脱敏后的 pr
 | 本地文件/MCP | 用户主动选择且经边界清理的内容/工具定义 | 未经用户选择的文件、原始 tool args/result、凭据文件 |
 
 当前实现是“字段/模式识别 + 边界限制”的纵深防御，并非形式化 DLP 或业务语义保密证明。任意自然语言、SQL 注释、错误文本或 schema 描述都可能包含模式无法识别的业务秘密；因此调用方仍不得主动把客户数据、生产凭据或机密业务规则写入 AI 输入。
+
+## 5. SQL 安全（Safe Mode 与只读连接）
+
+DataZen 在 GUI 查询执行、Driver Command、Workflow 与部分导出路径上，通过 `sql_guard::check_sql` 对 SQL 脚本做**尽力防护（best-effort heuristic）**——并非形式化安全证明，也无法覆盖所有方言、存储过程或绕过技巧。
+
+### 5.1 只读连接（`readOnly`）
+
+连接或数据库元数据标记为只读时，拦截常见写操作关键字（`INSERT` / `UPDATE` / `DELETE` / DDL / `GRANT` 等）。只读检查按分号拆分语句，对每条语句识别主动词；注释与引号内文本不参与分类。
+
+**限制**：依赖关键字启发式，不能识别 `SELECT … INTO`、方言专有写语句或通过视图/函数间接写入等边界情况。
+
+### 5.2 Safe Mode（全局设置，默认开启）
+
+Safe Mode 额外约束：
+
+| 规则 | 行为 |
+|------|------|
+| `UPDATE` / `DELETE` | 要求顶层 `WHERE` 子句（子查询内的 `WHERE` 不计） |
+| `DROP` / `TRUNCATE` | 一律拦截 |
+
+Safe Mode 开启时，Schema 树会隐藏 Truncate/Drop 等高危菜单项；关闭 Safe Mode 后，Query Panel 对 `DROP` / `TRUNCATE` 语句弹出二次确认，后端不再拦截此类语句。
+
+**限制**：`WHERE 1=1` 等恒真条件可通过检查；多语句脚本中任一条违规即拒绝整批；与 MCP `SafeWrite` 权限模式（`mcp/permission.rs`）是不同边界，互不替代。
+
+### 5.3 未覆盖路径
+
+以下路径**不**经过 `sql_guard`，或仅部分检查：
+
+- **Data Sync** 专用 IPC（`execute_data_sync`）——同族行级同步，语义与 Safe Mode 不同
+- **Data Transfer** 破坏性模式——由传输向导独立确认
+- **无头 MCP**（`--mcp-stdio`）——走 MCP 权限模式，非 GUI Safe Mode
+- **驱动原生管理命令**（`admin_commands`）——按 Command 定义执行
+
+### 5.4 用户预期
+
+Safe Mode 与只读连接旨在降低误操作风险，**不能**替代数据库侧权限控制、审计或变更审批。生产环境应同时配置最小权限账号与外部治理流程。
