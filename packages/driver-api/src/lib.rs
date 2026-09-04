@@ -21,6 +21,7 @@ pub mod sql_split;
 pub mod sql_target;
 pub mod sqlite_structure;
 pub mod sync;
+mod sync_taxonomy;
 mod traits;
 mod types;
 
@@ -61,6 +62,7 @@ pub use sync::{
     BoxedSyncAdapter, IRColumn, IRDefault, IRTable, IRType, SyncAdapterFactory, SyncSourceAdapter,
     SyncTargetAdapter,
 };
+pub use sync_taxonomy::{normalize_driver_id, sync_category_of, sync_family_of};
 pub use traits::*;
 pub use types::*;
 

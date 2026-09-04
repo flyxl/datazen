@@ -20,6 +20,7 @@ export const influxdbMeta = {
     category: 'sql',
     connectionView: 'sql',
     sqlDialect: 'generic',
+    syncFamily: 'influxdb',
     databaseFieldType: 'name',
     connectionForm: 'standard',
     clipboardSchemes: ['influxdb', 'influx'],

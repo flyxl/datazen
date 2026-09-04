@@ -20,6 +20,7 @@ export const victoriametricsMeta = {
     category: 'sql',
     connectionView: 'sql',
     sqlDialect: 'generic',
+    syncFamily: 'victoriametrics',
     databaseFieldType: 'name',
     connectionForm: 'standard',
     clipboardSchemes: ['victoriametrics'],

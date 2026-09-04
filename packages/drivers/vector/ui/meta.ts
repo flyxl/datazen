@@ -20,6 +20,7 @@ export const vectorMeta = {
     category: 'sql',
     connectionView: 'sql',
     sqlDialect: 'generic',
+    syncFamily: 'vector',
     databaseFieldType: 'name',
     connectionForm: 'standard',
     clipboardSchemes: ['vector'],

@@ -20,6 +20,7 @@ export const redisMeta = {
     supportsSQL: false,
     category: 'kv',
     connectionView: 'keyvalue',
+    syncFamily: 'redis',
     databaseFieldType: 'index',
     connectionForm: 'redis',
     clipboardSchemes: ['redis', 'rediss', 'redis+tls', 'redis-sentinel', 'sentinel'],

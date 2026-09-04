@@ -1,15 +1,9 @@
 //! Sync pairing policy: same dialect family → Direct; cross SQL → IR; cross category → forbidden.
 //!
-//! Category/family rules mirror frontend `src/lib/transferPairing.ts` for Transfer UI gating.
+//! Category/family rules are driven by driver-api taxonomy (`sync_category_of` /
+//! `sync_family_of`); frontend Transfer UI reads `DatabaseTypeMeta` instead.
 
-/// High-level driver category for sync pairing (broader than wire protocol).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SyncCategory {
-    Sql,
-    Document,
-    Kv,
-    Other,
-}
+use datazen_driver_api::{sync_category_of, sync_family_of, SyncCategory};
 
 /// Resolved sync path for a source/target database type pair.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,36 +23,14 @@ impl SyncPairing {
     }
 }
 
-/// Normalize a database type id to its sync dialect family (extends schema-diff aliases).
+/// Normalize a database type id to its sync dialect family.
 pub fn normalize_sync_family(raw: &str) -> String {
-    match raw.to_ascii_lowercase().as_str() {
-        "postgres" | "postgresql" | "cloudberry" | "questdb" => "postgresql".into(),
-        "mysql" | "mariadb" | "tidb" | "oceanbase" | "doris" | "starrocks" | "manticore"
-        | "ob_oracle" => "mysql".into(),
-        "sqlite" | "rqlite" | "turso" => "sqlite".into(),
-        "sqlserver" | "mssql" => "sqlserver".into(),
-        "clickhouse" => "clickhouse".into(),
-        "duckdb" => "duckdb".into(),
-        "elasticsearch" => "elasticsearch".into(),
-        "mongodb" => "mongodb".into(),
-        "redis" => "redis".into(),
-        "influxdb" => "influxdb".into(),
-        "victoriametrics" => "victoriametrics".into(),
-        "hbase" => "hbase".into(),
-        "vector" => "vector".into(),
-        "trino" | "presto" => "trino".into(),
-        other => other.to_string(),
-    }
+    sync_family_of(raw)
 }
 
 /// Map a database type id to a sync category.
 pub fn sync_category(raw: &str) -> SyncCategory {
-    match raw.to_ascii_lowercase().as_str() {
-        "redis" => SyncCategory::Kv,
-        "mongodb" => SyncCategory::Document,
-        "kiwi" | "superset" => SyncCategory::Other,
-        _ => SyncCategory::Sql,
-    }
+    sync_category_of(raw)
 }
 
 /// Classify how a source/target pair should sync.
@@ -69,7 +41,7 @@ pub fn resolve_sync_pairing(source: &str, target: &str) -> SyncPairing {
     if src_cat != tgt_cat {
         return SyncPairing::Unsupported {
             reason: format!(
-                "Sync between {} ({src_cat:?}) and {} ({tgt_cat:?}) is not supported",
+                "Sync between {} ({src_cat}) and {} ({tgt_cat}) is not supported",
                 source, target
             ),
         };

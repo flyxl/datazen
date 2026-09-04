@@ -104,6 +104,10 @@ impl DatabaseDriver for RqliteDriver {
         "rqlite".to_string()
     }
 
+    fn sync_family(&self) -> String {
+        "sqlite".into()
+    }
+
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
         let client = build_http_client(
             config.connection_timeout,

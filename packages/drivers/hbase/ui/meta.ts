@@ -20,6 +20,7 @@ export const hbaseMeta = {
     category: 'sql',
     connectionView: 'sql',
     sqlDialect: 'generic',
+    syncFamily: 'hbase',
     databaseFieldType: 'name',
     connectionForm: 'standard',
     clipboardSchemes: ['hbase'],

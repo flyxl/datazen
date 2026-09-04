@@ -11,20 +11,30 @@ sync category/family 下沉 driver-api trait。见计划 §2。Wave 2：等 Wave
 
 ## 状态
 
-- Phase: NOT_STARTED
-- 编码 commit: —
+- Phase: READY_FOR_TEST
+- 编码 commit: 0beeae257
 - 测试 commit: —
 - 合并 commit: —
 
-> 未启动：子代理派发机制自 Wave 1 中段起持续不可用（近 12 次派发全部失败，连最小任务都无法执行，无 closing message），playbook 的"编码→独立 Tester→修复循环"流程无法执行。待派发机制恢复后启动。Wave 1 全部 8 轨已于 2026-09-08 合入集成分支（`0d9ca4d95`，后端全库 1319✓、tsc✓）。
-
 ## 心跳
 
-- —
+- 2026-09-04T21:28+08:00 CODER 完成实现与自验，待独立 Tester 复测
 
 ## 自验结果
 
-- —
+| 套件 | 结果 |
+|------|------|
+| `CARGO_TARGET_DIR=target/cargo-wt cargo test -p datazen-driver-api --lib` | 113 passed |
+| `CARGO_TARGET_DIR=target/cargo-wt cargo test -p datazen --lib` | 1319 passed |
+| `npx tsc --noEmit` | OK |
+| `npx vitest run src/lib/__tests__/syncPairing.test.ts` | 9 passed |
+
+## 改动摘要
+
+- `packages/driver-api`: 新增 `SyncCategory`、`sync_category()`/`sync_family()` trait 方法、`sync_taxonomy` 查找模块；`ReuseDriver` 转发
+- 驱动覆写：`mysql`/`postgres`/`sqlite`/`rqlite`/`turso` 的 `sync_family`
+- `src-tauri/src/transfer/pairing.rs`: 删除 match 硬编码，改调 `sync_category_of`/`sync_family_of`
+- 前端：`databaseMeta.ts` 新增 `syncCategory`/`syncFamily`；`syncPairing.ts` 只读 registry meta；驱动 meta 补 `syncFamily`（generic dialect 类型）
 
 ## E2E 登记
 
