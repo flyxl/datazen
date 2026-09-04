@@ -15,7 +15,7 @@ P0-2, P0-3：DataTransferWindow 预览错误态与空表禁用守卫
 
 - Phase: PASSED
 - 编码 commit: 6815ff687
-- 测试 commit: （见下方测试复验提交）
+- 测试 commit: bb9ab1add
 - 合并 commit: 待合入
 
 ## 心跳
