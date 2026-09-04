@@ -8,6 +8,7 @@
 docs/todo/sql-editor/
 ├── README.md           # 本说明文件
 ├── prd.md              # DataZen IDE 级智能 SQL 编辑器系统需求规格说明书 (PRD)
+├── implementation-plan.md # 面向协调代理、编码代理与测试代理的分阶段实施方案
 └── dbx/                # dbx 仓库中与编辑器相关的核心源码参考
     ├── components/
     │   └── editor/     # 编辑器核心组件、搜索面板、AI 助手、参数与危险确认对话框
@@ -16,6 +17,12 @@ docs/todo/sql-editor/
     │   └── sql/        # 纯前端 SQL 语义 AST 模型、方言适配、分词器、格式化、执行目标计算
     └── types/          # 数据库、执行目标、参数等相关 TypeScript 类型定义
 ```
+
+## 实施入口
+
+- 产品范围与验收目标：[`prd.md`](prd.md)
+- 阶段拆分、接口契约、子代理轨道与质量门禁：[`implementation-plan.md`](implementation-plan.md)
+- `dbx/` 仅用于研究可观察行为、边界条件与性能策略；禁止在生产代码或测试中引用、复制或机械翻译其中的实现。
 
 ## 参考源码模块说明
 
