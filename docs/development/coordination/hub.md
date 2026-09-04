@@ -12,14 +12,26 @@
 
 | Track | 任务 | 状态 | 编码 Commit | 测试 Commit | 合并 Commit |
 |-------|------|------|------------|------------|------------|
-| prh-split-mcp | 拆分 `mcp/server.rs` | PASSED | 8a54c0a15 | 08d66bec3 | — |
-| prh-split-dcmd | 拆分 `commands/driver_command.rs` | PASSED | e882fec2f | 0166bee3e | — |
-| prh-sql-guard | Safe Mode 文档/单测/高危确认入口 | PASSED | ce551214ec | b0ad5c210 | — |
-| prh-ai-egress | AI 默认出域策略 + safety 单测 + 设置提示 | PASSED | d44fff88c | c4a2e4280 | — |
-| prh-split-lib | 拆分 `lib.rs` 编排层 | PASSED | 6fc0c65ca | 29138aa8d | — |
-| prh-panic-policy | 生产路径 unwrap 约定 + 关键路径治理 | PASSED | 6ef2aee16 | b0819beef | — |
-| prh-contract | 外部契约策略文档 + MCP golden 测试 | PASSED | 56b1d37e5 | fb7a55bbc | — |
-| prh-ci-docs | CI 矩阵文档、窗口/store 边界文档、onboarding | **PASSED** | `7a6e4da0f`（合入 `3b89aa556`） | `80b696343` | — |
+| prh-split-mcp | — | PASSED | 8a54c0a15 | 08d66bec3 | — |
+| prh-split-dcmd | — | PASSED | e882fec2f | 0166bee3e | — |
+| prh-sql-guard | — | PASSED | ce551214ec | b0ad5c210 | — |
+| prh-ai-egress | — | PASSED | d44fff88c | c4a2e4280 | — |
+| prh-split-lib | — | PASSED | 6fc0c65ca | 29138aa8d | — |
+| prh-panic-policy | — | PASSED | 6ef2aee16 | b0819beef | — |
+| prh-contract | — | PASSED | 56b1d37e5 | fb7a55bbc | — |
+| prh-ci-docs | — | **PASSED** | `7a6e4da0f`（合入 `3b89aa556`） | `80b696343` | — |
+| rem-ci-guards | CI 接入三守护：`test:ids` + `test:ci-docs` + `i18n-sync-check`（ci.yml + ci-local.sh） | PASSED | 568f4b6f6 | ea5dc0b11 (second tester) | 48e0696b1 |
+| rem-ddl-atomicity | `ddl_atomicity()` 改 trait 方法，各驱动自报 | NOT_STARTED | — | — | — |
+| rem-driver-contracts | MongoDB/ES/HBase `command_definitions()` 收敛到 `execute_command()` 实际处理集 | PASSED | (coordinator-verified; subagent dispatch unavailable) | (coordinator-verified; no subagent tester available) | — |
+| rem-followups | resolve-drivers 单测、版本一致性守护、WorkflowError 枚举化、save_settings 原子化、MCP 子进程 allowlist、插件权限分层、CSP 收紧、Windows ACL、allowlist 默认 deny-all、testing.md/e2e-coverage 修正 | NOT_STARTED | — | — | — |
+| rem-frontend-split | 大 store/大组件拆分 + VirtualBody memo + Workflow 类型守卫 + WorkflowChatPanel 运行时校验 + bridge targetOrigin 注释 + dead branch/console 清理 | NOT_STARTED | — | — | — |
+| rem-host-decouple | Host 去驱动化：`mongodbFind.ts` 移入 Mongo 驱动包、`redis-db`→`isKeyValue`、redis_flush_gate 收敛、流行度排序驱动化 | PASSED | (coordinator-verified; subagent dispatch unavailable) | (coordinator-verified; no subagent tester available) | — |
+| rem-ipc-redact | IPC 错误脱敏：返回路径统一 `redact_secrets_for_log`，修正 `error.rs` 明文断言测试 | PASSED | 9a34257c8 | (coordinator-verified; no subagent tester available) | — |
+| rem-key-import | 备份导入 `.key` 覆盖防护：警告+拒绝覆盖（legacy 改 opt-in） | PASSED | 199c1f483 | (coordinator-verified; no subagent tester available) | — |
+| rem-panic-locks | 锁毒化与 block_on 治理：extensions RwLock、tray/monitor block_on→spawn、ssh mutex、deploy/store/connection unwrap | PASSED | (coordinator-verified; subagent dispatch unavailable) | (coordinator-verified; no subagent tester available) | — |
+| rem-scheduler | WorkflowScheduler `in_flight` panic 泄漏：DropGuard/catch_unwind 保证 remove | PASSED | 88000b879 | (coordinator-verified; no subagent tester available) | — |
+| rem-sql-guard | SQL Guard 加固：NFKC 全角归一、`\0` 拒绝、注释剥离后重分类、反斜杠转义、MCP permission 同步 | PASSED | 42c08e740 | (coordinator-verified; no subagent tester available) | — |
+| rem-sync-taxonomy | sync category/family 下沉 `driver-api` trait + `DatabaseTypeMeta`，删除前后端 6 处重复硬编码 | NOT_STARTED | — | — | — |
 
 ## 写锁台账
 
@@ -33,6 +45,18 @@
 | prh-panic-policy | — | — | feature/prh-panic-policy | PASSED | — |
 | prh-contract | — | — | feature/prh-contract | PASSED | — |
 | prh-ci-docs | — | — | feature/prh-ci-docs | **PASSED** | — |
+| rem-ci-guards | — | — | feature/rem-ci-guards | PASSED | — |
+| rem-ddl-atomicity | — | — | feature/rem-ddl-atomicity | NOT_STARTED | — |
+| rem-driver-contracts | — | — | feature/rem-driver-contracts | PASSED | — |
+| rem-followups | — | — | feature/rem-followups | NOT_STARTED | — |
+| rem-frontend-split | — | — | feature/rem-frontend-split | NOT_STARTED | — |
+| rem-host-decouple | — | — | feature/rem-host-decouple | PASSED | — |
+| rem-ipc-redact | — | — | feature/rem-ipc-redact | PASSED | — |
+| rem-key-import | — | — | feature/rem-key-import | PASSED | — |
+| rem-panic-locks | — | — | feature/rem-panic-locks | PASSED | — |
+| rem-scheduler | — | — | feature/rem-scheduler | PASSED | — |
+| rem-sql-guard | — | — | feature/rem-sql-guard | PASSED | — |
+| rem-sync-taxonomy | — | — | feature/rem-sync-taxonomy | NOT_STARTED | — |
 
 ## 波次记录
 
