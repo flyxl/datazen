@@ -1,4 +1,5 @@
 import { useI18n } from '../../hooks/useI18n';
+import { usePlatform } from '../../hooks/usePlatform';
 import { getDbLabel } from '../../lib/databaseTypes';
 import type { DatabaseType } from '../../types';
 
@@ -20,6 +21,10 @@ export function ContentStatusBar({
   totalRows,
 }: ContentStatusBarProps) {
   const { t } = useI18n();
+  const platform = usePlatform();
+  const isMac = platform === 'macos';
+  const mod = isMac ? '⌘' : 'Ctrl';
+  const keySep = isMac ? '' : '+';
 
   return (
     <footer
@@ -43,9 +48,16 @@ export function ContentStatusBar({
           .join(' · ')}
       </div>
       <div className="shrink-0 text-fg-muted">
-        <kbd className="font-mono">⌘N</kbd> {t('common.newQuery')} ·{' '}
-        <kbd className="font-mono">⌘W</kbd> {t('common.close')} ·{' '}
-        <kbd className="font-mono">Space</kbd> {t('detail.title')}
+        <kbd className="font-mono">
+          {mod}
+          {keySep}N
+        </kbd>{' '}
+        {t('common.newQuery')} ·{' '}
+        <kbd className="font-mono">
+          {mod}
+          {keySep}W
+        </kbd>{' '}
+        {t('common.close')} · <kbd className="font-mono">Space</kbd> {t('detail.title')}
       </div>
     </footer>
   );

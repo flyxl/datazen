@@ -160,7 +160,7 @@ export function McpClientSection() {
   };
 
   const inputClass =
-    'h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500';
+    'h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25';
 
   // All hooks above. Gate the section on the `mcp` locale pack so the UI never
   // renders raw/un-translated `t('mcpClient.*')` keys before it is imported.
@@ -318,7 +318,7 @@ export function McpClientSection() {
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
-              className="w-full rounded-md border border-edge bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-blue-500"
+              className="w-full rounded-md border border-edge bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
             />
           </SettingRow>
           <div>

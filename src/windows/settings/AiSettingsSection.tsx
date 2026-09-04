@@ -227,7 +227,7 @@ export function AiSettingsSection() {
     : t('settings.ai.endpointPlaceholder');
 
   const inputClass =
-    'h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25';
+    'h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25';
 
   return (
     <>

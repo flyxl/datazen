@@ -11,6 +11,12 @@ import {
 } from '../../lib/dedicatedDbSession';
 import { pickDefaultSchema, uniqueSchemasFromTables } from '../data-sync/utils';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import {
+  pickPrefillDatabase,
+  pickPrefillSchema,
+  resolveDefaultDatabase,
+  useMigrationEndpointPrefill,
+} from '../../lib/migrationWindowPrefill';
 import type { ConnectionConfig } from '../../types';
 
 export interface SchemaDiffEndpointSessions {
@@ -56,6 +62,8 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
   useEffect(() => {
     loadConnections();
   }, [loadConnections]);
+
+  const migrationPrefillRef = useMigrationEndpointPrefill(connections, setSourceId, setTargetId);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -132,14 +140,16 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
       try {
         const { databases } = await listDatabasesDedicated(sourceId, cfg?.database);
         if (cancelled) return;
-        setSourceDatabases(databases);
+        setSourceDatabases(databases ?? []);
         const preferred = cfg?.database ?? '';
         setSourceDatabase((prev) =>
-          databases.includes(preferred)
-            ? preferred
-            : prev && databases.includes(prev)
-              ? prev
-              : (databases[0] ?? ''),
+          pickPrefillDatabase(
+            migrationPrefillRef,
+            'source',
+            databases,
+            (current) => resolveDefaultDatabase(databases, preferred, current),
+            prev,
+          ),
         );
       } catch {
         if (!cancelled) setSourceDatabases([]);
@@ -166,14 +176,16 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
       try {
         const { databases } = await listDatabasesDedicated(targetId, cfg?.database);
         if (cancelled) return;
-        setTargetDatabases(databases);
+        setTargetDatabases(databases ?? []);
         const preferred = cfg?.database ?? '';
         setTargetDatabase((prev) =>
-          databases.includes(preferred)
-            ? preferred
-            : prev && databases.includes(prev)
-              ? prev
-              : (databases[0] ?? ''),
+          pickPrefillDatabase(
+            migrationPrefillRef,
+            'target',
+            databases,
+            (current) => resolveDefaultDatabase(databases, preferred, current),
+            prev,
+          ),
         );
       } catch {
         if (!cancelled) setTargetDatabases([]);
@@ -244,7 +256,11 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
         if (cancelled) return;
         const schemas = uniqueSchemasFromTables(tables);
         setSourceSchemas(schemas);
-        setSourceSchema((prev) => pickDefaultSchema(schemas, prev));
+        setSourceSchema((prev) =>
+          pickPrefillSchema(migrationPrefillRef, 'source', schemas, (current) =>
+            pickDefaultSchema(schemas, current),
+          prev),
+        );
       } catch {
         if (!cancelled) {
           setSourceSchemas([]);
@@ -284,7 +300,11 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
         if (cancelled) return;
         const schemas = uniqueSchemasFromTables(tables);
         setTargetSchemas(schemas);
-        setTargetSchema((prev) => pickDefaultSchema(schemas, prev));
+        setTargetSchema((prev) =>
+          pickPrefillSchema(migrationPrefillRef, 'target', schemas, (current) =>
+            pickDefaultSchema(schemas, current),
+          prev),
+        );
       } catch {
         if (!cancelled) {
           setTargetSchemas([]);

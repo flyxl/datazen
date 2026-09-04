@@ -644,7 +644,7 @@ export function WorkflowPage({
               Workflows
               <span
                 className={cn(
-                  'absolute inset-x-0 bottom-0 h-0.5 bg-blue-500 transition-opacity duration-300',
+                  'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
                   sideTab === 'workflows' ? 'opacity-100' : 'opacity-0',
                 )}
               />
@@ -662,7 +662,7 @@ export function WorkflowPage({
               {t('workflows.history.title')}
               <span
                 className={cn(
-                  'absolute inset-x-0 bottom-0 h-0.5 bg-blue-500 transition-opacity duration-300',
+                  'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
                   sideTab === 'history' ? 'opacity-100' : 'opacity-0',
                 )}
               />
@@ -725,7 +725,7 @@ export function WorkflowPage({
 
         <div
           ref={sidebarHandleRef}
-          className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-blue-500/30"
+          className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-accent/30"
         />
 
         {/* Main content: tab bar + result */}
@@ -801,7 +801,7 @@ export function WorkflowPage({
                       </button>
                       <span
                         className={cn(
-                          'absolute inset-x-0 bottom-0 h-0.5 bg-blue-500 transition-opacity duration-300',
+                          'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
                           isActive ? 'opacity-100' : 'opacity-0',
                         )}
                       />

@@ -482,7 +482,7 @@ describe('BackupWindow backup flow (F3-BUG-002 coverage)', () => {
       expect(invokeMock).toHaveBeenCalledWith('connect', { connectionId: 'pg-1' }),
     );
     await waitFor(() => expect(screen.getByTestId('backup-start-backup')).not.toBeDisabled());
-    expect(screen.getByText('postgres').parentElement?.className).toContain('bg-blue-600/20');
+    expect(screen.getByText('postgres').parentElement?.className).toContain('bg-accent/20');
 
     fireEvent.click(screen.getByTestId('backup-start-backup'));
     const { args } = await waitFor(() => {

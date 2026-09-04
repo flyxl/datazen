@@ -30,8 +30,8 @@ const SCENARIO_VARIABLES: Record<PromptScenario, string[]> = {
 
 const SOURCE_BADGE_CLASSES: Record<PromptSource, string> = {
   default: 'bg-edge text-fg-muted',
-  driver: 'bg-blue-500/15 text-blue-500',
-  user: 'bg-green-500/15 text-green-500',
+  driver: 'bg-accent/15 text-accent',
+  user: 'bg-success/15 text-success',
 };
 
 export function PromptSettingsSection() {
@@ -108,7 +108,7 @@ export function PromptSettingsSection() {
   };
 
   const textareaClass =
-    'w-full rounded-md border border-edge bg-surface px-3 py-2 text-xs font-mono text-fg outline-none focus:border-blue-500 resize-y min-h-[80px]';
+    'w-full rounded-md border border-edge bg-surface px-3 py-2 text-xs font-mono text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 resize-y min-h-[80px]';
 
   return (
     <>

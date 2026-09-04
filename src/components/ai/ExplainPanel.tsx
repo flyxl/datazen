@@ -20,15 +20,15 @@ interface ExplainPanelProps {
 }
 
 const severityColors: Record<string, string> = {
-  high: 'border-red-500/30 bg-red-500/10 text-red-400',
-  medium: 'border-yellow-500/30 bg-yellow-500/10 text-yellow-400',
-  low: 'border-blue-500/30 bg-blue-500/10 text-blue-400',
+  high: 'border-danger/30 bg-danger/10 text-danger',
+  medium: 'border-warning/30 bg-warning/10 text-warning',
+  low: 'border-accent/30 bg-accent/10 text-accent',
 };
 
 const severityIcons: Record<string, string> = {
-  high: 'bg-red-500',
-  medium: 'bg-yellow-500',
-  low: 'bg-blue-500',
+  high: 'bg-danger',
+  medium: 'bg-warning',
+  low: 'bg-accent',
 };
 
 export function ExplainPanel({

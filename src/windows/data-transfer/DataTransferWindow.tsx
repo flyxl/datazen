@@ -47,6 +47,11 @@ import {
   releaseDedicatedSession,
   type DedicatedSideSession,
 } from '../../lib/dedicatedDbSession';
+import {
+  pickPrefillDatabase,
+  resolveDefaultDatabase,
+  useMigrationEndpointPrefill,
+} from '../../lib/migrationWindowPrefill';
 
 type WizardStep = 'endpoints' | 'setup' | 'objects' | 'mapping' | 'preview' | 'result';
 
@@ -83,6 +88,7 @@ export function DataTransferWindow() {
   const [executeProgress, setExecuteProgress] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
+  const [previewError, setPreviewError] = useState('');
   const [limitationsOpen, setLimitationsOpen] = useState(false);
   const [executeConfirmOpen, setExecuteConfirmOpen] = useState(false);
   const [selectedMappingTable, setSelectedMappingTable] = useState('');
@@ -107,6 +113,8 @@ export function DataTransferWindow() {
   useEffect(() => {
     loadConnections();
   }, [loadConnections]);
+
+  const migrationPrefillRef = useMigrationEndpointPrefill(connections, setSourceId, setTargetId);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -195,14 +203,16 @@ export function DataTransferWindow() {
       try {
         const { databases } = await listDatabasesDedicated(sourceId, cfg?.database);
         if (cancelled) return;
-        setSourceDatabases(databases);
+        setSourceDatabases(databases ?? []);
         const preferred = cfg?.database ?? '';
         setSourceDatabase((prev) =>
-          databases.includes(preferred)
-            ? preferred
-            : prev && databases.includes(prev)
-              ? prev
-              : (databases[0] ?? ''),
+          pickPrefillDatabase(
+            migrationPrefillRef,
+            'source',
+            databases,
+            (current) => resolveDefaultDatabase(databases, preferred, current),
+            prev,
+          ),
         );
       } catch {
         if (!cancelled) setSourceDatabases([]);
@@ -241,14 +251,16 @@ export function DataTransferWindow() {
       try {
         const { databases } = await listDatabasesDedicated(targetId, cfg?.database);
         if (cancelled) return;
-        setTargetDatabases(databases);
+        setTargetDatabases(databases ?? []);
         const preferred = cfg?.database ?? '';
         setTargetDatabase((prev) =>
-          databases.includes(preferred)
-            ? preferred
-            : prev && databases.includes(prev)
-              ? prev
-              : (databases[0] ?? ''),
+          pickPrefillDatabase(
+            migrationPrefillRef,
+            'target',
+            databases,
+            (current) => resolveDefaultDatabase(databases, preferred, current),
+            prev,
+          ),
         );
       } catch {
         if (!cancelled) setTargetDatabases([]);
@@ -388,25 +400,36 @@ export function DataTransferWindow() {
     }
   }, [refreshEndpointSessions, sourceDatabase, targetDatabase, mode, t]);
 
-  const runPreview = useCallback(async () => {
-    const sessions = await refreshEndpointSessions();
-    const job = buildJob(sessions);
-    if (!job) {
-      setErrorMsg(t('transfer.selectBoth'));
-      setErrorOpen(true);
-      return;
-    }
-    setLoading(true);
-    try {
-      const p = await transferCommands.preview(job);
-      setPreview(p);
-    } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : String(e));
-      setErrorOpen(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [refreshEndpointSessions, buildJob, t]);
+  const runPreview = useCallback(
+    async (opts?: { quiet?: boolean }): Promise<boolean> => {
+      const sessions = await refreshEndpointSessions();
+      const job = buildJob(sessions);
+      if (!job) {
+        setErrorMsg(t('transfer.selectBoth'));
+        setErrorOpen(true);
+        return false;
+      }
+      setPreviewError('');
+      setLoading(true);
+      try {
+        const p = await transferCommands.preview(job);
+        setPreview(p);
+        return true;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setPreview(null);
+        setPreviewError(msg);
+        if (!opts?.quiet) {
+          setErrorMsg(msg);
+          setErrorOpen(true);
+        }
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [refreshEndpointSessions, buildJob, t],
+  );
 
   const runExecute = useCallback(async () => {
     const sessions = await refreshEndpointSessions();
@@ -466,7 +489,7 @@ export function DataTransferWindow() {
         if (writeMode !== 'insert' && !confirmedDestructive) return false;
         return true;
       case 'objects':
-        return tables.length === 0 || tables.some((tbl) => tbl.enabled);
+        return tables.length > 0 && tables.some((tbl) => tbl.enabled);
       case 'mapping':
         return tables.some((tbl) => tbl.enabled && tableHasActiveMappings(tbl));
       default:
@@ -492,7 +515,7 @@ export function DataTransferWindow() {
   const goNext = useCallback(async () => {
     const next = STEPS[stepIndex + 1];
     if (step === 'mapping' && next === 'preview') {
-      await runPreview();
+      await runPreview({ quiet: true });
       setStep('preview');
       return;
     }
@@ -760,6 +783,23 @@ export function DataTransferWindow() {
                 <div className="flex justify-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin text-accent" />
                 </div>
+              ) : tables.length === 0 ? (
+                <div
+                  data-testid="data-transfer-objects-empty"
+                  className="rounded-lg border border-edge bg-surface-alt px-4 py-8 text-center text-sm"
+                >
+                  <p className="font-medium text-fg">{t('transfer.objects.noTablesFound')}</p>
+                  <p className="mt-2 text-fg-muted">{t('transfer.objects.noTablesHint')}</p>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="mt-4"
+                    data-testid="data-transfer-reinspect"
+                    onClick={() => void runInspect()}
+                  >
+                    {t('transfer.objects.reInspect')}
+                  </Button>
+                </div>
               ) : (
                 <ul className="divide-y divide-edge overflow-hidden rounded-lg border border-edge bg-surface-alt">
                   {tables.map((tbl) => (
@@ -792,6 +832,44 @@ export function DataTransferWindow() {
               onUpdateTable={updateTable}
               onTargetTableCommit={(sourceTable) => void refreshTableMapping(sourceTable)}
             />
+          )}
+
+          {step === 'preview' && !loading && !preview && (
+            <div
+              data-testid="data-transfer-preview-error"
+              className="rounded-lg border border-edge bg-surface-alt px-4 py-8 text-center text-sm"
+            >
+              <p className="font-medium text-fg">{t('transfer.preview.failed')}</p>
+              <CopyableError
+                message={previewError || t('transfer.preview.failedHint')}
+                className="error-message mx-auto mt-3 max-w-xl text-left text-xs"
+                copyButton
+              />
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  data-testid="data-transfer-preview-retry"
+                  onClick={() => void runPreview({ quiet: true })}
+                >
+                  {t('transfer.preview.retry')}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  data-testid="data-transfer-preview-back-mapping"
+                  onClick={goBack}
+                >
+                  {t('transfer.preview.backToMapping')}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {step === 'preview' && loading && (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-accent" />
+            </div>
           )}
 
           {step === 'preview' && preview && (

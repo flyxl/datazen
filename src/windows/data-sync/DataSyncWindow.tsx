@@ -23,6 +23,12 @@ import { listenCrossWindow } from '../../lib/crossWindowBus';
 import { cn } from '../../lib/cn';
 import { openDataTransferWindow, openSchemaDiffWindow } from '../../lib/windowManager';
 import {
+  pickPrefillDatabase,
+  pickPrefillSchema,
+  resolveDefaultDatabase,
+  useMigrationEndpointPrefill,
+} from '../../lib/migrationWindowPrefill';
+import {
   ensureDedicatedSession,
   listDatabasesDedicated,
   releaseDedicatedSession,
@@ -139,6 +145,8 @@ export function DataSyncWindow() {
     loadConnections();
   }, [loadConnections]);
 
+  const migrationPrefillRef = useMigrationEndpointPrefill(connections, setSourceId, setTargetId);
+
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     listenCrossWindow('datazen:connections-changed', loadConnections).then((fn) => {
@@ -240,14 +248,16 @@ export function DataSyncWindow() {
       try {
         const { databases } = await listDatabasesDedicated(sourceId, cfg?.database);
         if (cancelled) return;
-        setSourceDatabases(databases);
+        setSourceDatabases(databases ?? []);
         const preferred = cfg?.database ?? '';
         setSourceDatabase((prev) =>
-          databases.includes(preferred)
-            ? preferred
-            : prev && databases.includes(prev)
-              ? prev
-              : (databases[0] ?? ''),
+          pickPrefillDatabase(
+            migrationPrefillRef,
+            'source',
+            databases,
+            (current) => resolveDefaultDatabase(databases, preferred, current),
+            prev,
+          ),
         );
       } catch (e) {
         if (!cancelled) {
@@ -279,14 +289,16 @@ export function DataSyncWindow() {
       try {
         const { databases } = await listDatabasesDedicated(targetId, cfg?.database);
         if (cancelled) return;
-        setTargetDatabases(databases);
+        setTargetDatabases(databases ?? []);
         const preferred = cfg?.database ?? '';
         setTargetDatabase((prev) =>
-          databases.includes(preferred)
-            ? preferred
-            : prev && databases.includes(prev)
-              ? prev
-              : (databases[0] ?? ''),
+          pickPrefillDatabase(
+            migrationPrefillRef,
+            'target',
+            databases,
+            (current) => resolveDefaultDatabase(databases, preferred, current),
+            prev,
+          ),
         );
       } catch (e) {
         if (!cancelled) {
@@ -389,7 +401,11 @@ export function DataSyncWindow() {
         if (cancelled) return;
         const schemas = uniqueSchemasFromTables(tables);
         setSourceSchemas(schemas);
-        setSourceSchema((prev) => pickDefaultSchema(schemas, prev));
+        setSourceSchema((prev) =>
+          pickPrefillSchema(migrationPrefillRef, 'source', schemas, (current) =>
+            pickDefaultSchema(schemas, current),
+          prev),
+        );
       } catch {
         if (!cancelled) {
           setSourceSchemas([]);
@@ -429,7 +445,11 @@ export function DataSyncWindow() {
         if (cancelled) return;
         const schemas = uniqueSchemasFromTables(tables);
         setTargetSchemas(schemas);
-        setTargetSchema((prev) => pickDefaultSchema(schemas, prev));
+        setTargetSchema((prev) =>
+          pickPrefillSchema(migrationPrefillRef, 'target', schemas, (current) =>
+            pickDefaultSchema(schemas, current),
+          prev),
+        );
       } catch {
         if (!cancelled) {
           setTargetSchemas([]);
@@ -745,6 +765,11 @@ export function DataSyncWindow() {
 
   const runExecute = useCallback(async () => {
     if (!sourceId || !targetId) return;
+    if (targetReadOnly) {
+      setErrorMsg(t('sync.targetReadOnly'));
+      setErrorOpen(true);
+      return;
+    }
     setSyncState('executing');
     setExecuteProgress(t('sync.executing'));
     const jobId = crypto.randomUUID();
@@ -863,11 +888,16 @@ export function DataSyncWindow() {
     targetDatabase,
     sourceSchema,
     targetSchema,
+    targetReadOnly,
     t,
   ]);
 
   const handleExecute = useCallback(() => {
-    if (targetReadOnly) return;
+    if (targetReadOnly) {
+      setErrorMsg(t('sync.targetReadOnly'));
+      setErrorOpen(true);
+      return;
+    }
     if (hasSelectedDeletes) {
       setExecuteConfirmOpen(true);
       return;
