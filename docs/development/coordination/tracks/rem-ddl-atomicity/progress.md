@@ -12,7 +12,7 @@
 ## 状态
 
 - Phase: READY_FOR_TEST
-- 编码 commit: （提交后填入）
+- 编码 commit: 2c571534f
 - 测试 commit: —
 - 合并 commit: —
 
