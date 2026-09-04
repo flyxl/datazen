@@ -12,8 +12,8 @@ import {
   type QueryResultPayload,
 } from '../helpers.js';
 
-/** Fixed row count for comprehensive transfer E2E (5 batches @ 500). */
-export const TRANSFER_E2E_ROW_COUNT = 2500;
+/** Fixed row count for comprehensive transfer E2E (50 batches @ 500). */
+export const TRANSFER_E2E_ROW_COUNT = 25000;
 
 export const PG_SYNC_DB = 'datazen_sync_src';
 export const PG_SYNC_TGT_DB = 'datazen_sync_tgt';
@@ -137,7 +137,7 @@ export async function seedMysqlWideTypes(
   dbSessionId: string,
   table: string,
   count: number,
-  batchSize = 250,
+  batchSize = 1000,
 ): Promise<void> {
   for (let start = 1; start <= count; start += batchSize) {
     const end = Math.min(start + batchSize - 1, count);

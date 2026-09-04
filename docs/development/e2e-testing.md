@@ -66,7 +66,7 @@ pnpm e2e:redis          # 显式：packages/drivers/redis/e2e/（不进默认 pn
 pnpm e2e:i18n-backup
 pnpm e2e:path-ipc
 pnpm e2e:dashboard      # data-dashboard*.ts（同样 skip-build）
-pnpm e2e:data-transfer  # 数据传输专用：preflight 清理 + 全量 transfer suite（2500 行宽类型）
+pnpm e2e:data-transfer  # 数据传输专用：preflight 清理 + 全量 transfer suite（25000 行宽类型）
 pnpm e2e:data-transfer:build  # 同上，但会先完整 webdriver 构建
 pnpm e2e:schema-diff  # 结构对比专用：preflight 清理 + 全量 schema-diff suite（19 列宽类型 + 跨方言）
 pnpm e2e:schema-diff:build  # 同上，但会先完整 webdriver 构建

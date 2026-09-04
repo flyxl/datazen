@@ -46,6 +46,28 @@ mysql_cmd() {
   mysql "${args[@]}" "$@"
 }
 
+drop_pg_ephemeral_databases() {
+  psql_admin <<'SQL'
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT datname FROM pg_database
+    WHERE datistemplate = false
+      AND datname NOT IN ('postgres', 'datazen_e2e', 'datazen_sync_src', 'datazen_sync_tgt')
+      AND (
+        datname ILIKE '%e2e\_nav\_cross%' ESCAPE '\'
+        OR datname ILIKE 'e2e\_temp\_%' ESCAPE '\'
+        OR datname ILIKE 'e2e\_test\_db\_%' ESCAPE '\'
+      )
+  LOOP
+    EXECUTE format('DROP DATABASE IF EXISTS %I', r.datname);
+  END LOOP;
+END $$;
+SQL
+  echo "  Cleaned ephemeral databases in PostgreSQL"
+}
+
 drop_pg_ephemeral_tables() {
   local db="$1"
   if ! psql_db "$db" -tAc "SELECT 1" >/dev/null 2>&1; then
@@ -56,6 +78,21 @@ drop_pg_ephemeral_tables() {
 DO $$
 DECLARE r record;
 BEGIN
+  -- 1. Drop ephemeral test schemas (e.g. created by context menu or schema diff tests)
+  FOR r IN
+    SELECT schema_name FROM information_schema.schemata
+    WHERE schema_name NOT IN ('public', 'information_schema', 'pg_catalog')
+      AND (
+        schema_name ILIKE '%e2e%'
+        OR schema_name LIKE '\_e2e\_%' ESCAPE '\'
+        OR schema_name LIKE 'e2e\_%' ESCAPE '\'
+        OR schema_name LIKE 'datazen\_%' ESCAPE '\'
+      )
+  LOOP
+    EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', r.schema_name);
+  END LOOP;
+
+  -- 2. Drop ephemeral tables in public schema
   FOR r IN
     SELECT tablename FROM pg_tables
     WHERE schemaname = 'public'
@@ -63,16 +100,30 @@ BEGIN
       AND (
         tablename ILIKE '%e2e%'
         OR tablename LIKE 'sync\_%' ESCAPE '\'
-        OR tablename LIKE '_e2e\_%' ESCAPE '\'
-        OR tablename LIKE 'ds\_j\_%' ESCAPE '\'
-        OR tablename LIKE 'ds\_edge\_%' ESCAPE '\'
+        OR tablename LIKE '\_e2e\_%' ESCAPE '\'
+        OR tablename LIKE 'ds\_%' ESCAPE '\'
+        OR tablename LIKE 'sd\_%' ESCAPE '\'
+        OR tablename LIKE 'dt\_%' ESCAPE '\'
       )
   LOOP
     EXECUTE format('DROP TABLE IF EXISTS %I CASCADE', r.tablename);
   END LOOP;
 END $$;
 SQL
-  echo "  Dropped ephemeral tables in $db"
+  echo "  Dropped ephemeral schemas and tables in $db"
+}
+
+drop_mysql_ephemeral_databases() {
+  mysql_cmd -N -e "
+    SELECT CONCAT('DROP DATABASE IF EXISTS \`', schema_name, '\`;')
+    FROM information_schema.schemata
+    WHERE schema_name NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys', '${MYSQL_DB}', 'datazen_sync_mysql_src', 'datazen_sync_mysql_tgt')
+      AND (
+        schema_name LIKE 'e2e\\_nav\\_cross%'
+        OR schema_name LIKE 'e2e\\_temp\\_%'
+      );
+  " | mysql_cmd 2>/dev/null || true
+  echo "  Cleaned ephemeral databases in MySQL"
 }
 
 drop_mysql_ephemeral_tables() {
@@ -85,12 +136,14 @@ drop_mysql_ephemeral_tables() {
     SELECT CONCAT('DROP TABLE IF EXISTS \`', table_name, '\`;')
     FROM information_schema.tables
     WHERE table_schema = '${db}'
+      AND table_name <> 'product'
       AND (
         table_name LIKE '%e2e%'
-        OR table_name LIKE 'sync\_%'
-        OR table_name LIKE '_e2e\_%'
-        OR table_name LIKE 'ds\_j\_%'
-        OR table_name LIKE 'ds\_edge\_%'
+        OR table_name LIKE 'sync\\_%'
+        OR table_name LIKE '\\_e2e\\_%'
+        OR table_name LIKE 'ds\\_%'
+        OR table_name LIKE 'sd\\_%'
+        OR table_name LIKE 'dt\\_%'
       );
   " | mysql_cmd "$db" || true
   echo "  Dropped ephemeral tables in MySQL $db"
@@ -114,6 +167,7 @@ SQL
 }
 
 echo "=== E2E teardown: PostgreSQL ==="
+drop_pg_ephemeral_databases
 for db in "$E2E_DB" datazen_sync_src datazen_sync_tgt; do
   drop_pg_ephemeral_tables "$db"
 done
@@ -121,6 +175,7 @@ seed_product_table
 
 echo ""
 echo "=== E2E teardown: MySQL ==="
+drop_mysql_ephemeral_databases
 drop_mysql_ephemeral_tables "$MYSQL_DB"
 drop_mysql_ephemeral_tables datazen_sync_mysql_src
 drop_mysql_ephemeral_tables datazen_sync_mysql_tgt

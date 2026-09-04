@@ -331,10 +331,12 @@ function cleanup() {
 process.on('exit', cleanup);
 process.on('SIGINT', () => {
   cleanup();
+  runEnvTeardown();
   process.exit(130);
 });
 process.on('SIGTERM', () => {
   cleanup();
+  runEnvTeardown();
   process.exit(143);
 });
 

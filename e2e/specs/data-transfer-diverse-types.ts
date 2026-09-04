@@ -1,7 +1,7 @@
 /**
  * Data Transfer comprehensive E2E: wide column types + multi-batch row volume.
  *
- * Uses e2e/lib/dataTransferFixtures.ts (2500 rows, 19 columns).
+ * Uses e2e/lib/dataTransferFixtures.ts (25000 rows, 19 columns).
  * Preflight: bash e2e/setup-data-transfer-e2e.sh (also run via pnpm e2e:data-transfer).
  */
 import { expect, browser, $ } from '@wdio/globals';
@@ -64,10 +64,10 @@ async function runDataTransferWizard(sourceName: string, targetName: string, tab
   const execute = await $('[data-testid="data-transfer-execute"]');
   await execute.waitForClickable({ timeout: 20000 });
   await execute.click();
-  await browser.pause(Math.min(15000, 3000 + TRANSFER_E2E_ROW_COUNT * 4));
+  await browser.pause(Math.min(30000, 3000 + Math.floor(TRANSFER_E2E_ROW_COUNT / 200) * 100));
 
   const result = await $('[data-testid="data-transfer-result"]');
-  await result.waitForDisplayed({ timeout: 60000 });
+  await result.waitForDisplayed({ timeout: 120000 });
   expect(await result.getText()).not.toContain(t('transfer.error'));
 }
 
@@ -97,7 +97,7 @@ describe('数据传输限制说明 (DT-LIM)', () => {
 });
 
 describe(`PG→MySQL 宽类型 ${TRANSFER_E2E_ROW_COUNT} 行 (DT-COMP-PG-MYSQL)`, function () {
-  this.timeout(180000);
+  this.timeout(300000);
   let mainWindow: string;
   const STAMP = Date.now().toString(36);
   const SRC_ID = `e2e_dt_comp_pg_${STAMP}`;
@@ -131,7 +131,7 @@ describe(`PG→MySQL 宽类型 ${TRANSFER_E2E_ROW_COUNT} 行 (DT-COMP-PG-MYSQL)`
 });
 
 describe(`MySQL→PG 宽类型 ${TRANSFER_E2E_ROW_COUNT} 行 (DT-COMP-MYSQL-PG)`, function () {
-  this.timeout(180000);
+  this.timeout(300000);
   let mainWindow: string;
   const STAMP = Date.now().toString(36);
   const SRC_ID = `e2e_dt_comp_mysql_src_${STAMP}`;

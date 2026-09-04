@@ -100,7 +100,7 @@
 | 数据同步 IPC（inspect / compare / generate SQL / apply / revalidate） | `data-sync-real.ts` | Covered（需 `e2e/setup-sync-dbs.sh` PG 夹具；SYNC-REAL-009 apply→recompare；SYNC-REAL-024 PG 宽类型 apply） |
 | 数据传输窗口 + PG→PG 迁移闭环 | `data-transfer-window.ts` (DTW-001~004, DTW-CL) | Covered |
 | 数据传输类型映射 Preview DDL | `data-transfer-type-mapping.ts` (DT-TYPE-001) | Covered（PG→MySQL create-new） |
-| 数据传输限制说明 + PG↔MySQL 宽类型 **2500 行**（19 列） | `data-transfer-diverse-types.ts` (DT-COMP) | Covered |
+| 数据传输限制说明 + PG↔MySQL 宽类型 **25000 行**（19 列） | `data-transfer-diverse-types.ts` (DT-COMP) | Covered |
 | 数据传输 PG→MySQL / MySQL→PG 类型映射 Preview | `data-transfer-type-mapping*.ts` | Covered |
 | 数据传输模式矩阵 data/structure/both × PG↔PG/PG↔MySQL/MySQL↔PG | `data-transfer-mode-paths.ts` (DT-MODE) | Covered |
 | 数据传输 PG→PG / PG→MySQL / MySQL→PG 用户旅程 | `journeys/data-transfer-*-journey.ts` | Covered |
