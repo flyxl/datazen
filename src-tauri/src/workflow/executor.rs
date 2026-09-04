@@ -15,11 +15,11 @@ use super::command_runtime;
 use super::conditions::evaluate_condition;
 use super::context::WorkflowContext;
 use super::data_step::{run_merge, run_transform};
-use crate::workflow::WorkflowError;
 use crate::workflow::model::{
     ErrorStrategy, MergeSource, StepExecutionResult, StepStatus, TransformColumn,
     WorkflowDefinition, WorkflowExecutionResult, WorkflowStep,
 };
+use crate::workflow::WorkflowError;
 
 pub const WORKFLOW_QUERY_ROW_LIMIT: u32 = 1000;
 
@@ -160,7 +160,8 @@ impl WorkflowExecutor {
         global_timeout_secs: u64,
         global_start: &'a Instant,
         options: &'a WorkflowExecuteOptions,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), WorkflowError>> + Send + 'a>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), WorkflowError>> + Send + 'a>>
+    {
         Box::pin(async move {
             for step in steps {
                 if global_start.elapsed().as_secs() >= global_timeout_secs {

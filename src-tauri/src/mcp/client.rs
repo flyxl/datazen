@@ -36,24 +36,8 @@ fn default_true() -> bool {
 
 /// Basenames permitted for MCP stdio server spawn (`Command::new`).
 const ALLOWED_MCP_COMMANDS: &[&str] = &[
-    "node",
-    "nodejs",
-    "npx",
-    "npm",
-    "pnpm",
-    "yarn",
-    "bun",
-    "deno",
-    "python",
-    "python3",
-    "uv",
-    "uvx",
-    "ruby",
-    "perl",
-    "sh",
-    "bash",
-    "zsh",
-    "datazen",
+    "node", "nodejs", "npx", "npm", "pnpm", "yarn", "bun", "deno", "python", "python3", "uv",
+    "uvx", "ruby", "perl", "sh", "bash", "zsh", "datazen",
 ];
 
 /// Returns the executable basename (strips directory and `.exe` on Windows).
