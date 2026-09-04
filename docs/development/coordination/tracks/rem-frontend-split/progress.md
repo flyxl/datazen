@@ -11,10 +11,10 @@
 
 ## 状态
 
-- Phase: READY_FOR_TEST
+- Phase: PASSED
 - 编码 commit: b3bd3e75e
 - 修复 commit: 1023ad3b2
-- 测试 commit: —
+- 测试 commit: ff6e7c8d2
 - 合并 commit: —
 
 ## 心跳
@@ -27,6 +27,14 @@
 - `npx vitest run src/stores/tableData/__tests__/pendingChanges.test.ts`: 8 passed / 8
 - `npx vitest run`: 2423 passed / 2423 (296 files) — 初版编码自验
 - 对外 store selector / re-export API 保持兼容
+
+## Tester 复验结果（2026-09-04T21:45+08:00）
+
+- `npx tsc --noEmit`: 0 errors
+- `npx vitest run src/stores/tableData/__tests__/pendingChanges.test.ts`: 8 passed / 8
+- 改动相关套件: 594 passed / 594 (55 files)
+- BUG-001 修复 commit `1023ad3b2` 审查通过
+- 测试 commit: `ff6e7c8d2`
 
 ## 修复记录
 
