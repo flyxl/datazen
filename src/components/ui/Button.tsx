@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, MouseEvent } from 'react';
+import type { ButtonHTMLAttributes } from 'react';
 import { cn } from '../../lib/cn';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'run';
@@ -31,23 +31,18 @@ export function Button({
   variant = 'primary',
   size = 'md',
   type = 'button',
-  onMouseDown,
   ...props
 }: ButtonProps) {
-  const handleMouseDown = (e: MouseEvent<HTMLButtonElement>) => {
-    e.preventDefault();
-    onMouseDown?.(e);
-  };
   return (
     <button
       type={type}
       className={cn(
         'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60',
         sizes[size],
         variants[variant],
         className,
       )}
-      onMouseDown={handleMouseDown}
       {...props}
     />
   );
