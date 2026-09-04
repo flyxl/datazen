@@ -87,4 +87,20 @@ describe('ContentStatusBar', () => {
     expect(status).toHaveTextContent('Ctrl+N');
     expect(status).toHaveTextContent('Ctrl+W');
   });
+
+  it('[tester] shows Ctrl modifier labels when platform is unknown', () => {
+    usePlatformMock.mockReturnValue('unknown');
+    render(
+      <ContentStatusBar
+        currentDatabase={null}
+        tableName=""
+        columnCount={0}
+        totalRows={0}
+      />,
+    );
+
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent('Ctrl+N');
+    expect(status).toHaveTextContent('Ctrl+W');
+  });
 });

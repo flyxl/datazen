@@ -463,6 +463,18 @@ describe('ConnectionPage', () => {
     expect(screen.queryByTestId('navigator-tree')).not.toBeInTheDocument();
   });
 
+  it('[tester] settings view keeps TitleBar with settings title and back control', async () => {
+    render(<ConnectionPage />);
+
+    fireEvent.click(screen.getByTestId('workspace-nav-settings'));
+    await waitFor(() => expect(screen.getByTestId('settings-page')).toBeInTheDocument());
+
+    const titleBar = screen.getByTestId('title-bar');
+    expect(titleBar).toHaveTextContent('win.settings');
+    expect(screen.getByTestId('menu-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('settings-back')).toBeInTheDocument();
+  });
+
   it('TC-window: SettingsPage back returns to workspace and restores mode', async () => {
     render(<ConnectionPage />);
 
