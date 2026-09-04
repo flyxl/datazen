@@ -13,6 +13,7 @@
 
 - Phase: READY_FOR_TEST
 - 编码 commit: b3bd3e75e
+- 修复 commit: (pending)
 - 测试 commit: —
 - 合并 commit: —
 
@@ -23,8 +24,13 @@
 ## 自验结果
 
 - `npx tsc --noEmit`: 0 errors
-- `npx vitest run`: 2423 passed / 2423 (296 files)
+- `npx vitest run src/stores/tableData/__tests__/pendingChanges.test.ts`: 8 passed / 8
+- `npx vitest run`: 2423 passed / 2423 (296 files) — 初版编码自验
 - 对外 store selector / re-export API 保持兼容
+
+## 修复记录
+
+- **BUG-001** `effectivePendingIdentity` 过滤 `isPrimaryKey` 列后再调用 `buildRowIdentity`，避免全量 columns 传入时返回 null
 
 ## 改动摘要
 

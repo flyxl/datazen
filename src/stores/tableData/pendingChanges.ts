@@ -15,13 +15,15 @@ export function effectivePendingIdentity(
   change: PendingRowChange,
   pkColumns: ColumnSchema[],
 ): ReturnType<typeof buildRowIdentity> {
+  const actualPkColumns = pkColumns.filter((c) => c.isPrimaryKey);
+  const targetColumns = actualPkColumns.length > 0 ? actualPkColumns : pkColumns;
   const values: Record<string, unknown> = { ...change.rowIdentity };
-  for (const column of pkColumns) {
+  for (const column of targetColumns) {
     if (Object.prototype.hasOwnProperty.call(change.currentValues, column.name)) {
       values[column.name] = change.currentValues[column.name];
     }
   }
-  return buildRowIdentity(values, pkColumns);
+  return buildRowIdentity(values, targetColumns);
 }
 
 export function rowIdentityIsUnique(
