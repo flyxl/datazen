@@ -68,6 +68,10 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.supports_explain()
     }
 
+    fn ddl_atomicity(&self) -> DdlAtomicity {
+        self.inner.ddl_atomicity()
+    }
+
     fn format_sql_literal(&self, value: &Option<Value>) -> String {
         self.inner.format_sql_literal(value)
     }

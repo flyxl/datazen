@@ -11,20 +11,20 @@
 
 ## 状态
 
-- Phase: NOT_STARTED
-- 编码 commit: —
+- Phase: READY_FOR_TEST
+- 编码 commit: （提交后填入）
 - 测试 commit: —
 - 合并 commit: —
 
-> 未启动：子代理派发机制自 Wave 1 中段起持续不可用（近 12 次派发全部失败，连最小任务都无法执行，无 closing message），playbook 的"编码→独立 Tester→修复循环"流程无法执行。待派发机制恢复后启动。Wave 1 全部 8 轨已于 2026-09-08 合入集成分支（`0d9ca4d95`，后端全库 1319✓、tsc✓）。
-
 ## 心跳
 
-- —
+- 2026-09-04 BOOTSTRAP：worktree 确认，分支 `feature/rem-ddl-atomicity`
+- 2026-09-04 CODING 完成：`DdlAtomicity` + trait 方法 + PG/SQLite/MySQL 覆写 + host 去硬编码
 
 ## 自验结果
 
-- —
+- `cargo test -p datazen-driver-api --lib`：109 passed
+- `cargo test -p datazen --lib`：1319 passed
 
 ## E2E 登记
 

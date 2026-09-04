@@ -1,30 +1,10 @@
 //! Dialect-aware transaction scope for DDL and DML operations.
 
-use crate::db::{ConnectionHandle, DatabaseDriver, TransactionHandle};
-
-/// DDL atomicity semantics for a database dialect.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DdlAtomicity {
-    /// DDL is transactional (e.g. PostgreSQL, SQLite).
-    Transactional,
-    /// Each DDL statement auto-commits (e.g. MySQL).
-    AutoCommitPerStatement,
-    /// Unknown semantics.
-    Unknown,
-}
-
-/// Determine DDL atomicity for a given dialect.
-pub fn ddl_atomicity(dialect: &str) -> DdlAtomicity {
-    match dialect.to_ascii_lowercase().as_str() {
-        "postgresql" | "postgres" | "sqlite" => DdlAtomicity::Transactional,
-        "mysql" | "mariadb" | "tidb" | "oceanbase" => DdlAtomicity::AutoCommitPerStatement,
-        _ => DdlAtomicity::Unknown,
-    }
-}
+use crate::db::{ConnectionHandle, DatabaseDriver, DdlAtomicity, TransactionHandle};
 
 /// Dialect-aware transaction scope.
 ///
-/// Manages BEGIN/COMMIT/ROLLBACK lifecycle based on dialect's DDL atomicity.
+/// Manages BEGIN/COMMIT/ROLLBACK lifecycle based on the driver's DDL atomicity.
 /// For transactional dialects (PG), wraps operations in a real transaction.
 /// For auto-commit dialects (MySQL), operations execute without wrapping.
 pub struct TransactionScope<'a> {
@@ -35,13 +15,12 @@ pub struct TransactionScope<'a> {
 }
 
 impl<'a> TransactionScope<'a> {
-    /// Begin a transaction scope. For transactional dialects, calls BEGIN.
+    /// Begin a transaction scope. For transactional drivers, calls BEGIN.
     pub async fn begin(
         driver: &'a dyn DatabaseDriver,
         handle: &'a ConnectionHandle,
-        dialect: &str,
     ) -> Result<Self, String> {
-        let atomicity = ddl_atomicity(dialect);
+        let atomicity = driver.ddl_atomicity();
         let tx = if matches!(atomicity, DdlAtomicity::Transactional) {
             Some(
                 driver

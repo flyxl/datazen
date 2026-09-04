@@ -895,6 +895,10 @@ impl DatabaseDriver for MysqlDriver {
         }
     }
 
+    fn ddl_atomicity(&self) -> DdlAtomicity {
+        DdlAtomicity::AutoCommitPerStatement
+    }
+
     /// F7: qualify unqualified table references with the target database
     /// (`` `db`.`t` ``), shared by the mysql/mariadb/doris/starrocks/
     /// manticore/ob_oracle variants. Parse failures pass SQL through
