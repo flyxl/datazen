@@ -67,6 +67,7 @@
     "test:unit:coverage": "vitest run --coverage",
     "test:ids": "node scripts/check-id-terminology.mjs",
     "test:ci-docs": "node scripts/check-ci-docs-consistency.mjs",
+    "test:version": "node scripts/check-version-consistency.mjs",
     "test:scripts": "vitest run scripts/__tests__",
     "test:rust:backup-i18n": "cargo test -p datazen --lib app_data_archive && cargo test -p datazen --lib i18n_locale && cargo test -p datazen --lib store::tests",
     "prepare": "husky && node scripts/ensure-generated-drivers.mjs && node scripts/generate-builtin-locales.mjs",

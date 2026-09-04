@@ -15,6 +15,7 @@ export const sqlserverMeta = {
   supportsBackup: true,
   supportsTables: true,
   isKeyValue: false,
+  popularityOrder: 6,
   supportsSQL: true,
   category: 'sql',
   connectionView: 'sql',

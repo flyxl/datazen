@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   extractWorkflowYaml,
+  parseValidatedWorkflowDefinition,
   parseWorkflowYaml,
   validateWorkflowFields,
 } from '../workflowYaml';
@@ -63,5 +64,50 @@ describe('validateWorkflowFields', () => {
     expect(validateWorkflowFields({ id: 'wf-1', steps: [{}] })).toBe('name');
     expect(validateWorkflowFields({ id: 'wf-1', name: 'Test' })).toBe('steps');
     expect(validateWorkflowFields({ id: 'wf-1', name: 'Test', steps: [] })).toBe('steps');
+  });
+});
+
+describe('[tester] parseValidatedWorkflowDefinition', () => {
+  it('narrows a valid workflow object to WorkflowDefinition', () => {
+    const workflow = parseValidatedWorkflowDefinition({
+      id: 'wf-1',
+      name: 'Demo',
+      description: 'desc',
+      variables: [{ name: 'q', varType: 'string' }],
+      steps: [{ id: 's1', type: 'query' }],
+      version: '1',
+      visibility: 'user',
+    });
+    expect(workflow.id).toBe('wf-1');
+    expect(workflow.variables).toHaveLength(1);
+    expect(workflow.steps[0]?.type).toBe('query');
+  });
+
+  it('throws on invalid optional fields and malformed steps', () => {
+    expect(() =>
+      parseValidatedWorkflowDefinition({
+        id: 'wf-1',
+        name: 'Demo',
+        description: 123,
+        steps: [{ id: 's1', type: 'query' }],
+      }),
+    ).toThrow(/description must be a string/);
+
+    expect(() =>
+      parseValidatedWorkflowDefinition({
+        id: 'wf-1',
+        name: 'Demo',
+        variables: [{ bad: true }],
+        steps: [{ id: 's1', type: 'query' }],
+      }),
+    ).toThrow(/variables must be an array/);
+
+    expect(() =>
+      parseValidatedWorkflowDefinition({
+        id: 'wf-1',
+        name: 'Demo',
+        steps: [{ id: 's1' }],
+      }),
+    ).toThrow(/steps must be a non-empty array/);
   });
 });

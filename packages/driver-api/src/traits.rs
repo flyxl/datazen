@@ -20,6 +20,27 @@ pub trait DatabaseDriver: Send + Sync {
         DriverCategory::Sql
     }
 
+    /// Sync/transfer pairing category. Defaults from [`Self::driver_category`];
+    /// proxy/exploration drivers (e.g. kiwi, superset) should override to
+    /// [`SyncCategory::Other`].
+    fn sync_category(&self) -> SyncCategory {
+        match self.driver_type().as_str() {
+            "kiwi" | "superset" => SyncCategory::Other,
+            _ => match self.driver_category() {
+                DriverCategory::Sql => SyncCategory::Sql,
+                DriverCategory::KeyValue => SyncCategory::Kv,
+                DriverCategory::Document => SyncCategory::Document,
+            },
+        }
+    }
+
+    /// Sync dialect family for pairing (same family → Direct path).
+    /// Drivers should override when their family differs from [`Self::driver_type`]
+    /// (e.g. mariadb → mysql). Reuse wrappers delegate to the inner driver.
+    fn sync_family(&self) -> String {
+        self.driver_type()
+    }
+
     /// Dialect-specific schema migration renderer. The schema-diff domain
     /// produces database-neutral operations; the driver owns SQL syntax.
     fn migration_renderer(&self) -> Option<Arc<dyn MigrationRenderer>> {
@@ -60,6 +81,15 @@ pub trait DatabaseDriver: Send + Sync {
     /// Whether the driver supports EXPLAIN query plan analysis.
     fn supports_explain(&self) -> bool {
         true
+    }
+
+    /// Whether multi-statement DDL can be wrapped in a single transaction.
+    ///
+    /// Override for SQL drivers with known semantics. The default is
+    /// [`DdlAtomicity::Unknown`], which keeps legacy behavior for drivers
+    /// that have not yet declared their DDL atomicity.
+    fn ddl_atomicity(&self) -> DdlAtomicity {
+        DdlAtomicity::Unknown
     }
 
     fn format_sql_literal(&self, value: &Option<Value>) -> String {
@@ -791,6 +821,12 @@ mod structure_defaults_tests {
     }
 
     #[tokio::test]
+    async fn default_ddl_atomicity_is_unknown() {
+        let driver = StubDriver;
+        assert_eq!(driver.ddl_atomicity(), DdlAtomicity::Unknown);
+    }
+
+    #[tokio::test]
     async fn default_structure_capabilities_are_disabled() {
         let driver = StubDriver;
         let handle = ConnectionHandle {
@@ -837,6 +873,21 @@ mod structure_defaults_tests {
         assert!(
             matches!(err, DriverError::Unsupported(msg) if msg == "table structure planning is not supported by this driver")
         );
+    }
+
+    #[test]
+    fn stub_driver_sync_defaults() {
+        let driver = StubDriver;
+        assert_eq!(driver.sync_category(), SyncCategory::Sql);
+        assert_eq!(driver.sync_family(), "stub");
+    }
+
+    #[tokio::test]
+    async fn reuse_driver_forwards_sync_taxonomy() {
+        let inner: Arc<dyn DatabaseDriver> = Arc::new(StubDriver);
+        let driver = ReuseDriver::new(inner, "reuse-stub");
+        assert_eq!(driver.sync_category(), SyncCategory::Sql);
+        assert_eq!(driver.sync_family(), "stub");
     }
 
     #[tokio::test]

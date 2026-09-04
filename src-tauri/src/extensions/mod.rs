@@ -85,10 +85,10 @@ impl ExtensionManager {
     /// foreign directories are skipped with a warning. Staging/backup entries
     /// (dot-prefixed) are ignored. Returns the number of loaded extensions.
     pub fn load_from_disk(&self) -> usize {
-        let mut map = self
-            .extensions
-            .write()
-            .expect("extension registry poisoned");
+        let mut map = self.extensions.write().unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "extension registry write lock poisoned; recovering");
+            e.into_inner()
+        });
         map.clear();
 
         let Ok(entries) = fs::read_dir(&self.extensions_dir) else {
@@ -126,7 +126,10 @@ impl ExtensionManager {
 
     /// Snapshot of all registered extensions, sorted by name then id.
     pub fn list(&self) -> Vec<LoadedExtension> {
-        let map = self.extensions.read().expect("extension registry poisoned");
+        let map = self.extensions.read().unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "extension registry read lock poisoned; recovering");
+            e.into_inner()
+        });
         let mut extensions: Vec<LoadedExtension> = map.values().cloned().collect();
         extensions.sort_by(|a, b| {
             a.manifest
@@ -140,7 +143,10 @@ impl ExtensionManager {
     pub fn get(&self, id: &str) -> Option<LoadedExtension> {
         self.extensions
             .read()
-            .expect("extension registry poisoned")
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "extension registry read lock poisoned; recovering");
+                e.into_inner()
+            })
             .get(id)
             .cloned()
     }
@@ -152,7 +158,10 @@ impl ExtensionManager {
     pub fn is_enabled(&self, id: &str) -> bool {
         self.extensions
             .read()
-            .expect("extension registry poisoned")
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "extension registry read lock poisoned; recovering");
+                e.into_inner()
+            })
             .get(id)
             .is_some_and(|p| p.enabled)
     }
@@ -164,7 +173,7 @@ impl ExtensionManager {
 
         self.extensions
             .write()
-            .expect("extension registry poisoned")
+            .map_err(|e| format!("extension registry poisoned: {e}"))?
             .insert(manifest.id.clone(), LoadedExtension { manifest, enabled });
         Ok(())
     }
@@ -176,7 +185,7 @@ impl ExtensionManager {
         if !self
             .extensions
             .read()
-            .expect("extension registry poisoned")
+            .map_err(|e| format!("extension registry poisoned: {e}"))?
             .contains_key(id)
         {
             return Err(format!("extension not found: {id}"));
@@ -187,7 +196,7 @@ impl ExtensionManager {
         let mut map = self
             .extensions
             .write()
-            .expect("extension registry poisoned");
+            .map_err(|e| format!("extension registry poisoned: {e}"))?;
         if let Some(loaded) = map.get_mut(id) {
             loaded.enabled = enabled;
         }
@@ -201,7 +210,7 @@ impl ExtensionManager {
         if !self
             .extensions
             .read()
-            .expect("extension registry poisoned")
+            .map_err(|e| format!("extension registry poisoned: {e}"))?
             .contains_key(id)
         {
             return Err(format!("extension not found: {id}"));
@@ -213,7 +222,7 @@ impl ExtensionManager {
 
         self.extensions
             .write()
-            .expect("extension registry poisoned")
+            .map_err(|e| format!("extension registry poisoned: {e}"))?
             .remove(id);
         Ok(())
     }

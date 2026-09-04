@@ -2,6 +2,141 @@
 
 use serde_json::Value as JsonValue;
 
+// ---------------------------------------------------------------------------
+// Shared normalisation helpers (also used by mcp::permission)
+// ---------------------------------------------------------------------------
+
+/// Reject SQL containing null bytes — they can split keywords and bypass
+/// classification (e.g. `DROP\0TABLE t`).
+pub fn reject_null_bytes(sql: &str) -> Result<(), String> {
+    if sql.contains('\0') {
+        Err("SQL contains null bytes which are not allowed".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+/// Map fullwidth Latin characters (U+FF01 – U+FF5E) to their ASCII
+/// equivalents so that `ＤＲＯＰ` becomes `DROP` before classification.
+pub fn normalize_fullwidth(sql: &str) -> String {
+    let mut out = String::with_capacity(sql.len());
+    for ch in sql.chars() {
+        let cp = ch as u32;
+        // U+FF01 (！) .. U+FF5E (～) maps to U+0021 (!) .. U+007E (~)
+        if (0xFF01..=0xFF5E).contains(&cp) {
+            out.push((cp - 0xFEE0) as u8 as char);
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+/// Strip SQL comments (`--` line and `/* … */` block) without touching
+/// quoted strings.  Used by `check_sql` / `tokenize_sql` to re-classify a
+/// statement after comment removal (the "comment-strip re-classification" fix).
+///
+/// SQL treats a comment as equivalent to whitespace, so when a comment is
+/// removed we push a single space separator.  This keeps `DROP/**/TABLE` from
+/// becoming the glued token `DROPTABLE`, which would defeat keyword detection.
+pub fn strip_sql_comments(sql: &str) -> String {
+    let chars: Vec<char> = sql.chars().collect();
+    let mut out = String::with_capacity(sql.len());
+    let mut i = 0;
+    while i < chars.len() {
+        // quoted strings — pass through verbatim
+        let quote = chars[i];
+        if quote == '\'' || quote == '"' || quote == '`' {
+            let mut j = i + 1;
+            while j < chars.len() {
+                if chars[j] == quote {
+                    if quote == '\'' && j + 1 < chars.len() && chars[j + 1] == '\'' {
+                        j += 2;
+                        continue;
+                    }
+                    break;
+                }
+                j += 1;
+            }
+            // j may be past end if quote is never closed — clamp to last valid index
+            let end = if j < chars.len() { j } else { chars.len() - 1 };
+            for ch in &chars[i..=end] {
+                out.push(*ch);
+            }
+            i = if j < chars.len() { j + 1 } else { chars.len() };
+            continue;
+        }
+        // -- line comment
+        if chars[i] == '-' && i + 1 < chars.len() && chars[i + 1] == '-' {
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+            push_separator(&mut out);
+            continue;
+        }
+        // /* block comment */
+        if chars[i] == '/' && i + 1 < chars.len() && chars[i + 1] == '*' {
+            i += 2;
+            while i + 1 < chars.len() && !(chars[i] == '*' && chars[i + 1] == '/') {
+                i += 1;
+            }
+            i = (i + 2).min(chars.len());
+            push_separator(&mut out);
+            continue;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+/// Push a single space separator unless `out` already ends with whitespace,
+/// preserving the "comment ≡ whitespace" SQL semantics between tokens.
+fn push_separator(out: &mut String) {
+    if !out.is_empty() && !out.ends_with(' ') && !out.ends_with('\n') && !out.ends_with('\t') {
+        out.push(' ');
+    }
+}
+
+/// True when a `/* … */` block comment in `sql` contains a write verb.
+///
+/// Used by the conservative guard in `check_sql`: after comment stripping, a
+/// statement whose main verb is *not* a clearly-safe verb (e.g. `/* DROP */
+/// TABLE t` strips to `TABLE t`) may be disguising a write inside the comment,
+/// and must be blocked under read-only / safe mode.
+fn comment_hides_write_verb(sql: &str) -> bool {
+    let chars: Vec<char> = sql.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '/' && i + 1 < chars.len() && chars[i + 1] == '*' {
+            let start = i + 2;
+            let mut j = start;
+            while j + 1 < chars.len() && !(chars[j] == '*' && chars[j + 1] == '/') {
+                j += 1;
+            }
+            let comment_text: String = chars[start..j].iter().collect();
+            // Normalise fullwidth and check for any write verb inside the comment.
+            let norm = normalize_fullwidth(&comment_text);
+            if WRITE_VERBS.iter().any(|v| {
+                norm.split_whitespace()
+                    .any(|tok| tok.eq_ignore_ascii_case(v))
+            }) {
+                return true;
+            }
+            i = (j + 2).min(chars.len());
+            continue;
+        }
+        i += 1;
+    }
+    false
+}
+
+/// Full guard normalisation: reject null bytes + map fullwidth → halfwidth.
+pub fn normalize_sql(sql: &str) -> Result<String, String> {
+    reject_null_bytes(sql)?;
+    Ok(normalize_fullwidth(sql))
+}
+
 const WRITE_VERBS: &[&str] = &[
     "INSERT", "UPDATE", "DELETE", "MERGE", "UPSERT", "REPLACE", "CREATE", "ALTER", "DROP",
     "TRUNCATE", "GRANT", "REVOKE", "RENAME", "COPY", "LOAD", "UNLOAD", "CALL", "EXEC", "EXECUTE",
@@ -12,14 +147,28 @@ const WRITE_VERBS: &[&str] = &[
 const SAFE_MODE_NEEDS_WHERE: &[&str] = &["UPDATE", "DELETE"];
 const SAFE_MODE_BLOCKED: &[&str] = &["TRUNCATE", "DROP"];
 
+/// Read-only verbs that never mutate, used to decide whether a comment-stripped
+/// statement is a clearly-safe body (and thus not an attempted disguised write).
+const READ_VERBS: &[&str] = &[
+    "SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "PRAGMA", "USE", "WITH", "VALUES",
+];
+
+fn is_read_verb(v: &str) -> bool {
+    READ_VERBS.iter().any(|r| v.eq_ignore_ascii_case(r))
+}
+
 /// Reject mutating SQL when the connection is read-only, and require WHERE
 /// for UPDATE/DELETE when Safe Mode is on. Safe Mode also blocks TRUNCATE/DROP.
 pub fn check_sql(sql: &str, read_only: bool, safe_mode: bool) -> Result<(), String> {
     if !read_only && !safe_mode {
         return Ok(());
     }
-    for stmt in split_statements(sql) {
-        let Some(verb) = crate::mcp::permission::sql_main_keyword(&stmt) else {
+    let sql = normalize_sql(sql)?;
+    for stmt in split_statements(&sql) {
+        // Re-classify on the comment-stripped form so that
+        // `DROP/**/TABLE t` and `/* DROP */ TABLE t` are caught.
+        let stripped = strip_sql_comments(&stmt);
+        let Some(verb) = crate::mcp::permission::sql_main_keyword(&stripped) else {
             continue;
         };
         if read_only && is_write_verb(&verb) {
@@ -45,14 +194,33 @@ pub fn check_sql(sql: &str, read_only: bool, safe_mode: bool) -> Result<(), Stri
                 ));
             }
         }
+        // Conservative guard: if the stripped statement's main verb is neither
+        // a write verb nor a clearly-safe read verb (a bare `TABLE t` or similar),
+        // but a comment hides a write verb (e.g. `/* DROP */ TABLE t`), the write
+        // is being disguised and must be blocked under read-only or safe mode.
+        // A comment that fully precedes a safe verb (e.g. `/* DROP TABLE t */
+        // SELECT 1`) has a read verb after stripping and is left alone.
+        if !is_write_verb(&verb)
+            && !is_read_verb(&verb)
+            && comment_hides_write_verb(&stmt)
+            && (read_only || safe_mode)
+        {
+            return Err(format!(
+                "Comment hides a write verb; '{verb}' statement is not allowed"
+            ));
+        }
     }
     Ok(())
 }
 
 #[allow(dead_code)]
 pub fn is_write_sql(sql: &str) -> bool {
-    split_statements(sql).iter().any(|stmt| {
-        crate::mcp::permission::sql_main_keyword(stmt)
+    let Ok(sql) = normalize_sql(sql) else {
+        return false;
+    };
+    split_statements(&sql).iter().any(|stmt| {
+        let stripped = strip_sql_comments(stmt);
+        crate::mcp::permission::sql_main_keyword(&stripped)
             .map(|verb| is_write_verb(&verb))
             .unwrap_or(false)
     })
@@ -102,8 +270,15 @@ fn json_to_sql_literal(value: &JsonValue) -> String {
         JsonValue::Bool(true) => "TRUE".into(),
         JsonValue::Bool(false) => "FALSE".into(),
         JsonValue::Number(n) => n.to_string(),
-        JsonValue::String(s) => format!("'{}'", s.replace('\'', "''")),
-        other => format!("'{}'", other.to_string().replace('\'', "''")),
+        JsonValue::String(s) => {
+            let escaped = s.replace('\\', "\\\\").replace('\'', "''");
+            format!("'{escaped}'")
+        }
+        other => {
+            let raw = other.to_string();
+            let escaped = raw.replace('\\', "\\\\").replace('\'', "''");
+            format!("'{escaped}'")
+        }
     }
 }
 
@@ -477,13 +652,13 @@ mod tests {
         assert!(check_sql("UPDATE t SET x = 1", true, true).is_err());
     }
 
-    // --- [tester] edge-case / bypass probes ---
+    // --- [tester] edge-case / bypass probes (now all intercepted) ---
 
     #[test]
-    fn test_tester_inline_block_comment_inside_drop_is_heuristic_gap() {
-        // Tokenizer strips inline comments; verb becomes TABLE — known bypass.
-        assert!(check_sql("DROP/**/TABLE t", false, true).is_ok());
-        assert!(check_sql("TRUNCATE/**/TABLE t", false, true).is_ok());
+    fn test_tester_inline_block_comment_inside_drop_is_intercepted() {
+        // Comment-strip re-classification now catches inline comments.
+        assert!(check_sql("DROP/**/TABLE t", false, true).is_err());
+        assert!(check_sql("TRUNCATE/**/TABLE t", false, true).is_err());
     }
 
     #[test]
@@ -498,19 +673,21 @@ mod tests {
     }
 
     #[test]
-    fn test_tester_read_only_inline_comment_drop_is_heuristic_gap() {
-        assert!(check_sql("DROP/**/TABLE t", true, false).is_ok());
+    fn test_tester_read_only_inline_comment_drop_is_intercepted() {
+        assert!(check_sql("DROP/**/TABLE t", true, false).is_err());
     }
 
     #[test]
-    fn test_tester_unicode_fullwidth_drop_bypasses_safe_mode() {
-        // Fullwidth Latin letters are not recognized as DROP — documented heuristic gap.
-        assert!(check_sql("ＤＲＯＰ TABLE t", false, true).is_ok());
+    fn test_tester_unicode_fullwidth_drop_is_intercepted() {
+        // Fullwidth Latin letters are now normalised to ASCII before classification.
+        assert!(check_sql("ＤＲＯＰ TABLE t", false, true).is_err());
+        assert!(check_sql("ＤＲＯＰ TABLE t", true, false).is_err());
     }
 
     #[test]
-    fn test_tester_null_byte_splits_drop_keyword_is_heuristic_gap() {
-        assert!(check_sql("DROP\u{0000}TABLE t", false, true).is_ok());
+    fn test_tester_null_byte_is_rejected() {
+        assert!(check_sql("DROP\u{0000}TABLE t", false, true).is_err());
+        assert!(check_sql("DROP\u{0000}TABLE t", true, false).is_err());
     }
 
     #[test]
@@ -525,8 +702,48 @@ mod tests {
     }
 
     #[test]
-    fn test_tester_drop_keyword_split_across_comment_is_heuristic_gap() {
-        // Verb becomes TABLE after comment strip — known bypass, not a formal guarantee.
-        assert!(check_sql("/* DROP */ TABLE t", false, true).is_ok());
+    fn test_tester_drop_keyword_split_across_comment_is_intercepted() {
+        // Comment-strip re-classification now catches leading comments.
+        assert!(check_sql("/* DROP */ TABLE t", false, true).is_err());
+    }
+
+    // --- New hardening tests ---
+
+    #[test]
+    fn test_harden_fullwidth_drop_read_only() {
+        assert!(check_sql("ＤＲＯＰ TABLE t", true, false).is_err());
+        assert!(check_sql("ＤＲＯＰ TABLE t", true, true).is_err());
+    }
+
+    #[test]
+    fn test_harden_fullwidth_update_safe_mode() {
+        assert!(check_sql("ＵＰＤＡＴＥ t SET x = 1", false, true).is_err());
+    }
+
+    #[test]
+    fn test_harden_null_byte_variants() {
+        assert!(check_sql("DROP\u{0}TABLE t", false, true).is_err());
+        assert!(check_sql("SELECT\u{0}1", true, true).is_err());
+        assert!(check_sql("UPDATE\u{0}t SET x=1", true, false).is_err());
+    }
+
+    #[test]
+    fn test_harden_comment_strip_update_needs_where() {
+        // After stripping /* UPDATE */, the real verb is DELETE — needs WHERE.
+        assert!(check_sql("/* UPDATE */ DELETE FROM t", false, true).is_err());
+        // But with WHERE it passes.
+        assert!(check_sql("/* UPDATE */ DELETE FROM t WHERE id=1", false, true).is_ok());
+    }
+
+    #[test]
+    fn test_harden_comment_strip_interleaved_with_real_sql() {
+        assert!(check_sql("SELECT 1; DROP/**/TABLE t", false, true).is_err());
+        assert!(check_sql("SELECT 1; /* DROP */ TABLE t", false, true).is_err());
+    }
+
+    #[test]
+    fn test_harden_backslash_in_literal() {
+        let sql = apply_params("SELECT :x", &json!({"x": "a\\b"})).unwrap();
+        assert_eq!(sql, "SELECT 'a\\\\b'");
     }
 }

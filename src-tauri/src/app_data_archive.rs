@@ -96,6 +96,16 @@ fn should_exclude_on_import(rel_path: &Path) -> bool {
     should_exclude_common(rel_path)
 }
 
+/// Options controlling app-data ZIP import.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ImportOptions {
+    /// When `true`, a `.key` file inside the ZIP may overwrite an existing
+    /// `.key` in the target data dir.  When `false` (the default), importing a
+    /// ZIP that contains `.key` over an existing `.key` is rejected with a
+    /// clear error — the caller must explicitly opt in to allow this.
+    pub allow_key_overwrite: bool,
+}
+
 /// Recursively zip `data_dir` into `zip_path`, preserving relative paths.
 /// Like [`export_app_data_with_options`] with default export options.
 #[cfg_attr(not(test), allow(dead_code))]
@@ -372,7 +382,20 @@ fn extract_zip_to_dir_with_limits(
 ///
 /// Uses extract → validate in staging → build sibling `prepared` dir → atomic rename swap
 /// so a failed import never leaves `data_dir` empty or partially written.
+///
+/// By default, importing a ZIP that contains `.key` over an existing `.key` is
+/// rejected to prevent silent key replacement.  Callers that need this behaviour
+/// (e.g. legacy key migration) must set [`ImportOptions::allow_key_overwrite`].
 pub fn import_app_data(data_dir: &Path, zip_path: &Path) -> std::io::Result<()> {
+    import_app_data_with_options(data_dir, zip_path, ImportOptions::default())
+}
+
+/// Like [`import_app_data`] but respects [`ImportOptions`].
+pub fn import_app_data_with_options(
+    data_dir: &Path,
+    zip_path: &Path,
+    options: ImportOptions,
+) -> std::io::Result<()> {
     let parent = data_dir.parent().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -401,6 +424,18 @@ pub fn import_app_data(data_dir: &Path, zip_path: &Path) -> std::io::Result<()> 
         let had_logs = logs_path.is_dir();
         let key_path = data_dir.join(".key");
         let had_key = key_path.is_file();
+
+        // Key-overwrite guard: refuse to silently replace an existing .key
+        // with a .key from the archive unless the caller explicitly opted in.
+        if had_key && zip_has_key && !options.allow_key_overwrite {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "Backup archive contains a .key file that would overwrite the existing \
+                 encryption key. To allow this, re-import with allow_key_overwrite set \
+                 to true. This protects against accidental key replacement which could \
+                 make encrypted data unrecoverable.",
+            ));
+        }
 
         fs::create_dir_all(&prepared)?;
         copy_dir_all_filtered(&staging, &prepared, &staging, |rel| {
@@ -632,7 +667,15 @@ mod tests {
         let target = TempDir::new().unwrap();
         write_file(target.path(), ".key", "old-local-key");
 
-        import_app_data(target.path(), &zip_path).unwrap();
+        // Default: rejected because .key would be overwritten.
+        let err = import_app_data(target.path(), &zip_path).unwrap_err();
+        assert!(err.to_string().contains(".key"));
+
+        // Opt-in: allowed.
+        let options = ImportOptions {
+            allow_key_overwrite: true,
+        };
+        import_app_data_with_options(target.path(), &zip_path, options).unwrap();
 
         assert_eq!(
             fs::read_to_string(target.path().join(".key")).unwrap(),
@@ -1137,6 +1180,144 @@ mod tests {
         assert_eq!(
             fs::read_to_string(target.path().join("keep.json")).unwrap(),
             "unchanged"
+        );
+    }
+
+    // ── .key overwrite guard tests ──────────────────────────────────────
+
+    /// (a) Zip with `.key` importing over an existing `.key` → rejected.
+    #[test]
+    fn import_rejects_zip_with_key_over_existing_key() {
+        let target = TempDir::new().unwrap();
+        write_file(target.path(), ".key", "local-encryption-key");
+        write_file(target.path(), "settings.json", r#"{"theme":"dark"}"#);
+
+        // Build a zip that contains a .key and some other data.
+        let dir = TempDir::new().unwrap();
+        let zip_path = dir.path().join("with-key.zip");
+        {
+            let file = File::create(&zip_path).unwrap();
+            let mut zip = ZipWriter::new(file);
+            let options =
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+            zip.start_file("settings.json", options).unwrap();
+            zip.write_all(r#"{"theme":"light"}"#.as_bytes()).unwrap();
+            zip.start_file(".key", options).unwrap();
+            zip.write_all(b"archive-key-material").unwrap();
+            zip.finish().unwrap();
+        }
+
+        let err = import_app_data(target.path(), &zip_path).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains(".key") && msg.contains("overwrite"),
+            "error should mention .key and overwrite: {msg}"
+        );
+        // Original data must be untouched.
+        assert_eq!(
+            fs::read_to_string(target.path().join(".key")).unwrap(),
+            "local-encryption-key"
+        );
+        assert_eq!(
+            fs::read_to_string(target.path().join("settings.json")).unwrap(),
+            r#"{"theme":"dark"}"#
+        );
+    }
+
+    /// (b) Zip without `.key` importing normally → succeeds.
+    #[test]
+    fn import_succeeds_when_zip_has_no_key() {
+        let source = TempDir::new().unwrap();
+        write_file(source.path(), "settings.json", r#"{"theme":"light"}"#);
+
+        let out = TempDir::new().unwrap();
+        let zip_path = out.path().join("no-key.zip");
+        export_app_data(source.path(), &zip_path).unwrap();
+
+        let target = TempDir::new().unwrap();
+        write_file(target.path(), ".key", "local-encryption-key");
+
+        import_app_data(target.path(), &zip_path).unwrap();
+
+        // Existing key is preserved; imported data lands.
+        assert_eq!(
+            fs::read_to_string(target.path().join(".key")).unwrap(),
+            "local-encryption-key"
+        );
+        assert_eq!(
+            fs::read_to_string(target.path().join("settings.json")).unwrap(),
+            r#"{"theme":"light"}"#
+        );
+    }
+
+    /// (c) Opt-in `allow_key_overwrite: true` allows the import to proceed.
+    #[test]
+    fn import_with_allow_key_overwrite_overwrites_existing_key() {
+        let target = TempDir::new().unwrap();
+        write_file(target.path(), ".key", "old-key");
+        write_file(target.path(), "settings.json", r#"{"theme":"dark"}"#);
+
+        let dir = TempDir::new().unwrap();
+        let zip_path = dir.path().join("with-key.zip");
+        {
+            let file = File::create(&zip_path).unwrap();
+            let mut zip = ZipWriter::new(file);
+            let options =
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+            zip.start_file("settings.json", options).unwrap();
+            zip.write_all(r#"{"theme":"light"}"#.as_bytes()).unwrap();
+            zip.start_file(".key", options).unwrap();
+            zip.write_all(b"new-key-from-archive").unwrap();
+            zip.finish().unwrap();
+        }
+
+        let options = ImportOptions {
+            allow_key_overwrite: true,
+        };
+        import_app_data_with_options(target.path(), &zip_path, options).unwrap();
+
+        // Key was replaced by the archive's key.
+        assert_eq!(
+            fs::read_to_string(target.path().join(".key")).unwrap(),
+            "new-key-from-archive"
+        );
+        assert_eq!(
+            fs::read_to_string(target.path().join("settings.json")).unwrap(),
+            r#"{"theme":"light"}"#
+        );
+    }
+
+    /// Zip with `.key` importing into a target that has no `.key` → succeeds
+    /// (no existing key to overwrite, guard is a no-op).
+    #[test]
+    fn import_with_key_succeeds_when_no_existing_key() {
+        let target = TempDir::new().unwrap();
+        write_file(target.path(), "settings.json", r#"{"theme":"dark"}"#);
+
+        let dir = TempDir::new().unwrap();
+        let zip_path = dir.path().join("with-key.zip");
+        {
+            let file = File::create(&zip_path).unwrap();
+            let mut zip = ZipWriter::new(file);
+            let options =
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+            zip.start_file("settings.json", options).unwrap();
+            zip.write_all(r#"{"theme":"light"}"#.as_bytes()).unwrap();
+            zip.start_file(".key", options).unwrap();
+            zip.write_all(b"archive-key").unwrap();
+            zip.finish().unwrap();
+        }
+
+        // Default options — guard should not fire since there is no existing key.
+        import_app_data(target.path(), &zip_path).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(target.path().join(".key")).unwrap(),
+            "archive-key"
+        );
+        assert_eq!(
+            fs::read_to_string(target.path().join("settings.json")).unwrap(),
+            r#"{"theme":"light"}"#
         );
     }
 }

@@ -43,7 +43,9 @@ impl std::fmt::Display for CommandError {
 
 impl serde::Serialize for CommandError {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.to_string())
+        // Redact secrets so IPC payloads never leak credentials (M9/B8).
+        let redacted = crate::log_redact::redact_secrets_for_log(&self.to_string());
+        serializer.serialize_str(&redacted)
     }
 }
 
@@ -288,13 +290,28 @@ mod tests {
     }
 
     #[test]
-    fn cmd_ext_preserves_original_error_for_ipc() {
+    fn cmd_ext_redacts_secrets_in_ipc_payload() {
         let err: Result<i32, DriverError> = Err(DriverError::ConnectionFailed(
             "mysql://root:s3cret@127.0.0.1:3306/db".into(),
         ));
         let mapped = err.cmd_err("test_connection").unwrap_err();
-        // IPC payload keeps the original message; only the log line is redacted.
+        // Display keeps the original message (useful for internal logging).
         assert!(mapped.to_string().contains("s3cret"));
+        // IPC payload (Serialize) must NOT leak the password.
+        let ipc_json = serde_json::to_string(&mapped).unwrap();
+        assert!(
+            !ipc_json.contains("s3cret"),
+            "IPC must not contain plaintext password: {ipc_json}"
+        );
+        assert!(
+            ipc_json.contains("***@"),
+            "IPC must contain redacted placeholder: {ipc_json}"
+        );
+        // Error category must be preserved for frontend classification.
+        assert!(
+            ipc_json.contains("Connection failed"),
+            "IPC must preserve error category: {ipc_json}"
+        );
     }
 
     #[test]

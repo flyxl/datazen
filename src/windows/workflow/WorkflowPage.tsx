@@ -78,42 +78,18 @@ interface WorkflowPageProps {
   onOpenDashboardInShell?: (dashboardId?: string, dashboardName?: string) => void;
 }
 
-// ── Panel types (same pattern as ConnectionPage) ──────────────────
-
-interface WorkflowRunPanel {
-  type: 'run';
-  id: string;
-  workflowId: string;
-  workflowName: string;
-  startedAt: string;
-  result: WorkflowExecutionResult | null;
-  isExecuting: boolean;
-}
-
-interface HistoryDetailPanel {
-  type: 'history';
-  id: string;
-  historyId: string;
-  workflowName: string;
-  createdAt: string;
-  result: WorkflowExecutionResult;
-}
-
-interface EditPanel {
-  type: 'edit';
-  id: string;
-  editingId: string | null;
-  draft: WorkflowDraft;
-  editorMode: 'visual' | 'yaml';
-  yamlText: string;
-}
-
-interface AiCreatePanel {
-  type: 'ai-create';
-  id: string;
-}
-
-type Panel = WorkflowRunPanel | HistoryDetailPanel | EditPanel | AiCreatePanel;
+import {
+  isEditPanel,
+  isHistoryDetailPanel,
+  isWorkflowRunPanel,
+  panelExecutionResult,
+  panelTabLabel,
+  type AiCreatePanel,
+  type EditPanel,
+  type HistoryDetailPanel,
+  type WorkflowPanel as Panel,
+  type WorkflowRunPanel,
+} from './workflowPanelGuards';
 
 let panelCounter = 0;
 function nextPanelId(prefix: string) {
@@ -238,14 +214,12 @@ export function WorkflowPage({
   const openHistoryPanel = useCallback(
     async (historyId: string, workflowName: string) => {
       const existing = panels.find(
-        (p) => p.type === 'history' && (p as HistoryDetailPanel).historyId === historyId,
+        (p) => isHistoryDetailPanel(p) && p.historyId === historyId,
       );
       if (existing) {
         setActivePanelId(existing.id);
         setActiveStepIndex(
-          existing.type === 'history' && (existing as HistoryDetailPanel).result.steps.length > 0
-            ? 0
-            : null,
+          isHistoryDetailPanel(existing) && existing.result.steps.length > 0 ? 0 : null,
         );
         return;
       }
@@ -389,9 +363,8 @@ export function WorkflowPage({
   );
 
   const handleExecute = useCallback(async () => {
-    if (!activePanel || activePanel.type !== 'run') return;
-    const wfPanel = activePanel as WorkflowRunPanel;
-    await runWorkflowInPanel(wfPanel.id, wfPanel.workflowId, variables);
+    if (!activePanel || !isWorkflowRunPanel(activePanel)) return;
+    await runWorkflowInPanel(activePanel.id, activePanel.workflowId, variables);
   }, [activePanel, variables, runWorkflowInPanel]);
 
   const handleDelete = async (workflowId: string) => {
@@ -426,9 +399,7 @@ export function WorkflowPage({
 
   const openEditPanel = useCallback(
     async (editingId: string | null, draft: WorkflowDraft) => {
-      const existing = panels.find(
-        (p) => p.type === 'edit' && (p as EditPanel).editingId === editingId,
-      );
+      const existing = panels.find((p) => isEditPanel(p) && p.editingId === editingId);
       if (existing) {
         setActivePanelId(existing.id);
         return;
@@ -550,17 +521,16 @@ export function WorkflowPage({
 
   const currentStep =
     currentResult && activeStepIndex != null ? currentResult.steps[activeStepIndex] : null;
-  const currentWorkflow =
-    activePanel?.type === 'run'
-      ? (workflows.find((w) => w.id === (activePanel as WorkflowRunPanel).workflowId) ?? null)
-      : null;
+  const currentWorkflow = useMemo(() => {
+    if (!activePanel || !isWorkflowRunPanel(activePanel)) return null;
+    return workflows.find((w) => w.id === activePanel.workflowId) ?? null;
+  }, [activePanel, workflows]);
   const isExecuting =
-    activePanel?.type === 'run' ? (activePanel as WorkflowRunPanel).isExecuting : false;
+    activePanel && isWorkflowRunPanel(activePanel) ? activePanel.isExecuting : false;
 
   const handleAddToDashboardConfirm = useCallback(
     async (dashboardId: string | 'new', newName?: string) => {
-      if (activePanel?.type !== 'run') return;
-      const wfPanel = activePanel as WorkflowRunPanel;
+      if (!activePanel || !isWorkflowRunPanel(activePanel)) return;
       setAddToDashboardOpen(false);
       try {
         let targetId = dashboardId;
@@ -571,8 +541,8 @@ export function WorkflowPage({
         }
         const created = await dashboardCommands.createWidgetFromWorkflow({
           dashboardId: targetId,
-          workflowId: wfPanel.workflowId,
-          title: wfPanel.workflowName,
+          workflowId: activePanel.workflowId,
+          title: activePanel.workflowName,
           viewMode: 'table',
         });
         if (embedded && onOpenDashboardInShell) {
@@ -740,8 +710,8 @@ export function WorkflowPage({
                 workflows={workflows}
                 loading={workflowsLoading}
                 activePanelWorkflowId={
-                  activePanel?.type === 'run'
-                    ? (activePanel as WorkflowRunPanel).workflowId
+                  activePanel && isWorkflowRunPanel(activePanel)
+                    ? activePanel.workflowId
                     : undefined
                 }
                 onSelect={handleSelectWorkflow}
@@ -776,22 +746,12 @@ export function WorkflowPage({
                     ) : (
                       <History className="h-3.5 w-3.5 shrink-0" />
                     );
-                  const label =
-                    panel.type === 'ai-create'
-                      ? t('workflows.aiCreate.title')
-                      : panel.type === 'edit'
-                        ? (panel as EditPanel).editingId
-                          ? (panel as EditPanel).draft.name || t('workflows.edit')
-                          : t('workflows.create')
-                        : panel.type === 'run'
-                          ? `${(panel as WorkflowRunPanel).workflowName} ${new Date((panel as WorkflowRunPanel).startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                          : `${(panel as HistoryDetailPanel).workflowName} ${new Date((panel as HistoryDetailPanel).createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-                  const resultStatus =
-                    panel.type === 'run'
-                      ? (panel as WorkflowRunPanel).result
-                      : panel.type === 'history'
-                        ? (panel as HistoryDetailPanel).result
-                        : null;
+                  const label = panelTabLabel(panel, {
+                    aiCreate: t('workflows.aiCreate.title'),
+                    edit: t('workflows.edit'),
+                    create: t('workflows.create'),
+                  });
+                  const resultStatus = panelExecutionResult(panel);
 
                   return (
                     <div
@@ -809,12 +769,7 @@ export function WorkflowPage({
                         className="flex items-center gap-1.5"
                         onClick={() => {
                           setActivePanelId(panel.id);
-                          const panelResult =
-                            panel.type === 'run'
-                              ? (panel as WorkflowRunPanel).result
-                              : panel.type === 'history'
-                                ? (panel as HistoryDetailPanel).result
-                                : null;
+                          const panelResult = panelExecutionResult(panel);
                           setActiveStepIndex(
                             panelResult && panelResult.steps.length > 0 ? 0 : null,
                           );
@@ -832,7 +787,7 @@ export function WorkflowPage({
                             {resultStatus.success ? '✓' : '✗'}
                           </span>
                         )}
-                        {panel.type === 'run' && (panel as WorkflowRunPanel).isExecuting && (
+                        {isWorkflowRunPanel(panel) && panel.isExecuting && (
                           <Loader2 className="h-3 w-3 animate-spin text-accent" />
                         )}
                       </button>
@@ -961,7 +916,7 @@ export function WorkflowPage({
                 />
               </div>
             </div>
-          ) : activePanel?.type === 'edit' ? (
+          ) : activePanel && isEditPanel(activePanel) ? (
             <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
               <div
                 className="flex items-center gap-1 border-b border-edge px-3 py-1.5"
@@ -972,7 +927,7 @@ export function WorkflowPage({
                   data-testid="workflow-mode-visual"
                   className={cn(
                     'rounded px-2 py-1 text-xs',
-                    (activePanel as EditPanel).editorMode === 'visual'
+                    activePanel.editorMode === 'visual'
                       ? 'bg-accent/15 text-accent'
                       : 'text-fg-muted hover:text-fg',
                   )}
@@ -985,7 +940,7 @@ export function WorkflowPage({
                   data-testid="workflow-mode-yaml"
                   className={cn(
                     'rounded px-2 py-1 text-xs',
-                    (activePanel as EditPanel).editorMode === 'yaml'
+                    activePanel.editorMode === 'yaml'
                       ? 'bg-accent/15 text-accent'
                       : 'text-fg-muted hover:text-fg',
                   )}
@@ -994,14 +949,14 @@ export function WorkflowPage({
                   {t('workflows.editor.yaml')}
                 </button>
               </div>
-              {(activePanel as EditPanel).editorMode === 'visual' ? (
+              {activePanel.editorMode === 'visual' ? (
                 <div className="flex flex-1 min-h-0 overflow-y-auto">
                   <WorkflowForm
-                    draft={(activePanel as EditPanel).draft}
-                    editingId={(activePanel as EditPanel).editingId}
+                    draft={activePanel.draft}
+                    editingId={activePanel.editingId}
                     connections={savedConnections}
                     onDraftChange={(d) => updateEditDraft(activePanel.id, d)}
-                    onSave={() => void handleSave(activePanel.id, (activePanel as EditPanel).draft)}
+                    onSave={() => void handleSave(activePanel.id, activePanel.draft)}
                     onCancel={() => closePanel(activePanel.id)}
                   />
                 </div>
@@ -1009,7 +964,7 @@ export function WorkflowPage({
                 <div className="flex flex-1 min-h-0 flex-col gap-2 p-3">
                   <div className="min-h-0 flex-1">
                     <WorkflowYamlEditor
-                      value={(activePanel as EditPanel).yamlText}
+                      value={activePanel.yamlText}
                       onChange={(yaml) => updateEditYaml(activePanel.id, yaml)}
                     />
                   </div>
@@ -1026,7 +981,7 @@ export function WorkflowPage({
                       data-testid="workflow-yaml-save"
                       className="rounded-md bg-accent px-3 py-1.5 text-xs text-white hover:opacity-90"
                       onClick={() =>
-                        void handleSaveYaml(activePanel.id, (activePanel as EditPanel).yamlText)
+                        void handleSaveYaml(activePanel.id, activePanel.yamlText)
                       }
                     >
                       {t('common.save')}
@@ -1090,7 +1045,10 @@ function StepDetailView({
 
   const statementResult = useMemo(() => stepToStatementResult(step), [step]);
   const tableRows = statementResult?.rows;
-  const rowsCount = (step.result?.rows_count as number | undefined) ?? tableRows?.length ?? 0;
+  const rowsCount =
+    typeof step.result?.rows_count === 'number'
+      ? step.result.rows_count
+      : (tableRows?.length ?? 0);
   const chartable = useMemo(
     () => statementResult != null && isChartableResult(statementResult),
     [statementResult],

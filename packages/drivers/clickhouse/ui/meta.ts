@@ -15,6 +15,7 @@ export const clickhouseMeta = {
   supportsBackup: true,
   supportsTables: true,
   isKeyValue: false,
+  popularityOrder: 7,
   supportsSQL: true,
   category: 'sql',
   connectionView: 'sql',

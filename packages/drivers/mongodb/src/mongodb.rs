@@ -623,6 +623,21 @@ impl DatabaseDriver for MongodbDriver {
         cmds
     }
 
+    async fn execute_command(
+        &self,
+        handle: &ConnectionHandle,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<CommandResult, DriverError> {
+        match command {
+            "query_stream" => Err(DriverError::NotSupported(
+                "query_stream is dispatched through the streaming IPC path, not execute_command"
+                    .into(),
+            )),
+            _ => execute_standard_sql_command(self, handle, command, input).await,
+        }
+    }
+
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
     }
@@ -775,6 +790,45 @@ mod tests {
         assert!(!uri.contains("s3cret"), "{uri}");
         assert!(!uri.contains("alice"), "{uri}");
         assert!(uri.starts_with("mongodb://127.0.0.1:27017/"), "{uri}");
+    }
+
+    /// Contract test: every command advertised by `command_definitions()` must
+    /// have a corresponding dispatch branch in `execute_command()`. Unknown
+    /// commands must NOT silently succeed — they must return a clear error.
+    #[tokio::test]
+    async fn every_definition_has_execute_dispatch() {
+        let driver = MongodbDriver::new();
+        let handle = ConnectionHandle {
+            id: "test".into(),
+            pool_id: "test".into(),
+        };
+        let definitions = driver.command_definitions();
+        assert!(!definitions.is_empty(), "must have at least one command");
+        for def in &definitions {
+            let result = driver
+                .execute_command(&handle, &def.id, serde_json::json!({}))
+                .await;
+            match def.id.as_str() {
+                // query_stream goes through the streaming IPC path, not execute_command.
+                "query_stream" => {
+                    assert!(
+                        matches!(result, Err(DriverError::NotSupported(_))),
+                        "query_stream via execute_command must return NotSupported, got: {result:?}"
+                    );
+                }
+                // query/execute need live connections — ConnectionFailed is expected.
+                "query" | "execute" => {
+                    assert!(
+                        !matches!(result, Err(DriverError::Unsupported(_))),
+                        "command '{}' is defined but execute_command returns Unsupported (no dispatch branch)",
+                        def.id
+                    );
+                }
+                other => {
+                    panic!("command '{other}' is defined but has no contract test expectation");
+                }
+            }
+        }
     }
 }
 

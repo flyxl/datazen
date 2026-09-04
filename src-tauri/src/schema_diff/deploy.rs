@@ -1,8 +1,8 @@
 //! Execute schema diff deploy plans with dialect-aware atomicity.
 
 use super::types::{
-    ddl_atomicity, DdlAtomicity, DeployStatus, SchemaDiffDeployResult, SchemaDiffPlan,
-    StatementExecResult, StatementRisk,
+    DdlAtomicity, DeployStatus, SchemaDiffDeployResult, SchemaDiffPlan, StatementExecResult,
+    StatementRisk,
 };
 use crate::db::{ConnectionHandle, DatabaseDriver};
 use crate::services::transaction::TransactionScope;
@@ -33,9 +33,9 @@ pub async fn run_deploy_with_executor(
     executor: &dyn StatementExecutor,
     plan: &SchemaDiffPlan,
     opts: &DeployOptions,
+    atomicity: DdlAtomicity,
     cancelled: Option<&AtomicBool>,
 ) -> SchemaDiffDeployResult {
-    let atomicity = ddl_atomicity(&plan.target_dialect);
     let can_tx = matches!(atomicity, DdlAtomicity::Transactional) && opts.use_transaction;
     let n = plan.statements.len();
 
@@ -166,7 +166,7 @@ pub async fn execute_schema_diff_deploy(
     opts: DeployOptions,
     cancelled: Option<std::sync::Arc<AtomicBool>>,
 ) -> SchemaDiffDeployResult {
-    let atomicity = ddl_atomicity(&plan.target_dialect);
+    let atomicity = driver.ddl_atomicity();
     let can_tx = matches!(atomicity, DdlAtomicity::Transactional) && opts.use_transaction;
     let n = plan.statements.len();
 
@@ -181,7 +181,7 @@ pub async fn execute_schema_diff_deploy(
     }
 
     let tx_scope = if can_tx {
-        match TransactionScope::begin(driver, handle, &plan.target_dialect).await {
+        match TransactionScope::begin(driver, handle).await {
             Ok(scope) => Some(scope),
             Err(e) => {
                 return SchemaDiffDeployResult {
@@ -258,7 +258,17 @@ pub async fn execute_schema_diff_deploy(
     }
 
     if can_tx {
-        let scope = tx_scope.expect("transaction scope must exist when can_tx");
+        let Some(scope) = tx_scope else {
+            // Should be unreachable: can_tx implies DdlAtomicity::Transactional
+            // which guarantees tx_scope is Some. Defend without panicking.
+            return SchemaDiffDeployResult {
+                status: DeployStatus::Failed,
+                executed_count: 0,
+                statement_count: n,
+                errors: vec!["transaction scope missing despite can_tx=true".into()],
+                statement_results: results,
+            };
+        };
         if failed {
             let _ = scope.rollback().await;
             return SchemaDiffDeployResult {
@@ -384,6 +394,7 @@ mod tests {
                 use_transaction: true,
                 stop_on_error: true,
             },
+            DdlAtomicity::Transactional,
             None,
         )
         .await;
@@ -402,6 +413,7 @@ mod tests {
                 use_transaction: true, // ignored for mysql
                 stop_on_error: true,
             },
+            DdlAtomicity::AutoCommitPerStatement,
             None,
         )
         .await;
@@ -420,6 +432,7 @@ mod tests {
                 use_transaction: true,
                 stop_on_error: true,
             },
+            DdlAtomicity::Transactional,
             None,
         )
         .await;
@@ -436,8 +449,14 @@ mod tests {
         let flag = AtomicBool::new(false);
         flag.store(true, Ordering::SeqCst);
 
-        let result =
-            run_deploy_with_executor(&exec, &plan, &DeployOptions::default(), Some(&flag)).await;
+        let result = run_deploy_with_executor(
+            &exec,
+            &plan,
+            &DeployOptions::default(),
+            DdlAtomicity::Transactional,
+            Some(&flag),
+        )
+        .await;
         assert_eq!(result.status, DeployStatus::Cancelled);
         let log = exec.log.lock().unwrap();
         assert!(log.iter().any(|s| s == "ROLLBACK"));

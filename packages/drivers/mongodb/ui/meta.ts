@@ -15,6 +15,7 @@ export const mongodbMeta = {
     supportsBackup: false,
     supportsTables: true,
     isKeyValue: false,
+    popularityOrder: 5,
     supportsSQL: false,
     category: 'document',
     connectionView: 'document',

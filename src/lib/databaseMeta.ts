@@ -43,6 +43,13 @@ export interface DatabaseTypeMeta {
   supportsTables: boolean;
   /** Key-value stores (e.g. Redis) — no SQL tables in the traditional sense */
   isKeyValue: boolean;
+  /**
+   * Popularity rank for the new-connection sidebar ordering (lower = shown first).
+   * Omitted types sort after all ranked types, then alphabetically by id.
+   * The host derives `DB_TYPE_POPULARITY_ORDER` from this field instead of
+   * hard-coding a list, so new drivers get correct placement by setting this value.
+   */
+  popularityOrder?: number;
   /** Whether SQL is the primary query language */
   supportsSQL: boolean;
   /** Category aligned with backend `DriverCategory` / connection info */
@@ -51,6 +58,16 @@ export interface DatabaseTypeMeta {
   connectionView: 'sql' | 'keyvalue' | 'document';
   /** SQL dialect family for DDL/index queries; undefined for non-SQL types */
   sqlDialect?: string;
+  /**
+   * Sync/transfer pairing category. Defaults from {@link category}; set to
+   * `'other'` for proxy/exploration drivers (kiwi, superset).
+   */
+  syncCategory?: 'sql' | 'document' | 'kv' | 'other';
+  /**
+   * Sync dialect family for Transfer pairing. Defaults to {@link sqlDialect}
+   * or the registry db type id when omitted.
+   */
+  syncFamily?: string;
   /** How the "database" field behaves in the connection form.
    *  - name: logical database name (MySQL/PG)
    *  - path: file path (SQLite)

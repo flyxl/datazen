@@ -24,10 +24,11 @@ import { openSettingsWindow } from '../../lib/windowManager';
 import {
   extractWorkflowYaml,
   parseWorkflowYaml,
+  parseValidatedWorkflowDefinition,
   validateWorkflowFields,
 } from '../../lib/workflowYaml';
 import { splitContextItems } from '../../lib/contextItems';
-import type { AiChatMessage, ContextItem, WorkflowDefinition } from '../../types';
+import type { AiChatMessage, ContextItem } from '../../types';
 import { QuestionBlock } from './AiChatPanel';
 
 interface WorkflowChatPanelProps {
@@ -124,7 +125,7 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
           setSaving(false);
           return;
         }
-        const workflow = parsed as unknown as WorkflowDefinition;
+        const workflow = parseValidatedWorkflowDefinition(parsed);
         await aiCommands.workflowSave(workflow);
         setSaveOk(true);
         setSaving(false);

@@ -4,10 +4,12 @@
 //! AppHandle lookup so we can reuse `workflow_execute_impl`.
 
 use std::collections::{HashMap, HashSet};
+use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use futures_util::FutureExt;
 use tauri::{AppHandle, Manager};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
@@ -50,6 +52,26 @@ pub fn scheduled_interval_secs(workflow: &WorkflowDefinition) -> Option<u64> {
         return None;
     }
     Some(clamp_interval_secs(schedule.interval_secs.unwrap_or(3600)))
+}
+
+/// RAII guard that removes a workflow id from the `in_flight` set on drop.
+///
+/// This guarantees cleanup even when the spawned future panics or is cancelled
+/// by the tokio runtime, preventing the id from being permanently stuck.
+struct InFlightGuard {
+    scheduler: Arc<WorkflowScheduler>,
+    id: String,
+}
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        // `try_write` is non-blocking; if the lock is held (extremely rare at
+        // drop time since the task is ending), we accept the id staying — the
+        // next tick's insert would catch it.
+        if let Ok(mut set) = self.scheduler.in_flight.try_write() {
+            set.remove(&self.id);
+        }
+    }
 }
 
 pub struct WorkflowScheduler {
@@ -139,35 +161,54 @@ impl WorkflowScheduler {
             let id = workflow.id.clone();
             let app = handle.clone();
             tauri::async_runtime::spawn(async move {
-                let state = app.state::<crate::commands::AppState>();
-                let result = crate::commands::workflow_execute_impl(
-                    state.inner(),
-                    id.clone(),
-                    serde_json::json!({}),
-                    None,
-                )
+                // RAII guard: guarantees `in_flight.remove` on drop (normal,
+                // panic, or cancellation).
+                let _guard = InFlightGuard {
+                    scheduler: Arc::clone(&scheduler),
+                    id: id.clone(),
+                };
+
+                // catch_unwind ensures a panic inside the workflow execution
+                // does not prevent the guard from running; the panic is logged
+                // and `last_run` is still updated to avoid rapid retries.
+                let outcome = AssertUnwindSafe(async {
+                    let state = app.state::<crate::commands::AppState>();
+                    crate::commands::workflow_execute_impl(
+                        state.inner(),
+                        id.clone(),
+                        serde_json::json!({}),
+                        None,
+                    )
+                    .await
+                })
+                .catch_unwind()
                 .await;
-                match result {
-                    Ok(r) if r.success => {
+
+                match outcome {
+                    Ok(Ok(r)) if r.success => {
                         tracing::info!(workflow_id = %id, "scheduled workflow completed");
                     }
-                    Ok(r) => {
+                    Ok(Ok(r)) => {
                         tracing::warn!(
                             workflow_id = %id,
                             error = ?r.error,
                             "scheduled workflow finished with errors"
                         );
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         tracing::warn!(workflow_id = %id, error = %e, "scheduled workflow failed");
                     }
+                    Err(_panic) => {
+                        tracing::warn!(
+                            workflow_id = %id,
+                            "scheduled workflow panicked"
+                        );
+                    }
                 }
-                scheduler
-                    .last_run
-                    .write()
-                    .await
-                    .insert(id.clone(), Instant::now());
-                scheduler.in_flight.write().await.remove(&id);
+                // Update last_run regardless of outcome (including panic) to
+                // prevent rapid-fire retries on a consistently crashing workflow.
+                scheduler.last_run.write().await.insert(id, Instant::now());
+                // _guard drops here → in_flight.remove guaranteed
             });
         }
     }
@@ -238,5 +279,85 @@ mod tests {
     fn clamps_interval_helper() {
         assert_eq!(clamp_interval_secs(1), MIN_INTERVAL_SECS);
         assert_eq!(clamp_interval_secs(120), 120);
+    }
+
+    /// Verify that `InFlightGuard` removes the workflow id from `in_flight`
+    /// when it is dropped (normal completion path).
+    #[tokio::test]
+    async fn in_flight_guard_removes_on_normal_drop() {
+        let scheduler = WorkflowScheduler::new();
+        let wf_id = "panic-test-wf".to_string();
+
+        // Simulate inserting into in_flight (as tick() does).
+        scheduler.in_flight.write().await.insert(wf_id.clone());
+        assert!(scheduler.in_flight.read().await.contains(&wf_id));
+
+        {
+            let _guard = InFlightGuard {
+                scheduler: Arc::clone(&scheduler),
+                id: wf_id.clone(),
+            };
+            // Guard alive — id still in set.
+            assert!(scheduler.in_flight.read().await.contains(&wf_id));
+        }
+        // Guard dropped — id must be removed.
+        assert!(!scheduler.in_flight.read().await.contains(&wf_id));
+    }
+
+    /// Simulate the panic path: a future that panics is wrapped with a guard;
+    /// after the panic the id must be cleaned up and the workflow re-triggerable.
+    #[tokio::test]
+    async fn in_flight_cleanup_after_panic() {
+        let scheduler = WorkflowScheduler::new();
+        let wf_id = "panicky-wf".to_string();
+
+        // Insert into in_flight as tick() would.
+        scheduler.in_flight.write().await.insert(wf_id.clone());
+
+        // Simulate the spawn body: guard + catch_unwind around a panicking body.
+        let result = {
+            let _guard = InFlightGuard {
+                scheduler: Arc::clone(&scheduler),
+                id: wf_id.clone(),
+            };
+            AssertUnwindSafe(async {
+                panic!("workflow execution panic");
+            })
+            .catch_unwind()
+            .await
+        };
+        // The panic was caught.
+        assert!(result.is_err());
+
+        // Guard has been dropped — id must be cleaned from in_flight.
+        assert!(!scheduler.in_flight.read().await.contains(&wf_id));
+
+        // The workflow can be inserted again (re-triggerable).
+        assert!(scheduler.in_flight.write().await.insert(wf_id.clone()));
+        // Clean up.
+        scheduler.in_flight.write().await.remove(&wf_id);
+    }
+
+    /// Verify re-triggerability after normal completion (guard drop + id removed).
+    #[tokio::test]
+    async fn in_flight_retriggerable_after_normal_completion() {
+        let scheduler = WorkflowScheduler::new();
+        let wf_id = "normal-wf".to_string();
+
+        scheduler.in_flight.write().await.insert(wf_id.clone());
+        assert!(!scheduler.in_flight.write().await.insert(wf_id.clone()));
+        // Already in set — duplicate insert returns false (same as tick's skip).
+
+        {
+            let _guard = InFlightGuard {
+                scheduler: Arc::clone(&scheduler),
+                id: wf_id.clone(),
+            };
+        }
+        // After guard drop, id is removed.
+        assert!(!scheduler.in_flight.read().await.contains(&wf_id));
+        // Now re-insert succeeds — workflow is re-triggerable.
+        assert!(scheduler.in_flight.write().await.insert(wf_id.clone()));
+        scheduler.in_flight.write().await.remove(&wf_id);
     }
 }

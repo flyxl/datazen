@@ -13,5 +13,7 @@ export function mark(label: string) {
   const ts = Math.round(now - origin);
   const delta = Math.round(now - last);
   last = now;
-  console.log(`${wallClock()} [startup] +${String(ts).padStart(5)}ms  Δ${String(delta).padStart(4)}ms  ${label}`);
+  if (import.meta.env.DEV) {
+    console.log(`${wallClock()} [startup] +${String(ts).padStart(5)}ms  Δ${String(delta).padStart(4)}ms  ${label}`);
+  }
 }

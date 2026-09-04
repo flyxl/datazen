@@ -6,273 +6,43 @@ import {
   namespaceEnsurePending,
 } from '../lib/ensureNamespace';
 import {
-  collectTableLeafNames,
   isSchemaGroupingSchema,
   mergeNamespacePath,
   omitTableLeaf,
   pathKey,
   type NamespaceMergeKind,
-  type SqlNamespace,
 } from '../lib/sqlNamespace';
 import { t } from '../locales/t';
 import type { DatabaseType, TableInfo } from '../types';
+import {
+  computeIsMultiDatabase,
+  knownTableNames,
+  parsePathHierarchyDatabaseEntry,
+  resolvePreferredDatabase,
+  resolveVisibleDatabases,
+  type LoadForConnectionOptions,
+} from './schemaStoreHelpers';
+import {
+  activeFlatten,
+  createEmptyConnectionSchema,
+  DEFAULT_SCHEMA_KEY,
+  EMPTY_NAMESPACE,
+  extractSchemaPatch,
+  patchConnectionSchema,
+  resolveRealConnectionId,
+  resolveTargetConnectionId,
+  type ConnectionSchemaState,
+} from './schemaStoreState';
 
-/** Session multi-db UI: capability flag AND more than one *visible* database. */
-export function computeIsMultiDatabase(
-  hasMultiDatabase: boolean | undefined,
-  databaseCount: number,
-): boolean {
-  return Boolean(hasMultiDatabase && databaseCount > 1);
-}
-
-export function resolvePreferredDatabase(
-  databases: string[],
-  preferredDatabase?: string,
-): string | null {
-  if (preferredDatabase && databases.includes(preferredDatabase)) {
-    return preferredDatabase;
-  }
-  return databases[0] ?? null;
-}
-
-/**
- * When the connection config specifies a *logical* database that appears in
- * the driver list, lock the sidebar to that single database.
- *
- * If the preferred value is set but **not** in `allDatabases` (e.g. Kiwi stores
- * the instance domain in `config.database`), do **not** lock — expose the full
- * list and fall back to `resolvePreferredDatabase` semantics.
- */
-export function resolveVisibleDatabases(
-  allDatabases: string[],
-  preferredDatabase?: string,
-): { databases: string[]; preferred: string | null; lockedToConfigured: boolean } {
-  const configured = preferredDatabase?.trim();
-  if (configured && allDatabases.includes(configured)) {
-    return {
-      databases: [configured],
-      preferred: configured,
-      lockedToConfigured: true,
-    };
-  }
-  return {
-    databases: allDatabases,
-    preferred: resolvePreferredDatabase(allDatabases, configured || undefined),
-    lockedToConfigured: false,
-  };
-}
-
-/** Parse plugin database list entries (`id:name (backend)`) for path-hierarchy trees. */
-export function parsePathHierarchyDatabaseEntry(entry: string): { id: string; name: string } {
-  const colonIdx = entry.indexOf(':');
-  if (colonIdx < 0) return { id: entry, name: entry };
-  const id = entry.slice(0, colonIdx);
-  const rest = entry.slice(colonIdx + 1);
-  const backendMatch = rest.match(/^(.*?)\s*\(([^)]+)\)$/);
-  if (backendMatch) {
-    return { id, name: backendMatch[1].trim() };
-  }
-  return { id, name: rest };
-}
-
-const EMPTY_NAMESPACE: SqlNamespace = {};
-
-/** Fallback key when mutating schema without an active DB session (singleton compat). */
-const DEFAULT_SCHEMA_KEY = '__default__';
-
-/** Per-session schema cache entry (map key = runtime DB session id). */
-export interface ConnectionSchemaState {
-  currentDatabase: string | null;
-  /** F7: PG-family current schema — sent as the `schema` envelope field so
-   * rewrite-capable drivers qualify unqualified table references
-   * (`"schema"."t"`). `null` = no schema pin (session default). */
-  currentSchema: string | null;
-  databases: string[];
-  databaseType: string | null;
-  isMultiDatabase: boolean;
-  tables: TableInfo[];
-  views: TableInfo[];
-  /** All schema names including those with no tables (e.g. from PG schemata). */
-  schemaNames: string[];
-  columnMap: Record<string, string[]>;
-  namespaceTree: SqlNamespace;
-  loadedPaths: Set<string>;
-  pathItems: Record<string, TableInfo[]>;
-  pathAliases: Record<string, string>;
-  namespaceOwnedByPlugin: boolean;
-  schemaEpoch: number;
-  expanded: Set<string>;
-  selectedId: string | null;
-  loading: boolean;
-  ensuringCount: number;
-  error: string | null;
-  columnInflight: Set<string>;
-}
-
-const CONNECTION_STATE_KEYS = [
-  'currentDatabase',
-  'currentSchema',
-  'databases',
-  'databaseType',
-  'isMultiDatabase',
-  'tables',
-  'views',
-  'schemaNames',
-  'columnMap',
-  'namespaceTree',
-  'loadedPaths',
-  'pathItems',
-  'pathAliases',
-  'namespaceOwnedByPlugin',
-  'schemaEpoch',
-  'expanded',
-  'selectedId',
-  'loading',
-  'ensuringCount',
-  'error',
-  'columnInflight',
-] as const satisfies readonly (keyof ConnectionSchemaState)[];
-
-function createEmptyConnectionSchema(): ConnectionSchemaState {
-  return {
-    currentDatabase: null,
-    currentSchema: null,
-    databases: [],
-    databaseType: null,
-    isMultiDatabase: false,
-    tables: [],
-    views: [],
-    schemaNames: [],
-    columnMap: {},
-    namespaceTree: EMPTY_NAMESPACE,
-    loadedPaths: new Set(),
-    pathItems: {},
-    pathAliases: {},
-    namespaceOwnedByPlugin: false,
-    schemaEpoch: 0,
-    expanded: new Set(),
-    selectedId: null,
-    loading: false,
-    ensuringCount: 0,
-    error: null,
-    columnInflight: new Set(),
-  };
-}
-
-function activeFlatten(
-  schemas: Map<string, ConnectionSchemaState>,
-  activeDbSessionId: string | null,
-): ConnectionSchemaState & { dbSessionId: string | null } {
-  const readKey =
-    activeDbSessionId ?? (schemas.has(DEFAULT_SCHEMA_KEY) ? DEFAULT_SCHEMA_KEY : null);
-  if (!readKey) {
-    return { ...createEmptyConnectionSchema(), dbSessionId: null };
-  }
-  const schema = schemas.get(readKey);
-  if (!schema) {
-    return { ...createEmptyConnectionSchema(), dbSessionId: activeDbSessionId };
-  }
-  return { ...schema, dbSessionId: activeDbSessionId };
-}
-
-function extractSchemaPatch(partial: Partial<SchemaStore>): Partial<ConnectionSchemaState> {
-  const result: Partial<ConnectionSchemaState> = {};
-  for (const key of CONNECTION_STATE_KEYS) {
-    if (!(key in partial)) continue;
-    (result as Record<string, unknown>)[key] = partial[key as keyof ConnectionSchemaState];
-  }
-  return result;
-}
-
-function mergePartialIntoStore(
-  current: { schemas: Map<string, ConnectionSchemaState>; activeDbSessionId: string | null },
-  partial: Partial<SchemaStore>,
-): Pick<SchemaStore, 'schemas' | 'activeDbSessionId'> &
-  ConnectionSchemaState & { dbSessionId: string | null } {
-  let schemas = partial.schemas ?? current.schemas;
-  let activeDbSessionId = current.activeDbSessionId;
-
-  if ('activeDbSessionId' in partial) {
-    activeDbSessionId = partial.activeDbSessionId ?? null;
-  } else if ('dbSessionId' in partial) {
-    activeDbSessionId = partial.dbSessionId ?? null;
-  }
-
-  if (activeDbSessionId && !schemas.has(activeDbSessionId)) {
-    schemas = new Map(schemas);
-    schemas.set(activeDbSessionId, createEmptyConnectionSchema());
-  }
-
-  const schemaPatch = extractSchemaPatch(partial);
-
-  const mutationKey =
-    activeDbSessionId ?? (Object.keys(schemaPatch).length > 0 ? DEFAULT_SCHEMA_KEY : null);
-
-  if (mutationKey && Object.keys(schemaPatch).length > 0) {
-    schemas = new Map(schemas);
-    const prev = schemas.get(mutationKey) ?? createEmptyConnectionSchema();
-    schemas.set(mutationKey, { ...prev, ...schemaPatch });
-  }
-
-  return {
-    schemas,
-    activeDbSessionId,
-    ...activeFlatten(schemas, activeDbSessionId),
-  };
-}
-
-function patchConnectionSchema(
-  schemas: Map<string, ConnectionSchemaState>,
-  dbSessionId: string,
-  patch: Partial<ConnectionSchemaState>,
-): Map<string, ConnectionSchemaState> {
-  const next = new Map(schemas);
-  const prev = next.get(dbSessionId) ?? createEmptyConnectionSchema();
-  next.set(dbSessionId, { ...prev, ...patch });
-  return next;
-}
-
-function resolveTargetConnectionId(
-  state: { activeDbSessionId: string | null },
-  dbSessionId?: string,
-): string {
-  return dbSessionId ?? state.activeDbSessionId ?? DEFAULT_SCHEMA_KEY;
-}
-
-function resolveRealConnectionId(
-  state: { activeDbSessionId: string | null },
-  dbSessionId?: string,
-): string | null {
-  return dbSessionId ?? state.activeDbSessionId;
-}
-
-/** Names that are safe to pass to `get_columns` (complete loaded tables only). */
-export function knownTableNames(
-  namespaceTree: SqlNamespace,
-  tables: TableInfo[],
-  views: TableInfo[] = [],
-  pathItems: Record<string, TableInfo[]> = {},
-): Set<string> {
-  const names = collectTableLeafNames(namespaceTree);
-  for (const item of [...tables, ...views]) {
-    names.add(item.name);
-  }
-  for (const items of Object.values(pathItems)) {
-    for (const item of items) {
-      if (item.schema === 'CATALOG' || item.schema === 'SCHEMA') continue;
-      const parts = item.name.split('/').filter(Boolean);
-      names.add(parts[parts.length - 1] ?? item.name);
-    }
-  }
-  return names;
-}
-
-export interface LoadForConnectionOptions {
-  skipLoadTables?: boolean;
-  preferredDatabase?: string;
-  /** Used to resolve hasMultiDatabase for session isMultiDatabase. */
-  databaseType?: DatabaseType | string;
-}
+export {
+  computeIsMultiDatabase,
+  knownTableNames,
+  parsePathHierarchyDatabaseEntry,
+  resolvePreferredDatabase,
+  resolveVisibleDatabases,
+  type LoadForConnectionOptions,
+} from './schemaStoreHelpers';
+export type { ConnectionSchemaState } from './schemaStoreState';
 
 interface SchemaStore extends ConnectionSchemaState {
   /** Keyed per-connection schema cache. */
@@ -315,6 +85,43 @@ interface SchemaStore extends ConnectionSchemaState {
   setActiveConnection: (dbSessionId: string | null) => void;
   removeConnection: (dbSessionId: string) => void;
   getConnectionSchema: (dbSessionId: string) => ConnectionSchemaState | undefined;
+}
+
+function mergePartialIntoStore(
+  current: { schemas: Map<string, ConnectionSchemaState>; activeDbSessionId: string | null },
+  partial: Partial<SchemaStore>,
+): Pick<SchemaStore, 'schemas' | 'activeDbSessionId'> &
+  ConnectionSchemaState & { dbSessionId: string | null } {
+  let schemas = partial.schemas ?? current.schemas;
+  let activeDbSessionId = current.activeDbSessionId;
+
+  if ('activeDbSessionId' in partial) {
+    activeDbSessionId = partial.activeDbSessionId ?? null;
+  } else if ('dbSessionId' in partial) {
+    activeDbSessionId = partial.dbSessionId ?? null;
+  }
+
+  if (activeDbSessionId && !schemas.has(activeDbSessionId)) {
+    schemas = new Map(schemas);
+    schemas.set(activeDbSessionId, createEmptyConnectionSchema());
+  }
+
+  const schemaPatch = extractSchemaPatch(partial);
+
+  const mutationKey =
+    activeDbSessionId ?? (Object.keys(schemaPatch).length > 0 ? DEFAULT_SCHEMA_KEY : null);
+
+  if (mutationKey && Object.keys(schemaPatch).length > 0) {
+    schemas = new Map(schemas);
+    const prev = schemas.get(mutationKey) ?? createEmptyConnectionSchema();
+    schemas.set(mutationKey, { ...prev, ...schemaPatch });
+  }
+
+  return {
+    schemas,
+    activeDbSessionId,
+    ...activeFlatten(schemas, activeDbSessionId),
+  };
 }
 
 export const useSchemaStore = create<SchemaStore>((set, get) => {
@@ -760,8 +567,6 @@ useSchemaStore.setState = ((partial, replace) => {
     }) as SchemaStore;
   if (replace) {
     nativeSetState(merge as Parameters<typeof nativeSetState>[0], true);
-  } else if (typeof partial === 'function') {
-    nativeSetState((state) => merge(state));
   } else {
     nativeSetState((state) => merge(state));
   }

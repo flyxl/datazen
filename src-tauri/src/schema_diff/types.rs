@@ -175,7 +175,7 @@ pub struct StatementExecResult {
     pub error: Option<String>,
 }
 
-pub use crate::services::transaction::{ddl_atomicity, DdlAtomicity};
+pub use crate::db::DdlAtomicity;
 
 pub fn normalize_dialect(raw: &str) -> String {
     match raw.to_ascii_lowercase().as_str() {

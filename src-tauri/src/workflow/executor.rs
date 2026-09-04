@@ -19,6 +19,7 @@ use crate::workflow::model::{
     ErrorStrategy, MergeSource, StepExecutionResult, StepStatus, TransformColumn,
     WorkflowDefinition, WorkflowExecutionResult, WorkflowStep,
 };
+use crate::workflow::WorkflowError;
 
 pub const WORKFLOW_QUERY_ROW_LIMIT: u32 = 1000;
 
@@ -40,9 +41,9 @@ impl Default for WorkflowExecuteOptions {
 pub fn enforce_workflow_query_guards(
     sql: &str,
     permission_mode: Option<McpPermissionMode>,
-) -> Result<(), String> {
+) -> Result<(), WorkflowError> {
     if let Some(mode) = permission_mode {
-        permission::check_sql_allowed(sql, mode)?;
+        permission::check_sql_allowed(sql, mode).map_err(WorkflowError::Validation)?;
     }
     Ok(())
 }
@@ -101,7 +102,7 @@ impl WorkflowExecutor {
                     .get(&var.name)
                     .map_or(true, |v| v.is_empty())
             {
-                return Err(format!("Required variable '{}' is missing", var.name));
+                return Err(WorkflowError::MissingVariable(var.name.clone()).into_ipc_string());
             }
         }
 
@@ -118,7 +119,8 @@ impl WorkflowExecutor {
             &start,
             &options,
         )
-        .await;
+        .await
+        .map_err(WorkflowError::into_ipc_string);
         let total_time_ms = start.elapsed().as_millis() as u64;
 
         match outcome {
@@ -158,11 +160,12 @@ impl WorkflowExecutor {
         global_timeout_secs: u64,
         global_start: &'a Instant,
         options: &'a WorkflowExecuteOptions,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send + 'a>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), WorkflowError>> + Send + 'a>>
+    {
         Box::pin(async move {
             for step in steps {
                 if global_start.elapsed().as_secs() >= global_timeout_secs {
-                    return Err(format!("Global timeout ({global_timeout_secs}s) exceeded"));
+                    return Err(WorkflowError::GlobalTimeout(global_timeout_secs));
                 }
 
                 match step {
@@ -305,11 +308,11 @@ impl WorkflowExecutor {
                                 .await?
                             }
                             Err(_) => {
-                                let err = format!(
+                                let err = WorkflowError::Step(format!(
                                     "Step '{}' timed out after {}s",
                                     step.step_id(),
                                     timeout
-                                );
+                                ));
                                 Self::handle_step_error(
                                     step,
                                     err,
@@ -336,7 +339,7 @@ impl WorkflowExecutor {
     #[allow(clippy::too_many_arguments)]
     async fn handle_step_error(
         step: &WorkflowStep,
-        err: String,
+        err: WorkflowError,
         elapsed: u64,
         app_state: &AppState,
         connection_id: Option<&str>,
@@ -346,7 +349,8 @@ impl WorkflowExecutor {
         global_timeout_secs: u64,
         global_start: &Instant,
         options: &WorkflowExecuteOptions,
-    ) -> Result<(), String> {
+    ) -> Result<(), WorkflowError> {
+        let err_text = err.to_string();
         match step
             .on_error_strategy()
             .unwrap_or_else(|| default_strategy.clone())
@@ -358,7 +362,7 @@ impl WorkflowExecutor {
                     status: StepStatus::Failed,
                     result: None,
                     execution_time_ms: elapsed,
-                    error: Some(err.clone()),
+                    error: Some(err_text.clone()),
                     connection_name: None,
                     sql_executed: None,
                 });
@@ -372,7 +376,7 @@ impl WorkflowExecutor {
                     status: StepStatus::Skipped,
                     result: None,
                     execution_time_ms: elapsed,
-                    error: Some(err),
+                    error: Some(err_text),
                     connection_name: None,
                     sql_executed: None,
                 });
@@ -401,7 +405,7 @@ impl WorkflowExecutor {
         workflow_connection: Option<&str>,
         context: &mut WorkflowContext,
         options: &WorkflowExecuteOptions,
-    ) -> Result<StepExecutionResult, String> {
+    ) -> Result<StepExecutionResult, WorkflowError> {
         match step {
             WorkflowStep::Query {
                 id,
@@ -472,12 +476,12 @@ impl WorkflowExecutor {
                     .store
                     .get_ai_config()
                     .await
-                    .ok_or("AI not configured")?;
+                    .ok_or_else(|| WorkflowError::Ai("AI not configured".into()))?;
                 let provider = app_state
                     .ai_registry
                     .get(&ai_config.provider_type)
                     .await
-                    .ok_or("AI provider not available")?;
+                    .ok_or_else(|| WorkflowError::Ai("AI provider not available".into()))?;
                 let request = CompletionRequest {
                     request_id: Uuid::new_v4().to_string(),
                     model: ai_config.model.clone(),
@@ -496,7 +500,7 @@ impl WorkflowExecutor {
                 let response = provider
                     .complete(&request)
                     .await
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| WorkflowError::Ai(e.to_string()))?;
                 let structured = serde_json::json!({"result": response.content});
                 context.set_step_result(id, structured.clone());
                 Ok(StepExecutionResult {
@@ -590,7 +594,7 @@ impl WorkflowExecutor {
         context: &mut WorkflowContext,
         options: &WorkflowExecuteOptions,
         legacy_sql_template: Option<&str>,
-    ) -> Result<StepExecutionResult, String> {
+    ) -> Result<StepExecutionResult, WorkflowError> {
         if step.command == "query" {
             if let Some(sql) = step.input.get("sql").and_then(|v| v.as_str()) {
                 let clean = sql.trim_end_matches(';').trim().to_string();
@@ -650,19 +654,22 @@ async fn effective_connection_name(
     app_state: &AppState,
     step: &WorkflowCommandStep,
     workflow_connection: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, WorkflowError> {
     let id = command_runtime::resolve_connection_id(step, workflow_connection)?;
     let (runtime_id, _, _) = app_state
         .connection_manager
         .resolve_session_for_connection(id)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| WorkflowError::ConnectionFailed {
+            connection_id: id.to_string(),
+            message: e.to_string(),
+        })?;
     app_state
         .connection_manager
         .get_session_config(&runtime_id)
         .await
         .map(|c| c.name)
-        .map_err(|e| e.to_string())
+        .map_err(|e| WorkflowError::Driver(e.to_string()))
 }
 
 fn resolve_json_templates(

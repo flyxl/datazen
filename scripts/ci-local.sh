@@ -49,6 +49,26 @@ step "3/11 Guard: Host structure caps registry absent"
 node scripts/check-structure-editor-guardrails.mjs || fail "check-structure-editor-guardrails"
 
 # --------------------------------------------------------------------------
+step "3.1/11 Guard: ID terminology (connectionId / dbSessionId)"
+pnpm test:ids || fail "test:ids"
+
+# --------------------------------------------------------------------------
+step "3.2/11 Guard: CI-docs consistency"
+pnpm test:ci-docs || fail "test:ci-docs"
+
+# --------------------------------------------------------------------------
+step "3.25/11 Guard: version consistency (package.json / Cargo.toml / tauri.conf.json)"
+pnpm test:version || fail "test:version"
+
+# --------------------------------------------------------------------------
+step "3.3/11 Guard: i18n sync (warning only)"
+if node scripts/i18n-sync-check.mjs; then
+  step "3.3/11 i18n sync: all locales in sync ✔"
+else
+  printf '\033[1;33m[ci-local] i18n-sync-check: warnings above (missing/stale translations) — not blocking CI\033[0m\n'
+fi
+
+# --------------------------------------------------------------------------
 step "4/11 Frontend unit tests (pnpm test:unit; pretest/posttest 自动 codegen+restore)"
 pnpm test:unit || fail "test:unit"
 

@@ -5,7 +5,7 @@
 
         let test = TestAppState::with_tables().await;
         test.save_connection("mcp-cfg").await;
-        let server = DataZenMcpServer::new(Arc::new(test.state));
+        let server = mcp_server_allowing(Arc::new(test.state), &["mcp-cfg"]);
 
         let conns = server.list_connections().await.unwrap();
         assert!(conns.contains("mcp-cfg"));
@@ -114,7 +114,7 @@
 
         let test = TestAppState::with_tables().await;
         test.save_connection("cti-search").await;
-        let server = DataZenMcpServer::new(Arc::new(test.state));
+        let server = mcp_server_allowing(Arc::new(test.state), &["cti-search"]);
 
         let result = server
             .call_tool_inner(
@@ -138,7 +138,7 @@
         let test = TestAppState::with_tables().await;
         let (config, _db_session_id) = test.save_and_connect("mcp-prompt").await;
         let connection_id = config.id.clone();
-        let server = DataZenMcpServer::new(Arc::new(test.state));
+        let server = mcp_server_allowing(Arc::new(test.state), &[connection_id.as_str()]);
 
         let nl2sql = server
             .nl2sql_prompt(rmcp::handler::server::wrapper::Parameters(Nl2SqlArgs {
@@ -210,7 +210,7 @@
         let test = TestAppState::with_tables().await;
         test.save_connection("res-inner").await;
         let (_config, _db_session_id) = test.save_and_connect("res-inner").await;
-        let server = DataZenMcpServer::new(Arc::new(test.state));
+        let server = mcp_server_allowing(Arc::new(test.state), &["res-inner"]);
 
         let conns = server
             .read_resource_inner("datazen://connections")
@@ -303,6 +303,7 @@
 
         let test = TestAppState::new().await;
         let server = DataZenMcpServer::new(Arc::new(test.state))
+            .with_allowed_connections(&["x".into()])
             .with_disabled_tools(&["query".into()])
             .with_permission_mode(McpPermissionMode::SafeWrite);
 
@@ -317,6 +318,27 @@
         assert!(msg.contains("disabled"));
         assert!(msg.contains("Tool: query"));
         assert!(msg.contains("connection_id"));
+    }
+
+    #[tokio::test]
+    async fn test_tester_default_empty_allowlist_denies_all_connections() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::with_tables().await;
+        test.save_connection("blocked-by-default").await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+
+        let err = server
+            .call_tool_inner(
+                "list_databases",
+                Some(serde_json::json!({"connection_id":"blocked-by-default"})),
+            )
+            .await
+            .unwrap_err();
+        let msg = err.message.to_string();
+        assert!(msg.contains("deny-all"), "expected deny-all default, got: {msg}");
+        assert!(msg.contains("blocked-by-default"));
     }
 
     #[tokio::test]
@@ -350,7 +372,7 @@
 
         let test = TestAppState::with_tables().await;
         test.save_connection("ro-cfg").await;
-        let server = DataZenMcpServer::new(Arc::new(test.state))
+        let server = mcp_server_allowing(Arc::new(test.state), &["ro-cfg"])
             .with_permission_mode(McpPermissionMode::ReadOnly);
 
         let err = server
@@ -425,7 +447,7 @@
 
         let test = TestAppState::with_tables().await;
         test.save_connection("cti-cfg").await;
-        let server = DataZenMcpServer::new(Arc::new(test.state));
+        let server = mcp_server_allowing(Arc::new(test.state), &["cti-cfg"]);
 
         let dbs = server
             .call_tool_inner(
@@ -502,7 +524,7 @@
             .await
             .expect("add_query_history");
 
-        let server = DataZenMcpServer::new(Arc::new(test.state))
+        let server = mcp_server_allowing(Arc::new(test.state), &["hist-ro"])
             .with_permission_mode(McpPermissionMode::ReadOnly);
 
         assert_eq!(server.list_resources_inner().len(), 2);
@@ -649,7 +671,7 @@
 
         let test = TestAppState::with_tables().await;
         test.save_connection("res-list").await;
-        let server = DataZenMcpServer::new(Arc::new(test.state));
+        let server = mcp_server_allowing(Arc::new(test.state), &["res-list"]);
 
         for resource in server.list_resources_inner() {
             let uri = resource.uri.as_str();
@@ -704,7 +726,10 @@
         let test = TestAppState::with_tables().await;
         test.save_connection("conc-a").await;
         test.save_connection("conc-b").await;
-        let server = Arc::new(DataZenMcpServer::new(Arc::new(test.state)));
+        let server = Arc::new(mcp_server_allowing(
+            Arc::new(test.state),
+            &["conc-a", "conc-b"],
+        ));
 
         let (conns, workflows, inner_conns) = tokio::join!(
             server.read_resource_inner("datazen://connections"),

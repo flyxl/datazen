@@ -895,6 +895,14 @@ impl DatabaseDriver for MysqlDriver {
         }
     }
 
+    fn ddl_atomicity(&self) -> DdlAtomicity {
+        DdlAtomicity::AutoCommitPerStatement
+    }
+
+    fn sync_family(&self) -> String {
+        "mysql".into()
+    }
+
     /// F7: qualify unqualified table references with the target database
     /// (`` `db`.`t` ``), shared by the mysql/mariadb/doris/starrocks/
     /// manticore/ob_oracle variants. Parse failures pass SQL through
@@ -2336,6 +2344,14 @@ fn apply_mysql_select_limit(stmt: &str, limit: Option<u32>) -> (String, Option<u
 mod tests {
     use super::*;
     use datazen_driver_api::DatabaseDriver;
+
+    #[test]
+    fn test_tester_ddl_atomicity_is_auto_commit() {
+        assert_eq!(
+            MysqlDriver::new(false).ddl_atomicity(),
+            DdlAtomicity::AutoCommitPerStatement
+        );
+    }
 
     #[test]
     fn quote_identifier_escapes_backticks() {

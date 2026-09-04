@@ -2,22 +2,25 @@
 
 use crate::commands::AppState;
 use crate::mcp::permission::McpPermissionMode;
+use crate::workflow::error::WorkflowError;
 use crate::workflow::WorkflowCommandStep;
 use datazen_driver_api::{check_command_access, validate_command_input, CommandResult};
 
 pub fn resolve_connection_id<'a>(
     step: &'a WorkflowCommandStep,
     workflow_connection: Option<&'a str>,
-) -> Result<&'a str, String> {
+) -> Result<&'a str, WorkflowError> {
     step.effective_connection(workflow_connection)
-        .ok_or_else(|| format!("Command step '{}' requires a database connection", step.id))
+        .ok_or_else(|| WorkflowError::MissingConnection {
+            step_id: step.id.clone(),
+        })
 }
 
 pub async fn execute_command(
     app_state: &AppState,
     step: &WorkflowCommandStep,
     workflow_connection: Option<&str>,
-) -> Result<CommandResult, String> {
+) -> Result<CommandResult, WorkflowError> {
     execute_command_with_mode(app_state, step, workflow_connection, None).await
 }
 
@@ -26,35 +29,36 @@ pub async fn execute_command_with_mode(
     step: &WorkflowCommandStep,
     workflow_connection: Option<&str>,
     permission_mode: Option<McpPermissionMode>,
-) -> Result<CommandResult, String> {
+) -> Result<CommandResult, WorkflowError> {
     let connection_id = resolve_connection_id(step, workflow_connection)?;
     let (_runtime_id, driver, handle) = app_state
         .connection_manager
         .resolve_session_for_connection(connection_id)
         .await
-        .map_err(|e| format!("Failed to connect '{connection_id}': {e}"))?;
+        .map_err(|e| WorkflowError::ConnectionFailed {
+            connection_id: connection_id.to_string(),
+            message: crate::log_redact::redact_secrets_for_log(&e.to_string()),
+        })?;
 
     let definition = driver
         .command_definitions()
         .into_iter()
         .find(|definition| definition.id == step.command)
-        .ok_or_else(|| {
-            format!(
-                "Unsupported driver command '{}' for connection '{}'",
-                step.command, connection_id
-            )
+        .ok_or_else(|| WorkflowError::UnsupportedCommand {
+            command: step.command.clone(),
+            connection_id: connection_id.to_string(),
         })?;
     if !definition.metadata.workflow {
-        return Err(format!(
-            "Command '{}' is not available in workflows",
-            step.command
-        ));
+        return Err(WorkflowError::CommandNotInWorkflow {
+            command: step.command.clone(),
+        });
     }
-    validate_command_input(&definition, &step.input)?;
+    validate_command_input(&definition, &step.input).map_err(|e| WorkflowError::Validation(e))?;
     check_command_access(
         &definition,
         crate::commands::access_level_for_mode(permission_mode),
-    )?;
+    )
+    .map_err(|e| WorkflowError::Validation(e))?;
 
     if matches!(definition.id.as_str(), "query" | "execute") {
         if let Some(sql) = step.input.get("sql").and_then(|v| v.as_str()) {
@@ -65,11 +69,13 @@ pub async fn execute_command_with_mode(
                 .map(|c| c.read_only)
                 .unwrap_or(false);
             let safe_mode = app_state.store.get_settings().await.safe_mode;
-            crate::sql_guard::check_sql(sql, read_only, safe_mode)?;
+            crate::sql_guard::check_sql(sql, read_only, safe_mode)
+                .map_err(WorkflowError::Validation)?;
         }
         if let Some(mode) = permission_mode {
             if let Some(sql) = step.input.get("sql").and_then(|v| v.as_str()) {
-                crate::mcp::permission::check_sql_allowed(sql, mode)?;
+                crate::mcp::permission::check_sql_allowed(sql, mode)
+                    .map_err(WorkflowError::Validation)?;
             }
         }
     }
@@ -82,14 +88,14 @@ pub async fn execute_command_with_mode(
             driver
                 .use_database(&handle, database)
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| WorkflowError::Driver(e.to_string()))?;
         }
     }
 
     driver
         .execute_command(&handle, &step.command, step.input.clone())
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| WorkflowError::Driver(e.to_string()))
 }
 
 #[cfg(test)]
@@ -133,8 +139,8 @@ mod tests {
             serde_json::json!({"sql": "SELECT 1"}),
         );
         let error = resolve_connection_id(&step, None).unwrap_err();
-        assert!(error.contains("query"));
-        assert!(error.contains("requires a database connection"));
+        assert!(matches!(error, WorkflowError::MissingConnection { .. }));
+        assert!(error.to_string().contains("query"));
     }
 
     #[tokio::test]
@@ -187,7 +193,7 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(error.contains("not allowed"));
+        assert!(error.to_string().contains("not allowed"));
     }
 
     #[tokio::test]
@@ -203,7 +209,7 @@ mod tests {
         let error = execute_command(&test.state, &step, Some("wf-safe"))
             .await
             .unwrap_err();
-        assert!(error.contains("WHERE"));
+        assert!(error.to_string().contains("WHERE"));
     }
 
     #[tokio::test]
@@ -221,6 +227,6 @@ mod tests {
         let error = execute_command(&test.state, &step, Some("wf-conn-ro"))
             .await
             .unwrap_err();
-        assert!(error.contains("read-only"));
+        assert!(error.to_string().contains("read-only"));
     }
 }

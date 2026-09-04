@@ -20,3 +20,6 @@ fi
 # Restore driver-injected tracked files (Cargo.toml / capabilities).
 # Implementation lives in scripts/driver-stash-precommit.mjs for testability.
 node scripts/driver-stash-precommit.mjs
+
+# Guard version consistency across package.json / Cargo.toml / tauri.conf.json.
+node scripts/check-version-consistency.mjs

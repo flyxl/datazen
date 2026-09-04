@@ -120,11 +120,11 @@ impl MonitorEngine {
     }
 
     pub fn attach_app_state(self: &Arc<Self>, app_state: Arc<AppState>) {
-        *self.app_state.lock().expect("monitor app_state lock") = Some(app_state);
+        *self.app_state.lock().unwrap_or_else(|e| e.into_inner()) = Some(app_state);
     }
 
     pub fn start(self: &Arc<Self>, app_handle: AppHandle) {
-        *self.app_handle.lock().expect("monitor app_handle lock") = Some(app_handle);
+        *self.app_handle.lock().unwrap_or_else(|e| e.into_inner()) = Some(app_handle);
         let engine = Arc::clone(self);
         tauri::async_runtime::spawn(async move {
             if let Err(e) = engine.reload_from_store().await {
@@ -228,11 +228,14 @@ impl MonitorEngine {
                         );
                     }
                 }
-                if let Err(e) =
-                    tauri::async_runtime::block_on(app_state.monitor_engine.reload_from_store())
-                {
-                    tracing::warn!(error = %e, "failed to reload monitor after set_paused");
-                }
+                // Spawn reload instead of block_on to avoid panics when nested
+                // inside a Tokio runtime.
+                let engine_clone = app_state.monitor_engine.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = engine_clone.reload_from_store().await {
+                        tracing::warn!(error = %e, "failed to reload monitor after set_paused");
+                    }
+                });
                 if let Some(app) = self.app_handle() {
                     crate::tray::sync_tray(&app);
                 }
@@ -244,14 +247,14 @@ impl MonitorEngine {
     pub fn app_handle(&self) -> Option<AppHandle> {
         self.app_handle
             .lock()
-            .expect("monitor app_handle lock")
+            .unwrap_or_else(|e| e.into_inner())
             .clone()
     }
 
     fn app_state(&self) -> Option<Arc<AppState>> {
         self.app_state
             .lock()
-            .expect("monitor app_state lock")
+            .unwrap_or_else(|e| e.into_inner())
             .clone()
     }
 
@@ -281,7 +284,10 @@ impl MonitorEngine {
             .map_err(|_| DashboardExecuteError::Workflow("monitor semaphore closed".into()))?;
 
         let workflow_lock = {
-            let mut locks = self.workflow_locks.lock().expect("workflow_locks mutex");
+            let mut locks = self
+                .workflow_locks
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             locks
                 .entry(widget.workflow_id.clone())
                 .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
@@ -321,7 +327,7 @@ impl MonitorEngine {
         let app = self
             .app_handle
             .lock()
-            .expect("monitor app_handle lock")
+            .unwrap_or_else(|e| e.into_inner())
             .clone();
         let (notifications, client) = {
             let mut channels = self.alert_channels.lock().await;
@@ -337,7 +343,7 @@ impl MonitorEngine {
         let handle = self
             .app_handle
             .lock()
-            .expect("monitor app_handle lock")
+            .unwrap_or_else(|e| e.into_inner())
             .clone();
         let Some(app) = handle else {
             return;

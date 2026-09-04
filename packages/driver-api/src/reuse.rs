@@ -48,6 +48,14 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.driver_category()
     }
 
+    fn sync_category(&self) -> SyncCategory {
+        self.inner.sync_category()
+    }
+
+    fn sync_family(&self) -> String {
+        self.inner.sync_family()
+    }
+
     fn type_normalizer(&self) -> Option<Arc<dyn TypeNormalizer>> {
         self.inner.type_normalizer()
     }
@@ -66,6 +74,10 @@ impl DatabaseDriver for ReuseDriver {
 
     fn supports_explain(&self) -> bool {
         self.inner.supports_explain()
+    }
+
+    fn ddl_atomicity(&self) -> DdlAtomicity {
+        self.inner.ddl_atomicity()
     }
 
     fn format_sql_literal(&self, value: &Option<Value>) -> String {
@@ -420,6 +432,7 @@ mod tests {
         override_stream: bool,
         rows: usize,
         precise_cancel: bool,
+        ddl_atomicity: Option<DdlAtomicity>,
     }
 
     impl FakeDriver {
@@ -429,6 +442,7 @@ mod tests {
                 override_stream,
                 rows,
                 precise_cancel: false,
+                ddl_atomicity: None,
             })
         }
 
@@ -438,6 +452,17 @@ mod tests {
                 override_stream: true,
                 rows,
                 precise_cancel: true,
+                ddl_atomicity: None,
+            })
+        }
+
+        fn with_ddl_atomicity(rows: usize, atomicity: DdlAtomicity) -> Arc<Self> {
+            Arc::new(Self {
+                streamed: Mutex::new(false),
+                override_stream: false,
+                rows,
+                precise_cancel: false,
+                ddl_atomicity: Some(atomicity),
             })
         }
 
@@ -463,6 +488,10 @@ mod tests {
     impl DatabaseDriver for FakeDriver {
         fn driver_type(&self) -> DatabaseType {
             "fake".into()
+        }
+
+        fn ddl_atomicity(&self) -> DdlAtomicity {
+            self.ddl_atomicity.unwrap_or(DdlAtomicity::Unknown)
         }
 
         async fn connect(
@@ -719,6 +748,7 @@ mod tests {
                 override_stream: false,
                 rows: QUERY_STREAM_BATCH_SIZE + 2,
                 precise_cancel: false,
+                ddl_atomicity: None,
             },
         };
         let handle = ConnectionHandle {
@@ -802,5 +832,12 @@ mod tests {
         assert!(
             matches!(error, DriverError::Unsupported(message) if message.contains("compatibility driver"))
         );
+    }
+
+    #[test]
+    fn test_tester_reuse_driver_forwards_ddl_atomicity() {
+        let inner = FakeDriver::with_ddl_atomicity(1, DdlAtomicity::Transactional);
+        let reuse = ReuseDriver::new(inner, "mariadb");
+        assert_eq!(reuse.ddl_atomicity(), DdlAtomicity::Transactional);
     }
 }

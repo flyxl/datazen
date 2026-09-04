@@ -88,7 +88,10 @@ impl AlertChannelState {
             http_client: reqwest::Client::builder()
                 .timeout(WEBHOOK_TIMEOUT)
                 .build()
-                .expect("reqwest client"),
+                .unwrap_or_else(|e| {
+                    tracing::warn!(error = %e, "reqwest client build failed; using default");
+                    reqwest::Client::new()
+                }),
         }
     }
 
