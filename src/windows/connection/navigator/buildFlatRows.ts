@@ -86,12 +86,28 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
       const catKey = schemaName
         ? `${connectionId}::${dbName}::${schemaName}::${cat.id}`
         : `${connectionId}::${dbName}::${cat.id}`;
-      const isExpanded = expandedCats.has(catKey);
+      const isExpanded = expandedCats.has(catKey) || !!query;
 
       let count = 0;
-      if (cat.id === 'tables') count = tblItems.length;
-      else if (cat.id === 'views') count = viewItems.length;
-      else count = (dbObjectsMap[catKey] ?? []).length;
+      if (cat.id === 'tables') {
+        const filtered = query
+          ? tblItems.filter((i) => i.name.toLowerCase().includes(query))
+          : tblItems;
+        count = filtered.length;
+      } else if (cat.id === 'views') {
+        const filtered = query
+          ? viewItems.filter((i) => i.name.toLowerCase().includes(query))
+          : viewItems;
+        count = filtered.length;
+      } else {
+        const allObjs = dbObjectsMap[catKey] ?? [];
+        const filtered = query
+          ? allObjs.filter((o) => o.name.toLowerCase().includes(query))
+          : allObjs;
+        count = filtered.length;
+      }
+
+      if (query && count === 0) continue;
 
       rows.push({
         type: 'category',

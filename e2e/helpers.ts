@@ -1046,9 +1046,22 @@ export async function closeDataExportDialogIfOpen() {
         ? await $('.fixed.inset-0.z-50')
         : null;
   if (!open) return;
-  const cancel = await $(`button*=${t('common.cancel')}`);
-  if (await cancel.isExisting()) await cancel.click();
-  await browser.pause(400);
+  const cancelBtn = await $(`button*=${t('common.cancel')}`);
+  const closeBtn = await $(`button*=${t('common.close')}`);
+  const btn = (await cancelBtn.isExisting()) ? cancelBtn : closeBtn;
+  if (await btn.isExisting()) {
+    await btn.click();
+    await browser
+      .waitUntil(
+        async () => {
+          const d = await $('[data-testid="data-export-dialog"]');
+          return !(await d.isDisplayed().catch(() => false));
+        },
+        { timeout: 5000, timeoutMsg: '等待导出对话框关闭超时' },
+      )
+      .catch(() => {});
+  }
+  await browser.pause(200);
 }
 
 /** Wait until the connection navigator lists at least one table entry. */
@@ -1072,42 +1085,62 @@ export async function waitForSchemaTreeLoaded(timeout = 20000) {
 }
 
 /** Expand db → schema → Tables category in the virtualized navigator tree. */
-export async function expandSchemaTableCategory(schemaName = 'public') {
-  await browser.execute((schema: string) => {
-    const isCollapsed = (el: Element) => {
-      const cls = el.querySelector('svg')?.getAttribute('class') ?? '';
-      return cls.includes('chevron-right');
-    };
-    const expandIfCollapsed = (el: Element | null | undefined) => {
-      if (el instanceof HTMLElement && isCollapsed(el)) el.click();
-    };
-    expandIfCollapsed(document.querySelector('[data-tree-node="db"]'));
-    const schemas = Array.from(document.querySelectorAll('[data-tree-node="schema"]'));
-    const target =
-      schemas.find((el) => el.textContent?.toLowerCase().includes(schema.toLowerCase())) ??
-      schemas[0];
-    expandIfCollapsed(target);
-    for (const cat of document.querySelectorAll(
-      '[data-tree-node="category"][data-cat-id="tables"]',
-    )) {
-      expandIfCollapsed(cat);
-    }
-  }, schemaName);
-  await browser.pause(800);
-}
-
-/** Expand db → schema → a specific object category in the navigator tree. */
-export async function expandSchemaCategory(catId: string, schemaName = 'public') {
+export async function expandSchemaTableCategory(schemaName = 'public', dbName?: string) {
   await browser.execute(
-    (category: string, schema: string) => {
+    (schema: string, db?: string) => {
       const isCollapsed = (el: Element) => {
+        const expanded = el.getAttribute('aria-expanded');
+        if (expanded !== null) return expanded !== 'true';
         const cls = el.querySelector('svg')?.getAttribute('class') ?? '';
         return cls.includes('chevron-right');
       };
       const expandIfCollapsed = (el: Element | null | undefined) => {
         if (el instanceof HTMLElement && isCollapsed(el)) el.click();
       };
-      expandIfCollapsed(document.querySelector('[data-tree-node="db"]'));
+      const dbs = Array.from(document.querySelectorAll('[data-tree-node="db"]'));
+      const targetDb = db
+        ? dbs.find((el) => (el.getAttribute('data-db-name') || el.textContent || '').includes(db))
+        : (dbs.find((el) =>
+            (el.getAttribute('data-db-name') || el.textContent || '').includes('datazen_e2e'),
+          ) ?? dbs[0]);
+      expandIfCollapsed(targetDb);
+      const schemas = Array.from(document.querySelectorAll('[data-tree-node="schema"]'));
+      const target =
+        schemas.find((el) => el.textContent?.toLowerCase().includes(schema.toLowerCase())) ??
+        schemas[0];
+      expandIfCollapsed(target);
+      for (const cat of document.querySelectorAll(
+        '[data-tree-node="category"][data-cat-id="tables"]',
+      )) {
+        expandIfCollapsed(cat);
+      }
+    },
+    schemaName,
+    dbName,
+  );
+  await browser.pause(800);
+}
+
+/** Expand db → schema → a specific object category in the navigator tree. */
+export async function expandSchemaCategory(catId: string, schemaName = 'public', dbName?: string) {
+  await browser.execute(
+    (category: string, schema: string, db?: string) => {
+      const isCollapsed = (el: Element) => {
+        const expanded = el.getAttribute('aria-expanded');
+        if (expanded !== null) return expanded !== 'true';
+        const cls = el.querySelector('svg')?.getAttribute('class') ?? '';
+        return cls.includes('chevron-right');
+      };
+      const expandIfCollapsed = (el: Element | null | undefined) => {
+        if (el instanceof HTMLElement && isCollapsed(el)) el.click();
+      };
+      const dbs = Array.from(document.querySelectorAll('[data-tree-node="db"]'));
+      const targetDb = db
+        ? dbs.find((el) => (el.getAttribute('data-db-name') || el.textContent || '').includes(db))
+        : (dbs.find((el) =>
+            (el.getAttribute('data-db-name') || el.textContent || '').includes('datazen_e2e'),
+          ) ?? dbs[0]);
+      expandIfCollapsed(targetDb);
       const schemas = Array.from(document.querySelectorAll('[data-tree-node="schema"]'));
       const target =
         schemas.find((el) => el.textContent?.toLowerCase().includes(schema.toLowerCase())) ??
@@ -1121,6 +1154,7 @@ export async function expandSchemaCategory(catId: string, schemaName = 'public')
     },
     catId,
     schemaName,
+    dbName,
   );
   await browser.pause(800);
 }
@@ -1159,7 +1193,10 @@ export async function waitForTableInSidebar(tableName: string, timeout = 20000) 
     await browser.waitUntil(
       async () => {
         if (await tableNodeExistsInNavigator(tableName)) return true;
+        await setNavigatorSearch('');
+        await expandConnectedConnectionInNavigator();
         await expandSchemaTableCategory();
+        await setNavigatorSearch(tableName);
         await scrollSchemaTree(scrollPass);
         scrollPass++;
         return false;
@@ -1320,9 +1357,11 @@ export async function clickTableInSidebar(tableName: string) {
         // Only activate/expand the connected navigator entry after the exact
         // node is absent; clicking that entry while it is already expanded
         // can re-render the virtualized tree and lose the filtered row.
+        await setNavigatorSearch('');
         await expandConnectedConnectionInNavigator();
         await expandSchemaTableCategory();
         await expandSchemaCategory('views');
+        await setNavigatorSearch(tableName);
         await scrollSchemaTree(scrollPass);
         scrollPass++;
         return false;
@@ -1338,7 +1377,9 @@ export async function clickTableInSidebar(tableName: string) {
 export async function openTableFromSidebar(tableName: string) {
   await rightClickTableInSidebar(tableName);
   await browser.execute((openLabel: string) => {
-    const items = document.querySelectorAll('[data-testid="web-context-menu"] button');
+    const items = document.querySelectorAll(
+      '[data-testid="web-context-menu"] [data-testid^="web-context-item-"], [data-testid="web-context-menu"] button',
+    );
     for (const item of items) {
       if (item.textContent?.includes(openLabel)) {
         (item as HTMLElement).click();
@@ -1346,10 +1387,14 @@ export async function openTableFromSidebar(tableName: string) {
       }
     }
   }, t('schemaTree.openTable'));
-  await browser.waitUntil(() => tableWorkspaceIsOpen(tableName), {
-    timeout: 15000,
-    timeoutMsg: `等待表 "${tableName}" 工作区打开超时`,
-  });
+  try {
+    await browser.waitUntil(() => tableWorkspaceIsOpen(tableName), {
+      timeout: 15000,
+      timeoutMsg: `等待表 "${tableName}" 工作区打开超时`,
+    });
+  } finally {
+    await setNavigatorSearch('');
+  }
 }
 
 /** Switch the active table/view panel to the data sub-tab. */
@@ -1407,8 +1452,10 @@ export async function rightClickTableInSidebar(tableName: string) {
           return true;
         }, tableName);
         if (!opened) {
+          await setNavigatorSearch('');
           await expandConnectedConnectionInNavigator();
           await expandSchemaTableCategory();
+          await setNavigatorSearch(tableName);
           await scrollSchemaTree(scrollPass);
           scrollPass++;
           return false;
