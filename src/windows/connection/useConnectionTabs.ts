@@ -33,10 +33,18 @@ export function useConnectionTabs() {
     return connectionCommands.connect(tab.connectionId);
   }, []);
 
+  const connectingTabsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (tabs.length === 0) return;
-    const pending = tabs.filter((tab) => tab.status === 'connecting' && !tab.dbSessionId);
+    const pending = tabs.filter(
+      (tab) =>
+        tab.status === 'connecting' &&
+        !tab.dbSessionId &&
+        !connectingTabsRef.current.has(tab.connectionId),
+    );
     for (const tab of pending) {
+      connectingTabsRef.current.add(tab.connectionId);
       void (async () => {
         try {
           const sessionId = await connectTab(tab);
@@ -63,6 +71,8 @@ export function useConnectionTabs() {
                 : entry,
             ),
           );
+        } finally {
+          connectingTabsRef.current.delete(tab.connectionId);
         }
       })();
     }
