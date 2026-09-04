@@ -150,6 +150,42 @@ describe('windowManager — browser', () => {
     openDocsWindow('getting-started');
     expect(window.open).toHaveBeenLastCalledWith(DOCS_BASE_EN, '_blank', 'noopener');
   });
+
+  it('serializes migration prefill params into sub-window URLs', async () => {
+    vi.resetModules();
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    const { openDataSyncWindow, openDataTransferWindow, openSchemaDiffWindow } = await import(
+      '../windowManager'
+    );
+
+    openDataSyncWindow({
+      sourceId: 'pg-src',
+      targetId: 'pg-tgt',
+      sourceDatabase: 'src',
+    });
+    await vi.waitFor(() => expect(window.open).toHaveBeenCalled());
+    expect(window.open).toHaveBeenLastCalledWith(
+      '/window.html?window=data-sync&sourceId=pg-src&targetId=pg-tgt&sourceDatabase=src',
+      '_blank',
+      expect.any(String),
+    );
+
+    openDataTransferWindow({ sourceId: 'a', targetId: 'b' });
+    await vi.waitFor(() => expect(vi.mocked(window.open).mock.calls.length).toBeGreaterThan(1));
+    expect(window.open).toHaveBeenLastCalledWith(
+      '/window.html?window=data-transfer&sourceId=a&targetId=b',
+      '_blank',
+      expect.any(String),
+    );
+
+    openSchemaDiffWindow({ sourceSchema: 'public', targetSchema: 'app' });
+    await vi.waitFor(() => expect(vi.mocked(window.open).mock.calls.length).toBeGreaterThan(2));
+    expect(window.open).toHaveBeenLastCalledWith(
+      '/window.html?window=schema-diff&sourceSchema=public&targetSchema=app',
+      '_blank',
+      expect.any(String),
+    );
+  });
 });
 
 describe('windowManager — Tauri', () => {

@@ -22,6 +22,12 @@ vi.mock('../../../lib/crossWindowBus', () => ({
   listenCrossWindow: vi.fn().mockResolvedValue(() => {}),
 }));
 
+const urlParamMock = vi.fn<(name: string) => string | null>();
+
+vi.mock('../../../lib/windowKind', () => ({
+  getUrlParam: (name: string) => urlParamMock(name),
+}));
+
 vi.mock('../../../lib/dedicatedDbSession', () => ({
   listDatabasesDedicated: vi.fn(),
   ensureDedicatedSession: vi.fn(),
@@ -69,6 +75,8 @@ const MOCK_CONNECTIONS: ConnectionConfig[] = [
 describe('useSchemaDiffEndpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    urlParamMock.mockReset();
+    urlParamMock.mockReturnValue(null);
     vi.mocked(invoke).mockResolvedValue(MOCK_CONNECTIONS);
     vi.mocked(listDatabasesDedicated).mockResolvedValue({
       databases: ['datazen_sync_src', 'datazen_sync_tgt'],
@@ -211,6 +219,20 @@ describe('useSchemaDiffEndpoints', () => {
     expect(sessionId).toBe('session-pg-src');
     const { connectionCommands } = await import('../../../commands/connection');
     expect(connectionCommands.pingConnection).toHaveBeenCalledWith('session-pg-src');
+  });
+
+  it('[tester] applies URL prefill for source and target connection ids', async () => {
+    urlParamMock.mockImplementation((name) => {
+      if (name === 'sourceId') return 'pg-src';
+      if (name === 'targetId') return 'pg-tgt';
+      return null;
+    });
+    const { result } = renderHook(() => useSchemaDiffEndpoints());
+
+    await waitFor(() => {
+      expect(result.current.sourceId).toBe('pg-src');
+      expect(result.current.targetId).toBe('pg-tgt');
+    });
   });
 
   it('discovers schemas through table metadata for non-PostgreSQL SQL drivers', async () => {

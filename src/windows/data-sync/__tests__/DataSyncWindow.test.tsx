@@ -16,6 +16,7 @@ const {
   aiChatMock,
   stableT,
   aiConfiguredRef,
+  urlParamMock,
 } = vi.hoisted(() => {
   const stableT = (key: string, params?: Record<string, string | number>) =>
     params ? `${key}:${JSON.stringify(params)}` : key;
@@ -33,6 +34,7 @@ const {
     aiChatMock: vi.fn(),
     stableT,
     aiConfiguredRef,
+    urlParamMock: vi.fn<(name: string) => string | null>(),
   };
 });
 
@@ -105,6 +107,10 @@ vi.mock('../../../lib/windowManager', () => ({
   openDataTransferWindow: vi.fn(),
 }));
 
+vi.mock('../../../lib/windowKind', () => ({
+  getUrlParam: (name: string) => urlParamMock(name),
+}));
+
 vi.mock('../../../components/TitleBar', () => ({
   TitleBar: ({ title }: { title?: unknown }) => (
     <div data-testid="title-bar">{String(title ?? '')}</div>
@@ -172,6 +178,17 @@ function insertRow(): DataSyncRowChange {
     key: [1],
     sourceRow: [[1, 'alice']],
     targetRow: null,
+    changedColumns: [],
+    selected: true,
+  };
+}
+
+function deleteRow(): DataSyncRowChange {
+  return {
+    operation: 'DELETE',
+    key: [2],
+    sourceRow: null,
+    targetRow: [[2, 'bob']],
     changedColumns: [],
     selected: true,
   };
@@ -247,6 +264,8 @@ async function advanceToPreview(targetLabel = 'PG Tgt') {
 describe('DataSyncWindow wizard', () => {
   beforeEach(() => {
     aiConfiguredRef.value = false;
+    urlParamMock.mockReset();
+    urlParamMock.mockReturnValue(null);
     invokeMock.mockReset();
     inspectDataSyncMock.mockReset();
     compareDataSyncMock.mockReset();
@@ -613,6 +632,102 @@ describe('DataSyncWindow wizard', () => {
     );
     expect(screen.queryAllByTestId('data-sync-mapping-row')).toHaveLength(0);
     expect(screen.getByTestId('data-sync-step-endpoints')).toBeTruthy();
+  });
+
+  it('[tester] opens execute confirm dialog when delete rows are selected', async () => {
+    inspectDataSyncMock.mockResolvedValue([
+      { sourceTable: 'users', targetTable: 'users', status: 'MATCHED' },
+    ]);
+    compareDataSyncMock.mockResolvedValue([
+      {
+        sourceTable: 'users',
+        targetTable: 'users',
+        status: 'MATCHED',
+        rows: [deleteRow()],
+      },
+    ]);
+    applyDataSyncMock.mockResolvedValue({ applied: 1, rolledBack: false });
+    render(<DataSyncWindow />);
+    await advanceToCompare();
+    fireEvent.click(screen.getByTestId('data-sync-back'));
+    fireEvent.click(screen.getByTestId('data-sync-back'));
+    await waitFor(() => expect(screen.getByTestId('data-sync-step-setup')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('data-sync-option-delete'));
+    expect(await screen.findByText('sync.deleteConfirmTitle')).toBeTruthy();
+    fireEvent.click(screen.getByText('sync.enableDelete'));
+    fireEvent.click(screen.getByTestId('data-sync-next'));
+    await waitFor(() => expect(screen.getByTestId('data-sync-objects-step')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('data-sync-next'));
+    await waitFor(() => expect(screen.getByTestId('data-sync-summary')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('data-sync-next'));
+    await waitFor(() => expect(screen.getByTestId('data-sync-preview')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('data-sync-start'));
+    expect(await screen.findByText('sync.executeDeleteTitle')).toBeTruthy();
+    const confirmButtons = screen.getAllByText('sync.execute');
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]!);
+    await waitFor(() => expect(applyDataSyncMock).toHaveBeenCalled());
+  });
+
+  it('[tester] preserves syncOptions when source endpoint changes after setup', async () => {
+    invokeMock.mockImplementation(
+      async (
+        cmd: string,
+        args?: {
+          connectionId?: string;
+          database?: string | null;
+          sourceDatabaseType?: string;
+          targetDatabaseType?: string;
+        },
+      ) => {
+        if (cmd === 'get_connections') return [pgSrc, pgSrcAlt, pgTgt, mysqlTgt];
+        if (cmd === 'connect_dedicated') {
+          const conn = args?.connectionId ?? 'unknown';
+          const db = args?.database ?? 'default';
+          return `dedicated-${conn}-${db}`;
+        }
+        if (cmd === 'release_connection') return false;
+        if (cmd === 'connect') return `live-${args?.connectionId}`;
+        if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
+        return null;
+      },
+    );
+    render(<DataSyncWindow />);
+    await selectEndpoints();
+    fireEvent.click(screen.getByTestId('data-sync-next'));
+    await waitFor(() => expect(screen.getByTestId('data-sync-step-setup')).toBeTruthy());
+
+    const insertCheckbox = screen.getByTestId('data-sync-option-insert') as HTMLInputElement;
+    expect(insertCheckbox.checked).toBe(true);
+    fireEvent.click(insertCheckbox);
+    expect(insertCheckbox.checked).toBe(false);
+
+    fireEvent.click(screen.getByTestId('data-sync-back'));
+    await waitFor(() => expect(screen.getByTestId('data-sync-source')).toBeTruthy());
+    await pickSelect('data-sync-source', 'PG Src Alt');
+
+    fireEvent.click(screen.getByTestId('data-sync-next'));
+    await waitFor(() => expect(screen.getByTestId('data-sync-step-setup')).toBeTruthy());
+    expect((screen.getByTestId('data-sync-option-insert') as HTMLInputElement).checked).toBe(
+      false,
+    );
+  });
+
+  it('prefills connection endpoints from URL params', async () => {
+    urlParamMock.mockImplementation((name) => {
+      const params: Record<string, string> = {
+        sourceId: 'pg-src',
+        targetId: 'pg-tgt',
+      };
+      return params[name] ?? null;
+    });
+    render(<DataSyncWindow />);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
+    await waitFor(() =>
+      expect(screen.getByTestId('data-sync-source')).toHaveTextContent('PG Src'),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('data-sync-target')).toHaveTextContent('PG Tgt'),
+    );
   });
 
   it('shows AI explain diff result when configured', async () => {

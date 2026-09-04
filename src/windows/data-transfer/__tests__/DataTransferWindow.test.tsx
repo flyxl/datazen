@@ -5,7 +5,7 @@ import type { TransferTableResult } from '../../../commands/transfer';
 import { transferCommands } from '../../../commands/transfer';
 import { clearTransferLimitationsDismissed } from '../../../lib/transferLimitationsPrefs';
 
-const { invokeMock, inspectTransferMock, previewTransferMock, getDatabasesMock, stableT } =
+const { invokeMock, inspectTransferMock, previewTransferMock, getDatabasesMock, stableT, urlParamMock } =
   vi.hoisted(() => {
   const stableT = (key: string, params?: Record<string, string | number>) =>
     params ? `${key}:${JSON.stringify(params)}` : key;
@@ -15,6 +15,7 @@ const { invokeMock, inspectTransferMock, previewTransferMock, getDatabasesMock, 
     previewTransferMock: vi.fn(),
     getDatabasesMock: vi.fn(),
     stableT,
+    urlParamMock: vi.fn<(name: string) => string | null>(),
   };
 });
 
@@ -41,6 +42,10 @@ vi.mock('../../../hooks/useI18n', () => ({
 
 vi.mock('../../../hooks/useLocaleDomains', () => ({
   useLocaleDomains: () => true,
+}));
+
+vi.mock('../../../lib/windowKind', () => ({
+  getUrlParam: (name: string) => urlParamMock(name),
 }));
 
 vi.mock('../../../commands/database', () => ({
@@ -248,6 +253,8 @@ describe('DataTransferWindow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clearTransferLimitationsDismissed();
+    urlParamMock.mockReset();
+    urlParamMock.mockReturnValue(null);
     getDatabasesMock.mockResolvedValue(['src', 'tgt']);
     previewTransferMock.mockReset();
     previewTransferMock.mockResolvedValue(previewSuccess);
@@ -266,6 +273,26 @@ describe('DataTransferWindow', () => {
 
   afterEach(() => {
     cleanup();
+  });
+
+  it('[tester] prefills connection endpoints from URL params', async () => {
+    urlParamMock.mockImplementation((name) => {
+      const params: Record<string, string> = {
+        sourceId: 'pg-src',
+        targetId: 'pg-tgt',
+      };
+      return params[name] ?? null;
+    });
+    const { DataTransferWindow } = await import('../DataTransferWindow');
+    render(<DataTransferWindow />);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
+    await dismissLimitationsDialog();
+    await waitFor(() =>
+      expect(screen.getByTestId('data-transfer-source')).toHaveTextContent('PG Src'),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('data-transfer-target')).toHaveTextContent('PG Tgt'),
+    );
   });
 
   it('renders wizard shell', async () => {

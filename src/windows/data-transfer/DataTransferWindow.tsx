@@ -47,6 +47,11 @@ import {
   releaseDedicatedSession,
   type DedicatedSideSession,
 } from '../../lib/dedicatedDbSession';
+import {
+  pickPrefillDatabase,
+  resolveDefaultDatabase,
+  useMigrationEndpointPrefill,
+} from '../../lib/migrationWindowPrefill';
 
 type WizardStep = 'endpoints' | 'setup' | 'objects' | 'mapping' | 'preview' | 'result';
 
@@ -108,6 +113,8 @@ export function DataTransferWindow() {
   useEffect(() => {
     loadConnections();
   }, [loadConnections]);
+
+  const migrationPrefillRef = useMigrationEndpointPrefill(connections, setSourceId, setTargetId);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -196,14 +203,16 @@ export function DataTransferWindow() {
       try {
         const { databases } = await listDatabasesDedicated(sourceId, cfg?.database);
         if (cancelled) return;
-        setSourceDatabases(databases);
+        setSourceDatabases(databases ?? []);
         const preferred = cfg?.database ?? '';
         setSourceDatabase((prev) =>
-          databases.includes(preferred)
-            ? preferred
-            : prev && databases.includes(prev)
-              ? prev
-              : (databases[0] ?? ''),
+          pickPrefillDatabase(
+            migrationPrefillRef,
+            'source',
+            databases,
+            (current) => resolveDefaultDatabase(databases, preferred, current),
+            prev,
+          ),
         );
       } catch {
         if (!cancelled) setSourceDatabases([]);
@@ -242,14 +251,16 @@ export function DataTransferWindow() {
       try {
         const { databases } = await listDatabasesDedicated(targetId, cfg?.database);
         if (cancelled) return;
-        setTargetDatabases(databases);
+        setTargetDatabases(databases ?? []);
         const preferred = cfg?.database ?? '';
         setTargetDatabase((prev) =>
-          databases.includes(preferred)
-            ? preferred
-            : prev && databases.includes(prev)
-              ? prev
-              : (databases[0] ?? ''),
+          pickPrefillDatabase(
+            migrationPrefillRef,
+            'target',
+            databases,
+            (current) => resolveDefaultDatabase(databases, preferred, current),
+            prev,
+          ),
         );
       } catch {
         if (!cancelled) setTargetDatabases([]);

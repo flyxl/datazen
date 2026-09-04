@@ -112,10 +112,8 @@ export function SchemaDiffWindow() {
     setPlan(null);
     setDeployResult(null);
     setSelectedTable(null);
-    if (step !== 'endpoints') {
-      setStep('endpoints');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset wizard when endpoints change
+    planAutoRequestedRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- clear compare artifacts when endpoints change
   }, [
     endpoints.sourceId,
     endpoints.targetId,

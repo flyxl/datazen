@@ -13,6 +13,12 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { buildDocsUrl } from './docsUrls';
 import { emitCrossWindow } from './crossWindowBus';
 import { openNewConnectionDialog as openConnectionEditorDialog } from './connectionEditor';
+import {
+  buildMigrationWindowUrlParams,
+  type MigrationWindowPrefill,
+} from './migrationWindowPrefill';
+
+export type { MigrationWindowPrefill };
 
 /**
  * Representative window labels that must match
@@ -167,9 +173,9 @@ export function openNewConnectionDialog(editId?: string, defaultGroup?: string) 
 
 // ── Singleton windows ───────────────────────────────────────────────
 
-export function openDataSyncWindow() {
+export function openDataSyncWindow(prefill?: MigrationWindowPrefill) {
   openSingletonWindow('data-sync-singleton', {
-    params: { window: 'data-sync' },
+    params: buildMigrationWindowUrlParams('data-sync', prefill),
     width: 1000,
     height: 700,
     minWidth: 600,
@@ -178,9 +184,9 @@ export function openDataSyncWindow() {
   });
 }
 
-export function openDataTransferWindow() {
+export function openDataTransferWindow(prefill?: MigrationWindowPrefill) {
   openSingletonWindow('data-transfer-singleton', {
-    params: { window: 'data-transfer' },
+    params: buildMigrationWindowUrlParams('data-transfer', prefill),
     width: 1000,
     height: 720,
     minWidth: 640,
@@ -189,9 +195,9 @@ export function openDataTransferWindow() {
   });
 }
 
-export function openSchemaDiffWindow() {
+export function openSchemaDiffWindow(prefill?: MigrationWindowPrefill) {
   openSingletonWindow('schema-diff-singleton', {
-    params: { window: 'schema-diff' },
+    params: buildMigrationWindowUrlParams('schema-diff', prefill),
     width: 900,
     height: 640,
     minWidth: 560,
