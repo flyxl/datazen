@@ -500,6 +500,13 @@ mod tests {
     }
 
     #[test]
+    fn test_tester_validate_mcp_spawn_allows_datazen_and_strips_exe_suffix() {
+        assert!(validate_mcp_spawn_command("datazen").is_ok());
+        assert!(validate_mcp_spawn_command("node.exe").is_ok());
+        assert!(validate_mcp_spawn_command("/usr/local/bin/python3.exe").is_ok());
+    }
+
+    #[test]
     fn default_true_enables_servers_by_default() {
         assert!(default_true());
     }

@@ -80,4 +80,31 @@ mod tests {
         let err: WorkflowError = "step failed".into();
         assert_eq!(err.to_string(), "step failed");
     }
+
+    #[test]
+    fn test_tester_into_ipc_string_matches_display() {
+        let err = WorkflowError::GlobalTimeout(42);
+        assert_eq!(err.into_ipc_string(), "Global timeout (42s) exceeded");
+    }
+
+    #[test]
+    fn test_tester_missing_connection_formats_step_id() {
+        let err = WorkflowError::MissingConnection {
+            step_id: "fetch-users".into(),
+        };
+        assert_eq!(
+            err.to_string(),
+            "Command step 'fetch-users' requires a database connection"
+        );
+    }
+
+    #[test]
+    fn test_tester_unsupported_command_includes_ids() {
+        let err = WorkflowError::UnsupportedCommand {
+            command: "backup".into(),
+            connection_id: "cfg-1".into(),
+        };
+        assert!(err.to_string().contains("backup"));
+        assert!(err.to_string().contains("cfg-1"));
+    }
 }

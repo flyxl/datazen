@@ -71,6 +71,8 @@ import {
   BRIDGE_ERROR,
   BRIDGE_CHANNEL,
   MAX_INFLIGHT_REQUESTS,
+  isPluginCommandAllowed,
+  PLUGIN_COMMAND_DENYLIST,
 } from '../extensionBridge';
 
 type SentEnvelope = Record<string, unknown>;
@@ -625,6 +627,14 @@ describe('extensionBridge command.invoke error mapping', () => {
 
     expect((env.sent[0].payload as Record<string, unknown>).code).toBe(BRIDGE_ERROR.BAD_REQUEST);
     handle.detach();
+  });
+
+  it('[tester] isPluginCommandAllowed blocks every denylisted admin command', () => {
+    for (const command of PLUGIN_COMMAND_DENYLIST) {
+      expect(isPluginCommandAllowed(command)).toBe(false);
+    }
+    expect(isPluginCommandAllowed('query')).toBe(true);
+    expect(isPluginCommandAllowed('list_objects')).toBe(true);
   });
 
   it('rejects denylisted admin commands with E_PERMISSION', async () => {

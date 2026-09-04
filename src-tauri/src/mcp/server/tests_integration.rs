@@ -321,6 +321,27 @@
     }
 
     #[tokio::test]
+    async fn test_tester_default_empty_allowlist_denies_all_connections() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::with_tables().await;
+        test.save_connection("blocked-by-default").await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+
+        let err = server
+            .call_tool_inner(
+                "list_databases",
+                Some(serde_json::json!({"connection_id":"blocked-by-default"})),
+            )
+            .await
+            .unwrap_err();
+        let msg = err.message.to_string();
+        assert!(msg.contains("deny-all"), "expected deny-all default, got: {msg}");
+        assert!(msg.contains("blocked-by-default"));
+    }
+
+    #[tokio::test]
     async fn mcp_call_tool_inner_allowlist_error_includes_help() {
         use crate::testing::app_state::TestAppState;
         use std::sync::Arc;
