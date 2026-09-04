@@ -22,8 +22,12 @@ const TRACKS_DIR = path.join(COORD_DIR, 'tracks');
 const HUB_FILE = path.join(COORD_DIR, 'hub.md');
 
 if (!fs.existsSync(COORD_DIR)) {
-  console.error(`❌ 协调目录不存在: ${COORD_DIR}`);
-  process.exit(1);
+  if (isCheck) {
+    console.log(`ℹ️ 协调目录不存在: ${COORD_DIR}（无需检查）`);
+    process.exit(0);
+  }
+  console.log(`ℹ️ 协调目录不存在: ${COORD_DIR}（无活跃轨道）`);
+  process.exit(0);
 }
 
 // 1. 尝试从现有 hub.md 或 plan.md 提取静态段落（波次记录、跨轨风险、R 阶段清单、头部元信息）

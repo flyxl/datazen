@@ -63,9 +63,15 @@ export interface ContentViewProps {
   >;
   nodeContextMenuRef?: MutableRefObject<((payload: NodeContextMenuPayload) => void) | undefined>;
   actionsRef?: MutableRefObject<ConnectionViewActions | undefined>;
+  onSelectConnection?: (connectionId: string) => void;
 }
 
-export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: ContentViewProps) {
+export function ContentView({
+  selectTableRef,
+  nodeContextMenuRef,
+  actionsRef,
+  onSelectConnection,
+}: ContentViewProps) {
   const { t } = useI18n();
   const [confirmAction, confirmActionDialog] = useConfirmDialog();
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
@@ -127,11 +133,8 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
 
   // Guard: key-value / document panels (Redis, future MongoDB KV) hide SQL-oriented toolbar items.
   // Uses DB_REGISTRY metadata instead of panel type literal so new KV drivers get the same behaviour.
-  const isKvPanel =
-    (activePanel?.type === 'redis-db') ||
-    (toolbarDbMeta?.isKeyValue === true);
-  const showNewQuery =
-    !isKvPanel && toolbarDbMeta?.supportsSQL !== false && !!toolbarDbType;
+  const isKvPanel = activePanel?.type === 'redis-db' || toolbarDbMeta?.isKeyValue === true;
+  const showNewQuery = !isKvPanel && toolbarDbMeta?.supportsSQL !== false && !!toolbarDbType;
   const showNewTable =
     !isKvPanel &&
     canOpenStructureEditor(toolbarDbMeta) &&
@@ -139,8 +142,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
     !!toolbarDbType;
   const showErDiagramToolbar =
     !isKvPanel && toolbarDbMeta?.supportsErDiagram !== false && !!toolbarDbType;
-  const showObjectsToolbar =
-    !isKvPanel && toolbarDbMeta?.readOnly !== true && !!toolbarDbType;
+  const showObjectsToolbar = !isKvPanel && toolbarDbMeta?.readOnly !== true && !!toolbarDbType;
 
   // Detect a connection that is still being established (no dbSessionId yet).
   // When no panel is active, ConnectionWorkspaceHome needs to show a spinner
@@ -625,9 +627,10 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
   // KV / document panels own their logical database context. The schema store tracks
   // the outer SQL navigator and may still point at db0 after a KV panel was
   // opened on db5, so the status bar must use the panel's immutable target.
-  const statusDatabase = dbMeta?.isKeyValue === true && activePanel
-    ? (activePanel as { dbName?: string }).dbName ?? currentDatabase
-    : currentDatabase;
+  const statusDatabase =
+    dbMeta?.isKeyValue === true && activePanel
+      ? ((activePanel as { dbName?: string }).dbName ?? currentDatabase)
+      : currentDatabase;
 
   const detailColumnDefs: ColumnDef[] = useMemo(() => {
     if (activePanel?.type === 'table') {
@@ -726,6 +729,8 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
               onOpenErDiagram={() => handlers.handleOpenErDiagram()}
               onOpenObjects={handlers.handleOpenObjects}
               onOpenPanel={setActivePanel}
+              onSelectConnection={onSelectConnection}
+              onOpenQueryHistory={handlers.handleOpenQueryHistory}
             />
           ) : (
             <PanelContentRenderer

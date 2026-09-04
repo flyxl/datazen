@@ -1,4 +1,4 @@
-use crate::mysql::{decode_mysql_text, decode_mysql_text_opt, MysqlDriver};
+use crate::mysql::{decode_mysql_text, decode_mysql_text_opt};
 use datazen_driver_api::*;
 use serde_json::json;
 use sqlx::Row;

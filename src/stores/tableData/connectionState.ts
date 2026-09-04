@@ -61,6 +61,7 @@ export function emptyTableState(context: TableChangeContext | null = null): Tabl
     requestRevision: 0,
     loadingRevision: null,
     error: null,
+    visibleColumns: null,
   };
 }
 
@@ -111,6 +112,7 @@ export function syncFlat(
     editingCell: ts.editingCell,
     loading: ts.loading,
     error: ts.error,
+    visibleColumns: ts.visibleColumns,
   };
 }
 

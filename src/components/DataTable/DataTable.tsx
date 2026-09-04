@@ -88,6 +88,11 @@ export interface DataTableProps {
   /** Delete rows by page-row indices (requires primary keys). */
   onDeleteRows?: (rowIndices: number[]) => void;
 
+  /** Extra action buttons shown on the right side of the selection toolbar, next to export. */
+  headerActions?: React.ReactNode;
+  /** Custom empty content when columns are hidden or table has custom empty state. */
+  emptyPlaceholder?: React.ReactNode;
+
   /**
    * Optional cell text for the native context menu “copy” item.
    * When omitted, uses the right-clicked cell value (preferred) or `window.getSelection()`.
@@ -141,6 +146,8 @@ export function DataTable({
   dataExportCapability,
   primaryKeyColumns,
   onDeleteRows,
+  headerActions,
+  emptyPlaceholder,
   getContextCellText,
 }: DataTableProps) {
   const { t } = useI18n();
@@ -428,7 +435,8 @@ export function DataTable({
               {t('dataTable.selected')} {selectedRows.size} / {rows.length} {t('common.rows')}
             </span>
           )}
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-1.5">
+            {headerActions}
             {onDeleteRows && selectedRows.size > 0 && (primaryKeyColumns?.length ?? 0) > 0 && (
               <button
                 type="button"
@@ -467,50 +475,58 @@ export function DataTable({
         aria-label={t('dataTable.tableLabel')}
         onContextMenu={handleContextMenu}
       >
-        <TableHeader
-          columns={columns}
-          sorts={sorts}
-          onSort={onSort ?? NOOP}
-          columnWidths={columnWidths}
-          onResizeStart={onResizeStart}
-          sortable={onSort != null}
-          onFilterColumn={
-            onAddFilter ? (column) => onAddFilter({ column, operator: 'eq', value: '' }) : undefined
-          }
-        />
-        <VirtualBody
-          columns={columns}
-          rows={rows}
-          rowHeight={rowHeight}
-          editingCell={editingCell ?? null}
-          selectedRows={selectedRows}
-          highlightedRow={highlightedRow}
-          scrollElement={scrollEl}
-          columnWidths={columnWidths}
-          onCellDoubleClick={handleCellDoubleClick}
-          onCellEdit={handleCellEdit}
-          onCellEditCancel={handleCellEditCancel}
-          onRowSelect={handleRowClick}
-        />
-        {loading ? (
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex min-h-28 items-center justify-center gap-2 text-xs text-fg-muted"
-          >
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            {t('dataTable.loading')}
-          </div>
-        ) : rows.length === 0 ? (
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex min-h-28 flex-col items-center justify-center gap-1 px-4 text-center text-xs text-fg-muted"
-          >
-            <span>{t('dataTable.empty')}</span>
-            <span className="text-fg-muted/80">{t('dataTable.emptyHint')}</span>
-          </div>
-        ) : null}
+        {emptyPlaceholder ? (
+          emptyPlaceholder
+        ) : (
+          <>
+            <TableHeader
+              columns={columns}
+              sorts={sorts}
+              onSort={onSort ?? NOOP}
+              columnWidths={columnWidths}
+              onResizeStart={onResizeStart}
+              sortable={onSort != null}
+              onFilterColumn={
+                onAddFilter
+                  ? (column) => onAddFilter({ column, operator: 'eq', value: '' })
+                  : undefined
+              }
+            />
+            <VirtualBody
+              columns={columns}
+              rows={rows}
+              rowHeight={rowHeight}
+              editingCell={editingCell ?? null}
+              selectedRows={selectedRows}
+              highlightedRow={highlightedRow}
+              scrollElement={scrollEl}
+              columnWidths={columnWidths}
+              onCellDoubleClick={handleCellDoubleClick}
+              onCellEdit={handleCellEdit}
+              onCellEditCancel={handleCellEditCancel}
+              onRowSelect={handleRowClick}
+            />
+            {loading ? (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex min-h-28 items-center justify-center gap-2 text-xs text-fg-muted"
+              >
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                {t('dataTable.loading')}
+              </div>
+            ) : rows.length === 0 ? (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex min-h-28 flex-col items-center justify-center gap-1 px-4 text-center text-xs text-fg-muted"
+              >
+                <span>{t('dataTable.empty')}</span>
+                <span className="text-fg-muted/80">{t('dataTable.emptyHint')}</span>
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
 
       {hasPagination && (

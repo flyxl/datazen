@@ -12,7 +12,9 @@ mod types;
 mod tests;
 
 pub(crate) use access::access_level_for_mode;
+#[allow(unused_imports)]
 pub(crate) use discovery::{get_connection_commands_impl, get_driver_type_commands_impl};
+#[allow(unused_imports)]
 pub(crate) use execute::{execute_driver_command_impl, execute_driver_command_with_mode};
 pub(crate) use streaming::execute_driver_command_stream_impl;
 pub use types::{

@@ -30,7 +30,6 @@ mod util;
 pub mod workflow;
 
 pub use store::{AppDb, HistoryDb};
-pub(crate) use transfer::adapter_registry::SyncAdapterRegistry;
 
 #[cfg(any(test, feature = "test-harness"))]
 pub(crate) mod testing;

@@ -12,6 +12,7 @@ import {
   executeSQL,
   emitCrossWindowEvent,
   invokeBackend,
+  setSafeMode,
 } from '../helpers.js';
 
 /**
@@ -193,6 +194,26 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     expect(body).toContain(t('common.rows'));
     expect(body).toContain(t('common.columns'));
     expect(body).toContain('ms');
+  });
+
+  it('Safe Mode 下查询结果不能进入编辑模式 (SQ-QR-SAFE)', async () => {
+    await openQueryTab();
+    await executeSQL('SELECT 1 AS marker');
+    await browser.pause(600);
+    await setSafeMode(true);
+
+    await browser.execute(() => {
+      const el = document.querySelector('[data-testid="result-workspace-table"] span[title="1"]');
+      if (el) el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    });
+    await browser.pause(500);
+
+    const editInputPresent = await browser.execute(
+      () => !!document.querySelector('input.font-mono'),
+    );
+    expect(editInputPresent).toBe(false);
+
+    await setSafeMode(false);
   });
 
   it('执行后应显示总耗时 (SQ-002)', async () => {

@@ -7,6 +7,7 @@ use crate::db::{ConnectionHandle, DatabaseDriver, DdlAtomicity, TransactionHandl
 /// Manages BEGIN/COMMIT/ROLLBACK lifecycle based on the driver's DDL atomicity.
 /// For transactional dialects (PG), wraps operations in a real transaction.
 /// For auto-commit dialects (MySQL), operations execute without wrapping.
+#[allow(dead_code)]
 pub struct TransactionScope<'a> {
     driver: &'a dyn DatabaseDriver,
     handle: &'a ConnectionHandle,
@@ -14,6 +15,7 @@ pub struct TransactionScope<'a> {
     tx: Option<TransactionHandle>,
 }
 
+#[allow(dead_code)]
 impl<'a> TransactionScope<'a> {
     /// Begin a transaction scope. For transactional drivers, calls BEGIN.
     pub async fn begin(

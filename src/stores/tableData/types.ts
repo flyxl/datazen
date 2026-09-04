@@ -47,6 +47,7 @@ export interface TableState {
   /** Revision currently represented by the in-flight request, if any. */
   loadingRevision: number | null;
   error: string | null;
+  visibleColumns: string[] | null;
 }
 
 /** Per-connection table-data state */

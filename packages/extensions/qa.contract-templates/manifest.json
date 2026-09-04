@@ -1,0 +1,26 @@
+{
+  "id": "qa.contract-templates",
+  "name": "测试环境合同模板中心",
+  "version": "1.0.0",
+  "apiVersion": 2,
+  "author": "DataZen QA Team",
+  "description": "展示与调试测试环境各类业务合同模板，支持环境切换、动态占位符试算、随机测试数据模拟与导出",
+  "icon": "assets/icon.svg",
+  "entry": "index.html",
+  "contributes": {
+    "pages": [
+      {
+        "id": "contract-templates",
+        "title": "合同模板中心",
+        "icon": "assets/icon.svg",
+        "showIn": "workspace"
+      }
+    ]
+  },
+  "permissions": [
+    "context:connections",
+    "command:invoke",
+    "storage:local",
+    "ui:notify"
+  ]
+}

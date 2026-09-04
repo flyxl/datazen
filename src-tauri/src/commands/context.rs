@@ -575,8 +575,8 @@ mod tests {
         use crate::monitor::{MonitorConnectionRegistry, MonitorEngine};
         use crate::services::ConnectionManager;
         use crate::store::Store;
+        use crate::transfer::adapter_registry::SyncAdapterRegistry;
         use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
-        use crate::SyncAdapterRegistry;
         use std::sync::Arc;
 
         let dir = tempfile::tempdir().unwrap();
@@ -634,8 +634,8 @@ mod tests {
         use crate::monitor::{MonitorConnectionRegistry, MonitorEngine};
         use crate::services::ConnectionManager;
         use crate::store::{AppSettings, Store};
+        use crate::transfer::adapter_registry::SyncAdapterRegistry;
         use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
-        use crate::SyncAdapterRegistry;
         use std::sync::Arc;
 
         let dir = tempfile::tempdir().unwrap();

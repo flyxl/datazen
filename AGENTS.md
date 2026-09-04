@@ -215,6 +215,7 @@ PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`。改了驱动�
 - **生产路径禁止裸 `unwrap()` / `expect()`**（`#[cfg(test)]` 除外；确需 panic 须注释说明）。详见 [docs/development/panic-policy.md](docs/development/panic-policy.md)
 - TypeScript：严格模式，无 `any`（除 generated 文件），absolute imports
 - CSS：Tailwind utility classes，暗色主题默认
+- **单文件规模与模块拆分**：严格限制单源码文件大小（推荐单文件不超过 500 行，严禁出现数千行的超大单文件）；大型组件/模块必须按功能和职责拆分成高内聚、低耦合的小组件/子模块（如将复杂主视图拆分为独立抽屉、对话框、工具栏、子视图和独立 hook/工具库）
 - 安全：CSP、AES-256-GCM、路径遍历防护、文件扩展名白名单
 
 ## 重要注意事项

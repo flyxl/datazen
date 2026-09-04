@@ -43,6 +43,7 @@ packages/extensions/<publisher>.<name>/
 | `community.slate-blue` | 纯主题 | Slate & sky-blue 主题（light + dark），由旧 ThemePack 迁移 |
 | `community.table-workspace` | 纯主题 | 参考 `table-workspace-v01.svg` 的分层 navy 工作区主题（light + dark），含编辑器、图表、预览与语义图标 |
 | `datazen.playground` | 页面 + 主题 | 全功能示例：桥接握手、context.getConnections/getActiveConnection、command.invoke（query）、storage KV 计数器、ui.notify、实时主题快照，附 Playground Night 暗色主题 |
+| `qa.contract-templates` | 工作区页面 | 测试环境合同模板中心：多测试环境切换、合同模板分类检索、占位符动态试算与高仿真随机数据生成、电子印章与水印预览、Markdown/文本复制与导出 |
 
 ## 安装测试
 

@@ -26,11 +26,20 @@ vi.mock('../../../stores/connectionStore', () => {
   };
 });
 
-vi.mock('../../../components/SqlEditor', () => ({
-  SqlEditor: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
-    <textarea data-testid="sql-editor" value={value} onChange={(e) => onChange(e.target.value)} />
-  ),
-}));
+vi.mock('../../../components/SqlEditor', async () => {
+  const { forwardRef } = await import('react');
+  return {
+    SqlEditor: forwardRef(
+      ({ value, onChange }: { value: string; onChange: (v: string) => void }, _ref: unknown) => (
+        <textarea
+          data-testid="sql-editor"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ),
+    ),
+  };
+});
 
 vi.mock('../../../components/ui/Select', () => ({
   Select: ({

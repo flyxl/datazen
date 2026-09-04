@@ -5,9 +5,7 @@ use crate::mcp::permission;
 use crate::mcp::tool_help;
 use rmcp::model::*;
 use rmcp::service::RequestContext;
-use rmcp::{
-    prompt_handler, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler,
-};
+use rmcp::{prompt_handler, tool_handler, ErrorData as McpError, RoleServer, ServerHandler};
 
 #[tool_handler]
 #[prompt_handler]

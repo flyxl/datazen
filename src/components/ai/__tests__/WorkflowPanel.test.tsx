@@ -96,24 +96,32 @@ vi.mock('../../../lib/windowManager', () => ({
   openDocsWindow: (...a: unknown[]) => openDocsWindowMock(...a),
 }));
 
-vi.mock('../../../components/SqlEditor', () => ({
-  SqlEditor: ({
-    value,
-    onChange,
-    placeholder,
-  }: {
-    value: string;
-    onChange: (v: string) => void;
-    placeholder?: string;
-  }) => (
-    <textarea
-      data-testid="sql-editor"
-      placeholder={placeholder}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    />
-  ),
-}));
+vi.mock('../../../components/SqlEditor', async () => {
+  const { forwardRef } = await import('react');
+  return {
+    SqlEditor: forwardRef(
+      (
+        {
+          value,
+          onChange,
+          placeholder,
+        }: {
+          value: string;
+          onChange: (v: string) => void;
+          placeholder?: string;
+        },
+        _ref: unknown,
+      ) => (
+        <textarea
+          data-testid="sql-editor"
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ),
+    ),
+  };
+});
 
 vi.mock('../../../commands/driver', () => ({
   driverCommands: {

@@ -5,11 +5,17 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod admin_commands;
+mod catalog;
+mod connection;
+mod execution;
 mod migration;
 mod postgres;
+mod schema;
+mod sql;
 mod sql_target;
 mod structure;
 mod sync_adapter;
+mod type_decode;
 mod type_normalizer;
 pub use migration::{PostgresMigrationCapabilities, PostgresMigrationRenderer};
 pub use postgres::*;

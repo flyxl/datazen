@@ -15,6 +15,7 @@ import { ThemeToggle } from '../../components/ThemeToggle';
 import { ThemedIcon } from '../../components/ThemedIcon';
 import { ResultMessageDialog } from '../../components/ui/ResultMessageDialog';
 import { useI18n } from '../../hooks/useI18n';
+import { useResizable } from '../../hooks/useResizable';
 import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useAiStore } from '../../stores/aiStore';
@@ -117,10 +118,14 @@ export function ConnectionPage() {
 
   const { tabs, setTabs, activeIdx, setActiveIdx, activeTab, pendingActionRef } =
     useConnectionTabs();
-  const [sidebarWidth, setSidebarWidth] = useState(280);
+  const { size: sidebarWidth, handleRef: resizeHandleRef } = useResizable({
+    direction: 'horizontal',
+    initialSize: 280,
+    minSize: 200,
+    maxSize: 500,
+    storageKey: 'connection-sidebar-width',
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const isResizingRef = useRef(false);
-  const resizeHandleRef = useRef<HTMLDivElement>(null);
   const selectTableRef = useRef<
     ((table: string, schema?: string, database?: string) => void) | undefined
   >();
@@ -573,44 +578,6 @@ export function ConnectionPage() {
     openSettingsInShell,
   ]);
 
-  useEffect(() => {
-    const handle = resizeHandleRef.current;
-    if (!handle) return;
-
-    const clampWidth = (width: number) => Math.max(200, Math.min(500, width));
-
-    const onMouseDown = (e: MouseEvent) => {
-      e.preventDefault();
-      isResizingRef.current = true;
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-    };
-
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isResizingRef.current) return;
-      setSidebarWidth(clampWidth(e.clientX));
-    };
-
-    const onMouseUp = () => {
-      if (!isResizingRef.current) return;
-      isResizingRef.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
-    handle.addEventListener('mousedown', onMouseDown);
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-
-    return () => {
-      handle.removeEventListener('mousedown', onMouseDown);
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, []);
-
   // ── Render ──
 
   const centerTitle = (() => {
@@ -735,6 +702,7 @@ export function ConnectionPage() {
           selectTableRef={selectTableRef}
           nodeContextMenuRef={nodeContextMenuRef}
           actionsRef={actionsRef}
+          onSelectConnection={handleSelectConnection}
         />
       </div>
     </div>

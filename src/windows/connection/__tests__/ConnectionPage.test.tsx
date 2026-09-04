@@ -554,4 +554,21 @@ describe('ConnectionPage', () => {
     expect(tauriWindowTestState.minimizeMock).not.toHaveBeenCalled();
     expect(tauriWindowTestState.closeMock).toHaveBeenCalled();
   });
+
+  it('TC-sidebar: keeps sidebar resizable when switching to workflow and back', async () => {
+    render(<ConnectionPage />);
+    const aside = screen.getByTestId('connection-navigator-aside');
+    expect(aside).toBeInTheDocument();
+    expect(aside).toHaveStyle({ width: '280px' });
+
+    // Switch to workflow mode
+    fireEvent.click(screen.getByTestId('workspace-nav-workflow'));
+    expect(screen.queryByTestId('connection-navigator-aside')).not.toBeInTheDocument();
+
+    // Switch back to connections mode
+    fireEvent.click(screen.getByTestId('workspace-nav-connections'));
+    const asideAfter = screen.getByTestId('connection-navigator-aside');
+    expect(asideAfter).toBeInTheDocument();
+    expect(asideAfter).toHaveStyle({ width: '280px' });
+  });
 });

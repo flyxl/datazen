@@ -29,6 +29,7 @@ export function ResultTableView({
 }: ResultTableViewProps) {
   const { t } = useI18n();
   const queryResultLimit = useSettingsStore((s) => s.settings.queryResultLimit);
+  const safeMode = useSettingsStore((s) => s.settings.safeMode);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
 
   const columnDefs = useMemo<ColumnDef[]>(
@@ -72,10 +73,16 @@ export function ResultTableView({
 
   const handleCellDoubleClick = useCallback(
     (row: number, col: string) => {
+      // Safe Mode blocks in-place edit of query results. The row detail panel
+      // still opens on double-click so the user can inspect the record.
       onRowDetail?.(row);
+      if (safeMode) {
+        setEditingCell(null);
+        return;
+      }
       setEditingCell({ row, col });
     },
-    [onRowDetail],
+    [onRowDetail, safeMode],
   );
 
   return (
@@ -85,7 +92,7 @@ export function ResultTableView({
         rows={result.rows}
         statusBar={statusBar}
         rowHeight={32}
-        editingCell={editingCell}
+        editingCell={safeMode ? null : editingCell}
         onCellDoubleClick={handleCellDoubleClick}
         onCellEdit={(_row, _col, _value) => setEditingCell(null)}
         onCellEditCancel={() => setEditingCell(null)}

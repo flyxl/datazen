@@ -99,7 +99,12 @@ describe('repo extension packages', () => {
 
   it('includes the converted community theme and the sample extension', () => {
     expect(dirNames.sort()).toEqual(
-      ['community.slate-blue', 'community.table-workspace', 'datazen.playground'].sort(),
+      [
+        'community.slate-blue',
+        'community.table-workspace',
+        'datazen.playground',
+        'qa.contract-templates',
+      ].sort(),
     );
   });
 

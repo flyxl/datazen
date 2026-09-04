@@ -18,11 +18,7 @@ import {
 } from '../lib/tableChanges';
 import { useSettingsStore } from './settingsStore';
 import type { CellEdit, ConnectionTableState, TableState } from './tableData/types';
-import {
-  cloneFilters,
-  filterDraftEqualsApplied,
-  isCompleteFilter,
-} from './tableData/filterUtils';
+import { cloneFilters, filterDraftEqualsApplied, isCompleteFilter } from './tableData/filterUtils';
 import {
   activeTableContext,
   buildTableChangeContext,
@@ -58,6 +54,7 @@ interface TableDataStore extends ConnectionTableState {
   activeDbSessionId: string | null;
 
   columns: ColumnSchema[];
+  visibleColumns: string[] | null;
   rows: Record<string, unknown>[];
   totalRows: number;
   page: number;
@@ -98,6 +95,9 @@ interface TableDataStore extends ConnectionTableState {
     connectionId?: string | null;
     driverType?: string | null;
   }) => Promise<void>;
+  setVisibleColumns: (columns: string[] | null) => void;
+  toggleColumnVisibility: (columnName: string) => void;
+  resetVisibleColumns: () => void;
   setPage: (page: number) => void;
   setPageSize: (size: number) => void;
   addFilter: (filter: FilterCondition) => void;
@@ -377,9 +377,18 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         { ...ts, columns: res.columns, rows: fetchedRows, rowIdentityAnchors: anchors },
         fetchedRows,
       );
+      const validColumnNames = new Set(res.columns.map((c) => c.name));
+      const currentVisible = ts.visibleColumns;
+      const sanitizedVisible = currentVisible
+        ? currentVisible.filter((c) => validColumnNames.has(c))
+        : null;
       const patched: TableState = {
         ...ts,
         columns: res.columns,
+        visibleColumns:
+          sanitizedVisible && sanitizedVisible.length === res.columns.length
+            ? null
+            : sanitizedVisible,
         rows: rowsWithPending,
         totalRows: res.totalRows ?? ts.totalRows,
         page: res.page,
@@ -513,6 +522,25 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
   setFilterPanelOpen: (open) => {
     updateActive(get, set, () => ({ filterPanelOpen: open }));
+  },
+
+  setVisibleColumns: (columns) => {
+    updateActive(get, set, () => ({ visibleColumns: columns }));
+  },
+
+  toggleColumnVisibility: (columnName) => {
+    updateActive(get, set, (ts) => {
+      const allNames = ts.columns.map((c) => c.name);
+      const current = ts.visibleColumns ?? allNames;
+      const next = current.includes(columnName)
+        ? current.filter((c) => c !== columnName)
+        : [...current, columnName];
+      return { visibleColumns: next.length === allNames.length ? null : next };
+    });
+  },
+
+  resetVisibleColumns: () => {
+    updateActive(get, set, () => ({ visibleColumns: null }));
   },
 
   setSort: (sort) => {
