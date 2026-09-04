@@ -13,6 +13,7 @@ import {
   pickPrefillDatabase,
   pickPrefillSchema,
   readMigrationPrefillFromUrl,
+  resolveDefaultDatabase,
   useMigrationEndpointPrefill,
 } from '../migrationWindowPrefill';
 
@@ -109,6 +110,44 @@ describe('migrationWindowPrefill', () => {
       '',
     );
     expect(picked).toBe('public');
+  });
+
+  it('[tester] pickPrefillSchema consumes prefill once when present in list', () => {
+    const prefillRef = { current: { targetSchema: 'app' } };
+    const picked = pickPrefillSchema(
+      prefillRef,
+      'target',
+      ['public', 'app'],
+      () => 'public',
+      '',
+    );
+    expect(picked).toBe('app');
+    expect(prefillRef.current.targetSchema).toBeUndefined();
+  });
+
+  it('[tester] resolveDefaultDatabase prefers configured default, then prev, then first', () => {
+    expect(resolveDefaultDatabase(['a', 'b'], 'b', 'a')).toBe('b');
+    expect(resolveDefaultDatabase(['a', 'b'], 'missing', 'b')).toBe('b');
+    expect(resolveDefaultDatabase(['a', 'b'], 'missing', 'missing')).toBe('a');
+    expect(resolveDefaultDatabase(null, 'x', 'y')).toBe('');
+  });
+
+  it('[tester] useMigrationEndpointPrefill ignores unknown connection ids', () => {
+    urlParamMock.mockImplementation((name) => {
+      if (name === 'sourceId') return 'missing-src';
+      if (name === 'targetId') return 'missing-tgt';
+      return null;
+    });
+    const setSourceId = vi.fn();
+    const setTargetId = vi.fn();
+    const { rerender } = renderHook(
+      ({ connections }: { connections: ConnectionConfig[] }) =>
+        useMigrationEndpointPrefill(connections, setSourceId, setTargetId),
+      { initialProps: { connections: [] as ConnectionConfig[] } },
+    );
+    rerender({ connections: [pgSrc, pgTgt] });
+    expect(setSourceId).not.toHaveBeenCalled();
+    expect(setTargetId).not.toHaveBeenCalled();
   });
 
   it('useMigrationEndpointPrefill applies connection ids once connections load', () => {

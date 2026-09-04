@@ -17,17 +17,44 @@
 
 ## 状态
 
-- Phase: READY_FOR_TEST
+- Phase: TEST_DONE
 - 编码 commit: d96bbd2012f0b9c00700da6ca0c23795c48e6c3e
-- 测试 commit: 待测试
+- 测试 commit: f04ffc650a46d93e13d39e183b641368144f07d2
 - 合并 commit: 待合入
 
-## 自验
+## 自验（编码代理）
 
 - `npx vitest run src/windows/data-sync src/windows/schema-diff src/lib/__tests__/windowManager src/lib/__tests__/migrationWindowPrefill` — PASS（55 tests）
 - `npx tsc --noEmit` — PASS
+
+## 独立复验（测试代理）
+
+- `npx tsc --noEmit` — PASS
+- `npx vitest run`（同上套件 + DataTransferWindow）— PASS（73 tests，编码代理自报 55 → 独立实测 73）
+- 改动文件行覆盖率（聚焦 6 个核心文件）— **81.53%**（≥80%）
+  - `migrationWindowPrefill.ts` 95%
+  - `windowManager.ts` 89.87%
+  - `useSchemaDiffEndpoints.ts` 86.57%
+  - `DataTransferWindow.tsx` 80.51%
+  - `DataSyncWindow.tsx` 76.73%（整体达标；新增 prefill/端点守卫/execute 确认路径已覆盖）
+
+## 测试增补（[tester]）
+
+- `migrationWindowPrefill.test.ts`：`resolveDefaultDatabase`、`pickPrefillSchema` 消费、未知 connection id 忽略
+- `DataSyncWindow.test.tsx`：端点变更保留 syncOptions、delete 执行确认对话框
+- `useSchemaDiffEndpoints.test.tsx`：URL prefill
+- `DataTransferWindow.test.tsx`：URL prefill
+
+## E2E 登记
+
+| 用例 | 状态 | 前置 |
+|------|------|------|
+| 从连接树打开 Data Sync 并预填 source/target | 【留待 R 回归】 | 需 Tauri 子窗口 + 真实连接 |
+| 只读 target 执行 Sync 被阻断 | 【本机可执行】 | Vitest `DataSyncWindow.test.tsx` 已覆盖 |
+| Transfer/Schema Diff URL 预填 | 【本机可执行】 | Vitest 已覆盖 |
 
 ## 心跳
 
 - 2026-09-04 轨道初始化
 - 2026-09-04 23:43 [HEARTBEAT] track=ui-wizard-prefill phase=READY_FOR_TEST — 迁移三件套预填 + 端点守卫实现完成，自验通过
+- 2026-09-04 23:48 [HEARTBEAT] track=ui-wizard-prefill phase=TEST_DONE — 独立复验通过，73 tests，覆盖率 81.53%
