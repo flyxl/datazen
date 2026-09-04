@@ -12,14 +12,6 @@
 
 | Track | 任务 | 状态 | 编码 Commit | 测试 Commit | 合并 Commit |
 |-------|------|------|------------|------------|------------|
-| prh-split-mcp | — | PASSED | 8a54c0a15 | 08d66bec3 | — |
-| prh-split-dcmd | — | PASSED | e882fec2f | 0166bee3e | — |
-| prh-sql-guard | — | PASSED | ce551214ec | b0ad5c210 | — |
-| prh-ai-egress | — | PASSED | d44fff88c | c4a2e4280 | — |
-| prh-split-lib | — | PASSED | 6fc0c65ca | 29138aa8d | — |
-| prh-panic-policy | — | PASSED | 6ef2aee16 | b0819beef | — |
-| prh-contract | — | PASSED | 56b1d37e5 | fb7a55bbc | — |
-| prh-ci-docs | — | **PASSED** | `7a6e4da0f`（合入 `3b89aa556`） | `80b696343` | — |
 | rem-ci-guards | CI 接入三守护：`test:ids` + `test:ci-docs` + `i18n-sync-check`（ci.yml + ci-local.sh） | PASSED | 568f4b6f6 | ea5dc0b11 (second tester) | 48e0696b1 |
 | rem-ddl-atomicity | `ddl_atomicity()` 改 trait 方法，各驱动自报 | PASSED | 2c571534f | f85c5b1cc | 0e7addf62 |
 | rem-driver-contracts | MongoDB/ES/HBase `command_definitions()` 收敛到 `execute_command()` 实际处理集 | PASSED | (coordinator-verified; subagent dispatch unavailable) | (coordinator-verified; no subagent tester available) | — |
@@ -32,19 +24,15 @@
 | rem-scheduler | WorkflowScheduler `in_flight` panic 泄漏：DropGuard/catch_unwind 保证 remove | PASSED | 88000b879 | (coordinator-verified; no subagent tester available) | — |
 | rem-sql-guard | SQL Guard 加固：NFKC 全角归一、`\0` 拒绝、注释剥离后重分类、反斜杠转义、MCP permission 同步 | PASSED | 42c08e740 | (coordinator-verified; no subagent tester available) | — |
 | rem-sync-taxonomy | sync category/family 下沉 `driver-api` trait + `DatabaseTypeMeta`，删除前后端 6 处重复硬编码 | PASSED | d0e9f94d7 | 1e53d48f4 | 20fc6905e |
+| ui-button-focus | — | PASSED | ba1fa2b12 | 641c748bc | 待合入 |
+| ui-transfer-guards | — | PASSED | 6815ff687 | bb9ab1add | 待合入 |
+| ui-accent-tokens | — | TEST_DONE | c428b0c8c | cee7c1d15 | 待合入 |
+| ui-shell-unification | — | PASSED | 80e316d6a | 29d7907ea | 待合入 |
 
 ## 写锁台账
 
 | Track | 写锁代理 | Worktree | Branch | Phase | 最后心跳 |
 |-------|----------|----------|--------|-------|----------|
-| prh-split-mcp | tester-prh-split-mcp（独立实例 #2） | `.worktrees/datazen-test-prh-split-mcp` | feature/prh-split-mcp | PASSED | — |
-| prh-split-dcmd | — | — | feature/prh-split-dcmd | PASSED | — |
-| prh-sql-guard | tester-prh-sql-guard | `.worktrees/datazen-test-prh-sql-guard`（分支 `feature/test-prh-sql-guard`） | feature/prh-sql-guard | PASSED | — |
-| prh-ai-egress | — | — | feature/prh-ai-egress | PASSED | — |
-| prh-split-lib | — | — | feature/prh-split-lib | PASSED | — |
-| prh-panic-policy | — | — | feature/prh-panic-policy | PASSED | — |
-| prh-contract | — | — | feature/prh-contract | PASSED | — |
-| prh-ci-docs | — | — | feature/prh-ci-docs | **PASSED** | — |
 | rem-ci-guards | — | — | feature/rem-ci-guards | PASSED | — |
 | rem-ddl-atomicity | — | — | feature/rem-ddl-atomicity | PASSED | — |
 | rem-driver-contracts | — | — | feature/rem-driver-contracts | PASSED | — |
@@ -57,6 +45,10 @@
 | rem-scheduler | — | — | feature/rem-scheduler | PASSED | — |
 | rem-sql-guard | — | — | feature/rem-sql-guard | PASSED | — |
 | rem-sync-taxonomy | — | — | feature/rem-sync-taxonomy | PASSED | — |
+| ui-button-focus | — | — | feature/ui-button-focus | PASSED | — |
+| ui-transfer-guards | — | — | feature/ui-transfer-guards | PASSED | — |
+| ui-accent-tokens | — | — | feature/ui-accent-tokens | TEST_DONE | — |
+| ui-shell-unification | — | — | feature/ui-shell-unification | PASSED | — |
 
 ## 波次记录
 
