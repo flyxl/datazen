@@ -1,11 +1,10 @@
 import { create } from 'zustand';
 import { databaseCommands } from '../commands/database';
 import { t } from '../locales/t';
-import type { ColumnSchema, DatabaseType, FilterCondition, SortCondition, Value } from '../types';
+import type { ColumnSchema, DatabaseType, FilterCondition, SortCondition } from '../types';
 import { DB_REGISTRY } from '../lib/databaseTypes';
 import {
   buildRowIdentity,
-  clonePendingRowChange,
   duplicateRowIdentityKeys,
   isCompleteTableChangeContext,
   rowIdentityKey,
@@ -18,249 +17,38 @@ import {
   type TableChangeContext,
 } from '../lib/tableChanges';
 import { useSettingsStore } from './settingsStore';
+import type { CellEdit, ConnectionTableState, TableState } from './tableData/types';
+import {
+  cloneFilters,
+  filterDraftEqualsApplied,
+  isCompleteFilter,
+} from './tableData/filterUtils';
+import {
+  activeTableContext,
+  buildTableChangeContext,
+  emptyConnectionTableState,
+  emptyTableState,
+  extractErrorMessage,
+  flattenActive,
+  getState,
+  patchConnection,
+  rowsToRecords,
+  syncFlat,
+  toCellValue,
+} from './tableData/connectionState';
+import {
+  AMBIGUOUS_ROW_IDENTITY_ERROR,
+  findPendingForRow,
+  hasPendingIdentityCollision,
+  overlayPendingRows,
+  pendingChangesForWire,
+  pendingChangesSignature,
+  rebuildEditBuffer,
+  rowIdentityIsUnique,
+} from './tableData/pendingChanges';
 
-function rowsToRecords(
-  columns: ColumnSchema[],
-  rows: (Value | null)[][],
-): Record<string, unknown>[] {
-  return rows.map((row) => {
-    const record: Record<string, unknown> = {};
-    columns.forEach((col, i) => {
-      record[col.name] = row[i] ?? null;
-    });
-    return record;
-  });
-}
-
-export interface CellEdit {
-  rowIndex: number;
-  columnName: string;
-  originalValue: unknown;
-  newValue: unknown;
-  pkSnapshot: Record<string, unknown>;
-}
-
-function editKey(rowIndex: number, columnName: string) {
-  return `${rowIndex}:${columnName}`;
-}
-
-function toCellValue(val: unknown): Value | null {
-  if (val === null || val === undefined) return null;
-  return val as Value;
-}
-
-function extractErrorMessage(e: unknown, fallback: string): string {
-  if (typeof e === 'string' && e.trim()) return e;
-  if (e instanceof Error && e.message.trim()) return e.message;
-  if (e && typeof e === 'object') {
-    const msg = (e as { message?: unknown }).message;
-    if (typeof msg === 'string' && msg.trim()) return msg;
-  }
-  return fallback;
-}
-
-/** Incomplete filters (just added / cleared value) must not hit the backend. */
-export function isCompleteFilter(filter: FilterCondition): boolean {
-  if (!filter.column) return false;
-  if (filter.operator === 'isNull' || filter.operator === 'isNotNull') return true;
-  if (filter.value === null || filter.value === undefined) return false;
-  if (typeof filter.value === 'string' && filter.value === '') return false;
-  if (Array.isArray(filter.value) && filter.value.length === 0) return false;
-  return true;
-}
-
-export function cloneFilters(filters: FilterCondition[]): FilterCondition[] {
-  return filters.map((f) => ({ ...f }));
-}
-
-export function filterDraftEqualsApplied(
-  draftFilters: FilterCondition[],
-  draftLogic: 'and' | 'or',
-  appliedFilters: FilterCondition[],
-  appliedLogic: 'and' | 'or',
-): boolean {
-  return (
-    draftLogic === appliedLogic && JSON.stringify(draftFilters) === JSON.stringify(appliedFilters)
-  );
-}
-
-/** Per-table state slice */
-export interface TableState {
-  context: TableChangeContext | null;
-  columns: ColumnSchema[];
-  rows: Record<string, unknown>[];
-  totalRows: number;
-  page: number;
-  pageSize: number;
-  /** Applied filters used by queries. */
-  filters: FilterCondition[];
-  filterLogic: 'and' | 'or';
-  draftFilters: FilterCondition[];
-  draftFilterLogic: 'and' | 'or';
-  filterPanelOpen: boolean;
-  sorts: SortCondition[];
-  editBuffer: Map<string, CellEdit>;
-  /** Changes staged against this table; the map key is the stable PK identity. */
-  pendingChanges: Map<string, PendingRowChange>;
-  /** Ephemeral row-index anchor; it only points back to an original identity key. */
-  rowIdentityAnchors: Map<number, string>;
-  previewPlan: RowChangePlan | null;
-  pendingStatus: PendingStatus;
-  lastCommitResult: CommitPendingChangesResult | null;
-  selectedRows: Set<number>;
-  lastSelectedIndex: number | null;
-  editingCell: { row: number; col: string } | null;
-  loading: boolean;
-  /** Monotonic revision of the latest requested page/filter/sort state. */
-  requestRevision: number;
-  /** Revision currently represented by the in-flight request, if any. */
-  loadingRevision: number | null;
-  error: string | null;
-}
-
-function emptyTableState(context: TableChangeContext | null = null): TableState {
-  return {
-    context,
-    columns: [],
-    rows: [],
-    totalRows: 0,
-    page: 0,
-    pageSize: 50,
-    filters: [],
-    filterLogic: 'and',
-    draftFilters: [],
-    draftFilterLogic: 'and',
-    filterPanelOpen: false,
-    sorts: [],
-    editBuffer: new Map(),
-    pendingChanges: new Map(),
-    rowIdentityAnchors: new Map(),
-    previewPlan: null,
-    pendingStatus: 'idle',
-    lastCommitResult: null,
-    selectedRows: new Set(),
-    lastSelectedIndex: null,
-    editingCell: null,
-    loading: false,
-    requestRevision: 0,
-    loadingRevision: null,
-    error: null,
-  };
-}
-
-// ── Per-connection state ──────────────────────────────────────────
-
-interface ConnectionTableState {
-  activeTable: string | null;
-  activeTableKey: string | null;
-  connectionId: string | null;
-  databaseType: string | null;
-  /** F1: last target database used for table data loads on this session. */
-  activeDatabase: string | null;
-  activeSchema: string | null;
-  tableStates: Map<string, TableState>;
-  detailRowIndex: number | null;
-}
-
-function emptyConnectionTableState(): ConnectionTableState {
-  return {
-    activeTable: null,
-    activeTableKey: null,
-    connectionId: null,
-    databaseType: null,
-    activeDatabase: null,
-    activeSchema: null,
-    tableStates: new Map(),
-    detailRowIndex: null,
-  };
-}
-
-function getState(states: Map<string, TableState>, tableKey: string | null): TableState {
-  if (!tableKey) return emptyTableState();
-  return states.get(tableKey) ?? emptyTableState();
-}
-
-function syncFlat(
-  activeTable: string | null,
-  activeTableKey: string | null,
-  states: Map<string, TableState>,
-) {
-  const ts = getState(states, activeTableKey);
-  return {
-    tableName: activeTable,
-    columns: ts.columns,
-    rows: ts.rows,
-    totalRows: ts.totalRows,
-    page: ts.page,
-    pageSize: ts.pageSize,
-    filters: ts.filters,
-    filterLogic: ts.filterLogic,
-    draftFilters: ts.draftFilters,
-    draftFilterLogic: ts.draftFilterLogic,
-    filterPanelOpen: ts.filterPanelOpen,
-    sorts: ts.sorts,
-    editBuffer: ts.editBuffer,
-    pendingChanges: ts.pendingChanges,
-    previewPlan: ts.previewPlan,
-    pendingStatus: ts.pendingStatus,
-    lastCommitResult: ts.lastCommitResult,
-    selectedRows: ts.selectedRows,
-    lastSelectedIndex: ts.lastSelectedIndex,
-    editingCell: ts.editingCell,
-    loading: ts.loading,
-    error: ts.error,
-  };
-}
-
-function flattenActive(
-  perConnection: Map<string, ConnectionTableState>,
-  activeDbSessionId: string | null,
-): ConnectionTableState & ReturnType<typeof syncFlat> {
-  const cs = activeDbSessionId
-    ? (perConnection.get(activeDbSessionId) ?? emptyConnectionTableState())
-    : emptyConnectionTableState();
-  return {
-    ...cs,
-    ...syncFlat(cs.activeTable, cs.activeTableKey, cs.tableStates),
-  };
-}
-
-function patchConnection(
-  perConnection: Map<string, ConnectionTableState>,
-  dbSessionId: string,
-  patch: Partial<ConnectionTableState>,
-): Map<string, ConnectionTableState> {
-  const next = new Map(perConnection);
-  const current = perConnection.get(dbSessionId) ?? emptyConnectionTableState();
-  next.set(dbSessionId, { ...current, ...patch });
-  return next;
-}
-
-function buildTableChangeContext(
-  connState: ConnectionTableState,
-  params: {
-    dbSessionId: string;
-    table: string;
-    connectionId?: string | null;
-    driverType?: string | null;
-    database?: string | null;
-    schema?: string | null;
-  },
-): TableChangeContext {
-  return {
-    connectionId: params.connectionId !== undefined ? params.connectionId : connState.connectionId,
-    dbSessionId: params.dbSessionId,
-    driverType: params.driverType !== undefined ? params.driverType : connState.databaseType,
-    database: params.database !== undefined ? params.database : connState.activeDatabase,
-    schema: params.schema !== undefined ? params.schema : connState.activeSchema,
-    table: params.table,
-  };
-}
-
-function activeTableContext(conn: ConnectionTableState): TableChangeContext | null {
-  if (!conn.activeTableKey) return null;
-  return conn.tableStates.get(conn.activeTableKey)?.context ?? null;
-}
+export type { CellEdit, TableState } from './tableData/types';
+export { isCompleteFilter, cloneFilters, filterDraftEqualsApplied } from './tableData/filterUtils';
 
 // ── Store ─────────────────────────────────────────────────────────
 
@@ -390,127 +178,6 @@ function updateActiveForReload(
     ...updater(ts),
     requestRevision: ts.requestRevision + 1,
   }));
-}
-
-const AMBIGUOUS_ROW_IDENTITY_ERROR =
-  'Row identity is NULL, unstable, or ambiguous; UPDATE/DELETE was not staged.';
-
-function effectivePendingIdentity(
-  change: PendingRowChange,
-  pkColumns: ColumnSchema[],
-): ReturnType<typeof buildRowIdentity> {
-  const values: Record<string, unknown> = { ...change.rowIdentity };
-  for (const column of pkColumns) {
-    if (Object.prototype.hasOwnProperty.call(change.currentValues, column.name)) {
-      values[column.name] = change.currentValues[column.name];
-    }
-  }
-  return buildRowIdentity(values, pkColumns);
-}
-
-function rowIdentityIsUnique(
-  ts: TableState,
-  rowIndex: number,
-  identity: ReturnType<typeof buildRowIdentity>,
-  pkColumns: ColumnSchema[],
-): boolean {
-  if (!identity) return false;
-  const key = rowIdentityKey(identity);
-  return (
-    ts.rows.filter((row, index) => {
-      if (index === rowIndex) return false;
-      const other = buildRowIdentity(row, pkColumns);
-      return other ? rowIdentityKey(other) === key : false;
-    }).length === 0
-  );
-}
-
-function hasPendingIdentityCollision(
-  ts: TableState,
-  ownKey: string | null,
-  identity: ReturnType<typeof buildRowIdentity>,
-  pkColumns: ColumnSchema[],
-): boolean {
-  if (!identity) return true;
-  const key = rowIdentityKey(identity);
-  return [...ts.pendingChanges.entries()].some(([pendingKey, change]) => {
-    if (pendingKey === ownKey) return false;
-    const currentIdentity = effectivePendingIdentity(change, pkColumns);
-    return currentIdentity ? rowIdentityKey(currentIdentity) === key : true;
-  });
-}
-
-function findPendingForRow(
-  ts: TableState,
-  rowIndex: number,
-  row: Record<string, unknown>,
-  pkColumns: ColumnSchema[],
-): { key: string; change: PendingRowChange } | null {
-  const identity = buildRowIdentity(row, pkColumns);
-  if (!identity) return null;
-  if (!rowIdentityIsUnique(ts, rowIndex, identity, pkColumns)) return null;
-
-  // The anchor is only a UI transport for the original identity. It never
-  // searches by the row's current PK values and never points at another key.
-  const anchoredKey = ts.rowIdentityAnchors.get(rowIndex);
-  const anchored = anchoredKey ? ts.pendingChanges.get(anchoredKey) : undefined;
-  if (anchored) return { key: anchoredKey!, change: anchored };
-
-  const directKey = rowIdentityKey(identity);
-  const direct = ts.pendingChanges.get(directKey);
-  if (direct) return { key: directKey, change: direct };
-  return null;
-}
-
-function rebuildEditBuffer(ts: TableState): Map<string, CellEdit> {
-  const next = new Map<string, CellEdit>();
-  const pkColumns = ts.columns.filter((column) => column.isPrimaryKey);
-  if (pkColumns.length === 0) return next;
-
-  ts.rows.forEach((row, rowIndex) => {
-    const match = findPendingForRow(ts, rowIndex, row, pkColumns);
-    if (!match || match.change.deleteMarked) return;
-    for (const column of match.change.changedColumns) {
-      next.set(editKey(rowIndex, column), {
-        rowIndex,
-        columnName: column,
-        originalValue: match.change.originalValues[column],
-        newValue: match.change.currentValues[column],
-        pkSnapshot: { ...match.change.rowIdentity },
-      });
-    }
-  });
-  return next;
-}
-
-function overlayPendingRows(
-  ts: TableState,
-  rows: Record<string, unknown>[],
-): Record<string, unknown>[] {
-  const pkColumns = ts.columns.filter((column) => column.isPrimaryKey);
-  if (pkColumns.length === 0 || ts.pendingChanges.size === 0) return rows;
-  return rows.map((row, rowIndex) => {
-    // Never use a page-local row number while applying a fetch result. A
-    // stable identity match is required so a page switch cannot overlay a
-    // pending value onto an unrelated row.
-    const match = findPendingForRow(ts, rowIndex, row, pkColumns);
-    return match ? { ...row, ...match.change.currentValues } : row;
-  });
-}
-
-function pendingChangesSignature(pendingChanges: Map<string, PendingRowChange>): string {
-  return JSON.stringify(
-    Array.from(pendingChanges.entries())
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, change]) => [key, clonePendingRowChange(change)]),
-  );
-}
-
-function pendingChangesForWire(pendingChanges: Map<string, PendingRowChange>): PendingRowChange[] {
-  return Array.from(pendingChanges.values()).map((change) => {
-    const { rowIndex: _rowIndex, ...wireChange } = clonePendingRowChange(change);
-    return wireChange;
-  });
 }
 
 function reloadActive(get: () => TableDataStore): void {

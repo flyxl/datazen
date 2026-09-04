@@ -46,7 +46,9 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
 
   connect: async (config) => {
     const connectionId = config.id;
-    console.log('[connect] starting', connectionId, config.name);
+    if (import.meta.env.DEV) {
+      console.log('[connect] starting', connectionId, config.name);
+    }
 
     set((s) => ({
       connections: {
@@ -65,10 +67,14 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
 
     try {
       const dbSessionId = await connectionCommands.connect(connectionId);
-      console.log('[connect] pool created', dbSessionId);
+      if (import.meta.env.DEV) {
+        console.log('[connect] pool created', dbSessionId);
+      }
 
       const serverInfo = await connectionCommands.testConnection(config);
-      console.log('[connect] server info', serverInfo);
+      if (import.meta.env.DEV) {
+        console.log('[connect] server info', serverInfo);
+      }
 
       // Capability discovery must not turn a successful database connection
       // into a failed connection. Older/headless backends may not return the
@@ -95,7 +101,9 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
           },
         },
       }));
-      console.log('[connect] success', dbSessionId);
+      if (import.meta.env.DEV) {
+        console.log('[connect] success', dbSessionId);
+      }
       void emitCrossWindow('datazen:connection-ready', { connectionId, dbSessionId });
     } catch (e) {
       const msg = extractError(e);
@@ -208,7 +216,9 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
   disconnect: async (connectionId) => {
     const entry = get().connections[connectionId];
     const dbSessionId = entry?.dbSessionId;
-    console.log('[disconnect]', connectionId, dbSessionId);
+    if (import.meta.env.DEV) {
+      console.log('[disconnect]', connectionId, dbSessionId);
+    }
 
     if (!dbSessionId) {
       set((s) => {
@@ -220,7 +230,9 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
 
     try {
       await connectionCommands.disconnect(dbSessionId);
-      console.log('[disconnect] success');
+      if (import.meta.env.DEV) {
+        console.log('[disconnect] success');
+      }
       await emitCrossWindow('datazen:disconnect-requested', { dbSessionId });
     } catch (e) {
       console.error('[disconnect] failed', extractError(e));

@@ -9,7 +9,6 @@ import { Dialog } from '../../components/ui/Dialog';
 import { CopyableError } from '../../components/ui/CopyableError';
 import { aiCommands } from '../../commands/ai';
 import {
-  DEFAULT_SYNC_OPTIONS,
   syncCommands,
   type DataSyncRowChange,
   type SyncOptions,
@@ -32,7 +31,6 @@ import {
 import { useSyncPairingState } from '../../lib/syncPairing';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { ConnectionConfig } from '../../types';
-import type { SyncState } from './utils';
 import { pickDefaultSchema, uniqueSchemasFromTables } from './utils';
 import { CompareSummary } from './CompareSummary';
 import { DiffDetail } from './DiffDetail';
@@ -52,16 +50,10 @@ import {
   tableHasRowDiffs,
   tableKey,
   tablesForCompare,
-  type DataSyncTableResult,
-  type TableDiffFilter,
 } from './mappingView';
 import { buildCompareReportText } from './compareReport';
 
-type WizardStep = 'endpoints' | 'setup' | 'objects' | 'compare' | 'preview' | 'result';
-
-const STEPS: WizardStep[] = ['endpoints', 'setup', 'objects', 'compare', 'preview', 'result'];
-
-const NARROW_STEPS: WizardStep[] = ['endpoints', 'setup', 'result'];
+import { useDataSyncWizardState, WIZARD_STEPS, NARROW_WIZARD_STEPS } from './useDataSyncWizardState';
 
 export function DataSyncWindow() {
   const localesReady = useLocaleDomains(['sync']);
@@ -84,15 +76,27 @@ export function DataSyncWindow() {
   const [targetSchemas, setTargetSchemas] = useState<string[]>([]);
   const [sourceSchema, setSourceSchema] = useState('');
   const [targetSchema, setTargetSchema] = useState('');
-  const [syncOptions, setSyncOptions] = useState<SyncOptions>(DEFAULT_SYNC_OPTIONS);
-  const [mappingResults, setMappingResults] = useState<DataSyncTableResult[]>([]);
-  const [disabledTables, setDisabledTables] = useState<Set<string>>(new Set());
-  const [step, setStep] = useState<WizardStep>('endpoints');
-  const [inspectionComplete, setInspectionComplete] = useState(false);
-  const [syncState, setSyncState] = useState<SyncState>('idle');
-  const [selectedTableKey, setSelectedTableKey] = useState<string | null>(null);
-  const [tableFilter, setTableFilter] = useState<TableDiffFilter>('all');
-  const [tableSearch, setTableSearch] = useState('');
+  const {
+    syncOptions,
+    setSyncOptions,
+    mappingResults,
+    setMappingResults,
+    disabledTables,
+    setDisabledTables,
+    step,
+    setStep,
+    inspectionComplete,
+    setInspectionComplete,
+    syncState,
+    setSyncState,
+    selectedTableKey,
+    setSelectedTableKey,
+    tableFilter,
+    setTableFilter,
+    tableSearch,
+    setTableSearch,
+    resetCompareState,
+  } = useDataSyncWizardState();
   const [errorMsg, setErrorMsg] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
@@ -221,15 +225,6 @@ export function DataSyncWindow() {
       return { source: null, target: null };
     }
   }, [sourceSession, targetSession, sourceId, targetId, sourceDatabase, targetDatabase, t]);
-
-  const resetCompareState = useCallback(() => {
-    setMappingResults([]);
-    setDisabledTables(new Set());
-    setInspectionComplete(false);
-    setSelectedTableKey(null);
-    setSyncState('idle');
-    setStep('endpoints');
-  }, []);
 
   useEffect(() => {
     if (!sourceId) {
@@ -887,7 +882,7 @@ export function DataSyncWindow() {
   const compared = syncState === 'compared' || syncState === 'executing' || syncState === 'done';
   const busy = syncState === 'inspecting' || syncState === 'comparing' || syncState === 'executing';
   const compareDisabled = Boolean(sourceSessionError || targetSessionError);
-  const stepIndex = STEPS.indexOf(step);
+  const stepIndex = WIZARD_STEPS.indexOf(step);
   const canNext = useMemo(() => {
     switch (step) {
       case 'endpoints':
@@ -923,7 +918,7 @@ export function DataSyncWindow() {
   ]);
 
   const goNext = useCallback(async () => {
-    const next = STEPS[stepIndex + 1];
+    const next = WIZARD_STEPS[stepIndex + 1];
     if (!next) return;
 
     if (step === 'setup' && next === 'objects') {
@@ -943,7 +938,7 @@ export function DataSyncWindow() {
 
   const goBack = useCallback(() => {
     if (busy) return;
-    const previous = STEPS[stepIndex - 1];
+    const previous = WIZARD_STEPS[stepIndex - 1];
     if (previous) setStep(previous);
   }, [busy, stepIndex]);
   const compareStats = useMemo(() => summarizeCompare(mappingResults), [mappingResults]);
@@ -1019,7 +1014,7 @@ export function DataSyncWindow() {
 
       <div className="border-b border-edge px-6 py-3">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-1">
-          {STEPS.map((s, i) => (
+          {WIZARD_STEPS.map((s, i) => (
             <div key={s} className="flex items-center gap-1">
               {i > 0 && <ChevronRight className="h-3 w-3 shrink-0 text-fg-muted" aria-hidden />}
               <span
@@ -1056,7 +1051,7 @@ export function DataSyncWindow() {
         <div
           className={cn(
             'mx-auto flex min-h-0 w-full flex-1 flex-col px-6 py-6',
-            NARROW_STEPS.includes(step) ? 'max-w-2xl' : 'max-w-6xl',
+            NARROW_WIZARD_STEPS.includes(step) ? 'max-w-2xl' : 'max-w-6xl',
           )}
         >
           {step === 'endpoints' && (
