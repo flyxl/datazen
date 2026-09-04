@@ -12,7 +12,7 @@ sync category/family 下沉 driver-api trait。见计划 §2。Wave 2：等 Wave
 ## 状态
 
 - Phase: READY_FOR_TEST
-- 编码 commit: 0beeae257
+- 编码 commit: d0e9f94d7
 - 测试 commit: —
 - 合并 commit: —
 
