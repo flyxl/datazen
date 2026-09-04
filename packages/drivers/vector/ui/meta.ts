@@ -15,6 +15,7 @@ export const vectorMeta = {
     supportsBackup: false,
     supportsTables: true,
     isKeyValue: false,
+    popularityOrder: 21,
     supportsSQL: true,
     category: 'sql',
     connectionView: 'sql',

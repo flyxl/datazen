@@ -24,7 +24,7 @@ import { useConnectionStore } from '../../stores/connectionStore';
 import { connectionCommands } from '../../commands/connection';
 import { backupCommands } from '../../commands/backup';
 import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
-import { getDbLabel } from '../../lib/databaseTypes';
+import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
 import { openConnectionShareDialog } from '../../lib/connectionShare';
 import { openNewConnectionDialog, PENDING_CONNECTION_KEY } from '../../lib/windowManager';
 import { hideNativeContextMenu } from '../../lib/nativeContextMenu';
@@ -544,7 +544,7 @@ export function ConnectionPage() {
       const panels = usePanelStore.getState().panels;
       const existing = panels.find(
         (p) =>
-          p.type === 'redis-db' &&
+          DB_REGISTRY[p.databaseType]?.isKeyValue === true &&
           p.connectionId === connectionId &&
           (p as RedisDbPanel).dbName === dbName,
       );

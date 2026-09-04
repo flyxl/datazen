@@ -15,6 +15,7 @@ export const hbaseMeta = {
     supportsBackup: false,
     supportsTables: true,
     isKeyValue: false,
+    popularityOrder: 19,
     supportsSQL: true,
     category: 'sql',
     connectionView: 'sql',

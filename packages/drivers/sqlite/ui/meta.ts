@@ -15,6 +15,7 @@ export const sqliteMeta = {
   supportsBackup: true,
   supportsTables: true,
   isKeyValue: false,
+  popularityOrder: 3,
   supportsSQL: true,
   category: 'sql',
   connectionView: 'sql',

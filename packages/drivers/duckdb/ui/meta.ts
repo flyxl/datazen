@@ -15,6 +15,7 @@ export const duckdbMeta = {
   supportsBackup: true,
   supportsTables: true,
   isKeyValue: false,
+  popularityOrder: 12,
   supportsSQL: true,
   category: 'sql',
   connectionView: 'sql',

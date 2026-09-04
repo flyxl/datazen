@@ -15,6 +15,7 @@ export const victoriametricsMeta = {
     supportsBackup: false,
     supportsTables: true,
     isKeyValue: false,
+    popularityOrder: 18,
     supportsSQL: true,
     category: 'sql',
     connectionView: 'sql',

@@ -116,6 +116,7 @@ vi.mock('../../../lib/databaseTypes', () => ({
       readOnly: true,
       supportsErDiagram: false,
       connectionView: 'keyvalue',
+      isKeyValue: true,
     },
   },
   escapeIdent: (name: string) => `"${name}"`,

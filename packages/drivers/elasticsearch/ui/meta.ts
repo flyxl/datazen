@@ -15,6 +15,7 @@ export const elasticsearchMeta = {
     supportsBackup: false,
     supportsTables: true,
     isKeyValue: false,
+    popularityOrder: 11,
     supportsSQL: true,
     category: 'sql',
     connectionView: 'sql',

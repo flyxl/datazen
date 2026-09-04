@@ -15,6 +15,7 @@ export const rqliteMeta = {
   supportsBackup: true,
   supportsTables: true,
   isKeyValue: false,
+  popularityOrder: 16,
   supportsSQL: true,
   category: 'sql',
   connectionView: 'sql',

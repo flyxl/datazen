@@ -120,6 +120,8 @@ export function getPanelIcon(panel: Panel): ReactNode {
         fallback: Braces,
       });
     }
+    // 'redis-db' kept as panel type discriminant for TypeScript union narrowing.
+    // Conditional behaviour is driven by DB_REGISTRY[dbType]?.isKeyValue.
     case 'redis-db':
       return createElement(ThemedIcon, {
         id: 'schema.redisDatabase',
@@ -154,6 +156,7 @@ export function getPanelShortLabel(panel: Panel, t?: (key: TranslationKey) => st
       return tr('common.processList', 'Process List');
     case 'db-object':
       return (panel as DatabaseObjectPanel).objectName;
+    // 'redis-db' kept for union narrowing; DB_REGISTRY.isKeyValue governs branching elsewhere.
     case 'redis-db':
       return (panel as RedisDbPanel).dbName;
     default:
@@ -172,6 +175,7 @@ export function resolvePanelTabDatabase(
       return (panel as ViewPanel).database ?? sessionDatabase ?? null;
     case 'create-table':
       return (panel as CreateTablePanel).database ?? sessionDatabase ?? null;
+    // 'redis-db' kept for union narrowing; DB_REGISTRY.isKeyValue governs branching elsewhere.
     case 'redis-db':
       return (panel as RedisDbPanel).dbName;
     default:
