@@ -39,6 +39,11 @@ pub(crate) fn build_mysql_options(
     };
     opts = opts.ssl_mode(mysql_ssl);
 
+    // Always speak utf8mb4 (`SET NAMES utf8mb4` on connect). Without this the
+    // server may transcode client UTF-8 through a latin1 connection charset,
+    // double-encoding CJK text into mojibake on write (and mis-decoding reads).
+    opts = opts.charset("utf8mb4");
+
     Ok(opts)
 }
 

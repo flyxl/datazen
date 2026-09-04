@@ -63,9 +63,15 @@ export interface ContentViewProps {
   >;
   nodeContextMenuRef?: MutableRefObject<((payload: NodeContextMenuPayload) => void) | undefined>;
   actionsRef?: MutableRefObject<ConnectionViewActions | undefined>;
+  onSelectConnection?: (connectionId: string) => void;
 }
 
-export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: ContentViewProps) {
+export function ContentView({
+  selectTableRef,
+  nodeContextMenuRef,
+  actionsRef,
+  onSelectConnection,
+}: ContentViewProps) {
   const { t } = useI18n();
   const [confirmAction, confirmActionDialog] = useConfirmDialog();
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
@@ -722,6 +728,8 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
               onOpenErDiagram={() => handlers.handleOpenErDiagram()}
               onOpenObjects={handlers.handleOpenObjects}
               onOpenPanel={setActivePanel}
+              onSelectConnection={onSelectConnection}
+              onOpenQueryHistory={handlers.handleOpenQueryHistory}
             />
           ) : (
             <PanelContentRenderer
