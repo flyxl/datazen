@@ -15,7 +15,7 @@ P2/P3 跟进项合集。见计划 §2。Wave 2：等 Wave 1 合并后启动。
 - 代理: coder-rem-followups
 - Worktree: .worktrees/datazen-rem-followups
 - 分支: feature/rem-followups
-- 编码 commit: （见本次提交）
+- 编码 commit: 95b5faf6e
 - 测试 commit: —
 - 合并 commit: —
 
