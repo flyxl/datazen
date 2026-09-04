@@ -2388,6 +2388,14 @@ mod tests {
     use datazen_driver_api::DatabaseDriver;
 
     #[test]
+    fn test_tester_ddl_atomicity_is_transactional() {
+        assert_eq!(
+            PostgresDriver::new().ddl_atomicity(),
+            DdlAtomicity::Transactional
+        );
+    }
+
+    #[test]
     fn fetch_tables_sql_uses_pg_catalog_system_schema_filters() {
         const SQL: &str = r#"
             FROM pg_catalog.pg_class c

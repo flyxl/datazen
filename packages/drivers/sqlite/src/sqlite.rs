@@ -713,6 +713,15 @@ fn apply_sqlite_select_limit(stmt: &str, limit: Option<u32>) -> (String, Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use datazen_driver_api::DatabaseDriver;
+
+    #[test]
+    fn test_tester_ddl_atomicity_is_transactional() {
+        assert_eq!(
+            SqliteDriver::new().ddl_atomicity(),
+            DdlAtomicity::Transactional
+        );
+    }
 
     #[test]
     fn apply_sqlite_select_limit_none_does_not_rewrite() {

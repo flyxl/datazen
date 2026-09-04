@@ -2342,6 +2342,14 @@ mod tests {
     use datazen_driver_api::DatabaseDriver;
 
     #[test]
+    fn test_tester_ddl_atomicity_is_auto_commit() {
+        assert_eq!(
+            MysqlDriver::new(false).ddl_atomicity(),
+            DdlAtomicity::AutoCommitPerStatement
+        );
+    }
+
+    #[test]
     fn quote_identifier_escapes_backticks() {
         assert_eq!(MysqlDriver::quote_identifier("foo"), "`foo`");
         assert_eq!(MysqlDriver::quote_identifier("foo`bar"), "`foo``bar`");

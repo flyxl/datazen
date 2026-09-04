@@ -81,3 +81,59 @@ impl Drop for TransactionScope<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+
+    fn mock_handle() -> ConnectionHandle {
+        ConnectionHandle {
+            id: "conn-1".into(),
+            pool_id: "pool-1".into(),
+        }
+    }
+
+    fn mock_driver(atomicity: DdlAtomicity) -> std::sync::Arc<MockDriver> {
+        MockDriver::new(
+            "postgres",
+            MockDriverOptions {
+                ddl_atomicity: Some(atomicity),
+                ..Default::default()
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn test_tester_transactional_scope_begins_and_commits() {
+        let driver = mock_driver(DdlAtomicity::Transactional);
+        let handle = mock_handle();
+
+        let scope = TransactionScope::begin(driver.as_ref(), &handle).await.unwrap();
+        assert_eq!(scope.atomicity(), DdlAtomicity::Transactional);
+        assert!(scope.is_transactional());
+        scope.commit().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_tester_auto_commit_scope_skips_begin() {
+        let driver = mock_driver(DdlAtomicity::AutoCommitPerStatement);
+        let handle = mock_handle();
+
+        let scope = TransactionScope::begin(driver.as_ref(), &handle).await.unwrap();
+        assert_eq!(scope.atomicity(), DdlAtomicity::AutoCommitPerStatement);
+        assert!(!scope.is_transactional());
+        scope.commit().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_tester_unknown_atomicity_skips_begin() {
+        let driver = mock_driver(DdlAtomicity::Unknown);
+        let handle = mock_handle();
+
+        let scope = TransactionScope::begin(driver.as_ref(), &handle).await.unwrap();
+        assert_eq!(scope.atomicity(), DdlAtomicity::Unknown);
+        assert!(!scope.is_transactional());
+        scope.rollback().await.unwrap();
+    }
+}

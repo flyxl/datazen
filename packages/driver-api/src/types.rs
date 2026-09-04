@@ -795,4 +795,25 @@ mod tests {
         assert!(err.to_string().contains("Not supported"));
         assert!(err.to_string().contains("create_database"));
     }
+
+    #[test]
+    fn test_tester_ddl_atomicity_serde_roundtrip() {
+        for value in [
+            DdlAtomicity::Transactional,
+            DdlAtomicity::AutoCommitPerStatement,
+            DdlAtomicity::Unknown,
+        ] {
+            let json = serde_json::to_string(&value).unwrap();
+            let decoded: DdlAtomicity = serde_json::from_str(&json).unwrap();
+            assert_eq!(decoded, value);
+        }
+        assert_eq!(
+            serde_json::to_string(&DdlAtomicity::Transactional).unwrap(),
+            "\"transactional\""
+        );
+        assert_eq!(
+            serde_json::to_string(&DdlAtomicity::AutoCommitPerStatement).unwrap(),
+            "\"autoCommitPerStatement\""
+        );
+    }
 }

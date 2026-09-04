@@ -16,7 +16,7 @@ use datazen_driver_api::{
     execute_command_definition, execute_schema_object_command, execute_standard_sql_command,
     is_schema_object_command, query_command_definition, query_stream_command_definition,
     schema_catalog_command_definitions, schema_object_command_definitions,
-    try_execute_schema_catalog_command, CommandResult, DriverCommandDefinition,
+    try_execute_schema_catalog_command, CommandResult, DdlAtomicity, DriverCommandDefinition,
 };
 
 #[derive(Clone)]
@@ -44,6 +44,8 @@ pub struct MockDriverOptions {
     /// F7: when true, `qualify_sql_target` rewrites SQL by appending a
     /// marker comment recording the requested target (capability simulation).
     pub rewrite_sql_target: bool,
+    /// When set, overrides the default [`DdlAtomicity::Unknown`] for transaction-scope tests.
+    pub ddl_atomicity: Option<DdlAtomicity>,
 }
 
 impl Default for MockDriverOptions {
@@ -70,6 +72,7 @@ impl Default for MockDriverOptions {
             cancel_error: None,
             execute_rows_affected: 0,
             rewrite_sql_target: false,
+            ddl_atomicity: None,
         }
     }
 }
@@ -197,6 +200,12 @@ impl DatabaseDriver for MockDriver {
 
     fn driver_category(&self) -> DriverCategory {
         self.opts.category.clone()
+    }
+
+    fn ddl_atomicity(&self) -> DdlAtomicity {
+        self.opts
+            .ddl_atomicity
+            .unwrap_or(DdlAtomicity::Unknown)
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
