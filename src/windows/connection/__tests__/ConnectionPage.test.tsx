@@ -178,7 +178,18 @@ vi.mock('../ContentView', () => ({
 }));
 
 vi.mock('../../../components/TitleBar', () => ({
-  TitleBar: ({ title }: { title: string }) => <div data-testid="title-bar">{title}</div>,
+  TitleBar: ({
+    title,
+    leftContent,
+  }: {
+    title: string;
+    leftContent?: React.ReactNode;
+  }) => (
+    <div data-testid="title-bar">
+      {leftContent}
+      {title}
+    </div>
+  ),
 }));
 
 vi.mock('../../../components/MenuBar', () => ({
@@ -232,14 +243,9 @@ vi.mock('../../workflow/WorkflowPage', () => ({
   ),
 }));
 
-vi.mock('../../settings/SettingsPage', () => ({
-  SettingsPage: ({ initialSection, onBack }: { initialSection?: string; onBack: () => void }) => (
-    <div data-testid="settings-page">
-      settings-page section={initialSection ?? 'general'}
-      <button type="button" data-testid="settings-back" onClick={onBack}>
-        back
-      </button>
-    </div>
+vi.mock('../../settings/SettingsContent', () => ({
+  SettingsContent: ({ initialSection }: { initialSection?: string }) => (
+    <div data-testid="settings-content-mock">section={initialSection ?? 'general'}</div>
   ),
 }));
 
@@ -452,8 +458,21 @@ describe('ConnectionPage', () => {
     menuOpenSettingsHandler.current?.({ section: 'ai' });
 
     await waitFor(() => expect(screen.getByTestId('settings-page')).toBeInTheDocument());
-    expect(screen.getByTestId('settings-page')).toHaveTextContent('section=ai');
+    expect(screen.getByTestId('settings-content-mock')).toHaveTextContent('section=ai');
+    expect(screen.getByTestId('menu-bar')).toBeInTheDocument();
     expect(screen.queryByTestId('navigator-tree')).not.toBeInTheDocument();
+  });
+
+  it('[tester] settings view keeps TitleBar with settings title and back control', async () => {
+    render(<ConnectionPage />);
+
+    fireEvent.click(screen.getByTestId('workspace-nav-settings'));
+    await waitFor(() => expect(screen.getByTestId('settings-page')).toBeInTheDocument());
+
+    const titleBar = screen.getByTestId('title-bar');
+    expect(titleBar).toHaveTextContent('win.settings');
+    expect(screen.getByTestId('menu-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('settings-back')).toBeInTheDocument();
   });
 
   it('TC-window: SettingsPage back returns to workspace and restores mode', async () => {
@@ -476,6 +495,7 @@ describe('ConnectionPage', () => {
 
     fireEvent.click(screen.getByTestId('workspace-nav-settings'));
     await waitFor(() => expect(screen.getByTestId('settings-page')).toBeInTheDocument());
+    expect(screen.getByTestId('menu-bar')).toBeInTheDocument();
     expect(screen.queryByTestId('navigator-tree')).not.toBeInTheDocument();
     expect(screen.queryByTestId('workspace-nav-connections')).not.toBeInTheDocument();
   });
