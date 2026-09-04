@@ -18,27 +18,34 @@ import { useI18n } from '../../hooks/useI18n';
 import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useAiStore } from '../../stores/aiStore';
-import { useSchemaStore } from '../../stores/schemaStore';
-import { useTableDataStore } from '../../stores/tableDataStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { connectionCommands } from '../../commands/connection';
 import { backupCommands } from '../../commands/backup';
 import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
 import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
 import { openConnectionShareDialog } from '../../lib/connectionShare';
-import { openNewConnectionDialog, PENDING_CONNECTION_KEY } from '../../lib/windowManager';
+import { openNewConnectionDialog } from '../../lib/windowManager';
 import { hideNativeContextMenu } from '../../lib/nativeContextMenu';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { usePanelStore, nextPanelId, type RedisDbPanel } from '../../stores/panelStore';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import type { ConnectionViewActions } from '../../lib/connectionViews/types';
 import {
+  makeTabFromPayload,
+  removeConnectionFromStores,
+  syncStoresActiveConnection,
+  type ConnectionTab,
+  type MainView,
+  type WorkspaceMode,
+} from './connectionPageUtils';
+import { useConnectionTabs } from './useConnectionTabs';
+import { PENDING_CONNECTION_KEY } from '../../lib/windowManager';
+import {
   ConnectionNavigatorTree,
   type ConnectionNavigatorTreeHandle,
 } from './ConnectionNavigatorTree';
 import { ContentView } from './ContentView';
 import type { UiIconId } from '../../lib/iconIds';
-import type { DatabaseType } from '../../types';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { DashboardPanel } from '../dashboard/DashboardPanel';
 import { WorkflowPage } from '../workflow/WorkflowPage';
@@ -80,63 +87,6 @@ function WorkspaceModeButton({
   );
 }
 
-type WorkspaceMode = 'connections' | 'workflow' | 'dashboard' | 'workspace' | 'plugins';
-type MainView = 'workspace' | 'settings';
-
-// ── Connection Tab ────────────────────────────────────────────────
-
-interface ConnectionTab {
-  /** Persistent connection id (saved connection this tab was opened from). */
-  connectionId: string;
-  /** Live database session id ('' while connecting). */
-  dbSessionId: string;
-  connectionName: string;
-  databaseType: DatabaseType;
-  initialDatabase?: string;
-  status: 'connecting' | 'connected' | 'error';
-  error?: string;
-}
-
-function makeTabFromPayload(data: Record<string, string>): ConnectionTab | null {
-  const connectionId = data.connectionId ?? '';
-  if (!connectionId) return null;
-  const dbSessionId = data.dbSessionId ?? '';
-  return {
-    connectionId,
-    dbSessionId,
-    connectionName: data.connectionName ?? '',
-    databaseType: (data.databaseType ?? 'postgresql') as DatabaseType,
-    initialDatabase: data.database,
-    status: dbSessionId ? 'connected' : 'connecting',
-  };
-}
-
-function consumePendingConnection(): { tab: ConnectionTab; action?: string } | null {
-  try {
-    const raw = localStorage.getItem(PENDING_CONNECTION_KEY);
-    localStorage.removeItem(PENDING_CONNECTION_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw) as Record<string, string>;
-    const tab = makeTabFromPayload(data);
-    if (!tab) return null;
-    return { tab, action: data.action };
-  } catch {
-    return null;
-  }
-}
-
-// ── Sync all keyed stores to a specific connection ────────────────
-
-function syncStoresActiveConnection(dbSessionId: string | null) {
-  useSchemaStore.getState().setActiveConnection(dbSessionId);
-  useTableDataStore.getState().setActiveConnection(dbSessionId);
-}
-
-function removeConnectionFromStores(dbSessionId: string) {
-  useSchemaStore.getState().removeConnection(dbSessionId);
-  useTableDataStore.getState().removeConnection(dbSessionId);
-}
-
 // ── Component ─────────────────────────────────────────────────────
 
 export function ConnectionPage() {
@@ -165,14 +115,10 @@ export function ConnectionPage() {
   const [embeddedDashboardId, setEmbeddedDashboardId] = useState<string | undefined>(undefined);
   const [dashboardTitle, setDashboardTitle] = useState('');
 
-  const initialPendingRef = useRef(consumePendingConnection());
-  const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
-    return initialPendingRef.current ? [initialPendingRef.current.tab] : [];
-  });
-  const [activeIdx, setActiveIdx] = useState(0);
+  const { tabs, setTabs, activeIdx, setActiveIdx, activeTab, pendingActionRef } =
+    useConnectionTabs();
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const pendingActionRef = useRef<string | null>(null);
   const isResizingRef = useRef(false);
   const resizeHandleRef = useRef<HTMLDivElement>(null);
   const selectTableRef = useRef<
@@ -184,8 +130,6 @@ export function ConnectionPage() {
   >();
   const actionsRef = useRef<ConnectionViewActions | undefined>();
   const navigatorRef = useRef<ConnectionNavigatorTreeHandle>(null);
-
-  const activeTab = tabs[activeIdx] ?? null;
 
   const showMessageDialog = useCallback((text: string, kind: 'error' | 'success') => {
     setMessageDialogText(text);
@@ -201,14 +145,7 @@ export function ConnectionPage() {
     if (action === 'openSqlFile') {
       actionsRef.current?.openSqlFile?.();
     }
-  }, []);
-
-  useEffect(() => {
-    if (initialPendingRef.current?.action) {
-      pendingActionRef.current = initialPendingRef.current.action;
-      initialPendingRef.current = null;
-    }
-  }, []);
+  }, [pendingActionRef]);
 
   useEffect(() => {
     if (!activeTab?.dbSessionId || activeTab.status !== 'connected') return;
@@ -283,51 +220,6 @@ export function ConnectionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePanelId]);
 
-  // ── Connect the initial tab (if not already connected) ──
-
-  const connectTab = useCallback(async (tab: ConnectionTab): Promise<string> => {
-    const store = useActiveConnectionStore.getState();
-    const existing = store.connections[tab.connectionId];
-    if (existing?.status === 'connected' && existing.dbSessionId) {
-      return existing.dbSessionId;
-    }
-    store.markConnecting(tab.connectionId, tab.initialDatabase ?? null);
-    return connectionCommands.connect(tab.connectionId);
-  }, []);
-
-  useEffect(() => {
-    if (tabs.length === 0) return;
-    const pending = tabs.filter((t) => t.status === 'connecting' && !t.dbSessionId);
-    for (const tab of pending) {
-      void (async () => {
-        try {
-          const sessionId = await connectTab(tab);
-          useActiveConnectionStore.getState().markConnected(tab.connectionId, sessionId);
-          setTabs((prev) =>
-            prev.map((t) =>
-              t.connectionId === tab.connectionId
-                ? { ...t, dbSessionId: sessionId, status: 'connected', error: undefined }
-                : t,
-            ),
-          );
-          void emitCrossWindow('datazen:connection-ready', {
-            connectionId: tab.connectionId,
-            dbSessionId: sessionId,
-          });
-        } catch (e) {
-          const msg =
-            typeof e === 'string' ? e : e instanceof Error ? e.message : t('backend.unknownError');
-          useActiveConnectionStore.getState().markError(tab.connectionId, msg);
-          setTabs((prev) =>
-            prev.map((tb) =>
-              tb.connectionId === tab.connectionId ? { ...tb, status: 'error', error: msg } : tb,
-            ),
-          );
-        }
-      })();
-    }
-  }, [tabs, connectTab, t]);
-
   // ── Listen for new connection requests from MainPage ──
 
   useEffect(() => {
@@ -369,58 +261,6 @@ export function ConnectionPage() {
     });
     return () => cleanup?.();
   }, []);
-
-  // ── Listen for cross-window connection lifecycle events ──
-
-  useEffect(() => {
-    const cleanups: (() => void)[] = [];
-
-    void listenCrossWindow('datazen:connection-ready', (payload) => {
-      const data = payload as { connectionId?: string; dbSessionId?: string } | undefined;
-      if (!data?.connectionId || !data?.dbSessionId) return;
-      setTabs((prev) =>
-        prev.map((tab) =>
-          tab.connectionId === data.connectionId
-            ? { ...tab, dbSessionId: data.dbSessionId!, status: 'connected', error: undefined }
-            : tab,
-        ),
-      );
-    }).then((fn) => cleanups.push(fn));
-
-    void listenCrossWindow('datazen:connection-failed', (payload) => {
-      const data = payload as { connectionId?: string; error?: string } | undefined;
-      if (!data?.connectionId) return;
-      setTabs((prev) =>
-        prev.map((tab) =>
-          tab.connectionId === data.connectionId
-            ? { ...tab, status: 'error', error: data.error ?? 'Unknown error' }
-            : tab,
-        ),
-      );
-    }).then((fn) => cleanups.push(fn));
-
-    void listenCrossWindow('datazen:disconnect-requested', (payload) => {
-      const data = payload as { dbSessionId?: string } | undefined;
-      if (!data?.dbSessionId) return;
-      setTabs((prev) => prev.filter((t) => t.dbSessionId !== data.dbSessionId));
-    }).then((fn) => cleanups.push(fn));
-
-    return () => cleanups.forEach((fn) => fn());
-  }, []);
-
-  // ── Heartbeat for all connected tabs ──
-
-  useEffect(() => {
-    const HEARTBEAT_MS = 5 * 60 * 1000;
-    const timer = setInterval(() => {
-      for (const tab of tabs) {
-        if (tab.dbSessionId && tab.status === 'connected') {
-          connectionCommands.pingConnection(tab.dbSessionId).catch(() => {});
-        }
-      }
-    }, HEARTBEAT_MS);
-    return () => clearInterval(timer);
-  }, [tabs]);
 
   // ── Window close → release all connections (minimize when sub-windows stay open) ──
 

@@ -11,20 +11,31 @@
 
 ## 状态
 
-- Phase: NOT_STARTED
-- 编码 commit: —
+- Phase: READY_FOR_TEST
+- 编码 commit: 563ec92e8
 - 测试 commit: —
 - 合并 commit: —
 
-> 未启动：子代理派发机制自 Wave 1 中段起持续不可用（近 12 次派发全部失败，连最小任务都无法执行，无 closing message），playbook 的"编码→独立 Tester→修复循环"流程无法执行；协调者按用户指示停止推进 Wave 2。待派发机制恢复后启动。Wave 1 全部 8 轨已于 2026-09-08 合入集成分支（`0d9ca4d95`，后端全库 1319✓、tsc✓）。
-
 ## 心跳
 
-- —
+- 2026-09-04T21:29+08:00 Coder 完成 F1–F8 实现与自验
 
 ## 自验结果
 
-- —
+- `npx tsc --noEmit`: 0 errors
+- `npx vitest run`: 2423 passed / 2423 (296 files)
+- 对外 store selector / re-export API 保持兼容
+
+## 改动摘要
+
+- **F1** `tableDataStore` → `src/stores/tableData/{types,filterUtils,connectionState,pendingChanges}.ts`，主文件 re-export
+- **F2** `schemaStore` → `schemaStoreHelpers.ts` + `schemaStoreState.ts`；`setState` dead branch 合并
+- **F3** `panelStore` → `panelTypes.ts` + `panelQueryContext.ts`
+- **F4** `ConnectionPage` → `connectionPageUtils.ts` + `useConnectionTabs.ts`
+- **F5** `DataSyncWindow` → `useDataSyncWizardState.ts`
+- **F6** `VirtualBody` memo + `VirtualRow` + `DataTable` useCallback 行 handler
+- **F7** `WorkflowPage` type guards（`workflowPanelGuards.ts`）；`WorkflowChatPanel` `parseValidatedWorkflowDefinition`
+- **F8** `extensionBridge` targetOrigin 注释；生产 `console.log` DEV guard
 
 ## E2E 登记
 

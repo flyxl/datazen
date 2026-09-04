@@ -519,6 +519,9 @@ export function attachBridge(
             tokens: snapshot.tokens,
           },
         },
+        // targetOrigin '*' is intentional: plugin iframe src is a datazen:// URL whose
+        // origin string varies by platform; the bridge validates event.source and
+        // dispatches only declared manifest permissions before handling RPC.
         '*',
       );
       return;
@@ -542,6 +545,8 @@ export function attachBridge(
       const snapshot = buildThemeSnapshot();
       contentWindow.postMessage(
         { ch: BRIDGE_CHANNEL, type: 'theme.apply', target: 'host', payload: snapshot },
+        // Same-origin policy as host.ready: outbound theme pushes are scoped to the
+        // iframe contentWindow validated at attach time; permission checks gate RPC.
         '*',
       );
     },

@@ -42,7 +42,9 @@ export function StructureView({ dbSessionId, tableName, onEditStructure }: Struc
     let cancelled = false;
     setLoading(true);
     setError(null);
-    console.log('[StructureView] loading schema', dbSessionId, tableName);
+    if (import.meta.env.DEV) {
+      console.log('[StructureView] loading schema', dbSessionId, tableName);
+    }
 
     getCachedTableSchema(dbSessionId, tableName)
       .then((result) => {

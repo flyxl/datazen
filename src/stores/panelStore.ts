@@ -1,21 +1,10 @@
 import { create } from 'zustand';
 import { queryCommands } from '../commands/query';
 import { t } from '../locales/t';
-import { DB_REGISTRY } from '../lib/databaseTypes';
-import {
-  buildPathHierarchyDatabasePin,
-  inferSqlRelationPath,
-  namespaceRootsFrom,
-  pathHierarchyConnectionRoot,
-  pathHierarchyRelativeNamespacePath,
-  resolveQueryContextPath,
-} from '../lib/queryContextPath';
-import type { DatabaseType, FavoriteQuery, QueryHistoryEntry, Value } from '../types';
+import type { FavoriteQuery, QueryHistoryEntry, Value } from '../types';
 import type { ChartConfig } from '../types/chart';
-import type { TrendSeries } from '../lib/serverStatusTrends';
 import { getCancelCapability } from '../lib/queryExecutionViewModel';
 import { reduceQueryExecutionState } from '../lib/queryExecutionViewModel';
-import { useSchemaStore } from './schemaStore';
 import { useActiveConnectionStore } from './activeConnectionStore';
 import {
   type BindParams,
@@ -25,144 +14,34 @@ import {
   runStreamingQuery,
   runBoundQuery,
 } from './queryExecActions';
+import { panelTargetDatabase, panelTargetSchema } from './panelQueryContext';
+import {
+  resolveNextActive,
+  resetPanelIdCounter,
+  type Panel,
+} from './panelTypes';
 
 export type { QueryExecState, BindParams };
 export { EMPTY_QUERY_EXEC, emptyQueryExecState } from './queryExecActions';
-
-// ── Sub-tab types ────────────────────────────────────────────────
-
-export type SubTabId = 'data' | 'structure' | 'indexes' | 'foreignKeys' | 'ddl';
-
-// ── Panel types ──────────────────────────────────────────────────
-
-interface PanelBase {
-  id: string;
-  /** Persistent connection id (saved connection this panel belongs to). */
-  connectionId: string;
-  /** Live database session id (from activeConnectionStore). */
-  dbSessionId: string;
-  connectionName: string;
-  databaseType: DatabaseType;
-}
-
-export interface TablePanel extends PanelBase {
-  type: 'table';
-  tableName: string;
-  /** Database the table was opened from (multi-db drivers). */
-  database?: string;
-  tableSchema?: string;
-  subTab: SubTabId;
-  structureEditing?: boolean;
-}
-
-export interface ViewPanel extends PanelBase {
-  type: 'view';
-  viewName: string;
-  /** Database the view was opened from (multi-db drivers). */
-  database?: string;
-  viewSchema?: string;
-  subTab: SubTabId;
-}
-
-export interface QueryPanel extends PanelBase {
-  type: 'query';
-  title: string;
-  /** Superset / path-hierarchy connection database (not catalog name). */
-  database?: string;
-  schema?: string;
-  /** Catalog/schema segments for path-hierarchy query context selectors. */
-  namespacePath?: string[];
-}
-
-export interface CreateTablePanel extends PanelBase {
-  type: 'create-table';
-  /** Database the create-table panel was opened from (multi-db drivers). */
-  database?: string;
-  /** PG schema namespace when known from sidebar selection. */
-  tableSchema?: string;
-}
-
-export interface ErDiagramPanel extends PanelBase {
-  type: 'er-diagram';
-  focusTable?: string;
-}
-
-export interface ObjectsPanel extends PanelBase {
-  type: 'objects';
-}
-
-export interface PrivilegesPanel extends PanelBase {
-  type: 'privileges';
-}
-
-/** 服务器仪表盘面板（含 仪表盘 / 状态变量 / 服务器详情 三个内部子标签）。 */
-export interface ServerStatusPanel extends PanelBase {
-  type: 'server-status';
-  /** 该面板自身缓存的数据（与 connectionId 绑定，切换时保留已加载内容）。 */
-  data?: ServerStatusCache;
-}
-
-export interface ServerStatusCache {
-  status: Record<string, string | number | boolean | null>;
-  variables?: { name: string; value: string | null }[];
-  history?: Record<string, TrendSeries>;
-  /** 上次成功刷新时刻（wall-clock ms），用于「上次更新时间」显示。 */
-  updatedAt?: number;
-}
-
-/** 进程列表面板（独立于服务器仪表盘）。 */
-export interface ProcessesPanel extends PanelBase {
-  type: 'processes';
-  /** 该面板自身缓存的数据（与 connectionId 绑定）。 */
-  data?: ProcessListCacheData;
-}
-
-export interface ProcessListCacheData {
-  rows: (string | number | boolean | null)[][];
-  columns?: { name: string; dataType: string; nullable?: boolean }[];
-}
-
-export interface DatabaseObjectPanel extends PanelBase {
-  type: 'db-object';
-  objectKind: 'function' | 'procedure' | 'trigger' | 'sequence' | 'type';
-  objectName: string;
-  objectSchema?: string;
-}
-
-export interface RedisDbPanel extends PanelBase {
-  type: 'redis-db';
-  dbName: string;
-}
-
-export type Panel =
-  | TablePanel
-  | ViewPanel
-  | QueryPanel
-  | CreateTablePanel
-  | ErDiagramPanel
-  | ObjectsPanel
-  | PrivilegesPanel
-  | ServerStatusPanel
-  | ProcessesPanel
-  | DatabaseObjectPanel
-  | RedisDbPanel;
-
-// ── ID generation ────────────────────────────────────────────────
-
-let counter = 0;
-export function nextPanelId(prefix: string): string {
-  counter += 1;
-  return `panel-${prefix}-${counter}`;
-}
-
-// ── Connection context (for panel creation helpers) ──────────────
-
-export interface ConnectionContext {
-  connectionId: string;
-  dbSessionId: string;
-  connectionName: string;
-  databaseType: DatabaseType;
-}
+export type {
+  SubTabId,
+  TablePanel,
+  ViewPanel,
+  QueryPanel,
+  CreateTablePanel,
+  ErDiagramPanel,
+  ObjectsPanel,
+  PrivilegesPanel,
+  ServerStatusPanel,
+  ServerStatusCache,
+  ProcessesPanel,
+  ProcessListCacheData,
+  DatabaseObjectPanel,
+  RedisDbPanel,
+  Panel,
+  ConnectionContext,
+} from './panelTypes';
+export { nextPanelId } from './panelTypes';
 
 // ── Helper: cancel running queries and clean up queryExec entries ──
 
@@ -186,19 +65,6 @@ function cancelAndCleanupExec(
 }
 
 // ── Store interface ──────────────────────────────────────────────
-
-function resolveNextActive(
-  panels: Panel[],
-  removedId: string,
-  currentActiveId: string | null,
-): string | null {
-  if (currentActiveId !== removedId) return currentActiveId;
-  const idx = panels.findIndex((p) => p.id === removedId);
-  if (idx < 0) return null;
-  const remaining = panels.filter((p) => p.id !== removedId);
-  if (remaining.length === 0) return null;
-  return remaining[Math.min(idx, remaining.length - 1)].id;
-}
 
 interface PanelState {
   panels: Panel[];
@@ -249,69 +115,6 @@ interface PanelActions {
   toggleFavorites: () => void;
 
   reset: () => void;
-}
-
-/**
- * F1: the SQL editor's database dropdown is pure local state
- * (`schemaStore.currentDatabase`), so every execution must carry the panel's
- * selected database explicitly — the backend pins the session to it before
- * running unqualified SQL (BUG-001 fix).
- */
-function panelTargetDatabase(panel: QueryPanel, sql?: string): string | null {
-  const schemaState = useSchemaStore.getState().schemas.get(panel.dbSessionId);
-  const meta = DB_REGISTRY[panel.databaseType];
-  if (meta?.namespaceEnsure === 'path-hierarchy') {
-    const databases = schemaState?.databases ?? [];
-    const pathAliases = schemaState?.pathAliases ?? {};
-    const namespaceTree = schemaState?.namespaceTree ?? {};
-    const roots = namespaceRootsFrom(namespaceTree, pathAliases, databases);
-    const namespaceRootNames = Object.keys(namespaceTree);
-    const rootSet = new Set(roots);
-    let fromSql = sql?.trim()
-      ? resolveQueryContextPath(sql, { databases, namespaceRoots: roots })
-      : null;
-    if (sql?.trim()) {
-      const relation = inferSqlRelationPath(sql);
-      if (relation.length >= 3) {
-        const inferred = relation.slice(0, -1);
-        if (!fromSql || inferred.length > fromSql.length) fromSql = inferred;
-      } else if (relation.length >= 2) {
-        const inferred = relation.slice(0, -1);
-        if (inferred[0] && rootSet.has(inferred[0])) {
-          if (!fromSql || inferred.length > fromSql.length) fromSql = inferred;
-        }
-      }
-    }
-    const namespacePath = fromSql ?? panel.namespacePath ?? [];
-    const relativeNamespacePath = pathHierarchyRelativeNamespacePath(
-      databases,
-      namespaceTree,
-      namespacePath,
-    );
-    const root = pathHierarchyConnectionRoot(
-      databases,
-      panel.database,
-      schemaState?.currentDatabase ?? null,
-      pathAliases,
-      namespaceRootNames,
-    );
-    if (!root && relativeNamespacePath.length === 0) return null;
-    if (!root) return relativeNamespacePath.join('/');
-    return buildPathHierarchyDatabasePin(root, relativeNamespacePath);
-  }
-  if (panel.database?.trim()) return panel.database;
-  return schemaState?.currentDatabase ?? null;
-}
-
-/**
- * F7: the PG-family current schema is pure local state
- * (`schemaStore.currentSchema`, set via `setCurrentSchema`), so executions
- * carry it explicitly as the envelope `schema` field — rewrite-capable
- * drivers inline it (`"schema"."t"`); others ignore it.
- */
-function panelTargetSchema(panel: QueryPanel): string | null {
-  if (panel.schema?.trim()) return panel.schema;
-  return useSchemaStore.getState().schemas.get(panel.dbSessionId)?.currentSchema ?? null;
 }
 
 export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
@@ -615,7 +418,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
   // ── Reset ──────────────────────────────────────────────────────
 
   reset: () => {
-    counter = 0;
+    resetPanelIdCounter();
     set({
       panels: [],
       activePanelId: null,

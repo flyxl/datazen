@@ -166,6 +166,16 @@ export function DataTable({
     [onRowClick, onRowSelect],
   );
 
+  const handleCellDoubleClick = useCallback(
+    (row: number, col: string) => onCellDoubleClick?.(row, col),
+    [onCellDoubleClick],
+  );
+  const handleCellEdit = useCallback(
+    (row: number, col: string, value: unknown) => onCellEdit?.(row, col, value),
+    [onCellEdit],
+  );
+  const handleCellEditCancel = useCallback(() => onCellEditCancel?.(), [onCellEditCancel]);
+
   const exportEnabled = !!exportTableName && rows.length > 0 && dataExportCapability !== 'none';
   const columnNames = useMemo(() => columns.map((c) => c.name), [columns]);
 
@@ -477,9 +487,9 @@ export function DataTable({
           highlightedRow={highlightedRow}
           scrollElement={scrollEl}
           columnWidths={columnWidths}
-          onCellDoubleClick={onCellDoubleClick ?? NOOP}
-          onCellEdit={onCellEdit ?? NOOP}
-          onCellEditCancel={onCellEditCancel ?? NOOP}
+          onCellDoubleClick={handleCellDoubleClick}
+          onCellEdit={handleCellEdit}
+          onCellEditCancel={handleCellEditCancel}
           onRowSelect={handleRowClick}
         />
         {loading ? (
