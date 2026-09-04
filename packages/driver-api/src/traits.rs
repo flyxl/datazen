@@ -62,6 +62,15 @@ pub trait DatabaseDriver: Send + Sync {
         true
     }
 
+    /// Whether multi-statement DDL can be wrapped in a single transaction.
+    ///
+    /// Override for SQL drivers with known semantics. The default is
+    /// [`DdlAtomicity::Unknown`], which keeps legacy behavior for drivers
+    /// that have not yet declared their DDL atomicity.
+    fn ddl_atomicity(&self) -> DdlAtomicity {
+        DdlAtomicity::Unknown
+    }
+
     fn format_sql_literal(&self, value: &Option<Value>) -> String {
         match value {
             None | Some(Value::Null) => "NULL".to_string(),
@@ -788,6 +797,12 @@ mod structure_defaults_tests {
             original_indexes: vec![],
             current_indexes: vec![],
         }
+    }
+
+    #[tokio::test]
+    async fn default_ddl_atomicity_is_unknown() {
+        let driver = StubDriver;
+        assert_eq!(driver.ddl_atomicity(), DdlAtomicity::Unknown);
     }
 
     #[tokio::test]

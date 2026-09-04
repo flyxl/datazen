@@ -1,30 +1,10 @@
 //! Dialect-aware transaction scope for DDL and DML operations.
 
-use crate::db::{ConnectionHandle, DatabaseDriver, TransactionHandle};
-
-/// DDL atomicity semantics for a database dialect.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DdlAtomicity {
-    /// DDL is transactional (e.g. PostgreSQL, SQLite).
-    Transactional,
-    /// Each DDL statement auto-commits (e.g. MySQL).
-    AutoCommitPerStatement,
-    /// Unknown semantics.
-    Unknown,
-}
-
-/// Determine DDL atomicity for a given dialect.
-pub fn ddl_atomicity(dialect: &str) -> DdlAtomicity {
-    match dialect.to_ascii_lowercase().as_str() {
-        "postgresql" | "postgres" | "sqlite" => DdlAtomicity::Transactional,
-        "mysql" | "mariadb" | "tidb" | "oceanbase" => DdlAtomicity::AutoCommitPerStatement,
-        _ => DdlAtomicity::Unknown,
-    }
-}
+use crate::db::{ConnectionHandle, DatabaseDriver, DdlAtomicity, TransactionHandle};
 
 /// Dialect-aware transaction scope.
 ///
-/// Manages BEGIN/COMMIT/ROLLBACK lifecycle based on dialect's DDL atomicity.
+/// Manages BEGIN/COMMIT/ROLLBACK lifecycle based on the driver's DDL atomicity.
 /// For transactional dialects (PG), wraps operations in a real transaction.
 /// For auto-commit dialects (MySQL), operations execute without wrapping.
 pub struct TransactionScope<'a> {
@@ -35,13 +15,12 @@ pub struct TransactionScope<'a> {
 }
 
 impl<'a> TransactionScope<'a> {
-    /// Begin a transaction scope. For transactional dialects, calls BEGIN.
+    /// Begin a transaction scope. For transactional drivers, calls BEGIN.
     pub async fn begin(
         driver: &'a dyn DatabaseDriver,
         handle: &'a ConnectionHandle,
-        dialect: &str,
     ) -> Result<Self, String> {
-        let atomicity = ddl_atomicity(dialect);
+        let atomicity = driver.ddl_atomicity();
         let tx = if matches!(atomicity, DdlAtomicity::Transactional) {
             Some(
                 driver
@@ -100,5 +79,61 @@ impl Drop for TransactionScope<'_> {
         if self.tx.is_some() {
             tracing::warn!("TransactionScope dropped without commit/rollback");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+
+    fn mock_handle() -> ConnectionHandle {
+        ConnectionHandle {
+            id: "conn-1".into(),
+            pool_id: "pool-1".into(),
+        }
+    }
+
+    fn mock_driver(atomicity: DdlAtomicity) -> std::sync::Arc<MockDriver> {
+        MockDriver::new(
+            "postgres",
+            MockDriverOptions {
+                ddl_atomicity: Some(atomicity),
+                ..Default::default()
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn test_tester_transactional_scope_begins_and_commits() {
+        let driver = mock_driver(DdlAtomicity::Transactional);
+        let handle = mock_handle();
+
+        let scope = TransactionScope::begin(driver.as_ref(), &handle).await.unwrap();
+        assert_eq!(scope.atomicity(), DdlAtomicity::Transactional);
+        assert!(scope.is_transactional());
+        scope.commit().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_tester_auto_commit_scope_skips_begin() {
+        let driver = mock_driver(DdlAtomicity::AutoCommitPerStatement);
+        let handle = mock_handle();
+
+        let scope = TransactionScope::begin(driver.as_ref(), &handle).await.unwrap();
+        assert_eq!(scope.atomicity(), DdlAtomicity::AutoCommitPerStatement);
+        assert!(!scope.is_transactional());
+        scope.commit().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_tester_unknown_atomicity_skips_begin() {
+        let driver = mock_driver(DdlAtomicity::Unknown);
+        let handle = mock_handle();
+
+        let scope = TransactionScope::begin(driver.as_ref(), &handle).await.unwrap();
+        assert_eq!(scope.atomicity(), DdlAtomicity::Unknown);
+        assert!(!scope.is_transactional());
+        scope.rollback().await.unwrap();
     }
 }

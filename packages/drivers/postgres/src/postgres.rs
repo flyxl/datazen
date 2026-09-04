@@ -721,6 +721,10 @@ impl DatabaseDriver for PostgresDriver {
         "postgresql".to_string()
     }
 
+    fn ddl_atomicity(&self) -> DdlAtomicity {
+        DdlAtomicity::Transactional
+    }
+
     /// F7: qualify unqualified table references with the target schema
     /// (`"schema"."t"`). The database dimension is not inlined — PG resolves
     /// it through the host pool switch (`ensure_session_database`); parse
@@ -2382,6 +2386,14 @@ async fn fetch_pg_table_ddl_from_catalog(
 mod tests {
     use super::*;
     use datazen_driver_api::DatabaseDriver;
+
+    #[test]
+    fn test_tester_ddl_atomicity_is_transactional() {
+        assert_eq!(
+            PostgresDriver::new().ddl_atomicity(),
+            DdlAtomicity::Transactional
+        );
+    }
 
     #[test]
     fn fetch_tables_sql_uses_pg_catalog_system_schema_filters() {

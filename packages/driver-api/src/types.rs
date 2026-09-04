@@ -15,6 +15,23 @@ pub enum DriverCategory {
     Document,
 }
 
+/// DDL atomicity semantics reported by a driver.
+///
+/// Host code uses this to decide whether schema-diff deploy and similar
+/// multi-statement DDL paths should wrap operations in a real transaction.
+/// Drivers that do not override [`crate::DatabaseDriver::ddl_atomicity`]
+/// return [`Self::Unknown`], which disables transactional wrapping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DdlAtomicity {
+    /// DDL participates in the surrounding transaction (e.g. PostgreSQL, SQLite).
+    Transactional,
+    /// Each DDL statement auto-commits (e.g. MySQL / MariaDB).
+    AutoCommitPerStatement,
+    /// Semantics are unknown; the host executes statements without wrapping.
+    Unknown,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum SslMode {
@@ -777,5 +794,26 @@ mod tests {
         let err = DriverError::NotSupported("create_database".into());
         assert!(err.to_string().contains("Not supported"));
         assert!(err.to_string().contains("create_database"));
+    }
+
+    #[test]
+    fn test_tester_ddl_atomicity_serde_roundtrip() {
+        for value in [
+            DdlAtomicity::Transactional,
+            DdlAtomicity::AutoCommitPerStatement,
+            DdlAtomicity::Unknown,
+        ] {
+            let json = serde_json::to_string(&value).unwrap();
+            let decoded: DdlAtomicity = serde_json::from_str(&json).unwrap();
+            assert_eq!(decoded, value);
+        }
+        assert_eq!(
+            serde_json::to_string(&DdlAtomicity::Transactional).unwrap(),
+            "\"transactional\""
+        );
+        assert_eq!(
+            serde_json::to_string(&DdlAtomicity::AutoCommitPerStatement).unwrap(),
+            "\"autoCommitPerStatement\""
+        );
     }
 }

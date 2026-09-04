@@ -134,6 +134,10 @@ impl DatabaseDriver for SqliteDriver {
         "sqlite".to_string()
     }
 
+    fn ddl_atomicity(&self) -> DdlAtomicity {
+        DdlAtomicity::Transactional
+    }
+
     /// F7: qualify unqualified table references with the ATTACH alias
     /// (`"alias"."t"`). A DataZen SQLite connection is a single file
     /// (`main`), so this is a no-op unless the caller targets an explicit
@@ -709,6 +713,15 @@ fn apply_sqlite_select_limit(stmt: &str, limit: Option<u32>) -> (String, Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use datazen_driver_api::DatabaseDriver;
+
+    #[test]
+    fn test_tester_ddl_atomicity_is_transactional() {
+        assert_eq!(
+            SqliteDriver::new().ddl_atomicity(),
+            DdlAtomicity::Transactional
+        );
+    }
 
     #[test]
     fn apply_sqlite_select_limit_none_does_not_rewrite() {
