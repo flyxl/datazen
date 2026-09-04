@@ -19,7 +19,7 @@
 
 - Phase: TEST_DONE
 - 编码 commit: d96bbd2012f0b9c00700da6ca0c23795c48e6c3e
-- 测试 commit: f04ffc650a46d93e13d39e183b641368144f07d2
+- 测试 commit: c46cf8ad55daa5c4c42252556e18bf4b71b8347d
 - 合并 commit: 待合入
 
 ## 自验（编码代理）
