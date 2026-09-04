@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
+  <rect x="8" y="4" width="26" height="40" rx="3" fill="#3B82F6" fill-opacity="0.15" stroke="#3B82F6" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M26 4V12H34" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M14 16H22M14 22H28M14 28H24M14 34H20" stroke="#60A5FA" stroke-width="2" stroke-linecap="round"/>
+  <!-- Stamp / Test badge -->
+  <circle cx="33" cy="33" r="10" fill="#10B981" fill-opacity="0.2" stroke="#10B981" stroke-width="2.5"/>
+  <path d="M29 33L32 36L38 29" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
