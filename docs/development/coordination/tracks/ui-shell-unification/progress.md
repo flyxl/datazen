@@ -16,7 +16,7 @@
 
 - Phase: PASSED
 - 编码 commit: 80e316d6a
-- 测试 commit: e2634eb63
+- 测试 commit: 29d7907ea
 - 合并 commit: 待合入
 
 ## 自验结果（编码代理）
