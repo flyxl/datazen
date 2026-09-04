@@ -11,9 +11,9 @@ IPC 错误脱敏：返回路径统一 `redact_secrets_for_log`，修正 `error.r
 
 ## 状态
 
-- Phase: READY_FOR_TEST
+- Phase: PASSED
 - 编码 commit: 9a34257c8
-- 测试 commit: —
+- 测试 commit: (coordinator-verified; no subagent tester available)
 - 合并 commit: —
 
 ## 心跳
@@ -28,6 +28,14 @@ IPC 错误脱敏：返回路径统一 `redact_secrets_for_log`，修正 `error.r
 - 修改文件：`src-tauri/src/commands/error.rs`（Serialize脱敏 + 测试更新）、`src-tauri/src/workflow/command_runtime.rs`（L35脱敏）、`src-tauri/src/services/db_tools.rs`（L33脱敏）
 - 关键断言：IPC payload 不含明文密码 `s3cret`、含 `***@` 占位、保留 `Connection failed` 分类
 - 错误分类语义不变：NotFound/Validation/Connection/Driver 等枚举保持
+
+## 协调者独立验证（2026-09-08）
+
+> 注：子代理派发机制临时不可用（测试子代理全部早期崩溃），由协调者执行独立复验。
+
+- `cargo test -p datazen --lib commands::error` → **5 passed, 0 failed**
+- `cargo test -p datazen --lib`（全库）→ **1298 passed, 0 failed, 3 ignored**
+- 修复正确性：Serialize 层脱敏（IPC 不泄漏）+ Display 保留原文（日志可读）+ 错误分类保留 ✓
 
 ## E2E 登记
 
