@@ -373,7 +373,7 @@ function GrantDialog({
               {t('common.cancel')}
             </Button>
             <Button
-              variant="run"
+              variant="primary"
               className="h-7 px-3 text-xs"
               disabled={submitting || !username.trim() || selected.size === 0}
               onClick={() => void handleGrant()}

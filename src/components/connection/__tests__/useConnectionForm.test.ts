@@ -333,4 +333,32 @@ describe('useConnectionForm', () => {
     expect(config.sshTunnel?.jump?.host).toBe('inner');
     expect(config.readOnly).toBe(true);
   });
+
+  it('forces readOnly to true and prevents modifying when driver is read-only', () => {
+    const prevReadOnly = DB_REGISTRY['sqlite']?.readOnly;
+    try {
+      DB_REGISTRY['sqlite'].readOnly = true;
+
+      const { result } = renderHook(() => useConnectionForm());
+
+      act(() => {
+        result.current.handleDatabaseTypeChange('sqlite');
+      });
+
+      expect(result.current.driverReadOnly).toBe(true);
+      expect(result.current.readOnly).toBe(true);
+
+      // Attempt to manually set readOnly to false
+      act(() => {
+        result.current.setReadOnly(false);
+      });
+
+      // Must remain true
+      expect(result.current.readOnly).toBe(true);
+      const config = previewConfig(result.current);
+      expect(config.readOnly).toBe(true);
+    } finally {
+      DB_REGISTRY['sqlite'].readOnly = prevReadOnly;
+    }
+  });
 });

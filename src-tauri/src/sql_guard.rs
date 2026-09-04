@@ -421,4 +421,112 @@ mod tests {
     fn split_respects_semicolons_inside_strings() {
         assert!(check_sql("SELECT 'a; UPDATE t'; SELECT 1", true, true).is_ok());
     }
+
+    #[test]
+    fn read_only_blocks_insert_and_delete() {
+        assert!(check_sql("INSERT INTO t VALUES (1)", true, false).is_err());
+        assert!(check_sql("DELETE FROM t WHERE id = 1", true, false).is_err());
+    }
+
+    #[test]
+    fn mixed_statements_read_only_blocks_any_write() {
+        let err = check_sql("SELECT 1; UPDATE t SET x = 1 WHERE id = 1", true, false).unwrap_err();
+        assert!(err.contains("read-only"));
+        let err = check_sql("SELECT 1; INSERT INTO t VALUES (1)", true, false).unwrap_err();
+        assert!(err.contains("read-only"));
+    }
+
+    #[test]
+    fn mixed_statements_safe_mode_blocks_drop_and_truncate() {
+        for sql in [
+            "SELECT 1; DROP TABLE t",
+            "SELECT 1; TRUNCATE TABLE t",
+            "DROP TABLE t; SELECT 1",
+        ] {
+            let err = check_sql(sql, false, true).unwrap_err();
+            assert!(
+                err.contains("DROP") || err.contains("TRUNCATE"),
+                "expected block for {sql}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn mixed_statements_safe_mode_blocks_update_without_where() {
+        let err = check_sql("SELECT 1; UPDATE t SET x = 1", false, true).unwrap_err();
+        assert!(err.contains("WHERE"));
+        let err = check_sql("DELETE FROM t; SELECT 1", false, true).unwrap_err();
+        assert!(err.contains("WHERE"));
+    }
+
+    #[test]
+    fn mixed_statements_safe_mode_allows_safe_writes() {
+        assert!(check_sql("SELECT 1; SELECT 2", false, true).is_ok());
+        assert!(check_sql(
+            "SELECT 1; UPDATE t SET x = 1 WHERE id = 1; DELETE FROM t WHERE id = 2",
+            false,
+            true
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn read_only_and_safe_mode_both_apply() {
+        assert!(check_sql("INSERT INTO t VALUES (1)", true, true).is_err());
+        assert!(check_sql("DROP TABLE t", true, true).is_err());
+        assert!(check_sql("UPDATE t SET x = 1", true, true).is_err());
+    }
+
+    // --- [tester] edge-case / bypass probes ---
+
+    #[test]
+    fn test_tester_inline_block_comment_inside_drop_is_heuristic_gap() {
+        // Tokenizer strips inline comments; verb becomes TABLE — known bypass.
+        assert!(check_sql("DROP/**/TABLE t", false, true).is_ok());
+        assert!(check_sql("TRUNCATE/**/TABLE t", false, true).is_ok());
+    }
+
+    #[test]
+    fn test_tester_nested_block_comment_with_drop_still_blocked() {
+        assert!(check_sql("/* outer /* inner */ DROP TABLE t */", false, true).is_err());
+    }
+
+    #[test]
+    fn test_tester_drop_only_in_leading_comment_is_allowed() {
+        assert!(check_sql("/* DROP TABLE t */ SELECT 1", false, true).is_ok());
+        assert!(check_sql("-- DROP TABLE t\nSELECT 1", false, true).is_ok());
+    }
+
+    #[test]
+    fn test_tester_read_only_inline_comment_drop_is_heuristic_gap() {
+        assert!(check_sql("DROP/**/TABLE t", true, false).is_ok());
+    }
+
+    #[test]
+    fn test_tester_unicode_fullwidth_drop_bypasses_safe_mode() {
+        // Fullwidth Latin letters are not recognized as DROP — documented heuristic gap.
+        assert!(check_sql("ＤＲＯＰ TABLE t", false, true).is_ok());
+    }
+
+    #[test]
+    fn test_tester_null_byte_splits_drop_keyword_is_heuristic_gap() {
+        assert!(check_sql("DROP\u{0000}TABLE t", false, true).is_ok());
+    }
+
+    #[test]
+    fn test_tester_control_chars_in_select_do_not_crash() {
+        assert!(check_sql("SELECT\u{0001}1", true, true).is_ok());
+    }
+
+    #[test]
+    fn test_tester_mixed_case_and_extra_whitespace_drop_blocked() {
+        assert!(check_sql("  \n  DrOp  \t  TaBlE t", false, true).is_err());
+        assert!(check_sql("  truncate   table   t  ", false, true).is_err());
+    }
+
+    #[test]
+    fn test_tester_drop_keyword_split_across_comment_is_heuristic_gap() {
+        // Verb becomes TABLE after comment strip — known bypass, not a formal guarantee.
+        assert!(check_sql("/* DROP */ TABLE t", false, true).is_ok());
+    }
 }

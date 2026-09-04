@@ -997,14 +997,14 @@ mod tests {
     #[test]
     fn merged_extension_commands_gate_override_path_in_production() {
         const SOURCE: &str = include_str!("extensions.rs");
-        const LIB_RS: &str = include_str!("../lib.rs");
+        const BOOTSTRAP_RS: &str = include_str!("../bootstrap.rs");
 
         for gone in [
             "commands::install_extension_from_path,",
             "commands::inspect_extension_package,",
         ] {
             assert!(
-                !LIB_RS.contains(gone),
+                !BOOTSTRAP_RS.contains(gone),
                 "`{gone}` must no longer be registered"
             );
         }
@@ -1012,7 +1012,7 @@ mod tests {
             "commands::inspect_extension_package_with_dialog,",
             "commands::install_extension,",
         ] {
-            assert!(LIB_RS.contains(kept), "`{kept}` must stay registered");
+            assert!(BOOTSTRAP_RS.contains(kept), "`{kept}` must stay registered");
         }
 
         let call = "resolve_override_path(override_path";

@@ -210,6 +210,59 @@ async function endHtml5Drag(connectionName: string): Promise<void> {
   }, connectionName);
 }
 
+async function dragOverGroupHeaderHtml5(groupName: string): Promise<{ prevented: boolean; dropEffect: string }> {
+  return browser.execute((name: string) => {
+    const target = Array.from(document.querySelectorAll<HTMLElement>('[data-group-header]')).find(
+      (item) => item.dataset.groupName === name,
+    );
+    const dataTransfer = (window as DndWindow).__datazenDndTransfer;
+    if (!target || !dataTransfer) return { prevented: false, dropEffect: '' };
+
+    const event = new DragEvent('dragover', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer,
+    });
+    target.dispatchEvent(event);
+    return { prevented: event.defaultPrevented, dropEffect: dataTransfer.dropEffect };
+  }, groupName) as Promise<{ prevented: boolean; dropEffect: string }>;
+}
+
+async function dropGroupHeaderHtml5(groupName: string): Promise<boolean> {
+  return browser.execute((name: string) => {
+    const target = Array.from(document.querySelectorAll<HTMLElement>('[data-group-header]')).find(
+      (item) => item.dataset.groupName === name,
+    );
+    const dataTransfer = (window as DndWindow).__datazenDndTransfer;
+    if (!target || !dataTransfer) return false;
+
+    const dropEvent = new DragEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer,
+    });
+    target.dispatchEvent(dropEvent);
+    delete (window as DndWindow).__datazenDndTransfer;
+    return dropEvent.defaultPrevented;
+  }, groupName) as Promise<boolean>;
+}
+
+async function dragOverSectionHeaderHtml5(section: string): Promise<{ prevented: boolean; dropEffect: string }> {
+  return browser.execute((s: string) => {
+    const target = document.querySelector<HTMLElement>(`[data-section-header][data-section="${s}"]`);
+    const dataTransfer = (window as DndWindow).__datazenDndTransfer;
+    if (!target || !dataTransfer) return { prevented: false, dropEffect: '' };
+
+    const event = new DragEvent('dragover', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer,
+    });
+    target.dispatchEvent(event);
+    return { prevented: event.defaultPrevented, dropEffect: dataTransfer.dropEffect };
+  }, section) as Promise<{ prevented: boolean; dropEffect: string }>;
+}
+
 describe('连接分组中的 HTML5 拖拽排序 (DND)', () => {
   before(async () => {
     await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
@@ -351,5 +404,47 @@ describe('连接分组中的 HTML5 拖拽排序 (DND)', () => {
     expect(start.payload).toBe(CONN_A_ID);
     expect(start.types).toContain('text/plain');
     await endHtml5Drag(CONN_A_NAME);
+  });
+
+  it('DND-009: 通过 HTML5 拖拽将连接 A 拖到 GroupB 头部，连接 A 归类到 GroupB', async () => {
+    const start = await startHtml5Drag(CONN_A_NAME);
+    expect(start.status).toBe('ok');
+
+    const dragOverResult = await dragOverGroupHeaderHtml5(GROUP_B);
+    expect(dragOverResult.prevented).toBe(true);
+    expect(dragOverResult.dropEffect).toBe('move');
+
+    expect(await dropGroupHeaderHtml5(GROUP_B)).toBe(true);
+    await browser.waitUntil(
+      async () => {
+        const connections = await getConnections();
+        return connections.find((c) => c.id === CONN_A_ID)?.group === GROUP_B;
+      },
+      { timeout: 10000, interval: 200 },
+    );
+
+    // 拖拽回 GROUP_A 保持测试状态幂等
+    await startHtml5Drag(CONN_A_NAME);
+    await dragOverGroupHeaderHtml5(GROUP_A);
+    await dropGroupHeaderHtml5(GROUP_A);
+    await browser.waitUntil(
+      async () => {
+        const connections = await getConnections();
+        return connections.find((c) => c.id === CONN_A_ID)?.group === GROUP_A;
+      },
+      { timeout: 10000, interval: 200 },
+    );
+  });
+
+  it('DND-010: 拖拽到 Recent 分组头部应拒绝（dropEffect = none）', async () => {
+    const recentHeaderExists = await browser.execute(() => {
+      return document.querySelector('[data-section-header][data-section="recent"]') !== null;
+    });
+    if (recentHeaderExists) {
+      await startHtml5Drag(CONN_A_NAME);
+      const res = await dragOverSectionHeaderHtml5('recent');
+      expect(res.dropEffect).toBe('none');
+      await endHtml5Drag(CONN_A_NAME);
+    }
   });
 });

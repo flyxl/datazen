@@ -13,6 +13,10 @@ const pack = {
   'chat.reasoning': '思考过程',
   'chat.questions.customAnswer': '输入自定义回答…',
   'chat.questions.submit': '提交回答',
+  'chat.egressNotice': '您发送的内容可能离开本机，并由您配置的 AI 提供商处理。',
+  'chat.egressNoticeRelaxed':
+    '严格出域已关闭——查询结果、附加文件与工具输出可能会发送给 AI 提供商。',
+  'chat.egressNoticeContext': '附加的 @ 上下文将包含在发往 AI 提供商的请求中。',
   'context.title': 'AI 上下文',
   'context.tables': '表',
   'context.files': '文件',

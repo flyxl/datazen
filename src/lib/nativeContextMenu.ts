@@ -15,6 +15,7 @@ export type NativeMenuItemDef =
       kind: 'item';
       id: string;
       label: string;
+      shortcut?: string;
       enabled?: boolean;
       action: () => void | Promise<void>;
     }

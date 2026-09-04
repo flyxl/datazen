@@ -3,9 +3,15 @@
 pub mod allowlist;
 pub mod auth;
 pub mod client;
+mod contract;
+mod handler;
 pub mod permission;
+mod prompts;
+mod resources;
 mod server;
 pub mod tool_help;
+mod tools;
+mod types;
 
 pub use client::{
     format_call_tool_result, is_valid_mcp_server_id, validate_mcp_server_id, McpClientManager,

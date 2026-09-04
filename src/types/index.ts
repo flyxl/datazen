@@ -263,6 +263,8 @@ export interface AppSettings {
   pluginSettings: Record<string, unknown>;
   /** Saved external MCP Client server configs. Runtime connections are separate. */
   mcpClientServers?: McpServerConfig[];
+  /** Strip query result rows before AI requests leave the device. Default true. */
+  aiStrictEgress: boolean;
 }
 
 export type FilterOperator =

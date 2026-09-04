@@ -680,6 +680,22 @@ export function UnifiedSchemaTree({
                 {row.type === 'table' && (
                   <button
                     type="button"
+                    draggable
+                    onDragStart={(e) => {
+                      const payload = {
+                        tables: [
+                          {
+                            tableName: row.item.name,
+                            schema: row.item.schema ?? undefined,
+                          },
+                        ],
+                        connectionId,
+                        databaseType,
+                      };
+                      e.dataTransfer.setData('application/datazen-table', JSON.stringify(payload));
+                      e.dataTransfer.setData('text/plain', row.item.name);
+                      e.dataTransfer.effectAllowed = 'copy';
+                    }}
                     className={cn(
                       'flex w-full items-center gap-2 py-1.5 pr-3 text-left text-[13px] hover:bg-surface-raised',
                       selectedTable === row.item.name

@@ -98,7 +98,7 @@ export function buildConnectionConfig(input: BuildConnectionConfigInput): Connec
     sslMode: effectiveSslMode,
     group: coerceConnectionGroup(input.group) || undefined,
     colorTag: input.colorTag || undefined,
-    readOnly: input.readOnly || undefined,
+    readOnly: (meta?.readOnly === true || input.readOnly) || undefined,
   };
 
   if (input.sshTunnel) {

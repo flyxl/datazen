@@ -541,6 +541,20 @@ fn validate_export_path(path: &Path) -> Result<(), CommandError> {
 // Streaming write helpers
 // ---------------------------------------------------------------------------
 
+fn lock_export<T>(mutex: &Mutex<T>) -> Result<std::sync::MutexGuard<'_, T>, CommandError> {
+    mutex
+        .lock()
+        .map_err(|e| CommandError::Internal(format!("export lock poisoned: {e}")))
+}
+
+/// Query stream callbacks are `Fn` and cannot return `Result`; recover from poison.
+fn lock_export_stream<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|poisoned| {
+        tracing::error!("export stream lock poisoned; continuing with inner value");
+        poisoned.into_inner()
+    })
+}
+
 /// Stream a table's data to `dest`, formatted as `format`. Returns row count.
 async fn write_data_file(
     app: &AppHandle,
@@ -606,7 +620,7 @@ async fn write_data_file(
         QueryStreamEvent::StatementStart { columns: cols, .. } => {
             let derived: Vec<String> = cols.iter().map(|c| c.name.clone()).collect();
             {
-                let mut cur = cb_cols.lock().unwrap();
+                let mut cur = lock_export_stream(&cb_cols);
                 if cur.is_empty() {
                     *cur = derived;
                 }
@@ -615,10 +629,10 @@ async fn write_data_file(
         }
         QueryStreamEvent::Rows { rows, .. } => {
             ensure_header(&cb_cols, &cb_fmt, &cb_sink, &cb_header, false);
-            let cols = cb_cols.lock().unwrap().clone();
-            let text = cb_fmt.lock().unwrap().rows(&rows, &cols);
+            let cols = lock_export_stream(&cb_cols).clone();
+            let text = lock_export_stream(&cb_fmt).rows(&rows, &cols);
             if !text.is_empty() {
-                if let Err(e) = cb_sink.lock().unwrap().append_str(&text) {
+                if let Err(e) = lock_export_stream(&cb_sink).append_str(&text) {
                     // Cannot return an error through the Fn callback; the query
                     // will surface via query_stream's error propagation instead.
                     let _ = e;
@@ -648,10 +662,10 @@ async fn write_data_file(
                 },
             );
             if cb_tail.fetch_add(1, Ordering::Relaxed) == 0 {
-                let cols = cb_cols.lock().unwrap().clone();
-                let text = cb_fmt.lock().unwrap().tail(&cols);
+                let cols = lock_export_stream(&cb_cols).clone();
+                let text = lock_export_stream(&cb_fmt).tail(&cols);
                 if !text.is_empty() {
-                    if let Err(e) = cb_sink.lock().unwrap().append_str(&text) {
+                    if let Err(e) = lock_export_stream(&cb_sink).append_str(&text) {
                         let _ = e;
                     }
                 }
@@ -669,13 +683,13 @@ async fn write_data_file(
 
     // Ensure tail is written even if no Done event fired.
     if tail_stated.load(Ordering::Relaxed) == 0 {
-        let cols = columns.lock().unwrap().clone();
-        let text = formatter.lock().unwrap().tail(&cols);
+        let cols = lock_export(&columns)?.clone();
+        let text = lock_export(&formatter)?.tail(&cols);
         if !text.is_empty() {
-            sink.lock().unwrap().append_str(&text)?;
+            lock_export(&sink)?.append_str(&text)?;
         }
     }
-    sink.lock().unwrap().flush()?;
+    lock_export(&sink)?.flush()?;
 
     Ok(rows_written.load(Ordering::Relaxed))
 }
@@ -688,17 +702,17 @@ fn ensure_header(
     header_done: &Arc<Mutex<bool>>,
     _from_start: bool,
 ) {
-    let mut done = header_done.lock().unwrap();
+    let mut done = lock_export_stream(header_done);
     if *done {
         return;
     }
-    let cols = columns.lock().unwrap();
+    let cols = lock_export_stream(columns);
     if cols.is_empty() {
         return;
     }
-    let text = formatter.lock().unwrap().header(&cols);
+    let text = lock_export_stream(formatter).header(&cols);
     if !text.is_empty() {
-        if let Err(e) = sink.lock().unwrap().append_str(&text) {
+        if let Err(e) = lock_export_stream(sink).append_str(&text) {
             let _ = e;
         }
     }
@@ -1101,5 +1115,65 @@ mod tests {
             nullable: true,
         };
         assert_eq!(ci.name, "a");
+    }
+
+    fn poison_mutex<T>(mutex: &Mutex<T>) {
+        let target = mutex as *const Mutex<T> as usize;
+        let handle = std::thread::spawn(move || {
+            let m = unsafe { &*(target as *const Mutex<T>) };
+            let _guard = m.lock().unwrap();
+            panic!("tester: intentional mutex poison");
+        });
+        assert!(handle.join().is_err());
+    }
+
+    /// [tester] Non-callback export locks propagate poison as `CommandError::Internal`.
+    #[test]
+    fn test_tester_lock_export_poison_returns_internal() {
+        let mutex = Mutex::new(0_i32);
+        poison_mutex(&mutex);
+        let err = lock_export(&mutex).unwrap_err();
+        match err {
+            CommandError::Internal(msg) => {
+                assert!(
+                    msg.contains("export lock poisoned"),
+                    "unexpected internal message: {msg}"
+                );
+            }
+            other => panic!("expected CommandError::Internal, got {other:?}"),
+        }
+    }
+
+    /// [tester] Stream callback locks recover from poison via `into_inner`.
+    #[test]
+    fn test_tester_lock_export_stream_recovers_from_poison() {
+        let mutex = Mutex::new(vec!["col".to_string()]);
+        poison_mutex(&mutex);
+        let cols = lock_export_stream(&mutex);
+        assert_eq!(*cols, vec!["col".to_string()]);
+    }
+
+    /// [tester] Concurrent `lock_export` calls serialize without error on a healthy mutex.
+    #[test]
+    fn test_tester_lock_export_concurrent_access_succeeds() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let mutex = Arc::new(Mutex::new(0_i32));
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let m = Arc::clone(&mutex);
+                thread::spawn(move || {
+                    for _ in 0..100 {
+                        let mut guard = lock_export(&m).expect("lock should succeed");
+                        *guard += 1;
+                    }
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        assert_eq!(*lock_export(&mutex).unwrap(), 800);
     }
 }

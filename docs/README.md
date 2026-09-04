@@ -1,103 +1,79 @@
 # DataZen 文档索引
 
-> 面向 AI 编程助手与开发者的项目文档入口。产品官网与在线使用手册见 <https://flyxl.github.io/datazen/>（仓库内源文件位于 [site/](../site/)）。
+DataZen 文档只保留两类长期有效内容：**当前功能使用文档**和**当前代码架构/开发文档**。开发过程中的 PRD、进度、Bug List、UI Review、临时 Backlog 等不作为仓库文档长期维护。
 
-文档分四类：
+## 文档结构
 
 | 目录 | 定位 | 读者 |
-|------|------|------|
-| [features/](features/) | **系统功能介绍** — 各功能的用户向使用文档 | 所有用户 |
-| [architecture/](architecture/) | **系统架构文档** — 总览与各模块详细设计 | 贡献者 / AI 助手 |
-| [development/](development/) | **其他必要文档** — 开发、测试、发布、插件开发流程 | 贡献者 |
-| [blogs/](blogs/) | **架构文章系列** — 面向公开发布的 DataZen 架构解析 | 开发者 / 用户 |
+|---|---|---|
+| [features/](features/) | 当前已实现功能的使用说明 | 用户 / 开发者 |
+| [architecture/](architecture/) | 与 main 分支代码对应的架构说明 | 贡献者 / AI 助手 |
+| [development/](development/) | 开发、测试、发布、驱动开发流程 | 贡献者 |
+| [blogs/](blogs/) | 面向公开发布的架构文章 | 开发者 / 用户 |
 
----
+## 功能文档
 
-## 1. 系统功能介绍（docs/features/）
+- [Workflow](features/workflow-guide.zh-CN.md) / [English](features/workflow-guide.en.md)
+- [Schema Diff](features/schema-diff-guide.zh-CN.md) / [English](features/schema-diff-guide.en.md)
+- [Data Sync](features/data-sync-guide.zh-CN.md)
+- [Data Transfer](features/data-transfer-guide.zh-CN.md)
+- [Ops Dashboard](features/ops-dashboard-guide.zh-CN.md) / [English](features/ops-dashboard-guide.en.md)
 
-| 文档 | 语言 | 内容 |
-|------|------|------|
-| [workflow-guide](features/workflow-guide.zh-CN.md) / [en](features/workflow-guide.en.md) | 中 / 英 | Workflow：YAML 编排查询与 AI 步骤、变量模板、错误策略 |
-| [data-sync-guide](features/data-sync-guide.zh-CN.md) | 中 | 数据同步（同族库 Compare → Review → Preview → Execute） |
-| [data-transfer-guide](features/data-transfer-guide.zh-CN.md) | 中 | 异构数据迁移（6 步向导、IR 类型映射） |
-| [data-transfer-prd](features/data-transfer-prd.zh-CN.md) | 中 | Data Transfer 产品定义（PRD） |
-| [desktop-v0.1x-prd](features/desktop-v0.1x-prd.zh-CN.md) | 中 | v0.1.x Desktop PRD：开发者优先的 SQL-first 数据库客户端稳定版 |
-| [data-transfer-ui-redesign](features/data-transfer-ui-redesign.zh-CN.md) | 中 | Data Transfer UI 设计存档（6 步向导 · 已实施） |
-| [web-platform-prd](features/web-platform-prd.zh-CN.md) | 中 | v0.2.0 Web 平台化 PRD：自托管、工作区 RBAC、API/SSE、安全与发布门槛 |
-| [schema-diff-ui-redesign](features/schema-diff-ui-redesign.zh-CN.md) | 中 | Schema Diff UI 设计存档（双栏方案 B · 已实施） |
-| [schema-diff-guide](features/schema-diff-guide.zh-CN.md) / [en](features/schema-diff-guide.en.md) | 中 / 英 | 结构对比与 DDL 部署（5 步向导） |
-| [schema-diff-deploy](features/schema-diff-deploy.md) | 英 | Schema Diff Deploy 速览（安全默认值矩阵） |
-| [ops-dashboard-guide](features/ops-dashboard-guide.zh-CN.md) / [en](features/ops-dashboard-guide.en.md) | 中 / 英 | 运营看板：Widget、监控调度、告警与导出 |
+功能文档描述当前 main 已实现的行为；如果某能力尚未实现，不在这里记录未来计划。
 
-> 在线版使用手册（含截图，覆盖连接、SQL 编辑、数据编辑、AI、图表、Workflow、Redis、备份等全部功能）：
-> 英文 <https://flyxl.github.io/datazen/manual.html> · 中文 <https://flyxl.github.io/datazen/zh/manual.html>
+## 架构文档
 
-## 2. 系统架构文档（docs/architecture/）
+入口：[architecture/README.md](architecture/README.md)
 
-总览入口：[architecture/README.md](architecture/README.md)（分层架构、Driver Command 架构、Workflow 架构）。Web 平台化实施方案见 [web-platform-implementation](architecture/rfc/web-platform-implementation.zh-CN.md)。
+### 后端
 
-### 后端（architecture/backend/）
+- [Drivers](architecture/backend/drivers.md)
+- [Services](architecture/backend/services.md)
+- [Commands](architecture/backend/commands.md)
+- [Cache](architecture/backend/cache.md)
+- [Store](architecture/backend/store.md)
+- [AI](architecture/backend/ai.md)
+- [MCP](architecture/backend/mcp.md)
+- [Workflow](architecture/backend/workflow.md)
+- [Dashboard](architecture/backend/dashboard.md)
+- [Data Sync](architecture/backend/data-sync.md)
+- [Schema Diff](architecture/backend/schema-diff.md)
+- [Theme](architecture/backend/theme.md)
+- [Extensions](architecture/backend/extensions.md)
 
-| 文档 | 内容 |
-|------|------|
-| [drivers](architecture/backend/drivers.md) | DatabaseDriver trait、驱动注册表、inventory 注册 |
-| [services](architecture/backend/services.md) | ConnectionManager、QueryExecutor、DbTools |
-| [commands](architecture/backend/commands.md) | Tauri IPC 命令层、AppState、CommandError |
-| [cache](architecture/backend/cache.md) | Schema 两级 TTL 缓存与失效策略 |
-| [store](architecture/backend/store.md) | AES-256-GCM 持久化、keychain / .key 双后端 |
-| [ai](architecture/backend/ai.md) | AI Provider、协议层、PromptResolver |
-| [mcp](architecture/backend/mcp.md) | MCP Server / Client、无头 stdio 模式 |
-| [workflow](architecture/backend/workflow.md) | Workflow 引擎、Command runtime、连接继承 |
-| [dashboard](architecture/backend/dashboard.md) | 运营看板：AppDb、Monitor 调度、导出 v2 |
-| [data-sync](architecture/backend/data-sync.md) | 同族数据同步：门闸 / 比较 / ChangeSet |
-| [schema-diff](architecture/backend/schema-diff.md) | 结构对比 / DDL plan / 部署 |
-| [theme](architecture/backend/theme.md) | 运行时主题（扩展主题贡献、首屏背景缓存） |
-| [extensions](architecture/backend/extensions.md) | 运行时插件系统（UI 页 + 主题） |
+### 前端
 
-### 前端（architecture/frontend/）
+- [State](architecture/frontend/state.md)
+- [Components](architecture/frontend/components.md)
+- [AI](architecture/frontend/ai.md)
+- [Extensibility](architecture/frontend/extensibility.md)
 
-| 文档 | 内容 |
-|------|------|
-| [state](architecture/frontend/state.md) | Zustand stores、跨窗口通信 |
-| [components](architecture/frontend/components.md) | DataTable（--dt-*）、Context Menu、ER 图、主题系统 |
-| [ai](architecture/frontend/ai.md) | AI 组件、@ 上下文引用、SQL 编辑器方言 |
-| [extensibility](architecture/frontend/extensibility.md) | DB 类型扩展、DatabaseTypeMeta、插件 SDK |
+### 横切
 
-### 横切关注点
+- [Naming](architecture/naming.md)
+- [Security](architecture/security.md)
+- [Windows](architecture/windows.md)
+- [Testing](architecture/testing.md)
 
-| 文档 | 内容 |
-|------|------|
-| [naming](architecture/naming.md) | ID 术语规范：connectionId / dbSessionId 定义、流转与守护规则 |
-| [security](architecture/security.md) | 加密、CSP、路径遍历防护、AI Key 安全 |
-| [windows](architecture/windows.md) | 主工作区 Page 导航、子窗口、windowKind 路由 |
-| [testing](architecture/testing.md) | 测试策略总览（单测 / E2E 分层与落点） |
-| [rfc/unified-panel-store](architecture/rfc/unified-panel-store.md) | 统一 Panel Store RFC |
+## 开发与发布
 
-## 3. 开发 / 发布文档（docs/development/）
+- [E2E Testing](development/e2e-testing.md)
+- [E2E Coverage](development/e2e-coverage.md)
+- [CI Private Plugins](development/ci-private-plugins.md)
+- [Independent Driver Development](development/independent-driver-development.en.md) / [中文](development/independent-driver-development.zh-CN.md)
+- [Driver API Dependency Boundary](development/driver-api-dependency-boundary.md)
+- [Optional Drivers](development/optional-drivers.md)
+- [Packaging](development/packaging.md)
+- [Updater](development/updater.md)
+- [GitHub Pages](development/github-pages.md)
 
-| 文档 | 内容 |
-|------|------|
-| [e2e-testing](development/e2e-testing.md) | WebdriverIO E2E 完整流程（构建、运行、调试） |
-| [e2e-coverage](development/e2e-coverage.md) | Host UI E2E 覆盖矩阵与例外登记 |
-| [desktop-v0.1x-implementation](development/desktop-v0.1x-implementation.zh-CN.md) | v0.1.x Desktop 实施方案：并行轨道、依赖、集成热点与发布回归 |
-| [migration-tools-review](development/migration-tools-review-v0.1.0.md) | Schema Diff / Data Sync / Data Transfer 就绪度与测试命令 |
-| [migration-tools-backlog](todo/migration-tools-backlog.md) | 三项迁移工具后续增强 Backlog（P1–P3） |
-| [ci-private-plugins](development/ci-private-plugins.md) | 私有 Git 驱动的 CI Deploy Key / Environment 配置 |
-| [independent-driver-development](development/independent-driver-development.en.md) / [中文](development/independent-driver-development.zh-CN.md) | 独立仓库驱动插件开发指南 |
-| [driver-api-dependency-boundary](development/driver-api-dependency-boundary.md) | datazen-driver-api 公共 API 依赖边界 |
-| [optional-drivers](development/optional-drivers.md) | 可选驱动选型（MongoDB / ClickHouse / DuckDB / SQL Server…） |
-| [packaging](development/packaging.md) | 打包与发布渠道（Gatekeeper、公证、Linux 包） |
-| [updater](development/updater.md) | 自动更新机制 |
-| [github-pages](development/github-pages.md) | 官网 / 使用手册的 GitHub Pages 部署与验证 |
+## 公开架构文章
 
-## 4. 架构文章系列（docs/blogs/）
+见 [blogs/README.md](blogs/README.md)。
 
-系列大纲与文章索引见 [blogs/README.md](blogs/README.md)。第一篇：[DataZen 架构设计（一）：一个现代桌面数据库工具是如何构建的](blogs/01-datazen-architecture-overview.zh-CN.md)。
+## 维护规则
 
----
-
-## 资源
-
-- 官网与手册截图：[site/assets/screenshots/](../site/assets/screenshots/)（README 与官网引用的图片资源均在此）
-- 项目 README：[README.md](../README.md) / [README.zh-CN.md](../README.zh-CN.md)
-- 贡献指南：[CONTRIBUTING.md](../CONTRIBUTING.md)
+1. 文档中的文件路径、命令、IPC 名称和能力矩阵必须以 main 分支代码为准。
+2. 已实现功能写入 features；架构事实写入 architecture；开发流程写入 development。
+3. 临时实施计划、PRD、进度、Bug List 和评审记录不提交到长期文档索引。
+4. 删除或重构代码时，同步删除失效文档引用。

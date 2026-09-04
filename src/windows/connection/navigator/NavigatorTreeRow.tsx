@@ -78,6 +78,12 @@ export interface NavigatorTreeRowProps {
   handleDragLeave: () => void;
   handleDragEnd: () => void;
   handleDrop: (e: React.DragEvent) => void;
+  groupDropTarget?: string | null;
+  handleGroupDragOver?: (e: React.DragEvent, groupName: string) => void;
+  handleGroupDragLeave?: () => void;
+  handleGroupDrop?: (e: React.DragEvent, groupName: string) => void;
+  handleSectionDragOver?: (e: React.DragEvent, section: string) => void;
+  handleSectionDrop?: (e: React.DragEvent, section: string) => void;
   renderStatusDot: (connectionId: string) => React.ReactNode;
   viewActions?: {
     openObject?: (
@@ -121,6 +127,12 @@ export function NavigatorTreeRow({
   handleDragLeave,
   handleDragEnd,
   handleDrop,
+  groupDropTarget,
+  handleGroupDragOver,
+  handleGroupDragLeave,
+  handleGroupDrop,
+  handleSectionDragOver,
+  handleSectionDrop,
   renderStatusDot,
   viewActions,
 }: NavigatorTreeRowProps) {
@@ -131,6 +143,8 @@ export function NavigatorTreeRow({
           data-section-header
           data-section={row.section}
           className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-fg-muted"
+          onDragOver={(e) => handleSectionDragOver?.(e, row.section)}
+          onDrop={(e) => handleSectionDrop?.(e, row.section)}
         >
           <ThemedIcon
             id="schema.schema"
@@ -142,14 +156,21 @@ export function NavigatorTreeRow({
         </div>
       );
 
-    case 'group':
+    case 'group': {
+      const isDropTarget = groupDropTarget === row.groupName;
       return (
         <div
           data-group-header
           data-group-name={row.groupName}
-          className="flex cursor-pointer items-center gap-1.5 px-2 py-1 hover:bg-surface-raised/50"
+          className={cn(
+            'flex cursor-pointer items-center gap-1.5 px-2 py-1 transition-colors hover:bg-surface-raised/50',
+            isDropTarget && 'bg-accent/20 ring-1 ring-accent rounded-sm',
+          )}
           onClick={() => toggleGroup(row.groupName)}
           onContextMenu={(e) => handleGroupContextMenu(e, row.groupName)}
+          onDragOver={(e) => handleGroupDragOver?.(e, row.groupName)}
+          onDragLeave={handleGroupDragLeave}
+          onDrop={(e) => handleGroupDrop?.(e, row.groupName)}
         >
           {row.expanded ? (
             <ChevronDown className="h-3 w-3 shrink-0 text-fg-muted" />
@@ -165,6 +186,7 @@ export function NavigatorTreeRow({
           <span className="text-[11px] text-fg-muted">({row.count})</span>
         </div>
       );
+    }
 
     case 'connection': {
       const showDropBefore = dropTarget?.id === row.conn.id && dropTarget.position === 'before';

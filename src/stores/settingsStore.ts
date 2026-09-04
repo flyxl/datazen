@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   monitor: DEFAULT_MONITOR_SETTINGS,
   pluginSettings: {},
   mcpClientServers: [],
+  aiStrictEgress: true,
 };
 
 const THEME_STORAGE_KEY = 'datazen-theme';
