@@ -30,7 +30,7 @@ pub async fn resolve_connection_with_id(
     connection_manager
         .resolve_session_for_connection(connection_id)
         .await
-        .map_err(|e| format!("Cannot resolve connection '{connection_id}': {e}"))
+        .map_err(|e| format!("Cannot resolve connection '{connection_id}': {}", crate::log_redact::redact_secrets_for_log(&e.to_string())))
 }
 
 /// List all configured connections as a JSON string.
