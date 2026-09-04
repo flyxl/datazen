@@ -35,12 +35,24 @@
 | **ui-accent-tokens** | 统一强调色到 `accent` token：清理 `focus:border-blue-500` 与 `text-blue-500` 等硬编码，Badge/Tag 与危险色统一使用语义 token，补齐样式回归测试 | `src/windows/settings/`、`src/components/` 等相关样式文件 | **PASSED** (合入) |
 | **ui-shell-unification** | 外壳与导航打磨：SettingsPage 接入主 TitleBar 与菜单，ContentStatusBar 快捷键平台感知（Cmd/Ctrl 自适应）与上下文匹配 | `src/windows/connection/ConnectionPage.tsx`、`src/windows/settings/SettingsPage.tsx`、`src/windows/connection/ContentStatusBar.tsx` | **PASSED** (合入) |
 
-### Wave 3（2 轨并行：迁移向导统一 + 查询工具栏体验）
+### Wave 3（2 轨并行：迁移向导统一 + 查询工具栏体验）— 已完成 (PASSED)
 
 | Track | 任务摘要 | 主要写路径 | 状态 |
 |-------|----------|------------|------|
-| **ui-wizard-prefill** | 迁移三件套（Sync/Transfer/Diff）向导守卫与参数预填统一：windowManager 统一 prefill，DataSync 改端点保留已有配置选项，只读目标给出提示阻断 | `src/lib/windowManager.ts`、`src/windows/data-sync/DataSyncWindow.tsx`、`src/windows/schema-diff/SchemaDiffWindow.tsx` | 进行中 |
-| **ui-query-toolbar** | 查询工具栏体验优化：运行即显取消按钮（消除 300ms 延迟与布局跳动）；window.alert 绕过设计系统治理，单例窗口重复打开时自动聚焦与还原 | `src/windows/connection/QueryPanel.tsx`、`src/lib/windowManager.ts` | 进行中 |
+| **ui-wizard-prefill** | 迁移三件套（Sync/Transfer/Diff）向导守卫与参数预填统一：windowManager 统一 prefill，DataSync 改端点保留已有配置选项，只读目标给出提示阻断 | `src/lib/windowManager.ts`、`src/windows/data-sync/DataSyncWindow.tsx`、`src/windows/schema-diff/SchemaDiffWindow.tsx` | **PASSED** (合入) |
+| **ui-query-toolbar** | 查询工具栏体验优化：运行即显取消按钮（消除 300ms 延迟与布局跳动）；window.alert 绕过设计系统治理，单例窗口重复打开时自动聚焦与还原 | `src/windows/connection/QueryPanel.tsx`、`src/lib/windowManager.ts` | **PASSED** (合入) |
+
+---
+
+## 2. 成果与状态总结
+
+全量波次已按照并发 Playbook 标准执行完毕：
+- **P0-1（GlobalObjectSearch）**：清理入口及休眠状态，无残留无效计算。
+- **Wave 1**：P0-4（Button 焦点与可访问性）+ P0-2/P0-3（DataTransfer 向导守卫）全部通过测试并合流。
+- **Wave 2**：统一强调色至 accent token + SettingsPage 保留系统菜单与平台快捷键全部通过测试并合流。
+- **Wave 3**：迁移向导三件套 prefill 统一与只读阻断 + 查询工具栏消除 300ms 延迟与单例窗口激活全部通过测试并合流。
+- **R 阶段回归**：全量编译检查 `npx tsc --noEmit` 0 报错；受影响模块测试（60 个测试文件、484 个测试）100% 通过。
+
 
 
 

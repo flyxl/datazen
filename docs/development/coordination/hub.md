@@ -28,6 +28,8 @@
 | ui-transfer-guards | — | PASSED | 6815ff687 | bb9ab1add | 待合入 |
 | ui-accent-tokens | — | TEST_DONE | c428b0c8c | cee7c1d15 | 待合入 |
 | ui-shell-unification | — | PASSED | 80e316d6a | 29d7907ea | 待合入 |
+| ui-query-toolbar | — | TEST_DONE | ad1f0b0e8 | 9fa32bc0f | 待合入 |
+| ui-wizard-prefill | — | TEST_DONE | d96bbd2012f0b9c00700da6ca0c23795c48e6c3e | c46cf8ad55daa5c4c42252556e18bf4b71b8347d | 待合入 |
 
 ## 写锁台账
 
@@ -49,6 +51,8 @@
 | ui-transfer-guards | — | — | feature/ui-transfer-guards | PASSED | — |
 | ui-accent-tokens | — | — | feature/ui-accent-tokens | TEST_DONE | — |
 | ui-shell-unification | — | — | feature/ui-shell-unification | PASSED | — |
+| ui-query-toolbar | — | — | feature/ui-query-toolbar | TEST_DONE | — |
+| ui-wizard-prefill | — | — | feature/ui-wizard-prefill | TEST_DONE | — |
 
 ## 波次记录
 
