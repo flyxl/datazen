@@ -117,6 +117,5 @@ Migrating all 8 pure-IPC candidates saves **~4 minutes** from the default serial
 
 ## Related
 
-- [E2E performance plan](./coordination/e2e-perf-plan.md) — Track E scope
 - [E2E testing](./e2e-testing.md) — full E2E workflow
 - [Testing architecture](../architecture/testing.md) — Host vs driver test placement
