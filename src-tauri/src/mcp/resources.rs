@@ -1,14 +1,17 @@
 //! MCP resource listing/reading and test-oriented tool dispatch helpers.
 
 use super::server::{DataZenMcpServer, MCP_ALL_TOOLS};
+#[cfg(test)]
 use super::types::*;
 use crate::ai::budget;
 use crate::mcp::allowlist;
 use crate::mcp::permission;
+#[cfg(test)]
 use crate::mcp::tool_help;
+#[cfg(test)]
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
-use rmcp::{tool_router, ErrorData as McpError};
+use rmcp::ErrorData as McpError;
 
 impl DataZenMcpServer {
     pub(crate) async fn read_resource_inner(

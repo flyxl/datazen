@@ -209,7 +209,7 @@ fn mysql_placeholders_are_question_marks() {
 
 #[test]
 fn cancel_sql_targets_one_thread_without_process_scan() {
-    assert_eq!(MYSQL_CONNECTION_ID_SQL, "SELECT CONNECTION_ID()");
+    assert_eq!(execution::MYSQL_CONNECTION_ID_SQL, "SELECT CONNECTION_ID()");
     assert_eq!(build_kill_query_sql(42), "KILL QUERY 42");
     assert!(!build_kill_query_sql(42).contains("processlist"));
 }

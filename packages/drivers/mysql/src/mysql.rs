@@ -24,16 +24,14 @@ use catalog::{
 use connection::build_mysql_options;
 use datazen_driver_api::*;
 use execution::{build_kill_query_sql, MysqlQueryExecution};
-use sql::{apply_mysql_select_limit, is_mysql_result_query, split_mysql_statements};
+use sql::{apply_mysql_select_limit, split_mysql_statements};
 use sqlx::mysql::{MySqlPool, MySqlPoolOptions};
 use sqlx::pool::PoolConnection;
 use sqlx::{MySql, Row};
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock};
 
-pub(crate) use execution::MYSQL_CONNECTION_ID_SQL;
 pub(crate) use type_decode::{decode_mysql_text, decode_mysql_text_idx, decode_mysql_text_opt};
 
 pub struct MysqlDriver {

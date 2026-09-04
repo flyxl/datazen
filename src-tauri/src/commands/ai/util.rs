@@ -88,6 +88,7 @@ pub(crate) async fn build_connections_context(state: &AppState, lang: &str) -> S
     lines.join("\n")
 }
 
+#[allow(dead_code)]
 pub(crate) fn truncate_str(s: &str, max_bytes: usize) -> &str {
     if s.len() <= max_bytes {
         return s;

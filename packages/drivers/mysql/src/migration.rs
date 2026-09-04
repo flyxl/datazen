@@ -212,7 +212,6 @@ impl MigrationRenderer for MysqlMigrationRenderer {
                 rollback_sql: None,
                 summary: format!("DROP PRIMARY KEY {}", table),
             }),
-            _ => Err(format!("MySQL renderer does not yet support {:?}", op)),
         }
     }
 }

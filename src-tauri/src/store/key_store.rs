@@ -48,6 +48,7 @@ pub fn key_backend() -> KeyBackend {
     }
 }
 
+#[allow(dead_code)]
 fn should_prefer_file_backend() -> bool {
     #[cfg(target_os = "macos")]
     {

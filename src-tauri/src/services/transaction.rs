@@ -27,6 +27,7 @@ pub fn ddl_atomicity(dialect: &str) -> DdlAtomicity {
 /// Manages BEGIN/COMMIT/ROLLBACK lifecycle based on dialect's DDL atomicity.
 /// For transactional dialects (PG), wraps operations in a real transaction.
 /// For auto-commit dialects (MySQL), operations execute without wrapping.
+#[allow(dead_code)]
 pub struct TransactionScope<'a> {
     driver: &'a dyn DatabaseDriver,
     handle: &'a ConnectionHandle,
@@ -34,6 +35,7 @@ pub struct TransactionScope<'a> {
     tx: Option<TransactionHandle>,
 }
 
+#[allow(dead_code)]
 impl<'a> TransactionScope<'a> {
     /// Begin a transaction scope. For transactional dialects, calls BEGIN.
     pub async fn begin(

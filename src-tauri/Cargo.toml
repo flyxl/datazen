@@ -88,6 +88,10 @@ datazen-driver-postgres = { path = "../packages/drivers/postgres" }
 datazen-driver-mysql = { path = "../packages/drivers/mysql" }
 datazen-driver-sqlite = { path = "../packages/drivers/sqlite" }
 
+[[test]]
+name = "driver_command_ipc"
+required-features = ["test-harness"]
+
 [lints.rust]
 # Driver/plugin features are injected by resolve-drivers.mjs at build time; declare
 # them here so standalone `cargo check` does not treat them as unexpected cfg.

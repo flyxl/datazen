@@ -273,7 +273,6 @@ impl MigrationRenderer for PostgresMigrationRenderer {
             MigrationOperation::SetAutoIncrement { .. } => {
                 Err("PostgreSQL auto-increment changes require identity/sequence metadata".into())
             }
-            _ => Err(format!("PostgreSQL renderer does not yet support {:?}", op)),
         }
     }
 }
@@ -309,6 +308,7 @@ impl MigrationCapabilities for PostgresMigrationCapabilities {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(dead_code)]
     fn col(name: &str, ty: &str) -> MigrationColumn {
         MigrationColumn {
             name: name.into(),
