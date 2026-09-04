@@ -13,6 +13,7 @@ export function ToolbarButton({
   compact = false,
   label,
   icon,
+  variant = 'ghost',
   className,
   title,
   ...props
@@ -20,6 +21,7 @@ export function ToolbarButton({
   return (
     <Button
       {...props}
+      variant={variant}
       title={title ?? label}
       aria-label={label}
       className={cn('shrink-0', compact ? 'h-7 px-1.5' : 'h-7 gap-1 px-2 text-xs', className)}
