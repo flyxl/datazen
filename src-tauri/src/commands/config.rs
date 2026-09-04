@@ -627,12 +627,15 @@ async fn export_app_data_to_dest(state: &AppState, dest: PathBuf) -> Result<(), 
 async fn import_app_data_from_source(
     state: &AppState,
     source: PathBuf,
+    options: app_data_archive::ImportOptions,
 ) -> Result<(), CommandError> {
     let data_dir = state.store.data_dir().clone();
-    tokio::task::spawn_blocking(move || app_data_archive::import_app_data(&data_dir, &source))
-        .await
-        .map_err(|e| CommandError::Internal(format!("import_app_data task: {e}")))?
-        .cmd_err("import_app_data")?;
+    tokio::task::spawn_blocking(move || {
+        app_data_archive::import_app_data_with_options(&data_dir, &source, options)
+    })
+    .await
+    .map_err(|e| CommandError::Internal(format!("import_app_data task: {e}")))?
+    .cmd_err("import_app_data")?;
     tracing::info!("import_app_data OK");
     Ok(())
 }
@@ -680,11 +683,17 @@ pub async fn pick_app_data_import_file(app: AppHandle) -> Result<Option<String>,
 /// pass `source_path` from [`pick_app_data_import_file`] after a web confirm;
 /// E2E passes `override_path`, which requires a webdriver build and skips the
 /// native file picker (old raw-path behavior).
+///
+/// When the archive contains a `.key` file and the target data dir already has
+/// one, the import is rejected unless `allow_key_overwrite` is `true`.  This
+/// protects against silent key replacement that could render encrypted data
+/// unrecoverable.
 #[tauri::command]
 pub async fn import_app_data(
     state: State<'_, AppState>,
     source_path: Option<String>,
     override_path: Option<String>,
+    allow_key_overwrite: Option<bool>,
 ) -> Result<bool, CommandError> {
     let source = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
         Some(path) => path,
@@ -698,7 +707,10 @@ pub async fn import_app_data(
         }
     };
 
-    import_app_data_from_source(&state, source).await?;
+    let options = app_data_archive::ImportOptions {
+        allow_key_overwrite: allow_key_overwrite.unwrap_or(false),
+    };
+    import_app_data_from_source(&state, source, options).await?;
     Ok(true)
 }
 
@@ -1186,9 +1198,13 @@ mod tests {
         }
 
         let target = TestAppState::new().await;
-        import_app_data_from_source(&target.state, clean_zip)
-            .await
-            .unwrap();
+        import_app_data_from_source(
+            &target.state,
+            clean_zip,
+            app_data_archive::ImportOptions::default(),
+        )
+        .await
+        .unwrap();
         let groups_on_disk =
             std::fs::read_to_string(target.state.store.data_dir().join("groups.json")).unwrap();
         assert!(
