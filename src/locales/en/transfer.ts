@@ -69,5 +69,15 @@ const pack = {
   'transfer.limitations.dontShowAgain': 'Do not show this again',
   'transfer.ddlOverrideHint':
     'Edit the CREATE statement above; execute will run your modified SQL.',
+  'transfer.objects.noTablesFound':
+    'No transferable tables were found in the selected source database.',
+  'transfer.objects.noTablesHint':
+    'Check the source connection and database, then re-detect tables.',
+  'transfer.objects.reInspect': 'Re-detect tables',
+  'transfer.preview.failed': 'Preview generation failed',
+  'transfer.preview.failedHint':
+    'Could not generate a transfer preview. Review your mapping configuration and try again.',
+  'transfer.preview.retry': 'Regenerate preview',
+  'transfer.preview.backToMapping': 'Back to mapping',
 } as const;
 export default pack;

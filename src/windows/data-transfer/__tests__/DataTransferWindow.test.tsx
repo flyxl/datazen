@@ -5,12 +5,14 @@ import type { TransferTableResult } from '../../../commands/transfer';
 import { transferCommands } from '../../../commands/transfer';
 import { clearTransferLimitationsDismissed } from '../../../lib/transferLimitationsPrefs';
 
-const { invokeMock, inspectTransferMock, getDatabasesMock, stableT } = vi.hoisted(() => {
+const { invokeMock, inspectTransferMock, previewTransferMock, getDatabasesMock, stableT } =
+  vi.hoisted(() => {
   const stableT = (key: string, params?: Record<string, string | number>) =>
     params ? `${key}:${JSON.stringify(params)}` : key;
   return {
     invokeMock: vi.fn(),
     inspectTransferMock: vi.fn(),
+    previewTransferMock: vi.fn(),
     getDatabasesMock: vi.fn(),
     stableT,
   };
@@ -51,24 +53,7 @@ vi.mock('../../../commands/transfer', () => ({
   DEFAULT_TRANSFER_OPTIONS: { batchSize: 500, stopOnError: true, confirmedDestructive: false },
   transferCommands: {
     inspect: (...args: unknown[]) => inspectTransferMock(...args),
-    preview: vi.fn().mockResolvedValue({
-      canExecute: true,
-      ddl: [],
-      writePlans: [
-        {
-          sourceTable: 'users',
-          targetTable: 'users',
-          writeMode: 'truncateInsert',
-          mappedColumns: [],
-          preamble: [],
-          estimatedRows: 3,
-        },
-      ],
-      warnings: [],
-      pairingPath: 'direct',
-      mode: 'data',
-      writeMode: 'truncateInsert',
-    }),
+    preview: (...args: unknown[]) => previewTransferMock(...args),
     execute: vi.fn().mockResolvedValue({ rowsInserted: 3, tables: [] }),
     cancel: vi.fn(),
     classifyPair: vi.fn(),
@@ -127,6 +112,51 @@ const inspectRows: TransferTableResult[] = [
     ],
   },
 ];
+
+const previewSuccess = {
+  canExecute: true,
+  ddl: [],
+  writePlans: [
+    {
+      sourceTable: 'users',
+      targetTable: 'users',
+      writeMode: 'truncateInsert',
+      mappedColumns: [],
+      preamble: [],
+      estimatedRows: 3,
+    },
+  ],
+  warnings: [],
+  pairingPath: 'direct',
+  mode: 'data',
+  writeMode: 'truncateInsert',
+};
+
+async function advanceToObjectsStep(emptyTables = false) {
+  const { DataTransferWindow } = await import('../DataTransferWindow');
+  render(<DataTransferWindow />);
+
+  await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
+  await dismissLimitationsDialog();
+
+  await pickSelect('data-transfer-source', 'PG Src (postgresql)');
+  await pickSelect('data-transfer-target', 'PG Tgt (postgresql)');
+  await waitFor(() => expect(getDatabasesMock).toHaveBeenCalled());
+
+  fireEvent.click(screen.getByTestId('data-transfer-next'));
+  await waitFor(() => expect(screen.getByTestId('data-transfer-mode-data')).toBeTruthy());
+  fireEvent.click(screen.getByTestId('data-transfer-mode-data'));
+
+  inspectTransferMock.mockResolvedValue(emptyTables ? [] : inspectRows);
+  fireEvent.click(screen.getByTestId('data-transfer-next'));
+  await waitFor(() => expect(inspectTransferMock).toHaveBeenCalled());
+
+  if (emptyTables) {
+    await waitFor(() => expect(screen.getByTestId('data-transfer-objects-empty')).toBeTruthy());
+  } else {
+    await waitFor(() => expect(screen.getByTestId('data-transfer-table-row')).toBeTruthy());
+  }
+}
 
 async function pickSelect(testId: string, optionLabel: string) {
   const wrap = screen.getByTestId(testId);
@@ -219,6 +249,8 @@ describe('DataTransferWindow', () => {
     vi.clearAllMocks();
     clearTransferLimitationsDismissed();
     getDatabasesMock.mockResolvedValue(['src', 'tgt']);
+    previewTransferMock.mockReset();
+    previewTransferMock.mockResolvedValue(previewSuccess);
     invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
       if (cmd === 'get_connections') return [pgSrc, pgTgt];
       if (cmd === 'connect_dedicated') {
@@ -328,5 +360,73 @@ describe('DataTransferWindow', () => {
     fireEvent.click(screen.getByTestId('data-transfer-execute'));
     await waitFor(() => expect(transferCommands.execute).toHaveBeenCalled());
     expect(screen.queryByTestId('data-transfer-execute-confirm')).toBeNull();
+  });
+
+  it('disables next and shows empty guidance when no tables are detected', async () => {
+    await advanceToObjectsStep(true);
+
+    expect(screen.getByText('transfer.objects.noTablesFound')).toBeTruthy();
+    expect(screen.getByText('transfer.objects.noTablesHint')).toBeTruthy();
+    expect(screen.getByTestId('data-transfer-next')).toBeDisabled();
+
+    inspectTransferMock.mockClear();
+    inspectTransferMock.mockResolvedValue(inspectRows);
+    fireEvent.click(screen.getByTestId('data-transfer-reinspect'));
+
+    await waitFor(() => expect(inspectTransferMock).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId('data-transfer-table-row')).toBeTruthy());
+    expect(screen.getByTestId('data-transfer-next')).not.toBeDisabled();
+  });
+
+  it('shows preview error state with retry and back actions when preview fails', async () => {
+    await advanceToMappingStep();
+
+    previewTransferMock.mockRejectedValueOnce(new Error('preview boom'));
+    fireEvent.click(screen.getByTestId('data-transfer-next'));
+
+    const errorPanel = await waitFor(() => screen.getByTestId('data-transfer-preview-error'));
+    expect(within(errorPanel).getByText('preview boom')).toBeTruthy();
+    expect(screen.queryByTestId('data-transfer-preview')).toBeNull();
+
+    previewTransferMock.mockResolvedValueOnce(previewSuccess);
+    fireEvent.click(screen.getByTestId('data-transfer-preview-retry'));
+    await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
+  });
+
+  it('returns to mapping from preview error state', async () => {
+    await advanceToMappingStep();
+
+    previewTransferMock.mockRejectedValueOnce(new Error('preview boom'));
+    fireEvent.click(screen.getByTestId('data-transfer-next'));
+    await waitFor(() => expect(screen.getByTestId('data-transfer-preview-error')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('data-transfer-preview-back-mapping'));
+    await waitFor(() => expect(screen.getByTestId('data-transfer-mapping-step')).toBeTruthy());
+  });
+
+  it('updates preview error message when retry fails', async () => {
+    await advanceToMappingStep();
+
+    previewTransferMock.mockRejectedValueOnce(new Error('preview boom'));
+    fireEvent.click(screen.getByTestId('data-transfer-next'));
+    await waitFor(() => expect(screen.getByTestId('data-transfer-preview-error')).toBeTruthy());
+
+    previewTransferMock.mockRejectedValueOnce(new Error('retry failed'));
+    fireEvent.click(screen.getByTestId('data-transfer-preview-retry'));
+    await waitFor(() => {
+      const errorPanel = screen.getByTestId('data-transfer-preview-error');
+      expect(within(errorPanel).getByText('retry failed')).toBeTruthy();
+    });
+  });
+
+  it('advances to preview error state instead of blank when preview fails from mapping', async () => {
+    await advanceToMappingStep();
+
+    previewTransferMock.mockRejectedValueOnce(new Error('mapping preview failed'));
+    fireEvent.click(screen.getByTestId('data-transfer-next'));
+
+    const errorPanel = await waitFor(() => screen.getByTestId('data-transfer-preview-error'));
+    expect(within(errorPanel).getByText('mapping preview failed')).toBeTruthy();
+    expect(screen.queryByTestId('data-transfer-preview')).toBeNull();
   });
 });
