@@ -36,7 +36,6 @@ export function useDataSyncWizardState() {
     setInspectionComplete(false);
     setSelectedTableKey(null);
     setSyncState('idle');
-    setStep('endpoints');
   }, []);
 
   return {

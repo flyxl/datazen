@@ -16,6 +16,7 @@ const {
   aiChatMock,
   stableT,
   aiConfiguredRef,
+  urlParamMock,
 } = vi.hoisted(() => {
   const stableT = (key: string, params?: Record<string, string | number>) =>
     params ? `${key}:${JSON.stringify(params)}` : key;
@@ -33,6 +34,7 @@ const {
     aiChatMock: vi.fn(),
     stableT,
     aiConfiguredRef,
+    urlParamMock: vi.fn<(name: string) => string | null>(),
   };
 });
 
@@ -103,6 +105,10 @@ vi.mock('../../../hooks/useSettings', () => ({
 vi.mock('../../../lib/windowManager', () => ({
   openSchemaDiffWindow: vi.fn(),
   openDataTransferWindow: vi.fn(),
+}));
+
+vi.mock('../../../lib/windowKind', () => ({
+  getUrlParam: (name: string) => urlParamMock(name),
 }));
 
 vi.mock('../../../components/TitleBar', () => ({
@@ -247,6 +253,8 @@ async function advanceToPreview(targetLabel = 'PG Tgt') {
 describe('DataSyncWindow wizard', () => {
   beforeEach(() => {
     aiConfiguredRef.value = false;
+    urlParamMock.mockReset();
+    urlParamMock.mockReturnValue(null);
     invokeMock.mockReset();
     inspectDataSyncMock.mockReset();
     compareDataSyncMock.mockReset();
@@ -613,6 +621,24 @@ describe('DataSyncWindow wizard', () => {
     );
     expect(screen.queryAllByTestId('data-sync-mapping-row')).toHaveLength(0);
     expect(screen.getByTestId('data-sync-step-endpoints')).toBeTruthy();
+  });
+
+  it('prefills connection endpoints from URL params', async () => {
+    urlParamMock.mockImplementation((name) => {
+      const params: Record<string, string> = {
+        sourceId: 'pg-src',
+        targetId: 'pg-tgt',
+      };
+      return params[name] ?? null;
+    });
+    render(<DataSyncWindow />);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
+    await waitFor(() =>
+      expect(screen.getByTestId('data-sync-source')).toHaveTextContent('PG Src'),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('data-sync-target')).toHaveTextContent('PG Tgt'),
+    );
   });
 
   it('shows AI explain diff result when configured', async () => {

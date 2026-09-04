@@ -16,7 +16,7 @@ describe('[tester] useDataSyncWizardState', () => {
     expect(NARROW_WIZARD_STEPS).toEqual(['endpoints', 'setup', 'result']);
   });
 
-  it('resetCompareState clears compare-related fields', () => {
+  it('resetCompareState clears compare-related fields without resetting step', () => {
     const { result } = renderHook(() => useDataSyncWizardState());
 
     act(() => {
@@ -32,7 +32,7 @@ describe('[tester] useDataSyncWizardState', () => {
       result.current.resetCompareState();
     });
 
-    expect(result.current.step).toBe('endpoints');
+    expect(result.current.step).toBe('compare');
     expect(result.current.mappingResults).toEqual([]);
     expect(result.current.disabledTables.size).toBe(0);
     expect(result.current.inspectionComplete).toBe(false);
