@@ -103,7 +103,9 @@ const SAFE_WRITE_BLOCKED_KEYWORDS: &[&str] = &["DROP", "TRUNCATE", "ALTER", "GRA
 
 /// Returns the uppercase main SQL verb (handles leading `WITH` CTEs).
 pub fn sql_main_keyword(sql: &str) -> Option<String> {
-    let tokens = tokenize_sql(sql);
+    // Normalise fullwidth characters so that ＤＲＯＰ → DROP before classification.
+    let sql = crate::sql_guard::normalize_fullwidth(sql);
+    let tokens = tokenize_sql(&sql);
     if tokens.is_empty() {
         return None;
     }
@@ -118,12 +120,15 @@ pub fn sql_main_keyword(sql: &str) -> Option<String> {
 
 /// Returns `Ok(())` when SQL is allowed under the given mode.
 pub fn check_sql_allowed(sql: &str, mode: McpPermissionMode) -> Result<(), String> {
+    // Reject null bytes and normalise fullwidth before any classification.
+    crate::sql_guard::reject_null_bytes(sql)?;
+    let sql = crate::sql_guard::normalize_fullwidth(sql);
     match mode {
         McpPermissionMode::HighRiskWrite => Ok(()),
         McpPermissionMode::ReadOnly => {
             Err("SQL execution is blocked in MCP read-only permission mode".to_string())
         }
-        McpPermissionMode::SafeWrite => check_safe_write_sql(sql),
+        McpPermissionMode::SafeWrite => check_safe_write_sql(&sql),
     }
 }
 
@@ -201,7 +206,9 @@ pub fn check_tool_call(
             if tool_name == "query" {
                 if let Some(args) = arguments {
                     if let Some(sql) = args.get("sql").and_then(|v| v.as_str()) {
-                        check_safe_write_sql(sql)?;
+                        crate::sql_guard::reject_null_bytes(sql)?;
+                        let sql = crate::sql_guard::normalize_fullwidth(sql);
+                        check_safe_write_sql(&sql)?;
                     }
                 }
             }
@@ -647,5 +654,72 @@ mod tests {
         ));
         assert!(!query_history_content_allowed(McpPermissionMode::ReadOnly));
         assert!(query_history_content_allowed(McpPermissionMode::SafeWrite));
+    }
+
+    // --- Hardening: fullwidth normalisation + null-byte rejection ---
+
+    #[test]
+    fn fullwidth_drop_is_intercepted_in_safe_write() {
+        assert!(check_sql_allowed("ＤＲＯＰ TABLE t", McpPermissionMode::SafeWrite).is_err());
+    }
+
+    #[test]
+    fn fullwidth_truncate_is_intercepted_in_safe_write() {
+        assert!(
+            check_sql_allowed("ＴＲＵＮＣＡＴＥ TABLE t", McpPermissionMode::SafeWrite).is_err()
+        );
+    }
+
+    #[test]
+    fn fullwidth_create_table_is_intercepted_in_safe_write() {
+        assert!(check_sql_allowed(
+            "ＣＲＥＡＴＥ TABLE t (id INT)",
+            McpPermissionMode::SafeWrite
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn fullwidth_drop_via_tool_call_is_intercepted() {
+        let none = disabled(&[]);
+        let args = serde_json::json!({"sql": "ＤＲＯＰ TABLE t"})
+            .as_object()
+            .cloned();
+        assert!(
+            check_tool_call("query", McpPermissionMode::SafeWrite, &none, args.as_ref()).is_err()
+        );
+    }
+
+    #[test]
+    fn null_byte_in_sql_is_rejected() {
+        assert!(check_sql_allowed("DROP\u{0}TABLE t", McpPermissionMode::SafeWrite).is_err());
+    }
+
+    #[test]
+    fn null_byte_via_tool_call_is_rejected() {
+        let none = disabled(&[]);
+        let args = serde_json::json!({"sql": "DROP\u{0}TABLE t"})
+            .as_object()
+            .cloned();
+        assert!(
+            check_tool_call("query", McpPermissionMode::SafeWrite, &none, args.as_ref()).is_err()
+        );
+    }
+
+    #[test]
+    fn sql_main_keyword_handles_fullwidth() {
+        assert_eq!(
+            sql_main_keyword("ＤＲＯＰ TABLE t"),
+            Some("DROP".to_string())
+        );
+        assert_eq!(
+            sql_main_keyword("ＳＥＬＥＣＴ 1"),
+            Some("SELECT".to_string())
+        );
+    }
+
+    #[test]
+    fn high_risk_write_still_allows_fullwidth_drop() {
+        assert!(check_sql_allowed("ＤＲＯＰ TABLE t", McpPermissionMode::HighRiskWrite).is_ok());
     }
 }

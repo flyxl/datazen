@@ -33,8 +33,12 @@ pub fn normalize_fullwidth(sql: &str) -> String {
 }
 
 /// Strip SQL comments (`--` line and `/* … */` block) without touching
-/// quoted strings.  Used by `check_sql` to re-classify a statement after
-/// comment removal (the "comment-strip re-classification" fix).
+/// quoted strings.  Used by `check_sql` / `tokenize_sql` to re-classify a
+/// statement after comment removal (the "comment-strip re-classification" fix).
+///
+/// SQL treats a comment as equivalent to whitespace, so when a comment is
+/// removed we push a single space separator.  This keeps `DROP/**/TABLE` from
+/// becoming the glued token `DROPTABLE`, which would defeat keyword detection.
 pub fn strip_sql_comments(sql: &str) -> String {
     let chars: Vec<char> = sql.chars().collect();
     let mut out = String::with_capacity(sql.len());
@@ -67,26 +71,64 @@ pub fn strip_sql_comments(sql: &str) -> String {
             while i < chars.len() && chars[i] != '\n' {
                 i += 1;
             }
+            push_separator(&mut out);
             continue;
         }
         // /* block comment */
         if chars[i] == '/' && i + 1 < chars.len() && chars[i + 1] == '*' {
             i += 2;
-            // Handle empty block comment /**/ — closing */ starts at chars[i]
-            if i + 1 < chars.len() && chars[i] == '*' && chars[i + 1] == '/' {
-                i += 2;
-                continue;
-            }
             while i + 1 < chars.len() && !(chars[i] == '*' && chars[i + 1] == '/') {
                 i += 1;
             }
             i = (i + 2).min(chars.len());
+            push_separator(&mut out);
             continue;
         }
         out.push(chars[i]);
         i += 1;
     }
     out
+}
+
+/// Push a single space separator unless `out` already ends with whitespace,
+/// preserving the "comment ≡ whitespace" SQL semantics between tokens.
+fn push_separator(out: &mut String) {
+    if !out.is_empty() && !out.ends_with(' ') && !out.ends_with('\n') && !out.ends_with('\t') {
+        out.push(' ');
+    }
+}
+
+/// True when a `/* … */` block comment in `sql` contains a write verb.
+///
+/// Used by the conservative guard in `check_sql`: after comment stripping, a
+/// statement whose main verb is *not* a clearly-safe verb (e.g. `/* DROP */
+/// TABLE t` strips to `TABLE t`) may be disguising a write inside the comment,
+/// and must be blocked under read-only / safe mode.
+fn comment_hides_write_verb(sql: &str) -> bool {
+    let chars: Vec<char> = sql.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '/' && i + 1 < chars.len() && chars[i + 1] == '*' {
+            let start = i + 2;
+            let mut j = start;
+            while j + 1 < chars.len() && !(chars[j] == '*' && chars[j + 1] == '/') {
+                j += 1;
+            }
+            let comment_text: String = chars[start..j].iter().collect();
+            // Normalise fullwidth and check for any write verb inside the comment.
+            let norm = normalize_fullwidth(&comment_text);
+            if WRITE_VERBS.iter().any(|v| {
+                norm.split_whitespace()
+                    .any(|tok| tok.eq_ignore_ascii_case(v))
+            }) {
+                return true;
+            }
+            i = (j + 2).min(chars.len());
+            continue;
+        }
+        i += 1;
+    }
+    false
 }
 
 /// Full guard normalisation: reject null bytes + map fullwidth → halfwidth.
@@ -104,6 +146,16 @@ const WRITE_VERBS: &[&str] = &[
 
 const SAFE_MODE_NEEDS_WHERE: &[&str] = &["UPDATE", "DELETE"];
 const SAFE_MODE_BLOCKED: &[&str] = &["TRUNCATE", "DROP"];
+
+/// Read-only verbs that never mutate, used to decide whether a comment-stripped
+/// statement is a clearly-safe body (and thus not an attempted disguised write).
+const READ_VERBS: &[&str] = &[
+    "SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "PRAGMA", "USE", "WITH", "VALUES",
+];
+
+fn is_read_verb(v: &str) -> bool {
+    READ_VERBS.iter().any(|r| v.eq_ignore_ascii_case(r))
+}
 
 /// Reject mutating SQL when the connection is read-only, and require WHERE
 /// for UPDATE/DELETE when Safe Mode is on. Safe Mode also blocks TRUNCATE/DROP.
@@ -141,6 +193,21 @@ pub fn check_sql(sql: &str, read_only: bool, safe_mode: bool) -> Result<(), Stri
                     "Safe Mode requires a WHERE clause on {verb} statements"
                 ));
             }
+        }
+        // Conservative guard: if the stripped statement's main verb is neither
+        // a write verb nor a clearly-safe read verb (a bare `TABLE t` or similar),
+        // but a comment hides a write verb (e.g. `/* DROP */ TABLE t`), the write
+        // is being disguised and must be blocked under read-only or safe mode.
+        // A comment that fully precedes a safe verb (e.g. `/* DROP TABLE t */
+        // SELECT 1`) has a read verb after stripping and is left alone.
+        if !is_write_verb(&verb)
+            && !is_read_verb(&verb)
+            && comment_hides_write_verb(&stmt)
+            && (read_only || safe_mode)
+        {
+            return Err(format!(
+                "Comment hides a write verb; '{verb}' statement is not allowed"
+            ));
         }
     }
     Ok(())
