@@ -39,7 +39,7 @@ function PlanTreeNode({ node, depth }: { node: ExplainPlanNode; depth: number })
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs font-medium text-fg">{node.label}</span>
             {node.cost !== undefined && (
-              <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] text-blue-400">
+              <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent">
                 cost {node.cost.toFixed(2)}
               </span>
             )}

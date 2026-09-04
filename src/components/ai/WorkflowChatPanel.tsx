@@ -323,7 +323,7 @@ function WorkflowChatBubble({
       <div
         className={cn(
           'max-w-[90%] rounded-lg px-3 py-2 text-xs',
-          isUser ? 'bg-blue-500/20 text-fg' : 'bg-surface-alt text-fg-secondary',
+          isUser ? 'bg-accent/20 text-fg' : 'bg-surface-alt text-fg-secondary',
           isStreaming && !message.content && message.reasoning && 'animate-pulse',
         )}
       >

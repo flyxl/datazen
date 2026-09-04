@@ -106,13 +106,13 @@ export function ForeignKeysView({ dbSessionId, tableName }: ForeignKeysViewProps
                     ))}
                   </div>
                 </td>
-                <td className="px-4 py-2.5 font-mono text-blue-400">{fk.referencedTable}</td>
+                <td className="px-4 py-2.5 font-mono text-accent">{fk.referencedTable}</td>
                 <td className="px-4 py-2.5">
                   <div className="flex flex-wrap gap-1">
                     {fk.referencedColumns.map((col) => (
                       <span
                         key={col}
-                        className="inline-flex items-center rounded bg-blue-500/10 px-1.5 py-0.5 text-[11px] text-blue-400"
+                        className="inline-flex items-center rounded bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
                       >
                         {col}
                       </span>

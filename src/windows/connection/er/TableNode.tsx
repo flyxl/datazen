@@ -54,7 +54,7 @@ export const TableNode = memo(function TableNode({ data }: NodeProps) {
               className={cn(
                 'flex items-center gap-2 border-t border-edge/50 px-3 py-1 text-[11px]',
                 col.isPk && 'bg-yellow-500/5',
-                col.isFk && 'bg-blue-500/5',
+                col.isFk && 'bg-accent/5',
               )}
             >
               {col.isPk && (
@@ -63,7 +63,7 @@ export const TableNode = memo(function TableNode({ data }: NodeProps) {
                 </span>
               )}
               {col.isFk && (
-                <span className="shrink-0 rounded bg-blue-500/20 px-1 text-[9px] font-bold text-blue-400">
+                <span className="shrink-0 rounded bg-accent/20 px-1 text-[9px] font-bold text-accent">
                   FK
                 </span>
               )}

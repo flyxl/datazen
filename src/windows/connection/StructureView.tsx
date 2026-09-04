@@ -16,7 +16,7 @@ interface StructureViewProps {
 
 function KeyBadge({ label, tone }: { label: string; tone: 'blue' | 'amber' | 'green' }) {
   const colorMap = {
-    blue: 'bg-blue-500/20 text-blue-400',
+    blue: 'bg-accent/20 text-accent',
     amber: 'bg-amber-500/20 text-amber-400',
     green: 'bg-green-500/20 text-green-400',
   };

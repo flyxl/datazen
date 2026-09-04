@@ -40,7 +40,7 @@ export function FilterBar({ filters, onRemove, onClear, className, loading = fal
             </span>
             <button
               type="button"
-              className="rounded-sm p-0.5 text-blue-300 hover:bg-blue-500/10"
+              className="rounded-sm p-0.5 text-accent/70 hover:bg-accent/10"
               disabled={loading}
               aria-disabled={loading || undefined}
               onClick={() => onRemove(idx)}

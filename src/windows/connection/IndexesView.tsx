@@ -113,7 +113,7 @@ function CreateIndexDialog({
           </label>
           <input
             id="idx-name"
-            className="h-8 w-full rounded border border-edge bg-surface-alt px-2.5 text-sm text-fg outline-none focus:border-blue-500"
+            className="h-8 w-full rounded border border-edge bg-surface-alt px-2.5 text-sm text-fg outline-none focus:border-accent"
             value={indexName}
             onChange={(e) => {
               setNameTouched(true);
@@ -139,21 +139,21 @@ function CreateIndexDialog({
                   key={col.name}
                   className={cn(
                     'flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-surface-raised',
-                    checked && 'bg-blue-500/10',
+                    checked && 'bg-accent/10',
                   )}
                 >
                   <input
                     type="checkbox"
                     checked={checked}
                     onChange={() => toggleColumn(col.name)}
-                    className="accent-blue-500"
+                    className="accent-accent"
                   />
                   <span className="font-mono text-fg">{col.name}</span>
                   <span className={cn('text-xs', dataTypeTextClass(col.dataType))}>
                     {col.dataType}
                   </span>
                   {order && (
-                    <span className="ml-auto rounded bg-blue-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-blue-400">
+                    <span className="ml-auto rounded bg-accent/20 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
                       #{order}
                     </span>
                   )}
@@ -170,7 +170,7 @@ function CreateIndexDialog({
               type="checkbox"
               checked={isUnique}
               onChange={(e) => setIsUnique(e.target.checked)}
-              className="accent-blue-500"
+              className="accent-accent"
             />
             {t('indexes.unique')}
           </label>
@@ -478,7 +478,7 @@ export function IndexesView({
                       {idx.columns.map((col) => (
                         <span
                           key={col}
-                          className="inline-flex items-center rounded bg-blue-500/10 px-1.5 py-0.5 text-[11px] text-blue-400"
+                          className="inline-flex items-center rounded bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
                         >
                           {col}
                         </span>
@@ -494,7 +494,7 @@ export function IndexesView({
                     </span>
                   </td>
                   <td className="px-4 py-2.5">
-                    <span className={cn(idx.isPrimary ? 'text-blue-400' : 'text-fg-muted')}>
+                    <span className={cn(idx.isPrimary ? 'text-accent' : 'text-fg-muted')}>
                       {idx.isPrimary ? 'YES' : 'NO'}
                     </span>
                   </td>

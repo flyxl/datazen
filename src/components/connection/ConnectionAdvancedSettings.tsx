@@ -164,7 +164,7 @@ export function ConnectionAdvancedSettings({
             {showSsh ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             {t('newConn.sshTunnel')}
             {form.sshEnabled && (
-              <span className="ml-auto rounded bg-blue-500/20 px-1.5 py-0.5 text-xs text-blue-400">
+              <span className="ml-auto rounded bg-accent/20 px-1.5 py-0.5 text-xs text-accent">
                 SSH
               </span>
             )}

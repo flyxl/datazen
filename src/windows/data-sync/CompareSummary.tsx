@@ -37,7 +37,7 @@ export function CompareSummary({
       <span className="tabular-nums text-green-600 dark:text-green-400">
         {t('sync.summaryInserts', { count: stats.inserts })}
       </span>
-      <span className="tabular-nums text-blue-600 dark:text-blue-400">
+      <span className="tabular-nums text-accent">
         {t('sync.summaryUpdates', { count: stats.updates })}
       </span>
       <span className="tabular-nums text-red-600 dark:text-red-400">

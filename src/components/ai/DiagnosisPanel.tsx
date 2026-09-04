@@ -87,10 +87,10 @@ export function DiagnosisPanel({
   }
 
   return (
-    <div className="border-t border-blue-500/20 bg-blue-500/5">
+    <div className="border-t border-accent/20 bg-accent/5">
       <div className="flex items-center justify-between border-b border-edge px-3 py-1.5">
         <div className="flex items-center gap-2">
-          <Stethoscope className="h-3.5 w-3.5 text-blue-400" />
+          <Stethoscope className="h-3.5 w-3.5 text-accent" />
           <span className="text-xs font-medium text-fg">{t('diagnosis.title')}</span>
         </div>
         <div className="flex items-center gap-1.5">

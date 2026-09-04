@@ -145,7 +145,7 @@ export function ImportDialog({
             value={targetTable}
             onChange={(e) => setTargetTable(e.target.value)}
             placeholder={t('import.tableNamePlaceholder')}
-            className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+            className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
           />
         </div>
 

@@ -144,6 +144,10 @@ describe('ExplainPanel', () => {
     );
     expect(getByText('Slow scan')).toBeInTheDocument();
     expect(getByText('Seq Scan')).toBeInTheDocument();
+    const highRow = getByText('Seq Scan').closest('div.rounded.border');
+    expect(highRow?.className).toMatch(/text-danger|border-danger/);
+    const lowRow = getByText('Sort').closest('div.rounded.border');
+    expect(lowRow?.className).toMatch(/text-accent|border-accent/);
     fireEvent.click(getByText('nl2sql.apply'));
     expect(onApplySql).toHaveBeenCalledWith('CREATE INDEX idx ON users(id)');
   });
