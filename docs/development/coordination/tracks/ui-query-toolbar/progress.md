@@ -18,7 +18,7 @@
 
 - Phase: TEST_DONE
 - 编码 commit: ad1f0b0e8
-- 测试 commit: 5f244cd71
+- 测试 commit: 9fa32bc0f
 - 合并 commit: 待合入
 
 ## 自验（编码代理）
