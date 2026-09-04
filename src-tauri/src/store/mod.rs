@@ -305,14 +305,26 @@ impl Store {
         cache.settings.clone()
     }
 
+    /// Synchronous settings snapshot for sync contexts (e.g. tray).
+    /// Uses `try_read()` to avoid `block_on` which panics when nested in a
+    /// Tokio runtime. Falls back to `AppSettings::default_for_first_run()` if
+    /// the lock is contended.
+    pub fn try_get_settings(&self) -> AppSettings {
+        match self.cache.try_read() {
+            Ok(cache) => cache.settings.clone(),
+            Err(_) => {
+                tracing::warn!("settings cache lock contended; returning default settings");
+                AppSettings::default_for_first_run()
+            }
+        }
+    }
+
+    /// Atomically persist settings: acquire write lock, snapshot, write to disk,
+    /// then release. This avoids a separate read-after-write cycle.
     pub async fn save_settings(&self, settings: AppSettings) -> Result<(), StoreError> {
-        {
+        let snapshot = {
             let mut cache = self.cache.write().await;
             cache.settings = settings;
-        }
-
-        let snapshot = {
-            let cache = self.cache.read().await;
             cache.settings.clone()
         };
 

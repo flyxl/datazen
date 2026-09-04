@@ -258,7 +258,17 @@ pub async fn execute_schema_diff_deploy(
     }
 
     if can_tx {
-        let scope = tx_scope.expect("transaction scope must exist when can_tx");
+        let Some(scope) = tx_scope else {
+            // Should be unreachable: can_tx implies DdlAtomicity::Transactional
+            // which guarantees tx_scope is Some. Defend without panicking.
+            return SchemaDiffDeployResult {
+                status: DeployStatus::Failed,
+                executed_count: 0,
+                statement_count: n,
+                errors: vec!["transaction scope missing despite can_tx=true".into()],
+                statement_results: results,
+            };
+        };
         if failed {
             let _ = scope.rollback().await;
             return SchemaDiffDeployResult {

@@ -69,7 +69,14 @@ pub(crate) async fn connect_impl(
 
     if let Some(mut cfg) = state.store.get_connection(&connection_id).await {
         cfg.last_connected_at = Some(chrono::Utc::now().to_rfc3339());
-        let _ = state.store.save_connection(cfg).await;
+        // Best-effort metadata update; failure must not block the connect path.
+        if let Err(e) = state.store.save_connection(cfg).await {
+            tracing::warn!(
+                %connection_id,
+                error = %e,
+                "failed to persist last_connected_at"
+            );
+        }
     }
 
     tracing::info!(db_session_id = %db_session_id, "connect OK");
@@ -91,7 +98,14 @@ pub(crate) async fn connect_dedicated_impl(
 
     if let Some(mut cfg) = state.store.get_connection(&connection_id).await {
         cfg.last_connected_at = Some(chrono::Utc::now().to_rfc3339());
-        let _ = state.store.save_connection(cfg).await;
+        // Best-effort metadata update; failure must not block the connect path.
+        if let Err(e) = state.store.save_connection(cfg).await {
+            tracing::warn!(
+                %connection_id,
+                error = %e,
+                "failed to persist last_connected_at"
+            );
+        }
     }
 
     tracing::info!(db_session_id = %db_session_id, "connect_dedicated OK");

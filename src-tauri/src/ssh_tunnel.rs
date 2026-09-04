@@ -46,14 +46,22 @@ impl client::Handler for TunnelHandler {
             let observed = match known_host_entry_from_key(key) {
                 Ok(entry) => entry,
                 Err(e) => {
-                    *rejection.lock().unwrap() = Some(format!(
-                        "SSH host key verification failed for {host_id}: {e}"
-                    ));
+                    if let Ok(mut guard) = rejection.lock() {
+                        *guard = Some(format!(
+                            "SSH host key verification failed for {host_id}: {e}"
+                        ));
+                    }
                     return Ok(false);
                 }
             };
 
-            let mut map = known_hosts.lock().unwrap();
+            let mut map = match known_hosts.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    tracing::warn!(host = %host_id, "SSH known_hosts lock poisoned; recovering");
+                    poisoned.into_inner()
+                }
+            };
             match verify_host_key(map.get(&host_id), &observed) {
                 HostKeyDecision::AcceptMatch => Ok(true),
                 HostKeyDecision::AcceptFirstUse { fingerprint } => {
@@ -76,8 +84,9 @@ impl client::Handler for TunnelHandler {
                         received = %received,
                         "SSH host key mismatch"
                     );
-                    *rejection.lock().unwrap() =
-                        Some(mismatch_error_message(&host_id, &expected, &received));
+                    if let Ok(mut guard) = rejection.lock() {
+                        *guard = Some(mismatch_error_message(&host_id, &expected, &received));
+                    }
                     Ok(false)
                 }
             }
@@ -148,14 +157,15 @@ impl SshTunnel {
         let mut session = client::connect(config, (connect_host.as_str(), connect_port), handler)
             .await
             .map_err(|e| {
-                if let Some(msg) = rejection.lock().unwrap().take() {
-                    DriverError::SshTunnelError(msg)
-                } else {
-                    DriverError::SshTunnelError(format!(
-                        "SSH connect to {}:{} failed: {e}",
-                        ssh.host, ssh.port
-                    ))
+                if let Ok(mut guard) = rejection.lock() {
+                    if let Some(msg) = guard.take() {
+                        return DriverError::SshTunnelError(msg);
+                    }
                 }
+                DriverError::SshTunnelError(format!(
+                    "SSH connect to {}:{} failed: {e}",
+                    ssh.host, ssh.port
+                ))
             })?;
 
         // 2. Authenticate
@@ -165,7 +175,10 @@ impl SshTunnel {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .map_err(|e| DriverError::SshTunnelError(format!("Bind local port: {e}")))?;
-        let local_port = listener.local_addr().unwrap().port();
+        let local_port = listener
+            .local_addr()
+            .map_err(|e| DriverError::SshTunnelError(format!("get local port: {e}")))?
+            .port();
 
         tracing::info!(
             ssh_host = %ssh.host,
