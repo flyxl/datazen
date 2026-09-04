@@ -369,7 +369,7 @@ export function DocumentConnectionView({
             {tab === 'documents' ? t('mongo.documents') : t('mongo.queries')}
             <span
               className={cn(
-                'absolute inset-x-0 bottom-0 h-0.5 bg-blue-500 transition-opacity duration-300',
+                'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
                 activeTab === tab ? 'opacity-100' : 'opacity-0',
               )}
             />
@@ -400,7 +400,7 @@ export function DocumentConnectionView({
                     className={cn(
                       'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm',
                       selectedDb === db
-                        ? 'bg-blue-500/10 font-medium text-blue-400'
+                        ? 'bg-accent/10 font-medium text-accent'
                         : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
                     )}
                     onClick={() => void handleSelectDb(db)}
@@ -444,7 +444,7 @@ export function DocumentConnectionView({
                   className={cn(
                     'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm',
                     selectedCollection === c.name
-                      ? 'bg-blue-500/10 font-medium text-blue-400'
+                      ? 'bg-accent/10 font-medium text-accent'
                       : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
                   )}
                   onClick={() => handleSelectCollection(c.name)}
@@ -664,7 +664,7 @@ function DocumentDetailEditor({
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
-          className="h-full w-full resize-none rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg outline-none focus:border-blue-500"
+          className="h-full w-full resize-none rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg outline-none focus:border-accent"
         />
       </div>
     </div>
@@ -721,11 +721,11 @@ function DocumentResultTable({
                 className={cn(
                   'absolute left-0 flex w-full border-b border-edge text-left',
                   selectedRowIdx === vRow.index
-                    ? 'bg-blue-500/15'
+                    ? 'bg-accent/15'
                     : vRow.index % 2 === 0
                       ? 'bg-surface'
                       : 'bg-surface-raised/50',
-                  'hover:bg-blue-500/10',
+                  'hover:bg-accent/10',
                 )}
                 style={{ top: vRow.start, height: ROW_HEIGHT }}
                 onClick={() => onSelectRow(vRow.index)}

@@ -352,7 +352,7 @@ export function BackupWindow() {
                           className={cn(
                             'flex cursor-pointer items-center gap-2 py-1.5 pl-7 pr-2 transition-colors',
                             'hover:bg-surface-raised',
-                            selectedConnId === conn.id && 'bg-blue-600/20 text-blue-400',
+                            selectedConnId === conn.id && 'bg-accent/20 text-accent',
                             !canBackup && 'opacity-50',
                           )}
                           onClick={() => void handleSelectConnection(conn)}
@@ -396,7 +396,7 @@ export function BackupWindow() {
                 className={cn(
                   'flex cursor-pointer items-center gap-2 px-3 py-1.5 transition-colors',
                   'hover:bg-surface-raised',
-                  selectedDb === db.name && 'bg-blue-600/20 text-blue-400',
+                  selectedDb === db.name && 'bg-accent/20 text-accent',
                 )}
                 onClick={() => setSelectedDb(db.name)}
               >
@@ -465,12 +465,12 @@ export function BackupWindow() {
                         return opt ? (
                           <span
                             key={id}
-                            className="inline-flex items-center gap-1 rounded bg-blue-600/20 px-2 py-0.5 text-[11px] text-blue-400"
+                            className="inline-flex items-center gap-1 rounded bg-accent/20 px-2 py-0.5 text-[11px] text-accent"
                           >
                             {opt.label}
                             <button
                               type="button"
-                              className="ml-0.5 text-blue-400/60 hover:text-blue-400"
+                              className="ml-0.5 text-accent/60 hover:text-accent"
                               onClick={() => toggleOption(id)}
                             >
                               ×
@@ -509,7 +509,7 @@ export function BackupWindow() {
                 <div className="mt-2 h-1.5 overflow-hidden rounded bg-edge">
                   <div
                     className={cn(
-                      'h-full rounded bg-blue-500 transition-all',
+                      'h-full rounded bg-accent transition-all',
                       backing && !progress && 'w-1/3 animate-pulse',
                     )}
                     style={

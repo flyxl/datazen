@@ -62,7 +62,7 @@ export function AiCodeBlock({
               <button
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
-                className="rounded px-1.5 py-0.5 text-[10px] text-blue-400 hover:bg-surface hover:text-blue-300"
+                className="rounded px-1.5 py-0.5 text-[10px] text-accent hover:bg-surface hover:text-accent/80"
                 onClick={() => onInsertSql(code)}
                 data-testid="ai-code-insert"
               >

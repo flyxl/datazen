@@ -31,7 +31,7 @@ export function SshTunnelFields({
           data-testid="new-conn-ssh-tunnel-checkbox"
           checked={form.sshEnabled}
           onChange={(e) => form.setSshEnabled(e.target.checked)}
-          className="h-4 w-4 rounded border-edge bg-surface text-blue-500 focus:ring-blue-500/25"
+          className="h-4 w-4 rounded border-edge bg-surface accent-accent focus:ring-accent/25"
         />
         {t('newConn.sshTunnel')}
       </label>
@@ -88,7 +88,7 @@ export function SshTunnelFields({
                   className={cn(
                     'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs transition-colors',
                     form.sshAuthMethod === opt.id
-                      ? 'border-blue-500 bg-blue-500/10 text-blue-400'
+                      ? 'border-accent bg-accent/10 text-accent'
                       : 'border-edge bg-surface text-fg-secondary',
                   )}
                 >
@@ -141,7 +141,7 @@ export function SshTunnelFields({
                 type="checkbox"
                 checked={form.sshJumpEnabled}
                 onChange={(e) => form.setSshJumpEnabled(e.target.checked)}
-                className="h-4 w-4 rounded border-edge bg-surface text-blue-500 focus:ring-blue-500/25"
+                className="h-4 w-4 rounded border-edge bg-surface accent-accent focus:ring-accent/25"
               />
               {t('newConn.sshJump')}
             </label>
@@ -187,7 +187,7 @@ export function SshTunnelFields({
                       className={cn(
                         'flex flex-1 items-center justify-center rounded-md border px-3 py-2 text-xs transition-colors',
                         form.sshJumpAuthMethod === opt.id
-                          ? 'border-blue-500 bg-blue-500/10 text-blue-400'
+                          ? 'border-accent bg-accent/10 text-accent'
                           : 'border-edge bg-surface text-fg-secondary',
                       )}
                     >

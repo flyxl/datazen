@@ -24,7 +24,7 @@ function operationBadgeClass(op: string): string {
     case 'INSERT':
       return 'bg-green-500/15 text-green-700 dark:text-green-400';
     case 'UPDATE':
-      return 'bg-blue-500/15 text-blue-700 dark:text-blue-400';
+      return 'bg-accent/15 text-accent';
     case 'DELETE':
       return 'bg-red-500/15 text-red-700 dark:text-red-400';
     default:
@@ -199,7 +199,7 @@ export function DiffDetail({ table, options, onUpdateRows }: DiffDetailProps) {
                             <div className={cn(isChanged && 'text-fg-muted line-through')}>
                               {t('sync.sourceShort')}: {formatCell(s)}
                             </div>
-                            <div className={cn(isChanged && 'text-blue-700 dark:text-blue-400')}>
+                            <div className={cn(isChanged && 'text-accent')}>
                               {t('sync.targetShort')}: {formatCell(tg)}
                             </div>
                           </div>

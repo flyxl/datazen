@@ -558,7 +558,7 @@ export function SchemaDiffWindow() {
                   />
                   <div
                     ref={tableListResizeRef}
-                    className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-blue-500/30"
+                    className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-accent/30"
                   />
                   <div
                     className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto bg-surface-alt/30"

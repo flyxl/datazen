@@ -125,7 +125,7 @@ export function ConnectionSettingsDialog({ open, onClose }: ConnectionSettingsDi
             type="text"
             value={draft.editorFontFamily}
             onChange={(e) => updateField('editorFontFamily', e.target.value)}
-            className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+            className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
           />
         </div>
 

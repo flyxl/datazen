@@ -198,7 +198,7 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                     if (!Number.isFinite(n)) return;
                     updateField('connectionPoolSize', Math.min(100, Math.max(1, Math.round(n))));
                   }}
-                  className="h-9 w-24 rounded-md border border-edge bg-surface px-3 text-sm tabular-nums text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+                  className="h-9 w-24 rounded-md border border-edge bg-surface px-3 text-sm tabular-nums text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
                   data-testid="settings-connection-pool-size"
                 />
               </SettingRow>
@@ -258,7 +258,7 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                   type="text"
                   value={settings.editorFontFamily}
                   onChange={(e) => updateField('editorFontFamily', e.target.value)}
-                  className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+                  className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
                 />
               </SettingRow>
             </>
