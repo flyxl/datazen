@@ -24,12 +24,6 @@
 | rem-scheduler | WorkflowScheduler `in_flight` panic 泄漏：DropGuard/catch_unwind 保证 remove | PASSED | 88000b879 | (coordinator-verified; no subagent tester available) | — |
 | rem-sql-guard | SQL Guard 加固：NFKC 全角归一、`\0` 拒绝、注释剥离后重分类、反斜杠转义、MCP permission 同步 | PASSED | 42c08e740 | (coordinator-verified; no subagent tester available) | — |
 | rem-sync-taxonomy | sync category/family 下沉 `driver-api` trait + `DatabaseTypeMeta`，删除前后端 6 处重复硬编码 | PASSED | d0e9f94d7 | 1e53d48f4 | 20fc6905e |
-| ui-button-focus | — | PASSED | ba1fa2b12 | 641c748bc | 待合入 |
-| ui-transfer-guards | — | PASSED | 6815ff687 | bb9ab1add | 待合入 |
-| ui-accent-tokens | — | TEST_DONE | c428b0c8c | cee7c1d15 | 待合入 |
-| ui-shell-unification | — | PASSED | 80e316d6a | 29d7907ea | 待合入 |
-| ui-query-toolbar | — | TEST_DONE | ad1f0b0e8 | 9fa32bc0f | 待合入 |
-| ui-wizard-prefill | — | TEST_DONE | d96bbd2012f0b9c00700da6ca0c23795c48e6c3e | c46cf8ad55daa5c4c42252556e18bf4b71b8347d | 待合入 |
 
 ## 写锁台账
 
@@ -47,12 +41,6 @@
 | rem-scheduler | — | — | feature/rem-scheduler | PASSED | — |
 | rem-sql-guard | — | — | feature/rem-sql-guard | PASSED | — |
 | rem-sync-taxonomy | — | — | feature/rem-sync-taxonomy | PASSED | — |
-| ui-button-focus | — | — | feature/ui-button-focus | PASSED | — |
-| ui-transfer-guards | — | — | feature/ui-transfer-guards | PASSED | — |
-| ui-accent-tokens | — | — | feature/ui-accent-tokens | TEST_DONE | — |
-| ui-shell-unification | — | — | feature/ui-shell-unification | PASSED | — |
-| ui-query-toolbar | — | — | feature/ui-query-toolbar | TEST_DONE | — |
-| ui-wizard-prefill | — | — | feature/ui-wizard-prefill | TEST_DONE | — |
 
 ## 波次记录
 
