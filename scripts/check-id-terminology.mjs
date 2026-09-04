@@ -75,6 +75,12 @@ const ALLOWLIST = [
     file: 'e2e/specs/bugfix-admin-commands.ts',
     line: /invokeBackend<string>\('connect',\s*\{\s*connectionId:\s*config\.id/,
   },
+  {
+    // Backward-compat shim: tries `connectionId` first, falls back to
+    // legacy `configId` IPC arg for older builds.
+    file: 'e2e/helpers.ts',
+    line: /configId/,
+  },
 ];
 
 /** Recursively collect scannable files under one root directory. */

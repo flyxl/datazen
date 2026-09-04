@@ -52,6 +52,16 @@ jobs:
       - name: Guard Host structure caps registry absent
         run: node scripts/check-structure-editor-guardrails.mjs
 
+      - name: Guard ID terminology (connectionId / dbSessionId)
+        run: pnpm test:ids
+
+      - name: Guard CI-docs consistency
+        run: pnpm test:ci-docs
+
+      - name: Guard i18n sync (warning only)
+        run: node scripts/i18n-sync-check.mjs
+        continue-on-error: true
+
       - name: Frontend unit tests
         run: pnpm test:unit
 
