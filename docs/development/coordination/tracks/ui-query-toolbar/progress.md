@@ -17,7 +17,7 @@
 ## 状态
 
 - Phase: READY_FOR_TEST
-- 编码 commit: 8f3258572
+- 编码 commit: ad1f0b0e8
 - 测试 commit: 待测试
 - 合并 commit: 待合入
 
