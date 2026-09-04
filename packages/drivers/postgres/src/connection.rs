@@ -90,7 +90,9 @@ impl PostgresDriver {
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
     }
 
-    pub(crate) async fn fetch_tables_from_pool(pool: &PgPool) -> Result<Vec<TableInfo>, DriverError> {
+    pub(crate) async fn fetch_tables_from_pool(
+        pool: &PgPool,
+    ) -> Result<Vec<TableInfo>, DriverError> {
         let rows = sqlx::query(
             r#"
             SELECT n.nspname AS table_schema, c.relname AS table_name,
@@ -171,7 +173,10 @@ impl PostgresDriver {
             })
     }
 
-pub(crate) async fn test_connection_impl(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
+    pub(crate) async fn test_connection_impl(
+        &self,
+        config: &ConnectionConfig,
+    ) -> Result<ServerInfo, DriverError> {
         let opts = build_pg_options(config)?;
         let timeout = Duration::from_secs(config.connection_timeout as u64);
 
@@ -198,7 +203,10 @@ pub(crate) async fn test_connection_impl(&self, config: &ConnectionConfig) -> Re
         })
     }
 
-pub(crate) async fn connect_impl(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
+    pub(crate) async fn connect_impl(
+        &self,
+        config: &ConnectionConfig,
+    ) -> Result<ConnectionHandle, DriverError> {
         let opts = build_pg_options(config)?;
         let timeout = Duration::from_secs(config.connection_timeout as u64);
         let resolved_db = Self::resolve_connect_database(config).to_string();
@@ -258,7 +266,10 @@ pub(crate) async fn connect_impl(&self, config: &ConnectionConfig) -> Result<Con
         })
     }
 
-pub(crate) async fn disconnect_impl(&self, handle: ConnectionHandle) -> Result<(), DriverError> {
+    pub(crate) async fn disconnect_impl(
+        &self,
+        handle: ConnectionHandle,
+    ) -> Result<(), DriverError> {
         if let Some(mut conn) = self.transactions.lock().await.remove(&handle.id) {
             let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
         }
@@ -277,7 +288,10 @@ pub(crate) async fn disconnect_impl(&self, handle: ConnectionHandle) -> Result<(
         Ok(())
     }
 
-pub(crate) async fn get_databases_impl(&self, handle: &ConnectionHandle) -> Result<Vec<String>, DriverError> {
+    pub(crate) async fn get_databases_impl(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<Vec<String>, DriverError> {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
 
@@ -291,7 +305,7 @@ pub(crate) async fn get_databases_impl(&self, handle: &ConnectionHandle) -> Resu
         Ok(rows.iter().map(|r| r.get::<String, _>(0)).collect())
     }
 
-pub(crate) async fn get_tables_impl(
+    pub(crate) async fn get_tables_impl(
         &self,
         handle: &ConnectionHandle,
         database: &str,
@@ -326,7 +340,7 @@ pub(crate) async fn get_tables_impl(
         result
     }
 
-pub(crate) async fn use_database_impl(
+    pub(crate) async fn use_database_impl(
         &self,
         handle: &ConnectionHandle,
         database: &str,
@@ -389,7 +403,10 @@ pub(crate) async fn use_database_impl(
         Ok(())
     }
 
-pub(crate) async fn get_server_info_impl(&self, handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
+    pub(crate) async fn get_server_info_impl(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<ServerInfo, DriverError> {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
         let row = sqlx::query("SELECT version()")

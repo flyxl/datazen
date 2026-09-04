@@ -68,7 +68,7 @@ impl PostgresDriver {
         Ok((columns, pk_names))
     }
 
-pub(crate) async fn get_table_schema_impl(
+    pub(crate) async fn get_table_schema_impl(
         &self,
         handle: &ConnectionHandle,
         table: &str,

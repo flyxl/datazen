@@ -5,6 +5,22 @@ import { EditableCell } from '../EditableCell';
 afterEach(cleanup);
 
 describe('EditableCell component', () => {
+  it('renders a compact grid-cell editor instead of the generic form input', () => {
+    const { container } = render(
+      <EditableCell value="x" type="varchar" onCommit={vi.fn()} onCancel={vi.fn()} />,
+    );
+    const input = container.querySelector('input')!;
+    // The editor must not inherit the heavy form `Input` styling that
+    // padded/clipped it inside the tight grid cell.
+    const classes: string = input.getAttribute('class') ?? '';
+    expect(classes).toContain('h-7');
+    expect(classes).toContain('font-mono');
+    // The generic <Input> widget carries px-3 + rounded-md + focus:ring-2; a
+    // grid cell editor should stay minimal and edge-aligned.
+    expect(classes).not.toContain('px-3');
+    expect(classes).not.toContain('focus:ring-2');
+  });
+
   it('commits string value on Enter', () => {
     const onCommit = vi.fn();
     const onCancel = vi.fn();

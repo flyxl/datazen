@@ -4,7 +4,6 @@ use crate::types::*;
 
 use super::*;
 
-
 #[test]
 fn build_create_table_sql_includes_pk_and_not_null() {
     let schema = TableSchema {
@@ -169,17 +168,11 @@ impl DatabaseDriver for TableListingDriver {
         "listing".into()
     }
 
-    async fn connect(
-        &self,
-        _config: &ConnectionConfig,
-    ) -> Result<ConnectionHandle, DriverError> {
+    async fn connect(&self, _config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
         Ok(LISTING_HANDLE.clone())
     }
 
-    async fn test_connection(
-        &self,
-        _config: &ConnectionConfig,
-    ) -> Result<ServerInfo, DriverError> {
+    async fn test_connection(&self, _config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
         Ok(ServerInfo {
             server_version: String::new(),
             server_type: self.driver_type(),
@@ -190,10 +183,7 @@ impl DatabaseDriver for TableListingDriver {
         Ok(())
     }
 
-    async fn get_databases(
-        &self,
-        _handle: &ConnectionHandle,
-    ) -> Result<Vec<String>, DriverError> {
+    async fn get_databases(&self, _handle: &ConnectionHandle) -> Result<Vec<String>, DriverError> {
         Ok(vec![])
     }
 
@@ -264,11 +254,7 @@ impl DatabaseDriver for TableListingDriver {
         self.query(handle, sql).await
     }
 
-    async fn execute(
-        &self,
-        _handle: &ConnectionHandle,
-        _sql: &str,
-    ) -> Result<u64, DriverError> {
+    async fn execute(&self, _handle: &ConnectionHandle, _sql: &str) -> Result<u64, DriverError> {
         Ok(0)
     }
 

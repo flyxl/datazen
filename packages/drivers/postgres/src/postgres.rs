@@ -20,7 +20,8 @@ pub struct PostgresDriver {
     /// Open transactions: connection held for the lifetime of BEGIN…COMMIT/ROLLBACK, keyed by handle.id.
     pub(crate) transactions: Mutex<HashMap<String, PoolConnection<Postgres>>>,
     /// Exact execution target registry.
-    pub(crate) query_executions: Mutex<HashMap<QueryExecutionId, crate::execution::PgQueryExecution>>,
+    pub(crate) query_executions:
+        Mutex<HashMap<QueryExecutionId, crate::execution::PgQueryExecution>>,
     /// Separate control connections are never used to execute user SQL.
     pub(crate) control_pools: RwLock<HashMap<String, PgPool>>,
 }
@@ -145,7 +146,8 @@ impl DatabaseDriver for PostgresDriver {
         handle: &ConnectionHandle,
         execution_id: &QueryExecutionId,
     ) -> Result<(), DriverError> {
-        self.prepare_query_execution_impl(handle, execution_id).await
+        self.prepare_query_execution_impl(handle, execution_id)
+            .await
     }
 
     async fn query_stream_with_execution(
@@ -213,7 +215,8 @@ impl DatabaseDriver for PostgresDriver {
         handle: &ConnectionHandle,
         execution_id: &QueryExecutionId,
     ) -> Result<(), DriverError> {
-        self.cancel_query_with_execution_impl(handle, execution_id).await
+        self.cancel_query_with_execution_impl(handle, execution_id)
+            .await
     }
 
     async fn cleanup_query_execution(

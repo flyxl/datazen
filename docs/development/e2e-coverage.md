@@ -57,7 +57,8 @@
 | 表数据分页 / 排序 / 选择 / 删除行按钮 | `table-data.ts` | Covered |
 | 文本选择：内容可复制、交互控件不可选中（user-select 计算样式） | `table-data.ts` (TD-SEL-001) | Covered |
 | 表筛选：打开 / 添加 / Apply / Clear / AND·OR / 收起 / chip / 空值不报错 | `table-filter.ts` | Covered |
-| 表内联编辑 | `table-edit.ts` | Covered |
+| 表内联编辑 | `table-edit.ts`（DE-002/DE-002b/…） | Covered（DE-002b：Safe Mode 拦截双击进编辑） |
+| 查询结果 SafeMode 编辑门闸（`ResultTableView`） | `sql-query.ts`（SQ-QR-SAFE） | Covered |
 | 详情面板 | `detail-panel.ts` | Covered |
 | 结构只读 + 内嵌编辑 + 返回 + 保存列变更 + 导出表结构按钮 | `table-structure.ts` | Covered |
 | 索引列表 / 新建对话框 / 删除 / 在结构中编辑 | `table-indexes.ts`, `connection-window.ts` | Covered |
@@ -142,6 +143,7 @@
 | 插件 iframe 崩溃恢复条（10s watchdog → 重载按钮） | 需真实加载失败时序，WebKit 自动化不稳定 | `PluginPageShell.test.tsx` watchdog/reload 用例；E2E 断言 shell 存在与重开路径 |
 | 插件 iframe 内元素自动化（J2 桥往返的帧内 DOM 断言） | macOS WebKit 自动化下 `datazen://` 子帧导航被拒（实测截图：帧内容永不渲染、fixture JS 永不执行、`.storage.json` 探针永不落盘；同 URL 顶层窗口直载则正常渲染执行——疑为宿主 CSP `default-src 'self'` 未豁免 `datazen:` 子帧或 WebKit 自定义协议子帧策略，已登记 BUG-F9-04 待宿主验证） | 补偿：fixture 经既有桥 `storage.set` 持久化三个探针（`probe.bridge`/`probe.dark`/`probe.connCount`），E2E 从 `{appData}/plugins/datazen.sample/.storage.json` 轮询对账（内容可加载的平台即全量断言）；本环境下自动降级为真实 shell 级行为断言——watchdog 失败条出现 / 重载按钮重挂 iframe / manifest entry URL 解析正确。桥逻辑另有宿主 `extensionBridge` 64 例 + SDK 69 例单测背书。iframe 存在性断言（顶层文档）保留 |
 | 全 locale 文件 key 对齐（逐语言 bundle parity / 源文件 key 断言） | 发版流程已覆盖：`scripts/i18n-sync-check.mjs` + i18n-sync skill；E2E 易与 locale 重构脱节 | `src/locales/locales.test.ts`（Vitest）；发版前 `i18n-sync-check` CI |
+| 只读驱动（Kiwi / Superset 等 `DB_REGISTRY.readOnly`）表单元格编辑被禁止 | 该门闸由宿主 `TableView` + `DatabaseTypeMeta.readOnly` 驱动；Kiwi/Superset 为 git 驱动，不在 basic E2E 矩阵 | `TableView.test.tsx` 只读驱动用例；Superset/Kiwi 驱动内 `plugin-meta.test.ts` 断言 `readOnly` |
 
 ## 维护约定
 

@@ -9,7 +9,9 @@ pub(crate) fn non_empty_secret(value: Option<&str>) -> Option<&str> {
     value.filter(|s| !s.trim().is_empty())
 }
 
-pub(crate) fn build_mysql_options(config: &ConnectionConfig) -> Result<MySqlConnectOptions, DriverError> {
+pub(crate) fn build_mysql_options(
+    config: &ConnectionConfig,
+) -> Result<MySqlConnectOptions, DriverError> {
     let host = config.host.as_deref().unwrap_or("localhost");
     let port = config.port.unwrap_or(3306);
     let mut opts = MySqlConnectOptions::new()

@@ -1,7 +1,7 @@
 //! Routine/trigger DDL dump helpers and SHOW CREATE result extraction.
 
-use datazen_driver_api::*;
 use super::MysqlDriver;
+use datazen_driver_api::*;
 
 /// Best-effort dump of stored procedures and functions via SHOW CREATE.
 pub(crate) async fn dump_mysql_routines(driver: &MysqlDriver, handle: &ConnectionHandle) -> String {

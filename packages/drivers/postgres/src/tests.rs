@@ -408,10 +408,9 @@ fn build_pg_create_table_ddl_includes_types_not_null_default_and_pk() {
             default_expr: Some("'active'::text".into()),
         },
     ];
-    let sql =
-        build_pg_create_table_ddl("\"public\".\"users\"", &columns, &["id".into()], &|n| {
-            format!("\"{n}\"")
-        });
+    let sql = build_pg_create_table_ddl("\"public\".\"users\"", &columns, &["id".into()], &|n| {
+        format!("\"{n}\"")
+    });
     assert!(sql.starts_with("CREATE TABLE \"public\".\"users\" ("));
     assert!(sql.contains("\"id\" integer NOT NULL"));
     assert!(sql.contains("\"email\" character varying(255) NOT NULL"));
@@ -441,9 +440,7 @@ fn build_pg_create_sequence_sql_and_owned_by() {
         owned_column: Some("id".into()),
     };
     let create = build_pg_create_sequence_sql(&seq);
-    assert!(
-        create.starts_with("CREATE SEQUENCE IF NOT EXISTS \"public\".\"categories_id_seq\"")
-    );
+    assert!(create.starts_with("CREATE SEQUENCE IF NOT EXISTS \"public\".\"categories_id_seq\""));
     assert!(create.contains("START WITH 4"));
     assert!(create.contains("NO CYCLE"));
     let owned = build_pg_alter_sequence_owned_by(&seq, "\"public\".\"categories\"", &|n| {

@@ -364,7 +364,7 @@ impl PostgresDriver {
         }
     }
 
-pub(crate) async fn query_impl(
+    pub(crate) async fn query_impl(
         &self,
         handle: &ConnectionHandle,
         sql: &str,
@@ -420,7 +420,7 @@ pub(crate) async fn query_impl(
         })
     }
 
-pub(crate) async fn query_multi_impl(
+    pub(crate) async fn query_multi_impl(
         &self,
         handle: &ConnectionHandle,
         sql: &str,
@@ -569,7 +569,7 @@ pub(crate) async fn query_multi_impl(
         })
     }
 
-pub(crate) async fn query_stream_impl(
+    pub(crate) async fn query_stream_impl(
         &self,
         handle: &ConnectionHandle,
         sql: &str,
@@ -613,7 +613,7 @@ pub(crate) async fn query_stream_impl(
         Ok(())
     }
 
-pub(crate) async fn query_with_params_impl(
+    pub(crate) async fn query_with_params_impl(
         &self,
         handle: &ConnectionHandle,
         sql: &str,
@@ -660,7 +660,11 @@ pub(crate) async fn query_with_params_impl(
         })
     }
 
-pub(crate) async fn execute_impl(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
+    pub(crate) async fn execute_impl(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<u64, DriverError> {
         {
             let mut txs = self.transactions.lock().await;
             if let Some(conn) = txs.get_mut(&handle.id) {
@@ -683,7 +687,7 @@ pub(crate) async fn execute_impl(&self, handle: &ConnectionHandle, sql: &str) ->
         Ok(result.rows_affected())
     }
 
-pub(crate) async fn begin_transaction_impl(
+    pub(crate) async fn begin_transaction_impl(
         &self,
         handle: &ConnectionHandle,
     ) -> Result<TransactionHandle, DriverError> {
@@ -715,7 +719,7 @@ pub(crate) async fn begin_transaction_impl(
         })
     }
 
-pub(crate) async fn commit_impl(&self, tx: TransactionHandle) -> Result<(), DriverError> {
+    pub(crate) async fn commit_impl(&self, tx: TransactionHandle) -> Result<(), DriverError> {
         let mut conn = self
             .transactions
             .lock()
@@ -732,7 +736,7 @@ pub(crate) async fn commit_impl(&self, tx: TransactionHandle) -> Result<(), Driv
         Ok(())
     }
 
-pub(crate) async fn rollback_impl(&self, tx: TransactionHandle) -> Result<(), DriverError> {
+    pub(crate) async fn rollback_impl(&self, tx: TransactionHandle) -> Result<(), DriverError> {
         let mut conn = self
             .transactions
             .lock()
@@ -749,7 +753,7 @@ pub(crate) async fn rollback_impl(&self, tx: TransactionHandle) -> Result<(), Dr
         Ok(())
     }
 
-pub(crate) async fn explain_impl(
+    pub(crate) async fn explain_impl(
         &self,
         handle: &ConnectionHandle,
         sql: &str,

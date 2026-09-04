@@ -1,6 +1,6 @@
 //! SQL parsing helpers for PostgreSQL driver.
 
-use datazen_driver_api::{QueryResult, Value, sql_dump};
+use datazen_driver_api::{sql_dump, QueryResult, Value};
 
 /// Split `schema.table` into `(Some(schema), table)`. Unqualified names use `None`.
 pub(crate) fn parse_pg_table_ref(table: &str) -> (Option<&str>, &str) {
@@ -25,7 +25,11 @@ pub(crate) fn is_pg_result_query(sql: &str) -> bool {
         || upper.starts_with("EXPLAIN")
 }
 
-pub(crate) fn collect_named_ddl_column(result: &QueryResult, col_name: &str, kind_label: &str) -> String {
+pub(crate) fn collect_named_ddl_column(
+    result: &QueryResult,
+    col_name: &str,
+    kind_label: &str,
+) -> String {
     let ddl_idx = result
         .columns
         .iter()

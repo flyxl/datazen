@@ -34,7 +34,6 @@ pub(crate) fn decode_mysql_text_idx(row: &MySqlRow, index: usize) -> String {
         .unwrap_or_default()
 }
 
-
 impl super::MysqlDriver {
     pub(crate) fn safe_integer(v: i64) -> Value {
         if v > JS_MAX_SAFE_INT || v < JS_MIN_SAFE_INT {
@@ -74,7 +73,9 @@ impl super::MysqlDriver {
             .collect()
     }
 
-    pub(crate) fn decode_rows(rows: &[sqlx::mysql::MySqlRow]) -> (Vec<ColumnInfo>, Vec<Vec<Option<Value>>>) {
+    pub(crate) fn decode_rows(
+        rows: &[sqlx::mysql::MySqlRow],
+    ) -> (Vec<ColumnInfo>, Vec<Vec<Option<Value>>>) {
         let columns: Vec<ColumnInfo> = rows.first().map(Self::columns_of_row).unwrap_or_default();
 
         let result_rows: Vec<Vec<Option<Value>>> = rows

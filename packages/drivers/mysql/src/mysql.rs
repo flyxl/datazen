@@ -17,7 +17,10 @@ mod tests;
 
 use crate::structure;
 use async_trait::async_trait;
-use catalog::{dump_mysql_routines, dump_mysql_triggers, extract_named_create_column, extract_show_create_table};
+use catalog::{
+    dump_mysql_routines, dump_mysql_triggers, extract_named_create_column,
+    extract_show_create_table,
+};
 use connection::build_mysql_options;
 use datazen_driver_api::*;
 use execution::{build_kill_query_sql, MysqlQueryExecution};

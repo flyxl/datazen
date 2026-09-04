@@ -36,6 +36,21 @@ vi.mock('../../../stores/connectionStore', async (importOriginal) => {
   };
 });
 
+// Controllable registry so we can assert read-only drivers block editing.
+const registryState = vi.hoisted(() => ({
+  registry: {
+    postgresql: {} /* not read-only */,
+    superset: { readOnly: true },
+  } as Record<string, { readOnly?: boolean }>,
+}));
+
+vi.mock('../../../lib/databaseTypes', () => ({
+  get DB_REGISTRY() {
+    return registryState.registry;
+  },
+  escapeIdent: (ident: string) => ident,
+}));
+
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
     useDatabase: vi.fn().mockResolvedValue(undefined),
@@ -261,9 +276,7 @@ describe('TableView', () => {
 
   it('blocks cell editing when saved connection in store is read-only', () => {
     settingsState.safeMode = false;
-    connectionsState.connections = [
-      { id: 'conn-ro', name: 'ReadOnlyConn', readOnly: true },
-    ];
+    connectionsState.connections = [{ id: 'conn-ro', name: 'ReadOnlyConn', readOnly: true }];
 
     render(
       <TableView
@@ -285,9 +298,7 @@ describe('TableView', () => {
 
   it('blocks cell editing when connection is read-only, and allows when connection is not read-only', () => {
     settingsState.safeMode = false;
-    connectionsState.connections = [
-      { id: 'conn-rw', name: 'WritableConn', readOnly: false },
-    ];
+    connectionsState.connections = [{ id: 'conn-rw', name: 'WritableConn', readOnly: false }];
 
     render(
       <TableView
@@ -303,5 +314,18 @@ describe('TableView', () => {
 
     expect(tableState.startEdit).toHaveBeenCalledWith(0, 'id');
     expect(screen.queryByTestId('table-read-only-tip')).toBeNull();
+  });
+
+  it('blocks cell editing for a read-only driver even when Safe Mode is off', () => {
+    settingsState.safeMode = false;
+    registryState.registry.superset = { readOnly: true };
+
+    render(<TableView dbSessionId="c1" database="app" tableName="users" databaseType="superset" />);
+
+    fireEvent.click(screen.getByTestId('mock-cell-double-click'));
+    expect(tableState.startEdit).not.toHaveBeenCalled();
+    expect(screen.getByTestId('table-read-only-tip')).toHaveTextContent(
+      'tableData.readOnlyEditDisabled',
+    );
   });
 });

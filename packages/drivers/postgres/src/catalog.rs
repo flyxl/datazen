@@ -276,7 +276,7 @@ impl PostgresDriver {
         }
     }
 
-pub(crate) async fn dump_view_ddl_impl(
+    pub(crate) async fn dump_view_ddl_impl(
         &self,
         handle: &ConnectionHandle,
         view: &str,
@@ -301,7 +301,7 @@ pub(crate) async fn dump_view_ddl_impl(
         ))
     }
 
-pub(crate) async fn dump_routines_impl(
+    pub(crate) async fn dump_routines_impl(
         &self,
         handle: &ConnectionHandle,
         _database: &str,
@@ -320,7 +320,7 @@ pub(crate) async fn dump_routines_impl(
         Ok(collect_named_ddl_column(&result, "ddl", "ROUTINE"))
     }
 
-pub(crate) async fn dump_triggers_impl(
+    pub(crate) async fn dump_triggers_impl(
         &self,
         handle: &ConnectionHandle,
         _database: &str,
@@ -341,7 +341,7 @@ pub(crate) async fn dump_triggers_impl(
         Ok(collect_named_ddl_column(&result, "ddl", "TRIGGER"))
     }
 
-pub(crate) async fn dump_database_with_progress_impl(
+    pub(crate) async fn dump_database_with_progress_impl(
         &self,
         handle: &ConnectionHandle,
         database: &str,
@@ -392,7 +392,7 @@ pub(crate) async fn dump_database_with_progress_impl(
         result
     }
 
-pub(crate) async fn execute_command_impl(
+    pub(crate) async fn execute_command_impl(
         &self,
         handle: &ConnectionHandle,
         command: &str,

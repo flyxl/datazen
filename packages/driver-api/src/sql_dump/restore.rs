@@ -1,8 +1,8 @@
 //! SQL restore pipeline: streaming session, statement execution, recovery.
 
+use crate::sql_split::{is_comment_only_or_empty, SqlStatementScanner};
 use crate::traits::DatabaseDriver;
 use crate::types::*;
-use crate::sql_split::{is_comment_only_or_empty, SqlStatementScanner};
 
 use super::dump::{extract_nextval_sequence_names, quote_sequence_ident};
 use super::parser::{created_relation_ident, relation_already_exists};

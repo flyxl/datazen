@@ -14,9 +14,11 @@ vi.mock('../../../../hooks/useI18n', () => ({
   }),
 }));
 
+const settingsState = vi.hoisted(() => ({ queryResultLimit: 5000, safeMode: false }));
+
 vi.mock('../../../../stores/settingsStore', () => ({
-  useSettingsStore: (selector: (state: { settings: { queryResultLimit: number } }) => unknown) =>
-    selector({ settings: { queryResultLimit: 5000 } }),
+  useSettingsStore: (selector: (state: { settings: typeof settingsState }) => unknown) =>
+    selector({ settings: settingsState }),
 }));
 
 vi.mock('../../../../components/DataTable/DataTable', () => ({
@@ -55,6 +57,7 @@ function result(rows: StatementResult['rows']): StatementResult {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  settingsState.safeMode = false;
 });
 
 describe('ResultTableView', () => {
@@ -77,6 +80,20 @@ describe('ResultTableView', () => {
     expect(onRowDetail).toHaveBeenCalledWith(0);
     expect(dataTableMock.render).toHaveBeenLastCalledWith(
       expect.objectContaining({ editingCell: { row: 0, col: 'id' } }),
+    );
+  });
+
+  it('does not enter edit mode for result cells when Safe Mode is on', () => {
+    settingsState.safeMode = true;
+    const onRowDetail = vi.fn();
+    render(<ResultTableView result={result([[1]])} onRowDetail={onRowDetail} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'edit result cell' }));
+
+    // Row detail still opens, but the cell editor must never activate.
+    expect(onRowDetail).toHaveBeenCalledWith(0);
+    expect(dataTableMock.render).toHaveBeenLastCalledWith(
+      expect.objectContaining({ editingCell: null }),
     );
   });
 

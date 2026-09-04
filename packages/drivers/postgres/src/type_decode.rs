@@ -66,7 +66,9 @@ impl PostgresDriver {
         }
     }
 
-    pub(crate) fn decode_rows(rows: &[sqlx::postgres::PgRow]) -> (Vec<ColumnInfo>, Vec<Vec<Option<Value>>>) {
+    pub(crate) fn decode_rows(
+        rows: &[sqlx::postgres::PgRow],
+    ) -> (Vec<ColumnInfo>, Vec<Vec<Option<Value>>>) {
         let columns: Vec<ColumnInfo> = rows.first().map(Self::columns_of_row).unwrap_or_default();
 
         let result_rows: Vec<Vec<Option<Value>>> = rows
@@ -157,12 +159,11 @@ impl PostgresDriver {
                                 .ok()
                                 .map(Value::Json)
                                 .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
-                            s @ ("INET" | "CIDR" | "MACADDR" | "MACADDR8") => {
-                                row.try_get::<String, _>(i)
-                                    .ok()
-                                    .map(Value::String)
-                                    .or_else(|| Some(Value::String(format!("<{}>", s.to_lowercase()))))
-                            }
+                            s @ ("INET" | "CIDR" | "MACADDR" | "MACADDR8") => row
+                                .try_get::<String, _>(i)
+                                .ok()
+                                .map(Value::String)
+                                .or_else(|| Some(Value::String(format!("<{}>", s.to_lowercase())))),
                             "INTERVAL" => row
                                 .try_get::<sqlx::postgres::types::PgInterval, _>(i)
                                 .ok()
@@ -216,7 +217,9 @@ impl PostgresDriver {
         (columns, result_rows)
     }
 
-    pub(crate) fn extract_pg_plan_metrics(plan_json: &serde_json::Value) -> (Option<f64>, Option<i64>) {
+    pub(crate) fn extract_pg_plan_metrics(
+        plan_json: &serde_json::Value,
+    ) -> (Option<f64>, Option<i64>) {
         let plan = plan_json
             .as_array()
             .and_then(|rows| rows.first())
