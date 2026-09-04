@@ -14,7 +14,7 @@ P0-2, P0-3：DataTransferWindow 预览错误态与空表禁用守卫
 ## 状态
 
 - Phase: READY_FOR_TEST
-- 编码 commit: 待提交
+- 编码 commit: 6815ff687
 - 测试 commit: 待测试
 - 合并 commit: 待合入
 
