@@ -15,6 +15,7 @@ export const tursoMeta = {
   supportsBackup: true,
   supportsTables: true,
   isKeyValue: false,
+  popularityOrder: 15,
   supportsSQL: true,
   category: 'sql',
   connectionView: 'sql',

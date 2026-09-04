@@ -15,6 +15,7 @@ export const influxdbMeta = {
     supportsBackup: false,
     supportsTables: true,
     isKeyValue: false,
+    popularityOrder: 17,
     supportsSQL: true,
     category: 'sql',
     connectionView: 'sql',

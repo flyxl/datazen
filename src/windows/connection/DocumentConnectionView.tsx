@@ -22,7 +22,7 @@ import {
   parseMongoDocumentJson,
   parseMongoFilterJson,
   rowToDocument,
-} from '../../lib/mongodbFind';
+} from '../../../packages/drivers/mongodb/ui/mongodbFind';
 import type { ConnectionViewProps } from '../../lib/connectionViews/types';
 import type { StatementResult, TableInfo } from '../../types';
 

@@ -16,6 +16,7 @@ export const redisMeta = {
     supportsBackup: false,
     supportsTables: false,
     isKeyValue: true,
+    popularityOrder: 4,
     supportsSQL: false,
     category: 'kv',
     connectionView: 'keyvalue',

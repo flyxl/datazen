@@ -125,20 +125,22 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
   const toolbarExportScope = resolveExportScope(toolbarDbMeta);
   const batchExportSupported = supportsFullTableExport(toolbarExportScope);
 
-  const isRedisPanel = activePanel?.type === 'redis-db';
-  const isKvSidebar = toolbarDbMeta?.isKeyValue === true;
+  // Guard: key-value / document panels (Redis, future MongoDB KV) hide SQL-oriented toolbar items.
+  // Uses DB_REGISTRY metadata instead of panel type literal so new KV drivers get the same behaviour.
+  const isKvPanel =
+    (activePanel?.type === 'redis-db') ||
+    (toolbarDbMeta?.isKeyValue === true);
   const showNewQuery =
-    !isRedisPanel && !isKvSidebar && toolbarDbMeta?.supportsSQL !== false && !!toolbarDbType;
+    !isKvPanel && toolbarDbMeta?.supportsSQL !== false && !!toolbarDbType;
   const showNewTable =
-    !isRedisPanel &&
-    !isKvSidebar &&
+    !isKvPanel &&
     canOpenStructureEditor(toolbarDbMeta) &&
     toolbarDbMeta?.readOnly !== true &&
     !!toolbarDbType;
   const showErDiagramToolbar =
-    !isRedisPanel && !isKvSidebar && toolbarDbMeta?.supportsErDiagram !== false && !!toolbarDbType;
+    !isKvPanel && toolbarDbMeta?.supportsErDiagram !== false && !!toolbarDbType;
   const showObjectsToolbar =
-    !isRedisPanel && !isKvSidebar && toolbarDbMeta?.readOnly !== true && !!toolbarDbType;
+    !isKvPanel && toolbarDbMeta?.readOnly !== true && !!toolbarDbType;
 
   // Detect a connection that is still being established (no dbSessionId yet).
   // When no panel is active, ConnectionWorkspaceHome needs to show a spinner
@@ -620,10 +622,12 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
       ? (activeQueryExec.results[activeQueryExec.activeResultIdx] ?? null)
       : null;
 
-  // Redis panels own their logical database context. The schema store tracks
-  // the outer SQL navigator and may still point at db0 after a Redis panel was
+  // KV / document panels own their logical database context. The schema store tracks
+  // the outer SQL navigator and may still point at db0 after a KV panel was
   // opened on db5, so the status bar must use the panel's immutable target.
-  const statusDatabase = activePanel?.type === 'redis-db' ? activePanel.dbName : currentDatabase;
+  const statusDatabase = dbMeta?.isKeyValue === true && activePanel
+    ? (activePanel as { dbName?: string }).dbName ?? currentDatabase
+    : currentDatabase;
 
   const detailColumnDefs: ColumnDef[] = useMemo(() => {
     if (activePanel?.type === 'table') {

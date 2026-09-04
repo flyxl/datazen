@@ -70,17 +70,19 @@ export function PanelContentRenderer({
     return null;
   }
 
-  if (activePanel.type === 'redis-db') {
+  // KV / document panels (Redis etc.) are routed via DB_REGISTRY metadata, not panel type literal.
+  if (DB_REGISTRY[activePanel.databaseType]?.isKeyValue === true) {
+    const kvPanel = activePanel as RedisDbPanel;
     const viewMode = DB_REGISTRY[activePanel.databaseType]?.connectionView ?? 'sql';
-    const RedisView = getConnectionView(viewMode);
+    const KvView = getConnectionView(viewMode);
     return (
-      <RedisView
+      <KvView
         key={activePanel.id}
         dbSessionId={activePanel.dbSessionId}
         connectionId={activePanel.connectionId}
         connectionName={activePanel.connectionName}
         databaseType={activePanel.databaseType}
-        initialDatabase={(activePanel as RedisDbPanel).dbName}
+        initialDatabase={kvPanel.dbName}
         hideSidebar
         isActive
       />
