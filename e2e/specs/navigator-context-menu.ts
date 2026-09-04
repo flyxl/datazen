@@ -18,6 +18,9 @@ import {
   invokeBackend,
   queryScalar,
   type QueryResultPayload,
+  stubClipboardCapture,
+  readStubbedClipboard,
+  restoreClipboardStub,
 } from '../helpers.js';
 
 const TEST_TABLE = '_e2e_ctx_menu';
@@ -253,6 +256,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
+    await stubClipboardCapture();
     await browser.pause(1500);
     pgDbSessionId = await invokeBackend<string>('connect', { connectionId: SEEDED_CONN_ID });
 
@@ -278,6 +282,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
     } catch {
       /* best effort */
     }
+    await restoreClipboardStub();
   });
 
   // ── Connection Context Menu ──────────────────────────────────────
@@ -303,14 +308,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await clickSubmenuItem('copy-name');
       await browser.pause(300);
 
-      const clip = await browser.execute(() => {
-        return new Promise<string>((resolve) => {
-          navigator.clipboard
-            .readText()
-            .then(resolve)
-            .catch(() => resolve(''));
-        });
-      });
+      const clip = await readStubbedClipboard();
       expect(clip.length).toBeGreaterThan(0);
     });
 
@@ -353,14 +351,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await clickMenuItem(t('schemaTree.copyDatabaseName'));
       await browser.pause(300);
 
-      const clip = await browser.execute(() => {
-        return new Promise<string>((resolve) => {
-          navigator.clipboard
-            .readText()
-            .then(resolve)
-            .catch(() => resolve(''));
-        });
-      });
+      const clip = await readStubbedClipboard();
       expect(clip.length).toBeGreaterThan(0);
     });
 
@@ -426,14 +417,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await clickMenuItemById('copy-name');
       await browser.pause(300);
 
-      const clip = await browser.execute(() => {
-        return new Promise<string>((resolve) => {
-          navigator.clipboard
-            .readText()
-            .then(resolve)
-            .catch(() => resolve(''));
-        });
-      });
+      const clip = await readStubbedClipboard();
       expect(clip).toContain('public');
     });
 
@@ -666,14 +650,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await clickMenuItemById('copy-name');
       await browser.pause(500);
 
-      const clip = await browser.execute(() => {
-        return new Promise<string>((resolve) => {
-          navigator.clipboard
-            .readText()
-            .then(resolve)
-            .catch(() => resolve(''));
-        });
-      });
+      const clip = await readStubbedClipboard();
       expect(clip.length).toBeGreaterThan(0);
     });
 
@@ -686,14 +663,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await clickMenuItemById('copy-ddl');
       await browser.pause(2000);
 
-      const clip = await browser.execute(() => {
-        return new Promise<string>((resolve) => {
-          navigator.clipboard
-            .readText()
-            .then(resolve)
-            .catch(() => resolve(''));
-        });
-      });
+      const clip = await readStubbedClipboard();
       expect(clip).toContain('CREATE TABLE');
     });
 

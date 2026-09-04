@@ -39,10 +39,16 @@ async function openTestTableDataView() {
     await browser.pause(1500);
   };
   await openPanel();
-  let dataTab = await $(`button*=${t('connWin.data')}`);
+  let dataTab = await $('[data-testid="sub-tab-data"]');
+  if (!(await dataTab.isExisting())) {
+    dataTab = await $(`button*=${t('connWin.data')}`);
+  }
   if (!(await dataTab.isExisting())) {
     await openTableFromSidebar(TEST_TABLE);
-    dataTab = await $(`button*=${t('connWin.data')}`);
+    dataTab = await $('[data-testid="sub-tab-data"]');
+    if (!(await dataTab.isExisting())) {
+      dataTab = await $(`button*=${t('connWin.data')}`);
+    }
   }
   if (await dataTab.isExisting()) {
     await dataTab.waitForDisplayed({ timeout: 10000 });
@@ -59,7 +65,15 @@ async function openTestTableDataView() {
 }
 
 async function openTableExportDialog() {
-  await closeDataExportDialogIfOpen();
+  const dlg = await $('[data-testid="data-export-dialog"]');
+  if (await dlg.isDisplayed().catch(() => false)) {
+    const hasForm = await browser.execute(() => {
+      const d = document.querySelector('[data-testid="data-export-dialog"]');
+      return !!d?.querySelector('button[role="combobox"]');
+    });
+    if (hasForm) return;
+    await closeDataExportDialogIfOpen();
+  }
   await openTestTableDataView();
   const clicked = await browser.execute(
     (exportLabel: string, sampleCell: string) => {
@@ -96,8 +110,7 @@ describe('导出和导入 (EI-001~EI-006)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
-    await openQueryTab();
-    await browser.pause(1500);
+    await browser.pause(1000);
     await openTestTableDataView();
   });
 
