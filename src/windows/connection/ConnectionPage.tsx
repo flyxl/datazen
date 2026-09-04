@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ArrowLeft,
   Database,
   Gauge,
   LayoutGrid,
@@ -50,7 +51,7 @@ import type { UiIconId } from '../../lib/iconIds';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { DashboardPanel } from '../dashboard/DashboardPanel';
 import { WorkflowPage } from '../workflow/WorkflowPage';
-import { SettingsPage } from '../settings/SettingsPage';
+import { SettingsContent } from '../settings/SettingsContent';
 import { WorkspaceView } from '../workspace/WorkspaceView';
 import { ExtensionManagementPage } from '../extensions/ExtensionManagementPage';
 
@@ -708,88 +709,108 @@ export function ConnectionPage() {
     </div>
   );
 
+  const titleBarTitle = mainView === 'settings' ? t('win.settings') : centerTitle;
+
+  const titleBarLeft = (
+    <div className="flex items-center gap-1">
+      {mainView === 'settings' && (
+        <button
+          type="button"
+          data-testid="settings-back"
+          data-no-drag
+          onClick={handleSettingsBack}
+          title={t('common.back')}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-secondary hover:bg-surface-raised hover:text-fg"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+      )}
+      <MenuBar />
+    </div>
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface text-fg">
+      <TitleBar title={titleBarTitle} leftContent={titleBarLeft} rightContent={<ThemeToggle />} />
+
       {mainView === 'settings' ? (
-        <SettingsPage initialSection={settingsSection} onBack={handleSettingsBack} />
+        <div className="flex min-h-0 flex-1 flex-col" data-testid="settings-page">
+          <SettingsContent initialSection={settingsSection} />
+        </div>
       ) : (
-        <>
-          <TitleBar title={centerTitle} leftContent={<MenuBar />} rightContent={<ThemeToggle />} />
-
-          <div className="flex min-h-0 flex-1">
-            <aside className="flex h-full w-10 shrink-0 flex-col self-stretch border-r border-edge bg-surface-alt">
-              <div className="flex flex-col">
-                <WorkspaceModeButton
-                  icon={Database}
-                  iconId="nav.connections"
-                  label={t('nav.connections')}
-                  testId="workspace-nav-connections"
-                  active={workspaceMode === 'connections'}
-                  onClick={() => setWorkspaceMode('connections')}
-                />
-                <WorkspaceModeButton
-                  icon={Workflow}
-                  iconId="action.workflow"
-                  label={t('nav.workflow')}
-                  testId="workspace-nav-workflow"
-                  active={workspaceMode === 'workflow'}
-                  onClick={handleOpenWorkflow}
-                />
-                <WorkspaceModeButton
-                  icon={Gauge}
-                  iconId="action.dashboard"
-                  label={t('nav.dashboard')}
-                  testId="workspace-nav-dashboard"
-                  active={workspaceMode === 'dashboard'}
-                  onClick={() => void handleOpenDashboard()}
-                />
-                <WorkspaceModeButton
-                  icon={LayoutGrid}
-                  iconId="nav.workspacePages"
-                  label={t('nav.workspacePages')}
-                  testId="workspace-nav-workspace-pages"
-                  active={workspaceMode === 'workspace'}
-                  onClick={() => setWorkspaceMode('workspace')}
-                />
-                <WorkspaceModeButton
-                  icon={Puzzle}
-                  iconId="nav.plugins"
-                  label={t('nav.plugins')}
-                  testId="workspace-nav-plugins"
-                  active={workspaceMode === 'plugins'}
-                  onClick={() => setWorkspaceMode('plugins')}
-                />
-              </div>
-              <div className="mt-auto">
-                <WorkspaceModeButton
-                  icon={Settings}
-                  iconId="nav.settings"
-                  label={t('nav.settings')}
-                  testId="workspace-nav-settings"
-                  onClick={() => openSettingsInShell()}
-                />
-              </div>
-            </aside>
-
-            <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-              {workspaceMode === 'connections' ? (
-                connectionWorkspace
-              ) : workspaceMode === 'workflow' ? (
-                <WorkflowPage embedded onOpenDashboardInShell={handleOpenDashboardById} />
-              ) : workspaceMode === 'workspace' ? (
-                <WorkspaceView onOpenPlugins={() => setWorkspaceMode('plugins')} />
-              ) : workspaceMode === 'plugins' ? (
-                <ExtensionManagementPage onOpenInWorkspace={() => setWorkspaceMode('workspace')} />
-              ) : (
-                <DashboardPanel
-                  initialDashboardId={embeddedDashboardId}
-                  onDashboardChange={(_id, name) => setDashboardTitle(name)}
-                  onOpenWorkflowEditor={handleOpenWorkflow}
-                />
-              )}
+        <div className="flex min-h-0 flex-1">
+          <aside className="flex h-full w-10 shrink-0 flex-col self-stretch border-r border-edge bg-surface-alt">
+            <div className="flex flex-col">
+              <WorkspaceModeButton
+                icon={Database}
+                iconId="nav.connections"
+                label={t('nav.connections')}
+                testId="workspace-nav-connections"
+                active={workspaceMode === 'connections'}
+                onClick={() => setWorkspaceMode('connections')}
+              />
+              <WorkspaceModeButton
+                icon={Workflow}
+                iconId="action.workflow"
+                label={t('nav.workflow')}
+                testId="workspace-nav-workflow"
+                active={workspaceMode === 'workflow'}
+                onClick={handleOpenWorkflow}
+              />
+              <WorkspaceModeButton
+                icon={Gauge}
+                iconId="action.dashboard"
+                label={t('nav.dashboard')}
+                testId="workspace-nav-dashboard"
+                active={workspaceMode === 'dashboard'}
+                onClick={() => void handleOpenDashboard()}
+              />
+              <WorkspaceModeButton
+                icon={LayoutGrid}
+                iconId="nav.workspacePages"
+                label={t('nav.workspacePages')}
+                testId="workspace-nav-workspace-pages"
+                active={workspaceMode === 'workspace'}
+                onClick={() => setWorkspaceMode('workspace')}
+              />
+              <WorkspaceModeButton
+                icon={Puzzle}
+                iconId="nav.plugins"
+                label={t('nav.plugins')}
+                testId="workspace-nav-plugins"
+                active={workspaceMode === 'plugins'}
+                onClick={() => setWorkspaceMode('plugins')}
+              />
             </div>
+            <div className="mt-auto">
+              <WorkspaceModeButton
+                icon={Settings}
+                iconId="nav.settings"
+                label={t('nav.settings')}
+                testId="workspace-nav-settings"
+                onClick={() => openSettingsInShell()}
+              />
+            </div>
+          </aside>
+
+          <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+            {workspaceMode === 'connections' ? (
+              connectionWorkspace
+            ) : workspaceMode === 'workflow' ? (
+              <WorkflowPage embedded onOpenDashboardInShell={handleOpenDashboardById} />
+            ) : workspaceMode === 'workspace' ? (
+              <WorkspaceView onOpenPlugins={() => setWorkspaceMode('plugins')} />
+            ) : workspaceMode === 'plugins' ? (
+              <ExtensionManagementPage onOpenInWorkspace={() => setWorkspaceMode('workspace')} />
+            ) : (
+              <DashboardPanel
+                initialDashboardId={embeddedDashboardId}
+                onDashboardChange={(_id, name) => setDashboardTitle(name)}
+                onOpenWorkflowEditor={handleOpenWorkflow}
+              />
+            )}
           </div>
-        </>
+        </div>
       )}
 
       {confirmDeleteDialog}

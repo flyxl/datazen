@@ -142,7 +142,18 @@ vi.mock('../ContentView', () => ({
 }));
 
 vi.mock('../../../components/TitleBar', () => ({
-  TitleBar: ({ title }: { title: string }) => <div data-testid="title-bar">{title}</div>,
+  TitleBar: ({
+    title,
+    leftContent,
+  }: {
+    title: string;
+    leftContent?: React.ReactNode;
+  }) => (
+    <div data-testid="title-bar">
+      {leftContent}
+      {title}
+    </div>
+  ),
 }));
 
 vi.mock('../../../components/MenuBar', () => ({
@@ -174,14 +185,9 @@ vi.mock('../../workflow/WorkflowPage', () => ({
   WorkflowPage: () => <div data-testid="workflow-window">workflow</div>,
 }));
 
-vi.mock('../../settings/SettingsPage', () => ({
-  SettingsPage: ({ initialSection, onBack }: { initialSection?: string; onBack: () => void }) => (
-    <div data-testid="settings-page">
-      settings-page section={initialSection ?? 'general'}
-      <button type="button" data-testid="settings-back" onClick={onBack}>
-        back
-      </button>
-    </div>
+vi.mock('../../settings/SettingsContent', () => ({
+  SettingsContent: ({ initialSection }: { initialSection?: string }) => (
+    <div data-testid="settings-content-mock">section={initialSection ?? 'general'}</div>
   ),
 }));
 
