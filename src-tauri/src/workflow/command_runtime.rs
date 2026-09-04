@@ -32,7 +32,12 @@ pub async fn execute_command_with_mode(
         .connection_manager
         .resolve_session_for_connection(connection_id)
         .await
-        .map_err(|e| format!("Failed to connect '{connection_id}': {}", crate::log_redact::redact_secrets_for_log(&e.to_string())))?;
+        .map_err(|e| {
+            format!(
+                "Failed to connect '{connection_id}': {}",
+                crate::log_redact::redact_secrets_for_log(&e.to_string())
+            )
+        })?;
 
     let definition = driver
         .command_definitions()

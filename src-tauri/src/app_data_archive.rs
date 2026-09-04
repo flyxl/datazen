@@ -1201,8 +1201,7 @@ mod tests {
             let options =
                 SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
             zip.start_file("settings.json", options).unwrap();
-            zip.write_all(r#"{"theme":"light"}"#.as_bytes())
-                .unwrap();
+            zip.write_all(r#"{"theme":"light"}"#.as_bytes()).unwrap();
             zip.start_file(".key", options).unwrap();
             zip.write_all(b"archive-key-material").unwrap();
             zip.finish().unwrap();
@@ -1266,8 +1265,7 @@ mod tests {
             let options =
                 SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
             zip.start_file("settings.json", options).unwrap();
-            zip.write_all(r#"{"theme":"light"}"#.as_bytes())
-                .unwrap();
+            zip.write_all(r#"{"theme":"light"}"#.as_bytes()).unwrap();
             zip.start_file(".key", options).unwrap();
             zip.write_all(b"new-key-from-archive").unwrap();
             zip.finish().unwrap();
@@ -1304,8 +1302,7 @@ mod tests {
             let options =
                 SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
             zip.start_file("settings.json", options).unwrap();
-            zip.write_all(r#"{"theme":"light"}"#.as_bytes())
-                .unwrap();
+            zip.write_all(r#"{"theme":"light"}"#.as_bytes()).unwrap();
             zip.start_file(".key", options).unwrap();
             zip.write_all(b"archive-key").unwrap();
             zip.finish().unwrap();

@@ -299,10 +299,19 @@ mod tests {
         assert!(mapped.to_string().contains("s3cret"));
         // IPC payload (Serialize) must NOT leak the password.
         let ipc_json = serde_json::to_string(&mapped).unwrap();
-        assert!(!ipc_json.contains("s3cret"), "IPC must not contain plaintext password: {ipc_json}");
-        assert!(ipc_json.contains("***@"), "IPC must contain redacted placeholder: {ipc_json}");
+        assert!(
+            !ipc_json.contains("s3cret"),
+            "IPC must not contain plaintext password: {ipc_json}"
+        );
+        assert!(
+            ipc_json.contains("***@"),
+            "IPC must contain redacted placeholder: {ipc_json}"
+        );
         // Error category must be preserved for frontend classification.
-        assert!(ipc_json.contains("Connection failed"), "IPC must preserve error category: {ipc_json}");
+        assert!(
+            ipc_json.contains("Connection failed"),
+            "IPC must preserve error category: {ipc_json}"
+        );
     }
 
     #[test]

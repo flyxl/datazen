@@ -207,11 +207,7 @@ impl WorkflowScheduler {
                 }
                 // Update last_run regardless of outcome (including panic) to
                 // prevent rapid-fire retries on a consistently crashing workflow.
-                scheduler
-                    .last_run
-                    .write()
-                    .await
-                    .insert(id, Instant::now());
+                scheduler.last_run.write().await.insert(id, Instant::now());
                 // _guard drops here → in_flight.remove guaranteed
             });
         }
