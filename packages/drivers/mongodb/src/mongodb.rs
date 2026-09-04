@@ -825,9 +825,7 @@ mod tests {
                     );
                 }
                 other => {
-                    panic!(
-                        "command '{other}' is defined but has no contract test expectation"
-                    );
+                    panic!("command '{other}' is defined but has no contract test expectation");
                 }
             }
         }
