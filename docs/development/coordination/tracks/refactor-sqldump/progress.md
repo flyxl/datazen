@@ -3,8 +3,8 @@
 ## 1. 功能摘要
 - **Track ID**：refactor-sqldump
 - **任务目标**：将 `packages/driver-api/src/sql_dump.rs` (1,359 行) 拆分为 `packages/driver-api/src/sql_dump/` 目录模块（`mod.rs`, `dump.rs`, `restore.rs`, `parser.rs`, `tests.rs`）。
-- **当前状态**：未开始
-- **编码 Commit**：—
+- **当前状态**：已完成
+- **编码 Commit**：refactor(driver-api): modularize sql_dump module
 - **测试 Commit**：—
 
 ## 2. E2E 用例表
@@ -12,8 +12,13 @@
 
 ## 3. 测试结果与覆盖率
 - 目标套件：`cargo test -p datazen-driver-api --lib`
-- 基线测试数：全绿通过
+- 基线测试数：108 passed; 0 failed（全绿通过）
 
 ## 4. 设计决策 / 遗留注意
 - `packages/driver-api/src/sql_dump/mod.rs` 重新 `pub use` 所有导出函数与结构体，完全兼容原有调用。
 - 547 行单测独立移至 `tests.rs`。
+- 模块划分：
+  - `dump.rs` — DDL/INSERT 批处理、全库转储管线
+  - `restore.rs` — `RestoreSession`、恢复语句执行与错误恢复
+  - `parser.rs` — SQL 标识符/字面量解析辅助（`created_relation_ident` 等）
+  - `tests.rs` — 原 `#[cfg(test)]` 单测
