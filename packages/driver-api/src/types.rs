@@ -32,6 +32,26 @@ pub enum DdlAtomicity {
     Unknown,
 }
 
+/// High-level sync/transfer pairing category (broader than wire protocol).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncCategory {
+    Sql,
+    Document,
+    Kv,
+    Other,
+}
+
+impl std::fmt::Display for SyncCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Sql => write!(f, "Sql"),
+            Self::Document => write!(f, "Document"),
+            Self::Kv => write!(f, "Kv"),
+            Self::Other => write!(f, "Other"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum SslMode {

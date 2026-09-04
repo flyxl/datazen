@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { syncCommands } from '../commands/sync';
 import { DB_REGISTRY } from './databaseTypes';
 import type { DatabaseTypeMeta } from './databaseMeta';
+import { normalizeDriverId } from './syncTaxonomy';
 
 function registryMeta(dbType: string): DatabaseTypeMeta | undefined {
   return (DB_REGISTRY as Record<string, DatabaseTypeMeta | undefined>)[dbType];
@@ -23,57 +24,26 @@ export interface SyncPairingResult {
 
 type SyncCategory = 'sql' | 'document' | 'kv' | 'other';
 
+function categoryFromMeta(meta: DatabaseTypeMeta | undefined, dbType: string): SyncCategory {
+  if (meta?.syncCategory) return meta.syncCategory;
+  if (meta?.category === 'kv') return 'kv';
+  if (meta?.category === 'document') return 'document';
+  const id = normalizeDriverId(dbType);
+  if (id === 'kiwi' || id === 'superset') return 'other';
+  return 'sql';
+}
+
 export function syncCategory(dbType: string): SyncCategory {
-  switch (dbType.toLowerCase()) {
-    case 'redis':
-      return 'kv';
-    case 'mongodb':
-      return 'document';
-    case 'kiwi':
-    case 'superset':
-      return 'other';
-    default: {
-      const meta = registryMeta(dbType);
-      if (meta?.category === 'kv') return 'kv';
-      if (meta?.category === 'document') return 'document';
-      return 'sql';
-    }
-  }
+  const meta = registryMeta(dbType) ?? registryMeta(normalizeDriverId(dbType));
+  return categoryFromMeta(meta, dbType);
 }
 
 /** Normalize a database type id to its sync dialect family (Transfer UI only). */
 export function normalizeSyncFamily(dbType: string): string {
-  const meta = registryMeta(dbType);
-  if (meta?.sqlDialect) return meta.sqlDialect;
-
-  switch (dbType.toLowerCase()) {
-    case 'postgres':
-    case 'postgresql':
-    case 'cloudberry':
-    case 'questdb':
-      return 'postgresql';
-    case 'mysql':
-    case 'mariadb':
-    case 'tidb':
-    case 'oceanbase':
-    case 'doris':
-    case 'starrocks':
-    case 'manticore':
-    case 'ob_oracle':
-      return 'mysql';
-    case 'sqlite':
-    case 'rqlite':
-    case 'turso':
-      return 'sqlite';
-    case 'sqlserver':
-    case 'mssql':
-      return 'sqlserver';
-    case 'trino':
-    case 'presto':
-      return 'trino';
-    default:
-      return dbType.toLowerCase();
-  }
+  const meta = registryMeta(dbType) ?? registryMeta(normalizeDriverId(dbType));
+  if (meta?.syncFamily) return meta.syncFamily;
+  if (meta?.sqlDialect && meta.sqlDialect !== 'generic') return meta.sqlDialect;
+  return normalizeDriverId(dbType);
 }
 
 const pairingCache = new Map<string, SyncPairingResult>();
@@ -145,8 +115,7 @@ export function useSyncPairingState(
     void (async () => {
       const entries = await Promise.all(
         connections.map(
-          async (c) =>
-            [c.id, await isSyncTargetSupported(sourceType, c.databaseType)] as const,
+          async (c) => [c.id, await isSyncTargetSupported(sourceType, c.databaseType)] as const,
         ),
       );
       if (!cancelled) setTargetSupport(Object.fromEntries(entries));

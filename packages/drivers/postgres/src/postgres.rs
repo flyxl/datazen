@@ -725,6 +725,10 @@ impl DatabaseDriver for PostgresDriver {
         DdlAtomicity::Transactional
     }
 
+    fn sync_family(&self) -> String {
+        "postgresql".into()
+    }
+
     /// F7: qualify unqualified table references with the target schema
     /// (`"schema"."t"`). The database dimension is not inlined — PG resolves
     /// it through the host pool switch (`ensure_session_database`); parse

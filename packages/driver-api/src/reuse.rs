@@ -48,6 +48,14 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.driver_category()
     }
 
+    fn sync_category(&self) -> SyncCategory {
+        self.inner.sync_category()
+    }
+
+    fn sync_family(&self) -> String {
+        self.inner.sync_family()
+    }
+
     fn type_normalizer(&self) -> Option<Arc<dyn TypeNormalizer>> {
         self.inner.type_normalizer()
     }

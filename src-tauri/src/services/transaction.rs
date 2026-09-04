@@ -109,7 +109,9 @@ mod tests {
         let driver = mock_driver(DdlAtomicity::Transactional);
         let handle = mock_handle();
 
-        let scope = TransactionScope::begin(driver.as_ref(), &handle).await.unwrap();
+        let scope = TransactionScope::begin(driver.as_ref(), &handle)
+            .await
+            .unwrap();
         assert_eq!(scope.atomicity(), DdlAtomicity::Transactional);
         assert!(scope.is_transactional());
         scope.commit().await.unwrap();
@@ -120,7 +122,9 @@ mod tests {
         let driver = mock_driver(DdlAtomicity::AutoCommitPerStatement);
         let handle = mock_handle();
 
-        let scope = TransactionScope::begin(driver.as_ref(), &handle).await.unwrap();
+        let scope = TransactionScope::begin(driver.as_ref(), &handle)
+            .await
+            .unwrap();
         assert_eq!(scope.atomicity(), DdlAtomicity::AutoCommitPerStatement);
         assert!(!scope.is_transactional());
         scope.commit().await.unwrap();
@@ -131,7 +135,9 @@ mod tests {
         let driver = mock_driver(DdlAtomicity::Unknown);
         let handle = mock_handle();
 
-        let scope = TransactionScope::begin(driver.as_ref(), &handle).await.unwrap();
+        let scope = TransactionScope::begin(driver.as_ref(), &handle)
+            .await
+            .unwrap();
         assert_eq!(scope.atomicity(), DdlAtomicity::Unknown);
         assert!(!scope.is_transactional());
         scope.rollback().await.unwrap();

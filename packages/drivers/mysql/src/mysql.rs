@@ -899,6 +899,10 @@ impl DatabaseDriver for MysqlDriver {
         DdlAtomicity::AutoCommitPerStatement
     }
 
+    fn sync_family(&self) -> String {
+        "mysql".into()
+    }
+
     /// F7: qualify unqualified table references with the target database
     /// (`` `db`.`t` ``), shared by the mysql/mariadb/doris/starrocks/
     /// manticore/ob_oracle variants. Parse failures pass SQL through

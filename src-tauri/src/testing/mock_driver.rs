@@ -203,9 +203,7 @@ impl DatabaseDriver for MockDriver {
     }
 
     fn ddl_atomicity(&self) -> DdlAtomicity {
-        self.opts
-            .ddl_atomicity
-            .unwrap_or(DdlAtomicity::Unknown)
+        self.opts.ddl_atomicity.unwrap_or(DdlAtomicity::Unknown)
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {

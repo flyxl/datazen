@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
 import {
   clearSyncPairingCache,
   isSyncTargetSupported,
   normalizeSyncFamily,
   resolveSyncPairing,
+  syncCategory,
+  useSyncPairingState,
 } from '../syncPairing';
 
 const classifyDataSyncPairMock = vi.fn();
@@ -24,13 +27,11 @@ function mockPairing(
     reason?: string | null;
   },
 ) {
-  classifyDataSyncPairMock.mockImplementation(
-    async (source: string, target: string) => {
-      if (source === sourceType && target === targetType) return view;
-      if (source === targetType && target === sourceType) return view;
-      return { path: 'unsupported', supported: false, family: null, reason: null };
-    },
-  );
+  classifyDataSyncPairMock.mockImplementation(async (source: string, target: string) => {
+    if (source === sourceType && target === targetType) return view;
+    if (source === targetType && target === sourceType) return view;
+    return { path: 'unsupported', supported: false, family: null, reason: null };
+  });
 }
 
 describe('syncPairing (Data Sync V1 via IPC)', () => {
@@ -159,5 +160,82 @@ describe('syncPairing (Data Sync V1 via IPC)', () => {
     await resolveSyncPairing('mysql', 'mariadb');
     await resolveSyncPairing('mysql', 'mariadb');
     expect(classifyDataSyncPairMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('[tester] syncPairing taxonomy helpers', () => {
+  it('syncCategory reads registry category and proxy ids', () => {
+    expect(syncCategory('postgresql')).toBe('sql');
+    expect(syncCategory('redis')).toBe('kv');
+    expect(syncCategory('kiwi')).toBe('other');
+    expect(syncCategory('superset')).toBe('other');
+  });
+
+  it('normalizeSyncFamily prefers syncFamily and sqlDialect over raw id', () => {
+    expect(normalizeSyncFamily('redis')).toBe('redis');
+    expect(normalizeSyncFamily('mariadb')).toBe('mysql');
+    expect(normalizeSyncFamily('questdb')).toBe('postgresql');
+    expect(normalizeSyncFamily('presto')).toBe('trino');
+  });
+});
+
+describe('[tester] useSyncPairingState', () => {
+  beforeEach(() => {
+    clearSyncPairingCache();
+    classifyDataSyncPairMock.mockReset();
+  });
+
+  it('resolves target support map and active pairing from IPC', async () => {
+    classifyDataSyncPairMock.mockImplementation(async (source: string, target: string) => {
+      if (source === 'mysql' && target === 'mariadb') {
+        return { path: 'direct', supported: true, family: 'mysql' };
+      }
+      if (source === 'mysql' && target === 'postgresql') {
+        return { path: 'ir', supported: false, reason: 'transfer' };
+      }
+      return { path: 'unsupported', supported: false };
+    });
+
+    const connections = [
+      { id: 't1', databaseType: 'mariadb' },
+      { id: 't2', databaseType: 'postgresql' },
+    ];
+
+    const { result } = renderHook(() => useSyncPairingState('mysql', connections, 't1'));
+
+    await waitFor(() => {
+      expect(result.current.targetSupport).toEqual({ t1: true, t2: false });
+      expect(result.current.activePairing).toMatchObject({
+        path: 'direct',
+        supported: true,
+        family: 'mysql',
+      });
+    });
+  });
+
+  it('clears state when source is removed', async () => {
+    classifyDataSyncPairMock.mockResolvedValue({
+      path: 'direct',
+      supported: true,
+      family: 'mysql',
+    });
+
+    const connections = [{ id: 't1', databaseType: 'mariadb' }];
+
+    const { result, rerender } = renderHook(
+      ({ source, target }: { source?: string; target: string }) =>
+        useSyncPairingState(source, connections, target),
+      { initialProps: { source: 'mysql', target: 't1' } },
+    );
+
+    await waitFor(() =>
+      expect(result.current.activePairing).toMatchObject({ path: 'direct', supported: true }),
+    );
+
+    rerender({ source: undefined, target: 't1' });
+    await waitFor(() => {
+      expect(result.current.targetSupport).toEqual({});
+      expect(result.current.activePairing).toBeNull();
+    });
   });
 });

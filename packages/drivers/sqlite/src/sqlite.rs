@@ -138,6 +138,10 @@ impl DatabaseDriver for SqliteDriver {
         DdlAtomicity::Transactional
     }
 
+    fn sync_family(&self) -> String {
+        "sqlite".into()
+    }
+
     /// F7: qualify unqualified table references with the ATTACH alias
     /// (`"alias"."t"`). A DataZen SQLite connection is a single file
     /// (`main`), so this is a no-op unless the caller targets an explicit
