@@ -26,7 +26,9 @@ pub fn should_prevent_exit(app: &AppHandle) -> bool {
 
 pub fn should_close_to_tray(app: &AppHandle) -> bool {
     let state = app.state::<AppState>();
-    let settings = tauri::async_runtime::block_on(state.store.get_settings());
+    // Synchronous snapshot from in-memory cache — avoids block_on panics
+    // when called from within a Tokio runtime.
+    let settings = state.store.try_get_settings();
     should_close_main_to_tray(
         settings.monitor.tray_enabled,
         settings.monitor.close_to_tray,
@@ -132,11 +134,10 @@ fn handle_tray_menu_event(app: &AppHandle, id: &str) {
 }
 
 /// Sync tray from a non-async context (window/menu handlers).
-/// Prefer [`sync_tray_async`] when already inside a Tokio/Tauri async runtime —
-/// calling this from async code will panic (`block_on` nested in a runtime).
+/// Uses synchronous cache snapshot — safe from any context including Tokio runtimes.
 pub fn sync_tray(app: &AppHandle) {
     let state = app.state::<AppState>();
-    let settings = tauri::async_runtime::block_on(state.store.get_settings());
+    let settings = state.store.try_get_settings();
     apply_tray(app, &settings);
 }
 

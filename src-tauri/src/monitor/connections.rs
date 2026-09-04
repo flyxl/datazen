@@ -51,7 +51,10 @@ impl MonitorConnectionRegistry {
         connection_id: &str,
     ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), ConnectionError> {
         let lock = {
-            let mut locks = self.connect_locks.lock().unwrap();
+            let mut locks = self.connect_locks.lock().unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "monitor connect_locks mutex poisoned; recovering");
+                e.into_inner()
+            });
             locks
                 .entry(connection_id.to_string())
                 .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))

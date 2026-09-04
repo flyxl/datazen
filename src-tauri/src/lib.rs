@@ -48,9 +48,9 @@ pub(crate) use app_menu::{
 };
 #[allow(unused_imports)]
 pub(crate) use bootstrap::{
-    build_tracing_env_filter, finish_app_state, is_fullscreen_for_monitor, is_mcp_stdio_mode,
+    build_tracing_env_filter, finish_app_state, is_fullscreen_for_monitor,
     parse_log_settings_fields, resolve_context_dir, resolve_log_dir, resolve_prompts_dir,
     should_auto_start_embedded_mcp, unique_driver_types,
 };
 
-pub use bootstrap::{run, run_mcp_stdio};
+pub use bootstrap::{is_mcp_stdio_mode, run, run_mcp_stdio};

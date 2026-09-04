@@ -855,7 +855,12 @@ mod tests {
     #[test]
     fn test_tester_lib_reexports_public_entry_points() {
         let lib = include_str!("lib.rs");
-        assert!(lib.contains("pub use bootstrap::{run, run_mcp_stdio}"));
+        assert!(lib.contains("pub use bootstrap::{"));
+        assert!(lib.contains("run_mcp_stdio"));
+        assert!(lib.contains("run,"));
+        // is_mcp_stdio_mode must be publicly re-exported so the `datazen` bin
+        // can call it from main.rs (see fix(bootstrap) re-export commit).
+        assert!(lib.contains("is_mcp_stdio_mode"));
         assert!(lib.contains("mod app_menu"));
         assert!(lib.contains("mod bootstrap"));
     }
