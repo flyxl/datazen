@@ -17,7 +17,7 @@ P0-4：Button 焦点与可访问性治理
 
 - Phase: PASSED
 - 编码 commit: ba1fa2b12
-- 测试 commit: 507b59615
+- 测试 commit: 641c748bc
 - 合并 commit: 待合入
 
 ## 自验结果（Coder）
