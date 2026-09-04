@@ -63,5 +63,12 @@ const pack = {
   'transfer.limitations.noResume': '不支持表级断点续传；取消仅停止当前任务',
   'transfer.limitations.dontShowAgain': '不再显示此提示',
   'transfer.ddlOverrideHint': '可直接编辑上方 CREATE 语句；执行时将使用修改后的 SQL。',
+  'transfer.objects.noTablesFound': '当前源数据库未检测到可迁移的表。',
+  'transfer.objects.noTablesHint': '请检查源端连接与数据库，然后重新检测。',
+  'transfer.objects.reInspect': '重新检测',
+  'transfer.preview.failed': '预览生成失败',
+  'transfer.preview.failedHint': '无法生成传输预览。请检查映射配置后重试。',
+  'transfer.preview.retry': '重新生成预览',
+  'transfer.preview.backToMapping': '返回映射配置',
 } as const;
 export default pack;
