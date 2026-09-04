@@ -543,4 +543,26 @@ describe('tableDataStore', () => {
     });
     expect(useTableDataStore.getState().filterLogic).toBe('or');
   });
+
+  it('manages visibleColumns and column visibility toggles', async () => {
+    await loadTable();
+    expect(useTableDataStore.getState().visibleColumns).toBeNull();
+
+    // Set visible columns to a subset
+    useTableDataStore.getState().setVisibleColumns(['id']);
+    expect(useTableDataStore.getState().visibleColumns).toEqual(['id']);
+
+    // Toggle 'name' on
+    useTableDataStore.getState().toggleColumnVisibility('name');
+    // All columns are now visible, so it normalizes back to null
+    expect(useTableDataStore.getState().visibleColumns).toBeNull();
+
+    // Toggle 'name' off
+    useTableDataStore.getState().toggleColumnVisibility('name');
+    expect(useTableDataStore.getState().visibleColumns).toEqual(['id']);
+
+    // Reset visible columns
+    useTableDataStore.getState().resetVisibleColumns();
+    expect(useTableDataStore.getState().visibleColumns).toBeNull();
+  });
 });

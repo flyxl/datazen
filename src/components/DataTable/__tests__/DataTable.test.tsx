@@ -195,6 +195,30 @@ describe('DataTable', () => {
     });
   });
 
+  it('renders headerActions alongside export button in toolbar and supports emptyPlaceholder', () => {
+    const { getByTestId, getByTitle, queryByText } = render(
+      <DataTable
+        columns={COLS}
+        rows={rows}
+        selectedRows={new Set()}
+        onSelectAll={vi.fn()}
+        onRowSelect={vi.fn()}
+        exportTableName="users"
+        headerActions={
+          <button type="button" data-testid="custom-filter-action">
+            Filter Action
+          </button>
+        }
+        emptyPlaceholder={<div data-testid="custom-empty-placeholder">Empty Custom State</div>}
+      />,
+    );
+    expect(getByTestId('custom-filter-action')).toBeInTheDocument();
+    expect(getByTitle('export.export')).toBeInTheDocument();
+    expect(getByTestId('custom-empty-placeholder')).toBeInTheDocument();
+    // Headers are replaced by emptyPlaceholder
+    expect(queryByText('ID')).not.toBeInTheDocument();
+  });
+
   it('shows bottom export bar when no selection handlers', async () => {
     const { getAllByTitle, getByText, getAllByText } = render(
       <DataTable columns={COLS} rows={rows} exportTableName="users" />,

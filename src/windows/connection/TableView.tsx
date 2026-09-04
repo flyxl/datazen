@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Filter, Loader2, ShieldAlert } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Columns3, Filter, Loader2, ShieldAlert } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { NlFilterInput } from '../../components/ai/NlFilterInput';
+import { TableColumnFilter } from './TableColumnFilter';
 import { useTableDataStore, type TableState } from '../../stores/tableDataStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useConnectionStore } from '../../stores/connectionStore';
@@ -76,6 +77,7 @@ export function TableView({
   const setFilterLogic = useTableDataStore((s) => s.setFilterLogic);
   const applyFilters = useTableDataStore((s) => s.applyFilters);
   const setFilterPanelOpen = useTableDataStore((s) => s.setFilterPanelOpen);
+  const setVisibleColumns = useTableDataStore((s) => s.setVisibleColumns);
   const setPage = useTableDataStore((s) => s.setPage);
   const setPageSize = useTableDataStore((s) => s.setPageSize);
   const startEdit = useTableDataStore((s) => s.startEdit);
@@ -212,6 +214,28 @@ export function TableView({
   const draftFilters = ts?.draftFilters ?? [];
   const draftFilterLogic = ts?.draftFilterLogic ?? 'and';
   const filterPanelOpen = ts?.filterPanelOpen ?? false;
+  const visibleColumns = ts?.visibleColumns ?? null;
+
+  const displayedColumns = useMemo(() => {
+    if (visibleColumns === null) return columns;
+    const set = new Set(visibleColumns);
+    return columns.filter((c) => set.has(c.name));
+  }, [columns, visibleColumns]);
+
+  const columnDefs: ColumnDef[] = useMemo(
+    () =>
+      displayedColumns.map((c) => ({
+        id: c.name,
+        name: c.name,
+        type: c.dataType,
+      })),
+    [displayedColumns],
+  );
+
+  const rowArrays: unknown[][] = useMemo(
+    () => rows.map((record) => displayedColumns.map((col) => record[col.name] ?? null)),
+    [rows, displayedColumns],
+  );
   const editingCell = ts?.editingCell ?? null;
   const selectedRows = ts?.selectedRows ?? new Set<number>();
   const loading = ts?.loading ?? false;
@@ -353,16 +377,6 @@ export function TableView({
       </div>
     );
   }
-
-  const columnDefs: ColumnDef[] = columns.map((c) => ({
-    id: c.name,
-    name: c.name,
-    type: c.dataType,
-  }));
-
-  const rowArrays: unknown[][] = rows.map((record) =>
-    columns.map((col) => record[col.name] ?? null),
-  );
 
   const filterActive = filterPanelOpen || filters.length > 0 || draftFilters.length > 0;
 
@@ -540,6 +554,33 @@ export function TableView({
         dataExportCapability={dataExportCapability}
         primaryKeyColumns={columns.filter((c) => c.isPrimaryKey).map((c) => c.name)}
         onDeleteRows={isEditable ? handleDeleteRows : undefined}
+        headerActions={
+          <TableColumnFilter
+            columns={columns}
+            visibleColumns={visibleColumns}
+            onChange={setVisibleColumns}
+            disabled={loading || pendingBusy || columns.length === 0}
+          />
+        }
+        emptyPlaceholder={
+          columns.length > 0 && displayedColumns.length === 0 ? (
+            <div
+              data-testid="all-columns-hidden-state"
+              className="flex min-h-48 flex-1 flex-col items-center justify-center p-8 text-center text-fg-muted"
+            >
+              <Columns3 className="mb-2 h-8 w-8 opacity-40" />
+              <p className="text-sm font-medium">{t('tableData.allColumnsHidden')}</p>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="mt-2 text-xs"
+                onClick={() => setVisibleColumns(null)}
+              >
+                {t('tableData.resetColumns')}
+              </Button>
+            </div>
+          ) : undefined
+        }
       />
       {confirmDeleteDialog}
       {confirmCommitDialog}

@@ -58,8 +58,16 @@ vi.mock('../../../commands/database', () => ({
 }));
 
 vi.mock('../../../components/DataTable/DataTable', () => ({
-  DataTable: (props: { onCellDoubleClick?: (row: number, col: string) => void }) => (
+  DataTable: (props: {
+    columns?: Array<{ id: string; name: string }>;
+    onCellDoubleClick?: (row: number, col: string) => void;
+    headerActions?: React.ReactNode;
+    emptyPlaceholder?: React.ReactNode;
+  }) => (
     <div data-testid="mock-data-table">
+      <div data-testid="mock-data-table-columns">{props.columns?.map((c) => c.name).join(',')}</div>
+      <div data-testid="mock-data-table-actions">{props.headerActions}</div>
+      {props.emptyPlaceholder}
       <button
         type="button"
         data-testid="mock-cell-double-click"
@@ -86,6 +94,7 @@ const tableState = vi.hoisted(() => ({
   setFilterLogic: vi.fn(),
   applyFilters: vi.fn(),
   setFilterPanelOpen: vi.fn(),
+  setVisibleColumns: vi.fn(),
   setPage: vi.fn(),
   setPageSize: vi.fn(),
   startEdit: vi.fn(),
@@ -327,5 +336,154 @@ describe('TableView', () => {
     expect(screen.getByTestId('table-read-only-tip')).toHaveTextContent(
       'tableData.readOnlyEditDisabled',
     );
+  });
+
+  it('renders field filter toggle button in toolbar', () => {
+    tableState.tableStates.set('users', {
+      columns: [
+        { name: 'id', dataType: 'int', isPrimaryKey: true },
+        { name: 'name', dataType: 'varchar', isPrimaryKey: false },
+      ],
+      rows: [{ id: 1, name: 'Alice' }],
+      totalRows: 1,
+      page: 0,
+      pageSize: 50,
+      sorts: [],
+      filters: [],
+      filterLogic: 'and',
+      draftFilters: [],
+      draftFilterLogic: 'and',
+      filterPanelOpen: false,
+      visibleColumns: null,
+      editingCell: null,
+      selectedRows: new Set<number>(),
+      loading: false,
+      error: null,
+    });
+
+    render(
+      <TableView dbSessionId="c1" database="app" tableName="users" databaseType="postgresql" />,
+    );
+
+    expect(screen.getByTestId('table-column-filter-toggle')).toBeInTheDocument();
+    expect(screen.getByTestId('mock-data-table-columns')).toHaveTextContent('id,name');
+  });
+
+  it('filters displayed columns to only user-selected columns', () => {
+    tableState.tableStates.set('users', {
+      columns: [
+        { name: 'id', dataType: 'int', isPrimaryKey: true },
+        { name: 'name', dataType: 'varchar', isPrimaryKey: false },
+        { name: 'email', dataType: 'varchar', isPrimaryKey: false },
+      ],
+      rows: [{ id: 1, name: 'Alice', email: 'alice@example.com' }],
+      totalRows: 1,
+      page: 0,
+      pageSize: 50,
+      sorts: [],
+      filters: [],
+      filterLogic: 'and',
+      draftFilters: [],
+      draftFilterLogic: 'and',
+      filterPanelOpen: false,
+      visibleColumns: ['name', 'email'],
+      editingCell: null,
+      selectedRows: new Set<number>(),
+      loading: false,
+      error: null,
+    });
+
+    render(
+      <TableView dbSessionId="c1" database="app" tableName="users" databaseType="postgresql" />,
+    );
+
+    expect(screen.getByTestId('mock-data-table-columns')).toHaveTextContent('name,email');
+  });
+
+  it('shows all-columns-hidden empty state when user deselects all columns', () => {
+    tableState.tableStates.set('users', {
+      columns: [
+        { name: 'id', dataType: 'int', isPrimaryKey: true },
+        { name: 'name', dataType: 'varchar', isPrimaryKey: false },
+      ],
+      rows: [{ id: 1, name: 'Alice' }],
+      totalRows: 1,
+      page: 0,
+      pageSize: 50,
+      sorts: [],
+      filters: [],
+      filterLogic: 'and',
+      draftFilters: [],
+      draftFilterLogic: 'and',
+      filterPanelOpen: false,
+      visibleColumns: [],
+      editingCell: null,
+      selectedRows: new Set<number>(),
+      loading: false,
+      error: null,
+    });
+
+    render(
+      <TableView dbSessionId="c1" database="app" tableName="users" databaseType="postgresql" />,
+    );
+
+    expect(screen.getByTestId('all-columns-hidden-state')).toBeInTheDocument();
+    expect(screen.getByText('tableData.allColumnsHidden')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('tableData.resetColumns'));
+    expect(tableState.setVisibleColumns).toHaveBeenCalledWith(null);
+  });
+
+  it('does not trigger React hook count mismatch when transitioning from loading to loaded', () => {
+    tableState.tableStates.set('users', {
+      columns: [],
+      rows: [],
+      totalRows: 0,
+      page: 0,
+      pageSize: 50,
+      sorts: [],
+      filters: [],
+      filterLogic: 'and',
+      draftFilters: [],
+      draftFilterLogic: 'and',
+      filterPanelOpen: false,
+      visibleColumns: null,
+      editingCell: null,
+      selectedRows: new Set<number>(),
+      loading: true,
+      error: null,
+    });
+
+    const { rerender } = render(
+      <TableView dbSessionId="c1" database="app" tableName="users" databaseType="postgresql" />,
+    );
+    expect(screen.getByText('tableView.loadingData')).toBeInTheDocument();
+
+    tableState.tableStates.set('users', {
+      columns: [{ name: 'id', dataType: 'int', isPrimaryKey: true }],
+      rows: [{ id: 1 }],
+      totalRows: 1,
+      page: 0,
+      pageSize: 50,
+      sorts: [],
+      filters: [],
+      filterLogic: 'and',
+      draftFilters: [],
+      draftFilterLogic: 'and',
+      filterPanelOpen: false,
+      visibleColumns: null,
+      editingCell: null,
+      selectedRows: new Set<number>(),
+      loading: false,
+      error: null,
+    });
+
+    expect(() => {
+      rerender(
+        <TableView dbSessionId="c1" database="app" tableName="users" databaseType="postgresql" />,
+      );
+    }).not.toThrow();
+
+    expect(screen.getByTestId('mock-data-table')).toBeInTheDocument();
   });
 });
