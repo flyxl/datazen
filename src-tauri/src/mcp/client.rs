@@ -7,6 +7,7 @@ use rmcp::transport::{ConfigureCommandExt, TokioChildProcess};
 use rmcp::{RoleClient, ServiceExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -31,6 +32,50 @@ pub struct McpServerConfig {
 
 fn default_true() -> bool {
     true
+}
+
+/// Basenames permitted for MCP stdio server spawn (`Command::new`).
+const ALLOWED_MCP_COMMANDS: &[&str] = &[
+    "node",
+    "nodejs",
+    "npx",
+    "npm",
+    "pnpm",
+    "yarn",
+    "bun",
+    "deno",
+    "python",
+    "python3",
+    "uv",
+    "uvx",
+    "ruby",
+    "perl",
+    "sh",
+    "bash",
+    "zsh",
+    "datazen",
+];
+
+/// Returns the executable basename (strips directory and `.exe` on Windows).
+fn command_basename(cmd: &str) -> &str {
+    let base = Path::new(cmd)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(cmd);
+    base.strip_suffix(".exe").unwrap_or(base)
+}
+
+/// Validates that `cmd` is on the MCP spawn allowlist (deny-by-default).
+pub fn validate_mcp_spawn_command(cmd: &str) -> Result<(), String> {
+    let base = command_basename(cmd);
+    if ALLOWED_MCP_COMMANDS.contains(&base) {
+        Ok(())
+    } else {
+        Err(format!(
+            "MCP server command '{cmd}' is not allowed. Permitted executables: {}",
+            ALLOWED_MCP_COMMANDS.join(", ")
+        ))
+    }
 }
 
 fn mcp_server_id_regex() -> &'static Regex {
@@ -203,8 +248,12 @@ impl McpClientManager {
             .as_ref()
             .ok_or("Missing command for stdio transport")?;
 
+        validate_mcp_spawn_command(cmd)?;
+
         let mut command = tokio::process::Command::new(cmd);
         command.args(&config.args);
+        // Do not inherit the host process environment — only explicit MCP config vars.
+        command.env_clear();
         for (k, v) in &config.env {
             command.env(k, v);
         }
@@ -439,6 +488,22 @@ mod tests {
         assert!(json.contains("qualifiedName"));
         assert!(json.contains("inputSchema"));
         assert!(json.contains("mcp/s1/tool1"));
+    }
+
+    #[test]
+    fn validate_mcp_spawn_command_rejects_unknown_executables() {
+        assert!(validate_mcp_spawn_command("node").is_ok());
+        assert!(validate_mcp_spawn_command("/usr/bin/python3").is_ok());
+        assert!(validate_mcp_spawn_command("/usr/local/bin/npx").is_ok());
+        assert!(validate_mcp_spawn_command("/tmp/evil").is_err());
+        assert!(validate_mcp_spawn_command("curl").is_err());
+    }
+
+    #[test]
+    fn test_tester_validate_mcp_spawn_allows_datazen_and_strips_exe_suffix() {
+        assert!(validate_mcp_spawn_command("datazen").is_ok());
+        assert!(validate_mcp_spawn_command("node.exe").is_ok());
+        assert!(validate_mcp_spawn_command("/usr/local/bin/python3.exe").is_ok());
     }
 
     #[test]

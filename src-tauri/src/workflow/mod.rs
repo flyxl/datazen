@@ -5,8 +5,11 @@
 
 pub mod command;
 pub mod command_runtime;
+pub mod error;
 pub mod history;
 pub mod workflows;
+
+pub use error::WorkflowError;
 
 // These modules own the canonical workflow data types and registry. They are
 // public so the compatibility facade in `workflows` can re-export the same

@@ -35,7 +35,7 @@ const pack = {
     'Applies immediately when MCP Server is running (embedded mode reloads automatically)',
   'mcp.allowlist.title': 'Connection allowlist',
   'mcp.allowlist.description':
-    'Only selected connections are visible to MCP clients. Leave all unchecked to expose every saved connection.',
+    'Only selected connections are visible to MCP clients. None checked means deny-all — explicitly allow connections before MCP tools can access them.',
   'mcp.allowlist.empty': 'No saved connections yet.',
   'mcp.allowlist.restartHint':
     'Save to apply allowlist changes immediately when MCP Server is running',

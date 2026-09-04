@@ -1,16 +1,20 @@
-//! MCP connection allowlist — empty means all saved connections are exposed.
+//! MCP connection allowlist — empty means deny-all (secure default).
 
 /// Returns true when `connection_id` may be used by MCP tools/resources.
 ///
-/// An empty `allowed` list means unrestricted (all connections).
+/// An empty `allowed` list denies every connection until explicitly allowlisted.
 pub fn is_connection_allowed(connection_id: &str, allowed: &[String]) -> bool {
-    allowed.is_empty() || allowed.iter().any(|id| id == connection_id)
+    !allowed.is_empty() && allowed.iter().any(|id| id == connection_id)
 }
 
-/// Returns `Ok(())` when the connection is allowlisted (or allowlist is empty).
+/// Returns `Ok(())` when the connection is allowlisted.
 pub fn ensure_connection_allowed(connection_id: &str, allowed: &[String]) -> Result<(), String> {
     if is_connection_allowed(connection_id, allowed) {
         Ok(())
+    } else if allowed.is_empty() {
+        Err(format!(
+            "Connection '{connection_id}' is blocked: MCP connection allowlist is empty (deny-all default). Add connections in Settings → MCP."
+        ))
     } else {
         Err(format!(
             "Connection '{connection_id}' is not in the MCP connection allowlist"
@@ -33,10 +37,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_allowlist_allows_all() {
-        assert!(is_connection_allowed("a", &[]));
-        assert!(is_connection_allowed("b", &[]));
-        assert!(ensure_connection_allowed("a", &[]).is_ok());
+    fn empty_allowlist_denies_all() {
+        assert!(!is_connection_allowed("a", &[]));
+        assert!(!is_connection_allowed("b", &[]));
+        assert!(ensure_connection_allowed("a", &[]).is_err());
+        let msg = ensure_connection_allowed("a", &[]).unwrap_err();
+        assert!(msg.contains("deny-all"));
     }
 
     #[test]
@@ -53,7 +59,7 @@ mod tests {
         let allowed = vec!["a".into()];
         let kept = filter_connection_ids(["a", "b", "c"], &allowed);
         assert_eq!(kept, vec!["a"]);
-        let all = filter_connection_ids(["a", "b"], &[]);
-        assert_eq!(all, vec!["a", "b"]);
+        let none = filter_connection_ids(["a", "b"], &[]);
+        assert!(none.is_empty());
     }
 }
