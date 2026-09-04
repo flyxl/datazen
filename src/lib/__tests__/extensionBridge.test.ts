@@ -626,4 +626,23 @@ describe('extensionBridge command.invoke error mapping', () => {
     expect((env.sent[0].payload as Record<string, unknown>).code).toBe(BRIDGE_ERROR.BAD_REQUEST);
     handle.detach();
   });
+
+  it('rejects denylisted admin commands with E_PERMISSION', async () => {
+    seedActiveSession('cfg-x');
+    const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: ['command:invoke'] });
+    receive(
+      request('command.invoke', 'deny', {
+        connectionId: 'cfg-x',
+        command: 'drop_database',
+        args: { name: 'prod' },
+      }),
+      env.iframe.contentWindow,
+    );
+    await waitUntil(() => env.sent.length > 0);
+
+    expect(env.sent[0].type).toBe('command.invoke.err');
+    expect((env.sent[0].payload as Record<string, unknown>).code).toBe(BRIDGE_ERROR.PERMISSION);
+    expect(driverExecuteMock).not.toHaveBeenCalled();
+    handle.detach();
+  });
 });

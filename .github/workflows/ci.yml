@@ -58,6 +58,9 @@ jobs:
       - name: Guard CI-docs consistency
         run: pnpm test:ci-docs
 
+      - name: Guard version consistency
+        run: pnpm test:version
+
       - name: Guard i18n sync (warning only)
         run: node scripts/i18n-sync-check.mjs
         continue-on-error: true

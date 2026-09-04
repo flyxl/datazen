@@ -47,7 +47,7 @@
 | 连接工作区首页（无 panel 空状态） | `homepage-features.ts`, `unified-tab-bar.ts` (UTB-005) | Covered |
 | 新建 / 编辑 / 删除连接 | `new-connection.ts`, `edit-delete-connection.ts` | Covered |
 | 连接工具栏、表树、子标签（统一主窗口内） | `connection-window.ts`, `unified-tab-bar.ts` | Covered |
-| 侧栏删表后树立即刷新（不再需关窗） | `ConnectionNavigatorTree.test.tsx` / `schemaStore.test.ts` | Covered（原生 Drop 确认框见例外） |
+| 侧栏删表后树立即刷新（不再需关窗） | `src/windows/connection/navigator/__tests__/ConnectionNavigatorTree.test.tsx` / `src/stores/__tests__/schemaStore.test.ts` | Covered（原生 Drop 确认框见例外） |
 | 连接导航树右键菜单（连接/库/Schema/表·视图） | `navigator-context-menu.ts` (NCM-*) | Covered（含 Web ConfirmDialog 删除表/Schema：NCM-023/046） |
 | 连接右键子菜单分组（Connection/Server/Manage/Create New）& 未连接历史查询 pending | `conn-ctx-menu-submenus.ts` (CM-SUB-001~008, CM-SUB-010) | Covered |
 | 新建连接：切换类型保留各类表单快照 / 分组后测试连接无 cyclic 错误 | `new-connection.ts` (CM-002), `connection-validation.ts` (TC-CONN-008) | Covered |
@@ -130,7 +130,7 @@
 | 依赖真实 LLM Key 的 AI 深度路径 | 环境无 Key 时跳过 | `ai-features.ts` 条件执行；无 Key 时仍测未配置 UI |
 | `ConnectionSettingsDialog` | 当前未挂到可点击入口（非用户可达） | 组件单测；挂接 UI 后须立刻补 E2E |
 | E2E 夹具 `DROP`/`TRUNCATE` | Safe Mode 默认开启会拦截 | `executeSQL` / `withSafeModeOff` 临时关闭；`client-parity` 断言 DROP 被拦 |
-| 删除行确认框（`confirmOnDelete`） | — | `TableView` + `useConfirmDialog`；`DataTable.test.tsx`；E2E 可点 `[data-testid="confirm-dialog-ok"]`（见 `ops-process-server.ts`） |
+| 删除行确认框（`confirmOnDelete`） | — | `TableView` + `useConfirmDialog`；`src/components/DataTable/__tests__/DataTable.test.tsx`；E2E 可点 `[data-testid="confirm-dialog-ok"]`（见 `e2e/helpers/ops-process-server.ts`） |
 | 侧栏 Drop 表/视图/Schema 确认 | — | `ConnectionNavigatorTree` + `useConfirmDialog`；单测 + `navigator-context-menu.ts` NCM-023/046 |
 | 主窗口在子窗口未关时关闭 | 原生窗口关闭 + 阻塞对话框 | `window.rs` `non_main_window_labels` 单测 |
 | 恢复覆盖确认 + 选 SQL 文件 | OS 对话框不可点选 | `BackupWindow.test.tsx` overwrite；`backup-database.ts` BACKUP-012 IPC overwrite |

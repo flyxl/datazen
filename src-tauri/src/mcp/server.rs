@@ -15,7 +15,7 @@ pub struct DataZenMcpServer {
     pub(crate) app_state: Arc<AppState>,
     pub(crate) disabled_tools: HashSet<String>,
     pub(crate) permission_mode: McpPermissionMode,
-    /// Empty = all saved connections are exposed to MCP.
+    /// Non-empty allowlist required — empty means deny-all (secure default).
     pub(crate) allowed_connection_ids: Vec<String>,
 }
 
@@ -283,6 +283,18 @@ mod tests {
         assert!(desc.contains("id integer PK NOT NULL"));
         assert!(desc.contains("Primary Key: (id)"));
         assert!(desc.contains("users_pkey"));
+    }
+
+    fn mcp_server_allowing(
+        state: std::sync::Arc<crate::commands::AppState>,
+        connection_ids: &[&str],
+    ) -> DataZenMcpServer {
+        DataZenMcpServer::new(state).with_allowed_connections(
+            &connection_ids
+                .iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>(),
+        )
     }
 
     // Remaining integration tests live in server.rs; include from extracted block below.

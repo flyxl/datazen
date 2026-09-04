@@ -48,7 +48,7 @@ pnpm test:unit                     # package.json 脚本（vitest run）
 npx vitest run                     # 同上
 npx vitest run --reporter=verbose  # 详细输出
 
-# E2E 测试（详见 docs/e2e-testing.md — 必须 Tauri + webdriver 构建）
+# E2E 测试（详见 [e2e-testing.md](../development/e2e-testing.md) — 必须 Tauri + webdriver 构建）
 pnpm e2e                           # 完整构建 + 全部 E2E（推荐）
 pnpm e2e:skip-build                # 仅当已有合格 webdriver 二进制
 pnpm e2e:core / e2e:db / e2e:ai    # 分组（默认 skip-build）
@@ -137,9 +137,22 @@ Host 各模块内 `#[cfg(test)]`。驱动实现的单测在 `packages/drivers/<i
 3. 驱动专属用例不进 Host；例外路径登记在 [e2e-coverage.md](../development/e2e-coverage.md)。
 4. **Host Connection Contract × Driver**：`e2e/contract/` + `e2e/specs/host-contract-matrix.ts` — 各 SQL 驱动连接窗跑同一套 Host journeys；见 [e2e-coverage.md](../development/e2e-coverage.md)「Host Connection Contract」。
 
+### 4.7 Host Connection Contract 契约层
+
+契约层在 Host E2E 与驱动方言测试之间：**同一套 journeys 跨 PG / MySQL / SQLite 等 SQL 驱动各跑一遍**，验证连接窗口、查询、表数据、筛选、结构编辑等 Host UI/IPC 路径不因驱动切换而回归。
+
+| 组件 | 路径 | 说明 |
+|------|------|------|
+| Journey 定义 | `e2e/contract/` | 统一 journey 步骤与断言 |
+| 矩阵入口 | `e2e/specs/host-contract-matrix.ts` | WebdriverIO spec，按驱动参数化 |
+| 单测 / 覆盖率 | `vitest.e2e-contract.config.ts` | fixtures/plan 单测；`pnpm test:unit:e2e-contract:coverage` |
+| 运行命令 | `pnpm e2e:contract:matrix` | PG + MySQL + SQLite 全矩阵 |
+
+方言深度（`use_database`、专属 Command、Redis KV 等）仍在 `packages/drivers/<id>/` 的 crate 内测试，不进 Host 默认 `pnpm e2e`。
+
 ## 5. E2E 测试
 
-> **Agent / 开发者操作手册（构建、排错、检查清单）：[docs/e2e-testing.md](../development/e2e-testing.md)**
+> **Agent / 开发者操作手册（构建、排错、检查清单）：[e2e-testing.md](../development/e2e-testing.md)**
 
 WebdriverIO E2E spec（Host：`e2e/specs/`）：
 

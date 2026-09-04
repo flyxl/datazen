@@ -147,6 +147,24 @@ function routeFor(type: string): ExtensionPermission | null | undefined {
   return Object.prototype.hasOwnProperty.call(API_ROUTES, type) ? API_ROUTES[type] : undefined;
 }
 
+/** Driver commands plugins must never invoke even with `command:invoke`. */
+export const PLUGIN_COMMAND_DENYLIST = new Set([
+  'execute',
+  'create_database',
+  'drop_database',
+  'create_schema',
+  'drop_schema',
+  'create_user',
+  'drop_user',
+  'grant_privileges',
+  'revoke_privileges',
+]);
+
+/** Returns false when the command id is blocked for plugin invocation. */
+export function isPluginCommandAllowed(command: string): boolean {
+  return !PLUGIN_COMMAND_DENYLIST.has(command);
+}
+
 interface CommandInvokePayload {
   /** Persistent connection id (plugin-visible protocol key). */
   connectionId: string;
@@ -210,6 +228,12 @@ async function handleCommandInvoke(pluginId: string, payload: unknown) {
     throw new BridgeApiError(
       BRIDGE_ERROR.BAD_REQUEST,
       'command.invoke requires {connectionId, command, args?}',
+    );
+  }
+  if (!isPluginCommandAllowed(command)) {
+    throw new BridgeApiError(
+      BRIDGE_ERROR.PERMISSION,
+      `Command '${command}' is not permitted for plugins`,
     );
   }
   // Audit trail without leaking argument contents into logs. The same line

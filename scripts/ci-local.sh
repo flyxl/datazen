@@ -57,6 +57,10 @@ step "3.2/11 Guard: CI-docs consistency"
 pnpm test:ci-docs || fail "test:ci-docs"
 
 # --------------------------------------------------------------------------
+step "3.25/11 Guard: version consistency (package.json / Cargo.toml / tauri.conf.json)"
+pnpm test:version || fail "test:version"
+
+# --------------------------------------------------------------------------
 step "3.3/11 Guard: i18n sync (warning only)"
 if node scripts/i18n-sync-check.mjs; then
   step "3.3/11 i18n sync: all locales in sync ✔"
