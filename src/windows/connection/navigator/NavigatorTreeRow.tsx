@@ -258,6 +258,7 @@ export function NavigatorTreeRow({
           type="button"
           data-tree-node="db"
           data-db-name={row.dbName}
+          aria-expanded={row.expanded}
           className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] hover:bg-surface-raised text-fg-secondary"
           style={{ paddingLeft: depthPadding(row.depth) }}
           onClick={() => void toggleDb(row.connectionId, row.dbSessionId, row.dbName)}
@@ -284,6 +285,7 @@ export function NavigatorTreeRow({
           type="button"
           data-tree-node="schema"
           data-schema-name={row.schemaName}
+          aria-expanded={row.expanded}
           className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] hover:bg-surface-raised text-fg-secondary"
           style={{ paddingLeft: depthPadding(row.depth) }}
           onClick={() => toggleSchema(`${row.connectionId}::${row.dbName}::${row.schemaName}`)}
@@ -312,6 +314,7 @@ export function NavigatorTreeRow({
           type="button"
           data-tree-node="category"
           data-cat-id={row.cat.id}
+          aria-expanded={row.expanded}
           className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
           style={{ paddingLeft: depthPadding(row.depth) }}
           onClick={() => {

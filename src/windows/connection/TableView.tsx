@@ -19,6 +19,8 @@ import {
 } from '../../lib/filterExpression';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
+import { DB_REGISTRY } from '../../lib/databaseTypes';
+import type { DatabaseType } from '../../types';
 
 interface TableViewProps {
   dbSessionId: string;
@@ -47,7 +49,17 @@ export function TableView({
   const savedConnection = useConnectionStore((s) =>
     connectionId ? s.connections.find((c) => c.id === connectionId) : undefined,
   );
-  const isConnectionReadOnly = Boolean(readOnlyProp ?? savedConnection?.readOnly);
+  /**
+   * Drivers that declare `readOnly` in `DB_REGISTRY` (e.g. Kiwi / Superset)
+   * never support in-place cell editing. Gate here so a read-only driver or connection
+   * can never enter edit mode.
+   */
+  const driverReadOnly = databaseType
+    ? DB_REGISTRY[databaseType as DatabaseType]?.readOnly === true
+    : false;
+  const isConnectionReadOnly = Boolean(
+    readOnlyProp ?? (savedConnection?.readOnly || driverReadOnly),
+  );
   const isEditable = !isConnectionReadOnly;
 
   // NlFilterInput handles unconfigured state internally
@@ -220,13 +232,13 @@ export function TableView({
   }, [cancelEdit, editingCell, isEditable]);
 
   const handlePreviewPendingChanges = useCallback(async () => {
-    if (pendingBusy || pendingChanges.size === 0) return;
+    if (driverReadOnly || pendingBusy || pendingChanges.size === 0) return;
     const plan = await previewPendingChanges();
     if (plan) setPreviewOpen(true);
-  }, [pendingBusy, pendingChanges.size, previewPendingChanges]);
+  }, [driverReadOnly, pendingBusy, pendingChanges.size, previewPendingChanges]);
 
   const handleCommitPendingChanges = useCallback(async () => {
-    if (pendingBusy || pendingChanges.size === 0) return;
+    if (driverReadOnly || pendingBusy || pendingChanges.size === 0) return;
     const confirmed = await confirmCommit({
       title: t('tableData.commit'),
       message: t('tableData.confirmCommit', {
@@ -240,6 +252,7 @@ export function TableView({
   }, [
     commitPendingChanges,
     confirmCommit,
+    driverReadOnly,
     pendingBusy,
     pendingChanges.size,
     pendingDeleteCount,
