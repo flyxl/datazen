@@ -3,7 +3,7 @@
 | 文档属性 | 详情说明 |
 | :--- | :--- |
 | **文档名称** | DataZen IDE 级智能 SQL 编辑器系统需求规格说明书 |
-| **存放路径** | `docs/todo/sql-editor-prd.md` |
+| **存放路径** | `docs/todo/sql-editor/prd.md` |
 | **产品定位** | 对标 JetBrains DataGrip / VS Code 的现代化、智能感知、生产安全型桌面 SQL 交互工作台 |
 | **目标受众** | 后端工程师、DBA、数据分析师、全栈开发者 |
 | **技术基座** | Tauri v2 + React 18 + CodeMirror 6 + TypeScript + Tailwind CSS |

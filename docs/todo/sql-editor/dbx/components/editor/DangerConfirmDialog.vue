@@ -1,0 +1,188 @@
+<script setup lang="ts">
+import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import { AlertTriangle, Check, Copy, Loader2, TextWrap } from "@lucide/vue";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { useSqlHighlighter } from "@/composables/useSqlHighlighter";
+import { copyToClipboard } from "@/lib/common/clipboard";
+import { createBoundedTextPreview } from "@/lib/common/boundedTextPreview";
+
+const DANGER_PREVIEW_MAX_CHARACTERS = 8192;
+const DANGER_PREVIEW_MAX_LINES = 200;
+
+const { t } = useI18n();
+const { highlight } = useSqlHighlighter();
+
+const open = defineModel<boolean>("open", { default: false });
+const suppressFuturePrompts = defineModel<boolean>("suppressFuturePrompts", { default: false });
+const wrap = ref(true);
+const copied = ref(false);
+
+// The CodeMirror editor (if any) that was focused when this dialog opened, so
+// its internal selection can be restored without letting the browser move the caret.
+let editorRootToRestoreFocus: HTMLElement | null = null;
+let focusRestoreGeneration = 0;
+
+const props = withDefaults(
+  defineProps<{
+    sql?: string;
+    title?: string;
+    message?: string;
+    details?: string;
+    detailsText?: string;
+    confirmLabel?: string;
+    showSuppressToggle?: boolean;
+    suppressToggleLabel?: string;
+    loading?: boolean;
+    closeOnConfirm?: boolean;
+    cancelable?: boolean;
+    cancelRunningLoading?: boolean;
+    /** Holds the confirm button back until the caller's own precondition is met (e.g. the operator typed the target name). */
+    confirmDisabled?: boolean;
+  }>(),
+  {
+    sql: "",
+    title: "",
+    message: "",
+    details: "",
+    detailsText: "",
+    confirmLabel: "",
+    showSuppressToggle: false,
+    suppressToggleLabel: "",
+    loading: false,
+    closeOnConfirm: true,
+    cancelable: false,
+    cancelRunningLoading: false,
+    confirmDisabled: false,
+  },
+);
+
+const emit = defineEmits<{
+  confirm: [];
+  "cancel-running": [];
+}>();
+
+const code = computed(() => props.details || props.sql);
+// Keep the confirmation payload intact, but never feed an unbounded script to Shiki or the DOM.
+const preview = computed(() => createBoundedTextPreview(code.value, { maxCharacters: DANGER_PREVIEW_MAX_CHARACTERS, maxLines: DANGER_PREVIEW_MAX_LINES }));
+const highlightedHead = computed(() => highlight(preview.value.head));
+const highlightedTail = computed(() => highlight(preview.value.tail));
+const dialogOpen = computed({
+  get: () => open.value,
+  set: (value) => {
+    if (props.loading && !value) return;
+    open.value = value;
+  },
+});
+
+watch(
+  () => open.value,
+  (isOpen) => {
+    if (!isOpen) return;
+    focusRestoreGeneration += 1;
+    // Keep the original editor while a prior close animation is still pending.
+    if (editorRootToRestoreFocus) return;
+    const active = document.activeElement;
+    editorRootToRestoreFocus = active instanceof HTMLElement ? active.closest(".cm-editor") : null;
+  },
+  { immediate: true },
+);
+
+/**
+ * Restores focus through CodeMirror's own `EditorView.focus()` instead of the browser default.
+ *
+ * Reka UI's default close-auto-focus calls plain DOM `.focus()` on the element that was active
+ * before the dialog opened. In WebKit, refocusing a CodeMirror contenteditable this way can reset
+ * its caret to the start of the document, which makes the editor scroll to the top (#7692).
+ * `EditorView.focus()` restores CodeMirror's internal selection without creating that false change.
+ */
+function onDangerDialogCloseAutoFocus(event: Event) {
+  const target = editorRootToRestoreFocus;
+  if (!target || !target.isConnected) {
+    editorRootToRestoreFocus = null;
+    return;
+  }
+  event.preventDefault();
+  // An interrupted close may emit after the dialog has reopened. Suppress the stale native
+  // restoration, but retain the editor for the next completed close.
+  if (dialogOpen.value) return;
+  const generation = focusRestoreGeneration;
+  void import("@codemirror/view").then(({ EditorView }) => {
+    if (dialogOpen.value || generation !== focusRestoreGeneration || editorRootToRestoreFocus !== target) return;
+    editorRootToRestoreFocus = null;
+    EditorView.findFromDOM(target)?.focus();
+  });
+}
+
+function onConfirm() {
+  // Guard here as well as on the button: a disabled button still fires on some
+  // synthetic/keyboard paths, and this one gates a destructive operation.
+  if (props.loading || props.confirmDisabled) return;
+  if (props.closeOnConfirm) open.value = false;
+  emit("confirm");
+}
+
+async function copyFullCode() {
+  await copyToClipboard(code.value);
+  copied.value = true;
+  window.setTimeout(() => {
+    copied.value = false;
+  }, 1500);
+}
+</script>
+
+<template>
+  <Dialog v-model:open="dialogOpen">
+    <DialogContent class="sm:max-w-[480px]" @close-auto-focus="onDangerDialogCloseAutoFocus">
+      <DialogHeader>
+        <DialogTitle class="flex items-center gap-2 text-destructive">
+          <AlertTriangle class="h-5 w-5" />
+          {{ title || t("dangerDialog.title") }}
+        </DialogTitle>
+      </DialogHeader>
+
+      <div class="py-4 min-w-0">
+        <p class="text-sm text-muted-foreground mb-3">{{ message || t("dangerDialog.message") }}</p>
+        <p v-if="detailsText" class="text-xs text-muted-foreground mb-3 whitespace-pre-line">{{ detailsText }}</p>
+        <slot name="options" />
+        <div v-if="code" data-testid="danger-code-container" class="min-w-0">
+          <div data-testid="danger-code-actions" class="mb-1 flex items-center justify-end gap-0.5">
+            <Button variant="ghost" size="icon-xs" class="h-6 w-6 text-muted-foreground" :title="t('dangerDialog.copyFullText')" @click="copyFullCode">
+              <Check v-if="copied" class="h-3.5 w-3.5 text-emerald-600" />
+              <Copy v-else class="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon-xs" class="h-6 w-6" :class="wrap ? 'text-foreground bg-accent' : 'text-muted-foreground'" :title="t('dangerDialog.wrapLines')" @click="wrap = !wrap">
+              <TextWrap class="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <div data-native-clipboard data-testid="danger-code-preview" class="max-h-40 min-w-0 overflow-auto rounded bg-muted px-3 py-3 text-xs font-mono">
+            <pre class="font-inherit" :class="wrap ? 'w-full whitespace-pre-wrap break-all' : 'w-max min-w-full whitespace-pre'" v-html="highlightedHead" />
+            <div v-if="preview.truncated" data-testid="danger-preview-truncated" class="my-2 rounded border border-border/70 bg-background/70 px-2 py-1.5 text-center text-[11px] leading-4 text-muted-foreground whitespace-normal">
+              {{ t("dangerDialog.previewTruncated", { lines: preview.omittedLines.toLocaleString(), characters: preview.omittedCharacters.toLocaleString() }) }}
+            </div>
+            <pre v-if="preview.tail" class="font-inherit" :class="wrap ? 'w-full whitespace-pre-wrap break-all' : 'w-max min-w-full whitespace-pre'" v-html="highlightedTail" />
+          </div>
+        </div>
+        <div v-if="showSuppressToggle" class="mt-3 flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+          <Label for="danger-confirm-suppress" class="text-sm leading-5">{{ suppressToggleLabel || t("dangerDialog.suppressFuturePrompts") }}</Label>
+          <Switch id="danger-confirm-suppress" v-model="suppressFuturePrompts" />
+        </div>
+      </div>
+
+      <DialogFooter>
+        <Button v-if="loading && cancelable" variant="outline" :disabled="cancelRunningLoading" @click="$emit('cancel-running')">
+          <Loader2 v-if="cancelRunningLoading" class="h-3.5 w-3.5 animate-spin" />
+          {{ t("dangerDialog.cancelRunning") }}
+        </Button>
+        <Button v-else variant="outline" :disabled="loading" @click="open = false">{{ t("dangerDialog.cancel") }}</Button>
+        <Button variant="destructive" class="gap-1.5" :disabled="loading || confirmDisabled" @click="onConfirm">
+          <Loader2 v-if="loading" class="h-3.5 w-3.5 animate-spin" />
+          {{ confirmLabel || t("dangerDialog.confirm") }}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+</template>
