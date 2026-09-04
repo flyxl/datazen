@@ -16,7 +16,7 @@ P0-4：Button 焦点与可访问性治理
 ## 状态
 
 - Phase: READY_FOR_TEST
-- 编码 commit: 待提交
+- 编码 commit: ba1fa2b12
 - 测试 commit: 待测试
 - 合并 commit: 待合入
 
@@ -37,4 +37,4 @@ P0-4：Button 焦点与可访问性治理
 
 - 2026-09-04 轨道初始化
 - 2026-09-04 BOOTSTRAP：worktree 自检通过，分支 `feature/ui-button-focus`
-- 2026-09-04 CODING 完成：三件套自验通过，待 commit
+- 2026-09-04 CODING 完成：commit ba1fa2b12，三件套自验通过
