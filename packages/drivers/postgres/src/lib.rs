@@ -5,8 +5,14 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod admin_commands;
+mod catalog;
+mod connection;
+mod execution;
 mod migration;
+mod schema;
 mod postgres;
+mod sql;
+mod type_decode;
 mod sql_target;
 mod structure;
 mod sync_adapter;
