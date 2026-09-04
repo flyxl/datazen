@@ -59,24 +59,21 @@
 ### 2.1 已有能力，禁止重复建设
 
 - `SqlEditor` 已支持：有选区时 `Mod+Enter` 执行选区；无选区时用 `getStatementAtCursor` 执行当前语句；`Mod+Shift+Enter` 执行全脚本。
-- 流式执行、多 statement result、结果 Tab、取消、历史、事务检查、EXPLAIN 和结果工作区已经存在；结果展示区已独立封装在 `src/windows/connection/result-workspace/`。
-- `QueryErrorPanel` 已有 Retry、Explain/Fix SQL，`DiagnosisPanel` 已有一键应用修复；错误诊断纯上下文构建与脱敏逻辑已由 `src/lib/aiQueryActions.ts` 完整实现并具有单测守护。
-- 参数面板已有基础实现：`src/components/query/BindParamPanel.tsx` 与 `src/lib/sqlBindParams.ts`（支持 `:name` / `$1` 解析与 `paramsToPayload` 转换），并在 `QueryPanel` 中已完成初版接入。
+- 流式执行、多 statement result、结果 Tab、取消、历史、事务检查、EXPLAIN 和结果工作区已经存在。
+- `QueryErrorPanel` 已有 Retry、Explain/Fix SQL，`DiagnosisPanel` 已有一键应用修复。
 - 表节点已能通过 `application/datazen-table` 拖入编辑器，落点已使用 `posAtCoords`，空编辑器会生成查询 SQL。
 - `buildEditorSchema` 和 `contextualSchemaCompletion` 已提供基础的表/列上下文过滤。
-- Rust `sql_guard` 已在 `readOnly` 模式阻止全部写操作，并在 Safe Mode 阻止 DROP、TRUNCATE、无 WHERE 的 UPDATE/DELETE；最新补丁已加入深度注释剥离（`strip_sql_comments` / `comment_hides_write_verb`）以及全角字符归一化（`normalize_fullwidth`），防止隐藏写动词绕过。
+- Rust `sql_guard` 已在 `readOnly` 模式阻止全部写操作，并在 Safe Mode 阻止 DROP、TRUNCATE、无 WHERE 的 UPDATE/DELETE。
 - 多库或多 schema 调度继续归 Workflow，不进入本项目。
 
 ### 2.2 结构性问题
 
-- `src/components/SqlEditor.tsx` 已超过 500 行（516 行），需做纯壳层解耦。
-- `src/windows/connection/QueryPanel.tsx` 超过 1700 行（1718 行），膨胀主因为：收藏与历史侧边栏（及菜单）、未闭合/中断事务弹窗状态机、内嵌的 AI 诊断面板（Nl2SqlPanel / DiagnosisPanel / ExplainPanel）以及执行参数门禁交织。
-- `src-tauri/src/sql_guard.rs` 已达 749 行，需按职责拆分为 `mod.rs`、`params.rs`、`safety.rs`，但必须完整保留注释防御逻辑。
-- `ContentView.tsx`（933 行）包含大量创建/导入导出弹窗及右侧抽屉；左侧连接导航树早已迁至 `ConnectionNavigatorTree.tsx`。
-- `UnifiedSchemaTree.tsx`（808 行）仅包含库、模式、分类和对象（表/视图/过程）四级，**树上当前不存在列节点**，不支持直接从树拖拽单列。
+- `src/components/SqlEditor.tsx` 已超过 500 行。
+- `src/windows/connection/QueryPanel.tsx` 超过 1700 行，同时承担编辑器装配、执行门、参数、安全、诊断、结果等职责。
+- `ContentView.tsx`、`UnifiedSchemaTree.tsx`、`schemaStore.ts` 也都是热点大文件。
 - `sqlStatementRange.ts` 和 `sqlTransactionGuard.ts` 存在两套语句扫描逻辑；后者才支持 PostgreSQL dollar quote。
 - `schemaStore.columnMap` 只有列名，且裸表名 key 会造成不同 schema 同名表碰撞，无法支撑类型、注释、外键、索引和 hover。
-- 参数前端现有实现仅支持 `:name` / `$1`；Host object payload 仅替换 `:name` / `$name`，`?` 只支持数组，而 UI 永远发送 object。
+- 参数前端仅支持 `:name` / `$1`；Host object payload 仅替换 `:name` / `$name`，`?` 只支持数组，而 UI 永远发送 object。
 - `aiChatOpen` 和 Chat 输入都在 `ContentView` / `AiChatPanel` 内部，`QueryPanel` 没有打开并注入草稿的桥。
 
 ### 2.3 PRD 技术假设的校正
@@ -393,9 +390,8 @@ type SchemaObjectDragPayloadV1 = {
 ```
 
 - 新 MIME 为版本化通用对象类型，同时兼容读取旧 `application/datazen-table`。本 PRD 不增加 tree 多选，因此首版没有 multi-table payload。
-- **树节点范围**：当前 `UnifiedSchemaTree` 仅展示到 Table/View 级别，无列子节点；首版连接树拖拽仅支持 Table/View 节点。`{ kind: 'column' }` 作为协议预留，可供表结构视图等未来列源使用。
 - source connection 不同则拒绝并提示，不跨连接偷偷生成 SQL；缺少 source session 时按 connectionId 校验。
-- 空编辑器的 table drop 保留现有生成 `SELECT ... FROM ...` 行为；非空编辑器插入 quoted qualified table；column drop（若存在源）优先插入可唯一解析的 alias-qualified column，否则插入 quoted column。
+- 空编辑器的 table drop 保留现有生成 `SELECT ... FROM ...` 行为；非空编辑器插入 quoted qualified table；column drop 优先插入可唯一解析的 alias-qualified column，否则插入 quoted column。
 - drop caret 使用 CodeMirror decoration/state effect；`dragenter`、`dragover` 更新，`dragleave`、`drop`、`dragend`、编辑器卸载都清理。
 
 ### 4.7 AI 草稿桥
@@ -420,7 +416,7 @@ type AiChatDraftRequest = {
 - `AiChatPanel` 仅在当前身份/context 仍匹配时接收草稿；切到 Chat tab、填入 input、聚焦，但不发送。
 - pending draft 由 ContentView 持有，直到 `AiChatPanel` 在 textarea 写入成功后调用 `onDraftConsumed(requestId)`。未配置 AI 的 early-return 页面不得消费。
 - textarea 已有非空未发送内容时绝不静默覆盖：展示“替换/追加/取消”的小型非模态选择；追加时用明确分隔符。用户决定前 pending 保留。
-- prompt 构建直接复用 `src/lib/aiQueryActions.ts` 现有的 `buildQueryDiagnosisContext(input).promptContext`，其已封装 safe SQL、safe error、bounded context 与敏感信息脱敏；增加独立快照测试防止敏感信息回归。
+- prompt 构建复用 `buildQueryDiagnosisContext` 的 safe SQL、safe error、bounded context；增加独立快照测试防止敏感信息回归。
 
 ### 4.8 参数 wire payload
 
@@ -492,15 +488,15 @@ type SqlBindPayloadV2 = {
 
 独占文件：`QueryPanel.tsx` 和新 `src/windows/connection/query/` 壳模块。
 
-禁止修改：SqlEditor 内部、ContentView、schema tree、Rust、既有 `src/lib/aiQueryActions.ts`。
+禁止修改：SqlEditor 内部、ContentView、schema tree、Rust。
 
 步骤：
 
-1. 提取 `QuerySidebarSection`（收藏与历史侧边栏、右键上下文菜单及分组逻辑）。
-2. 提取 `QueryTransactionModals`（未闭合事务弹窗、中断事务恢复/回滚弹窗及事务状态轮询逻辑）。
-3. 提取 `QueryEditorSection`（工具栏、SqlEditor 装配与 BindParamPanel 挂载），结果区直接接入既有 `src/windows/connection/result-workspace/`。
-4. 提取现有执行入口为 `useQueryExecutionGate` 的等价版本，但不改变 guard 顺序或确认行为。
-5. 提取 editor metadata/context、参数绑定状态和 drop handler 的现有行为；复用既有 `src/lib/aiQueryActions.ts` 纯逻辑，不重复抽取诊断上下文。
+1. 先提取 `QueryEditorSection`、`QueryResultSection` 和纯 view props。
+2. 提取现有执行入口为 `useQueryExecutionGate` 的等价版本，但不改变 guard 顺序或确认行为。
+3. 提取 editor metadata/context、参数 state、drop handler 的现有行为。
+4. 保留收藏、格式化、历史、事务、EXPLAIN、取消、诊断、结果 Tab 语义。
+5. 把 `buildQueryPanelDiagnosisContext` 迁到独立模块并保持现有测试导出兼容。
 6. 降低 QueryPanel 到推荐 300 行左右，任何抽取模块不得超过 500 行。
 
 测试：QueryPanel 现有全部单测；重点回归 execute/cancel、危险 SQL、history、context、diagnosis、multi-result。
@@ -595,11 +591,11 @@ Stage 1 门禁：四轨 Tester 均 PASSED；合流后运行 typecheck、Host 前
 3. 让 TS parser 和 Rust binder 使用同一组 JSON 行为 fixture；分别验证“识别”和“替换”。
 4. Rust object binder 支持新稳定 ID，同时兼容旧 `:name` / `$name` payload。
 5. 保持 SQL literal 转义，不提供 raw SQL 或 identifier substitution。
-6. 先把已达 749 行的 `src-tauri/src/sql_guard.rs` 等价拆为 `sql_guard/mod.rs`、`params.rs`、`safety.rs`、Rust scanner/测试子模块；**必须严格保留近期新增的深层安全防御逻辑：`comment_hides_write_verb`（检测块注释中伪装的写动词）、`strip_sql_comments`、全角字符归一化 `normalize_fullwidth` 以及对应测试用例，严防安全回归**；本轨只新增 params 逻辑。
+6. 先把已超过 500 行的 `src-tauri/src/sql_guard.rs` 等价拆为 `sql_guard/mod.rs`、`params.rs`、`safety.rs`、Rust scanner/测试子模块；本轨只新增 params 逻辑。
 7. 确保 execute 与 streaming 两条 Host 路径调用同一个 v2 binder；保留旧 payload 兼容。
 8. 实现版本化 history 纯模块、敏感参数名过滤、connection 隔离和最近 5 条。
 
-测试：五语法、重复命名、每个 `?` 独立编号、混用、comments/quotes/casts/operators、DECLARE/SET；occurrence span 校验、Rust 旧兼容和转义；全角与注释防御用例全量回归。
+测试：五语法、重复命名、每个 `?` 独立编号、混用、comments/quotes/casts/operators、DECLARE/SET；occurrence span 校验、Rust 旧兼容和转义。
 
 完成定义：前后端 parameter fixture 一致，旧调用兼容，Host binder 全测试通过；风险逻辑不在本轨扩展。
 
@@ -614,7 +610,7 @@ Stage 1 门禁：四轨 Tester 均 PASSED；合流后运行 typecheck、Host 前
 1. 实现 read/mutation/unknown 和 drop/truncate/no-WHERE findings。
 2. WHERE 必须位于当前 DML 顶层，排除 CTE、subquery、字符串、注释。
 3. 多语句汇总全部 findings 和最高风险，保留原文 range。
-4. 保持 Rust `readOnly` / Safe Mode 行为（含注释内写动词拦截与空块注释处理），不增加确认绕过参数。
+4. 保持 Rust `readOnly` / Safe Mode 行为，不增加确认绕过参数。
 5. 验证 binder 后再 guard 的顺序由 execute/stream 共用。
 
 测试：顶层 WHERE、CTE/subquery、字符串中 WHERE、多语句、unknown、readOnly/Safe Mode、execute/stream 一致性。
@@ -649,10 +645,9 @@ Stage 2 门禁：Wave 2A、2B、2C 分别完成独立 Tester；合流后运行�
 
 步骤：
 
-1. 抽取多模态对话框容器（将创建库/模式/用户、执行 SQL 文件、导入导出等弹窗抽取为独立的 Dialogs 承载组件）。
-2. 抽取右侧抽屉容器与状态协调（AI 助手抽屉 `aiChatOpen` 与数据详情抽屉 `detailRow`）。
-3. 保持当前 table/data/structure navigation、split layout 和 active panel 生命周期。
-4. 将两个 touched 生产文件及新模块降到 500 行以下。
+1. 抽取 sidebar、panel content 和导航 view model，保留所有 props 和 state 生命周期。
+2. 保持当前 table/data/structure navigation、AI sidebar 开关、split layout 和 active panel 行为。
+3. 将两个 touched 生产文件及新模块降到 500 行以下。
 
 测试：现有 ContentView/PanelContentRenderer 测试、导航、AI sidebar、panel switching 回归。
 
@@ -681,13 +676,13 @@ Stage 2 门禁：Wave 2A、2B、2C 分别完成独立 Tester；合流后运行�
 
 步骤：
 
-1. 先拆分 `UnifiedSchemaTree.tsx` 大文件（808 行），保持树展开、搜索、上下文菜单、选择等价。
-2. 树对象识别与拖拽支持：当前树结构仅包含库、模式、分类和对象（表/视图/过程）四级，**树上无列子节点**。首版连接树拖拽明确聚焦于 Table/View 节点，定义版本化通用 MIME（`SchemaObjectDragPayloadV1`）和 Table payload，继续发送旧 `application/datazen-table` 兼容数据。
-3. 列拖拽支持限制在已有列源（如结构视图）或未来树列节点扩展，不在本轨强行向树注入可能导致元数据查询风暴的展开列节点。
-4. payload 始终携带 connectionId、对象 database/schema/table；有 session 时携带 dbSessionId。
+1. 先拆分大文件，保持树展开、搜索、上下文菜单、选择等价。
+2. 定义版本化通用 MIME 和 table/column discriminated payload，继续发送旧 MIME 兼容数据。
+3. 为可见列节点提供展开/加载路径；搜索命中的列也可作为 drag source。
+4. payload 始终携带 connectionId、对象 database/schema/table/column；有 session 时携带 dbSessionId。
 5. 不在 tree 侧决定 SQL 文本和 quote，不 import editor semantic 模块。
 
-测试：table/view payload、namespace identity、legacy payload、tree 原行为回归。
+测试：table/column payload、namespace identity、搜索列拖拽、legacy payload、tree 原行为回归。
 
 完成定义：树只表达 schema object，不承担 SQL 生成。
 
@@ -797,16 +792,16 @@ Stage 4 门禁：四轨 factory 测试通过；组合装配、reconfigure 和真
 
 完成定义：所有写文档行为都是单 transaction，undo 一次可完整撤销。
 
-#### Track S5-B：BindParamPanel 升级与参数历史
+#### Track S5-B：BindParamPanel 与历史
 
-独占文件：`src/components/query/BindParamPanel.tsx`（及新 `src/windows/connection/query/useBindParameters.ts`）、`src/lib/sqlBindParams.ts`、历史 UI 和对应 tests；Rust binder/command wire 已由 S2-C 完成，不修改 QueryPanel 或 execution gate。
+独占文件：BindParamPanel、useBindParameters、history UI 和对应 tests；Rust binder/command wire 已由 S2-C 完成，不修改 QueryPanel 或 execution gate。
 
 步骤：
 
-1. 升级现有 `src/lib/sqlBindParams.ts`：由单一 `:name` / `$1` 扩展至五类 syntax，生成符合 v2 wire payload 的 stable ID 与精确 occurrence 映射。
-2. 升级现有 `BindParamPanel.tsx`：面板按当前 execution target 解析 descriptor；命名参数去重、question 保持 occurrence；突出显示活动语句内的参数。
-3. label 保留原 syntax，input key 使用稳定 ID，目标变化时复用仍存在的值。
-4. 增加历史下拉：支持鼠标、上下键、Enter、Esc；显示最近 5 条并可清除当前参数历史；localStorage 不可用、配额错误、损坏 JSON 时静默降级，不影响执行。
+1. 面板按当前 execution target 解析 descriptor；命名参数去重、question 保持 occurrence。
+2. label 保留原 syntax，input key 使用稳定 ID，目标变化时复用仍存在的值。
+3. 历史下拉支持鼠标、上下键、Enter、Esc；显示最近 5 条并可清除当前参数历史。
+4. localStorage 不可用、配额错误、损坏 JSON 时静默降级，不影响执行。
 5. hook 输出 `buildPayloadForTarget(target.sql)`、`markSubmitted(snapshot)` 和参数 fingerprint，供 S5-C 消费；本轨不接执行入口。
 6. `markSubmitted` 记录历史，敏感名不记录；只有 S5-C 在真正提交前调用。
 7. 保持紧凑横条，不增加模态对话框，不支持 raw SQL 值。
@@ -843,8 +838,8 @@ Stage 5 门禁：真实参数执行集成测试通过；安全矩阵全绿；Bin
 
 步骤：
 
-1. `QueryErrorPanelProps` 增加 optional `onAskInChat`，不影响既有 Retry/Fix/Explain/Diagnose 条件和布局。
-2. 直接复用 `src/lib/aiQueryActions.ts` 的 `buildQueryDiagnosisContext`，基于 `promptContext` 构建安全、脱敏且有界的提示词（错误信息、SQL、dialect、database/schema 等），避免重复实现脱敏机制。
+1. `QueryErrorPanelProps` 增加 optional `onAskInChat`，不影响 Retry/Fix/Explain 条件和布局。
+2. 使用现有 diagnosis context 构建稳定分段 prompt：错误、SQL、dialect、database/schema、用户请求；所有字段有长度上限并脱敏。
 3. 点击后发带 panel/connection/session/context fingerprint 的 `AiChatDraftRequest`，展开 Chat、切到 chat tab、预填并 focus；只有 textarea 成功写入后 ack。
 4. 不自动发送；未配置时保留草稿并显示原配置入口。
 5. 确认历史参数值、结果行、session IDs 和 secret fixture 不出现在 prompt。
@@ -894,7 +889,7 @@ Stage 5 门禁：真实参数执行集成测试通过；安全矩阵全绿；Bin
 2. 接入 metadata snapshot、execution state、active target change、navigation/DDL callbacks 和 INSERT hint setting。
 3. `documentVersion` 用 editor StateField 维护；外部 value replacement、undo/redo 和 component remount 均有明确定义与测试。
 4. 将 table/column drop request 交给 `queryDropHandler`：空编辑器保留生成 SELECT，非空插入引用，跨连接拒绝；旧 payload 继续兼容。
-5. 将现有 CodeMirror dialect mapping 接入方言族 profile；当前 `SqlEditor.tsx` 中的 `CM_DIALECT_MAP` 仅包含 PG/MySQL/MariaDB/SQLite，需引入 `@codemirror/lang-sql` 的 MSSQL 支持，未知方言退回 Standard。
+5. 将现有 CodeMirror dialect mapping 接入方言族 profile；SQL Server 使用 `@codemirror/lang-sql` 的 MSSQL 支持，未知方言退回 Standard。
 6. 按设置动态装卸 hint；反复 reconfigure 不重复 listener/timer/tooltip。
 7. 把旧 `sqlCompletions`、`sqlCompletionContext`、旧 SqlEditor import 保持为兼容 wrapper，确认没有第二份函数或 scanner 数据源。
 
@@ -1151,7 +1146,7 @@ pnpm test:unit:drivers
 - 每次合流后立即运行 typecheck 和该轨 targeted tests；失败则停止后续合流并恢复责任轨。
 - locale、主 E2E specs、coverage 文档由收口轨单一 owner 修改。
 - 不编辑用户已有的无关改动，不提交 codegen/gitignored 文件。
-- 本方案不在 coordination 目录，所有 progress 必须显式记录 `Task` 和 `Plan: docs/todo/sql-editor/implementation-plan.md`，保证聚合总览能显示任务；也可由 Coordinator 创建只含链接和轨道索引的 coordination plan 指针。
+- 本方案不在 coordination 目录，所有 progress 必须显式记录 `Task` 和 `Plan: /Users/flyxl/code/datazen/docs/todo/sql-editor/implementation-plan.md`，保证聚合总览能显示任务；也可由 Coordinator 创建只含链接和轨道索引的 coordination plan 指针。
 - 每个 wave 派发前生成写锁 manifest：track、base commit、allow create/modify、deny hotspots、consumed/produced contract、E2E spec、locale key 清单。后续 ownership transfer 必须在新 wave manifest 明写。
 
 ## 9. 验收追踪清单

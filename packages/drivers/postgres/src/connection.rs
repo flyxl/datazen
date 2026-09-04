@@ -32,6 +32,10 @@ pub(crate) fn build_pg_options(
     };
     opts = opts.ssl_mode(pg_ssl);
 
+    if let Some(schema) = config.schema.as_deref().filter(|s| !s.trim().is_empty()) {
+        opts = opts.options([("search_path".to_string(), format!("{}, public", schema))]);
+    }
+
     opts = opts.log_statements(tracing::log::LevelFilter::Trace);
     Ok(opts)
 }
