@@ -218,7 +218,6 @@ describe('QueryPanel execute/cancel button', () => {
     aiState.isDiagnosing = false;
     aiState.diagnosisError = null;
     aiState.isConfigured = true;
-    vi.useFakeTimers();
     panelConnectionState.capabilities = {
       supportsCancelQuery: true,
       supportsQueryExecutionCancel: true,
@@ -260,10 +259,6 @@ describe('QueryPanel execute/cancel button', () => {
       cancelQuery,
       executeQuery,
     } as Partial<ReturnType<typeof usePanelStore.getState>>);
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
   });
 
   function setRunning(running: boolean) {
@@ -314,23 +309,9 @@ describe('QueryPanel execute/cancel button', () => {
     }));
   }
 
-  it('shows Execute while running for less than 300ms', () => {
+  it('shows Cancel immediately while running', () => {
     setRunning(true);
     renderPanel();
-    expect(screen.getByRole('button', { name: 'query.execute' })).toBeDisabled();
-    expect(screen.queryByRole('button', { name: 'query.stop' })).toBeNull();
-  });
-
-  it('replaces Execute with Cancel after 300ms of running', () => {
-    setRunning(true);
-    renderPanel();
-    act(() => {
-      vi.advanceTimersByTime(299);
-    });
-    expect(screen.getByRole('button', { name: 'query.execute' })).toBeDisabled();
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
     expect(screen.queryByRole('button', { name: 'query.execute' })).toBeNull();
     expect(screen.getByRole('button', { name: 'query.stop' })).toBeInTheDocument();
   });
@@ -338,9 +319,6 @@ describe('QueryPanel execute/cancel button', () => {
   it('calls cancelQuery when Cancel is clicked', () => {
     setRunning(true);
     renderPanel();
-    act(() => {
-      vi.advanceTimersByTime(300);
-    });
     fireEvent.click(screen.getByRole('button', { name: 'query.stop' }));
     expect(cancelQuery).toHaveBeenCalledWith(PANEL_ID);
   });
@@ -352,9 +330,6 @@ describe('QueryPanel execute/cancel button', () => {
       return { queryExec: new Map(s.queryExec).set(PANEL_ID, { ...exec, executionId: null }) };
     });
     renderPanel();
-    act(() => {
-      vi.advanceTimersByTime(300);
-    });
     expect(screen.getByRole('button', { name: 'query.stop' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'query.stop' }));
     expect(cancelQuery).not.toHaveBeenCalled();
@@ -369,9 +344,6 @@ describe('QueryPanel execute/cancel button', () => {
     };
     setRunning(true);
     renderPanel();
-    act(() => {
-      vi.advanceTimersByTime(300);
-    });
 
     expect(screen.getByRole('button', { name: 'query.stop' })).toBeDisabled();
     expect(screen.getAllByText('query.cancelUnavailable').length).toBeGreaterThan(0);
@@ -382,21 +354,15 @@ describe('QueryPanel execute/cancel button', () => {
     panelConnectionState.capabilities = undefined;
     setRunning(true);
     renderPanel();
-    act(() => {
-      vi.advanceTimersByTime(300);
-    });
 
     expect(screen.getByRole('button', { name: 'query.stop' })).toBeDisabled();
     expect(screen.getAllByText('query.cancelUnknown').length).toBeGreaterThan(0);
     expect(cancelQuery).not.toHaveBeenCalled();
   });
 
-  it('resets to Execute when running stops before 300ms', () => {
+  it('resets to Execute when running stops', () => {
     setRunning(true);
     const { rerender } = renderPanel();
-    act(() => {
-      vi.advanceTimersByTime(100);
-    });
     setRunning(false);
     rerender(
       <QueryPanel
@@ -406,9 +372,6 @@ describe('QueryPanel execute/cancel button', () => {
         databaseType="postgresql"
       />,
     );
-    act(() => {
-      vi.advanceTimersByTime(300);
-    });
     expect(screen.getByRole('button', { name: 'query.execute' })).not.toBeDisabled();
     expect(screen.queryByRole('button', { name: 'query.stop' })).toBeNull();
   });

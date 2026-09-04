@@ -67,7 +67,7 @@ const MAIN_SHELL_MENU_IDS = new Set([
 
 async function focusMainWindow(): Promise<void> {
   if (!isTauri()) return;
-  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+  const { WebviewWindow } = await loadWebviewWindowModule();
   const main = await WebviewWindow.getByLabel('main');
   if (!main) return;
   await main.show();
@@ -90,6 +90,14 @@ import { cssColorToHex } from './surfaceBgCache';
 
 /** Coalesce concurrent singleton opens (duplicate menu listeners / double-click). */
 const singletonOpenInFlight = new Map<string, Promise<void>>();
+
+let webviewWindowModulePromise: Promise<typeof import('@tauri-apps/api/webviewWindow')> | null =
+  null;
+
+function loadWebviewWindowModule() {
+  webviewWindowModulePromise ??= import('@tauri-apps/api/webviewWindow');
+  return webviewWindowModulePromise;
+}
 
 function resolveOpenerBackgroundColor(): string | undefined {
   if (typeof document === 'undefined') return undefined;
@@ -143,15 +151,30 @@ function openBrowserWindow(options: OpenWindowOptions) {
   window.open(url, '_blank', `width=${options.width ?? 800},height=${options.height ?? 640}`);
 }
 
+async function focusSingletonWindow(label: string): Promise<boolean> {
+  if (!isTauri()) return false;
+  const { WebviewWindow } = await loadWebviewWindowModule();
+  const existing = await WebviewWindow.getByLabel(label);
+  if (!existing) return false;
+  await existing.show();
+  await existing.unminimize();
+  await existing.setFocus();
+  return true;
+}
+
 function openSingletonWindow(label: string, options: OpenWindowOptions) {
   const inflight = singletonOpenInFlight.get(label);
   if (inflight) {
     void inflight.catch(() => {});
+    if (isTauri()) {
+      void focusSingletonWindow(label).catch(() => {});
+    }
     return;
   }
 
   const task = (async () => {
     if (isTauri()) {
+      if (await focusSingletonWindow(label)) return;
       await openTauriWindow(label, options);
     } else {
       openBrowserWindow(options);

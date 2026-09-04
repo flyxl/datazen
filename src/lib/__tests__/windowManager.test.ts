@@ -21,13 +21,12 @@ vi.mock('../crossWindowBus', () => ({
   emitCrossWindow: (...args: unknown[]) => mockEmitCrossWindow(...args),
 }));
 
+const mockGetByLabel = vi.fn().mockResolvedValue(null);
+
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
   WebviewWindow: {
-    getByLabel: vi.fn().mockResolvedValue({
-      show: mockShow,
-      unminimize: mockUnminimize,
-      setFocus: mockSetFocus,
-    }),
+    getByLabel: (...args: unknown[]) => mockGetByLabel(...args),
+    getAll: vi.fn().mockResolvedValue([]),
   },
 }));
 
@@ -194,6 +193,7 @@ describe('windowManager — Tauri', () => {
     vi.clearAllMocks();
     mockInvoke.mockResolvedValue(undefined);
     mockOpenPath.mockResolvedValue(undefined);
+    mockGetByLabel.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -219,6 +219,11 @@ describe('windowManager — Tauri', () => {
 
   it('openSettingsWindow focuses main and emits menu:open-settings instead of create_sub_window', async () => {
     vi.resetModules();
+    mockGetByLabel.mockResolvedValue({
+      show: mockShow,
+      unminimize: mockUnminimize,
+      setFocus: mockSetFocus,
+    });
     const { openSettingsWindow } = await import('../windowManager');
     openSettingsWindow('logging');
     await vi.waitFor(() => expect(mockEmitCrossWindow).toHaveBeenCalled());
@@ -226,6 +231,46 @@ describe('windowManager — Tauri', () => {
     expect(mockShow).toHaveBeenCalled();
     expect(mockSetFocus).toHaveBeenCalled();
     expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it('focuses an existing singleton instead of creating a duplicate window', async () => {
+    vi.resetModules();
+    mockGetByLabel.mockResolvedValue({
+      show: mockShow,
+      unminimize: mockUnminimize,
+      setFocus: mockSetFocus,
+    });
+    const { openDataSyncWindow } = await import('../windowManager');
+    openDataSyncWindow();
+    await vi.waitFor(() => expect(mockSetFocus).toHaveBeenCalled());
+    expect(mockShow).toHaveBeenCalled();
+    expect(mockUnminimize).toHaveBeenCalled();
+    expect(mockInvoke).not.toHaveBeenCalledWith('create_sub_window', expect.anything());
+  });
+
+  it('[tester] focuses existing singleton when duplicate open is requested while inflight', async () => {
+    vi.resetModules();
+    let resolveInvoke!: () => void;
+    mockInvoke.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveInvoke = resolve;
+        }),
+    );
+    mockGetByLabel
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({
+        show: mockShow,
+        unminimize: mockUnminimize,
+        setFocus: mockSetFocus,
+      });
+    const { openDataSyncWindow } = await import('../windowManager');
+    openDataSyncWindow();
+    openDataSyncWindow();
+    await vi.waitFor(() => expect(mockSetFocus).toHaveBeenCalled());
+    expect(mockShow).toHaveBeenCalled();
+    expect(mockUnminimize).toHaveBeenCalled();
+    resolveInvoke();
   });
 
   it('shows error dialog when invoke fails for other singleton windows', async () => {

@@ -94,6 +94,7 @@ import { analyzeTransactionSql, isAbortedTransactionError } from '../../lib/sqlT
 import { sqlContainsDangerousWrite } from '../../lib/dangerousSql';
 import { formatLastConnected } from '../../lib/formatters';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { ResultMessageDialog } from '../../components/ui/ResultMessageDialog';
 import type { ConnectionSchemaState } from '../../stores/schemaStore';
 import type { QueryExecState } from '../../stores/queryExecActions';
 
@@ -285,7 +286,9 @@ export function QueryPanel({
   const [favoriteDialogSql, setFavoriteDialogSql] = useState('');
   const [nl2sqlVisible, setNl2sqlVisible] = useState(false);
   const [diagnosisVisible, setDiagnosisVisible] = useState(false);
-  const [showCancel, setShowCancel] = useState(false);
+  const [messageDialogOpen, setMessageDialogOpen] = useState(false);
+  const [messageDialogText, setMessageDialogText] = useState('');
+  const [messageDialogKind, setMessageDialogKind] = useState<'error' | 'success'>('error');
   const [explainResult, setExplainResult] = useState<ExplainResult | null>(null);
   const [explainLoading, setExplainLoading] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
@@ -348,14 +351,11 @@ export function QueryPanel({
     [columnMap, currentDatabase, currentSchema, tables, views],
   );
 
-  useEffect(() => {
-    if (!exec.running) {
-      setShowCancel(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setShowCancel(true), 300);
-    return () => window.clearTimeout(timer);
-  }, [exec.running]);
+  const showMessageDialog = useCallback((text: string, kind: 'error' | 'success' = 'error') => {
+    setMessageDialogText(text);
+    setMessageDialogKind(kind);
+    setMessageDialogOpen(true);
+  }, []);
 
   const supportsExplain = dbMeta?.supportsExplain === true;
   const isPathHierarchy = isPathHierarchyDriver;
@@ -627,7 +627,7 @@ export function QueryPanel({
           ? selectionSql
           : editorRef.current?.getSelection()?.trim() || exec.sql;
       if (databaseType === 'postgresql' && hasSuspiciousPostgresDoubleQuotedLiteral(sqlToRun)) {
-        window.alert(t('query.postgresDoubleQuoteHint'));
+        showMessageDialog(t('query.postgresDoubleQuoteHint'), 'error');
         return;
       }
       await syncContextFromSql(
@@ -672,6 +672,7 @@ export function QueryPanel({
       maybeOfferAbortedDialog,
       refreshTxStatus,
       syncContextFromSql,
+      showMessageDialog,
       t,
     ],
   );
@@ -1079,20 +1080,7 @@ export function QueryPanel({
           }}
         />
         {exec.running ? (
-          showCancel ? (
-            <QueryExecutionStatus viewModel={executionViewModel} onCancel={handleCancel} />
-          ) : (
-            <ToolbarButton
-              compact={compactToolbar}
-              variant="run"
-              label={t('query.execute')}
-              title={`${t('query.execute')} (${executeShortcutLabel})`}
-              icon={<Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              onClick={handleExecute}
-              disabled
-              {...tid('editor-execute-button')}
-            />
-          )
+          <QueryExecutionStatus viewModel={executionViewModel} onCancel={handleCancel} />
         ) : (
           <ToolbarButton
             compact={compactToolbar}
@@ -1712,13 +1700,19 @@ export function QueryPanel({
               void emitCrossWindow('dashboard:changed', { dashboardId: created.dashboard.id });
               openDashboardWindow(created.dashboard.id, created.dashboard.name);
             } catch (e) {
-              window.alert(String(e));
+              showMessageDialog(e instanceof Error ? e.message : String(e), 'error');
             }
           })();
         }}
       />
       {confirmRetryDialog}
       {confirmDangerousDialog}
+      <ResultMessageDialog
+        open={messageDialogOpen}
+        kind={messageDialogKind}
+        message={messageDialogText}
+        onClose={() => setMessageDialogOpen(false)}
+      />
     </div>
   );
 }
