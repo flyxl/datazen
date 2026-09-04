@@ -212,6 +212,31 @@ describe('windowManager — Tauri', () => {
     expect(mockInvoke).not.toHaveBeenCalledWith('create_sub_window', expect.anything());
   });
 
+  it('[tester] focuses existing singleton when duplicate open is requested while inflight', async () => {
+    vi.resetModules();
+    let resolveInvoke!: () => void;
+    mockInvoke.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveInvoke = resolve;
+        }),
+    );
+    mockGetByLabel
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({
+        show: mockShow,
+        unminimize: mockUnminimize,
+        setFocus: mockSetFocus,
+      });
+    const { openDataSyncWindow } = await import('../windowManager');
+    openDataSyncWindow();
+    openDataSyncWindow();
+    await vi.waitFor(() => expect(mockSetFocus).toHaveBeenCalled());
+    expect(mockShow).toHaveBeenCalled();
+    expect(mockUnminimize).toHaveBeenCalled();
+    resolveInvoke();
+  });
+
   it('shows error dialog when invoke fails for other singleton windows', async () => {
     vi.resetModules();
     mockInvoke.mockRejectedValue(new Error('permission denied'));
