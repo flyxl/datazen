@@ -62,4 +62,25 @@ mod tests {
         assert_eq!(sync_family_of("trino"), "trino");
         assert_eq!(sync_family_of("presto"), "trino");
     }
+
+    #[test]
+    fn test_tester_unregistered_sync_categories() {
+        assert_eq!(sync_category_of("redis"), SyncCategory::Kv);
+        assert_eq!(sync_category_of("mongodb"), SyncCategory::Document);
+        assert_eq!(sync_category_of("superset"), SyncCategory::Other);
+        assert_eq!(sync_category_of("unknown_engine"), SyncCategory::Sql);
+    }
+
+    #[test]
+    fn test_tester_oceanbase_alias_normalizes_to_mysql_id() {
+        assert_eq!(normalize_driver_id("oceanbase"), "mysql");
+        assert_eq!(sync_family_of("oceanbase"), "mysql");
+        assert_eq!(sync_family_of("tidb"), "mysql");
+    }
+
+    #[test]
+    fn test_tester_unknown_id_passthrough() {
+        assert_eq!(normalize_driver_id("ClickHouse"), "clickhouse");
+        assert_eq!(sync_family_of("clickhouse"), "clickhouse");
+    }
 }

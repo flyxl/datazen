@@ -165,4 +165,16 @@ mod tests {
             SyncPairing::Ir
         );
     }
+
+    #[test]
+    fn test_tester_alias_types_use_normalized_family() {
+        assert!(matches!(
+            resolve_sync_pairing("tidb", "mysql"),
+            SyncPairing::Direct { ref family } if family == "mysql"
+        ));
+        assert!(matches!(
+            resolve_sync_pairing("oceanbase", "mariadb"),
+            SyncPairing::Direct { ref family } if family == "mysql"
+        ));
+    }
 }
