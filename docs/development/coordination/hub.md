@@ -36,4 +36,8 @@
 - [x] `cargo test -p datazen-driver-api --lib` (108 passed)
 - [x] `cargo test -p datazen-driver-postgres --lib` (98 passed)
 - [x] `cargo test -p datazen-driver-mysql --lib` (83 passed)
+- [x] `cargo test -p datazen --lib` (1298 passed)
+- [x] `npx tsc --noEmit` (0 errors)
+- [x] `npx vitest run` (297 files, 2430 passed)
+- [x] `npx vitest run --config vitest.drivers.config.ts` (14 files, 84 passed)
 - [ ] 集成分支 → main PR 说明
