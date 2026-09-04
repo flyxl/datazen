@@ -13,7 +13,7 @@ sync category/family 下沉 driver-api trait。见计划 §2。Wave 2：等 Wave
 
 - Phase: PASSED
 - 编码 commit: d0e9f94d7
-- 测试 commit: ad12351fd
+- 测试 commit: 1e53d48f4
 - 合并 commit: —
 
 ## 心跳
