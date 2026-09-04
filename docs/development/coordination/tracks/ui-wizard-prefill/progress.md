@@ -18,7 +18,7 @@
 ## 状态
 
 - Phase: READY_FOR_TEST
-- 编码 commit: 待提交
+- 编码 commit: d96bbd2012f0b9c00700da6ca0c23795c48e6c3e
 - 测试 commit: 待测试
 - 合并 commit: 待合入
 
