@@ -15,7 +15,7 @@
 ## 状态
 
 - Phase: READY_FOR_TEST
-- 编码 commit: 36bf6c9a0
+- 编码 commit: 80e316d6a
 - 测试 commit: 待测试
 - 合并 commit: 待合入
 
