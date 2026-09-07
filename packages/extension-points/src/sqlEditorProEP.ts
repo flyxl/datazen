@@ -13,6 +13,8 @@ import { createExtensionPoint } from './extensionPoints';
 export type SqlEditorProOptions = Record<string, any>;
 
 export interface SqlEditorProFeatures {
+  /** S4-A: statement frame + gutter run button extensions. */
+  createStatementDecorations?: (opts?: SqlEditorProOptions) => Extension[];
   /** S4-C: Alt+Enter intentions + INSERT/function inlay hints. */
   createIntentionExtensions?: (opts: SqlEditorProOptions, refs: SqlEditorProOptions) => Extension[];
   /** S4-D: table hover tooltip + Mod/Cmd+Click navigation. */
@@ -28,15 +30,36 @@ export interface SqlEditorProFeatures {
   createPasteExtensions?: (opts: SqlEditorProOptions) => Extension[];
   /** S5-A: context-menu group for paste-as-IN (null when unavailable). */
   createPasteAsInContextMenuItems?: () => SqlEditorProOptions | null;
+  /** S5-B: Bind parameter panel renderer. */
+  renderBindParamPanel?: (props: SqlEditorProOptions) => any;
+  /** S5-B: Bind parameters hook. */
+  useBindParameters?: (sql: string, options?: any) => any;
+  /** Pro settings contributions. */
+  settingsContributions?: SqlEditorProOptions[];
 }
 
 const fallbackFeatures: SqlEditorProFeatures = Object.freeze({
+  createStatementDecorations: () => [],
   createIntentionExtensions: () => [],
   createHoverExtensions: () => [],
   createSignatureHelpExtensions: () => [],
   createJoinCompletionSource: () => null,
   createPasteExtensions: () => [],
   createPasteAsInContextMenuItems: () => null,
+  renderBindParamPanel: () => null,
+  useBindParameters: () => ({
+    params: [],
+    values: {},
+    labels: {},
+    activeParamIds: [],
+    paramHistory: {},
+    setValue: () => {},
+    applyHistoryEntry: () => {},
+    clearHistory: () => {},
+    markSubmitted: () => {},
+    getHistory: () => [],
+  }),
+  settingsContributions: [],
 });
 
 export const sqlEditorProEP = createExtensionPoint<SqlEditorProFeatures>({

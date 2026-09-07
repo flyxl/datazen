@@ -3,6 +3,7 @@ import { render, fireEvent, cleanup, screen, act, waitFor } from '@testing-libra
 import { QueryPanel } from '../QueryPanel';
 import { usePanelStore, type QueryPanel as QueryPanelState } from '../../../stores/panelStore';
 import { EMPTY_QUERY_EXEC } from '../../../stores/queryExecActions';
+import { extensionRegistry, sqlEditorProEP } from '@datazen/extension-points';
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -137,8 +138,23 @@ vi.mock('../../../components/ai/ExplainPanel', () => ({
   ExplainPanel: () => null,
 }));
 
-vi.mock('../../../components/query/BindParamPanel', () => ({
-  BindParamPanel: ({
+extensionRegistry.register(sqlEditorProEP, {
+  useBindParameters: (sql: string) => {
+    const hasParam = sql.includes(':id');
+    return {
+      params: hasParam ? [{ name: 'id', stableId: 'id', syntax: 'colon' }] : [],
+      values: {},
+      labels: hasParam ? { id: ':id' } : {},
+      activeParamIds: hasParam ? ['id'] : [],
+      paramHistory: {},
+      setValue: vi.fn(),
+      applyHistoryEntry: vi.fn(),
+      clearHistory: vi.fn(),
+      markSubmitted: vi.fn(),
+      getHistory: () => [],
+    };
+  },
+  renderBindParamPanel: ({
     params,
     onChange,
   }: {
@@ -162,7 +178,7 @@ vi.mock('../../../components/query/BindParamPanel', () => ({
       </>
     );
   },
-}));
+});
 
 vi.mock('../../../hooks/useConfirmDialog', () => ({
   useConfirmDialog: () => [retryConfirmation.confirm, null],

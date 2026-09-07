@@ -46,8 +46,6 @@ import { getActionShortcut, toCodeMirrorKeyFormat, type KeymapPreset } from '../
 // ── Leaf factories (S4-A/B/C/D + S5-A) ───────────────────────────────
 import { statementIndexField } from './semantic/statementRanges';
 import { executionStateField } from './extensions/executionState';
-import { createStatementFrameExtension } from './extensions/statementFrame';
-import { createStatementGutterExtension } from './extensions/statementGutter';
 import { extensionRegistry, sqlEditorProEP } from '@datazen/extension-points';
 import { produceSchemaCompletions } from './completion/schemaCompletion';
 import { getDialectAdapter } from './semantic/dialectAdapter';
@@ -295,16 +293,9 @@ export interface CreateStatementExtensionsOptions {
 }
 
 export function createStatementExtensions(opts?: CreateStatementExtensionsOptions): Extension[] {
-  return [
-    statementIndexField(),
-    executionStateField,
-    ...createStatementFrameExtension(),
-    ...createStatementGutterExtension({
-      onExecute: (target) => {
-        opts?.onExecuteStatement?.(target.sql);
-      },
-    }),
-  ];
+  const pro = extensionRegistry.get(sqlEditorProEP);
+  const proDecorations = pro.createStatementDecorations?.(opts) ?? [];
+  return [statementIndexField(), executionStateField, ...proDecorations];
 }
 
 /* -------------------------------------------------------------------------- */

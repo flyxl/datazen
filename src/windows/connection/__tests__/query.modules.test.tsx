@@ -28,6 +28,7 @@ import { useQueryPanelWorkflows } from '../query/queryDropHandler';
 import type { QueryHistoryEntry } from '../../../types';
 import { usePanelStore } from '../../../stores/panelStore';
 import { EMPTY_QUERY_EXEC } from '../../../stores/queryExecActions';
+import { extensionRegistry, sqlEditorProEP } from '@datazen/extension-points';
 import { toQueryExecutionViewModel } from '../../../lib/queryExecutionViewModel';
 
 vi.mock('../../../hooks/useI18n', () => ({
@@ -115,8 +116,8 @@ vi.mock('../../../components/query/QueryExecutionStatus', () => ({
   ),
 }));
 
-vi.mock('../../../components/query/BindParamPanel', () => ({
-  BindParamPanel: ({
+extensionRegistry.register(sqlEditorProEP, {
+  renderBindParamPanel: ({
     onChange,
   }: {
     params: Array<{ name: string }>;
@@ -126,7 +127,7 @@ vi.mock('../../../components/query/BindParamPanel', () => ({
       bind
     </button>
   ),
-}));
+});
 
 vi.mock('../../../components/ai/Nl2SqlPanel', () => ({
   Nl2SqlPanel: () => <div data-testid="nl2sql-panel" />,

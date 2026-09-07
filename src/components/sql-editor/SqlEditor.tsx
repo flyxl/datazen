@@ -67,7 +67,6 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     onNavigateToTable,
     onNavigateToStructure,
     onNavigateToDdl,
-    insertValueHints = true,
     completionQuotePolicy = 'unquoted',
   },
   ref,
@@ -208,32 +207,25 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   );
 
   const intentionExts = useMemo(
-    () =>
-      createIntentionExtensions(
-        { insertValueHints, databaseType, schema },
-        { modelRef, metadataSnapshotRef },
-      ),
-    [insertValueHints, databaseType, schema],
+    () => createIntentionExtensions({ databaseType, schema }, { modelRef, metadataSnapshotRef }),
+    [databaseType, schema],
   );
 
   const hoverExts = useMemo(
     () =>
-      editorTableHover
-        ? createHoverExtensions(
-            {
-              metadataSnapshot,
-              onNavigateToTable,
-              onNavigateToStructure,
-              onNavigateToDdl,
-              databaseType,
-              database,
-              schema,
-            },
-            { modelRef, metadataSnapshotRef },
-          )
-        : [],
+      createHoverExtensions(
+        {
+          metadataSnapshot,
+          onNavigateToTable,
+          onNavigateToStructure,
+          onNavigateToDdl,
+          databaseType,
+          database,
+          schema,
+        },
+        { modelRef, metadataSnapshotRef },
+      ),
     [
-      editorTableHover,
       metadataSnapshot,
       onNavigateToTable,
       onNavigateToStructure,

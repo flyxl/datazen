@@ -105,9 +105,15 @@ vi.mock('../../../components/query/QueryContextSelectors', () => ({
   QueryContextSelectors: () => null,
 }));
 vi.mock('../../../components/query/QueryErrorPanel', () => ({ QueryErrorPanel: () => null }));
-vi.mock('../../../components/query/BindParamPanel', () => ({ BindParamPanel: () => null }));
 vi.mock('../../../stores/aiStore', () => ({
-  useAiStore: (sel: (s: { diagnosis: null; isDiagnosing: boolean; diagnosisError: null; isConfigured: boolean }) => unknown) =>
+  useAiStore: (
+    sel: (s: {
+      diagnosis: null;
+      isDiagnosing: boolean;
+      diagnosisError: null;
+      isConfigured: boolean;
+    }) => unknown,
+  ) =>
     sel({
       diagnosis: null,
       isDiagnosing: false,
@@ -242,9 +248,7 @@ describe('[tester] QueryPanel ResultMessageDialog', () => {
     fireEvent.click(screen.getByTestId('confirm-add-dashboard'));
 
     await waitFor(() => expect(createWidgetFromSql).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(screen.getByText('widget creation failed')).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText('widget creation failed')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'common.ok' })).toBeInTheDocument();
   });
 });

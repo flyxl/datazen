@@ -19,7 +19,7 @@ import type { EditorMetadataSnapshot } from '../../../components/sql-editor/meta
 import { QueryContextSelectors } from '../../../components/query/QueryContextSelectors';
 import { QueryExecutionStatus } from '../../../components/query/QueryExecutionStatus';
 import { Nl2SqlPanel } from '../../../components/ai/Nl2SqlPanel';
-import { BindParamPanel } from '../../../components/query/BindParamPanel';
+import { extensionRegistry, sqlEditorProEP } from '@datazen/extension-points';
 import { useI18n } from '../../../hooks/useI18n';
 import { usePlatform } from '../../../hooks/usePlatform';
 import { useSettingsStore } from '../../../stores/settingsStore';
@@ -29,7 +29,6 @@ import { buildSqlEditorContextMenuItems } from '../../../lib/sqlEditorContextMen
 import type { QueryExecutionViewModel } from '../../../lib/queryExecutionViewModel';
 import type { SqlNamespace } from '../../../lib/sqlNamespace';
 import type { SqlParam } from '../../../lib/sqlBindParams';
-import type { ParamHistoryEntry } from './useBindParameters';
 
 export interface QueryEditorSectionProps {
   dbSessionId: string;
@@ -44,7 +43,7 @@ export interface QueryEditorSectionProps {
   sqlParams: SqlParam[];
   paramValues: Record<string, string>;
   paramLabels?: Record<string, string>;
-  paramHistory?: Record<string, ParamHistoryEntry[]>;
+  paramHistory?: Record<string, any[]>;
   onParamChange: (name: string, value: string) => void;
   onClearParamHistory?: (stableId: string) => void;
   onApplyParamHistory?: (stableId: string, value: string) => void;
@@ -353,15 +352,15 @@ export function QueryEditorSection({
         />
       </ToolbarShell>
 
-      <BindParamPanel
-        params={sqlParams}
-        values={paramValues}
-        labels={paramLabels}
-        history={paramHistory}
-        onChange={onParamChange}
-        onClearHistory={onClearParamHistory}
-        onApplyHistory={onApplyParamHistory}
-      />
+      {extensionRegistry.get(sqlEditorProEP).renderBindParamPanel?.({
+        params: sqlParams,
+        values: paramValues,
+        labels: paramLabels,
+        history: paramHistory,
+        onChange: onParamChange,
+        onClearHistory: onClearParamHistory,
+        onApplyHistory: onApplyParamHistory,
+      })}
 
       <div className="flex min-w-0 flex-col">
         {nl2sqlVisible && (

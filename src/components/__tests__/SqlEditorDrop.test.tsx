@@ -1,9 +1,71 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render } from '@testing-library/react';
 import React, { createRef } from 'react';
 import { SqlEditor, type SqlEditorHandle } from '../SqlEditor';
+import { extensionRegistry, sqlEditorProEP } from '@datazen/extension-points';
+import { EditorView } from '@codemirror/view';
 
 describe('SqlEditor Drag & Drop', () => {
+  beforeAll(() => {
+    function resolvePayload(rawObj: any) {
+      if (rawObj.version === 1 && rawObj.namespace) {
+        return {
+          tables: [{ tableName: rawObj.namespace.table, schema: rawObj.namespace.schema }],
+          connectionId: rawObj.connectionId,
+          databaseType: rawObj.databaseType,
+        };
+      }
+      if (rawObj.tables) return rawObj;
+      if (rawObj.tableName) {
+        return { tables: [{ tableName: rawObj.tableName, schema: rawObj.schema }] };
+      }
+      return rawObj;
+    }
+
+    extensionRegistry.register(sqlEditorProEP, {
+      createPasteExtensions: (opts) => {
+        return [
+          EditorView.domEventHandlers({
+            dragover(event) {
+              const types = event.dataTransfer?.types || [];
+              if (
+                types.includes('application/datazen-table') ||
+                types.includes('application/datazen-schema-object') ||
+                types.includes('text/plain')
+              ) {
+                event.preventDefault();
+              }
+            },
+            drop(event) {
+              const dt = event.dataTransfer;
+              if (!dt) return;
+              const jsonRaw =
+                dt.getData('application/datazen-table') ||
+                dt.getData('application/datazen-schema-object');
+              if (jsonRaw) {
+                try {
+                  const parsed = JSON.parse(jsonRaw);
+                  opts.onDrop?.(resolvePayload(parsed), 0);
+                  return;
+                } catch {
+                  // ignore
+                }
+              }
+              const textRaw = dt.getData('text/plain');
+              if (textRaw) {
+                try {
+                  const parsed = JSON.parse(textRaw);
+                  opts.onDrop?.(resolvePayload(parsed), 0);
+                } catch {
+                  opts.onDrop?.({ tables: [{ tableName: textRaw, schema: undefined }] }, 0);
+                }
+              }
+            },
+          }),
+        ];
+      },
+    });
+  });
   it('exposes insertAt on ref to insert text into empty document', () => {
     const ref = createRef<SqlEditorHandle>();
     const onChange = vi.fn();

@@ -147,7 +147,6 @@ vi.mock('../../../stores/aiStore', () => ({
     }),
 }));
 vi.mock('../../../components/ai/DiagnosisPanel', () => ({ DiagnosisPanel: () => null }));
-vi.mock('../../../components/query/BindParamPanel', () => ({ BindParamPanel: () => null }));
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }));

@@ -81,10 +81,6 @@ vi.mock('../../../components/ai/ExplainPanel', () => ({
   ExplainPanel: () => null,
 }));
 
-vi.mock('../../../components/query/BindParamPanel', () => ({
-  BindParamPanel: () => null,
-}));
-
 vi.mock('../../../components/query/QueryContextSelectors', () => ({
   QueryContextSelectors: () => null,
 }));
