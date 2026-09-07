@@ -10,10 +10,10 @@ import {
 } from 'react';
 import { Database, FolderInput, Key, Loader2, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Button } from '../../../../src/components/ui/Button';
-import { Input } from '../../../../src/components/ui/Input';
-import { Select } from '../../../../src/components/ui/Select';
-import { Dialog } from '../../../../src/components/ui/Dialog';
+import { Button } from '@datazen/ui';
+import { Input } from '@datazen/ui';
+import { Select } from '@datazen/ui';
+import { Dialog } from '@datazen/ui';
 import { useSchemaStore } from '../../../../src/stores/schemaStore';
 import { useSettingsStore } from '../../../../src/stores/settingsStore';
 import { useColumnResize } from '../../../../src/hooks/useColumnResize';

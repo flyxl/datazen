@@ -294,6 +294,7 @@ pub fn run() {
         .plugin(theme::surface_bg::SurfaceBootPlugin::new(surface_bg))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_os::init());
 
     #[cfg(desktop)]
@@ -442,6 +443,7 @@ pub fn run() {
             crate::commands::get_databases,
             crate::commands::get_tables,
             crate::commands::get_columns,
+            crate::commands::get_all_columns,
             crate::commands::get_table_schema,
             crate::commands::get_structure_capabilities,
             crate::commands::plan_table_structure_changes,
@@ -466,6 +468,8 @@ pub fn run() {
             crate::commands::session_transaction_status,
             crate::commands::get_database_objects,
             crate::commands::get_object_ddl,
+            crate::commands::write_clipboard,
+            crate::commands::read_clipboard,
             crate::commands::get_privileges,
             crate::commands::get_query_history,
             crate::commands::clear_query_history,
@@ -477,6 +481,7 @@ pub fn run() {
             crate::commands::get_system_ui_language,
             crate::commands::save_settings,
             crate::commands::get_log_path,
+            crate::commands::get_app_executable_path,
             crate::commands::open_path,
             crate::commands::open_log_dir,
             crate::commands::open_workflows_dir,
@@ -531,6 +536,9 @@ pub fn run() {
             crate::commands::ai_save_config,
             crate::commands::ai_get_config,
             crate::commands::ai_delete_config,
+            crate::commands::ai_get_settings_config,
+            crate::commands::ai_save_settings_config,
+            crate::commands::ai_set_active_profile,
             crate::commands::ai_generate_sql,
             crate::commands::ai_diagnose_error,
             crate::commands::ai_analyze_explain,
@@ -629,16 +637,46 @@ pub fn run() {
                 }
             }
             #[cfg(target_os = "macos")]
-            if let tauri::WindowEvent::Resized(size) = event {
+            if let tauri::WindowEvent::Resized(_) = event {
                 let win = window.clone();
-                let width = size.width;
-                let height = size.height;
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_millis(200));
-                    if let Some(monitor) = win.current_monitor().ok().flatten() {
-                        let mon = monitor.size();
-                        let is_fs = is_fullscreen_for_monitor(width, height, mon.width, mon.height);
-                        let _ = win.emit("fullscreen-changed", is_fs);
+                    let is_fs = win.is_fullscreen().unwrap_or_else(|_| {
+                        if let (Ok(cur_size), Ok(Some(monitor))) =
+                            (win.inner_size(), win.current_monitor())
+                        {
+                            let mon = monitor.size();
+                            is_fullscreen_for_monitor(
+                                cur_size.width,
+                                cur_size.height,
+                                mon.width,
+                                mon.height,
+                            )
+                        } else {
+                            false
+                        }
+                    });
+                    let _ = win.emit("fullscreen-changed", is_fs);
+
+                    // Re-check after animation fully settles (macOS fullscreen animation is ~400ms)
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    let is_fs_settled = win.is_fullscreen().unwrap_or_else(|_| {
+                        if let (Ok(cur_size), Ok(Some(monitor))) =
+                            (win.inner_size(), win.current_monitor())
+                        {
+                            let mon = monitor.size();
+                            is_fullscreen_for_monitor(
+                                cur_size.width,
+                                cur_size.height,
+                                mon.width,
+                                mon.height,
+                            )
+                        } else {
+                            false
+                        }
+                    });
+                    if is_fs_settled != is_fs {
+                        let _ = win.emit("fullscreen-changed", is_fs_settled);
                     }
                 });
             }

@@ -1,39 +1,72 @@
 import type { TableInfo } from '../types';
 import { isSchemaGroupingSchema } from './sqlNamespace';
+import { scanSql } from '../components/sql-editor/semantic/scanner';
+import { buildStatementRanges } from '../components/sql-editor/semantic/statementRanges';
+import { buildScopesForStatement } from '../components/sql-editor/semantic/scope/builder';
+import { getDialectAdapter } from '../components/sql-editor/semantic/dialectAdapter';
 
-const FROM_RELATION =
-  /\b(?:from|join)\s+(?:only\s+)?((?:"[^"]+"|`[^`]+`|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|[A-Za-z_][\w$]*))*)/gi;
+/**
+ * Extract physical table/view names referenced across all scopes and statements
+ * in the provided SQL text, using lexical and semantic scope analysis.
+ *
+ * Filters out CTE and subquery aliases, preserving appearance order.
+ */
+export function tablesReferencedInSql(sql: string, dialectId?: string): string[] {
+  if (!sql.trim()) return [];
 
-function unquoteIdent(raw: string): string {
-  const trimmed = raw.trim();
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith('`') && trimmed.endsWith('`')) ||
-    (trimmed.startsWith('[') && trimmed.endsWith(']'))
-  ) {
-    return trimmed.slice(1, -1);
-  }
-  return trimmed;
-}
+  const adapter = getDialectAdapter(dialectId ?? 'standard');
+  const { tokens } = scanSql(sql);
+  const ranges = buildStatementRanges(sql);
+  const effectiveRanges =
+    ranges.length > 0
+      ? ranges
+      : [
+          {
+            contentFrom: 0,
+            contentTo: sql.length,
+            index: 0,
+            from: 0,
+            to: sql.length,
+            delimiterFrom: null,
+            delimiterTo: null,
+            firstExecutableLine: 0,
+            confidence: 'degraded' as const,
+          },
+        ];
 
-function lastRelationSegment(qualified: string): string | undefined {
-  const parts = qualified.split('.').map(unquoteIdent).filter(Boolean);
-  return parts[parts.length - 1];
-}
-
-/** Table names referenced by FROM/JOIN (last segment of each qualified path). */
-export function tablesReferencedInSql(sql: string): string[] {
   const names: string[] = [];
   const seen = new Set<string>();
-  FROM_RELATION.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = FROM_RELATION.exec(sql)) !== null) {
-    const table = lastRelationSegment(match[1] ?? '');
-    if (table && !seen.has(table)) {
-      seen.add(table);
-      names.push(table);
+
+  for (const range of effectiveRanges) {
+    const stmtRange = { from: range.contentFrom, to: range.contentTo };
+    let scopes: ReturnType<typeof buildScopesForStatement> = [];
+    try {
+      scopes = buildScopesForStatement(tokens, stmtRange, adapter, sql);
+    } catch {
+      continue;
+    }
+
+    const allRelations: { name: string; from: number }[] = [];
+    for (const scope of scopes) {
+      for (const rel of scope.relations) {
+        if (rel.sourceKind === 'table' || rel.sourceKind === 'view') {
+          const name = rel.relation.name.name;
+          if (name) {
+            allRelations.push({ name, from: rel.sourceRange.from });
+          }
+        }
+      }
+    }
+    allRelations.sort((a, b) => a.from - b.from);
+
+    for (const item of allRelations) {
+      if (!seen.has(item.name)) {
+        seen.add(item.name);
+        names.push(item.name);
+      }
     }
   }
+
   return names;
 }
 
@@ -41,8 +74,8 @@ export function tablesReferencedInSql(sql: string): string[] {
  * Last FROM/JOIN relation in `sql`. For `schema.table` / `catalog.schema.table`,
  * returns the table segment — CodeMirror resolves it via `defaultSchema` + aliases.
  */
-export function inferDefaultTable(sql: string): string | undefined {
-  const names = tablesReferencedInSql(sql);
+export function inferDefaultTable(sql: string, dialectId?: string): string | undefined {
+  const names = tablesReferencedInSql(sql, dialectId);
   return names[names.length - 1];
 }
 

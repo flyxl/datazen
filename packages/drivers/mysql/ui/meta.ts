@@ -1,4 +1,6 @@
-import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
+import type { DatabaseTypeMeta } from '@datazen/driver-sdk';
+import { mysqlFunctions } from './functions';
+import { mysqlDialect, mysqlDialectProfile } from './dialect';
 
 const mysqlStructureEditor = {
   columnTypes: [
@@ -45,6 +47,10 @@ const mysqlStructureEditor = {
 } satisfies NonNullable<DatabaseTypeMeta['structureEditor']>;
 
 const mysqlStructureEditorSpread = { structureEditor: mysqlStructureEditor } as const;
+const mysqlDialectSpread = {
+  sqlDialectStrategy: mysqlDialect,
+  sqlDialectProfile: mysqlDialectProfile,
+} as const;
 
 export const mysqlMeta = {
   label: 'MySQL',
@@ -66,6 +72,7 @@ export const mysqlMeta = {
   category: 'sql',
   connectionView: 'sql',
   sqlDialect: 'mysql',
+  sqlFunctions: mysqlFunctions,
   databaseFieldType: 'name',
   connectionForm: 'standard',
   clipboardSchemes: ['mysql'],
@@ -73,6 +80,7 @@ export const mysqlMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
 } satisfies DatabaseTypeMeta;
@@ -97,6 +105,7 @@ export const mariadbMeta = {
   category: 'sql',
   connectionView: 'sql',
   sqlDialect: 'mysql',
+  sqlFunctions: mysqlFunctions,
   databaseFieldType: 'name',
   connectionForm: 'standard',
   clipboardSchemes: ['mariadb'],
@@ -104,6 +113,7 @@ export const mariadbMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
 } satisfies DatabaseTypeMeta;
@@ -128,6 +138,7 @@ export const dorisMeta = {
   category: 'sql',
   connectionView: 'sql',
   sqlDialect: 'mysql',
+  sqlFunctions: mysqlFunctions,
   databaseFieldType: 'name',
   connectionForm: 'standard',
   clipboardSchemes: ['doris'],
@@ -135,6 +146,7 @@ export const dorisMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
 } satisfies DatabaseTypeMeta;
@@ -159,6 +171,7 @@ export const starrocksMeta = {
   category: 'sql',
   connectionView: 'sql',
   sqlDialect: 'mysql',
+  sqlFunctions: mysqlFunctions,
   databaseFieldType: 'name',
   connectionForm: 'standard',
   clipboardSchemes: ['starrocks'],
@@ -166,6 +179,7 @@ export const starrocksMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
 } satisfies DatabaseTypeMeta;
@@ -190,6 +204,7 @@ export const manticoreMeta = {
   category: 'sql',
   connectionView: 'sql',
   sqlDialect: 'mysql',
+  sqlFunctions: mysqlFunctions,
   databaseFieldType: 'name',
   connectionForm: 'standard',
   clipboardSchemes: ['manticore'],
@@ -197,6 +212,7 @@ export const manticoreMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
 } satisfies DatabaseTypeMeta;
@@ -221,6 +237,7 @@ export const obOracleMeta = {
   category: 'sql',
   connectionView: 'sql',
   sqlDialect: 'mysql',
+  sqlFunctions: mysqlFunctions,
   databaseFieldType: 'name',
   connectionForm: 'standard',
   clipboardSchemes: ['oceanbase'],
@@ -228,6 +245,7 @@ export const obOracleMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
 } satisfies DatabaseTypeMeta;

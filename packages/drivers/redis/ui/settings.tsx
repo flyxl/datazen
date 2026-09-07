@@ -1,4 +1,4 @@
-import { Select } from '@datazen/plugin-sdk';
+import { Select } from '@datazen/ui';
 
 export const redisSettingsSchema = {
   type: 'object',

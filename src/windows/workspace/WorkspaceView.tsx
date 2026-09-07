@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { useI18n } from '../../hooks/useI18n';
+import { useResizable } from '../../hooks/useResizable';
 import { useExtensionStore } from '../../stores/extensionStore';
 import { useWorkspaceTabsStore } from '../../stores/workspaceTabsStore';
 import { ExtensionPageShell } from './ExtensionPageShell';
@@ -25,11 +27,20 @@ export interface WorkspaceViewProps {
  * Also hosts the `plugins:open-page` deep-link listener (`datazen://…/open`).
  */
 export function WorkspaceView({ onOpenPlugins }: WorkspaceViewProps) {
+  const { t } = useI18n();
   const pages = useWorkspacePages();
   const plugins = useExtensionStore((s) => s.extensions);
   const pluginsLoaded = useExtensionStore((s) => s.loaded);
   const tabs = useWorkspaceTabsStore((s) => s.tabs);
   const activeKey = useWorkspaceTabsStore((s) => s.activeKey);
+
+  const { size: sidebarWidth, handleRef: resizeHandleRef } = useResizable({
+    direction: 'horizontal',
+    initialSize: 200,
+    minSize: 150,
+    maxSize: 480,
+    storageKey: 'workspace-sidebar-width',
+  });
 
   // Fire-and-forget initial load; refreshed via `plugins:changed` by the store.
   useEffect(() => {
@@ -76,7 +87,13 @@ export function WorkspaceView({ onOpenPlugins }: WorkspaceViewProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-1">
-      <WorkspaceNavigator onOpenPlugins={onOpenPlugins} />
+      <WorkspaceNavigator width={sidebarWidth} onOpenPlugins={onOpenPlugins} />
+      <div
+        ref={resizeHandleRef}
+        data-testid="workspace-sidebar-resize"
+        className="w-1 -ml-0.5 shrink-0 cursor-col-resize bg-transparent hover:bg-accent/30 transition-colors"
+        title={t('main.sidebar.resize')}
+      />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <WorkspaceTabBar />
         {tabs.length === 0 ? (

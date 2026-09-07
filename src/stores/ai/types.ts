@@ -1,7 +1,9 @@
 import type {
   AiChatMessage,
   AiChatSession,
+  AiModelProfile,
   AiProviderConfig,
+  AiSettingsConfig,
   ConnectionDiagnosis,
   DiagnosisResult,
   ExplainAnalysis,
@@ -33,6 +35,7 @@ export const initialNl2Sql: Nl2SqlState = {
 
 export interface AiStore {
   config: AiProviderConfig | null;
+  settingsConfig: AiSettingsConfig | null;
   isConfigured: boolean;
   providers: ProviderListItem[];
   configLoading: boolean;
@@ -60,6 +63,11 @@ export interface AiStore {
   fetchingRemoteModels: boolean;
 
   loadConfig: () => Promise<void>;
+  loadSettingsConfig: () => Promise<void>;
+  saveSettingsConfig: (config: AiSettingsConfig) => Promise<boolean>;
+  setActiveProfile: (profileId: string) => Promise<boolean>;
+  saveProfile: (profile: AiModelProfile) => Promise<boolean>;
+  deleteProfile: (profileId: string) => Promise<boolean>;
   loadProviders: () => Promise<void>;
   fetchRemoteModels: (protocol: string, endpoint: string, apiKey: string) => Promise<ModelInfo[]>;
   validateConfig: (config: AiProviderConfig) => Promise<boolean>;

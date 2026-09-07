@@ -4,6 +4,7 @@ use crate::postgres::PostgresDriver;
 use crate::sql::{parse_pg_table_ref, pg_regclass_name};
 use datazen_driver_api::*;
 use sqlx::Row;
+use std::collections::HashMap;
 
 impl PostgresDriver {
     pub(crate) async fn get_columns_impl(
@@ -213,5 +214,85 @@ impl PostgresDriver {
             indexes,
             foreign_keys,
         })
+    }
+
+    /// Batch-fetch columns for ALL tables in the connected database/schema
+    /// using a single SQL query, avoiding N per-table round-trips.
+    pub(crate) async fn get_all_columns_impl(
+        &self,
+        handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+
+        let configs = self.connect_configs.read().await;
+        let schema_filter = configs
+            .get(&handle.pool_id)
+            .and_then(|c| c.schema.as_deref())
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_string);
+        drop(configs);
+
+        let schema_ref = schema_filter.as_deref().unwrap_or("public");
+
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                c.table_name,
+                c.column_name,
+                c.data_type,
+                c.is_nullable,
+                c.column_default,
+                col_description(
+                    (quote_ident(c.table_schema)||'.'||quote_ident(c.table_name))::regclass,
+                    c.ordinal_position
+                ) AS comment,
+                CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END AS is_primary_key
+            FROM information_schema.columns c
+            LEFT JOIN (
+                SELECT ku.table_name, ku.column_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage ku
+                  ON ku.constraint_name = tc.constraint_name
+                 AND ku.table_schema = tc.table_schema
+                WHERE tc.constraint_type = 'PRIMARY KEY'
+                  AND tc.table_schema = $1
+            ) pk ON c.table_name = pk.table_name AND c.column_name = pk.column_name
+            WHERE c.table_schema = $1
+            ORDER BY c.table_name, c.ordinal_position
+            "#,
+        )
+        .bind(schema_ref)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        let mut result: HashMap<String, (Vec<ColumnSchema>, Vec<String>)> = HashMap::new();
+
+        for row in &rows {
+            let table_name: String = row.get("table_name");
+            let col_name: String = row.get("column_name");
+            let nullable: String = row.get("is_nullable");
+            let is_pk: bool = row.get("is_primary_key");
+
+            let column = ColumnSchema {
+                name: col_name.clone(),
+                data_type: row.get("data_type"),
+                nullable: nullable == "YES",
+                default_value: row.get("column_default"),
+                comment: row.get("comment"),
+                is_primary_key: is_pk,
+                is_auto_increment: false,
+            };
+
+            let entry = result.entry(table_name).or_default();
+            entry.0.push(column);
+            if is_pk {
+                entry.1.push(col_name);
+            }
+        }
+
+        Ok(result)
     }
 }

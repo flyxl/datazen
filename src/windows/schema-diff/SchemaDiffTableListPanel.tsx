@@ -56,11 +56,13 @@ export function SchemaDiffTableListPanel({
                 <span className="min-w-0 flex-1 truncate font-mono">{name}</span>
                 {hasDiff === true && (
                   <span className="shrink-0 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium uppercase text-warning">
-                    {t('sync.colChanged')}
+                    {t('schemaDiff.colChanged')}
                   </span>
                 )}
                 {hasDiff === false && (
-                  <span className="shrink-0 text-[10px] text-fg-muted">{t('sync.identical')}</span>
+                  <span className="shrink-0 text-[10px] text-fg-muted">
+                    {t('schemaDiff.identical')}
+                  </span>
                 )}
               </button>
             );

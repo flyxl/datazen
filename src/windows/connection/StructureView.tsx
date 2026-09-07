@@ -11,6 +11,8 @@ import { CopyableError } from '../../components/ui/CopyableError';
 interface StructureViewProps {
   dbSessionId: string;
   tableName: string;
+  database?: string;
+  targetColumn?: string;
   onEditStructure?: (tableName: string) => void;
 }
 
@@ -32,21 +34,53 @@ function KeyBadge({ label, tone }: { label: string; tone: 'blue' | 'amber' | 'gr
   );
 }
 
-export function StructureView({ dbSessionId, tableName, onEditStructure }: StructureViewProps) {
+export function StructureView({
+  dbSessionId,
+  tableName,
+  database,
+  targetColumn,
+  onEditStructure,
+}: StructureViewProps) {
   const { t } = useI18n();
   const [schema, setSchema] = useState<TableSchema | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [highlightedCol, setHighlightedCol] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!targetColumn || !schema) return;
+    const lower = targetColumn.toLowerCase();
+    const matched = schema.columns.find((c) => c.name.toLowerCase() === lower);
+    if (!matched) return;
+
+    setHighlightedCol(matched.name);
+
+    const scrollTimer = setTimeout(() => {
+      const el = document.querySelector(`[data-struct-col="${matched.name}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 150);
+
+    const fadeTimer = setTimeout(() => {
+      setHighlightedCol(null);
+    }, 1400);
+
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(fadeTimer);
+    };
+  }, [targetColumn, schema]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
     if (import.meta.env.DEV) {
-      console.log('[StructureView] loading schema', dbSessionId, tableName);
+      console.log('[StructureView] loading schema', dbSessionId, tableName, database);
     }
 
-    getCachedTableSchema(dbSessionId, tableName)
+    getCachedTableSchema(dbSessionId, tableName, database)
       .then((result) => {
         if (!cancelled) {
           setSchema(result);
@@ -70,7 +104,7 @@ export function StructureView({ dbSessionId, tableName, onEditStructure }: Struc
     return () => {
       cancelled = true;
     };
-  }, [dbSessionId, tableName, t]);
+  }, [dbSessionId, tableName, database, t]);
 
   if (loading) {
     return (
@@ -144,10 +178,17 @@ export function StructureView({ dbSessionId, tableName, onEditStructure }: Struc
             {schema.columns.map((col) => {
               const isPk = pkSet.has(col.name);
               const isUq = uniqueCols.has(col.name);
+              const isTarget = highlightedCol === col.name;
               return (
                 <tr
                   key={col.name}
-                  className="border-b border-edge bg-surface hover:bg-surface-alt/50"
+                  data-struct-col={col.name}
+                  className={cn(
+                    'border-b border-edge transition-all duration-500',
+                    isTarget
+                      ? 'bg-accent/25 ring-2 ring-accent/70 ring-inset animate-pulse'
+                      : 'bg-surface hover:bg-surface-alt/50',
+                  )}
                 >
                   <td className="selectable px-4 py-2.5 font-mono text-fg">{col.name}</td>
                   <td

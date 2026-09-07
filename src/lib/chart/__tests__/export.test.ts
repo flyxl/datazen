@@ -17,7 +17,7 @@ vi.mock('html-to-image', () => ({
 describe('exportChartAsPng', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    document.documentElement.style.setProperty('--c-surface', '#1a1a2e');
+    document.documentElement.style.setProperty('--c-surface', '#0b1220');
   });
 
   it('exports chart element as PNG via file dialog', async () => {

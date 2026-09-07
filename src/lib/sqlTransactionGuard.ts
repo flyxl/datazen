@@ -3,83 +3,12 @@
  *
  * Not a full SQL parser: strips comments/strings, splits on `;`, then looks at
  * statement-leading transaction keywords.
+ *
+ * Statement splitting delegates to the unified semantic scanner.
  */
+import { maskSemicolonsInLiterals } from '../components/sql-editor/semantic/scanner';
 
 /** Mask `;` inside comments and quoted literals so a naive split is safe. */
-function maskSemicolonsInLiterals(sql: string): string {
-  let out = '';
-  let i = 0;
-  while (i < sql.length) {
-    const c = sql[i]!;
-    const next = sql[i + 1];
-
-    if (c === '-' && next === '-') {
-      while (i < sql.length && sql[i] !== '\n') {
-        out += sql[i] === ';' ? ' ' : sql[i]!;
-        i += 1;
-      }
-      continue;
-    }
-    if (c === '#') {
-      while (i < sql.length && sql[i] !== '\n') {
-        out += sql[i] === ';' ? ' ' : sql[i]!;
-        i += 1;
-      }
-      continue;
-    }
-    if (c === '/' && next === '*') {
-      out += '/*';
-      i += 2;
-      while (i + 1 < sql.length && !(sql[i] === '*' && sql[i + 1] === '/')) {
-        out += sql[i] === ';' ? ' ' : sql[i]!;
-        i += 1;
-      }
-      if (i + 1 < sql.length) {
-        out += '*/';
-        i += 2;
-      }
-      continue;
-    }
-    if (c === "'" || c === '"') {
-      const quote = c;
-      out += c;
-      i += 1;
-      while (i < sql.length) {
-        const ch = sql[i]!;
-        out += ch === ';' ? ' ' : ch;
-        i += 1;
-        if (ch === quote) {
-          if (sql[i] === quote) {
-            out += quote;
-            i += 1;
-            continue;
-          }
-          break;
-        }
-      }
-      continue;
-    }
-    if (c === '$') {
-      const rest = sql.slice(i);
-      const m = rest.match(/^(\$[A-Za-z0-9_]*\$)/);
-      if (m) {
-        const tag = m[1]!;
-        const endIdx = sql.indexOf(tag, i + tag.length);
-        if (endIdx >= 0) {
-          out += sql.slice(i, endIdx + tag.length).replace(/;/g, ' ');
-          i = endIdx + tag.length;
-          continue;
-        }
-      }
-    }
-
-    out += c;
-    i += 1;
-  }
-  return out;
-}
-
-/** Strip comments for display/analysis helpers that still want statement text. */
 export function stripSqlNoise(sql: string): string {
   return maskSemicolonsInLiterals(sql);
 }

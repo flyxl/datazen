@@ -27,18 +27,18 @@ const CM_VARS: Record<keyof EditorColorContract, string> = {
   cursor: '--cm-cursor',
 };
 
-/** Host dark defaults (One Dark–ish); used when CSS vars are unset. */
+/** Host dark defaults (Table Workspace navy); used when CSS vars are unset. */
 export const DEFAULT_EDITOR_COLORS: EditorColorContract = {
-  keyword: '#c678dd',
-  string: '#98c379',
-  number: '#d19a66',
-  comment: '#5c6370',
-  operator: '#56b6c2',
-  punctuation: '#abb2bf',
-  foreground: '#f1f5f9',
-  background: '#0f172a',
-  selection: 'rgba(59,130,246,0.25)',
-  cursor: '#f1f5f9',
+  keyword: '#93c5fd',
+  string: '#6ee7b7',
+  number: '#fbbf24',
+  comment: '#9ca3af',
+  operator: '#67e8f9',
+  punctuation: '#d1d5db',
+  foreground: '#f3f4f6',
+  background: '#0b1220',
+  selection: 'rgba(59, 130, 246, 0.32)',
+  cursor: '#f3f4f6',
 };
 
 const EDITOR_JSON_KEYS = new Set<string>(Object.keys(CM_VARS));
@@ -75,14 +75,19 @@ export function readEditorColors(getVar: (name: string) => string): EditorColorC
   return colors;
 }
 
-export function readEditorColorsFromElement(el: Element = document.documentElement): EditorColorContract {
+export function readEditorColorsFromElement(
+  el: Element = document.documentElement,
+): EditorColorContract {
   const style = getComputedStyle(el);
   const colors = readEditorColors((name) => style.getPropertyValue(name));
   if (!packEditorOverlay) return colors;
   return { ...colors, ...packEditorOverlay };
 }
 
-export function editorColorsFromJson(json: unknown, base: EditorColorContract): EditorColorContract {
+export function editorColorsFromJson(
+  json: unknown,
+  base: EditorColorContract,
+): EditorColorContract {
   if (!json || typeof json !== 'object') return { ...base };
   const next = { ...base };
   for (const [key, value] of Object.entries(json as Record<string, unknown>)) {
@@ -105,10 +110,13 @@ const EXTENDED_LIGHT = {
   typeName: '#b45309',
   propertyName: '#2563eb',
   variableName: '#dc2626',
-  name: '#0f172a',
+  name: '#111827',
 };
 
-export function buildEditorHighlightStyle(colors: EditorColorContract, dark: boolean): HighlightStyle {
+export function buildEditorHighlightStyle(
+  colors: EditorColorContract,
+  dark: boolean,
+): HighlightStyle {
   const ext = dark ? EXTENDED_DARK : EXTENDED_LIGHT;
   return HighlightStyle.define([
     { tag: tags.keyword, color: colors.keyword },

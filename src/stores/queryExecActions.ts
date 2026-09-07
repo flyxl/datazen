@@ -2,7 +2,8 @@ import { queryCommands } from '../commands/query';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import { applyQueryStreamEvent } from '../lib/queryStream';
 import { resolvePostQueryViewMode } from '../lib/chart/postQueryView';
-import { sqlContainsSchemaChangingDdl } from '../lib/schemaChangingSql';
+import { sqlContainsSchemaChangingDdl, sqlMayMutateSchema } from '../lib/schemaChangingSql';
+import { invalidateSchemaCache } from '../lib/schemaCache';
 import { t } from '../locales/t';
 import type { QueryStreamEvent, StatementResult } from '../types';
 import type { ChartConfig } from '../types/chart';
@@ -59,6 +60,9 @@ function extractError(e: unknown): string {
 }
 
 async function notifySchemaChangedIfNeeded(dbSessionId: string, sql: string): Promise<void> {
+  if (sqlMayMutateSchema(sql)) {
+    invalidateSchemaCache(dbSessionId);
+  }
   if (!sqlContainsSchemaChangingDdl(sql)) return;
   await emitCrossWindow('datazen:refresh-connection', { dbSessionId });
 }
@@ -86,10 +90,7 @@ function transitionExec(
   return patchExec(current, panelId, reduceQueryExecutionState(exec, transition));
 }
 
-function queryErrorTransition(
-  exec: QueryExecState,
-  message: string,
-): QueryExecutionTransition {
+function queryErrorTransition(exec: QueryExecState, message: string): QueryExecutionTransition {
   if (exec.cancelState === 'requested' && isCancellationError(message)) {
     return { type: 'cancelled' };
   }
@@ -173,14 +174,5 @@ export async function runBoundQuery(
   /** F7: panel's PG-family schema target — drivers inline it when supported. */
   schema?: string | null,
 ): Promise<void> {
-  await runStreamingQuery(
-    panelId,
-    dbSessionId,
-    sql,
-    getExec,
-    setExec,
-    database,
-    schema,
-    params,
-  );
+  await runStreamingQuery(panelId, dbSessionId, sql, getExec, setExec, database, schema, params);
 }

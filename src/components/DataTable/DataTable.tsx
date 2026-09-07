@@ -10,7 +10,9 @@ import {
   formatRowAsSqlInsert,
   formatRowAsSqlUpdate,
   resolveDataTableCellFromEvent,
+  resolveDataTableHeaderColFromEvent,
   rowToNamedRecord,
+  serializeDataTableColumnValues,
   serializeDataTableRowsAsCsv,
   serializeDataTableRowsAsTsv,
 } from '../../lib/dataTableContextMenu';
@@ -192,6 +194,9 @@ export function DataTable({
       e.stopPropagation();
 
       const hit = resolveDataTableCellFromEvent(e.target);
+      const hitHeaderCol = !hit ? resolveDataTableHeaderColFromEvent(e.target) : null;
+      const effectiveColName = hit ? hit.columnName : hitHeaderCol;
+      const effectiveColIdx = effectiveColName ? columnNames.indexOf(effectiveColName) : -1;
       const hitRow = hit ? rows[hit.rowIndex] : undefined;
       const hitColIdx = hit ? columnNames.indexOf(hit.columnName) : -1;
       const hitCellValue = hitRow && hitColIdx >= 0 ? (hitRow[hitColIdx] ?? null) : undefined;
@@ -241,6 +246,7 @@ export function DataTable({
             copyAsUpdate: t('dataTable.copyAsUpdate'),
             copyAsCsv: t('dataTable.copyAsCsv'),
             copyColumnName: t('dataTable.copyColumnName'),
+            copyColumnData: t('dataTable.copyColumnData'),
             setNull: t('dataTable.setNull'),
             filterByValue: t('dataTable.filterByValue'),
             copySelectedRows: `${t('common.copy')} ${t('export.selectedRows')}`,
@@ -295,10 +301,15 @@ export function DataTable({
                   copyText(serializeDataTableRowsAsCsv(columnNames, csvRows));
                 }
               : undefined,
-            onCopyColumnName:
-              hasCellContext && hit
+            onCopyColumnName: effectiveColName
+              ? () => {
+                  copyText(effectiveColName);
+                }
+              : undefined,
+            onCopyColumnData:
+              effectiveColIdx >= 0
                 ? () => {
-                    copyText(hit.columnName);
+                    copyText(serializeDataTableColumnValues(effectiveColIdx, rows));
                   }
                 : undefined,
             onSetNull:
@@ -334,6 +345,7 @@ export function DataTable({
               : undefined,
           },
           hasCellContext,
+          hasHeaderContext: !!hitHeaderCol,
           hasSelectedRows,
           exportEnabled,
           canFilterByValue,
@@ -538,21 +550,6 @@ export function DataTable({
           onPageSizeChange={onPageSizeChange}
           loading={loading}
         />
-      )}
-
-      {exportEnabled && !hasSelection && (
-        <div className="flex shrink-0 items-center justify-end border-t border-edge bg-surface-alt px-2 py-1">
-          <button
-            type="button"
-            {...tid('data-table-export')}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-fg-secondary hover:bg-surface-raised hover:text-fg"
-            onClick={() => setExportOpen(true)}
-            title={t('export.export')}
-          >
-            <Download className="h-3 w-3" />
-            {t('export.export')}
-          </button>
-        </div>
       )}
 
       {exportOpen && (

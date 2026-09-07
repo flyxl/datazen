@@ -135,13 +135,20 @@ Data Transfer 使用 Endpoints → Setup → Objects → Mapping → Preview →
 - **MCP**：`src-tauri/src/mcp/` 同时提供 MCP Server 和 Client，并支持 headless stdio。
 - **Dashboard**：`src-tauri/src/dashboard/` 负责 Widget、执行、历史、告警和导出；Monitor 位于 `src-tauri/src/monitor/`。
 
-## 8. 持久化与安全
+## 8. 扩展与插件架构
+
+DataZen 采用双轨扩展体系：
+
+- **沙箱扩展（Sandbox Extensions）**：基于 `manifest.json`、`datazen://` 协议与沙箱 `<iframe>`，向用户暴露独立工作区页面与外观主题，通过受控 postMessage 桥通信。详见 [extensions.md](backend/extensions.md)。
+- **特权扩展点（Host Extension Points）**：宿主基于 `ExtensionPoint<T>` 契约与 CodeMirror Compartment 实现进程内（In-Process）接入，专用于 SQLEditor 增强等高性能、深交互核心模块。受根目录 **DataZen Plugin, Driver & Extension Linking Exception** 保护，支持独立许可与分发。
+
+## 9. 持久化与安全
 
 Desktop 持久化由 `src-tauri/src/store/` 管理，包含连接配置、设置、AI 配置、同步任务和历史等。敏感配置使用 AES-256-GCM，主密钥由 `key_store` 管理，可使用 OS keychain 或开发/CI 文件后端。
 
 查询历史目前位于 `history.sqlite`，SQL 文本和错误信息并非整体加密；因此应用数据目录应按敏感数据处理。
 
-## 9. 前端状态
+## 10. 前端状态
 
 React 前端使用 Zustand。主要 Store 位于 `src/stores/`：
 
@@ -155,7 +162,7 @@ React 前端使用 Zustand。主要 Store 位于 `src/stores/`：
 
 跨窗口不共享 React/Zustand 内存状态，通过 Tauri Event 进行同步。
 
-## 10. 测试
+## 11. 测试
 
 测试分布在 Driver、Host Rust、Frontend Vitest 和 E2E 四层。Driver-specific 行为放在 `packages/drivers/<id>/`；Host 不复制 Driver 方言测试。E2E 主要覆盖真实窗口流程和 IPC contract。
 

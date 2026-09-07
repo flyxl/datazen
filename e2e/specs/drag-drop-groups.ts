@@ -1,12 +1,15 @@
 /**
- * E2E tests for the navigator's native HTML5 drag-and-drop connection ordering.
+ * Integration tests for the navigator's HTML5 drag-and-drop connection ordering.
  *
  * The navigator uses `draggable` plus dragstart/dragover/drop/dragend handlers;
- * these tests dispatch that same event lifecycle instead of PointerEvents.
+ * These tests dispatch synthetic DOM events, bypassing the macOS dragging
+ * destination. They verify handlers and persistence, but cannot detect native
+ * WKWebView interception. See the native drag exception in e2e-coverage.md.
  */
 import { expect, browser, $ } from '@wdio/globals';
 import { expandAllGroups } from '../helpers.js';
 import { t } from '../i18n.js';
+import { existsSync, readFileSync } from 'node:fs';
 
 const GROUP_A = 'DragTestGroupA';
 const GROUP_B = 'DragTestGroupB';
@@ -14,6 +17,23 @@ const CONN_A_NAME = 'DragTestConnA';
 const CONN_B_NAME = 'DragTestConnB';
 const CONN_A_ID = 'drag_test_conn_a_e2e';
 const CONN_B_ID = 'drag_test_conn_b_e2e';
+
+describe('Main window HTML5 drag routing configuration', () => {
+  it('disables native file-drop interception in the effective platform configuration', () => {
+    const base = JSON.parse(
+      readFileSync(new URL('../../src-tauri/tauri.conf.json', import.meta.url), 'utf8'),
+    );
+    const platform =
+      process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux';
+    const platformUrl = new URL(`../../src-tauri/tauri.${platform}.conf.json`, import.meta.url);
+    const override = existsSync(platformUrl) ? JSON.parse(readFileSync(platformUrl, 'utf8')) : {};
+    // Tauri uses JSON Merge Patch: arrays are replaced, not merged by index.
+    const windows = override.app?.windows ?? base.app.windows;
+    expect(
+      windows.find((window: { label: string }) => window.label === 'main')?.dragDropEnabled,
+    ).toBe(false);
+  });
+});
 
 type ConnectionSnapshot = { id: string; name: string; group?: string };
 
@@ -210,7 +230,9 @@ async function endHtml5Drag(connectionName: string): Promise<void> {
   }, connectionName);
 }
 
-async function dragOverGroupHeaderHtml5(groupName: string): Promise<{ prevented: boolean; dropEffect: string }> {
+async function dragOverGroupHeaderHtml5(
+  groupName: string,
+): Promise<{ prevented: boolean; dropEffect: string }> {
   return browser.execute((name: string) => {
     const target = Array.from(document.querySelectorAll<HTMLElement>('[data-group-header]')).find(
       (item) => item.dataset.groupName === name,
@@ -247,9 +269,13 @@ async function dropGroupHeaderHtml5(groupName: string): Promise<boolean> {
   }, groupName) as Promise<boolean>;
 }
 
-async function dragOverSectionHeaderHtml5(section: string): Promise<{ prevented: boolean; dropEffect: string }> {
+async function dragOverSectionHeaderHtml5(
+  section: string,
+): Promise<{ prevented: boolean; dropEffect: string }> {
   return browser.execute((s: string) => {
-    const target = document.querySelector<HTMLElement>(`[data-section-header][data-section="${s}"]`);
+    const target = document.querySelector<HTMLElement>(
+      `[data-section-header][data-section="${s}"]`,
+    );
     const dataTransfer = (window as DndWindow).__datazenDndTransfer;
     if (!target || !dataTransfer) return { prevented: false, dropEffect: '' };
 
@@ -412,7 +438,13 @@ describe('连接分组中的 HTML5 拖拽排序 (DND)', () => {
 
     const dragOverResult = await dragOverGroupHeaderHtml5(GROUP_B);
     expect(dragOverResult.prevented).toBe(true);
-    expect(dragOverResult.dropEffect).toBe('move');
+    // WebKit's synthetic DataTransfer may keep dropEffect at "none" outside
+    // a native drag session. Assert visible acceptance and persisted movement.
+    await browser.waitUntil(async () =>
+      (await $(`[data-group-header][data-group-name="${GROUP_B}"]`).getAttribute('class')).includes(
+        'bg-accent/20',
+      ),
+    );
 
     expect(await dropGroupHeaderHtml5(GROUP_B)).toBe(true);
     await browser.waitUntil(

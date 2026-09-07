@@ -213,9 +213,7 @@ export function WorkflowPage({
 
   const openHistoryPanel = useCallback(
     async (historyId: string, workflowName: string) => {
-      const existing = panels.find(
-        (p) => isHistoryDetailPanel(p) && p.historyId === historyId,
-      );
+      const existing = panels.find((p) => isHistoryDetailPanel(p) && p.historyId === historyId);
       if (existing) {
         setActivePanelId(existing.id);
         setActiveStepIndex(
@@ -535,7 +533,9 @@ export function WorkflowPage({
       try {
         let targetId = dashboardId;
         if (dashboardId === 'new') {
-          const board = createEmptyDashboard(newName?.trim() || t('dashboard.defaultName'));
+          const board = createEmptyDashboard(
+            newName?.trim() || t('workflows.dashboard.defaultName'),
+          );
           await dashboardCommands.saveDashboard(board);
           targetId = board.id;
         }
@@ -867,7 +867,7 @@ export function WorkflowPage({
                   data-testid="workflow-add-to-dashboard"
                   onClick={() => setAddToDashboardOpen(true)}
                 >
-                  {t('dashboard.addToDashboard')}
+                  {t('workflows.addToDashboard')}
                 </Button>
               )}
             </div>
@@ -980,9 +980,7 @@ export function WorkflowPage({
                       type="button"
                       data-testid="workflow-yaml-save"
                       className="rounded-md bg-accent px-3 py-1.5 text-xs text-white hover:opacity-90"
-                      onClick={() =>
-                        void handleSaveYaml(activePanel.id, activePanel.yamlText)
-                      }
+                      onClick={() => void handleSaveYaml(activePanel.id, activePanel.yamlText)}
                     >
                       {t('common.save')}
                     </button>
@@ -1046,9 +1044,7 @@ function StepDetailView({
   const statementResult = useMemo(() => stepToStatementResult(step), [step]);
   const tableRows = statementResult?.rows;
   const rowsCount =
-    typeof step.result?.rows_count === 'number'
-      ? step.result.rows_count
-      : (tableRows?.length ?? 0);
+    typeof step.result?.rows_count === 'number' ? step.result.rows_count : (tableRows?.length ?? 0);
   const chartable = useMemo(
     () => statementResult != null && isChartableResult(statementResult),
     [statementResult],

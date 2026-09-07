@@ -244,6 +244,29 @@ fn missing_auto_chart_on_query_defaults_to_false() {
 }
 
 #[test]
+fn editor_completion_quote_policy_defaults_to_unquoted() {
+    let mut value = serde_json::to_value(AppSettings::default()).unwrap();
+    value
+        .as_object_mut()
+        .unwrap()
+        .remove("editorCompletionQuotePolicy");
+    let parsed: AppSettings = serde_json::from_value(value).unwrap();
+    assert_eq!(parsed.editor_completion_quote_policy, "unquoted");
+}
+
+#[test]
+fn editor_completion_quote_policy_roundtrip() {
+    let settings = AppSettings {
+        editor_completion_quote_policy: "both".to_string(),
+        ..AppSettings::default()
+    };
+    let json = serde_json::to_string(&settings).unwrap();
+    assert!(json.contains("editorCompletionQuotePolicy"));
+    let parsed: AppSettings = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.editor_completion_quote_policy, "both");
+}
+
+#[test]
 fn first_run_language_is_supported() {
     let settings = AppSettings::default_for_first_run();
     const OK: &[&str] = &["en", "zh-CN"];

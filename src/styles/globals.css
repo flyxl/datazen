@@ -51,7 +51,7 @@ html.macos-rounded #splash {
 /* A1: theme-aware, low-saturation selection highlight. */
 ::selection {
   background: rgba(59, 130, 246, 0.2);
-  background: color-mix(in oklab, var(--c-accent, #3b82f6) 22%, transparent);
+  background: color-mix(in oklab, var(--c-accent, #2563eb) 22%, transparent);
   color: inherit;
 }
 
@@ -61,6 +61,17 @@ body {
 }
 
 /* A2: interactive controls are not text-selectable. */
+[draggable='true'] {
+  -webkit-user-drag: element !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+[draggable='true'] * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
 button,
 [role='button'],
 [role='menuitem'],

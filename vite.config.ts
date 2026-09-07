@@ -15,7 +15,12 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@datazen/plugin-sdk': resolve(__dirname, 'src/plugin-sdk'),
+      '@datazen/driver-sdk': resolve(__dirname, 'packages/driver-sdk/src/index.ts'),
+      '@datazen/extension-points': resolve(__dirname, 'packages/extension-points/src/index.ts'),
+      '@datazen/app-sdk': resolve(__dirname, 'packages/app-sdk/src/index.ts'),
+      '@datazen/plugin-sdk': resolve(__dirname, 'src/plugin-sdk/index.ts'),
+      '@datazen/extension-sdk': resolve(__dirname, 'packages/app-sdk/src/index.ts'),
+      '@datazen/ui': resolve(__dirname, 'packages/ui/src/index.ts'),
     },
   },
   // Main window: index.html (with splash). Sub-windows: window.html (no splash).

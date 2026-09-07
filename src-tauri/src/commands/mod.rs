@@ -2,6 +2,7 @@
 
 pub mod ai;
 mod backup;
+mod clipboard;
 mod config;
 mod connection;
 mod connection_import;
@@ -28,6 +29,7 @@ mod workflow;
 
 pub use ai::*;
 pub use backup::*;
+pub use clipboard::*;
 pub use config::*;
 pub use connection::*;
 pub use context::*;

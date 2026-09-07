@@ -1,0 +1,311 @@
+{
+  "comment": "Shared risk-classification contract between the frontend assessor (classifyRisk / assessExecutionRisk) and the Rust Host guard (check_sql). Both suites consume these cases; a mismatch (semantic drift) fails one side.",
+  "cases": [
+    {
+      "id": "select-is-read",
+      "sql": "SELECT * FROM t",
+      "mode": { "readOnly": true, "safeMode": true },
+      "guardAllowed": true,
+      "frontendClassification": "read",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "with-cte-select-allowed-readonly",
+      "sql": "WITH c AS (SELECT 1) SELECT * FROM c",
+      "mode": { "readOnly": true, "safeMode": true },
+      "guardAllowed": true,
+      "frontendClassification": "read",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "where-in-string-read",
+      "sql": "SELECT 'WHERE' FROM dual",
+      "mode": { "readOnly": true, "safeMode": true },
+      "guardAllowed": true,
+      "frontendClassification": "read",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "update-with-where-safe-allowed",
+      "sql": "UPDATE users SET name = 'x' WHERE id = 1",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": true,
+      "frontendClassification": "mutation",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "update-without-where-safe-blocked",
+      "sql": "UPDATE users SET name = 'x'",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["no-where"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "update-with-where-readonly-blocked",
+      "sql": "UPDATE users SET name = 'x' WHERE id = 1",
+      "mode": { "readOnly": true, "safeMode": false },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "delete-without-where-safe-blocked",
+      "sql": "DELETE FROM t",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["no-where"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "delete-with-where-safe-allowed",
+      "sql": "DELETE FROM t WHERE id = 1",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": true,
+      "frontendClassification": "mutation",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "cte-subquery-where-excluded",
+      "sql": "UPDATE t SET x = (SELECT y FROM u WHERE id = 1)",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["no-where"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "cte-with-write-no-where",
+      "sql": "WITH c AS (SELECT 1 WHERE x = 2) UPDATE t SET y = 3",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["no-where"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "where-in-string-excluded-for-update",
+      "sql": "UPDATE t SET x = 'WHERE'",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["no-where"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "drop-blocked-safe",
+      "sql": "DROP TABLE t",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["drop"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "drop-blocked-readonly",
+      "sql": "DROP TABLE t",
+      "mode": { "readOnly": true, "safeMode": false },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["drop"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "drop-allowed-no-guards",
+      "sql": "DROP TABLE t",
+      "mode": { "readOnly": false, "safeMode": false },
+      "guardAllowed": true,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["drop"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "truncate-blocked-safe",
+      "sql": "TRUNCATE TABLE t",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["truncate"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "insert-no-where-allowed-safe",
+      "sql": "INSERT INTO t VALUES (1)",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": true,
+      "frontendClassification": "mutation",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "insert-readonly-blocked",
+      "sql": "INSERT INTO t VALUES (1)",
+      "mode": { "readOnly": true, "safeMode": false },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "grant-readonly-blocked",
+      "sql": "GRANT SELECT ON t TO u",
+      "mode": { "readOnly": true, "safeMode": false },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "grant-safe-allowed",
+      "sql": "GRANT SELECT ON t TO u",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": true,
+      "frontendClassification": "mutation",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "multi-statement-drop",
+      "sql": "SELECT 1; DROP TABLE t",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["drop"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "multi-statement-safe-read",
+      "sql": "SELECT 1; SELECT 2",
+      "mode": { "readOnly": true, "safeMode": true },
+      "guardAllowed": true,
+      "frontendClassification": "read",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "unknown-gibberish",
+      "sql": "GIBBERISH foo",
+      "mode": { "readOnly": true, "safeMode": true },
+      "guardAllowed": true,
+      "frontendClassification": "unknown",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "unknown-comment-hides-drop-blocked",
+      "sql": "/* DROP */ TABLE t",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "unknown",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "inline-comment-split-drop-blocked",
+      "sql": "DROP/**/TABLE t",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["drop"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "select-comment-hides-drop-allowed",
+      "sql": "SELECT 1 /* DROP TABLE t */",
+      "mode": { "readOnly": true, "safeMode": true },
+      "guardAllowed": true,
+      "frontendClassification": "read",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "select-into-maywrite-not-blocked",
+      "sql": "SELECT a INTO b FROM c",
+      "mode": { "readOnly": true, "safeMode": false },
+      "guardAllowed": true,
+      "frontendClassification": "mutation",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "explain-analyze-maywrite-not-blocked",
+      "sql": "EXPLAIN ANALYZE DELETE FROM t",
+      "mode": { "readOnly": true, "safeMode": false },
+      "guardAllowed": true,
+      "frontendClassification": "mutation",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    },
+    {
+      "id": "update-block-comment-where-not-real",
+      "sql": "UPDATE t SET x = 1 /* WHERE g */",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["no-where"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "delete-line-comment-where-not-real",
+      "sql": "DELETE FROM t -- WHERE g",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["no-where"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "update-hash-comment-where-not-real",
+      "sql": "UPDATE t SET x = 1 # WHERE g",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["no-where"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "update-dollar-quote-where-not-real",
+      "sql": "UPDATE t SET x = $q$WHERE$q$",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["no-where"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "delete-hash-comment-where-not-real",
+      "sql": "DELETE FROM t # WHERE g",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["no-where"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "update-dollar-quote-named-tag-where-not-real",
+      "sql": "UPDATE t SET x = $body$WHERE$body$",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": false,
+      "frontendClassification": "mutation",
+      "frontendFindings": ["no-where"],
+      "frontendHighRisk": true
+    },
+    {
+      "id": "update-hash-inside-string-where-real",
+      "sql": "UPDATE t SET x = 'a#b' WHERE id = 1",
+      "mode": { "readOnly": false, "safeMode": true },
+      "guardAllowed": true,
+      "frontendClassification": "mutation",
+      "frontendFindings": [],
+      "frontendHighRisk": false
+    }
+  ]
+}

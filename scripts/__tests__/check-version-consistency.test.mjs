@@ -9,8 +9,7 @@ import { tmpdir } from 'os';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
+import { describe, it, expect } from 'vitest';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const SCRIPT_SRC = join(REPO_ROOT, 'scripts/check-version-consistency.mjs');
@@ -42,17 +41,17 @@ describe('[tester] check-version-consistency', () => {
     const root = mkdtempSync(join(tmpdir(), 'ver-guard-ok-'));
     writeVersionFixture(root, { pkg: '1.2.3', cargo: '1.2.3', tauri: '1.2.3' });
     const result = runGuard(root);
-    assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /OK — all sources at 1\.2\.3/);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/OK — all sources at 1\.2\.3/);
   });
 
   it('test_tester_exits_1_on_version_mismatch', () => {
     const root = mkdtempSync(join(tmpdir(), 'ver-guard-mismatch-'));
     writeVersionFixture(root, { pkg: '1.0.0', cargo: '1.0.0', tauri: '9.9.9' });
     const result = runGuard(root);
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /Version mismatch detected/);
-    assert.match(result.stderr, /tauri\.conf\.json: 9\.9\.9/);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/Version mismatch detected/);
+    expect(result.stderr).toMatch(/tauri\.conf\.json: 9\.9\.9/);
   });
 
   it('test_tester_fails_on_missing_version_field', () => {
@@ -64,15 +63,15 @@ describe('[tester] check-version-consistency', () => {
     writeFileSync(join(root, 'src-tauri/Cargo.toml'), '[package]\nversion = "1.0.0"\n');
     writeFileSync(join(root, 'src-tauri/tauri.conf.json'), JSON.stringify({ version: '1.0.0' }));
     const result = runGuard(root);
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /Could not read version from package\.json/);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/Could not read version from package\.json/);
   });
 
   it('test_tester_fails_on_invalid_semver', () => {
     const root = mkdtempSync(join(tmpdir(), 'ver-guard-invalid-'));
     writeVersionFixture(root, { pkg: 'not-semver', cargo: 'not-semver', tauri: 'not-semver' });
     const result = runGuard(root);
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /Invalid semver in package\.json/);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/Invalid semver in package\.json/);
   });
 });

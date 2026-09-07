@@ -1,0 +1,22 @@
+{
+  "name": "@datazen/extension-points",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "description": "DataZen host extension points: typed in-process privileged extension registry and React hooks.",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "sideEffects": false,
+  "peerDependencies": {
+    "react": "^17.0.0 || ^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  }
+}

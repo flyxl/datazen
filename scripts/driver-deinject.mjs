@@ -36,10 +36,10 @@ export function cleanGeneratedTsContent() {
  * Regenerated every time the build runs with different --drivers args.
  */
 import { invoke } from '@tauri-apps/api/core';
-import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
-import type { SqlDialectStrategy } from '@datazen/plugin-sdk';
-import type { PluginFormValidator } from '@datazen/plugin-sdk';
-import type { ConnectionClipboardParser } from '@datazen/plugin-sdk';
+import type { DatabaseTypeMeta } from '@datazen/driver-sdk';
+import type { SqlDialectStrategy } from '@datazen/driver-sdk';
+import type { PluginFormValidator } from '@datazen/driver-sdk';
+import type { ConnectionClipboardParser } from '@datazen/driver-sdk';
 import type { PluginSettingsContribution } from '@datazen/plugin-sdk';
 import type { ComponentType } from 'react';
 

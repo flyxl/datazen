@@ -6,6 +6,8 @@ import { useConnectionStore } from '../../../stores/connectionStore';
 import { useActiveConnectionStore } from '../../../stores/activeConnectionStore';
 import { usePanelStore } from '../../../stores/panelStore';
 import { queryCommands } from '../../../commands/query';
+import { settingsCommands } from '../../../commands/settings';
+import { clearCachedAppExecutablePathForTest } from '../../../lib/mcpAgentConfig';
 import type { ConnectionConfig } from '../../../types';
 
 afterEach(cleanup);
@@ -23,6 +25,14 @@ vi.mock('../../../lib/databaseTypes', () => ({
 vi.mock('../contentViewHelpers', () => ({
   getPanelIcon: () => null,
   getPanelLabel: (panel: Panel) => panel.type,
+}));
+
+const { openBackupWindowMock } = vi.hoisted(() => ({
+  openBackupWindowMock: vi.fn(),
+}));
+
+vi.mock('../../../lib/windowManager', () => ({
+  openBackupWindow: (...args: unknown[]) => openBackupWindowMock(...args),
 }));
 
 vi.mock('../../../commands/query', () => ({
@@ -80,6 +90,7 @@ const sampleConnections: ConnectionConfig[] = [
 
 describe('ConnectionWorkspaceHome', () => {
   beforeEach(() => {
+    clearCachedAppExecutablePathForTest();
     useConnectionStore.setState({ connections: [] });
     useActiveConnectionStore.setState({ connections: {} });
     usePanelStore.setState({ pendingQueryHistoryConnectionId: null });
@@ -183,7 +194,7 @@ describe('ConnectionWorkspaceHome', () => {
 
     // Metric cards
     expect(screen.getByText('connWin.home.metrics.connections')).toBeInTheDocument();
-    expect(screen.getByText('connWin.home.metrics.connected')).toBeInTheDocument();
+    expect(screen.getByText('connWin.home.metrics.pinned')).toBeInTheDocument();
     expect(screen.getByText('connWin.home.metrics.dbTypes')).toBeInTheDocument();
 
     // Quick Start section
@@ -192,6 +203,10 @@ describe('ConnectionWorkspaceHome', () => {
     // Common operations
     expect(screen.getByText('connWin.home.commonOps')).toBeInTheDocument();
     expect(screen.getByTestId('empty-new-connection-button')).toBeInTheDocument();
+    expect(screen.getByTestId('empty-new-query-button')).toBeInTheDocument();
+    expect(screen.getByTestId('empty-backup-button')).toBeInTheDocument();
+    expect(screen.getByTestId('empty-restore-button')).toBeInTheDocument();
+    expect(screen.queryByTestId('empty-history-button')).not.toBeInTheDocument();
 
     // AI & MCP Integration
     expect(screen.getByText('connWin.home.aiIntegration.title')).toBeInTheDocument();
@@ -251,11 +266,10 @@ describe('ConnectionWorkspaceHome', () => {
     const viewAllBtn = screen.getByTestId('view-all-history-button');
     fireEvent.click(viewAllBtn);
 
-    expect(usePanelStore.getState().pendingQueryHistoryConnectionId).toBe('conn-1');
-    expect(onSelectConnection).toHaveBeenCalledWith('conn-1');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
-  it('handles clicking common ops history button by setting pendingQueryHistory and selecting connection', () => {
+  it('handles clicking common ops history button by opening global query history dialog', () => {
     useConnectionStore.setState({ connections: sampleConnections });
     const onSelectConnection = vi.fn();
 
@@ -278,11 +292,41 @@ describe('ConnectionWorkspaceHome', () => {
       />,
     );
 
-    const historyBtn = screen.getByTestId('empty-history-button');
-    fireEvent.click(historyBtn);
+    const viewAllBtn = screen.getByTestId('view-all-history-button');
+    fireEvent.click(viewAllBtn);
 
-    expect(usePanelStore.getState().pendingQueryHistoryConnectionId).toBe('conn-1');
-    expect(onSelectConnection).toHaveBeenCalledWith('conn-1');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('triggers openBackupWindow for backup and restore buttons', () => {
+    openBackupWindowMock.mockClear();
+    useConnectionStore.setState({ connections: sampleConnections });
+
+    render(
+      <ConnectionWorkspaceHome
+        hasConnections
+        connectionContext={null}
+        recentPanels={[]}
+        showNewQuery={false}
+        showNewTable={false}
+        showErDiagram={false}
+        showObjects={false}
+        onNewConnection={vi.fn()}
+        onNewQuery={vi.fn()}
+        onCreateTable={vi.fn()}
+        onOpenErDiagram={vi.fn()}
+        onOpenObjects={vi.fn()}
+        onOpenPanel={vi.fn()}
+      />,
+    );
+
+    const backupBtn = screen.getByTestId('empty-backup-button');
+    fireEvent.click(backupBtn);
+    expect(openBackupWindowMock).toHaveBeenCalledWith('backup');
+
+    const restoreBtn = screen.getByTestId('empty-restore-button');
+    fireEvent.click(restoreBtn);
+    expect(openBackupWindowMock).toHaveBeenCalledWith('restore');
   });
 
   it('copies MCP launch command to clipboard when clicking copy button', async () => {
@@ -316,6 +360,47 @@ describe('ConnectionWorkspaceHome', () => {
     await waitFor(() => {
       expect(screen.getByText('connWin.home.aiIntegration.copied')).toBeInTheDocument();
     });
+  });
+
+  it('displays and copies MCP launch command with full executable path', async () => {
+    vi.spyOn(settingsCommands, 'getAppExecutablePath').mockResolvedValue(
+      '/Applications/DataZen.app/Contents/MacOS/datazen',
+    );
+    useConnectionStore.setState({ connections: sampleConnections });
+    const writeTextSpy = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, {
+      clipboard: { writeText: writeTextSpy },
+    });
+
+    render(
+      <ConnectionWorkspaceHome
+        hasConnections
+        connectionContext={null}
+        recentPanels={[]}
+        showNewQuery={false}
+        showNewTable={false}
+        showErDiagram={false}
+        showObjects={false}
+        onNewConnection={vi.fn()}
+        onNewQuery={vi.fn()}
+        onCreateTable={vi.fn()}
+        onOpenErDiagram={vi.fn()}
+        onOpenObjects={vi.fn()}
+        onOpenPanel={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('/Applications/DataZen.app/Contents/MacOS/datazen --mcp'),
+      ).toBeInTheDocument();
+    });
+
+    const copyBtn = screen.getByText('connWin.home.aiIntegration.copy');
+    fireEvent.click(copyBtn);
+    expect(writeTextSpy).toHaveBeenCalledWith(
+      '/Applications/DataZen.app/Contents/MacOS/datazen --mcp',
+    );
   });
 
   it('displays query history records and allows copying SQL', async () => {
@@ -443,5 +528,106 @@ describe('ConnectionWorkspaceHome', () => {
     );
     fireEvent.click(screen.getByText('query'));
     expect(onOpenPanel).toHaveBeenCalledWith('panel-1');
+  });
+
+  it('renders quick start, common ops, query history, and AI assistant cards with flex-1 and full height structure', () => {
+    useConnectionStore.setState({ connections: sampleConnections });
+
+    render(
+      <ConnectionWorkspaceHome
+        hasConnections
+        connectionContext={null}
+        recentPanels={[]}
+        showNewQuery={false}
+        showNewTable={false}
+        showErDiagram={false}
+        showObjects={false}
+        onNewConnection={vi.fn()}
+        onNewQuery={vi.fn()}
+        onCreateTable={vi.fn()}
+        onOpenErDiagram={vi.fn()}
+        onOpenObjects={vi.fn()}
+        onOpenPanel={vi.fn()}
+      />,
+    );
+
+    // Quick Start section header & card container
+    const quickStartTitle = screen.getByText('connWin.home.quickStart');
+    const quickStartCol = quickStartTitle.closest('.lg\\:col-span-2');
+    expect(quickStartCol).toHaveClass('h-full', 'flex', 'flex-col');
+    const quickStartCard = quickStartCol?.querySelector('.rounded-xl');
+    expect(quickStartCard).toHaveClass('flex-1', 'flex', 'flex-col');
+
+    // Quick Start connection buttons should have flex-1 to distribute height
+    const pgConnBtn = screen.getByText('PostgreSQL-Local').closest('button');
+    expect(pgConnBtn).toHaveClass('flex-1');
+
+    // Common Ops header & card container
+    const commonOpsTitle = screen.getByText('connWin.home.commonOps');
+    const commonOpsCol = commonOpsTitle.closest('.flex.flex-col');
+    expect(commonOpsCol).toHaveClass('h-full');
+    const commonOpsCard = commonOpsCol?.querySelector('.rounded-xl');
+    expect(commonOpsCard).toHaveClass('flex-1', 'flex', 'flex-col', 'justify-between');
+
+    // Query History card
+    const historyHeading = screen
+      .getAllByText('connWin.home.recentQueries')
+      .find((el) => el.tagName === 'H3')!;
+    const historyCol = historyHeading.closest('.flex.flex-col');
+    expect(historyCol).toHaveClass('h-full');
+    const historyCard = historyCol?.querySelector('.rounded-xl');
+    expect(historyCard).toHaveClass('flex-1', 'flex', 'flex-col');
+
+    // AI Assistant card
+    const aiTitle = screen.getByText('connWin.home.aiIntegration.title');
+    const aiCol = aiTitle.closest('.flex.flex-col');
+    expect(aiCol).toHaveClass('h-full');
+    const aiCard = aiCol?.querySelector('.rounded-xl');
+    expect(aiCard).toHaveClass('flex-1', 'flex', 'flex-col', 'justify-between');
+  });
+
+  it('calls onSelectHistoryQuery when a recent query item is clicked', async () => {
+    const onSelectHistoryQuery = vi.fn();
+    const mockHistoryItem = {
+      id: 'hist-1',
+      connectionId: 'conn-1',
+      database: 'app_db',
+      sql: 'SELECT * FROM test_table',
+      executedAt: '2026-09-07T12:00:00Z',
+      executionTimeMs: 15,
+      success: true,
+    };
+    vi.mocked(queryCommands.getQueryHistory).mockResolvedValueOnce([mockHistoryItem]);
+
+    render(
+      <ConnectionWorkspaceHome
+        hasConnections
+        connectionContext={{
+          connectionId: 'conn-1',
+          dbSessionId: 'session-1',
+          connectionName: 'Conn 1',
+          databaseType: 'postgresql',
+        }}
+        recentPanels={[]}
+        showNewQuery={false}
+        showNewTable={false}
+        showErDiagram={false}
+        showObjects={false}
+        onNewConnection={vi.fn()}
+        onNewQuery={vi.fn()}
+        onCreateTable={vi.fn()}
+        onOpenErDiagram={vi.fn()}
+        onOpenObjects={vi.fn()}
+        onOpenPanel={vi.fn()}
+        onSelectHistoryQuery={onSelectHistoryQuery}
+      />,
+    );
+
+    const sqlText = await screen.findByText('SELECT * FROM test_table');
+    const card = sqlText.closest('[role="button"]');
+    expect(card).not.toBeNull();
+    fireEvent.click(card!);
+
+    expect(onSelectHistoryQuery).toHaveBeenCalledWith(mockHistoryItem);
   });
 });

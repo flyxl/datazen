@@ -43,6 +43,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
         username: process.env.E2E_PG_USER || 'postgres',
         password: process.env.E2E_PG_PASSWORD || '',
         database: '',
+        schema: process.env.E2E_WORKER_SCHEMA || undefined,
         group: 'E2E 测试',
         colorTag: 'blue',
         sslMode: 'disable',

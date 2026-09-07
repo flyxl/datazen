@@ -23,10 +23,10 @@ function makeTheme(dark: boolean, colors: EditorColorContract) {
         padding: '12px 0',
       },
       '.cm-gutters': {
-        backgroundColor: dark ? '#1e293b' : '#f8fafc',
-        color: dark ? '#64748b' : '#94a3b8',
+        backgroundColor: dark ? '#111827' : '#f1f5f9',
+        color: dark ? '#9ca3af' : '#64748b',
         border: 'none',
-        borderRight: `1px solid ${dark ? '#334155' : '#e2e8f0'}`,
+        borderRight: `1px solid ${dark ? '#374151' : '#cbd5e1'}`,
       },
       '.cm-activeLine': { backgroundColor: 'transparent' },
       '.cm-activeLineGutter': { backgroundColor: 'transparent' },

@@ -672,3 +672,30 @@ may consider it more useful to permit linking proprietary applications with
 the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
 <https://www.gnu.org/licenses/why-not-lgpl.html>.
+
+--------------------------------------------------------------------------------
+
+### DataZen Plugin, Driver & Extension Linking Exception
+
+Additional permission under GNU GPL version 3 section 7:
+
+1. As a special exception to the GNU General Public License version 3, the Copyright 
+   Holders of DataZen give you permission to link or combine DataZen with independent 
+   modules ("Drivers", "Themes", "Extension Points / EPs", or "Workspace Apps") that communicate 
+   with DataZen exclusively through its designated public SDKs and Extension Interfaces:
+   - `@datazen/driver-sdk` and `packages/driver-api` (for Database Drivers & Dialects)
+   - `@datazen/extension-points` (for in-process privileged host extension points)
+   - `@datazen/app-sdk` (for sandboxed Workspace Apps)
+   - Static theme packages (tokens.css, editor.json, charts.json)
+
+2. You may distribute such combined works under terms of your choice, provided that 
+   every copy of DataZen itself (excluding the independent modules) continues to be 
+   distributed in source code form under the GNU General Public License version 3.
+
+3. The independent modules themselves may be licensed under any terms of their authors' 
+   choice, including proprietary, commercial, or permissive open-source licenses, and are 
+   not subject to the reciprocal terms (Copyleft) of the GNU GPL.
+
+4. Nothing in this exception shall be construed as waiving the GPL's protections for 
+   the DataZen core codebase itself.
+

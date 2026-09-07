@@ -340,6 +340,70 @@ impl DatabaseDriver for ClickHouseDriver {
         })
     }
 
+    async fn get_all_columns(
+        &self,
+        handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
+        let pools = self.pools.read().await;
+        let entry = Self::get(&pools, handle)?;
+        let db = entry
+            .database
+            .clone()
+            .unwrap_or_else(|| "default".to_string());
+        let sql = format!(
+            "SELECT table, name, type, default_kind, default_expression, comment \
+             FROM system.columns WHERE database = '{}' ORDER BY table, position",
+            db.replace('\'', "''")
+        );
+        let v = Self::http_query(&entry.client, &entry.base, &sql, Some(&db)).await?;
+
+        let mut result: HashMap<String, (Vec<ColumnSchema>, Vec<String>)> = HashMap::new();
+
+        if let Some(data) = v.get("data").and_then(|d| d.as_array()) {
+            for row in data {
+                let table_name = row
+                    .get("table")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let col_name = row
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let data_type = row
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let default_value = row
+                    .get("default_expression")
+                    .and_then(|d| d.as_str())
+                    .map(String::from);
+                let comment = row
+                    .get("comment")
+                    .and_then(|c| c.as_str())
+                    .map(String::from);
+
+                let column = ColumnSchema {
+                    name: col_name.clone(),
+                    data_type,
+                    nullable: true, // ClickHouse columns are nullable by default
+                    default_value,
+                    comment,
+                    is_primary_key: false, // ClickHouse has no primary key concept in schema
+                    is_auto_increment: false,
+                };
+
+                let entry = result.entry(table_name).or_default();
+                entry.0.push(column);
+            }
+        }
+
+        Ok(result)
+    }
+
     async fn query(
         &self,
         handle: &ConnectionHandle,

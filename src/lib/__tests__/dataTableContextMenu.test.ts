@@ -5,7 +5,9 @@ import {
   formatRowAsSqlUpdate,
   formatRowAsSqlDelete,
   resolveDataTableCellFromEvent,
+  resolveDataTableHeaderColFromEvent,
   rowToNamedRecord,
+  serializeDataTableColumnValues,
   serializeDataTableRowsAsCsv,
   serializeDataTableRowsAsTsv,
   type DataTableContextMenuLabels,
@@ -20,6 +22,7 @@ const labels: DataTableContextMenuLabels = {
   copyAsUpdate: 'Copy as UPDATE',
   copyAsCsv: 'Copy as CSV',
   copyColumnName: 'Copy Column Name',
+  copyColumnData: 'Copy Column Data',
   setNull: 'Set NULL',
   filterByValue: 'Filter by This Value',
   copySelectedRows: 'Copy Selected Rows',
@@ -41,8 +44,9 @@ function findSubmenu(
   items: ReturnType<typeof buildDataTableContextMenuItems>,
   id: string,
 ): Extract<(typeof items)[number], { kind: 'submenu' }> | undefined {
-  return items.find((i): i is Extract<(typeof items)[number], { kind: 'submenu' }> =>
-    i.kind === 'submenu' && i.id === id,
+  return items.find(
+    (i): i is Extract<(typeof items)[number], { kind: 'submenu' }> =>
+      i.kind === 'submenu' && i.id === id,
   );
 }
 
@@ -68,6 +72,35 @@ describe('serializeDataTableRowsAsCsv', () => {
         ],
       ),
     ).toBe('id,name\n1,Ada\n2,"O""Brien, Jr"');
+  });
+});
+
+describe('serializeDataTableColumnValues', () => {
+  it('serializes column values separated by newlines, handling null and objects', () => {
+    const rows = [
+      [1, 'Alice', { role: 'admin' }],
+      [2, null, { role: 'user' }],
+      [3, 'Charlie', null],
+    ];
+    expect(serializeDataTableColumnValues(0, rows)).toBe('1\n2\n3');
+    expect(serializeDataTableColumnValues(1, rows)).toBe('Alice\n\nCharlie');
+    expect(serializeDataTableColumnValues(2, rows)).toBe('{"role":"admin"}\n{"role":"user"}\n');
+  });
+
+  it('returns empty string for negative column index', () => {
+    expect(serializeDataTableColumnValues(-1, [[1]])).toBe('');
+  });
+});
+
+describe('resolveDataTableHeaderColFromEvent', () => {
+  it('returns column name from closest element with data-col-header', () => {
+    const div = document.createElement('div');
+    div.setAttribute('data-col-header', 'email');
+    const child = document.createElement('span');
+    div.appendChild(child);
+    expect(resolveDataTableHeaderColFromEvent(child)).toBe('email');
+    expect(resolveDataTableHeaderColFromEvent(div)).toBe('email');
+    expect(resolveDataTableHeaderColFromEvent(null)).toBeNull();
   });
 });
 
@@ -219,9 +252,9 @@ describe('buildDataTableContextMenuItems', () => {
     ]);
     expect(rootItemIds(items)).not.toContain('export');
     expect(rootItemIds(items)).not.toContain('set-null');
-    expect(findSubmenu(items, 'more-actions')?.items.map((i) => i.kind === 'item' && i.id)).not.toContain(
-      'set-null',
-    );
+    expect(
+      findSubmenu(items, 'more-actions')?.items.map((i) => i.kind === 'item' && i.id),
+    ).not.toContain('set-null');
   });
 
   it('omits filter when canFilterByValue is false', () => {
@@ -257,10 +290,9 @@ describe('buildDataTableContextMenuItems', () => {
       exportEnabled: true,
     });
     expect(rootItemIds(items)).toEqual(['delete-row', 'export']);
-    expect(findSubmenu(items, 'more-actions')?.items.map((i) => i.kind === 'item' && i.id)).toEqual([
-      'copy-selected-rows',
-      'copy-as-csv',
-    ]);
+    expect(findSubmenu(items, 'more-actions')?.items.map((i) => i.kind === 'item' && i.id)).toEqual(
+      ['copy-selected-rows', 'copy-as-csv'],
+    );
 
     expect(
       ids(
@@ -310,5 +342,37 @@ describe('buildDataTableContextMenuItems', () => {
     });
     expect(rootItemIds(items)).toEqual(['copy']);
     expect(rootItemIds(items)).not.toContain('filter-by-value');
+  });
+
+  it('with header context only, shows copy column name and copy column data at root', () => {
+    const onCopyColumnName = vi.fn();
+    const onCopyColumnData = vi.fn();
+    const items = buildDataTableContextMenuItems({
+      labels,
+      handlers: {
+        onCopyColumnName,
+        onCopyColumnData,
+      },
+      hasHeaderContext: true,
+      hasCellContext: false,
+    });
+    expect(rootItemIds(items)).toEqual(['copy-column-name', 'copy-column-data']);
+    const colDataItem = items.find((i) => i.kind === 'item' && i.id === 'copy-column-data');
+    if (colDataItem?.kind === 'item') colDataItem.action();
+    expect(onCopyColumnData).toHaveBeenCalledOnce();
+  });
+
+  it('includes copy-column-data in more-actions when provided in cell context', () => {
+    const onCopyColumnData = vi.fn();
+    const items = buildDataTableContextMenuItems({
+      labels,
+      handlers: {
+        onCopy: vi.fn(),
+        onCopyColumnData,
+      },
+      hasCellContext: true,
+    });
+    const sub = findSubmenu(items, 'more-actions');
+    expect(sub?.items.some((i) => i.kind === 'item' && i.id === 'copy-column-data')).toBe(true);
   });
 });

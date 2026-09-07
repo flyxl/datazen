@@ -88,5 +88,7 @@ const pack = {
   'workflows.schedule.interval': '间隔（秒）',
   'workflows.schedule.hint': '最短 30 秒。定时备份请使用含 backup/command 的工作流。',
   'workflows.editor.invalidYamlField': 'YAML 无效：缺少或无效的字段 "{field}"',
+  'workflows.addToDashboard': '添加到看板',
+  'workflows.dashboard.defaultName': '新看板',
 } as const;
 export default pack;

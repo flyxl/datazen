@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Download, Loader2, Upload } from 'lucide-react';
-import { Button } from '../../../../src/components/ui/Button';
-import { Dialog } from '../../../../src/components/ui/Dialog';
-import { Input } from '../../../../src/components/ui/Input';
+import { Button } from '@datazen/ui';
+import { Dialog } from '@datazen/ui';
+import { Input } from '@datazen/ui';
 import { fileCommands } from '../../../../src/commands/file';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { invokeScanKeys, redisCommandInvoke } from './redisInvoke';
@@ -217,12 +217,7 @@ export function ImportExport({
       if (restoreEntries.length === 0) {
         throw new Error(t('redis.importExportEmptyArchive'));
       }
-      const result = await invokeRestoreKeys(
-        dbSessionId,
-        dbIndex,
-        restoreEntries,
-        replaceExisting,
-      );
+      const result = await invokeRestoreKeys(dbSessionId, dbIndex, restoreEntries, replaceExisting);
       const errCount = result.errors.length;
       showSummary([
         t('redis.importExportRestored').replace('{count}', String(result.restored)),

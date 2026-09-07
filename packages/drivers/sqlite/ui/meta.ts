@@ -1,4 +1,6 @@
-import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
+import type { DatabaseTypeMeta } from '@datazen/driver-sdk';
+import { sqliteFunctions } from './functions';
+import { sqliteDialect, sqliteDialectProfile } from './dialect';
 
 export const sqliteMeta = {
   label: 'SQLite',
@@ -20,6 +22,7 @@ export const sqliteMeta = {
   category: 'sql',
   connectionView: 'sql',
   sqlDialect: 'sqlite',
+  sqlFunctions: sqliteFunctions,
   databaseFieldType: 'path',
   connectionForm: 'file',
   clipboardSchemes: ['sqlite', 'sqlite3'],
@@ -45,4 +48,6 @@ export const sqliteMeta = {
     fields: {},
     indexMethods: ['btree'],
   },
+  sqlDialectStrategy: sqliteDialect,
+  sqlDialectProfile: sqliteDialectProfile,
 } satisfies DatabaseTypeMeta;

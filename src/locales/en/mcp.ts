@@ -47,7 +47,7 @@ const pack = {
   'mcp.config.copied': 'Copied',
   'mcp.config.pathHint': 'Typical location: {path}',
   'mcp.config.commandHint':
-    'Uses `datazen` on PATH. For packaged apps, replace command with the absolute binary path.',
+    'Populated with the full binary path of DataZen. Verify command path if the application is moved.',
   'mcpClient.title': 'External MCP Servers',
   'mcpClient.description': 'Connect to external MCP Servers to extend AI assistant capabilities.',
   'mcpClient.savedConfigs': 'Saved Servers',

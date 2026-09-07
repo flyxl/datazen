@@ -1,4 +1,4 @@
-import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
+import type { DatabaseTypeMeta } from '@datazen/driver-sdk';
 
 export const influxdbMeta = {
   label: 'InfluxDB',

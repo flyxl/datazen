@@ -94,6 +94,23 @@ pub struct AppSettings {
     /// When true (default), strip query result rows and payloads before AI requests leave the device.
     #[serde(default = "default_true")]
     pub ai_strict_egress: bool,
+    /// Identifier quotation policy for SQL completion ('unquoted' | 'always' | 'both'). Default 'unquoted'.
+    #[serde(default = "default_completion_quote_policy")]
+    pub editor_completion_quote_policy: String,
+    /// Keyboard shortcut preset ('default' | 'dbeaver' | 'navicat').
+    #[serde(default = "default_keymap_preset")]
+    pub keymap_preset: String,
+    /// User-customized keyboard shortcut overrides keyed by action ID.
+    #[serde(default)]
+    pub custom_keymap: std::collections::HashMap<String, String>,
+}
+
+fn default_completion_quote_policy() -> String {
+    "unquoted".to_string()
+}
+
+fn default_keymap_preset() -> String {
+    "default".to_string()
 }
 
 fn default_limit_select() -> bool {
@@ -153,6 +170,9 @@ impl Default for AppSettings {
             plugin_settings: serde_json::Map::new(),
             mcp_client_servers: Vec::new(),
             ai_strict_egress: true,
+            editor_completion_quote_policy: default_completion_quote_policy(),
+            keymap_preset: default_keymap_preset(),
+            custom_keymap: std::collections::HashMap::new(),
         }
     }
 }

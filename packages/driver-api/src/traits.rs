@@ -197,6 +197,23 @@ pub trait DatabaseDriver: Send + Sync {
         Ok((schema.columns, schema.primary_keys))
     }
 
+    /// Batch-fetch columns for all tables in the given database/schema.
+    ///
+    /// Returns a map of `table_name → (columns, primary_keys)`. Drivers that
+    /// can issue a single SQL query covering every table should override this
+    /// to avoid N per-table round-trips. The default returns
+    /// [`DriverError::Unsupported`] so callers know to fall back to
+    /// per-table [`Self::get_columns`].
+    async fn get_all_columns(
+        &self,
+        _handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
+        Err(DriverError::Unsupported(
+            "get_all_columns not supported by this driver".into(),
+        ))
+    }
+
     async fn query(&self, handle: &ConnectionHandle, sql: &str)
         -> Result<QueryResult, DriverError>;
 

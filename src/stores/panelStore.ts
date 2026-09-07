@@ -15,11 +15,7 @@ import {
   runBoundQuery,
 } from './queryExecActions';
 import { panelTargetDatabase, panelTargetSchema } from './panelQueryContext';
-import {
-  resolveNextActive,
-  resetPanelIdCounter,
-  type Panel,
-} from './panelTypes';
+import { resolveNextActive, resetPanelIdCounter, type Panel } from './panelTypes';
 
 export type { QueryExecState, BindParams };
 export { EMPTY_QUERY_EXEC, emptyQueryExecState } from './queryExecActions';
@@ -66,6 +62,13 @@ function cancelAndCleanupExec(
 
 // ── Store interface ──────────────────────────────────────────────
 
+export interface PendingHistoryQuery {
+  connectionId: string;
+  sql: string;
+  database?: string | null;
+  schema?: string | null;
+}
+
 interface PanelState {
   panels: Panel[];
   activePanelId: string | null;
@@ -76,6 +79,8 @@ interface PanelState {
   favoritesVisible: boolean;
   /** Connection id waiting for query-history to open once ContentView mounts. */
   pendingQueryHistoryConnectionId: string | null;
+  /** Pending history query waiting for connection session to be established before opening QueryPanel. */
+  pendingHistoryQuery: PendingHistoryQuery | null;
 }
 
 interface PanelActions {
@@ -108,6 +113,7 @@ interface PanelActions {
   loadHistory: (connectionId?: string) => Promise<void>;
   openQueryHistory: (connectionId?: string) => Promise<void>;
   setPendingQueryHistory: (connectionId: string | null) => void;
+  setPendingHistoryQuery: (query: PendingHistoryQuery | null) => void;
   toggleHistory: () => void;
   loadFavorites: (connectionId?: string) => Promise<void>;
   addFavorite: (title: string, sql: string, connectionId: string) => Promise<void>;
@@ -126,6 +132,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
   historyVisible: false,
   favoritesVisible: false,
   pendingQueryHistoryConnectionId: null,
+  pendingHistoryQuery: null,
 
   // ── Panel CRUD ──────────────────────────────────────────────
 
@@ -395,6 +402,10 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     set({ pendingQueryHistoryConnectionId: connectionId });
   },
 
+  setPendingHistoryQuery: (pendingHistoryQuery) => {
+    set({ pendingHistoryQuery });
+  },
+
   toggleHistory: () => set((s) => ({ historyVisible: !s.historyVisible })),
 
   loadFavorites: async (connectionId) => {
@@ -428,6 +439,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
       historyVisible: false,
       favoritesVisible: false,
       pendingQueryHistoryConnectionId: null,
+      pendingHistoryQuery: null,
     });
   },
 }));

@@ -55,6 +55,7 @@ const {
     contextDir: '/tmp/context',
     pluginSettings: {},
     mcpClientServers: [],
+    aiStrictEgress: true,
     monitor: {
       enabled: false,
       pollIntervalSecs: 60,
@@ -93,6 +94,33 @@ const {
     validateConfig: vi.fn().mockResolvedValue(true),
     saveConfig: vi.fn().mockResolvedValue(true),
     deleteConfig: vi.fn().mockResolvedValue(undefined),
+    saveProfile: vi.fn().mockResolvedValue(true),
+    deleteProfile: vi.fn().mockResolvedValue(true),
+    setActiveProfile: vi.fn().mockResolvedValue(true),
+    settingsConfig: {
+      activeProfileId: 'profile-1',
+      profiles: [
+        {
+          id: 'profile-1',
+          name: 'OpenAI GPT-4o',
+          providerType: 'open_ai' as const,
+          apiKey: 'sk-test',
+          endpoint: 'https://api.openai.com/v1',
+          model: 'gpt-4o',
+          maxTokens: 8000,
+          safetyGate: {
+            redactCredentials: true,
+            dataEgressLevel: 'strict' as const,
+            maxSampleRows: 3,
+            dbToolPolicy: 'read_only' as const,
+            mcpToolPolicy: 'disabled' as const,
+            requireSqlConfirm: true,
+            maxContextBytes: 32000,
+          },
+          isDefault: true,
+        },
+      ],
+    },
     fetchRemoteModels: vi.fn().mockResolvedValue([]),
     clearError: vi.fn(),
     setupEventListeners: vi.fn().mockResolvedValue(() => {}),
@@ -365,6 +393,7 @@ beforeEach(() => {
     contextDir: '/tmp/context',
     pluginSettings: {},
     mcpClientServers: [],
+    aiStrictEgress: true,
     monitor: {
       enabled: false,
       pollIntervalSecs: 60,
@@ -497,6 +526,8 @@ describe('SettingsContent', () => {
       expect(updateSettingsMock).toHaveBeenCalledWith({ editorFontFamily: 'JetBrains Mono' }),
     );
 
+    expect(screen.getByText('settings.editorCompletionQuotePolicy')).toBeInTheDocument();
+
     goToSection('settings.behavior');
     const switches = screen.getAllByRole('switch');
     fireEvent.click(switches[0]);
@@ -533,13 +564,6 @@ describe('SettingsContent', () => {
   });
 
   it('covers AI settings validate, save, delete, and fetch models', async () => {
-    aiState.config = {
-      providerType: 'open_ai',
-      apiKey: 'sk-test',
-      endpoint: 'https://api.openai.com/v1',
-      model: 'gpt-4o',
-      maxTokens: 8000,
-    };
     aiState.isConfigured = true;
     aiState.remoteModels = [{ id: 'gpt-4o', displayName: 'GPT-4o' }];
 
@@ -549,6 +573,9 @@ describe('SettingsContent', () => {
 
     expect(screen.getByText('settings.ai.configured')).toBeInTheDocument();
 
+    fireEvent.click(screen.getByTitle('settings.ai.editModel'));
+    expect(screen.getByText('settings.ai.editModel')).toBeInTheDocument();
+
     const apiKey = document.querySelector('input[type="password"]') as HTMLInputElement;
     fireEvent.change(apiKey, { target: { value: 'sk-new' } });
     fireEvent.click(screen.getByText('settings.ai.fetchModels'));
@@ -557,11 +584,12 @@ describe('SettingsContent', () => {
     fireEvent.click(screen.getByText('settings.ai.validate'));
     await waitFor(() => expect(validateConfigMock).toHaveBeenCalled());
 
-    fireEvent.click(screen.getByText('settings.ai.save'));
-    await waitFor(() => expect(saveConfigMock).toHaveBeenCalled());
+    const saveButtons = screen.getAllByText('common.save');
+    fireEvent.click(saveButtons[saveButtons.length - 1]);
+    await waitFor(() => expect(aiState.saveProfile).toHaveBeenCalled());
 
-    fireEvent.click(screen.getByText('settings.ai.delete'));
-    await waitFor(() => expect(deleteConfigMock).toHaveBeenCalled());
+    fireEvent.click(screen.getByTitle('common.delete'));
+    await waitFor(() => expect(aiState.deleteProfile).toHaveBeenCalled());
   });
 
   it('covers custom AI provider protocol and manual model input', async () => {
@@ -570,22 +598,19 @@ describe('SettingsContent', () => {
     await waitForSettingsLoad();
     goToSection('common.aiAssistant');
 
+    fireEvent.click(screen.getByText('settings.ai.addModel'));
+
     pickSelectOption(0, 'Custom');
-    expect(screen.getByText('settings.ai.customHint')).toBeInTheDocument();
     pickSelectOption(1, 'settings.ai.protocolAnthropic');
 
-    const textInputs = document.querySelectorAll('input[type="text"]');
-    fireEvent.change(textInputs[0], { target: { value: 'https://anthropic.example.com' } });
-    fireEvent.change(document.querySelector('input[type="password"]') as HTMLInputElement, {
-      target: { value: 'key' },
-    });
+    const apiKey = document.querySelector('input[type="password"]') as HTMLInputElement;
+    fireEvent.change(apiKey, { target: { value: 'key' } });
 
     fireEvent.click(screen.getByText('settings.ai.fetchModels'));
     await waitFor(() => expect(fetchRemoteModelsMock).toHaveBeenCalled());
 
     const manualCheckbox = screen.getByRole('checkbox');
     fireEvent.click(manualCheckbox);
-    fireEvent.change(textInputs[0], { target: { value: 'my-model' } });
   });
 
   it('covers context directory setting in AI section', async () => {
@@ -635,7 +660,7 @@ describe('SettingsContent', () => {
 
     render(<SettingsContent />);
     await waitForSettingsLoad();
-    goToSection('mcp.title');
+    goToSection('settings.mcp.title');
 
     await waitFor(() => expect(mcpListAllToolsMock).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByText('mcp.running')).toBeInTheDocument());
@@ -674,7 +699,7 @@ describe('SettingsContent', () => {
 
     render(<SettingsContent />);
     await waitForSettingsLoad();
-    goToSection('mcp.title');
+    goToSection('settings.mcp.title');
     await waitFor(() => expect(mcpListAllToolsMock).toHaveBeenCalled());
 
     fireEvent.click(screen.getAllByRole('switch')[0]);
@@ -698,7 +723,7 @@ describe('SettingsContent', () => {
 
     render(<SettingsContent />);
     await waitForSettingsLoad();
-    goToSection('mcpClient.title');
+    goToSection('settings.mcpClient.title');
 
     await waitFor(() => expect(loadMcpServersMock).toHaveBeenCalled());
     expect(screen.getByText('mcpClient.savedConfigs')).toBeInTheDocument();
@@ -725,7 +750,7 @@ describe('SettingsContent', () => {
     ];
     render(<SettingsContent />);
     await waitForSettingsLoad();
-    goToSection('mcpClient.title');
+    goToSection('settings.mcpClient.title');
 
     fireEvent.click(screen.getByText('mcpClient.disconnect'));
     await waitFor(() => expect(disconnectMcpServerMock).toHaveBeenCalledWith('srv1'));
@@ -737,7 +762,7 @@ describe('SettingsContent', () => {
     currentSettings.mcpClientServers = [];
     render(<SettingsContent />);
     await waitForSettingsLoad();
-    goToSection('mcpClient.title');
+    goToSection('settings.mcpClient.title');
 
     expect(screen.getByText('mcpClient.noSavedConfigs')).toBeInTheDocument();
     fireEvent.click(screen.getByText('mcpClient.addServer'));
@@ -800,7 +825,7 @@ describe('SettingsContent', () => {
 
     render(<SettingsContent />);
     await waitForSettingsLoad();
-    goToSection('mcpClient.title');
+    goToSection('settings.mcpClient.title');
 
     expect(screen.getByText('global mcp error')).toBeInTheDocument();
     fireEvent.click(screen.getAllByText('common.close')[0]);
@@ -869,7 +894,7 @@ describe('SettingsContent', () => {
     ];
     render(<SettingsContent />);
     await waitForSettingsLoad();
-    goToSection('mcpClient.title');
+    goToSection('settings.mcpClient.title');
 
     const expandBtn = screen.getByRole('button', { name: /Other MCP/ });
     fireEvent.click(expandBtn);
@@ -893,7 +918,7 @@ describe('SettingsContent', () => {
     aiState.mcpServers = [{ serverId: 'srv2', serverName: 'Other MCP', toolsCount: 0 }];
     render(<SettingsContent />);
     await waitForSettingsLoad();
-    goToSection('mcpClient.title');
+    goToSection('settings.mcpClient.title');
     fireEvent.click(screen.getByRole('button', { name: /Other MCP/ }));
     expect(screen.getByText('mcpClient.noTools')).toBeInTheDocument();
   });
@@ -916,7 +941,7 @@ describe('SettingsContent', () => {
 
     render(<SettingsContent />);
     await waitForSettingsLoad();
-    goToSection('mcpClient.title');
+    goToSection('settings.mcpClient.title');
 
     expect(screen.getByText('mcpClient.connectFailed')).toBeInTheDocument();
     expect(screen.getByText('connection refused')).toBeInTheDocument();
@@ -939,7 +964,7 @@ describe('SettingsContent', () => {
     aiState.mcpServerErrors = { 'err-srv': 'connection refused' };
     render(<SettingsContent />);
     await waitForSettingsLoad();
-    goToSection('mcpClient.title');
+    goToSection('settings.mcpClient.title');
 
     fireEvent.click(screen.getByText('mcpClient.reconnect'));
     await waitFor(() => expect(connectMcpServerMock).toHaveBeenCalledWith('err-srv'));

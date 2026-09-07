@@ -3,6 +3,7 @@ import { formatGroupLabel } from '../../../lib/connectionGroups';
 import { DB_REGISTRY } from '../../../lib/databaseTypes';
 import { getSqlDialect } from '../../../lib/sqlDialects';
 import { invalidateSchemaCache, getCachedDDL } from '../../../lib/schemaCache';
+import { fetchRelationDdl, copyToClipboard } from '../../../lib/fetchRelationDdl';
 import {
   buildMainConnectionContextMenuItems,
   buildMainGroupContextMenuItems,
@@ -25,7 +26,11 @@ import { showWebContextMenu } from '../../../stores/contextMenuStore';
 import { usePanelStore } from '../../../stores/panelStore';
 import { useSchemaStore } from '../../../stores/schemaStore';
 import { buildQueryOpenContext } from '../../../lib/tableSqlActions';
-import { generateTableSql, type GeneratedSqlType } from '../../../lib/sqlGenerator';
+import {
+  fetchTableSchemaForSqlGeneration,
+  generateTableSqlWithFallbacks,
+} from '../../../lib/tableSchemaForSql';
+import { type GeneratedSqlType } from '../../../lib/sqlGenerator';
 import type { ConnectionOpenTarget } from '../../../lib/connectionViews/types';
 import { databaseCommands } from '../../../commands/database';
 import { driverCommands } from '../../../commands/driver';
@@ -305,11 +310,11 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
               }
             },
             onCopyName: () => {
-              void navigator.clipboard.writeText(conn.name);
+              void copyToClipboard(conn.name);
             },
             onCopyUrl: () => {
               const url = buildConnectionUrl(conn);
-              if (url) void navigator.clipboard.writeText(url);
+              if (url) void copyToClipboard(url);
             },
             onNewQuery: () => {
               onSelectConnection(conn.id);
@@ -440,7 +445,7 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
               viewActions?.openQueryHistory?.();
             },
             onCopyDatabaseName: () => {
-              void navigator.clipboard.writeText(dbName);
+              void copyToClipboard(dbName);
             },
             onViewErDiagram: () => {
               onSelectConnection(connectionId);
@@ -618,7 +623,7 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
                 }
               : undefined,
             onCopyName: () => {
-              void navigator.clipboard.writeText(schemaName);
+              void copyToClipboard(schemaName);
             },
             onViewErDiagram: () => {
               onSelectConnection(connectionId);
@@ -723,17 +728,24 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
       const handleGenerateTableSql = async (type: GeneratedSqlType) => {
         onSelectConnection(connectionId);
         useSchemaStore.setState({ currentDatabase: dbName });
+        await activateDatabase(dbSessionId, dbName);
         const dbType = conn?.databaseType ?? 'postgresql';
+        const schemaState = useSchemaStore.getState().schemas.get(dbSessionId);
+        const tableSchema = await fetchTableSchemaForSqlGeneration({
+          dbSessionId,
+          tableName: name,
+          schema,
+          database: dbName,
+          databaseType: dbType,
+          columnMap: schemaState?.columnMap,
+        });
         const tableRef = schema ? `${schema}.${name}` : name;
-        try {
-          const tableSchema = await databaseCommands.getTableSchema(dbSessionId, tableRef);
-          const sql = generateTableSql(tableSchema, type, dbType, { schemaPrefix: schema });
-          viewActions?.newQuery?.(sql, { database: dbName, schema });
-        } catch (err) {
-          console.warn(`Failed to generate ${type} sql:`, err);
-          const fallbackSql = `/* Failed to load schema for ${tableRef} */\nSELECT * FROM ${name};`;
-          viewActions?.newQuery?.(fallbackSql, { database: dbName, schema });
-        }
+        const sql = generateTableSqlWithFallbacks(tableSchema, type, dbType, {
+          schemaPrefix: schema,
+          tableName: name,
+          tableRefLabel: tableRef,
+        });
+        viewActions?.newQuery?.(sql, { database: dbName, schema });
       };
 
       const handleGenerateDdl = async () => {
@@ -754,10 +766,16 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
               });
             }
           }
-          viewActions?.newQuery?.(ddl || `/* No DDL found for ${name} */`, { database: dbName, schema });
+          viewActions?.newQuery?.(ddl || `/* No DDL found for ${name} */`, {
+            database: dbName,
+            schema,
+          });
         } catch (err) {
           console.warn('Failed to generate DDL:', err);
-          viewActions?.newQuery?.(`/* Failed to get DDL for ${name} */`, { database: dbName, schema });
+          viewActions?.newQuery?.(`/* Failed to get DDL for ${name} */`, {
+            database: dbName,
+            schema,
+          });
         }
       };
 
@@ -771,25 +789,35 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
               void activateDatabase(dbSessionId, dbName);
               onSelectTable(name, schema, dbName);
             },
-            onGenerateSelect: kind === 'table' ? () => void handleGenerateTableSql('select') : undefined,
-            onGenerateInsert: kind === 'table' ? () => void handleGenerateTableSql('insert') : undefined,
-            onGenerateUpdate: kind === 'table' ? () => void handleGenerateTableSql('update') : undefined,
-            onGenerateDelete: kind === 'table' ? () => void handleGenerateTableSql('delete') : undefined,
+            onGenerateSelect:
+              kind === 'table' ? () => void handleGenerateTableSql('select') : undefined,
+            onGenerateInsert:
+              kind === 'table' ? () => void handleGenerateTableSql('insert') : undefined,
+            onGenerateUpdate:
+              kind === 'table' ? () => void handleGenerateTableSql('update') : undefined,
+            onGenerateDelete:
+              kind === 'table' ? () => void handleGenerateTableSql('delete') : undefined,
             onGenerateDdl: kind === 'table' ? () => void handleGenerateDdl() : undefined,
             onCopyName: () => {
-              void navigator.clipboard.writeText(name);
+              void copyToClipboard(name);
             },
             onCopyDdl: () => {
-              const dialect = getSqlDialect(conn?.databaseType ?? 'postgresql');
-              if (!dialect) return;
-              const { sql, extractColumnIndex } = dialect.ddl.getTableDdlQuery(name);
-              void getCachedDDL(dbSessionId, name, sql, (rows) => {
-                const row = rows[0];
-                const val = row?.[extractColumnIndex];
-                const ddl = typeof val === 'string' ? val : val != null ? String(val) : '';
-                if (ddl) void navigator.clipboard.writeText(ddl);
-                return ddl;
-              }).catch((err) => console.warn(err));
+              void (async () => {
+                try {
+                  const ddl = await fetchRelationDdl(
+                    dbSessionId,
+                    name,
+                    conn?.databaseType ?? 'postgresql',
+                    isView,
+                    schema,
+                  );
+                  if (ddl) {
+                    await copyToClipboard(ddl);
+                  }
+                } catch (err) {
+                  console.warn('Failed to copy DDL:', err);
+                }
+              })();
             },
             onFocusEr:
               kind === 'table' && supportsErDiagram
@@ -970,7 +998,7 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
             kind: 'item',
             id: 'copy-name',
             label: schemaLabels.copyName,
-            action: () => void navigator.clipboard.writeText(name),
+            action: () => void copyToClipboard(name),
           },
         ],
         { x: e.clientX, y: e.clientY },

@@ -13,10 +13,17 @@ import { useI18n } from '../../hooks/useI18n';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { ConnectionOpenTarget } from '../../lib/connectionViews/types';
 import {
+  EVENT_CONNECTIONS_CHANGED,
   groupConnectionsWithPinnedSection,
   useConnectionStore,
 } from '../../stores/connectionStore';
-import { connectionExpandKey, parseConnectionExpandKey } from '../../lib/connectionLocator';
+import { emitCrossWindow } from '../../lib/crossWindowBus';
+import {
+  connectionExpandKey,
+  parseConnectionExpandKey,
+  PINNED_GROUP_KEY,
+  RECENT_GROUP_KEY,
+} from '../../lib/connectionLocator';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -27,6 +34,7 @@ import { buildNavigatorFlatRows } from './navigator/buildFlatRows';
 import { NavigatorDialogs } from './navigator/NavigatorDialogs';
 import { NavigatorToolbar } from './navigator/NavigatorToolbar';
 import { NavigatorTreeRow } from './navigator/NavigatorTreeRow';
+import { createDragGhost, getUnifiedRowKey, removeDragGhost } from './navigator/utils';
 import {
   ConnectionNavigatorTreeHandle,
   ConnectionNavigatorTreeProps,
@@ -333,21 +341,8 @@ export const ConnectionNavigatorTree = forwardRef<
         if (isPathHierarchy) {
           void ensureNamespacePath([], entry.dbSessionId);
         }
-
-        if (isMultiDb) {
-          const sd = useSchemaStore.getState().schemas.get(entry.dbSessionId);
-          const configuredDb = conn.database?.trim();
-          const dbName =
-            configuredDb && sd?.databases.includes(configuredDb)
-              ? configuredDb
-              : (sd?.currentDatabase ?? sd?.databases[0]);
-          if (dbName) {
-            const dbKey = `${connectionId}::${dbName}`;
-            setExpandedDbs((prev) => new Set(prev).add(dbKey));
-            setExpandedCats((prev) => new Set(prev).add(`${dbKey}::tables`));
-            void dbState.reloadDbTables(entry.dbSessionId, dbName);
-          }
-        }
+        // For multi-db connections, do not auto-expand the default database;
+        // keep expansion at the databases container level so the user sees the database list.
       });
 
       if (!isMultiDb && !isPluginManaged && conn.database) {
@@ -499,37 +494,73 @@ export const ConnectionNavigatorTree = forwardRef<
   const [dropTarget, setDropTarget] = useState<{
     id: string;
     position: 'before' | 'after';
+    targetGroup?: string;
   } | null>(null);
   const dropTargetRef = useRef(dropTarget);
   dropTargetRef.current = dropTarget;
   const [groupDropTarget, setGroupDropTarget] = useState<string | null>(null);
 
-  const handleDragStart = useCallback((e: React.DragEvent, connId: string) => {
-    dragConnId.current = connId;
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', connId);
-  }, []);
+  const handleDragStart = useCallback(
+    (e: React.DragEvent, connId: string) => {
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) {
+        sel.removeAllRanges();
+      }
 
-  const handleDragOver = useCallback((e: React.DragEvent, targetId: string) => {
-    if (!dragConnId.current || dragConnId.current === targetId) {
-      setDropTarget(null);
-      return;
-    }
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const rect = e.currentTarget.getBoundingClientRect();
-    const midY = rect.top + rect.height / 2;
-    const position = e.clientY < midY ? 'before' : 'after';
-    setDropTarget((prev) =>
-      prev?.id === targetId && prev.position === position ? prev : { id: targetId, position },
-    );
-  }, []);
+      dragConnId.current = connId;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', connId);
+      e.dataTransfer.setData('application/datazen-connection', connId);
 
-  const handleDragLeave = useCallback(() => setDropTarget(null), []);
+      if (e.dataTransfer.setDragImage) {
+        const conn = connections.find((c) => c.id === connId);
+        const ghost = createDragGhost(conn?.name ?? connId);
+        e.dataTransfer.setDragImage(ghost, 16, 14);
+      }
+    },
+    [connections],
+  );
+
+  const handleDragOver = useCallback(
+    (e: React.DragEvent, targetId: string, targetSectionGroup?: string) => {
+      if (!dragConnId.current || dragConnId.current === targetId) {
+        setDropTarget(null);
+        return;
+      }
+      if (targetSectionGroup === RECENT_GROUP_KEY || targetSectionGroup === PINNED_GROUP_KEY) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'none';
+        setDropTarget(null);
+        return;
+      }
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const rect = e.currentTarget.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const position = e.clientY < midY ? 'before' : 'after';
+      setDropTarget((prev) =>
+        prev?.id === targetId &&
+        prev.position === position &&
+        prev.targetGroup === targetSectionGroup
+          ? prev
+          : { id: targetId, position, targetGroup: targetSectionGroup },
+      );
+    },
+    [],
+  );
+
+  const handleDragLeave = useCallback((_e: React.DragEvent) => {
+    // In WebKit / Safari, e.relatedTarget is ALWAYS null during drag events.
+    // Relying on relatedTarget to check if drag left the element will ALWAYS evaluate to false
+    // and wipe dropTarget on every mouse move across children!
+    // Therefore, do NOT clear dropTarget on row dragleave.
+    // dropTarget is updated on every dragover, and cleared on dragend or container dragleave.
+  }, []);
   const handleDragEnd = useCallback(() => {
     dragConnId.current = null;
     setDropTarget(null);
     setGroupDropTarget(null);
+    removeDragGhost();
   }, []);
 
   const handleGroupDragOver = useCallback((e: React.DragEvent, groupName: string) => {
@@ -539,24 +570,39 @@ export const ConnectionNavigatorTree = forwardRef<
     setGroupDropTarget(groupName);
   }, []);
 
-  const handleGroupDragLeave = useCallback(() => {
-    setGroupDropTarget(null);
+  const handleGroupDragLeave = useCallback((_e: React.DragEvent) => {
+    // Do not clear groupDropTarget on child leave; it will be updated by dragover
+    // or cleared on dragend.
   }, []);
 
-  const handleGroupDrop = useCallback((e: React.DragEvent, groupName: string) => {
-    e.preventDefault();
-    const connId = dragConnId.current || e.dataTransfer.getData('text/plain');
-    if (!connId) return;
-    void (async () => {
-      await useConnectionStore.getState().moveConnectionToGroup(connId, groupName);
-      await useConnectionStore.getState().fetchConnections?.();
-    })();
-    dragConnId.current = null;
-    setDropTarget(null);
-    setGroupDropTarget(null);
-  }, []);
+  const handleGroupDrop = useCallback(
+    (e: React.DragEvent, groupName: string) => {
+      // Only consume drops from connection reordering drags — table/view drops
+      // must pass through to the SQL editor drop handler.
+      const dt = e.dataTransfer;
+      const dtConnId =
+        typeof dt?.getData === 'function'
+          ? dt.getData('application/datazen-connection') || dt.getData('text/plain')
+          : null;
+      const connId = dragConnId.current || dtConnId;
+      if (!connId || !connections.some((c) => c.id === connId)) return;
+      e.preventDefault();
+      void (async () => {
+        await useConnectionStore.getState().moveConnectionToGroup(connId, groupName || undefined);
+        await useConnectionStore.getState().fetchConnections?.();
+        void emitCrossWindow(EVENT_CONNECTIONS_CHANGED);
+      })();
+      dragConnId.current = null;
+      setDropTarget(null);
+      setGroupDropTarget(null);
+    },
+    [connections],
+  );
 
   const handleSectionDragOver = useCallback((e: React.DragEvent, section: string) => {
+    // Only respond to connection reordering drags — table/view drops from the
+    // schema tree must pass through to the SQL editor drop handler.
+    if (!dragConnId.current) return;
     if (section === 'recent' || section === 'pinned') {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'none';
@@ -564,6 +610,9 @@ export const ConnectionNavigatorTree = forwardRef<
   }, []);
 
   const handleSectionDrop = useCallback((e: React.DragEvent, _section: string) => {
+    // Only consume drops from connection reordering drags — table/view drops
+    // must pass through to the SQL editor drop handler.
+    if (!dragConnId.current) return;
     e.preventDefault();
     setDropTarget(null);
     setGroupDropTarget(null);
@@ -572,7 +621,12 @@ export const ConnectionNavigatorTree = forwardRef<
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
-      const sourceId = dragConnId.current;
+      const dt = e.dataTransfer;
+      const dtSourceId =
+        typeof dt?.getData === 'function'
+          ? dt.getData('application/datazen-connection') || dt.getData('text/plain')
+          : null;
+      const sourceId = dragConnId.current || dtSourceId;
       const target = dropTargetRef.current;
       if (!sourceId || !target) {
         handleDragEnd();
@@ -587,6 +641,9 @@ export const ConnectionNavigatorTree = forwardRef<
         return;
       }
 
+      const sourceConn = connections.find((c) => c.id === sourceId);
+      const targetGroup = target.targetGroup;
+
       const reordered = [...ids];
       reordered.splice(fromIndex, 1);
       const insertAt =
@@ -595,9 +652,18 @@ export const ConnectionNavigatorTree = forwardRef<
           : reordered.indexOf(target.id) + 1;
       reordered.splice(insertAt, 0, sourceId);
 
-      void connectionCommands.reorderConnections(reordered).then(() => {
-        useConnectionStore.getState().fetchConnections();
-      });
+      void (async () => {
+        if (sourceConn && targetGroup !== undefined && (sourceConn.group ?? '') !== targetGroup) {
+          await connectionCommands.saveConnection({
+            ...sourceConn,
+            group: targetGroup || undefined,
+          });
+        }
+        await connectionCommands.reorderConnections(reordered);
+        await useConnectionStore.getState().fetchConnections();
+        void emitCrossWindow(EVENT_CONNECTIONS_CHANGED);
+      })();
+
       handleDragEnd();
     },
     [connections, handleDragEnd],
@@ -698,10 +764,19 @@ export const ConnectionNavigatorTree = forwardRef<
     ],
   );
 
+  const getItemKey = useCallback(
+    (index: number) => {
+      const row = flatRows[index];
+      return row ? getUnifiedRowKey(row, index) : index;
+    },
+    [flatRows],
+  );
+
   const virtualizer = useVirtualizer({
     count: flatRows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => NAVIGATOR_ROW_HEIGHT,
+    getItemKey,
     overscan: 25,
   });
 
@@ -727,7 +802,7 @@ export const ConnectionNavigatorTree = forwardRef<
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col bg-surface">
+    <div className="flex h-full min-h-0 flex-1 flex-col bg-surface select-none">
       <NavigatorToolbar
         t={t}
         searchQuery={searchQuery}
@@ -744,11 +819,49 @@ export const ConnectionNavigatorTree = forwardRef<
         onCollapseAll={collapseAll}
       />
 
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto py-1">
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto py-1 select-none"
+        onDragLeave={(e) => {
+          const current = scrollRef.current;
+          if (!current) return;
+          // Ignore events bubbling from child elements
+          if (e.target !== current) return;
+          const related = (e.relatedTarget ||
+            (e.nativeEvent as MouseEvent)?.relatedTarget) as Node | null;
+          if (related && current.contains(related)) return;
+          const rect = current.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            if (
+              e.clientX >= rect.left &&
+              e.clientX < rect.right &&
+              e.clientY >= rect.top &&
+              e.clientY < rect.bottom
+            ) {
+              return;
+            }
+          }
+          setDropTarget(null);
+          setGroupDropTarget(null);
+        }}
+        onDragOver={(e) => {
+          if (dropTargetRef.current || groupDropTarget !== null) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+          }
+        }}
+        onDrop={(e) => {
+          if (dropTargetRef.current) {
+            handleDrop(e);
+          } else if (groupDropTarget !== null) {
+            handleGroupDrop(e, groupDropTarget);
+          }
+        }}
+      >
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
           {virtualizer.getVirtualItems().map((virtualRow) => (
             <div
-              key={virtualRow.index}
+              key={virtualRow.key}
               style={{
                 position: 'absolute',
                 top: 0,

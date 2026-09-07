@@ -13,6 +13,7 @@ import {
   buildObjectBrowserListMenuItems,
 } from '../../lib/objectBrowserContextMenu';
 import { formatSql } from '../../lib/sqlFormat';
+import { copyToClipboard } from '../../lib/fetchRelationDdl';
 import type { DatabaseObject, DatabaseObjectKind } from '../../types';
 
 const KINDS: DatabaseObjectKind[] = ['function', 'procedure', 'trigger'];
@@ -82,7 +83,7 @@ export function ObjectBrowser({ dbSessionId, databaseType, database = null }: Ob
           selected?.name === obj.name && selected?.schema === obj.schema && ddl
             ? ddl
             : await databaseCommands.getObjectDdl(dbSessionId, obj.kind, obj.name, obj.schema);
-        await navigator.clipboard.writeText(text);
+        await copyToClipboard(text);
       } catch (e) {
         setRunMessage(e instanceof Error ? e.message : String(e));
       }
@@ -126,7 +127,7 @@ export function ObjectBrowser({ dbSessionId, databaseType, database = null }: Ob
           handlers: {
             onOpen: () => void openObject(obj),
             onCopyName: () => {
-              void navigator.clipboard.writeText(obj.name);
+              void copyToClipboard(obj.name);
             },
             onCopyDdl: () => {
               void copyObjectDdl(obj);

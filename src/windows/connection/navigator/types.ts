@@ -86,7 +86,7 @@ export type UnifiedRow =
       connectionId: string;
       dbSessionId: string;
     }
-  | { type: 'empty-group' }
+  | { type: 'empty-group'; groupName?: string }
   | { type: 'no-connections' };
 
 export interface ConnectionNavigatorTreeHandle {

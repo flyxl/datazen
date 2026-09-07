@@ -22,6 +22,8 @@
     "tauri:dev": "node scripts/tauri-dev.mjs",
     "tauri:build": "node scripts/generate-builtin-locales.mjs && node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs -- tauri build",
     "tauri:build:minimal": "node scripts/generate-builtin-locales.mjs && node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs --drivers=basic -- tauri build",
+    "tauri:build:webdriver": "node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs -- node scripts/e2e-tauri-build.mjs",
+    "tauri:build:webdriver:minimal": "node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs",
     "ext:pack": "node scripts/pack-extensions.mjs",
     "e2e": "node e2e/run.mjs",
     "e2e:minimal": "node e2e/run.mjs --minimal-drivers",

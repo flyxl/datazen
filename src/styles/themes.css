@@ -8,98 +8,110 @@
 
 :root {
   /* Backgrounds */
-  --c-surface: #ffffff;
-  --c-surface-alt: #f8fafc;
-  --c-surface-raised: #f1f5f9;
-  --c-surface-inset: #e2e8f0;
+  --c-surface: #f8fafc;
+  --c-surface-alt: #f1f5f9;
+  --c-surface-raised: #e2e8f0;
+  --c-surface-inset: #ffffff;
 
   /* Borders */
-  --c-edge: #e2e8f0;
+  --c-edge: #cbd5e1;
 
   /* Foreground / Text */
-  --c-fg: #0f172a;
+  --c-fg: #111827;
   --c-fg-secondary: #475569;
-  --c-fg-muted: #94a3b8;
+  --c-fg-muted: #64748b;
 
-  /* Accent & status (same both themes) */
-  --c-accent: #3b82f6;
-  --c-success: #22c55e;
-  --c-warning: #f59e0b;
-  --c-danger: #ef4444;
+  /* Accent & status */
+  --c-accent: #2563eb;
+  --c-success: #059669;
+  --c-warning: #d97706;
+  --c-danger: #dc2626;
   /* Query execute / run button — themed so SQL run can match a design accent */
-  --c-query-run: var(--c-success);
+  --c-query-run: #2563eb;
 
   /* Title bar background (TrafficLights area) */
-  --c-titlebar: #f1f5f9;
+  --c-titlebar: #e2e8f0;
   /* Title bar foreground / text (contrast against --c-titlebar) */
-  --c-titlebar-fg: #0f172a;
+  --c-titlebar-fg: #111827;
   --c-titlebar-fg-muted: #475569;
-  --c-titlebar-hover: rgba(15, 23, 42, 0.08);
+  --c-titlebar-hover: rgba(37, 99, 235, 0.1);
 
   /* Font stacks (overridable by theme packs) */
   --font-sans:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-  --font-mono: Menlo, Monaco, Consolas, 'Courier New', ui-monospace, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
   --font-editor: var(--font-mono);
 
   /* CodeMirror syntax colors (light) */
-  --cm-keyword: #7c3aed;
-  --cm-string: #16a34a;
-  --cm-number: #c2410c;
-  --cm-comment: #94a3b8;
-  --cm-operator: #0891b2;
+  --cm-keyword: #1d4ed8;
+  --cm-string: #047857;
+  --cm-number: #b45309;
+  --cm-comment: #64748b;
+  --cm-operator: #0e7490;
   --cm-punctuation: #475569;
-  --cm-foreground: #0f172a;
+  --cm-foreground: #111827;
   --cm-background: #ffffff;
-  --cm-selection: rgba(59, 130, 246, 0.15);
-  --cm-cursor: #0f172a;
+  --cm-selection: rgba(37, 99, 235, 0.18);
+  --cm-cursor: #111827;
 
   /* DataTable cell value colors by SQL-ish type family (overridable by theme packs) */
-  --dt-null: var(--c-fg-muted);
-  --dt-bool: #a855f7;
-  --dt-number: #d97706;
-  --dt-datetime: #7c3aed;
-  --dt-json: var(--c-fg);
-  --dt-text: var(--c-fg);
-  --dt-binary: var(--c-danger);
+  --dt-null: #64748b;
+  --dt-bool: #2563eb;
+  --dt-number: #b45309;
+  --dt-datetime: #0f766e;
+  --dt-json: #0369a1;
+  --dt-text: #111827;
+  --dt-binary: #dc2626;
 }
 
 .dark {
-  --c-surface: #0f172a;
-  --c-surface-alt: #1e293b;
-  --c-surface-raised: #334155;
-  --c-surface-inset: #0f172a;
+  /* Backgrounds */
+  --c-surface: #0b1220;
+  --c-surface-alt: #111827;
+  --c-surface-raised: #202b3a;
+  --c-surface-inset: #182231;
 
-  --c-edge: #334155;
+  /* Borders */
+  --c-edge: #374151;
 
-  --c-fg: #f1f5f9;
-  --c-fg-secondary: #94a3b8;
-  --c-fg-muted: #64748b;
+  /* Foreground / Text */
+  --c-fg: #f3f4f6;
+  --c-fg-secondary: #d1d5db;
+  --c-fg-muted: #9ca3af;
 
-  --c-titlebar: #1e293b;
-  --c-titlebar-fg: #f1f5f9;
-  --c-titlebar-fg-muted: #94a3b8;
-  --c-titlebar-hover: rgba(148, 163, 184, 0.18);
+  /* Accent & status */
+  --c-accent: #60a5fa;
+  --c-success: #34d399;
+  --c-warning: #fbbf24;
+  --c-danger: #f87171;
+  --c-query-run: #2563eb;
 
-  /* CodeMirror syntax colors (dark, One Dark–ish) */
-  --cm-keyword: #c678dd;
-  --cm-string: #98c379;
-  --cm-number: #d19a66;
-  --cm-comment: #5c6370;
-  --cm-operator: #56b6c2;
-  --cm-punctuation: #abb2bf;
-  --cm-foreground: #f1f5f9;
-  --cm-background: #0f172a;
-  --cm-selection: rgba(59, 130, 246, 0.25);
-  --cm-cursor: #f1f5f9;
+  /* Title bar background (TrafficLights area) */
+  --c-titlebar: #111827;
+  /* Title bar foreground / text */
+  --c-titlebar-fg: #f3f4f6;
+  --c-titlebar-fg-muted: #9ca3af;
+  --c-titlebar-hover: rgba(96, 165, 250, 0.16);
+
+  /* CodeMirror syntax colors (dark) */
+  --cm-keyword: #93c5fd;
+  --cm-string: #6ee7b7;
+  --cm-number: #fbbf24;
+  --cm-comment: #9ca3af;
+  --cm-operator: #67e8f9;
+  --cm-punctuation: #d1d5db;
+  --cm-foreground: #f3f4f6;
+  --cm-background: #0b1220;
+  --cm-selection: rgba(59, 130, 246, 0.32);
+  --cm-cursor: #f3f4f6;
 
   /* DataTable cell value colors by SQL-ish type family */
-  --dt-null: var(--c-fg-muted);
-  --dt-bool: #c084fc;
-  --dt-number: #fcd34d;
-  --dt-datetime: #c4b5fd;
-  --dt-json: var(--c-fg);
-  --dt-text: var(--c-fg);
-  --dt-binary: var(--c-danger);
+  --dt-null: #9ca3af;
+  --dt-bool: #93c5fd;
+  --dt-number: #fbbf24;
+  --dt-datetime: #5eead4;
+  --dt-json: #67e8f9;
+  --dt-text: #d1d5db;
+  --dt-binary: #f87171;
 }

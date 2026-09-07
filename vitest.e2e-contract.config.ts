@@ -7,7 +7,11 @@ import { resolve } from 'path';
 export default defineConfig({
   resolve: {
     alias: {
-      '@datazen/plugin-sdk': resolve(__dirname, 'src/plugin-sdk'),
+      '@datazen/driver-sdk': resolve(__dirname, 'packages/driver-sdk/src/index.ts'),
+      '@datazen/extension-points': resolve(__dirname, 'packages/extension-points/src/index.ts'),
+      '@datazen/app-sdk': resolve(__dirname, 'packages/app-sdk/src/index.ts'),
+      '@datazen/plugin-sdk': resolve(__dirname, 'src/plugin-sdk/index.ts'),
+      '@datazen/extension-sdk': resolve(__dirname, 'packages/app-sdk/src/index.ts'),
     },
   },
   test: {

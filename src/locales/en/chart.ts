@@ -2,6 +2,8 @@
 const pack = {
   'chart.viewTable': 'Table',
   'chart.viewChart': 'Chart',
+  'chart.emptyResultTooltip': 'Query returned no rows, cannot generate chart',
+  'chart.notChartableTooltip': 'No numeric fields found in result, cannot generate chart',
   'chart.type.bar': 'Bar Chart',
   'chart.type.line': 'Line Chart',
   'chart.type.pie': 'Pie Chart',

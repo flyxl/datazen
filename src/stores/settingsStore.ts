@@ -33,6 +33,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   pluginSettings: {},
   mcpClientServers: [],
   aiStrictEgress: true,
+  editorCompletionQuotePolicy: 'unquoted',
+  keymapPreset: 'default',
+  customKeymap: {},
 };
 
 const THEME_STORAGE_KEY = 'datazen-theme';

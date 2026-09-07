@@ -141,6 +141,14 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.get_columns(handle, table).await
     }
 
+    async fn get_all_columns(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
+        self.inner.get_all_columns(handle, database).await
+    }
+
     async fn query(
         &self,
         handle: &ConnectionHandle,

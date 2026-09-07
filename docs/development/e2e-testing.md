@@ -13,8 +13,17 @@
 | **必须启用驱动 Cargo feature** | 仅 `--features webdriver` 不会链接 path 驱动；inventory 注册依赖 `-f driver-postgres,...`（由 `.driver-features.json` 提供） |
 | **前端产物 `dist/`** | 由 `pnpm build`（Tauri `beforeBuildCommand`）生成；`frontendDist` 为 `../dist` |
 
-正确构建链路：
+正确构建链路与快捷命令：
 
+```bash
+# 一键编译带全部活跃驱动的 WebDriver 版应用
+pnpm tauri:build:webdriver
+
+# 或编译 minimal 驱动集合
+pnpm tauri:build:webdriver:minimal
+```
+
+其背后的执行链路：
 ```
 node scripts/with-driver-inject.mjs [--drivers=basic] -- node scripts/e2e-tauri-build.mjs
   → resolve-drivers → .driver-features.json

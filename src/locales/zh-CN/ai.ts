@@ -69,5 +69,11 @@ const pack = {
   'smartFilter.noFilters': '未解析到筛选条件',
   'smartFilter.parsed': '已解析 {count} 个筛选条件',
   'smartFilter.invalidColumns': '筛选字段需要确认：{columns}',
+  // S3-B2: AI draft bridge
+  'chat.draft.conflict': '输入框中已有未发送的文本，如何处理草稿？',
+  'chat.draft.replace': '替换',
+  'chat.draft.append': '追加',
+  'chat.draft.appendSeparator': '\n\n---\n\n',
+  'ai.workflows.tab': '工作流',
 } as const;
 export default pack;

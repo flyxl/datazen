@@ -1,0 +1,36 @@
+{
+  "theme": {
+    "mode": "dark",
+    "packId": null
+  },
+  "language": "zh-CN",
+  "limitSelectResults": true,
+  "queryResultLimit": 1000,
+  "editorFontSize": 14,
+  "editorFontFamily": "monospace",
+  "confirmOnDelete": true,
+  "autoCommit": true,
+  "safeMode": true,
+  "defaultPageSize": 50,
+  "connectionPoolSize": 10,
+  "logLevel": "info",
+  "logPath": "",
+  "mcpServerEnabled": false,
+  "mcpDisabledTools": [],
+  "mcpPermissionMode": "safe_write",
+  "mcpAllowedConnectionIds": [],
+  "contextDir": "",
+  "checkForUpdatesOnStartup": false,
+  "autoChartOnQuery": false,
+  "monitor": {
+    "trayEnabled": true,
+    "closeToTray": true,
+    "maxConcurrentQueries": 2,
+    "exportIncludeDashboardRuns": true,
+    "runRetentionCount": 200,
+    "runRetentionDays": 30
+  },
+  "pluginSettings": {},
+  "mcpClientServers": [],
+  "aiStrictEgress": true
+}

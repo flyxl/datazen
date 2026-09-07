@@ -66,6 +66,18 @@ pub(crate) async fn get_log_path_impl(state: &AppState) -> Result<String, Comman
     Ok(log_dir.to_string_lossy().to_string())
 }
 
+pub(crate) fn get_app_executable_path_impl() -> Result<String, CommandError> {
+    let exe = std::env::current_exe().cmd_err("get_app_executable_path")?;
+    let path = std::fs::canonicalize(&exe).unwrap_or(exe);
+    let path_str = path.to_string_lossy().to_string();
+    #[cfg(windows)]
+    let path_str = path_str
+        .strip_prefix(r"\\?\")
+        .unwrap_or(&path_str)
+        .to_string();
+    Ok(path_str)
+}
+
 #[tauri::command]
 pub async fn get_groups(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
     get_groups_impl(&state).await
@@ -99,6 +111,11 @@ pub async fn save_settings(
 #[tauri::command]
 pub async fn get_log_path(state: State<'_, AppState>) -> Result<String, CommandError> {
     get_log_path_impl(&state).await
+}
+
+#[tauri::command]
+pub fn get_app_executable_path() -> Result<String, CommandError> {
+    get_app_executable_path_impl()
 }
 
 fn path_is_under(child: &std::path::Path, root: &std::path::Path) -> bool {
@@ -755,6 +772,13 @@ pub fn restart_app(app: AppHandle) {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn test_get_app_executable_path_returns_valid_path() {
+        let exe = get_app_executable_path_impl().expect("executable path should be resolved");
+        assert!(!exe.is_empty());
+        assert!(Path::new(&exe).exists());
+    }
 
     #[test]
     fn path_is_under_matches_prefix() {

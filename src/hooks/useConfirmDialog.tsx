@@ -7,6 +7,12 @@ interface ConfirmOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   kind?: 'warning' | 'info';
+  /** Optional badge/tag displayed next to the title. */
+  badge?: string;
+  /** Optional SQL code preview section. */
+  codePreview?: string;
+  /** Optional longer description displayed below the message. */
+  description?: string;
 }
 
 type ConfirmFn = (options: ConfirmOptions) => Promise<boolean>;
@@ -45,6 +51,9 @@ export function useConfirmDialog(): [ConfirmFn, React.ReactNode] {
       confirmLabel={state.options.confirmLabel}
       cancelLabel={state.options.cancelLabel}
       kind={state.options.kind}
+      badge={state.options.badge}
+      codePreview={state.options.codePreview}
+      description={state.options.description}
       onConfirm={() => handleClose(true)}
       onCancel={() => handleClose(false)}
     />

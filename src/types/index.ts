@@ -265,6 +265,12 @@ export interface AppSettings {
   mcpClientServers?: McpServerConfig[];
   /** Strip query result rows before AI requests leave the device. Default true. */
   aiStrictEgress: boolean;
+  /** Identifier quotation policy in SQL autocomplete ('unquoted' | 'always' | 'both'). Default 'unquoted'. */
+  editorCompletionQuotePolicy?: 'unquoted' | 'always' | 'both';
+  /** Keyboard shortcut preset ('default' | 'dbeaver' | 'navicat'). Default 'default'. */
+  keymapPreset?: 'default' | 'dbeaver' | 'navicat';
+  /** User-customized keyboard shortcut overrides keyed by action ID. */
+  customKeymap?: Partial<Record<string, string>>;
 }
 
 export type FilterOperator =
@@ -325,6 +331,38 @@ export interface TableDataResult {
 // ── AI Types ──
 
 export type AiProviderType = 'open_ai' | 'deep_seek' | 'ollama' | 'custom';
+
+export type AiDataEgressLevel = 'strict' | 'sample_masked' | 'unrestricted';
+
+export type AiToolPermissionPolicy = 'disabled' | 'read_only' | 'require_confirm' | 'unrestricted';
+
+export interface AiSafetyGateConfig {
+  redactCredentials: boolean;
+  dataEgressLevel: AiDataEgressLevel;
+  maxSampleRows: number;
+  dbToolPolicy: AiToolPermissionPolicy;
+  mcpToolPolicy: AiToolPermissionPolicy;
+  requireSqlConfirm: boolean;
+  maxContextBytes: number;
+}
+
+export interface AiModelProfile {
+  id: string;
+  name: string;
+  providerType: AiProviderType;
+  apiKey?: string;
+  endpoint?: string;
+  model: string;
+  maxTokens?: number;
+  extra?: Record<string, unknown>;
+  safetyGate: AiSafetyGateConfig;
+  isDefault?: boolean;
+}
+
+export interface AiSettingsConfig {
+  activeProfileId: string;
+  profiles: AiModelProfile[];
+}
 
 export interface AiProviderConfig {
   providerType: AiProviderType;

@@ -32,8 +32,12 @@ const DIALECTS: Record<string, SqlDialectStrategy> = {
 };
 
 export function getSqlDialect(dbType: DatabaseType): SqlDialectStrategy | null {
-  const family = DB_REGISTRY[dbType]?.sqlDialect ?? (dbType as string);
-  return family ? DIALECTS[family] ?? null : null;
+  const meta = DB_REGISTRY[dbType];
+  if (meta?.sqlDialectStrategy) {
+    return meta.sqlDialectStrategy;
+  }
+  const family = meta?.sqlDialect ?? (dbType as string);
+  return family ? (DIALECTS[family] ?? null) : null;
 }
 
 export type {

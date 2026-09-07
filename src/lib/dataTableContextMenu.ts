@@ -10,6 +10,7 @@ export type DataTableContextMenuLabels = {
   copyAsUpdate: string;
   copyAsCsv: string;
   copyColumnName: string;
+  copyColumnData: string;
   setNull: string;
   filterByValue: string;
   copySelectedRows: string;
@@ -25,6 +26,7 @@ export type DataTableContextMenuHandlers = {
   onCopyAsUpdate?: () => void;
   onCopyAsCsv?: () => void;
   onCopyColumnName?: () => void;
+  onCopyColumnData?: () => void;
   onSetNull?: () => void;
   onFilterByValue?: () => void;
   onCopySelectedRows?: () => void;
@@ -37,6 +39,8 @@ export type BuildDataTableContextMenuArgs = {
   handlers: DataTableContextMenuHandlers;
   /** Right-clicked a data cell (row+column resolved). */
   hasCellContext?: boolean;
+  /** Right-clicked a column header (column resolved). */
+  hasHeaderContext?: boolean;
   /** One or more rows are selected. */
   hasSelectedRows?: boolean;
   /** Export action available. */
@@ -62,11 +66,7 @@ function push(...defs: Array<NativeMenuItemDef | null>): NativeMenuItemDef[] {
   return defs.filter((d): d is NativeMenuItemDef => d != null);
 }
 
-function submenu(
-  id: string,
-  label: string,
-  items: NativeMenuItemDef[],
-): NativeMenuItemDef | null {
+function submenu(id: string, label: string, items: NativeMenuItemDef[]): NativeMenuItemDef | null {
   return items.length > 0 ? { kind: 'submenu', id, label, items } : null;
 }
 
@@ -210,6 +210,30 @@ export function resolveDataTableCellFromEvent(
 }
 
 /**
+ * Resolve which column header was targeted by a contextmenu event.
+ * Expects TableHeader cells to set `data-col-header`.
+ */
+export function resolveDataTableHeaderColFromEvent(target: EventTarget | null): string | null {
+  if (!(target instanceof Element)) return null;
+  const el = target.closest('[data-col-header]');
+  return el ? el.getAttribute('data-col-header') : null;
+}
+
+/**
+ * Serialize an entire column's data as newline-separated text.
+ */
+export function serializeDataTableColumnValues(columnIndex: number, rows: unknown[][]): string {
+  if (columnIndex < 0) return '';
+  return rows
+    .map((row) => {
+      if (!Array.isArray(row)) return '';
+      const cell = row[columnIndex];
+      return cell == null ? '' : typeof cell === 'object' ? JSON.stringify(cell) : String(cell);
+    })
+    .join('\n');
+}
+
+/**
  * TablePlus-style DataTable context menu.
  * With cell context, keep the frequent actions at the root and group the
  * lower-frequency copy/NULL actions under a submenu. Never emit a lonely
@@ -222,12 +246,29 @@ export function buildDataTableContextMenuItems(
     labels,
     handlers,
     hasCellContext = false,
+    hasHeaderContext = false,
     hasSelectedRows = false,
     exportEnabled = false,
     canFilterByValue = false,
     canSetNull = false,
     canDelete = false,
   } = args;
+
+  if (hasHeaderContext && !hasCellContext) {
+    const headerItems = push(
+      item('copy-column-name', labels.copyColumnName, handlers.onCopyColumnName),
+      item('copy-column-data', labels.copyColumnData, handlers.onCopyColumnData),
+    );
+    if (exportEnabled) {
+      const exportItem = item('export', labels.export, handlers.onExport);
+      if (exportItem) {
+        return headerItems.length > 0
+          ? [...headerItems, { kind: 'separator' }, exportItem]
+          : [exportItem];
+      }
+    }
+    return headerItems;
+  }
 
   if (hasCellContext) {
     const frequent = push(
@@ -248,6 +289,7 @@ export function buildDataTableContextMenuItems(
       item('copy-as-update', labels.copyAsUpdate, handlers.onCopyAsUpdate),
       item('copy-as-csv', labels.copyAsCsv, handlers.onCopyAsCsv),
       item('copy-column-name', labels.copyColumnName, handlers.onCopyColumnName),
+      item('copy-column-data', labels.copyColumnData, handlers.onCopyColumnData),
       canSetNull ? item('set-null', labels.setNull, handlers.onSetNull) : null,
       hasSelectedRows
         ? item('copy-selected-rows', labels.copySelectedRows, handlers.onCopySelectedRows)

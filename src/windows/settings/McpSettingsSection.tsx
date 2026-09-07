@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -7,7 +7,11 @@ import { useI18n } from '../../hooks/useI18n';
 import { useLocaleDomains } from '../../hooks/useLocaleDomains';
 import { cn } from '../../lib/cn';
 import { aiCommands } from '../../commands/ai';
-import { buildMcpAgentSnippet, type McpAgentTarget } from '../../lib/mcpAgentConfig';
+import {
+  buildMcpAgentSnippet,
+  useAppExecutablePath,
+  type McpAgentTarget,
+} from '../../lib/mcpAgentConfig';
 import type { AppSettings, McpPermissionMode } from '../../types';
 import type { TranslationKey } from '../../locales';
 import { SectionTitle, SettingRow, ToggleRow } from './settingsUi';
@@ -178,7 +182,11 @@ export function McpSettingsSection({
     JSON.stringify([...allowedIds].sort()) !==
       JSON.stringify([...(settings.mcpAllowedConnectionIds ?? [])].sort());
 
-  const snippet = buildMcpAgentSnippet(agentTarget);
+  const appExecutablePath = useAppExecutablePath();
+  const snippet = useMemo(
+    () => buildMcpAgentSnippet(agentTarget, appExecutablePath),
+    [agentTarget, appExecutablePath],
+  );
   const handleCopySnippet = async () => {
     try {
       await navigator.clipboard.writeText(snippet.json);

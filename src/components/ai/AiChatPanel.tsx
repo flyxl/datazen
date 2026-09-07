@@ -7,6 +7,7 @@ import {
   MessageSquare,
   Settings,
   Sparkles,
+  Shield,
   Trash2,
   Wand2,
   Send,
@@ -21,13 +22,20 @@ import { openDocsWindow, openSettingsWindow } from '../../lib/windowManager';
 import { WorkflowPanel } from './WorkflowPanel';
 import { splitContextItems } from '../../lib/contextItems';
 import { AiEgressNotice } from './AiEgressNotice';
+import { detectSafetyPreset } from '../../lib/aiSafetyPresets';
+import { Select } from '../ui/Select';
 import type { AiChatMessage, AiQuestion, ContextItem } from '../../types';
+import type { AiChatDraftRequest } from '../../windows/connection/query/aiDraftBridge';
 
 interface AiChatPanelProps {
   dbSessionId: string;
   database?: string;
   sqlDialect?: string;
   onInsertSql?: (sql: string) => void;
+  /** S3-B2: pending draft request to prefill into the chat input. */
+  draftRequest?: AiChatDraftRequest | null;
+  /** S3-B2: called after the draft has been written into the textarea. */
+  onDraftConsumed?: (requestId: string) => void;
 }
 
 function formatMcpToolDisplayName(qualifiedName: string): string {
@@ -35,18 +43,54 @@ function formatMcpToolDisplayName(qualifiedName: string): string {
   return parts.length >= 3 ? parts.slice(2).join('/') : qualifiedName;
 }
 
-export function AiChatPanel({ dbSessionId, database, sqlDialect, onInsertSql }: AiChatPanelProps) {
+export function AiChatPanel({
+  dbSessionId,
+  database,
+  sqlDialect,
+  onInsertSql,
+  draftRequest,
+  onDraftConsumed,
+}: AiChatPanelProps) {
   const { t } = useI18n();
   const chatSession = useAiStore((s) => s.chatSession);
   const isConfigured = useAiStore((s) => s.isConfigured);
   const initChat = useAiStore((s) => s.initChatSession);
   const sendMessage = useAiStore((s) => s.sendChatMessage);
   const clearChat = useAiStore((s) => s.clearChat);
+  const settingsConfig = useAiStore((s) => s.settingsConfig);
+  const setActiveProfile = useAiStore((s) => s.setActiveProfile);
+  const loadConfig = useAiStore((s) => s.loadConfig);
+
+  useEffect(() => {
+    void loadConfig?.();
+  }, [loadConfig]);
+
+  const activeProfile =
+    settingsConfig?.profiles.find((p) => p.id === settingsConfig.activeProfileId) ??
+    settingsConfig?.profiles.find((p) => p.isDefault) ??
+    settingsConfig?.profiles[0];
+
+  const safetyPreset = activeProfile
+    ? detectSafetyPreset(activeProfile.safetyGate)
+    : 'cloud_strict';
+  const shieldColorClass =
+    safetyPreset === 'local_trust'
+      ? 'text-emerald-400'
+      : safetyPreset === 'enterprise_balanced'
+        ? 'text-amber-400'
+        : 'text-blue-400';
 
   const [input, setInput] = useState('');
   const [tab, setTab] = useState<'chat' | 'workflows'>('chat');
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── S3-B2: AI draft bridge ──────────────────────────────────────────────
+  // Track the last processed draft to avoid re-processing.
+  const lastProcessedDraftRef = useRef<string | null>(null);
+  // Conflict resolution: pending draft waiting for user decision.
+  const [pendingConflictDraft, setPendingConflictDraft] = useState<AiChatDraftRequest | null>(null);
 
   useEffect(() => {
     if (!chatSession) {
@@ -57,6 +101,61 @@ export function AiChatPanel({ dbSessionId, database, sqlDialect, onInsertSql }: 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatSession?.messages, chatSession?.streamContent]);
+
+  // S3-B2: Handle incoming draft requests.
+  useEffect(() => {
+    if (!draftRequest || !isConfigured) return;
+    if (lastProcessedDraftRef.current === draftRequest.requestId) return;
+
+    // AI not configured → do not consume (early return).
+    // Streaming → can prefill but must not send.
+    const isStreaming = chatSession?.isStreaming === true;
+
+    if (input.trim().length > 0) {
+      // Conflict: non-empty textarea → show non-modal choice, keep pending.
+      setPendingConflictDraft(draftRequest);
+      return;
+    }
+
+    // Empty input → directly prefill.
+    lastProcessedDraftRef.current = draftRequest.requestId;
+    setInput(draftRequest.content);
+    setTab('chat');
+    // Focus the textarea after render.
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+    // Ack consumption (only when not streaming; streaming acks are deferred).
+    if (!isStreaming) {
+      onDraftConsumed?.(draftRequest.requestId);
+    }
+  }, [draftRequest, isConfigured, chatSession?.isStreaming, input, onDraftConsumed]);
+
+  const resolveConflict = useCallback(
+    (strategy: 'replace' | 'append') => {
+      const draft = pendingConflictDraft;
+      if (!draft) return;
+      setPendingConflictDraft(null);
+      lastProcessedDraftRef.current = draft.requestId;
+
+      if (strategy === 'replace') {
+        setInput(draft.content);
+      } else {
+        const separator = t('chat.draft.appendSeparator');
+        setInput((prev) => prev + separator + draft.content);
+      }
+      setTab('chat');
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+      });
+      onDraftConsumed?.(draft.requestId);
+    },
+    [pendingConflictDraft, t, onDraftConsumed],
+  );
+
+  const dismissConflict = useCallback(() => {
+    setPendingConflictDraft(null);
+  }, []);
 
   const handleSend = useCallback(() => {
     if (!input.trim() || chatSession?.isStreaming) return;
@@ -122,7 +221,7 @@ export function AiChatPanel({ dbSessionId, database, sqlDialect, onInsertSql }: 
             onClick={() => setTab('workflows')}
           >
             <Wand2 className="h-3 w-3" />
-            {t('workflows.title')}
+            {t('ai.workflows.tab')}
           </button>
         </div>
         <div className="flex items-center gap-0.5">
@@ -158,6 +257,28 @@ export function AiChatPanel({ dbSessionId, database, sqlDialect, onInsertSql }: 
           )}
         </div>
       </div>
+
+      {tab === 'chat' && settingsConfig && settingsConfig.profiles.length > 0 && (
+        <div className="flex shrink-0 items-center justify-between border-b border-edge/60 bg-surface-alt/40 px-3 py-1 text-xs">
+          <div className="flex items-center gap-1.5 text-fg-muted">
+            <Shield className={cn('h-3.5 w-3.5 shrink-0', shieldColorClass)} />
+            <span className="text-[11px] font-medium text-fg-subtle">
+              {activeProfile?.name || activeProfile?.model || 'AI Model'}:
+            </span>
+          </div>
+          <div className="w-44">
+            <Select
+              value={settingsConfig.activeProfileId}
+              onChange={(val) => void setActiveProfile(val)}
+              className="text-[11px] py-0.5"
+              options={settingsConfig.profiles.map((p) => ({
+                value: p.id,
+                label: p.name || p.model,
+              }))}
+            />
+          </div>
+        </div>
+      )}
 
       {tab === 'workflows' ? (
         <div className="flex-1 overflow-y-auto px-3 py-2">
@@ -220,7 +341,41 @@ export function AiChatPanel({ dbSessionId, database, sqlDialect, onInsertSql }: 
             <div className="mb-2">
               <AiEgressNotice contextItems={contextItems} />
             </div>
+            {/* S3-B2: Conflict resolution bar when textarea already has content */}
+            {pendingConflictDraft && (
+              <div
+                className="mb-2 flex items-center gap-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200"
+                data-testid="draft-conflict-bar"
+              >
+                <span className="flex-1 truncate">{t('chat.draft.conflict')}</span>
+                <button
+                  type="button"
+                  className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-amber-100 hover:bg-amber-500/30"
+                  onClick={() => resolveConflict('replace')}
+                  data-testid="draft-replace"
+                >
+                  {t('chat.draft.replace')}
+                </button>
+                <button
+                  type="button"
+                  className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-amber-100 hover:bg-amber-500/30"
+                  onClick={() => resolveConflict('append')}
+                  data-testid="draft-append"
+                >
+                  {t('chat.draft.append')}
+                </button>
+                <button
+                  type="button"
+                  className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-amber-100 hover:bg-amber-500/30"
+                  onClick={dismissConflict}
+                  data-testid="draft-cancel"
+                >
+                  {t('common.cancel')}
+                </button>
+              </div>
+            )}
             <AiInput
+              ref={inputRef}
               value={input}
               onChange={setInput}
               onSubmit={handleSend}

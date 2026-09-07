@@ -40,7 +40,8 @@ const pack = {
   'mcp.config.copy': '复制',
   'mcp.config.copied': '已复制',
   'mcp.config.pathHint': '常见位置：{path}',
-  'mcp.config.commandHint': '默认使用 PATH 中的 `datazen`。安装包场景请将 command 换成绝对路径。',
+  'mcp.config.commandHint':
+    '已自动填入当前应用完整路径。若移动应用或在其他环境运行，请核对 command 路径。',
   'mcpClient.title': '外部 MCP 服务',
   'mcpClient.description': '连接外部 MCP Server，扩展 AI 助手能力。',
   'mcpClient.savedConfigs': '已保存的服务',

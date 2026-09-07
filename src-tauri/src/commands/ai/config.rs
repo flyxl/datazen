@@ -174,3 +174,82 @@ pub async fn ai_delete_config(
     let _ = handle.emit("ai:config-changed", false);
     Ok(())
 }
+
+pub(crate) async fn ai_get_settings_config_impl(
+    state: &AppState,
+) -> Result<AiSettingsConfig, CommandError> {
+    Ok(state.store.get_ai_settings_config().await)
+}
+
+#[tauri::command]
+pub async fn ai_get_settings_config(
+    state: State<'_, AppState>,
+) -> Result<AiSettingsConfig, CommandError> {
+    ai_get_settings_config_impl(&state).await
+}
+
+pub(crate) async fn ai_save_settings_config_impl(
+    state: &AppState,
+    config: AiSettingsConfig,
+) -> Result<(), CommandError> {
+    state.ensure_ai_ready().await;
+    if let Some(profile) = config
+        .profiles
+        .iter()
+        .find(|p| p.id == config.active_profile_id)
+        .or_else(|| config.profiles.iter().find(|p| p.is_default))
+        .or_else(|| config.profiles.first())
+    {
+        let provider_config = AiProviderConfig::from(profile);
+        if let Some(provider) = state.ai_registry.get(&provider_config.provider_type).await {
+            let _ = provider.initialize(&provider_config).await;
+        }
+    }
+
+    state
+        .store
+        .save_ai_settings_config(&config)
+        .await
+        .cmd_err("ai_save_settings_config")
+}
+
+#[tauri::command]
+pub async fn ai_save_settings_config(
+    handle: AppHandle,
+    state: State<'_, AppState>,
+    config: AiSettingsConfig,
+) -> Result<(), CommandError> {
+    ai_save_settings_config_impl(&state, config).await?;
+    let _ = handle.emit("ai:config-changed", true);
+    Ok(())
+}
+
+pub(crate) async fn ai_set_active_profile_impl(
+    state: &AppState,
+    profile_id: String,
+) -> Result<(), CommandError> {
+    state.ensure_ai_ready().await;
+    state
+        .store
+        .set_active_profile(&profile_id)
+        .await
+        .cmd_err("ai_set_active_profile")?;
+
+    if let Some(cfg) = state.store.get_ai_config().await {
+        if let Some(provider) = state.ai_registry.get(&cfg.provider_type).await {
+            let _ = provider.initialize(&cfg).await;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn ai_set_active_profile(
+    handle: AppHandle,
+    state: State<'_, AppState>,
+    profile_id: String,
+) -> Result<(), CommandError> {
+    ai_set_active_profile_impl(&state, profile_id).await?;
+    let _ = handle.emit("ai:config-changed", true);
+    Ok(())
+}

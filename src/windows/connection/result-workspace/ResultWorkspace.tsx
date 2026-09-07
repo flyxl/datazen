@@ -22,6 +22,12 @@ export interface ResultWorkspaceProps {
   onRowDetail?: (rowIndex: number) => void;
   /** Driver export capability; query results hide export when `none`. */
   dataExportCapability?: DataExportCapability;
+  /**
+   * Optional action button(s) rendered on the right side of the view-toggle
+   * toolbar row (e.g. export). Placed here so the button shares vertical space
+   * with the "表格 / 图表" tabs instead of occupying its own row.
+   */
+  headerActions?: React.ReactNode;
   className?: string;
 }
 
@@ -43,6 +49,7 @@ export function ResultWorkspace({
   onChartConfigChange,
   onRowDetail,
   dataExportCapability,
+  headerActions,
   className,
 }: ResultWorkspaceProps) {
   const { t } = useI18n();
@@ -120,15 +127,25 @@ export function ResultWorkspace({
               resolution.view === 'chart'
                 ? 'bg-accent/20 font-medium text-accent'
                 : 'text-fg-muted hover:text-fg-secondary',
+              !resolution.chartAvailable &&
+                'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-fg-muted',
             )}
             aria-pressed={resolution.view === 'chart'}
             disabled={!resolution.chartAvailable}
+            title={
+              !resolution.chartAvailable
+                ? !result || result.rows.length === 0
+                  ? t('chart.emptyResultTooltip')
+                  : t('chart.notChartableTooltip')
+                : undefined
+            }
             onClick={() => onViewChange?.('chart')}
           >
             <BarChart3 className="h-3 w-3" />
             {t('chart.viewChart')}
           </button>
         </div>
+        {headerActions && <div className="ml-auto flex items-center gap-1.5">{headerActions}</div>}
       </div>
 
       {resolution.view === 'table' ? (

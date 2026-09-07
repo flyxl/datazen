@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
-import { Button } from '../../../../src/components/ui/Button';
+import { Button } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
 import { redisCommandInvoke } from './redisInvoke';

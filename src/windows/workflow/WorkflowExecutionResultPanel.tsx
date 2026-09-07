@@ -1,11 +1,5 @@
 import { useMemo, useState } from 'react';
-import {
-  AlertTriangle,
-  BarChart3,
-  ChevronDown,
-  ChevronRight,
-  TableProperties,
-} from 'lucide-react';
+import { AlertTriangle, BarChart3, ChevronDown, ChevronRight, TableProperties } from 'lucide-react';
 import { ChartView } from '../../components/chart/ChartView';
 import { isChartableResult } from '../../lib/chart/fieldInference';
 import { cn } from '../../lib/cn';
@@ -145,14 +139,18 @@ function WorkflowStepResultRow({ step }: { step: StepExecutionResult }) {
                     </button>
                     <button
                       type="button"
+                      disabled={!chartable}
+                      title={!chartable ? t('chart.notChartableTooltip') : undefined}
                       onMouseDown={(e) => e.preventDefault()}
                       className={cn(
                         'flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] transition-colors',
                         viewMode === 'chart'
                           ? 'bg-accent/20 text-accent font-medium'
                           : 'text-fg-muted hover:text-fg-secondary',
+                        !chartable &&
+                          'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-fg-muted',
                       )}
-                      onClick={() => setViewMode('chart')}
+                      onClick={() => chartable && setViewMode('chart')}
                     >
                       <BarChart3 className="h-2.5 w-2.5" />
                       {t('chart.viewChart')}

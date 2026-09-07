@@ -9,7 +9,7 @@ import {
 import { t } from '../locales/t';
 import type { ConnectionConfig, ServerInfo } from '../types';
 
-const EVENT_CONNECTIONS_CHANGED = 'datazen:connections-changed';
+export const EVENT_CONNECTIONS_CHANGED = 'datazen:connections-changed';
 
 export function filterConnections(
   connections: ConnectionConfig[],

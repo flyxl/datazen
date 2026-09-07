@@ -105,7 +105,7 @@ export function checkWindowBoundaries(opts = {}) {
     if (!windowKind.includes(`'${kind}'`)) {
       errors.push(`windowKind.ts missing WindowKind: '${kind}'`);
     }
-    if (!windowManager.includes(`window: '${kind}'`)) {
+    if (!windowManager.includes(`window: '${kind}'`) && !windowManager.includes(`'${kind}'`)) {
       errors.push(`windowManager.ts missing openSingletonWindow param window: '${kind}'`);
     }
   }

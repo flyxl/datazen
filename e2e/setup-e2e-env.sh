@@ -74,6 +74,12 @@ BEGIN
   ] LOOP
     EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id SERIAL PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL)', table_name);
   END LOOP;
+
+  -- Ephemeral worker schemas for multi-instance E2E isolation
+  FOR i IN 0..7 LOOP
+    EXECUTE format('CREATE SCHEMA IF NOT EXISTS e2e_worker_%s', i);
+    EXECUTE format('GRANT ALL ON SCHEMA e2e_worker_%s TO PUBLIC', i);
+  END LOOP;
 END $$;
 
 SQL

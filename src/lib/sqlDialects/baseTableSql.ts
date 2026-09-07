@@ -23,12 +23,21 @@ export class BaseTableSqlGenerator implements TableSqlDialect {
   }
 
   generateSelect(tableRef: string, schema: TableSchema): string {
+    if (schema.columns.length === 0) {
+      return `SELECT *\nFROM ${tableRef};`;
+    }
     const cols = schema.columns.map((c) => this.quote(c.name)).join(', ');
     return `SELECT ${cols}\nFROM ${tableRef};`;
   }
 
   generateInsert(tableRef: string, schema: TableSchema): string {
+    if (schema.columns.length === 0) {
+      return `INSERT INTO ${tableRef}\nDEFAULT VALUES;`;
+    }
     const insertableCols = schema.columns.filter((c) => !c.isAutoIncrement);
+    if (insertableCols.length === 0) {
+      return `INSERT INTO ${tableRef}\nDEFAULT VALUES;`;
+    }
     const colList = insertableCols.map((c) => `  ${this.quote(c.name)}`).join(',\n');
     const valList = insertableCols
       .map((c) => {
@@ -46,6 +55,9 @@ export class BaseTableSqlGenerator implements TableSqlDialect {
   }
 
   generateUpdate(tableRef: string, schema: TableSchema): string {
+    if (schema.columns.length === 0) {
+      return `/* No column metadata available for UPDATE ${tableRef} */`;
+    }
     const nonPkCols = schema.columns.filter(
       (c) => !schema.primaryKeys.includes(c.name) && !c.isPrimaryKey,
     );
@@ -67,6 +79,9 @@ export class BaseTableSqlGenerator implements TableSqlDialect {
   }
 
   generateDelete(tableRef: string, schema: TableSchema): string {
+    if (schema.columns.length === 0) {
+      return `/* No column metadata available for DELETE ${tableRef} */`;
+    }
     const pks =
       schema.primaryKeys.length > 0
         ? schema.primaryKeys

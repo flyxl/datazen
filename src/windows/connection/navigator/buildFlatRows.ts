@@ -216,7 +216,7 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
     if (!expanded) continue;
 
     if (filteredConns.length === 0) {
-      rows.push({ type: 'empty-group' });
+      rows.push({ type: 'empty-group', groupName });
       continue;
     }
 

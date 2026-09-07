@@ -8,11 +8,7 @@ import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { CopyableError } from '../../components/ui/CopyableError';
 import { aiCommands } from '../../commands/ai';
-import {
-  syncCommands,
-  type DataSyncRowChange,
-  type SyncOptions,
-} from '../../commands/sync';
+import { syncCommands, type DataSyncRowChange, type SyncOptions } from '../../commands/sync';
 import { databaseCommands } from '../../commands/database';
 import { useI18n } from '../../hooks/useI18n';
 import { useLocaleDomains } from '../../hooks/useLocaleDomains';
@@ -59,7 +55,11 @@ import {
 } from './mappingView';
 import { buildCompareReportText } from './compareReport';
 
-import { useDataSyncWizardState, WIZARD_STEPS, NARROW_WIZARD_STEPS } from './useDataSyncWizardState';
+import {
+  useDataSyncWizardState,
+  WIZARD_STEPS,
+  NARROW_WIZARD_STEPS,
+} from './useDataSyncWizardState';
 
 export function DataSyncWindow() {
   const localesReady = useLocaleDomains(['sync']);
@@ -402,9 +402,13 @@ export function DataSyncWindow() {
         const schemas = uniqueSchemasFromTables(tables);
         setSourceSchemas(schemas);
         setSourceSchema((prev) =>
-          pickPrefillSchema(migrationPrefillRef, 'source', schemas, (current) =>
-            pickDefaultSchema(schemas, current),
-          prev),
+          pickPrefillSchema(
+            migrationPrefillRef,
+            'source',
+            schemas,
+            (current) => pickDefaultSchema(schemas, current),
+            prev,
+          ),
         );
       } catch {
         if (!cancelled) {
@@ -446,9 +450,13 @@ export function DataSyncWindow() {
         const schemas = uniqueSchemasFromTables(tables);
         setTargetSchemas(schemas);
         setTargetSchema((prev) =>
-          pickPrefillSchema(migrationPrefillRef, 'target', schemas, (current) =>
-            pickDefaultSchema(schemas, current),
-          prev),
+          pickPrefillSchema(
+            migrationPrefillRef,
+            'target',
+            schemas,
+            (current) => pickDefaultSchema(schemas, current),
+            prev,
+          ),
         );
       } catch {
         if (!cancelled) {
@@ -1294,7 +1302,7 @@ export function DataSyncWindow() {
           disabled={stepIndex === 0 || busy}
           onClick={goBack}
         >
-          <ChevronLeft className="h-4 w-4" /> {t('transfer.back')}
+          <ChevronLeft className="h-4 w-4" /> {t('sync.back')}
         </Button>
         {step !== 'preview' && step !== 'result' ? (
           <Button
@@ -1303,7 +1311,7 @@ export function DataSyncWindow() {
             onClick={() => void goNext()}
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {t('transfer.next')}
+            {t('sync.next')}
             <ChevronRight className="h-4 w-4" />
           </Button>
         ) : null}

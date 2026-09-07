@@ -114,6 +114,14 @@ impl DatabaseDriver for PostgresDriver {
         Self::get_columns_impl(self, handle, table).await
     }
 
+    async fn get_all_columns(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
+        Self::get_all_columns_impl(self, handle, database).await
+    }
+
     async fn get_table_schema(
         &self,
         handle: &ConnectionHandle,

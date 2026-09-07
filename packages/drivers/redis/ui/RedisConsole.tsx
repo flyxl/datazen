@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Loader2 } from 'lucide-react';
-import { Button } from '../../../../src/components/ui/Button';
+import { Button } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { useSettingsStore } from '../../../../src/stores/settingsStore';
 import { cn } from '../../../../src/lib/cn';

@@ -72,5 +72,12 @@ const pack = {
   'smartFilter.noFilters': 'No filter conditions parsed',
   'smartFilter.parsed': '{count} filter condition(s) parsed',
   'smartFilter.invalidColumns': 'Review these fields before filtering: {columns}',
+  // S3-B2: AI draft bridge
+  'chat.draft.conflict':
+    'You have unsent text in the input. How would you like to handle the draft?',
+  'chat.draft.replace': 'Replace',
+  'chat.draft.append': 'Append',
+  'chat.draft.appendSeparator': '\n\n---\n\n',
+  'ai.workflows.tab': 'Workflows',
 } as const;
 export default pack;

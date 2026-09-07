@@ -219,17 +219,13 @@ describe('DataTable', () => {
     expect(queryByText('ID')).not.toBeInTheDocument();
   });
 
-  it('shows bottom export bar when no selection handlers', async () => {
-    const { getAllByTitle, getByText, getAllByText } = render(
+  it('does not render standalone export button when no selection handlers (caller renders it)', async () => {
+    const { queryByTitle } = render(
       <DataTable columns={COLS} rows={rows} exportTableName="users" />,
     );
-    const exportBtns = getAllByTitle('export.export');
-    expect(exportBtns.length).toBeGreaterThan(0);
-    fireEvent.click(exportBtns[0]);
-    await waitFor(() => expect(getByText('common.exportData')).toBeInTheDocument());
-    const dialogExportBtns = getAllByText('export.export');
-    fireEvent.click(dialogExportBtns[dialogExportBtns.length - 1]);
-    await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());
+    // The bottom export bar was removed; the caller (e.g. ResultWorkspace)
+    // is now responsible for rendering the export button in the toolbar row.
+    expect(queryByTitle('export.export')).not.toBeInTheDocument();
   });
 
   it('opens native context menu with TablePlus-style items when a cell is hit', async () => {
@@ -273,6 +269,7 @@ describe('DataTable', () => {
       'copy-as-update',
       'copy-as-csv',
       'copy-column-name',
+      'copy-column-data',
       'set-null',
       'copy-selected-rows',
     ]);
@@ -337,8 +334,38 @@ describe('DataTable', () => {
       'copy-as-update',
       'copy-as-csv',
       'copy-column-name',
+      'copy-column-data',
     ]);
     expect(onAddFilter).not.toHaveBeenCalled();
+  });
+
+  it('copies column data when triggered from cell or header context menu', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    const { container } = render(<DataTable columns={COLS} rows={rows} />);
+
+    // Trigger on cell
+    fireEvent.contextMenu(container.querySelector('[data-dt-row="0"][data-dt-col="name"]')!);
+    await waitFor(() => expect(showNativeContextMenu).toHaveBeenCalled());
+    const menuItems = showNativeContextMenu.mock.calls[0]![0] as ContextMenuTestItem[];
+    const more = menuItems.find((i) => i.kind === 'submenu');
+    const copyColData = more?.items?.find((i) => i.id === 'copy-column-data');
+    expect(copyColData).toBeDefined();
+    copyColData?.action?.();
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('Alice\nBob'));
+
+    // Trigger on column header
+    showNativeContextMenu.mockClear();
+    writeText.mockClear();
+    const headerEl = container.querySelector('[data-col-header="id"]')!;
+    fireEvent.contextMenu(headerEl);
+    await waitFor(() => expect(showNativeContextMenu).toHaveBeenCalled());
+    const headerMenuItems = showNativeContextMenu.mock.calls[0]![0] as ContextMenuTestItem[];
+    const headerCopyData = headerMenuItems.find((i) => i.id === 'copy-column-data');
+    expect(headerCopyData).toBeDefined();
+    headerCopyData?.action?.();
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('1\n2'));
   });
 
   it('calls row click handlers', () => {

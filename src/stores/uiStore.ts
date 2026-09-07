@@ -21,6 +21,7 @@ interface UiStore {
   closeDialog: () => void;
   setConnectionsViewMode: (mode: ConnectionsViewMode) => void;
   setFullscreen: (value: boolean) => void;
+  syncFullscreen: () => Promise<boolean>;
 }
 
 export const useUiStore = create<UiStore>((set) => ({
@@ -40,4 +41,17 @@ export const useUiStore = create<UiStore>((set) => ({
   closeDialog: () => set({ activeDialog: null }),
   setConnectionsViewMode: (connectionsViewMode) => set({ connectionsViewMode }),
   setFullscreen: (isFullscreen) => set({ isFullscreen }),
+  syncFullscreen: async () => {
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+      return false;
+    }
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const isFs = await getCurrentWindow().isFullscreen();
+      set({ isFullscreen: isFs });
+      return isFs;
+    } catch {
+      return false;
+    }
+  },
 }));

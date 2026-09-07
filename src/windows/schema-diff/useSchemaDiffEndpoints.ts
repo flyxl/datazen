@@ -257,9 +257,13 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
         const schemas = uniqueSchemasFromTables(tables);
         setSourceSchemas(schemas);
         setSourceSchema((prev) =>
-          pickPrefillSchema(migrationPrefillRef, 'source', schemas, (current) =>
-            pickDefaultSchema(schemas, current),
-          prev),
+          pickPrefillSchema(
+            migrationPrefillRef,
+            'source',
+            schemas,
+            (current) => pickDefaultSchema(schemas, current),
+            prev,
+          ),
         );
       } catch {
         if (!cancelled) {
@@ -301,9 +305,13 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
         const schemas = uniqueSchemasFromTables(tables);
         setTargetSchemas(schemas);
         setTargetSchema((prev) =>
-          pickPrefillSchema(migrationPrefillRef, 'target', schemas, (current) =>
-            pickDefaultSchema(schemas, current),
-          prev),
+          pickPrefillSchema(
+            migrationPrefillRef,
+            'target',
+            schemas,
+            (current) => pickDefaultSchema(schemas, current),
+            prev,
+          ),
         );
       } catch {
         if (!cancelled) {
@@ -369,7 +377,7 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
       setTargetSession(target);
       return { source, target };
     } catch (e) {
-      reportError(`${t('sync.connectFailed')} ${e instanceof Error ? e.message : String(e)}`);
+      reportError(`${t('schemaDiff.connectFailed')} ${e instanceof Error ? e.message : String(e)}`);
       return { source: null, target: null };
     }
   }, [
@@ -409,7 +417,9 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
         else setTargetSession(next);
         return next?.dbSessionId ?? null;
       } catch (e) {
-        reportError(`${t('sync.connectFailed')} ${e instanceof Error ? e.message : String(e)}`);
+        reportError(
+          `${t('schemaDiff.connectFailed')} ${e instanceof Error ? e.message : String(e)}`,
+        );
         return null;
       }
     },
@@ -427,15 +437,15 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
 
   const validateEndpoints = useCallback((): boolean => {
     if (!sourceId || !targetId) {
-      reportError(t('sync.selectBoth'));
+      reportError(t('schemaDiff.selectBoth'));
       return false;
     }
     if (isSameEndpoint()) {
-      reportError(t('sync.cannotSameDb'));
+      reportError(t('schemaDiff.cannotSameDb'));
       return false;
     }
     if (!sourceDatabase || !targetDatabase) {
-      reportError(t('sync.selectDbRequired'));
+      reportError(t('schemaDiff.selectDbRequired'));
       return false;
     }
     return true;

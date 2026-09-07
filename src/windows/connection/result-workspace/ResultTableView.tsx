@@ -7,6 +7,8 @@ import { useSettingsStore } from '../../../stores/settingsStore';
 import type { StatementResult } from '../../../types';
 import type { DataExportCapability } from '../../../lib/exportCapability';
 import { tid } from '../../../lib/tid';
+import { isMutationExecution } from './isMutationExecution';
+import { ExecutionSummaryCard } from './ExecutionSummaryCard';
 
 export interface ResultTableViewProps {
   result: StatementResult;
@@ -84,6 +86,14 @@ export function ResultTableView({
     },
     [onRowDetail, safeMode],
   );
+
+  if (isMutationExecution(result)) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col" {...tid('result-workspace-table')}>
+        <ExecutionSummaryCard result={result} statusBar={statusBar} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" {...tid('result-workspace-table')}>

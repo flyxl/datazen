@@ -2,6 +2,7 @@ use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::db::{TableDataResult, TableInfo, TableSchema};
 use crate::services::{FilterCondition, OrderBy, QueryExecutor, SortCondition};
+use std::collections::HashMap;
 use std::time::Instant;
 use tauri::State;
 
@@ -47,31 +48,92 @@ pub(crate) async fn get_columns_impl(
     state: &AppState,
     db_session_id: String,
     table: String,
+    database: Option<String>,
 ) -> Result<Vec<String>, CommandError> {
     let start = Instant::now();
     tracing::info!(%db_session_id, %table, "get_columns");
+    super::query::ensure_session_database(
+        state,
+        &db_session_id,
+        database.as_deref(),
+        "get_columns",
+    )
+    .await?;
     let (driver, handle) = state
         .connection_manager
         .get_session(&db_session_id)
         .await
         .cmd_err("get_columns")?;
 
-    let (cols, _pks) = driver
-        .get_columns(&handle, &table)
+    let config = state
+        .connection_manager
+        .get_session_config(&db_session_id)
+        .await
+        .cmd_err("get_columns")?;
+    let db = database
+        .as_deref()
+        .or(config.database.as_deref())
+        .unwrap_or("default");
+
+    let cached = state
+        .schema_cache
+        .get_columns(&db_session_id, db, &table, &driver, &handle)
         .await
         .cmd_err("get_columns")?;
 
-    tracing::info!(%db_session_id, %table, count = cols.len(), ms = start.elapsed().as_millis() as u64, "get_columns OK");
-    Ok(cols.into_iter().map(|c| c.name).collect())
+    tracing::info!(%db_session_id, %table, count = cached.columns.len(), ms = start.elapsed().as_millis() as u64, "get_columns OK");
+    Ok(cached.columns.into_iter().map(|c| c.name).collect())
+}
+
+pub(crate) async fn get_all_columns_impl(
+    state: &AppState,
+    db_session_id: String,
+) -> Result<HashMap<String, Vec<String>>, CommandError> {
+    let start = Instant::now();
+    tracing::info!(%db_session_id, "get_all_columns");
+
+    let (driver, handle) = state
+        .connection_manager
+        .get_session(&db_session_id)
+        .await
+        .cmd_err("get_all_columns")?;
+
+    let config = state
+        .connection_manager
+        .get_session_config(&db_session_id)
+        .await
+        .cmd_err("get_all_columns")?;
+    let database = config.database.as_deref().unwrap_or("default");
+
+    let raw = driver
+        .get_all_columns(&handle, database)
+        .await
+        .cmd_err("get_all_columns")?;
+
+    let result: HashMap<String, Vec<String>> = raw
+        .into_iter()
+        .map(|(table, (cols, _pks))| (table, cols.into_iter().map(|c| c.name).collect()))
+        .collect();
+
+    tracing::info!(%db_session_id, %database, tables = result.len(), ms = start.elapsed().as_millis() as u64, "get_all_columns OK");
+    Ok(result)
 }
 
 pub(crate) async fn get_table_schema_impl(
     state: &AppState,
     db_session_id: String,
     table: String,
+    database_pin: Option<String>,
 ) -> Result<TableSchema, CommandError> {
     let start = Instant::now();
     tracing::info!(%db_session_id, %table, "get_table_schema");
+    super::query::ensure_session_database(
+        state,
+        &db_session_id,
+        database_pin.as_deref(),
+        "get_table_schema",
+    )
+    .await?;
 
     let config = state
         .connection_manager
@@ -400,8 +462,17 @@ pub async fn get_columns(
     state: State<'_, AppState>,
     db_session_id: String,
     table: String,
+    database: Option<String>,
 ) -> Result<Vec<String>, CommandError> {
-    get_columns_impl(&state, db_session_id, table).await
+    get_columns_impl(&state, db_session_id, table, database).await
+}
+
+#[tauri::command]
+pub async fn get_all_columns(
+    state: State<'_, AppState>,
+    db_session_id: String,
+) -> Result<HashMap<String, Vec<String>>, CommandError> {
+    get_all_columns_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
@@ -409,8 +480,9 @@ pub async fn get_table_schema(
     state: State<'_, AppState>,
     db_session_id: String,
     table: String,
+    database: Option<String>,
 ) -> Result<TableSchema, CommandError> {
-    get_table_schema_impl(&state, db_session_id, table).await
+    get_table_schema_impl(&state, db_session_id, table, database).await
 }
 
 #[tauri::command]
@@ -474,13 +546,13 @@ mod tests {
         assert_eq!(tables.len(), 1);
         assert_eq!(tables[0].name, "users");
 
-        let cols = get_columns_impl(&test.state, conn_id.clone(), "users".into())
+        let cols = get_columns_impl(&test.state, conn_id.clone(), "users".into(), None)
             .await
             .unwrap();
         assert!(cols.contains(&"id".to_string()));
         assert!(cols.contains(&"name".to_string()));
 
-        let schema = get_table_schema_impl(&test.state, conn_id.clone(), "users".into())
+        let schema = get_table_schema_impl(&test.state, conn_id.clone(), "users".into(), None)
             .await
             .unwrap();
         assert_eq!(schema.table_name, "users");

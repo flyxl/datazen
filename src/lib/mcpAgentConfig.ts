@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react';
+import { settingsCommands } from '../commands/settings';
+
 /** Build MCP client config snippets for Cursor / Claude Desktop. */
 
 export type McpAgentTarget = 'cursor' | 'claude';
@@ -17,11 +20,60 @@ export function buildMcpServerEntry(command: string): Record<string, unknown> {
   };
 }
 
+/** Formats CLI launch command (with quotes if executable path contains spaces). */
+export function formatMcpCliCommand(command = 'datazen'): string {
+  const trimmed = command.trim() || 'datazen';
+  const hasQuotes =
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"));
+  const quoted = trimmed.includes(' ') && !hasQuotes ? `"${trimmed}"` : trimmed;
+  return `${quoted} --mcp`;
+}
+
+let cachedAppExecutablePath: string | null = null;
+
+export async function getAppExecutablePath(): Promise<string> {
+  if (cachedAppExecutablePath) return cachedAppExecutablePath;
+  try {
+    const p = await settingsCommands.getAppExecutablePath();
+    if (p && typeof p === 'string' && p.trim().length > 0) {
+      cachedAppExecutablePath = p.trim();
+      return cachedAppExecutablePath;
+    }
+  } catch {
+    // In non-Tauri or test environments, fallback safely to default CLI command
+  }
+  return 'datazen';
+}
+
+export function clearCachedAppExecutablePathForTest(): void {
+  cachedAppExecutablePath = null;
+}
+
+export function useAppExecutablePath(): string {
+  const [exePath, setExePath] = useState<string>(cachedAppExecutablePath ?? 'datazen');
+
+  useEffect(() => {
+    if (cachedAppExecutablePath) {
+      setExePath(cachedAppExecutablePath);
+      return;
+    }
+    let cancelled = false;
+    void getAppExecutablePath().then((path) => {
+      if (!cancelled) {
+        setExePath(path);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return exePath;
+}
+
 /** Full JSON blob ready to paste into an mcpServers map wrapper. */
-export function buildMcpAgentSnippet(
-  target: McpAgentTarget,
-  command = 'datazen',
-): McpAgentSnippet {
+export function buildMcpAgentSnippet(target: McpAgentTarget, command = 'datazen'): McpAgentSnippet {
   const entry = buildMcpServerEntry(command);
   const wrapper = {
     mcpServers: {

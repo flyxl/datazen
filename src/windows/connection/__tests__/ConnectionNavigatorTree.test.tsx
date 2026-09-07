@@ -43,6 +43,7 @@ vi.mock('../../../lib/windowManager', () => ({
 }));
 
 const mockReorderConnections = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockSaveConnection = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const openDataSyncWindowMock = vi.hoisted(() => vi.fn());
 const openSchemaDiffWindowMock = vi.hoisted(() => vi.fn());
 const openDataTransferWindowMock = vi.hoisted(() => vi.fn());
@@ -50,6 +51,7 @@ const openDataTransferWindowMock = vi.hoisted(() => vi.fn());
 vi.mock('../../../commands/connection', () => ({
   connectionCommands: {
     reorderConnections: (...args: unknown[]) => mockReorderConnections(...args),
+    saveConnection: (...args: unknown[]) => mockSaveConnection(...args),
   },
 }));
 
@@ -249,6 +251,7 @@ vi.mock('../../../stores/connectionStore', () => {
   );
   return {
     useConnectionStore,
+    EVENT_CONNECTIONS_CHANGED: 'datazen:connections-changed',
     groupConnections: (connections: ConnectionConfig[], groups: string[], _query: string) => [
       { group: '', connections },
     ],
@@ -656,6 +659,7 @@ describe('ConnectionNavigatorTree multi-db table selection', () => {
     );
 
     await waitFor(() => findByText('db_a'));
+    fireEvent.click((await findByText('db_a')).closest('button')!);
     await waitFor(() => expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a'));
     fireEvent.click((await findByText('public')).closest('button')!);
     const tablesCategory = await waitFor(() => {
@@ -675,6 +679,37 @@ describe('ConnectionNavigatorTree multi-db table selection', () => {
     activeConnectionsState.connections = {
       'cfg-mysql': { status: 'connected', dbSessionId: 'conn-1', connectionId: 'cfg-mysql' },
     };
+  });
+
+  it('supports dragging table nodes with versioned and legacy drag payloads', async () => {
+    const { findByText, queryAllByText } = render(
+      <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-mysql" />,
+    );
+
+    await ensureDbTableVisible(findByText, queryAllByText, 'db_a', 'users');
+
+    const tableButton = (await findByText('users')).closest('button')!;
+    expect(tableButton).not.toBeNull();
+    expect(tableButton.getAttribute('draggable')).toBe('true');
+
+    const dt = {
+      setData: vi.fn(),
+      effectAllowed: '',
+      dropEffect: '',
+    };
+
+    fireEvent.dragStart(tableButton, { dataTransfer: dt });
+
+    expect(dt.setData).toHaveBeenCalledWith('text/plain', 'users');
+    expect(dt.setData).toHaveBeenCalledWith(
+      'application/datazen-schema-object',
+      expect.stringContaining('"table":"users"'),
+    );
+    expect(dt.setData).toHaveBeenCalledWith(
+      'application/datazen-table',
+      expect.stringContaining('"tableName":"users"'),
+    );
+    expect(dt.effectAllowed).toBe('copy');
   });
 });
 
@@ -758,6 +793,7 @@ describe('ConnectionNavigatorTree refresh', () => {
     );
 
     await waitFor(() => findByText('db_a'));
+    fireEvent.click((await findByText('db_a')).closest('button')!);
     await waitFor(() => expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a'));
     mockGetDatabases.mockClear();
     mockGetTables.mockClear();
@@ -897,6 +933,7 @@ describe('ConnectionNavigatorTree context menu new query', () => {
     );
 
     await waitFor(() => findByText('db_a'));
+    fireEvent.click((await findByText('db_a')).closest('button')!);
     await waitFor(() => expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a'));
     fireEvent.click((await findByText('public')).closest('button')!);
     await waitFor(() => {
@@ -1284,6 +1321,53 @@ describe('ConnectionNavigatorTree drag & drop reordering', () => {
     fireEvent.dragEnd(connRow(container, 'Conn B'));
     expect(mockReorderConnections).not.toHaveBeenCalled();
     expect(mockFetchConnections).not.toHaveBeenCalled();
+  });
+
+  it('does not render insertion indicator in recent section when dragging over a connection in regular group', async () => {
+    const recentConn = makeConn({
+      id: 'cfg-recent',
+      name: 'Recent Conn',
+      group: 'Group A',
+      lastConnectedAt: '2026-08-31T10:00:00Z',
+    });
+    const movingConn = makeConn({ id: 'cfg-moving', name: 'Moving Conn', group: 'Group A' });
+    connectionsState.connections = [recentConn, movingConn];
+    connectionsState.groups = ['Group A'];
+
+    const { container } = render(<ConnectionNavigatorTree {...baseProps} />);
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-conn-group="__recent__"][data-conn-name="Recent Conn"]'),
+      ).not.toBeNull();
+      expect(
+        container.querySelector('[data-conn-group="Group A"][data-conn-name="Recent Conn"]'),
+      ).not.toBeNull();
+    });
+
+    const dt = dataTransferStub();
+    const movingRow = container.querySelector(
+      '[data-conn-group="Group A"][data-conn-name="Moving Conn"]',
+    )!;
+    const targetRowInGroupA = container.querySelector(
+      '[data-conn-group="Group A"][data-conn-name="Recent Conn"]',
+    )!;
+    const recentRow = container.querySelector(
+      '[data-conn-group="__recent__"][data-conn-name="Recent Conn"]',
+    )!;
+
+    // Start dragging Moving Conn
+    fireEvent.dragStart(movingRow, { dataTransfer: dt });
+
+    // Drag over Recent Conn in Group A (before)
+    targetRowInGroupA.getBoundingClientRect = vi.fn().mockReturnValue({ top: 100, height: 20 });
+    fireEvent.dragOver(targetRowInGroupA, { dataTransfer: dt, clientY: 105 });
+
+    // The indicator should only be present in Group A, NOT in recent section
+    const groupAWrapper = targetRowInGroupA.parentElement!;
+    const recentWrapper = recentRow.parentElement!;
+
+    expect(groupAWrapper.querySelector('.bg-accent')).not.toBeNull();
+    expect(recentWrapper.querySelector('.bg-accent')).toBeNull();
   });
 });
 
@@ -1816,7 +1900,10 @@ async function renderWithSqlite(
 }
 
 /** Render a connected PostgreSQL session with three well-known schemas. */
-async function renderPgTree(extraProps: Partial<ConnectionNavigatorTreeProps> = {}) {
+async function renderPgTree(
+  extraProps: Partial<ConnectionNavigatorTreeProps> = {},
+  customTables?: TableInfo[],
+) {
   connectionsState.connections = [
     makeConn({ id: 'cfg-pg', name: 'PG Conn', databaseType: 'postgresql', port: 5432 }),
   ];
@@ -1824,32 +1911,28 @@ async function renderPgTree(extraProps: Partial<ConnectionNavigatorTreeProps> = 
     'cfg-pg': { status: 'connected', dbSessionId: 'conn-pg', connectionId: 'cfg-pg' },
   };
   mockGetDatabases.mockResolvedValue(['db_a']);
+  const defaultTables = [
+    { name: 'users', tableType: 'table', schema: 'public' },
+    { name: 'info_t', tableType: 'table', schema: 'information_schema' },
+    { name: 'cat_t', tableType: 'table', schema: 'pg_catalog' },
+  ] as TableInfo[];
   mockGetTables.mockImplementation((_c: string, db: string) =>
-    db === 'db_a'
-      ? Promise.resolve([
-          { name: 'users', tableType: 'table', schema: 'public' },
-          { name: 'info_t', tableType: 'table', schema: 'information_schema' },
-          { name: 'cat_t', tableType: 'table', schema: 'pg_catalog' },
-        ] as TableInfo[])
-      : Promise.resolve([]),
+    db === 'db_a' ? Promise.resolve(customTables ?? defaultTables) : Promise.resolve([]),
   );
-  return render(
+  const view = render(
     <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-pg" {...extraProps} />,
   );
+  fireEvent.click((await view.findByText('db_a')).closest('button')!);
+  return view;
 }
 
 describe('ConnectionNavigatorTree multi-db tree variants', () => {
   it('sorts schemas with the driver default schema first', async () => {
-    const { container } = await renderPgTree();
-    mockGetTables.mockImplementation((_c: string, db: string) =>
-      db === 'db_a'
-        ? Promise.resolve([
-            { name: 't_zeta', tableType: 'table', schema: 'zeta' },
-            { name: 't_pub', tableType: 'table', schema: 'public' },
-            { name: 't_alpha', tableType: 'table', schema: 'alpha' },
-          ] as TableInfo[])
-        : Promise.resolve([]),
-    );
+    const { container } = await renderPgTree({}, [
+      { name: 't_zeta', tableType: 'table', schema: 'zeta' },
+      { name: 't_pub', tableType: 'table', schema: 'public' },
+      { name: 't_alpha', tableType: 'table', schema: 'alpha' },
+    ] as TableInfo[]);
 
     await waitFor(() => {
       const names = [...container.querySelectorAll('[data-schema-name]')].map((el) =>
@@ -1871,13 +1954,10 @@ describe('ConnectionNavigatorTree multi-db tree variants', () => {
           ] as TableInfo[])
         : Promise.resolve([]),
     );
-    // Re-expand to pick up the new table payload.
+    // Expand to pick up the table payload.
     fireEvent.click((await findByText('db_a')).closest('button')!);
     await waitFor(() => {
       expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a');
-    });
-    fireEvent.click((await findByText('db_a')).closest('button')!);
-    await waitFor(() => {
       expect(container.querySelector('[data-cat-id="tables"]')).not.toBeNull();
       expect(container.querySelector('[data-tree-node="schema"]')).toBeNull();
     });
@@ -2783,7 +2863,11 @@ describe('ConnectionNavigatorTree imperative refresh guards', () => {
 
   it('reloads expanded databases when the schema fingerprint changes', async () => {
     const view = render(<ConnectionNavigatorTree {...baseProps} />);
-    await view.findByText('db_a');
+    const dbBtn = (await view.findByText('db_a')).closest('button')!;
+    fireEvent.click(dbBtn);
+    await waitFor(() => {
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a');
+    });
     mockGetTables.mockClear();
 
     seedSessionSchema('conn-1', { schemaEpoch: 42 });
@@ -2791,5 +2875,15 @@ describe('ConnectionNavigatorTree imperative refresh guards', () => {
     await waitFor(() => {
       expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a');
     });
+  });
+
+  it('does not auto-expand default database for multi-db connections', async () => {
+    mockGetTables.mockClear();
+    const { findByText } = render(
+      <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-mysql" />,
+    );
+    await findByText('db_a');
+    // Databases level is visible, but default database is not auto-expanded:
+    expect(mockGetTables).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,5 @@
-import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
+import type { DatabaseTypeMeta } from '@datazen/driver-sdk';
+import { duckdbDialect, duckdbDialectProfile } from './dialect';
 
 export const duckdbMeta = {
   label: 'DuckDB',
@@ -50,4 +51,6 @@ export const duckdbMeta = {
     fields: {},
     indexMethods: ['btree', 'art'],
   },
+  sqlDialectStrategy: duckdbDialect,
+  sqlDialectProfile: duckdbDialectProfile,
 } satisfies DatabaseTypeMeta;

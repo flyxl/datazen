@@ -689,7 +689,7 @@ export function SchemaDiffWindow() {
 
       <div className="flex shrink-0 items-center justify-between border-t border-edge px-6 py-3">
         <Button variant="ghost" disabled={stepIndex === 0 || loading} onClick={goBack}>
-          <ChevronLeft className="h-4 w-4" /> {t('transfer.back')}
+          <ChevronLeft className="h-4 w-4" /> {t('schemaDiff.back')}
         </Button>
         <div className="flex items-center gap-2">
           {step === 'deploy' ? (
@@ -707,7 +707,7 @@ export function SchemaDiffWindow() {
               disabled={!canNext || loading}
               onClick={() => void goNext()}
             >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('transfer.next')}
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('schemaDiff.next')}
               <ChevronRight className="h-4 w-4" />
             </Button>
           )}

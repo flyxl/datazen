@@ -120,7 +120,7 @@ describe('useSchemaDiffEndpoints', () => {
     await waitFor(() => expect(result.current.connections).toHaveLength(3));
 
     expect(result.current.validateEndpoints()).toBe(false);
-    expect(onError).toHaveBeenCalledWith('sync.selectBoth');
+    expect(onError).toHaveBeenCalledWith('schemaDiff.selectBoth');
 
     act(() => {
       result.current.setSourceId('pg-src');
@@ -136,7 +136,7 @@ describe('useSchemaDiffEndpoints', () => {
     });
 
     expect(result.current.validateEndpoints()).toBe(false);
-    expect(onError).toHaveBeenCalledWith('sync.cannotSameDb');
+    expect(onError).toHaveBeenCalledWith('schemaDiff.cannotSameDb');
 
     act(() => {
       result.current.setTargetId('pg-tgt');
@@ -150,7 +150,7 @@ describe('useSchemaDiffEndpoints', () => {
     });
 
     expect(result.current.validateEndpoints()).toBe(false);
-    expect(onError).toHaveBeenCalledWith('sync.selectDbRequired');
+    expect(onError).toHaveBeenCalledWith('schemaDiff.selectDbRequired');
   });
 
   it('validateEndpoints passes when endpoints differ', async () => {

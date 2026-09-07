@@ -35,6 +35,7 @@ import { DatabaseObjectView } from './DatabaseObjectView';
 import { PrivilegeView } from './PrivilegeView';
 import { ProcessListView } from './ProcessListView';
 import { ServerStatusView } from './ServerStatusView';
+import type { ContentViewCallbacks } from './query/aiDraftBridge';
 
 export interface PanelContentRendererProps {
   activePanel: Panel | null;
@@ -50,6 +51,8 @@ export interface PanelContentRendererProps {
   resolveTableSchema: (table: string) => string | null;
   /** 将进程/仪表盘面板自身数据写回对应面板（与 connectionId 绑定）。 */
   onUpdatePanelData: (panelId: string, data: unknown) => void;
+  /** S3-B2: Navigation and AI draft bridge callbacks from ContentView. */
+  callbacks?: ContentViewCallbacks;
 }
 
 export function PanelContentRenderer({
@@ -65,6 +68,7 @@ export function PanelContentRenderer({
   onRefresh,
   resolveTableSchema,
   onUpdatePanelData,
+  callbacks,
 }: PanelContentRendererProps) {
   if (!activePanel) {
     return null;
@@ -103,6 +107,7 @@ export function PanelContentRenderer({
       onRefresh={onRefresh}
       resolveTableSchema={resolveTableSchema}
       onUpdatePanelData={onUpdatePanelData}
+      callbacks={callbacks}
     />
   );
 }
@@ -120,6 +125,7 @@ interface SqlPanelContentProps {
   onRefresh: () => void;
   resolveTableSchema: (table: string) => string | null;
   onUpdatePanelData: (panelId: string, data: unknown) => void;
+  callbacks?: ContentViewCallbacks;
 }
 
 function SqlPanelContent({
@@ -135,6 +141,7 @@ function SqlPanelContent({
   onRefresh,
   resolveTableSchema,
   onUpdatePanelData,
+  callbacks,
 }: SqlPanelContentProps) {
   const { t } = useI18n();
   const savedConnection = useConnectionStore((s) =>
@@ -192,6 +199,8 @@ function SqlPanelContent({
               <StructureView
                 dbSessionId={panel.dbSessionId}
                 tableName={panel.tableName}
+                database={panel.database ?? currentDatabase ?? undefined}
+                targetColumn={panel.targetColumn}
                 onEditStructure={
                   panelShowStructureEditor ? () => onEditTableStructure(panel.tableName) : undefined
                 }
@@ -214,6 +223,7 @@ function SqlPanelContent({
             <DDLView
               dbSessionId={panel.dbSessionId}
               tableName={panel.tableName}
+              database={panel.database ?? currentDatabase ?? undefined}
               databaseType={panel.databaseType}
             />
           )}
@@ -252,12 +262,14 @@ function SqlPanelContent({
             <StructureView
               dbSessionId={panel.dbSessionId}
               tableName={(panel as ViewPanel).viewName}
+              database={(panel as ViewPanel).database ?? currentDatabase ?? undefined}
             />
           )}
           {(panel as ViewPanel).subTab === 'ddl' && (
             <DDLView
               dbSessionId={panel.dbSessionId}
               tableName={(panel as ViewPanel).viewName}
+              database={(panel as ViewPanel).database ?? currentDatabase ?? undefined}
               databaseType={panel.databaseType}
               isView
             />
@@ -278,6 +290,7 @@ function SqlPanelContent({
         database={panel.database}
         schema={panel.schema}
         namespacePath={panel.namespacePath}
+        callbacks={callbacks}
       />
     );
   }

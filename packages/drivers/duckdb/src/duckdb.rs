@@ -237,6 +237,54 @@ impl DatabaseDriver for DuckDbDriver {
         .await
     }
 
+    async fn get_all_columns(
+        &self,
+        handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
+        self.with_conn(handle, |conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT table_name, column_name, data_type, is_nullable \
+                     FROM information_schema.columns \
+                     WHERE table_schema = 'main' \
+                     ORDER BY table_name, ordinal_position",
+                )
+                .map_err(|e| DriverError::QueryFailed(format!("DuckDB prepare failed: {e}")))?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,                    // table_name
+                        row.get::<_, String>(1)?,                    // column_name
+                        row.get::<_, String>(2).unwrap_or_default(), // data_type
+                        row.get::<_, String>(3).unwrap_or_default(), // is_nullable
+                    ))
+                })
+                .map_err(|e| DriverError::QueryFailed(format!("DuckDB query failed: {e}")))?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| DriverError::QueryFailed(format!("DuckDB read failed: {e}")))?;
+
+            let mut result: HashMap<String, (Vec<ColumnSchema>, Vec<String>)> = HashMap::new();
+
+            for (table_name, col_name, data_type, is_nullable) in rows {
+                let column = ColumnSchema {
+                    name: col_name.clone(),
+                    data_type,
+                    nullable: is_nullable.eq_ignore_ascii_case("YES"),
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: false,
+                    is_auto_increment: false,
+                };
+                let entry = result.entry(table_name).or_default();
+                entry.0.push(column);
+            }
+
+            Ok(result)
+        })
+        .await
+    }
+
     async fn query(
         &self,
         handle: &ConnectionHandle,

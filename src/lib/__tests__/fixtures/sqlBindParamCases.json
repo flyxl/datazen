@@ -1,0 +1,155 @@
+{
+  "parseCases": [
+    {
+      "id": "colon-and-dollar",
+      "sql": "SELECT * FROM t WHERE id = :uid AND n = $1",
+      "policy": {},
+      "descriptors": [
+        { "name": "uid", "kind": "named", "syntax": "colon", "stableId": "named:uid" },
+        { "name": "1", "kind": "positional", "syntax": "dollar-positional", "stableId": "dollar:1" }
+      ],
+      "occurrences": [
+        { "from": 27, "to": 31, "id": "named:uid", "token": ":uid", "syntax": "colon", "name": "uid" },
+        { "from": 40, "to": 42, "id": "dollar:1", "token": "$1", "syntax": "dollar-positional", "name": "1" }
+      ]
+    },
+    {
+      "id": "ignore-string-and-comment",
+      "sql": "SELECT ':uid' WHERE x = :uid",
+      "policy": {},
+      "descriptors": [{ "name": "uid", "kind": "named", "syntax": "colon", "stableId": "named:uid" }],
+      "occurrences": [
+        { "from": 24, "to": 28, "id": "named:uid", "token": ":uid", "syntax": "colon", "name": "uid" }
+      ]
+    },
+    {
+      "id": "skip-cast",
+      "sql": "SELECT 1::int, :ok",
+      "policy": {},
+      "descriptors": [{ "name": "ok", "kind": "named", "syntax": "colon", "stableId": "named:ok" }],
+      "occurrences": [
+        { "from": 15, "to": 18, "id": "named:ok", "token": ":ok", "syntax": "colon", "name": "ok" }
+      ]
+    },
+    {
+      "id": "at-and-template",
+      "sql": "SELECT @name, ${name}",
+      "policy": { "enableAt": true, "enableTemplate": true },
+      "descriptors": [{ "name": "name", "kind": "named", "syntax": "at", "stableId": "named:name" }],
+      "occurrences": [
+        { "from": 7, "to": 12, "id": "named:name", "token": "@name", "syntax": "at", "name": "name" },
+        { "from": 14, "to": 21, "id": "named:name", "token": "${name}", "syntax": "template", "name": "name" }
+      ]
+    },
+    {
+      "id": "skip-at-system",
+      "sql": "SELECT @@version, @user",
+      "policy": { "enableAt": true },
+      "descriptors": [{ "name": "user", "kind": "named", "syntax": "at", "stableId": "named:user" }],
+      "occurrences": [
+        { "from": 18, "to": 23, "id": "named:user", "token": "@user", "syntax": "at", "name": "user" }
+      ]
+    },
+    {
+      "id": "question-mark-ordinals",
+      "sql": "SELECT ? , ?",
+      "policy": { "enableQuestion": true },
+      "descriptors": [
+        { "name": "1", "kind": "positional", "syntax": "question", "stableId": "question:1", "ordinal": 1 },
+        { "name": "2", "kind": "positional", "syntax": "question", "stableId": "question:2", "ordinal": 2 }
+      ],
+      "occurrences": [
+        { "from": 7, "to": 8, "id": "question:1", "token": "?", "syntax": "question", "name": "1", "ordinal": 1 },
+        { "from": 11, "to": 12, "id": "question:2", "token": "?", "syntax": "question", "name": "2", "ordinal": 2 }
+      ]
+    },
+    {
+      "id": "skip-pg-json-operators",
+      "sql": "SELECT data ? 'key' , col ?| arr , x ?& y , plain ?",
+      "policy": { "enableQuestion": true },
+      "descriptors": [
+        { "name": "1", "kind": "positional", "syntax": "question", "stableId": "question:1", "ordinal": 1 }
+      ],
+      "occurrences": [
+        { "from": 50, "to": 51, "id": "question:1", "token": "?", "syntax": "question", "name": "1", "ordinal": 1 }
+      ]
+    },
+    {
+      "id": "exclude-declared-at-var",
+      "sql": "DECLARE @limit INT; SELECT TOP (@limit) * FROM t WHERE id = @id",
+      "policy": { "enableAt": true, "excludeDeclaredAtVars": true },
+      "descriptors": [{ "name": "id", "kind": "named", "syntax": "at", "stableId": "named:id" }],
+      "occurrences": [
+        { "from": 60, "to": 63, "id": "named:id", "token": "@id", "syntax": "at", "name": "id" }
+      ]
+    },
+    {
+      "id": "exclude-set-at-var",
+      "sql": "SET @count = 0; SELECT @count, @filter",
+      "policy": { "enableAt": true, "excludeDeclaredAtVars": true },
+      "descriptors": [{ "name": "filter", "kind": "named", "syntax": "at", "stableId": "named:filter" }],
+      "occurrences": [
+        { "from": 31, "to": 38, "id": "named:filter", "token": "@filter", "syntax": "at", "name": "filter" }
+      ]
+    },
+    {
+      "id": "dollar-quote-body",
+      "sql": "SELECT $tag$ :hidden $tag$ , :visible",
+      "policy": {},
+      "descriptors": [{ "name": "visible", "kind": "named", "syntax": "colon", "stableId": "named:visible" }],
+      "occurrences": [
+        { "from": 29, "to": 37, "id": "named:visible", "token": ":visible", "syntax": "colon", "name": "visible" }
+      ]
+    }
+  ],
+  "bindCases": [
+    {
+      "id": "v2-named",
+      "sql": "SELECT * FROM t WHERE id = :uid AND name = :name",
+      "payload": {
+        "version": 2,
+        "values": { "named:uid": 42, "named:name": "O'Brien" },
+        "occurrences": [
+          { "from": 27, "to": 31, "id": "named:uid", "token": ":uid" },
+          { "from": 43, "to": 48, "id": "named:name", "token": ":name" }
+        ]
+      },
+      "expected": "SELECT * FROM t WHERE id = 42 AND name = 'O''Brien'"
+    },
+    {
+      "id": "v2-template",
+      "sql": "SELECT ${id}",
+      "payload": {
+        "version": 2,
+        "values": { "named:id": 7 },
+        "occurrences": [{ "from": 7, "to": 12, "id": "named:id", "token": "${id}" }]
+      },
+      "expected": "SELECT 7"
+    },
+    {
+      "id": "v2-question",
+      "sql": "SELECT ? , ?",
+      "payload": {
+        "version": 2,
+        "values": { "question:1": true, "question:2": false },
+        "occurrences": [
+          { "from": 7, "to": 8, "id": "question:1", "token": "?" },
+          { "from": 11, "to": 12, "id": "question:2", "token": "?" }
+        ]
+      },
+      "expected": "SELECT TRUE , FALSE"
+    },
+    {
+      "id": "legacy-object",
+      "sql": "SELECT :uid",
+      "payload": { "uid": 1 },
+      "expected": "SELECT 1"
+    },
+    {
+      "id": "legacy-array",
+      "sql": "SELECT $1 AND $2",
+      "payload": [1, "x"],
+      "expected": "SELECT 1 AND 'x'"
+    }
+  ]
+}

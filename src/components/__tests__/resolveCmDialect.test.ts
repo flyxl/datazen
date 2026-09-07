@@ -72,4 +72,9 @@ describe('resolveCmDialect', () => {
     const { resolveCmDialect } = await import('../SqlEditor');
     expect(resolveCmDialect('kiwi')).toBe(MySQL);
   });
+
+  it('[tester] falls back to StandardSQL for unknown database types', async () => {
+    const { resolveCmDialect } = await import('../SqlEditor');
+    expect(resolveCmDialect('nonexistent-db')).toBe(StandardSQL);
+  });
 });

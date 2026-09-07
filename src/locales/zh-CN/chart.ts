@@ -2,6 +2,8 @@
 const pack = {
   'chart.viewTable': '表格',
   'chart.viewChart': '图表',
+  'chart.emptyResultTooltip': '查询结果为空，无法生成图表',
+  'chart.notChartableTooltip': '结果集中未包含数值类型字段，无法生成图表',
   'chart.type.bar': '柱状图',
   'chart.type.line': '折线图',
   'chart.type.pie': '饼图',

@@ -883,6 +883,13 @@ async function executeSqlInEditor(sql: string) {
         await browser.pause(200);
         return false;
       }
+      // Confirm dangerous SQL dialog if shown (product guard when safe mode is off).
+      const confirmOk = await $('[data-testid="confirm-dialog-ok"]');
+      if ((await confirmOk.isExisting()) && (await confirmOk.isDisplayed().catch(() => false))) {
+        await confirmOk.click();
+        await browser.pause(200);
+        return false;
+      }
       if (
         /current transaction is aborted/i.test(body) ||
         body.includes('事务已中止') ||
@@ -1085,7 +1092,8 @@ export async function waitForSchemaTreeLoaded(timeout = 20000) {
 }
 
 /** Expand db → schema → Tables category in the virtualized navigator tree. */
-export async function expandSchemaTableCategory(schemaName = 'public', dbName?: string) {
+export async function expandSchemaTableCategory(schemaName?: string, dbName?: string) {
+  const targetSchema = schemaName || process.env.E2E_WORKER_SCHEMA || 'public';
   await browser.execute(
     (schema: string, db?: string) => {
       const isCollapsed = (el: Element) => {
@@ -1105,24 +1113,27 @@ export async function expandSchemaTableCategory(schemaName = 'public', dbName?: 
           ) ?? dbs[0]);
       expandIfCollapsed(targetDb);
       const schemas = Array.from(document.querySelectorAll('[data-tree-node="schema"]'));
-      const target =
-        schemas.find((el) => el.textContent?.toLowerCase().includes(schema.toLowerCase())) ??
-        schemas[0];
-      expandIfCollapsed(target);
+      const targets = [schema.toLowerCase()];
+      if (schema.toLowerCase() !== 'public') targets.push('public');
+      for (const t of targets) {
+        const match = schemas.find((el) => el.textContent?.toLowerCase().includes(t));
+        expandIfCollapsed(match);
+      }
       for (const cat of document.querySelectorAll(
         '[data-tree-node="category"][data-cat-id="tables"]',
       )) {
         expandIfCollapsed(cat);
       }
     },
-    schemaName,
+    targetSchema,
     dbName,
   );
   await browser.pause(800);
 }
 
 /** Expand db → schema → a specific object category in the navigator tree. */
-export async function expandSchemaCategory(catId: string, schemaName = 'public', dbName?: string) {
+export async function expandSchemaCategory(catId: string, schemaName?: string, dbName?: string) {
+  const targetSchema = schemaName || process.env.E2E_WORKER_SCHEMA || 'public';
   await browser.execute(
     (category: string, schema: string, db?: string) => {
       const isCollapsed = (el: Element) => {
@@ -1142,10 +1153,12 @@ export async function expandSchemaCategory(catId: string, schemaName = 'public',
           ) ?? dbs[0]);
       expandIfCollapsed(targetDb);
       const schemas = Array.from(document.querySelectorAll('[data-tree-node="schema"]'));
-      const target =
-        schemas.find((el) => el.textContent?.toLowerCase().includes(schema.toLowerCase())) ??
-        schemas[0];
-      expandIfCollapsed(target);
+      const targets = [schema.toLowerCase()];
+      if (schema.toLowerCase() !== 'public') targets.push('public');
+      for (const t of targets) {
+        const match = schemas.find((el) => el.textContent?.toLowerCase().includes(t));
+        expandIfCollapsed(match);
+      }
       for (const cat of document.querySelectorAll(
         `[data-tree-node="category"][data-cat-id="${category}"]`,
       )) {
@@ -1153,7 +1166,7 @@ export async function expandSchemaCategory(catId: string, schemaName = 'public',
       }
     },
     catId,
-    schemaName,
+    targetSchema,
     dbName,
   );
   await browser.pause(800);
@@ -1185,7 +1198,11 @@ async function scrollSchemaTree(pass: number) {
 }
 
 /** Wait until a table/view node is mounted in the virtualized schema tree. */
-export async function waitForTableInSidebar(tableName: string, timeout = 20000) {
+export async function waitForTableInSidebar(
+  tableName: string,
+  timeout = 20000,
+  schemaName?: string,
+) {
   await waitForSchemaTreeLoaded();
   await setNavigatorSearch(tableName);
   let scrollPass = 0;
@@ -1195,7 +1212,7 @@ export async function waitForTableInSidebar(tableName: string, timeout = 20000) 
         if (await tableNodeExistsInNavigator(tableName)) return true;
         await setNavigatorSearch('');
         await expandConnectedConnectionInNavigator();
-        await expandSchemaTableCategory();
+        await expandSchemaTableCategory(schemaName);
         await setNavigatorSearch(tableName);
         await scrollSchemaTree(scrollPass);
         scrollPass++;

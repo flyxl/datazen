@@ -8,6 +8,8 @@ use regex::Regex;
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
 
+use crate::ai::{AiDataEgressLevel, AiSafetyGateConfig};
+
 const MAX_AI_TEXT_BYTES: usize = 4_000;
 const MAX_JSON_DEPTH: usize = 4;
 const MAX_JSON_ARRAY_ITEMS: usize = 100;
@@ -322,6 +324,78 @@ pub(crate) fn redact_for_egress(value: &str, strict_egress: bool) -> String {
     )
 }
 
+fn sanitize_json_with_gate(value: Value, depth: usize, gate: &AiSafetyGateConfig) -> Value {
+    if depth >= MAX_JSON_DEPTH && value.is_object() {
+        return Value::String("[truncated]".into());
+    }
+
+    match value {
+        Value::String(value) => Value::String(redact_plain_text(&value)),
+        Value::Array(values) => {
+            let max_items = match gate.data_egress_level {
+                AiDataEgressLevel::Strict => 0,
+                AiDataEgressLevel::SampleMasked => {
+                    (gate.max_sample_rows as usize).min(MAX_JSON_ARRAY_ITEMS)
+                }
+                AiDataEgressLevel::Unrestricted => MAX_JSON_ARRAY_ITEMS,
+            };
+            Value::Array(
+                values
+                    .into_iter()
+                    .take(max_items)
+                    .map(|value| sanitize_json_with_gate(value, depth + 1, gate))
+                    .collect(),
+            )
+        }
+        Value::Object(values) => {
+            let mut sanitized = Map::new();
+            for (key, value) in values.into_iter().take(MAX_JSON_OBJECT_KEYS) {
+                if (gate.redact_credentials && is_sensitive_key(&key)) || is_sensitive_key(&key) {
+                    continue;
+                }
+                if gate.data_egress_level == AiDataEgressLevel::Strict && is_result_key(&key) {
+                    continue;
+                }
+                sanitized.insert(key, sanitize_json_with_gate(value, depth + 1, gate));
+            }
+            Value::Object(sanitized)
+        }
+        other => other,
+    }
+}
+
+fn redact_json_text_with_gate(value: &str, gate: &AiSafetyGateConfig) -> Option<String> {
+    let trimmed = value.trim();
+    if !((trimmed.starts_with('{') && trimmed.ends_with('}'))
+        || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+        || (trimmed.starts_with('"') && trimmed.ends_with('"')))
+    {
+        return None;
+    }
+
+    serde_json::from_str::<Value>(trimmed)
+        .ok()
+        .and_then(|parsed| serde_json::to_string(&sanitize_json_with_gate(parsed, 0, gate)).ok())
+}
+
+/// Sanitize text for AI using the model profile's independent safety gate configuration.
+pub(crate) fn redact_for_gate(value: &str, gate: &AiSafetyGateConfig) -> String {
+    let limit = if gate.max_context_bytes > 0 {
+        gate.max_context_bytes
+    } else {
+        MAX_AI_TEXT_BYTES
+    };
+    let text = redact_json_text_with_gate(value, gate).unwrap_or_else(|| redact_plain_text(value));
+    if text.len() <= limit {
+        return text;
+    }
+    let mut end = limit;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text[..end].to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -632,5 +706,52 @@ mod tests {
             serde_json::json!({"safeNote": "reference only"})
         );
         assert_ne!(relaxed, strict);
+    }
+
+    #[test]
+    fn test_safety_gate_sample_masked_limits_rows() {
+        let payload = serde_json::json!({
+            "rows": [
+                {"id": 1, "name": "user1"},
+                {"id": 2, "name": "user2"},
+                {"id": 3, "name": "user3"},
+                {"id": 4, "name": "user4"},
+                {"id": 5, "name": "user5"},
+            ],
+            "tableName": "users",
+        })
+        .to_string();
+
+        let gate = AiSafetyGateConfig {
+            data_egress_level: AiDataEgressLevel::SampleMasked,
+            max_sample_rows: 2,
+            ..Default::default()
+        };
+
+        let result = redact_for_gate(&payload, &gate);
+        let parsed: Value = serde_json::from_str(&result).expect("valid JSON");
+        assert_eq!(parsed["rows"].as_array().unwrap().len(), 2);
+        assert_eq!(parsed["tableName"], "users");
+    }
+
+    #[test]
+    fn test_safety_gate_unrestricted_allows_rows_but_strips_credentials() {
+        let payload = serde_json::json!({
+            "rows": [{"id": 1, "password": "super-secret"}],
+            "token": "secret-token",
+            "tableName": "users",
+        })
+        .to_string();
+
+        let gate = AiSafetyGateConfig {
+            data_egress_level: AiDataEgressLevel::Unrestricted,
+            ..Default::default()
+        };
+
+        let result = redact_for_gate(&payload, &gate);
+        let parsed: Value = serde_json::from_str(&result).expect("valid JSON");
+        assert_eq!(parsed["rows"].as_array().unwrap().len(), 1);
+        assert!(parsed["token"].is_null());
+        assert_eq!(parsed["tableName"], "users");
     }
 }

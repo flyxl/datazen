@@ -89,5 +89,7 @@ const pack = {
   'workflows.schedule.interval': 'Interval (seconds)',
   'workflows.schedule.hint': 'Minimum 30 seconds. Use a backup/command workflow for timed jobs.',
   'workflows.editor.invalidYamlField': 'Invalid YAML: missing or invalid field "{field}"',
+  'workflows.addToDashboard': 'Add to Dashboard',
+  'workflows.dashboard.defaultName': 'New Dashboard',
 } as const;
 export default pack;

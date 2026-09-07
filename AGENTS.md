@@ -1,4 +1,4 @@
-# AGENTS.md
+# [AGENTS.md](http://AGENTS.md)
 
 > 本文件面向 AI 编程助手，帮助其快速理解项目结构和约定。详细架构设计见 [docs/architecture/](docs/architecture/README.md)。
 
@@ -55,7 +55,11 @@ datazen/
 └── docs/                        # 文档：features/（功能）、architecture/（架构）、development/（开发发布）
 ```
 
+
+
 ## 核心架构模式
+
+
 
 ### 驱动选型（编译时，类似 Caddy 2）
 
@@ -72,6 +76,8 @@ DATAZEN_DRIVERS=all pnpm tauri:dev
 DATAZEN_DRIVERS=all pnpm tauri:build
 ```
 
+
+
 ### 数据库驱动
 
 - Path 驱动：`packages/drivers/*`（crate 名 `datazen-driver-<id>`），经 optional Cargo feature 注入
@@ -80,6 +86,18 @@ DATAZEN_DRIVERS=all pnpm tauri:build
 - 默认 DB 图标来自 `packages/drivers/*/ui/icons/{dbType}.svg`
 - 关键 trait 方法包括 `supports_offset()`、`supports_explain()`、`prompt_overrides()`
 - **驱动相关测试必须写在该驱动 crate 内**，不要加到 Host（`src-tauri/`、`src/`、`e2e/specs/`）。详见下方「驱动测试落点」
+
+
+
+### 四维扩展体系 (Driver / Theme / EP / Workspace App) 与公共设计系统 (@datazen/ui)
+
+DataZen 确立严格正交的四维可扩展架构，并依托独立公共设计系统 `@datazen/ui` 共享基础视觉：
+
+1. **Driver (数据库驱动)**：编译/链接时注入，基于 `@datazen/driver-sdk` 与 `packages/driver-api`。零 DOM、无 React 强依赖，承载数据库连接、SQL 方言、DDL、Driver Command。
+2. **Theme (外观主题)**：纯静态资源包（`manifest.json`, `tokens.css`, `editor.json`, `charts.json`, `icons/`），零代码执行，安全沙箱级最高。
+3. **EP (特权扩展点 / Host Extension Points)**：主进程特权插槽，基于 `@datazen/extension-points`。专用于 SQLEditor Pro 增强、高级图表等对键入延迟（<5ms）和 CodeMirror Compartment 深度集成有严苛要求的核心扩展。宿主内置纯净基础版（Fallback）。受根目录 `LICENSE` 的 **DataZen Plugin, Driver & Extension Linking Exception** 保护，允许扩展模块使用独立许可证（包含商业闭源）发布，免除 GPL-3.0 传染。
+4. **Workspace App (工作区应用)**：独立全屏 iframe 沙箱应用，基于 `@datazen/app-sdk`（原 extension-sdk），通过 `window.postMessage` 与受控桥通信。
+5. **@datazen/ui (公共设计系统)**：`packages/ui/`，纯 React 视图组件（Button, Input, Select, Dialog, Tabs, Badge, Label, cn），与宿主业务 Store 和 IPC 严格解耦。
 
 ### Driver Command API
 
@@ -107,6 +125,10 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 
 统一运行时扩展：`{appData}/plugins/{publisher}.{name}/`，manifest v2（`contributes.pages/themes` + 权限声明），沙箱 iframe + 受控 postMessage 桥（`extensionBridge.ts`），取数一律走 `execute_driver_command`。Rust `src-tauri/src/extensions/`，前端 `windows/workspace|extensions/`。主题贡献完整保留旧 ThemePack 能力（editorJson/chartsJson/iconsDir）；旧 `{appData}/themes/` 运行时入口已移除。宿主不感知具体插件 id；驱动相关测试规则同样适用于插件示例包（守护测试在 Host）。源码包与安装测试见 [packages/extensions/](packages/extensions/)；详细设计：[docs/architecture/backend/extensions.md](docs/architecture/backend/extensions.md)。
 
+### 特权扩展点（Host Extension Points）
+
+主进程特权插槽：专用于 SQLEditor 增强、高级图表等对键入延迟（<5ms）和 CodeMirror Compartment 深度集成有严苛要求的核心扩展。基于 `ExtensionPoint<T>` 契约与 `extensionRegistry` 解耦，宿主默认内置纯净基础版（Fallback）。受根目录 `LICENSE` 的 **DataZen Plugin, Driver & Extension Linking Exception** 保护，允许扩展模块使用独立许可证（包含商业闭源）发布，免除 GPL-3.0 传染。
+
 ### 运行时主题包（遗留）
 
 已被运行时插件系统的 themes 贡献取代；`{appData}/themes/` 不再被主窗口读取，遗留代码仅为测试保留（Q8 一次性切换）。
@@ -117,12 +139,14 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 - **主工作区 Page**：`main` 内用 `*Page` 导航（`WelcomePage` / `ConnectionPage` / `SettingsPage` 等）；Settings / 新建连接为 main 内嵌；Docs 跳转官网（非子窗口）。子窗口仅 backup / data-sync / schema-diff — 详见 [docs/architecture/windows.md](docs/architecture/windows.md)
 - IPC：前端 camelCase，Rust snake_case；Tauri 自动映射
 - 右键菜单统一使用 Web Context Menu，禁止 Tauri 原生 `Menu.popup()`
-- **主题包 DataTable 色**：`--dt-*` token + `src/lib/dataTypeColors.ts`（CellRenderer、StructureView、TableHeader 等共用）
+- **主题包 DataTable 色**：`--dt-`* token + `src/lib/dataTypeColors.ts`（CellRenderer、StructureView、TableHeader 等共用）
 - **Data Synchronization ≠ Transfer ≠ Structure Sync**：Sync 仅同族 + 结构/PK 完全一致；异构 IR 是 Transfer。详见 [docs/architecture/backend/data-sync.md](docs/architecture/backend/data-sync.md)
+
+
 
 ## ID 术语
 
-**`connectionId`** = 持久化连接配置 id（原 configId，落盘）；**`dbSessionId`** = 运行时数据库会话 id（内存态，永不落盘）。配置/归属/调度语义用 connectionId，操作已建立会话用 dbSessionId；新代码不得依赖 `resolve_session` 双模回退。详见 [docs/architecture/naming.md](docs/architecture/naming.md)。
+`connectionId` = 持久化连接配置 id（原 configId，落盘）；`dbSessionId` = 运行时数据库会话 id（内存态，永不落盘）。配置/归属/调度语义用 connectionId，操作已建立会话用 dbSessionId；新代码不得依赖 `resolve_session` 双模回退。详见 [docs/architecture/naming.md](docs/architecture/naming.md)。
 
 ## IPC 通信
 
@@ -134,23 +158,27 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 
 ## 关键功能模块
 
-| 功能 | 前端入口 | 后端入口 |
-|------|---------|---------|
-| 图表可视化 | `components/chart/` + `lib/chart/` | — |
-| ER 图 | `windows/connection/ErDiagramView.tsx` + `er/` | `commands/schema.rs → get_er_data` |
-| 数据导出 | `DataTable/DataExportDialog.tsx` + `lib/exportData.ts` | — |
-| 导出（多表） | `windows/connection/BatchExportDialog.tsx` + `lib/batchExport.ts` | — |
-| 导出表结构 | `TableStructureEditor` + `lib/exportTableStructure.ts` | — |
-| AI Chat | `components/ai/AiChatPanel.tsx` | `commands/ai.rs` |
-| Workflows | `windows/workflow/WorkflowPage.tsx` | `workflow/executor.rs` / `workflow/command_runtime.rs` |
-| 数据同步 | `windows/data-sync/` | `data_sync/` + `commands/sync/`（`inspect_data_sync` / `execute_data_sync`） |
-| 权限管理 | `windows/connection/PrivilegeView.tsx` | `execute_driver_command` + Driver `admin_commands`（动态 schema） |
-| 管理命令 | `Create*Dialog.tsx` + `schemaTreeContextMenu.ts` | `execute_driver_command` + Driver `admin_commands`（create/drop DB/schema/user, grant/revoke） |
-| Schema 对象 | 连接树 routines/triggers 等 | `execute_driver_command`（`list_objects` / `get_object_ddl` / `list_privileges`） |
-| Redis 深度运维 | `packages/drivers/redis/ui/*` | `execute_command` / `execute_driver_command` |
-| 扩展主题 | `windows/settings/AppearanceSection.tsx` | `extensions/` + `themePackApply.ts` |
-| 插件系统 | `windows/workspace/` + `windows/extensions/ExtensionManagementPage.tsx` | `extensions/` + `commands/extensions.rs`（`datazen://` 协议 / 桥接 `lib/extensionBridge.ts`） |
-| 插件示例包 | `packages/extensions/*`（含 README 安装测试步骤） | 同上；守护测试 `plugins::fixture_tests` + `extensionThemes.test.ts` |
+
+| 功能         | 前端入口                                                                    | 后端入口                                                                                         |
+| ---------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| 图表可视化      | `components/chart/` + `lib/chart/`                                      | —                                                                                            |
+| ER 图       | `windows/connection/ErDiagramView.tsx` + `er/`                          | `commands/schema.rs → get_er_data`                                                           |
+| 数据导出       | `DataTable/DataExportDialog.tsx` + `lib/exportData.ts`                  | —                                                                                            |
+| 导出（多表）     | `windows/connection/BatchExportDialog.tsx` + `lib/batchExport.ts`       | —                                                                                            |
+| 导出表结构      | `TableStructureEditor` + `lib/exportTableStructure.ts`                  | —                                                                                            |
+| AI Chat    | `components/ai/AiChatPanel.tsx`                                         | `commands/ai.rs`                                                                             |
+| Workflows  | `windows/workflow/WorkflowPage.tsx`                                     | `workflow/executor.rs` / `workflow/command_runtime.rs`                                       |
+| 数据同步       | `windows/data-sync/`                                                    | `data_sync/` + `commands/sync/`（`inspect_data_sync` / `execute_data_sync`）                   |
+| 权限管理       | `windows/connection/PrivilegeView.tsx`                                  | `execute_driver_command` + Driver `admin_commands`（动态 schema）                                |
+| 管理命令       | `Create*Dialog.tsx` + `schemaTreeContextMenu.ts`                        | `execute_driver_command` + Driver `admin_commands`（create/drop DB/schema/user, grant/revoke） |
+| Schema 对象  | 连接树 routines/triggers 等                                                 | `execute_driver_command`（`list_objects` / `get_object_ddl` / `list_privileges`）              |
+| Redis 深度运维 | `packages/drivers/redis/ui/*`                                           | `execute_command` / `execute_driver_command`                                                 |
+| 扩展主题       | `windows/settings/AppearanceSection.tsx`                                | `extensions/` + `themePackApply.ts`                                                          |
+| 插件系统       | `windows/workspace/` + `windows/extensions/ExtensionManagementPage.tsx` | `extensions/` + `commands/extensions.rs`（`datazen://` 协议 / 桥接 `lib/extensionBridge.ts`）      |
+| 插件示例包      | `packages/extensions/*`（含 README 安装测试步骤）                                | 同上；守护测试 `plugins::fixture_tests` + `extensionThemes.test.ts`                                 |
+
+
+
 
 ## 开发命令
 
@@ -161,6 +189,8 @@ pnpm tauri:dev                         # 完整开发（前端 + Rust；默认 b
 pnpm build                             # 构建前端（缺 codegen 时 --codegen-only；不改 Cargo.toml）
 pnpm build:with-drivers                # 单独前端构建并 inject/restore
 pnpm tauri:build                       # 完整应用（外层 inject 一次）
+pnpm tauri:build:webdriver             # 正确编译带驱动的 WebDriver 版应用（包含所有活跃驱动 + webdriver feature）
+pnpm tauri:build:webdriver:minimal     # 编译 minimal/basic 驱动的 WebDriver 版应用
 npx vitest run                         # Host 前端单元测试（不含 packages/drivers）
 pnpm test:unit:drivers                 # Path 驱动 UI 单测（packages/drivers/*/ui）
 cargo test -p datazen                  # Host Rust 单元测试（不含驱动 crate）
@@ -173,31 +203,34 @@ cargo test -p datazen-driver-postgres  # 示例：某个 path 驱动的 Rust 测
 
 完整流程见 [docs/development/e2e-testing.md](docs/development/e2e-testing.md)；覆盖矩阵见 [docs/development/e2e-coverage.md](docs/development/e2e-coverage.md)。
 
-- 必须用 `pnpm tauri build --debug --features webdriver` 构建
+- **构建方式**：必须使用 `pnpm tauri:build:webdriver`（或 `pnpm e2e` 自动触发）。**禁止**直接执行 `tauri build --debug --features webdriver` 或裸 `cargo build`，因为 bare tauri build 会缺少驱动注入与各驱动 Cargo feature（`driver-postgres` 等），导致运行时无法加载任何数据库驱动。
 - **硬性规则**：所有 Host UI 交互路径都必须被 E2E 覆盖；新增/变更 Host UI 必须同 PR 更新 E2E
 - **驱动 E2E** 写在 `packages/drivers/<id>/e2e/`，不进 Host `e2e/specs/`
 - **契约矩阵**：`e2e/contract/` 定义统一 journeys，`pnpm e2e:contract:matrix` 跨 PG/MySQL/SQLite 运行
 - 无法自动化的路径须在 `docs/development/e2e-coverage.md` 登记例外
 
 ```bash
-pnpm e2e                    # 完整构建 + 全部 Host E2E
-pnpm e2e:minimal             # DATAZEN_DRIVERS=basic 快速跑
-pnpm e2e:skip-build          # 跳过构建
-pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
+pnpm tauri:build:webdriver   # 编译带全部驱动的 WebDriver 应用
+pnpm e2e                     # 完整构建 + 全部 Host E2E
+pnpm e2e:minimal              # DATAZEN_DRIVERS=basic 快速跑
+pnpm e2e:skip-build           # 跳过构建（使用已编译的 debug binary）
+pnpm e2e:contract:matrix      # Host 契约 × 驱动矩阵
 ```
 
 PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`。改了驱动还要跑 `cargo test -p datazen-driver-<id>` 和 `pnpm test:unit:drivers`。
 
 ## 驱动测试落点
 
-**规则：驱动实现 / 方言 / 专属 UI / 专属 Command 的测试，写到该驱动 crate 目录（`packages/drivers/<id>/`），禁止放到 Host。** Git 驱动测试写在插件自己的仓库。
+**规则：驱动实现 / 方言 / 专属 UI / 专属 Command 的测试，写到该驱动 crate 目录（**`packages/drivers/<id>/`**），禁止放到 Host。** Git 驱动测试写在插件自己的仓库。
 
-| 类型 | 位置 | 运行 |
-|------|------|------|
-| Rust 单元 | 同文件 `#[cfg(test)]` | `cargo test -p datazen-driver-<id>` |
-| Rust 集成 | `packages/drivers/<id>/tests/` | `cargo test -p datazen-driver-<id> --test <name>` |
-| 驱动 UI 单测 | `packages/drivers/<id>/ui/__tests__/` | `pnpm test:unit:drivers` |
-| 驱动 E2E | `packages/drivers/<id>/e2e/` | 显式脚本，不进默认 `pnpm e2e` |
+
+| 类型       | 位置                                    | 运行                                                |
+| -------- | ------------------------------------- | ------------------------------------------------- |
+| Rust 单元  | 同文件 `#[cfg(test)]`                    | `cargo test -p datazen-driver-<id>`               |
+| Rust 集成  | `packages/drivers/<id>/tests/`        | `cargo test -p datazen-driver-<id> --test <name>` |
+| 驱动 UI 单测 | `packages/drivers/<id>/ui/__tests__/` | `pnpm test:unit:drivers`                          |
+| 驱动 E2E   | `packages/drivers/<id>/e2e/`          | 显式脚本，不进默认 `pnpm e2e`                              |
+
 
 **Host 只测宿主能力**（不编码驱动方言）。禁止在 `src-tauri/`、`e2e/specs/`、`src/**/__tests__/` 新增驱动专属测试。详细策略见 [docs/architecture/testing.md](docs/architecture/testing.md)。
 
@@ -209,14 +242,26 @@ PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`。改了驱动�
 - `scripts/i18n-sync-check.mjs --from <tag>` 可检查自上一个 tag 以来英文文件的变更，识别需要翻译的 key
 - 该脚本返回 exit code 1 表示有未完成的翻译，适合 CI 检查
 
+
+
 ## 代码风格
 
 - Rust：`rustfmt` + `thiserror` + `tracing` + `CommandError`
-- **生产路径禁止裸 `unwrap()` / `expect()`**（`#[cfg(test)]` 除外；确需 panic 须注释说明）。详见 [docs/development/panic-policy.md](docs/development/panic-policy.md)
+- **生产路径禁止裸** `unwrap()` **/** `expect()`（`#[cfg(test)]` 除外；确需 panic 须注释说明）。详见 [docs/development/panic-policy.md](docs/development/panic-policy.md)
 - TypeScript：严格模式，无 `any`（除 generated 文件），absolute imports
 - CSS：Tailwind utility classes，暗色主题默认
-- **单文件规模与模块拆分**：严格限制单源码文件大小（推荐单文件不超过 500 行，严禁出现数千行的超大单文件）；大型组件/模块必须按功能和职责拆分成高内聚、低耦合的小组件/子模块（如将复杂主视图拆分为独立抽屉、对话框、工具栏、子视图和独立 hook/工具库）
+- **单文件规模与模块拆分**：严格限制单源码文件大小（推荐单文件不超过 800 行，严禁出现数千行的超大单文件）；大型组件/模块必须按功能和职责拆分成高内聚、低耦合的小组件/子模块（如将复杂主视图拆分为独立抽屉、对话框、工具栏、子视图和独立 hook/工具库）
 - 安全：CSP、AES-256-GCM、路径遍历防护、文件扩展名白名单
+
+## 交互与补全开发原则（防回归规范）
+
+详细设计与案例复盘见 [docs/development/interaction-and-testing-principles.md](docs/development/interaction-and-testing-principles.md)。
+
+- **状态机思维**：任何上下文识别必须具备完整三要素（进入条件、状态内行为、退出跃迁条件），禁止编写只有进入而无退出的单向死锁逻辑。
+- **软排序优先于硬过滤**：优先通过 `boost` 增减权重解决补全排序（期望项加权、干扰项降权）；除非语法 100% 互斥，否则严禁粗暴 `return null` 或过度过滤。
+- **连续旅程测试（Journey Test）**：交互与编辑器逻辑禁止只测静态合法语句，必须编写模拟键盘击键全过程的连续状态机测试（涵盖残缺中间态），断言每一步的状态跃迁与退出。
+- **数据属性解耦**：点击与选择操作通过 DOM `data-*` 属性直接绑定标识，禁止在生产路径依赖不可靠的视口几何坐标反查。
+- **三维影响度自查**：提交前必须自查（1）是否彻底解决缺陷、（2）是否误伤合法同类、（3）用户下一步操作是否顺畅。
 
 ## 重要注意事项
 
@@ -239,7 +284,8 @@ PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`。改了驱动�
 - 日志文件位于 `{data_dir}/logs/`
 - 主题包与驱动选型独立：`{appData}/themes/` 不由 `resolve-drivers.mjs` 管理；删除主题包不影响 `packages/drivers/`；DataTable 单元格色 token 为 `--dt-*`
 
-<!-- CODEGRAPH_START -->
+
+
 ## CodeGraph
 
 In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
@@ -248,4 +294,4 @@ In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the re
 - **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
 
 If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
-<!-- CODEGRAPH_END -->
+

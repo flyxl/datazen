@@ -4,10 +4,11 @@ import type { AppSettings } from '../types';
 export const settingsCommands = {
   getSettings: () => invoke<AppSettings>('get_settings'),
 
-  saveSettings: (settings: AppSettings) =>
-    invoke<void>('save_settings', { settings }),
+  saveSettings: (settings: AppSettings) => invoke<void>('save_settings', { settings }),
 
   getLogPath: () => invoke<string>('get_log_path'),
+
+  getAppExecutablePath: () => invoke<string>('get_app_executable_path'),
 
   /** @deprecated E2E-only; prefer openLogDir / openWorkflowsDir / openContextDir. */
   openPath: (path: string) => invoke<void>('open_path', { path }),

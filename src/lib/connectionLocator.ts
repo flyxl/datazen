@@ -315,12 +315,10 @@ export function groupConnectionsWithRecentSections(
 
   for (const group of groups) {
     const section = grouped.get(group) ?? [];
-    if (section.length > 0) {
-      sections.push({
-        group,
-        connections: orderConnectionsForDisplay(section),
-      });
-    }
+    sections.push({
+      group,
+      connections: orderConnectionsForDisplay(section),
+    });
   }
 
   for (const [group, section] of grouped) {

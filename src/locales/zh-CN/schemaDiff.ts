@@ -70,5 +70,13 @@ const pack = {
   'schemaDiff.limitations.noAutoBackup': '部署前不自动备份',
   'schemaDiff.limitations.noMcpDeploy': '不支持经 MCP 一键部署（后续可能以高风险工具提供）',
   'schemaDiff.limitations.dontShowAgain': '不再显示此提示',
+  'schemaDiff.back': '上一步',
+  'schemaDiff.next': '下一步',
+  'schemaDiff.connectFailed': '连接失败：',
+  'schemaDiff.selectBoth': '请选择源数据库和目标数据库',
+  'schemaDiff.cannotSameDb': '同一连接上源与目标不能选择相同的数据库',
+  'schemaDiff.selectDbRequired': '请先选择源和目标数据库',
+  'schemaDiff.colChanged': '变更列',
+  'schemaDiff.identical': '结构一致',
 } as const;
 export default pack;

@@ -73,6 +73,26 @@ impl SqlServerDriver {
         )
     }
 
+    /// SQL to batch-fetch columns for ALL tables in the current database.
+    fn build_all_columns_sql() -> &'static str {
+        "SELECT t.name AS table_name, c.name AS column_name, tp.name AS data_type, \
+         c.is_nullable, c.is_identity, dc.definition AS default_value, \
+         CAST(ep.value AS nvarchar(max)) AS comment, \
+         CAST(CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END AS bit) AS is_pk \
+         FROM sys.columns c \
+         JOIN sys.tables t ON c.object_id = t.object_id \
+         JOIN sys.types tp ON c.user_type_id = tp.user_type_id \
+         LEFT JOIN sys.default_constraints dc ON c.default_object_id = dc.object_id \
+         LEFT JOIN sys.extended_properties ep ON ep.major_id = c.object_id AND ep.minor_id = c.column_id AND ep.name = 'MS_Description' \
+         LEFT JOIN ( \
+           SELECT ic.object_id, ic.column_id \
+           FROM sys.index_columns ic \
+           INNER JOIN sys.indexes i ON ic.object_id = i.object_id AND ic.index_id = i.index_id \
+           WHERE i.is_primary_key = 1 \
+         ) pk ON pk.object_id = c.object_id AND pk.column_id = c.column_id \
+         ORDER BY t.name, c.column_id"
+    }
+
     fn bit_true(v: &Option<Value>) -> bool {
         matches!(v, Some(Value::Bool(true)) | Some(Value::Integer(1)))
     }
@@ -463,6 +483,71 @@ impl DatabaseDriver for SqlServerDriver {
             indexes: Vec::new(),
             foreign_keys: Vec::new(),
         })
+    }
+
+    async fn get_all_columns(
+        &self,
+        handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
+        let mut map = self.clients.write().await;
+        let client = map
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        let result = Self::run(client, Self::build_all_columns_sql()).await?;
+
+        let mut all_columns: HashMap<String, (Vec<ColumnSchema>, Vec<String>)> = HashMap::new();
+
+        for row in &result.rows {
+            // SQL: table_name(0), column_name(1), data_type(2), is_nullable(3),
+            //      is_identity(4), default_value(5), comment(6), is_pk(7)
+            let table_name = row
+                .get(0)
+                .cloned()
+                .flatten()
+                .map(|v| datazen_driver_http_support::value_display(&v))
+                .unwrap_or_default();
+            let col_name = row
+                .get(1)
+                .cloned()
+                .flatten()
+                .map(|v| datazen_driver_http_support::value_display(&v))
+                .unwrap_or_default();
+            let data_type = row
+                .get(2)
+                .cloned()
+                .flatten()
+                .map(|v| datazen_driver_http_support::value_display(&v))
+                .unwrap_or_default();
+            let nullable = Self::bit_true(&row.get(3).cloned().flatten());
+            let is_pk = Self::bit_true(&row.get(7).cloned().flatten());
+
+            let column = ColumnSchema {
+                name: col_name.clone(),
+                data_type,
+                nullable,
+                default_value: row
+                    .get(5)
+                    .cloned()
+                    .flatten()
+                    .map(|v| datazen_driver_http_support::value_display(&v)),
+                comment: row
+                    .get(6)
+                    .cloned()
+                    .flatten()
+                    .map(|v| datazen_driver_http_support::value_display(&v)),
+                is_primary_key: is_pk,
+                is_auto_increment: Self::bit_true(&row.get(4).cloned().flatten()),
+            };
+
+            let entry = all_columns.entry(table_name).or_default();
+            entry.0.push(column);
+            if is_pk {
+                entry.1.push(col_name);
+            }
+        }
+
+        Ok(all_columns)
     }
 
     async fn query(

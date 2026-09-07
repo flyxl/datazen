@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isSchemaChangingStatement, sqlContainsSchemaChangingDdl } from '../schemaChangingSql';
+import {
+  isSchemaChangingStatement,
+  isSchemaMutatingStatement,
+  sqlContainsSchemaChangingDdl,
+  sqlMayMutateSchema,
+} from '../schemaChangingSql';
 
 describe('schemaChangingSql', () => {
   it('detects create/drop database, schema, and table', () => {
@@ -29,5 +34,14 @@ describe('schemaChangingSql', () => {
     expect(sqlContainsSchemaChangingDdl('SELECT 1; CREATE DATABASE app;')).toBe(true);
     expect(sqlContainsSchemaChangingDdl("SELECT 'DROP TABLE x';")).toBe(false);
     expect(sqlContainsSchemaChangingDdl('-- DROP DATABASE x\nSELECT 1')).toBe(false);
+  });
+
+  it('detects schema mutating statements (including ALTER, TRUNCATE, RENAME)', () => {
+    expect(isSchemaMutatingStatement('ALTER TABLE users ADD COLUMN x int')).toBe(true);
+    expect(isSchemaMutatingStatement('TRUNCATE TABLE users')).toBe(true);
+    expect(isSchemaMutatingStatement('RENAME TABLE a TO b')).toBe(true);
+    expect(isSchemaMutatingStatement("COMMENT ON TABLE users IS 'app users'")).toBe(true);
+    expect(isSchemaMutatingStatement('SELECT 1')).toBe(false);
+    expect(sqlMayMutateSchema('SELECT 1; ALTER TABLE users ADD COLUMN y text;')).toBe(true);
   });
 });

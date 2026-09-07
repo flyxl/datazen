@@ -51,4 +51,37 @@ describe('QueryErrorPanel', () => {
     render(<QueryErrorPanel message="err" />);
     expect(screen.queryByText('diagnosis.diagnose')).toBeNull();
   });
+
+  it('renders "Ask in Chat" button only when onAskInChat is provided', () => {
+    const onAskInChat = vi.fn();
+    const { unmount } = render(<QueryErrorPanel message="err" onAskInChat={onAskInChat} />);
+    const button = screen.getByTestId('query-ask-in-chat');
+    expect(button).toBeInTheDocument();
+    expect(button).toHaveTextContent('query.editor.askInChat');
+    fireEvent.click(button);
+    expect(onAskInChat).toHaveBeenCalledTimes(1);
+    unmount();
+    render(<QueryErrorPanel message="err" />);
+    expect(screen.queryByTestId('query-ask-in-chat')).toBeNull();
+  });
+
+  it('shows ask-in-chat button alongside other action buttons', () => {
+    const onRetry = vi.fn();
+    const onAskInChat = vi.fn();
+    render(<QueryErrorPanel message="err" onRetry={onRetry} onAskInChat={onAskInChat} />);
+    expect(screen.getByTestId('query-retry')).toBeInTheDocument();
+    expect(screen.getByTestId('query-ask-in-chat')).toBeInTheDocument();
+  });
+
+  it('hides the entire action bar when no actions are provided', () => {
+    const { container } = render(<QueryErrorPanel message="err" />);
+    // No action bar should exist (no explain, fix, retry, or askInChat).
+    expect(screen.queryByTestId('query-explain-error')).toBeNull();
+    expect(screen.queryByTestId('query-fix-sql')).toBeNull();
+    expect(screen.queryByTestId('query-retry')).toBeNull();
+    expect(screen.queryByTestId('query-ask-in-chat')).toBeNull();
+    // The container should not have the action bar div (mt-3 flex flex-wrap).
+    const actionBars = container.querySelectorAll('.mt-3.flex.flex-wrap');
+    expect(actionBars.length).toBe(0);
+  });
 });

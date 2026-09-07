@@ -57,7 +57,7 @@ export function BarChartRenderer({ data, config, onDataPointClick }: BarChartRen
       ) : (
         <Tooltip
           contentStyle={{
-            background: 'var(--c-surface-alt, #1e1e2e)',
+            background: 'var(--c-surface-alt, #111827)',
             border: '1px solid var(--c-edge, #333)',
             borderRadius: 6,
             color: 'var(--c-fg, #eee)',

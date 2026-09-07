@@ -18,6 +18,7 @@ export { initialNl2Sql } from './ai/types';
 
 export const useAiStore = create<AiStore>((set, get) => ({
   config: null,
+  settingsConfig: null,
   isConfigured: false,
   providers: [],
   configLoading: false,
@@ -48,10 +49,19 @@ export const useAiStore = create<AiStore>((set, get) => ({
     if (!('__TAURI_INTERNALS__' in globalThis)) return;
     set({ configLoading: true, configError: null });
     try {
-      const config = await aiCommands.getConfig();
+      const [config, settingsConfig] = await Promise.all([
+        typeof aiCommands?.getConfig === 'function'
+          ? aiCommands.getConfig()
+          : Promise.resolve(null),
+        typeof aiCommands?.getSettingsConfig === 'function'
+          ? aiCommands.getSettingsConfig().catch(() => null)
+          : Promise.resolve(null),
+      ]);
       set({
         config,
-        isConfigured: config !== null,
+        settingsConfig,
+        isConfigured:
+          config !== null || (settingsConfig !== null && settingsConfig.profiles.length > 0),
         configLoading: false,
       });
     } catch (e) {
@@ -60,6 +70,94 @@ export const useAiStore = create<AiStore>((set, get) => ({
         configError: e instanceof Error ? e.message : String(e),
       });
     }
+  },
+
+  loadSettingsConfig: async () => {
+    if (!('__TAURI_INTERNALS__' in globalThis)) return;
+    try {
+      const settingsConfig = await aiCommands.getSettingsConfig();
+      const config = await aiCommands.getConfig();
+      set({
+        settingsConfig,
+        config,
+        isConfigured: config !== null || (settingsConfig && settingsConfig.profiles.length > 0),
+      });
+    } catch (e) {
+      set({
+        configError: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
+
+  saveSettingsConfig: async (config) => {
+    set({ saving: true, configError: null });
+    try {
+      await aiCommands.saveSettingsConfig(config);
+      await get().loadConfig();
+      set({ saving: false });
+      return true;
+    } catch (e) {
+      set({
+        saving: false,
+        configError: e instanceof Error ? e.message : String(e),
+      });
+      return false;
+    }
+  },
+
+  setActiveProfile: async (profileId) => {
+    set({ configLoading: true, configError: null });
+    try {
+      await aiCommands.setActiveProfile(profileId);
+      await get().loadConfig();
+      set({ configLoading: false });
+      return true;
+    } catch (e) {
+      set({
+        configLoading: false,
+        configError: e instanceof Error ? e.message : String(e),
+      });
+      return false;
+    }
+  },
+
+  saveProfile: async (profile) => {
+    const current = get().settingsConfig || {
+      activeProfileId: profile.id,
+      profiles: [],
+    };
+    const exists = current.profiles.some((p) => p.id === profile.id);
+    let updatedProfiles = exists
+      ? current.profiles.map((p) => (p.id === profile.id ? profile : p))
+      : [...current.profiles, profile];
+
+    if (profile.isDefault) {
+      updatedProfiles = updatedProfiles.map((p) => ({
+        ...p,
+        isDefault: p.id === profile.id,
+      }));
+    }
+
+    const nextConfig = {
+      activeProfileId: profile.isDefault ? profile.id : current.activeProfileId || profile.id,
+      profiles: updatedProfiles,
+    };
+    return get().saveSettingsConfig(nextConfig);
+  },
+
+  deleteProfile: async (profileId) => {
+    const current = get().settingsConfig;
+    if (!current) return false;
+    const remaining = current.profiles.filter((p) => p.id !== profileId);
+    let nextActiveId = current.activeProfileId;
+    if (nextActiveId === profileId) {
+      nextActiveId = remaining[0]?.id || '';
+    }
+    const nextConfig = {
+      activeProfileId: nextActiveId,
+      profiles: remaining,
+    };
+    return get().saveSettingsConfig(nextConfig);
   },
 
   loadProviders: async () => {

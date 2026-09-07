@@ -211,14 +211,10 @@ src/components/sql-editor/
 ├── semantic/                            # 纯前端轻量 SQL 语义分析体系（每文件 < 300行）
 │   ├── tokenizer.ts                    # 容错分词器（识别关键字、注释、字符串、括号边界）
 │   ├── scopeModel.ts                   # 查询作用域、FROM/JOIN 表与别名映射解析
-│   ├── dialectAdapters.ts              # 多方言差异配置（MySQL, PG, SQLite, ClickHouse 等）
-│   └── intentionActions.ts             # Alt+Enter 意图操作（SELECT * 展开、别名前缀处理）
+│   └── dialectAdapters.ts              # 多方言差异配置（MySQL, PG, SQLite, ClickHouse 等）
 ├── completion/                          # 智能补全数据源（每文件 < 250行）
-│   ├── schemaCompletionSource.ts       # 表名与别名字段补全源
-│   ├── foreignKeyJoinCompletion.ts     # 基于外键关系的智能 JOIN 补全源
-│   └── functionCompletionSource.ts     # 内置函数与签名补全源
+│   └── schemaCompletionSource.ts       # 表名与别名字段补全源
 └── utils/                               # 纯工具库
-    ├── inListPaste.ts                  # 剪贴板文本自动转 IN 条件算法 (< 150行)
     └── statementRanges.ts              # 光标所在当前语句边界计算 (< 200行)
 ```
 
@@ -229,8 +225,8 @@ src/components/sql-editor/
 ```text
 路线规划：
 ├── Phase 1 (语句边界感知与执行交互升级)
-├── Phase 2 (纯前端容错语义 AST 与智能补全)
-└── Phase 3 (生产力工具、原生体验增强与安全加固)
+├── Phase 2 (纯前端容错语义 AST 与基础补全)
+└── Phase 3 (参数绑定与安全加固)
 ```
 
 ### Phase 1：语句边界感知与执行交互升级
@@ -239,17 +235,12 @@ src/components/sql-editor/
 - [ ] 实现行号槽单语句运行小图标（`statementGutter.ts`）。
 - [ ] 完善执行快捷键：`Cmd/Ctrl + Enter` 精准执行当前语句（选区优先）。
 
-### Phase 2：纯前端容错语义 AST 与智能补全
+### Phase 2：纯前端容错语义 AST 与基础补全
 - [ ] 编写轻量容错分词器（`tokenizer.ts`）与作用域别名解析器（`scopeModel.ts`）。
 - [ ] 实现方言适配器（`dialectAdapters.ts`），抹平 MySQL/PG/ClickHouse/SQLite 引用与大小写差异。
-- [ ] 实现别名感知字段过滤（`alias.` 仅推荐对应表的列）。
-- [ ] 实现基于外键元数据的智能 `JOIN` 关联条件补全。
-- [ ] 实现 `Alt+Enter` 意图操作（展开 `SELECT *`、字段别名补全）。
+- [ ] 实现字段智能过滤与补全。
 
-### Phase 3：生产力工具、原生体验增强与安全加固
-- [ ] 实现剪贴板数据一键智能粘贴为 `IN ('...', '...')`（`inListPaste.ts`）。
-- [ ] 实现侧边栏拖拽表/字段入编辑器的指示线（Drop Caret）与方言智能引号。
-- [ ] 实现 `INSERT INTO ... VALUES` 列名内联提示（`inlayHints.ts`）。
+### Phase 3：参数绑定与安全加固
 - [ ] 升级现有 `sqlBindParams.ts`：扩展支持 `@param`、`?`、`${var}` 语法，并为 `BindParamPanel` 增加历史值记忆。
 - [ ] 完善 `QueryErrorPanel`：保持原地重试与一键修复，增加“发送到 AI Chat 深度对话”联动入口。
 - [ ] 扩展 `dangerousSql.ts`：增加无 `WHERE` 条件的 `DELETE/UPDATE` 拦截，复用 `useConfirmDialog` 原生弹窗。

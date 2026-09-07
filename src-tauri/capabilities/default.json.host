@@ -23,6 +23,7 @@
     "core:menu:default",
     "dialog:default",
     "notification:default",
+    "clipboard-manager:default",
     "os:default",
     "updater:default",
     "process:default",

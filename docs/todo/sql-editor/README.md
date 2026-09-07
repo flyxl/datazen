@@ -33,15 +33,11 @@ docs/todo/sql-editor/
 - `SqlParameterDialog.vue`: 参数化 SQL 变量绑定对话框与历史值记忆。
 - `DangerConfirmDialog.vue`: 高危操作与生产环境静态安全拦截二次确认弹窗。
 - `MultiDbExecuteDialog.vue`: 跨多数据库/Schema 批量分发执行对话框。
-- `DelimitedListDialog.vue`: 剪贴板文本转换为 SQL `IN (...)` 列表配置。
 - `ThemeCustomizerDialog.vue`: 编辑器 Token 语法高亮调色盘。
 
 ### 2. `dbx/lib/editor/`
 - `codemirrorCurrentStatementFrameLayer.ts`: 当前语句发光/视觉外边框层。
 - `codemirrorStatementGutter.ts`: 行号栏单语句独立运行按钮。
-- `codemirrorInsertValueHints.ts`: `INSERT INTO ... VALUES` 列名内联提示（Inlay Hints）。
-- `sqlIntentionActions.ts`: `Alt+Enter` 意图操作（`SELECT *` 展开为列列表、字段别名限定）。
-- `hoverTableSql.ts`: 鼠标悬停显示表 DDL、字段元数据与内嵌快速过滤。
 - `queryEditorTableDrop.ts`: 侧边栏对象拖拽进编辑器的插入光标指示线（Drop Caret）与方言智能引号。
 
 ### 3. `dbx/lib/sql/`
@@ -49,4 +45,3 @@ docs/todo/sql-editor/
 - `sqlFormatter.ts`: 多方言代码格式化与压缩。
 - `sqlRisk.ts`: 语句风险等级分类（Read / Write / DDL / Transaction）。
 - `dmlChangePreview.ts`: DML 变更前自动转生成只读 SELECT 的 Diff 预览。
-- `sqlInListPaste.ts`: 剪贴板数据一键智能组装为 `IN ('...', '...')`。

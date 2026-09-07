@@ -5,6 +5,8 @@
 
 import type { DatabaseObjectKind, SslMode } from '../types';
 import type { StructureEditorUiConfig } from './structureEditor/types';
+import type { FunctionEntry } from './sqlFunctionTypes';
+import type { SqlDialectStrategy, SqlDialectProfile } from './sqlDialects/types';
 
 export type ConnectionMode = 'server' | 'file' | 'url';
 
@@ -142,4 +144,10 @@ export interface DatabaseTypeMeta {
   supportsCreateSchema?: boolean;
   /** Whether this driver supports CREATE USER via Driver Command. */
   supportsCreateUser?: boolean;
+  /** Dialect-specific SQL functions contributed by this driver for completion, signature help, and inlay hints */
+  sqlFunctions?: readonly FunctionEntry[];
+  /** SQL dialect strategy for DDL, Index, and Table template generation. */
+  sqlDialectStrategy?: SqlDialectStrategy;
+  /** Semantic editor profile for identifier quoting, casing, alias visibility, and parameter policies. */
+  sqlDialectProfile?: SqlDialectProfile;
 }

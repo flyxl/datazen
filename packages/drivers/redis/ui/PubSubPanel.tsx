@@ -1,12 +1,7 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, Radio, Send, X } from 'lucide-react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { Button } from '../../../../src/components/ui/Button';
+import { Button } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
 import { redisCommandInvoke } from './redisInvoke';
@@ -138,10 +133,7 @@ export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
         channels,
         patterns,
       });
-      setSubscriptions((prev) => [
-        ...prev,
-        { id: subscriptionId, channels, patterns },
-      ]);
+      setSubscriptions((prev) => [...prev, { id: subscriptionId, channels, patterns }]);
       setChannelsInput('');
       setPatternsInput('');
     } catch (e) {
@@ -151,18 +143,21 @@ export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
     }
   }, [channelsInput, patternsInput, dbSessionId, t]);
 
-  const handleUnsubscribe = useCallback(async (subscriptionId: string) => {
-    setError(null);
-    try {
-      await redisCommandInvoke('redis', 'pubsub_unsubscribe', {
-        dbSessionId,
-        subscriptionId,
-      });
-      setSubscriptions((prev) => prev.filter((s) => s.id !== subscriptionId));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, [dbSessionId]);
+  const handleUnsubscribe = useCallback(
+    async (subscriptionId: string) => {
+      setError(null);
+      try {
+        await redisCommandInvoke('redis', 'pubsub_unsubscribe', {
+          dbSessionId,
+          subscriptionId,
+        });
+        setSubscriptions((prev) => prev.filter((s) => s.id !== subscriptionId));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [dbSessionId],
+  );
 
   const handlePublish = useCallback(async () => {
     const channel = publishChannel.trim();
@@ -289,10 +284,14 @@ export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 font-mono text-fg-secondary">
                       {sub.channels.length > 0 && (
-                        <div>{t('redis.pubsubChannels')}: {sub.channels.join(', ')}</div>
+                        <div>
+                          {t('redis.pubsubChannels')}: {sub.channels.join(', ')}
+                        </div>
                       )}
                       {sub.patterns.length > 0 && (
-                        <div>{t('redis.pubsubPatterns')}: {sub.patterns.join(', ')}</div>
+                        <div>
+                          {t('redis.pubsubPatterns')}: {sub.patterns.join(', ')}
+                        </div>
                       )}
                     </div>
                     <button

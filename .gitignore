@@ -134,6 +134,7 @@ packages/extensions/dist/
 .dsh-vision-toolkit
 tsconfig.node.tsbuildinfo
 e2e/.app-data/
+e2e/.app-data-*/
 e2e/screenshots/
 e2e/demo-recording.png
 e2e/demo-recording.mp4
@@ -146,3 +147,7 @@ e2e/.demo-recording/
 .agents/
 .agent
 .codex/
+.codegraph/
+.cursor/mcp.json.bak
+opencode.jsonc
+feat/

@@ -1,4 +1,5 @@
-import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
+import type { DatabaseTypeMeta } from '@datazen/driver-sdk';
+import { clickhouseDialect, clickhouseDialectProfile } from './dialect';
 
 export const clickhouseMeta = {
   label: 'ClickHouse',
@@ -51,4 +52,6 @@ export const clickhouseMeta = {
     fields: {},
     indexMethods: ['minmax', 'set', 'bloom_filter', 'ngrambf_v1', 'tokenbf_v1'],
   },
+  sqlDialectStrategy: clickhouseDialect,
+  sqlDialectProfile: clickhouseDialectProfile,
 } satisfies DatabaseTypeMeta;

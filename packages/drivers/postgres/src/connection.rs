@@ -33,7 +33,8 @@ pub(crate) fn build_pg_options(
     opts = opts.ssl_mode(pg_ssl);
 
     if let Some(schema) = config.schema.as_deref().filter(|s| !s.trim().is_empty()) {
-        opts = opts.options([("search_path".to_string(), format!("{}, public", schema))]);
+        let clean = schema.trim().replace('"', "\"\"");
+        opts = opts.options([("search_path".to_string(), format!("\"{clean}\",public"))]);
     }
 
     opts = opts.log_statements(tracing::log::LevelFilter::Trace);
@@ -96,8 +97,17 @@ impl PostgresDriver {
 
     pub(crate) async fn fetch_tables_from_pool(
         pool: &PgPool,
+        schema_filter: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
-        let rows = sqlx::query(
+        let filter_clause = match schema_filter {
+            Some(s) if !s.trim().is_empty() => {
+                let escaped = s.replace('\'', "''");
+                format!("AND n.nspname IN ('{escaped}', 'public')")
+            }
+            _ => String::new(),
+        };
+
+        let sql = format!(
             r#"
             SELECT n.nspname AS table_schema, c.relname AS table_name,
                    CASE c.relkind
@@ -111,23 +121,27 @@ impl PostgresDriver {
               AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
               AND NOT pg_catalog.pg_is_other_temp_schema(n.oid)
               AND (pg_catalog.pg_my_temp_schema() = 0 OR n.oid <> pg_catalog.pg_my_temp_schema())
+              {filter_clause}
             UNION ALL
             SELECT n.nspname AS table_schema, '' AS table_name, 'SCHEMA_MARKER' AS table_type
             FROM pg_catalog.pg_namespace n
             WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
               AND NOT pg_catalog.pg_is_other_temp_schema(n.oid)
               AND (pg_catalog.pg_my_temp_schema() = 0 OR n.oid <> pg_catalog.pg_my_temp_schema())
+              {filter_clause}
               AND NOT EXISTS (
                 SELECT 1 FROM pg_catalog.pg_class c
                 WHERE c.relnamespace = n.oid
                   AND c.relkind IN ('r', 'v', 'm', 'f', 'p')
               )
             ORDER BY table_schema, table_name
-            "#,
-        )
-        .fetch_all(pool)
-        .await
-        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            "#
+        );
+
+        let rows = sqlx::query(&sql)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
         Ok(rows
             .iter()
@@ -315,12 +329,19 @@ impl PostgresDriver {
         database: &str,
     ) -> Result<Vec<TableInfo>, DriverError> {
         let db = database.trim();
+        let configs = self.connect_configs.read().await;
+        let schema_filter = configs
+            .get(&handle.pool_id)
+            .and_then(|c| c.schema.as_deref())
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_string);
+        drop(configs);
 
         // Empty name → list tables on the currently connected database.
         if db.is_empty() {
             let pools = self.pools.read().await;
             let pool = Self::get_pool(&pools, handle)?;
-            return Self::fetch_tables_from_pool(pool).await;
+            return Self::fetch_tables_from_pool(pool, schema_filter.as_deref()).await;
         }
 
         let active = self
@@ -333,13 +354,13 @@ impl PostgresDriver {
         if active.as_deref() == Some(db) {
             let pools = self.pools.read().await;
             let pool = Self::get_pool(&pools, handle)?;
-            return Self::fetch_tables_from_pool(pool).await;
+            return Self::fetch_tables_from_pool(pool, schema_filter.as_deref()).await;
         }
 
         // information_schema is per-database in Postgres — open a temporary pool
         // for the named catalog without permanently switching the handle.
         let temp = self.pool_for_named_database(handle, db, 1, 0).await?;
-        let result = Self::fetch_tables_from_pool(&temp).await;
+        let result = Self::fetch_tables_from_pool(&temp, schema_filter.as_deref()).await;
         temp.close().await;
         result
     }

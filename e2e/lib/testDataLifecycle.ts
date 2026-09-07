@@ -96,6 +96,7 @@ export async function seedDefaultPgConnection(browser: Browser): Promise<void> {
   const pgUser = process.env.E2E_PG_USER || process.env.PG_USER || 'postgres';
   const pgPassword = process.env.E2E_PG_PASSWORD || process.env.PG_PASSWORD || '';
   const pgDatabase = process.env.E2E_PG_DB || process.env.PG_DATABASE || 'postgres';
+  const pgSchema = process.env.E2E_WORKER_SCHEMA || undefined;
 
   await browser.executeAsync(
     (
@@ -104,6 +105,7 @@ export async function seedDefaultPgConnection(browser: Browser): Promise<void> {
       user: string,
       pw: string,
       db: string,
+      schema: string | undefined,
       done: (r: unknown) => void,
     ) => {
       const config = {
@@ -115,6 +117,7 @@ export async function seedDefaultPgConnection(browser: Browser): Promise<void> {
         username: user,
         password: pw,
         database: db,
+        schema: schema || undefined,
         group: 'E2E 测试',
         colorTag: 'blue',
         sslMode: 'disable',
@@ -130,6 +133,7 @@ export async function seedDefaultPgConnection(browser: Browser): Promise<void> {
     pgUser,
     pgPassword,
     pgDatabase,
+    pgSchema,
   );
 }
 

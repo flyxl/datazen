@@ -1,19 +1,7 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
-import {
-  CheckSquare,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Square,
-  Trash2,
-} from 'lucide-react';
-import { Button } from '../../../../src/components/ui/Button';
-import { Input } from '../../../../src/components/ui/Input';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CheckSquare, Loader2, Plus, RefreshCw, Square, Trash2 } from 'lucide-react';
+import { Button } from '@datazen/ui';
+import { Input } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
 import { redisCommandInvoke } from './redisInvoke';
@@ -192,14 +180,7 @@ export function StreamEditor({ dbSessionId, dbIndex, redisKey }: StreamEditorPro
     setLoading(true);
     setError(null);
     try {
-      const result = await invokeXrange(
-        dbSessionId,
-        dbIndex,
-        redisKey,
-        '-',
-        '+',
-        ENTRY_PAGE_SIZE,
-      );
+      const result = await invokeXrange(dbSessionId, dbIndex, redisKey, '-', '+', ENTRY_PAGE_SIZE);
       setEntries(result.entries);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -337,9 +318,7 @@ export function StreamEditor({ dbSessionId, dbIndex, redisKey }: StreamEditorPro
                 <th className="px-2 py-1.5 font-medium text-fg-muted">
                   {t('redis.streamEntryId')}
                 </th>
-                <th className="px-2 py-1.5 font-medium text-fg-muted">
-                  {t('redis.streamFields')}
-                </th>
+                <th className="px-2 py-1.5 font-medium text-fg-muted">{t('redis.streamFields')}</th>
               </tr>
             </thead>
             <tbody>
@@ -434,12 +413,7 @@ export function StreamEditor({ dbSessionId, dbIndex, redisKey }: StreamEditorPro
                       onClick={(e) => {
                         e.stopPropagation();
                         void runAction(async () => {
-                          await invokeXgroupDestroy(
-                            dbSessionId,
-                            dbIndex,
-                            redisKey,
-                            group.name,
-                          );
+                          await invokeXgroupDestroy(dbSessionId, dbIndex, redisKey, group.name);
                           if (selectedGroup === group.name) {
                             setSelectedGroup(null);
                           }
@@ -506,13 +480,9 @@ export function StreamEditor({ dbSessionId, dbIndex, redisKey }: StreamEditorPro
                   disabled={busy || selectedPending.size === 0}
                   onClick={() =>
                     void runAction(async () => {
-                      await invokeXack(
-                        dbSessionId,
-                        dbIndex,
-                        redisKey,
-                        selectedGroup,
-                        [...selectedPending],
-                      );
+                      await invokeXack(dbSessionId, dbIndex, redisKey, selectedGroup, [
+                        ...selectedPending,
+                      ]);
                       await loadGroups();
                       await loadPending(selectedGroup);
                     })
@@ -558,9 +528,7 @@ export function StreamEditor({ dbSessionId, dbIndex, redisKey }: StreamEditorPro
                           </button>
                         </td>
                         <td className="px-2 py-1 font-mono text-fg-secondary">{entry.id}</td>
-                        <td className="px-2 py-1 font-mono text-fg-secondary">
-                          {entry.consumer}
-                        </td>
+                        <td className="px-2 py-1 font-mono text-fg-secondary">{entry.consumer}</td>
                         <td className="px-2 py-1 text-fg-secondary">{entry.idleMs}</td>
                         <td className="px-2 py-1 text-fg-secondary">{entry.deliveryCount}</td>
                       </tr>

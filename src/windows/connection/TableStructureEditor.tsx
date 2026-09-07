@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Download, Loader2, Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { databaseCommands } from '../../commands/database';
+import { getCachedTableSchema, invalidateSchemaCache } from '../../lib/schemaCache';
 import { queryCommands } from '../../commands/query';
 import { structureCommands } from '../../commands/structure';
 import { driverCommands } from '../../commands/driver';
@@ -168,7 +168,7 @@ export function TableStructureEditor({
     const capsPromise = structureCommands.getStructureCapabilities(dbSessionId);
     const schemaPromise =
       mode === 'alter' && initialTableName
-        ? databaseCommands.getTableSchema(dbSessionId, initialTableName)
+        ? getCachedTableSchema(dbSessionId, initialTableName, database)
         : Promise.resolve(null);
 
     Promise.all([capsPromise, schemaPromise])
@@ -364,6 +364,9 @@ export function TableStructureEditor({
           setError(result.error);
         }
         return;
+      }
+      if (initialTableName) {
+        invalidateSchemaCache(dbSessionId, initialTableName);
       }
       onSuccess();
     } catch (e) {

@@ -14,6 +14,7 @@ import {
 } from '../lib/sqlNamespace';
 import { t } from '../locales/t';
 import type { DatabaseType, TableInfo } from '../types';
+import { bindSchemaStore } from '../plugin-sdk/schemaStoreBridge';
 import {
   computeIsMultiDatabase,
   knownTableNames,
@@ -481,7 +482,31 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
       const missing = wanted.filter((name) => !(name in columnMap) && !columnInflight.has(name));
       if (missing.length === 0) return;
 
-      const nextInflight = new Set(columnInflight);
+      // Try batch loading first
+      try {
+        const batchResult = await databaseCommands.getAllColumns(dbSessionId);
+        if (batchResult && Object.keys(batchResult).length > 0) {
+          const latest = get().schemas.get(dbSessionId) ?? createEmptyConnectionSchema();
+          const nextColumnMap = { ...latest.columnMap };
+          let changed = false;
+          for (const name of missing) {
+            if (name in batchResult) {
+              nextColumnMap[name] = batchResult[name];
+              changed = true;
+            }
+          }
+          if (changed) {
+            commitConnectionPatch(dbSessionId, { columnMap: nextColumnMap });
+          }
+          return;
+        }
+      } catch {
+        // Batch not supported or failed — fall through to per-table
+      }
+
+      // Fallback: per-table loading
+      const latest = get().schemas.get(dbSessionId) ?? createEmptyConnectionSchema();
+      const nextInflight = new Set(latest.columnInflight);
       for (const name of missing) nextInflight.add(name);
       commitConnectionPatch(dbSessionId, { columnInflight: nextInflight });
 
@@ -592,3 +617,5 @@ export function useConnectionSchemaField<K extends keyof ConnectionSchemaState>(
 if (import.meta.env.DEV) {
   (window as unknown as Record<string, unknown>).__schemaStore = useSchemaStore;
 }
+
+bindSchemaStore(useSchemaStore);

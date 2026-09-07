@@ -7,10 +7,21 @@ describe('sqlGenerator', () => {
     tableName: 'users',
     primaryKeys: ['id'],
     columns: [
-      { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, isAutoIncrement: true },
+      {
+        name: 'id',
+        dataType: 'bigint',
+        nullable: false,
+        isPrimaryKey: true,
+        isAutoIncrement: true,
+      },
       { name: 'name', dataType: 'varchar(255)', nullable: false },
       { name: 'email', dataType: 'varchar(255)', nullable: true },
-      { name: 'created_at', dataType: 'timestamp', nullable: false, defaultValue: 'CURRENT_TIMESTAMP' },
+      {
+        name: 'created_at',
+        dataType: 'timestamp',
+        nullable: false,
+        defaultValue: 'CURRENT_TIMESTAMP',
+      },
     ],
     indexes: [],
     foreignKeys: [],
@@ -32,8 +43,30 @@ describe('sqlGenerator', () => {
     });
 
     it('quotes identifiers with schema prefix when provided', () => {
-      const sql = generateTableSql(sampleSchema, 'select', 'postgresql', { schemaPrefix: 'public' });
+      const sql = generateTableSql(sampleSchema, 'select', 'postgresql', {
+        schemaPrefix: 'public',
+      });
       expect(sql).toBe('SELECT "id", "name", "email", "created_at"\nFROM "public"."users";');
+    });
+
+    it('generates SELECT * when columns array is empty', () => {
+      const emptyColsSchema: TableSchema = { ...sampleSchema, columns: [] };
+      const sql = generateTableSql(emptyColsSchema, 'select', 'postgresql');
+      expect(sql).toBe('SELECT *\nFROM "users";');
+    });
+
+    it('double-prefixes schema when tableName already includes schema prefix', () => {
+      // Callers MUST override tableName to bare name before calling generateTableSql
+      // to avoid this double-prefix. See handleGenerateTableSql for the fix.
+      const qualifiedSchema: TableSchema = {
+        ...sampleSchema,
+        tableName: 'public.users',
+      };
+      const sql = generateTableSql(qualifiedSchema, 'select', 'postgresql', {
+        schemaPrefix: 'public',
+      });
+      // This documents the raw formatTableRef behavior — callers must not trigger this.
+      expect(sql).toBe('SELECT "id", "name", "email", "created_at"\nFROM "public"."public.users";');
     });
 
     it('uses mysql backticks for mysql dialect', () => {
@@ -52,6 +85,21 @@ describe('sqlGenerator', () => {
       expect(sql).toContain('`created_at`');
       expect(sql).toContain('CURRENT_TIMESTAMP');
     });
+
+    it('generates DEFAULT VALUES when columns array is empty', () => {
+      const emptyColsSchema: TableSchema = { ...sampleSchema, columns: [] };
+      const sql = generateTableSql(emptyColsSchema, 'insert', 'postgresql');
+      expect(sql).toBe('INSERT INTO "users"\nDEFAULT VALUES;');
+    });
+
+    it('generates DEFAULT VALUES when all columns are auto-increment', () => {
+      const allAutoSchema: TableSchema = {
+        ...sampleSchema,
+        columns: sampleSchema.columns.map((c) => ({ ...c, isAutoIncrement: true })),
+      };
+      const sql = generateTableSql(allAutoSchema, 'insert', 'postgresql');
+      expect(sql).toBe('INSERT INTO "users"\nDEFAULT VALUES;');
+    });
   });
 
   describe('UPDATE generation', () => {
@@ -64,10 +112,22 @@ describe('sqlGenerator', () => {
       expect(sql).toContain('WHERE "id" = ;');
     });
 
+    it('generates placeholder comment when columns array is empty', () => {
+      const emptyColsSchema: TableSchema = { ...sampleSchema, columns: [] };
+      const sql = generateTableSql(emptyColsSchema, 'update', 'postgresql');
+      expect(sql).toBe('/* No column metadata available for UPDATE "users" */');
+    });
+
+    it('delegates to base class when columns array is empty (clickhouse)', () => {
+      const emptyColsSchema: TableSchema = { ...sampleSchema, columns: [] };
+      const sql = generateTableSql(emptyColsSchema, 'update', 'clickhouse');
+      expect(sql).toBe('/* No column metadata available for UPDATE `users` */');
+    });
+
     it('generates clickhouse specific ALTER TABLE UPDATE statement', () => {
       const sql = generateTableSql(sampleSchema, 'update', 'clickhouse');
       expect(sql).toContain('ALTER TABLE `users`\nUPDATE');
-      expect(sql).toContain('`name` = \'\'');
+      expect(sql).toContain("`name` = ''");
       expect(sql).toContain('WHERE `id` = ;');
     });
 
@@ -88,6 +148,18 @@ describe('sqlGenerator', () => {
       expect(sql).toBe('DELETE FROM "users"\nWHERE "id" = ;');
     });
 
+    it('generates placeholder comment when columns array is empty', () => {
+      const emptyColsSchema: TableSchema = { ...sampleSchema, columns: [] };
+      const sql = generateTableSql(emptyColsSchema, 'delete', 'postgresql');
+      expect(sql).toBe('/* No column metadata available for DELETE "users" */');
+    });
+
+    it('delegates to base class when columns array is empty (clickhouse)', () => {
+      const emptyColsSchema: TableSchema = { ...sampleSchema, columns: [] };
+      const sql = generateTableSql(emptyColsSchema, 'delete', 'clickhouse');
+      expect(sql).toBe('/* No column metadata available for DELETE `users` */');
+    });
+
     it('generates clickhouse specific ALTER TABLE DELETE statement', () => {
       const sql = generateTableSql(sampleSchema, 'delete', 'clickhouse');
       expect(sql).toBe('ALTER TABLE `users`\nDELETE WHERE `id` = ;');
@@ -100,7 +172,9 @@ describe('sqlGenerator', () => {
         columns: sampleSchema.columns.map((c) => ({ ...c, isPrimaryKey: false })),
       };
       const sql = generateTableSql(noPkSchema, 'delete', 'postgresql');
-      expect(sql).toBe('DELETE FROM "users"\nWHERE /* WARNING: Primary Key not found. Specify condition */;');
+      expect(sql).toBe(
+        'DELETE FROM "users"\nWHERE /* WARNING: Primary Key not found. Specify condition */;',
+      );
     });
   });
 

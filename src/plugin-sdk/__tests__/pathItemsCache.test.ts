@@ -1,10 +1,16 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { useSchemaStore } from '../../stores/schemaStore';
-import { cachePathItems, getCachedPathItems, subscribeSchemaPathItems } from '../index';
+import {
+  cachePathItems,
+  getCachedPathItems,
+  subscribeSchemaPathItems,
+  bindSchemaStore,
+} from '@datazen/driver-sdk';
 
 describe('plugin-sdk path item cache', () => {
   beforeEach(() => {
     useSchemaStore.getState().reset();
+    bindSchemaStore(useSchemaStore);
   });
 
   it('round-trips cached get_tables rows', () => {

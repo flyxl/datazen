@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Check, Copy, Lightbulb, RotateCcw, Stethoscope, Wand2 } from 'lucide-react';
+import { Check, Copy, Lightbulb, MessageSquare, RotateCcw, Stethoscope, Wand2 } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 
 interface QueryErrorPanelProps {
@@ -10,6 +10,8 @@ interface QueryErrorPanelProps {
   onFixSql?: () => void;
   onRetry?: () => void;
   onCopy?: () => void;
+  /** S6-A: Send sanitized error context to AI Chat as a draft. */
+  onAskInChat?: () => void;
 }
 
 /**
@@ -24,6 +26,7 @@ export function QueryErrorPanel({
   onFixSql,
   onRetry,
   onCopy,
+  onAskInChat,
 }: Readonly<QueryErrorPanelProps>) {
   const { t } = useI18n();
   const [errorCopied, setErrorCopied] = useState(false);
@@ -69,7 +72,7 @@ export function QueryErrorPanel({
       >
         {message}
       </pre>
-      {(explain || onFixSql || onRetry) && (
+      {(explain || onFixSql || onRetry || onAskInChat) && (
         <div className="mt-3 flex flex-wrap items-center gap-1">
           {explain && (
             <button
@@ -102,6 +105,18 @@ export function QueryErrorPanel({
             >
               <RotateCcw className="h-3 w-3" />
               {t('common.retry')}
+            </button>
+          )}
+          {onAskInChat && (
+            <button
+              type="button"
+              data-testid="query-ask-in-chat"
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-accent hover:bg-accent/10"
+              onClick={onAskInChat}
+              title={t('query.editor.askInChatHint')}
+            >
+              <MessageSquare className="h-3 w-3" />
+              {t('query.editor.askInChat')}
             </button>
           )}
         </div>

@@ -18,15 +18,17 @@ import type { I18nKey } from '../../../locales';
 import type { ConnectionConfig } from '../../../types';
 import type { ConnectionEntry } from '../../../stores/activeConnectionStore';
 import { LEAF_KIND_ICON } from '../schema-tree/schemaTreeCategories';
+import { setDragPayload } from '../schema-tree/schemaTreeDrag';
+import { PINNED_GROUP_KEY, RECENT_GROUP_KEY } from '../../../lib/connectionLocator';
 import type { UnifiedRow } from './types';
-import { depthPadding, namespaceLeafContext } from './utils';
+import { createDragGhost, depthPadding, namespaceLeafContext, removeDragGhost } from './utils';
 
 export interface NavigatorTreeRowProps {
   row: UnifiedRow;
   t: (key: I18nKey, params?: Record<string, string | number>) => string;
   connections: ConnectionConfig[];
   activeConnections: Record<string, ConnectionEntry | undefined>;
-  dropTarget: { id: string; position: 'before' | 'after' } | null;
+  dropTarget: { id: string; position: 'before' | 'after'; targetGroup?: string } | null;
   expandedDbs: Set<string>;
   onNewConnection: () => void;
   onSelectConnection: (connectionId: string) => void;
@@ -74,13 +76,13 @@ export interface NavigatorTreeRowProps {
   handleConnectionClick: (conn: ConnectionConfig, sectionGroup: string) => void;
   handleConnectionDoubleClick: (conn: ConnectionConfig, sectionGroup: string) => void;
   handleDragStart: (e: React.DragEvent, connId: string) => void;
-  handleDragOver: (e: React.DragEvent, targetId: string) => void;
-  handleDragLeave: () => void;
+  handleDragOver: (e: React.DragEvent, targetId: string, targetSectionGroup?: string) => void;
+  handleDragLeave: (e: React.DragEvent) => void;
   handleDragEnd: () => void;
   handleDrop: (e: React.DragEvent) => void;
   groupDropTarget?: string | null;
   handleGroupDragOver?: (e: React.DragEvent, groupName: string) => void;
-  handleGroupDragLeave?: () => void;
+  handleGroupDragLeave?: (e: React.DragEvent) => void;
   handleGroupDrop?: (e: React.DragEvent, groupName: string) => void;
   handleSectionDragOver?: (e: React.DragEvent, section: string) => void;
   handleSectionDrop?: (e: React.DragEvent, section: string) => void;
@@ -142,7 +144,7 @@ export function NavigatorTreeRow({
         <div
           data-section-header
           data-section={row.section}
-          className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-fg-muted"
+          className="flex select-none items-center gap-1.5 px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-fg-muted"
           onDragOver={(e) => handleSectionDragOver?.(e, row.section)}
           onDrop={(e) => handleSectionDrop?.(e, row.section)}
         >
@@ -163,7 +165,7 @@ export function NavigatorTreeRow({
           data-group-header
           data-group-name={row.groupName}
           className={cn(
-            'flex cursor-pointer items-center gap-1.5 px-2 py-1 transition-colors hover:bg-surface-raised/50',
+            'flex cursor-pointer select-none items-center gap-1.5 px-2 py-1 transition-colors hover:bg-surface-raised/50',
             isDropTarget && 'bg-accent/20 ring-1 ring-accent rounded-sm',
           )}
           onClick={() => toggleGroup(row.groupName)}
@@ -173,36 +175,50 @@ export function NavigatorTreeRow({
           onDrop={(e) => handleGroupDrop?.(e, row.groupName)}
         >
           {row.expanded ? (
-            <ChevronDown className="h-3 w-3 shrink-0 text-fg-muted" />
+            <ChevronDown className="pointer-events-none h-3 w-3 shrink-0 text-fg-muted" />
           ) : (
-            <ChevronRight className="h-3 w-3 shrink-0 text-fg-muted" />
+            <ChevronRight className="pointer-events-none h-3 w-3 shrink-0 text-fg-muted" />
           )}
           <ThemedIcon
             id="schema.schema"
-            className="h-3.5 w-3.5 shrink-0 text-amber-400"
+            className="pointer-events-none h-3.5 w-3.5 shrink-0 text-amber-400"
             fallback={row.expanded ? FolderOpen : FolderClosed}
           />
-          <span className="text-[13px] font-semibold text-fg">{row.displayName}</span>
-          <span className="text-[11px] text-fg-muted">({row.count})</span>
+          <span className="pointer-events-none text-[13px] font-semibold text-fg">
+            {row.displayName}
+          </span>
+          <span className="pointer-events-none text-[11px] text-fg-muted">({row.count})</span>
         </div>
       );
     }
 
     case 'connection': {
-      const showDropBefore = dropTarget?.id === row.conn.id && dropTarget.position === 'before';
-      const showDropAfter = dropTarget?.id === row.conn.id && dropTarget.position === 'after';
+      const isTargetGroup =
+        row.sectionGroup !== RECENT_GROUP_KEY &&
+        row.sectionGroup !== PINNED_GROUP_KEY &&
+        (dropTarget?.targetGroup ?? '') === (row.sectionGroup ?? '');
+      const showDropBefore =
+        isTargetGroup && dropTarget?.id === row.conn.id && dropTarget.position === 'before';
+      const showDropAfter =
+        isTargetGroup && dropTarget?.id === row.conn.id && dropTarget.position === 'after';
       const matchTitle = row.match ? `${row.match.reason}: ${row.match.context}` : undefined;
 
       return (
-        <div>
-          {showDropBefore && <div className="mx-2 h-[2px] rounded-full bg-accent" />}
+        <div
+          className="select-none"
+          onDragOver={(e) => handleDragOver(e, row.conn.id, row.sectionGroup)}
+          onDrop={handleDrop}
+        >
+          {showDropBefore && (
+            <div className="pointer-events-none mx-2 h-[2px] rounded-full bg-accent" />
+          )}
           <div
             data-conn-item
             data-conn-name={row.conn.name}
             data-conn-group={row.sectionGroup}
             draggable
             onDragStart={(e) => handleDragStart(e, row.conn.id)}
-            onDragOver={(e) => handleDragOver(e, row.conn.id)}
+            onDragOver={(e) => handleDragOver(e, row.conn.id, row.sectionGroup)}
             onDragLeave={handleDragLeave}
             onDragEnd={handleDragEnd}
             onDrop={handleDrop}
@@ -210,7 +226,7 @@ export function NavigatorTreeRow({
             data-search-match-reason={row.match?.reason}
             data-search-match-context={row.match?.context}
             className={cn(
-              'group relative flex cursor-default items-center gap-1.5 py-1 pr-2 text-[13px] transition-colors',
+              'group relative flex cursor-default select-none items-center gap-1.5 py-1 pr-2 text-[13px] transition-colors',
               row.isSelected
                 ? 'bg-accent/10 text-fg'
                 : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
@@ -247,7 +263,9 @@ export function NavigatorTreeRow({
             <span className="min-w-0 flex-1 truncate font-medium">{row.conn.name}</span>
             {renderStatusDot(row.conn.id)}
           </div>
-          {showDropAfter && <div className="mx-2 h-[2px] rounded-full bg-accent" />}
+          {showDropAfter && (
+            <div className="pointer-events-none mx-2 h-[2px] rounded-full bg-accent" />
+          )}
         </div>
       );
     }
@@ -350,8 +368,28 @@ export function NavigatorTreeRow({
           type="button"
           data-tree-node={row.catId === 'views' ? 'view' : 'table'}
           data-item-name={row.item.name}
+          draggable
+          onDragStart={(e) => {
+            const sel = window.getSelection();
+            if (sel && !sel.isCollapsed) sel.removeAllRanges();
+            const conn = connections.find((c) => c.id === row.connectionId);
+            setDragPayload(e.dataTransfer, {
+              kind: isView ? 'view' : 'table',
+              database: row.dbName,
+              schema: row.item.schema ?? undefined,
+              table: row.item.name,
+              connectionId: row.connectionId,
+              dbSessionId: row.dbSessionId || undefined,
+              databaseType: conn?.databaseType ?? '',
+            });
+            if (e.dataTransfer.setDragImage) {
+              const ghost = createDragGhost(row.item.name);
+              e.dataTransfer.setDragImage(ghost, 16, 14);
+            }
+          }}
+          onDragEnd={removeDragGhost}
           className={cn(
-            'flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] hover:bg-surface-raised',
+            'flex w-full cursor-pointer select-none items-center gap-1.5 py-1 pr-2 text-left text-[13px] hover:bg-surface-raised',
             row.isSelected ? 'bg-surface-raised text-fg' : 'text-fg-secondary',
           )}
           style={{ paddingLeft: depthPadding(row.depth) }}
@@ -374,7 +412,7 @@ export function NavigatorTreeRow({
           }}
         >
           <ThemedIcon id={iconId} className={`h-3.5 w-3.5 shrink-0 ${iconColor}`} fallback={Icon} />
-          <span className="selectable min-w-0 truncate">{row.item.name}</span>
+          <span className="min-w-0 truncate">{row.item.name}</span>
         </button>
       );
     }
@@ -463,7 +501,36 @@ export function NavigatorTreeRow({
             type="button"
             data-tree-node={menuKind}
             data-item-name={row.name}
-            className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
+            draggable
+            onDragStart={(e) => {
+              const sel = window.getSelection();
+              if (sel && !sel.isCollapsed) sel.removeAllRanges();
+              const conn = connections.find((c) => c.id === row.connectionId);
+              const schemaState = useSchemaStore.getState().schemas.get(row.dbSessionId);
+              const pathAliases = schemaState?.pathAliases ?? {};
+              const { tableName, schema, database } = namespaceLeafContext(
+                row.segments,
+                pathAliases,
+              );
+              const dbName = database ?? conn?.database ?? schemaState?.currentDatabase ?? '';
+              const relationKind =
+                row.leafKind === 'view' || row.leafKind === 'materializedView' ? 'view' : 'table';
+              setDragPayload(e.dataTransfer, {
+                kind: relationKind,
+                database: dbName,
+                schema: schema ?? undefined,
+                table: tableName,
+                connectionId: row.connectionId,
+                dbSessionId: row.dbSessionId || undefined,
+                databaseType: conn?.databaseType ?? '',
+              });
+              if (e.dataTransfer.setDragImage) {
+                const ghost = createDragGhost(tableName);
+                e.dataTransfer.setDragImage(ghost, 16, 14);
+              }
+            }}
+            onDragEnd={removeDragGhost}
+            className="flex w-full cursor-pointer select-none items-center gap-1.5 py-1 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
             style={{ paddingLeft: depthPadding(row.depth) }}
             onClick={() => {
               void (async () => {
@@ -521,7 +588,7 @@ export function NavigatorTreeRow({
               className={`h-3.5 w-3.5 shrink-0 ${leafIcon.color}`}
               fallback={leafIcon.icon}
             />
-            <span className="selectable min-w-0 truncate">{row.name}</span>
+            <span className="min-w-0 truncate">{row.name}</span>
           </button>
         );
       }
@@ -559,8 +626,27 @@ export function NavigatorTreeRow({
       );
     }
 
-    case 'empty-group':
-      return <div className="px-4 py-1.5 text-[11px] text-fg-muted">{t('main.noConnections')}</div>;
+    case 'empty-group': {
+      const isDropTarget = row.groupName !== undefined ? groupDropTarget === row.groupName : false;
+      return (
+        <div
+          data-empty-group={row.groupName}
+          className={cn(
+            'px-4 py-1.5 text-[11px] italic text-fg-muted select-none rounded-sm transition-colors',
+            isDropTarget && 'bg-accent/20 ring-1 ring-accent text-accent',
+          )}
+          onDragOver={(e) => {
+            if (row.groupName !== undefined) handleGroupDragOver?.(e, row.groupName);
+          }}
+          onDragLeave={handleGroupDragLeave}
+          onDrop={(e) => {
+            if (row.groupName !== undefined) handleGroupDrop?.(e, row.groupName);
+          }}
+        >
+          {t('main.noConnections')}
+        </div>
+      );
+    }
 
     case 'no-connections':
       return (

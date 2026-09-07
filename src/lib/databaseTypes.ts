@@ -67,6 +67,7 @@ export function escapeIdent(name: string, dbType?: DatabaseType): string {
   const q = dbType ? (DB_REGISTRY[dbType]?.quoteChar ?? '"') : '"';
   if (q === '`') return `\`${name.replaceAll('`', '``')}\``;
   if (q === '"') return `"${name.replaceAll('"', '""')}"`;
+  if (q === '[') return `[${name.replaceAll(']', ']]')}]`;
   return name; // no quoting (e.g. Redis)
 }
 

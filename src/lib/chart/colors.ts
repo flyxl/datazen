@@ -1,6 +1,18 @@
 /** Series colors remain fixed hex values; chart chrome uses --c-* CSS variables. */
 export const COLOR_PALETTES: Record<string, string[]> = {
-  default: ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#84cc16'],
+  default: ['#60a5fa', '#34d399', '#fbbf24', '#f87171', '#a78bfa', '#22d3ee', '#fb923c', '#f472b6'],
+  workspace: [
+    '#2563eb',
+    '#60a5fa',
+    '#93c5fd',
+    '#34d399',
+    '#5eead4',
+    '#fbbf24',
+    '#f87171',
+    '#a78bfa',
+  ],
+  navy: ['#0b1220', '#111827', '#182231', '#202b3a', '#374151', '#6b7280', '#9ca3af', '#d1d5db'],
+  status: ['#34d399', '#fbbf24', '#f87171', '#60a5fa', '#9ca3af'],
   ocean: ['#0ea5e9', '#0284c7', '#0369a1', '#075985', '#0c4a6e', '#164e63', '#155e75', '#0e7490'],
   forest: ['#22c55e', '#16a34a', '#15803d', '#166534', '#14532d', '#365314', '#3f6212', '#4d7c0f'],
   warm: ['#f97316', '#ef4444', '#f59e0b', '#ec4899', '#e11d48', '#be123c', '#9f1239', '#881337'],

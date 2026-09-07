@@ -29,6 +29,7 @@ import { openConnectionShareDialog } from '../../lib/connectionShare';
 import { openNewConnectionDialog } from '../../lib/windowManager';
 import { hideNativeContextMenu } from '../../lib/nativeContextMenu';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
+import { useUiStore } from '../../stores/uiStore';
 import { usePanelStore, nextPanelId, type RedisDbPanel } from '../../stores/panelStore';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import type { ConnectionViewActions } from '../../lib/connectionViews/types';
@@ -514,14 +515,14 @@ export function ConnectionPage() {
       return;
     }
     setEmbeddedDashboardId(undefined);
-    setDashboardTitle(t('dashboard.title'));
+    setDashboardTitle(t('connection.dashboard.title'));
     setWorkspaceMode('dashboard');
   }, [fetchDashboards, t]);
 
   const handleOpenDashboardById = useCallback(
     (dashboardId?: string, dashboardName?: string) => {
       setEmbeddedDashboardId(dashboardId);
-      setDashboardTitle(dashboardName ?? t('dashboard.title'));
+      setDashboardTitle(dashboardName ?? t('connection.dashboard.title'));
       setWorkspaceMode('dashboard');
     },
     [t],
@@ -533,12 +534,23 @@ export function ConnectionPage() {
 
   const openSettingsInShell = useCallback(
     (section?: string) => {
+      void useUiStore.getState().syncFullscreen();
       settingsReturnModeRef.current = workspaceMode;
       setSettingsSection(section);
       setMainView('settings');
     },
     [workspaceMode],
   );
+
+  useEffect(() => {
+    if (mainView === 'settings') {
+      void useUiStore.getState().syncFullscreen();
+      const timer = setTimeout(() => {
+        void useUiStore.getState().syncFullscreen();
+      }, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [mainView]);
 
   const handleSettingsBack = useCallback(() => {
     setMainView('workspace');
@@ -655,7 +667,7 @@ export function ConnectionPage() {
           </aside>
           <div
             ref={resizeHandleRef}
-            className="w-px shrink-0 cursor-col-resize bg-edge hover:bg-accent/30"
+            className="w-1 -ml-0.5 shrink-0 cursor-col-resize bg-transparent hover:bg-accent/30 transition-colors"
             title={t('main.sidebar.resize')}
           />
         </>

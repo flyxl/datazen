@@ -127,6 +127,65 @@ impl MysqlDriver {
         Ok((columns, pk_names))
     }
 
+    /// Batch-fetch columns for ALL tables in the given database in one query.
+    async fn fetch_all_columns_with_db<'e, E>(
+        executor: E,
+        current_db: &str,
+    ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::MySql>,
+    {
+        let cols = sqlx::query(
+            r#"
+            SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT,
+                   COLUMN_COMMENT, COLUMN_KEY, EXTRA
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = ?
+            ORDER BY TABLE_NAME, ORDINAL_POSITION
+            "#,
+        )
+        .bind(current_db)
+        .fetch_all(executor)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        let mut result: HashMap<String, (Vec<ColumnSchema>, Vec<String>)> = HashMap::new();
+
+        for r in &cols {
+            let table_name = decode_mysql_text(r, "TABLE_NAME");
+            let name = decode_mysql_text(r, "COLUMN_NAME");
+            let nullable = decode_mysql_text(r, "IS_NULLABLE");
+            let key = decode_mysql_text(r, "COLUMN_KEY");
+            let extra = decode_mysql_text(r, "EXTRA");
+            let is_pk = key == "PRI";
+
+            let column = ColumnSchema {
+                is_primary_key: is_pk,
+                name: name.clone(),
+                data_type: decode_mysql_text(r, "COLUMN_TYPE"),
+                nullable: nullable == "YES",
+                default_value: r.try_get("COLUMN_DEFAULT").ok(),
+                comment: {
+                    let s = decode_mysql_text(r, "COLUMN_COMMENT");
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Some(s)
+                    }
+                },
+                is_auto_increment: extra.contains("auto_increment"),
+            };
+
+            let entry = result.entry(table_name).or_default();
+            entry.0.push(column);
+            if is_pk {
+                entry.1.push(name);
+            }
+        }
+
+        Ok(result)
+    }
+
     pub(crate) fn quote_identifier(name: &str) -> String {
         format!("`{}`", name.replace('`', "``"))
     }
@@ -516,6 +575,36 @@ impl DatabaseDriver for MysqlDriver {
             }
         };
         Self::fetch_columns_with_db(&mut *conn, &current_db, table).await
+    }
+
+    async fn get_all_columns(
+        &self,
+        handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        self.apply_active_database(handle, &mut conn).await?;
+
+        let current_db = {
+            let tracked = self.active_databases.read().await;
+            tracked.get(&handle.pool_id).cloned()
+        };
+        let current_db = match current_db {
+            Some(db) if !db.is_empty() => db,
+            _ => {
+                let row = sqlx::query("SELECT DATABASE()")
+                    .fetch_one(&mut *conn)
+                    .await
+                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                row.try_get::<String, _>(0).unwrap_or_default()
+            }
+        };
+        Self::fetch_all_columns_with_db(&mut *conn, &current_db).await
     }
 
     async fn get_table_schema(

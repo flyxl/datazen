@@ -18,6 +18,7 @@ export interface TablePanel extends PanelBase {
   tableSchema?: string;
   subTab: SubTabId;
   structureEditing?: boolean;
+  targetColumn?: string;
 }
 
 export interface ViewPanel extends PanelBase {

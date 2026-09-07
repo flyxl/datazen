@@ -28,7 +28,13 @@ import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { splitPathHierarchyDatabasePin } from '../../lib/queryContextPath';
 
 export interface PanelHandlers {
-  handleSelectTable: (table: string, schema?: string, database?: string) => void;
+  handleSelectTable: (
+    table: string,
+    schema?: string,
+    database?: string,
+    subTab?: 'data' | 'structure' | 'ddl',
+    targetColumn?: string,
+  ) => void;
   handleCreateTable: () => void;
   handleEditTableStructure: (name: string) => void;
   handleOpenStructure: (name: string) => void;
@@ -119,7 +125,13 @@ export function usePanelHandlers({
   );
 
   const handleSelectTable = useCallback(
-    (table: string, schema?: string, database?: string) => {
+    (
+      table: string,
+      schema?: string,
+      database?: string,
+      subTab?: 'data' | 'structure' | 'ddl',
+      targetColumn?: string,
+    ) => {
       const ctx = sidebarConnCtx;
       if (!ctx) return;
       const currentPanels = usePanelStore
@@ -136,6 +148,9 @@ export function usePanelHandlers({
             (database == null || p.database === database),
         );
         if (existing) {
+          if (subTab) {
+            usePanelStore.getState().updatePanel(existing.id, { subTab });
+          }
           setActivePanel(existing.id);
           return;
         }
@@ -146,7 +161,7 @@ export function usePanelHandlers({
           viewName: table,
           database,
           viewSchema: schema,
-          subTab: 'data',
+          subTab: subTab ?? 'data',
         };
         addPanel(panel);
         return;
@@ -158,6 +173,12 @@ export function usePanelHandlers({
           (database == null || p.database === database),
       );
       if (existing) {
+        if (subTab) {
+          usePanelStore.getState().updatePanel(existing.id, {
+            subTab,
+            targetColumn,
+          });
+        }
         setActivePanel(existing.id);
         return;
       }
@@ -168,7 +189,8 @@ export function usePanelHandlers({
         tableName: table,
         database,
         tableSchema: schema,
-        subTab: 'data',
+        subTab: subTab ?? 'data',
+        targetColumn,
       };
       addPanel(panel);
     },
@@ -433,6 +455,18 @@ export function usePanelHandlers({
     usePanelStore.getState().setPendingQueryHistory(null);
     handleOpenQueryHistory();
   }, [sidebarConnCtx, handleOpenQueryHistory]);
+
+  // Consume pending history query intent set by clicking history queries or global history dialog
+  // when the connection was not yet open at click time.
+  useEffect(() => {
+    const pending = usePanelStore.getState().pendingHistoryQuery;
+    if (!pending || !sidebarConnCtx || sidebarConnCtx.connectionId !== pending.connectionId) return;
+    usePanelStore.getState().setPendingHistoryQuery(null);
+    handleNewQuery(pending.sql, {
+      database: pending.database || undefined,
+      schema: pending.schema || undefined,
+    });
+  }, [sidebarConnCtx, handleNewQuery]);
 
   const handleClosePanel = useCallback(
     (panelId: string) => {

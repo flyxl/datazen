@@ -8,10 +8,12 @@ import { PluginIcon } from './PluginIcon';
 export interface WorkspaceNavigatorProps {
   /** Shown in the empty state so users can jump to the plugin management page. */
   onOpenPlugins?: () => void;
+  /** Width in pixels for resizable sidebar. */
+  width?: number;
 }
 
 /** Left rail of the workspace mode: every page contributed by enabled plugins. */
-export function WorkspaceNavigator({ onOpenPlugins }: WorkspaceNavigatorProps) {
+export function WorkspaceNavigator({ onOpenPlugins, width }: WorkspaceNavigatorProps) {
   const { t } = useI18n();
   const pages = useWorkspacePages();
   const activeKey = useWorkspaceTabsStore((s) => s.activeKey);
@@ -19,7 +21,11 @@ export function WorkspaceNavigator({ onOpenPlugins }: WorkspaceNavigatorProps) {
   return (
     <aside
       data-testid="workspace-navigator"
-      className="flex h-full w-[180px] shrink-0 flex-col border-r border-edge bg-surface-alt"
+      style={width ? { width } : undefined}
+      className={cn(
+        'flex h-full shrink-0 flex-col border-r border-edge bg-surface-alt',
+        !width && 'w-[180px]',
+      )}
     >
       <div className="px-3 pt-3 pb-1 text-[11px] font-semibold tracking-wide text-fg-muted uppercase">
         {t('nav.workspacePages')}

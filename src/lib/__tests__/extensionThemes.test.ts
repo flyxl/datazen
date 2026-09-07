@@ -99,12 +99,7 @@ describe('repo extension packages', () => {
 
   it('includes the converted community theme and the sample extension', () => {
     expect(dirNames.sort()).toEqual(
-      [
-        'community.slate-blue',
-        'community.table-workspace',
-        'datazen.playground',
-        'qa.contract-templates',
-      ].sort(),
+      ['community.slate-blue', 'datazen.playground', 'qa.contract-templates'].sort(),
     );
   });
 
@@ -192,53 +187,6 @@ describe('community.slate-blue theme contract (converted extension)', () => {
     const charts = JSON.parse(
       readFileSync(join(packDir, theme?.chartsJson ?? ''), 'utf8'),
     ) as Record<string, unknown>;
-    expect(Object.keys(charts).length).toBeGreaterThan(0);
-    expect(readdirSync(join(packDir, theme?.iconsDir ?? '')).some((f) => f.endsWith('.svg'))).toBe(
-      true,
-    );
-  });
-});
-
-describe('community.table-workspace theme contract', () => {
-  const packDir = join(EXTENSIONS_ROOT, 'community.table-workspace');
-  const manifest = loadManifest('community.table-workspace');
-  const theme = manifest.contributes?.themes?.[0];
-  const tokensCss = readFileSync(join(packDir, theme?.tokensCss ?? ''), 'utf8');
-
-  it('declares a light+dark pure-theme contribution without pages/permissions', () => {
-    expect(theme?.id).toBe('table-workspace');
-    expect(theme?.modes).toEqual(['light', 'dark']);
-    expect(manifest.entry).toBeUndefined();
-    expect(manifest.permissions ?? []).toEqual([]);
-    expect(manifest.contributes?.pages ?? []).toEqual([]);
-  });
-
-  it('defines the complete surface, editor, DataTable, and font token contracts', () => {
-    for (const token of [
-      ...REQUIRED_SURFACE_TOKENS,
-      ...REQUIRED_FONT_TOKENS,
-      ...REQUIRED_CM_TOKENS,
-      ...RECOMMENDED_DT_TOKENS,
-    ]) {
-      expect(tokensCss, `missing ${token}`).toContain(`${token}:`);
-    }
-    expect(tokensCss).toMatch(/:root\s*\{/);
-    expect(tokensCss).toMatch(/\.dark\s*\{/);
-  });
-
-  it('ships preview, editor, chart, and semantic icon assets', () => {
-    expect(theme?.previewImage).toBe('themes/table-workspace/preview.svg');
-    expect(theme?.editorJson).toBe('themes/table-workspace/editor.json');
-    expect(theme?.chartsJson).toBe('themes/table-workspace/charts.json');
-    expect(theme?.iconsDir).toBe('themes/table-workspace/icons');
-
-    const editor = JSON.parse(
-      readFileSync(join(packDir, theme?.editorJson ?? ''), 'utf8'),
-    ) as Record<string, unknown>;
-    const charts = JSON.parse(
-      readFileSync(join(packDir, theme?.chartsJson ?? ''), 'utf8'),
-    ) as Record<string, unknown>;
-    expect(Object.keys(editor).length).toBeGreaterThan(0);
     expect(Object.keys(charts).length).toBeGreaterThan(0);
     expect(readdirSync(join(packDir, theme?.iconsDir ?? '')).some((f) => f.endsWith('.svg'))).toBe(
       true,

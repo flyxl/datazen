@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AiChatMessage,
   AiProviderConfig,
+  AiSettingsConfig,
   ConnectionDiagnosis,
   DiagnosisResult,
   ExplainAnalysis,
@@ -74,6 +75,10 @@ export const aiCommands = {
   saveConfig: (config: AiProviderConfig) => invoke<void>('ai_save_config', { config }),
   getConfig: () => invoke<AiProviderConfig | null>('ai_get_config'),
   deleteConfig: () => invoke<void>('ai_delete_config'),
+  getSettingsConfig: () => invoke<AiSettingsConfig>('ai_get_settings_config'),
+  saveSettingsConfig: (config: AiSettingsConfig) =>
+    invoke<void>('ai_save_settings_config', { config }),
+  setActiveProfile: (profileId: string) => invoke<void>('ai_set_active_profile', { profileId }),
 
   generateSql: (params: {
     dbSessionId: string;

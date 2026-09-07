@@ -1,18 +1,7 @@
-import {
-  useCallback,
-  useEffect,
-  useState,
-} from 'react';
-import {
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Trash2,
-} from 'lucide-react';
-import { Button } from '../../../../src/components/ui/Button';
-import { Input } from '../../../../src/components/ui/Input';
+import { useCallback, useEffect, useState } from 'react';
+import { ChevronDown, ChevronRight, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { Button } from '@datazen/ui';
+import { Input } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
 import { redisCommandInvoke } from './redisInvoke';
@@ -44,9 +33,7 @@ function childPath(parentPath: string, segment: string | number): string {
   if (parentPath === '$') {
     return typeof segment === 'number' ? `$[${segment}]` : `$.${segment}`;
   }
-  return typeof segment === 'number'
-    ? `${parentPath}[${segment}]`
-    : `${parentPath}.${segment}`;
+  return typeof segment === 'number' ? `${parentPath}[${segment}]` : `${parentPath}.${segment}`;
 }
 
 function formatScalar(value: JsonValue): string {
@@ -237,7 +224,11 @@ function JsonTreeNode({
             onClick={() => setExpanded((v) => !v)}
             aria-label={expanded ? t('redis.jsonCollapse') : t('redis.jsonExpand')}
           >
-            {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            {expanded ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
           </button>
         ) : (
           <span className="inline-block h-5 w-5" />
@@ -275,7 +266,12 @@ function JsonTreeNode({
             </Button>
           )}
           {!isContainer && editing && (
-            <Button variant="primary" className="h-6 px-1.5 text-[10px]" disabled={busy} onClick={saveScalar}>
+            <Button
+              variant="primary"
+              className="h-6 px-1.5 text-[10px]"
+              disabled={busy}
+              onClick={saveScalar}
+            >
               {t('common.save')}
             </Button>
           )}
@@ -420,9 +416,7 @@ export function JsonEditor({ dbSessionId, dbIndex, redisKey }: JsonEditorProps) 
   };
 
   if (modules !== null && !capable) {
-    return (
-      <p className="text-xs text-fg-muted">{t('redis.jsonModuleMissing')}</p>
-    );
+    return <p className="text-xs text-fg-muted">{t('redis.jsonModuleMissing')}</p>;
   }
 
   return (
@@ -450,8 +444,17 @@ export function JsonEditor({ dbSessionId, dbIndex, redisKey }: JsonEditorProps) 
       ) : root === null ? (
         <div className="space-y-2 rounded-md border border-dashed border-edge p-3">
           <p className="text-fg-muted">{t('redis.jsonEmpty')}</p>
-          <Button variant="primary" className="h-7 px-2 text-xs" disabled={initBusy} onClick={initRoot}>
-            {initBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('redis.jsonInitObject')}
+          <Button
+            variant="primary"
+            className="h-7 px-2 text-xs"
+            disabled={initBusy}
+            onClick={initRoot}
+          >
+            {initBusy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              t('redis.jsonInitObject')
+            )}
           </Button>
         </div>
       ) : (

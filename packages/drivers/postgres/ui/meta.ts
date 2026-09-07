@@ -1,4 +1,6 @@
-import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
+import type { DatabaseTypeMeta } from '@datazen/driver-sdk';
+import { postgresqlFunctions } from './functions';
+import { postgresqlDialect, postgresqlDialectProfile } from './dialect';
 
 const postgresqlStructureEditor = {
   columnTypes: [
@@ -55,6 +57,7 @@ export const postgresqlMeta = {
   category: 'sql',
   connectionView: 'sql',
   sqlDialect: 'postgresql',
+  sqlFunctions: postgresqlFunctions,
   databaseFieldType: 'name',
   connectionForm: 'standard',
   clipboardSchemes: ['postgres', 'postgresql'],
@@ -67,6 +70,8 @@ export const postgresqlMeta = {
   supportsCreateDatabase: true,
   supportsCreateSchema: true,
   supportsCreateUser: true,
+  sqlDialectStrategy: postgresqlDialect,
+  sqlDialectProfile: postgresqlDialectProfile,
 } satisfies DatabaseTypeMeta;
 
 export const questdbMeta = {
@@ -99,6 +104,8 @@ export const questdbMeta = {
   supportsCreateDatabase: true,
   supportsCreateSchema: true,
   supportsCreateUser: true,
+  sqlDialectStrategy: postgresqlDialect,
+  sqlDialectProfile: postgresqlDialectProfile,
 } satisfies DatabaseTypeMeta;
 
 export const cloudberryMeta = {
@@ -131,4 +138,6 @@ export const cloudberryMeta = {
   supportsCreateDatabase: true,
   supportsCreateSchema: true,
   supportsCreateUser: true,
+  sqlDialectStrategy: postgresqlDialect,
+  sqlDialectProfile: postgresqlDialectProfile,
 } satisfies DatabaseTypeMeta;

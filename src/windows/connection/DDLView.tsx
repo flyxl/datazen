@@ -1,23 +1,23 @@
 import { useCallback, useEffect, useState, type MouseEvent } from 'react';
 import { Check, Copy, Loader2 } from 'lucide-react';
-import { getCachedDDL } from '../../lib/schemaCache';
+import { fetchRelationDdl, copyToClipboard } from '../../lib/fetchRelationDdl';
 import { SqlCodeBlock } from '../../components/SqlCodeBlock';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { CopyableError } from '../../components/ui/CopyableError';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
-import { getSqlDialect } from '../../lib/sqlDialects';
 import type { DatabaseType } from '../../types';
 
 interface DDLViewProps {
   dbSessionId: string;
   tableName: string;
+  database?: string;
   databaseType?: string;
   isView?: boolean;
 }
 
-export function DDLView({ dbSessionId, tableName, databaseType, isView }: DDLViewProps) {
+export function DDLView({ dbSessionId, tableName, database, databaseType, isView }: DDLViewProps) {
   const { t } = useI18n();
   const [ddl, setDdl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,26 +30,14 @@ export function DDLView({ dbSessionId, tableName, databaseType, isView }: DDLVie
     setError(null);
     setDdl('');
 
-    const dialect = databaseType ? getSqlDialect(databaseType as DatabaseType) : null;
-    if (!dialect) {
-      setError(t('ddl.loadFailed'));
-      setLoading(false);
-      return;
-    }
-
-    const { sql, extractColumnIndex } =
-      isView && dialect.ddl.getViewDdlQuery
-        ? dialect.ddl.getViewDdlQuery(tableName)
-        : dialect.ddl.getTableDdlQuery(tableName);
-
-    getCachedDDL(dbSessionId, tableName, sql, (rows) => {
-      const row = rows[0];
-      const val = row?.[extractColumnIndex];
-      return typeof val === 'string' ? val : val != null ? String(val) : `-- ${t('ddl.getFailed')}`;
-    })
+    fetchRelationDdl(dbSessionId, tableName, databaseType, isView, undefined, database)
       .then((result) => {
         if (!cancelled) {
-          setDdl(result);
+          if (!result) {
+            setError(t('ddl.loadFailed'));
+          } else {
+            setDdl(result);
+          }
           setLoading(false);
         }
       })
@@ -65,16 +53,14 @@ export function DDLView({ dbSessionId, tableName, databaseType, isView }: DDLVie
     return () => {
       cancelled = true;
     };
-  }, [dbSessionId, tableName, databaseType, isView, t]);
+  }, [dbSessionId, tableName, database, databaseType, isView, t]);
 
   const handleCopy = useCallback(async () => {
     if (!ddl) return;
-    try {
-      await navigator.clipboard.writeText(ddl);
+    const ok = await copyToClipboard(ddl);
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // clipboard not available
     }
   }, [ddl]);
 

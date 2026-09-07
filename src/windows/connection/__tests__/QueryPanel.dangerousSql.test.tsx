@@ -73,17 +73,29 @@ const settingsState = vi.hoisted(() => ({
 
 const executeQuery = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
-vi.mock('../../../stores/settingsStore', () => ({
-  useSettingsStore: (
-    sel: (s: { settings: { safeMode: boolean; autoCommit: boolean } }) => unknown,
-  ) => sel({ settings: { safeMode: settingsState.safeMode, autoCommit: true } }),
-}));
+vi.mock('../../../stores/settingsStore', () => {
+  const state = () => ({ settings: { safeMode: settingsState.safeMode, autoCommit: true } });
+  return {
+    useSettingsStore: Object.assign(
+      (sel: (s: { settings: { safeMode: boolean; autoCommit: boolean } }) => unknown) =>
+        sel(state()),
+      { getState: () => state() },
+    ),
+  };
+});
 
 vi.mock('../../../stores/activeConnectionStore', () => ({
   useActiveConnectionStore: Object.assign(
     (selector: (state: typeof activeConnectionStoreState) => unknown) =>
       selector(activeConnectionStoreState),
     { getState: () => activeConnectionStoreState },
+  ),
+}));
+
+vi.mock('../../../stores/connectionStore', () => ({
+  useConnectionStore: Object.assign(
+    (selector: (state: { connections: unknown[] }) => unknown) => selector({ connections: [] }),
+    { getState: () => ({ connections: [] }) },
   ),
 }));
 
@@ -115,7 +127,16 @@ vi.mock('../../../components/query/QueryErrorPanel', () => ({
 }));
 vi.mock('../dashboard/AddToDashboardDialog', () => ({ AddToDashboardDialog: () => null }));
 vi.mock('../../../stores/aiStore', () => ({
-  useAiStore: (sel: (s: { diagnosis: null; isDiagnosing: boolean; diagnosisError: null; isConfigured: boolean; diagnoseError: ReturnType<typeof vi.fn>; clearDiagnosis: ReturnType<typeof vi.fn> }) => unknown) =>
+  useAiStore: (
+    sel: (s: {
+      diagnosis: null;
+      isDiagnosing: boolean;
+      diagnosisError: null;
+      isConfigured: boolean;
+      diagnoseError: ReturnType<typeof vi.fn>;
+      clearDiagnosis: ReturnType<typeof vi.fn>;
+    }) => unknown,
+  ) =>
     sel({
       diagnosis: null,
       isDiagnosing: false,
@@ -175,9 +196,7 @@ describe('[tester] QueryPanel dangerous SQL confirmation', () => {
           title: 'Test query',
         } satisfies QueryPanelState,
       ],
-      queryExec: new Map([
-        [PANEL_ID, { ...EMPTY_QUERY_EXEC, sql: 'SELECT 1', running: false }],
-      ]),
+      queryExec: new Map([[PANEL_ID, { ...EMPTY_QUERY_EXEC, sql: 'SELECT 1', running: false }]]),
       historyVisible: false,
       favoritesVisible: false,
       queryHistory: [],
@@ -218,9 +237,9 @@ describe('[tester] QueryPanel dangerous SQL confirmation', () => {
     await waitFor(() => expect(confirmMocks.dangerous).toHaveBeenCalledTimes(1));
     expect(confirmMocks.dangerous).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'query.dangerousSqlTitle',
-        message: 'query.dangerousSqlConfirm',
-        confirmLabel: 'query.execute',
+        title: 'query.editor.executionConfirm.highRiskTitle',
+        message: 'query.editor.executionConfirm.highRiskMessage',
+        confirmLabel: 'query.editor.executionConfirm.confirmExecute',
         kind: 'warning',
       }),
     );
@@ -255,13 +274,13 @@ describe('[tester] QueryPanel dangerous SQL confirmation', () => {
     expect(confirmMocks.dangerous).not.toHaveBeenCalled();
   });
 
-  it('skips dangerous confirmation when Safe Mode is on', async () => {
+  it('blocks execution of dangerous SQL when Safe Mode is on', async () => {
     settingsState.safeMode = true;
     setSql('DROP TABLE t');
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: 'query.execute' }));
 
-    await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(executeQuery).not.toHaveBeenCalled());
     expect(confirmMocks.dangerous).not.toHaveBeenCalled();
   });
 

@@ -187,6 +187,7 @@ const pack = {
   'connWin.home.recentPanels': '最近打开',
   'connWin.home.metrics.connections': '连接',
   'connWin.home.metrics.connected': '已连接',
+  'connWin.home.metrics.pinned': '置顶连接',
   'connWin.home.metrics.dbTypes': '数据库类型',
   'connWin.home.quickStart': '快速开始',
   'connWin.home.commonOps': '常用操作',
@@ -205,5 +206,6 @@ const pack = {
   'connWin.home.totalCount': '共 {count} 个连接',
   'connSettings.title': '连接设置',
   'connSettings.description': '配置当前连接窗口的显示和行为',
+  'connection.dashboard.title': '数据看板',
 } as const;
 export default pack;

@@ -111,4 +111,21 @@ describe('ResultTableView', () => {
       expect.objectContaining({ exportTableName: 'query_result', dataExportCapability: 'none' }),
     );
   });
+
+  it('renders ExecutionSummaryCard instead of DataTable for mutation executions (e.g. INSERT)', () => {
+    const insertResult: StatementResult = {
+      sql: "INSERT INTO users (name) VALUES ('Alice')",
+      columns: [],
+      rows: [],
+      rowsAffected: 1,
+      executionTimeMs: 15,
+    };
+    render(<ResultTableView result={insertResult} />);
+
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    expect(screen.getByText('query.executionSuccess')).toBeInTheDocument();
+    expect(
+      screen.getAllByText("INSERT INTO users (name) VALUES ('Alice')").length,
+    ).toBeGreaterThanOrEqual(1);
+  });
 });

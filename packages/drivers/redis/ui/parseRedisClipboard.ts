@@ -1,4 +1,4 @@
-import type { ConnectionClipboardFill } from '@datazen/plugin-sdk';
+import type { ConnectionClipboardFill } from '@datazen/driver-sdk';
 import type { RedisConnectionOptions, RedisTopology } from './connectionOptions';
 import { readRedisOptions } from './connectionOptions';
 import { mergeRedisOptions } from './connectionWizardValidate';
@@ -107,9 +107,9 @@ export function applyRedisClipboardToForm(
 
   const patch: Partial<RedisConnectionOptions> = {
     topology: parsed.topology,
-    clusterNodes: parsed.topology === 'cluster' ? parsed.clusterNodes ?? [] : [],
-    sentinelNodes: parsed.topology === 'sentinel' ? parsed.sentinelNodes ?? [] : [],
-    sentinelMasterName: parsed.topology === 'sentinel' ? parsed.sentinelMasterName ?? '' : '',
+    clusterNodes: parsed.topology === 'cluster' ? (parsed.clusterNodes ?? []) : [],
+    sentinelNodes: parsed.topology === 'sentinel' ? (parsed.sentinelNodes ?? []) : [],
+    sentinelMasterName: parsed.topology === 'sentinel' ? (parsed.sentinelMasterName ?? '') : '',
   };
   if (parsed.sentinelNodePassword !== undefined) {
     patch.sentinelNodePassword = parsed.sentinelNodePassword;
@@ -131,7 +131,11 @@ export function applyRedisClipboardToForm(
 }
 
 function normalizeClipboard(raw: string): string {
-  return raw.replace(/^\uFEFF/, '').trim().replace(/^['"]+|['"]+$/g, '').trim();
+  return raw
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .replace(/^['"]+|['"]+$/g, '')
+    .trim();
 }
 
 function stripEnvPrefix(text: string): string {
@@ -140,7 +144,9 @@ function stripEnvPrefix(text: string): string {
 }
 
 function mergeStandaloneUrls(urls: string[]): ParsedRedisClipboard | null {
-  const parsed = urls.map(parseRedisUrl).filter((item): item is ParsedRedisClipboard => item != null);
+  const parsed = urls
+    .map(parseRedisUrl)
+    .filter((item): item is ParsedRedisClipboard => item != null);
   if (parsed.length === 0) return null;
   if (parsed.some((item) => item.topology === 'sentinel')) {
     return parsed.find((item) => item.topology === 'sentinel') ?? null;
@@ -223,8 +229,7 @@ function parseRedisUrl(raw: string): ParsedRedisClipboard | null {
     params.get('master') ??
     params.get('sentinelMasterId') ??
     params.get('sentinelMasterName');
-  const querySentinelPassword =
-    params.get('sentinelPassword') ?? params.get('sentinel_password');
+  const querySentinelPassword = params.get('sentinelPassword') ?? params.get('sentinel_password');
   if (queryUser) username = queryUser;
   if (queryPassword != null) password = queryPassword;
 

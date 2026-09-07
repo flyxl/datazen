@@ -119,9 +119,9 @@ describe('syncWebviewBackgroundFromTokens', () => {
 
   it('falls back to dark/light defaults', () => {
     syncWebviewBackgroundFromTokens();
-    expect(document.documentElement.style.backgroundColor).toBe('rgb(255, 255, 255)');
+    expect(document.documentElement.style.backgroundColor).toBe('rgb(248, 250, 252)');
     document.documentElement.classList.add('dark');
     syncWebviewBackgroundFromTokens();
-    expect(document.documentElement.style.backgroundColor).toBe('rgb(15, 23, 42)');
+    expect(document.documentElement.style.backgroundColor).toBe('rgb(11, 18, 32)');
   });
 });

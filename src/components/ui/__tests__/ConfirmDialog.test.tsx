@@ -8,6 +8,8 @@ vi.mock('../../../hooks/useI18n', () => ({
       const map: Record<string, string> = {
         'common.cancel': 'Cancel',
         'common.confirm': 'Confirm',
+        'query.editor.executionConfirm.previewTruncated': 'Showing first {lines} lines',
+        'query.editor.executionConfirm.copySql': 'Copy SQL',
       };
       return map[key] ?? key;
     },
@@ -104,5 +106,81 @@ describe('ConfirmDialog', () => {
     // Dialog renders via portal to document.body
     const svg = document.body.querySelector('svg');
     expect(svg).toBeTruthy();
+  });
+
+  it('renders badge when provided', () => {
+    render(
+      <ConfirmDialog
+        open
+        title="Confirm"
+        message="Are you sure?"
+        badge="Production"
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    expect(screen.getByText('Production')).toBeTruthy();
+  });
+
+  it('renders description when provided', () => {
+    render(
+      <ConfirmDialog
+        open
+        title="Confirm"
+        message="Are you sure?"
+        description="This is a longer description with more details."
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    expect(screen.getByText('This is a longer description with more details.')).toBeTruthy();
+  });
+
+  it('renders code preview section when codePreview is provided', () => {
+    render(
+      <ConfirmDialog
+        open
+        title="Confirm"
+        message="Review SQL"
+        codePreview="SELECT * FROM users WHERE id = 1"
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    expect(screen.getByText('SELECT * FROM users WHERE id = 1')).toBeTruthy();
+    expect(screen.getByTestId('confirm-dialog-copy-sql')).toBeTruthy();
+  });
+
+  it('truncates code preview to max lines', () => {
+    const longSql = Array.from({ length: 20 }, (_, i) => `SELECT ${i} FROM t`).join('\n');
+    render(
+      <ConfirmDialog
+        open
+        title="Confirm"
+        message="Review SQL"
+        codePreview={longSql}
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    // Should show the truncated indicator (i18n mock returns the key literally)
+    expect(screen.getByText(/Showing first \{lines\} lines/)).toBeTruthy();
+    // Should not show the last line
+    expect(screen.queryByText('SELECT 19 FROM t')).toBeNull();
+  });
+
+  it('renders without badge when badge is not provided', () => {
+    const { container } = render(
+      <ConfirmDialog
+        open
+        title="Delete"
+        message="Sure?"
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    // No badge element should be present
+    const badges = container.querySelectorAll('[class*="bg-amber-500"]');
+    expect(badges.length).toBe(0);
   });
 });

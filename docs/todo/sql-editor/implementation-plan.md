@@ -27,11 +27,8 @@
 
 - 当前语句边框在超长语句上的降级思路。
 - gutter 使用“首个可执行行”而非语句起始空白行。
-- inlay hint 只分析 viewport/活动语句，并采用 debounce 和缓存。
-- Paste as IN 的输入体积、条目数上限及 quote-aware 分隔行为。
 - 参数历史的版本化、去重、损坏数据回退和数量限制。
 - 拖拽 payload 区分 table、column、multi-table 的行为设计。
-- 意图分析与 CodeMirror transaction 应用分离；语义歧义时不提供动作。
 - 大文档使用活动语句窗口、viewport、缓存和延迟计算的组合。
 
 ### 1.2 必须按 DataZen 架构重新设计的内容
@@ -81,10 +78,9 @@
 
 ### 2.3 PRD 技术假设的校正
 
-- “零后端 IPC”解释为键入、补全、hover、inlay 的同步回调不发 IPC；元数据仍需由外层按需加载并缓存。
+- “零后端 IPC”解释为键入、补全的同步回调不发 IPC；元数据仍需由外层按需加载并缓存。
 - 顶部 Execute 按钮保持当前“选区优先，否则全脚本”的行为；本项目只保证快捷键和 gutter 精准执行当前语句，除非产品另行要求改变顶部按钮。
 - 20,000 行与 `<5ms` 必须定义固定 fixture 和统计方法；不把易抖动的绝对墙钟断言放入普通单测。
-- 当前 `TableSchema` 没有可靠的表注释字段。首版 hover 在无表注释时隐藏该行，不伪造数据；若要求所有驱动都显示表注释，必须单列 Driver API 升级项目并同步协议版本及所有插件。
 - SQL Server 当前 registry 引号元数据与 PRD 的 `[]` 不一致。通用实现要支持 bracket quote；SQL Server 元数据修正和测试只能落在该驱动包。
 
 ## 3. 冻结的架构决策
@@ -159,20 +155,10 @@ src/components/sql-editor/
 │   └── useEditorMetadata.ts
 ├── completion/
 │   ├── schemaCompletion.ts
-│   ├── joinCompletion.ts
-│   ├── functionRegistry.ts
-│   └── signatureHelp.ts
-├── intentions/
-│   ├── analyzeIntentions.ts
-│   └── applyIntention.ts
+│   └── functionRegistry.ts
 ├── extensions/
 │   ├── statementFrame.ts
 │   ├── statementGutter.ts
-│   ├── insertHints.ts
-│   ├── tableHover.ts
-│   ├── definitionNavigation.ts
-│   ├── objectDrop.ts
-│   ├── pasteAsIn.ts
 │   └── multipleSelections.ts
 └── __tests__/
 ```
@@ -354,7 +340,6 @@ type EditorMetadataSnapshot = {
 - CodeMirror 只接收不可变 snapshot；加载完成后外层更新 epoch 并 reconfigure/dispatch refresh effect。
 - DDL、schema refresh、切换 database/schema、session 断开时失效；不得把 dbSessionId 持久化。
 - 加载失败保存短 TTL 的 error state，UI 降级但不反复请求。
-- 当前 `ForeignKeyInfo.referencedTable` 不含 namespace。首版 FK JOIN 只对“当前 schema 内且 referencedTable 唯一解析”的关系生成条件；跨 schema 或同名歧义只显示普通 relation completion。扩展 FK 完整 identity 需单独 Driver API/protocol migration。
 
 ### 4.5 编辑器对外契约
 
@@ -395,8 +380,8 @@ type SchemaObjectDragPayloadV1 = {
 - 新 MIME 为版本化通用对象类型，同时兼容读取旧 `application/datazen-table`。本 PRD 不增加 tree 多选，因此首版没有 multi-table payload。
 - **树节点范围**：当前 `UnifiedSchemaTree` 仅展示到 Table/View 级别，无列子节点；首版连接树拖拽仅支持 Table/View 节点。`{ kind: 'column' }` 作为协议预留，可供表结构视图等未来列源使用。
 - source connection 不同则拒绝并提示，不跨连接偷偷生成 SQL；缺少 source session 时按 connectionId 校验。
-- 空编辑器的 table drop 保留现有生成 `SELECT ... FROM ...` 行为；非空编辑器插入 quoted qualified table；column drop（若存在源）优先插入可唯一解析的 alias-qualified column，否则插入 quoted column。
-- drop caret 使用 CodeMirror decoration/state effect；`dragenter`、`dragover` 更新，`dragleave`、`drop`、`dragend`、编辑器卸载都清理。
+- 空编辑器的 table drop 保留现有生成 `SELECT ... FROM ...` 行为；非空编辑器插入 quoted qualified table；column drop（若存在源）插入 quoted column。
+- 基础 drop caret 使用 CodeMirror decoration/state effect；编辑器卸载时清理。
 
 ### 4.7 AI 草稿桥
 
@@ -717,58 +702,40 @@ Stage 3 门禁：快照契约、桥契约和 drag payload 冻结；四轨 Tester
 
 完成定义：Frame、gutter 和快捷键对同一 SQL 产生同一 range。
 
-#### Track S4-B：补全、FK JOIN 与函数签名
+#### Track S4-B：基础补全与函数字典
 
-独占文件：completion 目录、function registry、signature extension、`src/lib/sqlCompletions.ts`、`src/lib/sqlCompletionContext.ts` 及测试；不修改 metadata loader 或 editor composer。
+独占文件：completion 目录、function registry、`src/lib/sqlCompletions.ts`、`src/lib/sqlCompletionContext.ts` 及测试；不修改 metadata loader 或 editor composer。
 
 步骤：
 
 1. 保留现有基础 schema completion 作为 fallback。
-2. `alias.` 唯一解析时只返回该 relation 的列，detail 显示 type/nullable/comment；歧义时不猜。
-3. relation completion 使用当前 scope 的 database/schema 上下文。
-4. JOIN completion 从 snapshot 的 FK 双向构建候选；支持复合键、自关联、多个关系分别列出。
-5. 选中 JOIN 候选插入 quoted relation、唯一 alias 和完整 ON 条件；不得覆盖用户已有 ON。
-6. 函数 completion 与 signature help 共用 registry；signature 根据 comma depth 高亮当前参数。
-7. registry 由 dialect 元数据/通用集合组合，不写 driver ID switch。
-8. 初始 registry 至少覆盖 PRD 指定的 `DATE_ADD`、`CONCAT` 及现有 common/PG/MySQL/SQLite 清单；旧 `sqlFunctionCompletions` 改为该 registry 的兼容投影。
+2. relation completion 使用当前 scope 的 database/schema 上下文。
+3. registry 由 dialect 元数据/通用集合组合，不写 driver ID switch。
+4. 初始 registry 至少覆盖现有 common/PG/MySQL/SQLite 清单；旧 `sqlFunctionCompletions` 改为该 registry 的兼容投影。
 
-测试：alias filter、CTE、ambiguous、类型注释、复合/多 FK、自关联、现有 ON、嵌套函数、缺元数据 fallback。
+测试：类型注释、缺元数据 fallback。
 
 完成定义：completion/source 回调同步完成且不发 IPC；函数信息单一来源。
 
-#### Track S4-C：Intention 与 INSERT Hint
+#### Track S4-C：Intention 基础扩展点
 
-独占文件：intentions、insertHints 及纯/extension tests；不修改 composer。
-
-步骤：
-
-1. `analyzeIntentions` 返回纯 action 数据，`applyIntention` 单 transaction 应用。
-2. `SELECT *`：单 relation 扩展物理列；`alias.*` 只扩对应 relation；多 relation 裸 `*` 若策略不唯一则不提供动作。
-3. add/remove qualifier 只处理 semantic reference token，不用全文字符串替换；冲突或歧义时拒绝。
-4. Alt+Enter 菜单支持键盘、Esc、focus 恢复和 lightbulb 入口。
-5. INSERT 有显式列时本地对位；无显式列时用 metadata 物理顺序。多 VALUES 行均提示，列数不匹配只提示可确定部分。
-6. inlay 只分析 viewport ∩ active statement，debounce，设置关闭时不装配。
-7. extension 接受 setting boolean，但动态装卸由 S6-D composer 完成。
-
-测试：intention 事务和 cursor、歧义拒绝、多 VALUES/viewport、setting on/off factory 行为。
-
-完成定义：intention/hint factory 在缺 metadata 时优雅缺席，不错误改写 SQL。
-
-#### Track S4-D：Hover 与定义导航（S4-A/B/C 合流后启动）
-
-独占文件：`tableHover.ts`、`definitionNavigation.ts` 及测试；不修改 composer、ContentView 或 QueryPanel。
+独占文件：intentions 及纯/extension tests；不修改 composer。
 
 步骤：
 
-1. hover 延迟 300ms，移出/文档变更取消；展示已存在的 database/schema、PK、index、核心列，comment 不存在就隐藏。
-2. 列清单和 tooltip 内容有上限，大表显示省略计数。
-3. Hover actions 和 Mod/Ctrl-click 使用同一个 resolver/callback；默认 click 打开数据页，结构页由 hover 明确动作进入。
-4. Copy DDL 只发既定 callback，不从 metadata 拼 DDL。
-5. identity 不唯一、view 不支持某动作或 metadata 缺失时隐藏对应动作。
+1. 提供基础意图扩展点插槽（Fallback 模式无操作）。
 
-测试：hover delay/cancel、identity、modifier click、动作可见性、复制 DDL callback。
+完成定义：扩展点插槽在缺 metadata 或无增强扩展时优雅缺席。
 
-完成定义：hover/navigation factory 可独立挂载测试，无跨层 store/command import。
+#### Track S4-D：Hover 与定义导航扩展点（S4-A/B/C 合流后启动）
+
+独占文件：hover 扩展点及测试；不修改 composer、ContentView 或 QueryPanel。
+
+步骤：
+
+1. 提供基础 hover 扩展点插槽（Fallback 模式无操作）。
+
+完成定义：hover 扩展点插槽在缺 metadata 或无增强扩展时优雅缺席。
 
 Stage 4 调度：Wave 4A 并行 S4-A、S4-B、S4-C；合流后 Wave 4B 执行 S4-D。
 
@@ -778,22 +745,14 @@ Stage 4 门禁：四轨 factory 测试通过；组合装配、reconfigure 和真
 
 调度顺序：Wave 5A 并行 S5-A、S5-B；合流后 Wave 5B 单独执行 S5-C。S5-A 的 editor extension 仍是 leaf，由 S6-D 装配。
 
-#### Track S5-A：Paste as IN、Drop Caret 与多光标
+#### Track S5-A：基础多光标与粘贴扩展点
 
-独占文件：paste/drop/multiple-selection extension factory、context-menu item factory 及测试；不修改 tree 或 SqlEditor composer。
+独占文件：paste/multiple-selection extension factory 及测试；不修改 tree 或 SqlEditor composer。
 
 步骤：
 
-1. 实现纯 `parseDelimitedValues`：CRLF/newline/comma/tab、quoted delimiter、trim、空项策略。
-2. 提供“自动类型”和“全部按字符串”两种模式。自动类型中数字保持数值、`NULL` 保持 SQL NULL；其余内容单引号并将 `'` 转义为 `''`，不执行表达式。右键菜单用子项选择，快捷键使用用户上次选择或默认自动类型。
-3. 设 source 上限 1 MiB、value 上限 10,000，超限拒绝并给可本地化提示。
-4. 光标前是 `IN` / `NOT IN` 时只插入括号，否则插入 `IN (...)`；非空 selection 替换 selection。
-5. 绑定 `Mod+Shift+V` 和 Web Context Menu 项，读取 clipboard 失败时不改文档。
-6. 实现 drop caret；校验 source connection；按第 4.6 节决定 empty/non-empty/table/column 行为。
-7. quote 使用 dialect adapter；PostgreSQL 全小写安全标识符可免引号，保留字/大小写/特殊字符必须引用。
-8. 显式启用 `allowMultipleSelections`、Mod+D next occurrence、`rectangularSelection()`，处理 keymap 优先级。
-
-测试：delimiter/quote/NULL/numeric/limits/prefix、clipboard failure、drop caret 生命周期、legacy/new payload、cross-connection、三个 quote style、Mod+D 和矩形 selection。
+1. 显式启用 `allowMultipleSelections`、Mod+D next occurrence、`rectangularSelection()`，处理 keymap 优先级。
+2. 基础粘贴扩展点委托给 `@datazen/extension-points` 的 `sqlEditorProEP`。
 
 完成定义：所有写文档行为都是单 transaction，undo 一次可完整撤销。
 
@@ -890,15 +849,14 @@ Stage 5 门禁：真实参数执行集成测试通过；安全矩阵全绿；Bin
 
 步骤：
 
-1. 将 S4-A/B/C/D 和 S5-A 的 factory 按固定优先级装入 compartments：statement、completion/signature、intention/hint、hover/navigation、paste/drop/multiple selection。
-2. 接入 metadata snapshot、execution state、active target change、navigation/DDL callbacks 和 INSERT hint setting。
+1. 将基础扩展按固定优先级装入 compartments：statement、completion、intention/hint、hover/navigation、paste/drop/multiple selection，增强能力经由 `@datazen/extension-points` 插槽动态接入。
+2. 接入 metadata snapshot、execution state、active target change、navigation/DDL callbacks。
 3. `documentVersion` 用 editor StateField 维护；外部 value replacement、undo/redo 和 component remount 均有明确定义与测试。
 4. 将 table/column drop request 交给 `queryDropHandler`：空编辑器保留生成 SELECT，非空插入引用，跨连接拒绝；旧 payload 继续兼容。
 5. 将现有 CodeMirror dialect mapping 接入方言族 profile；当前 `SqlEditor.tsx` 中的 `CM_DIALECT_MAP` 仅包含 PG/MySQL/MariaDB/SQLite，需引入 `@codemirror/lang-sql` 的 MSSQL 支持，未知方言退回 Standard。
-6. 按设置动态装卸 hint；反复 reconfigure 不重复 listener/timer/tooltip。
-7. 把旧 `sqlCompletions`、`sqlCompletionContext`、旧 SqlEditor import 保持为兼容 wrapper，确认没有第二份函数或 scanner 数据源。
+6. 把旧 `sqlCompletions`、`sqlCompletionContext`、旧 SqlEditor import 保持为兼容 wrapper，确认没有第二份函数或 scanner 数据源。
 
-测试：全部 extension 组合、keymap 冲突、reconfigure/dispose、metadata refresh、setting toggle、drop→QueryPanel、execution snapshot、MSSQL/Standard mapping。
+测试：全部 extension 组合、keymap 冲突、reconfigure/dispose、metadata refresh、drop→QueryPanel、execution snapshot、MSSQL/Standard mapping。
 
 完成定义：所有 leaf 功能在真实 SqlEditor 中可见；组合生命周期测试和对应功能 E2E 通过。
 
@@ -929,8 +887,7 @@ Stage 6 门禁：AI 隐私、settings migration、i18n typecheck、目标驱动�
 各 UI feature 轨的 Tester 必须在功能合流前提交并运行自己唯一拥有的 E2E spec；不能把测试代码全部推迟到本阶段。建议所有权如下：
 
 - `sql-editor-statement.ts`：多语句 frame、gutter、shortcut、running、多结果回归。
-- `sql-editor-intelligence.ts`：alias completion、FK join、Alt+Enter、hint、hover/navigation。
-- `sql-editor-productivity.ts`：Paste as IN、table/column drop、Mod+D。
+- `sql-editor-productivity.ts`：table/column drop、Mod+D。
 - `sql-editor-safety-params.ts`：Host 通用参数 journey、历史、Safe Mode、production confirmation；方言碰撞不在单一 Host fixture 中强测。
 - `sql-editor-ai-error.ts`：确定性错误、Ask in Chat 草稿和脱敏；不调用真实 LLM。
 
@@ -973,47 +930,18 @@ Stage 7 门禁：全量单测、Rust Host 测试、目标驱动测试、Host E2E
 - gutter 执行中的 spinner 只代表当前请求；后续请求覆盖时立即切换。
 - marker 点击失败或请求取消后不残留 loading decoration。
 
-### 6.2 Completion / JOIN / Signature
+### 6.2 Completion
 
 - `o.` 只在 `o` 唯一绑定时返回该表列；未加载时显示 loading/fallback，不返回所有库列。
 - 列 detail 顺序：数据类型、nullable、comment；缺字段不显示占位垃圾文本。
-- FK candidate 显示关系方向和列对；复合外键生成多个 AND 条件。
-- 新 alias 必须避免当前 scope 已用 alias；不能可靠生成时只补 relation，不补 ON。
-- signature 的参数 index 只统计当前函数调用深度的 comma，忽略 nested call/string/comment。
 
-### 6.3 Intention
+### 6.3 Drop / Multiple Selection
 
-- `SELECT *` 不展开 `COUNT(*)`、乘法 `a * b` 或字符串中的星号。
-- 单表裸 `*` 可展开为列；多表裸 `*` 首版不猜，可分别提供“展开为所有 source 列”的明确动作，但必须保序和限定名。
-- 加 qualifier 前检查裸列在哪些 source 存在；唯一时执行，多义时不提供。
-- 移除 qualifier 前检查移除后仍唯一；否则拒绝。
-- 生成列清单遵循 metadata 物理顺序，quote 由 adapter 决定。
-
-### 6.4 INSERT Inlay Hint
-
-- 支持 `INSERT INTO t (a,b) VALUES (1,2)` 和无显式列的简单 VALUES。
-- 首版不对 INSERT...SELECT、DEFAULT VALUES、复杂 vendor syntax 伪造 hint。
-- 多行 VALUES 每行独立对位；表达式内部 comma 不增加 value index。
-- hint 是 decoration，不进入复制、搜索、undo 或 SQL 请求。
-
-### 6.5 Hover / Navigation
-
-- hover 只对 semantic relation reference 生效，不对同名 alias、字符串或注释生效。
-- metadata 未加载时可显示轻量 loading，并由外层请求；离开后取消展示，缓存请求本身可继续完成。
-- 列清单限制展示数量并提供省略计数，避免大表 tooltip 卡顿。
-- 打开对象必须携带完整 database/schema/name；同名表不得跳错。
-- view 没有结构设计能力时隐藏动作，而不是调用 table-only command。
-
-### 6.6 Paste / Drop / Multiple Selection
-
-- 粘贴解析不执行 CSV 公式、不解释 SQL 表达式、不读取剪贴板以外的数据。
-- 超限先提示再退出，文档保持不变。
 - drag payload 要校验 JSON、version、kind、必填字段和长度；非法外部 payload 忽略。
 - 从其他连接拖入时拒绝；从同连接不同 session 拖入时按当前 connection identity 再解析，不使用 source dbSessionId 发命令。
-- column alias 仅在当前语义模型唯一映射时添加。
 - Mod+D 不能破坏 CodeMirror 的 find next；keymap 优先级要有组件测试。
 
-### 6.7 参数
+### 6.4 参数
 
 - parser 和 binder 对同一 token 的判断必须一致；共享 fixture 是发布门禁。
 - 重复 `:id` 只有一个输入框；`:id`、`@id`、`${id}` 共享值但各 occurrence 独立替换。
@@ -1021,14 +949,14 @@ Stage 7 门禁：全量单测、Rust Host 测试、目标驱动测试、Host E2E
 - value coercion 继续支持 null/boolean/number/string；引号和 escape 始终由 Host 完成。
 - 参数替换不允许改变 identifier、keyword 或 SQL 结构；`${table}` 仍得到字符串 literal。
 
-### 6.8 风险
+### 6.5 风险
 
 - WHERE 必须属于目标 UPDATE/DELETE 顶层；CTE、subquery、字符串或注释中的 WHERE 不计。
 - 多语句 target 汇总全部 findings，确认框显示最高等级并列出受影响 statement index。
 - unknown 在 production 下确认，在非 production 下按现有行为执行并记录 classifier diagnostic。
 - 前端 assessment 与后端拒绝不一致时，以后端为准，错误面板应明确 Safe Mode/readOnly 原因。
 
-### 6.9 AI
+### 6.6 AI
 
 - prompt 复用现有脱敏函数；新增测试覆盖 URI credential、JSON secret、password assignment 和参数字面量。
 - prompt SQL/error 各自限制 4,000 字符，schema 摘要限制 relation/column 数量。
@@ -1043,9 +971,7 @@ Stage 7 门禁：全量单测、Rust Host 测试、目标驱动测试、Host E2E
 - semantic：alias、CTE、nested、shadowing、incomplete、ambiguity。
 - adapter：quote/escape/fold/policy，通过注入 metadata 测通用逻辑。
 - metadata：identity、dedupe、TTL、invalidate、session isolation。
-- completion：alias detail、FK direction/composite/multiple、自关联、fallback。
-- intention：star 分类、qualifier 唯一性、transaction changes。
-- paste：分隔、quote、escape、limit、prefix。
+- completion：fallback 机制。
 - params/history：五 syntax、ordinal、混用、敏感 history、storage failure。
 - risk：顶层 WHERE、multi-statement、production matrix。
 - AI prompt：bounded、redacted、无内部 IDs。
@@ -1056,9 +982,8 @@ Stage 7 门禁：全量单测、Rust Host 测试、目标驱动测试、Host E2E
 
 - extension 装配、reconfigure、dispose。
 - frame/gutter/running、keyboard target。
-- completion、signature、Alt+Enter transaction。
-- inlay viewport、hover timer、navigation callbacks。
-- clipboard/drop caret/multiple selections。
+- fallback 补全模式验证。
+- multiple selections。
 
 jsdom 不断言真实像素布局；几何计算抽纯函数，折行/滚动视觉交给 E2E。
 
@@ -1218,3 +1143,46 @@ pnpm test:unit:drivers
 9. dbx clean-room 审计结论及无运行时依赖证明。
 
 只有当 AC-01～AC-21 均有可重复证据、无未关闭 P0/P1/P2 bug、完整门禁通过，才能将该 PRD 标记为实施完成。
+
+## 12. 待实现：智能表名过滤（Smart Table Filter）
+
+**状态：TODO（后续实现）**
+
+### 需求
+当用户在 SELECT 子句中输入了列名后，在 FROM 位置补全表名时，只展示**包含所有已选列**的表。
+
+### 场景
+```
+SELECT id, name FROM |
+  → id 存在于: demo_sales, er_customers, er_orders
+  → name 存在于: er_customers, er_products
+  → 交集: er_customers
+  → 只显示 er_customers
+
+SELECT id, sale_date, amount FROM |
+  → 三列都在 demo_sales 中
+  → 只显示 demo_sales
+
+SELECT id, nonexistent_col FROM |
+  → nonexistent_col 不在任何表中
+  → fallback: 显示所有表
+```
+
+### 实现要点
+1. 从 `model.tokens` 中提取 SELECT 子句的列名（排除关键字）
+2. 对每个候选列名，扫描 `snapshot.relations` 找到包含该列的表
+3. 取交集：只保留包含所有已选列的表
+4. 交集为空时 fallback 到全量表列表
+
+### 设置开关
+- `useSettingsStore` 中添加 `smartTableFilter: boolean`，默认 `false`
+- Settings 页面 SQL Editor 部分添加开关
+- 传递链路：Settings → QueryPanel → QueryEditorSection → SqlEditor → createCompletionExtensions → produceSchemaCompletions
+
+### 改动文件
+- `schemaCompletion.ts` — `relation` 分支增加过滤逻辑
+- `editorExtensions.ts` — 传递 `smartTableFilter`
+- `SqlEditor.tsx` / `contracts.ts` — 透传 prop
+- `QueryEditorSection.tsx` — 从 settings 读取
+- `useSettingsStore.ts` — 增加字段
+- Settings 页面 UI

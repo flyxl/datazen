@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import {
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-  RefreshCw,
-  Trash2,
-} from 'lucide-react';
-import { Button } from '../../../../src/components/ui/Button';
-import { Dialog } from '../../../../src/components/ui/Dialog';
+import { ChevronDown, ChevronRight, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { Button } from '@datazen/ui';
+import { Dialog } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
 import { redisCommandInvoke } from './redisInvoke';
@@ -135,13 +129,7 @@ export function MonitorPanel({
   );
 }
 
-function InfoPane({
-  dbSessionId,
-  nodeAddr,
-}: {
-  dbSessionId: string;
-  nodeAddr: string | null;
-}) {
+function InfoPane({ dbSessionId, nodeAddr }: { dbSessionId: string; nodeAddr: string | null }) {
   const { t } = useI18n();
   const [sections, setSections] = useState<InfoSection[]>([]);
   const [loading, setLoading] = useState(false);
@@ -241,13 +229,7 @@ function InfoPane({
   );
 }
 
-function MemoryPane({
-  dbSessionId,
-  dbIndex,
-}: {
-  dbSessionId: string;
-  dbIndex: number;
-}) {
+function MemoryPane({ dbSessionId, dbIndex }: { dbSessionId: string; dbIndex: number }) {
   const { t } = useI18n();
   const [result, setResult] = useState<MemorySampleResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -406,9 +388,7 @@ function SlowlogPane({ dbSessionId }: { dbSessionId: string }) {
                   <td className="max-w-[420px] px-3 py-2 font-mono text-xs text-fg">
                     <span className="break-all">{entry.command.join(' ')}</span>
                   </td>
-                  <td className="px-3 py-2 text-xs text-fg-muted">
-                    {formatSlowlogClient(entry)}
-                  </td>
+                  <td className="px-3 py-2 text-xs text-fg-muted">{formatSlowlogClient(entry)}</td>
                 </tr>
               ))}
             </tbody>

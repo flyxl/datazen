@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react';
 import { Trash2, Clock, Replace } from 'lucide-react';
-import { Button } from '../../../../src/components/ui/Button';
-import { Input } from '../../../../src/components/ui/Input';
-import { Dialog } from '../../../../src/components/ui/Dialog';
+import { Button } from '@datazen/ui';
+import { Input } from '@datazen/ui';
+import { Dialog } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { redisCommandInvoke, type RedisInvokeFn } from './redisInvoke';
 

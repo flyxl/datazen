@@ -8,6 +8,9 @@ class ClickHouseTableSqlGenerator extends BaseTableSqlGenerator {
   }
 
   override generateUpdate(tableRef: string, schema: TableSchema): string {
+    if (schema.columns.length === 0) {
+      return super.generateUpdate(tableRef, schema);
+    }
     const nonPkCols = schema.columns.filter(
       (c) => !schema.primaryKeys.includes(c.name) && !c.isPrimaryKey,
     );
@@ -29,6 +32,9 @@ class ClickHouseTableSqlGenerator extends BaseTableSqlGenerator {
   }
 
   override generateDelete(tableRef: string, schema: TableSchema): string {
+    if (schema.columns.length === 0) {
+      return super.generateDelete(tableRef, schema);
+    }
     const pks =
       schema.primaryKeys.length > 0
         ? schema.primaryKeys

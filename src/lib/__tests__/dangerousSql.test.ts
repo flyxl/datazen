@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isDangerousWriteStatement, sqlContainsDangerousWrite } from '../dangerousSql';
+import {
+  classifyRisk,
+  isDangerousWriteStatement,
+  sqlContainsDangerousWrite,
+} from '../dangerousSql';
+import fixture from './fixtures/sqlRiskCases.json';
 
 describe('dangerousSql', () => {
   it('detects DROP and TRUNCATE statements', () => {
@@ -62,5 +67,129 @@ describe('dangerousSql', () => {
     it('detects WITH … DROP pattern', () => {
       expect(isDangerousWriteStatement('WITH c AS (SELECT 1) DROP TABLE t')).toBe(true);
     });
+  });
+});
+
+describe('classifyRisk', () => {
+  it('classifies SELECT as read', () => {
+    const a = classifyRisk('SELECT * FROM t');
+    expect(a.classification).toBe('read');
+    expect(a.hasHighRisk).toBe(false);
+    expect(a.findings).toEqual([]);
+  });
+
+  it('classifies UPDATE with top-level WHERE as mutation (no finding)', () => {
+    const a = classifyRisk('UPDATE t SET x = 1 WHERE id = 1');
+    expect(a.classification).toBe('mutation');
+    expect(a.statements[0].hasTopLevelWhere).toBe(true);
+    expect(a.findings).toEqual([]);
+  });
+
+  it('flags UPDATE/DELETE without a top-level WHERE as no-where', () => {
+    const update = classifyRisk('UPDATE t SET x = 1');
+    expect(update.findings.map((f) => f.type)).toEqual(['no-where']);
+    expect(update.hasHighRisk).toBe(true);
+    const del = classifyRisk('DELETE FROM t');
+    expect(del.findings.map((f) => f.type)).toEqual(['no-where']);
+  });
+
+  it('excludes WHERE inside a subquery', () => {
+    const a = classifyRisk('UPDATE t SET x = (SELECT y FROM u WHERE id = 1)');
+    expect(a.statements[0].hasTopLevelWhere).toBe(false);
+    expect(a.findings.map((f) => f.type)).toEqual(['no-where']);
+  });
+
+  it('excludes WHERE inside a CTE while still classifying the real verb', () => {
+    const a = classifyRisk('WITH c AS (SELECT 1 WHERE x = 2) UPDATE t SET y = 3');
+    expect(a.statements[0].verb).toBe('UPDATE');
+    expect(a.statements[0].hasTopLevelWhere).toBe(false);
+    expect(a.findings.map((f) => f.type)).toEqual(['no-where']);
+  });
+
+  it('excludes WHERE inside a string literal', () => {
+    const read = classifyRisk("SELECT 'WHERE' FROM dual");
+    expect(read.classification).toBe('read');
+    expect(read.findings).toEqual([]);
+    const upd = classifyRisk("UPDATE t SET x = 'WHERE'");
+    expect(upd.findings.map((f) => f.type)).toEqual(['no-where']);
+  });
+
+  it('excludes WHERE inside a block comment (frontend stricter than Host)', () => {
+    const a = classifyRisk('UPDATE t SET x = 1 /* WHERE g */');
+    expect(a.statements[0].hasTopLevelWhere).toBe(false);
+    expect(a.findings.map((f) => f.type)).toEqual(['no-where']);
+  });
+
+  it('classifies DROP / TRUNCATE as destructive findings', () => {
+    expect(classifyRisk('DROP TABLE t').findings[0].type).toBe('drop');
+    expect(classifyRisk('TRUNCATE TABLE t').findings[0].type).toBe('truncate');
+  });
+
+  it('does not flag regular mutation with a WHERE as high-risk', () => {
+    expect(classifyRisk('UPDATE t SET x = 1 WHERE id = 2').hasHighRisk).toBe(false);
+  });
+
+  it('aggregates findings and highest risk across statements', () => {
+    const a = classifyRisk('SELECT 1; DROP TABLE t');
+    expect(a.classification).toBe('mutation');
+    expect(a.findings.map((f) => f.type)).toEqual(['drop']);
+    expect(a.statements).toHaveLength(2);
+    const clean = classifyRisk('SELECT 1; SELECT 2');
+    expect(clean.classification).toBe('read');
+  });
+
+  it('reports unknown for unrecognized verbs', () => {
+    const a = classifyRisk('GIBBERISH foo');
+    expect(a.classification).toBe('unknown');
+  });
+
+  it('preserves the original range of a finding', () => {
+    const sql = 'SELECT 1; DROP TABLE t';
+    const finding = classifyRisk(sql).findings[0];
+    expect(sql.slice(finding.from, finding.to).toUpperCase()).toBe('DROP');
+    expect(finding.statementIndex).toBe(1);
+  });
+
+  it('handles a WITH CTE that resolves to DROP', () => {
+    const a = classifyRisk('WITH c AS (SELECT 1) DROP TABLE t');
+    expect(a.classification).toBe('mutation');
+    expect(a.findings.map((f) => f.type)).toEqual(['drop']);
+  });
+
+  it('normalizes fullwidth DROP to a drop finding', () => {
+    const a = classifyRisk('ＤＲＯＰ TABLE t');
+    expect(a.classification).toBe('mutation');
+    expect(a.findings.map((f) => f.type)).toEqual(['drop']);
+  });
+
+  it('detects comment-hides-write-verb for unknown verbs', () => {
+    const a = classifyRisk('/* DROP */ TABLE t');
+    expect(a.statements[0].commentHidesWriteVerb).toBe(true);
+    expect(a.statements[0].classification).toBe('unknown');
+  });
+
+  it('classifies SELECT INTO / EXPLAIN ANALYZE as may-write but not strict-write', () => {
+    const into = classifyRisk('SELECT a INTO b FROM c');
+    expect(into.classification).toBe('mutation');
+    expect(into.statements[0].strictWrite).toBe(false);
+    expect(into.hasHighRisk).toBe(false);
+    const ea = classifyRisk('EXPLAIN ANALYZE DELETE FROM t');
+    expect(ea.classification).toBe('mutation');
+    expect(ea.statements[0].strictWrite).toBe(false);
+  });
+
+  it('returns empty assessment for empty / whitespace-only input', () => {
+    expect(classifyRisk('').statements).toHaveLength(0);
+    expect(classifyRisk('   ').statements).toHaveLength(0);
+    expect(classifyRisk('  ;  ').statements).toHaveLength(0);
+  });
+});
+
+describe('shared fixture sqlRiskCases (frontend classification)', () => {
+  it.each(fixture.cases)('$id', (tc) => {
+    const a = classifyRisk(tc.sql);
+    expect(a.classification).toBe(tc.frontendClassification);
+    expect(a.findings.map((f) => f.type)).toEqual(tc.frontendFindings);
+    expect(a.hasHighRisk).toBe(tc.frontendHighRisk);
   });
 });

@@ -22,8 +22,8 @@ export const SETTINGS_SECTIONS: { id: SettingsSection; labelKey: TranslationKey 
   { id: 'logging', labelKey: 'settings.logging' },
   { id: 'ai', labelKey: 'common.aiAssistant' },
   { id: 'prompts', labelKey: 'settings.prompts' },
-  { id: 'mcpServer', labelKey: 'mcp.title' },
-  { id: 'mcpClient', labelKey: 'mcpClient.title' },
+  { id: 'mcpServer', labelKey: 'settings.mcp.title' },
+  { id: 'mcpClient', labelKey: 'settings.mcpClient.title' },
   { id: 'extensions', labelKey: 'settings.extensions.title' },
 ];
 

@@ -183,7 +183,9 @@ describe('ResultWorkspace', () => {
       />,
     );
     expect(screen.getByRole('grid')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'chart.viewChart' })).toBeDisabled();
+    const chartBtn = screen.getByRole('button', { name: 'chart.viewChart' });
+    expect(chartBtn).toBeDisabled();
+    expect(chartBtn).toHaveAttribute('title', 'chart.emptyResultTooltip');
 
     rerender(
       <ResultWorkspace

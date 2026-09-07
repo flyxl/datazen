@@ -160,3 +160,78 @@ export function flattenNamespaceTree(
     }
   }
 }
+
+export function getUnifiedRowKey(row: UnifiedRow, index: number): string {
+  switch (row.type) {
+    case 'section':
+      return `sec:${row.section}`;
+    case 'group':
+      return `grp:${row.groupName}`;
+    case 'connection':
+      return `conn:${row.sectionGroup}:${row.conn.id}`;
+    case 'db':
+      return `db:${row.connectionId}:${row.dbName}`;
+    case 'schema':
+      return `schema:${row.connectionId}:${row.dbName}:${row.schemaName}`;
+    case 'category':
+      return `cat:${row.key}`;
+    case 'table':
+      return `tbl:${row.connectionId}:${row.dbName}:${row.item.schema ?? ''}:${row.item.name}`;
+    case 'object':
+      return `obj:${row.catId}:${row.obj.name}`;
+    case 'kv-db':
+      return `kv:${row.connectionId}:${row.dbName}`;
+    case 'db-loading':
+      return `loading:${index}`;
+    case 'namespace-node':
+      return `ns:${row.key}`;
+    case 'empty-group':
+      return `empty:${row.groupName ?? index}`;
+    case 'no-connections':
+      return 'no-connections';
+  }
+}
+
+let activeGhost: HTMLElement | null = null;
+
+/**
+ * Creates a clean detached ghost element for HTML5 drag-and-drop.
+ *
+ * Essential for WebKit / Safari: calling setDragImage on elements inside
+ * virtualized containers with CSS transforms (like translateY) causes WebKit
+ * to snapshot the wrong coordinates (e.g. at (0,0) which shows whatever is at the top
+ * of the list, such as "最近 (3)"), or to produce corrupted drag ghosts.
+ */
+export function createDragGhost(label: string): HTMLElement {
+  removeDragGhost();
+  const ghost = document.createElement('div');
+  ghost.id = 'datazen-drag-ghost';
+  ghost.style.cssText =
+    'position:fixed;top:-1000px;left:-1000px;padding:4px 10px;border-radius:6px;' +
+    'background:#202b3a;color:#f3f4f6;font-size:12px;font-weight:500;' +
+    'border:1px solid rgba(59,130,246,0.6);box-shadow:0 4px 12px rgba(0,0,0,0.5);' +
+    'pointer-events:none;z-index:99999;white-space:nowrap;user-select:none;-webkit-user-select:none;';
+  ghost.textContent = label;
+  document.body.appendChild(ghost);
+  activeGhost = ghost;
+  return ghost;
+}
+
+export function removeDragGhost(): void {
+  if (activeGhost) {
+    try {
+      activeGhost.remove();
+    } catch {
+      // ignore
+    }
+    activeGhost = null;
+  }
+  const existing = document.getElementById('datazen-drag-ghost');
+  if (existing) {
+    try {
+      existing.remove();
+    } catch {
+      // ignore
+    }
+  }
+}

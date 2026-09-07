@@ -1,4 +1,5 @@
-import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
+import type { DatabaseTypeMeta } from '@datazen/driver-sdk';
+import { sqlserverDialect, sqlserverDialectProfile } from './dialect';
 
 export const sqlserverMeta = {
   label: 'SQL Server',
@@ -8,7 +9,7 @@ export const sqlserverMeta = {
   defaultPort: 1433,
   defaultHost: '127.0.0.1',
   defaultUser: 'sa',
-  quoteChar: '"',
+  quoteChar: '[',
   connectionMode: 'server',
   supportsSSH: true,
   supportsSSL: true,
@@ -68,4 +69,6 @@ export const sqlserverMeta = {
     fields: {},
     indexMethods: [],
   },
+  sqlDialectStrategy: sqlserverDialect,
+  sqlDialectProfile: sqlserverDialectProfile,
 } satisfies DatabaseTypeMeta;

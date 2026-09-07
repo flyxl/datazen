@@ -47,6 +47,41 @@ describe('tablesReferencedInSql', () => {
     expect(tablesReferencedInSql('')).toEqual([]);
   });
 
+  it('extracts all tables from comma-separated FROM clause with aliases', () => {
+    expect(
+      tablesReferencedInSql(
+        'SELECT order_no, name, city FROM er_customers c, er_orders o WHERE c.id=o.customer_id;',
+      ),
+    ).toEqual(['er_customers', 'er_orders']);
+  });
+
+  it('extracts tables across multiple statements', () => {
+    expect(
+      tablesReferencedInSql(
+        "SELECT * FROM users;\nSELECT * FROM orders WHERE id = 1;\nINSERT INTO logs (msg) VALUES ('ok');",
+      ),
+    ).toEqual(['users', 'orders', 'logs']);
+  });
+
+  it('extracts physical tables inside CTEs but ignores the CTE name itself', () => {
+    const sql = `
+      WITH cte_summary AS (
+        SELECT user_id, COUNT(*) as cnt FROM purchases GROUP BY user_id
+      )
+      SELECT u.name, c.cnt FROM users u JOIN cte_summary c ON u.id = c.user_id;
+    `;
+    expect(tablesReferencedInSql(sql)).toEqual(['purchases', 'users']);
+  });
+
+  it('extracts tables from UPDATE and DELETE statements', () => {
+    expect(tablesReferencedInSql('UPDATE accounts SET balance = 0 WHERE id = 1')).toEqual([
+      'accounts',
+    ]);
+    expect(tablesReferencedInSql('DELETE FROM expired_sessions WHERE created_at < NOW()')).toEqual([
+      'expired_sessions',
+    ]);
+  });
+
   it('still extracts an in-progress identifier (store must filter unknown names)', () => {
     expect(tablesReferencedInSql('SELECT * FROM hive.snap.wb_d')).toEqual(['wb_d']);
   });

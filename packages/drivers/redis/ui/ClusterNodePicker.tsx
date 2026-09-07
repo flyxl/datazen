@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Input } from '../../../../src/components/ui/Input';
-import { Select } from '../../../../src/components/ui/Select';
+import { Input } from '@datazen/ui';
+import { Select } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { useConnectionStore } from '../../../../src/stores/connectionStore';
 import { useSettingsStore } from '../../../../src/stores/settingsStore';
@@ -34,14 +34,13 @@ export function ClusterNodePicker({
   onChange,
 }: ClusterNodePickerProps) {
   const { t } = useI18n();
-  const connection = useConnectionStore((s) =>
-    s.connections.find((c) => c.id === dbSessionId),
-  );
+  const connection = useConnectionStore((s) => s.connections.find((c) => c.id === dbSessionId));
   const pluginSettings = useSettingsStore((s) => s.settings.pluginSettings);
   const clusterRouting = readClusterRouting(pluginSettings?.redis);
 
-  const topology = readRedisOptions(connection?.options as Record<string, unknown> | undefined)
-    .topology;
+  const topology = readRedisOptions(
+    connection?.options as Record<string, unknown> | undefined,
+  ).topology;
 
   const [nodes, setNodes] = useState<ClusterNode[]>([]);
   const [loading, setLoading] = useState(false);
@@ -106,15 +105,14 @@ export function ClusterNodePicker({
   if (!showPicker) return null;
 
   return (
-    <div className={`flex items-center gap-2 ${compact ? '' : 'border-b border-edge bg-surface-alt px-3 py-1.5'}`}>
+    <div
+      className={`flex items-center gap-2 ${compact ? '' : 'border-b border-edge bg-surface-alt px-3 py-1.5'}`}
+    >
       <span className="text-[11px] text-fg-muted">{t('redis.clusterNode')}</span>
       {nodeOptions.length > 0 ? (
         <Select
           value={pinnedNodeAddr}
-          options={[
-            { value: '', label: t('redis.clusterNodePlaceholder') },
-            ...nodeOptions,
-          ]}
+          options={[{ value: '', label: t('redis.clusterNodePlaceholder') }, ...nodeOptions]}
           onChange={persistPinnedNode}
           className="h-7 min-w-[180px] text-xs"
         />

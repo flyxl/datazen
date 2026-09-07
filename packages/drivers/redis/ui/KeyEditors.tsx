@@ -1,18 +1,14 @@
 import { useCallback, useState } from 'react';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
-import { Button } from '../../../../src/components/ui/Button';
-import { Input } from '../../../../src/components/ui/Input';
+import { Button } from '@datazen/ui';
+import { Input } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { redisCommandInvoke, type RedisInvokeFn } from './redisInvoke';
 import type { KeyDetail } from '../../../../src/types';
 import { hasRedisJson, isJsonKeyType, looksLikeJsonModuleDetail } from './hasRedisJson';
 import { JsonEditor } from './JsonEditor';
 import { StreamEditor } from './StreamEditor';
-import {
-  initialStringEditorValue,
-  looksLikeJsonText,
-  tryPrettyJson,
-} from './stringKeyValue';
+import { initialStringEditorValue, looksLikeJsonText, tryPrettyJson } from './stringKeyValue';
 
 export type PluginInvokeFn = RedisInvokeFn;
 
@@ -220,9 +216,7 @@ export function KeyDetailEditor({
   onRenamed,
 }: KeyDetailEditorProps) {
   const { t } = useI18n();
-  const [ttlInput, setTtlInput] = useState(
-    detail.ttl < 0 ? '' : String(detail.ttl),
-  );
+  const [ttlInput, setTtlInput] = useState(detail.ttl < 0 ? '' : String(detail.ttl));
   const [renameInput, setRenameInput] = useState(detail.key);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -243,10 +237,7 @@ export function KeyDetailEditor({
     [onRefresh],
   );
 
-  const ttlText =
-    detail.ttl < 0
-      ? t('redis.noExpiry')
-      : `${detail.ttl} ${t('redis.seconds')}`;
+  const ttlText = detail.ttl < 0 ? t('redis.noExpiry') : `${detail.ttl} ${t('redis.seconds')}`;
 
   const showJsonEditor =
     isJsonKeyType(detail.keyType) ||
@@ -256,9 +247,7 @@ export function KeyDetailEditor({
     <div className="space-y-3 text-xs">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-fg-muted">{t('redis.type')}:</span>
-        <span className="rounded bg-accent/10 px-1.5 py-0.5 text-accent">
-          {detail.keyType}
-        </span>
+        <span className="rounded bg-accent/10 px-1.5 py-0.5 text-accent">{detail.keyType}</span>
         <span className="font-medium text-fg-muted">TTL:</span>
         <span className="text-fg-secondary">{ttlText}</span>
       </div>
@@ -407,12 +396,12 @@ export function KeyDetailEditor({
 
       {!['string', 'hash', 'list', 'set', 'zset', 'stream'].includes(detail.keyType) &&
         !showJsonEditor && (
-        <div className="rounded-md border border-edge bg-surface-alt p-3">
-          <pre className="whitespace-pre-wrap break-all font-mono text-fg-secondary">
-            {JSON.stringify(detail.value, null, 2)}
-          </pre>
-        </div>
-      )}
+          <div className="rounded-md border border-edge bg-surface-alt p-3">
+            <pre className="whitespace-pre-wrap break-all font-mono text-fg-secondary">
+              {JSON.stringify(detail.value, null, 2)}
+            </pre>
+          </div>
+        )}
     </div>
   );
 }
@@ -485,12 +474,7 @@ function StringEditor({
             {t('redis.formatJson')}
           </Button>
         )}
-        <Button
-          variant="primary"
-          className="h-7 px-2 text-xs"
-          disabled={saving}
-          onClick={save}
-        >
+        <Button variant="primary" className="h-7 px-2 text-xs" disabled={saving} onClick={save}>
           {t('common.save')}
         </Button>
       </div>
@@ -520,8 +504,7 @@ function HashEditor({
   const [newValue, setNewValue] = useState('');
   const [editValues, setEditValues] = useState<Record<string, string>>({});
 
-  const getValue = (field: string, original: string) =>
-    editValues[field] ?? original;
+  const getValue = (field: string, original: string) => editValues[field] ?? original;
 
   return (
     <div className="space-y-2">
@@ -540,9 +523,7 @@ function HashEditor({
               <td className="px-2 py-1.5">
                 <Input
                   value={getValue(field, String(val))}
-                  onChange={(e) =>
-                    setEditValues((prev) => ({ ...prev, [field]: e.target.value }))
-                  }
+                  onChange={(e) => setEditValues((prev) => ({ ...prev, [field]: e.target.value }))}
                   className="h-7 font-mono text-xs"
                 />
               </td>
@@ -567,9 +548,7 @@ function HashEditor({
                     type="button"
                     className="rounded p-1 text-danger hover:bg-danger/10"
                     onClick={() =>
-                      void invokeHashDel(dbSessionId, dbIndex, detail.key, [field]).then(
-                        onChanged,
-                      )
+                      void invokeHashDel(dbSessionId, dbIndex, detail.key, [field]).then(onChanged)
                     }
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -598,17 +577,13 @@ function HashEditor({
           className="h-7 gap-1 px-2 text-xs"
           disabled={!newField.trim()}
           onClick={() =>
-            void invokeHashSet(
-              dbSessionId,
-              dbIndex,
-              detail.key,
-              newField.trim(),
-              newValue,
-            ).then(() => {
-              setNewField('');
-              setNewValue('');
-              onChanged();
-            })
+            void invokeHashSet(dbSessionId, dbIndex, detail.key, newField.trim(), newValue).then(
+              () => {
+                setNewField('');
+                setNewValue('');
+                onChanged();
+              },
+            )
           }
         >
           <Plus className="h-3 w-3" />
@@ -693,16 +668,12 @@ function ListEditor({
                     variant="secondary"
                     className="h-6 px-1.5 text-[10px]"
                     onClick={() =>
-                      void invokeListSet(
-                        dbSessionId,
-                        dbIndex,
-                        detail.key,
-                        i,
-                        editValue,
-                      ).then(() => {
-                        setEditIndex(null);
-                        onChanged();
-                      })
+                      void invokeListSet(dbSessionId, dbIndex, detail.key, i, editValue).then(
+                        () => {
+                          setEditIndex(null);
+                          onChanged();
+                        },
+                      )
                     }
                   >
                     {t('common.save')}
@@ -736,12 +707,12 @@ function ListEditor({
           className="h-7 px-2 text-xs"
           disabled={!pushValue.trim()}
           onClick={() =>
-            void invokeListPush(dbSessionId, dbIndex, detail.key, 'left', [
-              pushValue.trim(),
-            ]).then(() => {
-              setPushValue('');
-              onChanged();
-            })
+            void invokeListPush(dbSessionId, dbIndex, detail.key, 'left', [pushValue.trim()]).then(
+              () => {
+                setPushValue('');
+                onChanged();
+              },
+            )
           }
         >
           {t('redis.pushLeft')}
@@ -751,12 +722,12 @@ function ListEditor({
           className="h-7 px-2 text-xs"
           disabled={!pushValue.trim()}
           onClick={() =>
-            void invokeListPush(dbSessionId, dbIndex, detail.key, 'right', [
-              pushValue.trim(),
-            ]).then(() => {
-              setPushValue('');
-              onChanged();
-            })
+            void invokeListPush(dbSessionId, dbIndex, detail.key, 'right', [pushValue.trim()]).then(
+              () => {
+                setPushValue('');
+                onChanged();
+              },
+            )
           }
         >
           {t('redis.pushRight')}
@@ -805,9 +776,7 @@ function SetEditor({
                   type="button"
                   className="rounded p-1 text-danger hover:bg-danger/10"
                   onClick={() =>
-                    void invokeSetRemove(dbSessionId, dbIndex, detail.key, [member]).then(
-                      onChanged,
-                    )
+                    void invokeSetRemove(dbSessionId, dbIndex, detail.key, [member]).then(onChanged)
                   }
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -829,12 +798,10 @@ function SetEditor({
           className="h-7 gap-1 px-2 text-xs"
           disabled={!newMember.trim()}
           onClick={() =>
-            void invokeSetAdd(dbSessionId, dbIndex, detail.key, [newMember.trim()]).then(
-              () => {
-                setNewMember('');
-                onChanged();
-              },
-            )
+            void invokeSetAdd(dbSessionId, dbIndex, detail.key, [newMember.trim()]).then(() => {
+              setNewMember('');
+              onChanged();
+            })
           }
         >
           <Plus className="h-3 w-3" />
@@ -886,9 +853,9 @@ function ZsetEditor({
                   type="button"
                   className="rounded p-1 text-danger hover:bg-danger/10"
                   onClick={() =>
-                    void invokeZsetRemove(dbSessionId, dbIndex, detail.key, [
-                      item.member,
-                    ]).then(onChanged)
+                    void invokeZsetRemove(dbSessionId, dbIndex, detail.key, [item.member]).then(
+                      onChanged,
+                    )
                   }
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -948,14 +915,7 @@ export async function invokeCreateKey(
       await invokeHashSet(dbSessionId, dbIndex, key, 'field', initialValue || '', invoke);
       break;
     case 'list':
-      await invokeListPush(
-        dbSessionId,
-        dbIndex,
-        key,
-        'right',
-        [initialValue || ''],
-        invoke,
-      );
+      await invokeListPush(dbSessionId, dbIndex, key, 'right', [initialValue || ''], invoke);
       break;
     case 'set':
       await invokeSetAdd(dbSessionId, dbIndex, key, [initialValue || 'member'], invoke);

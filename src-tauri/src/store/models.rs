@@ -78,5 +78,6 @@ pub(crate) struct StoreCache {
     pub(super) sync_tasks: Vec<SyncTask>,
     pub(super) sync_tasks_loaded: bool,
     pub(super) ai_config: Option<AiProviderConfig>,
+    pub(super) ai_settings_config: Option<crate::ai::AiSettingsConfig>,
     pub(super) ai_config_loaded: bool,
 }

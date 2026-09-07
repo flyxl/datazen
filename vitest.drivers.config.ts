@@ -7,16 +7,18 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@datazen/plugin-sdk': resolve(__dirname, 'src/plugin-sdk'),
+      '@datazen/driver-sdk': resolve(__dirname, 'packages/driver-sdk/src/index.ts'),
+      '@datazen/extension-points': resolve(__dirname, 'packages/extension-points/src/index.ts'),
+      '@datazen/app-sdk': resolve(__dirname, 'packages/app-sdk/src/index.ts'),
+      '@datazen/ui': resolve(__dirname, 'packages/ui/src/index.ts'),
+      '@datazen/plugin-sdk': resolve(__dirname, 'src/plugin-sdk/index.ts'),
+      '@datazen/extension-sdk': resolve(__dirname, 'packages/app-sdk/src/index.ts'),
     },
   },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
-    include: [
-      'packages/drivers/**/*.test.{ts,tsx}',
-      'packages/drivers/**/__tests__/**/*.{ts,tsx}',
-    ],
+    include: ['packages/drivers/**/*.test.{ts,tsx}', 'packages/drivers/**/__tests__/**/*.{ts,tsx}'],
     exclude: [
       '**/node_modules/**',
       'packages/drivers/kiwi/**',

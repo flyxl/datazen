@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitFor, cleanup, screen, fireEvent } from '@testing-library/react';
 import { TableStructureEditor } from '../TableStructureEditor';
+import { invalidateSchemaCache } from '../../../lib/schemaCache';
 
 // The mount effect lists `t` in its deps — a fresh function per render would
 // retrigger it endlessly, so the mock must return a stable reference.
@@ -295,6 +296,10 @@ describe('TableStructureEditor targets the panel database (F1 BUG-003)', () => {
 });
 
 describe('TableStructureEditor branches', () => {
+  beforeEach(() => {
+    invalidateSchemaCache();
+  });
+
   it('shows the unsupported view when the driver has no SQL support', async () => {
     render(<TableStructureEditor {...baseProps('create')} databaseType={'mysql' as never} />);
     await waitFor(() => {
@@ -313,7 +318,7 @@ describe('TableStructureEditor branches', () => {
     mockGetTableSchema.mockResolvedValue(ALTER_SCHEMA);
     await mountAndLoad({ mode: 'alter', tableName: 'users' });
 
-    expect(mockGetTableSchema).toHaveBeenCalledWith('conn-1', 'users');
+    expect(mockGetTableSchema).toHaveBeenCalledWith('conn-1', 'users', 'db_b');
     expect(screen.getByTestId('column-table')).toBeInTheDocument();
     expect(mockGetStructureCapabilities).toHaveBeenCalledWith('conn-1');
   });

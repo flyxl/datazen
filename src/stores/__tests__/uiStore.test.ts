@@ -53,4 +53,9 @@ describe('uiStore', () => {
     useUiStore.getState().setFullscreen(true);
     expect(useUiStore.getState().isFullscreen).toBe(true);
   });
+
+  it('syncFullscreen returns false when not in Tauri environment', async () => {
+    const res = await useUiStore.getState().syncFullscreen();
+    expect(res).toBe(false);
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applySchemaDefaults } from '@datazen/plugin-sdk';
+import { applySchemaDefaults } from '../../../../../src/plugin-sdk/settings';
 import { redisSettingsSchema } from '../settings';
 
 describe('redisSettingsSchema', () => {

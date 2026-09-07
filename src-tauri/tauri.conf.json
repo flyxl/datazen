@@ -14,6 +14,7 @@
     "windows": [
       {
         "label": "main",
+        "dragDropEnabled": false,
         "title": "DataZen",
         "width": 1280,
         "height": 820,
@@ -23,7 +24,7 @@
         "decorations": true,
         "transparent": false,
         "visible": false,
-        "backgroundColor": "#0f172a",
+        "backgroundColor": "#0b1220",
         "acceptFirstMouse": true
       }
     ],

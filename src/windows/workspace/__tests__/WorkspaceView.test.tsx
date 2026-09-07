@@ -31,7 +31,8 @@ vi.mock('../../../stores/extensionStore', () => ({
   useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
     getState: () => ({
       ...pluginState,
-      byId: (id: string) => (pluginState.extensions as Array<{ id: string }>).find((p) => p.id === id),
+      byId: (id: string) =>
+        (pluginState.extensions as Array<{ id: string }>).find((p) => p.id === id),
       fetch: async () => {
         pluginState.fetchCount += 1;
       },
@@ -237,5 +238,17 @@ describe('WorkspaceView', () => {
     view.rerender(<WorkspaceView />);
     await act(async () => {});
     expect(closeByPluginMock).not.toHaveBeenCalled();
+  });
+
+  it('renders a resizable sidebar handle for the navigator', () => {
+    pluginState.extensions = [makePlugin()];
+    render(<WorkspaceView />);
+
+    const handle = screen.getByTestId('workspace-sidebar-resize');
+    expect(handle).toBeInTheDocument();
+    expect(handle).toHaveClass('cursor-col-resize');
+
+    const nav = screen.getByTestId('workspace-navigator');
+    expect(nav).toHaveStyle({ width: '200px' });
   });
 });

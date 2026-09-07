@@ -1,0 +1,462 @@
+2026-09-05T01:32:54.638584Z  INFO datazen::bootstrap: [startup] builder created
+2026-09-05T01:32:54.776474Z  INFO tauri_plugin_webdriver: WebDriver plugin initialized on port 4447
+2026-09-05T01:32:54.793362Z  INFO tauri_plugin_webdriver::server: WebDriver server listening on http://127.0.0.1:4447
+2026-09-05T01:32:54.922933Z  INFO datazen::bootstrap: [startup] setup begin (builder took 286.10575ms)
+2026-09-05T01:32:55.103838Z  INFO datazen::store::key_store: Using .key key backend (macOS adhoc/unsigned binary); set DATAZEN_KEYRING=keyring to force OS Keychain
+2026-09-05T01:32:55.147502Z  INFO datazen::store::history_db: Migrated query_history: connection_id → config_id (cleared old data)
+2026-09-05T01:32:55.148543Z  INFO datazen::store::history_db: Database schema migrated to version 2
+2026-09-05T01:32:55.149152Z  INFO datazen::store::history_db: Added query_history.schema column
+2026-09-05T01:32:55.149623Z  INFO datazen::store::history_db: Database schema migrated to version 3
+2026-09-05T01:32:55.150759Z  INFO datazen::store::history_db: Migrated query_history: config_id → connection_id
+2026-09-05T01:32:55.151386Z  INFO datazen::store::history_db: Migrated favorite_queries: config_id → connection_id
+2026-09-05T01:32:55.152997Z  INFO datazen::store::history_db: Database schema migrated to version 4
+2026-09-05T01:32:55.161542Z  INFO datazen::bootstrap: [startup]   store: 237.598042ms
+2026-09-05T01:32:55.161774Z  INFO datazen::bootstrap: [startup]   drivers (0 types): 214.708µs
+2026-09-05T01:32:55.172546Z  INFO datazen::bootstrap: [startup]   ui extensions loaded: 0
+2026-09-05T01:32:55.172898Z  INFO datazen::bootstrap: [startup]   block_on total: 249.909416ms
+2026-09-05T01:32:55.174711Z  INFO datazen::commands::window: main window resized to configured default from_w=800.0 from_h=600.0 to_w=1280.0 to_h=820.0
+2026-09-05T01:32:55.174818Z  INFO datazen::bootstrap: [startup]   get_settings: 3.875µs
+2026-09-05T01:32:55.175680Z  INFO datazen::bootstrap: Host memory snapshot used_mib=10759 total_mib=16384
+2026-09-05T01:32:55.186805Z  INFO datazen::bootstrap: [startup]   build menu: 11.962542ms
+2026-09-05T01:32:55.186818Z  INFO datazen::bootstrap: [startup] setup complete: 263.951667ms
+2026-09-05T01:32:55.275157Z  INFO datazen::workflow::registry: Seeded builtin workflow Hello Query (builtin-hello-query)
+2026-09-05T01:32:55.277807Z  INFO datazen::workflow::registry: Seeded builtin workflow Cross-DB sample (builtin-cross-db-sample)
+2026-09-05T01:32:55.290990Z  INFO datazen::workflow::registry: Seeded builtin workflow AI summarize query (builtin-ai-summarize)
+2026-09-05T01:33:12.250764Z  INFO datazen::commands::connection: save_connection id=conn_e2e_pg name=本地 PostgreSQL
+2026-09-05T01:33:23.084360Z  INFO datazen::ai::registry: [startup] AI providers ready: 888.709µs
+2026-09-05T01:33:23.086318Z  INFO datazen::ai::prompt_resolver: [prompts] loaded 10 templates for lang=en
+2026-09-05T01:33:23.086852Z  INFO datazen::ai::prompt_resolver: [prompts] loaded 10 templates for lang=zh-CN
+2026-09-05T01:33:48.079776Z  INFO datazen::commands::query: clear_query_history
+2026-09-05T01:33:50.924357Z  INFO datazen::commands::connection: save_connection id=conn_e2e_pg name=本地 PostgreSQL
+2026-09-05T01:33:56.081157Z  INFO datazen::commands::connection: connect connection_id=conn_e2e_pg
+2026-09-05T01:33:56.081258Z  INFO datazen::commands::connection: connect connection_id=conn_e2e_pg
+2026-09-05T01:33:56.081313Z  INFO datazen::db::registry: Registered driver on demand db_type="postgresql"
+2026-09-05T01:33:56.102756Z  INFO datazen::commands::connection: connect OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:33:56.103520Z  INFO datazen::commands::connection: connect OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:33:56.104031Z  INFO datazen::commands::connection: test_connection name=本地 PostgreSQL host=Some("localhost") port=Some(5432) db_type="postgresql" ssh=None
+2026-09-05T01:33:56.106893Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:33:56.107326Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:33:56.108932Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=2
+2026-09-05T01:33:56.110017Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:33:56.110333Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:33:56.111330Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:33:56.111805Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:33:56.112351Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=2
+2026-09-05T01:33:56.112807Z  INFO datazen::commands::connection: test_connection OK version=PostgreSQL 18.6 (Homebrew) on aarch64-apple-darwin24.6.0, compiled by Apple clang version 17.0.0 (clang-1700.6.4.2), 64-bit
+2026-09-05T01:33:56.116057Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=4
+2026-09-05T01:33:56.118266Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:33:56.119053Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:33:56.122097Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:33:56.123825Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:33:56.126385Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=4
+2026-09-05T01:33:56.127575Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=9
+2026-09-05T01:33:56.128959Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:33:56.129329Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:33:56.130041Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:33:59.394087Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:33:59.394430Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:33:59.395792Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:34:00.553939Z  INFO datazen::commands::driver_command::streaming: execute_driver_command_stream db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=35
+2026-09-05T01:34:00.555041Z  INFO sqlx::postgres::notice: table "_e2e_idx_child" does not exist, skipping
+2026-09-05T01:34:00.563805Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:34:00.563909Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:00.564386Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:00.564402Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:00.565381Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=1
+2026-09-05T01:34:00.566506Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:34:00.570428Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:00.570927Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:00.572010Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:34:00.572965Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:00.573255Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:00.574459Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:34:00.577294Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:00.577699Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:00.578689Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:34:02.263862Z  INFO datazen::commands::driver_command::streaming: execute_driver_command_stream db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=36
+2026-09-05T01:34:02.268622Z  INFO sqlx::postgres::notice: table "_e2e_idx_parent" does not exist, skipping
+2026-09-05T01:34:02.276746Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:34:02.276921Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:02.277060Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:02.277581Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:02.278131Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=1
+2026-09-05T01:34:02.279212Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:02.279689Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:02.282339Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=5
+2026-09-05T01:34:02.285799Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:02.286391Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:02.290319Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=4
+2026-09-05T01:34:02.296770Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=17
+2026-09-05T01:34:02.300049Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:02.300866Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:02.301712Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:34:03.633535Z  INFO datazen::commands::driver_command::streaming: execute_driver_command_stream db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=110
+2026-09-05T01:34:03.673819Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:34:03.673960Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:03.674470Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:03.674702Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:03.676244Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:34:03.676709Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=2
+2026-09-05T01:34:03.678608Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:03.679571Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:03.679669Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:03.680353Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:03.685281Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=5
+2026-09-05T01:34:03.686061Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=7
+2026-09-05T01:34:03.687645Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:03.688297Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:03.689422Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:34:04.538920Z  INFO datazen::commands::driver_command::streaming: execute_driver_command_stream db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=332
+2026-09-05T01:34:04.555504Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:34:04.555891Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:04.556438Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:04.556705Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:04.557645Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=2
+2026-09-05T01:34:04.558756Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=12 ms=3
+2026-09-05T01:34:04.559047Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:04.559405Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:04.560349Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=12 ms=1
+2026-09-05T01:34:04.561760Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:04.562013Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:04.562839Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=12 ms=1
+2026-09-05T01:34:04.563453Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:04.563801Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:04.564391Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=12 ms=0
+2026-09-05T01:34:05.395318Z  INFO datazen::commands::driver_command::streaming: execute_driver_command_stream db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=51
+2026-09-05T01:34:06.234832Z  INFO datazen::commands::driver_command::streaming: execute_driver_command_stream db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=60
+2026-09-05T01:34:07.093971Z  INFO datazen::commands::driver_command::streaming: execute_driver_command_stream db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=64
+2026-09-05T01:34:07.938247Z  INFO datazen::commands::driver_command::streaming: execute_driver_command_stream db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=59
+2026-09-05T01:34:08.786669Z  INFO datazen::commands::driver_command::streaming: execute_driver_command_stream db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=147
+2026-09-05T01:34:09.316714Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:09.317010Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:09.317882Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=12 ms=1
+2026-09-05T01:34:09.319843Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:34:09.320116Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:09.320909Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=12 ms=1
+2026-09-05T01:34:15.403444Z  INFO datazen::commands::schema: get_table_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_idx_child page=0 page_size=50
+2026-09-05T01:34:15.414395Z  INFO datazen::services::query_executor: query_executor: count query table=_e2e_idx_child
+2026-09-05T01:34:15.415761Z  INFO datazen::commands::schema: get_table_data OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_idx_child rows=2 ms=12
+2026-09-05T01:34:18.523277Z  INFO datazen::commands::schema: get_table_schema db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_idx_child
+2026-09-05T01:34:18.523693Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=get_table_schema db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:34:18.556278Z  INFO datazen::commands::schema: get_table_schema OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_idx_child cols=5 indexes=4 fks=1 ms=33
+2026-09-05T01:34:28.124527Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=query db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=839
+2026-09-05T01:35:01.514652Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:01.515508Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:01.517713Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=12 ms=3
+2026-09-05T01:35:05.263671Z  INFO datazen::commands::driver_command::streaming: execute_driver_command_stream db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=35
+2026-09-05T01:35:05.276869Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:35:05.276956Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:05.277348Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:05.277718Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:05.277962Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=1
+2026-09-05T01:35:05.278822Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:05.279142Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:05.279433Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:35:05.280490Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:35:05.281149Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:05.281924Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:05.283134Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:05.283414Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:05.283904Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:35:05.284335Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:35:06.930811Z  INFO datazen::commands::driver_command::streaming: execute_driver_command_stream db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=36
+2026-09-05T01:35:06.943834Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:35:06.943933Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:06.944330Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:06.944530Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:06.944896Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=1
+2026-09-05T01:35:06.945510Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:06.945575Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:35:06.946081Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:06.947027Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:35:06.947713Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:06.948628Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:06.949885Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:35:06.951281Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:06.951556Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:06.952275Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=0
+2026-09-05T01:35:08.274630Z  INFO datazen::commands::query: clear_query_history
+2026-09-05T01:35:10.910452Z  INFO datazen::commands::connection: save_connection id=conn_e2e_pg name=本地 PostgreSQL
+2026-09-05T01:35:16.066782Z  INFO datazen::commands::connection: connect connection_id=conn_e2e_pg
+2026-09-05T01:35:16.067250Z  INFO datazen::commands::connection: connect connection_id=conn_e2e_pg
+2026-09-05T01:35:16.069204Z  INFO datazen::commands::connection: connect OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:35:16.071164Z  INFO datazen::commands::connection: test_connection name=本地 PostgreSQL host=Some("localhost") port=Some(5432) db_type="postgresql" ssh=None
+2026-09-05T01:35:16.072082Z  INFO datazen::commands::connection: connect OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:35:16.076131Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:35:16.076805Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:16.077486Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=1
+2026-09-05T01:35:16.078684Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:35:16.079148Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:16.080389Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:16.081033Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:16.086396Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=7
+2026-09-05T01:35:16.087706Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=7
+2026-09-05T01:35:16.088502Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:16.088889Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:16.090969Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:16.091332Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:16.093320Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=4
+2026-09-05T01:35:16.095143Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:16.095401Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:16.096868Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:35:16.103508Z  INFO datazen::commands::connection: test_connection OK version=PostgreSQL 18.6 (Homebrew) on aarch64-apple-darwin24.6.0, compiled by Apple clang version 17.0.0 (clang-1700.6.4.2), 64-bit
+2026-09-05T01:35:16.112407Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=21
+2026-09-05T01:35:17.725777Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:17.726459Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:17.727513Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:35:18.881071Z  INFO datazen::commands::driver_command::streaming: execute_driver_command_stream db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=37
+2026-09-05T01:35:18.882296Z  INFO sqlx::postgres::notice: table "_e2e_filter_test" does not exist, skipping
+2026-09-05T01:35:18.891626Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:35:18.891718Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:18.892814Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:18.893118Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:18.894399Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:35:18.894659Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=3
+2026-09-05T01:35:18.896220Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:18.896822Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:18.897082Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:18.897380Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:18.898558Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:35:18.899322Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:35:18.902186Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:18.902556Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:18.903329Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:35:20.237552Z  INFO datazen::commands::driver_command::streaming: execute_driver_command_stream db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=132
+2026-09-05T01:35:20.252126Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:35:20.252242Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:20.252947Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:20.253815Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:20.255966Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=3
+2026-09-05T01:35:20.256644Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:20.256917Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:20.258580Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=6
+2026-09-05T01:35:20.259300Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:35:20.260801Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:20.261270Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:20.262412Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:35:20.262855Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:20.263247Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:20.264187Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:35:21.099234Z  INFO datazen::commands::driver_command::streaming: execute_driver_command_stream db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=116
+2026-09-05T01:35:22.829689Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:22.830338Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:22.831410Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:35:22.834380Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:22.834918Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:22.835771Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:35:28.103698Z  INFO datazen::commands::schema: get_table_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test page=0 page_size=50
+2026-09-05T01:35:28.108297Z  INFO datazen::services::query_executor: query_executor: count query table=_e2e_filter_test
+2026-09-05T01:35:28.109051Z  INFO datazen::commands::schema: get_table_data OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test rows=3 ms=5
+2026-09-05T01:35:31.165378Z  INFO datazen::commands::schema: get_table_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test page=0 page_size=50
+2026-09-05T01:35:31.165500Z  INFO datazen::services::query_executor: query_executor: count query table=_e2e_filter_test
+2026-09-05T01:35:31.167016Z  INFO datazen::commands::schema: get_table_data OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test rows=1 ms=1
+2026-09-05T01:35:31.167715Z  INFO datazen::commands::schema: get_table_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test page=0 page_size=50
+2026-09-05T01:35:31.167819Z  INFO datazen::services::query_executor: query_executor: count query table=_e2e_filter_test
+2026-09-05T01:35:31.168502Z  INFO datazen::commands::schema: get_table_data OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test rows=1 ms=0
+2026-09-05T01:35:31.186396Z  INFO datazen::commands::schema: get_table_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test page=0 page_size=50
+2026-09-05T01:35:31.186497Z  INFO datazen::services::query_executor: query_executor: count query table=_e2e_filter_test
+2026-09-05T01:35:31.187453Z  INFO datazen::commands::schema: get_table_data OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test rows=3 ms=1
+2026-09-05T01:35:31.945247Z  INFO datazen::commands::schema: get_table_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test page=0 page_size=50
+2026-09-05T01:35:31.945349Z  INFO datazen::services::query_executor: query_executor: count query table=_e2e_filter_test
+2026-09-05T01:35:31.945765Z  INFO datazen::commands::schema: get_table_data OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test rows=3 ms=0
+2026-09-05T01:35:33.839580Z  INFO datazen::commands::schema: get_table_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test page=0 page_size=50
+2026-09-05T01:35:33.839688Z  INFO datazen::services::query_executor: query_executor: count query table=_e2e_filter_test
+2026-09-05T01:35:33.840152Z  INFO datazen::commands::schema: get_table_data OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test rows=1 ms=0
+2026-09-05T01:35:35.049879Z  INFO datazen::commands::schema: get_table_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test page=0 page_size=50
+2026-09-05T01:35:35.049980Z  INFO datazen::services::query_executor: query_executor: count query table=_e2e_filter_test
+2026-09-05T01:35:35.050755Z  INFO datazen::commands::schema: get_table_data OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test rows=3 ms=0
+2026-09-05T01:35:38.840444Z  INFO datazen::commands::schema: get_table_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test page=0 page_size=50
+2026-09-05T01:35:38.840551Z  INFO datazen::services::query_executor: query_executor: count query table=_e2e_filter_test
+2026-09-05T01:35:38.841354Z  INFO datazen::commands::schema: get_table_data OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test rows=2 ms=0
+2026-09-05T01:35:40.255438Z  INFO datazen::commands::schema: get_table_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test page=0 page_size=50
+2026-09-05T01:35:40.255627Z  INFO datazen::services::query_executor: query_executor: count query table=_e2e_filter_test
+2026-09-05T01:35:40.257858Z  INFO datazen::commands::schema: get_table_data OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test rows=0 ms=2
+2026-09-05T01:35:41.465674Z  INFO datazen::commands::schema: get_table_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test page=0 page_size=50
+2026-09-05T01:35:41.465994Z  INFO datazen::services::query_executor: query_executor: count query table=_e2e_filter_test
+2026-09-05T01:35:41.467504Z  INFO datazen::commands::schema: get_table_data OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test rows=3 ms=1
+2026-09-05T01:35:43.711627Z  INFO datazen::commands::schema: get_table_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test page=0 page_size=50
+2026-09-05T01:35:43.711753Z  INFO datazen::services::query_executor: query_executor: count query table=_e2e_filter_test
+2026-09-05T01:35:43.712681Z  INFO datazen::commands::schema: get_table_data OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test rows=1 ms=1
+2026-09-05T01:35:46.412252Z  INFO datazen::commands::schema: get_table_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test page=0 page_size=50
+2026-09-05T01:35:46.412355Z  INFO datazen::services::query_executor: query_executor: count query table=_e2e_filter_test
+2026-09-05T01:35:46.413400Z  INFO datazen::commands::schema: get_table_data OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test rows=1 ms=1
+2026-09-05T01:35:47.622548Z  INFO datazen::commands::schema: get_table_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test page=0 page_size=50
+2026-09-05T01:35:47.622647Z  INFO datazen::services::query_executor: query_executor: count query table=_e2e_filter_test
+2026-09-05T01:35:47.623182Z  INFO datazen::commands::schema: get_table_data OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 table=_e2e_filter_test rows=3 ms=0
+2026-09-05T01:35:49.280826Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:49.281939Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:49.285227Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=4
+2026-09-05T01:35:50.445249Z  INFO datazen::commands::driver_command::streaming: execute_driver_command_stream db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=37
+2026-09-05T01:35:50.455609Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:35:50.455723Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:50.456759Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:50.456798Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:50.457372Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=1
+2026-09-05T01:35:50.457953Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:35:50.458824Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:50.460008Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:50.461012Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:35:50.462263Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:50.462751Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:50.463645Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:35:50.464660Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:35:50.465773Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:35:50.467113Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:35:51.790723Z  INFO datazen::commands::query: clear_query_history
+2026-09-05T01:35:54.652743Z  INFO datazen::commands::connection: save_connection id=conn_e2e_pg name=本地 PostgreSQL
+2026-09-05T01:36:02.705107Z  INFO datazen::commands::query: clear_query_history
+2026-09-05T01:36:05.360500Z  INFO datazen::commands::connection: save_connection id=conn_e2e_pg name=本地 PostgreSQL
+2026-09-05T01:36:08.895796Z  INFO datazen::commands::connection: save_connection id=e2e-edge-rapid-1 name=E2E-快速连1
+2026-09-05T01:36:08.899758Z  INFO datazen::commands::connection: save_connection id=e2e-edge-rapid-2 name=E2E-快速连2
+2026-09-05T01:36:08.902366Z  INFO datazen::commands::connection: save_connection id=e2e-edge-rapid-3 name=E2E-快速连3
+2026-09-05T01:36:08.907489Z  INFO datazen::commands::connection: delete_connection id=e2e-edge-rapid-1
+2026-09-05T01:36:08.909609Z  INFO datazen::commands::connection: delete_connection id=e2e-edge-rapid-2
+2026-09-05T01:36:08.911472Z  INFO datazen::commands::connection: delete_connection id=e2e-edge-rapid-3
+2026-09-05T01:36:08.916155Z  INFO datazen::commands::connection: save_connection id=e2e-edge-edit-test name=E2E-编辑前
+2026-09-05T01:36:08.918429Z  INFO datazen::commands::connection: save_connection id=e2e-edge-edit-test name=E2E-编辑后
+2026-09-05T01:36:10.927815Z  INFO datazen::commands::connection: delete_connection id=e2e-edge-edit-test
+2026-09-05T01:36:11.068694Z  INFO datazen::commands::connection: connect connection_id=conn_e2e_pg
+2026-09-05T01:36:11.069697Z  INFO datazen::commands::connection: connect OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:36:11.075056Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:36:11.075938Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:11.077141Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=2
+2026-09-05T01:36:11.077664Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:36:11.078209Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:11.079069Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=1
+2026-09-05T01:36:11.080136Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:36:11.080453Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:11.082131Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:36:11.087649Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:36:11.088274Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:11.088915Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:36:11.089441Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:11.089672Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:36:11.090263Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:36:11.093123Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:36:11.094077Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:11.096027Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:36:11.098822Z  INFO datazen::commands::connection: test_connection name=未命名连接 host=Some("192.0.2.1") port=Some(5432) db_type="postgresql" ssh=None
+2026-09-05T01:36:18.450847Z  INFO datazen::commands::connection: save_connection id=e2e-edge-group-test name=E2E-分组测试
+2026-09-05T01:36:18.456825Z  INFO datazen::commands::connection: test_connection name=未命名连接 host=Some("192.0.2.1") port=Some(5432) db_type="postgresql" ssh=None
+2026-09-05T01:36:20.462564Z  INFO datazen::commands::connection: save_connection id=e2e-edge-group-test name=E2E-分组测试
+2026-09-05T01:36:22.473749Z  INFO datazen::commands::connection: delete_connection id=e2e-edge-group-test
+2026-09-05T01:36:22.476977Z  INFO datazen::commands::connection: delete_connection id=e2e-edge-rapid-1
+2026-09-05T01:36:22.479207Z  INFO datazen::commands::connection: delete_connection id=e2e-edge-rapid-2
+2026-09-05T01:36:22.481295Z  INFO datazen::commands::connection: delete_connection id=e2e-edge-rapid-3
+2026-09-05T01:36:22.483568Z  INFO datazen::commands::connection: delete_connection id=e2e-edge-edit-test
+2026-09-05T01:36:22.485606Z  INFO datazen::commands::connection: delete_connection id=e2e-edge-group-test
+2026-09-05T01:36:22.799308Z  INFO datazen::commands::query: clear_query_history
+2026-09-05T01:36:25.502529Z  INFO datazen::commands::connection: save_connection id=conn_e2e_pg name=本地 PostgreSQL
+2026-09-05T01:36:30.680275Z  INFO datazen::commands::connection: connect connection_id=conn_e2e_pg
+2026-09-05T01:36:30.680375Z  INFO datazen::commands::connection: connect connection_id=conn_e2e_pg
+2026-09-05T01:36:30.681321Z  INFO datazen::commands::connection: connect OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:36:30.683062Z  INFO datazen::commands::connection: test_connection name=本地 PostgreSQL host=Some("localhost") port=Some(5432) db_type="postgresql" ssh=None
+2026-09-05T01:36:30.684892Z  INFO datazen::commands::connection: connect OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:36:30.688737Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:36:30.689573Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:30.690581Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=1
+2026-09-05T01:36:30.690789Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:36:30.691459Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:30.692291Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:36:30.693013Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:30.693298Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=2
+2026-09-05T01:36:30.694339Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:36:30.695528Z  INFO datazen::commands::connection: test_connection OK version=PostgreSQL 18.6 (Homebrew) on aarch64-apple-darwin24.6.0, compiled by Apple clang version 17.0.0 (clang-1700.6.4.2), 64-bit
+2026-09-05T01:36:30.696565Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:36:30.697037Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:30.698010Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:36:30.699490Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:36:30.700501Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:30.701199Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:36:30.701620Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:30.704189Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=4
+2026-09-05T01:36:30.705205Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=3
+2026-09-05T01:36:32.354064Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_objects db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:37.352944Z ERROR datazen::commands::error: cmd="test_connection" error=Driver error: Connection failed: encountered unexpected or invalid data: unexpected response from SSLRequest: 0x00 (sqlx_postgres::connection::tls:95)
+2026-09-05T01:36:39.155643Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_objects db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:39.768022Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_privileges db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:41.092164Z  INFO datazen::commands::query: clear_query_history
+2026-09-05T01:36:43.756413Z  INFO datazen::commands::connection: save_connection id=conn_e2e_pg name=本地 PostgreSQL
+2026-09-05T01:36:44.690931Z ERROR datazen::commands::error: cmd="test_connection" error=Driver error: Connection failed: encountered unexpected or invalid data: unexpected response from SSLRequest: 0x00 (sqlx_postgres::connection::tls:95)
+2026-09-05T01:36:49.055824Z  INFO datazen::commands::connection: connect connection_id=conn_e2e_pg
+2026-09-05T01:36:49.055839Z  INFO datazen::commands::connection: connect connection_id=conn_e2e_pg
+2026-09-05T01:36:49.056849Z  INFO datazen::commands::connection: connect OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:36:49.057968Z  INFO datazen::commands::connection: connect OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:36:49.061188Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:36:49.062436Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:49.063329Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=2
+2026-09-05T01:36:49.065074Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:36:49.065360Z  INFO datazen::commands::connection: test_connection name=本地 PostgreSQL host=Some("localhost") port=Some(5432) db_type="postgresql" ssh=None
+2026-09-05T01:36:49.066479Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:49.066515Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:36:49.067306Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:49.068554Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=3
+2026-09-05T01:36:49.069165Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:36:49.070658Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:36:49.071330Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:49.072099Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:36:49.072406Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=1
+2026-09-05T01:36:49.072547Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:49.074687Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:36:49.074694Z  INFO datazen::commands::connection: test_connection OK version=PostgreSQL 18.6 (Homebrew) on aarch64-apple-darwin24.6.0, compiled by Apple clang version 17.0.0 (clang-1700.6.4.2), 64-bit
+2026-09-05T01:36:49.075538Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:49.076631Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=4
+2026-09-05T01:36:49.077594Z  INFO datazen::commands::schema: get_tables OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride count=11 ms=2
+2026-09-05T01:36:51.500746Z  INFO datazen::commands::connection: connect connection_id=conn_e2e_pg
+2026-09-05T01:36:51.501598Z  INFO datazen::commands::connection: connect OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:36:51.504657Z  INFO datazen::commands::schema: get_databases db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:36:51.504972Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="8b891a5e-7601-4f05-b984-7870f3f16613" sql_len=0
+2026-09-05T01:36:51.505347Z  INFO datazen::commands::schema: get_databases OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 count=8 ms=0
+2026-09-05T01:36:51.508478Z  INFO datazen::commands::schema: get_er_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=datazen
+2026-09-05T01:36:51.571490Z  INFO datazen::commands::schema: get_er_data OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=datazen tables=6 ms=63
+2026-09-05T01:36:51.575079Z  INFO datazen::commands::connection: disconnect (force) db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:36:51.575355Z  INFO datazen::commands::connection: disconnect OK db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613
+2026-09-05T01:36:51.593673Z  INFO datazen::commands::schema: get_er_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:36:51.594027Z ERROR datazen::commands::error: cmd="get_er_data" error=DB session '8b891a5e-7601-4f05-b984-7870f3f16613' not found (a dbSessionId is a runtime session id; maybe you passed a connectionId where a dbSessionId was expected)
+2026-09-05T01:37:08.676261Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:37:08.676634Z ERROR datazen::commands::error: cmd="execute_driver_command" error=DB session '8b891a5e-7601-4f05-b984-7870f3f16613' not found (a dbSessionId is a runtime session id; maybe you passed a connectionId where a dbSessionId was expected)
+2026-09-05T01:37:08.790647Z  INFO datazen::commands::schema: get_tables db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:37:08.791390Z ERROR datazen::commands::error: cmd="execute_driver_command" error=DB session '8b891a5e-7601-4f05-b984-7870f3f16613' not found (a dbSessionId is a runtime session id; maybe you passed a connectionId where a dbSessionId was expected)
+2026-09-05T01:37:09.698588Z  INFO datazen::commands::schema: get_er_data db_session_id=8b891a5e-7601-4f05-b984-7870f3f16613 database=goecoride
+2026-09-05T01:37:09.698773Z ERROR datazen::commands::error: cmd="get_er_data" error=DB session '8b891a5e-7601-4f05-b984-7870f3f16613' not found (a dbSessionId is a runtime session id; maybe you passed a connectionId where a dbSessionId was expected)
+2026-09-05T01:38:26.763646Z  INFO datazen::commands::dialog: dialog injection queue reset
+2026-09-05T01:38:27.206081Z  INFO datazen::commands::query: clear_query_history
+2026-09-05T01:38:29.827980Z  INFO datazen::commands::connection: save_connection id=conn_e2e_pg name=本地 PostgreSQL
+2026-09-05T01:38:34.984339Z  INFO datazen::commands::connection: connect connection_id=conn_e2e_pg
+2026-09-05T01:38:34.984755Z  INFO datazen::commands::connection: connect connection_id=conn_e2e_pg
+2026-09-05T01:38:35.004773Z  INFO datazen::commands::connection: connect OK db_session_id=7fcc7754-5029-4083-aa35-006292ac341c
+2026-09-05T01:38:35.005418Z  INFO datazen::commands::connection: connect OK db_session_id=7fcc7754-5029-4083-aa35-006292ac341c
+2026-09-05T01:38:35.005673Z  INFO datazen::commands::connection: test_connection name=本地 PostgreSQL host=Some("localhost") port=Some(5432) db_type="postgresql" ssh=None
+2026-09-05T01:38:35.008103Z  INFO datazen::commands::schema: get_databases db_session_id=7fcc7754-5029-4083-aa35-006292ac341c
+2026-09-05T01:38:35.008428Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="7fcc7754-5029-4083-aa35-006292ac341c" sql_len=0
+2026-09-05T01:38:35.010146Z  INFO datazen::commands::schema: get_databases OK db_session_id=7fcc7754-5029-4083-aa35-006292ac341c count=8 ms=2
+2026-09-05T01:38:35.010582Z  INFO datazen::commands::schema: get_databases db_session_id=7fcc7754-5029-4083-aa35-006292ac341c
+2026-09-05T01:38:35.011232Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="7fcc7754-5029-4083-aa35-006292ac341c" sql_len=0
+2026-09-05T01:38:35.011739Z  INFO datazen::commands::schema: get_tables db_session_id=7fcc7754-5029-4083-aa35-006292ac341c database=goecoride
+2026-09-05T01:38:35.012002Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="7fcc7754-5029-4083-aa35-006292ac341c" sql_len=0
+2026-09-05T01:38:35.012703Z  INFO datazen::commands::connection: test_connection OK version=PostgreSQL 18.6 (Homebrew) on aarch64-apple-darwin24.6.0, compiled by Apple clang version 17.0.0 (clang-1700.6.4.2), 64-bit
+2026-09-05T01:38:35.012763Z  INFO datazen::commands::schema: get_databases OK db_session_id=7fcc7754-5029-4083-aa35-006292ac341c count=8 ms=2
+2026-09-05T01:38:35.015835Z  INFO datazen::commands::schema: get_tables db_session_id=7fcc7754-5029-4083-aa35-006292ac341c database=goecoride
+2026-09-05T01:38:35.015877Z  INFO datazen::commands::schema: get_tables OK db_session_id=7fcc7754-5029-4083-aa35-006292ac341c database=goecoride count=11 ms=4
+2026-09-05T01:38:35.016399Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="7fcc7754-5029-4083-aa35-006292ac341c" sql_len=0
+2026-09-05T01:38:35.020130Z  INFO datazen::commands::schema: get_tables db_session_id=7fcc7754-5029-4083-aa35-006292ac341c database=goecoride
+2026-09-05T01:38:35.020364Z  INFO datazen::commands::schema: get_tables OK db_session_id=7fcc7754-5029-4083-aa35-006292ac341c database=goecoride count=11 ms=4
+2026-09-05T01:38:35.021252Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="7fcc7754-5029-4083-aa35-006292ac341c" sql_len=0
+2026-09-05T01:38:35.022633Z  INFO datazen::commands::schema: get_tables db_session_id=7fcc7754-5029-4083-aa35-006292ac341c database=goecoride
+2026-09-05T01:38:35.023403Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_tables db_session_id="7fcc7754-5029-4083-aa35-006292ac341c" sql_len=0
+2026-09-05T01:38:35.023618Z  INFO datazen::commands::schema: get_tables OK db_session_id=7fcc7754-5029-4083-aa35-006292ac341c database=goecoride count=11 ms=3
+2026-09-05T01:38:35.024905Z  INFO datazen::commands::schema: get_tables OK db_session_id=7fcc7754-5029-4083-aa35-006292ac341c database=goecoride count=11 ms=2
+2026-09-05T01:38:49.112797Z  INFO datazen::commands::connection: connect connection_id=conn_e2e_pg
+2026-09-05T01:38:49.113793Z  INFO datazen::commands::connection: connect OK db_session_id=7fcc7754-5029-4083-aa35-006292ac341c
+2026-09-05T01:38:49.115437Z  INFO datazen::commands::schema: get_databases db_session_id=7fcc7754-5029-4083-aa35-006292ac341c
+2026-09-05T01:38:49.115876Z  INFO datazen::commands::driver_command::execute: execute_driver_command command=list_databases db_session_id="7fcc7754-5029-4083-aa35-006292ac341c" sql_len=0
+2026-09-05T01:38:49.116482Z  INFO datazen::commands::schema: get_databases OK db_session_id=7fcc7754-5029-4083-aa35-006292ac341c count=8 ms=1
+2026-09-05T01:38:51.445823Z  INFO datazen::commands::dialog: dialog injection queue reset
+2026-09-05T01:38:51.448182Z  INFO datazen::commands::dialog: dialog result injected
+2026-09-05T01:38:51.459477Z  INFO datazen::commands::backup: backup_database db_session_id=7fcc7754-5029-4083-aa35-006292ac341c path=/var/folders/2y/5w1_2qg97r7b9bfv20b4nybh0000gn/T/datazen-backup-1788572331446.sql
+2026-09-05T01:38:51.602697Z  INFO datazen::commands::backup: backup_database OK path=/var/folders/2y/5w1_2qg97r7b9bfv20b4nybh0000gn/T/datazen-backup-1788572331446.sql
+2026-09-05T01:38:52.766223Z  INFO datazen::commands::dialog: dialog injection queue reset
+2026-09-05T01:38:53.079252Z  INFO datazen::commands::query: clear_query_history
+2026-09-05T01:38:55.703330Z  INFO datazen::commands::connection: save_connection id=conn_e2e_pg name=本地 PostgreSQL
+2026-09-05T01:39:01.759210Z  INFO datazen::commands::config: export_app_data OK
+2026-09-05T01:39:01.764252Z  INFO datazen::commands::config: export_app_data OK

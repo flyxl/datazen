@@ -112,5 +112,7 @@ const pack = {
   'sync.status': 'Status',
   'sync.colChanged': 'Changed columns',
   'sync.schemaIdentical': 'Schemas are identical',
+  'sync.back': 'Back',
+  'sync.next': 'Next',
 } as const;
 export default pack;

@@ -44,6 +44,145 @@ fn default_max_tokens() -> u32 {
     200_000
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AiDataEgressLevel {
+    Strict,
+    SampleMasked,
+    Unrestricted,
+}
+
+impl Default for AiDataEgressLevel {
+    fn default() -> Self {
+        Self::Strict
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AiToolPermissionPolicy {
+    Disabled,
+    ReadOnly,
+    RequireConfirm,
+    Unrestricted,
+}
+
+impl Default for AiToolPermissionPolicy {
+    fn default() -> Self {
+        Self::ReadOnly
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiSafetyGateConfig {
+    #[serde(default = "default_true")]
+    pub redact_credentials: bool,
+    #[serde(default)]
+    pub data_egress_level: AiDataEgressLevel,
+    #[serde(default = "default_max_sample_rows")]
+    pub max_sample_rows: u32,
+    #[serde(default)]
+    pub db_tool_policy: AiToolPermissionPolicy,
+    #[serde(default)]
+    pub mcp_tool_policy: AiToolPermissionPolicy,
+    #[serde(default = "default_true")]
+    pub require_sql_confirm: bool,
+    #[serde(default = "default_max_context_bytes")]
+    pub max_context_bytes: usize,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_max_sample_rows() -> u32 {
+    3
+}
+
+fn default_max_context_bytes() -> usize {
+    32_000
+}
+
+impl Default for AiSafetyGateConfig {
+    fn default() -> Self {
+        Self {
+            redact_credentials: true,
+            data_egress_level: AiDataEgressLevel::Strict,
+            max_sample_rows: 3,
+            db_tool_policy: AiToolPermissionPolicy::ReadOnly,
+            mcp_tool_policy: AiToolPermissionPolicy::ReadOnly,
+            require_sql_confirm: true,
+            max_context_bytes: 32_000,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiModelProfile {
+    pub id: String,
+    pub name: String,
+    pub provider_type: AiProviderType,
+    pub api_key: Option<String>,
+    pub endpoint: Option<String>,
+    pub model: String,
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: u32,
+    #[serde(default)]
+    pub extra: serde_json::Value,
+    #[serde(default)]
+    pub safety_gate: AiSafetyGateConfig,
+    #[serde(default)]
+    pub is_default: bool,
+}
+
+impl From<&AiModelProfile> for AiProviderConfig {
+    fn from(p: &AiModelProfile) -> Self {
+        Self {
+            provider_type: p.provider_type,
+            api_key: p.api_key.clone(),
+            endpoint: p.endpoint.clone(),
+            model: p.model.clone(),
+            max_tokens: p.max_tokens,
+            extra: p.extra.clone(),
+        }
+    }
+}
+
+impl From<&AiProviderConfig> for AiModelProfile {
+    fn from(c: &AiProviderConfig) -> Self {
+        Self {
+            id: "default".into(),
+            name: format!("{} ({})", c.provider_type, c.model),
+            provider_type: c.provider_type,
+            api_key: c.api_key.clone(),
+            endpoint: c.endpoint.clone(),
+            model: c.model.clone(),
+            max_tokens: c.max_tokens,
+            extra: c.extra.clone(),
+            safety_gate: AiSafetyGateConfig::default(),
+            is_default: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiSettingsConfig {
+    pub active_profile_id: String,
+    pub profiles: Vec<AiModelProfile>,
+}
+
+impl Default for AiSettingsConfig {
+    fn default() -> Self {
+        Self {
+            active_profile_id: String::new(),
+            profiles: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelInfo {

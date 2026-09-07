@@ -38,6 +38,19 @@ export interface BackupOption {
   label: string;
 }
 
+export interface SqlDialectProfile {
+  quoteStyle: 'double' | 'backtick' | 'bracket' | 'none';
+  foldCase: 'lower' | 'upper' | 'preserve';
+  projectionAliasVisibility: 'select-only' | 'order-group' | 'broad';
+  parameterPolicy: {
+    atNamed?: boolean;
+    question?: boolean;
+    dollarPositional?: boolean;
+    template?: boolean;
+  };
+  reservedKeywords?: readonly string[];
+}
+
 export interface SqlDialectStrategy {
   family: SqlDialectFamily;
   ddl: DdlDialect;

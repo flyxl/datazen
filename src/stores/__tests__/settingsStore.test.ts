@@ -223,4 +223,16 @@ describe('settingsStore', () => {
     expect(useSettingsStore.getState().settings.autoChartOnQuery).toBe(false);
     expect(applyThemePack).not.toHaveBeenCalled();
   });
+
+  it('editorCompletionQuotePolicy defaults to unquoted and can be updated', async () => {
+    expect(useSettingsStore.getState().settings.editorCompletionQuotePolicy).toBe('unquoted');
+
+    applyThemePack.mockResolvedValue({ ok: true });
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+
+    await useSettingsStore.getState().updateSettings({ editorCompletionQuotePolicy: 'both' });
+
+    expect(useSettingsStore.getState().settings.editorCompletionQuotePolicy).toBe('both');
+    expect(mockSettingsCommands.saveSettings).toHaveBeenCalled();
+  });
 });

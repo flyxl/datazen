@@ -77,5 +77,13 @@ const pack = {
   'schemaDiff.limitations.noMcpDeploy':
     'No one-click deploy via MCP (may come later as high-risk tool)',
   'schemaDiff.limitations.dontShowAgain': 'Do not show this again',
+  'schemaDiff.back': 'Back',
+  'schemaDiff.next': 'Next',
+  'schemaDiff.connectFailed': 'Connection failed:',
+  'schemaDiff.selectBoth': 'Please select both source and target databases',
+  'schemaDiff.cannotSameDb': 'Source and target cannot be the same database on the same connection',
+  'schemaDiff.selectDbRequired': 'Please select both source and target databases first',
+  'schemaDiff.colChanged': 'Changed column',
+  'schemaDiff.identical': 'Identical',
 } as const;
 export default pack;

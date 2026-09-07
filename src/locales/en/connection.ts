@@ -194,6 +194,7 @@ const pack = {
   'connWin.home.recentPanels': 'Recent Panels',
   'connWin.home.metrics.connections': 'Connections',
   'connWin.home.metrics.connected': 'Connected',
+  'connWin.home.metrics.pinned': 'Pinned',
   'connWin.home.metrics.dbTypes': 'Database Types',
   'connWin.home.quickStart': 'Quick Start',
   'connWin.home.commonOps': 'Common Operations',
@@ -212,5 +213,6 @@ const pack = {
   'connWin.home.totalCount': '{count} total',
   'connSettings.title': 'Connection Settings',
   'connSettings.description': 'Configure display and behavior for this connection',
+  'connection.dashboard.title': 'Dashboard',
 } as const;
 export default pack;

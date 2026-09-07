@@ -3,6 +3,18 @@
   "app": {
     "windows": [
       {
+        "label": "main",
+        "dragDropEnabled": false,
+        "title": "DataZen",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 960,
+        "minHeight": 640,
+        "center": true,
+        "transparent": false,
+        "visible": false,
+        "backgroundColor": "#0b1220",
+        "acceptFirstMouse": true,
         "decorations": false
       }
     ]

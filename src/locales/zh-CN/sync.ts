@@ -110,5 +110,7 @@ const pack = {
   'sync.status': '状态',
   'sync.colChanged': '变更列',
   'sync.schemaIdentical': '结构一致',
+  'sync.back': '上一步',
+  'sync.next': '下一步',
 } as const;
 export default pack;

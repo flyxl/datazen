@@ -18,6 +18,12 @@ import { PromptSettingsSection } from './PromptSettingsSection';
 import { McpSettingsSection } from './McpSettingsSection';
 import { McpClientSection } from './McpClientSection';
 import { settingsSectionIconId } from '../../lib/hostLucideMap';
+import {
+  KEYMAP_ACTIONS,
+  type KeymapPreset,
+  getActionShortcut,
+  formatShortcutForDisplay,
+} from '../../lib/keymap';
 import { SectionTitle, SettingRow, ToggleRow } from './settingsUi';
 import { DataCleanupSection } from './DataCleanupSection';
 import { AppearanceSection } from './AppearanceSection';
@@ -32,6 +38,12 @@ const LOG_LEVEL_OPTIONS: { value: AppSettings['logLevel']; label: string }[] = [
   { value: 'info', label: 'Info' },
   { value: 'warn', label: 'Warn' },
   { value: 'error', label: 'Error' },
+];
+
+const KEYMAP_PRESET_OPTIONS: { value: KeymapPreset; labelKey: string }[] = [
+  { value: 'default', labelKey: 'settings.keymap.preset.default' },
+  { value: 'dbeaver', labelKey: 'settings.keymap.preset.dbeaver' },
+  { value: 'navicat', labelKey: 'settings.keymap.preset.navicat' },
 ];
 
 export interface SettingsContentProps {
@@ -261,6 +273,90 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                   className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
                 />
               </SettingRow>
+
+              <SettingRow
+                label={t('settings.editorCompletionQuotePolicy')}
+                hint={t('settings.editorCompletionQuotePolicyHint')}
+              >
+                <Select
+                  value={settings.editorCompletionQuotePolicy || 'unquoted'}
+                  options={[
+                    { value: 'unquoted', label: t('settings.quotePolicy.unquoted') },
+                    { value: 'both', label: t('settings.quotePolicy.both') },
+                    { value: 'always', label: t('settings.quotePolicy.always') },
+                  ]}
+                  onChange={(v) =>
+                    updateField('editorCompletionQuotePolicy', v as 'unquoted' | 'always' | 'both')
+                  }
+                />
+              </SettingRow>
+
+              <SettingRow label={t('settings.keymap.preset')}>
+                <Select
+                  value={settings.keymapPreset || 'default'}
+                  options={KEYMAP_PRESET_OPTIONS.map((o) => ({
+                    value: o.value,
+                    label: t(o.labelKey as import('../../locales').I18nKey),
+                  }))}
+                  onChange={(v) => updateField('keymapPreset', v as KeymapPreset)}
+                />
+              </SettingRow>
+
+              <div className="space-y-3 rounded-lg border border-edge bg-surface-alt p-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
+                    {t('settings.keymap.customize')}
+                  </span>
+                  {Object.keys(settings.customKeymap || {}).length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-accent hover:text-accent"
+                      onClick={() => updateField('customKeymap', {})}
+                    >
+                      {t('settings.keymap.resetCustom')}
+                    </Button>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {KEYMAP_ACTIONS.map((action) => {
+                    const currentVal = getActionShortcut(
+                      action.id,
+                      settings.keymapPreset || 'default',
+                      settings.customKeymap,
+                    );
+                    return (
+                      <div
+                        key={action.id}
+                        className="flex items-center justify-between gap-4 text-xs"
+                      >
+                        <span className="text-fg-secondary">
+                          {t(action.labelKey as import('../../locales').I18nKey)}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={currentVal}
+                            placeholder="e.g. Mod-Enter"
+                            onChange={(e) => {
+                              const newCustom = {
+                                ...(settings.customKeymap || {}),
+                                [action.id]: e.target.value,
+                              };
+                              updateField('customKeymap', newCustom);
+                            }}
+                            className="h-7 w-32 rounded border border-edge bg-surface px-2 font-mono text-[11px] text-fg outline-none focus:border-accent"
+                          />
+                          <kbd className="min-w-10 rounded border border-edge bg-surface-raised px-1.5 py-0.5 text-center font-mono text-[10px] text-fg-muted">
+                            {formatShortcutForDisplay(currentVal)}
+                          </kbd>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </>
           )}
 

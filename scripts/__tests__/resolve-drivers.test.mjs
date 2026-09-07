@@ -9,8 +9,7 @@
 import { readFileSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
+import { describe, it, expect } from 'vitest';
 import { resolveDrivers, wantsCodegenOnly } from '../resolve-drivers.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -28,13 +27,13 @@ const registry = {
 
 describe('resolveDrivers presets', () => {
   it('resolves bare basic to the four core path drivers', () => {
-    assert.deepEqual(resolveDrivers('basic', registry), [
+    expect(resolveDrivers('basic', registry)).toEqual([
       'postgres',
       'mysql',
       'sqlite',
       'redis',
     ]);
-    assert.deepEqual(resolveDrivers(':basic', registry), [
+    expect(resolveDrivers(':basic', registry)).toEqual([
       'postgres',
       'mysql',
       'sqlite',
@@ -43,12 +42,12 @@ describe('resolveDrivers presets', () => {
   });
 
   it('returns empty for stub', () => {
-    assert.deepEqual(resolveDrivers('stub', registry), []);
-    assert.deepEqual(resolveDrivers('', registry), []);
+    expect(resolveDrivers('stub', registry)).toEqual([]);
+    expect(resolveDrivers('', registry)).toEqual([]);
   });
 
   it('keeps bare all as path-only', () => {
-    assert.deepEqual(resolveDrivers('all', registry), [
+    expect(resolveDrivers('all', registry)).toEqual([
       'postgres',
       'mysql',
       'sqlite',
@@ -60,7 +59,7 @@ describe('resolveDrivers presets', () => {
 
 describe('resolveDrivers expanders in comma lists', () => {
   it('expands basic / :basic then appends git drivers without duplicates', () => {
-    assert.deepEqual(resolveDrivers('basic,superset,kiwi', registry), [
+    expect(resolveDrivers('basic,superset,kiwi', registry)).toEqual([
       'postgres',
       'mysql',
       'sqlite',
@@ -68,7 +67,7 @@ describe('resolveDrivers expanders in comma lists', () => {
       'superset',
       'kiwi',
     ]);
-    assert.deepEqual(resolveDrivers(':basic,kiwi,superset', registry), [
+    expect(resolveDrivers(':basic,kiwi,superset', registry)).toEqual([
       'postgres',
       'mysql',
       'sqlite',
@@ -80,12 +79,12 @@ describe('resolveDrivers expanders in comma lists', () => {
 
   it('expands all / :all then appends drivers without duplicates', () => {
     const expected = ['postgres', 'mysql', 'sqlite', 'redis', 'mongodb', 'superset', 'kiwi'];
-    assert.deepEqual(resolveDrivers('all,superset,kiwi', registry), expected);
-    assert.deepEqual(resolveDrivers(':all,superset,kiwi', registry), expected);
+    expect(resolveDrivers('all,superset,kiwi', registry)).toEqual(expected);
+    expect(resolveDrivers(':all,superset,kiwi', registry)).toEqual(expected);
   });
 
   it('dedupes when a path driver is listed after all', () => {
-    assert.deepEqual(resolveDrivers('all,postgres,superset', registry), [
+    expect(resolveDrivers('all,postgres,superset', registry)).toEqual([
       'postgres',
       'mysql',
       'sqlite',
@@ -96,16 +95,16 @@ describe('resolveDrivers expanders in comma lists', () => {
   });
 
   it('accepts bare kiwi or superset as single registry ids', () => {
-    assert.deepEqual(resolveDrivers('kiwi', registry), ['kiwi']);
-    assert.deepEqual(resolveDrivers('superset', registry), ['superset']);
+    expect(resolveDrivers('kiwi', registry)).toEqual(['kiwi']);
+    expect(resolveDrivers('superset', registry)).toEqual(['superset']);
   });
 });
 
 describe('wantsCodegenOnly', () => {
   it('detects --codegen-only anywhere in argv', () => {
-    assert.equal(wantsCodegenOnly(['--drivers=basic']), false);
-    assert.equal(wantsCodegenOnly(['--codegen-only']), true);
-    assert.equal(wantsCodegenOnly(['--codegen-only', '--drivers=basic']), true);
+    expect(wantsCodegenOnly(['--drivers=basic'])).toBe(false);
+    expect(wantsCodegenOnly(['--codegen-only'])).toBe(true);
+    expect(wantsCodegenOnly(['--codegen-only', '--drivers=basic'])).toBe(true);
   });
 });
 
@@ -114,9 +113,9 @@ describe('drivers-registry.json snapshot', () => {
     const raw = readFileSync(resolve(ROOT, 'drivers-registry.json'), 'utf-8');
     const live = JSON.parse(raw);
     for (const id of ['postgres', 'mysql', 'sqlite', 'redis']) {
-      assert.ok(live[id], `missing registry entry: ${id}`);
-      assert.equal(live[id].source, 'path', `${id} must be a path driver`);
-      assert.ok(typeof live[id].feature === 'string', `${id} must declare a Cargo feature`);
+      expect(live[id]).toBeTruthy();
+      expect(live[id].source).toBe('path');
+      expect(typeof live[id].feature).toBe('string');
     }
   });
 
@@ -124,9 +123,9 @@ describe('drivers-registry.json snapshot', () => {
     const raw = readFileSync(resolve(ROOT, 'drivers-registry.json'), 'utf-8');
     const live = JSON.parse(raw);
     const resolved = resolveDrivers('basic', live);
-    assert.deepEqual(resolved, ['postgres', 'mysql', 'sqlite', 'redis']);
+    expect(resolved).toEqual(['postgres', 'mysql', 'sqlite', 'redis']);
     for (const id of resolved) {
-      assert.equal(live[id]?.source, 'path');
+      expect(live[id]?.source).toBe('path');
     }
   });
 });

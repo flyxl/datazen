@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { AiChatPanel, QuestionBlock } from '../AiChatPanel';
+import type { AiChatDraftRequest } from '../../../windows/connection/query/aiDraftBridge';
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -177,7 +178,7 @@ describe('AiChatPanel', () => {
   it('switches to workflows tab and clears chat', () => {
     aiState.chatSession.messages = [{ role: 'user', content: 'x' }];
     const { getByText, getByTestId } = render(<AiChatPanel dbSessionId="c1" />);
-    fireEvent.click(getByText('workflows.title'));
+    fireEvent.click(getByText('ai.workflows.tab'));
     expect(getByTestId('workflow-panel')).toHaveTextContent('c1');
     fireEvent.click(getByText('common.aiAssistant'));
     const clearBtn = Array.from(document.querySelectorAll('button')).find(
@@ -211,5 +212,226 @@ describe('QuestionBlock', () => {
     fireEvent.click(getByText('Alpha'));
     fireEvent.click(getByText('chat.questions.submit'));
     expect(onSubmit).toHaveBeenCalledWith('Pick one\nAlpha');
+  });
+});
+
+describe('AiChatPanel — AI Draft Bridge (S3-B2)', () => {
+  const makeDraft = (overrides?: Partial<Parameters<typeof AiChatPanel>[0]>) =>
+    ({
+      requestId: 'req-1',
+      source: 'query-error' as const,
+      panelId: 'p1',
+      connectionId: 'conn1',
+      database: 'testdb',
+      content: 'SELECT * FROM users WHERE id = 1',
+      focus: true,
+      ...overrides,
+    }) as AiChatDraftRequest;
+
+  it('prefills empty input with draft and calls onDraftConsumed', async () => {
+    const onDraftConsumed = vi.fn();
+    const draft = makeDraft();
+    const { getByTestId } = render(
+      <AiChatPanel
+        dbSessionId="c1"
+        database="db"
+        draftRequest={draft}
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+    await waitFor(() => {
+      expect(getByTestId('chat-input')).toHaveValue('SELECT * FROM users WHERE id = 1');
+    });
+    expect(onDraftConsumed).toHaveBeenCalledWith('req-1');
+  });
+
+  it('skips draft when AI is not configured', () => {
+    aiState.isConfigured = false;
+    const onDraftConsumed = vi.fn();
+    const draft = makeDraft();
+    render(
+      <AiChatPanel
+        dbSessionId="c1"
+        database="db"
+        draftRequest={draft}
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+    expect(onDraftConsumed).not.toHaveBeenCalled();
+  });
+
+  it('does not send during streaming, only prefills', async () => {
+    aiState.chatSession.isStreaming = true;
+    const onDraftConsumed = vi.fn();
+    const draft = makeDraft();
+    render(
+      <AiChatPanel
+        dbSessionId="c1"
+        database="db"
+        draftRequest={draft}
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+    // Draft prefills but does not trigger send.
+    expect(aiState.sendChatMessage).not.toHaveBeenCalled();
+  });
+
+  it('shows conflict bar when input already has content', async () => {
+    const onDraftConsumed = vi.fn();
+    // First render with empty input to let the draft through.
+    const draft1 = makeDraft({ requestId: 'req-1', content: 'old text' });
+    const { rerender, getByTestId } = render(
+      <AiChatPanel
+        dbSessionId="c1"
+        database="db"
+        draftRequest={draft1}
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+    // Simulate user typing in the input.
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'user typed here' } });
+
+    // Now a second draft arrives while input has content.
+    const draft2 = makeDraft({ requestId: 'req-2', content: 'NEW DRAFT' });
+    rerender(
+      <AiChatPanel
+        dbSessionId="c1"
+        database="db"
+        draftRequest={draft2}
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByTestId('draft-conflict-bar')).toBeInTheDocument();
+    });
+    expect(onDraftConsumed).not.toHaveBeenCalledWith('req-2');
+  });
+
+  it('replace strategy overwrites input', async () => {
+    const onDraftConsumed = vi.fn();
+    const draft1 = makeDraft({ requestId: 'req-1', content: 'old' });
+    const { rerender, getByTestId, queryByTestId } = render(
+      <AiChatPanel
+        dbSessionId="c1"
+        database="db"
+        draftRequest={draft1}
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'existing text' } });
+
+    const draft2 = makeDraft({ requestId: 'req-2', content: 'replaced content' });
+    rerender(
+      <AiChatPanel
+        dbSessionId="c1"
+        database="db"
+        draftRequest={draft2}
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByTestId('draft-replace')).toBeInTheDocument();
+    });
+    fireEvent.click(getByTestId('draft-replace'));
+
+    expect(getByTestId('chat-input')).toHaveValue('replaced content');
+    expect(onDraftConsumed).toHaveBeenCalledWith('req-2');
+    expect(queryByTestId('draft-conflict-bar')).not.toBeInTheDocument();
+  });
+
+  it('append strategy adds separator and content', async () => {
+    const onDraftConsumed = vi.fn();
+    const draft1 = makeDraft({ requestId: 'req-1', content: 'a' });
+    const { rerender, getByTestId } = render(
+      <AiChatPanel
+        dbSessionId="c1"
+        database="db"
+        draftRequest={draft1}
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'existing' } });
+
+    const draft2 = makeDraft({ requestId: 'req-2', content: 'appended' });
+    rerender(
+      <AiChatPanel
+        dbSessionId="c1"
+        database="db"
+        draftRequest={draft2}
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByTestId('draft-append')).toBeInTheDocument();
+    });
+    fireEvent.click(getByTestId('draft-append'));
+
+    const textarea = getByTestId('chat-input') as HTMLTextAreaElement;
+    expect(textarea.value).toContain('existing');
+    expect(textarea.value).toContain('appended');
+    expect(onDraftConsumed).toHaveBeenCalledWith('req-2');
+  });
+
+  it('dismiss conflict clears pending without consuming', async () => {
+    const onDraftConsumed = vi.fn();
+    const draft1 = makeDraft({ requestId: 'req-1', content: 'x' });
+    const { rerender, getByTestId, queryByTestId } = render(
+      <AiChatPanel
+        dbSessionId="c1"
+        database="db"
+        draftRequest={draft1}
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'keep this' } });
+
+    const draft2 = makeDraft({ requestId: 'req-2', content: 'ignored' });
+    rerender(
+      <AiChatPanel
+        dbSessionId="c1"
+        database="db"
+        draftRequest={draft2}
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByTestId('draft-cancel')).toBeInTheDocument();
+    });
+    fireEvent.click(getByTestId('draft-cancel'));
+
+    expect(getByTestId('chat-input')).toHaveValue('keep this');
+    expect(onDraftConsumed).not.toHaveBeenCalledWith('req-2');
+    expect(queryByTestId('draft-conflict-bar')).not.toBeInTheDocument();
+  });
+
+  it('same requestId is not processed twice (idempotent ack)', async () => {
+    const onDraftConsumed = vi.fn();
+    const draft = makeDraft({ requestId: 'req-1' });
+    const { rerender } = render(
+      <AiChatPanel
+        dbSessionId="c1"
+        database="db"
+        draftRequest={draft}
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+    await waitFor(() => {
+      expect(onDraftConsumed).toHaveBeenCalledTimes(1);
+    });
+    // Re-render with same draft — should not trigger again.
+    rerender(
+      <AiChatPanel
+        dbSessionId="c1"
+        database="db"
+        draftRequest={draft}
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+    // Still only 1 call.
+    expect(onDraftConsumed).toHaveBeenCalledTimes(1);
   });
 });

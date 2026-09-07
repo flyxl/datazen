@@ -47,6 +47,7 @@
 | 连接工作区首页（无 panel 空状态） | `homepage-features.ts`, `unified-tab-bar.ts` (UTB-005) | Covered |
 | 新建 / 编辑 / 删除连接 | `new-connection.ts`, `edit-delete-connection.ts` | Covered |
 | 连接工具栏、表树、子标签（统一主窗口内） | `connection-window.ts`, `unified-tab-bar.ts` | Covered |
+| 连接跨分组 / 组内排序、Table/View 拖入 SQL 编辑器 | `drag-drop-groups.ts` / `schemaTreeDrag.test.ts` | Partial（合成 DOM 事件；系统拖放见例外） |
 | 侧栏删表后树立即刷新（不再需关窗） | `src/windows/connection/navigator/__tests__/ConnectionNavigatorTree.test.tsx` / `src/stores/__tests__/schemaStore.test.ts` | Covered（原生 Drop 确认框见例外） |
 | 连接导航树右键菜单（连接/库/Schema/表·视图） | `navigator-context-menu.ts` (NCM-*) | Covered（含 Web ConfirmDialog 删除表/Schema：NCM-023/046） |
 | 连接右键子菜单分组（Connection/Server/Manage/Create New）& 未连接历史查询 pending | `conn-ctx-menu-submenus.ts` (CM-SUB-001~008, CM-SUB-010) | Covered |
@@ -123,6 +124,31 @@
 | 插件系统：安装（两步对话框）/ 管理卡片与权限徽标 / Workspace 导航+Tab / 桥往返（探针落盘或 shell 级降级断言，见例外）/ 双 Tab 体系独立 / 外观主题切换 / 停用联动关 Tab / 卸载确认 | `plugins.spec.ts`（J1/J2/J3/J5/J4）+ fixture `e2e/fixtures/sample-plugin/`（fixture 校验锚点：`plugins::fixture_tests` Rust 单测） | Covered（安装走 PathInput 键入路径，原生目录选择器见例外；`ui.notify` 限频、iframe 崩溃恢复与 iframe 内容加载见例外） |
 
 ## 例外登记（自动化限制）
+
+### macOS 原生拖放验收
+
+`drag-drop-groups.ts` 主动构造 `DragEvent`，只能验证 DOM handler 和连接持久化，
+不能验证 NSDraggingDestination → WKWebView 的事件分发。主窗口必须配置
+`dragDropEnabled: false`：当前 Tauri runtime 的原生拖放回调始终返回 true，
+Wry 因此不调用 WKWebView 的默认 draggingEntered / draggingUpdated / performDragOperation。
+关闭后由 WebView 处理 HTML5 拖放；主窗口不再接收 Tauri 原生文件拖放通知
+（目前宿主没有使用该通知的监听器）。配置变更需要完整重启 Tauri，前端热更新不生效。
+
+**平台覆盖陷阱**：Tauri 使用 JSON Merge Patch，`tauri.macos.conf.json` 和
+`tauri.windows.conf.json` 的 `app.windows` 会整体替换基础配置的窗口数组，
+不是逐项合并。平台文件必须包含完整主窗口设置（尤其 `dragDropEnabled: false`），
+只修改 `tauri.conf.json` 不会修复这些平台。修改公共窗口设置时须同步平台文件；
+`scripts/__tests__/tauri-window-config.test.ts` 守护此契约，E2E 检查当前平台的有效窗口配置。
+
+每次涉及窗口配置或拖放链路变更，须在重建并重启的 macOS 应用中用真实鼠标验收：
+
+1. 将连接拖到另一个非空分组头部，再拖到空分组占位；悬停高亮、释放后归组，重启后保留。
+2. 在同组内将连接分别拖到另一连接上方和下方；出现定位线，释放后顺序正确，重启后保留。
+3. 将 Table 和 View 分别拖入同连接 SQL 编辑器；空编辑器生成查询，
+   `SELECT * FROM ` 后按鼠标位置插入标识符，悬停显示光标，释放后编辑器获得焦点。
+4. 按 Escape 取消拖拽，再重新拖动；取消不修改连接或 SQL，下一次拖放仍成功。
+
+合成事件测试通过不等于上述真机验收通过；未执行时须明确报告为待验收。
 
 | 路径 | 原因 | 替代覆盖 |
 |------|------|----------|

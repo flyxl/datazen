@@ -68,3 +68,27 @@ Settings「外观」仅列出已启用插件的 themes 贡献（packId 形如 `p
 - Rust：`cargo test -p datazen --lib plugins`（manifest 规则/协议安全/存储隔离/install 真实路径/fixture 与 packages/extensions 守护）
 - Host 单测：桥接语义+安全（extensionBridge*.test）、主题管线（themePackApply.pluginTheme.test）、壳集成（PluginPageShell.bridge）、store、管理页/工作区组件
 - E2E：`e2e/specs/plugins.spec.ts` J1–J5（装→列表→Tab→桥探针→外观→停用卸载），探针经桥 `storage.set` 落盘后磁盘对账（不依赖帧内 WebDriver 自动化）
+
+---
+
+## 扩展双轨架构：沙箱扩展 vs 特权扩展点（Host Extension Points）
+
+DataZen 扩展体系按照安全与性能需求划分为双轨机制：
+
+| 维度 | 沙箱扩展（Sandbox Extensions） | 特权扩展点（Host Extension Points） |
+|---|---|---|
+| **运行形态** | 独立沙箱 `<iframe>`，基于 `datazen://` 协议 | 宿主主进程内存执行（In-Process） |
+| **隔离级别** | 严格进程/源隔离，仅受控 postMessage 通信 | 零 IPC 损耗，直接访问宿主内部状态与 DOM |
+| **适用场景** | 独立工作区页面（Pages）、外观主题（Themes） | 核心编辑器增强（SQLEditor Pro）、高级图表、深度分析 |
+| **通信机制** | JSON-RPC 信封（`extensionBridge.ts`） | 类型化 TypeScript 契约（`ExtensionPoint<T>`） |
+| **许可证豁免** | 臂长通信（Arms-length），无 GPL 传染 | 受 **DataZen Plugin, Driver & Extension Linking Exception** 保护 |
+| **准入与安全** | 通用第三方插件（受严格权限声明管控） | 官方签名/可信特权模块，防止任意代码执行 |
+
+### 特权扩展点（Host Extension Points）机制
+
+特权扩展点专为对性能、深度交互有极致要求（例如 CodeMirror 键入期分析 <5ms、Compartment 动态重配置）的核心增强功能设计。
+
+1. **契约解耦**：宿主定义抽象扩展点契约（如 `SqlEditorProExtensionPoint`），并内置开箱即用的轻量基础版（Fallback），确保没有安装特权插件时宿主功能依然自洽可用。
+2. **动态插拔**：通过统一的 `extensionRegistry` 进行注册与退订，支持运行时或构建时无缝切换基础体验与增强体验。
+3. **法律合规**：根目录 `LICENSE` 声明了明确的 **GPL Linking Exception**，允许特权扩展使用独立许可证（包括商业闭源或宽松开源许可）发布与分发，免受宿主 GPL-3.0 协议传染。
+

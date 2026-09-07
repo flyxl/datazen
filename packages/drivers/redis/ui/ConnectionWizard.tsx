@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Input } from '../../../../src/components/ui/Input';
+import { Input } from '@datazen/ui';
 import { PathInput } from '../../../../src/components/ui/PathInput';
-import { Select } from '../../../../src/components/ui/Select';
+import { Select } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
-import { Label } from '../../../../src/components/connection/shared';
+import { Label } from '@datazen/ui';
 import type { ConnectionFormState } from '../../../../src/components/connection/useConnectionForm';
-import type { PluginFormValidator } from '../../../../src/plugin-sdk';
+import type { PluginFormValidator } from '@datazen/driver-sdk';
 import {
   formatNodeLines,
   parseNodeLines,
@@ -23,14 +23,10 @@ import {
 
 const TOPOLOGIES: RedisTopology[] = ['standalone', 'cluster', 'sentinel'];
 
-export const redisValidate: PluginFormValidator = (fields, t) =>
-  validateRedisConnection(fields, t);
+export const redisValidate: PluginFormValidator = (fields, t) => validateRedisConnection(fields, t);
 
 function useRedisForm(form: ConnectionFormState) {
-  const redisOptions = useMemo(
-    () => readRedisOptions(form.options),
-    [form.options],
-  );
+  const redisOptions = useMemo(() => readRedisOptions(form.options), [form.options]);
   const topology = redisOptions.topology ?? 'standalone';
 
   const updateOptions = (patch: Parameters<typeof mergeRedisOptions>[1]) => {
@@ -146,7 +142,9 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
           title={t('redis.wizard.topology')}
           options={TOPOLOGIES.map((value) => ({
             value,
-            label: t(`redis.wizard.topology${capitalize(value)}` as 'redis.wizard.topologyStandalone'),
+            label: t(
+              `redis.wizard.topology${capitalize(value)}` as 'redis.wizard.topologyStandalone',
+            ),
           }))}
           onChange={(v) => setTopology(v as RedisTopology)}
         />
@@ -209,9 +207,7 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
             <Label required>{t('redis.wizard.clusterNodes')}</Label>
             <textarea
               value={formatNodeLines(redisOptions.clusterNodes)}
-              onChange={(e) =>
-                updateOptions({ clusterNodes: parseNodeLines(e.target.value) })
-              }
+              onChange={(e) => updateOptions({ clusterNodes: parseNodeLines(e.target.value) })}
               rows={4}
               placeholder={'10.0.0.1:7000\n10.0.0.2:7000'}
               className={`w-full rounded-md border bg-surface px-3 py-2 font-mono text-xs text-fg outline-none ${
@@ -249,18 +245,14 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
               className={form.validationErrors.sentinelMasterName ? 'border-danger' : ''}
             />
             {form.validationErrors.sentinelMasterName && (
-              <p className="mt-1 text-xs text-danger">
-                {form.validationErrors.sentinelMasterName}
-              </p>
+              <p className="mt-1 text-xs text-danger">{form.validationErrors.sentinelMasterName}</p>
             )}
           </div>
           <div className="md:col-span-2">
             <Label required>{t('redis.wizard.sentinelNodes')}</Label>
             <textarea
               value={formatNodeLines(redisOptions.sentinelNodes)}
-              onChange={(e) =>
-                updateOptions({ sentinelNodes: parseNodeLines(e.target.value) })
-              }
+              onChange={(e) => updateOptions({ sentinelNodes: parseNodeLines(e.target.value) })}
               rows={4}
               placeholder={'127.0.0.1:26379\n127.0.0.1:26380'}
               className={`w-full rounded-md border bg-surface px-3 py-2 font-mono text-xs text-fg outline-none ${
@@ -316,12 +308,11 @@ export function RedisTlsFields({ form }: { form: ConnectionFormState }) {
   return (
     <div className="space-y-3">
       <div className="text-sm font-medium text-fg">{t('redis.wizard.tls')}</div>
-      {topology === 'sentinel' &&
-        (redisOptions.tls?.caPath || redisOptions.tls?.certPath) && (
-          <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
-            {t('redis.wizard.sentinelMtlsLimitation')}
-          </div>
-        )}
+      {topology === 'sentinel' && (redisOptions.tls?.caPath || redisOptions.tls?.certPath) && (
+        <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+          {t('redis.wizard.sentinelMtlsLimitation')}
+        </div>
+      )}
       <label className="flex items-start gap-2 text-sm">
         <input
           type="checkbox"
@@ -370,9 +361,7 @@ export function RedisTlsFields({ form }: { form: ConnectionFormState }) {
         <input
           type="checkbox"
           checked={redisOptions.tls?.insecureSkipVerify === true}
-          onChange={(e) =>
-            updateOptions({ tls: { insecureSkipVerify: e.target.checked } })
-          }
+          onChange={(e) => updateOptions({ tls: { insecureSkipVerify: e.target.checked } })}
         />
         <span>{t('redis.wizard.tlsInsecureSkipVerify')}</span>
       </label>

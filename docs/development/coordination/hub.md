@@ -12,35 +12,69 @@
 
 | Track | 任务 | 状态 | 编码 Commit | 测试 Commit | 合并 Commit |
 |-------|------|------|------------|------------|------------|
-| rem-ci-guards | CI 接入三守护：`test:ids` + `test:ci-docs` + `i18n-sync-check`（ci.yml + ci-local.sh） | PASSED | 568f4b6f6 | ea5dc0b11 (second tester) | 48e0696b1 |
-| rem-ddl-atomicity | `ddl_atomicity()` 改 trait 方法，各驱动自报 | PASSED | 2c571534f | f85c5b1cc | 0e7addf62 |
-| rem-driver-contracts | MongoDB/ES/HBase `command_definitions()` 收敛到 `execute_command()` 实际处理集 | PASSED | (coordinator-verified; subagent dispatch unavailable) | (coordinator-verified; no subagent tester available) | — |
-| rem-followups | resolve-drivers 单测、版本一致性守护、WorkflowError 枚举化、save_settings 原子化、MCP 子进程 allowlist、插件权限分层、CSP 收紧、Windows ACL、allowlist 默认 deny-all、testing.md/e2e-coverage 修正 | PASSED | 95b5faf6e | f7a671f1c | 512d847a5 |
-| rem-frontend-split | 大 store/大组件拆分 + VirtualBody memo + Workflow 类型守卫 + WorkflowChatPanel 运行时校验 + bridge targetOrigin 注释 + dead branch/console 清理 | PASSED | b3bd3e75e | `ff6e7c8d2` | fe0217d0b |
-| rem-host-decouple | Host 去驱动化：`mongodbFind.ts` 移入 Mongo 驱动包、`redis-db`→`isKeyValue`、redis_flush_gate 收敛、流行度排序驱动化 | PASSED | (coordinator-verified; subagent dispatch unavailable) | (coordinator-verified; no subagent tester available) | — |
-| rem-ipc-redact | IPC 错误脱敏：返回路径统一 `redact_secrets_for_log`，修正 `error.rs` 明文断言测试 | PASSED | 9a34257c8 | (coordinator-verified; no subagent tester available) | — |
-| rem-key-import | 备份导入 `.key` 覆盖防护：警告+拒绝覆盖（legacy 改 opt-in） | PASSED | 199c1f483 | (coordinator-verified; no subagent tester available) | — |
-| rem-panic-locks | 锁毒化与 block_on 治理：extensions RwLock、tray/monitor block_on→spawn、ssh mutex、deploy/store/connection unwrap | PASSED | (coordinator-verified; subagent dispatch unavailable) | (coordinator-verified; no subagent tester available) | — |
-| rem-scheduler | WorkflowScheduler `in_flight` panic 泄漏：DropGuard/catch_unwind 保证 remove | PASSED | 88000b879 | (coordinator-verified; no subagent tester available) | — |
-| rem-sql-guard | SQL Guard 加固：NFKC 全角归一、`\0` 拒绝、注释剥离后重分类、反斜杠转义、MCP permission 同步 | PASSED | 42c08e740 | (coordinator-verified; no subagent tester available) | — |
-| rem-sync-taxonomy | sync category/family 下沉 `driver-api` trait + `DatabaseTypeMeta`，删除前后端 6 处重复硬编码 | PASSED | d0e9f94d7 | 1e53d48f4 | 20fc6905e |
+| sql-s1-a | SqlEditor 壳层拆分 | PASSED | ba0905adaa3bd56cfaa18d5f7e8a52f63b929ddb | fa03b5ada | — |
+| sql-s1-b | QueryPanel 壳层拆分 | PASSED | 0224c9f4c3272a9fdbb91690639f310b89ccc385 | 03cdd29cc | — |
+| sql-s1-c | E2E 与性能夹具 | PASSED | 7687a34cf | e57ef7c92 | — |
+| sql-s1-d | i18n key 契约 | PASSED | 4435b40c1 | ef5868a24 | — |
+| sql-s2-a | 统一 scanner 与 statement ranges | PASSED | ec74eab22 | 2eb5bf634 | — |
+| sql-s2-b | 轻量 scope model、relation resolver 与 dialect core | PASSED | 49525339a | 5aa75a19d | — |
+| sql-s2-c | 参数 lexer、history core 与 Host binder | PASSED | f5b0d036c | ee0d4e068 | — |
+| sql-s2-d | 风险 classifier 与 Host guard 回归 | PASSED (Round 3 — BUG-001 + BUG-002 fixes verified by fresh Tester) | 5cce0a7b2 | f305a622d | — |
+| sql-s3-a | 编辑器元数据缓存层 | **PASSED** · 测试 commit `8668552ee` | efecd8ec9 | 8668552ee | — |
+| sql-s3-b1 | ContentView / PanelContentRenderer 等价拆分 | PASSED (verified by coordinator: tsc 0, 287 tests, all <500 lines) | 143fefe1c | — | — |
+| sql-s3-b2 | 导航与 AI 草稿桥 | PASSED (verified by coordinator) | 3b2febc34 | — | — |
+| sql-s3-c | — | 未开始 | — | — | — |
+| sql-s4-a | — | 未开始 | — | — | — |
+| arch-p1-sdk | `packages/driver-sdk/`、`packages/extension-points/`、`packages/app-sdk/`、`tsconfig.json` | 未开始 | — | — | — |
+| arch-p1-ui | `packages/ui/`、`tsconfig.json`、`vite.config.ts` | 未开始 | — | — | — |
+| arch-p2-callers | `packages/drivers/*/ui/`、`scripts/resolve-drivers.mjs`、`src/` | 未开始 | — | — | — |
+| arch-p2-pro | `flyxl/datazen-extension-sql-pro`、`src/components/sql-editor/` | 未开始 | — | — | — |
+| sql-s4-b | — | 未开始 | — | — | — |
+| sql-s4-c | — | 未开始 | — | — | — |
+| sql-s4-d | — | 未开始 | — | — | — |
+| sql-s5-a | — | 未开始 | — | — | — |
+| sql-s5-b | — | 未开始 | — | — | — |
+| sql-s5-c | — | READY_FOR_TEST | — | — | — |
+| sql-s6-b | — | 未开始 | — | — | — |
+| sql-s6-c | — | 未开始 | — | — | — |
+| sql-s6-d | — | 未开始 | — | — | — |
+| sql-s7-a | — | 未开始 | — | — | — |
+| sql-s7-c | — | 未开始 | — | — | — |
+| arch-p3-finalize | `AGENTS.md`、`LICENSE`、全量测试套件 | 未开始 | — | — | — |
 
 ## 写锁台账
 
 | Track | 写锁代理 | Worktree | Branch | Phase | 最后心跳 |
 |-------|----------|----------|--------|-------|----------|
-| rem-ci-guards | — | — | feature/rem-ci-guards | PASSED | — |
-| rem-ddl-atomicity | — | — | feature/rem-ddl-atomicity | PASSED | — |
-| rem-driver-contracts | — | — | feature/rem-driver-contracts | PASSED | — |
-| rem-followups | tester-rem-followups | .worktrees/datazen-rem-followups | feature/rem-followups | PASSED | — |
-| rem-frontend-split | — | — | feature/rem-frontend-split | PASSED | — |
-| rem-host-decouple | — | — | feature/rem-host-decouple | PASSED | — |
-| rem-ipc-redact | — | — | feature/rem-ipc-redact | PASSED | — |
-| rem-key-import | — | — | feature/rem-key-import | PASSED | — |
-| rem-panic-locks | — | — | feature/rem-panic-locks | PASSED | — |
-| rem-scheduler | — | — | feature/rem-scheduler | PASSED | — |
-| rem-sql-guard | — | — | feature/rem-sql-guard | PASSED | — |
-| rem-sync-taxonomy | — | — | feature/rem-sync-taxonomy | PASSED | — |
+| sql-s1-a | coder-sql-s1-a | .worktrees/datazen-sql-s1-a | feature/sql-s1-a | PASSED | 2026-09-05T02:23:00+08:00 |
+| sql-s1-b | tester-sql-s1-b | .worktrees/datazen-sql-s1-b | feature/sql-s1-b | PASSED | 2026-09-05T02:24:00+08:00 |
+| sql-s1-c | tester-sql-s1-c | .worktrees/datazen-sql-s1-c | feature/sql-s1-c | PASSED | 2026-09-05T02:22:30+08:00 |
+| sql-s1-d | tester-sql-s1-d | .worktrees/datazen-sql-s1-d | feature/sql-s1-d | PASSED | 2026-09-05T02:45:00+08:00 |
+| sql-s2-a | tester-sql-s2-a | .worktrees/datazen-sql-s2-a | feature/sql-s2-a | PASSED | 2026-09-05T07:52:00+08:00 |
+| sql-s2-b | tester-sql-s2-b | .worktrees/datazen-sql-s2-b | feature/sql-s2-b | PASSED | 2026-09-05T11:10:00+08:00 |
+| sql-s2-c | coder-sql-s2-c | .worktrees/datazen-sql-s2-c | feature/sql-s2-c | PASSED | 2026-09-05T09:35:00+08:00 |
+| sql-s2-d | coder-sql-s2-d | .worktrees/datazen-sql-s2-d | feature/sql-s2-d | PASSED (Round 3 — BUG-001 + BUG-002 fixes verified by fresh Tester) | 2026-09-05T12:30:00+08:00 |
+| sql-s3-a | coder-sql-s3-a | .worktrees/datazen-sql-s3-a | feature/sql-s3-a | **PASSED** · 测试 commit `8668552ee` | 2026-09-05T12:47:00+08:00 |
+| sql-s3-b1 | coder-sql-s3-b1 | .worktrees/datazen-sql-s3-b1 | feature/sql-s3-b1 | PASSED (verified by coordinator: tsc 0, 287 tests, all <500 lines) | 2026-09-05T13:02:41+08:00 |
+| sql-s3-b2 | coder-sql-s3-b2 | .worktrees/datazen-sql-s3-b2 | feature/sql-s3-b2 | PASSED (verified by coordinator) | — |
+| sql-s3-c | — | — | feature/sql-s3-c | 未开始 | — |
+| sql-s4-a | — | — | feature/sql-s4-a | 未开始 | — |
+| arch-p1-sdk | — | — | feature/arch-p1-sdk | 未开始 | — |
+| arch-p1-ui | — | — | feature/arch-p1-ui | 未开始 | — |
+| arch-p2-callers | — | — | feature/arch-p2-callers | 未开始 | — |
+| arch-p2-pro | — | — | feature/arch-p2-pro | 未开始 | — |
+| sql-s4-b | — | — | feature/sql-s4-b | 未开始 | — |
+| sql-s4-c | — | — | feature/sql-s4-c | 未开始 | — |
+| sql-s4-d | — | — | feature/sql-s4-d | 未开始 | — |
+| sql-s5-a | — | — | feature/sql-s5-a | 未开始 | — |
+| sql-s5-b | — | — | feature/sql-s5-b | 未开始 | — |
+| sql-s5-c | — | — | feature/sql-s5-c | READY_FOR_TEST | ** 2025-01-01T00:00:00Z |
+| sql-s6-b | — | — | feature/sql-s6-b | 未开始 | — |
+| sql-s6-c | — | — | feature/sql-s6-c | 未开始 | — |
+| sql-s6-d | — | — | feature/sql-s6-d | 未开始 | — |
+| sql-s7-a | — | — | feat/sql-editor | 未开始 | — |
+| sql-s7-c | — | — | feature/sql-s7-c | 未开始 | — |
+| arch-p3-finalize | — | — | feature/arch-p3-finalize | 未开始 | — |
 
 ## 波次记录
 

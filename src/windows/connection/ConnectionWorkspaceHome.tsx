@@ -1,21 +1,22 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
+  ArchiveRestore,
   Check,
   ChevronRight,
   Clock,
   Code2,
   Copy,
   Database,
+  DatabaseBackup,
   Download,
   GitFork,
-  History,
   Info,
   Loader2,
   Plus,
   Sparkles,
+  Star,
   TableProperties,
   Terminal,
-  Zap,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { DbTypeBadge } from '../../components/DbTypeBadge';
@@ -25,10 +26,13 @@ import { cn } from '../../lib/cn';
 import { getDbLabel } from '../../lib/databaseTypes';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
-import { usePanelStore, type ConnectionContext, type Panel } from '../../stores/panelStore';
+import { type ConnectionContext, type Panel } from '../../stores/panelStore';
 import { queryCommands } from '../../commands/query';
 import type { DatabaseType, QueryHistoryEntry } from '../../types';
 import { getPanelIcon, getPanelLabel } from './contentViewHelpers';
+import { GlobalQueryHistoryDialog } from '../../components/history/GlobalQueryHistoryDialog';
+import { openBackupWindow } from '../../lib/windowManager';
+import { formatMcpCliCommand, useAppExecutablePath } from '../../lib/mcpAgentConfig';
 
 export interface ConnectionWorkspaceHomeProps {
   hasConnections: boolean;
@@ -53,6 +57,7 @@ export interface ConnectionWorkspaceHomeProps {
   onOpenPanel: (panelId: string) => void;
   onSelectConnection?: (connectionId: string) => void;
   onOpenQueryHistory?: () => void;
+  onSelectHistoryQuery?: (entry: QueryHistoryEntry) => void;
 }
 
 interface QuickActionProps {
@@ -116,17 +121,17 @@ export function ConnectionWorkspaceHome({
   onOpenObjects,
   onOpenPanel,
   onSelectConnection,
-  onOpenQueryHistory,
+  onSelectHistoryQuery,
 }: Readonly<ConnectionWorkspaceHomeProps>) {
   const { t } = useI18n();
 
   const savedConnections = useConnectionStore((s) => s.connections);
   const activeConnections = useActiveConnectionStore((s) => s.connections);
-  const openQueryHistory = usePanelStore((s) => s.openQueryHistory);
 
   const [recentQueries, setRecentQueries] = useState<QueryHistoryEntry[]>([]);
   const [copiedSqlId, setCopiedSqlId] = useState<string | null>(null);
   const [copiedMcp, setCopiedMcp] = useState(false);
+  const [globalHistoryOpen, setGlobalHistoryOpen] = useState(false);
 
   // Load recent query history (global or connection-scoped)
   useEffect(() => {
@@ -149,10 +154,9 @@ export function ConnectionWorkspaceHome({
     };
   }, [connectionContext?.connectionId]);
 
-  // Derived metrics
-  const connectedCount = useMemo(() => {
-    return Object.values(activeConnections).filter((c) => c?.status === 'connected').length;
-  }, [activeConnections]);
+  const pinnedCount = useMemo(() => {
+    return savedConnections.filter((c) => c.pinned).length;
+  }, [savedConnections]);
 
   const distinctDbTypes = useMemo(() => {
     return Array.from(new Set(savedConnections.map((c) => c.databaseType)));
@@ -183,8 +187,11 @@ export function ConnectionWorkspaceHome({
     }
   };
 
+  const appExecutablePath = useAppExecutablePath();
+  const mcpCliCommand = useMemo(() => formatMcpCliCommand(appExecutablePath), [appExecutablePath]);
+
   const handleCopyMcpCommand = () => {
-    void navigator.clipboard?.writeText('datazen --mcp');
+    void navigator.clipboard?.writeText(mcpCliCommand);
     setCopiedMcp(true);
     setTimeout(() => setCopiedMcp(false), 2000);
   };
@@ -208,28 +215,26 @@ export function ConnectionWorkspaceHome({
     }
   };
 
-  /** Open the full query history drawer and query panel */
+  /** Open the global query history dialog */
   const handleOpenHistory = () => {
-    if (connectionContext && onOpenQueryHistory) {
-      onOpenQueryHistory();
-      return;
-    }
+    setGlobalHistoryOpen(true);
+  };
 
-    const targetConnId =
-      connectionContext?.connectionId ||
-      Object.values(activeConnections).find((c) => c?.status === 'connected')?.connectionId ||
-      quickConnections[0]?.id;
-
-    if (targetConnId) {
-      usePanelStore.getState().setPendingQueryHistory(targetConnId);
-      if (onSelectConnection) {
-        onSelectConnection(targetConnId);
-      }
-      if (connectionContext?.connectionId === targetConnId && onOpenQueryHistory) {
-        onOpenQueryHistory();
-      }
+  const handleBackup = () => {
+    const connectedEntry = Object.values(activeConnections).find((c) => c?.status === 'connected');
+    if (connectedEntry) {
+      openBackupWindow('backup', { connectionId: connectedEntry.connectionId });
     } else {
-      void openQueryHistory();
+      openBackupWindow('backup');
+    }
+  };
+
+  const handleRestore = () => {
+    const connectedEntry = Object.values(activeConnections).find((c) => c?.status === 'connected');
+    if (connectedEntry) {
+      openBackupWindow('restore', { connectionId: connectedEntry.connectionId });
+    } else {
+      openBackupWindow('restore');
     }
   };
 
@@ -312,26 +317,23 @@ export function ConnectionWorkspaceHome({
               </div>
             </div>
 
-            {/* Card 2: Connected Sessions */}
+            {/* Card 2: Pinned Connections */}
             <div className="flex items-center gap-4 rounded-xl border border-edge bg-surface-alt p-4 transition-colors hover:bg-surface-raised">
               <div
                 className={cn(
                   'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl',
-                  connectedCount > 0
-                    ? 'bg-success/10 text-success'
+                  pinnedCount > 0
+                    ? 'bg-amber-500/10 text-amber-400'
                     : 'bg-surface-raised text-fg-muted',
                 )}
               >
-                <Zap className="h-6 w-6" />
+                <Star className={cn('h-6 w-6', pinnedCount > 0 && 'fill-current')} />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-fg">{connectedCount}</span>
-                  {connectedCount > 0 && (
-                    <span className="inline-flex h-2 w-2 rounded-full bg-success animate-pulse" />
-                  )}
+                  <span className="text-2xl font-bold text-fg">{pinnedCount}</span>
                 </div>
-                <div className="text-xs text-fg-muted">{t('connWin.home.metrics.connected')}</div>
+                <div className="text-xs text-fg-muted">{t('connWin.home.metrics.pinned')}</div>
               </div>
             </div>
 
@@ -361,10 +363,10 @@ export function ConnectionWorkspaceHome({
           </div>
 
           {/* Middle Section: Quick Start (Single Unified List Card) + Common Operations */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 items-start">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             {/* Quick Start (2 columns span, rendered as a single cohesive list panel) */}
-            <div className="flex flex-col gap-2.5 lg:col-span-2">
-              <div className="flex items-center justify-between px-0.5">
+            <div className="flex h-full flex-col gap-2.5 lg:col-span-2">
+              <div className="flex h-5 items-center justify-between px-0.5">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
                   {t('connWin.home.quickStart')}
                 </h3>
@@ -375,7 +377,7 @@ export function ConnectionWorkspaceHome({
                 )}
               </div>
 
-              <div className="overflow-hidden rounded-xl border border-edge bg-surface-alt divide-y divide-edge/60">
+              <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-edge bg-surface-alt divide-y divide-edge/60">
                 {quickConnections.map((conn) => {
                   const isActive = activeConnections[conn.id]?.status === 'connected';
                   const isConnLoading = activeConnections[conn.id]?.status === 'connecting';
@@ -388,7 +390,7 @@ export function ConnectionWorkspaceHome({
                       key={conn.id}
                       type="button"
                       onClick={() => handleConnect(conn.id)}
-                      className="group flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-surface-raised"
+                      className="group flex flex-1 w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-surface-raised"
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
                         <DbTypeBadge databaseType={conn.databaseType} size={32} />
@@ -444,64 +446,84 @@ export function ConnectionWorkspaceHome({
             </div>
 
             {/* Common Operations (1 column) */}
-            <div className="flex flex-col gap-2.5">
-              <div className="px-0.5">
+            <div className="flex h-full flex-col gap-2.5">
+              <div className="flex h-5 items-center px-0.5">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
                   {t('connWin.home.commonOps')}
                 </h3>
               </div>
 
-              <div className="flex flex-col gap-1.5 rounded-xl border border-edge bg-surface-alt p-3">
-                <button
-                  type="button"
-                  data-testid="empty-new-connection-button"
-                  onClick={onNewConnection}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-fg transition-colors hover:bg-surface-raised hover:text-accent"
-                >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent/10 text-accent">
-                    <Plus className="h-4 w-4" />
-                  </div>
-                  <span>{t('common.newConnection')}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleNewQueryClick}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-fg transition-colors hover:bg-surface-raised hover:text-accent"
-                >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent/10 text-accent">
-                    <Code2 className="h-4 w-4" />
-                  </div>
-                  <span>{t('common.newQuery')}</span>
-                </button>
-
-                <button
-                  type="button"
-                  data-testid="empty-history-button"
-                  onClick={handleOpenHistory}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-fg transition-colors hover:bg-surface-raised hover:text-accent"
-                >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent/10 text-accent">
-                    <History className="h-4 w-4" />
-                  </div>
-                  <span>{t('connWin.home.recentQueries')}</span>
-                </button>
-
-                {onImportConnections && (
+              <div className="@container flex flex-1 flex-col justify-between rounded-xl border border-edge bg-surface-alt p-3">
+                <div className="grid grid-cols-1 @[240px]:grid-cols-2 gap-2">
                   <button
                     type="button"
-                    data-testid="empty-import-connections-button"
-                    onClick={onImportConnections}
-                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-fg transition-colors hover:bg-surface-raised hover:text-accent"
+                    data-testid="empty-new-connection-button"
+                    onClick={onNewConnection}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs sm:text-sm font-medium text-fg transition-colors hover:bg-surface-raised hover:text-accent min-w-0"
+                    title={t('common.newConnection')}
                   >
-                    <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent/10 text-accent">
-                      <Download className="h-4 w-4" />
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent">
+                      <Plus className="h-4 w-4" />
                     </div>
-                    <span>{t('common.importConnections')}</span>
+                    <span className="truncate">{t('common.newConnection')}</span>
                   </button>
-                )}
 
-                <div className="mt-1 flex items-start gap-2 border-t border-edge/60 pt-2 text-[11px] text-fg-muted">
+                  <button
+                    type="button"
+                    data-testid="empty-new-query-button"
+                    onClick={handleNewQueryClick}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs sm:text-sm font-medium text-fg transition-colors hover:bg-surface-raised hover:text-accent min-w-0"
+                    title={t('common.newQuery')}
+                  >
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent">
+                      <Code2 className="h-4 w-4" />
+                    </div>
+                    <span className="truncate">{t('common.newQuery')}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="empty-backup-button"
+                    onClick={handleBackup}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs sm:text-sm font-medium text-fg transition-colors hover:bg-surface-raised hover:text-accent min-w-0"
+                    title={t('common.backupDatabase')}
+                  >
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent">
+                      <DatabaseBackup className="h-4 w-4" />
+                    </div>
+                    <span className="truncate">{t('common.backupDatabase')}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="empty-restore-button"
+                    onClick={handleRestore}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs sm:text-sm font-medium text-fg transition-colors hover:bg-surface-raised hover:text-accent min-w-0"
+                    title={t('common.restoreDatabase')}
+                  >
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent">
+                      <ArchiveRestore className="h-4 w-4" />
+                    </div>
+                    <span className="truncate">{t('common.restoreDatabase')}</span>
+                  </button>
+
+                  {onImportConnections && (
+                    <button
+                      type="button"
+                      data-testid="empty-import-connections-button"
+                      onClick={onImportConnections}
+                      className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs sm:text-sm font-medium text-fg transition-colors hover:bg-surface-raised hover:text-accent min-w-0"
+                      title={t('common.importConnections')}
+                    >
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent">
+                        <Download className="h-4 w-4" />
+                      </div>
+                      <span className="truncate">{t('common.importConnections')}</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="mt-2 flex items-start gap-2 border-t border-edge/60 pt-2 text-[11px] text-fg-muted">
                   <Info className="h-3.5 w-3.5 shrink-0 text-fg-secondary mt-0.5" />
                   <p className="leading-snug">{t('connWin.home.selectConnectionTip')}</p>
                 </div>
@@ -512,8 +534,8 @@ export function ConnectionWorkspaceHome({
           {/* Bottom Section: Query History + AI Assistant */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* Query History */}
-            <div className="flex flex-col gap-2.5">
-              <div className="flex items-center justify-between px-0.5">
+            <div className="flex h-full flex-col gap-2.5">
+              <div className="flex h-5 items-center justify-between px-0.5">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
                   {t('connWin.home.recentQueries')}
                 </h3>
@@ -528,18 +550,27 @@ export function ConnectionWorkspaceHome({
                 </button>
               </div>
 
-              <div className="min-h-[140px] rounded-xl border border-edge bg-surface-alt p-4">
+              <div className="flex flex-1 flex-col rounded-xl border border-edge bg-surface-alt p-4">
                 {recentQueries.length === 0 ? (
-                  <div className="flex h-full min-h-[108px] flex-col items-center justify-center text-center text-fg-muted">
+                  <div className="flex flex-1 flex-col items-center justify-center text-center text-fg-muted">
                     <Clock className="h-6 w-6 opacity-40 mb-2" />
                     <p className="text-xs">{t('connWin.home.noRecentQueries')}</p>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-1 flex-col gap-2">
                     {recentQueries.slice(0, 3).map((item) => (
                       <div
                         key={item.id}
-                        className="group flex flex-col gap-1 rounded-lg border border-edge/70 bg-surface p-2.5 transition-colors hover:border-accent/30"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => onSelectHistoryQuery?.(item)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onSelectHistoryQuery?.(item);
+                          }
+                        }}
+                        className="group flex flex-col gap-1 rounded-lg border border-edge/70 bg-surface p-2.5 transition-colors hover:border-accent/40 hover:bg-surface-raised cursor-pointer text-left"
                       >
                         <div className="flex items-center justify-between text-[11px] text-fg-muted">
                           <div className="flex items-center gap-1.5 font-medium">
@@ -589,8 +620,8 @@ export function ConnectionWorkspaceHome({
             </div>
 
             {/* AI Assistant & MCP Integration */}
-            <div className="flex flex-col gap-2.5">
-              <div className="px-0.5">
+            <div className="flex h-full flex-col gap-2.5">
+              <div className="flex h-5 items-center px-0.5">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
                   {t('connWin.home.aiIntegration.title')}
                 </h3>
@@ -610,7 +641,9 @@ export function ConnectionWorkspaceHome({
                 <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-edge bg-surface px-3 py-2">
                   <div className="flex items-center gap-2 overflow-hidden">
                     <Terminal className="h-4 w-4 shrink-0 text-fg-muted" />
-                    <code className="font-mono text-xs text-fg truncate">datazen --mcp</code>
+                    <code className="font-mono text-xs text-fg truncate" title={mcpCliCommand}>
+                      {mcpCliCommand}
+                    </code>
                   </div>
                   <Button
                     variant="ghost"
@@ -637,6 +670,13 @@ export function ConnectionWorkspaceHome({
             </div>
           </div>
         </div>
+        {globalHistoryOpen && (
+          <GlobalQueryHistoryDialog
+            open={globalHistoryOpen}
+            onClose={() => setGlobalHistoryOpen(false)}
+            onSelectQuery={onSelectHistoryQuery}
+          />
+        )}
       </div>
     );
   }
@@ -777,7 +817,16 @@ export function ConnectionWorkspaceHome({
               {recentQueries.slice(0, 3).map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between rounded-xl border border-edge bg-surface-alt p-3 transition-colors hover:bg-surface-raised"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSelectHistoryQuery?.(item)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelectHistoryQuery?.(item);
+                    }
+                  }}
+                  className="flex items-center justify-between rounded-xl border border-edge bg-surface-alt p-3 transition-colors hover:bg-surface-raised hover:border-accent/40 cursor-pointer text-left"
                 >
                   <div className="min-w-0 flex-1 pr-4">
                     <div className="flex items-center gap-2 text-xs text-fg-muted">
@@ -797,7 +846,8 @@ export function ConnectionWorkspaceHome({
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       void navigator.clipboard?.writeText(item.sql);
                       setCopiedSqlId(item.id);
                       setTimeout(() => setCopiedSqlId(null), 2000);
@@ -822,6 +872,14 @@ export function ConnectionWorkspaceHome({
               ))}
             </div>
           </section>
+        )}
+        {globalHistoryOpen && (
+          <GlobalQueryHistoryDialog
+            open={globalHistoryOpen}
+            onClose={() => setGlobalHistoryOpen(false)}
+            onSelectQuery={onSelectHistoryQuery}
+            initialConnectionId={connectionContext?.connectionId}
+          />
         )}
       </div>
     </div>

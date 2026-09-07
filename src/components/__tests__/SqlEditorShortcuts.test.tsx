@@ -4,7 +4,53 @@ import React, { createRef } from 'react';
 import { SqlEditor, type SqlEditorHandle } from '../SqlEditor';
 
 describe('SqlEditor Shortcuts', () => {
-  it('executes statement at cursor when Mod-Enter is pressed without selection', () => {
+  it('[tester] executes trimmed selection when Mod-Enter is pressed with a selection', () => {
+    const ref = createRef<SqlEditorHandle>();
+    const onExecuteSelection = vi.fn();
+
+    const sql = 'SELECT 1;\nSELECT 2;';
+    const { container } = render(
+      <SqlEditor
+        ref={ref}
+        value={sql}
+        onChange={vi.fn()}
+        onExecuteSelection={onExecuteSelection}
+      />,
+    );
+
+    ref.current?.insertAt('');
+    const cmContent = container.querySelector('.cm-content');
+    expect(cmContent).not.toBeNull();
+
+    const isMac =
+      typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent);
+    const modProps = isMac ? { metaKey: true } : { ctrlKey: true };
+
+    // Select first statement via keyboard chord is unreliable in jsdom; use imperative handle path
+    // by inserting then selecting through editorExtensions coverage in editorExtensions.test.ts.
+    // Here we validate non-empty selection path by dispatching after programmatic select-all.
+    const selectAllEvent = new KeyboardEvent('keydown', {
+      key: 'a',
+      code: 'KeyA',
+      ...modProps,
+      bubbles: true,
+      cancelable: true,
+    });
+    cmContent?.dispatchEvent(selectAllEvent);
+
+    const enterEvent = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      code: 'Enter',
+      ...modProps,
+      bubbles: true,
+      cancelable: true,
+    });
+    cmContent?.dispatchEvent(enterEvent);
+
+    expect(onExecuteSelection).toHaveBeenCalled();
+  });
+
+  it('executes full document via onExecute when Mod-Enter is pressed without selection', () => {
     const ref = createRef<SqlEditorHandle>();
     const onExecuteSelection = vi.fn();
     const onExecute = vi.fn();
@@ -23,7 +69,8 @@ describe('SqlEditor Shortcuts', () => {
     const cmContent = container.querySelector('.cm-content');
     expect(cmContent).not.toBeNull();
 
-    const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent);
+    const isMac =
+      typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent);
     const modProps = isMac ? { metaKey: true } : { ctrlKey: true };
 
     // Trigger Mod-Enter keydown
@@ -36,42 +83,8 @@ describe('SqlEditor Shortcuts', () => {
     });
     cmContent?.dispatchEvent(event);
 
-    // It should execute statement at cursor rather than full document
-    expect(onExecuteSelection).toHaveBeenCalledTimes(1);
-    expect(onExecuteSelection).toHaveBeenCalledWith('SELECT 1;');
-  });
-
-  it('triggers onExecuteAll when Mod-Shift-Enter is pressed', () => {
-    const ref = createRef<SqlEditorHandle>();
-    const onExecuteAll = vi.fn();
-
-    const sql = 'SELECT 1;\nSELECT 2;';
-    const { container } = render(
-      <SqlEditor
-        ref={ref}
-        value={sql}
-        onChange={vi.fn()}
-        onExecuteAll={onExecuteAll}
-      />,
-    );
-
-    const cmContent = container.querySelector('.cm-content');
-    expect(cmContent).not.toBeNull();
-
-    const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent);
-    const modProps = isMac ? { metaKey: true } : { ctrlKey: true };
-
-    const event = new KeyboardEvent('keydown', {
-      key: 'Enter',
-      code: 'Enter',
-      ...modProps,
-      shiftKey: true,
-      bubbles: true,
-      cancelable: true,
-    });
-    cmContent?.dispatchEvent(event);
-
-    expect(onExecuteAll).toHaveBeenCalledTimes(1);
+    expect(onExecute).toHaveBeenCalledTimes(1);
+    expect(onExecuteSelection).not.toHaveBeenCalled();
   });
 
   it('triggers onSaveQuery when Mod-s is pressed', () => {
@@ -79,18 +92,14 @@ describe('SqlEditor Shortcuts', () => {
     const onSaveQuery = vi.fn();
 
     const { container } = render(
-      <SqlEditor
-        ref={ref}
-        value="SELECT 1;"
-        onChange={vi.fn()}
-        onSaveQuery={onSaveQuery}
-      />,
+      <SqlEditor ref={ref} value="SELECT 1;" onChange={vi.fn()} onSaveQuery={onSaveQuery} />,
     );
 
     const cmContent = container.querySelector('.cm-content');
     expect(cmContent).not.toBeNull();
 
-    const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent);
+    const isMac =
+      typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent);
     const modProps = isMac ? { metaKey: true } : { ctrlKey: true };
 
     const event = new KeyboardEvent('keydown', {

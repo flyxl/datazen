@@ -14,11 +14,4 @@ export const COLOR_KEYS = [
   { value: '#64748b', key: 'newConn.colorGray' },
 ] as const satisfies readonly { value: string; key: TranslationKey }[];
 
-export function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
-  return (
-    <div className="mb-1 text-xs text-fg-secondary">
-      {children}
-      {required && <span className="ml-0.5 text-red-400">*</span>}
-    </div>
-  );
-}
+export { Label } from '@datazen/ui';

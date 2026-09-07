@@ -307,8 +307,8 @@ function ErDiagramInner({
           pannable
           zoomable
           nodeColor={(node) => {
-            if (node.data?.highlighted) return 'var(--color-accent, #3b82f6)';
-            return 'var(--color-surface-alt, #1e293b)';
+            if (node.data?.highlighted) return 'var(--color-accent, #2563eb)';
+            return 'var(--color-surface-alt, #111827)';
           }}
           maskColor="rgba(0,0,0,0.5)"
           className="!bg-surface-alt !border-edge !shadow-lg"

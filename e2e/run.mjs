@@ -231,9 +231,10 @@ function resolvePorts(basePort, count) {
   return Array.from({ length: count }, (_, i) => basePort + i);
 }
 
-function startAppInstance({ binaryPath, dataDir, port, onOutput }) {
+function startAppInstance({ binaryPath, dataDir, port, workerIndex, onOutput }) {
   log(`Starting app instance on port ${port}: ${binaryPath}`);
   log(`App data isolation: DATAZEN_DATA_DIR=${dataDir}`);
+  const workerSchema = `e2e_worker_${workerIndex ?? 0}`;
   const proc = spawn(binaryPath, [], {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
@@ -243,6 +244,8 @@ function startAppInstance({ binaryPath, dataDir, port, onOutput }) {
       DATAZEN_DATA_DIR: dataDir,
       TAURI_WEBDRIVER_PORT: String(port),
       E2E_WD_PORT: String(port),
+      E2E_WORKER_INDEX: String(workerIndex ?? 0),
+      E2E_WORKER_SCHEMA: workerSchema,
     },
   });
   proc.stdout.on('data', (d) => process.stdout.write(d));
@@ -310,6 +313,7 @@ const appProcesses = wdPorts.map((port, i) =>
     binaryPath: appBinary,
     dataDir: dataDirs[i],
     port,
+    workerIndex: i,
     onOutput: onAppOutput,
   }),
 );
@@ -475,10 +479,13 @@ if (INSTANCE_COUNT > 1) {
 
   const wdioProcesses = chunks.map((specChunk, i) => {
     if (specChunk.length === 0) return null;
+    const workerSchema = `e2e_worker_${i}`;
     const env = {
       ...process.env,
       DATAZEN_DATA_DIR: dataDirs[i],
       E2E_WD_PORT: String(wdPorts[i]),
+      E2E_WORKER_INDEX: String(i),
+      E2E_WORKER_SCHEMA: workerSchema,
     };
     const specArgs = [];
     for (const s of specChunk) {
@@ -536,6 +543,8 @@ if (INSTANCE_COUNT > 1) {
     ...process.env,
     DATAZEN_DATA_DIR: dataDirs[0],
     E2E_WD_PORT: String(WD_PORT),
+    E2E_WORKER_INDEX: '0',
+    E2E_WORKER_SCHEMA: process.env.E2E_WORKER_SCHEMA || 'e2e_worker_0',
   };
 
   const wdio = spawn(
