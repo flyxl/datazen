@@ -106,6 +106,23 @@ const pack = {
   'query.editor.selection.addNextOccurrenceMac': '添加下一处匹配（⌘+D）',
   'query.editor.selection.addNextOccurrenceWin': '添加下一处匹配（Ctrl+D）',
   'query.editor.selection.rectangularHint': '列选择（Alt+拖动）',
+  // --- §4.1 SQL 代码片段 ---
+  'query.snippets': '代码片段',
+  'query.snippetsTitle': '插入 SQL 代码片段',
+  'query.editor.snippet.selectAll': 'SELECT * 并带 WHERE',
+  'query.editor.snippet.selectColumns': 'SELECT 指定字段',
+  'query.editor.snippet.insert': 'INSERT INTO … VALUES',
+  'query.editor.snippet.update': 'UPDATE … SET … WHERE',
+  'query.editor.snippet.delete': 'DELETE FROM … WHERE',
+  'query.editor.snippet.join': 'JOIN … ON',
+  'query.editor.snippet.count': 'SELECT COUNT(1)',
+  // --- §4.2 格式化 ---
+  'query.formatShortcutMac': '格式化 SQL (⇧⌥F)',
+  'query.formatShortcutWin': '格式化 SQL (Shift+Alt+F)',
+  // --- §4.3 显式刷新补全缓存 ---
+  'query.refreshCompletion': '刷新补全',
+  'query.refreshCompletionTitle': '重新加载自动补全所用的结构元数据',
+  'query.refreshCompletionDone': '补全缓存已刷新',
   'query.editor.param.historyLabel': '最近使用的值',
   'query.editor.param.clearHistory': '清除此参数的历史记录',
   'query.editor.param.noHistory': '暂无历史记录',

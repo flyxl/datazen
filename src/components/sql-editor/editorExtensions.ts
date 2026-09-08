@@ -48,6 +48,8 @@ import { statementIndexField } from './semantic/statementRanges';
 import { executionStateField } from './extensions/executionState';
 import { extensionRegistry, sqlEditorProEP } from '@datazen/extension-points';
 import { produceSchemaCompletions } from './completion/schemaCompletion';
+import { createSnippetCompletionSource } from './snippets';
+import { formatEditorDocument } from './format/formatEditorDocument';
 import { getDialectAdapter } from './semantic/dialectAdapter';
 import { buildSemanticModel } from './semantic/scopeModel';
 import type { EditorMetadataSnapshot } from './metadata/types';
@@ -281,7 +283,25 @@ export function createSqlExtensions(opts: CreateSqlExtensionsOptions): Extension
       defaultSchema: opts.defaultSchema,
       defaultTable: opts.defaultTable,
     }),
+    createFormatKeymap(opts.databaseType),
   ];
+}
+
+/**
+ * §4.2 Beautify shortcut. Lives in the SQL compartment so it always formats
+ * with the dialect currently selected in the panel.
+ */
+export function createFormatKeymap(databaseType?: string): Extension {
+  return keymap.of([
+    {
+      key: 'Shift-Alt-f',
+      run: (view) =>
+        formatEditorDocument(view, {
+          databaseType,
+          options: useSettingsStore.getState().settings.sqlFormatOptions,
+        }),
+    },
+  ]);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -309,6 +329,8 @@ export interface CompletionCompartmentOptions {
   metadataSnapshot?: EditorMetadataSnapshot;
   schema?: SQLNamespace;
   completionQuotePolicy?: CompletionQuotePolicy;
+  /** Resolves snippet description i18n keys; omitted in tests and non-UI callers. */
+  translate?: (key: string) => string;
 }
 
 export function createCompletionExtensions(
@@ -423,6 +445,8 @@ export function createCompletionExtensions(
         schema: opts.schema,
       }),
       functionCompletionSource,
+      // §4.1: snippet templates with tabstop expansion
+      createSnippetCompletionSource({ t: opts.translate }),
       // S4-B: schema-aware completion (reads from metadata snapshot)
       schemaAwareCompletionSource,
       // S4-B: Pro completion

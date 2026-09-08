@@ -16,6 +16,8 @@ import { ToolbarButton } from '../../../components/ui/ToolbarButton';
 import { SqlEditor } from '../../../components/SqlEditor';
 import type { SqlEditorHandle } from '../../../components/SqlEditor';
 import type { EditorMetadataSnapshot } from '../../../components/sql-editor/metadata/types';
+import { SnippetMenuButton } from './toolbar/SnippetMenuButton';
+import { RefreshCompletionButton } from './toolbar/RefreshCompletionButton';
 import { QueryContextSelectors } from '../../../components/query/QueryContextSelectors';
 import { QueryExecutionStatus } from '../../../components/query/QueryExecutionStatus';
 import { Nl2SqlPanel } from '../../../components/ai/Nl2SqlPanel';
@@ -77,6 +79,8 @@ export interface QueryEditorSectionProps {
   onExecuteSelection: (sql: string) => void;
   onCancel: () => void;
   onFormat: () => void;
+  /** §4.3 Reports the completion-cache refresh result to the panel's message surface. */
+  onCompletionRefreshed: (message: string) => void;
   onExplain: () => void;
   onBeginTx: () => void;
   onCommitTx: () => void;
@@ -162,6 +166,7 @@ export function QueryEditorSection({
   onExecuteSelection,
   onCancel,
   onFormat,
+  onCompletionRefreshed,
   onExplain,
   onBeginTx,
   onCommitTx,
@@ -190,6 +195,18 @@ export function QueryEditorSection({
   );
   const bindParamPanelEnabled = proSettings?.bindParamPanel !== false;
 
+  /**
+   * Prefer the editor's own selection-aware formatter (§4.2); `onFormat` stays
+   * as the fallback for the rare case the editor has not mounted yet.
+   */
+  const handleFormatClick = useCallback(() => {
+    if (editorRef.current?.formatDocument) {
+      editorRef.current.formatDocument();
+      return;
+    }
+    onFormat();
+  }, [editorRef, onFormat]);
+
   const handleEditorContextMenu = useCallback(
     (e: MouseEvent, sqlText: string) => {
       const selection = editorRef.current?.getSelection() ?? '';
@@ -208,7 +225,7 @@ export function QueryEditorSection({
             onRunSelection: () => {
               if (selection.trim()) onExecuteSelection(selection);
             },
-            onFormat,
+            onFormat: handleFormatClick,
             onComment: () => editorRef.current?.toggleLineComment(),
             onAddFavorite: onOpenAddFavoriteDialog,
           },
@@ -218,7 +235,7 @@ export function QueryEditorSection({
         { x: e.clientX, y: e.clientY },
       );
     },
-    [editorRef, onExecute, onExecuteSelection, onFormat, onOpenAddFavoriteDialog, t],
+    [editorRef, onExecute, onExecuteSelection, handleFormatClick, onOpenAddFavoriteDialog, t],
   );
 
   return (
@@ -273,9 +290,19 @@ export function QueryEditorSection({
           compact={compactToolbar}
           variant="ghost"
           label={t('query.format')}
+          title={isMac ? t('query.formatShortcutMac') : t('query.formatShortcutWin')}
           icon={<Wand2 className="h-3.5 w-3.5" />}
-          onClick={onFormat}
+          onClick={handleFormatClick}
           disabled={running || !sql.trim()}
+          {...tid('editor-format-button')}
+        />
+        <SnippetMenuButton editorRef={editorRef} compact={compactToolbar} disabled={running} />
+        <RefreshCompletionButton
+          dbSessionId={dbSessionId}
+          database={selectedDatabase}
+          compact={compactToolbar}
+          disabled={running}
+          onRefreshed={onCompletionRefreshed}
         />
         <div className="mx-1 h-4 w-px shrink-0 bg-edge" />
         <ToolbarButton

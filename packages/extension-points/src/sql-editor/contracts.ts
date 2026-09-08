@@ -30,6 +30,10 @@ export interface SqlEditorHandle {
   rawInsert?: (text: string, pos: number) => void;
   /** Focus the editor. */
   focus?: () => void;
+  /** Format the current selection, or the whole document when nothing is selected. */
+  formatDocument?: () => void;
+  /** Expand a snippet template at the cursor and activate tabstop navigation. */
+  insertSnippet?: (template: string) => void;
 }
 
 export interface SqlEditorProps {

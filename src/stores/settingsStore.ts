@@ -4,6 +4,7 @@ import { emitCrossWindow } from '../lib/crossWindowBus';
 import { resolveUiLanguage } from '../lib/resolveUiLanguage';
 import type { AppSettings } from '../types';
 import { HOST_DEFAULT_EDITOR_FONT } from '../lib/resolveEditorFontFamily';
+import { DEFAULT_SQL_FORMAT_OPTIONS } from '../lib/sqlFormat';
 import { DEFAULT_THEME_PREFERENCE, normalizeThemePreference, type ThemeMode } from '../types/theme';
 import { DEFAULT_MONITOR_SETTINGS } from '../types/dashboard';
 import { applyThemePack, syncWebviewBackgroundFromTokens } from '../lib/themePackApply';
@@ -36,6 +37,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   editorCompletionQuotePolicy: 'unquoted',
   keymapPreset: 'default',
   customKeymap: {},
+  sqlFormatOptions: DEFAULT_SQL_FORMAT_OPTIONS,
+  sqlExecutionStrategy: 'current_statement',
+  sqlSnippets: [],
 };
 
 const THEME_STORAGE_KEY = 'datazen-theme';

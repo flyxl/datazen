@@ -8,6 +8,7 @@
  * §Track S6-D: Central Editor / Query Assembly
  */
 import {
+  useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -17,10 +18,13 @@ import {
 } from 'react';
 import { EditorView, placeholder as cmPlaceholder } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
+import { snippet } from '@codemirror/autocomplete';
 import { parseQualifiedPathParents } from '../../lib/sqlPathPrefix';
 import { toggleSqlLineComments } from '../../lib/sqlEditorContextMenu';
 import { buildSemanticModel } from './semantic/scopeModel';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useI18n } from '../../hooks/useI18n';
+import type { I18nKey } from '../../locales';
 import type { SqlEditorHandle, SqlEditorProps } from './contracts';
 import {
   createBaseEditorExtensions,
@@ -38,6 +42,7 @@ import {
   createHoverExtensions,
   createPasteExtensions,
 } from './editorExtensions';
+import { formatEditorDocument } from './format/formatEditorDocument';
 import { StartExecutionEffect, FinishExecutionEffect } from './extensions/executionState';
 
 export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor(
@@ -93,6 +98,10 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   // ── S6-D: Snapshot & model refs for completion/hover ──────────────
   const metadataSnapshotRef = useRef(metadataSnapshot);
   const modelRef = useRef<import('./semantic/types').SqlSemanticModel | null>(null);
+
+  const { t } = useI18n();
+  // Snippet descriptions are i18n keys; the completion source needs a resolver.
+  const translate = useCallback((key: string) => t(key as I18nKey), [t]);
 
   // Settings are consumed internally by themeExtensions() in editorExtensions.ts
   const keymapPreset = useSettingsStore((s) => s.settings.keymapPreset);
@@ -190,6 +199,24 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     focus: () => {
       viewRef.current?.focus();
     },
+    formatDocument: () => {
+      const view = viewRef.current;
+      if (!view) return;
+      formatEditorDocument(view, {
+        databaseType,
+        options: useSettingsStore.getState().settings.sqlFormatOptions,
+      });
+      view.focus();
+    },
+    insertSnippet: (template: string) => {
+      const view = viewRef.current;
+      if (!view) return;
+      const { from, to } = view.state.selection.main;
+      // Applying via `snippet()` (rather than a plain insert) is what activates
+      // the tabstop session, so Tab / Shift-Tab traverse the placeholders.
+      snippet(template)(view, null, from, to);
+      view.focus();
+    },
   }));
 
   // ── Extension creation (memoized per compartment) ────────────────
@@ -207,10 +234,10 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   const completionExts = useMemo(
     () =>
       createCompletionExtensions(
-        { databaseType, metadataSnapshot, schema, completionQuotePolicy },
+        { databaseType, metadataSnapshot, schema, completionQuotePolicy, translate },
         { modelRef, metadataSnapshotRef },
       ),
-    [databaseType, metadataSnapshot, schema, completionQuotePolicy],
+    [databaseType, metadataSnapshot, schema, completionQuotePolicy, translate],
   );
 
   const intentionExts = useMemo(

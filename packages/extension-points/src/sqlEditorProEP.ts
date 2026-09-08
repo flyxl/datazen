@@ -74,6 +74,11 @@ export interface SqlEditorProFeatures {
   renderBindParamPanel?: (props: SqlEditorProOptions) => any;
   /** S5-B: Bind parameters hook. */
   useBindParameters?: (sql: string, options?: any) => any;
+  /**
+   * S4-E: as-you-type static diagnostics (unknown table / column squiggles).
+   * Returns `@codemirror/lint` extensions; debounced and degraded on large documents.
+   */
+  createLinterExtensions?: (opts: SqlEditorProOptions, refs: SqlEditorProOptions) => Extension[];
   /** Pro settings contributions. */
   settingsContributions?: ExtensionSettingsContribution[];
 }
@@ -86,6 +91,7 @@ const fallbackFeatures: SqlEditorProFeatures = Object.freeze({
   createJoinCompletionSource: () => null,
   createPasteExtensions: () => [],
   createPasteAsInContextMenuItems: () => null,
+  createLinterExtensions: () => [],
   renderBindParamPanel: () => null,
   useBindParameters: () => ({
     params: [],

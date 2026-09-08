@@ -107,6 +107,23 @@ const pack = {
   'query.editor.selection.addNextOccurrenceMac': 'Add next occurrence (⌘+D)',
   'query.editor.selection.addNextOccurrenceWin': 'Add next occurrence (Ctrl+D)',
   'query.editor.selection.rectangularHint': 'Column selection (Alt+drag)',
+  // --- §4.1 SQL snippets ---
+  'query.snippets': 'Snippets',
+  'query.snippetsTitle': 'Insert SQL snippet',
+  'query.editor.snippet.selectAll': 'SELECT * with WHERE',
+  'query.editor.snippet.selectColumns': 'SELECT specific columns',
+  'query.editor.snippet.insert': 'INSERT INTO … VALUES',
+  'query.editor.snippet.update': 'UPDATE … SET … WHERE',
+  'query.editor.snippet.delete': 'DELETE FROM … WHERE',
+  'query.editor.snippet.join': 'JOIN … ON',
+  'query.editor.snippet.count': 'SELECT COUNT(1)',
+  // --- §4.2 Beautify ---
+  'query.formatShortcutMac': 'Format SQL (⇧⌥F)',
+  'query.formatShortcutWin': 'Format SQL (Shift+Alt+F)',
+  // --- §4.3 Explicit completion cache refresh ---
+  'query.refreshCompletion': 'Refresh completion',
+  'query.refreshCompletionTitle': 'Reload schema metadata used by autocomplete',
+  'query.refreshCompletionDone': 'Completion cache refreshed',
   'query.editor.param.historyLabel': 'Recent values',
   'query.editor.param.clearHistory': 'Clear history for this parameter',
   'query.editor.param.noHistory': 'No history yet',

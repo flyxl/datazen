@@ -403,7 +403,8 @@ export function QueryPanel({
   const handleFormat = useCallback(() => {
     if (!exec.sql.trim()) return;
     try {
-      updateSql(panelId, formatSql(exec.sql, databaseType));
+      const options = useSettingsStore.getState().settings.sqlFormatOptions;
+      updateSql(panelId, formatSql(exec.sql, databaseType, options));
     } catch {
       /* keep original SQL if formatter rejects dialect-specific syntax */
     }
@@ -468,6 +469,7 @@ export function QueryPanel({
             onExecuteSelection={executionGate.handleExecuteSelection}
             onCancel={() => void cancelQuery(panelId)}
             onFormat={handleFormat}
+            onCompletionRefreshed={(message) => showMessageDialog(message, 'success')}
             onExplain={workflows.handleExplain}
             onBeginTx={tx.handleBeginTx}
             onCommitTx={tx.handleCommitTx}

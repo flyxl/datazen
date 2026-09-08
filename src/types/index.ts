@@ -230,6 +230,26 @@ import type { MonitorSettings } from './dashboard';
 
 export type McpPermissionMode = 'read_only' | 'safe_write' | 'high_risk_write';
 
+/** §4.2 Configurable SQL beautifier options. */
+export interface SqlFormatOptions {
+  keywordCase: 'upper' | 'lower' | 'preserve';
+  indentStyle: '2spaces' | '4spaces' | 'tab';
+  /** Put AND / OR at the start of the next line instead of the end of the current one. */
+  breakBeforeBooleanOperators: boolean;
+  /** Blank lines inserted between consecutive statements. */
+  linesBetweenQueries: number;
+}
+
+/**
+ * §5.1 Which SQL the Execute action submits when there is no explicit selection.
+ * `ask` prompts whenever the script holds more than one statement.
+ */
+export type SqlExecutionStrategy =
+  | 'current_statement'
+  | 'entire_script'
+  | 'largest_statement'
+  | 'ask';
+
 export interface AppSettings {
   theme: ThemePreference;
   language: string;
@@ -271,6 +291,12 @@ export interface AppSettings {
   keymapPreset?: 'default' | 'dbeaver' | 'navicat';
   /** User-customized keyboard shortcut overrides keyed by action ID. */
   customKeymap?: Partial<Record<string, string>>;
+  /** §4.2 SQL beautifier configuration. */
+  sqlFormatOptions?: SqlFormatOptions;
+  /** §5.1 Execute-action statement targeting strategy. Default 'current_statement'. */
+  sqlExecutionStrategy?: SqlExecutionStrategy;
+  /** §6.4 User-defined SQL snippets, merged after the built-in library. */
+  sqlSnippets?: Array<{ id: string; prefix: string; descriptionKey: string; template: string }>;
 }
 
 export type FilterOperator =
