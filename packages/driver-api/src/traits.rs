@@ -24,13 +24,10 @@ pub trait DatabaseDriver: Send + Sync {
     /// proxy/exploration drivers (e.g. kiwi, superset) should override to
     /// [`SyncCategory::Other`].
     fn sync_category(&self) -> SyncCategory {
-        match self.driver_type().as_str() {
-            "kiwi" | "superset" => SyncCategory::Other,
-            _ => match self.driver_category() {
-                DriverCategory::Sql => SyncCategory::Sql,
-                DriverCategory::KeyValue => SyncCategory::Kv,
-                DriverCategory::Document => SyncCategory::Document,
-            },
+        match self.driver_category() {
+            DriverCategory::Sql => SyncCategory::Sql,
+            DriverCategory::KeyValue => SyncCategory::Kv,
+            DriverCategory::Document => SyncCategory::Document,
         }
     }
 

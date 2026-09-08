@@ -20,11 +20,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ── DataZen Pro：默认发行版（全原生驱动 + SQL Editor Pro 特权增强）──
+          # ── DataZen Pro (Basic)：默认发行版（4 核心原生驱动 + SQL Editor Pro 特权增强）──
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             os_label: windows-x64
-            drivers: "all"
+            drivers: "basic"
             edition: "pro"
             variant_suffix: ""
             needs_git: false
@@ -32,7 +32,7 @@ jobs:
           - platform: macos-latest
             target: aarch64-apple-darwin
             os_label: macos-arm64
-            drivers: "all"
+            drivers: "basic"
             edition: "pro"
             variant_suffix: ""
             needs_git: false
@@ -40,7 +40,7 @@ jobs:
           - platform: macos-latest
             target: x86_64-apple-darwin
             os_label: macos-x64
-            drivers: "all"
+            drivers: "basic"
             edition: "pro"
             variant_suffix: ""
             needs_git: false
@@ -48,9 +48,42 @@ jobs:
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             os_label: linux-x64
-            drivers: "all"
+            drivers: "basic"
             edition: "pro"
             variant_suffix: ""
+            needs_git: false
+            needs_pro: true
+          # ── DataZen Pro (All)：全原生驱动版（全部原生驱动 + SQL Editor Pro 特权增强）──
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            os_label: windows-x64
+            drivers: "all"
+            edition: "pro"
+            variant_suffix: "-all"
+            needs_git: false
+            needs_pro: true
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            os_label: macos-arm64
+            drivers: "all"
+            edition: "pro"
+            variant_suffix: "-all"
+            needs_git: false
+            needs_pro: true
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            os_label: macos-x64
+            drivers: "all"
+            edition: "pro"
+            variant_suffix: "-all"
+            needs_git: false
+            needs_pro: true
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            os_label: linux-x64
+            drivers: "all"
+            edition: "pro"
+            variant_suffix: "-all"
             needs_git: false
             needs_pro: true
           # ── Akulaku Pro：定制驱动部署（全核心 + MongoDB + Kiwi + Superset + SQL Editor Pro）──
@@ -394,7 +427,8 @@ jobs:
             - **全量原生数据库驱动**：内置 PostgreSQL、MySQL、SQLite、Redis、MongoDB、SQL Server、ClickHouse、DuckDB、Elasticsearch 等全部原生驱动。
 
             ### 发行变体
-            - **DataZen Pro**（推荐，默认）：全量原生驱动 + SQL Editor Pro
+            - **DataZen Pro (Basic)**（默认推荐，体积最小）：4 核心原生驱动（PostgreSQL、MySQL、SQLite、Redis）+ SQL Editor Pro 特权增强
+            - **DataZen Pro (All)**（文件名含 `-all`）：全部原生驱动（PostgreSQL、MySQL、SQLite、Redis、MongoDB、SQL Server、ClickHouse、DuckDB、Elasticsearch 等）+ SQL Editor Pro 特权增强
             - **Akulaku Pro**（文件名含 `-akulaku`）：DataZen Pro + 特定渠道定制驱动（Kiwi、Superset）
 
             源码构建可进一步裁剪：`DATAZEN_DRIVERS=postgres,mongodb` 等显式列表，只编译需要的类型。
