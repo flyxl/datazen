@@ -39,9 +39,9 @@ Extension 扩展的是“用户如何组织和呈现能力”。它贡献工作�
 
 ## datazen:// 资源协议
 
-插件静态资源通过 `datazen://{pluginId}/{path}` 提供。Rust 端先验证插件已启用，再进行路径遍历防护、MIME 白名单和 CSP 注入。Windows WebView2 的映射形式与 macOS scheme 行为不同，因此 CSP 同时兼顾 `'self'` 和自定义 scheme。
+插件静态资源通过 `datazen://{wappId}/{path}` 提供。Rust 端先验证插件已启用，再进行路径遍历防护、MIME 白名单和 CSP 注入。Windows WebView2 的映射形式与 macOS scheme 行为不同，因此 CSP 同时兼顾 `'self'` 和自定义 scheme。
 
-深链 `datazen://{pluginId}/open?page=...` 只转换成宿主的 `plugins:open-page` 事件，页面路由仍由 Host 控制。
+深链 `datazen://{wappId}/open?page=...` 只转换成宿主的 `wapps:open-page` 事件，页面路由仍由 Host 控制。
 
 ## 主题是 Extension 的贡献
 

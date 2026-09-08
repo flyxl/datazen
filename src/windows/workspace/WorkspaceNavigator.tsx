@@ -55,7 +55,7 @@ export function WorkspaceNavigator({ onOpenPlugins, width }: WorkspaceNavigatorP
                 data-testid="workspace-nav-item"
                 data-page-key={page.key}
                 title={page.description ?? page.title}
-                onClick={() => openPluginPage(page.pluginId, page.pageId)}
+                onClick={() => openPluginPage(page.wappId || page.pluginId, page.pageId)}
                 className={cn(
                   'mb-0.5 flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
                   active
@@ -63,7 +63,11 @@ export function WorkspaceNavigator({ onOpenPlugins, width }: WorkspaceNavigatorP
                     : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
                 )}
               >
-                <PluginIcon pluginId={page.pluginId} icon={page.icon} className="mt-0.5 h-4 w-4" />
+                <PluginIcon
+                  wappId={page.wappId || page.pluginId}
+                  icon={page.icon}
+                  className="mt-0.5 h-4 w-4"
+                />
                 <span className="min-w-0">
                   <span className="block truncate text-xs font-medium">{page.title}</span>
                   {page.description ? (

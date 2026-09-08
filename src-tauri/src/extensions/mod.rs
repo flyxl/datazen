@@ -1,6 +1,6 @@
 //! Runtime UI/theme extension base: registry over installed extension packages.
 //!
-//! Extensions live in `{appData}/plugins/{id}/` (folder name == `manifest.id`).
+//! Extensions live in `{appData}/wapps/{id}/` (folder name == `manifest.id`).
 //! [`ExtensionManager`] loads every valid package at startup, tracks enabled
 //! state via a `.enabled` marker file, and is shared through `AppState`.
 pub mod install;

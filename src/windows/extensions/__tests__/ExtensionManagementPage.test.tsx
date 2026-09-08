@@ -63,7 +63,7 @@ vi.mock('../../../stores/workspaceTabsStore', () => ({
 }));
 
 vi.mock('../../../commands/extensions', () => ({
-  EXTENSIONS_CHANGED_EVENT: 'plugins:changed',
+  EXTENSIONS_CHANGED_EVENT: 'wapps:changed',
   extensionCommands: {
     inspectExtensionPackageWithDialog: (...args: unknown[]) => inspectPackageMock(...args),
     installExtension: (...args: unknown[]) => installFromPathMock(...args),
@@ -304,6 +304,7 @@ describe('ExtensionManagementPage', () => {
 
     expect(openTabMock).toHaveBeenCalledWith({
       key: 'acme.bill-audit:quota-check',
+      wappId: 'acme.bill-audit',
       pluginId: 'acme.bill-audit',
       pageId: 'quota-check',
       title: 'Quota Check',

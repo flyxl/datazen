@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { ExtensionManifest, ExtensionSummary } from '../types/extension';
 
 /** Mirrors `EXTENSIONS_CHANGED_EVENT` in `src-tauri/src/commands/extensions.rs`. */
-export const EXTENSIONS_CHANGED_EVENT = 'plugins:changed';
+export const EXTENSIONS_CHANGED_EVENT = 'wapps:changed';
 
 export type ExtensionPackageKind = 'zip' | 'folder';
 

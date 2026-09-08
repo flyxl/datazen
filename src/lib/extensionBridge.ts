@@ -239,7 +239,7 @@ async function handleCommandInvoke(pluginId: string, payload: unknown) {
   // Audit trail without leaking argument contents into logs. The same line
   // lands in {dataDir}/logs/datazen.log via the extension_audit_log command so
   // the webview console is not the only durable record.
-  console.info(`[extension:${pluginId}] command.invoke ${command} via ${connectionId}`);
+  console.info(`[wapp:${pluginId}] command.invoke ${command} via ${connectionId}`);
   extensionCommands.auditLog(pluginId, 'command.invoke', `${command} via ${connectionId}`);
   // Resolve the live db session for the persistent connection id.
   const entry = useActiveConnectionStore.getState().connections[connectionId];
@@ -297,7 +297,9 @@ function showNotification(title: string, body?: string): Promise<void> {
 }
 
 export interface AttachBridgeOptions {
-  pluginId: string;
+  wappId?: string;
+  /** @deprecated use wappId */
+  pluginId?: string;
   /** Manifest-declared permissions; deny-by-default for anything missing. */
   permissions: ExtensionPermission[];
   /** Locale reported in the handshake snapshot. */
@@ -333,8 +335,8 @@ export function attachBridge(
   iframe: HTMLIFrameElement,
   opts: AttachBridgeOptions,
 ): ExtensionBridgeHandle {
+  const pluginId = opts.wappId || opts.pluginId || '';
   const {
-    pluginId,
     permissions,
     locale = typeof navigator !== 'undefined' ? navigator.language : 'en',
     apiVersion = EXTENSION_API_VERSION,

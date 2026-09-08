@@ -17,7 +17,7 @@ use crate::extensions::{
 };
 
 /// Emitted after any install/remove/enable change so the frontend can refresh.
-pub const EXTENSIONS_CHANGED_EVENT: &str = "plugins:changed";
+pub const EXTENSIONS_CHANGED_EVENT: &str = "wapps:changed";
 
 const MAX_PICK_SESSIONS: usize = 8;
 
@@ -695,7 +695,7 @@ mod tests {
             .state
             .store
             .data_dir()
-            .join("plugins/acme.demo/.enabled")
+            .join("wapps/acme.demo/.enabled")
             .is_file());
 
         // -- manifest lookup
@@ -713,7 +713,7 @@ mod tests {
             .state
             .store
             .data_dir()
-            .join("plugins/acme.demo/.enabled")
+            .join("wapps/acme.demo/.enabled")
             .exists());
 
         // -- reads are refused while disabled
@@ -733,12 +733,7 @@ mod tests {
             .await
             .unwrap();
         assert!(list_extensions_impl(&test.state).is_empty());
-        assert!(!test
-            .state
-            .store
-            .data_dir()
-            .join("plugins/acme.demo")
-            .exists());
+        assert!(!test.state.store.data_dir().join("wapps/acme.demo").exists());
 
         // -- unknown ids error cleanly
         assert!(remove_extension_impl(&test.state, "acme.demo".into())
@@ -942,7 +937,7 @@ mod tests {
 
         // Simulate a restart: fresh manager over the same app-data dir.
         let reloaded =
-            crate::extensions::ExtensionManager::new(test.state.store.data_dir().join("plugins"));
+            crate::extensions::ExtensionManager::new(test.state.store.data_dir().join("wapps"));
         reloaded.load_from_disk();
         let restored = reloaded.get("acme.demo").expect("extension restored");
         assert!(!restored.enabled);

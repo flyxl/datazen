@@ -615,7 +615,7 @@ mod tests {
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             extensions: Arc::new(crate::extensions::ExtensionManager::new(
-                data_dir.join("plugins"),
+                data_dir.join("wapps"),
             )),
         };
 
@@ -682,7 +682,7 @@ mod tests {
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             extensions: Arc::new(crate::extensions::ExtensionManager::new(
-                data_dir.join("plugins"),
+                data_dir.join("wapps"),
             )),
         };
 

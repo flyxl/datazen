@@ -1,6 +1,6 @@
 # DataZen Extensions
 
-运行时插件（UI 页面 + 主题）的**源码包目录**。每个子目录是一个完整、可直接安装的 extension 包，遵循统一插件系统规范（详细设计见 [docs/architecture/backend/plugins.md](../../docs/architecture/backend/plugins.md)）。
+运行时插件（UI 页面 + 主题）的**源码包目录**。每个子目录是一个完整、可直接安装的 extension 包，遵循统一插件系统规范（详细设计见 [docs/architecture/backend/extensions.md](../../docs/architecture/backend/extensions.md)）。
 
 > 历史注记：本目录取代 `packages/themes/`（旧 v1 ThemePack 源码树）。社区主题 `community.slate-blue` 已按新规范改造为纯主题 extension；`fixtures/themes/community.fixture-dark` 保留原位，仅服务遗留 theme 模块的单测。
 
@@ -100,4 +100,4 @@ packages/extensions/<publisher>.<name>/
 
 ## SDK
 
-正式开发建议使用 [`packages/extension-sdk`](../extension-sdk/)（`createClient()` 类型化 RPC、`useTheme()`、`theme.css` 基础控件）；本目录示例刻意零构建，便于直接安装验证。
+正式开发建议使用 [`packages/app-sdk`](../app-sdk/)（`createClient()` 类型化 RPC、`useTheme()`、`theme.css` 基础控件）；本目录示例刻意零构建，便于直接安装验证。

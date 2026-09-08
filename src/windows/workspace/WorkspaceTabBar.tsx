@@ -49,7 +49,11 @@ export function WorkspaceTabBar() {
                 className="flex items-center gap-1.5"
                 onClick={() => activate(tab.key)}
               >
-                <PluginIcon pluginId={tab.pluginId} icon={tab.icon} className="h-3.5 w-3.5" />
+                <PluginIcon
+                  wappId={tab.wappId || tab.pluginId}
+                  icon={tab.icon}
+                  className="h-3.5 w-3.5"
+                />
                 <span className="max-w-[160px] truncate">{tab.title}</span>
               </button>
               <button

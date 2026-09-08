@@ -17,7 +17,7 @@ const listenMock = vi.hoisted(() => vi.fn());
 const unlistenMock = vi.fn();
 
 vi.mock('../../commands/extensions', () => ({
-  EXTENSIONS_CHANGED_EVENT: 'plugins:changed',
+  EXTENSIONS_CHANGED_EVENT: 'wapps:changed',
   extensionCommands: mockExtensionCommands,
 }));
 
@@ -172,11 +172,11 @@ describe('extensionStore', () => {
     expect(useExtensionStore.getState().byId('missing')).toBeUndefined();
   });
 
-  it('subscribes to plugins:changed once and refetches on event', async () => {
+  it('subscribes to wapps:changed once and refetches on event', async () => {
     await importStore();
 
     expect(listenMock).toHaveBeenCalledTimes(1);
-    expect(listenMock).toHaveBeenCalledWith('plugins:changed', expect.any(Function));
+    expect(listenMock).toHaveBeenCalledWith('wapps:changed', expect.any(Function));
 
     // Re-importing must not double-subscribe (module-level flag).
     await importStore();
@@ -197,7 +197,7 @@ describe('extensionStore', () => {
     expect(useExtensionStore.getState().error).toBe('ipc unavailable');
   });
 
-  it('plugins:changed refetch swaps in fresh data once the event fires', async () => {
+  it('wapps:changed refetch swaps in fresh data once the event fires', async () => {
     await importStore();
     const handler = listenMock.mock.calls[0][1] as () => void;
 
@@ -210,14 +210,14 @@ describe('extensionStore', () => {
     expect(useExtensionStore.getState().error).toBeNull();
   });
 
-  it('retries the plugins:changed subscription after a failed attempt', async () => {
+  it('retries the wapps:changed subscription after a failed attempt', async () => {
     listenMock.mockRejectedValueOnce(new Error('outside tauri runtime'));
     const { ensureExtensionsChangedListener } = await importStore();
 
     // Import-time subscribe rejected; flush tasks so the catch resets the guard.
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(listenMock).toHaveBeenCalledTimes(1);
-    expect(listenMock.mock.calls[0][0]).toBe('plugins:changed');
+    expect(listenMock.mock.calls[0][0]).toBe('wapps:changed');
 
     ensureExtensionsChangedListener(); // guard was reset → subscribes again
     expect(listenMock).toHaveBeenCalledTimes(2);

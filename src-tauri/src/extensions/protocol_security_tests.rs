@@ -483,7 +483,7 @@ fn duplicate_page_param_last_wins() {
 fn open_page_event_constant_matches_spec() {
     // Payload contract `{pluginId, pageId, params}` is built in
     // `emit_open_page`; the channel name is part of the frontend contract.
-    assert_eq!(EXTENSIONS_OPEN_PAGE_EVENT, "plugins:open-page");
+    assert_eq!(EXTENSIONS_OPEN_PAGE_EVENT, "wapps:open-page");
 }
 
 // ---------------------------------------------------------------------------

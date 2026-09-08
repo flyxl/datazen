@@ -55,7 +55,11 @@ export function WorkspaceDefaultCards({
               className="flex flex-col gap-2.5 rounded-xl border border-edge bg-surface-alt p-4 text-left transition-all hover:-translate-y-px hover:border-accent hover:bg-surface-raised hover:shadow-lg"
             >
               <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-raised">
-                <PluginIcon pluginId={page.pluginId} icon={page.icon} className="h-5 w-5" />
+                <PluginIcon
+                  wappId={page.wappId || page.pluginId}
+                  icon={page.icon}
+                  className="h-5 w-5"
+                />
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-sm font-semibold text-fg">{page.title}</span>

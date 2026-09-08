@@ -22,7 +22,7 @@
 
 ## 目录与安装
 
-安装根：`{appData}/plugins/{publisher}.{name}/`（目录名 == manifest.id）。zip/目录两态安装均先进入 `.datazen-staging-*` 临时目录跑完整规则校验再原子改名；同 id 重装自动备份 `{id}.old.bak`。卸载删除整目录——**含 `.storage.json` 用户数据**（确认弹窗已明示）。
+安装根：`{appData}/wapps/{publisher}.{name}/`（目录名 == manifest.id）。zip/目录两态安装均先进入 `.datazen-staging-*` 临时目录跑完整规则校验再原子改名；同 id 重装自动备份 `{id}.old.bak`。卸载删除整目录——**含 `.storage.json` 用户数据**（确认弹窗已明示）。
 
 源码包位于 [`packages/extensions/`](../../../packages/extensions/)（`community.slate-blue` 纯主题示例、`datazen.playground` 全功能示例），由 Rust `fixture_tests` 与 vitest `extensionThemes.test.ts` 双向守护。
 
@@ -41,9 +41,9 @@
 
 `register_uri_scheme_protocol("datazen")`：
 
-- `datazen://{pluginId}/{path}` 资产服务（enabled 校验→MIME 白名单→路径安全）；Windows/WebView2 映射为 `http(s)://datazen.<host>/…`
+- `datazen://{wappId}/{path}` 资产服务（enabled 校验→MIME 白名单→路径安全）；Windows/WebView2 映射为 `http(s)://datazen.<host>/…`
 - 响应头固定注入 CSP `default-src 'self' datazen:; script-src 'self' datazen:; …; connect-src 'none'` 与 nosniff。**必须双源**：macOS WebKit 对自定义 scheme 文档不匹配 `'self'`（BUG-F9-04），Windows 映射形态只有 `'self'` 能匹配
-- `datazen://{pluginId}/open?page=…&params=…` 深链 → 宿主事件 `plugins:open-page`
+- `datazen://{wappId}/open?page=…&params=…` 深链 → 宿主事件 `wapps:open-page`
 
 ## 桥接协议（src/lib/extensionBridge.ts）
 
@@ -53,15 +53,20 @@
 |-----|------|------|
 | context.getConnections / getActiveConnection | context:connections | 只读摘要 |
 | command.invoke | command:invoke | 转发 execute_driver_command；审计落盘 |
-| storage.get/set/remove | storage:local | `{appData}/plugins/{id}/.storage.json`，≤1MB |
+| storage.get/set/remove | storage:local | `{appData}/wapps/{id}/.storage.json`，≤1MB |
 | ui.notify | —（无需声明） | ≥5s 冷却 |
 | i18n.getString | — | 插件自带 `locales/<locale>.json` 查表，en 兜底 |
 
-限流 ≤20 并发（E_RATE_LIMIT）、单请求超时 30s。**主题推送**：`host.ready` 携带首次 `{dark, tokens}` 快照；宿主在 `<html>` class 变化与 `datazen:theme-pack-changed` 事件时对每个挂载桥推送 `theme.apply`（`PluginPageShell` → `pushThemeSnapshot`），页面侧义务见 [packages/extensions/README.md](../../../packages/extensions/README.md)「主题一致性规范」。**审计**：command.invoke 写 webview console（`[extension:{id}]`）并同时经 `extension_audit_log` 命令进 tracing 文件 sink（`{dataDir}/logs/datazen.log`，target `extension_audit`）；detail 仅含命令名+连接 id，参数内容永不入日志（前端构造式白名单 + Rust 双端截断）。
+限流 ≤20 并发（E_RATE_LIMIT）、单请求超时 30s。**主题推送**：`host.ready` 携带首次 `{dark, tokens}` 快照；宿主在 `<html>` class 变化与 `datazen:theme-pack-changed` 事件时对每个挂载桥推送 `theme.apply`（`PluginPageShell` → `pushThemeSnapshot`），页面侧义务见 [packages/extensions/README.md](../../../packages/extensions/README.md)「主题一致性规范」。**审计**：command.invoke 写 webview console（`[wapp:{id}]`）并同时经 `extension_audit_log` 命令进 tracing 文件 sink（`{dataDir}/logs/datazen.log`，target `extension_audit`）；detail 仅含命令名+连接 id，参数内容永不入日志（前端构造式白名单 + Rust 双端截断）。
 
 ## 主题应用
 
-Settings「外观」仅列出已启用插件的 themes 贡献（packId 形如 `plugin:{pluginId}:{themeId}`）。`themePackApply.applyPluginTheme` 经 `read_extension_file` 读 tokens.css 并 blob 重写 `url()` 相对资产；icons/editor/charts 三类可选资产随后应用，失败只降级对应切片。切换/清除由 `resetPackState()` 统一回收。旧 `{appData}/themes/` 运行时入口已移除。
+Settings「外观」仅列出已启用插件的 themes 贡献（packId 形如 `plugin:{wappId}:{themeId}`）。`themePackApply.applyPluginTheme` 经 `read_extension_file` 读 tokens.css 并 blob 重写 `url()` 相对资产；icons/editor/charts 三类可选资产随后应用，失败只降级对应切片。切换/清除由 `resetPackState()` 统一回收。旧 `{appData}/themes/` 运行时入口已移除。
+
+## 事件广播
+
+- 状态变更：`wapps:changed`（安装、卸载、启用、禁用时广播，通知各窗口与 Store 刷新）
+- 页面深链：`wapps:open-page`（`datazen://{wappId}/open?page=...` 被触发时派发）
 
 ## 测试分层
 

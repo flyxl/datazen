@@ -61,7 +61,7 @@ export const useExtensionStore = create<ExtensionStore>((set, get) => ({
 let subscriptionStarted = false;
 
 /**
- * Register the `plugins:changed` refresh listener exactly once per module
+ * Register the `wapps:changed` refresh listener exactly once per module
  * instance. The failure path resets the guard so a later retry can succeed
  * (e.g. when first attempted outside the Tauri runtime).
  */

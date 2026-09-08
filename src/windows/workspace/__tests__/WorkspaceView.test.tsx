@@ -48,6 +48,7 @@ vi.mock('../../../stores/workspaceTabsStore', () => ({
       open: openMock,
       activate: vi.fn(),
       close: vi.fn(),
+      closeByWapp: closeByPluginMock,
       closeByPlugin: closeByPluginMock,
     }),
   }),
@@ -76,7 +77,9 @@ function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary
 }
 
 function openPageHandler(): ((event: { payload?: unknown }) => void) | undefined {
-  const call = listenMock.mock.calls.find(([event]) => event === 'plugins:open-page');
+  const call = listenMock.mock.calls.find(
+    ([event]) => event === 'wapps:open-page' || event === 'plugins:open-page',
+  );
   return call?.[1] as ((event: { payload?: unknown }) => void) | undefined;
 }
 

@@ -151,7 +151,7 @@ zip -rqX ../com.example.bill-hud.zip . -x '.DS_Store'
 
 ## 4. 页面侧：postMessage 桥（推荐用 SDK）
 
-页面跑在**沙箱 iframe**：**没有** `window.tauri`，**不能** `fetch` 直连网络，资产只能通过 `datazen://{pluginId}/{path}` 拿到。取数能力**全部走桥**。
+页面跑在**沙箱 iframe**：**没有** `window.tauri`，**不能** `fetch` 直连网络，资产只能通过 `datazen://{wappId}/{path}` 拿到。取数能力**全部走桥**。
 
 ### 4.1 用官方 SDK `@datazen/extension-sdk`
 
@@ -347,7 +347,7 @@ zip -rqX ../com.example.bill-hud.zip . -x '.DS_Store'
 
 - ✔ 目录名 == `manifest.id`；`apiVersion = 2`；semver 版本号。
 - ✔ 用到 `context/command/storage` 就声明对应权限；`ui.notify` 不用声明。
-- ✔ 页面入口 `index.html` → 沙箱。任何 `fetch` / `<script src=http…>` 都会被宿主 CSP 拦下；**资产只能** 通过 `datazen://{pluginId}/{path}` 拿到。
+- ✔ 页面入口 `index.html` → 沙箱。任何 `fetch` / `<script src=http…>` 都会被宿主 CSP 拦下；**资产只能** 通过 `datazen://{wappId}/{path}` 拿到。
 - ✔ CSS 不写死主题色（见 §5）。
 - ✔ 包 ≤ 50MB、≤ 2000 文件，SVG ≤ 256KB 无 `script`/事件属性/`javascript:`，无符号链接。
 - ✔ 纯扩展省略 `entry`。

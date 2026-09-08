@@ -285,7 +285,7 @@ describe('F6 security: credential whitelisting', () => {
     await waitUntil(() => frame.sent.length > 0);
 
     const logged = consoleInfoSpy.mock.calls.map((c) => c.join(' ')).join('\n');
-    expect(logged).toContain('[extension:acme.bill-audit]');
+    expect(logged).toContain('[wapp:acme.bill-audit]');
     expect(logged).toContain('command.invoke');
     expect(logged).not.toContain('top-secret-value');
     // The same entry lands in the host log file via extension_audit_log (still

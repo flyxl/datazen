@@ -56,13 +56,14 @@ async function resolveEntry(pluginId: string): Promise<string> {
 }
 
 function cachedSrc(tab: WorkspaceTab): string | null {
-  const hit = entryCache.get(tab.pluginId);
+  const targetId = tab.wappId || tab.pluginId;
+  const hit = entryCache.get(targetId);
   if (!hit || hit.version !== tab.version) return null;
-  return buildSrc(tab.pluginId, hit.entry, tab.version);
+  return buildSrc(targetId, hit.entry, tab.version);
 }
 
-function buildSrc(pluginId: string, entry: string, version: string): string {
-  return `datazen://${pluginId}/${entry.replace(/^\.\//, '')}?v=${encodeURIComponent(version)}`;
+function buildSrc(targetId: string, entry: string, version: string): string {
+  return `datazen://${targetId}/${entry.replace(/^\.\//, '')}?v=${encodeURIComponent(version)}`;
 }
 
 type EntryPhase =
@@ -104,10 +105,12 @@ export function ExtensionPageShell({ tab, active }: ExtensionPageShellProps) {
   useEffect(() => {
     const el = iframeRef.current;
     if (phase.kind !== 'ready' || !el) return;
+    const targetId = tab.wappId || tab.pluginId;
     const permissions: ExtensionPermission[] =
-      useExtensionStore.getState().byId(tab.pluginId)?.permissions ?? [];
+      useExtensionStore.getState().byId(targetId)?.permissions ?? [];
     const bridge = attachBridge(el, {
-      pluginId: tab.pluginId,
+      wappId: targetId,
+      pluginId: targetId,
       permissions,
       locale: useSettingsStore.getState().settings.language,
     });
@@ -127,7 +130,7 @@ export function ExtensionPageShell({ tab, active }: ExtensionPageShellProps) {
       bridge.detach();
       if (bridgeRef.current === bridge) bridgeRef.current = null;
     };
-  }, [phase.kind, reloadNonce, tab.pluginId]);
+  }, [phase.kind, reloadNonce, tab.wappId, tab.pluginId]);
 
   useEffect(() => {
     if (active) setEverActivated(true);
@@ -137,9 +140,10 @@ export function ExtensionPageShell({ tab, active }: ExtensionPageShellProps) {
     if (!everActivated || phase.kind !== 'idle' || resolvingRef.current) return;
     resolvingRef.current = true;
     setPhase({ kind: 'resolving' });
-    void resolveEntry(tab.pluginId)
+    const targetId = tab.wappId || tab.pluginId;
+    void resolveEntry(targetId)
       .then((entry) => {
-        setPhase({ kind: 'ready', src: buildSrc(tab.pluginId, entry, tab.version) });
+        setPhase({ kind: 'ready', src: buildSrc(targetId, entry, tab.version) });
       })
       .catch(() => {
         setPhase({ kind: 'missing' });
@@ -147,7 +151,7 @@ export function ExtensionPageShell({ tab, active }: ExtensionPageShellProps) {
       .finally(() => {
         resolvingRef.current = false;
       });
-  }, [everActivated, phase, tab.pluginId, tab.version]);
+  }, [everActivated, phase, tab.wappId, tab.pluginId, tab.version]);
 
   // Load watchdog: a fresh frame that hasn't signalled `load` within the budget
   // flips the shell into its failure/recovery state.
@@ -175,7 +179,7 @@ export function ExtensionPageShell({ tab, active }: ExtensionPageShellProps) {
       aria-hidden={hidden}
     >
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-edge px-3">
-        <PluginIcon pluginId={tab.pluginId} icon={tab.icon} className="h-3.5 w-3.5" />
+        <PluginIcon wappId={tab.wappId || tab.pluginId} icon={tab.icon} className="h-3.5 w-3.5" />
         <span className="truncate text-xs font-semibold text-fg">{tab.title}</span>
         <Badge tone="neutral" className="px-1.5 py-0 text-[10px] font-normal">
           v{tab.version}

@@ -121,9 +121,9 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 
 详细设计：[Workflow 架构文档](docs/architecture/backend/workflow.md)；用户手册：[docs/features/workflow-guide.zh-CN.md](docs/features/workflow-guide.zh-CN.md)。
 
-### 运行时插件系统（Extensions：UI 页面 + 主题）
+### 运行时插件系统（Workspace App 页面 + 主题 Extension）
 
-统一运行时扩展：`{appData}/plugins/{publisher}.{name}/`，manifest v2（`contributes.pages/themes` + 权限声明），沙箱 iframe + 受控 postMessage 桥（`extensionBridge.ts`），取数一律走 `execute_driver_command`。Rust `src-tauri/src/extensions/`，前端 `windows/workspace|extensions/`。主题贡献完整保留旧 ThemePack 能力（editorJson/chartsJson/iconsDir）；旧 `{appData}/themes/` 运行时入口已移除。宿主不感知具体插件 id；驱动相关测试规则同样适用于插件示例包（守护测试在 Host）。源码包与安装测试见 [packages/extensions/](packages/extensions/)；详细设计：[docs/architecture/backend/extensions.md](docs/architecture/backend/extensions.md)。
+统一运行时扩展：`{appData}/wapps/{publisher}.{name}/`，manifest v2（`contributes.pages/themes` + 权限声明），沙箱 iframe + 受控 postMessage 桥（`extensionBridge.ts`），取数一律走 `execute_driver_command`。Rust `src-tauri/src/extensions/`，前端 `windows/workspace|extensions/`。主题贡献完整保留旧 ThemePack 能力（editorJson/chartsJson/iconsDir）；旧 `{appData}/themes/` 运行时入口已移除。宿主不感知具体插件 id；驱动相关测试规则同样适用于插件示例包（守护测试在 Host）。源码包与安装测试见 [packages/extensions/](packages/extensions/)；详细设计：[docs/architecture/backend/extensions.md](docs/architecture/backend/extensions.md)。
 
 ### 特权扩展点（Host Extension Points）
 

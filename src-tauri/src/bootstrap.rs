@@ -196,9 +196,15 @@ pub(crate) fn finish_app_state(
     let history_db = store.history_db();
     let app_db = store.app_db();
 
-    // Runtime extensions: scan {appData}/plugins/ for installed packages.
+    // Runtime extensions: scan {appData}/wapps/ for installed packages.
+    // If legacy {appData}/plugins/ exists and wapps does not, auto-migrate.
+    let wapps_dir = data_dir.join("wapps");
+    let legacy_plugins_dir = data_dir.join("plugins");
+    if !wapps_dir.exists() && legacy_plugins_dir.exists() {
+        let _ = std::fs::rename(&legacy_plugins_dir, &wapps_dir);
+    }
     // Invalid packages are skipped (warn) so one bad install can't break boot.
-    let extension_manager = Arc::new(extensions::ExtensionManager::new(data_dir.join("plugins")));
+    let extension_manager = Arc::new(extensions::ExtensionManager::new(wapps_dir));
     let extension_count = extension_manager.load_from_disk();
     tracing::info!("[startup]   ui extensions loaded: {extension_count}");
 
@@ -932,10 +938,7 @@ mod tests {
             None,
         );
 
-        assert_eq!(
-            state.extensions.extensions_dir(),
-            temp.path().join("plugins")
-        );
+        assert_eq!(state.extensions.extensions_dir(), temp.path().join("wapps"));
         assert!(Arc::ptr_eq(&state.driver_registry, &registry));
         assert!(registry.get(&db_type).await.is_some());
         assert!(state.extensions.list().is_empty());

@@ -28,8 +28,8 @@ use super::{is_valid_extension_id, ExtensionManager};
 use crate::commands::AppState;
 
 /// Event emitted when a `open` deep link resolves to a contributed page.
-/// Payload: `{ pluginId, pageId, params }`.
-pub const EXTENSIONS_OPEN_PAGE_EVENT: &str = "plugins:open-page";
+/// Payload: `{ wappId, pageId, params }` (with `pluginId` retained for backward compatibility).
+pub const EXTENSIONS_OPEN_PAGE_EVENT: &str = "wapps:open-page";
 
 /// Reserved first path segment marking a deep-link command (not an asset).
 pub const OPEN_COMMAND: &str = "open";
@@ -356,12 +356,13 @@ fn emit_open_page<R: Runtime>(app: &tauri::AppHandle<R>, outcome: &DatazenOutcom
         return;
     };
     let payload = serde_json::json!({
+        "wappId": plugin_id,
         "pluginId": plugin_id,
         "pageId": page_id,
         "params": params,
     });
     if let Err(error) = app.emit(EXTENSIONS_OPEN_PAGE_EVENT, payload) {
-        tracing::warn!(error = %error, "failed to emit plugins:open-page");
+        tracing::warn!(error = %error, "failed to emit wapps:open-page");
     }
 }
 

@@ -23,7 +23,7 @@ vi.mock('../../../hooks/useI18n', () => ({
 }));
 
 vi.mock('../../../commands/extensions', () => ({
-  EXTENSIONS_CHANGED_EVENT: 'plugins:changed',
+  EXTENSIONS_CHANGED_EVENT: 'wapps:changed',
   extensionCommands: {
     getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
   },
@@ -34,7 +34,8 @@ vi.mock('../../../stores/extensionStore', () => ({
     getState: () => ({
       ...pluginState,
       fetch: vi.fn().mockResolvedValue(undefined),
-      byId: (id: string) => (pluginState.extensions as Array<{ id: string }>).find((p) => p.id === id),
+      byId: (id: string) =>
+        (pluginState.extensions as Array<{ id: string }>).find((p) => p.id === id),
     }),
   }),
 }));
@@ -57,7 +58,9 @@ function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary
 }
 
 function openPageHandler(): ((event: { payload?: unknown }) => void) | undefined {
-  const call = listenMock.mock.calls.find(([event]) => event === 'plugins:open-page');
+  const call = listenMock.mock.calls.find(
+    ([event]) => event === 'wapps:open-page' || event === 'plugins:open-page',
+  );
   return call?.[1] as ((event: { payload?: unknown }) => void) | undefined;
 }
 

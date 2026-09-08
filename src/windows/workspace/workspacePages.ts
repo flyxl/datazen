@@ -8,19 +8,22 @@ import { useExtensionStore } from '../../stores/extensionStore';
 import type { ExtensionPageSummary, ExtensionSummary } from '../../types/extension';
 
 /** Mirrors `EXTENSIONS_OPEN_PAGE_EVENT` in `src-tauri/src/extensions/protocol.rs`. */
-export const EXTENSIONS_OPEN_PAGE_EVENT = 'plugins:open-page';
+export const EXTENSIONS_OPEN_PAGE_EVENT = 'wapps:open-page';
 
-/** Payload of the `plugins:open-page` deep-link event (`datazen://…/open?page=…`). */
+/** Payload of the `wapps:open-page` deep-link event (`datazen://…/open?page=…`). */
 export interface OpenPageEventPayload {
+  wappId?: string;
   pluginId?: string;
   pageId?: string;
-  /** Startup params; forwarded to the plugin page by the F6 bridge. Ignored here. */
+  /** Startup params; forwarded to the plugin page by the bridge. Ignored here. */
   params?: Record<string, string>;
 }
 
-/** Flattened "enabled plugin × contributed page" row used across workspace UI. */
+/** Flattened "enabled plugin/wapp × contributed page" row used across workspace UI. */
 export interface WorkspacePageEntry {
   key: string;
+  wappId: string;
+  /** @deprecated use wappId */
   pluginId: string;
   pageId: string;
   title: string;
@@ -33,6 +36,7 @@ export interface WorkspacePageEntry {
 function toEntry(plugin: ExtensionSummary, page: ExtensionPageSummary): WorkspacePageEntry {
   return {
     key: workspaceTabKey(plugin.id, page.id),
+    wappId: plugin.id,
     pluginId: plugin.id,
     pageId: page.id,
     title: page.title || plugin.name,
@@ -56,10 +60,14 @@ export function useWorkspacePages(): WorkspacePageEntry[] {
   return useMemo(() => deriveWorkspacePages(plugins), [plugins]);
 }
 
-export function buildWorkspaceTab(plugin: ExtensionSummary, page: ExtensionPageSummary): WorkspaceTab {
+export function buildWorkspaceTab(
+  plugin: ExtensionSummary,
+  page: ExtensionPageSummary,
+): WorkspaceTab {
   const entry = toEntry(plugin, page);
   return {
     key: entry.key,
+    wappId: entry.wappId,
     pluginId: entry.pluginId,
     pageId: entry.pageId,
     title: entry.title,
@@ -69,15 +77,18 @@ export function buildWorkspaceTab(plugin: ExtensionSummary, page: ExtensionPageS
 }
 
 /**
- * Resolve + open a plugin page tab (activates it). Returns false when the
- * plugin is missing/disabled or has no such page — callers decide whether to
+ * Resolve + open a workspace app page tab (activates it). Returns false when the
+ * wapp is missing/disabled or has no such page — callers decide whether to
  * surface that to the user.
  */
-export function openPluginPage(pluginId: string, pageId?: string): boolean {
-  const plugin = useExtensionStore.getState().byId(pluginId);
+export function openWappPage(wappId: string, pageId?: string): boolean {
+  const plugin = useExtensionStore.getState().byId(wappId);
   if (!plugin?.enabled || plugin.pages.length === 0) return false;
   const page = pageId ? plugin.pages.find((p) => p.id === pageId) : plugin.pages[0];
   if (!page) return false;
   useWorkspaceTabsStore.getState().open(buildWorkspaceTab(plugin, page));
   return true;
 }
+
+/** Alias of openWappPage for backward compatibility. */
+export const openPluginPage = openWappPage;

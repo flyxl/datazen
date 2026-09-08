@@ -15,7 +15,7 @@ vi.mock('../../../hooks/useI18n', () => ({
 }));
 
 vi.mock('../../../commands/extensions', () => ({
-  EXTENSIONS_CHANGED_EVENT: 'plugins:changed',
+  EXTENSIONS_CHANGED_EVENT: 'wapps:changed',
   extensionCommands: {
     inspectExtensionPackageWithDialog: (...args: unknown[]) => inspectWithDialogMock(...args),
     installExtension: (...args: unknown[]) => installExtensionMock(...args),

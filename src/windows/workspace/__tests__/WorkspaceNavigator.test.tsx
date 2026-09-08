@@ -23,7 +23,8 @@ vi.mock('../../../stores/extensionStore', () => ({
   useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
     getState: () => ({
       ...pluginState,
-      byId: (id: string) => (pluginState.extensions as Array<{ id: string }>).find((p) => p.id === id),
+      byId: (id: string) =>
+        (pluginState.extensions as Array<{ id: string }>).find((p) => p.id === id),
       fetch: vi.fn(),
     }),
   }),
@@ -112,6 +113,7 @@ describe('WorkspaceNavigator', () => {
 
     expect(openMock).toHaveBeenCalledWith({
       key: 'acme.bill-audit:quota-check',
+      wappId: 'acme.bill-audit',
       pluginId: 'acme.bill-audit',
       pageId: 'quota-check',
       title: 'Quota Check',

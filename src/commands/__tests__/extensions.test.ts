@@ -90,7 +90,7 @@ describe('extensionCommands', () => {
   });
 
   it('exposes the Rust event name and API version contract', () => {
-    expect(EXTENSIONS_CHANGED_EVENT).toBe('plugins:changed');
+    expect(EXTENSIONS_CHANGED_EVENT).toBe('wapps:changed');
     expect(EXTENSION_API_VERSION).toBe(2);
   });
 
