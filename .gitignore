@@ -67,7 +67,7 @@ src-tauri/src/driver_init.rs
 .pro-config.json
 packages/pro-extensions/
 src-tauri/resources/builtin-ep/
-artifacts/*.dzx
+artifacts/
 
 # Built-in locale codegen (written by generate-builtin-locales.mjs; not committed)
 src/locales/builtinLocales.ts
