@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ── DataZen Pro (Basic)：默认发行版（4 核心原生驱动 + SQL Editor Pro 特权增强）──
+          # ── DataZen (Basic)：默认发行版（4 核心原生驱动 + SQL Editor 增强）──
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             os_label: windows-x64
@@ -53,7 +53,7 @@ jobs:
             variant_suffix: ""
             needs_git: false
             needs_pro: true
-          # ── DataZen Pro (All)：全原生驱动版（全部原生驱动 + SQL Editor Pro 特权增强）──
+          # ── DataZen (All)：全原生驱动版（全部原生驱动 + SQL Editor 增强）──
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             os_label: windows-x64
@@ -319,9 +319,6 @@ jobs:
           $releaseDir = Join-Path "target/${{ matrix.target }}" "release"
           $executable = Join-Path $releaseDir "datazen.exe"
           if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-            $executable = Join-Path $releaseDir "DataZen Pro.exe"
-          }
-          if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
             $executable = Join-Path $releaseDir "DataZen.exe"
           }
           $prompts = Join-Path $releaseDir "prompts"
@@ -422,14 +419,14 @@ jobs:
           body: |
             ## 版本说明
 
-            本版本为 **DataZen Pro** 正式发布版，默认集成 **SQL Editor Pro** 特权增强套件：
-            - **SQL Editor Pro 核心特权**：表结构/字段智能悬浮预览 (Hover)、函数签名实时帮助 (Signature Help)、外键 JOIN 智能补全、智能 Intention 意图操作（星号展开、限定符补全等）、拖拽精准光标与 Paste-as-IN 高级粘贴、语句运行指示与高级参数绑定面板。
+            本版本为 **DataZen** 正式发布版，集成 **SQL Editor** 增强套件：
+            - **SQL Editor 核心增强**：表结构/字段智能悬浮预览 (Hover)、函数签名实时帮助 (Signature Help)、外键 JOIN 智能补全、智能 Intention 意图操作（星号展开、限定符补全等）、拖拽精准光标与 Paste-as-IN 高级粘贴、语句运行指示与高级参数绑定面板。
             - **全量原生数据库驱动**：内置 PostgreSQL、MySQL、SQLite、Redis、MongoDB、SQL Server、ClickHouse、DuckDB、Elasticsearch 等全部原生驱动。
 
             ### 发行变体
-            - **DataZen Pro (Basic)**（默认推荐，体积最小）：4 核心原生驱动（PostgreSQL、MySQL、SQLite、Redis）+ SQL Editor Pro 特权增强
-            - **DataZen Pro (All)**（文件名含 `-all`）：全部原生驱动（PostgreSQL、MySQL、SQLite、Redis、MongoDB、SQL Server、ClickHouse、DuckDB、Elasticsearch 等）+ SQL Editor Pro 特权增强
-            - **Akulaku Pro**（文件名含 `-akulaku`）：DataZen Pro + 特定渠道定制驱动（Kiwi、Superset）
+            - **DataZen (Basic)**（默认推荐，体积最小）：4 核心原生驱动（PostgreSQL、MySQL、SQLite、Redis）+ SQL Editor 增强
+            - **DataZen (All)**（文件名含 `-all`）：全部原生驱动（PostgreSQL、MySQL、SQLite、Redis、MongoDB、SQL Server、ClickHouse、DuckDB、Elasticsearch 等）+ SQL Editor 增强
+            - **Akulaku**（文件名含 `-akulaku`）：DataZen + 特定渠道定制驱动（Kiwi、Superset）
 
             源码构建可进一步裁剪：`DATAZEN_DRIVERS=postgres,mongodb` 等显式列表，只编译需要的类型。
 

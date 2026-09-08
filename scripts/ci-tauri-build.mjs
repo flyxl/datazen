@@ -26,9 +26,7 @@ const require = createRequire(import.meta.url);
 
 export const UPDATER_CONFIG = { bundle: { createUpdaterArtifacts: true } };
 
-export const PRO_CONFIG = {
-  productName: 'DataZen Pro',
-};
+export const PRO_CONFIG = {};
 
 export function resolveTauriCli(root = ROOT) {
   return require.resolve('@tauri-apps/cli/tauri.js', { paths: [root] });
