@@ -269,6 +269,47 @@ describe('ConnectionNavigatorTree Group Drag & Drop', () => {
     expect(mockMoveConnectionToGroup).toHaveBeenCalledWith('conn-1', 'Group B');
   });
 
+  it('does not highlight target group header when dragging over empty group placeholder', async () => {
+    connectionsState.connections = [
+      {
+        id: 'conn-1',
+        name: 'Conn 1',
+        databaseType: 'postgresql',
+        group: 'Group A',
+      } as ConnectionConfig,
+    ];
+    const { container } = render(<ConnectionNavigatorTree {...baseProps} />);
+
+    await waitFor(() =>
+      expect(container.querySelector('[data-conn-name="Conn 1"]')).not.toBeNull(),
+    );
+
+    const connEl = container.querySelector('[data-conn-name="Conn 1"]')!;
+    const groupBHeaderEl = container.querySelector('[data-group-name="Group B"]')!;
+    const emptyGroupBEl = container.querySelector('[data-empty-group="Group B"]')!;
+    expect(groupBHeaderEl).not.toBeNull();
+    expect(emptyGroupBEl).not.toBeNull();
+
+    const dt = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
+    fireEvent.dragStart(connEl, { dataTransfer: dt });
+
+    // Step 1: Dragging over the header highlights only the header, NOT the empty group placeholder
+    fireEvent.dragOver(groupBHeaderEl, { dataTransfer: dt });
+    expect(groupBHeaderEl.className).toContain('bg-accent/20');
+    expect(emptyGroupBEl.className).not.toContain('ring-accent');
+
+    // Step 2: Moving drag over the empty group placeholder must clear header highlight
+    // and highlight ONLY the placeholder
+    fireEvent.dragOver(emptyGroupBEl, { dataTransfer: dt });
+    expect(groupBHeaderEl.className).not.toContain('bg-accent/20');
+    expect(groupBHeaderEl.className).not.toContain('ring-accent');
+    expect(emptyGroupBEl.className).toContain('ring-accent');
+
+    // Step 3: Dropping on empty group placeholder moves connection to Group B
+    fireEvent.drop(emptyGroupBEl, { dataTransfer: dt });
+    expect(mockMoveConnectionToGroup).toHaveBeenCalledWith('conn-1', 'Group B');
+  });
+
   it('moves connection to target group and reorders when dropped on a connection in another group', async () => {
     connectionsState.connections = [
       {

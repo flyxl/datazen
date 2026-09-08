@@ -23,6 +23,8 @@ import { PINNED_GROUP_KEY, RECENT_GROUP_KEY } from '../../../lib/connectionLocat
 import type { UnifiedRow } from './types';
 import { createDragGhost, depthPadding, namespaceLeafContext, removeDragGhost } from './utils';
 
+export type GroupDropTarget = { groupName: string; target: 'header' | 'empty' };
+
 export interface NavigatorTreeRowProps {
   row: UnifiedRow;
   t: (key: I18nKey, params?: Record<string, string | number>) => string;
@@ -80,8 +82,12 @@ export interface NavigatorTreeRowProps {
   handleDragLeave: (e: React.DragEvent) => void;
   handleDragEnd: () => void;
   handleDrop: (e: React.DragEvent) => void;
-  groupDropTarget?: string | null;
-  handleGroupDragOver?: (e: React.DragEvent, groupName: string) => void;
+  groupDropTarget?: GroupDropTarget | null;
+  handleGroupDragOver?: (
+    e: React.DragEvent,
+    groupName: string,
+    target?: 'header' | 'empty',
+  ) => void;
   handleGroupDragLeave?: (e: React.DragEvent) => void;
   handleGroupDrop?: (e: React.DragEvent, groupName: string) => void;
   handleSectionDragOver?: (e: React.DragEvent, section: string) => void;
@@ -159,7 +165,8 @@ export function NavigatorTreeRow({
       );
 
     case 'group': {
-      const isDropTarget = groupDropTarget === row.groupName;
+      const isDropTarget =
+        groupDropTarget?.groupName === row.groupName && groupDropTarget?.target === 'header';
       return (
         <div
           data-group-header
@@ -170,7 +177,7 @@ export function NavigatorTreeRow({
           )}
           onClick={() => toggleGroup(row.groupName)}
           onContextMenu={(e) => handleGroupContextMenu(e, row.groupName)}
-          onDragOver={(e) => handleGroupDragOver?.(e, row.groupName)}
+          onDragOver={(e) => handleGroupDragOver?.(e, row.groupName, 'header')}
           onDragLeave={handleGroupDragLeave}
           onDrop={(e) => handleGroupDrop?.(e, row.groupName)}
         >
@@ -627,7 +634,10 @@ export function NavigatorTreeRow({
     }
 
     case 'empty-group': {
-      const isDropTarget = row.groupName !== undefined ? groupDropTarget === row.groupName : false;
+      const isDropTarget =
+        row.groupName !== undefined &&
+        groupDropTarget?.groupName === row.groupName &&
+        groupDropTarget?.target === 'empty';
       return (
         <div
           data-empty-group={row.groupName}
@@ -636,7 +646,7 @@ export function NavigatorTreeRow({
             isDropTarget && 'bg-accent/20 ring-1 ring-accent text-accent',
           )}
           onDragOver={(e) => {
-            if (row.groupName !== undefined) handleGroupDragOver?.(e, row.groupName);
+            if (row.groupName !== undefined) handleGroupDragOver?.(e, row.groupName, 'empty');
           }}
           onDragLeave={handleGroupDragLeave}
           onDrop={(e) => {

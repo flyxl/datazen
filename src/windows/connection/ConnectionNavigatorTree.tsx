@@ -33,7 +33,7 @@ import type { ConnectionConfig } from '../../types';
 import { buildNavigatorFlatRows } from './navigator/buildFlatRows';
 import { NavigatorDialogs } from './navigator/NavigatorDialogs';
 import { NavigatorToolbar } from './navigator/NavigatorToolbar';
-import { NavigatorTreeRow } from './navigator/NavigatorTreeRow';
+import { NavigatorTreeRow, type GroupDropTarget } from './navigator/NavigatorTreeRow';
 import { createDragGhost, getUnifiedRowKey, removeDragGhost } from './navigator/utils';
 import {
   ConnectionNavigatorTreeHandle,
@@ -498,7 +498,7 @@ export const ConnectionNavigatorTree = forwardRef<
   } | null>(null);
   const dropTargetRef = useRef(dropTarget);
   dropTargetRef.current = dropTarget;
-  const [groupDropTarget, setGroupDropTarget] = useState<string | null>(null);
+  const [groupDropTarget, setGroupDropTarget] = useState<GroupDropTarget | null>(null);
 
   const handleDragStart = useCallback(
     (e: React.DragEvent, connId: string) => {
@@ -527,6 +527,7 @@ export const ConnectionNavigatorTree = forwardRef<
         setDropTarget(null);
         return;
       }
+      setGroupDropTarget(null);
       if (targetSectionGroup === RECENT_GROUP_KEY || targetSectionGroup === PINNED_GROUP_KEY) {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'none';
@@ -563,12 +564,18 @@ export const ConnectionNavigatorTree = forwardRef<
     removeDragGhost();
   }, []);
 
-  const handleGroupDragOver = useCallback((e: React.DragEvent, groupName: string) => {
-    if (!dragConnId.current) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setGroupDropTarget(groupName);
-  }, []);
+  const handleGroupDragOver = useCallback(
+    (e: React.DragEvent, groupName: string, target: 'header' | 'empty' = 'header') => {
+      if (!dragConnId.current) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setDropTarget(null);
+      setGroupDropTarget((prev) =>
+        prev?.groupName === groupName && prev.target === target ? prev : { groupName, target },
+      );
+    },
+    [],
+  );
 
   const handleGroupDragLeave = useCallback((_e: React.DragEvent) => {
     // Do not clear groupDropTarget on child leave; it will be updated by dragover
@@ -854,7 +861,7 @@ export const ConnectionNavigatorTree = forwardRef<
           if (dropTargetRef.current) {
             handleDrop(e);
           } else if (groupDropTarget !== null) {
-            handleGroupDrop(e, groupDropTarget);
+            handleGroupDrop(e, groupDropTarget.groupName);
           }
         }}
       >
