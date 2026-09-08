@@ -1,11 +1,11 @@
 # Track ep-core-runtime: Extension Points Hot-Plugging Runtime & Compartment Reconfig
 
-> Status: **READY_FOR_TEST**
+> Status: **TEST_DONE**
 > Branch: `feature/ep-core-runtime`
 > Base branch: `feat/sql-editor-clean`
-> LastHeartbeat: 2026-09-08T18:26:00+08:00
+> LastHeartbeat: 2026-09-08T18:30:00+08:00
 > Coder Commit: `2130156fd`
-> Tester Commit: `pending`
+> Tester Commit: `1a319a85b`
 
 ---
 
@@ -33,7 +33,7 @@
 | SafeCompartmentWrapper & error boundary | Done |
 | CodeMirror Compartment hot reconfiguration in SqlEditor | Done |
 | Unit & Journey tests (hotplug.test.ts, editorHotplug.test.ts) | Done |
-| `npx vitest run packages/extension-points src/components/sql-editor` green | Done (364 tests) |
+| `npx vitest run packages/extension-points src/components/sql-editor` green | Done |
 | `npx tsc --noEmit` 0 errors | Done |
 
 ---
@@ -51,4 +51,54 @@ npx tsc --noEmit
 ---
 
 ## Tester Verification
-*(待 Coder 完成后由 Tester 独立复测登记)*
+
+**Bootstrap:** worktree `.worktrees/datazen-ep-core-runtime`, branch `feature/ep-core-runtime`, coder commit `2130156fd`
+
+### Independent Re-run (Phase B)
+
+| Suite | Coder 自报 | Tester 独立实测 |
+|---|---|---|
+| `npx vitest run packages/extension-points src/components/sql-editor` | 364 passed | **369 passed** (25 files) |
+| `npx tsc --noEmit` | 0 errors | **0 errors** |
+
+### Coverage (Phase C) — 核心改动模块
+
+| Module | Stmts | Branches | Funcs | 达标 |
+|---|---|---|---|---|
+| `extensionPoints.ts` | 94.4% | 85.7% | 100% | ✅ |
+| `lifecycle.ts` | 87.1% | 87.5% | 87.5% | ✅ |
+| `safeCompartment.ts` | 100% | — | 100% | ✅ |
+| `useExtension.ts` | 85.7% | 100% | 75% | ✅ |
+| `editorExtensions.ts` (热插拔增量路径) | reconfigureProCompartments / SafeCompartmentWrapper / proSafe 均已覆盖 | — | — | ✅ |
+
+> 注：`editorExtensions.ts` 整体文件覆盖率 25%（大量 S6-D 既有逻辑由其他单测间接覆盖）；本轨增量改动（SafeCompartmentWrapper 包装、reconfigureProCompartments、Transaction.addToHistory 隔离）经 `editorHotplug.test.ts` 与 `hotplug.test.ts` 全覆盖。
+
+### Tester 补充测试
+
+- `[tester] getContext returns active context or undefined`
+- `[tester] reset unloads all active extensions`
+- `[tester] unload tolerates dispose errors and still removes extension`
+- `[tester] unregister is no-op when extension point is not registered`
+- `[tester] SafeCompartmentWrapper invokes onCircuitBreak callback`
+
+### Code Review (Phase A) — 摘要
+
+- ✅ `Disposable` / `ExtensionContext` / `ExtensionModule` / `HostExtensionLoader` 契约完整，LIFO dispose 顺序正确
+- ✅ `ExtensionRegistry.subscribe` / `unregister` / fallback 引用稳定性符合 PRD
+- ✅ `SafeCompartmentWrapper` 异常时自动 unregister + fallback，不抛向宿主
+- ✅ `SqlEditor` 通过 `useIsExtensionEnhanced(sqlEditorProEP)` 触发 useMemo 重算 → compartment reconfigure
+- ✅ 所有 compartment reconfigure dispatch 均附加 `Transaction.addToHistory.of(false)`，undo/redo 历史不被污染
+- ⚠️ `HostExtensionLoader.loadFromUrl` 动态 import 路径无单测（需 Wave 3 E2E / 集成环境验证）
+
+### E2E 用例登记
+
+| ID | 场景 | 前置条件 | 执行方式 |
+|---|---|---|---|
+| E2E-EP-001 | 用户在 SQL 编辑器输入过程中，Pro 扩展动态激活，Gutter/Hover/Linter 平滑出现，光标/选区/文本/undo 栈无损 | Pro 版构建 + sql-editor-pro 扩展包 | 【留待 R 回归】 |
+| E2E-EP-002 | Pro 扩展动态卸载，编辑器回退 Community 基础能力，无窗口重载 | 已激活 Pro EP | 【留待 R 回归】 |
+| E2E-EP-003 | Pro 装饰器运行时崩溃，编辑器自动熔断降级，仍可继续编辑 | 注入会 throw 的 Pro 实现 | 【留待 R 回归】 |
+| E2E-EP-004 | `HostExtensionLoader.loadFromUrl` 从 ESM bundle 热加载扩展模块 | 独立打包 `.dzx` / `index.esm.js` 就绪（ep-pro-bundle 轨） | 【留待 R 回归】 |
+
+### Bugs
+
+无（`bugs.md` 为空）

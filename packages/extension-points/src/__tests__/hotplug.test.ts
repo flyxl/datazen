@@ -185,6 +185,86 @@ describe('EP hot-plug lifecycle (hotplug.test.ts)', () => {
     extensionRegistry.unregister(okPoint);
   });
 
+  it('[tester] getContext returns active context or undefined', async () => {
+    expect(loader.getContext('ctx-ext')).toBeUndefined();
+
+    const module: ExtensionModule = {
+      activate(ctx) {
+        ctx.subscriptions.push(() => {});
+      },
+    };
+    await loader.load('ctx-ext', module);
+
+    expect(loader.getContext('ctx-ext')?.extensionId).toBe('ctx-ext');
+    await loader.unload('ctx-ext');
+    expect(loader.getContext('ctx-ext')).toBeUndefined();
+  });
+
+  it('[tester] reset unloads all active extensions', async () => {
+    const module: ExtensionModule = {
+      activate(ctx) {
+        ctx.subscriptions.push(() => {});
+      },
+    };
+    await loader.load('ext-a', module);
+    await loader.load('ext-b', module);
+    expect(loader.isLoaded('ext-a')).toBe(true);
+    expect(loader.isLoaded('ext-b')).toBe(true);
+
+    await loader.reset();
+    expect(loader.isLoaded('ext-a')).toBe(false);
+    expect(loader.isLoaded('ext-b')).toBe(false);
+  });
+
+  it('[tester] unload tolerates dispose errors and still removes extension', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const module: ExtensionModule = {
+      activate(ctx) {
+        ctx.subscriptions.push(() => {
+          throw new Error('dispose failed');
+        });
+      },
+    };
+
+    await loader.load('fragile-ext', module);
+    await loader.unload('fragile-ext');
+
+    expect(loader.isLoaded('fragile-ext')).toBe(false);
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it('[tester] unregister is no-op when extension point is not registered', () => {
+    expect(() => registry.unregister(demoPoint)).not.toThrow();
+    expect(registry.isEnhanced(demoPoint)).toBe(false);
+  });
+
+  it('[tester] SafeCompartmentWrapper invokes onCircuitBreak callback', () => {
+    const crashingPoint = createExtensionPoint<{ boom(): string[] }>({
+      id: 'demo.circuit-cb',
+      name: 'Circuit CB Demo',
+      getDefault: () => ({ boom: () => [] }),
+    });
+
+    extensionRegistry.register(crashingPoint, {
+      boom: () => {
+        throw new Error('boom');
+      },
+    });
+
+    const onCircuitBreak = vi.fn();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    SafeCompartmentWrapper(
+      { point: crashingPoint, featureName: 'boom', onCircuitBreak },
+      () => extensionRegistry.get(crashingPoint).boom(),
+      [] as string[],
+    );
+
+    expect(onCircuitBreak).toHaveBeenCalledTimes(1);
+    vi.restoreAllMocks();
+  });
+
   it('sqlEditorProEP fallback is used after hot-unregister of pro implementation', () => {
     const proImpl = {
       createStatementDecorations: () => [{ tag: 'pro-marker' }],
