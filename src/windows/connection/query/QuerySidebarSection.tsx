@@ -183,7 +183,6 @@ export function QuerySidebarSection({
         ...currentPanel,
         id: newPanelId,
         title: favorite.title || currentPanel.title,
-        sql: favorite.sql,
       };
       usePanelStore.getState().addPanel(newPanel, true);
       usePanelStore.getState().updateSql(newPanelId, favorite.sql);

@@ -336,16 +336,10 @@ describe('Query Execution & Asset Experience Journeys', () => {
         id: 'panel-qry-main',
         type: 'query',
         title: 'Work in progress',
-        sql: 'SELECT * FROM drafts;',
         dbSessionId: 'sess-1',
         connectionId: 'conn-1',
-        results: [],
-        activeResultIdx: 0,
-        resultViewMode: 'table',
-        chartConfig: { chartType: 'bar', xColumn: null, yColumns: [] },
-        historySearch: '',
-        historyScopeMode: 'current',
-        pinned: false,
+        connectionName: 'Test Conn',
+        databaseType: 'postgres',
       };
 
       usePanelStore.setState({
@@ -361,6 +355,7 @@ describe('Query Execution & Asset Experience Journeys', () => {
           },
         ],
       });
+      usePanelStore.getState().updateSql('panel-qry-main', 'SELECT * FROM drafts;');
 
       // Simulate clicking on the favorite in QuerySidebarSection
       const favorite = usePanelStore.getState().queryFavorites[0];
@@ -373,11 +368,11 @@ describe('Query Execution & Asset Experience Journeys', () => {
         ...currentPanel,
         id: newPanelId,
         title: favorite.title,
-        sql: favorite.sql,
       };
 
       act(() => {
         usePanelStore.getState().addPanel(newPanel, true);
+        usePanelStore.getState().updateSql(newPanelId, favorite.sql);
         usePanelStore.getState().setActivePanel(newPanelId);
       });
 
@@ -385,13 +380,13 @@ describe('Query Execution & Asset Experience Journeys', () => {
       expect(stateAfter.panels).toHaveLength(2);
 
       // Verify the original panel's work in progress was not modified or overwritten
-      const originalPanelAfter = stateAfter.panels.find((p) => p.id === 'panel-qry-main')!;
-      expect(originalPanelAfter.sql).toBe('SELECT * FROM drafts;');
-      expect(originalPanelAfter.title).toBe('Work in progress');
+      const originalExecAfter = stateAfter.queryExec.get('panel-qry-main');
+      expect(originalExecAfter?.sql).toBe('SELECT * FROM drafts;');
 
       // Verify the new panel has the favorite SQL and title
       const newlyOpenedPanel = stateAfter.panels.find((p) => p.id === newPanelId)!;
-      expect(newlyOpenedPanel.sql).toBe(favorite.sql);
+      const newlyOpenedExec = stateAfter.queryExec.get(newPanelId);
+      expect(newlyOpenedExec?.sql).toBe(favorite.sql);
       expect(newlyOpenedPanel.title).toBe('Monthly Sales Report');
       expect(stateAfter.activePanelId).toBe(newPanelId);
     });
