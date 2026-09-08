@@ -360,6 +360,39 @@ describe('EP security gate (security.test.ts)', () => {
     }
   });
 
+  it('[tester] verifyExtensionPackage maps parseSignatureFile errors to invalid-signature', async () => {
+    const result = await verifyExtensionPackage({
+      manifest: SAMPLE_MANIFEST,
+      files: {
+        manifestContent,
+        bundleContent: SAMPLE_BUNDLE,
+        signatureContent: 'not-json',
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe('invalid-signature');
+      expect(result.reason).toContain('malformed JSON');
+    }
+  });
+
+  it('[tester] parseSignatureFile rejects invalid digest hex for bundle path', () => {
+    expect(() =>
+      parseSignatureFile(
+        JSON.stringify({
+          version: 1,
+          algorithm: 'Ed25519',
+          files: {
+            'manifest.json': { sha256: 'a'.repeat(64) },
+            'dist/index.esm.js': { sha256: 'not-valid-hex' },
+          },
+          signature: 'x',
+        }),
+      ),
+    ).toThrow(/invalid digest for dist\/index\.esm\.js/);
+  });
+
   it('verifyExtensionPackage rejects unknown signer without developer bypass', async () => {
     const foreign = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']);
     const files = {
