@@ -101,14 +101,23 @@ const WD_PORT = portArg
 const INSTANCE_COUNT = instancesArg ? parseInt(instancesArg, 10) : 1;
 const minimalDrivers =
   process.env.DATAZEN_DRIVERS === 'basic' || args.includes('--minimal-drivers');
+const isPro =
+  args.includes('--pro') ||
+  args.includes('--edition=pro') ||
+  process.env.DATAZEN_EDITION === 'pro';
+if (isPro) {
+  process.env.DATAZEN_EDITION = 'pro';
+}
 if (screenshotTrace) {
   process.env.E2E_SCREENSHOT = '1';
   fs.mkdirSync(path.join(__dirname, 'screenshots'), { recursive: true });
 }
+const proFlag = isPro ? '--edition=pro ' : '';
+const e2eProArg = isPro ? ' --edition=pro' : '';
 /** Inject drivers then build with webdriver + plugin Cargo features (see scripts/e2e-tauri-build.mjs). */
 const BUILD_CMD = minimalDrivers
-  ? 'node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs'
-  : 'node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs -- node scripts/e2e-tauri-build.mjs';
+  ? `node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs ${proFlag}--drivers=basic -- node scripts/e2e-tauri-build.mjs${e2eProArg}`
+  : `node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs ${proFlag}-- node scripts/e2e-tauri-build.mjs${e2eProArg}`;
 const wdioArgs = [];
 {
   const filtered = args.filter(
@@ -118,6 +127,9 @@ const wdioArgs = [];
       a !== '--minimal-plugins' &&
       a !== '--screenshot' &&
       a !== '--keep-app-data' &&
+      a !== '--pro' &&
+      a !== '--edition=pro' &&
+      !a.startsWith('--edition=') &&
       a !== '--port' &&
       args[i - 1] !== '--port' &&
       a !== '--instances' &&
@@ -182,6 +194,8 @@ function getAppBinaryPath() {
     'target/debug/bundle/macos/DataZen Pro.app/Contents/MacOS/datazen',
   );
   if (process.platform === 'darwin') {
+    if (isPro && fs.existsSync(proAppBundleBin)) return proAppBundleBin;
+    if (!isPro && fs.existsSync(appBundleBin)) return appBundleBin;
     if (fs.existsSync(proAppBundleBin)) return proAppBundleBin;
     if (fs.existsSync(appBundleBin)) return appBundleBin;
   }

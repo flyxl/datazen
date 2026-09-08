@@ -36,6 +36,9 @@
     "e2e": "node e2e/run.mjs",
     "e2e:minimal": "node e2e/run.mjs --minimal-drivers",
     "e2e:skip-build": "node e2e/run.mjs --skip-build",
+    "e2e:pro": "node e2e/run.mjs --pro",
+    "e2e:pro:minimal": "node e2e/run.mjs --pro --minimal-drivers",
+    "e2e:pro:skip-build": "node e2e/run.mjs --pro --skip-build",
     "e2e:parallel": "node e2e/run.mjs --skip-build --instances ${E2E_INSTANCES:-3}",
     "e2e:parallel:build": "node e2e/run.mjs --instances ${E2E_INSTANCES:-3}",
     "e2e:parallel:2": "node e2e/run.mjs --skip-build --instances 2",
@@ -82,7 +85,8 @@
     "test:scripts": "vitest run scripts/__tests__",
     "test:rust:backup-i18n": "cargo test -p datazen --lib app_data_archive && cargo test -p datazen --lib i18n_locale && cargo test -p datazen --lib store::tests",
     "prepare": "husky && node scripts/ensure-generated-drivers.mjs && node scripts/generate-builtin-locales.mjs",
-    "ci:local": "bash scripts/ci-local.sh"
+    "ci:local": "bash scripts/ci-local.sh",
+    "test:automation": "bash scripts/run-full-automation-test.sh"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",

@@ -13,7 +13,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { spawnTauri } from './ci-tauri-build.mjs';
+import { buildTauriArgs, spawnTauri } from './ci-tauri-build.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -26,7 +26,18 @@ if (!existsSync(featuresPath)) {
 
 const { features } = JSON.parse(readFileSync(featuresPath, 'utf-8'));
 const featureList = ['webdriver', ...(Array.isArray(features) ? features : [])];
-const args = ['build', '--debug', '-f', featureList.join(',')];
+
+const isPro =
+  process.argv.includes('--pro') ||
+  process.argv.includes('--edition=pro') ||
+  process.env.DATAZEN_EDITION === 'pro';
+const edition = isPro ? 'pro' : 'community';
+
+const args = buildTauriArgs({
+  edition,
+  features: featureList,
+  extraArgs: ['--debug'],
+});
 
 // Gate vite-gated E2E-only attributes (src/lib/tid.ts): the frontend build run by
 // Tauri's beforeBuildCommand inherits this env, so webdriver builds render

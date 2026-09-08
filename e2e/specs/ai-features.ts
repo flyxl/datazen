@@ -50,7 +50,12 @@ async function invokeWithRetry<T>(
 
 function getAiConfig() {
   return {
-    providerType: 'open_ai' as const,
+    providerType: (process.env.E2E_AI_PROVIDER || 'open_ai') as
+      | 'open_ai'
+      | 'anthropic'
+      | 'deepseek'
+      | 'ollama'
+      | 'custom',
     endpoint: process.env.E2E_AI_ENDPOINT || 'https://token.sensenova.cn/v1',
     apiKey: process.env.E2E_AI_API_KEY || '',
     model: process.env.E2E_AI_MODEL || 'glm-5.2',
