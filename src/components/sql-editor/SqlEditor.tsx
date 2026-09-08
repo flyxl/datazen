@@ -17,8 +17,9 @@ import {
   type MutableRefObject,
 } from 'react';
 import { EditorView, placeholder as cmPlaceholder } from '@codemirror/view';
-import { EditorState, Compartment } from '@codemirror/state';
+import { EditorState, Compartment, Transaction } from '@codemirror/state';
 import { snippet } from '@codemirror/autocomplete';
+import { useIsExtensionEnhanced, sqlEditorProEP } from '@datazen/extension-points';
 import { parseQualifiedPathParents } from '../../lib/sqlPathPrefix';
 import { toggleSqlLineComments } from '../../lib/sqlEditorContextMenu';
 import { buildSemanticModel } from './semantic/scopeModel';
@@ -113,6 +114,9 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   const statementGutterEnabled = proSettings?.statementGutter !== false;
   const tableHoverEnabled = proSettings?.tableHover !== false;
   const insertValueHintsEnabled = proSettings?.insertValueHints !== false;
+
+  // §EP hot-plug: re-render when Pro extension registers/unregisters at runtime
+  const isSqlEditorProEnhanced = useIsExtensionEnhanced(sqlEditorProEP);
 
   // ── Sync callback refs ───────────────────────────────────────────
   onChangeRef.current = onChange;
@@ -234,7 +238,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
           onExecuteSelectionRef.current?.(sql);
         },
       }),
-    [statementGutterEnabled],
+    [statementGutterEnabled, isSqlEditorProEnhanced],
   );
 
   const completionExts = useMemo(
@@ -243,7 +247,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
         { databaseType, metadataSnapshot, schema, completionQuotePolicy, translate },
         { modelRef, metadataSnapshotRef },
       ),
-    [databaseType, metadataSnapshot, schema, completionQuotePolicy, translate],
+    [databaseType, metadataSnapshot, schema, completionQuotePolicy, translate, isSqlEditorProEnhanced],
   );
 
   const intentionExts = useMemo(
@@ -252,7 +256,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
         { insertValueHints: insertValueHintsEnabled, databaseType, schema },
         { modelRef, metadataSnapshotRef },
       ),
-    [insertValueHintsEnabled, databaseType, schema],
+    [insertValueHintsEnabled, databaseType, schema, isSqlEditorProEnhanced],
   );
 
   const hoverExts = useMemo(
@@ -280,6 +284,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
       databaseType,
       database,
       schema,
+      isSqlEditorProEnhanced,
     ],
   );
 
@@ -289,12 +294,12 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
         connectionId,
         onDrop: onDropTable,
       }),
-    [connectionId, onDropTable],
+    [connectionId, onDropTable, isSqlEditorProEnhanced],
   );
 
   const linterExts = useMemo(
     () => createLinterExtensions({ databaseType, schema }, { modelRef, metadataSnapshotRef }),
-    [databaseType, schema],
+    [databaseType, schema, isSqlEditorProEnhanced],
   );
 
   // ── Editor mount ─────────────────────────────────────────────────
@@ -392,6 +397,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     if (!view) return;
     view.dispatch({
       effects: compartments.statement.reconfigure(statementExts),
+      annotations: Transaction.addToHistory.of(false),
     });
   }, [statementExts]);
 
@@ -401,6 +407,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     if (!view) return;
     view.dispatch({
       effects: compartments.completion.reconfigure(completionExts),
+      annotations: Transaction.addToHistory.of(false),
     });
   }, [completionExts]);
 
@@ -410,6 +417,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     if (!view) return;
     view.dispatch({
       effects: compartments.intention.reconfigure(intentionExts),
+      annotations: Transaction.addToHistory.of(false),
     });
   }, [intentionExts]);
 
@@ -419,6 +427,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     if (!view) return;
     view.dispatch({
       effects: compartments.hover.reconfigure(hoverExts),
+      annotations: Transaction.addToHistory.of(false),
     });
   }, [hoverExts]);
 
@@ -428,6 +437,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     if (!view) return;
     view.dispatch({
       effects: compartments.paste.reconfigure(pasteExts),
+      annotations: Transaction.addToHistory.of(false),
     });
   }, [pasteExts]);
 
@@ -437,6 +447,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     if (!view) return;
     view.dispatch({
       effects: compartments.linter.reconfigure(linterExts),
+      annotations: Transaction.addToHistory.of(false),
     });
   }, [linterExts]);
 
@@ -447,6 +458,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
       if (!view) return;
       view.dispatch({
         effects: themeCompartment.current.reconfigure(themeExtensions()),
+        annotations: Transaction.addToHistory.of(false),
       });
     };
     document.addEventListener('datazen:theme-pack-changed', reconfigure);
@@ -467,6 +479,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
           defaultTable,
         }),
       ),
+      annotations: Transaction.addToHistory.of(false),
     });
   }, [schema, databaseType, namespaceLoading, defaultSchema, defaultTable]);
 

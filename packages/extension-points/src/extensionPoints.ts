@@ -65,13 +65,21 @@ export class ExtensionRegistry {
   }
 
   /**
-   * 显式反注册扩展点实现
+   * 显式反注册扩展点实现（已反注册时静默 no-op）
    */
   unregister<T>(point: ExtensionPoint<T>): void {
-    if (this.implementations.has(point.id)) {
-      this.implementations.delete(point.id);
-      this.notify(point.id);
+    if (!this.implementations.has(point.id)) {
+      return;
     }
+    this.implementations.delete(point.id);
+    this.notify(point.id);
+  }
+
+  /**
+   * 订阅指定扩展点并返回退订函数（subscribe 的 point 对象重载）
+   */
+  subscribePoint<T>(point: ExtensionPoint<T>, listener: () => void): () => void {
+    return this.subscribe(point.id, listener);
   }
 
   /**
