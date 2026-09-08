@@ -75,6 +75,8 @@ export function useQueryExecutionGate({
   const pendingExecuteRef = useRef<PendingExecute | null>(null);
   const autoCommit = useSettingsStore((s) => s.settings.autoCommit);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
+  const sqlExecutionStrategy =
+    useSettingsStore((s) => s.settings?.sqlExecutionStrategy) ?? 'current_statement';
   const storeExecuteQuery = usePanelStore((s) => s.executeQuery);
   const storeExecuteSelection = usePanelStore((s) => s.executeSelection);
 
@@ -335,10 +337,9 @@ export function useQueryExecutionGate({
         if (activeSel) {
           targetSql = activeSel;
           effectiveKind = 'selection';
-        } else {
-          const strategy =
-            useSettingsStore.getState().settings.sqlExecutionStrategy ?? 'current_statement';
-          const cursorOffset = editorRef.current?.getCursorOffset?.() ?? 0;
+        } else if (typeof editorRef.current?.getCursorOffset === 'function') {
+          const strategy = sqlExecutionStrategy;
+          const cursorOffset = editorRef.current.getCursorOffset();
           const resolved = resolveExecutionTarget({
             doc: sql,
             cursorOffset,
@@ -446,6 +447,7 @@ export function useQueryExecutionGate({
       panelId,
       boundPayload,
       paramValues,
+      sqlExecutionStrategy,
     ],
   );
 

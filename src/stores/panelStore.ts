@@ -99,6 +99,7 @@ interface PanelActions {
   executeSelection: (panelId: string, sql: string, params?: BindParams) => Promise<void>;
   cancelQuery: (panelId: string) => Promise<void>;
   setActiveResult: (panelId: string, idx: number) => void;
+  togglePinResult: (panelId: string, idx: number) => void;
   setResultDetailRow: (panelId: string, index: number | null) => void;
   updateResultCell: (
     panelId: string,
@@ -354,6 +355,13 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
 
   setActiveResult: (panelId, idx) => {
     set((s) => ({ queryExec: patchExec(s.queryExec, panelId, { activeResultIdx: idx }) }));
+  },
+
+  togglePinResult: (panelId, idx) => {
+    const exec = get().queryExec.get(panelId);
+    if (!exec || !exec.results[idx]) return;
+    const newResults = exec.results.map((r, i) => (i === idx ? { ...r, pinned: !r.pinned } : r));
+    set((s) => ({ queryExec: patchExec(s.queryExec, panelId, { results: newResults }) }));
   },
 
   setResultDetailRow: (panelId, index) => {

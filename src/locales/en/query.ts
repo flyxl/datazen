@@ -317,5 +317,14 @@ const pack = {
     'Multiple statements detected. Please select the execution scope:',
   'query.executionStrategy.runCurrent': 'Run Current Statement (Lines {from}-{to})',
   'query.executionStrategy.runEntire': 'Run Entire Script ({count} statements)',
+  'query.openInNewTab': 'Open in New Tab',
+  'query.pinTab': 'Pin Tab',
+  'query.unpinTab': 'Unpin Tab',
+  'query.settingsImportExport': 'Snippets & Editor Settings',
+  'query.exportSettings': 'Export Settings (JSON)',
+  'query.importSettings': 'Import Settings (JSON)',
+  'query.exportSettingsSuccess': 'Settings exported to clipboard',
+  'query.importSettingsSuccess': 'Settings imported successfully',
+  'query.importSettingsInvalid': 'Invalid settings JSON format',
 } as const;
 export default pack;

@@ -142,6 +142,7 @@ export interface StatementResult {
   rowsAffected?: number;
   executionTimeMs: number;
   truncated?: boolean;
+  pinned?: boolean;
 }
 
 export interface MultiQueryResult {

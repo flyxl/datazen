@@ -513,6 +513,7 @@ export function QueryPanel({
             onApplyFixSql={workflows.handleApplyFixSql}
             onRetry={workflows.handleRetry}
             onSetActiveResult={(idx) => setActiveResult(panelId, idx)}
+            onTogglePinResult={(idx) => usePanelStore.getState().togglePinResult(panelId, idx)}
             onSetResultViewMode={(mode) => setResultViewModeStore(panelId, mode)}
             onChartConfigChange={(cfg) => setChartConfig(panelId, cfg)}
             onRowDetail={(rowIndex) => setResultDetailRow(panelId, rowIndex)}

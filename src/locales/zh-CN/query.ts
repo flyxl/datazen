@@ -311,5 +311,14 @@ const pack = {
   'query.executionStrategy.askDesc': '检测到脚本包含多条语句，请选择要执行的范围：',
   'query.executionStrategy.runCurrent': '仅执行当前语句（第 {from}-{to} 行）',
   'query.executionStrategy.runEntire': '执行整段脚本（共 {count} 条语句）',
+  'query.openInNewTab': '在新标签页打开',
+  'query.pinTab': '固定结果标签',
+  'query.unpinTab': '取消固定',
+  'query.settingsImportExport': '代码片段与编辑器配置',
+  'query.exportSettings': '导出配置 (JSON)',
+  'query.importSettings': '导入配置 (JSON)',
+  'query.exportSettingsSuccess': '配置已成功复制到剪贴板',
+  'query.importSettingsSuccess': '配置导入成功',
+  'query.importSettingsInvalid': '无效的配置 JSON 格式',
 } as const;
 export default pack;

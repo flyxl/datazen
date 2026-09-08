@@ -116,11 +116,15 @@ export async function runStreamingQuery(
   params?: BindParams,
 ): Promise<void> {
   const runId = ++streamRunCounter;
+  const currentExec = getExec().get(panelId);
+  const pinnedResults = (currentExec?.results ?? []).filter((r) => r.pinned);
+  const baseOffset = pinnedResults.length;
+
   setExec(
     transitionExec(
       patchExec(getExec(), panelId, {
-        results: [],
-        activeResultIdx: 0,
+        results: pinnedResults,
+        activeResultIdx: baseOffset,
         streamRunId: runId,
         executionTimeMs: null,
         executionId: null,
@@ -133,7 +137,7 @@ export async function runStreamingQuery(
   const onEvent = (event: QueryStreamEvent) => {
     const exec = getExec().get(panelId);
     if (!exec || exec.streamRunId !== runId) return;
-    const updated = applyQueryStreamEvent(exec, event);
+    const updated = applyQueryStreamEvent(exec, event, baseOffset);
     setExec(patchExec(getExec(), panelId, updated));
   };
 

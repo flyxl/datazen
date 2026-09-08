@@ -3,12 +3,14 @@ import type { NativeMenuItemDef } from './nativeContextMenu';
 /** Caller-supplied labels (typically from `t()`). No hardcoded locale strings here. */
 export type QuerySidebarFavoriteLabels = {
   applySql: string;
+  openInNewTab?: string;
   copySql: string;
   delete: string;
 };
 
 export type QuerySidebarFavoriteHandlers = {
   onApplySql?: () => void;
+  onOpenInNewTab?: () => void;
   onCopySql?: () => void;
   onDelete?: () => void;
 };
@@ -70,6 +72,7 @@ export function buildFavoriteSidebarContextMenuItems(
 ): NativeMenuItemDef[] {
   const { labels, handlers } = args;
   return push(
+    item('open-in-new-tab', labels.openInNewTab, handlers.onOpenInNewTab),
     item('apply-sql', labels.applySql, handlers.onApplySql),
     item('copy-sql', labels.copySql, handlers.onCopySql),
     item('delete', labels.delete, handlers.onDelete),

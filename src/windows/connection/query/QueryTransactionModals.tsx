@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Download, Gauge, Loader2 } from 'lucide-react';
+import { Download, Gauge, Loader2, Pin } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { Dialog } from '../../../components/ui/Dialog';
 import { CopyableError } from '../../../components/ui/CopyableError';
@@ -283,6 +283,7 @@ export interface QueryResultsPaneProps {
   onApplyFixSql: (sql: string) => void;
   onRetry: () => void;
   onSetActiveResult: (idx: number) => void;
+  onTogglePinResult?: (idx: number) => void;
   onSetResultViewMode: (mode: 'table' | 'chart') => void;
   onChartConfigChange: (cfg: ChartConfig) => void;
   onRowDetail: (rowIndex: number | null) => void;
@@ -321,6 +322,7 @@ export function QueryResultsPane({
   onApplyFixSql,
   onRetry,
   onSetActiveResult,
+  onTogglePinResult,
   onSetResultViewMode,
   onChartConfigChange,
   onRowDetail,
@@ -439,18 +441,45 @@ export function QueryResultsPane({
                     key={idx}
                     type="button"
                     className={cn(
-                      'relative px-3 py-1.5 text-xs transition-colors',
+                      'group relative flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
                       idx === activeResultIdx
                         ? 'text-fg font-medium'
                         : 'text-fg-muted hover:text-fg-secondary',
                     )}
                     onClick={() => onSetActiveResult(idx)}
                   >
-                    {t('query.result')} {idx + 1}
-                    <span className="ml-1.5 text-[10px] text-fg-muted">
+                    <span>
+                      {t('query.result')} {idx + 1}
+                    </span>
+                    <span className="text-[10px] text-fg-muted">
                       ({r.rows.length} {t('common.rows')}
                       {running ? '' : `, ${r.executionTimeMs}ms`})
                     </span>
+                    {onTogglePinResult && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        className={cn(
+                          'ml-1 rounded p-0.5 transition hover:bg-surface-raised',
+                          r.pinned
+                            ? 'text-accent opacity-100'
+                            : 'text-fg-muted opacity-0 group-hover:opacity-100',
+                        )}
+                        title={r.pinned ? t('query.unpinTab') : t('query.pinTab')}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onTogglePinResult(idx);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.stopPropagation();
+                            onTogglePinResult(idx);
+                          }
+                        }}
+                      >
+                        <Pin className={cn('h-3 w-3', r.pinned && 'fill-accent')} />
+                      </span>
+                    )}
                     <span
                       className={cn(
                         'absolute bottom-0 left-0 right-0 h-0.5 bg-accent transition-opacity duration-300',

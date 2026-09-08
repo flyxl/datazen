@@ -415,8 +415,18 @@ describe('[tester] useQueryExecutionGate', () => {
       setupConnectionStore();
       setupPanelStore('p1', multiSql);
 
+      const editorRef = {
+        current: {
+          getSelection: () => '',
+          getCursorOffset: () => 0,
+          toggleLineComment: vi.fn(),
+          insertAt: vi.fn(),
+        },
+      };
+
       const { result } = renderGate({
         sql: multiSql,
+        editorRef: editorRef as any,
       });
 
       await act(async () => {

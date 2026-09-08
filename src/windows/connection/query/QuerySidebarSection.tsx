@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { Trash2 } from 'lucide-react';
 import { usePanelStore } from '../../../stores/panelStore';
+import { nextPanelId, type QueryPanel } from '../../../stores/panelTypes';
 import { useSchemaStore } from '../../../stores/schemaStore';
 import { useI18n } from '../../../hooks/useI18n';
 import { showNativeContextMenu } from '../../../lib/nativeContextMenu';
@@ -170,18 +171,40 @@ export function QuerySidebarSection({
     void navigator.clipboard.writeText(sql);
   }, []);
 
+  const handleOpenFavoriteInNewTab = useCallback(
+    (favorite: { id: string; title: string; sql: string }) => {
+      const currentPanel = usePanelStore.getState().panels.find((p) => p.id === panelId);
+      if (!currentPanel || currentPanel.type !== 'query') {
+        updateSql(panelId, favorite.sql);
+        return;
+      }
+      const newPanelId = nextPanelId('qry');
+      const newPanel: QueryPanel = {
+        ...currentPanel,
+        id: newPanelId,
+        title: favorite.title || currentPanel.title,
+      };
+      usePanelStore.getState().addPanel(newPanel, true);
+      usePanelStore.getState().updateSql(newPanelId, favorite.sql);
+      usePanelStore.getState().setActivePanel(newPanelId);
+    },
+    [panelId, updateSql],
+  );
+
   const handleFavoriteContextMenu = useCallback(
-    (e: ReactMouseEvent, favorite: { id: string; sql: string }) => {
+    (e: ReactMouseEvent, favorite: { id: string; title: string; sql: string }) => {
       e.preventDefault();
       e.stopPropagation();
       void showNativeContextMenu(
         buildFavoriteSidebarContextMenuItems({
           labels: {
+            openInNewTab: t('query.openInNewTab'),
             applySql: t('query.applySql'),
             copySql: t('common.copySql'),
             delete: t('common.delete'),
           },
           handlers: {
+            onOpenInNewTab: () => handleOpenFavoriteInNewTab(favorite),
             onApplySql: () => updateSql(panelId, favorite.sql),
             onCopySql: () => copySqlToClipboard(favorite.sql),
             onDelete: () => {
@@ -192,7 +215,7 @@ export function QuerySidebarSection({
         { x: e.clientX, y: e.clientY },
       );
     },
-    [panelId, t, updateSql, copySqlToClipboard, deleteFavorite],
+    [handleOpenFavoriteInNewTab, panelId, t, updateSql, copySqlToClipboard, deleteFavorite],
   );
 
   const handleHistoryContextMenu = useCallback(
@@ -292,7 +315,8 @@ export function QuerySidebarSection({
                 <button
                   type="button"
                   className="min-w-0 flex-1 text-left"
-                  onClick={() => updateSql(panelId, f.sql)}
+                  onClick={() => handleOpenFavoriteInNewTab(f)}
+                  title={t('query.openInNewTab')}
                 >
                   <div className="truncate text-xs font-medium text-fg">{f.title}</div>
                   <div className="mt-0.5 truncate font-mono text-[11px] text-fg-muted">{f.sql}</div>

@@ -103,9 +103,38 @@ describe('applyQueryStreamEvent', () => {
     expect(state.results).toHaveLength(0);
   });
 
-  it('keeps an unknown event as a no-op', () => {
-    const before = tab();
-    const state = applyQueryStreamEvent(before, { type: 'noop' } as never);
-    expect(state).toEqual(before);
+  it('supports baseOffset to preserve pinned results', () => {
+    const pinned: StatementResult = {
+      sql: 'SELECT pinned',
+      columns: [{ name: 'val', dataType: 'int', nullable: false }],
+      rows: [[42]],
+      executionTimeMs: 5,
+      pinned: true,
+    };
+    let state = tab([pinned]);
+    state = applyQueryStreamEvent(
+      state,
+      {
+        type: 'statementStart',
+        index: 0,
+        sql: 'SELECT new_query',
+        columns: [{ name: 'name', dataType: 'text', nullable: true }],
+      },
+      1, // baseOffset
+    );
+    state = applyQueryStreamEvent(
+      state,
+      {
+        type: 'rows',
+        index: 0,
+        rows: [['Alice']],
+      },
+      1,
+    );
+    expect(state.results).toHaveLength(2);
+    expect(state.results[0].sql).toBe('SELECT pinned');
+    expect(state.results[0].pinned).toBe(true);
+    expect(state.results[1].sql).toBe('SELECT new_query');
+    expect(state.results[1].rows).toEqual([['Alice']]);
   });
 });

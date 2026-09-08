@@ -22,16 +22,18 @@ function emptyStatement(sql: string): StatementResult {
 export function applyQueryStreamEvent<T extends StreamableQueryTab>(
   tab: T,
   event: QueryStreamEvent,
+  baseOffset: number = 0,
 ): T {
   switch (event.type) {
     case 'executionStarted':
       return { ...tab, executionId: event.executionId };
     case 'statementStart': {
+      const targetIndex = event.index + baseOffset;
       const results = tab.results.slice();
-      while (results.length <= event.index) {
+      while (results.length <= targetIndex) {
         results.push(emptyStatement(''));
       }
-      results[event.index] = {
+      results[targetIndex] = {
         sql: event.sql,
         columns: event.columns,
         rows: [],
@@ -41,16 +43,16 @@ export function applyQueryStreamEvent<T extends StreamableQueryTab>(
       return { ...tab, results, error: null };
     }
     case 'rows': {
+      const targetIndex = event.index + baseOffset;
       const results = tab.results.map((result, index) =>
-        index === event.index
-          ? { ...result, rows: result.rows.concat(event.rows) }
-          : result,
+        index === targetIndex ? { ...result, rows: result.rows.concat(event.rows) } : result,
       );
       return { ...tab, results };
     }
     case 'statementEnd': {
+      const targetIndex = event.index + baseOffset;
       const results = tab.results.map((result, index) =>
-        index === event.index
+        index === targetIndex
           ? {
               ...result,
               rowsAffected: event.rowsAffected,

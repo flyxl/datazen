@@ -925,9 +925,13 @@ describe('[tester] query/QuerySidebarSection favorites', () => {
     } as Partial<ReturnType<typeof usePanelStore.getState>>);
   });
 
-  it('renders favorites and applies SQL on click', () => {
+  it('renders favorites and opens a new tab with SQL on click', () => {
     const updateSql = vi.fn();
-    usePanelStore.setState({ updateSql } as Partial<ReturnType<typeof usePanelStore.getState>>);
+    const addPanel = vi.fn();
+    usePanelStore.setState({
+      updateSql,
+      addPanel,
+    } as Partial<ReturnType<typeof usePanelStore.getState>>);
 
     render(
       <QuerySidebarSection
@@ -941,7 +945,11 @@ describe('[tester] query/QuerySidebarSection favorites', () => {
 
     expect(screen.getByText('Daily')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Daily'));
-    expect(updateSql).toHaveBeenCalledWith('p1', 'SELECT 1');
+    expect(addPanel).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Daily', type: 'query' }),
+      true,
+    );
+    expect(updateSql).toHaveBeenCalledWith(expect.stringMatching(/^panel-qry-/), 'SELECT 1');
   });
 
   it('deletes favorite via trash button', () => {
