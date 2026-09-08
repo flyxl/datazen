@@ -4,7 +4,7 @@
 > Branch: `feature/ep-packaging-ci`
 > Base branch: `feat/sql-editor-clean`
 > LastHeartbeat: 2026-09-08T18:36:00+08:00
-> Coder Commit: `pending`
+> Coder Commit: `56d62ae44`
 > Tester Commit: `pending`
 
 ---
