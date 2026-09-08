@@ -7,7 +7,7 @@
 //! 1. User override for (driver_type, scenario) — exact match
 //! 2. User override for (*, scenario) — global override
 //! 3. Driver-specific prompt from `DatabaseDriver::prompt_overrides()`
-//! 4. Built-in default from resource files (`resources/prompts/*.txt`)
+//! 4. Built-in default from resource files (`resources/prompts/*.md`)
 //! 5. Embedded English fallback compiled into the binary
 
 use std::collections::HashMap;
@@ -140,7 +140,11 @@ impl PromptResolver {
         if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().map(|e| e == "txt").unwrap_or(false) {
+                if path
+                    .extension()
+                    .map(|e| e == "md" || e == "txt")
+                    .unwrap_or(false)
+                {
                     if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                         if let Ok(content) = std::fs::read_to_string(&path) {
                             templates.insert(stem.to_string(), content);
@@ -314,7 +318,7 @@ impl PromptResolver {
     }
 }
 
-/// Convert a `PromptScenario` to its file-system key (matches `.txt` file stems).
+/// Convert a `PromptScenario` to its file-system key (matches `.md` / `.txt` file stems).
 fn scenario_to_key(scenario: PromptScenario) -> String {
     serde_json::to_value(&scenario)
         .ok()
@@ -325,25 +329,25 @@ fn scenario_to_key(scenario: PromptScenario) -> String {
 /// Embedded English defaults compiled into the binary as a last-resort fallback.
 fn embedded_default(scenario: PromptScenario) -> &'static str {
     match scenario {
-        PromptScenario::Nl2Sql => include_str!("../../resources/prompts/nl2sql.txt"),
-        PromptScenario::Diagnose => include_str!("../../resources/prompts/diagnose.txt"),
-        PromptScenario::NlFilter => include_str!("../../resources/prompts/nl_filter.txt"),
+        PromptScenario::Nl2Sql => include_str!("../../resources/prompts/nl2sql.md"),
+        PromptScenario::Diagnose => include_str!("../../resources/prompts/diagnose.md"),
+        PromptScenario::NlFilter => include_str!("../../resources/prompts/nl_filter.md"),
         PromptScenario::SchemaDocSelectTables => {
-            include_str!("../../resources/prompts/schema_doc_select_tables.txt")
+            include_str!("../../resources/prompts/schema_doc_select_tables.md")
         }
-        PromptScenario::SchemaDoc => include_str!("../../resources/prompts/schema_doc.txt"),
+        PromptScenario::SchemaDoc => include_str!("../../resources/prompts/schema_doc.md"),
         PromptScenario::ConnectionDiagnose => {
-            include_str!("../../resources/prompts/connection_diagnose.txt")
+            include_str!("../../resources/prompts/connection_diagnose.md")
         }
         PromptScenario::QuerySummary => {
-            include_str!("../../resources/prompts/query_summary.txt")
+            include_str!("../../resources/prompts/query_summary.md")
         }
         PromptScenario::ExplainAnalysis => {
-            include_str!("../../resources/prompts/explain_analysis.txt")
+            include_str!("../../resources/prompts/explain_analysis.md")
         }
-        PromptScenario::Chat => include_str!("../../resources/prompts/chat.txt"),
+        PromptScenario::Chat => include_str!("../../resources/prompts/chat.md"),
         PromptScenario::WorkflowGenerate => {
-            include_str!("../../resources/prompts/workflow_generate.txt")
+            include_str!("../../resources/prompts/workflow_generate.md")
         }
     }
 }
@@ -486,7 +490,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let prompts_dir = tmp.path().join("prompts");
         std::fs::create_dir_all(&prompts_dir).unwrap();
-        std::fs::write(prompts_dir.join("chat.txt"), "Custom chat prompt from file").unwrap();
+        std::fs::write(prompts_dir.join("chat.md"), "Custom chat prompt from file").unwrap();
 
         let data_dir = tmp.path().join("data");
         let resolver = PromptResolver::new(&data_dir, Some(prompts_dir));
@@ -500,7 +504,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let prompts_dir = tmp.path().join("prompts");
         std::fs::create_dir_all(&prompts_dir).unwrap();
-        std::fs::write(prompts_dir.join("nl2sql.txt"), "File-backed NL2SQL").unwrap();
+        std::fs::write(prompts_dir.join("nl2sql.md"), "File-backed NL2SQL").unwrap();
 
         let data_dir = tmp.path().join("data");
         let resolver = PromptResolver::new(&data_dir, Some(prompts_dir));

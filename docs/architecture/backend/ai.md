@@ -95,34 +95,34 @@ pub trait AiProvider: Send + Sync {
 
 ### 1.7 PromptResolver
 
-AI Prompt 模板管理（替代原 `PromptBuilder`），支持多层覆盖和多语言：
+AI Prompt 模板管理（替代原 `PromptBuilder`），统一使用英文系统 Prompt，并通过注入强约束语言指令输出当前应用设置的语言：
 
 **解析优先级**：
 1. 用户覆盖 — `prompt_overrides.json`（通过设置界面修改，按场景存储）
 2. 驱动覆盖 — `DatabaseDriver::prompt_overrides()`（运行时按连接的驱动类型动态应用）
-3. 资源文件模板 — `resources/prompts/{lang}/*.txt`（运行时按语言加载）
-4. 编译时嵌入 — `embedded_default()`（仅 fallback 到英文模板）
+3. 资源文件模板 — `resources/prompts/*.md`（运行时加载）
+4. 编译时嵌入 — `embedded_default()`（编译期二进制兜底）
 
-**语言 Fallback 链**：请求语言 → `zh-CN` → `en` → 编译时英文嵌入
+**语言控制机制**：Prompt 模板统一保持英文以最大化模型指令遵循与工具调用稳定性；自然语言输出通过 `inject_language_hint` 动态注入系统指令，强制模型输出当前应用配置语言（如简体中文、英文等）。
 
 **Prompt 场景**（`PromptScenario`枚举）：
 
 | 场景 | 模板文件 | 用途 |
 |------|---------|------|
-| `Nl2Sql` | `nl2sql.txt` | 自然语言转 SQL |
-| `Diagnose` | `diagnose.txt` | SQL 错误诊断 |
-| `NlFilter` | `nl_filter.txt` | 自然语言表筛选 |
-| `SchemaDocSelectTables` | `schema_doc_select_tables.txt` | 选择 Schema 文档表 |
-| `SchemaDoc` | `schema_doc.txt` | 生成 Schema 文档 |
-| `ConnectionDiagnose` | `connection_diagnose.txt` | 连接故障排查 |
-| `QuerySummary` | `query_summary.txt` | 查询历史分析 |
-| `ExplainAnalysis` | `explain_analysis.txt` | EXPLAIN 计划分析 |
-| `Chat` | `chat.txt` | AI 侧边栏对话 |
-| `WorkflowGenerate` | `workflow_generate.txt` | AI 辅助 Workflow 生成 |
+| `Nl2Sql` | `nl2sql.md` | 自然语言转 SQL |
+| `Diagnose` | `diagnose.md` | SQL 错误诊断 |
+| `NlFilter` | `nl_filter.md` | 自然语言表筛选 |
+| `SchemaDocSelectTables` | `schema_doc_select_tables.md` | 选择 Schema 文档表 |
+| `SchemaDoc` | `schema_doc.md` | 生成 Schema 文档 |
+| `ConnectionDiagnose` | `connection_diagnose.md` | 连接故障排查 |
+| `QuerySummary` | `query_summary.md` | 查询历史分析 |
+| `ExplainAnalysis` | `explain_analysis.md` | EXPLAIN 计划分析 |
+| `Chat` | `chat.md` | AI 侧边栏对话 |
+| `WorkflowGenerate` | `workflow_generate.md` | AI 辅助 Workflow 生成 |
 
-**模板存放位置**：`src-tauri/resources/prompts/{en,zh-CN}/`
+**模板存放位置**：`src-tauri/resources/prompts/*.md`
 
-**运行时加载**：启动时异步加载（`tokio::spawn`），切换语言时重新加载。
+**运行时加载**：首次使用 AI 时加载至内存缓存。
 
 ### 1.8 AI 流式响应
 
