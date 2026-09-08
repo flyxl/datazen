@@ -33,3 +33,37 @@ export * from './i18n';
 
 // SQL Editor Contracts & Semantics
 export * from './sql-editor';
+
+// EP security gate (signature verification & trust policies)
+export {
+  EXTENSION_POINTS_VERSION,
+  OFFICIAL_EP_PUBLIC_KEY_SPKI_B64,
+  UNVERIFIED_EXTENSION_LABEL,
+  checkEngineCompatibility,
+  normalizeTrustedPublicKey,
+  parseTrustedPublicKeys,
+  readAllowUnverifiedFromEnv,
+  sha256Hex,
+  verifyExtensionPackage,
+  verifySignatureWithPublicKey,
+  type ExtensionManifest,
+  type ExtensionManifestEngines,
+  type ExtensionPackageFiles,
+  type ExtensionSecurityConfig,
+  type ExtensionSourceKind,
+  type ExtensionTrustSource,
+  type ExtensionVerificationFailure,
+  type ExtensionVerificationResult,
+  type ExtensionVerificationSuccess,
+  type VerifyExtensionOptions,
+} from './security';
+export {
+  EP_SIGNATURE_ALGORITHM,
+  EP_SIGNATURE_VERSION,
+  EP_SIGNED_FILE_PATHS,
+  buildSignaturePayload,
+  parseSignatureFile,
+  type EpFileDigest,
+  type EpSignatureFile,
+  type EpSignedFilePath,
+} from './signaturePayload';
