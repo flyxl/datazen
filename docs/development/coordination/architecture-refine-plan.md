@@ -4,7 +4,7 @@
 > **分类体系**：Driver / Theme / EP (Host Extension Point) / Workspace App + `@datazen/ui`  
 > **Playbook**：`docs/development/subagent-dev-playbook.md` + `docs/development/subagent/`（Coordinator/Coder/Tester/Rescuer）  
 > **集成分支**：`feat/sql-editor`  
-> **私有增强仓**：`https://github.com/flyxl/datazen-extension-sql-pro`  
+> **私有增强仓**：`https://github.com/flyxl/datazen-extension-sql-editor-pro`  
 > **协调总览**：`docs/development/coordination/hub.md`（只读生成物，`node scripts/aggregate-hub.mjs`）  
 > **轨目录**：`docs/development/coordination/tracks/<track-id>/`（各轨仅维护本轨 `progress.md` + `bugs.md`）
 
@@ -35,7 +35,7 @@
 
 | Track | 任务摘要 | 主要写路径 | 状态 |
 |-------|----------|------------|------|
-| **arch-p2-pro** | 增强 SQLEditor 剥离与私有仓推送：将 intentions/hover/signatureHelp/joinCompletion 移至 flyxl/datazen-extension-sql-pro 私有仓，Host 仅留纯净 Fallback 扩展点插槽 | `flyxl/datazen-extension-sql-pro`、`src/components/sql-editor/` | **已完成** |
+| **arch-p2-pro** | 增强 SQLEditor 剥离与私有仓推送：将 intentions/hover/signatureHelp/joinCompletion 移至 flyxl/datazen-extension-sql-editor-pro 私有仓，Host 仅留纯净 Fallback 扩展点插槽 | `flyxl/datazen-extension-sql-editor-pro`、`src/components/sql-editor/` | **已完成** |
 | **arch-p2-callers** | 调用方迁移：驱动包改用 @datazen/driver-sdk 与 @datazen/ui，更新 resolve-drivers.mjs 脚本与 Host 导入 | `packages/drivers/*/ui/`、`scripts/resolve-drivers.mjs`、`src/` | **已完成** |
 
 ### Wave 3：历史净化与规范收口（1 轨串行）

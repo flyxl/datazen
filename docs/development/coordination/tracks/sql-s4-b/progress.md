@@ -14,5 +14,5 @@
 - `src/components/sql-editor/completion/schemaCompletion.ts` — Alias-aware schema completion: `alias.` resolves to that relation's columns with type/nullable/comment; ambiguous = no guess.
 
 ### Pro Extension Transferred
-- FK JOIN completion & Signature Help have been moved to private repo `https://github.com/flyxl/datazen-extension-sql-pro`.
+- FK JOIN completion & Signature Help have been moved to private repo `https://github.com/flyxl/datazen-extension-sql-editor-pro`.
 - Host uses `sqlEditorProEP` fallback.

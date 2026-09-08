@@ -10,6 +10,6 @@
 
 ### Pro Features Transferred
 Paste as IN, Drop Caret, and Delimited Values parsing have been moved to independent private repository:
-`https://github.com/flyxl/datazen-extension-sql-pro`
+`https://github.com/flyxl/datazen-extension-sql-editor-pro`
 
 Host uses `sqlEditorProEP` fallback.

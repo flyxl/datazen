@@ -340,7 +340,7 @@ export function useIsExtensionEnhanced<T>(point: ExtensionPoint<T>): boolean;
 
 ```
 
-**独立闭源扩展仓库（例如 `datazen-extension-sql-pro`）的开发范式**：
+**独立闭源扩展仓库（例如 `datazen-extension-sql-editor-pro`）的开发范式**：
 
 ```typescript
 
@@ -565,7 +565,7 @@ my-theme/
 2. **阶段二 (公共设计系统)**：`packages/ui` 建立并导出原子组件与 cn 工具。
 3. **阶段三 (调用方平滑替换)**：驱动包已切至 `@datazen/driver-sdk` 与 `@datazen/ui`，`resolve-drivers.mjs` codegen 已对齐。
 4. **阶段四 (私有增强仓与宿主净化)**：
-   - 私有增强仓 `https://github.com/flyxl/datazen-extension-sql-pro` 创建并推送。
+   - 私有增强仓 `https://github.com/flyxl/datazen-extension-sql-editor-pro` 创建并推送。
    - 宿主 `datazen` 仓库完全净化，仅留纯净 open-source fallback 扩展点。
    - `AGENTS.md`、`LICENSE` linking exception 均已同步。
    - 全量回归测试（Vitest、Rust、Driver tests、tsc）均 100% 通过。

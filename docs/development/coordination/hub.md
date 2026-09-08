@@ -28,7 +28,7 @@
 | arch-p1-sdk | `packages/driver-sdk/`、`packages/extension-points/`、`packages/app-sdk/`、`tsconfig.json` | 未开始 | — | — | — |
 | arch-p1-ui | `packages/ui/`、`tsconfig.json`、`vite.config.ts` | 未开始 | — | — | — |
 | arch-p2-callers | `packages/drivers/*/ui/`、`scripts/resolve-drivers.mjs`、`src/` | 未开始 | — | — | — |
-| arch-p2-pro | `flyxl/datazen-extension-sql-pro`、`src/components/sql-editor/` | 未开始 | — | — | — |
+| arch-p2-pro | `flyxl/datazen-extension-sql-editor-pro`、`src/components/sql-editor/` | 未开始 | — | — | — |
 | sql-s4-b | — | 未开始 | — | — | — |
 | sql-s4-c | — | 未开始 | — | — | — |
 | sql-s4-d | — | 未开始 | — | — | — |
