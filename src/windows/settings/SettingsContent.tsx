@@ -149,89 +149,125 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
 
     return (
       <div className="space-y-6 pt-4 border-t border-edge">
-        {list.map((contrib) => (
-          <div
-            key={contrib.extensionId}
-            className="space-y-4"
-            data-testid={`settings-contrib-${contrib.extensionId}`}
-          >
-            {(contrib.groupTitle || contrib.groupDescription) && (
-              <div>
-                {contrib.groupTitle && (
-                  <h4 className="text-sm font-semibold text-fg">{contrib.groupTitle}</h4>
-                )}
-                {contrib.groupDescription && (
-                  <p className="text-xs text-fg-muted mt-0.5">{contrib.groupDescription}</p>
-                )}
+        {list.map((contrib) => {
+          const extVals =
+            (settings.pluginSettings?.[contrib.extensionId] as
+              | Record<string, unknown>
+              | undefined) ?? {};
+
+          if (contrib.renderGroup) {
+            return (
+              <div
+                key={contrib.extensionId}
+                className="space-y-4"
+                data-testid={`settings-contrib-${contrib.extensionId}`}
+              >
+                {contrib.renderGroup({
+                  values: extVals,
+                  updateSetting: (key, val) => updatePluginSetting(contrib.extensionId, key, val),
+                  items: contrib.items,
+                })}
               </div>
-            )}
-            <div className="space-y-3">
-              {contrib.items.map((item) => {
-                const extVals =
-                  (settings.pluginSettings?.[contrib.extensionId] as
-                    | Record<string, unknown>
-                    | undefined) ?? {};
-                const currentValue = extVals[item.key] ?? item.defaultValue;
+            );
+          }
 
-                if (item.type === 'boolean') {
-                  return (
-                    <div key={item.key} className="space-y-1">
-                      <ToggleRow
-                        label={item.label}
-                        checked={Boolean(currentValue)}
-                        onChange={(v) => updatePluginSetting(contrib.extensionId, item.key, v)}
-                      />
-                      {item.hint && <p className="text-xs text-fg-muted pl-1">{item.hint}</p>}
-                    </div>
-                  );
-                }
+          return (
+            <div
+              key={contrib.extensionId}
+              className="space-y-4"
+              data-testid={`settings-contrib-${contrib.extensionId}`}
+            >
+              {(contrib.groupTitle || contrib.groupDescription) && (
+                <div>
+                  {contrib.groupTitle && (
+                    <h4 className="text-sm font-semibold text-fg">{contrib.groupTitle}</h4>
+                  )}
+                  {contrib.groupDescription && (
+                    <p className="text-xs text-fg-muted mt-0.5">{contrib.groupDescription}</p>
+                  )}
+                </div>
+              )}
+              <div className="space-y-3">
+                {(contrib.items ?? []).map((item) => {
+                  const currentValue = extVals[item.key] ?? item.defaultValue;
 
-                if (item.type === 'select' && item.options) {
-                  return (
-                    <SettingRow key={item.key} label={item.label} hint={item.hint}>
-                      <Select
-                        value={String(currentValue)}
-                        options={item.options.map((opt) => ({
-                          value: String(opt.value),
-                          label: opt.label,
-                        }))}
-                        onChange={(v) => updatePluginSetting(contrib.extensionId, item.key, v)}
-                      />
-                    </SettingRow>
-                  );
-                }
+                  if (item.type === 'custom' && item.render) {
+                    return (
+                      <SettingRow key={item.key} label={item.label} hint={item.hint}>
+                        {item.render({
+                          value: currentValue,
+                          onChange: (v) => updatePluginSetting(contrib.extensionId, item.key, v),
+                          values: extVals,
+                          updateSetting: (k, v) => updatePluginSetting(contrib.extensionId, k, v),
+                        })}
+                      </SettingRow>
+                    );
+                  }
 
-                if (item.type === 'number') {
+                  if (item.type === 'boolean') {
+                    return (
+                      <div key={item.key} className="space-y-1">
+                        <ToggleRow
+                          label={item.label}
+                          checked={Boolean(currentValue)}
+                          onChange={(v) => updatePluginSetting(contrib.extensionId, item.key, v)}
+                        />
+                        {item.hint && <p className="text-xs text-fg-muted pl-1">{item.hint}</p>}
+                      </div>
+                    );
+                  }
+
+                  if (item.type === 'select' && item.options) {
+                    return (
+                      <SettingRow key={item.key} label={item.label} hint={item.hint}>
+                        <Select
+                          value={String(currentValue)}
+                          options={item.options.map((opt) => ({
+                            value: String(opt.value),
+                            label: opt.label,
+                          }))}
+                          onChange={(v) => updatePluginSetting(contrib.extensionId, item.key, v)}
+                        />
+                      </SettingRow>
+                    );
+                  }
+
+                  if (item.type === 'number') {
+                    return (
+                      <SettingRow key={item.key} label={item.label} hint={item.hint}>
+                        <input
+                          type="number"
+                          value={Number(currentValue)}
+                          onChange={(e) =>
+                            updatePluginSetting(
+                              contrib.extensionId,
+                              item.key,
+                              Number(e.target.value),
+                            )
+                          }
+                          className="h-9 w-32 rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
+                        />
+                      </SettingRow>
+                    );
+                  }
+
                   return (
                     <SettingRow key={item.key} label={item.label} hint={item.hint}>
                       <input
-                        type="number"
-                        value={Number(currentValue)}
+                        type="text"
+                        value={String(currentValue ?? '')}
                         onChange={(e) =>
-                          updatePluginSetting(contrib.extensionId, item.key, Number(e.target.value))
+                          updatePluginSetting(contrib.extensionId, item.key, e.target.value)
                         }
-                        className="h-9 w-32 rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
+                        className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
                       />
                     </SettingRow>
                   );
-                }
-
-                return (
-                  <SettingRow key={item.key} label={item.label} hint={item.hint}>
-                    <input
-                      type="text"
-                      value={String(currentValue ?? '')}
-                      onChange={(e) =>
-                        updatePluginSetting(contrib.extensionId, item.key, e.target.value)
-                      }
-                      className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
-                    />
-                  </SettingRow>
-                );
-              })}
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   };

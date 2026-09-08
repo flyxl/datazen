@@ -1042,4 +1042,123 @@ describe('SettingsContent', () => {
       unregister();
     }
   });
+
+  it('renders custom item UI via item.render and handles update', async () => {
+    const { extensionRegistry, sqlEditorProEP } = await import('@datazen/extension-points');
+    const unregister = extensionRegistry.register(sqlEditorProEP, {
+      settingsContributions: [
+        {
+          extensionId: 'sql-editor-pro',
+          targetSection: 'editor',
+          items: [
+            {
+              key: 'customLicense',
+              label: '自定义授权栏',
+              type: 'custom',
+              defaultValue: 'init-license',
+              render: ({ value, onChange, updateSetting }) => (
+                <div data-testid="custom-item-container">
+                  <span data-testid="custom-val">{String(value)}</span>
+                  <button
+                    type="button"
+                    data-testid="custom-change-btn"
+                    onClick={() => onChange('new-license')}
+                  >
+                    Change
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="custom-other-btn"
+                    onClick={() => updateSetting('otherKey', 123)}
+                  >
+                    Other
+                  </button>
+                </div>
+              ),
+            },
+          ],
+        },
+      ],
+    });
+
+    try {
+      render(<SettingsContent />);
+      await waitForSettingsLoad();
+      goToSection('settings.editor');
+
+      expect(screen.getByTestId('custom-item-container')).toBeInTheDocument();
+      expect(screen.getByTestId('custom-val')).toHaveTextContent('init-license');
+
+      fireEvent.click(screen.getByTestId('custom-change-btn'));
+      await waitFor(() =>
+        expect(updateSettingsMock).toHaveBeenCalledWith({
+          pluginSettings: {
+            'sql-editor-pro': {
+              customLicense: 'new-license',
+            },
+          },
+        }),
+      );
+
+      fireEvent.click(screen.getByTestId('custom-other-btn'));
+      await waitFor(() =>
+        expect(updateSettingsMock).toHaveBeenCalledWith({
+          pluginSettings: {
+            'sql-editor-pro': {
+              customLicense: 'new-license',
+              otherKey: 123,
+            },
+          },
+        }),
+      );
+    } finally {
+      unregister();
+    }
+  });
+
+  it('renders custom group UI via contrib.renderGroup', async () => {
+    const { extensionRegistry, sqlEditorProEP } = await import('@datazen/extension-points');
+    const unregister = extensionRegistry.register(sqlEditorProEP, {
+      settingsContributions: [
+        {
+          extensionId: 'sql-editor-pro',
+          targetSection: 'editor',
+          renderGroup: ({ updateSetting }) => (
+            <div data-testid="custom-group-card">
+              <h3>全卡片自定义预览</h3>
+              <button
+                type="button"
+                data-testid="group-update-btn"
+                onClick={() => updateSetting('previewTheme', 'dark-pro')}
+              >
+                Set Preview Theme
+              </button>
+            </div>
+          ),
+        },
+      ],
+    });
+
+    try {
+      render(<SettingsContent />);
+      await waitForSettingsLoad();
+      goToSection('settings.editor');
+
+      expect(screen.getByTestId('custom-group-card')).toBeInTheDocument();
+      expect(screen.getByText('全卡片自定义预览')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('group-update-btn'));
+      await waitFor(() =>
+        expect(updateSettingsMock).toHaveBeenCalledWith({
+          pluginSettings: {
+            'sql-editor-pro': {
+              previewTheme: 'dark-pro',
+            },
+          },
+        }),
+      );
+    } finally {
+      unregister();
+    }
+  });
 });

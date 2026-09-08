@@ -10,6 +10,8 @@ export type {
   SqlEditorProOptions,
   ExtensionSettingOption,
   ExtensionSettingItem,
+  ExtensionSettingRenderProps,
+  ExtensionGroupRenderProps,
   ExtensionSettingsContribution,
 } from './sqlEditorProEP';
 export { sqlEditorProEP } from './sqlEditorProEP';

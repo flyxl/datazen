@@ -6,6 +6,7 @@
  */
 import type { Extension } from '@codemirror/state';
 import type { CompletionSource } from '@codemirror/autocomplete';
+import type React from 'react';
 import { createExtensionPoint } from './extensionPoints';
 
 /** Compartment option bags passed from host; typed loosely for cross-repo linking. */
@@ -17,13 +18,28 @@ export interface ExtensionSettingOption {
   value: string | number;
 }
 
+export interface ExtensionSettingRenderProps<T = unknown> {
+  value: T;
+  onChange: (newValue: T) => void;
+  values: Record<string, unknown>;
+  updateSetting: (key: string, val: unknown) => void;
+}
+
+export interface ExtensionGroupRenderProps {
+  values: Record<string, unknown>;
+  updateSetting: (key: string, val: unknown) => void;
+  items?: ExtensionSettingItem[];
+}
+
 export interface ExtensionSettingItem {
   key: string;
   label: string;
   hint?: string;
-  type: 'boolean' | 'number' | 'select' | 'input';
-  defaultValue: unknown;
+  type: 'boolean' | 'number' | 'select' | 'input' | 'custom';
+  defaultValue?: unknown;
   options?: ExtensionSettingOption[];
+  /** When type is 'custom', called to render custom UI component. */
+  render?: (props: ExtensionSettingRenderProps) => React.ReactNode;
 }
 
 export interface ExtensionSettingsContribution {
@@ -31,7 +47,9 @@ export interface ExtensionSettingsContribution {
   targetSection: 'editor' | 'general' | 'appearance';
   groupTitle?: string;
   groupDescription?: string;
-  items: ExtensionSettingItem[];
+  items?: ExtensionSettingItem[];
+  /** Custom renderer that replaces the entire settings group card. */
+  renderGroup?: (props: ExtensionGroupRenderProps) => React.ReactNode;
 }
 
 export interface SqlEditorProFeatures {
