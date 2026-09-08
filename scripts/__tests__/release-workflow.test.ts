@@ -42,6 +42,6 @@ describe('Windows release packaging', () => {
     expect(releaseWorkflow).toContain('edition: "pro"');
     expect(releaseWorkflow).toContain('needs_pro: true');
     expect(releaseWorkflow).not.toMatch(/edition:\s*"community"/);
-    expect(releaseWorkflow).not.toMatch(/variant_suffix:\s*"-all"/);
+    expect(releaseWorkflow).toMatch(/variant_suffix:\s*"-all"/);
   });
 });

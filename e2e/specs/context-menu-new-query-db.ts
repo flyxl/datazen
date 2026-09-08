@@ -15,8 +15,8 @@ import { createAndConnectPostgreSQL, closeExtraWindows } from '../helpers.js';
 const CONN_NAME = 'E2E-CtxNewQuery';
 const PG_HOST = process.env.E2E_PG_HOST || '127.0.0.1';
 const PG_PORT = Number(process.env.E2E_PG_PORT) || 5432;
-const PRIMARY_DB = process.env.E2E_PG_DB || 'postgres';
-const SECONDARY_DB = process.env.E2E_PG_SECONDARY_DB || 'datazen_test';
+const PRIMARY_DB = process.env.E2E_PG_DB || 'goecoride';
+const SECONDARY_DB = process.env.E2E_PG_SECONDARY_DB || 'postgres';
 
 function skipRequested(): boolean {
   return process.env.E2E_SKIP_PG === '1';
@@ -134,6 +134,8 @@ async function getQueryPanelDatabase(): Promise<string> {
   return browser.execute(() => {
     const selectors = document.querySelector('[data-testid="query-context-selectors"]');
     if (!selectors) return '';
+    const input = selectors.querySelector('input') as HTMLInputElement | null;
+    if (input) return (input.value || '').trim();
     const btn = selectors.querySelector('button');
     if (!btn) return '';
     // The button text may contain a checkmark; strip it

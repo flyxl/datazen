@@ -1,4 +1,5 @@
 import { expect, browser, $ } from '@wdio/globals';
+import { t } from '../i18n.js';
 import {
   captureJourneyStep,
   clickCardConnectButton,
@@ -294,22 +295,37 @@ describe('SQL Editor AI 错误诊断 (SE-AI-ERR)', () => {
     await openQueryTab();
     // Use an error SQL that references a parameter named 'password'
     await setEditorContent('SELECT * FROM nonexistent_table_users WHERE password = :password');
-    await browser.pause(500);
+    await browser.pause(800);
 
-    // Provide a dummy param value if bind-param-panel is active (so missing param validation passes)
-    const bindPanel = await $('[data-testid="bind-param-panel"]');
-    if (await bindPanel.isDisplayed().catch(() => false)) {
-      const paramInput = await $(
-        '[data-param-name="password"], input[placeholder*="value"], input[placeholder*="值"]',
-      );
-      if (await paramInput.isExisting()) {
-        await paramInput.setValue('test-dummy-pass');
-        await browser.pause(300);
-      }
+    // Provide value for :password if bind panel is rendered
+    const paramInput = await $(`input[placeholder="${t('query.paramValue')}"]`);
+    if (await paramInput.isExisting()) {
+      await paramInput.setValue('test-dummy-pass');
+      await browser.pause(200);
+    } else {
+      // Or set in store/DOM directly if needed
+      await browser.execute(() => {
+        const inp = document.querySelector(
+          'input[placeholder*="值"], input[placeholder*="value"]',
+        ) as HTMLInputElement;
+        if (inp) {
+          inp.value = 'test-dummy-pass';
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+          inp.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+      await browser.pause(200);
     }
 
     const execBtn = await $('[data-testid="editor-execute-button"]');
     await execBtn.click();
+    await browser.pause(500);
+
+    // If confirmation dialog appears, confirm it
+    const confirmOk = await $('[data-testid="confirm-dialog-ok"]');
+    if ((await confirmOk.isExisting()) && (await confirmOk.isDisplayed().catch(() => false))) {
+      await confirmOk.click();
+    }
 
     await browser.waitUntil(
       async () => {
