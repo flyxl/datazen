@@ -66,6 +66,7 @@ async function runSessionBootstrap() {
             autoCommit: true,
             safeMode: true,
             defaultPageSize: 50,
+            sqlExecutionStrategy: 'entire_script',
           },
         }),
       )

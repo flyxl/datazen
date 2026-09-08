@@ -540,7 +540,8 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   it('SQ-BIND-001: 命名参数 SQL 应显示绑定参数面板并可执行', async () => {
     await setEditorContent('SELECT :uid AS uid');
     await browser.pause(600);
-    await expect(await $(`div*=${t('query.params')}`)).toBeDisplayed();
+    const bindPanel = await $('[data-testid="bind-param-panel"]');
+    await bindPanel.waitForDisplayed({ timeout: 5000 });
     const paramInput = await $(`input[placeholder="${t('query.paramValue')}"]`);
     await paramInput.waitForDisplayed({ timeout: 5000 });
     await paramInput.setValue('e2e-bind');

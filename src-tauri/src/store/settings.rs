@@ -103,6 +103,13 @@ pub struct AppSettings {
     /// User-customized keyboard shortcut overrides keyed by action ID.
     #[serde(default)]
     pub custom_keymap: std::collections::HashMap<String, String>,
+    /// SQL execution strategy ('entire_script' | 'current_statement' | 'largest_statement' | 'ask').
+    #[serde(default = "default_sql_execution_strategy")]
+    pub sql_execution_strategy: String,
+}
+
+fn default_sql_execution_strategy() -> String {
+    "entire_script".to_string()
 }
 
 fn default_completion_quote_policy() -> String {
@@ -173,6 +180,7 @@ impl Default for AppSettings {
             editor_completion_quote_policy: default_completion_quote_policy(),
             keymap_preset: default_keymap_preset(),
             custom_keymap: std::collections::HashMap::new(),
+            sql_execution_strategy: default_sql_execution_strategy(),
         }
     }
 }

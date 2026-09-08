@@ -102,7 +102,7 @@ describe('SQL Editor 语句框架 (SE-STMT)', () => {
   // ── 语句分隔线 ─────────────────────────────────────────────────
 
   it('SE-STMT-010: 分号分隔的语句应有多个可执行区域', async () => {
-    await setEditorContent('SELECT 1; SELECT 2; SELECT 3');
+    await setEditorContent('SELECT 1;\nSELECT 2;\nSELECT 3');
     await browser.pause(500);
 
     // Gutter markers appear on the first executable line of each statement

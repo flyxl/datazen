@@ -38,7 +38,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   keymapPreset: 'default',
   customKeymap: {},
   sqlFormatOptions: DEFAULT_SQL_FORMAT_OPTIONS,
-  sqlExecutionStrategy: 'current_statement',
+  sqlExecutionStrategy: 'entire_script',
   sqlSnippets: [],
 };
 
@@ -136,6 +136,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const raw = await settingsCommands.getSettings();
       const theme = normalizeThemePreference(raw.theme);
       let settings = {
+        ...DEFAULT_SETTINGS,
         ...raw,
         theme,
         connectionPoolSize: raw.connectionPoolSize ?? 10,

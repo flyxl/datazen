@@ -26,7 +26,7 @@ const STRATEGIES: Array<{
 export function ExecutionStrategySelect({ compact, disabled }: ExecutionStrategySelectProps) {
   const { t } = useI18n();
   const currentStrategy =
-    useSettingsStore((s) => s.settings.sqlExecutionStrategy) ?? 'current_statement';
+    useSettingsStore((s) => s.settings.sqlExecutionStrategy) ?? 'entire_script';
   const updateSettings = useSettingsStore((s) => s.updateSettings);
 
   const openMenu = useCallback(
@@ -50,7 +50,7 @@ export function ExecutionStrategySelect({ compact, disabled }: ExecutionStrategy
 
   const activeLabelKey =
     STRATEGIES.find((s) => s.id === currentStrategy)?.labelKey ??
-    ('query.executionStrategy.currentStatement' as I18nKey);
+    ('query.executionStrategy.entireScript' as I18nKey);
 
   return (
     <ToolbarButton

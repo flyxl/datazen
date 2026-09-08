@@ -66,6 +66,11 @@ export interface SqlEditorProFeatures {
     opts: SqlEditorProOptions,
     refs: SqlEditorProOptions,
   ) => CompletionSource | null;
+  /** Pro column completion source (intelligent disambiguation & auto-FROM). */
+  createColumnCompletionSource?: (
+    opts: SqlEditorProOptions,
+    refs: SqlEditorProOptions,
+  ) => CompletionSource | null;
   /** S5-A: paste-as-IN keymap + schema-tree drop caret. */
   createPasteExtensions?: (opts: SqlEditorProOptions) => Extension[];
   /** S5-A: context-menu group for paste-as-IN (null when unavailable). */
@@ -89,6 +94,7 @@ const fallbackFeatures: SqlEditorProFeatures = Object.freeze({
   createHoverExtensions: () => [],
   createSignatureHelpExtensions: () => [],
   createJoinCompletionSource: () => null,
+  createColumnCompletionSource: () => null,
   createPasteExtensions: () => [],
   createPasteAsInContextMenuItems: () => null,
   createLinterExtensions: () => [],

@@ -76,7 +76,7 @@ export function useQueryExecutionGate({
   const autoCommit = useSettingsStore((s) => s.settings.autoCommit);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
   const sqlExecutionStrategy =
-    useSettingsStore((s) => s.settings?.sqlExecutionStrategy) ?? 'current_statement';
+    useSettingsStore((s) => s.settings?.sqlExecutionStrategy) ?? 'entire_script';
   const storeExecuteQuery = usePanelStore((s) => s.executeQuery);
   const storeExecuteSelection = usePanelStore((s) => s.executeSelection);
 

@@ -177,8 +177,13 @@ function getAppBinaryPath() {
     ROOT,
     'target/debug/bundle/macos/DataZen.app/Contents/MacOS/datazen',
   );
-  if (process.platform === 'darwin' && fs.existsSync(appBundleBin)) {
-    return appBundleBin;
+  const proAppBundleBin = path.join(
+    ROOT,
+    'target/debug/bundle/macos/DataZen Pro.app/Contents/MacOS/datazen',
+  );
+  if (process.platform === 'darwin') {
+    if (fs.existsSync(proAppBundleBin)) return proAppBundleBin;
+    if (fs.existsSync(appBundleBin)) return appBundleBin;
   }
   return path.join(ROOT, 'target/debug/datazen');
 }

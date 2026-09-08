@@ -44,9 +44,12 @@ import {
 import { getActionShortcut, toCodeMirrorKeyFormat, type KeymapPreset } from '../../lib/keymap';
 
 // ── Leaf factories (S4-A/B/C/D + S5-A) ───────────────────────────────
-import { statementIndexField } from './semantic/statementRanges';
-import { executionStateField } from './extensions/executionState';
-import { extensionRegistry, sqlEditorProEP } from '@datazen/extension-points';
+import {
+  statementIndexField,
+  executionStateField,
+  extensionRegistry,
+  sqlEditorProEP,
+} from '@datazen/extension-points';
 import { produceSchemaCompletions } from './completion/schemaCompletion';
 import { createSnippetCompletionSource } from './snippets';
 import { formatEditorDocument } from './format/formatEditorDocument';
@@ -345,8 +348,15 @@ export function createCompletionExtensions(
   const pro = extensionRegistry.get(sqlEditorProEP);
 
   const proCompletionSource: CompletionSource = (context) => {
-    const source = pro.createJoinCompletionSource?.(opts, refs);
-    return source ? source(context) : null;
+    const joinSource = pro.createJoinCompletionSource?.(opts, refs);
+    const joinRes = joinSource ? joinSource(context) : null;
+    if (joinRes) return joinRes;
+
+    const colSource = pro.createColumnCompletionSource?.(opts, refs);
+    const colRes = colSource ? colSource(context) : null;
+    if (colRes) return colRes;
+
+    return null;
   };
 
   // Wrap Completion[] as a CompletionSource with table context filtering
