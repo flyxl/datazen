@@ -127,7 +127,7 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 
 ### 特权扩展点（Host Extension Points）
 
-主进程特权插槽：专用于 SQLEditor 增强、高级图表等对键入延迟（<5ms）和 CodeMirror Compartment 深度集成有严苛要求的核心扩展。基于 `ExtensionPoint<T>` 契约与 `extensionRegistry` 解耦，宿主默认内置纯净基础版（Fallback）。受根目录 `LICENSE` 的 **DataZen Plugin, Driver & Extension Linking Exception** 保护，允许扩展模块使用独立许可证（包含商业闭源）发布，免除 GPL-3.0 传染。
+主进程特权插槽：专用于 SQLEditor 增强、高级图表等对键入延迟（<5ms）和 CodeMirror Compartment 深度集成有严苛要求的核心扩展。基于 `ExtensionPoint<T>` 契约与 `extensionRegistry` 解耦，宿主默认内置纯净基础版（Fallback）。受根目录 `LICENSE` 的 **DataZen Plugin, Driver & Extension Linking Exception** 保护，允许扩展模块使用独立许可证（包含商业闭源）发布，免除 GPL-3.0 传染。详细开发流程与独立仓库流转规范见 [docs/development/sql-editor-pro-development.zh-CN.md](docs/development/sql-editor-pro-development.zh-CN.md)。
 
 ### 运行时主题包（遗留）
 
@@ -186,13 +186,16 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 pnpm install                           # 安装依赖
 pnpm dev                               # Vite dev server
 pnpm tauri:dev                         # 完整开发（前端 + Rust；默认 basic 驱动）
+pnpm tauri:dev:pro                     # Pro 版桌面开发环境（含 SQL Editor Pro 特权增强）
 pnpm build                             # 构建前端（缺 codegen 时 --codegen-only；不改 Cargo.toml）
 pnpm build:with-drivers                # 单独前端构建并 inject/restore
-pnpm tauri:build                       # 完整应用（外层 inject 一次）
+pnpm tauri:build                       # 完整应用打包（默认 Pro 版 + 全部原生驱动）
+pnpm tauri:build:pro:minimal           # 核心驱动 Pro 版快速打包
 pnpm tauri:build:webdriver             # 正确编译带驱动的 WebDriver 版应用（包含所有活跃驱动 + webdriver feature）
 pnpm tauri:build:webdriver:minimal     # 编译 minimal/basic 驱动的 WebDriver 版应用
 npx vitest run                         # Host 前端单元测试（不含 packages/drivers）
 pnpm test:unit:drivers                 # Path 驱动 UI 单测（packages/drivers/*/ui）
+pnpm test:pro                          # SQL Editor Pro 特权插件单测
 cargo test -p datazen                  # Host Rust 单元测试（不含驱动 crate）
 cargo test -p datazen-driver-postgres  # 示例：某个 path 驱动的 Rust 测试
 ```

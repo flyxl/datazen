@@ -71,6 +71,7 @@
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:unit:drivers": "vitest run --config vitest.drivers.config.ts",
+    "test:pro": "vitest run --config packages/pro-extensions/sql-editor-pro/vitest.config.ts",
     "test:unit:e2e-contract": "vitest run --config vitest.e2e-contract.config.ts",
     "test:unit:e2e-contract:coverage": "vitest run --coverage --config vitest.e2e-contract.config.ts",
     "test:unit:coverage": "vitest run --coverage",
