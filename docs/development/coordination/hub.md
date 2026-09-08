@@ -41,6 +41,10 @@
 | sql-s7-a | — | 未开始 | — | — | — |
 | sql-s7-c | — | 未开始 | — | — | — |
 | arch-p3-finalize | `AGENTS.md`、`LICENSE`、全量测试套件 | 未开始 | — | — | — |
+| ep-core-runtime | — | 未开始 | — | — | — |
+| ep-pro-bundle | — | 未开始 | — | — | — |
+| ep-packaging-ci | — | 未开始 | — | — | — |
+| ep-security-gate | — | 未开始 | — | — | — |
 
 ## 写锁台账
 
@@ -75,6 +79,10 @@
 | sql-s7-a | — | — | feat/sql-editor | 未开始 | — |
 | sql-s7-c | — | — | feature/sql-s7-c | 未开始 | — |
 | arch-p3-finalize | — | — | feature/arch-p3-finalize | 未开始 | — |
+| ep-core-runtime | — | — | feature/ep-core-runtime | 未开始 | — |
+| ep-pro-bundle | — | `.worktrees/datazen-ep-pro-bundle` | `feature/ep-pro-bundle` @ `190549b` | 未开始 | — |
+| ep-packaging-ci | — | — | feature/ep-packaging-ci | 未开始 | — |
+| ep-security-gate | — | — | feature/ep-security-gate | 未开始 | — |
 
 ## 波次记录
 
