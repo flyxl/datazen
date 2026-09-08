@@ -185,6 +185,10 @@ export function QueryEditorSection({
   const completionQuotePolicy = useSettingsStore(
     (s) => s.settings.editorCompletionQuotePolicy ?? 'unquoted',
   );
+  const proSettings = useSettingsStore(
+    (s) => s.settings.pluginSettings?.['sql-editor-pro'] as Record<string, unknown> | undefined,
+  );
+  const bindParamPanelEnabled = proSettings?.bindParamPanel !== false;
 
   const handleEditorContextMenu = useCallback(
     (e: MouseEvent, sqlText: string) => {
@@ -352,15 +356,16 @@ export function QueryEditorSection({
         />
       </ToolbarShell>
 
-      {extensionRegistry.get(sqlEditorProEP).renderBindParamPanel?.({
-        params: sqlParams,
-        values: paramValues,
-        labels: paramLabels,
-        history: paramHistory,
-        onChange: onParamChange,
-        onClearHistory: onClearParamHistory,
-        onApplyHistory: onApplyParamHistory,
-      })}
+      {bindParamPanelEnabled &&
+        extensionRegistry.get(sqlEditorProEP).renderBindParamPanel?.({
+          params: sqlParams,
+          values: paramValues,
+          labels: paramLabels,
+          history: paramHistory,
+          onChange: onParamChange,
+          onClearHistory: onClearParamHistory,
+          onApplyHistory: onApplyParamHistory,
+        })}
 
       <div className="flex min-w-0 flex-col">
         {nl2sqlVisible && (

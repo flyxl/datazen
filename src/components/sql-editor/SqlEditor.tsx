@@ -97,6 +97,12 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   // Settings are consumed internally by themeExtensions() in editorExtensions.ts
   const keymapPreset = useSettingsStore((s) => s.settings.keymapPreset);
   const customKeymap = useSettingsStore((s) => s.settings.customKeymap);
+  const proSettings = useSettingsStore(
+    (s) => s.settings.pluginSettings?.['sql-editor-pro'] as Record<string, unknown> | undefined,
+  );
+  const statementGutterEnabled = proSettings?.statementGutter !== false;
+  const tableHoverEnabled = proSettings?.tableHover !== false;
+  const insertValueHintsEnabled = proSettings?.insertValueHints !== false;
 
   // ── Sync callback refs ───────────────────────────────────────────
   onChangeRef.current = onChange;
@@ -190,11 +196,12 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   const statementExts = useMemo(
     () =>
       createStatementExtensions({
+        enabled: statementGutterEnabled,
         onExecuteStatement: (sql) => {
           onExecuteSelectionRef.current?.(sql);
         },
       }),
-    [],
+    [statementGutterEnabled],
   );
 
   const completionExts = useMemo(
@@ -207,25 +214,32 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   );
 
   const intentionExts = useMemo(
-    () => createIntentionExtensions({ databaseType, schema }, { modelRef, metadataSnapshotRef }),
-    [databaseType, schema],
+    () =>
+      createIntentionExtensions(
+        { insertValueHints: insertValueHintsEnabled, databaseType, schema },
+        { modelRef, metadataSnapshotRef },
+      ),
+    [insertValueHintsEnabled, databaseType, schema],
   );
 
   const hoverExts = useMemo(
     () =>
-      createHoverExtensions(
-        {
-          metadataSnapshot,
-          onNavigateToTable,
-          onNavigateToStructure,
-          onNavigateToDdl,
-          databaseType,
-          database,
-          schema,
-        },
-        { modelRef, metadataSnapshotRef },
-      ),
+      tableHoverEnabled
+        ? createHoverExtensions(
+            {
+              metadataSnapshot,
+              onNavigateToTable,
+              onNavigateToStructure,
+              onNavigateToDdl,
+              databaseType,
+              database,
+              schema,
+            },
+            { modelRef, metadataSnapshotRef },
+          )
+        : [],
     [
+      tableHoverEnabled,
       metadataSnapshot,
       onNavigateToTable,
       onNavigateToStructure,

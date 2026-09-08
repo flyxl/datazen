@@ -290,11 +290,13 @@ export function createSqlExtensions(opts: CreateSqlExtensionsOptions): Extension
 
 export interface CreateStatementExtensionsOptions {
   onExecuteStatement?: (sql: string) => void;
+  enabled?: boolean;
 }
 
 export function createStatementExtensions(opts?: CreateStatementExtensionsOptions): Extension[] {
   const pro = extensionRegistry.get(sqlEditorProEP);
-  const proDecorations = pro.createStatementDecorations?.(opts) ?? [];
+  const proDecorations =
+    opts?.enabled !== false ? (pro.createStatementDecorations?.(opts) ?? []) : [];
   return [statementIndexField(), executionStateField, ...proDecorations];
 }
 

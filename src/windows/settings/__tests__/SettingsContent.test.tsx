@@ -984,4 +984,62 @@ describe('SettingsContent', () => {
     goToSection('common.aiAssistant');
     expect(screen.getByText('Invalid API key')).toBeInTheDocument();
   });
+
+  it('does not render extension settings contribution when not registered', async () => {
+    render(<SettingsContent />);
+    await waitForSettingsLoad();
+    goToSection('settings.editor');
+    expect(screen.queryByTestId('settings-contrib-sql-editor-pro')).not.toBeInTheDocument();
+  });
+
+  it('renders extension settings contribution dynamically when registered', async () => {
+    const { extensionRegistry, sqlEditorProEP } = await import('@datazen/extension-points');
+    const unregister = extensionRegistry.register(sqlEditorProEP, {
+      settingsContributions: [
+        {
+          extensionId: 'sql-editor-pro',
+          targetSection: 'editor',
+          groupTitle: 'SQL Editor Pro 增强设置',
+          groupDescription: '高级编辑器特性开关',
+          items: [
+            {
+              key: 'tableHover',
+              label: '表结构悬浮卡片',
+              hint: '鼠标悬浮时展示表列信息',
+              type: 'boolean',
+              defaultValue: true,
+            },
+          ],
+        },
+      ],
+    });
+
+    try {
+      render(<SettingsContent />);
+      await waitForSettingsLoad();
+      goToSection('settings.editor');
+
+      expect(screen.getByText('SQL Editor Pro 增强设置')).toBeInTheDocument();
+      expect(screen.getByText('高级编辑器特性开关')).toBeInTheDocument();
+      expect(screen.getByText('表结构悬浮卡片')).toBeInTheDocument();
+      expect(screen.getByText('鼠标悬浮时展示表列信息')).toBeInTheDocument();
+
+      const contribContainer = screen.getByTestId('settings-contrib-sql-editor-pro');
+      const toggle = within(contribContainer).getByRole('switch');
+      expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+      fireEvent.click(toggle);
+      await waitFor(() =>
+        expect(updateSettingsMock).toHaveBeenCalledWith({
+          pluginSettings: {
+            'sql-editor-pro': {
+              tableHover: false,
+            },
+          },
+        }),
+      );
+    } finally {
+      unregister();
+    }
+  });
 });

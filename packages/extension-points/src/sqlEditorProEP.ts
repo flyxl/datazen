@@ -12,6 +12,28 @@ import { createExtensionPoint } from './extensionPoints';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type SqlEditorProOptions = Record<string, any>;
 
+export interface ExtensionSettingOption {
+  label: string;
+  value: string | number;
+}
+
+export interface ExtensionSettingItem {
+  key: string;
+  label: string;
+  hint?: string;
+  type: 'boolean' | 'number' | 'select' | 'input';
+  defaultValue: unknown;
+  options?: ExtensionSettingOption[];
+}
+
+export interface ExtensionSettingsContribution {
+  extensionId: string;
+  targetSection: 'editor' | 'general' | 'appearance';
+  groupTitle?: string;
+  groupDescription?: string;
+  items: ExtensionSettingItem[];
+}
+
 export interface SqlEditorProFeatures {
   /** S4-A: statement frame + gutter run button extensions. */
   createStatementDecorations?: (opts?: SqlEditorProOptions) => Extension[];
@@ -35,7 +57,7 @@ export interface SqlEditorProFeatures {
   /** S5-B: Bind parameters hook. */
   useBindParameters?: (sql: string, options?: any) => any;
   /** Pro settings contributions. */
-  settingsContributions?: SqlEditorProOptions[];
+  settingsContributions?: ExtensionSettingsContribution[];
 }
 
 const fallbackFeatures: SqlEditorProFeatures = Object.freeze({

@@ -28,6 +28,7 @@ import { SectionTitle, SettingRow, ToggleRow } from './settingsUi';
 import { DataCleanupSection } from './DataCleanupSection';
 import { AppearanceSection } from './AppearanceSection';
 import { parseSettingsSection, SETTINGS_SECTIONS, type SettingsSection } from './settingsSections';
+import { useExtension, sqlEditorProEP } from '@datazen/extension-points';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500];
 const RESULT_LIMIT_OPTIONS = [1000, 2000, 5000, 10000, 50000];
@@ -121,6 +122,118 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
     } catch (error) {
       console.error('Failed to update setting:', error);
     }
+  };
+
+  const pro = useExtension(sqlEditorProEP);
+
+  const updatePluginSetting = async (extensionId: string, key: string, value: unknown) => {
+    const currentPluginSettings =
+      (localSettings.pluginSettings as Record<string, Record<string, unknown>>) || {};
+    const extSettings = { ...(currentPluginSettings[extensionId] || {}), [key]: value };
+    const nextPluginSettings = { ...currentPluginSettings, [extensionId]: extSettings };
+
+    setLocalSettings((prev) => ({
+      ...prev,
+      pluginSettings: nextPluginSettings,
+    }));
+    try {
+      await updateSettings({ pluginSettings: nextPluginSettings });
+    } catch (error) {
+      console.error('Failed to update plugin setting:', error);
+    }
+  };
+
+  const renderSectionContributions = (targetSection: 'editor' | 'general' | 'appearance') => {
+    const list = (pro.settingsContributions ?? []).filter((c) => c.targetSection === targetSection);
+    if (list.length === 0) return null;
+
+    return (
+      <div className="space-y-6 pt-4 border-t border-edge">
+        {list.map((contrib) => (
+          <div
+            key={contrib.extensionId}
+            className="space-y-4"
+            data-testid={`settings-contrib-${contrib.extensionId}`}
+          >
+            {(contrib.groupTitle || contrib.groupDescription) && (
+              <div>
+                {contrib.groupTitle && (
+                  <h4 className="text-sm font-semibold text-fg">{contrib.groupTitle}</h4>
+                )}
+                {contrib.groupDescription && (
+                  <p className="text-xs text-fg-muted mt-0.5">{contrib.groupDescription}</p>
+                )}
+              </div>
+            )}
+            <div className="space-y-3">
+              {contrib.items.map((item) => {
+                const extVals =
+                  (settings.pluginSettings?.[contrib.extensionId] as
+                    | Record<string, unknown>
+                    | undefined) ?? {};
+                const currentValue = extVals[item.key] ?? item.defaultValue;
+
+                if (item.type === 'boolean') {
+                  return (
+                    <div key={item.key} className="space-y-1">
+                      <ToggleRow
+                        label={item.label}
+                        checked={Boolean(currentValue)}
+                        onChange={(v) => updatePluginSetting(contrib.extensionId, item.key, v)}
+                      />
+                      {item.hint && <p className="text-xs text-fg-muted pl-1">{item.hint}</p>}
+                    </div>
+                  );
+                }
+
+                if (item.type === 'select' && item.options) {
+                  return (
+                    <SettingRow key={item.key} label={item.label} hint={item.hint}>
+                      <Select
+                        value={String(currentValue)}
+                        options={item.options.map((opt) => ({
+                          value: String(opt.value),
+                          label: opt.label,
+                        }))}
+                        onChange={(v) => updatePluginSetting(contrib.extensionId, item.key, v)}
+                      />
+                    </SettingRow>
+                  );
+                }
+
+                if (item.type === 'number') {
+                  return (
+                    <SettingRow key={item.key} label={item.label} hint={item.hint}>
+                      <input
+                        type="number"
+                        value={Number(currentValue)}
+                        onChange={(e) =>
+                          updatePluginSetting(contrib.extensionId, item.key, Number(e.target.value))
+                        }
+                        className="h-9 w-32 rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
+                      />
+                    </SettingRow>
+                  );
+                }
+
+                return (
+                  <SettingRow key={item.key} label={item.label} hint={item.hint}>
+                    <input
+                      type="text"
+                      value={String(currentValue ?? '')}
+                      onChange={(e) =>
+                        updatePluginSetting(contrib.extensionId, item.key, e.target.value)
+                      }
+                      className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
+                    />
+                  </SettingRow>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   return (
@@ -241,6 +354,8 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                 onChange={(v) => updateField('autoChartOnQuery', v)}
               />
               <p className="text-xs text-fg-muted -mt-2">{t('settings.autoChartOnQueryHint')}</p>
+
+              {renderSectionContributions('general')}
             </>
           )}
 
@@ -357,6 +472,8 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                   })}
                 </div>
               </div>
+
+              {renderSectionContributions('editor')}
             </>
           )}
 
