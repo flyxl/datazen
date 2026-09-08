@@ -274,7 +274,6 @@ jobs:
             --extension=sql-editor-pro \
             --mode=dzx \
             --skip-build \
-            --dir=src-tauri/resources/builtin-ep/sql-editor-pro \
             --out=artifacts/
           ls -la artifacts/*.dzx
         env:

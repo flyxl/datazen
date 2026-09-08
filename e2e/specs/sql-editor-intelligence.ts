@@ -340,30 +340,51 @@ describe('SQL Editor 智能功能 (SE-INT)', () => {
 
     // Position cursor on the table name
     await browser.execute(() => {
-      const cmView = (document.querySelector('.cm-editor') as any)?.cmView?.view;
+      const editors = Array.from(document.querySelectorAll('.cm-editor'));
+      let cmView: any = null;
+      for (let i = editors.length - 1; i >= 0; i--) {
+        const view = (editors[i] as any)?.cmView?.view || (editors[i] as any)?.__cmView;
+        if (view && view.state.doc.toString().includes('_e2e_int_hover')) {
+          cmView = view;
+          break;
+        }
+      }
       if (!cmView) return;
+      cmView.focus();
       const doc = cmView.state.doc.toString();
       const idx = doc.indexOf('_e2e_int_hover');
       if (idx >= 0) {
-        cmView.dispatch({ selection: { anchor: idx, head: idx + 15 } });
+        const targetLen = Math.min(doc.length, idx + 14);
+        cmView.dispatch({ selection: { anchor: idx, head: targetLen } });
       }
     });
     await browser.pause(300);
 
     // Hover over the table name (mouse move + delay)
     await browser.execute(() => {
-      const cmView = (document.querySelector('.cm-editor') as any)?.cmView?.view;
+      const editors = Array.from(document.querySelectorAll('.cm-editor'));
+      let cmView: any = null;
+      let cmEl: any = null;
+      for (let i = editors.length - 1; i >= 0; i--) {
+        const view = (editors[i] as any)?.cmView?.view || (editors[i] as any)?.__cmView;
+        if (view && view.state.doc.toString().includes('_e2e_int_hover')) {
+          cmView = view;
+          cmEl = editors[i];
+          break;
+        }
+      }
       if (!cmView) return;
-      const pos = cmView.posAtCoords({ x: 100, y: 100 });
-      if (pos != null) {
-        const coords = cmView.coordsAtPos(pos);
+      const doc = cmView.state.doc.toString();
+      const idx = doc.indexOf('_e2e_int_hover');
+      if (idx >= 0) {
+        const coords = cmView.coordsAtPos(idx);
         if (coords) {
           const event = new MouseEvent('mousemove', {
             bubbles: true,
             clientX: coords.left,
             clientY: coords.top,
           });
-          document.querySelector('.cm-editor')?.dispatchEvent(event);
+          (cmEl || document.querySelector('.cm-editor'))?.dispatchEvent(event);
         }
       }
     });
@@ -394,8 +415,17 @@ describe('SQL Editor 智能功能 (SE-INT)', () => {
 
     // Position cursor on the table name
     await browser.execute(() => {
-      const cmView = (document.querySelector('.cm-editor') as any)?.cmView?.view;
+      const editors = Array.from(document.querySelectorAll('.cm-editor'));
+      let cmView: any = null;
+      for (let i = editors.length - 1; i >= 0; i--) {
+        const view = (editors[i] as any)?.cmView?.view || (editors[i] as any)?.__cmView;
+        if (view && view.state.doc.toString().includes('_e2e_int_nav')) {
+          cmView = view;
+          break;
+        }
+      }
       if (!cmView) return;
+      cmView.focus();
       const doc = cmView.state.doc.toString();
       const idx = doc.indexOf('_e2e_int_nav');
       if (idx >= 0) {
@@ -406,7 +436,17 @@ describe('SQL Editor 智能功能 (SE-INT)', () => {
 
     // Mod+Click on the table name
     await browser.execute(() => {
-      const cmView = (document.querySelector('.cm-editor') as any)?.cmView?.view;
+      const editors = Array.from(document.querySelectorAll('.cm-editor'));
+      let cmView: any = null;
+      let cmEl: any = null;
+      for (let i = editors.length - 1; i >= 0; i--) {
+        const view = (editors[i] as any)?.cmView?.view || (editors[i] as any)?.__cmView;
+        if (view && view.state.doc.toString().includes('_e2e_int_nav')) {
+          cmView = view;
+          cmEl = editors[i];
+          break;
+        }
+      }
       if (!cmView) return;
       const doc = cmView.state.doc.toString();
       const idx = doc.indexOf('_e2e_int_nav');
@@ -420,7 +460,7 @@ describe('SQL Editor 智能功能 (SE-INT)', () => {
         clientY: coords.top,
         metaKey: true,
       });
-      document.querySelector('.cm-editor')?.dispatchEvent(event);
+      (cmEl || document.querySelector('.cm-editor'))?.dispatchEvent(event);
     });
     await browser.pause(1000);
 
@@ -446,8 +486,17 @@ describe('SQL Editor 智能功能 (SE-INT)', () => {
 
     // Position cursor on 'name' column
     await browser.execute(() => {
-      const cmView = (document.querySelector('.cm-editor') as any)?.cmView?.view;
+      const editors = Array.from(document.querySelectorAll('.cm-editor'));
+      let cmView: any = null;
+      for (let i = editors.length - 1; i >= 0; i--) {
+        const view = (editors[i] as any)?.cmView?.view || (editors[i] as any)?.__cmView;
+        if (view && view.state.doc.toString().includes('_e2e_int_col')) {
+          cmView = view;
+          break;
+        }
+      }
       if (!cmView) return;
+      cmView.focus();
       const doc = cmView.state.doc.toString();
       const idx = doc.indexOf('name');
       if (idx >= 0) {
@@ -458,7 +507,17 @@ describe('SQL Editor 智能功能 (SE-INT)', () => {
 
     // Hover over the column name
     await browser.execute(() => {
-      const cmView = (document.querySelector('.cm-editor') as any)?.cmView?.view;
+      const editors = Array.from(document.querySelectorAll('.cm-editor'));
+      let cmView: any = null;
+      let cmEl: any = null;
+      for (let i = editors.length - 1; i >= 0; i--) {
+        const view = (editors[i] as any)?.cmView?.view || (editors[i] as any)?.__cmView;
+        if (view && view.state.doc.toString().includes('_e2e_int_col')) {
+          cmView = view;
+          cmEl = editors[i];
+          break;
+        }
+      }
       if (!cmView) return;
       const doc = cmView.state.doc.toString();
       const idx = doc.indexOf('name');
@@ -470,7 +529,7 @@ describe('SQL Editor 智能功能 (SE-INT)', () => {
         clientX: coords.left,
         clientY: coords.top,
       });
-      document.querySelector('.cm-editor')?.dispatchEvent(event);
+      (cmEl || document.querySelector('.cm-editor'))?.dispatchEvent(event);
     });
     await browser.pause(500);
 

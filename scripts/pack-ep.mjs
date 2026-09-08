@@ -198,20 +198,26 @@ export function packEp(opts = {}) {
   const skipBuild = opts.skipBuild ?? parsed.skipBuild;
   const log = opts.log ?? console.log.bind(console);
 
-  if (!existsSync(extensionDir)) {
-    throw new Error(`[pack-ep] extension directory not found: ${extensionDir}`);
+  let effectiveExtensionDir = extensionDir;
+  if (!existsSync(effectiveExtensionDir)) {
+    if (extension === 'sql-editor-pro' && existsSync(DEFAULT_PRO_DEST)) {
+      log(`[pack-ep] specified dir not found: ${effectiveExtensionDir}, falling back to ${DEFAULT_PRO_DEST}`);
+      effectiveExtensionDir = DEFAULT_PRO_DEST;
+    } else {
+      throw new Error(`[pack-ep] extension directory not found: ${effectiveExtensionDir}`);
+    }
   }
 
   if (!skipBuild) {
-    buildExtensionLibrary(extensionDir, { log });
-  } else if (!existsSync(join(extensionDir, 'dist/index.esm.js'))) {
+    buildExtensionLibrary(effectiveExtensionDir, { log });
+  } else if (!existsSync(join(effectiveExtensionDir, 'dist/index.esm.js'))) {
     throw new Error(
-      `[pack-ep] --skip-build requires existing dist/index.esm.js under ${extensionDir}`,
+      `[pack-ep] --skip-build requires existing dist/index.esm.js under ${effectiveExtensionDir}`,
     );
   }
 
   const workDir = join(outDir, `.pack-ep-staging-${extension}`);
-  stagePackageTree(extensionDir, workDir, { log });
+  stagePackageTree(effectiveExtensionDir, workDir, { log });
   assertPackageLayout(workDir);
 
   const manifestVersion = readManifestVersion(join(workDir, 'manifest.json'));

@@ -28,6 +28,21 @@ describe('SQL Editor AI 错误诊断 (SE-AI-ERR)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
+    // Seed a dummy AI config so isConfigured=true, allowing draftRequest to prefill
+    try {
+      await invokeBackend('ai_save_config', {
+        config: {
+          providerType: 'open_ai',
+          endpoint: 'https://api.openai.com/v1',
+          apiKey: 'sk-dummy-test-key-for-e2e-draft',
+          model: 'gpt-4o',
+          extra: null,
+        },
+      });
+    } catch {
+      /* best effort */
+    }
+
     await invokeBackend('save_connection', {
       config: {
         id: connId,
@@ -59,6 +74,7 @@ describe('SQL Editor AI 错误诊断 (SE-AI-ERR)', () => {
     try {
       await closeExtraWindows(mainWindow);
       await invokeBackend('delete_connection', { id: connId });
+      await invokeBackend('ai_delete_config');
     } catch {
       /* cleanup best-effort */
     }
@@ -276,9 +292,21 @@ describe('SQL Editor AI 错误诊断 (SE-AI-ERR)', () => {
 
   it('SE-AI-ERR-030: Draft 不应包含密码', async () => {
     await openQueryTab();
-    // Use a SQL that references a parameter named 'password'
-    await setEditorContent('SELECT * FROM users WHERE password = :password');
-    await browser.pause(300);
+    // Use an error SQL that references a parameter named 'password'
+    await setEditorContent('SELECT * FROM nonexistent_table_users WHERE password = :password');
+    await browser.pause(500);
+
+    // Provide a dummy param value if bind-param-panel is active (so missing param validation passes)
+    const bindPanel = await $('[data-testid="bind-param-panel"]');
+    if (await bindPanel.isDisplayed().catch(() => false)) {
+      const paramInput = await $(
+        '[data-param-name="password"], input[placeholder*="value"], input[placeholder*="值"]',
+      );
+      if (await paramInput.isExisting()) {
+        await paramInput.setValue('test-dummy-pass');
+        await browser.pause(300);
+      }
+    }
 
     const execBtn = await $('[data-testid="editor-execute-button"]');
     await execBtn.click();
