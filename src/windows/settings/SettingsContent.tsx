@@ -543,10 +543,10 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={handleExportSettings}>
+                  <Button variant="secondary" size="sm" onClick={handleExportSettings}>
                     {t('query.exportSettings')}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={handleImportSettings}>
+                  <Button variant="secondary" size="sm" onClick={handleImportSettings}>
                     {t('query.importSettings')}
                   </Button>
                 </div>

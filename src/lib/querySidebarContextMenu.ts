@@ -52,10 +52,10 @@ export type BuildHistorySidebarHeaderContextMenuArgs = {
 
 function item(
   id: string,
-  label: string,
+  label: string | undefined,
   action: (() => void) | undefined,
 ): NativeMenuItemDef | null {
-  if (!action) return null;
+  if (!label || !action) return null;
   return { kind: 'item', id, label, action };
 }
 

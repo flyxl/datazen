@@ -56,7 +56,7 @@ export function ExecutionStrategySelect({ compact, disabled }: ExecutionStrategy
     <ToolbarButton
       compact={compact}
       variant="ghost"
-      label={compact ? undefined : t(activeLabelKey)}
+      label={t(activeLabelKey)}
       title={`${t('query.executionStrategy.title')}: ${t(activeLabelKey)}`}
       icon={
         <div className="flex items-center gap-0.5">

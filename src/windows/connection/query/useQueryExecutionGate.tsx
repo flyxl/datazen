@@ -6,7 +6,7 @@ import { useConnectionStore } from '../../../stores/connectionStore';
 import { useI18n } from '../../../hooks/useI18n';
 import { useConfirmDialog } from '../../../hooks/useConfirmDialog';
 import { analyzeTransactionSql } from '../../../lib/sqlTransactionGuard';
-import { parseSqlParams, substituteSqlParams } from '../../../lib/sqlBindParams';
+import { substituteSqlParams } from '../../../lib/sqlBindParams';
 import { findMissingParams } from './validateBindParams';
 import {
   resolveExecutionTarget,
