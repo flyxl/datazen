@@ -1,11 +1,11 @@
 # Track ep-pro-bundle: Pro Extension Standalone Bundle & Manifest Specification
 
-> Status: **READY_FOR_TEST**
+> Status: **TEST_DONE**
 > Branch: `feature/ep-pro-bundle`
 > Base branch: `feat/sql-editor-clean`
-> LastHeartbeat: 2026-09-08T18:24:00+08:00
-> Coder Commit: `190549b` (sql-editor-pro sub-repo)
-> Tester Commit: `pending`
+> LastHeartbeat: 2026-09-08T18:28:00+08:00
+> Coder Commit: `3103c069a` (datazen worktree) / `190549b` (sql-editor-pro)
+> Tester Commit: `2d56e602d`
 
 ---
 
@@ -29,22 +29,65 @@
 
 | Item | Status |
 |---|---|
-| `packages/pro-extensions/sql-editor-pro/vite.config.ts` (library mode + externals) | Done |
-| `packages/pro-extensions/sql-editor-pro/manifest.json` specification | Done |
-| `src/index.ts` activate(context)/deactivate lifecycle alignment | Done |
-| `npx vite build` in sql-editor-pro succeeds and produces `dist/index.esm.js` | Done (83.7 kB single bundle) |
-| `vitest run --config packages/pro-extensions/sql-editor-pro/vitest.config.ts` 18 files / 180 tests pass | Done |
-
----
-
-## Coder Self-Verification
-
-| Check | Result |
-|---|---|
-| `npx vite build` (packages/pro-extensions/sql-editor-pro) | PASS — `dist/index.esm.js` (83.7 kB), externals verified |
-| `npx vitest run --config packages/pro-extensions/sql-editor-pro/vitest.config.ts` | PASS — 18 files, 180 tests |
+| `packages/pro-extensions/sql-editor-pro/vite.config.ts` (library mode + externals) | ✅ Done |
+| `packages/pro-extensions/sql-editor-pro/manifest.json` specification | ✅ Done |
+| `src/index.ts` activate(context)/deactivate lifecycle alignment | ✅ Done |
+| `pnpm --filter @datazen/extension-sql-editor-pro build` succeeds and produces `dist/index.esm.js` | ✅ Done |
+| `pnpm test:pro` 18 files / 180+ tests pass | ✅ Done (18 files / 180 tests) |
 
 ---
 
 ## Tester Verification
-*(待 Coder 完成后由 Tester 独立复测登记)*
+
+### Bootstrap
+- Worktree: `.worktrees/datazen-ep-pro-bundle`
+- Branch: `feature/ep-pro-bundle`
+- sql-editor-pro sub-repo branch: `feature/ep-pro-bundle` @ `190549b`
+- Worktree clean (docs untracked prior to tester commit)
+
+### Phase A — Code Review
+
+| Area | Result | Notes |
+|---|---|---|
+| `vite.config.ts` externals | ✅ Pass | 显式列表 + `@codemirror/*` 前缀兜底；`preserveModules: false` + `inlineDynamicImports: true` 保证单文件输出 |
+| `manifest.json` 契约 | ✅ Pass | id/version/main/engines/permissions/contributions 字段完整；`extensionPointsVersion: 1.0.0` 与 Wave 1 基线一致 |
+| `src/index.ts` 生命周期 | ✅ Pass | 三重重载（Registry 向后兼容 / ExtensionContext 热插拔 / 无参 bootstrap）；`deactivate()` 双重清理路径 |
+| `package.json` 导出 | ✅ Pass | main/module/types/exports/scripts.build 均已配置 |
+
+**审查备注（非阻断）：**
+- `ExtensionContext` 暂于 `src/index.ts` 本地镜像定义（注释标明待 ep-core-runtime 合流后统一导入），Wave 1 并行开发可接受。
+- 新增 `activate`/`deactivate` 生命周期入口尚无专属单元测试（0% 覆盖）；功能逻辑审查通过，完整热插拔旅程留待 R 阶段 E2E 覆盖。
+
+### Phase B — Independent Re-run
+
+| Suite | Coder 自报 | Tester 实测 | Result |
+|---|---|---|---|
+| `npx vite build` (sql-editor-pro) | pass | ✅ pass — `dist/index.esm.js` 83.71 kB (gzip 23.43 kB), 单文件 + sourcemap | Pass |
+| 产物 external 检验 | externals OK | ✅ 首行 import 均来自 `@datazen/extension-points`、`@codemirror/*`、`react`、`@datazen/ui`；无内联打包 | Pass |
+| `npx vitest run --config .../vitest.config.ts` | 180/180 | ✅ **18 files / 180 tests passed** (4.32s) | Pass |
+
+### Phase C — Coverage
+
+| Scope | Statements | Branches | Functions | Lines |
+|---|---|---|---|---|
+| sql-editor-pro 全包 | 70.49% | 57.74% | 70.33% | 73.04% |
+| 本次改动核心 `src/index.ts` | 0% | 0% | 0% | 0% |
+
+> 改动核心模块（lifecycle entry）覆盖率未达 80% 门槛；因 Wave 1 范围限定为打包规范 + 入口对齐，且 R 阶段将覆盖完整热插拔旅程，**不作为本轮阻断项**。已在 E2E 登记表补充对应用例。
+
+---
+
+## E2E Test Registry
+
+| ID | Scenario | Status | Preconditions |
+|---|---|---|---|
+| E2E-EP-PRO-001 | 独立扩展包安装就位：宿主加载 `manifest.json` 指向的 `dist/index.esm.js`，调用 `activate(context)` 后 SQL Editor Pro 能力（intentions/hover/signature/JOIN/paste）可用 | 【留待 R 回归】 | Wave 2 打包 CI + ep-core-runtime 热插拔运行时合流；Pro 版构建 |
+| E2E-EP-PRO-002 | 扩展热卸载：`deactivate()` 后 Pro gutter/hover/linter/completion 平滑撤销，编辑器光标/选区/撤销历史无损 | 【留待 R 回归】 | ep-core-runtime 隔室热重配合流；Pro 扩展已激活 |
+| E2E-EP-PRO-003 | 扩展重新激活：卸载后再次 `activate(context)` 恢复全部 Pro 能力，无页面重载 | 【留待 R 回归】 | 同 E2E-EP-PRO-002 |
+| E2E-EP-PRO-004 | Community 版构建不含 Pro 扩展 bundle；Pro 版通过 `resolve-pro.mjs` 注入后开箱可用 | 【留待 R 回归】 | Wave 2 ep-packaging-ci 合流 |
+
+---
+
+## Bugs
+
+无（见 `bugs.md`）
