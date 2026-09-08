@@ -111,6 +111,8 @@ export const compartments = {
   hover: new Compartment(),
   /** Paste + drop + multi-cursor (S5-A) */
   paste: new Compartment(),
+  /** Linter / Diagnostics (S4-E) */
+  linter: new Compartment(),
 };
 
 /* -------------------------------------------------------------------------- */
@@ -509,6 +511,26 @@ export function createHoverExtensions(
 ): Extension[] {
   const pro = extensionRegistry.get(sqlEditorProEP);
   return pro.createHoverExtensions?.(opts, refs) ?? [];
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Linter compartment (S4-E)                                                  */
+/* -------------------------------------------------------------------------- */
+
+export interface LinterCompartmentOptions {
+  databaseType?: string;
+  schema?: SqlSchema;
+}
+
+export function createLinterExtensions(
+  opts: LinterCompartmentOptions,
+  refs: {
+    modelRef: MutableRefObject<SqlSemanticModel | null>;
+    metadataSnapshotRef: MutableRefObject<EditorMetadataSnapshot | undefined>;
+  },
+): Extension[] {
+  const pro = extensionRegistry.get(sqlEditorProEP);
+  return pro.createLinterExtensions?.(opts, refs) ?? [];
 }
 
 /* -------------------------------------------------------------------------- */

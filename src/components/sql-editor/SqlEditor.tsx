@@ -41,6 +41,7 @@ import {
   createIntentionExtensions,
   createHoverExtensions,
   createPasteExtensions,
+  createLinterExtensions,
 } from './editorExtensions';
 import { formatEditorDocument } from './format/formatEditorDocument';
 import { StartExecutionEffect, FinishExecutionEffect } from './extensions/executionState';
@@ -291,6 +292,11 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     [connectionId, onDropTable],
   );
 
+  const linterExts = useMemo(
+    () => createLinterExtensions({ databaseType, schema }, { modelRef, metadataSnapshotRef }),
+    [databaseType, schema],
+  );
+
   // ── Editor mount ─────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return;
@@ -328,6 +334,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
         compartments.intention.of(intentionExts),
         compartments.hover.of(hoverExts),
         compartments.paste.of(pasteExts),
+        compartments.linter.of(linterExts),
         // §S6-D: DOM event handlers (contextmenu + navigation click)
         createDomEventHandlers({
           onCtxMenu: onCtxMenuRef as MutableRefObject<
@@ -423,6 +430,15 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
       effects: compartments.paste.reconfigure(pasteExts),
     });
   }, [pasteExts]);
+
+  // ── §S6-D: Reconfigure linter compartment ────────────────────────
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: compartments.linter.reconfigure(linterExts),
+    });
+  }, [linterExts]);
 
   // ── Theme-pack change listener (reconfigure theme compartment) ───
   useEffect(() => {
