@@ -17,12 +17,13 @@ import { execSync, spawn } from 'child_process';
 import { resolve, dirname } from 'path';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
+import { resolvePro } from './resolve-pro.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
-function restoreStash() {
-  console.log('[tauri:dev] restoring managed files from copy-stash...');
+function restoreAll() {
+  console.log('[tauri:dev] restoring managed files from copy-stash & pro codegen...');
   try {
     execSync('node scripts/driver-file-stash.mjs restore', {
       cwd: ROOT,
@@ -30,6 +31,11 @@ function restoreStash() {
     });
   } catch (e) {
     console.error('[tauri:dev] stash restore failed — working tree may still have injected files');
+  }
+  try {
+    resolvePro({ restore: true });
+  } catch (e) {
+    console.error('[tauri:dev] pro restore failed');
   }
 }
 
@@ -71,8 +77,30 @@ if (args.some((a) => a === '--plugins' || a.startsWith('--plugins=')) || process
   process.exit(1);
 }
 
-const driversArgs = args.filter((a) => a.startsWith('--drivers'));
-const otherArgs = args.filter((a) => !a.startsWith('--drivers'));
+let edition = process.env.DATAZEN_EDITION || 'pro';
+let proPath = process.env.DATAZEN_PRO_PATH || null;
+let proGit = process.env.DATAZEN_PRO_GIT || null;
+
+const driversArgs = [];
+const otherArgs = [];
+
+for (const a of args) {
+  if (a.startsWith('--drivers')) {
+    driversArgs.push(a);
+  } else if (a === '--pro' || a === '--edition=pro') {
+    edition = 'pro';
+  } else if (a === '--community' || a === '--edition=community') {
+    edition = 'community';
+  } else if (a.startsWith('--edition=')) {
+    edition = a.slice('--edition='.length);
+  } else if (a.startsWith('--pro-path=')) {
+    proPath = a.slice('--pro-path='.length);
+  } else if (a.startsWith('--pro-git=')) {
+    proGit = a.slice('--pro-git='.length);
+  } else {
+    otherArgs.push(a);
+  }
+}
 const driversStr = driversArgs.join(' ');
 
 console.log('[tauri:dev] generating menu labels from locales...');
@@ -80,6 +108,9 @@ execSync('node scripts/generate-menu-labels.mjs', {
   cwd: ROOT,
   stdio: 'inherit',
 });
+
+console.log(`[tauri:dev] resolving pro extension (edition="${edition}")...`);
+resolvePro({ edition, proPath, proGit });
 
 console.log('[tauri:dev] resolving drivers (copy-stash + inject)...');
 const features = resolveDriversWithInjectCheck(driversStr);
@@ -106,6 +137,7 @@ const tauri = spawn('npx', tauriArgs, {
   shell: true,
   env: {
     ...process.env,
+    DATAZEN_EDITION: edition,
     DATAZEN_DRIVERS:
       process.env.DATAZEN_DRIVERS ||
       driversArgs.map((a) => a.split('=')[1]).join(',') ||
@@ -114,15 +146,15 @@ const tauri = spawn('npx', tauriArgs, {
 });
 
 process.on('SIGINT', () => {
-  restoreStash();
+  restoreAll();
   process.exit(130);
 });
 process.on('SIGTERM', () => {
-  restoreStash();
+  restoreAll();
   process.exit(143);
 });
 
 tauri.on('exit', (code) => {
-  restoreStash();
+  restoreAll();
   process.exit(code ?? 0);
 });

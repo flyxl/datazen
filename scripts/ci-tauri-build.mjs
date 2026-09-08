@@ -70,6 +70,7 @@ export function buildTauriArgs({
   features = [],
   configPath = null,
   updaterConfigPath = null,
+  extraArgs = [],
 } = {}) {
   const args = ['build'];
   if (target) {
@@ -84,6 +85,9 @@ export function buildTauriArgs({
   }
   if (Array.isArray(features) && features.length > 0) {
     args.push('-f', features.join(','));
+  }
+  if (Array.isArray(extraArgs) && extraArgs.length > 0) {
+    args.push(...extraArgs);
   }
   return args;
 }
@@ -105,13 +109,22 @@ export function spawnTauri(args, { cwd = ROOT, env = process.env, log = console.
 }
 
 function main() {
-  const targetArg = process.argv.find((a) => a.startsWith('--target='));
+  const argv = process.argv.slice(2);
+  const targetArg = argv.find((a) => a.startsWith('--target='));
   const target = targetArg ? targetArg.slice('--target='.length) : null;
   const isPro =
-    process.argv.includes('--pro') ||
-    process.argv.includes('--edition=pro') ||
+    argv.includes('--pro') ||
+    argv.includes('--edition=pro') ||
     process.env.DATAZEN_EDITION === 'pro';
   const edition = isPro ? 'pro' : 'community';
+
+  const knownPrefixes = ['--target=', '--edition='];
+  const knownFlags = new Set(['--pro', '--community', '--updater']);
+  const extraArgs = argv.filter((a) => {
+    if (knownFlags.has(a)) return false;
+    if (knownPrefixes.some((p) => a.startsWith(p))) return false;
+    return true;
+  });
 
   const featuresPath = resolve(ROOT, '.driver-features.json');
   if (!existsSync(featuresPath)) {
@@ -122,9 +135,10 @@ function main() {
   const { features } = JSON.parse(readFileSync(featuresPath, 'utf-8'));
   const args = buildTauriArgs({
     target,
-    updater: process.argv.includes('--updater'),
+    updater: argv.includes('--updater'),
     edition,
     features,
+    extraArgs,
   });
   const result = spawnTauri(args);
   process.exit(result.status ?? 1);
