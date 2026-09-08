@@ -299,4 +299,47 @@ describe('[tester] useQueryExecutionGate', () => {
       expect(usePanelStore.getState().executeQuery).toHaveBeenCalledWith('p1', undefined),
     );
   });
+
+  it('blocks execution when SQL contains unassigned bind parameter', async () => {
+    setupConnectionStore();
+    setupPanelStore('p1', 'SELECT * FROM users WHERE id = :id');
+    const showMessageDialog = vi.fn();
+    const { result } = renderGate({
+      sql: 'SELECT * FROM users WHERE id = :id',
+      showMessageDialog,
+      paramValues: {},
+    });
+
+    await act(async () => {
+      result.current.handleExecute();
+    });
+
+    expect(showMessageDialog).toHaveBeenCalledWith('Missing param: :id', 'error');
+    expect(usePanelStore.getState().executeQuery).not.toHaveBeenCalled();
+    expect(usePanelStore.getState().executeSelection).not.toHaveBeenCalled();
+  });
+
+  it('allows execution when all bind parameters are provided', async () => {
+    setupConnectionStore();
+    setupPanelStore('p1', 'SELECT * FROM users WHERE id = :id');
+    const showMessageDialog = vi.fn();
+    const { result } = renderGate({
+      sql: 'SELECT * FROM users WHERE id = :id',
+      showMessageDialog,
+      paramValues: { 'named:id': '123' },
+    });
+
+    await act(async () => {
+      result.current.handleExecute();
+    });
+
+    expect(showMessageDialog).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(usePanelStore.getState().executeSelection).toHaveBeenCalledWith(
+        'p1',
+        'SELECT * FROM users WHERE id = 123',
+        undefined,
+      ),
+    );
+  });
 });

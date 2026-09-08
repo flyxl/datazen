@@ -7,6 +7,7 @@ import { useI18n } from '../../../hooks/useI18n';
 import { useConfirmDialog } from '../../../hooks/useConfirmDialog';
 import { analyzeTransactionSql } from '../../../lib/sqlTransactionGuard';
 import { parseSqlParams, substituteSqlParams } from '../../../lib/sqlBindParams';
+import { findMissingParams } from './validateBindParams';
 import { PRESET_GROUPS } from '../../../lib/connectionGroups';
 import { assessExecutionRisk } from './queryExecutionRisk';
 import type { SqlRiskClassification } from './queryExecutionRisk';
@@ -146,6 +147,17 @@ export function useQueryExecutionGate({
         kind === 'selection' && selectionSql != null
           ? selectionSql
           : editorRef.current?.getSelection()?.trim() || sql;
+
+      // Defense-in-depth: assert no missing parameters before substitution
+      const runMissing = findMissingParams(targetRawSql, rawValues);
+      if (runMissing.length > 0) {
+        showMessageDialog(
+          t('query.editor.param.missingValue', { token: runMissing[0].label }),
+          'error',
+        );
+        return;
+      }
+
       const targetSubstitutedSql = substituteSqlParams(targetRawSql, rawValues);
 
       if (kind === 'selection' && selectionSql != null) {
@@ -322,20 +334,29 @@ export function useQueryExecutionGate({
         return;
       }
 
-      // 2. Parameter validation
-      const params = parseSqlParams(sqlForCheck);
-      if (params.length > 0) {
-        const hasMissing = params.some((p) => {
-          const val = snapshotPayload?.[p.stableId] ?? snapshotPayload?.[p.name];
-          return val === undefined || val === null || val === '';
-        });
-        if (hasMissing) {
-          showMessageDialog(
-            t('query.editor.param.missingValue', { token: params[0].name }),
-            'error',
+      // 2. Parameter validation (Host autonomous check, blocking execution on missing params)
+      const effectiveValues = (paramValues ?? snapshotPayload ?? {}) as Record<string, unknown>;
+      const missing = findMissingParams(sqlForCheck, effectiveValues);
+      if (missing.length > 0) {
+        const firstMissing = missing[0];
+        showMessageDialog(
+          t('query.editor.param.missingValue', { token: firstMissing.label }),
+          'error',
+        );
+        setTimeout(() => {
+          const selector = `[data-param-id="${firstMissing.param.stableId}"], [data-param-name="${firstMissing.param.name}"]`;
+          const input = document.querySelector(selector) as HTMLInputElement | null;
+          input?.focus();
+          window.dispatchEvent(
+            new CustomEvent('datazen:focus-bind-param', {
+              detail: {
+                stableId: firstMissing.param.stableId,
+                name: firstMissing.param.name,
+              },
+            }),
           );
-          return;
-        }
+        }, 50);
+        return;
       }
 
       // 3. Risk assessment via unified evaluator
@@ -383,6 +404,7 @@ export function useQueryExecutionGate({
       showMessageDialog,
       panelId,
       boundPayload,
+      paramValues,
     ],
   );
 
