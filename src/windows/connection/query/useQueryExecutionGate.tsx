@@ -330,7 +330,7 @@ export function useQueryExecutionGate({
       let targetSql = sql;
       let effectiveKind: ExecuteKind = kind;
 
-      if (kind === 'selection' && selectionSql != null) {
+      if (selectionSql != null) {
         targetSql = selectionSql;
       } else {
         const activeSel = editorRef.current?.getSelection()?.trim();
