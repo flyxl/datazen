@@ -35,6 +35,7 @@ export const DEFAULT_PRO_GIT = 'https://github.com/flyxl/datazen-extension-sql-e
 export const GENERATED_PRO_TS = resolve(ROOT, 'src/plugins/generated-pro.ts');
 
 export function parseArgs(argv = process.argv.slice(2)) {
+  let explicitEdition = null;
   let edition = process.env.DATAZEN_EDITION || 'community';
   let proPath = process.env.DATAZEN_PRO_PATH || null;
   let proGit = process.env.DATAZEN_PRO_GIT || DEFAULT_PRO_GIT;
@@ -44,11 +45,14 @@ export function parseArgs(argv = process.argv.slice(2)) {
   for (const arg of argv) {
     if (arg === '--pro' || arg === '--edition=pro') {
       edition = 'pro';
+      explicitEdition = 'pro';
     } else if (arg === '--community' || arg === '--edition=community') {
       edition = 'community';
+      explicitEdition = 'community';
     } else if (arg === '--restore') {
       restore = true;
       edition = 'community';
+      explicitEdition = 'community';
     } else if (arg === '--codegen-only') {
       codegenOnly = true;
     } else if (arg.startsWith('--pro-path=')) {
@@ -58,7 +62,7 @@ export function parseArgs(argv = process.argv.slice(2)) {
     }
   }
 
-  return { edition, proPath, proGit, restore, codegenOnly };
+  return { edition, explicitEdition, proPath, proGit, restore, codegenOnly };
 }
 
 export function writeCommunityCodegen(dest = GENERATED_PRO_TS) {
@@ -143,11 +147,21 @@ export function ensureProCheckout({ proPath, proGit, codegenOnly } = {}) {
 
 export function resolvePro(opts = {}) {
   const parsed = parseArgs();
-  const edition = opts.edition ?? parsed.edition ?? 'community';
+  const explicitEdition =
+    opts.edition ??
+    parsed.explicitEdition ??
+    (process.env.DATAZEN_EDITION ? parsed.edition : null);
+  const edition = explicitEdition ?? 'community';
   const proPath = opts.proPath ?? parsed.proPath;
   const proGit = opts.proGit ?? parsed.proGit;
   const restore = opts.restore ?? parsed.restore;
   const codegenOnly = opts.codegenOnly ?? parsed.codegenOnly;
+
+  // If codegenOnly is requested without an explicit edition, and generated-pro.ts already exists, preserve it!
+  if (codegenOnly && !explicitEdition && !restore && existsSync(GENERATED_PRO_TS)) {
+    console.log('[resolve-pro] generated-pro.ts already exists; preserving existing edition');
+    return { edition: 'preserved', active: true };
+  }
 
   if (restore || edition === 'community') {
     writeCommunityCodegen();

@@ -324,6 +324,7 @@ pub(crate) fn redact_for_egress(value: &str, strict_egress: bool) -> String {
     )
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn sanitize_json_with_gate(value: Value, depth: usize, gate: &AiSafetyGateConfig) -> Value {
     if depth >= MAX_JSON_DEPTH && value.is_object() {
         return Value::String("[truncated]".into());
@@ -364,6 +365,7 @@ fn sanitize_json_with_gate(value: Value, depth: usize, gate: &AiSafetyGateConfig
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn redact_json_text_with_gate(value: &str, gate: &AiSafetyGateConfig) -> Option<String> {
     let trimmed = value.trim();
     if !((trimmed.starts_with('{') && trimmed.ends_with('}'))
@@ -379,6 +381,7 @@ fn redact_json_text_with_gate(value: &str, gate: &AiSafetyGateConfig) -> Option<
 }
 
 /// Sanitize text for AI using the model profile's independent safety gate configuration.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn redact_for_gate(value: &str, gate: &AiSafetyGateConfig) -> String {
     let limit = if gate.max_context_bytes > 0 {
         gate.max_context_bytes

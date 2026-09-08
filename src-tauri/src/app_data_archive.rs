@@ -386,6 +386,7 @@ fn extract_zip_to_dir_with_limits(
 /// By default, importing a ZIP that contains `.key` over an existing `.key` is
 /// rejected to prevent silent key replacement.  Callers that need this behaviour
 /// (e.g. legacy key migration) must set [`ImportOptions::allow_key_overwrite`].
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn import_app_data(data_dir: &Path, zip_path: &Path) -> std::io::Result<()> {
     import_app_data_with_options(data_dir, zip_path, ImportOptions::default())
 }

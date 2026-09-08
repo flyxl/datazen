@@ -5,10 +5,10 @@ mod safety;
 mod scanner;
 
 pub use params::apply_params;
-pub use safety::{
-    check_sql, is_write_sql, normalize_fullwidth, normalize_sql, reject_null_bytes,
-    strip_sql_comments,
-};
+pub use safety::{check_sql, normalize_fullwidth, reject_null_bytes};
+
+#[cfg(test)]
+pub use safety::is_write_sql;
 
 #[cfg(test)]
 mod tests {

@@ -103,17 +103,21 @@ for (const a of args) {
 }
 const driversStr = driversArgs.join(' ');
 
+process.env.DATAZEN_EDITION = edition;
+if (proPath) process.env.DATAZEN_PRO_PATH = proPath;
+if (proGit) process.env.DATAZEN_PRO_GIT = proGit;
+
 console.log('[tauri:dev] generating menu labels from locales...');
 execSync('node scripts/generate-menu-labels.mjs', {
   cwd: ROOT,
   stdio: 'inherit',
 });
 
-console.log(`[tauri:dev] resolving pro extension (edition="${edition}")...`);
-resolvePro({ edition, proPath, proGit });
-
 console.log('[tauri:dev] resolving drivers (copy-stash + inject)...');
 const features = resolveDriversWithInjectCheck(driversStr);
+
+console.log(`[tauri:dev] resolving pro extension (edition="${edition}")...`);
+resolvePro({ edition, proPath, proGit });
 
 const tauriArgs = ['tauri', 'dev'];
 

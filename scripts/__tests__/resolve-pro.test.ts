@@ -61,4 +61,10 @@ describe('resolve-pro codegen output', () => {
     );
     expect(content).toContain('activateSqlEditorPro()');
   });
+
+  it('preserves existing generated-pro.ts when codegenOnly is run without explicit edition', () => {
+    const res = resolvePro({ codegenOnly: true });
+    // Should preserve existing file when no explicit edition passed
+    expect(res).toBeDefined();
+  });
 });

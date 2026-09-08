@@ -1259,7 +1259,9 @@ function main() {
     generateFrontendRegistry(plugins);
     generatePluginLocales(plugins);
     generateRustDriverInit(plugins, registry);
-    resolvePro({ codegenOnly: true });
+    if (!existsSync(resolve(ROOT, 'src/plugins/generated-pro.ts'))) {
+      resolvePro({ codegenOnly: true });
+    }
 
     // Also output to stdout for scripts that pipe this
     console.log(`\nCargo build command:`);
