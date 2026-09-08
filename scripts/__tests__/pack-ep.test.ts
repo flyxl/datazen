@@ -17,10 +17,21 @@ import {
   dzxFileName,
   listZipEntries,
   packEp,
+  parsePackArgs,
+  readManifestVersion,
   REQUIRED_PACKAGE_PATHS,
   stagePackageTree,
+  syncLocales,
 } from '../pack-ep.mjs';
-import { buildSignaturePayload, sha256File, signEpPackage } from '../sign-ep.mjs';
+import {
+  buildSignaturePayload,
+  parsePrivateKeyMaterial,
+  parseSignArgs,
+  sha256File,
+  sha256Hex,
+  signEpPackage,
+} from '../sign-ep.mjs';
+import { generateKeyPairSync } from 'crypto';
 
 function writeFixtureExtension(root: string) {
   mkdirSync(join(root, 'dist'), { recursive: true });
@@ -167,4 +178,115 @@ describe('pack-ep integration with sql-editor-pro (when present)', () => {
 
     rmSync(outDir, { recursive: true, force: true });
   }, 120_000);
+});
+
+describe('[tester] pack-ep args, locales, and error paths', () => {
+  it('test_tester_parsePackArgs_parses_mode_out_and_skip_build', () => {
+    const parsed = parsePackArgs([
+      '--extension=custom-ep',
+      '--mode=stage',
+      '--out=/tmp/out',
+      '--stage-dir=/tmp/stage',
+      '--skip-build',
+    ]);
+    expect(parsed.extension).toBe('custom-ep');
+    expect(parsed.mode).toBe('stage');
+    expect(parsed.outDir).toContain('/tmp/out');
+    expect(parsed.stageDir).toContain('/tmp/stage');
+    expect(parsed.skipBuild).toBe(true);
+  });
+
+  it('test_tester_readManifestVersion_requires_string_version', () => {
+    const dir = join(tmpdir(), `pack-ep-manifest-${Date.now()}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ id: 'x' }));
+    expect(() => readManifestVersion(join(dir, 'manifest.json'))).toThrow(/missing string "version"/);
+  });
+
+  it('test_tester_packEp_unknown_mode_throws', () => {
+    const src = join(tmpdir(), `pack-ep-bad-mode-${Date.now()}`);
+    writeFixtureExtension(src);
+    expect(() =>
+      packEp({
+        extensionDir: src,
+        mode: 'invalid' as 'dzx',
+        skipBuild: true,
+        log: () => {},
+      }),
+    ).toThrow(/unknown mode/);
+  });
+
+  it('test_tester_packEp_mode_both_writes_dzx_and_stages', () => {
+    const src = join(tmpdir(), `pack-ep-both-src-${Date.now()}`);
+    const stageDir = join(tmpdir(), `pack-ep-both-stage-${Date.now()}`);
+    const outDir = join(tmpdir(), `pack-ep-both-out-${Date.now()}`);
+    writeFixtureExtension(src);
+    const result = packEp({
+      extension: 'fixture-ep',
+      extensionDir: src,
+      mode: 'both',
+      outDir,
+      stageDir,
+      skipBuild: true,
+      log: () => {},
+    });
+    expect(result.staged).toBe(true);
+    expect(result.dzxPath).toBe(join(outDir, 'fixture-ep-9.9.9.dzx'));
+    expect(existsSync(result.dzxPath!)).toBe(true);
+    expect(existsSync(join(stageDir, 'signature.sig'))).toBe(true);
+    rmSync(outDir, { recursive: true, force: true });
+    rmSync(stageDir, { recursive: true, force: true });
+  });
+
+  it('test_tester_syncLocales_copies_explicit_locales_directory', () => {
+    const src = join(tmpdir(), `pack-ep-locales-src-${Date.now()}`);
+    const target = join(tmpdir(), `pack-ep-locales-target-${Date.now()}`);
+    mkdirSync(join(src, 'locales'), { recursive: true });
+    writeFileSync(join(src, 'locales/en.json'), '{"k":"v"}');
+    syncLocales(src, target, { log: () => {} });
+    expect(existsSync(join(target, 'locales/en.json'))).toBe(true);
+  });
+
+  it('test_tester_assertPackageLayout_throws_when_incomplete', () => {
+    const dir = join(tmpdir(), `pack-ep-incomplete-${Date.now()}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'manifest.json'), '{}');
+    expect(() => assertPackageLayout(dir)).toThrow(/incomplete package/);
+  });
+});
+
+describe('[tester] sign-ep helpers and error paths', () => {
+  it('test_tester_sha256Hex_matches_file_digest', () => {
+    const dir = join(tmpdir(), `sign-ep-hex-${Date.now()}`);
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, 'sample.txt');
+    writeFileSync(file, 'hello');
+    expect(sha256Hex('hello')).toBe(sha256File(file));
+  });
+
+  it('test_tester_parsePrivateKeyMaterial_accepts_generated_ed25519_pem', () => {
+    const { privateKey } = generateKeyPairSync('ed25519');
+    const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+    expect(parsePrivateKeyMaterial(pem)).toBeDefined();
+  });
+
+  it('test_tester_signEpPackage_throws_when_signed_file_missing', () => {
+    const dir = join(tmpdir(), `sign-ep-missing-${Date.now()}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'manifest.json'), '{}');
+    expect(() => signEpPackage({ packageDir: dir })).toThrow(/missing signed artifact/);
+  });
+
+  it('test_tester_parseSignArgs_reads_dir_and_out', () => {
+    expect(parseSignArgs(['--dir=/pkg', '--out=/sig'])).toEqual({
+      packageDir: '/pkg',
+      outPath: '/sig',
+    });
+  });
+
+  it('test_tester_parsePrivateKeyMaterial_rejects_invalid_seed_length', () => {
+    expect(() => parsePrivateKeyMaterial(Buffer.from('short').toString('base64'))).toThrow(
+      /32-byte Ed25519 seed/,
+    );
+  });
 });

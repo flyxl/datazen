@@ -1,9 +1,9 @@
 # Track ep-packaging-ci: Standalone Packager, Tauri Builtin Bundling & GitHub Actions Release
 
-> Status: **READY_FOR_TEST**
+> Status: **TEST_DONE**
 > Branch: `feature/ep-packaging-ci`
 > Base branch: `feat/sql-editor-clean`
-> LastHeartbeat: 2026-09-08T18:36:00+08:00
+> LastHeartbeat: 2026-09-08T18:39:00+08:00
 > Coder Commit: `56d62ae44`
 > Tester Commit: `pending`
 
@@ -55,4 +55,51 @@
 ---
 
 ## Tester Verification
-*(待 Coder 完成后由 Tester 独立复测登记)*
+
+| Suite | Coder | Tester (独立复验) |
+|---|---|---|
+| `npx vitest run scripts/__tests__/pack-ep.test.ts scripts/__tests__/resolve-pro.test.ts` | 14/14 | **35/35 passed** |
+| `npx tsc --noEmit` | 0 errors | **0 errors** |
+
+### 脚本覆盖率（v8, `--coverage.include=scripts/{pack-ep,resolve-pro,sign-ep}.mjs`）
+
+| File | Lines | Stmts | Branches |
+|---|---|---|---|
+| `pack-ep.mjs` | 92.5% | 91.8% | 87.4% |
+| `resolve-pro.mjs` | 72.9% | 72.9% | 86.4% |
+| `sign-ep.mjs` | 81.4% | 81.4% | 73.3% |
+| **Aggregate** | **83.3%** | **83.0%** | **82.8%** |
+
+> `resolve-pro.mjs` 未覆盖分支主要为 `ensureProCheckout` 的 git clone / `/tmp` fallback 与 CLI 入口（需网络或外部目录，留待 R 阶段集成验证）。
+
+### 代码审查摘要
+
+| 文件 | 结论 |
+|---|---|
+| `scripts/pack-ep.mjs` | ✅ 正确实现 build → stage → sign → `.dzx`/staging 双模式；`REQUIRED_PACKAGE_PATHS` 与 ZIP 结构符合规范 |
+| `scripts/resolve-pro.mjs` | ✅ Pro codegen 已解耦静态 import，改为 `hostExtensionLoader.loadFromUrl` + `builtin-ep` 路径解析；community restore 清理 staging |
+| `src-tauri/tauri.conf.json` | ✅ `bundle.resources` 含 `"resources/builtin-ep": "builtin-ep"` |
+| `.github/workflows/release.yml` | ✅ Pro matrix 传 `--edition=pro`；linux-x64 构建后 `--skip-build` 打 `.dzx`；`artifacts/*` 上传含 dzx |
+
+### Tester 新增测试（`[tester]` 块）
+
+- `resolve-pro.test.ts`：community/restore staging 清理、`ensureProCheckout` 显式路径、`stageProExtension`、`resolvePro` pro 全链路 staging（当 pro-extensions 存在时）
+- `pack-ep.test.ts`：`parsePackArgs`、manifest 校验、unknown mode、mode=both、locales 复制、`sign-ep` 辅助函数与错误路径
+
+---
+
+## E2E 用例登记
+
+| ID | 场景 | 前置条件 | 执行方式 |
+|---|---|---|---|
+| E2E-EP-PKG-001 | Pro 版 `pnpm tauri:build:pro` 后安装包内含 `builtin-ep/sql-editor-pro/`（manifest + dist + signature.sig） | Pro 私仓 checkout + 签名密钥 | 【留待 R 回归】 |
+| E2E-EP-PKG-002 | Community 版构建不含 `builtin-ep/sql-editor-pro/` | `--edition=community` | 【留待 R 回归】 |
+| E2E-EP-PKG-003 | Pro 客户端启动后 SQL Editor Pro 能力（Hover/Completion）无需静态 bundle 即可激活 | Pro 安装包 + Postgres 连接 | 【留待 R 回归】 |
+| E2E-EP-PKG-004 | GitHub Release Pro 流水线产出 `sql-editor-pro-{version}.dzx` 且 ZIP 内含 manifest/dist/signature/locales | `DATAZEN_EP_SIGNING_PRIVATE_KEY` secret | 【留待 R 回归】 |
+| E2E-EP-PKG-005 | 独立 `.dzx` 热加载（开发者模式）替换内置扩展 | Wave 2 ep-security-gate 合流后 | 【留待 R 回归】 |
+
+---
+
+## Phase
+
+`TEST_DONE` — 2026-09-08，Tester 独立复验通过，无 Bug 登记。
