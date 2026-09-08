@@ -109,6 +109,7 @@ export const config: WebdriverIO.Config = {
    */
   suites: {
     // Fast regression subset (~30 specs, target <10 min) — `pnpm e2e:smoke`
+    // (excludes Data Migration triad: schema-diff, data-sync, data-transfer)
     smoke: [
       './specs/main-window.ts',
       './specs/new-connection.ts',
@@ -132,9 +133,7 @@ export const config: WebdriverIO.Config = {
       './specs/workflow.ts',
       './specs/er-diagram.ts',
       './specs/multi-database.ts',
-      './specs/data-sync-window.ts',
       './specs/backup-window.ts',
-      './specs/schema-diff-window.ts',
       './specs/ai-features.ts',
       './specs/app-data-backup.ts',
       './specs/path-ipc-hardening.ts',
