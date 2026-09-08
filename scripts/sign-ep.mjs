@@ -58,7 +58,13 @@ export function parsePrivateKeyMaterial(raw) {
       type: 'pkcs8',
     });
   }
-  return createPrivateKey({ key: buf, format: 'der', type: 'pkcs8' });
+  try {
+    return createPrivateKey({ key: buf, format: 'der', type: 'pkcs8' });
+  } catch {
+    throw new Error(
+      '[sign-ep] DATAZEN_EP_SIGNING_PRIVATE_KEY must be PEM or base64-encoded 32-byte Ed25519 seed',
+    );
+  }
 }
 
 export function resolveSigningPrivateKey(env = process.env) {
