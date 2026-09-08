@@ -261,8 +261,24 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DATAZEN_DRIVERS: ${{ matrix.drivers }}
           DATAZEN_EDITION: ${{ matrix.edition || 'community' }}
+          DATAZEN_EP_SIGNING_PRIVATE_KEY: ${{ secrets.DATAZEN_EP_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ matrix.variant_suffix == '' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Pack signed SQL Editor Pro .dzx (Default Pro, once)
+        if: matrix.needs_pro && matrix.variant_suffix == '' && matrix.os_label == 'linux-x64'
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          node scripts/pack-ep.mjs \
+            --extension=sql-editor-pro \
+            --mode=dzx \
+            --skip-build \
+            --dir=src-tauri/resources/builtin-ep/sql-editor-pro \
+            --out=artifacts/
+          ls -la artifacts/*.dzx
+        env:
+          DATAZEN_EP_SIGNING_PRIVATE_KEY: ${{ secrets.DATAZEN_EP_SIGNING_PRIVATE_KEY }}
 
       - name: Package Windows portable archive
         if: runner.os == 'Windows'

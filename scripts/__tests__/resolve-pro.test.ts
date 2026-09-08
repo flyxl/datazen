@@ -49,17 +49,17 @@ describe('resolve-pro codegen output', () => {
     expect(content).not.toContain('@datazen/extension-sql-editor-pro');
   });
 
-  it('writes pro codegen with extension activation', () => {
+  it('writes pro codegen with builtin-ep HostExtensionLoader activation', () => {
     const dir = mkdtempSync(join(tmpdir(), 'resolve-pro-test-'));
     const file = join(dir, 'generated-pro.ts');
     writeProCodegen(file);
     expect(existsSync(file)).toBe(true);
     const content = readFileSync(file, 'utf-8');
     expect(content).toContain("export const DATAZEN_EDITION = 'pro'");
-    expect(content).toContain(
-      "import { activate as activateSqlEditorPro } from '@datazen/extension-sql-editor-pro'",
-    );
-    expect(content).toContain('activateSqlEditorPro()');
+    expect(content).toContain('hostExtensionLoader');
+    expect(content).toContain('loadFromUrl');
+    expect(content).toContain("'builtin-ep'");
+    expect(content).not.toContain('@datazen/extension-sql-editor-pro');
   });
 
   it('preserves existing generated-pro.ts when codegenOnly is run without explicit edition', () => {

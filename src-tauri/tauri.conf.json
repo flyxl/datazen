@@ -63,7 +63,8 @@
     "createUpdaterArtifacts": false,
     "targets": "all",
     "resources": {
-      "resources/prompts": "prompts"
+      "resources/prompts": "prompts",
+      "resources/builtin-ep": "builtin-ep"
     },
     "icon": [
       "icons/32x32.png",
