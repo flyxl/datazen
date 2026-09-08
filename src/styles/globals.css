@@ -73,16 +73,23 @@ body {
 }
 
 button,
+button *,
 [role='button'],
+[role='button'] *,
 [role='menuitem'],
+[role='menuitem'] *,
 [role='menuitemcheckbox'],
+[role='menuitemcheckbox'] *,
 [role='menuitemradio'],
+[role='menuitemradio'] *,
 [role='tab'],
+[role='tab'] *,
 [role='checkbox'],
 [role='radio'],
 [role='switch'],
 [role='slider'],
 [role='option'],
+[role='option'] *,
 [role='listbox'],
 [role='combobox'],
 [role='menu'],
@@ -98,8 +105,8 @@ input[type='color'],
 input[type='file'],
 select,
 progress {
-  -webkit-user-select: none;
-  user-select: none;
+  -webkit-user-select: none !important;
+  user-select: none !important;
 }
 
 /* User-facing error text: danger color + selectable for copy. */
@@ -110,7 +117,9 @@ progress {
   white-space: pre-wrap;
   word-break: break-word;
 }
-/* Content opt-in, per concrete layout element. */
+/* Content opt-in, per concrete layout element.
+   Ensures all error messages, technical outputs, and non-button danger alerts are copyable.
+   Interactive controls (buttons) above are protected with !important to prevent copying. */
 .selectable,
 .select-text,
 .copyable,
@@ -122,8 +131,18 @@ code,
 .cm-content,
 .cm-editor,
 [role='alert'],
+.error-message,
+p.text-danger,
+span.text-danger,
+div.text-danger,
+.text-red-300,
 .text-red-400,
 .text-red-500,
+.text-red-600,
+.text-red-700,
+[data-error],
+[data-testid*='error'],
+[aria-invalid='true'],
 .whitespace-pre-wrap {
   -webkit-user-select: text;
   user-select: text;

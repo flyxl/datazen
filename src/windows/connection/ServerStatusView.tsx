@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { ChartCanvas } from '../../components/chart/ChartCanvas';
 import { cn } from '../../lib/cn';
 import { driverCommands } from '../../commands/driver';
@@ -659,8 +660,8 @@ export function ServerStatusView({
 
   if (error && !status) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-sm text-danger">
-        {error}
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+        <CopyableError message={error} copyButton className="max-w-lg text-sm text-danger" />
       </div>
     );
   }

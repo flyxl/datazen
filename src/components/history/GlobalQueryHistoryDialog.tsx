@@ -3,6 +3,7 @@ import { Check, Clock, Copy, ExternalLink, Search, Trash2 } from 'lucide-react';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
+import { CopyableError } from '../ui/CopyableError';
 import { useI18n } from '../../hooks/useI18n';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { queryCommands } from '../../commands/query';
@@ -272,9 +273,11 @@ export function GlobalQueryHistoryDialog({
                   </pre>
 
                   {item.errorMessage && (
-                    <div className="text-[11px] text-danger bg-danger/10 rounded px-2 py-1 truncate">
-                      {item.errorMessage}
-                    </div>
+                    <CopyableError
+                      message={item.errorMessage}
+                      copyButton
+                      className="rounded bg-danger/10 px-2 py-1 text-[11px] text-danger"
+                    />
                   )}
                 </div>
               );

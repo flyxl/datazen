@@ -175,7 +175,7 @@ export function McpClientSection() {
 
       {mcpError && (
         <div className="flex items-center justify-between rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5">
-          <span className="text-xs text-red-500">{mcpError}</span>
+          <span className="select-text text-xs text-red-500">{mcpError}</span>
           <button onClick={clearMcpError} className="text-xs text-red-500 underline">
             {t('common.close')}
           </button>
@@ -259,7 +259,7 @@ export function McpClientSection() {
                 </div>
                 {serverError && (
                   <div className="mt-1.5 flex items-start justify-between gap-2 rounded border border-red-500/20 bg-red-500/5 px-2 py-1">
-                    <span className="text-xs text-red-500">{serverError}</span>
+                    <span className="select-text text-xs text-red-500">{serverError}</span>
                     <button
                       type="button"
                       onClick={() => clearMcpServerError(config.id)}
@@ -384,7 +384,9 @@ export function McpClientSection() {
             onChange={(enabledForAi) => setDraft((d) => ({ ...d, enabledForAi }))}
           />
           {(saveError || idDuplicate) && (
-            <p className="text-xs text-red-500">{saveError ?? t('mcpClient.duplicateId')}</p>
+            <p className="select-text text-xs text-red-500">
+              {saveError ?? t('mcpClient.duplicateId')}
+            </p>
           )}
           <div className="flex gap-2">
             <Button

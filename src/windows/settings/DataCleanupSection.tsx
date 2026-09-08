@@ -164,7 +164,7 @@ export function DataCleanupSection() {
         </Button>
         {message && (
           <span
-            className={`text-xs ${message.kind === 'success' ? 'text-success' : 'text-danger'}`}
+            className={`select-text text-xs ${message.kind === 'success' ? 'text-success' : 'text-danger'}`}
           >
             {message.text}
           </span>

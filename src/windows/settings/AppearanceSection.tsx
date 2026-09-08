@@ -129,7 +129,7 @@ export function AppearanceSection({
       )}
 
       {error && (
-        <p className="mt-3 text-xs text-red-500" data-testid="appearance-error">
+        <p className="select-text mt-3 text-xs text-red-500" data-testid="appearance-error">
           {t('settings.appearance.applyError', { error })}
         </p>
       )}

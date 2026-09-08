@@ -398,7 +398,9 @@ export function WorkflowPanel({ dbSessionId }: WorkflowPanelProps) {
           )}
 
           {workflowError && (
-            <div className="text-xs text-red-400 rounded bg-red-500/10 p-2">{workflowError}</div>
+            <div className="select-text text-xs text-red-400 rounded bg-red-500/10 p-2">
+              {workflowError}
+            </div>
           )}
 
           {result && <WorkflowExecutionResultPanel result={result} t={t} />}

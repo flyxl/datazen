@@ -7,6 +7,7 @@ import type { StatementResult } from '../../../types';
 import type { ChartConfig } from '../../../types/chart';
 import type { DataExportCapability } from '../../../lib/exportCapability';
 import { cn } from '../../../lib/cn';
+import { CopyableError } from '../../../components/ui/CopyableError';
 import { ResultTableView } from './ResultTableView';
 import { resolveResultWorkspaceView, type ResultWorkspaceView } from './resultWorkspaceHelpers';
 
@@ -74,10 +75,9 @@ export function ResultWorkspace({
     return (
       <div
         className={cn('flex min-h-0 flex-1 items-center justify-center px-4', className)}
-        role="alert"
         {...tid('result-workspace-error')}
       >
-        <p className="max-w-2xl text-sm text-red-400">{error}</p>
+        <CopyableError message={error} copyButton className="max-w-2xl text-sm text-red-400" />
       </div>
     );
   }

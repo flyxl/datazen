@@ -85,7 +85,7 @@ export function SchemaDiffDeployPanel({
       </label>
 
       {requireRollback && !plan.rollbackCompleteness.complete && (
-        <p className="text-xs text-danger">
+        <p className="select-text text-xs text-danger">
           {t('schemaDiff.rollbackIncomplete')}: {plan.rollbackCompleteness.missing.join('; ')}
         </p>
       )}

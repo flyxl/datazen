@@ -138,7 +138,7 @@ export function ExplainPanel({
 
       {explainError && (
         <div className="p-3">
-          <div className="rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+          <div className="select-text rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
             {explainError}
           </div>
         </div>

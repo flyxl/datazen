@@ -7,7 +7,9 @@ interface Props {
 }
 
 interface BoundaryProps extends Props {
-  t: (key: 'common.error' | 'common.close' | 'common.retry' | 'backend.unknownError') => string;
+  t: (
+    key: 'common.error' | 'common.close' | 'common.retry' | 'backend.unknownError' | 'common.copy',
+  ) => string;
 }
 
 interface State {
@@ -50,9 +52,24 @@ class ErrorBoundaryInner extends Component<BoundaryProps, State> {
           <div className="max-w-md space-y-4 text-center">
             <div className="text-4xl">⚠️</div>
             <h2 className="text-lg font-semibold text-fg">{this.props.t('common.error')}</h2>
-            <p className="text-sm text-fg-secondary break-all">
-              {this.state.error?.message || this.props.t('backend.unknownError')}
-            </p>
+            <div className="space-y-2">
+              <p className="selectable select-text max-h-40 overflow-auto rounded bg-surface-alt p-2 font-mono text-xs text-danger break-all">
+                {this.state.error?.message || this.props.t('backend.unknownError')}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  const content =
+                    this.state.error?.stack ||
+                    this.state.error?.message ||
+                    this.props.t('backend.unknownError');
+                  void navigator.clipboard.writeText(content);
+                }}
+                className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+              >
+                {this.props.t('common.copy')}
+              </button>
+            </div>
             <div className="flex justify-center gap-3">
               <button
                 type="button"

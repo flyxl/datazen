@@ -4,10 +4,7 @@ import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { openSettingsWindow } from '../../lib/windowManager';
-import type {
-  QueryActionBuildResult,
-  QueryDiagnosisContext,
-} from '../../lib/aiQueryActions';
+import type { QueryActionBuildResult, QueryDiagnosisContext } from '../../lib/aiQueryActions';
 
 interface DiagnosisPanelProps {
   diagnosisContext: QueryActionBuildResult<QueryDiagnosisContext>;
@@ -15,11 +12,7 @@ interface DiagnosisPanelProps {
   onClose: () => void;
 }
 
-export function DiagnosisPanel({
-  diagnosisContext,
-  onApplySql,
-  onClose,
-}: DiagnosisPanelProps) {
+export function DiagnosisPanel({ diagnosisContext, onApplySql, onClose }: DiagnosisPanelProps) {
   const { t } = useI18n();
   const diagnosis = useAiStore((s) => s.diagnosis);
   const isDiagnosing = useAiStore((s) => s.isDiagnosing);
@@ -124,7 +117,7 @@ export function DiagnosisPanel({
         )}
 
         {diagnosisError && (
-          <div className="rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+          <div className="select-text rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
             {diagnosisError}
           </div>
         )}

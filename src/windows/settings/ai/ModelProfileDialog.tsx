@@ -361,7 +361,7 @@ export function ModelProfileDialog({
               onChange={(isDefault) => setDraft((d) => ({ ...d, isDefault }))}
             />
 
-            {configError && <p className="text-xs text-red-500">{configError}</p>}
+            {configError && <p className="select-text text-xs text-red-500">{configError}</p>}
           </div>
         )}
 

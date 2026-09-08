@@ -126,7 +126,7 @@ export function Nl2SqlPanel({
       </div>
 
       {nl2sqlError && (
-        <div className="mx-2 mb-2 shrink-0 rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+        <div className="select-text mx-2 mb-2 shrink-0 rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
           {nl2sqlError}
         </div>
       )}

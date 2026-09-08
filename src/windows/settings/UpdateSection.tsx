@@ -150,7 +150,7 @@ export function UpdateSection({
       </div>
 
       {status && <p className="text-xs text-fg-secondary">{status}</p>}
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p className="select-text text-xs text-red-500">{error}</p>}
     </>
   );
 }

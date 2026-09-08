@@ -35,7 +35,7 @@ export function WorkflowExecutionResultPanel({
       ))}
 
       {result.error && (
-        <div className="px-3 py-2 text-xs text-red-400 bg-red-500/5 border-t border-edge">
+        <div className="select-text px-3 py-2 text-xs text-red-400 bg-red-500/5 border-t border-edge">
           {result.error}
         </div>
       )}
@@ -115,7 +115,7 @@ function WorkflowStepResultRow({ step }: { step: StepExecutionResult }) {
             </div>
           )}
 
-          {step.error && <div className="text-[11px] text-red-400">{step.error}</div>}
+          {step.error && <div className="select-text text-[11px] text-red-400">{step.error}</div>}
 
           {hasData && (
             <div>

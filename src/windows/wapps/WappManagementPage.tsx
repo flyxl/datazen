@@ -358,7 +358,7 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
         </div>
 
         {(actionError || storeError) && (
-          <div className="mt-3 text-sm text-red-400" data-testid="plugin-page-error">
+          <div className="select-text mt-3 text-sm text-red-400" data-testid="plugin-page-error">
             {actionError ?? storeError}
           </div>
         )}

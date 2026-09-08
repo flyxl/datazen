@@ -149,7 +149,7 @@ export function AiSettingsSection() {
         </div>
       </div>
 
-      {configError && <p className="text-xs text-red-500">{configError}</p>}
+      {configError && <p className="select-text text-xs text-red-500">{configError}</p>}
 
       {profiles.length === 0 ? (
         <div

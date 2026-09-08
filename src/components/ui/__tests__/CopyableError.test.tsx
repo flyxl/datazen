@@ -23,7 +23,7 @@ describe('CopyableError', () => {
     const longMessage = 'line one\nline two with more detail';
     render(<CopyableError message={longMessage} />);
     const el = screen.getByTestId('copyable-error-message');
-    expect(el).toHaveClass('selectable', 'whitespace-pre-wrap', 'break-words');
+    expect(el).toHaveClass('selectable', 'select-text', 'whitespace-pre-wrap', 'break-words');
     expect(el.textContent).toBe(longMessage);
   });
 

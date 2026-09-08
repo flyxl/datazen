@@ -107,9 +107,26 @@ function clearSelection() {
 export function installDragSelectionGuard(): () => void {
   let pressStart: { target: Element; selectable: boolean } | null = null;
 
+  const isInteractiveControl = (el: Element): boolean => {
+    return Boolean(
+      el.closest(
+        'button, [role="button"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="tab"], [role="checkbox"], [role="radio"], [role="switch"], [role="slider"], [role="option"], [role="combobox"]',
+      ),
+    );
+  };
+
   const isSelectable = (el: Element | null): boolean => {
     if (!el) return false;
-    if (el.closest('.selectable, .select-text, .copyable, [role="alert"], pre, code')) {
+    // Interactive controls (buttons, menu items, tabs, switches, etc.) must NEVER be text-selectable,
+    // even if styled with danger colors (e.g. Button variant="danger", delete buttons).
+    if (isInteractiveControl(el)) {
+      return false;
+    }
+    if (
+      el.closest(
+        '.selectable, .select-text, .copyable, .error-message, [role="alert"], [data-error], [data-testid*="error"], [aria-invalid="true"], pre, code',
+      )
+    ) {
       return true;
     }
     let node: Element | null = el;

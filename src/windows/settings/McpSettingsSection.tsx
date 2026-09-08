@@ -226,7 +226,7 @@ export function McpSettingsSection({
         </div>
       </SettingRow>
 
-      {toggleError && <p className="text-xs text-red-500">{toggleError}</p>}
+      {toggleError && <p className="select-text text-xs text-red-500">{toggleError}</p>}
 
       <SettingRow label={t('mcp.permission.title')}>
         <div className="space-y-2 pt-1">

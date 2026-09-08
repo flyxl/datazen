@@ -98,9 +98,7 @@ export function FileConnectionFields({ form }: { form: ConnectionFormState }) {
   }, [adbMode, packages.length, loadPackages]);
 
   const filteredPackages = packageFilter
-    ? packages.filter((p) =>
-        p.package_name.toLowerCase().includes(packageFilter.toLowerCase()),
-      )
+    ? packages.filter((p) => p.package_name.toLowerCase().includes(packageFilter.toLowerCase()))
     : packages;
 
   return (
@@ -145,9 +143,7 @@ export function FileConnectionFields({ form }: { form: ConnectionFormState }) {
               className="mb-1"
             />
             {loadingPackages ? (
-              <p className="text-xs text-fg-muted">
-                {t('newConn.adbLoadingPackages')}
-              </p>
+              <p className="text-xs text-fg-muted">{t('newConn.adbLoadingPackages')}</p>
             ) : (
               <Select
                 value={selectedPackage}
@@ -166,9 +162,7 @@ export function FileConnectionFields({ form }: { form: ConnectionFormState }) {
             <div>
               <Label>{t('newConn.adbSelectDatabase')}</Label>
               {loadingDatabases ? (
-                <p className="text-xs text-fg-muted">
-                {t('newConn.adbLoadingDatabases')}
-              </p>
+                <p className="text-xs text-fg-muted">{t('newConn.adbLoadingDatabases')}</p>
               ) : (
                 <Select
                   value={selectedDbPath}
@@ -185,22 +179,14 @@ export function FileConnectionFields({ form }: { form: ConnectionFormState }) {
 
           {/* Pull button — save path chosen in native dialog */}
           {selectedPackage && selectedDbPath && (
-            <Button
-              onClick={handlePull}
-              disabled={pulling}
-              className="w-full"
-            >
+            <Button onClick={handlePull} disabled={pulling} className="w-full">
               {pulling ? t('newConn.adbPulling') : t('newConn.adbPull')}
             </Button>
           )}
 
           {/* Status messages */}
-          {error && (
-            <p className="text-xs text-[var(--c-danger)]">{error}</p>
-          )}
-          {success && (
-            <p className="text-xs text-[var(--c-success)]">{success}</p>
-          )}
+          {error && <p className="select-text text-xs text-[var(--c-danger)]">{error}</p>}
+          {success && <p className="text-xs text-[var(--c-success)]">{success}</p>}
         </div>
       )}
     </div>

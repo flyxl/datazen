@@ -121,6 +121,73 @@ describe('installDragSelectionGuard', () => {
     expect(removeAllRanges).not.toHaveBeenCalled();
   });
 
+  it('keeps the selection when the press started on non-button danger/error elements', () => {
+    const dangerClasses = ['selectable', 'select-text', 'copyable', 'error-message'];
+
+    for (const cls of dangerClasses) {
+      const removeAllRanges = mockSelection(true);
+      el.className = cls;
+      el.style.userSelect = 'none';
+      el.dispatchEvent(
+        new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1 }),
+      );
+      fire('mousemove', { buttons: 1 });
+      expect(removeAllRanges).not.toHaveBeenCalled();
+    }
+  });
+
+  it('clears the selection when the press started on a button, even with danger styles', () => {
+    const button = document.createElement('button');
+    button.className = 'bg-danger text-white border-danger hover:bg-danger/80';
+    button.textContent = 'Delete Record';
+    document.body.appendChild(button);
+
+    const removeAllRanges = mockSelection(true);
+    button.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1 }),
+    );
+    fire('mousemove', { buttons: 1 });
+    expect(removeAllRanges).toHaveBeenCalledTimes(1);
+
+    button.remove();
+  });
+
+  it('clears the selection when the press started on an element inside a danger button', () => {
+    const button = document.createElement('button');
+    button.className = 'bg-red-500 text-white';
+    const span = document.createElement('span');
+    span.className = 'text-danger font-bold';
+    span.textContent = 'Drop Table';
+    button.appendChild(span);
+    document.body.appendChild(button);
+
+    const removeAllRanges = mockSelection(true);
+    span.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1 }),
+    );
+    fire('mousemove', { buttons: 1 });
+    expect(removeAllRanges).toHaveBeenCalledTimes(1);
+
+    button.remove();
+  });
+
+  it('clears the selection when the press started on role="button" or role="menuitem" with danger style', () => {
+    const divBtn = document.createElement('div');
+    divBtn.setAttribute('role', 'button');
+    divBtn.className = 'text-danger';
+    divBtn.textContent = 'Clear All';
+    document.body.appendChild(divBtn);
+
+    const removeAllRanges = mockSelection(true);
+    divBtn.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1 }),
+    );
+    fire('mousemove', { buttons: 1 });
+    expect(removeAllRanges).toHaveBeenCalledTimes(1);
+
+    divBtn.remove();
+  });
+
   it('does not clear on a plain click without movement', () => {
     const removeAllRanges = mockSelection(true);
     el.style.userSelect = 'none';
