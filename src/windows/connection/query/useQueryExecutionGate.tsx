@@ -8,6 +8,11 @@ import { useConfirmDialog } from '../../../hooks/useConfirmDialog';
 import { analyzeTransactionSql } from '../../../lib/sqlTransactionGuard';
 import { parseSqlParams, substituteSqlParams } from '../../../lib/sqlBindParams';
 import { findMissingParams } from './validateBindParams';
+import {
+  resolveExecutionTarget,
+  type ResolveExecutionTargetResult,
+} from './resolveExecutionTarget';
+import { ExecutionStrategyAskModal } from './ExecutionStrategyAskModal';
 import { PRESET_GROUPS } from '../../../lib/connectionGroups';
 import { assessExecutionRisk } from './queryExecutionRisk';
 import type { SqlRiskClassification } from './queryExecutionRisk';
@@ -64,6 +69,9 @@ export function useQueryExecutionGate({
   const { t } = useI18n();
   const [confirmDangerous, confirmDangerousDialog] = useConfirmDialog();
   const [txUnclosedOpen, setTxUnclosedOpen] = useState(false);
+  const [askModalState, setAskModalState] = useState<{
+    target: ResolveExecutionTargetResult;
+  } | null>(null);
   const pendingExecuteRef = useRef<PendingExecute | null>(null);
   const autoCommit = useSettingsStore((s) => s.settings.autoCommit);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
@@ -317,19 +325,52 @@ export function useQueryExecutionGate({
    */
   const requestExecute = useCallback(
     async (kind: ExecuteKind, selectionSql?: string) => {
-      const sqlForCheck =
-        kind === 'selection' && selectionSql != null
-          ? selectionSql
-          : editorRef.current?.getSelection()?.trim() || sql;
+      let targetSql = sql;
+      let effectiveKind: ExecuteKind = kind;
+
+      if (kind === 'selection' && selectionSql != null) {
+        targetSql = selectionSql;
+      } else {
+        const activeSel = editorRef.current?.getSelection()?.trim();
+        if (activeSel) {
+          targetSql = activeSel;
+          effectiveKind = 'selection';
+        } else {
+          const strategy =
+            useSettingsStore.getState().settings.sqlExecutionStrategy ?? 'current_statement';
+          const cursorOffset = editorRef.current?.getCursorOffset?.() ?? 0;
+          const resolved = resolveExecutionTarget({
+            doc: sql,
+            cursorOffset,
+            selection: '',
+            strategy,
+          });
+
+          if (resolved.needsAsk) {
+            setAskModalState({ target: resolved });
+            return;
+          }
+
+          targetSql = resolved.sql;
+          if (resolved.strategyUsed !== 'entire_script' && targetSql !== sql) {
+            effectiveKind = 'selection';
+          }
+        }
+      }
+
+      const sqlForCheck = targetSql;
 
       // Freeze snapshot before any async work
       const snapshotPayload =
-        kind === 'selection' && selectionSql != null ? boundPayload : boundPayload;
+        effectiveKind === 'selection' && selectionSql != null ? boundPayload : boundPayload;
       const snapshot = buildSnapshot(sqlForCheck, snapshotPayload);
 
       // 1. Transaction check — unclosed BEGIN
       if (analyzeTransactionSql(sqlForCheck).hasUnclosedBegin) {
-        pendingExecuteRef.current = { kind, sql: selectionSql };
+        pendingExecuteRef.current = {
+          kind: effectiveKind,
+          sql: effectiveKind === 'selection' ? targetSql : undefined,
+        };
         setTxUnclosedOpen(true);
         return;
       }
@@ -390,7 +431,7 @@ export function useQueryExecutionGate({
       }
 
       // 7. Submit execution with the frozen snapshot
-      void runExecute(kind, selectionSql);
+      void runExecute(effectiveKind, effectiveKind === 'selection' ? targetSql : undefined);
     },
     [
       confirmDangerous,
@@ -478,6 +519,38 @@ export function useQueryExecutionGate({
     setTxUnclosedOpen(false);
   }, []);
 
+  const handleAskExecuteCurrent = useCallback(() => {
+    const currentSql = askModalState?.target.currentStatement?.sql;
+    setAskModalState(null);
+    if (currentSql) {
+      void requestExecute('selection', currentSql);
+    }
+  }, [askModalState, requestExecute]);
+
+  const handleAskExecuteEntire = useCallback(() => {
+    const entire = askModalState?.target.entireScript;
+    setAskModalState(null);
+    if (entire) {
+      void requestExecute('full', entire);
+    }
+  }, [askModalState, requestExecute]);
+
+  const handleAskCancel = useCallback(() => {
+    setAskModalState(null);
+  }, []);
+
+  const executionStrategyAskModal = askModalState ? (
+    <ExecutionStrategyAskModal
+      open
+      currentStatement={askModalState.target.currentStatement}
+      statementCount={askModalState.target.statementCount}
+      entireScript={askModalState.target.entireScript}
+      onExecuteCurrent={handleAskExecuteCurrent}
+      onExecuteEntire={handleAskExecuteEntire}
+      onCancel={handleAskCancel}
+    />
+  ) : null;
+
   return {
     requestExecute,
     runExecute,
@@ -487,5 +560,6 @@ export function useQueryExecutionGate({
     handleCancelUnclosedTx,
     txUnclosedOpen,
     confirmDangerousDialog,
+    executionStrategyAskModal,
   };
 }

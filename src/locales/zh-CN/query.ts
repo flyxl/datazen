@@ -302,5 +302,14 @@ const pack = {
   'batchExport.disabledByDriver': '该驱动不支持整表导出。',
   'query.addToDashboard': '添加到看板',
   'query.dashboard.defaultName': '新看板',
+  'query.executionStrategy.title': '执行策略',
+  'query.executionStrategy.currentStatement': '当前语句',
+  'query.executionStrategy.entireScript': '整段脚本',
+  'query.executionStrategy.largestStatement': '最大/临近语句',
+  'query.executionStrategy.ask': '每次询问',
+  'query.executionStrategy.askTitle': '选择执行范围',
+  'query.executionStrategy.askDesc': '检测到脚本包含多条语句，请选择要执行的范围：',
+  'query.executionStrategy.runCurrent': '仅执行当前语句（第 {from}-{to} 行）',
+  'query.executionStrategy.runEntire': '执行整段脚本（共 {count} 条语句）',
 } as const;
 export default pack;

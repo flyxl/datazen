@@ -18,6 +18,7 @@ import type { SqlEditorHandle } from '../../../components/SqlEditor';
 import type { EditorMetadataSnapshot } from '../../../components/sql-editor/metadata/types';
 import { SnippetMenuButton } from './toolbar/SnippetMenuButton';
 import { RefreshCompletionButton } from './toolbar/RefreshCompletionButton';
+import { ExecutionStrategySelect } from './toolbar/ExecutionStrategySelect';
 import { QueryContextSelectors } from '../../../components/query/QueryContextSelectors';
 import { QueryExecutionStatus } from '../../../components/query/QueryExecutionStatus';
 import { Nl2SqlPanel } from '../../../components/ai/Nl2SqlPanel';
@@ -275,6 +276,7 @@ export function QueryEditorSection({
             {...tid('editor-execute-button')}
           />
         )}
+        <ExecutionStrategySelect compact={compactToolbar} disabled={running} />
         {supportsExplain && (
           <ToolbarButton
             compact={compactToolbar}

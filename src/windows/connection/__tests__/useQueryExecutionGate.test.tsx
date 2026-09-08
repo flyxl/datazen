@@ -342,4 +342,91 @@ describe('[tester] useQueryExecutionGate', () => {
       ),
     );
   });
+
+  describe('execution strategy integration', () => {
+    const multiSql = 'SELECT 1;\nSELECT 2;\nSELECT 3;';
+
+    it('current_statement executes only the targeted statement', async () => {
+      useSettingsStore.setState({
+        settings: {
+          ...useSettingsStore.getState().settings,
+          sqlExecutionStrategy: 'current_statement',
+        },
+      });
+      setupConnectionStore();
+      setupPanelStore('p1', multiSql);
+      const editorRef = {
+        current: {
+          getSelection: () => '',
+          getCursorOffset: () => multiSql.indexOf('SELECT 2;'),
+          toggleLineComment: vi.fn(),
+          insertAt: vi.fn(),
+        },
+      };
+
+      const { result } = renderGate({
+        sql: multiSql,
+        editorRef: editorRef as any,
+      });
+
+      await act(async () => {
+        result.current.handleExecute();
+      });
+
+      await waitFor(() =>
+        expect(usePanelStore.getState().executeSelection).toHaveBeenCalledWith(
+          'p1',
+          'SELECT 2;',
+          undefined,
+        ),
+      );
+    });
+
+    it('entire_script executes full text', async () => {
+      useSettingsStore.setState({
+        settings: {
+          ...useSettingsStore.getState().settings,
+          sqlExecutionStrategy: 'entire_script',
+        },
+      });
+      setupConnectionStore();
+      setupPanelStore('p1', multiSql);
+
+      const { result } = renderGate({
+        sql: multiSql,
+      });
+
+      await act(async () => {
+        result.current.handleExecute();
+      });
+
+      await waitFor(() =>
+        expect(usePanelStore.getState().executeQuery).toHaveBeenCalledWith('p1', undefined),
+      );
+    });
+
+    it('ask strategy opens ask modal on multi-statement script', async () => {
+      useSettingsStore.setState({
+        settings: {
+          ...useSettingsStore.getState().settings,
+          sqlExecutionStrategy: 'ask',
+        },
+      });
+      setupConnectionStore();
+      setupPanelStore('p1', multiSql);
+
+      const { result } = renderGate({
+        sql: multiSql,
+      });
+
+      await act(async () => {
+        result.current.handleExecute();
+      });
+
+      // Does not immediately execute before user choices
+      expect(usePanelStore.getState().executeQuery).not.toHaveBeenCalled();
+      expect(usePanelStore.getState().executeSelection).not.toHaveBeenCalled();
+      expect(result.current.executionStrategyAskModal).not.toBeNull();
+    });
+  });
 });

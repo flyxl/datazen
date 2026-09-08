@@ -562,6 +562,7 @@ export function QueryPanel({
 
       {confirmRetryDialog}
       {executionGate.confirmDangerousDialog}
+      {executionGate.executionStrategyAskModal}
       <ResultMessageDialog
         open={messageDialogOpen}
         kind={messageDialogKind}

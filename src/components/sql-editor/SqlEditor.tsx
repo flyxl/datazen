@@ -217,6 +217,11 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
       snippet(template)(view, null, from, to);
       view.focus();
     },
+    getCursorOffset: () => {
+      const view = viewRef.current;
+      if (!view) return 0;
+      return view.state.selection.main.head;
+    },
   }));
 
   // ── Extension creation (memoized per compartment) ────────────────

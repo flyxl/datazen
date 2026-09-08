@@ -34,6 +34,8 @@ export interface SqlEditorHandle {
   formatDocument?: () => void;
   /** Expand a snippet template at the cursor and activate tabstop navigation. */
   insertSnippet?: (template: string) => void;
+  /** Get the current cursor head offset in the document. */
+  getCursorOffset?: () => number;
 }
 
 export interface SqlEditorProps {

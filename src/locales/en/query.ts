@@ -307,5 +307,15 @@ const pack = {
   'batchExport.disabledByDriver': 'This driver does not support full-table export.',
   'query.addToDashboard': 'Add to Dashboard',
   'query.dashboard.defaultName': 'New Dashboard',
+  'query.executionStrategy.title': 'Execution Strategy',
+  'query.executionStrategy.currentStatement': 'Current Statement',
+  'query.executionStrategy.entireScript': 'Entire Script',
+  'query.executionStrategy.largestStatement': 'Nearest/Largest Statement',
+  'query.executionStrategy.ask': 'Ask Before Execution',
+  'query.executionStrategy.askTitle': 'Select Execution Scope',
+  'query.executionStrategy.askDesc':
+    'Multiple statements detected. Please select the execution scope:',
+  'query.executionStrategy.runCurrent': 'Run Current Statement (Lines {from}-{to})',
+  'query.executionStrategy.runEntire': 'Run Entire Script ({count} statements)',
 } as const;
 export default pack;
