@@ -148,8 +148,16 @@ describe('SQL Editor 生产力功能 (SE-PROD)', () => {
 
     // Select OLD_VALUE
     await browser.execute(() => {
-      const cmView = (document.querySelector('.cm-editor') as any)?.cmView?.view;
+      const editors = Array.from(document.querySelectorAll('.cm-editor'));
+      let cmView: any = null;
+      for (let i = editors.length - 1; i >= 0; i--) {
+        if ((editors[i] as any)?.cmView?.view) {
+          cmView = (editors[i] as any).cmView.view;
+          break;
+        }
+      }
       if (!cmView) return;
+      cmView.focus();
       const doc = cmView.state.doc.toString();
       const start = doc.indexOf('OLD_VALUE');
       if (start >= 0) {
@@ -302,8 +310,16 @@ describe('SQL Editor 生产力功能 (SE-PROD)', () => {
 
     // Select the first 'test_col'
     await browser.execute(() => {
-      const cmView = (document.querySelector('.cm-editor') as any)?.cmView?.view;
+      const editors = Array.from(document.querySelectorAll('.cm-editor'));
+      let cmView: any = null;
+      for (let i = editors.length - 1; i >= 0; i--) {
+        if ((editors[i] as any)?.cmView?.view) {
+          cmView = (editors[i] as any).cmView.view;
+          break;
+        }
+      }
       if (!cmView) return;
+      cmView.focus();
       const doc = cmView.state.doc.toString();
       const idx = doc.indexOf('test_col');
       if (idx >= 0) {
@@ -312,13 +328,20 @@ describe('SQL Editor 生产力功能 (SE-PROD)', () => {
     });
     await browser.pause(200);
 
-    // Press Mod+D to select next occurrence
-    await browser.keys(['Meta', 'D']);
+    // Press Mod+d to select next occurrence
+    await browser.keys(['Meta', 'd']);
     await browser.pause(300);
 
     // Check if multiple selections exist
     const selectionCount = await browser.execute(() => {
-      const cmView = (document.querySelector('.cm-editor') as any)?.cmView?.view;
+      const editors = Array.from(document.querySelectorAll('.cm-editor'));
+      let cmView: any = null;
+      for (let i = editors.length - 1; i >= 0; i--) {
+        if ((editors[i] as any)?.cmView?.view) {
+          cmView = (editors[i] as any).cmView.view;
+          break;
+        }
+      }
       if (!cmView) return 1;
       return cmView.state.selection.ranges.length;
     });
@@ -333,8 +356,16 @@ describe('SQL Editor 生产力功能 (SE-PROD)', () => {
 
     // Select the first 'foo'
     await browser.execute(() => {
-      const cmView = (document.querySelector('.cm-editor') as any)?.cmView?.view;
+      const editors = Array.from(document.querySelectorAll('.cm-editor'));
+      let cmView: any = null;
+      for (let i = editors.length - 1; i >= 0; i--) {
+        if ((editors[i] as any)?.cmView?.view) {
+          cmView = (editors[i] as any).cmView.view;
+          break;
+        }
+      }
       if (!cmView) return;
+      cmView.focus();
       const doc = cmView.state.doc.toString();
       const idx = doc.indexOf('foo');
       if (idx >= 0) {
@@ -343,14 +374,21 @@ describe('SQL Editor 生产力功能 (SE-PROD)', () => {
     });
     await browser.pause(200);
 
-    // Press Mod+D twice more to select all three 'foo'
-    await browser.keys(['Meta', 'D']);
+    // Press Mod+d twice more to select all three 'foo'
+    await browser.keys(['Meta', 'd']);
     await browser.pause(200);
-    await browser.keys(['Meta', 'D']);
+    await browser.keys(['Meta', 'd']);
     await browser.pause(300);
 
     const selectionCount = await browser.execute(() => {
-      const cmView = (document.querySelector('.cm-editor') as any)?.cmView?.view;
+      const editors = Array.from(document.querySelectorAll('.cm-editor'));
+      let cmView: any = null;
+      for (let i = editors.length - 1; i >= 0; i--) {
+        if ((editors[i] as any)?.cmView?.view) {
+          cmView = (editors[i] as any).cmView.view;
+          break;
+        }
+      }
       if (!cmView) return 1;
       return cmView.state.selection.ranges.length;
     });
@@ -474,21 +512,34 @@ describe('SQL Editor 生产力功能 (SE-PROD)', () => {
 
     // Alt+drag to create rectangular selection
     await browser.execute(() => {
-      const cmView = (document.querySelector('.cm-editor') as any)?.cmView?.view;
-      if (!cmView) return;
-      // Simulate rectangular selection via CM API
-      const pos1 = cmView.posAtCoords({ x: 20, y: 100 });
-      const pos2 = cmView.posAtCoords({ x: 100, y: 120 });
-      if (pos1 != null && pos2 != null) {
-        cmView.dispatch({
-          selection: { anchor: pos1, head: pos2 },
-        });
+      const editors = Array.from(document.querySelectorAll('.cm-editor'));
+      let cmView: any = null;
+      for (let i = editors.length - 1; i >= 0; i--) {
+        if ((editors[i] as any)?.cmView?.view) {
+          cmView = (editors[i] as any).cmView.view;
+          break;
+        }
       }
+      if (!cmView) return;
+      cmView.focus();
+      // Simulate rectangular selection via CM API
+      const pos1 = cmView.posAtCoords({ x: 20, y: 100 }) ?? 0;
+      const pos2 = cmView.posAtCoords({ x: 100, y: 120 }) ?? Math.min(10, cmView.state.doc.length);
+      cmView.dispatch({
+        selection: { anchor: pos1, head: pos2 },
+      });
     });
     await browser.pause(300);
 
     const selection = await browser.execute(() => {
-      const cmView = (document.querySelector('.cm-editor') as any)?.cmView?.view;
+      const editors = Array.from(document.querySelectorAll('.cm-editor'));
+      let cmView: any = null;
+      for (let i = editors.length - 1; i >= 0; i--) {
+        if ((editors[i] as any)?.cmView?.view) {
+          cmView = (editors[i] as any).cmView.view;
+          break;
+        }
+      }
       if (!cmView) return null;
       const sel = cmView.state.selection;
       return {

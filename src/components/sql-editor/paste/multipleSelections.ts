@@ -39,7 +39,6 @@ export function createMultipleSelectionsExtension(): Extension[] {
         // High-priority direct handler for Mod+D / Cmd+D across macOS WKWebView and web
         if (
           (e.metaKey || e.ctrlKey) &&
-          !e.shiftKey &&
           !e.altKey &&
           (e.key === 'd' || e.key === 'D' || e.code === 'KeyD')
         ) {
@@ -61,6 +60,16 @@ export function createMultipleSelectionsExtension(): Extension[] {
       },
       {
         key: 'Mod-D',
+        run: selectNextOccurrence,
+        preventDefault: true,
+      },
+      {
+        key: 'Shift-Mod-d',
+        run: selectNextOccurrence,
+        preventDefault: true,
+      },
+      {
+        key: 'Shift-Mod-D',
         run: selectNextOccurrence,
         preventDefault: true,
       },

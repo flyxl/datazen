@@ -247,7 +247,14 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
         { databaseType, metadataSnapshot, schema, completionQuotePolicy, translate },
         { modelRef, metadataSnapshotRef },
       ),
-    [databaseType, metadataSnapshot, schema, completionQuotePolicy, translate, isSqlEditorProEnhanced],
+    [
+      databaseType,
+      metadataSnapshot,
+      schema,
+      completionQuotePolicy,
+      translate,
+      isSqlEditorProEnhanced,
+    ],
   );
 
   const intentionExts = useMemo(
@@ -365,6 +372,8 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     });
 
     viewRef.current = view;
+    (view.dom as any).cmView = { view };
+    (view.dom as any).__cmView = view;
 
     try {
       modelRef.current = buildSemanticModel(
