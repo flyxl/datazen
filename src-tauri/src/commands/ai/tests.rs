@@ -228,7 +228,9 @@ fn test_language_hint_known_locales() {
     assert!(language_hint("en").contains("English"));
     assert!(language_hint("ja").contains("Japanese"));
     assert!(language_hint("ko").contains("Korean"));
-    assert!(language_hint("fr").contains("fr"));
+    assert!(language_hint("es").contains("Spanish"));
+    assert!(language_hint("fr").contains("French"));
+    assert!(language_hint("custom-locale").contains("custom-locale"));
 }
 
 #[test]

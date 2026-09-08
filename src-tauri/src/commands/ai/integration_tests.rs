@@ -322,8 +322,7 @@ async fn prompt_override_round_trip() {
     let entry = PromptOverrideEntry {
         driver_type: "postgres".into(),
         scenario: PromptScenario::Chat,
-        system_zh: "自定义".into(),
-        system_en: "Custom chat prompt".into(),
+        system: "Custom chat prompt".into(),
     };
     test.state
         .prompt_resolver

@@ -1,10 +1,14 @@
 //! Prompt resolution with driver + user override support.
 //!
+//! All built-in templates are in English. Free-text output language is governed
+//! by the application's active language setting injected at invocation time.
+//!
 //! Resolution order (highest priority first):
 //! 1. User override for (driver_type, scenario) — exact match
 //! 2. User override for (*, scenario) — global override
 //! 3. Driver-specific prompt from `DatabaseDriver::prompt_overrides()`
 //! 4. Built-in default from resource files (`resources/prompts/*.txt`)
+//! 5. Embedded English fallback compiled into the binary
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -21,8 +25,14 @@ pub struct PromptOverrideEntry {
     /// `"*"` means global override for all driver types.
     pub driver_type: String,
     pub scenario: PromptScenario,
-    pub system_zh: String,
-    pub system_en: String,
+    #[serde(
+        default,
+        alias = "systemEn",
+        alias = "system_en",
+        alias = "systemZh",
+        alias = "system_zh"
+    )]
+    pub system: String,
 }
 
 /// Persisted file format for prompt overrides.
@@ -39,10 +49,8 @@ pub struct PromptInfo {
     pub scenario: PromptScenario,
     pub label: String,
     pub source: PromptSource,
-    pub system_zh: String,
-    pub system_en: String,
-    pub default_zh: String,
-    pub default_en: String,
+    pub system: String,
+    pub default_system: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -57,9 +65,10 @@ pub struct PromptResolver {
     file_path: PathBuf,
     prompts_dir: Option<PathBuf>,
     user_overrides: RwLock<Vec<PromptOverrideEntry>>,
-    /// lang -> (scenario_key -> template_content)
-    template_cache: RwLock<HashMap<String, HashMap<String, String>>>,
+    /// scenario_key -> template_content
+    template_cache: RwLock<HashMap<String, String>>,
     overrides_loaded: AtomicBool,
+    templates_loaded: AtomicBool,
     load_lock: Mutex<()>,
 }
 
@@ -71,19 +80,15 @@ impl PromptResolver {
             user_overrides: RwLock::new(Vec::new()),
             template_cache: RwLock::new(HashMap::new()),
             overrides_loaded: AtomicBool::new(false),
+            templates_loaded: AtomicBool::new(false),
             load_lock: Mutex::new(()),
         }
     }
 
-    /// Load overrides + language templates on first AI/prompt use.
-    pub async fn ensure_ready(&self, lang: &str) {
+    /// Load overrides + templates on first AI/prompt use.
+    pub async fn ensure_ready(&self, _lang: &str) {
         self.ensure_overrides_loaded().await;
-        // load_language is cheap when already cached
-        if !self.template_cache.read().await.contains_key("en") {
-            self.load_language(lang).await;
-        } else if lang != "en" && !self.template_cache.read().await.contains_key(lang) {
-            self.load_language(lang).await;
-        }
+        self.ensure_templates_loaded().await;
     }
 
     async fn ensure_overrides_loaded(&self) {
@@ -100,6 +105,18 @@ impl PromptResolver {
         self.overrides_loaded.store(true, Ordering::Release);
     }
 
+    async fn ensure_templates_loaded(&self) {
+        if self.templates_loaded.load(Ordering::Acquire) {
+            return;
+        }
+        let _guard = self.load_lock.lock().await;
+        if self.templates_loaded.load(Ordering::Acquire) {
+            return;
+        }
+        self.load_templates().await;
+        self.templates_loaded.store(true, Ordering::Release);
+    }
+
     pub async fn load(&self) -> Result<(), String> {
         if self.file_path.exists() {
             let data = tokio::fs::read_to_string(&self.file_path)
@@ -112,31 +129,15 @@ impl PromptResolver {
         Ok(())
     }
 
-    /// Load prompt templates for a language from the prompts directory.
-    /// Always loads "en" first as fallback.
-    /// For `zh-*` languages, tries exact match (e.g. `zh-TW`) first, then `zh-CN`.
-    pub async fn load_language(&self, lang: &str) {
+    /// Load prompt templates from the prompts directory.
+    pub async fn load_templates(&self) {
         let Some(dir) = &self.prompts_dir else { return };
-
-        self.scan_and_cache_lang(dir, "en").await;
-
-        if lang != "en" {
-            self.scan_and_cache_lang(dir, lang).await;
-
-            if lang.starts_with("zh") && lang != "zh-CN" {
-                self.scan_and_cache_lang(dir, "zh-CN").await;
-            }
-        }
-    }
-
-    async fn scan_and_cache_lang(&self, base_dir: &Path, lang: &str) {
-        let lang_dir = base_dir.join(lang);
-        if !lang_dir.is_dir() {
+        if !dir.is_dir() {
             return;
         }
 
         let mut templates = HashMap::new();
-        if let Ok(entries) = std::fs::read_dir(&lang_dir) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.extension().map(|e| e == "txt").unwrap_or(false) {
@@ -150,14 +151,8 @@ impl PromptResolver {
         }
 
         if !templates.is_empty() {
-            tracing::info!(
-                "[prompts] loaded {} templates for lang={lang}",
-                templates.len()
-            );
-            self.template_cache
-                .write()
-                .await
-                .insert(lang.to_string(), templates);
+            tracing::info!("[prompts] loaded {} templates from disk", templates.len());
+            *self.template_cache.write().await = templates;
         }
     }
 
@@ -182,7 +177,7 @@ impl PromptResolver {
         &self,
         scenario: PromptScenario,
         driver: Option<&dyn DatabaseDriver>,
-        lang: &str,
+        _lang: &str,
     ) -> String {
         let driver_type_name = driver.and_then(|d| {
             serde_json::to_value(&d.driver_type())
@@ -198,7 +193,7 @@ impl PromptResolver {
                 .iter()
                 .find(|o| o.driver_type == *dt && o.scenario == scenario)
             {
-                return Self::select_lang(&entry.system_zh, &entry.system_en, lang);
+                return entry.system.clone();
             }
         }
 
@@ -207,39 +202,26 @@ impl PromptResolver {
             .iter()
             .find(|o| o.driver_type == "*" && o.scenario == scenario)
         {
-            return Self::select_lang(&entry.system_zh, &entry.system_en, lang);
+            return entry.system.clone();
         }
 
         // 3. Driver-specific prompt
         if let Some(d) = driver {
             let driver_prompts = d.prompt_overrides();
             if let Some(tpl) = driver_prompts.get(&scenario) {
-                return Self::select_lang(&tpl.system_zh, &tpl.system_en, lang);
+                return tpl.system.clone();
             }
         }
 
-        // 4. Template from files (cached) → zh-CN fallback → en fallback → embedded
+        // 4. Template from files (cached)
         let key = scenario_to_key(scenario);
-
         let cache = self.template_cache.read().await;
-        // Try exact lang
-        if let Some(tpl) = cache.get(lang).and_then(|m| m.get(&key)) {
+        if let Some(tpl) = cache.get(&key) {
             return tpl.clone();
-        }
-        // For zh-* variants, fall back to zh-CN
-        if lang.starts_with("zh") && lang != "zh-CN" {
-            if let Some(tpl) = cache.get("zh-CN").and_then(|m| m.get(&key)) {
-                return tpl.clone();
-            }
-        }
-        // Fall back to en
-        if !lang.starts_with("en") {
-            if let Some(tpl) = cache.get("en").and_then(|m| m.get(&key)) {
-                return tpl.clone();
-            }
         }
         drop(cache);
 
+        // 5. Embedded fallback
         embedded_default(scenario).to_string()
     }
 
@@ -258,26 +240,15 @@ impl PromptResolver {
             .iter()
             .map(|&scenario| {
                 let key = scenario_to_key(scenario);
-                let en_fallback = embedded_default(scenario).to_string();
-                let default_zh = cache
-                    .get("zh-CN")
-                    .and_then(|m| m.get(&key))
-                    .cloned()
-                    .unwrap_or_else(|| en_fallback.clone());
-                let default_en = cache
-                    .get("en")
-                    .and_then(|m| m.get(&key))
-                    .cloned()
-                    .unwrap_or(en_fallback);
+                let fallback = embedded_default(scenario).to_string();
+                let default_system = cache.get(&key).cloned().unwrap_or(fallback);
                 let mut source = PromptSource::Default;
-                let mut system_zh = default_zh.clone();
-                let mut system_en = default_en.clone();
+                let mut system = default_system.clone();
 
                 // Check driver override
                 if let Some(tpl) = driver_prompts.get(&scenario) {
                     source = PromptSource::Driver;
-                    system_zh = tpl.system_zh.clone();
-                    system_en = tpl.system_en.clone();
+                    system = tpl.system.clone();
                 }
 
                 // Check user override (exact driver match)
@@ -287,8 +258,7 @@ impl PromptResolver {
                         .find(|o| o.driver_type == *dt && o.scenario == scenario)
                     {
                         source = PromptSource::User;
-                        system_zh = entry.system_zh.clone();
-                        system_en = entry.system_en.clone();
+                        system = entry.system.clone();
                     }
                 }
 
@@ -299,8 +269,7 @@ impl PromptResolver {
                         .find(|o| o.driver_type == "*" && o.scenario == scenario)
                     {
                         source = PromptSource::User;
-                        system_zh = entry.system_zh.clone();
-                        system_en = entry.system_en.clone();
+                        system = entry.system.clone();
                     }
                 }
 
@@ -308,10 +277,8 @@ impl PromptResolver {
                     scenario,
                     label: scenario.label().to_string(),
                     source,
-                    system_zh,
-                    system_en,
-                    default_zh,
-                    default_en,
+                    system,
+                    default_system,
                 }
             })
             .collect()
@@ -345,14 +312,6 @@ impl PromptResolver {
     pub async fn get_all_overrides(&self) -> Vec<PromptOverrideEntry> {
         self.user_overrides.read().await.clone()
     }
-
-    fn select_lang(zh: &str, en: &str, lang: &str) -> String {
-        if lang.starts_with("zh") {
-            zh.to_string()
-        } else {
-            en.to_string()
-        }
-    }
 }
 
 /// Convert a `PromptScenario` to its file-system key (matches `.txt` file stems).
@@ -366,25 +325,25 @@ fn scenario_to_key(scenario: PromptScenario) -> String {
 /// Embedded English defaults compiled into the binary as a last-resort fallback.
 fn embedded_default(scenario: PromptScenario) -> &'static str {
     match scenario {
-        PromptScenario::Nl2Sql => include_str!("../../resources/prompts/en/nl2sql.txt"),
-        PromptScenario::Diagnose => include_str!("../../resources/prompts/en/diagnose.txt"),
-        PromptScenario::NlFilter => include_str!("../../resources/prompts/en/nl_filter.txt"),
+        PromptScenario::Nl2Sql => include_str!("../../resources/prompts/nl2sql.txt"),
+        PromptScenario::Diagnose => include_str!("../../resources/prompts/diagnose.txt"),
+        PromptScenario::NlFilter => include_str!("../../resources/prompts/nl_filter.txt"),
         PromptScenario::SchemaDocSelectTables => {
-            include_str!("../../resources/prompts/en/schema_doc_select_tables.txt")
+            include_str!("../../resources/prompts/schema_doc_select_tables.txt")
         }
-        PromptScenario::SchemaDoc => include_str!("../../resources/prompts/en/schema_doc.txt"),
+        PromptScenario::SchemaDoc => include_str!("../../resources/prompts/schema_doc.txt"),
         PromptScenario::ConnectionDiagnose => {
-            include_str!("../../resources/prompts/en/connection_diagnose.txt")
+            include_str!("../../resources/prompts/connection_diagnose.txt")
         }
         PromptScenario::QuerySummary => {
-            include_str!("../../resources/prompts/en/query_summary.txt")
+            include_str!("../../resources/prompts/query_summary.txt")
         }
         PromptScenario::ExplainAnalysis => {
-            include_str!("../../resources/prompts/en/explain_analysis.txt")
+            include_str!("../../resources/prompts/explain_analysis.txt")
         }
-        PromptScenario::Chat => include_str!("../../resources/prompts/en/chat.txt"),
+        PromptScenario::Chat => include_str!("../../resources/prompts/chat.txt"),
         PromptScenario::WorkflowGenerate => {
-            include_str!("../../resources/prompts/en/workflow_generate.txt")
+            include_str!("../../resources/prompts/workflow_generate.txt")
         }
     }
 }
@@ -448,17 +407,16 @@ mod tests {
             .set_override(PromptOverrideEntry {
                 driver_type: "*".into(),
                 scenario: PromptScenario::Chat,
-                system_zh: "自定义中文".into(),
-                system_en: "Custom English".into(),
+                system: "Custom English prompt".into(),
             })
             .await
             .unwrap();
 
         let result = resolver.resolve(PromptScenario::Chat, None, "zh-CN").await;
-        assert_eq!(result, "自定义中文");
+        assert_eq!(result, "Custom English prompt");
 
         let result = resolver.resolve(PromptScenario::Chat, None, "en").await;
-        assert_eq!(result, "Custom English");
+        assert_eq!(result, "Custom English prompt");
     }
 
     #[tokio::test]
@@ -470,8 +428,7 @@ mod tests {
             .set_override(PromptOverrideEntry {
                 driver_type: "*".into(),
                 scenario: PromptScenario::Chat,
-                system_zh: "自定义".into(),
-                system_en: "Custom".into(),
+                system: "Custom".into(),
             })
             .await
             .unwrap();
@@ -495,8 +452,7 @@ mod tests {
                 .set_override(PromptOverrideEntry {
                     driver_type: "PostgreSQL".into(),
                     scenario: PromptScenario::Nl2Sql,
-                    system_zh: "PG专属".into(),
-                    system_en: "PG specific".into(),
+                    system: "PG specific".into(),
                 })
                 .await
                 .unwrap();
@@ -508,6 +464,7 @@ mod tests {
             let overrides = resolver.get_all_overrides().await;
             assert_eq!(overrides.len(), 1);
             assert_eq!(overrides[0].driver_type, "PostgreSQL");
+            assert_eq!(overrides[0].system, "PG specific");
         }
     }
 
@@ -519,22 +476,21 @@ mod tests {
         assert_eq!(prompts.len(), PromptScenario::all().len());
         for p in &prompts {
             assert_eq!(p.source, PromptSource::Default);
-            assert!(!p.default_zh.is_empty());
-            assert!(!p.default_en.is_empty());
+            assert!(!p.default_system.is_empty());
+            assert!(!p.system.is_empty());
         }
     }
 
     #[tokio::test]
-    async fn test_load_language_from_prompts_dir() {
+    async fn test_load_templates_from_prompts_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let prompts_dir = tmp.path().join("prompts");
-        let en_dir = prompts_dir.join("en");
-        std::fs::create_dir_all(&en_dir).unwrap();
-        std::fs::write(en_dir.join("chat.txt"), "Custom chat prompt from file").unwrap();
+        std::fs::create_dir_all(&prompts_dir).unwrap();
+        std::fs::write(prompts_dir.join("chat.txt"), "Custom chat prompt from file").unwrap();
 
         let data_dir = tmp.path().join("data");
         let resolver = PromptResolver::new(&data_dir, Some(prompts_dir));
-        resolver.load_language("en").await;
+        resolver.load_templates().await;
         let result = resolver.resolve(PromptScenario::Chat, None, "en").await;
         assert_eq!(result, "Custom chat prompt from file");
     }
@@ -543,9 +499,8 @@ mod tests {
     async fn test_ensure_ready_loads_templates() {
         let tmp = tempfile::tempdir().unwrap();
         let prompts_dir = tmp.path().join("prompts");
-        let en_dir = prompts_dir.join("en");
-        std::fs::create_dir_all(&en_dir).unwrap();
-        std::fs::write(en_dir.join("nl2sql.txt"), "File-backed NL2SQL").unwrap();
+        std::fs::create_dir_all(&prompts_dir).unwrap();
+        std::fs::write(prompts_dir.join("nl2sql.txt"), "File-backed NL2SQL").unwrap();
 
         let data_dir = tmp.path().join("data");
         let resolver = PromptResolver::new(&data_dir, Some(prompts_dir));
@@ -562,8 +517,7 @@ mod tests {
             .set_override(PromptOverrideEntry {
                 driver_type: "PostgreSQL".into(),
                 scenario: PromptScenario::Chat,
-                system_zh: "PG中文".into(),
-                system_en: "PG English".into(),
+                system: "PG English".into(),
             })
             .await
             .unwrap();
@@ -576,8 +530,7 @@ mod tests {
             .set_override(PromptOverrideEntry {
                 driver_type: "*".into(),
                 scenario: PromptScenario::Diagnose,
-                system_zh: "全局诊断".into(),
-                system_en: "Global diagnose".into(),
+                system: "Global diagnose".into(),
             })
             .await
             .unwrap();

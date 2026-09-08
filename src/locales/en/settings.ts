@@ -222,6 +222,9 @@ const pack = {
   'settings.prompts.resetConfirm': 'Are you sure you want to reset this prompt to the default?',
   'settings.prompts.zh': 'Chinese Prompt',
   'settings.prompts.en': 'English Prompt',
+  'settings.prompts.template': 'System Prompt (English)',
+  'settings.prompts.langNotice':
+    'Prompt templates are maintained in English for precision. AI output will automatically use your active application display language.',
   'settings.prompts.saved': 'Prompt saved',
   'settings.prompts.resetDone': 'Reset to default',
   'settings.prompts.variables': 'Available Variables',

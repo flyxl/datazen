@@ -15,14 +15,25 @@ pub(crate) fn language_hint(lang: &str) -> String {
         "en" => "English",
         "ja" => "Japanese",
         "ko" => "Korean",
+        "es" => "Spanish",
+        "fr" => "French",
+        "de" => "German",
+        "ru" => "Russian",
+        "pt-BR" => "Portuguese (Brazil)",
+        other if other.starts_with("zh") => "Chinese (Simplified)",
+        other if other.starts_with("en") => "English",
         _ => lang,
     };
-    format!("\n\nIMPORTANT: All free-text content in your response MUST be in {lang_name}.")
+    format!(
+        "\n\nIMPORTANT LANGUAGE REQUIREMENT:\nThe application's active display language is set to {lang_name}.\nRegardless of the language used in system instructions or user input, all your natural language responses, explanations, summaries, descriptions, and free-text fields (including string values in JSON responses) MUST be written in {lang_name}. Technical identifiers, SQL syntax, and JSON keys must remain unchanged."
+    )
 }
 
 pub(crate) fn inject_language_hint(messages: &mut [ChatMessage], lang: &str) {
     if let Some(sys) = messages.iter_mut().find(|m| m.role == MessageRole::System) {
-        sys.content.push_str(&language_hint(lang));
+        if !sys.content.contains("IMPORTANT LANGUAGE REQUIREMENT") {
+            sys.content.push_str(&language_hint(lang));
+        }
     }
 }
 

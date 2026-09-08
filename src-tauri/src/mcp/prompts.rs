@@ -42,7 +42,8 @@ impl DataZenMcpServer {
             .prompt_resolver
             .resolve(PromptScenario::Nl2Sql, Some(driver.as_ref()), &lang)
             .await;
-        let system_content = prompt_resolver::render_template(&system, &vars);
+        let mut system_content = prompt_resolver::render_template(&system, &vars);
+        system_content.push_str(&crate::commands::ai::language_hint(&lang));
 
         Ok(GetPromptResult::new(vec![
             PromptMessage::new_text(Role::User, system_content),
@@ -73,7 +74,8 @@ impl DataZenMcpServer {
             .prompt_resolver
             .resolve(PromptScenario::Diagnose, Some(driver.as_ref()), &lang)
             .await;
-        let system_content = prompt_resolver::render_template(&system, &vars);
+        let mut system_content = prompt_resolver::render_template(&system, &vars);
+        system_content.push_str(&crate::commands::ai::language_hint(&lang));
 
         Ok(GetPromptResult::new(vec![
             PromptMessage::new_text(Role::User, system_content),
@@ -119,7 +121,8 @@ impl DataZenMcpServer {
                 &lang,
             )
             .await;
-        let system_content = prompt_resolver::render_template(&system, &vars);
+        let mut system_content = prompt_resolver::render_template(&system, &vars);
+        system_content.push_str(&crate::commands::ai::language_hint(&lang));
 
         Ok(GetPromptResult::new(vec![
             PromptMessage::new_text(Role::User, system_content),

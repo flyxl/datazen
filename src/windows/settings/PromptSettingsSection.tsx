@@ -40,8 +40,7 @@ export function PromptSettingsSection() {
   const [driverType, setDriverType] = useState<string>('*');
   const [prompts, setPrompts] = useState<PromptInfo[]>([]);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
-  const [editZh, setEditZh] = useState('');
-  const [editEn, setEditEn] = useState('');
+  const [editSystem, setEditSystem] = useState('');
   const [feedback, setFeedback] = useState('');
   const driverOptions = [
     { value: '*', label: t('settings.prompts.allDrivers') },
@@ -64,8 +63,7 @@ export function PromptSettingsSection() {
 
   const handleEdit = (idx: number) => {
     setEditingIdx(idx);
-    setEditZh(prompts[idx].systemZh);
-    setEditEn(prompts[idx].systemEn);
+    setEditSystem(prompts[idx].system);
   };
 
   const handleSave = async () => {
@@ -74,8 +72,7 @@ export function PromptSettingsSection() {
     const entry: PromptOverrideEntry = {
       driverType,
       scenario: p.scenario,
-      systemZh: editZh,
-      systemEn: editEn,
+      system: editSystem,
     };
     await aiCommands.promptSetOverride(entry);
     setFeedback(t('settings.prompts.saved'));
@@ -108,12 +105,15 @@ export function PromptSettingsSection() {
   };
 
   const textareaClass =
-    'w-full rounded-md border border-edge bg-surface px-3 py-2 text-xs font-mono text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 resize-y min-h-[80px]';
+    'w-full rounded-md border border-edge bg-surface px-3 py-2 text-xs font-mono text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 resize-y min-h-[120px]';
 
   return (
     <>
       <SectionTitle>{t('settings.prompts')}</SectionTitle>
       <p className="text-xs text-fg-muted">{t('settings.prompts.description')}</p>
+      <p className="text-xs text-fg-muted bg-surface-alt/70 border border-edge rounded px-2.5 py-1.5">
+        {t('settings.prompts.langNotice')}
+      </p>
 
       <SettingRow label={t('settings.prompts.driver')}>
         <Select value={driverType} options={driverOptions} onChange={setDriverType} />
@@ -166,23 +166,12 @@ export function PromptSettingsSection() {
                 <div className="space-y-2">
                   <div>
                     <label className="block text-xs text-fg-secondary mb-1">
-                      {t('settings.prompts.zh')}
+                      {t('settings.prompts.template')}
                     </label>
                     <textarea
-                      value={editZh}
-                      onChange={(e) => setEditZh(e.target.value)}
-                      rows={6}
-                      className={textareaClass}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-fg-secondary mb-1">
-                      {t('settings.prompts.en')}
-                    </label>
-                    <textarea
-                      value={editEn}
-                      onChange={(e) => setEditEn(e.target.value)}
-                      rows={6}
+                      value={editSystem}
+                      onChange={(e) => setEditSystem(e.target.value)}
+                      rows={8}
                       className={textareaClass}
                     />
                   </div>
@@ -196,9 +185,9 @@ export function PromptSettingsSection() {
                   </div>
                 </div>
               ) : (
-                <pre className="max-h-20 overflow-y-auto whitespace-pre-wrap text-[11px] text-fg-muted bg-surface-alt rounded p-2">
-                  {p.systemZh.slice(0, 200)}
-                  {p.systemZh.length > 200 ? '…' : ''}
+                <pre className="max-h-24 overflow-y-auto whitespace-pre-wrap text-[11px] text-fg-muted bg-surface-alt rounded p-2">
+                  {p.system.slice(0, 260)}
+                  {p.system.length > 260 ? '…' : ''}
                 </pre>
               )}
             </div>

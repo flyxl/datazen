@@ -10,6 +10,7 @@ pub use chat::*;
 pub use config::*;
 pub use generate::*;
 pub use prompts::*;
+pub(crate) use util::language_hint;
 
 #[cfg(test)]
 pub(crate) use util::*;

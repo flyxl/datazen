@@ -343,19 +343,15 @@ const samplePrompts = [
     scenario: 'nl2sql' as PromptScenario,
     label: 'NL to SQL',
     source: 'default' as const,
-    systemZh: '中文'.repeat(80),
-    systemEn: 'English prompt body',
-    defaultZh: '默认中文',
-    defaultEn: 'Default EN',
+    system: 'English prompt body'.repeat(10),
+    defaultSystem: 'Default EN',
   },
   {
     scenario: 'chat' as PromptScenario,
     label: 'Chat',
     source: 'user' as const,
-    systemZh: '用户自定义',
-    systemEn: 'User custom',
-    defaultZh: '默认',
-    defaultEn: 'Default',
+    system: 'User custom',
+    defaultSystem: 'Default',
   },
 ];
 
@@ -642,9 +638,9 @@ describe('SettingsContent', () => {
     expect(screen.getByText(/settings\.prompts\.variables/)).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByText('settings.prompts.edit')[0]);
-    const textareas = document.querySelectorAll('textarea');
-    fireEvent.change(textareas[0], { target: { value: '新中文' } });
-    fireEvent.change(textareas[1], { target: { value: 'New EN' } });
+    const textarea = document.querySelector('textarea');
+    expect(textarea).not.toBeNull();
+    fireEvent.change(textarea!, { target: { value: 'New prompt' } });
     fireEvent.click(screen.getByText('common.save'));
     await waitFor(() => expect(promptSetOverrideMock).toHaveBeenCalled());
 

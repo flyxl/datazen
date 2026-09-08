@@ -214,6 +214,9 @@ const pack = {
   'settings.prompts.resetConfirm': '确定要重置此 Prompt 为默认值吗？',
   'settings.prompts.zh': '中文 Prompt',
   'settings.prompts.en': '英文 Prompt',
+  'settings.prompts.template': '系统 Prompt（英文）',
+  'settings.prompts.langNotice':
+    'Prompt 统一使用英文以保证推理和工具调用的稳定性，AI 输出内容将自动适配当前应用设置的语言。',
   'settings.prompts.saved': 'Prompt 已保存',
   'settings.prompts.resetDone': '已重置为默认',
   'settings.prompts.variables': '可用变量',

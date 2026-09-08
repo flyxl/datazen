@@ -54,17 +54,14 @@ export interface PromptInfo {
   scenario: PromptScenario;
   label: string;
   source: PromptSource;
-  systemZh: string;
-  systemEn: string;
-  defaultZh: string;
-  defaultEn: string;
+  system: string;
+  defaultSystem: string;
 }
 
 export interface PromptOverrideEntry {
   driverType: string;
   scenario: PromptScenario;
-  systemZh: string;
-  systemEn: string;
+  system: string;
 }
 
 export const aiCommands = {

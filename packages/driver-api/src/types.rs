@@ -513,15 +513,15 @@ impl std::fmt::Display for PromptScenario {
     }
 }
 
-/// A bilingual prompt template for a specific scenario.
+/// A prompt template for a specific scenario (written in English).
 ///
 /// Templates can contain `{{variable}}` placeholders that get substituted at
 /// runtime. Available variables depend on the scenario.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PromptTemplate {
-    pub system_zh: String,
-    pub system_en: String,
+    #[serde(alias = "systemEn", alias = "system_en")]
+    pub system: String,
 }
 
 /// Options for driver-native SQL database dumps.
