@@ -4,7 +4,7 @@
 > Branch: `feature/ep-security-gate`
 > Base branch: `feat/sql-editor-clean`
 > LastHeartbeat: 2026-09-08T18:35:00+08:00
-> Coder Commit: `df0ef4eb2`
+> Coder Commit: `0ac438a3e`
 > Tester Commit: `pending`
 
 ---
