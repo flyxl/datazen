@@ -86,6 +86,36 @@ export function runWithDriverInject(options = {}) {
   const driversArgs = ahead.filter((a) => a.startsWith('--drivers'));
   const resolveArgs = driversArgs.join(' ');
 
+  const proFlag =
+    ahead.some((a) => a === '--pro' || a === '--edition=pro') ||
+    baseEnv.DATAZEN_EDITION === 'pro';
+  const proPathArg = ahead.find((a) => a.startsWith('--pro-path='));
+  const proGitArg = ahead.find((a) => a.startsWith('--pro-git='));
+
+  const runResolvePro =
+    options.runResolvePro ??
+    ((args) => {
+      execSync(`node scripts/resolve-pro.mjs ${args}`.trim(), {
+        cwd: root,
+        stdio: 'inherit',
+        env: baseEnv,
+      });
+    });
+
+  const runRestorePro =
+    options.runRestorePro ??
+    (() => {
+      try {
+        execSync('node scripts/resolve-pro.mjs --restore', {
+          cwd: root,
+          stdio: 'inherit',
+          env: baseEnv,
+        });
+      } catch {
+        console.error('[with-driver-inject] resolve-pro restore failed');
+      }
+    });
+
   const runResolve =
     options.runResolve ??
     ((args) => {
@@ -134,6 +164,13 @@ export function runWithDriverInject(options = {}) {
     env: baseEnv,
   });
 
+  const doRestore = () => {
+    runRestore();
+    if (proFlag) {
+      runRestorePro();
+    }
+  };
+
   if (nested) {
     log(
       `[with-driver-inject] ${INJECT_ACTIVE_ENV}=1; skipping resolve/restore (nested)`,
@@ -142,24 +179,28 @@ export function runWithDriverInject(options = {}) {
     log(
       '[with-driver-inject] orphan .driver-file-stash/ detected; restoring before resolve',
     );
-    runRestore();
+    doRestore();
   }
 
   if (ownStash) {
     runResolve(resolveArgs);
+    if (proFlag) {
+      const extra = [proPathArg, proGitArg].filter(Boolean).join(' ');
+      runResolvePro(`--edition=pro${extra ? ` ${extra}` : ''}`);
+    }
   }
 
   const childEnv = ownStash
-    ? { ...baseEnv, [INJECT_ACTIVE_ENV]: '1' }
+    ? { ...baseEnv, [INJECT_ACTIVE_ENV]: '1', ...(proFlag ? { DATAZEN_EDITION: 'pro' } : {}) }
     : { ...baseEnv };
 
   if (behind.length === 0) {
-    if (ownStash) runRestore();
+    if (ownStash) doRestore();
     return { status: 0, ownStash, nested, orphanStash };
   }
 
   const result = runCommand(behind[0], behind.slice(1), childEnv);
-  if (ownStash) runRestore();
+  if (ownStash) doRestore();
   return {
     status: result.status ?? 1,
     ownStash,

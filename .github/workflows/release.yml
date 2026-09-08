@@ -20,82 +20,72 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ── Basic：四核心 path 驱动 ──
-          - platform: windows-latest
-            target: x86_64-pc-windows-msvc
-            os_label: windows-x64
-            drivers: "basic"
-            variant_suffix: ""
-            needs_git: false
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-            os_label: macos-arm64
-            drivers: "basic"
-            variant_suffix: ""
-            needs_git: false
-          - platform: macos-latest
-            target: x86_64-apple-darwin
-            os_label: macos-x64
-            drivers: "basic"
-            variant_suffix: ""
-            needs_git: false
-          - platform: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            os_label: linux-x64
-            drivers: "basic"
-            variant_suffix: ""
-            needs_git: false
-          # ── All：全部 path 原生驱动（不含 kiwi / superset / olap）──
+          # ── DataZen Pro：默认发行版（全原生驱动 + SQL Editor Pro 特权增强）──
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             os_label: windows-x64
             drivers: "all"
-            variant_suffix: "-all"
+            edition: "pro"
+            variant_suffix: ""
             needs_git: false
+            needs_pro: true
           - platform: macos-latest
             target: aarch64-apple-darwin
             os_label: macos-arm64
             drivers: "all"
-            variant_suffix: "-all"
+            edition: "pro"
+            variant_suffix: ""
             needs_git: false
+            needs_pro: true
           - platform: macos-latest
             target: x86_64-apple-darwin
             os_label: macos-x64
             drivers: "all"
-            variant_suffix: "-all"
+            edition: "pro"
+            variant_suffix: ""
             needs_git: false
+            needs_pro: true
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             os_label: linux-x64
             drivers: "all"
-            variant_suffix: "-all"
+            edition: "pro"
+            variant_suffix: ""
             needs_git: false
-          # ── Akulaku：CI 显式列表（非 resolve-drivers 预设）──
-          # basic + mongodb + kiwi + superset
+            needs_pro: true
+          # ── Akulaku Pro：定制驱动部署（全核心 + MongoDB + Kiwi + Superset + SQL Editor Pro）──
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             os_label: windows-x64
             drivers: "postgres,mysql,sqlite,redis,mongodb,kiwi,superset"
+            edition: "pro"
             variant_suffix: "-akulaku"
             needs_git: true
+            needs_pro: true
           - platform: macos-latest
             target: aarch64-apple-darwin
             os_label: macos-arm64
             drivers: "postgres,mysql,sqlite,redis,mongodb,kiwi,superset"
+            edition: "pro"
             variant_suffix: "-akulaku"
             needs_git: true
+            needs_pro: true
           - platform: macos-latest
             target: x86_64-apple-darwin
             os_label: macos-x64
             drivers: "postgres,mysql,sqlite,redis,mongodb,kiwi,superset"
+            edition: "pro"
             variant_suffix: "-akulaku"
             needs_git: true
+            needs_pro: true
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             os_label: linux-x64
             drivers: "postgres,mysql,sqlite,redis,mongodb,kiwi,superset"
+            edition: "pro"
             variant_suffix: "-akulaku"
             needs_git: true
+            needs_pro: true
 
     runs-on: ${{ matrix.platform }}
 
@@ -148,17 +138,18 @@ jobs:
           shared-key: ${{ matrix.target }}
           cache-on-failure: true
 
-      # Git-driver SKUs only: read-only Deploy Keys for private plugin repos.
+      # Git-driver & Pro extension SKUs: read-only Deploy Keys for private repos.
       # Public key exposure is harmless; private keys must stay in Environment secrets.
       # Do NOT rely on webfactory/ssh-agent comment→repo mapping: keys commented
       # `datazen-ci-*` are not auto-mapped, so GitHub accepts only the first key and
       # the second private repo fails with "Repository not found".
-      - name: Setup SSH for private plugins
-        if: matrix.needs_git
+      - name: Setup SSH for private plugins & pro extensions
+        if: matrix.needs_git || matrix.needs_pro
         shell: bash
         env:
           KIWI_DEPLOY_KEY: ${{ secrets.KIWI_DEPLOY_KEY }}
           SUPERSET_DEPLOY_KEY: ${{ secrets.SUPERSET_DEPLOY_KEY }}
+          PRO_DEPLOY_KEY: ${{ secrets.PRO_DEPLOY_KEY || secrets.SQL_EDITOR_PRO_DEPLOY_KEY }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
@@ -166,38 +157,60 @@ jobs:
           ssh-keyscan -t ed25519,rsa github.com >> ~/.ssh/known_hosts 2>/dev/null
           chmod 644 ~/.ssh/known_hosts
 
-          printf '%s\n' "$KIWI_DEPLOY_KEY" > ~/.ssh/datazen_kiwi
-          printf '%s\n' "$SUPERSET_DEPLOY_KEY" > ~/.ssh/datazen_superset
-          chmod 600 ~/.ssh/datazen_kiwi ~/.ssh/datazen_superset
-
-          printf '%s\n' \
-            'Host github.com-kiwi' \
-            '  HostName github.com' \
-            '  User git' \
-            '  IdentityFile ~/.ssh/datazen_kiwi' \
-            '  IdentitiesOnly yes' \
-            'Host github.com-superset' \
-            '  HostName github.com' \
-            '  User git' \
-            '  IdentityFile ~/.ssh/datazen_superset' \
-            '  IdentitiesOnly yes' \
-            > ~/.ssh/config
+          touch ~/.ssh/config
           chmod 600 ~/.ssh/config
 
-          # drivers-registry.json keeps https:// URLs; rewrite per-repo to the
-          # Host alias that selects the matching deploy key.
-          # Use --add: a second insteadOf without --add overwrites the first.
-          git config --global --unset-all url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf || true
-          git config --global --add url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf "https://github.com/flyxl/datazen-driver-kiwi.git"
-          git config --global --add url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf "https://github.com/flyxl/datazen-driver-kiwi"
-          git config --global --add url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf "git@github.com:flyxl/datazen-driver-kiwi.git"
-          git config --global --unset-all url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf || true
-          git config --global --add url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf "https://github.com/flyxl/datazen-driver-superset.git"
-          git config --global --add url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf "https://github.com/flyxl/datazen-driver-superset"
-          git config --global --add url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf "git@github.com:flyxl/datazen-driver-superset.git"
+          if [ -n "${KIWI_DEPLOY_KEY:-}" ]; then
+            printf '%s\n' "$KIWI_DEPLOY_KEY" > ~/.ssh/datazen_kiwi
+            chmod 600 ~/.ssh/datazen_kiwi
+            printf '%s\n' \
+              'Host github.com-kiwi' \
+              '  HostName github.com' \
+              '  User git' \
+              '  IdentityFile ~/.ssh/datazen_kiwi' \
+              '  IdentitiesOnly yes' \
+              >> ~/.ssh/config
+            git config --global --unset-all url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf || true
+            git config --global --add url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf "https://github.com/flyxl/datazen-driver-kiwi.git"
+            git config --global --add url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf "https://github.com/flyxl/datazen-driver-kiwi"
+            git config --global --add url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf "git@github.com:flyxl/datazen-driver-kiwi.git"
+          fi
+
+          if [ -n "${SUPERSET_DEPLOY_KEY:-}" ]; then
+            printf '%s\n' "$SUPERSET_DEPLOY_KEY" > ~/.ssh/datazen_superset
+            chmod 600 ~/.ssh/datazen_superset
+            printf '%s\n' \
+              'Host github.com-superset' \
+              '  HostName github.com' \
+              '  User git' \
+              '  IdentityFile ~/.ssh/datazen_superset' \
+              '  IdentitiesOnly yes' \
+              >> ~/.ssh/config
+            git config --global --unset-all url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf || true
+            git config --global --add url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf "https://github.com/flyxl/datazen-driver-superset.git"
+            git config --global --add url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf "https://github.com/flyxl/datazen-driver-superset"
+            git config --global --add url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf "git@github.com:flyxl/datazen-driver-superset.git"
+          fi
+
+          if [ -n "${PRO_DEPLOY_KEY:-}" ]; then
+            printf '%s\n' "$PRO_DEPLOY_KEY" > ~/.ssh/datazen_pro
+            chmod 600 ~/.ssh/datazen_pro
+            printf '%s\n' \
+              'Host github.com-pro' \
+              '  HostName github.com' \
+              '  User git' \
+              '  IdentityFile ~/.ssh/datazen_pro' \
+              '  IdentitiesOnly yes' \
+              >> ~/.ssh/config
+            git config --global --unset-all url."git@github.com-pro:flyxl/datazen-extension-sql-editor-pro.git".insteadOf || true
+            git config --global --add url."git@github.com-pro:flyxl/datazen-extension-sql-editor-pro.git".insteadOf "https://github.com/flyxl/datazen-extension-sql-editor-pro.git"
+            git config --global --add url."git@github.com-pro:flyxl/datazen-extension-sql-editor-pro.git".insteadOf "https://github.com/flyxl/datazen-extension-sql-editor-pro"
+            git config --global --add url."git@github.com-pro:flyxl/datazen-extension-sql-editor-pro.git".insteadOf "git@github.com:flyxl/datazen-extension-sql-editor-pro.git"
+          fi
+
           git config --global --get-regexp '^url\..*\.insteadof$' || true
           # Smoke-test rewrite (does not need network auth for ls-remote if config wrong — fail early).
-          echo "GIT_SSH rewrite smoke: $(git config --get-regexp 'url\..*kiwi.*insteadof' | tr '\n' ' ')"
+          echo "GIT_SSH rewrite smoke: $(git config --get-regexp 'url\..*(kiwi|superset|sql-editor-pro).*insteadof' | tr '\n' ' ' || true)"
 
       - name: Import Windows code signing certificate
         if: runner.os == 'Windows'
@@ -216,7 +229,7 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      - name: Configure updater signing (Basic only)
+      - name: Configure updater signing (Default Pro only)
         if: matrix.variant_suffix == ''
         shell: bash
         run: |
@@ -224,7 +237,7 @@ jobs:
             echo "TAURI signing key present — updater artifacts will be generated"
             echo "UPDATER_BUILD=1" >> "$GITHUB_ENV"
           else
-            echo "::warning::TAURI_SIGNING_PRIVATE_KEY not set — skipping updater artifact generation for Basic build"
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY not set — skipping updater artifact generation for Pro build"
             echo "UPDATER_BUILD=0" >> "$GITHUB_ENV"
           fi
 
@@ -235,10 +248,15 @@ jobs:
           if [ "${UPDATER_BUILD}" = "1" ]; then
             UPDATER_FLAG="--updater"
           fi
-          node scripts/with-driver-inject.mjs --drivers="${{ matrix.drivers }}" -- node scripts/ci-tauri-build.mjs --target=${{ matrix.target }} ${UPDATER_FLAG}
+          EDITION_FLAG=""
+          if [ "${{ matrix.edition }}" = "pro" ]; then
+            EDITION_FLAG="--edition=pro"
+          fi
+          node scripts/with-driver-inject.mjs --drivers="${{ matrix.drivers }}" ${EDITION_FLAG} -- node scripts/ci-tauri-build.mjs --target=${{ matrix.target }} ${UPDATER_FLAG} ${EDITION_FLAG}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DATAZEN_DRIVERS: ${{ matrix.drivers }}
+          DATAZEN_EDITION: ${{ matrix.edition || 'community' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ matrix.variant_suffix == '' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
@@ -248,6 +266,12 @@ jobs:
         run: |
           $releaseDir = Join-Path "target/${{ matrix.target }}" "release"
           $executable = Join-Path $releaseDir "datazen.exe"
+          if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+            $executable = Join-Path $releaseDir "DataZen Pro.exe"
+          }
+          if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+            $executable = Join-Path $releaseDir "DataZen.exe"
+          }
           $prompts = Join-Path $releaseDir "prompts"
           if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
             throw "Portable executable not found: $executable"
@@ -346,11 +370,13 @@ jobs:
           body: |
             ## 版本说明
 
-            本次发布包含三个发行变体（按需选用，不为大而全买单）：
+            本版本为 **DataZen Pro** 正式发布版，默认集成 **SQL Editor Pro** 特权增强套件：
+            - **SQL Editor Pro 核心特权**：表结构/字段智能悬浮预览 (Hover)、函数签名实时帮助 (Signature Help)、外键 JOIN 智能补全、智能 Intention 意图操作（星号展开、限定符补全等）、拖拽精准光标与 Paste-as-IN 高级粘贴、语句运行指示与高级参数绑定面板。
+            - **全量原生数据库驱动**：内置 PostgreSQL、MySQL、SQLite、Redis、MongoDB、SQL Server、ClickHouse、DuckDB、Elasticsearch 等全部原生驱动。
 
-            - **Basic**（无后缀）：PostgreSQL、MySQL、SQLite、Redis — 默认推荐，体积最小
-            - **All**（文件名含 `-all`）：全部 **path 原生驱动**（MongoDB、SQL Server、ClickHouse、DuckDB 等；**不含** Kiwi / Superset / OLAP）
-            - **Akulaku**（文件名含 `-akulaku`）：Basic + MongoDB + Kiwi + Superset（面向特定部署）
+            ### 发行变体
+            - **DataZen Pro**（推荐，默认）：全量原生驱动 + SQL Editor Pro
+            - **Akulaku Pro**（文件名含 `-akulaku`）：DataZen Pro + 特定渠道定制驱动（Kiwi、Superset）
 
             源码构建可进一步裁剪：`DATAZEN_DRIVERS=postgres,mongodb` 等显式列表，只编译需要的类型。
 

@@ -22,8 +22,10 @@ import { installTauriEventUnlistenRaceWorkaround } from './lib/tauriEventCompat'
 import { bootstrapDefaultIconResolver } from './lib/bootstrapIconResolver';
 import { maybeCheckOnStartup } from './lib/updater';
 import { getWindowKind } from './lib/windowKind';
+import { initProExtensions } from './plugins/generated-pro';
 
 bootstrapDefaultIconResolver();
+initProExtensions();
 installTauriEventUnlistenRaceWorkaround();
 
 const SETTINGS_PRELOAD_TIMEOUT_MS = 3_000;

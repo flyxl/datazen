@@ -40,6 +40,7 @@ import {
   allStashed,
   ROOT as STASH_ROOT,
 } from './driver-file-stash.mjs';
+import { resolvePro } from './resolve-pro.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = STASH_ROOT;
@@ -1258,6 +1259,7 @@ function main() {
     generateFrontendRegistry(plugins);
     generatePluginLocales(plugins);
     generateRustDriverInit(plugins, registry);
+    resolvePro({ codegenOnly: true });
 
     // Also output to stdout for scripts that pipe this
     console.log(`\nCargo build command:`);

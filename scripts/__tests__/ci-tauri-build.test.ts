@@ -18,13 +18,7 @@ describe('ci-tauri-build args', () => {
       target: 'x86_64-pc-windows-msvc',
       updaterConfigPath: configPath,
     });
-    expect(args).toEqual([
-      'build',
-      '--target',
-      'x86_64-pc-windows-msvc',
-      '--config',
-      configPath,
-    ]);
+    expect(args).toEqual(['build', '--target', 'x86_64-pc-windows-msvc', '--config', configPath]);
     expect(args[args.indexOf('--config') + 1].startsWith('{')).toBe(false);
   });
 
@@ -35,14 +29,20 @@ describe('ci-tauri-build args', () => {
   });
 
   it('omits --config unless updater is requested', () => {
-    expect(buildTauriArgs({ features: ['driver-redis'] })).toEqual([
-      'build',
-      '-f',
-      'driver-redis',
-    ]);
+    expect(buildTauriArgs({ features: ['driver-redis'] })).toEqual(['build', '-f', 'driver-redis']);
   });
 
   it('resolves the JS CLI entry instead of pnpm.cmd', () => {
     expect(resolveTauriCli().replaceAll('\\', '/')).toMatch(/@tauri-apps\/cli\/tauri\.js$/);
+  });
+
+  it('generates Pro config when edition=pro is requested', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datazen-ci-tauri-'));
+    const args = buildTauriArgs({
+      edition: 'pro',
+      features: ['driver-redis'],
+      updaterConfigPath: join(dir, 'test-pro.json'),
+    });
+    expect(args).toEqual(['build', '--config', join(dir, 'test-pro.json'), '-f', 'driver-redis']);
   });
 });

@@ -83,6 +83,11 @@ export function runEnsureGeneratedDrivers(options = {}) {
         stdio: 'inherit',
         env: process.env,
       });
+      execSync(`node scripts/resolve-pro.mjs --codegen-only`, {
+        cwd: root,
+        stdio: 'inherit',
+        env: process.env,
+      });
     });
   runResolve(resolveArgs);
   return { generated: true, missing };

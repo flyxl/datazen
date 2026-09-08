@@ -15,6 +15,7 @@ export const FULLY_GENERATED_MANAGED = [
   'src-tauri/src/driver_init.rs',
   'src/plugins/generated.ts',
   'src/plugins/generated-locales.ts',
+  'src/plugins/generated-pro.ts',
 ];
 
 export function isFullyGeneratedManagedFile(relPath) {
@@ -22,6 +23,7 @@ export function isFullyGeneratedManagedFile(relPath) {
     relPath.endsWith('driver_init.rs')
     || relPath.endsWith('generated.ts')
     || relPath.endsWith('generated-locales.ts')
+    || relPath.endsWith('generated-pro.ts')
   );
 }
 

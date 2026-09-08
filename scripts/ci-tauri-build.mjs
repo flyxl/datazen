@@ -26,29 +26,61 @@ const require = createRequire(import.meta.url);
 
 export const UPDATER_CONFIG = { bundle: { createUpdaterArtifacts: true } };
 
+export const PRO_CONFIG = {
+  productName: 'DataZen Pro',
+  app: {
+    windows: [
+      {
+        title: 'DataZen Pro',
+      },
+    ],
+  },
+};
+
 export function resolveTauriCli(root = ROOT) {
   return require.resolve('@tauri-apps/cli/tauri.js', { paths: [root] });
 }
 
 export function writeUpdaterConfigFile(dir = join(tmpdir(), 'datazen-ci-tauri')) {
+  return writeTauriConfigFile({ updater: true, isPro: false, dir });
+}
+
+export function writeTauriConfigFile({
+  updater = false,
+  isPro = false,
+  dir = join(tmpdir(), 'datazen-ci-tauri'),
+} = {}) {
   mkdirSync(dir, { recursive: true });
-  const file = join(dir, 'updater-config.json');
-  writeFileSync(file, `${JSON.stringify(UPDATER_CONFIG)}\n`);
+  const file = join(dir, `config-${isPro ? 'pro' : 'base'}-${updater ? 'updater' : 'plain'}.json`);
+  const config = {};
+  if (updater) {
+    Object.assign(config, UPDATER_CONFIG);
+  }
+  if (isPro) {
+    Object.assign(config, PRO_CONFIG);
+  }
+  writeFileSync(file, `${JSON.stringify(config)}\n`);
   return file;
 }
 
 export function buildTauriArgs({
   target = null,
   updater = false,
+  edition = 'community',
   features = [],
+  configPath = null,
   updaterConfigPath = null,
 } = {}) {
   const args = ['build'];
   if (target) {
     args.push('--target', target);
   }
-  if (updater) {
-    args.push('--config', updaterConfigPath ?? writeUpdaterConfigFile());
+  const isPro = edition === 'pro';
+  if (updater || isPro) {
+    args.push(
+      '--config',
+      configPath ?? updaterConfigPath ?? writeTauriConfigFile({ updater, isPro }),
+    );
   }
   if (Array.isArray(features) && features.length > 0) {
     args.push('-f', features.join(','));
@@ -75,6 +107,11 @@ export function spawnTauri(args, { cwd = ROOT, env = process.env, log = console.
 function main() {
   const targetArg = process.argv.find((a) => a.startsWith('--target='));
   const target = targetArg ? targetArg.slice('--target='.length) : null;
+  const isPro =
+    process.argv.includes('--pro') ||
+    process.argv.includes('--edition=pro') ||
+    process.env.DATAZEN_EDITION === 'pro';
+  const edition = isPro ? 'pro' : 'community';
 
   const featuresPath = resolve(ROOT, '.driver-features.json');
   if (!existsSync(featuresPath)) {
@@ -86,6 +123,7 @@ function main() {
   const args = buildTauriArgs({
     target,
     updater: process.argv.includes('--updater'),
+    edition,
     features,
   });
   const result = spawnTauri(args);

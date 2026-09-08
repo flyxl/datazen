@@ -62,7 +62,10 @@ e2e/.env
 # Driver selection codegen (written by resolve-drivers.mjs; not committed)
 src/plugins/generated.ts
 src/plugins/generated-locales.ts
+src/plugins/generated-pro.ts
 src-tauri/src/driver_init.rs
+.pro-config.json
+packages/pro-extensions/
 
 # Built-in locale codegen (written by generate-builtin-locales.mjs; not committed)
 src/locales/builtinLocales.ts

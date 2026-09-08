@@ -217,4 +217,40 @@ describe('runWithDriverInject nested ownership', () => {
     expect(result.nested).toBe(true);
     expect(calls).toEqual([]);
   });
+
+  it('pro edition: invokes runResolvePro and runRestorePro when requested', () => {
+    const calls: string[] = [];
+    const result = runWithDriverInject({
+      argv: ['--drivers=basic', '--edition=pro', '--', 'echo', 'pro'],
+      stashExistsFn: () => false,
+      env: {},
+      runResolve: (args) => {
+        calls.push(`resolve:${args}`);
+      },
+      runRestore: () => {
+        calls.push('restore');
+      },
+      runResolvePro: (args) => {
+        calls.push(`resolve-pro:${args}`);
+      },
+      runRestorePro: () => {
+        calls.push('restore-pro');
+      },
+      runCommand: (cmd, args, env) => {
+        calls.push(`cmd:${cmd} ${args.join(' ')}`);
+        expect(env.DATAZEN_EDITION).toBe('pro');
+        return { status: 0 };
+      },
+      log: () => {},
+    });
+
+    expect(result.status).toBe(0);
+    expect(calls).toEqual([
+      'resolve:--drivers=basic',
+      'resolve-pro:--edition=pro',
+      'cmd:echo pro',
+      'restore',
+      'restore-pro',
+    ]);
+  });
 });

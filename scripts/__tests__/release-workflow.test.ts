@@ -36,4 +36,12 @@ describe('Windows release packaging', () => {
     expect(releaseWorkflow).toContain('Copy-Item -LiteralPath $prompts');
     expect(releaseWorkflow).toContain('*-windows-*-portable-windows-x64.zip');
   });
+
+  it('builds Pro edition by default in release workflow and excludes pure community builds', () => {
+    // Assert all matrix entries have edition: "pro" and needs_pro: true
+    expect(releaseWorkflow).toContain('edition: "pro"');
+    expect(releaseWorkflow).toContain('needs_pro: true');
+    expect(releaseWorkflow).not.toMatch(/edition:\s*"community"/);
+    expect(releaseWorkflow).not.toMatch(/variant_suffix:\s*"-all"/);
+  });
 });
