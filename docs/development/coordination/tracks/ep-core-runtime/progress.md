@@ -4,7 +4,7 @@
 > Branch: `feature/ep-core-runtime`
 > Base branch: `feat/sql-editor-clean`
 > LastHeartbeat: 2026-09-08T18:26:00+08:00
-> Coder Commit: `pending`
+> Coder Commit: `2130156fd`
 > Tester Commit: `pending`
 
 ---
