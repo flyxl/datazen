@@ -34,6 +34,7 @@ export default defineConfig({
       // SDK package tests run on the Host toolchain too (PRD F8).
       'packages/app-sdk/__tests__/**/*.test.{ts,tsx}',
       'packages/extension-points/__tests__/**/*.test.{ts,tsx}',
+      'packages/extension-points/src/__tests__/**/*.test.{ts,tsx}',
       'packages/driver-sdk/__tests__/**/*.test.{ts,tsx}',
       'packages/ui/src/__tests__/**/*.test.{ts,tsx}',
     ],

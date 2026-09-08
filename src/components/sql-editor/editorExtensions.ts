@@ -11,7 +11,7 @@ import type { MutableRefObject } from 'react';
 import { EditorView, keymap } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { sql, keywordCompletionSource, type SQLNamespace } from '@codemirror/lang-sql';
-import { Compartment, StateField, StateEffect, type Extension } from '@codemirror/state';
+import { Compartment, StateField, StateEffect, type Extension, Transaction } from '@codemirror/state';
 import {
   autocompletion,
   closeBrackets,
@@ -49,6 +49,8 @@ import {
   executionStateField,
   extensionRegistry,
   sqlEditorProEP,
+  SafeCompartmentWrapper,
+  type ExtensionPoint,
 } from '@datazen/extension-points';
 import { produceSchemaCompletions } from './completion/schemaCompletion';
 import { createSnippetCompletionSource } from './snippets';
@@ -318,10 +320,21 @@ export interface CreateStatementExtensionsOptions {
   enabled?: boolean;
 }
 
+const proSafe = (featureName: string) => ({
+  point: sqlEditorProEP as ExtensionPoint<unknown>,
+  featureName,
+});
+
 export function createStatementExtensions(opts?: CreateStatementExtensionsOptions): Extension[] {
   const pro = extensionRegistry.get(sqlEditorProEP);
   const proDecorations =
-    opts?.enabled !== false ? (pro.createStatementDecorations?.(opts) ?? []) : [];
+    opts?.enabled !== false
+      ? SafeCompartmentWrapper(
+          proSafe('createStatementDecorations'),
+          () => pro.createStatementDecorations?.(opts) ?? [],
+          [],
+        )
+      : [];
   return [statementIndexField(), executionStateField, ...proDecorations];
 }
 
@@ -347,17 +360,22 @@ export function createCompletionExtensions(
 ): Extension[] {
   const pro = extensionRegistry.get(sqlEditorProEP);
 
-  const proCompletionSource: CompletionSource = (context) => {
-    const joinSource = pro.createJoinCompletionSource?.(opts, refs);
-    const joinRes = joinSource ? joinSource(context) : null;
-    if (joinRes) return joinRes;
+  const proCompletionSource: CompletionSource = (context) =>
+    SafeCompartmentWrapper(
+      proSafe('proCompletionSource'),
+      () => {
+        const joinSource = pro.createJoinCompletionSource?.(opts, refs);
+        const joinRes = joinSource ? joinSource(context) : null;
+        if (joinRes) return joinRes;
 
-    const colSource = pro.createColumnCompletionSource?.(opts, refs);
-    const colRes = colSource ? colSource(context) : null;
-    if (colRes) return colRes;
+        const colSource = pro.createColumnCompletionSource?.(opts, refs);
+        const colRes = colSource ? colSource(context) : null;
+        if (colRes) return colRes;
 
-    return null;
-  };
+        return null;
+      },
+      null,
+    );
 
   // Wrap Completion[] as a CompletionSource with table context filtering
   const functionCompletionSource: CompletionSource = (context) => {
@@ -468,7 +486,11 @@ export function createCompletionExtensions(
     maxRenderedOptions: 50,
   });
 
-  const signatureHelpExts = pro.createSignatureHelpExtensions?.(opts.databaseType) ?? [];
+  const signatureHelpExts = SafeCompartmentWrapper(
+    proSafe('createSignatureHelpExtensions'),
+    () => pro.createSignatureHelpExtensions?.(opts.databaseType) ?? [],
+    [],
+  );
 
   return [completionSources, ...signatureHelpExts];
 }
@@ -495,7 +517,11 @@ export function createIntentionExtensions(
   },
 ): Extension[] {
   const pro = extensionRegistry.get(sqlEditorProEP);
-  return pro.createIntentionExtensions?.(opts, refs) ?? [];
+  return SafeCompartmentWrapper(
+    proSafe('createIntentionExtensions'),
+    () => pro.createIntentionExtensions?.(opts, refs) ?? [],
+    [],
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -520,7 +546,11 @@ export function createHoverExtensions(
   },
 ): Extension[] {
   const pro = extensionRegistry.get(sqlEditorProEP);
-  return pro.createHoverExtensions?.(opts, refs) ?? [];
+  return SafeCompartmentWrapper(
+    proSafe('createHoverExtensions'),
+    () => pro.createHoverExtensions?.(opts, refs) ?? [],
+    [],
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -540,7 +570,11 @@ export function createLinterExtensions(
   },
 ): Extension[] {
   const pro = extensionRegistry.get(sqlEditorProEP);
-  return pro.createLinterExtensions?.(opts, refs) ?? [];
+  return SafeCompartmentWrapper(
+    proSafe('createLinterExtensions'),
+    () => pro.createLinterExtensions?.(opts, refs) ?? [],
+    [],
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -656,4 +690,28 @@ export function createModelBuilderExtension(
 
 function parentsEqual(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((seg, i) => seg === b[i]);
+}
+
+/** §EP hot-plug: batch-reconfigure all Pro-driven compartments on a live EditorView. */
+export interface ProCompartmentPayload {
+  statement: Extension[];
+  completion: Extension[];
+  intention: Extension[];
+  hover: Extension[];
+  paste: Extension[];
+  linter: Extension[];
+}
+
+export function reconfigureProCompartments(view: EditorView, payload: ProCompartmentPayload): void {
+  view.dispatch({
+    effects: [
+      compartments.statement.reconfigure(payload.statement),
+      compartments.completion.reconfigure(payload.completion),
+      compartments.intention.reconfigure(payload.intention),
+      compartments.hover.reconfigure(payload.hover),
+      compartments.paste.reconfigure(payload.paste),
+      compartments.linter.reconfigure(payload.linter),
+    ],
+    annotations: Transaction.addToHistory.of(false),
+  });
 }

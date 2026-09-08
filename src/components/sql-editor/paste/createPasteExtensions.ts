@@ -6,7 +6,12 @@
  * Community edition does not provide paste-as-IN.
  */
 import type { Extension } from '@codemirror/state';
-import { extensionRegistry, sqlEditorProEP } from '@datazen/extension-points';
+import {
+  extensionRegistry,
+  sqlEditorProEP,
+  SafeCompartmentWrapper,
+  type ExtensionPoint,
+} from '@datazen/extension-points';
 import type { DroppedTablePayload } from '../contracts';
 import { createMultipleSelectionsExtension } from './multipleSelections';
 
@@ -19,6 +24,13 @@ export interface PasteCompartmentOptions {
 export function createPasteExtensions(opts: PasteCompartmentOptions): Extension[] {
   const multiCursor = createMultipleSelectionsExtension();
   const pro = extensionRegistry.get(sqlEditorProEP);
-  const proPaste = pro.createPasteExtensions?.(opts) ?? [];
+  const proPaste = SafeCompartmentWrapper(
+    {
+      point: sqlEditorProEP as ExtensionPoint<unknown>,
+      featureName: 'createPasteExtensions',
+    },
+    () => pro.createPasteExtensions?.(opts) ?? [],
+    [],
+  );
   return [...multiCursor, ...proPaste];
 }

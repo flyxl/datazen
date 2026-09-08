@@ -6,6 +6,18 @@ export type { ExtensionPoint, CreateExtensionPointOptions } from './extensionPoi
 export { createExtensionPoint, ExtensionRegistry, extensionRegistry } from './extensionPoints';
 export { useExtension, useIsExtensionEnhanced } from './useExtension';
 export type {
+  Disposable,
+  ExtensionSubscription,
+  ExtensionContext,
+  ExtensionModule,
+} from './lifecycle';
+export {
+  HostExtensionLoader,
+  hostExtensionLoader,
+  registerExtensionPoint,
+} from './lifecycle';
+export { SafeCompartmentWrapper, type SafeCompartmentOptions } from './safeCompartment';
+export type {
   SqlEditorProFeatures,
   SqlEditorProOptions,
   ExtensionSettingOption,
