@@ -28,13 +28,6 @@ export const UPDATER_CONFIG = { bundle: { createUpdaterArtifacts: true } };
 
 export const PRO_CONFIG = {
   productName: 'DataZen Pro',
-  app: {
-    windows: [
-      {
-        title: 'DataZen Pro',
-      },
-    ],
-  },
 };
 
 export function resolveTauriCli(root = ROOT) {
