@@ -65,7 +65,7 @@
     set('token-count', count);
   }
 
-  // Theme-consistency contract (packages/extensions/README.md): write the
+  // Theme-consistency contract (packages/wapps/README.md): write the
   // host's --c-*/--dt-* tokens onto :root, toggle the `dark` class and keep
   // native controls/scrollbars in sync via color-scheme.
   function applyHostTheme(ctx) {

@@ -46,8 +46,9 @@ DataZen 确立了严格的开源宿主与闭源商业特权扩展物理隔离策
 packages/pro-extensions/sql-editor-pro/
 ├── .git/                        # 独立的私有 Git 仓库
 ├── package.json                 # 包元数据 (@datazen/extension-sql-editor-pro)
-├── tsconfig.json                # TypeScript 路径别名 (@host/* -> ../../../src/*)
+├── tsconfig.json                # 独立 TypeScript 编译配置
 ├── vitest.config.ts             # 独立的 Vitest 运行配置
+├── AGENTS.md                    # 专属于该插件的 Agent 极简上下文开发规范
 └── src/
     ├── index.ts                 # 扩展入口 activate(registry) 与导出
     ├── proFeatures.ts           # 汇聚装配所有 Pro 特性并向 sqlEditorProEP 注入
@@ -57,15 +58,16 @@ packages/pro-extensions/sql-editor-pro/
     ├── join-completion/         # 基于外键依赖的智能 JOIN 补全
     ├── paste/                   # 智能粘贴 (Paste-as-IN) 与拖拽高亮 DropCaret
     ├── statement-gutter/        # 语句行号 Gutter 运行按钮与多语句高亮
-    └── bind-params/             # SQL 命名参数智能提取与绑定面板
+    ├── bind-params/             # SQL 命名参数智能提取与绑定面板
+    └── locales/                 # 独立的 Pro 多语言资源 (en.ts, zh-CN.ts)
 ```
 
-### 路径别名支持
-为了让 Pro 扩展能够使用宿主导出的公共类型与 UI 设计系统，以下别名已在 `tsconfig.json` 和 `vite.config.ts` 中完成全局映射：
-- `@datazen/extension-points`：指向扩展点定义；
-- `@datazen/ui`：指向宿主共享设计系统（Button, Dialog, Input, Select 等纯 React 视图组件）；
-- `@host/sql-editor/*`：指向宿主 SQL 编辑器的语义解析器、类型与抽象接口；
-- `@host/*`：指向宿主公共工具库与 Hook。
+### 规范依赖与零宿主内部引用（Zero @host/*）
+Pro 扩展遵循彻底的纯净解耦规范，**严禁使用任何 `@host/*` 别名**，所需公共能力均由权威公共包导出：
+- `@datazen/extension-points`：SQL 编辑器契约（`SqlEditorProps`, `SqlSchema` 等）、语义模型（`buildSemanticModel`, `scanSql`, `getDialectAdapter` 等）以及多语言跨宿主桥梁；
+- `@datazen/ui`：宿主共享设计系统（Button, Dialog, Input, Select, cn 等纯 React 视图组件）；
+- `@codemirror/*`：CodeMirror 6 官方核心库。
+- 本地词条：`src/locales/` 维护自己的翻译，通过 `@datazen/extension-points` 的 `createExtensionI18n` 复用宿主当前的语言设置与切换调度。
 
 ---
 

@@ -22,7 +22,7 @@ incremental = true
 strip = true
 lto = true
 codegen-units = 1
-opt-level = "s"
+opt-level = "z"
 
 # Driver patches — injected by resolve-drivers.mjs at build time; do NOT add manually.
 # <<driver-patches>>

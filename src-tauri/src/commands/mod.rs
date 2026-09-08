@@ -14,7 +14,6 @@ mod dialog;
 pub(crate) mod driver_command;
 mod error;
 mod export;
-mod extensions;
 mod file;
 mod history;
 pub mod mcp;
@@ -24,6 +23,7 @@ mod schema_diff;
 mod structure;
 mod sync;
 mod theme;
+mod wapps;
 pub(crate) mod window;
 mod workflow;
 
@@ -43,7 +43,6 @@ pub use data_transfer::*;
 pub use dialog::*;
 pub use driver_command::*;
 pub use export::*;
-pub use extensions::*;
 pub use file::*;
 pub use history::*;
 pub use mcp::*;
@@ -53,6 +52,7 @@ pub use schema_diff::*;
 pub use structure::*;
 pub use sync::*;
 pub use theme::*;
+pub use wapps::*;
 pub use window::*;
 pub use workflow::*;
 
@@ -60,12 +60,12 @@ use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
 use crate::cache::SchemaCache;
 use crate::db::registry::DriverRegistry;
 use crate::db::TransactionHandle;
-use crate::extensions::ExtensionManager;
 use crate::mcp::McpClientManager;
 use crate::monitor::{MonitorConnectionRegistry, MonitorEngine};
 use crate::services::ConnectionManager;
 use crate::store::Store;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
+use crate::wapps::WappManager;
 use crate::workflow::scheduler::WorkflowScheduler;
 use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
 use datazen_driver_api::QueryExecutionId;
@@ -156,7 +156,8 @@ pub struct AppState {
     pub session_transactions: Arc<tokio::sync::Mutex<HashMap<String, TransactionHandle>>>,
     pub query_executions: Arc<QueryExecutionRegistry>,
     pub workflow_scheduler: Arc<WorkflowScheduler>,
-    pub extensions: Arc<ExtensionManager>,
+    pub wapps: Arc<WappManager>,
+    pub extensions: Arc<WappManager>,
 }
 
 impl AppState {

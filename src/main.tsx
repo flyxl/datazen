@@ -23,6 +23,22 @@ import { bootstrapDefaultIconResolver } from './lib/bootstrapIconResolver';
 import { maybeCheckOnStartup } from './lib/updater';
 import { getWindowKind } from './lib/windowKind';
 import { initProExtensions } from './plugins/generated-pro';
+import { setHostLocaleBridge, setTableSchemaProvider } from '@datazen/extension-points';
+import { useSettingsStore } from './stores/settingsStore';
+import { getCachedTableSchema } from './lib/schemaCache';
+import { t } from './locales/t';
+
+setHostLocaleBridge({
+  getLocale: () => useSettingsStore.getState().settings.language ?? 'en',
+  subscribe: (listener) =>
+    useSettingsStore.subscribe((state, prevState) => {
+      if (state.settings.language !== prevState.settings.language) {
+        listener(state.settings.language ?? 'en');
+      }
+    }),
+  translate: (key, params) => t(key, params),
+});
+setTableSchemaProvider(getCachedTableSchema);
 
 bootstrapDefaultIconResolver();
 initProExtensions();

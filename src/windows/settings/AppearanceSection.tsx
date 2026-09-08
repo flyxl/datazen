@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { encodePluginThemePackId, parsePluginThemePackId } from '../../lib/themePackApply';
-import { useExtensionStore } from '../../stores/extensionStore';
+import { useWappStore } from '../../stores/wappStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { AppSettings } from '../../types';
 import type { ThemeMode } from '../../types/theme';
-import type { ExtensionSummary } from '../../types/extension';
+import type { WappSummary } from '../../types/wapp';
 import { SectionTitle, SettingRow } from './settingsUi';
 
 /** Sentinel option value representing the built-in default theme (packId = null). */
@@ -24,8 +24,8 @@ interface ThemeOption {
   label: string;
 }
 
-/** Flatten enabled plugins into a single theme-option list (no plugin hardcoding). */
-function collectThemeOptions(extensions: ExtensionSummary[]): ThemeOption[] {
+/** Flatten enabled plugins/wapps into a single theme-option list (no plugin hardcoding). */
+function collectThemeOptions(extensions: WappSummary[]): ThemeOption[] {
   return extensions
     .filter((p) => p.enabled)
     .flatMap((plugin) =>
@@ -47,19 +47,19 @@ export function AppearanceSection({
   onThemeChange,
 }: AppearanceSectionProps = {}) {
   const { t } = useI18n();
-  const extensions = useExtensionStore((s) => s.extensions);
-  const loaded = useExtensionStore((s) => s.loaded);
+  const wapps = useWappStore((s) => s.wapps);
+  const loaded = useWappStore((s) => s.loaded);
   const storedSettings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
   const settings = draftSettings ?? storedSettings;
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!loaded) void useExtensionStore.getState().fetch();
+    if (!loaded) void useWappStore.getState().fetch();
   }, [loaded]);
 
   // PRD §4.5: only themes contributed by *enabled* plugins are switchable here.
-  const themeOptions = useMemo(() => collectThemeOptions(extensions), [extensions]);
+  const themeOptions = useMemo(() => collectThemeOptions(wapps), [wapps]);
 
   const activePackId = settings.theme.packId;
   const activePluginThemeMissing =

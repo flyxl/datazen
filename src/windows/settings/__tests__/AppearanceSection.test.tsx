@@ -8,7 +8,19 @@ const { pluginState, fetchMock, settingsState, updateSettingsMock } = vi.hoisted
   const updateSettingsFn = vi.fn();
   return {
     pluginState: {
-      extensions: [] as Array<Record<string, unknown>>,
+      _list: [] as Array<Record<string, unknown>>,
+      get wapps() {
+        return this._list;
+      },
+      set wapps(v: Array<Record<string, unknown>>) {
+        this._list = v;
+      },
+      get extensions() {
+        return this._list;
+      },
+      set extensions(v: Array<Record<string, unknown>>) {
+        this._list = v;
+      },
       loaded: true,
       error: null as string | null,
     },
@@ -29,7 +41,19 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string, params?: Record<string, string | number>) => key }),
 }));
 
+vi.mock('../../../stores/wappStore', () => ({
+  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+    getState: () => ({ ...pluginState, fetch: fetchMock }),
+  }),
+  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+    getState: () => ({ ...pluginState, fetch: fetchMock }),
+  }),
+}));
+
 vi.mock('../../../stores/extensionStore', () => ({
+  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+    getState: () => ({ ...pluginState, fetch: fetchMock }),
+  }),
   useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
     getState: () => ({ ...pluginState, fetch: fetchMock }),
   }),

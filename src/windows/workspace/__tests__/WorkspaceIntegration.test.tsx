@@ -2,17 +2,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { WorkspaceView } from '../WorkspaceView';
 import { useWorkspaceTabsStore } from '../../../stores/workspaceTabsStore';
-import type { ExtensionSummary } from '../../../types/extension';
+import type { ExtensionSummary, WappSummary } from '../../../types/wapp';
 
-const { listenMock, pluginState, getManifestMock } = vi.hoisted(() => ({
-  listenMock: vi.fn(),
-  pluginState: {
-    extensions: [] as Array<Record<string, unknown>>,
+const { listenMock, pluginState, getManifestMock } = vi.hoisted(() => {
+  const pState = {
+    _list: [] as Array<Record<string, unknown>>,
+    get wapps() {
+      return this._list;
+    },
+    set wapps(v: Array<Record<string, unknown>>) {
+      this._list = v;
+    },
+    get extensions() {
+      return this._list;
+    },
+    set extensions(v: Array<Record<string, unknown>>) {
+      this._list = v;
+    },
     loaded: true,
     error: null as string | null,
-  },
-  getManifestMock: vi.fn(),
-}));
+  };
+  return {
+    listenMock: vi.fn(),
+    pluginState: pState,
+    getManifestMock: vi.fn(),
+  };
+});
 
 vi.mock('@tauri-apps/api/event', () => ({
   listen: (...args: Parameters<typeof listenMock>) => listenMock(...args),
@@ -22,20 +37,60 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../commands/extensions', () => ({
+vi.mock('../../../commands/wapps', () => ({
+  WAPPS_CHANGED_EVENT: 'wapps:changed',
   EXTENSIONS_CHANGED_EVENT: 'wapps:changed',
+  wappCommands: {
+    getWappManifest: (...args: unknown[]) => getManifestMock(...args),
+    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
+  },
   extensionCommands: {
     getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
   },
 }));
 
-vi.mock('../../../stores/extensionStore', () => ({
+vi.mock('../../../commands/extensions', () => ({
+  WAPPS_CHANGED_EVENT: 'wapps:changed',
+  EXTENSIONS_CHANGED_EVENT: 'wapps:changed',
+  wappCommands: {
+    getWappManifest: (...args: unknown[]) => getManifestMock(...args),
+    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
+  },
+  extensionCommands: {
+    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
+  },
+}));
+
+vi.mock('../../../stores/wappStore', () => ({
+  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+    getState: () => ({
+      ...pluginState,
+      fetch: vi.fn().mockResolvedValue(undefined),
+      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
+    }),
+  }),
   useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
     getState: () => ({
       ...pluginState,
       fetch: vi.fn().mockResolvedValue(undefined),
-      byId: (id: string) =>
-        (pluginState.extensions as Array<{ id: string }>).find((p) => p.id === id),
+      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
+    }),
+  }),
+}));
+
+vi.mock('../../../stores/extensionStore', () => ({
+  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+    getState: () => ({
+      ...pluginState,
+      fetch: vi.fn().mockResolvedValue(undefined),
+      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
+    }),
+  }),
+  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+    getState: () => ({
+      ...pluginState,
+      fetch: vi.fn().mockResolvedValue(undefined),
+      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
     }),
   }),
 }));

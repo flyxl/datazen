@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 datazen-driver-api = { path = "../../driver-api" }
 async-trait = "0.1"
 base64 = "0.22"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util", "process", "macros"] }
 sqlx = { version = "=0.8.6", features = ["runtime-tokio", "tls-rustls", "sqlite", "chrono", "json"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }

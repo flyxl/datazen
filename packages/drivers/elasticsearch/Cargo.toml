@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 datazen-driver-api = { path = "../../driver-api" }
 datazen-driver-http-support = { path = "../http-support" }
 async-trait = "0.1"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util", "macros"] }
 reqwest = { version = "0.13.3", features = ["json"] }
 serde_json = "1"
 tracing = "0.1"

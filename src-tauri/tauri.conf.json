@@ -6,6 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm exec vite",
     "beforeBuildCommand": "pnpm build",
+    "beforeBundleCommand": "node scripts/upx-compress.mjs",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
   },

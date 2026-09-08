@@ -8,7 +8,7 @@
  * (`themeTokens.ts`) are imported for live round-trips.
  */
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,7 +30,10 @@ import { EXTENSION_API_VERSION as HOST_API_VERSION } from '../../../src/types/ex
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HOST_ROOT = resolve(HERE, '../../..');
-const HOST_BRIDGE_SRC = readFileSync(resolve(HOST_ROOT, 'src/lib/extensionBridge.ts'), 'utf8');
+const HOST_BRIDGE_PATH = existsSync(resolve(HOST_ROOT, 'src/lib/wappBridge.ts'))
+  ? resolve(HOST_ROOT, 'src/lib/wappBridge.ts')
+  : resolve(HOST_ROOT, 'src/lib/extensionBridge.ts');
+const HOST_BRIDGE_SRC = readFileSync(HOST_BRIDGE_PATH, 'utf8');
 const HOST_CSS_SRC = readFileSync(resolve(HOST_ROOT, 'src/styles/themes.css'), 'utf8');
 const SDK_CSS_SRC = readFileSync(resolve(HERE, '../src/theme.css'), 'utf8');
 

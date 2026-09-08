@@ -142,13 +142,7 @@ vi.mock('../ContentView', () => ({
 }));
 
 vi.mock('../../../components/TitleBar', () => ({
-  TitleBar: ({
-    title,
-    leftContent,
-  }: {
-    title: string;
-    leftContent?: React.ReactNode;
-  }) => (
+  TitleBar: ({ title, leftContent }: { title: string; leftContent?: React.ReactNode }) => (
     <div data-testid="title-bar">
       {leftContent}
       {title}
@@ -202,7 +196,34 @@ vi.mock('../../workspace/WorkspaceView', () => ({
   ),
 }));
 
+vi.mock('../../wapps/WappManagementPage', () => ({
+  WappManagementPage: ({ onOpenInWorkspace }: { onOpenInWorkspace?: () => void }) => (
+    <div data-testid="plugins-management-page">
+      plugins-management-page
+      <button type="button" data-testid="plugins-goto-workspace" onClick={onOpenInWorkspace}>
+        goto workspace
+      </button>
+    </div>
+  ),
+  ExtensionManagementPage: ({ onOpenInWorkspace }: { onOpenInWorkspace?: () => void }) => (
+    <div data-testid="plugins-management-page">
+      plugins-management-page
+      <button type="button" data-testid="plugins-goto-workspace" onClick={onOpenInWorkspace}>
+        goto workspace
+      </button>
+    </div>
+  ),
+}));
+
 vi.mock('../../extensions/ExtensionManagementPage', () => ({
+  WappManagementPage: ({ onOpenInWorkspace }: { onOpenInWorkspace?: () => void }) => (
+    <div data-testid="plugins-management-page">
+      plugins-management-page
+      <button type="button" data-testid="plugins-goto-workspace" onClick={onOpenInWorkspace}>
+        goto workspace
+      </button>
+    </div>
+  ),
   ExtensionManagementPage: ({ onOpenInWorkspace }: { onOpenInWorkspace?: () => void }) => (
     <div data-testid="plugins-management-page">
       plugins-management-page

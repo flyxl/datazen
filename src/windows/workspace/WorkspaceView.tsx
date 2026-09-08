@@ -2,9 +2,9 @@ import { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
-import { useExtensionStore } from '../../stores/extensionStore';
+import { useWappStore } from '../../stores/wappStore';
 import { useWorkspaceTabsStore } from '../../stores/workspaceTabsStore';
-import { ExtensionPageShell } from './ExtensionPageShell';
+import { WappPageShell } from './WappPageShell';
 import { WorkspaceDefaultCards } from './WorkspaceDefaultCards';
 import { WorkspaceNavigator } from './WorkspaceNavigator';
 import { WorkspaceTabBar } from './WorkspaceTabBar';
@@ -29,8 +29,9 @@ export interface WorkspaceViewProps {
 export function WorkspaceView({ onOpenPlugins }: WorkspaceViewProps) {
   const { t } = useI18n();
   const pages = useWorkspacePages();
-  const plugins = useExtensionStore((s) => s.extensions);
-  const pluginsLoaded = useExtensionStore((s) => s.loaded);
+  const wapps = useWappStore((s) => s.wapps);
+  const plugins = wapps;
+  const pluginsLoaded = useWappStore((s) => s.loaded);
   const tabs = useWorkspaceTabsStore((s) => s.tabs);
   const activeKey = useWorkspaceTabsStore((s) => s.activeKey);
 
@@ -42,9 +43,9 @@ export function WorkspaceView({ onOpenPlugins }: WorkspaceViewProps) {
     storageKey: 'workspace-sidebar-width',
   });
 
-  // Fire-and-forget initial load; refreshed via `plugins:changed` by the store.
+  // Fire-and-forget initial load; refreshed via `wapps:changed` by the store.
   useEffect(() => {
-    if (!useExtensionStore.getState().loaded) void useExtensionStore.getState().fetch();
+    if (!useWappStore.getState().loaded) void useWappStore.getState().fetch();
   }, []);
 
   // BUG-F4-01: a `wapps:changed` refresh triggered outside this window
@@ -73,7 +74,7 @@ export function WorkspaceView({ onOpenPlugins }: WorkspaceViewProps) {
       const payload = event.payload;
       const targetId = payload?.wappId || payload?.pluginId;
       if (!targetId || !payload?.pageId) return;
-      const plugin = useExtensionStore.getState().byId(targetId);
+      const plugin = useWappStore.getState().byId(targetId);
       if (!plugin || !plugin.enabled) return;
       if (!plugin.pages.some((p) => p.id === payload.pageId)) return;
       openPluginPage(targetId, payload.pageId);
@@ -108,7 +109,7 @@ export function WorkspaceView({ onOpenPlugins }: WorkspaceViewProps) {
         ) : (
           <div className="relative min-h-0 flex-1">
             {tabs.map((tab) => (
-              <ExtensionPageShell key={tab.key} tab={tab} active={tab.key === activeKey} />
+              <WappPageShell key={tab.key} tab={tab} active={tab.key === activeKey} />
             ))}
           </div>
         )}

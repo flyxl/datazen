@@ -15,3 +15,9 @@ export type {
   ExtensionSettingsContribution,
 } from './sqlEditorProEP';
 export { sqlEditorProEP } from './sqlEditorProEP';
+
+// i18n Bridge & Creator
+export * from './i18n';
+
+// SQL Editor Contracts & Semantics
+export * from './sql-editor';

@@ -241,6 +241,10 @@ jobs:
             echo "UPDATER_BUILD=0" >> "$GITHUB_ENV"
           fi
 
+      - name: Install UPX (Windows)
+        if: runner.os == 'Windows'
+        run: choco install upx --no-progress
+
       - name: Resolve drivers and build Tauri app
         shell: bash
         run: |

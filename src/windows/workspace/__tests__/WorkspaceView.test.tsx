@@ -1,23 +1,38 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { WorkspaceView } from '../WorkspaceView';
-import type { ExtensionSummary } from '../../../types/extension';
+import type { ExtensionSummary, WappSummary } from '../../../types/wapp';
 
-const { listenMock, pluginState, tabsState, openMock, closeByPluginMock } = vi.hoisted(() => ({
-  listenMock: vi.fn(),
-  pluginState: {
-    extensions: [] as Array<Record<string, unknown>>,
+const { listenMock, pluginState, tabsState, openMock, closeByPluginMock } = vi.hoisted(() => {
+  const pState = {
+    _list: [] as Array<Record<string, unknown>>,
+    get wapps() {
+      return this._list;
+    },
+    set wapps(v: Array<Record<string, unknown>>) {
+      this._list = v;
+    },
+    get extensions() {
+      return this._list;
+    },
+    set extensions(v: Array<Record<string, unknown>>) {
+      this._list = v;
+    },
     loaded: true,
     error: null as string | null,
     fetchCount: 0,
-  },
-  tabsState: {
-    tabs: [] as Array<Record<string, unknown>>,
-    activeKey: null as string | null,
-  },
-  openMock: vi.fn(),
-  closeByPluginMock: vi.fn(),
-}));
+  };
+  return {
+    listenMock: vi.fn(),
+    pluginState: pState,
+    tabsState: {
+      tabs: [] as Array<Record<string, unknown>>,
+      activeKey: null as string | null,
+    },
+    openMock: vi.fn(),
+    closeByPluginMock: vi.fn(),
+  };
+});
 
 vi.mock('@tauri-apps/api/event', () => ({
   listen: (...args: Parameters<typeof listenMock>) => listenMock(...args),
@@ -27,12 +42,41 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../stores/extensionStore', () => ({
+vi.mock('../../../stores/wappStore', () => ({
+  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+    getState: () => ({
+      ...pluginState,
+      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
+      fetch: async () => {
+        pluginState.fetchCount += 1;
+      },
+    }),
+  }),
   useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
     getState: () => ({
       ...pluginState,
-      byId: (id: string) =>
-        (pluginState.extensions as Array<{ id: string }>).find((p) => p.id === id),
+      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
+      fetch: async () => {
+        pluginState.fetchCount += 1;
+      },
+    }),
+  }),
+}));
+
+vi.mock('../../../stores/extensionStore', () => ({
+  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+    getState: () => ({
+      ...pluginState,
+      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
+      fetch: async () => {
+        pluginState.fetchCount += 1;
+      },
+    }),
+  }),
+  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+    getState: () => ({
+      ...pluginState,
+      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
       fetch: async () => {
         pluginState.fetchCount += 1;
       },
@@ -54,7 +98,25 @@ vi.mock('../../../stores/workspaceTabsStore', () => ({
   }),
 }));
 
+vi.mock('../WappPageShell', () => ({
+  WappPageShell: ({ tab, active }: { tab: { key: string }; active: boolean }) => (
+    <div data-testid="plugin-shell-stub" data-active={String(active)}>
+      {tab.key}
+    </div>
+  ),
+  ExtensionPageShell: ({ tab, active }: { tab: { key: string }; active: boolean }) => (
+    <div data-testid="plugin-shell-stub" data-active={String(active)}>
+      {tab.key}
+    </div>
+  ),
+}));
+
 vi.mock('../ExtensionPageShell', () => ({
+  WappPageShell: ({ tab, active }: { tab: { key: string }; active: boolean }) => (
+    <div data-testid="plugin-shell-stub" data-active={String(active)}>
+      {tab.key}
+    </div>
+  ),
   ExtensionPageShell: ({ tab, active }: { tab: { key: string }; active: boolean }) => (
     <div data-testid="plugin-shell-stub" data-active={String(active)}>
       {tab.key}

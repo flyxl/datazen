@@ -9,6 +9,7 @@ import {
 import type { MongoTranslationKey } from '../../packages/drivers/mongodb/locales/en';
 import { PLUGIN_LOCALES, type PluginTranslationKey } from '../plugins/generated-locales';
 import { lookupLazyTranslation } from './lazyPacks';
+import { getExtensionTranslation } from '@datazen/extension-points';
 
 export type { TranslationKey, PluginTranslationKey, MongoTranslationKey };
 export { BUILTIN_LOCALES, builtinLocales, BUILTIN_LOCALE_LABELS };
@@ -18,7 +19,7 @@ export type { LazyDomain, LocaleDomain } from './domains';
 export { LAZY_DOMAINS, EAGER_DOMAINS } from './domains';
 
 /** Host keys plus merged plugin keys from enabled drivers. */
-export type I18nKey = TranslationKey | PluginTranslationKey | MongoTranslationKey;
+export type I18nKey = TranslationKey | PluginTranslationKey | MongoTranslationKey | (string & {});
 
 const extensionLocales = new Map<string, { label: string; translations: Record<string, string> }>();
 
@@ -69,15 +70,19 @@ export function getTranslation(
     text =
       hostLookup(locale, key) ??
       pluginDict?.[key] ??
+      getExtensionTranslation(locale, key) ??
       hostLookup('en', key) ??
       pluginLocalesEn[key] ??
+      getExtensionTranslation('en', key) ??
       hostLookup('zh-CN', key);
   } else {
     const ext = extensionLocales.get(locale);
     text =
       ext?.translations[key] ??
+      getExtensionTranslation(locale, key) ??
       hostLookup('en', key) ??
       pluginLocalesEn[key] ??
+      getExtensionTranslation('en', key) ??
       hostLookup('zh-CN', key);
   }
 

@@ -19,7 +19,7 @@ datazen-driver-api = { workspace = true }
 datazen-ai-api = { path = "../packages/ai-api" }
 inventory = "0.3"
 tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "net", "process"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 aes-gcm = "0.10"
@@ -47,7 +47,7 @@ tauri-plugin-process = "2"
 sys-locale = "0.3.2"
 flate2 = "1.1.9"
 russh = "0.60"
-reqwest = { version = "0.13.3", features = ["json", "cookies", "stream", "query", "form"] }
+reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "json", "stream", "cookies", "query", "form"] }
 futures-util = "0.3"
 
 # Driver crates — injected by resolve-drivers.mjs at build time; do NOT add manually.

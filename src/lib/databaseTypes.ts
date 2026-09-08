@@ -11,10 +11,13 @@ import type { IconSourceMap } from './iconResolver';
 
 export type { ConnectionMode, DatabaseTypeMeta } from './databaseMeta';
 import type { DatabaseTypeMeta } from './databaseMeta';
+import { registerDriverMetas } from '@datazen/extension-points';
 
 export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
   ...DRIVER_DB_ENTRIES,
 } as Record<DatabaseType, DatabaseTypeMeta>;
+
+registerDriverMetas(DB_REGISTRY as any);
 
 /**
  * New-connection sidebar order: most commonly used types first (not wire-protocol family).

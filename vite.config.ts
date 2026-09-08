@@ -27,8 +27,6 @@ export default defineConfig({
       '@datazen/extension-sdk': resolve(__dirname, 'packages/app-sdk/src/index.ts'),
       '@datazen/ui': resolve(__dirname, 'packages/ui/src/index.ts'),
       '@datazen/extension-sql-editor-pro': proPath,
-      '@host/sql-editor': resolve(__dirname, 'src/components/sql-editor'),
-      '@host': resolve(__dirname, 'src'),
     },
   },
   // Main window: index.html (with splash). Sub-windows: window.html (no splash).

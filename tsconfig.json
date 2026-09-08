@@ -25,9 +25,7 @@
       "@datazen/extension-sql-editor-pro": [
         "./packages/pro-extensions/sql-editor-pro/src/index.ts",
         "/tmp/datazen-extension-sql-editor-pro/src/index.ts"
-      ],
-      "@host/sql-editor/*": ["./src/components/sql-editor/*"],
-      "@host/*": ["./src/*"]
+      ]
     }
   },
   "include": ["src", "packages/driver-sdk", "packages/extension-points", "packages/app-sdk", "packages/ui"],

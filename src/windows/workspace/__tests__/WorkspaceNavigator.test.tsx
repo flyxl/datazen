@@ -3,28 +3,66 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { WorkspaceNavigator } from '../WorkspaceNavigator';
 import type { ExtensionSummary } from '../../../types/extension';
 
-const { pluginState, tabsState, openMock } = vi.hoisted(() => ({
-  pluginState: {
-    extensions: [] as Array<Record<string, unknown>>,
+const { pluginState, tabsState, openMock } = vi.hoisted(() => {
+  const pState = {
+    _list: [] as Array<Record<string, unknown>>,
+    get wapps() {
+      return this._list;
+    },
+    set wapps(v: Array<Record<string, unknown>>) {
+      this._list = v;
+    },
+    get extensions() {
+      return this._list;
+    },
+    set extensions(v: Array<Record<string, unknown>>) {
+      this._list = v;
+    },
     loaded: true,
     error: null as string | null,
-  },
-  tabsState: {
-    activeKey: null as string | null,
-  },
-  openMock: vi.fn(),
-}));
+  };
+  return {
+    pluginState: pState,
+    tabsState: {
+      activeKey: null as string | null,
+    },
+    openMock: vi.fn(),
+  };
+});
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../stores/extensionStore', () => ({
+vi.mock('../../../stores/wappStore', () => ({
+  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+    getState: () => ({
+      ...pluginState,
+      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
+      fetch: vi.fn(),
+    }),
+  }),
   useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
     getState: () => ({
       ...pluginState,
-      byId: (id: string) =>
-        (pluginState.extensions as Array<{ id: string }>).find((p) => p.id === id),
+      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
+      fetch: vi.fn(),
+    }),
+  }),
+}));
+
+vi.mock('../../../stores/extensionStore', () => ({
+  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+    getState: () => ({
+      ...pluginState,
+      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
+      fetch: vi.fn(),
+    }),
+  }),
+  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+    getState: () => ({
+      ...pluginState,
+      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
       fetch: vi.fn(),
     }),
   }),
