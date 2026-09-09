@@ -10,7 +10,7 @@ use tauri::{
 
 /// Main window defaults from `tauri.conf.json`.
 const MAIN_WINDOW_DEFAULT_W: f64 = 1280.0;
-const MAIN_WINDOW_DEFAULT_H: f64 = 820.0;
+const MAIN_WINDOW_DEFAULT_H: f64 = 900.0;
 const MAIN_WINDOW_MIN_W: f64 = 960.0;
 const MAIN_WINDOW_MIN_H: f64 = 640.0;
 /// Legacy launcher size before the unified workspace shell.
