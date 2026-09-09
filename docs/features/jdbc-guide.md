@@ -5,7 +5,7 @@ DataZen can talk to databases that only ship a **JDBC** driver by running a smal
 ## Requirements
 
 1. **JRE/JDK 17+** on the machine (`java` on `PATH` or `JAVA_HOME`).
-2. Built agent jar: `datazen-jdbc-agent/build/datazen-jdbc-agent.jar` (see build below).
+2. Built agent jar: `datazen-jdbc-agent.jar` (see build below).
 3. Feature enabled: include `jdbc` in `DATAZEN_DRIVERS` (registry id `jdbc`).
 4. Vendor **JDBC JAR**(s) you obtain yourself (not redistributed by DataZen).
 
@@ -16,11 +16,23 @@ chmod +x datazen-jdbc-agent/build.sh
 ./datazen-jdbc-agent/build.sh
 ```
 
-Point the Host at the jar via `AgentLaunchConfig.agent_jar` (default `datazen-jdbc-agent.jar` in CWD) or copy the jar next to the app and configure Settings when UI lands.
+## Settings → Extensions → JDBC (Host wiring)
+
+UI fields are stored under `AppSettings.pluginSettings.jdbc` and synced into the driver crate on **boot** and every **save_settings** (same pattern as Redis `allowFlush`):
+
+| Field | JSON key | Default | Env override |
+|-------|----------|---------|--------------|
+| Java executable | `javaPath` | empty → `JAVA_HOME` / `PATH` | `DATAZEN_JDBC_JAVA` |
+| Agent JAR path | `agentJarPath` | `datazen-jdbc-agent.jar` | `DATAZEN_JDBC_AGENT_JAR` |
+| Idle timeout (seconds) | `idleTimeoutSecs` | `600` (min 60) | `DATAZEN_JDBC_IDLE_TIMEOUT` |
+
+**Jar resolution** (when the configured path is not an existing file): configured path → next to the app executable → `Contents/Resources/` (macOS bundle) → cwd → `datazen-jdbc-agent/target/` (dev).
+
+Changing java/jar path bumps an internal config epoch; the next JDBC connect **restarts** the shared agent process with the new launch config.
 
 ## Connection fields
 
-Use database type **JDBC**. Put advanced fields in connection `options`:
+Use database type **JDBC**. Connection dialog maps to `options`:
 
 ```json
 {
