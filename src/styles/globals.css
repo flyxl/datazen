@@ -1,7 +1,16 @@
-@import 'tailwindcss';
+@import 'tailwindcss' source(none);
 @import './themes.css';
 
 @config '../../tailwind.config.ts';
+
+@source '../../index.html';
+@source '../../window.html';
+@source '../../src';
+@source '../../packages/ui/src';
+@source '../../packages/drivers/*/ui';
+@source '../../packages/app-sdk/src';
+@source '../../packages/extension-points/src';
+@source '../../packages/pro-extensions/*/src';
 
 html,
 body,
