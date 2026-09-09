@@ -69,6 +69,10 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
+vi.mock('../../../hooks/useLocaleDomains', () => ({
+  useLocaleDomains: () => true,
+}));
+
 vi.mock('../../../stores/aiStore', () => ({
   useAiStore: (sel: (s: typeof aiStoreState) => unknown) => sel(aiStoreState),
 }));
@@ -381,10 +385,10 @@ describe('WorkflowPanel', () => {
     fireEvent.click(screen.getByText('Chart Run'));
     await waitFor(() => expect(screen.getByText(/workflows\.result/)).toBeInTheDocument());
     fireEvent.click(screen.getByText('q1'));
-    expect(screen.getByText('chart.viewChart')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('chart.viewChart'));
+    expect(screen.getByText('workflows.viewChart')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('workflows.viewChart'));
     fireEvent.click(screen.getByText('chart-click'));
-    expect(screen.getByText('chart.viewTable')).toBeInTheDocument();
+    expect(screen.getByText('workflows.viewTable')).toBeInTheDocument();
   });
 
   it('shows workflow error and failed execution via history', async () => {

@@ -671,6 +671,7 @@ export function DataTransferWindow() {
             <MigrationEndpointsBar
               layout="grid"
               testIdPrefix="data-transfer"
+              i18nPrefix="transfer"
               showSwap={false}
               showCompare={false}
               includeEmptyConnectionOption

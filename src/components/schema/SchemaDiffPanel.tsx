@@ -5,8 +5,7 @@ export function SchemaDiffPanel({ diff }: { diff: TableSchemaDiff }) {
   const { t } = useI18n();
   const missing = diff.missingOnTarget ?? diff.added;
   const extra = diff.extraOnTarget ?? diff.removed;
-  const identical =
-    missing.length === 0 && extra.length === 0 && diff.changed.length === 0;
+  const identical = missing.length === 0 && extra.length === 0 && diff.changed.length === 0;
 
   return (
     <div className="space-y-4 text-xs">
@@ -36,7 +35,7 @@ export function SchemaDiffPanel({ diff }: { diff: TableSchemaDiff }) {
       )}
       {diff.changed.length > 0 && (
         <section>
-          <h4 className="mb-1.5 font-semibold text-warning">{t('sync.colChanged')}</h4>
+          <h4 className="mb-1.5 font-semibold text-warning">{t('schemaDiff.colChanged')}</h4>
           {diff.changed.map((col) => (
             <div
               key={col.name}
@@ -44,12 +43,12 @@ export function SchemaDiffPanel({ diff }: { diff: TableSchemaDiff }) {
             >
               <div className="font-medium text-fg">{col.name}</div>
               <div className="mt-1 text-fg-secondary">
-                {t('sync.source')}: {col.source.dataType}
+                {t('schemaDiff.source')}: {col.source.dataType}
                 {col.source.nullable ? '' : ', NOT NULL'}
                 {col.source.isPrimaryKey ? ', PK' : ''}
               </div>
               <div className="text-fg-secondary">
-                {t('sync.target')}: {col.target.dataType}
+                {t('schemaDiff.target')}: {col.target.dataType}
                 {col.target.nullable ? '' : ', NOT NULL'}
                 {col.target.isPrimaryKey ? ', PK' : ''}
               </div>
@@ -58,7 +57,7 @@ export function SchemaDiffPanel({ diff }: { diff: TableSchemaDiff }) {
           ))}
         </section>
       )}
-      {identical && <div className="text-fg-muted">{t('sync.schemaIdentical')}</div>}
+      {identical && <div className="text-fg-muted">{t('schemaDiff.schemaIdentical')}</div>}
     </div>
   );
 }

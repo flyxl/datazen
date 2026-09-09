@@ -480,15 +480,15 @@ describe('WorkflowPage', () => {
     await executeWithResult(makeResult([chartableStep]));
     expect(screen.getByTestId('data-table')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('chart.viewChart'));
+    fireEvent.click(screen.getByText('workflows.viewChart'));
     await waitFor(() => expect(screen.getByTestId('chart-view')).toBeInTheDocument());
 
     fireEvent.click(screen.getByText('chart-point'));
     await waitFor(() => expect(screen.getByTestId('data-table')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByText('chart.viewChart'));
+    fireEvent.click(screen.getByText('workflows.viewChart'));
     fireEvent.click(screen.getByText('chart-config'));
-    fireEvent.click(screen.getByText('chart.viewTable'));
+    fireEvent.click(screen.getByText('workflows.viewTable'));
   });
 
   it('reuses run panel and closes panels via tab X', async () => {
@@ -585,8 +585,8 @@ describe('WorkflowPage', () => {
     }
 
     clickStepTab('big');
-    fireEvent.click(screen.getByText('chart.viewChart'));
-    await waitFor(() => expect(screen.getByText('chart.sampledWarning')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('workflows.viewChart'));
+    await waitFor(() => expect(screen.getByText('workflows.sampledWarning')).toBeInTheDocument());
 
     clickStepTab('empty-q');
     expect(screen.getByText('workflows.noQueryResult')).toBeInTheDocument();

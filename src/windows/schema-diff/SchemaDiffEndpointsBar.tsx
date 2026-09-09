@@ -46,6 +46,7 @@ export function SchemaDiffEndpointsBar({
   return (
     <MigrationEndpointsBar
       testIdPrefix="schema-diff"
+      i18nPrefix="schemaDiff"
       compareLabel={t('schemaDiff.compare')}
       busy={busy}
       actionNote={actionNote}

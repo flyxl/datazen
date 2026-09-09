@@ -499,6 +499,7 @@ export function SchemaDiffWindow() {
             <MigrationEndpointsBar
               layout="grid"
               testIdPrefix="schema-diff"
+              i18nPrefix="schemaDiff"
               showSwap={false}
               showCompare={false}
               sourceId={endpoints.sourceId}

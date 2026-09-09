@@ -178,7 +178,7 @@ export function ChartWidgetTile({
             variant="ghost"
             className="h-6 w-6 px-0"
             data-testid="dashboard-tile-expand"
-            title={t('chart.expand')}
+            title={t('dashboard.expand')}
             onClick={() => setExpanded(true)}
           >
             <Maximize2 className="h-3.5 w-3.5" />
@@ -351,7 +351,7 @@ function TileExpandOverlay({
           type="button"
           className="flex items-center gap-1 rounded px-2 py-1 text-xs text-fg-muted hover:bg-surface-alt hover:text-fg-secondary transition-colors"
           onClick={onClose}
-          title={t('chart.collapse')}
+          title={t('dashboard.collapse')}
         >
           <Minimize2 className="h-3.5 w-3.5" />
         </button>

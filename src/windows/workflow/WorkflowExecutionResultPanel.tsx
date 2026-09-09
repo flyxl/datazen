@@ -135,12 +135,12 @@ function WorkflowStepResultRow({ step }: { step: StepExecutionResult }) {
                       onClick={() => setViewMode('table')}
                     >
                       <TableProperties className="h-2.5 w-2.5" />
-                      {t('chart.viewTable')}
+                      {t('workflows.viewTable')}
                     </button>
                     <button
                       type="button"
                       disabled={!chartable}
-                      title={!chartable ? t('chart.notChartableTooltip') : undefined}
+                      title={!chartable ? t('workflows.notChartableTooltip') : undefined}
                       onMouseDown={(e) => e.preventDefault()}
                       className={cn(
                         'flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] transition-colors',
@@ -153,7 +153,7 @@ function WorkflowStepResultRow({ step }: { step: StepExecutionResult }) {
                       onClick={() => chartable && setViewMode('chart')}
                     >
                       <BarChart3 className="h-2.5 w-2.5" />
-                      {t('chart.viewChart')}
+                      {t('workflows.viewChart')}
                     </button>
                   </div>
                 )}
@@ -167,7 +167,7 @@ function WorkflowStepResultRow({ step }: { step: StepExecutionResult }) {
                   {statementResult.rows.length > 1000 && (
                     <div className="flex items-center gap-1 bg-surface-alt px-2 py-0.5 text-[10px] text-yellow-400">
                       <AlertTriangle className="h-2.5 w-2.5" />
-                      {t('chart.sampledWarning', { limit: '1000' })}
+                      {t('workflows.sampledWarning', { limit: '1000' })}
                     </div>
                   )}
                   <ChartView

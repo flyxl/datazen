@@ -385,7 +385,7 @@ export function McpSettingsSection({
 
           <div className="flex items-center gap-3">
             {!onSettingsChange && saved && (
-              <span className="text-xs text-green-500">{t('settings.saved')}</span>
+              <span className="text-xs text-green-500">{t('mcp.saved')}</span>
             )}
             {!onSettingsChange && (
               <Button
@@ -403,7 +403,7 @@ export function McpSettingsSection({
       {allTools.length === 0 && toolsDirty && (
         <div className="flex items-center gap-3">
           {!onSettingsChange && saved && (
-            <span className="text-xs text-green-500">{t('settings.saved')}</span>
+            <span className="text-xs text-green-500">{t('mcp.saved')}</span>
           )}
           {!onSettingsChange && (
             <Button variant="primary" onClick={() => void handleSaveTools()}>

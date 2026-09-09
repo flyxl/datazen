@@ -1079,7 +1079,7 @@ function StepDetailView({
               onClick={() => setViewMode('table')}
             >
               <TableProperties className="h-3 w-3" />
-              {t('chart.viewTable')}
+              {t('workflows.viewTable')}
             </button>
             <button
               type="button"
@@ -1093,7 +1093,7 @@ function StepDetailView({
               onClick={() => setViewMode('chart')}
             >
               <BarChart3 className="h-3 w-3" />
-              {t('chart.viewChart')}
+              {t('workflows.viewChart')}
             </button>
           </div>
         )}
@@ -1126,7 +1126,7 @@ function StepDetailView({
           {statementResult.rows.length > 1000 && (
             <div className="flex items-center gap-1 border-b border-edge bg-surface-alt px-3 py-1 text-[11px] text-yellow-400">
               <AlertTriangle className="h-3 w-3" />
-              {t('chart.sampledWarning', { limit: '1000' })}
+              {t('workflows.sampledWarning', { limit: '1000' })}
             </div>
           )}
           <div className="flex flex-1 min-h-0">

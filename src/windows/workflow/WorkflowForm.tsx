@@ -33,10 +33,10 @@ function WorkflowSqlEditor({
       void showNativeContextMenu(
         buildSqlEditorContextMenuItems({
           labels: {
-            run: t('query.run'),
-            runSelection: t('query.runSelection'),
-            format: t('query.format'),
-            comment: t('query.comment'),
+            run: t('workflows.run'),
+            runSelection: t('workflows.runSelection'),
+            format: t('workflows.format'),
+            comment: t('workflows.comment'),
           },
           handlers: {
             onFormat: () => onChange(formatSql(value, databaseType)),

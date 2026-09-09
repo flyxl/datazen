@@ -12,6 +12,7 @@ import {
   Wand2,
 } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
+import { useLocaleDomains } from '../../hooks/useLocaleDomains';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { useAiStore } from '../../stores/aiStore';
 import { aiCommands } from '../../commands/ai';
@@ -35,6 +36,7 @@ interface WorkflowPanelProps {
 type PanelTab = 'workflows' | 'history';
 
 export function WorkflowPanel({ dbSessionId }: WorkflowPanelProps) {
+  const localesReady = useLocaleDomains(['workflows']);
   const { t } = useI18n();
   const [confirmWf, confirmWfDialog] = useConfirmDialog();
   const workflows = useAiStore((s) => s.workflows);
@@ -177,7 +179,7 @@ export function WorkflowPanel({ dbSessionId }: WorkflowPanelProps) {
   const inputClass =
     'w-full h-7 rounded border border-edge bg-surface px-2 text-xs text-fg outline-none focus:border-accent';
 
-  if (workflowsLoading) {
+  if (!localesReady || workflowsLoading) {
     return (
       <div className="flex items-center justify-center py-4 text-fg-muted text-xs">
         <Loader2 className="h-4 w-4 animate-spin mr-1" />

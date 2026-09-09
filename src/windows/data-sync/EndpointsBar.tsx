@@ -59,6 +59,7 @@ export function EndpointsBar(props: EndpointsBarProps) {
   return (
     <MigrationEndpointsBar
       testIdPrefix="data-sync"
+      i18nPrefix="sync"
       layout={layout}
       compareLabel={t('sync.compare')}
       actionNote={actionNote}
