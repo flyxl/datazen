@@ -128,6 +128,7 @@ const VirtualRow = memo(function VirtualRow({
         return (
           <div
             key={col.id}
+            data-testid="data-table-cell"
             data-dt-row={vRow.index}
             data-dt-col={col.name}
             className="flex shrink-0 items-center overflow-hidden border-r border-edge/30 px-2"

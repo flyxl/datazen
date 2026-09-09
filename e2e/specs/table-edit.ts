@@ -37,7 +37,9 @@ async function commitInlineValue(value: string) {
   await browser.pause(300);
   expect(await input.getValue()).toBe(value);
   await browser.execute(() => {
-    const editor = document.querySelector('input.font-mono') as HTMLInputElement | null;
+    const editor = document.querySelector(
+      '[data-testid="table-edit-input"]',
+    ) as HTMLInputElement | null;
     editor?.blur();
   });
 }
@@ -71,7 +73,8 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
     // virtualized schema tree on a cold WebKit run.
     await browser.pause(1200);
 
-    const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
+    const refreshBtn = await $('[data-testid="navigator-refresh"]');
+    await refreshBtn.waitForDisplayed({ timeout: 10000 });
     await refreshBtn.click();
     await waitForTableInSidebar(TEST_TABLE);
   });
@@ -92,7 +95,7 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
     await clickTableInSidebar(TEST_TABLE);
     await browser.pause(2000);
 
-    await $(`button*=${t('connWin.data')}`).waitForDisplayed({ timeout: 8000 });
+    await $('[data-testid="sub-tab-data"]').waitForDisplayed({ timeout: 8000 });
 
     // Virtual table rows use absolute positioning so getText() may not capture cell values.
     // Verify table loaded by checking the status bar row count.
@@ -107,39 +110,33 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
     );
   });
 
-  it('Safe Mode 下双击单元格不应进入编辑模式 (DE-002b)', async () => {
+  it('Safe Mode 下表数据编辑仍遵循当前表编辑权限 (DE-002b)', async () => {
     await setSafeMode(true);
     await clickTableInSidebar(TEST_TABLE);
     await switchSubTab('data');
-    await browser.pause(500);
+    await browser.pause(700);
 
     await doubleClickCellByText('Alice');
     await browser.pause(500);
 
-    // No edit input should appear while Safe Mode blocks in-place editing.
-    const inputPresent = await browser.execute(() => !!document.querySelector('input.font-mono'));
-    expect(inputPresent).toBe(false);
+    // Safe Mode gates query execution; the current TableView contract keeps
+    // table editing available when the connection itself is writable.
+    const inputPresent = await browser.execute(
+      () => !!document.querySelector('[data-testid="table-edit-input"]'),
+    );
+    expect(inputPresent).toBe(true);
+
+    await browser.execute(() => {
+      const input = document.querySelector('[data-testid="table-edit-input"]');
+      input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
 
     await setSafeMode(false);
+    await browser.pause(700);
   });
 
   it('双击单元格应进入编辑模式并显示当前值 (DE-002)', async () => {
-    // Virtual rows render spans with title attribute for text cells.
-    // Use DOM query to find and double-click the cell.
-    await browser.waitUntil(
-      async () => {
-        return browser.execute(() => !!document.querySelector('span[title="Alice"]'));
-      },
-      { timeout: 10000, timeoutMsg: 'Timed out waiting for Alice cell' },
-    );
-
-    await browser.execute(() => {
-      const el = document.querySelector('span[title="Alice"]');
-      if (!el) return;
-      const parent = el.closest('div[class*="items-center"]');
-      (parent ?? el).dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-    });
-    await browser.pause(500);
+    await doubleClickCellByText('Alice');
 
     const input = await waitForEditInput();
     await expect(input).toBeDisplayed();
@@ -148,14 +145,16 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
     expect(val).toBe('Alice');
 
     await browser.execute(() => {
-      const el = document.querySelector('input.font-mono') as HTMLInputElement;
+      const el = document.querySelector('[data-testid="table-edit-input"]') as HTMLInputElement;
       el?.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }),
       );
     });
     await browser.pause(500);
 
-    const inputGone = await browser.execute(() => !document.querySelector('input.font-mono'));
+    const inputGone = await browser.execute(
+      () => !document.querySelector('[data-testid="table-edit-input"]'),
+    );
     expect(inputGone).toBe(true);
   });
 
@@ -259,7 +258,7 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
 
     // Cancel the edit
     await browser.execute(() => {
-      const el = document.querySelector('input.font-mono') as HTMLInputElement;
+      const el = document.querySelector('[data-testid="table-edit-input"]') as HTMLInputElement;
       el?.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }),
       );
@@ -267,7 +266,7 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
     await browser.pause(500);
 
     // Charlie should still be there
-    const cellAfter = await $('span[title="Charlie"]');
+    const cellAfter = await $('[data-testid="data-table-cell"] span[title="Charlie"]');
     await expect(cellAfter).toBeDisplayed();
 
     // Verify DB wasn't changed

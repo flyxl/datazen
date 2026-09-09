@@ -298,6 +298,7 @@ export function NavigatorTreeRow({
       return (
         <button
           type="button"
+          data-testid="schema-tree-node"
           data-tree-node="db"
           data-db-name={row.dbName}
           aria-expanded={row.expanded}
@@ -325,6 +326,7 @@ export function NavigatorTreeRow({
       return (
         <button
           type="button"
+          data-testid="schema-tree-node"
           data-tree-node="schema"
           data-schema-name={row.schemaName}
           aria-expanded={row.expanded}
@@ -354,6 +356,7 @@ export function NavigatorTreeRow({
       return (
         <button
           type="button"
+          data-testid="schema-tree-node"
           data-tree-node="category"
           data-cat-id={row.cat.id}
           aria-expanded={row.expanded}
@@ -390,6 +393,7 @@ export function NavigatorTreeRow({
       return (
         <button
           type="button"
+          data-testid="schema-tree-node"
           data-tree-node={row.catId === 'views' ? 'view' : 'table'}
           data-item-name={row.item.name}
           draggable
@@ -450,6 +454,7 @@ export function NavigatorTreeRow({
       return (
         <button
           type="button"
+          data-testid="schema-tree-node"
           data-tree-node={row.catId}
           data-item-name={row.obj.name}
           className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
@@ -476,6 +481,7 @@ export function NavigatorTreeRow({
       return (
         <button
           type="button"
+          data-testid="schema-tree-node"
           data-tree-node="kv-db"
           data-db-name={row.dbName}
           className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] hover:bg-surface-raised text-fg-secondary"
@@ -523,6 +529,7 @@ export function NavigatorTreeRow({
         return (
           <button
             type="button"
+            data-testid="schema-tree-node"
             data-tree-node={menuKind}
             data-item-name={row.name}
             draggable
@@ -619,6 +626,7 @@ export function NavigatorTreeRow({
       return (
         <button
           type="button"
+          data-testid="schema-tree-node"
           data-tree-node="namespace"
           className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
           style={{ paddingLeft: depthPadding(row.depth) }}

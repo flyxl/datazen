@@ -84,6 +84,7 @@ export function EditableCell({ value, type, onCommit, onCancel }: EditableCellPr
 
   return (
     <input
+      data-testid="table-edit-input"
       autoFocus
       value={local}
       onChange={(e) => setLocal(e.target.value)}

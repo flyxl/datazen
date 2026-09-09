@@ -91,6 +91,7 @@ export function NavigatorToolbar({
               className="flex h-6 w-6 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
               onClick={onRefresh}
               title={t('connWin.refresh')}
+              data-testid="navigator-refresh"
             >
               <RefreshCw className="h-3.5 w-3.5" />
             </button>

@@ -346,6 +346,7 @@ export function QueryEditorSection({
               icon={<Check className="h-3.5 w-3.5 text-success" />}
               onClick={() => void onCommitTx()}
               disabled={running || txBusy}
+              data-testid="query-commit-tx"
             />
             <ToolbarButton
               compact={compactToolbar}
@@ -354,6 +355,7 @@ export function QueryEditorSection({
               icon={<Undo2 className="h-3.5 w-3.5 text-danger" />}
               onClick={() => void onRollbackTx()}
               disabled={running || txBusy}
+              data-testid="query-rollback-tx"
             />
             <span
               className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent"
@@ -368,6 +370,7 @@ export function QueryEditorSection({
           <span
             className="shrink-0 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning"
             title={t('settings.safeMode')}
+            data-testid="query-safe-mode"
           >
             {compactToolbar ? 'Safe' : t('settings.safeMode')}
           </span>
@@ -416,16 +419,19 @@ export function QueryEditorSection({
         />
       </ToolbarShell>
 
-      {bindParamPanelEnabled &&
-        enhanced.renderBindParamPanel?.({
-          params: sqlParams,
-          values: paramValues,
-          labels: paramLabels,
-          history: paramHistory,
-          onChange: onParamChange,
-          onClearHistory: onClearParamHistory,
-          onApplyHistory: onApplyParamHistory,
-        })}
+      {bindParamPanelEnabled && enhanced.renderBindParamPanel && (
+        <div data-testid="bind-param-panel">
+          {enhanced.renderBindParamPanel({
+            params: sqlParams,
+            values: paramValues,
+            labels: paramLabels,
+            history: paramHistory,
+            onChange: onParamChange,
+            onClearHistory: onClearParamHistory,
+            onApplyHistory: onApplyParamHistory,
+          })}
+        </div>
+      )}
 
       <div className="flex min-w-0 flex-col">
         {nl2sqlVisible && (

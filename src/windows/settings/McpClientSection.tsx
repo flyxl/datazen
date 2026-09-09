@@ -281,6 +281,7 @@ export function McpClientSection() {
             <div className="space-y-1">
               <input
                 type="text"
+                data-testid="mcp-server-id"
                 value={draft.id}
                 onChange={(e) => {
                   setDraft((d) => ({ ...d, id: e.target.value }));
@@ -296,6 +297,7 @@ export function McpClientSection() {
           <SettingRow label={t('mcpClient.serverName')}>
             <input
               type="text"
+              data-testid="mcp-server-name"
               value={draft.name}
               onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
               placeholder="My Server"
@@ -303,11 +305,14 @@ export function McpClientSection() {
             />
           </SettingRow>
           <SettingRow label={t('mcpClient.command')}>
-            <PathInput
-              value={draft.command ?? ''}
-              onChange={(command) => setDraft((d) => ({ ...d, command }))}
-              placeholder="/usr/local/bin/my-mcp"
-            />
+            <div data-testid="mcp-server-command">
+              <PathInput
+                value={draft.command ?? ''}
+                onChange={(command) => setDraft((d) => ({ ...d, command }))}
+                placeholder="/usr/local/bin/my-mcp"
+                inputTestId="mcp-server-command-input"
+              />
+            </div>
           </SettingRow>
           <SettingRow label={t('mcpClient.args')}>
             <textarea

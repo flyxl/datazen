@@ -170,13 +170,14 @@ export function ObjectBrowser({ dbSessionId, databaseType, database = null }: Ob
   );
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="flex min-h-0 flex-1" data-testid="object-browser">
       <aside className="flex w-64 shrink-0 flex-col border-r border-edge bg-surface-alt">
         <div className="flex gap-1 border-b border-edge p-2">
           {KINDS.map((k) => (
             <button
               key={k}
               type="button"
+              data-testid={`object-browser-${k}`}
               className={cn(
                 'flex-1 rounded px-1.5 py-1 text-[11px]',
                 kind === k ? 'bg-accent/15 text-accent' : 'text-fg-muted hover:text-fg',

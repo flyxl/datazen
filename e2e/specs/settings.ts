@@ -48,23 +48,23 @@ describe('Settings (SS-001~SS-006)', () => {
   // ── Theme toggle (SS-001) ──
 
   it('SS-001: should display theme toggle button', async () => {
-    const themeBtn = await $('button[title*="主题"]');
+    const themeBtn = await $('[data-testid="theme-toggle-button"]');
     await expect(themeBtn).toBeDisplayed();
   });
 
   it('SS-001: clicking theme button should show options', async () => {
-    const themeBtn = await $('button[title*="主题"]');
+    const themeBtn = await $('[data-testid="theme-toggle-button"]');
     await themeBtn.click();
     await browser.pause(300);
 
-    await expect(await $('button*=浅色')).toBeDisplayed();
-    await expect(await $('button*=深色')).toBeDisplayed();
-    await expect(await $('button*=跟随系统')).toBeDisplayed();
+    await expect(await $('[data-testid="theme-option-light"]')).toBeDisplayed();
+    await expect(await $('[data-testid="theme-option-dark"]')).toBeDisplayed();
+    await expect(await $('[data-testid="theme-option-system"]')).toBeDisplayed();
     await captureJourneyStep('theme-menu-open');
   });
 
   it('SS-001: light theme should remove dark class', async () => {
-    const lightBtn = await $('button*=浅色');
+    const lightBtn = await $('[data-testid="theme-option-light"]');
     await lightBtn.click();
     await browser.pause(500);
 
@@ -74,11 +74,11 @@ describe('Settings (SS-001~SS-006)', () => {
   });
 
   it('SS-001: dark theme should add dark class', async () => {
-    const themeBtn = await $('button[title*="主题"]');
+    const themeBtn = await $('[data-testid="theme-toggle-button"]');
     await themeBtn.click();
     await browser.pause(300);
 
-    const darkBtn = await $('button*=深色');
+    const darkBtn = await $('[data-testid="theme-option-dark"]');
     await darkBtn.click();
     await browser.pause(500);
 
@@ -88,11 +88,11 @@ describe('Settings (SS-001~SS-006)', () => {
   });
 
   it('SS-002: system theme should work', async () => {
-    const themeBtn = await $('button[title*="主题"]');
+    const themeBtn = await $('[data-testid="theme-toggle-button"]');
     await themeBtn.click();
     await browser.pause(300);
 
-    const systemBtn = await $('button*=跟随系统');
+    const systemBtn = await $('[data-testid="theme-option-system"]');
     await expect(systemBtn).toBeDisplayed();
     await systemBtn.click();
     await browser.pause(300);
@@ -185,7 +185,7 @@ describe('Settings (SS-001~SS-006)', () => {
 
   it('TC-SET-003: 设置窗口编辑器分区应显示字体相关控件', async () => {
     await openSettingsInMainWindow();
-    const editorNav = await $('button*=编辑器');
+    const editorNav = await $('[data-testid="settings-nav-editor"]');
     if (await editorNav.isExisting()) {
       await editorNav.click();
       await browser.pause(400);
@@ -202,7 +202,7 @@ describe('Settings (SS-001~SS-006)', () => {
 
   it('TC-SET-004: 设置窗口数据浏览分区应显示分页/限制相关项', async () => {
     await openSettingsInMainWindow();
-    const dataNav = await $('button*=数据浏览');
+    const dataNav = await $('[data-testid="settings-nav-dataBrowsing"]');
     if (await dataNav.isExisting()) {
       await dataNav.click();
       await browser.pause(400);
@@ -220,13 +220,9 @@ describe('Settings (SS-001~SS-006)', () => {
 
   it('TC-SET-007: 设置窗口应有 Prompt 自定义入口', async () => {
     await openSettingsInMainWindow();
-    const promptNav = await $('button*=Prompt 管理');
-    const promptNavAlt = await $('button*=Prompt');
-    if (await promptNav.isExisting()) {
-      await promptNav.click();
-    } else if (await promptNavAlt.isExisting()) {
-      await promptNavAlt.click();
-    }
+    const promptNav = await $('[data-testid="settings-nav-prompts"]');
+    await promptNav.waitForDisplayed({ timeout: 10000 });
+    await promptNav.click();
     await browser.pause(500);
     const body = await $('body').getText();
     expect(
@@ -240,47 +236,31 @@ describe('Settings (SS-001~SS-006)', () => {
   it('SS-NAV-001: 设置侧栏应能进入行为 / 日志 / AI / MCP / 扩展分区', async () => {
     await openSettingsInMainWindow();
 
-    const sections: Array<{ label: string; expectText: string[] }> = [
-      {
-        label: t('settings.behavior'),
-        expectText: [t('settings.dataCleanup.title'), '确认', 'Safe', '安全'],
-      },
-      { label: t('settings.logging'), expectText: ['日志', 'Log', '路径'] },
-      {
-        testId: 'settings-nav-ai',
-        label: 'AI',
-        expectText: [t('settings.ai.provider'), t('settings.ai.apiKey'), 'API'],
-      },
-      { label: t('mcp.title'), expectText: ['MCP', t('mcp.title')] },
-      {
-        label: t('mcpClient.title'),
-        expectText: [t('mcpClient.title'), t('mcpClient.savedConfigs'), 'MCP'],
-      },
-      {
-        label: t('settings.extensions.title'),
-        expectText: [t('settings.extensions.title'), t('settings.extensions.empty'), '扩展'],
-      },
+    const sections = [
+      'settings-nav-behavior',
+      'settings-nav-logging',
+      'settings-nav-ai',
+      'settings-nav-mcpServer',
+      'settings-nav-mcpClient',
+      'settings-nav-extensions',
     ];
 
-    for (const sec of sections) {
-      const nav = (sec as any).testId
-        ? await $(`[data-testid="${(sec as any).testId}"]`)
-        : await $(`button*=${sec.label}`);
-      await nav.waitForDisplayed({ timeout: 8000 });
+    for (const testId of sections) {
+      const nav = await $(`[data-testid="${testId}"]`);
+      await nav.waitForDisplayed({ timeout: 10000 });
+      await nav.scrollIntoView({ block: 'center' });
+      await nav.waitForClickable({ timeout: 5000 });
       await nav.click();
-      await browser.pause(400);
-      const body = await $('body').getText();
-      expect(sec.expectText.some((frag) => body.includes(frag))).toBe(true);
+      const sectionId = testId.replace('settings-nav-', '');
+      await $(`[data-testid="settings-section-${sectionId}"]`).waitForDisplayed({ timeout: 10000 });
     }
   });
 
   it('SS-CLN-001: 行为分区应能看到数据清理入口', async () => {
     await openSettingsInMainWindow();
-    await $(`button*=${t('settings.behavior')}`).click();
-    await browser.pause(400);
-    const body = await $('body').getText();
-    expect(body).toContain(t('settings.dataCleanup.title'));
-    expect(body).toContain(t('settings.dataCleanup.run'));
+    await $('[data-testid="settings-nav-behavior"]').click();
+    await $('[data-testid="data-cleanup-section"]').waitForDisplayed({ timeout: 10000 });
+    await expect(await $('[data-testid="data-cleanup-run"]')).toBeDisplayed();
   });
 
   // ── F1: SettingsPage in main window ──
@@ -305,12 +285,7 @@ describe('Settings (SS-001~SS-006)', () => {
       await openSettingsInMainWindow('ai');
       const aiNav = await $("[data-testid='settings-nav-ai']");
       await aiNav.waitForDisplayed({ timeout: 8000 });
-      const body = await $('body').getText();
-      expect(
-        body.includes(t('settings.ai.provider')) ||
-          body.includes('API') ||
-          body.includes('Provider'),
-      ).toBe(true);
+      await expect(await $('[data-testid="settings-section-ai"]')).toBeDisplayed();
     });
   });
 
@@ -344,12 +319,12 @@ describe('Settings (SS-001~SS-006)', () => {
     await addBtn.click();
     await browser.pause(300);
 
-    const idInput = await $('input[placeholder="my-mcp-server"]');
+    const idInput = await $('[data-testid="mcp-server-id"]');
     await idInput.waitForDisplayed({ timeout: 5000 });
     await idInput.setValue('e2e-mcp-test');
-    const nameInput = await $('input[placeholder="My Server"]');
+    const nameInput = await $('[data-testid="mcp-server-name"]');
     await nameInput.setValue('E2E MCP');
-    const cmdInput = await $('input[placeholder*="/usr/local/bin"]');
+    const cmdInput = await $('[data-testid="mcp-server-command-input"]');
     await cmdInput.waitForDisplayed({ timeout: 5000 });
     await cmdInput.setValue('/usr/bin/true');
 

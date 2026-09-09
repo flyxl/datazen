@@ -15,6 +15,7 @@ export interface PathInputProps {
   className?: string;
   error?: boolean;
   onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
+  inputTestId?: string;
 }
 
 export function PathInput({
@@ -26,6 +27,7 @@ export function PathInput({
   className,
   error,
   onKeyDown,
+  inputTestId,
 }: PathInputProps) {
   const { t } = useI18n();
 
@@ -47,6 +49,7 @@ export function PathInput({
   return (
     <div className={cn('flex w-full gap-1', className)}>
       <Input
+        data-testid={inputTestId}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}

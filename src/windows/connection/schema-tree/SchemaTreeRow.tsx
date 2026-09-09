@@ -103,6 +103,9 @@ function DbRow({
   return (
     <button
       type="button"
+      data-testid="schema-tree-node"
+      data-tree-node="db"
+      data-db-name={row.dbName}
       className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-surface-raised text-fg-secondary"
       onClick={() => onToggleDb?.(row.dbName!)}
       onContextMenu={(e) => {
@@ -140,6 +143,9 @@ function SchemaRow({
   return (
     <button
       type="button"
+      data-testid="schema-tree-node"
+      data-tree-node="schema"
+      data-schema-name={row.schemaName}
       className="flex w-full items-center gap-2 py-1.5 pr-2 text-left text-[13px] hover:bg-surface-raised text-fg-secondary"
       style={{ paddingLeft: depthPadding(row.depth) }}
       onClick={() => onToggleSchema?.(`${row.dbName}::${row.schemaName}`)}
@@ -167,6 +173,9 @@ function CategoryRow({
   return (
     <button
       type="button"
+      data-testid="schema-tree-node"
+      data-tree-node="category"
+      data-cat-id={row.cat?.id}
       className="flex w-full items-center gap-2 py-1.5 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
       style={{ paddingLeft: depthPadding(row.depth) }}
       onClick={() => onToggleCategory?.(row.key!, row.cat!.id)}
@@ -221,6 +230,9 @@ function TableRow({
   return (
     <button
       type="button"
+      data-testid="schema-tree-node"
+      data-tree-node={isView ? 'view' : 'table'}
+      data-item-name={item.name}
       draggable
       onDragStart={(e) => {
         const sel = window.getSelection();
@@ -287,6 +299,9 @@ function ObjectRow({
   return (
     <button
       type="button"
+      data-testid="schema-tree-node"
+      data-tree-node={obj.kind}
+      data-item-name={obj.name}
       className="flex w-full items-center gap-2 py-1.5 pr-3 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
       style={{ paddingLeft: depthPadding(row.depth) }}
       onContextMenu={(e) => {

@@ -222,6 +222,7 @@ export function FavoriteNameDialog({
           <label className="mb-1 block text-xs text-fg-muted">{t('query.favoriteTitle')}</label>
           <input
             type="text"
+            data-testid="query-favorite-title-input"
             value={favoriteName}
             onChange={(e) => onFavoriteNameChange(e.target.value)}
             placeholder={t('query.favoriteTitlePlaceholder')}
@@ -247,6 +248,7 @@ export function FavoriteNameDialog({
             className="h-7 px-3 text-xs"
             disabled={!favoriteName.trim()}
             onClick={onSave}
+            data-testid="query-favorite-save"
           >
             {t('common.save')}
           </Button>
@@ -440,6 +442,7 @@ export function QueryResultsPane({
                   <button
                     key={idx}
                     type="button"
+                    data-testid={`query-result-tab-${idx + 1}`}
                     className={cn(
                       'group relative flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors',
                       idx === activeResultIdx

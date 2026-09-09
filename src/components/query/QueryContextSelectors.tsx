@@ -83,7 +83,12 @@ function QueryContextCompactSelect({
       disabled={disabled}
       loading={loading}
       triggerDataAttrs={
-        levelIndex === undefined ? undefined : { 'data-query-context-level': String(levelIndex) }
+        levelIndex === undefined
+          ? { 'data-testid': 'query-context-database' }
+          : {
+              'data-testid': `query-context-level-${levelIndex}`,
+              'data-query-context-level': String(levelIndex),
+            }
       }
     />
   );

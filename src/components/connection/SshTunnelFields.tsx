@@ -84,6 +84,7 @@ export function SshTunnelFields({
                 <button
                   key={opt.id}
                   type="button"
+                  data-testid={`new-conn-ssh-auth-${opt.id}`}
                   onClick={() => form.setSshAuthMethod(opt.id)}
                   className={cn(
                     'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs transition-colors',
@@ -100,7 +101,10 @@ export function SshTunnelFields({
           </div>
 
           {form.sshAuthMethod === 'agent' ? (
-            <div className="md:col-span-2 text-[11px] text-fg-muted">
+            <div
+              className="md:col-span-2 text-[11px] text-fg-muted"
+              data-testid="new-conn-ssh-auth-agent-hint"
+            >
               {t('newConn.authAgentHint')}
             </div>
           ) : form.sshAuthMethod === 'password' ? (
@@ -136,7 +140,10 @@ export function SshTunnelFields({
           )}
 
           <div className="md:col-span-2">
-            <label className="flex items-center gap-2 text-sm text-fg-secondary">
+            <label
+              className="flex items-center gap-2 text-sm text-fg-secondary"
+              data-testid="new-conn-ssh-jump-toggle"
+            >
               <input
                 type="checkbox"
                 checked={form.sshJumpEnabled}
@@ -148,10 +155,11 @@ export function SshTunnelFields({
           </div>
 
           {form.sshJumpEnabled && (
-            <>
+            <div data-testid="new-conn-ssh-jump-fields" className="contents">
               <div>
                 <Label required>{t('newConn.sshJumpHost')}</Label>
                 <Input
+                  data-testid="new-conn-ssh-jump-host"
                   value={form.sshJumpHost}
                   onChange={(e) => form.setSshJumpHost(e.target.value)}
                   placeholder="bastion.example.com"
@@ -183,6 +191,7 @@ export function SshTunnelFields({
                     <button
                       key={opt.id}
                       type="button"
+                      data-testid={`new-conn-ssh-jump-auth-${opt.id}`}
                       onClick={() => form.setSshJumpAuthMethod(opt.id)}
                       className={cn(
                         'flex flex-1 items-center justify-center rounded-md border px-3 py-2 text-xs transition-colors',
@@ -226,7 +235,7 @@ export function SshTunnelFields({
                   </div>
                 </>
               )}
-            </>
+            </div>
           )}
         </div>
       )}

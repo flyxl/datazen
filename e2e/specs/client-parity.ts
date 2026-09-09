@@ -209,29 +209,30 @@ describe('Client parity P0–P2', () => {
     await connectSeededPgInWorkspace();
     await openQueryTab();
 
-    await expect(await $(`button*=${t('query.format')}`)).toBeDisplayed();
-    await expect(await $(`button*=${t('query.beginTx')}`)).toBeDisplayed();
-    await expect(await $(`button*=${t('query.commitTx')}`)).toBeDisplayed();
-    await expect(await $(`button*=${t('query.rollbackTx')}`)).toBeDisplayed();
-    await expect(await $(`span*=${t('settings.safeMode')}`)).toBeDisplayed();
+    const moreMenu = await $('[data-testid="query-toolbar-more-menu-trigger"]');
+    await moreMenu.waitForDisplayed({ timeout: 10000 });
+    await moreMenu.click();
+    await expect(await $('[data-testid="more-menu-format"]')).toBeDisplayed();
+    await expect(await $('[data-testid="more-menu-begin-tx"]')).toBeDisplayed();
+    await expect(await $('[data-testid="query-safe-mode"]')).toBeDisplayed();
 
     await setEditorContent('select id from t where id = :uid');
-    await expect(await $(`button*=${t('query.format')}`)).toBeEnabled();
+    await expect(await $('[data-testid="more-menu-format"]')).toBeEnabled();
     const body = await $('body').getText();
     expect(body).toContain(':uid');
 
-    await $(`button*=${t('query.format')}`).click();
+    await $('[data-testid="more-menu-format"]').click();
     await browser.pause(400);
     const formatted = await browser.execute(() => {
-      const el = document.querySelector('.cm-editor .cm-content') as HTMLElement | null;
+      const el = document.querySelector('[data-testid="sql-editor-content"]') as HTMLElement | null;
       return el?.textContent || '';
     });
     expect(formatted.toUpperCase()).toContain('SELECT');
 
-    await expect(await $(`button*=${t('objects.title')}`)).toBeDisplayed();
-    await expect(await $(`button*=${t('privileges.title')}`)).toBeDisplayed();
-    await $(`button*=${t('objects.title')}`).click();
-    await expect(await $(`button*=${t('objects.function')}`)).toBeDisplayed();
+    await expect(await $('[data-testid="content-toolbar-objects"]')).toBeDisplayed();
+    await expect(await $('[data-testid="content-toolbar-privileges"]')).toBeDisplayed();
+    await $('[data-testid="content-toolbar-objects"]').click();
+    await expect(await $('[data-testid="object-browser-function"]')).toBeDisplayed();
     const bodyAfterObjects = await $('body').getText();
     expect(bodyAfterObjects).not.toContain('Object list query missing name column');
     expect(
@@ -268,10 +269,10 @@ describe('Client parity P0–P2', () => {
     const sshCheckbox = await $('[data-testid="new-conn-ssh-tunnel-checkbox"]');
     await sshCheckbox.waitForDisplayed({ timeout: 10000 });
     await sshCheckbox.click();
-    await expect(await $(`button*=${t('newConn.authAgent')}`)).toBeDisplayed();
-    await $(`button*=${t('newConn.authAgent')}`).click();
-    await expect(await $(`div*=${t('newConn.authAgentHint')}`)).toBeDisplayed();
-    await $(`label*=${t('newConn.sshJump')}`).click();
-    await expect(await $(`div*=${t('newConn.sshJumpHost')}`)).toBeDisplayed();
+    await expect(await $('[data-testid="new-conn-ssh-auth-agent"]')).toBeDisplayed();
+    await $('[data-testid="new-conn-ssh-auth-agent"]').click();
+    await expect(await $('[data-testid="new-conn-ssh-auth-agent-hint"]')).toBeDisplayed();
+    await $('[data-testid="new-conn-ssh-jump-toggle"]').click();
+    await expect(await $('[data-testid="new-conn-ssh-jump-host"]')).toBeDisplayed();
   });
 });

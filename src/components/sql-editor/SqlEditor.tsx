@@ -392,6 +392,8 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
       state,
       parent: containerRef.current,
     });
+    view.dom.setAttribute('data-testid', 'sql-editor');
+    view.contentDOM.setAttribute('data-testid', 'sql-editor-content');
 
     viewRef.current = view;
     (view.dom as any).cmView = { view };

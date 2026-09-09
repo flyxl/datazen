@@ -7,10 +7,12 @@ import {
   useNodesState,
   useEdgesState,
   ReactFlowProvider,
+  ControlButton,
   type Node,
   type Edge,
   type NodeTypes,
   type Viewport,
+  useReactFlow,
   BackgroundVariant,
   Panel,
 } from '@xyflow/react';
@@ -57,6 +59,7 @@ function ErDiagramInner({
   onFocusTable,
 }: ErDiagramViewProps) {
   const { t } = useI18n();
+  const { fitView, zoomIn, zoomOut } = useReactFlow();
   const [schemas, setSchemas] = useState<TableSchema[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -296,12 +299,41 @@ function ErDiagramInner({
         minZoom={0.1}
         maxZoom={10}
         proOptions={{ hideAttribution: true }}
+        data-testid="er-diagram-flow"
         className="er-diagram-flow bg-surface"
       >
         <Controls
+          data-testid="er-diagram-controls"
+          showZoom={false}
+          showFitView={false}
           showInteractive={false}
           className="!bg-surface !border-edge !shadow-lg [&>button]:!bg-surface [&>button]:!border-edge [&>button]:!text-fg-muted [&>button:hover]:!bg-surface-alt [&>button:hover]:!text-fg"
-        />
+        >
+          <ControlButton
+            data-testid="er-diagram-zoom-in"
+            aria-label={t('erDiagram.zoomIn')}
+            title={t('erDiagram.zoomIn')}
+            onClick={() => void zoomIn()}
+          >
+            +
+          </ControlButton>
+          <ControlButton
+            data-testid="er-diagram-zoom-out"
+            aria-label={t('erDiagram.zoomOut')}
+            title={t('erDiagram.zoomOut')}
+            onClick={() => void zoomOut()}
+          >
+            −
+          </ControlButton>
+          <ControlButton
+            data-testid="er-diagram-fit-view"
+            aria-label={t('erDiagram.fitView')}
+            title={t('erDiagram.fitView')}
+            onClick={() => void fitView()}
+          >
+            ↗
+          </ControlButton>
+        </Controls>
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} className="!bg-surface" />
         <MiniMap
           pannable

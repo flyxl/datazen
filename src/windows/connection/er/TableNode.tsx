@@ -19,6 +19,7 @@ export const TableNode = memo(function TableNode({ data }: NodeProps) {
 
   return (
     <div
+      data-testid="er-table-node"
       className={cn(
         'min-w-[180px] max-w-[280px] rounded-lg border shadow-md',
         highlighted ? 'border-accent bg-accent/5' : 'border-edge bg-surface',

@@ -79,6 +79,7 @@ export function PanelTabBar({
                   tabRefs.current[panel.id] = element;
                 }}
                 type="button"
+                data-testid="panel-tab-select"
                 role="tab"
                 aria-selected={isActive}
                 tabIndex={isActive ? 0 : -1}

@@ -824,20 +824,20 @@ export async function confirmWebDialog(timeout = 5000): Promise<void> {
  * pointer/focus transition that closes it during a real user edit.
  */
 export async function setEditorContent(sql: string) {
-  const editor = await $('.cm-editor .cm-content');
+  const editor = await $('[data-testid="sql-editor-content"]');
   await editor.waitForDisplayed({ timeout: 10000 });
   await editor.click();
   await browser.waitUntil(
     async () =>
       browser.execute(
         () =>
-          document.activeElement?.closest('.cm-editor .cm-content') != null &&
-          document.querySelector('[id^="dz-select-listbox-"]') == null,
+          document.activeElement?.closest('[data-testid="sql-editor-content"]') != null &&
+          document.querySelector('[data-testid="select-listbox"]') == null,
       ),
     { timeout: 2000, timeoutMsg: 'editor did not receive focus or a selector stayed open' },
   );
   await browser.execute((text: string) => {
-    const el = document.querySelector('.cm-editor .cm-content') as HTMLElement;
+    const el = document.querySelector('[data-testid="sql-editor-content"]') as HTMLElement;
     if (!el) return;
     el.focus();
     const sel = window.getSelection();
@@ -953,12 +953,25 @@ async function executeSqlInEditor(sql: string) {
 /** Open a new query tab and wait for the execute button. */
 export async function openQueryTab() {
   // Stable E2E locators (vite-gated data-testid, see src/lib/tid.ts).
-  let newQueryBtn = await $('[data-testid="conn-toolbar-new-query"]');
-  if (!(await newQueryBtn.isExisting()) || !(await newQueryBtn.isDisplayed())) {
-    newQueryBtn = await $('[data-testid="home-quick-new-query"]');
+  let clicked = false;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3 && !clicked; attempt++) {
+    try {
+      let newQueryBtn = await $('[data-testid="conn-toolbar-new-query"]');
+      if (!(await newQueryBtn.isExisting()) || !(await newQueryBtn.isDisplayed())) {
+        newQueryBtn = await $('[data-testid="home-quick-new-query"]');
+      }
+      await newQueryBtn.waitForDisplayed({ timeout: 15000 });
+      await newQueryBtn.scrollIntoView({ block: 'center' });
+      await newQueryBtn.waitForClickable({ timeout: 5000 });
+      await newQueryBtn.click();
+      clicked = true;
+    } catch (error) {
+      lastError = error;
+      await browser.pause(300);
+    }
   }
-  await newQueryBtn.waitForDisplayed({ timeout: 15000 });
-  await newQueryBtn.click();
+  if (!clicked) throw lastError ?? new Error('无法打开新建查询面板');
   await browser.pause(500);
   // Wait for execute button — try testid first, then aria-label fallback.
   let execBtn = await $('[data-testid="editor-execute-button"]');
@@ -1022,7 +1035,8 @@ async function navigatorHasTableButtons(): Promise<boolean> {
     // before the async schema load has mounted any table rows.
     return (
       nav.querySelector(
-        '[data-tree-node="table"][data-item-name], [data-tree-node="view"][data-item-name]',
+        '[data-testid="schema-tree-node"][data-tree-node="table"][data-item-name], ' +
+          '[data-testid="schema-tree-node"][data-tree-node="view"][data-item-name]',
       ) != null
     );
   });
@@ -1105,14 +1119,18 @@ export async function expandSchemaTableCategory(schemaName?: string, dbName?: st
       const expandIfCollapsed = (el: Element | null | undefined) => {
         if (el instanceof HTMLElement && isCollapsed(el)) el.click();
       };
-      const dbs = Array.from(document.querySelectorAll('[data-tree-node="db"]'));
+      const dbs = Array.from(
+        document.querySelectorAll('[data-testid="schema-tree-node"][data-tree-node="db"]'),
+      );
       const targetDb = db
         ? dbs.find((el) => (el.getAttribute('data-db-name') || el.textContent || '').includes(db))
         : (dbs.find((el) =>
             (el.getAttribute('data-db-name') || el.textContent || '').includes('datazen_e2e'),
           ) ?? dbs[0]);
       expandIfCollapsed(targetDb);
-      const schemas = Array.from(document.querySelectorAll('[data-tree-node="schema"]'));
+      const schemas = Array.from(
+        document.querySelectorAll('[data-testid="schema-tree-node"][data-tree-node="schema"]'),
+      );
       const targets = [schema.toLowerCase()];
       if (schema.toLowerCase() !== 'public') targets.push('public');
       for (const t of targets) {
@@ -1120,7 +1138,7 @@ export async function expandSchemaTableCategory(schemaName?: string, dbName?: st
         expandIfCollapsed(match);
       }
       for (const cat of document.querySelectorAll(
-        '[data-tree-node="category"][data-cat-id="tables"]',
+        '[data-testid="schema-tree-node"][data-tree-node="category"][data-cat-id="tables"]',
       )) {
         expandIfCollapsed(cat);
       }
@@ -1145,14 +1163,18 @@ export async function expandSchemaCategory(catId: string, schemaName?: string, d
       const expandIfCollapsed = (el: Element | null | undefined) => {
         if (el instanceof HTMLElement && isCollapsed(el)) el.click();
       };
-      const dbs = Array.from(document.querySelectorAll('[data-tree-node="db"]'));
+      const dbs = Array.from(
+        document.querySelectorAll('[data-testid="schema-tree-node"][data-tree-node="db"]'),
+      );
       const targetDb = db
         ? dbs.find((el) => (el.getAttribute('data-db-name') || el.textContent || '').includes(db))
         : (dbs.find((el) =>
             (el.getAttribute('data-db-name') || el.textContent || '').includes('datazen_e2e'),
           ) ?? dbs[0]);
       expandIfCollapsed(targetDb);
-      const schemas = Array.from(document.querySelectorAll('[data-tree-node="schema"]'));
+      const schemas = Array.from(
+        document.querySelectorAll('[data-testid="schema-tree-node"][data-tree-node="schema"]'),
+      );
       const targets = [schema.toLowerCase()];
       if (schema.toLowerCase() !== 'public') targets.push('public');
       for (const t of targets) {
@@ -1160,7 +1182,7 @@ export async function expandSchemaCategory(catId: string, schemaName?: string, d
         expandIfCollapsed(match);
       }
       for (const cat of document.querySelectorAll(
-        `[data-tree-node="category"][data-cat-id="${category}"]`,
+        `[data-testid="schema-tree-node"][data-tree-node="category"][data-cat-id="${category}"]`,
       )) {
         expandIfCollapsed(cat);
       }
@@ -1236,7 +1258,10 @@ async function tableNodeExistsInNavigator(tableName: string): Promise<boolean> {
     const matchName = (label: string) =>
       label === name || label.endsWith(`.${name}`) || label.endsWith(`/${name}`);
     return Array.from(
-      nav.querySelectorAll('[data-tree-node="table"], [data-tree-node="view"]'),
+      nav.querySelectorAll(
+        '[data-testid="schema-tree-node"][data-tree-node="table"], ' +
+          '[data-testid="schema-tree-node"][data-tree-node="view"]',
+      ),
     ).some((n) => matchName(n.getAttribute('data-item-name') ?? ''));
   }, tableName);
 }
@@ -1331,7 +1356,10 @@ async function scrollVisibleTableNode(tableName: string): Promise<boolean> {
     const matchName = (label: string) =>
       label === name || label.endsWith(`.${name}`) || label.endsWith(`/${name}`);
     const node = Array.from(
-      nav.querySelectorAll<HTMLElement>('[data-tree-node="table"], [data-tree-node="view"]'),
+      nav.querySelectorAll<HTMLElement>(
+        '[data-testid="schema-tree-node"][data-tree-node="table"], ' +
+          '[data-testid="schema-tree-node"][data-tree-node="view"]',
+      ),
     ).find((candidate) => matchName(candidate.getAttribute('data-item-name') ?? ''));
     if (!node) return false;
     node.scrollIntoView({ block: 'center' });
@@ -1354,10 +1382,18 @@ export async function clickTableInSidebar(tableName: string) {
         if (found) {
           // Use WebDriver-level click instead of in-page DOM click, which
           // can miss React synthetic event handlers on virtualised tree nodes.
-          const nodeEl = await $(`[data-item-name="${tableName}"]`);
+          const nodeEl = await $(`[data-testid="schema-tree-node"][data-item-name="${tableName}"]`);
           if (await nodeEl.isDisplayed().catch(() => false)) {
-            await nodeEl.click();
-            await browser.pause(500);
+            try {
+              await nodeEl.scrollIntoView({ block: 'center' });
+              await nodeEl.waitForClickable({ timeout: 3000 });
+              await nodeEl.click();
+              await browser.pause(500);
+            } catch {
+              // Virtualized rows can be replaced between the in-page lookup
+              // and the WebDriver click. Let the outer wait reacquire it.
+              return false;
+            }
           }
           // The navigator handler first activates the database and then
           // schedules TableView creation. Keep the search mounted while that
@@ -1453,7 +1489,10 @@ export async function rightClickTableInSidebar(tableName: string) {
             label.endsWith(` · ${name}`) ||
             label.includes(name);
           const node = Array.from(
-            nav.querySelectorAll<HTMLElement>('[data-tree-node="table"], [data-tree-node="view"]'),
+            nav.querySelectorAll<HTMLElement>(
+              '[data-testid="schema-tree-node"][data-tree-node="table"], ' +
+                '[data-testid="schema-tree-node"][data-tree-node="view"]',
+            ),
           ).find((candidate) => matchName(candidate.getAttribute('data-item-name') ?? ''));
           if (!node) return false;
           node.scrollIntoView({ block: 'center' });
@@ -1497,6 +1536,10 @@ export async function rightClickTableInSidebar(tableName: string) {
 /** Click the first table/view entry in the sidebar and return its name. */
 export async function clickFirstTable() {
   await waitForSchemaTreeLoaded();
+  // A connected session can finish mounting its navigator after the generic
+  // schema marker appears. Re-assert the connection expansion before reading
+  // the first virtualized row.
+  await expandConnectedConnectionInNavigator();
   let name: string | null = null;
   let scrollPass = 0;
   await browser.waitUntil(
@@ -1510,7 +1553,8 @@ export async function clickFirstTable() {
             a.querySelector('[data-conn-item]'),
           );
         const node = nav?.querySelector<HTMLElement>(
-          '[data-tree-node="table"][data-item-name], [data-tree-node="view"][data-item-name]',
+          '[data-testid="schema-tree-node"][data-tree-node="table"][data-item-name], ' +
+            '[data-testid="schema-tree-node"][data-tree-node="view"][data-item-name]',
         );
         if (!node) return null;
         const value = node.getAttribute('data-item-name');
@@ -1523,10 +1567,18 @@ export async function clickFirstTable() {
         // Use WebDriver-level click (proper user simulation) instead of
         // in-page DOM click, which can miss React synthetic event handlers
         // on virtualised tree nodes.
-        const nodeEl = await $(`[data-item-name="${name}"]`);
+        const nodeEl = await $(`[data-testid="schema-tree-node"][data-item-name="${name}"]`);
         if (await nodeEl.isDisplayed().catch(() => false)) {
-          await nodeEl.click();
-          await browser.pause(500);
+          try {
+            await nodeEl.scrollIntoView({ block: 'center' });
+            await nodeEl.waitForClickable({ timeout: 3000 });
+            await nodeEl.click();
+            await browser.pause(500);
+          } catch {
+            // Reacquire the row on the next polling iteration if React
+            // replaced the virtualized node while it was being clicked.
+            return false;
+          }
         }
       }
       if (name && (await tableWorkspaceIsOpen(name))) return true;
@@ -1564,13 +1616,20 @@ export async function switchSubTab(tabId: string) {
 export async function doubleClickCellByText(text: string) {
   await browser.waitUntil(
     async () => {
-      const el = await $(`span[title="${text}"]`);
-      return el.isDisplayed();
+      const cells = await $$('[data-testid="data-table-cell"]');
+      for (const cell of cells) {
+        if ((await cell.getText().catch(() => '')).trim() === text) {
+          return cell.isDisplayed().catch(() => false);
+        }
+      }
+      return false;
     },
     { timeout: 8000, timeoutMsg: `等待 "${text}" 单元格显示超时` },
   );
   await browser.execute((t: string) => {
-    const el = document.querySelector(`span[title="${t}"]`);
+    const el = Array.from(document.querySelectorAll('[data-testid="data-table-cell"]')).find(
+      (cell) => (cell.textContent ?? '').trim() === t,
+    );
     if (!el) return;
     el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
   }, text);
@@ -1581,18 +1640,20 @@ export async function doubleClickCellByText(text: string) {
 export async function waitForEditInput() {
   await browser.waitUntil(
     async () => {
-      const exists = await browser.execute(() => !!document.querySelector('input.font-mono'));
+      const exists = await browser.execute(
+        () => !!document.querySelector('[data-testid="table-edit-input"]'),
+      );
       return exists;
     },
     { timeout: 8000, timeoutMsg: '等待编辑 input 出现超时' },
   );
-  return $('input.font-mono');
+  return $('[data-testid="table-edit-input"]');
 }
 
 // ── Host Select (dz-select-listbox-<id>) ─────────────────────────────
 
 /** CSS selector for an open Host Select listbox (React useId suffix). */
-export const SELECT_LISTBOX_SELECTOR = '[id^="dz-select-listbox-"]';
+export const SELECT_LISTBOX_SELECTOR = '[data-testid="select-listbox"]';
 
 /** Open a Host Select by matching the trigger's visible label, then pick an option. */
 export async function selectDzOption(triggerLabel: string, optionLabel: string) {
@@ -1606,12 +1667,12 @@ export async function selectDzOption(triggerLabel: string, optionLabel: string) 
 
   await browser.waitUntil(
     async () =>
-      browser.execute(() => Boolean(document.querySelector('[id^="dz-select-listbox-"]'))),
+      browser.execute(() => Boolean(document.querySelector('[data-testid="select-listbox"]'))),
     { timeout: 5000, timeoutMsg: `Select listbox did not open for trigger: ${triggerLabel}` },
   );
 
   await browser.execute((option: string) => {
-    const list = document.querySelector('[id^="dz-select-listbox-"]');
+    const list = document.querySelector('[data-testid="select-listbox"]');
     if (!list) throw new Error('dz-select-listbox not open');
     const item = Array.from(list.children).find((el) => (el.textContent || '').includes(option));
     if (!item) throw new Error(`Select option not found: ${option}`);
@@ -1634,12 +1695,12 @@ export async function selectDzOptionInWrap(wrapTestId: string, optionLabel: stri
 
       await browser.waitUntil(
         async () =>
-          browser.execute(() => Boolean(document.querySelector('[id^="dz-select-listbox-"]'))),
+          browser.execute(() => Boolean(document.querySelector('[data-testid="select-listbox"]'))),
         { timeout: 5000, timeoutMsg: `Select listbox did not open in ${wrapTestId}` },
       );
 
       await browser.execute((option: string) => {
-        const list = document.querySelector('[id^="dz-select-listbox-"]');
+        const list = document.querySelector('[data-testid="select-listbox"]');
         if (!list) throw new Error('dz-select-listbox not open');
         const item = Array.from(list.children).find((el) =>
           (el.textContent || '').includes(option),
@@ -1717,16 +1778,28 @@ export async function openDashboardPanel(mainHandle?: string, dashboardId?: stri
 
 /** Open ER diagram from home quick action or connection toolbar. */
 export async function openErDiagramFromUi() {
-  const homeQuick = await $('[data-testid="home-quick-er-diagram"]');
-  if (await homeQuick.isDisplayed().catch(() => false)) {
-    await homeQuick.click();
-    return;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const homeQuick = await $('[data-testid="home-quick-er-diagram"]');
+      if (await homeQuick.isDisplayed().catch(() => false)) {
+        await homeQuick.scrollIntoView({ block: 'center' });
+        await homeQuick.waitForClickable({ timeout: 5000 });
+        await homeQuick.click();
+        return;
+      }
+      const toolbarWrap = await $('[data-testid="content-toolbar-er-diagram"]');
+      await toolbarWrap.waitForExist({ timeout: 15000 });
+      const toolbarBtn = await $('[data-testid="content-toolbar-er-diagram-button"]');
+      await toolbarBtn.waitForClickable({ timeout: 10000 });
+      await toolbarBtn.click();
+      return;
+    } catch (error) {
+      lastError = error;
+      await browser.pause(400);
+    }
   }
-  const toolbarWrap = await $('[data-testid="content-toolbar-er-diagram"]');
-  await toolbarWrap.waitForExist({ timeout: 15000 });
-  const toolbarBtn = await toolbarWrap.$('button');
-  await toolbarBtn.waitForClickable({ timeout: 10000 });
-  await toolbarBtn.click();
+  throw lastError ?? new Error('无法打开 ER 图入口');
 }
 
 /** Emit a cross-window menu event on the main Tauri window. */

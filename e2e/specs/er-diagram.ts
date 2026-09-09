@@ -29,7 +29,7 @@ async function focusErPanelTab() {
   for (const tab of tabs) {
     const text = await tab.getText();
     if (/ER Diagram|ER 图/i.test(text)) {
-      const selectBtn = await tab.$('button');
+      const selectBtn = await tab.$('[data-testid="panel-tab-select"]');
       await selectBtn.click();
       await browser.pause(400);
       return;
@@ -40,15 +40,25 @@ async function focusErPanelTab() {
 
 /** Ensure ER diagram content is visible (re-focus tab or re-open from toolbar). */
 async function ensureErDiagramVisible() {
-  const erView = await $('[data-testid="er-diagram-view"]');
-  if (await erView.isDisplayed()) return;
+  if (
+    await $('[data-testid="er-diagram-view"]')
+      .isDisplayed()
+      .catch(() => false)
+  )
+    return;
   try {
     await focusErPanelTab();
   } catch {
     await openErDiagramFromUi();
     await browser.pause(1500);
   }
-  await erView.waitForDisplayed({ timeout: 15000 });
+  await browser.waitUntil(
+    async () =>
+      $('[data-testid="er-diagram-view"]')
+        .isDisplayed()
+        .catch(() => false),
+    { timeout: 15000, timeoutMsg: 'ER diagram view did not become visible' },
+  );
 }
 
 describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
@@ -70,7 +80,13 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
   });
 
   it('ER-001: get_er_data IPC 应返回 schema 数组', async () => {
-    const dbSessionId = await invokeBackend<string>('connect', { connectionId: SEEDED_CONN_ID });
+    // Use a dedicated session. `connect` reuses the UI-owned session and the
+    // force-disconnect below would otherwise invalidate the ER panel's live
+    // dbSessionId before ER-003 opens it.
+    const dbSessionId = await invokeBackend<string>('connect_dedicated', {
+      connectionId: SEEDED_CONN_ID,
+      database: null,
+    });
     try {
       const databases = await invokeBackend<string[]>('get_databases', { dbSessionId });
       expect(databases.length).toBeGreaterThan(0);
@@ -106,7 +122,7 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
 
     const erView = await $('[data-testid="er-diagram-view"]');
     await erView.waitForDisplayed({ timeout: 15000 });
-    const reactFlow = await erView.$('.react-flow');
+    const reactFlow = await erView.$('[data-testid="er-diagram-flow"]');
     await expect(reactFlow).toBeDisplayed();
     await captureJourneyStep('er-canvas-visible', 0, true);
   });
@@ -128,33 +144,33 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
   it('ER-005: React Flow 控件应可见', async () => {
     await browser.switchToWindow(mainWindow);
     await ensureErDiagramVisible();
-    const zoomIn = await $('[data-testid="er-diagram-view"] .react-flow__controls-zoomin');
+    const zoomIn = await $('[data-testid="er-diagram-zoom-in"]');
     await zoomIn.waitForClickable({ timeout: 10000 });
     await zoomIn.click();
     await zoomIn.click();
     await browser.pause(500);
-    const controls = await $('[data-testid="er-diagram-view"] .react-flow__controls');
-    await expect(controls).toBeDisplayed();
+    await expect(await $('[data-testid="er-diagram-zoom-out"]')).toBeDisplayed();
     await captureJourneyStep('er-controls-zoomed', 0, true);
   });
 
   it('ER-006: 统计面板应显示表/关系数量', async () => {
     await browser.switchToWindow(mainWindow);
     await ensureErDiagramVisible();
-    const fitView = await $('[data-testid="er-diagram-view"] .react-flow__controls-fitview');
-    if (await fitView.isExisting()) {
-      await fitView.click();
-      await browser.pause(400);
-    }
-    const firstNode = await $('[data-testid="er-diagram-view"] .react-flow__node');
-    await firstNode.waitForDisplayed({ timeout: 10000 });
-    await firstNode.click();
-    await browser.pause(500);
     const stats = await $('[data-testid="er-diagram-stats"]');
     await stats.waitForDisplayed({ timeout: 10000 });
     const text = await stats.getText();
     expect(text.length).toBeGreaterThan(0);
     expect(text).toMatch(/\d/);
+
+    const fitView = await $('[data-testid="er-diagram-fit-view"]');
+    if (await fitView.isExisting()) {
+      await fitView.click();
+      await browser.pause(400);
+    }
+    const firstNode = await $('[data-testid="er-table-node"]');
+    await firstNode.waitForDisplayed({ timeout: 10000 });
+    await firstNode.click();
+    await browser.pause(500);
     await captureJourneyStep('er-table-selected', 0, true);
   });
 
@@ -168,7 +184,7 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
     await browser.pause(500);
     await captureJourneyStep('er-search-filtered', 0, true);
     const nodeCount = await browser.execute(
-      () => document.querySelectorAll('[data-testid="er-diagram-view"] .react-flow__node').length,
+      () => document.querySelectorAll('[data-testid="er-table-node"]').length,
     );
     expect(nodeCount).toBeGreaterThanOrEqual(0);
   });

@@ -334,7 +334,10 @@ export function QuerySidebarSection({
         </aside>
       )}
       {historyVisible && (
-        <aside className="w-64 shrink-0 overflow-y-auto border-l border-edge bg-surface-alt">
+        <aside
+          className="w-64 shrink-0 overflow-y-auto border-l border-edge bg-surface-alt"
+          data-testid="query-history-panel"
+        >
           <div
             className="flex items-center justify-between border-b border-edge px-3 py-2"
             onContextMenu={handleHistoryHeaderContextMenu}
@@ -426,6 +429,7 @@ export function QuerySidebarSection({
                     <button
                       key={h.id}
                       type="button"
+                      data-testid="query-history-item"
                       className="w-full border-b border-edge px-3 py-2 text-left hover:bg-surface-raised"
                       onClick={() => updateSql(panelId, h.sql)}
                       onContextMenu={(e) => handleHistoryContextMenu(e, h.sql)}

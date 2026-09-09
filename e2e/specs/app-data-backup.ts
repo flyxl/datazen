@@ -124,7 +124,7 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
     expect(mainPageSrc).toContain('menu:import-connections');
 
     const zh = fs.readFileSync(
-      path.resolve(import.meta.dirname, '../../src/locales/zh-CN.ts'),
+      path.resolve(import.meta.dirname, '../../src/locales/zh-CN/core.ts'),
       'utf8',
     );
     expect(zh).toContain("'common.exportAppData': '导出应用数据'");
@@ -210,7 +210,11 @@ sys.exit(1 if bad else 0)
   it('ADB-007: export label locale keys match current UI language', async () => {
     const settings = await invokeBackend<{ language: string }>('get_settings');
     const localeFile =
-      settings.language === 'zh-CN' ? 'zh-CN.ts' : settings.language === 'en' ? 'en.ts' : 'en.ts';
+      settings.language === 'zh-CN'
+        ? path.join('zh-CN', 'core.ts')
+        : settings.language === 'en'
+          ? path.join('en', 'core.ts')
+          : path.join('en', 'core.ts');
     const src = fs.readFileSync(
       path.resolve(import.meta.dirname, `../../src/locales/${localeFile}`),
       'utf8',

@@ -123,7 +123,9 @@ export async function setSqlEditorSelection(from: number, to: number): Promise<v
 /** Select a substring by literal match (first occurrence). */
 export async function selectSqlEditorSubstring(literal: string): Promise<boolean> {
   return browser.execute((needle) => {
-    const view = readCmView();
+    const editor = document.querySelector('[data-testid="sql-editor"]');
+    const view = (editor as (HTMLElement & { cmView?: { view: CmEditorView } }) | null)?.cmView
+      ?.view;
     if (!view) return false;
     const doc = view.state.doc.toString();
     const start = doc.indexOf(needle);

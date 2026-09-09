@@ -89,6 +89,7 @@ function OptionList({
             key={opt.value}
             id={optionId(opt.value, idx)}
             role="option"
+            data-testid="select-option"
             data-option-idx={idx}
             tabIndex={opt.disabled ? undefined : -1}
             aria-selected={isSelected}
@@ -346,6 +347,7 @@ export function Select({
       <div
         ref={listRef}
         id={listId}
+        data-testid="select-listbox"
         role="listbox"
         aria-label={accessibleLabel}
         className="fixed z-[9999] overflow-y-auto rounded-lg border border-edge bg-surface-alt py-1 shadow-xl"
@@ -476,6 +478,7 @@ export function Select({
         disabled={isDisabled}
         aria-busy={loading || undefined}
         title={title}
+        {...triggerDataAttrs}
         className={cn(
           triggerShellClass,
           fitContent ? 'inline-flex w-auto' : 'w-full',

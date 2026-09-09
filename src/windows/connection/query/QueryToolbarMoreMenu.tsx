@@ -77,7 +77,7 @@ export function QueryToolbarMoreMenu({
 }: QueryToolbarMoreMenuProps) {
   const { t } = useI18n();
   const platform = usePlatform();
-  const isMac = platform === 'macos' || platform === 'ios';
+  const isMac = platform === 'macos' || (platform as string) === 'ios';
 
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);

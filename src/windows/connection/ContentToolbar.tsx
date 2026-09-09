@@ -134,6 +134,7 @@ export function ContentToolbar({
             compact={compact}
             variant="secondary"
             className="h-8"
+            data-testid="content-toolbar-er-diagram-button"
             label={t('common.erDiagram')}
             icon={<GitFork className="h-4 w-4" />}
             onClick={onOpenErDiagram}
@@ -149,6 +150,7 @@ export function ContentToolbar({
             label={t('objects.title')}
             icon={<Code2 className="h-4 w-4" />}
             onClick={onOpenObjects}
+            data-testid="content-toolbar-objects"
           />
           <ToolbarButton
             compact={compact}
@@ -157,6 +159,7 @@ export function ContentToolbar({
             label={t('privileges.title')}
             icon={<KeyRound className="h-4 w-4" />}
             onClick={onOpenPrivileges}
+            data-testid="content-toolbar-privileges"
           />
         </>
       )}

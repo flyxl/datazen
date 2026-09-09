@@ -48,15 +48,18 @@ export function AppearanceSection({
 }: AppearanceSectionProps = {}) {
   const { t } = useI18n();
   const wapps = useWappStore((s) => s.wapps);
-  const loaded = useWappStore((s) => s.loaded);
   const storedSettings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
   const settings = draftSettings ?? storedSettings;
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!loaded) void useWappStore.getState().fetch();
-  }, [loaded]);
+    // Settings can be opened after a plugin was installed in another window.
+    // Refresh here even when the store was previously loaded so the theme
+    // list cannot remain an outdated empty snapshot when the change event was
+    // delivered before this page mounted.
+    void useWappStore.getState().fetch();
+  }, []);
 
   // PRD §4.5: only themes contributed by *enabled* plugins are switchable here.
   const themeOptions = useMemo(() => collectThemeOptions(wapps), [wapps]);
@@ -104,6 +107,7 @@ export function AppearanceSection({
             value={settings.theme.mode}
             options={MODE_OPTIONS.map((m) => ({ value: m.value, label: t(m.key) }))}
             onChange={handleModeChange}
+            triggerDataAttrs={{ 'data-testid': 'appearance-color-scheme-select' }}
           />
         </SettingRow>
 
@@ -118,6 +122,7 @@ export function AppearanceSection({
               ...themeOptions.map((o) => ({ value: o.value, label: o.label })),
             ]}
             onChange={handleThemeChange}
+            triggerDataAttrs={{ 'data-testid': 'appearance-theme-select' }}
           />
         </SettingRow>
       </div>
