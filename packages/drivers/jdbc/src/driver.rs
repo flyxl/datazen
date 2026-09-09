@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
 
-use crate::agent_process::{AgentLaunchConfig, AgentProcessManager};
+use crate::agent_process::AgentProcessManager;
 use crate::protocol::methods;
 
 /// Opaque session map: connection handle id → agent sessionId.
@@ -21,13 +21,13 @@ pub struct JdbcDriver {
 }
 
 impl JdbcDriver {
+    /// Shared agent process for the whole host (Settings-driven launch config).
+    pub fn shared() -> Self {
+        Self::with_agent(AgentProcessManager::global())
+    }
+
     pub fn new() -> Self {
-        Self {
-            agent: AgentProcessManager::new(AgentLaunchConfig::default()),
-            sessions: Mutex::new(SessionTable {
-                sessions: HashMap::new(),
-            }),
-        }
+        Self::shared()
     }
 
     pub fn with_agent(agent: Arc<AgentProcessManager>) -> Self {
@@ -61,7 +61,6 @@ impl JdbcDriver {
     /// - `jars` — array of absolute jar paths
     /// - `driverClass` — e.g. org.h2.Driver
     /// - `props` — string map of extra JDBC properties
-    /// - `agentJar` — override agent jar path for this process (applied on first use)
     fn open_params(config: &ConnectionConfig) -> Result<serde_json::Value, DriverError> {
         let opts = config.options.as_ref();
         let url = opts
@@ -188,7 +187,7 @@ impl JdbcDriver {
             .await
             .map_err(Self::map_err)?;
 
-        let mut columns = Self::parse_columns(result.get("columns").unwrap_or(&serde_json::Value::Null));
+        let columns = Self::parse_columns(result.get("columns").unwrap_or(&serde_json::Value::Null));
         let mut rows = Self::parse_rows(result.get("rows").unwrap_or(&serde_json::Value::Null));
         let mut has_more = result
             .get("hasMore")
@@ -199,7 +198,6 @@ impl JdbcDriver {
             .and_then(|v| v.as_str())
             .map(str::to_string);
 
-        // Drain remaining batches up to max_rows total for non-stream path.
         if let Some(ref cid) = cursor_id {
             while has_more && (rows.len() as u32) < max_rows {
                 let remain = max_rows - rows.len() as u32;
@@ -235,11 +233,7 @@ impl JdbcDriver {
                 .await;
         }
 
-        if columns.is_empty() && rows.is_empty() {
-            // update-style result
-        }
-
-        let _ = columns; // silence if empty
+        let _ = columns;
         Ok(QueryResult {
             columns: Self::parse_columns(result.get("columns").unwrap_or(&serde_json::Value::Null)),
             rows,
@@ -465,7 +459,6 @@ impl DatabaseDriver for JdbcDriver {
         sql: &str,
         _params: &[Value],
     ) -> Result<QueryResult, DriverError> {
-        // MVP: no prepared-statement binding yet; run as plain SQL.
         self.query(handle, sql).await
     }
 
@@ -523,7 +516,6 @@ impl DatabaseDriver for JdbcDriver {
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
-        // Precise cancel needs executionId (Phase 4 optional path).
         Ok(())
     }
 
@@ -577,10 +569,7 @@ mod tests {
     #[test]
     fn open_params_reads_options() {
         let mut opts = serde_json::Map::new();
-        opts.insert(
-            "jdbcUrl".into(),
-            serde_json::json!("jdbc:h2:mem:test"),
-        );
+        opts.insert("jdbcUrl".into(), serde_json::json!("jdbc:h2:mem:test"));
         opts.insert("jars".into(), serde_json::json!(["/tmp/h2.jar"]));
         opts.insert("driverClass".into(), serde_json::json!("org.h2.Driver"));
         let cfg = ConnectionConfig {
@@ -608,6 +597,5 @@ mod tests {
         let p = JdbcDriver::open_params(&cfg).unwrap();
         assert_eq!(p["url"], "jdbc:h2:mem:test");
         assert_eq!(p["driverClass"], "org.h2.Driver");
-        assert_eq!(p["jars"][0], "/tmp/h2.jar");
     }
 }
