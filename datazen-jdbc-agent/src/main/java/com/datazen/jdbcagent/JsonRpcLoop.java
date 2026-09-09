@@ -1,12 +1,8 @@
 package com.datazen.jdbcagent;
 
 import java.io.PrintStream;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
-/** Dispatches JSON-RPC methods. Hand-rolled JSON to stay dependency-free. */
+/** Dispatches JSON-RPC methods. Hand-rolled JSON to stay lightweight. */
 final class JsonRpcLoop {
 
   private final SessionManager sessions;
@@ -65,8 +61,7 @@ final class JsonRpcLoop {
           sessions.txRollback(line);
           writeResult(id, "{\"ok\":true}");
         }
-        default -> writeError(
-            id, -32601, "Method not found: " + method, "internal");
+        default -> writeError(id, -32601, "Method not found: " + method, "internal");
       }
     } catch (AgentException e) {
       writeError(id, e.code, e.getMessage(), e.category);
@@ -78,6 +73,10 @@ final class JsonRpcLoop {
   }
 
   private void writeHello(String id) {
+    String caps =
+        PoolRegistry.hikariAvailable()
+            ? "[\"jdbc\",\"session\",\"query.stream\",\"tx\",\"pool\"]"
+            : "[\"jdbc\",\"session\",\"query.stream\",\"tx\"]";
     writeResult(
         id,
         "{"
@@ -87,7 +86,8 @@ final class JsonRpcLoop {
             + "\"protocolVersion\":"
             + AgentMain.PROTOCOL_VERSION
             + ","
-            + "\"capabilities\":[\"jdbc\",\"session\",\"query.stream\",\"tx\"]"
+            + "\"capabilities\":"
+            + caps
             + "}");
   }
 
@@ -119,7 +119,6 @@ final class JsonRpcLoop {
     if (m == null || m.isEmpty()) {
       return e.getClass().getSimpleName();
     }
-    // Redact common password query params.
     return m.replaceAll("(?i)(password=)[^&;\\s]+", "$1***");
   }
 }
