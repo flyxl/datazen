@@ -456,6 +456,359 @@ describe('Onboarding Continuous Journey Test', () => {
     });
   });
 
+  describe('Abnormal & Boundary Journeys', () => {
+    it('sample DB init error: shows error dialog, stays not_started, no pending connection', async () => {
+      vi.mocked(sampleDataCommands.initSampleDatabase).mockRejectedValueOnce(
+        new Error('sample init failed'),
+      );
+
+      render(<WelcomePage />);
+      expect(useOnboardingStore.getState().status).toBe('not_started');
+
+      fireEvent.click(screen.getByTestId('welcome-open-sample'));
+
+      await waitFor(() => {
+        expect(screen.getByText('sample init failed')).toBeInTheDocument();
+      });
+      expect(useOnboardingStore.getState().status).toBe('not_started');
+      expect(useOnboardingStore.getState().step).toBe(1);
+      expect(localStorage.getItem(PENDING_CONNECTION_KEY)).toBeNull();
+    });
+
+    it('query execution failure at step 2: does not mark query executed or advance step', async () => {
+      useOnboardingStore.getState().startOnboarding('sample_sqlite');
+      expect(useOnboardingStore.getState().step).toBe(2);
+
+      usePanelStore.setState({
+        executeQuery: vi.fn().mockImplementation(async () => {
+          usePanelStore.setState({
+            queryExec: new Map([
+              [
+                'p1',
+                {
+                  ...EMPTY_QUERY_EXEC,
+                  sql: 'SELECT * FROM missing_table',
+                  results: [],
+                  activeResultIdx: 0,
+                  error: 'table not found',
+                },
+              ],
+            ]),
+          });
+        }),
+        executeSelection: vi.fn().mockResolvedValue(undefined),
+        queryExec: new Map([['p1', { ...EMPTY_QUERY_EXEC, sql: 'SELECT * FROM missing_table' }]]),
+      });
+
+      const editorRef = {
+        current: {
+          getSelection: () => '',
+          insertAt: vi.fn(),
+          toggleLineComment: vi.fn(),
+        },
+      };
+
+      const { result } = renderHook(() =>
+        useQueryExecutionGate({
+          panelId: 'p1',
+          dbSessionId: 'sess-1',
+          databaseType: 'sqlite',
+          connectionId: 'conn-1',
+          editorRef,
+          sql: 'SELECT * FROM missing_table',
+          boundPayload: undefined,
+          inTransaction: false,
+          setInTransaction: vi.fn(),
+          refreshTxStatus: vi.fn().mockResolvedValue(undefined),
+          maybeOfferAbortedDialog: vi.fn().mockResolvedValue(undefined),
+          syncContextFromSql: vi.fn().mockResolvedValue(undefined),
+          showMessageDialog: vi.fn(),
+          onExecutionComplete: vi.fn(),
+        }),
+      );
+
+      await act(async () => {
+        await result.current.runExecute('full');
+      });
+
+      expect(useOnboardingStore.getState().queryExecuted).toBe(false);
+      expect(useOnboardingStore.getState().step).toBe(2);
+    });
+
+    it('empty result set at step 2: does not mark query executed or advance step', async () => {
+      useOnboardingStore.getState().startOnboarding('sample_sqlite');
+      expect(useOnboardingStore.getState().step).toBe(2);
+
+      usePanelStore.setState({
+        executeQuery: vi.fn().mockImplementation(async () => {
+          usePanelStore.setState({
+            queryExec: new Map([
+              [
+                'p1',
+                {
+                  ...EMPTY_QUERY_EXEC,
+                  sql: 'SELECT 1 WHERE 1=0',
+                  results: [
+                    {
+                      sql: 'SELECT 1 WHERE 1=0',
+                      columns: [],
+                      rows: [],
+                      rowsAffected: 0,
+                      executionTimeMs: 1,
+                    },
+                  ],
+                  activeResultIdx: 0,
+                  error: null,
+                },
+              ],
+            ]),
+          });
+        }),
+        executeSelection: vi.fn().mockResolvedValue(undefined),
+        queryExec: new Map([['p1', { ...EMPTY_QUERY_EXEC, sql: 'SELECT 1 WHERE 1=0' }]]),
+      });
+
+      const editorRef = {
+        current: {
+          getSelection: () => '',
+          insertAt: vi.fn(),
+          toggleLineComment: vi.fn(),
+        },
+      };
+
+      const { result } = renderHook(() =>
+        useQueryExecutionGate({
+          panelId: 'p1',
+          dbSessionId: 'sess-1',
+          databaseType: 'sqlite',
+          connectionId: 'conn-1',
+          editorRef,
+          sql: 'SELECT 1 WHERE 1=0',
+          boundPayload: undefined,
+          inTransaction: false,
+          setInTransaction: vi.fn(),
+          refreshTxStatus: vi.fn().mockResolvedValue(undefined),
+          maybeOfferAbortedDialog: vi.fn().mockResolvedValue(undefined),
+          syncContextFromSql: vi.fn().mockResolvedValue(undefined),
+          showMessageDialog: vi.fn(),
+          onExecutionComplete: vi.fn(),
+        }),
+      );
+
+      await act(async () => {
+        await result.current.runExecute('full');
+      });
+
+      expect(useOnboardingStore.getState().queryExecuted).toBe(false);
+      expect(useOnboardingStore.getState().step).toBe(2);
+    });
+
+    it('skip immunity: skipped at step 2 ignores query, AI toggle, chart view, and guide bar', async () => {
+      useOnboardingStore.getState().startOnboarding('sample_sqlite');
+      const onRun = vi.fn();
+      const { rerender, container } = render(<OnboardingGuideBar onExecuteSampleQuery={onRun} />);
+
+      fireEvent.click(screen.getByTestId('onboarding-skip-btn'));
+      expect(useOnboardingStore.getState().status).toBe('skipped');
+      expect(useOnboardingStore.getState().step).toBe(2);
+
+      rerender(<OnboardingGuideBar onExecuteSampleQuery={onRun} />);
+      expect(container.firstChild).toBeNull();
+
+      // Query execution gate with successful rows must not advance onboarding
+      usePanelStore.setState({
+        executeQuery: vi.fn().mockImplementation(async () => {
+          usePanelStore.setState({
+            queryExec: new Map([
+              [
+                'p1',
+                {
+                  ...EMPTY_QUERY_EXEC,
+                  sql: 'SELECT 1',
+                  results: [
+                    {
+                      sql: 'SELECT 1',
+                      columns: [],
+                      rows: [[1]],
+                      executionTimeMs: 1,
+                    },
+                  ],
+                  activeResultIdx: 0,
+                  error: null,
+                },
+              ],
+            ]),
+          });
+        }),
+        executeSelection: vi.fn().mockResolvedValue(undefined),
+        queryExec: new Map([['p1', { ...EMPTY_QUERY_EXEC, sql: 'SELECT 1' }]]),
+      });
+
+      const editorRef = {
+        current: {
+          getSelection: () => '',
+          insertAt: vi.fn(),
+          toggleLineComment: vi.fn(),
+        },
+      };
+
+      const { result } = renderHook(() =>
+        useQueryExecutionGate({
+          panelId: 'p1',
+          dbSessionId: 'sess-1',
+          databaseType: 'sqlite',
+          connectionId: 'conn-1',
+          editorRef,
+          sql: 'SELECT 1',
+          boundPayload: undefined,
+          inTransaction: false,
+          setInTransaction: vi.fn(),
+          refreshTxStatus: vi.fn().mockResolvedValue(undefined),
+          maybeOfferAbortedDialog: vi.fn().mockResolvedValue(undefined),
+          syncContextFromSql: vi.fn().mockResolvedValue(undefined),
+          showMessageDialog: vi.fn(),
+          onExecutionComplete: vi.fn(),
+        }),
+      );
+
+      await act(async () => {
+        await result.current.runExecute('full');
+      });
+
+      expect(useOnboardingStore.getState().status).toBe('skipped');
+      expect(useOnboardingStore.getState().queryExecuted).toBe(false);
+      expect(useOnboardingStore.getState().step).toBe(2);
+
+      // AI toggle and chart view at step 3 must not re-activate onboarding
+      useOnboardingStore.getState().advanceToStep(3);
+      expect(useOnboardingStore.getState().step).toBe(3);
+
+      const onToggleNl2sql = vi.fn();
+      render(
+        <QueryEditorSection
+          dbSessionId="sess-1"
+          editorRef={{ current: null }}
+          toolbarRef={{ current: null }}
+          compactToolbar={false}
+          sql="SELECT 1"
+          running={false}
+          executionTimeMs={null}
+          executionViewModel={toQueryExecutionViewModel(EMPTY_QUERY_EXEC, {
+            supportsCancelQuery: false,
+            supportsQueryExecutionCancel: false,
+          })}
+          sqlParams={[]}
+          paramValues={{}}
+          onParamChange={vi.fn()}
+          editorHeight={200}
+          editorResizeRef={{ current: null }}
+          editorSchema={[]}
+          namespaceLoading={false}
+          supportsExplain
+          safeMode={false}
+          inTransaction={false}
+          txBusy={false}
+          isMultiDb={false}
+          isPathHierarchy={false}
+          hasContextSelectors={false}
+          databases={[]}
+          namespaceTree={[]}
+          pathAliases={{}}
+          contextPath={[]}
+          nl2sqlVisible={false}
+          onToggleNl2sql={onToggleNl2sql}
+          historyVisible={false}
+          favoritesVisible={false}
+          onToggleHistory={vi.fn()}
+          onToggleFavorites={vi.fn()}
+          onUpdateSql={vi.fn()}
+          onExecute={vi.fn()}
+          onExecuteSelection={vi.fn()}
+          onCancel={vi.fn()}
+          onFormat={vi.fn()}
+          onCompletionRefreshed={vi.fn()}
+          onExplain={vi.fn()}
+          onBeginTx={vi.fn()}
+          onCommitTx={vi.fn()}
+          onRollbackTx={vi.fn()}
+          onApplyAiSql={vi.fn()}
+          onOpenAddFavoriteDialog={vi.fn()}
+          onQualifiedPath={vi.fn()}
+          onSelectContextLevel={vi.fn()}
+          onDropTable={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'nl2sql.title' }));
+      expect(onToggleNl2sql).toHaveBeenCalled();
+      expect(useOnboardingStore.getState().aiOrChartExplored).toBe(false);
+      expect(useOnboardingStore.getState().status).toBe('skipped');
+
+      cleanup();
+
+      const chartableResult: StatementResult = {
+        sql: 'SELECT label, amount FROM metrics',
+        columns: [
+          { name: 'label', dataType: 'text', nullable: true },
+          { name: 'amount', dataType: 'int4', nullable: true },
+        ],
+        rows: [['one', 1]],
+        executionTimeMs: 1,
+      };
+
+      const onSetResultViewMode = (mode: 'table' | 'chart') => {
+        if (mode === 'chart') {
+          const ob = useOnboardingStore.getState();
+          if (ob.status === 'active' && ob.step === 3) {
+            ob.markAiOrChartExplored();
+          }
+        }
+      };
+
+      render(
+        <ResultWorkspace
+          result={chartableResult}
+          view="table"
+          onViewChange={onSetResultViewMode}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'chart.viewChart' }));
+      expect(useOnboardingStore.getState().aiOrChartExplored).toBe(false);
+      expect(useOnboardingStore.getState().status).toBe('skipped');
+
+      const { container: guideContainer } = render(
+        <OnboardingGuideBar onExecuteSampleQuery={onRun} />,
+      );
+      expect(guideContainer.firstChild).toBeNull();
+    });
+
+    it('corrupted localStorage recovery: safely resets to not_started / step 1 on reload', async () => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ status: 'malicious', step: 999 }));
+
+      vi.resetModules();
+      const storeMod = await import('../../../stores/onboardingStore');
+      const guideBarMod = await import('../OnboardingGuideBar');
+      const reloaded = storeMod.useOnboardingStore.getState();
+
+      expect(reloaded.status).toBe('not_started');
+      expect(reloaded.step).toBe(1);
+      expect(reloaded.queryExecuted).toBe(false);
+      expect(reloaded.aiOrChartExplored).toBe(false);
+
+      const { container } = render(<guideBarMod.OnboardingGuideBar />);
+      expect(container.firstChild).toBeNull();
+
+      localStorage.setItem(STORAGE_KEY, '{not-valid-json');
+
+      vi.resetModules();
+      const storeMod2 = await import('../../../stores/onboardingStore');
+      const reloaded2 = storeMod2.useOnboardingStore.getState();
+
+      expect(reloaded2.status).toBe('not_started');
+      expect(reloaded2.step).toBe(1);
+      expect(reloaded2.sampleConnectionId).toBeNull();
+    });
+  });
+
   describe('Persistence recovery journey', () => {
     it('preserves completed status after module reload and does not re-open wizard', async () => {
       useOnboardingStore.getState().startOnboarding('sample_sqlite');
