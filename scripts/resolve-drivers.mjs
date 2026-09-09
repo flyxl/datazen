@@ -1,36 +1,105 @@
 #!/usr/bin/env node
 /**
- * resolve-drivers.mjs — thin loader that reconstructs the full script from
- * committed base64 parts (scripts/resolve-drivers.b64.*.txt).
+ * resolve-drivers.mjs
+ *
+ * Self-heal entry: downloads the last known-good resolve-drivers body from
+ * GitHub (commit 0d08398 on feature/jdbc-agent) and applies the JDBC frontend
+ * registration patch, writing scripts/resolve-drivers.impl.mjs.
+ *
+ * Prefer replacing this with the full in-tree script once uploaded; until then
+ * builds need network on first materialize (or commit the generated impl).
  */
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
+import { writeFileSync, existsSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
+import { execSync } from 'child_process';
 
 const dir = dirname(fileURLToPath(import.meta.url));
-const impl = join(dir, 'resolve-drivers.impl.mjs');
+const implPath = join(dir, 'resolve-drivers.impl.mjs');
+const BASE =
+  'https://raw.githubusercontent.com/flyxl/datazen/0d08398e8012b171c43c5352e0c208e1154b4d1a/scripts/resolve-drivers.mjs';
 
 function materialize() {
-  const parts = readdirSync(dir)
-    .filter((f) => /^resolve-drivers\.b64\.\d+\.txt$/.test(f))
-    .sort((a, b) => {
-      const na = Number(a.match(/(\d+)/)[1]);
-      const nb = Number(b.match(/(\d+)/)[1]);
-      return na - nb;
-    });
-  if (parts.length === 0) {
-    console.error('[resolve-drivers] missing resolve-drivers.b64.*.txt parts');
-    process.exit(1);
+  const text = execSync(`curl -fsSL '${BASE}'`, {
+    encoding: 'utf8',
+    maxBuffer: 12 * 1024 * 1024,
+  });
+
+  const vectorBlock = `  vector: {
+    dbTypes: [{ id: 'vector', metaExport: 'vectorMeta' }],
+    metaPath: '../../packages/drivers/vector/ui/meta',
+  },
+};`;
+
+  const jdbcBlock = `  vector: {
+    dbTypes: [{ id: 'vector', metaExport: 'vectorMeta' }],
+    metaPath: '../../packages/drivers/vector/ui/meta',
+  },
+  jdbc: {
+    dbTypes: [{ id: 'jdbc', metaExport: 'jdbcMeta' }],
+    metaPath: '../../packages/drivers/jdbc/ui/meta',
+    connectionForm: {
+      component: 'JdbcConnectionFields',
+      path: '../../packages/drivers/jdbc/ui/JdbcConnectionFields',
+      formVariant: 'jdbc',
+      validator: { export: 'jdbcValidate' },
+    },
+    settings: {
+      pluginId: 'jdbc',
+      label: 'JDBC',
+      sectionExport: 'JdbcSettingsSection',
+      sectionPath: '../../packages/drivers/jdbc/ui/settings',
+      schemaExport: 'jdbcSettingsSchema',
+      schemaPath: '../../packages/drivers/jdbc/ui/settings',
+    },
+  },
+};`;
+
+  if (!text.includes(vectorBlock)) {
+    throw new Error('unexpected base resolve-drivers.mjs (vector block missing)');
   }
-  let b64 = '';
-  for (const f of parts) {
-    b64 += readFileSync(join(dir, f), 'utf8').trim();
+  let out = text.replace(vectorBlock, jdbcBlock);
+
+  const locOld = `const DRIVER_LOCALE_CONFIG = {
+  redis: {
+    path: '../../packages/drivers/redis/locales',
+    typeExport: 'RedisTranslationKey',
+    importPrefix: 'redisLocale',
+  },
+  mongodb: {
+    path: '../../packages/drivers/mongodb/locales',
+    typeExport: 'MongoTranslationKey',
+    importPrefix: 'mongoLocale',
+  },
+};`;
+
+  const locNew = `const DRIVER_LOCALE_CONFIG = {
+  redis: {
+    path: '../../packages/drivers/redis/locales',
+    typeExport: 'RedisTranslationKey',
+    importPrefix: 'redisLocale',
+  },
+  mongodb: {
+    path: '../../packages/drivers/mongodb/locales',
+    typeExport: 'MongoTranslationKey',
+    importPrefix: 'mongoLocale',
+  },
+  jdbc: {
+    path: '../../packages/drivers/jdbc/locales',
+    typeExport: 'JdbcTranslationKey',
+    importPrefix: 'jdbcLocale',
+  },
+};`;
+
+  if (!out.includes(locOld)) {
+    throw new Error('unexpected base resolve-drivers.mjs (locale config missing)');
   }
-  writeFileSync(impl, Buffer.from(b64, 'base64'));
+  out = out.replace(locOld, locNew);
+  writeFileSync(implPath, out);
+  console.log('[resolve-drivers] materialized', implPath);
 }
 
-if (!existsSync(impl) || process.argv.includes('--rematerialize')) {
+if (!existsSync(implPath) || process.argv.includes('--rematerialize')) {
   materialize();
-  console.log('[resolve-drivers] wrote', impl);
 }
-await import(pathToFileURL(impl).href);
+await import(pathToFileURL(implPath).href);
