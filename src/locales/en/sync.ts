@@ -252,6 +252,14 @@ const pack = {
   'schemaDiff.requirement.backfillHint':
     'Existing rows must be populated before enforcing NOT NULL.',
   'schemaDiff.requirement.unsupportedTitle': 'Unsupported',
+  'schemaDiff.typeSuggestions.title': 'Field Type Mapping Notice',
+  'schemaDiff.typeSuggestions.desc':
+    'The source table contains unbounded TEXT columns. Suggested types have been pre-filled for MySQL compatibility. You can adjust them as needed before deployment:',
+  'schemaDiff.typeSuggestions.column': 'Column',
+  'schemaDiff.typeSuggestions.sourceType': 'Source Type',
+  'schemaDiff.typeSuggestions.targetType': 'Target Type',
+  'schemaDiff.typeSuggestions.reason': 'Reason / Constraint',
+  'schemaDiff.typeSuggestions.apply': 'Apply & Regenerate Plan',
   'schemaDiff.rollback.available': 'Rollback: Available',
   'schemaDiff.rollback.partial':
     'Rollback: Partial — {count} statements cannot be automatically rolled back.',

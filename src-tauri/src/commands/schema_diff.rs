@@ -8,10 +8,11 @@ use crate::schema_diff::deploy::{
     DESTRUCTIVE_CONFIRM_TOKEN,
 };
 use crate::schema_diff::diff_table_schemas;
-use crate::schema_diff::plan::{build_schema_diff_plan, PlanOptions};
+use crate::schema_diff::plan::{build_schema_diff_plan, is_source_unbounded_text, PlanOptions};
 use crate::schema_diff::types::TableColumnDiff;
 use crate::schema_diff::types::{
-    normalize_dialect, resolve_table_for_dialect, SchemaDiffDeployResult, SchemaDiffPlan,
+    normalize_dialect, resolve_table_for_dialect, ColumnTypeOverride, SchemaDiffDeployResult,
+    SchemaDiffPlan,
 };
 use crate::services::job_registry::{cancel_job, ensure_job, remove_job};
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
@@ -62,6 +63,7 @@ pub async fn prepare_schema_diff_plan(
     table_names: Vec<String>,
     allow_destructive: bool,
     include_indexes: Option<bool>,
+    type_overrides: Option<Vec<ColumnTypeOverride>>,
 ) -> Result<SchemaDiffPlan, CommandError> {
     tracing::info!(
         %source_db_session_id,
@@ -134,18 +136,40 @@ pub async fn prepare_schema_diff_plan(
             .get_target(&tgt_config.database_type)
             .ok_or_else(|| CommandError::Validation("missing target sync adapter".into()))?;
 
+        let tgt_is_mysql = tgt_d == "mysql";
         let mapper = |source_type: &str, col_name: &str| -> Result<String, String> {
-            for (_t, src, _) in &pairs {
-                if let Some(col) = src
+            for (tgt_tbl, src, _) in &pairs {
+                let matching_col = src
                     .columns
                     .iter()
                     .find(|c| c.name == col_name && c.data_type == source_type)
-                {
+                    .or_else(|| src.columns.iter().find(|c| c.name == col_name));
+                if let Some(col) = matching_col {
+                    // 1. User explicit column type overrides take highest priority
+                    if let Some(ref overrides) = type_overrides {
+                        if let Some(ov) = overrides.iter().find(|o| {
+                            (o.table.eq_ignore_ascii_case(tgt_tbl)
+                                || tgt_tbl.ends_with(&format!(".{}", o.table))
+                                || o.table.ends_with(&format!(".{}", tgt_tbl)))
+                                && o.column.eq_ignore_ascii_case(col_name)
+                        }) {
+                            return Ok(ov.target_type.clone());
+                        }
+                    }
+
+                    // 2. MySQL target: unbounded text columns default to pre-filled suggested VARCHAR(255)
+                    if tgt_is_mysql && is_source_unbounded_text(&col.data_type) {
+                        return Ok("VARCHAR(255)".into());
+                    }
+
                     let ir = src_adapter.column_to_ir(col, Some(source_type));
-                    return Ok(tgt_adapter.ir_type_to_native(&ir.ir_type));
-                }
-                if let Some(col) = src.columns.iter().find(|c| c.name == col_name) {
-                    let ir = src_adapter.column_to_ir(col, Some(&col.data_type));
+                    if col.default_value.is_some()
+                        && !tgt_adapter.allows_column_default(&ir.ir_type)
+                    {
+                        if let Some(fallback) = tgt_adapter.default_capable_type_for(&ir.ir_type) {
+                            return Ok(tgt_adapter.ir_type_to_native(&fallback));
+                        }
+                    }
                     return Ok(tgt_adapter.ir_type_to_native(&ir.ir_type));
                 }
             }
@@ -162,7 +186,7 @@ pub async fn prepare_schema_diff_plan(
                 allow_destructive,
                 include_indexes,
                 type_mapper: Some(&mapper),
-                cross_dialect: false,
+                cross_dialect: true,
             },
         )
     } else {

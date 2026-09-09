@@ -24,6 +24,14 @@ describe('MySQL Driver Dialect', () => {
       quoteChar: '`',
     });
     expect(createSql).toBe('CREATE INDEX `idx_name` ON `users` USING hash (`name`)');
+
+    const prefixSql = mysqlDialect.index.getCreateIndexSql({
+      indexName: 'idx_region',
+      tableName: 'demo_customers',
+      columns: ['region(255)'],
+      quoteChar: '`',
+    });
+    expect(prefixSql).toBe('CREATE INDEX `idx_region` ON `demo_customers` (`region`(255))');
   });
 
   it('provides correct semantic profile for mysql editor', () => {

@@ -2062,7 +2062,54 @@ export async function advanceSchemaDiffToReview() {
   await browser.pause(300);
 }
 
-export async function deploySchemaDiffPlan() {
+/** Assert no errors (global banner, deploy errors, or inline copyable error) in Schema Diff window. */
+export async function assertSchemaDiffNoErrors() {
+  const errorElements = await $$('.error-message');
+  const visibleErrors: string[] = [];
+  for (const el of errorElements) {
+    if (await el.isDisplayed().catch(() => false)) {
+      const txt = await el.getText().catch(() => '');
+      if (txt) visibleErrors.push(txt);
+    }
+  }
+  if (visibleErrors.length > 0) {
+    throw new Error(
+      `Schema Diff window has unexpected error messages: ${visibleErrors.join(' | ')}`,
+    );
+  }
+}
+
+/**
+ * Assert that schema diff deployment finished strictly with status Committed,
+ * executed all statements, and produced zero errors.
+ */
+export async function assertSchemaDiffDeploySuccess() {
+  const statusEl = await $('[data-testid="schema-diff-deploy-status"]');
+  await statusEl.waitForDisplayed({ timeout: 10000 });
+  const statusText = (await statusEl.getText()).toLowerCase();
+  expect(statusText).toContain('committed');
+  expect(statusText).not.toContain('failed');
+  expect(statusText).not.toContain('rolled_back');
+  expect(statusText).not.toContain('mixed');
+
+  const countEl = await $('[data-testid="schema-diff-deploy-count"]');
+  await countEl.waitForDisplayed({ timeout: 10000 });
+  const countText = await countEl.getText();
+  const match = countText.match(/(\d+)\s*\/\s*(\d+)/);
+  if (match) {
+    const executed = Number(match[1]);
+    const total = Number(match[2]);
+    expect(executed).toBeGreaterThan(0);
+    expect(executed).toBe(total);
+  }
+
+  const errorsEl = await $('[data-testid="schema-diff-deploy-errors"]');
+  expect(await errorsEl.isExisting()).toBe(false);
+
+  await assertSchemaDiffNoErrors();
+}
+
+export async function deploySchemaDiffPlan(opts: { assertSuccess?: boolean } = {}) {
   const deployBtn = await $('[data-testid="schema-diff-deploy"]');
   await deployBtn.waitForClickable({ timeout: 15000 });
   await deployBtn.click();
@@ -2087,6 +2134,10 @@ export async function deploySchemaDiffPlan() {
       timeoutMsg: 'schema diff deploy did not finish',
     },
   );
+
+  if (opts.assertSuccess ?? true) {
+    await assertSchemaDiffDeploySuccess();
+  }
 }
 
 // ── Export UI (drivers with exportScope: none) ─────────────────────

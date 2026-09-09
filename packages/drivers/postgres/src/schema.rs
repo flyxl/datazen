@@ -95,12 +95,24 @@ impl PostgresDriver {
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
+        if cols.is_empty() {
+            return Ok(TableSchema {
+                table_name: table.to_string(),
+                columns: Vec::new(),
+                primary_keys: Vec::new(),
+                indexes: Vec::new(),
+                foreign_keys: Vec::new(),
+            });
+        }
+
         let pk_rows = sqlx::query(
             r#"
             SELECT a.attname
             FROM pg_index i
-            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+            JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum, n) ON true
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
             WHERE i.indrelid = $1::regclass AND i.indisprimary
+            ORDER BY k.n
             "#,
         )
         .bind(&regclass)
@@ -115,14 +127,19 @@ impl PostgresDriver {
             .map(|r| {
                 let name: String = r.get("column_name");
                 let nullable: String = r.get("is_nullable");
+                let default_value: Option<String> = r.get("column_default");
+                let is_auto_increment = default_value
+                    .as_deref()
+                    .map(|d| d.contains("nextval("))
+                    .unwrap_or(false);
                 ColumnSchema {
                     is_primary_key: pk_names.contains(&name),
                     name,
                     data_type: r.get("data_type"),
                     nullable: nullable == "YES",
-                    default_value: r.get("column_default"),
+                    default_value,
                     comment: r.get("comment"),
-                    is_auto_increment: false,
+                    is_auto_increment,
                 }
             })
             .collect();

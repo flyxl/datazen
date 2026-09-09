@@ -705,6 +705,20 @@ impl DatabaseDriver for MysqlDriver {
             let col_name = decode_mysql_text(r, "Column_name");
             let non_unique: i64 = r.try_get::<i64, _>("Non_unique").unwrap_or(1);
             let idx_type = decode_mysql_text(r, "Index_type");
+            let sub_part: Option<i64> = r
+                .try_get::<Option<i64>, _>("Sub_part")
+                .ok()
+                .flatten()
+                .or_else(|| {
+                    r.try_get::<Option<i32>, _>("Sub_part")
+                        .ok()
+                        .flatten()
+                        .map(|v| v as i64)
+                });
+            let col_spec = match sub_part {
+                Some(sp) if sp > 0 => format!("{col_name}({sp})"),
+                _ => col_name,
+            };
 
             let entry = idx_map
                 .entry(idx_name.clone())
@@ -715,8 +729,18 @@ impl DatabaseDriver for MysqlDriver {
                     is_primary: idx_name == "PRIMARY",
                     index_type: idx_type,
                 });
-            entry.columns.push(col_name);
+            entry.columns.push(col_spec);
         }
+
+        let primary_keys = idx_map
+            .get("PRIMARY")
+            .map(|idx| {
+                idx.columns
+                    .iter()
+                    .map(|c| c.split('(').next().unwrap_or(c).to_string())
+                    .collect()
+            })
+            .unwrap_or(pk_names);
 
         let mut indexes: Vec<IndexInfo> = idx_map.into_values().collect();
         indexes.sort_by(|a, b| b.is_primary.cmp(&a.is_primary).then(a.name.cmp(&b.name)));
@@ -731,7 +755,7 @@ impl DatabaseDriver for MysqlDriver {
         Ok(TableSchema {
             table_name: table.to_string(),
             columns,
-            primary_keys: pk_names,
+            primary_keys,
             indexes,
             foreign_keys,
         })

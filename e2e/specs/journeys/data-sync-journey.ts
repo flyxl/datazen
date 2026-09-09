@@ -103,11 +103,13 @@ function defineDriverJourney(label: string, driver: 'postgresql' | 'mysql') {
     it('完整旅程：校验 → 比较 → Review → 执行', async () => {
       await runPreCompareValidationBranches(f, sameEndpointId, sameEndpointName);
 
+      await selectFixtureEndpoints(f);
+      await captureStep(`${f.screenshotPrefix}-07-endpoints-selected`);
+
       await runEndpointSwapBranch(f);
       await runDeleteEnableAcceptBranch(f);
+      await browser.pause(500);
 
-      await selectFixtureEndpoints(f);
-      await browser.pause(1000);
       if (driver === 'postgresql') {
         const schema = await $('[data-testid="data-sync-source-schema"]');
         if (await schema.isDisplayed().catch(() => false)) {

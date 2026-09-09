@@ -105,6 +105,7 @@ export function TableListPanel({
               <button
                 key={key}
                 type="button"
+                data-testid="data-sync-table-item"
                 className={cn(
                   'flex w-full items-center gap-2 border-b border-edge px-3 py-2 text-left text-xs hover:bg-surface-alt',
                   active && 'bg-surface-alt',

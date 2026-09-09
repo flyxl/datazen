@@ -213,6 +213,7 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
     const STAMP = Date.now().toString(36);
     const SRC_ID = `e2e_ds_cancel_src_${STAMP}`;
     const TGT_ID = `e2e_ds_cancel_tgt_${STAMP}`;
+    const TABLE = `e2e_ds_cancel_${STAMP}`;
     await invokeBackend('save_connection', {
       config: pgConfig(SRC_ID, `DS-Cancel-Src-${STAMP}`, 'datazen_sync_src'),
     });
@@ -220,33 +221,70 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
       config: pgConfig(TGT_ID, `DS-Cancel-Tgt-${STAMP}`, 'datazen_sync_tgt'),
     });
 
-    await openDataSyncWindow();
-    await selectDzOption(t('sync.selectSource'), `DS-Cancel-Src-${STAMP}`);
-    await selectDzOption(t('sync.selectTarget'), `DS-Cancel-Tgt-${STAMP}`);
-    await browser.pause(1500);
-    await advanceDataSyncToSetup();
-    await inspectDataSyncObjects();
-    await $('[data-testid="data-sync-next"]').click();
-    await browser.waitUntil(
-      async () =>
-        (await $('[data-testid="data-sync-window"]').getAttribute('data-sync-step')) === 'compare',
-      { timeout: 10000, timeoutMsg: 'data-sync compare step did not open' },
-    );
-    const cancel = await $('[data-testid="data-sync-cancel"]');
-    const sawCancel = await cancel
-      .waitForDisplayed({ timeout: 8000 })
-      .then(() => true)
-      .catch(() => false);
-    expect(sawCancel).toBe(true);
-    await cancel.click();
-    await waitForSyncStateNotBusy('compare cancel did not restore idle/compared state');
-    const state = await getSyncState();
-    expect(state).not.toBe('inspecting');
-    expect(state).not.toBe('comparing');
-    await expect(await $('[data-testid="data-sync-next"]')).toBeDisplayed();
-    expect(await $('[data-testid="data-sync-next"]').getAttribute('disabled')).toBe(null);
-    expect(await $('body').getText()).toContain(t('sync.compareCancelled'));
-    await captureStep('ds-edge-12-compare-cancelled');
+    const srcSession = await connectConfig(SRC_ID);
+    const tgtSession = await connectConfig(TGT_ID);
+    try {
+      await withSafeModeOff(async () => {
+        await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
+        await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
+        await executeQuery(
+          srcSession,
+          `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
+        );
+        await executeQuery(
+          tgtSession,
+          `CREATE TABLE ${TABLE} (id int PRIMARY KEY, name text NOT NULL)`,
+        );
+        await executeQuery(
+          srcSession,
+          `INSERT INTO ${TABLE} (id, name) SELECT g, 'v' || g FROM generate_series(1, 2000) g`,
+        );
+        await executeQuery(
+          tgtSession,
+          `INSERT INTO ${TABLE} (id, name) SELECT g, 'v' || g FROM generate_series(1, 100) g`,
+        );
+      });
+
+      await openDataSyncWindow();
+      await selectDzOption(t('sync.selectSource'), `DS-Cancel-Src-${STAMP}`);
+      await selectDzOption(t('sync.selectTarget'), `DS-Cancel-Tgt-${STAMP}`);
+      await browser.pause(1500);
+      await advanceDataSyncToSetup();
+      await inspectDataSyncObjects();
+      await $('[data-testid="data-sync-next"]').click();
+      await browser.waitUntil(
+        async () =>
+          (await $('[data-testid="data-sync-window"]').getAttribute('data-sync-step')) ===
+          'compare',
+        { timeout: 10000, timeoutMsg: 'data-sync compare step did not open' },
+      );
+      const cancel = await $('[data-testid="data-sync-cancel"]');
+      const sawCancel = await cancel
+        .waitForDisplayed({ timeout: 8000 })
+        .then(() => true)
+        .catch(() => false);
+      expect(sawCancel).toBe(true);
+      await cancel.click();
+      await waitForSyncStateNotBusy('compare cancel did not restore idle/compared state');
+      const state = await getSyncState();
+      expect(state).not.toBe('inspecting');
+      expect(state).not.toBe('comparing');
+      await expect(await $('[data-testid="data-sync-next"]')).toBeDisplayed();
+      expect(await $('body').getText()).toContain(t('sync.compareCancelled'));
+      await captureStep('ds-edge-12-compare-cancelled');
+
+      try {
+        await withSafeModeOff(async () => {
+          await executeQuery(srcSession, `DROP TABLE IF EXISTS ${TABLE}`);
+          await executeQuery(tgtSession, `DROP TABLE IF EXISTS ${TABLE}`);
+        });
+      } catch {
+        /* ok */
+      }
+    } finally {
+      await disconnectBackend(srcSession);
+      await disconnectBackend(tgtSession);
+    }
 
     for (const id of [SRC_ID, TGT_ID]) {
       try {
@@ -373,12 +411,12 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
       await browser.pause(1500);
       await advanceDataSyncToSetup();
       await inspectDataSyncObjects();
-      await compareDataSyncObjects();
-      await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 20000 });
       const rowCountBefore = await browser.execute(
         () => document.querySelectorAll('[data-testid="data-sync-mapping-row"]').length,
       );
       expect(rowCountBefore).toBeGreaterThan(0);
+      await compareDataSyncObjects();
+      await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 20000 });
 
       await moveDataSyncBackTo('endpoints');
       await selectDzOptionInWrap('data-sync-source', `DS-Chg-Alt-${STAMP}`);
@@ -533,6 +571,7 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
   });
 
   it('DS-EDGE-009: 取消映射表勾选后 Execute 应禁用', async () => {
+    await moveDataSyncBackTo('objects');
     const unchecked = await browser.execute((tableName: string) => {
       let count = 0;
       const rows = document.querySelectorAll('[data-testid="data-sync-mapping-row"]');
@@ -549,7 +588,6 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
     await browser.pause(400);
     await expect(await $('[data-testid="data-sync-next"]')).toBeDisabled();
     await captureStep('ds-edge-post-03-mapping-unchecked');
-    await moveDataSyncBackTo('objects');
     await browser.execute(() => {
       document
         .querySelectorAll('[data-testid="data-sync-mapping-row"] input[type="checkbox"]')

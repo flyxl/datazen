@@ -42,6 +42,14 @@ describe('getSqlDialect', () => {
     });
     expect(sql).toContain('UNIQUE INDEX');
     expect(sql).toContain('USING hash');
+
+    const prefixSql = getSqlDialect('mysql')!.index.getCreateIndexSql({
+      indexName: 'idx_region',
+      tableName: 'demo_customers',
+      columns: ['region(255)'],
+      quoteChar: '`',
+    });
+    expect(prefixSql).toBe('CREATE INDEX `idx_region` ON `demo_customers` (`region`(255))');
   });
 
   it('postgresql create index supports gin method', () => {

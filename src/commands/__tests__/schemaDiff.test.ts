@@ -188,6 +188,40 @@ describe('schemaDiffCommands wrappers', () => {
     });
   });
 
+  it('preparePlan forwards typeOverrides and preserves typeSuggestions', async () => {
+    const planWithSug = samplePlan({
+      typeSuggestions: [
+        {
+          table: 'demo_customers',
+          column: 'region',
+          sourceType: 'text',
+          suggestedType: 'VARCHAR(255)',
+          currentType: 'VARCHAR(255)',
+          reason: 'Indexed column',
+          isKeyOrIndexed: true,
+        },
+      ],
+    });
+    invokeMock.mockResolvedValueOnce(planWithSug);
+    const overrides = [{ table: 'demo_customers', column: 'region', targetType: 'VARCHAR(64)' }];
+    const res = await schemaDiffCommands.preparePlan({
+      sourceDbSessionId: 'src-1',
+      targetDbSessionId: 'tgt-1',
+      tableNames: ['demo_customers'],
+      allowDestructive: false,
+      typeOverrides: overrides,
+    });
+    expect(res.typeSuggestions).toHaveLength(1);
+    expect(invokeMock).toHaveBeenCalledWith('prepare_schema_diff_plan', {
+      sourceDbSessionId: 'src-1',
+      targetDbSessionId: 'tgt-1',
+      tableNames: ['demo_customers'],
+      allowDestructive: false,
+      includeIndexes: undefined,
+      typeOverrides: overrides,
+    });
+  });
+
   it('executeDeploy forwards deploy options and confirm token', async () => {
     const plan = samplePlan();
     const result = { status: 'committed', executedCount: 1 };

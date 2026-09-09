@@ -6,6 +6,7 @@
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../../i18n.js';
 import {
+  advanceTransferWizardToPreview,
   captureJourneyStep,
   closeExtraWindows,
   connectBackend,
@@ -172,20 +173,10 @@ describe('数据传输 PG→MySQL 跨方言旅程 (DT-PG-MYSQL-JOURNEY)', () => 
   });
 
   it('Step 5: 推进映射与预览直至执行步骤', async () => {
-    for (let i = 0; i < 8; i++) {
-      const execute = await $('[data-testid="data-transfer-execute"]');
-      if (await execute.isExisting().catch(() => false)) {
-        await captureJourneyStep('dt-pg-mysql-07-execute-ready', 0, true);
-        break;
-      }
-      const preview = await $('[data-testid="data-transfer-preview"]');
-      if (await preview.isDisplayed().catch(() => false)) {
-        await captureJourneyStep('dt-pg-mysql-07-preview', 0, true);
-      }
-      const next = await $('[data-testid="data-transfer-next"]');
-      if (!(await next.isEnabled())) await browser.pause(1000);
-      await clickNext(`dt-pg-mysql-08-advance-${i}`);
-    }
+    await advanceTransferWizardToPreview();
+    const execute = await $('[data-testid="data-transfer-execute"]');
+    await execute.waitForDisplayed({ timeout: 15000 });
+    await captureJourneyStep('dt-pg-mysql-07-execute-ready', 0, true);
   });
 
   it('Step 6: 执行跨方言传输并验证 MySQL 目标行数', async () => {

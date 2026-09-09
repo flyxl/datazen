@@ -2,10 +2,10 @@
 
 use super::types::{
     normalize_dialect, resolve_table_for_dialect, ColumnSnapshot, PlanRequirement, PlanStatement,
-    RollbackCompleteness, SchemaDiffPlan, StatementRisk,
+    RollbackCompleteness, SchemaDiffPlan, StatementRisk, TypeSuggestion,
 };
 use crate::db::TableSchema;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// Optional mapper: (source_type_sql, column_name) → native type for target dialect.
 pub type TypeMapper<'a> = dyn Fn(&str, &str) -> Result<String, String> + 'a;
@@ -274,6 +274,10 @@ fn plan_single_table(
         });
     }
 
+    if normalize_dialect(target_dialect) == "mysql" {
+        adjust_mysql_index_columns(&mut operations, src, tgt, warnings);
+    }
+
     let Some(capabilities) = driver.migration_capabilities() else {
         requirements.push(super::types::PlanRequirement::Unsupported {
             operation: table.to_string(),
@@ -368,6 +372,84 @@ fn extract_len(ty: &str) -> Option<usize> {
     ty[start + 1..end].parse().ok()
 }
 
+fn is_mysql_blob_or_text(ty: &str) -> bool {
+    let lower = ty.trim().to_ascii_lowercase();
+    let base = lower.split('(').next().unwrap_or("").trim();
+    if matches!(
+        base,
+        "text"
+            | "tinytext"
+            | "mediumtext"
+            | "longtext"
+            | "blob"
+            | "tinyblob"
+            | "mediumblob"
+            | "longblob"
+    ) {
+        return true;
+    }
+    if (base == "varchar" || base == "char") && extract_len(&lower).map_or(false, |len| len > 768) {
+        return true;
+    }
+    false
+}
+
+fn adjust_mysql_index_columns(
+    operations: &mut [super::operations::MigrationOperation],
+    src: &TableSchema,
+    tgt: &TableSchema,
+    warnings: &mut Vec<String>,
+) {
+    let mut target_col_types: HashMap<String, String> = HashMap::new();
+
+    for c in &tgt.columns {
+        target_col_types.insert(c.name.to_ascii_lowercase(), c.data_type.clone());
+    }
+
+    for op in operations.iter() {
+        match op {
+            super::operations::MigrationOperation::CreateTable { columns, .. } => {
+                for c in columns {
+                    target_col_types.insert(c.name.to_ascii_lowercase(), c.data_type.clone());
+                }
+            }
+            super::operations::MigrationOperation::AddColumn { column, .. } => {
+                target_col_types.insert(column.name.to_ascii_lowercase(), column.data_type.clone());
+            }
+            super::operations::MigrationOperation::AlterColumnType { column, to, .. } => {
+                target_col_types.insert(column.to_ascii_lowercase(), to.clone());
+            }
+            _ => {}
+        }
+    }
+
+    for c in &src.columns {
+        target_col_types
+            .entry(c.name.to_ascii_lowercase())
+            .or_insert_with(|| c.data_type.clone());
+    }
+
+    for op in operations.iter_mut() {
+        if let super::operations::MigrationOperation::CreateIndex { table, index } = op {
+            for col in &mut index.columns {
+                if col.contains('(') {
+                    continue;
+                }
+                let clean_name = col.trim().trim_matches('`').to_ascii_lowercase();
+                if let Some(ty) = target_col_types.get(&clean_name) {
+                    if is_mysql_blob_or_text(ty) {
+                        warnings.push(format!(
+                            "Added prefix length (255) for BLOB/TEXT column '{clean_name}' in index '{}' on table '{table}' for MySQL compatibility",
+                            index.name
+                        ));
+                        *col = format!("{}(255)", col.trim().trim_matches('`'));
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn rollback_completeness(statements: &[super::types::PlanStatement]) -> RollbackCompleteness {
     let missing: Vec<String> = statements
         .iter()
@@ -378,6 +460,98 @@ fn rollback_completeness(statements: &[super::types::PlanStatement]) -> Rollback
         complete: missing.is_empty(),
         missing,
     }
+}
+
+pub fn is_source_unbounded_text(data_type: &str) -> bool {
+    let lower = data_type.trim().to_ascii_lowercase();
+    let base = lower.split('(').next().unwrap_or("").trim();
+    if matches!(
+        base,
+        "text" | "citext" | "tinytext" | "mediumtext" | "longtext"
+    ) {
+        return true;
+    }
+    if (base == "varchar" || base == "character varying" || base == "char" || base == "character")
+        && !lower.contains('(')
+    {
+        return true;
+    }
+    false
+}
+
+fn detect_type_suggestions(
+    pairs: &[(String, TableSchema, TableSchema)],
+    source_dialect: &str,
+    target_dialect: &str,
+    opts: &PlanOptions<'_>,
+) -> Vec<TypeSuggestion> {
+    let src_d = normalize_dialect(source_dialect);
+    let tgt_d = normalize_dialect(target_dialect);
+    if tgt_d != "mysql" || src_d == tgt_d {
+        return Vec::new();
+    }
+
+    let mut suggestions = Vec::new();
+    for (table, src, _tgt) in pairs {
+        for col in &src.columns {
+            if is_source_unbounded_text(&col.data_type) {
+                let is_pk = src
+                    .primary_keys
+                    .iter()
+                    .any(|pk| pk.eq_ignore_ascii_case(&col.name))
+                    || col.is_primary_key;
+                let is_unique_indexed = src.indexes.iter().any(|i| {
+                    i.is_unique
+                        && i.columns.iter().any(|c| {
+                            c.split('(')
+                                .next()
+                                .unwrap_or(c)
+                                .trim()
+                                .trim_matches('`')
+                                .eq_ignore_ascii_case(&col.name)
+                        })
+                });
+                let is_indexed = src.indexes.iter().any(|i| {
+                    i.columns.iter().any(|c| {
+                        c.split('(')
+                            .next()
+                            .unwrap_or(c)
+                            .trim()
+                            .trim_matches('`')
+                            .eq_ignore_ascii_case(&col.name)
+                    })
+                });
+                let has_default = col.default_value.is_some();
+
+                let reason = if is_pk {
+                    "Primary key column; MySQL requires explicit key length for keys".to_string()
+                } else if is_unique_indexed {
+                    "Unique index column; MySQL TEXT does not support direct unique index"
+                        .to_string()
+                } else if is_indexed {
+                    "Indexed column; MySQL requires explicit key prefix length for TEXT".to_string()
+                } else if has_default {
+                    "Default value defined; MySQL restricts default values on BLOB/TEXT".to_string()
+                } else {
+                    "Unbounded text column; explicit length recommended for MySQL".to_string()
+                };
+
+                let current_type = resolve_type(opts, &col.name, &col.data_type)
+                    .unwrap_or_else(|_| "VARCHAR(255)".into());
+
+                suggestions.push(TypeSuggestion {
+                    table: table.clone(),
+                    column: col.name.clone(),
+                    source_type: col.data_type.clone(),
+                    suggested_type: "VARCHAR(255)".into(),
+                    current_type,
+                    reason,
+                    is_key_or_indexed: is_pk || is_unique_indexed || is_indexed || has_default,
+                });
+            }
+        }
+    }
+    suggestions
 }
 
 /// Build a plan for one or more tables. `pairs` is (table_name, source_schema, target_schema).
@@ -424,6 +598,7 @@ pub fn build_schema_diff_plan(
 
     let primary = tables.first().cloned().unwrap_or_default();
     let completeness = rollback_completeness(&statements);
+    let type_suggestions = detect_type_suggestions(pairs, source_dialect, target_dialect, &opts);
 
     SchemaDiffPlan {
         table: primary,
@@ -435,6 +610,7 @@ pub fn build_schema_diff_plan(
         warnings,
         rollback_completeness: completeness,
         requirements,
+        type_suggestions,
     }
 }
 
@@ -972,5 +1148,139 @@ mod tests {
             .requirements
             .iter()
             .any(|r| matches!(r, super::super::types::PlanRequirement::Unsupported { .. })));
+    }
+
+    #[test]
+    fn mysql_indexes_on_blob_text_columns_receive_prefix_length() {
+        let mut src = schema(vec![
+            col("id", "int"),
+            col("name", "text"),
+            col("region", "text"),
+        ]);
+        src.indexes.push(IndexInfo {
+            name: "idx_demo_customers_region".into(),
+            columns: vec!["region".into()],
+            is_unique: false,
+            is_primary: false,
+            index_type: "BTREE".into(),
+        });
+        src.indexes.push(IndexInfo {
+            name: "uq_demo_customers_name".into(),
+            columns: vec!["name".into()],
+            is_unique: true,
+            is_primary: false,
+            index_type: "BTREE".into(),
+        });
+        let tgt = schema(vec![]);
+
+        // MySQL target
+        let mysql_plan = build_schema_diff_plan(
+            &[("demo_customers".into(), src.clone(), tgt.clone())],
+            "postgresql",
+            "mysql",
+            PlanOptions::default(),
+        );
+        let region_stmt = mysql_plan
+            .statements
+            .iter()
+            .find(|s| s.sql.contains("idx_demo_customers_region"))
+            .expect("should have region index statement");
+        assert!(
+            region_stmt.sql.contains("`region`(255)"),
+            "MySQL index should have prefix length: {}",
+            region_stmt.sql
+        );
+        let name_stmt = mysql_plan
+            .statements
+            .iter()
+            .find(|s| s.sql.contains("uq_demo_customers_name"))
+            .expect("should have name unique index statement");
+        assert!(
+            name_stmt.sql.contains("`name`(255)"),
+            "MySQL unique index should have prefix length: {}",
+            name_stmt.sql
+        );
+        assert!(mysql_plan
+            .warnings
+            .iter()
+            .any(|w| w.contains("prefix length (255)")));
+
+        // PostgreSQL target: no prefix length should be added
+        let pg_plan = build_schema_diff_plan(
+            &[("demo_customers".into(), src, tgt)],
+            "mysql",
+            "postgresql",
+            PlanOptions::default(),
+        );
+        let pg_region_stmt = pg_plan
+            .statements
+            .iter()
+            .find(|s| s.sql.contains("idx_demo_customers_region"))
+            .expect("should have pg region index statement");
+        assert!(
+            pg_region_stmt.sql.contains("\"region\""),
+            "PostgreSQL index should keep bare column: {}",
+            pg_region_stmt.sql
+        );
+        assert!(!pg_region_stmt.sql.contains("255"));
+    }
+
+    #[test]
+    fn cross_dialect_mysql_detects_unbounded_text_type_suggestions() {
+        let mut src = schema(vec![
+            col("id", "int"),
+            col("name", "text"),
+            col("region", "text"),
+            col("notes", "text"),
+        ]);
+        src.indexes.push(IndexInfo {
+            name: "uq_demo_customers_name".into(),
+            columns: vec!["name".into()],
+            is_unique: true,
+            is_primary: false,
+            index_type: "BTREE".into(),
+        });
+        src.indexes.push(IndexInfo {
+            name: "idx_demo_customers_region".into(),
+            columns: vec!["region".into()],
+            is_unique: false,
+            is_primary: false,
+            index_type: "BTREE".into(),
+        });
+        let tgt = schema(vec![]);
+
+        let plan = build_schema_diff_plan(
+            &[("demo_customers".into(), src, tgt)],
+            "postgresql",
+            "mysql",
+            PlanOptions::default(),
+        );
+
+        assert_eq!(plan.type_suggestions.len(), 3);
+        let name_sug = plan
+            .type_suggestions
+            .iter()
+            .find(|s| s.column == "name")
+            .expect("should have name suggestion");
+        assert_eq!(name_sug.suggested_type, "VARCHAR(255)");
+        assert!(name_sug.is_key_or_indexed);
+        assert!(name_sug.reason.contains("Unique index"));
+
+        let region_sug = plan
+            .type_suggestions
+            .iter()
+            .find(|s| s.column == "region")
+            .expect("should have region suggestion");
+        assert_eq!(region_sug.suggested_type, "VARCHAR(255)");
+        assert!(region_sug.is_key_or_indexed);
+        assert!(region_sug.reason.contains("Indexed column"));
+
+        let notes_sug = plan
+            .type_suggestions
+            .iter()
+            .find(|s| s.column == "notes")
+            .expect("should have notes suggestion");
+        assert_eq!(notes_sug.suggested_type, "VARCHAR(255)");
+        assert!(!notes_sug.is_key_or_indexed);
     }
 }
