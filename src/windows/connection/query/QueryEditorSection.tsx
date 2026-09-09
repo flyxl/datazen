@@ -16,7 +16,6 @@ import { QueryExecutionStatus } from '../../../components/query/QueryExecutionSt
 import { Nl2SqlPanel } from '../../../components/ai/Nl2SqlPanel';
 import { sqlEditorEnhancedEP, useExtension } from '@datazen/extension-points';
 import { useI18n } from '../../../hooks/useI18n';
-import { useOnboardingStore } from '../../../stores/onboardingStore';
 import { usePlatform } from '../../../hooks/usePlatform';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { tid } from '../../../lib/tid';
@@ -221,10 +220,6 @@ export function QueryEditorSection({
   }, [dbSessionId, selectedDatabase, isRefreshingCompletion, onCompletionRefreshed, t]);
 
   const handleToggleNl2sql = useCallback(() => {
-    const ob = useOnboardingStore.getState();
-    if (ob.status === 'active' && ob.step === 3) {
-      ob.markAiOrChartExplored();
-    }
     onToggleNl2sql();
   }, [onToggleNl2sql]);
 

@@ -90,21 +90,6 @@ const pack = {
   'welcome.feature.workflow.description': '通过 YAML 驱动的工作流自动化重复任务。',
   'welcome.feature.ai.description': '生成 SQL、解释查询，并支持多种 AI 提供商。',
   'welcome.createConnection': '创建第一个连接',
-  'welcome.onboarding.title': '三步快速开启体验',
-  'welcome.onboarding.step1': '1. 连接数据（已备好示例库）',
-  'welcome.onboarding.step2': '2. 运行首条 SQL 查询',
-  'welcome.onboarding.step3': '3. 体验图表与 AI 洞察',
-  'welcome.openSampleDb': '打开示例 SQLite (快速体验)',
-  'welcome.openSampleDbHint': '零凭据即开即用，内置完整的真实电商业务示例数据集。',
-  'welcome.skipOnboarding': '跳过向导直接使用',
-  'onboarding.badge': '向导 {step}/3',
-  'onboarding.step2.message':
-    '第 2 步：运行首条查询 — 已预置销售额统计语句，点击下方 [▶ 运行 (⌘+Enter)] 查出数据。',
-  'onboarding.step2.action': '一键运行并推进 →',
-  'onboarding.step3.message':
-    '第 3 步：数据洞察 — 查询已成功！点击结果栏右上角 [📊 生成图表] 或工具栏 [✨ AI 助手]。',
-  'onboarding.step3.action': '完成向导 ✓',
-  'onboarding.skip': '跳过向导',
   'welcome.importConnectionHint':
     '支持从 TablePlus、Navicat、DataGrip、DBeaver、DBX 或 DataZen 导出文件导入。',
   'common.newGroup': '新建分组',

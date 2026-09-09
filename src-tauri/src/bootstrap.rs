@@ -434,7 +434,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             crate::commands::get_connections,
-            crate::commands::init_sample_database,
             crate::commands::save_connection,
             crate::commands::delete_connection,
             crate::commands::reorder_connections,

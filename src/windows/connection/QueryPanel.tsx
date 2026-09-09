@@ -7,7 +7,6 @@ import {
   inferDefaultTable,
   tablesReferencedInSql,
 } from '../../lib/sqlEditorDefaults';
-import { useOnboardingStore } from '../../stores/onboardingStore';
 import { usePanelStore } from '../../stores/panelStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useQueryExec } from '../../hooks/useQueryExec';
@@ -517,12 +516,6 @@ export function QueryPanel({
             onSetActiveResult={(idx) => setActiveResult(panelId, idx)}
             onTogglePinResult={(idx) => usePanelStore.getState().togglePinResult(panelId, idx)}
             onSetResultViewMode={(mode) => {
-              if (mode === 'chart') {
-                const ob = useOnboardingStore.getState();
-                if (ob.status === 'active' && ob.step === 3) {
-                  ob.markAiOrChartExplored();
-                }
-              }
               setResultViewModeStore(panelId, mode);
             }}
             onChartConfigChange={(cfg) => setChartConfig(panelId, cfg)}

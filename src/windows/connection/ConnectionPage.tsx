@@ -42,11 +42,7 @@ import { WorkflowPage } from '../workflow/WorkflowPage';
 import { SettingsContent } from '../settings/SettingsContent';
 import { WorkspaceView } from '../workspace/WorkspaceView';
 import { WappManagementPage } from '../wapps/WappManagementPage';
-import { OnboardingGuideBar } from './OnboardingGuideBar';
-import { useOnboardingStore } from '../../stores/onboardingStore';
 import { WorkspaceModeSidebar } from './WorkspaceModeSidebar';
-import { GETTING_STARTED_QUERY_TITLE, SAMPLE_GETTING_STARTED_SQL } from './gettingStartedQuery';
-import { useAutoOpenGettingStartedQuery } from './useAutoOpenGettingStartedQuery';
 
 export function ConnectionPage() {
   useSettings();
@@ -95,8 +91,6 @@ export function ConnectionPage() {
   const navigatorRef = useRef<ConnectionNavigatorTreeHandle>(null);
   const workspaceSidebarMode = useUiStore((s) => s.workspaceSidebarMode);
   const toggleWorkspaceSidebarMode = useUiStore((s) => s.toggleWorkspaceSidebarMode);
-  const onboardingStatus = useOnboardingStore((s) => s.status);
-  const sampleConnectionId = useOnboardingStore((s) => s.sampleConnectionId);
   const sidebarExpanded = workspaceSidebarMode === 'expanded';
 
   const showMessageDialog = useCallback((text: string, kind: 'error' | 'success') => {
@@ -119,25 +113,6 @@ export function ConnectionPage() {
     if (!activeTab?.dbSessionId || activeTab.status !== 'connected') return;
     executePendingAction();
   }, [activeTab?.dbSessionId, activeTab?.status, executePendingAction]);
-
-  const handleExecuteSampleQuery = useCallback(() => {
-    actionsRef.current?.newQuery?.(
-      SAMPLE_GETTING_STARTED_SQL,
-      undefined,
-      GETTING_STARTED_QUERY_TITLE,
-    );
-    const panelId = usePanelStore.getState().activePanelId;
-    if (panelId) {
-      void usePanelStore.getState().executeQuery(panelId);
-    }
-  }, []);
-
-  useAutoOpenGettingStartedQuery({
-    actionsRef,
-    onboardingStatus,
-    sampleConnectionId,
-    activeTab,
-  });
 
   const allPanels = usePanelStore((s) => s.panels);
   const activePanelId = usePanelStore((s) => s.activePanelId);
@@ -591,7 +566,6 @@ export function ConnectionPage() {
 
   const connectionWorkspace = (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <OnboardingGuideBar onExecuteSampleQuery={handleExecuteSampleQuery} />
       <div className="flex min-h-0 flex-1">
         {sidebarCollapsed ? (
           <div className="flex shrink-0 flex-col items-center border-r border-edge bg-surface-alt py-2">
