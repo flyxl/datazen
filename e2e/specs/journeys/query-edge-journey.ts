@@ -9,7 +9,7 @@ import {
   setEditorContent,
 } from '../../helpers.js';
 
-describe('SQL 查询边界完整用户旅程 (QUERY-EDGE-JOURNEY)', () => {
+describe('SQL 查询边界完整用户旅程 (QUERY-EDGE-JOURNEY, TC-QUERY-006, TC-QUERY-009~012)', () => {
   let mainWindow: string;
   let firstJourneyTabIndex: number;
 

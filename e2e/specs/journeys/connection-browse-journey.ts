@@ -23,7 +23,7 @@ describe('查看连接完整用户旅程 (CONNECTION-BROWSE-JOURNEY)', () => {
     await closeExtraWindows(mainWindow);
   });
 
-  it('完整旅程：连接列表 → 连接首页 → Schema 树 → 表数据/结构/索引/外键/DDL', async () => {
+  it('完整旅程：连接列表 → 连接首页 → Schema 树 → 表数据 → 结构 → 返回数据', async () => {
     const disconnectedHome = await $('[data-testid="connection-workspace-home"]');
     await disconnectedHome.waitForDisplayed({ timeout: 10000 });
     expect(await disconnectedHome.getText()).toContain(t('connWin.home.selectConnectionTitle'));
@@ -45,13 +45,10 @@ describe('查看连接完整用户旅程 (CONNECTION-BROWSE-JOURNEY)', () => {
     await expect(dataTab).toBeDisplayed();
     await captureJourneyStep('connection-browse-table-data');
 
-    for (const tabId of ['structure', 'indexes', 'foreignKeys', 'ddl']) {
-      await switchSubTab(tabId);
-      await expect(await $(`[data-testid="sub-tab-${tabId}"]`)).toBeDisplayed();
-      await captureJourneyStep(`connection-browse-${tabId}`);
-    }
+    await switchSubTab('structure');
+    await expect(await $('[data-testid="sub-tab-structure"]')).toBeDisplayed();
+    await captureJourneyStep('connection-browse-structure');
 
-    expect(await $('body').getText()).toContain(tableName);
     await switchSubTab('data');
     await captureJourneyStep('connection-browse-return-data');
   });

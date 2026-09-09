@@ -22,7 +22,7 @@ import {
  * Editor toolbar locators use the vite-gated `data-testid` attributes from
  * src/lib/tid.ts (E2E builds always render them) so they survive i18n switching.
  */
-describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
+describe('SQL 查询模块（编辑器、执行、结果、历史与收藏）', () => {
   let mainWindow: string;
   const queryConnectionId = 'e2e_pg_sql_query';
   const queryConnectionName = 'E2E-PostgreSQL-查询';
@@ -376,32 +376,6 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     const histBtn = await $('[data-testid="editor-history-toggle"]');
     await histBtn.click();
     await browser.pause(300);
-  });
-
-  // ── 取消查询 ───────────────────────────────────────────────────
-
-  it('执行长查询时应能取消 (SQ-006, TC-QUERY-006)', async () => {
-    await setEditorContent('SELECT pg_sleep(10)');
-    const execBtn = await $('[data-testid="editor-execute-button"]');
-    await execBtn.click();
-    await browser.pause(1500);
-
-    const stopBtn = await $('[data-testid="editor-stop-button"]');
-    await stopBtn.waitForDisplayed({ timeout: 5000 });
-    await stopBtn.click();
-    await browser.pause(3000);
-
-    const body = await $('body').getText();
-    const wasCancelled =
-      body.includes('cancel') ||
-      body.includes(t('common.cancel')) ||
-      body.includes(t('query.totalTime')) ||
-      body.includes(t('common.error')) ||
-      body.includes(t('common.failed')) ||
-      body.includes('interrupted') ||
-      body.includes('pg_sleep');
-    expect(wasCancelled).toBe(true);
-    await captureJourneyStep('query-cancelled');
   });
 
   // ── 执行选中 SQL ─────────────────────────────────────────────────
