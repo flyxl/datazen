@@ -24,7 +24,6 @@ struct JdbcFactory;
 
 impl DatabaseDriverFactory for JdbcFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
-        // One shared agent process for the whole host; settings apply live.
         Arc::new(JdbcDriver::shared())
     }
 
@@ -37,8 +36,11 @@ impl DatabaseDriverFactory for JdbcFactory {
     }
 
     fn supports_streaming_results(&self) -> bool {
-        // Materialized query_multi path; true stream fetch can be enabled later.
-        false
+        true
+    }
+
+    fn supports_cancel_query(&self) -> bool {
+        true
     }
 }
 
