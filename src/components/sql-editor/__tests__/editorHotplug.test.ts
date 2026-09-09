@@ -21,6 +21,7 @@ import {
   createLinterExtensions,
   reconfigureProCompartments,
 } from '../editorExtensions';
+import { BUILTIN_SQL_SNIPPETS } from '../snippets';
 
 function mountEditor(initialDoc = 'SELECT * FROM users'): {
   view: EditorView;
@@ -243,5 +244,13 @@ describe('editorHotplug journey — compartment reconfiguration without state lo
 
     view.destroy();
     parent.remove();
+  });
+
+  it('accepts snippets in completion options without throwing', () => {
+    const exts = createCompletionExtensions(
+      { snippets: BUILTIN_SQL_SNIPPETS },
+      { modelRef: { current: null } },
+    );
+    expect(exts).toBeDefined();
   });
 });
