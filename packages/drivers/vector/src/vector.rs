@@ -365,6 +365,7 @@ impl DatabaseDriver for VectorDriver {
             "JSON command",
         );
         cmds.push(query_stream_command_definition());
+        cmds.extend(schema_catalog_command_definitions());
         cmds
     }
 

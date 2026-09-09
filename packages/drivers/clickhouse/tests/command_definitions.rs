@@ -14,3 +14,15 @@ fn command_definitions_include_sql_commands() {
         assert!(ids.contains(&id.to_string()), "missing command {id}");
     }
 }
+
+#[test]
+fn command_definitions_include_catalog_commands() {
+    let ids: Vec<String> = ClickHouseDriver::new()
+        .command_definitions()
+        .into_iter()
+        .map(|d| d.id)
+        .collect();
+    assert!(ids.contains(&"list_databases".to_string()));
+    assert!(ids.contains(&"list_tables".to_string()));
+    assert!(ids.contains(&"get_table_schema".to_string()));
+}

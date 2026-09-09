@@ -434,6 +434,7 @@ impl DatabaseDriver for HBaseDriver {
             "scan <table>",
         );
         cmds.push(query_stream_command_definition());
+        cmds.extend(schema_catalog_command_definitions());
         cmds
     }
 
@@ -448,7 +449,21 @@ impl DatabaseDriver for HBaseDriver {
                 "query_stream is dispatched through the streaming IPC path, not execute_command"
                     .into(),
             )),
-            _ => execute_standard_sql_command(self, handle, command, input).await,
+            _ => {
+                match execute_standard_sql_command(self, handle, command, input.clone()).await {
+                    Ok(result) => return Ok(result),
+                    Err(DriverError::Unsupported(_)) => {}
+                    Err(err) => return Err(err),
+                }
+                if let Some(result) =
+                    try_execute_schema_catalog_command(self, handle, command, input).await?
+                {
+                    return Ok(result);
+                }
+                Err(DriverError::Unsupported(format!(
+                    "unsupported driver command: {command}"
+                )))
+            }
         }
     }
 
@@ -462,13 +477,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn command_definitions_are_query_only() {
+    fn command_definitions_include_query_and_catalog_commands() {
         let ids: Vec<_> = HBaseDriver::new()
             .command_definitions()
             .into_iter()
             .map(|d| d.id)
             .collect();
-        assert_eq!(ids, vec!["query", "query_stream"]);
+        for id in [
+            "query",
+            "query_stream",
+            "list_databases",
+            "list_tables",
+            "get_table_schema",
+        ] {
+            assert!(ids.contains(&id.to_string()), "missing command {id}");
+        }
     }
 
     #[test]
@@ -619,7 +642,7 @@ mod tests {
                         "query_stream via execute_command must return NotSupported, got: {result:?}"
                     );
                 }
-                "query" => {
+                "query" | "list_databases" | "list_tables" | "get_table_schema" => {
                     assert!(
                         !matches!(result, Err(DriverError::Unsupported(_))),
                         "command '{}' is defined but execute_command returns Unsupported (no dispatch branch)",

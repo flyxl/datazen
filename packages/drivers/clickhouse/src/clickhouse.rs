@@ -516,11 +516,13 @@ impl DatabaseDriver for ClickHouseDriver {
     }
 
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
-        vec![
+        let mut cmds = vec![
             query_command_definition(),
             execute_command_definition(),
             query_stream_command_definition(),
-        ]
+        ];
+        cmds.extend(schema_catalog_command_definitions());
+        cmds
     }
 
     async fn execute_command(

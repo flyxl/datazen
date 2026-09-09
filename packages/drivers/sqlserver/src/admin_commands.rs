@@ -74,6 +74,7 @@ pub fn sqlserver_admin_command_definitions() -> Vec<DriverCommandDefinition> {
         metadata: DriverCommandMetadata::new(CommandCategory::Admin, CommandAccessLevel::HighRisk),
     });
 
+    cmds.extend(schema_catalog_command_definitions());
     cmds
 }
 

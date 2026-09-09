@@ -665,7 +665,7 @@ mod tests {
     async fn unknown_object_kind_is_validation_error() {
         let test = TestAppState::new().await;
         let (_, conn_id) = test.save_and_connect("obj-bad-kind").await;
-        let err = get_database_objects_impl(&test.state, conn_id, "view".into())
+        let err = get_database_objects_impl(&test.state, conn_id, "invalid_kind".into())
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Unknown object kind"));

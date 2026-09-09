@@ -191,7 +191,8 @@ pub trait DatabaseDriver: Send + Sync {
         table: &str,
     ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
         let schema = self.get_table_schema(handle, table).await?;
-        Ok((schema.columns, schema.primary_keys))
+        let pks = schema.effective_primary_keys();
+        Ok((schema.columns, pks))
     }
 
     /// Batch-fetch columns for all tables in the given database/schema.
@@ -922,6 +923,112 @@ mod structure_defaults_tests {
             .await
             .unwrap_err();
         assert!(matches!(err, DriverError::Unsupported(_)));
+    }
+
+    #[tokio::test]
+    async fn get_columns_uses_effective_primary_keys_when_primary_keys_empty() {
+        struct DriverWithColumnPkOnly;
+
+        #[async_trait]
+        impl DatabaseDriver for DriverWithColumnPkOnly {
+            fn driver_type(&self) -> DatabaseType {
+                "dummy".into()
+            }
+
+            async fn connect(&self, _: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
+                unreachable!()
+            }
+
+            async fn test_connection(
+                &self,
+                _: &ConnectionConfig,
+            ) -> Result<ServerInfo, DriverError> {
+                unreachable!()
+            }
+
+            async fn disconnect(&self, _: ConnectionHandle) -> Result<(), DriverError> {
+                Ok(())
+            }
+
+            async fn get_databases(
+                &self,
+                _: &ConnectionHandle,
+            ) -> Result<Vec<String>, DriverError> {
+                Ok(vec![])
+            }
+
+            async fn get_tables(
+                &self,
+                _: &ConnectionHandle,
+                _: &str,
+            ) -> Result<Vec<TableInfo>, DriverError> {
+                Ok(vec![])
+            }
+
+            async fn get_table_schema(
+                &self,
+                _: &ConnectionHandle,
+                _: &str,
+            ) -> Result<TableSchema, DriverError> {
+                Ok(TableSchema {
+                    table_name: "users".into(),
+                    columns: vec![ColumnSchema {
+                        name: "id".into(),
+                        data_type: "int".into(),
+                        nullable: false,
+                        default_value: None,
+                        comment: None,
+                        is_primary_key: true,
+                        is_auto_increment: true,
+                    }],
+                    primary_keys: vec![], // intentionally empty to test fallback
+                    indexes: vec![],
+                    foreign_keys: vec![],
+                })
+            }
+
+            async fn query(
+                &self,
+                _: &ConnectionHandle,
+                _: &str,
+            ) -> Result<QueryResult, DriverError> {
+                unreachable!()
+            }
+
+            async fn query_multi(
+                &self,
+                _: &ConnectionHandle,
+                _: &str,
+                _: Option<u32>,
+            ) -> Result<MultiQueryResult, DriverError> {
+                unreachable!()
+            }
+
+            async fn query_with_params(
+                &self,
+                _: &ConnectionHandle,
+                _: &str,
+                _: &[Value],
+            ) -> Result<QueryResult, DriverError> {
+                unreachable!()
+            }
+
+            async fn execute(&self, _: &ConnectionHandle, _: &str) -> Result<u64, DriverError> {
+                unreachable!()
+            }
+
+            async fn cancel_query(&self, _: &ConnectionHandle) -> Result<(), DriverError> {
+                Ok(())
+            }
+        }
+
+        let driver = DriverWithColumnPkOnly;
+        let handle = ConnectionHandle {
+            id: "c".into(),
+            pool_id: "p".into(),
+        };
+        let (_cols, pks) = driver.get_columns(&handle, "users").await.unwrap();
+        assert_eq!(pks, vec!["id"]);
     }
 }
 

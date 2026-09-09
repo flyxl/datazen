@@ -138,11 +138,18 @@ pub fn parse_type_parts(raw: &str) -> (String, Option<String>, String) {
     let trimmed = collapse_ws(raw);
     let (core, suffix) = peel_suffixes(&trimmed);
     match (core.find('('), core.rfind(')')) {
-        (Some(open), Some(close)) if close > open => (
-            core[..open].trim().to_string(),
-            Some(core[open + 1..close].trim().to_string()),
-            suffix,
-        ),
+        (Some(open), Some(close)) if close > open => {
+            let base = core[..open].trim().to_string();
+            let args = Some(core[open + 1..close].trim().to_string());
+            let remainder = core[close + 1..].trim();
+            let combined_suffix = match (remainder.is_empty(), suffix.is_empty()) {
+                (true, true) => String::new(),
+                (false, true) => remainder.to_string(),
+                (true, false) => suffix,
+                (false, false) => format!("{remainder} {suffix}"),
+            };
+            (base, args, combined_suffix)
+        }
         _ => (core, None, suffix),
     }
 }
@@ -214,5 +221,29 @@ mod type_parts_tests {
         assert!(base.is_empty());
         assert!(args.is_none());
         assert!(suffix.is_empty());
+    }
+
+    #[test]
+    fn parse_array_types_preserves_brackets() {
+        let (base, args, suffix) = parse_type_parts("VARCHAR(255)[]");
+        assert_eq!(base, "VARCHAR");
+        assert_eq!(args.as_deref(), Some("255"));
+        assert_eq!(suffix, "[]");
+        assert_eq!(
+            format_type(&base, args.as_deref(), &suffix),
+            "VARCHAR(255) []"
+        );
+    }
+
+    #[test]
+    fn parse_timestamp_with_time_zone_preserves_suffix() {
+        let (base, args, suffix) = parse_type_parts("TIMESTAMP(6) WITH TIME ZONE");
+        assert_eq!(base, "TIMESTAMP");
+        assert_eq!(args.as_deref(), Some("6"));
+        assert_eq!(suffix, "WITH TIME ZONE");
+        assert_eq!(
+            format_type(&base, args.as_deref(), &suffix),
+            "TIMESTAMP(6) WITH TIME ZONE"
+        );
     }
 }
