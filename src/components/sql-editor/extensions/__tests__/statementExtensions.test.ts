@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createStatementExtensions } from '../../editorExtensions';
-import { extensionRegistry, sqlEditorProEP } from '@datazen/extension-points';
+import { extensionRegistry, sqlEditorEnhancedEP } from '@datazen/extension-points';
 import { EditorView } from '@codemirror/view';
 
 describe('createStatementExtensions fallback behavior', () => {
-  it('returns pure core extensions without pro gutter or frame decorations when pro is not loaded', () => {
+  it('returns pure core extensions without enhanced gutter or frame decorations when enhanced is not loaded', () => {
     const extensions = createStatementExtensions({
       onExecuteStatement: () => {},
     });
@@ -14,9 +14,9 @@ describe('createStatementExtensions fallback behavior', () => {
     expect(extensions.length).toBe(2);
   });
 
-  it('respects enabled: false and suppresses pro decorations', () => {
+  it('respects enabled: false and suppresses enhanced decorations', () => {
     const dummyDecoration = EditorView.theme({});
-    const unregister = extensionRegistry.register(sqlEditorProEP, {
+    const unregister = extensionRegistry.register(sqlEditorEnhancedEP, {
       createStatementDecorations: () => [dummyDecoration],
     });
 

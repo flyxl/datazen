@@ -32,7 +32,7 @@ DataZen 确立了严格的开源宿主与闭源商业特权扩展物理隔离策
 ### 核心隔离保障机制
 1. **源码级隔离**：宿主 `src/` 中没有任何 `@datazen/extension-sql-editor-pro` 的静态源码依赖。
 2. **构建期代码生成**：由 `scripts/resolve-pro.mjs` 动态写入 gitignored 的 `src/plugins/generated-pro.ts`：
-   - 当 `--edition=pro` 时注入 `activate()` 并注册至 `sqlEditorProEP`；
+   - 当 `--edition=pro` 时注入 `activate()` 并注册至 `sqlEditorEnhancedEP`；
    - 当 `--edition=community`（默认开源版）时输出空桩函数，宿主走纯净 Fallback。
 3. **独立 Git 仓库**：`packages/pro-extensions/sql-editor-pro` 拥有独立的 `.git` 版本树，并被宿主根目录 `.gitignore` 全局忽略，绝对不会被意外提交进宿主仓库。
 
@@ -51,7 +51,7 @@ packages/pro-extensions/sql-editor-pro/
 ├── AGENTS.md                    # 专属于该插件的 Agent 极简上下文开发规范
 └── src/
     ├── index.ts                 # 扩展入口 activate(registry) 与导出
-    ├── proFeatures.ts           # 汇聚装配所有 Pro 特性并向 sqlEditorProEP 注入
+    ├── proFeatures.ts           # 汇聚装配所有增强特性并向 sqlEditorEnhancedEP 注入
     ├── intentions/              # 智能意图 (星号展开、限定符增删、INSERT/函数内联提示)
     ├── hover/                   # 表结构悬浮卡片预览、Mod+Click 结构跳转
     ├── signature-help/          # 函数签名与参数高亮实时提示
@@ -137,19 +137,19 @@ pnpm tauri:dev --edition=pro --drivers=postgres,mysql,mongodb
 *例如：要在 SQL 编辑器顶部添加一个 Pro 专用的性能分析抽屉，或新增一种编辑器事件监听插槽。*
 
 1. **第一步：在宿主中扩展特权契约**：
-   在宿主 `packages/extension-points/src/sqlEditorProEP.ts` 中扩展 `SqlEditorProFeatures` 接口定义，例如：
+   在宿主 `packages/extension-points/src/sqlEditorEnhancedEP.ts` 中扩展 `SqlEditorEnhancedFeatures` 接口定义，例如：
    ```typescript
-   export interface SqlEditorProFeatures {
+   export interface SqlEditorEnhancedFeatures {
      // ... 现有能力
      /** 新增：高级 SQL 性能分析面板提供者 */
      createProfilerPanel?: (ctx: SqlEditorContext) => React.ReactNode;
    }
    ```
 2. **第二步：在宿主中编写消费与 Fallback**：
-   在宿主组件（如 `src/components/sql-editor/SqlEditor.tsx`）中通过 `useExtension(sqlEditorProEP)` 消费该能力，并编写当插件未激活时的安全兜底逻辑：
+   在宿主组件（如 `src/components/sql-editor/SqlEditor.tsx`）中通过 `useExtension(sqlEditorEnhancedEP)` 消费该能力，并编写当插件未激活时的安全兜底逻辑：
    ```typescript
-   const proFeatures = useExtension(sqlEditorProEP);
-   // proFeatures?.createProfilerPanel ? proFeatures.createProfilerPanel(ctx) : null
+   const enhancedFeatures = useExtension(sqlEditorEnhancedEP);
+   // enhancedFeatures?.createProfilerPanel ? enhancedFeatures.createProfilerPanel(ctx) : null
    ```
 3. **第三步：在 Pro 插件中实现新增契约**：
    在 `packages/pro-extensions/sql-editor-pro/src/proFeatures.ts` 中注入实现。

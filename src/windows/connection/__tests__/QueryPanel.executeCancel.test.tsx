@@ -3,7 +3,7 @@ import { render, fireEvent, cleanup, screen, act, waitFor } from '@testing-libra
 import { QueryPanel } from '../QueryPanel';
 import { usePanelStore, type QueryPanel as QueryPanelState } from '../../../stores/panelStore';
 import { EMPTY_QUERY_EXEC } from '../../../stores/queryExecActions';
-import { extensionRegistry, sqlEditorProEP } from '@datazen/extension-points';
+import { extensionRegistry, sqlEditorEnhancedEP } from '@datazen/extension-points';
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -138,7 +138,7 @@ vi.mock('../../../components/ai/ExplainPanel', () => ({
   ExplainPanel: () => null,
 }));
 
-extensionRegistry.register(sqlEditorProEP, {
+extensionRegistry.register(sqlEditorEnhancedEP, {
   useBindParameters: (sql: string) => {
     const hasParam = sql.includes(':id');
     return {

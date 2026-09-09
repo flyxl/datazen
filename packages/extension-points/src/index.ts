@@ -11,13 +11,11 @@ export type {
   ExtensionContext,
   ExtensionModule,
 } from './lifecycle';
-export {
-  HostExtensionLoader,
-  hostExtensionLoader,
-  registerExtensionPoint,
-} from './lifecycle';
+export { HostExtensionLoader, hostExtensionLoader, registerExtensionPoint } from './lifecycle';
 export { SafeCompartmentWrapper, type SafeCompartmentOptions } from './safeCompartment';
 export type {
+  SqlEditorEnhancedFeatures,
+  SqlEditorEnhancedOptions,
   SqlEditorProFeatures,
   SqlEditorProOptions,
   ExtensionSettingOption,
@@ -25,8 +23,8 @@ export type {
   ExtensionSettingRenderProps,
   ExtensionGroupRenderProps,
   ExtensionSettingsContribution,
-} from './sqlEditorProEP';
-export { sqlEditorProEP } from './sqlEditorProEP';
+} from './sqlEditorEnhancedEP';
+export { sqlEditorEnhancedEP, sqlEditorProEP } from './sqlEditorEnhancedEP';
 
 // i18n Bridge & Creator
 export * from './i18n';

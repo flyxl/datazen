@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { EditorState, Transaction } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { undo, redo } from '@codemirror/commands';
-import { extensionRegistry, sqlEditorProEP } from '@datazen/extension-points';
+import { extensionRegistry, sqlEditorEnhancedEP } from '@datazen/extension-points';
 import {
   compartments,
   createBaseEditorExtensions,
@@ -71,10 +71,7 @@ function mountEditor(initialDoc = 'SELECT * FROM users'): {
   return { view, parent, modelRef, metadataSnapshotRef };
 }
 
-function buildProPayload(
-  modelRef: { current: null },
-  metadataSnapshotRef: { current: undefined },
-) {
+function buildProPayload(modelRef: { current: null }, metadataSnapshotRef: { current: undefined }) {
   return {
     statement: createStatementExtensions({ enabled: true }),
     completion: createCompletionExtensions(
@@ -85,10 +82,7 @@ function buildProPayload(
       { databaseType: 'postgresql' },
       { modelRef, metadataSnapshotRef },
     ),
-    hover: createHoverExtensions(
-      { databaseType: 'postgresql' },
-      { modelRef, metadataSnapshotRef },
-    ),
+    hover: createHoverExtensions({ databaseType: 'postgresql' }, { modelRef, metadataSnapshotRef }),
     paste: createPasteExtensions({}),
     linter: createLinterExtensions(
       { databaseType: 'postgresql' },
@@ -141,7 +135,7 @@ describe('editorHotplug journey — compartment reconfiguration without state lo
     });
 
     let unregister: (() => void) | undefined;
-    unregister = extensionRegistry.register(sqlEditorProEP, {
+    unregister = extensionRegistry.register(sqlEditorEnhancedEP, {
       createStatementDecorations: () => [proMarker],
     });
 
@@ -206,7 +200,7 @@ describe('editorHotplug journey — compartment reconfiguration without state lo
     expect(coreCount).toBe(2); // statementIndexField + executionStateField
 
     const dummyDeco = EditorView.theme({});
-    const unsub = extensionRegistry.register(sqlEditorProEP, {
+    const unsub = extensionRegistry.register(sqlEditorEnhancedEP, {
       createStatementDecorations: () => [dummyDeco],
     });
 
@@ -227,16 +221,16 @@ describe('editorHotplug journey — compartment reconfiguration without state lo
   it('circuit-breaker removes crashing Pro extensions while editor remains editable', () => {
     const { view, parent, modelRef, metadataSnapshotRef } = mountEditor('SELECT 1');
 
-    extensionRegistry.register(sqlEditorProEP, {
+    extensionRegistry.register(sqlEditorEnhancedEP, {
       createStatementDecorations: () => {
         throw new Error('pro gutter crash');
       },
     });
-    expect(extensionRegistry.isEnhanced(sqlEditorProEP)).toBe(true);
+    expect(extensionRegistry.isEnhanced(sqlEditorEnhancedEP)).toBe(true);
 
     // SafeCompartmentWrapper inside createStatementExtensions catches and unregisters
     const payload = buildProPayload(modelRef, metadataSnapshotRef);
-    expect(extensionRegistry.isEnhanced(sqlEditorProEP)).toBe(false);
+    expect(extensionRegistry.isEnhanced(sqlEditorEnhancedEP)).toBe(false);
 
     reconfigureProCompartments(view, payload);
     expect(view.state.doc.toString()).toBe('SELECT 1');

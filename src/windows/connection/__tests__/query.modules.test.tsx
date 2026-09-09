@@ -28,7 +28,7 @@ import { useQueryPanelWorkflows } from '../query/queryDropHandler';
 import type { QueryHistoryEntry } from '../../../types';
 import { usePanelStore } from '../../../stores/panelStore';
 import { EMPTY_QUERY_EXEC } from '../../../stores/queryExecActions';
-import { extensionRegistry, sqlEditorProEP } from '@datazen/extension-points';
+import { extensionRegistry, sqlEditorEnhancedEP } from '@datazen/extension-points';
 import { toQueryExecutionViewModel } from '../../../lib/queryExecutionViewModel';
 
 vi.mock('../../../hooks/useI18n', () => ({
@@ -116,7 +116,7 @@ vi.mock('../../../components/query/QueryExecutionStatus', () => ({
   ),
 }));
 
-extensionRegistry.register(sqlEditorProEP, {
+extensionRegistry.register(sqlEditorEnhancedEP, {
   renderBindParamPanel: ({
     onChange,
   }: {

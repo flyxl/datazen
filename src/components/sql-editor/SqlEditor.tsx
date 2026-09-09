@@ -19,7 +19,7 @@ import {
 import { EditorView, placeholder as cmPlaceholder } from '@codemirror/view';
 import { EditorState, Compartment, Transaction } from '@codemirror/state';
 import { snippet } from '@codemirror/autocomplete';
-import { useIsExtensionEnhanced, sqlEditorProEP } from '@datazen/extension-points';
+import { useIsExtensionEnhanced, sqlEditorEnhancedEP } from '@datazen/extension-points';
 import { parseQualifiedPathParents } from '../../lib/sqlPathPrefix';
 import { toggleSqlLineComments } from '../../lib/sqlEditorContextMenu';
 import { buildSemanticModel } from './semantic/scopeModel';
@@ -108,15 +108,17 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   // Settings are consumed internally by themeExtensions() in editorExtensions.ts
   const keymapPreset = useSettingsStore((s) => s.settings.keymapPreset);
   const customKeymap = useSettingsStore((s) => s.settings.customKeymap);
-  const proSettings = useSettingsStore(
-    (s) => s.settings.pluginSettings?.['sql-editor-pro'] as Record<string, unknown> | undefined,
+  const editorExtensionSettings = useSettingsStore(
+    (s) =>
+      (s.settings.pluginSettings?.['sql-editor-enhanced'] ??
+        s.settings.pluginSettings?.['sql-editor-pro']) as Record<string, unknown> | undefined,
   );
-  const statementGutterEnabled = proSettings?.statementGutter !== false;
-  const tableHoverEnabled = proSettings?.tableHover !== false;
-  const insertValueHintsEnabled = proSettings?.insertValueHints !== false;
+  const statementGutterEnabled = editorExtensionSettings?.statementGutter !== false;
+  const tableHoverEnabled = editorExtensionSettings?.tableHover !== false;
+  const insertValueHintsEnabled = editorExtensionSettings?.insertValueHints !== false;
 
-  // §EP hot-plug: re-render when Pro extension registers/unregisters at runtime
-  const isSqlEditorProEnhanced = useIsExtensionEnhanced(sqlEditorProEP);
+  // §EP hot-plug: re-render when enhanced extension registers/unregisters at runtime
+  const isSqlEditorEnhanced = useIsExtensionEnhanced(sqlEditorEnhancedEP);
 
   // ── Sync callback refs ───────────────────────────────────────────
   onChangeRef.current = onChange;
@@ -238,7 +240,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
           onExecuteSelectionRef.current?.(sql);
         },
       }),
-    [statementGutterEnabled, isSqlEditorProEnhanced],
+    [statementGutterEnabled, isSqlEditorEnhanced],
   );
 
   const completionExts = useMemo(
@@ -247,14 +249,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
         { databaseType, metadataSnapshot, schema, completionQuotePolicy, translate },
         { modelRef, metadataSnapshotRef },
       ),
-    [
-      databaseType,
-      metadataSnapshot,
-      schema,
-      completionQuotePolicy,
-      translate,
-      isSqlEditorProEnhanced,
-    ],
+    [databaseType, metadataSnapshot, schema, completionQuotePolicy, translate, isSqlEditorEnhanced],
   );
 
   const intentionExts = useMemo(
@@ -268,7 +263,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
         },
         { modelRef, metadataSnapshotRef },
       ),
-    [insertValueHintsEnabled, databaseType, schema, completionQuotePolicy, isSqlEditorProEnhanced],
+    [insertValueHintsEnabled, databaseType, schema, completionQuotePolicy, isSqlEditorEnhanced],
   );
 
   const hoverExts = useMemo(
@@ -296,7 +291,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
       databaseType,
       database,
       schema,
-      isSqlEditorProEnhanced,
+      isSqlEditorEnhanced,
     ],
   );
 
@@ -306,12 +301,12 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
         connectionId,
         onDrop: onDropTable,
       }),
-    [connectionId, onDropTable, isSqlEditorProEnhanced],
+    [connectionId, onDropTable, isSqlEditorEnhanced],
   );
 
   const linterExts = useMemo(
     () => createLinterExtensions({ databaseType, schema }, { modelRef, metadataSnapshotRef }),
-    [databaseType, schema, isSqlEditorProEnhanced],
+    [databaseType, schema, isSqlEditorEnhanced],
   );
 
   // ── Editor mount ─────────────────────────────────────────────────

@@ -1,10 +1,10 @@
 /**
- * Context menu item factory for Paste-as-IN (Pro extension).
+ * Context menu item factory for Paste-as-IN (Enhanced extension).
  *
- * Returns null in fallback mode when sqlEditorProEP is not enhanced.
+ * Returns null in fallback mode when sqlEditorEnhancedEP is not enhanced.
  */
 import type { EditorView } from '@codemirror/view';
-import { extensionRegistry, sqlEditorProEP } from '@datazen/extension-points';
+import { extensionRegistry, sqlEditorEnhancedEP } from '@datazen/extension-points';
 
 export interface ContextMenuItem {
   label: string;
@@ -18,11 +18,11 @@ export interface PasteAsInContextMenuGroup {
 }
 
 /**
- * Create the context menu items for Paste-as-IN when Pro is active.
+ * Create the context menu items for Paste-as-IN when enhanced extension is active.
  */
 export function createPasteAsInContextMenuItems(): PasteAsInContextMenuGroup | null {
-  const pro = extensionRegistry.get(sqlEditorProEP);
-  const group = pro.createPasteAsInContextMenuItems?.();
+  const enhanced = extensionRegistry.get(sqlEditorEnhancedEP);
+  const group = enhanced.createPasteAsInContextMenuItems?.();
   return (group as PasteAsInContextMenuGroup | null) ?? null;
 }
 

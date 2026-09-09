@@ -15,8 +15,8 @@ import { EditorView } from '@codemirror/view';
 import { undo, redo } from '@codemirror/commands';
 import {
   extensionRegistry,
-  sqlEditorProEP,
-  type SqlEditorProFeatures,
+  sqlEditorEnhancedEP,
+  type SqlEditorEnhancedFeatures,
   verifyExtensionPackage,
   UNVERIFIED_EXTENSION_LABEL,
   EXTENSION_POINTS_VERSION,
@@ -45,7 +45,7 @@ import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'fs';
 
 describe('EP Hot-plugging Full Journey (R-Phase)', () => {
   beforeEach(() => {
-    extensionRegistry.unregister(sqlEditorProEP);
+    extensionRegistry.unregister(sqlEditorEnhancedEP);
   });
 
   // ── Journey 1: Editor Hot-plugging & Compartment Reconfiguration ────────────
@@ -93,7 +93,7 @@ describe('EP Hot-plugging Full Journey (R-Phase)', () => {
     const view = new EditorView({ state, parent });
 
     // Initial state: fallback (not enhanced)
-    expect(extensionRegistry.isEnhanced(sqlEditorProEP)).toBe(false);
+    expect(extensionRegistry.isEnhanced(sqlEditorEnhancedEP)).toBe(false);
 
     // Step 1: User types additional SQL
     view.dispatch({
@@ -104,8 +104,8 @@ describe('EP Hot-plugging Full Journey (R-Phase)', () => {
     const textBeforeHotplug = view.state.doc.toString();
     const selBeforeHotplug = view.state.selection.main.from;
 
-    // Step 2: Pro extension activates dynamically (Hot-Plug)
-    const mockProFeatures: SqlEditorProFeatures = {
+    // Step 2: Enhanced extension activates dynamically (Hot-Plug)
+    const mockEnhancedFeatures: SqlEditorEnhancedFeatures = {
       createStatementDecorations: vi.fn(() => []),
       createHoverExtensions: vi.fn(() => []),
       createIntentionExtensions: vi.fn(() => []),
@@ -125,8 +125,8 @@ describe('EP Hot-plugging Full Journey (R-Phase)', () => {
       usePasteAsIn: vi.fn(),
     };
 
-    extensionRegistry.register(sqlEditorProEP, mockProFeatures);
-    expect(extensionRegistry.isEnhanced(sqlEditorProEP)).toBe(true);
+    extensionRegistry.register(sqlEditorEnhancedEP, mockEnhancedFeatures);
+    expect(extensionRegistry.isEnhanced(sqlEditorEnhancedEP)).toBe(true);
 
     // Reconfigure compartments without destroying view
     reconfigureProCompartments(view, {
@@ -139,9 +139,9 @@ describe('EP Hot-plugging Full Journey (R-Phase)', () => {
     expect(view.state.doc.toString()).toBe(textBeforeHotplug);
     expect(view.state.selection.main.from).toBe(selBeforeHotplug);
 
-    // Step 3: Pro extension deactivates dynamically (Hot-Unplug)
-    extensionRegistry.unregister(sqlEditorProEP);
-    expect(extensionRegistry.isEnhanced(sqlEditorProEP)).toBe(false);
+    // Step 3: Enhanced extension deactivates dynamically (Hot-Unplug)
+    extensionRegistry.unregister(sqlEditorEnhancedEP);
+    expect(extensionRegistry.isEnhanced(sqlEditorEnhancedEP)).toBe(false);
 
     reconfigureProCompartments(view, {
       opts: { databaseType: 'postgresql' },

@@ -18,7 +18,7 @@ import { useCompactToolbar } from '../../hooks/useCompactToolbar';
 import { queryToolbarExpandedMinWidth } from './queryToolbarWidth';
 import { formatSql } from '../../lib/sqlFormat';
 import { paramsToPayload } from '../../lib/sqlBindParams';
-import { sqlEditorProEP, useExtension } from '@datazen/extension-points';
+import { sqlEditorEnhancedEP, useExtension } from '@datazen/extension-points';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { resolveExportScope } from '../../lib/exportCapability';
 import { toQueryExecutionViewModel } from '../../lib/queryExecutionViewModel';
@@ -83,8 +83,8 @@ export function QueryPanel({
   const setResultViewModeStore = usePanelStore((s) => s.setResultViewMode);
 
   const editorRef = useRef<SqlEditorHandle>(null);
-  const pro = useExtension(sqlEditorProEP);
-  const bindState = pro.useBindParameters?.(exec.sql) ?? {
+  const enhanced = useExtension(sqlEditorEnhancedEP);
+  const bindState = enhanced.useBindParameters?.(exec.sql) ?? {
     params: [],
     values: {},
     labels: {},

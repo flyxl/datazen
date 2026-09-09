@@ -22,7 +22,7 @@ import { ExecutionStrategySelect } from './toolbar/ExecutionStrategySelect';
 import { QueryContextSelectors } from '../../../components/query/QueryContextSelectors';
 import { QueryExecutionStatus } from '../../../components/query/QueryExecutionStatus';
 import { Nl2SqlPanel } from '../../../components/ai/Nl2SqlPanel';
-import { sqlEditorProEP, useExtension } from '@datazen/extension-points';
+import { sqlEditorEnhancedEP, useExtension } from '@datazen/extension-points';
 import { useI18n } from '../../../hooks/useI18n';
 import { usePlatform } from '../../../hooks/usePlatform';
 import { useSettingsStore } from '../../../stores/settingsStore';
@@ -191,11 +191,13 @@ export function QueryEditorSection({
   const completionQuotePolicy = useSettingsStore(
     (s) => s.settings.editorCompletionQuotePolicy ?? 'unquoted',
   );
-  const pro = useExtension(sqlEditorProEP);
-  const proSettings = useSettingsStore(
-    (s) => s.settings.pluginSettings?.['sql-editor-pro'] as Record<string, unknown> | undefined,
+  const enhanced = useExtension(sqlEditorEnhancedEP);
+  const editorExtensionSettings = useSettingsStore(
+    (s) =>
+      (s.settings.pluginSettings?.['sql-editor-enhanced'] ??
+        s.settings.pluginSettings?.['sql-editor-pro']) as Record<string, unknown> | undefined,
   );
-  const bindParamPanelEnabled = proSettings?.bindParamPanel !== false;
+  const bindParamPanelEnabled = editorExtensionSettings?.bindParamPanel !== false;
 
   /**
    * Prefer the editor's own selection-aware formatter (§4.2); `onFormat` stays
@@ -387,7 +389,7 @@ export function QueryEditorSection({
       </ToolbarShell>
 
       {bindParamPanelEnabled &&
-        pro.renderBindParamPanel?.({
+        enhanced.renderBindParamPanel?.({
           params: sqlParams,
           values: paramValues,
           labels: paramLabels,

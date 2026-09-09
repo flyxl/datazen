@@ -29,7 +29,7 @@ import { SectionTitle, SettingRow, ToggleRow } from './settingsUi';
 import { DataCleanupSection } from './DataCleanupSection';
 import { AppearanceSection } from './AppearanceSection';
 import { parseSettingsSection, SETTINGS_SECTIONS, type SettingsSection } from './settingsSections';
-import { useExtension, sqlEditorProEP } from '@datazen/extension-points';
+import { useExtension, sqlEditorEnhancedEP } from '@datazen/extension-points';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500];
 const RESULT_LIMIT_OPTIONS = [1000, 2000, 5000, 10000, 50000];
@@ -125,7 +125,7 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
     }
   };
 
-  const pro = useExtension(sqlEditorProEP);
+  const enhanced = useExtension(sqlEditorEnhancedEP);
 
   const [importExportStatus, setImportExportStatus] = useState<string | null>(null);
 
@@ -171,7 +171,9 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
   };
 
   const renderSectionContributions = (targetSection: 'editor' | 'general' | 'appearance') => {
-    const list = (pro.settingsContributions ?? []).filter((c) => c.targetSection === targetSection);
+    const list = (enhanced.settingsContributions ?? []).filter(
+      (c) => c.targetSection === targetSection,
+    );
     if (list.length === 0) return null;
 
     return (

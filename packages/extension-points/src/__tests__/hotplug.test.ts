@@ -12,7 +12,7 @@ import {
   type ExtensionModule,
 } from '../lifecycle';
 import { SafeCompartmentWrapper } from '../safeCompartment';
-import { sqlEditorProEP } from '../sqlEditorProEP';
+import { sqlEditorEnhancedEP, sqlEditorProEP } from '../sqlEditorEnhancedEP';
 
 interface DemoFeatures {
   label: string;
@@ -265,20 +265,22 @@ describe('EP hot-plug lifecycle (hotplug.test.ts)', () => {
     vi.restoreAllMocks();
   });
 
-  it('sqlEditorProEP fallback is used after hot-unregister of pro implementation', () => {
-    const proImpl = {
-      createStatementDecorations: () => [{ tag: 'pro-marker' }],
+  it('sqlEditorEnhancedEP fallback is used after hot-unregister of enhanced implementation', () => {
+    const enhancedImpl = {
+      createStatementDecorations: () => [{ tag: 'enhanced-marker' }],
     };
 
-    const unsub = extensionRegistry.register(sqlEditorProEP, proImpl);
+    const unsub = extensionRegistry.register(sqlEditorEnhancedEP, enhancedImpl);
+    expect(extensionRegistry.isEnhanced(sqlEditorEnhancedEP)).toBe(true);
+    // Legacy alias also reflects enhanced state
     expect(extensionRegistry.isEnhanced(sqlEditorProEP)).toBe(true);
-    expect(extensionRegistry.get(sqlEditorProEP).createStatementDecorations?.()).toEqual([
-      { tag: 'pro-marker' },
+    expect(extensionRegistry.get(sqlEditorEnhancedEP).createStatementDecorations?.()).toEqual([
+      { tag: 'enhanced-marker' },
     ]);
 
     unsub();
-    const fallbackImpl = extensionRegistry.get(sqlEditorProEP);
-    expect(extensionRegistry.isEnhanced(sqlEditorProEP)).toBe(false);
+    const fallbackImpl = extensionRegistry.get(sqlEditorEnhancedEP);
+    expect(extensionRegistry.isEnhanced(sqlEditorEnhancedEP)).toBe(false);
     expect(fallbackImpl.createStatementDecorations?.()).toEqual([]);
   });
 });

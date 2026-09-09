@@ -54,7 +54,7 @@ import {
   statementIndexField,
   executionStateField,
   extensionRegistry,
-  sqlEditorProEP,
+  sqlEditorEnhancedEP,
   SafeCompartmentWrapper,
   type ExtensionPoint,
 } from '@datazen/extension-points';
@@ -326,22 +326,22 @@ export interface CreateStatementExtensionsOptions {
   enabled?: boolean;
 }
 
-const proSafe = (featureName: string) => ({
-  point: sqlEditorProEP as ExtensionPoint<unknown>,
+const enhancedSafe = (featureName: string) => ({
+  point: sqlEditorEnhancedEP as ExtensionPoint<unknown>,
   featureName,
 });
 
 export function createStatementExtensions(opts?: CreateStatementExtensionsOptions): Extension[] {
-  const pro = extensionRegistry.get(sqlEditorProEP);
-  const proDecorations =
+  const enhanced = extensionRegistry.get(sqlEditorEnhancedEP);
+  const enhancedDecorations =
     opts?.enabled !== false
       ? SafeCompartmentWrapper(
-          proSafe('createStatementDecorations'),
-          () => pro.createStatementDecorations?.(opts) ?? [],
+          enhancedSafe('createStatementDecorations'),
+          () => enhanced.createStatementDecorations?.(opts) ?? [],
           [],
         )
       : [];
-  return [statementIndexField(), executionStateField, ...proDecorations];
+  return [statementIndexField(), executionStateField, ...enhancedDecorations];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -364,17 +364,17 @@ export function createCompletionExtensions(
     metadataSnapshotRef?: MutableRefObject<EditorMetadataSnapshot | undefined>;
   },
 ): Extension[] {
-  const pro = extensionRegistry.get(sqlEditorProEP);
+  const enhanced = extensionRegistry.get(sqlEditorEnhancedEP);
 
-  const proCompletionSource: CompletionSource = (context) =>
+  const enhancedCompletionSource: CompletionSource = (context) =>
     SafeCompartmentWrapper(
-      proSafe('proCompletionSource'),
+      enhancedSafe('enhancedCompletionSource'),
       () => {
-        const joinSource = pro.createJoinCompletionSource?.(opts, refs);
+        const joinSource = enhanced.createJoinCompletionSource?.(opts, refs);
         const joinRes = joinSource ? joinSource(context) : null;
         if (joinRes) return joinRes;
 
-        const colSource = pro.createColumnCompletionSource?.(opts, refs);
+        const colSource = enhanced.createColumnCompletionSource?.(opts, refs);
         const colRes = colSource ? colSource(context) : null;
         if (colRes) return colRes;
 
@@ -485,16 +485,16 @@ export function createCompletionExtensions(
       createSnippetCompletionSource({ t: opts.translate }),
       // S4-B: schema-aware completion (reads from metadata snapshot)
       schemaAwareCompletionSource,
-      // S4-B: Pro completion
-      proCompletionSource,
+      // S4-B: Enhanced completion
+      enhancedCompletionSource,
     ],
     activateOnTyping: true,
     maxRenderedOptions: 50,
   });
 
   const signatureHelpExts = SafeCompartmentWrapper(
-    proSafe('createSignatureHelpExtensions'),
-    () => pro.createSignatureHelpExtensions?.(opts.databaseType) ?? [],
+    enhancedSafe('createSignatureHelpExtensions'),
+    () => enhanced.createSignatureHelpExtensions?.(opts.databaseType) ?? [],
     [],
   );
 
@@ -523,10 +523,10 @@ export function createIntentionExtensions(
     metadataSnapshotRef: MutableRefObject<EditorMetadataSnapshot | undefined>;
   },
 ): Extension[] {
-  const pro = extensionRegistry.get(sqlEditorProEP);
+  const enhanced = extensionRegistry.get(sqlEditorEnhancedEP);
   return SafeCompartmentWrapper(
-    proSafe('createIntentionExtensions'),
-    () => pro.createIntentionExtensions?.(opts, refs) ?? [],
+    enhancedSafe('createIntentionExtensions'),
+    () => enhanced.createIntentionExtensions?.(opts, refs) ?? [],
     [],
   );
 }
@@ -552,10 +552,10 @@ export function createHoverExtensions(
     metadataSnapshotRef?: MutableRefObject<EditorMetadataSnapshot | undefined>;
   },
 ): Extension[] {
-  const pro = extensionRegistry.get(sqlEditorProEP);
+  const enhanced = extensionRegistry.get(sqlEditorEnhancedEP);
   return SafeCompartmentWrapper(
-    proSafe('createHoverExtensions'),
-    () => pro.createHoverExtensions?.(opts, refs) ?? [],
+    enhancedSafe('createHoverExtensions'),
+    () => enhanced.createHoverExtensions?.(opts, refs) ?? [],
     [],
   );
 }
@@ -576,10 +576,10 @@ export function createLinterExtensions(
     metadataSnapshotRef: MutableRefObject<EditorMetadataSnapshot | undefined>;
   },
 ): Extension[] {
-  const pro = extensionRegistry.get(sqlEditorProEP);
+  const enhanced = extensionRegistry.get(sqlEditorEnhancedEP);
   return SafeCompartmentWrapper(
-    proSafe('createLinterExtensions'),
-    () => pro.createLinterExtensions?.(opts, refs) ?? [],
+    enhancedSafe('createLinterExtensions'),
+    () => enhanced.createLinterExtensions?.(opts, refs) ?? [],
     [],
   );
 }

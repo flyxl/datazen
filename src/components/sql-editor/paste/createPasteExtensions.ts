@@ -2,13 +2,13 @@
  * Paste/drop/multiple selection compartment factory.
  *
  * §Track S5-A: Paste/Drop/Multiple Selection
- * Pro features (paste-as-IN, drop caret) are supplied via sqlEditorProEP.
+ * Enhanced features (paste-as-IN, drop caret) are supplied via sqlEditorEnhancedEP.
  * Community edition does not provide paste-as-IN.
  */
 import type { Extension } from '@codemirror/state';
 import {
   extensionRegistry,
-  sqlEditorProEP,
+  sqlEditorEnhancedEP,
   SafeCompartmentWrapper,
   type ExtensionPoint,
 } from '@datazen/extension-points';
@@ -23,14 +23,14 @@ export interface PasteCompartmentOptions {
 
 export function createPasteExtensions(opts: PasteCompartmentOptions): Extension[] {
   const multiCursor = createMultipleSelectionsExtension();
-  const pro = extensionRegistry.get(sqlEditorProEP);
-  const proPaste = SafeCompartmentWrapper(
+  const enhanced = extensionRegistry.get(sqlEditorEnhancedEP);
+  const enhancedPaste = SafeCompartmentWrapper(
     {
-      point: sqlEditorProEP as ExtensionPoint<unknown>,
+      point: sqlEditorEnhancedEP as ExtensionPoint<unknown>,
       featureName: 'createPasteExtensions',
     },
-    () => pro.createPasteExtensions?.(opts) ?? [],
+    () => enhanced.createPasteExtensions?.(opts) ?? [],
     [],
   );
-  return [...multiCursor, ...proPaste];
+  return [...multiCursor, ...enhancedPaste];
 }

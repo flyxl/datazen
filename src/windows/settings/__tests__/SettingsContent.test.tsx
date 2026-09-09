@@ -989,8 +989,8 @@ describe('SettingsContent', () => {
   });
 
   it('renders extension settings contribution dynamically when registered', async () => {
-    const { extensionRegistry, sqlEditorProEP } = await import('@datazen/extension-points');
-    const unregister = extensionRegistry.register(sqlEditorProEP, {
+    const { extensionRegistry, sqlEditorEnhancedEP } = await import('@datazen/extension-points');
+    const unregister = extensionRegistry.register(sqlEditorEnhancedEP, {
       settingsContributions: [
         {
           extensionId: 'sql-editor-pro',
@@ -1040,8 +1040,8 @@ describe('SettingsContent', () => {
   });
 
   it('renders custom item UI via item.render and handles update', async () => {
-    const { extensionRegistry, sqlEditorProEP } = await import('@datazen/extension-points');
-    const unregister = extensionRegistry.register(sqlEditorProEP, {
+    const { extensionRegistry, sqlEditorEnhancedEP } = await import('@datazen/extension-points');
+    const unregister = extensionRegistry.register(sqlEditorEnhancedEP, {
       settingsContributions: [
         {
           extensionId: 'sql-editor-pro',
@@ -1113,8 +1113,8 @@ describe('SettingsContent', () => {
   });
 
   it('renders custom group UI via contrib.renderGroup', async () => {
-    const { extensionRegistry, sqlEditorProEP } = await import('@datazen/extension-points');
-    const unregister = extensionRegistry.register(sqlEditorProEP, {
+    const { extensionRegistry, sqlEditorEnhancedEP } = await import('@datazen/extension-points');
+    const unregister = extensionRegistry.register(sqlEditorEnhancedEP, {
       settingsContributions: [
         {
           extensionId: 'sql-editor-pro',

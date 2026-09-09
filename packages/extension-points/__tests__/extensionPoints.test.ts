@@ -125,9 +125,10 @@ describe('ExtensionPoints & ExtensionRegistry', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it('sqlEditorProEP fallback returns empty settingsContributions array', async () => {
-    const { sqlEditorProEP } = await import('../src/sqlEditorProEP');
-    const fallback = sqlEditorProEP.getDefault();
+  it('sqlEditorEnhancedEP fallback returns empty settingsContributions array', async () => {
+    const { sqlEditorEnhancedEP, sqlEditorProEP } = await import('../src/sqlEditorEnhancedEP');
+    const fallback = sqlEditorEnhancedEP.getDefault();
     expect(fallback.settingsContributions).toEqual([]);
+    expect(sqlEditorProEP).toBe(sqlEditorEnhancedEP);
   });
 });
