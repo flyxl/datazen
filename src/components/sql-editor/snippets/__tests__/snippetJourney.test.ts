@@ -192,6 +192,70 @@ describe('user custom snippets', () => {
     if (!result || !('options' in result)) return;
     expect(result.options.map((o) => o.label)).toContain('custom_foo');
   });
+
+  it('custom snippet expansion journey: typing -> expansion -> placeholder replacement -> tabstop navigation', () => {
+    const multiStopSnippet: SqlSnippetItem = {
+      id: 'custom-insert',
+      prefix: 'inss',
+      descriptionKey: 'Custom insert into audit',
+      template:
+        'INSERT INTO audit_log (${1:action}, ${2:actor})\nVALUES (${3:val1}, ${4:val2});${5}',
+    };
+
+    const source = createSnippetCompletionSource({
+      snippets: [...BUILTIN_SQL_SNIPPETS, multiStopSnippet],
+    });
+
+    // Step 1: Type prefix 'ins' -> offers both builtin 'ins' and custom 'inss'
+    const insState = EditorState.create({ doc: 'ins' });
+    const insResult = source(new CompletionContext(insState, 3, false));
+    expect(insResult).not.toBeNull();
+    if (insResult && 'options' in insResult) {
+      const labels = insResult.options.map((o) => o.label);
+      expect(labels).toContain('ins');
+      expect(labels).toContain('inss');
+    }
+
+    // Step 2: Expand custom snippet over 'inss'
+    const harness = createHarness('inss');
+    snippet(multiStopSnippet.template)(harness.view as any, null, 0, 4);
+
+    expect(harness.doc).toBe('INSERT INTO audit_log (action, actor)\nVALUES (val1, val2);');
+
+    // First tabstop ${1:action} selected
+    expect(harness.state.sliceDoc(harness.selection.from, harness.selection.to)).toBe('action');
+    expect(hasNextSnippetField(harness.state)).toBe(true);
+    expect(hasPrevSnippetField(harness.state)).toBe(false);
+
+    // Replace ${1}
+    harness.view.dispatch(harness.state.replaceSelection('event_type'));
+
+    // Advance to ${2:actor}
+    expect(harness.apply(nextSnippetField)).toBe(true);
+    expect(harness.state.sliceDoc(harness.selection.from, harness.selection.to)).toBe('actor');
+    expect(hasPrevSnippetField(harness.state)).toBe(true);
+
+    // Replace ${2}
+    harness.view.dispatch(harness.state.replaceSelection('user_id'));
+
+    // Advance to ${3:val1}
+    expect(harness.apply(nextSnippetField)).toBe(true);
+    expect(harness.state.sliceDoc(harness.selection.from, harness.selection.to)).toBe('val1');
+
+    // Back-navigate with Shift-Tab to ${2:user_id}
+    expect(harness.apply(prevSnippetField)).toBe(true);
+    expect(harness.state.sliceDoc(harness.selection.from, harness.selection.to)).toBe('user_id');
+
+    // Forward to ${3:val1} and ${4:val2}
+    expect(harness.apply(nextSnippetField)).toBe(true);
+    expect(harness.apply(nextSnippetField)).toBe(true);
+    expect(harness.state.sliceDoc(harness.selection.from, harness.selection.to)).toBe('val2');
+
+    // Forward to terminal ${5} -> session terminates
+    expect(harness.apply(nextSnippetField)).toBe(true);
+    expect(hasNextSnippetField(harness.state)).toBe(false);
+    expect(hasPrevSnippetField(harness.state)).toBe(false);
+  });
 });
 
 describe('builtin snippet library integrity', () => {

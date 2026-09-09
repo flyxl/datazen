@@ -59,16 +59,16 @@ export function SnippetEditDialog({
       return;
     }
 
-    if (!trimmedTemplate) {
-      setError(t('query.snippets.templateRequired'));
-      return;
-    }
-
     const isDuplicatePrefix = existingPrefixes.some(
       (p) => p.toLowerCase() === trimmedPrefix.toLowerCase(),
     );
     if (isDuplicatePrefix) {
       setError(t('query.snippets.prefixDuplicate'));
+      return;
+    }
+
+    if (!trimmedTemplate) {
+      setError(t('query.snippets.templateRequired'));
       return;
     }
 
