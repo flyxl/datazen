@@ -10,7 +10,6 @@ import {
   closeExtraWindows,
   openConnectionsWorkspace,
   openNewConnectionDialogFromUi,
-  selectNewConnectionDriver,
 } from '../../helpers.js';
 import {
   deleteJourneyConnectionsByName,
@@ -35,14 +34,8 @@ describe('创建连接完整用户旅程 (CONNECTION-CREATE-JOURNEY)', () => {
     await browser.refresh();
   });
 
-  it('完整旅程：连接工作区 → 选择驱动 → 填写配置 → 测试 → 保存 → 重载后仍存在', async () => {
+  it('完整旅程：连接工作区 → 填写配置 → 测试 → 保存 → 重载后仍存在', async () => {
     await openNewConnectionDialogFromUi();
-
-    // Preserve the existing driver-switch snapshot behavior inside the full
-    // creation journey instead of leaving it only in isolated form tests.
-    await selectNewConnectionDriver('sqlite');
-    await expect(await $('input[placeholder="/path/to/db.sqlite"]')).toBeDisplayed();
-    await selectNewConnectionDriver('postgresql');
 
     await fillPostgresConnectionForm(CONNECTION_NAME);
     await captureJourneyStep('connection-create-form-filled');

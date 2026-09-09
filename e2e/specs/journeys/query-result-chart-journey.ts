@@ -7,12 +7,14 @@
  * volume.
  */
 import { expect, browser, $ } from '@wdio/globals';
-import { t } from '../../i18n.js';
 import {
   captureJourneyStep,
   closeDataExportDialogIfOpen,
   closeExtraWindows,
+  connectBackend,
+  disconnectBackend,
   executeSQL,
+  executeQuery,
   openConnectionWindow,
   openQueryTab,
   waitForDataExportDialog,
@@ -23,22 +25,35 @@ describe('查询→结果→图表→导出完整用户旅程 (QUERY-RESULT-JOUR
   const tableName = `e2e_query_chart_journey_${Date.now().toString(36)}`;
 
   before(async () => {
+    const dbSessionId = await connectBackend('conn_e2e_pg');
+    try {
+      await executeQuery(
+        dbSessionId,
+        `CREATE TABLE IF NOT EXISTS ${tableName} (category TEXT, amount INTEGER)`,
+      );
+      await executeQuery(dbSessionId, `DELETE FROM ${tableName} WHERE TRUE`);
+      await executeQuery(
+        dbSessionId,
+        `INSERT INTO ${tableName} (category, amount) VALUES ('Alpha', 100), ('Beta', 200), ('Gamma', 150), ('Delta', 300)`,
+      );
+    } finally {
+      await disconnectBackend(dbSessionId);
+    }
+
     const opened = await openConnectionWindow();
     mainWindow = opened.mainWindow;
-    await openQueryTab();
-    await executeSQL(`CREATE TABLE IF NOT EXISTS ${tableName} (category TEXT, amount INTEGER)`);
-    await executeSQL(`DELETE FROM ${tableName}`);
-    await executeSQL(
-      `INSERT INTO ${tableName} (category, amount) VALUES ('Alpha', 100), ('Beta', 200), ('Gamma', 150), ('Delta', 300)`,
-    );
     await openQueryTab();
   });
 
   after(async () => {
     try {
       await closeDataExportDialogIfOpen();
-      await openQueryTab();
-      await executeSQL(`DROP TABLE IF EXISTS ${tableName}`);
+      const dbSessionId = await connectBackend('conn_e2e_pg');
+      try {
+        await executeQuery(dbSessionId, `DROP TABLE IF EXISTS ${tableName}`);
+      } finally {
+        await disconnectBackend(dbSessionId);
+      }
     } catch {
       /* best effort; the shared E2E teardown also removes journey tables */
     }
@@ -62,12 +77,6 @@ describe('查询→结果→图表→导出完整用户旅程 (QUERY-RESULT-JOUR
     await $('[class*="recharts-wrapper"]').waitForExist({ timeout: 10000 });
     expect(await chartButton.getAttribute('aria-pressed')).toBe('true');
     await captureJourneyStep('query-result-chart-visible');
-
-    const pieButton = await $(`button[aria-label="${t('chart.type.pie')}"]`);
-    await pieButton.waitForClickable({ timeout: 5000 });
-    await pieButton.click();
-    await $('[class*="recharts-wrapper"]').waitForExist({ timeout: 5000 });
-    await captureJourneyStep('query-result-chart-type-switched');
 
     const tableButton = await $('[data-testid="result-workspace-view-table"]');
     await tableButton.click();

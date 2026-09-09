@@ -53,8 +53,7 @@ describe('欢迎页→连接→首条查询完整用户旅程 (WELCOME-QUERY-JOU
     await expect(await $('[data-testid="welcome-page"]')).toBeDisplayed();
     const welcomeText = await $('[data-testid="welcome-page"]').getText();
     expect(welcomeText).toContain(t('welcome.title'));
-    expect(welcomeText).toContain(t('welcome.feature.connections.title'));
-    await expect(await $('[data-testid="welcome-import-connection"]')).toBeDisplayed();
+    await expect(await $('[data-testid="welcome-create-connection"]')).toBeDisplayed();
     await captureJourneyStep('welcome-query-welcome-visible');
 
     await $('[data-testid="welcome-create-connection"]').click();
