@@ -188,6 +188,13 @@ describe('locales', () => {
     ).toContain('unexpected token');
   });
 
+  it('contains snippet management keys in en and zh-CN', () => {
+    expect(getTranslation('en', 'query.snippets.add')).toBe('Add Snippet');
+    expect(getTranslation('zh-CN', 'query.snippets.add')).toBe('新增片段');
+    expect(getTranslation('en', 'query.snippets.builtin')).toBe('Built-in');
+    expect(getTranslation('zh-CN', 'query.snippets.builtin')).toBe('内置');
+  });
+
   it('zh-CN and en differ on at least some user-facing strings', () => {
     expect(zhCN['common.ok']).not.toBe(en['common.ok']);
     expect(zhCN['settings.language']).not.toBe(en['settings.language']);
