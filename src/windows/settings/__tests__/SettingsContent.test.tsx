@@ -506,6 +506,12 @@ describe('SettingsContent', () => {
     await waitFor(() => expect(updateSettingsMock).toHaveBeenCalledWith({ defaultPageSize: 100 }));
   });
 
+  it('renders SqlSnippetsCard in editor section', async () => {
+    render(<SettingsContent initialSection="editor" />);
+    expect(screen.getByText('query.snippets')).toBeInTheDocument();
+    expect(screen.getByText('query.snippets.add')).toBeInTheDocument();
+  });
+
   it('covers editor and behavior sections', async () => {
     render(<SettingsContent />);
     await waitForSettingsLoad();

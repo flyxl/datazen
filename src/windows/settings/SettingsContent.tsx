@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { ThemedIcon } from '../../components/ThemedIcon';
 import { Button } from '../../components/ui/Button';
@@ -10,7 +10,6 @@ import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { settingsCommands } from '../../commands/settings';
 import type { AppSettings } from '../../types';
-import { exportEditorSettings, importEditorSettings } from '../../lib/settingsExport';
 import { BUILTIN_LOCALES, BUILTIN_LOCALE_LABELS, getExtensionLocales } from '../../locales';
 import { UpdateSection } from './UpdateSection';
 import { PluginSettingsSection } from './PluginSettingsSection';
@@ -28,6 +27,7 @@ import {
 import { SectionTitle, SettingRow, ToggleRow } from './settingsUi';
 import { DataCleanupSection } from './DataCleanupSection';
 import { AppearanceSection } from './AppearanceSection';
+import { SqlSnippetsCard } from './SqlSnippetsCard';
 import { parseSettingsSection, SETTINGS_SECTIONS, type SettingsSection } from './settingsSections';
 import { useExtension, sqlEditorEnhancedEP } from '@datazen/extension-points';
 
@@ -126,32 +126,6 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
   };
 
   const enhanced = useExtension(sqlEditorEnhancedEP);
-
-  const [importExportStatus, setImportExportStatus] = useState<string | null>(null);
-
-  const handleExportSettings = useCallback(async () => {
-    try {
-      const jsonStr = exportEditorSettings(localSettings);
-      await navigator.clipboard.writeText(jsonStr);
-      setImportExportStatus(t('query.exportSettingsSuccess'));
-      setTimeout(() => setImportExportStatus(null), 3000);
-    } catch (e) {
-      setImportExportStatus(String(e));
-    }
-  }, [localSettings, t]);
-
-  const handleImportSettings = useCallback(async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      const imported = importEditorSettings(text);
-      await updateSettings(imported);
-      setImportExportStatus(t('query.importSettingsSuccess'));
-      setTimeout(() => setImportExportStatus(null), 3000);
-    } catch {
-      setImportExportStatus(t('query.importSettingsInvalid'));
-      setTimeout(() => setImportExportStatus(null), 3000);
-    }
-  }, [updateSettings, t]);
 
   const updatePluginSetting = async (extensionId: string, key: string, value: unknown) => {
     const currentPluginSettings =
@@ -538,22 +512,10 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                 </div>
               </div>
 
-              <div className="space-y-3 rounded-lg border border-edge bg-surface-alt p-3.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
-                    {t('query.settingsImportExport')}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="secondary" size="sm" onClick={handleExportSettings}>
-                    {t('query.exportSettings')}
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={handleImportSettings}>
-                    {t('query.importSettings')}
-                  </Button>
-                </div>
-                {importExportStatus && <p className="text-xs text-accent">{importExportStatus}</p>}
-              </div>
+              <SqlSnippetsCard
+                settings={settings}
+                onUpdateSnippets={(snippets) => updateField('sqlSnippets', snippets)}
+              />
 
               {renderSectionContributions('editor')}
             </>
