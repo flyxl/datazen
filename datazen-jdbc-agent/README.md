@@ -1,34 +1,32 @@
 # datazen-jdbc-agent
 
-External Java Agent for DataZen generic JDBC connections.
+External Java Agent for DataZen generic JDBC (monorepo path `datazen-jdbc-agent/`).
 
-- **Java:** 17+ (21 recommended for CI)
-- **Protocol:** JSON-RPC 2.0 over stdio (one JSON object per line)
-- **Contract:** [`packages/drivers/jdbc/protocol.md`](../packages/drivers/jdbc/protocol.md)
-- **Plan:** [`docs/todo/jdbc-agent-implementation-plan.md`](../docs/todo/jdbc-agent-implementation-plan.md)
+- **Java:** 17+
+- **Protocol:** JSON-RPC 2.0 over stdio — [`packages/drivers/jdbc/protocol.md`](../packages/drivers/jdbc/protocol.md)
+- **Deps:** none (pure JDK). Vendor JDBC JARs supplied at `session.open` via `jars[]`.
 
-## Phase 0 status
-
-Implements `agent.hello` only. Session / query / meta land in later phases.
-
-## Build & run (JDK 17+)
+## Build
 
 ```bash
-mkdir -p build/classes
-javac -encoding UTF-8 -source 17 -target 17 -d build/classes \
-  src/main/java/com/datazen/jdbcagent/AgentMain.java
-
-jar cfe build/datazen-jdbc-agent.jar com.datazen.jdbcagent.AgentMain \
-  -C build/classes .
-
-echo '{"jsonrpc":"2.0","id":1,"method":"agent.hello","params":{"hostVersion":"dev","protocolVersion":1}}' \
-  | java -jar build/datazen-jdbc-agent.jar
+./datazen-jdbc-agent/build.sh
+# → datazen-jdbc-agent/build/datazen-jdbc-agent.jar
 ```
 
-Expected stdout line contains `"protocolVersion":1` and `"agentVersion":"0.1.0"`.
+## Run (smoke)
 
-## Design notes
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"agent.hello","params":{"hostVersion":"dev","protocolVersion":1}}' \
+  | java -jar datazen-jdbc-agent/build/datazen-jdbc-agent.jar
+```
 
-- stdout = protocol only; stderr = logs
-- Do not bundle vendor JDBC JARs; Host passes jar paths in `session.open` (Phase 2)
-- Single shared Agent process per DataZen app (Host-side policy)
+With H2 (download h2.jar yourself):
+
+```bash
+# session.open with jars:["/path/h2.jar"], driverClass:"org.h2.Driver",
+# url:"jdbc:h2:mem:test;DB_CLOSE_DELAY=-1", user:"sa", password:""
+```
+
+## Methods
+
+`agent.hello` / `agent.shutdown` / `session.*` / `meta.*` / `query.*` / `exec.update` / `tx.*`

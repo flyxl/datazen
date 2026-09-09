@@ -4,12 +4,13 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 
 /**
- * Phase 0 JDBC Agent: stdio JSON-RPC loop with {@code agent.hello} only.
+ * JDBC Agent entry: JSON-RPC 2.0 over stdio (one object per line).
  *
- * <p>No third-party JSON library - minimal hand parsing for hello/shutdown so
- * the jar stays dependency-free until Phase 2 (session/query).
+ * <p>stdout = protocol only; stderr = diagnostics. Driver {@code System.out}
+ * is redirected to stderr at startup.
  */
 public final class AgentMain {
 
@@ -19,8 +20,15 @@ public final class AgentMain {
   private AgentMain() {}
 
   public static void main(String[] args) {
-    PrintStream protocolOut = System.out;
+    // Prevent JDBC drivers from corrupting the protocol stream.
+    System.setOut(System.err);
+
+    PrintStream protocolOut =
+        new PrintStream(new FileOutputStreamAdapter(FileDescriptor.out), true, StandardCharsets.UTF_8);
     PrintStream log = System.err;
+
+    SessionManager sessions = new SessionManager();
+    JsonRpcLoop loop = new JsonRpcLoop(sessions, protocolOut, log);
 
     try {
       BufferedReader in =
@@ -35,129 +43,40 @@ public final class AgentMain {
           log.println("[jdbc-agent] skip non-json line");
           continue;
         }
-        handleLine(line, protocolOut, log);
+        if (loop.handleLine(line)) {
+          // shutdown requested
+          break;
+        }
       }
     } catch (Exception e) {
       log.println("[jdbc-agent] fatal: " + e.getMessage());
       System.exit(1);
+    } finally {
+      sessions.closeAll();
     }
   }
 
-  static void handleLine(String line, PrintStream out, PrintStream log) {
-    String id = extractJsonValue(line, "id");
-    String method = extractJsonString(line, "method");
-    if (method == null) {
-      writeError(out, id, -32600, "Invalid Request: missing method", "internal");
-      return;
-    }
-    switch (method) {
-      case "agent.hello" -> writeHello(out, id);
-      case "agent.shutdown" -> {
-        writeResult(out, id, "{\"ok\":true}");
-        System.exit(0);
-      }
-      default -> writeError(
-          out,
-          id,
-          -32601,
-          "Method not found: " + method + " (Phase 0 agent implements agent.hello only)",
-          "internal");
-    }
-  }
+  /** Minimal adapter so we can keep a dedicated protocol stdout after System.setOut. */
+  private static final class FileOutputStreamAdapter extends java.io.OutputStream {
+    private final java.io.FileOutputStream inner;
 
-  static void writeHello(PrintStream out, String id) {
-    String result =
-        "{"
-            + "\"agentVersion\":\""
-            + AGENT_VERSION
-            + "\","
-            + "\"protocolVersion\":"
-            + PROTOCOL_VERSION
-            + ","
-            + "\"capabilities\":[\"jdbc\",\"session\",\"query.stream\",\"tx\"]"
-            + "}";
-    writeResult(out, id, result);
-  }
+    FileOutputStreamAdapter(java.io.FileDescriptor fd) {
+      this.inner = new java.io.FileOutputStream(fd);
+    }
 
-  static void writeResult(PrintStream out, String id, String resultJson) {
-    String idField = id == null ? "null" : id;
-    out.println(
-        "{\"jsonrpc\":\"2.0\",\"id\":" + idField + ",\"result\":" + resultJson + "}");
-    out.flush();
-  }
+    @Override
+    public void write(int b) throws java.io.IOException {
+      inner.write(b);
+    }
 
-  static void writeError(
-      PrintStream out, String id, int code, String message, String category) {
-    String idField = id == null ? "null" : id;
-    String safe = message.replace("\\", "\\\\").replace("\"", "\\\"");
-    out.println(
-        "{\"jsonrpc\":\"2.0\",\"id\":"
-            + idField
-            + ",\"error\":{"
-            + "\"code\":"
-            + code
-            + ",\"message\":\""
-            + safe
-            + "\","
-            + "\"data\":{\"category\":\""
-            + category
-            + "\"}}}");
-    out.flush();
-  }
+    @Override
+    public void write(byte[] b, int off, int len) throws java.io.IOException {
+      inner.write(b, off, len);
+    }
 
-  static String extractJsonValue(String json, String key) {
-    String pattern = "\"" + key + "\"";
-    int i = json.indexOf(pattern);
-    if (i < 0) {
-      return null;
+    @Override
+    public void flush() throws java.io.IOException {
+      inner.flush();
     }
-    int colon = json.indexOf(':', i + pattern.length());
-    if (colon < 0) {
-      return null;
-    }
-    int j = colon + 1;
-    while (j < json.length() && Character.isWhitespace(json.charAt(j))) {
-      j++;
-    }
-    if (j >= json.length()) {
-      return null;
-    }
-    if (json.charAt(j) == '"') {
-      int end = json.indexOf('"', j + 1);
-      if (end < 0) {
-        return null;
-      }
-      return "\"" + json.substring(j + 1, end) + "\"";
-    }
-    int end = j;
-    while (end < json.length()) {
-      char c = json.charAt(end);
-      if (c == ',' || c == '}' || Character.isWhitespace(c)) {
-        break;
-      }
-      end++;
-    }
-    return json.substring(j, end);
-  }
-
-  static String extractJsonString(String json, String key) {
-    String pattern = "\"" + key + "\"";
-    int i = json.indexOf(pattern);
-    if (i < 0) {
-      return null;
-    }
-    int colon = json.indexOf(':', i + pattern.length());
-    if (colon < 0) {
-      return null;
-    }
-    int q1 = json.indexOf('"', colon + 1);
-    if (q1 < 0) {
-      return null;
-    }
-    int q2 = json.indexOf('"', q1 + 1);
-    if (q2 < 0) {
-      return null;
-    }
-    return json.substring(q1 + 1, q2);
   }
 }
