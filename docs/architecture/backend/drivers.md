@@ -107,3 +107,22 @@ Driver 通过 inventory 在编译期注册。构建时由 registry / build tooli
 独立 Driver 推荐使用独立 Git repository，通过 DataZen registry 的 `source: "path"` 在本地宿主中调试，发布后可使用固定 commit 的 Git dependency。
 
 详见 [独立驱动开发指南](../../development/independent-driver-development.zh-CN.md)。
+
+## 8. 外部 Agent 驱动（JDBC）
+
+少数生态只有 **JDBC** 客户端时，DataZen 不嵌入 JVM，而是：
+
+```text
+JdbcDriver (Rust, packages/drivers/jdbc)
+    ↓ stdio JSON-RPC 2.0
+datazen-jdbc-agent (Java 17+, monorepo 子目录)
+    ↓ URLClassLoader + java.sql
+vendor JDBC JAR (用户自备)
+```
+
+约束：
+
+- 仍实现同一套 `DatabaseDriver`；Host 无平行连接 API
+- 默认 SKU / Basic **不**打包 JRE 与 Agent
+- 连接参数走 `ConnectionConfig.options`（`jdbcUrl`、`jars`、`driverClass`、`props`）
+- 协议与生命周期见 `packages/drivers/jdbc/protocol.md`、[JDBC 指南](../../features/jdbc-guide.md)
