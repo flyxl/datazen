@@ -23,8 +23,9 @@ pub trait SyncSourceAdapter: Send + Sync {
         schema: &TableSchema,
         full_types: Option<&HashMap<String, String>>,
     ) -> IRTable {
+        let effective_pks = schema.effective_primary_keys();
         let pk_set: std::collections::HashSet<&str> =
-            schema.primary_keys.iter().map(|s| s.as_str()).collect();
+            effective_pks.iter().map(|s| s.as_str()).collect();
 
         let columns = schema
             .columns
@@ -42,7 +43,7 @@ pub trait SyncSourceAdapter: Send + Sync {
         IRTable {
             name: schema.table_name.clone(),
             columns,
-            primary_keys: schema.primary_keys.clone(),
+            primary_keys: effective_pks,
             table_options: None,
         }
     }
