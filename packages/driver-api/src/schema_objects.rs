@@ -5,6 +5,8 @@
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjectKind {
+    Table,
+    View,
     Function,
     Procedure,
     Trigger,
@@ -15,6 +17,8 @@ pub enum ObjectKind {
 impl ObjectKind {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Table => "table",
+            Self::View => "view",
             Self::Function => "function",
             Self::Procedure => "procedure",
             Self::Trigger => "trigger",
@@ -25,6 +29,8 @@ impl ObjectKind {
 
     pub fn parse(raw: &str) -> Option<Self> {
         match raw.to_ascii_lowercase().as_str() {
+            "table" => Some(Self::Table),
+            "view" => Some(Self::View),
             "function" => Some(Self::Function),
             "procedure" => Some(Self::Procedure),
             "trigger" => Some(Self::Trigger),
@@ -173,6 +179,13 @@ pub fn object_ddl_sql(
         None => ident.clone(),
     };
     match (family, kind) {
+        ("postgresql", ObjectKind::View) => Some(format!(
+            "SELECT pg_get_viewdef(c.oid, true) AS ddl \
+             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+             WHERE c.relname = {} AND n.nspname = {}",
+            sql_string(name),
+            sql_string(schema.unwrap_or("public")),
+        )),
         ("postgresql", ObjectKind::Function | ObjectKind::Procedure) => Some(format!(
             "SELECT pg_get_functiondef(p.oid) AS ddl \
              FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
@@ -222,9 +235,19 @@ pub fn object_ddl_sql(
                  GROUP BY t.oid, t.typtype, t.typbasetype, t.typtypmod"
             ))
         }
+        ("mysql", ObjectKind::Table) => Some(format!("SHOW CREATE TABLE {qualified}")),
+        ("mysql", ObjectKind::View) => Some(format!("SHOW CREATE VIEW {qualified}")),
         ("mysql", ObjectKind::Function) => Some(format!("SHOW CREATE FUNCTION {ident}")),
         ("mysql", ObjectKind::Procedure) => Some(format!("SHOW CREATE PROCEDURE {ident}")),
         ("mysql", ObjectKind::Trigger) => Some(format!("SHOW CREATE TRIGGER {ident}")),
+        ("sqlite", ObjectKind::Table) => Some(format!(
+            "SELECT sql AS ddl FROM sqlite_master WHERE type = 'table' AND name = {}",
+            sql_string(name),
+        )),
+        ("sqlite", ObjectKind::View) => Some(format!(
+            "SELECT sql AS ddl FROM sqlite_master WHERE type = 'view' AND name = {}",
+            sql_string(name),
+        )),
         ("sqlite", ObjectKind::Trigger) => Some(format!(
             "SELECT sql AS ddl FROM sqlite_master WHERE type = 'trigger' AND name = {}",
             sql_string(name),
@@ -362,6 +385,24 @@ mod tests {
     fn object_kind_parse() {
         assert_eq!(ObjectKind::parse("FUNCTION"), Some(ObjectKind::Function));
         assert_eq!(ObjectKind::parse("nope"), None);
+    }
+
+    #[test]
+    fn object_kind_parses_table_and_view() {
+        assert_eq!(ObjectKind::parse("table"), Some(ObjectKind::Table));
+        assert_eq!(ObjectKind::parse("view"), Some(ObjectKind::View));
+        assert_eq!(ObjectKind::Table.as_str(), "table");
+        assert_eq!(ObjectKind::View.as_str(), "view");
+
+        assert!(object_ddl_sql("mysql", ObjectKind::Table, "users", None).is_some());
+        assert!(object_ddl_sql(
+            "postgresql",
+            ObjectKind::View,
+            "active_users",
+            Some("public")
+        )
+        .is_some());
+        assert!(object_ddl_sql("sqlite", ObjectKind::Table, "users", None).is_some());
     }
 
     #[test]

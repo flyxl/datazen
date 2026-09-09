@@ -33,7 +33,7 @@ pub fn schema_object_command_definitions() -> Vec<DriverCommandDefinition> {
                 "properties": {
                     "kind": {
                         "type": "string",
-                        "enum": ["function", "procedure", "trigger", "sequence", "type"],
+                        "enum": ["table", "view", "function", "procedure", "trigger", "sequence", "type"],
                         "description": "Object kind to list"
                     }
                 },
@@ -70,7 +70,7 @@ pub fn schema_object_command_definitions() -> Vec<DriverCommandDefinition> {
                 "properties": {
                     "kind": {
                         "type": "string",
-                        "enum": ["function", "procedure", "trigger", "sequence", "type"],
+                        "enum": ["table", "view", "function", "procedure", "trigger", "sequence", "type"],
                         "description": "Object kind"
                     },
                     "name": { "type": "string", "description": "Object name" },
