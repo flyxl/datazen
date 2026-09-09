@@ -12,8 +12,8 @@ describe('queryToolbarExpandedMinWidth', () => {
       databases: [],
       contextPath: [],
     });
-    // 32 padding + 6 buttons * 84 + 5 gaps + 8 separator
-    expect(width).toBe(32 + 6 * 84 + 5 * 8 + 8);
+    // 32 padding + 7 buttons * 84 + 6 gaps + 8 separator
+    expect(width).toBe(32 + 7 * 84 + 6 * 8 + 8);
   });
 
   it('adds commit and rollback buttons when in transaction', () => {

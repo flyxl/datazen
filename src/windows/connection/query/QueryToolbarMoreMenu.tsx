@@ -26,6 +26,7 @@ export interface QueryToolbarMoreMenuProps {
   supportsExplain?: boolean;
   explainDisabled?: boolean;
   formatDisabled?: boolean;
+  refreshCompletionDisabled?: boolean;
   inTransaction?: boolean;
   txBusy?: boolean;
   onFormat: () => void;
@@ -71,6 +72,7 @@ export function QueryToolbarMoreMenu({
   supportsExplain = false,
   explainDisabled = false,
   formatDisabled = false,
+  refreshCompletionDisabled = false,
   inTransaction = false,
   txBusy = false,
   onFormat,
@@ -174,6 +176,7 @@ export function QueryToolbarMoreMenu({
               testId="more-menu-refresh-completion"
               label={t('query.refreshCompletion')}
               icon={<RefreshCw className="h-3.5 w-3.5" />}
+              disabled={refreshCompletionDisabled}
               onClick={() => runAction(onRefreshCompletion)}
             />
           )}

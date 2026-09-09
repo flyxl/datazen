@@ -44,7 +44,7 @@ export function queryToolbarExpandedMinWidth(options: {
   /** @deprecated Explain moved to overflow menu; kept for call-site compatibility. */
   supportsExplain?: boolean;
 }): number {
-  const buttonCount = 6 + (options.inTransaction ? 2 : 0);
+  const buttonCount = 7 + (options.inTransaction ? 2 : 0);
 
   let contextWidth = 0;
   if (options.hasContextSelectors) {

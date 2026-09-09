@@ -1,5 +1,5 @@
-import { useCallback, type MutableRefObject, type Ref } from 'react';
-import { Bookmark, Check, Clock, Loader2, Play, Sparkles, Undo2 } from 'lucide-react';
+import { useCallback, useState, type MutableRefObject, type Ref } from 'react';
+import { Bookmark, Check, Clock, Loader2, Play, Save, Sparkles, Undo2 } from 'lucide-react';
 import { ToolbarShell } from '../../../components/ui/ToolbarShell';
 import { ToolbarButton } from '../../../components/ui/ToolbarButton';
 import { SqlEditor } from '../../../components/SqlEditor';
@@ -190,6 +190,7 @@ export function QueryEditorSection({
         s.settings.pluginSettings?.['sql-editor-pro']) as Record<string, unknown> | undefined,
   );
   const bindParamPanelEnabled = editorExtensionSettings?.bindParamPanel !== false;
+  const [isRefreshingCompletion, setIsRefreshingCompletion] = useState(false);
 
   /**
    * Prefer the editor's own selection-aware formatter (§4.2); `onFormat` stays
@@ -204,14 +205,19 @@ export function QueryEditorSection({
   }, [editorRef, onFormat]);
 
   const handleRefreshCompletion = useCallback(async () => {
-    if (!dbSessionId) return;
-    invalidateSchemaCache(dbSessionId);
-    metadataCache.invalidateSession(dbSessionId);
-    if (selectedDatabase) {
-      await useSchemaStore.getState().loadTables(selectedDatabase, dbSessionId);
+    if (!dbSessionId || isRefreshingCompletion) return;
+    setIsRefreshingCompletion(true);
+    try {
+      invalidateSchemaCache(dbSessionId);
+      metadataCache.invalidateSession(dbSessionId);
+      if (selectedDatabase) {
+        await useSchemaStore.getState().loadTables(selectedDatabase, dbSessionId);
+      }
+      onCompletionRefreshed(t('query.refreshCompletionDone'));
+    } finally {
+      setIsRefreshingCompletion(false);
     }
-    onCompletionRefreshed(t('query.refreshCompletionDone'));
-  }, [dbSessionId, selectedDatabase, onCompletionRefreshed, t]);
+  }, [dbSessionId, selectedDatabase, isRefreshingCompletion, onCompletionRefreshed, t]);
 
   const handleEditorContextMenu = useCallback(
     (e: MouseEvent, sqlText: string) => {
@@ -288,6 +294,15 @@ export function QueryEditorSection({
         <ExecutionStrategySelect compact={compactToolbar} disabled={running} />
         <ToolbarButton
           compact={compactToolbar}
+          variant="ghost"
+          label={t('common.save')}
+          icon={<Save className="h-3.5 w-3.5" />}
+          onClick={() => onOpenAddFavoriteDialog(sql)}
+          disabled={running || !sql.trim()}
+          {...tid('editor-save-button')}
+        />
+        <ToolbarButton
+          compact={compactToolbar}
           variant={nl2sqlVisible ? 'secondary' : 'ghost'}
           label={t('nl2sql.title')}
           icon={<Sparkles className="h-3.5 w-3.5" />}
@@ -299,6 +314,7 @@ export function QueryEditorSection({
           supportsExplain={supportsExplain}
           explainDisabled={running || !sql.trim()}
           formatDisabled={running || !sql.trim()}
+          refreshCompletionDisabled={isRefreshingCompletion}
           inTransaction={inTransaction}
           txBusy={txBusy}
           onFormat={handleFormatClick}
@@ -330,8 +346,11 @@ export function QueryEditorSection({
               onClick={() => void onRollbackTx()}
               disabled={running || txBusy}
             />
-            <span className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent">
-              TX
+            <span
+              className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent"
+              title={t('query.inTransaction')}
+            >
+              {compactToolbar ? 'TX' : t('query.inTransaction')}
             </span>
           </>
         )}
@@ -342,6 +361,25 @@ export function QueryEditorSection({
             title={t('settings.safeMode')}
           >
             {compactToolbar ? 'Safe' : t('settings.safeMode')}
+          </span>
+        )}
+        {!compactToolbar && (
+          <span className="shrink-0 whitespace-nowrap text-[11px] text-fg-muted">
+            {isMac ? '⌘+Enter' : 'Ctrl+Enter'} {t('query.execute')}
+          </span>
+        )}
+        {executionViewModel.rowCount != null && (
+          <span className="shrink-0 whitespace-nowrap text-[11px] text-fg-muted">
+            {compactToolbar
+              ? `${executionViewModel.rowCount} ${t('common.rows')}`
+              : t('query.historyRows', { count: executionViewModel.rowCount })}
+          </span>
+        )}
+        {executionViewModel.affectedRows != null && (
+          <span className="shrink-0 whitespace-nowrap text-[11px] text-fg-muted">
+            {compactToolbar
+              ? `${executionViewModel.affectedRows} ${t('query.affectedRows')}`
+              : t('query.rowsAffectedCount', { count: executionViewModel.affectedRows })}
           </span>
         )}
         {executionTimeMs != null && (
