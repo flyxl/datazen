@@ -16,10 +16,17 @@ import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** sessionId → JDBC connection + open cursors. One connection per session (MVP). */
+/**
+ * sessionId → JDBC connection + open cursors.
+ *
+ * <p>When HikariCP is on the classpath (default agent build), connections are
+ * borrowed from a shared pool keyed by url+user+jars. Otherwise falls back to
+ * one dedicated connection per session.
+ */
 final class SessionManager {
 
   private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
+  private final PoolRegistry pools = new PoolRegistry();
 
   String open(String requestLine) throws Exception {
     String url = JsonLite.extractString(requestLine, "url");
@@ -43,9 +50,7 @@ final class SessionManager {
 
     ClassLoader parent = ClassLoader.getSystemClassLoader();
     URLClassLoader loader =
-        urls.isEmpty()
-            ? null
-            : new URLClassLoader(urls.toArray(new URL[0]), parent);
+        urls.isEmpty() ? null : new URLClassLoader(urls.toArray(new URL[0]), parent);
 
     Properties props = new Properties();
     if (user != null) {
@@ -58,22 +63,47 @@ final class SessionManager {
       props.setProperty(e.getKey(), e.getValue());
     }
 
+    boolean usePool = PoolRegistry.hikariAvailable();
+    if (propsMap != null && "false".equalsIgnoreCase(propsMap.getOrDefault("pool.enabled", "true"))) {
+      usePool = false;
+    }
+    if ("false".equalsIgnoreCase(String.valueOf(JsonLite.extractString(requestLine, "poolEnabled")))) {
+      usePool = false;
+    }
+
     Connection conn;
+    String poolKey = null;
     try {
+      Driver driver = null;
       if (driverClass != null && !driverClass.isBlank() && loader != null) {
         Class<?> cls = Class.forName(driverClass, true, loader);
         Object inst = cls.getDeclaredConstructor().newInstance();
         if (!(inst instanceof Driver)) {
           throw AgentException.driver("class is not java.sql.Driver: " + driverClass);
         }
-        Driver driver = (Driver) inst;
+        driver = (Driver) inst;
+      }
+
+      if (usePool && driver != null) {
+        poolKey = PoolRegistry.poolKey(url, user, jars);
+        PoolRegistry.PoolSettings settings =
+            PoolRegistry.PoolSettings.fromRequest(requestLine, propsMap);
+        ClassLoader prev = Thread.currentThread().getContextClassLoader();
+        try {
+          if (loader != null) {
+            Thread.currentThread().setContextClassLoader(loader);
+          }
+          conn = pools.borrow(poolKey, driver, loader, url, props, settings);
+          loader = null; // owned by pool
+        } finally {
+          Thread.currentThread().setContextClassLoader(prev);
+        }
+      } else if (driver != null) {
         conn = driver.connect(url, props);
         if (conn == null) {
           throw AgentException.connect("Driver.connect returned null for url");
         }
       } else if (loader != null) {
-        // Try ServiceLoader-style: scan jars for Driver implementations is heavy;
-        // fall back to DriverManager with context classloader.
         Thread.currentThread().setContextClassLoader(loader);
         conn = java.sql.DriverManager.getConnection(url, props);
       } else {
@@ -89,10 +119,21 @@ final class SessionManager {
       throw AgentException.driver(e.getMessage() != null ? e.getMessage() : e.getClass().getName());
     }
 
-    conn.setAutoCommit(true);
+    try {
+      conn.setAutoCommit(true);
+    } catch (SQLException e) {
+      try {
+        conn.close();
+      } catch (SQLException ignored) {
+      }
+      if (poolKey != null) {
+        pools.releaseRef(poolKey);
+      }
+      throw AgentException.connect(e.getMessage() != null ? e.getMessage() : "setAutoCommit failed");
+    }
     String id = "s-" + UUID.randomUUID();
-    sessions.put(id, new Session(id, conn, loader));
-    return "{\"sessionId\":" + JsonLite.quote(id) + "}";
+    sessions.put(id, new Session(id, conn, loader, poolKey));
+    return "{\"sessionId\":" + JsonLite.quote(id) + ",\"pooled\":" + (poolKey != null) + "}";
   }
 
   void close(String sessionId) throws AgentException {
@@ -101,7 +142,7 @@ final class SessionManager {
     }
     Session s = sessions.remove(sessionId);
     if (s != null) {
-      s.close();
+      s.close(pools);
     }
   }
 
@@ -109,9 +150,10 @@ final class SessionManager {
     for (String id : sessions.keySet()) {
       Session s = sessions.remove(id);
       if (s != null) {
-        s.close();
+        s.close(pools);
       }
     }
+    pools.closeAll();
   }
 
   String metaDatabases(String line) throws Exception {
@@ -254,20 +296,7 @@ final class SessionManager {
     ResultSet rs = st.getResultSet();
     String columns = TypeCodec.columnsJson(rs.getMetaData());
     List<String> rows = TypeCodec.readRows(rs, maxRows);
-    boolean hasMore = !rs.isAfterLast() && rows.size() >= maxRows;
-    // Check one more next to know hasMore accurately
-    if (rows.size() >= maxRows) {
-      hasMore = true;
-    } else {
-      hasMore = false;
-    }
-    // Re-evaluate: if we stopped because maxRows, try peek
-    if (rows.size() == maxRows) {
-      hasMore = rs.next();
-      if (hasMore) {
-        // put cursor back is hard; keep hasMore true and leave RS open
-      }
-    }
+    boolean hasMore = rows.size() >= maxRows;
 
     if (hasMore) {
       String cursorId = "c-" + UUID.randomUUID();
@@ -317,11 +346,7 @@ final class SessionManager {
       } catch (SQLException ignored) {
       }
     }
-    return "{\"rows\":"
-        + TypeCodec.rowsJson(rows)
-        + ",\"hasMore\":"
-        + hasMore
-        + "}";
+    return "{\"rows\":" + TypeCodec.rowsJson(rows) + ",\"hasMore\":" + hasMore + "}";
   }
 
   void queryClose(String line) throws Exception {
@@ -413,17 +438,21 @@ final class SessionManager {
   private static final class Session {
     final String id;
     final Connection conn;
+    /** Non-null only for non-pooled sessions (owns the loader). */
     final URLClassLoader loader;
+    /** Non-null when borrowed from {@link PoolRegistry}. */
+    final String poolKey;
     final ConcurrentHashMap<String, Cursor> cursors = new ConcurrentHashMap<>();
     final ConcurrentHashMap<String, Statement> statements = new ConcurrentHashMap<>();
 
-    Session(String id, Connection conn, URLClassLoader loader) {
+    Session(String id, Connection conn, URLClassLoader loader, String poolKey) {
       this.id = id;
       this.conn = conn;
       this.loader = loader;
+      this.poolKey = poolKey;
     }
 
-    void close() {
+    void close(PoolRegistry pools) {
       for (Cursor c : cursors.values()) {
         try {
           c.rs.close();
@@ -440,7 +469,9 @@ final class SessionManager {
         conn.close();
       } catch (Exception ignored) {
       }
-      if (loader != null) {
+      if (poolKey != null) {
+        pools.releaseRef(poolKey);
+      } else if (loader != null) {
         try {
           loader.close();
         } catch (Exception ignored) {
