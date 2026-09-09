@@ -1,11 +1,13 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useQueryExecutionGate } from '../query/useQueryExecutionGate';
+import { useOnboardingStore } from '../../../stores/onboardingStore';
 import { usePanelStore } from '../../../stores/panelStore';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { useConnectionStore } from '../../../stores/connectionStore';
 import { useActiveConnectionStore } from '../../../stores/activeConnectionStore';
 import { EMPTY_QUERY_EXEC } from '../../../stores/queryExecActions';
+import type { StatementResult } from '../../../types';
 
 // ── Mocks ───────────────────────────────────────────────────────
 
@@ -162,6 +164,7 @@ function renderGate(overrides: Partial<Parameters<typeof useQueryExecutionGate>[
 describe('[tester] useQueryExecutionGate', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useOnboardingStore.getState().resetOnboarding();
     setupConnectionStore();
     setupPanelStore('p1', 'SELECT 1');
     useSettingsStore.setState({
@@ -438,5 +441,87 @@ describe('[tester] useQueryExecutionGate', () => {
       expect(usePanelStore.getState().executeSelection).not.toHaveBeenCalled();
       expect(result.current.executionStrategyAskModal).not.toBeNull();
     });
+  });
+
+  it('marks onboarding query executed when step 2 query returns rows', async () => {
+    useOnboardingStore.getState().startOnboarding('sample_sqlite');
+    expect(useOnboardingStore.getState().step).toBe(2);
+
+    const mockResult: StatementResult = {
+      sql: 'SELECT 1',
+      columns: [{ name: 'id', dataType: 'integer', nullable: false }],
+      rows: [[1]],
+      executionTimeMs: 1,
+    };
+
+    usePanelStore.setState({
+      executeQuery: vi.fn().mockImplementation(async () => {
+        usePanelStore.setState({
+          queryExec: new Map([
+            [
+              'p1',
+              {
+                ...EMPTY_QUERY_EXEC,
+                sql: 'SELECT 1',
+                results: [mockResult],
+                activeResultIdx: 0,
+                error: null,
+              },
+            ],
+          ]),
+        });
+      }),
+      executeSelection: vi.fn().mockResolvedValue(undefined),
+      queryExec: new Map([['p1', { ...EMPTY_QUERY_EXEC, sql: 'SELECT 1' }]]),
+    });
+
+    const { result } = renderGate();
+    await act(async () => {
+      await result.current.runExecute('full');
+    });
+
+    expect(useOnboardingStore.getState().queryExecuted).toBe(true);
+    expect(useOnboardingStore.getState().step).toBe(3);
+  });
+
+  it('does not mark onboarding query executed when query returns no rows', async () => {
+    useOnboardingStore.getState().startOnboarding('sample_sqlite');
+
+    usePanelStore.setState({
+      executeQuery: vi.fn().mockImplementation(async () => {
+        usePanelStore.setState({
+          queryExec: new Map([
+            [
+              'p1',
+              {
+                ...EMPTY_QUERY_EXEC,
+                sql: 'DELETE FROM t WHERE 1=0',
+                results: [
+                  {
+                    sql: 'DELETE FROM t WHERE 1=0',
+                    columns: [],
+                    rows: [],
+                    rowsAffected: 0,
+                    executionTimeMs: 1,
+                  },
+                ],
+                activeResultIdx: 0,
+                error: null,
+              },
+            ],
+          ]),
+        });
+      }),
+      executeSelection: vi.fn().mockResolvedValue(undefined),
+      queryExec: new Map([['p1', { ...EMPTY_QUERY_EXEC, sql: 'DELETE FROM t WHERE 1=0' }]]),
+    });
+
+    const { result } = renderGate({ sql: 'DELETE FROM t WHERE 1=0' });
+    await act(async () => {
+      await result.current.runExecute('full');
+    });
+
+    expect(useOnboardingStore.getState().queryExecuted).toBe(false);
+    expect(useOnboardingStore.getState().step).toBe(2);
   });
 });

@@ -13,10 +13,11 @@ import { TitleBar } from '../../components/TitleBar';
 import { MenuBar } from '../../components/MenuBar';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { Button } from '../../components/ui/Button';
+import { ResultMessageDialog } from '../../components/ui/ResultMessageDialog';
 import { sampleDataCommands } from '../../commands/sampleData';
 import { useI18n } from '../../hooks/useI18n';
 import { openConnectionShareDialog } from '../../lib/connectionShare';
-import { openNewConnectionDialog } from '../../lib/windowManager';
+import { openNewConnectionDialog, PENDING_CONNECTION_KEY } from '../../lib/windowManager';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useOnboardingStore } from '../../stores/onboardingStore';
 
@@ -41,6 +42,8 @@ function FeatureItem({ icon: Icon, title, description }: Readonly<FeatureItemPro
 export function WelcomePage() {
   const { t } = useI18n();
   const [sampleLoading, setSampleLoading] = useState(false);
+  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
+  const [errorDialogText, setErrorDialogText] = useState('');
 
   const features: FeatureItemProps[] = [
     {
@@ -71,11 +74,23 @@ export function WelcomePage() {
     try {
       const config = await sampleDataCommands.initSampleDatabase();
       await useConnectionStore.getState().fetchConnections();
+      localStorage.setItem(PENDING_CONNECTION_KEY, JSON.stringify({ connectionId: config.id }));
       useOnboardingStore.getState().startOnboarding(config.id);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setErrorDialogText(message);
+      setErrorDialogOpen(true);
     } finally {
       setSampleLoading(false);
     }
   }, [sampleLoading]);
+
+  const handleCreateConnection = useCallback(() => {
+    if (useOnboardingStore.getState().status === 'not_started') {
+      useOnboardingStore.getState().startOnboarding();
+    }
+    openNewConnectionDialog();
+  }, []);
 
   const handleSkipOnboarding = useCallback(() => {
     useOnboardingStore.getState().skipOnboarding();
@@ -138,7 +153,7 @@ export function WelcomePage() {
               <Button
                 variant="secondary"
                 data-testid="welcome-create-connection"
-                onClick={() => openNewConnectionDialog()}
+                onClick={handleCreateConnection}
               >
                 <Plus className="h-4 w-4" />
                 {t('welcome.createConnection')}
@@ -173,6 +188,13 @@ export function WelcomePage() {
           </div>
         </div>
       </div>
+
+      <ResultMessageDialog
+        open={errorDialogOpen}
+        kind="error"
+        message={errorDialogText}
+        onClose={() => setErrorDialogOpen(false)}
+      />
     </div>
   );
 }

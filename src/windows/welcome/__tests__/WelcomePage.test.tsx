@@ -3,6 +3,7 @@ import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { WelcomePage } from '../WelcomePage';
 import { useOnboardingStore } from '../../../stores/onboardingStore';
 import { sampleDataCommands } from '../../../commands/sampleData';
+import { PENDING_CONNECTION_KEY } from '../../../lib/windowManager';
 
 const openNewConnectionDialogMock = vi.fn();
 const openConnectionShareDialogMock = vi.fn();
@@ -27,6 +28,7 @@ vi.mock('../../../stores/connectionStore', () => ({
 }));
 
 vi.mock('../../../lib/windowManager', () => ({
+  PENDING_CONNECTION_KEY: 'datazen:pending-connection',
   openNewConnectionDialog: (...args: unknown[]) => openNewConnectionDialogMock(...args),
 }));
 
@@ -52,6 +54,11 @@ afterEach(() => {
 });
 
 describe('WelcomePage', () => {
+  beforeEach(() => {
+    useOnboardingStore.getState().resetOnboarding();
+    localStorage.clear();
+  });
+
   it('renders app icon, feature overview, and connection CTAs', () => {
     render(<WelcomePage />);
     expect(screen.getByTestId('welcome-page')).toBeInTheDocument();
@@ -71,10 +78,13 @@ describe('WelcomePage', () => {
     expect(screen.getByText('welcome.importConnectionHint')).toBeInTheDocument();
   });
 
-  it('create-connection CTA opens new connection dialog', () => {
+  it('create-connection CTA opens new connection dialog and starts onboarding step 1', () => {
     render(<WelcomePage />);
+    expect(useOnboardingStore.getState().status).toBe('not_started');
     fireEvent.click(screen.getByTestId('welcome-create-connection'));
     expect(openNewConnectionDialogMock).toHaveBeenCalledOnce();
+    expect(useOnboardingStore.getState().status).toBe('active');
+    expect(useOnboardingStore.getState().step).toBe(1);
   });
 
   it('import-connection CTA opens connection share dialog in import mode', () => {
@@ -88,6 +98,7 @@ describe('WelcomePage', () => {
 describe('WelcomePage Onboarding', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     fetchConnectionsMock.mockResolvedValue(undefined);
     useOnboardingStore.getState().resetOnboarding();
   });
@@ -99,7 +110,7 @@ describe('WelcomePage Onboarding', () => {
     expect(screen.getByTestId('welcome-skip-onboarding')).toBeInTheDocument();
   });
 
-  it('initiates sample database when clicking quick start', async () => {
+  it('initiates sample database when clicking quick start and queues auto-connect', async () => {
     const mockConn = { id: 'sample_sqlite', name: 'Sample E-Commerce' };
     vi.mocked(sampleDataCommands.initSampleDatabase).mockResolvedValueOnce(mockConn);
 
@@ -108,9 +119,29 @@ describe('WelcomePage Onboarding', () => {
 
     await waitFor(() => {
       expect(sampleDataCommands.initSampleDatabase).toHaveBeenCalled();
+      expect(fetchConnectionsMock).toHaveBeenCalled();
       expect(useOnboardingStore.getState().status).toBe('active');
+      expect(useOnboardingStore.getState().step).toBe(2);
       expect(useOnboardingStore.getState().sampleConnectionId).toBe('sample_sqlite');
+      expect(localStorage.getItem(PENDING_CONNECTION_KEY)).toBe(
+        JSON.stringify({ connectionId: 'sample_sqlite' }),
+      );
     });
+  });
+
+  it('shows error dialog when sample database init fails', async () => {
+    vi.mocked(sampleDataCommands.initSampleDatabase).mockRejectedValueOnce(
+      new Error('sample init failed'),
+    );
+
+    render(<WelcomePage />);
+    fireEvent.click(screen.getByTestId('welcome-open-sample'));
+
+    await waitFor(() => {
+      expect(screen.getByText('sample init failed')).toBeInTheDocument();
+    });
+    expect(useOnboardingStore.getState().status).toBe('not_started');
+    expect(localStorage.getItem(PENDING_CONNECTION_KEY)).toBeNull();
   });
 
   it('marks onboarding as skipped when clicking skip link', () => {

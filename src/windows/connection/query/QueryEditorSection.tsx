@@ -16,6 +16,7 @@ import { QueryExecutionStatus } from '../../../components/query/QueryExecutionSt
 import { Nl2SqlPanel } from '../../../components/ai/Nl2SqlPanel';
 import { sqlEditorEnhancedEP, useExtension } from '@datazen/extension-points';
 import { useI18n } from '../../../hooks/useI18n';
+import { useOnboardingStore } from '../../../stores/onboardingStore';
 import { usePlatform } from '../../../hooks/usePlatform';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { tid } from '../../../lib/tid';
@@ -219,6 +220,14 @@ export function QueryEditorSection({
     }
   }, [dbSessionId, selectedDatabase, isRefreshingCompletion, onCompletionRefreshed, t]);
 
+  const handleToggleNl2sql = useCallback(() => {
+    const ob = useOnboardingStore.getState();
+    if (ob.status === 'active' && ob.step === 3) {
+      ob.markAiOrChartExplored();
+    }
+    onToggleNl2sql();
+  }, [onToggleNl2sql]);
+
   const handleEditorContextMenu = useCallback(
     (e: MouseEvent, sqlText: string) => {
       const selection = editorRef.current?.getSelection() ?? '';
@@ -306,7 +315,7 @@ export function QueryEditorSection({
           variant={nl2sqlVisible ? 'secondary' : 'ghost'}
           label={t('nl2sql.title')}
           icon={<Sparkles className="h-3.5 w-3.5" />}
-          onClick={onToggleNl2sql}
+          onClick={handleToggleNl2sql}
         />
         <QueryToolbarMoreMenu
           compact={compactToolbar}

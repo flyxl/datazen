@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type MutableRefObject } from 'react';
 import { queryCommands } from '../../../commands/query';
+import { useOnboardingStore } from '../../../stores/onboardingStore';
 import { usePanelStore } from '../../../stores/panelStore';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { useConnectionStore } from '../../../stores/connectionStore';
@@ -182,11 +183,21 @@ export function useQueryExecutionGate({
           await storeExecuteQuery(panelId, boundPayload);
         }
       }
-      const err = usePanelStore.getState().queryExec.get(panelId)?.error ?? null;
+      const execState = usePanelStore.getState().queryExec.get(panelId);
+      const err = execState?.error ?? null;
       if (err) {
         await maybeOfferAbortedDialog(err);
       } else {
         await refreshTxStatus();
+        const activeResult = execState?.results?.[execState.activeResultIdx ?? 0];
+        const hasRows =
+          (activeResult?.rows?.length ?? 0) > 0 || (activeResult?.rowsAffected ?? 0) > 0;
+        if (hasRows) {
+          const ob = useOnboardingStore.getState();
+          if (ob.status === 'active' && ob.step === 2) {
+            ob.markQueryExecuted();
+          }
+        }
       }
       onExecutionComplete();
     },
