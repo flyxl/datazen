@@ -1,49 +1,47 @@
-# Task 8 Report — TableStructureEditor refactor
+# Task 8 Report — Onboarding continuous lifecycle journey tests
 
 **Status:** Complete
 
 ## Summary
 
-Refactored `TableStructureEditor` to consume driver UI config (`DB_REGISTRY.structureEditor`), runtime caps (`getStructureCapabilities`), and DDL planning (`planTableStructureChanges`). Removed all Host-side PG SQL generation (`PG_TYPES`, `generateCreateSQL`, `generateAlterSQL`).
+Added `onboardingJourney.test.tsx` covering the full first-run wizard state machine: store-level lifecycle, premature skip, DOM-level guide bar interactions, end-to-end WelcomePage-to-completion journey, and persistence recovery after module reload.
 
 ## Changes
 
 | Area | Detail |
 |------|--------|
-| `TableStructureEditor.tsx` | Parallel load schema + caps on open; draft columns + indexes; preview via plan IPC; execute statements one-by-one with stop-on-failure + partial count message |
-| `structure/` subcomponents | Wired `StructureColumnTable`, `StructureIndexTable`, `StructurePlanPreview` |
-| `SqlConnectionView.tsx` | Passes `databaseType` into editor |
-| `draftDefaults.ts` | Pure helpers for empty/default draft rows |
-| `controlHints.ts` | Single i18n key `structEditor.capDisabled` for disabled controls |
-| Locales (`en`, `zh-CN`) | Added cap/disabled, indexes section, partial execute, not-supported keys |
+| `onboardingJourney.test.tsx` | Store lifecycle: `not_started` → `active` step 2 → query → explore → `completed` |
+| Skip path | Premature skip at step 2 leaves `skipped`; subsequent `markQueryExecuted` does not reactivate |
+| DOM guide bar | Quick-run button → step 3 → complete button → guide bar unmounts |
+| End-to-end journey | `WelcomePage` click `welcome-open-sample` → `initSampleDatabase` → `startOnboarding('sample_sqlite')` → render `OnboardingGuideBar` → quick run → explore → complete → unmount |
+| Persistence recovery | After `vi.resetModules()`, dynamically re-import **both** `onboardingStore` and `OnboardingGuideBar` so the component binds to the freshly hydrated store from `localStorage`; completed/skipped statuses do not re-open the wizard |
 
-## Behavior checklist
+## Test coverage
 
-- [x] Open: schema + caps + meta in parallel (alter) / caps + defaults (create)
-- [x] Draft includes columns and indexes on same screen
-- [x] Controls disabled via `capEnabled` + tooltip reason
-- [x] `reorderColumn === false` disables drag reorder
-- [x] Preview → `planTableStructureChanges` with sql/summary/risk
-- [x] Execute one statement at a time; stop on failure; show executed count on partial failure
-- [x] No Host PG SQL hardcoding
-- [x] `buildStructureChangeRequest` helper + vitest (pre-existing)
-- [x] Missing/disabled `structureEditor` → clear message, no crash
-- [x] E2E selectors preserved (`new_table`, `column_name`, preview button text)
+| Test | Validates |
+|------|-----------|
+| Store lifecycle | Full state transitions without DOM |
+| Premature skip | Clean `skipped` terminal state |
+| DOM guide bar journey | Button clicks drive step 2 → 3 → completion |
+| End-to-end multi-step | WelcomePage CTA through guide bar DOM to completion |
+| Persistence (completed) | Module reload + guide bar stays hidden |
+| Persistence (skipped) | Module reload + guide bar stays hidden |
 
 ## Tests
 
 ```bash
-npx vitest run src/lib/structureEditor/   # 5 passed
+npx vitest run src/windows/connection/__tests__/onboardingJourney.test.tsx
+→ 6 passed
 ```
 
 ## Concerns / follow-ups
 
-- Task 9 (IndexesView opt-out / entry guards) not in scope; create-table entry in sidebar still shown for all SQL types — guard belongs to Task 9.
-- Create-mode default column template uses generic `id` + PK checkbox; dialect-specific serial types come from driver plan, not Host defaults.
-- No dedicated vitest for `draftDefaults.ts` (trivial); mapping covered by `buildStructureChangeRequest.test.ts`.
+- End-to-end test simulates WelcomePage and OnboardingGuideBar as sequential renders (not a single ConnectionPage mount); ConnectionPage integration is covered separately in `ConnectionPageOnboarding.test.tsx`.
+- Chart/AI explore step is asserted via `markAiOrChartExplored()` store call; full chart/AI DOM interaction is out of scope for this journey file.
+- Persistence tests must remain last in the file (or re-import store in `beforeEach`) because `vi.resetModules()` invalidates top-level static imports.
 
 ## Commit
 
 ```
-refactor(ui): TableStructureEditor consumes driver caps and plan IPC
+test(onboarding): expand end-to-end journey test and fix dynamic module hydration test
 ```
