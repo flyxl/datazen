@@ -97,6 +97,14 @@ const pack = {
   'welcome.openSampleDb': '打开示例 SQLite (快速体验)',
   'welcome.openSampleDbHint': '零凭据即开即用，内置完整的真实电商业务示例数据集。',
   'welcome.skipOnboarding': '跳过向导直接使用',
+  'onboarding.badge': '向导 {step}/3',
+  'onboarding.step2.message':
+    '第 2 步：运行首条查询 — 已预置销售额统计语句，点击下方 [▶ 运行 (⌘+Enter)] 查出数据。',
+  'onboarding.step2.action': '一键运行并推进 →',
+  'onboarding.step3.message':
+    '第 3 步：数据洞察 — 查询已成功！点击结果栏右上角 [📊 生成图表] 或工具栏 [✨ AI 助手]。',
+  'onboarding.step3.action': '完成向导 ✓',
+  'onboarding.skip': '跳过向导',
   'welcome.importConnectionHint':
     '支持从 TablePlus、Navicat、DataGrip、DBeaver、DBX 或 DataZen 导出文件导入。',
   'common.newGroup': '新建分组',
