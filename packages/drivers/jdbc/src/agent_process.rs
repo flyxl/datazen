@@ -1,6 +1,9 @@
 //! Lifecycle manager for the external JDBC Java Agent process.
 //!
-//! Phase 1: spawn, stdio JSON-RPC, hello handshake, restart-once, shutdown.
+//! Spawn, stdio JSON-RPC, hello handshake, restart-once, shutdown.
+//! Launch paths come from [`crate::settings::resolved_launch_config`] so
+//! Settings / env changes apply on the next ensure_running (or immediately
+//! when the config epoch advances).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -18,6 +21,7 @@ use tracing::{debug, error, info, warn};
 use crate::protocol::{
     methods, validate_hello_result, JsonRpcRequest, JsonRpcResponse, RpcError, PROTOCOL_VERSION,
 };
+use crate::settings;
 
 /// Default RPC round-trip timeout.
 const RPC_TIMEOUT: Duration = Duration::from_secs(30);
@@ -48,6 +52,14 @@ impl Default for AgentLaunchConfig {
     }
 }
 
+impl PartialEq for AgentLaunchConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.java_path == other.java_path
+            && self.agent_jar == other.agent_jar
+            && self.idle_timeout_secs == other.idle_timeout_secs
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentState {
     Stopped,
@@ -65,7 +77,10 @@ struct LiveAgent {
 
 /// Manages a single shared Java Agent child process for the whole app.
 pub struct AgentProcessManager {
-    config: AgentLaunchConfig,
+    /// Fallback config when settings module is not used (tests).
+    fallback_config: AgentLaunchConfig,
+    /// Epoch observed at last successful start.
+    started_epoch: AtomicU64,
     state: Mutex<AgentState>,
     live: Mutex<Option<LiveAgent>>,
     next_id: AtomicU64,
@@ -76,7 +91,8 @@ pub struct AgentProcessManager {
 impl AgentProcessManager {
     pub fn new(config: AgentLaunchConfig) -> Arc<Self> {
         Arc::new(Self {
-            config,
+            fallback_config: config,
+            started_epoch: AtomicU64::new(0),
             state: Mutex::new(AgentState::Stopped),
             live: Mutex::new(None),
             next_id: AtomicU64::new(1),
@@ -84,12 +100,33 @@ impl AgentProcessManager {
         })
     }
 
+    /// Process-wide shared manager (one agent for all JDBC connections).
+    pub fn global() -> Arc<Self> {
+        static GLOBAL: std::sync::OnceLock<Arc<AgentProcessManager>> = std::sync::OnceLock::new();
+        GLOBAL
+            .get_or_init(|| AgentProcessManager::new(AgentLaunchConfig::default()))
+            .clone()
+    }
+
     pub async fn state(&self) -> AgentState {
         *self.state.lock().await
     }
 
-    pub fn config(&self) -> &AgentLaunchConfig {
-        &self.config
+    pub fn config(&self) -> AgentLaunchConfig {
+        // Prefer host-synced settings; tests that pass a custom path via
+        // `new()` keep using fallback when settings were never applied.
+        let resolved = settings::resolved_launch_config();
+        if resolved != AgentLaunchConfig::default() || settings::config_epoch() > 1 {
+            resolved
+        } else if self.fallback_config != AgentLaunchConfig::default() {
+            self.fallback_config.clone()
+        } else {
+            resolved
+        }
+    }
+
+    fn launch_config(&self) -> AgentLaunchConfig {
+        self.config()
     }
 
     fn alloc_id(&self) -> u64 {
@@ -114,21 +151,26 @@ impl AgentProcessManager {
                 return Ok(candidate);
             }
         }
-        // Fall back to PATH lookup.
         Ok(PathBuf::from(if cfg!(windows) { "java.exe" } else { "java" }))
     }
 
     /// Ensure the agent is running and has completed `agent.hello`.
+    /// Restarts if plugin settings epoch advanced since last start.
     pub async fn ensure_running(self: &Arc<Self>) -> Result<(), String> {
+        let epoch = settings::config_epoch();
         {
             let st = *self.state.lock().await;
             if st == AgentState::Running {
-                // Cheap liveness: if we still hold a live handle, OK.
                 let live = self.live.lock().await;
-                if live.is_some() {
+                if live.is_some() && self.started_epoch.load(Ordering::SeqCst) == epoch {
                     return Ok(());
                 }
             }
+        }
+        // Settings changed or process dead: recycle.
+        if self.started_epoch.load(Ordering::SeqCst) != epoch {
+            let _ = self.kill_inner().await;
+            *self.state.lock().await = AgentState::Stopped;
         }
         self.start_and_hello().await
     }
@@ -142,10 +184,12 @@ impl AgentProcessManager {
             *st = AgentState::Starting;
         }
 
+        let epoch = settings::config_epoch();
         let result = self.spawn_inner().await;
         match result {
             Ok(()) => {
                 *self.state.lock().await = AgentState::Running;
+                self.started_epoch.store(epoch, Ordering::SeqCst);
                 self.allow_restart.store(true, Ordering::SeqCst);
                 Ok(())
             }
@@ -158,11 +202,12 @@ impl AgentProcessManager {
     }
 
     async fn spawn_inner(self: &Arc<Self>) -> Result<(), String> {
-        let java = Self::resolve_java(&self.config)?;
-        let jar = &self.config.agent_jar;
+        let config = self.launch_config();
+        let java = Self::resolve_java(&config)?;
+        let jar = &config.agent_jar;
         if !jar.is_file() {
             return Err(format!(
-                "JDBC Agent jar not found: {} (place datazen-jdbc-agent.jar or set path in Settings)",
+                "JDBC Agent jar not found: {} (set path in Settings → Extensions → JDBC, or DATAZEN_JDBC_AGENT_JAR)",
                 jar.display()
             ));
         }
@@ -189,7 +234,6 @@ impl AgentProcessManager {
             .ok_or_else(|| "agent stdout missing".to_string())?;
         let stderr = child.stderr.take();
 
-        // Drain stderr to tracing so it never blocks the pipe.
         if let Some(stderr) = stderr {
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stderr).lines();
@@ -211,7 +255,6 @@ impl AgentProcessManager {
             });
         }
 
-        // Reader task: demux stdout lines to pending oneshots.
         let mgr = Arc::clone(self);
         tokio::spawn(async move {
             let mut lines = BufReader::new(stdout).lines();
@@ -256,7 +299,6 @@ impl AgentProcessManager {
                     }
                 }
             }
-            // EOF: fail all pending and mark dead.
             warn!(target: "jdbc_agent", "agent stdout closed");
             let mut live = mgr.live.lock().await;
             if let Some(mut l) = live.take() {
@@ -268,9 +310,8 @@ impl AgentProcessManager {
             *mgr.state.lock().await = AgentState::Failed;
         });
 
-        // Hello handshake.
         let hello_params = serde_json::json!({
-            "hostVersion": self.config.host_version,
+            "hostVersion": config.host_version,
             "protocolVersion": PROTOCOL_VERSION,
         });
         let result = timeout(
@@ -286,17 +327,15 @@ impl AgentProcessManager {
         Ok(())
     }
 
-    /// Send a JSON-RPC request and wait for the matching response id.
     pub async fn rpc(
         self: &Arc<Self>,
         method: &str,
         params: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
         self.ensure_running().await?;
-        match self.rpc_unlocked(method, Some(params)).await {
+        match self.rpc_unlocked(method, Some(params.clone())).await {
             Ok(v) => Ok(v),
             Err(e) => {
-                // One automatic restart if the process died.
                 if self.maybe_restart_after_error(&e).await {
                     self.ensure_running().await?;
                     return self
@@ -358,7 +397,6 @@ impl AgentProcessManager {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => Err(RpcError::Protocol("RPC waiter dropped".into())),
             Err(_) => {
-                // Timed out: remove pending slot.
                 let mut live = self.live.lock().await;
                 if let Some(l) = live.as_mut() {
                     l.pending.remove(&id);
@@ -377,14 +415,12 @@ impl AgentProcessManager {
             for (_, tx) in l.pending.drain() {
                 let _ = tx.send(Err(RpcError::Protocol("agent shutting down".into())));
             }
-            // Best-effort graceful shutdown RPC is skipped if stdin already broken.
             let _ = l.child.kill().await;
             let _ = l.child.wait().await;
         }
         Ok(())
     }
 
-    /// Graceful shutdown: try `agent.shutdown`, then kill.
     pub async fn shutdown(&self) -> Result<(), String> {
         {
             let live = self.live.lock().await;
@@ -405,7 +441,6 @@ impl AgentProcessManager {
 
 impl Drop for AgentProcessManager {
     fn drop(&mut self) {
-        // Best-effort: if Tokio runtime is still alive, spawn kill; otherwise rely on kill_on_drop.
         if let Ok(live) = self.live.try_lock() {
             if live.is_some() {
                 error!(target: "jdbc_agent", "AgentProcessManager dropped while agent still live; child kill_on_drop should reap");
@@ -436,7 +471,6 @@ mod tests {
         assert_eq!(mgr.state().await, AgentState::Failed);
     }
 
-    /// Integration: spawn a tiny Python mock agent if `python3` exists.
     #[tokio::test]
     async fn mock_agent_hello_and_rpc() {
         let python = which_python();
@@ -474,8 +508,6 @@ for line in sys.stdin:
         )
         .unwrap();
 
-        // Use python as "java" and script path encoded via a wrapper jar path trick:
-        // We override by pointing java_path to a shell wrapper.
         let wrapper = dir.join("fake_java.sh");
         #[cfg(unix)]
         {
@@ -496,19 +528,23 @@ for line in sys.stdin:
             return;
         }
 
-        // agent_jar must exist as a file; create dummy.
         let dummy_jar = dir.join("dummy.jar");
         std::fs::write(&dummy_jar, b"dummy").unwrap();
 
+        // Seed settings so resolved_launch_config matches the test wrapper.
+        crate::settings::apply_plugin_settings(&serde_json::json!({
+            "javaPath": wrapper.to_string_lossy(),
+            "agentJarPath": dummy_jar.to_string_lossy(),
+            "idleTimeoutSecs": 60,
+        }));
+
         let mgr = AgentProcessManager::new(AgentLaunchConfig {
-            java_path: Some(wrapper),
-            agent_jar: dummy_jar,
+            java_path: Some(wrapper.clone()),
+            agent_jar: dummy_jar.clone(),
             idle_timeout_secs: 60,
             host_version: "test".into(),
         });
 
-        // spawn uses `java -jar jar` — our wrapper ignores args and runs python.
-        // Command is: fake_java.sh -jar dummy.jar — shell script still execs python.
         mgr.ensure_running().await.expect("hello");
         assert_eq!(mgr.state().await, AgentState::Running);
 
