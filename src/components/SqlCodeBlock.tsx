@@ -1,15 +1,19 @@
 import { useEffect, useRef } from 'react';
 import { EditorView, lineNumbers } from '@codemirror/view';
-import { EditorState, Transaction } from '@codemirror/state';
+import { Compartment, EditorState, Transaction } from '@codemirror/state';
 import { sql, PostgreSQL, MySQL, MariaSQL, SQLite, StandardSQL } from '@codemirror/lang-sql';
 import type { SQLDialect } from '@codemirror/lang-sql';
 import {
   editorSyntaxHighlighting,
   readEditorColorsFromElement,
+  applySqlSyntaxPreset,
+  sqlPropertyNameHighlighting,
   type EditorColorContract,
 } from '../lib/themeEditorColors';
+import { useSettingsStore } from '../stores/settingsStore';
 
-function makeTheme(dark: boolean, colors: EditorColorContract) {
+function makeTheme(dark: boolean, colors: EditorColorContract & { propertyName?: string }) {
+  const propertyNameColor = colors.propertyName ?? (dark ? '#61afef' : '#2563eb');
   return EditorView.theme(
     {
       '&': {
@@ -21,6 +25,9 @@ function makeTheme(dark: boolean, colors: EditorColorContract) {
       '.cm-content': {
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
         padding: '12px 0',
+      },
+      '.cm-sql-property-name, .cm-sql-property-name *': {
+        color: `${propertyNameColor} !important`,
       },
       '.cm-gutters': {
         backgroundColor: dark ? '#111827' : '#f1f5f9',
@@ -49,18 +56,29 @@ function resolveDialect(dialect: string): SQLDialect {
   return dialectMap[dialect] ?? StandardSQL;
 }
 
+function codeBlockThemeExtensions(dark: boolean, sqlSyntaxTheme?: string) {
+  const baseColors = readEditorColorsFromElement();
+  const colors = applySqlSyntaxPreset(baseColors, sqlSyntaxTheme, dark);
+  return [
+    editorSyntaxHighlighting(colors, dark),
+    makeTheme(dark, colors),
+    sqlPropertyNameHighlighting(),
+  ];
+}
+
 function codeBlockExtensions(
   dark: boolean,
   sqlDialect: SQLDialect,
   readOnly: boolean,
+  sqlSyntaxTheme?: string,
+  themeCompartment?: Compartment,
   onDocChange?: (code: string) => void,
 ) {
-  const colors = readEditorColorsFromElement();
+  const themeExtensions = codeBlockThemeExtensions(dark, sqlSyntaxTheme);
   const extensions = [
     lineNumbers(),
     sql({ dialect: sqlDialect }),
-    editorSyntaxHighlighting(colors, dark),
-    makeTheme(dark, colors),
+    themeCompartment ? themeCompartment.of(themeExtensions) : themeExtensions,
   ];
   if (readOnly) {
     return [EditorState.readOnly.of(true), EditorView.editable.of(false), ...extensions];
@@ -90,9 +108,11 @@ interface SqlCodeBlockProps {
 export function SqlCodeBlock({ code, dialect = 'postgresql', onChange }: SqlCodeBlockProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const themeCompartment = useRef(new Compartment());
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const readOnly = !onChange;
+  const sqlSyntaxTheme = useSettingsStore((s) => s.settings.sqlSyntaxTheme);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -101,8 +121,13 @@ export function SqlCodeBlock({ code, dialect = 'postgresql', onChange }: SqlCode
 
     const state = EditorState.create({
       doc: code,
-      extensions: codeBlockExtensions(dark, sqlDialect, readOnly, (next) =>
-        onChangeRef.current?.(next),
+      extensions: codeBlockExtensions(
+        dark,
+        sqlDialect,
+        readOnly,
+        sqlSyntaxTheme,
+        themeCompartment.current,
+        (next) => onChangeRef.current?.(next),
       ),
     });
     const view = new EditorView({ state, parent: containerRef.current });
@@ -111,10 +136,16 @@ export function SqlCodeBlock({ code, dialect = 'postgresql', onChange }: SqlCode
     const observer = new MutationObserver(() => {
       const nowDark = document.documentElement.classList.contains('dark');
       const doc = view.state.doc.toString();
+      const currentTheme = useSettingsStore.getState().settings.sqlSyntaxTheme;
       const newState = EditorState.create({
         doc,
-        extensions: codeBlockExtensions(nowDark, sqlDialect, readOnly, (next) =>
-          onChangeRef.current?.(next),
+        extensions: codeBlockExtensions(
+          nowDark,
+          sqlDialect,
+          readOnly,
+          currentTheme,
+          themeCompartment.current,
+          (next) => onChangeRef.current?.(next),
         ),
       });
       view.setState(newState);
@@ -128,6 +159,16 @@ export function SqlCodeBlock({ code, dialect = 'postgresql', onChange }: SqlCode
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount once; code synced below
   }, [dialect, readOnly]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    const dark = document.documentElement.classList.contains('dark');
+    view.dispatch({
+      effects: themeCompartment.current.reconfigure(codeBlockThemeExtensions(dark, sqlSyntaxTheme)),
+      annotations: Transaction.addToHistory.of(false),
+    });
+  }, [sqlSyntaxTheme]);
 
   useEffect(() => {
     const view = viewRef.current;

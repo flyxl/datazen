@@ -72,6 +72,9 @@ const pack = {
   'keymap.action.formatSql': 'Format SQL',
   'settings.fontSize': 'Font Size',
   'settings.fontFamily': 'Font Family',
+  'settings.sqlSyntaxTheme': 'SQL Syntax Theme',
+  'settings.sqlSyntaxThemeHint':
+    'Color scheme for SQL keywords, strings, and comments. "Default" follows the active application theme.',
   'settings.behavior': 'Behavior',
   'settings.dataCleanup.title': 'History cleanup',
   'settings.dataCleanup.description':

@@ -70,6 +70,8 @@ const pack = {
   'keymap.action.formatSql': '格式化 SQL',
   'settings.fontSize': '字号',
   'settings.fontFamily': '字体',
+  'settings.sqlSyntaxTheme': 'SQL 语法配色',
+  'settings.sqlSyntaxThemeHint': 'SQL 关键字、字符串和注释的配色方案。选择"默认"将跟随应用主题。',
   'settings.behavior': '行为',
   'settings.dataCleanup.title': '历史数据清理',
   'settings.dataCleanup.description': '清理本机保存的 SQL 查询历史与工作流执行记录。',

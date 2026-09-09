@@ -23,6 +23,7 @@ export const THEME_TOKENS = [
   '--c-fg-muted',
   // Accent & status
   '--c-accent',
+  '--c-accent-deep',
   '--c-success',
   '--c-warning',
   '--c-danger',

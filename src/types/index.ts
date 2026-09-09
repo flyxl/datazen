@@ -298,6 +298,8 @@ export interface AppSettings {
   sqlExecutionStrategy?: SqlExecutionStrategy;
   /** §6.4 User-defined SQL snippets, merged after the built-in library. */
   sqlSnippets?: Array<{ id: string; prefix: string; descriptionKey: string; template: string }>;
+  /** SQL syntax highlighting color preset ('default' follows the active theme pack). */
+  sqlSyntaxTheme?: string;
 }
 
 export type FilterOperator =

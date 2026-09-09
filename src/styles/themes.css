@@ -23,11 +23,12 @@
 
   /* Accent & status */
   --c-accent: #2563eb;
+  --c-accent-deep: #1e40af;
   --c-success: #059669;
   --c-warning: #d97706;
   --c-danger: #dc2626;
-  /* Query execute / run button — themed so SQL run can match a design accent */
-  --c-query-run: #2563eb;
+  /* Query execute / run button — green accent for Run action */
+  --c-query-run: #059669;
 
   /* Title bar background (TrafficLights area) */
   --c-titlebar: #e2e8f0;
@@ -82,10 +83,12 @@
 
   /* Accent & status */
   --c-accent: #60a5fa;
+  --c-accent-deep: #2563eb;
   --c-success: #34d399;
   --c-warning: #fbbf24;
   --c-danger: #f87171;
-  --c-query-run: #2563eb;
+  /* Query execute / run button — green accent for Run action */
+  --c-query-run: #34d399;
 
   /* Title bar background (TrafficLights area) */
   --c-titlebar: #111827;

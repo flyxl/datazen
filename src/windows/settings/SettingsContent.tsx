@@ -30,6 +30,8 @@ import { AppearanceSection } from './AppearanceSection';
 import { SqlSnippetsCard } from './SqlSnippetsCard';
 import { parseSettingsSection, SETTINGS_SECTIONS, type SettingsSection } from './settingsSections';
 import { useExtension, sqlEditorEnhancedEP } from '@datazen/extension-points';
+import { SQL_SYNTAX_PRESETS } from '../../lib/themeEditorColors';
+import { SqlSyntaxPreview } from '../../components/SqlSyntaxPreview';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500];
 const RESULT_LIMIT_OPTIONS = [1000, 2000, 5000, 10000, 50000];
@@ -95,6 +97,17 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
       setActiveSection(parseSettingsSection(initialSection));
     }
   }, [initialSection]);
+
+  // Track dark mode for the SQL syntax preview.
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'));
+  useEffect(() => {
+    const el = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setIsDark(el.classList.contains('dark'));
+    });
+    observer.observe(el, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     void loadSettings().then(() => {
@@ -429,6 +442,18 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                   onChange={(e) => updateField('editorFontFamily', e.target.value)}
                   className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
                 />
+              </SettingRow>
+
+              <SettingRow
+                label={t('settings.sqlSyntaxTheme')}
+                hint={t('settings.sqlSyntaxThemeHint')}
+              >
+                <Select
+                  value={settings.sqlSyntaxTheme || 'default'}
+                  options={SQL_SYNTAX_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
+                  onChange={(v) => updateField('sqlSyntaxTheme', v)}
+                />
+                <SqlSyntaxPreview themeId={settings.sqlSyntaxTheme || 'default'} dark={isDark} />
               </SettingRow>
 
               <SettingRow

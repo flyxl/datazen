@@ -27,7 +27,12 @@ import {
 } from '@codemirror/autocomplete';
 import { searchKeymap } from '@codemirror/search';
 import { lineNumbers, tooltips } from '@codemirror/view';
-import { editorSyntaxHighlighting, readEditorColorsFromElement } from '../../lib/themeEditorColors';
+import {
+  applySqlSyntaxPreset,
+  editorSyntaxHighlighting,
+  readEditorColorsFromElement,
+  sqlPropertyNameHighlighting,
+} from '../../lib/themeEditorColors';
 import {
   resolveEditorFontFamily,
   HOST_DEFAULT_EDITOR_FONT,
@@ -130,7 +135,11 @@ export const compartments = {
 /*  Theme extensions                                                           */
 /* -------------------------------------------------------------------------- */
 
-function makeEditorTheme({ dark, fontSize, fontFamily }: ThemeConfig) {
+function makeEditorTheme(
+  { dark, fontSize, fontFamily }: ThemeConfig,
+  colors: { propertyName?: string },
+) {
+  const propertyNameColor = colors.propertyName ?? (dark ? '#61afef' : '#2563eb');
   return EditorView.theme(
     {
       '&': {
@@ -140,6 +149,11 @@ function makeEditorTheme({ dark, fontSize, fontFamily }: ThemeConfig) {
       '.cm-content': {
         fontFamily: `${fontFamily}, ui-monospace, SFMono-Regular, Menlo, monospace`,
         padding: '12px 0',
+      },
+      '.cm-sql-property-name, .cm-sql-property-name *': {
+        // Syntax highlighting can render its token span inside a decoration
+        // span, so this must win on both the marker and its descendants.
+        color: `${propertyNameColor} !important`,
       },
       '.cm-activeLine': {
         backgroundColor: dark ? 'rgba(30,41,59,0.5)' : 'rgba(241,245,249,0.5)',
@@ -197,10 +211,15 @@ export function currentThemeConfig(): ThemeConfig {
   };
 }
 
-export function themeExtensions(): Extension[] {
+export function themeExtensions(sqlSyntaxTheme?: string): Extension[] {
   const config = currentThemeConfig();
-  const colors = readEditorColorsFromElement(document.documentElement);
-  return [makeEditorTheme(config), editorSyntaxHighlighting(colors, config.dark)];
+  const baseColors = readEditorColorsFromElement(document.documentElement);
+  const colors = applySqlSyntaxPreset(baseColors, sqlSyntaxTheme, config.dark);
+  return [
+    makeEditorTheme(config, colors),
+    editorSyntaxHighlighting(colors, config.dark),
+    sqlPropertyNameHighlighting(),
+  ];
 }
 
 /* -------------------------------------------------------------------------- */

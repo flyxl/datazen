@@ -115,6 +115,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
 
   const keymapPreset = useSettingsStore((s) => s.settings.keymapPreset);
   const customKeymap = useSettingsStore((s) => s.settings.customKeymap);
+  const sqlSyntaxTheme = useSettingsStore((s) => s.settings.sqlSyntaxTheme);
   const editorExtensionSettings = useSettingsStore(
     (s) =>
       (s.settings.pluginSettings?.['sql-editor-enhanced'] ??
@@ -338,7 +339,9 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     const state = EditorState.create({
       doc: value,
       extensions: [
-        ...themeExtensions(),
+        // Keep the initial theme in the same compartment that is reconfigured
+        // when the user changes the SQL syntax theme or theme pack.
+        themeCompartment.current.of(themeExtensions(sqlSyntaxTheme)),
         ...createBaseEditorExtensions(
           {
             onExecute: onExecuteRef as MutableRefObject<(() => void) | undefined>,
@@ -360,7 +363,6 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
           defaultSchema,
           defaultTable,
         }),
-        themeCompartment.current.of([]),
         sqlCompartment.current.of([]),
         // §S6-D: compartment groups in priority order
         compartments.statement.of(statementExts),
@@ -490,13 +492,25 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
       const view = viewRef.current;
       if (!view) return;
       view.dispatch({
-        effects: themeCompartment.current.reconfigure(themeExtensions()),
+        effects: themeCompartment.current.reconfigure(
+          themeExtensions(useSettingsStore.getState().settings.sqlSyntaxTheme),
+        ),
         annotations: Transaction.addToHistory.of(false),
       });
     };
     document.addEventListener('datazen:theme-pack-changed', reconfigure);
     return () => document.removeEventListener('datazen:theme-pack-changed', reconfigure);
   }, []);
+
+  // ── SQL syntax theme preset change ──────────────────────────────
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: themeCompartment.current.reconfigure(themeExtensions(sqlSyntaxTheme)),
+      annotations: Transaction.addToHistory.of(false),
+    });
+  }, [sqlSyntaxTheme]);
 
   // ── §S6-D: Reconfigure SQL compartment on schema/type change ─────
   useEffect(() => {
