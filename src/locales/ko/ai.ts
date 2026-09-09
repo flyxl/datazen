@@ -67,5 +67,16 @@ const pack = {
   'smartFilter.noFilters': '파싱된 필터 조건이 없습니다.',
   'smartFilter.parsed': '{count} 필터 조건이 구문 분석되었습니다.',
   'smartFilter.invalidColumns': 'Review these fields before filtering: {columns}',
+  'chat.egressNotice':
+    '전송하는 콘텐츠가 이 장치를 벗어나 설정된 AI 제공자에게 전달되어 처리될 수 있습니다.',
+  'chat.egressNoticeRelaxed':
+    '엄격한 데이터 전송 제한이 해제되었습니다 — 쿼리 결과, 첨부 파일, 도구 출력이 AI 제공자에게 전송될 수 있습니다.',
+  'chat.egressNoticeContext': '첨부된 @ 컨텍스트는 AI 제공자에게 전송되는 요청에 포함됩니다.',
+  'chat.draft.conflict':
+    '입력란에 작성 중인 텍스트가 있습니다. 임시 저장을 어떻게 처리하시겠습니까?',
+  'chat.draft.replace': '바꾸기',
+  'chat.draft.append': '추가하기',
+  'chat.draft.appendSeparator': '\n\n---\n\n',
+  'ai.workflows.tab': '워크플로',
 } as const;
 export default pack;

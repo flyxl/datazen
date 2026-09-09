@@ -274,5 +274,11 @@ const pack = {
   'fk.localColumn': '열',
   'fk.refTable': '참조 테이블',
   'fk.refColumn': '참조 열',
+  'schemaTree.generateSql': 'SQL 생성',
+  'schemaTree.generateSelect': 'SELECT',
+  'schemaTree.generateInsert': 'INSERT',
+  'schemaTree.generateUpdate': 'UPDATE',
+  'schemaTree.generateDelete': 'DELETE',
+  'schemaTree.generateDdl': 'DDL',
 } as const;
 export default pack;

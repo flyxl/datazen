@@ -68,5 +68,16 @@ const pack = {
   'smartFilter.noFilters': 'Условия фильтра не анализируются',
   'smartFilter.parsed': '{count} условие(я) фильтра проанализировано',
   'smartFilter.invalidColumns': 'Review these fields before filtering: {columns}',
+  'chat.egressNotice':
+    'Отправляемый контент может покидать это устройство и обрабатываться настроенным поставщиком ИИ.',
+  'chat.egressNoticeRelaxed':
+    'Строгая защита отключена — результаты запросов, вложенные файлы и выводы инструментов могут отправляться вашему поставщику ИИ.',
+  'chat.egressNoticeContext':
+    'Прикрепленный контекст @ будет включен в запрос, отправляемый поставщику ИИ.',
+  'chat.draft.conflict': 'В поле ввода есть неотправленный текст. Как поступить с черновиком?',
+  'chat.draft.replace': 'Заменить',
+  'chat.draft.append': 'Добавить',
+  'chat.draft.appendSeparator': '\n\n---\n\n',
+  'ai.workflows.tab': 'Workflows',
 } as const;
 export default pack;

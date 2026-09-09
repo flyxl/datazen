@@ -90,5 +90,7 @@ const pack = {
   'workflows.schedule.hint':
     '最短 30 秒。定期バックアップには backup/command ワークフローを使います。',
   'workflows.editor.invalidYamlField': '無効な YAML: フィールド "{field}" が無効またはありません',
+  'workflows.addToDashboard': 'ダッシュボードに追加',
+  'workflows.dashboard.defaultName': '新規ダッシュボード',
 } as const;
 export default pack;

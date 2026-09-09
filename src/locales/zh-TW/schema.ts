@@ -270,5 +270,11 @@ const pack = {
   'fk.localColumn': '本表列',
   'fk.refTable': '引用表',
   'fk.refColumn': '引用列',
+  'schemaTree.generateSql': '產生 SQL',
+  'schemaTree.generateSelect': 'SELECT',
+  'schemaTree.generateInsert': 'INSERT',
+  'schemaTree.generateUpdate': 'UPDATE',
+  'schemaTree.generateDelete': 'DELETE',
+  'schemaTree.generateDdl': 'DDL',
 } as const;
 export default pack;

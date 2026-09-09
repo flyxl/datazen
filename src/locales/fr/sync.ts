@@ -269,5 +269,46 @@ const pack = {
   'schemaDiff.limitations.noMcpDeploy':
     'No one-click deploy via MCP (may come later as high-risk tool)',
   'schemaDiff.limitations.dontShowAgain': 'Do not show this again',
+  'sync.database': 'Base de données',
+  'sync.selectDatabase': 'Sélectionner une base…',
+  'schemaDiff.source': 'Source',
+  'schemaDiff.target': 'Cible',
+  'schemaDiff.selectSource': 'Sélectionnez la source…',
+  'schemaDiff.selectTarget': 'Sélectionnez la cible…',
+  'schemaDiff.database': 'Base de données',
+  'schemaDiff.selectDatabase': 'Sélectionner une base…',
+  'schemaDiff.schema': 'Schéma',
+  'schemaDiff.selectSchema': 'Sélectionner un schéma',
+  'schemaDiff.swapEndpoints': 'Échanger source et cible',
+  'transfer.selectSource': 'Sélectionnez la source…',
+  'transfer.selectTarget': 'Sélectionnez la cible…',
+  'transfer.database': 'Base de données',
+  'transfer.selectDatabase': 'Sélectionner une base…',
+  'transfer.schema': 'Schéma',
+  'transfer.selectSchema': 'Sélectionner un schéma',
+  'transfer.swapEndpoints': 'Échanger source et cible',
+  'transfer.unsupportedPair': 'Paire non prise en charge',
+  'sync.back': 'Retour',
+  'sync.next': 'Suivant',
+  'transfer.objects.noTablesFound':
+    'Aucune table transférable trouvée dans la base de données source sélectionnée.',
+  'transfer.objects.noTablesHint':
+    'Vérifiez la connexion et la base de données source, puis relancez la détection des tables.',
+  'transfer.objects.reInspect': 'Re-détecter les tables',
+  'transfer.preview.failed': 'Échec de la génération de l’aperçu',
+  'transfer.preview.failedHint':
+    'Impossible de générer l’aperçu du transfert. Vérifiez votre configuration de mappage et réessayez.',
+  'transfer.preview.retry': 'Régénérer l’aperçu',
+  'transfer.preview.backToMapping': 'Retour au mappage',
+  'schemaDiff.back': 'Retour',
+  'schemaDiff.next': 'Suivant',
+  'schemaDiff.connectFailed': 'Échec de la connexion :',
+  'schemaDiff.selectBoth': 'Veuillez sélectionner les bases de données source et cible',
+  'schemaDiff.cannotSameDb':
+    'La source et la cible ne peuvent pas être la même base de données sur la même connexion',
+  'schemaDiff.selectDbRequired':
+    'Veuillez d’abord sélectionner les bases de données source et cible',
+  'schemaDiff.colChanged': 'Colonne modifiée',
+  'schemaDiff.identical': 'Identique',
 } as const;
 export default pack;

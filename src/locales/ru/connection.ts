@@ -196,5 +196,27 @@ const pack = {
   'connWin.home.recentPanels': 'Недавние панели',
   'connSettings.title': 'Настройки подключения',
   'connSettings.description': 'Настройте отображение и поведение для этого соединения',
+  'newConn.driverReadOnlyLocked':
+    'Заблокировано: этот драйвер базы данных доступен только для чтения',
+  'connWin.home.metrics.connections': 'Подключения',
+  'connWin.home.metrics.connected': 'Подключено',
+  'connWin.home.metrics.pinned': 'Закрепленные',
+  'connWin.home.metrics.dbTypes': 'Типы БД',
+  'connWin.home.quickStart': 'Быстрый старт',
+  'connWin.home.commonOps': 'Частые операции',
+  'connWin.home.recentQueries': 'История запросов',
+  'connWin.home.noRecentQueries': 'Истории запросов пока нет',
+  'connWin.home.aiIntegration.title': 'Интеграция с ИИ-ассистентами',
+  'connWin.home.aiIntegration.desc':
+    'DataZen нативно интегрируется с Model Context Protocol (MCP), позволяя Cursor, Claude Code, Windsurf и другим инструментам анализировать и запрашивать данные прямо в ИИ-редакторе.',
+  'connWin.home.aiIntegration.command': 'Команда запуска',
+  'connWin.home.aiIntegration.copied': 'Скопировано',
+  'connWin.home.aiIntegration.copy': 'Копировать',
+  'connWin.home.status.connected': 'Подключено',
+  'connWin.home.status.offline': 'Офлайн',
+  'connWin.home.connectNow': 'Подключиться',
+  'connWin.home.viewAll': 'Показать все',
+  'connWin.home.totalCount': 'Всего {count}',
+  'connection.dashboard.title': 'Дашборд',
 } as const;
 export default pack;

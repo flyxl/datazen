@@ -49,5 +49,8 @@ const pack = {
   'chart.splitView': 'Разделить на отдельные графики по серии',
   'chart.expandTitle': 'Предварительный просмотр диаграммы',
   'chart.collapse': 'Крах',
+  'chart.emptyResultTooltip': 'Запрос не вернул строк, невозможно построить график',
+  'chart.notChartableTooltip':
+    'В результатах не найдено числовых полей, невозможно построить график',
 } as const;
 export default pack;

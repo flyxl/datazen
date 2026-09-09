@@ -65,5 +65,14 @@ const pack = {
   'smartFilter.noFilters': '未解析到篩選條件',
   'smartFilter.parsed': '已解析 {count} 個篩選條件',
   'smartFilter.invalidColumns': 'Review these fields before filtering: {columns}',
+  'chat.egressNotice': '您發送的內容可能會離開本機，並由您設定的 AI 提供商處理。',
+  'chat.egressNoticeRelaxed':
+    '嚴格出域已關閉——查詢結果、附加檔案與工具輸出可能會發送給 AI 提供商。',
+  'chat.egressNoticeContext': '附加的 @ 上下文將包含在發往 AI 提供商的請求中。',
+  'chat.draft.conflict': '輸入框中已有未發送的文字，如何處理草稿？',
+  'chat.draft.replace': '取代',
+  'chat.draft.append': '追加',
+  'chat.draft.appendSeparator': '\n\n---\n\n',
+  'ai.workflows.tab': '工作流程',
 } as const;
 export default pack;

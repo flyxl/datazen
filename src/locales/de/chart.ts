@@ -48,5 +48,9 @@ const pack = {
   'chart.splitView': 'In separate Diagramme pro Serie aufteilen',
   'chart.expandTitle': 'Diagrammvorschau',
   'chart.collapse': 'Zusammenbruch',
+  'chart.emptyResultTooltip':
+    'Abfrage lieferte keine Zeilen zurück, Diagramm kann nicht erstellt werden',
+  'chart.notChartableTooltip':
+    'Keine numerischen Felder im Ergebnis gefunden, Diagramm kann nicht erstellt werden',
 } as const;
 export default pack;

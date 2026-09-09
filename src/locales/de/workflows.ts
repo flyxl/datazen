@@ -93,5 +93,7 @@ const pack = {
   'workflows.schedule.interval': 'Intervall (Sekunden)',
   'workflows.schedule.hint': 'Mindestens 30 Sekunden. Für Zeitjobs ein Backup-/Command-Workflow.',
   'workflows.editor.invalidYamlField': 'Ungültiges YAML: Feld «{field}» fehlt oder ist ungültig',
+  'workflows.addToDashboard': 'Zum Dashboard hinzufügen',
+  'workflows.dashboard.defaultName': 'Neues Dashboard',
 } as const;
 export default pack;

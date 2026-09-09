@@ -276,5 +276,11 @@ const pack = {
   'fk.localColumn': 'カラム',
   'fk.refTable': '参照表',
   'fk.refColumn': '参照列',
+  'schemaTree.generateSql': 'SQL 生成',
+  'schemaTree.generateSelect': 'SELECT',
+  'schemaTree.generateInsert': 'INSERT',
+  'schemaTree.generateUpdate': 'UPDATE',
+  'schemaTree.generateDelete': 'DELETE',
+  'schemaTree.generateDdl': 'DDL',
 } as const;
 export default pack;

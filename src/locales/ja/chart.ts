@@ -48,5 +48,8 @@ const pack = {
   'chart.splitView': 'シリーズごとに個別チャートに分割',
   'chart.expandTitle': 'チャートのプレビュー',
   'chart.collapse': '崩壊',
+  'chart.emptyResultTooltip': 'クエリ結果が空のため、グラフを生成できません',
+  'chart.notChartableTooltip':
+    '結果セットに数値フィールドが含まれていないため、グラフを生成できません',
 } as const;
 export default pack;

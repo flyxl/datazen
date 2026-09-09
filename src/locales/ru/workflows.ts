@@ -90,5 +90,7 @@ const pack = {
   'workflows.schedule.interval': 'Интервал (секунды)',
   'workflows.schedule.hint': 'Минимум 30 секунд. Для заданий используйте workflow backup/command.',
   'workflows.editor.invalidYamlField': 'Неверный YAML: поле «{field}» отсутствует или неверно',
+  'workflows.addToDashboard': 'Добавить на дашборд',
+  'workflows.dashboard.defaultName': 'Новый дашборд',
 } as const;
 export default pack;

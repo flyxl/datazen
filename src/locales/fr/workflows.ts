@@ -95,5 +95,7 @@ const pack = {
   'workflows.schedule.hint':
     'Minimum 30 secondes. Utilisez un workflow backup/command pour les jobs.',
   'workflows.editor.invalidYamlField': 'YAML invalide : champ « {field} » manquant ou invalide',
+  'workflows.addToDashboard': 'Ajouter au tableau de bord',
+  'workflows.dashboard.defaultName': 'Nouveau tableau de bord',
 } as const;
 export default pack;

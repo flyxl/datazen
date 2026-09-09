@@ -49,5 +49,9 @@ const pack = {
   'chart.splitView': 'Diviser en graphiques séparés par série',
   'chart.expandTitle': 'Aperçu du graphique',
   'chart.collapse': 'Effondrement',
+  'chart.emptyResultTooltip':
+    'La requête n’a retourné aucune ligne, impossible de générer le graphique',
+  'chart.notChartableTooltip':
+    'Aucun champ numérique trouvé dans le résultat, impossible de générer le graphique',
 } as const;
 export default pack;

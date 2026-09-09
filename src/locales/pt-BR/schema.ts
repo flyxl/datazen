@@ -274,5 +274,11 @@ const pack = {
   'fk.localColumn': 'Coluna',
   'fk.refTable': 'Tabela de referência',
   'fk.refColumn': 'Coluna de referência',
+  'schemaTree.generateSql': 'Gerar SQL',
+  'schemaTree.generateSelect': 'SELECT',
+  'schemaTree.generateInsert': 'INSERT',
+  'schemaTree.generateUpdate': 'UPDATE',
+  'schemaTree.generateDelete': 'DELETE',
+  'schemaTree.generateDdl': 'DDL',
 } as const;
 export default pack;

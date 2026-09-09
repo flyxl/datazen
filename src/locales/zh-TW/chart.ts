@@ -48,5 +48,7 @@ const pack = {
   'chart.splitView': '按系列拆分為獨立圖表',
   'chart.expandTitle': '圖表預覽',
   'chart.collapse': '退出放大',
+  'chart.emptyResultTooltip': '查詢結果為空，無法產生圖表',
+  'chart.notChartableTooltip': '結果集中未包含數值類型欄位，無法產生圖表',
 } as const;
 export default pack;

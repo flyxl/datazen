@@ -70,5 +70,17 @@ const pack = {
   'smartFilter.noFilters': 'Keine Filterbedingungen analysiert',
   'smartFilter.parsed': '{count} Filterbedingung(en) analysiert',
   'smartFilter.invalidColumns': 'Review these fields before filtering: {columns}',
+  'chat.egressNotice':
+    'Von Ihnen gesendete Inhalte können dieses Gerät verlassen und von Ihrem konfigurierten KI-Anbieter verarbeitet werden.',
+  'chat.egressNoticeRelaxed':
+    'Strikter Datenschutz ist deaktiviert — Abfrageergebnisse, angehängte Dateien und Tool-Ausgaben können an Ihren KI-Anbieter gesendet werden.',
+  'chat.egressNoticeContext':
+    'Der angehängte @-Kontext wird in die an Ihren KI-Anbieter gesendete Anfrage aufgenommen.',
+  'chat.draft.conflict':
+    'Im Eingabefeld befindet sich ungesendeter Text. Wie möchten Sie mit dem Entwurf verfahren?',
+  'chat.draft.replace': 'Ersetzen',
+  'chat.draft.append': 'Anhängen',
+  'chat.draft.appendSeparator': '\n\n---\n\n',
+  'ai.workflows.tab': 'Workflows',
 } as const;
 export default pack;

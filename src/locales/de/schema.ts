@@ -275,5 +275,11 @@ const pack = {
   'fk.localColumn': 'Spalte',
   'fk.refTable': 'Siehe Tabelle',
   'fk.refColumn': 'Referenzspalte',
+  'schemaTree.generateSql': 'SQL generieren',
+  'schemaTree.generateSelect': 'SELECT',
+  'schemaTree.generateInsert': 'INSERT',
+  'schemaTree.generateUpdate': 'UPDATE',
+  'schemaTree.generateDelete': 'DELETE',
+  'schemaTree.generateDdl': 'DDL',
 } as const;
 export default pack;

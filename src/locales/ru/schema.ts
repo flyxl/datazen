@@ -275,5 +275,11 @@ const pack = {
   'fk.localColumn': 'Столбец',
   'fk.refTable': 'Справочная таблица',
   'fk.refColumn': 'Ссылочный столбец',
+  'schemaTree.generateSql': 'Сгенерировать SQL',
+  'schemaTree.generateSelect': 'SELECT',
+  'schemaTree.generateInsert': 'INSERT',
+  'schemaTree.generateUpdate': 'UPDATE',
+  'schemaTree.generateDelete': 'DELETE',
+  'schemaTree.generateDdl': 'DDL',
 } as const;
 export default pack;

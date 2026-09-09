@@ -240,26 +240,27 @@ export function MigrationEndpointsBar({
   const { t } = useI18n();
   const prefix = resolveDefaultPrefix(testIdPrefix, i18nPrefix);
 
-  const resolvedSourceLabelKey = sourceLabelKey ?? (`${prefix}.source` as I18nKey);
-  const resolvedTargetLabelKey = targetLabelKey ?? (`${prefix}.target` as I18nKey);
+  const resolvedSourceLabelKey =
+    sourceLabelKey ?? (prefix === 'transfer' ? 'transfer.source' : 'sync.source');
+  const resolvedTargetLabelKey =
+    targetLabelKey ?? (prefix === 'transfer' ? 'transfer.target' : 'sync.target');
   const resolvedSourcePlaceholderKey =
     sourcePlaceholderKey ??
     (includeEmptyConnectionOption
       ? (emptyConnectionLabelKey ?? 'common.selectConnection')
-      : (`${prefix}.selectSource` as I18nKey));
+      : 'sync.selectSource');
   const resolvedTargetPlaceholderKey =
     targetPlaceholderKey ??
     (includeEmptyConnectionOption
       ? (emptyConnectionLabelKey ?? 'common.selectConnection')
-      : (`${prefix}.selectTarget` as I18nKey));
-  const resolvedDatabaseLabelKey = databaseLabelKey ?? (`${prefix}.database` as I18nKey);
+      : 'sync.selectTarget');
+  const resolvedDatabaseLabelKey = databaseLabelKey ?? 'common.database';
   const resolvedSelectDatabasePlaceholderKey =
-    selectDatabasePlaceholderKey ?? (`${prefix}.selectDatabase` as I18nKey);
-  const resolvedSchemaLabelKey = schemaLabelKey ?? (`${prefix}.schema` as I18nKey);
-  const resolvedSelectSchemaPlaceholderKey =
-    selectSchemaPlaceholderKey ?? (`${prefix}.selectSchema` as I18nKey);
-  const resolvedSwapTooltipKey = swapTooltipKey ?? (`${prefix}.swapEndpoints` as I18nKey);
-  const resolvedReadOnlyHintKey = readOnlyHintKey ?? (`${prefix}.readOnlyHint` as I18nKey);
+    selectDatabasePlaceholderKey ?? 'common.selectDatabase';
+  const resolvedSchemaLabelKey = schemaLabelKey ?? 'sync.schema';
+  const resolvedSelectSchemaPlaceholderKey = selectSchemaPlaceholderKey ?? 'sync.selectSchema';
+  const resolvedSwapTooltipKey = swapTooltipKey ?? 'sync.swapEndpoints';
+  const resolvedReadOnlyHintKey = readOnlyHintKey ?? 'transfer.readOnlyHint';
 
   const isGrid = layout === 'grid';
   const emptyConn = includeEmptyConnectionOption

@@ -48,5 +48,7 @@ const pack = {
   'chart.splitView': '시리즈별 개별 차트로 분할',
   'chart.expandTitle': '차트 미리보기',
   'chart.collapse': '무너지다',
+  'chart.emptyResultTooltip': '쿼리 결과가 비어 있어 차트를 생성할 수 없습니다.',
+  'chart.notChartableTooltip': '결과에 숫자 필드가 없어 차트를 생성할 수 없습니다.',
 } as const;
 export default pack;

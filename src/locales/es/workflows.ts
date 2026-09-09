@@ -93,5 +93,7 @@ const pack = {
   'workflows.schedule.interval': 'Intervalo (segundos)',
   'workflows.schedule.hint': 'Mínimo 30 segundos. Use un workflow de backup/command para trabajos.',
   'workflows.editor.invalidYamlField': 'YAML inválido: campo «{field}» faltante o inválido',
+  'workflows.addToDashboard': 'Agregar al panel',
+  'workflows.dashboard.defaultName': 'Nuevo panel',
 } as const;
 export default pack;

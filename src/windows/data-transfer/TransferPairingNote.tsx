@@ -11,7 +11,7 @@ export function TransferPairingNote({ reason }: { reason?: string | null }) {
         'mt-4 inline-block rounded border border-edge bg-surface px-2 py-1 text-xs text-fg-muted',
       )}
     >
-      {reason ?? t('transfer.unsupportedPair')}
+      {reason ?? t('common.unsupportedPair')}
     </p>
   );
 }

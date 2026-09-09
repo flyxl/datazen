@@ -69,5 +69,16 @@ const pack = {
   'smartFilter.noFilters': 'フィルター条件が解析されませんでした',
   'smartFilter.parsed': '{count} フィルター条件が解析されました',
   'smartFilter.invalidColumns': 'Review these fields before filtering: {columns}',
+  'chat.egressNotice':
+    '送信されたコンテンツは端末を離れ、設定されたAIプロバイダーによって処理される場合があります。',
+  'chat.egressNoticeRelaxed':
+    '厳格なデータ保護が無効です — クエリ結果、添付ファイル、ツールの出力がAIプロバイダーに送信される可能性があります。',
+  'chat.egressNoticeContext':
+    '添付された @ コンテキストはAIプロバイダーに送信されるリクエストに含まれます。',
+  'chat.draft.conflict': '入力欄に未送信のテキストがあります。下書きをどのように処理しますか？',
+  'chat.draft.replace': '置換',
+  'chat.draft.append': '追記',
+  'chat.draft.appendSeparator': '\n\n---\n\n',
+  'ai.workflows.tab': 'ワークフロー',
 } as const;
 export default pack;

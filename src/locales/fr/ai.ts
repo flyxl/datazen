@@ -71,5 +71,17 @@ const pack = {
   'smartFilter.noFilters': 'Aucune condition de filtre analysée',
   'smartFilter.parsed': 'Condition(s) de filtre {count} analysée(s)',
   'smartFilter.invalidColumns': 'Review these fields before filtering: {columns}',
+  'chat.egressNotice':
+    'Le contenu que vous envoyez peut quitter cet appareil et être traité par votre fournisseur d’IA configuré.',
+  'chat.egressNoticeRelaxed':
+    'La protection stricte est désactivée — les résultats de requête, fichiers joints et sorties d’outils peuvent être envoyés à votre fournisseur d’IA.',
+  'chat.egressNoticeContext':
+    'Le contexte @ joint sera inclus dans la requête envoyée à votre fournisseur d’IA.',
+  'chat.draft.conflict':
+    'Vous avez du texte non envoyé dans la zone de saisie. Que souhaitez-vous faire du brouillon ?',
+  'chat.draft.replace': 'Remplacer',
+  'chat.draft.append': 'Ajouter',
+  'chat.draft.appendSeparator': '\n\n---\n\n',
+  'ai.workflows.tab': 'Workflows',
 } as const;
 export default pack;

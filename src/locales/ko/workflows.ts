@@ -89,5 +89,7 @@ const pack = {
   'workflows.schedule.interval': '간격(초)',
   'workflows.schedule.hint': '최소 30초. 예약 백업은 backup/command 워크플로를 사용하세요.',
   'workflows.editor.invalidYamlField': '잘못된 YAML: 필드 "{field}"이(가) 없거나 잘못되었습니다',
+  'workflows.addToDashboard': '대시보드에 추가',
+  'workflows.dashboard.defaultName': '새 대시보드',
 } as const;
 export default pack;
