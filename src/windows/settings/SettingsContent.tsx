@@ -316,7 +316,10 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
       </nav>
 
       <div className="flex-1 overflow-y-auto px-8 py-6" data-testid="settings-content">
-        <div className="mx-auto max-w-lg space-y-5">
+        <div
+          className="mx-auto max-w-lg space-y-5"
+          data-testid={`settings-section-${activeSection}`}
+        >
           {activeSection === 'general' && (
             <>
               <SectionTitle>{t('settings.general')}</SectionTitle>

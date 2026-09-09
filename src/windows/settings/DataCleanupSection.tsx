@@ -69,7 +69,10 @@ export function DataCleanupSection() {
   }, [confirmCleanup, customDays, presetDays, resolveScope, retentionMode, t]);
 
   return (
-    <div className="space-y-4 rounded-md border border-edge bg-surface-alt p-4">
+    <div
+      className="space-y-4 rounded-md border border-edge bg-surface-alt p-4"
+      data-testid="data-cleanup-section"
+    >
       <div>
         <h3 className="text-sm font-medium text-fg">{t('settings.dataCleanup.title')}</h3>
         <p className="mt-1 text-xs text-fg-muted">{t('settings.dataCleanup.description')}</p>

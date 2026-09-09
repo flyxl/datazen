@@ -34,6 +34,7 @@ export function ThemeToggle() {
     <div ref={ref} className="relative">
       <button
         type="button"
+        data-testid="theme-toggle-button"
         onClick={() => setOpen((v) => !v)}
         className="inline-flex h-8 w-8 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg transition-colors"
         title={t('theme.tooltip', { current: t(current.key) })}
@@ -47,6 +48,7 @@ export function ThemeToggle() {
             <button
               key={opt.value}
               type="button"
+              data-testid={`theme-option-${opt.value}`}
               onClick={() => {
                 void updateSettings({ theme: { ...theme, mode: opt.value } });
                 setOpen(false);
