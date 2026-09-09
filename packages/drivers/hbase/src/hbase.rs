@@ -449,7 +449,21 @@ impl DatabaseDriver for HBaseDriver {
                 "query_stream is dispatched through the streaming IPC path, not execute_command"
                     .into(),
             )),
-            _ => execute_standard_sql_command(self, handle, command, input).await,
+            _ => {
+                match execute_standard_sql_command(self, handle, command, input.clone()).await {
+                    Ok(result) => return Ok(result),
+                    Err(DriverError::Unsupported(_)) => {}
+                    Err(err) => return Err(err),
+                }
+                if let Some(result) =
+                    try_execute_schema_catalog_command(self, handle, command, input).await?
+                {
+                    return Ok(result);
+                }
+                Err(DriverError::Unsupported(format!(
+                    "unsupported driver command: {command}"
+                )))
+            }
         }
     }
 
@@ -628,7 +642,7 @@ mod tests {
                         "query_stream via execute_command must return NotSupported, got: {result:?}"
                     );
                 }
-                "query" => {
+                "query" | "list_databases" | "list_tables" | "get_table_schema" => {
                     assert!(
                         !matches!(result, Err(DriverError::Unsupported(_))),
                         "command '{}' is defined but execute_command returns Unsupported (no dispatch branch)",

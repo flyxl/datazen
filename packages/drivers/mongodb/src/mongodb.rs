@@ -635,7 +635,21 @@ impl DatabaseDriver for MongodbDriver {
                 "query_stream is dispatched through the streaming IPC path, not execute_command"
                     .into(),
             )),
-            _ => execute_standard_sql_command(self, handle, command, input).await,
+            _ => {
+                match execute_standard_sql_command(self, handle, command, input.clone()).await {
+                    Ok(result) => return Ok(result),
+                    Err(DriverError::Unsupported(_)) => {}
+                    Err(err) => return Err(err),
+                }
+                if let Some(result) =
+                    try_execute_schema_catalog_command(self, handle, command, input).await?
+                {
+                    return Ok(result);
+                }
+                Err(DriverError::Unsupported(format!(
+                    "unsupported driver command: {command}"
+                )))
+            }
         }
     }
 
@@ -673,7 +687,12 @@ mod tests {
             .into_iter()
             .map(|d| d.id)
             .collect();
-        assert_eq!(ids, vec!["query", "execute", "query_stream"]);
+        assert!(ids.contains(&"query".to_string()));
+        assert!(ids.contains(&"execute".to_string()));
+        assert!(ids.contains(&"query_stream".to_string()));
+        assert!(ids.contains(&"list_databases".to_string()));
+        assert!(ids.contains(&"list_tables".to_string()));
+        assert!(ids.contains(&"get_table_schema".to_string()));
         let query = MongodbDriver::new()
             .command_definitions()
             .into_iter()
@@ -817,8 +836,8 @@ mod tests {
                         "query_stream via execute_command must return NotSupported, got: {result:?}"
                     );
                 }
-                // query/execute need live connections — ConnectionFailed is expected.
-                "query" | "execute" => {
+                // query/execute/catalog need live connections — ConnectionFailed is expected.
+                "query" | "execute" | "list_databases" | "list_tables" | "get_table_schema" => {
                     assert!(
                         !matches!(result, Err(DriverError::Unsupported(_))),
                         "command '{}' is defined but execute_command returns Unsupported (no dispatch branch)",

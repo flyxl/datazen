@@ -38,11 +38,13 @@ pub(crate) async fn execute_driver_command_with_mode(
 
     let mut definitions = driver.command_definitions();
     // Safety guard: if a driver forgot to extend schema_catalog_command_definitions,
-    // inject them so navigation/browsing is never broken.
-    if is_schema_catalog_command(&request.command)
-        && !definitions.iter().any(|d| d.id == request.command)
-    {
-        definitions.extend(schema_catalog_command_definitions());
+    // inject only the missing catalog definitions so navigation/browsing is never broken.
+    if is_schema_catalog_command(&request.command) {
+        for def in schema_catalog_command_definitions() {
+            if !definitions.iter().any(|d| d.id == def.id) {
+                definitions.push(def);
+            }
+        }
     }
 
     let definition = definitions
