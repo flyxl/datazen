@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { Plus, Copy, Edit2, Trash2, Code2, Download, Upload } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -32,13 +32,38 @@ export function SqlSnippetsCard({ settings, onUpdateSnippets }: Readonly<SqlSnip
   });
 
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showStatus = useCallback((msg: string) => {
     setStatusMessage(msg);
-    setTimeout(() => setStatusMessage(null), 3000);
+    if (statusTimerRef.current) {
+      clearTimeout(statusTimerRef.current);
+    }
+    statusTimerRef.current = setTimeout(() => {
+      setStatusMessage(null);
+      statusTimerRef.current = null;
+    }, 3000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (statusTimerRef.current) {
+        clearTimeout(statusTimerRef.current);
+      }
+    };
   }, []);
 
   const customSnippets = useMemo(() => settings.sqlSnippets ?? [], [settings.sqlSnippets]);
+
+  const existingPrefixes = useMemo(() => {
+    const allPrefixes = [
+      ...BUILTIN_SQL_SNIPPETS.map((s) => s.prefix),
+      ...customSnippets.map((s) => s.prefix),
+    ];
+    const ownPrefix =
+      dialogState.snippet && !dialogState.isDuplicate ? dialogState.snippet.prefix : null;
+    return ownPrefix ? allPrefixes.filter((p) => p !== ownPrefix) : allPrefixes;
+  }, [customSnippets, dialogState.snippet, dialogState.isDuplicate]);
 
   const handleExport = useCallback(async () => {
     try {
@@ -270,6 +295,7 @@ export function SqlSnippetsCard({ settings, onUpdateSnippets }: Readonly<SqlSnip
         open={dialogState.open}
         snippet={dialogState.snippet}
         isDuplicate={dialogState.isDuplicate}
+        existingPrefixes={existingPrefixes}
         onClose={() => setDialogState({ open: false, snippet: null, isDuplicate: false })}
         onSave={handleSaveSnippet}
       />

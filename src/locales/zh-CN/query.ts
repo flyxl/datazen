@@ -123,6 +123,8 @@ const pack = {
   'query.snippets.template': 'SQL 模板',
   'query.snippets.templatePlaceholder': 'SELECT * FROM ${1:table_name} WHERE ${2:condition};${3}',
   'query.snippets.templateRequired': '模板内容不能为空',
+  'query.snippets.syntaxGuideTitle': '语法说明：',
+  'query.snippets.prefixDuplicate': '该快捷前缀已存在',
   'query.snippets.syntaxGuide':
     '使用 ${1:占位符} 支持 Tab 键逐项跳转，末尾保留 ${N} 以便完成跳转。',
   'query.snippets.deleteConfirmTitle': '删除代码片段',

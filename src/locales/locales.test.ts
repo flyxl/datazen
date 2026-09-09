@@ -193,6 +193,10 @@ describe('locales', () => {
     expect(getTranslation('zh-CN', 'query.snippets.add')).toBe('新增片段');
     expect(getTranslation('en', 'query.snippets.builtin')).toBe('Built-in');
     expect(getTranslation('zh-CN', 'query.snippets.builtin')).toBe('内置');
+    expect(getTranslation('en', 'query.snippets.syntaxGuideTitle')).toBe('Syntax Guide:');
+    expect(getTranslation('zh-CN', 'query.snippets.syntaxGuideTitle')).toBe('语法说明：');
+    expect(getTranslation('en', 'query.snippets.prefixDuplicate')).toBe('Prefix already exists');
+    expect(getTranslation('zh-CN', 'query.snippets.prefixDuplicate')).toBe('该快捷前缀已存在');
   });
 
   it('zh-CN and en differ on at least some user-facing strings', () => {

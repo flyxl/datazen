@@ -125,6 +125,8 @@ const pack = {
   'query.snippets.template': 'SQL Template',
   'query.snippets.templatePlaceholder': 'SELECT * FROM ${1:table_name} WHERE ${2:condition};${3}',
   'query.snippets.templateRequired': 'Template is required',
+  'query.snippets.syntaxGuideTitle': 'Syntax Guide:',
+  'query.snippets.prefixDuplicate': 'Prefix already exists',
   'query.snippets.syntaxGuide':
     'Use ${1:placeholder} for Tab stop navigation. Trailing ${N} ends the session.',
   'query.snippets.deleteConfirmTitle': 'Delete Snippet',

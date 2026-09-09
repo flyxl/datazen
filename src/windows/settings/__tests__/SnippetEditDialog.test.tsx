@@ -48,6 +48,48 @@ describe('SnippetEditDialog', () => {
     expect(screen.getByText('query.snippets.prefixInvalid')).toBeInTheDocument();
   });
 
+  it('shows duplicate prefix error when existingPrefixes contains the entered prefix', () => {
+    const onSave = vi.fn();
+    render(
+      <SnippetEditDialog
+        open={true}
+        snippet={null}
+        existingPrefixes={['selw', 'selcustom']}
+        onClose={vi.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('query.snippets.prefixPlaceholder'), {
+      target: { value: 'selw' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('query.snippets.templatePlaceholder'), {
+      target: { value: 'SELECT 1;${1}' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'common.save' }));
+
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByText('query.snippets.prefixDuplicate')).toBeInTheDocument();
+  });
+
+  it('shows template-required error when template is empty', () => {
+    const onSave = vi.fn();
+    render(<SnippetEditDialog open={true} snippet={null} onClose={vi.fn()} onSave={onSave} />);
+
+    fireEvent.change(screen.getByPlaceholderText('query.snippets.prefixPlaceholder'), {
+      target: { value: 'my_prefix' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('query.snippets.templatePlaceholder'), {
+      target: { value: '   ' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'common.save' }));
+
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByText('query.snippets.templateRequired')).toBeInTheDocument();
+  });
+
   it('calls onSave with valid data and generated UUID for new snippets', () => {
     const onSave = vi.fn();
     render(<SnippetEditDialog open={true} snippet={null} onClose={vi.fn()} onSave={onSave} />);

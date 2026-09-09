@@ -8,6 +8,7 @@ export interface SnippetEditDialogProps {
   open: boolean;
   snippet: SqlSnippetItem | null;
   isDuplicate?: boolean;
+  existingPrefixes?: string[];
   onClose: () => void;
   onSave: (snippet: SqlSnippetItem) => void;
 }
@@ -18,6 +19,7 @@ export function SnippetEditDialog({
   open,
   snippet,
   isDuplicate = false,
+  existingPrefixes = [],
   onClose,
   onSave,
 }: Readonly<SnippetEditDialogProps>) {
@@ -32,7 +34,7 @@ export function SnippetEditDialog({
     if (open) {
       if (snippet) {
         setPrefix(isDuplicate ? `${snippet.prefix}_copy` : snippet.prefix);
-        const resolvedDesc = t(snippet.descriptionKey as any);
+        const resolvedDesc = t(snippet.descriptionKey as Parameters<typeof t>[0]);
         setDescription(
           resolvedDesc === snippet.descriptionKey ? snippet.descriptionKey : resolvedDesc,
         );
@@ -62,11 +64,19 @@ export function SnippetEditDialog({
       return;
     }
 
+    const isDuplicatePrefix = existingPrefixes.some(
+      (p) => p.toLowerCase() === trimmedPrefix.toLowerCase(),
+    );
+    if (isDuplicatePrefix) {
+      setError(t('query.snippets.prefixDuplicate'));
+      return;
+    }
+
     onSave({
       id: snippet && !isDuplicate ? snippet.id : crypto.randomUUID(),
       prefix: trimmedPrefix,
       descriptionKey: description.trim() || trimmedPrefix,
-      template: template,
+      template: trimmedTemplate,
     });
     onClose();
   };
@@ -144,7 +154,9 @@ export function SnippetEditDialog({
             className="w-full resize-y rounded-md border border-edge bg-surface p-2.5 font-mono text-xs text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
           />
           <div className="rounded border border-edge bg-surface-alt/70 p-2 text-[11px] text-fg-muted">
-            <span className="font-semibold text-fg-secondary">Syntax Guide: </span>
+            <span className="font-semibold text-fg-secondary">
+              {t('query.snippets.syntaxGuideTitle')}{' '}
+            </span>
             {t('query.snippets.syntaxGuide')}
           </div>
         </div>
