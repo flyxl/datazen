@@ -673,7 +673,7 @@ export function ConnectionPage() {
         </>
       )}
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {activeTab?.status === 'error' && !activePanel && (
           <div className="flex flex-1 flex-col items-center justify-center gap-4">
             <div className="copyable text-sm text-danger">{activeTab.error}</div>

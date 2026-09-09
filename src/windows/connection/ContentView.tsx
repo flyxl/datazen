@@ -349,7 +349,7 @@ export function ContentView({
   const closeCreateUser = useCallback(() => setCreateUserOpen(false), []);
 
   return (
-    <>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {activePanel && (
         <ContentToolbar
           showNewQuery={showNewQuery}
@@ -487,6 +487,6 @@ export function ContentView({
       />
 
       {confirmActionDialog}
-    </>
+    </div>
   );
 }
