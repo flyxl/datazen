@@ -1248,6 +1248,19 @@ describe('[tester] query/QueryResultsPane', () => {
         {...baseProps}
         results={results}
         activeResult={results[0]}
+        resultViewMode="chart"
+        chartConfig={{
+          chartType: 'bar',
+          xAxis: 'id',
+          yAxes: [],
+          groupBy: null,
+          aggregation: 'none',
+          sortBy: 'none',
+          showLegend: true,
+          showGrid: true,
+          showValues: false,
+          colorScheme: 'default',
+        }}
         onSetActiveResult={onSetActiveResult}
         onAddToDashboardOpen={onAddToDashboardOpen}
       />,

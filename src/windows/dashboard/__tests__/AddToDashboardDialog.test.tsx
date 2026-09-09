@@ -8,6 +8,10 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
+vi.mock('../../../hooks/useLocaleDomains', () => ({
+  useLocaleDomains: () => true,
+}));
+
 vi.mock('../../../commands/dashboard', () => ({
   dashboardCommands: {
     listDashboards: (...args: unknown[]) => listDashboardsMock(...args),

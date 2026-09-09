@@ -106,6 +106,9 @@ pub struct AppSettings {
     /// SQL execution strategy ('entire_script' | 'current_statement' | 'largest_statement' | 'ask').
     #[serde(default = "default_sql_execution_strategy")]
     pub sql_execution_strategy: String,
+    /// SQL syntax highlighting color preset ('default' follows the active theme pack).
+    #[serde(default)]
+    pub sql_syntax_theme: Option<String>,
 }
 
 fn default_sql_execution_strategy() -> String {
@@ -181,6 +184,7 @@ impl Default for AppSettings {
             keymap_preset: default_keymap_preset(),
             custom_keymap: std::collections::HashMap::new(),
             sql_execution_strategy: default_sql_execution_strategy(),
+            sql_syntax_theme: None,
         }
     }
 }

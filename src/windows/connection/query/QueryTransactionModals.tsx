@@ -519,17 +519,19 @@ export function QueryResultsPane({
                   dataExportCapability={queryResultExportCapability}
                   headerActions={
                     <>
-                      <button
-                        type="button"
-                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-fg-secondary hover:bg-surface-raised hover:text-fg"
-                        data-testid="query-add-to-dashboard"
-                        disabled={!activeResult.rows.length}
-                        onClick={() => onAddToDashboardOpen(true)}
-                        title={t('query.addToDashboard')}
-                      >
-                        <Gauge className="h-3 w-3" />
-                        {t('query.addToDashboard')}
-                      </button>
+                      {resultViewMode === 'chart' && chartConfig && (
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-fg-secondary hover:bg-surface-raised hover:text-fg"
+                          data-testid="query-add-to-dashboard"
+                          disabled={!activeResult.rows.length}
+                          onClick={() => onAddToDashboardOpen(true)}
+                          title={t('query.addToDashboard')}
+                        >
+                          <Gauge className="h-3 w-3" />
+                          {t('query.addToDashboard')}
+                        </button>
+                      )}
                       {exportButton}
                     </>
                   }

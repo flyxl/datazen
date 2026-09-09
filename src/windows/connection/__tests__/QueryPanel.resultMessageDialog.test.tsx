@@ -243,6 +243,24 @@ describe('[tester] QueryPanel ResultMessageDialog', () => {
   });
 
   it('shows ResultMessageDialog when add-to-dashboard widget creation fails', async () => {
+    usePanelStore.setState((s) => ({
+      queryExec: new Map(s.queryExec).set(PANEL_ID, {
+        ...s.queryExec.get(PANEL_ID)!,
+        resultViewMode: 'chart',
+        chartConfig: {
+          chartType: 'bar',
+          xAxis: 'c',
+          yAxes: [],
+          groupBy: null,
+          aggregation: 'none',
+          sortBy: 'none',
+          showLegend: true,
+          showGrid: true,
+          showValues: false,
+          colorScheme: 'default',
+        },
+      }),
+    }));
     renderPanel();
     fireEvent.click(screen.getByTestId('query-add-to-dashboard'));
     fireEvent.click(screen.getByTestId('confirm-add-dashboard'));

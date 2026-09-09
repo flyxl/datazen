@@ -5,6 +5,7 @@ import { Dialog } from '../../components/ui/Dialog';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
+import { useLocaleDomains } from '../../hooks/useLocaleDomains';
 import { dashboardCommands } from '../../commands/dashboard';
 import type { Dashboard } from '../../types/dashboard';
 
@@ -20,6 +21,7 @@ export function AddToDashboardDialog({
   onConfirm,
 }: Readonly<AddToDashboardDialogProps>) {
   const { t } = useI18n();
+  const localesReady = useLocaleDomains(['dashboard']);
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [loading, setLoading] = useState(false);
   const [selection, setSelection] = useState('');
@@ -49,8 +51,8 @@ export function AddToDashboardDialog({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only refetch when dialog opens
-  }, [open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-run on open and when locale pack loads
+  }, [open, localesReady]);
 
   const selectOptions = useMemo(
     () => dashboards.map((b) => ({ value: b.id, label: b.name })),
@@ -65,6 +67,16 @@ export function AddToDashboardDialog({
     }
     onConfirm(selection);
   };
+
+  // Gate on the `dashboard` locale pack so the dialog never renders
+  // raw/un-translated `t('dashboard.*')` keys before it loads.
+  if (!localesReady) {
+    return (
+      <Dialog open={open} title="…" onClose={onClose}>
+        <p className="text-xs text-fg-muted">{t('common.loading')}</p>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog
