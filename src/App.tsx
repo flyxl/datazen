@@ -4,6 +4,7 @@ import { mark } from './lib/startupTimer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { WebContextMenuHost } from './components/ui/WebContextMenu';
 import { WindowChromeFallback } from './components/WindowChromeFallback';
+import { hideSplash } from './lib/splash';
 import {
   installDragSelectionGuard,
   installGlobalTextSelectionPolicy,
@@ -47,6 +48,7 @@ mark(`windowKind resolved: "${windowKind}"`);
 function WindowContent() {
   useEffect(() => {
     mark('window component mounted');
+    hideSplash(document.getElementById('splash'));
   }, []);
 
   switch (windowKind) {

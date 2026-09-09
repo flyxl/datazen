@@ -89,6 +89,17 @@
           }
         })();
       }
+      // Safety watchdog: ensure splash is never permanently stuck if module load fails
+      setTimeout(function () {
+        var splash = document.getElementById('splash');
+        if (splash && !splash.classList.contains('hide')) {
+          console.warn('[startup] splash screen safety watchdog triggered after 8s');
+          splash.classList.add('hide');
+          setTimeout(function () {
+            if (splash.parentNode) splash.parentNode.removeChild(splash);
+          }, 350);
+        }
+      }, 8000);
     </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>

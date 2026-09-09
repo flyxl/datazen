@@ -45,6 +45,14 @@ class ErrorBoundaryInner extends Component<BoundaryProps, State> {
       return this.props.children;
     }
 
+    if (typeof document !== 'undefined') {
+      const splash = document.getElementById('splash');
+      if (splash) {
+        splash.classList.add('hide');
+        window.setTimeout(() => splash.remove(), 350);
+      }
+    }
+
     return (
       <div className="flex h-screen min-h-0 w-screen flex-col bg-surface">
         <TitleBar />

@@ -78,7 +78,9 @@ async function bootstrap() {
       </React.StrictMode>,
     );
     mark('React.render() called (Suspense shell)');
-  } finally {
+  } catch (e: any) {
+    console.error('[bootstrap] fatal initialization error:', e);
+    // Fatal crash fallback: ensure splash is never stuck if React root fails
     hideSplash(document.getElementById('splash'));
   }
 }
