@@ -4,6 +4,7 @@ import {
   Database,
   Gauge,
   LayoutGrid,
+  PanelLeftClose,
   PanelLeftOpen,
   Puzzle,
   Settings,
@@ -55,6 +56,18 @@ import { WorkflowPage } from '../workflow/WorkflowPage';
 import { SettingsContent } from '../settings/SettingsContent';
 import { WorkspaceView } from '../workspace/WorkspaceView';
 import { WappManagementPage } from '../wapps/WappManagementPage';
+import { OnboardingGuideBar } from './OnboardingGuideBar';
+import { useOnboardingStore } from '../../stores/onboardingStore';
+
+const SAMPLE_GETTING_STARTED_SQL = `-- Welcome to DataZen! Quick Sales Analysis
+SELECT
+  p.category,
+  COUNT(o.id) as total_orders,
+  ROUND(SUM(o.total_amount), 2) as total_revenue
+FROM products p
+JOIN orders o ON p.id = o.product_id
+GROUP BY p.category
+ORDER BY total_revenue DESC;`;
 
 interface WorkspaceShortcutButtonProps {
   icon: LucideIcon;
@@ -63,6 +76,7 @@ interface WorkspaceShortcutButtonProps {
   testId: string;
   onClick: () => void;
   active?: boolean;
+  expanded?: boolean;
 }
 
 function WorkspaceModeButton({
@@ -72,6 +86,7 @@ function WorkspaceModeButton({
   testId,
   onClick,
   active = false,
+  expanded = false,
 }: Readonly<WorkspaceShortcutButtonProps>) {
   return (
     <button
@@ -79,13 +94,16 @@ function WorkspaceModeButton({
       data-testid={testId}
       onClick={onClick}
       title={label}
-      className={`flex h-10 w-full items-center justify-center text-xs transition-colors ${
+      className={`flex h-10 w-full items-center text-xs transition-colors ${
+        expanded ? 'justify-start gap-2.5 px-3' : 'justify-center'
+      } ${
         active
           ? 'bg-accent/20 text-accent'
           : 'text-fg-secondary hover:bg-surface-raised hover:text-fg'
       }`}
     >
       <ThemedIcon id={iconId} className="h-4 w-4 shrink-0" fallback={Icon} />
+      {expanded && <span className="truncate">{label}</span>}
     </button>
   );
 }
@@ -137,6 +155,12 @@ export function ConnectionPage() {
   >();
   const actionsRef = useRef<ConnectionViewActions | undefined>();
   const navigatorRef = useRef<ConnectionNavigatorTreeHandle>(null);
+  const sampleQueryOpenedRef = useRef(false);
+  const workspaceSidebarMode = useUiStore((s) => s.workspaceSidebarMode);
+  const toggleWorkspaceSidebarMode = useUiStore((s) => s.toggleWorkspaceSidebarMode);
+  const onboardingStatus = useOnboardingStore((s) => s.status);
+  const sampleConnectionId = useOnboardingStore((s) => s.sampleConnectionId);
+  const sidebarExpanded = workspaceSidebarMode === 'expanded';
 
   const showMessageDialog = useCallback((text: string, kind: 'error' | 'success') => {
     setMessageDialogText(text);
@@ -158,6 +182,30 @@ export function ConnectionPage() {
     if (!activeTab?.dbSessionId || activeTab.status !== 'connected') return;
     executePendingAction();
   }, [activeTab?.dbSessionId, activeTab?.status, executePendingAction]);
+
+  const handleExecuteSampleQuery = useCallback(() => {
+    actionsRef.current?.newQuery?.(SAMPLE_GETTING_STARTED_SQL);
+    const panelId = usePanelStore.getState().activePanelId;
+    if (panelId) {
+      void usePanelStore.getState().executeQuery(panelId);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (sampleQueryOpenedRef.current) return;
+    if (onboardingStatus !== 'active' || !sampleConnectionId) return;
+    if (!activeTab?.dbSessionId || activeTab.status !== 'connected') return;
+    if (activeTab.connectionId !== sampleConnectionId) return;
+
+    sampleQueryOpenedRef.current = true;
+    actionsRef.current?.newQuery?.(SAMPLE_GETTING_STARTED_SQL);
+  }, [
+    onboardingStatus,
+    sampleConnectionId,
+    activeTab?.connectionId,
+    activeTab?.dbSessionId,
+    activeTab?.status,
+  ]);
 
   const allPanels = usePanelStore((s) => s.panels);
   const activePanelId = usePanelStore((s) => s.activePanelId);
@@ -610,113 +658,118 @@ export function ConnectionPage() {
   })();
 
   const connectionWorkspace = (
-    <div className="flex h-full min-h-0 flex-1">
-      {sidebarCollapsed ? (
-        <div className="flex shrink-0 flex-col items-center border-r border-edge bg-surface-alt py-2">
-          <button
-            type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
-            onClick={() => setSidebarCollapsed(false)}
-            title={t('connWin.expandSidebar')}
-          >
-            <PanelLeftOpen className="h-4 w-4" />
-          </button>
-        </div>
-      ) : (
-        <>
-          <aside
-            data-testid="connection-navigator-aside"
-            style={{ width: sidebarWidth }}
-            className="flex h-full min-h-0 shrink-0 flex-col border-r border-edge bg-surface-alt"
-          >
-            <div className="flex min-h-0 flex-1 flex-col">
-              <ConnectionNavigatorTree
-                ref={navigatorRef}
-                activeConnectionId={activeTab?.connectionId ?? null}
-                onSelectConnection={handleSelectConnection}
-                onSelectTable={handleSelectTable}
-                onSelectKvDb={handleSelectKvDb}
-                onNewConnection={(defaultGroup) => openNewConnectionDialog(undefined, defaultGroup)}
-                onRefresh={handleRefresh}
-                onExportConnections={() => openConnectionShareDialog('export')}
-                onImportConnections={() => openConnectionShareDialog('import')}
-                onEditConnection={(id) => openNewConnectionDialog(id)}
-                onDeleteConnection={handleDeleteConnection}
-                onDisconnect={handleDisconnect}
-                onCollapseSidebar={() => setSidebarCollapsed(true)}
-                onNodeContextMenu={(payload) => nodeContextMenuRef.current?.(payload)}
-                onShowMessage={showMessageDialog}
-                viewActions={{
-                  newQuery: (...args) => actionsRef.current?.newQuery(...args),
-                  openTableAction: (context, action) =>
-                    actionsRef.current?.openTableAction?.(context, action),
-                  openSqlFile: () => actionsRef.current?.openSqlFile?.(),
-                  createTable: () => actionsRef.current?.createTable?.(),
-                  openCreateDatabase: () => actionsRef.current?.openCreateDatabase?.(),
-                  openCreateSchema: () => actionsRef.current?.openCreateSchema?.(),
-                  openCreateUser: () => actionsRef.current?.openCreateUser?.(),
-                  openErDiagram: (...args) => actionsRef.current?.openErDiagram(...args),
-                  refresh: () => actionsRef.current?.refresh(),
-                  openObject: (...args) => actionsRef.current?.openObject?.(...args),
-                  openQueryHistory: () => actionsRef.current?.openQueryHistory?.(),
-                  openServerStatus: (...args) => actionsRef.current?.openServerStatus?.(...args),
-                  openProcessList: (...args) => actionsRef.current?.openProcessList?.(...args),
-                }}
-              />
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      <OnboardingGuideBar onExecuteSampleQuery={handleExecuteSampleQuery} />
+      <div className="flex min-h-0 flex-1">
+        {sidebarCollapsed ? (
+          <div className="flex shrink-0 flex-col items-center border-r border-edge bg-surface-alt py-2">
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
+              onClick={() => setSidebarCollapsed(false)}
+              title={t('connWin.expandSidebar')}
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <>
+            <aside
+              data-testid="connection-navigator-aside"
+              style={{ width: sidebarWidth }}
+              className="flex h-full min-h-0 shrink-0 flex-col border-r border-edge bg-surface-alt"
+            >
+              <div className="flex min-h-0 flex-1 flex-col">
+                <ConnectionNavigatorTree
+                  ref={navigatorRef}
+                  activeConnectionId={activeTab?.connectionId ?? null}
+                  onSelectConnection={handleSelectConnection}
+                  onSelectTable={handleSelectTable}
+                  onSelectKvDb={handleSelectKvDb}
+                  onNewConnection={(defaultGroup) =>
+                    openNewConnectionDialog(undefined, defaultGroup)
+                  }
+                  onRefresh={handleRefresh}
+                  onExportConnections={() => openConnectionShareDialog('export')}
+                  onImportConnections={() => openConnectionShareDialog('import')}
+                  onEditConnection={(id) => openNewConnectionDialog(id)}
+                  onDeleteConnection={handleDeleteConnection}
+                  onDisconnect={handleDisconnect}
+                  onCollapseSidebar={() => setSidebarCollapsed(true)}
+                  onNodeContextMenu={(payload) => nodeContextMenuRef.current?.(payload)}
+                  onShowMessage={showMessageDialog}
+                  viewActions={{
+                    newQuery: (...args) => actionsRef.current?.newQuery(...args),
+                    openTableAction: (context, action) =>
+                      actionsRef.current?.openTableAction?.(context, action),
+                    openSqlFile: () => actionsRef.current?.openSqlFile?.(),
+                    createTable: () => actionsRef.current?.createTable?.(),
+                    openCreateDatabase: () => actionsRef.current?.openCreateDatabase?.(),
+                    openCreateSchema: () => actionsRef.current?.openCreateSchema?.(),
+                    openCreateUser: () => actionsRef.current?.openCreateUser?.(),
+                    openErDiagram: (...args) => actionsRef.current?.openErDiagram(...args),
+                    refresh: () => actionsRef.current?.refresh(),
+                    openObject: (...args) => actionsRef.current?.openObject?.(...args),
+                    openQueryHistory: () => actionsRef.current?.openQueryHistory?.(),
+                    openServerStatus: (...args) => actionsRef.current?.openServerStatus?.(...args),
+                    openProcessList: (...args) => actionsRef.current?.openProcessList?.(...args),
+                  }}
+                />
+              </div>
+            </aside>
+            <div
+              ref={resizeHandleRef}
+              className="w-1 -ml-0.5 shrink-0 cursor-col-resize bg-transparent hover:bg-accent/30 transition-colors"
+              title={t('main.sidebar.resize')}
+            />
+          </>
+        )}
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {activeTab?.status === 'error' && !activePanel && (
+            <div className="flex flex-1 flex-col items-center justify-center gap-4">
+              <div className="copyable text-sm text-danger">{activeTab.error}</div>
+              <div className="flex gap-2">
+                <button
+                  className="rounded-md bg-accent px-4 py-1.5 text-sm text-white hover:bg-accent/90"
+                  type="button"
+                  onClick={() => {
+                    setTabs((prev) =>
+                      prev.map((tab, i) =>
+                        i === activeIdx
+                          ? { ...tab, status: 'connecting', dbSessionId: '', error: undefined }
+                          : tab,
+                      ),
+                    );
+                  }}
+                >
+                  {t('common.retry')}
+                </button>
+                <button
+                  className="rounded-md bg-surface-raised px-4 py-1.5 text-sm text-fg-secondary hover:text-fg"
+                  type="button"
+                  onClick={() => void handleCloseTab(activeTab.connectionId)}
+                >
+                  {t('common.close')}
+                </button>
+              </div>
             </div>
-          </aside>
-          <div
-            ref={resizeHandleRef}
-            className="w-1 -ml-0.5 shrink-0 cursor-col-resize bg-transparent hover:bg-accent/30 transition-colors"
-            title={t('main.sidebar.resize')}
+          )}
+
+          {activeTab?.status === 'connecting' && !activePanel && (
+            <div className="flex flex-1 flex-col items-center justify-center gap-4">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+              <div className="text-sm text-fg-muted">{t('conn.connecting')}</div>
+            </div>
+          )}
+
+          <ContentView
+            selectTableRef={selectTableRef}
+            nodeContextMenuRef={nodeContextMenuRef}
+            actionsRef={actionsRef}
+            onSelectConnection={handleSelectConnection}
           />
-        </>
-      )}
-
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {activeTab?.status === 'error' && !activePanel && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4">
-            <div className="copyable text-sm text-danger">{activeTab.error}</div>
-            <div className="flex gap-2">
-              <button
-                className="rounded-md bg-accent px-4 py-1.5 text-sm text-white hover:bg-accent/90"
-                type="button"
-                onClick={() => {
-                  setTabs((prev) =>
-                    prev.map((tab, i) =>
-                      i === activeIdx
-                        ? { ...tab, status: 'connecting', dbSessionId: '', error: undefined }
-                        : tab,
-                    ),
-                  );
-                }}
-              >
-                {t('common.retry')}
-              </button>
-              <button
-                className="rounded-md bg-surface-raised px-4 py-1.5 text-sm text-fg-secondary hover:text-fg"
-                type="button"
-                onClick={() => void handleCloseTab(activeTab.connectionId)}
-              >
-                {t('common.close')}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {activeTab?.status === 'connecting' && !activePanel && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-            <div className="text-sm text-fg-muted">{t('conn.connecting')}</div>
-          </div>
-        )}
-
-        <ContentView
-          selectTableRef={selectTableRef}
-          nodeContextMenuRef={nodeContextMenuRef}
-          actionsRef={actionsRef}
-          onSelectConnection={handleSelectConnection}
-        />
+        </div>
       </div>
     </div>
   );
@@ -751,7 +804,11 @@ export function ConnectionPage() {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
-          <aside className="flex h-full w-10 shrink-0 flex-col self-stretch border-r border-edge bg-surface-alt">
+          <aside
+            className={`flex h-full shrink-0 flex-col self-stretch border-r border-edge bg-surface-alt ${
+              sidebarExpanded ? 'w-28' : 'w-10'
+            }`}
+          >
             <div className="flex flex-col">
               <WorkspaceModeButton
                 icon={Database}
@@ -759,6 +816,7 @@ export function ConnectionPage() {
                 label={t('nav.connections')}
                 testId="workspace-nav-connections"
                 active={workspaceMode === 'connections'}
+                expanded={sidebarExpanded}
                 onClick={() => setWorkspaceMode('connections')}
               />
               <WorkspaceModeButton
@@ -767,6 +825,7 @@ export function ConnectionPage() {
                 label={t('nav.workflow')}
                 testId="workspace-nav-workflow"
                 active={workspaceMode === 'workflow'}
+                expanded={sidebarExpanded}
                 onClick={handleOpenWorkflow}
               />
               <WorkspaceModeButton
@@ -775,6 +834,7 @@ export function ConnectionPage() {
                 label={t('nav.dashboard')}
                 testId="workspace-nav-dashboard"
                 active={workspaceMode === 'dashboard'}
+                expanded={sidebarExpanded}
                 onClick={() => void handleOpenDashboard()}
               />
               <WorkspaceModeButton
@@ -783,6 +843,7 @@ export function ConnectionPage() {
                 label={t('nav.workspacePages')}
                 testId="workspace-nav-workspace-pages"
                 active={workspaceMode === 'workspace'}
+                expanded={sidebarExpanded}
                 onClick={() => setWorkspaceMode('workspace')}
               />
               <WorkspaceModeButton
@@ -791,17 +852,37 @@ export function ConnectionPage() {
                 label={t('nav.plugins')}
                 testId="workspace-nav-plugins"
                 active={workspaceMode === 'plugins'}
+                expanded={sidebarExpanded}
                 onClick={() => setWorkspaceMode('plugins')}
               />
             </div>
-            <div className="mt-auto">
+            <div className="mt-auto flex flex-col">
               <WorkspaceModeButton
                 icon={Settings}
                 iconId="nav.settings"
                 label={t('nav.settings')}
                 testId="workspace-nav-settings"
+                expanded={sidebarExpanded}
                 onClick={() => openSettingsInShell()}
               />
+              <button
+                type="button"
+                data-testid="workspace-sidebar-toggle"
+                title={sidebarExpanded ? t('connWin.collapseSidebar') : t('connWin.expandSidebar')}
+                onClick={toggleWorkspaceSidebarMode}
+                className={`flex h-10 w-full items-center text-xs text-fg-secondary transition-colors hover:bg-surface-raised hover:text-fg ${
+                  sidebarExpanded ? 'justify-start gap-2.5 px-3' : 'justify-center'
+                }`}
+              >
+                {sidebarExpanded ? (
+                  <PanelLeftClose className="h-4 w-4 shrink-0" />
+                ) : (
+                  <PanelLeftOpen className="h-4 w-4 shrink-0" />
+                )}
+                {sidebarExpanded && (
+                  <span className="truncate">{t('connWin.collapseSidebar')}</span>
+                )}
+              </button>
             </div>
           </aside>
 
