@@ -174,7 +174,7 @@ export function SqlSnippetsCard({ settings, onUpdateSnippets }: Readonly<SqlSnip
                       <span className="truncate text-xs font-medium text-fg">
                         {resolveSnippetDesc(item.descriptionKey)}
                       </span>
-                      <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                      <Badge tone="accent" className="px-1.5 py-0 text-[10px]">
                         {t('query.snippets.custom')}
                       </Badge>
                     </div>
@@ -239,7 +239,7 @@ export function SqlSnippetsCard({ settings, onUpdateSnippets }: Readonly<SqlSnip
                     <span className="truncate text-xs font-medium text-fg">
                       {resolveSnippetDesc(item.descriptionKey)}
                     </span>
-                    <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-fg-muted">
+                    <Badge tone="neutral" className="px-1.5 py-0 text-[10px] text-fg-muted">
                       {t('query.snippets.builtin')}
                     </Badge>
                   </div>
