@@ -50,6 +50,13 @@ pub struct MysqlDriver {
 }
 
 impl MysqlDriver {
+    pub(crate) fn is_table_not_found_error(err_msg: &str) -> bool {
+        let lower = err_msg.to_ascii_lowercase();
+        lower.contains("1146")
+            || lower.contains("doesn't exist")
+            || lower.contains("does not exist")
+    }
+
     pub fn new(is_mariadb: bool) -> Self {
         Self {
             pools: RwLock::new(HashMap::new()),
@@ -624,10 +631,26 @@ impl DatabaseDriver for MysqlDriver {
         let q = Self::quote_identifier(table);
 
         // Sequential on one connection so USE (active database) applies to all SHOW calls.
-        let col_rows = sqlx::query(&format!("SHOW FULL COLUMNS FROM {}", q))
+        let col_rows = match sqlx::query(&format!("SHOW FULL COLUMNS FROM {}", q))
             .fetch_all(&mut *conn)
             .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                let err_msg = e.to_string();
+                if Self::is_table_not_found_error(&err_msg) {
+                    tracing::info!(%table, "mysql get_table_schema: table does not exist, returning empty schema");
+                    return Ok(TableSchema {
+                        table_name: table.to_string(),
+                        columns: Vec::new(),
+                        primary_keys: Vec::new(),
+                        indexes: Vec::new(),
+                        foreign_keys: Vec::new(),
+                    });
+                }
+                return Err(DriverError::QueryFailed(err_msg));
+            }
+        };
         let idx_rows = sqlx::query(&format!("SHOW INDEX FROM {}", q))
             .fetch_all(&mut *conn)
             .await

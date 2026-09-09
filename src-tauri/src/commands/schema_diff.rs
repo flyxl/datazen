@@ -20,6 +20,39 @@ use crate::transfer::full_types::fetch_full_column_types;
 use std::sync::Arc;
 use tauri::State;
 
+fn is_table_missing_error(msg: &str) -> bool {
+    let lower = msg.to_ascii_lowercase();
+    lower.contains("1146")
+        || lower.contains("doesn't exist")
+        || lower.contains("does not exist")
+        || lower.contains("not found")
+}
+
+async fn fetch_target_table_schema(
+    driver: &dyn datazen_driver_api::DatabaseDriver,
+    handle: &datazen_driver_api::ConnectionHandle,
+    table: &str,
+) -> Result<crate::db::TableSchema, CommandError> {
+    match driver.get_table_schema(handle, table).await {
+        Ok(schema) => Ok(schema),
+        Err(e) => {
+            let msg = e.to_string();
+            if is_table_missing_error(&msg) {
+                tracing::info!(%table, "target table does not exist, treating as empty schema");
+                Ok(crate::db::TableSchema {
+                    table_name: table.to_string(),
+                    columns: Vec::new(),
+                    primary_keys: Vec::new(),
+                    indexes: Vec::new(),
+                    foreign_keys: Vec::new(),
+                })
+            } else {
+                Err(CommandError::Driver(e))
+            }
+        }
+    }
+}
+
 /// Prepare a DDL deploy plan (source = desired → target).
 #[tauri::command]
 pub async fn prepare_schema_diff_plan(
@@ -74,8 +107,7 @@ pub async fn prepare_schema_diff_plan(
             .get_table_schema(&src_handle, &src_table)
             .await
             .cmd_err("prepare_schema_diff_plan")?;
-        let tgt_schema = tgt_driver
-            .get_table_schema(&tgt_handle, &tgt_table)
+        let tgt_schema = fetch_target_table_schema(tgt_driver.as_ref(), &tgt_handle, &tgt_table)
             .await
             .cmd_err("prepare_schema_diff_plan")?;
         // DDL in the plan targets the target dialect, so the pair's table identifier must be
@@ -255,8 +287,7 @@ pub(crate) async fn compare_table_schemas_impl(
         .get_table_schema(&src_handle, &src_table)
         .await
         .cmd_err("compare_table_schemas")?;
-    let tgt_schema = tgt_driver
-        .get_table_schema(&tgt_handle, &tgt_table)
+    let tgt_schema = fetch_target_table_schema(tgt_driver.as_ref(), &tgt_handle, &tgt_table)
         .await
         .cmd_err("compare_table_schemas")?;
 
@@ -291,20 +322,28 @@ pub(crate) async fn compare_table_schemas_impl(
             )
             .await
             .ok();
-            let tgt_full_types = fetch_full_column_types(
-                tgt_src_adapter.as_ref(),
-                tgt_driver.as_ref(),
-                &tgt_handle,
-                &tgt_table,
-            )
-            .await
-            .ok();
+            let tgt_full_types = if tgt_schema.columns.is_empty() {
+                None
+            } else {
+                fetch_full_column_types(
+                    tgt_src_adapter.as_ref(),
+                    tgt_driver.as_ref(),
+                    &tgt_handle,
+                    &tgt_table,
+                )
+                .await
+                .ok()
+            };
 
             let src_ir = src_adapter.table_to_ir(&src_schema, src_full_types.as_ref());
             let tgt_ir = tgt_src_adapter.table_to_ir(&tgt_schema, tgt_full_types.as_ref());
             ir_diff = Some(diff_table_schemas_ir(&table_name, &src_ir, &tgt_ir));
             source_ddl = Some(build_create_table_ddl(&src_ir, src_tgt_adapter.as_ref()));
-            target_ddl = Some(build_create_table_ddl(&tgt_ir, tgt_adapter.as_ref()));
+            target_ddl = if tgt_ir.columns.is_empty() {
+                None
+            } else {
+                Some(build_create_table_ddl(&tgt_ir, tgt_adapter.as_ref()))
+            };
         }
     }
 
@@ -353,4 +392,23 @@ pub async fn compare_table_schemas(
         table_name,
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_table_missing_error_detects_various_patterns() {
+        assert!(is_table_missing_error(
+            "Query failed: error returned from database: 1146 (42S02): Table 'datazen_demo.demo_customers' doesn't exist"
+        ));
+        assert!(is_table_missing_error(
+            "relation \"public.demo_customers\" does not exist"
+        ));
+        assert!(is_table_missing_error("Table 'users' doesn't exist"));
+        assert!(is_table_missing_error("Table not found: users"));
+        assert!(!is_table_missing_error("Connection refused"));
+        assert!(!is_table_missing_error("Syntax error in SQL statement"));
+    }
 }

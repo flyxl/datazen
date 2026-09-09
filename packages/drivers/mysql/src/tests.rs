@@ -419,3 +419,22 @@ fn apply_mysql_select_limit_plus_one_and_existing_limit() {
         ("UPDATE t SET a = 1".into(), None)
     );
 }
+
+#[test]
+fn is_table_not_found_error_detects_mysql_1146_and_does_not_exist() {
+    assert!(MysqlDriver::is_table_not_found_error(
+        "error returned from database: 1146 (42S02): Table 'datazen_demo.demo_customers' doesn't exist"
+    ));
+    assert!(MysqlDriver::is_table_not_found_error(
+        "Error 1146: Table 'mydb.users' doesn't exist"
+    ));
+    assert!(MysqlDriver::is_table_not_found_error(
+        "table 'mydb.orders' does not exist"
+    ));
+    assert!(!MysqlDriver::is_table_not_found_error(
+        "1045 (28000): Access denied for user 'root'@'localhost'"
+    ));
+    assert!(!MysqlDriver::is_table_not_found_error(
+        "1064 (42000): You have an error in your SQL syntax"
+    ));
+}
