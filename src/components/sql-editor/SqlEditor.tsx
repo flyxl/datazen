@@ -260,10 +260,15 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   const intentionExts = useMemo(
     () =>
       createIntentionExtensions(
-        { insertValueHints: insertValueHintsEnabled, databaseType, schema },
+        {
+          insertValueHints: insertValueHintsEnabled,
+          databaseType,
+          schema,
+          completionQuotePolicy,
+        },
         { modelRef, metadataSnapshotRef },
       ),
-    [insertValueHintsEnabled, databaseType, schema, isSqlEditorProEnhanced],
+    [insertValueHintsEnabled, databaseType, schema, completionQuotePolicy, isSqlEditorProEnhanced],
   );
 
   const hoverExts = useMemo(

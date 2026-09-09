@@ -11,7 +11,13 @@ import type { MutableRefObject } from 'react';
 import { EditorView, keymap } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { sql, keywordCompletionSource, type SQLNamespace } from '@codemirror/lang-sql';
-import { Compartment, StateField, StateEffect, type Extension, Transaction } from '@codemirror/state';
+import {
+  Compartment,
+  StateField,
+  StateEffect,
+  type Extension,
+  Transaction,
+} from '@codemirror/state';
 import {
   autocompletion,
   closeBrackets,
@@ -503,6 +509,7 @@ export interface IntentionCompartmentOptions {
   insertValueHints?: boolean;
   databaseType?: string;
   schema?: SqlSchema;
+  completionQuotePolicy?: CompletionQuotePolicy;
 }
 
 /**
