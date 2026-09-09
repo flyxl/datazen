@@ -90,6 +90,13 @@ const pack = {
   'welcome.feature.workflow.description': '通过 YAML 驱动的工作流自动化重复任务。',
   'welcome.feature.ai.description': '生成 SQL、解释查询，并支持多种 AI 提供商。',
   'welcome.createConnection': '创建第一个连接',
+  'welcome.onboarding.title': '三步快速开启体验',
+  'welcome.onboarding.step1': '1. 连接数据（已备好示例库）',
+  'welcome.onboarding.step2': '2. 运行首条 SQL 查询',
+  'welcome.onboarding.step3': '3. 体验图表与 AI 洞察',
+  'welcome.openSampleDb': '打开示例 SQLite (快速体验)',
+  'welcome.openSampleDbHint': '零凭据即开即用，内置完整的真实电商业务示例数据集。',
+  'welcome.skipOnboarding': '跳过向导直接使用',
   'welcome.importConnectionHint':
     '支持从 TablePlus、Navicat、DataGrip、DBeaver、DBX 或 DataZen 导出文件导入。',
   'common.newGroup': '新建分组',

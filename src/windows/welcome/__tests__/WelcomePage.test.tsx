@@ -1,12 +1,29 @@
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { WelcomePage } from '../WelcomePage';
+import { useOnboardingStore } from '../../../stores/onboardingStore';
+import { sampleDataCommands } from '../../../commands/sampleData';
 
 const openNewConnectionDialogMock = vi.fn();
 const openConnectionShareDialogMock = vi.fn();
+const fetchConnectionsMock = vi.fn();
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
+}));
+
+vi.mock('../../../commands/sampleData', () => ({
+  sampleDataCommands: {
+    initSampleDatabase: vi.fn(),
+  },
+}));
+
+vi.mock('../../../stores/connectionStore', () => ({
+  useConnectionStore: {
+    getState: () => ({
+      fetchConnections: fetchConnectionsMock,
+    }),
+  },
 }));
 
 vi.mock('../../../lib/windowManager', () => ({
@@ -65,5 +82,40 @@ describe('WelcomePage', () => {
     fireEvent.click(screen.getByTestId('welcome-import-connection'));
     expect(openConnectionShareDialogMock).toHaveBeenCalledOnce();
     expect(openConnectionShareDialogMock).toHaveBeenCalledWith('import');
+  });
+});
+
+describe('WelcomePage Onboarding', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchConnectionsMock.mockResolvedValue(undefined);
+    useOnboardingStore.getState().resetOnboarding();
+  });
+
+  it('renders guided steps banner and sample sqlite quick action', () => {
+    render(<WelcomePage />);
+    expect(screen.getByTestId('welcome-open-sample')).toBeInTheDocument();
+    expect(screen.getByTestId('welcome-create-connection')).toBeInTheDocument();
+    expect(screen.getByTestId('welcome-skip-onboarding')).toBeInTheDocument();
+  });
+
+  it('initiates sample database when clicking quick start', async () => {
+    const mockConn = { id: 'sample_sqlite', name: 'Sample E-Commerce' };
+    vi.mocked(sampleDataCommands.initSampleDatabase).mockResolvedValueOnce(mockConn);
+
+    render(<WelcomePage />);
+    fireEvent.click(screen.getByTestId('welcome-open-sample'));
+
+    await waitFor(() => {
+      expect(sampleDataCommands.initSampleDatabase).toHaveBeenCalled();
+      expect(useOnboardingStore.getState().status).toBe('active');
+      expect(useOnboardingStore.getState().sampleConnectionId).toBe('sample_sqlite');
+    });
+  });
+
+  it('marks onboarding as skipped when clicking skip link', () => {
+    render(<WelcomePage />);
+    fireEvent.click(screen.getByTestId('welcome-skip-onboarding'));
+    expect(useOnboardingStore.getState().status).toBe('skipped');
   });
 });

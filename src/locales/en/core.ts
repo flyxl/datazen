@@ -93,6 +93,13 @@ const pack = {
   'welcome.feature.ai.description':
     'Generate SQL, explain queries, and get help from multiple AI providers.',
   'welcome.createConnection': 'Create Your First Connection',
+  'welcome.onboarding.title': 'Get started in 3 quick steps',
+  'welcome.onboarding.step1': '1. Connect data (Sample SQLite ready)',
+  'welcome.onboarding.step2': '2. Run your first query',
+  'welcome.onboarding.step3': '3. Gain insights with charts & AI',
+  'welcome.openSampleDb': 'Open Sample SQLite (Instant Tour)',
+  'welcome.openSampleDbHint': 'No credentials required. Ready-to-query e-commerce demo dataset.',
+  'welcome.skipOnboarding': 'Skip guide and start directly',
   'common.importConnections': 'Import Connections',
   'welcome.importConnectionHint':
     'Import from TablePlus, Navicat, DataGrip, DBeaver, DBX, or a DataZen export file.',
