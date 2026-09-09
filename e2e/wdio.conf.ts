@@ -127,6 +127,7 @@ export const config: WebdriverIO.Config = {
       './specs/edit-delete-connection.ts',
       './specs/i18n-menu.ts',
       './specs/connection-edge-cases.ts',
+      './specs/connection-navigator-expansion.ts',
       './specs/client-parity.ts',
       './specs/conn-ctx-menu-submenus.ts',
       './specs/object-browser.ts',
@@ -154,6 +155,7 @@ export const config: WebdriverIO.Config = {
       './specs/i18n-menu.ts',
       './specs/homepage-features.ts',
       './specs/connection-empty-state.ts',
+      './specs/welcome.ts',
       './specs/drag-drop-groups.ts',
       './specs/backup-database.ts',
       './specs/backup-window.ts',
@@ -198,6 +200,15 @@ export const config: WebdriverIO.Config = {
       './specs/journeys/data-transfer-journey.ts',
       './specs/journeys/data-transfer-pg-mysql-journey.ts',
       './specs/journeys/data-transfer-mysql-pg-journey.ts',
+      './specs/journeys/connection-create-journey.ts',
+      './specs/journeys/connection-browse-journey.ts',
+      './specs/journeys/connection-query-journey.ts',
+      './specs/journeys/first-run-edge-journey.ts',
+      './specs/journeys/query-edge-journey.ts',
+      './specs/journeys/query-result-chart-journey.ts',
+      './specs/journeys/query-recovery-journey.ts',
+      './specs/journeys/query-toolbar-responsive-journey.ts',
+      './specs/journeys/welcome-query-journey.ts',
     ],
     // Host contract matrix × PG/MySQL/SQLite (`pnpm e2e:contract:matrix`,
     // `pnpm e2e:contract:pg` adds --mochaOpts.grep 'Host contract @ postgres')
@@ -249,7 +260,7 @@ export const config: WebdriverIO.Config = {
       './specs/journeys/schema-diff-pg-mysql-journey.ts',
       './specs/journeys/schema-diff-mysql-pg-journey.ts',
     ],
-    // Full user journeys for hidden v0.1.0 windows (`pnpm e2e:journeys`)
+    // Cross-module user journeys (`pnpm e2e:journeys`)
     journeys: [
       './specs/journeys/schema-diff-journey.ts',
       './specs/journeys/schema-diff-pg-mysql-journey.ts',
@@ -258,10 +269,30 @@ export const config: WebdriverIO.Config = {
       './specs/journeys/data-transfer-journey.ts',
       './specs/journeys/data-transfer-pg-mysql-journey.ts',
       './specs/journeys/data-transfer-mysql-pg-journey.ts',
+      './specs/connection-navigator-expansion.ts',
+      './specs/journeys/welcome-query-journey.ts',
+      './specs/journeys/connection-create-journey.ts',
+      './specs/journeys/connection-browse-journey.ts',
+      './specs/journeys/connection-query-journey.ts',
+      './specs/journeys/query-result-chart-journey.ts',
+      './specs/journeys/query-recovery-journey.ts',
+      './specs/journeys/query-toolbar-responsive-journey.ts',
+      './specs/journeys/query-edge-journey.ts',
+      './specs/journeys/first-run-edge-journey.ts',
       './specs/data-transfer-type-mapping.ts',
       './specs/data-transfer-type-mapping-mysql-pg.ts',
       './specs/data-transfer-diverse-types.ts',
       './specs/data-transfer-mode-paths.ts',
+    ],
+    // Continuous failure/recovery and state-boundary paths
+    // (`pnpm e2e:journeys:edge`)
+    'journey-edge': [
+      './specs/journeys/first-run-edge-journey.ts',
+      './specs/journeys/query-recovery-journey.ts',
+      './specs/journeys/query-edge-journey.ts',
+      './specs/connection-navigator-expansion.ts',
+      './specs/connection-validation.ts',
+      './specs/connection-edge-cases.ts',
     ],
     // Data Sync: UI smoke + edge cases + IPC + full journey (`pnpm e2e:data-sync`)
     'data-sync': [

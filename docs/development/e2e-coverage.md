@@ -42,17 +42,26 @@
 | 用户路径 | Spec | 状态 |
 |----------|------|------|
 | 主页操作面板、搜索、分组 | `main-window.ts`, `homepage-features.ts` | Covered |
+| 首次安装 → Welcome → 取消/重新建连 → 查看连接 → 首条查询 | `journeys/welcome-query-journey.ts` | Covered（当前已实现的 PostgreSQL 首激活路径；示例 SQLite 向导仍待产品实现） |
+| 已有工作区 → 驱动切换 → 填写/测试/保存连接 → 重载持久化 | `journeys/connection-create-journey.ts` | Covered |
+| 连接列表 → 连接首页 → Schema 树 → 数据/结构/索引/外键/DDL | `journeys/connection-browse-journey.ts` | Covered |
+| 新建连接 → 打开连接 → 新建查询 → 执行 SQL | `journeys/connection-query-journey.ts` | Covered |
 | 主页空白右键 Web 菜单（含边缘不截断） | `homepage-features.ts` (HOME-021) | Covered（需 webdriver 二进制；无二进制时 BLOCKED） |
 | 统一工作区导航（连接 / 工作流 / 看板） | `homepage-features.ts` (HOME-001), `main-window.ts` | Covered |
 | 连接工作区首页（无 panel 空状态） | `homepage-features.ts`, `unified-tab-bar.ts` (UTB-005) | Covered |
 | 新建 / 编辑 / 删除连接 | `new-connection.ts`, `edit-delete-connection.ts` | Covered |
 | 连接工具栏、表树、子标签（统一主窗口内） | `connection-window.ts`, `unified-tab-bar.ts` | Covered |
 | 连接跨分组 / 组内排序、Table/View 拖入 SQL 编辑器 | `drag-drop-groups.ts` / `schemaTreeDrag.test.ts` | Partial（合成 DOM 事件；系统拖放见例外） |
+| 最近连接分组展开 / 折叠 / 恢复 | `connection-navigator-expansion.ts` (NAV-EXPAND) | Covered |
 | 侧栏删表后树立即刷新（不再需关窗） | `src/windows/connection/navigator/__tests__/ConnectionNavigatorTree.test.tsx` / `src/stores/__tests__/schemaStore.test.ts` | Covered（原生 Drop 确认框见例外） |
 | 连接导航树右键菜单（连接/库/Schema/表·视图） | `navigator-context-menu.ts` (NCM-*) | Covered（含 Web ConfirmDialog 删除表/Schema：NCM-023/046） |
 | 连接右键子菜单分组（Connection/Server/Manage/Create New）& 未连接历史查询 pending | `conn-ctx-menu-submenus.ts` (CM-SUB-001~008, CM-SUB-010) | Covered |
 | 新建连接：切换类型保留各类表单快照 / 分组后测试连接无 cyclic 错误 | `new-connection.ts` (CM-002), `connection-validation.ts` (TC-CONN-008) | Covered |
 | 查询执行 / 历史 / 收藏 | `sql-query.ts` | Covered |
+| 查询错误 → 复制错误 → 修正 SQL → 成功结果 | `journeys/query-recovery-journey.ts` | Covered（不依赖尚未稳定的真实 LLM 返回） |
+| 长查询取消 → 恢复执行 → 多 Tab 隔离与结果保留 | `journeys/query-edge-journey.ts` | Covered |
+| 查询结果 → 图表 → 类型切换 → 导出入口 | `journeys/query-result-chart-journey.ts` | Covered |
+| 窄窗口查询工具栏 compact → 查询 / 历史 → 恢复 | `journeys/query-toolbar-responsive-journey.ts` | Covered |
 | 绑定参数面板填值并执行 | `sql-query.ts` (SQ-BIND-*) | Covered |
 | EXPLAIN 面板 | `sql-query.ts` (SQ-EXPLAIN-*) | Covered |
 | 表数据分页 / 排序 / 选择 / 删除行按钮 | `table-data.ts` | Covered |
@@ -73,6 +82,17 @@
 | AI Chat / @ 上下文 | `ai-context*.ts`, `ai-features.ts` | Covered（需 API Key 的路径见 Exception） |
 | AI 无 Key 降级 | `ai-no-key-fallback.ts` (TC-AI-007~009) | Covered |
 | 智能筛选未配置提示 | `table-filter.ts` (TF-AI-*) | Covered |
+
+## 首次安装 / 连接 / 查询 Edge Journey
+
+| 状态边界 | Spec | 状态 |
+|----------|------|------|
+| 必填校验 → 连接失败 → 修正成功 → 保存 → 删除最后连接返回 Welcome | `journeys/first-run-edge-journey.ts` | Covered |
+| 错误 SQL → 复制错误 → 修正并重新执行 | `journeys/query-recovery-journey.ts` | Covered |
+| 查询运行中取消 → 编辑器恢复可执行 → 新 Tab 隔离 → 切回结果保留 | `journeys/query-edge-journey.ts` | Covered |
+| 慢连接 pending → 成功后精确展开；切换连接仅保留一个展开项 | `connection-navigator-expansion.ts` | Covered |
+| 空 Host / 无效 Host / 错误密码 / 空密码 / 分组切换 | `connection-validation.ts` | Covered |
+| 快速增删 / 编辑刷新 / 失败后重试 / 重复打开 / 分组重命名 | `connection-edge-cases.ts` | Covered |
 
 ## 其他窗口 / 设置
 

@@ -79,6 +79,8 @@ pnpm e2e:data-transfer  # 数据传输专用：preflight 清理 + 全量 transfe
 pnpm e2e:data-transfer:build  # 同上，但会先完整 webdriver 构建
 pnpm e2e:schema-diff  # 结构对比专用：preflight 清理 + 全量 schema-diff suite（19 列宽类型 + 跨方言）
 pnpm e2e:schema-diff:build  # 同上，但会先完整 webdriver 构建
+pnpm e2e:journeys  # 跨模块连续用户旅程（Welcome/Query/Navigator/Chart/迁移）+ 截图留痕
+pnpm e2e:journeys:edge  # 首次安装、连接和查询的异常恢复/状态边界 journeys
 pnpm e2e:contract:matrix          # Host UI/IPC × PG/MySQL/SQLite 连接窗
 pnpm e2e:contract:pg              # 仅 PostgreSQL 契约冒烟
 pnpm test:unit:e2e-contract:coverage  # 契约纯逻辑单测 ≥80%
@@ -263,7 +265,7 @@ e2e/wdio.conf.ts
   ├─ hostname/port: 127.0.0.1:4445
   ├─ before: 强制 language=zh-CN，必要时 seed PostgreSQL 连接
   ├─ specs: e2e/specs/**/*.ts
-  └─ suites: 分组清单（core/db/contract/redis/ai/i18n-backup/path-ipc/dashboard/data-transfer/journeys），供 --suite 选择
+  └─ suites: 分组清单（core/db/contract/redis/ai/i18n-backup/path-ipc/dashboard/data-transfer/journeys/journey-edge），供 --suite 选择
 ```
 
 - Spec 写法：通过 `browser.executeAsync` + `__TAURI_INTERNALS__.invoke` 调后端；UI 用 WebdriverIO `$` / `expect`。  
@@ -278,6 +280,7 @@ e2e/wdio.conf.ts
 | 核心 UI | `main-window.ts`, `homepage-features.ts`, `settings.ts`, `i18n-menu.ts` |
 | 连接 | `new-connection.ts`, `edit-delete-connection.ts`, `connection-window.ts` |
 | SQL / 表 | `sql-query.ts`, `table-data.ts`, `table-filter.ts`, `table-indexes.ts`, `table-edit.ts`, `export-import.ts`, `object-browser.ts` |
+| 连续用户旅程 | `journeys/README.md`；首次安装、连接创建/浏览/查询、异常恢复、图表，以及迁移类 journeys |
 | 路径 IPC / 备份 | `path-ipc-hardening.ts`, `app-data-backup.ts`, `backup-database.ts`, `backup-window.ts`, `schema-diff-window.ts` |
 | i18n | `i18n-10-locales.ts`, `system-locale.ts`, `i18n-menu.ts` |
 | AI / Workflow | `ai-features.ts`, `ai-context.ts`, `workflow.ts`, `workflow-window.ts`, `driver-commands.ts` |

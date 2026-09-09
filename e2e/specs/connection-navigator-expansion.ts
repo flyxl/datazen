@@ -1,5 +1,5 @@
 import { expect, browser, $ } from '@wdio/globals';
-import { expandAllGroups } from '../helpers.js';
+import { captureJourneyStep, expandAllGroups } from '../helpers.js';
 import { t } from '../i18n.js';
 
 const GROUP_A = 'E2E-Navigator-Group-A';
@@ -284,5 +284,39 @@ describe('连接导航树单连接展开 (NAV-EXPAND)', () => {
     expect(await getExpanded('__recent__', RECENT_NAME)).toBe('false');
     expect(await getExpanded(GROUP_A, RECENT_NAME)).toBe('false');
     expect(await getExpanded(GROUP_B, OTHER_NAME)).toBe('true');
+  });
+
+  it('完整旅程：最近分组折叠 → 展开，并保留最近连接入口', async () => {
+    const header = await $('[data-section-header][data-section="recent"]');
+    await header.waitForDisplayed({ timeout: 10000 });
+
+    await browser.waitUntil(async () => (await header.getAttribute('aria-expanded')) === 'true', {
+      timeout: 10000,
+      timeoutMsg: '最近连接分组未处于展开状态',
+    });
+    await expect(
+      await $(`[data-conn-group="__recent__"][data-conn-name="${RECENT_NAME}"]`),
+    ).toBeDisplayed();
+    await captureJourneyStep('navigator-recent-expanded');
+
+    await header.click();
+    await browser.waitUntil(async () => (await header.getAttribute('aria-expanded')) === 'false', {
+      timeout: 10000,
+      timeoutMsg: '最近连接分组未收起',
+    });
+    await expect(
+      await $(`[data-conn-group="__recent__"][data-conn-name="${RECENT_NAME}"]`),
+    ).not.toBeExisting();
+    await captureJourneyStep('navigator-recent-collapsed');
+
+    await header.click();
+    await browser.waitUntil(async () => (await header.getAttribute('aria-expanded')) === 'true', {
+      timeout: 10000,
+      timeoutMsg: '最近连接分组未恢复展开',
+    });
+    await expect(
+      await $(`[data-conn-group="__recent__"][data-conn-name="${RECENT_NAME}"]`),
+    ).toBeDisplayed();
+    await captureJourneyStep('navigator-recent-restored');
   });
 });
