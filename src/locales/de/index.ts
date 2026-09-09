@@ -8,10 +8,8 @@ import dashboard from './dashboard';
 import mcp from './mcp';
 import query from './query';
 import schema from './schema';
-import schemaDiff from './schemaDiff';
 import settings from './settings';
 import sync from './sync';
-import transfer from './transfer';
 import workflows from './workflows';
 
 const locale = {
@@ -24,10 +22,8 @@ const locale = {
   ...mcp,
   ...query,
   ...schema,
-  ...schemaDiff,
   ...settings,
   ...sync,
-  ...transfer,
   ...workflows,
 } as const;
 

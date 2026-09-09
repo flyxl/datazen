@@ -24,14 +24,12 @@ locales/
 
 ## Lazy domains
 
-| Domain       | Loaded when                          |
-|--------------|--------------------------------------|
-| sync         | Data Sync window                     |
-| transfer     | Data Transfer window                 |
-| schemaDiff   | Schema Diff window                   |
-| workflows    | Workflow page                        |
-| dashboard    | Dashboard panel                      |
-| mcp          | Settings → MCP sections              |
+| Domain       | Loaded when                                            |
+|--------------|--------------------------------------------------------|
+| sync         | Migration tools (Data Sync, Schema Diff, Data Transfer)|
+| workflows    | Workflow page                                          |
+| dashboard    | Dashboard panel                                        |
+| mcp          | Settings → MCP sections                                |
 
 ```ts
 import { useLocaleDomains } from '../hooks/useLocaleDomains';

@@ -24,7 +24,9 @@ describe('useLocaleDomains', () => {
   beforeEach(() => {
     ensureMock.mockClear();
     ensureMock.mockResolvedValue(undefined);
-    useSettingsStore.setState({ settings: { ...useSettingsStore.getState().settings, language: 'en' } });
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, language: 'en' },
+    });
   });
 
   afterEach(() => {
@@ -32,11 +34,11 @@ describe('useLocaleDomains', () => {
   });
 
   it('does not re-ensure when a new array with the same keys is passed each render', async () => {
-    const { rerender } = render(<Probe domains={['sync', 'transfer']} rerender={1} />);
+    const { rerender } = render(<Probe domains={['sync', 'workflows']} rerender={1} />);
     await vi.waitFor(() => expect(ensureMock).toHaveBeenCalledTimes(1));
 
     // A fresh array literal with the same (reordered) keys must NOT re-trigger.
-    rerender(<Probe domains={['transfer', 'sync']} rerender={2} />);
+    rerender(<Probe domains={['workflows', 'sync']} rerender={2} />);
     await vi.waitFor(() => expect(ensureMock).toHaveBeenCalledTimes(1));
   });
 
@@ -44,7 +46,9 @@ describe('useLocaleDomains', () => {
     const { rerender } = render(<Probe domains={['sync']} rerender={1} />);
     await vi.waitFor(() => expect(ensureMock).toHaveBeenCalledTimes(1));
 
-    useSettingsStore.setState({ settings: { ...useSettingsStore.getState().settings, language: 'zh-CN' } });
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, language: 'zh-CN' },
+    });
     rerender(<Probe domains={['sync']} rerender={2} />);
     await vi.waitFor(() => expect(ensureMock).toHaveBeenCalledTimes(2));
     // The language passed through is the new one.
@@ -52,8 +56,8 @@ describe('useLocaleDomains', () => {
   });
 
   it('passes the stable domain list to ensureLocaleDomains', async () => {
-    render(<Probe domains={['transfer', 'sync']} rerender={1} />);
+    render(<Probe domains={['workflows', 'sync']} rerender={1} />);
     await vi.waitFor(() => expect(ensureMock).toHaveBeenCalledTimes(1));
-    expect(ensureMock).toHaveBeenLastCalledWith('en', ['sync', 'transfer']);
+    expect(ensureMock).toHaveBeenLastCalledWith('en', ['sync', 'workflows']);
   });
 });

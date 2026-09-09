@@ -18,16 +18,12 @@ type Loader = () => Promise<{ default: Pack }>;
 const loaders: Record<BuiltinLocale, Record<LazyDomain, Loader>> = {
   en: {
     sync: () => import('./en/sync'),
-    transfer: () => import('./en/transfer'),
-    schemaDiff: () => import('./en/schemaDiff'),
     workflows: () => import('./en/workflows'),
     dashboard: () => import('./en/dashboard'),
     mcp: () => import('./en/mcp'),
   },
   'zh-CN': {
     sync: () => import('./zh-CN/sync'),
-    transfer: () => import('./zh-CN/transfer'),
-    schemaDiff: () => import('./zh-CN/schemaDiff'),
     workflows: () => import('./zh-CN/workflows'),
     dashboard: () => import('./zh-CN/dashboard'),
     mcp: () => import('./zh-CN/mcp'),

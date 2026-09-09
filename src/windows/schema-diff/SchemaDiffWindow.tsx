@@ -58,7 +58,7 @@ function tableDiffHasChanges(diff: TableSchemaDiff): boolean {
 }
 
 export function SchemaDiffWindow() {
-  const localesReady = useLocaleDomains(['schemaDiff']);
+  const localesReady = useLocaleDomains(['sync']);
   useSettings();
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
@@ -428,8 +428,8 @@ export function SchemaDiffWindow() {
     </span>
   ) : undefined;
 
-  // All hooks above. Gate the body on the `schemaDiff` locale pack so the UI
-  // never renders raw/un-translated `t('schemaDiff.*')` keys before it loads.
+  // All hooks above. Gate the body on the `sync` locale pack so the UI
+  // never renders raw/un-translated keys before it loads.
   if (!localesReady) {
     return <LocaleDomainLoading testId="schema-diff-locale-loading" />;
   }

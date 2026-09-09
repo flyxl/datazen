@@ -60,7 +60,7 @@ const STEPS: WizardStep[] = ['endpoints', 'setup', 'objects', 'mapping', 'previe
 const NARROW_STEPS: WizardStep[] = ['endpoints', 'setup', 'result'];
 
 export function DataTransferWindow() {
-  const localesReady = useLocaleDomains(['transfer']);
+  const localesReady = useLocaleDomains(['sync']);
   useSettings();
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
@@ -615,8 +615,8 @@ export function DataTransferWindow() {
     },
   ];
 
-  // All hooks above. Gate the body on the `transfer` locale pack so the UI
-  // never renders raw/un-translated `t('transfer.*')` keys before it is loaded.
+  // All hooks above. Gate the body on the `sync` locale pack so the UI
+  // never renders raw/un-translated keys before it is loaded.
   if (!localesReady) {
     return <LocaleDomainLoading testId="data-transfer-locale-loading" />;
   }

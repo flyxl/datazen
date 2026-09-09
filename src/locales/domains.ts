@@ -17,14 +17,7 @@ export const EAGER_DOMAINS = [
   'ai',
 ] as const;
 
-export const LAZY_DOMAINS = [
-  'sync',
-  'transfer',
-  'schemaDiff',
-  'workflows',
-  'dashboard',
-  'mcp',
-] as const;
+export const LAZY_DOMAINS = ['sync', 'workflows', 'dashboard', 'mcp'] as const;
 
 export type EagerDomain = (typeof EAGER_DOMAINS)[number];
 export type LazyDomain = (typeof LAZY_DOMAINS)[number];

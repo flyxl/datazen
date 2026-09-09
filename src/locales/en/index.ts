@@ -9,8 +9,6 @@ import chart from './chart';
 import backup from './backup';
 import ai from './ai';
 import sync from './sync';
-import transfer from './transfer';
-import schemaDiff from './schemaDiff';
 import workflows from './workflows';
 import dashboard from './dashboard';
 import mcp from './mcp';
@@ -25,8 +23,6 @@ const en: Record<TranslationKey, string> = {
   ...backup,
   ...ai,
   ...sync,
-  ...transfer,
-  ...schemaDiff,
   ...workflows,
   ...dashboard,
   ...mcp,
