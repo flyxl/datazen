@@ -1,77 +1,99 @@
 [package]
 name = "datazen"
-version = "0.1.11"
-description = "A modern database client"
-authors = ["flyxl"]
+version = "0.2.0"
+description = "DataZen desktop database client (Tauri backend)"
+authors = ["DataZen"]
 edition = "2021"
-default-run = "datazen"
+rust-version = "1.77.2"
+license = "GPL-3.0-or-later"
 
 [lib]
-name = "datazen_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+name = "datazen"
+path = "src/lib.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "protocol-asset", "devtools"] }
-tauri-plugin-opener = "2"
-tauri-plugin-dialog = "2"
-tauri-plugin-fs = "2"
-tauri-plugin-shell = "2"
-tauri-plugin-process = "2"
-tauri-plugin-updater = "2"
-serde = { workspace = true }
-serde_json = { workspace = true }
-tokio = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-thiserror = { workspace = true }
-uuid = { workspace = true }
-chrono = { workspace = true }
-base64 = { workspace = true }
-rand = { workspace = true }
-aes-gcm = { workspace = true }
-sha2 = { workspace = true }
-hex = { workspace = true }
-reqwest = { workspace = true }
-url = { workspace = true }
-dirs = { workspace = true }
-rusqlite = { workspace = true }
-keyring = { workspace = true }
-regex = { workspace = true }
-open = { workspace = true }
-futures = { workspace = true }
-async-trait = { workspace = true }
 datazen-driver-api = { workspace = true }
-# Optional OS helpers
-arboard = "3"
-
+datazen-ai-api = { path = "../packages/ai-api" }
+inventory = "0.3"
+tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "net", "process"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+aes-gcm = "0.10"
+argon2 = "0.5"
+base64 = "0.22"
+rand = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "1"
+anyhow = "1"
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+open = "5"
+sysinfo = "0.30"
+async-trait = "0.1"
+urlencoding = "2"
 tauri-plugin-webdriver = { version = "0.2", optional = true }
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-os = "2.3.2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+sys-locale = "0.3.2"
+flate2 = "1.1.9"
+russh = "0.60"
+reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "json", "stream", "cookies", "query", "form"] }
+futures-util = "0.3"
 
 # Driver crates — injected by resolve-drivers.mjs at build time; do NOT add manually.
 # <<driver-dependencies>>
 # <</driver-dependencies>>
+rmcp = { version = "2.2.0", features = ["server", "client", "transport-io", "transport-child-process", "transport-streamable-http-server", "macros", "schemars"] }
+schemars = "1.2.2"
+tokio-util = { version = "0.7.19", features = ["rt", "compat"] }
+dirs = "6.0.0"
+rusqlite = { version = "0.32.1", features = ["bundled"] }
+keyring = { version = "4", features = ["v1"] }
+serde_yaml = "0.9.34"
+regex = "1.13.1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+pbkdf2 = "0.12"
+sha1 = "0.10"
+hmac = "0.12"
+aes = "0.8"
+cbc = "0.1"
+sha2 = "0.10"
+
+tempfile = { version = "3.27.0", optional = true }
 
 [features]
 default = []
 webdriver = ["tauri-plugin-webdriver"]
+# Enables `datazen::test_harness` for src-tauri/tests/ IPC migration integration tests.
+test-harness = ["dep:tempfile"]
 # Driver features — injected by resolve-drivers.mjs at build time; do NOT add manually.
 # <<driver-features>>
 # <</driver-features>>
 
+
 [dev-dependencies]
-tempfile = "3"
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tempfile = "3.27.0"
+wiremock = "0.6"
+sqlx = { version = "=0.8.6", features = ["runtime-tokio", "tls-rustls", "postgres", "mysql"] }
 datazen-driver-postgres = { path = "../packages/drivers/postgres" }
 datazen-driver-mysql = { path = "../packages/drivers/mysql" }
 datazen-driver-sqlite = { path = "../packages/drivers/sqlite" }
 
 [[test]]
 name = "driver_command_ipc"
-path = "tests/driver_command_ipc.rs"
+required-features = ["test-harness"]
 
+[lints.rust]
 # Driver/plugin features are injected by resolve-drivers.mjs at build time; declare
 # them here so standalone `cargo check` does not treat them as unexpected cfg.
-[lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("driver-postgres", "driver-mysql", "driver-sqlite", "driver-redis", "driver-sqlserver", "driver-clickhouse", "driver-duckdb", "driver-elasticsearch", "driver-mongodb", "driver-influxdb", "driver-victoriametrics", "driver-hbase", "driver-vector", "driver-jdbc", "driver-olap", "plugin-postgres", "plugin-mysql", "plugin-sqlite", "plugin-redis", "plugin-kiwi", "plugin-superset"))'] }
