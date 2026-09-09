@@ -1,16 +1,18 @@
 package com.datazen.jdbcagent;
 
 import java.io.BufferedReader;
+import java.io.FileDescriptor;
+import java.io.FileOutputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Locale;
 
 /**
  * JDBC Agent entry: JSON-RPC 2.0 over stdio (one object per line).
  *
  * <p>stdout = protocol only; stderr = diagnostics. Driver {@code System.out}
- * is redirected to stderr at startup.
+ * is redirected to stderr at startup so JDBC drivers cannot corrupt the wire.
  */
 public final class AgentMain {
 
@@ -20,13 +22,12 @@ public final class AgentMain {
   private AgentMain() {}
 
   public static void main(String[] args) {
-    // Prevent JDBC drivers from corrupting the protocol stream.
+    // Keep a dedicated stream on the real stdout FD before hijacking System.out.
+    PrintStream protocolOut =
+        new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8);
     System.setOut(System.err);
 
-    PrintStream protocolOut =
-        new PrintStream(new FileOutputStreamAdapter(FileDescriptor.out), true, StandardCharsets.UTF_8);
     PrintStream log = System.err;
-
     SessionManager sessions = new SessionManager();
     JsonRpcLoop loop = new JsonRpcLoop(sessions, protocolOut, log);
 
@@ -44,7 +45,6 @@ public final class AgentMain {
           continue;
         }
         if (loop.handleLine(line)) {
-          // shutdown requested
           break;
         }
       }
@@ -53,30 +53,6 @@ public final class AgentMain {
       System.exit(1);
     } finally {
       sessions.closeAll();
-    }
-  }
-
-  /** Minimal adapter so we can keep a dedicated protocol stdout after System.setOut. */
-  private static final class FileOutputStreamAdapter extends java.io.OutputStream {
-    private final java.io.FileOutputStream inner;
-
-    FileOutputStreamAdapter(java.io.FileDescriptor fd) {
-      this.inner = new java.io.FileOutputStream(fd);
-    }
-
-    @Override
-    public void write(int b) throws java.io.IOException {
-      inner.write(b);
-    }
-
-    @Override
-    public void write(byte[] b, int off, int len) throws java.io.IOException {
-      inner.write(b, off, len);
-    }
-
-    @Override
-    public void flush() throws java.io.IOException {
-      inner.flush();
     }
   }
 }

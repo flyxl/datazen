@@ -1,6 +1,6 @@
 import type { DatabaseTypeMeta } from '@datazen/driver-sdk';
 
-/** Generic JDBC via external Agent - advanced capabilities are limited vs native drivers. */
+/** Generic JDBC via external Agent — limited vs native drivers. */
 export const jdbcMeta = {
   label: 'JDBC',
   shortLabel: 'JDBC',

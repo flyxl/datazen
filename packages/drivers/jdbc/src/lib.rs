@@ -1,7 +1,7 @@
 //! DataZen path driver: jdbc (external Java Agent).
 //!
-//! Phase 1: AgentProcessManager can spawn the agent and complete `agent.hello`.
-//! Live DatabaseDriver ops still return Unsupported until Phase 2–3.
+//! MVP: AgentProcessManager + full session/query/meta over JSON-RPC.
+//! Enable with `DATAZEN_DRIVERS=…,jdbc` and place `datazen-jdbc-agent.jar`.
 
 use std::sync::Arc;
 
@@ -31,6 +31,7 @@ impl DatabaseDriverFactory for JdbcFactory {
     }
 
     fn supports_streaming_results(&self) -> bool {
+        // Materialized query_multi path; true stream fetch can be enabled later.
         false
     }
 }
