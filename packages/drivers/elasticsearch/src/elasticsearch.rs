@@ -416,6 +416,7 @@ impl DatabaseDriver for ElasticsearchDriver {
             "Elasticsearch SQL",
         );
         cmds.push(query_stream_command_definition());
+        cmds.extend(schema_catalog_command_definitions());
         cmds
     }
 

@@ -338,6 +338,7 @@ impl DatabaseDriver for VictoriaMetricsDriver {
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
         let mut cmds = query_only_command_definitions("Run a PromQL instant query", "PromQL");
         cmds.push(query_stream_command_definition());
+        cmds.extend(schema_catalog_command_definitions());
         cmds
     }
 
