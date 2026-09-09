@@ -14,6 +14,7 @@ mod agent_process;
 mod driver;
 mod protocol;
 mod settings;
+mod stream_query;
 
 pub use agent_process::{AgentLaunchConfig, AgentProcessManager, AgentState};
 pub use driver::JdbcDriver;
