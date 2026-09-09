@@ -2,9 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { queryToolbarExpandedMinWidth } from '../queryToolbarWidth';
 
 describe('queryToolbarExpandedMinWidth', () => {
-  it('counts all query toolbar buttons including explain', () => {
+  it('counts consolidated top-level toolbar buttons', () => {
     const width = queryToolbarExpandedMinWidth({
-      supportsExplain: true,
       hasContextSelectors: false,
       isPathHierarchy: false,
       isMultiDb: false,
@@ -13,13 +12,50 @@ describe('queryToolbarExpandedMinWidth', () => {
       databases: [],
       contextPath: [],
     });
-    // 32 padding + 12 buttons * 84 + 11 gaps + 8 separator
-    expect(width).toBe(32 + 12 * 84 + 11 * 8 + 8);
+    // 32 padding + 7 buttons * 84 + 6 gaps + 8 separator
+    expect(width).toBe(32 + 7 * 84 + 6 * 8 + 8);
+  });
+
+  it('adds commit and rollback buttons when in transaction', () => {
+    const idle = queryToolbarExpandedMinWidth({
+      hasContextSelectors: false,
+      isPathHierarchy: false,
+      isMultiDb: false,
+      inTransaction: false,
+      namespaceTree: {},
+      pathAliases: {},
+      databases: [],
+      contextPath: [],
+    });
+    const inTx = queryToolbarExpandedMinWidth({
+      hasContextSelectors: false,
+      isPathHierarchy: false,
+      isMultiDb: false,
+      inTransaction: true,
+      namespaceTree: {},
+      pathAliases: {},
+      databases: [],
+      contextPath: [],
+    });
+    expect(inTx - idle).toBe(2 * 84 + 2 * 8);
+  });
+
+  it('calculates compact required width with consolidated layout', () => {
+    const width = queryToolbarExpandedMinWidth({
+      hasContextSelectors: true,
+      isPathHierarchy: false,
+      isMultiDb: false,
+      namespaceTree: {},
+      pathAliases: {},
+      databases: [],
+      contextPath: [],
+    });
+    expect(width).toBeGreaterThan(400);
+    expect(width).toBeLessThan(1200);
   });
 
   it('reserves path-hierarchy selector width before namespace loads', () => {
     const withoutTree = queryToolbarExpandedMinWidth({
-      supportsExplain: false,
       hasContextSelectors: true,
       isPathHierarchy: true,
       isMultiDb: false,
@@ -29,7 +65,6 @@ describe('queryToolbarExpandedMinWidth', () => {
       contextPath: [],
     });
     const withoutSelectors = queryToolbarExpandedMinWidth({
-      supportsExplain: false,
       hasContextSelectors: false,
       isPathHierarchy: false,
       isMultiDb: false,
@@ -43,7 +78,6 @@ describe('queryToolbarExpandedMinWidth', () => {
 
   it('reserves compact multi-db selector width', () => {
     const withMultiDb = queryToolbarExpandedMinWidth({
-      supportsExplain: false,
       hasContextSelectors: true,
       isPathHierarchy: false,
       isMultiDb: true,
@@ -54,7 +88,6 @@ describe('queryToolbarExpandedMinWidth', () => {
       currentDatabase: 'postgres',
     });
     const withoutSelectors = queryToolbarExpandedMinWidth({
-      supportsExplain: false,
       hasContextSelectors: false,
       isPathHierarchy: false,
       isMultiDb: false,

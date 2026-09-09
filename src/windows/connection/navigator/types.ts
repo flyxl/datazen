@@ -120,7 +120,8 @@ export interface ConnectionNavigatorTreeProps {
     newQuery?: (
       initialSql?: string,
       context?: Pick<TableContextInput, 'database' | 'schema'>,
-    ) => void;
+      title?: string,
+    ) => boolean | void;
     openTableAction?: (context: TableContextInput, action: TableSqlActionKind) => void;
     openSqlFile?: () => void;
     createTable?: () => void;

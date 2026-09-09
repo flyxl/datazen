@@ -7,6 +7,7 @@ import {
   inferDefaultTable,
   tablesReferencedInSql,
 } from '../../lib/sqlEditorDefaults';
+import { useOnboardingStore } from '../../stores/onboardingStore';
 import { usePanelStore } from '../../stores/panelStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useQueryExec } from '../../hooks/useQueryExec';
@@ -192,14 +193,16 @@ export function QueryPanel({
     currentDatabase,
   });
 
+  const tx = useQueryTransaction({ dbSessionId });
+
   const { ref: toolbarRef, compact: compactToolbar } = useCompactToolbar(
     useMemo(
       () =>
         queryToolbarExpandedMinWidth({
-          supportsExplain,
           hasContextSelectors,
           isPathHierarchy,
           isMultiDb,
+          inTransaction: tx.inTransaction,
           contextSchema: selectedSchema,
           namespaceTree,
           pathAliases,
@@ -208,10 +211,10 @@ export function QueryPanel({
           currentDatabase: selectedDatabase,
         }),
       [
-        supportsExplain,
         hasContextSelectors,
         isPathHierarchy,
         isMultiDb,
+        tx.inTransaction,
         selectedSchema,
         namespaceTree,
         pathAliases,
@@ -247,7 +250,6 @@ export function QueryPanel({
     setMessageDialogOpen(true);
   }, []);
 
-  const tx = useQueryTransaction({ dbSessionId });
   const executionGate = useQueryExecutionGate({
     panelId,
     dbSessionId,
@@ -514,7 +516,15 @@ export function QueryPanel({
             onRetry={workflows.handleRetry}
             onSetActiveResult={(idx) => setActiveResult(panelId, idx)}
             onTogglePinResult={(idx) => usePanelStore.getState().togglePinResult(panelId, idx)}
-            onSetResultViewMode={(mode) => setResultViewModeStore(panelId, mode)}
+            onSetResultViewMode={(mode) => {
+              if (mode === 'chart') {
+                const ob = useOnboardingStore.getState();
+                if (ob.status === 'active' && ob.step === 3) {
+                  ob.markAiOrChartExplored();
+                }
+              }
+              setResultViewModeStore(panelId, mode);
+            }}
             onChartConfigChange={(cfg) => setChartConfig(panelId, cfg)}
             onRowDetail={(rowIndex) => setResultDetailRow(panelId, rowIndex)}
             onShowExplain={workflows.setShowExplain}

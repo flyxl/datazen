@@ -31,20 +31,20 @@ function pathHierarchyLabelWidth(name: string): number {
 }
 
 export function queryToolbarExpandedMinWidth(options: {
-  supportsExplain: boolean;
   hasContextSelectors: boolean;
   isPathHierarchy: boolean;
   isMultiDb: boolean;
+  inTransaction?: boolean;
   contextSchema?: string | null;
   namespaceTree: SqlNamespace;
   pathAliases: Record<string, string>;
   databases: readonly string[];
   contextPath: readonly string[];
   currentDatabase?: string | null;
+  /** @deprecated Explain moved to overflow menu; kept for call-site compatibility. */
+  supportsExplain?: boolean;
 }): number {
-  // Execute, strategy, format, snippets, refresh, transaction controls,
-  // history, favorites, and NL2SQL. Explain is the only conditional action.
-  const buttonCount = 11 + (options.supportsExplain ? 1 : 0);
+  const buttonCount = 7 + (options.inTransaction ? 2 : 0);
 
   let contextWidth = 0;
   if (options.hasContextSelectors) {

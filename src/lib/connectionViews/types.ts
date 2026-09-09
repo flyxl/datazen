@@ -25,7 +25,11 @@ export interface ConnectionOpenTarget {
 }
 
 export interface ConnectionViewActions {
-  newQuery: (initialSql?: string, context?: Pick<TableContextInput, 'database' | 'schema'>) => void;
+  newQuery: (
+    initialSql?: string,
+    context?: Pick<TableContextInput, 'database' | 'schema'>,
+    title?: string,
+  ) => boolean | void;
   openTableAction?: (context: TableContextInput, action: TableSqlActionKind) => void;
   openSqlFile?: () => void;
   createTable?: () => void;

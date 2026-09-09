@@ -241,6 +241,7 @@ const schemaStoreState = vi.hoisted(() => ({
   currentSchema: null as string | null,
   ensureNamespacePath: vi.fn(),
   switchDatabase: vi.fn(),
+  loadTables: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../../stores/activeConnectionStore', () => ({
@@ -775,6 +776,18 @@ describe('[tester] query/useQueryTransaction', () => {
 });
 
 describe('[tester] query/QueryEditorSection', () => {
+  beforeEach(() => {
+    vi.stubEnv('VITE_E2E', '1');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function openMoreMenu() {
+    fireEvent.click(screen.getByTestId('query-toolbar-more-menu-trigger'));
+  }
+
   function renderSection(overrides: Partial<ComponentProps<typeof QueryEditorSection>> = {}) {
     const editorRef = {
       current: { getSelection: () => 'SELECT 2', insertAt: vi.fn(), toggleLineComment: vi.fn() },
@@ -826,6 +839,7 @@ describe('[tester] query/QueryEditorSection', () => {
       onExecuteSelection: vi.fn(),
       onCancel: vi.fn(),
       onFormat: vi.fn(),
+      onCompletionRefreshed: vi.fn(),
       onExplain: vi.fn(),
       onBeginTx: vi.fn(),
       onCommitTx: vi.fn(),
@@ -851,6 +865,7 @@ describe('[tester] query/QueryEditorSection', () => {
     const onToggleHistory = vi.fn();
     const onToggleFavorites = vi.fn();
     const onParamChange = vi.fn();
+    const onOpenAddFavoriteDialog = vi.fn();
 
     renderSection({
       onExecute,
@@ -863,12 +878,16 @@ describe('[tester] query/QueryEditorSection', () => {
       onToggleHistory,
       onToggleFavorites,
       onParamChange,
+      onOpenAddFavoriteDialog,
       inTransaction: true,
     });
 
+    fireEvent.click(screen.getByTestId('editor-save-button'));
     fireEvent.click(screen.getByRole('button', { name: 'query.execute' }));
-    fireEvent.click(screen.getByRole('button', { name: 'explain.title' }));
-    fireEvent.click(screen.getByRole('button', { name: 'query.format' }));
+    openMoreMenu();
+    fireEvent.click(screen.getByTestId('more-menu-explain'));
+    openMoreMenu();
+    fireEvent.click(screen.getByTestId('more-menu-format'));
     fireEvent.click(screen.getByRole('button', { name: 'query.commitTx' }));
     fireEvent.click(screen.getByRole('button', { name: 'query.rollbackTx' }));
     fireEvent.click(screen.getByRole('button', { name: 'query.history' }));
@@ -877,6 +896,7 @@ describe('[tester] query/QueryEditorSection', () => {
     fireEvent.click(screen.getByTestId('bind-param-change'));
     fireEvent.contextMenu(screen.getByTestId('mock-sql-editor'));
 
+    expect(onOpenAddFavoriteDialog).toHaveBeenCalledWith('SELECT 1');
     expect(onExecute).toHaveBeenCalled();
     expect(onExplain).toHaveBeenCalled();
     expect(onFormat).toHaveBeenCalled();
@@ -890,14 +910,16 @@ describe('[tester] query/QueryEditorSection', () => {
     expect(screen.getByTestId('context-selectors')).toBeInTheDocument();
     expect(screen.getByText('settings.safeMode')).toBeInTheDocument();
     expect(screen.getByText('query.inTransaction')).toBeInTheDocument();
+    expect(screen.getByText('⌘+Enter query.execute')).toBeInTheDocument();
   });
 
   it('shows in-transaction badge and begin transaction when idle', () => {
     const onBeginTx = vi.fn();
     renderSection({ inTransaction: false, onBeginTx });
-    fireEvent.click(screen.getByRole('button', { name: 'query.beginTx' }));
+    openMoreMenu();
+    fireEvent.click(screen.getByTestId('more-menu-begin-tx'));
     expect(onBeginTx).toHaveBeenCalled();
-    expect(screen.queryByText('query.inTransaction')).toBeNull();
+    expect(screen.queryByText('TX')).toBeNull();
   });
 
   it('shows cancel control while running', () => {
@@ -909,6 +931,49 @@ describe('[tester] query/QueryEditorSection', () => {
     renderSection({ running: true, executionViewModel: execVm, onCancel });
     fireEvent.click(screen.getByTestId('cancel-running'));
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  it('shows row count in status zone when available', () => {
+    const execVm = toQueryExecutionViewModel(
+      {
+        ...EMPTY_QUERY_EXEC,
+        sql: 'SELECT 1',
+        running: false,
+        results: [{ rows: [{ id: 1 }, { id: 2 }], columns: ['id'] }],
+        activeResultIdx: 0,
+      },
+      { supportsCancelQuery: true, supportsQueryExecutionCancel: true },
+    );
+    renderSection({ executionViewModel: execVm });
+    expect(screen.getByText('query.historyRows')).toBeInTheDocument();
+  });
+
+  it('guards refresh completion against double clicks', async () => {
+    let resolveLoad: (() => void) | undefined;
+    schemaStoreState.loadTables.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveLoad = resolve;
+        }),
+    );
+    const onCompletionRefreshed = vi.fn();
+    renderSection({ onCompletionRefreshed });
+
+    openMoreMenu();
+    fireEvent.click(screen.getByTestId('more-menu-refresh-completion'));
+    openMoreMenu();
+    fireEvent.click(screen.getByTestId('more-menu-refresh-completion'));
+
+    expect(schemaStoreState.loadTables).toHaveBeenCalledTimes(1);
+    expect(onCompletionRefreshed).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveLoad?.();
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(onCompletionRefreshed).toHaveBeenCalledWith('query.refreshCompletionDone'),
+    );
   });
 });
 

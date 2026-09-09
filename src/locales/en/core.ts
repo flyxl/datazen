@@ -93,6 +93,21 @@ const pack = {
   'welcome.feature.ai.description':
     'Generate SQL, explain queries, and get help from multiple AI providers.',
   'welcome.createConnection': 'Create Your First Connection',
+  'welcome.onboarding.title': 'Get started in 3 quick steps',
+  'welcome.onboarding.step1': '1. Connect data (Sample SQLite ready)',
+  'welcome.onboarding.step2': '2. Run your first query',
+  'welcome.onboarding.step3': '3. Gain insights with charts & AI',
+  'welcome.openSampleDb': 'Open Sample SQLite (Instant Tour)',
+  'welcome.openSampleDbHint': 'No credentials required. Ready-to-query e-commerce demo dataset.',
+  'welcome.skipOnboarding': 'Skip guide and start directly',
+  'onboarding.badge': 'Guide {step}/3',
+  'onboarding.step2.message':
+    'Step 2: Run query — Preset sales aggregate query is ready. Click [▶ Run (⌘+Enter)] below.',
+  'onboarding.step2.action': 'Run & Advance →',
+  'onboarding.step3.message':
+    'Step 3: Insights — Query succeeded! Click [📊 Visualize] on the result bar or [✨ AI Assistant].',
+  'onboarding.step3.action': 'Complete Guide ✓',
+  'onboarding.skip': 'Skip Guide',
   'common.importConnections': 'Import Connections',
   'welcome.importConnectionHint':
     'Import from TablePlus, Navicat, DataGrip, DBeaver, DBX, or a DataZen export file.',
