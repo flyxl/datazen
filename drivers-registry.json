@@ -94,12 +94,6 @@
     "feature": "driver-vector",
     "description": "Vector database (generic HTTP)"
   },
-  "jdbc": {
-    "source": "path",
-    "path": "packages/drivers/jdbc",
-    "feature": "driver-jdbc",
-    "description": "Generic JDBC via external Java Agent (optional; not in Basic SKU)"
-  },
   "kiwi": {
     "source": "git",
     "git": "https://github.com/flyxl/datazen-driver-kiwi.git",
