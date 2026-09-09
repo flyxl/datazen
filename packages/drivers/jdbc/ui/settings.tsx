@@ -1,3 +1,4 @@
+import { PathInput } from '../../../../src/components/ui/PathInput';
 import { Input } from '@datazen/ui';
 
 export const jdbcSettingsSchema = {
@@ -42,26 +43,37 @@ export function JdbcSettingsSection({
   return (
     <div className="space-y-3 text-sm">
       <p className="text-xs text-fg-muted">
-        JDBC uses an external Java agent process. Requires JRE 17+ and a built agent jar. Vendor
-        JDBC drivers are not bundled.
+        JDBC uses an external Java agent process. Requires <strong>JRE 17+</strong> and a built{' '}
+        <code className="text-[11px]">datazen-jdbc-agent.jar</code>. Vendor JDBC drivers are not
+        bundled. Paths apply on the next connect (agent restarts if java/jar change).
       </p>
       <div>
         <div className="mb-1 font-medium">Java executable</div>
-        <Input
+        <PathInput
           value={v.javaPath ?? ''}
-          onChange={(e) => onChange({ ...v, javaPath: e.target.value })}
+          onChange={(path) => onChange({ ...v, javaPath: path })}
           placeholder="java (or /path/to/java)"
-          className="h-8 w-full text-xs"
+          className="w-full"
         />
+        <p className="mt-1 text-[11px] text-fg-muted">
+          Leave empty to use JAVA_HOME or PATH. Override with env DATAZEN_JDBC_JAVA.
+        </p>
       </div>
       <div>
         <div className="mb-1 font-medium">Agent JAR</div>
-        <Input
+        <PathInput
           value={v.agentJarPath ?? 'datazen-jdbc-agent.jar'}
-          onChange={(e) => onChange({ ...v, agentJarPath: e.target.value })}
+          onChange={(path) => onChange({ ...v, agentJarPath: path })}
           placeholder="datazen-jdbc-agent.jar"
-          className="h-8 w-full text-xs"
+          dialogOptions={{
+            filters: [{ name: 'JAR', extensions: ['jar'] }],
+          }}
+          className="w-full"
         />
+        <p className="mt-1 text-[11px] text-fg-muted">
+          Build with <code className="text-[11px]">./datazen-jdbc-agent/build.sh</code>. Env
+          override: DATAZEN_JDBC_AGENT_JAR.
+        </p>
       </div>
       <div>
         <div className="mb-1 font-medium">Idle timeout (seconds)</div>
@@ -77,6 +89,11 @@ export function JdbcSettingsSection({
           }
           className="h-8 w-full text-xs"
         />
+      </div>
+      <div className="rounded-md border border-edge/60 bg-surface-2/30 px-3 py-2 text-[11px] text-fg-muted">
+        <strong className="text-fg">Probe:</strong> there is no separate health command yet — open a
+        JDBC connection or use Test Connection. Failures such as missing jar / wrong JRE surface as
+        connection errors with the resolved path.
       </div>
     </div>
   );
