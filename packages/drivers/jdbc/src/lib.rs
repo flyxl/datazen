@@ -1,7 +1,7 @@
 //! DataZen path driver: jdbc (external Java Agent).
 //!
-//! Phase 0 skeleton: registers the driver id and returns Unsupported for
-//! live operations until AgentProcessManager + protocol are wired (Phase 1+).
+//! Phase 1: AgentProcessManager can spawn the agent and complete `agent.hello`.
+//! Live DatabaseDriver ops still return Unsupported until Phase 2–3.
 
 use std::sync::Arc;
 
@@ -11,9 +11,9 @@ mod agent_process;
 mod driver;
 mod protocol;
 
-pub use agent_process::AgentProcessManager;
+pub use agent_process::{AgentLaunchConfig, AgentProcessManager, AgentState};
 pub use driver::JdbcDriver;
-pub use protocol::{PROTOCOL_VERSION, agent_version_info};
+pub use protocol::{agent_version_info, PROTOCOL_VERSION};
 
 struct JdbcFactory;
 
@@ -31,7 +31,6 @@ impl DatabaseDriverFactory for JdbcFactory {
     }
 
     fn supports_streaming_results(&self) -> bool {
-        // Will be true once query.fetch streaming is implemented (Phase 2-3).
         false
     }
 }

@@ -15,11 +15,11 @@ Host (`packages/drivers/jdbc`) <-> Java Agent (`datazen-jdbc-agent`) over **stdi
 
 Negotiate via `agent.hello`. Host must reject agents with incompatible major protocol version.
 
-## Methods (Phase 0 implements hello only on Agent)
+## Methods
 
 | Method | Status |
 |--------|--------|
-| `agent.hello` | Phase 0 |
+| `agent.hello` | Phase 1 (Host + Agent) |
 | `agent.shutdown` | Phase 1 |
 | `session.open` / `session.close` | Phase 2 |
 | `meta.databases` / `meta.tables` / `meta.columns` | Phase 2 |
@@ -27,14 +27,20 @@ Negotiate via `agent.hello`. Host must reject agents with incompatible major pro
 | `exec.update` | Phase 2 |
 | `tx.begin` / `tx.commit` / `tx.rollback` | Phase 2 |
 
-See [jdbc-agent-implementation-plan.md](../../../docs/todo/jdbc-agent-implementation-plan.md) for param/result field tables.
-
 ## Hello example
 
 ```json
 {"jsonrpc":"2.0","id":1,"method":"agent.hello","params":{"hostVersion":"0.0.0","protocolVersion":1}}
 {"jsonrpc":"2.0","id":1,"result":{"agentVersion":"0.1.0","protocolVersion":1,"capabilities":["jdbc","session","query.stream","tx"]}}
 ```
+
+## Host behavior (Phase 1)
+
+- Lazy start on first `ensure_running` / `rpc`
+- Single shared Agent process
+- stdout reader demux by response `id`
+- One automatic restart after unexpected exit; second failure surfaces error
+- `shutdown` sends `agent.shutdown` then kills the child
 
 ## Errors
 
