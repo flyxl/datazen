@@ -41,26 +41,42 @@ impl JdbcDriver {
 
     fn map_err(e: String) -> DriverError {
         let lower = e.to_lowercase();
-        if lower.contains("not found") && lower.contains("jar") {
-            DriverError::InvalidConfig(e)
-        } else if lower.contains("auth") || lower.contains("password") {
+        if (lower.contains("not found") && lower.contains("jar"))
+            || lower.contains("agent jar")
+            || lower.contains("datazen-jdbc-agent")
+        {
+            DriverError::InvalidConfig(format!(
+                "{e} — set Settings → Extensions → JDBC → Agent JAR, or DATAZEN_JDBC_AGENT_JAR"
+            ))
+        } else if lower.contains("failed to spawn")
+            || (lower.contains("no such file") && lower.contains("java"))
+            || lower.contains("cannot run program")
+        {
+            DriverError::InvalidConfig(format!(
+                "{e} — install JRE 17+ and ensure `java` is on PATH, or set javaPath / DATAZEN_JDBC_JAVA"
+            ))
+        } else if lower.contains("unsupported class version")
+            || lower.contains("class file version")
+        {
+            DriverError::InvalidConfig(format!(
+                "{e} — JDBC agent requires Java 17 or newer"
+            ))
+        } else if lower.contains("agent.hello")
+            || lower.contains("agent process exited")
+            || lower.contains("agent not running")
+        {
+            DriverError::ConnectionFailed(format!(
+                "{e} — agent failed to start or died; check JRE 17+ and agent jar path"
+            ))
+        } else if lower.contains("auth") || lower.contains("password") || lower.contains("login") {
             DriverError::AuthenticationFailed(e)
         } else if lower.contains("connect") || lower.contains("connection") {
             DriverError::ConnectionFailed(e)
-        } else if lower.contains("sql") || lower.contains("query") {
-            DriverError::QueryFailed(e)
         } else {
             DriverError::QueryFailed(e)
         }
     }
 
-    /// Build session.open params from ConnectionConfig.
-    ///
-    /// Expected `options` keys (all optional except jdbcUrl):
-    /// - `jdbcUrl` | `url` — JDBC URL (required)
-    /// - `jars` — array of absolute jar paths
-    /// - `driverClass` — e.g. org.h2.Driver
-    /// - `props` — string map of extra JDBC properties
     fn open_params(config: &ConnectionConfig) -> Result<serde_json::Value, DriverError> {
         let opts = config.options.as_ref();
         let url = opts
@@ -187,7 +203,6 @@ impl JdbcDriver {
             .await
             .map_err(Self::map_err)?;
 
-        let columns = Self::parse_columns(result.get("columns").unwrap_or(&serde_json::Value::Null));
         let mut rows = Self::parse_rows(result.get("rows").unwrap_or(&serde_json::Value::Null));
         let mut has_more = result
             .get("hasMore")
@@ -233,7 +248,6 @@ impl JdbcDriver {
                 .await;
         }
 
-        let _ = columns;
         Ok(QueryResult {
             columns: Self::parse_columns(result.get("columns").unwrap_or(&serde_json::Value::Null)),
             rows,
@@ -271,7 +285,7 @@ impl DatabaseDriver for JdbcDriver {
         self.agent
             .ensure_running()
             .await
-            .map_err(|e| DriverError::ConnectionFailed(e))?;
+            .map_err(|e| DriverError::ConnectionFailed(Self::map_err(e).to_string()))?;
         let params = Self::open_params(config)?;
         let result = self
             .agent
@@ -453,6 +467,27 @@ impl DatabaseDriver for JdbcDriver {
         })
     }
 
+    async fn query_stream(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: datazen_driver_api::QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let sid = self.session_id(handle).await?;
+        crate::stream_query::stream_query(
+            &self.agent,
+            &sid,
+            sql,
+            limit,
+            on_event,
+            Self::parse_columns,
+            Self::parse_rows,
+            Self::map_err,
+        )
+        .await
+    }
+
     async fn query_with_params(
         &self,
         handle: &ConnectionHandle,
@@ -515,7 +550,10 @@ impl DatabaseDriver for JdbcDriver {
         Ok(())
     }
 
-    async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+    async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
+        if let Ok(sid) = self.session_id(handle).await {
+            crate::stream_query::cancel_session_query(&self.agent, &sid).await?;
+        }
         Ok(())
     }
 
