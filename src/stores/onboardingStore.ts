@@ -20,6 +20,29 @@ export interface OnboardingState {
 
 const STORAGE_KEY = 'datazen:onboarding-state-v1';
 
+const VALID_STATUSES: readonly OnboardingStatus[] = [
+  'not_started',
+  'active',
+  'completed',
+  'skipped',
+];
+
+const VALID_STEPS: readonly (1 | 2 | 3)[] = [1, 2, 3];
+
+function parseStatus(value: unknown): OnboardingStatus {
+  if (typeof value === 'string' && (VALID_STATUSES as readonly string[]).includes(value)) {
+    return value as OnboardingStatus;
+  }
+  return 'not_started';
+}
+
+function parseStep(value: unknown): 1 | 2 | 3 {
+  if (typeof value === 'number' && (VALID_STEPS as readonly number[]).includes(value)) {
+    return value as 1 | 2 | 3;
+  }
+  return 1;
+}
+
 interface PersistedState {
   status: OnboardingStatus;
   step: 1 | 2 | 3;
@@ -51,8 +74,8 @@ function loadPersistedState(): PersistedState {
     }
     const parsed = JSON.parse(raw) as Partial<PersistedState>;
     return {
-      status: parsed.status ?? 'not_started',
-      step: parsed.step ?? 1,
+      status: parseStatus(parsed.status),
+      step: parseStep(parsed.step),
       sampleConnectionId: parsed.sampleConnectionId ?? null,
       queryExecuted: !!parsed.queryExecuted,
       aiOrChartExplored: !!parsed.aiOrChartExplored,
