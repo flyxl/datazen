@@ -6,6 +6,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { MoreHorizontal, FileSearch, Wand2, RefreshCw, CirclePlay } from 'lucide-react';
 import { ToolbarButton } from '../../../components/ui/ToolbarButton';
 import { useI18n } from '../../../hooks/useI18n';
@@ -80,6 +81,7 @@ export function QueryToolbarMoreMenu({
   const isMac = platform === 'macos' || (platform as string) === 'ios';
 
   const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
   const close = useCallback(() => setOpen(false), []);
@@ -96,9 +98,13 @@ export function QueryToolbarMoreMenu({
     if (!open) return;
 
     const handleMouseDown = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
+      const t = event.target as Node | null;
+      if (containerRef.current?.contains(t)) return;
+      if (
+        (event.target as HTMLElement)?.closest('[data-testid="query-toolbar-more-menu-dropdown"]')
+      )
+        return;
+      setOpen(false);
     };
 
     document.addEventListener('mousedown', handleMouseDown);
@@ -112,6 +118,16 @@ export function QueryToolbarMoreMenu({
       containerRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
     }
   };
+
+  const handleToggle = useCallback(() => {
+    setOpen((prev) => {
+      if (!prev && containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setMenuPos({ x: rect.left, y: rect.bottom });
+      }
+      return !prev;
+    });
+  }, []);
 
   const formatShortcut = isMac ? '⇧⌥F' : 'Shift+Alt+F';
 
@@ -131,61 +147,64 @@ export function QueryToolbarMoreMenu({
         aria-expanded={open}
         aria-haspopup="menu"
         data-testid="query-toolbar-more-menu-trigger"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={handleToggle}
       />
 
-      {open && (
-        <div
-          role="menu"
-          data-testid="query-toolbar-more-menu-dropdown"
-          className="absolute left-0 top-full z-50 mt-1 min-w-[200px] overflow-hidden rounded-md border border-edge bg-surface-raised py-1 text-xs text-fg shadow-lg"
-        >
-          <MenuItem
-            testId="more-menu-format"
-            label={t('query.format')}
-            shortcut={formatShortcut}
-            icon={<Wand2 className="h-3.5 w-3.5" />}
-            disabled={formatDisabled}
-            onClick={() => runAction(onFormat)}
-          />
-
-          {supportsExplain && (
+      {open &&
+        createPortal(
+          <div
+            role="menu"
+            data-testid="query-toolbar-more-menu-dropdown"
+            className="fixed z-[10000] min-w-[200px] overflow-hidden rounded-lg border border-edge bg-surface-alt py-1 text-xs text-fg shadow-xl"
+            style={{ left: menuPos.x, top: menuPos.y }}
+          >
             <MenuItem
-              testId="more-menu-explain"
-              label={t('explain.title')}
-              icon={<FileSearch className="h-3.5 w-3.5" />}
-              disabled={explainDisabled}
-              onClick={() => runAction(onExplain)}
+              testId="more-menu-format"
+              label={t('query.format')}
+              shortcut={formatShortcut}
+              icon={<Wand2 className="h-3.5 w-3.5" />}
+              disabled={formatDisabled}
+              onClick={() => runAction(onFormat)}
             />
-          )}
 
-          {renderSnippetButton && (
-            <div className="border-t border-edge/50 px-1 py-0.5">{renderSnippetButton()}</div>
-          )}
+            {supportsExplain && (
+              <MenuItem
+                testId="more-menu-explain"
+                label={t('explain.title')}
+                icon={<FileSearch className="h-3.5 w-3.5" />}
+                disabled={explainDisabled}
+                onClick={() => runAction(onExplain)}
+              />
+            )}
 
-          {onRefreshCompletion && (
-            <MenuItem
-              testId="more-menu-refresh-completion"
-              label={t('query.refreshCompletion')}
-              icon={<RefreshCw className="h-3.5 w-3.5" />}
-              disabled={refreshCompletionDisabled}
-              onClick={() => runAction(onRefreshCompletion)}
-            />
-          )}
+            {renderSnippetButton && (
+              <div className="border-t border-edge/50 px-1 py-0.5">{renderSnippetButton()}</div>
+            )}
 
-          <div className="my-0.5 border-t border-edge/50" />
+            {onRefreshCompletion && (
+              <MenuItem
+                testId="more-menu-refresh-completion"
+                label={t('query.refreshCompletion')}
+                icon={<RefreshCw className="h-3.5 w-3.5" />}
+                disabled={refreshCompletionDisabled}
+                onClick={() => runAction(onRefreshCompletion)}
+              />
+            )}
 
-          {!inTransaction && (
-            <MenuItem
-              testId="more-menu-begin-tx"
-              label={t('query.beginTx')}
-              icon={<CirclePlay className="h-3.5 w-3.5" />}
-              disabled={txBusy}
-              onClick={() => runAction(onBeginTx)}
-            />
-          )}
-        </div>
-      )}
+            <div className="my-0.5 border-t border-edge/50" />
+
+            {!inTransaction && (
+              <MenuItem
+                testId="more-menu-begin-tx"
+                label={t('query.beginTx')}
+                icon={<CirclePlay className="h-3.5 w-3.5" />}
+                disabled={txBusy}
+                onClick={() => runAction(onBeginTx)}
+              />
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

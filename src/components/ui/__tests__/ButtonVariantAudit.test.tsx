@@ -3,15 +3,16 @@ import { render, screen } from '@testing-library/react';
 import { Button } from '../Button';
 
 describe('Button Variant Audit & Specification', () => {
-  it('renders primary variant with accent background and run variant with green query-run', () => {
+  it('renders primary variant with deep accent background and run variant with green query-run', () => {
     const { rerender } = render(<Button variant="primary">Primary Action</Button>);
     const primaryBtn = screen.getByRole('button', { name: 'Primary Action' });
-    expect(primaryBtn.className).toContain('bg-accent');
+    expect(primaryBtn.className).toContain('bg-accent-deep');
     expect(primaryBtn.className).not.toContain('bg-query-run');
 
     rerender(<Button variant="run">Run Query</Button>);
     const runBtn = screen.getByRole('button', { name: 'Run Query' });
     expect(runBtn.className).toContain('bg-query-run');
+    expect(runBtn.className).not.toContain('bg-accent-deep');
   });
 
   it('audits that save, create, and commit buttons do not use green run variant', async () => {

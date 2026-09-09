@@ -36,6 +36,7 @@ export default {
         },
         accent: {
           DEFAULT: 'var(--c-accent)',
+          deep: 'var(--c-accent-deep)',
         },
         success: {
           DEFAULT: 'var(--c-success)',

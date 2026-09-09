@@ -7,7 +7,7 @@ type Size = 'md' | 'sm';
 
 const variants: Record<Variant, string> = {
   primary:
-    'bg-accent text-white hover:bg-accent/90 disabled:opacity-50 disabled:pointer-events-none shadow-sm',
+    'bg-accent-deep text-white hover:bg-accent-deep/90 disabled:opacity-50 disabled:pointer-events-none shadow-sm',
   /** Exclusive to SQL execution and Workflow execution */
   run: 'bg-query-run text-white hover:bg-query-run/90 disabled:opacity-50 disabled:pointer-events-none shadow-sm',
   secondary:

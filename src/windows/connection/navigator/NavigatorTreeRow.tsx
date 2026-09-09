@@ -147,29 +147,31 @@ export function NavigatorTreeRow({
   switch (row.type) {
     case 'section':
       return (
-        <button
-          type="button"
+        <div
           data-section-header
           data-section={row.section}
+          role="button"
+          tabIndex={0}
           aria-expanded={row.expanded}
           className={cn(
-            'flex w-full select-none items-center gap-1.5 px-2 py-1 text-left text-[11px] font-semibold uppercase tracking-wider text-fg-muted',
-            row.section === 'recent' && 'cursor-pointer hover:bg-surface-raised/50',
+            'flex w-full select-none items-center gap-1.5 px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-fg-muted cursor-pointer hover:bg-surface-raised/50',
           )}
-          onClick={() => {
-            if (row.section === 'recent') toggleGroup(RECENT_GROUP_KEY);
+          onClick={() =>
+            toggleGroup(row.section === 'pinned' ? PINNED_GROUP_KEY : RECENT_GROUP_KEY)
+          }
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              toggleGroup(row.section === 'pinned' ? PINNED_GROUP_KEY : RECENT_GROUP_KEY);
+            }
           }}
           onDragOver={(e) => handleSectionDragOver?.(e, row.section)}
           onDrop={(e) => handleSectionDrop?.(e, row.section)}
         >
-          {row.section === 'recent' ? (
-            row.expanded ? (
-              <ChevronDown className="pointer-events-none h-3 w-3 shrink-0 text-fg-muted" />
-            ) : (
-              <ChevronRight className="pointer-events-none h-3 w-3 shrink-0 text-fg-muted" />
-            )
+          {row.expanded ? (
+            <ChevronDown className="pointer-events-none h-3 w-3 shrink-0 text-fg-muted" />
           ) : (
-            <span className="h-3 w-3 shrink-0" aria-hidden="true" />
+            <ChevronRight className="pointer-events-none h-3 w-3 shrink-0 text-fg-muted" />
           )}
           <ThemedIcon
             id="schema.schema"
@@ -178,7 +180,7 @@ export function NavigatorTreeRow({
           />
           <span className="pointer-events-none">{row.displayName}</span>
           <span className="pointer-events-none text-[10px] font-normal">({row.count})</span>
-        </button>
+        </div>
       );
 
     case 'group': {

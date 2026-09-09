@@ -187,7 +187,7 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
 
     const isPinnedSection = groupName === PINNED_GROUP_KEY;
     const isRecentSection = groupName === RECENT_GROUP_KEY;
-    const expanded = isPinnedSection || expandedGroups.has(groupName) || !!query;
+    const expanded = expandedGroups.has(groupName) || !!query;
     const displayName = isPinnedSection
       ? t('main.ctx.pinConnection')
       : isRecentSection

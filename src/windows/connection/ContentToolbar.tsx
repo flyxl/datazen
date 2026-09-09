@@ -105,7 +105,7 @@ export function ContentToolbar({
   const { ref: toolbarRef, compact } = useCompactToolbar(expandedMinWidth);
 
   return (
-    <ToolbarShell ref={toolbarRef} className="h-12 min-h-[48px] px-4">
+    <ToolbarShell ref={toolbarRef} className="h-12 min-h-[48px] px-3">
       {showNewQuery && (
         <ToolbarButton
           compact={compact}

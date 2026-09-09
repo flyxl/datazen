@@ -119,7 +119,7 @@ export const ConnectionNavigatorTree = forwardRef<
   );
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    () => new Set([RECENT_GROUP_KEY]),
+    () => new Set([PINNED_GROUP_KEY, RECENT_GROUP_KEY]),
   );
   const [expandedConnections, setExpandedConnections] = useState<Set<string>>(new Set());
   const [expandedDbs, setExpandedDbs] = useState<Set<string>>(new Set());
