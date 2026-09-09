@@ -7,6 +7,7 @@ import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -66,7 +67,6 @@ final class PoolRegistry {
               cfg.setIdleTimeout(settings.idleTimeoutMs);
               cfg.setMaxLifetime(settings.maxLifetimeMs);
               cfg.setAutoCommit(true);
-              // Desktop agent: fail fast rather than queue forever.
               cfg.setInitializationFailTimeout(10_000);
               HikariDataSource ds = new HikariDataSource(cfg);
               PoolEntry created = new PoolEntry(ds, loader);
@@ -81,7 +81,6 @@ final class PoolRegistry {
     }
   }
 
-  /** Drop one session reference; close pool when unused. */
   void releaseRef(String key) {
     pools.computeIfPresent(
         key,
@@ -129,9 +128,8 @@ final class PoolRegistry {
     long idleTimeoutMs = 600_000;
     long maxLifetimeMs = 1_800_000;
 
-    static PoolSettings fromRequest(String requestLine, java.util.Map<String, String> propsMap) {
+    static PoolSettings fromRequest(String requestLine, Map<String, String> propsMap) {
       PoolSettings s = new PoolSettings();
-      // Optional nested-ish keys flattened in props: pool.maximumPoolSize etc.
       if (propsMap != null) {
         applyInt(propsMap, "pool.maximumPoolSize", v -> s.maximumPoolSize = v);
         applyInt(propsMap, "maximumPoolSize", v -> s.maximumPoolSize = v);
@@ -140,12 +138,12 @@ final class PoolRegistry {
         applyLong(propsMap, "pool.idleTimeoutMs", v -> s.idleTimeoutMs = v);
         applyLong(propsMap, "pool.maxLifetimeMs", v -> s.maxLifetimeMs = v);
       }
-      Integer max = JsonLite.extractIntObj(requestLine, "maximumPoolSize");
-      if (max != null && max > 0) {
+      int max = JsonLite.extractInt(requestLine, "maximumPoolSize", -1);
+      if (max > 0) {
         s.maximumPoolSize = max;
       }
-      Integer minIdle = JsonLite.extractIntObj(requestLine, "minimumIdle");
-      if (minIdle != null && minIdle >= 0) {
+      int minIdle = JsonLite.extractInt(requestLine, "minimumIdle", -1);
+      if (minIdle >= 0) {
         s.minimumIdle = minIdle;
       }
       if (s.maximumPoolSize < 1) {
@@ -160,8 +158,7 @@ final class PoolRegistry {
       return s;
     }
 
-    private static void applyInt(
-        java.util.Map<String, String> map, String key, java.util.function.IntConsumer c) {
+    private static void applyInt(Map<String, String> map, String key, java.util.function.IntConsumer c) {
       String v = map.get(key);
       if (v == null) {
         return;
@@ -173,7 +170,7 @@ final class PoolRegistry {
     }
 
     private static void applyLong(
-        java.util.Map<String, String> map, String key, java.util.function.LongConsumer c) {
+        Map<String, String> map, String key, java.util.function.LongConsumer c) {
       String v = map.get(key);
       if (v == null) {
         return;
