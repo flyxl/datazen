@@ -1,14 +1,20 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, cleanup, screen, fireEvent } from '@testing-library/react';
+import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ConnectionPage } from '../ConnectionPage';
+import { SAMPLE_GETTING_STARTED_SQL } from '../gettingStartedQuery';
 import { useUiStore } from '../../../stores/uiStore';
 import { useOnboardingStore } from '../../../stores/onboardingStore';
+import { PENDING_CONNECTION_KEY } from '../../../lib/windowManager';
+import type { ConnectionViewActions } from '../../../lib/connectionViews/types';
 
-const { fetchConnectionsMock, fetchGroupsMock, listenCrossWindowMock } = vi.hoisted(() => ({
-  fetchConnectionsMock: vi.fn().mockResolvedValue(undefined),
-  fetchGroupsMock: vi.fn().mockResolvedValue(undefined),
-  listenCrossWindowMock: vi.fn(() => Promise.resolve(() => {})),
-}));
+const { fetchConnectionsMock, fetchGroupsMock, listenCrossWindowMock, newQueryMock } = vi.hoisted(
+  () => ({
+    fetchConnectionsMock: vi.fn().mockResolvedValue(undefined),
+    fetchGroupsMock: vi.fn().mockResolvedValue(undefined),
+    listenCrossWindowMock: vi.fn(() => Promise.resolve(() => {})),
+    newQueryMock: vi.fn(() => true),
+  }),
+);
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -119,9 +125,30 @@ vi.mock('../../../lib/crossWindowBus', () => ({
   listenCrossWindow: (...args: unknown[]) => listenCrossWindowMock(...args),
 }));
 
-vi.mock('../ContentView', () => ({
-  ContentView: () => <div data-testid="mock-content-view">content-view</div>,
-}));
+vi.mock('../ContentView', async () => {
+  const { useLayoutEffect } = await import('react');
+  return {
+    ContentView: ({
+      actionsRef,
+    }: {
+      actionsRef?: { current: ConnectionViewActions | undefined };
+    }) => {
+      useLayoutEffect(() => {
+        if (actionsRef) {
+          actionsRef.current = {
+            newQuery: newQueryMock,
+            openErDiagram: vi.fn(),
+            refresh: vi.fn(),
+          };
+        }
+        return () => {
+          if (actionsRef) actionsRef.current = undefined;
+        };
+      }, [actionsRef]);
+      return <div data-testid="mock-content-view">content-view</div>;
+    },
+  };
+});
 
 vi.mock('../../../components/TitleBar', () => ({
   TitleBar: ({ title }: { title: string }) => <div data-testid="title-bar">{title}</div>,
@@ -207,5 +234,38 @@ describe('ConnectionPage Onboarding & Dual Mode Sidebar', () => {
     expect(useUiStore.getState().workspaceSidebarMode).toBe('icons');
     fireEvent.click(screen.getByTestId('workspace-sidebar-toggle'));
     expect(useUiStore.getState().workspaceSidebarMode).toBe('expanded');
+  });
+
+  it('persists workspace sidebar mode to localStorage', () => {
+    render(<ConnectionPage />);
+    expect(localStorage.getItem('datazen:workspace-sidebar-mode')).toBeNull();
+    fireEvent.click(screen.getByTestId('workspace-sidebar-toggle'));
+    expect(localStorage.getItem('datazen:workspace-sidebar-mode')).toBe('expanded');
+    fireEvent.click(screen.getByTestId('workspace-sidebar-toggle'));
+    expect(localStorage.getItem('datazen:workspace-sidebar-mode')).toBe('icons');
+  });
+
+  it('auto-opens getting_started.sql with preset SQL when onboarding sample connection connects', async () => {
+    const sampleConnectionId = 'sample_sqlite';
+    useOnboardingStore.getState().startOnboarding(sampleConnectionId);
+    localStorage.setItem(
+      PENDING_CONNECTION_KEY,
+      JSON.stringify({
+        connectionId: sampleConnectionId,
+        dbSessionId: 'session-onboarding-1',
+        connectionName: 'Sample SQLite',
+        databaseType: 'sqlite',
+      }),
+    );
+
+    render(<ConnectionPage />);
+
+    await waitFor(() => {
+      expect(newQueryMock).toHaveBeenCalledWith(
+        SAMPLE_GETTING_STARTED_SQL,
+        undefined,
+        'getting_started.sql',
+      );
+    });
   });
 });

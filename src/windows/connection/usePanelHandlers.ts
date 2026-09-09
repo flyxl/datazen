@@ -52,7 +52,8 @@ export interface PanelHandlers {
   handleNewQuery: (
     initialSql?: string,
     context?: Pick<TableContextInput, 'database' | 'schema'>,
-  ) => void;
+    title?: string,
+  ) => boolean;
   handleOpenTableAction: (context: TableContextInput, action: TableSqlActionKind) => void;
   handleOpenQueryHistory: () => void;
   handleClosePanel: (panelId: string) => void;
@@ -396,8 +397,12 @@ export function usePanelHandlers({
   );
 
   const handleNewQuery = useCallback(
-    (initialSql?: string, target?: Pick<TableContextInput, 'database' | 'schema'>) => {
-      if (!sidebarConnCtx) return;
+    (
+      initialSql?: string,
+      target?: Pick<TableContextInput, 'database' | 'schema'>,
+      title?: string,
+    ): boolean => {
+      if (!sidebarConnCtx) return false;
       const panelId = nextPanelId('qry');
       let panelDatabase = target?.database?.trim() || undefined;
       let namespacePath: string[] | undefined;
@@ -412,13 +417,16 @@ export function usePanelHandlers({
         ...sidebarConnCtx,
         type: 'query',
         id: panelId,
-        title: db ? `${sidebarConnCtx.connectionName}@${db}` : sidebarConnCtx.connectionName,
+        title:
+          title?.trim() ||
+          (db ? `${sidebarConnCtx.connectionName}@${db}` : sidebarConnCtx.connectionName),
         database: panelDatabase || undefined,
         schema: target?.schema?.trim() || undefined,
         namespacePath,
       };
       addPanel(panel);
       if (initialSql) updateSql(panelId, initialSql);
+      return true;
     },
     [sidebarConnCtx, currentDatabase, initialDatabase, addPanel, updateSql],
   );

@@ -1,20 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ArrowLeft,
-  Database,
-  Gauge,
-  LayoutGrid,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Puzzle,
-  Settings,
-  Workflow,
-  type LucideIcon,
-} from 'lucide-react';
+import { ArrowLeft, PanelLeftOpen } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { MenuBar } from '../../components/MenuBar';
 import { ThemeToggle } from '../../components/ThemeToggle';
-import { ThemedIcon } from '../../components/ThemedIcon';
 import { ResultMessageDialog } from '../../components/ui/ResultMessageDialog';
 import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
@@ -27,7 +15,6 @@ import { backupCommands } from '../../commands/backup';
 import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
 import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
 import { openConnectionShareDialog } from '../../lib/connectionShare';
-import { openNewConnectionDialog } from '../../lib/windowManager';
 import { hideNativeContextMenu } from '../../lib/nativeContextMenu';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useUiStore } from '../../stores/uiStore';
@@ -43,13 +30,12 @@ import {
   type WorkspaceMode,
 } from './connectionPageUtils';
 import { useConnectionTabs } from './useConnectionTabs';
-import { PENDING_CONNECTION_KEY } from '../../lib/windowManager';
+import { openNewConnectionDialog, PENDING_CONNECTION_KEY } from '../../lib/windowManager';
 import {
   ConnectionNavigatorTree,
   type ConnectionNavigatorTreeHandle,
 } from './ConnectionNavigatorTree';
 import { ContentView } from './ContentView';
-import type { UiIconId } from '../../lib/iconIds';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { DashboardPanel } from '../dashboard/DashboardPanel';
 import { WorkflowPage } from '../workflow/WorkflowPage';
@@ -58,57 +44,9 @@ import { WorkspaceView } from '../workspace/WorkspaceView';
 import { WappManagementPage } from '../wapps/WappManagementPage';
 import { OnboardingGuideBar } from './OnboardingGuideBar';
 import { useOnboardingStore } from '../../stores/onboardingStore';
-
-const SAMPLE_GETTING_STARTED_SQL = `-- Welcome to DataZen! Quick Sales Analysis
-SELECT
-  p.category,
-  COUNT(o.id) as total_orders,
-  ROUND(SUM(o.total_amount), 2) as total_revenue
-FROM products p
-JOIN orders o ON p.id = o.product_id
-GROUP BY p.category
-ORDER BY total_revenue DESC;`;
-
-interface WorkspaceShortcutButtonProps {
-  icon: LucideIcon;
-  iconId: UiIconId;
-  label: string;
-  testId: string;
-  onClick: () => void;
-  active?: boolean;
-  expanded?: boolean;
-}
-
-function WorkspaceModeButton({
-  icon: Icon,
-  iconId,
-  label,
-  testId,
-  onClick,
-  active = false,
-  expanded = false,
-}: Readonly<WorkspaceShortcutButtonProps>) {
-  return (
-    <button
-      type="button"
-      data-testid={testId}
-      onClick={onClick}
-      title={label}
-      className={`flex h-10 w-full items-center text-xs transition-colors ${
-        expanded ? 'justify-start gap-2.5 px-3' : 'justify-center'
-      } ${
-        active
-          ? 'bg-accent/20 text-accent'
-          : 'text-fg-secondary hover:bg-surface-raised hover:text-fg'
-      }`}
-    >
-      <ThemedIcon id={iconId} className="h-4 w-4 shrink-0" fallback={Icon} />
-      {expanded && <span className="truncate">{label}</span>}
-    </button>
-  );
-}
-
-// ── Component ─────────────────────────────────────────────────────
+import { WorkspaceModeSidebar } from './WorkspaceModeSidebar';
+import { GETTING_STARTED_QUERY_TITLE, SAMPLE_GETTING_STARTED_SQL } from './gettingStartedQuery';
+import { useAutoOpenGettingStartedQuery } from './useAutoOpenGettingStartedQuery';
 
 export function ConnectionPage() {
   useSettings();
@@ -155,7 +93,6 @@ export function ConnectionPage() {
   >();
   const actionsRef = useRef<ConnectionViewActions | undefined>();
   const navigatorRef = useRef<ConnectionNavigatorTreeHandle>(null);
-  const sampleQueryOpenedRef = useRef(false);
   const workspaceSidebarMode = useUiStore((s) => s.workspaceSidebarMode);
   const toggleWorkspaceSidebarMode = useUiStore((s) => s.toggleWorkspaceSidebarMode);
   const onboardingStatus = useOnboardingStore((s) => s.status);
@@ -184,28 +121,23 @@ export function ConnectionPage() {
   }, [activeTab?.dbSessionId, activeTab?.status, executePendingAction]);
 
   const handleExecuteSampleQuery = useCallback(() => {
-    actionsRef.current?.newQuery?.(SAMPLE_GETTING_STARTED_SQL);
+    actionsRef.current?.newQuery?.(
+      SAMPLE_GETTING_STARTED_SQL,
+      undefined,
+      GETTING_STARTED_QUERY_TITLE,
+    );
     const panelId = usePanelStore.getState().activePanelId;
     if (panelId) {
       void usePanelStore.getState().executeQuery(panelId);
     }
   }, []);
 
-  useEffect(() => {
-    if (sampleQueryOpenedRef.current) return;
-    if (onboardingStatus !== 'active' || !sampleConnectionId) return;
-    if (!activeTab?.dbSessionId || activeTab.status !== 'connected') return;
-    if (activeTab.connectionId !== sampleConnectionId) return;
-
-    sampleQueryOpenedRef.current = true;
-    actionsRef.current?.newQuery?.(SAMPLE_GETTING_STARTED_SQL);
-  }, [
+  useAutoOpenGettingStartedQuery({
+    actionsRef,
     onboardingStatus,
     sampleConnectionId,
-    activeTab?.connectionId,
-    activeTab?.dbSessionId,
-    activeTab?.status,
-  ]);
+    activeTab,
+  });
 
   const allPanels = usePanelStore((s) => s.panels);
   const activePanelId = usePanelStore((s) => s.activePanelId);
@@ -804,87 +736,15 @@ export function ConnectionPage() {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
-          <aside
-            className={`flex h-full shrink-0 flex-col self-stretch border-r border-edge bg-surface-alt ${
-              sidebarExpanded ? 'w-28' : 'w-10'
-            }`}
-          >
-            <div className="flex flex-col">
-              <WorkspaceModeButton
-                icon={Database}
-                iconId="nav.connections"
-                label={t('nav.connections')}
-                testId="workspace-nav-connections"
-                active={workspaceMode === 'connections'}
-                expanded={sidebarExpanded}
-                onClick={() => setWorkspaceMode('connections')}
-              />
-              <WorkspaceModeButton
-                icon={Workflow}
-                iconId="action.workflow"
-                label={t('nav.workflow')}
-                testId="workspace-nav-workflow"
-                active={workspaceMode === 'workflow'}
-                expanded={sidebarExpanded}
-                onClick={handleOpenWorkflow}
-              />
-              <WorkspaceModeButton
-                icon={Gauge}
-                iconId="action.dashboard"
-                label={t('nav.dashboard')}
-                testId="workspace-nav-dashboard"
-                active={workspaceMode === 'dashboard'}
-                expanded={sidebarExpanded}
-                onClick={() => void handleOpenDashboard()}
-              />
-              <WorkspaceModeButton
-                icon={LayoutGrid}
-                iconId="nav.workspacePages"
-                label={t('nav.workspacePages')}
-                testId="workspace-nav-workspace-pages"
-                active={workspaceMode === 'workspace'}
-                expanded={sidebarExpanded}
-                onClick={() => setWorkspaceMode('workspace')}
-              />
-              <WorkspaceModeButton
-                icon={Puzzle}
-                iconId="nav.plugins"
-                label={t('nav.plugins')}
-                testId="workspace-nav-plugins"
-                active={workspaceMode === 'plugins'}
-                expanded={sidebarExpanded}
-                onClick={() => setWorkspaceMode('plugins')}
-              />
-            </div>
-            <div className="mt-auto flex flex-col">
-              <WorkspaceModeButton
-                icon={Settings}
-                iconId="nav.settings"
-                label={t('nav.settings')}
-                testId="workspace-nav-settings"
-                expanded={sidebarExpanded}
-                onClick={() => openSettingsInShell()}
-              />
-              <button
-                type="button"
-                data-testid="workspace-sidebar-toggle"
-                title={sidebarExpanded ? t('connWin.collapseSidebar') : t('connWin.expandSidebar')}
-                onClick={toggleWorkspaceSidebarMode}
-                className={`flex h-10 w-full items-center text-xs text-fg-secondary transition-colors hover:bg-surface-raised hover:text-fg ${
-                  sidebarExpanded ? 'justify-start gap-2.5 px-3' : 'justify-center'
-                }`}
-              >
-                {sidebarExpanded ? (
-                  <PanelLeftClose className="h-4 w-4 shrink-0" />
-                ) : (
-                  <PanelLeftOpen className="h-4 w-4 shrink-0" />
-                )}
-                {sidebarExpanded && (
-                  <span className="truncate">{t('connWin.collapseSidebar')}</span>
-                )}
-              </button>
-            </div>
-          </aside>
+          <WorkspaceModeSidebar
+            workspaceMode={workspaceMode}
+            sidebarExpanded={sidebarExpanded}
+            onSetWorkspaceMode={setWorkspaceMode}
+            onOpenWorkflow={handleOpenWorkflow}
+            onOpenDashboard={handleOpenDashboard}
+            onOpenSettings={() => openSettingsInShell()}
+            onToggleSidebarMode={toggleWorkspaceSidebarMode}
+          />
 
           <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
             {workspaceMode === 'connections' ? (
