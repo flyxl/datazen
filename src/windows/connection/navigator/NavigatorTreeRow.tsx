@@ -147,21 +147,38 @@ export function NavigatorTreeRow({
   switch (row.type) {
     case 'section':
       return (
-        <div
+        <button
+          type="button"
           data-section-header
           data-section={row.section}
-          className="flex select-none items-center gap-1.5 px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-fg-muted"
+          aria-expanded={row.expanded}
+          className={cn(
+            'flex w-full select-none items-center gap-1.5 px-2 py-1 text-left text-[11px] font-semibold uppercase tracking-wider text-fg-muted',
+            row.section === 'recent' && 'cursor-pointer hover:bg-surface-raised/50',
+          )}
+          onClick={() => {
+            if (row.section === 'recent') toggleGroup(RECENT_GROUP_KEY);
+          }}
           onDragOver={(e) => handleSectionDragOver?.(e, row.section)}
           onDrop={(e) => handleSectionDrop?.(e, row.section)}
         >
+          {row.section === 'recent' ? (
+            row.expanded ? (
+              <ChevronDown className="pointer-events-none h-3 w-3 shrink-0 text-fg-muted" />
+            ) : (
+              <ChevronRight className="pointer-events-none h-3 w-3 shrink-0 text-fg-muted" />
+            )
+          ) : (
+            <span className="h-3 w-3 shrink-0" aria-hidden="true" />
+          )}
           <ThemedIcon
             id="schema.schema"
-            className="h-3.5 w-3.5 shrink-0 text-amber-400"
-            fallback={FolderOpen}
+            className="pointer-events-none h-3.5 w-3.5 shrink-0 text-amber-400"
+            fallback={row.expanded ? FolderOpen : FolderClosed}
           />
-          <span>{row.displayName}</span>
-          <span className="text-[10px] font-normal">({row.count})</span>
-        </div>
+          <span className="pointer-events-none">{row.displayName}</span>
+          <span className="pointer-events-none text-[10px] font-normal">({row.count})</span>
+        </button>
       );
 
     case 'group': {

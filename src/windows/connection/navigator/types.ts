@@ -10,6 +10,7 @@ export type UnifiedRow =
       section: 'pinned' | 'recent';
       displayName: string;
       count: number;
+      expanded: boolean;
     }
   | { type: 'group'; groupName: string; displayName: string; count: number; expanded: boolean }
   | {

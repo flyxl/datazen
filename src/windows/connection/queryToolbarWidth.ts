@@ -42,7 +42,9 @@ export function queryToolbarExpandedMinWidth(options: {
   contextPath: readonly string[];
   currentDatabase?: string | null;
 }): number {
-  const buttonCount = 8 + (options.supportsExplain ? 1 : 0);
+  // Execute, strategy, format, snippets, refresh, transaction controls,
+  // history, favorites, and NL2SQL. Explain is the only conditional action.
+  const buttonCount = 11 + (options.supportsExplain ? 1 : 0);
 
   let contextWidth = 0;
   if (options.hasContextSelectors) {

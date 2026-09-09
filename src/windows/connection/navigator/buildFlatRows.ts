@@ -187,7 +187,7 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
 
     const isPinnedSection = groupName === PINNED_GROUP_KEY;
     const isRecentSection = groupName === RECENT_GROUP_KEY;
-    const expanded = isPinnedSection || isRecentSection || expandedGroups.has(groupName) || !!query;
+    const expanded = isPinnedSection || expandedGroups.has(groupName) || !!query;
     const displayName = isPinnedSection
       ? t('main.ctx.pinConnection')
       : isRecentSection
@@ -202,6 +202,7 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
         section: isPinnedSection ? 'pinned' : 'recent',
         displayName,
         count: filteredConns.length,
+        expanded,
       });
     } else if (!query) {
       rows.push({

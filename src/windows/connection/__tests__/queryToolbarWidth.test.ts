@@ -13,8 +13,8 @@ describe('queryToolbarExpandedMinWidth', () => {
       databases: [],
       contextPath: [],
     });
-    // 32 padding + 9 buttons * 84 + 8 gaps + 8 separator
-    expect(width).toBe(32 + 9 * 84 + 8 * 8 + 8);
+    // 32 padding + 12 buttons * 84 + 11 gaps + 8 separator
+    expect(width).toBe(32 + 12 * 84 + 11 * 8 + 8);
   });
 
   it('reserves path-hierarchy selector width before namespace loads', () => {

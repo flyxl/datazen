@@ -1186,6 +1186,44 @@ describe('ConnectionNavigatorTree connection row interactions', () => {
     });
   });
 
+  it('allows the recent section to collapse and expand', async () => {
+    const recent = makeConn({
+      id: 'cfg-recent',
+      name: 'Recent Conn',
+      group: 'Group A',
+      lastConnectedAt: '2026-08-31T10:00:00Z',
+    });
+    connectionsState.connections = [recent];
+    connectionsState.groups = ['Group A'];
+
+    const { container } = render(
+      <ConnectionNavigatorTree {...baseProps} activeConnectionId={null} />,
+    );
+
+    const recentHeader = () =>
+      container.querySelector<HTMLButtonElement>('[data-section-header][data-section="recent"]');
+    const recentRow = () =>
+      container.querySelector('[data-conn-group="__recent__"][data-conn-name="Recent Conn"]');
+
+    await waitFor(() => {
+      expect(recentHeader()).not.toBeNull();
+      expect(recentRow()).not.toBeNull();
+      expect(recentHeader()?.getAttribute('aria-expanded')).toBe('true');
+    });
+
+    fireEvent.click(recentHeader()!);
+    await waitFor(() => {
+      expect(recentHeader()?.getAttribute('aria-expanded')).toBe('false');
+      expect(recentRow()).toBeNull();
+    });
+
+    fireEvent.click(recentHeader()!);
+    await waitFor(() => {
+      expect(recentHeader()?.getAttribute('aria-expanded')).toBe('true');
+      expect(recentRow()).not.toBeNull();
+    });
+  });
+
   it('keeps a slow selected connection pending and expands that exact row after success', async () => {
     const recent = makeConn({
       id: 'cfg-recent',

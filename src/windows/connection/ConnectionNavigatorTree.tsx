@@ -118,7 +118,9 @@ export const ConnectionNavigatorTree = forwardRef<
     [connections, groups],
   );
 
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    () => new Set([RECENT_GROUP_KEY]),
+  );
   const [expandedConnections, setExpandedConnections] = useState<Set<string>>(new Set());
   const [expandedDbs, setExpandedDbs] = useState<Set<string>>(new Set());
   const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set());
@@ -172,7 +174,7 @@ export const ConnectionNavigatorTree = forwardRef<
     const prev = prevGroupsRef.current;
     prevGroupsRef.current = groups;
     if (!prev) {
-      setExpandedGroups(new Set([...groups, '']));
+      setExpandedGroups(new Set([...groups, '', RECENT_GROUP_KEY]));
       return;
     }
     const newGroups = groups.filter((g) => !prev.includes(g));

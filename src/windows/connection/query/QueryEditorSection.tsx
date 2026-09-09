@@ -244,7 +244,11 @@ export function QueryEditorSection({
 
   return (
     <>
-      <ToolbarShell ref={toolbarRef} className="h-9 flex-nowrap overflow-x-auto px-3">
+      <ToolbarShell
+        ref={toolbarRef}
+        className="h-9 flex-nowrap overflow-x-hidden px-3"
+        {...tid('query-editor-toolbar')}
+      >
         {hasContextSelectors && (
           <QueryContextSelectors
             isMultiDb={isMultiDb}

@@ -47,7 +47,7 @@ export function PanelTabBar({
   };
 
   return (
-    <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt">
+    <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt pb-0.5">
       <div
         role="tablist"
         aria-label={t('panel.tabListLabel')}
