@@ -192,14 +192,16 @@ export function QueryPanel({
     currentDatabase,
   });
 
+  const tx = useQueryTransaction({ dbSessionId });
+
   const { ref: toolbarRef, compact: compactToolbar } = useCompactToolbar(
     useMemo(
       () =>
         queryToolbarExpandedMinWidth({
-          supportsExplain,
           hasContextSelectors,
           isPathHierarchy,
           isMultiDb,
+          inTransaction: tx.inTransaction,
           contextSchema: selectedSchema,
           namespaceTree,
           pathAliases,
@@ -208,10 +210,10 @@ export function QueryPanel({
           currentDatabase: selectedDatabase,
         }),
       [
-        supportsExplain,
         hasContextSelectors,
         isPathHierarchy,
         isMultiDb,
+        tx.inTransaction,
         selectedSchema,
         namespaceTree,
         pathAliases,
@@ -247,7 +249,6 @@ export function QueryPanel({
     setMessageDialogOpen(true);
   }, []);
 
-  const tx = useQueryTransaction({ dbSessionId });
   const executionGate = useQueryExecutionGate({
     panelId,
     dbSessionId,

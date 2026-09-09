@@ -775,6 +775,10 @@ describe('[tester] query/useQueryTransaction', () => {
 });
 
 describe('[tester] query/QueryEditorSection', () => {
+  function openMoreMenu() {
+    fireEvent.click(screen.getByTestId('query-toolbar-more-menu-trigger'));
+  }
+
   function renderSection(overrides: Partial<ComponentProps<typeof QueryEditorSection>> = {}) {
     const editorRef = {
       current: { getSelection: () => 'SELECT 2', insertAt: vi.fn(), toggleLineComment: vi.fn() },
@@ -867,8 +871,10 @@ describe('[tester] query/QueryEditorSection', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'query.execute' }));
-    fireEvent.click(screen.getByRole('button', { name: 'explain.title' }));
-    fireEvent.click(screen.getByRole('button', { name: 'query.format' }));
+    openMoreMenu();
+    fireEvent.click(screen.getByTestId('more-menu-explain'));
+    openMoreMenu();
+    fireEvent.click(screen.getByTestId('more-menu-format'));
     fireEvent.click(screen.getByRole('button', { name: 'query.commitTx' }));
     fireEvent.click(screen.getByRole('button', { name: 'query.rollbackTx' }));
     fireEvent.click(screen.getByRole('button', { name: 'query.history' }));
@@ -889,15 +895,16 @@ describe('[tester] query/QueryEditorSection', () => {
     expect(screen.getByTestId('nl2sql-panel')).toBeInTheDocument();
     expect(screen.getByTestId('context-selectors')).toBeInTheDocument();
     expect(screen.getByText('settings.safeMode')).toBeInTheDocument();
-    expect(screen.getByText('query.inTransaction')).toBeInTheDocument();
+    expect(screen.getByText('TX')).toBeInTheDocument();
   });
 
   it('shows in-transaction badge and begin transaction when idle', () => {
     const onBeginTx = vi.fn();
     renderSection({ inTransaction: false, onBeginTx });
-    fireEvent.click(screen.getByRole('button', { name: 'query.beginTx' }));
+    openMoreMenu();
+    fireEvent.click(screen.getByTestId('more-menu-begin-tx'));
     expect(onBeginTx).toHaveBeenCalled();
-    expect(screen.queryByText('query.inTransaction')).toBeNull();
+    expect(screen.queryByText('TX')).toBeNull();
   });
 
   it('shows cancel control while running', () => {
