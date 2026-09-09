@@ -59,7 +59,7 @@ import {
   type ExtensionPoint,
 } from '@datazen/extension-points';
 import { produceSchemaCompletions } from './completion/schemaCompletion';
-import { createSnippetCompletionSource } from './snippets';
+import { createSnippetCompletionSource, type SqlSnippetItem } from './snippets';
 import { formatEditorDocument } from './format/formatEditorDocument';
 import { getDialectAdapter } from './semantic/dialectAdapter';
 import { buildSemanticModel } from './semantic/scopeModel';
@@ -355,6 +355,8 @@ export interface CompletionCompartmentOptions {
   completionQuotePolicy?: CompletionQuotePolicy;
   /** Resolves snippet description i18n keys; omitted in tests and non-UI callers. */
   translate?: (key: string) => string;
+  /** Active snippet library (builtin + user snippets) */
+  snippets?: readonly SqlSnippetItem[];
 }
 
 export function createCompletionExtensions(
@@ -482,7 +484,7 @@ export function createCompletionExtensions(
       }),
       functionCompletionSource,
       // §4.1: snippet templates with tabstop expansion
-      createSnippetCompletionSource({ t: opts.translate }),
+      createSnippetCompletionSource({ t: opts.translate, snippets: opts.snippets }),
       // S4-B: schema-aware completion (reads from metadata snapshot)
       schemaAwareCompletionSource,
       // S4-B: Enhanced completion

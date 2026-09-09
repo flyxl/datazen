@@ -44,6 +44,7 @@ import {
   createPasteExtensions,
   createLinterExtensions,
 } from './editorExtensions';
+import { BUILTIN_SQL_SNIPPETS } from './snippets';
 import { formatEditorDocument } from './format/formatEditorDocument';
 import { StartExecutionEffect, FinishExecutionEffect } from './extensions/executionState';
 
@@ -106,6 +107,12 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   const translate = useCallback((key: string) => t(key as I18nKey), [t]);
 
   // Settings are consumed internally by themeExtensions() in editorExtensions.ts
+  const userSnippets = useSettingsStore((s) => s.settings.sqlSnippets);
+  const allSnippets = useMemo(
+    () => [...BUILTIN_SQL_SNIPPETS, ...(userSnippets ?? [])],
+    [userSnippets],
+  );
+
   const keymapPreset = useSettingsStore((s) => s.settings.keymapPreset);
   const customKeymap = useSettingsStore((s) => s.settings.customKeymap);
   const editorExtensionSettings = useSettingsStore(
@@ -246,10 +253,25 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   const completionExts = useMemo(
     () =>
       createCompletionExtensions(
-        { databaseType, metadataSnapshot, schema, completionQuotePolicy, translate },
+        {
+          databaseType,
+          metadataSnapshot,
+          schema,
+          completionQuotePolicy,
+          translate,
+          snippets: allSnippets,
+        },
         { modelRef, metadataSnapshotRef },
       ),
-    [databaseType, metadataSnapshot, schema, completionQuotePolicy, translate, isSqlEditorEnhanced],
+    [
+      databaseType,
+      metadataSnapshot,
+      schema,
+      completionQuotePolicy,
+      translate,
+      allSnippets,
+      isSqlEditorEnhanced,
+    ],
   );
 
   const intentionExts = useMemo(

@@ -15,7 +15,12 @@ import {
   hasNextSnippetField,
   hasPrevSnippetField,
 } from '@codemirror/autocomplete';
-import { createSnippetCompletionSource, BUILTIN_SQL_SNIPPETS } from '..';
+import {
+  buildSnippetCompletions,
+  createSnippetCompletionSource,
+  BUILTIN_SQL_SNIPPETS,
+  type SqlSnippetItem,
+} from '..';
 
 const source = createSnippetCompletionSource();
 
@@ -158,6 +163,34 @@ describe('snippet expansion journey — sel* end to end', () => {
     snippet(join.template)(harness.view as any, null, 0, 0);
     const occurrences = harness.doc.split('table_name').length - 1;
     expect(occurrences).toBe(2);
+  });
+});
+
+describe('user custom snippets', () => {
+  const customSnippet: SqlSnippetItem = {
+    id: 'custom-foo',
+    prefix: 'custom_foo',
+    descriptionKey: 'Custom foo template',
+    template: 'SELECT foo FROM ${1:tbl};${2}',
+  };
+
+  it('includes user custom snippets when provided in options', () => {
+    const completions = buildSnippetCompletions({
+      snippets: [...BUILTIN_SQL_SNIPPETS, customSnippet],
+    });
+
+    expect(completions.some((c) => c.item.prefix === 'custom_foo')).toBe(true);
+  });
+
+  it('surfaces custom snippets in createSnippetCompletionSource', () => {
+    const source = createSnippetCompletionSource({
+      snippets: [...BUILTIN_SQL_SNIPPETS, customSnippet],
+    });
+    const state = EditorState.create({ doc: 'custom_foo' });
+    const result = source(new CompletionContext(state, 'custom_foo'.length, false));
+    expect(result).not.toBeNull();
+    if (!result || !('options' in result)) return;
+    expect(result.options.map((o) => o.label)).toContain('custom_foo');
   });
 });
 
