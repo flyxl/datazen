@@ -511,7 +511,8 @@ mod tests {
 
     #[test]
     fn missing_target_table_plans_create_not_add_column() {
-        let src = schema(vec![col("id", "int"), col("email", "varchar(255)")]);
+        let mut src = schema(vec![col("id", "int"), col("email", "varchar(255)")]);
+        src.primary_keys = vec!["id".into()];
         let tgt = schema(vec![]);
         let plan = build_column_plan("public.users", &src, &tgt, "postgresql").unwrap();
         assert!(plan
@@ -519,6 +520,20 @@ mod tests {
             .iter()
             .any(|s| s.sql.contains("CREATE TABLE") && s.sql.contains("email")));
         assert!(!plan.statements.iter().any(|s| s.sql.contains("ADD COLUMN")));
+        assert!(!plan
+            .statements
+            .iter()
+            .any(|s| s.sql.contains("ADD PRIMARY KEY")));
+
+        let mysql_plan = build_column_plan("users", &src, &tgt, "mysql").unwrap();
+        assert!(mysql_plan
+            .statements
+            .iter()
+            .any(|s| s.sql.contains("CREATE TABLE") && s.sql.contains("PRIMARY KEY (`id`)")));
+        assert!(!mysql_plan
+            .statements
+            .iter()
+            .any(|s| s.sql.contains("ADD PRIMARY KEY")));
     }
 
     #[test]

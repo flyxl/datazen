@@ -13,7 +13,9 @@ pub fn diff_to_operations(
     let diff = super::compare::diff_table_schemas(table, source, target, normalizer);
     let mut ops = Vec::new();
 
-    if target.columns.is_empty() && !source.columns.is_empty() {
+    let is_new_table = target.columns.is_empty() && !source.columns.is_empty();
+
+    if is_new_table {
         ops.push(MigrationOperation::CreateTable {
             table: table.into(),
             columns: source
@@ -21,7 +23,7 @@ pub fn diff_to_operations(
                 .iter()
                 .map(super::compare::column_snapshot)
                 .collect(),
-            primary_keys: source.primary_keys.clone(),
+            primary_keys: source.effective_primary_keys(),
         });
     } else {
         for c in diff.missing_on_target {
@@ -74,22 +76,22 @@ pub fn diff_to_operations(
                 ops.push(op);
             }
         }
-    }
 
-    let source_pks = source.effective_primary_keys();
-    let target_pks = target.effective_primary_keys();
-    if source_pks != target_pks {
-        if !target_pks.is_empty() {
-            ops.push(MigrationOperation::DropPrimaryKey {
-                table: table.into(),
-                columns: target_pks,
-            });
-        }
-        if !source_pks.is_empty() {
-            ops.push(MigrationOperation::AddPrimaryKey {
-                table: table.into(),
-                columns: source_pks,
-            });
+        let source_pks = source.effective_primary_keys();
+        let target_pks = target.effective_primary_keys();
+        if source_pks != target_pks {
+            if !target_pks.is_empty() {
+                ops.push(MigrationOperation::DropPrimaryKey {
+                    table: table.into(),
+                    columns: target_pks,
+                });
+            }
+            if !source_pks.is_empty() {
+                ops.push(MigrationOperation::AddPrimaryKey {
+                    table: table.into(),
+                    columns: source_pks,
+                });
+            }
         }
     }
 
@@ -141,6 +143,40 @@ mod tests {
         let t = schema(vec![col("id")]);
         let ops = diff_to_operations("t", &s, &t, None);
         assert!(matches!(&ops[0], MigrationOperation::AddColumn { .. }));
+    }
+
+    #[test]
+    fn new_table_creates_table_with_pks_and_no_redundant_add_pk() {
+        let mut s = schema(vec![col("id"), col("name")]);
+        s.primary_keys = vec!["id".into()];
+        let t = schema(vec![]);
+        let ops = diff_to_operations("t", &s, &t, None);
+        assert_eq!(ops.len(), 1);
+        assert!(
+            matches!(&ops[0], MigrationOperation::CreateTable { primary_keys, .. } if primary_keys == &["id"])
+        );
+        assert!(!ops
+            .iter()
+            .any(|op| matches!(op, MigrationOperation::AddPrimaryKey { .. })));
+        assert!(!ops
+            .iter()
+            .any(|op| matches!(op, MigrationOperation::DropPrimaryKey { .. })));
+    }
+
+    #[test]
+    fn new_table_from_column_flags_creates_table_with_pks() {
+        let mut id = col("id");
+        id.is_primary_key = true;
+        let s = schema(vec![id, col("name")]);
+        let t = schema(vec![]);
+        let ops = diff_to_operations("t", &s, &t, None);
+        assert_eq!(ops.len(), 1);
+        assert!(
+            matches!(&ops[0], MigrationOperation::CreateTable { primary_keys, .. } if primary_keys == &["id"])
+        );
+        assert!(!ops
+            .iter()
+            .any(|op| matches!(op, MigrationOperation::AddPrimaryKey { .. })));
     }
 
     #[test]
