@@ -21,6 +21,18 @@ fn format_mysql_column_def(c: &MigrationColumn, qi: &impl Fn(&str) -> String) ->
     def
 }
 
+fn format_mysql_index_col(s: &str, qi: &impl Fn(&str) -> String) -> String {
+    let trimmed = s.trim();
+    if let Some(paren_pos) = trimmed.find('(') {
+        if trimmed.ends_with(')') {
+            let col = trimmed[..paren_pos].trim().trim_matches('`');
+            let len_part = &trimmed[paren_pos..];
+            return format!("{}{}", qi(col), len_part);
+        }
+    }
+    qi(trimmed)
+}
+
 pub struct MysqlMigrationRenderer;
 
 impl MigrationRenderer for MysqlMigrationRenderer {
@@ -133,7 +145,7 @@ impl MigrationRenderer for MysqlMigrationRenderer {
                     index
                         .columns
                         .iter()
-                        .map(|c| qi(c))
+                        .map(|c| format_mysql_index_col(c, &qi))
                         .collect::<Vec<_>>()
                         .join(", ")
                 ),
@@ -353,5 +365,40 @@ mod tests {
         };
         assert!(MysqlMigrationCapabilities.supports(&op));
         assert!(MysqlMigrationCapabilities.requires_table_rebuild(&op));
+    }
+
+    #[test]
+    fn create_index_renders_prefix_length_properly() {
+        let op = MigrationOperation::CreateIndex {
+            table: "demo_customers".into(),
+            index: IndexInfo {
+                name: "idx_demo_customers_region".into(),
+                columns: vec!["region(255)".into()],
+                is_unique: false,
+                is_primary: false,
+                index_type: "BTREE".into(),
+            },
+        };
+        let stmt = MysqlMigrationRenderer.render(&op).unwrap();
+        assert_eq!(
+            stmt.sql,
+            "CREATE INDEX `idx_demo_customers_region` ON `demo_customers` (`region`(255))"
+        );
+
+        let unique_op = MigrationOperation::CreateIndex {
+            table: "demo_customers".into(),
+            index: IndexInfo {
+                name: "uq_demo_customers_name".into(),
+                columns: vec!["name(255)".into()],
+                is_unique: true,
+                is_primary: false,
+                index_type: "BTREE".into(),
+            },
+        };
+        let unique_stmt = MysqlMigrationRenderer.render(&unique_op).unwrap();
+        assert_eq!(
+            unique_stmt.sql,
+            "CREATE UNIQUE INDEX `uq_demo_customers_name` ON `demo_customers` (`name`(255))"
+        );
     }
 }

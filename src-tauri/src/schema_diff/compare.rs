@@ -97,8 +97,18 @@ pub struct IndexDiff {
     pub extra_on_target: Vec<IndexInfo>,
 }
 
+fn normalize_index_col(c: &str) -> &str {
+    c.split('(').next().unwrap_or(c).trim().trim_matches('`')
+}
+
 fn index_definition_equal(a: &IndexInfo, b: &IndexInfo) -> bool {
-    a.columns == b.columns && a.is_unique == b.is_unique
+    if a.is_unique != b.is_unique || a.columns.len() != b.columns.len() {
+        return false;
+    }
+    a.columns
+        .iter()
+        .zip(b.columns.iter())
+        .all(|(ca, cb)| normalize_index_col(ca) == normalize_index_col(cb))
 }
 
 pub fn diff_indexes(src: &TableSchema, tgt: &TableSchema) -> IndexDiff {
@@ -262,5 +272,17 @@ mod tests {
         assert!(!diff.extra_on_target[0].is_unique);
         assert_eq!(diff.missing_on_target.len(), 1);
         assert!(diff.missing_on_target[0].is_unique);
+    }
+
+    #[test]
+    fn index_matches_with_mysql_prefix_length() {
+        let mut src = schema(vec![col("id", "int"), col("region", "text")]);
+        src.indexes.push(index("idx_region", &["region"], false));
+        let mut tgt = schema(vec![col("id", "int"), col("region", "text")]);
+        tgt.indexes
+            .push(index("idx_region", &["region(255)"], false));
+        let diff = diff_indexes(&src, &tgt);
+        assert!(diff.missing_on_target.is_empty());
+        assert!(diff.extra_on_target.is_empty());
     }
 }

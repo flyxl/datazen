@@ -1,4 +1,8 @@
-import type { SchemaDiffDeployResult, SchemaDiffPlan } from '../../commands/schemaDiff';
+import type {
+  ColumnTypeOverride,
+  SchemaDiffDeployResult,
+  SchemaDiffPlan,
+} from '../../commands/schemaDiff';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { SchemaDiffDeployPanel } from './SchemaDiffDeployPanel';
@@ -16,6 +20,9 @@ export interface SchemaDiffRightPanelProps {
   onIncludeIndexesChange: (value: boolean) => void;
   onRegenerate: () => void;
   regenerating?: boolean;
+  typeOverrides?: ColumnTypeOverride[];
+  onTypeOverrideChange?: (table: string, column: string, targetType: string) => void;
+  onApplyTypeOverrides?: () => void;
   targetLabel: string;
   useTransaction: boolean;
   onUseTransactionChange: (value: boolean) => void;
@@ -42,6 +49,9 @@ export function SchemaDiffRightPanel({
   onIncludeIndexesChange,
   onRegenerate,
   regenerating,
+  typeOverrides,
+  onTypeOverrideChange,
+  onApplyTypeOverrides,
   targetLabel,
   useTransaction,
   onUseTransactionChange,
@@ -108,6 +118,9 @@ export function SchemaDiffRightPanel({
                 onIncludeIndexesChange={onIncludeIndexesChange}
                 onRegenerate={onRegenerate}
                 regenerating={regenerating}
+                typeOverrides={typeOverrides}
+                onTypeOverrideChange={onTypeOverrideChange}
+                onApplyTypeOverrides={onApplyTypeOverrides}
               />
             ) : (
               <div className="flex h-full min-h-[8rem] items-center justify-center text-sm text-fg-muted">

@@ -380,6 +380,7 @@ mod tests {
                 missing: vec![],
             },
             requirements: vec![],
+            type_suggestions: vec![],
         }
     }
 

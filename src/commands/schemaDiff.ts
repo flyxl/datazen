@@ -17,6 +17,22 @@ export interface RollbackCompleteness {
   missing: string[];
 }
 
+export interface TypeSuggestion {
+  table: string;
+  column: string;
+  sourceType: string;
+  suggestedType: string;
+  currentType: string;
+  reason: string;
+  isKeyOrIndexed: boolean;
+}
+
+export interface ColumnTypeOverride {
+  table: string;
+  column: string;
+  targetType: string;
+}
+
 /** Normalized plan requirement (from IPC tagged enum). */
 export interface PlanRequirement {
   kind: 'Backfill' | 'Unsupported';
@@ -95,6 +111,7 @@ export interface SchemaDiffPlan {
   warnings: string[];
   requirements?: PlanRequirement[];
   rollbackCompleteness: RollbackCompleteness;
+  typeSuggestions?: TypeSuggestion[];
 }
 
 export interface StatementExecResult {
@@ -163,6 +180,7 @@ export const schemaDiffCommands = {
     tableNames: string[];
     allowDestructive: boolean;
     includeIndexes?: boolean;
+    typeOverrides?: ColumnTypeOverride[];
   }) =>
     invoke<SchemaDiffPlanIpc>('prepare_schema_diff_plan', {
       sourceDbSessionId: params.sourceDbSessionId,
@@ -170,6 +188,7 @@ export const schemaDiffCommands = {
       tableNames: params.tableNames,
       allowDestructive: params.allowDestructive,
       includeIndexes: params.includeIndexes,
+      typeOverrides: params.typeOverrides,
     }).then(normalizePlan),
 
   executeDeploy: (params: {

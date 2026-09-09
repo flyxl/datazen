@@ -211,12 +211,18 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
       }
     }
     try {
-      if (srcSessionId) await disconnectBackend(srcSessionId);
+      if (srcSessionId) {
+        await disconnectBackend(srcSessionId);
+        srcSessionId = '';
+      }
     } catch {
       /* ok */
     }
     try {
-      if (tgtSessionId) await disconnectBackend(tgtSessionId);
+      if (tgtSessionId) {
+        await disconnectBackend(tgtSessionId);
+        tgtSessionId = '';
+      }
     } catch {
       /* ok */
     }
@@ -565,12 +571,18 @@ describe('数据同步: 权限错误 (SYNC-PERM)', () => {
 
   after(async () => {
     try {
-      if (roSessionId) await disconnectBackend(roSessionId);
+      if (roSessionId) {
+        await disconnectBackend(roSessionId);
+        roSessionId = '';
+      }
     } catch {
       /* ok */
     }
     try {
-      if (myRoSessionId) await disconnectBackend(myRoSessionId);
+      if (myRoSessionId) {
+        await disconnectBackend(myRoSessionId);
+        myRoSessionId = '';
+      }
     } catch {
       /* ok */
     }
@@ -655,7 +667,18 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
       /* ok */
     }
     try {
-      if (myTgtSessionId) await disconnectBackend(myTgtSessionId);
+      if (srcSessionId) {
+        await disconnectBackend(srcSessionId);
+        srcSessionId = '';
+      }
+    } catch {
+      /* ok */
+    }
+    try {
+      if (myTgtSessionId) {
+        await disconnectBackend(myTgtSessionId);
+        myTgtSessionId = '';
+      }
     } catch {
       /* ok */
     }
@@ -804,6 +827,15 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
       INSERT INTO sync_batch_c VALUES (1, 'c1');
     `,
     );
+
+    await runSQL(
+      batchTgtId,
+      `
+      CREATE TABLE sync_batch_a (id int PRIMARY KEY, val text);
+      CREATE TABLE sync_batch_b (id int PRIMARY KEY, val text);
+      CREATE TABLE sync_batch_c (id int PRIMARY KEY, val text);
+    `,
+    );
   });
 
   after(async () => {
@@ -834,12 +866,18 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
       /* ok */
     }
     try {
-      if (batchSrcId) await disconnectBackend(batchSrcId);
+      if (batchSrcId) {
+        await disconnectBackend(batchSrcId);
+        batchSrcId = '';
+      }
     } catch {
       /* ok */
     }
     try {
-      if (batchTgtId) await disconnectBackend(batchTgtId);
+      if (batchTgtId) {
+        await disconnectBackend(batchTgtId);
+        batchTgtId = '';
+      }
     } catch {
       /* ok */
     }

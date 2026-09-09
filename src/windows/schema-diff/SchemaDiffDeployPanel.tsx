@@ -117,15 +117,18 @@ export function SchemaDiffDeployPanel({
       )}
 
       {result && (
-        <div className="rounded border border-edge bg-surface-alt p-3 text-xs">
-          <div className="font-medium text-fg">
+        <div
+          className="rounded border border-edge bg-surface-alt p-3 text-xs"
+          data-testid="schema-diff-deploy-result"
+        >
+          <div className="font-medium text-fg" data-testid="schema-diff-deploy-status">
             {t('schemaDiff.deployStatus')}: {result.status}
           </div>
-          <div className="text-fg-secondary">
+          <div className="text-fg-secondary" data-testid="schema-diff-deploy-count">
             {result.executedCount}/{result.statementCount} {t('schemaDiff.executed')}
           </div>
           {result.errors.length > 0 && (
-            <ul className="mt-2 list-inside list-disc">
+            <ul className="mt-2 list-inside list-disc" data-testid="schema-diff-deploy-errors">
               {result.errors.map((e) => (
                 <li key={e}>
                   <CopyableError message={e} className="error-message text-xs" />

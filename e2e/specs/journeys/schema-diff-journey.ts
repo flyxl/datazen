@@ -7,6 +7,8 @@
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../../i18n.js';
 import {
+  assertSchemaDiffDeploySuccess,
+  assertSchemaDiffNoErrors,
   captureJourneyStep,
   closeExtraWindows,
   disconnectBackend,
@@ -99,15 +101,17 @@ describe('结构对比完整用户旅程 (SD-JOURNEY)', () => {
     const body = await $('body').getText();
     expect(body).toContain(TABLE);
     expect(body.length).toBeGreaterThan(100);
+    await assertSchemaDiffNoErrors();
     await captureJourneyStep('sd-journey-05-compare-result', 0, true);
   });
 
-  it('Step 3~5: 生成计划→审阅→部署并验证 extra_col', async () => {
+  it('Step 3~5: 生成计划→审阅→部署（严格验证 Committed 与零错误）并验证 extra_col', async () => {
     await clickSchemaDiffNext();
     await clickSchemaDiffGeneratePlan();
     let body = await $('body').getText();
     expect(body).toContain(t('schemaDiff.stepPlan'));
     expect(body).toContain(t('schemaDiff.statements'));
+    await assertSchemaDiffNoErrors();
     await captureJourneyStep('sd-journey-06-plan-generated', 0, true);
 
     await advanceSchemaDiffToReview();
@@ -117,8 +121,7 @@ describe('结构对比完整用户旅程 (SD-JOURNEY)', () => {
     await captureJourneyStep('sd-journey-07-review-step', 0, true);
 
     await deploySchemaDiffPlan();
-    body = await $('body').getText();
-    expect(body).toContain(t('schemaDiff.deployStatus'));
+    await assertSchemaDiffDeploySuccess();
     await captureJourneyStep('sd-journey-08-deploy-complete', 0, true);
 
     const tgtSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });

@@ -12,6 +12,7 @@ import {
   exportPlanSql,
   planHasDestructive,
   schemaDiffCommands,
+  type ColumnTypeOverride,
   type SchemaDiffConfigJson,
   type SchemaDiffDeployResult,
   type SchemaDiffPlan,
@@ -82,6 +83,7 @@ export function SchemaDiffWindow() {
   const [importConfigText, setImportConfigText] = useState('');
   const [importConfigError, setImportConfigError] = useState('');
   const [limitationsOpen, setLimitationsOpen] = useState(false);
+  const [typeOverrides, setTypeOverrides] = useState<ColumnTypeOverride[]>([]);
   const planAutoRequestedRef = useRef(false);
 
   const { size: tableListWidth, handleRef: tableListResizeRef } = useResizable({
@@ -112,6 +114,7 @@ export function SchemaDiffWindow() {
     setPlan(null);
     setDeployResult(null);
     setSelectedTable(null);
+    setTypeOverrides([]);
     planAutoRequestedRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- clear compare artifacts when endpoints change
   }, [
@@ -214,37 +217,56 @@ export function SchemaDiffWindow() {
     }
   }, [endpoints, tablePicks, t]);
 
-  const buildPlan = useCallback(async () => {
-    setError('');
-    setDeployResult(null);
-    const tables = enabledTableNames(tablePicks);
-    if (tables.length === 0) {
-      setError(t('schemaDiff.tableRequired'));
-      return;
-    }
-    if (!endpoints.validateEndpoints()) return;
-
-    setLoading(true);
-    try {
-      const srcConnId = await endpoints.ensureConnected('source');
-      const tgtConnId = await endpoints.ensureConnected('target');
-      if (!srcConnId || !tgtConnId) return;
-      const next = await schemaDiffCommands.preparePlan({
-        sourceDbSessionId: srcConnId,
-        targetDbSessionId: tgtConnId,
-        tableNames: tables,
-        allowDestructive,
-        includeIndexes,
+  const handleTypeOverrideChange = useCallback(
+    (table: string, column: string, targetType: string) => {
+      setTypeOverrides((prev) => {
+        const filtered = prev.filter((o) => !(o.table === table && o.column === column));
+        return [...filtered, { table, column, targetType }];
       });
-      setPlan(next);
-      setUseTransaction(dialectSupportsTransactionalDdl(next.targetDialect));
-      setConfirmText('');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [allowDestructive, endpoints, includeIndexes, tablePicks, t]);
+    },
+    [],
+  );
+
+  const buildPlan = useCallback(
+    async (explicitOverrides?: ColumnTypeOverride[]) => {
+      setError('');
+      setDeployResult(null);
+      const tables = enabledTableNames(tablePicks);
+      if (tables.length === 0) {
+        setError(t('schemaDiff.tableRequired'));
+        return;
+      }
+      if (!endpoints.validateEndpoints()) return;
+
+      setLoading(true);
+      try {
+        const srcConnId = await endpoints.ensureConnected('source');
+        const tgtConnId = await endpoints.ensureConnected('target');
+        if (!srcConnId || !tgtConnId) return;
+        const overridesToUse = explicitOverrides ?? typeOverrides;
+        const next = await schemaDiffCommands.preparePlan({
+          sourceDbSessionId: srcConnId,
+          targetDbSessionId: tgtConnId,
+          tableNames: tables,
+          allowDestructive,
+          includeIndexes,
+          typeOverrides: overridesToUse.length > 0 ? overridesToUse : undefined,
+        });
+        setPlan(next);
+        setUseTransaction(dialectSupportsTransactionalDdl(next.targetDialect));
+        setConfirmText('');
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [allowDestructive, endpoints, includeIndexes, tablePicks, t, typeOverrides],
+  );
+
+  const handleApplyTypeOverrides = useCallback(() => {
+    void buildPlan(typeOverrides);
+  }, [buildPlan, typeOverrides]);
 
   useEffect(() => {
     if (step !== 'plan') {
@@ -642,6 +664,9 @@ export function SchemaDiffWindow() {
                 onIncludeIndexesChange={setIncludeIndexes}
                 onRegenerate={() => void buildPlan()}
                 regenerating={loading && Boolean(plan)}
+                typeOverrides={typeOverrides}
+                onTypeOverrideChange={handleTypeOverrideChange}
+                onApplyTypeOverrides={handleApplyTypeOverrides}
                 targetLabel={targetLabel}
                 useTransaction={useTransaction}
                 onUseTransactionChange={setUseTransaction}

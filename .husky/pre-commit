@@ -9,11 +9,11 @@ cargo fmt --all
 # Stage any files changed by rustfmt so the formatted version is committed.
 git add -- '*.rs'
 
-# Format staged frontend/source files with a pinned Prettier version.
-# Prettier is intentionally invoked through pnpm so developers do not need a global install.
+# Format staged frontend/source files with project-local Prettier.
+# prettier is pinned in devDependencies for reproducible formatting across the team.
 FRONTEND_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(js|jsx|ts|tsx|css|scss|less|html)$' || true)
 if [ -n "$FRONTEND_FILES" ]; then
-  pnpm --silent dlx prettier@3.6.2 --write --ignore-unknown $FRONTEND_FILES
+  npx --no-install prettier --write --ignore-unknown $FRONTEND_FILES
   git add -- $FRONTEND_FILES
 fi
 

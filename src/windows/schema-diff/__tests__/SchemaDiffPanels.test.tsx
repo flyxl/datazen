@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import type { SchemaDiffPlan } from '../../../commands/schemaDiff';
 import { SchemaDiffRightPanel } from '../SchemaDiffRightPanel';
 import { SchemaDiffPlanPanel } from '../SchemaDiffPlanPanel';
+import { SchemaDiffDeployPanel } from '../SchemaDiffDeployPanel';
 import { SchemaDiffTableListPanel } from '../SchemaDiffTableListPanel';
 
 vi.mock('../../../hooks/useI18n', () => ({
@@ -11,6 +12,10 @@ vi.mock('../../../hooks/useI18n', () => ({
     language: 'en',
   }),
 }));
+
+afterEach(() => {
+  cleanup();
+});
 
 const samplePlan: SchemaDiffPlan = {
   table: 'users',
@@ -232,5 +237,113 @@ describe('SchemaDiffPlanPanel empty plans', () => {
     expect(within(availableContainer).getByTestId('schema-diff-rollback-status')).toHaveTextContent(
       'schemaDiff.rollback.available',
     );
+  });
+
+  it('renders type suggestions notice and handles override change and apply', () => {
+    const onOverrideChange = vi.fn();
+    const onApply = vi.fn();
+    const planWithSug: SchemaDiffPlan = {
+      ...samplePlan,
+      typeSuggestions: [
+        {
+          table: 'demo_customers',
+          column: 'region',
+          sourceType: 'text',
+          suggestedType: 'VARCHAR(255)',
+          currentType: 'VARCHAR(255)',
+          reason: 'Indexed column; MySQL requires explicit key prefix length',
+          isKeyOrIndexed: true,
+        },
+      ],
+    };
+
+    render(
+      <SchemaDiffPlanPanel
+        plan={planWithSug}
+        allowDestructive={false}
+        includeIndexes
+        onAllowDestructiveChange={vi.fn()}
+        onIncludeIndexesChange={vi.fn()}
+        onRegenerate={vi.fn()}
+        onTypeOverrideChange={onOverrideChange}
+        onApplyTypeOverrides={onApply}
+      />,
+    );
+
+    const notice = screen.getByTestId('schema-diff-type-suggestions');
+    expect(notice).toHaveTextContent('schemaDiff.typeSuggestions.title');
+    expect(notice).toHaveTextContent('demo_customers.region');
+    expect(notice).toHaveTextContent('text');
+    expect(notice).toHaveTextContent('Indexed column; MySQL requires explicit key prefix length');
+
+    const input = within(notice).getByDisplayValue('VARCHAR(255)');
+    fireEvent.change(input, { target: { value: 'VARCHAR(64)' } });
+    expect(onOverrideChange).toHaveBeenCalledWith('demo_customers', 'region', 'VARCHAR(64)');
+
+    const applyBtn = within(notice).getByText('schemaDiff.typeSuggestions.apply');
+    fireEvent.click(applyBtn);
+    expect(onApply).toHaveBeenCalled();
+  });
+});
+
+describe('SchemaDiffDeployPanel', () => {
+  it('renders committed deploy result with count and no errors', () => {
+    render(
+      <SchemaDiffDeployPanel
+        plan={samplePlan}
+        targetLabel="demo_db"
+        useTransaction
+        onUseTransactionChange={vi.fn()}
+        requireRollback={false}
+        onRequireRollbackChange={vi.fn()}
+        confirmText=""
+        onConfirmTextChange={vi.fn()}
+        deploying={false}
+        onDeploy={vi.fn()}
+        result={{
+          status: 'committed',
+          executedCount: 4,
+          statementCount: 4,
+          errors: [],
+          statementResults: [],
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('schema-diff-deploy-result')).toBeInTheDocument();
+    expect(screen.getByTestId('schema-diff-deploy-status')).toHaveTextContent('committed');
+    expect(screen.getByTestId('schema-diff-deploy-count')).toHaveTextContent('4/4');
+    expect(screen.queryByTestId('schema-diff-deploy-errors')).not.toBeInTheDocument();
+  });
+
+  it('renders failed deploy result with error messages list', () => {
+    render(
+      <SchemaDiffDeployPanel
+        plan={samplePlan}
+        targetLabel="demo_db"
+        useTransaction
+        onUseTransactionChange={vi.fn()}
+        requireRollback={false}
+        onRequireRollbackChange={vi.fn()}
+        confirmText=""
+        onConfirmTextChange={vi.fn()}
+        deploying={false}
+        onDeploy={vi.fn()}
+        result={{
+          status: 'failed',
+          executedCount: 1,
+          statementCount: 4,
+          errors: ['Query failed: Multiple primary key defined'],
+          statementResults: [],
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('schema-diff-deploy-result')).toBeInTheDocument();
+    expect(screen.getByTestId('schema-diff-deploy-status')).toHaveTextContent('failed');
+    expect(screen.getByTestId('schema-diff-deploy-count')).toHaveTextContent('1/4');
+    const errorsList = screen.getByTestId('schema-diff-deploy-errors');
+    expect(errorsList).toBeInTheDocument();
+    expect(errorsList).toHaveTextContent('Multiple primary key defined');
   });
 });

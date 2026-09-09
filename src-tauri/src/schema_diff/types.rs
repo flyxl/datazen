@@ -127,6 +127,26 @@ pub struct PlanStatement {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct TypeSuggestion {
+    pub table: String,
+    pub column: String,
+    pub source_type: String,
+    pub suggested_type: String,
+    pub current_type: String,
+    pub reason: String,
+    pub is_key_or_indexed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnTypeOverride {
+    pub table: String,
+    pub column: String,
+    pub target_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct SchemaDiffPlan {
     pub table: String,
     pub tables: Vec<String>,
@@ -137,6 +157,8 @@ pub struct SchemaDiffPlan {
     pub warnings: Vec<String>,
     pub requirements: Vec<PlanRequirement>,
     pub rollback_completeness: RollbackCompleteness,
+    #[serde(default)]
+    pub type_suggestions: Vec<TypeSuggestion>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -288,14 +288,15 @@ export async function runCompare(f: SyncJourneyFixture) {
   }
 
   await inspectDataSyncObjects();
-  await compareDataSyncObjects();
-  await browser.pause(500);
-
   const rows = await browser.execute((tableName: string) => {
     const els = document.querySelectorAll('[data-testid="data-sync-mapping-row"]');
     return Array.from(els).some((el) => (el.textContent || '').includes(tableName));
   }, f.table);
   expect(rows).toBe(true);
+
+  await compareDataSyncObjects();
+  await browser.pause(500);
+  await expect(await $('[data-testid="data-sync-summary"]')).toBeDisplayed();
 }
 
 export async function runPostCompareReviewBranches(f: SyncJourneyFixture) {
@@ -340,6 +341,7 @@ export async function runPostCompareReviewBranches(f: SyncJourneyFixture) {
     await expect(rowDiff).toBeDisplayed();
   }
 
+  await moveDataSyncBackTo('objects');
   const toggledOff = await browser.execute((tableName: string) => {
     const rows = document.querySelectorAll('[data-testid="data-sync-mapping-row"]');
     for (const row of rows) {
@@ -355,7 +357,6 @@ export async function runPostCompareReviewBranches(f: SyncJourneyFixture) {
   await browser.pause(400);
   await expect(await $('[data-testid="data-sync-next"]')).toBeDisabled();
 
-  await moveDataSyncBackTo('objects');
   await browser.execute((tableName: string) => {
     const rows = document.querySelectorAll('[data-testid="data-sync-mapping-row"]');
     for (const row of rows) {
@@ -376,6 +377,11 @@ export async function runPostCompareReviewBranches(f: SyncJourneyFixture) {
     await insertOpt.click();
     await browser.pause(300);
   }
+  const updateOpt = await $('[data-testid="data-sync-option-update"]');
+  if (await updateOpt.isSelected()) {
+    await updateOpt.click();
+    await browser.pause(300);
+  }
   await inspectDataSyncObjects();
   await compareDataSyncObjects();
   await advanceDataSyncToPreview();
@@ -384,6 +390,9 @@ export async function runPostCompareReviewBranches(f: SyncJourneyFixture) {
   await moveDataSyncBackTo('setup');
   const insertOptAgain = await $('[data-testid="data-sync-option-insert"]');
   await insertOptAgain.click();
+  await browser.pause(300);
+  const updateOptAgain = await $('[data-testid="data-sync-option-update"]');
+  await updateOptAgain.click();
   await browser.pause(300);
   await inspectDataSyncObjects();
   await compareDataSyncObjects();
@@ -443,68 +452,76 @@ export async function runExecuteDeleteConfirmBranch(f: SyncJourneyFixture) {
     await withSafeModeOff(async () => {
       await executeQuery(tgtSession, `INSERT INTO ${f.table} (id, name) VALUES (6,'extra')`);
     });
+  } finally {
+    await disconnectBackend(tgtSession);
+  }
 
-    await moveDataSyncBackTo('setup');
-    const deleteOpt = await $('[data-testid="data-sync-option-delete"]');
-    await deleteOpt.click();
-    await browser.pause(400);
-    const enableBtn = await $(`button*=${t('sync.enableDelete')}`);
-    await enableBtn.waitForDisplayed({ timeout: 5000 });
-    await enableBtn.click();
-    await browser.pause(300);
-    expect(await deleteOpt.isSelected()).toBe(true);
+  await moveDataSyncBackTo('setup');
+  const deleteOpt = await $('[data-testid="data-sync-option-delete"]');
+  await deleteOpt.click();
+  await browser.pause(400);
+  const enableBtn = await $(`button*=${t('sync.enableDelete')}`);
+  await enableBtn.waitForDisplayed({ timeout: 5000 });
+  await enableBtn.click();
+  await browser.pause(300);
+  expect(await deleteOpt.isSelected()).toBe(true);
 
-    await inspectDataSyncObjects();
-    await compareDataSyncObjects();
-    await captureStep(`${f.screenshotPrefix}-16-delete-recompared`);
+  await inspectDataSyncObjects();
+  await compareDataSyncObjects();
+  await captureStep(`${f.screenshotPrefix}-16-delete-recompared`);
 
-    const deleteFilter = await $(`button*=${t('sync.filter.delete')}`);
-    await deleteFilter.click();
-    await browser.pause(300);
+  const deleteFilter = await $(`button*=${t('sync.filter.delete')}`);
+  await deleteFilter.click();
+  await browser.pause(300);
 
-    await browser.execute((tableName: string) => {
-      const rows = document.querySelectorAll('[data-testid="data-sync-mapping-row"]');
-      for (const row of rows) {
-        if ((row.textContent || '').includes(tableName)) {
-          (row as HTMLElement).click();
-        }
-      }
-    }, f.table);
-    await browser.pause(400);
-
-    const selectAllDelete = await $(`button*=${t('sync.selectAllDelete')}`);
-    await selectAllDelete.waitForDisplayed({ timeout: 10000 });
-    await selectAllDelete.click();
-    await browser.pause(300);
-
-    await advanceDataSyncToPreview();
-    const start = await $('[data-testid="data-sync-start"]');
-    await start.waitForClickable({ timeout: 20000 });
-    await start.click();
-    await browser.pause(400);
-    expect(await $('body').getText()).toContain(t('sync.executeDeleteTitle'));
-    await captureStep(`${f.screenshotPrefix}-17-delete-execute-confirm`);
-    const clicked = await browser.execute((label: string) => {
-      const buttons = Array.from(document.querySelectorAll('button')).reverse();
-      const button = buttons.find((btn) => (btn.textContent || '').includes(label));
-      if (!button) return false;
-      button.click();
-      return true;
-    }, t('sync.execute'));
-    expect(clicked).toBe(true);
-
-    await browser.waitUntil(
-      async () => {
-        const cancel = await $('[data-testid="data-sync-cancel"]');
-        return !(await cancel.isDisplayed().catch(() => false));
-      },
-      { timeout: 120000, timeoutMsg: 'delete execute did not finish' },
+  await browser.execute((tableName: string) => {
+    const rows = document.querySelectorAll(
+      '[data-testid="data-sync-table-item"], [data-testid="data-sync-mapping-row"], button',
     );
+    for (const row of rows) {
+      if ((row.textContent || '').includes(tableName)) {
+        (row as HTMLElement).click();
+        break;
+      }
+    }
+  }, f.table);
+  await browser.pause(400);
 
+  const selectAllDelete = await $(`button*=${t('sync.selectAllDelete')}`);
+  await selectAllDelete.waitForDisplayed({ timeout: 10000 });
+  await selectAllDelete.click();
+  await browser.pause(300);
+
+  await advanceDataSyncToPreview();
+  const start = await $('[data-testid="data-sync-start"]');
+  await start.waitForClickable({ timeout: 20000 });
+  await start.click();
+  await browser.pause(400);
+  expect(await $('body').getText()).toContain(t('sync.executeDeleteTitle'));
+  await captureStep(`${f.screenshotPrefix}-17-delete-execute-confirm`);
+  const clicked = await browser.execute((label: string) => {
+    const buttons = Array.from(document.querySelectorAll('button')).reverse();
+    const button = buttons.find((btn) => (btn.textContent || '').includes(label));
+    if (!button) return false;
+    button.click();
+    return true;
+  }, t('sync.execute'));
+  expect(clicked).toBe(true);
+
+  await browser.waitUntil(
+    async () => {
+      const cancel = await $('[data-testid="data-sync-cancel"]');
+      return !(await cancel.isDisplayed().catch(() => false));
+    },
+    { timeout: 120000, timeoutMsg: 'delete execute did not finish' },
+  );
+
+  const postTgtSession = await connectConfig(f.tgtId);
+  try {
     await browser.waitUntil(
       async () => {
         const rows = await executeQuery(
-          tgtSession,
+          postTgtSession,
           f.driver === 'postgresql'
             ? `SELECT count(*)::int AS c FROM ${f.table}`
             : `SELECT count(*) AS c FROM ${f.table}`,
@@ -515,12 +532,12 @@ export async function runExecuteDeleteConfirmBranch(f: SyncJourneyFixture) {
     );
 
     const orphan = await executeQuery(
-      tgtSession,
+      postTgtSession,
       `SELECT count(*) AS c FROM ${f.table} WHERE id = 6`,
     );
     expect(queryScalar(orphan, 'c')).toBe(0);
   } finally {
-    await disconnectBackend(tgtSession);
+    await disconnectBackend(postTgtSession);
   }
 }
 
@@ -555,7 +572,7 @@ export async function runPreCompareValidationBranches(
   await browser.pause(300);
   await captureStep(`${f.screenshotPrefix}-03-options-toggled`);
 
-  await next.click();
+  await clickDataSyncNext();
   await browser.pause(500);
   const errSame = await $('[data-testid="data-sync-error"]');
   await expect(errSame).toBeDisplayed();
@@ -564,14 +581,12 @@ export async function runPreCompareValidationBranches(
   await dismissOkDialog();
 
   await moveDataSyncBackTo('endpoints');
-  await selectFixtureEndpoints(f);
-  await captureStep(`${f.screenshotPrefix}-07-endpoints-selected`);
-
   try {
     await invokeBackend('delete_connection', { id: sameEndpointId });
   } catch {
     /* ok */
   }
+  await browser.pause(500);
 }
 
 export async function runEndpointSwapBranch(f: SyncJourneyFixture) {

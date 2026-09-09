@@ -1,8 +1,10 @@
 import type {
+  ColumnTypeOverride,
   PlanRequirement,
   PlanStatement,
   SchemaDiffPlan,
   StatementRisk,
+  TypeSuggestion,
 } from '../../commands/schemaDiff';
 import { rollbackCompletenessCounts } from '../../commands/schemaDiff';
 import { useI18n } from '../../hooks/useI18n';
@@ -30,10 +32,7 @@ function PlanRequirements({ requirements }: { requirements: PlanRequirement[] })
   }
 
   return (
-    <div
-      className="space-y-2"
-      data-testid="schema-diff-plan-requirements"
-    >
+    <div className="space-y-2" data-testid="schema-diff-plan-requirements">
       {requirements.map((req) => {
         const target = requirementTarget(req);
         if (req.kind === 'Backfill') {
@@ -64,6 +63,120 @@ function PlanRequirements({ requirements }: { requirements: PlanRequirement[] })
   );
 }
 
+const COMMON_MYSQL_TEXT_TYPES = [
+  'VARCHAR(255)',
+  'VARCHAR(128)',
+  'VARCHAR(64)',
+  'VARCHAR(500)',
+  'TEXT',
+  'MEDIUMTEXT',
+  'LONGTEXT',
+];
+
+function TypeSuggestionsNotice({
+  suggestions,
+  overrides = [],
+  onOverrideChange,
+  onApply,
+  regenerating,
+}: {
+  suggestions: TypeSuggestion[];
+  overrides?: ColumnTypeOverride[];
+  onOverrideChange?: (table: string, column: string, targetType: string) => void;
+  onApply?: () => void;
+  regenerating?: boolean;
+}) {
+  const { t } = useI18n();
+
+  if (suggestions.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs"
+      data-testid="schema-diff-type-suggestions"
+    >
+      <div className="flex items-center gap-1.5 font-medium text-yellow-400">
+        <span>⚠</span>
+        <span>{t('schemaDiff.typeSuggestions.title')}</span>
+      </div>
+      <p className="mt-1 text-fg-secondary">{t('schemaDiff.typeSuggestions.desc')}</p>
+
+      <div className="mt-2.5 overflow-x-auto">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b border-edge/60 text-[11px] text-fg-muted font-normal">
+              <th className="pb-1.5 pr-3">{t('schemaDiff.typeSuggestions.column')}</th>
+              <th className="pb-1.5 pr-3">{t('schemaDiff.typeSuggestions.sourceType')}</th>
+              <th className="pb-1.5 pr-3">{t('schemaDiff.typeSuggestions.targetType')}</th>
+              <th className="pb-1.5">{t('schemaDiff.typeSuggestions.reason')}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-edge/30">
+            {suggestions.map((sug) => {
+              const currentOverride =
+                overrides.find((o) => o.table === sug.table && o.column === sug.column)
+                  ?.targetType ??
+                sug.currentType ??
+                sug.suggestedType;
+
+              return (
+                <tr key={`${sug.table}.${sug.column}`} className="py-1.5">
+                  <td className="py-1.5 pr-3 font-mono font-medium text-fg">
+                    {sug.table}.{sug.column}
+                  </td>
+                  <td className="py-1.5 pr-3 font-mono text-fg-secondary">{sug.sourceType}</td>
+                  <td className="py-1.5 pr-3">
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        data-testid={`type-suggestion-input-${sug.column}`}
+                        list={`type-options-${sug.table}-${sug.column}`}
+                        value={currentOverride}
+                        onChange={(e) => onOverrideChange?.(sug.table, sug.column, e.target.value)}
+                        className="w-32 rounded border border-edge bg-surface px-2 py-0.5 font-mono text-xs text-fg focus:border-accent focus:outline-none"
+                      />
+                      <datalist id={`type-options-${sug.table}-${sug.column}`}>
+                        {COMMON_MYSQL_TEXT_TYPES.map((ty) => (
+                          <option key={ty} value={ty} />
+                        ))}
+                      </datalist>
+                    </div>
+                  </td>
+                  <td className="py-1.5 text-fg-muted">
+                    <span
+                      className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${
+                        sug.isKeyOrIndexed
+                          ? 'bg-yellow-500/20 text-yellow-300 font-medium'
+                          : 'bg-surface-alt text-fg-muted'
+                      }`}
+                    >
+                      {sug.reason}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-2.5 flex justify-end">
+        <button
+          type="button"
+          data-testid="schema-diff-apply-suggestions"
+          disabled={regenerating}
+          onClick={onApply}
+          className="rounded bg-yellow-500/20 px-2.5 py-1 text-xs font-medium text-yellow-300 hover:bg-yellow-500/30 disabled:opacity-50 transition-colors"
+        >
+          {t('schemaDiff.typeSuggestions.apply')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PlanRollbackStatus({ plan }: { plan: SchemaDiffPlan }) {
   const { t } = useI18n();
   const total = plan.statements.length;
@@ -76,10 +189,7 @@ function PlanRollbackStatus({ plan }: { plan: SchemaDiffPlan }) {
 
   if (missing === 0) {
     return (
-      <p
-        className="text-sm text-emerald-400"
-        data-testid="schema-diff-rollback-status"
-      >
+      <p className="text-sm text-emerald-400" data-testid="schema-diff-rollback-status">
         ✅ {t('schemaDiff.rollback.available')}
       </p>
     );
@@ -87,20 +197,14 @@ function PlanRollbackStatus({ plan }: { plan: SchemaDiffPlan }) {
 
   if (complete === 0) {
     return (
-      <p
-        className="text-sm text-red-400"
-        data-testid="schema-diff-rollback-status"
-      >
+      <p className="text-sm text-red-400" data-testid="schema-diff-rollback-status">
         ❌ {t('schemaDiff.rollback.none')}
       </p>
     );
   }
 
   return (
-    <p
-      className="text-sm text-yellow-400"
-      data-testid="schema-diff-rollback-status"
-    >
+    <p className="text-sm text-yellow-400" data-testid="schema-diff-rollback-status">
       ⚠ {t('schemaDiff.rollback.partial', { count: missing })}
     </p>
   );
@@ -114,6 +218,9 @@ export function SchemaDiffPlanPanel({
   onIncludeIndexesChange,
   onRegenerate,
   regenerating,
+  typeOverrides,
+  onTypeOverrideChange,
+  onApplyTypeOverrides,
 }: {
   plan: SchemaDiffPlan;
   allowDestructive: boolean;
@@ -122,6 +229,9 @@ export function SchemaDiffPlanPanel({
   onIncludeIndexesChange: (v: boolean) => void;
   onRegenerate: () => void;
   regenerating?: boolean;
+  typeOverrides?: ColumnTypeOverride[];
+  onTypeOverrideChange?: (table: string, column: string, targetType: string) => void;
+  onApplyTypeOverrides?: () => void;
 }) {
   const { t } = useI18n();
   const requirements = plan.requirements ?? [];
@@ -159,6 +269,16 @@ export function SchemaDiffPlanPanel({
 
       {!plan.sameDialect && (
         <p className="text-sm text-warning">{t('schemaDiff.crossDialectNote')}</p>
+      )}
+
+      {plan.typeSuggestions && plan.typeSuggestions.length > 0 && (
+        <TypeSuggestionsNotice
+          suggestions={plan.typeSuggestions}
+          overrides={typeOverrides}
+          onOverrideChange={onTypeOverrideChange}
+          onApply={onApplyTypeOverrides}
+          regenerating={regenerating}
+        />
       )}
 
       {plan.warnings.length > 0 && (
