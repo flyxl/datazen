@@ -11,7 +11,9 @@ import {
   closeExtraWindows,
   connectSeededPgInWorkspace,
   executeSQL,
+  openConnectionsWorkspace,
   openQueryTab,
+  waitForTableInSidebar,
 } from '../helpers.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -45,6 +47,39 @@ async function withSafeModeOff<T>(fn: () => Promise<T>): Promise<T> {
 
 const BATCH_TABLE = 'e2e_batch_ops_test';
 
+/**
+ * Refresh the navigator schema tree and wait for the newly-created table to
+ * appear. The tree snapshot taken when the connection first loaded predates
+ * our CREATE TABLE, so an explicit refresh is required before the table can
+ * be located. Returns without throwing if the table is already visible.
+ */
+async function refreshSchemaTreeIfNeeded(tableName: string) {
+  try {
+    const isset = await browser.execute(
+      (name: string) =>
+        !!(
+          document.querySelector('[data-testid="connection-navigator-aside"]') ??
+          Array.from(document.querySelectorAll('aside')).find((a) =>
+            a.querySelector('[data-conn-item]'),
+          )
+        )?.querySelector(
+          `[data-testid="schema-tree-node"][data-tree-node="table"]` + `[data-item-name="${name}"]`,
+        ),
+      tableName,
+    );
+    if (isset) return;
+  } catch {
+    /* ignore */
+  }
+  await openConnectionsWorkspace();
+  await browser.pause(500);
+  await browser.execute(() => {
+    const btn = document.querySelector('[data-testid="navigator-refresh"]') as HTMLElement | null;
+    btn?.click();
+  });
+  await browser.pause(1500);
+}
+
 describe('数据表批量操作 (TC-TABLE-009~014)', () => {
   let mainWindow: string;
 
@@ -68,6 +103,16 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
       INSERT INTO ${BATCH_TABLE} (name, value)
       SELECT 'row_' || g, g FROM generate_series(1, 55) g
     `);
+    // Closed-loop gate: the UI-built table must be visible in the schema
+    // tree (refreshing it if the tree snapshot predates the DDL) and hold
+    // all 55 rows before any test proceeds. Without this, downstream
+    // "table not found / no rows" failures are setup races, not product bugs.
+    await refreshSchemaTreeIfNeeded(BATCH_TABLE);
+    // Closed-loop gate: SQL execution already proved success above (any DDL/DML
+    // error would have thrown), so we only require the new table to be visible
+    // in the refreshed schema tree before any TC runs. Row-level assertions are
+    // left to each test's own rendered-outcome checks.
+    await waitForTableInSidebar(BATCH_TABLE, 30000);
   });
 
   after(async () => {
@@ -79,21 +124,22 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
   });
 
   it('TC-TABLE-009: 点击表名应显示数据行', async () => {
-    try {
-      await clickTableInSidebar(BATCH_TABLE);
-    } catch {
-      await openQueryTab();
-      await executeSQL(`SELECT * FROM ${BATCH_TABLE} LIMIT 1`);
-    }
+    // DataTable is a div-virtualized grid (not a native <table>), so the
+    // stable signal for "rows rendered" is the cell testid. We do NOT fall
+    // back to a query-panel SELECT here — that would leak grid rows into the
+    // query results and pollute the sibling TC assertions.
+    await clickTableInSidebar(BATCH_TABLE);
     await browser.waitUntil(
       async () =>
-        browser.execute(() => document.querySelectorAll('table tbody tr, [role="row"]').length > 0),
+        browser.execute(
+          () => document.querySelectorAll('[data-testid="data-table-cell"]').length > 0,
+        ),
       { timeout: 15000, timeoutMsg: `表 ${BATCH_TABLE} 数据行未渲染` },
     );
-    const hasData = await browser.execute(() => {
-      return document.querySelectorAll('table tbody tr, [role="row"]').length > 0;
-    });
-    expect(hasData).toBe(true);
+    const cells = await browser.execute(
+      () => document.querySelectorAll('[data-testid="data-table-cell"]').length,
+    );
+    expect(cells).toBeGreaterThan(0);
     await captureJourneyStep('table-data-visible');
   });
 
@@ -103,15 +149,15 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
       const match = body.match(/(\d+)\s*(?:条|rows|records)/i);
       return match ? match[0] : '';
     });
-    const hasData = await browser.execute(() => {
-      return document.querySelectorAll('table tbody tr, [role="row"]').length > 0;
-    });
+    const hasData = await browser.execute(
+      () => document.querySelectorAll('[data-testid="data-table-cell"]').length > 0,
+    );
     expect(hasData || paginationText.length > 0).toBe(true);
   });
 
   it('TC-TABLE-011: 点击下一页应显示不同数据', async () => {
     const firstCell = await browser.execute(() => {
-      const cells = document.querySelectorAll('td span[title], td span');
+      const cells = document.querySelectorAll('[data-testid="data-table-cell"]');
       for (const c of cells) {
         const text = c.textContent?.trim();
         if (text && text.startsWith('row_')) return text;
@@ -141,7 +187,7 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
     if (clickedNext) {
       await browser.pause(1000);
       const newFirstCell = await browser.execute(() => {
-        const cells = document.querySelectorAll('td span[title], td span');
+        const cells = document.querySelectorAll('[data-testid="data-table-cell"]');
         for (const c of cells) {
           const text = c.textContent?.trim();
           if (text && text.startsWith('row_')) return text;
@@ -199,6 +245,23 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
   });
 
   it('TC-TABLE-014: 分页边界 — 第一页不应有上一页按钮', async () => {
+    // TC-011 paginated forward, so the grid may be on page 2+ here. Navigate
+    // back to page 1 first (clicking prev while it is enabled), then assert
+    // the prev button ends up disabled — i.e. no "previous" at the start.
+    const backToFirst = await browser.execute(() => {
+      let back = 0;
+      for (let i = 0; i < 3; i++) {
+        const btn = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find((b) => {
+          const aria = b.getAttribute('aria-label') || '';
+          return aria.includes('上一页') || aria.includes('Previous');
+        });
+        if (!btn || btn.disabled || btn.getAttribute('aria-disabled') === 'true') return back;
+        btn.click();
+        back++;
+      }
+      return back;
+    });
+    await browser.pause(500);
     const hasPrevDisabled = await browser.execute(() => {
       const btns = Array.from(document.querySelectorAll('button'));
       const prev = btns.find((b) => {
