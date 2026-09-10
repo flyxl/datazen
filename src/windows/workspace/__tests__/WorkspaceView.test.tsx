@@ -139,9 +139,7 @@ function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary
 }
 
 function openPageHandler(): ((event: { payload?: unknown }) => void) | undefined {
-  const call = listenMock.mock.calls.find(
-    ([event]) => event === 'wapps:open-page' || event === 'plugins:open-page',
-  );
+  const call = listenMock.mock.calls.find(([event]) => event === 'wapps:open-page');
   return call?.[1] as ((event: { payload?: unknown }) => void) | undefined;
 }
 
@@ -196,7 +194,7 @@ describe('WorkspaceView', () => {
     expect(shells[0].getAttribute('data-active')).toBe('true');
   });
 
-  it('opens and activates a tab for a valid plugins:open-page deep link', async () => {
+  it('opens and activates a tab for a valid wapps:open-page deep link', async () => {
     pluginState.extensions = [makePlugin()];
 
     render(<WorkspaceView />);

@@ -28,7 +28,7 @@ datazen/
 │   ├── lib/                     # 工具库与业务算法
 │   ├── hooks/                   # React hooks
 │   ├── locales/                 # i18n 领域包与按需加载
-│   └── plugins/                 # 自动生成注册文件（generated.ts / generated-locales.ts / generated-pro.ts）
+│   └── extensions/              # 自动生成注册文件（generated.ts / generated-locales.ts / generated-pro.ts）
 ├── src-tauri/                   # Rust 后端
 │   ├── src/
 │   │   ├── ai/                  # AI Provider 实现 / protocol / context

@@ -5,6 +5,7 @@
  * Covers: TC-AI-007 ~ TC-AI-009
  */
 import { expect, browser, $ } from '@wdio/globals';
+import { t } from '../i18n.js';
 import {
   closeExtraWindows,
   captureJourneyStep,
@@ -64,13 +65,21 @@ describe('AI 面板无 Key 降级 (TC-AI-007~009)', () => {
     expect(label.length).toBeGreaterThan(0);
   });
 
-  it('TC-AI-009: AI 设置分区应列出 Provider 选项', async () => {
+  it('TC-AI-009: AI 设置分区应显示模型配置入口（空态 + 添加模型）', async () => {
     await browser.switchToWindow(mainWindow);
     await openSettingsInMainWindow('ai');
     await browser.pause(1500);
+    // Profile-based AI settings: with no key there are no profiles — the
+    // empty state plus the add-model entry must be visible. Provider options
+    // (OpenAI/Anthropic/DeepSeek/…) live inside the add-model dialog.
+    const emptyState = await $('[data-testid="ai-models-empty"]');
+    await emptyState.waitForDisplayed({ timeout: 10000 });
     const body = await $('body').getText();
     expect(
-      body.includes('OpenAI') ||
+      body.includes(t('settings.ai.modelsTitle')) ||
+        body.includes(t('settings.ai.addModel')) ||
+        body.includes(t('settings.ai.noModels')) ||
+        body.includes('OpenAI') ||
         body.includes('Anthropic') ||
         body.includes('DeepSeek') ||
         body.includes('Provider'),

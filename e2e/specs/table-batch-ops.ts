@@ -85,7 +85,11 @@ describe('数据表批量操作 (TC-TABLE-009~014)', () => {
       await openQueryTab();
       await executeSQL(`SELECT * FROM ${BATCH_TABLE} LIMIT 1`);
     }
-    await browser.pause(1000);
+    await browser.waitUntil(
+      async () =>
+        browser.execute(() => document.querySelectorAll('table tbody tr, [role="row"]').length > 0),
+      { timeout: 15000, timeoutMsg: `表 ${BATCH_TABLE} 数据行未渲染` },
+    );
     const hasData = await browser.execute(() => {
       return document.querySelectorAll('table tbody tr, [role="row"]').length > 0;
     });

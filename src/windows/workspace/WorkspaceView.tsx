@@ -24,7 +24,7 @@ export interface WorkspaceViewProps {
  * Workspace mode layout: extension navigator on the left, independent tab strip +
  * panels (or the default card grid) on the right.
  *
- * Also hosts the `plugins:open-page` deep-link listener (`datazen://…/open`).
+ * Also hosts the `wapps:open-page` deep-link listener (`datazen://…/open`).
  */
 export function WorkspaceView({ onOpenExtensions }: WorkspaceViewProps) {
   const { t } = useI18n();

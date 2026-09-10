@@ -19,7 +19,7 @@
 
   // BUG-F9-02 workaround: safaridriver cannot automate elements inside the
   // opaque-origin plugin iframe, so probe outcomes are persisted through the
-  // bridge storage.set RPC and asserted from disk by plugins.spec.ts.
+  // bridge storage.set RPC and asserted from disk by wapps.spec.ts.
   var PROBE_PREFIX = 'probe.';
 
   var parentWindow = window.parent;

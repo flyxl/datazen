@@ -11,7 +11,7 @@ pub mod storage;
 #[cfg(test)]
 mod integration_tests;
 
-// F9: keeps the E2E sample plugin package (e2e/fixtures/sample-plugin) valid.
+// F9: keeps the E2E sample wapp package (e2e/fixtures/sample-wapp) valid.
 #[cfg(test)]
 mod fixture_tests;
 

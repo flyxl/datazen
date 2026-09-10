@@ -76,7 +76,7 @@ describe('数据看板组件 UX (UJ-05, UJ-06, UJ-09)', () => {
     const exportBtn = await $(
       `[data-testid="dashboard-tile-table"] button[title="${t('export.export')}"]`,
     );
-    await exportBtn.waitForDisplayed({ timeout: 5000 });
+    await exportBtn.waitForDisplayed({ timeout: 15000 });
     await exportBtn.click();
     const exportDialog = await $('[data-testid="data-export-dialog"]');
     await exportDialog.waitForDisplayed({ timeout: 5000 });

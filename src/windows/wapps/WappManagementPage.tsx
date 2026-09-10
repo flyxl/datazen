@@ -199,7 +199,7 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
       <div
         key={plugin.id}
         data-testid="extension-card"
-        data-plugin-id={plugin.id}
+        data-wapp-id={plugin.id}
         className={cn(
           'flex flex-col gap-2.5 rounded-lg border border-edge bg-surface-alt p-4 transition-colors hover:border-accent/50',
           dimmed && 'opacity-60',

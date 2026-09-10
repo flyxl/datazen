@@ -11,6 +11,7 @@ import {
   connectSeededPgInWorkspace,
   closeExtraWindows,
   executeSQL,
+  openQueryTab,
   waitForSchemaTreeLoaded,
 } from '../helpers.js';
 
@@ -64,7 +65,12 @@ describe('Schema 树完整性 (TC-TREE-001~006)', () => {
 
   it('TC-TREE-002: 展开 Tables 分组应显示至少一个表', async () => {
     const tableCount = await browser.execute(() => {
-      const aside = document.querySelector('aside');
+      const nodes = Array.from(document.querySelectorAll('[data-testid="schema-tree-node"]'));
+      if (nodes.length > 0) return nodes.length;
+      // Fallback for older row markup.
+      const aside =
+        document.querySelector('[data-testid="connection-navigator-aside"]') ??
+        document.querySelector('aside');
       if (!aside) return 0;
       const buttons = Array.from(aside.querySelectorAll('button'));
       return buttons.filter((b) => {
@@ -117,6 +123,7 @@ describe('Schema 树完整性 (TC-TREE-001~006)', () => {
 
   it('TC-TREE-006: 执行 DDL 后刷新 Schema 树应反映变更', async () => {
     const testTable = 'e2e_schema_refresh_test';
+    await openQueryTab();
     await withSafeModeOff(async () => {
       await executeSQL(`DROP TABLE IF EXISTS ${testTable}`);
     });

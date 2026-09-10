@@ -16,6 +16,7 @@ import {
   switchSubTab,
   clickFirstTable,
   asideHasSchemaSections,
+  connectionNavigatorAside,
   waitForNewQueryButton,
 } from '../helpers.js';
 
@@ -142,13 +143,17 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
     const toolbar = await waitForNewQueryButton();
     await expect(toolbar).toBeDisplayed();
 
-    const aside = await $('aside');
+    const aside = await connectionNavigatorAside();
+    await browser.waitUntil(async () => asideHasSchemaSections(await aside.getText()), {
+      timeout: 15000,
+      timeoutMsg: 'MySQL 侧边栏未加载出 schema 分区',
+    });
     const asideText = await aside.getText();
     expect(asideHasSchemaSections(asideText)).toBe(true);
   });
 
   it('侧边栏应显示 MySQL 测试表 (MY-002)', async () => {
-    const aside = await $('aside');
+    const aside = await connectionNavigatorAside();
     const asideText = await aside.getText();
     expect(asideText).toContain(TABLE_BASIC);
     expect(asideText).toContain(TABLE_TYPES);

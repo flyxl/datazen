@@ -160,7 +160,7 @@ async function waitForConnectingWithoutExpandedConnection(
         name,
         connectingTitle,
       ),
-    { timeout: 10000, timeoutMsg: `连接 ${name} 未进入连接中状态` },
+    { timeout: 10000, interval: 100, timeoutMsg: `连接 ${name} 未进入连接中状态` },
   );
 }
 
@@ -261,7 +261,7 @@ describe('连接导航树单连接展开 (NAV-EXPAND)', () => {
         window as Window & {
           __DATAZEN_E2E_CONNECT_DELAY_MS__?: Record<string, number>;
         }
-      ).__DATAZEN_E2E_CONNECT_DELAY_MS__ = { [connectionId]: 1200 };
+      ).__DATAZEN_E2E_CONNECT_DELAY_MS__ = { [connectionId]: 3000 };
     }, OTHER_ID);
     try {
       expect(await dispatchRowAction(GROUP_B, OTHER_NAME, 'doubleClick')).toBe(true);

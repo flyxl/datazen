@@ -1107,51 +1107,45 @@ export async function waitForSchemaTreeLoaded(timeout = 20000) {
 
 /** Expand db → schema → Tables category in the virtualized navigator tree. */
 export async function expandSchemaTableCategory(schemaName?: string, dbName?: string) {
-  const targetSchema = schemaName || process.env.E2E_WORKER_SCHEMA || 'public';
-  await browser.execute(
-    (schema: string, db?: string) => {
-      const isCollapsed = (el: Element) => {
-        const expanded = el.getAttribute('aria-expanded');
-        if (expanded !== null) return expanded !== 'true';
-        const cls = el.querySelector('svg')?.getAttribute('class') ?? '';
-        return cls.includes('chevron-right');
-      };
-      const expandIfCollapsed = (el: Element | null | undefined) => {
-        if (el instanceof HTMLElement && isCollapsed(el)) el.click();
-      };
-      const dbs = Array.from(
-        document.querySelectorAll('[data-testid="schema-tree-node"][data-tree-node="db"]'),
-      );
-      const targetDb = db
-        ? dbs.find((el) => (el.getAttribute('data-db-name') || el.textContent || '').includes(db))
-        : (dbs.find((el) =>
-            (el.getAttribute('data-db-name') || el.textContent || '').includes('datazen_e2e'),
-          ) ?? dbs[0]);
-      expandIfCollapsed(targetDb);
-      const schemas = Array.from(
-        document.querySelectorAll('[data-testid="schema-tree-node"][data-tree-node="schema"]'),
-      );
-      const targets = [schema.toLowerCase()];
-      if (schema.toLowerCase() !== 'public') targets.push('public');
-      for (const t of targets) {
-        const match = schemas.find((el) => el.textContent?.toLowerCase().includes(t));
-        expandIfCollapsed(match);
-      }
-      for (const cat of document.querySelectorAll(
-        '[data-testid="schema-tree-node"][data-tree-node="category"][data-cat-id="tables"]',
-      )) {
-        expandIfCollapsed(cat);
-      }
-    },
-    targetSchema,
-    dbName,
-  );
-  await browser.pause(800);
+  await expandSchemaCategory('tables', schemaName, dbName);
 }
 
 /** Expand db → schema → a specific object category in the navigator tree. */
 export async function expandSchemaCategory(catId: string, schemaName?: string, dbName?: string) {
   const targetSchema = schemaName || process.env.E2E_WORKER_SCHEMA || 'public';
+  // Step 1: expand the db node, then wait for its schema children to mount.
+  // toggleDb fetches the table list asynchronously; on a cold start the
+  // schema rows arrive well after a fixed pause, so poll for them instead.
+  await browser.execute((db?: string) => {
+    const isCollapsed = (el: Element) => {
+      const expanded = el.getAttribute('aria-expanded');
+      if (expanded !== null) return expanded !== 'true';
+      const cls = el.querySelector('svg')?.getAttribute('class') ?? '';
+      return cls.includes('chevron-right');
+    };
+    const dbs = Array.from(
+      document.querySelectorAll('[data-testid="schema-tree-node"][data-tree-node="db"]'),
+    );
+    const targetDb = db
+      ? dbs.find((el) => (el.getAttribute('data-db-name') || el.textContent || '').includes(db))
+      : (dbs.find((el) =>
+          (el.getAttribute('data-db-name') || el.textContent || '').includes('datazen_e2e'),
+        ) ?? dbs[0]);
+    if (targetDb instanceof HTMLElement && isCollapsed(targetDb)) targetDb.click();
+  }, dbName);
+  await browser.waitUntil(
+    async () =>
+      browser.execute((schema: string) => {
+        const schemas = Array.from(
+          document.querySelectorAll('[data-testid="schema-tree-node"][data-tree-node="schema"]'),
+        );
+        const targets = [schema.toLowerCase()];
+        if (schema.toLowerCase() !== 'public') targets.push('public');
+        return targets.some((t) => schemas.some((el) => el.textContent?.toLowerCase().includes(t)));
+      }, targetSchema),
+    { timeout: 20000, timeoutMsg: '等待 schema 节点挂载超时' },
+  );
+  // Step 2: expand schema → category now that the rows exist.
   await browser.execute(
     (category: string, schema: string, db?: string) => {
       const isCollapsed = (el: Element) => {
@@ -1163,15 +1157,6 @@ export async function expandSchemaCategory(catId: string, schemaName?: string, d
       const expandIfCollapsed = (el: Element | null | undefined) => {
         if (el instanceof HTMLElement && isCollapsed(el)) el.click();
       };
-      const dbs = Array.from(
-        document.querySelectorAll('[data-testid="schema-tree-node"][data-tree-node="db"]'),
-      );
-      const targetDb = db
-        ? dbs.find((el) => (el.getAttribute('data-db-name') || el.textContent || '').includes(db))
-        : (dbs.find((el) =>
-            (el.getAttribute('data-db-name') || el.textContent || '').includes('datazen_e2e'),
-          ) ?? dbs[0]);
-      expandIfCollapsed(targetDb);
       const schemas = Array.from(
         document.querySelectorAll('[data-testid="schema-tree-node"][data-tree-node="schema"]'),
       );
@@ -1394,6 +1379,23 @@ export async function clickTableInSidebar(tableName: string) {
               // and the WebDriver click. Let the outer wait reacquire it.
               return false;
             }
+            // Fallback: in-page click when the WebDriver hit-test missed
+            // the virtualized row (e.g. after a layout shift from a
+            // preceding spec's window handling).
+            if (!(await tableWorkspaceIsOpen(tableName))) {
+              await browser.execute((table: string) => {
+                const nav =
+                  document.querySelector('[data-testid="connection-navigator-aside"]') ??
+                  Array.from(document.querySelectorAll('aside')).find((a) =>
+                    a.querySelector('[data-conn-item]'),
+                  );
+                const el = nav?.querySelector<HTMLElement>(
+                  `[data-testid="schema-tree-node"][data-item-name="${table}"]`,
+                );
+                el?.click();
+              }, tableName);
+              await browser.pause(500);
+            }
           }
           // The navigator handler first activates the database and then
           // schedules TableView creation. Keep the search mounted while that
@@ -1578,6 +1580,23 @@ export async function clickFirstTable() {
             // Reacquire the row on the next polling iteration if React
             // replaced the virtualized node while it was being clicked.
             return false;
+          }
+          // Fallback: if the WebDriver click did not open the workspace
+          // (e.g. WebKit hit-test missed a virtualized row after a layout
+          // shift), dispatch an in-page click on the same node.
+          if (!(await tableWorkspaceIsOpen(name))) {
+            await browser.execute((table: string) => {
+              const nav =
+                document.querySelector('[data-testid="connection-navigator-aside"]') ??
+                Array.from(document.querySelectorAll('aside')).find((a) =>
+                  a.querySelector('[data-conn-item]'),
+                );
+              const el = nav?.querySelector<HTMLElement>(
+                `[data-testid="schema-tree-node"][data-item-name="${table}"]`,
+              );
+              el?.click();
+            }, name);
+            await browser.pause(500);
           }
         }
       }

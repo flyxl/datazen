@@ -72,7 +72,7 @@
 }
 
 .dz-btn--primary:hover:not(:disabled) {
-  opacity: 0.85;
+  background: var(--c-accent-deep, #4f46e5);
   border-color: transparent;
 }
 

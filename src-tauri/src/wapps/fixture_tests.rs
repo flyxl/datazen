@@ -1,8 +1,8 @@
-//! Guards the F9 E2E fixture (`e2e/fixtures/sample-plugin/`) against rot.
+//! Guards the F9 E2E fixture (`e2e/fixtures/sample-wapp/`) against rot.
 //!
-//! The sample plugin package must keep passing the full manifest rule set
+//! The sample wapp package must keep passing the full manifest rule set
 //! (§2.2 rules 1–7) and the real directory-install path, otherwise every
-//! journey in `e2e/specs/plugins.spec.ts` fails for fixture reasons instead of
+//! journey in `e2e/specs/wapps.spec.ts` fails for fixture reasons instead of
 //! product reasons. Reads the fixture relative to `CARGO_MANIFEST_DIR` so the
 //! check runs both locally and in CI without any setup.
 
@@ -13,12 +13,12 @@ use super::install::install_from_dir;
 use super::manifest::{parse_manifest, validate_extension_dir, validate_manifest};
 use super::EXTENSION_API_VERSION;
 
-fn sample_plugin_fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../e2e/fixtures/sample-plugin")
+fn sample_wapp_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../e2e/fixtures/sample-wapp")
 }
 
 fn load_fixture_manifest() -> (PathBuf, super::ExtensionManifest) {
-    let dir = sample_plugin_fixture();
+    let dir = sample_wapp_fixture();
     let content = fs::read_to_string(dir.join("manifest.json"))
         .unwrap_or_else(|e| panic!("read fixture manifest.json: {e}"));
     let manifest = parse_manifest(&content)
@@ -27,14 +27,14 @@ fn load_fixture_manifest() -> (PathBuf, super::ExtensionManifest) {
 }
 
 #[test]
-fn e2e_sample_plugin_fixture_passes_manifest_validation() {
+fn e2e_sample_wapp_fixture_passes_manifest_validation() {
     let (dir, manifest) = load_fixture_manifest();
 
     // Full rule set 1–7 against the on-disk package (entry/icon/tokens paths,
     // extension whitelist, svg scan, quotas). The source folder name is a repo
     // path and need not equal the id — real installs rename staging to `{id}`.
     validate_manifest(&manifest, &dir)
-        .unwrap_or_else(|e| panic!("sample-plugin fixture drifted out of spec: {e}"));
+        .unwrap_or_else(|e| panic!("sample-wapp fixture drifted out of spec: {e}"));
 
     assert_eq!(manifest.id, "datazen.sample");
     assert_eq!(manifest.api_version, EXTENSION_API_VERSION);
@@ -57,8 +57,8 @@ fn e2e_sample_plugin_fixture_passes_manifest_validation() {
 }
 
 #[test]
-fn e2e_sample_plugin_fixture_declares_all_required_files() {
-    let dir = sample_plugin_fixture();
+fn e2e_sample_wapp_fixture_declares_all_required_files() {
+    let dir = sample_wapp_fixture();
     for rel in [
         "index.html",
         "assets/app.js",
@@ -73,16 +73,16 @@ fn e2e_sample_plugin_fixture_declares_all_required_files() {
 }
 
 #[test]
-fn e2e_sample_plugin_fixture_installs_through_the_real_path() {
+fn e2e_sample_wapp_fixture_installs_through_the_real_path() {
     let (dir, _) = load_fixture_manifest();
 
-    let plugins_root = tempfile::TempDir::new().unwrap();
-    let manifest = install_from_dir(&dir, plugins_root.path())
+    let wapps_root = tempfile::TempDir::new().unwrap();
+    let manifest = install_from_dir(&dir, wapps_root.path())
         .unwrap_or_else(|e| panic!("directory install of the fixture must succeed: {e}"));
 
-    // The staged copy was renamed to `{plugins_dir}/{id}` and revalidates
+    // The staged copy was renamed to `{wapps_dir}/{id}` and revalidates
     // cleanly there (this also enforces folder name == manifest.id).
-    let installed = plugins_root.path().join("datazen.sample");
+    let installed = wapps_root.path().join("datazen.sample");
     validate_extension_dir(&installed)
         .unwrap_or_else(|e| panic!("installed fixture must revalidate: {e}"));
     assert_eq!(manifest.id, "datazen.sample");

@@ -3,7 +3,7 @@
 //! 运行：`cargo test -p datazen --lib extensions::integration_tests`
 //! 说明：lib.rs 中 `mod extensions` 为 crate 私有，外部 tests/ 目标无法访问，
 //! 故本文件经 `#[cfg(test)] mod integration_tests;` 以 lib 单测目标编译
-//! （接线见 plugins/mod.rs，零发布代码影响）。
+//! （接线见 wapps/mod.rs，零发布代码影响）。
 
 use std::fs;
 use std::io::Write as _;

@@ -113,9 +113,7 @@ function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary
 }
 
 function openPageHandler(): ((event: { payload?: unknown }) => void) | undefined {
-  const call = listenMock.mock.calls.find(
-    ([event]) => event === 'wapps:open-page' || event === 'plugins:open-page',
-  );
+  const call = listenMock.mock.calls.find(([event]) => event === 'wapps:open-page');
   return call?.[1] as ((event: { payload?: unknown }) => void) | undefined;
 }
 
@@ -224,7 +222,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
     expect(screen.getAllByTestId('wapp-iframe')).toHaveLength(2);
   });
 
-  it('ignores malformed plugins:open-page payloads without opening any tab', async () => {
+  it('ignores malformed wapps:open-page payloads without opening any tab', async () => {
     pluginState.extensions = [makePlugin()];
 
     render(<WorkspaceView />);

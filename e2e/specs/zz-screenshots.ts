@@ -1598,9 +1598,9 @@ describe('site screenshots', () => {
       async () =>
         browser.execute(
           () =>
-            !!document.querySelector('[data-testid="plugin-management-page"]') &&
-            (!!document.querySelector('[data-testid="plugin-card"]') ||
-              !!document.querySelector('[data-testid="plugin-install-button"]')),
+            !!document.querySelector('[data-testid="extension-management-page"]') &&
+            (!!document.querySelector('[data-testid="extension-card"]') ||
+              !!document.querySelector('[data-testid="extension-install-button"]')),
         ),
       { timeout: 15000, timeoutMsg: 'plugin management page not ready' },
     );

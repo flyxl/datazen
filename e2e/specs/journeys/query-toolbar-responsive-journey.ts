@@ -16,7 +16,7 @@ import {
 } from '../../helpers.js';
 
 async function setWindowSize(width: number, height: number) {
-  await invokeBackend('plugin:window|set_size', { size: { width, height } });
+  await invokeBackend('plugin:window|set_size', { value: { Logical: { width, height } } });
   await browser.pause(600);
 }
 

@@ -39,6 +39,7 @@ export const DEFAULT_THEME_TOKENS: Record<string, string> = {
   '--c-fg-secondary': '#d4d4d8',
   '--c-fg-muted': '#a1a1aa',
   '--c-accent': '#6366f1',
+  '--c-accent-deep': '#4f46e5',
   '--c-success': '#22c55e',
   '--c-warning': '#eab308',
   '--c-danger': '#ef4444',

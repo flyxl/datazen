@@ -1,7 +1,7 @@
 /**
  * F9 Host E2E: runtime UI extensions — sample extension fixture journeys (PRD §7/§8).
  *
- * Fixture: `e2e/fixtures/sample-plugin/` (id `datazen.sample`, zero-build
+ * Fixture: `e2e/fixtures/sample-wapp/` (id `datazen.sample`, zero-build
  * static package with one workspace page + one theme contribution).
  *
  * Journeys:
@@ -42,7 +42,7 @@ const EXPECTED_PACK_ID = `plugin:${PLUGIN_ID}:sample-light`;
 
 const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 /** Absolute path typed into the install dialog's PathInput. */
-const FIXTURE_DIR = path.resolve(THIS_DIR, '..', 'fixtures', 'sample-plugin');
+const FIXTURE_DIR = path.resolve(THIS_DIR, '..', 'fixtures', 'sample-wapp');
 
 /** Mirrors app.js: the storage round-trip marker key/value (J2-003). */
 const STORAGE_KEY = 'e2e-marker';
@@ -122,7 +122,7 @@ async function openSampleTabAndAwaitBridge(): Promise<boolean> {
   await ensureLivePgSession();
   await openWorkspaceMode();
   await openSampleTabFromNavigator();
-  const iframe = await $('[data-testid="plugin-iframe"]');
+  const iframe = await $('[data-testid="wapp-iframe"]');
   await iframe.waitForExist({ timeout: 15000 });
 
   if (MACOS_WEBKIT_BRIDGE_BLOCKED) {
@@ -133,7 +133,7 @@ async function openSampleTabAndAwaitBridge(): Promise<boolean> {
   await browser.waitUntil(
     async () => {
       if (
-        await $('[data-testid="plugin-shell-reload"]')
+        await $('[data-testid="wapp-shell-reload"]')
           .isExisting()
           .catch(() => false)
       ) {
@@ -157,7 +157,7 @@ async function openSampleTabAndAwaitBridge(): Promise<boolean> {
   );
   if (!probesLanded) {
     console.warn(
-      '[plugins.spec] BUG-F9-02/04: plugin iframe content does not load under ' +
+      '[wapps.spec] BUG-F9-02/04: plugin iframe content does not load under ' +
         'WebKit automation (datazen:// subframe navigation refused); assertions ' +
         'fall back to real shell-level product behaviour',
     );
@@ -166,16 +166,16 @@ async function openSampleTabAndAwaitBridge(): Promise<boolean> {
 }
 
 async function waitForPluginShellFallback() {
-  await $('[data-testid="plugin-page-shell"]').waitForDisplayed({ timeout: 15000 });
+  await $('[data-testid="wapp-page-shell"]').waitForDisplayed({ timeout: 15000 });
   await browser.waitUntil(
     async () =>
-      (await $('[data-testid="plugin-shell-reload"]')
+      (await $('[data-testid="wapp-shell-reload"]')
         .isDisplayed()
         .catch(() => false)) ||
-      (await $('[data-testid="plugin-shell-retry"]')
+      (await $('[data-testid="wapp-shell-retry"]')
         .isDisplayed()
         .catch(() => false)) ||
-      (await $('[data-testid="plugin-iframe"]')
+      (await $('[data-testid="wapp-iframe"]')
         .getAttribute('src')
         .catch(() => null)) === `datazen://${PLUGIN_ID}/index.html?v=1.0.0`,
     {
@@ -216,7 +216,7 @@ async function openPluginsPage() {
   const nav = await $('[data-testid="workspace-nav-extensions"]');
   await nav.waitForDisplayed({ timeout: 10000 });
   await nav.click();
-  await $('[data-testid="plugin-management-page"]').waitForDisplayed({ timeout: 10000 });
+  await $('[data-testid="extension-management-page"]').waitForDisplayed({ timeout: 10000 });
   await captureJourneyStep('extensions-page', 0, true);
 }
 
@@ -229,7 +229,7 @@ async function openWorkspaceMode() {
 }
 
 async function sampleCard() {
-  return $(`[data-testid="plugin-card"][data-plugin-id="${PLUGIN_ID}"]`);
+  return $(`[data-testid="extension-card"][data-wapp-id="${PLUGIN_ID}"]`);
 }
 
 async function waitForSampleCard(timeout = 15000) {
@@ -243,7 +243,7 @@ async function openSampleTabFromNavigator() {
   await item.waitForDisplayed({ timeout: 10000 });
   await item.click();
   await $('[data-testid="workspace-tabbar"]').waitForDisplayed({ timeout: 10000 });
-  const iframe = await $('[data-testid="plugin-iframe"]');
+  const iframe = await $('[data-testid="wapp-iframe"]');
   await iframe.waitForExist({ timeout: 15000 });
   await captureJourneyStep('plugin-tab-open', 0, true);
   return iframe;
@@ -266,31 +266,31 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
   it('J1-001: installs the fixture directory via the two-step dialog and shows the card', async () => {
     await openPluginsPage();
 
-    const emptyState = await $('[data-testid="plugin-page-empty"]');
+    const emptyState = await $('[data-testid="extension-page-empty"]');
     if (await emptyState.isExisting()) {
       await expect(emptyState).toBeDisplayed(); // sanity: starts without our plugin
     }
 
-    await $('[data-testid="plugin-install-button"]').click();
+    await $('[data-testid="extension-install-button"]').click();
     const dialog = await $('[role="dialog"]');
     await dialog.waitForDisplayed({ timeout: 10000 });
 
     // J1-001-R: native folder picker — inject fixture path (dialog branch, no typed path).
     await resetDialogQueue();
     await injectDialogPath(FIXTURE_DIR);
-    await $('[data-testid="plugin-install-browse-folder"]').click();
+    await $('[data-testid="extension-install-browse-folder"]').click();
 
     // Step 1 → 2: validate-only inspect; review shows name/version/permissions.
-    await $('[data-testid="plugin-install-review"]').waitForDisplayed({ timeout: 15000 });
-    const review = await $('[data-testid="plugin-install-review"]').getText();
+    await $('[data-testid="extension-install-review"]').waitForDisplayed({ timeout: 15000 });
+    const review = await $('[data-testid="extension-install-review"]').getText();
     expect(review).toContain('Sample Hello');
     expect(review).toContain('1.0.0');
-    await captureJourneyStep('plugin-install-review', 0, true);
+    await captureJourneyStep('extension-install-review', 0, true);
 
-    const badges = await $$('[data-testid="plugin-install-permissions"] [title]');
+    const badges = await $$('[data-testid="extension-install-permissions"] [title]');
     expect(badges.length).toBe(3); // context:connections / command:invoke / storage:local
 
-    await $('[data-testid="plugin-install-confirm"]').click();
+    await $('[data-testid="extension-install-confirm"]').click();
     await browser.waitUntil(async () => !(await dialog.isExisting()), {
       timeout: 15000,
       timeoutMsg: 'install dialog did not close',
@@ -306,7 +306,7 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     expect(cardText).toContain('storage:local');
 
     // Enabled by default after install.
-    const toggle = await card.$('[data-testid="plugin-toggle"]');
+    const toggle = await card.$('[data-testid="extension-toggle"]');
     expect(await toggle.getAttribute('aria-checked')).toBe('true');
     await captureJourneyStep('plugin-installed', 0, true);
   });
@@ -337,15 +337,15 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     const probesLanded = await openSampleTabAndAwaitBridge();
     if (!probesLanded) {
       if (MACOS_WEBKIT_BRIDGE_BLOCKED) {
-        await $('[data-testid="plugin-page-shell"]').waitForExist({ timeout: 15000 });
+        await $('[data-testid="wapp-page-shell"]').waitForExist({ timeout: 15000 });
         return;
       }
       // Degraded environment (BUG-F9-02/04): the real, observable product
       // behaviour is the watchdog failure bar — assert it instead.
       await waitForPluginShellFallback();
-      const reload = await $('[data-testid="plugin-shell-reload"]');
-      const retry = await $('[data-testid="plugin-shell-retry"]');
-      const iframe = await $('[data-testid="plugin-iframe"]');
+      const reload = await $('[data-testid="wapp-shell-reload"]');
+      const retry = await $('[data-testid="wapp-shell-retry"]');
+      const iframe = await $('[data-testid="wapp-iframe"]');
       expect(
         (await reload.isDisplayed().catch(() => false)) ||
           (await retry.isDisplayed().catch(() => false)) ||
@@ -362,22 +362,22 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     const probesLanded = await openSampleTabAndAwaitBridge();
     if (!probesLanded) {
       if (MACOS_WEBKIT_BRIDGE_BLOCKED) {
-        await $('[data-testid="plugin-page-shell"]').waitForExist({ timeout: 15000 });
+        await $('[data-testid="wapp-page-shell"]').waitForExist({ timeout: 15000 });
         return;
       }
       // Degraded environment: exercise the real recovery path — the watchdog
       // reload control remounts a fresh plugin iframe.
       await waitForPluginShellFallback();
-      const reload = await $('[data-testid="plugin-shell-reload"]');
+      const reload = await $('[data-testid="wapp-shell-reload"]');
       if (await reload.isDisplayed().catch(() => false)) {
         await reload.click();
-        const freshFrame = await $('[data-testid="plugin-iframe"]');
+        const freshFrame = await $('[data-testid="wapp-iframe"]');
         await freshFrame.waitForExist({ timeout: 15000 });
       } else {
-        const retry = await $('[data-testid="plugin-shell-retry"]');
+        const retry = await $('[data-testid="wapp-shell-retry"]');
         if (await retry.isDisplayed().catch(() => false)) {
           await retry.click();
-          await $('[data-testid="plugin-shell-loading"]')
+          await $('[data-testid="wapp-shell-loading"]')
             .waitForDisplayed({ reverse: true, timeout: 15000 })
             .catch(() => {});
         }
@@ -396,14 +396,14 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     const probesLanded = await openSampleTabAndAwaitBridge();
     if (!probesLanded) {
       if (MACOS_WEBKIT_BRIDGE_BLOCKED) {
-        await $('[data-testid="plugin-page-shell"]').waitForExist({ timeout: 15000 });
+        await $('[data-testid="wapp-page-shell"]').waitForExist({ timeout: 15000 });
         return;
       }
       // Degraded environment: at minimum the shell resolved and mounted the
       // manifest entry URL for the right plugin/version.
       await waitForPluginShellFallback();
-      const iframe = await $('[data-testid="plugin-iframe"]');
-      const retry = await $('[data-testid="plugin-shell-retry"]');
+      const iframe = await $('[data-testid="wapp-iframe"]');
+      const retry = await $('[data-testid="wapp-shell-retry"]');
       expect(
         (await iframe.getAttribute('src').catch(() => null)) ===
           `datazen://${PLUGIN_ID}/index.html?v=1.0.0` ||
@@ -419,12 +419,12 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     const probesLanded = await openSampleTabAndAwaitBridge();
     if (!probesLanded) {
       if (MACOS_WEBKIT_BRIDGE_BLOCKED) {
-        await $('[data-testid="plugin-page-shell"]').waitForExist({ timeout: 15000 });
+        await $('[data-testid="wapp-page-shell"]').waitForExist({ timeout: 15000 });
         return;
       }
       await waitForPluginShellFallback();
-      const iframe = await $('[data-testid="plugin-iframe"]');
-      const retry = await $('[data-testid="plugin-shell-retry"]');
+      const iframe = await $('[data-testid="wapp-iframe"]');
+      const retry = await $('[data-testid="wapp-shell-retry"]');
       expect(
         (await iframe.getAttribute('src').catch(() => null)) ===
           `datazen://${PLUGIN_ID}/index.html?v=1.0.0` ||
@@ -442,7 +442,7 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     if (probe.startsWith('err:')) {
       // No reachable database in this environment (saved connection is not
       // connectable here): the RPC + error-mapping path still ran end-to-end.
-      console.warn(`[plugins.spec] J2-005 environment-gated: ${probe}`);
+      console.warn(`[wapps.spec] J2-005 environment-gated: ${probe}`);
       return;
     }
     expect(probe).toBe('ok:1rows');
@@ -463,7 +463,7 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     // The tab survived the round-trip; its iframe instance is still mounted.
     await $('[data-testid="workspace-tabbar"]').waitForDisplayed({ timeout: 10000 });
     expect((await $$('[data-testid="workspace-tab"]')).length).toBe(1);
-    await expect(await $('[data-testid="plugin-page-shell"]')).toBeDisplayed();
+    await expect(await $('[data-testid="wapp-page-shell"]')).toBeDisplayed();
   });
 
   it('J3-002: closing all workspace tabs restores the default cards view', async () => {
@@ -473,7 +473,7 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     }
 
     expect(await $('[data-testid="workspace-tabbar"]').isExisting()).toBe(false);
-    expect(await $('[data-testid="plugin-page-shell"]').isExisting()).toBe(false);
+    expect(await $('[data-testid="wapp-page-shell"]').isExisting()).toBe(false);
     const cards = await $('[data-testid="workspace-default-cards"]');
     await cards.waitForDisplayed({ timeout: 10000 });
     const body = await $('body').getText();
@@ -552,12 +552,12 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
 
     await openPluginsPage();
     const card = await waitForSampleCard();
-    const toggle = await card.$('[data-testid="plugin-toggle"]');
+    const toggle = await card.$('[data-testid="extension-toggle"]');
     await toggle.click();
     await browser.waitUntil(
       async () =>
         (await (await sampleCard())
-          .$('[data-testid="plugin-toggle"]')
+          .$('[data-testid="extension-toggle"]')
           .getAttribute('aria-checked')) === 'false',
       {
         timeout: 15000,
@@ -609,13 +609,13 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     }
     expect(vanishMs).toBeGreaterThanOrEqual(0);
     expect(await $('[data-testid="workspace-tabbar"]').isExisting()).toBe(false);
-    expect(await $('[data-testid="plugin-page-shell"]').isExisting()).toBe(false);
+    expect(await $('[data-testid="wapp-page-shell"]').isExisting()).toBe(false);
   });
 
   it('J4-002: uninstalling asks for confirmation and removes the management card', async () => {
     await openPluginsPage();
     const card = await waitForSampleCard();
-    await (await card.$('[data-testid="plugin-uninstall"]')).click();
+    await (await card.$('[data-testid="extension-uninstall"]')).click();
 
     const confirm = await $('[data-testid="confirm-dialog-ok"]');
     await confirm.waitForDisplayed({ timeout: 10000 });

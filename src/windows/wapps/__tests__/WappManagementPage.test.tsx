@@ -149,7 +149,7 @@ function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary
 function card(id: string): HTMLElement {
   const el = screen
     .getAllByTestId('extension-card')
-    .find((c) => c.getAttribute('data-plugin-id') === id);
+    .find((c) => c.getAttribute('data-wapp-id') === id);
   if (!el) throw new Error(`card ${id} not found`);
   return el;
 }

@@ -111,7 +111,10 @@ export async function runHcExplain(ctx: ContractConnCtx) {
   await openQueryTab();
   await setEditorContent('SELECT 1 AS n');
   await browser.pause(300);
-  const explainBtn = await $('[data-testid="editor-explain-button"]');
+  const moreMenu = await $('[data-testid="query-toolbar-more-menu-trigger"]');
+  await moreMenu.waitForDisplayed({ timeout: 8000 });
+  await moreMenu.click();
+  const explainBtn = await $('[data-testid="more-menu-explain"]');
   await explainBtn.waitForDisplayed({ timeout: 8000 });
   await explainBtn.click();
   await browser.waitUntil(
