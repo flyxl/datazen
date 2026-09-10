@@ -82,7 +82,7 @@ describe('首次安装连接异常恢复旅程 (FIRST-RUN-EDGE-JOURNEY)', () => 
           .catch(() => false),
       { timeout: 10000, timeoutMsg: '删除最后一个连接后未返回欢迎页' },
     );
-    await expect(await $('[data-testid="workspace-nav-connections"]')).not.toBeExisting();
+    await expect(await $('[data-testid="workspace-nav-databases"]')).not.toBeExisting();
     await captureJourneyStep('first-run-edge-last-connection-deleted');
   });
 });

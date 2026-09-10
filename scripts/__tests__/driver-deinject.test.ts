@@ -26,15 +26,15 @@ describe('driver-deinject', () => {
   it('leaves gitignored codegen files unchanged', () => {
     expect(
       deinjectManagedContent(
-        'src/plugins/generated.ts',
-        INJECTED_CONTENTS['src/plugins/generated.ts'],
+        'src/extensions/generated.ts',
+        INJECTED_CONTENTS['src/extensions/generated.ts'],
       ),
-    ).toBe(INJECTED_CONTENTS['src/plugins/generated.ts']);
+    ).toBe(INJECTED_CONTENTS['src/extensions/generated.ts']);
   });
 
   it('classifies fully-generated codegen paths', () => {
-    expect(isFullyGeneratedManagedFile('src/plugins/generated.ts')).toBe(true);
-    expect(isFullyGeneratedManagedFile('src/plugins/generated-locales.ts')).toBe(true);
+    expect(isFullyGeneratedManagedFile('src/extensions/generated.ts')).toBe(true);
+    expect(isFullyGeneratedManagedFile('src/extensions/generated-locales.ts')).toBe(true);
     expect(isFullyGeneratedManagedFile('src-tauri/src/driver_init.rs')).toBe(true);
     expect(isFullyGeneratedManagedFile('Cargo.toml')).toBe(false);
   });
@@ -43,8 +43,10 @@ describe('driver-deinject', () => {
     expect(cleanGeneratedTsContent()).toContain('export type DatabaseType = never');
     expect(cleanGeneratedLocalesContent()).toContain('export type PluginTranslationKey = never');
     expect(cleanDriverInitContent()).toContain('No plugins with Tauri commands enabled');
-    expect(cleanFullyGeneratedContent('src/plugins/generated.ts')).toBe(cleanGeneratedTsContent());
-    expect(cleanFullyGeneratedContent('src/plugins/generated-locales.ts')).toBe(
+    expect(cleanFullyGeneratedContent('src/extensions/generated.ts')).toBe(
+      cleanGeneratedTsContent(),
+    );
+    expect(cleanFullyGeneratedContent('src/extensions/generated-locales.ts')).toBe(
       cleanGeneratedLocalesContent(),
     );
     expect(cleanFullyGeneratedContent('src-tauri/src/driver_init.rs')).toBe(

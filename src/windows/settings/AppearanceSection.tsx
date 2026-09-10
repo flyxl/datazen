@@ -24,7 +24,7 @@ interface ThemeOption {
   label: string;
 }
 
-/** Flatten enabled plugins/wapps into a single theme-option list (no plugin hardcoding). */
+/** Flatten enabled extensions/wapps into a single theme-option list (no plugin hardcoding). */
 function collectThemeOptions(extensions: WappSummary[]): ThemeOption[] {
   return extensions
     .filter((p) => p.enabled)
@@ -61,7 +61,7 @@ export function AppearanceSection({
     void useWappStore.getState().fetch();
   }, []);
 
-  // PRD §4.5: only themes contributed by *enabled* plugins are switchable here.
+  // PRD §4.5: only themes contributed by *enabled* extensions are switchable here.
   const themeOptions = useMemo(() => collectThemeOptions(wapps), [wapps]);
 
   const activePackId = settings.theme.packId;

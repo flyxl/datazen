@@ -3,7 +3,7 @@ const pack = {
   'settings.title': 'Configurações',
   'settings.general': 'Em geral',
   'settings.extensions.title': 'Extensões',
-  'settings.extensions.empty': 'Nenhuma extensão de plugin está disponível nesta compilação.',
+  'settings.extensions.empty': 'Nenhuma extensão está disponível nesta compilação.',
   'settings.theme': 'Tema',
   'settings.theme.pack': 'Pacote de tema',
   'settings.colorScheme': 'Color scheme',

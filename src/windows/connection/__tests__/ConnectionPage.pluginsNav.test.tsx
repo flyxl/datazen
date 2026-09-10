@@ -186,11 +186,11 @@ vi.mock('../../settings/SettingsContent', () => ({
 }));
 
 vi.mock('../../workspace/WorkspaceView', () => ({
-  WorkspaceView: ({ onOpenPlugins }: { onOpenPlugins?: () => void }) => (
+  WorkspaceView: ({ onOpenExtensions }: { onOpenExtensions?: () => void }) => (
     <div data-testid="workspace-view">
       workspace-view
-      <button type="button" data-testid="workspace-goto-plugins" onClick={onOpenPlugins}>
-        goto plugins
+      <button type="button" data-testid="workspace-goto-extensions" onClick={onOpenExtensions}>
+        goto extensions
       </button>
     </div>
   ),
@@ -198,17 +198,17 @@ vi.mock('../../workspace/WorkspaceView', () => ({
 
 vi.mock('../../wapps/WappManagementPage', () => ({
   WappManagementPage: ({ onOpenInWorkspace }: { onOpenInWorkspace?: () => void }) => (
-    <div data-testid="plugins-management-page">
-      plugins-management-page
-      <button type="button" data-testid="plugins-goto-workspace" onClick={onOpenInWorkspace}>
+    <div data-testid="extensions-management-page">
+      extensions-management-page
+      <button type="button" data-testid="extensions-goto-workspace" onClick={onOpenInWorkspace}>
         goto workspace
       </button>
     </div>
   ),
   ExtensionManagementPage: ({ onOpenInWorkspace }: { onOpenInWorkspace?: () => void }) => (
-    <div data-testid="plugins-management-page">
-      plugins-management-page
-      <button type="button" data-testid="plugins-goto-workspace" onClick={onOpenInWorkspace}>
+    <div data-testid="extensions-management-page">
+      extensions-management-page
+      <button type="button" data-testid="extensions-goto-workspace" onClick={onOpenInWorkspace}>
         goto workspace
       </button>
     </div>
@@ -217,17 +217,17 @@ vi.mock('../../wapps/WappManagementPage', () => ({
 
 vi.mock('../../extensions/ExtensionManagementPage', () => ({
   WappManagementPage: ({ onOpenInWorkspace }: { onOpenInWorkspace?: () => void }) => (
-    <div data-testid="plugins-management-page">
-      plugins-management-page
-      <button type="button" data-testid="plugins-goto-workspace" onClick={onOpenInWorkspace}>
+    <div data-testid="extensions-management-page">
+      extensions-management-page
+      <button type="button" data-testid="extensions-goto-workspace" onClick={onOpenInWorkspace}>
         goto workspace
       </button>
     </div>
   ),
   ExtensionManagementPage: ({ onOpenInWorkspace }: { onOpenInWorkspace?: () => void }) => (
-    <div data-testid="plugins-management-page">
-      plugins-management-page
-      <button type="button" data-testid="plugins-goto-workspace" onClick={onOpenInWorkspace}>
+    <div data-testid="extensions-management-page">
+      extensions-management-page
+      <button type="button" data-testid="extensions-goto-workspace" onClick={onOpenInWorkspace}>
         goto workspace
       </button>
     </div>
@@ -260,19 +260,19 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-describe('ConnectionPage plugin nav integration (F4)', () => {
+describe('ConnectionPage extension nav integration (F4)', () => {
   it('renders the two new aside buttons between dashboard and settings', () => {
     render(<ConnectionPage />);
 
     expect(screen.getByTestId('workspace-nav-workspace-pages')).toBeInTheDocument();
-    expect(screen.getByTestId('workspace-nav-plugins')).toBeInTheDocument();
+    expect(screen.getByTestId('workspace-nav-extensions')).toBeInTheDocument();
 
     const order = [
-      'workspace-nav-connections',
+      'workspace-nav-databases',
       'workspace-nav-workflow',
       'workspace-nav-dashboard',
       'workspace-nav-workspace-pages',
-      'workspace-nav-plugins',
+      'workspace-nav-extensions',
     ].map((id) => screen.getByTestId(id));
     for (let i = 1; i < order.length; i++) {
       const pos = order[i - 1]!.compareDocumentPosition(order[i]!);
@@ -291,27 +291,27 @@ describe('ConnectionPage plugin nav integration (F4)', () => {
     expect(screen.queryByTestId('navigator-tree')).not.toBeInTheDocument();
   });
 
-  it('switches to the plugins management page with its own title on click', () => {
+  it('switches to the extensions management page with its own title on click', () => {
     render(<ConnectionPage />);
 
-    fireEvent.click(screen.getByTestId('workspace-nav-plugins'));
+    fireEvent.click(screen.getByTestId('workspace-nav-extensions'));
 
-    expect(screen.getByTestId('plugins-management-page')).toBeInTheDocument();
-    expect(screen.getByTestId('title-bar')).toHaveTextContent('nav.plugins');
+    expect(screen.getByTestId('extensions-management-page')).toBeInTheDocument();
+    expect(screen.getByTestId('title-bar')).toHaveTextContent('nav.extensions');
   });
 
-  it('wires cross-mode shortcuts: workspace empty-state → plugins page → back', () => {
+  it('wires cross-mode shortcuts: workspace empty-state → extensions page → back', () => {
     render(<ConnectionPage />);
 
     fireEvent.click(screen.getByTestId('workspace-nav-workspace-pages'));
-    fireEvent.click(screen.getByTestId('workspace-goto-plugins'));
-    expect(screen.getByTestId('plugins-management-page')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('workspace-goto-extensions'));
+    expect(screen.getByTestId('extensions-management-page')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId('plugins-goto-workspace'));
+    fireEvent.click(screen.getByTestId('extensions-goto-workspace'));
     expect(screen.getByTestId('workspace-view')).toBeInTheDocument();
   });
 
-  it('keeps connection tabs intact across workspace/plugins mode round-trips', async () => {
+  it('keeps connection tabs intact across workspace/extensions mode round-trips', async () => {
     localStorage.setItem(
       'datazen:pending-connection',
       JSON.stringify({ connectionId: 'cfg-1', connectionName: 'Local PG' }),
@@ -324,10 +324,10 @@ describe('ConnectionPage plugin nav integration (F4)', () => {
     fireEvent.click(screen.getByTestId('workspace-nav-workspace-pages'));
     expect(screen.queryByTestId('mock-content-view')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId('workspace-nav-plugins'));
+    fireEvent.click(screen.getByTestId('workspace-nav-extensions'));
     expect(screen.queryByTestId('mock-content-view')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId('workspace-nav-connections'));
+    fireEvent.click(screen.getByTestId('workspace-nav-databases'));
     await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
     // No reconnect: the connection tab survived the mode switches untouched.
     expect(connectMock).toHaveBeenCalledTimes(1);
@@ -355,10 +355,10 @@ describe('ConnectionPage plugin nav integration (F4)', () => {
     expect(workspaceBtn.className).not.toMatch(/bg-accent\/20/);
     fireEvent.click(workspaceBtn);
     expect(workspaceBtn.className).toMatch(/bg-accent\/20/);
-    expect(screen.getByTestId('workspace-nav-plugins').className).not.toMatch(/bg-accent\/20/);
+    expect(screen.getByTestId('workspace-nav-extensions').className).not.toMatch(/bg-accent\/20/);
 
-    fireEvent.click(screen.getByTestId('workspace-nav-plugins'));
-    expect(screen.getByTestId('workspace-nav-plugins').className).toMatch(/bg-accent\/20/);
+    fireEvent.click(screen.getByTestId('workspace-nav-extensions'));
+    expect(screen.getByTestId('workspace-nav-extensions').className).toMatch(/bg-accent\/20/);
     expect(workspaceBtn.className).not.toMatch(/bg-accent\/20/);
   });
 });

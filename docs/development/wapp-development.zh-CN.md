@@ -5,7 +5,7 @@
 > 相关文档：
 > - 架构设计：[docs/architecture/backend/wapps.md](../architecture/backend/wapps.md)
 > - 可安装的**示例包源码**：[packages/wapps/](../../packages/wapps/)（`datazen.playground` 全功能示例、`community.slate-blue` 纯主题示例）
-> - 应用沙箱 SDK：`@datazen/app-sdk`
+> - 应用沙箱 SDK：`@datazen/wapp-sdk`
 
 ---
 
@@ -20,7 +20,7 @@ DataZen 拥有正交的多维扩展体系，明确区分：
 | 加载方式 | 运行时：沙箱 iframe + postMessage 桥 | 编译期/动态插槽（In-Process） | 编译期链接进 binary |
 | 文档 | 本文 | `docs/development/sql-editor-pro-development.zh-CN.md` | `docs/development/independent-driver-development.*.md` |
 
-**一句话**：你只要写一份 `manifest.json` + 页面/主题资源，用户就能在 DataZen 的「应用」列表里安装，得到一个新的**工作区页面**（比如「账单看板」「运维监控」）或一套**主题**。它跑在宿主开的**沙箱 iframe**里——没有 `window.tauri`、不直接访问文件系统/网络/数据库连接，所有能力（取数、读连接、存储、通知）都通过一个受控的 `postMessage` 桥（使用 `@datazen/app-sdk`）向宿主申请。这既是安全边界，也是能力上限。
+**一句话**：你只要写一份 `manifest.json` + 页面/主题资源，用户就能在 DataZen 的「应用」列表里安装，得到一个新的**工作区页面**（比如「账单看板」「运维监控」）或一套**主题**。它跑在宿主开的**沙箱 iframe**里——没有 `window.tauri`、不直接访问文件系统/网络/数据库连接，所有能力（取数、读连接、存储、通知）都通过一个受控的 `postMessage` 桥（使用 `@datazen/wapp-sdk`）向宿主申请。这既是安全边界，也是能力上限。
 
 ---
 
@@ -153,12 +153,12 @@ zip -rqX ../com.example.bill-hud.zip . -x '.DS_Store'
 
 页面跑在**沙箱 iframe**：**没有** `window.tauri`，**不能** `fetch` 直连网络，资产只能通过 `datazen://{wappId}/{path}` 拿到。取数能力**全部走桥**。
 
-### 4.1 用官方 SDK `@datazen/app-sdk`
+### 4.1 用官方 SDK `@datazen/wapp-sdk`
 
 > 纯 TS、零运行时依赖（React 绑定是可选）。开发产物建议把你的代码连同 SDK 一起**打包**进页面（零构建时可以直接从 `datazen://…` 引用 SDK 源码，见示例；或把 SDK 编译进你的 bundle）。
 
 ```ts
-import { createClient } from '@datazen/app-sdk';
+import { createClient } from '@datazen/wapp-sdk';
 
 const dz = createClient();
 // 必须先握手；成功返回宿主上下文 { apiVersion, locale, dark, tokens }
@@ -211,7 +211,7 @@ dz.detach(); // 可选：拆桥（卸载监听 + 中止挂起请求）
 2. 推荐用 SDK 的 React 绑定订阅主题快照：
 
    ```ts
-   import { useTheme } from '@datazen/app-sdk/react';
+   import { useTheme } from '@datazen/wapp-sdk/react';
    const { dark, tokens } = useTheme(); // 宿主每次切主题都会重渲
    ```
    非 React：`startThemeListener()`（SDK）或订阅 `datazen:theme-pack-changed` DOM 事件。
@@ -341,7 +341,7 @@ zip -rqX ../com.example.bill-hud.zip . -x '.DS_Store'
 </html>
 ```
 
-> 说明：上面用了 `import ... from './assets/sdk.mjs'`（假定你把 SDK 也打包进你的 `assets/`）。真实开发建议用 bundler 把 `@datazen/app-sdk` 一起打包；零构建的话把 SDK 源码或 dist 放进包内相对引用即可。主题应用请直接用 SDK 的 `applyThemeSnapshot` / `useTheme()`（§5），不要手搓。
+> 说明：上面用了 `import ... from './assets/sdk.mjs'`（假定你把 SDK 也打包进你的 `assets/`）。真实开发建议用 bundler 把 `@datazen/wapp-sdk` 一起打包；零构建的话把 SDK 源码或 dist 放进包内相对引用即可。主题应用请直接用 SDK 的 `applyThemeSnapshot` / `useTheme()`（§5），不要手搓。
 
 ---
 

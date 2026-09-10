@@ -80,9 +80,9 @@ Driver API 的公共接口不能暴露 sqlx、mongodb、redis 等实现类型。
 
 ## 5. 前端 Driver
 
-如果 Driver 提供 UI，可以把前端代码随 Driver 一起编译进 DataZen。resolver 会生成 gitignored 的 `src/plugins/generated.ts`。
+如果 Driver 提供 UI，可以把前端代码随 Driver 一起编译进 DataZen。resolver 会生成 gitignored 的 `src/extensions/generated.ts`。
 
-插件 UI 应使用 DataZen 已定义的 Driver/Plugin contract，不直接依赖 Host 内部实现。
+插件 UI 应使用 DataZen 已定义的 Driver/Extension contract，不直接依赖 Host 内部实现。
 
 ## 6. 测试
 

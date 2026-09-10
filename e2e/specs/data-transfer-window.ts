@@ -22,7 +22,7 @@ describe('数据传输窗口 (DTW-001~DTW-003)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+    await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 15000 });
   });
 
   after(async () => {

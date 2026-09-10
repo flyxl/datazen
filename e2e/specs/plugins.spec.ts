@@ -1,5 +1,5 @@
 /**
- * F9 Host E2E: runtime UI plugins — sample plugin fixture journeys (PRD §7/§8).
+ * F9 Host E2E: runtime UI extensions — sample extension fixture journeys (PRD §7/§8).
  *
  * Fixture: `e2e/fixtures/sample-plugin/` (id `datazen.sample`, zero-build
  * static package with one workspace page + one theme contribution).
@@ -16,9 +16,9 @@
  *      (watchdog failure bar / reload recovery / entry URL resolution).
  *   J3 tab independence: connection/workspace modes keep separate state;
  *      closing all workspace tabs restores the default card view
- *   J5 Settings → 外观 shows the plugin theme card and applies it persistently
+ *   J5 Settings → 外观 shows the extension theme card and applies it persistently
  *   J4 disable removes tab + navigator entry; uninstall (with confirm) removes card
- *      (executed last because it tears the plugin down; returns from J5's
+ *      (executed last because it tears the extension down; returns from J5's
  *      Settings view first — BUG-F9-03)
  */
 import os from 'node:os';
@@ -213,11 +213,11 @@ async function resetThemePackId() {
 }
 
 async function openPluginsPage() {
-  const nav = await $('[data-testid="workspace-nav-plugins"]');
+  const nav = await $('[data-testid="workspace-nav-extensions"]');
   await nav.waitForDisplayed({ timeout: 10000 });
   await nav.click();
   await $('[data-testid="plugin-management-page"]').waitForDisplayed({ timeout: 10000 });
-  await captureJourneyStep('plugins-page', 0, true);
+  await captureJourneyStep('extensions-page', 0, true);
 }
 
 async function openWorkspaceMode() {
@@ -249,7 +249,7 @@ async function openSampleTabFromNavigator() {
   return iframe;
 }
 
-describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
+describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
   before(async () => {
     // Clean slate: drop any leftover install and theme selection.
     await browser.url('tauri://localhost');
@@ -454,7 +454,7 @@ describe('UI plugins (F9: sample plugin + bridge + appearance)', () => {
     await openWorkspaceMode();
     await openSampleTabFromNavigator();
 
-    await $('[data-testid="workspace-nav-connections"]').click();
+    await $('[data-testid="workspace-nav-databases"]').click();
     await browser.pause(600);
     // Connections mode replaces the whole workspace layout.
     expect(await $('[data-testid="workspace-navigator"]').isExisting()).toBe(false);

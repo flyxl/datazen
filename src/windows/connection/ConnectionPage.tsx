@@ -554,7 +554,7 @@ export function ConnectionPage() {
       return dashboardTitle ? `${dashboardTitle} - DataZen` : t('win.dashboard');
     }
     if (workspaceMode === 'workspace') return t('nav.workspacePages');
-    if (workspaceMode === 'plugins') return t('nav.plugins');
+    if (workspaceMode === 'extension') return t('nav.extensions');
     if (activePanel) {
       return `${activePanel.connectionName} - ${getDbLabel(activePanel.databaseType)} - DataZen`;
     }
@@ -726,8 +726,8 @@ export function ConnectionPage() {
             ) : workspaceMode === 'workflow' ? (
               <WorkflowPage embedded onOpenDashboardInShell={handleOpenDashboardById} />
             ) : workspaceMode === 'workspace' ? (
-              <WorkspaceView onOpenPlugins={() => setWorkspaceMode('plugins')} />
-            ) : workspaceMode === 'plugins' ? (
+              <WorkspaceView onOpenExtensions={() => setWorkspaceMode('extension')} />
+            ) : workspaceMode === 'extension' ? (
               <WappManagementPage onOpenInWorkspace={() => setWorkspaceMode('workspace')} />
             ) : (
               <DashboardPanel

@@ -1,6 +1,6 @@
 /** Database engine identifiers for the current build (injected via resolve-drivers). */
-export type { DatabaseType } from '../plugins/generated';
-import type { DatabaseType } from '../plugins/generated';
+export type { DatabaseType } from '../extensions/generated';
+import type { DatabaseType } from '../extensions/generated';
 
 export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
 

@@ -74,7 +74,7 @@ async function setAppLanguage(mainWin: string, language: 'en' | 'zh-CN') {
   await browser.switchToWindow(mainWin);
   await browser.execute(() => location.reload());
   await browser.pause(2000);
-  await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+  await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 15000 });
 }
 
 async function dismissLimitationsDialogIfOpen(testIdPrefix: string) {
@@ -273,7 +273,7 @@ async function clickIconButton(iconClass: string, within?: string) {
 async function goToConnections() {
   await browser.execute(() => {
     document
-      .querySelector('[data-testid="workspace-nav-connections"]')
+      .querySelector('[data-testid="workspace-nav-databases"]')
       ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
   await browser.pause(800);
@@ -309,11 +309,11 @@ async function goToDashboard() {
   await browser.pause(800);
 }
 
-/** Navigate to the plugins management page. */
+/** Navigate to the extensions management page. */
 async function goToPlugins() {
   await browser.execute(() => {
     document
-      .querySelector('[data-testid="workspace-nav-plugins"]')
+      .querySelector('[data-testid="workspace-nav-extensions"]')
       ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
   await browser.pause(800);
@@ -1590,9 +1590,9 @@ describe('site screenshots', () => {
     await goToConnections();
   });
 
-  // ─────────────────────── 22-plugins ──────────────────────────────────────
+  // ─────────────────────── 22-extensions ──────────────────────────────────────
 
-  it('22-plugins: plugin management page', async () => {
+  it('22-extensions: extensions management page', async () => {
     await goToPlugins();
     await browser.waitUntil(
       async () =>
@@ -1604,7 +1604,7 @@ describe('site screenshots', () => {
         ),
       { timeout: 15000, timeoutMsg: 'plugin management page not ready' },
     );
-    await shot('22-plugins.png');
+    await shot('22-extensions.png');
     await goToConnections();
   });
 

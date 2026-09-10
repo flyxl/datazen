@@ -3,8 +3,8 @@
  * Ensure gitignored driver codegen files exist.
  *
  * Files:
- *   src/plugins/generated.ts
- *   src/plugins/generated-locales.ts
+ *   src/extensions/generated.ts
+ *   src/extensions/generated-locales.ts
  *   src-tauri/src/driver_init.rs
  *   src-tauri/capabilities/default.json (merged from default_host.json + plugins)
  *

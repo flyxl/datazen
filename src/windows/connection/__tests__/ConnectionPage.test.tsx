@@ -178,13 +178,7 @@ vi.mock('../ContentView', () => ({
 }));
 
 vi.mock('../../../components/TitleBar', () => ({
-  TitleBar: ({
-    title,
-    leftContent,
-  }: {
-    title: string;
-    leftContent?: React.ReactNode;
-  }) => (
+  TitleBar: ({ title, leftContent }: { title: string; leftContent?: React.ReactNode }) => (
     <div data-testid="title-bar">
       {leftContent}
       {title}
@@ -436,7 +430,7 @@ describe('ConnectionPage', () => {
     await waitFor(() => expect(fetchDashboardsMock).toHaveBeenCalledOnce());
     expect(screen.getByTestId('dashboard-panel')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId('workspace-nav-connections'));
+    fireEvent.click(screen.getByTestId('workspace-nav-databases'));
     expect(screen.getByTestId('navigator-tree')).toBeInTheDocument();
   });
 
@@ -497,7 +491,7 @@ describe('ConnectionPage', () => {
     await waitFor(() => expect(screen.getByTestId('settings-page')).toBeInTheDocument());
     expect(screen.getByTestId('menu-bar')).toBeInTheDocument();
     expect(screen.queryByTestId('navigator-tree')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('workspace-nav-connections')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('workspace-nav-databases')).not.toBeInTheDocument();
   });
 
   it('TC-window: sidebar Settings from workflow returns to workflow on back', async () => {
@@ -517,7 +511,7 @@ describe('ConnectionPage', () => {
   it('TC-window: sidebar Settings button has no unreachable active highlight (F3-BUG-001)', () => {
     render(<ConnectionPage />);
 
-    const connectionsNav = screen.getByTestId('workspace-nav-connections');
+    const connectionsNav = screen.getByTestId('workspace-nav-databases');
     const settingsNav = screen.getByTestId('workspace-nav-settings');
 
     expect(connectionsNav.className).toMatch(/bg-accent\/20/);
@@ -586,7 +580,7 @@ describe('ConnectionPage', () => {
     expect(screen.queryByTestId('connection-navigator-aside')).not.toBeInTheDocument();
 
     // Switch back to connections mode
-    fireEvent.click(screen.getByTestId('workspace-nav-connections'));
+    fireEvent.click(screen.getByTestId('workspace-nav-databases'));
     const asideAfter = screen.getByTestId('connection-navigator-aside');
     expect(asideAfter).toBeInTheDocument();
     expect(asideAfter).toHaveStyle({ width: '280px' });

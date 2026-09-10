@@ -91,26 +91,26 @@ export function InstallWappDialog({ open, onClose, onInstalled }: InstallWappDia
   return (
     <Dialog
       open={open}
-      title={t('plugins.install.title')}
-      description={t('plugins.install.description')}
+      title={t('extensions.install.title')}
+      description={t('extensions.install.description')}
       onClose={onClose}
       footer={
         step === 'review' ? (
           <>
             <Button
               variant="ghost"
-              data-testid="plugin-install-back"
+              data-testid="extension-install-back"
               onClick={backToSelect}
               disabled={installing}
             >
-              {t('plugins.install.back')}
+              {t('extensions.install.back')}
             </Button>
             <Button
-              data-testid="plugin-install-confirm"
+              data-testid="extension-install-confirm"
               onClick={() => void handleInstall()}
               disabled={!manifest || !pickToken || installing}
             >
-              {installing ? t('plugins.install.installing') : t('plugins.install.confirm')}
+              {installing ? t('extensions.install.installing') : t('extensions.install.confirm')}
             </Button>
           </>
         ) : (
@@ -123,8 +123,8 @@ export function InstallWappDialog({ open, onClose, onInstalled }: InstallWappDia
       }
     >
       {step === 'review' && manifest ? (
-        <div className="flex flex-col gap-3" data-testid="plugin-install-review">
-          <div className="text-xs text-fg-muted" data-testid="plugin-install-package-label">
+        <div className="flex flex-col gap-3" data-testid="extension-install-review">
+          <div className="text-xs text-fg-muted" data-testid="extension-install-package-label">
             {packageLabel}
           </div>
           <div>
@@ -139,11 +139,13 @@ export function InstallWappDialog({ open, onClose, onInstalled }: InstallWappDia
           ) : null}
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-fg-secondary">
-              {t('plugins.install.permissions')}
+              {t('extensions.install.permissions')}
             </span>
-            <div className="flex flex-wrap gap-1" data-testid="plugin-install-permissions">
+            <div className="flex flex-wrap gap-1" data-testid="extension-install-permissions">
               {manifest.permissions.length === 0 ? (
-                <span className="text-xs text-fg-muted">{t('plugins.install.noPermissions')}</span>
+                <span className="text-xs text-fg-muted">
+                  {t('extensions.install.noPermissions')}
+                </span>
               ) : (
                 manifest.permissions.map((perm) => (
                   <Badge key={perm} title={PERMISSION_LABELS[perm] ?? perm}>
@@ -157,36 +159,38 @@ export function InstallWappDialog({ open, onClose, onInstalled }: InstallWappDia
             <CopyableError
               message={error}
               copyButton
-              data-testid="plugin-install-error"
+              data-testid="extension-install-error"
               className="text-sm text-red-400"
             />
           ) : null}
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          <p className="text-xs text-fg-secondary">{t('plugins.install.pickPrompt')}</p>
+          <p className="text-xs text-fg-secondary">{t('extensions.install.pickPrompt')}</p>
           <div className="flex flex-wrap gap-2">
             <Button
-              data-testid="plugin-install-browse-zip"
+              data-testid="extension-install-browse-zip"
               onClick={() => void handlePick('zip')}
               disabled={inspecting}
             >
-              {inspecting ? t('plugins.install.inspecting') : t('plugins.install.browseZip')}
+              {inspecting ? t('extensions.install.inspecting') : t('extensions.install.browseZip')}
             </Button>
             <Button
               variant="secondary"
-              data-testid="plugin-install-browse-folder"
+              data-testid="extension-install-browse-folder"
               onClick={() => void handlePick('folder')}
               disabled={inspecting}
             >
-              {inspecting ? t('plugins.install.inspecting') : t('plugins.install.browseFolder')}
+              {inspecting
+                ? t('extensions.install.inspecting')
+                : t('extensions.install.browseFolder')}
             </Button>
           </div>
           {error ? (
             <CopyableError
               message={error}
               copyButton
-              data-testid="plugin-install-error"
+              data-testid="extension-install-error"
               className="text-sm text-red-400"
             />
           ) : null}

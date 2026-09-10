@@ -19,7 +19,7 @@ import type {
   SshAuthMethod,
   SshTunnelConfig,
 } from '../../types';
-import { getPluginConnectionForm, getPluginValidator } from '../../plugins/generated';
+import { getPluginConnectionForm, getPluginValidator } from '../../extensions/generated';
 
 export interface UseConnectionFormOptions {
   editId?: string | null;

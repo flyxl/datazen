@@ -1,9 +1,9 @@
 {
-  "name": "@datazen/app-sdk",
+  "name": "@datazen/wapp-sdk",
   "version": "0.1.0",
   "private": true,
   "license": "GPL-3.0-or-later",
-  "description": "DataZen UI plugin SDK: typed bridge RPC client + theme token application for sandboxed plugin iframes.",
+  "description": "DataZen Workspace App SDK: typed bridge RPC client + theme token application for sandboxed wapp iframes.",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",

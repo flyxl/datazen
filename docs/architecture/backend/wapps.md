@@ -17,7 +17,7 @@
 │ register_uri_scheme_protocol("datazen") 资产服务 + open 深链             │    │
 │ execute_driver_command（复用，零改动）                                    │    │
 └─────────────────────────────────────────────────────────────────────────┘    │
-        ▲ sandbox iframe（opaque origin，@datazen/app-sdk 或裸 JS）◄───────────┘
+        ▲ sandbox iframe（opaque origin，@datazen/wapp-sdk 或裸 JS）◄───────────┘
 ```
 
 ## 目录与安装
@@ -85,7 +85,7 @@ DataZen 扩展体系按照安全与性能需求划分为双轨机制：
 | **运行形态** | 独立沙箱 `<iframe>`，基于 `datazen://` 协议 | 宿主主进程内存执行（In-Process） |
 | **隔离级别** | 严格进程/源隔离，仅受控 postMessage 通信 | 零 IPC 损耗，直接访问宿主内部状态与 DOM |
 | **适用场景** | 独立工作区页面（Pages）、外观主题（Themes） | 核心编辑器增强（SQLEditor Pro）、高级图表、深度分析 |
-| **通信机制** | JSON-RPC 信封（`wappBridge.ts` / `@datazen/app-sdk`） | 类型化 TypeScript 契约（`ExtensionPoint<T>`） |
+| **通信机制** | JSON-RPC 信封（`wappBridge.ts` / `@datazen/wapp-sdk`） | 类型化 TypeScript 契约（`ExtensionPoint<T>`） |
 | **许可证豁免** | 臂长通信（Arms-length），无 GPL 传染 | 受 **DataZen Plugin, Driver & Extension Linking Exception** 保护 |
 | **准入与安全** | 通用第三方应用（受严格权限声明管控） | 官方签名/可信特权模块，防止任意代码执行 |
 

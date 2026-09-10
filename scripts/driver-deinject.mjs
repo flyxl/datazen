@@ -13,9 +13,9 @@ export const DRIVER_ACL_IDS = ['kiwi', 'olap', 'superset', 'redis'];
 
 export const FULLY_GENERATED_MANAGED = [
   'src-tauri/src/driver_init.rs',
-  'src/plugins/generated.ts',
-  'src/plugins/generated-locales.ts',
-  'src/plugins/generated-pro.ts',
+  'src/extensions/generated.ts',
+  'src/extensions/generated-locales.ts',
+  'src/extensions/generated-pro.ts',
 ];
 
 export function isFullyGeneratedManagedFile(relPath) {

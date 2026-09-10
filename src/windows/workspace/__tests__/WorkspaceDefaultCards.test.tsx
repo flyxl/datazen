@@ -22,12 +22,12 @@ function makeEntry(overrides: Partial<WorkspacePageEntry> = {}): WorkspacePageEn
 
 let pages: WorkspacePageEntry[];
 const onOpen = vi.fn();
-const onOpenPlugins = vi.fn();
+const onOpenExtensions = vi.fn();
 
 beforeEach(() => {
   pages = [];
   onOpen.mockClear();
-  onOpenPlugins.mockClear();
+  onOpenExtensions.mockClear();
 });
 
 afterEach(cleanup);
@@ -47,7 +47,9 @@ describe('WorkspaceDefaultCards', () => {
       }),
     ];
 
-    render(<WorkspaceDefaultCards pages={pages} onOpen={onOpen} onOpenPlugins={onOpenPlugins} />);
+    render(
+      <WorkspaceDefaultCards pages={pages} onOpen={onOpen} onOpenExtensions={onOpenExtensions} />,
+    );
 
     expect(screen.getAllByTestId('workspace-default-card')).toHaveLength(2);
     expect(screen.getByText('Quota Check')).toBeInTheDocument();
@@ -65,14 +67,16 @@ describe('WorkspaceDefaultCards', () => {
     expect(onOpen).toHaveBeenCalledWith(pages[0]);
   });
 
-  it('shows the empty-state guidance with a shortcut to the plugins page', () => {
-    render(<WorkspaceDefaultCards pages={[]} onOpen={onOpen} onOpenPlugins={onOpenPlugins} />);
+  it('shows the empty-state guidance with a shortcut to the extensions page', () => {
+    render(
+      <WorkspaceDefaultCards pages={[]} onOpen={onOpen} onOpenExtensions={onOpenExtensions} />,
+    );
 
     expect(screen.getByTestId('workspace-empty')).toBeInTheDocument();
     expect(screen.queryByTestId('workspace-default-card')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId('workspace-open-plugins'));
-    expect(onOpenPlugins).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByTestId('workspace-open-extensions'));
+    expect(onOpenExtensions).toHaveBeenCalledOnce();
     expect(onOpen).not.toHaveBeenCalled();
   });
 });

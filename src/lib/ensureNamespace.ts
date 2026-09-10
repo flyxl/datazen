@@ -16,7 +16,7 @@ export interface EnsureDeps {
   loadedPaths: Set<string>;
   /** Raw `get_tables` payloads keyed by fetch path (shared with custom trees). */
   pathItems: Record<string, TableInfo[]>;
-  /** SQL display name → fetch path root (e.g. numeric id). Filled by plugins via SDK. */
+  /** SQL display name → fetch path root (e.g. numeric id). Filled by extensions via SDK. */
   pathAliases: Record<string, string>;
   namespaceTree: SqlNamespace;
   tables: TableInfo[];

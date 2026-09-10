@@ -270,13 +270,13 @@ describe('Settings (SS-001~SS-006)', () => {
       await openSettingsInMainWindow();
       await expect(await $('[data-testid="settings-page"]')).toBeDisplayed();
       await expect(await $('[data-testid="settings-back"]')).toBeDisplayed();
-      await expect(await $('[data-testid="workspace-nav-connections"]')).not.toBeDisplayed();
+      await expect(await $('[data-testid="workspace-nav-databases"]')).not.toBeDisplayed();
     });
 
     it('F1-E2E-002: back button returns to main workspace shell', async () => {
       await openSettingsInMainWindow();
       await backFromSettingsInMainWindow();
-      await expect(await $('[data-testid="workspace-nav-connections"]')).toBeDisplayed();
+      await expect(await $('[data-testid="workspace-nav-databases"]')).toBeDisplayed();
       await expect(await $('[data-testid="workspace-nav-workflow"]')).toBeDisplayed();
       await expect(await $('[data-testid="settings-page"]')).not.toBeExisting();
     });

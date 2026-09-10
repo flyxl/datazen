@@ -92,9 +92,7 @@ export function WelcomePage() {
                 {t('common.importConnections')}
               </Button>
             </div>
-            <p className="max-w-md text-center text-xs text-fg-muted">
-              {t('welcome.importConnectionHint')}
-            </p>
+            <p className="text-center text-xs text-fg-muted">{t('welcome.importConnectionHint')}</p>
           </div>
 
           <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">

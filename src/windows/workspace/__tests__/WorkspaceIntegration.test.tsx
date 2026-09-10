@@ -143,7 +143,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
 
     expect(screen.getByTestId('workspace-default-cards')).toBeInTheDocument();
     expect(screen.queryByTestId('workspace-tabbar')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('plugin-page-shell')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('wapp-page-shell')).not.toBeInTheDocument();
   });
 
   it('opens a tab from the navigator click: tab bar appears, cards disappear, sandboxed iframe mounts', async () => {
@@ -157,7 +157,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
     expect(await screen.findByTestId('workspace-tabbar')).toBeInTheDocument();
     expect(screen.queryByTestId('workspace-default-cards')).not.toBeInTheDocument();
 
-    const iframe = await screen.findByTestId('plugin-iframe');
+    const iframe = await screen.findByTestId('wapp-iframe');
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
     expect(iframe.getAttribute('src')).toBe('datazen://acme.bill-audit/index.html?v=1.0.0');
     // Navigator stays usable next to the open tab.
@@ -177,7 +177,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
 
     expect(await screen.findByTestId('workspace-tabbar')).toBeInTheDocument();
     expect(screen.getByTestId('workspace-tab')).toHaveTextContent('Pricing');
-    const iframe = await screen.findByTestId('plugin-iframe');
+    const iframe = await screen.findByTestId('wapp-iframe');
     expect(iframe.getAttribute('src')).toBe('datazen://acme.afi/ui.html?v=1.0.0');
   });
 
@@ -187,16 +187,16 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
     render(<WorkspaceView />);
     await act(async () => {});
     fireEvent.click(screen.getByTestId('workspace-nav-item'));
-    await screen.findByTestId('plugin-iframe');
+    await screen.findByTestId('wapp-iframe');
 
     fireEvent.click(screen.getByTestId('workspace-tab-close'));
 
     await waitFor(() => expect(screen.queryByTestId('workspace-tabbar')).not.toBeInTheDocument());
     expect(screen.getByTestId('workspace-default-cards')).toBeInTheDocument();
-    expect(screen.queryByTestId('plugin-iframe')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('wapp-iframe')).not.toBeInTheDocument();
     // Navigator still offers the page for reopening.
     fireEvent.click(screen.getByTestId('workspace-nav-item'));
-    expect(await screen.findByTestId('plugin-iframe')).toBeInTheDocument();
+    expect(await screen.findByTestId('wapp-iframe')).toBeInTheDocument();
   });
 
   it('keeps inactive shells mounted-but-hidden while another tab is active', async () => {
@@ -210,18 +210,18 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
 
     const items = screen.getAllByTestId('workspace-nav-item');
     fireEvent.click(items[0]!);
-    await screen.findByTestId('plugin-iframe');
+    await screen.findByTestId('wapp-iframe');
     fireEvent.click(items[1]!);
     await act(async () => {});
 
     expect(screen.getAllByTestId('workspace-tab')).toHaveLength(2);
-    const shells = screen.getAllByTestId('plugin-page-shell');
+    const shells = screen.getAllByTestId('wapp-page-shell');
     expect(shells).toHaveLength(2);
     const hidden = shells.filter((s) => s.className.includes('hidden'));
     expect(hidden).toHaveLength(1);
     expect(hidden[0]!.getAttribute('aria-hidden')).toBe('true');
     // Both iframes stay mounted (instance preserved), only one visible.
-    expect(screen.getAllByTestId('plugin-iframe')).toHaveLength(2);
+    expect(screen.getAllByTestId('wapp-iframe')).toHaveLength(2);
   });
 
   it('ignores malformed plugins:open-page payloads without opening any tab', async () => {
@@ -262,7 +262,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
     await waitFor(() => expect(screen.queryByTestId('workspace-tabbar')).not.toBeInTheDocument());
     // The default (empty) view returns and the iframe is gone (no zombie tab).
     expect(screen.getByTestId('workspace-empty')).toBeInTheDocument();
-    expect(screen.queryByTestId('plugin-iframe')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('wapp-iframe')).not.toBeInTheDocument();
 
     // Re-enabling restores the navigator entry so the page can reopen.
     pluginState.extensions = [makePlugin()];
@@ -270,6 +270,6 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
       view.rerender(<WorkspaceView />);
     });
     fireEvent.click(screen.getByTestId('workspace-nav-item'));
-    expect(await screen.findByTestId('plugin-iframe')).toBeInTheDocument();
+    expect(await screen.findByTestId('wapp-iframe')).toBeInTheDocument();
   });
 });

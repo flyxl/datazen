@@ -3,7 +3,7 @@ const pack = {
   'settings.title': 'Settings',
   'settings.general': 'General',
   'settings.extensions.title': 'Extensions',
-  'settings.extensions.empty': 'No plugin extensions are available in this build.',
+  'settings.extensions.empty': 'No extensions are available in this build.',
   'settings.theme': 'Theme',
   'settings.theme.pack': 'Theme pack',
   'settings.colorScheme': 'Color scheme',
@@ -15,14 +15,14 @@ const pack = {
   'settings.theme.remove': 'Remove pack',
   'settings.appearance': 'Appearance',
   'settings.appearance.subtitle':
-    'Themes come from installed plugins. Click a card to apply it; manage installation on the Plugins page.',
+    'Themes come from installed extensions. Click a card to apply it; manage installation on the Extensions page.',
   'settings.appearance.current': 'Current theme',
   'settings.appearance.emptyTitle': 'No themes installed',
   'settings.appearance.emptyHint':
-    'Install a theme plugin from the Plugins page and its themes will show up here.',
+    'Install a theme extension from the Extensions page and its themes will show up here.',
   'settings.appearance.applyError': 'Failed to apply theme: {error}',
   'settings.appearance.missingHint':
-    'The active theme is no longer provided by an enabled plugin. Pick another theme or restart DataZen to reset.',
+    'The active theme is no longer provided by an enabled extension. Pick another theme or restart DataZen to reset.',
   'settings.appearance.more': 'Other appearance settings',
   'settings.appearance.morePlaceholder':
     'Reserved for future options such as density, font size, and more.',

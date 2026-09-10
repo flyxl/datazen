@@ -36,7 +36,7 @@ async function runSessionBootstrap() {
   await browser.pause(2000);
   // Ensure we're on the main page — the app may start on welcome/settings
   try {
-    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 10000 });
+    await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 10000 });
   } catch {
     // Retry navigation if the element didn't appear
     await browser.url('tauri://localhost');
@@ -80,7 +80,7 @@ async function runSessionBootstrap() {
   await browser.execute(() => location.reload());
   await browser.pause(2000);
   try {
-    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 10000 });
+    await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 10000 });
   } catch {
     // App may still be loading
     await browser.pause(2000);

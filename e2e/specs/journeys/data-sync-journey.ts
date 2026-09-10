@@ -44,7 +44,7 @@ function defineDriverJourney(label: string, driver: 'postgresql' | 'mysql') {
       mainWindow = await browser.getWindowHandle();
       await browser.switchToWindow(mainWindow);
       await browser.url('tauri://localhost/');
-      await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+      await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 15000 });
 
       const stamp = `${driver === 'postgresql' ? 'pg' : 'my'}_${Date.now().toString(36)}`;
       f = createFixture(driver, stamp);

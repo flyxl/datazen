@@ -147,7 +147,7 @@ describe('Online Help Docs (DOCS-001~DOCS-007)', () => {
 
     const hasMainWorkspace = await browser.execute(() => {
       return (
-        document.querySelector('[data-testid="workspace-nav-connections"]') !== null ||
+        document.querySelector('[data-testid="workspace-nav-databases"]') !== null ||
         document.querySelector('[data-testid="settings-page"]') !== null ||
         document.querySelector('[data-testid="welcome-page"]') !== null
       );

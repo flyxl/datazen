@@ -3,9 +3,9 @@ import type { UiIconId } from './iconIds';
 /** Default Lucide component names for v1 semantic UI icon ids (Host fallback when no theme pack). */
 export const HOST_LUCIDE_MAP: Record<UiIconId, string> = {
   'nav.settings': 'Settings',
-  'nav.connections': 'Database',
+  'nav.databases': 'Database',
   'nav.workspacePages': 'LayoutGrid',
-  'nav.plugins': 'Puzzle',
+  'nav.extensions': 'Puzzle',
   'query.run': 'Play',
   'query.stop': 'Square',
   'ai.chat': 'Bot',

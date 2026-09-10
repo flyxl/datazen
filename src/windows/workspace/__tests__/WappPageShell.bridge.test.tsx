@@ -131,7 +131,7 @@ describe('ExtensionPageShell bridge wiring (F6)', () => {
   }
   it('attaches the bridge once with the shell iframe, manifest permissions and locale', async () => {
     render(<ExtensionPageShell tab={makeTab()} active />);
-    await screen.findByTestId('plugin-iframe', {}, { timeout: 5_000 });
+    await screen.findByTestId('wapp-iframe', {}, { timeout: 5_000 });
 
     // The bridge attach runs in a post-commit effect; under CI load the iframe
     // can be observed one paint before that effect lands. Poll briefly.
@@ -145,7 +145,7 @@ describe('ExtensionPageShell bridge wiring (F6)', () => {
       HTMLIFrameElement,
       Record<string, unknown>,
     ];
-    expect(iframeEl).toBe(screen.getByTestId('plugin-iframe'));
+    expect(iframeEl).toBe(screen.getByTestId('wapp-iframe'));
     expect(opts.pluginId).toBe('acme.bill-audit');
     expect(opts.permissions).toEqual(['context:connections', 'command:invoke']);
     expect(typeof opts.locale).toBe('string');
@@ -153,7 +153,7 @@ describe('ExtensionPageShell bridge wiring (F6)', () => {
 
   it('pushes a theme snapshot on datazen:theme-pack-changed', async () => {
     render(<ExtensionPageShell tab={makeTab()} active />);
-    await screen.findByTestId('plugin-iframe', {}, { timeout: 5_000 });
+    await screen.findByTestId('wapp-iframe', {}, { timeout: 5_000 });
     const handle = await waitForAttachedHandle();
     expect(handle.pushThemeSnapshot).not.toHaveBeenCalled();
 
@@ -172,7 +172,7 @@ describe('ExtensionPageShell bridge wiring (F6)', () => {
 
   it('pushes a theme snapshot when documentElement class mutates (dark/light switch)', async () => {
     render(<ExtensionPageShell tab={makeTab()} active />);
-    await screen.findByTestId('plugin-iframe', {}, { timeout: 5_000 });
+    await screen.findByTestId('wapp-iframe', {}, { timeout: 5_000 });
     const handle = await waitForAttachedHandle();
 
     document.documentElement.classList.add('dark');
@@ -191,7 +191,7 @@ describe('ExtensionPageShell bridge wiring (F6)', () => {
 
   it('detaches on unmount and stops reacting to theme triggers afterwards', async () => {
     const { unmount } = render(<ExtensionPageShell tab={makeTab()} active />);
-    await screen.findByTestId('plugin-iframe', {}, { timeout: 5_000 });
+    await screen.findByTestId('wapp-iframe', {}, { timeout: 5_000 });
     const handle = await waitForAttachedHandle();
 
     unmount();
@@ -210,7 +210,7 @@ describe('ExtensionPageShell bridge wiring (F6)', () => {
     vi.useFakeTimers();
     render(<ExtensionPageShell tab={makeTab()} active />);
     await act(async () => {});
-    expect(screen.getByTestId('plugin-iframe')).toBeInTheDocument();
+    expect(screen.getByTestId('wapp-iframe')).toBeInTheDocument();
 
     const firstHandle = await waitForAttachedHandle();
 
@@ -218,9 +218,9 @@ describe('ExtensionPageShell bridge wiring (F6)', () => {
     await act(async () => {
       vi.advanceTimersByTime(10_000);
     });
-    fireEvent.click(screen.getByTestId('plugin-shell-reload'));
+    fireEvent.click(screen.getByTestId('wapp-shell-reload'));
     await act(async () => {});
-    expect(screen.getByTestId('plugin-iframe')).toBeInTheDocument();
+    expect(screen.getByTestId('wapp-iframe')).toBeInTheDocument();
 
     expect(firstHandle.detach).toHaveBeenCalled(); // old bridge torn down
     expect(attachBridgeMock).toHaveBeenCalledTimes(2); // fresh bridge for the fresh frame

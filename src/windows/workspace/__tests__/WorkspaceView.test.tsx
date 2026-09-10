@@ -100,12 +100,12 @@ vi.mock('../../../stores/workspaceTabsStore', () => ({
 
 vi.mock('../WappPageShell', () => ({
   WappPageShell: ({ tab, active }: { tab: { key: string }; active: boolean }) => (
-    <div data-testid="plugin-shell-stub" data-active={String(active)}>
+    <div data-testid="wapp-shell-stub" data-active={String(active)}>
       {tab.key}
     </div>
   ),
   ExtensionPageShell: ({ tab, active }: { tab: { key: string }; active: boolean }) => (
-    <div data-testid="plugin-shell-stub" data-active={String(active)}>
+    <div data-testid="wapp-shell-stub" data-active={String(active)}>
       {tab.key}
     </div>
   ),
@@ -113,12 +113,12 @@ vi.mock('../WappPageShell', () => ({
 
 vi.mock('../ExtensionPageShell', () => ({
   WappPageShell: ({ tab, active }: { tab: { key: string }; active: boolean }) => (
-    <div data-testid="plugin-shell-stub" data-active={String(active)}>
+    <div data-testid="wapp-shell-stub" data-active={String(active)}>
       {tab.key}
     </div>
   ),
   ExtensionPageShell: ({ tab, active }: { tab: { key: string }; active: boolean }) => (
-    <div data-testid="plugin-shell-stub" data-active={String(active)}>
+    <div data-testid="wapp-shell-stub" data-active={String(active)}>
       {tab.key}
     </div>
   ),
@@ -190,7 +190,7 @@ describe('WorkspaceView', () => {
 
     expect(screen.queryByTestId('workspace-default-cards')).not.toBeInTheDocument();
     expect(screen.getByTestId('workspace-tabbar')).toBeInTheDocument();
-    const shells = screen.getAllByTestId('plugin-shell-stub');
+    const shells = screen.getAllByTestId('wapp-shell-stub');
     expect(shells).toHaveLength(1);
     expect(shells[0]).toHaveTextContent('acme.bill-audit:quota-check');
     expect(shells[0].getAttribute('data-active')).toBe('true');

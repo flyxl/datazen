@@ -2,7 +2,7 @@ import { useEffect, type ComponentType } from 'react';
 import { DB_REGISTRY } from '../../../lib/databaseTypes';
 import type { DatabaseTypeMeta } from '../../../lib/databaseMeta';
 import type { SchemaTreeNodeKind } from '../../../lib/schemaTreeContextMenu';
-import { getPluginSchemaTree } from '../../../plugins/generated';
+import { getPluginSchemaTree } from '../../../extensions/generated';
 import { useSchemaStore } from '../../../stores/schemaStore';
 import type { DatabaseType } from '../../../types';
 import { UnifiedSchemaTree } from './UnifiedSchemaTree';

@@ -6,7 +6,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { COLOR_KEYS, Label } from './shared';
 import { SshTunnelFields } from './SshTunnelFields';
-import { getPluginConnectionAdvanced } from '../../plugins/generated';
+import { getPluginConnectionAdvanced } from '../../extensions/generated';
 import type { ConnectionFormState } from './useConnectionForm';
 import type { SslMode } from '../../types';
 

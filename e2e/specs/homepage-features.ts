@@ -35,7 +35,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
 async function ensureConnectionsHome() {
   await browser.url('tauri://localhost');
   await browser.pause(800);
-  await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 10000 });
+  await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 10000 });
   await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
     timeout: 10000,
   });
@@ -82,7 +82,7 @@ describe('主页 TablePlus 风格 (HOME)', () => {
   });
 
   it('HOME-001: 应显示统一工作区导航', async () => {
-    await expect(await $('[data-testid="workspace-nav-connections"]')).toBeDisplayed();
+    await expect(await $('[data-testid="workspace-nav-databases"]')).toBeDisplayed();
     await expect(await $('[data-testid="workspace-nav-workflow"]')).toBeDisplayed();
     await expect(await $('[data-testid="workspace-nav-dashboard"]')).toBeDisplayed();
   });

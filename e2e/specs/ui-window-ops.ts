@@ -15,7 +15,7 @@ describe('窗口与 UI 操作 (TC-UI-001/002/003/005)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+    await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 15000 });
     await expandAllGroups();
   });
 
@@ -44,7 +44,7 @@ describe('窗口与 UI 操作 (TC-UI-001/002/003/005)', () => {
     await browser.pause(1500);
     const handles = await browser.getWindowHandles();
     expect(handles.length).toBe(1);
-    await expect(await $('[data-testid="workspace-nav-connections"]')).toBeDisplayed();
+    await expect(await $('[data-testid="workspace-nav-databases"]')).toBeDisplayed();
   });
 
   it('TC-UI-003: 侧栏连接树区域应可见', async () => {

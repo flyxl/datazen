@@ -6,7 +6,7 @@ import type {
   ConnectionClipboardFill,
   MatchedConnectionClipboard,
 } from './connectionClipboardTypes';
-import { getPluginClipboardParsers } from '../plugins/generated';
+import { getPluginClipboardParsers } from '../extensions/generated';
 
 export type {
   ConnectionClipboardFill,
@@ -22,9 +22,7 @@ export function matchConnectionClipboard(
   if (!text) return null;
 
   const allowed = new Set(
-    availableTypes && availableTypes.length > 0
-      ? availableTypes
-      : Object.keys(DB_REGISTRY),
+    availableTypes && availableTypes.length > 0 ? availableTypes : Object.keys(DB_REGISTRY),
   );
 
   for (const entry of getPluginClipboardParsers()) {
@@ -182,10 +180,7 @@ function parseBareHostPort(text: string): { host: string; port: number } | null 
   return parseAuthority(text, 0);
 }
 
-function parseAuthority(
-  token: string,
-  defaultPort: number,
-): { host: string; port: number } | null {
+function parseAuthority(token: string, defaultPort: number): { host: string; port: number } | null {
   const trimmed = token.trim();
   if (!trimmed) return null;
   if (trimmed.startsWith('[')) {
@@ -227,7 +222,11 @@ function readSslMode(value: string | null): ConnectionClipboardFill['sslMode'] |
 }
 
 function normalizeClipboard(raw: string): string {
-  return raw.replace(/^\uFEFF/, '').trim().replace(/^['"]+|['"]+$/g, '').trim();
+  return raw
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .replace(/^['"]+|['"]+$/g, '')
+    .trim();
 }
 
 function stripEnvPrefix(text: string): string {

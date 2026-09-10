@@ -13,7 +13,7 @@ describe('主窗口 / 统一工作区 (CM-001)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    const connectionsNav = await $('[data-testid="workspace-nav-connections"]');
+    const connectionsNav = await $('[data-testid="workspace-nav-databases"]');
     await connectionsNav.waitForDisplayed({ timeout: 15000 });
     await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
       timeout: 10000,
@@ -32,7 +32,7 @@ describe('主窗口 / 统一工作区 (CM-001)', () => {
   });
 
   it('应显示工作区导航栏（连接 / 工作流 / 看板）', async () => {
-    await expect(await $('[data-testid="workspace-nav-connections"]')).toBeDisplayed();
+    await expect(await $('[data-testid="workspace-nav-databases"]')).toBeDisplayed();
     await expect(await $('[data-testid="workspace-nav-workflow"]')).toBeDisplayed();
     await expect(await $('[data-testid="workspace-nav-dashboard"]')).toBeDisplayed();
   });

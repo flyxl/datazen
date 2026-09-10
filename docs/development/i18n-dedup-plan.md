@@ -58,7 +58,7 @@
 | `common.dataSync` | Data Sync | 数据同步 | `menu.dataSync`, `action.dataSync`, `sync.title` |
 | `common.schemaDiff` | Schema Diff | 结构对比 | `menu.schemaDiff`, `sync.openSchemaDiff`, `schemaDiff.title` |
 | `common.edit` | Edit | 编辑 | `menu.edit`, `settings.prompts.edit`, `workflows.edit` |
-| `common.theme` | Theme | 主题 | `menu.theme`, `plugins.page.themeBadge`, `settings.theme` |
+| `common.theme` | Theme | 主题 | `menu.theme`, `extensions.page.themeBadge`, `settings.theme` |
 | `common.importAppData` | Import App Data | 导入应用数据 | `menu.importConfig`, `action.importConfig`, `appData.importConfirmTitle` |
 | `common.importConnections` | Import Connections | 导入连接 | `menu.importConnections`, `welcome.importConnection`, `connShare.importTitle` |
 | `common.workflows` | Workflows | 工作流 | `welcome.feature.workflow.title`, `nav.workflow`, `workflows.title` |

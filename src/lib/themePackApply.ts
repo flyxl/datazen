@@ -20,7 +20,7 @@ export const THEME_PACK_STYLE_ID = 'datazen-theme-pack';
 
 /**
  * Prefix persisted in `settings.theme.packId` for themes contributed by UI
- * plugins: `plugin:{pluginId}:{themeId}`. Plugin ids (`<publisher>.<name>`)
+ * extensions: `plugin:{pluginId}:{themeId}`. Plugin ids (`<publisher>.<name>`)
  * and theme ids never contain colons, so the first colon splits reliably.
  */
 export const PLUGIN_THEME_PACK_PREFIX = 'plugin:';

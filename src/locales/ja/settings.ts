@@ -3,7 +3,7 @@ const pack = {
   'settings.title': '設定',
   'settings.general': '一般的な',
   'settings.extensions.title': '拡張機能',
-  'settings.extensions.empty': 'このビルドではプラグイン拡張機能は利用できません。',
+  'settings.extensions.empty': 'このビルドでは拡張機能は利用できません。',
   'settings.theme': 'テーマ',
   'settings.theme.pack': 'テーマパック',
   'settings.colorScheme': 'Color scheme',

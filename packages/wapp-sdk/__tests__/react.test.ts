@@ -1,5 +1,5 @@
 /**
- * F8 test-agent: `useTheme` React binding (`@datazen/extension-sdk/react`).
+ * F8 test-agent: `useTheme` React binding (`@datazen/wapp-sdk/react`).
  * Uses createElement (no JSX) so the package tsconfig stays unchanged.
  */
 import { describe, expect, it, beforeEach } from 'vitest';

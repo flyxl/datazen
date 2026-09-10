@@ -19,7 +19,7 @@ import { t } from '../i18n.js';
 
 async function ensureConnectionsHome() {
   await openConnectionsWorkspace();
-  await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+  await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 15000 });
   await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
     timeout: 10000,
   });

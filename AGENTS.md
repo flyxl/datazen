@@ -47,7 +47,7 @@ datazen/
 ├── packages/
 │   ├── ui/                      # @datazen/ui: 纯 React 基础组件设计系统（Button, Dialog, Select 等）
 │   ├── extension-points/        # @datazen/extension-points: 特权扩展点 (EP) 契约与注册表
-│   ├── app-sdk/                 # @datazen/app-sdk: Workspace App 沙箱应用前端 SDK
+│   ├── wapp-sdk/                 # @datazen/wapp-sdk: Workspace App 沙箱应用前端 SDK
 │   ├── driver-sdk/              # @datazen/driver-sdk: 数据库驱动前端元数据/方言/Command SDK
 │   ├── driver-api/              # Rust: DatabaseDriver trait + Command API + inventory 注册
 │   ├── ai-api/                  # Rust: AiProvider trait + 工厂 + 消息/调用协议模型
@@ -95,7 +95,7 @@ DataZen 确立严格正交的四维可扩展架构，依托独立设计系统 `@
 1. **Driver (数据库驱动)**：编译/链接时注入，基于 `@datazen/driver-sdk` 与 `packages/driver-api`。零 DOM、无 React 强依赖，承载数据库连接、SQL 方言、DDL、Driver Command。
 2. **Theme (外观主题)**：纯静态资源包（`manifest.json`, `tokens.css`, `editor.json`, `charts.json`, `icons/`），零代码执行，安全沙箱级最高。
 3. **EP (特权扩展点 / Host Extension Points)**：主进程特权插槽，基于 `@datazen/extension-points`。专用于 SQLEditor Pro 增强、高级图表等对键入延迟（<5ms）和 CodeMirror Compartment 深度集成有严苛要求的核心扩展。宿主默认内置纯净基础版（Fallback）。受根目录 `LICENSE` 的 **DataZen Plugin, Driver & Extension Linking Exception** 保护，允许扩展模块使用独立许可证发布，免除 GPL-3.0 传染。
-4. **Workspace App (工作区应用)**：独立全屏 iframe 沙箱应用，运行目录 `{appData}/wapps/{publisher}.{name}/`，基于 `@datazen/app-sdk`，通过 `window.postMessage` 受控桥与宿主通信，取数一律走 `execute_driver_command`。
+4. **Workspace App (工作区应用)**：独立全屏 iframe 沙箱应用，运行目录 `{appData}/wapps/{publisher}.{name}/`，基于 `@datazen/wapp-sdk`，通过 `window.postMessage` 受控桥与宿主通信，取数一律走 `execute_driver_command`。
 5. **@datazen/ui (公共设计系统)**：`packages/ui/`，纯 React 基础视图组件（Button, Input, Select, Dialog, Tabs, Badge, Label, cn），与宿主业务 Store 和 IPC 严格解耦。宿主 `src/components/ui/` 和驱动 UI 统一复用。
 
 ### Driver Command API 与统一执行网关
@@ -228,9 +228,9 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
 - Path 驱动 Rust crate：`datazen-driver-<id>`；Git 驱动 Rust crate 名以插件仓库为准。
 - `Cargo.toml` 中的插件占位段在 git 中应保持为空；`resolve-drivers.mjs` 构建时自动填充。
 - 以下文件均为 gitignored 的 codegen 文件，由 `resolve-drivers` / `resolve-pro` 生成，切勿提交：
-  - `src/plugins/generated.ts`
-  - `src/plugins/generated-locales.ts`
-  - `src/plugins/generated-pro.ts`
+  - `src/extensions/generated.ts`
+  - `src/extensions/generated-locales.ts`
+  - `src/extensions/generated-pro.ts`
   - `src-tauri/src/driver_init.rs`
   - `src-tauri/capabilities/default.json`
 - **Capabilities 管理**：`src-tauri/capabilities/default.json.host` 是 git 跟踪的 host 权限源文件；需要添加新 host capability 时直接修改该文件。`default.json` 在构建时自动合并生成，**严禁手动编辑或提交**。

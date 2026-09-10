@@ -82,7 +82,7 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+    await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 15000 });
   });
 
   after(async () => {

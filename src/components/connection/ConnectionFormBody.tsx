@@ -9,7 +9,7 @@ import { ConnectionAdvancedSettings } from './ConnectionAdvancedSettings';
 import { FileConnectionFields } from './FileConnectionFields';
 import { IndexConnectionFields } from './IndexConnectionFields';
 import { StandardConnectionFields } from './StandardConnectionFields';
-import { getPluginConnectionForm } from '../../plugins/generated';
+import { getPluginConnectionForm } from '../../extensions/generated';
 import type { ConnectionFormState } from './useConnectionForm';
 import type { DatabaseType } from '../../types';
 

@@ -160,13 +160,13 @@ describe('WorkspaceNavigator', () => {
     });
   });
 
-  it('shows the empty-state guidance and opens the plugins page', () => {
-    const onOpenPlugins = vi.fn();
-    render(<WorkspaceNavigator onOpenPlugins={onOpenPlugins} />);
+  it('shows the empty-state guidance and opens the extensions page', () => {
+    const onOpenExtensions = vi.fn();
+    render(<WorkspaceNavigator onOpenExtensions={onOpenExtensions} />);
 
     expect(screen.getByText('workspace.emptyHint')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('workspace-open-plugins'));
-    expect(onOpenPlugins).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByTestId('workspace-open-extensions'));
+    expect(onOpenExtensions).toHaveBeenCalledOnce();
   });
 
   it('cleans up after unmount', () => {

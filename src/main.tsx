@@ -22,7 +22,7 @@ import { installTauriEventUnlistenRaceWorkaround } from './lib/tauriEventCompat'
 import { bootstrapDefaultIconResolver } from './lib/bootstrapIconResolver';
 import { maybeCheckOnStartup } from './lib/updater';
 import { getWindowKind } from './lib/windowKind';
-import { initProExtensions } from './plugins/generated-pro';
+import { initProExtensions } from './extensions/generated-pro';
 import { setHostLocaleBridge, setTableSchemaProvider } from '@datazen/extension-points';
 import { useSettingsStore } from './stores/settingsStore';
 import { getCachedTableSchema } from './lib/schemaCache';

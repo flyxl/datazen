@@ -82,7 +82,7 @@ function WappCardIcon({ wapp }: { wapp: WappSummary }) {
 
   return (
     <span
-      data-testid="plugin-card-icon"
+      data-testid="extension-card-icon"
       className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-raised text-base font-semibold text-accent"
     >
       {url ? (
@@ -91,7 +91,7 @@ function WappCardIcon({ wapp }: { wapp: WappSummary }) {
           alt=""
           draggable={false}
           className="h-full w-full object-contain"
-          data-testid="plugin-card-icon-img"
+          data-testid="extension-card-icon-img"
         />
       ) : (
         initials
@@ -173,8 +173,8 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
 
   const handleRemove = (plugin: WappSummary) => {
     void confirmRemove({
-      title: t('plugins.page.uninstallTitle'),
-      message: t('plugins.page.uninstallMessage', { name: plugin.name }),
+      title: t('extensions.page.uninstallTitle'),
+      message: t('extensions.page.uninstallMessage', { name: plugin.name }),
       kind: 'warning',
     }).then(async (ok) => {
       if (!ok) return;
@@ -198,7 +198,7 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
     return (
       <div
         key={plugin.id}
-        data-testid="plugin-card"
+        data-testid="extension-card"
         data-plugin-id={plugin.id}
         className={cn(
           'flex flex-col gap-2.5 rounded-lg border border-edge bg-surface-alt p-4 transition-colors hover:border-accent/50',
@@ -230,16 +230,16 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
           {apiMismatch ? (
             <Badge
               tone="warning"
-              title={t('plugins.page.apiMismatchHint', {
+              title={t('extensions.page.apiMismatchHint', {
                 plugin: plugin.apiVersion,
                 host: WAPP_API_VERSION,
               })}
             >
-              {t('plugins.page.apiMismatch')}
+              {t('extensions.page.apiMismatch')}
             </Badge>
           ) : null}
           {!hasPages(plugin) && hasThemes(plugin) ? (
-            <Badge tone="accent">{t('plugins.page.themeBadge')}</Badge>
+            <Badge tone="accent">{t('extensions.page.themeBadge')}</Badge>
           ) : null}
           {plugin.permissions.map((perm) => (
             <Badge key={perm} title={PERMISSION_LABELS[perm] ?? perm}>
@@ -249,7 +249,7 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
         </div>
 
         {!hasPages(plugin) && hasThemes(plugin) ? (
-          <p className="text-[11px] text-fg-muted">{t('plugins.page.themeHint')}</p>
+          <p className="text-[11px] text-fg-muted">{t('extensions.page.themeHint')}</p>
         ) : null}
 
         <div className="mt-auto flex items-center gap-2 border-t border-edge pt-2.5">
@@ -257,10 +257,10 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
             type="button"
             role="switch"
             aria-checked={plugin.enabled}
-            aria-label={t('plugins.page.toggle')}
-            data-testid="plugin-toggle"
+            aria-label={t('extensions.page.toggle')}
+            data-testid="extension-toggle"
             disabled={apiMismatch}
-            title={apiMismatch ? t('plugins.page.apiMismatch') : t('plugins.page.toggle')}
+            title={apiMismatch ? t('extensions.page.apiMismatch') : t('extensions.page.toggle')}
             onClick={() => void handleToggle(plugin)}
             className={cn(
               'relative h-[18px] w-8 shrink-0 rounded-full transition-colors',
@@ -279,19 +279,19 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
             <Button
               size="sm"
               variant="secondary"
-              data-testid="plugin-open"
+              data-testid="extension-open"
               disabled={!plugin.enabled}
               onClick={() => handleOpen(plugin)}
             >
-              {t('plugins.page.open')}
+              {t('extensions.page.open')}
             </Button>
           ) : null}
           <span className="flex-1" />
           <Button
             size="sm"
             variant="ghost"
-            data-testid="plugin-uninstall"
-            title={t('plugins.page.uninstall')}
+            data-testid="extension-uninstall"
+            title={t('extensions.page.uninstall')}
             onClick={() => handleRemove(plugin)}
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -302,41 +302,41 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
   };
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto" data-testid="plugin-management-page">
+    <div className="min-h-0 flex-1 overflow-y-auto" data-testid="extension-management-page">
       <div className="mx-auto max-w-5xl px-6 py-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold text-fg">
-              {t('plugins.page.title')}{' '}
+              {t('extensions.page.title')}{' '}
               <span className="text-xs font-normal text-fg-muted">
-                {t('plugins.page.count', { count: wapps.length })}
+                {t('extensions.page.count', { count: wapps.length })}
               </span>
             </h2>
-            <p className="mt-1 text-xs text-fg-muted">{t('plugins.page.subtitle')}</p>
+            <p className="mt-1 text-xs text-fg-muted">{t('extensions.page.subtitle')}</p>
           </div>
           <Button
-            data-testid="plugin-install-button"
+            data-testid="extension-install-button"
             onClick={() => setInstallOpen(true)}
             className="shrink-0"
           >
             <Download className="h-4 w-4" />
-            {t('plugins.page.install')}
+            {t('extensions.page.install')}
           </Button>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Input
-            data-testid="plugin-search-input"
+            data-testid="extension-search-input"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={t('plugins.page.searchPlaceholder')}
+            placeholder={t('extensions.page.searchPlaceholder')}
             className="h-8 max-w-xs text-xs"
           />
           {(['all', 'workspace', 'theme'] as const).map((f) => (
             <button
               key={f}
               type="button"
-              data-testid={`plugin-filter-${f}`}
+              data-testid={`extension-filter-${f}`}
               onClick={() => setFilter(f)}
               className={cn(
                 'rounded-full border px-3 py-1 text-xs transition-colors',
@@ -347,10 +347,10 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
             >
               {t(
                 f === 'all'
-                  ? 'plugins.page.filterAll'
+                  ? 'extensions.page.filterAll'
                   : f === 'workspace'
-                    ? 'plugins.page.filterWorkspace'
-                    : 'plugins.page.filterTheme',
+                    ? 'extensions.page.filterWorkspace'
+                    : 'extensions.page.filterTheme',
                 { count: counts[f] },
               )}
             </button>
@@ -358,30 +358,30 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
         </div>
 
         {(actionError || storeError) && (
-          <div className="select-text mt-3 text-sm text-red-400" data-testid="plugin-page-error">
+          <div className="select-text mt-3 text-sm text-red-400" data-testid="extension-page-error">
             {actionError ?? storeError}
           </div>
         )}
 
         {filtered.length === 0 ? (
           <div
-            data-testid="plugin-page-empty"
+            data-testid="extension-page-empty"
             className="mt-10 flex flex-col items-center gap-2 rounded-lg border border-dashed border-edge px-4 py-12 text-center"
           >
             <PackageOpen className="h-6 w-6 text-fg-muted" />
-            <p className="text-sm text-fg-secondary">{t('plugins.page.emptyTitle')}</p>
-            <p className="max-w-sm text-xs text-fg-muted">{t('plugins.page.emptyHint')}</p>
+            <p className="text-sm text-fg-secondary">{t('extensions.page.emptyTitle')}</p>
+            <p className="max-w-sm text-xs text-fg-muted">{t('extensions.page.emptyHint')}</p>
           </div>
         ) : allGroups ? (
           <div className="mt-4 flex flex-col gap-6">
             {allGroups.map(({ key, items }) =>
               items.length === 0 ? null : (
-                <section key={key} data-testid={`plugin-group-${key}`}>
+                <section key={key} data-testid={`extension-group-${key}`}>
                   <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
                     {t(
                       key === 'workspace'
-                        ? 'plugins.page.groupWorkspace'
-                        : 'plugins.page.groupTheme',
+                        ? 'extensions.page.groupWorkspace'
+                        : 'extensions.page.groupTheme',
                     )}
                   </h3>
                   <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">

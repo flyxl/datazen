@@ -1,5 +1,5 @@
 import { DB_REGISTRY, normalizeIndexDatabaseField } from './databaseTypes';
-import { getPluginConnectionForm } from '../plugins/generated';
+import { getPluginConnectionForm } from '../extensions/generated';
 import type { ConnectionConfig, DatabaseType, SslMode, SshTunnelConfig } from '../types';
 
 function hasEnabledTlsOption(options: Record<string, unknown>): boolean {
@@ -98,7 +98,7 @@ export function buildConnectionConfig(input: BuildConnectionConfigInput): Connec
     sslMode: effectiveSslMode,
     group: coerceConnectionGroup(input.group) || undefined,
     colorTag: input.colorTag || undefined,
-    readOnly: (meta?.readOnly === true || input.readOnly) || undefined,
+    readOnly: meta?.readOnly === true || input.readOnly || undefined,
   };
 
   if (input.sshTunnel) {

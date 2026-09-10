@@ -3,7 +3,7 @@ import { useTableDataStore } from '../../stores/tableDataStore';
 import { PENDING_CONNECTION_KEY } from '../../lib/windowManager';
 import type { DatabaseType } from '../../types';
 
-export type WorkspaceMode = 'connections' | 'workflow' | 'dashboard' | 'workspace' | 'plugins';
+export type WorkspaceMode = 'connections' | 'workflow' | 'dashboard' | 'workspace' | 'extension';
 export type MainView = 'workspace' | 'settings';
 
 export interface ConnectionTab {

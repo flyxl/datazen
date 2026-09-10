@@ -104,7 +104,7 @@ describe('首次安装欢迎页 (F5-E2E-001 ~ F5-E2E-005)', () => {
     const welcome = await $('[data-testid="welcome-page"]');
     await welcome.waitForDisplayed({ timeout: 15000 });
     await expect(welcome).toBeDisplayed();
-    await expect(await $('[data-testid="workspace-nav-connections"]')).not.toBeExisting();
+    await expect(await $('[data-testid="workspace-nav-databases"]')).not.toBeExisting();
   });
 
   it('F5-E2E-002: 欢迎页展示标题与四宫格功能介绍', async () => {
@@ -142,7 +142,7 @@ describe('首次安装欢迎页 (F5-E2E-001 ~ F5-E2E-005)', () => {
     );
     await browser.switchToWindow(mainWindow);
 
-    const nav = await $('[data-testid="workspace-nav-connections"]');
+    const nav = await $('[data-testid="workspace-nav-databases"]');
     await nav.waitForDisplayed({ timeout: 15000 });
     await expect(nav).toBeDisplayed();
     await expect(await $('[data-testid="welcome-page"]')).not.toBeExisting();
@@ -166,6 +166,6 @@ describe('首次安装欢迎页 (F5-E2E-001 ~ F5-E2E-005)', () => {
     const welcome = await $('[data-testid="welcome-page"]');
     await welcome.waitForDisplayed({ timeout: 15000 });
     await expect(welcome).toBeDisplayed();
-    await expect(await $('[data-testid="workspace-nav-connections"]')).not.toBeExisting();
+    await expect(await $('[data-testid="workspace-nav-databases"]')).not.toBeExisting();
   });
 });

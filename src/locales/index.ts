@@ -7,7 +7,7 @@ import {
   type BuiltinLocale,
 } from './builtinLocales';
 import type { MongoTranslationKey } from '../../packages/drivers/mongodb/locales/en';
-import { PLUGIN_LOCALES, type PluginTranslationKey } from '../plugins/generated-locales';
+import { PLUGIN_LOCALES, type PluginTranslationKey } from '../extensions/generated-locales';
 import { lookupLazyTranslation } from './lazyPacks';
 import { getExtensionTranslation } from '@datazen/extension-points';
 

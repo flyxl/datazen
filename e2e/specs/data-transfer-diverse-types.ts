@@ -76,7 +76,7 @@ describe('数据传输限制说明 (DT-LIM)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+    await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 15000 });
   });
 
   after(async () => {

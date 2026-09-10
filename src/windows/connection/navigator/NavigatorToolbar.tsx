@@ -38,7 +38,7 @@ export function NavigatorToolbar({
   return (
     <>
       <div className="flex h-12 min-h-[48px] shrink-0 items-center justify-between border-b border-edge px-2">
-        <span className="text-[13px] font-semibold text-fg">{t('nav.connections')}</span>
+        <span className="text-[13px] font-semibold text-fg">{t('nav.databases')}</span>
         <div className="flex items-center gap-0.5">
           {onExportConnections && (
             <button

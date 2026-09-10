@@ -195,8 +195,8 @@ const DRIVER_ICON_PARENT = {
 };
 
 function driverUiDirFromMetaPath(metaPath) {
-  // metaPath like '../../packages/drivers/postgres/ui/meta' (from src/plugins)
-  const absMetaTs = resolve(ROOT, 'src/plugins', `${metaPath}.ts`);
+  // metaPath like '../../packages/drivers/postgres/ui/meta' (from src/extensions)
+  const absMetaTs = resolve(ROOT, 'src/extensions', `${metaPath}.ts`);
   return dirname(absMetaTs);
 }
 
@@ -204,9 +204,9 @@ function resolveDriverIconImport(metaPath, dbTypeId) {
   const uiDir = driverUiDirFromMetaPath(metaPath);
   const abs = join(uiDir, 'icons', `${dbTypeId}.svg`);
   if (!existsSync(abs)) return null;
-  // import path relative to src/plugins/generated.ts
-  const relFromPlugins = relative(resolve(ROOT, 'src/plugins'), abs).replaceAll('\\', '/');
-  const importPath = relFromPlugins.startsWith('.') ? relFromPlugins : `./${relFromPlugins}`;
+  // import path relative to src/extensions/generated.ts
+  const relFromExtensions = relative(resolve(ROOT, 'src/extensions'), abs).replaceAll('\\', '/');
+  const importPath = relFromExtensions.startsWith('.') ? relFromExtensions : `./${relFromExtensions}`;
   return { abs, importPath: `${importPath}?url`, fileKey: dbTypeId };
 }
 
@@ -375,7 +375,7 @@ const DRIVER_LOCALE_CONFIG = {
 
 const HOST_LOCALES = ['en', 'zh-CN'];
 
-function generatePluginLocales(plugins) {
+function generateExtensionLocales(plugins) {
   const importLines = [];
   const typeParts = [];
   const localeIds = HOST_LOCALES.map((id) =>
@@ -428,7 +428,7 @@ ${localeEntryLines.join('\n')}
 };
 `;
 
-  const outPath = workPath('src/plugins/generated-locales.ts');
+  const outPath = workPath('src/extensions/generated-locales.ts');
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, content);
   console.log(`[resolve-drivers] wrote ${outPath}`);
@@ -763,7 +763,7 @@ export function hasPluginCommand(pluginId: string, command: string): boolean {
 }
 `;
 
-  const outPath = workPath('src/plugins/generated.ts');
+  const outPath = workPath('src/extensions/generated.ts');
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, content);
   console.log(`[resolve-drivers] wrote ${outPath}`);
@@ -1257,9 +1257,9 @@ function main() {
     console.log(`[resolve-drivers] wrote ${outPath}`);
 
     generateFrontendRegistry(plugins);
-    generatePluginLocales(plugins);
+    generateExtensionLocales(plugins);
     generateRustDriverInit(plugins, registry);
-    if (!existsSync(resolve(ROOT, 'src/plugins/generated-pro.ts'))) {
+    if (!existsSync(resolve(ROOT, 'src/extensions/generated-pro.ts'))) {
       resolvePro({ codegenOnly: true });
     }
 

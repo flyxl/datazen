@@ -1,13 +1,13 @@
 /**
- * @datazen/app-sdk — public entry point.
+ * @datazen/wapp-sdk — public entry point.
  *
  * - `createClient()` — typed postMessage RPC against the host bridge.
  * - Theme utilities — apply/observe host `theme.apply` snapshots (no React).
  * - Types — wire shapes shared with `src/lib/extensionBridge.ts`.
  *
- * The optional `useTheme` React hook lives at `@datazen/app-sdk/react`
+ * The optional `useTheme` React hook lives at `@datazen/wapp-sdk/react`
  * (react is an optional peer dependency): exporting it from here would force
- * every plugin bundle — including non-React ones — to link against React,
+ * every wapp bundle — including non-React ones — to link against React,
  * breaking the zero-runtime-dependency contract. Its result *type* is
  * re-exported below (type-only imports are erased, so this stays safe).
  */

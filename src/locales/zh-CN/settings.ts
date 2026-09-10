@@ -3,7 +3,7 @@ const pack = {
   'settings.title': '偏好设置',
   'settings.general': '通用',
   'settings.extensions.title': '扩展',
-  'settings.extensions.empty': '当前构建中没有可用的插件扩展。',
+  'settings.extensions.empty': '当前构建中没有可用的扩展。',
   'settings.theme': '主题',
   'settings.theme.pack': '主题包',
   'settings.colorScheme': '配色方案',

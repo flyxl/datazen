@@ -85,14 +85,14 @@ function renderOpen(onInstalled?: (plugin: WappSummary) => void) {
 
 /** Clicks folder browse and advances to the review step (inspection must succeed). */
 async function gotoReviewViaFolder() {
-  fireEvent.click(screen.getByTestId('plugin-install-browse-folder'));
-  await screen.findByTestId('plugin-install-review');
+  fireEvent.click(screen.getByTestId('extension-install-browse-folder'));
+  await screen.findByTestId('extension-install-review');
 }
 
 /** Clicks zip browse and triggers an inspection that rejects. */
 async function inspectFailureViaZip() {
-  fireEvent.click(screen.getByTestId('plugin-install-browse-zip'));
-  await screen.findByTestId('plugin-install-error');
+  fireEvent.click(screen.getByTestId('extension-install-browse-zip'));
+  await screen.findByTestId('extension-install-error');
 }
 
 beforeEach(() => {
@@ -108,9 +108,9 @@ describe('InstallExtensionDialog', () => {
   it('shows native browse actions on the select step', () => {
     renderOpen();
 
-    expect(screen.getByTestId('plugin-install-browse-zip')).toBeEnabled();
-    expect(screen.getByTestId('plugin-install-browse-folder')).toBeEnabled();
-    expect(screen.queryByTestId('plugin-install-next')).not.toBeInTheDocument();
+    expect(screen.getByTestId('extension-install-browse-zip')).toBeEnabled();
+    expect(screen.getByTestId('extension-install-browse-folder')).toBeEnabled();
+    expect(screen.queryByTestId('extension-install-next')).not.toBeInTheDocument();
   });
 
   it('does not invoke the backend until a browse action is chosen', () => {
@@ -131,15 +131,15 @@ describe('InstallExtensionDialog', () => {
     expect(inspectWithDialogMock).toHaveBeenCalledWith('folder');
     expect(installExtensionMock).not.toHaveBeenCalled();
 
-    expect(screen.getByTestId('plugin-install-review')).toHaveTextContent('Demo Plugin');
-    expect(screen.getByTestId('plugin-install-review')).toHaveTextContent('v1.2.3');
-    expect(screen.getByTestId('plugin-install-review')).toHaveTextContent('Acme');
-    expect(screen.getByTestId('plugin-install-package-label')).toHaveTextContent('acme.zip');
-    const permissions = screen.getByTestId('plugin-install-permissions');
+    expect(screen.getByTestId('extension-install-review')).toHaveTextContent('Demo Plugin');
+    expect(screen.getByTestId('extension-install-review')).toHaveTextContent('v1.2.3');
+    expect(screen.getByTestId('extension-install-review')).toHaveTextContent('Acme');
+    expect(screen.getByTestId('extension-install-package-label')).toHaveTextContent('acme.zip');
+    const permissions = screen.getByTestId('extension-install-permissions');
     expect(permissions).toHaveTextContent('context:connections');
     expect(permissions).toHaveTextContent('command:invoke');
 
-    fireEvent.click(screen.getByTestId('plugin-install-confirm'));
+    fireEvent.click(screen.getByTestId('extension-install-confirm'));
     await waitFor(() => expect(installExtensionMock).toHaveBeenCalledWith('pick-token-1'));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(onCloseMock).toHaveBeenCalledTimes(1));
@@ -155,8 +155,8 @@ describe('InstallExtensionDialog', () => {
     renderOpen();
     await gotoReviewViaFolder();
 
-    expect(screen.getByTestId('plugin-install-permissions')).toHaveTextContent(
-      'plugins.install.noPermissions',
+    expect(screen.getByTestId('extension-install-permissions')).toHaveTextContent(
+      'extensions.install.noPermissions',
     );
   });
 
@@ -164,8 +164,8 @@ describe('InstallExtensionDialog', () => {
     renderOpen();
     await gotoReviewViaFolder();
 
-    fireEvent.click(screen.getByTestId('plugin-install-back'));
-    expect(await screen.findByTestId('plugin-install-browse-folder')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('extension-install-back'));
+    expect(await screen.findByTestId('extension-install-browse-folder')).toBeInTheDocument();
     expect(installExtensionMock).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByText('common.cancel'));
@@ -179,16 +179,16 @@ describe('InstallExtensionDialog', () => {
     renderOpen();
     await inspectFailureViaZip();
 
-    const message = screen.getByTestId('plugin-install-error');
+    const message = screen.getByTestId('extension-install-error');
     expect(message.className).toMatch(/selectable|copyable/);
     expect(message).toHaveAttribute('role', 'alert');
     expect(message).toHaveTextContent('manifest invalid');
     expect(screen.getByTestId('copyable-error-copy')).toBeInTheDocument();
 
-    expect(screen.queryByTestId('plugin-install-review')).not.toBeInTheDocument();
-    expect(screen.getByTestId('plugin-install-browse-zip')).toBeEnabled();
+    expect(screen.queryByTestId('extension-install-review')).not.toBeInTheDocument();
+    expect(screen.getByTestId('extension-install-browse-zip')).toBeEnabled();
     expect(installExtensionMock).not.toHaveBeenCalled();
-    expect(screen.getByText('plugins.install.title')).toBeInTheDocument();
+    expect(screen.getByText('extensions.install.title')).toBeInTheDocument();
   });
 
   it('copies the raw error text to the clipboard via the copy button', async () => {
@@ -208,11 +208,11 @@ describe('InstallExtensionDialog', () => {
 
     renderOpen();
     await gotoReviewViaFolder();
-    fireEvent.click(screen.getByTestId('plugin-install-confirm'));
+    fireEvent.click(screen.getByTestId('extension-install-confirm'));
 
-    expect(await screen.findByTestId('plugin-install-error')).toHaveTextContent('disk full');
-    expect(screen.queryByTestId('plugin-install-review')).not.toBeInTheDocument();
-    expect(screen.getByTestId('plugin-install-browse-folder')).toBeEnabled();
+    expect(await screen.findByTestId('extension-install-error')).toHaveTextContent('disk full');
+    expect(screen.queryByTestId('extension-install-review')).not.toBeInTheDocument();
+    expect(screen.getByTestId('extension-install-browse-folder')).toBeEnabled();
     expect(onCloseMock).not.toHaveBeenCalled();
   });
 
@@ -220,11 +220,11 @@ describe('InstallExtensionDialog', () => {
     inspectWithDialogMock.mockResolvedValue(null);
 
     renderOpen();
-    fireEvent.click(screen.getByTestId('plugin-install-browse-zip'));
+    fireEvent.click(screen.getByTestId('extension-install-browse-zip'));
 
     await waitFor(() => expect(inspectWithDialogMock).toHaveBeenCalledTimes(1));
-    expect(screen.queryByTestId('plugin-install-error')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('plugin-install-review')).not.toBeInTheDocument();
-    expect(screen.getByTestId('plugin-install-browse-zip')).toBeEnabled();
+    expect(screen.queryByTestId('extension-install-error')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('extension-install-review')).not.toBeInTheDocument();
+    expect(screen.getByTestId('extension-install-browse-zip')).toBeEnabled();
   });
 });

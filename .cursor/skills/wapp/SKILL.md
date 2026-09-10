@@ -1,13 +1,13 @@
 ---
 name: wapp
-description: Create, scaffold, modify, debug, package and test a DataZen Workspace App (Wapp / UI Extension), a sandboxed runtime app that contributes a workspace page and/or themes. Use this skill when a developer wants to build a Wapp for the DataZen desktop database tool (installed into the host app's Wapps list), write an app page against the sandboxed postMessage bridge (@datazen/app-sdk), contribute a theme, package the wapp into an installable zip (pnpm wapp:pack), or troubleshoot install / theme / security issues. Everything is self-contained here.
+description: Create, scaffold, modify, debug, package and test a DataZen Workspace App (Wapp / UI Extension), a sandboxed runtime app that contributes a workspace page and/or themes. Use this skill when a developer wants to build a Wapp for the DataZen desktop database tool (installed into the host app's Wapps list), write an app page against the sandboxed postMessage bridge (@datazen/wapp-sdk), contribute a theme, package the wapp into an installable zip (pnpm wapp:pack), or troubleshoot install / theme / security issues. Everything is self-contained here.
 ---
 
 # 构建 DataZen 工作区应用（Workspace App / Wapp）
 
 DataZen 是一个面向**终端用户**的桌面数据库工具（宿主应用）。第三方开发者**不需要**获取 DataZen 源码，只需按本文档构建一个 Wapp 应用包（一个目录 + manifest），用户就能在 DataZen 里安装它，获得一个**工作区页面**和/或**主题**。
 
-一个 Wapp = 一份 `manifest.json` 声明「贡献了什么」+ 包内页面/主题资源。宿主把页面跑在**沙箱 iframe**（opaque origin，无 Tauri API、无数据直连），页面通过受控 `postMessage` 桥与宿主对话（推荐使用 `@datazen/app-sdk`）。这些全是**运行时**能力，与「数据库驱动插件」（编译时注入）及「特权扩展点 EP」（主进程插槽）正交。
+一个 Wapp = 一份 `manifest.json` 声明「贡献了什么」+ 包内页面/主题资源。宿主把页面跑在**沙箱 iframe**（opaque origin，无 Tauri API、无数据直连），页面通过受控 `postMessage` 桥与宿主对话（推荐使用 `@datazen/wapp-sdk`）。这些全是**运行时**能力，与「数据库驱动插件」（编译时注入）及「特权扩展点 EP」（主进程插槽）正交。
 
 > Wapp 只做 UI 呈现与桥接取数，**不能**直接访问文件系统/网络/数据库连接——所有能力都走受控网桥（见下）。这既是安全边界也是能力上限。
 

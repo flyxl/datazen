@@ -6,7 +6,11 @@
  */
 
 import type { DatabaseType } from '../types';
-import { DRIVER_DB_ENTRIES, DRIVER_ICON_ENTRIES, DRIVER_ICON_PARENTS } from '../plugins/generated';
+import {
+  DRIVER_DB_ENTRIES,
+  DRIVER_ICON_ENTRIES,
+  DRIVER_ICON_PARENTS,
+} from '../extensions/generated';
 import type { IconSourceMap } from './iconResolver';
 
 export type { ConnectionMode, DatabaseTypeMeta } from './databaseMeta';

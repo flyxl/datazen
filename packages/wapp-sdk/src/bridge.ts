@@ -239,7 +239,7 @@ export function createClient(options: CreateClientOptions = {}): ExtensionClient
       failHandshake(
         new ExtensionError(
           SDK_ERROR.VERSION_MISMATCH,
-          `host bridge apiVersion ${String(payload.apiVersion)} is incompatible with SDK ${EXTENSION_API_VERSION}; update @datazen/extension-sdk`,
+          `host bridge apiVersion ${String(payload.apiVersion)} is incompatible with SDK ${EXTENSION_API_VERSION}; update @datazen/wapp-sdk`,
         ),
       );
       return;

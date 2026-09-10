@@ -10,7 +10,7 @@
  *     (formerly the runtime meaning of `connectionId`) — never persisted
  *
  * Scans src/ packages/ e2e/ (skips node_modules and gitignored codegen such
- * as src/plugins/generated*.ts). Any forbidden hit outside the allow-list
+ * as src/extensions/generated*.ts). Any forbidden hit outside the allow-list
  * below exits 1 with `file:line: content`.
  */
 import { readdirSync, readFileSync } from 'fs';
@@ -23,7 +23,7 @@ const SCAN_DIRS = ['src', 'packages', 'e2e'];
 const SCAN_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.rs']);
 const SKIP_DIR_NAMES = new Set(['node_modules', 'dist', 'coverage', '.git']);
 // Gitignored codegen produced by resolve-drivers — never hand-written source.
-const SKIP_FILES = new Set(['src/plugins/generated.ts', 'src/plugins/generated-locales.ts']);
+const SKIP_FILES = new Set(['src/extensions/generated.ts', 'src/extensions/generated-locales.ts']);
 
 /**
  * Forbidden token shapes. Every entry must carry a reason; hits are only

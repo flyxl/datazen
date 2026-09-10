@@ -16,17 +16,17 @@ import {
 } from './workspacePages';
 
 export interface WorkspaceViewProps {
-  /** Empty-state / navigator shortcut to the plugin management page. */
-  onOpenPlugins?: () => void;
+  /** Empty-state / navigator shortcut to the extension management page. */
+  onOpenExtensions?: () => void;
 }
 
 /**
- * Workspace mode layout: plugin navigator on the left, independent tab strip +
+ * Workspace mode layout: extension navigator on the left, independent tab strip +
  * panels (or the default card grid) on the right.
  *
  * Also hosts the `plugins:open-page` deep-link listener (`datazen://…/open`).
  */
-export function WorkspaceView({ onOpenPlugins }: WorkspaceViewProps) {
+export function WorkspaceView({ onOpenExtensions }: WorkspaceViewProps) {
   const { t } = useI18n();
   const pages = useWorkspacePages();
   const wapps = useWappStore((s) => s.wapps);
@@ -91,7 +91,7 @@ export function WorkspaceView({ onOpenPlugins }: WorkspaceViewProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-1">
-      <WorkspaceNavigator width={sidebarWidth} onOpenPlugins={onOpenPlugins} />
+      <WorkspaceNavigator width={sidebarWidth} onOpenExtensions={onOpenExtensions} />
       <div
         ref={resizeHandleRef}
         data-testid="workspace-sidebar-resize"
@@ -104,7 +104,7 @@ export function WorkspaceView({ onOpenPlugins }: WorkspaceViewProps) {
           <WorkspaceDefaultCards
             pages={pages}
             onOpen={(page) => openPluginPage(page.pluginId, page.pageId)}
-            onOpenPlugins={onOpenPlugins}
+            onOpenExtensions={onOpenExtensions}
           />
         ) : (
           <div className="relative min-h-0 flex-1">

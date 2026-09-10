@@ -83,9 +83,9 @@ export function WorkspaceModeSidebar({
       <div className="flex flex-col">
         <WorkspaceModeButton
           icon={Database}
-          iconId="nav.connections"
-          label={t('nav.connections')}
-          testId="workspace-nav-connections"
+          iconId="nav.databases"
+          label={t('nav.databases')}
+          testId="workspace-nav-databases"
           active={workspaceMode === 'connections'}
           expanded={sidebarExpanded}
           onClick={() => onSetWorkspaceMode('connections')}
@@ -119,12 +119,12 @@ export function WorkspaceModeSidebar({
         />
         <WorkspaceModeButton
           icon={Puzzle}
-          iconId="nav.plugins"
-          label={t('nav.plugins')}
-          testId="workspace-nav-plugins"
-          active={workspaceMode === 'plugins'}
+          iconId="nav.extensions"
+          label={t('nav.extensions')}
+          testId="workspace-nav-extensions"
+          active={workspaceMode === 'extension'}
           expanded={sidebarExpanded}
-          onClick={() => onSetWorkspaceMode('plugins')}
+          onClick={() => onSetWorkspaceMode('extension')}
         />
       </div>
       <div className="mt-auto flex flex-col">

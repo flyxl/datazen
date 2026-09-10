@@ -6,15 +6,15 @@ import type { WorkspacePageEntry } from './workspacePages';
 export interface WorkspaceDefaultCardsProps {
   pages: WorkspacePageEntry[];
   onOpen: (page: WorkspacePageEntry) => void;
-  /** Empty-state shortcut to the plugin management page. */
-  onOpenPlugins?: () => void;
+  /** Empty-state shortcut to the extension management page. */
+  onOpenExtensions?: () => void;
 }
 
 /** Default right-hand view of the workspace mode when no tab is open. */
 export function WorkspaceDefaultCards({
   pages,
   onOpen,
-  onOpenPlugins,
+  onOpenExtensions,
 }: WorkspaceDefaultCardsProps) {
   const { t } = useI18n();
 
@@ -26,14 +26,14 @@ export function WorkspaceDefaultCards({
       >
         <h2 className="text-sm font-semibold text-fg">{t('workspace.emptyTitle')}</h2>
         <p className="max-w-xs text-xs leading-relaxed text-fg-muted">{t('workspace.emptyHint')}</p>
-        {onOpenPlugins ? (
+        {onOpenExtensions ? (
           <Button
             size="sm"
             variant="secondary"
-            data-testid="workspace-open-plugins"
-            onClick={onOpenPlugins}
+            data-testid="workspace-open-extensions"
+            onClick={onOpenExtensions}
           >
-            {t('workspace.openPlugins')}
+            {t('workspace.openExtensions')}
           </Button>
         ) : null}
       </div>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSchemaStore, useConnectionSchemaField } from '../../../stores/schemaStore';
 import { DB_REGISTRY } from '../../../lib/databaseTypes';
-import type { DatabaseType } from '../../../plugins/generated';
+import type { DatabaseType } from '../../../extensions/generated';
 import type { DatabaseObject, TableInfo } from '../../../types';
 import type { SchemaTreeCategoryDef } from './schemaTreeCategories';
 import { getEffectiveCategories } from './schemaTreeCategories';

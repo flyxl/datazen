@@ -87,14 +87,14 @@ describe('ExtensionPageShell', () => {
   it('lazily mounts the iframe only after first activation', async () => {
     getManifestMock.mockResolvedValue({ id: 'x', version: '1.0.0', entry: 'index.html' });
     const utils = render(<ExtensionPageShell tab={makeTab()} active={false} />);
-    expect(screen.queryByTestId('plugin-iframe')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('wapp-iframe')).not.toBeInTheDocument();
     // Shell itself is hidden while its tab is inactive.
-    expect(screen.getByTestId('plugin-page-shell').className).toMatch(/hidden/);
+    expect(screen.getByTestId('wapp-page-shell').className).toMatch(/hidden/);
 
     await act(async () => {
       utils.rerender(<ExtensionPageShell tab={makeTab()} active />);
     });
-    expect(await screen.findByTestId('plugin-iframe')).toBeInTheDocument();
+    expect(await screen.findByTestId('wapp-iframe')).toBeInTheDocument();
   });
 
   it('renders a sandboxed iframe with the datazen:// entry URL and caches the manifest entry', async () => {
@@ -107,7 +107,7 @@ describe('ExtensionPageShell', () => {
     const tab = makeTab();
     await renderActive(tab);
 
-    const iframe = screen.getByTestId('plugin-iframe');
+    const iframe = screen.getByTestId('wapp-iframe');
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
     expect(iframe.getAttribute('src')).toBe('datazen://acme.bill-audit/index.html?v=1.0.0');
     expect(iframe.getAttribute('key')).toBeNull();
@@ -117,7 +117,7 @@ describe('ExtensionPageShell', () => {
     // Second instance of the same plugin/version resolves from cache.
     cleanup();
     await renderActive(makeTab({ key: 'acme.bill-audit:other' }));
-    expect(screen.getByTestId('plugin-iframe')).toBeInTheDocument();
+    expect(screen.getByTestId('wapp-iframe')).toBeInTheDocument();
     expect(getManifestMock).toHaveBeenCalledTimes(1);
 
     // A version change invalidates the cache.
@@ -131,7 +131,7 @@ describe('ExtensionPageShell', () => {
 
     await renderActive(makeTab());
 
-    expect(screen.getByTestId('plugin-iframe').getAttribute('src')).toBe(
+    expect(screen.getByTestId('wapp-iframe').getAttribute('src')).toBe(
       'datazen://acme.bill-audit/main.html?v=1.0.0',
     );
     expect(getManifestMock).not.toHaveBeenCalled();
@@ -143,11 +143,11 @@ describe('ExtensionPageShell', () => {
 
     utils.rerender(<ExtensionPageShell tab={makeTab()} active={false} />);
 
-    const shell = screen.getByTestId('plugin-page-shell');
+    const shell = screen.getByTestId('wapp-page-shell');
     expect(shell.className).toMatch(/hidden/);
     expect(shell.getAttribute('aria-hidden')).toBe('true');
     // Same iframe element is still mounted.
-    expect(screen.getByTestId('plugin-iframe')).toBeInTheDocument();
+    expect(screen.getByTestId('wapp-iframe')).toBeInTheDocument();
   });
 
   it('shows a reload button after the 10s load timeout and remounts on reload', async () => {
@@ -156,29 +156,29 @@ describe('ExtensionPageShell', () => {
 
     render(<ExtensionPageShell tab={makeTab()} active />);
     await act(async () => {});
-    expect(screen.getByTestId('plugin-iframe')).toBeInTheDocument();
-    expect(screen.queryByTestId('plugin-shell-reload')).not.toBeInTheDocument();
+    expect(screen.getByTestId('wapp-iframe')).toBeInTheDocument();
+    expect(screen.queryByTestId('wapp-shell-reload')).not.toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(10_000);
     });
-    expect(screen.getByTestId('plugin-shell-reload')).toBeInTheDocument();
+    expect(screen.getByTestId('wapp-shell-reload')).toBeInTheDocument();
     expect(screen.getByText('workspace.shell.loadFailed')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId('plugin-shell-reload'));
+    fireEvent.click(screen.getByTestId('wapp-shell-reload'));
 
-    expect(screen.getByTestId('plugin-iframe')).toBeInTheDocument();
-    expect(screen.queryByTestId('plugin-shell-reload')).not.toBeInTheDocument();
+    expect(screen.getByTestId('wapp-iframe')).toBeInTheDocument();
+    expect(screen.queryByTestId('wapp-shell-reload')).not.toBeInTheDocument();
 
     // Watchdog re-arms for the fresh frame.
     act(() => {
       vi.advanceTimersByTime(9_999);
     });
-    expect(screen.queryByTestId('plugin-shell-reload')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('wapp-shell-reload')).not.toBeInTheDocument();
     act(() => {
       vi.advanceTimersByTime(1);
     });
-    expect(screen.getByTestId('plugin-shell-reload')).toBeInTheDocument();
+    expect(screen.getByTestId('wapp-shell-reload')).toBeInTheDocument();
   });
 
   it('shows the failure state when no manifest entry exists and retries on demand', async () => {
@@ -186,11 +186,11 @@ describe('ExtensionPageShell', () => {
 
     await renderActive(makeTab());
 
-    expect(screen.queryByTestId('plugin-iframe')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('wapp-iframe')).not.toBeInTheDocument();
     expect(screen.getByText('workspace.shell.loadFailed')).toBeInTheDocument();
 
     await act(async () => {
-      fireEvent.click(screen.getByTestId('plugin-shell-retry'));
+      fireEvent.click(screen.getByTestId('wapp-shell-retry'));
     });
     expect(getManifestMock).toHaveBeenCalledTimes(2);
     expect(screen.getByText('workspace.shell.loadFailed')).toBeInTheDocument();
@@ -200,8 +200,8 @@ describe('ExtensionPageShell', () => {
     getManifestMock.mockResolvedValue({ id: 'x', version: '1.0.0', entry: 'index.html' });
     const { unmount } = await renderActive(makeTab());
 
-    expect(screen.getByTestId('plugin-iframe')).toBeInTheDocument();
+    expect(screen.getByTestId('wapp-iframe')).toBeInTheDocument();
     unmount();
-    expect(screen.queryByTestId('plugin-iframe')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('wapp-iframe')).not.toBeInTheDocument();
   });
 });

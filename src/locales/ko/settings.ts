@@ -3,7 +3,7 @@ const pack = {
   'settings.title': '설정',
   'settings.general': '일반적인',
   'settings.extensions.title': '확장',
-  'settings.extensions.empty': '이 빌드에서는 사용 가능한 플러그인 확장이 없습니다.',
+  'settings.extensions.empty': '이 빌드에서는 사용 가능한 확장이 없습니다.',
   'settings.theme': '주제',
   'settings.theme.pack': '테마 팩',
   'settings.colorScheme': 'Color scheme',

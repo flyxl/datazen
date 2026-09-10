@@ -68,7 +68,7 @@ describe('MySQL→PG 类型映射 Preview DDL (DT-TYPE-MYSQL-PG)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+    await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 15000 });
 
     await invokeBackend('save_connection', {
       config: mysqlConfig(SRC_ID, SRC_NAME, 'datazen_sync_mysql_tgt'),

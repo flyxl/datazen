@@ -14,7 +14,7 @@ Extension 扩展的是“用户如何组织和呈现能力”。它贡献工作�
 | 主要内容 | 数据库协议、方言、Command | 页面、主题、资源 |
 | 执行位置 | Rust 进程 | 沙箱 iframe + Host Bridge |
 | 数据库访问 | 直接持有连接能力 | 仅经权限桥调用 Command |
-| 安装来源 | Cargo / Git Driver | plugins 目录中的包 |
+| 安装来源 | Cargo / Git Driver | extensions 目录中的包 |
 
 ## Extension Manifest v2
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MySQL, PostgreSQL, StandardSQL } from '@codemirror/lang-sql';
 
-vi.mock('../../plugins/generated', () => {
+vi.mock('../../extensions/generated', () => {
   const kiwi = {
     label: 'Kiwi',
     shortLabel: 'Ki',

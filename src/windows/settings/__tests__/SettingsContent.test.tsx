@@ -311,7 +311,7 @@ vi.mock('../UpdateSection', () => ({
 }));
 
 vi.mock('../PluginSettingsSection', () => ({
-  PluginSettingsSection: () => <div data-testid="plugin-settings" />,
+  PluginSettingsSection: () => <div data-testid="wapp-settings" />,
 }));
 
 async function waitForSettingsLoad() {
@@ -976,7 +976,7 @@ describe('SettingsContent', () => {
     render(<SettingsContent />);
     await waitForSettingsLoad();
     goToSection('settings.extensions.title');
-    expect(screen.getByTestId('plugin-settings')).toBeInTheDocument();
+    expect(screen.getByTestId('wapp-settings')).toBeInTheDocument();
   });
 
   it('shows config error in AI section', async () => {

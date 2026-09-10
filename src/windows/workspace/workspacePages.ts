@@ -48,7 +48,7 @@ function toEntry(wapp: WappSummary, page: WappPageSummary): WorkspacePageEntry {
   };
 }
 
-/** All pages contributed by enabled wapps/plugins, in install order. */
+/** All pages contributed by enabled wapps/extensions, in install order. */
 export function deriveWorkspacePages(wapps: WappSummary[]): WorkspacePageEntry[] {
   return wapps
     .filter((p) => p.enabled && p.pages.length > 0)

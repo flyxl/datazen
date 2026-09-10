@@ -19,7 +19,7 @@
  *   DATAZEN_PRO_GIT="https://github.com/flyxl/datazen-extension-sql-editor-pro.git"
  *
  * Generates:
- *   src/plugins/generated-pro.ts (gitignored)
+ *   src/extensions/generated-pro.ts (gitignored)
  */
 
 import { existsSync, writeFileSync, mkdirSync, cpSync, rmSync } from 'fs';
@@ -33,7 +33,7 @@ export const ROOT = resolve(__dirname, '..');
 export const PRO_EXT_DIR = resolve(ROOT, 'packages/pro-extensions');
 export const DEFAULT_PRO_DEST = resolve(PRO_EXT_DIR, 'sql-editor-pro');
 export const DEFAULT_PRO_GIT = 'https://github.com/flyxl/datazen-extension-sql-editor-pro.git';
-export const GENERATED_PRO_TS = resolve(ROOT, 'src/plugins/generated-pro.ts');
+export const GENERATED_PRO_TS = resolve(ROOT, 'src/extensions/generated-pro.ts');
 
 export function parseArgs(argv = process.argv.slice(2)) {
   let explicitEdition = null;

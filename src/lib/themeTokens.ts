@@ -1,7 +1,7 @@
 /**
- * Theme token contract shared with UI plugins (PRD §4.4).
+ * Theme token contract shared with UI extensions (PRD §4.4).
  *
- * `THEME_TOKENS` lists the CSS custom property names a plugin may consume:
+ * `THEME_TOKENS` lists the CSS custom property names an extension may consume:
  * the full `--c-*` semantic color set (styles/themes.css) and the full
  * `--dt-*` DataTable type-color set (see src/lib/dataTypeColors.ts). Only
  * names are stored here — values are read live from computed styles so

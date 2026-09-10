@@ -174,7 +174,7 @@ export function WappPageShell({ tab, active }: WappPageShellProps) {
 
   return (
     <div
-      data-testid="plugin-page-shell"
+      data-testid="wapp-page-shell"
       data-shell-key={tab.key}
       className={cn('absolute inset-0 flex min-h-0 flex-col bg-surface', hidden && 'hidden')}
       aria-hidden={hidden}
@@ -194,7 +194,7 @@ export function WappPageShell({ tab, active }: WappPageShellProps) {
           <Button
             size="sm"
             variant="secondary"
-            data-testid="plugin-shell-reload"
+            data-testid="wapp-shell-reload"
             onClick={handleReload}
           >
             <RotateCw className="h-3 w-3" />
@@ -212,7 +212,7 @@ export function WappPageShell({ tab, active }: WappPageShellProps) {
             <iframe
               key={reloadNonce > 0 ? `${tab.key}#${reloadNonce}` : tab.key}
               ref={iframeRef}
-              data-testid="plugin-iframe"
+              data-testid="wapp-iframe"
               title={tab.title}
               sandbox="allow-scripts"
               src={phase.src}
@@ -227,7 +227,7 @@ export function WappPageShell({ tab, active }: WappPageShellProps) {
             <Button
               size="sm"
               variant="secondary"
-              data-testid="plugin-shell-retry"
+              data-testid="wapp-shell-retry"
               onClick={handleReload}
             >
               <RotateCw className="h-3 w-3" />
@@ -236,7 +236,7 @@ export function WappPageShell({ tab, active }: WappPageShellProps) {
           </div>
         ) : (
           <div
-            data-testid="plugin-shell-loading"
+            data-testid="wapp-shell-loading"
             className="flex h-full items-center justify-center text-fg-muted"
           >
             <Loader2 className="h-5 w-5 animate-spin" />

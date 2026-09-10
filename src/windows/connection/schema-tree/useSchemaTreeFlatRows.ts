@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { matchingColumns, tableMatchesObjectSearch } from '../../../lib/schemaObjectSearch';
 import { DB_REGISTRY } from '../../../lib/databaseTypes';
-import type { DatabaseType } from '../../../plugins/generated';
+import type { DatabaseType } from '../../../extensions/generated';
 import type { DatabaseObject, TableInfo } from '../../../types';
 import type { SchemaTreeCategoryDef } from './schemaTreeCategories';
 import type { FlatRow } from './SchemaTreeRow';

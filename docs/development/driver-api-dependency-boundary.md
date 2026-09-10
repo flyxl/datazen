@@ -1,6 +1,6 @@
 # Driver API Public Dependency Boundary
 
-`packages/driver-api` is the stable compile-time contract between DataZen and independent database driver plugins.
+`packages/driver-api` is the stable compile-time contract between DataZen and independent database driver extensions.
 
 The API is published as the MIT-licensed `datazen-driver-api` crate. Its source of truth is the DataZen monorepo; there is no separate Driver API source repository.
 
@@ -105,11 +105,11 @@ DataZen itself consumes the crate through the workspace path dependency:
 datazen-driver-api = { path = "packages/driver-api" }
 ```
 
-Independent plugins normally consume the published crate:
+Independent extensions normally consume the published crate:
 
 ```toml
 [dependencies]
 datazen-driver-api = "0.1"
 ```
 
-When developing an API change before publication, an independent plugin can temporarily use a local path dependency pointing at `packages/driver-api`.
+When developing an API change before publication, an independent extension can temporarily use a local path dependency pointing at `packages/driver-api`.

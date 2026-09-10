@@ -18,9 +18,9 @@
     "paths": {
       "@datazen/driver-sdk": ["./packages/driver-sdk/src/index.ts"],
       "@datazen/extension-points": ["./packages/extension-points/src/index.ts"],
-      "@datazen/app-sdk": ["./packages/app-sdk/src/index.ts"],
+      "@datazen/wapp-sdk": ["./packages/wapp-sdk/src/index.ts"],
       "@datazen/plugin-sdk": ["./src/plugin-sdk/index.ts"],
-      "@datazen/extension-sdk": ["./packages/app-sdk/src/index.ts"],
+      "@datazen/extension-sdk": ["./packages/wapp-sdk/src/index.ts"],
       "@datazen/ui": ["./packages/ui/src/index.ts"],
       "@datazen/extension-sql-editor-pro": [
         "./packages/pro-extensions/sql-editor-pro/src/index.ts",
@@ -28,7 +28,7 @@
       ]
     }
   },
-  "include": ["src", "packages/driver-sdk", "packages/extension-points", "packages/app-sdk", "packages/ui"],
+  "include": ["src", "packages/driver-sdk", "packages/extension-points", "packages/wapp-sdk", "packages/ui"],
   "exclude": [
     "src/**/__tests__/**",
     "src/**/*.test.ts",

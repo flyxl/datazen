@@ -148,7 +148,7 @@ function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary
 
 function card(id: string): HTMLElement {
   const el = screen
-    .getAllByTestId('plugin-card')
+    .getAllByTestId('extension-card')
     .find((c) => c.getAttribute('data-plugin-id') === id);
   if (!el) throw new Error(`card ${id} not found`);
   return el;
@@ -190,9 +190,9 @@ describe('ExtensionManagementPage', () => {
 
     render(<ExtensionManagementPage />);
 
-    expect(screen.getByTestId('plugin-management-page')).toBeInTheDocument();
-    expect(screen.getByText('plugins.page.title')).toBeInTheDocument();
-    expect(screen.getAllByTestId('plugin-card')).toHaveLength(2);
+    expect(screen.getByTestId('extension-management-page')).toBeInTheDocument();
+    expect(screen.getByText('extensions.page.title')).toBeInTheDocument();
+    expect(screen.getAllByTestId('extension-card')).toHaveLength(2);
     expect(screen.getByText('Bill Audit')).toBeInTheDocument();
     expect(screen.getByText('Midnight')).toBeInTheDocument();
     // Permission badge with tooltip explanation from the in-component map.
@@ -214,18 +214,18 @@ describe('ExtensionManagementPage', () => {
     render(<ExtensionManagementPage />);
 
     // PRD §4.3: default filter is Workspace — theme-only plugins start hidden.
-    expect(screen.getAllByTestId('plugin-card')).toHaveLength(1);
+    expect(screen.getAllByTestId('extension-card')).toHaveLength(1);
     expect(screen.getByText('Bill Audit')).toBeInTheDocument();
-    const workspaceChip = screen.getByTestId('plugin-filter-workspace');
+    const workspaceChip = screen.getByTestId('extension-filter-workspace');
     expect(workspaceChip.className).toMatch(/bg-accent/);
-    expect(screen.getByTestId('plugin-filter-all').className).not.toMatch(/bg-accent/);
+    expect(screen.getByTestId('extension-filter-all').className).not.toMatch(/bg-accent/);
 
-    fireEvent.click(screen.getByTestId('plugin-filter-theme'));
-    expect(screen.getAllByTestId('plugin-card')).toHaveLength(1);
-    expect(screen.getByTestId('plugin-management-page')).toHaveTextContent('Midnight');
+    fireEvent.click(screen.getByTestId('extension-filter-theme'));
+    expect(screen.getAllByTestId('extension-card')).toHaveLength(1);
+    expect(screen.getByTestId('extension-management-page')).toHaveTextContent('Midnight');
 
-    fireEvent.click(screen.getByTestId('plugin-filter-all'));
-    expect(screen.getAllByTestId('plugin-card')).toHaveLength(2);
+    fireEvent.click(screen.getByTestId('extension-filter-all'));
+    expect(screen.getAllByTestId('extension-card')).toHaveLength(2);
   });
 
   it('renders the all view grouped into Workspace pages and Themes sections', () => {
@@ -242,18 +242,20 @@ describe('ExtensionManagementPage', () => {
     ];
 
     render(<ExtensionManagementPage />);
-    fireEvent.click(screen.getByTestId('plugin-filter-all'));
+    fireEvent.click(screen.getByTestId('extension-filter-all'));
 
-    expect(screen.getByTestId('plugin-group-workspace')).toHaveTextContent(
-      'plugins.page.groupWorkspace',
+    expect(screen.getByTestId('extension-group-workspace')).toHaveTextContent(
+      'extensions.page.groupWorkspace',
     );
-    expect(screen.getByTestId('plugin-group-theme')).toHaveTextContent('plugins.page.groupTheme');
-    const workspaceGroup = screen.getByTestId('plugin-group-workspace');
-    expect(within(workspaceGroup).getAllByTestId('plugin-card')).toHaveLength(2);
+    expect(screen.getByTestId('extension-group-theme')).toHaveTextContent(
+      'extensions.page.groupTheme',
+    );
+    const workspaceGroup = screen.getByTestId('extension-group-workspace');
+    expect(within(workspaceGroup).getAllByTestId('extension-card')).toHaveLength(2);
     expect(within(workspaceGroup).getByText('Bill Audit')).toBeInTheDocument();
     expect(within(workspaceGroup).getByText('Both')).toBeInTheDocument();
-    const themeGroup = screen.getByTestId('plugin-group-theme');
-    expect(within(themeGroup).getAllByTestId('plugin-card')).toHaveLength(1);
+    const themeGroup = screen.getByTestId('extension-group-theme');
+    expect(within(themeGroup).getAllByTestId('extension-card')).toHaveLength(1);
     expect(within(themeGroup).getByText('Midnight')).toBeInTheDocument();
   });
 
@@ -261,28 +263,28 @@ describe('ExtensionManagementPage', () => {
     pluginState.extensions = [makePlugin(), makePlugin({ id: 'acme.afi', name: 'AFI Pricing' })];
 
     render(<ExtensionManagementPage />);
-    fireEvent.click(screen.getByTestId('plugin-filter-all'));
+    fireEvent.click(screen.getByTestId('extension-filter-all'));
 
-    expect(screen.queryByTestId('plugin-group-theme')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('extension-group-theme')).not.toBeInTheDocument();
     expect(
-      within(screen.getByTestId('plugin-group-workspace')).getAllByTestId('plugin-card'),
+      within(screen.getByTestId('extension-group-workspace')).getAllByTestId('extension-card'),
     ).toHaveLength(2);
 
     // Non-"all" filters keep rendering a single flat grid without headers.
-    fireEvent.click(screen.getByTestId('plugin-filter-workspace'));
-    expect(screen.queryByTestId('plugin-group-workspace')).not.toBeInTheDocument();
-    expect(screen.getAllByTestId('plugin-card')).toHaveLength(2);
+    fireEvent.click(screen.getByTestId('extension-filter-workspace'));
+    expect(screen.queryByTestId('extension-group-workspace')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('extension-card')).toHaveLength(2);
   });
 
   it('narrows cards by search text across name/id/description', () => {
     pluginState.extensions = [makePlugin(), makePlugin({ id: 'acme.afi', name: 'AFI Pricing' })];
 
     render(<ExtensionManagementPage />);
-    fireEvent.change(screen.getByTestId('plugin-search-input'), {
+    fireEvent.change(screen.getByTestId('extension-search-input'), {
       target: { value: 'afi' },
     });
 
-    expect(screen.getAllByTestId('plugin-card')).toHaveLength(1);
+    expect(screen.getAllByTestId('extension-card')).toHaveLength(1);
     expect(screen.getByText('AFI Pricing')).toBeInTheDocument();
   });
 
@@ -291,8 +293,8 @@ describe('ExtensionManagementPage', () => {
 
     render(<ExtensionManagementPage />);
 
-    expect(screen.getByTestId('plugin-page-empty')).toBeInTheDocument();
-    expect(screen.queryByTestId('plugin-card')).not.toBeInTheDocument();
+    expect(screen.getByTestId('extension-page-empty')).toBeInTheDocument();
+    expect(screen.queryByTestId('extension-card')).not.toBeInTheDocument();
   });
 
   it('toggles a plugin off through the store and closes its workspace tabs', async () => {
@@ -300,7 +302,7 @@ describe('ExtensionManagementPage', () => {
     setEnabledMock.mockResolvedValue(undefined);
 
     render(<ExtensionManagementPage />);
-    fireEvent.click(within(card('acme.bill-audit')).getByTestId('plugin-toggle'));
+    fireEvent.click(within(card('acme.bill-audit')).getByTestId('extension-toggle'));
 
     await waitFor(() => expect(setEnabledMock).toHaveBeenCalledWith('acme.bill-audit', false));
     await waitFor(() => expect(closeByPluginMock).toHaveBeenCalledWith('acme.bill-audit'));
@@ -310,7 +312,7 @@ describe('ExtensionManagementPage', () => {
     pluginState.extensions = [makePlugin({ enabled: false })];
 
     render(<ExtensionManagementPage />);
-    fireEvent.click(within(card('acme.bill-audit')).getByTestId('plugin-toggle'));
+    fireEvent.click(within(card('acme.bill-audit')).getByTestId('extension-toggle'));
 
     await waitFor(() => expect(setEnabledMock).toHaveBeenCalledWith('acme.bill-audit', true));
     expect(closeByPluginMock).not.toHaveBeenCalled();
@@ -321,10 +323,10 @@ describe('ExtensionManagementPage', () => {
     setEnabledMock.mockRejectedValue(new Error('backend refused'));
 
     render(<ExtensionManagementPage />);
-    fireEvent.click(within(card('acme.bill-audit')).getByTestId('plugin-toggle'));
+    fireEvent.click(within(card('acme.bill-audit')).getByTestId('extension-toggle'));
 
     await waitFor(() =>
-      expect(screen.getByTestId('plugin-page-error')).toHaveTextContent('backend refused'),
+      expect(screen.getByTestId('extension-page-error')).toHaveTextContent('backend refused'),
     );
   });
 
@@ -333,12 +335,12 @@ describe('ExtensionManagementPage', () => {
     removeMock.mockResolvedValue(undefined);
 
     render(<ExtensionManagementPage />);
-    fireEvent.click(within(card('acme.bill-audit')).getByTestId('plugin-uninstall'));
+    fireEvent.click(within(card('acme.bill-audit')).getByTestId('extension-uninstall'));
 
     await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
     expect(confirmSpy.mock.calls[0]?.[0]).toMatchObject({
-      title: 'plugins.page.uninstallTitle',
-      message: 'plugins.page.uninstallMessage',
+      title: 'extensions.page.uninstallTitle',
+      message: 'extensions.page.uninstallMessage',
     });
     await waitFor(() => expect(removeMock).toHaveBeenCalledWith('acme.bill-audit'));
     expect(closeByPluginMock).toHaveBeenCalledWith('acme.bill-audit');
@@ -349,7 +351,7 @@ describe('ExtensionManagementPage', () => {
     confirmSpy.mockResolvedValue(false);
 
     render(<ExtensionManagementPage />);
-    fireEvent.click(within(card('acme.bill-audit')).getByTestId('plugin-uninstall'));
+    fireEvent.click(within(card('acme.bill-audit')).getByTestId('extension-uninstall'));
 
     await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
     expect(removeMock).not.toHaveBeenCalled();
@@ -360,7 +362,7 @@ describe('ExtensionManagementPage', () => {
     const onOpenInWorkspace = vi.fn();
 
     render(<ExtensionManagementPage onOpenInWorkspace={onOpenInWorkspace} />);
-    fireEvent.click(within(card('acme.bill-audit')).getByTestId('plugin-open'));
+    fireEvent.click(within(card('acme.bill-audit')).getByTestId('extension-open'));
 
     expect(openTabMock).toHaveBeenCalledWith({
       key: 'acme.bill-audit:quota-check',
@@ -386,12 +388,12 @@ describe('ExtensionManagementPage', () => {
     ];
 
     render(<ExtensionManagementPage />);
-    fireEvent.click(screen.getByTestId('plugin-filter-theme'));
+    fireEvent.click(screen.getByTestId('extension-filter-theme'));
     const themeCard = card('acme.midnight');
 
-    expect(within(themeCard).getByText('plugins.page.themeHint')).toBeInTheDocument();
-    expect(within(themeCard).getByText('plugins.page.themeBadge')).toBeInTheDocument();
-    expect(within(themeCard).queryByTestId('plugin-open')).not.toBeInTheDocument();
+    expect(within(themeCard).getByText('extensions.page.themeHint')).toBeInTheDocument();
+    expect(within(themeCard).getByText('extensions.page.themeBadge')).toBeInTheDocument();
+    expect(within(themeCard).queryByTestId('extension-open')).not.toBeInTheDocument();
   });
 
   it('greys out API-mismatched plugins and blocks their toggle/open actions', () => {
@@ -401,11 +403,11 @@ describe('ExtensionManagementPage', () => {
     const mismatched = card('acme.bill-audit');
 
     expect(mismatched.className).toMatch(/opacity-60/);
-    expect(within(mismatched).getByText('plugins.page.apiMismatch')).toBeInTheDocument();
-    expect((within(mismatched).getByTestId('plugin-toggle') as HTMLButtonElement).disabled).toBe(
+    expect(within(mismatched).getByText('extensions.page.apiMismatch')).toBeInTheDocument();
+    expect((within(mismatched).getByTestId('extension-toggle') as HTMLButtonElement).disabled).toBe(
       true,
     );
-    expect(within(mismatched).queryByTestId('plugin-open')).not.toBeInTheDocument();
+    expect(within(mismatched).queryByTestId('extension-open')).not.toBeInTheDocument();
   });
 
   it('installs through the two-step confirm flow and refreshes the list', async () => {
@@ -413,23 +415,23 @@ describe('ExtensionManagementPage', () => {
     fetchMock.mockResolvedValue(undefined);
 
     render(<ExtensionManagementPage />);
-    fireEvent.click(screen.getByTestId('plugin-install-button'));
+    fireEvent.click(screen.getByTestId('extension-install-button'));
 
-    expect(screen.getByText('plugins.install.title')).toBeInTheDocument();
+    expect(screen.getByText('extensions.install.title')).toBeInTheDocument();
 
     // Step 1 → 2: native browse + inspect only, no write yet.
-    fireEvent.click(await screen.findByTestId('plugin-install-browse-zip'));
-    const review = await screen.findByTestId('plugin-install-review');
+    fireEvent.click(await screen.findByTestId('extension-install-browse-zip'));
+    const review = await screen.findByTestId('extension-install-review');
     expect(review).toHaveTextContent('New Plugin');
     expect(inspectPackageMock).toHaveBeenCalledWith('zip');
     expect(installFromPathMock).not.toHaveBeenCalled();
 
     // Step 2: explicit confirmation performs the install.
-    fireEvent.click(screen.getByTestId('plugin-install-confirm'));
+    fireEvent.click(screen.getByTestId('extension-install-confirm'));
     await waitFor(() => expect(installFromPathMock).toHaveBeenCalledWith('pick-acme-new'));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await waitFor(() =>
-      expect(screen.queryByText('plugins.install.title')).not.toBeInTheDocument(),
+      expect(screen.queryByText('extensions.install.title')).not.toBeInTheDocument(),
     );
   });
 
@@ -437,16 +439,16 @@ describe('ExtensionManagementPage', () => {
     inspectPackageMock.mockRejectedValue(new Error('manifest invalid'));
 
     render(<ExtensionManagementPage />);
-    fireEvent.click(screen.getByTestId('plugin-install-button'));
-    fireEvent.click(await screen.findByTestId('plugin-install-browse-zip'));
+    fireEvent.click(screen.getByTestId('extension-install-button'));
+    fireEvent.click(await screen.findByTestId('extension-install-browse-zip'));
 
     await waitFor(() =>
-      expect(screen.getByTestId('plugin-install-error')).toHaveTextContent('manifest invalid'),
+      expect(screen.getByTestId('extension-install-error')).toHaveTextContent('manifest invalid'),
     );
     expect(screen.getByTestId('copyable-error-copy')).toBeInTheDocument();
     // Nothing was written; dialog stays open so the user can retry or copy.
     expect(installFromPathMock).not.toHaveBeenCalled();
-    expect(screen.getByText('plugins.install.title')).toBeInTheDocument();
+    expect(screen.getByText('extensions.install.title')).toBeInTheDocument();
   });
 
   it('renders the package icon image when the plugin declares one', async () => {
@@ -462,9 +464,9 @@ describe('ExtensionManagementPage', () => {
 
     render(<ExtensionManagementPage />);
 
-    const iconSlot = within(card('acme.branded')).getByTestId('plugin-card-icon');
+    const iconSlot = within(card('acme.branded')).getByTestId('extension-card-icon');
     await waitFor(() =>
-      expect(within(iconSlot).getByTestId('plugin-card-icon-img')).toBeInTheDocument(),
+      expect(within(iconSlot).getByTestId('extension-card-icon-img')).toBeInTheDocument(),
     );
     expect(readExtensionFileMock).toHaveBeenCalledWith('acme.branded', 'assets/logo.svg');
   });
@@ -473,9 +475,9 @@ describe('ExtensionManagementPage', () => {
     pluginState.extensions = [makePlugin({ id: 'acme.plain', name: 'Plain' })];
     render(<ExtensionManagementPage />);
 
-    const slot = within(card('acme.plain')).getByTestId('plugin-card-icon');
+    const slot = within(card('acme.plain')).getByTestId('extension-card-icon');
     expect(slot).toHaveTextContent('P');
-    expect(slot.querySelector('[data-testid="plugin-card-icon-img"]')).toBeNull();
+    expect(slot.querySelector('[data-testid="extension-card-icon-img"]')).toBeNull();
     expect(readExtensionFileMock).not.toHaveBeenCalled();
   });
 
@@ -486,7 +488,7 @@ describe('ExtensionManagementPage', () => {
     readExtensionFileMock.mockRejectedValue(new Error('plugin disabled or missing'));
 
     render(<ExtensionManagementPage />);
-    const slot = within(card('acme.broken')).getByTestId('plugin-card-icon');
+    const slot = within(card('acme.broken')).getByTestId('extension-card-icon');
     await waitFor(() => expect(slot).toHaveTextContent('B'));
     expect(readExtensionFileMock).toHaveBeenCalledWith('acme.broken', 'assets/icon.svg');
   });

@@ -1,9 +1,9 @@
 /** Semantic host icons that a contributed theme may replace through iconsDir. */
 export const UI_ICON_IDS = [
   'nav.settings',
-  'nav.connections',
+  'nav.databases',
   'nav.workspacePages',
-  'nav.plugins',
+  'nav.extensions',
   'query.run',
   'query.stop',
   'ai.chat',

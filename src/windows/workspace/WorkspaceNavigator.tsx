@@ -6,14 +6,14 @@ import { openPluginPage, useWorkspacePages } from './workspacePages';
 import { PluginIcon } from './PluginIcon';
 
 export interface WorkspaceNavigatorProps {
-  /** Shown in the empty state so users can jump to the plugin management page. */
-  onOpenPlugins?: () => void;
+  /** Shown in the empty state so users can jump to the extension management page. */
+  onOpenExtensions?: () => void;
   /** Width in pixels for resizable sidebar. */
   width?: number;
 }
 
-/** Left rail of the workspace mode: every page contributed by enabled plugins. */
-export function WorkspaceNavigator({ onOpenPlugins, width }: WorkspaceNavigatorProps) {
+/** Left rail of the workspace mode: every page contributed by enabled extensions. */
+export function WorkspaceNavigator({ onOpenExtensions, width }: WorkspaceNavigatorProps) {
   const { t } = useI18n();
   const pages = useWorkspacePages();
   const activeKey = useWorkspaceTabsStore((s) => s.activeKey);
@@ -33,12 +33,12 @@ export function WorkspaceNavigator({ onOpenPlugins, width }: WorkspaceNavigatorP
       {pages.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-3 pb-6 text-center">
           <p className="text-xs leading-relaxed text-fg-muted">{t('workspace.emptyHint')}</p>
-          {onOpenPlugins ? (
+          {onOpenExtensions ? (
             <Button
               size="sm"
               variant="secondary"
-              data-testid="workspace-open-plugins"
-              onClick={onOpenPlugins}
+              data-testid="workspace-open-extensions"
+              onClick={onOpenExtensions}
             >
               {t('workspace.openPlugins')}
             </Button>

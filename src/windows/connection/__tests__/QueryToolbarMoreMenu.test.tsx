@@ -89,13 +89,26 @@ describe('QueryToolbarMoreMenu', () => {
     expect(onBeginTx).toHaveBeenCalled();
   });
 
-  it('hides transaction controls in overflow menu when already in transaction', () => {
-    renderMenu({ inTransaction: true });
+  it('shows Commit and Rollback when in transaction, hides Begin', () => {
+    const onCommitTx = vi.fn();
+    renderMenu({ inTransaction: true, onCommitTx });
 
     openMenu();
     expect(screen.queryByTestId('more-menu-begin-tx')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('more-menu-commit-tx')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('more-menu-rollback-tx')).not.toBeInTheDocument();
+    expect(screen.getByTestId('more-menu-commit-tx')).toBeInTheDocument();
+    expect(screen.getByTestId('more-menu-rollback-tx')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('more-menu-commit-tx'));
+    expect(onCommitTx).toHaveBeenCalled();
+  });
+
+  it('calls onRollbackTx when Rollback is clicked in transaction', () => {
+    const onRollbackTx = vi.fn();
+    renderMenu({ inTransaction: true, onRollbackTx });
+
+    openMenu();
+    fireEvent.click(screen.getByTestId('more-menu-rollback-tx'));
+    expect(onRollbackTx).toHaveBeenCalled();
   });
 
   it('shows Refresh Completions when onRefreshCompletion is provided', () => {

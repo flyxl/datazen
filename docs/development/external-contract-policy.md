@@ -1,6 +1,6 @@
 # External Contract Policy
 
-DataZen exposes several **external contracts** consumed by MCP clients, database driver plugins, AI provider plugins, GUI extensions, and automation scripts. This document defines what counts as a breaking change, how deprecations work before and after v1.0, and what contributors must verify before merging.
+DataZen exposes several **external contracts** consumed by MCP clients, database driver extensions, AI provider extensions, GUI extensions, and automation scripts. This document defines what counts as a breaking change, how deprecations work before and after v1.0, and what contributors must verify before merging.
 
 Related docs:
 
@@ -17,7 +17,7 @@ Related docs:
 | **MCP prompts** | MCP clients using NL2SQL / diagnose helpers | Prompt names and argument keys are stable |
 | **Tauri IPC commands** | React frontend, E2E, extensions bridge | Command names and request/response shapes used by the Host UI |
 | **`PROTOCOL_VERSION`** (`packages/driver-api`) | Path and Git database drivers | Bump only with migration notes; drivers must recompile |
-| **`AI_PROTOCOL_VERSION`** (`packages/ai-api`) | AI provider plugins | Same as driver protocol |
+| **`AI_PROTOCOL_VERSION`** (`packages/ai-api`) | AI provider extensions | Same as driver protocol |
 | **Persisted store JSON** | Upgrades across app versions | Field renames require migration or dual-read period |
 
 Internal refactors (file splits, private helper moves) are **not** contract changes as long as observable behavior and the surfaces above stay the same.

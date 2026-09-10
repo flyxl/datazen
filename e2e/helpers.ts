@@ -613,14 +613,14 @@ function isRetryableIpcError(err: unknown): boolean {
 /** Ensure the main workspace window is active before backend IPC (avoids hung executeAsync). */
 export async function ensureMainWindowForIpc() {
   try {
-    const nav = await $('[data-testid="workspace-nav-connections"]');
+    const nav = await $('[data-testid="workspace-nav-databases"]');
     if (await nav.isDisplayed().catch(() => false)) return;
   } catch {
     /* fall through */
   }
   try {
     await browser.url('tauri://localhost');
-    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+    await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 15000 });
   } catch {
     const handles = await browser.getWindowHandles();
     if (handles[0]) await browser.switchToWindow(handles[0]);
@@ -1739,7 +1739,7 @@ export async function openConnectionsWorkspace(mainHandle?: string) {
     await browser.switchToWindow(mainHandle);
   }
   await browser.pause(200);
-  const nav = await $('[data-testid="workspace-nav-connections"]');
+  const nav = await $('[data-testid="workspace-nav-databases"]');
   if (await nav.isExisting()) {
     await nav.waitForDisplayed({ timeout: 15000 });
     await nav.click();
@@ -1833,7 +1833,7 @@ export async function openSettingsInMainWindow(section?: string) {
   await browser.url('tauri://localhost');
   await browser.waitUntil(
     async () => {
-      const nav = await $('[data-testid="workspace-nav-connections"]');
+      const nav = await $('[data-testid="workspace-nav-databases"]');
       return nav.isDisplayed().catch(() => false);
     },
     { timeout: 20000, timeoutMsg: 'Main window workspace nav not ready' },
@@ -1854,7 +1854,7 @@ export async function backFromSettingsInMainWindow() {
     timeout: 10000,
     timeoutMsg: 'SettingsPage did not close after back',
   });
-  await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 10000 });
+  await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 10000 });
 }
 
 // ── data transfer window ────────────────────────────────────────────

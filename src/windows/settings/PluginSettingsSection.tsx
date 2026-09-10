@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 import { mergePluginSettings } from '../../plugin-sdk/settings';
-import { PLUGIN_SETTINGS_ENTRIES } from '../../plugins/generated';
+import { PLUGIN_SETTINGS_ENTRIES } from '../../extensions/generated';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { AppSettings } from '../../types';
 import { JsonSchemaSettingsForm } from './JsonSchemaSettingsForm';

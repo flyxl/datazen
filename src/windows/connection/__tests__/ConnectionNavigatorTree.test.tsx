@@ -55,7 +55,7 @@ vi.mock('../../../commands/connection', () => ({
   },
 }));
 
-vi.mock('../../../plugins/generated', () => {
+vi.mock('../../../extensions/generated', () => {
   const sqlMulti = {
     label: 'SQL',
     shortLabel: 'SQL',

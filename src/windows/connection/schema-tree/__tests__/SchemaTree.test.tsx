@@ -7,7 +7,7 @@ vi.mock('../../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../../plugins/generated', () => {
+vi.mock('../../../../extensions/generated', () => {
   const sqlMulti = {
     label: 'SQL',
     shortLabel: 'SQL',

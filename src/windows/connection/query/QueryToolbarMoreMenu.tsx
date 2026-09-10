@@ -7,7 +7,15 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { MoreHorizontal, FileSearch, Wand2, RefreshCw, CirclePlay } from 'lucide-react';
+import {
+  MoreHorizontal,
+  FileSearch,
+  Wand2,
+  RefreshCw,
+  CirclePlay,
+  Check,
+  Undo2,
+} from 'lucide-react';
 import { ToolbarButton } from '../../../components/ui/ToolbarButton';
 import { useI18n } from '../../../hooks/useI18n';
 import { usePlatform } from '../../../hooks/usePlatform';
@@ -71,8 +79,8 @@ export function QueryToolbarMoreMenu({
   onFormat,
   onExplain,
   onBeginTx,
-  onCommitTx: _onCommitTx,
-  onRollbackTx: _onRollbackTx,
+  onCommitTx,
+  onRollbackTx,
   onRefreshCompletion,
   renderSnippetButton,
 }: QueryToolbarMoreMenuProps) {
@@ -193,7 +201,24 @@ export function QueryToolbarMoreMenu({
 
             <div className="my-0.5 border-t border-edge/50" />
 
-            {!inTransaction && (
+            {inTransaction ? (
+              <>
+                <MenuItem
+                  testId="more-menu-commit-tx"
+                  label={t('query.commitTx')}
+                  icon={<Check className="h-3.5 w-3.5" />}
+                  disabled={txBusy}
+                  onClick={() => runAction(onCommitTx)}
+                />
+                <MenuItem
+                  testId="more-menu-rollback-tx"
+                  label={t('query.rollbackTx')}
+                  icon={<Undo2 className="h-3.5 w-3.5" />}
+                  disabled={txBusy}
+                  onClick={() => runAction(onRollbackTx)}
+                />
+              </>
+            ) : (
               <MenuItem
                 testId="more-menu-begin-tx"
                 label={t('query.beginTx')}

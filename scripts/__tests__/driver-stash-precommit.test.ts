@@ -39,8 +39,8 @@ describe('injection detectors', () => {
   });
 
   it('detects generated.ts PluginDatabaseType != never', () => {
-    expect(hasInjectedGeneratedTs(CLEAN_CONTENTS['src/plugins/generated.ts'])).toBe(false);
-    expect(hasInjectedGeneratedTs(INJECTED_CONTENTS['src/plugins/generated.ts'])).toBe(true);
+    expect(hasInjectedGeneratedTs(CLEAN_CONTENTS['src/extensions/generated.ts'])).toBe(false);
+    expect(hasInjectedGeneratedTs(INJECTED_CONTENTS['src/extensions/generated.ts'])).toBe(true);
   });
 
   it('detects capabilities plugin ACL entries', () => {
@@ -53,12 +53,15 @@ describe('injection detectors', () => {
   it('fileHasInjection routes by path', () => {
     expect(fileHasInjection('Cargo.toml', INJECTED_CONTENTS['Cargo.toml'])).toBe(true);
     expect(
-      fileHasInjection('src/plugins/generated.ts', INJECTED_CONTENTS['src/plugins/generated.ts']),
+      fileHasInjection(
+        'src/extensions/generated.ts',
+        INJECTED_CONTENTS['src/extensions/generated.ts'],
+      ),
     ).toBe(true);
     expect(
       fileHasInjection(
-        'src/plugins/generated-locales.ts',
-        INJECTED_CONTENTS['src/plugins/generated-locales.ts'],
+        'src/extensions/generated-locales.ts',
+        INJECTED_CONTENTS['src/extensions/generated-locales.ts'],
       ),
     ).toBe(true);
     expect(
@@ -73,9 +76,9 @@ describe('injection detectors', () => {
   it('treats empty or stub codegen as not injected', () => {
     expect(hasInjectedGeneratedTs('')).toBe(false);
     expect(hasInjectedGeneratedTs('export const x = 1;\n')).toBe(false);
-    expect(hasInjectedGeneratedTs(CLEAN_CONTENTS['src/plugins/generated.ts'])).toBe(false);
+    expect(hasInjectedGeneratedTs(CLEAN_CONTENTS['src/extensions/generated.ts'])).toBe(false);
     expect(hasInjectedGeneratedLocales('')).toBe(false);
-    expect(hasInjectedGeneratedLocales(CLEAN_CONTENTS['src/plugins/generated-locales.ts'])).toBe(
+    expect(hasInjectedGeneratedLocales(CLEAN_CONTENTS['src/extensions/generated-locales.ts'])).toBe(
       false,
     );
     expect(hasInjectedDriverInit('')).toBe(false);

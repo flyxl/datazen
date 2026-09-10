@@ -32,7 +32,7 @@ SchemaCache 缓存的是表结构、列类型、主键和相关元数据，不�
 
 文件导入、导出和 Extension 资源访问都必须在 Rust 端做路径遍历防护、扩展名白名单、大小限制和符号链接策略。生产 IPC 不接受任意路径覆盖；只有 webdriver/E2E 构建允许专用 override path。
 
-Extension 使用自己的 `{appData}/plugins/{id}/.storage.json`，大小和请求次数受限，不能读取其他插件或宿主配置。
+Extension 使用自己的 `{appData}/wapps/{id}/.storage.json`，大小和请求次数受限，不能读取其他插件或宿主配置。
 
 ## CSP 与主题/资源
 

@@ -68,7 +68,7 @@ describe('数据传输 PG→MySQL 跨方言旅程 (DT-PG-MYSQL-JOURNEY)', () => 
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+    await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 15000 });
 
     await invokeBackend('save_connection', {
       config: pgConfig(SRC_ID, SRC_NAME, 'datazen_sync_src'),

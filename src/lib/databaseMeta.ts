@@ -87,7 +87,7 @@ export interface DatabaseTypeMeta {
   hasMultiDatabase?: boolean;
   /** Default page size for table data; unset uses per-table or global default */
   defaultPageSize?: number;
-  /** Connection form variant — plugins can provide custom form identifiers */
+  /** Connection form variant — extensions can provide custom form identifiers */
   connectionForm: string;
   /**
    * URL schemes (without `://`) this driver claims for new-connection clipboard auto-detect.
@@ -107,7 +107,7 @@ export interface DatabaseTypeMeta {
    * - `default-sql`: database → tables (MySQL/MariaDB/…)
    * - `postgresql`: database → schema → table (or schema → table when single-db)
    * - `path-hierarchy`: slash-path levels via `get_tables` + optional name→id aliases
-   *   (plugins that use catalog/schema navigation rows with schema CATALOG|SCHEMA)
+   *   (extensions that use catalog/schema navigation rows with schema CATALOG|SCHEMA)
    */
   namespaceEnsure?: 'default-sql' | 'postgresql' | 'path-hierarchy';
   /**

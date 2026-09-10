@@ -29,7 +29,7 @@ describe('diag startup state', () => {
 
     await browser.execute(() => {
       document
-        .querySelector('[data-testid="workspace-nav-connections"]')
+        .querySelector('[data-testid="workspace-nav-databases"]')
         ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     await browser.pause(1500);

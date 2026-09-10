@@ -48,7 +48,7 @@ describe('结构对比 MySQL→PG 跨方言旅程 (SD-MYSQL-PG-JOURNEY)', functi
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 15000 });
+    await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 15000 });
     await invokeBackend('save_connection', {
       config: mysqlConnectionConfig(SRC_ID, SRC_NAME, MYSQL_SYNC_DB),
     });

@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 import { DocumentConnectionView } from '../../windows/connection/DocumentConnectionView';
-import { getPluginConnectionView } from '../../plugins/generated';
+import { getPluginConnectionView } from '../../extensions/generated';
 import type { ConnectionViewProps } from './types';
 
 /**

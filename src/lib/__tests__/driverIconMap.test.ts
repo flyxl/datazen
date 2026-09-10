@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DRIVER_ICON_ENTRIES, DRIVER_ICON_PARENTS } from '../../plugins/generated';
+import { DRIVER_ICON_ENTRIES, DRIVER_ICON_PARENTS } from '../../extensions/generated';
 import { getDriverIconMap, getDriverIconParents } from '../databaseTypes';
 
 const BASIC_DRIVER_ICON_KEYS = [

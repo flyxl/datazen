@@ -87,7 +87,7 @@ export type PluginErrEnvelope = WappErrEnvelope;
 export type PluginResponseEnvelope<P = unknown> = WappResponseEnvelope<P>;
 
 /**
- * Connection summary visible to wapps/plugins. Deliberately whitelisted — host,
+ * Connection summary visible to wapps/extensions. Deliberately whitelisted — host,
  * port, username, password and every other credential-bearing field of
  * `ConnectionConfig` are physically absent from this shape.
  */
@@ -155,7 +155,7 @@ function routeFor(type: string): WappPermission | null | undefined {
   return Object.prototype.hasOwnProperty.call(API_ROUTES, type) ? API_ROUTES[type] : undefined;
 }
 
-/** Driver commands plugins/wapps must never invoke even with `command:invoke`. */
+/** Driver commands extensions/wapps must never invoke even with `command:invoke`. */
 export const WAPP_COMMAND_DENYLIST = new Set([
   'execute',
   'create_database',
@@ -245,7 +245,7 @@ async function handleCommandInvoke(wappId: string, payload: unknown) {
   if (!isWappCommandAllowed(command)) {
     throw new BridgeApiError(
       BRIDGE_ERROR.PERMISSION,
-      `Command '${command}' is not permitted for plugins`,
+      `Command '${command}' is not permitted for extensions`,
     );
   }
   // Audit trail without leaking argument contents into logs. The same line

@@ -3,7 +3,7 @@ const pack = {
   'settings.title': 'Настройки',
   'settings.general': 'Общий',
   'settings.extensions.title': 'Расширения',
-  'settings.extensions.empty': 'В этой сборке нет доступных расширений плагинов.',
+  'settings.extensions.empty': 'В этой сборке нет доступных расширений.',
   'settings.theme': 'Тема',
   'settings.theme.pack': 'Пакет тем',
   'settings.colorScheme': 'Color scheme',

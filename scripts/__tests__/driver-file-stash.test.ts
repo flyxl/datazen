@@ -43,7 +43,7 @@ describe('createDriverFileStash', () => {
 
   it('restore brings back exact clean bytes after inject simulation', () => {
     stash.stashManagedFiles();
-    // simulate resolve-plugins writing injected copies
+    // simulate resolve-drivers writing injected copies
     writeManagedFiles(root, INJECTED_CONTENTS);
     for (const f of MANAGED_FILES) {
       expect(readManaged(root, f)).toBe(INJECTED_CONTENTS[f]);
@@ -70,15 +70,15 @@ describe('createDriverFileStash', () => {
 
   it('leaves gitignored codegen files in place on restore', () => {
     stash.stashManagedFiles();
-    mkdirSync(join(root, 'src/plugins'), { recursive: true });
+    mkdirSync(join(root, 'src/extensions'), { recursive: true });
     writeFileSync(
-      stash.workPath('src/plugins/generated.ts'),
-      INJECTED_CONTENTS['src/plugins/generated.ts'],
+      stash.workPath('src/extensions/generated.ts'),
+      INJECTED_CONTENTS['src/extensions/generated.ts'],
     );
     writeManagedFiles(root, INJECTED_CONTENTS);
     stash.restoreManagedFiles();
-    expect(readManaged(root, 'src/plugins/generated.ts')).toBe(
-      INJECTED_CONTENTS['src/plugins/generated.ts'],
+    expect(readManaged(root, 'src/extensions/generated.ts')).toBe(
+      INJECTED_CONTENTS['src/extensions/generated.ts'],
     );
     expect(readManaged(root, 'Cargo.toml')).toBe(CLEAN_CONTENTS['Cargo.toml']);
   });
