@@ -827,7 +827,6 @@ describe('ConnectionNavigatorTree drop database', () => {
     await triggerDropDatabase(findByText, 'db_a');
 
     await waitFor(() => {
-      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'postgres');
       expect(useSchemaStore.getState().currentDatabase).toBe('postgres');
       expect(mockDriverExecute).toHaveBeenCalledWith({
         dbSessionId: 'conn-1',
@@ -855,7 +854,6 @@ describe('ConnectionNavigatorTree drop database', () => {
     await triggerDropDatabase(findByText, 'db_a');
 
     await waitFor(() => {
-      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'postgres');
       expect(mockDriverExecute).toHaveBeenCalledWith({
         dbSessionId: 'conn-1',
         command: 'drop_database',
@@ -2091,7 +2089,6 @@ describe('ConnectionNavigatorTree multi-db tree variants', () => {
     await triggerDropDatabase(findByText, 'db_a');
 
     await waitFor(() => {
-      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'postgres');
       expect(mockDriverExecute).toHaveBeenCalledWith({
         dbSessionId: 'conn-1',
         command: 'drop_database',

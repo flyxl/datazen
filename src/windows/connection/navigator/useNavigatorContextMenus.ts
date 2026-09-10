@@ -481,17 +481,37 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
                       kind: 'warning',
                     });
                     if (!ok || !conn) return;
+
+                    // The DROP is the atomic step: only its failure is a "drop failed".
+                    // The driver (`drop_database`) already moves the connection pool off
+                    // the target and terminates lingering backends itself, so nothing
+                    // else needs to happen (or can be allowed to fail) before it runs.
                     try {
-                      const schemaData = useSchemaStore.getState().schemas.get(dbSessionId);
-                      const activeDb = schemaData?.currentDatabase;
-                      const fallback = resolveDropDatabaseFallback(
-                        schemaData?.databases ?? [],
-                        dbName,
-                        conn.database,
+                      await driverCommands.execute({
+                        dbSessionId,
+                        command: 'drop_database',
+                        input: { name: dbName },
+                      });
+                    } catch (err) {
+                      onShowMessage?.(
+                        extractErrorMessage(err, t('schemaTree.dropDatabaseFailed')),
+                        'error',
                       );
-                      if (fallback) {
-                        await databaseCommands.getTables(dbSessionId, fallback);
-                        if (activeDb === dbName && schemaData) {
+                      return;
+                    }
+
+                    // Drop succeeded. Refresh + repoint the UI, best-effort only: a
+                    // failure here must not be reported as a failed drop.
+                    void (async () => {
+                      try {
+                        const schemaData = useSchemaStore.getState().schemas.get(dbSessionId);
+                        const activeDb = schemaData?.currentDatabase;
+                        const fallback = resolveDropDatabaseFallback(
+                          schemaData?.databases ?? [],
+                          dbName,
+                          conn.database,
+                        );
+                        if (fallback && activeDb === dbName && schemaData) {
                           const cached = dbTablesMap[`${dbSessionId}::${fallback}`];
                           if (cached) {
                             useSchemaStore
@@ -519,23 +539,16 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
                             });
                           }
                         }
+                        clearDbLocalCache(connectionId, dbSessionId, dbName);
+                        await loadForConnection(dbSessionId, {
+                          databaseType: conn.databaseType,
+                          skipLoadTables: true,
+                        });
+                      } catch {
+                        // Intentionally swallow refresh errors: the database was already
+                        // dropped successfully, so a refresh hiccup is not a drop failure.
                       }
-                      await driverCommands.execute({
-                        dbSessionId,
-                        command: 'drop_database',
-                        input: { name: dbName },
-                      });
-                      clearDbLocalCache(connectionId, dbSessionId, dbName);
-                      await loadForConnection(dbSessionId, {
-                        databaseType: conn.databaseType,
-                        skipLoadTables: true,
-                      });
-                    } catch (err) {
-                      onShowMessage?.(
-                        extractErrorMessage(err, t('schemaTree.dropDatabaseFailed')),
-                        'error',
-                      );
-                    }
+                    })();
                   })();
                 }
               : undefined,

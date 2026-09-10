@@ -43,7 +43,13 @@ export function resolveDropDatabaseFallback(
 }
 
 export function extractErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
+  if (typeof error === 'string' && error.trim()) return error;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (error && typeof error === 'object') {
+    const msg = (error as { message?: unknown }).message;
+    if (typeof msg === 'string' && msg.trim()) return msg;
+  }
+  return fallback;
 }
 
 export function quoteRelationName(
