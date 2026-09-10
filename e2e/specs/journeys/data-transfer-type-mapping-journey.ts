@@ -1,8 +1,10 @@
 /**
- * Data Transfer column type mapping → Preview DDL (MySQL → PG, structure create-new).
+ * Data Transfer column type mapping journey → Preview DDL (MySQL → PG,
+ * structure create-new). Cross-dialect type mapping expert scenario: runs as
+ * part of the data-transfer journeys suite.
  */
 import { expect, browser, $ } from '@wdio/globals';
-import { t } from '../i18n.js';
+import { t } from '../../i18n.js';
 import {
   captureJourneyStep,
   closeExtraWindows,
@@ -11,7 +13,7 @@ import {
   openDataTransferWindow,
   selectDzOptionInWrap,
   withSafeModeOff,
-} from '../helpers.js';
+} from '../../helpers.js';
 
 function pgConfig(id: string, name: string, database: string) {
   return {
@@ -57,7 +59,7 @@ async function getPreviewDdl(sourceTable: string): Promise<string> {
   }, sourceTable);
 }
 
-describe('MySQL→PG 类型映射 Preview DDL (DT-TYPE-MYSQL-PG)', () => {
+describe('数据传输 MySQL→PG 类型映射旅程 (DT-TYPE-MYSQL-PG-JOURNEY)', () => {
   let mainWindow: string;
   const STAMP = Date.now().toString(36);
   const SRC_ID = `e2e_dt_mp_type_src_${STAMP}`;

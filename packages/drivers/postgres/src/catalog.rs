@@ -398,6 +398,12 @@ impl PostgresDriver {
         command: &str,
         input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
+        if command == "drop_database" {
+            // PostgreSQL cannot drop the currently-open database, nor one that still
+            // has active backends. Handle it on the driver so we can move our own pool
+            // off the target and terminate remaining connections first.
+            return crate::admin_commands::drop_database_impl(self, handle, &input).await;
+        }
         match execute_standard_sql_command(self, handle, command, input.clone()).await {
             Err(DriverError::Unsupported(_)) => {}
             other => return other,

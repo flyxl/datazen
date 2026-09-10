@@ -1,6 +1,7 @@
+use crate::postgres::PostgresDriver;
 use datazen_driver_api::*;
 use serde_json::json;
-use sqlx::Row;
+use sqlx::{Executor, Row};
 
 pub fn pg_admin_command_definitions() -> Vec<DriverCommandDefinition> {
     let mut cmds = vec![
@@ -478,6 +479,89 @@ pub async fn execute_pg_admin_command(
         "kill_process" => kill_pg_process(pool, &input).await,
         _ => execute_pg_admin_sql(pool, command, input).await,
     }
+}
+
+/// Drop a PostgreSQL database.
+///
+/// `DROP DATABASE` fails if the target is the currently-open database or if any
+/// backend is still connected to it. Unlike other admin commands this therefore
+/// can't run on the handle's own pool when that pool is attached to the target:
+/// we pick a safe sentinel database, move the handle's pool onto it if needed,
+/// terminate any remaining backends on the target, and only then drop it.
+pub(crate) async fn drop_database_impl(
+    driver: &PostgresDriver,
+    handle: &ConnectionHandle,
+    input: &serde_json::Value,
+) -> Result<CommandResult, DriverError> {
+    let name = input["name"]
+        .as_str()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| DriverError::InvalidConfig("name is required".into()))?;
+
+    // The database the handle's pool is currently attached to.
+    let active = driver
+        .active_databases
+        .read()
+        .await
+        .get(&handle.pool_id)
+        .cloned();
+
+    // Pick a sentinel database (≠ target) to run the drop from. The handle's own
+    // pooled connection is always allowed to query pg_database regardless of the
+    // target, so no reconnect is needed just to choose the sentinel.
+    let sentinel = {
+        let pools = driver.pools.read().await;
+        let pool = PostgresDriver::get_pool(&pools, handle)?;
+        let rows = sqlx::query(
+            "SELECT datname FROM pg_database \
+             WHERE datallowconn AND datname <> $1 \
+             ORDER BY (datname = 'postgres') DESC, datname",
+        )
+        .bind(name)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        rows.first()
+            .and_then(|r| r.try_get::<String, _>(0).ok())
+            .ok_or_else(|| {
+                DriverError::QueryFailed(
+                    "No other database available to run DROP DATABASE from \
+                     (switch to a different database first or connect to `postgres`)"
+                        .to_string(),
+                )
+            })?
+    };
+
+    // If our pool is attached to the target, reconnect it to the sentinel first —
+    // otherwise PostgreSQL refuses: "cannot drop the currently open database".
+    // use_database_impl refuses while a transaction is open, which is the safe call.
+    if active.as_deref() == Some(name) {
+        driver.use_database_impl(handle, &sentinel).await?;
+    }
+
+    // Run the drop from the pool (now on the sentinel), terminating any remaining
+    // backends still connected to the target first.
+    {
+        let pools = driver.pools.read().await;
+        let pool = PostgresDriver::get_pool(&pools, handle)?;
+        sqlx::query(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
+             WHERE datname = $1 AND pid <> pg_backend_pid()",
+        )
+        .bind(name)
+        .execute(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        pool.execute(format!("DROP DATABASE {}", quote_ident(name)).as_str())
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+    }
+
+    Ok(CommandResult {
+        data: json!({ "ok": true }),
+    })
 }
 
 async fn fetch_pg_process_list(pool: &sqlx::PgPool) -> Result<CommandResult, DriverError> {
@@ -1089,6 +1173,135 @@ mod tests {
             );
         }
         pool.close().await;
+    }
+
+    /// 临场回归：真实本地 PG 上删除数据库。
+    /// 覆盖两种 PG 特有的失败场景：
+    ///  1) 删除的库上仍有其它连接（先自动 terminate 再 DROP）；
+    ///  2) 删除当前驱动正在连接的库（须先切换池到哨兵库再 DROP）。
+    /// 全程通过 `DatabaseDriver` trait，模拟前端右键「删除数据库」调用。
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn live_drop_database_on_local_pg() {
+        let driver = PostgresDriver::new();
+        let cfg = ConnectionConfig {
+            id: "live-drop-test".into(),
+            name: "live-drop-test".into(),
+            database_type: "postgres".into(),
+            host: Some(std::env::var("PGHOST").unwrap_or_else(|_| "127.0.0.1".into())),
+            port: Some(
+                std::env::var("PGPORT")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(5432),
+            ),
+            username: Some(std::env::var("PGUSER").unwrap_or_else(|_| "postgres".into())),
+            password: Some(std::env::var("PGPASSWORD").unwrap_or_else(|_| "postgres".into())),
+            database: Some("postgres".into()),
+            schema: None,
+            ssl_mode: SslMode::Disable,
+            connection_timeout: 30,
+            max_pool_size: 4,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+            read_only: false,
+            pinned: false,
+        };
+
+        let handle = match driver.connect(&cfg).await {
+            Ok(h) => h,
+            Err(e) => {
+                eprintln!("skip live drop db: {e}");
+                return;
+            }
+        };
+
+        let uniq = format!(
+            "dz_drop_{:x}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
+        let drop_me = format!("{uniq}_a");
+        let current_open = format!("{uniq}_b");
+
+        let cleanup = async {
+            let _ = driver
+                .execute_command(&handle, "drop_database", json!({ "name": drop_me }))
+                .await;
+            let _ = driver
+                .execute_command(&handle, "drop_database", json!({ "name": current_open }))
+                .await;
+        };
+        cleanup.await;
+
+        // ---- 场景 1：库上另有连接（驱动当前在 postgres，不占用目标）----
+        driver
+            .execute_command(&handle, "create_database", json!({ "name": drop_me }))
+            .await
+            .expect("create first db");
+
+        // 模拟其它会话占用该库。
+        let hold = |name: String| {
+            let opts = sqlx::postgres::PgConnectOptions::new()
+                .host(&std::env::var("PGHOST").unwrap_or_else(|_| "127.0.0.1".into()))
+                .port(
+                    std::env::var("PGPORT")
+                        .ok()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(5432),
+                )
+                .username(&std::env::var("PGUSER").unwrap_or_else(|_| "postgres".into()))
+                .password(&std::env::var("PGPASSWORD").unwrap_or_else(|_| "postgres".into()))
+                .database(&name);
+            async move {
+                let p = sqlx::postgres::PgPoolOptions::new()
+                    .max_connections(1)
+                    .connect_with(opts)
+                    .await
+                    .unwrap();
+                let _conn = p.acquire().await.unwrap(); // keep backend attached to the db
+                tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                drop(_conn);
+                p.close().await;
+            }
+        };
+        let _held = tokio::spawn(hold(drop_me.clone()));
+
+        // 等持有连接就绪。
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+        let r1 = driver
+            .execute_command(&handle, "drop_database", json!({ "name": drop_me }))
+            .await;
+        assert!(
+            r1.is_ok(),
+            "should auto-terminate & drop occupied db, got: {r1:?}"
+        );
+
+        // ---- 场景 2：删除驱动当前正连接的库（postgres → 哨兵再删）----
+        driver
+            .execute_command(&handle, "create_database", json!({ "name": current_open }))
+            .await
+            .expect("create second db");
+        driver
+            .use_database(&handle, &current_open)
+            .await
+            .expect("switch pool onto the db we are about to drop");
+
+        let r2 = driver
+            .execute_command(&handle, "drop_database", json!({ "name": current_open }))
+            .await;
+        assert!(
+            r2.is_ok(),
+            "should move pool off the current db and drop it, got: {r2:?}"
+        );
+
+        driver.disconnect(handle).await.ok();
     }
 }
 
