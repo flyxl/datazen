@@ -19,6 +19,7 @@ mark('CSS loaded');
 
 import { hideSplash, waitForStartupTask } from './lib/splash';
 import { installTauriEventUnlistenRaceWorkaround } from './lib/tauriEventCompat';
+import { installDocumentScrollLock } from './lib/documentScrollLock';
 import { bootstrapDefaultIconResolver } from './lib/bootstrapIconResolver';
 import { maybeCheckOnStartup } from './lib/updater';
 import { getWindowKind } from './lib/windowKind';
@@ -43,6 +44,9 @@ setTableSchemaProvider(getCachedTableSchema);
 bootstrapDefaultIconResolver();
 initProExtensions();
 installTauriEventUnlistenRaceWorkaround();
+// Keep the viewport anchored at (0,0): programmatic scrolls (WebDriver
+// scrollIntoView/click, focus()) must never shift the fixed chrome.
+installDocumentScrollLock();
 
 const SETTINGS_PRELOAD_TIMEOUT_MS = 3_000;
 
