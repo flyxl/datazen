@@ -59,6 +59,7 @@ function getAiConfig() {
     endpoint: process.env.E2E_AI_ENDPOINT || 'https://token.sensenova.cn/v1',
     apiKey: process.env.E2E_AI_API_KEY || '',
     model: process.env.E2E_AI_MODEL || 'glm-5.2',
+    protocol: process.env.E2E_AI_PROTOCOL || undefined,
   };
 }
 
@@ -84,7 +85,7 @@ describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
         endpoint: aiConfig.endpoint,
         apiKey: aiConfig.apiKey,
         model: aiConfig.model,
-        extra: null,
+        extra: aiConfig.protocol ? { protocol: aiConfig.protocol } : null,
       },
     });
 
@@ -140,7 +141,7 @@ describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
         endpoint: aiConfig.endpoint,
         apiKey: aiConfig.apiKey,
         model: aiConfig.model,
-        extra: null,
+        extra: aiConfig.protocol ? { protocol: aiConfig.protocol } : null,
       },
     });
   });
@@ -322,7 +323,7 @@ describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
         endpoint: aiConfig.endpoint,
         apiKey: aiConfig.apiKey,
         model: aiConfig.model,
-        extra: null,
+        extra: aiConfig.protocol ? { protocol: aiConfig.protocol } : null,
       },
     });
 
