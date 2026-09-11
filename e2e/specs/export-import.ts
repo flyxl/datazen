@@ -121,7 +121,7 @@ describe('导出和导入 (EI-001~EI-006)', () => {
     try {
       await executeQuery(
         seedSession,
-        'DELETE FROM product; INSERT INTO product (name, status) VALUES ' +
+        'DELETE FROM product WHERE id > 0; INSERT INTO product (name, status) VALUES ' +
           "('Widget','active'),('Gadget','active'),('Thing','pending'),('Gizmo','inactive');",
       );
     } finally {

@@ -143,8 +143,9 @@ describe('详情面板 (DP-001~DP-004)', () => {
     await nameInput.click();
     await nameInput.setValue('AliceEdited');
     await browser.pause(150);
-    // Tab blurs the field → InlineFieldEditor.commit() → onFieldEdit → DB save.
-    await browser.keys(['Tab']);
+    // Enter commits InlineFieldEditor for non-longtext fields (handleKeyDown);
+    // a more deterministic trigger than relying on blur under WebKit.
+    await browser.keys(['Enter']);
     await browser.pause(1500);
   });
 

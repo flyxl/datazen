@@ -63,20 +63,19 @@ async function clickMenuItem(label: string) {
 }
 
 /** Hover a submenu trigger to open its submenu. */
-async function hoverOrganizeSubmenu() {
-  const trigger = await $('[data-testid="web-context-submenu-trigger-organize-submenu"]');
+/** Hover a submenu trigger to open its submenu (deterministic on WebKit). */
+async function hoverSubmenu(testid: string) {
+  const trigger = await $(`[data-testid="${testid}"]`);
   if (await trigger.isExisting()) {
     // Real pointer hover (.moveTo()) does not reliably open submenus under the
     // WebKit WebDriver. WebContextMenu opens a submenu on onMouseEnter / onFocus,
     // so dispatch those DOM events deterministically.
     await trigger.moveTo().catch(() => {});
-    await browser.execute(() => {
-      const t = document.querySelector(
-        '[data-testid="web-context-submenu-trigger-organize-submenu"]',
-      ) as HTMLElement | null;
+    await browser.execute((sel: string) => {
+      const t = document.querySelector(sel) as HTMLElement | null;
       t?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true }));
       t?.focus();
-    });
+    }, `[data-testid="${testid}"]`);
     await browser
       .waitUntil(
         () =>
@@ -84,11 +83,13 @@ async function hoverOrganizeSubmenu() {
             const sub = document.querySelector('[data-testid="web-context-submenu"]');
             return !!sub && sub.querySelectorAll('[data-testid^="web-context-item-"]').length > 0;
           }),
-        { timeout: 3000, timeoutMsg: '组织子菜单未打开' },
+        { timeout: 3000, timeoutMsg: '子菜单未打开' },
       )
       .catch(() => {});
   }
 }
+
+const hoverOrganizeSubmenu = () => hoverSubmenu('web-context-submenu-trigger-organize-submenu');
 
 /** 关闭菜单。 */
 async function dismissMenu() {
@@ -185,16 +186,10 @@ describe('运维 §5.4: 连接 Pin 置顶 (OPS-PIN)', () => {
     });
     expect(organizeText).toContain(t('main.ctx.pinConnection'));
 
-    const connectionTrigger = await $(
-      '[data-testid="web-context-submenu-trigger-connection-submenu"]',
-    );
-    await connectionTrigger.moveTo();
-    await browser.pause(400);
+    await hoverSubmenu('web-context-submenu-trigger-connection-submenu');
     expect(await hasMenuItemId('object-filter')).toBe(true);
 
-    const serverTrigger = await $('[data-testid="web-context-submenu-trigger-server-submenu"]');
-    await serverTrigger.moveTo();
-    await browser.pause(400);
+    await hoverSubmenu('web-context-submenu-trigger-server-submenu');
     expect(await hasMenuItemId('process-list')).toBe(true);
     expect(await hasMenuItemId('server-status')).toBe(true);
     await dismissMenu();
