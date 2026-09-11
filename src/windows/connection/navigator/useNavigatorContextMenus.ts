@@ -966,15 +966,18 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
     (e: React.MouseEvent, catKey: string, catId: string, connectionId: string) => {
       e.preventDefault();
       e.stopPropagation();
+      const conn = connections.find((c) => c.id === connectionId);
+      const dbMeta = conn ? DB_REGISTRY[conn.databaseType] : undefined;
+      const readOnly = conn?.readOnly === true || dbMeta?.readOnly === true;
       showWebContextMenu(
         buildSchemaTreeContextMenuItems({
           kind: 'category',
           labels: schemaLabels,
+          readOnly,
           handlers: {
             onRefresh: () => {
               const entry = activeConnections[connectionId];
               if (!entry?.dbSessionId) return;
-              const conn = connections.find((c) => c.id === connectionId);
               if (!conn) return;
 
               const parts = catKey.split('::');
@@ -997,6 +1000,13 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
                 void reloadDbObjectCategory(entry.dbSessionId, catKey, catId);
               }
             },
+            onNewTable:
+              catId === 'tables' && !readOnly && viewActions?.createTable
+                ? () => {
+                    onSelectConnection(connectionId);
+                    viewActions.createTable!();
+                  }
+                : undefined,
           },
           categoryId: catId,
         }),
@@ -1007,9 +1017,11 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
       activeConnections,
       connections,
       loadForConnection,
+      onSelectConnection,
       reloadDbObjectCategory,
       reloadDbTables,
       schemaLabels,
+      viewActions,
     ],
   );
 

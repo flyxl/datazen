@@ -685,10 +685,13 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
         await rightClick('[data-tree-node="table"]');
       }
       await clickMenuItemById('copy-ddl');
-      await browser.pause(2000);
 
-      const clip = await readStubbedClipboard();
-      expect(clip).toContain('CREATE TABLE');
+      // copy-ddl fetches the DDL asynchronously (native registry / DB query), so poll
+      // the stubbed clipboard until it is replaced by the DDL rather than reading once.
+      await browser.waitUntil(async () => (await readStubbedClipboard()).includes('CREATE TABLE'), {
+        timeout: 20000,
+        timeoutMsg: '复制 DDL 后剪贴板未出现 CREATE TABLE',
+      });
     });
 
     it('NCM-043: 表-打开应显示表数据', async () => {
