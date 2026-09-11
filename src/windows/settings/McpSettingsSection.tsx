@@ -304,7 +304,7 @@ export function McpSettingsSection({
               className={cn(
                 'rounded px-2 py-1 text-xs',
                 agentTarget === target
-                  ? 'bg-accent text-white'
+                  ? 'bg-accent text-on-accent'
                   : 'bg-surface-raised text-fg-secondary hover:text-fg',
               )}
             >

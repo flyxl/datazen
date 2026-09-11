@@ -7,10 +7,16 @@
   --c-surface-raised: #e2e8f0;
   --c-surface-inset: #ffffff;
   --c-edge: #e2e8f0;
+  --c-edge-hi: #cbd5e1;
   --c-fg: #0f172a;
   --c-fg-secondary: #475569;
   --c-fg-muted: #94a3b8;
   --c-accent: #3b82f6;
+  --c-accent-2: #2563eb;
+  --c-accent-deep: #1e40af;
+  --c-accent-dim: rgba(59, 130, 246, 0.1);
+  --c-accent-ring: rgba(59, 130, 246, 0.12);
+  --c-on-accent: #ffffff;
   --c-success: #22c55e;
   --c-warning: #f59e0b;
   --c-danger: #ef4444;
@@ -19,6 +25,18 @@
   --c-titlebar-fg: #f1f5f9;
   --c-titlebar-fg-muted: #cbd5e1;
   --c-titlebar-hover: rgba(255, 255, 255, 0.12);
+
+  --radius-sm: 9px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+
+  --shadow-card: 0 8px 24px -12px rgba(15, 23, 42, 0.25);
+  --shadow-glow: 0 8px 24px -12px rgba(59, 130, 246, 0.25);
+
+  --bg-gradient:
+    radial-gradient(120% 70% at 0% 0%, rgba(59, 130, 246, 0.08) 0%, transparent 55%),
+    linear-gradient(180deg, #ffffff, #f1f5f9);
 
   --font-sans:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC',
@@ -55,10 +73,16 @@
   --c-surface-raised: #1e293b;
   --c-surface-inset: #060913;
   --c-edge: #334155;
+  --c-edge-hi: #475569;
   --c-fg: #f1f5f9;
   --c-fg-secondary: #cbd5e1;
   --c-fg-muted: #64748b;
   --c-accent: #60a5fa;
+  --c-accent-2: #93c5fd;
+  --c-accent-deep: #2563eb;
+  --c-accent-dim: rgba(96, 165, 250, 0.12);
+  --c-accent-ring: rgba(96, 165, 250, 0.12);
+  --c-on-accent: #04121b;
   --c-success: #22c55e;
   --c-warning: #f59e0b;
   --c-danger: #f87171;
@@ -67,6 +91,18 @@
   --c-titlebar-fg: #e2e8f0;
   --c-titlebar-fg-muted: #94a3b8;
   --c-titlebar-hover: rgba(255, 255, 255, 0.1);
+
+  --radius-sm: 9px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+
+  --shadow-card: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 30px 90px -40px rgba(96, 165, 250, 0.25);
+
+  --bg-gradient:
+    radial-gradient(120% 70% at 0% 0%, rgba(96, 165, 250, 0.13) 0%, transparent 55%),
+    linear-gradient(180deg, #111827, #060913);
 
   /* CodeMirror syntax (slate-blue, sky accents, on black) */
   --cm-keyword: #60a5fa;

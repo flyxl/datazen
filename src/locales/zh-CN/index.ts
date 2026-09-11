@@ -11,6 +11,7 @@ import sync from './sync';
 import workflows from './workflows';
 import dashboard from './dashboard';
 import mcp from './mcp';
+import onboarding from './onboarding';
 
 const zhCN = {
   ...core,
@@ -25,6 +26,7 @@ const zhCN = {
   ...workflows,
   ...dashboard,
   ...mcp,
+  ...onboarding,
 } as const;
 
 export default zhCN;

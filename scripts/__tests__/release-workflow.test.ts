@@ -32,9 +32,12 @@ describe('Windows release packaging', () => {
 
   it('publishes an installer-free portable archive with runtime resources', () => {
     expect(releaseWorkflow).toContain('Package Windows portable archive');
-    expect(releaseWorkflow).toContain('DataZen-windows-${version}-portable-${label}.zip');
+    // New naming: DataZen-{version}-{osLabel}[-variant]-portable.zip
+    expect(releaseWorkflow).toContain('DataZen-$version-$osLabel-portable.zip');
     expect(releaseWorkflow).toContain('Copy-Item -LiteralPath $prompts');
-    expect(releaseWorkflow).toContain('*-windows-*-portable-windows-x64.zip');
+    // Portable includes Pro extension resources
+    expect(releaseWorkflow).toContain('builtin-ep');
+    expect(releaseWorkflow).toContain('Copy-Item -LiteralPath $builtinEp');
   });
 
   it('builds Pro edition by default in release workflow and excludes pure community builds', () => {
@@ -43,5 +46,24 @@ describe('Windows release packaging', () => {
     expect(releaseWorkflow).toContain('needs_pro: true');
     expect(releaseWorkflow).not.toMatch(/edition:\s*"community"/);
     expect(releaseWorkflow).toMatch(/variant_suffix:\s*"-all"/);
+  });
+
+  it('drops Akulaku Linux matrix entries', () => {
+    // Akulaku should only have Windows and macOS — no ubuntu / linux
+    const akulakuBlock = releaseWorkflow.slice(
+      releaseWorkflow.indexOf('# ── Akulaku'),
+      releaseWorkflow.indexOf('# ── Akulaku') + 500,
+    );
+    expect(akulakuBlock).not.toContain('ubuntu-22.04');
+    expect(akulakuBlock).not.toContain('linux-x64');
+  });
+
+  it('uses canonical artifact naming: DataZen-{Version}-{Platform}-{Arch}[-{Variant}]-{Type}.{ext}', () => {
+    expect(releaseWorkflow).toContain('Rename artifacts with canonical names');
+    // Canonical name function
+    expect(releaseWorkflow).toContain('DataZen-${VERSION}-${PLATFORM}-${ARCH}');
+    // Pro verification step checks actual bundled output (.app / deb), not staging dir
+    expect(releaseWorkflow).toContain('Verify Pro extension is bundled in app');
+    expect(releaseWorkflow).toContain('builtin-ep/sql-editor-pro/dist/index.esm.js');
   });
 });

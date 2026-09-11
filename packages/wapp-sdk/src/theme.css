@@ -13,23 +13,23 @@
 /* ---- page scaffold ------------------------------------------------------ */
 
 .dz-root {
-  background: var(--c-surface, #18181b);
-  color: var(--c-fg, #fafafa);
+  background: var(--c-surface, #0b0e14);
+  color: var(--c-fg, #e6eaf2);
   font-family: inherit;
   font-size: 13px;
   line-height: 1.5;
 }
 
 .dz-muted {
-  color: var(--c-fg-muted, #a1a1aa);
+  color: var(--c-fg-muted, #5f6879);
 }
 
 .dz-secondary {
-  color: var(--c-fg-secondary, #d4d4d8);
+  color: var(--c-fg-secondary, #8b94a7);
 }
 
 .dz-accent {
-  color: var(--c-accent, #6366f1);
+  color: var(--c-accent, #4fc3f7);
 }
 
 /* ---- buttons ------------------------------------------------------------ */
@@ -39,10 +39,10 @@
   align-items: center;
   gap: 0.375rem;
   padding: 0.375rem 0.75rem;
-  border: 1px solid var(--c-edge, #3f3f46);
+  border: 1px solid var(--c-edge, #1e2534);
   border-radius: 0.375rem;
-  background: var(--c-surface-raised, #27272a);
-  color: var(--c-fg, #fafafa);
+  background: var(--c-surface-raised, #161b28);
+  color: var(--c-fg, #e6eaf2);
   font-size: inherit;
   cursor: pointer;
   transition:
@@ -52,12 +52,12 @@
 }
 
 .dz-btn:hover:not(:disabled) {
-  background: var(--c-surface-alt, #1f1f23);
-  border-color: var(--c-accent, #6366f1);
+  background: var(--c-surface-alt, #0e121b);
+  border-color: var(--c-edge-hi, #2a3549);
 }
 
 .dz-btn:focus-visible {
-  outline: 2px solid var(--c-accent, #6366f1);
+  outline: 2px solid var(--c-accent, #4fc3f7);
   outline-offset: 1px;
 }
 
@@ -67,18 +67,25 @@
 }
 
 .dz-btn--primary {
-  background: var(--c-accent, #6366f1);
+  background: var(--c-accent, #4fc3f7);
   border-color: transparent;
+  color: var(--c-on-accent, #04121b);
 }
 
 .dz-btn--primary:hover:not(:disabled) {
-  background: var(--c-accent-deep, #4f46e5);
+  background: var(--c-accent-2, #6fd0fa);
+  border-color: transparent;
+}
+
+.dz-btn--primary:active:not(:disabled) {
+  background: var(--c-accent-deep, #2f7fa6);
   border-color: transparent;
 }
 
 .dz-btn--danger {
-  background: var(--c-danger, #ef4444);
+  background: var(--c-danger, #ff7b72);
   border-color: transparent;
+  color: var(--c-on-accent, #04121b);
 }
 
 .dz-btn--danger:hover:not(:disabled) {
@@ -93,10 +100,10 @@
 .dz-select {
   width: 100%;
   padding: 0.375rem 0.625rem;
-  border: 1px solid var(--c-edge, #3f3f46);
+  border: 1px solid var(--c-edge, #1e2534);
   border-radius: 0.375rem;
-  background: var(--c-surface-inset, #101012);
-  color: var(--c-fg, #fafafa);
+  background: var(--c-surface-inset, #0a0d14);
+  color: var(--c-fg, #e6eaf2);
   font-size: inherit;
 }
 
@@ -107,30 +114,31 @@
 
 .dz-input::placeholder,
 .dz-textarea::placeholder {
-  color: var(--c-fg-muted, #a1a1aa);
+  color: var(--c-fg-muted, #5f6879);
 }
 
 .dz-input:focus-visible,
 .dz-textarea:focus-visible,
 .dz-select:focus-visible {
   outline: none;
-  border-color: var(--c-accent, #6366f1);
+  border-color: var(--c-accent, #4fc3f7);
+  box-shadow: 0 0 0 3px var(--c-accent-ring, rgba(79, 195, 247, 0.09));
 }
 
 .dz-label {
   display: block;
   margin-bottom: 0.25rem;
   font-size: 0.8125rem;
-  color: var(--c-fg-secondary, #d4d4d8);
+  color: var(--c-fg-secondary, #8b94a7);
 }
 
 /* ---- card --------------------------------------------------------------- */
 
 .dz-card {
-  border: 1px solid var(--c-edge, #3f3f46);
+  border: 1px solid var(--c-edge, #1e2534);
   border-radius: 0.5rem;
-  background: var(--c-surface-raised, #27272a);
-  color: var(--c-fg, #fafafa);
+  background: var(--c-surface-raised, #161b28);
+  color: var(--c-fg, #e6eaf2);
   padding: 1rem;
 }
 
@@ -138,7 +146,7 @@
   margin: 0 0 0.5rem;
   font-size: 0.9375rem;
   font-weight: 600;
-  color: var(--c-fg, #fafafa);
+  color: var(--c-fg, #e6eaf2);
 }
 
 /* ---- table -------------------------------------------------------------- */
@@ -147,13 +155,13 @@
   width: 100%;
   border-collapse: collapse;
   font-size: inherit;
-  color: var(--c-fg, #fafafa);
+  color: var(--c-fg, #e6eaf2);
 }
 
 .dz-table th,
 .dz-table td {
   padding: 0.375rem 0.625rem;
-  border-bottom: 1px solid var(--c-edge, #3f3f46);
+  border-bottom: 1px solid var(--c-edge, #1e2534);
   text-align: left;
   overflow-wrap: anywhere;
 }
@@ -161,34 +169,34 @@
 .dz-table thead th {
   position: sticky;
   top: 0;
-  background: var(--c-surface-alt, #1f1f23);
-  color: var(--c-fg-secondary, #d4d4d8);
+  background: var(--c-surface-alt, #0e121b);
+  color: var(--c-fg-secondary, #8b94a7);
   font-weight: 600;
   white-space: nowrap;
 }
 
 .dz-table tbody tr:hover td {
-  background: var(--c-surface-inset, #101012);
+  background: var(--c-surface-inset, #0a0d14);
 }
 
 /* Cell tint helpers mirroring the host DataTable type-color contract. */
 .dz-cell-null {
-  color: var(--dt-null, #71717a);
+  color: var(--dt-null, #5f6879);
 }
 .dz-cell-bool {
-  color: var(--dt-bool, #fb923c);
+  color: var(--dt-bool, #4fc3f7);
 }
 .dz-cell-number {
-  color: var(--dt-number, #38bdf8);
+  color: var(--dt-number, #fbbf24);
 }
 .dz-cell-datetime {
-  color: var(--dt-datetime, #a78bfa);
+  color: var(--dt-datetime, #5eead4);
 }
 .dz-cell-json {
-  color: var(--dt-json, #facc15);
+  color: var(--dt-json, #67e8f9);
 }
 .dz-cell-text {
-  color: var(--dt-text, #e4e4e7);
+  color: var(--dt-text, #8b94a7);
 }
 .dz-cell-binary {
   color: var(--dt-binary, #fb7185);
@@ -202,17 +210,26 @@
   padding: 0.125rem 0.5rem;
   border-radius: 9999px;
   font-size: 0.75rem;
-  background: var(--c-surface-inset, #101012);
-  border: 1px solid var(--c-edge, #3f3f46);
-  color: var(--c-fg-secondary, #d4d4d8);
+  background: var(--c-surface-inset, #0a0d14);
+  border: 1px solid var(--c-edge, #1e2534);
+  color: var(--c-fg-secondary, #8b94a7);
 }
 
 .dz-badge--success {
-  color: var(--c-success, #22c55e);
+  color: var(--c-success, #5fd08a);
 }
+
 .dz-badge--warning {
-  color: var(--c-warning, #eab308);
+  color: var(--c-warning, #fbbf24);
 }
+
 .dz-badge--danger {
-  color: var(--c-danger, #ef4444);
+  color: var(--c-danger, #ff7b72);
+}
+
+/* ---- selection ---------------------------------------------------------- */
+
+.dz-selected {
+  background: var(--c-accent-dim, rgba(79, 195, 247, 0.12));
+  border-color: var(--c-edge-hi, #2a3549);
 }

@@ -388,7 +388,7 @@ export function QuerySidebarSection({
                 data-testid="history-scope-current"
                 aria-pressed={historyScopeMode === 'current'}
                 onClick={() => setHistoryScopeMode('current')}
-                className={`rounded px-2 py-0.5 text-[11px] ${historyScopeMode === 'current' ? 'bg-accent text-white' : 'border border-edge text-fg-muted hover:text-fg'}`}
+                className={`rounded px-2 py-0.5 text-[11px] ${historyScopeMode === 'current' ? 'bg-accent text-on-accent' : 'border border-edge text-fg-muted hover:text-fg'}`}
               >
                 {t('query.historyScopeCurrent')}
               </button>
@@ -397,7 +397,7 @@ export function QuerySidebarSection({
                 data-testid="history-scope-all"
                 aria-pressed={historyScopeMode === 'all'}
                 onClick={() => setHistoryScopeMode('all')}
-                className={`rounded px-2 py-0.5 text-[11px] ${historyScopeMode === 'all' ? 'bg-accent text-white' : 'border border-edge text-fg-muted hover:text-fg'}`}
+                className={`rounded px-2 py-0.5 text-[11px] ${historyScopeMode === 'all' ? 'bg-accent text-on-accent' : 'border border-edge text-fg-muted hover:text-fg'}`}
               >
                 {t('query.historyScopeAll')}
               </button>

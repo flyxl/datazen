@@ -645,7 +645,7 @@ export function DataTransferWindow() {
                   className={cn(
                     'flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold',
                     i === stepIndex
-                      ? 'bg-accent text-white'
+                      ? 'bg-accent text-on-accent'
                       : i < stepIndex
                         ? 'bg-accent/20 text-accent'
                         : 'bg-surface-raised text-fg-muted',

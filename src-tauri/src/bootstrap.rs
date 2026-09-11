@@ -481,6 +481,7 @@ pub fn run() {
             crate::commands::get_settings,
             crate::commands::get_system_ui_language,
             crate::commands::save_settings,
+            crate::commands::seed_sample_db,
             crate::commands::get_log_path,
             crate::commands::get_app_executable_path,
             crate::commands::open_path,

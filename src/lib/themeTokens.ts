@@ -17,13 +17,18 @@ export const THEME_TOKENS = [
   '--c-surface-inset',
   // Borders
   '--c-edge',
+  '--c-edge-hi',
   // Foreground / text
   '--c-fg',
   '--c-fg-secondary',
   '--c-fg-muted',
   // Accent & status
   '--c-accent',
+  '--c-accent-2',
   '--c-accent-deep',
+  '--c-accent-dim',
+  '--c-accent-ring',
+  '--c-on-accent',
   '--c-success',
   '--c-warning',
   '--c-danger',

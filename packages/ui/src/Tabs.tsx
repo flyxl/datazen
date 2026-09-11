@@ -30,9 +30,9 @@ export function Tabs({ items, activeId, onChange, trailing, className }: TabsPro
               type="button"
               onClick={() => onChange(item.id)}
               className={cn(
-                'shrink-0 h-8 rounded-md px-3 text-xs font-medium transition-colors',
+                'shrink-0 h-8 rounded-[9px] px-3 text-xs font-medium transition-colors',
                 selected
-                  ? 'bg-surface text-fg border border-edge'
+                  ? 'bg-accent-dim text-fg border border-accent/20'
                   : 'text-fg-muted hover:text-fg hover:bg-surface-raised/40',
               )}
             >

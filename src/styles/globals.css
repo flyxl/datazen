@@ -158,20 +158,21 @@ div.text-danger,
   user-select: text;
 }
 
-/* ── Scrollbar ── */
+/* ── Scrollbar (demo: 9px dark thumb with inset border) ── */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--c-surface-inset);
-  border-radius: 4px;
+  background: #1c2331;
+  border-radius: 9px;
+  border: 2px solid var(--c-surface);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--c-fg-muted);
+  background: var(--c-edge-hi);
 }
 ::-webkit-scrollbar-corner {
   background: transparent;
@@ -186,6 +187,18 @@ div.text-danger,
   display: none;
   width: 0;
   height: 0;
+}
+
+/* ── Demo step transition (startup-journey style) ── */
+@keyframes dz-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* ── ReactFlow viewport: remove will-change to avoid sub-pixel blur ── */

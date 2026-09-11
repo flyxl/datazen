@@ -10,9 +10,9 @@ export function Input({ className, ...props }: InputProps) {
       autoCorrect="off"
       spellCheck={false}
       className={cn(
-        'h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none',
+        'h-10 w-full rounded-[9px] border border-edge bg-surface-inset px-3 font-mono text-[13px] text-fg outline-none',
         'placeholder:text-fg-muted',
-        'focus:border-accent focus:ring-2 focus:ring-accent/25',
+        'focus:border-accent focus:ring-[3px] focus:ring-accent-ring focus:bg-surface-inset',
         'disabled:cursor-not-allowed disabled:opacity-50',
         className,
       )}

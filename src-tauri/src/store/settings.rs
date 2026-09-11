@@ -3,6 +3,14 @@ use crate::mcp::permission::McpPermissionMode;
 use crate::mcp::McpServerConfig;
 use serde::{Deserialize, Serialize};
 
+/// Onboarding wizard completion state.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OnboardingState {
+    pub completed: bool,
+    pub version: i32,
+}
+
 /// Light / dark / system mode plus optional installed theme pack.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -115,6 +123,9 @@ pub struct AppSettings {
     /// SQL syntax highlighting color preset ('default' follows the active theme pack).
     #[serde(default)]
     pub sql_syntax_theme: Option<String>,
+    /// Onboarding wizard state. `None` or `version < 1` → show wizard.
+    #[serde(default)]
+    pub onboarding: Option<OnboardingState>,
 }
 
 fn default_sql_execution_strategy() -> String {
@@ -193,6 +204,7 @@ impl Default for AppSettings {
             custom_keymap: std::collections::HashMap::new(),
             sql_execution_strategy: default_sql_execution_strategy(),
             sql_syntax_theme: None,
+            onboarding: None,
         }
     }
 }

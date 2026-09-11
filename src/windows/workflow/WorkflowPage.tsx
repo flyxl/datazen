@@ -979,7 +979,7 @@ export function WorkflowPage({
                     <button
                       type="button"
                       data-testid="workflow-yaml-save"
-                      className="rounded-md bg-accent px-3 py-1.5 text-xs text-white hover:opacity-90"
+                      className="rounded-md bg-accent px-3 py-1.5 text-xs text-on-accent hover:opacity-90"
                       onClick={() => void handleSaveYaml(activePanel.id, activePanel.yamlText)}
                     >
                       {t('common.save')}

@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 
-export const DEFAULT_SURFACE_DARK = '#0b1220';
+export const DEFAULT_SURFACE_DARK = '#0b0e14';
 export const DEFAULT_SURFACE_LIGHT = '#f8fafc';
 
 const SAFE_HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;

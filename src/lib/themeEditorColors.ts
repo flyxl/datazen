@@ -35,18 +35,18 @@ const CM_VARS: Record<keyof EditorColorContract, string> = {
   cursor: '--cm-cursor',
 };
 
-/** Host dark defaults (Table Workspace navy); used when CSS vars are unset. */
+/** Host dark defaults (demo startup-journey palette); used when CSS vars are unset. */
 export const DEFAULT_EDITOR_COLORS: EditorColorContract = {
   keyword: '#93c5fd',
   string: '#6ee7b7',
   number: '#fbbf24',
-  comment: '#9ca3af',
+  comment: '#5f6879',
   operator: '#67e8f9',
-  punctuation: '#d1d5db',
-  foreground: '#f3f4f6',
-  background: '#0b1220',
-  selection: 'rgba(59, 130, 246, 0.32)',
-  cursor: '#f3f4f6',
+  punctuation: '#8b94a7',
+  foreground: '#e6eaf2',
+  background: '#0b0e14',
+  selection: 'rgba(79, 195, 247, 0.25)',
+  cursor: '#e6eaf2',
 };
 
 const EDITOR_JSON_KEYS = new Set<string>(Object.keys(CM_VARS));

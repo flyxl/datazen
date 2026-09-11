@@ -12,6 +12,7 @@ import sync from './sync';
 import workflows from './workflows';
 import dashboard from './dashboard';
 import mcp from './mcp';
+import onboarding from './onboarding';
 
 const en: Record<TranslationKey, string> = {
   ...core,
@@ -26,6 +27,7 @@ const en: Record<TranslationKey, string> = {
   ...workflows,
   ...dashboard,
   ...mcp,
+  ...onboarding,
 };
 
 export default en;

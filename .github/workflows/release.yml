@@ -86,7 +86,7 @@ jobs:
             variant_suffix: "-all"
             needs_git: false
             needs_pro: true
-          # ── Akulaku Pro：定制驱动部署（全核心 + MongoDB + Kiwi + Superset + SQL Editor Pro）──
+          # ── Akulaku：定制驱动部署（全核心 + MongoDB + Kiwi + Superset + Pro；仅 Windows / macOS）──
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             os_label: windows-x64
@@ -106,14 +106,6 @@ jobs:
           - platform: macos-latest
             target: x86_64-apple-darwin
             os_label: macos-x64
-            drivers: "postgres,mysql,sqlite,redis,mongodb,kiwi,superset"
-            edition: "pro"
-            variant_suffix: "-akulaku"
-            needs_git: true
-            needs_pro: true
-          - platform: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            os_label: linux-x64
             drivers: "postgres,mysql,sqlite,redis,mongodb,kiwi,superset"
             edition: "pro"
             variant_suffix: "-akulaku"
@@ -298,6 +290,60 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ matrix.variant_suffix == '' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+      - name: Verify Pro extension is bundled in app
+        if: matrix.needs_pro
+        shell: bash
+        run: |
+          # Note: with-driver-inject.mjs restores staging dirs after the child command,
+          # so src-tauri/resources/builtin-ep/ may already be cleared here.
+          # We verify the actual bundled output instead.
+          BUNDLE_DIR="target/${{ matrix.target }}/release/bundle"
+          FAIL=0
+
+          # ── macOS: check .app bundle ──
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            APP_DIR=$(find "$BUNDLE_DIR/macos" -name "*.app" -type d 2>/dev/null | head -1)
+            if [ -z "$APP_DIR" ]; then
+              echo "::error::macOS .app bundle not found in $BUNDLE_DIR/macos"
+              ls -la "$BUNDLE_DIR/macos/" 2>/dev/null || echo "(no macOS bundle dir)"
+              FAIL=1
+            elif [ -f "$APP_DIR/Contents/Resources/builtin-ep/sql-editor-pro/dist/index.esm.js" ]; then
+              echo "✓ Pro extension found in macOS .app: $APP_DIR"
+              ls -la "$APP_DIR/Contents/Resources/builtin-ep/sql-editor-pro/"
+            else
+              echo "::error::Pro extension (builtin-ep) not found in macOS .app bundle"
+              echo "Contents of $APP_DIR/Contents/Resources/:"
+              ls -laR "$APP_DIR/Contents/Resources/" 2>/dev/null | head -40
+              FAIL=1
+            fi
+          fi
+
+          # ── Linux: check deb package ──
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            DEB=$(find "$BUNDLE_DIR/deb" -name "*.deb" 2>/dev/null | head -1)
+            if [ -z "$DEB" ]; then
+              echo "::error::Linux deb package not found in $BUNDLE_DIR/deb"
+              FAIL=1
+            elif dpkg-deb -c "$DEB" 2>/dev/null | grep -q "builtin-ep/sql-editor-pro"; then
+              echo "✓ Pro extension found in Linux deb: $DEB"
+              dpkg-deb -c "$DEB" 2>/dev/null | grep "builtin-ep/sql-editor-pro"
+            else
+              echo "::error::Pro extension (builtin-ep) not found in Linux deb package"
+              echo "deb contents with 'builtin-ep':"
+              dpkg-deb -c "$DEB" 2>/dev/null | grep -i "builtin-ep" || echo "(no builtin-ep entries)"
+              echo "deb contents with 'prompts' (for reference):"
+              dpkg-deb -c "$DEB" 2>/dev/null | grep "prompts" | head -5
+              FAIL=1
+            fi
+          fi
+
+          # ── Windows: NSIS installer check (portable is verified in its own step) ──
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            echo "ℹ Windows portable archive is verified in the dedicated packaging step."
+          fi
+
+          exit $FAIL
+
       - name: Pack signed SQL Editor Pro .dzx (Default Pro, once)
         if: matrix.needs_pro && matrix.variant_suffix == '' && matrix.os_label == 'linux-x64'
         shell: bash
@@ -312,6 +358,7 @@ jobs:
         env:
           DATAZEN_EP_SIGNING_PRIVATE_KEY: ${{ secrets.DATAZEN_EP_SIGNING_PRIVATE_KEY }}
 
+      # ── Windows portable: includes runtime resources (prompts + Pro builtin-ep) ──
       - name: Package Windows portable archive
         if: runner.os == 'Windows'
         shell: pwsh
@@ -329,7 +376,7 @@ jobs:
             throw "Portable resources not found: $prompts"
           }
 
-          $stageDir = Join-Path $env:RUNNER_TEMP "datazen-portable-${{ matrix.variant_suffix }}"
+          $stageDir = Join-Path $env:RUNNER_TEMP "datazen-portable"
           if (Test-Path -LiteralPath $stageDir) {
             Remove-Item -LiteralPath $stageDir -Recurse -Force
           }
@@ -337,76 +384,132 @@ jobs:
           Copy-Item -LiteralPath $executable -Destination (Join-Path $stageDir "DataZen.exe")
           Copy-Item -LiteralPath $prompts -Destination (Join-Path $stageDir "prompts") -Recurse
 
+          # Include Pro extension resources (builtin-ep) for full feature parity with installers.
+          $builtinEp = Join-Path $releaseDir "builtin-ep"
+          if (Test-Path -LiteralPath $builtinEp -PathType Container) {
+            Copy-Item -LiteralPath $builtinEp -Destination (Join-Path $stageDir "builtin-ep") -Recurse
+            Write-Host "Included builtin-ep (Pro extensions) in portable archive"
+          } else {
+            Write-Warning "builtin-ep directory not found at $builtinEp — portable archive will not include Pro extensions"
+          }
+
           # Keep future adjacent runtime libraries with the portable executable.
           Get-ChildItem -LiteralPath $releaseDir -File -Filter "*.dll" | ForEach-Object {
             Copy-Item -LiteralPath $_.FullName -Destination $stageDir
           }
 
           $version = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
-          $label = "${{ matrix.os_label }}${{ matrix.variant_suffix }}"
+          $osLabel = "${{ matrix.os_label }}"
+          $variant = "${{ matrix.variant_suffix }}"
+          $variantTrimmed = $variant.TrimStart('-')
           New-Item -ItemType Directory -Path "artifacts" -Force | Out-Null
-          # Put the OS immediately after the product name so GitHub's
-          # lexicographic asset sorting keeps every OS together. Keep the
-          # detailed label at the end for compatibility with existing links.
-          $archive = Join-Path "artifacts" "DataZen-windows-${version}-portable-${label}.zip"
+          if ($variantTrimmed) {
+            $archive = Join-Path "artifacts" "DataZen-$version-$osLabel-portable-$variantTrimmed.zip"
+          } else {
+            $archive = Join-Path "artifacts" "DataZen-$version-$osLabel-portable.zip"
+          }
           Compress-Archive -Path (Join-Path $stageDir "*") -DestinationPath $archive -CompressionLevel Optimal -Force
           Write-Host "Created portable archive: $archive"
 
-      - name: Rename artifacts with platform and variant label
+      # ── Canonical artifact naming: DataZen-{Version}-{Platform}-{Arch}[-{Variant}]-{Type}.{ext} ──
+      - name: Rename artifacts with canonical names
         shell: bash
         run: |
           BUNDLE_DIR="target/${{ matrix.target }}/release/bundle"
-          LABEL="${{ matrix.os_label }}${{ matrix.variant_suffix }}"
-          OS_GROUP="${{ matrix.os_label }}"
-          OS_GROUP="${OS_GROUP%%-*}"
+          VERSION=$(node -p "require('./package.json').version")
+          OS_LABEL="${{ matrix.os_label }}"
+          VARIANT="${{ matrix.variant_suffix }}"
+          VARIANT="${VARIANT#-}"          # strip leading hyphen
+          PLATFORM="${OS_LABEL%%-*}"      # macos / windows / linux
+          ARCH="${OS_LABEL#*-}"           # arm64 / x64
+
           mkdir -p artifacts
 
+          # Map original basename → canonical basename (for sig resolution)
+          declare -A RENAME
+
+          installer_type() {
+            local name="$1"
+            case "$name" in
+              *.app.tar.gz) echo "tar" ;;
+              *.tar.gz)     echo "tar" ;;
+              *.dmg)        echo "dmg" ;;
+              *.exe)        echo "nsis" ;;
+              *.AppImage)   echo "appimage" ;;
+              *.deb)        echo "deb" ;;
+              *.rpm)        echo "rpm" ;;
+              *)            echo "" ;;
+            esac
+          }
+
+          file_ext() {
+            local name="$1"
+            case "$name" in
+              *.app.tar.gz) echo "tar.gz" ;;
+              *.tar.gz)     echo "tar.gz" ;;
+              *.dmg)        echo "dmg" ;;
+              *.exe)        echo "exe" ;;
+              *.AppImage)   echo "AppImage" ;;
+              *.deb)        echo "deb" ;;
+              *.rpm)        echo "rpm" ;;
+              *)            echo "" ;;
+            esac
+          }
+
+          canonical_name() {
+            local type="$1"
+            local ext="$2"
+            if [ -n "$VARIANT" ]; then
+              echo "DataZen-${VERSION}-${PLATFORM}-${ARCH}-${VARIANT}-${type}.${ext}"
+            else
+              echo "DataZen-${VERSION}-${PLATFORM}-${ARCH}-${type}.${ext}"
+            fi
+          }
+
           shopt -s nullglob
+
+          # Process non-sig files first
           for file in \
             "$BUNDLE_DIR"/dmg/*.dmg \
             "$BUNDLE_DIR"/macos/*.tar.gz \
-            "$BUNDLE_DIR"/macos/*.sig \
             "$BUNDLE_DIR"/nsis/*.exe \
-            "$BUNDLE_DIR"/nsis/*.sig \
             "$BUNDLE_DIR"/deb/*.deb \
             "$BUNDLE_DIR"/rpm/*.rpm \
-            "$BUNDLE_DIR"/appimage/*.AppImage \
+            "$BUNDLE_DIR"/appimage/*.AppImage; do
+            [ -f "$file" ] || continue
+            base=$(basename "$file")
+            type=$(installer_type "$base")
+            ext=$(file_ext "$base")
+            [ -z "$type" ] && continue
+
+            newbase=$(canonical_name "$type" "$ext")
+            RENAME["$base"]="$newbase"
+            cp "$file" "artifacts/$newbase"
+            echo "  $base → $newbase"
+          done
+
+          # Process sig files (must follow their main file's new name)
+          for file in \
+            "$BUNDLE_DIR"/macos/*.sig \
+            "$BUNDLE_DIR"/nsis/*.sig \
             "$BUNDLE_DIR"/appimage/*.sig; do
             [ -f "$file" ] || continue
             base=$(basename "$file")
-            if [[ "$base" == *.sig ]]; then
-              # Signature files must follow their bundle's renamed name so the
-              # updater latest.json generator can resolve "<bundle>.<ext>.sig".
-              sigstem="${base%.sig}"
-              if [[ "$sigstem" == *.tar.gz ]]; then
-                inner="${sigstem%.tar.gz}"
-                newsigstem="${inner}-${LABEL}.tar.gz"
-              elif [[ "$sigstem" == *.AppImage ]]; then
-                inner="${sigstem%.AppImage}"
-                newsigstem="${inner}-${LABEL}.AppImage"
-              else
-                inner="${sigstem%.*}"
-                ext="${sigstem##*.}"
-                newsigstem="${inner}-${LABEL}.${ext}"
-              fi
-              newname="${newsigstem}.sig"
-            elif [[ "$base" == *.tar.gz ]]; then
-              stem="${base%.tar.gz}"
-              newname="${stem}-${LABEL}.tar.gz"
-            elif [[ "$base" == *.AppImage ]]; then
-              stem="${base%.AppImage}"
-              newname="${stem}-${LABEL}.AppImage"
+            sigstem="${base%.sig}"
+
+            if [[ -n "${RENAME[$sigstem]+_}" ]]; then
+              newbase="${RENAME[$sigstem]}.sig"
             else
-              stem="${base%.*}"
-              ext="${base##*.}"
-              newname="${stem}-${LABEL}.${ext}"
+              type=$(installer_type "$sigstem")
+              ext=$(file_ext "$sigstem")
+              [ -z "$type" ] && { echo "  SKIP unrecognized sig: $base"; continue; }
+              newbase="$(canonical_name "$type" "$ext").sig"
             fi
-            # GitHub sorts release assets by name. Prefixing the OS group
-            # keeps Linux, macOS and Windows assets together regardless of
-            # architecture or release variant.
-            newname="${OS_GROUP}-${newname}"
-            cp "$file" "artifacts/$newname"
+
+            cp "$file" "artifacts/$newbase"
+            echo "  $base → $newbase"
           done
+
           ls -la artifacts/ || true
 
       - name: Upload artifacts to release
@@ -419,14 +522,19 @@ jobs:
           body: |
             ## 版本说明
 
-            本版本为 **DataZen** 正式发布版，集成 **SQL Editor** 增强套件：
+            本版本为 **DataZen** 正式发布版，所有变体均集成 **SQL Editor 增强**：
             - **SQL Editor 核心增强**：表结构/字段智能悬浮预览 (Hover)、函数签名实时帮助 (Signature Help)、外键 JOIN 智能补全、智能 Intention 意图操作（星号展开、限定符补全等）、拖拽精准光标与 Paste-as-IN 高级粘贴、语句运行指示与高级参数绑定面板。
             - **全量原生数据库驱动**：内置 PostgreSQL、MySQL、SQLite、Redis、MongoDB、SQL Server、ClickHouse、DuckDB、Elasticsearch 等全部原生驱动。
 
             ### 发行变体
             - **DataZen (Basic)**（默认推荐，体积最小）：4 核心原生驱动（PostgreSQL、MySQL、SQLite、Redis）+ SQL Editor 增强
-            - **DataZen (All)**（文件名含 `-all`）：全部原生驱动（PostgreSQL、MySQL、SQLite、Redis、MongoDB、SQL Server、ClickHouse、DuckDB、Elasticsearch 等）+ SQL Editor 增强
-            - **Akulaku**（文件名含 `-akulaku`）：DataZen + 特定渠道定制驱动（Kiwi、Superset）
+            - **DataZen (All)**（文件名含 `-all`）：全部原生驱动 + SQL Editor 增强
+            - **Akulaku**（文件名含 `-akulaku`，仅 Windows / macOS）：DataZen + 特定渠道定制驱动（Kiwi、Superset）
+
+            ### 文件命名规范
+            `DataZen-{版本}-{平台}-{架构}[-{变体}]-{安装类型}.{扩展名}`
+
+            例：`DataZen-0.2.0-windows-x64-nsis.exe`、`DataZen-0.2.0-macos-arm64.dmg`、`DataZen-0.2.0-all-linux-x64.AppImage`
 
             源码构建可进一步裁剪：`DATAZEN_DRIVERS=postgres,mongodb` 等显式列表，只编译需要的类型。
 
@@ -444,11 +552,11 @@ jobs:
             或者：右键点击应用 → 选择"打开" → 在弹出的对话框中点击"打开"。
 
             ### Windows
-            - **NSIS 安装包**：运行 `.exe` 并按提示安装。
-            - **Portable**：解压 `*-windows-*-portable-windows-x64*.zip`，直接运行 `DataZen.exe`，无需安装。
+            - **NSIS 安装包**：运行 `DataZen-*-windows-x64-nsis.exe` 并按提示安装。
+            - **Portable**：解压 `DataZen-*-windows-x64-portable.zip`，直接运行 `DataZen.exe`，无需安装。
 
             ### Linux (x86_64)
-            - **AppImage**：`chmod +x *.AppImage` 后直接运行（部分发行版需安装 `libfuse2`）
+            - **AppImage**：`chmod +x DataZen-*.AppImage` 后直接运行（部分发行版需安装 `libfuse2`）
             - **deb**：`sudo apt install ./DataZen-*-linux-x64.deb`
             - **rpm**：`sudo rpm -i ./DataZen-*-linux-x64.rpm`（或发行版对应的包管理器）
             运行时依赖 WebKitGTK（常见包名：`libwebkit2gtk-4.1-0` / `webkit2gtk4.1`）。
@@ -526,12 +634,14 @@ jobs:
           found=0
           for f in assets/*; do
             base=$(basename "$f")
+            # Skip variant builds, signatures, and non-installer files
             case "$base" in
-              *-all.*|*-akulaku.*) continue ;;
-              *.sig|latest.json) continue ;;
+              *-all-*) continue ;;
+              *-akulaku-*) continue ;;
+              *.sig|latest.json|*.dzx) continue ;;
             esac
             case "$base" in
-              *-macos-arm64.dmg|*-macos-x64.dmg|*-windows-x64.exe|*-windows-*-portable-windows-x64.zip|*-linux-x64.deb|*-linux-x64.rpm|*-linux-x64.AppImage)
+              *-macos-*.dmg|*-macos-*.tar.gz|*-windows-*-nsis.exe|*-windows-*-portable.zip|*-linux-*.deb|*-linux-*.rpm|*-linux-*.AppImage)
                 sha=$(sha256sum "$f" | awk '{print $1}')
                 echo "| \`$base\` | \`$sha\` |" >> checksums.md
                 found=$((found + 1))

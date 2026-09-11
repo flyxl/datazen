@@ -734,7 +734,7 @@ export function WorkflowForm({
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
-              className="px-3 py-1 text-xs bg-accent text-white rounded hover:bg-accent/90 transition-colors disabled:opacity-50"
+              className="px-3 py-1 text-xs bg-accent text-on-accent rounded hover:bg-accent/90 transition-colors disabled:opacity-50"
               onClick={onSave}
               disabled={!draft.id.trim() || !draft.name.trim() || draft.steps.length === 0}
             >

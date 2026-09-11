@@ -95,7 +95,10 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (showPicker && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter' || e.key === 'Escape')) {
+      if (
+        showPicker &&
+        (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter' || e.key === 'Escape')
+      ) {
         return;
       }
       if (disabled) return;
@@ -162,7 +165,10 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
         )}
         onMouseDown={(e) => {
           // Keep focus in the textarea when clicking chips / padding (span-like field).
-          if (e.target === e.currentTarget || (e.target as HTMLElement).closest('[data-testid="context-token"]')) {
+          if (
+            e.target === e.currentTarget ||
+            (e.target as HTMLElement).closest('[data-testid="context-token"]')
+          ) {
             e.preventDefault();
             textareaRef.current?.focus();
           }
@@ -263,7 +269,7 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
                 className={cn(
                   'flex h-6 w-6 items-center justify-center rounded-md transition-colors',
                   canSend
-                    ? 'bg-accent text-white hover:bg-accent/90'
+                    ? 'bg-accent text-on-accent hover:bg-accent/90'
                     : 'bg-fg-muted/10 text-fg-muted/40 cursor-not-allowed',
                 )}
               >

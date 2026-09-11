@@ -637,7 +637,7 @@ export function ConnectionPage() {
               <div className="copyable text-sm text-danger">{activeTab.error}</div>
               <div className="flex gap-2">
                 <button
-                  className="rounded-md bg-accent px-4 py-1.5 text-sm text-white hover:bg-accent/90"
+                  className="rounded-md bg-accent px-4 py-1.5 text-sm text-on-accent hover:bg-accent-2"
                   type="button"
                   onClick={() => {
                     setTabs((prev) =>

@@ -8,11 +8,13 @@ import { openConnectionShareDialog } from '../../lib/connectionShare';
 import type { ConnectionImportSource } from '../../components/connection/ConnectionShareDialog';
 import { openNewConnectionDialog } from '../../lib/windowManager';
 import { useConnectionStore } from '../../stores/connectionStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { Button } from '../../components/ui/Button';
 import { ConnectionEditorDialogHost } from '../../components/connection/NewConnectionDialog';
 import { ConnectionShareDialogHost } from '../../components/connection/ConnectionShareDialogHost';
 import { ConnectionPage } from '../connection/ConnectionPage';
 import { WelcomePage } from '../welcome/WelcomePage';
+import { OnboardingWizard } from '../onboarding/OnboardingWizard';
 /**
  * Main window entry: first-run welcome when no saved connections,
  * otherwise the unified connection workspace.
@@ -24,6 +26,7 @@ export function MainPage() {
   const loadError = useConnectionStore((s) => s.error);
   const fetchConnections = useConnectionStore((s) => s.fetchConnections);
   const fetchGroups = useConnectionStore((s) => s.fetchGroups);
+  const onboarding = useSettingsStore((s) => s.settings.onboarding);
 
   useEffect(() => {
     void fetchConnections();
@@ -103,6 +106,11 @@ export function MainPage() {
         <ConnectionShareDialogHost />
       </div>
     );
+  }
+
+  // Onboarding gate: show wizard when not completed or version < 1
+  if (!onboarding?.completed || (onboarding?.version ?? 0) < 1) {
+    return <OnboardingWizard />;
   }
 
   if (connections.length === 0 && loadError) {
