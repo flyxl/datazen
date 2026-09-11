@@ -904,9 +904,9 @@ export async function dismissResultMessageIfOpen(timeout = 3000): Promise<void> 
  * Close any leftover modal before proceeding: Safe-Mode / dangerous-confirm dialog OR a
  * ResultMessageDialog alert. Both are modals that would block the query toolbar.
  */
-export async function dismissAnyOpenDialog(): Promise<void> {
-  await dismissConfirmDialogIfOpen(1200);
-  await dismissResultMessageIfOpen(1200);
+export async function dismissAnyOpenDialog(timeout = 1200): Promise<void> {
+  await dismissConfirmDialogIfOpen(timeout);
+  await dismissResultMessageIfOpen(timeout);
 }
 
 /**
@@ -982,6 +982,15 @@ async function executeSqlInEditor(sql: string) {
         await browser.pause(200);
         return false;
       }
+      // Dismiss a Safe-Mode hard-block ResultMessageDialog if shown (safe mode ON). It is a
+      // modal notice that would otherwise stay up and block the query toolbar of the next test.
+      // The query did not run, so treat the attempt as handled once it is dismissed.
+      const blockedMsg = await $('[data-testid="result-message-ok"]');
+      if ((await blockedMsg.isExisting()) && (await blockedMsg.isDisplayed().catch(() => false))) {
+        await blockedMsg.click();
+        await browser.pause(200);
+        return true;
+      }
       if (
         /current transaction is aborted/i.test(body) ||
         body.includes('事务已中止') ||
@@ -1045,9 +1054,10 @@ async function executeSqlInEditor(sql: string) {
 /** Open a new query tab and wait for the execute button. */
 export async function openQueryTab() {
   // Defense-in-depth: a leftover Safe-Mode / dangerous-SQL confirm dialog is a modal that
-  // would cover the toolbar and make the new-query button unclickable. Close it first so a
-  // slow previous test can never block navigation here. Fast no-op when no dialog is open.
-  await dismissConfirmDialogIfOpen(2000);
+  // would cover the toolbar and make the new-query button unclickable. Close both the
+  // ConfirmDialog and the Safe-Mode ResultMessageDialog first so a slow previous test can
+  // never block navigation here. Fast no-op when no dialog is open.
+  await dismissAnyOpenDialog(2000);
   // Stable E2E locators (vite-gated data-testid, see src/lib/tid.ts).
   let clicked = false;
   let lastError: unknown;
