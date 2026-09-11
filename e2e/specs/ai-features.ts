@@ -1,5 +1,11 @@
 import { expect, browser, $ } from '@wdio/globals';
-import { openConnectionWindow, closeExtraWindows, executeSQL } from '../helpers.js';
+import {
+  openConnectionWindow,
+  closeExtraWindows,
+  connectSeededPgInWorkspace,
+  openQueryTab,
+  executeSQL,
+} from '../helpers.js';
 
 /**
  * Invoke a Tauri IPC command from the browser context.
@@ -292,12 +298,14 @@ describe('AI 功能 E2E 测试 (AI-001~AI-012)', () => {
 
     // Seed at least one executed query so query-history analysis has input
     // (ai_analyze_queries errors with "No query history available" otherwise).
-    if (connWindow) {
-      await browser.switchToWindow(connWindow);
-      await executeSQL('SELECT 1');
-      await browser.pause(1000);
-      await browser.switchToWindow(mainWindow);
-    }
+    // Do it in the main workspace query tab — the connection window has no
+    // mounted sql-editor to run a query against.
+    const host = await browser.getWindowHandle();
+    await connectSeededPgInWorkspace();
+    await openQueryTab();
+    await executeSQL('SELECT 1');
+    await browser.pause(1000);
+    await closeExtraWindows(host);
 
     const result = await invokeWithRetry<any>('ai_analyze_queries', {});
 
