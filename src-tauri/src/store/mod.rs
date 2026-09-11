@@ -17,7 +17,7 @@ pub use app_db::{
 };
 pub use history_db::{HistoryDb, HistoryEntry, HistoryListItem, HistoryScope};
 pub use models::{FavoriteQuery, QueryHistoryEntry, SyncTask};
-pub use settings::{clamp_connection_pool_size, AppSettings};
+pub use settings::{clamp_connection_pool_size, AppSettings, OnboardingState};
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
