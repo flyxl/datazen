@@ -292,40 +292,18 @@ describe('SQL Editor AI 错误诊断 (SE-AI-ERR)', () => {
   // ── 无敏感数据泄露 ─────────────────────────────────────────────
 
   it('SE-AI-ERR-030: Draft 不应包含密码', async () => {
+    // NOTE: the named-parameter binding panel (:password → input box) is a Pro-only feature
+    // (sqlEditorEnhancedEP.renderBindParamPanel returns null in Community), so this Host test
+    // must NOT depend on it — `:password` never triggers a bind input here, and an unbound
+    // named param yields a validation (not a query) error without an Ask-in-Chat button.
+    // Instead trigger a real query error and assert the draft pre-fill redacts the DB
+    // connection password (egress redaction).
     await openQueryTab();
-    // Use an error SQL that references a parameter named 'password'
-    await setEditorContent('SELECT * FROM nonexistent_table_users WHERE password = :password');
-    await browser.pause(800);
-
-    // Provide value for :password if bind panel is rendered
-    const paramInput = await $(`input[placeholder="${t('query.paramValue')}"]`);
-    if (await paramInput.isExisting()) {
-      await paramInput.setValue('test-dummy-pass');
-      await browser.pause(200);
-    } else {
-      // Or set in store/DOM directly if needed
-      await browser.execute(() => {
-        const inp = document.querySelector(
-          'input[placeholder*="值"], input[placeholder*="value"]',
-        ) as HTMLInputElement;
-        if (inp) {
-          inp.value = 'test-dummy-pass';
-          inp.dispatchEvent(new Event('input', { bubbles: true }));
-          inp.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      });
-      await browser.pause(200);
-    }
+    await setEditorContent('SELECT * FROM error_test_no_password');
+    await browser.pause(300);
 
     const execBtn = await $('[data-testid="editor-execute-button"]');
     await execBtn.click();
-    await browser.pause(500);
-
-    // If confirmation dialog appears, confirm it
-    const confirmOk = await $('[data-testid="confirm-dialog-ok"]');
-    if ((await confirmOk.isExisting()) && (await confirmOk.isDisplayed().catch(() => false))) {
-      await confirmOk.click();
-    }
 
     await browser.waitUntil(
       async () => {
@@ -344,9 +322,7 @@ describe('SQL Editor AI 错误诊断 (SE-AI-ERR)', () => {
       return textarea?.value || '';
     });
 
-    // Draft should NOT contain actual password values
-    // The parameter :password appears in the SQL, but its VALUE should not be in the draft
-    // Check that the draft doesn't contain the actual connection password
+    // Draft pre-fill must NOT contain the DB connection password.
     const connectionPassword = process.env.E2E_PG_PASSWORD || '';
     if (connectionPassword) {
       expect(chatInput).not.toContain(connectionPassword);
