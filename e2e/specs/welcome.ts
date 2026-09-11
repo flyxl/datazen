@@ -78,6 +78,12 @@ describe('首次安装欢迎页 (F5-E2E-001 ~ F5-E2E-005)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await deleteAllConnections();
+    // Bypass the onboarding wizard gate (MainPage shows the wizard when
+    // `onboarding.completed !== true`); this suite asserts WelcomePage itself.
+    const settings = await invokeBackend<Record<string, unknown>>('get_settings');
+    await invokeBackend('save_settings', {
+      settings: { ...settings, onboarding: { completed: true, version: 1 } },
+    });
     await browser.execute(() => location.reload());
     await browser.pause(1500);
   });
@@ -96,6 +102,11 @@ describe('首次安装欢迎页 (F5-E2E-001 ~ F5-E2E-005)', () => {
       }
     }
     await reseedE2ePgConnection();
+    // Restore onboarding gate to default (wizard visible) for later suites.
+    const settings = await invokeBackend<Record<string, unknown>>('get_settings');
+    await invokeBackend('save_settings', {
+      settings: { ...settings, onboarding: { completed: false, version: 1 } },
+    });
     await browser.execute(() => location.reload());
     await browser.pause(1500);
   });

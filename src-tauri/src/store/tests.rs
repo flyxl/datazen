@@ -1,5 +1,6 @@
 use super::*;
 use crate::db::{ConnectionConfig, SshTunnelConfig, SslMode};
+use crate::store::settings::OnboardingState;
 use chrono::Utc;
 use settings::{deserialize_theme, ThemePreference};
 
@@ -165,6 +166,30 @@ async fn ssh_credentials_roundtrip_after_reload() {
     let ssh = loaded[0].ssh_tunnel.as_ref().unwrap();
     assert_eq!(ssh.password.as_deref(), Some("ssh-secret-password"));
     assert_eq!(ssh.passphrase.as_deref(), Some("key-passphrase"));
+}
+
+#[test]
+fn onboarding_state_roundtrip_and_legacy_compat() {
+    // roundtrip: completed + version survive serde
+    let settings = AppSettings {
+        onboarding: Some(OnboardingState {
+            completed: true,
+            version: 1,
+        }),
+        ..AppSettings::default()
+    };
+    let json = serde_json::to_string(&settings).unwrap();
+    assert!(json.contains("onboarding"));
+    let parsed: AppSettings = serde_json::from_str(&json).unwrap();
+    let state = parsed.onboarding.as_ref().unwrap();
+    assert!(state.completed);
+    assert_eq!(state.version, 1);
+
+    // legacy compat: old settings.json without the key → None (treated as not completed)
+    let mut legacy = serde_json::to_value(AppSettings::default()).unwrap();
+    legacy.as_object_mut().unwrap().remove("onboarding");
+    let parsed: AppSettings = serde_json::from_value(legacy).unwrap();
+    assert!(parsed.onboarding.is_none());
 }
 
 #[test]
