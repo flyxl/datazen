@@ -234,12 +234,12 @@ describe('运维 §5.4: 对象过滤器 (OPS-FILTER)', () => {
     await connectSeededPgInWorkspace();
     await openQueryTab();
     await withSafeModeOff(async () => {
-      await executeSQL(`DROP TABLE IF EXISTS ${FT1}`);
-      await executeSQL(`DROP TABLE IF EXISTS ${FT2}`);
-      await executeSQL(`DROP TABLE IF EXISTS ${PLAIN}`);
-      await executeSQL(`CREATE TABLE ${FT1} (id int PRIMARY KEY)`);
-      await executeSQL(`CREATE TABLE ${FT2} (id int PRIMARY KEY)`);
-      await executeSQL(`CREATE TABLE ${PLAIN} (id int PRIMARY KEY)`);
+      await executeSQL(`DROP TABLE IF EXISTS public.${FT1}`);
+      await executeSQL(`DROP TABLE IF EXISTS public.${FT2}`);
+      await executeSQL(`DROP TABLE IF EXISTS public.${PLAIN}`);
+      await executeSQL(`CREATE TABLE public.${FT1} (id int PRIMARY KEY)`);
+      await executeSQL(`CREATE TABLE public.${FT2} (id int PRIMARY KEY)`);
+      await executeSQL(`CREATE TABLE public.${PLAIN} (id int PRIMARY KEY)`);
     });
     await closeExtraWindows(mainWindow);
   });
@@ -249,9 +249,9 @@ describe('运维 §5.4: 对象过滤器 (OPS-FILTER)', () => {
       await connectSeededPgInWorkspace();
       await openQueryTab();
       await withSafeModeOff(async () => {
-        await executeSQL(`DROP TABLE IF EXISTS ${FT1}`);
-        await executeSQL(`DROP TABLE IF EXISTS ${FT2}`);
-        await executeSQL(`DROP TABLE IF EXISTS ${PLAIN}`);
+        await executeSQL(`DROP TABLE IF EXISTS public.${FT1}`);
+        await executeSQL(`DROP TABLE IF EXISTS public.${FT2}`);
+        await executeSQL(`DROP TABLE IF EXISTS public.${PLAIN}`);
       });
     } catch {
       /* best effort */
