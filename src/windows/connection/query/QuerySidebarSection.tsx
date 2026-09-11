@@ -82,11 +82,23 @@ export function useQueryContextPath({
         return;
       }
       const db = next[0];
-      if (db && db !== currentDatabase) {
+      // Guard: in single-database mode the context-path root can be a *schema*
+      // (e.g. `public`) rather than a database — never hand a schema name to
+      // switchDatabase, which would run get_tables('public') and pin the
+      // session's currentDatabase to a non-existent database.
+      if (db && databases.includes(db) && db !== currentDatabase) {
         await switchDatabase(db);
       }
     },
-    [currentDatabase, ensureNamespacePath, isPathHierarchy, panelId, switchDatabase, updatePanel],
+    [
+      currentDatabase,
+      databases,
+      ensureNamespacePath,
+      isPathHierarchy,
+      panelId,
+      switchDatabase,
+      updatePanel,
+    ],
   );
 
   useEffect(() => {
