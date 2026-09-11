@@ -127,13 +127,17 @@ describe('边缘用例 (TC-EDGE-001/002/004/008)', () => {
     await waitForNewQueryButton(20000);
     await openQueryTab();
     await setEditorContent('SELECT 1 AS rapid');
-    const execBtn = await $(`button*=${t('query.execute')}`);
+    const execSel = `button*=${t('query.execute')}`;
     for (let i = 0; i < 5; i++) {
-      await execBtn.click();
+      // Re-query each iteration: the result grid re-renders after each run, so a
+      // cached element reference goes stale and WebKit WebDriver throws a JS
+      // exception on .click(). Fresh lookup avoids that.
+      const btn = await $(execSel);
+      if (await btn.isExisting()) await btn.click();
       await browser.pause(80);
     }
     await browser.pause(3000);
-    await expect(await $(`button*=${t('query.execute')}`)).toBeDisplayed();
+    await expect(await $(execSel)).toBeDisplayed();
     await closeExtraWindows(mainWindow);
   });
 });

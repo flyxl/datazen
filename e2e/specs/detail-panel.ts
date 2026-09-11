@@ -147,6 +147,20 @@ describe('详情面板 (DP-001~DP-004)', () => {
     // a more deterministic trigger than relying on blur under WebKit.
     await browser.keys(['Enter']);
     await browser.pause(1500);
+    // InlineFieldEditor Enter only stages a cell change in the store
+    // (updateCell -> stageCellChange).  The pending-changes-bar appears with a
+    // commit button; click it and confirm so the change is really flushed to DB,
+    // otherwise DP-004's readback would still see the original value.
+    const commitBtn = await $('[data-testid="pending-commit"]');
+    if (await commitBtn.isExisting()) {
+      await commitBtn.click();
+      await browser.pause(300);
+      const ok = await $('[data-testid="confirm-dialog-ok"]');
+      if (await ok.isExisting()) {
+        await ok.click();
+        await browser.pause(1500);
+      }
+    }
   });
 
   it('编辑后的值应持久化到数据库 (DP-004)', async () => {
