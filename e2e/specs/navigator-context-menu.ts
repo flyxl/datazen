@@ -261,9 +261,11 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
     pgDbSessionId = await invokeBackend<string>('connect', { connectionId: SEEDED_CONN_ID });
 
     await openQueryTab();
-    await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
-    await executeSQL(`CREATE TABLE ${TEST_TABLE} (id SERIAL PRIMARY KEY, name TEXT NOT NULL)`);
-    await executeSQL(`INSERT INTO ${TEST_TABLE}(name) VALUES ('test_ctx_row')`);
+    await executeSQL(`DROP TABLE IF EXISTS public.${TEST_TABLE}`);
+    await executeSQL(
+      `CREATE TABLE public.${TEST_TABLE} (id SERIAL PRIMARY KEY, name TEXT NOT NULL)`,
+    );
+    await executeSQL(`INSERT INTO public.${TEST_TABLE}(name) VALUES ('test_ctx_row')`);
     await browser.pause(1000);
     expect(await pgTableExists(pgDbSessionId, TEST_TABLE)).toBe(true);
   });
@@ -271,7 +273,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
   after(async () => {
     try {
       await openQueryTab();
-      await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
+      await executeSQL(`DROP TABLE IF EXISTS public.${TEST_TABLE}`);
     } catch {
       /* best effort */
     }

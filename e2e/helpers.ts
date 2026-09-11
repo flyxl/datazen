@@ -1059,32 +1059,49 @@ export async function openQueryTab() {
   // never block navigation here. Fast no-op when no dialog is open.
   await dismissAnyOpenDialog(2000);
   // Stable E2E locators (vite-gated data-testid, see src/lib/tid.ts).
-  let clicked = false;
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 3 && !clicked; attempt++) {
+  //
+  // Robustness: after connecting, the toolbar button can be displayed but still DISABLED
+  // while the connection initializes (under multi-instance load the pool can contend and the
+  // ready state lags well past the previous fixed 5s waitForClickable). Poll for genuine
+  // clickability within a total 30s budget and confirm the editor actually mounted before
+  // declaring success. Healthy runs resolve in well under a second.
+  const deadline = Date.now() + 30_000;
+  let opened = false;
+  while (Date.now() < deadline && !opened) {
     try {
       let newQueryBtn = await $('[data-testid="conn-toolbar-new-query"]');
-      if (!(await newQueryBtn.isExisting()) || !(await newQueryBtn.isDisplayed())) {
+      if (
+        !(await newQueryBtn.isExisting()) ||
+        !(await newQueryBtn.isDisplayed().catch(() => false))
+      ) {
         newQueryBtn = await $('[data-testid="home-quick-new-query"]');
       }
-      await newQueryBtn.waitForDisplayed({ timeout: 15000 });
-      await newQueryBtn.scrollIntoView({ block: 'center' });
-      await newQueryBtn.waitForClickable({ timeout: 5000 });
+      if (
+        !(await newQueryBtn.isExisting()) ||
+        !(await newQueryBtn.isDisplayed().catch(() => false))
+      ) {
+        await browser.pause(300);
+        continue;
+      }
+      await newQueryBtn.scrollIntoView({ block: 'center' }).catch(() => {});
+      await newQueryBtn.waitForClickable({ timeout: Math.max(1000, deadline - Date.now()) });
       await newQueryBtn.click();
-      clicked = true;
-    } catch (error) {
-      lastError = error;
+      await browser.pause(250);
+      const execPresent = await $('[data-testid="editor-execute-button"]')
+        .isExisting()
+        .catch(() => false);
+      if (execPresent) opened = true;
+    } catch {
+      // Still initializing (not yet clickable / click didn't mount the editor) — keep polling.
       await browser.pause(300);
     }
   }
-  if (!clicked) throw lastError ?? new Error('无法打开新建查询面板');
-  await browser.pause(500);
   // Wait for execute button — try testid first, then aria-label fallback.
   let execBtn = await $('[data-testid="editor-execute-button"]');
   if (!(await execBtn.isExisting())) {
     execBtn = await $('button[aria-label="执行"]');
   }
-  await execBtn.waitForDisplayed({ timeout: 10000 });
+  await execBtn.waitForDisplayed({ timeout: 15000 });
 }
 
 // ── schema sidebar ──────────────────────────────────────────────────
