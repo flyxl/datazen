@@ -7,6 +7,12 @@ const fetchGroupsMock = vi.fn().mockResolvedValue(undefined);
 const listenCrossWindowMock = vi.fn().mockResolvedValue(() => {});
 const openNewConnectionDialogMock = vi.fn();
 
+const settingsState = {
+  settings: {
+    onboarding: { completed: true, version: 1 },
+  } as Record<string, unknown>,
+};
+
 const storeState = {
   connections: [] as Array<{ id: string }>,
   connectionsLoaded: false,
@@ -21,6 +27,10 @@ vi.mock('../../../hooks/useI18n', () => ({
 
 vi.mock('../../../stores/connectionStore', () => ({
   useConnectionStore: (sel: (s: typeof storeState) => unknown) => sel(storeState),
+}));
+
+vi.mock('../../../stores/settingsStore', () => ({
+  useSettingsStore: (sel: (s: typeof settingsState) => unknown) => sel(settingsState),
 }));
 
 vi.mock('../../../lib/crossWindowBus', () => ({
@@ -48,6 +58,10 @@ vi.mock('../welcome/WelcomePage', () => ({
       </button>
     </div>
   ),
+}));
+
+vi.mock('../../onboarding/OnboardingWizard', () => ({
+  OnboardingWizard: () => <div data-testid="onboarding-wizard">onboarding</div>,
 }));
 
 vi.mock('../../../components/TitleBar', () => ({
@@ -91,6 +105,7 @@ beforeEach(() => {
   storeState.connections = [];
   storeState.connectionsLoaded = false;
   storeState.error = null;
+  settingsState.settings = { onboarding: { completed: true, version: 1 } };
 });
 
 afterEach(() => {
@@ -194,5 +209,20 @@ describe('MainPage', () => {
         expect.any(Function),
       ),
     );
+  });
+
+  it('shows OnboardingWizard when onboarding not completed', () => {
+    settingsState.settings = { onboarding: undefined };
+    storeState.connectionsLoaded = true;
+    render(<MainPage />);
+    expect(screen.getByTestId('onboarding-wizard')).toBeInTheDocument();
+    expect(screen.queryByTestId('welcome-page')).not.toBeInTheDocument();
+  });
+
+  it('shows OnboardingWizard when onboarding version < 1', () => {
+    settingsState.settings = { onboarding: { completed: true, version: 0 } };
+    storeState.connectionsLoaded = true;
+    render(<MainPage />);
+    expect(screen.getByTestId('onboarding-wizard')).toBeInTheDocument();
   });
 });

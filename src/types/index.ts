@@ -302,6 +302,8 @@ export interface AppSettings {
   sqlSnippets?: Array<{ id: string; prefix: string; descriptionKey: string; template: string }>;
   /** SQL syntax highlighting color preset ('default' follows the active theme pack). */
   sqlSyntaxTheme?: string;
+  /** Onboarding wizard state. `undefined` or `version < 1` → show wizard. */
+  onboarding?: { completed: boolean; version: number };
 }
 
 export type FilterOperator =
