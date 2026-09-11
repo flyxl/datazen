@@ -78,8 +78,27 @@ async function clickMenuItemById(id: string) {
 async function hoverServerSubmenu() {
   const trigger = await $('[data-testid="web-context-submenu-trigger-server-submenu"]');
   if (await trigger.isExisting()) {
-    await trigger.moveTo();
-    await browser.pause(400);
+    // Real pointer hover (.moveTo()) does not reliably open submenus under the
+    // WebKit WebDriver. WebContextMenu opens a submenu on onMouseEnter / onFocus,
+    // so dispatch those DOM events deterministically.
+    await trigger.moveTo().catch(() => {});
+    await browser.execute(() => {
+      const t = document.querySelector(
+        '[data-testid="web-context-submenu-trigger-server-submenu"]',
+      ) as HTMLElement | null;
+      t?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true }));
+      t?.focus();
+    });
+    await browser
+      .waitUntil(
+        () =>
+          browser.execute(() => {
+            const sub = document.querySelector('[data-testid="web-context-submenu"]');
+            return !!sub && sub.querySelectorAll('[data-testid^="web-context-item-"]').length > 0;
+          }),
+        { timeout: 3000, timeoutMsg: '服务器子菜单未打开' },
+      )
+      .catch(() => {});
   }
 }
 
@@ -301,11 +320,11 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
 
   it('OPS-SS-002: refresh keeps panel healthy', async () => {
     // Open server status panel via context menu on main connection
-    const connItem = await browser.execute(() => {
+    const connItem = await browser.execute((connName: string) => {
       const items = Array.from(document.querySelectorAll('[data-conn-item]'));
       const main = items.find((el) => {
         const name = el.getAttribute('data-conn-name') || '';
-        return name === E2E_PG_CONN_NAME;
+        return name === connName;
       });
       if (!main) return false;
       const rect = main.getBoundingClientRect();
@@ -318,7 +337,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
         }),
       );
       return true;
-    });
+    }, E2E_PG_CONN_NAME);
     if (!connItem) return;
     await browser.pause(400);
 
@@ -337,11 +356,11 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
 
   it('OPS-PL-001: process list table headers render specific columns', async () => {
     // Open process list on the main connection
-    const connItem = await browser.execute(() => {
+    const connItem = await browser.execute((connName: string) => {
       const items = Array.from(document.querySelectorAll('[data-conn-item]'));
       const main = items.find((el) => {
         const name = el.getAttribute('data-conn-name') || '';
-        return name === E2E_PG_CONN_NAME;
+        return name === connName;
       });
       if (!main) return false;
       const rect = main.getBoundingClientRect();
@@ -354,7 +373,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
         }),
       );
       return true;
-    });
+    }, E2E_PG_CONN_NAME);
     if (!connItem) return;
     await browser.pause(400);
 

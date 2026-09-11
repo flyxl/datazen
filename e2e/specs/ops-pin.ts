@@ -66,8 +66,27 @@ async function clickMenuItem(label: string) {
 async function hoverOrganizeSubmenu() {
   const trigger = await $('[data-testid="web-context-submenu-trigger-organize-submenu"]');
   if (await trigger.isExisting()) {
-    await trigger.moveTo();
-    await browser.pause(400);
+    // Real pointer hover (.moveTo()) does not reliably open submenus under the
+    // WebKit WebDriver. WebContextMenu opens a submenu on onMouseEnter / onFocus,
+    // so dispatch those DOM events deterministically.
+    await trigger.moveTo().catch(() => {});
+    await browser.execute(() => {
+      const t = document.querySelector(
+        '[data-testid="web-context-submenu-trigger-organize-submenu"]',
+      ) as HTMLElement | null;
+      t?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true }));
+      t?.focus();
+    });
+    await browser
+      .waitUntil(
+        () =>
+          browser.execute(() => {
+            const sub = document.querySelector('[data-testid="web-context-submenu"]');
+            return !!sub && sub.querySelectorAll('[data-testid^="web-context-item-"]').length > 0;
+          }),
+        { timeout: 3000, timeoutMsg: '组织子菜单未打开' },
+      )
+      .catch(() => {});
   }
 }
 

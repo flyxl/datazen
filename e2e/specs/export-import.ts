@@ -5,10 +5,13 @@ import path from 'node:path';
 import { t } from '../i18n.js';
 import {
   captureJourneyStep,
+  connectBackend,
   connectSeededPgInWorkspace,
   closeExtraWindows,
   closeDataExportDialogIfOpen,
   clickTableInSidebar,
+  disconnectBackend,
+  executeQuery,
   injectDialogPath,
   openQueryTab,
   openTableFromSidebar,
@@ -109,6 +112,21 @@ describe('导出和导入 (EI-001~EI-006)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
+    // Re-seed the fixture `product` table deterministically. The DataTable export
+    // button is disabled when the table is empty (DataTable.exportEnabled requires
+    // rows.length > 0), and the shared E2E DB may have left `product` empty after
+    // earlier specs ran, so construct the 4 canonical rows instead of relying on
+    // shared env state. `product` schema: id serial PK, name, status → 4 rows / 3 cols.
+    const seedSession = await connectBackend('conn_e2e_pg');
+    try {
+      await executeQuery(
+        seedSession,
+        'DELETE FROM product; INSERT INTO product (name, status) VALUES ' +
+          "('Widget','active'),('Gadget','active'),('Thing','pending'),('Gizmo','inactive');",
+      );
+    } finally {
+      await disconnectBackend(seedSession);
+    }
     await connectSeededPgInWorkspace();
     await browser.pause(1000);
     await openTestTableDataView();

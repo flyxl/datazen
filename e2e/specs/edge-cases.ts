@@ -3,10 +3,10 @@
  */
 import { expect, browser, $ } from '@wdio/globals';
 import {
-  clickCardConnectButton,
   closeExtraWindows,
   executeSQL,
   expandAllGroups,
+  openConnectionWindow,
   openQueryTab,
   setEditorContent,
   waitForNewQueryButton,
@@ -101,13 +101,9 @@ describe('边缘用例 (TC-EDGE-001/002/004/008)', () => {
   });
 
   it('TC-EDGE-004: 大结果集查询应返回结果或截断提示且不崩溃', async () => {
-    await clickCardConnectButton();
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 30000,
-    });
-    const handles = await browser.getWindowHandles();
-    const connWindow = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(connWindow);
+    // Unified workspace: seeding the PG connection opens in the SAME OS
+    // window (openConnectionWindow returns connWindow === mainWindow).
+    await openConnectionWindow();
     await waitForNewQueryButton(20000);
     await openQueryTab();
     await executeSQL('SELECT generate_series(1, 5000) AS n');
@@ -126,14 +122,8 @@ describe('边缘用例 (TC-EDGE-001/002/004/008)', () => {
   it('TC-EDGE-008: 快速重复点击执行不应导致应用崩溃', async () => {
     await closeExtraWindows(mainWindow);
     await browser.switchToWindow(mainWindow);
-    await clickCardConnectButton();
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 30000,
-    });
-    const handles = await browser.getWindowHandles();
-    const connWindow = handles.find((h) => h && h !== mainWindow);
-    expect(connWindow).toBeTruthy();
-    await browser.switchToWindow(connWindow!);
+    // Unified workspace: connection opens in the same window, no second handle.
+    await openConnectionWindow();
     await waitForNewQueryButton(20000);
     await openQueryTab();
     await setEditorContent('SELECT 1 AS rapid');

@@ -235,8 +235,9 @@ describe('FileConnectionFields 浅色主题适配 (FCF-001~FCF-010)', () => {
     });
 
     expect(result).not.toBeNull();
-    expect(result!.surfaceAlt).toBe('#f8fafc');
-    expect(result!.edge).toBe('#e2e8f0');
+    // Current light token palette (src/styles/themes.css :root)
+    expect(result!.surfaceAlt).toBe('#f1f5f9');
+    expect(result!.edge).toBe('#cbd5e1');
     expect(result!.hasSemanticClasses).toBe(true);
     expect(result!.bgColor).not.toBe('rgba(0, 0, 0, 0)');
     expect(result!.borderColor).not.toBe('rgba(0, 0, 0, 0)');
@@ -282,8 +283,9 @@ describe('FileConnectionFields 浅色主题适配 (FCF-001~FCF-010)', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.surfaceAlt).toBe('#1e293b');
-    expect(result.edge).toBe('#334155');
+    // Current dark token palette (src/styles/themes.css .dark)
+    expect(result.surfaceAlt).toBe('#111827');
+    expect(result.edge).toBe('#374151');
     expect(result.bgColor).not.toBe('rgba(0, 0, 0, 0)');
     expect(result.borderColor).not.toBe('rgba(0, 0, 0, 0)');
   });

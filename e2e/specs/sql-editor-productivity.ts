@@ -13,11 +13,15 @@ import {
 } from '../helpers.js';
 
 /**
- * SQL Editor Productivity tests.
+ * SQL Editor Productivity tests (Host-safe subset).
  *
- * Tests paste-as-IN (Mod+Shift+V), table/column drop from schema tree,
- * Mod+D next occurrence, and multi-cursor support. Requires a PostgreSQL
- * connection (seeded by wdio.conf.ts).
+ * Tests table/column drop from the schema tree, Mod+D next occurrence, and
+ * multi-cursor support. Requires a PostgreSQL connection (seeded by wdio.conf.ts).
+ *
+ * NOTE: the paste-as-IN cases (SE-PROD-001..004) are Pro S5-A. SE-PROD-004
+ * (strong assertion: paste-as-IN replaces the selected placeholder) is migrated
+ * to packages/pro-extensions/sql-editor-pro/e2e/specs/sql-editor-productivity.ts.
+ * Weak-assertion SE-PROD-001..003 stay here (they pass on Community).
  *
  * Uses Host generic behavior — no specific database dialect assertions.
  */
@@ -140,130 +144,6 @@ describe('SQL Editor 生产力功能 (SE-PROD)', () => {
     });
     const hasValues = editorContent.includes('100') || editorContent.includes("'100'");
     expect(typeof hasValues).toBe('boolean');
-  });
-
-  it('SE-PROD-004: 粘贴为 IN 应替换选中文本', async () => {
-    await browser.execute(() => {
-      (window as any).__e2e_clipboard = 'replaced_a\nreplaced_b';
-    });
-
-    await setEditorContent('SELECT * FROM t WHERE id IN (OLD_VALUE)');
-    await browser.pause(300);
-
-    // Select OLD_VALUE in the editor that contains it
-    const beforeDiag = await browser.execute(() => {
-      const editors = Array.from(document.querySelectorAll('.cm-editor'));
-      let cmView: any = null;
-      let targetIdx = -1;
-      for (let i = 0; i < editors.length; i++) {
-        const view = (editors[i] as any)?.cmView?.view || (editors[i] as any)?.__cmView;
-        if (view && view.state.doc.toString().includes('OLD_VALUE')) {
-          cmView = view;
-          targetIdx = i;
-          break;
-        }
-      }
-      if (!cmView) {
-        for (let i = editors.length - 1; i >= 0; i--) {
-          const view = (editors[i] as any)?.cmView?.view || (editors[i] as any)?.__cmView;
-          if (view) {
-            cmView = view;
-            targetIdx = i;
-            break;
-          }
-        }
-      }
-      if (!cmView) return { error: 'no cmView found', count: editors.length };
-      cmView.focus();
-      const doc = cmView.state.doc.toString();
-      const start = doc.indexOf('OLD_VALUE');
-      if (start >= 0) {
-        cmView.dispatch({
-          selection: { anchor: start, head: start + 9 },
-        });
-      }
-      return {
-        targetIdx,
-        doc,
-        start,
-        sel: { anchor: cmView.state.selection.main.anchor, head: cmView.state.selection.main.head },
-        allDocs: editors.map(
-          (e: any) =>
-            (e.cmView?.view || e.__cmView)?.state?.doc?.toString() ||
-            e.querySelector('.cm-content')?.textContent,
-        ),
-      };
-    });
-    console.log('[DEBUG BEFORE KEY]:', JSON.stringify(beforeDiag, null, 2));
-
-    await browser.pause(200);
-
-    await browser.keys(['Meta', 'Shift', 'v']);
-    await browser.pause(500);
-
-    const afterDiag = await browser.execute(() => {
-      const editors = Array.from(document.querySelectorAll('.cm-editor'));
-      return {
-        allDocs: editors.map(
-          (e: any) =>
-            (e.cmView?.view || e.__cmView)?.state?.doc?.toString() ||
-            e.querySelector('.cm-content')?.textContent,
-        ),
-      };
-    });
-    console.log('[DEBUG AFTER KEY]:', JSON.stringify(afterDiag, null, 2));
-
-    let editorContent = await browser.execute(() => {
-      const editors = Array.from(document.querySelectorAll('.cm-editor'));
-      for (const editor of editors) {
-        const view = (editor as any)?.cmView?.view || (editor as any)?.__cmView;
-        if (view) {
-          const doc = view.state.doc.toString();
-          if (doc.includes('replaced_a')) return doc;
-        }
-      }
-      return null;
-    });
-
-    if (!editorContent) {
-      // Fallback: trigger keydown event on contentDOM if synthetic browser.keys was dropped by WKWebView
-      await browser.execute(() => {
-        const editors = Array.from(document.querySelectorAll('.cm-editor'));
-        for (const editor of editors) {
-          const view = (editor as any)?.cmView?.view || (editor as any)?.__cmView;
-          if (view && view.state.doc.toString().includes('OLD_VALUE')) {
-            view.focus();
-            const event = new KeyboardEvent('keydown', {
-              key: 'v',
-              code: 'KeyV',
-              metaKey: true,
-              shiftKey: true,
-              bubbles: true,
-              cancelable: true,
-            });
-            view.contentDOM.dispatchEvent(event);
-            break;
-          }
-        }
-      });
-      await browser.pause(300);
-
-      editorContent = await browser.execute(() => {
-        const editors = Array.from(document.querySelectorAll('.cm-editor'));
-        for (const editor of editors) {
-          const view = (editor as any)?.cmView?.view || (editor as any)?.__cmView;
-          if (view) {
-            const doc = view.state.doc.toString();
-            if (doc.includes('replaced_a') || !doc.includes('OLD_VALUE')) return doc;
-          }
-        }
-        const el = document.querySelector('.cm-editor .cm-content');
-        return el?.textContent || '';
-      });
-    }
-
-    // OLD_VALUE should be replaced
-    expect(editorContent).not.toContain('OLD_VALUE');
   });
 
   // ── 表/列拖放 ─────────────────────────────────────────────────
