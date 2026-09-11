@@ -196,6 +196,10 @@ export const config: WebdriverIO.Config = {
     contract: ['./specs/host-contract-matrix.ts'],
     // Redis driver's own E2E, not part of default full run (`pnpm e2e:redis`)
     redis: ['../packages/drivers/redis/e2e/*.ts'],
+    // SQL Editor Pro enhanced features (S4-A statement frame/gutter, S5-B bind-param panel),
+    // migrated to the Pro extension's own e2e dir — requires a Pro build:
+    // `pnpm e2e:pro:sql-editor`. Not part of the default Community run.
+    'pro-sql-editor': ['../packages/pro-extensions/sql-editor-pro/e2e/specs/*.ts'],
     // AI features (`pnpm e2e:ai`)
     ai: [
       './specs/ai-features.ts',

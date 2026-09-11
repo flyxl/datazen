@@ -1,6 +1,5 @@
 import { expect, browser, $ } from '@wdio/globals';
 import {
-  captureJourneyStep,
   clickCardConnectButton,
   closeExtraWindows,
   setEditorContent,
@@ -13,15 +12,17 @@ import {
 } from '../helpers.js';
 
 /**
- * SQL Editor Statement Frame & Gutter tests.
+ * SQL Editor Statement execution tests (Host capability).
  *
- * Tests multi-statement frame rendering, gutter execution markers,
- * statement-level shortcuts, running state indication, and multi-result
- * regression. Requires a PostgreSQL connection (seeded by wdio.conf.ts).
+ * Tests the Host-native statement execution model: statement-level shortcuts,
+ * running-state indication, multi-result regression, and DML row counts.
+ * Requires a PostgreSQL connection (seeded by wdio.conf.ts).
  *
- * Uses Host generic behavior — no specific database dialect assertions.
+ * NOTE: statement frame/gutter decorations (Pro S4-A) were migrated to
+ * packages/pro-extensions/sql-editor-pro/e2e/specs/sql-editor-statement.ts.
+ * Uses Host generic behaviour — no specific database dialect assertions.
  */
-describe('SQL Editor 语句框架 (SE-STMT)', () => {
+describe('SQL Editor 语句执行 (SE-STMT)', () => {
   let mainWindow: string;
   const connId = 'e2e_pg_sql_stmt';
   const connName = 'E2E-PostgreSQL-Stmt';
@@ -61,88 +62,6 @@ describe('SQL Editor 语句框架 (SE-STMT)', () => {
       await invokeBackend('delete_connection', { id: connId });
     } catch {
       /* cleanup best-effort */
-    }
-  });
-
-  // ── 多语句框架渲染 ─────────────────────────────────────────────
-
-  it('SE-STMT-001: 多语句编辑器应渲染语句框架装饰', async () => {
-    await setEditorContent('SELECT 1 AS a; SELECT 2 AS b; SELECT 3 AS c');
-    await browser.pause(500);
-
-    // Statement frames are rendered as CSS decorations on CM lines
-    const frameCount = await browser.execute(() => {
-      return document.querySelectorAll('.sql-statement-frame').length;
-    });
-    // At least some lines should have the frame decoration
-    expect(frameCount).toBeGreaterThanOrEqual(1);
-    await captureJourneyStep('statement-frames-visible');
-  });
-
-  it('SE-STMT-002: 单语句编辑器应至少有一个语句框架', async () => {
-    await setEditorContent('SELECT 1 AS single');
-    await browser.pause(500);
-
-    const frameCount = await browser.execute(() => {
-      return document.querySelectorAll('.sql-statement-frame').length;
-    });
-    expect(frameCount).toBeGreaterThanOrEqual(1);
-  });
-
-  it('SE-STMT-003: 空编辑器不应渲染语句框架', async () => {
-    await setEditorContent('');
-    await browser.pause(500);
-
-    const frameCount = await browser.execute(() => {
-      return document.querySelectorAll('.sql-statement-frame').length;
-    });
-    expect(frameCount).toBe(0);
-  });
-
-  // ── 语句分隔线 ─────────────────────────────────────────────────
-
-  it('SE-STMT-010: 分号分隔的语句应有多个可执行区域', async () => {
-    await setEditorContent('SELECT 1;\nSELECT 2;\nSELECT 3');
-    await browser.pause(500);
-
-    // Gutter markers appear on the first executable line of each statement
-    const markerCount = await browser.execute(() => {
-      return document.querySelectorAll('.sql-gutter-idle').length;
-    });
-    expect(markerCount).toBeGreaterThanOrEqual(2);
-    await captureJourneyStep('multi-statement-gutter-markers');
-  });
-
-  // ── 滑槽执行标记 ───────────────────────────────────────────────
-
-  it('SE-STMT-020: 空闲语句应显示播放标记', async () => {
-    await setEditorContent('SELECT 1 AS idle_test');
-    await browser.pause(500);
-
-    const idleMarkers = await browser.execute(() => {
-      return document.querySelectorAll('.sql-gutter-idle').length;
-    });
-    expect(idleMarkers).toBeGreaterThanOrEqual(1);
-  });
-
-  it('SE-STMT-021: 执行期间当前语句应显示旋转标记', async () => {
-    await setEditorContent('SELECT pg_sleep(5)');
-    const execBtn = await $('[data-testid="editor-execute-button"]');
-    await execBtn.click();
-    await browser.pause(1000);
-
-    // During execution, the executing statement shows a running spinner
-    const runningMarkers = await browser.execute(() => {
-      return document.querySelectorAll('.sql-gutter-running').length;
-    });
-    // At least one running marker should be visible during execution
-    expect(runningMarkers).toBeGreaterThanOrEqual(0); // May be 0 if execution completes quickly
-
-    // Cancel to not block other tests
-    const stopBtn = await $('[data-testid="editor-stop-button"]');
-    if (await stopBtn.isExisting()) {
-      await stopBtn.click();
-      await browser.pause(2000);
     }
   });
 
@@ -235,8 +154,6 @@ describe('SQL Editor 语句框架 (SE-STMT)', () => {
       },
       { timeout: 15000, timeoutMsg: '等待多结果标签出现超时' },
     );
-
-    await captureJourneyStep('multi-result-tabs-regression');
   });
 
   it('SE-STMT-051: 结果标签应可切换', async () => {
@@ -250,7 +167,7 @@ describe('SQL Editor 语句框架 (SE-STMT)', () => {
     expect(hasTabs).toBe(true);
   });
 
-  // ── DML 语句框架 ───────────────────────────────────────────────
+  // ── DML 行数 ───────────────────────────────────────────────────
 
   it('SE-STMT-060: DML 语句应显示影响行数', async () => {
     await openQueryTab();

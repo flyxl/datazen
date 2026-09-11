@@ -117,6 +117,9 @@ const pack = {
   'settings.safeMode': 'Safe Mode',
   'settings.safeModeHint':
     '尽力防护：禁止无 WHERE 的 UPDATE/DELETE，以及 TRUNCATE/DROP；非形式化安全保证。',
+  'settings.confirmDangerousExecution': '关闭 Safe Mode 后执行高危 SQL 时弹框确认',
+  'settings.confirmDangerousExecutionHint':
+    '关闭 Safe Mode 后，执行高危/生产 SQL 前弹出确认框。关闭此项将直接执行不弹框。',
   'settings.monitor': '监控',
   'settings.monitor.description': '看板后台刷新、系统托盘、告警与运行历史保留策略。',
   'settings.monitor.trayEnabled': '显示系统托盘图标',

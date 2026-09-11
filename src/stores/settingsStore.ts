@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   confirmOnDelete: true,
   autoCommit: true,
   safeMode: true,
+  confirmDangerousExecution: true,
   defaultPageSize: 50,
   connectionPoolSize: 10,
   logLevel: 'info',

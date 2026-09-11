@@ -122,6 +122,9 @@ const pack = {
   'settings.safeMode': 'Safe Mode',
   'settings.safeModeHint':
     'Best-effort guard: blocks UPDATE/DELETE without WHERE, and TRUNCATE/DROP. Not a formal security guarantee.',
+  'settings.confirmDangerousExecution': 'Confirm dangerous SQL when Safe Mode is off',
+  'settings.confirmDangerousExecutionHint':
+    'Show a confirmation dialog before executing high-risk/production SQL when Safe Mode is off. Turn off to run directly.',
   'settings.monitor': 'Monitor',
   'settings.monitor.description':
     'Background dashboard refresh, system tray, alerts, and run history retention.',

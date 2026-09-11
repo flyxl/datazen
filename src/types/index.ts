@@ -262,6 +262,8 @@ export interface AppSettings {
   autoCommit: boolean;
   /** Require WHERE on UPDATE/DELETE; also block TRUNCATE/DROP. Default true. */
   safeMode: boolean;
+  /** When Safe Mode is OFF, show a confirm dialog before high-risk/production execution. Default true. */
+  confirmDangerousExecution: boolean;
   defaultPageSize: number;
   /** Max DB session pool size (Postgres/MySQL). Default 10; applies on next connect. */
   connectionPoolSize: number;

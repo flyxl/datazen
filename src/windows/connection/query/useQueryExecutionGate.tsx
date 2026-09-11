@@ -29,6 +29,8 @@ export interface ExecutionSnapshot {
   readOnly: boolean;
   safeMode: boolean;
   isProduction: boolean;
+  /** Whether high-risk/production confirmation is offered when Safe Mode is off. */
+  confirmDangerous: boolean;
 }
 
 export interface UseQueryExecutionGateOptions {
@@ -75,6 +77,9 @@ export function useQueryExecutionGate({
   const pendingExecuteRef = useRef<PendingExecute | null>(null);
   const autoCommit = useSettingsStore((s) => s.settings.autoCommit);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
+  const confirmDangerousSetting = useSettingsStore(
+    (s) => s.settings.confirmDangerousExecution !== false,
+  );
   const sqlExecutionStrategy =
     useSettingsStore((s) => s.settings?.sqlExecutionStrategy) ?? 'entire_script';
   const storeExecuteQuery = usePanelStore((s) => s.executeQuery);
@@ -102,9 +107,10 @@ export function useQueryExecutionGate({
         readOnly,
         safeMode,
         isProduction,
+        confirmDangerous: confirmDangerousSetting,
       };
     },
-    [panelId, dbSessionId, connectionId, safeMode],
+    [panelId, dbSessionId, connectionId, safeMode, confirmDangerousSetting],
   );
 
   /** Check whether a snapshot is still fresh by comparing against live state. */
@@ -125,6 +131,10 @@ export function useQueryExecutionGate({
 
       const liveSafeMode = useSettingsStore.getState().settings.safeMode;
       if (liveSafeMode !== snapshot.safeMode) return true;
+
+      const liveConfirmDangerous =
+        useSettingsStore.getState().settings.confirmDangerousExecution !== false;
+      if (liveConfirmDangerous !== snapshot.confirmDangerous) return true;
 
       return false;
     },
@@ -298,6 +308,7 @@ export function useQueryExecutionGate({
       readOnly: snapshot.readOnly,
       safeMode: snapshot.safeMode,
       isProduction: snapshot.isProduction,
+      confirmDangerous: snapshot.confirmDangerous,
     });
     const descriptions = resolveFindingDescriptions(risk.findings, classification);
 
@@ -407,6 +418,7 @@ export function useQueryExecutionGate({
         readOnly: snapshot.readOnly,
         safeMode: snapshot.safeMode,
         isProduction: snapshot.isProduction,
+        confirmDangerous: snapshot.confirmDangerous,
       });
 
       // 4. ReadOnly hard block
@@ -482,6 +494,7 @@ export function useQueryExecutionGate({
       readOnly: snapshot.readOnly,
       safeMode: snapshot.safeMode,
       isProduction: snapshot.isProduction,
+      confirmDangerous: snapshot.confirmDangerous,
     });
 
     if (risk.hardBlocked && risk.hardBlockReason === 'safeMode') {

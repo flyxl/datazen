@@ -19,6 +19,8 @@ export type ExecutionRiskMode = {
   readOnly: boolean;
   safeMode: boolean;
   isProduction: boolean;
+  /** When true, confirmation is offered for high-risk/production SQL when Safe Mode is off. Default true. */
+  confirmDangerous: boolean;
 };
 
 /** The subset of the mode relevant to the Host hard guard. */
@@ -105,11 +107,13 @@ export function assessExecutionRisk(sql: string, mode: ExecutionRiskMode): Execu
   }
 
   const confirmReasons: string[] = [];
-  if (mode.isProduction && assessment.classification !== 'read') {
-    confirmReasons.push('production');
-  }
-  if (!mode.safeMode && assessment.hasHighRisk) {
-    confirmReasons.push('high-risk');
+  if (mode.confirmDangerous) {
+    if (mode.isProduction && assessment.classification !== 'read') {
+      confirmReasons.push('production');
+    }
+    if (!mode.safeMode && assessment.hasHighRisk) {
+      confirmReasons.push('high-risk');
+    }
   }
   const needsConfirm = !hardBlocked && confirmReasons.length > 0;
 

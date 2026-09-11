@@ -39,6 +39,8 @@
     "e2e:pro": "node e2e/run.mjs --pro",
     "e2e:pro:minimal": "node e2e/run.mjs --pro --minimal-drivers",
     "e2e:pro:skip-build": "node e2e/run.mjs --pro --skip-build",
+    "e2e:pro:sql-editor": "node e2e/run.mjs --pro -- --suite pro-sql-editor",
+    "e2e:pro:sql-editor:skip-build": "node e2e/run.mjs --pro --skip-build -- --suite pro-sql-editor",
     "e2e:parallel": "node e2e/run.mjs --skip-build --instances ${E2E_INSTANCES:-3}",
     "e2e:parallel:build": "node e2e/run.mjs --instances ${E2E_INSTANCES:-3}",
     "e2e:parallel:2": "node e2e/run.mjs --skip-build --instances 2",

@@ -8,6 +8,7 @@ describe('assessExecutionRisk', () => {
       readOnly: tc.mode.readOnly,
       safeMode: tc.mode.safeMode,
       isProduction: false,
+      confirmDangerous: true,
     });
     expect(decision.hardBlocked).toBe(!tc.guardAllowed);
   });
@@ -17,6 +18,7 @@ describe('assessExecutionRisk', () => {
       readOnly: true,
       safeMode: false,
       isProduction: false,
+      confirmDangerous: true,
     });
     expect(d.hardBlocked).toBe(true);
     expect(d.hardBlockReason).toBe('readOnly');
@@ -28,6 +30,7 @@ describe('assessExecutionRisk', () => {
       readOnly: false,
       safeMode: true,
       isProduction: false,
+      confirmDangerous: true,
     });
     expect(d.hardBlocked).toBe(true);
     expect(d.hardBlockReason).toBe('safeMode');
@@ -39,6 +42,7 @@ describe('assessExecutionRisk', () => {
       readOnly: false,
       safeMode: true,
       isProduction: false,
+      confirmDangerous: true,
     });
     expect(d.hardBlocked).toBe(true);
     expect(d.needsConfirm).toBe(false);
@@ -49,6 +53,7 @@ describe('assessExecutionRisk', () => {
       readOnly: false,
       safeMode: false,
       isProduction: false,
+      confirmDangerous: true,
     });
     expect(d.hardBlocked).toBe(false);
     expect(d.needsConfirm).toBe(true);
@@ -60,6 +65,7 @@ describe('assessExecutionRisk', () => {
       readOnly: false,
       safeMode: true,
       isProduction: true,
+      confirmDangerous: true,
     });
     expect(d.hardBlocked).toBe(false);
     expect(d.needsConfirm).toBe(true);
@@ -71,6 +77,7 @@ describe('assessExecutionRisk', () => {
       readOnly: false,
       safeMode: false,
       isProduction: true,
+      confirmDangerous: true,
     });
     expect(d.needsConfirm).toBe(false);
   });
@@ -80,6 +87,7 @@ describe('assessExecutionRisk', () => {
       readOnly: false,
       safeMode: false,
       isProduction: true,
+      confirmDangerous: true,
     });
     expect(d.needsConfirm).toBe(true);
     expect(d.confirmReasons).toEqual(['production', 'high-risk']);
@@ -90,12 +98,14 @@ describe('assessExecutionRisk', () => {
       readOnly: false,
       safeMode: false,
       isProduction: false,
+      confirmDangerous: true,
     });
     expect(plain.needsConfirm).toBe(false);
     const prod = assessExecutionRisk('GIBBERISH foo', {
       readOnly: false,
       safeMode: false,
       isProduction: true,
+      confirmDangerous: true,
     });
     expect(prod.needsConfirm).toBe(true);
     expect(prod.confirmReasons).toContain('production');
@@ -106,6 +116,7 @@ describe('assessExecutionRisk', () => {
       readOnly: false,
       safeMode: false,
       isProduction: true,
+      confirmDangerous: true,
     });
     expect(prod.needsConfirm).toBe(true);
     expect(prod.confirmReasons).toContain('production');
@@ -113,8 +124,33 @@ describe('assessExecutionRisk', () => {
       readOnly: true,
       safeMode: false,
       isProduction: false,
+      confirmDangerous: true,
     });
     expect(ro.hardBlocked).toBe(false);
+  });
+
+  it('confirmDangerous=false disables high-risk/production confirm -> direct pass', () => {
+    const d = assessExecutionRisk('DROP TABLE t', {
+      readOnly: false,
+      safeMode: false,
+      isProduction: true,
+      confirmDangerous: false,
+    });
+    expect(d.hardBlocked).toBe(false);
+    expect(d.needsConfirm).toBe(false);
+    expect(d.confirmReasons).toEqual([]);
+  });
+
+  it('confirmDangerous=false does NOT bypass Safe Mode hard block', () => {
+    const d = assessExecutionRisk('UPDATE t SET x = 1', {
+      readOnly: false,
+      safeMode: true,
+      isProduction: true,
+      confirmDangerous: false,
+    });
+    expect(d.hardBlocked).toBe(true);
+    expect(d.hardBlockReason).toBe('safeMode');
+    expect(d.needsConfirm).toBe(false);
   });
 });
 

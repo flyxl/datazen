@@ -54,6 +54,9 @@ pub struct AppSettings {
     /// Require WHERE on UPDATE/DELETE; also block TRUNCATE/DROP (TablePlus-style Safe Mode). Default on.
     #[serde(default = "default_true")]
     pub safe_mode: bool,
+    /// When Safe Mode is off, prompt before executing high-risk/production SQL. Default on.
+    #[serde(default = "default_true")]
+    pub confirm_dangerous_execution: bool,
     pub default_page_size: u32,
     /// Max connections per DB session pool (Postgres/MySQL). Applies on next connect.
     #[serde(default = "default_connection_pool_size")]
@@ -168,6 +171,7 @@ impl Default for AppSettings {
             confirm_on_delete: true,
             auto_commit: true,
             safe_mode: true,
+            confirm_dangerous_execution: true,
             default_page_size: 50,
             connection_pool_size: default_connection_pool_size(),
             log_level: default_log_level(),

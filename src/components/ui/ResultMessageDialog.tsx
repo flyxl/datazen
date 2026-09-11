@@ -53,7 +53,12 @@ export function ResultMessageDialog({ open, kind, message, onClose }: ResultMess
           ) : (
             <div />
           )}
-          <Button variant="primary" className="h-8 px-3 text-xs" onClick={onClose}>
+          <Button
+            variant="primary"
+            className="h-8 px-3 text-xs"
+            onClick={onClose}
+            data-testid="result-message-ok"
+          >
             {t('common.ok')}
           </Button>
         </div>

@@ -809,12 +809,104 @@ export async function setSafeMode(enabled: boolean): Promise<void> {
   await browser.pause(300);
 }
 
+/** Turn the "confirm dangerous SQL when Safe Mode is off" setting on/off (default on). */
+export async function setConfirmDangerousExecution(enabled: boolean): Promise<void> {
+  const settings = await invokeSettings<SettingsLike>('get_settings');
+  const next = { ...settings, confirmDangerousExecution: enabled };
+  if (settings.confirmDangerousExecution !== enabled) {
+    await invokeSettings('save_settings', { settings: next });
+  }
+  await emitCrossWindowEvent('datazen:settings-changed', next);
+  await browser.pause(300);
+}
+
 /** Click the in-app ConfirmDialog primary button (useConfirmDialog / ConfirmDialog). */
 export async function confirmWebDialog(timeout = 5000): Promise<void> {
   const okBtn = await $('[data-testid="confirm-dialog-ok"]');
   await okBtn.waitForDisplayed({ timeout });
   await okBtn.click();
   await browser.pause(800);
+}
+
+/**
+ * Dismiss (cancel) an open Safe-Mode / dangerous-SQL confirm dialog, if any.
+ *
+ * Waits up to `timeout` for the dialog to appear (the backend may take a moment to
+ * render it after an execute) and then clicks Cancel so the dangerous op stays blocked.
+ * Returns immediately when no dialog is present — safe to call before navigation so a
+ * leftover modal can never block `openQueryTab` of the next test.
+ *
+ * Prefer Cancel; falls back to Escape (the Dialog default cancel) when the dialog has no
+ * cancel testid, so it still closes instead of lingering. It never clicks OK, which would
+ * confirm/execute a dangerous op. Use `confirmWebDialog` when a test genuinely wants to
+ * accept the operation.
+ */
+export async function dismissConfirmDialogIfOpen(timeout = 3000): Promise<void> {
+  const okBtn = await $('[data-testid="confirm-dialog-ok"]');
+  // Fast existence check — keeps the no-dialog path near-zero cost (called from hot paths).
+  if (!(await okBtn.isExisting().catch(() => false))) return;
+  try {
+    await okBtn.waitForDisplayed({ timeout });
+  } catch {
+    // Dialog element existed but never became visible — nothing to act on.
+    return;
+  }
+  const cancelBtn = await $('[data-testid="confirm-dialog-cancel"]');
+  const hasCancel = await cancelBtn.isDisplayed().catch(() => false);
+  if (hasCancel) {
+    await cancelBtn.click();
+  } else {
+    // No explicit cancel target: press Escape (Cancel is the Dialog default for Esc), and
+    // never fall through to clicking OK — that would CONFIRM/execute a dangerous op.
+    await browser.keys('Escape');
+  }
+  await browser.pause(400);
+}
+
+/**
+ * Confirm (accept) a Safe-Mode / dangerous-SQL confirm dialog IF it appears, else proceed.
+ *
+ * Unlike `confirmWebDialog` (which hard-fails when no dialog shows), this tolerates the
+ * "safe mode off → dangerous op executes directly with no confirm" path: it waits up to
+ * `timeout` for the OK button and clicks it when present, returning immediately otherwise.
+ * Use this for tests that must accept the operation when a dialog is shown.
+ */
+export async function confirmWebDialogIfOpen(timeout = 5000): Promise<void> {
+  const okBtn = await $('[data-testid="confirm-dialog-ok"]');
+  if (!(await okBtn.isExisting().catch(() => false))) return;
+  try {
+    await okBtn.waitForDisplayed({ timeout });
+  } catch {
+    return;
+  }
+  await okBtn.click();
+  await browser.pause(800);
+}
+
+/**
+ * Dismiss an open ResultMessageDialog (success/error alert) via its OK button, if any.
+ * Fast no-op when absent. The Safe Mode hard-block shows one of these, and it is a modal
+ * that otherwise stays up and blocks the query toolbar of the next test.
+ */
+export async function dismissResultMessageIfOpen(timeout = 3000): Promise<void> {
+  const okBtn = await $('[data-testid="result-message-ok"]');
+  if (!(await okBtn.isExisting().catch(() => false))) return;
+  try {
+    await okBtn.waitForDisplayed({ timeout });
+  } catch {
+    return;
+  }
+  await okBtn.click();
+  await browser.pause(300);
+}
+
+/**
+ * Close any leftover modal before proceeding: Safe-Mode / dangerous-confirm dialog OR a
+ * ResultMessageDialog alert. Both are modals that would block the query toolbar.
+ */
+export async function dismissAnyOpenDialog(): Promise<void> {
+  await dismissConfirmDialogIfOpen(1200);
+  await dismissResultMessageIfOpen(1200);
 }
 
 /**
@@ -952,6 +1044,10 @@ async function executeSqlInEditor(sql: string) {
 
 /** Open a new query tab and wait for the execute button. */
 export async function openQueryTab() {
+  // Defense-in-depth: a leftover Safe-Mode / dangerous-SQL confirm dialog is a modal that
+  // would cover the toolbar and make the new-query button unclickable. Close it first so a
+  // slow previous test can never block navigation here. Fast no-op when no dialog is open.
+  await dismissConfirmDialogIfOpen(2000);
   // Stable E2E locators (vite-gated data-testid, see src/lib/tid.ts).
   let clicked = false;
   let lastError: unknown;

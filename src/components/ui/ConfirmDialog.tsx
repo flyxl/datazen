@@ -70,7 +70,12 @@ export function ConfirmDialog({
       className="max-w-lg"
       footer={
         <>
-          <Button variant="ghost" className="h-8 px-3 text-xs" onClick={onCancel}>
+          <Button
+            variant="ghost"
+            className="h-8 px-3 text-xs"
+            onClick={onCancel}
+            data-testid="confirm-dialog-cancel"
+          >
             {cancelLabel ?? t('common.cancel')}
           </Button>
           <Button

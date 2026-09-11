@@ -574,6 +574,13 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                 onChange={(v) => updateField('safeMode', v)}
               />
 
+              <ToggleRow
+                label={t('settings.confirmDangerousExecution')}
+                hint={t('settings.confirmDangerousExecutionHint')}
+                checked={settings.confirmDangerousExecution !== false}
+                onChange={(v) => updateField('confirmDangerousExecution', v)}
+              />
+
               <DataCleanupSection />
             </>
           )}
