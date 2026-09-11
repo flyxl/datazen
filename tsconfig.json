@@ -19,7 +19,6 @@
       "@datazen/driver-sdk": ["./packages/driver-sdk/src/index.ts"],
       "@datazen/extension-points": ["./packages/extension-points/src/index.ts"],
       "@datazen/wapp-sdk": ["./packages/wapp-sdk/src/index.ts"],
-      "@datazen/plugin-sdk": ["./src/plugin-sdk/index.ts"],
       "@datazen/extension-sdk": ["./packages/wapp-sdk/src/index.ts"],
       "@datazen/ui": ["./packages/ui/src/index.ts"],
       "@datazen/extension-sql-editor-pro": [
