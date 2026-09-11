@@ -1,5 +1,5 @@
 import { expect, browser, $ } from '@wdio/globals';
-import { openConnectionWindow, closeExtraWindows } from '../helpers.js';
+import { openConnectionWindow, closeExtraWindows, executeSQL } from '../helpers.js';
 
 /**
  * Invoke a Tauri IPC command from the browser context.
