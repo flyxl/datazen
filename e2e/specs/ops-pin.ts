@@ -115,16 +115,16 @@ async function connIndexInList(connName: string): Promise<number> {
   }, connName);
 }
 
-/** 反向查询某个连接是否 pinned（通过 get_connections 返回值）。 */
-async function connPinned(connId: string): Promise<boolean> {
+/** 反向查询某个连接是否 pinned（通过 get_connections 返回值；按 name 或 id 匹配）。 */
+async function connPinned(nameOrId: string): Promise<boolean> {
   const list = await browser.executeAsync((done: (r: unknown) => void) => {
     (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
       ?.invoke?.('get_connections')
       .then((r: unknown) => done(r))
       .catch(() => done([]));
   });
-  const arr = (list ?? []) as Array<{ id: string; pinned?: boolean }>;
-  const c = arr.find((x) => x.id === connId);
+  const arr = (list ?? []) as Array<{ id: string; name?: string; pinned?: boolean }>;
+  const c = arr.find((x) => x.id === nameOrId || x.name === nameOrId);
   return c?.pinned === true;
 }
 
@@ -196,18 +196,16 @@ describe('运维 §5.4: 连接 Pin 置顶 (OPS-PIN)', () => {
   });
 
   it('OPS-PIN-002: Pin 后连接应置顶到当前列表最前', async () => {
-    const beforeA = await connIndexInList(PIN_CONN_A);
-    expect(beforeA).toBeGreaterThanOrEqual(0);
+    // 用 get_connections 的 pinned 字段作为可靠判据（导航树按 section 渲染，
+    // data-conn-item 的裸 index 并不反映置顶顺序）。
+    expect(await connPinned(PIN_CONN_A)).toBe(false);
 
     await rightClickConn(PIN_CONN_A);
     await hoverOrganizeSubmenu();
     await clickMenuItem(t('main.ctx.pinConnection'));
     await browser.pause(800);
 
-    // 置顶：A 在列表中的位置应前移（比 pin 前更靠前）。
-    // 不硬断言绝对第 0 位——列表前部可能有其它固定/种子项占据更低下标。
-    const afterA = await connIndexInList(PIN_CONN_A);
-    expect(afterA).toBeLessThan(beforeA);
+    expect(await connPinned(PIN_CONN_A)).toBe(true);
   });
 
   it('OPS-PIN-003: Pin 后菜单项变更为 Unpin', async () => {
