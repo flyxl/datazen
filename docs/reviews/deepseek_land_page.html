@@ -1,0 +1,1433 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Connections — DataZen</title>
+    <style>
+      :root {
+        --bg: #0b0e14;
+        --bg-panel: #0e121b;
+        --bg-card: #121721;
+        --bg-card-hi: #161d2b;
+        --bg-input: #0a0d14;
+        --border: #1e2534;
+        --border-hi: #2a3549;
+        --text: #e6eaf2;
+        --text-2: #8b94a7;
+        --text-3: #5f6879;
+        --text-4: #3d4759;
+        --accent: #4fc3f7;
+        --accent-hi: #6fd0fa;
+        --accent-dim: rgba(79, 195, 247, 0.11);
+        --green: #5fd08a;
+        --green-dim: rgba(95, 208, 138, 0.12);
+        --amber: #ffb86b;
+        --amber-dim: rgba(255, 184, 107, 0.12);
+        --mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+        --sans:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        background: #070a0f;
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 13px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+        display: grid;
+        place-items: center;
+        padding: 28px 20px;
+        min-height: 100vh;
+      }
+      button {
+        font-family: inherit;
+        border: none;
+        background: none;
+        color: inherit;
+        cursor: pointer;
+        padding: 0;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      kbd {
+        font-family: var(--mono);
+        font-size: 10px;
+        background: #161c28;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 1px 5px;
+        color: var(--text-3);
+      }
+
+      /* ============ Window ============ */
+      .app {
+        width: min(1320px, 100%);
+        height: min(830px, calc(100vh - 56px));
+        background: var(--bg);
+        border: 1px solid #232b3c;
+        border-radius: 12px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow:
+          0 50px 110px -40px rgba(0, 0, 0, 0.92),
+          0 0 0 1px rgba(255, 255, 255, 0.02);
+      }
+      .titlebar {
+        height: 38px;
+        flex: 0 0 38px;
+        background: #0a0d14;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        padding: 0 14px;
+        position: relative;
+      }
+      .dots {
+        display: flex;
+        gap: 8px;
+      }
+      .dot {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+      }
+      .dot.r {
+        background: #ff5f57;
+      }
+      .dot.y {
+        background: #febc2e;
+      }
+      .dot.g {
+        background: #28c840;
+      }
+      .titlebar .t {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font-size: 11.5px;
+        color: var(--text-3);
+        font-family: var(--mono);
+        pointer-events: none;
+      }
+
+      .body {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+
+      /* ============ Rail ============ */
+      .rail {
+        flex: 0 0 54px;
+        background: #0a0d14;
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 10px 0;
+        gap: 3px;
+      }
+      .rail-btn {
+        position: relative;
+        width: 38px;
+        height: 38px;
+        border-radius: 9px;
+        display: grid;
+        place-items: center;
+        color: var(--text-3);
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .rail-btn svg {
+        width: 17px;
+        height: 17px;
+      }
+      .rail-btn:hover {
+        background: #141a26;
+        color: var(--text-2);
+      }
+      .rail-btn.on {
+        background: var(--accent-dim);
+        color: var(--accent);
+      }
+      .rail-btn.on::before {
+        content: '';
+        position: absolute;
+        left: -10px;
+        top: 9px;
+        bottom: 9px;
+        width: 2px;
+        border-radius: 0 2px 2px 0;
+        background: var(--accent);
+      }
+      .rail-sep {
+        width: 20px;
+        height: 1px;
+        background: var(--border);
+        margin: 7px 0;
+      }
+      .rail-spacer {
+        flex: 1;
+      }
+      /* tooltip */
+      .rail-btn::after {
+        content: attr(data-tip);
+        position: absolute;
+        left: calc(100% + 10px);
+        top: 50%;
+        transform: translateY(-50%) translateX(-4px);
+        background: #1a2130;
+        border: 1px solid var(--border-hi);
+        color: var(--text);
+        font-size: 11.5px;
+        font-weight: 500;
+        padding: 5px 9px;
+        border-radius: 7px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition:
+          opacity 0.14s,
+          transform 0.14s;
+        z-index: 60;
+        box-shadow: 0 8px 22px -8px rgba(0, 0, 0, 0.8);
+      }
+      .rail-btn:hover::after {
+        opacity: 1;
+        transform: translateY(-50%) translateX(0);
+      }
+
+      /* ============ Panel ============ */
+      .panel {
+        flex: 0 0 288px;
+        background: var(--bg-panel);
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      .panel-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 13px 14px 11px;
+      }
+      .panel-head h2 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 660;
+        letter-spacing: -0.005em;
+        flex: 1;
+      }
+      .panel-head .ic {
+        width: 27px;
+        height: 27px;
+        border-radius: 7px;
+        display: grid;
+        place-items: center;
+        color: var(--text-3);
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .panel-head .ic svg {
+        width: 15px;
+        height: 15px;
+      }
+      .panel-head .ic:hover {
+        background: #141a26;
+        color: var(--text);
+      }
+
+      /* 分组工具条 */
+      .panel-tools {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 0 10px 11px;
+        border-bottom: 1px solid var(--border);
+      }
+      .tool-primary {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 30px;
+        padding: 0 11px 0 9px;
+        border-radius: 8px;
+        background: var(--accent);
+        color: #04121b;
+        font-size: 12.5px;
+        font-weight: 640;
+        letter-spacing: -0.005em;
+        transition:
+          background 0.15s,
+          transform 0.15s;
+      }
+      .tool-primary:hover {
+        background: var(--accent-hi);
+      }
+      .tool-primary svg {
+        width: 14px;
+        height: 14px;
+      }
+      .tool-sep {
+        width: 1px;
+        height: 16px;
+        background: var(--border);
+        margin: 0 6px;
+      }
+      .tool-ic {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+        display: grid;
+        place-items: center;
+        color: var(--text-3);
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .tool-ic svg {
+        width: 14.5px;
+        height: 14.5px;
+      }
+      .tool-ic:hover {
+        background: #141a26;
+        color: var(--text);
+      }
+      .tool-spacer {
+        flex: 1;
+      }
+
+      /* 搜索 */
+      .search {
+        margin: 10px 12px 6px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--bg-input);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 0 10px;
+        height: 31px;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s;
+      }
+      .search:focus-within {
+        border-color: rgba(79, 195, 247, 0.5);
+        box-shadow: 0 0 0 3px rgba(79, 195, 247, 0.08);
+      }
+      .search svg {
+        width: 13px;
+        height: 13px;
+        color: var(--text-4);
+        flex: 0 0 auto;
+      }
+      .search input {
+        flex: 1;
+        min-width: 0;
+        background: none;
+        border: none;
+        outline: none;
+        color: var(--text);
+        font-size: 12.5px;
+        font-family: inherit;
+      }
+      .search input::placeholder {
+        color: var(--text-4);
+      }
+      .search kbd {
+        flex: 0 0 auto;
+      }
+
+      /* 连接树 */
+      .tree {
+        flex: 1;
+        overflow-y: auto;
+        padding: 6px 8px 14px;
+        min-height: 0;
+      }
+      .tree::-webkit-scrollbar {
+        width: 8px;
+      }
+      .tree::-webkit-scrollbar-thumb {
+        background: #1b2231;
+        border-radius: 8px;
+        border: 2px solid var(--bg-panel);
+      }
+
+      .group-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 7px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 650;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--text-3);
+        cursor: pointer;
+      }
+      .group-head:hover {
+        color: var(--text-2);
+      }
+      .group-head svg {
+        width: 11px;
+        height: 11px;
+      }
+      .group-head .count {
+        margin-left: auto;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--text-4);
+        text-transform: none;
+        letter-spacing: 0;
+      }
+
+      .conn-item {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 7px 8px;
+        border-radius: 7px;
+        cursor: pointer;
+        transition: background 0.13s;
+      }
+      .conn-item:hover {
+        background: #141a26;
+      }
+      .conn-item .badge {
+        flex: 0 0 auto;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        display: grid;
+        place-items: center;
+        color: #fff;
+      }
+      .conn-item .badge svg {
+        width: 12px;
+        height: 12px;
+      }
+      .conn-item .badge.pg {
+        background: linear-gradient(160deg, #3e6e96, #2e577a);
+      }
+      .conn-item .badge.my {
+        background: linear-gradient(160deg, #d98a2b, #b36e17);
+      }
+      .conn-item .nm {
+        flex: 1;
+        min-width: 0;
+        font-size: 12.5px;
+        color: var(--text-2);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .conn-item:hover .nm {
+        color: var(--text);
+      }
+      .conn-item .st {
+        flex: 0 0 auto;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--amber);
+        box-shadow: 0 0 0 3px var(--amber-dim);
+      }
+      .conn-item .st.on {
+        background: var(--green);
+        box-shadow: 0 0 0 3px var(--green-dim);
+      }
+      /* hover 时露出重连按钮 */
+      .conn-item .reconnect {
+        position: absolute;
+        right: 6px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        height: 22px;
+        padding: 0 8px;
+        border-radius: 6px;
+        background: #1d2635;
+        border: 1px solid var(--border-hi);
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-2);
+        opacity: 0;
+        transform: translateX(4px);
+        transition:
+          opacity 0.14s,
+          transform 0.14s,
+          color 0.14s,
+          background 0.14s;
+      }
+      .conn-item:hover .reconnect {
+        opacity: 1;
+        transform: none;
+      }
+      .conn-item .reconnect:hover {
+        background: #243043;
+        color: var(--text);
+      }
+      .conn-item .reconnect svg {
+        width: 11px;
+        height: 11px;
+      }
+      .conn-item:hover .st {
+        opacity: 0;
+      }
+
+      /* ============ Main ============ */
+      .main {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        overflow-y: auto;
+        background:
+          radial-gradient(70% 40% at 50% 0%, rgba(79, 195, 247, 0.055), transparent 65%), var(--bg);
+      }
+      .main::-webkit-scrollbar {
+        width: 10px;
+      }
+      .main::-webkit-scrollbar-thumb {
+        background: #1b2231;
+        border-radius: 10px;
+        border: 3px solid var(--bg);
+      }
+
+      .wrap {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 40px 44px 40px;
+      }
+
+      /* Hero */
+      .hero {
+        margin-bottom: 34px;
+      }
+      .hero h1 {
+        margin: 0 0 8px;
+        font-size: 24px;
+        font-weight: 720;
+        letter-spacing: -0.028em;
+        line-height: 1.2;
+      }
+      .hero p {
+        margin: 0;
+        font-size: 13.5px;
+        color: var(--text-2);
+        line-height: 1.6;
+      }
+      .hero p b {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      /* Section */
+      .sec {
+        margin-bottom: 30px;
+      }
+      .sec-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      .sec-head h3 {
+        margin: 0;
+        font-size: 11.5px;
+        font-weight: 660;
+        letter-spacing: 0.075em;
+        text-transform: uppercase;
+        color: var(--text-3);
+      }
+      .sec-head .line {
+        flex: 1;
+        height: 1px;
+        background: var(--border);
+      }
+      .sec-head a,
+      .sec-head button {
+        font-size: 12px;
+        font-weight: 570;
+        color: var(--accent);
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        transition: color 0.15s;
+      }
+      .sec-head a:hover,
+      .sec-head button:hover {
+        color: var(--accent-hi);
+      }
+      .sec-head a svg,
+      .sec-head button svg {
+        width: 12px;
+        height: 12px;
+      }
+
+      /* ---- Connection cards (主入口) ---- */
+      .conn-list {
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+      }
+
+      .ccard {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 14px 16px;
+        background: linear-gradient(180deg, #131924, #10151e);
+        border: 1px solid var(--border);
+        border-radius: 11px;
+        transition:
+          border-color 0.16s,
+          background 0.16s,
+          transform 0.16s;
+        cursor: pointer;
+        position: relative;
+      }
+      .ccard:hover {
+        border-color: rgba(79, 195, 247, 0.34);
+        background: linear-gradient(180deg, #16202e, #121826);
+        transform: translateY(-1px);
+      }
+      .ccard .cbadge {
+        flex: 0 0 auto;
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        color: #fff;
+        box-shadow: 0 4px 14px -6px rgba(0, 0, 0, 0.7);
+      }
+      .ccard .cbadge svg {
+        width: 19px;
+        height: 19px;
+      }
+      .ccard .cbadge.pg {
+        background: linear-gradient(155deg, #41799f, #2c577a);
+      }
+      .ccard .cbadge.my {
+        background: linear-gradient(155deg, #e0952f, #b36e17);
+      }
+
+      .ccard .cinfo {
+        flex: 1;
+        min-width: 0;
+      }
+      .ccard .cname {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        font-weight: 650;
+        letter-spacing: -0.012em;
+        margin-bottom: 2px;
+      }
+      .ccard .cname .tag {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        color: var(--text-3);
+        background: #181f2c;
+        border: 1px solid var(--border);
+        padding: 1.5px 6px;
+        border-radius: 4px;
+      }
+      .ccard .cmeta {
+        font-size: 12px;
+        color: var(--text-3);
+        font-family: var(--mono);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .ccard .cstat {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11.5px;
+        font-weight: 560;
+        padding: 4px 10px;
+        border-radius: 999px;
+      }
+      .ccard .cstat .d {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+      }
+      .ccard .cstat.off {
+        color: var(--amber);
+        background: var(--amber-dim);
+      }
+      .ccard .cstat.off .d {
+        background: var(--amber);
+      }
+      .ccard .cstat.on {
+        color: var(--green);
+        background: var(--green-dim);
+      }
+      .ccard .cstat.on .d {
+        background: var(--green);
+      }
+
+      .ccard .cact {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 32px;
+        padding: 0 15px;
+        border-radius: 8px;
+        font-size: 12.5px;
+        font-weight: 640;
+        letter-spacing: -0.005em;
+        transition:
+          background 0.15s,
+          border-color 0.15s,
+          transform 0.15s,
+          color 0.15s;
+      }
+      .ccard .cact svg {
+        width: 13px;
+        height: 13px;
+      }
+      .ccard .cact.solid {
+        background: var(--accent);
+        color: #04121b;
+      }
+      .ccard .cact.solid:hover {
+        background: var(--accent-hi);
+      }
+      .ccard .cact.line {
+        border: 1px solid var(--border-hi);
+        color: var(--text-2);
+        background: transparent;
+      }
+      .ccard .cact.line:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: var(--accent-dim);
+      }
+
+      /* ---- History ---- */
+      .hist {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .hrow {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        border-radius: 9px;
+        transition: background 0.14s;
+        position: relative;
+      }
+      .hrow:hover {
+        background: #111722;
+      }
+      .hrow .hico {
+        flex: 0 0 auto;
+        width: 26px;
+        height: 26px;
+        border-radius: 7px;
+        display: grid;
+        place-items: center;
+        background: #141b27;
+        color: var(--text-3);
+      }
+      .hrow .hico svg {
+        width: 13px;
+        height: 13px;
+      }
+      .hrow .hmain {
+        flex: 1;
+        min-width: 0;
+      }
+      .hrow .hsql {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--text-2);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        margin-bottom: 1px;
+      }
+      .hrow .hsql:hover {
+        color: var(--text);
+      }
+      .hrow .hmeta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+        color: var(--text-4);
+      }
+      .hrow .hmeta .src {
+        color: var(--text-3);
+      }
+      .hrow .hmeta .sep {
+        width: 2px;
+        height: 2px;
+        border-radius: 50%;
+        background: var(--text-4);
+      }
+      .hrow .hmeta .ms {
+        font-family: var(--mono);
+      }
+
+      .hrow .hact {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        opacity: 0;
+        transform: translateX(4px);
+        transition:
+          opacity 0.14s,
+          transform 0.14s;
+      }
+      .hrow:hover .hact {
+        opacity: 1;
+        transform: none;
+      }
+      .hrow .hbtn {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+        display: grid;
+        place-items: center;
+        color: var(--text-3);
+        transition:
+          background 0.14s,
+          color 0.14s;
+      }
+      .hrow .hbtn svg {
+        width: 13.5px;
+        height: 13.5px;
+      }
+      .hrow .hbtn:hover {
+        background: #1d2635;
+        color: var(--text);
+      }
+      .hrow .hbtn.run:hover {
+        background: var(--accent-dim);
+        color: var(--accent);
+      }
+
+      /* ---- MCP bar ---- */
+      .mcp {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 14px 16px;
+        background: linear-gradient(180deg, #111826, #0e131c);
+        border: 1px solid var(--border);
+        border-radius: 11px;
+      }
+      .mcp .mi {
+        flex: 0 0 auto;
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        display: grid;
+        place-items: center;
+        background: var(--accent-dim);
+        color: var(--accent);
+        border: 1px solid rgba(79, 195, 247, 0.16);
+      }
+      .mcp .mi svg {
+        width: 17px;
+        height: 17px;
+      }
+      .mcp .mt {
+        flex: 1;
+        min-width: 0;
+      }
+      .mcp .mt b {
+        display: block;
+        font-size: 13px;
+        font-weight: 640;
+        letter-spacing: -0.008em;
+        margin-bottom: 1px;
+      }
+      .mcp .mt span {
+        display: block;
+        font-size: 11.5px;
+        color: var(--text-3);
+        line-height: 1.5;
+      }
+      .mcp .mact {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
+      }
+      .mcp code {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text-3);
+        background: #080b11;
+        border: 1px solid var(--border);
+        padding: 6px 10px;
+        border-radius: 7px;
+        max-width: 210px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .mcp .mbtn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 31px;
+        padding: 0 13px;
+        border-radius: 8px;
+        border: 1px solid var(--border-hi);
+        color: var(--text-2);
+        font-size: 12.5px;
+        font-weight: 600;
+        transition:
+          border-color 0.15s,
+          color 0.15s,
+          background 0.15s;
+      }
+      .mcp .mbtn:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: var(--accent-dim);
+      }
+      .mcp .mbtn svg {
+        width: 13px;
+        height: 13px;
+      }
+
+      /* 完成提示（模拟 hover 反馈，无需交互） */
+      .footer-note {
+        margin-top: 26px;
+        padding-top: 18px;
+        border-top: 1px solid var(--border);
+        font-size: 11.5px;
+        color: var(--text-4);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .footer-note kbd {
+        font-size: 10px;
+      }
+
+      @media (max-width: 1080px) {
+        .panel {
+          flex-basis: 250px;
+        }
+        .wrap {
+          padding: 32px 30px 34px;
+        }
+      }
+      @media (max-width: 900px) {
+        body {
+          padding: 0;
+        }
+        .app {
+          height: 100vh;
+          border-radius: 0;
+          border: none;
+        }
+        .panel {
+          display: none;
+        }
+        .mcp {
+          flex-wrap: wrap;
+        }
+        .mcp code {
+          max-width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol
+        id="i-db"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <ellipse cx="12" cy="5.5" rx="7" ry="2.8" />
+        <path d="M5 5.5v13c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8v-13" />
+        <path d="M5 12c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8" />
+      </symbol>
+      <symbol
+        id="i-sql"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="m9 8-4 4 4 4M15 8l4 4-4 4" />
+      </symbol>
+      <symbol
+        id="i-clock"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 7.5V12l3 2" />
+      </symbol>
+      <symbol
+        id="i-flow"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <rect x="3" y="3" width="7" height="6" rx="1.6" />
+        <rect x="14" y="15" width="7" height="6" rx="1.6" />
+        <path d="M6.5 9v5.5a3 3 0 0 0 3 3H14" />
+      </symbol>
+      <symbol
+        id="i-puzzle"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path
+          d="M10.5 3.5a2 2 0 0 1 3 1.7V7h2.2a1.8 1.8 0 0 1 1.8 1.8v2.4h-1.6a2 2 0 0 0 0 4h1.6v2.2a1.8 1.8 0 0 1-1.8 1.8H13v-1.6a2 2 0 0 0-4 0v1.6H6.8A1.8 1.8 0 0 1 5 17.4V15h1.6a2 2 0 0 0 0-4H5V8.8A1.8 1.8 0 0 1 6.8 7h2.9V5.2a2 2 0 0 1 .8-1.7z"
+        />
+      </symbol>
+      <symbol
+        id="i-gear"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="12" cy="12" r="3.2" />
+        <path
+          d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"
+        />
+      </symbol>
+      <symbol
+        id="i-plus"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 5v14M5 12h14" />
+      </symbol>
+      <symbol
+        id="i-refresh"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M20 11a8 8 0 0 0-13.7-5.3L4 8" />
+        <path d="M4 4v4h4" />
+        <path d="M4 13a8 8 0 0 0 13.7 5.3L20 16" />
+        <path d="M20 20v-4h-4" />
+      </symbol>
+      <symbol
+        id="i-import"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 3v10M8 9l4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+      </symbol>
+      <symbol
+        id="i-chev"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="m6 9 6 6 6-6" />
+      </symbol>
+      <symbol
+        id="i-search"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.9"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-3.5-3.5" />
+      </symbol>
+      <symbol
+        id="i-panel"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <rect x="3" y="4" width="18" height="16" rx="2.2" />
+        <path d="M9 4v16" />
+      </symbol>
+      <symbol
+        id="i-arrow"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M5 12h14M13 6l6 6-6 6" />
+      </symbol>
+      <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M8 5.5v13l11-6.5z" />
+      </symbol>
+      <symbol
+        id="i-copy"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <rect x="9" y="9" width="11" height="12" rx="2.2" />
+        <path d="M5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5" />
+      </symbol>
+      <symbol
+        id="i-plug"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M9 3v5M15 3v5" />
+        <path d="M6 8h12v3a6 6 0 0 1-6 6 6 6 0 0 1-6-6z" />
+        <path d="M12 17v4" />
+      </symbol>
+    </svg>
+
+    <div class="app">
+      <!-- Titlebar -->
+      <div class="titlebar">
+        <div class="dots">
+          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        </div>
+        <div class="t">Connections — DataZen</div>
+      </div>
+
+      <div class="body">
+        <!-- ============ Rail ============ -->
+        <nav class="rail">
+          <button class="rail-btn on" data-tip="Connections  ⌘1">
+            <svg><use href="#i-db" /></svg>
+          </button>
+          <button class="rail-btn" data-tip="Queries  ⌘2">
+            <svg><use href="#i-sql" /></svg>
+          </button>
+          <button class="rail-btn" data-tip="History  ⌘3">
+            <svg><use href="#i-clock" /></svg>
+          </button>
+          <button class="rail-btn" data-tip="Workflows  ⌘4">
+            <svg><use href="#i-flow" /></svg>
+          </button>
+          <button class="rail-btn" data-tip="Extensions  ⌘5">
+            <svg><use href="#i-puzzle" /></svg>
+          </button>
+          <div class="rail-spacer"></div>
+          <button class="rail-btn" data-tip="Settings  ⌘,">
+            <svg><use href="#i-gear" /></svg>
+          </button>
+        </nav>
+
+        <!-- ============ Panel ============ -->
+        <aside class="panel">
+          <div class="panel-head">
+            <h2>Connections</h2>
+            <button class="ic" title="Collapse panel">
+              <svg><use href="#i-panel" /></svg>
+            </button>
+          </div>
+
+          <div class="panel-tools">
+            <button class="tool-primary">
+              <svg><use href="#i-plus" /></svg>
+              New
+            </button>
+            <div class="tool-sep"></div>
+            <button class="tool-ic" title="Import connections">
+              <svg><use href="#i-import" /></svg>
+            </button>
+            <button class="tool-ic" title="Refresh">
+              <svg><use href="#i-refresh" /></svg>
+            </button>
+            <div class="tool-spacer"></div>
+          </div>
+
+          <div class="search">
+            <svg><use href="#i-search" /></svg>
+            <input type="text" placeholder="Find connections…" />
+            <kbd>⌘K</kbd>
+          </div>
+
+          <div class="tree">
+            <div class="group-head">
+              <svg><use href="#i-chev" /></svg>
+              Development
+              <span class="count">2</span>
+            </div>
+
+            <div class="conn-item">
+              <span class="badge pg"
+                ><svg><use href="#i-db" /></svg
+              ></span>
+              <span class="nm">PostgreSQL-Local</span>
+              <span class="st"></span>
+              <button class="reconnect">
+                <svg><use href="#i-play" /></svg>Connect
+              </button>
+            </div>
+
+            <div class="conn-item">
+              <span class="badge my"
+                ><svg><use href="#i-db" /></svg
+              ></span>
+              <span class="nm">MySQL-Local</span>
+              <span class="st"></span>
+              <button class="reconnect">
+                <svg><use href="#i-play" /></svg>Connect
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        <!-- ============ Main ============ -->
+        <main class="main">
+          <div class="wrap">
+            <!-- Hero -->
+            <header class="hero">
+              <h1>Ready to query</h1>
+              <p>
+                You have <b>2 connections</b> saved. Pick one to open, or start a new query from
+                scratch.
+              </p>
+            </header>
+
+            <!-- Connections -->
+            <section class="sec">
+              <div class="sec-head">
+                <h3>Your connections</h3>
+                <div class="line"></div>
+                <button>+ New connection</button>
+              </div>
+
+              <div class="conn-list">
+                <div class="ccard">
+                  <div class="cbadge pg">
+                    <svg><use href="#i-db" /></svg>
+                  </div>
+                  <div class="cinfo">
+                    <div class="cname">
+                      PostgreSQL-Local
+                      <span class="tag">PostgreSQL</span>
+                    </div>
+                    <div class="cmeta">127.0.0.1:5432 · Development</div>
+                  </div>
+                  <span class="cstat off"><span class="d"></span>Offline</span>
+                  <button class="cact solid">
+                    <svg><use href="#i-play" /></svg>
+                    Connect
+                  </button>
+                </div>
+
+                <div class="ccard">
+                  <div class="cbadge my">
+                    <svg><use href="#i-db" /></svg>
+                  </div>
+                  <div class="cinfo">
+                    <div class="cname">
+                      MySQL-Local
+                      <span class="tag">MySQL</span>
+                    </div>
+                    <div class="cmeta">127.0.0.1:3306 · Development</div>
+                  </div>
+                  <span class="cstat off"><span class="d"></span>Offline</span>
+                  <button class="cact solid">
+                    <svg><use href="#i-play" /></svg>
+                    Connect
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <!-- Recent queries -->
+            <section class="sec">
+              <div class="sec-head">
+                <h3>Recent queries</h3>
+                <div class="line"></div>
+                <a href="#"
+                  >View all <svg><use href="#i-arrow" /></svg
+                ></a>
+              </div>
+
+              <div class="hist">
+                <div class="hrow">
+                  <div class="hico">
+                    <svg><use href="#i-sql" /></svg>
+                  </div>
+                  <div class="hmain">
+                    <div class="hsql">
+                      SELECT sql FROM sqlite_master WHERE type='table' AND name=…
+                    </div>
+                    <div class="hmeta">
+                      <span class="src">sample_ecommerce.sqlite</span>
+                      <span class="sep"></span>
+                      <span>2 min ago</span>
+                      <span class="sep"></span>
+                      <span class="ms">19 ms</span>
+                    </div>
+                  </div>
+                  <div class="hact">
+                    <button class="hbtn run" title="Re-run">
+                      <svg><use href="#i-play" /></svg>
+                    </button>
+                    <button class="hbtn" title="Copy SQL">
+                      <svg><use href="#i-copy" /></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="hrow">
+                  <div class="hico">
+                    <svg><use href="#i-sql" /></svg>
+                  </div>
+                  <div class="hmain">
+                    <div class="hsql">
+                      — Welcome to DataZen! Quick Sales Analysis SELECT p.categ…
+                    </div>
+                    <div class="hmeta">
+                      <span class="src">sample_ecommerce.sqlite</span>
+                      <span class="sep"></span>
+                      <span>14 min ago</span>
+                      <span class="sep"></span>
+                      <span class="ms">0 ms</span>
+                    </div>
+                  </div>
+                  <div class="hact">
+                    <button class="hbtn run" title="Re-run">
+                      <svg><use href="#i-play" /></svg>
+                    </button>
+                    <button class="hbtn" title="Copy SQL">
+                      <svg><use href="#i-copy" /></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="hrow">
+                  <div class="hico">
+                    <svg><use href="#i-sql" /></svg>
+                  </div>
+                  <div class="hmain">
+                    <div class="hsql">DROP TABLE `datazen_demo`.`demo_sales`;</div>
+                    <div class="hmeta">
+                      <span class="src">datazen_demo</span>
+                      <span class="sep"></span>
+                      <span>1 hour ago</span>
+                      <span class="sep"></span>
+                      <span class="ms">19 ms</span>
+                    </div>
+                  </div>
+                  <div class="hact">
+                    <button class="hbtn run" title="Re-run">
+                      <svg><use href="#i-play" /></svg>
+                    </button>
+                    <button class="hbtn" title="Copy SQL">
+                      <svg><use href="#i-copy" /></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- MCP -->
+            <section class="mcp">
+              <div class="mi">
+                <svg><use href="#i-plug" /></svg>
+              </div>
+              <div class="mt">
+                <b>DataZen MCP Server</b>
+                <span>Let Cursor, Claude Code and Windsurf query your databases directly.</span>
+              </div>
+              <div class="mact">
+                <code>mcpServers.datazen.config</code>
+                <button class="mbtn">
+                  <svg><use href="#i-copy" /></svg>
+                  Copy config
+                </button>
+              </div>
+            </section>
+
+            <div class="footer-note">
+              <kbd>⌘K</kbd> command palette &nbsp;·&nbsp; <kbd>⌘T</kbd> new query &nbsp;·&nbsp;
+              <kbd>⌘B</kbd> toggle sidebar
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

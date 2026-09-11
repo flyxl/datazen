@@ -1,0 +1,1423 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DataZen — First Launch Onboarding</title>
+    <style>
+      :root {
+        --bg: #0b0e14;
+        --bg-2: #0e121b;
+        --bg-3: #121721;
+        --bg-4: #161b28;
+        --panel: #0a0d14;
+        --border: #1e2534;
+        --border-hi: #2a3549;
+        --text: #e6eaf2;
+        --text-2: #8b94a7;
+        --text-3: #5f6879;
+        --accent: #4fc3f7;
+        --accent-2: #6fd0fa;
+        --accent-dim: rgba(79, 195, 247, 0.12);
+        --green: #5fd08a;
+        --radius: 12px;
+        --mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+        --sans:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+          'PingFang SC', 'Microsoft YaHei', sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(80% 60% at 50% 0%, #10151f 0%, #070a0f 60%), #070a0f;
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 14px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+        display: grid;
+        place-items: center;
+        padding: 32px 20px;
+        min-height: 100vh;
+      }
+      button {
+        font-family: inherit;
+      }
+      a {
+        color: inherit;
+      }
+
+      /* ================= Window frame ================= */
+      .app {
+        width: min(1120px, 100%);
+        height: min(720px, calc(100vh - 64px));
+        background: var(--bg);
+        border: 1px solid #232b3c;
+        border-radius: 14px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow:
+          0 60px 120px -40px rgba(0, 0, 0, 0.9),
+          0 0 0 1px rgba(255, 255, 255, 0.02),
+          0 30px 90px -40px rgba(79, 195, 247, 0.22);
+      }
+
+      /* Titlebar */
+      .app-bar {
+        height: 40px;
+        flex: 0 0 40px;
+        background: #0a0d14;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        padding: 0 14px;
+        gap: 8px;
+        position: relative;
+      }
+      .dots {
+        display: flex;
+        gap: 8px;
+      }
+      .dot {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+      }
+      .dot.r {
+        background: #ff5f57;
+      }
+      .dot.y {
+        background: #febc2e;
+      }
+      .dot.g {
+        background: #28c840;
+      }
+      .app-bar .bar-title {
+        position: absolute;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 11.5px;
+        color: var(--text-3);
+        font-family: var(--mono);
+        pointer-events: none;
+      }
+
+      /* Body split */
+      .app-body {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 352px 1fr;
+        min-height: 0;
+      }
+
+      /* ================= Aside ================= */
+      .aside {
+        position: relative;
+        padding: 40px 34px;
+        background:
+          radial-gradient(120% 70% at 0% 0%, rgba(79, 195, 247, 0.13) 0%, transparent 55%),
+          linear-gradient(180deg, #0e131c, #0a0e15);
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .aside::after {
+        content: '';
+        position: absolute;
+        left: -60px;
+        bottom: -120px;
+        width: 300px;
+        height: 300px;
+        border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(79, 195, 247, 0.1), transparent 70%);
+        pointer-events: none;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        margin-bottom: 38px;
+        position: relative;
+      }
+      .brand svg {
+        width: 21px;
+        height: 21px;
+        color: var(--accent);
+      }
+
+      .aside h1 {
+        margin: 0 0 12px;
+        font-size: 26px;
+        line-height: 1.18;
+        letter-spacing: -0.028em;
+        font-weight: 730;
+        position: relative;
+      }
+      .aside .sub {
+        margin: 0 0 34px;
+        font-size: 13.5px;
+        line-height: 1.65;
+        color: var(--text-2);
+        max-width: 32ch;
+        position: relative;
+      }
+
+      .fitem {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        padding: 12px 0;
+        border-top: 1px solid rgba(30, 37, 52, 0.7);
+        position: relative;
+      }
+      .fitem:first-of-type {
+        border-top: none;
+      }
+      .fitem .fi {
+        flex: 0 0 auto;
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        background: var(--accent-dim);
+        color: var(--accent);
+        border: 1px solid rgba(79, 195, 247, 0.16);
+      }
+      .fitem .fi svg {
+        width: 15px;
+        height: 15px;
+      }
+      .fitem b {
+        display: block;
+        font-size: 13px;
+        font-weight: 640;
+        letter-spacing: -0.005em;
+      }
+      .fitem span {
+        display: block;
+        font-size: 12px;
+        color: var(--text-3);
+        line-height: 1.5;
+        margin-top: 1px;
+      }
+
+      .aside-foot {
+        margin-top: auto;
+        padding-top: 22px;
+        font-size: 11.5px;
+        color: var(--text-3);
+        font-family: var(--mono);
+        position: relative;
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      /* ================= Main ================= */
+      .main {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+        background: var(--bg);
+      }
+
+      .main-scroll {
+        flex: 1;
+        overflow-y: auto;
+        padding: 44px 48px 32px;
+        min-height: 0;
+      }
+      .main-scroll::-webkit-scrollbar {
+        width: 9px;
+      }
+      .main-scroll::-webkit-scrollbar-thumb {
+        background: #1c2331;
+        border-radius: 9px;
+        border: 2px solid var(--bg);
+      }
+
+      /* Step visibility */
+      .step {
+        display: none;
+        animation: stepIn 0.38s cubic-bezier(0.2, 0.7, 0.3, 1);
+      }
+      .step.active {
+        display: block;
+      }
+      @keyframes stepIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      .step-tag {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 650;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: var(--accent);
+        background: var(--accent-dim);
+        border: 1px solid rgba(79, 195, 247, 0.2);
+        padding: 4px 10px;
+        border-radius: 999px;
+        margin-bottom: 18px;
+      }
+      .step h2 {
+        margin: 0 0 10px;
+        font-size: 25px;
+        letter-spacing: -0.026em;
+        line-height: 1.2;
+        font-weight: 720;
+      }
+      .step .hint {
+        margin: 0 0 30px;
+        font-size: 13.5px;
+        color: var(--text-2);
+        line-height: 1.65;
+        max-width: 56ch;
+      }
+
+      /* ---------- Step 0: choice cards ---------- */
+      .choice {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        width: 100%;
+        text-align: left;
+        background: linear-gradient(180deg, #121824, #0f131c);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 18px 20px;
+        cursor: pointer;
+        transition:
+          border-color 0.16s,
+          background 0.16s,
+          transform 0.16s;
+        color: inherit;
+        margin-bottom: 12px;
+      }
+      .choice:hover {
+        border-color: rgba(79, 195, 247, 0.35);
+        background: #141a26;
+        transform: translateY(-1px);
+      }
+      .choice.primary {
+        border-color: rgba(79, 195, 247, 0.28);
+      }
+      .choice .ci {
+        flex: 0 0 auto;
+        width: 40px;
+        height: 40px;
+        border-radius: 11px;
+        display: grid;
+        place-items: center;
+        background: var(--accent-dim);
+        color: var(--accent);
+        border: 1px solid rgba(79, 195, 247, 0.18);
+      }
+      .choice .ci svg {
+        width: 19px;
+        height: 19px;
+      }
+      .choice .ct {
+        flex: 1;
+        min-width: 0;
+      }
+      .choice .ct b {
+        display: block;
+        font-size: 14.5px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      .choice .ct span {
+        display: block;
+        font-size: 12.5px;
+        color: var(--text-2);
+        margin-top: 2px;
+        line-height: 1.5;
+      }
+      .choice .ca {
+        flex: 0 0 auto;
+        color: var(--text-3);
+        transition:
+          color 0.16s,
+          transform 0.16s;
+      }
+      .choice .ca svg {
+        width: 16px;
+        height: 16px;
+      }
+      .choice:hover .ca {
+        color: var(--accent);
+        transform: translateX(2px);
+      }
+
+      .import-line {
+        margin-top: 18px;
+        padding-top: 18px;
+        border-top: 1px solid var(--border);
+        font-size: 12.5px;
+        color: var(--text-3);
+      }
+      .import-line a {
+        color: var(--accent);
+        text-decoration: none;
+        border-bottom: 1px solid rgba(79, 195, 247, 0.3);
+      }
+      .import-line a:hover {
+        color: var(--accent-2);
+      }
+
+      /* ---------- Step 1: connection ---------- */
+      .db-grid {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 9px;
+        margin-bottom: 26px;
+      }
+      .db {
+        background: #0f131c;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 13px 6px 11px;
+        cursor: pointer;
+        text-align: center;
+        color: var(--text-2);
+        transition:
+          border-color 0.16s,
+          background 0.16s,
+          color 0.16s;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 7px;
+      }
+      .db:hover {
+        border-color: var(--border-hi);
+        background: #121826;
+        color: var(--text);
+      }
+      .db.sel {
+        border-color: rgba(79, 195, 247, 0.55);
+        background: rgba(79, 195, 247, 0.07);
+        color: var(--text);
+        box-shadow: 0 0 0 3px rgba(79, 195, 247, 0.06);
+      }
+      .db .di {
+        width: 22px;
+        height: 22px;
+        display: grid;
+        place-items: center;
+      }
+      .db .di svg {
+        width: 19px;
+        height: 19px;
+      }
+      .db small {
+        font-size: 10.5px;
+        letter-spacing: -0.01em;
+        font-weight: 550;
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-bottom: 6px;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .field.full {
+        grid-column: 1 / -1;
+      }
+      .field label {
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--text-3);
+        letter-spacing: 0.02em;
+      }
+      .field input {
+        width: 100%;
+        background: #0a0d14;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        padding: 10px 12px;
+        color: var(--text);
+        font-size: 13px;
+        font-family: var(--mono);
+        outline: none;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s,
+          background 0.15s;
+      }
+      .field input::placeholder {
+        color: #3d4759;
+      }
+      .field input:focus {
+        border-color: rgba(79, 195, 247, 0.5);
+        box-shadow: 0 0 0 3px rgba(79, 195, 247, 0.09);
+        background: #0b0f17;
+      }
+
+      .test-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-top: 20px;
+        padding-top: 18px;
+        border-top: 1px solid var(--border);
+      }
+      .test-msg {
+        font-size: 12.5px;
+        color: var(--text-3);
+      }
+      .test-msg.ok {
+        color: var(--green);
+      }
+      .test-msg.err {
+        color: #ff7b72;
+      }
+      .test-msg code {
+        font-family: var(--mono);
+        font-size: 11.5px;
+      }
+
+      .spinner {
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.18);
+        border-top-color: var(--accent);
+        animation: spin 0.7s linear infinite;
+        display: inline-block;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* ---------- Step 2: AI ---------- */
+      .provider-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 9px;
+        margin-bottom: 24px;
+      }
+      .prov {
+        background: #0f131c;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 8px;
+        cursor: pointer;
+        text-align: center;
+        color: var(--text-2);
+        font-size: 12px;
+        font-weight: 560;
+        transition:
+          border-color 0.16s,
+          background 0.16s,
+          color 0.16s;
+      }
+      .prov:hover {
+        border-color: var(--border-hi);
+        background: #121826;
+        color: var(--text);
+      }
+      .prov.sel {
+        border-color: rgba(79, 195, 247, 0.55);
+        background: rgba(79, 195, 247, 0.07);
+        color: var(--text);
+        box-shadow: 0 0 0 3px rgba(79, 195, 247, 0.06);
+      }
+
+      .note {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        margin-top: 18px;
+        padding: 13px 15px;
+        background: rgba(79, 195, 247, 0.05);
+        border: 1px solid rgba(79, 195, 247, 0.16);
+        border-radius: 10px;
+        font-size: 12.5px;
+        color: var(--text-2);
+        line-height: 1.6;
+      }
+      .note svg {
+        width: 15px;
+        height: 15px;
+        flex: 0 0 auto;
+        color: var(--accent);
+        margin-top: 2px;
+      }
+
+      /* ---------- Step 3: done ---------- */
+      .done-wrap {
+        text-align: center;
+        padding: 34px 0 10px;
+      }
+      .done-mark {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        margin: 0 auto 24px;
+        display: grid;
+        place-items: center;
+        background: rgba(95, 208, 138, 0.1);
+        border: 1px solid rgba(95, 208, 138, 0.3);
+        color: var(--green);
+        box-shadow: 0 0 0 8px rgba(95, 208, 138, 0.04);
+      }
+      .done-mark svg {
+        width: 28px;
+        height: 28px;
+      }
+      .done-wrap h2 {
+        margin-bottom: 10px;
+      }
+      .done-wrap .hint {
+        margin: 0 auto 30px;
+      }
+
+      .summary {
+        text-align: left;
+        max-width: 440px;
+        margin: 0 auto;
+        background: #0f131c;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+      }
+      .srow {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 13px 18px;
+        border-bottom: 1px solid rgba(30, 37, 52, 0.65);
+        font-size: 13px;
+      }
+      .srow:last-child {
+        border-bottom: none;
+      }
+      .srow .si {
+        width: 15px;
+        height: 15px;
+        color: var(--green);
+        flex: 0 0 auto;
+      }
+      .srow .sk {
+        color: var(--text-3);
+        width: 112px;
+        flex: 0 0 auto;
+        font-size: 12.5px;
+      }
+      .srow .sv {
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* ================= Footer ================= */
+      .main-foot {
+        flex: 0 0 auto;
+        border-top: 1px solid var(--border);
+        background: #0a0d14;
+        padding: 15px 48px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .steps-ind {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .si-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #232b3c;
+        transition:
+          background 0.2s,
+          width 0.2s;
+      }
+      .si-dot.on {
+        background: var(--accent);
+        width: 20px;
+        border-radius: 4px;
+      }
+      .si-dot.done {
+        background: #2f7fa6;
+      }
+      .steps-label {
+        font-size: 11.5px;
+        color: var(--text-3);
+        font-family: var(--mono);
+        margin-left: 4px;
+      }
+      .foot-btns {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        padding: 10px 18px;
+        border-radius: 9px;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1;
+        border: 1px solid transparent;
+        cursor: pointer;
+        transition:
+          background 0.16s,
+          border-color 0.16s,
+          transform 0.16s,
+          color 0.16s,
+          opacity 0.16s;
+        white-space: nowrap;
+      }
+      .btn svg {
+        width: 14px;
+        height: 14px;
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: #04121b;
+      }
+      .btn-primary:hover {
+        background: var(--accent-2);
+        transform: translateY(-1px);
+      }
+      .btn-ghost {
+        border-color: var(--border);
+        color: var(--text-2);
+      }
+      .btn-ghost:hover {
+        border-color: var(--border-hi);
+        color: var(--text);
+        background: var(--bg-3);
+      }
+      .btn-text {
+        background: transparent;
+        color: var(--text-3);
+        border: none;
+        padding: 10px 6px;
+      }
+      .btn-text:hover {
+        color: var(--text-2);
+      }
+      .btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        transform: none;
+      }
+      .btn[hidden] {
+        display: none;
+      }
+
+      /* ================= Responsive ================= */
+      @media (max-width: 900px) {
+        .app-body {
+          grid-template-columns: 1fr;
+        }
+        .aside {
+          padding: 26px 30px;
+          border-right: none;
+          border-bottom: 1px solid var(--border);
+        }
+        .aside h1 {
+          font-size: 21px;
+        }
+        .aside .sub {
+          margin-bottom: 20px;
+        }
+        .aside .fitem {
+          display: none;
+        }
+        .aside-foot {
+          display: none;
+        }
+        .main-scroll {
+          padding: 32px 30px 24px;
+        }
+        .main-foot {
+          padding: 14px 30px;
+        }
+        .db-grid {
+          grid-template-columns: repeat(3, 1fr);
+        }
+        .provider-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (max-width: 560px) {
+        body {
+          padding: 0;
+        }
+        .app {
+          height: 100vh;
+          border-radius: 0;
+          border: none;
+        }
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+        .foot-btns .btn {
+          padding: 10px 14px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ===== SVG sprite ===== -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol
+        id="i-db"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <ellipse cx="12" cy="5.5" rx="7" ry="2.8" />
+        <path d="M5 5.5v13c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8v-13" />
+        <path d="M5 12c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8" />
+      </symbol>
+      <symbol
+        id="i-feather"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
+        <path d="M16 8 2 22" />
+        <path d="M17.5 15H9" />
+      </symbol>
+      <symbol
+        id="i-spark"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path
+          d="M12 3v3M12 18v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M3 12h3M18 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"
+        />
+        <circle cx="12" cy="12" r="3.2" />
+      </symbol>
+      <symbol
+        id="i-lock"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <rect x="4" y="10.5" width="16" height="10.5" rx="2.2" />
+        <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+      </symbol>
+      <symbol
+        id="i-plus"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.9"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 5v14M5 12h14" />
+      </symbol>
+      <symbol
+        id="i-flask"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path
+          d="M9 3h6M10 3v6.2L4.8 18a1.8 1.8 0 0 0 1.6 2.7h11.2a1.8 1.8 0 0 0 1.6-2.7L14 9.2V3"
+        />
+        <path d="M7.3 14h9.4" />
+      </symbol>
+      <symbol
+        id="i-arrow"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M5 12h14M13 6l6 6-6 6" />
+      </symbol>
+      <symbol
+        id="i-check"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.4"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="m4 12.5 5 5L20 6.5" />
+      </symbol>
+      <symbol
+        id="i-check-circle"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="12" cy="12" r="9" />
+        <path d="m8 12.3 2.7 2.7L16 9.5" />
+      </symbol>
+      <symbol
+        id="i-info"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 11v5M12 8h.01" />
+      </symbol>
+      <symbol
+        id="i-sql"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="m9 8-4 4 4 4M15 8l4 4-4 4" />
+      </symbol>
+      <symbol
+        id="i-download"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.9"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 3v12M7 11l5 5 5-5M4 20h16" />
+      </symbol>
+    </svg>
+
+    <div class="app">
+      <!-- ===== Titlebar ===== -->
+      <div class="app-bar">
+        <div class="dots">
+          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        </div>
+        <div class="bar-title">DataZen — Welcome</div>
+      </div>
+
+      <div class="app-body">
+        <!-- ===== Aside ===== -->
+        <aside class="aside">
+          <div class="brand">
+            <svg><use href="#i-db" /></svg>
+            DataZen
+          </div>
+
+          <h1>Welcome to DataZen</h1>
+          <p class="sub">
+            Set up your workspace in two quick steps. Everything stays on this machine — no account,
+            no cloud.
+          </p>
+
+          <div class="fitem">
+            <div class="fi">
+              <svg><use href="#i-feather" /></svg>
+            </div>
+            <div>
+              <b>Under 10 MB</b>
+              <span>Native binary, instant launch.</span>
+            </div>
+          </div>
+          <div class="fitem">
+            <div class="fi">
+              <svg><use href="#i-spark" /></svg>
+            </div>
+            <div>
+              <b>AI-native</b>
+              <span>Schema-aware SQL assistance.</span>
+            </div>
+          </div>
+          <div class="fitem">
+            <div class="fi">
+              <svg><use href="#i-lock" /></svg>
+            </div>
+            <div>
+              <b>Local-first</b>
+              <span>Credentials encrypted on device.</span>
+            </div>
+          </div>
+
+          <div class="aside-foot">
+            <span>v1.0.0</span>
+            <span>GPLv3</span>
+          </div>
+        </aside>
+
+        <!-- ===== Main ===== -->
+        <main class="main">
+          <div class="main-scroll">
+            <!-- ---------- STEP 0 : Welcome choice ---------- -->
+            <section class="step active" data-step="0">
+              <h2>How would you like to start?</h2>
+              <p class="hint">
+                Connect a real database, or take DataZen for a spin with a bundled sample dataset
+                first.
+              </p>
+
+              <button class="choice primary" data-go="1">
+                <div class="ci">
+                  <svg><use href="#i-plus" /></svg>
+                </div>
+                <div class="ct">
+                  <b>Connect a database</b>
+                  <span>PostgreSQL, MySQL, SQLite, Redis and more</span>
+                </div>
+                <div class="ca">
+                  <svg><use href="#i-arrow" /></svg>
+                </div>
+              </button>
+
+              <button class="choice" data-sample="1">
+                <div class="ci">
+                  <svg><use href="#i-flask" /></svg>
+                </div>
+                <div class="ct">
+                  <b>Explore with sample data</b>
+                  <span>A local SQLite playground — nothing to configure</span>
+                </div>
+                <div class="ca">
+                  <svg><use href="#i-arrow" /></svg>
+                </div>
+              </button>
+
+              <div class="import-line">
+                Already using another client?
+                <a href="#">Import connections from DBeaver, TablePlus or a .env file</a>
+              </div>
+            </section>
+
+            <!-- ---------- STEP 1 : Connection ---------- -->
+            <section class="step" data-step="1">
+              <div class="step-tag">Step 1 of 2</div>
+              <h2>Connect your first database</h2>
+              <p class="hint">
+                Pick a driver and fill in the connection details. DataZen stores credentials
+                encrypted on this device only.
+              </p>
+
+              <div class="db-grid" id="dbGrid">
+                <div class="db sel" data-db="PostgreSQL">
+                  <div class="di">
+                    <svg><use href="#i-db" /></svg>
+                  </div>
+                  <small>PostgreSQL</small>
+                </div>
+                <div class="db" data-db="MySQL">
+                  <div class="di">
+                    <svg><use href="#i-db" /></svg>
+                  </div>
+                  <small>MySQL</small>
+                </div>
+                <div class="db" data-db="SQLite">
+                  <div class="di">
+                    <svg><use href="#i-db" /></svg>
+                  </div>
+                  <small>SQLite</small>
+                </div>
+                <div class="db" data-db="Redis">
+                  <div class="di">
+                    <svg><use href="#i-db" /></svg>
+                  </div>
+                  <small>Redis</small>
+                </div>
+                <div class="db" data-db="MongoDB">
+                  <div class="di">
+                    <svg><use href="#i-db" /></svg>
+                  </div>
+                  <small>MongoDB</small>
+                </div>
+                <div class="db" data-db="ClickHouse">
+                  <div class="di">
+                    <svg><use href="#i-db" /></svg>
+                  </div>
+                  <small>ClickHouse</small>
+                </div>
+              </div>
+
+              <div class="form-grid">
+                <div class="field">
+                  <label for="c-host">Host</label>
+                  <input id="c-host" type="text" value="localhost" placeholder="localhost" />
+                </div>
+                <div class="field">
+                  <label for="c-port">Port</label>
+                  <input id="c-port" type="text" value="5432" placeholder="5432" />
+                </div>
+                <div class="field">
+                  <label for="c-db">Database</label>
+                  <input id="c-db" type="text" value="analytics" placeholder="database name" />
+                </div>
+                <div class="field">
+                  <label for="c-user">Username</label>
+                  <input id="c-user" type="text" value="postgres" placeholder="username" />
+                </div>
+                <div class="field full">
+                  <label for="c-pass">Password</label>
+                  <input id="c-pass" type="password" value="••••••••••" placeholder="password" />
+                </div>
+              </div>
+
+              <div class="test-row">
+                <button class="btn btn-ghost" id="btnTest">
+                  <svg><use href="#i-flask" /></svg>
+                  Test connection
+                </button>
+                <span class="test-msg" id="testMsg"></span>
+              </div>
+            </section>
+
+            <!-- ---------- STEP 2 : AI ---------- -->
+            <section class="step" data-step="2">
+              <div class="step-tag">Step 2 of 2</div>
+              <h2>Set up AI assistance</h2>
+              <p class="hint">
+                DataZen uses your own API key to generate SQL, explain errors and analyse query
+                plans. You can skip this and configure it later.
+              </p>
+
+              <div class="provider-grid" id="provGrid">
+                <div class="prov sel" data-prov="OpenAI">OpenAI</div>
+                <div class="prov" data-prov="Anthropic">Anthropic</div>
+                <div class="prov" data-prov="DeepSeek">DeepSeek</div>
+                <div class="prov" data-prov="Custom">Custom endpoint</div>
+              </div>
+
+              <div class="form-grid">
+                <div class="field full">
+                  <label for="ai-key">API key</label>
+                  <input id="ai-key" type="password" placeholder="sk-..." />
+                </div>
+                <div class="field full">
+                  <label for="ai-model">Model</label>
+                  <input id="ai-model" type="text" value="gpt-4o-mini" placeholder="model name" />
+                </div>
+              </div>
+
+              <div class="note">
+                <svg><use href="#i-info" /></svg>
+                <span>
+                  Your key is encrypted with AES-256-GCM and stored locally. Requests go directly to
+                  your provider — never through DataZen servers. There aren't any.
+                </span>
+              </div>
+            </section>
+
+            <!-- ---------- STEP 3 : Done ---------- -->
+            <section class="step" data-step="3">
+              <div class="done-wrap">
+                <div class="done-mark">
+                  <svg><use href="#i-check" /></svg>
+                </div>
+                <h2>You're all set</h2>
+                <p class="hint">
+                  Your workspace is ready. DataZen will open your connection and you can start
+                  writing queries right away.
+                </p>
+
+                <div class="summary">
+                  <div class="srow">
+                    <svg class="si"><use href="#i-check-circle" /></svg>
+                    <span class="sk">Connection</span>
+                    <span class="sv" id="sum-conn">postgres@localhost:5432/analytics</span>
+                  </div>
+                  <div class="srow">
+                    <svg class="si"><use href="#i-check-circle" /></svg>
+                    <span class="sk">AI provider</span>
+                    <span class="sv" id="sum-ai">OpenAI · gpt-4o-mini</span>
+                  </div>
+                  <div class="srow">
+                    <svg class="si"><use href="#i-check-circle" /></svg>
+                    <span class="sk">Storage</span>
+                    <span class="sv">Encrypted locally · AES-256-GCM</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- ===== Footer ===== -->
+          <div class="main-foot">
+            <div class="steps-ind" id="stepsInd">
+              <span class="si-dot" data-i="1"></span>
+              <span class="si-dot" data-i="2"></span>
+              <span class="steps-label" id="stepsLabel">Step 1 of 2</span>
+            </div>
+            <div class="foot-btns">
+              <button class="btn btn-text" id="btnSkip" hidden>Skip setup</button>
+              <button class="btn btn-ghost" id="btnBack" hidden>Back</button>
+              <button class="btn btn-primary" id="btnNext">Continue</button>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var steps = Array.prototype.slice.call(document.querySelectorAll('.step'));
+        var dots = Array.prototype.slice.call(document.querySelectorAll('.si-dot'));
+        var stepsInd = document.getElementById('stepsInd');
+        var stepsLbl = document.getElementById('stepsLabel');
+        var btnBack = document.getElementById('btnBack');
+        var btnNext = document.getElementById('btnNext');
+        var btnSkip = document.getElementById('btnSkip');
+
+        var current = 0;
+        var tested = false; // 是否已成功测试连接
+
+        /* ---------- 状态渲染 ---------- */
+        function render() {
+          // 步骤切换
+          steps.forEach(function (s, i) {
+            s.classList.toggle('active', i === current);
+          });
+
+          // 进度指示
+          if (current === 0 || current === 3) {
+            stepsInd.style.visibility = 'hidden';
+          } else {
+            stepsInd.style.visibility = 'visible';
+            dots.forEach(function (d, i) {
+              var n = i + 1;
+              d.classList.toggle('on', n === current);
+              d.classList.toggle('done', n < current);
+            });
+            stepsLbl.textContent = 'Step ' + current + ' of 2';
+          }
+
+          // 按钮状态
+          btnBack.hidden = current === 0 || current === 3;
+          btnSkip.hidden = current !== 2;
+
+          if (current === 0) {
+            btnNext.hidden = true;
+          } else if (current === 1) {
+            btnNext.hidden = false;
+            btnNext.textContent = 'Continue';
+            btnNext.disabled = !tested;
+          } else if (current === 2) {
+            btnNext.hidden = false;
+            btnNext.textContent = 'Finish setup';
+            btnNext.disabled = false;
+          } else {
+            btnNext.hidden = false;
+            btnNext.textContent = 'Open DataZen';
+            btnNext.disabled = false;
+          }
+        }
+
+        /* ---------- 跳转 ---------- */
+        function go(n) {
+          if (n < 0 || n > 3) return;
+          current = n;
+          if (n === 3) updateSummary();
+          render();
+          document.querySelector('.main-scroll').scrollTop = 0;
+        }
+
+        /* ---------- 汇总信息 ---------- */
+        function updateSummary() {
+          var host = document.getElementById('c-host').value || 'localhost';
+          var port = document.getElementById('c-port').value || '5432';
+          var db = document.getElementById('c-db').value || 'postgres';
+          var user = document.getElementById('c-user').value || 'postgres';
+          var selDb = document.querySelector('.db.sel');
+          var drv = selDb ? selDb.getAttribute('data-db') : 'PostgreSQL';
+
+          document.getElementById('sum-conn').textContent =
+            drv.toLowerCase() + ' · ' + user + '@' + host + ':' + port + '/' + db;
+
+          var key = document.getElementById('ai-key').value.trim();
+          var model = document.getElementById('ai-model').value.trim() || 'default';
+          var selP = document.querySelector('.prov.sel');
+          var prov = selP ? selP.getAttribute('data-prov') : 'OpenAI';
+
+          document.getElementById('sum-ai').textContent = key
+            ? prov + ' · ' + model
+            : 'Not configured (can be set later)';
+        }
+
+        /* ---------- 事件绑定 ---------- */
+
+        // 步骤 0：卡片入口
+        document.querySelectorAll('[data-go]').forEach(function (el) {
+          el.addEventListener('click', function () {
+            go(parseInt(el.getAttribute('data-go'), 10));
+          });
+        });
+        document.querySelectorAll('[data-sample]').forEach(function (el) {
+          el.addEventListener('click', function () {
+            // 使用示例数据 → 直接跳到完成，AI 保持未配置
+            document.getElementById('ai-key').value = '';
+            document.getElementById('sum-conn').textContent = 'Sample dataset · SQLite (bundled)';
+            current = 3;
+            updateSummary();
+            document.getElementById('sum-conn').textContent = 'Sample dataset · SQLite (bundled)';
+            render();
+          });
+        });
+
+        // 数据库驱动选择
+        document.querySelectorAll('#dbGrid .db').forEach(function (el) {
+          el.addEventListener('click', function () {
+            document.querySelectorAll('#dbGrid .db').forEach(function (x) {
+              x.classList.remove('sel');
+            });
+            el.classList.add('sel');
+
+            // 依据驱动预填端口
+            var portMap = {
+              PostgreSQL: '5432',
+              MySQL: '3306',
+              SQLite: '',
+              Redis: '6379',
+              MongoDB: '27017',
+              ClickHouse: '8123',
+            };
+            var drv = el.getAttribute('data-db');
+            var portInput = document.getElementById('c-port');
+            if (portMap[drv] !== undefined) portInput.value = portMap[drv];
+
+            // SQLite 无主机概念，做一点简单的界面适配
+            var hostInput = document.getElementById('c-host');
+            if (drv === 'SQLite') {
+              hostInput.value = './sample.db';
+              hostInput.previousElementSibling.textContent = 'File path';
+              portInput.value = '';
+              portInput.disabled = true;
+            } else {
+              hostInput.previousElementSibling.textContent = 'Host';
+              portInput.disabled = false;
+            }
+
+            // 更换驱动后需要重新测试
+            tested = false;
+            document.getElementById('testMsg').textContent = '';
+            document.getElementById('testMsg').className = 'test-msg';
+            render();
+          });
+        });
+
+        // AI Provider 选择
+        document.querySelectorAll('#provGrid .prov').forEach(function (el) {
+          el.addEventListener('click', function () {
+            document.querySelectorAll('#provGrid .prov').forEach(function (x) {
+              x.classList.remove('sel');
+            });
+            el.classList.add('sel');
+            var prov = el.getAttribute('data-prov');
+            var modelInput = document.getElementById('ai-model');
+            var defaults = {
+              OpenAI: 'gpt-4o-mini',
+              Anthropic: 'claude-sonnet-4',
+              DeepSeek: 'deepseek-chat',
+              Custom: '',
+            };
+            modelInput.value = defaults[prov] || '';
+          });
+        });
+
+        // 测试连接
+        document.getElementById('btnTest').addEventListener('click', function () {
+          var btn = this;
+          var msg = document.getElementById('testMsg');
+
+          btn.disabled = true;
+          msg.className = 'test-msg';
+          msg.innerHTML = '<span class="spinner"></span> Testing connection…';
+
+          setTimeout(function () {
+            btn.disabled = false;
+            tested = true;
+            msg.className = 'test-msg ok';
+            msg.innerHTML = '✓ Connected — 42 ms · PostgreSQL 16.2';
+            render();
+          }, 1200);
+        });
+
+        // 底部按钮
+        btnNext.addEventListener('click', function () {
+          go(current + 1);
+        });
+        btnBack.addEventListener('click', function () {
+          go(current - 1);
+        });
+        btnSkip.addEventListener('click', function () {
+          document.getElementById('ai-key').value = '';
+          go(3);
+        });
+
+        // 初始化
+        render();
+      })();
+    </script>
+  </body>
+</html>
