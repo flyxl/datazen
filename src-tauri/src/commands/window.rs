@@ -17,8 +17,8 @@ const MAIN_WINDOW_MIN_H: f64 = 640.0;
 const MAIN_WINDOW_LEGACY_W: f64 = 800.0;
 const MAIN_WINDOW_LEGACY_H: f64 = 600.0;
 
-/// Built-in dark `--c-surface` / splash fallback (`#0b1220`).
-const WINDOW_BG_DARK: Color = Color(0x0b, 0x12, 0x20, 0xff);
+/// Built-in dark `--c-surface` / splash fallback (`#0b0e14`).
+const WINDOW_BG_DARK: Color = Color(0x0b, 0x0e, 0x14, 0xff);
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

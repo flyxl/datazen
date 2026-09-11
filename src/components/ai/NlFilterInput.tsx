@@ -146,7 +146,7 @@ export function NlFilterInput({ dbSessionId, database, tableName }: NlFilterInpu
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
-            className="rounded bg-accent px-2 py-0.5 text-xs text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+            className="rounded bg-accent px-2 py-0.5 text-xs text-on-accent transition-colors hover:bg-accent-2 disabled:opacity-50"
             onClick={() => void handleParse()}
             disabled={!nlFilterInput.trim()}
           >

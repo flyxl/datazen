@@ -2,7 +2,8 @@
 # Replace PackageVersion and InstallerSha256 after each release.
 # Submit via winget-pkgs or: winget install Flyxl.DataZen
 #
-# Installer URL must match Basic release artifact (no -all / -akulaku suffix).
+# Installer URL must match Basic release artifact (no -all / -akulaku variant).
+# Naming convention: DataZen-{Version}-{Platform}-{Arch}-nsis.exe
 
 PackageIdentifier: Flyxl.DataZen
 PackageVersion: 0.1.1

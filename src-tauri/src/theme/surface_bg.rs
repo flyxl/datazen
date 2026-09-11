@@ -13,7 +13,7 @@ use tauri::{AppHandle, Manager, Runtime};
 
 use crate::store::Store;
 
-pub const DEFAULT_SURFACE_DARK_HEX: &str = "#0b1220";
+pub const DEFAULT_SURFACE_DARK_HEX: &str = "#0b0e14";
 pub const SURFACE_BG_FILE: &str = "surface-bg.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn parse_and_normalize_hex() {
-        assert_eq!(parse_css_hex("#0b1220"), Some((0x0b, 0x12, 0x20)));
+        assert_eq!(parse_css_hex("#0b0e14"), Some((0x0b, 0x0e, 0x14)));
         assert_eq!(normalize_css_hex("#ABC"), Some("#aabbcc".into()));
         assert_eq!(normalize_css_hex("#fff"), Some("#ffffff".into()));
         assert!(normalize_css_hex("not-a-color").is_none());

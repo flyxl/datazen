@@ -122,6 +122,6 @@ describe('syncWebviewBackgroundFromTokens', () => {
     expect(document.documentElement.style.backgroundColor).toBe('rgb(248, 250, 252)');
     document.documentElement.classList.add('dark');
     syncWebviewBackgroundFromTokens();
-    expect(document.documentElement.style.backgroundColor).toBe('rgb(11, 18, 32)');
+    expect(document.documentElement.style.backgroundColor).toBe('rgb(11, 14, 20)');
   });
 });

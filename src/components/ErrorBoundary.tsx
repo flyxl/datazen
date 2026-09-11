@@ -89,7 +89,7 @@ class ErrorBoundaryInner extends Component<BoundaryProps, State> {
               <button
                 type="button"
                 onClick={this.handleReload}
-                className="rounded-lg bg-accent px-4 py-2 text-sm text-white hover:bg-accent/90"
+                className="rounded-lg bg-accent px-4 py-2 text-sm text-on-accent hover:bg-accent-2"
               >
                 {this.props.t('common.retry')}
               </button>

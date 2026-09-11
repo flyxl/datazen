@@ -7,7 +7,7 @@
 
 | 层级 | PR CI（`ci.yml`） | Release（`release.yml`） | 本地 / 维护者 |
 |------|-------------------|--------------------------|---------------|
-| 驱动选型 | **`basic` 固定**（postgres, mysql, sqlite, redis） | Basic / All / Akulaku 三 SKU × 四平台 | 任意 `--drivers=` / `DATAZEN_DRIVERS` |
+| 驱动选型 | **`basic` 固定**（postgres, mysql, sqlite, redis） | Basic / All × 四平台 + Akulaku × 三平台（Windows / macOS，无 Linux） | 任意 `--drivers=` / `DATAZEN_DRIVERS` |
 | Host 前端单测 | ✅ `pnpm test:unit` | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit` |
 | TypeScript | ✅ `pnpm typecheck` | 同上 | `pnpm typecheck` |
 | Host Rust lib | ✅ `cargo test -p datazen --lib`（basic features） | 完整 release 构建 | `cargo test -p datazen --lib` |
@@ -109,7 +109,7 @@ cargo test -p datazen-ai-api --lib
 
 - **Basic**：四平台 × basic 驱动（与 PR CI 同套核心驱动，但做完整 `tauri build`）。
 - **All**：四平台 × 全部 path 驱动（**不进 PR CI** 的集成验证点）。
-- **Akulaku**：含 git 私有驱动；Secrets 在 GitHub Environment `release`。
+- **Akulaku**：三平台（Windows / macOS）× 含 git 私有驱动；Secrets 在 GitHub Environment `release`。
 
 ## 7. 相关文档
 

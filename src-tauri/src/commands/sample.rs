@@ -5,8 +5,8 @@
 //! Idempotent: returns the existing path when the db file already exists.
 
 use super::error::CommandError;
-use tauri::{AppHandle, Manager};
 use std::fs;
+use tauri::{AppHandle, Manager};
 
 const SEED_SQL: &str =
     "CREATE TABLE IF NOT EXISTS demo_sales (region TEXT, amount REAL, quarter TEXT);
@@ -23,8 +23,8 @@ pub(crate) fn seed_sample_db_at(data_dir: &std::path::Path) -> Result<String, Co
     if db_path.exists() {
         return Ok(db_path.to_string_lossy().to_string());
     }
-    let conn = rusqlite::Connection::open(&db_path)
-        .map_err(|e| CommandError::Internal(e.to_string()))?;
+    let conn =
+        rusqlite::Connection::open(&db_path).map_err(|e| CommandError::Internal(e.to_string()))?;
     conn.execute_batch(SEED_SQL)
         .map_err(|e| CommandError::Internal(e.to_string()))?;
     Ok(db_path.to_string_lossy().to_string())

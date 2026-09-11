@@ -15,6 +15,7 @@
 
   /* Borders */
   --c-edge: #cbd5e1;
+  --c-edge-hi: #94a3b8;
 
   /* Foreground / Text */
   --c-fg: #111827;
@@ -23,7 +24,12 @@
 
   /* Accent & status */
   --c-accent: #2563eb;
+  --c-accent-2: #1d4ed8;
   --c-accent-deep: #1e40af;
+  --c-accent-dim: rgba(37, 99, 235, 0.08);
+  --c-accent-ring: rgba(37, 99, 235, 0.12);
+  /* Text on accent-filled surfaces (demo primary button: accent bg + dark text) */
+  --c-on-accent: #ffffff;
   --c-success: #059669;
   --c-warning: #d97706;
   --c-danger: #dc2626;
@@ -36,6 +42,21 @@
   --c-titlebar-fg: #111827;
   --c-titlebar-fg-muted: #475569;
   --c-titlebar-hover: rgba(37, 99, 235, 0.1);
+
+  /* Radii (demo: card 12 / small-card 10 / input+button 9 / pill 999) */
+  --radius-sm: 9px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+
+  /* Shadows */
+  --shadow-card: 0 8px 24px -12px rgba(15, 23, 42, 0.25);
+  --shadow-glow: 0 8px 24px -12px rgba(37, 99, 235, 0.25);
+
+  /* Sidebar / welcome ambience (demo .aside background) */
+  --bg-gradient:
+    radial-gradient(120% 70% at 0% 0%, rgba(37, 99, 235, 0.08) 0%, transparent 55%),
+    linear-gradient(180deg, #ffffff, #f1f5f9);
 
   /* Font stacks (overridable by theme packs) */
   --font-sans:
@@ -67,54 +88,74 @@
 }
 
 .dark {
-  /* Backgrounds */
-  --c-surface: #0b1220;
-  --c-surface-alt: #111827;
-  --c-surface-raised: #202b3a;
-  --c-surface-inset: #182231;
+  /* Backgrounds (demo: #0b0e14 / #0e121b / #161b28, panel #0a0d14) */
+  --c-surface: #0b0e14;
+  --c-surface-alt: #0e121b;
+  --c-surface-raised: #161b28;
+  --c-surface-inset: #0a0d14;
 
   /* Borders */
-  --c-edge: #374151;
+  --c-edge: #1e2534;
+  --c-edge-hi: #2a3549;
 
   /* Foreground / Text */
-  --c-fg: #f3f4f6;
-  --c-fg-secondary: #d1d5db;
-  --c-fg-muted: #9ca3af;
+  --c-fg: #e6eaf2;
+  --c-fg-secondary: #8b94a7;
+  --c-fg-muted: #5f6879;
 
   /* Accent & status */
-  --c-accent: #60a5fa;
-  --c-accent-deep: #2563eb;
-  --c-success: #34d399;
+  --c-accent: #4fc3f7;
+  --c-accent-2: #6fd0fa;
+  --c-accent-deep: #2f7fa6;
+  --c-accent-dim: rgba(79, 195, 247, 0.12);
+  --c-accent-ring: rgba(79, 195, 247, 0.09);
+  --c-on-accent: #04121b;
+  --c-success: #5fd08a;
   --c-warning: #fbbf24;
-  --c-danger: #f87171;
+  --c-danger: #ff7b72;
   /* Query execute / run button — green accent for Run action */
-  --c-query-run: #34d399;
+  --c-query-run: #5fd08a;
 
   /* Title bar background (TrafficLights area) */
-  --c-titlebar: #111827;
+  --c-titlebar: #0a0d14;
   /* Title bar foreground / text */
-  --c-titlebar-fg: #f3f4f6;
-  --c-titlebar-fg-muted: #9ca3af;
-  --c-titlebar-hover: rgba(96, 165, 250, 0.16);
+  --c-titlebar-fg: #e6eaf2;
+  --c-titlebar-fg-muted: #5f6879;
+  --c-titlebar-hover: rgba(79, 195, 247, 0.16);
+
+  /* Radii (demo: card 12 / small-card 10 / input+button 9 / pill 999) */
+  --radius-sm: 9px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+
+  /* Shadows */
+  --shadow-card: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 30px 90px -40px rgba(79, 195, 247, 0.22);
+
+  /* Sidebar / welcome ambience (demo .aside background) */
+  --bg-gradient:
+    radial-gradient(120% 70% at 0% 0%, rgba(79, 195, 247, 0.13) 0%, transparent 55%),
+    linear-gradient(180deg, #0e131c, #0a0e15);
 
   /* CodeMirror syntax colors (dark) */
   --cm-keyword: #93c5fd;
   --cm-string: #6ee7b7;
   --cm-number: #fbbf24;
-  --cm-comment: #9ca3af;
+  --cm-comment: #5f6879;
   --cm-operator: #67e8f9;
-  --cm-punctuation: #d1d5db;
-  --cm-foreground: #f3f4f6;
-  --cm-background: #0b1220;
-  --cm-selection: rgba(59, 130, 246, 0.32);
-  --cm-cursor: #f3f4f6;
+  --cm-punctuation: #8b94a7;
+  --cm-foreground: #e6eaf2;
+  --cm-background: #0b0e14;
+  --cm-selection: rgba(79, 195, 247, 0.25);
+  --cm-cursor: #e6eaf2;
 
   /* DataTable cell value colors by SQL-ish type family */
-  --dt-null: #9ca3af;
-  --dt-bool: #93c5fd;
+  --dt-null: #5f6879;
+  --dt-bool: #4fc3f7;
   --dt-number: #fbbf24;
   --dt-datetime: #5eead4;
   --dt-json: #67e8f9;
-  --dt-text: #d1d5db;
-  --dt-binary: #f87171;
+  --dt-text: #8b94a7;
+  --dt-binary: #ff7b72;
 }

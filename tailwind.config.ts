@@ -22,6 +22,7 @@ export default {
         },
         edge: {
           DEFAULT: 'var(--c-edge)',
+          hi: 'var(--c-edge-hi)',
         },
         fg: {
           DEFAULT: 'var(--c-fg)',
@@ -36,7 +37,13 @@ export default {
         },
         accent: {
           DEFAULT: 'var(--c-accent)',
+          2: 'var(--c-accent-2)',
           deep: 'var(--c-accent-deep)',
+          dim: 'var(--c-accent-dim)',
+          ring: 'var(--c-accent-ring)',
+        },
+        'on-accent': {
+          DEFAULT: 'var(--c-on-accent)',
         },
         success: {
           DEFAULT: 'var(--c-success)',

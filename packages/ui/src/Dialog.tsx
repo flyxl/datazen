@@ -112,7 +112,7 @@ export function Dialog({
         onKeyDown={handleKeyDown}
         {...(testId ? tid(testId) : {})}
         className={cn(
-          'relative z-10 w-full max-w-xl overflow-hidden rounded-xl border border-edge bg-surface-alt shadow-xl',
+          'relative z-10 w-full max-w-xl overflow-hidden rounded-[12px] border border-edge bg-surface-alt shadow-xl',
           className,
         )}
       >

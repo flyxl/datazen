@@ -385,7 +385,7 @@ export function WorkflowPanel({ dbSessionId }: WorkflowPanelProps) {
               <button
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
-                className="flex items-center gap-1.5 rounded bg-query-run px-3 py-1.5 text-xs text-white transition-colors hover:bg-query-run/90 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded bg-query-run px-3 py-1.5 text-xs text-on-accent transition-colors hover:bg-query-run/90 disabled:opacity-50"
                 onClick={() => void handleExecute()}
                 disabled={isExecuting}
               >

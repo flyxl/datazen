@@ -44,7 +44,7 @@ Release SKUs (see [packaging.md](packaging.md) and GitHub release notes):
 |-----|---------|
 | **Basic** | postgres, mysql, sqlite, redis |
 | **All** | all path drivers (includes the four above; **excludes** Kiwi / OLAP / Superset) |
-| **Akulaku** | Basic + mongodb + kiwi + superset |
+| **Akulaku** | Basic + mongodb + kiwi + superset (Windows / macOS only) |
 
 ## What the Host expects (zero hardcoding)
 

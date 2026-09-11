@@ -53,7 +53,7 @@ function filterOptions(options: readonly SelectOption[], query: string): SelectO
 }
 
 const triggerShellClass =
-  'flex items-center rounded-md border border-edge bg-surface text-left text-sm text-fg outline-none focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-50';
+  'flex items-center rounded-[9px] border border-edge bg-surface-inset text-left text-sm text-fg outline-none hover:border-edge-hi focus-within:border-accent focus-within:ring-[3px] focus-within:ring-accent-ring disabled:cursor-not-allowed disabled:opacity-50';
 
 function fitContentCharCount(text: string, min = 2, max = 12): number {
   return Math.max(min, Math.min(text.length, max));
@@ -98,7 +98,7 @@ function OptionList({
             className={cn(
               'flex cursor-pointer items-center px-2.5 py-1.5 text-sm transition-colors',
               opt.disabled && 'cursor-not-allowed opacity-40',
-              isHighlighted && !opt.disabled && 'bg-surface-raised',
+              isHighlighted && !opt.disabled && 'bg-accent-dim text-fg',
               isSelected && !isHighlighted && 'text-accent',
             )}
             onMouseEnter={() => {
@@ -350,7 +350,7 @@ export function Select({
         data-testid="select-listbox"
         role="listbox"
         aria-label={accessibleLabel}
-        className="fixed z-[9999] overflow-y-auto rounded-lg border border-edge bg-surface-alt py-1 shadow-xl"
+        className="fixed z-[9999] overflow-y-auto rounded-[10px] border border-edge bg-surface-alt py-1 shadow-xl"
         style={{ top: pos.top, left: pos.left, width: pos.width, maxHeight: 240 }}
         onKeyDown={handleListKeyDown}
       >

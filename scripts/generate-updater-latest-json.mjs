@@ -65,15 +65,15 @@ function platformUrl(fileName) {
 const mapping = [
   {
     key: 'darwin-aarch64',
-    file: pick((f) => f.endsWith('-macos-arm64.tar.gz') || f.endsWith('_aarch64.app.tar.gz')),
+    file: pick((f) => f.endsWith('-macos-arm64.tar.gz')),
   },
   {
     key: 'darwin-x86_64',
-    file: pick((f) => f.endsWith('-macos-x64.tar.gz') || (f.endsWith('.app.tar.gz') && f.includes('x64') && !f.includes('arm64'))),
+    file: pick((f) => f.endsWith('-macos-x64.tar.gz')),
   },
   {
     key: 'windows-x86_64',
-    file: pick((f) => f.endsWith('-windows-x64.exe')),
+    file: pick((f) => f.endsWith('-windows-x64-nsis.exe')),
   },
   {
     key: 'linux-x86_64',
