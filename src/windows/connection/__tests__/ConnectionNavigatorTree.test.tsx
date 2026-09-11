@@ -298,6 +298,8 @@ const panelStoreState = {
 const mockSetPendingQueryHistory = vi.fn((id: string | null) => {
   panelStoreState.pendingQueryHistoryConnectionId = id;
 });
+const mockRemovePanelsForDatabase = vi.fn();
+const mockRemovePanelsForRelation = vi.fn();
 vi.mock('../../../stores/panelStore', () => ({
   usePanelStore: Object.assign(
     (sel: (s: typeof panelStoreState) => unknown) => sel(panelStoreState),
@@ -305,6 +307,8 @@ vi.mock('../../../stores/panelStore', () => ({
       getState: () => ({
         pendingQueryHistoryConnectionId: panelStoreState.pendingQueryHistoryConnectionId,
         setPendingQueryHistory: mockSetPendingQueryHistory,
+        removePanelsForDatabase: mockRemovePanelsForDatabase,
+        removePanelsForRelation: mockRemovePanelsForRelation,
       }),
     },
   ),
@@ -876,6 +880,46 @@ describe('ConnectionNavigatorTree drop database', () => {
     await waitFor(() => {
       expect(onShowMessage).toHaveBeenCalledWith('permission denied', 'error');
     });
+  });
+
+  it('closes tabs bound to the dropped database after a successful drop', async () => {
+    mockRemovePanelsForDatabase.mockClear();
+    const { findByText, queryAllByText } = render(<ConnectionNavigatorTree {...baseProps} />);
+
+    await ensureDbTableVisible(findByText, queryAllByText, 'db_a', 'users');
+    await waitFor(() => {
+      expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+    });
+
+    await triggerDropDatabase(findByText, 'db_a');
+
+    await waitFor(() => {
+      expect(mockDriverExecute).toHaveBeenCalledWith({
+        dbSessionId: 'conn-1',
+        command: 'drop_database',
+        input: { name: 'db_a' },
+      });
+    });
+    await waitFor(() => {
+      expect(mockRemovePanelsForDatabase).toHaveBeenCalledWith('cfg-mysql', 'db_a', 'db_a');
+    });
+  });
+
+  it('keeps tabs open when the drop fails', async () => {
+    mockRemovePanelsForDatabase.mockClear();
+    mockDriverExecute.mockRejectedValueOnce(new Error('permission denied'));
+    const onShowMessage = vi.fn();
+    const { findByText } = render(
+      <ConnectionNavigatorTree {...baseProps} onShowMessage={onShowMessage} />,
+    );
+
+    await waitFor(() => findByText('db_a'));
+    await triggerDropDatabase(findByText, 'db_a');
+
+    await waitFor(() => {
+      expect(onShowMessage).toHaveBeenCalledWith('permission denied', 'error');
+    });
+    expect(mockRemovePanelsForDatabase).not.toHaveBeenCalled();
   });
 });
 
@@ -2317,6 +2361,7 @@ describe('ConnectionNavigatorTree schema context menu', () => {
     });
     await activateDatabaseContext(findByText, 'db_a', 'users');
     mockExecuteQuery.mockClear();
+    mockRemovePanelsForRelation.mockClear();
 
     await openMenuAndPick((await findByText('orders')).closest('button')!, 'drop');
 
@@ -2328,6 +2373,9 @@ describe('ConnectionNavigatorTree schema context menu', () => {
         'db_b',
         null,
       );
+    });
+    await waitFor(() => {
+      expect(mockRemovePanelsForRelation).toHaveBeenCalledWith('cfg-mysql', 'orders', 'db_b');
     });
   });
 

@@ -87,6 +87,24 @@ interface PanelActions {
   addPanel: (panel: Panel, activate?: boolean) => void;
   removePanel: (panelId: string) => void;
   removeAllForConnection: (connectionId: string) => void;
+  /**
+   * Close table/view tabs opened on a dropped relation. `database` is optional:
+   * panels created without a pinned database only carry the table name, so a
+   * missing database on either side must not block the match.
+   */
+  removePanelsForRelation: (connectionId: string, tableName: string, database?: string) => void;
+  /**
+   * Close every panel bound to a dropped database (table / view / query / ...).
+   * `sessionDatabase` covers table/view panels created without a pinned
+   * database: they render against the session's current database, so they are
+   * only matched when it equals the dropped database. Query panels without a
+   * pinned database simply follow the session fallback and are kept.
+   */
+  removePanelsForDatabase: (
+    connectionId: string,
+    database: string,
+    sessionDatabase?: string,
+  ) => void;
   setActivePanel: (panelId: string) => void;
   updatePanel: (panelId: string, patch: Partial<Panel>) => void;
   closeOtherPanels: (panelId: string) => void;
@@ -165,6 +183,73 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const { panels, activePanelId, queryExec } = get();
     const toRemove = panels.filter((p) => p.connectionId === connectionId);
     const remaining = panels.filter((p) => p.connectionId !== connectionId);
+    const nextExec = cancelAndCleanupExec(toRemove, queryExec);
+    const activeStillExists = remaining.some((p) => p.id === activePanelId);
+    set({
+      panels: remaining,
+      activePanelId: activeStillExists ? activePanelId : (remaining.at(-1)?.id ?? null),
+      queryExec: nextExec,
+    });
+  },
+
+  removePanelsForRelation: (connectionId, tableName, database) => {
+    const { panels, activePanelId, queryExec } = get();
+    const targetDb = database?.trim() || undefined;
+    const toRemove = panels.filter((p) => {
+      if (p.connectionId !== connectionId) return false;
+      if (p.type === 'table') {
+        if (p.tableName !== tableName) return false;
+        const panelDb = p.database?.trim() || undefined;
+        return !targetDb || !panelDb || panelDb === targetDb;
+      }
+      if (p.type === 'view') {
+        if (p.viewName !== tableName) return false;
+        const panelDb = p.database?.trim() || undefined;
+        return !targetDb || !panelDb || panelDb === targetDb;
+      }
+      return false;
+    });
+    if (toRemove.length === 0) return;
+    const remaining = panels.filter((p) => !toRemove.some((r) => r.id === p.id));
+    const nextExec = cancelAndCleanupExec(toRemove, queryExec);
+    const activeStillExists = remaining.some((p) => p.id === activePanelId);
+    set({
+      panels: remaining,
+      activePanelId: activeStillExists ? activePanelId : (remaining.at(-1)?.id ?? null),
+      queryExec: nextExec,
+    });
+  },
+
+  removePanelsForDatabase: (connectionId, database, sessionDatabase) => {
+    const { panels, activePanelId, queryExec } = get();
+    const targetDb = database.trim();
+    if (!targetDb) return;
+    const sessionDb = sessionDatabase?.trim() || undefined;
+    const toRemove = panels.filter((p) => {
+      if (p.connectionId !== connectionId) return false;
+      switch (p.type) {
+        case 'table': {
+          const panelDb = p.database?.trim() || undefined;
+          if (panelDb) return panelDb === targetDb;
+          return sessionDb === targetDb;
+        }
+        case 'view': {
+          const panelDb = p.database?.trim() || undefined;
+          if (panelDb) return panelDb === targetDb;
+          return sessionDb === targetDb;
+        }
+        case 'query':
+          return (p.database?.trim() || undefined) === targetDb;
+        case 'create-table':
+          return (p.database?.trim() || undefined) === targetDb;
+        case 'redis-db':
+          return p.dbName === targetDb;
+        default:
+          return false;
+      }
+    });
+    if (toRemove.length === 0) return;
+    const remaining = panels.filter((p) => !toRemove.some((r) => r.id === p.id));
     const nextExec = cancelAndCleanupExec(toRemove, queryExec);
     const activeStillExists = remaining.some((p) => p.id === activePanelId);
     set({

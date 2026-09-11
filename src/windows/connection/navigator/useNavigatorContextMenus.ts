@@ -505,6 +505,15 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
                     void (async () => {
                       try {
                         const schemaData = useSchemaStore.getState().schemas.get(dbSessionId);
+                        // Close tabs opened on the dropped database before the
+                        // session fallback rewrites currentDatabase below.
+                        usePanelStore
+                          .getState()
+                          .removePanelsForDatabase(
+                            connectionId,
+                            dbName,
+                            schemaData?.currentDatabase ?? undefined,
+                          );
                         const activeDb = schemaData?.currentDatabase;
                         const fallback = resolveDropDatabaseFallback(
                           schemaData?.databases ?? [],
@@ -914,6 +923,9 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
                           dbName,
                           schema ?? null,
                         );
+                        usePanelStore
+                          .getState()
+                          .removePanelsForRelation(connectionId, name, dbName);
                         refreshAfterMutation();
                       } catch (err) {
                         onShowMessage?.(

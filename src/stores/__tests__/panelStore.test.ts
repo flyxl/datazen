@@ -510,6 +510,133 @@ describe('panelStore', () => {
     expect(state.activePanelId).toBeNull();
   });
 
+  // ── removePanelsForRelation ────────────────────────────────
+
+  it('removePanelsForRelation closes table and view panels on the dropped relation', () => {
+    const tablePanel = makeTable('users');
+    const viewPanel: Panel = {
+      ...base,
+      type: 'view',
+      id: nextPanelId('view'),
+      viewName: 'users',
+      subTab: 'data',
+    };
+    const otherPanel = makeTable('orders');
+    usePanelStore.getState().addPanel(tablePanel);
+    usePanelStore.getState().addPanel(viewPanel, false);
+    usePanelStore.getState().addPanel(otherPanel, false);
+
+    usePanelStore.getState().removePanelsForRelation('cfg-1', 'users');
+
+    const state = usePanelStore.getState();
+    expect(state.panels.map((p) => p.id)).toEqual([otherPanel.id]);
+    expect(state.activePanelId).toBe(otherPanel.id);
+  });
+
+  it('removePanelsForRelation respects pinned database mismatches', () => {
+    const pinnedOther: TablePanel = {
+      ...makeTable('users'),
+      id: nextPanelId('tbl'),
+      database: 'db_b',
+    };
+    const pinnedSame: TablePanel = {
+      ...makeTable('users'),
+      id: nextPanelId('tbl'),
+      database: 'db_a',
+    };
+    const foreignConn: TablePanel = {
+      ...makeTable('users'),
+      id: nextPanelId('tbl'),
+      connectionId: 'cfg-2',
+      dbSessionId: 'sess-2',
+      database: 'db_a',
+    };
+    usePanelStore.getState().addPanel(pinnedOther);
+    usePanelStore.getState().addPanel(pinnedSame, false);
+    usePanelStore.getState().addPanel(foreignConn, false);
+
+    usePanelStore.getState().removePanelsForRelation('cfg-1', 'users', 'db_a');
+
+    const state = usePanelStore.getState();
+    expect(state.panels.map((p) => p.id)).toEqual([pinnedOther.id, foreignConn.id]);
+  });
+
+  // ── removePanelsForDatabase ────────────────────────────────
+
+  it('removePanelsForDatabase closes pinned table/query panels on the dropped database', () => {
+    const tablePanel: TablePanel = {
+      ...makeTable('users'),
+      id: nextPanelId('tbl'),
+      database: 'db_a',
+    };
+    const queryPanel: Panel = { ...base, type: 'query', id: nextPanelId('qry'), title: 'Q1' };
+    const otherDbPanel: TablePanel = {
+      ...makeTable('orders'),
+      id: nextPanelId('tbl'),
+      database: 'db_b',
+    };
+    usePanelStore.getState().addPanel(tablePanel);
+    usePanelStore.getState().addPanel(queryPanel, false);
+    usePanelStore.getState().addPanel(otherDbPanel, false);
+
+    usePanelStore.getState().removePanelsForDatabase('cfg-1', 'db_a');
+
+    const state = usePanelStore.getState();
+    expect(state.panels.map((p) => p.id)).toEqual([queryPanel.id, otherDbPanel.id]);
+    expect(state.queryExec.has(queryPanel.id)).toBe(true);
+  });
+
+  it('removePanelsForDatabase closes query panels pinned to the dropped database and cleans exec', () => {
+    const pinnedQuery: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      database: 'db_a',
+    };
+    const floatingQuery: Panel = { ...base, type: 'query', id: nextPanelId('qry'), title: 'Q2' };
+    usePanelStore.getState().addPanel(pinnedQuery);
+    usePanelStore.getState().addPanel(floatingQuery, false);
+
+    usePanelStore.getState().removePanelsForDatabase('cfg-1', 'db_a', 'db_b');
+
+    const state = usePanelStore.getState();
+    expect(state.panels.map((p) => p.id)).toEqual([floatingQuery.id]);
+    expect(state.queryExec.has(pinnedQuery.id)).toBe(false);
+    expect(state.queryExec.has(floatingQuery.id)).toBe(true);
+  });
+
+  it('removePanelsForDatabase closes unpinned table panels rendered on the session database', () => {
+    const floatingTable = makeTable('users');
+    usePanelStore.getState().addPanel(floatingTable);
+
+    usePanelStore.getState().removePanelsForDatabase('cfg-1', 'db_a', 'db_a');
+
+    expect(usePanelStore.getState().panels).toHaveLength(0);
+    expect(usePanelStore.getState().activePanelId).toBeNull();
+  });
+
+  it('removePanelsForDatabase keeps panels of other databases and connections', () => {
+    const pinnedOther: TablePanel = {
+      ...makeTable('users'),
+      id: nextPanelId('tbl'),
+      database: 'db_b',
+    };
+    const foreignConn: TablePanel = {
+      ...makeTable('users'),
+      id: nextPanelId('tbl'),
+      connectionId: 'cfg-2',
+      dbSessionId: 'sess-2',
+      database: 'db_a',
+    };
+    usePanelStore.getState().addPanel(pinnedOther);
+    usePanelStore.getState().addPanel(foreignConn, false);
+
+    usePanelStore.getState().removePanelsForDatabase('cfg-1', 'db_a', 'db_a');
+
+    expect(usePanelStore.getState().panels).toHaveLength(2);
+  });
+
   // ── closeOtherPanels ─────────────────────────────────────────
 
   it('closeOtherPanels keeps only the specified panel', () => {

@@ -137,7 +137,11 @@ export function useConnectionContextMenu({
       };
 
       const closePanelsForTable = (table: string) => {
-        const toClose = scopedPanels.filter((p) => p.type === 'table' && p.tableName === table);
+        const toClose = scopedPanels.filter(
+          (p) =>
+            (p.type === 'table' && p.tableName === table) ||
+            (p.type === 'view' && p.viewName === table),
+        );
         for (const p of toClose) removePanel(p.id);
       };
 
