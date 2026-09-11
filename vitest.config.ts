@@ -19,7 +19,6 @@ export default defineConfig({
       '@datazen/driver-sdk': resolve(__dirname, 'packages/driver-sdk/src/index.ts'),
       '@datazen/extension-points': resolve(__dirname, 'packages/extension-points/src/index.ts'),
       '@datazen/wapp-sdk': resolve(__dirname, 'packages/wapp-sdk/src/index.ts'),
-      '@datazen/plugin-sdk': resolve(__dirname, 'src/plugin-sdk/index.ts'),
       '@datazen/extension-sdk': resolve(__dirname, 'packages/wapp-sdk/src/index.ts'),
       '@datazen/ui': resolve(__dirname, 'packages/ui/src/index.ts'),
       '@tauri-apps/api/window': resolve(__dirname, 'src/test/mocks/tauriWindow.ts'),

@@ -172,8 +172,7 @@ const pack = {
   'extensions.page.themeBadge': 'Thème',
   'extensions.page.themeHint': 'Changez de thème dans Paramètres → Apparence.',
   'extensions.page.apiMismatch': "Version d'API non prise en charge",
-  'extensions.page.apiMismatchHint':
-    "L'API plugin v{plugin} ne correspond pas à l'API hôte v{host}.",
+  'extensions.page.apiMismatchHint': "L'API plugin v{wapp} ne correspond pas à l'API hôte v{host}.",
   'extensions.page.emptyTitle': 'Aucun plugin trouvé',
   'extensions.page.emptyHint':
     'Installez un package plugin (.zip) pour étendre DataZen avec de nouvelles pages workspace ou des thèmes.',

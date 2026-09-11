@@ -135,12 +135,14 @@ Data Transfer 使用 Endpoints → Setup → Objects → Mapping → Preview →
 - **MCP**：`src-tauri/src/mcp/` 同时提供 MCP Server 和 Client，并支持 headless stdio。
 - **Dashboard**：`src-tauri/src/dashboard/` 负责 Widget、执行、历史、告警和导出；Monitor 位于 `src-tauri/src/monitor/`。
 
-## 8. 扩展与插件架构
+## 8. 四维扩展架构
 
-DataZen 采用双轨扩展体系：
+DataZen 采用四维扩展体系：
 
-- **沙箱扩展（Sandbox Extensions）**：基于 `manifest.json`、`datazen://` 协议与沙箱 `<iframe>`，向用户暴露独立工作区页面与外观主题，通过受控 postMessage 桥通信。详见 [extensions.md](backend/extensions.md)。
+- **数据库驱动（Driver）**：编译时注入，基于 `@datazen/driver-sdk` 与 `packages/driver-api`，通过 inventory 注册。承载数据库连接、SQL 方言、DDL 和 Driver Command。
+- **沙箱工作区应用（Wapp）**：基于 `manifest.json`、`datazen://` 协议与沙箱 `<iframe>`，向用户暴露独立工作区页面与外观主题，通过受控 postMessage 桥通信。详见 [wapps.md](backend/wapps.md)。
 - **特权扩展点（Host Extension Points）**：宿主基于 `ExtensionPoint<T>` 契约与 CodeMirror Compartment 实现进程内（In-Process）接入，专用于 SQLEditor 增强等高性能、深交互核心模块。受根目录 **DataZen Plugin, Driver & Extension Linking Exception** 保护，支持独立许可与分发。
+- **外观主题（Theme）**：纯静态资源包，零代码执行，通过 `manifest.json` + CSS/JSON/SVG 声明，运行时安装到 `{appData}/themes/`。详见 [theme.md](backend/theme.md)。
 
 ## 9. 持久化与安全
 

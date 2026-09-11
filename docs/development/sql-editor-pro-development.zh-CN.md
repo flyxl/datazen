@@ -31,7 +31,7 @@ DataZen 确立了严格的开源宿主与闭源商业特权扩展物理隔离策
 
 ### 核心隔离保障机制
 1. **源码级隔离**：宿主 `src/` 中没有任何 `@datazen/extension-sql-editor-pro` 的静态源码依赖。
-2. **构建期代码生成**：由 `scripts/resolve-pro.mjs` 动态写入 gitignored 的 `src/plugins/generated-pro.ts`：
+2. **构建期代码生成**：由 `scripts/resolve-pro.mjs` 动态写入 gitignored 的 `src/extensions/generated-pro.ts`：
    - 当 `--edition=pro` 时注入 `activate()` 并注册至 `sqlEditorEnhancedEP`；
    - 当 `--edition=community`（默认开源版）时输出空桩函数，宿主走纯净 Fallback。
 3. **独立 Git 仓库**：`packages/pro-extensions/sql-editor-pro` 拥有独立的 `.git` 版本树，并被宿主根目录 `.gitignore` 全局忽略，绝对不会被意外提交进宿主仓库。

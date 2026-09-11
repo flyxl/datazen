@@ -171,7 +171,7 @@ const pack = {
   'extensions.page.themeBadge': 'Тема',
   'extensions.page.themeHint': 'Переключайте темы в Настройки → Внешний вид.',
   'extensions.page.apiMismatch': 'Версия API не поддерживается',
-  'extensions.page.apiMismatchHint': 'API плагина v{plugin} не соответствует API хоста v{host}.',
+  'extensions.page.apiMismatchHint': 'API плагина v{wapp} не соответствует API хоста v{host}.',
   'extensions.page.emptyTitle': 'Плагины не найдены',
   'extensions.page.emptyHint':
     'Установите пакет плагина (.zip), чтобы расширить DataZen новыми страницами workspace или темами.',

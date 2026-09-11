@@ -58,7 +58,7 @@ export function syncSchemaNamespace(
 
 /**
  * Register SQL display-name → fetch-path-root aliases and seed top-level namespace branches.
- * Plugins that use opaque path roots (e.g. numeric ids) call this after listing databases.
+ * Drivers that use opaque path roots (e.g. numeric ids) call this after listing databases.
  */
 export function registerPathAliases(
   entries: { name: string; id: string }[],

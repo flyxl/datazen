@@ -1,4 +1,4 @@
-import { extensionCommands } from '../commands/extensions';
+import { wappCommands } from '../commands/wapps';
 import { emitCrossWindow } from './crossWindowBus';
 import { bootstrapDefaultIconResolver } from './bootstrapIconResolver';
 import { UI_ICON_IDS } from './iconIds';
@@ -6,7 +6,7 @@ import { createIconResolver, setActiveIconResolver, type IconSourceMap } from '.
 import { getDbIcon, getDriverIconMap } from './databaseTypes';
 import { buildHostLucideById } from './hostLucideMap';
 import type { DatabaseType } from '../types';
-import type { ThemeContribution as PluginThemeContribution } from '../types/extension';
+import type { WappThemeContribution } from '../types/wapp';
 import { parsePackEditorOverlay, setPackEditorColorOverlay } from './themeEditorColors';
 import { setChartPaletteOverride } from './chart/colors';
 import {
@@ -20,10 +20,10 @@ export const THEME_PACK_STYLE_ID = 'datazen-theme-pack';
 
 /**
  * Prefix persisted in `settings.theme.packId` for themes contributed by UI
- * extensions: `plugin:{pluginId}:{themeId}`. Plugin ids (`<publisher>.<name>`)
+ * wapps: `wapp:{wappId}:{themeId}`. Wapp ids (`<publisher>.<name>`)
  * and theme ids never contain colons, so the first colon splits reliably.
  */
-export const PLUGIN_THEME_PACK_PREFIX = 'plugin:';
+export const WAPP_THEME_PACK_PREFIX = 'wapp:';
 
 const ICON_EXTENSIONS = ['.svg', '.webp', '.png'] as const;
 const FONT_URL_RE = /url\s*\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
@@ -105,11 +105,11 @@ function notifyThemePackChanged(): void {
 }
 
 async function readExtensionFileOrNull(
-  pluginId: string,
+  wappId: string,
   relativePath: string,
 ): Promise<number[] | null> {
   try {
-    return await extensionCommands.readExtensionFile(pluginId, relativePath);
+    return await wappCommands.readWappFile(wappId, relativePath);
   } catch {
     return null;
   }
@@ -119,7 +119,7 @@ type PackFileReader = (relativePath: string) => Promise<number[] | null>;
 
 /**
  * Lexically joins an asset reference against the directory of the css file
- * it appears in (`''` = plugin/pack root). Rejects traversal outside the root.
+ * it appears in (`''` = wapp/pack root). Rejects traversal outside the root.
  */
 function joinRelativePath(baseDir: string, ref: string): string {
   const segments = `${ref.startsWith('/') ? '' : baseDir ? `${baseDir}/` : ''}${ref}`.split('/');
@@ -213,49 +213,49 @@ export function clearThemePack(): void {
 
 export type ApplyThemePackResult = { ok: true } | { ok: false; error: string };
 
-export function encodePluginThemePackId(pluginId: string, themeId: string): string {
-  return `${PLUGIN_THEME_PACK_PREFIX}${pluginId}:${themeId}`;
+export function encodeWappThemePackId(wappId: string, themeId: string): string {
+  return `${WAPP_THEME_PACK_PREFIX}${wappId}:${themeId}`;
 }
 
-export function parsePluginThemePackId(
+export function parseWappThemePackId(
   packId: string | null | undefined,
-): { pluginId: string; themeId: string } | null {
-  if (!packId || !packId.startsWith(PLUGIN_THEME_PACK_PREFIX)) return null;
-  const rest = packId.slice(PLUGIN_THEME_PACK_PREFIX.length);
+): { wappId: string; themeId: string } | null {
+  if (!packId || !packId.startsWith(WAPP_THEME_PACK_PREFIX)) return null;
+  const rest = packId.slice(WAPP_THEME_PACK_PREFIX.length);
   const sep = rest.indexOf(':');
   if (sep <= 0 || sep === rest.length - 1) return null;
-  return { pluginId: rest.slice(0, sep), themeId: rest.slice(sep + 1) };
+  return { wappId: rest.slice(0, sep), themeId: rest.slice(sep + 1) };
 }
 
-/** Reference to a theme contributed by an installed UI plugin. */
-export interface PluginThemeRef {
-  pluginId: string;
+/** Reference to a theme contributed by an installed UI wapp. */
+export interface WappThemeRef {
+  wappId: string;
   themeId: string;
   /** Display name, accepted for caller convenience (not used for lookup). */
   name?: string;
 }
 
-async function loadPluginThemeContribution(
-  pluginId: string,
+async function loadWappThemeContribution(
+  wappId: string,
   themeId: string,
-): Promise<PluginThemeContribution> {
-  const manifest = await extensionCommands.getExtensionManifest(pluginId);
+): Promise<WappThemeContribution> {
+  const manifest = await wappCommands.getWappManifest(wappId);
   const theme = manifest.contributes.themes.find((th) => th.id === themeId);
   if (!theme) {
-    throw new Error(`Theme "${themeId}" not found in plugin "${pluginId}"`);
+    throw new Error(`Theme "${themeId}" not found in wapp "${wappId}"`);
   }
   return theme;
 }
 
-/** Probe a plugin icons dir for one semantic id across the allowed extensions. */
-async function probePluginIcon(
-  pluginId: string,
+/** Probe a wapp icons dir for one semantic id across the allowed extensions. */
+async function probeWappIcon(
+  wappId: string,
   iconsDir: string,
   semanticId: string,
 ): Promise<string | null> {
   for (const ext of ICON_EXTENSIONS) {
     const relPath = joinRelativePath(iconsDir, `${semanticId}${ext}`);
-    const bytes = await readExtensionFileOrNull(pluginId, relPath);
+    const bytes = await readExtensionFileOrNull(wappId, relPath);
     if (bytes && bytes.length > 0) {
       return bytesToBlobUrl(bytes, mimeForPath(relPath));
     }
@@ -263,33 +263,33 @@ async function probePluginIcon(
   return null;
 }
 
-async function loadPluginIcons(pluginId: string, iconsDir: string): Promise<IconSourceMap> {
+async function loadWappIcons(wappId: string, iconsDir: string): Promise<IconSourceMap> {
   const ids = [...UI_ICON_IDS, ...Object.keys(getDriverIconMap())];
   const map: IconSourceMap = {};
   await Promise.all(
     ids.map(async (id) => {
-      const url = await probePluginIcon(pluginId, iconsDir, id);
+      const url = await probeWappIcon(wappId, iconsDir, id);
       if (url) map[id] = url;
     }),
   );
   return map;
 }
 
-async function applyPluginThemePackId(
+async function applyWappThemePackId(
   packId: string,
   { broadcast = true }: { broadcast?: boolean } = {},
 ): Promise<ApplyThemePackResult> {
-  const parsed = parsePluginThemePackId(packId);
+  const parsed = parseWappThemePackId(packId);
   if (!parsed) {
-    return { ok: false, error: `invalid plugin theme id: ${packId}` };
+    return { ok: false, error: `invalid wapp theme id: ${packId}` };
   }
-  const { pluginId, themeId } = parsed;
+  const { wappId, themeId } = parsed;
 
   resetPackState();
   try {
-    const theme = await loadPluginThemeContribution(pluginId, themeId);
+    const theme = await loadWappThemeContribution(wappId, themeId);
     const tokensPath = theme.tokensCss;
-    const tokensBytes = await readExtensionFileOrNull(pluginId, tokensPath);
+    const tokensBytes = await readExtensionFileOrNull(wappId, tokensPath);
     if (!tokensBytes) {
       throw new Error('tokens.css missing');
     }
@@ -299,7 +299,7 @@ async function applyPluginThemePackId(
       ? tokensPath.slice(0, tokensPath.lastIndexOf('/'))
       : '';
     const css = await rewriteCssUrls(decodeUtf8(tokensBytes), (relPath) =>
-      readExtensionFileOrNull(pluginId, joinRelativePath(baseDir, relPath)),
+      readExtensionFileOrNull(wappId, joinRelativePath(baseDir, relPath)),
     );
     injectThemePackCss(css);
 
@@ -307,24 +307,24 @@ async function applyPluginThemePackId(
     // palettes. Soft-fail like the legacy pipeline — a broken optional asset
     // degrades that slice only, never the whole theme application.
     if (theme.iconsDir) {
-      const packIcons = await loadPluginIcons(pluginId, theme.iconsDir);
+      const packIcons = await loadWappIcons(wappId, theme.iconsDir);
       installIconResolver(packIcons);
     }
 
     if (theme.editorJson) {
-      const editorBytes = await readExtensionFileOrNull(pluginId, theme.editorJson);
+      const editorBytes = await readExtensionFileOrNull(wappId, theme.editorJson);
       if (editorBytes) {
         try {
           const overlay = parsePackEditorOverlay(JSON.parse(decodeUtf8(editorBytes)) as unknown);
           setPackEditorColorOverlay(overlay);
         } catch (err) {
-          console.warn('[theme] failed to parse plugin editor.json', err);
+          console.warn('[theme] failed to parse wapp editor.json', err);
         }
       }
     }
 
     if (theme.chartsJson) {
-      const chartsBytes = await readExtensionFileOrNull(pluginId, theme.chartsJson);
+      const chartsBytes = await readExtensionFileOrNull(wappId, theme.chartsJson);
       if (chartsBytes) {
         setChartPaletteOverride(parseChartsJson(chartsBytes));
       }
@@ -335,7 +335,7 @@ async function applyPluginThemePackId(
     if (broadcast) void emitCrossWindow('datazen:theme-pack-changed', packId);
     return { ok: true };
   } catch (err) {
-    console.warn('[theme] failed to apply plugin theme', packId, err);
+    console.warn('[theme] failed to apply wapp theme', packId, err);
     resetPackState();
     syncWebviewBackgroundFromTokens();
     notifyThemePackChanged();
@@ -346,23 +346,23 @@ async function applyPluginThemePackId(
 }
 
 /**
- * Apply a theme contributed by an enabled UI plugin: reads `tokens.css` (and
+ * Apply a theme contributed by an enabled UI wapp: reads `tokens.css` (and
  * any local assets referenced by its `url(...)`s) as bytes through
- * `read_extension_file` and injects them into the host theme style element.
+ * `read_wapp_file` and injects them into the host theme style element.
  */
-export async function applyPluginTheme(
-  theme: PluginThemeRef,
+export async function applyWappTheme(
+  theme: WappThemeRef,
   options: { broadcast?: boolean } = {},
 ): Promise<ApplyThemePackResult> {
-  return applyPluginThemePackId(encodePluginThemePackId(theme.pluginId, theme.themeId), options);
+  return applyWappThemePackId(encodeWappThemePackId(theme.wappId, theme.themeId), options);
 }
 
 export async function applyThemePack(
   packId: string | null,
   { broadcast = true }: { broadcast?: boolean } = {},
 ): Promise<ApplyThemePackResult> {
-  if (packId && parsePluginThemePackId(packId)) {
-    return applyPluginThemePackId(packId, { broadcast });
+  if (packId && parseWappThemePackId(packId)) {
+    return applyWappThemePackId(packId, { broadcast });
   }
 
   resetPackState();

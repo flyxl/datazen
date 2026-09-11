@@ -16,7 +16,7 @@ const baseSettings = {
   autoCommit: true,
   safeMode: true,
   defaultPageSize: 50,
-    connectionPoolSize: 10,
+  connectionPoolSize: 10,
   checkForUpdatesOnStartup: true,
   logLevel: 'info' as const,
   logPath: '',
@@ -24,7 +24,7 @@ const baseSettings = {
   mcpDisabledTools: [] as string[],
   mcpPermissionMode: 'read_only' as const,
   contextDir: '',
-  pluginSettings: {},
+  driverSettings: {},
   monitor: {
     enabled: false,
     pollIntervalSecs: 60,
@@ -52,9 +52,7 @@ afterEach(cleanup);
 
 describe('ConnectionSettingsDialog', () => {
   it('renders nothing when closed', () => {
-    const { container } = render(
-      <ConnectionSettingsDialog open={false} onClose={vi.fn()} />,
-    );
+    const { container } = render(<ConnectionSettingsDialog open={false} onClose={vi.fn()} />);
     expect(container.innerHTML).toBe('');
   });
 

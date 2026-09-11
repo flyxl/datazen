@@ -31,9 +31,9 @@ Extension 扩展的是“用户如何组织和呈现能力”。它贡献工作�
 
 ## 沙箱与桥接
 
-页面在 opaque-origin iframe 中运行。Host 通过 `postMessage` 发送 `host.ready`，插件以 `plugin.ready` 完成握手，所有请求带 `reqId`，响应必须回显它。
+页面在 opaque-origin iframe 中运行。Host 通过 `postMessage` 发送 `host.ready`，Wapp 以 `wapp.ready` 完成握手，所有请求带 `reqId`，响应必须回显它。
 
-桥接层会检查消息信封、目标插件、权限和并发限制。`command.invoke` 最终转发到 `execute_driver_command`，并记录命令名与连接 ID 的审计信息，但不把 SQL 参数写入日志。
+桥接层会检查消息信封、目标 Wapp、权限和并发限制。`command.invoke` 最终转发到 `execute_driver_command`，并记录命令名与连接 ID 的审计信息，但不把 SQL 参数写入日志。
 
 这种设计让插件可以使用统一 Command 能力，却不能直接绕过权限访问连接池或本地文件。
 

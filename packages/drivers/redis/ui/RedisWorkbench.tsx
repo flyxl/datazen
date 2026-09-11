@@ -20,7 +20,7 @@ import { useColumnResize } from '../../../../src/hooks/useColumnResize';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
 import { showNativeContextMenu } from '../../../../src/lib/nativeContextMenu';
-import { readBooleanField } from '../../../../src/plugin-sdk/settings';
+import { readBooleanField } from '../../../../src/lib/driverSettings';
 import { invokeGetKey, invokeScanKeys, redisCommandInvoke } from './redisInvoke';
 import type { KeyDetail, KeyEntry } from '../../../../src/types';
 import { BatchBar, invokeDeleteKeys } from './BatchBar';
@@ -79,9 +79,9 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
     const databasesFromStore = useSchemaStore((s) => s.databases);
     const loading = useSchemaStore((s) => s.loading);
     const loadForConnection = useSchemaStore((s) => s.loadForConnection);
-    const pluginSettings = useSettingsStore((s) => s.settings.pluginSettings);
+    const driverSettings = useSettingsStore((s) => s.settings.driverSettings);
     const allowFlush = readBooleanField(
-      (pluginSettings?.redis ?? {}) as Record<string, unknown>,
+      (driverSettings?.redis ?? {}) as Record<string, unknown>,
       'allowFlush',
       false,
     );

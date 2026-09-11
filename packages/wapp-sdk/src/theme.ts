@@ -1,5 +1,5 @@
 /**
- * Theme token application for UI plugin pages (PRD §4.4 / §5).
+ * Theme token application for UI wapp pages (PRD §4.4 / §5).
  *
  * React-free core: consumes `theme.apply` snapshots pushed by the host,
  * writes the contract tokens (`--c-*` / `--dt-*`) onto
@@ -27,7 +27,7 @@ export const THEME_CHANGED_EVENT = 'datazen:theme-pack-changed';
 
 /**
  * Fallback palette merged under every incoming snapshot (PRD R5): a host or
- * snapshot that omits contract tokens still leaves plugin widgets styled.
+ * snapshot that omits contract tokens still leaves wapp widgets styled.
  */
 export const DEFAULT_THEME_TOKENS: Record<string, string> = {
   '--c-surface': '#18181b',
@@ -115,7 +115,7 @@ function notifyListeners(): void {
  * re-pushes stay observable.
  *
  * Writes go to `element.style` rather than reading back computed styles —
- * the iframe body stays transparent and inherits only what plugins consume.
+ * the iframe body stays transparent and inherits only what wapps consume.
  */
 export function applyThemeSnapshot(
   snapshot: Partial<ThemeSnapshot> | null | undefined,

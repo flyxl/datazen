@@ -24,7 +24,7 @@ vi.mock('../../../stores/workspaceTabsStore', () => ({
 function makeTab(overrides: Partial<WorkspaceTab> = {}): WorkspaceTab {
   return {
     key: 'acme.bill-audit:quota-check',
-    pluginId: 'acme.bill-audit',
+    wappId: 'acme.bill-audit',
     pageId: 'quota-check',
     title: 'Quota Check',
     version: '1.0.0',
@@ -52,7 +52,7 @@ describe('WorkspaceTabBar', () => {
       makeTab(),
       makeTab({
         key: 'acme.afi:pricing',
-        pluginId: 'acme.afi',
+        wappId: 'acme.afi',
         pageId: 'pricing',
         title: 'Pricing',
       }),

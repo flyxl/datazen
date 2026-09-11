@@ -10,7 +10,7 @@
  * - rate-limit quota release semantics (completion / timeout / denials)
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PluginRequestEnvelope } from '../extensionBridge';
+import type { PluginRequestEnvelope } from '../wappBridge';
 
 const {
   storageGetMock,
@@ -47,39 +47,6 @@ vi.mock('../../commands/wapps', () => ({
     wappStorageGet: (...args: unknown[]) => storageGetMock(...args),
     wappStorageSet: (...args: unknown[]) => storageSetMock(...args),
     wappStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    extensionStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    extensionStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    extensionStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    auditLog: (...args: unknown[]) => auditLogMock(...args),
-  },
-  extensionCommands: {
-    wappStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    wappStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    wappStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    extensionStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    extensionStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    extensionStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    auditLog: (...args: unknown[]) => auditLogMock(...args),
-  },
-}));
-
-vi.mock('../../commands/extensions', () => ({
-  wappCommands: {
-    wappStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    wappStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    wappStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    extensionStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    extensionStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    extensionStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    auditLog: (...args: unknown[]) => auditLogMock(...args),
-  },
-  extensionCommands: {
-    wappStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    wappStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    wappStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    extensionStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    extensionStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    extensionStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
     auditLog: (...args: unknown[]) => auditLogMock(...args),
   },
 }));
@@ -107,12 +74,7 @@ vi.mock('../../stores/activeConnectionStore', () => ({
 vi.spyOn(console, 'info').mockImplementation((...args: unknown[]) => consoleInfoSpy(...args));
 
 import { THEME_TOKENS, THEME_SNAPSHOT_VERSION } from '../themeTokens';
-import {
-  attachBridge,
-  BRIDGE_ERROR,
-  BRIDGE_CHANNEL,
-  type ExtensionBridgeHandle,
-} from '../wappBridge';
+import { attachBridge, BRIDGE_ERROR, BRIDGE_CHANNEL, type WappBridgeHandle } from '../wappBridge';
 
 type SentEnvelope = Record<string, unknown>;
 
@@ -149,7 +111,7 @@ async function waitUntil(cond: () => boolean): Promise<void> {
 }
 
 let frame: FakeFrame;
-let handle: ExtensionBridgeHandle | null = null;
+let handle: WappBridgeHandle | null = null;
 
 function request(type: string, reqId?: string, payload?: unknown): PluginRequestEnvelope {
   return { ch: BRIDGE_CHANNEL, type, target: 'host', ...(reqId ? { reqId } : {}), payload };
@@ -235,7 +197,7 @@ describe('F6 security: credential whitelisting', () => {
   it('getConnections (IPC fallback path) emits constructively whitelisted summaries', async () => {
     getConnectionsIpcMock.mockResolvedValue([LEAKY_CONFIG]);
     handle = attachBridge(frame.iframe, {
-      pluginId: 'p',
+      wappId: 'p',
       permissions: ['context:connections'],
     });
 
@@ -264,7 +226,7 @@ describe('F6 security: credential whitelisting', () => {
       },
     };
     handle = attachBridge(frame.iframe, {
-      pluginId: 'p',
+      wappId: 'p',
       permissions: ['context:connections'],
     });
 
@@ -284,7 +246,7 @@ describe('F6 security: credential whitelisting', () => {
         400,
       )}) secret-frame-token`;
     driverExecuteMock.mockRejectedValue(bomb);
-    handle = attachBridge(frame.iframe, { pluginId: 'p', permissions: ['command:invoke'] });
+    handle = attachBridge(frame.iframe, { wappId: 'p', permissions: ['command:invoke'] });
 
     receive(
       request('command.invoke', 'boom', { connectionId: 'cfg', command: 'query' }),
@@ -303,7 +265,7 @@ describe('F6 security: credential whitelisting', () => {
     seedActiveSession('cfg');
     driverExecuteMock.mockResolvedValue({ data: null });
     handle = attachBridge(frame.iframe, {
-      pluginId: 'acme.bill-audit',
+      wappId: 'acme.bill-audit',
       permissions: ['command:invoke'],
     });
 
@@ -328,9 +290,9 @@ describe('F6 security: credential whitelisting', () => {
 });
 
 describe('F6 security: permission gate vs malformed routing', () => {
-  function attachAll(): ExtensionBridgeHandle {
+  function attachAll(): WappBridgeHandle {
     return attachBridge(frame.iframe, {
-      pluginId: 'p',
+      wappId: 'p',
       permissions: ['context:connections', 'command:invoke', 'storage:local'],
     });
   }
@@ -416,7 +378,7 @@ describe('F6 security: permission gate vs malformed routing', () => {
 
 describe('F6 security: malformed command.invoke payloads', () => {
   beforeEach(() => {
-    handle = attachBridge(frame.iframe, { pluginId: 'p', permissions: ['command:invoke'] });
+    handle = attachBridge(frame.iframe, { wappId: 'p', permissions: ['command:invoke'] });
   });
 
   afterEach(() => {
@@ -495,7 +457,7 @@ describe('F6 security: prototype pollution containment', () => {
   it('passes polluted-key args verbatim to IPC without merging them anywhere', async () => {
     seedActiveSession('c');
     driverExecuteMock.mockResolvedValue({ data: null });
-    handle = attachBridge(frame.iframe, { pluginId: 'p', permissions: ['command:invoke'] });
+    handle = attachBridge(frame.iframe, { wappId: 'p', permissions: ['command:invoke'] });
 
     // JSON.parse gives `__proto__` own-property semantics (postMessage parity).
     const evilArgs = JSON.parse(
@@ -518,7 +480,7 @@ describe('F6 security: prototype pollution containment', () => {
 
   it('passes polluted-key storage values verbatim', async () => {
     storageSetMock.mockResolvedValue(undefined);
-    handle = attachBridge(frame.iframe, { pluginId: 'p', permissions: ['storage:local'] });
+    handle = attachBridge(frame.iframe, { wappId: 'p', permissions: ['storage:local'] });
 
     const evilValue = JSON.parse('{"__proto__":{"polluted":"pwned"}}');
     receive(
@@ -533,7 +495,7 @@ describe('F6 security: prototype pollution containment', () => {
 
   it('does not let a polluted reqId tamper with response envelopes', async () => {
     storageGetMock.mockResolvedValue('v');
-    handle = attachBridge(frame.iframe, { pluginId: 'p', permissions: ['storage:local'] });
+    handle = attachBridge(frame.iframe, { wappId: 'p', permissions: ['storage:local'] });
 
     receive(request('storage.get', '__proto__', { key: 'k' }), frame.iframe.contentWindow);
     await waitUntil(() => frame.sent.length > 0);
@@ -547,7 +509,7 @@ describe('F6 security: prototype pollution containment', () => {
 
 describe('F6 security: storage & notify payload validation', () => {
   it('rejects missing / empty / non-string storage keys with E_BAD_REQUEST', async () => {
-    handle = attachBridge(frame.iframe, { pluginId: 'p', permissions: ['storage:local'] });
+    handle = attachBridge(frame.iframe, { wappId: 'p', permissions: ['storage:local'] });
     const types = ['storage.get', 'storage.set', 'storage.remove'];
     let n = 0;
     for (const type of types) {
@@ -569,7 +531,7 @@ describe('F6 security: storage & notify payload validation', () => {
 
   it('rejects ui.notify without a title or with non-string body before invoking', async () => {
     notificationInvokeMock.mockResolvedValue(undefined);
-    handle = attachBridge(frame.iframe, { pluginId: 'p', permissions: [] });
+    handle = attachBridge(frame.iframe, { wappId: 'p', permissions: [] });
 
     receive(request('ui.notify', 'n1', {}), frame.iframe.contentWindow);
     receive(request('ui.notify', 'n2', { title: '' }), frame.iframe.contentWindow);
@@ -588,15 +550,15 @@ describe('F6 security: cross-iframe source isolation', () => {
   it('routes messages strictly by event.source — sibling frames cannot cross-talk', async () => {
     const a = makeFakeIframe();
     const b = makeFakeIframe();
-    storageGetMock.mockImplementation((_pluginId: string, key: string) =>
+    storageGetMock.mockImplementation((_wappId: string, key: string) =>
       Promise.resolve(key === 'from-a' ? 'A-STORE' : 'B-STORE'),
     );
     const handleA = attachBridge(a.iframe, {
-      pluginId: 'plugin.a',
+      wappId: 'wapp.a',
       permissions: ['storage:local'],
     });
     const handleB = attachBridge(b.iframe, {
-      pluginId: 'plugin.b',
+      wappId: 'wapp.b',
       permissions: ['storage:local'],
     });
 
@@ -607,11 +569,11 @@ describe('F6 security: cross-iframe source isolation', () => {
     expect(a.sent).toHaveLength(0);
     expect(b.sent[0].type).toBe('storage.get.ok');
     expect((b.sent[0].payload as { value: string }).value).toBe('B-STORE');
-    expect(storageGetMock).toHaveBeenLastCalledWith('plugin.b', 'from-b');
+    expect(storageGetMock).toHaveBeenLastCalledWith('wapp.b', 'from-b');
 
     receive(request('storage.get', 'q-a', { key: 'from-a' }), a.iframe.contentWindow);
     await waitUntil(() => a.sent.length > 0);
-    expect(storageGetMock).toHaveBeenLastCalledWith('plugin.a', 'from-a');
+    expect(storageGetMock).toHaveBeenLastCalledWith('wapp.a', 'from-a');
     expect(a.sent.filter((m) => m.reqId === 'q-a')).toHaveLength(1);
     expect(b.sent.filter((m) => m.reqId === 'q-a')).toHaveLength(0);
 
@@ -621,10 +583,10 @@ describe('F6 security: cross-iframe source isolation', () => {
 
   it('stays fully silent after detach — requests and handshake alike', async () => {
     storageGetMock.mockResolvedValue('late');
-    const handle = attachBridge(frame.iframe, { pluginId: 'p', permissions: ['storage:local'] });
+    const handle = attachBridge(frame.iframe, { wappId: 'p', permissions: ['storage:local'] });
     handle.detach();
 
-    receive(request('plugin.ready'), frame.iframe.contentWindow);
+    receive(request('wapp.ready'), frame.iframe.contentWindow);
     receive(request('storage.get', 'late1', { key: 'k' }), frame.iframe.contentWindow);
     await flush();
 
@@ -644,7 +606,7 @@ describe('F6 security: rate-limit quota lifecycle', () => {
       .mockImplementation(() => Promise.resolve('unexpected-extra-call'));
 
     handle = attachBridge(frame.iframe, {
-      pluginId: 'p',
+      wappId: 'p',
       permissions: ['storage:local'],
       maxInflight: 2,
     });
@@ -683,7 +645,7 @@ describe('F6 security: rate-limit quota lifecycle', () => {
     vi.useFakeTimers();
     storageGetMock.mockImplementation(() => new Promise(() => undefined)); // hangs forever
     const handle = attachBridge(frame.iframe, {
-      pluginId: 'p',
+      wappId: 'p',
       permissions: ['storage:local'],
       timeoutMs: 1_000,
       maxInflight: 1,
@@ -708,7 +670,7 @@ describe('F6 security: rate-limit quota lifecycle', () => {
   });
 
   it('permission-denied floods never consume concurrency quota', async () => {
-    handle = attachBridge(frame.iframe, { pluginId: 'p', permissions: [] });
+    handle = attachBridge(frame.iframe, { wappId: 'p', permissions: [] });
     for (let i = 0; i < 30; i += 1) {
       receive(request('context.getConnections', `deny${i}`), frame.iframe.contentWindow);
     }
@@ -726,7 +688,7 @@ describe('F6 security: rate-limit quota lifecycle', () => {
 describe('F6 security: manual theme snapshot reflects live theme state', () => {
   it('pushThemeSnapshot mirrors the current dark flag and token contract on every call', () => {
     document.documentElement.classList.remove('dark');
-    const handle = attachBridge(frame.iframe, { pluginId: 'p', permissions: [] });
+    const handle = attachBridge(frame.iframe, { wappId: 'p', permissions: [] });
 
     handle.pushThemeSnapshot();
     expect(frame.sent[0]).toMatchObject({

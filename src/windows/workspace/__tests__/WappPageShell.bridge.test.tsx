@@ -1,5 +1,5 @@
 /**
- * F6 — ExtensionPageShell ⇄ bridge wiring tests (test agent).
+ * F6 — WappPageShell ⇄ bridge wiring tests (test agent).
  *
  * Covers the shell-level trigger paths from PRD §4.4:
  * - bridge attached once per ready iframe with manifest permissions + locale
@@ -21,10 +21,6 @@ vi.mock('../../../lib/wappBridge', () => ({
   attachBridge: (...args: unknown[]) => attachBridgeMock(...args),
 }));
 
-vi.mock('../../../lib/extensionBridge', () => ({
-  attachBridge: (...args: unknown[]) => attachBridgeMock(...args),
-}));
-
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
@@ -32,20 +28,6 @@ vi.mock('../../../hooks/useI18n', () => ({
 vi.mock('../../../commands/wapps', () => ({
   wappCommands: {
     getWappManifest: (...args: unknown[]) => getManifestMock(...args),
-    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
-  },
-  extensionCommands: {
-    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
-  },
-}));
-
-vi.mock('../../../commands/extensions', () => ({
-  wappCommands: {
-    getWappManifest: (...args: unknown[]) => getManifestMock(...args),
-    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
-  },
-  extensionCommands: {
-    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
   },
 }));
 
@@ -53,26 +35,9 @@ vi.mock('../../../stores/wappStore', () => ({
   useWappStore: {
     getState: () => ({ byId: () => summaryHolder.current }),
   },
-  useExtensionStore: {
-    getState: () => ({ byId: () => summaryHolder.current }),
-  },
 }));
 
-vi.mock('../../../stores/extensionStore', () => ({
-  useExtensionStore: {
-    getState: () => ({ byId: () => summaryHolder.current }),
-  },
-  useWappStore: {
-    getState: () => ({ byId: () => summaryHolder.current }),
-  },
-}));
-
-import {
-  WappPageShell,
-  ExtensionPageShell,
-  clearWappEntryCache,
-  clearExtensionEntryCache,
-} from '../WappPageShell';
+import { WappPageShell, clearWappEntryCache } from '../WappPageShell';
 
 function makeHandle() {
   return { pushThemeSnapshot: vi.fn(), detach: vi.fn() };
@@ -81,7 +46,7 @@ function makeHandle() {
 function makeTab(overrides: Partial<WorkspaceTab> = {}): WorkspaceTab {
   return {
     key: 'acme.bill-audit:quota-check',
-    pluginId: 'acme.bill-audit',
+    wappId: 'acme.bill-audit',
     pageId: 'quota-check',
     title: 'Quota Check',
     version: '1.0.0',
@@ -97,7 +62,7 @@ async function flushObserver(): Promise<void> {
 }
 
 beforeEach(() => {
-  clearExtensionEntryCache();
+  clearWappEntryCache();
   getManifestMock.mockReset().mockResolvedValue({
     id: 'acme.bill-audit',
     version: '1.0.0',
@@ -118,7 +83,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('ExtensionPageShell bridge wiring (F6)', () => {
+describe('WappPageShell bridge wiring (F6)', () => {
   /** Wait for the post-commit attach effect; returns the bridge handle. */
   async function waitForAttachedHandle(): Promise<ReturnType<typeof makeHandle>> {
     await vi.waitFor(
@@ -130,7 +95,7 @@ describe('ExtensionPageShell bridge wiring (F6)', () => {
     return attachBridgeMock.mock.results[0].value as ReturnType<typeof makeHandle>;
   }
   it('attaches the bridge once with the shell iframe, manifest permissions and locale', async () => {
-    render(<ExtensionPageShell tab={makeTab()} active />);
+    render(<WappPageShell tab={makeTab()} active />);
     await screen.findByTestId('wapp-iframe', {}, { timeout: 5_000 });
 
     // The bridge attach runs in a post-commit effect; under CI load the iframe
@@ -146,13 +111,13 @@ describe('ExtensionPageShell bridge wiring (F6)', () => {
       Record<string, unknown>,
     ];
     expect(iframeEl).toBe(screen.getByTestId('wapp-iframe'));
-    expect(opts.pluginId).toBe('acme.bill-audit');
+    expect(opts.wappId).toBe('acme.bill-audit');
     expect(opts.permissions).toEqual(['context:connections', 'command:invoke']);
     expect(typeof opts.locale).toBe('string');
   });
 
   it('pushes a theme snapshot on datazen:theme-pack-changed', async () => {
-    render(<ExtensionPageShell tab={makeTab()} active />);
+    render(<WappPageShell tab={makeTab()} active />);
     await screen.findByTestId('wapp-iframe', {}, { timeout: 5_000 });
     const handle = await waitForAttachedHandle();
     expect(handle.pushThemeSnapshot).not.toHaveBeenCalled();
@@ -171,7 +136,7 @@ describe('ExtensionPageShell bridge wiring (F6)', () => {
   });
 
   it('pushes a theme snapshot when documentElement class mutates (dark/light switch)', async () => {
-    render(<ExtensionPageShell tab={makeTab()} active />);
+    render(<WappPageShell tab={makeTab()} active />);
     await screen.findByTestId('wapp-iframe', {}, { timeout: 5_000 });
     const handle = await waitForAttachedHandle();
 
@@ -190,7 +155,7 @@ describe('ExtensionPageShell bridge wiring (F6)', () => {
   });
 
   it('detaches on unmount and stops reacting to theme triggers afterwards', async () => {
-    const { unmount } = render(<ExtensionPageShell tab={makeTab()} active />);
+    const { unmount } = render(<WappPageShell tab={makeTab()} active />);
     await screen.findByTestId('wapp-iframe', {}, { timeout: 5_000 });
     const handle = await waitForAttachedHandle();
 
@@ -208,7 +173,7 @@ describe('ExtensionPageShell bridge wiring (F6)', () => {
 
   it('reattaches a fresh bridge when the watchdog reload remounts the iframe', async () => {
     vi.useFakeTimers();
-    render(<ExtensionPageShell tab={makeTab()} active />);
+    render(<WappPageShell tab={makeTab()} active />);
     await act(async () => {});
     expect(screen.getByTestId('wapp-iframe')).toBeInTheDocument();
 

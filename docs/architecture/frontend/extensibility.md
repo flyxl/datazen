@@ -1,4 +1,4 @@
-# 扩展性 — 数据库类型与插件系统
+# 扩展性 — 数据库类型与驱动系统
 
 > [返回架构总览](../README.md)
 
@@ -58,11 +58,11 @@ src/windows/connection/
 5. （可选）`sqlDialects/` — 新方言策略文件
 6. （可选）`schema-tree/` — 新 Schema 树变体
 
-### 1.5 主题包 vs 驱动插件
+### 1.5 主题包 vs 数据库驱动
 
-主题包与驱动插件**不共享**安装路径或注册表：
+主题包与数据库驱动**不共享**安装路径或注册表：
 
-| | 驱动插件 | 主题包 |
+| | 数据库驱动 | 主题包 |
 |---|---------|--------|
 | 路径 | `packages/drivers/<id>/`（path 已提交；git 构建时 clone，gitignored） | `{appData}/themes/{id}/`（运行时 ZIP） |
 | 注册 | `drivers-registry.json` + `DB_REGISTRY` | 文件系统 + `manifest.json` |

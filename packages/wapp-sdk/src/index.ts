@@ -3,7 +3,7 @@
  *
  * - `createClient()` — typed postMessage RPC against the host bridge.
  * - Theme utilities — apply/observe host `theme.apply` snapshots (no React).
- * - Types — wire shapes shared with `src/lib/extensionBridge.ts`.
+ * - Types — wire shapes shared with `src/lib/wappBridge.ts`.
  *
  * The optional `useTheme` React hook lives at `@datazen/wapp-sdk/react`
  * (react is an optional peer dependency): exporting it from here would force
@@ -16,8 +16,8 @@ export {
   BRIDGE_ERROR,
   REQUEST_TIMEOUT_MS,
   SDK_ERROR,
-  EXTENSION_API_VERSION,
-  ExtensionError,
+  WAPP_API_VERSION,
+  WappError,
   createClient,
 } from './bridge';
 export type {
@@ -28,8 +28,8 @@ export type {
   HostContext,
   NotifyRequest,
   SdkErrorCode,
-  ExtensionClient,
-  ExtensionErrorCode,
+  WappClient,
+  WappErrorCode,
 } from './bridge';
 
 export {

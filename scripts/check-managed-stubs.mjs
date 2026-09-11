@@ -2,7 +2,7 @@
 /**
  * Fail if git-tracked managed files look injected.
  * Run on a clean checkout (before resolve-drivers) so CI catches accidental
- * commits of Cargo.toml / capabilities plugin injection.
+ * commits of Cargo.toml / capabilities driver injection.
  *
  * Driver codegen (generated.ts / driver_init.rs) is gitignored and not checked.
  */
@@ -40,7 +40,7 @@ export function checkManagedStubs(opts = {}) {
     const content = readFileSync(path, 'utf-8');
     if (fileHasInjection(rel, content)) {
       error(
-        `[check-managed-stubs] ${rel} looks injected (plugin deps / ACL present).`,
+        `[check-managed-stubs] ${rel} looks injected (driver deps / ACL present).`,
       );
       error('  Restore with: node scripts/driver-file-stash.mjs restore');
       failed = true;

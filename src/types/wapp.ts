@@ -96,16 +96,3 @@ export interface WappSummary {
   pages: WappPageSummary[];
   themes: WappThemeSummary[];
 }
-
-// ---------------------------------------------------------------------------
-// Backward-compatible aliases for legacy Extension naming
-// ---------------------------------------------------------------------------
-export const EXTENSION_API_VERSION = WAPP_API_VERSION;
-export type ExtensionPermission = WappPermission;
-export type PageContribution = WappPageContribution;
-export type ThemeContribution = WappThemeContribution;
-export type Contributions = WappContributions;
-export type ExtensionManifest = WappManifest;
-export type ExtensionPageSummary = WappPageSummary;
-export type ExtensionThemeSummary = WappThemeSummary;
-export type ExtensionSummary = WappSummary;

@@ -278,11 +278,11 @@ fn first_run_language_is_supported() {
 }
 
 #[test]
-fn plugin_settings_defaults_when_key_missing() {
+fn driver_settings_defaults_when_key_missing() {
     let mut value = serde_json::to_value(AppSettings::default()).unwrap();
-    value.as_object_mut().unwrap().remove("pluginSettings");
+    value.as_object_mut().unwrap().remove("driverSettings");
     let parsed: AppSettings = serde_json::from_value(value).unwrap();
-    assert!(parsed.plugin_settings.is_empty());
+    assert!(parsed.driver_settings.is_empty());
 }
 
 #[test]
@@ -294,9 +294,9 @@ fn mcp_client_servers_defaults_when_key_missing() {
 }
 
 #[test]
-fn plugin_settings_roundtrip_opaque() {
+fn driver_settings_roundtrip_opaque() {
     let settings = AppSettings {
-        plugin_settings: {
+        driver_settings: {
             let mut m = serde_json::Map::new();
             m.insert("redis".into(), serde_json::json!({ "allowFlush": true }));
             m
@@ -304,10 +304,10 @@ fn plugin_settings_roundtrip_opaque() {
         ..AppSettings::default()
     };
     let json = serde_json::to_string(&settings).unwrap();
-    assert!(json.contains("pluginSettings"));
+    assert!(json.contains("driverSettings"));
     let parsed: AppSettings = serde_json::from_str(&json).unwrap();
     assert_eq!(
-        parsed.plugin_settings.get("redis").unwrap()["allowFlush"],
+        parsed.driver_settings.get("redis").unwrap()["allowFlush"],
         true
     );
 }

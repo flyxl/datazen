@@ -41,8 +41,8 @@ describe('driver-deinject', () => {
 
   it('returns canonical empty codegen stubs', () => {
     expect(cleanGeneratedTsContent()).toContain('export type DatabaseType = never');
-    expect(cleanGeneratedLocalesContent()).toContain('export type PluginTranslationKey = never');
-    expect(cleanDriverInitContent()).toContain('No plugins with Tauri commands enabled');
+    expect(cleanGeneratedLocalesContent()).toContain('export type DriverTranslationKey = never');
+    expect(cleanDriverInitContent()).toContain('No drivers with Tauri commands enabled');
     expect(cleanFullyGeneratedContent('src/extensions/generated.ts')).toBe(
       cleanGeneratedTsContent(),
     );

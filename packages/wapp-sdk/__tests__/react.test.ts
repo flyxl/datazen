@@ -8,7 +8,7 @@ import { act, render } from '@testing-library/react';
 import { applyThemeSnapshot, getThemeState, subscribeTheme } from '../src/theme';
 import type { ThemeState } from '../src/theme';
 
-// The subpath export under test — imported via the same specifier plugins use
+// The subpath export under test — imported via the same specifier wapps use
 // is not possible here (package self-reference); src/react.ts IS that module.
 import { useTheme } from '../src/react';
 

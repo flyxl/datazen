@@ -85,9 +85,12 @@ pub struct AppSettings {
     /// Dashboard monitor / tray / retention settings (nested for settings UI).
     #[serde(default)]
     pub monitor: MonitorSettings,
-    /// Opaque per-plugin settings keyed by plugin id (e.g. `"redis"`).
+    /// Opaque per-driver settings keyed by driver id (e.g. `"redis"`).
+    #[serde(default, alias = "plugin_settings", alias = "wapp_settings")]
+    pub driver_settings: serde_json::Map<String, serde_json::Value>,
+    /// Opaque per-wapp settings keyed by wapp id. Currently unused, reserved for future workspace app configs.
     #[serde(default)]
-    pub plugin_settings: serde_json::Map<String, serde_json::Value>,
+    pub wapp_settings: serde_json::Map<String, serde_json::Value>,
     /// Saved external MCP Client server configs (stdio). Runtime connections are separate.
     #[serde(default)]
     pub mcp_client_servers: Vec<McpServerConfig>,
@@ -177,7 +180,8 @@ impl Default for AppSettings {
             check_for_updates_on_startup: false,
             auto_chart_on_query: false,
             monitor: MonitorSettings::default(),
-            plugin_settings: serde_json::Map::new(),
+            driver_settings: serde_json::Map::new(),
+            wapp_settings: serde_json::Map::new(),
             mcp_client_servers: Vec::new(),
             ai_strict_egress: true,
             editor_completion_quote_policy: default_completion_quote_policy(),

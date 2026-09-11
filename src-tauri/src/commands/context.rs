@@ -615,9 +615,6 @@ mod tests {
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
-            extensions: Arc::new(crate::extensions::ExtensionManager::new(
-                data_dir.join("wapps"),
-            )),
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();
@@ -683,9 +680,6 @@ mod tests {
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
-            extensions: Arc::new(crate::extensions::ExtensionManager::new(
-                data_dir.join("wapps"),
-            )),
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();

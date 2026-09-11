@@ -63,34 +63,4 @@ export const wappCommands = {
       /* audit is best-effort; IPC being down must not break the call path */
     });
   },
-
-  // Legacy method aliases for backward compatibility
-  listExtensions: () => invoke<WappSummary[]>('list_wapps'),
-  getExtensionManifest: (id: string) => invoke<WappManifest>('get_wapp_manifest', { id }),
-  inspectExtensionPackageWithDialog: (packageKind: WappPackageKind, overridePath?: string) =>
-    invoke<WappPackagePreview | null>('inspect_wapp_package_with_dialog', {
-      packageKind,
-      overridePath,
-    }),
-  installExtension: (pickToken: string, overridePath?: string) =>
-    invoke<WappSummary>('install_wapp', { pickToken, overridePath }),
-  removeExtension: (id: string) => invoke<void>('remove_wapp', { id }),
-  setExtensionEnabled: (id: string, enabled: boolean) =>
-    invoke<void>('set_wapp_enabled', { id, enabled }),
-  extensionStorageGet: (extensionId: string, key: string) =>
-    invoke<unknown>('wapp_storage_get', { wappId: extensionId, key }),
-  extensionStorageSet: (extensionId: string, key: string, value: unknown) =>
-    invoke<void>('wapp_storage_set', { wappId: extensionId, key, value }),
-  extensionStorageRemove: (extensionId: string, key: string) =>
-    invoke<void>('wapp_storage_remove', { wappId: extensionId, key }),
-  readExtensionFile: (id: string, relativePath: string) =>
-    invoke<number[]>('read_wapp_file', { id, relativePath }),
 };
-
-// ---------------------------------------------------------------------------
-// Backward-compatible aliases for legacy Extension naming
-// ---------------------------------------------------------------------------
-export const EXTENSIONS_CHANGED_EVENT = WAPPS_CHANGED_EVENT;
-export type ExtensionPackageKind = WappPackageKind;
-export type ExtensionPackagePreview = WappPackagePreview;
-export const extensionCommands = wappCommands;

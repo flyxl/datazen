@@ -257,8 +257,8 @@ fi
 # ---------------------------------------------------------------------------
 check_codegen() {
   local missing=0
-  [[ -f src/plugins/generated.ts ]] || {
-    echo "  缺少 src/plugins/generated.ts"
+  [[ -f src/extensions/generated.ts ]] || {
+    echo "  缺少 src/extensions/generated.ts"
     missing=1
   }
   [[ -f src-tauri/src/driver_init.rs ]] || {

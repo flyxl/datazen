@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { getConnectionView } from '../connectionViews';
 import { DocumentConnectionView } from '../../windows/connection/DocumentConnectionView';
-import { getPluginConnectionView } from '../../extensions/generated';
+import { getDriverConnectionView } from '../../extensions/generated';
 
 describe('getConnectionView', () => {
   it('returns mapped views by mode', () => {
-    const pluginKeyvalue = getPluginConnectionView('keyvalue');
-    if (pluginKeyvalue) {
-      expect(getConnectionView('keyvalue')).toBe(pluginKeyvalue);
+    const driverKeyvalue = getDriverConnectionView('keyvalue');
+    if (driverKeyvalue) {
+      expect(getConnectionView('keyvalue')).toBe(driverKeyvalue);
     }
     expect(getConnectionView('document')).toBe(DocumentConnectionView);
   });

@@ -73,8 +73,8 @@ export function MonitorPanel({
   onPinnedNodeAddrChange,
 }: MonitorPanelProps) {
   const { t } = useI18n();
-  const pluginSettings = useSettingsStore((s) => s.settings.pluginSettings);
-  const clusterRouting = readClusterRouting(pluginSettings?.redis);
+  const driverSettings = useSettingsStore((s) => s.settings.driverSettings);
+  const clusterRouting = readClusterRouting(driverSettings?.redis);
   const nodeAddr = resolvePinnedNodeAddr(clusterRouting, pinnedNodeAddr);
   const [subPage, setSubPage] = useState<MonitorSubPage>('info');
 

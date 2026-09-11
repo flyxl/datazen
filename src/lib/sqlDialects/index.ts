@@ -11,7 +11,7 @@ import {
   mongodbDialect,
   genericDialect,
 } from './extra';
-import { PLUGIN_SQL_DIALECTS } from '../../extensions/generated';
+import { DRIVER_SQL_DIALECTS } from '../../extensions/generated';
 import type { SqlDialectStrategy } from './types';
 
 const BUILTIN_DIALECTS: Record<string, SqlDialectStrategy> = {
@@ -28,7 +28,7 @@ const BUILTIN_DIALECTS: Record<string, SqlDialectStrategy> = {
 
 const DIALECTS: Record<string, SqlDialectStrategy> = {
   ...BUILTIN_DIALECTS,
-  ...PLUGIN_SQL_DIALECTS,
+  ...DRIVER_SQL_DIALECTS,
 };
 
 export function getSqlDialect(dbType: DatabaseType): SqlDialectStrategy | null {

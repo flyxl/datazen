@@ -6,7 +6,7 @@ import type {
   ConnectionClipboardFill,
   MatchedConnectionClipboard,
 } from './connectionClipboardTypes';
-import { getPluginClipboardParsers } from '../extensions/generated';
+import { getDriverClipboardParsers } from '../extensions/generated';
 
 export type {
   ConnectionClipboardFill,
@@ -25,7 +25,7 @@ export function matchConnectionClipboard(
     availableTypes && availableTypes.length > 0 ? availableTypes : Object.keys(DB_REGISTRY),
   );
 
-  for (const entry of getPluginClipboardParsers()) {
+  for (const entry of getDriverClipboardParsers()) {
     if (!allowed.has(entry.dbType)) continue;
     const fill = entry.parse(text);
     if (fill) return { databaseType: entry.dbType, fill };

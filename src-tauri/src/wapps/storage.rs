@@ -1,8 +1,8 @@
-//! Per-extension key-value storage backed by `{plugins_dir}/{id}/.storage.json`.
+//! Per-wapp key-value storage backed by `{wapps_dir}/{id}/.storage.json`.
 //!
-//! Values are namespaced by extension directory, so two extensions writing the same
+//! Values are namespaced by wapp directory, so two wapps writing the same
 //! key can never interfere. Writes are atomic (temp file + rename) and capped
-//! at 1 MB per extension.
+//! at 1 MB per wapp.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,26 +10,26 @@ use std::sync::{LazyLock, Mutex};
 
 use serde_json::{Map, Value};
 
-/// Host-managed per-extension KV file (hidden from package scans and reads).
+/// Host-managed per-wapp KV file (hidden from package scans and reads).
 pub const STORAGE_FILE: &str = ".storage.json";
 
-/// Maximum serialized storage size per extension.
+/// Maximum serialized storage size per wapp.
 pub const MAX_STORAGE_BYTES: usize = 1024 * 1024;
 
 /// Serializes read-modify-write cycles so concurrent updates cannot clobber
 /// each other's temp files or lose writes.
 static STORAGE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
-/// Validate an extension id used as a path segment for storage operations.
-fn validate_extension_id(extension_id: &str) -> Result<(), String> {
-    if extension_id.is_empty()
-        || extension_id.starts_with('.')
-        || extension_id.contains('/')
-        || extension_id.contains('\\')
-        || extension_id.contains("..")
-        || extension_id.contains('\0')
+/// Validate a wapp id used as a path segment for storage operations.
+fn validate_wapp_id(wapp_id: &str) -> Result<(), String> {
+    if wapp_id.is_empty()
+        || wapp_id.starts_with('.')
+        || wapp_id.contains('/')
+        || wapp_id.contains('\\')
+        || wapp_id.contains("..")
+        || wapp_id.contains('\0')
     {
-        return Err(format!("invalid extension id: {extension_id}"));
+        return Err(format!("invalid wapp id: {wapp_id}"));
     }
     Ok(())
 }
@@ -41,9 +41,9 @@ fn validate_key(key: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn storage_file_path(plugins_dir: &Path, extension_id: &str) -> Result<PathBuf, String> {
-    validate_extension_id(extension_id)?;
-    Ok(plugins_dir.join(extension_id).join(STORAGE_FILE))
+pub(crate) fn storage_file_path(wapps_dir: &Path, wapp_id: &str) -> Result<PathBuf, String> {
+    validate_wapp_id(wapp_id)?;
+    Ok(wapps_dir.join(wapp_id).join(STORAGE_FILE))
 }
 
 fn read_storage_map(path: &Path) -> Result<Map<String, Value>, String> {
@@ -64,7 +64,7 @@ fn write_storage_atomic(path: &Path, map: &Map<String, Value>) -> Result<(), Str
         serde_json::to_string_pretty(map).map_err(|e| format!("encode storage: {e}"))?;
     if serialized.len() > MAX_STORAGE_BYTES {
         return Err(format!(
-            "extension storage exceeds limit ({MAX_STORAGE_BYTES} bytes)"
+            "wapp storage exceeds limit ({MAX_STORAGE_BYTES} bytes)"
         ));
     }
 
@@ -90,14 +90,10 @@ fn write_storage_atomic(path: &Path, map: &Map<String, Value>) -> Result<(), Str
     Ok(())
 }
 
-/// Read a single key; `None` when the extension has no stored value for it.
-pub fn storage_get(
-    plugins_dir: &Path,
-    extension_id: &str,
-    key: &str,
-) -> Result<Option<Value>, String> {
+/// Read a single key; `None` when the wapp has no stored value for it.
+pub fn storage_get(wapps_dir: &Path, wapp_id: &str, key: &str) -> Result<Option<Value>, String> {
     validate_key(key)?;
-    let path = storage_file_path(plugins_dir, extension_id)?;
+    let path = storage_file_path(wapps_dir, wapp_id)?;
 
     let _guard = STORAGE_LOCK.lock().map_err(|_| "storage lock poisoned")?;
     read_storage_map(&path).map(|map| map.get(key).cloned())
@@ -105,14 +101,9 @@ pub fn storage_get(
 
 /// Write a single key. Fails when the resulting serialized store would exceed
 /// [`MAX_STORAGE_BYTES`].
-pub fn storage_set(
-    plugins_dir: &Path,
-    extension_id: &str,
-    key: &str,
-    value: Value,
-) -> Result<(), String> {
+pub fn storage_set(wapps_dir: &Path, wapp_id: &str, key: &str, value: Value) -> Result<(), String> {
     validate_key(key)?;
-    let path = storage_file_path(plugins_dir, extension_id)?;
+    let path = storage_file_path(wapps_dir, wapp_id)?;
 
     let _guard = STORAGE_LOCK.lock().map_err(|_| "storage lock poisoned")?;
     let mut map = read_storage_map(&path)?;
@@ -121,9 +112,9 @@ pub fn storage_set(
 }
 
 /// Delete a single key; returns whether it existed.
-pub fn storage_remove(plugins_dir: &Path, extension_id: &str, key: &str) -> Result<bool, String> {
+pub fn storage_remove(wapps_dir: &Path, wapp_id: &str, key: &str) -> Result<bool, String> {
     validate_key(key)?;
-    let path = storage_file_path(plugins_dir, extension_id)?;
+    let path = storage_file_path(wapps_dir, wapp_id)?;
 
     let _guard = STORAGE_LOCK.lock().map_err(|_| "storage lock poisoned")?;
     let mut map = read_storage_map(&path)?;
@@ -160,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    fn plugins_are_isolated_by_namespace() {
+    fn wapps_are_isolated_by_namespace() {
         let dir = TempDir::new().unwrap();
         storage_set(dir.path(), "acme.one", "shared-key", json!("from-one")).unwrap();
         storage_set(dir.path(), "acme.two", "shared-key", json!(42)).unwrap();
@@ -186,7 +177,7 @@ mod tests {
     }
 
     #[test]
-    fn get_on_missing_plugin_or_key_is_none() {
+    fn get_on_missing_wapp_or_key_is_none() {
         let dir = TempDir::new().unwrap();
         assert_eq!(storage_get(dir.path(), "acme.none", "k").unwrap(), None);
         storage_set(dir.path(), "acme.none", "other", json!(1)).unwrap();
@@ -224,7 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_extension_ids_and_keys() {
+    fn rejects_invalid_wapp_ids_and_keys() {
         let dir = TempDir::new().unwrap();
         for bad in ["../escape", ".hidden", "a/b", "a\\b", ""] {
             assert!(

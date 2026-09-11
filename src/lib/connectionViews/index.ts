@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 import { DocumentConnectionView } from '../../windows/connection/DocumentConnectionView';
-import { getPluginConnectionView } from '../../extensions/generated';
+import { getDriverConnectionView } from '../../extensions/generated';
 import type { ConnectionViewProps } from './types';
 
 /**
@@ -12,7 +12,7 @@ const BUILTIN_VIEWS: Record<string, ComponentType<ConnectionViewProps>> = {
 };
 
 export function getConnectionView(mode: string): ComponentType<ConnectionViewProps> {
-  const pluginView = getPluginConnectionView(mode);
-  if (pluginView) return pluginView as ComponentType<ConnectionViewProps>;
+  const wappView = getDriverConnectionView(mode);
+  if (wappView) return wappView as ComponentType<ConnectionViewProps>;
   return BUILTIN_VIEWS[mode] ?? DocumentConnectionView;
 }

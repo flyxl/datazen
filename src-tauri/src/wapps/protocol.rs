@@ -1,4 +1,4 @@
-//! `datazen://` custom protocol: plugin asset service + deep-link commands.
+//! `datazen://` custom protocol: wapp asset service + deep-link commands.
 //!
 //! URL syntax: `datazen://<publisher>.<extension-name>/<path-or-command>?<query>`
 //!
@@ -7,7 +7,7 @@
 //!   Content-Type table.
 //! - **command form** (`datazen://acme.bill-audit/open?page=quota-check&uid=1`):
 //!   first path segment `open` is a reserved deep link; the host emits
-//!   [`EXTENSIONS_OPEN_PAGE_EVENT`] to the frontend instead of serving bytes.
+//!   [`WAPPS_OPEN_PAGE_EVENT`] to the frontend instead of serving bytes.
 //!
 //! On Windows the WebView exposes custom schemes as
 //! `http://datazen./<host>/<path>` while macOS/Linux keep
@@ -24,12 +24,12 @@ use std::path::{Path, PathBuf};
 use serde_json::{Map, Value};
 use tauri::{http, Emitter, Manager, Runtime, UriSchemeContext};
 
-use super::{is_valid_extension_id, ExtensionManager};
+use super::{is_valid_wapp_id, WappManager};
 use crate::commands::AppState;
 
 /// Event emitted when a `open` deep link resolves to a contributed page.
-/// Payload: `{ wappId, pageId, params }` (with `pluginId` retained for backward compatibility).
-pub const EXTENSIONS_OPEN_PAGE_EVENT: &str = "wapps:open-page";
+/// Payload: `{ wappId, pageId, params }`.
+pub const WAPPS_OPEN_PAGE_EVENT: &str = "wapps:open-page";
 
 /// Reserved first path segment marking a deep-link command (not an asset).
 pub const OPEN_COMMAND: &str = "open";
@@ -49,7 +49,7 @@ font-src 'self' datazen:; connect-src 'none'";
 /// Decoded query parameters keyed by parameter name.
 pub type QueryMap = BTreeMap<String, String>;
 
-/// Result of routing a parsed request against the plugin registry.
+/// Result of routing a parsed request against the wapp registry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DatazenOutcome {
     /// Serve package file bytes with a Content-Type from the safe table.
@@ -57,9 +57,9 @@ pub enum DatazenOutcome {
         content_type: &'static str,
         bytes: Vec<u8>,
     },
-    /// Emit [`EXTENSIONS_OPEN_PAGE_EVENT`] and answer 200 with an empty body.
+    /// Emit [`WAPPS_OPEN_PAGE_EVENT`] and answer 200 with an empty body.
     OpenPage {
-        plugin_id: String,
+        wapp_id: String,
         page_id: String,
         /// Remaining query entries (`page` excluded) forwarded verbatim.
         params: Map<String, Value>,
@@ -71,7 +71,7 @@ pub enum DatazenOutcome {
 // ---------------------------------------------------------------------------
 
 /// Parse a raw `datazen://...` / `http(s)://datazen./...` request target into
-/// `(plugin id, relative path-or-command, decoded query map)`.
+/// `(wapp id, relative path-or-command, decoded query map)`.
 ///
 /// Percent-escapes are decoded *before* any component validation so encoded
 /// traversal sequences cannot slip past later checks.
@@ -89,10 +89,10 @@ pub fn parse_datazen_uri(uri: &str) -> Result<(String, String, QueryMap), String
         None => (host_and_path, ""),
     };
 
-    // Host must be a valid `<publisher>.<name>` plugin id; this rejects hosts
+    // Host must be a valid `<publisher>.<name>` wapp id; this rejects hosts
     // without the publisher dot, uppercase ids and overlong segments.
-    if !is_valid_extension_id(host) {
-        return Err(format!("invalid extension host: `{host}`"));
+    if !is_valid_wapp_id(host) {
+        return Err(format!("invalid wapp host: `{host}`"));
     }
 
     let path = percent_decode(raw_path);
@@ -111,7 +111,7 @@ fn strip_scheme(uri: &str) -> Option<&str> {
     // `http://datazen./acme.bill-audit/index.html`. The `/` separator is
     // mandatory (BUG-F2-01): spec §2.4 only defines
     // `http://datazen./<host>/<path>`, so `datazen.` followed directly by the
-    // plugin id is not an alias and must fail as an unsupported scheme.
+    // wapp id is not an alias and must fail as an unsupported scheme.
     for prefix in ["https://datazen.", "http://datazen."] {
         if lower.starts_with(prefix) {
             return uri.get(prefix.len()..)?.strip_prefix('/');
@@ -222,18 +222,18 @@ pub(crate) fn content_type_for(ext: &str) -> Option<&'static str> {
 // Routing (pure against the registry; testable without a Tauri app)
 // ---------------------------------------------------------------------------
 
-/// Route `(plugin id, path, query)` through the registry: existence → enabled
+/// Route `(wapp id, path, query)` through the registry: existence → enabled
 /// → command/asset dispatch. Errors are bare status codes (404 / 403) so the
 /// HTTP layer can respond without leaking details.
 pub(crate) fn route_datazen_request(
-    manager: &ExtensionManager,
-    plugin_id: &str,
+    manager: &WappManager,
+    wapp_id: &str,
     path: &str,
     query: &QueryMap,
 ) -> Result<DatazenOutcome, http::StatusCode> {
     use http::StatusCode;
 
-    let Some(loaded) = manager.get(plugin_id) else {
+    let Some(loaded) = manager.get(wapp_id) else {
         return Err(StatusCode::NOT_FOUND);
     };
     if !loaded.enabled {
@@ -262,7 +262,7 @@ pub(crate) fn route_datazen_request(
             .collect();
 
         return Ok(DatazenOutcome::OpenPage {
-            plugin_id: plugin_id.to_string(),
+            wapp_id: wapp_id.to_string(),
             page_id: page_id.clone(),
             params,
         });
@@ -276,12 +276,12 @@ pub(crate) fn route_datazen_request(
         .unwrap_or_default();
     let content_type = content_type_for(ext).ok_or(StatusCode::NOT_FOUND)?;
 
-    let plugin_dir = manager.plugin_dir(plugin_id);
-    let file_path = plugin_dir.join(&rel);
+    let wapp_dir = manager.wapp_dir(wapp_id);
+    let file_path = wapp_dir.join(&rel);
     if !file_path.is_file() {
         return Err(StatusCode::NOT_FOUND);
     }
-    ensure_within_plugin_dir(&plugin_dir, &file_path)?;
+    ensure_within_wapp_dir(&wapp_dir, &file_path)?;
 
     let bytes = fs::read(&file_path).map_err(|_| StatusCode::NOT_FOUND)?;
     Ok(DatazenOutcome::Asset {
@@ -291,10 +291,10 @@ pub(crate) fn route_datazen_request(
 }
 
 /// Symlink-swap defense: resolve both directories and require containment.
-fn ensure_within_plugin_dir(plugin_dir: &Path, file_path: &Path) -> Result<(), http::StatusCode> {
+fn ensure_within_wapp_dir(wapp_dir: &Path, file_path: &Path) -> Result<(), http::StatusCode> {
     use http::StatusCode;
 
-    let canonical_dir = fs::canonicalize(plugin_dir).map_err(|_| StatusCode::NOT_FOUND)?;
+    let canonical_dir = fs::canonicalize(wapp_dir).map_err(|_| StatusCode::NOT_FOUND)?;
     let canonical_file = fs::canonicalize(file_path).map_err(|_| StatusCode::NOT_FOUND)?;
     if canonical_file.starts_with(&canonical_dir) {
         Ok(())
@@ -324,8 +324,8 @@ pub fn handle_datazen_request<R: Runtime>(
             tracing::warn!(error = %error, "rejected malformed datazen URI");
             datazen_response(StatusCode::NOT_FOUND, None, Vec::new())
         }
-        Ok((plugin_id, path, query)) => {
-            match route_datazen_request(&state.extensions, &plugin_id, &path, &query) {
+        Ok((wapp_id, path, query)) => {
+            match route_datazen_request(&state.wapps, &wapp_id, &path, &query) {
                 Ok(DatazenOutcome::Asset {
                     content_type,
                     bytes,
@@ -335,7 +335,7 @@ pub fn handle_datazen_request<R: Runtime>(
                     datazen_response(StatusCode::OK, None, Vec::new())
                 }
                 Err(status) => {
-                    tracing::warn!(plugin = %plugin_id, status = %status, "datazen request rejected");
+                    tracing::warn!(wapp = %wapp_id, status = %status, "datazen request rejected");
                     datazen_response(status, None, Vec::new())
                 }
             }
@@ -348,7 +348,7 @@ pub fn handle_datazen_request<R: Runtime>(
 /// the plugin page tab (F3/F4 consumption).
 fn emit_open_page<R: Runtime>(app: &tauri::AppHandle<R>, outcome: &DatazenOutcome) {
     let DatazenOutcome::OpenPage {
-        plugin_id,
+        wapp_id,
         page_id,
         params,
     } = outcome
@@ -356,12 +356,11 @@ fn emit_open_page<R: Runtime>(app: &tauri::AppHandle<R>, outcome: &DatazenOutcom
         return;
     };
     let payload = serde_json::json!({
-        "wappId": plugin_id,
-        "pluginId": plugin_id,
+        "wappId": wapp_id,
         "pageId": page_id,
         "params": params,
     });
-    if let Err(error) = app.emit(EXTENSIONS_OPEN_PAGE_EVENT, payload) {
+    if let Err(error) = app.emit(WAPPS_OPEN_PAGE_EVENT, payload) {
         tracing::warn!(error = %error, "failed to emit wapps:open-page");
     }
 }
@@ -407,7 +406,7 @@ mod tests {
         fs::write(path, content).unwrap();
     }
 
-    fn manager_with_page_plugin(dir: &Path) -> ExtensionManager {
+    fn manager_with_page_wapp(dir: &Path) -> WappManager {
         write_file(dir, "acme.bill-audit/manifest.json", PAGE_MANIFEST);
         write_file(dir, "acme.bill-audit/index.html", "<html>bill-audit</html>");
         write_file(dir, "acme.bill-audit/assets/icon.svg", "<svg/>");
@@ -415,15 +414,15 @@ mod tests {
         write_file(dir, "acme.bill-audit/.storage.json", "{}");
         write_file(dir, "acme.bill-audit/.enabled", "1\n");
 
-        let manager = ExtensionManager::new(dir.to_path_buf());
+        let manager = WappManager::new(dir.to_path_buf());
         assert_eq!(manager.load_from_disk(), 1);
         manager
     }
 
-    fn route(manager: &ExtensionManager, uri: &str) -> Result<DatazenOutcome, http::StatusCode> {
-        let (plugin_id, path, query) =
+    fn route(manager: &WappManager, uri: &str) -> Result<DatazenOutcome, http::StatusCode> {
+        let (wapp_id, path, query) =
             parse_datazen_uri(uri).map_err(|_| http::StatusCode::NOT_FOUND)?;
-        route_datazen_request(manager, &plugin_id, &path, &query)
+        route_datazen_request(manager, &wapp_id, &path, &query)
     }
 
     // -- parse ---------------------------------------------------------------
@@ -449,7 +448,7 @@ mod tests {
 
     #[test]
     fn windows_form_without_separator_is_rejected() {
-        // BUG-F2-01: `datazen.` followed directly by the plugin id (no `/`
+        // BUG-F2-01: `datazen.` followed directly by the wapp id (no `/`
         // separator) used to be accepted as a lenient alias. Spec §2.4 only
         // defines `http://datazen./<host>/<path>`, so these must fail with
         // "unsupported scheme" while the canonical form keeps parsing.
@@ -495,7 +494,7 @@ mod tests {
         assert_eq!(id, "acme.bill-audit");
         assert_eq!(path, "");
         let dir = tempfile::TempDir::new().unwrap();
-        let manager = manager_with_page_plugin(dir.path());
+        let manager = manager_with_page_wapp(dir.path());
         assert_eq!(
             route_datazen_request(&manager, &id, "", &QueryMap::new()),
             Err(http::StatusCode::NOT_FOUND)
@@ -522,7 +521,7 @@ mod tests {
     #[test]
     fn encoded_traversal_is_caught_after_decoding() {
         let dir = tempfile::TempDir::new().unwrap();
-        let manager = manager_with_page_plugin(dir.path());
+        let manager = manager_with_page_wapp(dir.path());
         assert_eq!(
             route(
                 &manager,
@@ -577,7 +576,7 @@ mod tests {
     #[test]
     fn open_command_resolves_contributed_page_and_splits_params() {
         let dir = tempfile::TempDir::new().unwrap();
-        let manager = manager_with_page_plugin(dir.path());
+        let manager = manager_with_page_wapp(dir.path());
 
         let outcome = route(
             &manager,
@@ -587,7 +586,7 @@ mod tests {
         assert_eq!(
             outcome,
             DatazenOutcome::OpenPage {
-                plugin_id: "acme.bill-audit".into(),
+                wapp_id: "acme.bill-audit".into(),
                 page_id: "quota-check".into(),
                 params: [("uid".to_string(), Value::String("123".into()))]
                     .into_iter()
@@ -599,7 +598,7 @@ mod tests {
     #[test]
     fn unknown_commands_are_not_found() {
         let dir = tempfile::TempDir::new().unwrap();
-        let manager = manager_with_page_plugin(dir.path());
+        let manager = manager_with_page_wapp(dir.path());
 
         // Not a real file either → plain 404.
         assert_eq!(
@@ -616,7 +615,7 @@ mod tests {
     #[test]
     fn open_without_known_page_is_not_found() {
         let dir = tempfile::TempDir::new().unwrap();
-        let manager = manager_with_page_plugin(dir.path());
+        let manager = manager_with_page_wapp(dir.path());
 
         for uri in [
             "datazen://acme.bill-audit/open",
@@ -636,7 +635,7 @@ mod tests {
     #[test]
     fn serves_asset_bytes_with_content_type() {
         let dir = tempfile::TempDir::new().unwrap();
-        let manager = manager_with_page_plugin(dir.path());
+        let manager = manager_with_page_wapp(dir.path());
 
         let outcome = route(&manager, "datazen://acme.bill-audit/index.html").unwrap();
         assert_eq!(
@@ -658,9 +657,9 @@ mod tests {
     }
 
     #[test]
-    fn disabled_plugin_is_forbidden_for_both_forms() {
+    fn disabled_wapp_is_forbidden_for_both_forms() {
         let dir = tempfile::TempDir::new().unwrap();
-        let manager = manager_with_page_plugin(dir.path());
+        let manager = manager_with_page_wapp(dir.path());
         manager.set_enabled("acme.bill-audit", false).unwrap();
 
         for uri in [
@@ -679,9 +678,9 @@ mod tests {
     }
 
     #[test]
-    fn unknown_plugins_are_not_found() {
+    fn unknown_wapps_are_not_found() {
         let dir = tempfile::TempDir::new().unwrap();
-        let manager = manager_with_page_plugin(dir.path());
+        let manager = manager_with_page_wapp(dir.path());
         assert_eq!(
             route(&manager, "datazen://acme.ghost/index.html"),
             Err(http::StatusCode::NOT_FOUND)
@@ -691,7 +690,7 @@ mod tests {
     #[test]
     fn hidden_host_files_are_never_served() {
         let dir = tempfile::TempDir::new().unwrap();
-        let manager = manager_with_page_plugin(dir.path());
+        let manager = manager_with_page_wapp(dir.path());
         for uri in [
             "datazen://acme.bill-audit/.storage.json",
             "datazen://acme.bill-audit/.enabled",
@@ -710,7 +709,7 @@ mod tests {
         write_file(dir.path(), "acme.bill-audit/manifest.json", PAGE_MANIFEST);
         write_file(dir.path(), "acme.bill-audit/blob.txt", "nope");
 
-        let manager = ExtensionManager::new(dir.path().to_path_buf());
+        let manager = WappManager::new(dir.path().to_path_buf());
         // Register directly: simulates a file dropped into a plugin dir after
         // install-time validation (which itself rejects `.txt` packages).
         let manifest = super::super::parse_manifest(PAGE_MANIFEST).unwrap();

@@ -144,7 +144,7 @@ describe('startThemeListener', () => {
   });
 
   const THEME_APPLY = (tokens: Record<string, string>) => ({
-    ch: 'datazen-extension',
+    ch: 'datazen-wapp',
     type: 'theme.apply',
     target: 'host',
     payload: { v: 2, dark: true, tokens },

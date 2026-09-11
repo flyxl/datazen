@@ -11,7 +11,7 @@ export interface ConnectionClipboardFill {
   name?: string;
   sslMode?: SslMode;
   options?: Record<string, unknown>;
-  /** Expand Advanced when TLS / plugin advanced fields were filled. */
+  /** Expand Advanced when TLS / wapp advanced fields were filled. */
   expandAdvanced?: boolean;
 }
 

@@ -35,8 +35,8 @@ export function ClusterNodePicker({
 }: ClusterNodePickerProps) {
   const { t } = useI18n();
   const connection = useConnectionStore((s) => s.connections.find((c) => c.id === dbSessionId));
-  const pluginSettings = useSettingsStore((s) => s.settings.pluginSettings);
-  const clusterRouting = readClusterRouting(pluginSettings?.redis);
+  const driverSettings = useSettingsStore((s) => s.settings.driverSettings);
+  const clusterRouting = readClusterRouting(driverSettings?.redis);
 
   const topology = readRedisOptions(
     connection?.options as Record<string, unknown> | undefined,

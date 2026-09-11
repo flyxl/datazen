@@ -8,8 +8,6 @@ export function workspaceTabKey(wappId: string, pageId: string): string {
 export interface WorkspaceTab {
   key: string;
   wappId: string;
-  /** @deprecated use wappId */
-  pluginId: string;
   pageId: string;
   title: string;
   icon?: string;
@@ -29,20 +27,17 @@ interface WorkspaceTabsStore {
   activate: (key: string) => void;
   /** Closes every tab of a workspace app (uninstall/disable). Same neighbor rule. */
   closeByWapp: (wappId: string) => void;
-  /** Alias of closeByWapp. */
-  closeByPlugin: (pluginId: string) => void;
 }
 
 export const useWorkspaceTabsStore = create<WorkspaceTabsStore>((set, get) => {
   const closeByWappImpl = (wappId: string) => {
     const { tabs, activeKey } = get();
-    const firstRemovedIndex = tabs.findIndex((t) => (t.wappId || t.pluginId) === wappId);
+    const firstRemovedIndex = tabs.findIndex((t) => t.wappId === wappId);
     if (firstRemovedIndex === -1) return;
 
     const activeSurvives =
-      activeKey !== null &&
-      tabs.some((t) => t.key === activeKey && (t.wappId || t.pluginId) !== wappId);
-    const next = tabs.filter((t) => (t.wappId || t.pluginId) !== wappId);
+      activeKey !== null && tabs.some((t) => t.key === activeKey && t.wappId !== wappId);
+    const next = tabs.filter((t) => t.wappId !== wappId);
     if (activeSurvives) {
       set({ tabs: next });
       return;
@@ -58,8 +53,7 @@ export const useWorkspaceTabsStore = create<WorkspaceTabsStore>((set, get) => {
     open: (rawTab) => {
       const tab: WorkspaceTab = {
         ...rawTab,
-        wappId: rawTab.wappId ?? rawTab.pluginId,
-        pluginId: rawTab.pluginId ?? rawTab.wappId,
+        wappId: rawTab.wappId,
       };
       const { tabs } = get();
       const index = tabs.findIndex((t) => t.key === tab.key);
@@ -94,6 +88,5 @@ export const useWorkspaceTabsStore = create<WorkspaceTabsStore>((set, get) => {
     },
 
     closeByWapp: closeByWappImpl,
-    closeByPlugin: closeByWappImpl,
   };
 });

@@ -1,37 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { WappManagementPage, ExtensionManagementPage } from '../WappManagementPage';
-import {
-  WAPP_API_VERSION,
-  EXTENSION_API_VERSION,
-  type WappSummary,
-  type ExtensionSummary,
-} from '../../../types/wapp';
+import { WAPP_API_VERSION, type WappSummary } from '../../../types/wapp';
 
 const {
-  pluginState,
+  wappState,
   setEnabledMock,
   removeMock,
   fetchMock,
-  closeByPluginMock,
+  closeByWappMock,
   openTabMock,
   inspectPackageMock,
   installFromPathMock,
-  readExtensionFileMock,
+  readWappFileMock,
   confirmSpy,
 } = vi.hoisted(() => ({
-  pluginState: {
+  wappState: {
     _list: [] as Array<Record<string, unknown>>,
     get wapps() {
       return this._list;
     },
     set wapps(v: Array<Record<string, unknown>>) {
-      this._list = v;
-    },
-    get extensions() {
-      return this._list;
-    },
-    set extensions(v: Array<Record<string, unknown>>) {
       this._list = v;
     },
     loaded: true,
@@ -40,11 +29,11 @@ const {
   setEnabledMock: vi.fn(),
   removeMock: vi.fn(),
   fetchMock: vi.fn(),
-  closeByPluginMock: vi.fn(),
+  closeByWappMock: vi.fn(),
   openTabMock: vi.fn(),
   inspectPackageMock: vi.fn(),
   installFromPathMock: vi.fn(),
-  readExtensionFileMock: vi.fn(),
+  readWappFileMock: vi.fn(),
   confirmSpy: vi.fn(),
 }));
 
@@ -57,44 +46,23 @@ vi.mock('../../../hooks/useConfirmDialog', () => ({
 }));
 
 vi.mock('../../../stores/wappStore', () => ({
-  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+  useWappStore: Object.assign((sel: (s: typeof wappState) => unknown) => sel(wappState), {
     getState: () => ({
-      ...pluginState,
+      ...wappState,
       fetch: fetchMock,
       setEnabled: setEnabledMock,
       remove: removeMock,
-      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
-    }),
-  }),
-  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
-    getState: () => ({
-      ...pluginState,
-      fetch: fetchMock,
-      setEnabled: setEnabledMock,
-      remove: removeMock,
-      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
-    }),
-  }),
-}));
-
-vi.mock('../../../stores/extensionStore', () => ({
-  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
-    getState: () => ({
-      ...pluginState,
-      fetch: fetchMock,
-      setEnabled: setEnabledMock,
-      remove: removeMock,
-      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
+      byId: (id: string) => (wappState.wapps as Array<{ id: string }>).find((p) => p.id === id),
     }),
   }),
 }));
 
 vi.mock('../../../stores/workspaceTabsStore', () => ({
-  workspaceTabKey: (pluginId: string, pageId: string) => `${pluginId}:${pageId}`,
+  workspaceTabKey: (wappId: string, pageId: string) => `${wappId}:${pageId}`,
   useWorkspaceTabsStore: Object.assign(
     (sel: (s: Record<string, unknown>) => unknown) => sel({ tabs: [], activeKey: null }),
     {
-      getState: () => ({ open: openTabMock, closeByPlugin: closeByPluginMock }),
+      getState: () => ({ open: openTabMock, closeByWapp: closeByWappMock }),
     },
   ),
 }));
@@ -104,38 +72,16 @@ vi.mock('../../../commands/wapps', () => ({
   wappCommands: {
     inspectWappPackageWithDialog: (...args: unknown[]) => inspectPackageMock(...args),
     installWapp: (...args: unknown[]) => installFromPathMock(...args),
-    readWappFile: (...args: unknown[]) => readExtensionFileMock(...args),
-    inspectExtensionPackageWithDialog: (...args: unknown[]) => inspectPackageMock(...args),
-    installExtension: (...args: unknown[]) => installFromPathMock(...args),
-    readExtensionFile: (...args: unknown[]) => readExtensionFileMock(...args),
-  },
-  extensionCommands: {
-    inspectExtensionPackageWithDialog: (...args: unknown[]) => inspectPackageMock(...args),
-    installExtension: (...args: unknown[]) => installFromPathMock(...args),
-    readExtensionFile: (...args: unknown[]) => readExtensionFileMock(...args),
+    readWappFile: (...args: unknown[]) => readWappFileMock(...args),
   },
 }));
 
-vi.mock('../../../commands/extensions', () => ({
-  EXTENSIONS_CHANGED_EVENT: 'wapps:changed',
-  extensionCommands: {
-    inspectExtensionPackageWithDialog: (...args: unknown[]) => inspectPackageMock(...args),
-    installExtension: (...args: unknown[]) => installFromPathMock(...args),
-    readExtensionFile: (...args: unknown[]) => readExtensionFileMock(...args),
-  },
-  wappCommands: {
-    inspectWappPackageWithDialog: (...args: unknown[]) => inspectPackageMock(...args),
-    installWapp: (...args: unknown[]) => installFromPathMock(...args),
-    readWappFile: (...args: unknown[]) => readExtensionFileMock(...args),
-  },
-}));
-
-function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary {
+function makePlugin(overrides: Partial<WappSummary> = {}): WappSummary {
   return {
     id: 'acme.bill-audit',
     name: 'Bill Audit',
     version: '1.0.0',
-    apiVersion: EXTENSION_API_VERSION,
+    apiVersion: WAPP_API_VERSION,
     author: 'Acme',
     description: 'Compare bills against quotas',
     enabled: true,
@@ -155,10 +101,10 @@ function card(id: string): HTMLElement {
 }
 
 beforeEach(() => {
-  pluginState.wapps = [];
-  pluginState.extensions = [];
-  pluginState.loaded = true;
-  pluginState.error = null;
+  wappState.wapps = [];
+  wappState.wapps = [];
+  wappState.loaded = true;
+  wappState.error = null;
   setEnabledMock.mockReset().mockResolvedValue(undefined);
   removeMock.mockReset().mockResolvedValue(undefined);
   fetchMock.mockReset().mockResolvedValue(undefined);
@@ -167,7 +113,7 @@ beforeEach(() => {
     packageLabel: 'acme-new.zip',
     manifest: {
       id: 'acme.new',
-      name: 'New Plugin',
+      name: 'New Wapp',
       version: '1.0.0',
       apiVersion: 2,
       author: 'Acme',
@@ -176,8 +122,8 @@ beforeEach(() => {
     },
   });
   installFromPathMock.mockReset();
-  readExtensionFileMock.mockReset().mockResolvedValue(new Uint8Array([137, 80, 78, 71]));
-  closeByPluginMock.mockReset();
+  readWappFileMock.mockReset().mockResolvedValue(new Uint8Array([137, 80, 78, 71]));
+  closeByWappMock.mockReset();
   openTabMock.mockReset();
   confirmSpy.mockReset().mockResolvedValue(true);
 });
@@ -186,7 +132,7 @@ afterEach(cleanup);
 
 describe('ExtensionManagementPage', () => {
   it('renders header with installed count and one card per plugin', () => {
-    pluginState.extensions = [makePlugin(), makePlugin({ id: 'acme.midnight', name: 'Midnight' })];
+    wappState.wapps = [makePlugin(), makePlugin({ id: 'acme.midnight', name: 'Midnight' })];
 
     render(<ExtensionManagementPage />);
 
@@ -201,7 +147,7 @@ describe('ExtensionManagementPage', () => {
   });
 
   it('defaults the filter to Workspace and switches through all/theme chips', () => {
-    pluginState.extensions = [
+    wappState.wapps = [
       makePlugin(),
       makePlugin({
         id: 'acme.midnight',
@@ -229,7 +175,7 @@ describe('ExtensionManagementPage', () => {
   });
 
   it('renders the all view grouped into Workspace pages and Themes sections', () => {
-    pluginState.extensions = [
+    wappState.wapps = [
       makePlugin({
         id: 'acme.midnight',
         name: 'Midnight',
@@ -260,7 +206,7 @@ describe('ExtensionManagementPage', () => {
   });
 
   it('hides empty groups in the all view and keeps the flat grid for single-kind filters', () => {
-    pluginState.extensions = [makePlugin(), makePlugin({ id: 'acme.afi', name: 'AFI Pricing' })];
+    wappState.wapps = [makePlugin(), makePlugin({ id: 'acme.afi', name: 'AFI Pricing' })];
 
     render(<ExtensionManagementPage />);
     fireEvent.click(screen.getByTestId('extension-filter-all'));
@@ -277,7 +223,7 @@ describe('ExtensionManagementPage', () => {
   });
 
   it('narrows cards by search text across name/id/description', () => {
-    pluginState.extensions = [makePlugin(), makePlugin({ id: 'acme.afi', name: 'AFI Pricing' })];
+    wappState.wapps = [makePlugin(), makePlugin({ id: 'acme.afi', name: 'AFI Pricing' })];
 
     render(<ExtensionManagementPage />);
     fireEvent.change(screen.getByTestId('extension-search-input'), {
@@ -289,7 +235,7 @@ describe('ExtensionManagementPage', () => {
   });
 
   it('shows an empty state when nothing matches', () => {
-    pluginState.extensions = [];
+    wappState.wapps = [];
 
     render(<ExtensionManagementPage />);
 
@@ -298,28 +244,28 @@ describe('ExtensionManagementPage', () => {
   });
 
   it('toggles a plugin off through the store and closes its workspace tabs', async () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     setEnabledMock.mockResolvedValue(undefined);
 
     render(<ExtensionManagementPage />);
     fireEvent.click(within(card('acme.bill-audit')).getByTestId('extension-toggle'));
 
     await waitFor(() => expect(setEnabledMock).toHaveBeenCalledWith('acme.bill-audit', false));
-    await waitFor(() => expect(closeByPluginMock).toHaveBeenCalledWith('acme.bill-audit'));
+    await waitFor(() => expect(closeByWappMock).toHaveBeenCalledWith('acme.bill-audit'));
   });
 
   it('enables a disabled plugin without closing tabs', async () => {
-    pluginState.extensions = [makePlugin({ enabled: false })];
+    wappState.wapps = [makePlugin({ enabled: false })];
 
     render(<ExtensionManagementPage />);
     fireEvent.click(within(card('acme.bill-audit')).getByTestId('extension-toggle'));
 
     await waitFor(() => expect(setEnabledMock).toHaveBeenCalledWith('acme.bill-audit', true));
-    expect(closeByPluginMock).not.toHaveBeenCalled();
+    expect(closeByWappMock).not.toHaveBeenCalled();
   });
 
   it('surfaces store errors from a failed toggle', async () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     setEnabledMock.mockRejectedValue(new Error('backend refused'));
 
     render(<ExtensionManagementPage />);
@@ -331,7 +277,7 @@ describe('ExtensionManagementPage', () => {
   });
 
   it('uninstalls after confirmation and closes related tabs', async () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     removeMock.mockResolvedValue(undefined);
 
     render(<ExtensionManagementPage />);
@@ -343,11 +289,11 @@ describe('ExtensionManagementPage', () => {
       message: 'extensions.page.uninstallMessage',
     });
     await waitFor(() => expect(removeMock).toHaveBeenCalledWith('acme.bill-audit'));
-    expect(closeByPluginMock).toHaveBeenCalledWith('acme.bill-audit');
+    expect(closeByWappMock).toHaveBeenCalledWith('acme.bill-audit');
   });
 
   it('keeps the plugin when uninstall is cancelled', async () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     confirmSpy.mockResolvedValue(false);
 
     render(<ExtensionManagementPage />);
@@ -358,7 +304,7 @@ describe('ExtensionManagementPage', () => {
   });
 
   it('opens a workspace plugin tab and switches to the workspace view', () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     const onOpenInWorkspace = vi.fn();
 
     render(<ExtensionManagementPage onOpenInWorkspace={onOpenInWorkspace} />);
@@ -367,7 +313,6 @@ describe('ExtensionManagementPage', () => {
     expect(openTabMock).toHaveBeenCalledWith({
       key: 'acme.bill-audit:quota-check',
       wappId: 'acme.bill-audit',
-      pluginId: 'acme.bill-audit',
       pageId: 'quota-check',
       title: 'Quota Check',
       icon: undefined,
@@ -377,7 +322,7 @@ describe('ExtensionManagementPage', () => {
   });
 
   it('renders theme-only cards without an open action and with the settings hint', () => {
-    pluginState.extensions = [
+    wappState.wapps = [
       makePlugin({
         id: 'acme.midnight',
         name: 'Midnight',
@@ -397,7 +342,7 @@ describe('ExtensionManagementPage', () => {
   });
 
   it('greys out API-mismatched plugins and blocks their toggle/open actions', () => {
-    pluginState.extensions = [makePlugin({ apiVersion: EXTENSION_API_VERSION + 1 })];
+    wappState.wapps = [makePlugin({ apiVersion: WAPP_API_VERSION + 1 })];
 
     render(<ExtensionManagementPage />);
     const mismatched = card('acme.bill-audit');
@@ -422,7 +367,7 @@ describe('ExtensionManagementPage', () => {
     // Step 1 → 2: native browse + inspect only, no write yet.
     fireEvent.click(await screen.findByTestId('extension-install-browse-zip'));
     const review = await screen.findByTestId('extension-install-review');
-    expect(review).toHaveTextContent('New Plugin');
+    expect(review).toHaveTextContent('New Wapp');
     expect(inspectPackageMock).toHaveBeenCalledWith('zip');
     expect(installFromPathMock).not.toHaveBeenCalled();
 
@@ -452,7 +397,7 @@ describe('ExtensionManagementPage', () => {
   });
 
   it('renders the package icon image when the plugin declares one', async () => {
-    pluginState.extensions = [
+    wappState.wapps = [
       makePlugin({
         id: 'acme.branded',
         name: 'Branded',
@@ -460,7 +405,7 @@ describe('ExtensionManagementPage', () => {
         enabled: true,
       }),
     ];
-    readExtensionFileMock.mockResolvedValue(new Uint8Array([60, 115, 118, 103])); // "<svg"
+    readWappFileMock.mockResolvedValue(new Uint8Array([60, 115, 118, 103])); // "<svg"
 
     render(<ExtensionManagementPage />);
 
@@ -468,28 +413,26 @@ describe('ExtensionManagementPage', () => {
     await waitFor(() =>
       expect(within(iconSlot).getByTestId('extension-card-icon-img')).toBeInTheDocument(),
     );
-    expect(readExtensionFileMock).toHaveBeenCalledWith('acme.branded', 'assets/logo.svg');
+    expect(readWappFileMock).toHaveBeenCalledWith('acme.branded', 'assets/logo.svg');
   });
 
   it('falls back to the letter avatar when no icon is declared', () => {
-    pluginState.extensions = [makePlugin({ id: 'acme.plain', name: 'Plain' })];
+    wappState.wapps = [makePlugin({ id: 'acme.plain', name: 'Plain' })];
     render(<ExtensionManagementPage />);
 
     const slot = within(card('acme.plain')).getByTestId('extension-card-icon');
     expect(slot).toHaveTextContent('P');
     expect(slot.querySelector('[data-testid="extension-card-icon-img"]')).toBeNull();
-    expect(readExtensionFileMock).not.toHaveBeenCalled();
+    expect(readWappFileMock).not.toHaveBeenCalled();
   });
 
   it('falls back to the letter avatar when the icon cannot be read', async () => {
-    pluginState.extensions = [
-      makePlugin({ id: 'acme.broken', name: 'Broken', icon: 'assets/icon.svg' }),
-    ];
-    readExtensionFileMock.mockRejectedValue(new Error('plugin disabled or missing'));
+    wappState.wapps = [makePlugin({ id: 'acme.broken', name: 'Broken', icon: 'assets/icon.svg' })];
+    readWappFileMock.mockRejectedValue(new Error('plugin disabled or missing'));
 
     render(<ExtensionManagementPage />);
     const slot = within(card('acme.broken')).getByTestId('extension-card-icon');
     await waitFor(() => expect(slot).toHaveTextContent('B'));
-    expect(readExtensionFileMock).toHaveBeenCalledWith('acme.broken', 'assets/icon.svg');
+    expect(readWappFileMock).toHaveBeenCalledWith('acme.broken', 'assets/icon.svg');
   });
 });

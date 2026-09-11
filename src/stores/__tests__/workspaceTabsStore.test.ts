@@ -1,16 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useWorkspaceTabsStore, workspaceTabKey, type WorkspaceTab } from '../workspaceTabsStore';
 
-function tab(
-  pluginId: string,
-  pageId: string,
-  overrides: Partial<WorkspaceTab> = {},
-): WorkspaceTab {
+function tab(wappId: string, pageId: string, overrides: Partial<WorkspaceTab> = {}): WorkspaceTab {
   return {
-    key: workspaceTabKey(pluginId, pageId),
-    pluginId,
+    key: workspaceTabKey(wappId, pageId),
+    wappId,
     pageId,
-    title: `${pluginId}/${pageId}`,
+    title: `${wappId}/${pageId}`,
     version: '1.0.0',
     ...overrides,
   };
@@ -106,46 +102,46 @@ describe('workspaceTabsStore', () => {
     });
   });
 
-  it('closeByPlugin removes all plugin tabs and falls back to a neighbor', () => {
+  it('closeByWapp removes all wapp tabs and falls back to a neighbor', () => {
     // acme.demo owns the active tab and its neighbor; fallback comes from acme.other.
     seed([A(), B(), C(), D()], A().key);
-    useWorkspaceTabsStore.getState().closeByPlugin('acme.demo');
+    useWorkspaceTabsStore.getState().closeByWapp('acme.demo');
 
     const state = useWorkspaceTabsStore.getState();
-    expect(state.tabs.map((t) => t.pluginId)).toEqual(['acme.other', 'acme.other']);
+    expect(state.tabs.map((t) => t.wappId)).toEqual(['acme.other', 'acme.other']);
     expect(state.activeKey).toBe(C().key);
   });
 
-  it('closeByPlugin keeps activeKey when another plugin is active', () => {
+  it('closeByWapp keeps activeKey when another wapp is active', () => {
     seed([A(), B(), C()], C().key);
-    useWorkspaceTabsStore.getState().closeByPlugin('acme.demo');
+    useWorkspaceTabsStore.getState().closeByWapp('acme.demo');
 
     const state = useWorkspaceTabsStore.getState();
     expect(state.tabs.map((t) => t.title)).toEqual(['C']);
     expect(state.activeKey).toBe(C().key);
   });
 
-  it('closeByPlugin clearing everything sets activeKey to null', () => {
+  it('closeByWapp clearing everything sets activeKey to null', () => {
     seed([C(), D()], D().key);
-    useWorkspaceTabsStore.getState().closeByPlugin('acme.other');
+    useWorkspaceTabsStore.getState().closeByWapp('acme.other');
 
     const state = useWorkspaceTabsStore.getState();
     expect(state.tabs).toEqual([]);
     expect(state.activeKey).toBeNull();
   });
 
-  it('closeByPlugin is a no-op for unknown plugins', () => {
+  it('closeByWapp is a no-op for unknown plugins', () => {
     seed([A(), C()], C().key);
-    useWorkspaceTabsStore.getState().closeByPlugin('ghost.pkg');
+    useWorkspaceTabsStore.getState().closeByWapp('ghost.pkg');
     expect(useWorkspaceTabsStore.getState().tabs).toHaveLength(2);
     expect(useWorkspaceTabsStore.getState().activeKey).toBe(C().key);
   });
 
   // --- F3 supplementary (test agent): key format, close-first, anchor edge ---
 
-  it('workspaceTabKey joins pluginId and pageId with ":"', () => {
+  it('workspaceTabKey joins wappId and pageId with ":"', () => {
     expect(workspaceTabKey('acme.demo', 'main')).toBe('acme.demo:main');
-    expect(workspaceTabKey(A().pluginId, A().pageId)).toBe(A().key);
+    expect(workspaceTabKey(A().wappId, A().pageId)).toBe(A().key);
   });
 
   it('close matrix: active first → right neighbor', () => {
@@ -168,21 +164,21 @@ describe('workspaceTabsStore', () => {
     expect(state.activeKey).toBe(A().key);
   });
 
-  it('closeByPlugin anchors the fallback at the first removed slot', () => {
-    // Active tab is the LAST of the removed plugin's tabs; the anchor still
+  it('closeByWapp anchors the fallback at the first removed slot', () => {
+    // Active tab is the LAST of the removed wapp's tabs; the anchor still
     // points at the first removed position inside the filtered list.
     const b2 = tab('acme.demo', 'extra', { title: 'B2' });
     seed([C(), B(), b2, D()], b2.key);
-    useWorkspaceTabsStore.getState().closeByPlugin('acme.demo');
+    useWorkspaceTabsStore.getState().closeByWapp('acme.demo');
 
     const state = useWorkspaceTabsStore.getState();
     expect(state.tabs.map((t) => t.title)).toEqual(['C', 'D']);
     expect(state.activeKey).toBe(D().key);
   });
 
-  it('closeByPlugin falls back to the left neighbor when removal sits at the tail', () => {
+  it('closeByWapp falls back to the left neighbor when removal sits at the tail', () => {
     seed([A(), C()], C().key);
-    useWorkspaceTabsStore.getState().closeByPlugin('acme.other');
+    useWorkspaceTabsStore.getState().closeByWapp('acme.other');
 
     const state = useWorkspaceTabsStore.getState();
     expect(state.tabs.map((t) => t.title)).toEqual(['A']);

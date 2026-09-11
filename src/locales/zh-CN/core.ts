@@ -161,7 +161,7 @@ const pack = {
   'extensions.page.themeBadge': '主题',
   'extensions.page.themeHint': '主题请在 设置 → 外观 中切换。',
   'extensions.page.apiMismatch': 'API 版本不兼容',
-  'extensions.page.apiMismatchHint': '插件 API v{plugin} 与宿主 API v{host} 不匹配。',
+  'extensions.page.apiMismatchHint': '插件 API v{wapp} 与宿主 API v{host} 不匹配。',
   'extensions.page.emptyTitle': '没有找到插件',
   'extensions.page.emptyHint': '安装插件包（.zip）即可为 DataZen 扩展新的工作区页面或主题。',
   'extensions.install.title': '安装插件',

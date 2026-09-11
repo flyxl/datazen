@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
-import { encodePluginThemePackId, parsePluginThemePackId } from '../../lib/themePackApply';
+import { encodeWappThemePackId, parseWappThemePackId } from '../../lib/themePackApply';
 import { useWappStore } from '../../stores/wappStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { AppSettings } from '../../types';
@@ -24,14 +24,14 @@ interface ThemeOption {
   label: string;
 }
 
-/** Flatten enabled extensions/wapps into a single theme-option list (no plugin hardcoding). */
+/** Flatten enabled extensions/wapps into a single theme-option list. */
 function collectThemeOptions(extensions: WappSummary[]): ThemeOption[] {
   return extensions
     .filter((p) => p.enabled)
-    .flatMap((plugin) =>
-      plugin.themes.map((theme) => ({
-        packId: encodePluginThemePackId(plugin.id, theme.id),
-        value: encodePluginThemePackId(plugin.id, theme.id),
+    .flatMap((wapp) =>
+      wapp.themes.map((theme) => ({
+        packId: encodeWappThemePackId(wapp.id, theme.id),
+        value: encodeWappThemePackId(wapp.id, theme.id),
         label: `${theme.name}`,
       })),
     );
@@ -54,7 +54,7 @@ export function AppearanceSection({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Settings can be opened after a plugin was installed in another window.
+    // Settings can be opened after a wapp was installed in another window.
     // Refresh here even when the store was previously loaded so the theme
     // list cannot remain an outdated empty snapshot when the change event was
     // delivered before this page mounted.
@@ -66,7 +66,7 @@ export function AppearanceSection({
 
   const activePackId = settings.theme.packId;
   const activePluginThemeMissing =
-    parsePluginThemePackId(activePackId) !== null &&
+    parseWappThemePackId(activePackId) !== null &&
     !themeOptions.some((o) => o.packId === activePackId);
 
   const handleModeChange = (mode: string) => {

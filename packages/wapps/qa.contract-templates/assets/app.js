@@ -6,7 +6,7 @@
   'use strict';
 
   var API_VERSION = 2;
-  var CHANNEL = 'datazen-extension';
+  var CHANNEL = 'datazen-wapp';
   var STORAGE_KEY_PREFS = 'qa_contract_prefs';
   var STORAGE_KEY_CUSTOM_TPLS = 'qa_contract_custom_tpls';
   var REQUEST_TIMEOUT_MS = 15000;
@@ -145,7 +145,7 @@
     function ping() {
       retries += 1;
       parentWindow.postMessage(
-        { ch: CHANNEL, type: 'plugin.ready', payload: { apiVersion: API_VERSION } },
+        { ch: CHANNEL, type: 'wapp.ready', payload: { apiVersion: API_VERSION } },
         '*',
       );
       if (retries >= 15) {

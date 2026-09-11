@@ -1,24 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AppearanceSection } from '../AppearanceSection';
-import { EXTENSION_API_VERSION, type ExtensionSummary } from '../../../types/extension';
-import { encodePluginThemePackId } from '../../../lib/themePackApply';
+import { WAPP_API_VERSION, type WappSummary } from '../../../types/wapp';
+import { encodeWappThemePackId as encodePluginThemePackId } from '../../../lib/themePackApply';
 
-const { pluginState, fetchMock, settingsState, updateSettingsMock } = vi.hoisted(() => {
+const { wappState, fetchMock, settingsState, updateSettingsMock } = vi.hoisted(() => {
   const updateSettingsFn = vi.fn();
   return {
-    pluginState: {
+    wappState: {
       _list: [] as Array<Record<string, unknown>>,
       get wapps() {
         return this._list;
       },
       set wapps(v: Array<Record<string, unknown>>) {
-        this._list = v;
-      },
-      get extensions() {
-        return this._list;
-      },
-      set extensions(v: Array<Record<string, unknown>>) {
         this._list = v;
       },
       loaded: true,
@@ -29,7 +23,7 @@ const { pluginState, fetchMock, settingsState, updateSettingsMock } = vi.hoisted
       settings: {
         theme: { mode: 'dark', packId: null as string | null },
         language: 'en',
-        pluginSettings: {},
+        driverSettings: {},
       },
       updateSettings: updateSettingsFn,
     },
@@ -42,20 +36,8 @@ vi.mock('../../../hooks/useI18n', () => ({
 }));
 
 vi.mock('../../../stores/wappStore', () => ({
-  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
-    getState: () => ({ ...pluginState, fetch: fetchMock }),
-  }),
-  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
-    getState: () => ({ ...pluginState, fetch: fetchMock }),
-  }),
-}));
-
-vi.mock('../../../stores/extensionStore', () => ({
-  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
-    getState: () => ({ ...pluginState, fetch: fetchMock }),
-  }),
-  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
-    getState: () => ({ ...pluginState, fetch: fetchMock }),
+  useWappStore: Object.assign((sel: (s: typeof wappState) => unknown) => sel(wappState), {
+    getState: () => ({ ...wappState, fetch: fetchMock }),
   }),
 }));
 
@@ -68,12 +50,12 @@ vi.mock('../../../stores/settingsStore', () => ({
   ),
 }));
 
-function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary {
+function makePlugin(overrides: Partial<WappSummary> = {}): WappSummary {
   return {
     id: 'acme.bill-audit',
     name: 'Bill Audit',
     version: '1.0.0',
-    apiVersion: EXTENSION_API_VERSION,
+    apiVersion: WAPP_API_VERSION,
     author: 'Acme',
     enabled: true,
     permissions: [],
@@ -104,13 +86,13 @@ function pickOption(trigger: HTMLElement, optionLabel: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   updateSettingsMock.mockResolvedValue(undefined);
-  pluginState.extensions = [];
-  pluginState.loaded = true;
-  pluginState.error = null;
+  wappState.wapps = [];
+  wappState.loaded = true;
+  wappState.error = null;
   settingsState.settings = {
     theme: { mode: 'dark', packId: null },
     language: 'en',
-    pluginSettings: {},
+    driverSettings: {},
   };
 });
 
@@ -118,7 +100,7 @@ afterEach(cleanup);
 
 describe('AppearanceSection', () => {
   it('renders color-scheme and theme-pack selects with the built-in default option', () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     render(<AppearanceSection />);
 
     expect(screen.getByText('settings.colorScheme')).toBeInTheDocument();
@@ -126,12 +108,12 @@ describe('AppearanceSection', () => {
 
     const [scheme, theme] = allSelectTriggers();
     expect(scheme).toHaveTextContent('theme.dark');
-    // No plugin theme selected -> built-in default shown.
+    // No wapp theme selected -> built-in default shown.
     expect(theme).toHaveTextContent('settings.theme.packDefault');
   });
 
-  it('lists themes of enabled plugins as options in the theme select', () => {
-    pluginState.extensions = [makePlugin()];
+  it('lists themes of enabled wapps as options in the theme select', () => {
+    wappState.wapps = [makePlugin()];
     render(<AppearanceSection />);
 
     const [, theme] = allSelectTriggers();
@@ -140,8 +122,8 @@ describe('AppearanceSection', () => {
     expect(screen.getByText('Solar')).toBeInTheDocument();
   });
 
-  it('hides themes contributed by disabled plugins', () => {
-    pluginState.extensions = [
+  it('hides themes contributed by disabled wapps', () => {
+    wappState.wapps = [
       makePlugin(),
       makePlugin({
         id: 'acme.disabled-themes',
@@ -160,7 +142,7 @@ describe('AppearanceSection', () => {
   });
 
   it('applies a plugin theme on selection and persists the encoded pack id', async () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     render(<AppearanceSection />);
 
     const [, theme] = allSelectTriggers();
@@ -179,9 +161,9 @@ describe('AppearanceSection', () => {
     settingsState.settings = {
       theme: { mode: 'dark', packId: encodePluginThemePackId('acme.bill-audit', 'solar') },
       language: 'en',
-      pluginSettings: {},
+      driverSettings: {},
     };
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     render(<AppearanceSection />);
 
     const [, theme] = allSelectTriggers();
@@ -204,9 +186,9 @@ describe('AppearanceSection', () => {
         packId: encodePluginThemePackId('acme.bill-audit', 'solar'),
       },
       language: 'en',
-      pluginSettings: {},
+      driverSettings: {},
     };
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     render(<AppearanceSection />);
 
     const [, theme] = allSelectTriggers();
@@ -215,7 +197,7 @@ describe('AppearanceSection', () => {
   });
 
   it('changes the color scheme and persists the new mode', async () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     render(<AppearanceSection />);
 
     const [scheme] = allSelectTriggers();
@@ -232,7 +214,7 @@ describe('AppearanceSection', () => {
 
   it('shows an error when applying a theme fails', async () => {
     updateSettingsMock.mockRejectedValueOnce(new Error('tokens.css missing'));
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     render(<AppearanceSection />);
 
     const [, theme] = allSelectTriggers();
@@ -245,16 +227,16 @@ describe('AppearanceSection', () => {
     );
   });
 
-  it('shows the orphan hint when the persisted plugin theme is no longer offered', () => {
+  it('shows the orphan hint when the persisted wapp theme is no longer offered', () => {
     settingsState.settings = {
       theme: {
         mode: 'dark',
         packId: encodePluginThemePackId('acme.gone-plugin', 'vanished'),
       },
       language: 'en',
-      pluginSettings: {},
+      driverSettings: {},
     };
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     render(<AppearanceSection />);
 
     expect(screen.getByTestId('appearance-orphan-hint')).toHaveTextContent(
@@ -262,14 +244,14 @@ describe('AppearanceSection', () => {
     );
   });
 
-  it('fetches plugins once on mount when the store has not loaded yet', () => {
-    pluginState.loaded = false;
+  it('fetches wapps once on mount when the store has not loaded yet', () => {
+    wappState.loaded = false;
     render(<AppearanceSection />);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('shows the empty state hint when no themes are contributed', () => {
-    pluginState.extensions = [makePlugin({ themes: [] })];
+    wappState.wapps = [makePlugin({ themes: [] })];
     render(<AppearanceSection />);
 
     expect(screen.getByTestId('appearance-more-placeholder')).toBeInTheDocument();

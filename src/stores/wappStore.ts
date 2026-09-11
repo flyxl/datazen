@@ -6,8 +6,6 @@ import type { WappSummary } from '../types/wapp';
 
 interface WappStore {
   wapps: WappSummary[];
-  /** Alias for backward compatibility */
-  extensions: WappSummary[];
   loaded: boolean;
   error: string | null;
   fetch: () => Promise<void>;
@@ -19,16 +17,13 @@ interface WappStore {
 
 export const useWappStore = create<WappStore>((set, get) => ({
   wapps: [],
-  get extensions() {
-    return this.wapps;
-  },
   loaded: false,
   error: null,
 
   fetch: async () => {
     try {
       const wapps = await wappCommands.listWapps();
-      set({ wapps, extensions: wapps, loaded: true, error: null });
+      set({ wapps, loaded: true, error: null });
     } catch (e) {
       set({ loaded: true, error: toErrorMessage(e) });
     }
@@ -39,7 +34,6 @@ export const useWappStore = create<WappStore>((set, get) => ({
     const updated = previous.map((p) => (p.id === id ? { ...p, enabled } : p));
     set({
       wapps: updated,
-      extensions: updated,
       error: null,
     });
     try {
@@ -90,9 +84,3 @@ export function ensureWappsChangedListener(): void {
 }
 
 ensureWappsChangedListener();
-
-// ---------------------------------------------------------------------------
-// Backward-compatible aliases for legacy Extension naming
-// ---------------------------------------------------------------------------
-export const useExtensionStore = useWappStore;
-export const ensureExtensionsChangedListener = ensureWappsChangedListener;

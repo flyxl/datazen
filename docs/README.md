@@ -59,7 +59,7 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 
 - [E2E Testing](development/e2e-testing.md)
 - [E2E Coverage](development/e2e-coverage.md)
-- [CI Private Plugins](development/ci-private-plugins.md)
+- [CI Private Plugins](development/ci-private-drivers.md)
 - [Independent Driver Development](development/independent-driver-development.en.md) / [中文](development/independent-driver-development.zh-CN.md)
 - [Driver API Dependency Boundary](development/driver-api-dependency-boundary.md)
 - [Optional Drivers](development/optional-drivers.md)

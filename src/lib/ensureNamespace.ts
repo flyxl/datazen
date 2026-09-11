@@ -67,8 +67,8 @@ function resolveEnsureStrategy(databaseType: string | null): DatabaseTypeMeta['n
 }
 
 /**
- * Path-hierarchy ensure: uses plugin-registered pathAliases for the root segment,
- * then `get_tables(rootId[/…])`. Does not parse plugin-specific database list formats.
+ * Path-hierarchy ensure: uses wapp-registered pathAliases for the root segment,
+ * then `get_tables(rootId[/…])`. Does not parse wapp-specific database list formats.
  */
 async function ensurePathHierarchy(segments: string[], deps: EnsureDeps): Promise<void> {
   const { dbSessionId, pathAliases } = deps;

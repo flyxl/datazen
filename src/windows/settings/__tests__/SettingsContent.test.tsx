@@ -53,7 +53,7 @@ const {
     mcpDisabledTools: [],
     mcpPermissionMode: 'read_only',
     contextDir: '/tmp/context',
-    pluginSettings: {},
+    driverSettings: {},
     mcpClientServers: [],
     aiStrictEgress: true,
     monitor: {
@@ -310,8 +310,8 @@ vi.mock('../UpdateSection', () => ({
   ),
 }));
 
-vi.mock('../PluginSettingsSection', () => ({
-  PluginSettingsSection: () => <div data-testid="wapp-settings" />,
+vi.mock('../DriverSettingsSection', () => ({
+  DriverSettingsSection: () => <div data-testid="driver-settings" />,
 }));
 
 async function waitForSettingsLoad() {
@@ -387,7 +387,7 @@ beforeEach(() => {
     mcpDisabledTools: [],
     mcpPermissionMode: 'read_only',
     contextDir: '/tmp/context',
-    pluginSettings: {},
+    driverSettings: {},
     mcpClientServers: [],
     aiStrictEgress: true,
     monitor: {
@@ -976,7 +976,7 @@ describe('SettingsContent', () => {
     render(<SettingsContent />);
     await waitForSettingsLoad();
     goToSection('settings.extensions.title');
-    expect(screen.getByTestId('wapp-settings')).toBeInTheDocument();
+    expect(screen.getByTestId('driver-settings')).toBeInTheDocument();
   });
 
   it('shows config error in AI section', async () => {
@@ -1033,7 +1033,7 @@ describe('SettingsContent', () => {
       fireEvent.click(toggle);
       await waitFor(() =>
         expect(updateSettingsMock).toHaveBeenCalledWith({
-          pluginSettings: {
+          driverSettings: {
             'sql-editor-pro': {
               tableHover: false,
             },
@@ -1094,7 +1094,7 @@ describe('SettingsContent', () => {
       fireEvent.click(screen.getByTestId('custom-change-btn'));
       await waitFor(() =>
         expect(updateSettingsMock).toHaveBeenCalledWith({
-          pluginSettings: {
+          driverSettings: {
             'sql-editor-pro': {
               customLicense: 'new-license',
             },
@@ -1105,7 +1105,7 @@ describe('SettingsContent', () => {
       fireEvent.click(screen.getByTestId('custom-other-btn'));
       await waitFor(() =>
         expect(updateSettingsMock).toHaveBeenCalledWith({
-          pluginSettings: {
+          driverSettings: {
             'sql-editor-pro': {
               customLicense: 'new-license',
               otherKey: 123,
@@ -1152,7 +1152,7 @@ describe('SettingsContent', () => {
       fireEvent.click(screen.getByTestId('group-update-btn'));
       await waitFor(() =>
         expect(updateSettingsMock).toHaveBeenCalledWith({
-          pluginSettings: {
+          driverSettings: {
             'sql-editor-pro': {
               previewTheme: 'dark-pro',
             },

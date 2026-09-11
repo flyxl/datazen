@@ -12,7 +12,7 @@ import { settingsCommands } from '../../commands/settings';
 import type { AppSettings } from '../../types';
 import { BUILTIN_LOCALES, BUILTIN_LOCALE_LABELS, getExtensionLocales } from '../../locales';
 import { UpdateSection } from './UpdateSection';
-import { PluginSettingsSection } from './PluginSettingsSection';
+import { DriverSettingsSection } from './DriverSettingsSection';
 import { AiSettingsSection } from './AiSettingsSection';
 import { PromptSettingsSection } from './PromptSettingsSection';
 import { McpSettingsSection } from './McpSettingsSection';
@@ -140,20 +140,20 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
 
   const enhanced = useExtension(sqlEditorEnhancedEP);
 
-  const updatePluginSetting = async (extensionId: string, key: string, value: unknown) => {
-    const currentPluginSettings =
-      (localSettings.pluginSettings as Record<string, Record<string, unknown>>) || {};
-    const extSettings = { ...(currentPluginSettings[extensionId] || {}), [key]: value };
-    const nextPluginSettings = { ...currentPluginSettings, [extensionId]: extSettings };
+  const updateExtensionSetting = async (extensionId: string, key: string, value: unknown) => {
+    const currentDriverSettings =
+      (localSettings.driverSettings as Record<string, Record<string, unknown>>) || {};
+    const extSettings = { ...(currentDriverSettings[extensionId] || {}), [key]: value };
+    const nextDriverSettings = { ...currentDriverSettings, [extensionId]: extSettings };
 
     setLocalSettings((prev) => ({
       ...prev,
-      pluginSettings: nextPluginSettings,
+      driverSettings: nextDriverSettings,
     }));
     try {
-      await updateSettings({ pluginSettings: nextPluginSettings });
+      await updateSettings({ driverSettings: nextDriverSettings });
     } catch (error) {
-      console.error('Failed to update plugin setting:', error);
+      console.error('Failed to update extension setting:', error);
     }
   };
 
@@ -167,7 +167,7 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
       <div className="space-y-6 pt-4 border-t border-edge">
         {list.map((contrib) => {
           const extVals =
-            (settings.pluginSettings?.[contrib.extensionId] as
+            (settings.driverSettings?.[contrib.extensionId] as
               | Record<string, unknown>
               | undefined) ?? {};
 
@@ -180,7 +180,8 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
               >
                 {contrib.renderGroup({
                   values: extVals,
-                  updateSetting: (key, val) => updatePluginSetting(contrib.extensionId, key, val),
+                  updateSetting: (key, val) =>
+                    updateExtensionSetting(contrib.extensionId, key, val),
                   items: contrib.items,
                 })}
               </div>
@@ -212,9 +213,10 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                       <SettingRow key={item.key} label={item.label} hint={item.hint}>
                         {item.render({
                           value: currentValue,
-                          onChange: (v) => updatePluginSetting(contrib.extensionId, item.key, v),
+                          onChange: (v) => updateExtensionSetting(contrib.extensionId, item.key, v),
                           values: extVals,
-                          updateSetting: (k, v) => updatePluginSetting(contrib.extensionId, k, v),
+                          updateSetting: (k, v) =>
+                            updateExtensionSetting(contrib.extensionId, k, v),
                         })}
                       </SettingRow>
                     );
@@ -226,7 +228,7 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                         <ToggleRow
                           label={item.label}
                           checked={Boolean(currentValue)}
-                          onChange={(v) => updatePluginSetting(contrib.extensionId, item.key, v)}
+                          onChange={(v) => updateExtensionSetting(contrib.extensionId, item.key, v)}
                         />
                         {item.hint && <p className="text-xs text-fg-muted pl-1">{item.hint}</p>}
                       </div>
@@ -242,7 +244,7 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                             value: String(opt.value),
                             label: opt.label,
                           }))}
-                          onChange={(v) => updatePluginSetting(contrib.extensionId, item.key, v)}
+                          onChange={(v) => updateExtensionSetting(contrib.extensionId, item.key, v)}
                         />
                       </SettingRow>
                     );
@@ -255,7 +257,7 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                           type="number"
                           value={Number(currentValue)}
                           onChange={(e) =>
-                            updatePluginSetting(
+                            updateExtensionSetting(
                               contrib.extensionId,
                               item.key,
                               Number(e.target.value),
@@ -273,7 +275,7 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                         type="text"
                         value={String(currentValue ?? '')}
                         onChange={(e) =>
-                          updatePluginSetting(contrib.extensionId, item.key, e.target.value)
+                          updateExtensionSetting(contrib.extensionId, item.key, e.target.value)
                         }
                         className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
                       />
@@ -617,7 +619,7 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
           {activeSection === 'prompts' && <PromptSettingsSection />}
           {activeSection === 'mcpServer' && <McpSettingsSection settings={settings} />}
           {activeSection === 'mcpClient' && <McpClientSection />}
-          {activeSection === 'extensions' && <PluginSettingsSection settings={settings} />}
+          {activeSection === 'extensions' && <DriverSettingsSection settings={settings} />}
         </div>
       </div>
     </div>

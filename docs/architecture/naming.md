@@ -105,7 +105,7 @@ DataZen 中有两类容易混淆的标识符。本文是它们的唯一权威定
 |------|------|------|
 | Workflow runtime | `src-tauri/src/workflow/command_runtime.rs` / `executor.rs` | Step / Workflow 的 `connection` 字段存配置 id；执行时经 `resolve_session_for_connection` 按需建连或复用 |
 | MCP DB tools / AI db tools | `src-tauri/src/services/db_tools.rs` `resolve_connection` | 外部契约传 `connection_id`；内部经 `resolve_session_for_connection` 转换 |
-| 插件桥透传 | `src/lib/extensionBridge.ts` `handleCommandInvoke` | 插件契约传 `connectionId`；宿主从 `activeConnectionStore` 解析 live `dbSessionId`，**无活动会话则拒绝** |
+| Wapp 桥透传 | `src/lib/wappBridge.ts` `handleCommandInvoke` | Wapp 契约传 `connectionId`；宿主从 `activeConnectionStore` 解析 live `dbSessionId`，**无活动会话则拒绝** |
 
 ### P1 迁移摘要（cr-p1-session-id / cr-p1-mcp-connection-only）
 
@@ -128,7 +128,7 @@ DataZen 中有两类容易混淆的标识符。本文是它们的唯一权威定
 | `connectionId`（旧·运行时会话含义） | `dbSessionId` / `db_session_id` | 运行时会话 id 改名；注意旧 `connectionId` 与新 `connectionId` **不是同一个东西** |
 | Schema Diff v1 载荷 `configId` | v2 `sourceConnectionId` / `targetConnectionId`（`version: 2`） | v1 格式导入被明确拒绝 |
 | SyncTask 持久化字段 `sourceConfigId` / `targetConfigId` | `sourceDbSessionId` / `targetDbSessionId` + `sourceConnectionId` / `targetConnectionId` | 会话与归属两类字段分离 |
-| 插件桥 `command.invoke` 参数键 `configId` | `connectionId` | plugin-sdk 类型同步更新，无别名 |
+| Wapp 桥 `command.invoke` 参数键 `configId` | `connectionId` | driver-sdk 类型同步更新，无别名 |
 | SQLite 历史库列 `query_history.config_id` 等 | `connection_id` | 启动时一次性迁移（schema v3 → v4），数据保留 |
 
 破坏性变更全量清单与迁移指引见 [CHANGELOG.md](../../CHANGELOG.md)。后端的权威实现注释另见 `src-tauri/src/services/connection_manager.rs` 顶部 "ID terminology" 文档块。

@@ -733,7 +733,7 @@ describe('schemaStore keyed multi-connection', () => {
   });
 });
 
-describe('parsePathHierarchyDatabaseEntry / plugin namespace bootstrap', () => {
+describe('parsePathHierarchyDatabaseEntry / wapp namespace bootstrap', () => {
   it('parses Superset-style database list entries', async () => {
     const { parsePathHierarchyDatabaseEntry } = await import('../schemaStore');
     expect(parsePathHierarchyDatabaseEntry('558:presto_afi_data (presto)')).toEqual({

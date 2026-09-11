@@ -9,23 +9,19 @@ import type { WappPageSummary, WappSummary } from '../../types/wapp';
 
 /** Mirrors `WAPPS_OPEN_PAGE_EVENT` in `src-tauri/src/wapps/protocol.rs`. */
 export const WAPPS_OPEN_PAGE_EVENT = 'wapps:open-page';
-export const EXTENSIONS_OPEN_PAGE_EVENT = WAPPS_OPEN_PAGE_EVENT;
 
 /** Payload of the `wapps:open-page` deep-link event (`datazen://…/open?page=…`). */
 export interface OpenPageEventPayload {
   wappId?: string;
-  pluginId?: string;
   pageId?: string;
-  /** Startup params; forwarded to the plugin page by the bridge. Ignored here. */
+  /** Startup params; forwarded to the wapp page by the bridge. Ignored here. */
   params?: Record<string, string>;
 }
 
-/** Flattened "enabled plugin/wapp × contributed page" row used across workspace UI. */
+/** Flattened "enabled wapp × contributed page" row used across workspace UI. */
 export interface WorkspacePageEntry {
   key: string;
   wappId: string;
-  /** @deprecated use wappId */
-  pluginId: string;
   pageId: string;
   title: string;
   icon?: string;
@@ -38,7 +34,6 @@ function toEntry(wapp: WappSummary, page: WappPageSummary): WorkspacePageEntry {
   return {
     key: workspaceTabKey(wapp.id, page.id),
     wappId: wapp.id,
-    pluginId: wapp.id,
     pageId: page.id,
     title: page.title || wapp.name,
     icon: page.icon,
@@ -48,14 +43,14 @@ function toEntry(wapp: WappSummary, page: WappPageSummary): WorkspacePageEntry {
   };
 }
 
-/** All pages contributed by enabled wapps/extensions, in install order. */
+/** All pages contributed by enabled wapps, in install order. */
 export function deriveWorkspacePages(wapps: WappSummary[]): WorkspacePageEntry[] {
   return wapps
     .filter((p) => p.enabled && p.pages.length > 0)
     .flatMap((p) => p.pages.map((page) => toEntry(p, page)));
 }
 
-/** Reactive list of workspace pages (memoized on the plugin list reference). */
+/** Reactive list of workspace pages (memoized on the wapp list reference). */
 export function useWorkspacePages(): WorkspacePageEntry[] {
   const wapps = useWappStore((s) => s.wapps);
   return useMemo(() => deriveWorkspacePages(wapps), [wapps]);
@@ -66,7 +61,6 @@ export function buildWorkspaceTab(wapp: WappSummary, page: WappPageSummary): Wor
   return {
     key: entry.key,
     wappId: entry.wappId,
-    pluginId: entry.pluginId,
     pageId: entry.pageId,
     title: entry.title,
     icon: entry.icon,
@@ -87,6 +81,3 @@ export function openWappPage(wappId: string, pageId?: string): boolean {
   useWorkspaceTabsStore.getState().open(buildWorkspaceTab(wapp, page));
   return true;
 }
-
-/** Alias of openWappPage for backward compatibility. */
-export const openPluginPage = openWappPage;

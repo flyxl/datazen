@@ -97,7 +97,7 @@ describe('wappCommands', () => {
   it('passes install and manifest payloads through untouched', async () => {
     const summary = {
       id: 'acme.demo',
-      name: 'Demo Plugin',
+      name: 'Demo Wapp',
       version: '1.0.0',
       apiVersion: 2,
       enabled: true,

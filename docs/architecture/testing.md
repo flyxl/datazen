@@ -28,7 +28,7 @@ Path 驱动（`packages/drivers/<id>/`，crate `datazen-driver-<id>`）：
 | UI 单测 | `packages/drivers/<id>/ui/__tests__/` | `pnpm test:unit:drivers` |
 | E2E | `packages/drivers/<id>/e2e/` | 如 `pnpm e2e:redis` |
 
-Git 驱动（Kiwi 等）：测试在**插件仓库**维护，不要提交到 Host。
+Git 驱动（Kiwi 等）：测试在**驱动仓库**维护，不要提交到 Host。
 
 Host（`src-tauri/`、`src/`、`e2e/specs/`）只测宿主：IPC、Workflow 引擎、MCP、通用窗口/表数据。可以用真实 PG/MySQL 当**夹具**，但不要把 `use_database`、structure DDL、Redis Command 等驱动语义写进 Host 测试。
 
@@ -167,7 +167,7 @@ WebdriverIO E2E spec（Host：`e2e/specs/`）：
 | **路径 IPC / 备份·i18n** | `path-ipc-hardening.ts`, `app-data-backup.ts`, `i18n-10-locales.ts`, `system-locale.ts`, `i18n-menu.ts` |
 | **运维** | `backup-database.ts`, `backup-window.ts`, `schema-diff-window.ts`, `data-sync-window.ts`, `data-sync-real.ts`, `bugfix-verification.ts` |
 
-**插件 / 驱动自有（不进 Host 默认 `pnpm e2e` / `pnpm test:unit`）：**
+**驱动自有（不进 Host 默认 `pnpm e2e` / `pnpm test:unit`）：**
 
 | 类型 | 位置 / 命令 |
 |------|-------------|

@@ -14,7 +14,7 @@ import {
 } from '../lib/sqlNamespace';
 import { t } from '../locales/t';
 import type { DatabaseType, TableInfo } from '../types';
-import { bindSchemaStore } from '../plugin-sdk/schemaStoreBridge';
+import { bindSchemaStore } from '@datazen/driver-sdk';
 import {
   computeIsMultiDatabase,
   knownTableNames,

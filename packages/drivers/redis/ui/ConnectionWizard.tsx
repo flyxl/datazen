@@ -5,7 +5,7 @@ import { Select } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { Label } from '@datazen/ui';
 import type { ConnectionFormState } from '../../../../src/components/connection/useConnectionForm';
-import type { PluginFormValidator } from '@datazen/driver-sdk';
+import type { DriverFormValidator } from '@datazen/driver-sdk';
 import {
   formatNodeLines,
   parseNodeLines,
@@ -23,7 +23,7 @@ import {
 
 const TOPOLOGIES: RedisTopology[] = ['standalone', 'cluster', 'sentinel'];
 
-export const redisValidate: PluginFormValidator = (fields, t) => validateRedisConnection(fields, t);
+export const redisValidate: DriverFormValidator = (fields, t) => validateRedisConnection(fields, t);
 
 function useRedisForm(form: ConnectionFormState) {
   const redisOptions = useMemo(() => readRedisOptions(form.options), [form.options]);

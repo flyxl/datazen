@@ -1,7 +1,7 @@
-//! F1「Rust 插件基座」集成测试（测试 agent 补充）。
+//! F1「Rust wapp 基座」集成测试（测试 agent 补充）。
 //!
-//! 运行：`cargo test -p datazen --lib extensions::integration_tests`
-//! 说明：lib.rs 中 `mod extensions` 为 crate 私有，外部 tests/ 目标无法访问，
+//! 运行：`cargo test -p datazen --lib wapps::integration_tests`
+//! 说明：lib.rs 中 `mod wapps` 为 crate 私有，外部 tests/ 目标无法访问，
 //! 故本文件经 `#[cfg(test)] mod integration_tests;` 以 lib 单测目标编译
 //! （接线见 wapps/mod.rs，零发布代码影响）。
 
@@ -16,13 +16,13 @@ use zip::{CompressionMethod, ZipWriter};
 
 use super::storage::MAX_STORAGE_BYTES;
 use super::{
-    is_valid_extension_id, parse_manifest, storage_get, storage_remove, validate_extension_dir,
-    validate_manifest, ExtensionManager,
+    is_valid_wapp_id, parse_manifest, storage_get, storage_remove, validate_manifest,
+    validate_wapp_dir, WappManager,
 };
 use crate::commands::{
-    extension_storage_get_impl, extension_storage_remove_impl, extension_storage_set_impl,
-    get_extension_manifest_impl, install_extension_from_path_impl, list_extensions_impl,
-    read_extension_file_impl, remove_extension_impl, set_extension_enabled_impl,
+    get_wapp_manifest_impl, install_wapp_from_path_impl, list_wapps_impl, read_wapp_file_impl,
+    remove_wapp_impl, set_wapp_enabled_impl, wapp_storage_get_impl, wapp_storage_remove_impl,
+    wapp_storage_set_impl,
 };
 use crate::testing::app_state::TestAppState;
 
@@ -50,7 +50,7 @@ const THEME_MANIFEST: &str = r#"{
   }
 }"#;
 
-fn page_plugin_entries() -> Vec<(&'static str, &'static str)> {
+fn page_wapp_entries() -> Vec<(&'static str, &'static str)> {
     vec![
         ("manifest.json", PAGE_MANIFEST),
         ("index.html", "<html>bill-audit</html>"),
@@ -61,7 +61,7 @@ fn page_plugin_entries() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-fn theme_plugin_entries() -> Vec<(&'static str, &'static str)> {
+fn theme_wapp_entries() -> Vec<(&'static str, &'static str)> {
     vec![
         ("manifest.json", THEME_MANIFEST),
         ("tokens.css", ":root { --c-accent: red; }"),
@@ -101,12 +101,12 @@ fn oversize_declared_zip(path: &Path) {
     zip.finish().unwrap();
 }
 
-fn plugins_root(test: &TestAppState) -> PathBuf {
-    test.state.extensions.extensions_dir().to_path_buf()
+fn wapps_root(test: &TestAppState) -> PathBuf {
+    test.state.wapps.wapps_dir().to_path_buf()
 }
 
-fn staging_dirs(plugins_dir: &Path) -> Vec<String> {
-    fs::read_dir(plugins_dir)
+fn staging_dirs(wapps_dir: &Path) -> Vec<String> {
+    fs::read_dir(wapps_dir)
         .unwrap()
         .flatten()
         .filter_map(|e| e.file_name().to_str().map(str::to_string))
@@ -115,7 +115,7 @@ fn staging_dirs(plugins_dir: &Path) -> Vec<String> {
 }
 
 async fn install_error(test: &TestAppState, path: &Path) -> String {
-    install_extension_from_path_impl(&test.state, path.to_string_lossy().to_string())
+    install_wapp_from_path_impl(&test.state, path.to_string_lossy().to_string())
         .await
         .expect_err("install must fail")
         .to_string()
@@ -139,15 +139,15 @@ async fn assert_variant_rejected(
         Err(err) => assert!(err.contains(expect), "[{label}] got: {err}"),
         Ok(manifest) => {
             let dir = tmp.path().join(format!("check-{idx}"));
-            write_dir(&dir, &page_plugin_entries());
+            write_dir(&dir, &page_wapp_entries());
             let err = validate_manifest(&manifest, &dir)
                 .expect_err(&format!("[{label}] must fail validation"));
             assert!(err.contains(expect), "[{label}] got: {err}");
-            assert!(validate_extension_dir(&dir.join("..").join("nonexistent")).is_err());
+            assert!(validate_wapp_dir(&dir.join("..").join("nonexistent")).is_err());
         }
     }
 
-    let mut entries = page_plugin_entries();
+    let mut entries = page_wapp_entries();
     entries[0] = ("manifest.json", patched);
     let src = tmp.path().join(format!("pkg-{idx}"));
     write_dir(&src, &entries);
@@ -156,8 +156,8 @@ async fn assert_variant_rejected(
         contains_any(&err.to_lowercase(), &expect.to_lowercase()),
         "[{label}] expected `{expect}` in install error: {err}"
     );
-    assert!(list_extensions_impl(&test.state).is_empty(), "[{label}]");
-    assert!(staging_dirs(&plugins_root(test)).is_empty(), "[{label}]");
+    assert!(list_wapps_impl(&test.state).is_empty(), "[{label}]");
+    assert!(staging_dirs(&wapps_root(test)).is_empty(), "[{label}]");
 }
 
 // ---------------------------------------------------------------------------
@@ -167,17 +167,16 @@ async fn assert_variant_rejected(
 #[tokio::test]
 async fn full_lifecycle_install_list_toggle_remove() {
     let test = TestAppState::new().await;
-    assert!(list_extensions_impl(&test.state).is_empty());
+    assert!(list_wapps_impl(&test.state).is_empty());
 
     let tmp = TempDir::new().unwrap();
     let zip_path = tmp.path().join("bill-audit.zip");
-    zip_from_entries(&zip_path, &page_plugin_entries());
+    zip_from_entries(&zip_path, &page_wapp_entries());
 
     // -- 安装：返回摘要且 enabled=true
-    let summary =
-        install_extension_from_path_impl(&test.state, zip_path.to_string_lossy().to_string())
-            .await
-            .unwrap();
+    let summary = install_wapp_from_path_impl(&test.state, zip_path.to_string_lossy().to_string())
+        .await
+        .unwrap();
     assert_eq!(summary.id, PAGE_MANIFEST_ID);
     assert!(summary.enabled);
     assert_eq!(
@@ -191,23 +190,20 @@ async fn full_lifecycle_install_list_toggle_remove() {
     assert_eq!(summary.pages[0].id, "quota-check");
 
     // -- list：1 条、enabled=true、`.enabled` 落盘且目录可复验
-    let plugins = list_extensions_impl(&test.state);
-    assert_eq!(plugins.len(), 1);
-    assert_eq!(plugins[0].id, PAGE_MANIFEST_ID);
-    assert!(plugins[0].enabled);
-    let dir = plugins_root(&test).join(PAGE_MANIFEST_ID);
+    let wapps = list_wapps_impl(&test.state);
+    assert_eq!(wapps.len(), 1);
+    assert_eq!(wapps[0].id, PAGE_MANIFEST_ID);
+    assert!(wapps[0].enabled);
+    let dir = wapps_root(&test).join(PAGE_MANIFEST_ID);
     assert!(dir.join(".enabled").is_file());
-    assert!(
-        validate_extension_dir(&dir).is_ok(),
-        "installed dir revalidates"
-    );
+    assert!(validate_wapp_dir(&dir).is_ok(), "installed dir revalidates");
 
     // -- manifest 查询
-    let manifest = get_extension_manifest_impl(&test.state, PAGE_MANIFEST_ID).unwrap();
+    let manifest = get_wapp_manifest_impl(&test.state, PAGE_MANIFEST_ID).unwrap();
     assert_eq!(manifest.version, "1.0.0");
 
     // -- storage 写入（供启停切换后验证保留）
-    extension_storage_set_impl(
+    wapp_storage_set_impl(
         &test.state,
         PAGE_MANIFEST_ID.into(),
         "lastUid".into(),
@@ -217,47 +213,47 @@ async fn full_lifecycle_install_list_toggle_remove() {
     .unwrap();
 
     // -- set_enabled(false)：仍列出但 disabled；marker 消失；读取被拒
-    set_extension_enabled_impl(&test.state, PAGE_MANIFEST_ID.into(), false)
+    set_wapp_enabled_impl(&test.state, PAGE_MANIFEST_ID.into(), false)
         .await
         .unwrap();
-    let plugins = list_extensions_impl(&test.state);
-    assert_eq!(plugins.len(), 1, "disabled plugin stays listed");
-    assert!(!plugins[0].enabled);
+    let wapps = list_wapps_impl(&test.state);
+    assert_eq!(wapps.len(), 1, "disabled wapp stays listed");
+    assert!(!wapps[0].enabled);
     assert!(!dir.join(".enabled").exists());
-    let err = read_extension_file_impl(&test.state, PAGE_MANIFEST_ID.into(), "index.html".into())
+    let err = read_wapp_file_impl(&test.state, PAGE_MANIFEST_ID.into(), "index.html".into())
         .await
         .unwrap_err();
     assert!(err.to_string().contains("disabled"), "{err}");
 
     // -- 重启模拟：新 manager 从磁盘恢复 disabled 状态
-    let reloaded = ExtensionManager::new(plugins_root(&test));
+    let reloaded = WappManager::new(wapps_root(&test));
     assert_eq!(reloaded.load_from_disk(), 1);
     assert!(!reloaded.get(PAGE_MANIFEST_ID).unwrap().enabled);
 
     // -- set_enabled(true)：恢复启用；storage 数据不受启停影响
-    set_extension_enabled_impl(&test.state, PAGE_MANIFEST_ID.into(), true)
+    set_wapp_enabled_impl(&test.state, PAGE_MANIFEST_ID.into(), true)
         .await
         .unwrap();
-    assert!(list_extensions_impl(&test.state)[0].enabled);
+    assert!(list_wapps_impl(&test.state)[0].enabled);
     assert_eq!(
-        extension_storage_get_impl(&test.state, PAGE_MANIFEST_ID.into(), "lastUid".into())
+        wapp_storage_get_impl(&test.state, PAGE_MANIFEST_ID.into(), "lastUid".into())
             .await
             .unwrap(),
         Some(json!(42))
     );
 
     // -- remove：目录（含 `.storage.json`）删除并注销；再次 remove 报 NotFound（幂等语义清晰）
-    remove_extension_impl(&test.state, PAGE_MANIFEST_ID.into())
+    remove_wapp_impl(&test.state, PAGE_MANIFEST_ID.into())
         .await
         .unwrap();
-    assert!(list_extensions_impl(&test.state).is_empty());
-    assert!(!plugins_root(&test).join(PAGE_MANIFEST_ID).exists());
+    assert!(list_wapps_impl(&test.state).is_empty());
+    assert!(!wapps_root(&test).join(PAGE_MANIFEST_ID).exists());
 
-    let err = remove_extension_impl(&test.state, PAGE_MANIFEST_ID.into())
+    let err = remove_wapp_impl(&test.state, PAGE_MANIFEST_ID.into())
         .await
         .unwrap_err();
     assert!(err.to_string().contains("not found"), "{err}");
-    assert!(staging_dirs(&plugins_root(&test)).is_empty());
+    assert!(staging_dirs(&wapps_root(&test)).is_empty());
 }
 
 // ---------------------------------------------------------------------------
@@ -311,11 +307,11 @@ async fn malicious_zips_rejected_without_side_effects() {
             "[{name}] expected `{expect}`, got: {err}"
         );
         assert!(
-            list_extensions_impl(&test.state).is_empty(),
+            list_wapps_impl(&test.state).is_empty(),
             "[{name}] registry stays empty"
         );
         assert!(
-            staging_dirs(&plugins_root(&test)).is_empty(),
+            staging_dirs(&wapps_root(&test)).is_empty(),
             "[{name}] no staging/backup leftovers"
         );
     }
@@ -328,8 +324,8 @@ async fn malicious_zips_rejected_without_side_effects() {
         contains_any(&err, "uncompressed size limit|size limit|zip bomb"),
         "oversize declared package: {err}"
     );
-    assert!(list_extensions_impl(&test.state).is_empty());
-    assert!(staging_dirs(&plugins_root(&test)).is_empty());
+    assert!(list_wapps_impl(&test.state).is_empty());
+    assert!(staging_dirs(&wapps_root(&test)).is_empty());
 }
 
 // ---------------------------------------------------------------------------
@@ -346,12 +342,12 @@ async fn manifest_boundary_rules_enforced_on_install() {
         (
             "missing publisher dot",
             PAGE_MANIFEST.replace("\"id\": \"acme.bill-audit\"", "\"id\": \"bill-audit\""),
-            "invalid extension id",
+            "invalid wapp id",
         ),
         (
             "extra dot in id",
             PAGE_MANIFEST.replace("\"id\": \"acme.bill-audit\"", "\"id\": \"ac.me.bill\""),
-            "invalid extension id",
+            "invalid wapp id",
         ),
         (
             "api_version=1 too old",
@@ -405,7 +401,7 @@ async fn manifest_boundary_rules_enforced_on_install() {
     let old =
         parse_manifest(&PAGE_MANIFEST.replace("\"apiVersion\": 2", "\"apiVersion\": 1")).unwrap();
     let dir = tmp.path().join(PAGE_MANIFEST_ID);
-    write_dir(&dir, &page_plugin_entries());
+    write_dir(&dir, &page_wapp_entries());
     let err = validate_manifest(&old, &dir).unwrap_err();
     assert!(
         err.contains("DataZen") && err.contains("apiVersion"),
@@ -419,10 +415,10 @@ async fn manifest_boundary_rules_enforced_on_install() {
     assert!(err.contains("page icon not found"), "{err}");
 
     // id 字符集边界补充（纯函数级）。
-    assert!(!is_valid_extension_id("-lead.bill"));
-    assert!(!is_valid_extension_id("acme."));
-    assert!(!is_valid_extension_id(".bill"));
-    assert!(is_valid_extension_id("a0.b-c"));
+    assert!(!is_valid_wapp_id("-lead.bill"));
+    assert!(!is_valid_wapp_id("acme."));
+    assert!(!is_valid_wapp_id(".bill"));
+    assert!(is_valid_wapp_id("a0.b-c"));
 }
 
 // ---------------------------------------------------------------------------
@@ -430,24 +426,24 @@ async fn manifest_boundary_rules_enforced_on_install() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn storage_isolated_across_plugins_and_capped_at_1mb() {
+async fn storage_isolated_across_wapps_and_capped_at_1mb() {
     let test = TestAppState::new().await;
     let tmp = TempDir::new().unwrap();
 
     for (file, entries) in [
-        ("one.zip", theme_plugin_entries()),
-        ("two.zip", page_plugin_entries()),
+        ("one.zip", theme_wapp_entries()),
+        ("two.zip", page_wapp_entries()),
     ] {
         let zip_path = tmp.path().join(file);
         zip_from_entries(&zip_path, &entries);
-        install_extension_from_path_impl(&test.state, zip_path.to_string_lossy().to_string())
+        install_wapp_from_path_impl(&test.state, zip_path.to_string_lossy().to_string())
             .await
             .unwrap();
     }
-    assert_eq!(list_extensions_impl(&test.state).len(), 2);
+    assert_eq!(list_wapps_impl(&test.state).len(), 2);
 
     // 同 key 双插件互不干扰。
-    extension_storage_set_impl(
+    wapp_storage_set_impl(
         &test.state,
         "acme.one".into(),
         "shared-key".into(),
@@ -455,7 +451,7 @@ async fn storage_isolated_across_plugins_and_capped_at_1mb() {
     )
     .await
     .unwrap();
-    extension_storage_set_impl(
+    wapp_storage_set_impl(
         &test.state,
         PAGE_MANIFEST_ID.into(),
         "shared-key".into(),
@@ -464,27 +460,27 @@ async fn storage_isolated_across_plugins_and_capped_at_1mb() {
     .await
     .unwrap();
     assert_eq!(
-        extension_storage_get_impl(&test.state, "acme.one".into(), "shared-key".into())
+        wapp_storage_get_impl(&test.state, "acme.one".into(), "shared-key".into())
             .await
             .unwrap(),
         Some(json!("from-one"))
     );
     assert_eq!(
-        extension_storage_get_impl(&test.state, PAGE_MANIFEST_ID.into(), "shared-key".into())
+        wapp_storage_get_impl(&test.state, PAGE_MANIFEST_ID.into(), "shared-key".into())
             .await
             .unwrap(),
         Some(json!(7))
     );
 
     // 未注册插件在 IPC 层被拒（先于磁盘访问）。
-    let err = extension_storage_set_impl(&test.state, "acme.ghost".into(), "k".into(), json!(1))
+    let err = wapp_storage_set_impl(&test.state, "acme.ghost".into(), "k".into(), json!(1))
         .await
         .unwrap_err();
     assert!(err.to_string().contains("not found"), "{err}");
 
     // 1MB 限额：略小于上限可写入；追加后超限拒绝且原数据不变。
     let big_value = json!("x".repeat(MAX_STORAGE_BYTES - 512));
-    extension_storage_set_impl(
+    wapp_storage_set_impl(
         &test.state,
         PAGE_MANIFEST_ID.into(),
         "blob".into(),
@@ -493,13 +489,13 @@ async fn storage_isolated_across_plugins_and_capped_at_1mb() {
     .await
     .unwrap();
     assert_eq!(
-        extension_storage_get_impl(&test.state, PAGE_MANIFEST_ID.into(), "blob".into())
+        wapp_storage_get_impl(&test.state, PAGE_MANIFEST_ID.into(), "blob".into())
             .await
             .unwrap(),
         Some(big_value)
     );
 
-    let err = extension_storage_set_impl(
+    let err = wapp_storage_set_impl(
         &test.state,
         PAGE_MANIFEST_ID.into(),
         "overflow".into(),
@@ -509,7 +505,7 @@ async fn storage_isolated_across_plugins_and_capped_at_1mb() {
     .unwrap_err();
     assert!(err.to_string().contains("exceeds limit"), "{err}");
     assert_eq!(
-        extension_storage_get_impl(&test.state, PAGE_MANIFEST_ID.into(), "shared-key".into())
+        wapp_storage_get_impl(&test.state, PAGE_MANIFEST_ID.into(), "shared-key".into())
             .await
             .unwrap(),
         Some(json!(7)),
@@ -526,58 +522,58 @@ async fn storage_remove_is_idempotent() {
     let test = TestAppState::new().await;
     let tmp = TempDir::new().unwrap();
     let zip_path = tmp.path().join("bill-audit.zip");
-    zip_from_entries(&zip_path, &page_plugin_entries());
-    install_extension_from_path_impl(&test.state, zip_path.to_string_lossy().to_string())
+    zip_from_entries(&zip_path, &page_wapp_entries());
+    install_wapp_from_path_impl(&test.state, zip_path.to_string_lossy().to_string())
         .await
         .unwrap();
 
-    extension_storage_set_impl(&test.state, PAGE_MANIFEST_ID.into(), "k".into(), json!("v"))
+    wapp_storage_set_impl(&test.state, PAGE_MANIFEST_ID.into(), "k".into(), json!("v"))
         .await
         .unwrap();
 
     // 底层：第一次删除返回 true（存在），第二次返回 false（幂等不报错）。
-    assert!(storage_remove(&plugins_root(&test), PAGE_MANIFEST_ID, "k").unwrap());
-    assert!(!storage_remove(&plugins_root(&test), PAGE_MANIFEST_ID, "k").unwrap());
+    assert!(storage_remove(&wapps_root(&test), PAGE_MANIFEST_ID, "k").unwrap());
+    assert!(!storage_remove(&wapps_root(&test), PAGE_MANIFEST_ID, "k").unwrap());
     assert_eq!(
-        storage_get(&plugins_root(&test), PAGE_MANIFEST_ID, "k").unwrap(),
+        storage_get(&wapps_root(&test), PAGE_MANIFEST_ID, "k").unwrap(),
         None
     );
 
     // IPC 层：两次 remove 均 Ok(()).
-    extension_storage_remove_impl(&test.state, PAGE_MANIFEST_ID.into(), "k".into())
+    wapp_storage_remove_impl(&test.state, PAGE_MANIFEST_ID.into(), "k".into())
         .await
         .unwrap();
-    extension_storage_remove_impl(&test.state, PAGE_MANIFEST_ID.into(), "k".into())
+    wapp_storage_remove_impl(&test.state, PAGE_MANIFEST_ID.into(), "k".into())
         .await
         .unwrap();
-    assert!(!plugins_root(&test)
+    assert!(!wapps_root(&test)
         .join(PAGE_MANIFEST_ID)
         .join(".storage.json")
         .exists());
 }
 
 // ---------------------------------------------------------------------------
-// F1-I06 read_plugin_file：正常 / 隐藏文件拒绝 / 穿越 / 绝对路径 / 未启用拒绝
+// F1-I06 read_wapp_file：正常 / 隐藏文件拒绝 / 穿越 / 绝对路径 / 未启用拒绝
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn read_plugin_file_enforces_sandbox_rules() {
+async fn read_wapp_file_enforces_sandbox_rules() {
     let test = TestAppState::new().await;
     let tmp = TempDir::new().unwrap();
     let zip_path = tmp.path().join("bill-audit.zip");
-    zip_from_entries(&zip_path, &page_plugin_entries());
-    install_extension_from_path_impl(&test.state, zip_path.to_string_lossy().to_string())
+    zip_from_entries(&zip_path, &page_wapp_entries());
+    install_wapp_from_path_impl(&test.state, zip_path.to_string_lossy().to_string())
         .await
         .unwrap();
 
     // 正常读取：根文件与嵌套资产。
     assert_eq!(
-        read_extension_file_impl(&test.state, PAGE_MANIFEST_ID.into(), "index.html".into())
+        read_wapp_file_impl(&test.state, PAGE_MANIFEST_ID.into(), "index.html".into())
             .await
             .unwrap(),
         b"<html>bill-audit</html>".to_vec()
     );
-    read_extension_file_impl(
+    read_wapp_file_impl(
         &test.state,
         PAGE_MANIFEST_ID.into(),
         "assets/icon.svg".into(),
@@ -587,7 +583,7 @@ async fn read_plugin_file_enforces_sandbox_rules() {
 
     // 宿主托管隐藏文件一律拒绝。
     for hidden in [".storage.json", ".enabled", "assets/.secret.css"] {
-        let err = read_extension_file_impl(&test.state, PAGE_MANIFEST_ID.into(), hidden.into())
+        let err = read_wapp_file_impl(&test.state, PAGE_MANIFEST_ID.into(), hidden.into())
             .await
             .unwrap_err();
         assert!(
@@ -603,7 +599,7 @@ async fn read_plugin_file_enforces_sandbox_rules() {
         "/etc/passwd",
         "..\\evil.html",
     ] {
-        let err = read_extension_file_impl(&test.state, PAGE_MANIFEST_ID.into(), evil.into())
+        let err = read_wapp_file_impl(&test.state, PAGE_MANIFEST_ID.into(), evil.into())
             .await
             .unwrap_err();
         assert!(
@@ -613,20 +609,20 @@ async fn read_plugin_file_enforces_sandbox_rules() {
     }
 
     // 缺失文件 → NotFound；未知插件 → NotFound。
-    let err = read_extension_file_impl(&test.state, PAGE_MANIFEST_ID.into(), "nope.html".into())
+    let err = read_wapp_file_impl(&test.state, PAGE_MANIFEST_ID.into(), "nope.html".into())
         .await
         .unwrap_err();
     assert!(err.to_string().contains("not found"), "{err}");
-    let err = read_extension_file_impl(&test.state, "acme.ghost".into(), "index.html".into())
+    let err = read_wapp_file_impl(&test.state, "acme.ghost".into(), "index.html".into())
         .await
         .unwrap_err();
     assert!(err.to_string().contains("not found"), "{err}");
 
     // 未启用插件读取被拒。
-    set_extension_enabled_impl(&test.state, PAGE_MANIFEST_ID.into(), false)
+    set_wapp_enabled_impl(&test.state, PAGE_MANIFEST_ID.into(), false)
         .await
         .unwrap();
-    let err = read_extension_file_impl(&test.state, PAGE_MANIFEST_ID.into(), "index.html".into())
+    let err = read_wapp_file_impl(&test.state, PAGE_MANIFEST_ID.into(), "index.html".into())
         .await
         .unwrap_err();
     assert!(err.to_string().contains("disabled"), "{err}");

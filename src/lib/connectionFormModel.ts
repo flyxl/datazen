@@ -1,5 +1,5 @@
 import { DB_REGISTRY, normalizeIndexDatabaseField } from './databaseTypes';
-import { getPluginConnectionForm } from '../extensions/generated';
+import { getDriverConnectionForm } from '../extensions/generated';
 import type { ConnectionConfig, DatabaseType, SslMode, SshTunnelConfig } from '../types';
 
 function hasEnabledTlsOption(options: Record<string, unknown>): boolean {
@@ -120,7 +120,7 @@ export function buildConnectionConfig(input: BuildConnectionConfigInput): Connec
     password: input.password || undefined,
   };
 
-  if (meta.defaultUser || meta.requiresUsername || getPluginConnectionForm(meta.connectionForm)) {
+  if (meta.defaultUser || meta.requiresUsername || getDriverConnectionForm(meta.connectionForm)) {
     conn.username = input.username || meta.defaultUser || undefined;
   }
   if (meta.connectionIncludesSchema) {

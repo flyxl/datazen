@@ -9,8 +9,6 @@ pub mod data_sync;
 mod data_transfer;
 pub mod db;
 mod driver_init;
-mod wapps;
-use wapps as extensions;
 mod i18n_locale;
 mod log_redact;
 pub mod mcp;
@@ -28,6 +26,7 @@ mod theme;
 pub mod transfer;
 mod tray;
 mod util;
+mod wapps;
 pub mod workflow;
 
 pub use store::{AppDb, HistoryDb};

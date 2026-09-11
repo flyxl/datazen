@@ -25,7 +25,7 @@ describe('settingsExport', () => {
     checkForUpdatesOnStartup: false,
     autoChartOnQuery: false,
     monitor: {} as any,
-    pluginSettings: {},
+    driverSettings: {},
     aiStrictEgress: true,
     editorCompletionQuotePolicy: 'always',
     keymapPreset: 'dbeaver',
@@ -61,7 +61,8 @@ describe('settingsExport', () => {
     // Sensitive settings must NEVER be present
     expect(parsed.theme).toBeUndefined();
     expect(parsed.mcpAllowedConnectionIds).toBeUndefined();
-    expect(parsed.pluginSettings).toBeUndefined();
+    expect(parsed.driverSettings).toBeUndefined();
+    expect(parsed.wappSettings).toBeUndefined();
   });
 
   it('imports valid exported json correctly', () => {

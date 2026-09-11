@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PluginRequestEnvelope } from '../extensionBridge';
+import type { PluginRequestEnvelope } from '../wappBridge';
 
 const {
   storageGetMock,
@@ -10,7 +10,7 @@ const {
   connectionStoreState,
   activeConnectionStoreState,
   notificationInvokeMock,
-  readExtensionFileMock,
+  readWappFileMock,
   auditLogMock,
 } = vi.hoisted(() => ({
   storageGetMock: vi.fn(),
@@ -23,7 +23,7 @@ const {
   },
   activeConnectionStoreState: { current: { connections: {} } },
   notificationInvokeMock: vi.fn(),
-  readExtensionFileMock: vi.fn(),
+  readWappFileMock: vi.fn(),
   auditLogMock: vi.fn(),
 }));
 
@@ -40,47 +40,7 @@ vi.mock('../../commands/wapps', () => ({
     wappStorageGet: (...args: unknown[]) => storageGetMock(...args),
     wappStorageSet: (...args: unknown[]) => storageSetMock(...args),
     wappStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    extensionStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    extensionStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    extensionStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    readWappFile: (...args: unknown[]) => readExtensionFileMock(...args),
-    readExtensionFile: (...args: unknown[]) => readExtensionFileMock(...args),
-    auditLog: (...args: unknown[]) => auditLogMock(...args),
-  },
-  extensionCommands: {
-    wappStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    wappStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    wappStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    extensionStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    extensionStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    extensionStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    readWappFile: (...args: unknown[]) => readExtensionFileMock(...args),
-    readExtensionFile: (...args: unknown[]) => readExtensionFileMock(...args),
-    auditLog: (...args: unknown[]) => auditLogMock(...args),
-  },
-}));
-
-vi.mock('../../commands/extensions', () => ({
-  wappCommands: {
-    wappStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    wappStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    wappStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    extensionStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    extensionStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    extensionStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    readWappFile: (...args: unknown[]) => readExtensionFileMock(...args),
-    readExtensionFile: (...args: unknown[]) => readExtensionFileMock(...args),
-    auditLog: (...args: unknown[]) => auditLogMock(...args),
-  },
-  extensionCommands: {
-    wappStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    wappStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    wappStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    extensionStorageGet: (...args: unknown[]) => storageGetMock(...args),
-    extensionStorageSet: (...args: unknown[]) => storageSetMock(...args),
-    extensionStorageRemove: (...args: unknown[]) => storageRemoveMock(...args),
-    readWappFile: (...args: unknown[]) => readExtensionFileMock(...args),
-    readExtensionFile: (...args: unknown[]) => readExtensionFileMock(...args),
+    readWappFile: (...args: unknown[]) => readWappFileMock(...args),
     auditLog: (...args: unknown[]) => auditLogMock(...args),
   },
 }));
@@ -111,8 +71,8 @@ import {
   BRIDGE_ERROR,
   BRIDGE_CHANNEL,
   MAX_INFLIGHT_REQUESTS,
-  isPluginCommandAllowed,
-  PLUGIN_COMMAND_DENYLIST,
+  isWappCommandAllowed,
+  WAPP_COMMAND_DENYLIST,
 } from '../wappBridge';
 
 type SentEnvelope = Record<string, unknown>;
@@ -132,7 +92,7 @@ function makeFakeIframe() {
   return { iframe, sent };
 }
 
-/** Simulate a plugin → host message originating from the given source window. */
+/** Simulate a wapp → host message originating from the given source window. */
 function receive(data: unknown, source: unknown): void {
   window.dispatchEvent(new MessageEvent('message', { data, source: source as Window | null }));
 }
@@ -184,16 +144,16 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('extensionBridge handshake', () => {
-  it('answers plugin.ready with host.ready carrying apiVersion/locale/dark/tokens', async () => {
+describe('wappBridge handshake', () => {
+  it('answers wapp.ready with host.ready carrying apiVersion/locale/dark/tokens', async () => {
     document.documentElement.classList.add('dark');
     const handle = attachBridge(env.iframe, {
-      pluginId: 'acme.bill-audit',
+      wappId: 'acme.bill-audit',
       permissions: [],
       locale: 'de',
     });
 
-    receive(request('plugin.ready'), env.iframe.contentWindow);
+    receive(request('wapp.ready'), env.iframe.contentWindow);
     await flush();
 
     expect(env.sent).toHaveLength(1);
@@ -214,7 +174,7 @@ describe('extensionBridge handshake', () => {
   });
 
   it('pushThemeSnapshot posts theme.apply with versioned snapshot', () => {
-    const handle = attachBridge(env.iframe, { pluginId: 'acme.bill-audit', permissions: [] });
+    const handle = attachBridge(env.iframe, { wappId: 'acme.bill-audit', permissions: [] });
     handle.pushThemeSnapshot();
 
     expect(env.sent).toHaveLength(1);
@@ -230,11 +190,11 @@ describe('extensionBridge handshake', () => {
   });
 });
 
-describe('extensionBridge permission gate (deny-by-default)', () => {
+describe('wappBridge permission gate (deny-by-default)', () => {
   it.each([['context.getConnections'], ['context.getActiveConnection']])(
     'denies %s without context:connections',
     async (type) => {
-      const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: [] });
+      const handle = attachBridge(env.iframe, { wappId: 'p', permissions: [] });
       receive(request(type, 'r1'), env.iframe.contentWindow);
       await waitUntil(() => env.sent.length > 0);
 
@@ -245,7 +205,7 @@ describe('extensionBridge permission gate (deny-by-default)', () => {
   );
 
   it('denies command.invoke without command:invoke', async () => {
-    const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: [] });
+    const handle = attachBridge(env.iframe, { wappId: 'p', permissions: [] });
     receive(
       request('command.invoke', 'r1', { connectionId: 'c', command: 'query' }),
       env.iframe.contentWindow,
@@ -258,7 +218,7 @@ describe('extensionBridge permission gate (deny-by-default)', () => {
   });
 
   it('denies storage APIs without storage:local', async () => {
-    const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: [] });
+    const handle = attachBridge(env.iframe, { wappId: 'p', permissions: [] });
     for (const [i, type] of ['storage.get', 'storage.set', 'storage.remove'].entries()) {
       receive(request(type, `r${i}`, { key: 'k' }), env.iframe.contentWindow);
     }
@@ -279,7 +239,7 @@ describe('extensionBridge permission gate (deny-by-default)', () => {
     notificationInvokeMock.mockResolvedValue(undefined);
 
     const handle = attachBridge(env.iframe, {
-      pluginId: 'acme.bill-audit',
+      wappId: 'acme.bill-audit',
       permissions: [...ALL_PERMISSIONS],
     });
 
@@ -318,7 +278,7 @@ describe('extensionBridge permission gate (deny-by-default)', () => {
     expect(byReqId.get('d')?.type).toBe('command.invoke.ok');
     expect(byReqId.get('e')?.type).toBe('ui.notify.ok');
 
-    // Storage IPC is namespaced by plugin id and passes raw values through.
+    // Storage IPC is namespaced by wapp id and passes raw values through.
     expect(storageGetMock).toHaveBeenCalledWith('acme.bill-audit', 'k');
     expect(storageSetMock).toHaveBeenCalledWith('acme.bill-audit', 'k', { x: 1 });
     expect(storageRemoveMock).toHaveBeenCalledWith('acme.bill-audit', 'k');
@@ -336,14 +296,14 @@ describe('extensionBridge permission gate (deny-by-default)', () => {
   });
 
   it('resolves i18n.getString from plugin locales with en fallback', async () => {
-    readExtensionFileMock.mockImplementation(async (_id: string, path: string) => {
+    readWappFileMock.mockImplementation(async (_id: string, path: string) => {
       if (path === 'locales/zh-CN.json') return toBytes('{"greet":"你好"}');
       if (path === 'locales/zh.json') return toBytes('{}');
       if (path === 'locales/en.json') return toBytes('{"greet":"Hello"}');
       return null;
     });
     const handle = attachBridge(env.iframe, {
-      pluginId: 'p',
+      wappId: 'p',
       permissions: [],
       locale: 'zh-CN',
     });
@@ -365,17 +325,17 @@ describe('extensionBridge permission gate (deny-by-default)', () => {
   });
 
   it('rejects i18n.getString without a key and never reads files', async () => {
-    const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: [] });
+    const handle = attachBridge(env.iframe, { wappId: 'p', permissions: [] });
     receive(request('i18n.getString', 'r3', {}), env.iframe.contentWindow);
     await waitUntil(() => env.sent.length > 0);
     expect(env.sent[0].type).toBe('i18n.getString.err');
     expect((env.sent[0].payload as Record<string, unknown>).code).toBe(BRIDGE_ERROR.BAD_REQUEST);
-    expect(readExtensionFileMock).not.toHaveBeenCalled();
+    expect(readWappFileMock).not.toHaveBeenCalled();
     handle.detach();
   });
 });
 
-describe('extensionBridge envelope semantics', () => {
+describe('wappBridge envelope semantics', () => {
   it('echoes reqId on .ok responses even when handlers complete out of order', async () => {
     let releaseFirst!: (v: unknown) => void;
     let releaseSecond!: (v: unknown) => void;
@@ -394,7 +354,7 @@ describe('extensionBridge envelope semantics', () => {
       );
 
     const handle = attachBridge(env.iframe, {
-      pluginId: 'p',
+      wappId: 'p',
       permissions: ['storage:local'],
     });
     receive(request('storage.get', 'first', { key: 'a' }), env.iframe.contentWindow);
@@ -417,7 +377,7 @@ describe('extensionBridge envelope semantics', () => {
   });
 
   it('replies E_NOT_FOUND to unknown api types', async () => {
-    const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: [...ALL_PERMISSIONS] });
+    const handle = attachBridge(env.iframe, { wappId: 'p', permissions: [...ALL_PERMISSIONS] });
     receive(request('fs.readFile', 'r1'), env.iframe.contentWindow);
     await waitUntil(() => env.sent.length > 0);
 
@@ -427,9 +387,9 @@ describe('extensionBridge envelope semantics', () => {
   });
 
   it('ignores messages whose event.source is not this iframe', async () => {
-    const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: [...ALL_PERMISSIONS] });
+    const handle = attachBridge(env.iframe, { wappId: 'p', permissions: [...ALL_PERMISSIONS] });
 
-    receive(request('plugin.ready'), {});
+    receive(request('wapp.ready'), {});
     receive(request('storage.get', 'r1', { key: 'k' }), null);
     receive({ ch: 'other-channel', type: 'x', target: 'host' }, env.iframe.contentWindow);
     receive('garbage', env.iframe.contentWindow);
@@ -440,7 +400,7 @@ describe('extensionBridge envelope semantics', () => {
   });
 
   it('stops answering after detach', async () => {
-    const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: ['storage:local'] });
+    const handle = attachBridge(env.iframe, { wappId: 'p', permissions: ['storage:local'] });
     handle.detach();
 
     receive(request('storage.get', 'r1', { key: 'k' }), env.iframe.contentWindow);
@@ -450,7 +410,7 @@ describe('extensionBridge envelope semantics', () => {
   });
 });
 
-describe('extensionBridge rate limiting & timeout', () => {
+describe('wappBridge rate limiting & timeout', () => {
   it('rejects the 21st concurrent request with E_RATE_LIMIT and recovers afterwards', async () => {
     seedActiveSession('c');
     let resolveFirst!: (v: unknown) => void;
@@ -462,7 +422,7 @@ describe('extensionBridge rate limiting & timeout', () => {
     );
 
     const handle = attachBridge(env.iframe, {
-      pluginId: 'p',
+      wappId: 'p',
       permissions: ['command:invoke'],
       maxInflight: MAX_INFLIGHT_REQUESTS,
     });
@@ -503,7 +463,7 @@ describe('extensionBridge rate limiting & timeout', () => {
   it('limits ui.notify to one shot per 5s cooldown', async () => {
     vi.useFakeTimers();
     notificationInvokeMock.mockResolvedValue(undefined);
-    const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: [] });
+    const handle = attachBridge(env.iframe, { wappId: 'p', permissions: [] });
 
     receive(request('ui.notify', 'n1', { title: 'one' }), env.iframe.contentWindow);
     await vi.advanceTimersByTimeAsync(0);
@@ -527,7 +487,7 @@ describe('extensionBridge rate limiting & timeout', () => {
     vi.useFakeTimers();
     driverExecuteMock.mockImplementation(() => new Promise(() => undefined));
     const handle = attachBridge(env.iframe, {
-      pluginId: 'p',
+      wappId: 'p',
       permissions: ['command:invoke'],
       timeoutMs: 30_000,
     });
@@ -547,7 +507,7 @@ describe('extensionBridge rate limiting & timeout', () => {
   });
 });
 
-describe('extensionBridge context whitelist', () => {
+describe('wappBridge context whitelist', () => {
   const leakyConfig = {
     id: 'conn_1',
     name: 'Prod PG',
@@ -575,7 +535,7 @@ describe('extensionBridge context whitelist', () => {
     };
 
     const handle = attachBridge(env.iframe, {
-      pluginId: 'p',
+      wappId: 'p',
       permissions: ['context:connections'],
     });
     receive(request('context.getConnections', 'r1'), env.iframe.contentWindow);
@@ -594,7 +554,7 @@ describe('extensionBridge context whitelist', () => {
     getConnectionsIpcMock.mockResolvedValue([leakyConfig]);
 
     const handle = attachBridge(env.iframe, {
-      pluginId: 'p',
+      wappId: 'p',
       permissions: ['context:connections'],
     });
     receive(request('context.getConnections', 'r1'), env.iframe.contentWindow);
@@ -614,7 +574,7 @@ describe('extensionBridge context whitelist', () => {
     };
 
     const handle = attachBridge(env.iframe, {
-      pluginId: 'p',
+      wappId: 'p',
       permissions: ['context:connections'],
     });
 
@@ -643,11 +603,11 @@ describe('extensionBridge context whitelist', () => {
   });
 });
 
-describe('extensionBridge command.invoke error mapping', () => {
+describe('wappBridge command.invoke error mapping', () => {
   it('maps backend "not found" rejections to E_NOT_FOUND', async () => {
     seedActiveSession('cfg-x');
     driverExecuteMock.mockRejectedValue('connection not found: cfg-x');
-    const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: ['command:invoke'] });
+    const handle = attachBridge(env.iframe, { wappId: 'p', permissions: ['command:invoke'] });
 
     receive(
       request('command.invoke', 'miss', { connectionId: 'cfg-x', command: 'query' }),
@@ -661,7 +621,7 @@ describe('extensionBridge command.invoke error mapping', () => {
   });
 
   it('rejects malformed payloads with E_BAD_REQUEST', async () => {
-    const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: ['command:invoke'] });
+    const handle = attachBridge(env.iframe, { wappId: 'p', permissions: ['command:invoke'] });
     receive(request('command.invoke', 'bad', { command: '' }), env.iframe.contentWindow);
     await waitUntil(() => env.sent.length > 0);
 
@@ -669,17 +629,17 @@ describe('extensionBridge command.invoke error mapping', () => {
     handle.detach();
   });
 
-  it('[tester] isPluginCommandAllowed blocks every denylisted admin command', () => {
-    for (const command of PLUGIN_COMMAND_DENYLIST) {
-      expect(isPluginCommandAllowed(command)).toBe(false);
+  it('[tester] isWappCommandAllowed blocks every denylisted admin command', () => {
+    for (const command of WAPP_COMMAND_DENYLIST) {
+      expect(isWappCommandAllowed(command)).toBe(false);
     }
-    expect(isPluginCommandAllowed('query')).toBe(true);
-    expect(isPluginCommandAllowed('list_objects')).toBe(true);
+    expect(isWappCommandAllowed('query')).toBe(true);
+    expect(isWappCommandAllowed('list_objects')).toBe(true);
   });
 
   it('rejects denylisted admin commands with E_PERMISSION', async () => {
     seedActiveSession('cfg-x');
-    const handle = attachBridge(env.iframe, { pluginId: 'p', permissions: ['command:invoke'] });
+    const handle = attachBridge(env.iframe, { wappId: 'p', permissions: ['command:invoke'] });
     receive(
       request('command.invoke', 'deny', {
         connectionId: 'cfg-x',

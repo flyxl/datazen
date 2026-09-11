@@ -13,9 +13,9 @@ use tauri::http;
 
 use super::protocol::{
     content_type_for, parse_datazen_uri, route_datazen_request, safe_relative_path, DatazenOutcome,
-    EXTENSIONS_OPEN_PAGE_EVENT,
+    WAPPS_OPEN_PAGE_EVENT,
 };
-use super::{parse_manifest, ExtensionManager};
+use super::{parse_manifest, WappManager};
 
 const MANIFEST: &str = r#"{
   "id": "acme.bill-audit",
@@ -40,7 +40,7 @@ fn write_bytes(dir: &Path, rel: &str, content: &[u8]) {
 
 /// Fixture whose package passed install-time validation (`load_from_disk`),
 /// containing one file per whitelisted extension plus host-managed state.
-fn rich_manager(dir: &Path) -> ExtensionManager {
+fn rich_manager(dir: &Path) -> WappManager {
     write_text(dir, "acme.bill-audit/manifest.json", MANIFEST);
     write_text(dir, "acme.bill-audit/index.html", "<html>bill-audit</html>");
     write_text(dir, "acme.bill-audit/app.js", "console.log(1)");
@@ -56,30 +56,29 @@ fn rich_manager(dir: &Path) -> ExtensionManager {
     write_text(dir, "acme.bill-audit/.storage.json", "{}");
     write_text(dir, "acme.bill-audit/.enabled", "1\n");
 
-    let manager = ExtensionManager::new(dir.to_path_buf());
+    let manager = WappManager::new(dir.to_path_buf());
     assert_eq!(manager.load_from_disk(), 1);
     manager
 }
 
 /// Fixture registered without a package rescan, simulating files dropped
 /// into an installed plugin directory after install-time validation.
-fn registered_manager(dir: &Path) -> ExtensionManager {
+fn registered_manager(dir: &Path) -> WappManager {
     write_text(dir, "acme.bill-audit/manifest.json", MANIFEST);
     write_text(dir, "acme.bill-audit/index.html", "<html>bill-audit</html>");
     write_text(dir, "acme.bill-audit/data.json", "{\"k\":1}");
     write_text(dir, "acme.bill-audit/assets/icon.svg", "<svg/>");
 
-    let manager = ExtensionManager::new(dir.to_path_buf());
+    let manager = WappManager::new(dir.to_path_buf());
     manager
         .register(parse_manifest(MANIFEST).unwrap(), true)
         .unwrap();
     manager
 }
 
-fn route(manager: &ExtensionManager, uri: &str) -> Result<DatazenOutcome, http::StatusCode> {
-    let (plugin_id, path, query) =
-        parse_datazen_uri(uri).map_err(|_| http::StatusCode::NOT_FOUND)?;
-    route_datazen_request(manager, &plugin_id, &path, &query)
+fn route(manager: &WappManager, uri: &str) -> Result<DatazenOutcome, http::StatusCode> {
+    let (wapp_id, path, query) = parse_datazen_uri(uri).map_err(|_| http::StatusCode::NOT_FOUND)?;
+    route_datazen_request(manager, &wapp_id, &path, &query)
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +303,7 @@ fn drive_letter_component_cannot_escape_containment() {
     let manager = rich_manager(dir.path());
     // On Unix `C:` is just a directory name (nothing there → 404). On Windows
     // `Path::join` would replace the base for prefixed paths, so this exercises
-    // the `ensure_within_plugin_dir` containment backstop instead.
+    // the `ensure_within_wapp_dir` containment backstop instead.
     for uri in [
         "datazen://acme.bill-audit/C:/evil.json",
         "http://datazen./acme.bill-audit/C%3A/evil.json",
@@ -388,7 +387,7 @@ fn open_params_special_characters_forwarded_verbatim() {
     assert_eq!(
         outcome,
         DatazenOutcome::OpenPage {
-            plugin_id: "acme.bill-audit".into(),
+            wapp_id: "acme.bill-audit".into(),
             page_id: "quota-check".into(),
             params: expected,
         }
@@ -472,7 +471,7 @@ fn duplicate_page_param_last_wins() {
     assert_eq!(
         outcome,
         DatazenOutcome::OpenPage {
-            plugin_id: "acme.bill-audit".into(),
+            wapp_id: "acme.bill-audit".into(),
             page_id: "quota-check".into(),
             params: Map::new(),
         }
@@ -481,9 +480,9 @@ fn duplicate_page_param_last_wins() {
 
 #[test]
 fn open_page_event_constant_matches_spec() {
-    // Payload contract `{pluginId, pageId, params}` is built in
+    // Payload contract `{wappId, pageId, params}` is built in
     // `emit_open_page`; the channel name is part of the frontend contract.
-    assert_eq!(EXTENSIONS_OPEN_PAGE_EVENT, "wapps:open-page");
+    assert_eq!(WAPPS_OPEN_PAGE_EVENT, "wapps:open-page");
 }
 
 // ---------------------------------------------------------------------------
@@ -668,10 +667,10 @@ fn symlink_inside_serves_and_outside_is_contained() {
 
     let dir = tempfile::tempdir().unwrap();
     let manager = registered_manager(dir.path());
-    let plugin_assets = dir.path().join("acme.bill-audit/assets");
+    let wapp_assets = dir.path().join("acme.bill-audit/assets");
 
     // Internal alias: resolves back into the plugin dir → served.
-    symlink(Path::new("../data.json"), plugin_assets.join("alias.json")).unwrap();
+    symlink(Path::new("../data.json"), wapp_assets.join("alias.json")).unwrap();
     assert_eq!(
         route(&manager, "datazen://acme.bill-audit/assets/alias.json").unwrap(),
         DatazenOutcome::Asset {
@@ -685,7 +684,7 @@ fn symlink_inside_serves_and_outside_is_contained() {
     write_text(outside.path(), "settings.json", "{\"secret\":true}");
     symlink(
         outside.path().join("settings.json"),
-        plugin_assets.join("out.json"),
+        wapp_assets.join("out.json"),
     )
     .unwrap();
     assert_eq!(

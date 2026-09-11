@@ -169,7 +169,7 @@ const pack = {
   'extensions.page.themeBadge': 'Theme',
   'extensions.page.themeHint': 'Switch themes in Settings → Appearance.',
   'extensions.page.apiMismatch': 'API version not supported',
-  'extensions.page.apiMismatchHint': 'Extension API v{plugin} does not match host API v{host}.',
+  'extensions.page.apiMismatchHint': 'Extension API v{wapp} does not match host API v{host}.',
   'extensions.page.emptyTitle': 'No extensions found',
   'extensions.page.emptyHint':
     'Install an extension package (.zip) to extend DataZen with new workspace pages or themes.',

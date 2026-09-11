@@ -3,7 +3,7 @@ import {
   applySchemaDefaults,
   listSchemaPropertyEntries,
   readBooleanField,
-} from '../../plugin-sdk/settings';
+} from '../../lib/driverSettings';
 
 function ToggleRow({
   label,
@@ -51,9 +51,10 @@ export function JsonSchemaSettingsForm({
   onChange: (next: unknown) => void;
 }) {
   const current = useMemo(() => {
-    const raw = value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {};
+    const raw =
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : {};
     return applySchemaDefaults(schema, raw);
   }, [schema, value]);
 

@@ -38,7 +38,7 @@ describe('injection detectors', () => {
     expect(hasInjectedDriverInit(INJECTED_CONTENTS['src-tauri/src/driver_init.rs'])).toBe(true);
   });
 
-  it('detects generated.ts PluginDatabaseType != never', () => {
+  it('detects generated.ts DriverDatabaseType != never', () => {
     expect(hasInjectedGeneratedTs(CLEAN_CONTENTS['src/extensions/generated.ts'])).toBe(false);
     expect(hasInjectedGeneratedTs(INJECTED_CONTENTS['src/extensions/generated.ts'])).toBe(true);
   });

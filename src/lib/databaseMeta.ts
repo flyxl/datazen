@@ -94,7 +94,7 @@ export interface DatabaseTypeMeta {
    * Custom parsers registered in `generated.ts` run first and can override this.
    */
   clipboardSchemes?: string[];
-  /** Schema tree mode: 'standard' (default), 'multiDatabase', or 'custom' (plugin-provided tree) */
+  /** Schema tree mode: 'standard' (default), 'multiDatabase', or 'custom' (wapp-provided tree) */
   schemaTreeMode?: 'standard' | 'multiDatabase' | 'custom';
   /** Whether this driver is read-only (no DDL, no create/alter table, no import) */
   readOnly?: boolean;
@@ -103,7 +103,7 @@ export interface DatabaseTypeMeta {
   /** Whether this driver supports ER diagram (requires FK metadata) */
   supportsErDiagram?: boolean;
   /**
-   * On-demand SQL namespace completion strategy (host is plugin-agnostic).
+   * On-demand SQL namespace completion strategy (host is wapp-agnostic).
    * - `default-sql`: database → tables (MySQL/MariaDB/…)
    * - `postgresql`: database → schema → table (or schema → table when single-db)
    * - `path-hierarchy`: slash-path levels via `get_tables` + optional name→id aliases
@@ -117,7 +117,7 @@ export interface DatabaseTypeMeta {
   defaultSchema?: string;
   /**
    * When true, host `setLoadedTables` does not merge into `namespaceTree`
-   * (plugin owns hierarchy via SDK `syncSchemaNamespace` / aliases).
+   * (wapp owns hierarchy via SDK `syncSchemaNamespace` / aliases).
    */
   namespaceOwnedByPlugin?: boolean;
   /**

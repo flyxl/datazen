@@ -163,7 +163,7 @@ const pack = {
   'extensions.page.themeBadge': '主題',
   'extensions.page.themeHint': '主題請在 設定 → 外觀 中切換。',
   'extensions.page.apiMismatch': 'API 版本不相容',
-  'extensions.page.apiMismatchHint': '外掛 API v{plugin} 與宿主 API v{host} 不相符。',
+  'extensions.page.apiMismatchHint': '外掛 API v{wapp} 與宿主 API v{host} 不相符。',
   'extensions.page.emptyTitle': '找不到外掛',
   'extensions.page.emptyHint': '安裝外掛包（.zip）即可為 DataZen 擴充新的工作區頁面或主題。',
   'extensions.install.title': '安裝外掛',

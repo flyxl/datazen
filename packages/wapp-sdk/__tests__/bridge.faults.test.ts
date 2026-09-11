@@ -4,8 +4,8 @@
  *
  * C-03/C-04 lock in the BUG-F8-01 fix: malformed `.err` frames whose
  * `payload` is absent or null must settle the pending request as
- * ExtensionError(E_INTERNAL) with zero uncaught page errors (see
- * docs/architecture/backend/plugins.md).
+ * WappError(E_INTERNAL) with zero uncaught page errors (see
+ * docs/architecture/backend/wapps.md).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -13,16 +13,16 @@ import {
   BRIDGE_ERROR,
   REQUEST_TIMEOUT_MS,
   SDK_ERROR,
-  EXTENSION_API_VERSION,
-  ExtensionError,
+  WAPP_API_VERSION,
+  WappError,
   createClient,
 } from '../src/bridge';
-import type { ExtensionClient } from '../src/bridge';
+import type { WappClient } from '../src/bridge';
 
 type Sent = Record<string, unknown>;
 
 const HOST_READY_PAYLOAD = {
-  apiVersion: EXTENSION_API_VERSION,
+  apiVersion: WAPP_API_VERSION,
   locale: 'en',
   dark: false,
   tokens: {},
@@ -55,7 +55,7 @@ function okResponse(type: string, reqId: string, payload?: unknown): Sent {
   };
 }
 
-async function handshake(parent: Window): Promise<{ client: ExtensionClient }> {
+async function handshake(parent: Window): Promise<{ client: WappClient }> {
   const client = createClient({ parentWindow: parent });
   const readyPromise = client.ready();
   receive(parent, hostReady());
@@ -159,9 +159,9 @@ describe('malformed host responses (F8 tolerance matrix)', () => {
       tracked.restore();
     }
 
-    const failure = (await pending) as ExtensionError;
+    const failure = (await pending) as WappError;
     expect(tracked.events).toEqual([]);
-    expect(failure).toBeInstanceOf(ExtensionError);
+    expect(failure).toBeInstanceOf(WappError);
     expect(failure.code).toBe(BRIDGE_ERROR.INTERNAL);
     expect(failure.message).toBe('storage.get');
   });
@@ -190,9 +190,9 @@ describe('malformed host responses (F8 tolerance matrix)', () => {
         tracked.restore();
       }
 
-      const failure = (await pending) as ExtensionError;
+      const failure = (await pending) as WappError;
       expect(tracked.events).toEqual([]);
-      expect(failure).toBeInstanceOf(ExtensionError);
+      expect(failure).toBeInstanceOf(WappError);
       expect(failure.code).toBe(BRIDGE_ERROR.INTERNAL);
       expect(failure.message).toBe('ui.notify');
     }
@@ -213,8 +213,8 @@ describe('malformed host responses (F8 tolerance matrix)', () => {
         ok: false,
         payload: badPayload,
       });
-      const failure = (await pending) as ExtensionError;
-      expect(failure).toBeInstanceOf(ExtensionError);
+      const failure = (await pending) as WappError;
+      expect(failure).toBeInstanceOf(WappError);
       expect(failure.code).toBe(BRIDGE_ERROR.INTERNAL);
       expect(failure.message).toBe('storage.remove');
     }
@@ -297,7 +297,7 @@ describe('argument pass-through (command.invoke)', () => {
       connectionId: 'cfg-9',
       command: 'query',
       args,
-      tracingTag: 'plugin-side-extra',
+      tracingTag: 'wapp-side-extra',
     };
 
     const pending = client.command.invoke(invokeRequest);
@@ -308,7 +308,7 @@ describe('argument pass-through (command.invoke)', () => {
     const payload = sent[1].payload as Record<string, unknown>;
     expect(Object.keys(payload)).toEqual(Object.keys(invokeRequest));
     expect(payload.args).toBe(args);
-    expect(payload.tracingTag).toBe('plugin-side-extra');
+    expect(payload.tracingTag).toBe('wapp-side-extra');
 
     receive(
       parent,
@@ -366,7 +366,7 @@ describe('concurrent request routing', () => {
     await expect(second).resolves.toBe('real');
   });
 
-  it('C-12 detach aborts all 50 in-flight requests with EXTENSION_DETACHED', async () => {
+  it('C-12 detach aborts all 50 in-flight requests with WAPP_DETACHED', async () => {
     const { parent } = makeParentWindow();
     const { client } = await handshake(parent);
 
@@ -378,8 +378,8 @@ describe('concurrent request routing', () => {
 
     const outcomes = await Promise.all(pendings);
     for (const outcome of outcomes) {
-      expect(outcome).toBeInstanceOf(ExtensionError);
-      expect((outcome as ExtensionError).code).toBe(SDK_ERROR.DETACHED);
+      expect(outcome).toBeInstanceOf(WappError);
+      expect((outcome as WappError).code).toBe(SDK_ERROR.DETACHED);
     }
   });
 
@@ -396,7 +396,7 @@ describe('concurrent request routing', () => {
     const pa = clientA.context.getActiveConnection().then((value) => ({ from: 'A', value }));
     const pb = clientB.context.getActiveConnection().then((value) => ({ from: 'B', value }));
 
-    // sent[0]/sent[1] are the two plugin.ready envelopes; pick out the typed
+    // sent[0]/sent[1] are the two wapp.ready envelopes; pick out the typed
     // requests by route type (A posted first, B second).
     const reqIds = sent
       .filter((envelope) => envelope.type === 'context.getActiveConnection')

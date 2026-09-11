@@ -310,7 +310,7 @@ async function goToDashboard() {
 }
 
 /** Navigate to the extensions management page. */
-async function goToPlugins() {
+async function goToWapps() {
   await browser.execute(() => {
     document
       .querySelector('[data-testid="workspace-nav-extensions"]')
@@ -1593,7 +1593,7 @@ describe('site screenshots', () => {
   // ─────────────────────── 22-extensions ──────────────────────────────────────
 
   it('22-extensions: extensions management page', async () => {
-    await goToPlugins();
+    await goToWapps();
     await browser.waitUntil(
       async () =>
         browser.execute(
@@ -1602,9 +1602,9 @@ describe('site screenshots', () => {
             (!!document.querySelector('[data-testid="extension-card"]') ||
               !!document.querySelector('[data-testid="extension-install-button"]')),
         ),
-      { timeout: 15000, timeoutMsg: 'plugin management page not ready' },
+      { timeout: 15000, timeoutMsg: 'wapp management page not ready' },
     );
-    await shot('22-extensions.png');
+    await shot('22-wapps.png');
     await goToConnections();
   });
 

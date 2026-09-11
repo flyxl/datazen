@@ -2,12 +2,12 @@ import { X } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { useWorkspaceTabsStore } from '../../stores/workspaceTabsStore';
-import { PluginIcon } from './PluginIcon';
+import { WappIcon } from './WappIcon';
 
 /**
  * Workspace tab strip. Visually mirrors the connection `PanelTabBar` but is
  * backed exclusively by `workspaceTabsStore` (independent of connection tabs).
- * Renders nothing while no plugin page tab is open.
+ * Renders nothing while no wapp page tab is open.
  */
 export function WorkspaceTabBar() {
   const { t } = useI18n();
@@ -49,11 +49,7 @@ export function WorkspaceTabBar() {
                 className="flex items-center gap-1.5"
                 onClick={() => activate(tab.key)}
               >
-                <PluginIcon
-                  wappId={tab.wappId || tab.pluginId}
-                  icon={tab.icon}
-                  className="h-3.5 w-3.5"
-                />
+                <WappIcon wappId={tab.wappId} icon={tab.icon} className="h-3.5 w-3.5" />
                 <span className="max-w-[160px] truncate">{tab.title}</span>
               </button>
               <button

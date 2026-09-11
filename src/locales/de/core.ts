@@ -172,7 +172,7 @@ const pack = {
   'extensions.page.themeBadge': 'Thema',
   'extensions.page.themeHint': 'Themes wechseln Sie unter Einstellungen → Erscheinungsbild.',
   'extensions.page.apiMismatch': 'API-Version nicht unterstützt',
-  'extensions.page.apiMismatchHint': 'Plugin-API v{plugin} entspricht nicht Host-API v{host}.',
+  'extensions.page.apiMismatchHint': 'Plugin-API v{wapp} entspricht nicht Host-API v{host}.',
   'extensions.page.emptyTitle': 'Keine Plugins gefunden',
   'extensions.page.emptyHint':
     'Installieren Sie ein Plugin-Paket (.zip), um DataZen um neue Workspace-Seiten oder Themes zu erweitern.',

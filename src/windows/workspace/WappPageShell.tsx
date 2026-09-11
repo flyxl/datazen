@@ -10,7 +10,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { attachBridge, type WappBridgeHandle } from '../../lib/wappBridge';
 import type { WappPermission } from '../../types/wapp';
 import type { WorkspaceTab } from '../../stores/workspaceTabsStore';
-import { PluginIcon } from './PluginIcon';
+import { WappIcon } from './WappIcon';
 
 const LOAD_TIMEOUT_MS = 10_000;
 
@@ -19,7 +19,7 @@ interface EntryCacheHit {
   entry: string;
 }
 
-/** Resolved page entries keyed by wapp/plugin id; reused while the version is unchanged. */
+/** Resolved page entries keyed by wapp id; reused while the version is unchanged. */
 const entryCache = new Map<string, EntryCacheHit>();
 
 /** Test seam: resets the memoized manifest entry cache. */
@@ -27,10 +27,8 @@ export function clearWappEntryCache(): void {
   entryCache.clear();
 }
 
-export const clearExtensionEntryCache = clearWappEntryCache;
-
 /**
- * Resolve the wapp/plugin page entry (`manifest.entry`). Prefers an inline `entry`
+ * Resolve the wapp page entry (`manifest.entry`). Prefers an inline `entry`
  * on the summary payload when present, otherwise fetches the full manifest via
  * `get_wapp_manifest` and caches it.
  */
@@ -56,7 +54,7 @@ async function resolveEntry(wappId: string): Promise<string> {
 }
 
 function cachedSrc(tab: WorkspaceTab): string | null {
-  const targetId = tab.wappId || tab.pluginId;
+  const targetId = tab.wappId;
   const hit = entryCache.get(targetId);
   if (!hit || hit.version !== tab.version) return null;
   return buildSrc(targetId, hit.entry, tab.version);
@@ -78,10 +76,8 @@ export interface WappPageShellProps {
   active: boolean;
 }
 
-export type ExtensionPageShellProps = WappPageShellProps;
-
 /**
- * Host-side shell around a sandboxed wapp/plugin page.
+ * Host-side shell around a sandboxed wapp page.
  *
  * Lifecycle: lazy-mount on first activation → CSS-hidden (instance preserved)
  * while inactive → unmounted together with its tab (shell key = tab key).
@@ -107,11 +103,10 @@ export function WappPageShell({ tab, active }: WappPageShellProps) {
   useEffect(() => {
     const el = iframeRef.current;
     if (phase.kind !== 'ready' || !el) return;
-    const targetId = tab.wappId || tab.pluginId;
+    const targetId = tab.wappId;
     const permissions: WappPermission[] = useWappStore.getState().byId(targetId)?.permissions ?? [];
     const bridge = attachBridge(el, {
       wappId: targetId,
-      pluginId: targetId,
       permissions,
       locale: useSettingsStore.getState().settings.language,
     });
@@ -131,7 +126,7 @@ export function WappPageShell({ tab, active }: WappPageShellProps) {
       bridge.detach();
       if (bridgeRef.current === bridge) bridgeRef.current = null;
     };
-  }, [phase.kind, reloadNonce, tab.wappId, tab.pluginId]);
+  }, [phase.kind, reloadNonce, tab.wappId]);
 
   useEffect(() => {
     if (active) setEverActivated(true);
@@ -141,7 +136,7 @@ export function WappPageShell({ tab, active }: WappPageShellProps) {
     if (!everActivated || phase.kind !== 'idle' || resolvingRef.current) return;
     resolvingRef.current = true;
     setPhase({ kind: 'resolving' });
-    const targetId = tab.wappId || tab.pluginId;
+    const targetId = tab.wappId;
     void resolveEntry(targetId)
       .then((entry) => {
         setPhase({ kind: 'ready', src: buildSrc(targetId, entry, tab.version) });
@@ -152,7 +147,7 @@ export function WappPageShell({ tab, active }: WappPageShellProps) {
       .finally(() => {
         resolvingRef.current = false;
       });
-  }, [everActivated, phase, tab.wappId, tab.pluginId, tab.version]);
+  }, [everActivated, phase, tab.wappId, tab.version]);
 
   // Load watchdog: a fresh frame that hasn't signalled `load` within the budget
   // flips the shell into its failure/recovery state.
@@ -180,7 +175,7 @@ export function WappPageShell({ tab, active }: WappPageShellProps) {
       aria-hidden={hidden}
     >
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-edge px-3">
-        <PluginIcon wappId={tab.wappId || tab.pluginId} icon={tab.icon} className="h-3.5 w-3.5" />
+        <WappIcon wappId={tab.wappId} icon={tab.icon} className="h-3.5 w-3.5" />
         <span className="truncate text-xs font-semibold text-fg">{tab.title}</span>
         <Badge tone="neutral" className="px-1.5 py-0 text-[10px] font-normal">
           v{tab.version}
@@ -246,5 +241,3 @@ export function WappPageShell({ tab, active }: WappPageShellProps) {
     </div>
   );
 }
-
-export const ExtensionPageShell = WappPageShell;

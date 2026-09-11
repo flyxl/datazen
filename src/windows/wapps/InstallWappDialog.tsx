@@ -13,10 +13,8 @@ export interface InstallWappDialogProps {
   open: boolean;
   onClose: () => void;
   /** Called after a successful install and store refresh. */
-  onInstalled?: (plugin: WappSummary) => void;
+  onInstalled?: (wapp: WappSummary) => void;
 }
-
-export type InstallExtensionDialogProps = InstallWappDialogProps;
 
 type InstallStep = 'select' | 'review';
 
@@ -199,5 +197,3 @@ export function InstallWappDialog({ open, onClose, onInstalled }: InstallWappDia
     </Dialog>
   );
 }
-
-export const InstallExtensionDialog = InstallWappDialog;

@@ -2,11 +2,11 @@ import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { useWorkspaceTabsStore } from '../../stores/workspaceTabsStore';
-import { openPluginPage, useWorkspacePages } from './workspacePages';
-import { PluginIcon } from './PluginIcon';
+import { openWappPage, useWorkspacePages } from './workspacePages';
+import { WappIcon } from './WappIcon';
 
 export interface WorkspaceNavigatorProps {
-  /** Shown in the empty state so users can jump to the extension management page. */
+  /** Shown in the empty state so users can jump to the wapp management page. */
   onOpenExtensions?: () => void;
   /** Width in pixels for resizable sidebar. */
   width?: number;
@@ -55,7 +55,7 @@ export function WorkspaceNavigator({ onOpenExtensions, width }: WorkspaceNavigat
                 data-testid="workspace-nav-item"
                 data-page-key={page.key}
                 title={page.description ?? page.title}
-                onClick={() => openPluginPage(page.wappId || page.pluginId, page.pageId)}
+                onClick={() => openWappPage(page.wappId, page.pageId)}
                 className={cn(
                   'mb-0.5 flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
                   active
@@ -63,11 +63,7 @@ export function WorkspaceNavigator({ onOpenExtensions, width }: WorkspaceNavigat
                     : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
                 )}
               >
-                <PluginIcon
-                  wappId={page.wappId || page.pluginId}
-                  icon={page.icon}
-                  className="mt-0.5 h-4 w-4"
-                />
+                <WappIcon wappId={page.wappId} icon={page.icon} className="mt-0.5 h-4 w-4" />
                 <span className="min-w-0">
                   <span className="block truncate text-xs font-medium">{page.title}</span>
                   {page.description ? (

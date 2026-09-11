@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 /**
  * Guards the repo-bundled wapp packages under `packages/wapps/`.
  *
- * Since the unified plugin/wapp system (PRD: wapps.md), themes ship as
+ * Since the unified wapp system (PRD: wapps.md), themes ship as
  * `contributes.themes` inside wapp manifests (apiVersion 2) instead of
  * legacy v1 ThemePacks. The community theme pack was converted accordingly;
  * this suite keeps its token contract honest and validates the sample
@@ -60,7 +60,7 @@ const RECOMMENDED_DT_TOKENS = [
 /** Fonts stay part of the host token contract for full-look packs. */
 const REQUIRED_FONT_TOKENS = ['--font-sans', '--font-mono', '--font-editor'] as const;
 
-interface ExtensionManifest {
+interface WappManifest {
   id: string;
   apiVersion: number;
   icon?: string;
@@ -88,10 +88,10 @@ function listWappDirs(): string[] {
     .filter((name) => existsSync(join(WAPPS_ROOT, name, 'manifest.json')));
 }
 
-function loadManifest(dirName: string): ExtensionManifest {
+function loadManifest(dirName: string): WappManifest {
   return JSON.parse(
     readFileSync(join(WAPPS_ROOT, dirName, 'manifest.json'), 'utf8'),
-  ) as ExtensionManifest;
+  ) as WappManifest;
 }
 
 describe('repo wapp packages', () => {

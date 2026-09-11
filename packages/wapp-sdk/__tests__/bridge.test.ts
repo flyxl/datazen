@@ -4,16 +4,16 @@ import {
   BRIDGE_ERROR,
   REQUEST_TIMEOUT_MS,
   SDK_ERROR,
-  EXTENSION_API_VERSION,
-  ExtensionError,
+  WAPP_API_VERSION,
+  WappError,
   createClient,
 } from '../src/bridge';
-import type { ExtensionClient } from '../src/bridge';
+import type { WappClient } from '../src/bridge';
 
 type Sent = Record<string, unknown>;
 
 const HOST_READY_PAYLOAD = {
-  apiVersion: EXTENSION_API_VERSION,
+  apiVersion: WAPP_API_VERSION,
   locale: 'en',
   dark: true,
   tokens: { '--c-accent': '#6366f1', '--dt-number': '#38bdf8' },
@@ -60,7 +60,7 @@ function errResponse(type: string, reqId: string, code: string, message: string)
 }
 
 /** Create a client and complete the handshake against the fake host window. */
-async function handshake(parent: Window): Promise<{ client: ExtensionClient }> {
+async function handshake(parent: Window): Promise<{ client: WappClient }> {
   const client = createClient({ parentWindow: parent });
   const readyPromise = client.ready();
   receive(parent, hostReady());
@@ -74,7 +74,7 @@ afterEach(() => {
 });
 
 describe('createClient.ready()', () => {
-  it('posts the plugin.ready envelope and resolves the host context', async () => {
+  it('posts the wapp.ready envelope and resolves the host context', async () => {
     const { parent, sent } = makeParentWindow();
     const client = createClient({ parentWindow: parent });
 
@@ -82,9 +82,9 @@ describe('createClient.ready()', () => {
     expect(sent).toEqual([
       {
         ch: BRIDGE_CHANNEL,
-        type: 'plugin.ready',
+        type: 'wapp.ready',
         target: 'host',
-        payload: { apiVersion: EXTENSION_API_VERSION },
+        payload: { apiVersion: WAPP_API_VERSION },
       },
     ]);
 
@@ -92,7 +92,7 @@ describe('createClient.ready()', () => {
     await expect(readyPromise).resolves.toEqual(HOST_READY_PAYLOAD);
   });
 
-  it('is idempotent after success and does not re-send plugin.ready', async () => {
+  it('is idempotent after success and does not re-send wapp.ready', async () => {
     const { parent, sent } = makeParentWindow();
     const { client } = await handshake(parent);
 
@@ -112,7 +112,7 @@ describe('createClient.ready()', () => {
     expect(sent).toHaveLength(1);
   });
 
-  it('rejects with EXTENSION_VERSION_MISMATCH on an incompatible host and caches the failure', async () => {
+  it('rejects with WAPP_VERSION_MISMATCH on an incompatible host and caches the failure', async () => {
     const { parent, sent } = makeParentWindow();
     const client = createClient({ parentWindow: parent });
 
@@ -120,8 +120,8 @@ describe('createClient.ready()', () => {
     receive(parent, hostReady({ ...HOST_READY_PAYLOAD, apiVersion: 3 }));
     const failure = await first;
 
-    expect(failure).toBeInstanceOf(ExtensionError);
-    expect((failure as ExtensionError).code).toBe(SDK_ERROR.VERSION_MISMATCH);
+    expect(failure).toBeInstanceOf(WappError);
+    expect((failure as WappError).code).toBe(SDK_ERROR.VERSION_MISMATCH);
 
     // Later attempts fail fast instead of re-handshaking with a bad host.
     await expect(client.ready()).rejects.toMatchObject({ code: SDK_ERROR.VERSION_MISMATCH });
@@ -138,8 +138,8 @@ describe('createClient.ready()', () => {
 
     await vi.advanceTimersByTimeAsync(1);
     const failure = await readyPromise;
-    expect(failure).toBeInstanceOf(ExtensionError);
-    expect((failure as ExtensionError).code).toBe(BRIDGE_ERROR.TIMEOUT);
+    expect(failure).toBeInstanceOf(WappError);
+    expect((failure as WappError).code).toBe(BRIDGE_ERROR.TIMEOUT);
   });
 });
 
@@ -279,7 +279,7 @@ describe('createClient typed api surface', () => {
 });
 
 describe('createClient error handling', () => {
-  it('turns .err responses into ExtensionError with the wire code', async () => {
+  it('turns .err responses into WappError with the wire code', async () => {
     const { parent, sent } = makeParentWindow();
     const { client } = await handshake(parent);
 
@@ -295,7 +295,7 @@ describe('createClient error handling', () => {
     );
     await expect(denied).rejects.toMatchObject({
       code: BRIDGE_ERROR.PERMISSION,
-      name: 'ExtensionError',
+      name: 'WappError',
     });
   });
 
@@ -313,7 +313,7 @@ describe('createClient error handling', () => {
       payload: {},
     });
     const failure = await pending;
-    expect((failure as ExtensionError).code).toBe(BRIDGE_ERROR.INTERNAL);
+    expect((failure as WappError).code).toBe(BRIDGE_ERROR.INTERNAL);
   });
 
   it('ignores responses from sources other than the parent window', async () => {
@@ -364,9 +364,9 @@ describe('createClient timeouts', () => {
     expect(caught).toBeUndefined();
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(caught).toBeInstanceOf(ExtensionError);
-    expect((caught as ExtensionError).code).toBe(BRIDGE_ERROR.TIMEOUT);
-    expect((caught as ExtensionError).message).toContain('"storage.get"');
+    expect(caught).toBeInstanceOf(WappError);
+    expect((caught as WappError).code).toBe(BRIDGE_ERROR.TIMEOUT);
+    expect((caught as WappError).message).toContain('"storage.get"');
     await pending;
 
     // The entry is gone: a late host answer must not double-settle or throw.
@@ -387,7 +387,7 @@ describe('createClient timeouts', () => {
     });
     await vi.advanceTimersByTimeAsync(50);
     await pending;
-    expect((caught as ExtensionError).code).toBe(BRIDGE_ERROR.TIMEOUT);
+    expect((caught as WappError).code).toBe(BRIDGE_ERROR.TIMEOUT);
   });
 });
 
@@ -400,12 +400,12 @@ describe('createClient.detach()', () => {
     const inflight = client.notify({ title: 'bye' }).catch((error: unknown) => {
       abort = error;
     });
-    expect(sent).toHaveLength(2); // plugin.ready + ui.notify
+    expect(sent).toHaveLength(2); // wapp.ready + ui.notify
 
     client.detach();
     await inflight;
-    expect(abort).toBeInstanceOf(ExtensionError);
-    expect((abort as ExtensionError).code).toBe(SDK_ERROR.DETACHED);
+    expect(abort).toBeInstanceOf(WappError);
+    expect((abort as WappError).code).toBe(SDK_ERROR.DETACHED);
 
     await expect(client.context.getConnections()).rejects.toMatchObject({
       code: SDK_ERROR.DETACHED,

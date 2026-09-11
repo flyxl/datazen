@@ -42,7 +42,7 @@ mkdir com.example.bill-hud && cd com.example.bill-hud
   "name": "Bill HUD",
   "version": "1.0.0",                    // semver
   "apiVersion": 2,                       // 必须 = 2（当前协议版本）
-  "icon": "assets/icon.png",             // 可选：插件方形品牌图标（png|webp|svg）
+  "icon": "assets/icon.png",             // 可选：wapp方形品牌图标（png|webp|svg）
   "description": "…",                    // 可选
   "author": "…",                         // 可选
   "entry": "index.html",                 // 有 contributes.pages 时必需
@@ -80,13 +80,13 @@ zip -rqX ../com.example.bill-hud.zip . -x '.DS_Store'
 
 ### 1.4 安装验证
 
-1. 打开 DataZen → 左侧栏「**插件**」→「**安装插件…**」。
+1. 打开 DataZen → 左侧栏「**工作区应用**」→「**安装应用…**」。
 2. 填入 zip 或目录的路径。
 3. 预览卡片（名称 / 版本 / 权限清单）→「安装」，出现卡片即成功。
 4. 页面：左侧栏「**Workspace**」→ 点你的页面 Tab。
 5. 主题：「设置」→「外观」→ 选它。
 
-> 安装是**拷贝语义**：改了源码要**重新安装**才能生效（同 id 重装会覆盖旧包并备份为 `{id}.old.bak`）。停用 / 卸载在插件管理页操作。
+> 安装是**拷贝语义**：改了源码要**重新安装**才能生效（同 id 重装会覆盖旧包并备份为 `{id}.old.bak`）。停用 / 卸载在应用管理页操作。
 
 ---
 
@@ -194,7 +194,7 @@ dz.detach(); // 可选：拆桥（卸载监听 + 中止挂起请求）
 
 - `ready()` 手动开始，只需成功一次；握手失败/超时 reject。
 - 每个请求 **30s 超时**，宿主**并发上限 20**（超出抛 `E_RATE_LIMIT`）。
-- 所有失败统一抛 **`ExtensionError`**（或 `WappError`），带 `code`：`E_PERMISSION` / `E_NOT_FOUND` / `E_TIMEOUT` / `E_RATE_LIMIT` / `E_PLUGIN_DISABLED` / `E_BAD_REQUEST` / `E_NOT_IMPLEMENTED` / `E_INTERNAL`，以及 SDK 本地的 `EXTENSION_VERSION_MISMATCH` / `EXTENSION_DETACHED`。
+- 所有失败统一抛 **`WappError`**，带 `code`：`E_PERMISSION` / `E_NOT_FOUND` / `E_TIMEOUT` / `E_RATE_LIMIT` / `E_WAPP_DISABLED` / `E_BAD_REQUEST` / `E_NOT_IMPLEMENTED` / `E_INTERNAL`，以及 SDK 本地的 `WAPP_VERSION_MISMATCH` / `WAPP_DETACHED`。
 - **反伪造**：SDK 只信任 `event.source === parent` 的消息，不要信任来自别处的消息。
 
 ### 4.2 不用打包器、纯 JS 也能写（裸桥）
@@ -359,7 +359,7 @@ zip -rqX ../com.example.bill-hud.zip . -x '.DS_Store'
 
 ## 10. 卸载 / 重装行为
 
-- **卸载**：删除该插件整个目录（**含用户存在 `storage.*` 里的数据**），确认弹窗会明说。
+- **卸载**：删除该应用整个目录（**含用户存在 `storage.*` 里的数据**），确认弹窗会明说。
 - **重装**：同 id 安装覆盖旧版，旧目录备份为 `{id}.old.bak`。
 
 ---

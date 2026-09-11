@@ -1,13 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { mergePluginSettings, readBooleanField } from '../../plugin-sdk/settings';
+import { mergeDriverSettings, readBooleanField } from '../driverSettings';
 
-describe('plugin settings helpers', () => {
-  it('merges one plugin bucket without clobbering others', () => {
-    const next = mergePluginSettings(
-      { kiwi: { x: 1 } },
-      'redis',
-      { allowFlush: true },
-    );
+describe('wapp settings helpers', () => {
+  it('merges one wapp bucket without clobbering others', () => {
+    const next = mergeDriverSettings({ kiwi: { x: 1 } }, 'redis', { allowFlush: true });
     expect(next).toEqual({ kiwi: { x: 1 }, redis: { allowFlush: true } });
   });
 

@@ -9,7 +9,7 @@ import { ConnectionAdvancedSettings } from './ConnectionAdvancedSettings';
 import { FileConnectionFields } from './FileConnectionFields';
 import { IndexConnectionFields } from './IndexConnectionFields';
 import { StandardConnectionFields } from './StandardConnectionFields';
-import { getPluginConnectionForm } from '../../extensions/generated';
+import { getDriverConnectionForm } from '../../extensions/generated';
 import type { ConnectionFormState } from './useConnectionForm';
 import type { DatabaseType } from '../../types';
 
@@ -28,7 +28,7 @@ export function ConnectionFormBody({
 }: ConnectionFormBodyProps) {
   const { t } = useI18n();
   const isWindow = variant === 'window';
-  const PluginConnectionForm = getPluginConnectionForm(form.formVariant);
+  const DriverConnectionForm = getDriverConnectionForm(form.formVariant);
 
   return (
     <>
@@ -73,18 +73,18 @@ export function ConnectionFormBody({
           </>
         )}
 
-        {PluginConnectionForm && <PluginConnectionForm form={form} />}
-        {!PluginConnectionForm && form.formVariant === 'file' && (
+        {DriverConnectionForm && <DriverConnectionForm form={form} />}
+        {!DriverConnectionForm && form.formVariant === 'file' && (
           <FileConnectionFields form={form} />
         )}
-        {!PluginConnectionForm && form.formVariant === 'index' && (
+        {!DriverConnectionForm && form.formVariant === 'index' && (
           <StandardConnectionFields
             form={form}
             databaseField={<IndexConnectionFields form={form} />}
             hostPlaceholder={isWindow ? 'prod-db.example.com' : '127.0.0.1'}
           />
         )}
-        {!PluginConnectionForm && form.formVariant === 'standard' && (
+        {!DriverConnectionForm && form.formVariant === 'standard' && (
           <StandardConnectionFields
             form={form}
             hostPlaceholder={isWindow ? 'prod-db.example.com' : '127.0.0.1'}

@@ -6,7 +6,7 @@
  *   src/extensions/generated.ts
  *   src/extensions/generated-locales.ts
  *   src-tauri/src/driver_init.rs
- *   src-tauri/capabilities/default.json (merged from default_host.json + plugins)
+ *   src-tauri/capabilities/default.json (merged from default_host.json + drivers)
  *
  * Used by `pnpm install` (prepare) and `pnpm build` so tsc / rust-analyzer /
  * beforeBuildCommand work on a fresh clone without injecting Cargo.toml.

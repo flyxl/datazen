@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { WorkspaceView } from '../WorkspaceView';
-import type { ExtensionSummary, WappSummary } from '../../../types/wapp';
+import type { WappSummary } from '../../../types/wapp';
 
-const { listenMock, pluginState, tabsState, openMock, closeByPluginMock } = vi.hoisted(() => {
+const { listenMock, wappState, tabsState, openMock, closeByWappMock } = vi.hoisted(() => {
   const pState = {
     _list: [] as Array<Record<string, unknown>>,
     get wapps() {
@@ -12,25 +12,19 @@ const { listenMock, pluginState, tabsState, openMock, closeByPluginMock } = vi.h
     set wapps(v: Array<Record<string, unknown>>) {
       this._list = v;
     },
-    get extensions() {
-      return this._list;
-    },
-    set extensions(v: Array<Record<string, unknown>>) {
-      this._list = v;
-    },
     loaded: true,
     error: null as string | null,
     fetchCount: 0,
   };
   return {
     listenMock: vi.fn(),
-    pluginState: pState,
+    wappState: pState,
     tabsState: {
       tabs: [] as Array<Record<string, unknown>>,
       activeKey: null as string | null,
     },
     openMock: vi.fn(),
-    closeByPluginMock: vi.fn(),
+    closeByWappMock: vi.fn(),
   };
 });
 
@@ -43,57 +37,26 @@ vi.mock('../../../hooks/useI18n', () => ({
 }));
 
 vi.mock('../../../stores/wappStore', () => ({
-  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+  useWappStore: Object.assign((sel: (s: typeof wappState) => unknown) => sel(wappState), {
     getState: () => ({
-      ...pluginState,
-      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
+      ...wappState,
+      byId: (id: string) => (wappState.wapps as Array<{ id: string }>).find((p) => p.id === id),
       fetch: async () => {
-        pluginState.fetchCount += 1;
-      },
-    }),
-  }),
-  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
-    getState: () => ({
-      ...pluginState,
-      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
-      fetch: async () => {
-        pluginState.fetchCount += 1;
-      },
-    }),
-  }),
-}));
-
-vi.mock('../../../stores/extensionStore', () => ({
-  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
-    getState: () => ({
-      ...pluginState,
-      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
-      fetch: async () => {
-        pluginState.fetchCount += 1;
-      },
-    }),
-  }),
-  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
-    getState: () => ({
-      ...pluginState,
-      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
-      fetch: async () => {
-        pluginState.fetchCount += 1;
+        wappState.fetchCount += 1;
       },
     }),
   }),
 }));
 
 vi.mock('../../../stores/workspaceTabsStore', () => ({
-  workspaceTabKey: (pluginId: string, pageId: string) => `${pluginId}:${pageId}`,
+  workspaceTabKey: (wappId: string, pageId: string) => `${wappId}:${pageId}`,
   useWorkspaceTabsStore: Object.assign((sel: (s: typeof tabsState) => unknown) => sel(tabsState), {
     getState: () => ({
       ...tabsState,
       open: openMock,
       activate: vi.fn(),
       close: vi.fn(),
-      closeByWapp: closeByPluginMock,
-      closeByPlugin: closeByPluginMock,
+      closeByWapp: closeByWappMock,
     }),
   }),
 }));
@@ -104,27 +67,9 @@ vi.mock('../WappPageShell', () => ({
       {tab.key}
     </div>
   ),
-  ExtensionPageShell: ({ tab, active }: { tab: { key: string }; active: boolean }) => (
-    <div data-testid="wapp-shell-stub" data-active={String(active)}>
-      {tab.key}
-    </div>
-  ),
 }));
 
-vi.mock('../ExtensionPageShell', () => ({
-  WappPageShell: ({ tab, active }: { tab: { key: string }; active: boolean }) => (
-    <div data-testid="wapp-shell-stub" data-active={String(active)}>
-      {tab.key}
-    </div>
-  ),
-  ExtensionPageShell: ({ tab, active }: { tab: { key: string }; active: boolean }) => (
-    <div data-testid="wapp-shell-stub" data-active={String(active)}>
-      {tab.key}
-    </div>
-  ),
-}));
-
-function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary {
+function makePlugin(overrides: Partial<WappSummary> = {}): WappSummary {
   return {
     id: 'acme.bill-audit',
     name: 'Bill Audit',
@@ -144,38 +89,38 @@ function openPageHandler(): ((event: { payload?: unknown }) => void) | undefined
 }
 
 beforeEach(() => {
-  pluginState.extensions = [];
-  pluginState.loaded = true;
-  pluginState.error = null;
-  pluginState.fetchCount = 0;
+  wappState.wapps = [];
+  wappState.loaded = true;
+  wappState.error = null;
+  wappState.fetchCount = 0;
   tabsState.tabs = [];
   tabsState.activeKey = null;
   listenMock.mockReset().mockResolvedValue(() => {});
   openMock.mockClear();
-  closeByPluginMock.mockClear();
+  closeByWappMock.mockClear();
 });
 
 afterEach(cleanup);
 
 describe('WorkspaceView', () => {
   it('renders navigator plus default cards when no tab is open', () => {
-    pluginState.extensions = [makePlugin()];
-    pluginState.loaded = false;
+    wappState.wapps = [makePlugin()];
+    wappState.loaded = false;
 
     render(<WorkspaceView />);
 
     expect(screen.getByTestId('workspace-navigator')).toBeInTheDocument();
     expect(screen.getByTestId('workspace-default-cards')).toBeInTheDocument();
-    // Triggers the initial plugin list load itself.
-    expect(pluginState.fetchCount).toBe(1);
+    // Triggers the initial wapp list load itself.
+    expect(wappState.fetchCount).toBe(1);
   });
 
   it('renders one preserved shell per open tab instead of the default view', async () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     tabsState.tabs = [
       {
         key: 'acme.bill-audit:quota-check',
-        pluginId: 'acme.bill-audit',
+        wappId: 'acme.bill-audit',
         pageId: 'quota-check',
         title: 'Quota Check',
         version: '1.0.0',
@@ -195,7 +140,7 @@ describe('WorkspaceView', () => {
   });
 
   it('opens and activates a tab for a valid wapps:open-page deep link', async () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
 
     render(<WorkspaceView />);
     await act(async () => {});
@@ -204,12 +149,12 @@ describe('WorkspaceView', () => {
     expect(handler).toBeDefined();
 
     await act(async () => {
-      handler?.({ payload: { pluginId: 'acme.bill-audit', pageId: 'quota-check', params: {} } });
+      handler?.({ payload: { wappId: 'acme.bill-audit', pageId: 'quota-check', params: {} } });
     });
     expect(openMock).toHaveBeenCalledWith(
       expect.objectContaining({
         key: 'acme.bill-audit:quota-check',
-        pluginId: 'acme.bill-audit',
+        wappId: 'acme.bill-audit',
         pageId: 'quota-check',
         title: 'Quota Check',
         version: '1.0.0',
@@ -217,18 +162,18 @@ describe('WorkspaceView', () => {
     );
   });
 
-  it('ignores invalid deep links (unknown/disabled plugin, missing or unknown page)', async () => {
-    pluginState.extensions = [makePlugin(), makePlugin({ id: 'acme.off', enabled: false })];
+  it('ignores invalid deep links (unknown/disabled wapp, missing or unknown page)', async () => {
+    wappState.wapps = [makePlugin(), makePlugin({ id: 'acme.off', enabled: false })];
 
     render(<WorkspaceView />);
     await act(async () => {});
 
     const handler = openPageHandler();
     await act(async () => {
-      handler?.({ payload: { pluginId: 'ghost', pageId: 'main' } });
-      handler?.({ payload: { pluginId: 'acme.off', pageId: 'main' } });
-      handler?.({ payload: { pluginId: 'acme.bill-audit' } });
-      handler?.({ payload: { pluginId: 'acme.bill-audit', pageId: 'nope' } });
+      handler?.({ payload: { wappId: 'ghost', pageId: 'main' } });
+      handler?.({ payload: { wappId: 'acme.off', pageId: 'main' } });
+      handler?.({ payload: { wappId: 'acme.bill-audit' } });
+      handler?.({ payload: { wappId: 'acme.bill-audit', pageId: 'nope' } });
       handler?.({});
     });
 
@@ -239,72 +184,72 @@ describe('WorkspaceView', () => {
     tabsState.tabs = [
       {
         key: 'acme.bill-audit:quota-check',
-        pluginId: 'acme.bill-audit',
+        wappId: 'acme.bill-audit',
         pageId: 'quota-check',
         title: 'Quota Check',
         version: '1.0.0',
       },
       {
         key: 'acme.keep:main',
-        pluginId: 'acme.keep',
+        wappId: 'acme.keep',
         pageId: 'main',
         title: 'Keep',
         version: '1.0.0',
       },
     ];
-    pluginState.extensions = [makePlugin(), makePlugin({ id: 'acme.keep', name: 'Keep' })];
+    wappState.wapps = [makePlugin(), makePlugin({ id: 'acme.keep', name: 'Keep' })];
 
     const view = render(<WorkspaceView />);
     await act(async () => {});
-    expect(closeByPluginMock).not.toHaveBeenCalled();
+    expect(closeByWappMock).not.toHaveBeenCalled();
 
     // Another window disables `acme.bill-audit`; the refreshed list arrives.
-    pluginState.extensions = [makePlugin({ enabled: false }), makePlugin({ id: 'acme.keep' })];
+    wappState.wapps = [makePlugin({ enabled: false }), makePlugin({ id: 'acme.keep' })];
     view.rerender(<WorkspaceView />);
     await act(async () => {});
-    expect(closeByPluginMock).toHaveBeenCalledTimes(1);
-    expect(closeByPluginMock).toHaveBeenCalledWith('acme.bill-audit');
+    expect(closeByWappMock).toHaveBeenCalledTimes(1);
+    expect(closeByWappMock).toHaveBeenCalledWith('acme.bill-audit');
 
-    // A later refresh where the plugin is gone entirely also closes its tabs.
-    closeByPluginMock.mockClear();
-    pluginState.extensions = [makePlugin({ id: 'acme.keep' })];
+    // A later refresh where the wapp is gone entirely also closes its tabs.
+    closeByWappMock.mockClear();
+    wappState.wapps = [makePlugin({ id: 'acme.keep' })];
     view.rerender(<WorkspaceView />);
     await act(async () => {});
-    expect(closeByPluginMock).toHaveBeenCalledWith('acme.bill-audit');
+    expect(closeByWappMock).toHaveBeenCalledWith('acme.bill-audit');
 
     // Enabled plugins are never touched.
-    expect(closeByPluginMock).not.toHaveBeenCalledWith('acme.keep');
+    expect(closeByWappMock).not.toHaveBeenCalledWith('acme.keep');
   });
 
-  it('does not diff-close tabs before the plugin store has loaded', async () => {
+  it('does not diff-close tabs before the wapp store has loaded', async () => {
     // Restored tabs exist while the initial fetch is still in flight; the
     // empty placeholder list must not close them.
     tabsState.tabs = [
       {
         key: 'acme.bill-audit:quota-check',
-        pluginId: 'acme.bill-audit',
+        wappId: 'acme.bill-audit',
         pageId: 'quota-check',
         title: 'Quota Check',
         version: '1.0.0',
       },
     ];
-    pluginState.extensions = [];
-    pluginState.loaded = false;
+    wappState.wapps = [];
+    wappState.loaded = false;
 
     const view = render(<WorkspaceView />);
     await act(async () => {});
-    expect(closeByPluginMock).not.toHaveBeenCalled();
+    expect(closeByWappMock).not.toHaveBeenCalled();
 
-    // Store finishes loading with the plugin still enabled → tab survives.
-    pluginState.loaded = true;
-    pluginState.extensions = [makePlugin()];
+    // Store finishes loading with the wapp still enabled → tab survives.
+    wappState.loaded = true;
+    wappState.wapps = [makePlugin()];
     view.rerender(<WorkspaceView />);
     await act(async () => {});
-    expect(closeByPluginMock).not.toHaveBeenCalled();
+    expect(closeByWappMock).not.toHaveBeenCalled();
   });
 
   it('renders a resizable sidebar handle for the navigator', () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     render(<WorkspaceView />);
 
     const handle = screen.getByTestId('workspace-sidebar-resize');

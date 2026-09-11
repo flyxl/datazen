@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { WorkspaceView } from '../WorkspaceView';
 import { useWorkspaceTabsStore } from '../../../stores/workspaceTabsStore';
-import type { ExtensionSummary, WappSummary } from '../../../types/wapp';
+import type { WappSummary } from '../../../types/wapp';
 
-const { listenMock, pluginState, getManifestMock } = vi.hoisted(() => {
+const { listenMock, wappState, getManifestMock } = vi.hoisted(() => {
   const pState = {
     _list: [] as Array<Record<string, unknown>>,
     get wapps() {
@@ -13,18 +13,12 @@ const { listenMock, pluginState, getManifestMock } = vi.hoisted(() => {
     set wapps(v: Array<Record<string, unknown>>) {
       this._list = v;
     },
-    get extensions() {
-      return this._list;
-    },
-    set extensions(v: Array<Record<string, unknown>>) {
-      this._list = v;
-    },
     loaded: true,
     error: null as string | null,
   };
   return {
     listenMock: vi.fn(),
-    pluginState: pState,
+    wappState: pState,
     getManifestMock: vi.fn(),
   };
 });
@@ -39,58 +33,17 @@ vi.mock('../../../hooks/useI18n', () => ({
 
 vi.mock('../../../commands/wapps', () => ({
   WAPPS_CHANGED_EVENT: 'wapps:changed',
-  EXTENSIONS_CHANGED_EVENT: 'wapps:changed',
   wappCommands: {
     getWappManifest: (...args: unknown[]) => getManifestMock(...args),
-    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
-  },
-  extensionCommands: {
-    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
-  },
-}));
-
-vi.mock('../../../commands/extensions', () => ({
-  WAPPS_CHANGED_EVENT: 'wapps:changed',
-  EXTENSIONS_CHANGED_EVENT: 'wapps:changed',
-  wappCommands: {
-    getWappManifest: (...args: unknown[]) => getManifestMock(...args),
-    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
-  },
-  extensionCommands: {
-    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
   },
 }));
 
 vi.mock('../../../stores/wappStore', () => ({
-  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+  useWappStore: Object.assign((sel: (s: typeof wappState) => unknown) => sel(wappState), {
     getState: () => ({
-      ...pluginState,
+      ...wappState,
       fetch: vi.fn().mockResolvedValue(undefined),
-      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
-    }),
-  }),
-  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
-    getState: () => ({
-      ...pluginState,
-      fetch: vi.fn().mockResolvedValue(undefined),
-      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
-    }),
-  }),
-}));
-
-vi.mock('../../../stores/extensionStore', () => ({
-  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
-    getState: () => ({
-      ...pluginState,
-      fetch: vi.fn().mockResolvedValue(undefined),
-      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
-    }),
-  }),
-  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
-    getState: () => ({
-      ...pluginState,
-      fetch: vi.fn().mockResolvedValue(undefined),
-      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
+      byId: (id: string) => (wappState.wapps as Array<{ id: string }>).find((p) => p.id === id),
     }),
   }),
 }));
@@ -98,7 +51,7 @@ vi.mock('../../../stores/extensionStore', () => ({
 // NOTE: `workspaceTabsStore` is intentionally NOT mocked — the real store
 // drives the TabBar ⇆ DefaultCards mutual exclusion and shell lifecycle.
 
-function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary {
+function makePlugin(overrides: Partial<WappSummary> = {}): WappSummary {
   return {
     id: 'acme.bill-audit',
     name: 'Bill Audit',
@@ -119,9 +72,9 @@ function openPageHandler(): ((event: { payload?: unknown }) => void) | undefined
 
 beforeEach(() => {
   useWorkspaceTabsStore.setState({ tabs: [], activeKey: null });
-  pluginState.extensions = [];
-  pluginState.loaded = true;
-  pluginState.error = null;
+  wappState.wapps = [];
+  wappState.loaded = true;
+  wappState.error = null;
   listenMock.mockReset().mockResolvedValue(() => {});
   getManifestMock.mockReset().mockResolvedValue({
     id: 'acme.bill-audit',
@@ -134,7 +87,7 @@ afterEach(cleanup);
 
 describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', () => {
   it('shows default cards only while no tab is open', async () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
 
     render(<WorkspaceView />);
     await act(async () => {});
@@ -145,7 +98,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
   });
 
   it('opens a tab from the navigator click: tab bar appears, cards disappear, sandboxed iframe mounts', async () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
 
     render(<WorkspaceView />);
     await act(async () => {});
@@ -163,7 +116,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
   });
 
   it('opens a tab from a default card click as well', async () => {
-    pluginState.extensions = [
+    wappState.wapps = [
       makePlugin({ id: 'acme.afi', name: 'AFI', pages: [{ id: 'pricing', title: 'Pricing' }] }),
     ];
     getManifestMock.mockResolvedValue({ id: 'acme.afi', version: '1.0.0', entry: 'ui.html' });
@@ -180,7 +133,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
   });
 
   it('closing the last tab restores the default card view and unmounts the iframe', async () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
 
     render(<WorkspaceView />);
     await act(async () => {});
@@ -198,7 +151,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
   });
 
   it('keeps inactive shells mounted-but-hidden while another tab is active', async () => {
-    pluginState.extensions = [
+    wappState.wapps = [
       makePlugin(),
       makePlugin({ id: 'acme.afi', name: 'AFI', pages: [{ id: 'pricing', title: 'Pricing' }] }),
     ];
@@ -223,7 +176,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
   });
 
   it('ignores malformed wapps:open-page payloads without opening any tab', async () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
 
     render(<WorkspaceView />);
     await act(async () => {});
@@ -233,8 +186,8 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
       handler?.({ payload: null });
       handler?.({ payload: undefined });
       handler?.({ payload: {} });
-      handler?.({ payload: { pluginId: '', pageId: '' } });
-      handler?.({ payload: { pluginId: 'acme.bill-audit' } });
+      handler?.({ payload: { wappId: '', pageId: '' } });
+      handler?.({ payload: { wappId: 'acme.bill-audit' } });
       handler?.({});
     });
 
@@ -242,17 +195,17 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
     expect(screen.getByTestId('workspace-default-cards')).toBeInTheDocument();
   });
 
-  it('closes an open plugin tab when an external refresh disables the plugin (BUG-F4-01)', async () => {
-    pluginState.extensions = [makePlugin()];
+  it('closes an open wapp tab when an external refresh disables the wapp (BUG-F4-01)', async () => {
+    wappState.wapps = [makePlugin()];
     const view = render(<WorkspaceView />);
     await act(async () => {});
 
     fireEvent.click(screen.getByTestId('workspace-nav-item'));
     expect(await screen.findByTestId('workspace-tabbar')).toBeInTheDocument();
 
-    // Another window disables the plugin; the refreshed plugin list arrives
+    // Another window disables the wapp; the refreshed wapp list arrives
     // through the shared store while this window never touched the toggle.
-    pluginState.extensions = [makePlugin({ enabled: false })];
+    wappState.wapps = [makePlugin({ enabled: false })];
     await act(async () => {
       view.rerender(<WorkspaceView />);
     });
@@ -263,7 +216,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
     expect(screen.queryByTestId('wapp-iframe')).not.toBeInTheDocument();
 
     // Re-enabling restores the navigator entry so the page can reopen.
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     await act(async () => {
       view.rerender(<WorkspaceView />);
     });

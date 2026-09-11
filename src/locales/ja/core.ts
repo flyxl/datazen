@@ -169,8 +169,7 @@ const pack = {
   'extensions.page.themeBadge': 'テーマ',
   'extensions.page.themeHint': 'テーマは 設定 → 外観 で切り替えます。',
   'extensions.page.apiMismatch': 'API バージョンがサポートされていません',
-  'extensions.page.apiMismatchHint':
-    'プラグイン API v{plugin} はホスト API v{host} と一致しません。',
+  'extensions.page.apiMismatchHint': 'プラグイン API v{wapp} はホスト API v{host} と一致しません。',
   'extensions.page.emptyTitle': 'プラグインが見つかりません',
   'extensions.page.emptyHint':
     'プラグインパッケージ (.zip) をインストールして、DataZen に新しいワークスペース ページやテーマを追加できます。',

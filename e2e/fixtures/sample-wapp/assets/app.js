@@ -1,8 +1,8 @@
 /*
- * Sample plugin bridge client (F9 E2E fixture).
+ * Sample wapp bridge client (F9 E2E fixture).
  *
  * Zero-build vanilla JS mirroring the @datazen/extension-sdk bridge semantics:
- * `plugin.ready` -> `host.ready` handshake, then reqId-correlated RPC against
+ * `wapp.ready` -> `host.ready` handshake, then reqId-correlated RPC against
  * the host postMessage router (src/lib/extensionBridge.ts). Kept dependency-free
  * on purpose so the fixture is a plain static directory.
  */
@@ -10,7 +10,7 @@
   'use strict';
 
   var API_VERSION = 2;
-  var CHANNEL = 'datazen-extension';
+  var CHANNEL = 'datazen-wapp';
   var HANDSHAKE_RETRIES = 10;
   var HANDSHAKE_RETRY_MS = 500;
   var REQUEST_TIMEOUT_MS = 15000;
@@ -18,7 +18,7 @@
   var STORAGE_VALUE = 'ok';
 
   // BUG-F9-02 workaround: safaridriver cannot automate elements inside the
-  // opaque-origin plugin iframe, so probe outcomes are persisted through the
+  // opaque-origin wapp iframe, so probe outcomes are persisted through the
   // bridge storage.set RPC and asserted from disk by wapps.spec.ts.
   var PROBE_PREFIX = 'probe.';
 
@@ -141,7 +141,7 @@
   }
 
   // Journey 2 / M2 acceptance: one real command.invoke round-trip against the
-  // first saved connection. `ok:<rows>` proves the full plugin → bridge →
+  // first saved connection. `ok:<rows>` proves the full wapp → bridge →
   // execute_driver_command path; `err:…` keeps the failure observable (the
   // spec treats unreachable-DB outcomes as environment-gated).
   function runQueryProbe(conns) {
@@ -208,9 +208,9 @@
       });
   }
 
-  function sendPluginReady() {
+  function sendWappReady() {
     parentWindow.postMessage(
-      { ch: CHANNEL, type: 'plugin.ready', target: 'host', payload: { apiVersion: API_VERSION } },
+      { ch: CHANNEL, type: 'wapp.ready', target: 'host', payload: { apiVersion: API_VERSION } },
       '*',
     );
   }
@@ -230,7 +230,7 @@
     }
     stopHandshakeRetry();
     handshakeTimer = setTimeout(function () {
-      sendPluginReady();
+      sendWappReady();
       scheduleHandshakeRetry(attempt + 1);
     }, HANDSHAKE_RETRY_MS);
   }
@@ -248,7 +248,7 @@
 
   function boot() {
     set('bridge-status', 'connecting');
-    sendPluginReady();
+    sendWappReady();
     scheduleHandshakeRetry(1);
   }
 

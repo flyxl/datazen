@@ -24,7 +24,7 @@ src-tauri/src/ai/                   # 内置 AI Provider 实现
 ├── deepseek.rs                     # DeepSeek Provider (Responses API, reasoning 支持)
 ├── custom.rs                       # 自定义 Provider (三种协议: Chat/Responses/Anthropic 兼容,
 │                                   #   远程模型列表获取)
-├── registry.rs                     # AiProviderRegistry (动态注册/获取, inventory 插件发现)
+├── registry.rs                     # AiProviderRegistry (动态注册/获取, inventory 发现)
 ├── context.rs                      # SchemaContextBuilder (DDL 上下文, token 预算控制)
 ├── prompt_resolver.rs              # PromptResolver (资源文件加载 + 用户/驱动覆盖 + 多语言 fallback)
 └── protocol/                       # 共享 HTTP 协议实现

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
  * Pack every installable workspace app package under packages/wapps/ into a
- * zip for the plugin-install dialog.
+ * zip for the wapp-install dialog.
  *
  * Source layout:   packages/wapps/<publisher>.<name>/
  * Output layout:   packages/wapps/dist/<publisher>.<name>.zip   (gitignored)
  *
  * Each package must carry a manifest.json whose `id` equals the directory name
- * (the plugin system enforces this on install). Packaging is copy-semantics:
+ * (the wapp system enforces this on install). Packaging is copy-semantics:
  * the whole package dir is zipped, with `.DS_Store` excluded.
  *
  * Usage:
@@ -67,7 +67,7 @@ if (all.length === 0) {
   process.exit(1);
 }
 
-// Validate manifest `id` matches directory name (plugin host contract).
+// Validate manifest `id` matches directory name (wapp host contract).
 let invalid = false;
 for (const pkgDir of all) {
   const id = readId(pkgDir);

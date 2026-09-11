@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { WorkspaceNavigator } from '../WorkspaceNavigator';
-import type { ExtensionSummary } from '../../../types/extension';
+import type { WappSummary } from '../../../types/wapp';
 
-const { pluginState, tabsState, openMock } = vi.hoisted(() => {
+const { wappState, tabsState, openMock } = vi.hoisted(() => {
   const pState = {
     _list: [] as Array<Record<string, unknown>>,
     get wapps() {
@@ -12,17 +12,11 @@ const { pluginState, tabsState, openMock } = vi.hoisted(() => {
     set wapps(v: Array<Record<string, unknown>>) {
       this._list = v;
     },
-    get extensions() {
-      return this._list;
-    },
-    set extensions(v: Array<Record<string, unknown>>) {
-      this._list = v;
-    },
     loaded: true,
     error: null as string | null,
   };
   return {
-    pluginState: pState,
+    wappState: pState,
     tabsState: {
       activeKey: null as string | null,
     },
@@ -35,47 +29,23 @@ vi.mock('../../../hooks/useI18n', () => ({
 }));
 
 vi.mock('../../../stores/wappStore', () => ({
-  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
+  useWappStore: Object.assign((sel: (s: typeof wappState) => unknown) => sel(wappState), {
     getState: () => ({
-      ...pluginState,
-      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
-      fetch: vi.fn(),
-    }),
-  }),
-  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
-    getState: () => ({
-      ...pluginState,
-      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
-      fetch: vi.fn(),
-    }),
-  }),
-}));
-
-vi.mock('../../../stores/extensionStore', () => ({
-  useWappStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
-    getState: () => ({
-      ...pluginState,
-      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
-      fetch: vi.fn(),
-    }),
-  }),
-  useExtensionStore: Object.assign((sel: (s: typeof pluginState) => unknown) => sel(pluginState), {
-    getState: () => ({
-      ...pluginState,
-      byId: (id: string) => (pluginState.wapps as Array<{ id: string }>).find((p) => p.id === id),
+      ...wappState,
+      byId: (id: string) => (wappState.wapps as Array<{ id: string }>).find((p) => p.id === id),
       fetch: vi.fn(),
     }),
   }),
 }));
 
 vi.mock('../../../stores/workspaceTabsStore', () => ({
-  workspaceTabKey: (pluginId: string, pageId: string) => `${pluginId}:${pageId}`,
+  workspaceTabKey: (wappId: string, pageId: string) => `${wappId}:${pageId}`,
   useWorkspaceTabsStore: Object.assign((sel: (s: typeof tabsState) => unknown) => sel(tabsState), {
     getState: () => ({ ...tabsState, open: openMock }),
   }),
 }));
 
-function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary {
+function makePlugin(overrides: Partial<WappSummary> = {}): WappSummary {
   return {
     id: 'acme.bill-audit',
     name: 'Bill Audit',
@@ -92,8 +62,8 @@ function makePlugin(overrides: Partial<ExtensionSummary> = {}): ExtensionSummary
 }
 
 beforeEach(() => {
-  pluginState.extensions = [];
-  pluginState.error = null;
+  wappState.wapps = [];
+  wappState.error = null;
   tabsState.activeKey = null;
   openMock.mockClear();
 });
@@ -101,8 +71,8 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('WorkspaceNavigator', () => {
-  it('renders one item per enabled-plugin page with title and description', () => {
-    pluginState.extensions = [
+  it('renders one item per enabled-wapp page with title and description', () => {
+    wappState.wapps = [
       makePlugin(),
       makePlugin({
         id: 'acme.afi',
@@ -134,7 +104,7 @@ describe('WorkspaceNavigator', () => {
   });
 
   it('highlights the item matching the active tab key', () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     tabsState.activeKey = 'acme.bill-audit:quota-check';
 
     render(<WorkspaceNavigator />);
@@ -144,7 +114,7 @@ describe('WorkspaceNavigator', () => {
   });
 
   it('opens the corresponding tab on click', () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
 
     render(<WorkspaceNavigator />);
     fireEvent.click(screen.getByTestId('workspace-nav-item'));
@@ -152,7 +122,6 @@ describe('WorkspaceNavigator', () => {
     expect(openMock).toHaveBeenCalledWith({
       key: 'acme.bill-audit:quota-check',
       wappId: 'acme.bill-audit',
-      pluginId: 'acme.bill-audit',
       pageId: 'quota-check',
       title: 'Quota Check',
       icon: undefined,
@@ -170,7 +139,7 @@ describe('WorkspaceNavigator', () => {
   });
 
   it('cleans up after unmount', () => {
-    pluginState.extensions = [makePlugin()];
+    wappState.wapps = [makePlugin()];
     const { unmount } = render(<WorkspaceNavigator />);
     unmount();
     cleanup();

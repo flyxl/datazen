@@ -1,4 +1,4 @@
-# CI：私有插件仓库（Deploy Key + Environment）
+# CI：私有驱动仓库（Deploy Key + Environment）
 
 **Akulaku** 等含 git 驱动的发布变体会通过 `resolve-drivers.mjs` clone `datazen-driver-kiwi` / `datazen-driver-superset`。仓库为 private 时，Release workflow 使用 **只读 Deploy Key（SSH）** 拉取；凭据放在 GitHub Environment **`release`**，而不是仓库级 Secrets。
 

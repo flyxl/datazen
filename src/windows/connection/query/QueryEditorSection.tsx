@@ -186,8 +186,8 @@ export function QueryEditorSection({
   const enhanced = useExtension(sqlEditorEnhancedEP);
   const editorExtensionSettings = useSettingsStore(
     (s) =>
-      (s.settings.pluginSettings?.['sql-editor-enhanced'] ??
-        s.settings.pluginSettings?.['sql-editor-pro']) as Record<string, unknown> | undefined,
+      (s.settings.driverSettings?.['sql-editor-enhanced'] ??
+        s.settings.driverSettings?.['sql-editor-pro']) as Record<string, unknown> | undefined,
   );
   const bindParamPanelEnabled = editorExtensionSettings?.bindParamPanel !== false;
   const [isRefreshingCompletion, setIsRefreshingCompletion] = useState(false);

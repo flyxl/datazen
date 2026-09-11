@@ -168,7 +168,7 @@ const pack = {
   'extensions.page.themeHint': '설정 → 모양에서 테마를 전환하세요.',
   'extensions.page.apiMismatch': 'API 버전 미지원',
   'extensions.page.apiMismatchHint':
-    'Plugin API v{plugin}이(가) 호스트 API v{host}와 일치하지 않습니다.',
+    'Plugin API v{wapp}이(가) 호스트 API v{host}와 일치하지 않습니다.',
   'extensions.page.emptyTitle': 'Plugin을 찾을 수 없습니다',
   'extensions.page.emptyHint':
     'Plugin 패키지(.zip)를 설치하여 DataZen에 새 Workspace 페이지나 테마를 추가하세요.',

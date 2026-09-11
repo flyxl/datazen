@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import {
-  WappPageShell,
-  ExtensionPageShell,
-  clearWappEntryCache,
-  clearExtensionEntryCache,
-} from '../WappPageShell';
+import { WappPageShell, clearWappEntryCache } from '../WappPageShell';
 import type { WorkspaceTab } from '../../../stores/workspaceTabsStore';
 
 const { getManifestMock, summaryHolder } = vi.hoisted(() => ({
@@ -20,36 +15,10 @@ vi.mock('../../../hooks/useI18n', () => ({
 vi.mock('../../../commands/wapps', () => ({
   wappCommands: {
     getWappManifest: (...args: unknown[]) => getManifestMock(...args),
-    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
-  },
-  extensionCommands: {
-    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
-  },
-}));
-
-vi.mock('../../../commands/extensions', () => ({
-  wappCommands: {
-    getWappManifest: (...args: unknown[]) => getManifestMock(...args),
-    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
-  },
-  extensionCommands: {
-    getExtensionManifest: (...args: unknown[]) => getManifestMock(...args),
   },
 }));
 
 vi.mock('../../../stores/wappStore', () => ({
-  useWappStore: {
-    getState: () => ({ byId: () => summaryHolder.current }),
-  },
-  useExtensionStore: {
-    getState: () => ({ byId: () => summaryHolder.current }),
-  },
-}));
-
-vi.mock('../../../stores/extensionStore', () => ({
-  useExtensionStore: {
-    getState: () => ({ byId: () => summaryHolder.current }),
-  },
   useWappStore: {
     getState: () => ({ byId: () => summaryHolder.current }),
   },
@@ -58,7 +27,7 @@ vi.mock('../../../stores/extensionStore', () => ({
 function makeTab(overrides: Partial<WorkspaceTab> = {}): WorkspaceTab {
   return {
     key: 'acme.bill-audit:quota-check',
-    pluginId: 'acme.bill-audit',
+    wappId: 'acme.bill-audit',
     pageId: 'quota-check',
     title: 'Quota Check',
     version: '1.0.0',
@@ -67,13 +36,13 @@ function makeTab(overrides: Partial<WorkspaceTab> = {}): WorkspaceTab {
 }
 
 async function renderActive(tab: WorkspaceTab) {
-  const utils = render(<ExtensionPageShell tab={tab} active />);
+  const utils = render(<WappPageShell tab={tab} active />);
   await act(async () => {});
   return utils;
 }
 
 beforeEach(() => {
-  clearExtensionEntryCache();
+  clearWappEntryCache();
   getManifestMock.mockReset();
   summaryHolder.current = undefined;
 });
@@ -83,16 +52,16 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('ExtensionPageShell', () => {
+describe('WappPageShell', () => {
   it('lazily mounts the iframe only after first activation', async () => {
     getManifestMock.mockResolvedValue({ id: 'x', version: '1.0.0', entry: 'index.html' });
-    const utils = render(<ExtensionPageShell tab={makeTab()} active={false} />);
+    const utils = render(<WappPageShell tab={makeTab()} active={false} />);
     expect(screen.queryByTestId('wapp-iframe')).not.toBeInTheDocument();
     // Shell itself is hidden while its tab is inactive.
     expect(screen.getByTestId('wapp-page-shell').className).toMatch(/hidden/);
 
     await act(async () => {
-      utils.rerender(<ExtensionPageShell tab={makeTab()} active />);
+      utils.rerender(<WappPageShell tab={makeTab()} active />);
     });
     expect(await screen.findByTestId('wapp-iframe')).toBeInTheDocument();
   });
@@ -114,7 +83,7 @@ describe('ExtensionPageShell', () => {
     expect(getManifestMock).toHaveBeenCalledTimes(1);
     expect(getManifestMock).toHaveBeenCalledWith('acme.bill-audit');
 
-    // Second instance of the same plugin/version resolves from cache.
+    // Second instance of the same wapp/version resolves from cache.
     cleanup();
     await renderActive(makeTab({ key: 'acme.bill-audit:other' }));
     expect(screen.getByTestId('wapp-iframe')).toBeInTheDocument();
@@ -141,7 +110,7 @@ describe('ExtensionPageShell', () => {
     getManifestMock.mockResolvedValue({ id: 'x', version: '1.0.0', entry: 'index.html' });
     const utils = await renderActive(makeTab());
 
-    utils.rerender(<ExtensionPageShell tab={makeTab()} active={false} />);
+    utils.rerender(<WappPageShell tab={makeTab()} active={false} />);
 
     const shell = screen.getByTestId('wapp-page-shell');
     expect(shell.className).toMatch(/hidden/);
@@ -154,7 +123,7 @@ describe('ExtensionPageShell', () => {
     vi.useFakeTimers();
     getManifestMock.mockResolvedValue({ id: 'x', version: '1.0.0', entry: 'index.html' });
 
-    render(<ExtensionPageShell tab={makeTab()} active />);
+    render(<WappPageShell tab={makeTab()} active />);
     await act(async () => {});
     expect(screen.getByTestId('wapp-iframe')).toBeInTheDocument();
     expect(screen.queryByTestId('wapp-shell-reload')).not.toBeInTheDocument();

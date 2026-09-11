@@ -6,7 +6,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { COLOR_KEYS, Label } from './shared';
 import { SshTunnelFields } from './SshTunnelFields';
-import { getPluginConnectionAdvanced } from '../../extensions/generated';
+import { getDriverConnectionAdvanced } from '../../extensions/generated';
 import type { ConnectionFormState } from './useConnectionForm';
 import type { SslMode } from '../../types';
 
@@ -23,7 +23,7 @@ export function ConnectionAdvancedSettings({
 }: ConnectionAdvancedSettingsProps) {
   const { t } = useI18n();
   const isWindow = variant === 'window';
-  const PluginAdvanced = getPluginConnectionAdvanced(form.formVariant);
+  const DriverAdvanced = getDriverConnectionAdvanced(form.formVariant);
   const [showSsh, setShowSsh] = useState(form.sshEnabled);
 
   useEffect(() => {
@@ -56,8 +56,8 @@ export function ConnectionAdvancedSettings({
             isWindow ? 'bg-surface' : 'bg-surface-alt',
           )}
         >
-          {PluginAdvanced ? (
-            <PluginAdvanced form={form} />
+          {DriverAdvanced ? (
+            <DriverAdvanced form={form} />
           ) : form.supportsSSL ? (
             <div data-testid="new-conn-ssl-mode">
               <Label>{t('newConn.sslMode')}</Label>

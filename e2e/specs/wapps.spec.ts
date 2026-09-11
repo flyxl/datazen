@@ -8,7 +8,7 @@
  *   J1 install via management page dialog (typed package path → review → confirm)
  *   J2 open tab from Workspace navigator + bridge round-trip. The fixture
  *      persists probe outcomes via the bridge storage.set RPC and the spec
- *      asserts them from `{appData}/plugins/datazen.sample/.storage.json`
+ *      asserts them from `{appData}/wapps/datazen.sample/.storage.json`
  *      (context.getConnections, storage.set/get, dark state). Environment-
  *      gated: under macOS WebKit automation `datazen://` subframe navigation
  *      is refused so the fixture JS never runs (BUG-F9-02/BUG-F9-04); in that
@@ -36,9 +36,9 @@ import {
   resetDialogQueue,
 } from '../helpers.js';
 
-const PLUGIN_ID = 'datazen.sample';
-const PAGE_KEY = `${PLUGIN_ID}:hello`;
-const EXPECTED_PACK_ID = `plugin:${PLUGIN_ID}:sample-light`;
+const WAPP_ID = 'datazen.sample';
+const PAGE_KEY = `${WAPP_ID}:hello`;
+const EXPECTED_PACK_ID = `wapp:${WAPP_ID}:sample-light`;
 
 const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 /** Absolute path typed into the install dialog's PathInput. */
@@ -50,15 +50,15 @@ const STORAGE_VALUE = 'ok';
 
 // Tauri uses WKWebView on macOS. Its automation context refuses the
 // `datazen://` subframe navigation, so the fixture cannot execute even though
-// the host shell and iframe are mounted. Set E2E_PLUGIN_BRIDGE=1 only when a
+// the host shell and iframe are mounted. Set E2E_WAPP_BRIDGE=1 only when a
 // runner explicitly provides a WebKit setup where this restriction is absent.
 const MACOS_WEBKIT_BRIDGE_BLOCKED =
-  process.platform === 'darwin' && process.env.E2E_PLUGIN_BRIDGE !== '1';
+  process.platform === 'darwin' && process.env.E2E_WAPP_BRIDGE !== '1';
 
 /**
  * Host data dir = Tauri `app_data_dir()`. Under `e2e/run.mjs` this is the
  * isolated `e2e/.app-data` tree (via `DATAZEN_DATA_DIR` on app + WDIO).
- * Plugin storage persists at `{data_dir}/plugins/{id}/.storage.json`.
+ * Wapp storage persists at `{data_dir}/wapps/{id}/.storage.json`.
  */
 function resolveAppDataDir(): string {
   if (process.env.DATAZEN_DATA_DIR) {
@@ -76,15 +76,15 @@ function resolveAppDataDir(): string {
       );
 }
 
-const PLUGIN_STORAGE_FILE = path.join(resolveAppDataDir(), 'plugins', PLUGIN_ID, '.storage.json');
+const WAPP_STORAGE_FILE = path.join(resolveAppDataDir(), 'wapps', WAPP_ID, '.storage.json');
 
-interface PluginStorageFile {
+interface WappStorageFile {
   [key: string]: unknown;
 }
 
-async function readPluginStorage(): Promise<PluginStorageFile | null> {
+async function readWappStorage(): Promise<WappStorageFile | null> {
   try {
-    return JSON.parse(await readFile(PLUGIN_STORAGE_FILE, 'utf-8')) as PluginStorageFile;
+    return JSON.parse(await readFile(WAPP_STORAGE_FILE, 'utf-8')) as WappStorageFile;
   } catch {
     return null; // not written yet / mid-atomic-rename
   }
@@ -93,15 +93,15 @@ async function readPluginStorage(): Promise<PluginStorageFile | null> {
 /**
  * Open the sample tab (top-document assertions only) and await the bridge
  * outcome. Returns true when the fixture's probe.* values landed in the
- * plugin's `.storage.json` (bridge handshake → permission → IPC → persistence
+ * wapp's `.storage.json` (bridge handshake → permission → IPC → persistence
  * all worked), false when the shell watchdog fired instead — i.e. the iframe
  * content never loaded (BUG-F9-02/BUG-F9-04: under macOS WebKit automation,
  * `datazen://` subframe navigation is refused, so the fixture JS never runs;
  * see docs/development/e2e-coverage.md 例外登记).
  */
-async function ensureSamplePluginInstalled() {
-  const plugins = await invokeBackend<PluginSummaryRow[]>('list_extensions');
-  if (plugins.some((p) => p.id === PLUGIN_ID)) return;
+async function ensureSampleWappInstalled() {
+  const wapps = await invokeBackend<WappSummaryRow[]>('list_wapps');
+  if (wapps.some((p) => p.id === WAPP_ID)) return;
   await invokeBackend('install_extension', { pickToken: null, overridePath: FIXTURE_DIR });
   await browser.pause(600);
 }
@@ -139,7 +139,7 @@ async function openSampleTabAndAwaitBridge(): Promise<boolean> {
       ) {
         return true; // watchdog fired: content never loaded (degraded env)
       }
-      const storage = await readPluginStorage();
+      const storage = await readWappStorage();
       if (
         typeof storage?.['probe.bridge'] !== 'undefined' &&
         typeof storage?.[STORAGE_KEY] !== 'undefined'
@@ -152,12 +152,12 @@ async function openSampleTabAndAwaitBridge(): Promise<boolean> {
     {
       timeout: 25000,
       interval: 500,
-      timeoutMsg: `plugin bridge neither persisted probes to ${PLUGIN_STORAGE_FILE} nor tripped the shell watchdog`,
+      timeoutMsg: `wapp bridge neither persisted probes to ${WAPP_STORAGE_FILE} nor tripped the shell watchdog`,
     },
   );
   if (!probesLanded) {
     console.warn(
-      '[wapps.spec] BUG-F9-02/04: plugin iframe content does not load under ' +
+      '[wapps.spec] BUG-F9-02/04: wapp iframe content does not load under ' +
         'WebKit automation (datazen:// subframe navigation refused); assertions ' +
         'fall back to real shell-level product behaviour',
     );
@@ -165,7 +165,7 @@ async function openSampleTabAndAwaitBridge(): Promise<boolean> {
   return probesLanded;
 }
 
-async function waitForPluginShellFallback() {
+async function waitForWappShellFallback() {
   await $('[data-testid="wapp-page-shell"]').waitForDisplayed({ timeout: 15000 });
   await browser.waitUntil(
     async () =>
@@ -177,16 +177,16 @@ async function waitForPluginShellFallback() {
         .catch(() => false)) ||
       (await $('[data-testid="wapp-iframe"]')
         .getAttribute('src')
-        .catch(() => null)) === `datazen://${PLUGIN_ID}/index.html?v=1.0.0`,
+        .catch(() => null)) === `datazen://${WAPP_ID}/index.html?v=1.0.0`,
     {
       timeout: 15000,
       interval: 300,
-      timeoutMsg: 'plugin shell fallback did not reach a stable iframe/reload state',
+      timeoutMsg: 'wapp shell fallback did not reach a stable iframe/reload state',
     },
   );
 }
 
-interface PluginSummaryRow {
+interface WappSummaryRow {
   id: string;
   enabled?: boolean;
 }
@@ -195,9 +195,9 @@ interface PersistedSettings {
   theme: { mode?: string; packId?: string | null };
 }
 
-async function removeSamplePluginViaIpc() {
+async function removeSampleWappViaIpc() {
   try {
-    await invokeBackend('remove_extension', { id: PLUGIN_ID });
+    await invokeBackend('remove_wapp', { id: WAPP_ID });
   } catch {
     /* not installed yet */
   }
@@ -212,7 +212,7 @@ async function resetThemePackId() {
   }
 }
 
-async function openPluginsPage() {
+async function openWappsPage() {
   const nav = await $('[data-testid="workspace-nav-extensions"]');
   await nav.waitForDisplayed({ timeout: 10000 });
   await nav.click();
@@ -229,12 +229,12 @@ async function openWorkspaceMode() {
 }
 
 async function sampleCard() {
-  return $(`[data-testid="extension-card"][data-wapp-id="${PLUGIN_ID}"]`);
+  return $(`[data-testid="wapp-card"][data-wapp-id="${WAPP_ID}"]`);
 }
 
 async function waitForSampleCard(timeout = 15000) {
   const card = await sampleCard();
-  await card.waitForDisplayed({ timeout, timeoutMsg: 'sample plugin card not visible' });
+  await card.waitForDisplayed({ timeout, timeoutMsg: 'sample wapp card not visible' });
   return card;
 }
 
@@ -245,7 +245,7 @@ async function openSampleTabFromNavigator() {
   await $('[data-testid="workspace-tabbar"]').waitForDisplayed({ timeout: 10000 });
   const iframe = await $('[data-testid="wapp-iframe"]');
   await iframe.waitForExist({ timeout: 15000 });
-  await captureJourneyStep('plugin-tab-open', 0, true);
+  await captureJourneyStep('wapp-tab-open', 0, true);
   return iframe;
 }
 
@@ -254,21 +254,21 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     // Clean slate: drop any leftover install and theme selection.
     await browser.url('tauri://localhost');
     await browser.pause(1500);
-    await removeSamplePluginViaIpc();
-    // remove_plugin deletes {plugins_dir}/{id} (incl. .storage.json); unlink
+    await removeSampleWappViaIpc();
+    // remove_wapp deletes {wapps_dir}/{id} (incl. .storage.json); unlink
     // defensively so J2 probe assertions can only pass from this run's writes.
-    await rm(PLUGIN_STORAGE_FILE).catch(() => {});
+    await rm(WAPP_STORAGE_FILE).catch(() => {});
     await resetThemePackId();
   });
 
   // ── J1: install through the management page dialog ──────────────────
 
   it('J1-001: installs the fixture directory via the two-step dialog and shows the card', async () => {
-    await openPluginsPage();
+    await openWappsPage();
 
     const emptyState = await $('[data-testid="extension-page-empty"]');
     if (await emptyState.isExisting()) {
-      await expect(emptyState).toBeDisplayed(); // sanity: starts without our plugin
+      await expect(emptyState).toBeDisplayed(); // sanity: starts without our wapp
     }
 
     await $('[data-testid="extension-install-button"]').click();
@@ -308,12 +308,12 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     // Enabled by default after install.
     const toggle = await card.$('[data-testid="extension-toggle"]');
     expect(await toggle.getAttribute('aria-checked')).toBe('true');
-    await captureJourneyStep('plugin-installed', 0, true);
+    await captureJourneyStep('wapp-installed', 0, true);
   });
 
-  it('J1-002: list_extensions reports the installed plugin as enabled', async () => {
-    const plugins = await invokeBackend<PluginSummaryRow[]>('list_extensions');
-    const row = plugins.find((p) => p.id === PLUGIN_ID);
+  it('J1-002: list_wapps reports the installed wapp as enabled', async () => {
+    const wapps = await invokeBackend<WappSummaryRow[]>('list_wapps');
+    const row = wapps.find((p) => p.id === WAPP_ID);
     expect(row).toBeDefined();
     expect(row?.enabled).toBe(true);
   });
@@ -321,7 +321,7 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
   // ── J2: workspace entry + bridge round-trip inside the iframe ───────
 
   it('J2-001: workspace navigator lists the page and opens a tab', async () => {
-    await ensureSamplePluginInstalled();
+    await ensureSampleWappInstalled();
     await openWorkspaceMode();
 
     const item = await $(`[data-testid="workspace-nav-item"][data-page-key="${PAGE_KEY}"]`);
@@ -342,19 +342,19 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
       }
       // Degraded environment (BUG-F9-02/04): the real, observable product
       // behaviour is the watchdog failure bar — assert it instead.
-      await waitForPluginShellFallback();
+      await waitForWappShellFallback();
       const reload = await $('[data-testid="wapp-shell-reload"]');
       const retry = await $('[data-testid="wapp-shell-retry"]');
       const iframe = await $('[data-testid="wapp-iframe"]');
       expect(
         (await reload.isDisplayed().catch(() => false)) ||
           (await retry.isDisplayed().catch(() => false)) ||
-          (await iframe.getAttribute('src')) === `datazen://${PLUGIN_ID}/index.html?v=1.0.0`,
+          (await iframe.getAttribute('src')) === `datazen://${WAPP_ID}/index.html?v=1.0.0`,
       ).toBe(true);
       return;
     }
-    expect((await readPluginStorage())?.['probe.bridge']).toBe('ok');
-    const dark: unknown = (await readPluginStorage())?.['probe.dark'];
+    expect((await readWappStorage())?.['probe.bridge']).toBe('ok');
+    const dark: unknown = (await readWappStorage())?.['probe.dark'];
     expect(['dark', 'light']).toContain(dark);
   });
 
@@ -366,8 +366,8 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
         return;
       }
       // Degraded environment: exercise the real recovery path — the watchdog
-      // reload control remounts a fresh plugin iframe.
-      await waitForPluginShellFallback();
+      // reload control remounts a fresh wapp iframe.
+      await waitForWappShellFallback();
       const reload = await $('[data-testid="wapp-shell-reload"]');
       if (await reload.isDisplayed().catch(() => false)) {
         await reload.click();
@@ -386,7 +386,7 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     }
     // The fixture's e2e-marker set/get pair proves storage.set + storage.get
     // both answered; its persisted value is the durable half of that proof.
-    expect((await readPluginStorage())?.[STORAGE_KEY]).toBe(STORAGE_VALUE);
+    expect((await readWappStorage())?.[STORAGE_KEY]).toBe(STORAGE_VALUE);
   });
 
   it('J2-004: context.getConnections count matches the persisted connections', async () => {
@@ -400,18 +400,18 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
         return;
       }
       // Degraded environment: at minimum the shell resolved and mounted the
-      // manifest entry URL for the right plugin/version.
-      await waitForPluginShellFallback();
+      // manifest entry URL for the right wapp/version.
+      await waitForWappShellFallback();
       const iframe = await $('[data-testid="wapp-iframe"]');
       const retry = await $('[data-testid="wapp-shell-retry"]');
       expect(
         (await iframe.getAttribute('src').catch(() => null)) ===
-          `datazen://${PLUGIN_ID}/index.html?v=1.0.0` ||
+          `datazen://${WAPP_ID}/index.html?v=1.0.0` ||
           (await retry.isDisplayed().catch(() => false)),
       ).toBe(true);
       return;
     }
-    const count = Number((await readPluginStorage())?.['probe.connCount']);
+    const count = Number((await readWappStorage())?.['probe.connCount']);
     expect(count).toBe(conns.length);
   });
 
@@ -422,12 +422,12 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
         await $('[data-testid="wapp-page-shell"]').waitForExist({ timeout: 15000 });
         return;
       }
-      await waitForPluginShellFallback();
+      await waitForWappShellFallback();
       const iframe = await $('[data-testid="wapp-iframe"]');
       const retry = await $('[data-testid="wapp-shell-retry"]');
       expect(
         (await iframe.getAttribute('src').catch(() => null)) ===
-          `datazen://${PLUGIN_ID}/index.html?v=1.0.0` ||
+          `datazen://${WAPP_ID}/index.html?v=1.0.0` ||
           (await retry.isDisplayed().catch(() => false)),
       ).toBe(true);
       return;
@@ -435,10 +435,10 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
 
     // The query probe lands after connCount (it chains off context results).
     await browser.waitUntil(
-      async () => String((await readPluginStorage())?.['probe.query'] ?? '').length > 0,
+      async () => String((await readWappStorage())?.['probe.query'] ?? '').length > 0,
       { timeout: 20000, interval: 500, timeoutMsg: 'probe.query never persisted' },
     );
-    const probe = String((await readPluginStorage())?.['probe.query']);
+    const probe = String((await readWappStorage())?.['probe.query']);
     if (probe.startsWith('err:')) {
       // No reachable database in this environment (saved connection is not
       // connectable here): the RPC + error-mapping path still ran end-to-end.
@@ -480,13 +480,13 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     expect(body).toContain('Sample Hello'); // page card offered again
   });
 
-  // ── J5: Settings → 外观 applies the plugin theme persistently ───────
+  // ── J5: Settings → 外观 applies the wapp theme persistently ───────
 
-  it('J5-001: appearance section lists Sample Light and applying persists plugin:<id>:<theme>', async () => {
-    await ensureSamplePluginInstalled();
+  it('J5-001: appearance section lists Sample Light and applying persists wapp:<id>:<theme>', async () => {
+    await ensureSampleWappInstalled();
     // Mount the management page once so its authoritative list refreshes
     // before Settings reads the contributed themes.
-    await openPluginsPage();
+    await openWappsPage();
     await waitForSampleCard();
     await $('[data-testid="workspace-nav-settings"]').click();
     await $('[data-testid="settings-page"]').waitForDisplayed({ timeout: 10000 });
@@ -495,7 +495,7 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     const section = await $('[data-testid="appearance-section"]');
     await section.waitForDisplayed({ timeout: 10000 });
 
-    // AppearanceSection renders plugin themes in a portaled Select.
+    // AppearanceSection renders wapp themes in a portaled Select.
     await browser.waitUntil(
       async () => {
         const themeSelect = await $('[data-testid="appearance-theme-select"]');
@@ -521,13 +521,13 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     // no explicit Save button required.
     await browser.pause(1000);
 
-    // Durable value lives in settings (not localStorage): plugin:{pluginId}:{themeId}.
+    // Durable value lives in settings (not localStorage): wapp:{wappId}:{themeId}.
     await browser.waitUntil(
       async () => {
         const settings = await invokeBackend<PersistedSettings>('get_settings');
         return settings.theme.packId === EXPECTED_PACK_ID;
       },
-      { timeout: 10000, timeoutMsg: 'plugin theme packId did not persist' },
+      { timeout: 10000, timeoutMsg: 'wapp theme packId did not persist' },
     );
 
     // Theme change triggers a global re-render; wait for the UI to settle
@@ -539,7 +539,7 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
 
   // ── J4: disable → tab/nav removed; uninstall (confirm) → card gone ──
 
-  it('J4-001: disabling the plugin closes its tab and removes the navigator entry', async () => {
+  it('J4-001: disabling the wapp closes its tab and removes the navigator entry', async () => {
     // J5-001 now exits settings; if somehow still on settings, go back.
     const settingsPage = await $('[data-testid="settings-page"]');
     if (await settingsPage.isExisting().catch(() => false)) {
@@ -550,7 +550,7 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     await openWorkspaceMode();
     await openSampleTabFromNavigator();
 
-    await openPluginsPage();
+    await openWappsPage();
     const card = await waitForSampleCard();
     const toggle = await card.$('[data-testid="extension-toggle"]');
     await toggle.click();
@@ -561,11 +561,11 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
           .getAttribute('aria-checked')) === 'false',
       {
         timeout: 15000,
-        timeoutMsg: 'plugin toggle did not flip to disabled',
+        timeoutMsg: 'wapp toggle did not flip to disabled',
       },
     );
 
-    // Disable → plugins:changed event → store refresh → navigator re-render is
+    // Disable → wapps:changed event → store refresh → navigator re-render is
     // async; poll in-page (executeAsync) instead of one-shot WebDriver checks,
     // whose round-trip latency made this assertion flaky.
     await openWorkspaceMode();
@@ -587,7 +587,7 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
       // Force a remount of the workspace view. If the entry clears afterwards,
       // the store state was correct and only the incremental re-render stalled
       // (automation environment); persisting across remount is a real defect.
-      await openPluginsPage();
+      await openWappsPage();
       await openWorkspaceMode();
       const afterRemount = await browser.executeAsync((done: (ms: number) => void) => {
         const started = performance.now();
@@ -613,7 +613,7 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
   });
 
   it('J4-002: uninstalling asks for confirmation and removes the management card', async () => {
-    await openPluginsPage();
+    await openWappsPage();
     const card = await waitForSampleCard();
     await (await card.$('[data-testid="extension-uninstall"]')).click();
 
@@ -624,18 +624,18 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
     const cardAfter = await sampleCard();
     await browser.waitUntil(async () => !(await cardAfter.isExisting()), {
       timeout: 15000,
-      timeoutMsg: 'plugin card still present after uninstall',
+      timeoutMsg: 'wapp card still present after uninstall',
     });
 
-    const plugins = await invokeBackend<PluginSummaryRow[]>('list_extensions');
-    expect(plugins.find((p) => p.id === PLUGIN_ID)).toBeUndefined();
+    const wapps = await invokeBackend<WappSummaryRow[]>('list_wapps');
+    expect(wapps.find((p) => p.id === WAPP_ID)).toBeUndefined();
   });
 
   // ── cleanup ─────────────────────────────────────────────────────────
 
   after(async () => {
     try {
-      await removeSamplePluginViaIpc();
+      await removeSampleWappViaIpc();
     } catch {
       /* ignore */
     }

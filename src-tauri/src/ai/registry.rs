@@ -28,7 +28,7 @@ impl AiProviderRegistry {
         }
     }
 
-    /// Register built-in + plugin providers and restore the saved config.
+    /// Register built-in + external providers and restore the saved config.
     /// Safe to call repeatedly; only the first call does work.
     pub async fn ensure_registered(&self, store: &Store) {
         if self.registered.load(Ordering::Acquire) {
@@ -156,7 +156,7 @@ mod tests {
     }
 }
 
-/// Registers built-in AI providers and discovers plugin providers via `inventory`
+/// Registers built-in AI providers and discovers external providers via `inventory`
 /// into an existing registry (used for deferred / in-place startup warm-up).
 pub async fn register_ai_providers(registry: &AiProviderRegistry) {
     registry.register(Arc::new(OpenAiProvider::new())).await;
@@ -169,7 +169,7 @@ pub async fn register_ai_providers(registry: &AiProviderRegistry) {
         let pv = factory.protocol_version();
         if pv < MIN_AI_PROTOCOL_VERSION {
             tracing::error!(
-                "AI plugin '{}' protocol version {} is too old (minimum {}). Skipping.",
+                "AI provider '{}' protocol version {} is too old (minimum {}). Skipping.",
                 factory.provider_id(),
                 pv,
                 MIN_AI_PROTOCOL_VERSION
@@ -178,7 +178,7 @@ pub async fn register_ai_providers(registry: &AiProviderRegistry) {
         }
         if pv > AI_PROTOCOL_VERSION {
             tracing::warn!(
-                "AI plugin '{}' protocol version {} is newer than host {}. Loading with possible incompatibility.",
+                "AI provider '{}' protocol version {} is newer than host {}. Loading with possible incompatibility.",
                 factory.provider_id(),
                 pv,
                 AI_PROTOCOL_VERSION
@@ -186,7 +186,7 @@ pub async fn register_ai_providers(registry: &AiProviderRegistry) {
         }
         if pv < AI_PROTOCOL_VERSION {
             tracing::warn!(
-                "AI plugin '{}' protocol version {} < host {}. Running in degraded mode \
+                "AI provider '{}' protocol version {} < host {}. Running in degraded mode \
                  (streaming={}, tools={}).",
                 factory.provider_id(),
                 pv,
@@ -198,7 +198,7 @@ pub async fn register_ai_providers(registry: &AiProviderRegistry) {
 
         let provider = factory.create();
         tracing::info!(
-            "Registered AI plugin provider: {} (protocol v{})",
+            "Registered AI provider: {} (protocol v{})",
             factory.provider_id(),
             pv
         );
@@ -206,7 +206,7 @@ pub async fn register_ai_providers(registry: &AiProviderRegistry) {
     }
 }
 
-/// Registers built-in AI providers and discovers plugin providers via `inventory`.
+/// Registers built-in AI providers and discovers external providers via `inventory`.
 pub async fn init_ai_providers() -> AiProviderRegistry {
     let registry = AiProviderRegistry::new();
     register_ai_providers(&registry).await;

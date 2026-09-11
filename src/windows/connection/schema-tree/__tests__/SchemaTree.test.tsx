@@ -50,13 +50,13 @@ vi.mock('../../../../extensions/generated', () => {
   };
   return {
     DRIVER_DB_ENTRIES,
-    PLUGIN_DB_ENTRIES: DRIVER_DB_ENTRIES,
-    PLUGIN_SQL_DIALECTS: {},
-    getPluginSchemaTree: () => undefined,
-    getPluginConnectionForm: () => undefined,
-    getPluginConnectionAdvanced: () => undefined,
-    getPluginValidator: () => undefined,
-    getPluginClipboardParsers: () => [],
+    DRIVER_DB_ENTRIES: DRIVER_DB_ENTRIES,
+    DRIVER_SQL_DIALECTS: {},
+    getDriverSchemaTree: () => undefined,
+    getDriverConnectionForm: () => undefined,
+    getDriverConnectionAdvanced: () => undefined,
+    getDriverValidator: () => undefined,
+    getDriverClipboardParsers: () => [],
   };
 });
 

@@ -73,7 +73,7 @@ describe('settingsStore', () => {
       contextDir: '',
       checkForUpdatesOnStartup: false,
       monitor: {},
-      pluginSettings: {},
+      driverSettings: {},
     });
 
     await useSettingsStore.getState().loadSettings();
@@ -97,12 +97,12 @@ describe('settingsStore', () => {
     expect(mockSettingsCommands.saveSettings).not.toHaveBeenCalled();
   });
 
-  it('SS-P2: loadSettings resets a failed plugin theme (e.g. plugin disabled) back to the default pack', async () => {
+  it('SS-P2: loadSettings resets a failed wapp theme (e.g. wapp disabled) back to the default pack', async () => {
     mockSettingsCommands.getSettings.mockResolvedValueOnce({
       theme: { mode: 'dark', packId: 'plugin:acme.bill-audit:midnight-blue' },
       language: 'en',
     });
-    // First call (persisted plugin theme) fails — e.g. plugin disabled/removed;
+    // First call (persisted wapp theme) fails — e.g. wapp disabled/removed;
     // second call (reset to no pack) succeeds.
     applyThemePack
       .mockResolvedValueOnce({

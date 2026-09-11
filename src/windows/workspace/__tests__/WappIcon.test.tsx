@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
-import { PluginIcon } from '../PluginIcon';
+import { WappIcon } from '../WappIcon';
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -8,17 +8,15 @@ vi.mock('../../../hooks/useI18n', () => ({
 
 afterEach(cleanup);
 
-describe('PluginIcon', () => {
+describe('WappIcon', () => {
   it('falls back to the puzzle glyph when no icon is contributed', () => {
-    const { container } = render(<PluginIcon pluginId="acme.bill-audit" />);
+    const { container } = render(<WappIcon />);
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('svg')).not.toBeNull();
   });
 
   it('renders the datazen:// asset image for a contributed icon', () => {
-    const { container } = render(
-      <PluginIcon pluginId="acme.bill-audit" icon="./assets/icon.svg" />,
-    );
+    const { container } = render(<WappIcon wappId="acme.bill-audit" icon="./assets/icon.svg" />);
     const img = container.querySelector('img');
     expect(img).not.toBeNull();
     expect(img!.getAttribute('src')).toBe('datazen://acme.bill-audit/assets/icon.svg');
@@ -27,7 +25,7 @@ describe('PluginIcon', () => {
 
   it('swaps to the puzzle glyph after the icon fails to load and recovers on icon change', () => {
     const { rerender, container } = render(
-      <PluginIcon pluginId="acme.bill-audit" icon="assets/icon.svg" />,
+      <WappIcon wappId="acme.bill-audit" icon="assets/icon.svg" />,
     );
     const img = container.querySelector('img');
     expect(img).not.toBeNull();
@@ -36,7 +34,7 @@ describe('PluginIcon', () => {
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('svg')).not.toBeNull();
 
-    rerender(<PluginIcon pluginId="acme.bill-audit" icon="assets/other.svg" />);
+    rerender(<WappIcon wappId="acme.bill-audit" icon="assets/other.svg" />);
     const refreshed = container.querySelector('img');
     expect(refreshed!.getAttribute('src')).toBe('datazen://acme.bill-audit/assets/other.svg');
 

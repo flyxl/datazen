@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * e2e-tauri-build.mjs — `tauri build --debug` with webdriver + plugin features.
+ * e2e-tauri-build.mjs — `tauri build --debug` with webdriver + driver features.
  *
  * Must run inside `with-driver-inject` (or after resolve-drivers) so
  * `.driver-features.json` exists. Mirrors `ci-tauri-build.mjs` but always

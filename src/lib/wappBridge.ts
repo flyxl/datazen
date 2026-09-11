@@ -1,8 +1,8 @@
 /**
- * Host-side postMessage bridge for sandboxed UI wapp/plugin iframes (PRD §3).
+ * Host-side postMessage bridge for sandboxed UI wapp iframes (PRD §3).
  *
  * Envelope (both directions):
- *   { ch:'datazen-wapp' | 'datazen-extension', type, reqId?, target:'host', payload? }
+ *   { ch:'datazen-wapp', type, reqId?, target:'host', payload? }
  * Responses suffix the request type with `.ok` / `.err` and echo `reqId`.
  *
  * Security posture:
@@ -24,9 +24,7 @@ import { useConnectionStore } from '../stores/connectionStore';
 import { useActiveConnectionStore } from '../stores/activeConnectionStore';
 import { buildThemeSnapshot } from './themeTokens';
 
-export const BRIDGE_CHANNEL = 'datazen-extension';
-export const WAPP_BRIDGE_CHANNEL = 'datazen-wapp';
-export const LEGACY_BRIDGE_CHANNEL = 'datazen-extension';
+export const BRIDGE_CHANNEL = 'datazen-wapp';
 
 export const REQUEST_TIMEOUT_MS = 30_000;
 export const MAX_INFLIGHT_REQUESTS = 20;
@@ -38,7 +36,7 @@ export const BRIDGE_ERROR = {
   NOT_FOUND: 'E_NOT_FOUND',
   TIMEOUT: 'E_TIMEOUT',
   RATE_LIMIT: 'E_RATE_LIMIT',
-  PLUGIN_DISABLED: 'E_PLUGIN_DISABLED',
+  WAPP_DISABLED: 'E_WAPP_DISABLED',
   BAD_REQUEST: 'E_BAD_REQUEST',
   NOT_IMPLEMENTED: 'E_NOT_IMPLEMENTED',
   INTERNAL: 'E_INTERNAL',
@@ -168,17 +166,13 @@ export const WAPP_COMMAND_DENYLIST = new Set([
   'revoke_privileges',
 ]);
 
-export const PLUGIN_COMMAND_DENYLIST = WAPP_COMMAND_DENYLIST;
-
-/** Returns false when the command id is blocked for wapp/plugin invocation. */
+/** Returns false when the command id is blocked for wapp invocation. */
 export function isWappCommandAllowed(command: string): boolean {
   return !WAPP_COMMAND_DENYLIST.has(command);
 }
 
-export const isPluginCommandAllowed = isWappCommandAllowed;
-
 interface CommandInvokePayload {
-  /** Persistent connection id (plugin-visible protocol key). */
+  /** Persistent connection id (wapp-visible protocol key). */
   connectionId: string;
   command: string;
   args?: Record<string, unknown>;
@@ -207,7 +201,7 @@ class BridgeApiError extends Error {
  * Connections source for context APIs. Prefers the connection store cache
  * (`ConnectionConfig[]`, loaded on app start); falls back to a fresh IPC
  * fetch when the store has not completed its first load. Either way only
- * whitelisted fields ever reach the plugin.
+ * whitelisted fields ever reach the wapp.
  */
 function loadConnections() {
   const state = useConnectionStore.getState();
@@ -310,8 +304,6 @@ function showNotification(title: string, body?: string): Promise<void> {
 
 export interface AttachBridgeOptions {
   wappId?: string;
-  /** @deprecated use wappId */
-  pluginId?: string;
   /** Manifest-declared permissions; deny-by-default for anything missing. */
   permissions: WappPermission[];
   /** Locale reported in the handshake snapshot. */
@@ -323,33 +315,27 @@ export interface AttachBridgeOptions {
 }
 
 export type WappBridgeOptions = AttachBridgeOptions;
-export type ExtensionBridgeOptions = AttachBridgeOptions;
 
 export interface WappBridgeHandle {
   detach(): void;
-  /** Push a fresh theme.apply snapshot to the wapp/plugin iframe. */
+  /** Push a fresh theme.apply snapshot to the wapp iframe. */
   pushThemeSnapshot(): void;
 }
-
-export type ExtensionBridgeHandle = WappBridgeHandle;
 
 function isEnvelope(data: unknown): data is WappRequestEnvelope {
   return (
     typeof data === 'object' &&
     data !== null &&
-    ((data as { ch?: unknown }).ch === BRIDGE_CHANNEL ||
-      (data as { ch?: unknown }).ch === WAPP_BRIDGE_CHANNEL ||
-      (data as { ch?: unknown }).ch === LEGACY_BRIDGE_CHANNEL) &&
+    (data as { ch?: unknown }).ch === BRIDGE_CHANNEL &&
     (data as { target?: unknown }).target === 'host' &&
     typeof (data as { type?: unknown }).type === 'string'
   );
 }
 
-export const isPluginEnvelope = isEnvelope;
 export const isWappEnvelope = isEnvelope;
 
 /**
- * Attach the RPC bridge to a wapp/plugin iframe. Returns a handle whose `detach`
+ * Attach the RPC bridge to a wapp iframe. Returns a handle whose `detach`
  * removes the window listener; call it when the shell unmounts or reloads
  * the frame.
  */
@@ -357,7 +343,7 @@ export function attachBridge(
   iframe: HTMLIFrameElement,
   opts: AttachBridgeOptions,
 ): WappBridgeHandle {
-  const wappId = opts.wappId || opts.pluginId || '';
+  const wappId = opts.wappId || '';
   const {
     permissions,
     locale = typeof navigator !== 'undefined' ? navigator.language : 'en',
@@ -378,7 +364,7 @@ export function attachBridge(
     contentWindow.postMessage(
       {
         ...response,
-        ch: request.ch || LEGACY_BRIDGE_CHANNEL,
+        ch: request.ch || BRIDGE_CHANNEL,
         type: responseTypeOf(request.type, response.ok),
         reqId: request.reqId,
       },
@@ -573,13 +559,13 @@ export function attachBridge(
     const data: unknown = event.data;
     if (!isEnvelope(data)) return;
 
-    if (data.type === 'plugin.ready' || data.type === 'wapp.ready') {
+    if (data.type === 'wapp.ready') {
       const contentWindow = iframe.contentWindow;
       if (!contentWindow) return;
       const snapshot = buildThemeSnapshot();
       contentWindow.postMessage(
         {
-          ch: data.ch || LEGACY_BRIDGE_CHANNEL,
+          ch: data.ch || BRIDGE_CHANNEL,
           type: 'host.ready',
           target: 'host',
           payload: {

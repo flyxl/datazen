@@ -28,7 +28,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 function makeWapp(overrides: Partial<WappSummary> = {}): WappSummary {
   return {
     id: 'acme.demo',
-    name: 'Demo Plugin',
+    name: 'Demo Wapp',
     version: '1.0.0',
     apiVersion: 2,
     author: 'Acme',
@@ -164,7 +164,7 @@ describe('wappStore', () => {
     await importStore();
     await useWappStore.getState().fetch();
 
-    expect(useWappStore.getState().byId('acme.midnight')?.name).toBe('Demo Plugin');
+    expect(useWappStore.getState().byId('acme.midnight')?.name).toBe('Demo Wapp');
     expect(useWappStore.getState().byId('missing')).toBeUndefined();
   });
 

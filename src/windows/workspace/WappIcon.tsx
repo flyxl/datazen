@@ -2,22 +2,20 @@ import { useEffect, useState } from 'react';
 import { Puzzle } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
-export interface PluginIconProps {
+export interface WappIconProps {
   wappId?: string;
-  /** @deprecated use wappId */
-  pluginId?: string;
   /** Package-relative icon path from a manifest contribution. */
   icon?: string;
   className?: string;
 }
 
 /**
- * Renders a workspace app / plugin contributed icon through the `datazen://` asset protocol,
+ * Renders a workspace app contributed icon through the `datazen://` asset protocol,
  * falling back to a puzzle glyph when absent or broken.
  */
-export function PluginIcon({ wappId, pluginId, icon, className }: PluginIconProps) {
+export function WappIcon({ wappId, icon, className }: WappIconProps) {
   const [broken, setBroken] = useState(false);
-  const targetId = wappId || pluginId || '';
+  const targetId = wappId || '';
 
   useEffect(() => {
     setBroken(false);

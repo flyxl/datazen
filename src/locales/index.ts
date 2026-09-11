@@ -7,19 +7,19 @@ import {
   type BuiltinLocale,
 } from './builtinLocales';
 import type { MongoTranslationKey } from '../../packages/drivers/mongodb/locales/en';
-import { PLUGIN_LOCALES, type PluginTranslationKey } from '../extensions/generated-locales';
+import { DRIVER_LOCALES, type DriverTranslationKey } from '../extensions/generated-locales';
 import { lookupLazyTranslation } from './lazyPacks';
 import { getExtensionTranslation } from '@datazen/extension-points';
 
-export type { TranslationKey, PluginTranslationKey, MongoTranslationKey };
+export type { TranslationKey, DriverTranslationKey, MongoTranslationKey };
 export { BUILTIN_LOCALES, builtinLocales, BUILTIN_LOCALE_LABELS };
 export type { BuiltinLocale };
 export { ensureLocaleDomains, ensureAllLazyDomains, isDomainLoaded } from './lazyPacks';
 export type { LazyDomain, LocaleDomain } from './domains';
 export { LAZY_DOMAINS, EAGER_DOMAINS } from './domains';
 
-/** Host keys plus merged plugin keys from enabled drivers. */
-export type I18nKey = TranslationKey | PluginTranslationKey | MongoTranslationKey | (string & {});
+/** Host keys plus merged wapp keys from enabled drivers. */
+export type I18nKey = TranslationKey | DriverTranslationKey | MongoTranslationKey | (string & {});
 
 const extensionLocales = new Map<string, { label: string; translations: Record<string, string> }>();
 
@@ -48,7 +48,7 @@ export function getExtensionLocales(): Array<{ value: string; label: string }> {
   }));
 }
 
-const pluginLocalesEn = PLUGIN_LOCALES.en;
+const driverLocalesEn = DRIVER_LOCALES.en;
 
 function isBuiltinLocale(locale: string): locale is BuiltinLocale {
   return (BUILTIN_LOCALES as readonly string[]).includes(locale);
@@ -66,13 +66,13 @@ export function getTranslation(
   let text: string | undefined;
 
   if (isBuiltinLocale(locale)) {
-    const pluginDict = PLUGIN_LOCALES[locale] as Record<string, string> | undefined;
+    const driverDict = DRIVER_LOCALES[locale] as Record<string, string> | undefined;
     text =
       hostLookup(locale, key) ??
-      pluginDict?.[key] ??
+      driverDict?.[key] ??
       getExtensionTranslation(locale, key) ??
       hostLookup('en', key) ??
-      pluginLocalesEn[key] ??
+      driverLocalesEn[key] ??
       getExtensionTranslation('en', key) ??
       hostLookup('zh-CN', key);
   } else {
@@ -81,7 +81,7 @@ export function getTranslation(
       ext?.translations[key] ??
       getExtensionTranslation(locale, key) ??
       hostLookup('en', key) ??
-      pluginLocalesEn[key] ??
+      driverLocalesEn[key] ??
       getExtensionTranslation('en', key) ??
       hostLookup('zh-CN', key);
   }
@@ -97,7 +97,7 @@ export function getTranslation(
 }
 
 /**
- * Host locale strings only (excludes plugin driver keys).
+ * Host locale strings only (excludes wapp driver keys).
  * Includes eager packs plus any lazy packs already loaded for this locale.
  * For a complete snapshot of all keys, call ensureAllLazyDomains(locale) first
  * or import from './fullLocales'.
@@ -112,11 +112,11 @@ export function getHostTranslations(locale: SupportedLocale | string): Record<st
   return ext?.translations ?? { ...builtinEagerLocales.en };
 }
 
-/** Host + merged plugin locale strings for the active driver set. */
+/** Host + merged wapp locale strings for the active driver set. */
 export function getAllTranslations(locale: SupportedLocale | string): Record<string, string> {
   if (isBuiltinLocale(locale)) {
-    return { ...getHostTranslations(locale), ...PLUGIN_LOCALES[locale] };
+    return { ...getHostTranslations(locale), ...DRIVER_LOCALES[locale] };
   }
   const ext = extensionLocales.get(locale);
-  return { ...(ext?.translations ?? builtinEagerLocales.en), ...PLUGIN_LOCALES.en };
+  return { ...(ext?.translations ?? builtinEagerLocales.en), ...DRIVER_LOCALES.en };
 }

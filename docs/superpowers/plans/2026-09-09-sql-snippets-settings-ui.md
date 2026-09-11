@@ -448,7 +448,7 @@ const mockSettings: AppSettings = {
   mcpDisabledTools: [],
   mcpPermissionMode: 'read_only',
   contextDir: '/tmp',
-  pluginSettings: {},
+  driverSettings: {},
   mcpClientServers: [],
   aiStrictEgress: true,
   monitor: { enabled: false, pollIntervalSecs: 60, retentionDays: 7, trayEnabled: false, alertsEnabled: false },

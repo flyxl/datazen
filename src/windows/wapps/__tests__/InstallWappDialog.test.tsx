@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { InstallWappDialog, InstallExtensionDialog } from '../InstallWappDialog';
+import { InstallWappDialog } from '../InstallWappDialog';
 import type { WappManifest, WappSummary } from '../../../types/wapp';
 
-const { inspectWithDialogMock, installExtensionMock, fetchMock, onCloseMock } = vi.hoisted(() => ({
+const { inspectWithDialogMock, installWappMock, fetchMock, onCloseMock } = vi.hoisted(() => ({
   inspectWithDialogMock: vi.fn(),
-  installExtensionMock: vi.fn(),
+  installWappMock: vi.fn(),
   fetchMock: vi.fn(),
   onCloseMock: vi.fn(),
 }));
@@ -16,30 +16,9 @@ vi.mock('../../../hooks/useI18n', () => ({
 
 vi.mock('../../../commands/wapps', () => ({
   WAPPS_CHANGED_EVENT: 'wapps:changed',
-  EXTENSIONS_CHANGED_EVENT: 'wapps:changed',
   wappCommands: {
     inspectWappPackageWithDialog: (...args: unknown[]) => inspectWithDialogMock(...args),
-    installWapp: (...args: unknown[]) => installExtensionMock(...args),
-    inspectExtensionPackageWithDialog: (...args: unknown[]) => inspectWithDialogMock(...args),
-    installExtension: (...args: unknown[]) => installExtensionMock(...args),
-  },
-  extensionCommands: {
-    inspectExtensionPackageWithDialog: (...args: unknown[]) => inspectWithDialogMock(...args),
-    installExtension: (...args: unknown[]) => installExtensionMock(...args),
-  },
-}));
-
-vi.mock('../../../commands/extensions', () => ({
-  EXTENSIONS_CHANGED_EVENT: 'wapps:changed',
-  extensionCommands: {
-    inspectExtensionPackageWithDialog: (...args: unknown[]) => inspectWithDialogMock(...args),
-    installExtension: (...args: unknown[]) => installExtensionMock(...args),
-  },
-  wappCommands: {
-    inspectWappPackageWithDialog: (...args: unknown[]) => inspectWithDialogMock(...args),
-    installWapp: (...args: unknown[]) => installExtensionMock(...args),
-    inspectExtensionPackageWithDialog: (...args: unknown[]) => inspectWithDialogMock(...args),
-    installExtension: (...args: unknown[]) => installExtensionMock(...args),
+    installWapp: (...args: unknown[]) => installWappMock(...args),
   },
 }));
 
@@ -47,23 +26,11 @@ vi.mock('../../../stores/wappStore', () => ({
   useWappStore: {
     getState: () => ({ fetch: fetchMock }),
   },
-  useExtensionStore: {
-    getState: () => ({ fetch: fetchMock }),
-  },
-}));
-
-vi.mock('../../../stores/extensionStore', () => ({
-  useExtensionStore: {
-    getState: () => ({ fetch: fetchMock }),
-  },
-  useWappStore: {
-    getState: () => ({ fetch: fetchMock }),
-  },
 }));
 
 const REVIEW_MANIFEST: WappManifest = {
   id: 'acme.demo',
-  name: 'Demo Plugin',
+  name: 'Demo Wapp',
   version: '1.2.3',
   apiVersion: 2,
   author: 'Acme',
@@ -97,14 +64,14 @@ async function inspectFailureViaZip() {
 
 beforeEach(() => {
   inspectWithDialogMock.mockReset().mockResolvedValue(PREVIEW);
-  installExtensionMock.mockReset();
+  installWappMock.mockReset();
   fetchMock.mockReset().mockResolvedValue(undefined);
   onCloseMock.mockReset();
 });
 
 afterEach(cleanup);
 
-describe('InstallExtensionDialog', () => {
+describe('InstallWappDialog', () => {
   it('shows native browse actions on the select step', () => {
     renderOpen();
 
@@ -116,22 +83,22 @@ describe('InstallExtensionDialog', () => {
   it('does not invoke the backend until a browse action is chosen', () => {
     renderOpen();
     expect(inspectWithDialogMock).not.toHaveBeenCalled();
-    expect(installExtensionMock).not.toHaveBeenCalled();
+    expect(installWappMock).not.toHaveBeenCalled();
   });
 
   it('walks the two-step flow: inspect → review details/permissions → install', async () => {
-    const installed = { id: 'acme.new', name: 'New' } as unknown as ExtensionSummary;
+    const installed = { id: 'acme.new', name: 'New' } as unknown as WappSummary;
     const onInstalled = vi.fn();
-    installExtensionMock.mockResolvedValue(installed);
+    installWappMock.mockResolvedValue(installed);
 
     renderOpen(onInstalled);
 
     await gotoReviewViaFolder();
     expect(inspectWithDialogMock).toHaveBeenCalledTimes(1);
     expect(inspectWithDialogMock).toHaveBeenCalledWith('folder');
-    expect(installExtensionMock).not.toHaveBeenCalled();
+    expect(installWappMock).not.toHaveBeenCalled();
 
-    expect(screen.getByTestId('extension-install-review')).toHaveTextContent('Demo Plugin');
+    expect(screen.getByTestId('extension-install-review')).toHaveTextContent('Demo Wapp');
     expect(screen.getByTestId('extension-install-review')).toHaveTextContent('v1.2.3');
     expect(screen.getByTestId('extension-install-review')).toHaveTextContent('Acme');
     expect(screen.getByTestId('extension-install-package-label')).toHaveTextContent('acme.zip');
@@ -140,7 +107,7 @@ describe('InstallExtensionDialog', () => {
     expect(permissions).toHaveTextContent('command:invoke');
 
     fireEvent.click(screen.getByTestId('extension-install-confirm'));
-    await waitFor(() => expect(installExtensionMock).toHaveBeenCalledWith('pick-token-1'));
+    await waitFor(() => expect(installWappMock).toHaveBeenCalledWith('pick-token-1'));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(onCloseMock).toHaveBeenCalledTimes(1));
     expect(onInstalled).toHaveBeenCalledWith(installed);
@@ -166,11 +133,11 @@ describe('InstallExtensionDialog', () => {
 
     fireEvent.click(screen.getByTestId('extension-install-back'));
     expect(await screen.findByTestId('extension-install-browse-folder')).toBeInTheDocument();
-    expect(installExtensionMock).not.toHaveBeenCalled();
+    expect(installWappMock).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByText('common.cancel'));
     expect(onCloseMock).toHaveBeenCalledTimes(1);
-    expect(installExtensionMock).not.toHaveBeenCalled();
+    expect(installWappMock).not.toHaveBeenCalled();
   });
 
   it('shows an inspection failure as a copyable error and stays on the select step', async () => {
@@ -187,7 +154,7 @@ describe('InstallExtensionDialog', () => {
 
     expect(screen.queryByTestId('extension-install-review')).not.toBeInTheDocument();
     expect(screen.getByTestId('extension-install-browse-zip')).toBeEnabled();
-    expect(installExtensionMock).not.toHaveBeenCalled();
+    expect(installWappMock).not.toHaveBeenCalled();
     expect(screen.getByText('extensions.install.title')).toBeInTheDocument();
   });
 
@@ -204,7 +171,7 @@ describe('InstallExtensionDialog', () => {
   });
 
   it('returns to the select step with a copyable error when the install fails', async () => {
-    installExtensionMock.mockRejectedValue(new Error('disk full'));
+    installWappMock.mockRejectedValue(new Error('disk full'));
 
     renderOpen();
     await gotoReviewViaFolder();

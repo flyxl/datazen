@@ -56,7 +56,7 @@ Workflow Command Step 在执行前解析连接、模板变量和输入 Schema，
 
 ## Redis 为什么不需要 Host 特判
 
-Redis 的 KV、发布订阅和管理操作显然不同于 SQL，但它们可以用 Command 表达：`redis_get`、`redis_set`、`scan_keys` 等定义自己的输入 Schema 和风险级别。Host 只看到可发现的命令，不写 `pluginId === 'redis'` 的设置分支。
+Redis 的 KV、发布订阅和管理操作显然不同于 SQL，但它们可以用 Command 表达：`redis_get`、`redis_set`、`scan_keys` 等定义自己的输入 Schema 和风险级别。Host 只看到可发现的命令，不写 `driverId === 'redis'` 的设置分支。
 
 ## 兼容与演进
 

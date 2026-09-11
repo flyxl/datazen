@@ -84,7 +84,7 @@ describe('applyThemePack with legacy packId', () => {
     clearThemePackDom();
   });
 
-  it('returns error for non-plugin pack ids', async () => {
+  it('returns error for non-wapp pack ids', async () => {
     const result = await applyThemePack('classic-pack');
     expect(result).toEqual({ ok: false, error: 'unknown theme pack: classic-pack' });
     expect(document.getElementById('datazen-theme-pack')).toBeNull();

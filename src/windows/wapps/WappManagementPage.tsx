@@ -43,9 +43,9 @@ function mimeForIcon(path: string): string {
 }
 
 /**
- * Renders a wapp/plugin's package-level icon as an image loaded through
- * `read_wapp_file`. Falls back to the letter avatar when the plugin declares
- * no icon, the file cannot be read, or the plugin is disabled.
+ * Renders a wapp's package-level icon as an image loaded through
+ * `read_wapp_file`. Falls back to the letter avatar when the wapp declares
+ * no icon, the file cannot be read, or the wapp is disabled.
  */
 function WappCardIcon({ wapp }: { wapp: WappSummary }) {
   const initials = wapp.name.slice(0, 1).toUpperCase();
@@ -104,7 +104,7 @@ export const ExtensionCardIcon = WappCardIcon;
 
 export interface WappManagementPageProps {
   /**
-   * Invoked after a workspace plugin's [Open] action so the host can switch
+   * Invoked after a workspace wapp's [Open] action so the host can switch
    * the workspace mode to the workspace view.
    */
   onOpenInWorkspace?: () => void;
@@ -158,71 +158,71 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
     ];
   }, [filtered, filter]);
 
-  const handleToggle = async (plugin: WappSummary) => {
+  const handleToggle = async (wapp: WappSummary) => {
     setActionError(null);
     try {
-      await useWappStore.getState().setEnabled(plugin.id, !plugin.enabled);
-      if (plugin.enabled) {
-        // Disabling removes its pages → close the plugin's workspace tabs.
-        useWorkspaceTabsStore.getState().closeByPlugin(plugin.id);
+      await useWappStore.getState().setEnabled(wapp.id, !wapp.enabled);
+      if (wapp.enabled) {
+        // Disabling removes its pages → close the wapp's workspace tabs.
+        useWorkspaceTabsStore.getState().closeByWapp(wapp.id);
       }
     } catch (e) {
       setActionError(e instanceof Error ? e.message : String(e));
     }
   };
 
-  const handleRemove = (plugin: WappSummary) => {
+  const handleRemove = (wapp: WappSummary) => {
     void confirmRemove({
       title: t('extensions.page.uninstallTitle'),
-      message: t('extensions.page.uninstallMessage', { name: plugin.name }),
+      message: t('extensions.page.uninstallMessage', { name: wapp.name }),
       kind: 'warning',
     }).then(async (ok) => {
       if (!ok) return;
       setActionError(null);
       try {
-        await useWappStore.getState().remove(plugin.id);
-        useWorkspaceTabsStore.getState().closeByPlugin(plugin.id);
+        await useWappStore.getState().remove(wapp.id);
+        useWorkspaceTabsStore.getState().closeByWapp(wapp.id);
       } catch (e) {
         setActionError(e instanceof Error ? e.message : String(e));
       }
     });
   };
 
-  const handleOpen = (plugin: WappSummary) => {
-    if (openWappPage(plugin.id)) onOpenInWorkspace?.();
+  const handleOpen = (wapp: WappSummary) => {
+    if (openWappPage(wapp.id)) onOpenInWorkspace?.();
   };
 
-  const renderCard = (plugin: WappSummary) => {
-    const apiMismatch = plugin.apiVersion !== WAPP_API_VERSION;
-    const dimmed = apiMismatch || !plugin.enabled;
+  const renderCard = (wapp: WappSummary) => {
+    const apiMismatch = wapp.apiVersion !== WAPP_API_VERSION;
+    const dimmed = apiMismatch || !wapp.enabled;
     return (
       <div
-        key={plugin.id}
+        key={wapp.id}
         data-testid="extension-card"
-        data-wapp-id={plugin.id}
+        data-wapp-id={wapp.id}
         className={cn(
           'flex flex-col gap-2.5 rounded-lg border border-edge bg-surface-alt p-4 transition-colors hover:border-accent/50',
           dimmed && 'opacity-60',
         )}
       >
         <div className="flex items-center gap-2.5">
-          <WappCardIcon wapp={plugin} />
+          <WappCardIcon wapp={wapp} />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
-              <span className="truncate text-sm font-semibold text-fg">{plugin.name}</span>
+              <span className="truncate text-sm font-semibold text-fg">{wapp.name}</span>
               <span className="shrink-0 rounded bg-surface-raised px-1 py-px text-[10px] text-fg-muted">
-                v{plugin.version}
+                v{wapp.version}
               </span>
             </div>
             <div className="truncate text-[11px] text-fg-muted">
-              {plugin.author ? `by ${plugin.author}` : plugin.id}
+              {wapp.author ? `by ${wapp.author}` : wapp.id}
             </div>
           </div>
         </div>
 
-        {plugin.description ? (
+        {wapp.description ? (
           <p className="line-clamp-2 text-xs leading-relaxed text-fg-secondary">
-            {plugin.description}
+            {wapp.description}
           </p>
         ) : null}
 
@@ -231,24 +231,24 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
             <Badge
               tone="warning"
               title={t('extensions.page.apiMismatchHint', {
-                plugin: plugin.apiVersion,
+                wapp: wapp.apiVersion,
                 host: WAPP_API_VERSION,
               })}
             >
               {t('extensions.page.apiMismatch')}
             </Badge>
           ) : null}
-          {!hasPages(plugin) && hasThemes(plugin) ? (
+          {!hasPages(wapp) && hasThemes(wapp) ? (
             <Badge tone="accent">{t('extensions.page.themeBadge')}</Badge>
           ) : null}
-          {plugin.permissions.map((perm) => (
+          {wapp.permissions.map((perm) => (
             <Badge key={perm} title={PERMISSION_LABELS[perm] ?? perm}>
               {perm}
             </Badge>
           ))}
         </div>
 
-        {!hasPages(plugin) && hasThemes(plugin) ? (
+        {!hasPages(wapp) && hasThemes(wapp) ? (
           <p className="text-[11px] text-fg-muted">{t('extensions.page.themeHint')}</p>
         ) : null}
 
@@ -256,32 +256,32 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
           <button
             type="button"
             role="switch"
-            aria-checked={plugin.enabled}
+            aria-checked={wapp.enabled}
             aria-label={t('extensions.page.toggle')}
             data-testid="extension-toggle"
             disabled={apiMismatch}
             title={apiMismatch ? t('extensions.page.apiMismatch') : t('extensions.page.toggle')}
-            onClick={() => void handleToggle(plugin)}
+            onClick={() => void handleToggle(wapp)}
             className={cn(
               'relative h-[18px] w-8 shrink-0 rounded-full transition-colors',
-              plugin.enabled ? 'bg-green-600' : 'bg-edge',
+              wapp.enabled ? 'bg-green-600' : 'bg-edge',
               apiMismatch && 'cursor-not-allowed opacity-50',
             )}
           >
             <span
               className={cn(
                 'absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white transition-all',
-                plugin.enabled ? 'left-[16px]' : 'left-0.5',
+                wapp.enabled ? 'left-[16px]' : 'left-0.5',
               )}
             />
           </button>
-          {hasPages(plugin) && !apiMismatch ? (
+          {hasPages(wapp) && !apiMismatch ? (
             <Button
               size="sm"
               variant="secondary"
               data-testid="extension-open"
-              disabled={!plugin.enabled}
-              onClick={() => handleOpen(plugin)}
+              disabled={!wapp.enabled}
+              onClick={() => handleOpen(wapp)}
             >
               {t('extensions.page.open')}
             </Button>
@@ -292,7 +292,7 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
             variant="ghost"
             data-testid="extension-uninstall"
             title={t('extensions.page.uninstall')}
-            onClick={() => handleRemove(plugin)}
+            onClick={() => handleRemove(wapp)}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>

@@ -110,7 +110,7 @@ impl DriverRegistry {
             let pv = factory.protocol_version();
             if pv < datazen_driver_api::MIN_PROTOCOL_VERSION {
                 return Err(format!(
-                    "Plugin '{}' protocol version {} is too old (minimum {})",
+                    "Driver '{}' protocol version {} is too old (minimum {})",
                     factory.driver_id(),
                     pv,
                     datazen_driver_api::MIN_PROTOCOL_VERSION
@@ -118,14 +118,14 @@ impl DriverRegistry {
             }
             if pv > datazen_driver_api::PROTOCOL_VERSION {
                 tracing::warn!(
-                    "Plugin '{}' protocol version {} is newer than host {}. Loading with possible incompatibility.",
+                    "Driver '{}' protocol version {} is newer than host {}. Loading with possible incompatibility.",
                     factory.driver_id(),
                     pv,
                     datazen_driver_api::PROTOCOL_VERSION
                 );
             } else if pv < datazen_driver_api::PROTOCOL_VERSION {
                 tracing::warn!(
-                    "Plugin '{}' protocol version {} < host {}. Running in degraded mode \
+                    "Driver '{}' protocol version {} < host {}. Running in degraded mode \
                      (cancel_query={}, explain={}, streaming={}).",
                     factory.driver_id(),
                     pv,

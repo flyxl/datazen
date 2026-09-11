@@ -1,8 +1,8 @@
 /**
  * F8 test-agent: SDK ↔ host contract interoperability checks.
  *
- * The host counterpart lives in `src/lib/extensionBridge.ts` (+ `themeTokens.ts`,
- * `types/plugin.ts`, `theme.css` consumers). Heavy host modules (tauri IPC,
+ * The host counterpart lives in `src/lib/wappBridge.ts` (+ `themeTokens.ts`,
+ * `types/wapp.ts`, `theme.css` consumers). Heavy host modules (tauri IPC,
  * zustand stores) are NOT executed here — their constants are parsed from
  * source so a drift on either side fails this file. Light pure modules
  * (`themeTokens.ts`) are imported for live round-trips.
@@ -16,7 +16,7 @@ import {
   BRIDGE_CHANNEL as SDK_CHANNEL,
   BRIDGE_ERROR as SDK_ERRORS,
   REQUEST_TIMEOUT_MS as SDK_TIMEOUT,
-  EXTENSION_API_VERSION as SDK_API_VERSION,
+  WAPP_API_VERSION as SDK_API_VERSION,
 } from '../src/bridge';
 import { DEFAULT_THEME_TOKENS, applyThemeSnapshot, startThemeListener } from '../src/theme';
 import * as SdkPublic from '../src/index';
@@ -26,13 +26,13 @@ import {
   THEME_TOKENS,
   buildThemeSnapshot,
 } from '../../../src/lib/themeTokens';
-import { EXTENSION_API_VERSION as HOST_API_VERSION } from '../../../src/types/extension';
+import { WAPP_API_VERSION as HOST_API_VERSION } from '../../../src/types/wapp';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HOST_ROOT = resolve(HERE, '../../..');
 const HOST_BRIDGE_PATH = existsSync(resolve(HOST_ROOT, 'src/lib/wappBridge.ts'))
   ? resolve(HOST_ROOT, 'src/lib/wappBridge.ts')
-  : resolve(HOST_ROOT, 'src/lib/extensionBridge.ts');
+  : resolve(HOST_ROOT, 'src/lib/wappBridge.ts');
 const HOST_BRIDGE_SRC = readFileSync(HOST_BRIDGE_PATH, 'utf8');
 const HOST_CSS_SRC = readFileSync(resolve(HOST_ROOT, 'src/styles/themes.css'), 'utf8');
 const SDK_CSS_SRC = readFileSync(resolve(HERE, '../src/theme.css'), 'utf8');
@@ -80,7 +80,7 @@ describe('X-01 wire error codes: every SDK BRIDGE_ERROR equals the host router c
 
 describe('X-02 envelope constants', () => {
   it('channel name matches the host literal', () => {
-    expect(SDK_CHANNEL).toBe('datazen-extension');
+    expect(SDK_CHANNEL).toBe('datazen-wapp');
     expect(HOST_BRIDGE_SRC).toContain(`export const BRIDGE_CHANNEL = '${SDK_CHANNEL}';`);
   });
 
@@ -89,7 +89,7 @@ describe('X-02 envelope constants', () => {
     expect(HOST_BRIDGE_SRC).toContain('export const REQUEST_TIMEOUT_MS = 30_000;');
   });
 
-  it('envelope field set of SDK requests mirrors the host PluginRequestEnvelope', () => {
+  it('envelope field set of SDK requests mirrors the host WappRequestEnvelope', () => {
     // Host shape: {ch, type, reqId?, target:'host', payload?}
     expect(HOST_BRIDGE_SRC).toContain("target: 'host'");
     // Host responses suffix .ok/.err and echo reqId — the SDK routes purely by
@@ -101,7 +101,7 @@ describe('X-02 envelope constants', () => {
 });
 
 describe('X-03 protocol version alignment', () => {
-  it('apiVersion === 2 across SDK, host types and Rust PLUGIN_API_VERSION', () => {
+  it('apiVersion === 2 across SDK, host types and Rust WAPP_API_VERSION', () => {
     expect(SDK_API_VERSION).toBe(HOST_API_VERSION);
     expect(SDK_API_VERSION).toBe(2);
   });
@@ -160,7 +160,7 @@ describe('X-05 theme token contract', () => {
     // ① Every color usage goes through a var() reference to a contract token.
     //    All seven DataTable tokens plus the twelve core semantic colors must
     //    be consumed; the five host-chrome tokens (--c-query-run/--c-titlebar*)
-    //    intentionally stay unconsumed (plugins do not render title bars).
+    //    intentionally stay unconsumed (wapps do not render title bars).
     const varNames = new Set(
       [...css.matchAll(/var\(\s*(--[a-z0-9-]+)/gi)].map((match) => match[1]!.toLowerCase()),
     );
@@ -277,7 +277,7 @@ describe('X-06 live snapshot round-trip (host builder → SDK applier)', () => {
 
     const pending = client.ready();
     const snapshot = buildThemeSnapshot();
-    // Exact payload keys the host posts after plugin.ready (attachBridge):
+    // Exact payload keys the host posts after wapp.ready (attachBridge):
     window.dispatchEvent(
       new MessageEvent('message', {
         source: parent,

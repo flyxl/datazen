@@ -118,8 +118,8 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   const sqlSyntaxTheme = useSettingsStore((s) => s.settings.sqlSyntaxTheme);
   const editorExtensionSettings = useSettingsStore(
     (s) =>
-      (s.settings.pluginSettings?.['sql-editor-enhanced'] ??
-        s.settings.pluginSettings?.['sql-editor-pro']) as Record<string, unknown> | undefined,
+      (s.settings.driverSettings?.['sql-editor-enhanced'] ??
+        s.settings.driverSettings?.['sql-editor-pro']) as Record<string, unknown> | undefined,
   );
   const statementGutterEnabled = editorExtensionSettings?.statementGutter !== false;
   const tableHoverEnabled = editorExtensionSettings?.tableHover !== false;

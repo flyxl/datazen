@@ -1,7 +1,7 @@
-//! Runtime UI/theme extension base: registry over installed extension packages.
+//! Runtime UI/theme extension base: registry over installed wapp packages.
 //!
-//! Extensions live in `{appData}/wapps/{id}/` (folder name == `manifest.id`).
-//! [`ExtensionManager`] loads every valid package at startup, tracks enabled
+//! Wapps live in `{appData}/wapps/{id}/` (folder name == `manifest.id`).
+//! [`WappManager`] loads every valid package at startup, tracks enabled
 //! state via a `.enabled` marker file, and is shared through `AppState`.
 pub mod install;
 pub mod manifest;
@@ -18,92 +18,81 @@ mod fixture_tests;
 #[cfg(test)]
 mod protocol_security_tests;
 
+#[cfg(test)]
+mod manifest_tests;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
-// Re-exported for the IPC layer and the `datazen://` asset service (F2);
-// consumed via `crate::extensions::…` paths, so unused-import lint is expected.
 #[allow(unused_imports)]
 pub use manifest::{
-    allowed_extension_file_ext, is_valid_extension_id, parse_manifest, validate_extension_dir,
-    validate_manifest, Contributions, ExtensionManifest, PageContribution, Permission,
-    ThemeContribution, WappContributions, WappManifest, WappPageContribution, WappPermission,
-    WappThemeContribution, MAX_EXTENSION_FILES, MAX_EXTENSION_UNCOMPRESSED,
+    allowed_wapp_file_ext, is_valid_wapp_id, parse_manifest, validate_manifest, validate_wapp_dir,
+    Contributions, PageContribution, Permission, ThemeContribution, WappManifest, MAX_WAPP_FILES,
+    MAX_WAPP_UNCOMPRESSED,
 };
 #[allow(unused_imports)]
-pub use protocol::{handle_datazen_request, parse_datazen_uri, EXTENSIONS_OPEN_PAGE_EVENT};
+pub use protocol::{handle_datazen_request, parse_datazen_uri, WAPPS_OPEN_PAGE_EVENT};
 pub use storage::{storage_get, storage_remove, storage_set};
 
-/// Host-side runtime wapp/extension API version; packages must declare
+/// Host-side runtime wapp API version; packages must declare
 /// `apiVersion == WAPP_API_VERSION` to load.
 pub const WAPP_API_VERSION: u32 = 2;
-pub const EXTENSION_API_VERSION: u32 = WAPP_API_VERSION;
 
-/// Marker file inside an extension directory; presence means "enabled".
+/// Marker file inside a wapp directory; presence means "enabled".
 pub const ENABLED_MARKER_FILE: &str = ".enabled";
 
 #[derive(Debug, Clone)]
-pub struct LoadedExtension {
-    pub manifest: ExtensionManifest,
+pub struct LoadedWapp {
+    pub manifest: WappManifest,
     pub enabled: bool,
 }
 
-#[allow(dead_code)]
-pub type LoadedWapp = LoadedExtension;
-#[allow(dead_code)]
-pub type WappManager = ExtensionManager;
-
-/// Shared extension registry. All methods are thread-safe; disk writes are small
+/// Shared wapp registry. All methods are thread-safe; disk writes are small
 /// marker-file operations.
 #[derive(Debug)]
-pub struct ExtensionManager {
-    extensions_dir: PathBuf,
-    extensions: RwLock<HashMap<String, LoadedExtension>>,
+pub struct WappManager {
+    wapps_dir: PathBuf,
+    wapps: RwLock<HashMap<String, LoadedWapp>>,
 }
 
-impl ExtensionManager {
-    pub fn new(extensions_dir: PathBuf) -> Self {
+impl WappManager {
+    pub fn new(wapps_dir: PathBuf) -> Self {
         Self {
-            extensions_dir,
-            extensions: RwLock::new(HashMap::new()),
+            wapps_dir,
+            wapps: RwLock::new(HashMap::new()),
         }
     }
 
-    /// Root directory that holds one sub-directory per installed wapp / extension.
+    /// Root directory that holds one sub-directory per installed wapp.
     pub fn wapps_dir(&self) -> &Path {
-        &self.extensions_dir
+        &self.wapps_dir
     }
 
-    /// Root directory that holds one sub-directory per installed extension.
-    pub fn extensions_dir(&self) -> &Path {
-        &self.extensions_dir
+    /// Directory of an installed wapp (id must be validated first).
+    pub fn wapp_dir(&self, id: &str) -> PathBuf {
+        self.wapps_dir.join(id)
     }
 
-    /// Directory of an installed extension (id must be validated first).
-    pub fn plugin_dir(&self, id: &str) -> PathBuf {
-        self.extensions_dir.join(id)
-    }
-
-    fn checked_plugin_dir(&self, id: &str) -> Result<PathBuf, String> {
-        if !is_valid_extension_id(id) {
-            return Err(format!("invalid extension id: {id}"));
+    fn checked_wapp_dir(&self, id: &str) -> Result<PathBuf, String> {
+        if !is_valid_wapp_id(id) {
+            return Err(format!("invalid wapp id: {id}"));
         }
-        Ok(self.plugin_dir(id))
+        Ok(self.wapp_dir(id))
     }
 
-    /// Scan `{plugins_dir}` and register every valid package. Invalid or
+    /// Scan `{wapps_dir}` and register every valid package. Invalid or
     /// foreign directories are skipped with a warning. Staging/backup entries
-    /// (dot-prefixed) are ignored. Returns the number of loaded extensions.
+    /// (dot-prefixed) are ignored. Returns the number of loaded wapps.
     pub fn load_from_disk(&self) -> usize {
-        let mut map = self.extensions.write().unwrap_or_else(|e| {
-            tracing::warn!(error = %e, "extension registry write lock poisoned; recovering");
+        let mut map = self.wapps.write().unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "wapp registry write lock poisoned; recovering");
             e.into_inner()
         });
         map.clear();
 
-        let Ok(entries) = fs::read_dir(&self.extensions_dir) else {
+        let Ok(entries) = fs::read_dir(&self.wapps_dir) else {
             return 0;
         };
 
@@ -117,18 +106,18 @@ impl ExtensionManager {
                 continue;
             }
 
-            match validate_extension_dir(&path) {
+            match validate_wapp_dir(&path) {
                 Ok(manifest) => {
                     let enabled = self
-                        .plugin_dir(&manifest.id)
+                        .wapp_dir(&manifest.id)
                         .join(ENABLED_MARKER_FILE)
                         .exists();
-                    tracing::debug!(extension = %manifest.id, enabled, "loaded ui extension");
-                    map.insert(manifest.id.clone(), LoadedExtension { manifest, enabled });
+                    tracing::debug!(wapp = %manifest.id, enabled, "loaded ui wapp");
+                    map.insert(manifest.id.clone(), LoadedWapp { manifest, enabled });
                     loaded += 1;
                 }
                 Err(e) => {
-                    tracing::warn!(extension = %name, error = %e, "skipping invalid ui extension");
+                    tracing::warn!(wapp = %name, error = %e, "skipping invalid ui wapp");
                 }
             }
         }
@@ -136,42 +125,42 @@ impl ExtensionManager {
         loaded
     }
 
-    /// Snapshot of all registered extensions, sorted by name then id.
-    pub fn list(&self) -> Vec<LoadedExtension> {
-        let map = self.extensions.read().unwrap_or_else(|e| {
-            tracing::warn!(error = %e, "extension registry read lock poisoned; recovering");
+    /// Snapshot of all registered wapps, sorted by name then id.
+    pub fn list(&self) -> Vec<LoadedWapp> {
+        let map = self.wapps.read().unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "wapp registry read lock poisoned; recovering");
             e.into_inner()
         });
-        let mut extensions: Vec<LoadedExtension> = map.values().cloned().collect();
-        extensions.sort_by(|a, b| {
+        let mut wapps: Vec<LoadedWapp> = map.values().cloned().collect();
+        wapps.sort_by(|a, b| {
             a.manifest
                 .name
                 .cmp(&b.manifest.name)
                 .then_with(|| a.manifest.id.cmp(&b.manifest.id))
         });
-        extensions
+        wapps
     }
 
-    pub fn get(&self, id: &str) -> Option<LoadedExtension> {
-        self.extensions
+    pub fn get(&self, id: &str) -> Option<LoadedWapp> {
+        self.wapps
             .read()
             .unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "extension registry read lock poisoned; recovering");
+                tracing::warn!(error = %e, "wapp registry read lock poisoned; recovering");
                 e.into_inner()
             })
             .get(id)
             .cloned()
     }
 
-    pub fn manifest(&self, id: &str) -> Option<ExtensionManifest> {
+    pub fn manifest(&self, id: &str) -> Option<WappManifest> {
         self.get(id).map(|p| p.manifest)
     }
 
     pub fn is_enabled(&self, id: &str) -> bool {
-        self.extensions
+        self.wapps
             .read()
             .unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "extension registry read lock poisoned; recovering");
+                tracing::warn!(error = %e, "wapp registry read lock poisoned; recovering");
                 e.into_inner()
             })
             .get(id)
@@ -179,71 +168,71 @@ impl ExtensionManager {
     }
 
     /// Register an installed package in memory and persist its enabled state.
-    pub fn register(&self, manifest: ExtensionManifest, enabled: bool) -> Result<(), String> {
-        let dir = self.checked_plugin_dir(&manifest.id)?;
+    pub fn register(&self, manifest: WappManifest, enabled: bool) -> Result<(), String> {
+        let dir = self.checked_wapp_dir(&manifest.id)?;
         persist_enabled_marker(&dir, enabled)?;
 
-        self.extensions
+        self.wapps
             .write()
-            .map_err(|e| format!("extension registry poisoned: {e}"))?
-            .insert(manifest.id.clone(), LoadedExtension { manifest, enabled });
+            .map_err(|e| format!("wapp registry poisoned: {e}"))?
+            .insert(manifest.id.clone(), LoadedWapp { manifest, enabled });
         Ok(())
     }
 
     /// Toggle enable state: updates the `.enabled` marker on disk and the
-    /// in-memory registry. Disabled extensions stay listed with `enabled=false`.
+    /// in-memory registry. Disabled wapps stay listed with `enabled=false`.
     pub fn set_enabled(&self, id: &str, enabled: bool) -> Result<(), String> {
-        let dir = self.checked_plugin_dir(id)?;
+        let dir = self.checked_wapp_dir(id)?;
         if !self
-            .extensions
+            .wapps
             .read()
-            .map_err(|e| format!("extension registry poisoned: {e}"))?
+            .map_err(|e| format!("wapp registry poisoned: {e}"))?
             .contains_key(id)
         {
-            return Err(format!("extension not found: {id}"));
+            return Err(format!("wapp not found: {id}"));
         }
 
         persist_enabled_marker(&dir, enabled)?;
 
         let mut map = self
-            .extensions
+            .wapps
             .write()
-            .map_err(|e| format!("extension registry poisoned: {e}"))?;
+            .map_err(|e| format!("wapp registry poisoned: {e}"))?;
         if let Some(loaded) = map.get_mut(id) {
             loaded.enabled = enabled;
         }
         Ok(())
     }
 
-    /// Remove an extension: deletes its directory (including `.enabled` and
+    /// Remove a wapp: deletes its directory (including `.enabled` and
     /// `.storage.json`) and unregisters it.
     pub fn remove(&self, id: &str) -> Result<(), String> {
-        let dir = self.checked_plugin_dir(id)?;
+        let dir = self.checked_wapp_dir(id)?;
         if !self
-            .extensions
+            .wapps
             .read()
-            .map_err(|e| format!("extension registry poisoned: {e}"))?
+            .map_err(|e| format!("wapp registry poisoned: {e}"))?
             .contains_key(id)
         {
-            return Err(format!("extension not found: {id}"));
+            return Err(format!("wapp not found: {id}"));
         }
 
         if dir.is_dir() {
-            fs::remove_dir_all(&dir).map_err(|e| format!("remove extension dir {id}: {e}"))?;
+            fs::remove_dir_all(&dir).map_err(|e| format!("remove wapp dir {id}: {e}"))?;
         }
 
-        self.extensions
+        self.wapps
             .write()
-            .map_err(|e| format!("extension registry poisoned: {e}"))?
+            .map_err(|e| format!("wapp registry poisoned: {e}"))?
             .remove(id);
         Ok(())
     }
 }
 
-fn persist_enabled_marker(plugin_dir: &Path, enabled: bool) -> Result<(), String> {
-    let marker = plugin_dir.join(ENABLED_MARKER_FILE);
+fn persist_enabled_marker(wapp_dir: &Path, enabled: bool) -> Result<(), String> {
+    let marker = wapp_dir.join(ENABLED_MARKER_FILE);
     if enabled {
-        fs::create_dir_all(plugin_dir).map_err(|e| format!("create extension dir: {e}"))?;
+        fs::create_dir_all(wapp_dir).map_err(|e| format!("create wapp dir: {e}"))?;
         fs::write(&marker, b"1\n").map_err(|e| format!("write enabled marker: {e}"))?;
     } else if marker.exists() && fs::remove_file(&marker).is_err() {
         return Err(format!(

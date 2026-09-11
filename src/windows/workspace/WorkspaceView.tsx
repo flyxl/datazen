@@ -9,19 +9,19 @@ import { WorkspaceDefaultCards } from './WorkspaceDefaultCards';
 import { WorkspaceNavigator } from './WorkspaceNavigator';
 import { WorkspaceTabBar } from './WorkspaceTabBar';
 import {
-  EXTENSIONS_OPEN_PAGE_EVENT,
-  openPluginPage,
+  WAPPS_OPEN_PAGE_EVENT,
+  openWappPage,
   useWorkspacePages,
   type OpenPageEventPayload,
 } from './workspacePages';
 
 export interface WorkspaceViewProps {
-  /** Empty-state / navigator shortcut to the extension management page. */
+  /** Empty-state / navigator shortcut to the wapp management page. */
   onOpenExtensions?: () => void;
 }
 
 /**
- * Workspace mode layout: extension navigator on the left, independent tab strip +
+ * Workspace mode layout: wapp navigator on the left, independent tab strip +
  * panels (or the default card grid) on the right.
  *
  * Also hosts the `wapps:open-page` deep-link listener (`datazen://…/open`).
@@ -30,8 +30,7 @@ export function WorkspaceView({ onOpenExtensions }: WorkspaceViewProps) {
   const { t } = useI18n();
   const pages = useWorkspacePages();
   const wapps = useWappStore((s) => s.wapps);
-  const plugins = wapps;
-  const pluginsLoaded = useWappStore((s) => s.loaded);
+  const wappsLoaded = useWappStore((s) => s.loaded);
   const tabs = useWorkspaceTabsStore((s) => s.tabs);
   const activeKey = useWorkspaceTabsStore((s) => s.activeKey);
 
@@ -49,35 +48,34 @@ export function WorkspaceView({ onOpenExtensions }: WorkspaceViewProps) {
   }, []);
 
   // BUG-F4-01: a `wapps:changed` refresh triggered outside this window
-  // (another window disabling/uninstalling a plugin/wapp) must also close that
+  // (another window disabling/uninstalling a wapp) must also close that
   // wapp's workspace tabs — the management page only covers its own actions.
   // The diff only runs once the store has loaded, so the initial (possibly
-  // empty) plugin list can never close pre-existing tabs.
+  // empty) wapp list can never close pre-existing tabs.
   useEffect(() => {
-    if (!pluginsLoaded) return;
-    const { tabs: openTabs, closeByWapp, closeByPlugin } = useWorkspaceTabsStore.getState();
-    const closeFn = closeByWapp ?? closeByPlugin;
+    if (!wappsLoaded) return;
+    const { tabs: openTabs, closeByWapp } = useWorkspaceTabsStore.getState();
     const visited = new Set<string>();
     for (const tab of openTabs) {
-      const id = tab.wappId || tab.pluginId;
+      const id = tab.wappId;
       if (visited.has(id)) continue;
       visited.add(id);
-      const plugin = plugins.find((p) => p.id === id);
-      if (!plugin || !plugin.enabled) closeFn(id);
+      const wapp = wapps.find((p) => p.id === id);
+      if (!wapp || !wapp.enabled) closeByWapp(id);
     }
-  }, [plugins, pluginsLoaded]);
+  }, [wapps, wappsLoaded]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let disposed = false;
-    void listen<OpenPageEventPayload>(EXTENSIONS_OPEN_PAGE_EVENT, (event) => {
+    void listen<OpenPageEventPayload>(WAPPS_OPEN_PAGE_EVENT, (event) => {
       const payload = event.payload;
-      const targetId = payload?.wappId || payload?.pluginId;
+      const targetId = payload?.wappId;
       if (!targetId || !payload?.pageId) return;
-      const plugin = useWappStore.getState().byId(targetId);
-      if (!plugin || !plugin.enabled) return;
-      if (!plugin.pages.some((p) => p.id === payload.pageId)) return;
-      openPluginPage(targetId, payload.pageId);
+      const wapp = useWappStore.getState().byId(targetId);
+      if (!wapp || !wapp.enabled) return;
+      if (!wapp.pages.some((p) => p.id === payload.pageId)) return;
+      openWappPage(targetId, payload.pageId);
       // `params` is stored with the tab by the bridge consumer in F6.
     }).then((fn) => {
       if (disposed) fn();
@@ -103,7 +101,7 @@ export function WorkspaceView({ onOpenExtensions }: WorkspaceViewProps) {
         {tabs.length === 0 ? (
           <WorkspaceDefaultCards
             pages={pages}
-            onOpen={(page) => openPluginPage(page.pluginId, page.pageId)}
+            onOpen={(page) => openWappPage(page.wappId, page.pageId)}
             onOpenExtensions={onOpenExtensions}
           />
         ) : (

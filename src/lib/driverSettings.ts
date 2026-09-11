@@ -1,19 +1,19 @@
 import type { ComponentType } from 'react';
 import type { AppSettings } from '../types';
 
-export type PluginSettingsContribution = {
-  pluginId: string;
+export type DriverSettingsContribution = {
+  driverId: string;
   label: string;
   SettingsSection?: ComponentType<{ value: unknown; onChange: (next: unknown) => void }>;
   schema?: object;
 };
 
-export function mergePluginSettings(
-  all: AppSettings['pluginSettings'],
-  pluginId: string,
+export function mergeDriverSettings(
+  all: AppSettings['driverSettings'],
+  driverId: string,
   next: unknown,
-): AppSettings['pluginSettings'] {
-  return { ...all, [pluginId]: next };
+): AppSettings['driverSettings'] {
+  return { ...all, [driverId]: next };
 }
 
 export function readBooleanField(

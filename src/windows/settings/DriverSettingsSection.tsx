@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useI18n } from '../../hooks/useI18n';
-import { mergePluginSettings } from '../../plugin-sdk/settings';
-import { PLUGIN_SETTINGS_ENTRIES } from '../../extensions/generated';
+import { mergeDriverSettings } from '../../lib/driverSettings';
+import { DRIVER_SETTINGS_ENTRIES } from '../../extensions/generated';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { AppSettings } from '../../types';
 import { JsonSchemaSettingsForm } from './JsonSchemaSettingsForm';
@@ -12,32 +12,32 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
-function PluginBlockTitle({ children }: { children: React.ReactNode }) {
+function DriverBlockTitle({ children }: { children: React.ReactNode }) {
   return <h3 className="text-sm font-medium text-fg">{children}</h3>;
 }
 
-export interface PluginSettingsSectionProps {
+export interface DriverSettingsSectionProps {
   settings?: AppSettings;
   onSettingsChange?: (partial: Partial<AppSettings>) => void;
 }
 
-export function PluginSettingsSection({
+export function DriverSettingsSection({
   settings: draftSettings,
   onSettingsChange,
-}: PluginSettingsSectionProps = {}) {
+}: DriverSettingsSectionProps = {}) {
   const { t } = useI18n();
   const storedSettings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
   const settings = draftSettings ?? storedSettings;
   const [saved, setSaved] = useState(false);
 
-  const entries = PLUGIN_SETTINGS_ENTRIES;
+  const entries = DRIVER_SETTINGS_ENTRIES;
 
-  const handlePluginChange = useCallback(
-    async (pluginId: string, next: unknown) => {
-      const latest = settings.pluginSettings;
+  const handleDriverChange = useCallback(
+    async (driverId: string, next: unknown) => {
+      const latest = settings.driverSettings;
       const partial = {
-        pluginSettings: mergePluginSettings(latest, pluginId, next),
+        driverSettings: mergeDriverSettings(latest, driverId, next),
       };
       if (onSettingsChange) onSettingsChange(partial);
       else await updateSettings(partial);
@@ -47,8 +47,8 @@ export function PluginSettingsSection({
     [onSettingsChange, settings, updateSettings],
   );
 
-  const readPluginValue = (pluginId: string): unknown => {
-    return settings.pluginSettings[pluginId] ?? {};
+  const readDriverValue = (driverId: string): unknown => {
+    return settings.driverSettings[driverId] ?? {};
   };
 
   return (
@@ -60,15 +60,15 @@ export function PluginSettingsSection({
       ) : (
         <div className="space-y-6">
           {entries.map((entry) => {
-            const value = readPluginValue(entry.pluginId);
-            const onChange = (next: unknown) => void handlePluginChange(entry.pluginId, next);
+            const value = readDriverValue(entry.driverId);
+            const onChange = (next: unknown) => void handleDriverChange(entry.driverId, next);
 
             return (
               <div
-                key={entry.pluginId}
+                key={entry.driverId}
                 className="space-y-3 rounded-md border border-edge bg-surface p-4"
               >
-                <PluginBlockTitle>{entry.label}</PluginBlockTitle>
+                <DriverBlockTitle>{entry.label}</DriverBlockTitle>
                 {entry.SettingsSection ? (
                   <entry.SettingsSection value={value} onChange={onChange} />
                 ) : entry.schema ? (

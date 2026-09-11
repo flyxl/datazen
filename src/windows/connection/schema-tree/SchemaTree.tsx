@@ -2,7 +2,7 @@ import { useEffect, type ComponentType } from 'react';
 import { DB_REGISTRY } from '../../../lib/databaseTypes';
 import type { DatabaseTypeMeta } from '../../../lib/databaseMeta';
 import type { SchemaTreeNodeKind } from '../../../lib/schemaTreeContextMenu';
-import { getPluginSchemaTree } from '../../../extensions/generated';
+import { getDriverSchemaTree } from '../../../extensions/generated';
 import { useSchemaStore } from '../../../stores/schemaStore';
 import type { DatabaseType } from '../../../types';
 import { UnifiedSchemaTree } from './UnifiedSchemaTree';
@@ -45,9 +45,9 @@ export function SchemaTree(props: SchemaTreeProps) {
   const meta = DB_REGISTRY[props.databaseType];
 
   if (meta?.schemaTreeMode === 'custom') {
-    const PluginTree = getPluginSchemaTree(props.databaseType);
-    if (PluginTree) {
-      return <CustomSchemaTreeHost PluginTree={PluginTree} {...props} />;
+    const DriverTree = getDriverSchemaTree(props.databaseType);
+    if (DriverTree) {
+      return <CustomSchemaTreeHost DriverTree={DriverTree} {...props} />;
     }
   }
 
@@ -59,9 +59,9 @@ export function SchemaTree(props: SchemaTreeProps) {
 
 /** Ensure schemaStore.dbSessionId is set for custom trees (column autocomplete). */
 function CustomSchemaTreeHost({
-  PluginTree,
+  DriverTree,
   ...props
-}: SchemaTreeProps & { PluginTree: ComponentType<Record<string, unknown>> }) {
+}: SchemaTreeProps & { DriverTree: ComponentType<Record<string, unknown>> }) {
   useEffect(() => {
     useSchemaStore.setState({
       dbSessionId: props.connectionId,
@@ -70,7 +70,7 @@ function CustomSchemaTreeHost({
   }, [props.connectionId, props.databaseType]);
 
   return (
-    <PluginTree
+    <DriverTree
       connectionId={props.connectionId}
       databaseType={props.databaseType}
       onSelectTable={props.onSelectTable}

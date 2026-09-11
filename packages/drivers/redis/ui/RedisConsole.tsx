@@ -62,8 +62,8 @@ export function RedisConsole({
   onPinnedNodeAddrChange,
 }: RedisConsoleProps) {
   const { t } = useI18n();
-  const pluginSettings = useSettingsStore((s) => s.settings.pluginSettings);
-  const clusterRouting = readClusterRouting(pluginSettings?.redis);
+  const driverSettings = useSettingsStore((s) => s.settings.driverSettings);
+  const clusterRouting = readClusterRouting(driverSettings?.redis);
   const nodeAddr = resolvePinnedNodeAddr(clusterRouting, pinnedNodeAddr);
   const editorFontFamily = useSettingsStore(
     (s) => s.settings.editorFontFamily || HOST_DEFAULT_EDITOR_FONT,

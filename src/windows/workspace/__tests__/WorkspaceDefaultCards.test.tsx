@@ -10,7 +10,7 @@ vi.mock('../../../hooks/useI18n', () => ({
 function makeEntry(overrides: Partial<WorkspacePageEntry> = {}): WorkspacePageEntry {
   return {
     key: 'acme.bill-audit:quota-check',
-    pluginId: 'acme.bill-audit',
+    wappId: 'acme.bill-audit',
     pageId: 'quota-check',
     title: 'Quota Check',
     version: '1.0.0',
@@ -38,7 +38,7 @@ describe('WorkspaceDefaultCards', () => {
       makeEntry(),
       makeEntry({
         key: 'acme.afi:pricing',
-        pluginId: 'acme.afi',
+        wappId: 'acme.afi',
         pageId: 'pricing',
         title: 'Pricing Viewer',
         version: '2.1.4',

@@ -1,8 +1,5 @@
 import type { DatabaseType, TableInfo } from '../types';
-import {
-  collectTableLeafNames,
-  type SqlNamespace,
-} from '../lib/sqlNamespace';
+import { collectTableLeafNames, type SqlNamespace } from '../lib/sqlNamespace';
 
 /** Session multi-db UI: capability flag AND more than one *visible* database. */
 export function computeIsMultiDatabase(
@@ -45,7 +42,7 @@ export function resolveVisibleDatabases(
   };
 }
 
-/** Parse plugin database list entries (`id:name (backend)`) for path-hierarchy trees. */
+/** Parse wapp database list entries (`id:name (backend)`) for path-hierarchy trees. */
 export function parsePathHierarchyDatabaseEntry(entry: string): { id: string; name: string } {
   const colonIdx = entry.indexOf(':');
   if (colonIdx < 0) return { id: entry, name: entry };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applySchemaDefaults } from '../../../../../src/plugin-sdk/settings';
+import { applySchemaDefaults } from '../../../../../src/lib/driverSettings';
 import { redisSettingsSchema } from '../settings';
 
 describe('redisSettingsSchema', () => {

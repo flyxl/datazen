@@ -29,10 +29,10 @@ export type {
 export type { ConnectionFormState } from '../../../src/components/connection/useConnectionForm';
 
 /**
- * Plugin form validator: receives raw field values and i18n `t()`,
+ * Driver form validator: receives raw field values and i18n `t()`,
  * returns a map of field→error message (empty = valid).
  */
-export type PluginFormValidator = (
+export type DriverFormValidator = (
   fields: {
     host: string;
     port: string;

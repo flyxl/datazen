@@ -51,8 +51,8 @@ vi.mock('../../extensions/generated', () => {
   };
   return {
     DRIVER_DB_ENTRIES: { postgresql, kiwi },
-    PLUGIN_DB_ENTRIES: { postgresql, kiwi },
-    PLUGIN_SQL_DIALECTS: {},
+    DRIVER_DB_ENTRIES: { postgresql, kiwi },
+    DRIVER_SQL_DIALECTS: {},
   };
 });
 
@@ -68,7 +68,7 @@ describe('resolveCmDialect', () => {
     expect(resolveCmDialect(undefined)).toBe(StandardSQL);
   });
 
-  it('maps plugin types via sqlDialect metadata', async () => {
+  it('maps wapp types via sqlDialect metadata', async () => {
     const { resolveCmDialect } = await import('../SqlEditor');
     expect(resolveCmDialect('kiwi')).toBe(MySQL);
   });

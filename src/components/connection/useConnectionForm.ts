@@ -19,7 +19,7 @@ import type {
   SshAuthMethod,
   SshTunnelConfig,
 } from '../../types';
-import { getPluginConnectionForm, getPluginValidator } from '../../extensions/generated';
+import { getDriverConnectionForm, getDriverValidator } from '../../extensions/generated';
 
 export interface UseConnectionFormOptions {
   editId?: string | null;
@@ -397,17 +397,17 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
 
   const meta = DB_REGISTRY[databaseType];
   const formVariant = meta?.connectionForm ?? 'standard';
-  const isPluginForm = !!getPluginConnectionForm(formVariant);
-  const hasUsername = !!meta?.defaultUser || !!meta?.requiresUsername || isPluginForm;
+  const isDriverForm = !!getDriverConnectionForm(formVariant);
+  const hasUsername = !!meta?.defaultUser || !!meta?.requiresUsername || isDriverForm;
   const supportsSSL = !!meta?.supportsSSL;
   const supportsSSH = !!meta?.supportsSSH;
 
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   const validate = useCallback((): boolean => {
-    const pluginValidator = getPluginValidator(formVariant);
-    if (pluginValidator) {
-      const errors = pluginValidator(
+    const driverValidator = getDriverValidator(formVariant);
+    if (driverValidator) {
+      const errors = driverValidator(
         { host, port, database, username, password, schema, options: connectionOptions },
         t as (key: string) => string,
       );
@@ -419,7 +419,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
 
     if (meta?.connectionMode === 'file') {
       if (!database.trim()) errors.database = t('newConn.required');
-    } else if (!isPluginForm) {
+    } else if (!isDriverForm) {
       if (!host.trim()) errors.host = t('newConn.required');
       if (!port.trim() || isNaN(Number(port))) errors.port = t('newConn.required');
     }
@@ -431,7 +431,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     database,
     formVariant,
     host,
-    isPluginForm,
+    isDriverForm,
     meta?.connectionMode,
     password,
     port,

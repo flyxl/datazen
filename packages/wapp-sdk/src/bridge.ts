@@ -1,20 +1,20 @@
 /**
- * Plugin-side typed RPC client over the host postMessage bridge (PRD §3).
+ * Wapp-side typed RPC client over the host postMessage bridge (PRD §3).
  *
  * Runs inside the sandboxed iframe: no Tauri APIs, zero runtime dependencies.
- * Every request is a `{ch:'datazen-extension', type, reqId, target:'host', payload?}`
+ * Every request is a `{ch:'datazen-wapp', type, reqId, target:'host', payload?}`
  * envelope posted to `window.parent` with a `'*'` targetOrigin (the frame has
  * an opaque origin, so nothing stricter can be expressed); responses are
  * trusted only when `event.source === parent` and are correlated by the
  * echoed `reqId`. Requests time out after {@link REQUEST_TIMEOUT_MS}; `.err`
- * responses become {@link ExtensionError}s carrying the wire error code.
+ * responses become {@link WappError}s carrying the wire error code.
  */
-export const BRIDGE_CHANNEL = 'datazen-extension';
+export const BRIDGE_CHANNEL = 'datazen-wapp';
 
-/** Must match `EXTENSION_API_VERSION` on the host (`src/types/extension.ts`). */
-export const EXTENSION_API_VERSION = 2;
+/** Must match `WAPP_API_VERSION` on the host (`src/types/extension.ts`). */
+export const WAPP_API_VERSION = 2;
 
-/** Mirrors the host router deadline (`extensionBridge.ts`). */
+/** Mirrors the host router deadline (`wappBridge.ts`). */
 export const REQUEST_TIMEOUT_MS = 30_000;
 
 /** Wire error codes mirrored from the host router; never leak stack traces. */
@@ -23,7 +23,7 @@ export const BRIDGE_ERROR = {
   NOT_FOUND: 'E_NOT_FOUND',
   TIMEOUT: 'E_TIMEOUT',
   RATE_LIMIT: 'E_RATE_LIMIT',
-  PLUGIN_DISABLED: 'E_PLUGIN_DISABLED',
+  WAPP_DISABLED: 'E_WAPP_DISABLED',
   BAD_REQUEST: 'E_BAD_REQUEST',
   NOT_IMPLEMENTED: 'E_NOT_IMPLEMENTED',
   INTERNAL: 'E_INTERNAL',
@@ -33,21 +33,21 @@ export type BridgeErrorCode = (typeof BRIDGE_ERROR)[keyof typeof BRIDGE_ERROR];
 
 /** SDK-local failure codes that never appear on the wire. */
 export const SDK_ERROR = {
-  VERSION_MISMATCH: 'EXTENSION_VERSION_MISMATCH',
-  DETACHED: 'EXTENSION_DETACHED',
+  VERSION_MISMATCH: 'WAPP_VERSION_MISMATCH',
+  DETACHED: 'WAPP_DETACHED',
 } as const;
 
 export type SdkErrorCode = (typeof SDK_ERROR)[keyof typeof SDK_ERROR];
 
-export type ExtensionErrorCode = BridgeErrorCode | SdkErrorCode;
+export type WappErrorCode = BridgeErrorCode | SdkErrorCode;
 
 /** Typed rejection for every failed bridge interaction. */
-export class ExtensionError extends Error {
-  readonly code: ExtensionErrorCode;
+export class WappError extends Error {
+  readonly code: WappErrorCode;
 
-  constructor(code: ExtensionErrorCode, message: string) {
+  constructor(code: WappErrorCode, message: string) {
     super(message);
-    this.name = 'ExtensionError';
+    this.name = 'WappError';
     this.code = code;
   }
 }
@@ -80,7 +80,7 @@ interface ErrEnvelope {
 
 type ResponseEnvelope<P = unknown> = OkEnvelope<P> | ErrEnvelope;
 
-/** Connection summary visible to plugins — whitelisted fields only. */
+/** Connection summary visible to wapps — whitelisted fields only. */
 export interface ConnectionSummary {
   id: string;
   name: string;
@@ -107,10 +107,10 @@ export interface HostContext {
   tokens: Record<string, string>;
 }
 
-export interface ExtensionClient {
+export interface WappClient {
   /**
-   * Perform the `plugin.ready` → `host.ready` handshake and resolve with the
-   * host context. Rejects with `EXTENSION_VERSION_MISMATCH` when the host
+   * Perform the `wapp.ready` → `host.ready` handshake and resolve with the
+   * host context. Rejects with `WAPP_VERSION_MISMATCH` when the host
    * speaks another protocol version, `E_TIMEOUT` when it never answers.
    * Idempotent after success.
    */
@@ -127,7 +127,7 @@ export interface ExtensionClient {
     invoke(request: CommandInvokeRequest): Promise<unknown>;
   };
 
-  /** Host-side per-plugin KV storage (host requires `storage:local`). */
+  /** Host-side per-wapp KV storage (host requires `storage:local`). */
   readonly storage: {
     get<T = unknown>(key: string): Promise<T | null>;
     set(key: string, value: unknown): Promise<void>;
@@ -137,7 +137,7 @@ export interface ExtensionClient {
   /** System notification; host rate limits to one shot per 5s. */
   notify(request: NotifyRequest): Promise<void>;
 
-  /** Look up a string from the plugin's own locales bundle. */
+  /** Look up a string from the wapp's own locales bundle. */
   readonly i18n: {
     getString(key: string): Promise<string | null>;
   };
@@ -177,7 +177,7 @@ function isResponseEnvelope(data: unknown): data is ResponseEnvelope {
 }
 
 /**
- * Create the bridge client. Attach once per plugin page:
+ * Create the bridge client. Attach once per wapp page:
  *
  * ```ts
  * const dz = createClient();
@@ -185,7 +185,7 @@ function isResponseEnvelope(data: unknown): data is ResponseEnvelope {
  * const rows = await dz.command.invoke({ connectionId, command: 'query', args: { sql } });
  * ```
  */
-export function createClient(options: CreateClientOptions = {}): ExtensionClient {
+export function createClient(options: CreateClientOptions = {}): WappClient {
   const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const parent =
     options.parentWindow !== undefined
@@ -235,11 +235,11 @@ export function createClient(options: CreateClientOptions = {}): ExtensionClient
   function settleHandshake(data: { payload?: unknown }): void {
     if (handshakeState !== 'pending') return;
     const payload = isRecord(data.payload) ? data.payload : {};
-    if (payload.apiVersion !== EXTENSION_API_VERSION) {
+    if (payload.apiVersion !== WAPP_API_VERSION) {
       failHandshake(
-        new ExtensionError(
+        new WappError(
           SDK_ERROR.VERSION_MISMATCH,
-          `host bridge apiVersion ${String(payload.apiVersion)} is incompatible with SDK ${EXTENSION_API_VERSION}; update @datazen/wapp-sdk`,
+          `host bridge apiVersion ${String(payload.apiVersion)} is incompatible with SDK ${WAPP_API_VERSION}; update @datazen/wapp-sdk`,
         ),
       );
       return;
@@ -259,7 +259,7 @@ export function createClient(options: CreateClientOptions = {}): ExtensionClient
 
   function ready(): Promise<HostContext> {
     if (detached) {
-      return Promise.reject(new ExtensionError(SDK_ERROR.DETACHED, 'client detached'));
+      return Promise.reject(new WappError(SDK_ERROR.DETACHED, 'client detached'));
     }
     if (handshakeState === 'ready' && context) return Promise.resolve(context);
     if (handshakeState === 'failed') {
@@ -288,25 +288,25 @@ export function createClient(options: CreateClientOptions = {}): ExtensionClient
       rejectReady = reject;
       handshakeTimer = setTimeout(() => {
         failHandshake(
-          new ExtensionError(BRIDGE_ERROR.TIMEOUT, `handshake timed out after ${timeoutMs}ms`),
+          new WappError(BRIDGE_ERROR.TIMEOUT, `handshake timed out after ${timeoutMs}ms`),
         );
       }, timeoutMs);
       post({
         ch: BRIDGE_CHANNEL,
-        type: 'plugin.ready',
+        type: 'wapp.ready',
         target: 'host',
-        payload: { apiVersion: EXTENSION_API_VERSION },
+        payload: { apiVersion: WAPP_API_VERSION },
       });
     });
   }
 
   function request<R>(type: string, payload?: unknown): Promise<R> {
     if (detached) {
-      return Promise.reject(new ExtensionError(SDK_ERROR.DETACHED, 'client detached'));
+      return Promise.reject(new WappError(SDK_ERROR.DETACHED, 'client detached'));
     }
     if (!parent) {
       return Promise.reject(
-        new ExtensionError(BRIDGE_ERROR.INTERNAL, `"${type}" unavailable outside an iframe`),
+        new WappError(BRIDGE_ERROR.INTERNAL, `"${type}" unavailable outside an iframe`),
       );
     }
     seq += 1;
@@ -314,9 +314,7 @@ export function createClient(options: CreateClientOptions = {}): ExtensionClient
     return new Promise<R>((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(reqId);
-        reject(
-          new ExtensionError(BRIDGE_ERROR.TIMEOUT, `"${type}" timed out after ${timeoutMs}ms`),
-        );
+        reject(new WappError(BRIDGE_ERROR.TIMEOUT, `"${type}" timed out after ${timeoutMs}ms`));
       }, timeoutMs);
       pending.set(reqId, { type, resolve, reject, timer });
       post({
@@ -349,14 +347,14 @@ export function createClient(options: CreateClientOptions = {}): ExtensionClient
     } else {
       // Malformed host frames may omit or null the err payload entirely
       // (BUG-F8-01); read defensively so the listener can never throw and
-      // the pending request always settles as ExtensionError(E_INTERNAL).
+      // the pending request always settles as WappError(E_INTERNAL).
       const payload: { code?: unknown; message?: unknown } = isRecord(data.payload)
         ? data.payload
         : {};
       const code = payload.code;
       entry.reject(
-        new ExtensionError(
-          (typeof code === 'string' ? code : BRIDGE_ERROR.INTERNAL) as ExtensionErrorCode,
+        new WappError(
+          (typeof code === 'string' ? code : BRIDGE_ERROR.INTERNAL) as WappErrorCode,
           (typeof payload.message === 'string' && payload.message) || entry.type,
         ),
       );
@@ -367,7 +365,7 @@ export function createClient(options: CreateClientOptions = {}): ExtensionClient
     window.addEventListener('message', onMessage);
   }
 
-  const client: ExtensionClient = {
+  const client: WappClient = {
     ready,
 
     context: {
@@ -424,10 +422,10 @@ export function createClient(options: CreateClientOptions = {}): ExtensionClient
       }
       for (const [, entry] of pending) {
         clearTimeout(entry.timer);
-        entry.reject(new ExtensionError(SDK_ERROR.DETACHED, `"${entry.type}" aborted: detached`));
+        entry.reject(new WappError(SDK_ERROR.DETACHED, `"${entry.type}" aborted: detached`));
       }
       pending.clear();
-      failHandshake(new ExtensionError(SDK_ERROR.DETACHED, 'handshake aborted: detached'));
+      failHandshake(new WappError(SDK_ERROR.DETACHED, 'handshake aborted: detached'));
     },
   };
 

@@ -6,7 +6,7 @@
  * Invoked by `.husky/pre-commit`. Safe to unit-test with an injectable root.
  *
  * Strategy:
- *   - Detect tracked files that still carry injection (plugin compile ran).
+ *   - Detect tracked files that still carry injection (driver compile ran).
  *   - For those files only: strip injection while keeping user edits
  *     (e.g. new window labels in capabilities).
  *   - Gitignored codegen (generated.ts / driver_init.rs) is left as-is.
@@ -56,11 +56,11 @@ export function hasInjectedDriverInit(content) {
 
 export function hasInjectedGeneratedTs(content) {
   if (!content) return false;
-  // Prefer DatabaseType (current stub/generated). Fall back to legacy PluginDatabaseType.
+  // Prefer DatabaseType (current stub/generated). Fall back to legacy DriverDatabaseType.
   const lines = content.split('\n');
   const typeLine =
     lines.find((l) => /^export type DatabaseType = /.test(l)) ||
-    lines.find((l) => l.includes('PluginDatabaseType = '));
+    lines.find((l) => l.includes('DriverDatabaseType = '));
   if (!typeLine) return false;
   return !/=\s*never\b/.test(typeLine);
 }
@@ -68,7 +68,7 @@ export function hasInjectedGeneratedTs(content) {
 export function hasInjectedGeneratedLocales(content) {
   if (!content) return false;
   if (/from '\.\.\/\.\.\/packages\/drivers\//.test(content)) return true;
-  const typeLine = content.split('\n').find((l) => /^export type PluginTranslationKey = /.test(l));
+  const typeLine = content.split('\n').find((l) => /^export type DriverTranslationKey = /.test(l));
   if (!typeLine) return false;
   return !/=\s*never\b/.test(typeLine);
 }

@@ -1,20 +1,20 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import {
-  applyPluginTheme,
+  applyWappTheme,
   applyThemePack,
   clearThemePackDom,
-  encodePluginThemePackId,
-  parsePluginThemePackId,
+  encodeWappThemePackId,
+  parseWappThemePackId,
 } from '../themePackApply';
 import { emitCrossWindow } from '../crossWindowBus';
 
-const mockReadPluginFile = vi.fn();
-const mockGetExtensionManifest = vi.fn();
+const mockReadWappFile = vi.fn();
+const mockGetWappManifest = vi.fn();
 
-vi.mock('../../commands/extensions', () => ({
-  extensionCommands: {
-    readExtensionFile: (...args: unknown[]) => mockReadPluginFile(...args),
-    getExtensionManifest: (...args: unknown[]) => mockGetExtensionManifest(...args),
+vi.mock('../../commands/wapps', () => ({
+  wappCommands: {
+    readWappFile: (...args: unknown[]) => mockReadWappFile(...args),
+    getWappManifest: (...args: unknown[]) => mockGetWappManifest(...args),
   },
 }));
 
@@ -67,62 +67,62 @@ const MANIFEST = {
   permissions: [],
 };
 
-describe('plugin theme pack id codec', () => {
+describe('wapp theme pack id codec', () => {
   beforeEach(() => {
     mockEmitCrossWindow.mockClear();
   });
 
-  it('round-trips pluginId and themeId', () => {
-    const encoded = encodePluginThemePackId('acme.bill-audit', 'midnight-blue');
-    expect(encoded).toBe('plugin:acme.bill-audit:midnight-blue');
-    expect(parsePluginThemePackId(encoded)).toEqual({
-      pluginId: 'acme.bill-audit',
+  it('round-trips wappId and themeId', () => {
+    const encoded = encodeWappThemePackId('acme.bill-audit', 'midnight-blue');
+    expect(encoded).toBe('wapp:acme.bill-audit:midnight-blue');
+    expect(parseWappThemePackId(encoded)).toEqual({
+      wappId: 'acme.bill-audit',
       themeId: 'midnight-blue',
     });
   });
 
   it('returns null for legacy theme pack ids and malformed input', () => {
-    expect(parsePluginThemePackId('legacy-pack')).toBeNull();
-    expect(parsePluginThemePackId(null)).toBeNull();
-    expect(parsePluginThemePackId(undefined)).toBeNull();
-    expect(parsePluginThemePackId('plugin:')).toBeNull();
-    expect(parsePluginThemePackId('plugin:only-plugin-id')).toBeNull();
-    expect(parsePluginThemePackId('plugin::theme')).toBeNull();
+    expect(parseWappThemePackId('legacy-pack')).toBeNull();
+    expect(parseWappThemePackId(null)).toBeNull();
+    expect(parseWappThemePackId(undefined)).toBeNull();
+    expect(parseWappThemePackId('wapp:')).toBeNull();
+    expect(parseWappThemePackId('wapp:only-wapp-id')).toBeNull();
+    expect(parseWappThemePackId('wapp::theme')).toBeNull();
   });
 });
 
-describe('applyPluginTheme', () => {
+describe('applyWappTheme', () => {
   beforeEach(() => {
     clearThemePackDom();
-    mockReadPluginFile.mockReset();
-    mockGetExtensionManifest.mockReset().mockResolvedValue(MANIFEST);
+    mockReadWappFile.mockReset();
+    mockGetWappManifest.mockReset().mockResolvedValue(MANIFEST);
     mockEmitCrossWindow.mockClear();
   });
 
-  it('loads tokens.css from the plugin via readExtensionFile and injects it', async () => {
-    mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
+  it('loads tokens.css from the wapp via readWappFile and injects it', async () => {
+    mockReadWappFile.mockImplementation(async (_id: string, path: string) => {
       if (path === 'themes/midnight-blue/tokens.css') {
         return toBytes(':root { --c-accent: #1122ff; }');
       }
       return null;
     });
 
-    const result = await applyPluginTheme({
-      pluginId: 'acme.bill-audit',
+    const result = await applyWappTheme({
+      wappId: 'acme.bill-audit',
       themeId: 'midnight-blue',
       name: 'Midnight Blue',
     });
     expect(result).toEqual({ ok: true });
-    expect(mockGetExtensionManifest).toHaveBeenCalledWith('acme.bill-audit');
-    expect(mockReadPluginFile).toHaveBeenCalledWith(
+    expect(mockGetWappManifest).toHaveBeenCalledWith('acme.bill-audit');
+    expect(mockReadWappFile).toHaveBeenCalledWith(
       'acme.bill-audit',
       'themes/midnight-blue/tokens.css',
     );
     expect(document.getElementById('datazen-theme-pack')?.textContent).toContain('--c-accent');
   });
 
-  it('rewrites local url(...) references to blob URLs via readExtensionFile', async () => {
-    mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
+  it('rewrites local url(...) references to blob URLs via readWappFile', async () => {
+    mockReadWappFile.mockImplementation(async (_id: string, path: string) => {
       if (path === 'themes/solar/tokens.css') {
         return toBytes('@font-face { src: url("./fonts/custom.woff2"); }');
       }
@@ -130,9 +130,9 @@ describe('applyPluginTheme', () => {
       return null;
     });
 
-    const result = await applyPluginTheme({ pluginId: 'acme.bill-audit', themeId: 'solar' });
+    const result = await applyWappTheme({ wappId: 'acme.bill-audit', themeId: 'solar' });
     expect(result).toEqual({ ok: true });
-    expect(mockReadPluginFile).toHaveBeenCalledWith(
+    expect(mockReadWappFile).toHaveBeenCalledWith(
       'acme.bill-audit',
       'themes/solar/fonts/custom.woff2',
     );
@@ -141,15 +141,15 @@ describe('applyPluginTheme', () => {
   });
 
   it('rejects remote http URLs referenced by the tokens css', async () => {
-    mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
+    mockReadWappFile.mockImplementation(async (_id: string, path: string) => {
       if (path === 'themes/midnight-blue/tokens.css') {
         return toBytes('@font-face { src: url("https://evil.example/font.woff2"); }');
       }
       return null;
     });
 
-    const result = await applyPluginTheme({
-      pluginId: 'acme.bill-audit',
+    const result = await applyWappTheme({
+      wappId: 'acme.bill-audit',
       themeId: 'midnight-blue',
     });
     expect(result.ok).toBe(false);
@@ -158,9 +158,9 @@ describe('applyPluginTheme', () => {
   });
 
   it('returns an error when the tokens css file is missing', async () => {
-    mockReadPluginFile.mockResolvedValue(null);
-    const result = await applyPluginTheme({
-      pluginId: 'acme.bill-audit',
+    mockReadWappFile.mockResolvedValue(null);
+    const result = await applyWappTheme({
+      wappId: 'acme.bill-audit',
       themeId: 'midnight-blue',
     });
     expect(result).toEqual({ ok: false, error: 'tokens.css missing' });
@@ -168,28 +168,28 @@ describe('applyPluginTheme', () => {
   });
 
   it('returns an error when the theme id is not in the manifest', async () => {
-    const result = await applyPluginTheme({ pluginId: 'acme.bill-audit', themeId: 'nope' });
+    const result = await applyWappTheme({ wappId: 'acme.bill-audit', themeId: 'nope' });
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toMatch(/Theme "nope" not found in plugin "acme\.bill-audit"/);
+      expect(result.error).toMatch(/Theme "nope" not found in wapp "acme\.bill-audit"/);
     }
-    expect(mockReadPluginFile).not.toHaveBeenCalled();
+    expect(mockReadWappFile).not.toHaveBeenCalled();
   });
 
   it('PT-10: resolves bare url() refs against the tokens.css directory', async () => {
-    mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
+    mockReadWappFile.mockImplementation(async (_id: string, path: string) => {
       if (path === 'themes/solar/tokens.css') return toBytes('@font-face { src: url("bg.png"); }');
       if (path === 'themes/solar/bg.png') return [0x89, 0x50];
       return null;
     });
 
-    const result = await applyPluginTheme({ pluginId: 'acme.bill-audit', themeId: 'solar' });
+    const result = await applyWappTheme({ wappId: 'acme.bill-audit', themeId: 'solar' });
     expect(result).toEqual({ ok: true });
-    expect(mockReadPluginFile).toHaveBeenCalledWith('acme.bill-audit', 'themes/solar/bg.png');
+    expect(mockReadWappFile).toHaveBeenCalledWith('acme.bill-audit', 'themes/solar/bg.png');
   });
 
   it('PT-11: resolves ../ url() refs against the tokens.css directory without escaping it lexically upward beyond root', async () => {
-    mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
+    mockReadWappFile.mockImplementation(async (_id: string, path: string) => {
       if (path === 'themes/solar/tokens.css') {
         return toBytes('@font-face { src: url("../shared/accent.svg"); }');
       }
@@ -197,14 +197,14 @@ describe('applyPluginTheme', () => {
       return null;
     });
 
-    const result = await applyPluginTheme({ pluginId: 'acme.bill-audit', themeId: 'solar' });
+    const result = await applyWappTheme({ wappId: 'acme.bill-audit', themeId: 'solar' });
     expect(result).toEqual({ ok: true });
-    expect(mockReadPluginFile).toHaveBeenCalledWith('acme.bill-audit', 'themes/shared/accent.svg');
+    expect(mockReadWappFile).toHaveBeenCalledWith('acme.bill-audit', 'themes/shared/accent.svg');
   });
 
-  it('PT-12: rejects ../../ traversal that would leave the plugin root (stays inside the sandbox)', async () => {
+  it('PT-12: rejects ../../ traversal that would leave the wapp root (stays inside the sandbox)', async () => {
     const requestedPaths: string[] = [];
-    mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
+    mockReadWappFile.mockImplementation(async (_id: string, path: string) => {
       requestedPaths.push(path);
       if (path === 'themes/solar/tokens.css') {
         return toBytes('@font-face { src: url("../../../../../etc/evil.woff2"); }');
@@ -212,7 +212,7 @@ describe('applyPluginTheme', () => {
       return null;
     });
 
-    const result = await applyPluginTheme({ pluginId: 'acme.bill-audit', themeId: 'solar' });
+    const result = await applyWappTheme({ wappId: 'acme.bill-audit', themeId: 'solar' });
     expect(result.ok).toBe(false);
     for (const path of requestedPaths) {
       expect(path.startsWith('..')).toBe(false);
@@ -223,8 +223,8 @@ describe('applyPluginTheme', () => {
     expect(document.getElementById('datazen-theme-pack')).toBeNull();
   });
 
-  it('PT-13: treats root-absolute url() refs as plugin-root relative paths', async () => {
-    mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
+  it('PT-13: treats root-absolute url() refs as wapp-root relative paths', async () => {
+    mockReadWappFile.mockImplementation(async (_id: string, path: string) => {
       if (path === 'themes/solar/tokens.css') {
         return toBytes('@font-face { src: url("/assets/logo.png"); }');
       }
@@ -232,12 +232,12 @@ describe('applyPluginTheme', () => {
       return null;
     });
 
-    const result = await applyPluginTheme({ pluginId: 'acme.bill-audit', themeId: 'solar' });
+    const result = await applyWappTheme({ wappId: 'acme.bill-audit', themeId: 'solar' });
     expect(result).toEqual({ ok: true });
-    expect(mockReadPluginFile).toHaveBeenCalledWith('acme.bill-audit', 'assets/logo.png');
+    expect(mockReadWappFile).toHaveBeenCalledWith('acme.bill-audit', 'assets/logo.png');
   });
 
-  it('PT-14: switching to another plugin theme replaces the injected css and revokes previous blob urls', async () => {
+  it('PT-14: switching to another wapp theme replaces the injected css and revokes previous blob urls', async () => {
     const createdBlobUrls: string[] = [];
     const originalCreateObjectURL = URL.createObjectURL;
     const originalRevokeObjectURL = URL.revokeObjectURL;
@@ -253,7 +253,7 @@ describe('applyPluginTheme', () => {
     });
 
     try {
-      mockGetExtensionManifest.mockResolvedValue({
+      mockGetWappManifest.mockResolvedValue({
         ...MANIFEST,
         contributes: {
           pages: [],
@@ -268,7 +268,7 @@ describe('applyPluginTheme', () => {
           ],
         },
       });
-      mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
+      mockReadWappFile.mockImplementation(async (_id: string, path: string) => {
         if (path === 'themes/midnight-blue/tokens.css') {
           return toBytes(':root { --c-accent: #1122ff; }');
         }
@@ -280,13 +280,13 @@ describe('applyPluginTheme', () => {
       });
 
       // First apply creates one blob url for the referenced font asset.
-      await applyPluginTheme({ pluginId: 'acme.bill-audit', themeId: 'solar' });
+      await applyWappTheme({ wappId: 'acme.bill-audit', themeId: 'solar' });
       expect(document.getElementById('datazen-theme-pack')?.textContent).toMatch(/url\("blob:/);
       expect(createdBlobUrls.length).toBe(1);
       expect(revoked).not.toContain(createdBlobUrls[0]);
 
       // Switching back revokes the previous blob url and replaces the injected css.
-      await applyPluginTheme({ pluginId: 'acme.bill-audit', themeId: 'midnight-blue' });
+      await applyWappTheme({ wappId: 'acme.bill-audit', themeId: 'midnight-blue' });
       const css = document.getElementById('datazen-theme-pack')?.textContent ?? '';
       expect(css).toContain('#1122ff');
       expect(css).not.toContain('#ffaa00');
@@ -298,20 +298,20 @@ describe('applyPluginTheme', () => {
   });
 
   it('PT-15: failure after a successful apply resets the DOM and broadcasts a null pack change', async () => {
-    mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
+    mockReadWappFile.mockImplementation(async (_id: string, path: string) => {
       if (path === 'themes/midnight-blue/tokens.css')
         return toBytes(':root { --c-accent: #1122ff; }');
       return null;
     });
 
-    await applyPluginTheme({ pluginId: 'acme.bill-audit', themeId: 'midnight-blue' });
+    await applyWappTheme({ wappId: 'acme.bill-audit', themeId: 'midnight-blue' });
     expect(document.getElementById('datazen-theme-pack')).not.toBeNull();
     mockEmitCrossWindow.mockClear();
 
-    // Plugin got disabled / files removed → manifest lookup fails.
-    mockGetExtensionManifest.mockRejectedValue(new Error('plugin disabled or missing'));
-    const result = await applyPluginTheme({
-      pluginId: 'acme.bill-audit',
+    // Wapp got disabled / files removed → manifest lookup fails.
+    mockGetWappManifest.mockRejectedValue(new Error('wapp disabled or missing'));
+    const result = await applyWappTheme({
+      wappId: 'acme.bill-audit',
       themeId: 'midnight-blue',
     });
 
@@ -321,10 +321,10 @@ describe('applyPluginTheme', () => {
   });
 
   it('PT-16: broadcast=false suppresses the cross-window pack change event', async () => {
-    mockReadPluginFile.mockResolvedValue(toBytes(':root { --c-accent: #1122ff; }'));
+    mockReadWappFile.mockResolvedValue(toBytes(':root { --c-accent: #1122ff; }'));
 
-    const result = await applyPluginTheme(
-      { pluginId: 'acme.bill-audit', themeId: 'midnight-blue' },
+    const result = await applyWappTheme(
+      { wappId: 'acme.bill-audit', themeId: 'midnight-blue' },
       { broadcast: false },
     );
 
@@ -333,37 +333,35 @@ describe('applyPluginTheme', () => {
   });
 });
 
-describe('applyThemePack dispatches encoded plugin ids to the plugin path', () => {
+describe('applyThemePack dispatches encoded wapp ids to the wapp path', () => {
   beforeEach(() => {
     clearThemePackDom();
-    mockReadPluginFile.mockReset();
-    mockGetExtensionManifest.mockReset().mockResolvedValue(MANIFEST);
+    mockReadWappFile.mockReset();
+    mockGetWappManifest.mockReset().mockResolvedValue(MANIFEST);
     mockEmitCrossWindow.mockClear();
   });
 
-  it('applies a persisted `plugin:` packId without touching legacy packs', async () => {
-    mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
+  it('applies a persisted `wapp:` packId without touching legacy packs', async () => {
+    mockReadWappFile.mockImplementation(async (_id: string, path: string) => {
       if (path === 'themes/midnight-blue/tokens.css')
         return toBytes(':root { --c-accent: #00ff88; }');
       return null;
     });
 
-    const result = await applyThemePack(
-      encodePluginThemePackId('acme.bill-audit', 'midnight-blue'),
-    );
+    const result = await applyThemePack(encodeWappThemePackId('acme.bill-audit', 'midnight-blue'));
     expect(result).toEqual({ ok: true });
-    expect(mockReadPluginFile).toHaveBeenCalled();
+    expect(mockReadWappFile).toHaveBeenCalled();
     expect(document.getElementById('datazen-theme-pack')?.textContent).toContain('--c-accent');
   });
 
   it('rejects plain legacy pack ids', async () => {
     const result = await applyThemePack('classic-pack');
     expect(result).toEqual({ ok: false, error: 'unknown theme pack: classic-pack' });
-    expect(mockReadPluginFile).not.toHaveBeenCalled();
+    expect(mockReadWappFile).not.toHaveBeenCalled();
   });
 });
 
-describe('applyPluginTheme legacy-parity assets', () => {
+describe('applyWappTheme legacy-parity assets', () => {
   const RICH_MANIFEST = {
     ...MANIFEST,
     contributes: {
@@ -393,8 +391,8 @@ describe('applyPluginTheme legacy-parity assets', () => {
 
   beforeEach(() => {
     clearThemePackDom();
-    mockReadPluginFile.mockReset();
-    mockGetExtensionManifest.mockReset().mockResolvedValue(RICH_MANIFEST);
+    mockReadWappFile.mockReset();
+    mockGetWappManifest.mockReset().mockResolvedValue(RICH_MANIFEST);
     mockEmitCrossWindow.mockClear();
     vi.mocked(setChartPaletteOverride).mockClear();
     vi.mocked(setPackEditorColorOverlay).mockClear();
@@ -402,7 +400,7 @@ describe('applyPluginTheme legacy-parity assets', () => {
   });
 
   it('applies chart palette, icon overrides, and editor overlay', async () => {
-    mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
+    mockReadWappFile.mockImplementation(async (_id: string, path: string) => {
       switch (path) {
         case 'themes/night/tokens.css':
           return toBytes(':root { --c-accent: #101010; }');
@@ -417,9 +415,9 @@ describe('applyPluginTheme legacy-parity assets', () => {
       }
     });
 
-    const result = await applyPluginTheme({ pluginId: 'acme.bill-audit', themeId: 'night' });
+    const result = await applyWappTheme({ wappId: 'acme.bill-audit', themeId: 'night' });
     expect(result).toEqual({ ok: true });
-    expect(mockReadPluginFile).toHaveBeenCalledWith(
+    expect(mockReadWappFile).toHaveBeenCalledWith(
       'acme.bill-audit',
       'themes/night/icons/nav.settings.svg',
     );
@@ -432,7 +430,7 @@ describe('applyPluginTheme legacy-parity assets', () => {
 
   it('soft-fails malformed optional assets without failing the theme', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    mockReadPluginFile.mockImplementation(async (_id: string, path: string) => {
+    mockReadWappFile.mockImplementation(async (_id: string, path: string) => {
       switch (path) {
         case 'themes/night/tokens.css':
           return toBytes(':root { --c-accent: #101010; }');
@@ -443,7 +441,7 @@ describe('applyPluginTheme legacy-parity assets', () => {
       }
     });
 
-    const result = await applyPluginTheme({ pluginId: 'acme.bill-audit', themeId: 'night' });
+    const result = await applyWappTheme({ wappId: 'acme.bill-audit', themeId: 'night' });
     expect(result).toEqual({ ok: true });
     // Unparseable palette resets the override (legacy semantics), theme stays on.
     expect(vi.mocked(setChartPaletteOverride)).toHaveBeenLastCalledWith(null);

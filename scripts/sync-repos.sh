@@ -4,7 +4,7 @@ set -euo pipefail
 # ── Usage ────────────────────────────────────────────────────────────
 # ./scripts/sync-repos.sh [--commit-message "msg"]
 #
-# Syncs local changes to external plugin GitHub repositories:
+# Syncs local changes to external driver GitHub repositories:
 #   - packages/drivers/kiwi  → github.com/flyxl/datazen-driver-kiwi
 #   - packages/drivers/olap    → github.com/flyxl/datazen-plugin-olap
 #
@@ -38,28 +38,28 @@ info()  { echo -e "${CYAN}▸${NC} $*"; }
 ok()    { echo -e "${GREEN}✓${NC} $*"; }
 warn()  { echo -e "${YELLOW}⚠${NC} $*"; }
 
-# ── Sync plugin repos ───────────────────────────────────────────────
+# ── Sync driver repos ───────────────────────────────────────────────
 
-sync_plugin() {
+sync_driver() {
   local name="$1"
   local dir="$DRIVERS_DIR/$name"
 
   if [[ ! -d "$dir/.git" ]]; then
-    warn "Plugin '$name' not found or not a git repo at $dir — skipping"
+    warn "Driver '$name' not found or not a git repo at $dir — skipping"
     return
   fi
 
-  info "Syncing plugin '$name'..."
+  info "Syncing driver '$name'..."
 
   local status
   status=$(cd "$dir" && git status --porcelain -- ':!Cargo.lock' ':!target/')
 
   if [[ -z "$status" ]]; then
-    ok "Plugin '$name' has no changes"
+    ok "Driver '$name' has no changes"
     return
   fi
 
-  local msg="${COMMIT_MSG:-"sync: update $name plugin"}"
+  local msg="${COMMIT_MSG:-"sync: update $name driver"}"
   (
     cd "$dir"
     git add -A ':!Cargo.lock' ':!target/'
@@ -70,7 +70,7 @@ sync_plugin() {
       git push origin main
     }
   )
-  ok "Plugin '$name' pushed"
+  ok "Driver '$name' pushed"
 }
 
 # ── Update Cargo.lock ────────────────────────────────────────────────
@@ -100,8 +100,8 @@ echo "  DataZen Repository Sync"
 echo "═══════════════════════════════════════"
 echo ""
 
-for plugin in kiwi olap; do
-  sync_plugin "$plugin"
+for driver in kiwi olap; do
+  sync_driver "$driver"
 done
 echo ""
 

@@ -280,8 +280,10 @@ export interface AppSettings {
   autoChartOnQuery: boolean;
   /** Dashboard monitor / tray / retention settings. */
   monitor: MonitorSettings;
-  /** Opaque per-plugin settings keyed by plugin id (e.g. `"redis"`). */
-  pluginSettings: Record<string, unknown>;
+  /** Opaque per-driver settings keyed by driver id (e.g. `"redis"`). */
+  driverSettings: Record<string, unknown>;
+  /** Opaque per-wapp settings keyed by wapp id. Reserved for future workspace app configs. */
+  wappSettings: Record<string, unknown>;
   /** Saved external MCP Client server configs. Runtime connections are separate. */
   mcpClientServers?: McpServerConfig[];
   /** Strip query result rows before AI requests leave the device. Default true. */
