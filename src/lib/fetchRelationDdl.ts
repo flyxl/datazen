@@ -35,6 +35,7 @@ export async function fetchRelationDdl(
           return typeof val === 'string' ? val : val != null ? String(val) : '';
         },
         database ? { namespacePath: [database] } : undefined,
+        database,
       );
       if (ddl && ddl.trim()) return ddl;
     } catch {

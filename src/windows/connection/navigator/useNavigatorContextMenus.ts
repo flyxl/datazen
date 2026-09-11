@@ -832,6 +832,7 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
                     conn?.databaseType ?? 'postgresql',
                     isView,
                     schema,
+                    dbName,
                   );
                   if (ddl) {
                     await copyToClipboard(ddl);

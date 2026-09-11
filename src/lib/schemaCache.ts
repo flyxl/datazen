@@ -130,6 +130,7 @@ export async function getCachedDDL(
   sql: string,
   resultExtractor: (rows: unknown[][]) => string,
   identity?: DdlCacheIdentity,
+  database?: string | null,
 ): Promise<string> {
   const key = ddlCacheKey(dbSessionId, tableName, identity);
 
@@ -144,7 +145,16 @@ export async function getCachedDDL(
   let inflight = ddlInflight.get(key);
   if (!inflight) {
     inflight = (async () => {
-      const multi = await queryCommands.executeQuery(dbSessionId, sql);
+      // Pin the session to `database` before running (mirrors query pinning in
+      // queryCommands.executeQuery's F1 path) so a copy-DDL call never resolves
+      // against a stale/active database that may not own the relation.
+      const multi = await queryCommands.executeQuery(
+        dbSessionId,
+        sql,
+        undefined,
+        database ?? null,
+        null,
+      );
       const row = multi.results[0]?.rows[0];
       const data = resultExtractor(row ? [row] : []);
       ddlCache.set(key, { data, timestamp: Date.now() });
