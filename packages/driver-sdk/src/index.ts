@@ -16,7 +16,7 @@ export type {
 
 // === Database metadata ===
 export type { DatabaseTypeMeta, ConnectionMode } from '../../../src/lib/databaseMeta';
-export type { DatabaseObjectKind, TableSchema } from '../../../src/types';
+export type { DatabaseObjectKind, TableSchema, TableInfo } from '../../../src/types';
 
 // === SQL function catalog types ===
 export type { FunctionEntry, FunctionParam } from '../../../src/lib/sqlFunctionTypes';
