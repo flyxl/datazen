@@ -258,7 +258,7 @@ export function QueryEditorSection({
     <>
       <ToolbarShell
         ref={toolbarRef}
-        className="h-9 flex-nowrap overflow-x-hidden px-3"
+        className="scrollbar-hide h-9 flex-nowrap overflow-x-hidden px-3"
         {...tid('query-editor-toolbar')}
       >
         {hasContextSelectors && (

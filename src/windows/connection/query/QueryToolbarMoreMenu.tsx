@@ -86,6 +86,8 @@ export function QueryToolbarMoreMenu({
   renderSnippetButton,
 }: QueryToolbarMoreMenuProps) {
   const { t } = useI18n();
+  const keymapPreset = useSettingsStore((s) => s.settings.keymapPreset);
+  const customKeymap = useSettingsStore((s) => s.settings.customKeymap);
 
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -137,11 +139,7 @@ export function QueryToolbarMoreMenu({
   }, []);
 
   const formatShortcut = formatShortcutForDisplay(
-    getActionShortcut(
-      'formatSql',
-      useSettingsStore.getState().settings.keymapPreset,
-      useSettingsStore.getState().settings.customKeymap,
-    ),
+    getActionShortcut('formatSql', keymapPreset, customKeymap),
   );
 
   return (

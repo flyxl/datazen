@@ -40,7 +40,7 @@ export function WorkspaceNavigator({ onOpenExtensions, width }: WorkspaceNavigat
               data-testid="workspace-open-extensions"
               onClick={onOpenExtensions}
             >
-              {t('workspace.openPlugins')}
+              {t('workspace.openExtensions')}
             </Button>
           ) : null}
         </div>
