@@ -56,6 +56,25 @@ describe('useConnectionClipboardFill', () => {
     expect(onApplied).toHaveBeenCalledWith('redis');
   });
 
+  it('skips the mount-time clipboard read when the host has no user gesture', async () => {
+    mockClipboard('postgresql://u:p@db.internal:5433/prod');
+    const form = stubForm();
+    renderHook(() => useConnectionClipboardFill(form, { enabled: true, autoRead: false }));
+
+    // No gesture → no automatic read, so nothing is filled in.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(navigator.clipboard.readText).not.toHaveBeenCalled();
+    expect(form.setHost).not.toHaveBeenCalled();
+
+    // An explicit paste still fills the form.
+    fireEvent.paste(window, {
+      clipboardData: { getData: () => 'postgresql://u:p@db.internal:5433/prod' },
+    });
+    await waitFor(() => {
+      expect(form.setHost).toHaveBeenCalledWith('db.internal');
+    });
+  });
+
   it('does not auto-fill when editing an existing connection', async () => {
     mockClipboard('redis://cache:6379');
     const form = stubForm({ name: 'prod' });

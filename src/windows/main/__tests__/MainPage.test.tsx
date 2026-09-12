@@ -211,18 +211,34 @@ describe('MainPage', () => {
     );
   });
 
-  it('shows OnboardingWizard when onboarding not completed', () => {
-    settingsState.settings = { onboarding: undefined };
+  it('shows OnboardingWizard when onboarding is explicitly not completed', () => {
+    settingsState.settings = { onboarding: { completed: false, version: 1 } };
     storeState.connectionsLoaded = true;
     render(<MainPage />);
     expect(screen.getByTestId('onboarding-wizard')).toBeInTheDocument();
     expect(screen.queryByTestId('welcome-page')).not.toBeInTheDocument();
   });
 
-  it('shows OnboardingWizard when onboarding version < 1', () => {
-    settingsState.settings = { onboarding: { completed: true, version: 0 } };
+  it('never shows OnboardingWizard for an upgrading user (legacy settings.json without onboarding)', () => {
+    settingsState.settings = { onboarding: null };
     storeState.connectionsLoaded = true;
     render(<MainPage />);
-    expect(screen.getByTestId('onboarding-wizard')).toBeInTheDocument();
+    expect(screen.queryByTestId('onboarding-wizard')).not.toBeInTheDocument();
+    expect(screen.getByTestId('welcome-page')).toBeInTheDocument();
+  });
+
+  it('never shows OnboardingWizard when the onboarding key is missing entirely', () => {
+    settingsState.settings = {};
+    storeState.connectionsLoaded = true;
+    render(<MainPage />);
+    expect(screen.queryByTestId('onboarding-wizard')).not.toBeInTheDocument();
+    expect(screen.getByTestId('welcome-page')).toBeInTheDocument();
+  });
+
+  it('hides OnboardingWizard once the journey was completed', () => {
+    settingsState.settings = { onboarding: { completed: true, version: 1 } };
+    storeState.connectionsLoaded = true;
+    render(<MainPage />);
+    expect(screen.queryByTestId('onboarding-wizard')).not.toBeInTheDocument();
   });
 });

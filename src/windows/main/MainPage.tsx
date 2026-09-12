@@ -15,6 +15,7 @@ import { ConnectionShareDialogHost } from '../../components/connection/Connectio
 import { ConnectionPage } from '../connection/ConnectionPage';
 import { WelcomePage } from '../welcome/WelcomePage';
 import { OnboardingWizard } from '../onboarding/OnboardingWizard';
+import { shouldShowOnboarding } from '../onboarding/onboardingGate';
 /**
  * Main window entry: first-run welcome when no saved connections,
  * otherwise the unified connection workspace.
@@ -108,8 +109,10 @@ export function MainPage() {
     );
   }
 
-  // Onboarding gate: show wizard when not completed or version < 1
-  if (!onboarding?.completed || (onboarding?.version ?? 0) < 1) {
+  // First-run journey gate: the backend marks a fresh install as
+  // `onboarding: { completed: false }` and an upgrade as `{ completed: true }`,
+  // so a missing state (legacy settings.json) never re-onboards anyone.
+  if (shouldShowOnboarding(onboarding)) {
     return <OnboardingWizard />;
   }
 

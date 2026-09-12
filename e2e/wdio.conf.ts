@@ -67,6 +67,11 @@ async function runSessionBootstrap() {
             safeMode: true,
             defaultPageSize: 50,
             sqlExecutionStrategy: 'entire_script',
+            // Every suite except `onboarding-journey` asserts the workspace, and
+            // a wiped `e2e/.app-data` is a fresh install whose first-run journey
+            // would otherwise replace MainPage. The journey spec flips this back
+            // to `{ completed: false }` for its own cases.
+            onboarding: { completed: true, version: 1 },
           },
         }),
       )
@@ -265,7 +270,13 @@ export const config: WebdriverIO.Config = {
       './specs/journeys/query-toolbar-responsive-journey.ts',
       './specs/journeys/query-edge-journey.ts',
       './specs/journeys/first-run-edge-journey.ts',
+      // First-run journey (onboarding wizard). Runs last on purpose: its cases
+      // rewrite the onboarding gate and restore it in `after`.
+      './specs/journeys/onboarding-journey.ts',
     ],
+    // First-run journey only (`pnpm e2e:onboarding`). Self-contained: it flips
+    // the onboarding gate itself and restores it afterwards.
+    onboarding: ['./specs/journeys/onboarding-journey.ts'],
     // Continuous failure/recovery and state-boundary paths
     // (`pnpm e2e:journeys:edge`)
     'journey-edge': [

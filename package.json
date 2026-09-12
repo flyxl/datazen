@@ -64,6 +64,8 @@
     "e2e:dashboard": "node e2e/run.mjs --skip-build -- --suite dashboard",
     "e2e:journeys": "node e2e/run.mjs --skip-build --screenshot -- --suite journeys",
     "e2e:journeys:edge": "node e2e/run.mjs --skip-build --screenshot -- --suite journey-edge",
+    "e2e:onboarding": "node e2e/run.mjs --skip-build -- --suite onboarding",
+    "e2e:onboarding:build": "node e2e/run.mjs -- --suite onboarding",
     "e2e:connection:edge": "node e2e/run.mjs --skip-build --screenshot -- --suite connection-edge",
     "e2e:data-transfer": "bash e2e/setup-data-transfer-e2e.sh && node e2e/run.mjs --skip-build -- --suite data-transfer",
     "e2e:data-transfer:build": "bash e2e/setup-data-transfer-e2e.sh && node e2e/run.mjs -- --suite data-transfer",

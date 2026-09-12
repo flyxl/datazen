@@ -102,10 +102,12 @@ describe('首次安装欢迎页 (F5-E2E-001 ~ F5-E2E-005)', () => {
       }
     }
     await reseedE2ePgConnection();
-    // Restore onboarding gate to default (wizard visible) for later suites.
+    // Keep the onboarding gate closed for the following suites: the first-run
+    // journey owns its own spec (`journeys/onboarding-journey.ts`) and would
+    // otherwise replace MainPage for everything that runs after this file.
     const settings = await invokeBackend<Record<string, unknown>>('get_settings');
     await invokeBackend('save_settings', {
-      settings: { ...settings, onboarding: { completed: false, version: 1 } },
+      settings: { ...settings, onboarding: { completed: true, version: 1 } },
     });
     await browser.execute(() => location.reload());
     await browser.pause(1500);

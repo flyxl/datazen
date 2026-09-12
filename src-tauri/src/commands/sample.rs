@@ -5,8 +5,8 @@
 //! Idempotent: returns the existing path when the db file already exists.
 
 use super::error::CommandError;
+use crate::store::Store;
 use std::fs;
-use tauri::{AppHandle, Manager};
 
 const SEED_SQL: &str =
     "CREATE TABLE IF NOT EXISTS demo_sales (region TEXT, amount REAL, quarter TEXT);
@@ -30,11 +30,14 @@ pub(crate) fn seed_sample_db_at(data_dir: &std::path::Path) -> Result<String, Co
     Ok(db_path.to_string_lossy().to_string())
 }
 
+/// Seed the bundled sample database into the application data directory.
+///
+/// The directory resolution goes through [`Store::default_app_data_dir`] so it
+/// honours the `DATAZEN_DATA_DIR` override — E2E and headless runs must never
+/// write sample data into the real user profile.
 #[tauri::command]
-pub async fn seed_sample_db(app: AppHandle) -> Result<String, CommandError> {
-    let data_dir = app
-        .path()
-        .app_data_dir()
+pub async fn seed_sample_db() -> Result<String, CommandError> {
+    let data_dir = Store::default_app_data_dir()
         .map_err(|e| CommandError::Internal(format!("seed_sample_db: {e}")))?;
     seed_sample_db_at(&data_dir)
 }

@@ -1,12 +1,19 @@
 import { useEffect, useRef } from 'react';
-import {
-  applyMatchedClipboard,
-  matchConnectionClipboard,
-} from '../../lib/connectionClipboard';
+import { applyMatchedClipboard, matchConnectionClipboard } from '../../lib/connectionClipboard';
 import type { ConnectionFormState } from './useConnectionForm';
 
 export interface UseConnectionClipboardFillOptions {
   enabled: boolean;
+  /**
+   * Read the clipboard once when the form mounts (default `true`).
+   *
+   * Hosts that mount the form *without* a user gesture must pass `false`: on
+   * macOS an automatic `clipboard.readText()` goes through the paste permission
+   * path and can stall the renderer (observed as a frozen connection form on
+   * the first-run journey, and as a hanging WebDriver click in E2E). Explicit
+   * pastes keep working either way — the `paste` listener is always attached.
+   */
+  autoRead?: boolean;
   availableTypes?: string[] | null;
   onApplied?: (databaseType: string) => void;
 }
@@ -38,15 +45,17 @@ export function useConnectionClipboardFill(
     };
 
     let cancelled = false;
-    void (async () => {
-      try {
-        const text = await navigator.clipboard.readText();
-        if (cancelled || appliedRef.current) return;
-        applyText(text, false);
-      } catch {
-        /* clipboard permission / empty */
-      }
-    })();
+    if (options.autoRead !== false) {
+      void (async () => {
+        try {
+          const text = await navigator.clipboard.readText();
+          if (cancelled || appliedRef.current) return;
+          applyText(text, false);
+        } catch {
+          /* clipboard permission / empty */
+        }
+      })();
+    }
 
     const onPaste = (event: ClipboardEvent) => {
       if (appliedRef.current) return;

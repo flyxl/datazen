@@ -15,6 +15,7 @@ export const EAGER_DOMAINS = [
   'chart',
   'backup',
   'ai',
+  'onboarding',
 ] as const;
 
 export const LAZY_DOMAINS = ['sync', 'workflows', 'dashboard', 'mcp'] as const;
