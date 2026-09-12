@@ -275,10 +275,13 @@ jobs:
         shell: bash
         env:
           PRO_DEPLOY_KEY: ${{ secrets.PRO_DEPLOY_KEY || secrets.SQL_EDITOR_PRO_DEPLOY_KEY }}
+          PRO_PREBUILT_TOKEN: ${{ secrets.PRO_PREBUILT_TOKEN }}
         run: |
           # Attempt to download the prebuilt pro extension tarball from the
           # Pro repo's GitHub Release.  This avoids cloning + building from
           # source — no SSH deploy key needed for the Pro repo itself.
+          # The Pro repo is private: pass a fine-grained PAT (releases:read on
+          # the Pro repo) as the `PRO_PREBUILT_TOKEN` environment secret.
           VERSION=$(node -p "require('./package.json').version")
           PRO_REPO="flyxl/datazen-extension-sql-editor-pro"
           TAG="pro-${VERSION}"
@@ -287,14 +290,24 @@ jobs:
 
           echo "Trying prebuilt: ${URL}"
 
-          # Try curl first; GitHub redirects to a CDN URL.
-          # Use GH_TOKEN if available for private repos.
-          AUTH_HEADER=""
-          if [ -n "${GH_TOKEN:-}" ]; then
-            AUTH_HEADER="-H 'Authorization: token ${GH_TOKEN}'"
+          # Token precedence: dedicated PRO_PREBUILT_TOKEN > GITHUB_TOKEN.
+          # Note: GITHUB_TOKEN belongs to the host repo and cannot read the
+          # private Pro repo's releases — without PRO_PREBUILT_TOKEN the
+          # download is expected to 404 and fall back to source build.
+          PREBUILT_AUTH=""
+          if [ -n "${PRO_PREBUILT_TOKEN:-}" ]; then
+            PREBUILT_AUTH="Authorization: Bearer ${PRO_PREBUILT_TOKEN}"
+          elif [ -n "${GITHUB_TOKEN:-}" ]; then
+            PREBUILT_AUTH="Authorization: Bearer ${GITHUB_TOKEN}"
           fi
 
-          if curl -fsSL ${AUTH_HEADER} -o "/tmp/${TARBALL}" "${URL}" 2>/dev/null; then
+          if [ -n "$PREBUILT_AUTH" ]; then
+            curl_args=(-fsSL -H "$PREBUILT_AUTH" -o "/tmp/${TARBALL}" "${URL}")
+          else
+            curl_args=(-fsSL -o "/tmp/${TARBALL}" "${URL}")
+          fi
+
+          if curl "${curl_args[@]}" 2>/tmp/prebuilt-curl.err; then
             mkdir -p src-tauri/resources/builtin-ep/sql-editor-pro
             tar -xzf "/tmp/${TARBALL}" -C src-tauri/resources/builtin-ep/sql-editor-pro
             rm -f "/tmp/${TARBALL}"
@@ -307,11 +320,13 @@ jobs:
               # Also set for resolve-pro.mjs
               echo "DATAZEN_PRO_PREBUILT_URL=${URL}" >> "$GITHUB_ENV"
             else
-              echo "⚠️ Prebuilt tarball missing required files, falling back to source build"
+              echo "::notice::Prebuilt tarball missing required files, falling back to source build"
             fi
           else
-            echo "⚠️ Prebuilt download failed (HTTP or not found), falling back to source build"
+            HTTP_HINT=$(head -c 200 /tmp/prebuilt-curl.err 2>/dev/null || echo "download failed")
+            echo "::notice::Prebuilt download failed (${HTTP_HINT}), falling back to source build"
           fi
+          rm -f /tmp/prebuilt-curl.err
 
       - name: Resolve drivers and build Tauri app
         shell: bash
@@ -365,22 +380,38 @@ jobs:
             fi
           fi
 
-          # ── Linux: check deb package ──
+          # ── Linux: check deb + AppImage ──
           if [ "${{ runner.os }}" = "Linux" ]; then
+            echo "::notice::[pro-verify] staging state before check:"
+            ls -la src-tauri/resources/builtin-ep/sql-editor-pro/dist/ 2>/dev/null || echo "::notice::[pro-verify] staging dir already restored (expected)"
+
             DEB=$(find "$BUNDLE_DIR/deb" -name "*.deb" 2>/dev/null | head -1)
             if [ -z "$DEB" ]; then
               echo "::error::Linux deb package not found in $BUNDLE_DIR/deb"
               FAIL=1
-            elif dpkg-deb -c "$DEB" 2>/dev/null | grep -q "builtin-ep/sql-editor-pro"; then
+            elif dpkg-deb -c "$DEB" 2>/dev/null | grep -q "builtin-ep/sql-editor-pro/dist/index.esm.js"; then
               echo "✓ Pro extension found in Linux deb: $DEB"
-              dpkg-deb -c "$DEB" 2>/dev/null | grep "builtin-ep/sql-editor-pro"
+              dpkg-deb -c "$DEB" 2>/dev/null | grep "builtin-ep/sql-editor-pro" | head -10
             else
               echo "::error::Pro extension (builtin-ep) not found in Linux deb package"
-              echo "deb contents with 'builtin-ep':"
-              dpkg-deb -c "$DEB" 2>/dev/null | grep -i "builtin-ep" || echo "(no builtin-ep entries)"
-              echo "deb contents with 'prompts' (for reference):"
-              dpkg-deb -c "$DEB" 2>/dev/null | grep "prompts" | head -5
+              echo "::notice::[pro-verify] deb entries with 'builtin-ep':"
+              dpkg-deb -c "$DEB" 2>/dev/null | grep -i "builtin-ep" || echo "::notice::[pro-verify] (no builtin-ep entries at all)"
+              echo "::notice::[pro-verify] deb entries with 'prompts' (control group):"
+              dpkg-deb -c "$DEB" 2>/dev/null | grep "prompts" | head -5 || echo "::notice::[pro-verify] (no prompts entries either — resources/ bundling is broken)"
               FAIL=1
+            fi
+
+            # AppImage is a squashfs dump of the same resource tree — check it too.
+            APPIMAGE=$(find "$BUNDLE_DIR/appimage" -name "*.AppImage" 2>/dev/null | head -1)
+            if [ -n "$APPIMAGE" ] && [ -f "$APPIMAGE" ]; then
+              chmod +x "$APPIMAGE" 2>/dev/null || true
+              if "$APPIMAGE" --appimage-extract "usr/lib/*/resources/builtin-ep/sql-editor-pro/dist/index.esm.js" >/dev/null 2>&1; then
+                echo "✓ Pro extension found in Linux AppImage"
+                rm -rf squashfs-root
+              else
+                echo "::notice::[pro-verify] builtin-ep not confirmed in AppImage (extraction probe failed)"
+                rm -rf squashfs-root
+              fi
             fi
           fi
 

@@ -28,6 +28,38 @@ export const UPDATER_CONFIG = { bundle: { createUpdaterArtifacts: true } };
 
 export const PRO_CONFIG = {};
 
+/** Relative paths that must exist under the staged Pro extension tree. */
+export const REQUIRED_PRO_STAGED_PATHS = [
+  'manifest.json',
+  'dist/index.esm.js',
+  'signature.sig',
+];
+
+export function builtinEpStagingDir(root = ROOT) {
+  return join(root, 'src-tauri', 'resources', 'builtin-ep', 'sql-editor-pro');
+}
+
+/**
+ * Pre-flight check for Pro edition builds: verify the staged builtin-ep tree
+ * exists *before* the ~10 min Tauri build starts. Returns the list of missing
+ * relative paths (empty = ready). Emits a `::notice::` line per missing file
+ * so failures are visible in check-run annotations without admin log access.
+ */
+export function checkProStagingReady({ root = ROOT, log = console.log } = {}) {
+  const staging = builtinEpStagingDir(root);
+  const missing = REQUIRED_PRO_STAGED_PATHS.filter(
+    (rel) => !existsSync(join(staging, rel)),
+  );
+  if (missing.length > 0) {
+    log(
+      `::notice::[pro-staging] missing staged files under ${staging}: ${missing.join(', ')}`,
+    );
+  } else {
+    log(`[pro-staging] staged tree ready at ${staging}`);
+  }
+  return missing;
+}
+
 export function resolveTauriCli(root = ROOT) {
   return require.resolve('@tauri-apps/cli/tauri.js', { paths: [root] });
 }
@@ -124,6 +156,20 @@ function main() {
   }
 
   const { features } = JSON.parse(readFileSync(featuresPath, 'utf-8'));
+
+  // Fail fast: a missing staged tree means the .deb/.app would ship without
+  // the Pro extension — better to stop here than after a 10-min build.
+  if (edition === 'pro') {
+    const missing = checkProStagingReady();
+    if (missing.length > 0) {
+      console.error(
+        `[ci-tauri-build] pro staging incomplete, missing: ${missing.join(', ')} ` +
+          `(expected under ${builtinEpStagingDir()})`,
+      );
+      process.exit(1);
+    }
+  }
+
   const args = buildTauriArgs({
     target,
     updater: argv.includes('--updater'),
