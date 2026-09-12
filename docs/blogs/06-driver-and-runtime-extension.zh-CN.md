@@ -63,4 +63,4 @@ Extension 扩展的是“用户如何组织和呈现能力”。它贡献工作�
 
 两种扩展机制不是重复建设，而是两个不同的信任域。Driver 负责连接能力，Extension 负责呈现能力；Command Runtime 是它们之间的受控交汇点。下一篇将回到桌面体验本身，说明 DataZen 为什么把大多数功能收进统一工作区，只保留少量真正需要原生窗口的页面。
 
-相关资料：[Extensions 架构](../architecture/backend/extensions.md) · [驱动架构](04-pluggable-database-drivers.zh-CN.md)
+相关资料：[Wapps 架构](../architecture/backend/wapps.md) · [驱动架构](04-pluggable-database-drivers.zh-CN.md)

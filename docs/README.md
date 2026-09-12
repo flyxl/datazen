@@ -39,7 +39,7 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 - [Data Sync](architecture/backend/data-sync.md)
 - [Schema Diff](architecture/backend/schema-diff.md)
 - [Theme](architecture/backend/theme.md)
-- [Extensions](architecture/backend/extensions.md)
+- [Wapps](architecture/backend/wapps.md)
 
 ### 前端
 

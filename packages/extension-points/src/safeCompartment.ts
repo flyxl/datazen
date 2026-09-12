@@ -5,7 +5,6 @@
  * the extension point (falling back to host defaults), and returns a safe fallback
  * value so the editor keeps working.
  *
- * @see docs/todo/hot-plug-prd.md §7.1
  */
 
 import type { ExtensionPoint } from './extensionPoints';

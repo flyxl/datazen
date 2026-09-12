@@ -66,4 +66,4 @@ Command ID 一旦进入 Workflow、插件或 MCP 配置，就应保持稳定。�
 
 Command API 把数据库能力变成可描述、可校验、可授权的协议。Trait 仍然承担底层连接和查询抽象，但面向产品的能力通过 Definition 暴露。这样 Driver 可以持续增加能力，宿主却不必持续增加数据库类型分支。
 
-相关资料：[Driver Command API](../architecture/backend/drivers.md) · [Workflow 模块](../architecture/backend/workflow.md) · [Extension 桥接](../architecture/backend/extensions.md)
+相关资料：[Driver Command API](../architecture/backend/drivers.md) · [Workflow 模块](../architecture/backend/workflow.md) · [Wapp 桥接](../architecture/backend/wapps.md)

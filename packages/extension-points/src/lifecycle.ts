@@ -1,7 +1,6 @@
 /**
  * Extension module lifecycle contracts — activate/deactivate with safe disposal.
  *
- * @see docs/todo/hot-plug-prd.md §3.1–3.2
  */
 
 import type { ExtensionPoint } from './extensionPoints';

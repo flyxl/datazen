@@ -48,4 +48,4 @@ Extension 使用自己的 `{appData}/wapps/{id}/.storage.json`，大小和请求
 
 缓存解决重复读取，Store 解决可恢复状态，加密和路径门控解决敏感边界。它们共同形成“本地优先但不随意暴露”的桌面数据层。下一篇将说明如何测试这些边界，尤其是为什么驱动方言测试必须留在驱动 crate 内。
 
-相关资料：[Schema 缓存](../architecture/backend/cache.md) · [Store](../architecture/backend/store.md) · [Extension 安全](../architecture/backend/extensions.md)
+相关资料：[Schema 缓存](../architecture/backend/cache.md) · [Store](../architecture/backend/store.md) · [Wapp 安全](../architecture/backend/wapps.md)

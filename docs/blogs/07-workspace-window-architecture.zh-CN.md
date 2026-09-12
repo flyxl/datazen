@@ -49,4 +49,4 @@ Rust 的 `create_sub_window` 负责真正创建原生窗口，设置尺寸、透
 
 窗口架构最终服务的是状态边界。主工作区负责连续的数据库工作流，少量子窗口负责隔离的专用任务，WindowKind 和 windowManager 则把平台差异集中起来。下一篇将深入主工作区内部：当连接、面板、Schema 和 AI 状态不断变化时，Zustand 如何避免一个全局 Store 失控。
 
-相关资料：[窗口管理](../architecture/windows.md) · [Extension 页面壳](../architecture/backend/extensions.md)
+相关资料：[窗口管理](../architecture/windows.md) · [Wapp 页面壳](../architecture/backend/wapps.md)

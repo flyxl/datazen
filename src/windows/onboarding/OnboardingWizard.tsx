@@ -32,7 +32,7 @@ GROUP BY region
 ORDER BY total DESC;`;
 
 /**
- * First-run journey shell (see docs/reviews/startup_journey_proposal.md).
+ * First-run journey shell.
  *
  * S0 entry choice → S1 step 1 of 2 (inline import form / connection form /
  * sample dataset) → S2 step 2 of 2 (AI provider, always) → S3 done.
