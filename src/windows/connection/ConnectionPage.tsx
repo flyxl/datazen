@@ -30,7 +30,12 @@ import {
   type WorkspaceMode,
 } from './connectionPageUtils';
 import { useConnectionTabs } from './useConnectionTabs';
-import { openNewConnectionDialog, PENDING_CONNECTION_KEY } from '../../lib/windowManager';
+import {
+  openNewConnectionDialog,
+  PENDING_CONNECTION_KEY,
+  POST_ONBOARDING_SAMPLE_KEY,
+  type PostOnboardingSample,
+} from '../../lib/windowManager';
 import {
   ConnectionNavigatorTree,
   type ConnectionNavigatorTreeHandle,
@@ -89,6 +94,10 @@ export function ConnectionPage() {
   >();
   const actionsRef = useRef<ConnectionViewActions | undefined>();
   const navigatorRef = useRef<ConnectionNavigatorTreeHandle>(null);
+
+  // ── Post-onboarding: auto-open sample connection + preset query ──
+  const postOnboardingRef = useRef<PostOnboardingSample | null>(null);
+  const postOnboardingConsumedRef = useRef(false);
   const workspaceSidebarMode = useUiStore((s) => s.workspaceSidebarMode);
   const toggleWorkspaceSidebarMode = useUiStore((s) => s.toggleWorkspaceSidebarMode);
   const sidebarExpanded = workspaceSidebarMode === 'expanded';
@@ -115,6 +124,7 @@ export function ConnectionPage() {
   }, [activeTab?.dbSessionId, activeTab?.status, executePendingAction]);
 
   const allPanels = usePanelStore((s) => s.panels);
+
   const activePanelId = usePanelStore((s) => s.activePanelId);
   const activePanel = allPanels.find((p) => p.id === activePanelId) ?? null;
 
@@ -411,6 +421,46 @@ export function ConnectionPage() {
     void fetchGroups();
     void navigatorRef.current?.refreshAllConnections();
   }, [fetchConnections, fetchGroups]);
+
+  // ── Post-onboarding sample: read directive once, open connection + query ──
+
+  // Step 1: Read the directive from localStorage on first mount.
+  useEffect(() => {
+    if (postOnboardingConsumedRef.current) return;
+    try {
+      const raw = localStorage.getItem(POST_ONBOARDING_SAMPLE_KEY);
+      if (!raw) return;
+      localStorage.removeItem(POST_ONBOARDING_SAMPLE_KEY);
+      postOnboardingConsumedRef.current = true;
+      postOnboardingRef.current = JSON.parse(raw) as PostOnboardingSample;
+    } catch {
+      // Malformed key — ignore.
+    }
+  }, []);
+
+  // Step 2: Once connections are loaded, find the sample connection and open a tab.
+  useEffect(() => {
+    const directive = postOnboardingRef.current;
+    if (!directive) return;
+    if (!connections.length) return;
+    const conn = connections.find((c) => c.name === directive.connectionName);
+    if (!conn) return;
+    handleSelectConnection(conn.id);
+  }, [connections, handleSelectConnection]);
+
+  // Step 3: When the sample connection becomes connected, open a query panel
+  // with the preset SQL.
+  useEffect(() => {
+    const directive = postOnboardingRef.current;
+    if (!directive) return;
+    const conn = connections.find((c) => c.name === directive.connectionName);
+    if (!conn) return;
+    const tab = tabs.find((t) => t.connectionId === conn.id && t.status === 'connected');
+    if (!tab) return;
+    if (allPanels.some((p) => p.connectionId === conn.id)) return;
+    postOnboardingRef.current = null;
+    actionsRef.current?.newQuery?.(directive.sql);
+  }, [tabs, connections, allPanels]);
 
   const handleExportConfig = useCallback(async () => {
     let saved: boolean;

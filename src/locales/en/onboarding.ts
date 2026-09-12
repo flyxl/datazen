@@ -7,8 +7,8 @@ const onboarding = {
   'onboarding.sidebar.importDesc': 'DBeaver, DataGrip, Navicat, TablePlus.',
   'onboarding.sidebar.aiTitle': 'AI-native',
   'onboarding.sidebar.aiDesc': 'Schema-aware SQL assistance.',
-  'onboarding.sidebar.localTitle': 'Local-first',
-  'onboarding.sidebar.localDesc': 'Credentials encrypted on device.',
+  'onboarding.sidebar.dashboardTitle': 'Dashboards & Charts',
+  'onboarding.sidebar.dashboardDesc': 'Visualise query results and share reports.',
 
   // S0 — Welcome
   'onboarding.s0.title': 'How would you like to start?',
@@ -72,7 +72,8 @@ const onboarding = {
   'onboarding.s3.aiNotConfigured': 'Not configured (optional)',
   'onboarding.s3.notConfigured': 'Not configured (can be added later)',
   'onboarding.s3.openBtn': 'Open DataZen',
-  'onboarding.s3.nextHint': 'Next: run the prebuilt query and press <b>Add to Dashboard</b>',
+  'onboarding.s3.nextHint':
+    'Next: the query is ready — press <b>Execute</b> then <b>Add to Dashboard</b>',
 
   // Common
   'onboarding.common.skip': 'Skip setup',

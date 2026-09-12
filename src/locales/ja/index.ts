@@ -6,6 +6,7 @@ import connection from './connection';
 import core from './core';
 import dashboard from './dashboard';
 import mcp from './mcp';
+import onboarding from './onboarding';
 import query from './query';
 import schema from './schema';
 import settings from './settings';
@@ -20,6 +21,7 @@ const locale = {
   ...core,
   ...dashboard,
   ...mcp,
+  ...onboarding,
   ...query,
   ...schema,
   ...settings,

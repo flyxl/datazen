@@ -298,6 +298,18 @@ export function openDashboardWindow(dashboardId?: string, dashboardName?: string
 export const PENDING_CONNECTION_KEY = 'datazen:pending-connection';
 
 /**
+ * Key used by the onboarding wizard to signal ConnectionPage to auto-open
+ * the sample connection and pre-fill a query panel with a preset SQL statement.
+ * Consumed once on mount and immediately removed.
+ */
+export const POST_ONBOARDING_SAMPLE_KEY = 'datazen:post-onboarding-sample';
+
+export interface PostOnboardingSample {
+  connectionName: string;
+  sql: string;
+}
+
+/**
  * Open the main workspace and add a connection tab.
  *
  * Connection-specific params are NOT included in the URL (only `window=connection`)

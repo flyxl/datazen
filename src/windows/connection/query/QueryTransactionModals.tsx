@@ -532,7 +532,7 @@ export function QueryResultsPane({
                           {t('query.addToDashboard')}
                         </button>
                       )}
-                      {exportButton}
+                      {resultViewMode !== 'chart' && exportButton}
                     </>
                   }
                   onViewChange={onSetResultViewMode}

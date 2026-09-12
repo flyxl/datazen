@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useState } from 'react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useAiStore } from '../../stores/aiStore';
 import { useModelProfileDraft } from '../settings/ai/useModelProfileDraft';
+import { POST_ONBOARDING_SAMPLE_KEY, type PostOnboardingSample } from '../../lib/windowManager';
 import { BrandSidebar } from './BrandSidebar';
 import { WizardFooter } from './WizardFooter';
 import { WelcomeStep } from './steps/WelcomeStep';
@@ -20,6 +21,15 @@ import {
   type WizardState,
 } from './wizardState';
 import type { ConnectionImportSource } from '../../components/connection/ConnectionShareDialog';
+
+/**
+ * Preset SQL filled into the query editor when the user enters the main workspace
+ * via the sample-database onboarding path.
+ */
+const SAMPLE_PRESET_SQL = `SELECT region, SUM(amount) AS total
+FROM demo_sales
+GROUP BY region
+ORDER BY total DESC;`;
 
 /**
  * First-run journey shell (see docs/reviews/startup_journey_proposal.md).
@@ -47,8 +57,21 @@ export function OnboardingWizard() {
   }, [detected]);
 
   const handleOpen = useCallback(() => {
+    // When the user finishes via the sample-database path, stash a directive
+    // so ConnectionPage can auto-open the connection and pre-fill a query.
+    if (state.entry === 'sample' && state.connectionName) {
+      const payload: PostOnboardingSample = {
+        connectionName: state.connectionName,
+        sql: SAMPLE_PRESET_SQL,
+      };
+      try {
+        localStorage.setItem(POST_ONBOARDING_SAMPLE_KEY, JSON.stringify(payload));
+      } catch {
+        // localStorage unavailable — graceful no-op.
+      }
+    }
     void updateSettings({ onboarding: completedOnboardingState() });
-  }, [updateSettings]);
+  }, [updateSettings, state.entry, state.connectionName]);
 
   const handleFinish = useCallback(async () => {
     // Nothing typed → AI stays unconfigured (the journey never forces a key).

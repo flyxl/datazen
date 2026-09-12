@@ -41,10 +41,11 @@ export function WelcomeStep({
           onClick={onImport}
           data-testid="onboarding-entry-import"
           className={cn(
-            'group flex items-center gap-4 rounded-xl border bg-[linear-gradient(180deg,#121824,#0f131c)] p-[18px_20px] text-left transition-all hover:-translate-y-px',
+            'group flex items-center gap-4 rounded-xl border p-[18px_20px] text-left transition-all hover:-translate-y-px',
+            'bg-white dark:bg-[linear-gradient(180deg,#121824,#0f131c)]',
             selectedEntry === 'import'
               ? 'border-accent/55 shadow-[0_0_0_3px_rgba(79,195,247,0.10)]'
-              : 'border-accent/45 shadow-[0_0_0_3px_rgba(79,195,247,0.06)] hover:border-accent/35 hover:bg-[#141a26]',
+              : 'border-accent/45 shadow-[0_0_0_3px_rgba(79,195,247,0.06)] hover:border-accent/35 hover:bg-accent-dim dark:hover:bg-[#141a26]',
           )}
         >
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] bg-accent/12 text-accent border border-accent/18">
@@ -79,7 +80,7 @@ export function WelcomeStep({
           type="button"
           onClick={onManual}
           data-testid="onboarding-entry-manual"
-          className="group flex items-center gap-4 rounded-xl border border-edge bg-[linear-gradient(180deg,#121824,#0f131c)] p-[18px_20px] text-left transition-all hover:border-edge-hi hover:bg-[#141a26] hover:-translate-y-px"
+          className="group flex items-center gap-4 rounded-xl border border-edge bg-white dark:bg-[linear-gradient(180deg,#121824,#0f131c)] p-[18px_20px] text-left transition-all hover:border-edge-hi hover:bg-surface-raised dark:hover:bg-[#141a26] hover:-translate-y-px"
         >
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] bg-accent/12 text-accent border border-accent/18">
             <Plus className="h-[19px] w-[19px]" />
@@ -100,7 +101,7 @@ export function WelcomeStep({
           type="button"
           onClick={onSample}
           data-testid="onboarding-entry-sample"
-          className="group flex items-center gap-4 rounded-xl border border-edge bg-[linear-gradient(180deg,#121824,#0f131c)] p-[18px_20px] text-left transition-all hover:border-edge-hi hover:bg-[#141a26] hover:-translate-y-px"
+          className="group flex items-center gap-4 rounded-xl border border-edge bg-white dark:bg-[linear-gradient(180deg,#121824,#0f131c)] p-[18px_20px] text-left transition-all hover:border-edge-hi hover:bg-surface-raised dark:hover:bg-[#141a26] hover:-translate-y-px"
         >
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] bg-accent/12 text-accent border border-accent/18">
             <FlaskConical className="h-[19px] w-[19px]" />

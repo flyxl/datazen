@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Database, Download, Lock, Sparkles } from 'lucide-react';
+import { Database, Download, Gauge, Sparkles } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import {
@@ -34,7 +34,7 @@ export function BrandSidebar() {
         'pt-[40px] pb-0',
       )}
     >
-      {/* Gradient background */}
+      {/* Gradient background — always dark as a brand anchor. */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_70%_at_0%_0%,rgba(79,195,247,0.13)_0%,transparent_55%)] bg-[linear-gradient(180deg,#0e131c,#0a0e15)]" />
 
       {/* Brand */}
@@ -68,9 +68,9 @@ export function BrandSidebar() {
           desc={t('onboarding.sidebar.aiDesc')}
         />
         <FeatureItem
-          icon={<Lock className="h-[15px] w-[15px]" />}
-          title={t('onboarding.sidebar.localTitle')}
-          desc={t('onboarding.sidebar.localDesc')}
+          icon={<Gauge className="h-[15px] w-[15px]" />}
+          title={t('onboarding.sidebar.dashboardTitle')}
+          desc={t('onboarding.sidebar.dashboardDesc')}
         />
       </div>
 

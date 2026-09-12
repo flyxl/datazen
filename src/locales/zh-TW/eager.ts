@@ -7,6 +7,7 @@ import settings from './settings';
 import chart from './chart';
 import backup from './backup';
 import ai from './ai';
+import onboarding from './onboarding';
 
 const eager = {
   ...core,
@@ -17,6 +18,7 @@ const eager = {
   ...chart,
   ...backup,
   ...ai,
+  ...onboarding,
 } as const;
 
 export default eager;

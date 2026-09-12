@@ -7,8 +7,8 @@ const onboarding = {
   'onboarding.sidebar.importDesc': 'DBeaver、DataGrip、Navicat、TablePlus。',
   'onboarding.sidebar.aiTitle': 'AI 原生',
   'onboarding.sidebar.aiDesc': '感知 Schema 的 SQL 辅助。',
-  'onboarding.sidebar.localTitle': '本地优先',
-  'onboarding.sidebar.localDesc': '凭据在设备上加密存储。',
+  'onboarding.sidebar.dashboardTitle': '可视化仪表盘',
+  'onboarding.sidebar.dashboardDesc': '查询结果秒变图表，报告无忧。',
 
   // S0 — Welcome
   'onboarding.s0.title': '你想如何开始？',
@@ -71,7 +71,7 @@ const onboarding = {
   'onboarding.s3.aiNotConfigured': '未配置（可选）',
   'onboarding.s3.notConfigured': '未配置（可稍后添加）',
   'onboarding.s3.openBtn': '打开 DataZen',
-  'onboarding.s3.nextHint': '下一步：运行预置查询，然后点击<b>添加到仪表板</b>',
+  'onboarding.s3.nextHint': '下一步：查询已就绪 — 点击<b>执行</b>，然后<b>添加到仪表板</b>',
 
   // Common
   'onboarding.common.skip': '跳过设置',
