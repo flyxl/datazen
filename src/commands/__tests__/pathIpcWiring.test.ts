@@ -44,10 +44,7 @@ describe('path IPC frontend wiring', () => {
     expect(src).not.toContain('@tauri-apps/api/core');
     expect(src).not.toMatch(/invoke[<(]/);
 
-    const hostBootstrap = fs.readFileSync(
-      path.join(ROOT, '../src-tauri/src/bootstrap.rs'),
-      'utf8',
-    );
+    const hostBootstrap = fs.readFileSync(path.join(ROOT, '../src-tauri/src/bootstrap.rs'), 'utf8');
     expect(hostBootstrap).not.toContain('adb_list_packages');
     expect(hostBootstrap).not.toContain('adb_pull_database');
 
@@ -92,10 +89,7 @@ describe('path IPC frontend wiring', () => {
     }
 
     // Host registration surface matches the merge.
-    const hostBootstrap = fs.readFileSync(
-      path.join(ROOT, '../src-tauri/src/bootstrap.rs'),
-      'utf8',
-    );
+    const hostBootstrap = fs.readFileSync(path.join(ROOT, '../src-tauri/src/bootstrap.rs'), 'utf8');
     expect(hostBootstrap).toContain('commands::backup_database,');
     expect(hostBootstrap).toContain('commands::restore_sql_file,');
     expect(hostBootstrap).toContain('commands::save_encryption_key_with_dialog');
@@ -145,13 +139,16 @@ describe('path IPC frontend wiring', () => {
     // Production callers: dialog flow only, no overridePath anywhere.
     const shareDialog = readSrc('components/connection/ConnectionShareDialog.tsx');
     expect(shareDialog).toContain('connectionCommands.exportConnections(');
-    expect(shareDialog).toContain('connectionCommands.importConnectionsAtPath(');
-    expect(shareDialog).toContain('connectionCommands.pickConnectionsImportFile(');
+    // Import is delegated to useConnectionImport hook (shared with the journey).
+    expect(shareDialog).toContain('useConnectionImport');
+    const importHook = readSrc('components/connection/useConnectionImport.ts');
+    expect(importHook).toContain('connectionCommands.importConnectionsAtPath(');
+    expect(importHook).toContain('connectionCommands.pickConnectionsImportFile(');
     const connectionPage = readSrc('windows/connection/ConnectionPage.tsx');
     expect(connectionPage).toContain('backupCommands.exportAppData(');
     expect(connectionPage).toContain('backupCommands.pickAppDataImportFile(');
     expect(connectionPage).toContain('backupCommands.importAppData(');
-    for (const prod of [connection, backup, shareDialog, connectionPage]) {
+    for (const prod of [connection, backup, shareDialog, importHook, connectionPage]) {
       expect(prod).not.toContain('overridePath');
       for (const gone of GONE_WRAPPERS) {
         expect(prod).not.toContain(gone);
@@ -159,10 +156,7 @@ describe('path IPC frontend wiring', () => {
     }
 
     // Host registration surface matches the merge.
-    const hostBootstrap = fs.readFileSync(
-      path.join(ROOT, '../src-tauri/src/bootstrap.rs'),
-      'utf8',
-    );
+    const hostBootstrap = fs.readFileSync(path.join(ROOT, '../src-tauri/src/bootstrap.rs'), 'utf8');
     for (const kept of [
       'commands::export_connections,',
       'commands::import_connections_preview,',

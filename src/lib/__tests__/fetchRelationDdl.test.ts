@@ -40,6 +40,7 @@ describe('fetchRelationDdl', () => {
       expect.stringContaining('SHOW CREATE TABLE `users`'),
       expect.any(Function),
       undefined,
+      undefined,
     );
   });
 
@@ -55,6 +56,7 @@ describe('fetchRelationDdl', () => {
       'sqlite_users',
       expect.stringContaining("WHERE type='table' AND name='sqlite_users'"),
       expect.any(Function),
+      undefined,
       undefined,
     );
   });
@@ -79,6 +81,7 @@ describe('fetchRelationDdl', () => {
       expect.any(String),
       expect.any(Function),
       { namespacePath: ['tenant_db'] },
+      'tenant_db',
     );
 
     vi.mocked(schemaCache.getCachedDDL).mockRejectedValueOnce(new Error('fail'));

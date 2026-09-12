@@ -66,7 +66,13 @@ describe('schemaCache', () => {
     const extractor = vi.fn((rows: unknown[][]) => String(rows[0]?.[0] ?? ''));
     const ddl = await getCachedDDL('conn-1', 'users', 'SHOW CREATE TABLE users', extractor);
     expect(ddl).toBe('CREATE TABLE users (...);');
-    expect(mockExecuteQuery).toHaveBeenCalledWith('conn-1', 'SHOW CREATE TABLE users');
+    expect(mockExecuteQuery).toHaveBeenCalledWith(
+      'conn-1',
+      'SHOW CREATE TABLE users',
+      undefined,
+      null,
+      null,
+    );
     expect(extractor).toHaveBeenCalledWith([['CREATE TABLE users (...);']]);
 
     mockExecuteQuery.mockClear();
