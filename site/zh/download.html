@@ -69,24 +69,36 @@
             <div class="icon">🍎</div>
             <h3>macOS</h3>
             <p style="margin: 8px 0 16px">支持 Apple Silicon（M 系列）与 Intel，dmg 安装包。</p>
-            <a
-              class="btn btn-primary"
-              href="https://github.com/flyxl/datazen/releases"
-              target="_blank"
-              rel="noopener"
-              >前往 Releases 下载</a
-            >
+              <a
+                class="btn btn-primary platform-download"
+                data-platform="macos"
+                data-arch="arm64"
+                href="https://github.com/flyxl/datazen/releases"
+                target="_blank"
+                rel="noopener"
+                >下载 Apple Silicon 版</a
+              >
+              <a
+                class="btn btn-secondary platform-download"
+                data-platform="macos"
+                data-arch="x64"
+                href="https://github.com/flyxl/datazen/releases"
+                target="_blank"
+                rel="noopener"
+                >下载 Intel 版</a
+              >
           </div>
           <div class="card">
             <div class="icon">🪟</div>
             <h3>Windows</h3>
             <p style="margin: 8px 0 16px">x64，提供 NSIS .exe 安装包与 Portable .zip。</p>
             <a
-              class="btn btn-primary"
+              class="btn btn-primary platform-download"
+              data-platform="windows"
               href="https://github.com/flyxl/datazen/releases"
               target="_blank"
               rel="noopener"
-              >前往 Releases 下载</a
+              >下载最新版本</a
             >
           </div>
           <div class="card">
@@ -94,11 +106,12 @@
             <h3>Linux</h3>
             <p style="margin: 8px 0 16px">x86_64，提供 .deb、.rpm 与 AppImage。</p>
             <a
-              class="btn btn-primary"
+              class="btn btn-primary platform-download"
+              data-platform="linux"
               href="https://github.com/flyxl/datazen/releases"
               target="_blank"
               rel="noopener"
-              >前往 Releases 下载</a
+              >下载最新版本</a
             >
           </div>
         </div>
@@ -123,12 +136,6 @@
             class="copy-btn"
             onclick="navigator.clipboard.writeText('winget install flyxl.datazen')"
           >
-            复制
-          </button>
-        </div>
-        <div class="install-cmd">
-          <code>scoop install datazen</code>
-          <button class="copy-btn" onclick="navigator.clipboard.writeText('scoop install datazen')">
             复制
           </button>
         </div>
@@ -213,12 +220,10 @@
             <p>不需要。下载安装即可使用，无需注册任何账号。</p>
           </details>
           <details>
-            <summary>我的数据会去哪里？</summary>
+            <summary>AI 请求如何处理？</summary>
             <p>
-              数据库数据与连接凭据只保存在你的电脑上——DataZen
-              不运营任何云服务，数据不会经过我们的服务器。只有当你使用 AI 功能时，Schema
-              与查询上下文才会发送给你自己配置的 AI 服务商（OpenAI / Anthropic / DeepSeek /
-              自定义端点）。
+              使用 AI 功能时，Schema 与查询上下文会发送给你自己配置的 AI 服务商（OpenAI /
+              Anthropic / DeepSeek / 自定义端点）。
             </p>
           </details>
           <details>
@@ -267,7 +272,7 @@
             "name": "我的数据会上传到哪里？",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "数据库数据和凭据全部留在本机，DataZen 不运行云服务。仅 AI 功能会将 schema 和查询上下文发送到你配置的服务商。"
+              "text": "AI 功能会将 schema 和查询上下文发送到你配置的服务商。"
             }
           },
           {

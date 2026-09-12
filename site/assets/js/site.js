@@ -25,7 +25,7 @@
       menuAria: 'Menu',
       productMenuAria: 'Toggle product menu',
       footerAbout:
-        'The AI-powered database workspace for developers. Query, debug, analyze and automate your databases — locally, from one lightweight desktop app. Licensed under GPLv3.',
+        'The AI-powered database workspace for developers. Query, debug, analyze and automate your databases from one lightweight desktop app. Licensed under GPLv3.',
       footerProduct: 'Product',
       footerLinks: 'Links',
       footerFeatures: 'All features',
@@ -66,7 +66,7 @@
       menuAria: '菜单',
       productMenuAria: '展开产品菜单',
       footerAbout:
-        '面向开发者的 AI 数据库工作台：查询、排障、分析、自动化，都在一款轻量桌面应用里本地完成。GPLv3 协议开源。',
+        '面向开发者的 AI 数据库工作台：查询、排障、分析、自动化，都在一款轻量桌面应用里完成。GPLv3 协议开源。',
       footerProduct: '产品',
       footerLinks: '链接',
       footerFeatures: '功能总览',
@@ -299,6 +299,50 @@
     }
   }
 
+  // ── Release downloads: resolve the matching installer from the latest release ──
+  function initReleaseDownloads() {
+    var buttons = document.querySelectorAll('.platform-download');
+    if (!buttons.length) return;
+
+    var ua = navigator.userAgent || '';
+    var isArmMac = /Macintosh/.test(ua) && /arm|aarch64/i.test(navigator.userAgentData?.architecture || '');
+    var platform = /Windows/.test(ua) ? 'windows' : /Linux/.test(ua) && !/Android/.test(ua) ? 'linux' : 'macos';
+    var type = platform === 'windows' ? 'nsis' : platform === 'linux' ? 'AppImage' : 'dmg';
+    var releaseUrl = 'https://api.github.com/repos/flyxl/datazen/releases/latest';
+
+    fetch(releaseUrl)
+      .then(function (response) {
+        if (!response.ok) throw new Error('Release lookup failed');
+        return response.json();
+      })
+      .then(function (release) {
+        var assets = (release.assets || []).filter(function (asset) {
+          return asset && asset.browser_download_url;
+        });
+        buttons.forEach(function (button) {
+          if (button.dataset.platform === platform) {
+            var buttonArch = button.dataset.arch || (isArmMac ? 'arm64' : 'x64');
+            var platformPattern = new RegExp(platform + '-' + buttonArch, 'i');
+            var extensionPattern = platform === 'windows' ? /\.exe$/i : platform === 'linux' ? /\.AppImage$/i : /\.dmg$/i;
+            var candidates = assets.filter(function (asset) {
+              return platformPattern.test(asset.name) && extensionPattern.test(asset.name) &&
+                (platform !== 'windows' || !/portable/i.test(asset.name));
+            });
+            var match = candidates.sort(function (left, right) {
+              var leftVariant = /-(?:all|akulaku)(?:[-.])/i.test(left.name) ? 1 : 0;
+              var rightVariant = /-(?:all|akulaku)(?:[-.])/i.test(right.name) ? 1 : 0;
+              return leftVariant - rightVariant;
+            })[0];
+            if (!match) return;
+            button.href = match.browser_download_url;
+            button.target = '_self';
+            button.removeAttribute('rel');
+          }
+        });
+      })
+      .catch(function () {});
+  }
+
   // ── GitHub star badge ──
   function initStarBadge() {
     var navEl = document.getElementById('nav-star-count');
@@ -409,6 +453,7 @@
     renderFooter();
     initHeroDemo();
     initPlatformDetect();
+    initReleaseDownloads();
     initStarBadge();
     initLightbox();
   });
