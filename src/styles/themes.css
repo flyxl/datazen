@@ -8,83 +8,83 @@
 
 :root {
   /* Backgrounds */
-  --c-surface: #f8fafc;
+  --c-surface: #f6f8fb;
   --c-surface-alt: #f1f5f9;
-  --c-surface-raised: #e2e8f0;
+  --c-surface-raised: #e8eef6;
   --c-surface-inset: #ffffff;
 
   /* Borders */
-  --c-edge: #cbd5e1;
-  --c-edge-hi: #94a3b8;
+  --c-edge: #e1e8f1;
+  --c-edge-hi: #c6d2e1;
 
   /* Foreground / Text */
-  --c-fg: #111827;
-  --c-fg-secondary: #475569;
-  --c-fg-muted: #64748b;
+  --c-fg: #26364d;
+  --c-fg-secondary: #58708d;
+  --c-fg-muted: #8498af;
 
   /* Accent & status */
-  --c-accent: #2563eb;
-  --c-accent-2: #1d4ed8;
-  --c-accent-deep: #1e40af;
-  --c-accent-dim: rgba(37, 99, 235, 0.08);
-  --c-accent-ring: rgba(37, 99, 235, 0.12);
+  --c-accent: #4385f5;
+  --c-accent-2: #3478ee;
+  --c-accent-deep: #285fc5;
+  --c-accent-dim: rgba(67, 133, 245, 0.09);
+  --c-accent-ring: rgba(67, 133, 245, 0.16);
   /* Text on accent-filled surfaces (demo primary button: accent bg + dark text) */
   --c-on-accent: #ffffff;
-  --c-success: #059669;
-  --c-warning: #d97706;
-  --c-danger: #dc2626;
+  --c-success: #18b77a;
+  --c-warning: #e39a27;
+  --c-danger: #e05252;
   /* Query execute / run button — green accent for Run action */
-  --c-query-run: #059669;
+  --c-query-run: #18b77a;
 
   /* Title bar background (TrafficLights area) */
-  --c-titlebar: #e2e8f0;
+  --c-titlebar: #ffffff;
   /* Title bar foreground / text (contrast against --c-titlebar) */
-  --c-titlebar-fg: #111827;
-  --c-titlebar-fg-muted: #475569;
-  --c-titlebar-hover: rgba(37, 99, 235, 0.1);
+  --c-titlebar-fg: #26364d;
+  --c-titlebar-fg-muted: #7187a2;
+  --c-titlebar-hover: rgba(67, 133, 245, 0.1);
 
-  /* Radii (demo: card 12 / small-card 10 / input+button 9 / pill 999) */
-  --radius-sm: 9px;
-  --radius-md: 10px;
-  --radius-lg: 12px;
+  /* Radii: restrained workspace controls with softly rounded containers. */
+  --radius-sm: 7px;
+  --radius-md: 9px;
+  --radius-lg: 11px;
   --radius-full: 999px;
 
   /* Shadows */
-  --shadow-card: 0 8px 24px -12px rgba(15, 23, 42, 0.25);
-  --shadow-glow: 0 8px 24px -12px rgba(37, 99, 235, 0.25);
+  --shadow-card: 0 8px 24px -14px rgba(38, 54, 77, 0.22);
+  --shadow-glow: 0 8px 24px -12px rgba(67, 133, 245, 0.22);
 
   /* Sidebar / welcome ambience (demo .aside background) */
   --bg-gradient:
-    radial-gradient(120% 70% at 0% 0%, rgba(37, 99, 235, 0.08) 0%, transparent 55%),
+    radial-gradient(120% 70% at 0% 0%, rgba(67, 133, 245, 0.06) 0%, transparent 55%),
     linear-gradient(180deg, #ffffff, #f1f5f9);
 
   /* Font stacks (overridable by theme packs) */
   --font-sans:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC',
+    -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
   --font-editor: var(--font-mono);
 
   /* CodeMirror syntax colors (light) */
-  --cm-keyword: #1d4ed8;
-  --cm-string: #047857;
-  --cm-number: #b45309;
-  --cm-comment: #64748b;
-  --cm-operator: #0e7490;
-  --cm-punctuation: #475569;
-  --cm-foreground: #111827;
+  --cm-keyword: #285fc5;
+  --cm-string: #168363;
+  --cm-number: #b86d12;
+  --cm-comment: #8498af;
+  --cm-operator: #147e9c;
+  --cm-punctuation: #58708d;
+  --cm-foreground: #26364d;
   --cm-background: #ffffff;
-  --cm-selection: rgba(37, 99, 235, 0.18);
-  --cm-cursor: #111827;
+  --cm-selection: rgba(67, 133, 245, 0.18);
+  --cm-cursor: #26364d;
 
   /* DataTable cell value colors by SQL-ish type family (overridable by theme packs) */
-  --dt-null: #64748b;
-  --dt-bool: #2563eb;
-  --dt-number: #b45309;
-  --dt-datetime: #0f766e;
-  --dt-json: #0369a1;
-  --dt-text: #111827;
-  --dt-binary: #dc2626;
+  --dt-null: #8498af;
+  --dt-bool: #3478ee;
+  --dt-number: #b86d12;
+  --dt-datetime: #147e9c;
+  --dt-json: #2b70a8;
+  --dt-text: #26364d;
+  --dt-binary: #e05252;
 }
 
 .dark {
