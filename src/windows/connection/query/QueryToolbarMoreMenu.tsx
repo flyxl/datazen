@@ -18,8 +18,9 @@ import {
 } from 'lucide-react';
 import { ToolbarButton } from '../../../components/ui/ToolbarButton';
 import { useI18n } from '../../../hooks/useI18n';
-import { usePlatform } from '../../../hooks/usePlatform';
 import { cn } from '../../../lib/cn';
+import { formatShortcutForDisplay, getActionShortcut } from '../../../lib/keymap';
+import { useSettingsStore } from '../../../stores/settingsStore';
 
 export interface QueryToolbarMoreMenuProps {
   compact?: boolean;
@@ -85,8 +86,6 @@ export function QueryToolbarMoreMenu({
   renderSnippetButton,
 }: QueryToolbarMoreMenuProps) {
   const { t } = useI18n();
-  const platform = usePlatform();
-  const isMac = platform === 'macos' || (platform as string) === 'ios';
 
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -137,7 +136,13 @@ export function QueryToolbarMoreMenu({
     });
   }, []);
 
-  const formatShortcut = isMac ? '⇧⌥F' : 'Shift+Alt+F';
+  const formatShortcut = formatShortcutForDisplay(
+    getActionShortcut(
+      'formatSql',
+      useSettingsStore.getState().settings.keymapPreset,
+      useSettingsStore.getState().settings.customKeymap,
+    ),
+  );
 
   return (
     <div

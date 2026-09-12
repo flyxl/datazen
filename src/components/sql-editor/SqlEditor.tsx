@@ -528,7 +528,15 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
       ),
       annotations: Transaction.addToHistory.of(false),
     });
-  }, [schema, databaseType, namespaceLoading, defaultSchema, defaultTable]);
+  }, [
+    schema,
+    databaseType,
+    namespaceLoading,
+    defaultSchema,
+    defaultTable,
+    keymapPreset,
+    customKeymap,
+  ]);
 
   // ── §S6-D: External value replacement (with documentVersion bump) ─
   useEffect(() => {

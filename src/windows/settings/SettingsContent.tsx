@@ -23,6 +23,7 @@ import {
   type KeymapPreset,
   getActionShortcut,
   formatShortcutForDisplay,
+  normalizeShortcutInput,
 } from '../../lib/keymap';
 import { SectionTitle, SettingRow, ToggleRow } from './settingsUi';
 import { DataCleanupSection } from './DataCleanupSection';
@@ -521,12 +522,12 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                         <div className="flex items-center gap-2">
                           <input
                             type="text"
-                            value={currentVal}
+                            value={formatShortcutForDisplay(currentVal)}
                             placeholder="e.g. Mod-Enter"
                             onChange={(e) => {
                               const newCustom = {
                                 ...(settings.customKeymap || {}),
-                                [action.id]: e.target.value,
+                                [action.id]: normalizeShortcutInput(e.target.value),
                               };
                               updateField('customKeymap', newCustom);
                             }}

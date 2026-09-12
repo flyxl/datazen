@@ -324,9 +324,16 @@ export function createSqlExtensions(opts: CreateSqlExtensionsOptions): Extension
  * with the dialect currently selected in the panel.
  */
 export function createFormatKeymap(databaseType?: string): Extension {
+  const formatShortcut = toCodeMirrorKeyFormat(
+    getActionShortcut(
+      'formatSql',
+      useSettingsStore.getState().settings.keymapPreset,
+      useSettingsStore.getState().settings.customKeymap,
+    ),
+  );
   return keymap.of([
     {
-      key: 'Shift-Alt-f',
+      key: formatShortcut,
       run: (view) =>
         formatEditorDocument(view, {
           databaseType,

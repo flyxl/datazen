@@ -3,6 +3,7 @@ import {
   formatShortcutForDisplay,
   getActionShortcut,
   KEYMAP_PRESETS,
+  normalizeShortcutInput,
   toCodeMirrorKeyFormat,
   toShortcutHookFormat,
 } from '../keymap';
@@ -57,9 +58,19 @@ describe('toCodeMirrorKeyFormat', () => {
 });
 
 describe('formatShortcutForDisplay', () => {
-  it('formats shortcuts cleanly', () => {
-    const formatted = formatShortcutForDisplay('Mod-Enter');
-    expect(typeof formatted).toBe('string');
-    expect(formatted.length).toBeGreaterThan(0);
+  it('uses readable platform-specific modifier names', () => {
+    const originalPlatform = navigator.platform;
+    const originalUserAgent = navigator.userAgent;
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' });
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Macintosh' });
+    expect(formatShortcutForDisplay('Mod-Shift-f')).toBe('Cmd+Shift+F');
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: originalPlatform });
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: originalUserAgent });
+    expect(formatShortcutForDisplay('Mod-Shift-f')).toBe('Ctrl+Shift+F');
+  });
+
+  it('normalizes platform labels before persistence', () => {
+    expect(normalizeShortcutInput('Cmd+Shift+F')).toBe('Mod-Shift-F');
+    expect(normalizeShortcutInput('Ctrl+Shift+F')).toBe('Ctrl-Shift-F');
   });
 });

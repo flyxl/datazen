@@ -96,18 +96,43 @@ export function toCodeMirrorKeyFormat(key: string): string {
 export function formatShortcutForDisplay(key: string): string {
   const isMac =
     typeof navigator !== 'undefined' &&
-    /mac|iphone|ipad|ipod/i.test(navigator.userAgent || navigator.platform || '');
+    /mac|iphone|ipad|ipod/i.test(`${navigator.platform} ${navigator.userAgent}`);
   return key
     .split(/[-+]/)
     .map((part) => {
       const lower = part.trim().toLowerCase();
-      if (lower === 'mod') return isMac ? '⌘' : 'Ctrl';
-      if (lower === 'ctrl') return isMac ? '⌃' : 'Ctrl';
-      if (lower === 'alt') return isMac ? '⌥' : 'Alt';
-      if (lower === 'shift') return isMac ? '⇧' : 'Shift';
-      if (lower === 'enter') return '↵';
+      if (lower === 'mod') return isMac ? 'Cmd' : 'Ctrl';
+      if (lower === 'ctrl') return 'Ctrl';
+      if (lower === 'alt') return isMac ? 'Option' : 'Alt';
+      if (lower === 'shift') return 'Shift';
+      if (lower === 'enter') return 'Enter';
       if (/^f\d+$/i.test(lower)) return lower.toUpperCase();
       return lower.toUpperCase();
     })
-    .join(isMac ? '' : '+');
+    .join('+');
+}
+
+/** Normalize platform-specific shortcut labels back to the persisted format. */
+export function normalizeShortcutInput(key: string): string {
+  return key
+    .trim()
+    .replace(/\b(cmd|command)\b/gi, 'Mod')
+    .replace(/\b(option)\b/gi, 'Alt')
+    .replace(/\s*([+-])\s*/g, '$1')
+    .replace(/\+/g, '-')
+    .split('-')
+    .filter(Boolean)
+    .map((part) => {
+      const lower = part.toLowerCase();
+      if (lower === 'mod') return 'Mod';
+      if (lower === 'ctrl') return 'Ctrl';
+      if (lower === 'alt') return 'Alt';
+      if (lower === 'shift') return 'Shift';
+      if (lower === 'enter') return 'Enter';
+      if (lower === 'space') return 'Space';
+      if (lower === 'escape' || lower === 'esc') return 'Escape';
+      if (/^f\d+$/i.test(lower)) return lower.toUpperCase();
+      return part;
+    })
+    .join('-');
 }
