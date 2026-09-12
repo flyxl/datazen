@@ -42,6 +42,7 @@ export function parseArgs(argv = process.argv.slice(2)) {
   let proGit = process.env.DATAZEN_PRO_GIT || DEFAULT_PRO_GIT;
   let restore = false;
   let codegenOnly = false;
+  let prebuiltUrl = process.env.DATAZEN_PRO_PREBUILT_URL || null;
 
   for (const arg of argv) {
     if (arg === '--pro' || arg === '--edition=pro') {
@@ -60,10 +61,12 @@ export function parseArgs(argv = process.argv.slice(2)) {
       proPath = arg.slice('--pro-path='.length);
     } else if (arg.startsWith('--pro-git=')) {
       proGit = arg.slice('--pro-git='.length);
+    } else if (arg.startsWith('--pro-prebuilt-url=')) {
+      prebuiltUrl = arg.slice('--pro-prebuilt-url='.length);
     }
   }
 
-  return { edition, explicitEdition, proPath, proGit, restore, codegenOnly };
+  return { edition, explicitEdition, proPath, proGit, restore, codegenOnly, prebuiltUrl };
 }
 
 export function writeCommunityCodegen(dest = GENERATED_PRO_TS) {
@@ -142,6 +145,71 @@ export function clearBuiltinEpStaging(extension = 'sql-editor-pro') {
   }
 }
 
+/**
+ * Download a prebuilt pro extension tarball and extract it directly to the
+ * builtin-ep staging directory.  The tarball is expected to contain the
+ * already-staged package tree (manifest.json, dist/, signature.sig, etc.)
+ * — no build or signing step is needed after extraction.
+ *
+ * @param {{ prebuiltUrl: string, extension?: string }} opts
+ */
+export function downloadPrebuiltEp({ prebuiltUrl, extension = 'sql-editor-pro' } = {}) {
+  const target = resolve(DEFAULT_BUILTIN_EP_ROOT, extension);
+  mkdirSync(target, { recursive: true });
+
+  const tmpDir = resolve(ROOT, '.pro-prebuilt-download');
+  mkdirSync(tmpDir, { recursive: true });
+  const tarball = resolve(tmpDir, 'prebuilt.tar.gz');
+
+  console.log(`[resolve-pro] downloading prebuilt EP from ${prebuiltUrl} ...`);
+  try {
+    // Try gh release download first (works with deploy keys for private repos)
+    // Fall back to curl/wget for public URLs
+    const isGithubUrl = prebuiltUrl.includes('github.com');
+    if (isGithubUrl && !prebuiltUrl.includes('/releases/download/')) {
+      // It's a tag-based URL — construct the asset name
+      // Expect format: pro-{version} tag name
+      throw new Error('tag-based download not supported, use full asset URL');
+    }
+
+    try {
+      execSync(
+        `curl -fsSL -o "${tarball}" "${prebuiltUrl}"`,
+        { stdio: 'pipe' }
+      );
+    } catch {
+      // curl failed — try wget
+      execSync(
+        `wget -q -O "${tarball}" "${prebuiltUrl}"`,
+        { stdio: 'pipe' }
+      );
+    }
+
+    // Extract to target dir
+    execSync(
+      `tar -xzf "${tarball}" -C "${target}"`,
+      { stdio: 'pipe' }
+    );
+
+    // Verify required files
+    const required = ['manifest.json', 'dist/index.esm.js'];
+    for (const f of required) {
+      if (!existsSync(resolve(target, f))) {
+        throw new Error(`prebuilt tarball missing required file: ${f}`);
+      }
+    }
+
+    console.log(`[resolve-pro] prebuilt EP extracted to ${target}`);
+    return target;
+  } catch (err) {
+    console.error(`[resolve-pro] prebuilt download failed: ${err.message}`);
+    throw err;
+  } finally {
+    // Cleanup temp files
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  }
+}
+
 export function stageProExtension({
   extensionDir,
   skipBuild = false,
@@ -213,6 +281,7 @@ export function resolvePro(opts = {}) {
   const proGit = opts.proGit ?? parsed.proGit;
   const restore = opts.restore ?? parsed.restore;
   const codegenOnly = opts.codegenOnly ?? parsed.codegenOnly;
+  const prebuiltUrl = opts.prebuiltUrl ?? parsed.prebuiltUrl;
 
   // If codegenOnly is requested without an explicit edition, and generated-pro.ts already exists, preserve it!
   if (codegenOnly && !explicitEdition && !restore && existsSync(GENERATED_PRO_TS)) {
@@ -227,6 +296,35 @@ export function resolvePro(opts = {}) {
   }
 
   if (edition === 'pro') {
+    // Fast path: prebuilt tarball (downloaded in CI or via --pro-prebuilt-url)
+    const builtinEpDir = resolve(DEFAULT_BUILTIN_EP_ROOT, 'sql-editor-pro');
+    const hasPrebuiltFiles =
+      existsSync(resolve(builtinEpDir, 'manifest.json')) &&
+      existsSync(resolve(builtinEpDir, 'dist/index.esm.js'));
+
+    if (prebuiltUrl && !codegenOnly) {
+      if (hasPrebuiltFiles) {
+        console.log('[resolve-pro] prebuilt EP already staged, skipping download');
+        writeProCodegen(GENERATED_PRO_TS, { proPath: proPath || builtinEpDir });
+        return { edition: 'pro', active: true, path: builtinEpDir, prebuilt: true };
+      }
+      try {
+        const targetPath = downloadPrebuiltEp({ prebuiltUrl });
+        writeProCodegen(GENERATED_PRO_TS, { proPath: targetPath || proPath || DEFAULT_PRO_DEST });
+        return { edition: 'pro', active: true, path: targetPath, prebuilt: true };
+      } catch (err) {
+        console.warn(`[resolve-pro] prebuilt download failed, falling back to git clone: ${err.message}`);
+      }
+    }
+
+    // If prebuilt files are already staged (e.g., by CI download step), just codegen
+    if (hasPrebuiltFiles && !proPath && !proGit && !codegenOnly) {
+      console.log('[resolve-pro] pro extension already staged in builtin-ep, writing codegen');
+      writeProCodegen(GENERATED_PRO_TS, { proPath: proPath || builtinEpDir });
+      return { edition: 'pro', active: true, path: builtinEpDir, prebuilt: true };
+    }
+
+    // Standard path: clone + build from source
     const targetPath = ensureProCheckout({ proPath, proGit, codegenOnly });
     writeProCodegen(GENERATED_PRO_TS, { proPath: targetPath || proPath || DEFAULT_PRO_DEST });
     if (!codegenOnly && targetPath) {

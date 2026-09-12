@@ -91,6 +91,7 @@ export function runWithDriverInject(options = {}) {
     baseEnv.DATAZEN_EDITION === 'pro';
   const proPathArg = ahead.find((a) => a.startsWith('--pro-path='));
   const proGitArg = ahead.find((a) => a.startsWith('--pro-git='));
+  const proPrebuiltArg = ahead.find((a) => a.startsWith('--pro-prebuilt-url='));
 
   const runResolvePro =
     options.runResolvePro ??
@@ -185,7 +186,7 @@ export function runWithDriverInject(options = {}) {
   if (ownStash) {
     runResolve(resolveArgs);
     if (proFlag) {
-      const extra = [proPathArg, proGitArg].filter(Boolean).join(' ');
+      const extra = [proPathArg, proGitArg, proPrebuiltArg].filter(Boolean).join(' ');
       runResolvePro(`--edition=pro${extra ? ` ${extra}` : ''}`);
     }
   }

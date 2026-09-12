@@ -270,6 +270,49 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install upx --no-progress
 
+      - name: Download prebuilt Pro extension (fast path)
+        if: matrix.needs_pro
+        shell: bash
+        env:
+          PRO_DEPLOY_KEY: ${{ secrets.PRO_DEPLOY_KEY || secrets.SQL_EDITOR_PRO_DEPLOY_KEY }}
+        run: |
+          # Attempt to download the prebuilt pro extension tarball from the
+          # Pro repo's GitHub Release.  This avoids cloning + building from
+          # source — no SSH deploy key needed for the Pro repo itself.
+          VERSION=$(node -p "require('./package.json').version")
+          PRO_REPO="flyxl/datazen-extension-sql-editor-pro"
+          TAG="pro-${VERSION}"
+          TARBALL="sql-editor-pro-${VERSION}.tar.gz"
+          URL="https://github.com/${PRO_REPO}/releases/download/${TAG}/${TARBALL}"
+
+          echo "Trying prebuilt: ${URL}"
+
+          # Try curl first; GitHub redirects to a CDN URL.
+          # Use GH_TOKEN if available for private repos.
+          AUTH_HEADER=""
+          if [ -n "${GH_TOKEN:-}" ]; then
+            AUTH_HEADER="-H 'Authorization: token ${GH_TOKEN}'"
+          fi
+
+          if curl -fsSL ${AUTH_HEADER} -o "/tmp/${TARBALL}" "${URL}" 2>/dev/null; then
+            mkdir -p src-tauri/resources/builtin-ep/sql-editor-pro
+            tar -xzf "/tmp/${TARBALL}" -C src-tauri/resources/builtin-ep/sql-editor-pro
+            rm -f "/tmp/${TARBALL}"
+
+            # Verify required files
+            if [ -f "src-tauri/resources/builtin-ep/sql-editor-pro/manifest.json" ] && \
+               [ -f "src-tauri/resources/builtin-ep/sql-editor-pro/dist/index.esm.js" ]; then
+              echo "✅ Prebuilt pro extension downloaded and extracted"
+              echo "PRO_PREBUILT_URL=${URL}" >> "$GITHUB_ENV"
+              # Also set for resolve-pro.mjs
+              echo "DATAZEN_PRO_PREBUILT_URL=${URL}" >> "$GITHUB_ENV"
+            else
+              echo "⚠️ Prebuilt tarball missing required files, falling back to source build"
+            fi
+          else
+            echo "⚠️ Prebuilt download failed (HTTP or not found), falling back to source build"
+          fi
+
       - name: Resolve drivers and build Tauri app
         shell: bash
         run: |
@@ -281,7 +324,11 @@ jobs:
           if [ "${{ matrix.edition }}" = "pro" ]; then
             EDITION_FLAG="--edition=pro"
           fi
-          node scripts/with-driver-inject.mjs --drivers="${{ matrix.drivers }}" ${EDITION_FLAG} -- node scripts/ci-tauri-build.mjs --target=${{ matrix.target }} ${UPDATER_FLAG} ${EDITION_FLAG}
+          PRO_PREBUILT_FLAG=""
+          if [ -n "${PRO_PREBUILT_URL:-}" ]; then
+            PRO_PREBUILT_FLAG="--pro-prebuilt-url=${PRO_PREBUILT_URL}"
+          fi
+          node scripts/with-driver-inject.mjs --drivers="${{ matrix.drivers }}" ${EDITION_FLAG} ${PRO_PREBUILT_FLAG} -- node scripts/ci-tauri-build.mjs --target=${{ matrix.target }} ${UPDATER_FLAG} ${EDITION_FLAG}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DATAZEN_DRIVERS: ${{ matrix.drivers }}
