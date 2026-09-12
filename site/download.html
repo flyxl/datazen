@@ -71,20 +71,32 @@
             <p style="margin: 8px 0 16px">
               Apple Silicon (M series) and Intel supported — dmg installer.
             </p>
-            <a
-              class="btn btn-primary"
-              href="https://github.com/flyxl/datazen/releases"
-              target="_blank"
-              rel="noopener"
-              >Download from Releases</a
-            >
+              <a
+                class="btn btn-primary platform-download"
+                data-platform="macos"
+                data-arch="arm64"
+                href="https://github.com/flyxl/datazen/releases"
+                target="_blank"
+                rel="noopener"
+                >Download for Apple Silicon</a
+              >
+              <a
+                class="btn btn-secondary platform-download"
+                data-platform="macos"
+                data-arch="x64"
+                href="https://github.com/flyxl/datazen/releases"
+                target="_blank"
+                rel="noopener"
+                >Download for Intel</a
+              >
           </div>
           <div class="card">
             <div class="icon">🪟</div>
             <h3>Windows</h3>
             <p style="margin: 8px 0 16px">x64 — NSIS .exe installer and portable .zip.</p>
             <a
-              class="btn btn-primary"
+              class="btn btn-primary platform-download"
+              data-platform="windows"
               href="https://github.com/flyxl/datazen/releases"
               target="_blank"
               rel="noopener"
@@ -96,11 +108,12 @@
             <h3>Linux</h3>
             <p style="margin: 8px 0 16px">x86_64 — .deb, .rpm, and AppImage packages.</p>
             <a
-              class="btn btn-primary"
+              class="btn btn-primary platform-download"
+              data-platform="linux"
               href="https://github.com/flyxl/datazen/releases"
               target="_blank"
               rel="noopener"
-              >Download from Releases</a
+              >Download latest</a
             >
           </div>
         </div>
@@ -123,12 +136,6 @@
             class="copy-btn"
             onclick="navigator.clipboard.writeText('winget install flyxl.datazen')"
           >
-            Copy
-          </button>
-        </div>
-        <div class="install-cmd">
-          <code>scoop install datazen</code>
-          <button class="copy-btn" onclick="navigator.clipboard.writeText('scoop install datazen')">
             Copy
           </button>
         </div>
@@ -217,12 +224,10 @@
             <p>No. Download, install, and use — no signup required.</p>
           </details>
           <details>
-            <summary>Where does my data go?</summary>
+            <summary>How are AI requests handled?</summary>
             <p>
-              Your database data and credentials stay on your machine — DataZen runs no cloud
-              service, so nothing passes through our servers. Only when you use AI features are
-              schema and query context sent to the AI provider you configure (OpenAI / Anthropic /
-              DeepSeek / custom endpoint).
+              When you use AI features, schema and query context are sent to the AI provider you
+              configure (OpenAI / Anthropic / DeepSeek / custom endpoint).
             </p>
           </details>
           <details>
@@ -299,10 +304,10 @@
           },
           {
             "@type": "Question",
-            "name": "Where does my data go?",
+            "name": "How are AI requests handled?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Your database data and credentials stay on your machine. DataZen runs no cloud service. Only AI features send schema and query context to the provider you configure."
+              "text": "AI features send schema and query context to the provider you configure."
             }
           },
           {

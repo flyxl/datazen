@@ -6,7 +6,7 @@
     <title>DataZen — AI-Powered Database Workspace for Developers</title>
     <meta
       name="description"
-      content="DataZen is a free open-source desktop database workspace: natural-language SQL, one-click error diagnosis, EXPLAIN analysis, charts, cross-database workflows, and a built-in MCP server for AI agents. Local-first, under 15 MB."
+      content="DataZen is a free open-source desktop database workspace: natural-language SQL, one-click error diagnosis, EXPLAIN analysis, charts, cross-database workflows, and a built-in MCP server for AI agents."
     />
     <link rel="canonical" href="https://flyxl.github.io/datazen/" />
     <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/" />
@@ -16,7 +16,7 @@
     <meta property="og:title" content="DataZen — AI-Powered Database Workspace for Developers" />
     <meta
       property="og:description"
-      content="Query, debug, analyze and automate your databases with an AI teammate — locally, from one lightweight desktop app. NL2SQL, error diagnosis, EXPLAIN analysis, charts, workflows, MCP server."
+      content="Query, debug, analyze and automate your databases with an AI teammate from one lightweight desktop app. NL2SQL, error diagnosis, EXPLAIN analysis, charts, workflows, MCP server."
     />
     <meta property="og:url" content="https://flyxl.github.io/datazen/" />
     <meta
@@ -29,7 +29,7 @@
     <meta name="twitter:title" content="DataZen — AI-Powered Database Workspace for Developers" />
     <meta
       name="twitter:description"
-      content="Query, debug, analyze and automate your databases with an AI teammate — locally, from one lightweight desktop app."
+      content="Query, debug, analyze and automate your databases with an AI teammate from one lightweight desktop app."
     />
     <meta
       name="twitter:image"
@@ -53,7 +53,7 @@
         "softwareHelp": "https://flyxl.github.io/datazen/manual.html",
         "sameAs": ["https://github.com/flyxl/datazen", "https://x.com/xiaolongwu3"],
         "featureList": "Natural-language SQL, SQL error diagnosis, EXPLAIN analysis, query charts, cross-database workflows, MCP server, MCP client, extensible database drivers",
-        "description": "Free, open-source AI-powered database workspace: NL2SQL, error diagnosis, EXPLAIN analysis, charts, cross-database workflows and a built-in MCP server. Under 15 MB, local-first.",
+        "description": "Free, open-source AI-powered database workspace: NL2SQL, error diagnosis, EXPLAIN analysis, charts, cross-database workflows and a built-in MCP server.",
         "inLanguage": "en"
       }
     </script>
@@ -80,10 +80,10 @@
           },
           {
             "@type": "Question",
-            "name": "Does DataZen upload database data to a cloud service?",
+            "name": "How are AI provider requests handled?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "No. Database credentials stay encrypted on the local device, and AI requests go only to the provider configured by the user."
+              "text": "AI requests go only to the provider configured by the user."
             }
           },
           {
@@ -105,10 +105,10 @@
     <section class="hero">
       <div class="wrap">
         <span class="hero-badge"><span class="dot"></span>Free &amp; Open Source</span>
-        <h1>The <span class="grad">AI workspace</span><br />for your databases.</h1>
+        <h1>An <span class="grad">AI database workspace</span><br />for developers and agents.</h1>
         <p class="lead">
-          Query, debug, analyze and automate your databases with an AI teammate — locally, from one
-          lightweight desktop app.
+          Query, diagnose, visualize, migrate and automate your databases from one desktop app —
+          with AI and MCP built into the real workflow.
         </p>
         <div class="hero-cta">
           <a class="btn btn-primary btn-lg" id="hero-download" href="download.html"
@@ -127,9 +127,7 @@
           <strong>macOS note:</strong> If you see "damaged or cannot verify", run
           <code>xattr -cr /Applications/DataZen.app</code> then right-click → Open.
         </p>
-        <p class="hero-note">
-          Your database data stays local — AI requests go only to the provider you configure.
-        </p>
+        <p class="hero-note">Bring your own AI provider and keep provider access under your control.</p>
 
         <!-- Live demo: NL → SQL → result → chart -->
         <div class="hero-shot">
@@ -164,17 +162,17 @@
         <span class="db-chip"><i></i>Redis</span>
         <span class="db-chip"><i></i>MongoDB</span>
         <span class="db-chip"><i></i>ClickHouse</span>
-        <span class="pill">+ plugin drivers</span>
+        <span class="pill">+ optional and external drivers</span>
       </div>
     </section>
 
-    <!-- Stats band -->
+    <!-- Product loop -->
     <section class="section-tight">
       <div class="wrap stats-band">
-        <div class="stat"><b>&lt;15 MB</b><span>installer size</span></div>
-        <div class="stat"><b>&lt;1 s</b><span>cold startup</span></div>
-        <div class="stat"><b>4+</b><span>databases built-in</span></div>
-        <div class="stat"><b>$0</b><span>free &amp; open source</span></div>
+        <div class="stat"><b>Understand</b><span>SQL, schema, ER diagrams, Redis</span></div>
+        <div class="stat"><b>Fix</b><span>AI diagnosis, EXPLAIN, safe editing</span></div>
+        <div class="stat"><b>Move</b><span>backup, sync, transfer, schema diff</span></div>
+        <div class="stat"><b>Automate</b><span>Workflows, dashboards, MCP</span></div>
       </div>
     </section>
 
@@ -183,10 +181,10 @@
       <div class="wrap">
         <div class="section-head center">
           <span class="kicker">The core difference</span>
-          <h2>Your database, with an AI teammate</h2>
+          <h2>AI that works inside the database loop</h2>
           <p>
-            Not a chatbot bolted onto a grid — every AI capability lives inside the real query
-            workflow.
+            Not a chatbot bolted onto a grid. AI receives real schema and error context, then hands
+            useful results back to the editor, chart, workflow, or agent.
           </p>
         </div>
         <div class="grid-3">
@@ -397,7 +395,7 @@
               <td class="no">—</td>
             </tr>
             <tr>
-              <td>Local-first — no account, no cloud service</td>
+              <td>No account — open source and provider-neutral</td>
               <td class="yes">✓</td>
               <td class="no">Varies</td>
             </tr>
@@ -483,7 +481,7 @@
             <h2>Your database. Your credentials. Your AI provider.</h2>
             <p>The question every AI database tool must answer honestly: where does my data go?</p>
             <ul>
-              <li>DataZen runs no cloud service — your data never passes through our servers</li>
+              <li>Bring your own AI provider and keep provider access under your control</li>
               <li>Passwords are AES-256-GCM encrypted; the master key lives in your OS keychain</li>
               <li>
                 Only schema and query context are shared with AI — and only with the provider you
@@ -590,8 +588,7 @@
           <div class="card">
             <h3>Does data leave my device?</h3>
             <p>
-              Database credentials stay encrypted locally. AI requests go only to the provider and
-              endpoint you configure.
+              AI requests go only to the provider and endpoint you configure.
             </p>
           </div>
           <div class="card">
@@ -623,13 +620,14 @@
     <section class="section" style="padding-top: 0">
       <div class="wrap">
         <div class="cta-band">
-          <h2>Ready to hand the tedious parts to AI?</h2>
+          <h2>One workspace for the database work that follows every query</h2>
           <p>
-            Download free, connect your database, and run your first AI-assisted query in minutes.
+            Download free, connect a database, and move from your first query to a repeatable workflow
+            in minutes.
           </p>
           <a class="btn btn-primary btn-lg" href="download.html">Download DataZen — Free</a>
           <p class="muted" style="font-size: 13px; margin-top: 14px">
-            No account · Open source · Local-first
+            No account · Open source · Bring your own provider
           </p>
           <p class="muted" style="font-size: 13px; margin-top: 8px">
             <a
@@ -647,10 +645,10 @@
             >
             ·
             <a
-              href="https://github.com/flyxl/datazen/blob/main/docs/development/roadmap.md"
+              href="manual.html"
               target="_blank"
               rel="noopener"
-              >Roadmap</a
+              >User manual</a
             >
           </p>
         </div>

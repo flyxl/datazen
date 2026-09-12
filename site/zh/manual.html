@@ -781,12 +781,11 @@ output:
             />
             <ul>
               <li>
-                连接凭据使用 AES-256-GCM 加密存储；主密钥默认保存在操作系统钥匙串 （开发版可用本地
+                连接凭据使用 AES-256-GCM 加密存储；主密钥默认保存在操作系统钥匙串（开发版可用
                 <code>.key</code> 文件）。
               </li>
               <li>
-                AI 配置独立加密（<code>ai_config.enc</code>），请求只发往你自己配置的 Provider，
-                数据不上传任何云端服务。
+                AI 配置独立加密（<code>ai_config.enc</code>），请求只发往你自己配置的 Provider。
               </li>
               <li>
                 Safe Mode 拦截无 WHERE 的 UPDATE / DELETE 和 TRUNCATE /
