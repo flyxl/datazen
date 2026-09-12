@@ -42,8 +42,6 @@ const pack = {
   'chart.empty.noNumericField': '차트에는 숫자 열이 1개 이상 필요합니다.',
   'chart.empty.noConfig': '구성 패널에서 Y축 필드를 선택하세요.',
   'chart.sampledWarning': '대규모 데이터 세트, 차트에는 처음 {limit} 행만 표시됩니다.',
-  'chart.nlPlaceholder': '명령 입력(예: 파이로 전환)',
-  'chart.nlHint': '자연어로 차트 조정',
   'chart.expand': '확장하다',
   'chart.splitView': '시리즈별 개별 차트로 분할',
   'chart.expandTitle': '차트 미리보기',

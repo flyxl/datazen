@@ -42,8 +42,6 @@ const pack = {
   'chart.empty.noNumericField': '需要至少一個數值列才能生成圖表',
   'chart.empty.noConfig': '請在左側配置面板中選擇 Y 軸字段',
   'chart.sampledWarning': '數據量較大，圖表僅展示前 {limit} 行',
-  'chart.nlPlaceholder': '輸入指令（如：換成餅圖）',
-  'chart.nlHint': '用自然語言調整圖表',
   'chart.expand': '放大顯示',
   'chart.splitView': '按系列拆分為獨立圖表',
   'chart.expandTitle': '圖表預覽',

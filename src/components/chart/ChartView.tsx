@@ -138,7 +138,6 @@ export function ChartView({
         config={config}
         onChange={setConfig}
         chartRef={chartRef}
-        fields={fields}
         onExpand={() => setExpanded(true)}
         splitView={splitView}
         onToggleSplit={() => setSplitView((v) => !v)}

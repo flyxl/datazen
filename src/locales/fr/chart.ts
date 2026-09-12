@@ -43,8 +43,6 @@ const pack = {
   'chart.empty.noConfig': "Sélectionnez un champ d'axe Y dans le panneau de configuration",
   'chart.sampledWarning':
     'Grand ensemble de données, le graphique affiche uniquement les {limit} premières lignes',
-  'chart.nlPlaceholder': 'Tapez une commande (par exemple, passer à la tarte)',
-  'chart.nlHint': 'Ajuster le graphique avec le langage naturel',
   'chart.expand': 'Développer',
   'chart.splitView': 'Diviser en graphiques séparés par série',
   'chart.expandTitle': 'Aperçu du graphique',

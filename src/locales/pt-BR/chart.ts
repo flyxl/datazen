@@ -43,8 +43,6 @@ const pack = {
   'chart.empty.noConfig': 'Selecione um campo do eixo Y no painel de configuração',
   'chart.sampledWarning':
     'Grande conjunto de dados, o gráfico mostra apenas as primeiras {limit} linhas',
-  'chart.nlPlaceholder': 'Digite o comando (por exemplo, mudar para pizza)',
-  'chart.nlHint': 'Ajuste o gráfico com linguagem natural',
   'chart.expand': 'Expandir',
   'chart.splitView': 'Dividir em gráficos separados por série',
   'chart.expandTitle': 'Pré-visualização do gráfico',

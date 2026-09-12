@@ -42,8 +42,6 @@ const pack = {
   'chart.empty.noNumericField': 'Für Diagramme ist mindestens eine numerische Spalte erforderlich',
   'chart.empty.noConfig': 'Wählen Sie im Konfigurationsfenster ein Y-Achsenfeld aus',
   'chart.sampledWarning': 'Großer Datensatz, Diagramm zeigt nur die ersten {limit} Zeilen',
-  'chart.nlPlaceholder': 'Geben Sie den Befehl ein (z. B. zu Kuchen wechseln)',
-  'chart.nlHint': 'Passen Sie das Diagramm mit natürlicher Sprache an',
   'chart.expand': 'Expandieren',
   'chart.splitView': 'In separate Diagramme pro Serie aufteilen',
   'chart.expandTitle': 'Diagrammvorschau',

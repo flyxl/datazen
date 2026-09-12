@@ -1,12 +1,10 @@
-import { useCallback, useRef, useState } from 'react';
-import { useAiKeyboard } from '../../hooks/useAiKeyboard';
+import { useRef, useState } from 'react';
 import {
   BarChart3,
   Download,
   LayoutGrid,
   Maximize2,
   LineChart as LineChartIcon,
-  MessageSquare,
   PieChart as PieChartIcon,
   ScatterChart as ScatterChartIcon,
   TrendingUp,
@@ -14,15 +12,13 @@ import {
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { exportChartAsPng, exportChartAsSvg } from '../../lib/chart/export';
-import { parseNlChartConfig } from '../../lib/chart/nlConfig';
-import type { ChartConfig, ChartField, ChartType } from '../../types/chart';
+import type { ChartConfig, ChartType } from '../../types/chart';
 import { ToolbarShell } from '../ui/ToolbarShell';
 
 interface ChartToolbarProps {
   config: ChartConfig;
   onChange: (config: ChartConfig) => void;
   chartRef: React.RefObject<HTMLDivElement | null>;
-  fields?: ChartField[];
   onExpand?: () => void;
   splitView?: boolean;
   onToggleSplit?: () => void;
@@ -40,28 +36,13 @@ export function ChartToolbar({
   config,
   onChange,
   chartRef,
-  fields = [],
   onExpand,
   splitView,
   onToggleSplit,
 }: ChartToolbarProps) {
   const { t } = useI18n();
   const [exportOpen, setExportOpen] = useState(false);
-  const [nlInput, setNlInput] = useState('');
-  const [nlOpen, setNlOpen] = useState(false);
-  const nlInputRef = useRef<HTMLInputElement>(null);
   const exportRef = useRef<HTMLDivElement>(null);
-
-  const handleNlSubmit = useCallback(() => {
-    if (!nlInput.trim()) return;
-    const result = parseNlChartConfig(nlInput, fields, config);
-    if (result.matched) {
-      onChange(result.config as ChartConfig);
-      setNlInput('');
-    }
-  }, [nlInput, fields, config, onChange]);
-
-  const aiKeyboard = useAiKeyboard(handleNlSubmit);
 
   const handleExport = async (format: 'png' | 'svg') => {
     setExportOpen(false);
@@ -148,42 +129,6 @@ export function ChartToolbar({
       )}
 
       <div className="flex-1" />
-
-      {/* NL config input */}
-      {nlOpen ? (
-        <div className="flex items-center gap-1">
-          <input
-            ref={nlInputRef}
-            type="text"
-            value={nlInput}
-            onChange={(e) => setNlInput(e.target.value)}
-            onKeyDown={(e) => {
-              aiKeyboard.onKeyDown(e);
-              if (e.key === 'Escape') {
-                setNlOpen(false);
-                setNlInput('');
-              }
-            }}
-            onCompositionStart={aiKeyboard.onCompositionStart}
-            onCompositionEnd={aiKeyboard.onCompositionEnd}
-            placeholder={t('chart.nlPlaceholder')}
-            className="h-6 w-40 rounded border border-edge bg-surface px-2 text-xs text-fg focus:border-accent focus:outline-none"
-            autoFocus
-          />
-        </div>
-      ) : (
-        <button
-          type="button"
-          className="flex items-center gap-1 rounded px-2 py-1 text-xs text-fg-muted hover:text-fg-secondary hover:bg-surface transition-colors"
-          onClick={() => {
-            setNlOpen(true);
-            setTimeout(() => nlInputRef.current?.focus(), 50);
-          }}
-          title={t('chart.nlHint')}
-        >
-          <MessageSquare className="h-3.5 w-3.5" />
-        </button>
-      )}
 
       {/* Expand button */}
       {onExpand && (

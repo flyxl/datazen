@@ -44,8 +44,6 @@ const pack = {
   'chart.empty.noNumericField': '需要至少一个数值列才能生成图表',
   'chart.empty.noConfig': '请在左侧配置面板中选择 Y 轴字段',
   'chart.sampledWarning': '数据量较大，图表仅展示前 {limit} 行',
-  'chart.nlPlaceholder': '输入指令（如：换成饼图）',
-  'chart.nlHint': '用自然语言调整图表',
   'chart.expand': '放大显示',
   'chart.expandTitle': '图表预览',
   'chart.collapse': '退出放大',

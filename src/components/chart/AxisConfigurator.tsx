@@ -3,7 +3,12 @@ import { useState } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 import { Select } from '../ui/Select';
 import type { SelectOption } from '../ui/Select';
-import type { AggregationType, ChartConfig, ChartField, ChartRecommendation } from '../../types/chart';
+import type {
+  AggregationType,
+  ChartConfig,
+  ChartField,
+  ChartRecommendation,
+} from '../../types/chart';
 import { COLOR_PALETTES } from '../../lib/chart/colors';
 
 interface AxisConfiguratorProps {
@@ -13,12 +18,19 @@ interface AxisConfiguratorProps {
   recommendation: ChartRecommendation | null;
 }
 
-export function AxisConfigurator({ fields, config, onChange, recommendation }: AxisConfiguratorProps) {
+export function AxisConfigurator({
+  fields,
+  config,
+  onChange,
+  recommendation,
+}: AxisConfiguratorProps) {
   const { t } = useI18n();
   const [collapsed, setCollapsed] = useState(false);
 
   const numericFields = fields.filter((f) => f.inferredType === 'numeric');
-  const categoricalFields = fields.filter((f) => f.inferredType === 'categorical' || f.inferredType === 'datetime');
+  const categoricalFields = fields.filter(
+    (f) => f.inferredType === 'categorical' || f.inferredType === 'datetime',
+  );
   const unusedYFields = numericFields.filter((f) => !config.yAxes.includes(f.name));
 
   const allFieldOptions: SelectOption[] = [
@@ -111,37 +123,45 @@ export function AxisConfigurator({ fields, config, onChange, recommendation }: A
                 <button
                   type="button"
                   className="text-fg-muted hover:text-red-400"
-                  onClick={() => onChange({ ...config, yAxes: config.yAxes.filter((_, i) => i !== idx) })}
+                  onClick={() =>
+                    onChange({ ...config, yAxes: config.yAxes.filter((_, i) => i !== idx) })
+                  }
                 >
                   <X className="h-3 w-3" />
                 </button>
               )}
             </div>
           ))}
-          {unusedYFields.length > 0 && config.chartType !== 'pie' && config.chartType !== 'scatter' && (
-            <button
-              type="button"
-              className="flex items-center gap-1 text-accent hover:text-accent/80 mt-1"
-              onClick={() => onChange({ ...config, yAxes: [...config.yAxes, unusedYFields[0].name] })}
-            >
-              <Plus className="h-3 w-3" />
-              {t('chart.addSeries')}
-            </button>
-          )}
+          {unusedYFields.length > 0 &&
+            config.chartType !== 'pie' &&
+            config.chartType !== 'scatter' && (
+              <button
+                type="button"
+                className="flex items-center gap-1 text-accent hover:text-accent/80 mt-1"
+                onClick={() =>
+                  onChange({ ...config, yAxes: [...config.yAxes, unusedYFields[0].name] })
+                }
+              >
+                <Plus className="h-3 w-3" />
+                {t('chart.addSeries')}
+              </button>
+            )}
         </div>
 
         {/* Group By */}
-        {config.chartType !== 'pie' && config.chartType !== 'scatter' && categoricalFields.length > 0 && (
-          <div>
-            <label className="mb-1 block text-fg-muted">{t('chart.groupBy')}</label>
-            <Select
-              value={config.groupBy ?? ''}
-              options={groupByOptions}
-              onChange={(v) => onChange({ ...config, groupBy: v || null })}
-              className="!h-7 !text-xs"
-            />
-          </div>
-        )}
+        {config.chartType !== 'pie' &&
+          config.chartType !== 'scatter' &&
+          categoricalFields.length > 0 && (
+            <div>
+              <label className="mb-1 block text-fg-muted">{t('chart.groupBy')}</label>
+              <Select
+                value={config.groupBy ?? ''}
+                options={groupByOptions}
+                onChange={(v) => onChange({ ...config, groupBy: v || null })}
+                className="!h-7 !text-xs"
+              />
+            </div>
+          )}
 
         {/* Aggregation */}
         <div>
@@ -168,7 +188,7 @@ export function AxisConfigurator({ fields, config, onChange, recommendation }: A
         {/* Color Scheme */}
         <div>
           <label className="mb-1 block text-fg-muted">{t('chart.colorScheme')}</label>
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             {Object.entries(COLOR_PALETTES).map(([name, palette]) => (
               <button
                 key={name}
@@ -179,7 +199,11 @@ export function AxisConfigurator({ fields, config, onChange, recommendation }: A
                 onClick={() => onChange({ ...config, colorScheme: name })}
               >
                 {palette.slice(0, 4).map((c, i) => (
-                  <span key={i} className="block h-3 w-3 rounded-sm" style={{ backgroundColor: c }} />
+                  <span
+                    key={i}
+                    className="block h-3 w-3 rounded-sm"
+                    style={{ backgroundColor: c }}
+                  />
                 ))}
               </button>
             ))}
@@ -193,9 +217,7 @@ export function AxisConfigurator({ fields, config, onChange, recommendation }: A
               <Lightbulb className="h-3 w-3" />
               <span className="font-medium">{t('chart.recommended')}</span>
             </div>
-            <p className="text-fg-muted text-[11px]">
-              {t(recommendation.reason as never)}
-            </p>
+            <p className="text-fg-muted text-[11px]">{t(recommendation.reason as never)}</p>
           </div>
         )}
       </div>

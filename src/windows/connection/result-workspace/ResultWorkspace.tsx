@@ -99,7 +99,7 @@ export function ResultWorkspace({
 
   return (
     <div
-      className={cn('flex min-h-0 flex-1 flex-col overflow-hidden', className)}
+      className={cn('flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden', className)}
       {...tid('result-workspace')}
     >
       <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt px-2">

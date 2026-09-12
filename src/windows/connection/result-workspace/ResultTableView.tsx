@@ -89,14 +89,14 @@ export function ResultTableView({
 
   if (isMutationExecution(result)) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col" {...tid('result-workspace-table')}>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col" {...tid('result-workspace-table')}>
         <ExecutionSummaryCard result={result} statusBar={statusBar} />
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" {...tid('result-workspace-table')}>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col" {...tid('result-workspace-table')}>
       <DataTable
         columns={columnDefs}
         rows={result.rows}
@@ -111,6 +111,7 @@ export function ResultTableView({
         highlightedRow={rowDetailIndex}
         exportTableName="query_result"
         dataExportCapability={dataExportCapability}
+        className="mr-1 rounded-b-md rounded-t-none border-x border-b border-t-0"
       />
       {result.rows.length === 0 && (
         <div className="flex shrink-0 items-center justify-center border-t border-edge px-3 py-3 text-sm text-fg-muted">

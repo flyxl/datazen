@@ -23,6 +23,7 @@ import { Pagination } from './Pagination';
 import { TableHeader, type ColumnDef } from './TableHeader';
 import { VirtualBody } from './VirtualBody';
 import { DataExportDialog } from './DataExportDialog';
+import { cn } from '../../lib/cn';
 
 export interface DataTableProps {
   columns: ColumnDef[];
@@ -95,6 +96,9 @@ export interface DataTableProps {
   /** Custom empty content when columns are hidden or table has custom empty state. */
   emptyPlaceholder?: React.ReactNode;
 
+  /** Optional layout classes for embedding the table in a composed surface. */
+  className?: string;
+
   /**
    * Optional cell text for the native context menu “copy” item.
    * When omitted, uses the right-clicked cell value (preferred) or `window.getSelection()`.
@@ -150,6 +154,7 @@ export function DataTable({
   onDeleteRows,
   headerActions,
   emptyPlaceholder,
+  className,
   getContextCellText,
 }: DataTableProps) {
   const { t } = useI18n();
@@ -399,7 +404,10 @@ export function DataTable({
 
   return (
     <div
-      className="selectable flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-edge bg-surface"
+      className={cn(
+        'selectable flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-edge bg-surface',
+        className,
+      )}
       onKeyDown={handleDeleteKey}
     >
       {hasFilterEditor ? (

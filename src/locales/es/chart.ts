@@ -43,8 +43,6 @@ const pack = {
   'chart.empty.noConfig': 'Seleccione un campo del eje Y en el panel de configuración',
   'chart.sampledWarning':
     'Conjunto de datos grande, el gráfico muestra solo las primeras {limit} filas',
-  'chart.nlPlaceholder': 'Escriba el comando (por ejemplo, cambiar a pastel)',
-  'chart.nlHint': 'Ajustar el gráfico con lenguaje natural',
   'chart.expand': 'Expandir',
   'chart.splitView': 'Dividir en gráficos separados por serie',
   'chart.expandTitle': 'Vista previa del gráfico',

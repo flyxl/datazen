@@ -42,8 +42,6 @@ const pack = {
   'chart.empty.noNumericField': 'グラフには少なくとも 1 つの数値列が必要です',
   'chart.empty.noConfig': '設定パネルで Y 軸フィールドを選択します',
   'chart.sampledWarning': '大規模なデータセット、グラフには最初の {limit} 行のみが表示されます',
-  'chart.nlPlaceholder': 'コマンドを入力します (例: パイに切り替え)',
-  'chart.nlHint': '自然言語でチャートを調整する',
   'chart.expand': '拡大する',
   'chart.splitView': 'シリーズごとに個別チャートに分割',
   'chart.expandTitle': 'チャートのプレビュー',

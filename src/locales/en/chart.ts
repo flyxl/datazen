@@ -44,8 +44,6 @@ const pack = {
   'chart.empty.noNumericField': 'At least one numeric column is required for charts',
   'chart.empty.noConfig': 'Select a Y-axis field in the config panel',
   'chart.sampledWarning': 'Large dataset, chart shows first {limit} rows only',
-  'chart.nlPlaceholder': 'Type command (e.g. switch to pie)',
-  'chart.nlHint': 'Adjust chart with natural language',
   'chart.expand': 'Expand',
   'chart.splitView': 'Split into separate charts per series',
   'chart.expandTitle': 'Chart Preview',
