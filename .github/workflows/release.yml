@@ -294,15 +294,33 @@ jobs:
           # Note: GITHUB_TOKEN belongs to the host repo and cannot read the
           # private Pro repo's releases — without PRO_PREBUILT_TOKEN the
           # download is expected to 404 and fall back to source build.
-          PREBUILT_AUTH=""
-          if [ -n "${PRO_PREBUILT_TOKEN:-}" ]; then
-            PREBUILT_AUTH="Authorization: Bearer ${PRO_PREBUILT_TOKEN}"
-          elif [ -n "${GITHUB_TOKEN:-}" ]; then
-            PREBUILT_AUTH="Authorization: Bearer ${GITHUB_TOKEN}"
+          PREBUILT_TOKEN="${PRO_PREBUILT_TOKEN:-${GITHUB_TOKEN:-}}"
+
+          # Private-repo release assets cannot be fetched via the browser
+          # redirect URL with a Bearer token (CDN returns 404). Resolve the
+          # asset via the API and download with Accept: application/octet-stream.
+          ASSET_URL=""
+          if [ -n "$PREBUILT_TOKEN" ]; then
+            ASSET_URL=$(curl -fsSL -H "Authorization: Bearer ${PREBUILT_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${PRO_REPO}/releases/tags/${TAG}" \
+              2>/dev/null | node -e "
+                let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
+                  try{
+                    const j=JSON.parse(s);
+                    const a=(j.assets||[]).find(x=>x.name==='${TARBALL}');
+                    if(a&&a.url)console.log(a.url);
+                  }catch{}
+                });" || true)
           fi
 
-          if [ -n "$PREBUILT_AUTH" ]; then
-            curl_args=(-fsSL -H "$PREBUILT_AUTH" -o "/tmp/${TARBALL}" "${URL}")
+          if [ -n "$ASSET_URL" ]; then
+            curl_args=(-fsSL -H "Authorization: Bearer ${PREBUILT_TOKEN}" \
+              -H "Accept: application/octet-stream" \
+              -o "/tmp/${TARBALL}" "${ASSET_URL}")
+          elif [ -n "$PREBUILT_TOKEN" ]; then
+            # API lookup failed — try the browser URL as a last resort (public repos).
+            curl_args=(-fsSL -H "Authorization: Bearer ${PREBUILT_TOKEN}" -o "/tmp/${TARBALL}" "${URL}")
           else
             curl_args=(-fsSL -o "/tmp/${TARBALL}" "${URL}")
           fi

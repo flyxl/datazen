@@ -72,6 +72,9 @@ describe('Windows release packaging', () => {
     // Dedicated PAT secret: GITHUB_TOKEN cannot read the private Pro repo's releases
     expect(releaseWorkflow).toContain('PRO_PREBUILT_TOKEN');
     expect(releaseWorkflow).toContain('Authorization: Bearer');
+    // Private-repo assets must resolve via the API (browser CDN URL 404s with Bearer)
+    expect(releaseWorkflow).toContain('Accept: application/octet-stream');
+    expect(releaseWorkflow).toContain('releases/tags/');
     // curl failure reason must surface in annotations without admin log access
     expect(releaseWorkflow).toContain('::notice::Prebuilt download failed');
     // Verify step emits notices so the next failure is diagnosable from annotations
