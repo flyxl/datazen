@@ -425,9 +425,6 @@ jobs:
 
           mkdir -p artifacts
 
-          # Map original basename → canonical basename (for sig resolution)
-          declare -A RENAME
-
           installer_type() {
             local name="$1"
             case "$name" in
@@ -468,7 +465,9 @@ jobs:
 
           shopt -s nullglob
 
-          # Process non-sig files first
+          # Process non-sig files first, writing a mapping file for sig resolution
+          # (avoids bash 4+ associative arrays which break on macOS bash 3.2)
+          MAPPING_FILE=$(mktemp)
           for file in \
             "$BUNDLE_DIR"/dmg/*.dmg \
             "$BUNDLE_DIR"/macos/*.tar.gz \
@@ -483,7 +482,7 @@ jobs:
             [ -z "$type" ] && continue
 
             newbase=$(canonical_name "$type" "$ext")
-            RENAME["$base"]="$newbase"
+            echo "${base}=${newbase}" >> "$MAPPING_FILE"
             cp "$file" "artifacts/$newbase"
             echo "  $base → $newbase"
           done
@@ -497,19 +496,21 @@ jobs:
             base=$(basename "$file")
             sigstem="${base%.sig}"
 
-            if [[ -n "${RENAME[$sigstem]+_}" ]]; then
-              newbase="${RENAME[$sigstem]}.sig"
-            else
+            # Look up the mapping via grep (works on bash 3.2)
+            newbase=$(grep "^${sigstem}=" "$MAPPING_FILE" 2>/dev/null | head -1 | cut -d= -f2-)
+
+            if [ -z "$newbase" ]; then
               type=$(installer_type "$sigstem")
               ext=$(file_ext "$sigstem")
               [ -z "$type" ] && { echo "  SKIP unrecognized sig: $base"; continue; }
-              newbase="$(canonical_name "$type" "$ext").sig"
+              newbase="$(canonical_name "$type" "$ext")"
             fi
 
-            cp "$file" "artifacts/$newbase"
-            echo "  $base → $newbase"
+            cp "$file" "artifacts/${newbase}.sig"
+            echo "  $base → ${newbase}.sig"
           done
 
+          rm -f "$MAPPING_FILE"
           ls -la artifacts/ || true
 
       - name: Upload artifacts to release
