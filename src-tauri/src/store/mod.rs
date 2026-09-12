@@ -209,10 +209,38 @@ impl Store {
             .load_json_file::<Vec<String>>("groups.json")
             .await
             .unwrap_or_default();
-        cache.settings = match self.load_json_file::<AppSettings>("settings.json").await {
-            Ok(settings) => settings,
-            Err(_) => AppSettings::default_for_first_run(),
+
+        // First run vs upgrade: only a data dir that has never persisted
+        // `settings.json` is a fresh installation. An existing file (even an
+        // unreadable one) means this user upgraded, so the first-run journey
+        // must stay hidden — see `resolve_loaded_onboarding`.
+        let settings_path = self.data_dir.join("settings.json");
+        let (settings, persist_settings) = if settings_path.exists() {
+            match self.load_json_file::<AppSettings>("settings.json").await {
+                Ok(mut settings) => {
+                    let needs_persist = settings.resolve_loaded_onboarding();
+                    (settings, needs_persist)
+                }
+                Err(_) => {
+                    let mut settings = AppSettings::default_for_first_run();
+                    settings.onboarding = Some(OnboardingState::for_existing_install());
+                    (settings, true)
+                }
+            }
+        } else {
+            (AppSettings::default_for_first_run(), true)
         };
+        cache.settings = settings;
+
+        if persist_settings {
+            // Materialize the resolved state so the next launch reads it back
+            // instead of re-deriving it (a settings write after a first launch
+            // must not turn a fresh install into an "upgrade").
+            let snapshot = cache.settings.clone();
+            if let Err(e) = self.save_json_file("settings.json", &snapshot).await {
+                tracing::warn!("failed to persist initial settings.json: {e}");
+            }
+        }
 
         // favorites / sync_tasks / ai_config stay unloaded
         // until their respective flows call ensure_* below.

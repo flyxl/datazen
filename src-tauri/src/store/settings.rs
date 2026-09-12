@@ -3,12 +3,35 @@ use crate::mcp::permission::McpPermissionMode;
 use crate::mcp::McpServerConfig;
 use serde::{Deserialize, Serialize};
 
+/// Current first-run journey revision. Bump it only when the journey must be
+/// shown again to users who already finished an earlier revision.
+pub const ONBOARDING_VERSION: i32 = 1;
+
 /// Onboarding wizard completion state.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct OnboardingState {
     pub completed: bool,
     pub version: i32,
+}
+
+impl OnboardingState {
+    /// Fresh installation: the journey has never been shown.
+    pub fn for_fresh_install() -> Self {
+        Self {
+            completed: false,
+            version: ONBOARDING_VERSION,
+        }
+    }
+
+    /// Existing installation that predates the journey: mark it as seen so an
+    /// upgrading user is never onboarded (requirement: upgrade ≠ first run).
+    pub fn for_existing_install() -> Self {
+        Self {
+            completed: true,
+            version: ONBOARDING_VERSION,
+        }
+    }
 }
 
 /// Light / dark / system mode plus optional installed theme pack.
@@ -162,11 +185,29 @@ pub fn clamp_connection_pool_size(n: u32) -> u32 {
 }
 
 impl AppSettings {
-    /// Defaults used on first install when `settings.json` is absent.
+    /// Defaults used on a brand-new installation when `settings.json` is absent.
+    ///
+    /// The onboarding state is materialized as "not completed" so the first-run
+    /// journey is shown. Writing it immediately also keeps the very next launch
+    /// from mistaking this install for an upgrade (see [`crate::store::Store::load_all`]).
     pub fn default_for_first_run() -> Self {
         let mut settings = Self::default();
         settings.language = crate::i18n_locale::default_ui_language();
+        settings.onboarding = Some(OnboardingState::for_fresh_install());
         settings
+    }
+
+    /// Resolve the onboarding state of a settings file that was already on disk.
+    ///
+    /// A file without the `onboarding` key was written by a build that predates
+    /// the first-run journey → the user is upgrading, so the journey stays
+    /// hidden. Returns `true` when the resolved state must be persisted.
+    pub fn resolve_loaded_onboarding(&mut self) -> bool {
+        if self.onboarding.is_some() {
+            return false;
+        }
+        self.onboarding = Some(OnboardingState::for_existing_install());
+        true
     }
 }
 
