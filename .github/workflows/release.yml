@@ -407,16 +407,19 @@ jobs:
             if [ -z "$DEB" ]; then
               echo "::error::Linux deb package not found in $BUNDLE_DIR/deb"
               FAIL=1
-            elif dpkg-deb -c "$DEB" 2>/dev/null | grep -q "builtin-ep/sql-editor-pro/dist/index.esm.js"; then
-              echo "✓ Pro extension found in Linux deb: $DEB"
-              dpkg-deb -c "$DEB" 2>/dev/null | grep "builtin-ep/sql-editor-pro" | head -10
             else
-              echo "::error::Pro extension (builtin-ep) not found in Linux deb package"
-              echo "::notice::[pro-verify] deb entries with 'builtin-ep':"
-              dpkg-deb -c "$DEB" 2>/dev/null | grep -i "builtin-ep" || echo "::notice::[pro-verify] (no builtin-ep entries at all)"
-              echo "::notice::[pro-verify] deb entries with 'prompts' (control group):"
-              dpkg-deb -c "$DEB" 2>/dev/null | grep "prompts" | head -5 || echo "::notice::[pro-verify] (no prompts entries either — resources/ bundling is broken)"
-              FAIL=1
+              # Cache dpkg-deb listing once — avoids re-running for each check
+              # and prevents bash 3.2 pipeline exit-code issues with grep -q.
+              DEB_LISTING=$(dpkg-deb -c "$DEB" 2>/dev/null || true)
+              echo "$DEB_LISTING" | grep "builtin-ep/sql-editor-pro" | head -10
+              if echo "$DEB_LISTING" | grep -q "builtin-ep/sql-editor-pro/dist/index.esm.js"; then
+                echo "✓ Pro extension found in Linux deb: $DEB"
+              else
+                echo "::error::Pro extension (builtin-ep) not found in Linux deb package"
+                echo "::notice::[pro-verify] deb entries with 'builtin-ep':"
+                echo "$DEB_LISTING" | grep -i "builtin-ep" || echo "::notice::[pro-verify] (no builtin-ep entries)"
+                FAIL=1
+              fi
             fi
 
             # AppImage is a squashfs dump of the same resource tree — check it too.
