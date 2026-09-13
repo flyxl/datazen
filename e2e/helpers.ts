@@ -1592,11 +1592,6 @@ export async function clickTableInSidebar(tableName: string) {
               await browser.pause(500);
             }
           }
-          // The navigator handler first activates the database and then
-          // schedules TableView creation. Keep the search mounted while that
-          // async chain settles. Do not click repeatedly while that chain is
-          // in flight: a second click can restart database activation and
-          // make the virtualized row disappear from the filtered tree.
           await browser.waitUntil(() => tableWorkspaceIsOpen(tableName), {
             timeout: 15000,
             timeoutMsg: `等待表 "${tableName}" 工作区打开超时`,

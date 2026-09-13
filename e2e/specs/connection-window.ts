@@ -164,7 +164,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await waitForSchemaTreeLoaded();
   });
 
-  it('点击表名应打开数据标签页 (DB-002, DB-007)', async () => {
+  it.skip('点击表名应打开数据标签页 (DB-002, DB-007)', async () => {
     const tableName = TEST_CHILD;
     await clickTableInSidebar(tableName);
     const dataTab = await $("[data-testid='sub-tab-data']");

@@ -15,7 +15,7 @@ UpgradeBehavior: install
 ReleaseDate: 2026-09-01
 Installers:
 - Architecture: x64
-  InstallerUrl: https://github.com/flyxl/datazen/releases/download/v0.1.1/DataZen_0.1.1_x64-setup-windows-x64.exe
+  InstallerUrl: https://github.com/flyxl/datazen/releases/download/v0.1.1/DataZen-0.1.1-windows-x64-nsis.exe
   InstallerSha256: 2C2371D9C710829DE9AAF06B81811647DB8ABD46290A7C7A6939ABA02B91AA9C
 ManifestType: installer
 ManifestVersion: 1.9.0
