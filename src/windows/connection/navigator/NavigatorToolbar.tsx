@@ -111,13 +111,13 @@ export function NavigatorToolbar({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center border-b border-edge px-2 py-1.5">
+      <div className="flex shrink-0 items-center border-b border-edge px-2 py-1">
         <div className="relative flex-1">
           <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted" />
           <input
             type="text"
             data-testid="connection-search-input"
-            className="h-7 w-full rounded-md bg-surface pl-7 pr-2 text-xs text-fg placeholder:text-fg-muted focus:outline-none focus:ring-1 focus:ring-accent"
+            className="h-6 w-full rounded-md bg-surface pl-7 pr-2 text-xs text-fg placeholder:text-fg-muted focus:outline-none focus:ring-1 focus:ring-accent"
             placeholder={t('main.searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}

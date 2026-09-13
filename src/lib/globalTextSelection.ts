@@ -89,6 +89,33 @@ function clearSelection() {
 }
 
 /**
+ * Suppress the native WebView right-click context menu globally.
+ *
+ * In release builds the WebView shows a default context menu with "Reload",
+ * "Inspect Element" etc. when right-clicking on areas without a custom
+ * contextmenu handler. This intercepts ALL contextmenu events at the
+ * document level and prevents the default menu. Components that need their
+ * own context menus call `e.preventDefault()` in their handlers and show
+ * a custom web menu via `showNativeContextMenu`.
+ *
+ * In dev builds the native menu is kept so "Inspect Element" remains
+ * accessible for debugging.
+ */
+export function installNativeContextMenuSuppressor(): () => void {
+  if (import.meta.env.DEV) return () => {};
+
+  const onContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
+  };
+
+  document.addEventListener('contextmenu', onContextMenu);
+
+  return () => {
+    document.removeEventListener('contextmenu', onContextMenu);
+  };
+}
+
+/**
  * Guard against stray left-button drags painting a huge selection block.
  *
  * Selection is only allowed to start on content that is actually selectable

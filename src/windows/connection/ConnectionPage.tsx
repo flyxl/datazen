@@ -408,13 +408,35 @@ export function ConnectionPage() {
     [handleCloseTab],
   );
 
+  const pendingSelectTableRef = useRef<{
+    table: string;
+    schema?: string;
+    database?: string;
+  } | null>(null);
+
   const handleSelectTable = useCallback((tableName: string, schema?: string, database?: string) => {
     // Defer so that any preceding handleSelectConnection state flush + useLayoutEffect
     // has time to update selectTableRef to the correct connection's handler.
+    pendingSelectTableRef.current = { table: tableName, schema, database };
     requestAnimationFrame(() => {
-      selectTableRef.current?.(tableName, schema, database);
+      if (selectTableRef.current) {
+        const p = pendingSelectTableRef.current;
+        pendingSelectTableRef.current = null;
+        if (p) selectTableRef.current(p.table, p.schema, p.database);
+      }
     });
   }, []);
+
+  // Retry pending table selection after ContentView re-mounts (useLayoutEffect
+  // in ContentView sets selectTableRef.current; this effect fires on the next
+  // render after that layout effect, so the ref is guaranteed to be ready).
+  useEffect(() => {
+    const p = pendingSelectTableRef.current;
+    if (p && selectTableRef.current) {
+      pendingSelectTableRef.current = null;
+      selectTableRef.current(p.table, p.schema, p.database);
+    }
+  });
 
   const handleRefresh = useCallback(() => {
     void fetchConnections();

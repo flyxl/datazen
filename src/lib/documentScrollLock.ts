@@ -21,6 +21,11 @@
  * reach the Document/Window targets without the capture flag). Snapping
  * fires one extra no-op scroll event, so the listener settles immediately.
  * Remove never — the viewport must stay anchored for the app lifetime.
+ *
+ * Strategy: two layers of defense:
+ * 1. Scroll event listeners (fast path) — catches most programmatic scrolls.
+ * 2. requestAnimationFrame polling — catches edge cases where scroll events
+ *    don't fire (e.g., some WebDriver scrollIntoView variants).
  */
 interface ScrollLockGlobal {
   __datazenScrollLockInstalled?: boolean;
@@ -49,6 +54,32 @@ export function installDocumentScrollLock(): void {
   // preventDefault().
   window.addEventListener('scroll', snap, { passive: true });
   document.addEventListener('scroll', snap, { passive: true });
+
+  // Layer 2: rAF polling — catches edge cases where scroll events don't fire
+  // (e.g., some WebDriver scrollIntoView variants that bypass the event loop).
+  // The check is extremely cheap (two property reads), and rAF only fires
+  // when the tab is visible, so there's no idle-power cost.
+  let lastKnownRootScrollTop = 0;
+  let lastKnownBodyScrollTop = 0;
+
+  const pollAndSnap = () => {
+    const root = document.documentElement;
+    const body = document.body;
+
+    // Fast path: only snap if something actually changed
+    const rootScrollTop = root.scrollTop;
+    const bodyScrollTop = body?.scrollTop ?? 0;
+
+    if (rootScrollTop !== lastKnownRootScrollTop || bodyScrollTop !== lastKnownBodyScrollTop) {
+      lastKnownRootScrollTop = rootScrollTop;
+      lastKnownBodyScrollTop = bodyScrollTop;
+      snap();
+    }
+
+    requestAnimationFrame(pollAndSnap);
+  };
+
+  requestAnimationFrame(pollAndSnap);
 
   // Snap once on install in case something scrolled before bootstrap.
   snap();

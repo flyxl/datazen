@@ -8,6 +8,7 @@ import { hideSplash } from './lib/splash';
 import {
   installDragSelectionGuard,
   installGlobalTextSelectionPolicy,
+  installNativeContextMenuSuppressor,
   installRightDragSelectionSuppressor,
 } from './lib/globalTextSelection';
 
@@ -71,10 +72,12 @@ export default function App() {
     const stopSelectAll = installGlobalTextSelectionPolicy();
     const stopRightDrag = installRightDragSelectionSuppressor();
     const stopDragGuard = installDragSelectionGuard();
+    const stopNativeCtxMenu = installNativeContextMenuSuppressor();
     return () => {
       stopSelectAll();
       stopRightDrag();
       stopDragGuard();
+      stopNativeCtxMenu();
     };
   }, []);
 
